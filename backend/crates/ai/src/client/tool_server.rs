@@ -3,7 +3,8 @@
 //! `{name, input}`; we answer `{content, isError}`.
 //!
 //! Each turn registers its [`ToolHandler`] and gets a fresh token (32 random bytes, hex), so two
-//! turns never see each other's calls. Dropping the [`ToolRegistration`] unregisters it. An
+//! turns never see each other's calls. Dropping the [`ToolRegistration`] unregisters it, and the
+//! token also expires after its TTL (the turn timeout). An
 //! unknown or expired token is 404, a missing one 401. The body limit is 64 KiB. A call that runs
 //! longer than the per-call timeout (50 s: under the sidecar's 55 s callback fetch, over T23's
 //! 45 s engine wait) answers `isError` with `{"available":false,"reason":"engine busy"}`.
@@ -14,7 +15,7 @@
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex, Weak};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use axum::Router;
 use axum::body::Bytes;
@@ -42,6 +43,8 @@ type Key = [u8; 32];
 struct Entry {
     token: String,
     handler: Arc<dyn ToolHandler>,
+    /// After this the token is expired (404) even if the registration was never dropped.
+    expires_at: Instant,
 }
 
 struct Inner {
@@ -53,6 +56,11 @@ fn key_of(token: &str) -> Key {
     Sha256::digest(token.as_bytes()).into()
 }
 
+fn purge_expired(reg: &mut HashMap<Key, Entry>) {
+    let now = Instant::now();
+    reg.retain(|_, e| e.expires_at > now);
+}
+
 fn ct_eq(a: &[u8], b: &[u8]) -> bool {
     if a.len() != b.len() {
         return false;
@@ -62,7 +70,8 @@ fn ct_eq(a: &[u8], b: &[u8]) -> bool {
 
 impl Inner {
     fn lookup(&self, token: &str) -> Option<Arc<dyn ToolHandler>> {
-        let reg = self.registry.lock().unwrap_or_else(|e| e.into_inner());
+        let mut reg = self.registry.lock().unwrap_or_else(|e| e.into_inner());
+        purge_expired(&mut reg);
         let entry = reg.get(&key_of(token))?;
         ct_eq(entry.token.as_bytes(), token.as_bytes()).then(|| entry.handler.clone())
     }
@@ -236,21 +245,26 @@ impl ToolServer {
         self.local_addr
     }
 
-    /// Registers one turn's handler under a fresh token.
-    pub fn register(&self, h: Arc<dyn ToolHandler>) -> ToolRegistration {
+    /// Registers one turn's handler under a fresh token that expires after `ttl` (the turn
+    /// timeout), even if the registration is never dropped.
+    pub fn register(&self, h: Arc<dyn ToolHandler>, ttl: Duration) -> ToolRegistration {
         let token = hex::encode(rand::random::<[u8; 32]>());
         let key = key_of(&token);
-        self.inner
+        let mut reg = self
+            .inner
             .registry
             .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .insert(
-                key,
-                Entry {
-                    token: token.clone(),
-                    handler: h,
-                },
-            );
+            .unwrap_or_else(|e| e.into_inner());
+        purge_expired(&mut reg);
+        reg.insert(
+            key,
+            Entry {
+                token: token.clone(),
+                handler: h,
+                expires_at: Instant::now() + ttl,
+            },
+        );
+        drop(reg);
         ToolRegistration {
             url: format!("{}{TOOLS_PATH}", self.public_url),
             token,
@@ -259,12 +273,14 @@ impl ToolServer {
         }
     }
 
-    /// The number of live registrations.
+    /// The number of live (registered and unexpired) registrations.
     pub fn registrations(&self) -> usize {
-        self.inner
+        let mut reg = self
+            .inner
             .registry
             .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .len()
+            .unwrap_or_else(|e| e.into_inner());
+        purge_expired(&mut reg);
+        reg.len()
     }
 }

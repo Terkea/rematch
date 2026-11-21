@@ -9,7 +9,8 @@
 //!   idle timeout. The batch's `results_url` is never followed, so a forged host cannot receive
 //!   the key.
 //!
-//! The non-streaming calls retry per [`super::retry`]. Logging is `debug` only: method, path,
+//! `status` retries per [`super::retry`]; `submit` retries only a refused connection, 429 or 529
+//! (a batch is paid, so a possibly-created one is never re-sent). Logging is `debug` only: method, path,
 //! status, attempt, duration and `request-id`.
 
 use std::time::{Duration, Instant, SystemTime};
@@ -25,13 +26,22 @@ use super::retry::{retry_delay, should_retry};
 use super::sidecar::{error_of, http_client};
 use super::wire::{
     BATCHES_PATH, BatchCreate, BatchObject, BatchResult, BatchResultLine, DEFAULT_BASE_URL,
-    MessagesRequest, REQUEST_ID_HEADER,
+    MessagesRequest, REQUEST_ID_HEADER, USER_AGENT,
 };
 
 /// `anthropic-version` of every batch call (`2026-10-21`).
 pub use super::wire::ANTHROPIC_VERSION;
-/// The batch client's User-Agent.
-pub const BATCHES_USER_AGENT: &str = "chess-improver/0.1";
+
+/// How a call may be retried.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Retry {
+    /// The full [`super::retry`] policy (idempotent reads).
+    Full,
+    /// Creating a batch is paid and not idempotent: retry only when the request certainly did
+    /// not create one (a refused connection, 429 or 529). A 5xx, a timeout after sending, or any
+    /// other failure is returned, and the reconciler (Task 21) decides.
+    Create,
+}
 
 /// `ANTHROPIC_API_KEY`. `Debug` and `Display` redact it; there is no `Serialize`.
 #[derive(Clone, PartialEq, Eq)]
@@ -154,7 +164,7 @@ impl BatchesClient {
             .header("x-api-key", self.cfg.api_key.expose())
             .header("anthropic-version", ANTHROPIC_VERSION)
             .header(reqwest::header::CONTENT_TYPE, "application/json")
-            .header(reqwest::header::USER_AGENT, BATCHES_USER_AGENT)
+            .header(reqwest::header::USER_AGENT, USER_AGENT)
     }
 
     /// Sends a non-streaming call with retries and returns the 2xx body.
@@ -163,6 +173,7 @@ impl BatchesClient {
         method: reqwest::Method,
         path: &str,
         body: Option<&[u8]>,
+        policy: Retry,
     ) -> Result<bytes::Bytes, AiError> {
         let mut attempt = 0u32;
         loop {
@@ -200,7 +211,8 @@ impl BatchesClient {
                         header(reqwest::header::RETRY_AFTER.as_str()).as_deref(),
                         SystemTime::now(),
                     );
-                    let retryable = should_retry(Some(status), x_should_retry.as_deref());
+                    let retryable = should_retry(Some(status), x_should_retry.as_deref())
+                        && (policy == Retry::Full || matches!(status, 429 | 529));
                     (error_of(resp).await, retryable, retry_after)
                 }
                 Err(e) => {
@@ -212,7 +224,9 @@ impl BatchesClient {
                         "anthropic batch call failed"
                     );
                     let err = classify_transport(&e);
-                    let retryable = err.is_unavailable() && should_retry(None, None);
+                    let retryable = err.is_unavailable()
+                        && should_retry(None, None)
+                        && (policy == Retry::Full || e.is_connect());
                     (err, retryable, None)
                 }
             };
@@ -248,7 +262,12 @@ impl BatchesClient {
         let body = serde_json::to_vec(&create)
             .map_err(|_| AiError::Response(redact("batch request could not be encoded")))?;
         let bytes = self
-            .call(reqwest::Method::POST, BATCHES_PATH, Some(&body))
+            .call(
+                reqwest::Method::POST,
+                BATCHES_PATH,
+                Some(&body),
+                Retry::Create,
+            )
             .await?;
         Ok(Self::batch_object(&bytes)?.id)
     }
@@ -256,7 +275,12 @@ impl BatchesClient {
     pub async fn status(&self, id: &str) -> Result<BatchStatus, AiError> {
         check_id(id)?;
         let bytes = self
-            .call(reqwest::Method::GET, &format!("{BATCHES_PATH}/{id}"), None)
+            .call(
+                reqwest::Method::GET,
+                &format!("{BATCHES_PATH}/{id}"),
+                None,
+                Retry::Full,
+            )
             .await?;
         Ok(Self::batch_object(&bytes)?.processing_status)
     }
@@ -289,12 +313,10 @@ impl BatchesClient {
             if !resp.status().is_success() {
                 return Err(error_of(resp).await);
             }
-            Ok(Lines {
-                body: resp.bytes_stream().boxed(),
-                buf: Vec::new(),
-                idle: self.cfg.stream_idle_timeout,
-                done: false,
-            })
+            Ok(Lines::new(
+                resp.bytes_stream().boxed(),
+                self.cfg.stream_idle_timeout,
+            ))
         };
         stream::once(start)
             .flat_map(move |r| match r {
@@ -308,48 +330,123 @@ impl BatchesClient {
     }
 }
 
-/// Splits a streamed body into non-empty lines.
+/// The longest results line accepted (4 MiB); a longer one yields a `Response` error and is
+/// skipped up to its newline.
+pub const MAX_RESULT_LINE: usize = 4 * 1024 * 1024;
+
+/// Splits a streamed body into non-empty lines, scanning each byte once.
 struct Lines {
     body: BoxStream<'static, reqwest::Result<bytes::Bytes>>,
     buf: Vec<u8>,
+    /// Start of the current line in `buf`.
+    start: usize,
+    /// Bytes of `buf` already searched for a newline.
+    scanned: usize,
+    /// Dropping an oversized line until its newline.
+    skipping: bool,
+    max: usize,
     idle: Duration,
     done: bool,
 }
 
+enum Next {
+    Line(Vec<u8>),
+    TooLong,
+    NeedMore,
+}
+
+fn too_long() -> AiError {
+    AiError::Response(redact("batch result line too large"))
+}
+
 impl Lines {
-    fn take_line(&mut self) -> Option<Vec<u8>> {
+    fn new(body: BoxStream<'static, reqwest::Result<bytes::Bytes>>, idle: Duration) -> Self {
+        Lines {
+            body,
+            buf: Vec::new(),
+            start: 0,
+            scanned: 0,
+            skipping: false,
+            max: MAX_RESULT_LINE,
+            idle,
+            done: false,
+        }
+    }
+
+    fn next_line(&mut self) -> Next {
         loop {
-            let at = self.buf.iter().position(|&b| b == b'\n')?;
-            let mut line: Vec<u8> = self.buf.drain(..=at).collect();
-            line.pop();
-            if line.last() == Some(&b'\r') {
-                line.pop();
+            let Some(off) = self.buf[self.scanned..].iter().position(|&b| b == b'\n') else {
+                self.scanned = self.buf.len();
+                if self.skipping {
+                    // Nothing of an oversized line is kept.
+                    self.buf.clear();
+                    self.start = 0;
+                    self.scanned = 0;
+                } else if self.buf.len() - self.start > self.max {
+                    self.skipping = true;
+                    self.buf.clear();
+                    self.start = 0;
+                    self.scanned = 0;
+                    return Next::TooLong;
+                }
+                return Next::NeedMore;
+            };
+            let end = self.scanned + off;
+            let line_start = self.start;
+            self.start = end + 1;
+            self.scanned = self.start;
+            if self.skipping {
+                self.skipping = false;
+                continue;
+            }
+            let mut line = &self.buf[line_start..end];
+            if let [rest @ .., b'\r'] = line {
+                line = rest;
+            }
+            if line.len() > self.max {
+                return Next::TooLong;
             }
             if !line.iter().all(u8::is_ascii_whitespace) {
-                return Some(line);
+                return Next::Line(line.to_vec());
             }
         }
+    }
+
+    /// Drops consumed bytes before a refill.
+    fn compact(&mut self) {
+        self.buf.drain(..self.start);
+        self.scanned -= self.start;
+        self.start = 0;
     }
 
     fn into_stream(self) -> BoxStream<'static, Result<Vec<u8>, AiError>> {
         stream::unfold(self, |mut s| async move {
             loop {
-                if let Some(line) = s.take_line() {
-                    return Some((Ok(line), s));
+                match s.next_line() {
+                    Next::Line(line) => return Some((Ok(line), s)),
+                    Next::TooLong => return Some((Err(too_long()), s)),
+                    Next::NeedMore => {}
                 }
                 if s.done {
-                    let rest = std::mem::take(&mut s.buf);
-                    if rest.iter().all(u8::is_ascii_whitespace) {
+                    let rest = s.buf.split_off(s.start);
+                    s.buf.clear();
+                    s.start = 0;
+                    s.scanned = 0;
+                    if s.skipping || rest.iter().all(u8::is_ascii_whitespace) {
                         return None;
                     }
                     return Some((Ok(rest), s));
                 }
+                s.compact();
                 match tokio::time::timeout(s.idle, s.body.next()).await {
                     Ok(Some(Ok(chunk))) => s.buf.extend_from_slice(&chunk),
                     Ok(None) => s.done = true,
                     _ => {
                         s.done = true;
                         s.buf.clear();
+                        s.start = 0;
+                        s.scanned = 0;
+                        s.skipping = true;
                         return Some((Err(connection()), s));
                     }
                 }

@@ -599,6 +599,13 @@ describe("runChat", () => {
     const res = new FakeRes();
     await runChat(parseChatRequest(baseBody), testConfig(), res, deps());
     expect(res.events().map((e) => e.event)).toEqual(["tool_use", "delta", "retract", "done"]);
+    // The tool_use names its message, so Rust can drop the retracted call from its tool uses.
+    expect(res.events()[0]?.data).toEqual({
+      id: "toolu_bad",
+      name: "mcp__coach__get_position",
+      input: {},
+      messageId: "msg_tool",
+    });
     expect(res.events()[2]?.data).toEqual({ messageIds: ["msg_tool"], reason: "superseded" });
   });
 

@@ -20,33 +20,87 @@ pub enum SseError {
     TrailingPartialEvent,
 }
 
-#[derive(Debug, Default)]
+/// The longest line, and the most data in one event, the decoder buffers (4 MiB). Beyond it the
+/// decoder stops and [`SseDecoder::overflowed`] is true.
+pub const MAX_LINE: usize = 4 * 1024 * 1024;
+
+#[derive(Debug)]
 pub struct SseDecoder {
     buf: Vec<u8>,
+    /// Bytes of `buf` already searched for a newline (the scan is incremental).
+    scanned: usize,
     event: Option<String>,
     data: String,
     has_data: bool,
+    max: usize,
+    overflow: bool,
+}
+
+impl Default for SseDecoder {
+    fn default() -> Self {
+        SseDecoder::with_max_line(MAX_LINE)
+    }
 }
 
 impl SseDecoder {
+    /// A decoder whose line and event-data limit is `max` bytes.
+    pub fn with_max_line(max: usize) -> Self {
+        SseDecoder {
+            buf: Vec::new(),
+            scanned: 0,
+            event: None,
+            data: String::new(),
+            has_data: false,
+            max,
+            overflow: false,
+        }
+    }
+
+    /// True once a line or an event's data exceeded the limit; nothing more is decoded.
+    pub fn overflowed(&self) -> bool {
+        self.overflow
+    }
+
     /// Feeds one chunk and returns every event it completes.
     pub fn push(&mut self, chunk: &[u8]) -> Vec<SseEvent> {
-        self.buf.extend_from_slice(chunk);
         let mut out = Vec::new();
+        if self.overflow {
+            return out;
+        }
+        self.buf.extend_from_slice(chunk);
         let mut start = 0;
-        while let Some(off) = self.buf[start..].iter().position(|&b| b == b'\n') {
-            let end = start + off;
+        while let Some(off) = self.buf[self.scanned..].iter().position(|&b| b == b'\n') {
+            let end = self.scanned + off;
             let mut line = &self.buf[start..end];
             if let [rest @ .., b'\r'] = line {
                 line = rest;
             }
             let line = String::from_utf8_lossy(line).into_owned();
             start = end + 1;
-            if let Some(ev) = self.line(&line) {
+            self.scanned = start;
+            if line.len() > self.max {
+                self.overflow = true;
+            } else if let Some(ev) = self.line(&line) {
                 out.push(ev);
+            }
+            if self.data.len() > self.max {
+                self.overflow = true;
+            }
+            if self.overflow {
+                self.buf.clear();
+                self.scanned = 0;
+                self.reset();
+                return out;
             }
         }
         self.buf.drain(..start);
+        self.scanned = self.buf.len();
+        if self.buf.len() > self.max {
+            self.overflow = true;
+            self.buf.clear();
+            self.scanned = 0;
+            self.reset();
+        }
         out
     }
 
@@ -54,6 +108,7 @@ impl SseDecoder {
     pub fn finish(&mut self) -> Result<(), SseError> {
         let partial = !self.buf.is_empty() || self.has_data || self.event.is_some();
         self.buf.clear();
+        self.scanned = 0;
         self.reset();
         if partial {
             Err(SseError::TrailingPartialEvent)

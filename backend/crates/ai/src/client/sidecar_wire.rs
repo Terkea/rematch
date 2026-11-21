@@ -160,13 +160,16 @@ pub struct RetractEvent {
     pub reason: String,
 }
 
-/// `tool_use {id, name, input}`.
+/// `tool_use {id, name, input, messageId?}`.
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 pub struct ToolUseEvent {
     pub id: String,
     pub name: String,
     #[serde(default)]
     pub input: Option<Value>,
+    /// The API message of the tool call; a later `retract` naming it removes the call.
+    #[serde(default, rename = "messageId")]
+    pub message_id: Option<String>,
 }
 
 /// `error`: the Anthropic error body plus `status`. Only `error.type` is kept.

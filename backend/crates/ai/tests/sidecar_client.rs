@@ -185,6 +185,14 @@ async fn structured_posts_the_contract_with_bearer() {
     assert_eq!(res.parse_error, None);
 
     let reqs = server.received_requests().await.unwrap();
+    // ADR 0043: the fixed project User-Agent, never an email address.
+    let ua = reqs[0].headers.get("user-agent").unwrap().to_str().unwrap();
+    assert_eq!(
+        ua,
+        "chess-improver/0.1 (+https://github.com/chess-improver)"
+    );
+    assert_eq!(ua, ai::client::wire::USER_AGENT);
+    assert!(!ua.contains('@'));
     let body: Value = serde_json::from_slice(&reqs[0].body).unwrap();
     assert_eq!(body["model"], "claude-sonnet-5-5");
     assert_eq!(body["effort"], "medium");
@@ -877,6 +885,149 @@ async fn health_parses_auth_kind() {
         let v: AuthKind = serde_json::from_value(json!(wire)).unwrap();
         assert_eq!(v, kind);
     }
+}
+
+// ---- fix round 1 -----------------------------------------------------------------------------
+
+fn mu(model: &str, usage: AiUsage) -> ModelUsage {
+    ModelUsage {
+        model: model.into(),
+        usage,
+    }
+}
+
+async fn resumed_two_models() -> TurnResult {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat"))
+        .respond_with(sse(&fixture("chat-resumed-two-models.sse")))
+        .mount(&server)
+        .await;
+    let mut req = chat(ToolChoice::None);
+    req.resume = true;
+    req.rebuild_context = Some("<summary>".into());
+    let events = collect(client(&server).stream_turn(&req, None)).await;
+    match events.last() {
+        Some(Ok(TurnEvent::Done(t))) => t.clone(),
+        other => panic!("{other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn resumed_two_model_turn_meters_each_model_by_difference() {
+    let turn = resumed_two_models().await;
+    assert_eq!(turn.session, Some(SessionPath::Resumed));
+    let prev = vec![
+        mu("claude-haiku-5-5", sonnet(120, 12, 0, 0)),
+        mu("claude-sonnet-5-5", sonnet(2000, 100, 6000, 1200)),
+    ];
+    assert_eq!(
+        metered_turn_usage(&turn, Some(&prev)),
+        vec![
+            mu("claude-haiku-5-5", sonnet(40, 4, 0, 0)),
+            // The difference also counts internal calls the stream sum (512 input) missed.
+            mu("claude-sonnet-5-5", sonnet(560, 30, 3000, 0)),
+        ]
+    );
+    assert_eq!(
+        turn.model_usage,
+        vec![
+            mu("claude-haiku-5-5", sonnet(40, 4, 0, 0)),
+            mu("claude-sonnet-5-5", sonnet(512, 30, 3000, 0)),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn an_empty_previous_total_falls_back_to_model_usage() {
+    let turn = resumed_two_models().await;
+    // An empty stored total is no baseline: it would meter the whole session again.
+    assert_eq!(metered_turn_usage(&turn, Some(&[])), turn.model_usage);
+    assert_eq!(metered_turn_usage(&turn, None), turn.model_usage);
+}
+
+#[tokio::test]
+async fn a_model_missing_from_now_falls_back_to_model_usage() {
+    let turn = resumed_two_models().await;
+    let prev = vec![
+        mu("claude-haiku-5-5", sonnet(120, 12, 0, 0)),
+        mu("claude-sonnet-5-5", sonnet(2000, 100, 6000, 1200)),
+        mu("claude-opus-5-5", sonnet(1, 1, 0, 0)),
+    ];
+    assert_eq!(metered_turn_usage(&turn, Some(&prev)), turn.model_usage);
+}
+
+#[tokio::test]
+async fn a_retracted_tool_use_is_removed_from_tool_uses() {
+    let server = MockServer::start().await;
+    let done = json!({"subtype":"success","stopReason":"end_turn","text":"fixed","numTurns":2,
+        "durationMs":1,"modelUsage":{},"sessionModelUsage":{},"sdkCostUsd":0.0,"session":"new"});
+    let body = format!(
+        "event: tool_use\ndata: {}\n\nevent: tool_use\ndata: {}\n\nevent: retract\ndata: {}\n\nevent: done\ndata: {done}\n\n",
+        json!({"id":"toolu_bad","name":"mcp__coach__get_position","input":{},"messageId":"msg_tool"}),
+        json!({"id":"toolu_ok","name":"mcp__coach__get_shape","input":{"gameId":"g"},"messageId":"msg_ok"}),
+        json!({"messageIds":["msg_tool"],"reason":"superseded"}),
+    );
+    Mock::given(method("POST"))
+        .and(path("/v1/chat"))
+        .respond_with(sse(&body))
+        .mount(&server)
+        .await;
+    let events = collect(client(&server).stream_turn(&chat(ToolChoice::Auto), None)).await;
+    let Some(Ok(TurnEvent::Done(t))) = events.last() else {
+        panic!("{events:?}")
+    };
+    assert_eq!(
+        t.tool_uses,
+        vec![ToolUse {
+            id: "toolu_ok".into(),
+            name: "get_shape".into(),
+            input: Some(json!({"gameId":"g"})),
+        }]
+    );
+}
+
+#[tokio::test]
+async fn the_registration_ends_when_the_terminal_event_is_queued() {
+    for file in ["chat-tool-then-text.sse", "chat-error-overloaded.sse"] {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/chat"))
+            .respond_with(sse(&fixture(file)))
+            .mount(&server)
+            .await;
+        let tools = ToolServer::start("127.0.0.1:0".parse().unwrap(), "http://w:7311".into())
+            .await
+            .unwrap();
+        let c = SidecarClient::new(config(&server), Some(tools.clone())).unwrap();
+        let req = chat(ToolChoice::Auto);
+        let handler: Arc<dyn ToolHandler> = Arc::new(Echo);
+        let mut s = c.stream_turn(&req, Some(handler));
+        let first = s.next().await.unwrap();
+        assert!(first.is_ok(), "{file}");
+        // The whole body is one chunk, so the terminal item is already queued: the stream is
+        // still alive, but the turn's tools are gone.
+        assert_eq!(tools.registrations(), 0, "{file}");
+        while s.next().await.is_some() {}
+    }
+}
+
+#[tokio::test]
+async fn an_oversized_sse_line_is_a_response_error() {
+    let server = MockServer::start().await;
+    let huge = "x".repeat(ai::client::sse::MAX_LINE + 1);
+    Mock::given(method("POST"))
+        .and(path("/v1/chat"))
+        .respond_with(sse(&format!("event: delta\ndata: {huge}\n\n")))
+        .mount(&server)
+        .await;
+    let events = collect(client(&server).stream_turn(&chat(ToolChoice::Auto), None)).await;
+    assert_eq!(events.len(), 1);
+    assert!(
+        matches!(&events[0], Err(AiError::Response(_))),
+        "{:?}",
+        events[0].as_ref().err()
+    );
 }
 
 // ---- secrets ---------------------------------------------------------------------------------

@@ -295,12 +295,14 @@ pub enum TurnEvent {
 /// - a resumed turn with the previous turn's stored `session_model_usage`: per model,
 ///   `session_model_usage(now) - previous`, falling back to `model_usage` when any difference is
 ///   negative (a model missing from `now` counts as negative);
-/// - otherwise (a new or rebuilt turn, or no stored previous total): `model_usage`.
+/// - otherwise (a new or rebuilt turn, or no stored previous total, or an empty one):
+///   `model_usage`.
 pub fn metered_turn_usage(turn: &TurnResult, previous: Option<&[ModelUsage]>) -> Vec<ModelUsage> {
     let (Some(SessionPath::Resumed), Some(prev)) = (turn.session, previous) else {
         return turn.model_usage.clone();
     };
-    if turn.session_model_usage.is_empty() {
+    // An empty stored total is no baseline (it would meter the whole session again).
+    if turn.session_model_usage.is_empty() || prev.is_empty() {
         return turn.model_usage.clone();
     }
     let mut now: BTreeMap<&str, AiUsage> = BTreeMap::new();

@@ -44,6 +44,9 @@ impl ToolHandler for Recorder {
     }
 }
 
+/// A turn timeout long enough for every test except the TTL one.
+const TTL: Duration = Duration::from_secs(180);
+
 async fn server() -> Arc<ToolServer> {
     ToolServer::start(
         "127.0.0.1:0".parse().unwrap(),
@@ -77,7 +80,7 @@ async fn routes_by_turn_token_to_the_registered_handler() {
     install_crypto();
     let s = server().await;
     let h = Recorder::new("a");
-    let reg = s.register(h.clone());
+    let reg = s.register(h.clone(), TTL);
     assert_eq!(reg.url, "http://rust-worker:7311/v1/tools");
     assert_eq!(reg.token.len(), 64);
     assert!(reg.token.bytes().all(|b| b.is_ascii_hexdigit()));
@@ -107,7 +110,7 @@ async fn routes_by_turn_token_to_the_registered_handler() {
         ]
     );
     // Two registrations get two different tokens.
-    let other = s.register(Recorder::new("b"));
+    let other = s.register(Recorder::new("b"), TTL);
     assert_ne!(other.token, reg.token);
     assert_eq!(s.registrations(), 2);
 }
@@ -116,7 +119,7 @@ async fn routes_by_turn_token_to_the_registered_handler() {
 async fn unknown_token_is_404_and_missing_is_401() {
     install_crypto();
     let s = server().await;
-    let _reg = s.register(Recorder::new("a"));
+    let _reg = s.register(Recorder::new("a"), TTL);
     let body = json!({"name": "x", "input": {}});
     assert_eq!(post(&s, Some(&"0".repeat(64)), body.clone()).await.0, 404);
     assert_eq!(post(&s, None, body.clone()).await.0, 401);
@@ -141,7 +144,7 @@ async fn unknown_token_is_404_and_missing_is_401() {
 async fn dropped_registration_is_404() {
     install_crypto();
     let s = server().await;
-    let reg = s.register(Recorder::new("a"));
+    let reg = s.register(Recorder::new("a"), TTL);
     let token = reg.token.clone();
     let body = json!({"name": "x", "input": {}});
     assert_eq!(post(&s, Some(&token), body.clone()).await.0, 200);
@@ -165,7 +168,7 @@ async fn slow_handler_times_out_as_engine_busy() {
         calls: Mutex::new(Vec::new()),
         delay: Duration::from_secs(5),
     });
-    let reg = s.register(h);
+    let reg = s.register(h, TTL);
     let started = std::time::Instant::now();
     let (status, body) = post(
         &s,
@@ -188,7 +191,7 @@ async fn oversized_body_is_413() {
     install_crypto();
     let s = server().await;
     let h = Recorder::new("a");
-    let reg = s.register(h.clone());
+    let reg = s.register(h.clone(), TTL);
     let big = "x".repeat(65 * 1024);
     let (status, _) = post(
         &s,
@@ -215,8 +218,8 @@ async fn two_turns_never_cross() {
     let s = server().await;
     let a = Recorder::new("a");
     let b = Recorder::new("b");
-    let ra = s.register(a.clone());
-    let rb = s.register(b.clone());
+    let ra = s.register(a.clone(), TTL);
+    let rb = s.register(b.clone(), TTL);
     let mut calls = Vec::new();
     for i in 0..10 {
         let (reg, name) = if i % 2 == 0 {
@@ -240,4 +243,23 @@ async fn two_turns_never_cross() {
     assert!(b.calls.lock().unwrap().iter().all(|(n, _)| n == "for_b"));
     assert_eq!(a.calls.lock().unwrap().len(), 5);
     assert_eq!(b.calls.lock().unwrap().len(), 5);
+}
+
+#[tokio::test]
+async fn registration_expires_after_its_ttl() {
+    install_crypto();
+    let s = server().await;
+    let h = Recorder::new("a");
+    // Never dropped: the TTL (the turn timeout) still ends it.
+    let reg = s.register(h.clone(), Duration::from_millis(100));
+    let body = json!({"name": "x", "input": {}});
+    assert_eq!(post(&s, Some(&reg.token), body.clone()).await.0, 200);
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert_eq!(post(&s, Some(&reg.token), body).await.0, 404);
+    assert_eq!(s.registrations(), 0);
+    assert_eq!(h.calls.lock().unwrap().len(), 1);
+    drop(reg); // dropping an expired registration is harmless
+    let live = s.register(Recorder::new("b"), TTL);
+    assert_eq!(s.registrations(), 1);
+    drop(live);
 }

@@ -30,7 +30,7 @@ use super::sidecar_wire::{
 };
 use super::sse::SseDecoder;
 use super::tool_server::{ToolRegistration, ToolServer};
-use super::wire::{ErrorBody, OutputFormat};
+use super::wire::{ErrorBody, OutputFormat, USER_AGENT};
 
 /// `maxTurns` of a structured call (the SDK may retry its own structured output).
 pub const STRUCTURED_MAX_TURNS: u32 = 3;
@@ -166,6 +166,7 @@ pub(crate) async fn error_of(resp: reqwest::Response) -> AiError {
 pub(crate) fn http_client(connect_timeout: Duration) -> Result<reqwest::Client, AiError> {
     let _ = rustls::crypto::ring::default_provider().install_default();
     reqwest::Client::builder()
+        .user_agent(USER_AGENT)
         .connect_timeout(connect_timeout)
         .redirect(reqwest::redirect::Policy::none())
         .build()
@@ -334,7 +335,7 @@ impl SidecarClient {
                 model: req.model.as_str(),
                 tool_uses: Vec::new(),
                 message: None,
-                _registration: registration,
+                registration,
             })
         };
         stream::once(start)
@@ -359,7 +360,8 @@ impl SidecarClient {
         let (system_prompt, prompt) = flatten_for_sidecar(&req.system, &req.messages)?;
         let offer = req.tool_choice != ToolChoice::None;
         let registration = match (offer, tools, &self.tools) {
-            (true, Some(h), Some(server)) => Some(server.register(h)),
+            // The sidecar aborts the turn at `timeoutMs`, so no tool call can arrive later.
+            (true, Some(h), Some(server)) => Some(server.register(h, self.cfg.chat_timeout)),
             _ => None,
         };
         let mut wire_tools: Vec<SidecarTool> = if registration.is_some() {
@@ -437,8 +439,8 @@ fn map_structured(req: &StructuredRequest, out: SidecarResult) -> StructuredResu
     }
 }
 
-/// The state of one chat stream. Holding the registration keeps the turn's tools reachable for
-/// exactly as long as the stream lives.
+/// The state of one chat stream. The registration keeps the turn's tools reachable until the
+/// terminal event is queued (or the stream is dropped, or its TTL runs out).
 struct TurnStream {
     body: BoxStream<'static, reqwest::Result<Bytes>>,
     decoder: SseDecoder,
@@ -446,9 +448,10 @@ struct TurnStream {
     finished: bool,
     idle: Duration,
     model: &'static str,
-    tool_uses: Vec<ToolUse>,
+    /// Each tool use with the API message it belongs to, so a retract can remove it.
+    tool_uses: Vec<(Option<String>, ToolUse)>,
     message: Option<String>,
-    _registration: Option<ToolRegistration>,
+    registration: Option<ToolRegistration>,
 }
 
 impl TurnStream {
@@ -469,6 +472,9 @@ impl TurnStream {
                                 break;
                             }
                         }
+                        if !s.finished && s.decoder.overflowed() {
+                            s.fail(AiError::Response(redact("sidecar event too large")));
+                        }
                     }
                     // Idle too long, a broken body, or an end before the terminal event.
                     _ => s.fail(connection()),
@@ -478,9 +484,15 @@ impl TurnStream {
         .boxed()
     }
 
-    fn fail(&mut self, e: AiError) {
-        self.pending.push_back(Err(e));
+    /// Queues the terminal item. The turn is over, so its tools are unregistered at once.
+    fn finish(&mut self, item: Result<TurnEvent, AiError>) {
+        self.pending.push_back(item);
         self.finished = true;
+        self.registration = None;
+    }
+
+    fn fail(&mut self, e: AiError) {
+        self.finish(Err(e));
     }
 
     fn parse<T: serde::de::DeserializeOwned>(&mut self, data: &str) -> Option<T> {
@@ -511,6 +523,8 @@ impl TurnStream {
                 let Some(r) = self.parse::<RetractEvent>(data) else {
                     return;
                 };
+                self.tool_uses
+                    .retain(|(m, _)| m.as_ref().is_none_or(|m| !r.message_ids.contains(m)));
                 self.pending.push_back(Ok(TurnEvent::Retract {
                     message_ids: r.message_ids,
                     reason: r.reason,
@@ -525,19 +539,21 @@ impl TurnStream {
                     Some(bare) => bare.to_owned(),
                     None => t.name,
                 };
-                self.tool_uses.push(ToolUse {
-                    id: t.id,
-                    name,
-                    input: t.input,
-                });
+                self.tool_uses.push((
+                    t.message_id,
+                    ToolUse {
+                        id: t.id,
+                        name,
+                        input: t.input,
+                    },
+                ));
             }
             Some("done") => {
                 let Some(out) = self.parse::<SidecarResult>(data) else {
                     return;
                 };
                 let turn = self.turn_result(out);
-                self.pending.push_back(Ok(TurnEvent::Done(turn)));
-                self.finished = true;
+                self.finish(Ok(TurnEvent::Done(turn)));
             }
             Some("error") => {
                 let Some(e) = self.parse::<ErrorEvent>(data) else {
@@ -560,7 +576,10 @@ impl TurnStream {
         TurnResult {
             content,
             stop_reason: out.stop_reason(),
-            tool_uses: std::mem::take(&mut self.tool_uses),
+            tool_uses: std::mem::take(&mut self.tool_uses)
+                .into_iter()
+                .map(|(_, t)| t)
+                .collect(),
             usage: sum_usage(&entries),
             model: self.model.to_owned(),
             model_usage: entries,

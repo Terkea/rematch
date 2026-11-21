@@ -113,7 +113,10 @@ async fn batch_create_sends_params_with_api_key_and_version() {
         .and(header("x-api-key", KEY))
         .and(header("anthropic-version", "2026-10-21"))
         .and(header("content-type", "application/json"))
-        .and(header("user-agent", "chess-improver/0.1"))
+        .and(header(
+            "user-agent",
+            "chess-improver/0.1 (+https://github.com/chess-improver)",
+        ))
         .respond_with(json_resp(200, &fixture("batch-create.json")))
         .expect(1)
         .mount(&server)
@@ -121,8 +124,12 @@ async fn batch_create_sends_params_with_api_key_and_version() {
     let id = client(&server).submit(&items()).await.unwrap();
     assert_eq!(id, BATCH);
 
-    let body: Value =
-        serde_json::from_slice(&server.received_requests().await.unwrap()[0].body).unwrap();
+    let sent = &server.received_requests().await.unwrap()[0];
+    // ADR 0043: one shared project User-Agent, never an email address.
+    let ua = sent.headers.get("user-agent").unwrap().to_str().unwrap();
+    assert_eq!(ua, ai::client::wire::USER_AGENT);
+    assert!(!ua.contains('@'));
+    let body: Value = serde_json::from_slice(&sent.body).unwrap();
     let want = serde_json::to_value(MessagesRequest::structured(&req())).unwrap();
     assert_eq!(body["requests"].as_array().unwrap().len(), 2);
     assert_eq!(body["requests"][0]["custom_id"], "probe__v1__weekly-u1");
@@ -469,4 +476,105 @@ async fn runtime_without_batches_key_gives_no_api_key_and_batches_disabled() {
     };
     assert!(rt.batches_enabled());
     assert_eq!(rt.batch_status(BATCH).await.unwrap(), BatchStatus::Ended);
+}
+
+// ---- fix round 1: a batch is paid, so submit never re-sends one that may exist ----------------
+
+#[tokio::test]
+async fn a_500_on_submit_is_sent_once() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/messages/batches"))
+        .respond_with(json_resp(
+            500,
+            r#"{"type":"error","error":{"type":"api_error","message":"x"}}"#,
+        ))
+        .mount(&server)
+        .await;
+    let err = client(&server).submit(&items()).await.unwrap_err();
+    assert_eq!(
+        err,
+        AiError::Unavailable {
+            reason: UnavailableReason::Server,
+            retry_after: None
+        }
+    );
+    assert_eq!(server.received_requests().await.unwrap().len(), 1);
+    // `status` keeps the full policy: a 500 there is retried.
+    Mock::given(method("GET"))
+        .respond_with(json_resp(
+            500,
+            r#"{"type":"error","error":{"type":"api_error","message":"x"}}"#,
+        ))
+        .mount(&server)
+        .await;
+    let err = client(&server).status(BATCH).await.unwrap_err();
+    assert!(err.is_unavailable());
+    assert_eq!(server.received_requests().await.unwrap().len(), 1 + 3);
+}
+
+#[tokio::test]
+async fn a_timeout_on_submit_is_sent_once() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/messages/batches"))
+        .respond_with(
+            json_resp(200, &fixture("batch-create.json")).set_delay(Duration::from_secs(2)),
+        )
+        .mount(&server)
+        .await;
+    let mut cfg = config(&server);
+    cfg.request_timeout = Duration::from_millis(200);
+    let started = Instant::now();
+    let err = BatchesClient::new(cfg)
+        .unwrap()
+        .submit(&items())
+        .await
+        .unwrap_err();
+    assert!(started.elapsed() < Duration::from_secs(2));
+    assert!(err.is_unavailable(), "{err:?}");
+    assert_eq!(server.received_requests().await.unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn a_429_on_submit_is_retried() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/messages/batches"))
+        .respond_with(FailThen {
+            status: 429,
+            retry_after: Some("0.01"),
+            fail: 1,
+            seen: Mutex::new(0),
+            ok: json_resp(200, &fixture("batch-create.json")),
+        })
+        .mount(&server)
+        .await;
+    assert_eq!(client(&server).submit(&items()).await.unwrap(), BATCH);
+    assert_eq!(server.received_requests().await.unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn an_oversized_results_line_is_a_response_error_and_is_skipped() {
+    let server = MockServer::start().await;
+    let lines: Vec<&str> = fixture("batch-results.jsonl").leak().lines().collect();
+    let huge = format!(
+        "{{\"custom_id\":\"probe__v1__big\",\"pad\":\"{}\"}}",
+        "x".repeat(ai::client::batches::MAX_RESULT_LINE)
+    );
+    let body = format!("{}\n{huge}\n{}\n", lines[0], lines[1]);
+    mount_results(&server, body).await;
+    let all = results(&client(&server)).await;
+    assert_eq!(
+        all.len(),
+        3,
+        "{:?}",
+        all.iter().map(|r| r.is_ok()).collect::<Vec<_>>()
+    );
+    assert_eq!(all[0].as_ref().unwrap().custom_id, "probe__v1__weekly-u1");
+    let Err(AiError::Response(msg)) = &all[1] else {
+        panic!("{:?}", all[1].as_ref().err())
+    };
+    assert!(!msg.contains("xxxx"));
+    assert_eq!(all[2].as_ref().unwrap().custom_id, "probe__v1__weekly-u2");
 }

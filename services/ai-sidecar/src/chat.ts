@@ -314,9 +314,18 @@ class TurnStream {
       for (const b of Array.isArray(msg.content) ? msg.content : []) {
         const blk = b as { type?: string; id?: string; name?: string; input?: unknown };
         if (blk.type === "tool_use") {
-          this.w.event("tool_use", { id: blk.id, name: blk.name, input: blk.input });
-          // A superseded message can withdraw its tool calls too, so they count as streamed.
-          if (msg.id && m.parent_tool_use_id === null) this.streamed.add(msg.id);
+          const data: { id?: string; name?: string; input: unknown; messageId?: string } = {
+            id: blk.id,
+            name: blk.name,
+            input: blk.input,
+          };
+          // A superseded message can withdraw its tool calls too, so they count as streamed, and
+          // the message id lets the client drop the call when a later retract names it.
+          if (msg.id && m.parent_tool_use_id === null) {
+            data.messageId = msg.id;
+            this.streamed.add(msg.id);
+          }
+          this.w.event("tool_use", data);
           wrote = true;
         }
       }

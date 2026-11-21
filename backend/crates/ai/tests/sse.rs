@@ -2,7 +2,7 @@
 //! tested in `sidecar_client.rs`; these cover framing only. Every input is a hand-written fixture
 //! in `backend/fixtures/ai/api/` or an inline string; nothing touches the network.
 
-use ai::client::sse::{SseDecoder, SseError, SseEvent};
+use ai::client::sse::{MAX_LINE, SseDecoder, SseError, SseEvent};
 use ai::testing::fixtures_dir;
 use serde_json::Value;
 
@@ -106,4 +106,41 @@ fn trailing_partial_event_is_an_error() {
     let mut d = SseDecoder::default();
     assert!(d.push(b"data: {\"type\":\"pi").is_empty());
     assert_eq!(d.finish(), Err(SseError::TrailingPartialEvent));
+}
+
+// ---- limits (Task 11 fix round 1) ----
+
+#[test]
+fn the_default_line_limit_is_4_mib() {
+    assert_eq!(MAX_LINE, 4 * 1024 * 1024);
+}
+
+#[test]
+fn an_oversized_line_overflows_whether_split_or_whole() {
+    let line = format!("data: {}\n\n", "x".repeat(64));
+    // Whole, in one chunk.
+    let mut d = SseDecoder::with_max_line(32);
+    assert!(d.push(line.as_bytes()).is_empty());
+    assert!(d.overflowed());
+    // Split byte by byte: detected without a newline, and nothing more is decoded.
+    let mut d = SseDecoder::with_max_line(32);
+    for b in line.as_bytes() {
+        assert!(d.push(&[*b]).is_empty());
+    }
+    assert!(d.overflowed());
+    assert!(d.push(b"data: ok\n\n").is_empty());
+    // At the limit is fine.
+    let mut d = SseDecoder::with_max_line(32);
+    let ok = format!("data: {}\n\n", "x".repeat(26));
+    assert_eq!(d.push(ok.as_bytes()).len(), 1);
+    assert!(!d.overflowed());
+}
+
+#[test]
+fn oversized_event_data_overflows() {
+    // Many short data lines whose joined data exceeds the limit.
+    let mut d = SseDecoder::with_max_line(32);
+    let lines = "data: 0123456789\n".repeat(5);
+    assert!(d.push(lines.as_bytes()).is_empty());
+    assert!(d.overflowed());
 }

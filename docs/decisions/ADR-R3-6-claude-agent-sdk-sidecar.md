@@ -45,7 +45,7 @@ This section was recorded with the implementation in `services/ai-sidecar` (SDK 
   The stream sends these events:
   - `delta {text, messageId?}`, for top-level `text_delta` only;
   - `retract {messageIds, reason}`, naming streamed messages that a refusal or a superseding message withdrew (`done.text` is authoritative);
-  - `tool_use {id, name, input}`, where `name` is the SDK's MCP name `mcp__coach__<name>` (Rust strips the prefix);
+  - `tool_use {id, name, input, messageId?}` (a later retract naming `messageId` withdraws the call), where `name` is the SDK's MCP name `mcp__coach__<name>` (Rust strips the prefix);
   - exactly one terminal event, either `done` (the query result plus `session: "new" | "resumed" | "rebuilt"` and `sessionModelUsage`) or `error` (the error body plus `status`);
   - a `: ping` comment every 15 s.
 
