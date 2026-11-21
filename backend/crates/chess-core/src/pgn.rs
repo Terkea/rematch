@@ -149,6 +149,11 @@ fn tokenize(movetext: &str) -> Result<Vec<(String, Option<f64>)>, PgnError> {
     let bytes = movetext.as_bytes();
     while i < bytes.len() {
         let c = bytes[i];
+        // chess.js rejects `%` escape lines (the PGN spec says to ignore
+        // them); we match chess.js rather than the spec.
+        if c == b'%' && (i == 0 || bytes[i - 1] == b'\n') {
+            return Err(PgnError::Malformed("% escape line".into()));
+        }
         match c {
             b'{' => {
                 let end = movetext[i + 1..]
@@ -217,10 +222,10 @@ fn terminal_of(pos: &Position, seen: &[String]) -> Option<Terminal> {
         Some(Terminal::Checkmate)
     } else if pos.is_stalemate() {
         Some(Terminal::Stalemate)
-    } else if pos.halfmove_clock() >= 100
-        || pos.is_insufficient_material()
-        || seen.iter().filter(|k| **k == pos.repetition_key()).count() >= 3
-    {
+    } else if pos.halfmove_clock() >= 100 || pos.is_insufficient_material() || {
+        let key = pos.repetition_key();
+        seen.iter().filter(|k| **k == key).count() >= 3
+    } {
         Some(Terminal::Draw)
     } else {
         None
