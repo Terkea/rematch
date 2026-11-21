@@ -27,6 +27,20 @@ describe("getEnv", () => {
     expect(getEnv(base).LICHESS_CLIENT_ID).toBe("chess-improver");
   });
 
+  it("turns INVITE_ONLY on by default and off only for exactly 0", () => {
+    expect(getEnv(base).INVITE_ONLY).toBe(true);
+    expect(getEnv({ ...base, INVITE_ONLY: "1" }).INVITE_ONLY).toBe(true);
+    expect(getEnv({ ...base, INVITE_ONLY: "0" }).INVITE_ONLY).toBe(false);
+  });
+
+  it("parses INVITE_ALLOWLIST into trimmed lower-case emails", () => {
+    expect(getEnv(base).INVITE_ALLOWLIST).toEqual([]);
+    expect(
+      getEnv({ ...base, INVITE_ALLOWLIST: " Dev@Example.invalid, ,b@example.invalid" })
+        .INVITE_ALLOWLIST,
+    ).toEqual(["dev@example.invalid", "b@example.invalid"]);
+  });
+
   it("caches the parse of process.env", () => {
     resetEnvCache();
     Object.assign(process.env, base);

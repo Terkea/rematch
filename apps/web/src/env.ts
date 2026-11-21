@@ -2,6 +2,29 @@ import { z } from "zod";
 import { flagOn } from "./app/lab/lab-enabled";
 
 const flag = z.string().optional().transform(flagOn);
+// Default-on switch: off only when set to exactly "0" (ADR-WEB-3, invite-only private beta).
+const defaultOn = z
+  .string()
+  .optional()
+  .transform((value) => value !== "0");
+const list = z
+  .string()
+  .default("")
+  .transform((value) =>
+    value
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean),
+  );
+const emailList = z
+  .string()
+  .default("")
+  .transform((value) =>
+    value
+      .split(",")
+      .map((email) => email.trim().toLowerCase())
+      .filter(Boolean),
+  );
 
 const schema = z.object({
   DATABASE_URL: z.string().min(1),
@@ -21,6 +44,19 @@ const schema = z.object({
   CHESSCOM_OAUTH_ENABLED: flag,
   CONTACT_EMAIL: z.string().min(1),
   LAB_ENABLED: flag,
+  INVITE_ONLY: defaultOn,
+  INVITE_ALLOWLIST: emailList,
+  // Client IP for rate limits (ADR-WEB-3). Empty: no proxy, so forwarding headers are ignored.
+  TRUSTED_PROXIES: list,
+  IP_ADDRESS_HEADERS: z
+    .string()
+    .default("x-forwarded-for")
+    .transform((value) =>
+      value
+        .split(",")
+        .map((item) => item.trim().toLowerCase())
+        .filter(Boolean),
+    ),
 });
 
 export type WebEnv = z.infer<typeof schema>;

@@ -7,6 +7,7 @@ services:
       LICHESS_API_BASE_URL: http://fakes:3199
       CHESSCOM_API_BASE_URL: http://fakes:3199/chesscom
       CHESSCOM_ENABLED: "1"
+      INVITE_ALLOWLIST: dev@example.invalid
     depends_on:
       fakes:
         condition: service_started
