@@ -156,6 +156,18 @@ pub struct ParsedGame {
     pub terminal: Option<Terminal>,
 }
 
+impl ParsedGame {
+    /// Value of the PGN header `name`. When a header appears more than once the
+    /// last occurrence wins (TS parity, where later tags overwrite earlier ones).
+    pub fn header(&self, name: &str) -> Option<&str> {
+        self.headers
+            .iter()
+            .rev()
+            .find(|(k, _)| k == name)
+            .map(|(_, v)| v.as_str())
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ClockInfo {
     pub base_seconds: f64,

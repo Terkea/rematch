@@ -2,8 +2,8 @@
 //! review-finding cases the TS version only failed soft on, and parity with
 //! chess.js 1.4.0 on recorded Lichess and chess.com games.
 
-use chess_core::Color;
-use chess_core::pgn::{PgnError, Terminal, parse_pgn};
+use chess_core::pgn::{PgnError, parse_pgn};
+use chess_core::{Color, Terminal};
 use serde::Deserialize;
 
 fn fixture(name: &str) -> String {
@@ -300,6 +300,8 @@ struct Case {
     name: String,
     pgn: String,
     daily: bool,
+    #[serde(rename = "noClocks", default)]
+    no_clocks: bool,
     terminal: Option<String>,
     /// san, uci, fen before, fen after, clock.
     plies: Vec<(String, String, String, String, Option<f64>)>,
@@ -310,6 +312,17 @@ fn recorded_games_match_chessjs() {
     let reference: Reference =
         serde_json::from_str(&fixture("realworld-reference.json")).expect("reference json");
     assert!(reference.cases.len() >= 8);
+    let terminals: Vec<Option<&str>> = reference
+        .cases
+        .iter()
+        .map(|c| c.terminal.as_deref())
+        .collect();
+    for want in [Some("checkmate"), Some("stalemate"), Some("draw"), None] {
+        assert!(
+            terminals.contains(&want),
+            "reference lacks terminal {want:?}"
+        );
+    }
     for case in &reference.cases {
         let game = parse_pgn(&case.pgn).unwrap_or_else(|e| panic!("{}: {e}", case.name));
         assert_eq!(game.plies.len(), case.plies.len(), "{}", case.name);
@@ -321,7 +334,9 @@ fn recorded_games_match_chessjs() {
             assert_eq!(got.fen_before, want.2, "{at}");
             assert_eq!(got.fen_after, want.3, "{at}");
             assert_eq!(got.clock_seconds, want.4, "{at}");
-            if case.daily {
+            if case.no_clocks {
+                assert!(got.clock_seconds.is_none(), "{at}: no clocks in source");
+            } else if case.daily {
                 assert!(got.clock_seconds.is_none(), "{at}: daily has no clocks");
             } else {
                 assert!(got.clock_seconds.is_some(), "{at}: missing clock");
@@ -334,4 +349,69 @@ fn recorded_games_match_chessjs() {
         });
         assert_eq!(terminal, case.terminal.as_deref(), "{}", case.name);
     }
+}
+
+// ---- escape lines, clocks, unicode, size ----
+
+#[test]
+fn percent_escape_lines_are_rejected_like_chessjs() {
+    // chess.js 1.4.0 throws on a line starting with `%` (the PGN spec says
+    // to ignore it); we match chess.js.
+    for pgn in [
+        "1. e4 e5
+% escaped Nf3
+2. Nf3 Nc6
+",
+        "%first line
+1. e4 e5
+",
+        "1. e4 e5
+%
+2. Nf3 Nc6
+",
+    ] {
+        assert!(matches!(
+            parse_pgn(pgn).unwrap_err(),
+            PgnError::Malformed(_)
+        ));
+    }
+    // A `%` inside a comment is fine.
+    assert_eq!(
+        sans(
+            "1. e4 {50% sure
+% x} e5 *"
+        ),
+        ["e4", "e5"]
+    );
+}
+
+#[test]
+fn clock_with_two_digit_hours() {
+    let c = clocks("1. e4 {[%clk 10:00:00]} e5 {[%clk 100:01:02.5]} *");
+    assert_eq!(c, [Some(36000.0), Some(100.0 * 3600.0 + 62.5)]);
+}
+
+#[test]
+fn non_ascii_comment_bytes() {
+    let pgn = "1. e4 {Schöne Eröffnung ♟ 日本語 [%clk 0:01:00]} e5 {é} 2. Nf3 ; ünï
+Nc6 *";
+    assert_eq!(sans(pgn), ["e4", "e5", "Nf3", "Nc6"]);
+    assert_eq!(clocks(pgn)[0], Some(60.0));
+}
+
+#[test]
+fn long_game_parses_quickly() {
+    let mut pgn = String::new();
+    for n in 1..=260 {
+        pgn.push_str(&format!("{n}. Nf3 Nf6 {n}. Ng1 Ng8 "));
+    }
+    // numbers are ignored; 1040 plies of knight shuffling
+    let start = std::time::Instant::now();
+    let game = parse_pgn(&pgn).expect("parses");
+    assert_eq!(game.plies.len(), 1040);
+    assert!(
+        start.elapsed() < std::time::Duration::from_secs(1),
+        "{:?}",
+        start.elapsed()
+    );
 }
