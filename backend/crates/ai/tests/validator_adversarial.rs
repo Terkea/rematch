@@ -656,7 +656,7 @@ mod must_reject {
 
     /// (kind, weakness id, text, cited plies of li-w1-0, expected code).
     fn vectors() -> Vec<Vector> {
-        use RuleKind::{Area, Focus, Item, Summary, Weakness};
+        use RuleKind::{Area, Focus, Item, Opening, Summary, Weakness};
         let w = |t: &str| format!("{WIN} {t}");
         vec![
             // C1: glued tokens.
@@ -736,6 +736,16 @@ mod must_reject {
             (Item, None, "Unlock more lessons.".into(), vec![], C::Marketing),
             (Item, None, "See our pricing.".into(), vec![], C::Marketing),
             (Item, None, "This is behind a paywall.".into(), vec![], C::Marketing),
+            // Fix round 2: quantity words on every paragraph kind.
+            (Item, None, "You win most games with the Italian.".into(), vec![], C::FreeTextFact),
+            (Item, None, "Nearly every loss starts here.".into(), vec![], C::FreeTextFact),
+            (Opening, None, "You always lose this line, as in {{move:li-w1-0:5}}.".into(), vec![5], C::FreeTextFact),
+            // Fix round 2: bare "because" where the causal ban applies.
+            (Item, None, "You lose because you rush.".into(), vec![], C::CausalClaim),
+            (Summary, None, w("you lose because you rush."), vec![], C::CausalClaim),
+            // Fix round 2: "improvement" and "stopped" assert a change.
+            (Weakness, Some("W1"), w("there is a clear improvement, as in {{move:li-w1-0:5}}."), vec![5], C::LikelihoodMismatch),
+            (Weakness, Some("W1"), w("this has stopped, as in {{move:li-w1-0:5}}."), vec![5], C::LikelihoodMismatch),
         ]
     }
 
@@ -748,6 +758,7 @@ mod must_reject {
         let early_rules = report_text_rules(&early);
         let vs = vectors();
         assert!(vs.len() >= 60, "{} vectors", vs.len());
+        let mut missed = Vec::new();
         for (kind, w, text, plies, want) in vs {
             let cites: Vec<Citation> = plies.iter().map(|p| cite(G, *p)).collect();
             let meta = RuleMeta {
@@ -770,8 +781,11 @@ mod must_reject {
             } else {
                 codes(validate_text(&text, &cites, &ev, &rules(kind, meta), "p"))
             };
-            assert!(got.contains(&want), "{text:?}: want {want:?}, got {got:?}");
+            if !got.contains(&want) {
+                missed.push(format!("{text:?}: want {want:?}, got {got:?}"));
+            }
         }
+        assert!(missed.is_empty(), "accepted vectors: {missed:#?}");
     }
 
     #[test]

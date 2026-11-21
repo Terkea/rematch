@@ -113,7 +113,7 @@ lazy_re!(
 );
 lazy_re!(
     CAUSAL,
-    r"\b(caused|because\s+of|due\s+to|the\s+reason\s+(is|was)|led\s+to|proves?)\b"
+    r"\b(caused|because(\s+of)?|due\s+to|the\s+reason\s+(is|was)|led\s+to|proves?)\b"
 );
 lazy_re!(
     HEDGE,
@@ -125,10 +125,11 @@ lazy_re!(
     LIKELIHOOD,
     r"\b(no\s+clear\s+change\s+yet|(highly|most|extremely|very)[\s-]+likely|unclear\s+yet|likely)\b"
 );
-// Fix round 1 (I7): a direction of change needs the likelihood phrase.
+// Fix round 1 (I7): a direction of change needs the likelihood phrase. Fix round 2 adds the
+// nouns and "stopped" ("a clear improvement", "this has stopped"): both assert a change.
 lazy_re!(
     DIRECTION,
-    r"\b(improving|improved|getting\s+(better|worse)|fixed|worse|worsening|declining|declined)\b"
+    r"\b(improving|improved|improvements?|getting\s+(better|worse)|fixed|worse|worsening|declining|declined|stopped)\b"
 );
 // Fix round 1 (C4): engine and evaluation words.
 lazy_re!(
@@ -438,13 +439,13 @@ pub struct RuleMeta {
     pub line_key: Option<String>,
 }
 
-/// TS `reportTextRules`, in token form, with fix round 1.
-/// - Everywhere: `banned_phrases`, `no_marketing` and `engine_claims`.
+/// TS `reportTextRules`, in token form, with fix rounds 1 and 2.
+/// - Everywhere: `banned_phrases`, `no_marketing`, `engine_claims` and `no_quantity_words`.
 /// - Weakness and Focus: a citation, `likelihood(likelihood_phrase(w.p_imp))` (an unknown or
 ///   general weakness requires no phrase, so every phrase and direction is a mismatch),
-///   `evidence_window`, `no_quantity_words` and `no_causal_phrases`.
-/// - Summary: `evidence_window`, `no_quantity_words` and `no_causal_phrases`.
-/// - Area: `no_quantity_words`, and below its minimum sample `states_insufficient_data`.
+///   `evidence_window` and `no_causal_phrases`.
+/// - Summary: `evidence_window` and `no_causal_phrases`.
+/// - Area: below its minimum sample, `states_insufficient_data`.
 /// - Item: `no_causal_phrases`.
 /// - Opening: a citation, and `line` tokens only for its own line.
 pub fn report_text_rules(
@@ -464,7 +465,12 @@ pub fn report_text_rules(
         .collect();
     move |kind: RuleKind, meta: RuleMeta| {
         let mut rules = TextRules {
-            extra: vec![banned_phrases(), no_marketing(), engine_claims()],
+            extra: vec![
+                banned_phrases(),
+                no_marketing(),
+                engine_claims(),
+                no_quantity_words(),
+            ],
             ..TextRules::default()
         };
         match kind {
@@ -476,16 +482,13 @@ pub fn report_text_rules(
                     .and_then(|id| p_imp.iter().find(|(w, _)| w == id).and_then(|(_, p)| *p));
                 rules.extra.push(likelihood(likelihood_phrase(p)));
                 rules.extra.push(evidence_window(tc));
-                rules.extra.push(no_quantity_words());
                 rules.extra.push(no_causal_phrases());
             }
             RuleKind::Summary => {
                 rules.extra.push(evidence_window(tc));
-                rules.extra.push(no_quantity_words());
                 rules.extra.push(no_causal_phrases());
             }
             RuleKind::Area => {
-                rules.extra.push(no_quantity_words());
                 if let Some(area) = meta.area.filter(|a| insufficient.contains(a)) {
                     rules.extra.push(states_insufficient_data(area));
                 }

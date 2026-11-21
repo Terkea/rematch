@@ -319,3 +319,83 @@ mod union {
         );
     }
 }
+
+/// Fix round 2: a dedicated test of the C4 rule, `engine_claims`, on its own.
+mod engine_claims_rule {
+    use super::*;
+    use ai::validator::language::engine_claims;
+
+    fn check(text: &str, plies: &[u32]) -> Vec<ValidationCode> {
+        let ev = build_evidence(&input("b2-rapid"));
+        let rules = TextRules {
+            extra: vec![engine_claims()],
+            ..TextRules::default()
+        };
+        let cites: Vec<Citation> = plies
+            .iter()
+            .map(|p| Citation {
+                game_id: "li-w1-0".into(),
+                ply: *p,
+            })
+            .collect();
+        match validate_text(text, &cites, &ev, &rules, "p") {
+            Ok(_) => Vec::new(),
+            Err(e) => e.into_iter().map(|e| e.code).collect(),
+        }
+    }
+
+    #[test]
+    fn engine_words_need_engine_evidence() {
+        for bad in [
+            "The engine disliked {{move:li-w1-0:5}}.",
+            "Stockfish prefers another plan.",
+            "You were winning before {{move:li-w1-0:5}}.",
+            "It was equal before {{move:li-w1-0:5}}.",
+            "You threw away the game with {{move:li-w1-0:5}}.",
+            "That was not the best move.",
+            "The ENGINE agrees.",
+        ] {
+            assert_eq!(check(bad, &[5]), [C::UncitedReference], "{bad}");
+        }
+    }
+
+    #[test]
+    fn a_best_pv_or_cited_eval_token_supports_them() {
+        for ok in [
+            "{{best:li-w1-0:5}} kept the advantage.",
+            "The engine line {{pv:li-w1-0:5:best:1}} wins material.",
+            "You were winning ({{num:weaknesses.W1.exemplars.0.evalBefore.pawns|signed1}}) before {{move:li-w1-0:5}}.",
+            "You lost the thread with {{move:li-w1-0:5}}.",
+        ] {
+            assert_eq!(check(ok, &[5]), [], "{ok}");
+        }
+        // An eval of an uncited exemplar does not count.
+        assert_eq!(
+            check(
+                "You were losing ({{num:weaknesses.W1.exemplars.1.evalAfter.pawns|signed1}}).",
+                &[5]
+            ),
+            [C::UncitedReference]
+        );
+    }
+
+    #[test]
+    fn blunder_or_mistake_may_not_sit_next_to_the_engines_move() {
+        for bad in [
+            "{{best:li-w1-0:5}} was a blunder.",
+            "That mistake, {{best:li-w1-0:5}}, cost you.",
+            "The blunder was {{pv:li-w1-0:5:best:1}} here.",
+        ] {
+            assert_eq!(check(bad, &[5]), [C::UncitedReference], "{bad}");
+        }
+        // Far from the best token, or next to a played move, it is fine.
+        assert_eq!(check("{{move:li-w1-0:5}} was a blunder.", &[5]), []);
+        assert_eq!(
+            check(
+                "{{best:li-w1-0:5}} was the calm reply, and much later on in that game came a blunder.",
+                &[5]
+            ),
+            []
+        );
+    }
+}

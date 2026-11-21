@@ -104,7 +104,7 @@ The prompts (Task 13) state what each path means.
 
 It is a parity check of those leaf modules and regexes, not of a TS validator. `ts_parity::rust_rejects_everything_ts_rejects` asserts superset safety on every row: if TS rejects a row, Rust rejects it. The rows only Rust rejects must be exactly `STRICTER`: the hardened-form union, and square scoping. Codes are not compared, because Rust collects more stages and has rules TS lacks.
 
-**Rust-only vectors.** `must_reject::every_review_vector_is_rejected_with_its_code` holds every false-accept vector of the Task 8 review (C1–C6 and the Important items), 68 paragraphs, each with the code it must give. `must_reject::the_supported_forms_pass` pins the legitimate forms next to them: sentence punctuation after a token, squares of the cited position, an engine word with a `best` token or a cited eval, and bound formats.
+**Rust-only vectors.** `must_reject::every_review_vector_is_rejected_with_its_code` holds every false-accept vector of the Task 8 review (C1–C6 and the Important items, plus the fix round 2 vectors), 75 paragraphs, each with the code it must give. `must_reject::the_supported_forms_pass` pins the legitimate forms next to them: sentence punctuation after a token, squares of the cited position, an engine word with a `best` token or a cited eval, and bound formats.
 
 **Cost.** Every pass reports to `count_scanned`. `text::tests::scanned_bytes_are_linear_on_hostile_shapes` bounds the whole check at 200·n, including the adjacency scan, the language rules and the blunder windows.
 
@@ -120,11 +120,11 @@ The rules are `TextRule`s over the stripped text (each token is `§`), in `valid
 |---|---|---|
 | `banned_phrases()` | `banned_phrase` | `guarantee\w*`, `definitely`, `certain(ty\|ly)?`, `proven?`, near-certainty (`almost surely/certain(ly)`, `virtually certain/guaranteed`, `surely`, `no doubt`, `without (a) doubt`, `bound to`, `sure to`), and promised gains: `(will\|'ll\|’ll\|is/are going to) (gain\|reach\|get you to\|raise your rating\|improve your rating)` |
 | `no_marketing()` | `marketing` | `upgrade`, `subscribe`, `subscription`, `premium`, `pro (plan\|tier\|version\|account)`, `discount`, `free trial`, `refer a friend`, `share your (report\|card)`, `buy`, `unlock`, `pricing`, `paywall` |
-| `likelihood(required)` | `likelihood_mismatch` | Any vocabulary phrase other than `required`, longest first with word boundaries. `(highly\|most\|extremely\|very)[\s-]+likely` are phrases of their own; spaces and hyphens are normalised before comparing. A direction of change (`improving`, `improved`, `getting better/worse`, `fixed`, `worse`, `worsening`, `declining`, `declined`) needs the required phrase in the same text. With `None`, every phrase and every direction word is a mismatch. |
+| `likelihood(required)` | `likelihood_mismatch` | Any vocabulary phrase other than `required`, longest first with word boundaries. `(highly\|most\|extremely\|very)[\s-]+likely` are phrases of their own; spaces and hyphens are normalised before comparing. A direction of change (`improving`, `improved`, `getting better/worse`, `fixed`, `worse`, `worsening`, `declining`, `declined`, and since fix round 2 `improvement(s)` and `stopped`) needs the required phrase in the same text. With `None`, every phrase and every direction word is a mismatch. |
 | `evidence_window(tc)` | `missing_evidence_window` | A `{{num:basis.analysedGames}}` or `{{num:basis.analysedGames\|int}}` token, and the time-class word |
 | `engine_claims()` | `uncited_reference` | `engine`, `stockfish`, `winning`, `losing`, `(check)mate(s/d)`, `advantage`, `equal`, `top choice`, `best move` or `threw away` need, in the same paragraph, a `best`, `pv` or `eng` token, or a `num` token on an evaluation path of a cited position (`Evidence::position_of_path`). Separately, `blunder…` or `mistake…` within four words of a `best` token, or of a `pv` token of the best line, is rejected. |
 | `no_quantity_words()` | `free_text_fact` | `most (of your) games`, `the majority`, `nearly every`, `every (single) game`, `each game`, `a handful`, `a score of`, `\w*fold`, `nil`, `always`, `never` |
-| `no_causal_claims()` | `causal_claim`, `missing_hedge` | `caused`, `because of`, `due to`, `the reason (is\|was)`, `led to`, `proves?`, plus a required hedge (`may`, `might`, `possibly`, `could`, `coincid…`, `around the time`, `at about the same time`); for change notes |
+| `no_causal_claims()` | `causal_claim`, `missing_hedge` | `caused`, `because` (also bare, since fix round 2), `because of`, `due to`, `the reason (is\|was)`, `led to`, `proves?`, plus a required hedge (`may`, `might`, `possibly`, `could`, `coincid…`, `around the time`, `at about the same time`); for change notes |
 | `no_causal_phrases()` | `causal_claim` | The causal phrases alone, with no hedge requirement |
 | `states_insufficient_data(area)` | `insufficient_data_not_stated` | A `{{num:areaScores.<area>.needMore…}}` token |
 
@@ -140,16 +140,19 @@ The phrase helpers:
 
 | Kind | Rules |
 |---|---|
-| Every kind | `banned_phrases`, `no_marketing`, `engine_claims` |
-| Weakness, Focus (`why`) | a required citation, `likelihood(likelihood_phrase(w.p_imp))`, `evidence_window`, `no_quantity_words`, `no_causal_phrases` |
-| Summary | `evidence_window`, `no_quantity_words`, `no_causal_phrases` |
-| Area | `no_quantity_words`, and `states_insufficient_data` below the area's minimum sample |
+| Every kind | `banned_phrases`, `no_marketing`, `engine_claims`, `no_quantity_words` (on every kind since fix round 2: strengths, headline, habit, plan and opening text too) |
+| Weakness, Focus (`why`) | a required citation, `likelihood(likelihood_phrase(w.p_imp))`, `evidence_window`, `no_causal_phrases` |
+| Summary | `evidence_window`, `no_causal_phrases` |
+| Area | `states_insufficient_data` below the area's minimum sample |
 | Item (headline, strength, intro, habit, weekly rhythm, drill rationale) | `no_causal_phrases` |
 | Opening | a required citation, and `line` tokens only for its own line |
 
 `no_causal_claims`, which also requires a hedge, is for change notes (Task 14).
 
-**Accepted false positives.** These rules reject some honest prose, which costs a repair turn:
+**Rulings of fix round 2.** "improvement" and "stopped" assert a change, so in weakness and focus texts they need the required likelihood phrase, like the other direction words. Bare "because" states a cause, so it is banned wherever the causal ban applies.
+
+**Accepted false positives.** These rules reject some honest prose, which costs a repair turn. They fail closed: the item is dropped, never shown.
+- `always`/`never` now reject habits such as "always check captures";
 - `buy` also rejects "buy time";
 - `certain` rejects "a certain line";
 - `mate` rejects a rationale for `mate_patterns`;
