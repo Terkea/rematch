@@ -1,5 +1,13 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "globalPassThroughEnv": [
+    "DATABASE_URL",
+    "DATABASE_URL_TEST",
+    "REDIS_URL",
+    "STOCKFISH_PATH",
+    "CONTACT_EMAIL",
+    "LICHESS_TOKEN"
+  ],
   "tasks": {
     "build": { "dependsOn": ["^build"], "outputs": ["dist/**"] },
     "test": { "dependsOn": ["^build"] },

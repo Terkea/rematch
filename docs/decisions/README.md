@@ -24,3 +24,4 @@ One file per decision: context, decision, alternatives, consequences. New decisi
 - [0020. Post-launch backlog](0020-post-launch-backlog.md)
 - [0021. TypeScript everywhere; Rust only for a profiled hot job](0021-typescript-not-rust.md)
 - [0022. Biome for lint and format, Vitest for tests](0022-tooling-biome-vitest.md)
+- [0023. Local stack host ports 55432 and 56379](0023-local-stack-host-ports.md)
