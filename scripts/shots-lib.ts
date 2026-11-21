@@ -30,7 +30,7 @@ export function parseShotsArgs(argv: string[]): ShotsArgs {
     if (flag === "--routes") {
       args.routes = value()
         .split(",")
-        .map((r) => r.trim())
+        .map((r) => normaliseRoute(r.trim()))
         .filter(Boolean);
     } else if (flag === "--base-url") args.baseUrl = value();
     else if (flag === "--out") args.out = value();
@@ -41,10 +41,25 @@ export function parseShotsArgs(argv: string[]): ShotsArgs {
   return args;
 }
 
+// Git Bash on Windows rewrites a leading "/x" into "C:/Program Files/Git/x" before we see it.
+const drivePath = /^[A-Za-z]:[\\/]/;
+
+export function normaliseRoute(route: string): string {
+  if (!route) return route;
+  if (drivePath.test(route)) {
+    console.warn(
+      `Route "${route}" looks like a Windows path; Git Bash rewrote it. Set MSYS_NO_PATHCONV=1 or omit the leading slash.`,
+    );
+    return route;
+  }
+  return route.startsWith("/") ? route : `/${route}`;
+}
+
 function slug(route: string): string {
   const [path = "", hash] = route.split("#");
-  const base = path.replace(/^\/+|\/+$/g, "").replace(/\//g, "-") || "home";
-  return hash ? `${base}--${hash}` : base;
+  const safe = (text: string) => text.replace(/[?:*"<>|\\]/g, "_");
+  const base = safe(path.replace(/^\/+|\/+$/g, "").replace(/\//g, "-")) || "home";
+  return hash ? `${base}--${safe(hash)}` : base;
 }
 
 export function shotPath(out: string, route: string, width: ShotWidth, theme: ShotTheme): string {

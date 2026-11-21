@@ -23,4 +23,5 @@ The owner requires a premium, non-generic UI. Tests cannot judge that, so every 
 ## Consequences
 
 - The MCP server only appears in a new Claude Code session; verify with `/mcp` (if it lists no tools, run `npx clear-npx-cache` and retry). Not verified in the implementing session; see the task report.
-- Production builds 404 on `/lab` unless `LAB_ENABLED=1`.
+- Production builds 404 on `/lab` unless `LAB_ENABLED=1`. The layout, the lab index and `/styleguide` all call the single `labEnabled` in `lab/lab-enabled.ts`, whose `flagOn` is also what `env.ts` uses.
+- Warning: `docker-compose.yml` defaults `LAB_ENABLED=1`. That is for local development only; never carry it into a deployment, or the lab and styleguide become public.

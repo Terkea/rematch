@@ -1,7 +1,14 @@
+import { notFound } from "next/navigation";
+import { labEnabled } from "./lab-enabled";
+
 const surfaces = ["styleguide-hero", "board"] as const;
 const variants = ["a", "b", "c"] as const;
 
+// Guarded here too, so the page stays closed even if the layout is ever bypassed.
+export const dynamic = "force-dynamic";
+
 export default function LabIndex() {
+  if (!labEnabled(process.env)) notFound();
   return (
     <main className="mx-auto max-w-3xl px-(--space-gutter) py-8">
       <h1 className="font-serif text-3xl font-semibold">Lab</h1>

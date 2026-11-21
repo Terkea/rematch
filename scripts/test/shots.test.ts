@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { parseShotsArgs, shotMatrix, shotPath } from "../shots-lib.js";
 
 describe("shotPath", () => {
@@ -14,6 +14,28 @@ describe("shotPath", () => {
     expect(shotPath(".shots", "/styleguide#hero", 390, "dark")).toBe(
       ".shots/styleguide--hero/390-dark.png",
     );
+  });
+});
+
+describe("route safety", () => {
+  it("sanitises characters that are illegal in file names", () => {
+    expect(shotPath(".shots", '/a?x=1:*"<>|', 390, "light")).toBe(
+      ".shots/a_x=1______/390-light.png",
+    );
+  });
+});
+
+describe("route normalisation", () => {
+  it("prepends a slash when missing", () => {
+    expect(parseShotsArgs(["--routes", "styleguide,lab"]).routes).toEqual(["/styleguide", "/lab"]);
+  });
+  it("keeps /a,/b and warns on drive-looking paths", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(parseShotsArgs(["--routes", "/a,/b"]).routes).toEqual(["/a", "/b"]);
+    expect(warn).not.toHaveBeenCalled();
+    parseShotsArgs(["--routes", "C:/Program Files/Git/styleguide"]);
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
   });
 });
 
