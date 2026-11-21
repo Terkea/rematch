@@ -332,10 +332,21 @@ async fn many_concurrent_claimers_claim_each_job_exactly_once(pool: PgPool) {
         tasks.push(tokio::spawn(async move {
             let owner = format!("w{w}");
             let mut mine = Vec::new();
+            let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
             loop {
                 let jobs = q.dequeue(&[KIND], &owner, 3, LEASE).await.unwrap();
                 if jobs.is_empty() {
-                    break;
+                    // Empty is not "no work" (ADR 0032): SKIP LOCKED passes over rows that
+                    // in-flight claims hold. Stop only once no live job is left.
+                    if q.live_count(&[KIND], None).await.unwrap() == 0 {
+                        break;
+                    }
+                    assert!(
+                        tokio::time::Instant::now() < deadline,
+                        "live jobs never drained"
+                    );
+                    tokio::time::sleep(Duration::from_millis(5)).await;
+                    continue;
                 }
                 for job in jobs {
                     assert!(
@@ -450,6 +461,40 @@ async fn future_run_at_is_not_dequeued(pool: PgPool) {
         .await
         .unwrap();
     assert_eq!(claim_one(&q).await.id, id);
+}
+
+/// The database wall clock can step backwards (NTP, VM resync; the Docker Desktop VM steps back
+/// about 2.7 s every 27 s). A job enqueued to run at once must stay claimable, while a delayed
+/// job still waits for its `run_at`. Simulated by moving both rows 3 s ahead of the clock, which
+/// is what a later 3 s step back does.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn an_immediate_job_stays_claimable_after_the_clock_steps_back(pool: PgPool) {
+    let q = Queue::new(pool.clone());
+    let now_id = q
+        .enqueue(KIND, &json!({}), EnqueueOptions::default())
+        .await
+        .unwrap()
+        .unwrap();
+    let delayed = EnqueueOptions {
+        run_at: Some(OffsetDateTime::now_utc() + time::Duration::hours(1)),
+        ..EnqueueOptions::default()
+    };
+    q.enqueue(KIND, &json!({}), delayed).await.unwrap().unwrap();
+    sqlx::query(
+        "UPDATE jobs SET created_at = created_at + interval '3 seconds', \
+           run_at = run_at + interval '3 seconds'",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let ids: Vec<i64> = q
+        .dequeue(&[KIND], "w", 10, LEASE)
+        .await
+        .unwrap()
+        .iter()
+        .map(|j| j.id)
+        .collect();
+    assert_eq!(ids, vec![now_id], "only the immediate job is due");
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]

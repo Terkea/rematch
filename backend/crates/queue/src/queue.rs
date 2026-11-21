@@ -188,11 +188,13 @@ WITH ins AS (
   DO NOTHING RETURNING id)
 SELECT id, pg_notify('jobs', $1) IS NULL AS not_notified FROM ins";
 
-/// One statement; the attempt is counted at claim.
+/// One statement; the attempt is counted at claim. A job enqueued to run at once has
+/// `run_at = created_at` (one transaction's `now()`), so `run_at <= created_at` keeps it due even
+/// after the wall clock steps back (ADR 0032); a delayed or re-queued job waits for `now()`.
 const DEQUEUE_SQL: &str = concat!(
     "WITH next AS (
   SELECT id FROM jobs
-  WHERE state = 'queued' AND kind = ANY($1) AND run_at <= now()
+  WHERE state = 'queued' AND kind = ANY($1) AND (run_at <= now() OR run_at <= created_at)
   ORDER BY ",
     claim_order!(),
     "
