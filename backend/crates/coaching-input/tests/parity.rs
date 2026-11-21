@@ -710,6 +710,18 @@ fn walker_reports_unknown_keywords_and_sibling_differences() {
     let mut nullable_bound = nullable.clone();
     nullable_bound["properties"]["a"]["minLength"] = json!(1);
     assert!(has(&diffs(&nullable, &nullable_bound), "$.a: minLength"));
+
+    // A node with both anyOf and oneOf, and a null member that carries keywords.
+    let mut both = union.clone();
+    both["properties"]["a"]["oneOf"] = json!([{"type": "string"}, {"type": "number"}]);
+    assert!(has(&diffs(&union, &both), "Rust has both anyOf and oneOf"));
+    let null_extra = object(json!({
+        "anyOf": [{"$ref": "#/$defs/A"}, {"type": "null", "maxLength": 1}]
+    }));
+    assert!(has(
+        &diffs(&nullable, &null_extra),
+        "Rust null member has keywords"
+    ));
 }
 
 #[test]

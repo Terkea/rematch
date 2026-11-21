@@ -56,8 +56,9 @@ fn invalid_fen() {
     input.strengths[0].exemplars[1].fen = "x".repeat(101);
     issue_at(&input, "strengths.0.exemplars.1.fen");
 
-    // chess.js's structural rules, which `Position::from_fen` alone does not enforce: exactly
-    // six single-space-separated fields, eight ranks, no two digits in a row.
+    // Structural rules `Position::from_fen` alone does not enforce: six fields, eight ranks, no
+    // two digits in a row (as chess.js). Single-space separation is deliberately stricter than
+    // chess.js/zod (which accept runs of whitespace).
     let fen = sample().weaknesses[0].exemplars[0].fen.clone();
     assert_eq!(fen.split('/').nth(4), Some("4P3"), "fixture's fifth rank");
     // White to move, like the fixture exemplar (ply 5), so only the shape differs.
@@ -66,23 +67,29 @@ fn invalid_fen() {
     input.weaknesses[0].exemplars[0].fen = start.into();
     assert_eq!(input.validate(), Ok(()));
     let shapes = [
-        format!(" {fen}"),
-        format!("{fen} "),
-        format!("{fen}\n"),
-        fen.replacen(' ', "  ", 1),
-        fen.replacen(' ', "\t", 1),
-        fen.replacen("4P3", "4P12", 1),
-        fen.replacen("4P3", "4X3", 1),
-        start.replacen("/8/", "/44/", 1),
-        start.replacen("/8/", "/8/8/", 1),
+        ("leading space", format!(" {fen}")),
+        ("trailing space", format!("{fen} ")),
+        ("trailing newline", format!("{fen}\n")),
+        (
+            "double space (stricter than chess.js/zod)",
+            fen.replacen(' ', "  ", 1),
+        ),
+        (
+            "tab separator (stricter than chess.js/zod)",
+            fen.replacen(' ', "\t", 1),
+        ),
+        ("adjacent digits 12", fen.replacen("4P3", "4P12", 1)),
+        ("invalid piece", fen.replacen("4P3", "4X3", 1)),
+        ("adjacent digits 44", start.replacen("/8/", "/44/", 1)),
+        ("nine ranks", start.replacen("/8/", "/8/8/", 1)),
     ];
-    for bad in shapes {
+    for (case, bad) in shapes {
         let mut input = sample();
         input.weaknesses[0].exemplars[0].fen = bad.clone();
         assert_eq!(
             issue_at(&input, "weaknesses.0.exemplars.0.fen"),
             "invalid FEN",
-            "{bad:?}"
+            "{case}: {bad:?}"
         );
     }
 }

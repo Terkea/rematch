@@ -82,10 +82,12 @@ fn char_len(s: &str) -> usize {
     s.chars().count()
 }
 
-/// chess.js `validateFen`'s structural rules, which `Position::from_fen` alone does not enforce
-/// (it splits on any run of whitespace and accepts `44` as a rank): exactly six fields separated
-/// by single spaces, no other whitespace, and eight ranks of pieces and digits 1-8 that fill
-/// eight squares with no two digits in a row.
+/// Structural FEN rules that `Position::from_fen` alone does not enforce (it accepts `44` as a
+/// rank): six non-empty fields and eight ranks of pieces and digits 1-8 that fill eight squares
+/// with no two digits in a row, as chess.js `validateFen` requires. The whitespace rule (fields
+/// separated by single spaces, no other whitespace) is deliberately stricter than chess.js/zod
+/// (which accept runs of whitespace): it is the safe direction, and the builder never emits such
+/// FENs.
 fn fen_shape_ok(fen: &str) -> bool {
     let fields: Vec<&str> = fen.split(' ').collect();
     if fields.len() != 6

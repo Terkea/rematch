@@ -69,7 +69,7 @@ The output is committed as `backend/crates/coaching-input/schema/coaching-input-
 ### Refinements and bounds in `validate()`
 
 JSON Schema cannot express the zod refinements. `validate()` checks them with zod's paths and messages:
-- the FEN is valid, and its side to move agrees with the ply parity (odd = `w`; the second FEN field is read as zod reads it). Validity takes two checks. The first is chess.js's structural rules: exactly six fields separated by single spaces with no other whitespace, and eight ranks of pieces and digits 1-8 that fill eight squares with no two digits in a row. `Position::from_fen` alone splits on any whitespace and accepts `44`. The second is `chess_core::board::Position::from_fen`;
+- the FEN is valid, and its side to move agrees with the ply parity (odd = `w`; the second FEN field is read as zod reads it). Validity takes two checks. The first is a structural check: six fields and eight ranks of pieces and digits 1-8 that fill eight squares with no two digits in a row, as chess.js requires (`Position::from_fen` alone accepts `44`). Its whitespace rule is deliberately stricter than chess.js/zod (which accept runs of whitespace): fields must be separated by single spaces, with no leading, trailing or other whitespace. That is the safe direction, and the builder never emits such FENs. The second is `chess_core::board::Position::from_fen`;
 - the metric `value`, `low`, `high` and `bandMedian` lie within the unit range, and `low <= high`;
 - `intervalLow <= posteriorRate <= intervalHigh`, and `events <= opportunities`;
 - ranks are unique (the issue is at the second occurrence);
