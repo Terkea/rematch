@@ -124,3 +124,183 @@ describe("fixtures", () => {
     }
   });
 });
+
+// biome-ignore lint/suspicious/noExplicitAny: mutation helper over untyped raw input
+type Raw = Record<string, any>;
+const raw = (): Raw => structuredClone(loadFixture("b2-rapid")) as unknown as Raw;
+const issuePaths = (r: ReturnType<typeof parseCoachingInput>) =>
+  r.ok ? [] : r.issues.map((i) => i.path);
+
+describe("prompt-size bounds", () => {
+  const cases: [string, (d: Raw) => void, string][] = [
+    [
+      "oversize PV",
+      (d) => (d.weaknesses[0].exemplars[0].bestPv = Array(17).fill("e2e4")),
+      "weaknesses.0.exemplars.0.bestPv",
+    ],
+    [
+      "too many tags",
+      (d) => (d.weaknesses[0].exemplars[0].tags = Array(13).fill("t")),
+      "weaknesses.0.exemplars.0.tags",
+    ],
+    [
+      "oversize tag",
+      (d) => (d.weaknesses[0].exemplars[0].tags = ["x".repeat(41)]),
+      "weaknesses.0.exemplars.0.tags.0",
+    ],
+    ["too many metrics", (d) => (d.metrics = Array(81).fill(d.metrics[0])), "metrics"],
+    ["too many weaknesses", (d) => (d.weaknesses = Array(25).fill(d.weaknesses[0])), "weaknesses"],
+    ["too many openings", (d) => (d.openings = Array(31).fill(d.openings[0])), "openings"],
+    ["too many changes", (d) => (d.changes = Array(21).fill(d.changes[0])), "changes"],
+    [
+      "too many alternatives",
+      (d) => (d.openings[1].alternatives = Array(6).fill(d.openings[1].alternatives[0])),
+      "openings.1.alternatives",
+    ],
+    [
+      "too many causes",
+      (d) => (d.changes[0].candidateCauses = Array(7).fill(d.changes[0].candidateCauses[0])),
+      "changes.0.candidateCauses",
+    ],
+    [
+      "too many moves",
+      (d) => (d.openings[0].movesSan = Array(41).fill("e4")),
+      "openings.0.movesSan",
+    ],
+    ["oversize label", (d) => (d.weaknesses[0].label = "x".repeat(121)), "weaknesses.0.label"],
+    [
+      "oversize description",
+      (d) => (d.changes[0].candidateCauses[0].description = "x".repeat(601)),
+      "changes.0.candidateCauses.0.description",
+    ],
+    ["oversize rank", (d) => (d.weaknesses[0].rank = 25), "weaknesses.0.rank"],
+    ["oversize priority", (d) => (d.weaknesses[0].priority = 1e9), "weaknesses.0.priority"],
+  ];
+  it.each(cases)("rejects %s with a named issue", (_n, mutate, path) => {
+    const d = raw();
+    mutate(d);
+    expect(issuePaths(parseCoachingInput(d))).toContain(path);
+  });
+});
+
+describe("documented ranges and cross-field rules", () => {
+  it("rejects a per-game value declared as a rate", () => {
+    const d = raw();
+    d.metrics[0].unit = "rate";
+    d.metrics[0].value = 3.1;
+    expect(issuePaths(parseCoachingInput(d))).toContain("metrics.0.value");
+  });
+  it("rejects old unit names", () => {
+    const d = raw();
+    d.metrics[0].unit = "percent";
+    expect(parseCoachingInput(d).ok).toBe(false);
+  });
+  it("rejects pct above 100 and interval fields out of 0..1", () => {
+    const d = raw();
+    d.metrics[3].value = 101;
+    d.weaknesses[0].intervalHigh = 1.5;
+    const paths = issuePaths(parseCoachingInput(d));
+    expect(paths).toContain("metrics.3.value");
+    expect(paths).toContain("weaknesses.0.intervalHigh");
+  });
+  it("requires metric low <= high", () => {
+    const d = raw();
+    d.metrics[0].low = 2;
+    d.metrics[0].high = 1;
+    expect(issuePaths(parseCoachingInput(d))).toContain("metrics.0.low");
+  });
+  it("requires intervalLow <= posteriorRate <= intervalHigh", () => {
+    const d = raw();
+    d.weaknesses[0].posteriorRate = 0.5;
+    expect(issuePaths(parseCoachingInput(d))).toContain("weaknesses.0.posteriorRate");
+    const e = raw();
+    e.weaknesses[0].intervalLow = 0.3;
+    expect(issuePaths(parseCoachingInput(e))).toContain("weaknesses.0.intervalLow");
+  });
+  it("requires unique weakness ranks", () => {
+    const d = raw();
+    d.weaknesses[1].rank = d.weaknesses[0].rank;
+    expect(issuePaths(parseCoachingInput(d))).toContain("weaknesses.1.rank");
+  });
+  it("requires FEN side to move to match ply parity", () => {
+    const d = raw();
+    d.weaknesses[0].exemplars[0].ply += 1;
+    expect(issuePaths(parseCoachingInput(d))).toContain("weaknesses.0.exemplars.0.fen");
+    const c = raw();
+    c.changes[0].examples[0].ply += 1;
+    expect(issuePaths(parseCoachingInput(c))).toContain("changes.0.examples.0.fen");
+  });
+  it("requires events <= opportunities, onset ordering, analysed <= imported", () => {
+    const d = raw();
+    d.weaknesses[0].events = d.weaknesses[0].opportunities + 1;
+    d.changes[0].onsetFrom = "2026-12-01";
+    d.basis.analysedGames = d.basis.importedGames + 1;
+    const paths = issuePaths(parseCoachingInput(d));
+    expect(paths).toContain("weaknesses.0.events");
+    expect(paths).toContain("changes.0.onsetDate");
+    expect(paths).toContain("basis.analysedGames");
+  });
+});
+
+describe("strictness at depth and change examples", () => {
+  it("rejects nested unknown keys and names them", () => {
+    for (const mutate of [
+      (d: Raw) => (d.basis.extra = 1),
+      (d: Raw) => (d.weaknesses[0].exemplars[0].played.extra = 1),
+      (d: Raw) => (d.weaknesses[0].exemplars[0].evalBefore.extra = 1),
+      (d: Raw) => (d.changes[0].candidateCauses[0].extra = 1),
+      (d: Raw) => (d.openings[1].alternatives[0].extra = 1),
+      (d: Raw) => (d.changes[0].examples[0].extra = 1),
+    ]) {
+      const d = raw();
+      mutate(d);
+      const r = parseCoachingInput(d);
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.issues.some((i) => i.message.includes("extra"))).toBe(true);
+    }
+  });
+  it("requires a valid side on change examples and keeps 2 before / 2 after", () => {
+    const b2 = loadFixture("b2-rapid");
+    expect(b2.changes[0]?.examples.map((e) => e.side)).toEqual([
+      "before",
+      "before",
+      "after",
+      "after",
+    ]);
+    const d = raw();
+    d.changes[0].examples[0].side = "during";
+    expect(issuePaths(parseCoachingInput(d))).toContain("changes.0.examples.0.side");
+    const m = raw();
+    delete m.changes[0].examples[0].side;
+    expect(parseCoachingInput(m).ok).toBe(false);
+  });
+});
+
+describe("fixture consistency", () => {
+  const all = () => {
+    const f = loadFixture("b2-rapid");
+    return f.weaknesses.flatMap((w) => w.exemplars.map((e) => ({ w: w.id, e })));
+  };
+  it("uses distinct positions across weaknesses", () => {
+    const fens = all().map(({ e }) => e.fen);
+    expect(new Set(fens).size).toBe(fens.length);
+  });
+  it("derives win percentages from evals for the mover, and the move costs the mover", () => {
+    const win = (cp: number) => 50 + 50 * (2 / (1 + Math.exp(-0.00368208 * cp)) - 1);
+    for (const { e } of all()) {
+      const white = e.ply % 2 === 1;
+      const cb = (e.evalBefore as { cp: number }).cp;
+      const ca = (e.evalAfter as { cp: number }).cp;
+      const sign = white ? 1 : -1;
+      expect(e.winBefore).toBeCloseTo(win(sign * cb), 0);
+      expect(e.winAfter).toBeCloseTo(win(sign * ca), 0);
+      expect(e.winAfter).toBeLessThan(e.winBefore);
+    }
+  });
+  it("b0 and b2 have different area scores and metrics", () => {
+    const b2 = loadFixture("b2-rapid");
+    const b0 = loadFixture("b0-blitz");
+    expect(b0.areaScores.map((a) => a.score)).not.toEqual(b2.areaScores.map((a) => a.score));
+    expect(b0.metrics[0]?.value).not.toBe(b2.metrics[0]?.value);
+  });
+});

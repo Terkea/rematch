@@ -20,49 +20,49 @@
   "areaScores": [
     {
       "area": "openings",
-      "score": 40,
+      "score": 48,
       "n": 120,
       "sufficient": true,
       "needMore": null
     },
     {
       "area": "middlegame",
-      "score": 47,
+      "score": 55,
       "n": 115,
       "sufficient": true,
       "needMore": null
     },
     {
       "area": "endgame",
-      "score": 54,
+      "score": 41,
       "n": 110,
       "sufficient": true,
       "needMore": null
     },
     {
       "area": "tactics",
-      "score": 61,
+      "score": 37,
       "n": 105,
       "sufficient": true,
       "needMore": null
     },
     {
       "area": "calculation",
-      "score": 68,
+      "score": 52,
       "n": 100,
       "sufficient": true,
       "needMore": null
     },
     {
       "area": "time",
-      "score": 75,
+      "score": 60,
       "n": 95,
       "sufficient": true,
       "needMore": null
     },
     {
       "area": "mindset",
-      "score": 82,
+      "score": 66,
       "n": 90,
       "sufficient": true,
       "needMore": null
@@ -70,16 +70,30 @@
   ],
   "metrics": [
     {
-      "key": "blunder_rate",
+      "key": "blunders_per_game",
       "area": "tactics",
-      "label": "Blunders per 100 moves",
-      "value": 3.1,
-      "unit": "rate",
-      "n": 4200,
-      "low": 2.7,
-      "high": 3.5,
-      "bandMedian": 2.2,
+      "label": "Blunders per game",
+      "value": 0.9,
+      "unit": "per_game",
+      "n": 214,
+      "low": 0.7,
+      "high": 1.1,
+      "bandMedian": 0.6,
       "bandPercentile": 78,
+      "sufficient": true,
+      "needMore": null
+    },
+    {
+      "key": "hung_piece_rate",
+      "area": "tactics",
+      "label": "Hung-piece rate per opportunity",
+      "value": 0.06,
+      "unit": "rate",
+      "n": 3400,
+      "low": 0.05,
+      "high": 0.07,
+      "bandMedian": 0.04,
+      "bandPercentile": 74,
       "sufficient": true,
       "needMore": null
     },
@@ -94,6 +108,20 @@
       "high": null,
       "bandMedian": 9.8,
       "bandPercentile": null,
+      "sufficient": true,
+      "needMore": null
+    },
+    {
+      "key": "endgame_conversion",
+      "area": "endgame",
+      "label": "Won endgames converted",
+      "value": 62,
+      "unit": "pct",
+      "n": 41,
+      "low": 48,
+      "high": 75,
+      "bandMedian": 70,
+      "bandPercentile": 35,
       "sufficient": true,
       "needMore": null
     }
@@ -119,28 +147,28 @@
       "opportunities": 190,
       "exemplars": [
         {
-          "gameId": "li-w1a",
-          "ply": 6,
+          "gameId": "li-w1-0",
+          "ply": 5,
           "playedAt": "2026-11-01T18:30:00.000Z",
-          "fen": "rnbqkbnr/ppp2ppp/3p4/4p3/3PP3/5N2/PPP2PPP/RNBQKB1R b KQkq - 0 3",
+          "fen": "rnbqkbnr/ppp2ppp/3p4/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 0 3",
           "played": {
-            "san": "Bg4",
-            "uci": "c8g4"
+            "san": "d4",
+            "uci": "d2d4"
           },
           "best": {
-            "san": "exd4",
-            "uci": "e5d4"
+            "san": "Nxe5",
+            "uci": "f3e5"
           },
           "bestPv": [
-            "e5d4",
-            "f3d4",
-            "b8d7",
-            "d4b5"
+            "f3e5",
+            "d6e5",
+            "f1b5",
+            "b8d7"
           ],
           "refutationPv": [
-            "d4e5",
-            "d6e5",
-            "f3e5"
+            "e5d4",
+            "f3d4",
+            "b8d7"
           ],
           "tags": [
             "hung_piece"
@@ -149,38 +177,73 @@
             "cp": 20
           },
           "evalAfter": {
-            "cp": -180
+            "cp": -160
           },
-          "winBefore": 52,
-          "winAfter": 31
+          "winBefore": 51.8,
+          "winAfter": 35.7
         },
         {
-          "gameId": "li-w1b",
-          "ply": 10,
+          "gameId": "li-w1-1",
+          "ply": 9,
           "playedAt": "2026-11-02T18:30:00.000Z",
-          "fen": "rn1qkbnr/ppp2ppp/3p4/4P3/4P3/5Q2/PPP2PPP/RNB1KB1R b KQkq - 0 5",
+          "fen": "rn1qkbnr/ppp2ppp/3p4/4P3/4P3/5b2/PPP2PPP/RNBQKB1R w KQkq - 0 5",
           "played": {
-            "san": "dxe5",
-            "uci": "d6e5"
+            "san": "Qxf3",
+            "uci": "d1f3"
           },
           "best": {
-            "san": "Nd7",
-            "uci": "b8d7"
+            "san": "exd6",
+            "uci": "e5d6"
           },
           "bestPv": [
-            "b8d7",
             "e5d6",
-            "f8d6",
-            "f3f7"
+            "d8d6",
+            "g2f3",
+            "d6h2"
           ],
           "refutationPv": [
+            "d6e5",
             "f3f7",
-            "e8f7",
-            "f1c4"
+            "e8f7"
           ],
           "tags": [
-            "hung_piece",
-            "time_trouble"
+            "hung_piece"
+          ],
+          "evalBefore": {
+            "cp": 40
+          },
+          "evalAfter": {
+            "cp": -200
+          },
+          "winBefore": 53.7,
+          "winAfter": 32.4
+        },
+        {
+          "gameId": "li-w1-2",
+          "ply": 13,
+          "playedAt": "2026-11-03T18:30:00.000Z",
+          "fen": "rn1qkb1r/ppp2ppp/5n2/4p3/2B1P3/5Q2/PPP2PPP/RNB1K2R w KQkq - 2 7",
+          "played": {
+            "san": "Qb3",
+            "uci": "f3b3"
+          },
+          "best": {
+            "san": "Bb5+",
+            "uci": "c4b5"
+          },
+          "bestPv": [
+            "c4b5",
+            "b8d7",
+            "b5d7",
+            "d8d7"
+          ],
+          "refutationPv": [
+            "d8d2",
+            "b1d2",
+            "f6e4"
+          ],
+          "tags": [
+            "hung_piece"
           ],
           "evalBefore": {
             "cp": 60
@@ -188,44 +251,8 @@
           "evalAfter": {
             "cp": -240
           },
-          "winBefore": 56,
-          "winAfter": 27
-        },
-        {
-          "gameId": "li-w1c",
-          "ply": 14,
-          "playedAt": "2026-11-03T18:30:00.000Z",
-          "fen": "rn1qkb1r/ppp2ppp/5n2/4p3/2B1P3/1Q6/PPP2PPP/RNB1K2R b KQkq - 3 7",
-          "played": {
-            "san": "Qe7",
-            "uci": "d8e7"
-          },
-          "best": {
-            "san": "Qd2+",
-            "uci": "d8d2"
-          },
-          "bestPv": [
-            "d8d2",
-            "b1d2",
-            "f6e4",
-            "c4b5"
-          ],
-          "refutationPv": [
-            "c4b5",
-            "b8d7",
-            "b5d7"
-          ],
-          "tags": [
-            "hung_piece"
-          ],
-          "evalBefore": {
-            "cp": -10
-          },
-          "evalAfter": {
-            "cp": -310
-          },
-          "winBefore": 49,
-          "winAfter": 22
+          "winBefore": 55.5,
+          "winAfter": 29.2
         }
       ]
     },
@@ -249,113 +276,112 @@
       "opportunities": 180,
       "exemplars": [
         {
-          "gameId": "li-w3a",
-          "ply": 6,
+          "gameId": "li-w3-0",
+          "ply": 16,
           "playedAt": "2026-11-05T18:30:00.000Z",
-          "fen": "rnbqkbnr/ppp2ppp/3p4/4p3/3PP3/5N2/PPP2PPP/RNBQKB1R b KQkq - 0 3",
+          "fen": "rn2kb1r/ppp1qppp/5n2/4p3/2B1P3/1QN5/PPP2PPP/R1B1K2R b KQkq - 5 8",
           "played": {
-            "san": "Bg4",
-            "uci": "c8g4"
+            "san": "c6",
+            "uci": "c7c6"
           },
           "best": {
-            "san": "exd4",
-            "uci": "e5d4"
+            "san": "Nxe4",
+            "uci": "f6e4"
           },
           "bestPv": [
-            "e5d4",
-            "f3d4",
-            "b8d7",
-            "d4b5"
-          ],
-          "refutationPv": [
-            "d4e5",
-            "d6e5",
-            "f3e5"
-          ],
-          "tags": [
-            "fork"
-          ],
-          "evalBefore": {
-            "cp": 20
-          },
-          "evalAfter": {
-            "cp": -180
-          },
-          "winBefore": 52,
-          "winAfter": 31
-        },
-        {
-          "gameId": "li-w3b",
-          "ply": 10,
-          "playedAt": "2026-11-06T18:30:00.000Z",
-          "fen": "rn1qkbnr/ppp2ppp/3p4/4P3/4P3/5Q2/PPP2PPP/RNB1KB1R b KQkq - 0 5",
-          "played": {
-            "san": "dxe5",
-            "uci": "d6e5"
-          },
-          "best": {
-            "san": "Nd7",
-            "uci": "b8d7"
-          },
-          "bestPv": [
-            "b8d7",
-            "e5d6",
-            "f8d6",
-            "f3f7"
-          ],
-          "refutationPv": [
-            "f3f7",
-            "e8f7",
-            "f1c4"
-          ],
-          "tags": [
-            "fork",
-            "time_trouble"
-          ],
-          "evalBefore": {
-            "cp": 60
-          },
-          "evalAfter": {
-            "cp": -240
-          },
-          "winBefore": 56,
-          "winAfter": 27
-        },
-        {
-          "gameId": "li-w3c",
-          "ply": 14,
-          "playedAt": "2026-11-07T18:30:00.000Z",
-          "fen": "rn1qkb1r/ppp2ppp/5n2/4p3/2B1P3/1Q6/PPP2PPP/RNB1K2R b KQkq - 3 7",
-          "played": {
-            "san": "Qe7",
-            "uci": "d8e7"
-          },
-          "best": {
-            "san": "Qd2+",
-            "uci": "d8d2"
-          },
-          "bestPv": [
-            "d8d2",
-            "b1d2",
             "f6e4",
-            "c4b5"
-          ],
-          "refutationPv": [
             "c4b5",
             "b8d7",
             "b5d7"
           ],
+          "refutationPv": [
+            "c4f7",
+            "e7f7",
+            "b3b7"
+          ],
           "tags": [
             "fork"
           ],
           "evalBefore": {
-            "cp": -10
+            "cp": -40
           },
           "evalAfter": {
-            "cp": -310
+            "cp": 140
           },
-          "winBefore": 49,
-          "winAfter": 22
+          "winBefore": 53.7,
+          "winAfter": 37.4
+        },
+        {
+          "gameId": "li-w3-1",
+          "ply": 18,
+          "playedAt": "2026-11-06T18:30:00.000Z",
+          "fen": "rn2kb1r/pp2qppp/2p2n2/4p1B1/2B1P3/1QN5/PPP2PPP/R3K2R b KQkq - 1 9",
+          "played": {
+            "san": "b5",
+            "uci": "b7b5"
+          },
+          "best": {
+            "san": "Nxe4",
+            "uci": "f6e4"
+          },
+          "bestPv": [
+            "f6e4",
+            "g5e7",
+            "e8e7",
+            "c4f7"
+          ],
+          "refutationPv": [
+            "g5f6",
+            "e7f6",
+            "c4b5"
+          ],
+          "tags": [
+            "fork"
+          ],
+          "evalBefore": {
+            "cp": -20
+          },
+          "evalAfter": {
+            "cp": 220
+          },
+          "winBefore": 51.8,
+          "winAfter": 30.8
+        },
+        {
+          "gameId": "li-w3-2",
+          "ply": 20,
+          "playedAt": "2026-11-07T18:30:00.000Z",
+          "fen": "rn2kb1r/p3qppp/2p2n2/1N2p1B1/2B1P3/1Q6/PPP2PPP/R3K2R b KQkq - 0 10",
+          "played": {
+            "san": "cxb5",
+            "uci": "c6b5"
+          },
+          "best": {
+            "san": "Qb4+",
+            "uci": "e7b4"
+          },
+          "bestPv": [
+            "e7b4",
+            "b3b4",
+            "f8b4",
+            "b5c3"
+          ],
+          "refutationPv": [
+            "g5f6",
+            "e7f6",
+            "c4b5"
+          ],
+          "tags": [
+            "fork"
+          ],
+          "evalBefore": {
+            "cp": 0
+          },
+          "evalAfter": {
+            "cp": 300
+          },
+          "winBefore": 50,
+          "winAfter": 24.9
         }
       ]
     },
@@ -430,8 +456,8 @@
       "intervalHigh": 0.28,
       "bandMedian": 0.09,
       "bandPercentile": 50,
-      "excessEplPerGame": 0.29999999999999993,
-      "confidence": 0.6699999999999999,
+      "excessEplPerGame": 0.3,
+      "confidence": 0.67,
       "priority": 4,
       "state": "improving",
       "pImp": 0.7,
@@ -448,27 +474,27 @@
       "exemplars": [
         {
           "gameId": "li-s1",
-          "ply": 8,
+          "ply": 11,
           "playedAt": "2026-11-08T18:30:00.000Z",
-          "fen": "rn1qkbnr/ppp2ppp/3p4/4P3/4P1b1/5N2/PPP2PPP/RNBQKB1R b KQkq - 0 4",
+          "fen": "rn1qkbnr/ppp2ppp/8/4p3/4P3/5Q2/PPP2PPP/RNB1KB1R w KQkq - 0 6",
           "played": {
-            "san": "Bxf3",
-            "uci": "g4f3"
+            "san": "Bc4",
+            "uci": "f1c4"
           },
           "best": {
-            "san": "dxe5",
-            "uci": "d6e5"
+            "san": "Qxf7+",
+            "uci": "f3f7"
           },
           "bestPv": [
-            "d6e5",
-            "f3e5",
-            "d8d2",
-            "b1d2"
+            "f3f7",
+            "e8f7",
+            "f1c4",
+            "d8d5"
           ],
           "refutationPv": [
-            "e5d6",
-            "d8d6",
-            "g2f3"
+            "d8d2",
+            "b1d2",
+            "b8d7"
           ],
           "tags": [
             "opening"
@@ -477,10 +503,43 @@
             "cp": 30
           },
           "evalAfter": {
-            "cp": 45
+            "cp": 40
           },
-          "winBefore": 54,
-          "winAfter": 56
+          "winBefore": 52.8,
+          "winAfter": 53.7
+        },
+        {
+          "gameId": "li-s2",
+          "ply": 31,
+          "playedAt": "2026-11-09T18:30:00.000Z",
+          "fen": "4kb1r/p2n1ppp/4q3/4p1B1/4P3/1Q6/PPP2PPP/2KR4 w k - 0 16",
+          "played": {
+            "san": "Qb8+",
+            "uci": "b3b8"
+          },
+          "best": null,
+          "bestPv": [
+            "b3b8",
+            "d7b8",
+            "d1d8"
+          ],
+          "refutationPv": [
+            "d7b8",
+            "g5f6",
+            "g7f6"
+          ],
+          "tags": [
+            "tactics",
+            "finisher"
+          ],
+          "evalBefore": {
+            "mate": 2
+          },
+          "evalAfter": {
+            "mate": 1
+          },
+          "winBefore": 100,
+          "winAfter": 100
         }
       ]
     }
@@ -587,10 +646,10 @@
             "cp": 30
           },
           "evalAfter": {
-            "cp": 150
+            "cp": 140
           },
-          "winBefore": 54,
-          "winAfter": 40
+          "winBefore": 47.2,
+          "winAfter": 37.4
         }
       ]
     },
@@ -642,27 +701,27 @@
       "examples": [
         {
           "gameId": "li-c1-0",
-          "ply": 6,
+          "ply": 21,
           "playedAt": "2026-11-01T18:30:00.000Z",
-          "fen": "rnbqkbnr/ppp2ppp/3p4/4p3/3PP3/5N2/PPP2PPP/RNBQKB1R b KQkq - 0 3",
+          "fen": "rn2kb1r/p3qppp/5n2/1p2p1B1/2B1P3/1Q6/PPP2PPP/R3K2R w KQkq - 0 11",
           "played": {
-            "san": "Bg4",
-            "uci": "c8g4"
+            "san": "Bxb5+",
+            "uci": "c4b5"
           },
           "best": {
-            "san": "exd4",
-            "uci": "e5d4"
+            "san": "Bxf6",
+            "uci": "g5f6"
           },
           "bestPv": [
-            "e5d4",
-            "f3d4",
-            "b8d7",
-            "d4b5"
+            "g5f6",
+            "e7f6",
+            "c4b5",
+            "b8d7"
           ],
           "refutationPv": [
-            "d4e5",
-            "d6e5",
-            "f3e5"
+            "b8d7",
+            "b5d7",
+            "e8d7"
           ],
           "tags": [
             "tactics"
@@ -671,35 +730,35 @@
             "cp": 10
           },
           "evalAfter": {
-            "cp": -200
+            "cp": -190
           },
-          "winBefore": 50,
-          "winAfter": 28,
+          "winBefore": 50.9,
+          "winAfter": 33.2,
           "side": "before"
         },
         {
           "gameId": "li-c1-1",
-          "ply": 10,
+          "ply": 23,
           "playedAt": "2026-11-02T18:30:00.000Z",
-          "fen": "rn1qkbnr/ppp2ppp/3p4/4P3/4P3/5Q2/PPP2PPP/RNB1KB1R b KQkq - 0 5",
+          "fen": "r3kb1r/p2nqppp/5n2/1B2p1B1/4P3/1Q6/PPP2PPP/R3K2R w KQkq - 1 12",
           "played": {
-            "san": "dxe5",
-            "uci": "d6e5"
+            "san": "O-O-O",
+            "uci": "e1c1"
           },
           "best": {
-            "san": "Nd7",
-            "uci": "b8d7"
+            "san": "Bxd7+",
+            "uci": "b5d7"
           },
           "bestPv": [
-            "b8d7",
-            "e5d6",
-            "f8d6",
-            "f3f7"
+            "b5d7",
+            "e8d7",
+            "g5f6",
+            "e7f6"
           ],
           "refutationPv": [
-            "f3f7",
-            "e8f7",
-            "f1c4"
+            "f6e4",
+            "b5d7",
+            "e7d7"
           ],
           "tags": [
             "tactics"
@@ -708,35 +767,35 @@
             "cp": 10
           },
           "evalAfter": {
-            "cp": -200
+            "cp": -190
           },
-          "winBefore": 50,
-          "winAfter": 28,
+          "winBefore": 50.9,
+          "winAfter": 33.2,
           "side": "before"
         },
         {
           "gameId": "li-c1-2",
-          "ply": 14,
+          "ply": 25,
           "playedAt": "2026-11-03T18:30:00.000Z",
-          "fen": "rn1qkb1r/ppp2ppp/5n2/4p3/2B1P3/1Q6/PPP2PPP/RNB1K2R b KQkq - 3 7",
+          "fen": "3rkb1r/p2nqppp/5n2/1B2p1B1/4P3/1Q6/PPP2PPP/2KR3R w k - 3 13",
           "played": {
-            "san": "Qe7",
-            "uci": "d8e7"
+            "san": "Rxd7",
+            "uci": "d1d7"
           },
           "best": {
-            "san": "Qd2+",
-            "uci": "d8d2"
+            "san": "Bxd7+",
+            "uci": "b5d7"
           },
           "bestPv": [
-            "d8d2",
-            "b1d2",
-            "f6e4",
-            "c4b5"
+            "b5d7",
+            "d8d7",
+            "g5f6",
+            "d7d1"
           ],
           "refutationPv": [
-            "c4b5",
-            "b8d7",
-            "b5d7"
+            "d8d7",
+            "b5d7",
+            "e8d7"
           ],
           "tags": [
             "tactics"
@@ -745,35 +804,35 @@
             "cp": 10
           },
           "evalAfter": {
-            "cp": -200
+            "cp": -190
           },
-          "winBefore": 50,
-          "winAfter": 28,
+          "winBefore": 50.9,
+          "winAfter": 33.2,
           "side": "after"
         },
         {
           "gameId": "li-c1-3",
-          "ply": 18,
+          "ply": 27,
           "playedAt": "2026-11-04T18:30:00.000Z",
-          "fen": "rn2kb1r/pp2qppp/2p2n2/4p1B1/2B1P3/1QN5/PPP2PPP/R3K2R b KQkq - 1 9",
+          "fen": "4kb1r/p2rqppp/5n2/1B2p1B1/4P3/1Q6/PPP2PPP/2K4R w k - 0 14",
           "played": {
-            "san": "b5",
-            "uci": "b7b5"
+            "san": "Rd1",
+            "uci": "h1d1"
           },
           "best": {
-            "san": "Nxe4",
-            "uci": "f6e4"
+            "san": "Bxd7+",
+            "uci": "b5d7"
           },
           "bestPv": [
-            "f6e4",
-            "g5e7",
-            "e8e7",
-            "c4f7"
+            "b5d7",
+            "e8d7",
+            "g5f6",
+            "e7f6"
           ],
           "refutationPv": [
-            "g5f6",
-            "e7f6",
-            "c4b5"
+            "f6e4",
+            "b5d7",
+            "e7d7"
           ],
           "tags": [
             "tactics"
@@ -782,10 +841,10 @@
             "cp": 10
           },
           "evalAfter": {
-            "cp": -200
+            "cp": -190
           },
-          "winBefore": 50,
-          "winAfter": 28,
+          "winBefore": 50.9,
+          "winAfter": 33.2,
           "side": "after"
         }
       ]

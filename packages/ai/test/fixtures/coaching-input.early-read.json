@@ -20,15 +20,15 @@
   "areaScores": [
     {
       "area": "openings",
-      "score": 40,
-      "n": 120,
+      "score": 45,
+      "n": 30,
       "sufficient": true,
       "needMore": null
     },
     {
       "area": "middlegame",
-      "score": 47,
-      "n": 115,
+      "score": 50,
+      "n": 25,
       "sufficient": true,
       "needMore": null
     },
@@ -41,8 +41,8 @@
     },
     {
       "area": "tactics",
-      "score": 61,
-      "n": 105,
+      "score": 40,
+      "n": 15,
       "sufficient": true,
       "needMore": null
     },
@@ -55,8 +55,8 @@
     },
     {
       "area": "time",
-      "score": 75,
-      "n": 95,
+      "score": 55,
+      "n": 5,
       "sufficient": true,
       "needMore": null
     },
@@ -70,16 +70,30 @@
   ],
   "metrics": [
     {
-      "key": "blunder_rate",
+      "key": "blunders_per_game",
       "area": "tactics",
-      "label": "Blunders per 100 moves",
-      "value": 3.1,
-      "unit": "rate",
-      "n": 4200,
-      "low": 2.7,
-      "high": 3.5,
-      "bandMedian": 2.2,
+      "label": "Blunders per game",
+      "value": 0.9,
+      "unit": "per_game",
+      "n": 214,
+      "low": 0.7,
+      "high": 1.1,
+      "bandMedian": 0.6,
       "bandPercentile": 78,
+      "sufficient": true,
+      "needMore": null
+    },
+    {
+      "key": "hung_piece_rate",
+      "area": "tactics",
+      "label": "Hung-piece rate per opportunity",
+      "value": 0.06,
+      "unit": "rate",
+      "n": 3400,
+      "low": 0.05,
+      "high": 0.07,
+      "bandMedian": 0.04,
+      "bandPercentile": 74,
       "sufficient": true,
       "needMore": null
     },
@@ -119,40 +133,40 @@
       "opportunities": 190,
       "exemplars": [
         {
-          "gameId": "li-erw1a",
-          "ply": 6,
+          "gameId": "li-erw1-0",
+          "ply": 3,
           "playedAt": "2026-11-01T18:30:00.000Z",
-          "fen": "rnbqkbnr/ppp2ppp/3p4/4p3/3PP3/5N2/PPP2PPP/RNBQKB1R b KQkq - 0 3",
+          "fen": "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2",
           "played": {
-            "san": "Bg4",
-            "uci": "c8g4"
+            "san": "Nf3",
+            "uci": "g1f3"
           },
           "best": {
-            "san": "exd4",
-            "uci": "e5d4"
+            "san": "a3",
+            "uci": "a2a3"
           },
           "bestPv": [
-            "e5d4",
-            "f3d4",
-            "b8d7",
-            "d4b5"
+            "a2a3",
+            "f8a3",
+            "b2a3",
+            "b8c6"
           ],
           "refutationPv": [
-            "d4e5",
-            "d6e5",
-            "f3e5"
+            "b8c6",
+            "f3e5",
+            "c6e5"
           ],
           "tags": [
             "hung_piece"
           ],
           "evalBefore": {
-            "cp": 20
+            "cp": 0
           },
           "evalAfter": {
             "cp": -180
           },
-          "winBefore": 52,
-          "winAfter": 31
+          "winBefore": 50,
+          "winAfter": 34
         }
       ]
     },
