@@ -14,15 +14,15 @@
   "dependencies": {
     "@ci/chess-core": "workspace:*",
     "@ci/db": "workspace:*",
-    "bullmq": "^6.7.8",
-    "chess.js": "^1.4.0",
+    "bullmq": "6.7.6",
+    "chess.js": "1.4.0",
     "drizzle-orm": "0.45.4",
-    "ioredis": "^6.0.0"
+    "ioredis": "6.0.0"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
-    "postgres": "~4.1.1",
-    "tsx": "^4.20.0",
-    "vitest": "~5.1.1"
+    "@types/node": "22.20.5",
+    "postgres": "4.1.1",
+    "tsx": "4.23.15",
+    "vitest": "5.1.0"
   }
 }
