@@ -173,4 +173,43 @@ describe("evaluateGame", () => {
     expect(evals).toHaveLength(6);
     expect(calls).toHaveLength(3);
   });
+
+  it("reports progress from inside the loop after each persisted engine result", async () => {
+    const game = parsePgn("1. e4 e5 2. Nf3 *"); // 4 positions
+    const cache = createMemoryEvalCache();
+    const { pool } = fakePool();
+    const progress: { done: number; total: number; cachedSoFar: number }[] = [];
+    const keys = [game.startFen, ...game.plies.map((p) => p.fenAfter)].map(fenKey);
+    await evaluateGame(
+      {
+        pool,
+        cache,
+        concurrency: 1,
+        onProgress: async (done, total) => {
+          const cachedSoFar = (await cache.getMany(keys, ANALYSIS_PROTOCOL)).size;
+          progress.push({ done, total, cachedSoFar });
+        },
+      },
+      game,
+      null,
+    );
+    expect(progress).toEqual([1, 2, 3, 4].map((d) => ({ done: d, total: 4, cachedSoFar: d })));
+  });
+
+  it("does not fail the evaluation when onProgress throws", async () => {
+    const game = parsePgn("1. e4 e5 *");
+    const { pool } = fakePool();
+    const evals = await evaluateGame(
+      {
+        pool,
+        cache: createMemoryEvalCache(),
+        onProgress: () => {
+          throw new Error("heartbeat write failed");
+        },
+      },
+      game,
+      null,
+    );
+    expect(evals).toHaveLength(3);
+  });
 });

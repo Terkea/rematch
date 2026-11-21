@@ -1,7 +1,9 @@
 import { type Db, games, moves, upsertGame } from "@ci/db";
+import { UnrecoverableError } from "bullmq";
 import { eq } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 import { createDbEvalCache } from "../../src/analysis/eval-cache.js";
+import { EnginePoolClosedError } from "../../src/engine/engine-pool.js";
 import { handleAnalyseGame } from "../../src/jobs/analyse-game.js";
 import { getWorkerTestDb, workerTestDbConfigured } from "../db.js";
 import { insertAccount, makeGame, SCHOLARS } from "./helpers.js";
@@ -108,5 +110,102 @@ describe.skipIf(!workerTestDbConfigured())("handleAnalyseGame", () => {
     // Re-analysing a finished game replaces moves rather than duplicating them.
     await handleAnalyseGame(deps, { gameId: id });
     expect(await moveCount(id)).toBe(4);
+  });
+
+  it("a missing game throws UnrecoverableError, so BullMQ does not retry it", async () => {
+    const deps = { db, pool: pool(), cache: createDbEvalCache(db) };
+    await expect(
+      handleAnalyseGame(deps, { gameId: "00000000-0000-4000-8000-000000000000" }),
+    ).rejects.toBeInstanceOf(UnrecoverableError);
+  });
+
+  it("records the start, counts attempts and heartbeats from inside the evaluation", async () => {
+    const id = await addGame("1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 *", "beating");
+    const heartbeats: (Date | null)[] = [];
+    const slow = {
+      analyse: async () => {
+        heartbeats.push((await getGame(id))?.heartbeatAt ?? null);
+        await new Promise((r) => setTimeout(r, 5));
+        return [{ multipv: 1, score: { cp: 20 }, pv: ["e2e4"], depth: 1, nodes: 1 }];
+      },
+    };
+    const before = Date.now();
+    await handleAnalyseGame(
+      { db, pool: slow, cache: createDbEvalCache(db), heartbeatEveryMs: 0, concurrency: 1 },
+      { gameId: id },
+    );
+    const g = await getGame(id);
+    expect(g?.analysisAttempts).toBe(1);
+    expect(g?.analysisStartedAt?.getTime()).toBeGreaterThanOrEqual(before - 1000);
+    const times = heartbeats.map((h) => h?.getTime() ?? 0);
+    expect(times[0]).toBeGreaterThan(0); // set when the attempt starts
+    expect(new Set(times).size).toBeGreaterThan(3); // and refreshed while evaluating
+    expect((g?.heartbeatAt?.getTime() ?? 0) >= (times.at(-1) ?? 0)).toBe(true);
+  });
+
+  it("goes back to pending (not failed) when BullMQ will retry", async () => {
+    const id = await addGame("1. e4 c6 2. d4 d5 *", "retrying");
+    const p = pool({ on: true });
+    const deps = { db, pool: p, cache: createDbEvalCache(db) };
+    await expect(
+      handleAnalyseGame(deps, { gameId: id }, { attemptsMade: 0, attempts: 3 }),
+    ).rejects.toThrow("engine exploded");
+    const g = await getGame(id);
+    expect(g?.analysisStatus).toBe("pending");
+    expect(g?.analysisError).toContain("engine exploded");
+    expect(g?.analysisAttempts).toBe(1);
+  });
+
+  it("a closed engine pool (shutdown) leaves the game pending even on the last attempt", async () => {
+    const id = await addGame("1. e4 e6 2. d4 d5 *", "shutdown");
+    const closed = {
+      analyse: async (): Promise<never> => {
+        throw new EnginePoolClosedError();
+      },
+    };
+    const published: string[] = [];
+    await expect(
+      handleAnalyseGame(
+        {
+          db,
+          pool: closed,
+          cache: createDbEvalCache(db),
+          publish: async (_a, type) => {
+            published.push(type);
+            return 1;
+          },
+        },
+        { gameId: id },
+        { attemptsMade: 2, attempts: 3 },
+      ),
+    ).rejects.toBeInstanceOf(EnginePoolClosedError);
+    expect((await getGame(id))?.analysisStatus).toBe("pending");
+    expect(published).toEqual([]);
+  });
+
+  it("publishes game.analysed with the player's accuracy after the commit", async () => {
+    const id = await addGame("1. d4 Nf6 2. c4 e6 *", "announced");
+    const events: { accountId: string; type: string; payload: object; status?: string }[] = [];
+    await handleAnalyseGame(
+      {
+        db,
+        pool: pool(),
+        cache: createDbEvalCache(db),
+        publish: async (accountId, type, payload) => {
+          events.push({ accountId, type, payload, status: (await getGame(id))?.analysisStatus });
+          return 1;
+        },
+      },
+      { gameId: id },
+    );
+    const g = await getGame(id);
+    expect(events).toEqual([
+      {
+        accountId: g?.accountId,
+        type: "game.analysed",
+        payload: { gameId: id, accuracy: expect.closeTo(g?.whiteAccuracy as number, 4) },
+        status: "done",
+      },
+    ]);
   });
 });

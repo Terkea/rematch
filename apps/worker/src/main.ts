@@ -1,3 +1,5 @@
+import { installGracefulShutdown } from "./lifecycle/shutdown.js";
+import { log } from "./log.js";
 import { startWorkers } from "./start-workers.js";
 
 function requireEnv(name: string): string {
@@ -6,14 +8,13 @@ function requireEnv(name: string): string {
   return v;
 }
 
-const workers = await startWorkers({
+const running = await startWorkers({
   REDIS_URL: requireEnv("REDIS_URL"),
   DATABASE_URL: requireEnv("DATABASE_URL"),
   STOCKFISH_PATH: requireEnv("STOCKFISH_PATH"),
   CONTACT_EMAIL: requireEnv("CONTACT_EMAIL"),
   LICHESS_TOKEN: process.env.LICHESS_TOKEN,
 });
-console.log("worker ready");
-const stop = () => void workers.close().finally(() => process.exit(0));
-process.on("SIGINT", stop);
-process.on("SIGTERM", stop);
+installGracefulShutdown(running, { graceMs: 25_000 });
+await running.queues.scheduleReconcile();
+log.info({ workers: running.workers.length }, "worker ready");

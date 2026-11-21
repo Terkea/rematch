@@ -88,12 +88,14 @@ function normalize(g: ChesscomGame): NormalizedGame | null {
 export async function* fetchChesscomGames(
   client: PlatformClient,
   username: string,
-  opts: { since?: Date; max?: number } = {},
+  /** `since` and `until` are inclusive bounds on the game end time. */
+  opts: { since?: Date; until?: Date; max?: number } = {},
 ): AsyncIterable<NormalizedGame> {
   if (opts.max !== undefined && opts.max <= 0) return;
   const base = `https://api.chess.com/pub/player/${encodeURIComponent(username.toLowerCase())}`;
   const { archives } = await client.getJson<{ archives: string[] }>(`${base}/games/archives`);
   const sinceMs = opts.since?.getTime();
+  const untilMs = opts.until?.getTime();
   let yielded = 0;
 
   for (const archive of [...archives].reverse()) {
@@ -102,10 +104,15 @@ export async function* fetchChesscomGames(
       const monthEnd = Date.UTC(Number(m[1]), Number(m[2]), 1);
       if (monthEnd <= sinceMs) break; // this and all older months are before `since`
     }
+    if (untilMs !== undefined && m?.[1] && m[2]) {
+      const monthStart = Date.UTC(Number(m[1]), Number(m[2]) - 1, 1);
+      if (monthStart > untilMs) continue; // the whole month is after `until`
+    }
     const { games } = await client.getJson<{ games: ChesscomGame[] }>(archive);
     const ordered = [...games].sort((a, b) => b.end_time - a.end_time);
     for (const g of ordered) {
       if (sinceMs !== undefined && g.end_time * 1000 < sinceMs) continue;
+      if (untilMs !== undefined && g.end_time * 1000 > untilMs) continue;
       if (g.rules && g.rules !== "chess") continue;
       const n = normalize(g);
       if (!n) continue;

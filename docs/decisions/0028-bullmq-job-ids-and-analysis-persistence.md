@@ -21,4 +21,4 @@ Encoding the job id with another separator and parsing it back (not needed, the 
 
 ## Consequences
 
-A game inserted but not enqueued (crash between the two steps) stays `pending` until the reconciler of Task 12b re-enqueues it. Finished jobs keep their id until removed, so a later re-enqueue of the same game is a no-op while the job is retained.
+A game inserted but not enqueued (crash between the two steps) stays `pending` until the reconciler of Task 12b re-enqueues it. Finished jobs keep their id until removed; since ADR 0029, `enqueueAnalyse` removes a retained completed or failed job before re-adding, so re-analysis is not swallowed.

@@ -1,4 +1,5 @@
 import { type Db, games, linkedAccounts } from "@ci/db";
+import { UnrecoverableError } from "bullmq";
 import { eq } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 import type { NormalizedGame } from "../../src/importers/types.js";
@@ -26,7 +27,7 @@ describe.skipIf(!workerTestDbConfigured())("handleImportAccount", () => {
     };
   }
 
-  it("import twice yields same rows and enqueues only once", async () => {
+  it("import twice yields same rows; still-pending games are re-enqueued (jobId dedupes)", async () => {
     const acct = await insertAccount(db, "twice");
     const list = [
       makeGame({ white: { name: "Twice", rating: 1 } }),
@@ -45,7 +46,7 @@ describe.skipIf(!workerTestDbConfigured())("handleImportAccount", () => {
     const rows = await db.select().from(games).where(eq(games.accountId, acct.id));
     expect(rows).toHaveLength(2);
     expect(first).toHaveLength(2);
-    expect(second).toHaveLength(0);
+    expect(second.sort()).toEqual(first.sort());
     expect(rows.every((r) => r.analysisStatus === "pending")).toBe(true);
   });
 
@@ -68,5 +69,11 @@ describe.skipIf(!workerTestDbConfigured())("handleImportAccount", () => {
     await handleImportAccount(deps([], []), { accountId: acct.id });
     const [row] = await db.select().from(linkedAccounts).where(eq(linkedAccounts.id, acct.id));
     expect(row?.lastSyncedAt).toBeInstanceOf(Date);
+  });
+
+  it("a missing account throws UnrecoverableError", async () => {
+    await expect(
+      handleImportAccount(deps([], []), { accountId: "00000000-0000-4000-8000-000000000000" }),
+    ).rejects.toBeInstanceOf(UnrecoverableError);
   });
 });

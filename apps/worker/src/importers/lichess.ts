@@ -71,10 +71,11 @@ function timing(g: LichessGame): {
 export async function* fetchLichessGames(
   client: PlatformClient,
   username: string,
-  opts: { since?: Date; max?: number; token?: string } = {},
+  opts: { since?: Date; until?: Date; max?: number; token?: string } = {},
 ): AsyncIterable<NormalizedGame> {
   const params = new URLSearchParams();
   if (opts.since) params.set("since", String(opts.since.getTime()));
+  if (opts.until) params.set("until", String(opts.until.getTime()));
   if (opts.max !== undefined) params.set("max", String(opts.max));
   params.set("sort", "dateDesc");
   params.set("pgnInJson", "true");

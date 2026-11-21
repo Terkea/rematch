@@ -14,6 +14,13 @@ export interface EvaluateGameDeps {
   cache: EvalCache;
   /** Parallel engine requests (default 4). The pool queues beyond its own size. */
   concurrency?: number;
+  /**
+   * Called inside the evaluation loop after each engine result is persisted to the cache, with
+   * the number of engine positions done and the total sent to the engine. Used for heartbeats; an
+   * error it throws is ignored. Because it runs only when work completes, a hung loop stops
+   * calling it, which is what lets the reconciler spot a stuck analysis.
+   */
+  onProgress?: (done: number, total: number) => void | Promise<void>;
 }
 
 /** Fixed white-POV score for a final position that is checkmate, stalemate or another draw. */
@@ -75,6 +82,8 @@ export async function evaluateGame(
 
   const analysed = new Map<string, PositionEval>();
   const queue = [...misses];
+  const total = queue.length;
+  let done = 0;
   let failure: unknown;
   let failed = false;
   const worker = async () => {
@@ -95,6 +104,14 @@ export async function evaluateGame(
         await deps.cache.putMany([
           { fenKey: key, protocol: ANALYSIS_PROTOCOL, eval: ev, source: "stockfish" },
         ]);
+        done++;
+        if (deps.onProgress) {
+          try {
+            await deps.onProgress(done, total);
+          } catch {
+            // A failed heartbeat must not fail the analysis.
+          }
+        }
       } catch (err) {
         if (!failed) failure = err;
         failed = true;

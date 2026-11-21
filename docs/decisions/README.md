@@ -30,3 +30,4 @@ One file per decision: context, decision, alternatives, consequences. New decisi
 - [0026. Workspace packages resolve source via a development condition](0026-workspace-source-resolution.md)
 - [0027. Lichess server evals accepted into the eval cache](0027-lichess-evals-in-eval-cache.md)
 - [0028](0028-bullmq-job-ids-and-analysis-persistence.md) BullMQ job ids and analysis persistence
+- [0029](0029-state-in-postgres-reconciler-not-outbox.md) State in Postgres, queue as delivery; reconciler instead of an outbox
