@@ -26,7 +26,7 @@
 //! session sets server-side TCP keepalives, so a worker that dies without closing the socket
 //! frees the account within about 90 s.
 //!
-//! Known limitation (still open): exclusion lasts only as long as the lock session. If the
+//! Known limitation (deferred to T23/T24): exclusion lasts only as long as the lock session. If the
 //! lock connection dies while the handler is still running (a network fault, an administrator
 //! terminating the backend), the lock is gone but the handler keeps writing through pool
 //! connections, so a re-claimed job could overlap it again. Routing the cursor and run writes

@@ -5,12 +5,15 @@
 //! 2. if they have not, the engine pool is closed: in-flight analyses fail with `PoolClosed`,
 //!    put their game back to `pending` and release their job without using an attempt; the
 //!    runners drain again until 90 %;
-//! 3. runners still busy are forced: their handlers are cancelled and their jobs released
-//!    (`release_owned`), again without using an attempt;
+//! 3. runners still busy are forced within the rest of the grace (90 %-100 %): their handlers
+//!    are cancelled, then aborted, and their jobs always released (`release_owned`) before the
+//!    budget ends, again without using an attempt;
 //! 4. the engines (if not closed yet) and the database pool are closed.
 //!
 //! Every step is bounded by the remaining budget (at least [`MIN_STEP`]); failures and timeouts
-//! are logged and make the exit code 1. A runner that had to be forced is not a failure: it is
+//! are logged and make the exit code 1. Because of that floor the steps can overrun the grace a
+//! little, so the whole shutdown also has a hard deadline, `grace + hard_after` (25 s + 3 s):
+//! whatever is still running then is dropped, the exit code is 1 and the process exits. A runner that had to be forced is not a failure: it is
 //! the designed path for a job longer than the grace.
 
 use std::sync::Arc;
@@ -26,6 +29,9 @@ use tokio::time::Instant;
 
 /// The default total budget from the signal to the exit.
 pub const DEFAULT_GRACE: Duration = Duration::from_secs(25);
+/// How long past the grace the shutdown may run before it is cut off and the process exits
+/// with 1: 25 s + 3 s ends before compose's `stop_grace_period: 30s` SIGKILL.
+pub const DEFAULT_HARD_AFTER: Duration = Duration::from_secs(3);
 /// The smallest budget any one step gets, even past the grace.
 pub const MIN_STEP: Duration = Duration::from_millis(100);
 
@@ -35,8 +41,8 @@ pub trait Drainable: Send + Sync {
     fn stop(&self);
     /// Resolves once every in-flight job has finished.
     fn wait_idle(&self) -> BoxFuture<'_, ()>;
-    /// Cancel in-flight jobs and hand them back to the queue.
-    fn force(&self) -> BoxFuture<'_, ()>;
+    /// Cancel in-flight jobs and hand them back to the queue within `budget`.
+    fn force(&self, budget: Duration) -> BoxFuture<'_, ()>;
 }
 
 impl Drainable for RunnerHandle {
@@ -48,8 +54,8 @@ impl Drainable for RunnerHandle {
         RunnerHandle::wait_idle(self).boxed()
     }
 
-    fn force(&self) -> BoxFuture<'_, ()> {
-        RunnerHandle::force(self).boxed()
+    fn force(&self, budget: Duration) -> BoxFuture<'_, ()> {
+        RunnerHandle::force_within(self, budget).boxed()
     }
 }
 
@@ -86,23 +92,52 @@ pub struct ShutdownHandles {
 
 #[derive(Clone, Copy, Debug)]
 pub struct ShutdownOptions {
-    /// Total budget from the signal to the exit (default 25 s).
+    /// Budget for the graceful steps, from the signal (default 25 s).
     pub grace: Duration,
+    /// The hard deadline is `grace + hard_after` (default 3 s): whatever is still running then
+    /// is dropped and the shutdown returns 1, so the process exits.
+    pub hard_after: Duration,
 }
 
-impl Default for ShutdownOptions {
-    fn default() -> Self {
+impl ShutdownOptions {
+    /// `grace` with the default [`DEFAULT_HARD_AFTER`].
+    pub fn with_grace(grace: Duration) -> Self {
         ShutdownOptions {
-            grace: DEFAULT_GRACE,
+            grace,
+            hard_after: DEFAULT_HARD_AFTER,
         }
     }
 }
 
+impl Default for ShutdownOptions {
+    fn default() -> Self {
+        ShutdownOptions::with_grace(DEFAULT_GRACE)
+    }
+}
+
 /// Runs the shutdown (see the module docs) and returns the exit code: 0, or 1 if any close
-/// failed or timed out.
+/// failed or timed out, or if the hard deadline (`grace + hard_after`) cut it off.
 pub async fn shutdown(handles: ShutdownHandles, opts: ShutdownOptions) -> i32 {
     let started = Instant::now();
-    let grace = opts.grace;
+    let deadline = started + opts.grace + opts.hard_after;
+    match tokio::time::timeout_at(deadline, steps(handles, opts.grace, started)).await {
+        Ok(code) => code,
+        Err(_) => {
+            // Dropping the steps future drops whatever was still closing; the leases of jobs
+            // not yet released expire and are reclaimed by the next worker.
+            tracing::error!(
+                ms = started.elapsed().as_millis() as u64,
+                hard_deadline_ms = (opts.grace + opts.hard_after).as_millis() as u64,
+                ok = false,
+                "shutdown hit its hard deadline; exiting anyway"
+            );
+            1
+        }
+    }
+}
+
+/// The graceful steps, each bounded by the remaining `grace` (at least [`MIN_STEP`]).
+async fn steps(handles: ShutdownHandles, grace: Duration, started: Instant) -> i32 {
     let budget = |fraction: f64| {
         (started + grace.mul_f64(fraction))
             .saturating_duration_since(Instant::now())
@@ -131,8 +166,14 @@ pub async fn shutdown(handles: ShutdownHandles, opts: ShutdownOptions) -> i32 {
             .is_ok();
         if !settled {
             tracing::warn!("forcing the runners; their jobs are released without an attempt");
-            let forced = join_all(handles.runners.iter().map(|r| r.force()));
-            if tokio::time::timeout(budget(1.0), forced).await.is_err() {
+            // The 90 %-100 % window: each runner cancels, aborts and always releases its jobs
+            // (`release_owned`) within it. The outer bound only catches a broken `force`.
+            let window = budget(1.0);
+            let forced = join_all(handles.runners.iter().map(|r| r.force(window)));
+            if tokio::time::timeout(window + MIN_STEP, forced)
+                .await
+                .is_err()
+            {
                 failed = true;
                 tracing::error!(resource = "runners", "force timed out");
             }

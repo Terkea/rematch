@@ -136,12 +136,19 @@ pub async fn check_stockfish(path: &std::path::Path) -> Result<String, StartErro
     }
 }
 
-/// The default engine count: one per core, leaving one for everything else.
+/// At most this many engines unless `WORKER_POOL_SIZE` asks for more: a backfill must not
+/// saturate a desktop.
+pub const MAX_DEFAULT_POOL_SIZE: usize = 8;
+
+/// The default engine count for `cores` CPUs: two left for everything else, at most
+/// [`MAX_DEFAULT_POOL_SIZE`], at least 1.
+pub fn pool_size_for(cores: usize) -> usize {
+    cores.saturating_sub(2).clamp(1, MAX_DEFAULT_POOL_SIZE)
+}
+
+/// [`pool_size_for`] this machine's available parallelism.
 pub fn default_pool_size() -> usize {
-    std::thread::available_parallelism()
-        .map(|n| n.get().saturating_sub(1))
-        .unwrap_or(1)
-        .max(1)
+    pool_size_for(std::thread::available_parallelism().map_or(1, |n| n.get()))
 }
 
 pub fn analyse_runner_config(base: &RunnerConfig, concurrency: usize) -> RunnerConfig {
@@ -432,6 +439,18 @@ mod tests {
         assert_eq!(a.worker_id, base.worker_id);
         assert_eq!(ANALYSE_HARD_TIMEOUT, Duration::from_secs(660));
         assert_eq!(RECONCILE_HARD_TIMEOUT, Duration::from_secs(300));
-        assert!(default_pool_size() >= 1);
+        assert!((1..=MAX_DEFAULT_POOL_SIZE).contains(&default_pool_size()));
+        for (cores, size) in [
+            (0, 1),
+            (1, 1),
+            (2, 1),
+            (3, 1),
+            (4, 2),
+            (10, 8),
+            (24, 8),
+            (64, 8),
+        ] {
+            assert_eq!(pool_size_for(cores), size, "{cores} cores");
+        }
     }
 }

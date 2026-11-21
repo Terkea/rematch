@@ -7,7 +7,8 @@ use std::path::PathBuf;
 
 use anyhow::{Context, bail};
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// `Debug` redacts the database password and the Lichess token, so the value can be logged.
+#[derive(Clone, PartialEq, Eq)]
 pub struct WorkerEnv {
     /// `DATABASE_URL` (required).
     pub database_url: String,
@@ -18,7 +19,7 @@ pub struct WorkerEnv {
     /// `LICHESS_SINCE_LOOKBACK_DAYS`: overrides the incremental Lichess look-back (30 days).
     pub lichess_lookback_days: Option<u32>,
     /// `WORKER_POOL_SIZE`: Stockfish processes (and analyses at once); default
-    /// `max(1, available_parallelism - 1)`.
+    /// `min(available_parallelism - 2, 8)`, at least 1.
     pub pool_size: Option<usize>,
 }
 
@@ -38,6 +39,41 @@ impl WorkerEnv {
             lichess_lookback_days: parse(&get, "LICHESS_SINCE_LOOKBACK_DAYS", 0)?,
             pool_size: parse(&get, "WORKER_POOL_SIZE", 1)?,
         })
+    }
+}
+
+impl std::fmt::Debug for WorkerEnv {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WorkerEnv")
+            .field("database_url", &redact_url(&self.database_url))
+            .field("stockfish_path", &self.stockfish_path)
+            .field(
+                "lichess_token",
+                &self.lichess_token.as_ref().map(|_| REDACTED),
+            )
+            .field("lichess_lookback_days", &self.lichess_lookback_days)
+            .field("pool_size", &self.pool_size)
+            .finish()
+    }
+}
+
+const REDACTED: &str = "***";
+
+/// `scheme://user:password@host/...` with the password replaced by `***`. A URL without a
+/// password is returned as it is.
+pub fn redact_url(url: &str) -> String {
+    let Some((scheme, rest)) = url.split_once("://") else {
+        return url.to_owned();
+    };
+    let authority_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    let (authority, tail) = rest.split_at(authority_end);
+    // The last `@` ends the userinfo (a password may itself contain `@`).
+    let Some((userinfo, host)) = authority.rsplit_once('@') else {
+        return url.to_owned();
+    };
+    match userinfo.split_once(':') {
+        Some((user, _password)) => format!("{scheme}://{user}:{REDACTED}@{host}{tail}"),
+        None => url.to_owned(),
     }
 }
 
@@ -116,6 +152,32 @@ mod tests {
             let err = env(&vars).unwrap_err().to_string();
             assert!(err.starts_with(name), "{err}");
         }
+    }
+
+    #[test]
+    fn debug_redacts_the_database_password_and_the_lichess_token() {
+        let env = WorkerEnv {
+            database_url: "postgres://postgres:s3cr@t@db:5432/chess?sslmode=disable".to_owned(),
+            stockfish_path: PathBuf::from("/sf"),
+            lichess_token: Some("lip_secret_token".to_owned()),
+            lichess_lookback_days: None,
+            pool_size: Some(2),
+        };
+        let shown = format!("{env:?}");
+        assert!(!shown.contains("s3cr"), "{shown}");
+        assert!(!shown.contains("lip_secret_token"), "{shown}");
+        assert!(
+            shown.contains("postgres://postgres:***@db:5432/chess?sslmode=disable"),
+            "{shown}"
+        );
+        assert!(shown.contains("lichess_token: Some(\"***\")"), "{shown}");
+        assert!(shown.contains("pool_size: Some(2)"), "{shown}");
+        assert_eq!(redact_url("postgres://db/chess"), "postgres://db/chess");
+        assert_eq!(
+            redact_url("postgres://user@db/chess"),
+            "postgres://user@db/chess"
+        );
+        assert_eq!(redact_url("not a url"), "not a url");
     }
 
     #[test]

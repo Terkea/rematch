@@ -109,9 +109,7 @@ async fn starts_with_stockfish_19_and_shuts_down_cleanly(
     assert_eq!(reconcile, 1);
     let code = shutdown(
         running.into_shutdown_handles(),
-        ShutdownOptions {
-            grace: Duration::from_secs(5),
-        },
+        ShutdownOptions::with_grace(Duration::from_secs(5)),
     )
     .await;
     assert_eq!(code, 0);
