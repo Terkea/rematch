@@ -11,10 +11,14 @@
     "test": "turbo run test",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
-    "format": "biome format --write ."
+    "format": "biome format --write .",
+    "shots": "tsx scripts/shots.ts",
+    "design:check": "tsx scripts/ban-lint.ts && pnpm dlx impeccable@<reviewed> detect apps/web/src packages/ui/src",
+    "e2e": "pnpm --filter @ci/web e2e"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.8",
+    "tsx": "^4.20.0",
     "turbo": "~2.11.13",
     "typescript": "~5.9.3",
     "vitest": "~5.1.1"
