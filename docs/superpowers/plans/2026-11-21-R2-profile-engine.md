@@ -11,7 +11,7 @@
 **Spec:** `docs/superpowers/specs/2026-11-21-chess-improver-design.md` §8, §8a, §8b, §8c, §8d, "8. (cont.)", §12a, §12b, §13a, §14; `docs/research/improvement-engine.md` §4.4 and §6 (normative); ADR 0030. **Content source:** TS M2 (above), including "Contract mapping to M3". **Contract:** `packages/ai/src/input/schema.ts` in worktree `E:\code\chess-improver\.worktrees\m3` (zod, field docs, `LIMITS`). **Builds on:** `docs/superpowers/plans/2026-11-21-R1-rust-core.md` (crate layout, Global Constraints, queue/events/db APIs). In this plan "R1 Tn" is an R1 task and "Task n" is an R2 task.
 
 
-> **Controller amendment (R1 T1 fix, ADR 0031):** `chrono` is NOT used. Every timestamp is `time::OffsetDateTime` (`DateTime<Utc>` in this text means `OffsetDateTime`; `Utc::now()` means `OffsetDateTime::now_utc()`). JSON timestamps that must match the TS reference / `Date.toISOString()` use `#[serde(with = "chess_core::js_time::iso")]` (or `::option`), which always writes UTC with exactly 3 fractional digits. sqlx uses its `time` feature.
+> **Controller amendment (R1 T1 fix, ADR 0031):** `chrono` is NOT used. Every timestamp is `time::OffsetDateTime` (`DateTime<Utc>` in this text means `OffsetDateTime`; `Utc::now()` means `OffsetDateTime::now_utc()`). JSON timestamps that must match the TS reference / `Date.toISOString()` use `#[serde(with = "common::js_time::iso")]` (or `::option`), which always writes UTC with exactly 3 fractional digits. sqlx uses its `time` feature.
 
 ## Global Constraints
 

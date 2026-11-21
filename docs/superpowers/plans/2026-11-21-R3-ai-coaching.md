@@ -30,7 +30,7 @@ A report is five structured-output calls (`overview`, `weaknesses`, `openings`, 
 - the R2 plan `docs/superpowers/plans/2026-11-21-R2-profile-engine.md`, which owns the shared `CoachingInput` serde struct.
 
 
-> **Controller amendment (R1 T1 fix, ADR 0031):** `chrono` is NOT used. Every timestamp is `time::OffsetDateTime` (`DateTime<Utc>` in this text means `OffsetDateTime`; `Utc::now()` means `OffsetDateTime::now_utc()`). JSON timestamps that must match the TS reference / `Date.toISOString()` use `#[serde(with = "chess_core::js_time::iso")]` (or `::option`), which always writes UTC with exactly 3 fractional digits. sqlx uses its `time` feature.
+> **Controller amendment (R1 T1 fix, ADR 0031):** `chrono` is NOT used. Every timestamp is `time::OffsetDateTime` (`DateTime<Utc>` in this text means `OffsetDateTime`; `Utc::now()` means `OffsetDateTime::now_utc()`). JSON timestamps that must match the TS reference / `Date.toISOString()` use `#[serde(with = "common::js_time::iso")]` (or `::option`), which always writes UTC with exactly 3 fractional digits. sqlx uses its `time` feature.
 
 ## Global Constraints
 
