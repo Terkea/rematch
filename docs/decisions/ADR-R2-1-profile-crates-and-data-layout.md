@@ -27,6 +27,12 @@ Every library crate dev-depends on `testkit` and on tokio `test-util`. Every mod
 - `enrich::types` (`TablebaseProbe`, `DifficultyProvider`, `DifficultyInput`, `DifficultyError`);
 - the R2 job kinds appended to `queue::kinds`: `schedule-analysis`, `preview-game`, `build-profile`, `analyse-reference-game`, with their payloads, dedupe keys, `PREVIEW_PRIORITY = 0` and `REFERENCE_PRIORITY = 200`.
 
+**Persisted JSON shapes (fix round 2).**
+- `LineAnalysis` flattens its `Swing`, so its JSON is TS M2's flat `{gain, depth, mateIn, tags}`.
+- `PlayerGameMetrics` (and its sub-structs and `BinomialObs`) use struct-level `#[serde(default)]`. A field added later then deserialises from older `game_metrics.metrics` jsonb rows as its default, instead of failing.
+- `version` still gates semantic changes. A change in a field's meaning bumps `PLAYER_GAME_METRICS_VERSION`, and readers recompute or ignore rows with an older version. Only the addition of fields relies on the defaults.
+- `enrich` depends on `rustls` and exposes `install_crypto_provider()`, the same ring `install_default()` that `platforms::client` uses. reqwest is built with `rustls-no-provider`, so every `reqwest::Client` in `enrich` is built after calling it.
+
 `chrono` is not used (ADR 0031 amendment). Every timestamp is `time::OffsetDateTime`, so schemars gets no `chrono04` feature. In the contract, timestamp fields are annotated as strings (Task 2).
 
 ### New dependencies and the 7-day rule

@@ -19,6 +19,7 @@ schemars.workspace = true
 uuid.workspace = true
 time.workspace = true
 thiserror.workspace = true
+regex.workspace = true
 
 [dev-dependencies]
 testkit.workspace = true

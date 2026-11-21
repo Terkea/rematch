@@ -18,6 +18,8 @@ db.workspace = true
 common.workspace = true
 sqlx.workspace = true
 reqwest.workspace = true
+# reqwest uses rustls-no-provider: install the ring provider before building a Client.
+rustls.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 futures.workspace = true

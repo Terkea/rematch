@@ -283,10 +283,12 @@ pub struct Swing {
     pub mate_in: Option<u32>,
 }
 
-/// A swing plus the motifs of the line.
+/// A swing plus the motifs of the line. JSON is flat like TS M2 (`LineAnalysis extends Swing`):
+/// `{"gain", "depth", "mateIn", "tags"}`.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LineAnalysis {
+    #[serde(flatten)]
     pub swing: Swing,
     pub tags: Vec<MotifTag>,
 }
@@ -394,7 +396,7 @@ pub struct AnalysedGame {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct BinomialObs {
     pub events: u32,
     pub opportunities: u32,
@@ -444,7 +446,7 @@ pub const PLAYER_GAME_METRICS_VERSION: u32 = 1;
 
 /// A value per game phase (TS `Record<Phase, number | null>`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct PhaseValues {
     pub opening: Option<f64>,
     pub middlegame: Option<f64>,
@@ -452,14 +454,14 @@ pub struct PhaseValues {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct ClockBucket {
     pub moves: u32,
     pub decisive: u32,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct ConversionMetric {
     pub episode: bool,
     pub converted: Option<bool>,
@@ -467,21 +469,21 @@ pub struct ConversionMetric {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct ResilienceMetric {
     pub episode: bool,
     pub saved: Option<bool>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct MissCounts {
     pub opportunities: u32,
     pub misses: u32,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct TacticsCounts {
     pub opportunities: u32,
     pub missed: u32,
@@ -489,14 +491,14 @@ pub struct TacticsCounts {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct SharpCounts {
     pub positions: u32,
     pub errors: u32,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct QuietLoss {
     pub moves: u32,
     /// Sum of player win% loss over the quiet moves.
@@ -504,7 +506,7 @@ pub struct QuietLoss {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct OpeningMetrics {
     pub line_key: Option<String>,
     pub book_exit_ply: Option<u32>,
@@ -516,7 +518,7 @@ pub struct OpeningMetrics {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct EndgameMetrics {
     #[serde(rename = "type")]
     pub kind: Option<EndgameType>,
@@ -529,8 +531,12 @@ pub struct EndgameMetrics {
 /// Per-game chess metrics, version 1, stored as `game_metrics.metrics` jsonb (serde camelCase).
 /// Field list exactly TS M2 Task 1 `GameMetrics`, plus `opening.evalAtOpeningEndWhiteCp` (R-8).
 /// Named `PlayerGameMetrics` to avoid confusion with R1's `analysis::metrics::GameMetrics` (timing).
+///
+/// Struct-level `#[serde(default)]`: a field added later deserialises from older jsonb rows as its
+/// default. `version` still gates semantic changes (a changed meaning bumps it, and readers
+/// recompute or reject rows with an older version).
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct PlayerGameMetrics {
     pub version: u32,
     pub score: Option<f64>,
@@ -761,5 +767,44 @@ mod tests {
         assert_eq!(v["strengths"][0]["kind"], "only_move_found");
         let back: PlayerGameMetrics = serde_json::from_value(v).unwrap();
         assert_eq!(back, m);
+    }
+
+    #[test]
+    fn line_analysis_json_is_flat_like_ts() {
+        let l = LineAnalysis {
+            swing: Swing {
+                gain: 3.0,
+                depth: Some(2),
+                mate_in: None,
+            },
+            tags: vec![MotifTag::Fork, MotifTag::MateIn4Plus],
+        };
+        let json = r#"{"gain":3.0,"depth":2,"mateIn":null,"tags":["fork","mateIn4Plus"]}"#;
+        assert_eq!(serde_json::to_string(&l).unwrap(), json);
+        assert_eq!(serde_json::from_str::<LineAnalysis>(json).unwrap(), l);
+    }
+
+    #[test]
+    fn old_player_game_metrics_json_without_newer_fields_deserialises() {
+        let mut v = serde_json::to_value(PlayerGameMetrics {
+            version: PLAYER_GAME_METRICS_VERSION,
+            blunders: 2,
+            ..Default::default()
+        })
+        .unwrap();
+        // Simulate a row written before these fields existed.
+        let obj = v.as_object_mut().unwrap();
+        obj.remove("strengths");
+        obj.remove("w9dRho");
+        obj["opening"]
+            .as_object_mut()
+            .unwrap()
+            .remove("evalAtOpeningEndWhiteCp");
+        let m: PlayerGameMetrics = serde_json::from_value(v).unwrap();
+        assert_eq!(m.version, 1);
+        assert_eq!(m.blunders, 2);
+        assert!(m.strengths.is_empty());
+        assert_eq!(m.w9d_rho, None);
+        assert_eq!(m.opening.eval_at_opening_end_white_cp, None);
     }
 }
