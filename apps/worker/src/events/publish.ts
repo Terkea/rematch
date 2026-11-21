@@ -1,4 +1,6 @@
-import { type Db, insertUserEvent } from "@ci/db";
+import { type Db, insertUserEvent, userEventsChannel } from "@ci/db";
+
+export { userEventsChannel };
 
 export type UserEventType = "import.progress" | "game.analysed" | "job.failed";
 
@@ -7,8 +9,6 @@ export type PublishFn = (
   type: UserEventType,
   payload: object,
 ) => Promise<number>;
-
-export const userEventsChannel = (accountId: string): string => `user-events:${accountId}`;
 
 /**
  * Appends an event to `user_events` and fans it out on `user-events:<accountId>`. Call it only
