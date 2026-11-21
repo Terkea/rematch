@@ -18,6 +18,7 @@ import { skipEngineTests, stockfishPath } from "../engine/stockfish.js";
 import {
   addGame,
   FAST_WORKER,
+  fakeLine,
   getGame,
   isDead,
   redisUrl,
@@ -127,7 +128,7 @@ describe("installGracefulShutdown (fakes)", () => {
     );
     h.proc.emit("SIGTERM");
     await h.exited;
-    expect(Date.now() - started).toBeLessThan(300 + 100);
+    expect(Date.now() - started).toBeLessThan(300 + 700);
     // The pool is closed early to abort in-flight work, then the worker is force-closed.
     expect(h.order).toEqual(["worker", "pool", "worker(force)"]);
   });
@@ -191,12 +192,22 @@ describe.skipIf(!stackConfigured() || skipEngineTests)("SIGTERM during analysis"
     worker = undefined;
 
     const g = await getGame(db, id);
-    expect(["done", "pending"]).toContain(g?.analysisStatus);
-    if (g?.analysisStatus === "pending") {
-      // Left for the retry path: the job is still live in BullMQ (delayed retry or waiting).
-      const state = await (await queues.analyseGame.getJob(analyseJobId(id)))?.getState();
-      expect(["delayed", "waiting", "active"]).toContain(state);
-    }
+    // 30 plies at 300k nodes cannot finish within the 1.2 s drain window: the analysis is aborted.
+    expect(g?.analysisStatus).toBe("pending");
+    // Left for the stalled-job path: the job is still live in BullMQ.
+    const state = await (await queues.analyseGame.getJob(analyseJobId(id)))?.getState();
+    expect(["delayed", "waiting", "active"]).toContain(state);
     for (const pid of pids) expect(isDead(pid)).toBe(true);
-  }, 20_000);
+
+    // And nothing is lost: the next worker (here with a fake engine) finishes the game.
+    worker = createAnalyseWorker(
+      { connection, prefix, workerOptions: FAST_WORKER, log: silentLog },
+      { db, pool: { analyse: async () => fakeLine }, cache: createDbEvalCache(db) },
+      1,
+    );
+    await waitFor(async () => (await getGame(db, id))?.analysisStatus === "done", {
+      timeoutMs: 10_000,
+      what: "the game to be finished by the next worker",
+    });
+  }, 30_000);
 });

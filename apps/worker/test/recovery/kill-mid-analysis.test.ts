@@ -102,4 +102,62 @@ describe.skipIf(!stackConfigured())("crash recovery: worker killed mid-analysis"
     expect(secondCalls).toContain(firstCalls[3]);
     expect(firstCalls.length + secondCalls.length).toBe(11 + 1);
   }, 25_000);
+
+  it("a job failed by maxStalledCount exhaustion leaves the game failed", async () => {
+    // Workers from the previous test would compete for the job.
+    await Promise.all(workers.splice(0).map((w) => w.close(true)));
+    const { id, accountId } = await addGame(db, "1. d4 Nf6 2. c4 g6 *", "stalls");
+    // No stalls allowed: the first stall exhausts the job.
+    const rt = {
+      connection,
+      prefix,
+      workerOptions: { ...FAST_WORKER, maxStalledCount: 0 },
+      log: silentLog,
+    };
+    let calls = 0;
+    const hanging = {
+      analyse: () => {
+        calls++;
+        return new Promise<never>(() => {});
+      },
+    };
+    const crashed = createAnalyseWorker(
+      rt,
+      { db, pool: hanging, cache: createDbEvalCache(db), concurrency: 1 },
+      1,
+    );
+    workers.push(crashed);
+    await queues.enqueueAnalyse(id);
+    await waitFor(() => calls > 0, { what: "the first engine call" });
+    await crashed.close(true);
+
+    const published: string[] = [];
+    workers.push(
+      createAnalyseWorker(
+        rt,
+        {
+          db,
+          pool: hanging,
+          cache: createDbEvalCache(db),
+          publish: async (acct, type) => {
+            if (acct === accountId) published.push(type);
+            return 1;
+          },
+        },
+        1,
+      ),
+    );
+    // The handler's own catch never runs here: BullMQ fails the job before calling it.
+    const failed = await waitFor(
+      async () => {
+        const g = await getGame(db, id);
+        return g?.analysisStatus === "failed" ? g : null;
+      },
+      { timeoutMs: 15_000, what: "the game to be failed" },
+    );
+    expect(failed.analysisError).toMatch(/stalled/);
+    expect(await queues.analyseJobState(id)).toBe("failed");
+    expect(calls).toBe(1);
+    expect(published).toEqual(["job.failed"]);
+  }, 25_000);
 });

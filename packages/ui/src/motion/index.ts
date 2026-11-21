@@ -6,6 +6,7 @@ export {
   dampingRatio,
   dur,
   ease,
+  overlay,
   overshoot,
   type PieceType,
   type PieceWeight,

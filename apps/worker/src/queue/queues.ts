@@ -44,9 +44,6 @@ export function createRedisConnection(url: string): Redis {
  */
 export const analyseJobId = (gameId: string): string => `analyse-${gameId}`;
 
-/** Job states in which BullMQ will still run (or is running) the job. */
-const LIVE_STATES = new Set(["waiting", "active", "delayed", "prioritized", "waiting-children"]);
-
 export interface Queues {
   importAccount: Queue<ImportAccountPayload>;
   analyseGame: Queue<AnalyseGamePayload>;
@@ -57,8 +54,13 @@ export interface Queues {
    * whether a job was added.
    */
   enqueueAnalyse(gameId: string): Promise<boolean>;
-  /** True when BullMQ holds a waiting, active or delayed job for the game. */
-  hasLiveAnalyseJob(gameId: string): Promise<boolean>;
+  /**
+   * For each game, whether BullMQ holds a job that will still run ("live": waiting, active,
+   * delayed), a retained finished one ("finished"), or none. One pipelined round trip, O(1) each.
+   */
+  analyseLiveness(gameIds: string[]): Promise<JobLiveness[]>;
+  /** The exact BullMQ state of the game's analyse job (a round trip each; use for few games). */
+  analyseJobState(gameId: string): Promise<string>;
   enqueueImport(payload: ImportAccountPayload, opts?: { jobId?: string }): Promise<void>;
   /** Registers (idempotently) the repeatable reconcile job. */
   scheduleReconcile(): Promise<void>;
@@ -66,6 +68,8 @@ export interface Queues {
   obliterate(): Promise<void>;
   close(): Promise<void>;
 }
+
+export type JobLiveness = "live" | "finished" | "none";
 
 export interface QueueOptions {
   prefix?: string;
@@ -91,21 +95,36 @@ export function createQueues(connection: Redis, opts: QueueOptions = {}): Queues
     q.on("error", (err) => log.error({ queue: q.name, err: errorMessage(err) }, "queue error"));
   }
 
-  const hasLiveAnalyseJob = async (gameId: string) => {
-    const state = await analyseGame.getJobState(analyseJobId(gameId));
-    return LIVE_STATES.has(state);
+  // A BullMQ job is the hash <prefix>:<queue>:<jobId>. "timestamp" is written when the job is
+  // added and "finishedOn" when it completes or fails for good (BullMQ 6.7.8 layout). A retry
+  // that is delayed or waiting has no finishedOn, so it counts as live.
+  const analyseLiveness = async (gameIds: string[]): Promise<JobLiveness[]> => {
+    if (gameIds.length === 0) return [];
+    // The non-blocking connection this module was given; BullMQ keys live on the same server.
+    const pipeline = connection.pipeline();
+    for (const id of gameIds) {
+      pipeline.hmget(analyseGame.toKey(analyseJobId(id)), "timestamp", "finishedOn");
+    }
+    const replies = (await pipeline.exec()) ?? [];
+    return replies.map(([err, value]: [Error | null, unknown]) => {
+      if (err) throw err;
+      const [timestamp, finishedOn] = value as [string | null, string | null];
+      if (timestamp === null) return "none";
+      return finishedOn === null ? "live" : "finished";
+    });
   };
 
   return {
     importAccount,
     analyseGame,
     reconcile,
-    hasLiveAnalyseJob,
+    analyseLiveness,
+    analyseJobState: (gameId) => analyseGame.getJobState(analyseJobId(gameId)),
     async enqueueAnalyse(gameId) {
       const jobId = analyseJobId(gameId);
-      const state = await analyseGame.getJobState(jobId);
-      if (LIVE_STATES.has(state)) return false;
-      if (state === "completed" || state === "failed") {
+      const [liveness] = await analyseLiveness([gameId]);
+      if (liveness === "live") return false;
+      if (liveness === "finished") {
         // A concurrent remover may win the race; either way the id is free afterwards.
         await analyseGame.remove(jobId).catch(() => 0);
       }

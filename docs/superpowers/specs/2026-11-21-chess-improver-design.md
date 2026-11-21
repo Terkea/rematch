@@ -59,7 +59,9 @@ Players range from about 400 to 2500+ across bullet, blitz, rapid, classical and
 
 Bands use each platform's own rating scale. Lichess and chess.com ratings are not comparable, and we never mix them.
 
-## 6. System architecture (builder's choice, decided here)
+## 6. System architecture
+
+> **Superseded in part by ADR 0030 (2026-11-21): the whole backend is Rust.** The cargo workspace `backend/` holds the crates chess-core, db (sqlx), queue (Postgres SKIP LOCKED), engine, platforms, analysis, events (LISTEN/NOTIFY), profile, ai (an Anthropic HTTP client), plus the `worker` and `cli` binaries. Only `apps/web` (Next.js) and `packages/ui` stay TypeScript. Redis and BullMQ are removed. The schema source of truth is SQL migrations in `db/migrations/`, and the web app's Drizzle schema is generated from them with a CI drift check. The TypeScript backend code is the reference spec until Rust parity is reached. Where the text below names TypeScript, BullMQ, Redis or Drizzle for the backend, ADR 0030 wins.
 
 ```
             ┌──────────────┐   Lichess / chess.com public APIs
@@ -155,6 +157,32 @@ So we import broadly and analyse selectively.
 **Cost envelope.** A heavy Pro user's onboarding (P0 + P1) takes about 200–400 games, roughly 1–2 core-hours. On 16 cores that's about 5–8 minutes of wall time, and results stream in as they finish. P2 backfill adds about 500 games over the following hours at low priority. Per-user CPU-seconds are metered, and hard caps from §13 apply.
 
 **Shown to the user.** Each profile and KPI states its basis ("based on 214 analysed rapid games from 3,912 imported") along with how far the background backfill has got, so a sampled history is never mistaken for a complete one.
+
+## 8d. Capacity and scaling (measured 2026-11-21)
+
+**Measurements:**
+- Stockfish 19 benchmark in the worker image: about 1.97M nodes/s per thread.
+- At 300k nodes, that's about 0.15 s per position.
+- The live smoke run averaged about 70 positions per game, so with overhead one game takes about **12 core-seconds**.
+
+**One user:**
+
+| Games | 24-core dev box | 16-vCPU production worker |
+|---|---|---|
+| 100 | under 1 min | about 1.5 min |
+| 1,000 | about 9 min | about 13 min |
+
+**Sign-up waves set the requirement.** 100 free users × 50 games is 5,000 games, about 17 core-hours. One 16-vCPU worker needs about 70 minutes to drain that. The money cost is negligible (about €0.01 per vCPU-hour, so about €0.25 for the whole wave). The binding constraint is **time to first insight**, so the design targets latency:
+
+1. **Fair scheduling.** The analysis scheduler (§8c) serves users round-robin in slices of 5 games, ordered by priority tier, then by when the user joined. Nobody waits behind another user's whole history. Every new user gets their first 10 games before anyone's 11th.
+2. **Preview pass.** A user's first 20 P0 games are first analysed at **30k nodes** (about 10× faster, giving a provisional "early read" within about 1–2 minutes even during a wave). Those preview evals are labelled `preview`. They are never written to the shared cache, and never used for KPIs, posteriors or the weakness timeline. The full protocol pass replaces them in the background. This is the only exception to "one protocol everywhere", and it's visibly marked as provisional in the UI.
+3. **Cache multiplication.** The shared FEN cache, seeded from the Lichess eval dump, gets more effective with every user: openings and common endgames repeat. Expect about 15–30% fewer engine calls at scale, plus free Lichess server evals for Lichess users.
+4. **Horizontal autoscaling.** Workers are stateless consumers of the queue. An autoscaler watches queue lag (the oldest P0 job's age, and core-seconds queued). When P0 lag exceeds 3 minutes, it adds dedicated-vCPU cloud servers with hourly billing, for example 48-vCPU instances. It scales back down after 15 minutes idle, with a monthly spend cap in config. The baseline is one always-on 16-vCPU worker, burst capacity is about 4 extra servers, and the caps are approved by the owner before deploying (§18).
+5. **Back-pressure UI.** The live analysis screen shows the user's place and an ETA, for example "about 3 min, analysing 38 / 50", computed from queue depth and measured throughput. It's never a spinner.
+
+**Burst capacity target.** With 1 baseline + 2 burst 48-vCPU servers (about 110 engines), a 100-user wave reaches every user's preview within about 2 minutes, and every user's full 50 within about 10 minutes.
+
+Claude cost per report is estimated at $0.05–0.15 (Sonnet, cached prefix, five sections). Monthly regenerations go through the Batch API at a 50% discount.
 
 ## 8. (cont.) Improvement engine: normative spec
 
@@ -273,7 +301,14 @@ Source: `docs/research/competitors-and-users.md`. Paid rivals cost $8–14/month
    - powers a human-like sparring bot for conversion and defence drills.
 7. **Own-mistake puzzles default to the last 30 days,** with filters by motif, phase, opening and time control.
 8. **Refutations play out on the board,** drawn as red-pen arrows. This is the signature motion moment from §11.
-9. **"Ask your coach" chat.** Claude answers questions about the player's own games using only their computed data and the engine (as tools), through the same claim validator. Pro only, with a fair-use cap.
+9. **"Ask your coach" chat** (expanded at the owner's request, 2026-11-21: "allow the user to talk to the AI to ask clarifying questions"):
+   - It opens anchored to whatever the player is looking at (a report section, weakness, move, position, opening line or game).
+   - It answers follow-ups ("why is this a mistake?", "what should I play instead?", "show me another game like this").
+   - For "what if I'd played X?" questions it runs an **on-demand server-side engine check**. That's a high-priority interactive job, MultiPV 3, never used for stats. Results are cited through `{{eng:…}}` tokens, so answers stay facts-by-reference.
+   - Threads are saved and can be deleted.
+   - Limits: Pro gets 30 messages/day and 300/month, plus 20 engine checks/day. Free gets 3 messages/week and 3 engine checks/week, as a taste.
+   - Safety: chess and own-games only, a minor-safe tone, no rating promises, prompt-injection resistant, and every paragraph validated.
+   - The original definition follows. The "Ask your coach" chat: Claude answers questions about the player's own games using only their computed data and the engine (as tools), through the same claim validator. Pro only, with a fair-use cap.
 10. **Free acquisition tools:**
     - unlimited single-game review in the browser (WASM Stockfish), with no signup needed;
     - a no-signup **quick diagnosis** by username: the last 20 games and a teaser report, cached and rate-limited.
@@ -294,6 +329,50 @@ Owner's words: "sexy design", "amazing UI with animations and a premium feel", "
   - Responses to user actions: drill right/wrong feedback, streak increments, plan completion.
   - Not allowed: a fade-up on every section, or a hover effect on every card.
   - Fully respects `prefers-reduced-motion`.
+- **Motion is a headline feature (owner, 2026-11-21: "the animations need to be huge, that makes it premium").** This overrides the "use motion sparingly" default. The rule is now **rich, choreographed and physical, never generic**.
+  - **Signature moments:**
+    - the **analysis reveal**, a full choreographed sequence: the eval graph draws across, critical moments pulse in, then red-pen marks draw onto the board in ranked order and the scoresheet annotates itself line by line;
+    - the **report reveal**: sections assemble with staggered, spring-based motion;
+    - **onboarding**: games stream onto a live board, replaying at speed while the counter climbs.
+  - **Continuity:**
+    - shared-element transitions, using the View Transitions API with a Motion fallback. A position thumbnail morphs into the full board, a weakness card expands into its area page, a KPI tile grows into its chart;
+    - route changes animate as page turns on the scoresheet metaphor, not cross-fades.
+  - **Physical feel:**
+    - pieces move with spring physics, with a small lift and settle on drop and a dragged piece that tilts slightly;
+    - captures knock the captured piece off;
+    - the eval bar swings with momentum;
+    - numbers roll (NumberFlow);
+    - progress fills like ink soaking into paper.
+  - **Landing page:** scroll-driven storytelling with GSAP ScrollTrigger and Lenis. A real game plays out as you scroll, with the coach's annotations writing themselves in.
+  - **Micro-interactions everywhere they mean something:** drill right/wrong, streak ticks, button presses (a pen-press feel), hover previews of moves on the scoresheet. Every one shows what changed. None is decoration with no meaning.
+  - **Quality bar:**
+    - 60 fps on mid-range phones: only transform and opacity, plus GPU-friendly SVG stroke-dashoffset;
+    - motion never blocks input, because all of it is interruptible and skippable;
+    - long sequences have a "skip" and run only on first view, with later visits much shorter;
+    - full `prefers-reduced-motion` support, which swaps choreography for instant state changes with brief opacity cues.
+  - **Still banned:** identical fade-up-on-scroll on every section, hover lift and shadow on every card, gratuitous parallax, and motion with no meaning.
+  - DESIGN.md gets a full motion system to match: duration and easing tokens, spring presets (`settle`, `pen`, `swing`, `page`), a stagger scale, and a choreography spec for each signature moment.
+- **Sound (owner's request: "sounds for moving pieces").**
+  - **The sound set:**
+    - move (a soft wooden placement);
+    - capture (heavier, with a slight knock);
+    - check (a brighter tick);
+    - castle (two quick placements);
+    - promotion (a rising tone);
+    - game end;
+    - drill correct (a short warm chime) and drill wrong (a muted low thud, never harsh);
+    - optionally, a very subtle pen scratch when a red-pen annotation draws on, off by default.
+  - **Sources:**
+    - All sounds are **original**. Ideally they're synthesised procedurally with the Web Audio API: tiny, consistent, licence-free, and tunable to match the scoresheet character (paper and wood, not arcade).
+    - The alternative is recorded samples under CC0, each with its source logged.
+    - **No sounds are copied from chess.com or Lichess** or any other product.
+  - **Behaviour:**
+    - Sound starts only after the first user gesture, because of browser autoplay rules.
+    - There's a global mute and volume control in the header and in settings, remembered per user. Sound is on by default for board interactions and off by default for ambient effects.
+    - `prefers-reduced-motion` does not mute sound. Sound has its own setting.
+    - Sound never carries information on its own: every sound has a visual equivalent.
+    - Repeated sounds are throttled during fast replay or scrubbing. Scrubbing the move list doesn't play a sound per move; only stepping or play does.
+  - **Implementation:** a small `@ci/ui` audio module, `useBoardSounds()`, with preloading and a single shared AudioContext. Sounds are triggered from board events (move, capture, check and so on, worked out with chess.js), so every board in the app sounds the same.
 - **Quality floor:** responsive down to 360px, keyboard-accessible board and drills, visible focus, WCAG AA contrast, and light and dark themes.
 - **Board component:** `react-chessboard` (MIT) or a custom board. **Not** chessground, which is GPL-3.0 and would force the web client to be open source.
 - **UI stack** (from `docs/research/ui-tooling.md`):

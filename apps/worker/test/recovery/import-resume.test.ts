@@ -1,9 +1,19 @@
 import { type Db, games, importRuns, linkedAccounts } from "@ci/db";
 import { eq } from "drizzle-orm";
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { CircuitOpenError, createCircuitBreaker } from "../../src/http/circuit-breaker.js";
+import {
+  PlatformNotFoundError,
+  PlatformRateLimitError,
+  PlatformTimeoutError,
+} from "../../src/http/platform-client.js";
 import type { NormalizedGame } from "../../src/importers/types.js";
-import { handleImportAccount, type ImportCursor } from "../../src/jobs/import-account.js";
+import { JobDeadlineError } from "../../src/jobs/deadline.js";
+import {
+  handleImportAccount,
+  type ImportCursor,
+  importErrorCode,
+} from "../../src/jobs/import-account.js";
 import { getWorkerTestDb, workerTestDbConfigured } from "../db.js";
 import { insertAccount, makeGame } from "../jobs/helpers.js";
 
@@ -32,6 +42,9 @@ describe.skipIf(!workerTestDbConfigured())("import recovery", () => {
   beforeAll(async () => {
     db = (await getWorkerTestDb()) as Db;
   });
+  afterAll(async () => {
+    await db.$client.end();
+  });
 
   // Newest first, as both platforms stream.
   const fourGames = (name: string) =>
@@ -50,6 +63,8 @@ describe.skipIf(!workerTestDbConfigured())("import recovery", () => {
       enqueueAnalyse: async (id: string) => {
         enqueued.push(id);
       },
+      // Exact cursors here; the Lichess look-back has its own test.
+      lichessSinceLookbackDays: 0,
     };
   }
 
@@ -74,6 +89,7 @@ describe.skipIf(!workerTestDbConfigured())("import recovery", () => {
     expect(await db.select().from(games).where(eq(games.accountId, acct.id))).toHaveLength(2);
     const [failedRun] = await db.select().from(importRuns).where(eq(importRuns.accountId, acct.id));
     expect(failedRun).toMatchObject({
+      errorCode: "unknown",
       status: "failed",
       imported: 2,
       lastError: "connection reset",
@@ -177,5 +193,60 @@ describe.skipIf(!workerTestDbConfigured())("import recovery", () => {
       ),
     ).rejects.toBeInstanceOf(CircuitOpenError);
     expect(platformCalls).toBe(0);
+  });
+
+  it("re-fetches the last 30 days on Lichess, so late-finishing correspondence games land", async () => {
+    const acct = await insertAccount(db, "corres");
+    const newer = makeGame({
+      white: { name: "Corres", rating: 1 },
+      playedAt: new Date("2026-03-20T00:00:00Z"),
+    });
+    // Created earlier, but only finished (and so only listed) after "newer" was stored.
+    const correspondence = makeGame({
+      white: { name: "Corres", rating: 1 },
+      playedAt: new Date("2026-03-01T00:00:00Z"),
+      timeClass: "daily",
+    });
+    const base = { ...deps(fakeImporter([newer], [])) };
+    const { lichessSinceLookbackDays: _, ...defaults } = base;
+    await handleImportAccount(defaults, { accountId: acct.id });
+
+    const calls: Opts[] = [];
+    const next = { ...deps(fakeImporter([newer, correspondence], calls)) };
+    const { lichessSinceLookbackDays: __, ...nextDefaults } = next;
+    const res = await handleImportAccount(nextDefaults, { accountId: acct.id });
+    expect(calls).toEqual([{ since: new Date("2026-02-18T00:00:00Z") }]);
+    expect(res.imported).toBe(1);
+    expect(await db.select().from(games).where(eq(games.accountId, acct.id))).toHaveLength(2);
+    // The watermark itself still records the newest game, not the look-back.
+    expect((await cursorOf(acct.id))?.newestSeenAt).toBe(newer.playedAt.toISOString());
+
+    // The look-back is configurable.
+    const custom: Opts[] = [];
+    await handleImportAccount(
+      { ...deps(fakeImporter([], custom)), lichessSinceLookbackDays: 1 },
+      { accountId: acct.id },
+    );
+    expect(custom).toEqual([{ since: new Date("2026-03-19T00:00:00Z") }]);
+  });
+
+  it("records an error code from the typed platform error", async () => {
+    expect(importErrorCode(new PlatformNotFoundError("u"))).toBe("not_found");
+    expect(importErrorCode(new PlatformRateLimitError("u", 3))).toBe("rate_limited");
+    expect(importErrorCode(new PlatformTimeoutError("u", 10))).toBe("timeout");
+    expect(importErrorCode(new JobDeadlineError("import-account", 10))).toBe("timeout");
+    expect(importErrorCode(new CircuitOpenError(10))).toBe("circuit_open");
+    expect(importErrorCode(new Error("?"))).toBe("unknown");
+
+    const acct = await insertAccount(db, "limited");
+    const importer = async function* (): AsyncIterable<NormalizedGame> {
+      yield* [];
+      throw new PlatformRateLimitError("https://lichess.org/api/games/user/limited", 4);
+    };
+    await expect(
+      handleImportAccount(deps(importer as never), { accountId: acct.id }),
+    ).rejects.toBeInstanceOf(PlatformRateLimitError);
+    const [run] = await db.select().from(importRuns).where(eq(importRuns.accountId, acct.id));
+    expect(run).toMatchObject({ status: "failed", errorCode: "rate_limited" });
   });
 });
