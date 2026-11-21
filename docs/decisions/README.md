@@ -62,3 +62,4 @@ R2 (profile engine) records use placeholder numbers until the controller renumbe
 - [ADR-R2-17. ETA and autoscaling hooks](ADR-R2-17-eta-and-autoscaling-hooks.md)
 - [ADR-R2-18. build-profile job and CoachingInput builder](ADR-R2-18-build-profile-and-coaching-input.md)
 - [0031 addendum. npm enforcement of the 7-day age and exact-pin rule](0031-addendum-npm-enforcement.md)
+- [0040. chess.com first; Lichess accounts deferred](0040-chesscom-first-defer-lichess-accounts.md)
