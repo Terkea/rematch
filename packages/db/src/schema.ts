@@ -51,10 +51,14 @@ export type ImportErrorCode = "not_found" | "rate_limited" | "timeout" | "circui
  * Import checkpoint on the account. Games stream newest first. `oldestReached` is the oldest
  * playedAt committed by a pass that has not finished yet (null when no pass is open), and
  * `newestSeenAt` is the playedAt watermark below which every game has been imported. ISO strings.
+ * `backfill` marks an open frontier left by a run that stopped at `--max`: everything above
+ * `newestSeenAt` is imported and the next run continues below `oldestReached` with no upper
+ * watermark bound.
  */
 export interface ImportCursor {
   oldestReached: string | null;
   newestSeenAt: string | null;
+  backfill?: boolean;
 }
 
 export const linkedAccounts = pgTable(

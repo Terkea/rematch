@@ -8,7 +8,7 @@ import {
   upsertGame,
 } from "@ci/db";
 import { UnrecoverableError } from "bullmq";
-import { eq, max } from "drizzle-orm";
+import { count, eq, max } from "drizzle-orm";
 import type { PublishFn } from "../events/publish.js";
 import {
   type CircuitBreaker,
@@ -82,7 +82,8 @@ const EMPTY_CURSOR: ImportCursor = { oldestReached: null, newestSeenAt: null };
  *
  * A pass streams (since: newestSeenAt, until?: oldestReached) and checkpoints `oldestReached`
  * (the oldest game committed so far) every batch. When a pass finishes, `newestSeenAt` becomes the
- * newest game stored and `oldestReached` is cleared. A run first finishes any interrupted pass,
+ * newest game stored and `oldestReached` is cleared. A pass that stops at `--max` keeps
+ * `oldestReached` (with `backfill` when it had no lower watermark), so the next run continues below it. A run first finishes any interrupted pass,
  * then fetches games newer than everything stored. Upserts make overlaps harmless.
  */
 export async function handleImportAccount(
@@ -120,10 +121,13 @@ export async function handleImportAccount(
   const client = breaker
     ? withCircuitBreaker(deps.clients[platform], breaker)
     : deps.clients[platform];
-  const fetchGames = (range: { since?: Date; until?: Date }): AsyncIterable<NormalizedGame> => {
+  const fetchGames = (
+    range: { since?: Date; until?: Date },
+    passMax: number | undefined,
+  ): AsyncIterable<NormalizedGame> => {
     const opts = {
       ...range,
-      ...(payload.max !== undefined ? { max: payload.max } : {}),
+      ...(passMax !== undefined ? { max: passMax } : {}),
     };
     return platform === "lichess"
       ? deps.importers.lichess(client, account.username, {
@@ -162,8 +166,16 @@ export async function handleImportAccount(
   const idleMs = deps.idleDeadlineMs ?? IMPORT_IDLE_DEADLINE_MS;
   const deadline = createDeadline("import-account", idleMs);
 
-  const runPass = async (range: { since?: Date; until?: Date }) => {
-    const it = fetchGames(range)[Symbol.asyncIterator]();
+  /**
+   * Streams one pass. Returns true when it stopped because it hit its `max` (the history may go
+   * on), in which case the frontier is kept for the next run; false when the stream ended.
+   */
+  const runPass = async (
+    range: { since?: Date; until?: Date },
+    passMax: number | undefined = payload.max,
+  ): Promise<boolean> => {
+    const it = fetchGames(range, passMax)[Symbol.asyncIterator]();
+    let streamed = 0;
     for (;;) {
       let next: IteratorResult<NormalizedGame>;
       try {
@@ -175,6 +187,7 @@ export async function handleImportAccount(
       }
       if (next.done) break;
       deadline.reset();
+      streamed++;
       const g = next.value;
       const playerColor =
         g.white.name.toLowerCase() === username
@@ -218,6 +231,25 @@ export async function handleImportAccount(
         await checkpoint();
       }
     }
+    // A pass cut off by max has not reached its lower bound: keep the frontier.
+    if (passMax !== undefined && streamed >= passMax) {
+      const [top] = await db
+        .select({ newest: max(games.playedAt) })
+        .from(games)
+        .where(eq(games.accountId, account.id));
+      // A pass without a lower bound (first run, or a backfill) has imported everything above
+      // its frontier, so the watermark moves up. A pass bounded by an old watermark leaves it:
+      // the gap between the two is what the next run resumes.
+      if (range.since === undefined) {
+        const seen = cursor.newestSeenAt ? new Date(cursor.newestSeenAt) : null;
+        const newest = [top?.newest, seen]
+          .filter((d): d is Date => d instanceof Date)
+          .sort((a, b) => b.getTime() - a.getTime())[0];
+        cursor = { ...cursor, newestSeenAt: newest ? newest.toISOString() : null, backfill: true };
+      }
+      await checkpoint();
+      return true;
+    }
     // The pass reached its lower bound: everything up to the newest stored game is imported.
     const [row] = await db
       .select({ newest: max(games.playedAt) })
@@ -229,16 +261,36 @@ export async function handleImportAccount(
     frontier = null;
     cursor = { oldestReached: null, newestSeenAt: newest ? newest.toISOString() : null };
     await checkpoint();
+    return false;
   };
 
   try {
+    let stopped = false;
     if (cursor.oldestReached) {
-      await runPass({
-        until: new Date(cursor.oldestReached),
-        ...(cursor.newestSeenAt ? { since: sinceOf(cursor.newestSeenAt) } : {}),
-      });
+      const backfill = cursor.backfill === true;
+      let budget = payload.max;
+      if (backfill && payload.max !== undefined) {
+        // --max is a total: only the shortfall is fetched, plus the inclusive boundary game.
+        const [stored] = await db
+          .select({ n: count() })
+          .from(games)
+          .where(eq(games.accountId, account.id));
+        budget = payload.max - (stored?.n ?? 0) + 1;
+        stopped = budget <= 1;
+      }
+      if (!stopped) {
+        stopped = await runPass(
+          {
+            until: new Date(cursor.oldestReached),
+            ...(cursor.newestSeenAt && !backfill ? { since: sinceOf(cursor.newestSeenAt) } : {}),
+          },
+          budget,
+        );
+      }
     }
-    await runPass(cursor.newestSeenAt ? { since: sinceOf(cursor.newestSeenAt) } : {});
+    if (!stopped) {
+      await runPass(cursor.newestSeenAt ? { since: sinceOf(cursor.newestSeenAt) } : {});
+    }
   } catch (err) {
     deadline.clear();
     const message = errorMessage(err).slice(0, MAX_ERROR_LENGTH);
