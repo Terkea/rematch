@@ -29,6 +29,9 @@ A report is five structured-output calls (`overview`, `weaknesses`, `openings`, 
 - the R1 plan `docs/superpowers/plans/2026-11-21-R1-rust-core.md`, for the crate layout, the queue, events and db APIs, and the Global Constraints;
 - the R2 plan `docs/superpowers/plans/2026-11-21-R2-profile-engine.md`, which owns the shared `CoachingInput` serde struct.
 
+
+> **Controller amendment (R1 T1 fix, ADR 0031):** `chrono` is NOT used. Every timestamp is `time::OffsetDateTime` (`DateTime<Utc>` in this text means `OffsetDateTime`; `Utc::now()` means `OffsetDateTime::now_utc()`). JSON timestamps that must match the TS reference / `Date.toISOString()` use `#[serde(with = "chess_core::js_time::iso")]` (or `::option`), which always writes UTC with exactly 3 fractional digits. sqlx uses its `time` feature.
+
 ## Global Constraints
 
 R1's Global Constraints apply unchanged. In short:
@@ -317,10 +320,10 @@ pub enum QuotaWindow { Day, Week, Month }                // UTC; a week starts M
 pub struct Quota { pub limit: u32, pub window: QuotaWindow }
 pub fn chat_quotas(plan: Plan) -> &'static [Quota];      // Free: [3/Week]; Pro: [30/Day, 300/Month]
 pub fn engine_quotas(plan: Plan) -> &'static [Quota];    // Free: [3/Week]; Pro: [20/Day]
-pub fn window_start(w: QuotaWindow, now: DateTime<Utc>) -> DateTime<Utc>;
-pub fn window_reset(w: QuotaWindow, now: DateTime<Utc>) -> DateTime<Utc>;
+pub fn window_start(w: QuotaWindow, now: OffsetDateTime) -> OffsetDateTime;
+pub fn window_reset(w: QuotaWindow, now: OffsetDateTime) -> OffsetDateTime;
 /// `used(window)` returns the count used in that window; the first exhausted quota and its reset time, or None.
-pub fn exhausted(quotas: &[Quota], used: impl Fn(QuotaWindow) -> u32, now: DateTime<Utc>) -> Option<(Quota, DateTime<Utc>)>;
+pub fn exhausted(quotas: &[Quota], used: impl Fn(QuotaWindow) -> u32, now: OffsetDateTime) -> Option<(Quota, OffsetDateTime)>;
 pub trait Entitlements: Send + Sync {
     fn plan<'a>(&'a self, account_id: Uuid) -> BoxFuture<'a, Plan>;
     fn budget_scope<'a>(&'a self, account_id: Uuid) -> BoxFuture<'a, Vec<Uuid>>; // accounts sharing one budget
@@ -498,7 +501,7 @@ pub fn input(name: &str) -> CoachingInput;                          // load + se
   - `weekly.rs`: `WeeklyReviewOutput { headline: Item, process: Item, outcomes: Vec<Item> /* ≤3 */, exemplars: Vec<Item> /* ≤2 */, next_week: Item }`, and `WeeklyReviewInput`. The input is strict and mirrors TS plan B4 field for field (`inputVersion: "weekly-input-v1"`, `timeClass`, `band`, `weekStart`, `weekEnd`, `gamesThisWeek`, `basis`, `adherence`, `metricDeltas`, `focusUpdates`, `exemplars` ≤2, `changes`).
   - `change.rs`: `WeaknessChangeOutput { text: String, citations: Vec<Citation> }`, `WeaknessChangeInput { change: TimelineChange, band: BandId, time_class: TimeClass, basis: Basis }`, and `change_key(c: &TimelineChange) -> String`, which is `"{series_key}@{onset_game_id}"`.
   - `drills.rs`: `DrillType` (the 18 TS values, snake_case) and `drills_for(weakness_id: &str, variant: Option<&str>) -> Vec<DrillType>`, exactly `drills.ts`.
-  - `disclosure.rs`: `AI_DISCLOSURE_LABEL`, `AI_DISCLOSURE_NOTE` (the exact copy in Global Constraints), `AiDisclosure { label, note, model, prompt_version, generated_at: String /* RFC 3339 with millis, Z */ }`, and `make_disclosure(model: &str, prompt_version: &str, at: DateTime<Utc>) -> AiDisclosure`.
+  - `disclosure.rs`: `AI_DISCLOSURE_LABEL`, `AI_DISCLOSURE_NOTE` (the exact copy in Global Constraints), `AiDisclosure { label, note, model, prompt_version, generated_at: String /* RFC 3339 with millis, Z */ }`, and `make_disclosure(model: &str, prompt_version: &str, at: OffsetDateTime) -> AiDisclosure`.
   - `schema.rs`:
     - `pub fn api_schema<T: JsonSchema>() -> serde_json::Value` generates with `schemars::generate::SchemaSettings::draft2020_12()` and `inline_subschemas = true`, then `sanitize`. It drops `$schema`, `title`, `format`, `minLength`, `maxLength`, `minimum`, `maximum`, `exclusiveMinimum`, `exclusiveMaximum`, `multipleOf`, `pattern`, `minItems`, `maxItems` and `default`, rewrites `type:[X,"null"]` as `anyOf:[{…X},{"type":"null"}]`, and sets `additionalProperties:false` on every object.
     - `pub fn assert_api_subset(v: &serde_json::Value) -> Result<(), String>`.
@@ -1237,7 +1240,7 @@ CREATE INDEX ai_batch_items_pending_idx ON ai_batch_items (batch_id) WHERE proce
   - `meter(conn, account_id, feature, calls: &[CallRecord], ref_id: &str, requested_model: AiModel)`, which writes one `ai_usage` row per call and prices unknown response models at the requested model's rates with a `warn`;
   - `request_report(pool, queue, account_id, tc, trigger, plan) -> Result<Uuid /* run id */>`, which inserts a queued run and enqueues after the commit;
   - `FREE_REPORT_INTERVAL_DAYS = 30` and `HEARTBEAT_EVERY = 15 s`;
-  - `ReportDeps { pool, queue, ai: Option<Arc<dyn AiClient>>, inputs: Arc<dyn CoachingInputProvider>, entitlements: Arc<dyn Entitlements>, budgets: BudgetConfig, now: Arc<dyn Fn() -> DateTime<Utc> + Send + Sync>, heartbeat_every: Duration }` and `GenerateReportHandler(ReportDeps)`, which implements R1's `Handler` for `generate-report`.
+  - `ReportDeps { pool, queue, ai: Option<Arc<dyn AiClient>>, inputs: Arc<dyn CoachingInputProvider>, entitlements: Arc<dyn Entitlements>, budgets: BudgetConfig, now: Arc<dyn Fn() -> OffsetDateTime + Send + Sync>, heartbeat_every: Duration }` and `GenerateReportHandler(ReportDeps)`, which implements R1's `Handler` for `generate-report`.
   - The handler procedure (port of TS plan C2):
     1. **Claim the run.** `claim_run`. If the run is already `done` or another worker holds it, return `Ok`.
     2. **Plan gate.** A free plan with a report in the last 30 days and a trigger other than onboarding gives `failed` with `last_error "plan_interval"` and `JobError::Unrecoverable`.
@@ -1386,7 +1389,7 @@ CREATE INDEX ai_batch_items_pending_idx ON ai_batch_items (batch_id) WHERE proce
 
 ```rust
 pub enum EngineCheck { Done { eval_id: String, evidence: EngineEvidence }, Pending { eval_id: String },
-    Limit { window: QuotaWindow, resets_at: DateTime<Utc> }, Unavailable { reason: String } }
+    Limit { window: QuotaWindow, resets_at: OffsetDateTime }, Unavailable { reason: String } }
 pub trait InteractiveEngine: Send + Sync {
     fn request<'a>(&'a self, base_fen: &'a str, moves: &'a [String], wait: Duration) -> BoxFuture<'a, anyhow::Result<EngineCheck>>;
     fn wait<'a>(&'a self, eval_id: &'a str, wait: Duration) -> BoxFuture<'a, anyhow::Result<EngineCheck>>;
@@ -1455,7 +1458,7 @@ pub trait InteractiveEngine: Send + Sync {
 - Produces:
   - `split_paragraphs(buffer: &str) -> (Vec<String>, String /* rest */)`, split on a blank line;
   - `CHAT_LIMITS = ChatLimits { max_tool_rounds: 6, max_question_chars: 2000, max_turns_per_conversation: 40, max_tokens: 8000, replay_turns: 6 }`, and `ENGINE_WAIT_INLINE = 5 s`, `ENGINE_WAIT_MAX = 45 s`;
-  - `DenyReason { WeeklyCap, DailyCap, MonthlyCap, ConversationFull, TooLong }` and `check_chat_allowance(plan: Plan, used: impl Fn(QuotaWindow) -> u32, turns_in_conversation: u32, question_chars: usize, now) -> Result<(), (DenyReason, Option<DateTime<Utc>> /* resets_at */)>`. It uses `entitlements::chat_quotas`; free users get 3 a week;
+  - `DenyReason { WeeklyCap, DailyCap, MonthlyCap, ConversationFull, TooLong }` and `check_chat_allowance(plan: Plan, used: impl Fn(QuotaWindow) -> u32, turns_in_conversation: u32, question_chars: usize, now) -> Result<(), (DenyReason, Option<OffsetDateTime> /* resets_at */)>`. It uses `entitlements::chat_quotas`; free users get 3 a week;
   - the fixed copy. It is server copy, not model output, and contains no upsell:
     - `CHAT_DROPPED_NOTE = "I removed {n} statement(s) I couldn't check against your games."`;
     - `CHAT_FALLBACK_TEXT = "I couldn't check that answer against your games, so I'd rather not guess. Try asking about a specific game, move or position."`;
