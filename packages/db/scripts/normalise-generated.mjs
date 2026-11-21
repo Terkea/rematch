@@ -44,13 +44,31 @@ for (const b of schema.blocks) {
   b.text = b.text.replace(/(timestamp\([^)]*?)mode: (["'])string\2/g, '$1mode: "date"');
   // drizzle-kit labels opclasses from the wrong column; Postgres picks the right default anyway
   b.text = b.text.replace(/\.op\((["'])\w+\1\)/g, "");
-  // an empty text[] default is introspected as [""]; only position_evals.pv is known to have one
+  // an empty text[] default is introspected as [""]: position_evals.pv, and the profile pv arrays
   if (b.name === "positionEvals") {
     b.text = replaceExact(
       b.text,
       /(pv: text\(\)\.array\(\)\.default\()\[(["'])\2\]\)/g,
       "$1sql`'{}'::text[]`)",
       "position_evals.pv",
+    );
+  }
+  // the profile migration's pv arrays default to '{}' too (20261121020000_profile_engine.sql)
+  if (b.name === "moveFeatures") {
+    b.text = replaceExact(
+      b.text,
+      /((?:bestPv|refutationPv): text\((["'])\w+\2\)\.array\(\)\.default\()\[(["'])\3\]\)/g,
+      "$1sql`'{}'::text[]`)",
+      "move_features.best_pv/refutation_pv",
+      2,
+    );
+  }
+  if (b.name === "positionThreats") {
+    b.text = replaceExact(
+      b.text,
+      /(pv: text\(\)\.array\(\)\.default\()\[(["'])\2\]\)/g,
+      "$1sql`'{}'::text[]`)",
+      "position_threats.pv",
     );
   }
   if (b.name === "userEvents") {
