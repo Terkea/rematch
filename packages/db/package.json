@@ -13,6 +13,22 @@
       },
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./generated": {
+      "development": {
+        "types": "./src/generated/schema.ts",
+        "default": "./src/generated/schema.ts"
+      },
+      "types": "./dist/generated/schema.d.ts",
+      "default": "./dist/generated/schema.js"
+    },
+    "./generated/relations": {
+      "development": {
+        "types": "./src/generated/relations.ts",
+        "default": "./src/generated/relations.ts"
+      },
+      "types": "./dist/generated/relations.d.ts",
+      "default": "./dist/generated/relations.js"
     }
   },
   "scripts": {
@@ -24,12 +40,12 @@
     "db:pull": "drizzle-kit pull --config drizzle.pull.config.ts"
   },
   "dependencies": {
-    "drizzle-orm": "~0.45.4",
+    "drizzle-orm": "0.45.4",
     "postgres": "~4.1.1"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
-    "drizzle-kit": "~0.31.11",
+    "drizzle-kit": "0.31.11",
     "vitest": "~5.1.1"
   }
 }

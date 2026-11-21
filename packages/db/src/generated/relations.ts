@@ -9,16 +9,16 @@ export const gamesRelations = relations(games, ({ one, many }) => ({
   moves: many(moves),
 }));
 
-export const linkedAccountsRelations = relations(linkedAccounts, ({ many }) => ({
-  games: many(games),
-  importRuns: many(importRuns),
-}));
-
 export const importRunsRelations = relations(importRuns, ({ one }) => ({
   linkedAccount: one(linkedAccounts, {
     fields: [importRuns.accountId],
     references: [linkedAccounts.id],
   }),
+}));
+
+export const linkedAccountsRelations = relations(linkedAccounts, ({ many }) => ({
+  games: many(games),
+  importRuns: many(importRuns),
 }));
 
 export const movesRelations = relations(moves, ({ one }) => ({

@@ -7,7 +7,8 @@ if (!url) throw new Error("DATABASE_URL is required (use scripts/db/generate-dri
 
 export default defineConfig({
   dialect: "postgresql",
-  out: "./src/generated",
+  // The generator pulls into a scratch directory and moves it into place only on success (PULL_OUT).
+  out: process.env.PULL_OUT ?? "./src/generated",
   dbCredentials: { url },
   schemaFilter: ["public"],
   // sqlx bookkeeping is not part of the application schema.
