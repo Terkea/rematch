@@ -3,7 +3,7 @@
 use std::time::Duration;
 
 use chess_core::EngineScore;
-use engine::uci::{StartOptions, UciEngine, validate_fen};
+use engine::uci::{StartOptions, UciEngine, sent_fen, validate_fen};
 use engine::{AnalyseOptions, AnalysisLine, EngineError};
 
 const START: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
@@ -204,10 +204,17 @@ async fn a_dropped_analysis_does_not_corrupt_the_next_one() {
         multipv: 1,
         timeout: Duration::from_secs(60),
     };
+    // Drop the future only once the search is provably running: Stockfish
+    // idles at ~0 CPU, so 150 ms of extra CPU time means `go` is executing.
+    let pid = e.pid().unwrap();
+    let base = cpu_time(pid).unwrap();
     tokio::select! {
         _ = e.analyse(START, long) => panic!("the long search finished"),
-        _ = tokio::time::sleep(Duration::from_millis(300)) => {}
+        _ = testkit::wait_for("the search to burn CPU", Duration::from_secs(20), Duration::from_millis(10), || async {
+            cpu_time(pid).filter(|c| c.saturating_sub(base) >= Duration::from_millis(150))
+        }) => {}
     }
+    assert!(e.is_searching(), "the future was dropped outside a search");
     let o = AnalyseOptions {
         nodes: 200_000,
         multipv: 1,
@@ -250,6 +257,82 @@ async fn an_externally_killed_engine_is_detected_by_eof() {
     let err = e.analyse(START, opts(1000, 1)).await.unwrap_err();
     assert!(matches!(err, EngineError::Crashed), "{err:?}");
     assert!(!e.is_alive());
+    // The dead child was reaped, not left as a zombie.
+    assert!(!proc_exists(pid), "zombie {pid} left behind");
+}
+
+#[tokio::test]
+async fn a_crash_mid_search_reports_crashed_and_reaps_the_process() {
+    let Some(sf) = testkit::stockfish() else {
+        return;
+    };
+    let mut e = UciEngine::start(start_opts(sf)).await.unwrap();
+    let pid = e.pid().unwrap();
+    let long = AnalyseOptions {
+        nodes: 5_000_000_000,
+        multipv: 1,
+        timeout: Duration::from_secs(60),
+    };
+    let killer = async {
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        kill9(pid);
+    };
+    let (r, ()) = tokio::join!(e.analyse(START, long), killer);
+    assert!(matches!(r, Err(EngineError::Crashed)), "{r:?}");
+    assert!(!proc_exists(pid), "zombie {pid} left behind");
+}
+
+#[tokio::test]
+async fn analyses_a_position_with_huge_clocks() {
+    let Some(sf) = testkit::stockfish() else {
+        return;
+    };
+    let mut e = UciEngine::start(start_opts(sf)).await.unwrap();
+    // Sent as `... 150 10000`: Stockfish reads the clocks as `int`.
+    let fen = "4k3/8/8/8/8/8/4P3/4K3 w - - 4000000000 4000000000";
+    let r = e.analyse(fen, opts(10_000, 1)).await.unwrap();
+    assert_eq!(r.lines.len(), 1);
+    assert!(e.is_alive());
+    e.quit().await;
+}
+
+#[test]
+fn sent_fen_clamps_the_clocks() {
+    assert_eq!(
+        sent_fen("4k3/8/8/8/8/8/4P3/4K3 w - - 151 10001").unwrap(),
+        "4k3/8/8/8/8/8/4P3/4K3 w - - 150 10000"
+    );
+    assert_eq!(
+        sent_fen("4k3/8/8/8/8/8/4P3/4K3 w - - 4000000000 4000000000").unwrap(),
+        "4k3/8/8/8/8/8/4P3/4K3 w - - 150 10000"
+    );
+    // At or under the caps the clocks pass through.
+    assert_eq!(
+        sent_fen("4k3/8/8/8/8/8/4P3/4K3 w - - 150 10000").unwrap(),
+        "4k3/8/8/8/8/8/4P3/4K3 w - - 150 10000"
+    );
+    assert_eq!(sent_fen(START).unwrap(), START);
+    assert!(sent_fen("not a fen").is_err());
+}
+
+fn kill9(pid: u32) {
+    let _ = std::process::Command::new("sh")
+        .args(["-c", &format!("kill -9 {pid}")])
+        .status();
+}
+
+/// A zombie still has a `/proc` entry; a reaped process does not.
+fn proc_exists(pid: u32) -> bool {
+    std::path::Path::new(&format!("/proc/{pid}")).exists()
+}
+
+/// utime + stime from `/proc/<pid>/stat` (100 ticks/s).
+fn cpu_time(pid: u32) -> Option<Duration> {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    let rest = stat.get(stat.rfind(')')? + 2..)?;
+    let f: Vec<&str> = rest.split_whitespace().collect();
+    let ticks: u64 = f.get(11)?.parse::<u64>().ok()? + f.get(12)?.parse::<u64>().ok()?;
+    Some(Duration::from_millis(ticks * 10))
 }
 
 #[tokio::test]
