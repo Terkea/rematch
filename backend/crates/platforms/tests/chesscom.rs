@@ -1,19 +1,18 @@
 //! Port of apps/worker/test/importers/chesscom.test.ts (fixtures, no live network).
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use chess_core::TimeClass;
 use chess_core::pgn::parse_pgn;
 use futures::StreamExt;
-use futures::future::BoxFuture;
-use futures::stream::BoxStream;
 use platforms::chesscom::{ChesscomSource, normalize_chesscom};
 use platforms::client::{ClientOptions, HttpPlatformClient};
 use platforms::{
     FetchOptions, GameSource, NormalizedGame, Platform, PlatformClient, PlatformError,
 };
 use serde_json::{Value, json};
+use testkit::fake_platform::FakeClient;
 use time::OffsetDateTime;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -39,38 +38,6 @@ fn fixtures() -> Fixtures {
     }
 }
 
-struct FakeClient {
-    data: HashMap<String, Value>,
-    archives: Vec<String>,
-    urls: Mutex<Vec<String>>,
-}
-
-impl PlatformClient for FakeClient {
-    fn get_json<'a>(
-        &'a self,
-        url: &'a str,
-        _headers: platforms::types::Headers,
-    ) -> BoxFuture<'a, Result<Value, PlatformError>> {
-        Box::pin(async move {
-            self.urls.lock().unwrap().push(url.to_string());
-            if let Some(v) = self.data.get(url) {
-                return Ok(v.clone());
-            }
-            if self.archives.iter().any(|a| a == url) {
-                return Ok(json!({"games": []}));
-            }
-            Err(PlatformError::NotFound { url: url.into() })
-        })
-    }
-    fn get_ndjson<'a>(
-        &'a self,
-        _url: &'a str,
-        _headers: platforms::types::Headers,
-    ) -> BoxStream<'a, Result<Value, PlatformError>> {
-        panic!("unexpected get_ndjson")
-    }
-}
-
 fn fake(months: Vec<(String, Vec<Value>)>) -> (Arc<FakeClient>, Fixtures) {
     fake_with(months, None)
 }
@@ -82,18 +49,21 @@ fn fake_with(
 ) -> (Arc<FakeClient>, Fixtures) {
     let f = fixtures();
     let list = archives_override.unwrap_or_else(|| f.archives.clone());
-    let mut data = HashMap::new();
-    data.insert(ARCHIVES_URL.to_string(), json!({"archives": list}));
-    data.insert(f.archives[2].clone(), json!({"games": f.month}));
+    // Every archive month exists (empty unless given); any other URL is NotFound.
+    let mut json: HashMap<String, Value> = f
+        .archives
+        .iter()
+        .map(|a| (a.clone(), json!({"games": []})))
+        .collect();
+    json.insert(ARCHIVES_URL.to_string(), json!({"archives": list}));
+    json.insert(f.archives[2].clone(), json!({"games": f.month}));
     for (k, v) in months {
-        data.insert(k, json!({"games": v}));
+        json.insert(k, json!({"games": v}));
     }
-    let all = f.archives.clone();
     (
         Arc::new(FakeClient {
-            data,
-            archives: all,
-            urls: Mutex::new(vec![]),
+            json,
+            ..FakeClient::default()
         }),
         f,
     )
@@ -118,7 +88,7 @@ async fn games(c: &Arc<FakeClient>, user: &str, opts: FetchOptions) -> Vec<Norma
 }
 
 fn urls(c: &FakeClient) -> Vec<String> {
-    c.urls.lock().unwrap().clone()
+    c.calls().into_iter().map(|(url, _)| url).collect()
 }
 
 fn with(g: &Value, patch: Value) -> Value {
@@ -415,11 +385,7 @@ async fn empty_archives_list_yields_nothing() {
 
 #[tokio::test]
 async fn unknown_user_yields_not_found() {
-    let c = Arc::new(FakeClient {
-        data: HashMap::new(),
-        archives: vec![],
-        urls: Mutex::new(vec![]),
-    });
+    let c = Arc::new(FakeClient::default());
     let rs = collect(&c, "ghost", FetchOptions::default()).await;
     assert_eq!(rs.len(), 1);
     assert!(matches!(rs[0], Err(PlatformError::NotFound { .. })));
