@@ -103,6 +103,10 @@
   /* The board: below 768px it fills the column, up to 480px. Rounded to whole squares below. */
   --board-size: min(100vw - 2 * var(--space-gutter), 480px);
 
+  /* The styleguide hero only: the board in its 8px well. From 1024px the hero's right column (header,
+     then the eval graph filling the rest) is exactly this tall (DESIGN.md "Styleguide hero"). */
+  --hero-graph-height: calc(var(--board-size) + 16px);
+
   /* Elevation: the one shadow, for things that float */
   --shadow-lift: 0 10px 30px -12px rgb(22 35 59 / 0.35);
 

@@ -1,4 +1,4 @@
-# ADR-WEB-12. Board: shipped Cburnett pieces, piece scale and piece motion
+# ADR-WEB-13. Board: shipped Cburnett pieces, coordinates and piece motion
 
 Date: 2026-11-21
 Status: Accepted (Task 11, M4)
