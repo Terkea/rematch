@@ -330,9 +330,7 @@ async fn connect_for_migrations_disables_the_statement_timeout(
     assert_eq!(shown, "0");
 }
 
-// Task 19 adds the generation columns. Until then `GameRow` carries placeholder constants.
 #[sqlx::test(migrator = "db::MIGRATOR")]
-#[ignore = "enable in Task 19: generation columns"]
 async fn generation_round_trips(pool: PgPool) {
     let acc = make_account(&pool).await;
     let id = upsert_game(&pool, &game_row(acc, "gen1")).await.unwrap().id;

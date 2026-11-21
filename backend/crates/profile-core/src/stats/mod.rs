@@ -3,6 +3,7 @@
 pub mod beta;
 pub mod beta_binomial;
 pub mod correlation;
+pub mod error;
 pub mod intervals;
 pub mod posterior;
 pub mod priority;

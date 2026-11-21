@@ -175,12 +175,15 @@ services:
       dockerfile: backend/Dockerfile
       target: dev
     working_dir: /work/backend
-    # Compose interpolates ${...} from the host shell and .env, NOT from `run -e`. So CARGO_TARGET_DIR
-    # is derived inside the container from the LANE passed with `run -e LANE=<lane>` (default: main).
+    # Compose interpolates ${...} from the host shell and .env, NOT from `run -e`. So the target dir
+    # is derived inside the container from the LANE passed with `run -e LANE=<lane>` (default: main):
+    # each lane builds into its own /target/<lane>. Cargo sees it through the fixed path /lane-target
+    # (a symlink in the container's own filesystem), because sccache keys include the --out-dir,
+    # -L and OUT_DIR paths: one path for every lane is what lets lanes hit each other's cache.
     entrypoint:
       - /bin/sh
       - -c
-      - 'export CARGO_TARGET_DIR="/target/$${LANE:-main}"; exec "$$@"'
+      - 'mkdir -p "/target/$${LANE:-main}" && ln -sfn "/target/$${LANE:-main}" /lane-target && export CARGO_TARGET_DIR=/lane-target; exec "$$@"'
       - rust-dev
     environment:
       # Master connection for #[sqlx::test], which creates and drops one database per test.
@@ -194,14 +197,23 @@ services:
       DATA_DIR: /work/data
       SYZYGY_PATH: /work/data/syzygy
       MAIA_URL: ${MAIA_URL:-}
+      # scripts/check-crate-age.sh caches crates.io publish dates here, shared by every lane.
+      CRATE_AGE_CACHE: /crate-age
     depends_on:
       postgres:
         condition: service_healthy
+    # rust_target stays per compose project (and per LANE inside it), so lanes never share a target
+    # dir and `down -v` removes it. The four caches (cargo registry, cargo git, sccache, crates.io
+    # publish dates) are external volumes shared by every project (ADR 0042), and `down -v` never
+    # deletes external volumes. Create them once with `sh scripts/rust-cache-init.sh`. Compose
+    # refuses to start rust-dev while one of them is missing.
     volumes:
       - .:/work
       - rust_target:/target
       - cargo_registry:/usr/local/cargo/registry
       - cargo_git:/usr/local/cargo/git
+      - sccache:/sccache
+      - crate_age:/crate-age
 
 volumes:
   pgdata:
@@ -215,4 +227,14 @@ volumes:
   pnpm_store:
   rust_target:
   cargo_registry:
+    external: true
+    name: ci-cargo-registry
   cargo_git:
+    external: true
+    name: ci-cargo-git
+  sccache:
+    external: true
+    name: ci-sccache
+  crate_age:
+    external: true
+    name: ci-crate-age
