@@ -18,7 +18,7 @@ Design decisions live in `docs/decisions/`; the spec is in `docs/superpowers/spe
 
 ```sh
 cp .env.example .env                       # set CONTACT_EMAIL (never a real personal address)
-docker compose up -d --build               # Postgres 17, Redis 7, worker with Stockfish 19
+docker compose up -d --build               # Postgres 17, Redis 7, worker with Stockfish 19, web, Mailpit
 docker compose run --rm worker pnpm test   # full suite inside the container
 docker compose run --rm worker pnpm lint
 ```
@@ -47,6 +47,12 @@ package test suites can run in parallel without truncating each other's rows. Li
 
 ```sh
 docker compose exec postgres psql -U postgres -c "CREATE DATABASE chess_worker_test"
+```
+
+The web app's tests use `chess_web_test` (`WEB_DATABASE_URL_TEST`):
+
+```sh
+docker compose exec postgres psql -U postgres -c "CREATE DATABASE chess_web_test"
 ```
 
 ## Analyse CLI
