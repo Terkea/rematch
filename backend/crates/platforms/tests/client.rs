@@ -1,7 +1,6 @@
 //! Port of apps/worker/test/http/platform-client.test.ts, against local test servers.
 
-use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use futures::StreamExt;
@@ -62,36 +61,30 @@ async fn sends_identifying_user_agent() {
     assert_eq!(v, json!({"ok": true}));
 }
 
+/// Records the arrival `Instant` of every request. Each response is delayed by `DELAY`, so a
+/// serialising client cannot send request 2 before request 1's response could have been delivered.
 struct Tracking {
-    in_flight: Arc<AtomicUsize>,
-    max: Arc<AtomicUsize>,
+    arrivals: Arc<Mutex<Vec<Instant>>>,
 }
+
+const DELAY: Duration = Duration::from_millis(50);
 
 impl Respond for Tracking {
     fn respond(&self, _: &Request) -> ResponseTemplate {
-        let now = self.in_flight.fetch_add(1, Ordering::SeqCst) + 1;
-        self.max.fetch_max(now, Ordering::SeqCst);
-        // Responders are sync: release the in-flight slot after the same 10 ms the response is
-        // delayed by.
-        let in_flight = self.in_flight.clone();
-        tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_millis(10)).await;
-            in_flight.fetch_sub(1, Ordering::SeqCst);
-        });
+        self.arrivals.lock().unwrap().push(Instant::now());
         ResponseTemplate::new(200)
             .set_body_json(json!({}))
-            .set_delay(Duration::from_millis(10))
+            .set_delay(DELAY)
     }
 }
 
 #[tokio::test]
 async fn serialises_requests() {
     let server = MockServer::start().await;
-    let max = Arc::new(AtomicUsize::new(0));
+    let arrivals = Arc::new(Mutex::new(Vec::new()));
     Mock::given(method("GET"))
         .respond_with(Tracking {
-            in_flight: Arc::new(AtomicUsize::new(0)),
-            max: max.clone(),
+            arrivals: arrivals.clone(),
         })
         .mount(&server)
         .await;
@@ -100,7 +93,14 @@ async fn serialises_requests() {
     let (a, b) = tokio::join!(c.get_json(&u1, vec![]), c.get_json(&u2, vec![]));
     a.unwrap();
     b.unwrap();
-    assert_eq!(max.load(Ordering::SeqCst), 1);
+    let mut t = arrivals.lock().unwrap().clone();
+    t.sort();
+    assert_eq!(t.len(), 2);
+    let gap = t[1] - t[0];
+    assert!(
+        gap >= Duration::from_millis(45),
+        "second request arrived {gap:?} after the first; expected >= 45ms"
+    );
 }
 
 #[tokio::test]
