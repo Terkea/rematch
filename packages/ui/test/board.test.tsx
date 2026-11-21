@@ -3,8 +3,9 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { frame } from "motion/react";
 import { useState } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { buildPieces, PIECE_FILES } from "../scripts/build-pieces-lib.js";
 import {
   Board,
@@ -350,6 +351,8 @@ const travelY = (c: HTMLElement, sq: string) => {
   return m ? Number(m[1]) : 0;
 };
 const wait = (ms: number) => act(() => new Promise((r) => setTimeout(r, ms)));
+/** Resolves after Motion has processed its next frame. */
+const nextFrame = () => act(() => new Promise<void>((r) => frame.postRender(() => r())));
 
 describe("Board check-square coordinates", () => {
   // Black's rook on h1 checks White's king on e1, a first-rank square that carries the "e".
@@ -504,14 +507,27 @@ describe("Board motion edge cases", () => {
 
   it("re-plans a piece still in the air from where it is drawn (M7)", async () => {
     stubFullMotion();
+    // Motion's frame loop is scheduled by jsdom's own requestAnimationFrame (bound when Motion
+    // loads), but every frame reads its time from performance.now. With only that clock faked,
+    // the animation sees exactly the time the test advances, however loaded the machine is.
+    vi.useFakeTimers({ toFake: ["performance"] });
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
     const E4 = "4k3/8/8/8/4P3/8/8/4K3 b - - 0 1";
     const E5 = "4k3/8/8/4P3/8/8/8/4K3 w - - 0 1";
     const { container, rerender } = render(
       <Board fen="4k3/8/8/8/8/8/4P3/4K3 w - - 0 1" label="P" />,
     );
     rerender(<Board fen={E4} label="P" lastMove={{ from: "e2", to: "e4" }} />);
-    // Lift (90ms) and part of the travel: the pawn is between e2 and e4.
-    await wait(130);
+    // Lift (90ms) and part of the travel: the pawn is between e2 and e4. The clock moves 10ms at
+    // a time, and each step waits for a frame to run at that time, so the lift's end and the
+    // travel's start land on the frames they would on a real 100fps screen.
+    await nextFrame();
+    for (let t = 0; t < 130; t += 10) {
+      vi.advanceTimersByTime(10);
+      await nextFrame();
+    }
     const midway = travelY(container, "e4");
     expect(midway).toBeGreaterThan(0);
     expect(midway).toBeLessThan(200);
