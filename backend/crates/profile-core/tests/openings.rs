@@ -212,23 +212,19 @@ fn every_dataset_line_key_fits() {
 
 // --- Dataset -----------------------------------------------------------------------------------
 
-/// The load budget. An optimised build replays the tables in about 20 ms. Unoptimised test
-/// builds run `Position::play_san` about 15 times slower (about 290 ms for the 8 801 distinct
-/// moves), so a debug build gets 10 times the budget (still at least 3 times the measured time).
-const LOAD_BUDGET: Duration = Duration::from_millis(200);
-const DEBUG_BUILD_FACTOR: u32 = 10;
+/// One bound for every build: the measured worst case (113 ms, in a test build with
+/// `cozy-chess` and `chess-core` at `opt-level = 3`) times 3, the timing rule's margin.
+/// A release build takes about 20 ms, inside the brief's 200 ms target. A test build takes
+/// 100-113 ms, under 200 ms but without the 3x margin, hence 340 ms (controller ruling).
+const LOAD_BOUND: Duration = Duration::from_millis(340);
 
+/// Brief name: `dataset_loads_under_200ms`.
 #[test]
-fn dataset_loads_under_200ms() {
-    let budget = if cfg!(debug_assertions) {
-        LOAD_BUDGET * DEBUG_BUILD_FACTOR
-    } else {
-        LOAD_BUDGET
-    };
+fn dataset_loads_under_340ms() {
     let t = Instant::now();
     let fresh = build_openings(&VENDORED_TSVS).expect("vendored tables replay");
     let took = t.elapsed();
-    assert!(took < budget, "took {took:?}, budget {budget:?}");
+    assert!(took < LOAD_BOUND, "took {took:?}, bound {LOAD_BOUND:?}");
     assert!(fresh.len() >= 3000, "{} entries", fresh.len());
     assert_eq!(openings().len(), fresh.len());
     assert!(std::ptr::eq(openings(), openings()), "built once");
