@@ -471,6 +471,28 @@ expect(formatNotation({ moveNumber: 12, color: "white", san: "Nf5", judgement: "
 
 Each W4 task loads the `dataviz` skill before writing chart code. The four tasks touch disjoint files and run in parallel once Tasks 3 and 5 have landed.
 
+### Task 12b: Board sounds (added by the owner's request)
+
+**Files:**
+- Create: `packages/ui/src/audio/{context.ts,synth.ts,sounds.ts,use-board-sounds.ts,index.ts}`, `packages/ui/test/audio.test.ts`, a styleguide section `apps/web/src/app/styleguide/sections/sound.tsx`, and an ADR `docs/decisions/ADR-WEB-n-original-procedural-sounds.md`
+- Modify: `packages/ui/DESIGN.md` (adds a "Sound" section: the sound set, character, volumes, rules)
+
+**Interfaces:**
+- Consumes: the Task 11 board's move events (`onMove({ san, flags })`, where chess.js flags give capture/castle/promotion and the SAN suffix gives check/mate).
+- Produces:
+  - `type BoardSound = "move" | "capture" | "check" | "castle" | "promote" | "gameEnd" | "correct" | "wrong" | "pen"`
+  - `soundForMove(move: { san: string; flags: string }): BoardSound`. Precedence: gameEnd (#) > check (+) > promote > castle > capture > move.
+  - `createSoundEngine(opts?: { ctxFactory?: () => AudioContext }): { unlock(): Promise<void>; play(s: BoardSound): void; setVolume(v: number): void; setMuted(m: boolean): void }`. Lazy AudioContext; `unlock` on the first user gesture; throttle of at most one sound per 40 ms; `play` is a no-op while locked or muted.
+  - `useBoardSounds(): { play; muted; setMuted; volume; setVolume }`, persisted in localStorage (wrapped in try/catch).
+
+- [ ] **Step 1: Failing tests.**
+  - `soundForMove`: `{san:"Nf3",flags:"n"}` gives move; `{san:"Bxe5",flags:"c"}` gives capture; `{san:"O-O",flags:"k"}` gives castle; `{san:"e8=Q",flags:"np"}` gives promote; `{san:"Qxf7+",flags:"c"}` gives check; `{san:"Qxf7#",flags:"c"}` gives gameEnd.
+  - The engine, with a fake AudioContext: `play` before `unlock` schedules nothing; after `unlock`, `play("move")` schedules exactly one source; two plays within 40 ms schedule one; muted schedules nothing; `setVolume(0.3)` sets the gain to 0.3.
+- [ ] **Step 2:** Run the tests. Expected: FAIL.
+- [ ] **Step 3: Implement procedural synthesis in `synth.ts`** (Web Audio only, no sample files). Move: a short filtered noise burst (a band-pass around 1.8 kHz, 35 ms decay) plus a low body thump (a sine around 180 Hz, 60 ms). Capture: the same with a higher gain and a second, slightly delayed knock. Check: a brief triangle "tick" around 1.2 kHz. Castle: two moves 70 ms apart. Promote: a rising two-tone. GameEnd: a soft low chord. Correct: a warm two-note chime. Wrong: a muted low thud. Pen: very quiet filtered noise with a slight pitch glide, off by default. Tune by ear, using the styleguide demo with a fresh-subagent listening review of the recorded parameters. Record the final parameters in DESIGN.md.
+- [ ] **Step 4:** Add a styleguide "Sound" section with a play button per sound, plus the mute and volume controls. Make sure the controls are keyboard accessible.
+- [ ] **Step 5:** Run the tests. Expected: PASS. Commit `feat(ui): original procedural board sounds`.
+
 ### Task 13: Eval graph (visx)
 
 **Files:**

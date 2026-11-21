@@ -322,6 +322,50 @@ Owner's words: "sexy design", "amazing UI with animations and a premium feel", "
   - Responses to user actions: drill right/wrong feedback, streak increments, plan completion.
   - Not allowed: a fade-up on every section, or a hover effect on every card.
   - Fully respects `prefers-reduced-motion`.
+- **Motion is a headline feature (owner, 2026-11-21: "the animations need to be huge, that makes it premium").** This overrides the "use motion sparingly" default. The rule is now **rich, choreographed and physical, never generic**.
+  - **Signature moments:**
+    - the **analysis reveal**, a full choreographed sequence: the eval graph draws across, critical moments pulse in, then red-pen marks draw onto the board in ranked order and the scoresheet annotates itself line by line;
+    - the **report reveal**: sections assemble with staggered, spring-based motion;
+    - **onboarding**: games stream onto a live board, replaying at speed while the counter climbs.
+  - **Continuity:**
+    - shared-element transitions, using the View Transitions API with a Motion fallback. A position thumbnail morphs into the full board, a weakness card expands into its area page, a KPI tile grows into its chart;
+    - route changes animate as page turns on the scoresheet metaphor, not cross-fades.
+  - **Physical feel:**
+    - pieces move with spring physics, with a small lift and settle on drop and a dragged piece that tilts slightly;
+    - captures knock the captured piece off;
+    - the eval bar swings with momentum;
+    - numbers roll (NumberFlow);
+    - progress fills like ink soaking into paper.
+  - **Landing page:** scroll-driven storytelling with GSAP ScrollTrigger and Lenis. A real game plays out as you scroll, with the coach's annotations writing themselves in.
+  - **Micro-interactions everywhere they mean something:** drill right/wrong, streak ticks, button presses (a pen-press feel), hover previews of moves on the scoresheet. Every one shows what changed. None is decoration with no meaning.
+  - **Quality bar:**
+    - 60 fps on mid-range phones: only transform and opacity, plus GPU-friendly SVG stroke-dashoffset;
+    - motion never blocks input, because all of it is interruptible and skippable;
+    - long sequences have a "skip" and run only on first view, with later visits much shorter;
+    - full `prefers-reduced-motion` support, which swaps choreography for instant state changes with brief opacity cues.
+  - **Still banned:** identical fade-up-on-scroll on every section, hover lift and shadow on every card, gratuitous parallax, and motion with no meaning.
+  - DESIGN.md gets a full motion system to match: duration and easing tokens, spring presets (`settle`, `pen`, `swing`, `page`), a stagger scale, and a choreography spec for each signature moment.
+- **Sound (owner's request: "sounds for moving pieces").**
+  - **The sound set:**
+    - move (a soft wooden placement);
+    - capture (heavier, with a slight knock);
+    - check (a brighter tick);
+    - castle (two quick placements);
+    - promotion (a rising tone);
+    - game end;
+    - drill correct (a short warm chime) and drill wrong (a muted low thud, never harsh);
+    - optionally, a very subtle pen scratch when a red-pen annotation draws on, off by default.
+  - **Sources:**
+    - All sounds are **original**. Ideally they're synthesised procedurally with the Web Audio API: tiny, consistent, licence-free, and tunable to match the scoresheet character (paper and wood, not arcade).
+    - The alternative is recorded samples under CC0, each with its source logged.
+    - **No sounds are copied from chess.com or Lichess** or any other product.
+  - **Behaviour:**
+    - Sound starts only after the first user gesture, because of browser autoplay rules.
+    - There's a global mute and volume control in the header and in settings, remembered per user. Sound is on by default for board interactions and off by default for ambient effects.
+    - `prefers-reduced-motion` does not mute sound. Sound has its own setting.
+    - Sound never carries information on its own: every sound has a visual equivalent.
+    - Repeated sounds are throttled during fast replay or scrubbing. Scrubbing the move list doesn't play a sound per move; only stepping or play does.
+  - **Implementation:** a small `@ci/ui` audio module, `useBoardSounds()`, with preloading and a single shared AudioContext. Sounds are triggered from board events (move, capture, check and so on, worked out with chess.js), so every board in the app sounds the same.
 - **Quality floor:** responsive down to 360px, keyboard-accessible board and drills, visible focus, WCAG AA contrast, and light and dark themes.
 - **Board component:** `react-chessboard` (MIT) or a custom board. **Not** chessground, which is GPL-3.0 and would force the web client to be open source.
 - **UI stack** (from `docs/research/ui-tooling.md`):
