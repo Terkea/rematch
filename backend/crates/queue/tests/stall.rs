@@ -86,19 +86,35 @@ async fn row(pool: &PgPool, id: i64) -> Row {
     .expect("job row")
 }
 
-async fn enqueue(q: &Queue) -> i64 {
-    q.enqueue(KIND, &json!({}), EnqueueOptions::default())
-        .await
-        .unwrap()
-        .unwrap()
+/// Options for a job that is due at once with a `run_at` a minute in the past, so a step back of
+/// the VM clock (Postgres included) between enqueue and claim cannot make it look delayed.
+fn due() -> EnqueueOptions {
+    EnqueueOptions {
+        run_at: Some(time::OffsetDateTime::now_utc() - time::Duration::minutes(1)),
+        ..EnqueueOptions::default()
+    }
 }
 
-/// `fast_for_tests` (lease 2 s) with renewals every 200 ms, so a renew has 800 ms before the
+async fn enqueue(q: &Queue) -> i64 {
+    q.enqueue(KIND, &json!({}), due()).await.unwrap().unwrap()
+}
+
+/// `fast_for_tests` (lease 4 s) with renewals every 200 ms, so a renew has 2.8 s before the
 /// local lease deadline on a loaded test host.
 fn fast() -> RunnerConfig {
     RunnerConfig {
         renew_every: Duration::from_millis(200),
         ..RunnerConfig::fast_for_tests()
+    }
+}
+
+/// For a runner that must stay alive and never be reaped: `fast()` with a 6 s lease, more than
+/// `renew_every` + 3 s, so a forward step of the VM clock cannot make its lease look expired
+/// before the next renew (ADR 0032).
+fn live() -> RunnerConfig {
+    RunnerConfig {
+        lease: Duration::from_secs(6),
+        ..fast()
     }
 }
 
@@ -121,6 +137,19 @@ where
     .await
     .unwrap();
     Instant::now() + Duration::from_secs_f64(remaining.max(0.0))
+}
+
+/// Makes the leases of `ids` expired on the database side (instead of a tiny lease plus a sleep,
+/// which a step of the VM clock can defeat).
+async fn expire(pool: &PgPool, ids: &[i64]) {
+    sqlx::query(
+        "UPDATE jobs SET lease_until = now() - interval '1 minute' \
+         WHERE id = ANY($1) AND state = 'running'",
+    )
+    .bind(ids)
+    .execute(pool)
+    .await
+    .unwrap();
 }
 
 /// Waits until `owner` holds the job's lease.
@@ -185,7 +214,7 @@ async fn expired_lease_is_recovered_without_using_an_attempt(pool: PgPool) {
     wait_owned(&pool, id, &owner).await;
     // The worker dies: no release, no renewals.
     crashed.abort();
-    let recovered = wait_for("lease expiry", Duration::from_secs(10), POLL, || async {
+    let recovered = wait_for("lease expiry", Duration::from_secs(20), POLL, || async {
         let r = q.recover_expired(&[KIND]).await.unwrap();
         (!r.is_empty()).then_some(r)
     })
@@ -202,7 +231,7 @@ async fn expired_lease_is_recovered_without_using_an_attempt(pool: PgPool) {
     assert_eq!(r.lease_owner, None);
 
     let h = handler(|_, _| async { Ok(json!({})) });
-    let fresh = Runner::spawn(q.clone(), h, fast());
+    let fresh = Runner::spawn(q.clone(), h, live());
     wait_for("done", Duration::from_secs(10), POLL, || async {
         (row(&pool, id).await.state == "done").then_some(())
     })
@@ -223,7 +252,7 @@ async fn runner_reaper_recovers_a_dead_workers_job(pool: PgPool) {
     wait_owned(&pool, id, &owner).await;
     crashed.abort();
     let h = handler(|_, _| async { Ok(json!({})) });
-    let survivor = Runner::spawn(q.clone(), h, fast());
+    let survivor = Runner::spawn(q.clone(), h, live());
     wait_for("done", Duration::from_secs(15), POLL, || async {
         (row(&pool, id).await.state == "done").then_some(())
     })
@@ -264,6 +293,11 @@ async fn stalled_more_than_max_stalls_is_dead_and_calls_on_dead(pool: PgPool) {
         let runner = Runner::spawn(q.clone(), crashing.clone(), cfg);
         let r = wait_owned(&pool, id, &owner).await;
         assert_eq!(r.stalls, i, "stall {i}");
+        // The claim is visible before the job task has called the handler: wait for the call.
+        wait_for("handler called", Duration::from_secs(10), POLL, || async {
+            (calls.load(Ordering::SeqCst) > i as usize).then_some(())
+        })
+        .await;
         runner.abort();
         if i < 2 {
             let rec = wait_for("lease expiry", Duration::from_secs(15), POLL, || async {
@@ -276,7 +310,7 @@ async fn stalled_more_than_max_stalls_is_dead_and_calls_on_dead(pool: PgPool) {
         }
     }
     // A live runner's reaper finds the third stall: more than max_stalls, so dead.
-    let watcher = Runner::spawn(q.clone(), watching.clone(), fast());
+    let watcher = Runner::spawn(q.clone(), watching.clone(), live());
     let r = wait_for("dead", Duration::from_secs(15), POLL, || async {
         let r = row(&pool, id).await;
         (r.state == "dead").then_some(r)
@@ -326,10 +360,7 @@ async fn expired_lease_holder_cannot_complete(pool: PgPool) {
         }
     });
     // Runner 2 must keep the job through a clock step: a 6 s lease.
-    let cfg = RunnerConfig {
-        lease: Duration::from_secs(6),
-        ..fast()
-    };
+    let cfg = live();
     let owner2 = owner_of(&cfg);
     let runner2 = Runner::spawn(q.clone(), h, cfg);
     // Runner 2's reaper re-queues the expired job and runner 2 claims it.
@@ -397,6 +428,7 @@ async fn lost_lease_cancels_the_handler_and_drops_its_result(pool: PgPool) {
         .await
         .unwrap();
     takeover.commit().await.unwrap();
+    let committed = Instant::now();
     let cancelled_at = tokio::time::timeout(Duration::from_secs(10), rx.recv())
         .await
         .expect("handler cancelled")
@@ -405,6 +437,13 @@ async fn lost_lease_cancels_the_handler_and_drops_its_result(pool: PgPool) {
         cancelled_at <= deadline + Duration::from_secs(1),
         "cancelled {:?} after the old lease ran out",
         cancelled_at.saturating_duration_since(deadline)
+    );
+    // Within ~2 s of the takeover (renews every 200 ms), long before the 6 s lease deadline:
+    // the renew's `false` cancelled it, not the deadline fallback.
+    let after = cancelled_at.saturating_duration_since(committed);
+    assert!(
+        after < Duration::from_secs(2),
+        "cancelled {after:?} after the takeover"
     );
     wait_for("lease lost", Duration::from_secs(10), POLL, || async {
         (runner.stats().lease_lost == 1).then_some(())
@@ -423,17 +462,17 @@ async fn reaper_ignores_live_leases_and_other_kinds(pool: PgPool) {
     let q = Queue::new(pool.clone());
     let live = enqueue(&q).await;
     let other = q
-        .enqueue("import-account", &json!({}), EnqueueOptions::default())
+        .enqueue("import-account", &json!({}), due())
         .await
         .unwrap()
         .unwrap();
     q.dequeue(&[KIND], "w", 1, Duration::from_secs(60))
         .await
         .unwrap();
-    q.dequeue(&["import-account"], "w", 1, Duration::from_millis(1))
+    q.dequeue(&["import-account"], "w", 1, Duration::from_secs(60))
         .await
         .unwrap();
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    expire(&pool, &[other]).await;
     assert!(q.recover_expired(&[KIND]).await.unwrap().is_empty());
     assert!(q.recover_expired(&[]).await.unwrap().is_empty());
     assert_eq!(row(&pool, live).await.state, "running");
@@ -528,11 +567,11 @@ async fn concurrent_reapers_recover_each_job_once(pool: PgPool) {
         ids.push(enqueue(&q).await);
     }
     let claimed = q
-        .dequeue(&[KIND], "w", 10, Duration::from_millis(1))
+        .dequeue(&[KIND], "w", 10, Duration::from_secs(60))
         .await
         .unwrap();
     assert_eq!(claimed.len(), 10);
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    expire(&pool, &ids).await;
     let (a, b) = tokio::join!(q.recover_expired(&[KIND]), q.recover_expired(&[KIND]));
     let a: Vec<i64> = a.unwrap().iter().map(|r| r.job.id).collect();
     let b: Vec<i64> = b.unwrap().iter().map(|r| r.job.id).collect();
@@ -550,4 +589,119 @@ async fn concurrent_reapers_recover_each_job_once(pool: PgPool) {
             "job {id}"
         );
     }
+}
+
+/// The `run_at` column of a job, as stored.
+async fn run_at(pool: &PgPool, id: i64) -> time::OffsetDateTime {
+    sqlx::query_scalar("SELECT run_at FROM jobs WHERE id = $1")
+        .bind(id)
+        .fetch_one(pool)
+        .await
+        .unwrap()
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn re_queues_keep_their_run_at(pool: PgPool) {
+    // A stall recovery and a shutdown release re-queue a job at once *in its old place*: the
+    // `run_at` is kept, so the job neither falls behind a backlog nor looks delayed after the
+    // clock steps back (an immediate job has `run_at <= created_at`).
+    let q = Queue::new(pool.clone());
+    let early = EnqueueOptions {
+        run_at: Some(time::OffsetDateTime::now_utc() - time::Duration::hours(1)),
+        ..EnqueueOptions::default()
+    };
+    let old = q.enqueue(KIND, &json!({}), early).await.unwrap().unwrap();
+    let newer = enqueue(&q).await;
+    let original = run_at(&pool, old).await;
+
+    let a = q
+        .dequeue(&[KIND], "w", 1, Duration::from_secs(60))
+        .await
+        .unwrap()
+        .pop()
+        .unwrap();
+    assert_eq!(a.id, old);
+    expire(&pool, &[old]).await;
+    assert_eq!(q.recover_expired(&[KIND]).await.unwrap().len(), 1);
+    assert_eq!(
+        run_at(&pool, old).await,
+        original,
+        "the reaper keeps run_at"
+    );
+    let again = q
+        .dequeue(&[KIND], "me", 1, Duration::from_secs(60))
+        .await
+        .unwrap()
+        .pop()
+        .unwrap();
+    assert_eq!(again.id, old, "still ahead of the newer job");
+
+    assert_eq!(q.release_owned("me").await.unwrap(), 1);
+    assert_eq!(
+        run_at(&pool, old).await,
+        original,
+        "release_owned keeps run_at"
+    );
+    let next: Vec<i64> = q
+        .dequeue(&[KIND], "w", 2, Duration::from_secs(60))
+        .await
+        .unwrap()
+        .iter()
+        .map(|j| j.id)
+        .collect();
+    assert_eq!(next, vec![old, newer]);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn reaper_ignores_a_lease_that_only_looks_expired(pool: PgPool) {
+    // A forward step of the database clock makes a live lease look expired. A runner's reaper
+    // confirms an expiry over two passes at least `stall_grace` apart on the monotonic clock,
+    // with the lease token and heartbeat unchanged, so the live owner (renewing every 200 ms)
+    // keeps its job.
+    let q = Queue::new(pool.clone());
+    let id = enqueue(&q).await;
+    let release = Arc::new(tokio::sync::Notify::new());
+    let r2 = release.clone();
+    let h = handler(move |_, _| {
+        let release = r2.clone();
+        async move {
+            release.notified().await;
+            Ok(json!({}))
+        }
+    });
+    let cfg = live();
+    let owner = owner_of(&cfg);
+    let owner_runner = Runner::spawn(q.clone(), h, cfg);
+    wait_owned(&pool, id, &owner).await;
+    // A second runner of the kind reaps every 250 ms too.
+    let other = Runner::spawn(q.clone(), hanging(), live());
+    let until = Instant::now() + Duration::from_secs(4);
+    while Instant::now() < until {
+        sqlx::query(
+            "UPDATE jobs SET lease_until = now() - interval '10 seconds' \
+             WHERE id = $1 AND state = 'running'",
+        )
+        .bind(id)
+        .execute(&pool)
+        .await
+        .unwrap();
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let r = row(&pool, id).await;
+    assert_eq!(r.state, "running", "a live lease is never reaped");
+    assert_eq!(r.stalls, 0);
+    assert_eq!(r.lease_owner.as_deref(), Some(owner.as_str()));
+    assert_eq!(owner_runner.stats().stalled + other.stats().stalled, 0);
+
+    release.notify_one();
+    wait_for("done", Duration::from_secs(10), POLL, || async {
+        (row(&pool, id).await.state == "done").then_some(())
+    })
+    .await;
+    let r = row(&pool, id).await;
+    assert_eq!((r.attempts, r.stalls), (1, 0));
+    owner_runner.stop();
+    other.stop();
+    owner_runner.wait_idle().await;
+    other.wait_idle().await;
 }

@@ -93,11 +93,17 @@ async fn row(pool: &PgPool, id: i64) -> Row {
     .expect("job row")
 }
 
+/// Options for a job that is due at once with a `run_at` a minute in the past, so a step back of
+/// the VM clock (Postgres included) between enqueue and claim cannot make it look delayed.
+fn due() -> EnqueueOptions {
+    EnqueueOptions {
+        run_at: Some(time::OffsetDateTime::now_utc() - time::Duration::minutes(1)),
+        ..EnqueueOptions::default()
+    }
+}
+
 async fn enqueue(q: &Queue, kind: &str, payload: Value) -> i64 {
-    q.enqueue(kind, &payload, EnqueueOptions::default())
-        .await
-        .unwrap()
-        .unwrap()
+    q.enqueue(kind, &payload, due()).await.unwrap().unwrap()
 }
 
 async fn count_in(pool: &PgPool, state: &str) -> i64 {
@@ -347,6 +353,7 @@ async fn hard_timeout_fails_as_retryable_timeout(pool: PgPool) {
             // A lease far beyond the deadline and no reaper: only the hard timeout acts.
             lease: Duration::from_secs(10),
             renew_every: Duration::from_secs(1),
+            stall_grace: Duration::from_secs(3),
             reap_every: Duration::from_secs(60),
             ..cfg(1)
         },
@@ -447,7 +454,8 @@ async fn force_cancels_handlers_and_releases_leases(pool: PgPool) {
         assert_eq!(r.attempts, 0, "job {id}: no attempt used");
         assert_eq!(r.lease_token, None);
         assert_eq!(r.lease_owner, None);
-        assert!(r.run_in <= 1.0, "ready at once: {}", r.run_in);
+        // Ready at once; a clock step between the write and this read can add up to ~3 s.
+        assert!(r.run_in <= 5.0, "ready at once: {}", r.run_in);
         assert_eq!(r.error_code.as_deref(), Some("shutdown"));
     }
 }
@@ -515,6 +523,7 @@ async fn force_releases_only_this_runners_jobs(pool: PgPool) {
         // The other runner's job must survive the ~2 s force on a busy host.
         lease: Duration::from_secs(10),
         renew_every: Duration::from_secs(1),
+        stall_grace: Duration::from_secs(3),
         ..cfg(1)
     };
     let ra = Runner::spawn(q.clone(), handler(KIND, hang), shared.clone());
@@ -565,6 +574,7 @@ async fn shutdown_drains_within_grace_or_releases(pool: PgPool) {
             // The slow job must still hold its lease when the grace period ends.
             lease: Duration::from_secs(10),
             renew_every: Duration::from_secs(1),
+            stall_grace: Duration::from_secs(3),
             ..cfg(2)
         },
     );
@@ -627,7 +637,7 @@ async fn final_failure_is_dead_and_calls_on_dead_once(pool: PgPool) {
             &json!({}),
             EnqueueOptions {
                 max_attempts: 2,
-                ..EnqueueOptions::default()
+                ..due()
             },
         )
         .await
@@ -661,7 +671,7 @@ async fn on_dead_reason_is_truncated_to_2000_characters(pool: PgPool) {
             &json!({}),
             EnqueueOptions {
                 max_attempts: 1,
-                ..EnqueueOptions::default()
+                ..due()
             },
         )
         .await
@@ -807,7 +817,7 @@ async fn failed_jobs_are_logged_with_id_kind_and_attempt(pool: PgPool) {
             &json!({}),
             EnqueueOptions {
                 max_attempts: 1,
-                ..EnqueueOptions::default()
+                ..due()
             },
         )
         .await

@@ -451,7 +451,7 @@ async fn future_run_at_is_not_dequeued(pool: PgPool) {
         .unwrap()
         .unwrap();
     assert!(q.dequeue(&[KIND], "w", 10, LEASE).await.unwrap().is_empty());
-    sqlx::query("UPDATE jobs SET run_at = now() - interval '1 second' WHERE id = $1")
+    sqlx::query("UPDATE jobs SET run_at = now() - interval '1 hour' WHERE id = $1")
         .bind(id)
         .execute(&pool)
         .await
@@ -480,7 +480,7 @@ async fn retryable_failure_backs_off_exponentially(pool: PgPool) {
     assert_eq!(r.last_error.as_deref(), Some("boom"));
     assert_eq!(r.lease_token, None, "the lease is cleared");
 
-    sqlx::query("UPDATE jobs SET run_at = now() WHERE id = $1")
+    sqlx::query("UPDATE jobs SET run_at = now() - interval '1 hour' WHERE id = $1")
         .bind(id)
         .execute(&pool)
         .await
@@ -504,7 +504,7 @@ async fn final_retryable_failure_is_dead(pool: PgPool) {
         .unwrap()
         .unwrap();
     for attempt in 1..=3 {
-        sqlx::query("UPDATE jobs SET run_at = now() WHERE id = $1")
+        sqlx::query("UPDATE jobs SET run_at = now() - interval '1 hour' WHERE id = $1")
             .bind(id)
             .execute(&pool)
             .await
@@ -606,6 +606,12 @@ async fn release_on_the_final_attempt_is_not_dead(pool: PgPool) {
     let r = row(&pool, id).await;
     assert_eq!((r.state.as_str(), r.attempts), ("queued", 2));
     assert_near(r.run_in, 0.0, CLOCK_STEP);
+    // Due at once; back-dated so a step back of the clock cannot make it look delayed.
+    sqlx::query("UPDATE jobs SET run_at = now() - interval '1 hour' WHERE id = $1")
+        .bind(id)
+        .execute(&pool)
+        .await
+        .unwrap();
     // A fresh worker gets the final attempt again and can complete it.
     let again = claim_one(&q).await;
     assert_eq!(again.attempts, 3);
@@ -641,7 +647,7 @@ async fn recurring_job_requeues_on_complete_and_failure(pool: PgPool) {
     assert_near(r.run_in, 300.0, CLOCK_STEP);
     assert!(!r.finished);
 
-    sqlx::query("UPDATE jobs SET run_at = now() WHERE id = $1")
+    sqlx::query("UPDATE jobs SET run_at = now() - interval '1 hour' WHERE id = $1")
         .bind(id)
         .execute(&pool)
         .await
@@ -658,7 +664,7 @@ async fn recurring_job_requeues_on_complete_and_failure(pool: PgPool) {
     assert_near(r.run_in, 300.0, CLOCK_STEP);
     assert_eq!(r.last_error.as_deref(), Some("db down"));
 
-    sqlx::query("UPDATE jobs SET run_at = now() WHERE id = $1")
+    sqlx::query("UPDATE jobs SET run_at = now() - interval '1 hour' WHERE id = $1")
         .bind(id)
         .execute(&pool)
         .await

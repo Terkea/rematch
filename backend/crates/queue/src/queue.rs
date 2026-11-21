@@ -301,7 +301,7 @@ fn millis(d: Duration) -> f64 {
     d.as_secs_f64() * 1000.0
 }
 
-fn truncate_chars(s: &str, max: usize) -> String {
+pub(crate) fn truncate_chars(s: &str, max: usize) -> String {
     match s.char_indices().nth(max) {
         Some((at, _)) => s[..at].to_owned(),
         None => s.to_owned(),

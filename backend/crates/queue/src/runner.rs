@@ -9,21 +9,30 @@
 //! - **Leases:** jobs are leased under the runner's own owner, `<worker_id>/<kind>`, so two
 //!   runners of one process never release each other's jobs. Every job renews its lease every
 //!   `renew_every`; the renew runs beside the handler (which keeps being polled) and is bounded
-//!   by the local lease deadline. The local deadline starts before the claim, so it is never
-//!   later than the database's `lease_until`. When a renew says the lease is lost (the reaper
+//!   by the local lease deadline. The local deadline starts before the claim and runs on the
+//!   monotonic clock, so it is never later than the database's `lease_until` unless the
+//!   database clock steps forward (which shortens the database lease by the step; the
+//!   two-pass reaper below keeps that from reaping a live lease). When a renew says the lease
+//!   is lost (the reaper
 //!   re-queued the job and someone else may hold it), or when no renew has succeeded by
 //!   `lease_until - CANCEL_GRACE`, the job's [`JobContext::cancel`] fires, the handler gets
 //!   [`CANCEL_GRACE`], and its result is dropped: a cancelled handler never outlives its lease
 //!   by more than that.
 //! - **Hard deadline:** after `hard_timeout` the token is cancelled, the handler gets 1 s to
 //!   wind down, and the attempt fails as `Retryable { code: "timeout" }`.
-//! - **Stalls:** every `reap_every` the loop runs [`Queue::recover_expired`] for its kind; a job
-//!   that stalled more than `max_stalls` times is dead and [`Handler::on_dead`] is called.
+//! - **Stalls:** every `reap_every` the loop lists its kind's leases that look expired by the
+//!   database clock ([`Queue::expired_leases`]) and recovers only those that have looked expired,
+//!   with the same lease token and heartbeat, for at least `stall_grace` on the monotonic clock
+//!   ([`Queue::recover_marked`]). A forward step of the database clock therefore cannot reap a
+//!   live owner, which renews (and so changes its heartbeat) every `renew_every` <
+//!   `stall_grace`. A job that stalled more than `max_stalls` times is dead and
+//!   [`Handler::on_dead`] is called.
 //! - **Shutdown:** [`RunnerHandle::stop`] stops claiming and lets in-flight jobs finish
 //!   ([`RunnerHandle::wait_idle`]); [`RunnerHandle::force`] cancels every handler, waits up to
 //!   1 s, then hands the remaining jobs back with [`Queue::release_owned`] without using an
 //!   attempt. A retryable failure after `force` (handler error, hard timeout or panic) is
-//!   recorded as a release too; an `Unrecoverable` one stays failed. Both are re-entrant;
+//!   recorded as a release too; an `Unrecoverable` one stays failed, provided its write lands
+//!   within [`FORCE_GRACE`] (otherwise `release_owned` re-queues it). Both are re-entrant;
 //!   [`RunnerHandle::shutdown`] combines them with a grace period.
 
 use std::any::Any;
@@ -43,8 +52,12 @@ use tokio::time::{Instant, MissedTickBehavior};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
-use crate::queue::{Backoff, FailOutcome, JOBS_CHANNEL, MAX_ERROR_CHARS, Queue, QueueError};
-use crate::reaper::STALLED_REASON;
+use std::collections::HashMap;
+
+use crate::queue::{
+    Backoff, FailOutcome, JOBS_CHANNEL, MAX_ERROR_CHARS, Queue, QueueError, truncate_chars,
+};
+use crate::reaper::{LeaseMark, STALLED_REASON};
 use crate::types::{Job, JobError};
 
 /// How long a cancelled handler (hard timeout, lost lease) gets before it is dropped. A job's
@@ -82,7 +95,10 @@ pub struct JobContext {
 
 #[derive(Clone, Debug)]
 pub struct RunnerConfig {
-    /// The `lease_owner` of every job this runner claims; unique per runner.
+    /// The prefix of this runner's `lease_owner`, which is `<worker_id>/<kind>`. It must be
+    /// unique per *process*: runners of one process (one per kind) may share it, but two
+    /// replicas with the same `worker_id` would release each other's jobs on `force`. The
+    /// default is `<host>-<pid>-<random>`.
     pub worker_id: String,
     /// Jobs of this kind run at once.
     pub concurrency: usize,
@@ -92,6 +108,10 @@ pub struct RunnerConfig {
     pub renew_every: Duration,
     /// Stall recovery period (30 s).
     pub reap_every: Duration,
+    /// How long a lease must keep looking expired, unchanged, on the monotonic clock before the
+    /// reaper recovers it (25 s; must exceed `renew_every`, so a live owner always renews in
+    /// between). Guards against forward steps of the database clock.
+    pub stall_grace: Duration,
     /// Fallback poll when no notification arrives (500 ms).
     pub idle_poll: Duration,
     pub backoff: Backoff,
@@ -107,6 +127,7 @@ impl Default for RunnerConfig {
             lease: Duration::from_secs(60),
             renew_every: Duration::from_secs(20),
             reap_every: Duration::from_secs(30),
+            stall_grace: Duration::from_secs(25),
             idle_poll: Duration::from_millis(500),
             backoff: Backoff::default(),
             hard_timeout: None,
@@ -115,12 +136,14 @@ impl Default for RunnerConfig {
 }
 
 impl RunnerConfig {
-    /// Short timings for tests: lease 2 s, renew 500 ms, reap 250 ms, poll 50 ms, backoff 50 ms.
+    /// Short timings for tests: lease 4 s, renew 500 ms, reap 250 ms, stall grace 1 s, poll
+    /// 50 ms, backoff 50 ms. The lease leaves a renew 2.5 s before the local deadline.
     pub fn fast_for_tests() -> Self {
         Self {
-            lease: Duration::from_secs(2),
+            lease: Duration::from_secs(4),
             renew_every: Duration::from_millis(500),
             reap_every: Duration::from_millis(250),
+            stall_grace: Duration::from_secs(1),
             idle_poll: Duration::from_millis(50),
             backoff: Backoff {
                 base: Duration::from_millis(50),
@@ -215,8 +238,9 @@ impl Runner {
     /// Starts a runner for `handler.kind()` on the current tokio runtime.
     ///
     /// # Panics
-    /// When `concurrency` is 0, or when `renew_every` does not fit before the local lease
-    /// deadline (`lease - min(CANCEL_GRACE, lease / 2)`).
+    /// When `concurrency` is 0, when `renew_every` does not fit before the local lease
+    /// deadline (`lease - min(CANCEL_GRACE, lease / 2)`), or when `stall_grace` does not exceed
+    /// `renew_every`.
     pub fn spawn(queue: Queue, handler: Arc<dyn Handler>, cfg: RunnerConfig) -> RunnerHandle {
         assert!(cfg.concurrency > 0, "runner concurrency must be at least 1");
         assert!(
@@ -224,6 +248,12 @@ impl Runner {
             "renew_every ({:?}) must be shorter than the lease ({:?}) minus the cancel grace",
             cfg.renew_every,
             cfg.lease
+        );
+        assert!(
+            cfg.stall_grace > cfg.renew_every,
+            "stall_grace ({:?}) must exceed renew_every ({:?})",
+            cfg.stall_grace,
+            cfg.renew_every
         );
         let owner = format!("{}/{}", cfg.worker_id, handler.kind());
         let shared = Arc::new(Shared {
@@ -254,7 +284,7 @@ impl RunnerHandle {
     pub fn stop(&self) {
         let s = &self.shared;
         if !s.stop.is_cancelled() {
-            tracing::info!(worker_id = %s.cfg.worker_id, kind = s.handler.kind(), "runner stopping");
+            tracing::info!(lease_owner = %s.owner, kind = s.handler.kind(), "runner stopping");
         }
         s.stop.cancel();
     }
@@ -302,13 +332,15 @@ impl RunnerHandle {
 
     /// Graceful shutdown: [`stop`](Self::stop), wait up to `grace` for in-flight jobs, then
     /// [`force`](Self::force). `true` when everything finished within `grace`. Re-entrant.
+    /// After `force`, an `Unrecoverable` verdict stays failed only if its write lands within
+    /// [`FORCE_GRACE`]; otherwise the job is released like the rest.
     pub async fn shutdown(&self, grace: Duration) -> bool {
         self.stop();
         if tokio::time::timeout(grace, self.wait_idle()).await.is_ok() {
             return true;
         }
         tracing::warn!(
-            worker_id = %self.shared.cfg.worker_id,
+            lease_owner = %self.shared.owner,
             kind = self.shared.handler.kind(),
             in_flight = self.in_flight(),
             "jobs did not finish within the grace period; forcing"
@@ -365,6 +397,7 @@ async fn run(s: Arc<Shared>) {
     let mut tasks: JoinSet<()> = JoinSet::new();
     let mut reap = tokio::time::interval(s.cfg.reap_every);
     reap.set_missed_tick_behavior(MissedTickBehavior::Delay);
+    let mut stalls = StallTracker::default();
     loop {
         if s.stop.is_cancelled() {
             break;
@@ -394,7 +427,7 @@ async fn run(s: Arc<Shared>) {
             biased;
             _ = s.stop.cancelled() => {}
             Some(res) = tasks.join_next(), if !tasks.is_empty() => log_join(kind, res),
-            _ = reap.tick() => reap_expired(&s, &mut tasks).await,
+            _ = reap.tick() => reap_expired(&s, &mut stalls, &mut tasks).await,
             _ = s.wake.notified() => {}
             _ = tokio::time::sleep(s.cfg.idle_poll) => {}
         }
@@ -445,11 +478,52 @@ async fn listen(pool: PgPool, kind: &'static str, wake: Arc<Notify>) {
     }
 }
 
-/// Recovers this kind's expired leases; dead ones get `on_dead` (tracked in `tasks`, so a drain
-/// waits for it).
-async fn reap_expired(s: &Arc<Shared>, tasks: &mut JoinSet<()>) {
+/// Two-pass stall confirmation: a lease is recovered only once it has looked expired, with the
+/// same token and heartbeat, for at least the grace period on the monotonic clock.
+#[derive(Default)]
+struct StallTracker {
+    /// Leases that looked expired at the last pass, with when each was first seen unchanged.
+    seen: HashMap<i64, (LeaseMark, Instant)>,
+}
+
+impl StallTracker {
+    /// Records this pass's expired-looking leases and returns those confirmed: seen unchanged
+    /// for at least `grace`. A lease that changed (renewed: new heartbeat; re-claimed: new
+    /// token) starts over; one no longer listed is forgotten.
+    fn observe(&mut self, marks: Vec<LeaseMark>, now: Instant, grace: Duration) -> Vec<LeaseMark> {
+        let mut next = HashMap::with_capacity(marks.len());
+        let mut confirmed = Vec::new();
+        for mark in marks {
+            let first = match self.seen.get(&mark.id) {
+                Some((old, at)) if *old == mark => *at,
+                _ => now,
+            };
+            if now.saturating_duration_since(first) >= grace {
+                confirmed.push(mark.clone());
+            }
+            next.insert(mark.id, (mark, first));
+        }
+        self.seen = next;
+        confirmed
+    }
+}
+
+/// Recovers this kind's confirmed expired leases; dead ones get `on_dead` (tracked in `tasks`,
+/// so a drain waits for it).
+async fn reap_expired(s: &Arc<Shared>, stalls: &mut StallTracker, tasks: &mut JoinSet<()>) {
     let kind = s.handler.kind();
-    let recovered = match s.queue.recover_expired(&[kind]).await {
+    let marks = match s.queue.expired_leases(&[kind]).await {
+        Ok(m) => m,
+        Err(e) => {
+            tracing::error!(kind, error = %e, "listing expired leases failed");
+            return;
+        }
+    };
+    let confirmed = stalls.observe(marks, Instant::now(), s.cfg.stall_grace);
+    if confirmed.is_empty() {
+        return;
+    }
+    let recovered = match s.queue.recover_marked(&confirmed).await {
         Ok(r) => r,
         Err(e) => {
             tracing::error!(kind, error = %e, "stall recovery failed");
@@ -497,14 +571,16 @@ async fn run_job(s: Arc<Shared>, job: Job, claimed_at: Instant, _guard: InFlight
     let token = s.force.child_token();
     let handler = s.handler.clone();
     let started = Instant::now();
-    let fut = AssertUnwindSafe(handler.handle(
-        job.clone(),
-        JobContext {
-            cancel: token.clone(),
-        },
-    ))
-    .catch_unwind();
-    tokio::pin!(fut);
+    // Boxed, so a cancelled handler can be dropped (freeing what it holds) before a slow write.
+    let mut fut = Box::pin(
+        AssertUnwindSafe(handler.handle(
+            job.clone(),
+            JobContext {
+                cancel: token.clone(),
+            },
+        ))
+        .catch_unwind(),
+    );
 
     let lease = s.cfg.lease;
     let grace = CANCEL_GRACE.min(lease / 2);
@@ -566,10 +642,12 @@ async fn run_job(s: Arc<Shared>, job: Job, claimed_at: Instant, _guard: InFlight
                 "lease lost; handler cancelled and its result dropped"
             );
             let _ = tokio::time::timeout(grace, &mut fut).await;
+            drop(fut);
         }
         Ended::TimedOut => {
             token.cancel();
             let _ = tokio::time::timeout(grace, &mut fut).await;
+            drop(fut);
             bump(&s.counters.timed_out);
             let limit = s.cfg.hard_timeout.unwrap_or_default();
             let err = JobError::Retryable {
@@ -631,13 +709,6 @@ fn panic_message(p: &(dyn Any + Send)) -> String {
         s.clone()
     } else {
         "unknown panic".to_owned()
-    }
-}
-
-fn truncate_chars(s: &str, max: usize) -> String {
-    match s.char_indices().nth(max) {
-        Some((at, _)) => s[..at].to_owned(),
-        None => s.to_owned(),
     }
 }
 
@@ -727,5 +798,77 @@ async fn record_failure(s: &Arc<Shared>, job: &Job, err: JobError) {
         // The same bound as the stored `last_error` (TS parity).
         let reason = truncate_chars(&err.to_string(), MAX_ERROR_CHARS);
         s.handler.on_dead(job, &reason).await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use time::OffsetDateTime;
+
+    fn mark(id: i64, beat: i64) -> LeaseMark {
+        LeaseMark {
+            id,
+            lease_token: Uuid::from_u128(id as u128),
+            heartbeat_at: OffsetDateTime::from_unix_timestamp(beat).unwrap(),
+        }
+    }
+
+    const GRACE: Duration = Duration::from_secs(5);
+
+    #[test]
+    fn a_lease_is_confirmed_only_after_looking_expired_unchanged_for_the_grace() {
+        let mut t = StallTracker::default();
+        let t0 = Instant::now();
+        assert!(t.observe(vec![mark(1, 100)], t0, GRACE).is_empty());
+        let later = t0 + Duration::from_secs(4);
+        assert!(t.observe(vec![mark(1, 100)], later, GRACE).is_empty());
+        let after = t0 + GRACE;
+        assert_eq!(
+            t.observe(vec![mark(1, 100)], after, GRACE),
+            vec![mark(1, 100)]
+        );
+    }
+
+    #[test]
+    fn a_new_heartbeat_or_token_starts_over() {
+        let mut t = StallTracker::default();
+        let t0 = Instant::now();
+        t.observe(vec![mark(1, 100)], t0, GRACE);
+        // Renewed in between (as after a forward clock step on a live lease).
+        let t1 = t0 + Duration::from_secs(6);
+        assert!(t.observe(vec![mark(1, 101)], t1, GRACE).is_empty());
+        let mut reclaimed = mark(1, 101);
+        reclaimed.lease_token = Uuid::from_u128(99);
+        let t2 = t1 + Duration::from_secs(6);
+        assert!(t.observe(vec![reclaimed.clone()], t2, GRACE).is_empty());
+        let t3 = t2 + GRACE;
+        assert_eq!(
+            t.observe(vec![reclaimed.clone()], t3, GRACE),
+            vec![reclaimed]
+        );
+    }
+
+    #[test]
+    fn a_lease_that_stops_looking_expired_is_forgotten() {
+        let mut t = StallTracker::default();
+        let t0 = Instant::now();
+        t.observe(vec![mark(1, 100), mark(2, 100)], t0, GRACE);
+        t.observe(vec![mark(2, 100)], t0 + Duration::from_secs(1), GRACE);
+        // Job 1 looks expired again later: its clock starts over.
+        let t2 = t0 + Duration::from_secs(6);
+        assert_eq!(
+            t.observe(vec![mark(1, 100), mark(2, 100)], t2, GRACE),
+            vec![mark(2, 100)]
+        );
+    }
+
+    #[test]
+    fn a_zero_grace_confirms_at_once() {
+        let mut t = StallTracker::default();
+        assert_eq!(
+            t.observe(vec![mark(7, 1)], Instant::now(), Duration::ZERO),
+            vec![mark(7, 1)]
+        );
     }
 }
