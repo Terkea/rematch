@@ -1,0 +1,6 @@
+event: delta
+data: {"text":"Hm","messageId":"msg_01"}
+
+event: error
+data: {"type":"error","error":{"type":"overloaded_error","message":"upstream API error 529"},"status":529}
+

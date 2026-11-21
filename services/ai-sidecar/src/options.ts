@@ -36,7 +36,8 @@ export type ToolSpec = { name: string; description: string; inputSchema: unknown
 export type ToolCallback = { url: string; token: string };
 export type ChatRequest = BaseRequest & {
   tools: ToolSpec[];
-  toolCallback: ToolCallback;
+  /** Required when `tools` is not empty; a turn without tools may omit it. */
+  toolCallback?: ToolCallback;
   /** The Postgres conversation id; it is also the SDK session id. */
   conversationId: string;
   /** False on the first turn of a conversation, true on every later turn. */
@@ -116,9 +117,13 @@ export function parseChatRequest(body: unknown): ChatRequest {
       inputSchema: o.inputSchema,
     };
   });
-  const cb = obj(b.toolCallback, "toolCallback");
-  const url = str(cb.url, "toolCallback.url");
-  if (!/^https?:\/\//.test(url)) throw bad("toolCallback.url must be http(s)");
+  let toolCallback: ToolCallback | undefined;
+  if (b.toolCallback !== undefined || tools.length > 0) {
+    const cb = obj(b.toolCallback, "toolCallback");
+    const url = str(cb.url, "toolCallback.url");
+    if (!/^https?:\/\//.test(url)) throw bad("toolCallback.url must be http(s)");
+    toolCallback = { url, token: str(cb.token, "toolCallback.token") };
+  }
   const conversationId = str(b.conversationId, "conversationId");
   if (!UUID.test(conversationId)) throw bad("conversationId must be a uuid");
   if (b.resume !== undefined && typeof b.resume !== "boolean")
@@ -126,7 +131,7 @@ export function parseChatRequest(body: unknown): ChatRequest {
   const req: ChatRequest = {
     ...base,
     tools,
-    toolCallback: { url, token: str(cb.token, "toolCallback.token") },
+    ...(toolCallback ? { toolCallback } : {}),
     conversationId: conversationId.toLowerCase(),
     resume: b.resume === true,
   };

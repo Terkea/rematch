@@ -44,6 +44,8 @@ uuid.workspace = true
 time.workspace = true
 sqlx.workspace = true
 rand.workspace = true
+# Task 11 (coordinator approval): the tool-callback endpoint the sidecar posts to.
+axum.workspace = true
 
 [dev-dependencies]
 testkit.workspace = true

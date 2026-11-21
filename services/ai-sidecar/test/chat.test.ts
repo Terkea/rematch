@@ -160,6 +160,17 @@ describe("runChat", () => {
     expect(o?.includePartialMessages).toBe(true);
   });
 
+  it("a_turn_without_tools_mounts_no_coach_server", async () => {
+    const s = useScript([textDelta("plain"), result()]);
+    const res = new FakeRes();
+    const body = { ...baseBody, tools: [], toolCallback: undefined };
+    await runChat(parseChatRequest(body), testConfig(), res, deps());
+    expect(terminal(res).map((e) => e.event)).toEqual(["done"]);
+    const o = s.calls[0]?.options;
+    expect(o?.mcpServers).toBeUndefined();
+    expect(o?.allowedTools).toBeUndefined();
+  });
+
   it("stream_ends_with_exactly_one_terminal_event", async () => {
     const scenarios: Parameters<typeof scripted>[0] = [
       [textDelta("a"), result()],

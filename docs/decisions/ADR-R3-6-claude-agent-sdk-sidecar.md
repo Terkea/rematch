@@ -37,7 +37,7 @@ This section was recorded with the implementation in `services/ai-sidecar` (SDK 
 - `POST /v1/query` makes one stateless structured call. The request carries `model, effort, maxTokens, timeoutMs, maxTurns, systemPrompt, prompt[] (text blocks), outputFormat?`. The reply is 200 for any SDK result message: `{subtype, stopReason, structuredOutput?, text, numTurns, durationMs, modelUsage{model: {inputTokens, outputTokens, cacheReadInputTokens, cacheCreationInputTokens}}, sdkCostUsd}`. `subtype` passes through: `success`, `error_max_turns`, `error_max_structured_output_retries` or `error_during_execution`. When the result carries `api_error_status`, the reply instead has that HTTP status and an Anthropic error body.
 - `POST /v1/chat` runs one chat turn over SSE. The request is the query body without `outputFormat`, plus:
   - `tools[] {name, description, inputSchema}`;
-  - `toolCallback {url, token}`;
+  - `toolCallback {url, token}`, required when `tools` is not empty (Task 11: a turn without tools, such as the "answer now" follow-up, omits it and mounts no coach server);
   - `conversationId` (a uuid);
   - `resume` (a boolean);
   - `rebuildContext`, required when `resume` is true (otherwise 400).
@@ -45,7 +45,7 @@ This section was recorded with the implementation in `services/ai-sidecar` (SDK 
   The stream sends these events:
   - `delta {text, messageId?}`, for top-level `text_delta` only;
   - `retract {messageIds, reason}`, naming streamed messages that a refusal or a superseding message withdrew (`done.text` is authoritative);
-  - `tool_use {id, name, input}`;
+  - `tool_use {id, name, input}`, where `name` is the SDK's MCP name `mcp__coach__<name>` (Rust strips the prefix);
   - exactly one terminal event, either `done` (the query result plus `session: "new" | "resumed" | "rebuilt"` and `sessionModelUsage`) or `error` (the error body plus `status`);
   - a `: ping` comment every 15 s.
 
@@ -147,3 +147,9 @@ Owner direction: the coach chat uses the SDK's native sessions, as in the owner'
   The uuids in the last two are mapped to message ids, and unknown or already-retracted uuids are a no-op. `done.text` is authoritative for the turn's final text.
 - **One turn per conversation.** Two overlapping turns of one conversation would delete each other's transcripts and branch the stored session. The sidecar holds an in-process lock per conversation id. When a store is configured, it also holds a Postgres session-level advisory lock, `pg_try_advisory_lock(2026112110, hashtext(conversation_id))`, on a dedicated pool connection for the whole turn, so replicas exclude each other. The two-int key keeps it apart from the store's single-bigint append locks. The lock is taken once a limiter slot is free, so a queued request holds no connection. A second turn gets 409 with error type `turn_in_progress`, before any header. On a `new` turn whose id already has store rows (a retried first turn), those rows are deleted first.
 - **Store writes.** `append` is `INSERT … ON CONFLICT DO NOTHING` against Task 17's partial unique index `(project_key, session_id, subpath, (entry->>'uuid')) WHERE entry ? 'uuid'`, so retried batches and in-batch repeats are no-ops. The `ai_sidecar` role is created NOLOGIN by the migration. Operations grant `LOGIN PASSWORD` out of band; in dev compose that is `docker/postgres/ai-sidecar-role.sh` (profile `ai`).
+
+## Notes from Task 11
+
+- **Optional callback.** `toolCallback` is optional when `tools` is empty, and such a turn mounts no `coach` MCP server. A callback that is sent is still validated.
+- **Turn-lock hygiene (final Task 10 review).** `lockLost` counts only while the lock is held. A no-op `error` listener stays on the lock connection after release (once per pooled client, so listeners do not pile up). On the not-acquired path a failing `RESET` destroys the connection and still reports "held elsewhere" (409), instead of throwing, which would have let the turn run with no lock.
+- **Test schema.** The sidecar's store tests read the `ai_sdk_session_entries` table, indexes and role block from Task 17's real migration (`db/migrations/20261121030000_ai_coaching.sql`) at test time; the copied fixture is gone.

@@ -182,9 +182,24 @@ describe("buildOptions", () => {
       { ...chatBody, toolCallback: { url: "ftp://x", token: "t" } },
       { ...chatBody, outputFormat: body.outputFormat },
       { ...chatBody, resume: true }, // a resumable turn must carry its rebuild context
+      {
+        ...chatBody,
+        tools: [{ name: "get_game", description: "d", inputSchema: { type: "object" } }],
+        toolCallback: undefined,
+      }, // tools need a callback
     ]) {
       expect(() => parseChatRequest(bad)).toThrow(SidecarError);
     }
+  });
+
+  it("a_turn_without_tools_needs_no_callback", () => {
+    const req = parseChatRequest({ ...chatBody, tools: [], toolCallback: undefined });
+    expect(req.tools).toEqual([]);
+    expect(req.toolCallback).toBeUndefined();
+    // A callback sent anyway is still validated.
+    expect(() =>
+      parseChatRequest({ ...chatBody, tools: [], toolCallback: { url: "ftp://x", token: "t" } }),
+    ).toThrow(SidecarError);
   });
 
   it("chat_options_allow_only_coach_tools", () => {

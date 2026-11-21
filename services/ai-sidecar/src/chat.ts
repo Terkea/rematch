@@ -174,10 +174,17 @@ async function streamTurn(
         ? [{ type: "text" as const, text: req.rebuildContext }, ...req.prompt]
         : req.prompt;
     try {
+      // A turn without tools (e.g. the "answer now" follow-up) mounts no coach server.
+      const coach =
+        req.toolCallback && req.tools.length > 0
+          ? {
+              mcpServer: buildCoachServer(req.tools, req.toolCallback, deps.fetchImpl),
+              toolNames: req.tools.map((t) => t.name),
+            }
+          : {};
       const options = buildOptions(req, cfg, {
         abortController: ctl.ac,
-        mcpServer: buildCoachServer(req.tools, req.toolCallback, deps.fetchImpl),
-        toolNames: req.tools.map((t) => t.name),
+        ...coach,
         partial: true,
         session,
       });
