@@ -32,3 +32,4 @@ One file per decision: context, decision, alternatives, consequences. New decisi
 - [0028](0028-bullmq-job-ids-and-analysis-persistence.md) BullMQ job ids and analysis persistence
 - [0029](0029-state-in-postgres-reconciler-not-outbox.md) State in Postgres, queue as delivery; reconciler instead of an outbox
 - [0039](0039-piece-set.md) Piece set: Cburnett by default, Chessnut as an option
+- [ADR-WEB-10](ADR-WEB-10-visual-qa-loop.md) Visual QA loop: Playwright, shots, lab and critique

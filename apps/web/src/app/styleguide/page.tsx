@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { brand } from "../../brand";
+import { labEnabled } from "../lab/lab-enabled";
 import { AnnotationsSection } from "./sections/annotations";
 import { AreaScoreSection } from "./sections/area-score";
 import { BoardSection } from "./sections/board";
@@ -21,7 +22,7 @@ export const metadata: Metadata = { title: `Styleguide, ${brand.name}` };
 export const dynamic = "force-dynamic";
 
 export default function StyleguidePage() {
-  if (process.env.NODE_ENV === "production" && process.env.LAB_ENABLED !== "1") notFound();
+  if (!labEnabled(process.env)) notFound();
 
   return (
     <div className="mx-auto max-w-7xl px-(--space-gutter)">
