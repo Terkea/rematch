@@ -8,11 +8,13 @@
 use chess_core::{Color, TimeClass};
 use coaching_input::MetricUnit;
 use profile_core::kpi::area_scores::{area_components, compute_area_scores};
-use profile_core::kpi::catalogue::{KpiGame, KpiKind, kpi_catalogue, kpi_definition};
+use profile_core::kpi::catalogue::{
+    CATALOGUE_LEN, KpiGame, KpiKind, is_count_mean, kpi_catalogue, kpi_definition,
+};
 use profile_core::kpi::iso_week::iso_week_key;
 use profile_core::kpi::snapshots::{
-    Comparison, KpiValue, Window, WindowKind, compare_kpi, compute_kpis, compute_kpis_report,
-    should_append,
+    Comparison, KpiValue, Window, WindowKind, clamp_to_unit, compare_kpi, compute_kpis,
+    compute_kpis_report, garwood_rate_interval, should_append,
 };
 use profile_core::stats::intervals::{Z80, wilson};
 use profile_core::stats::rng::Rng;
@@ -27,6 +29,7 @@ use uuid::Uuid;
 
 // ---------------------------------------------------------------- fixtures
 
+#[derive(Clone)]
 struct Owned {
     ctx: GameContext,
     metrics: PlayerGameMetrics,
@@ -112,6 +115,7 @@ fn value_row(metric: MetricId, value: f64, n: u32) -> KpiValue {
         window_key: "last50".into(),
         value: Some(value),
         value_adjusted: Some(value),
+        value_adjusted_raw: Some(value),
         n,
         ci_low: Some(value),
         ci_high: Some(value),
@@ -126,6 +130,7 @@ fn rate_row(metric: MetricId, k: u32, n: u32) -> KpiValue {
         window_key: "2026-W47".into(),
         value: Some(f64::from(k) / f64::from(n)),
         value_adjusted: None,
+        value_adjusted_raw: None,
         n,
         ci_low: Some(ci.low),
         ci_high: Some(ci.high),
@@ -271,7 +276,12 @@ fn opponent_adjustment_shifts_value_and_interval() {
     // The stored interval brackets the raw value; the adjusted one is shifted by the same amount.
     let (lo, hi) = (r.ci_low.unwrap(), r.ci_high.unwrap());
     assert!(lo <= 2.5 && 2.5 <= hi);
-    assert_eq!(r.adjusted_interval(), Some((lo - 2.0, hi - 2.0)));
+    assert_eq!(r.value_adjusted_raw, Some(0.5));
+    // Shifted by -2, then clamped at 0 like the value (per_game >= 0).
+    assert_eq!(
+        r.adjusted_interval(),
+        Some(((lo - 2.0).max(0.0), (hi - 2.0).max(0.0)))
+    );
     // A metric without a reference stat is not adjusted.
     assert_eq!(
         row(&out, base(BaseMetric::OneMoveBlundersPerGame)).value_adjusted,
@@ -396,7 +406,25 @@ fn mindset_has_no_benchmark_and_areas_come_in_contract_order() {
 #[test]
 fn catalogue_has_36_base_rows_and_contract_units() {
     let cat = kpi_catalogue();
-    assert_eq!(cat.len(), 36 + MotifTag::ALL.len() + 17);
+    assert_eq!(cat.len(), 69);
+    assert_eq!(CATALOGUE_LEN, 69);
+    assert_eq!(
+        cat.iter()
+            .filter(|d| matches!(d.metric, MetricId::MotifMissRate(_)))
+            .count(),
+        16
+    );
+    assert_eq!(
+        cat.iter()
+            .filter(|d| matches!(d.metric, MetricId::Weakness(_)))
+            .count(),
+        17
+    );
+    assert_eq!(
+        "score_after_non_loss".parse::<MetricId>().unwrap(),
+        base(BaseMetric::ScoreAfterNonLoss)
+    );
+    assert!("score_after_win".parse::<MetricId>().is_err());
     for (d, b) in cat.iter().zip(BaseMetric::ALL) {
         assert_eq!(d.metric, MetricId::Base(b));
     }
@@ -577,8 +605,9 @@ fn invalid_inputs_are_skipped_and_counted() {
     stale.metrics.version = PLAYER_GAME_METRICS_VERSION + 1;
     stale.metrics.blunders = 50;
     games.push(stale);
-    // A duplicate of game 0.
-    let mut dup = owned(0, NOW, TimeClass::Blitz);
+    // An identical copy of game 1 (merged), and a conflicting copy of game 0 (both refused).
+    games.push(games[1].clone());
+    let mut dup = games[0].clone();
     dup.metrics.blunders = 40;
     games.push(dup);
     // Non-finite values and impossible counts.
@@ -597,11 +626,13 @@ fn invalid_inputs_are_skipped_and_counted() {
     let report = compute_kpis_report(&kpi_games(&games), &LAST50, None);
     assert_eq!(report.skipped.stale_version, 1);
     assert_eq!(report.skipped.duplicate_game, 1);
+    assert_eq!(report.skipped.conflicting_duplicates, 1);
     assert_eq!(report.skipped.invalid_value, 3);
+    // Games 1..=4 (game 0 refused); the bad game's NaN accuracy is skipped.
     let acc = row(&report.values, base(BaseMetric::Accuracy));
-    assert_eq!((acc.value, acc.n), (Some(70.0), 5));
+    assert_eq!((acc.value, acc.n), (Some(70.0), 4));
     let bl = row(&report.values, base(BaseMetric::BlundersPerGame));
-    assert_eq!((bl.value, bl.n), (Some(1.0), 6));
+    assert_eq!((bl.value, bl.n), (Some(1.0), 5));
     let pin = row(&report.values, MetricId::MotifMissRate(MotifTag::Pin));
     assert_eq!((pin.value, pin.n), (None, 0));
     assert_eq!(
@@ -762,11 +793,21 @@ fn check_honest(values: &[KpiValue]) {
         match r.value {
             None => {
                 assert_eq!((r.value_adjusted, r.ci_low, r.ci_high), (None, None, None));
+                assert_eq!(r.value_adjusted_raw, None);
             }
             Some(v) => {
                 assert!(r.n >= 1, "{} value from n 0", r.metric);
                 if let (Some(lo), Some(hi)) = (r.ci_low, r.ci_high) {
                     assert!(lo <= v && v <= hi, "{}: {lo} {v} {hi}", r.metric);
+                    // Never a zero-width interval: it would claim certainty.
+                    assert!(lo < hi, "{}: zero width at {v}", r.metric);
+                }
+                assert_eq!(r.value_adjusted.is_some(), r.value_adjusted_raw.is_some());
+                if let Some(va) = r.value_adjusted {
+                    assert_eq!(clamp_to_unit(va, def.contract_unit), va, "{}", r.metric);
+                    if let Some((lo, hi)) = r.adjusted_interval() {
+                        assert!(lo <= va && va <= hi, "{}: {lo} {va} {hi}", r.metric);
+                    }
                 }
                 assert_eq!(r.ci_low.is_some(), r.ci_high.is_some());
                 if def.kind == KpiKind::Rate {
@@ -787,6 +828,14 @@ fn property_outputs_are_finite_bracketed_and_order_independent() {
     for case in 0..40 {
         let count = int(&mut rng, 120) as usize;
         let mut games = random_games(&mut rng, count);
+        // Identical copies (merged) and conflicting copies (the id is refused).
+        for j in 0..games.len().min(6) {
+            let mut copy = games[j].clone();
+            if j % 2 == 1 {
+                copy.metrics.blunders += 1;
+            }
+            games.push(copy);
+        }
         let reference = random_reference(&mut rng);
         let with_ref = (case % 3 != 0).then_some(&reference);
         let windows = [
@@ -876,5 +925,214 @@ fn property_wilson_rows_match_pooled_counts() {
             assert_eq!(r.value, Some(f64::from(k) / f64::from(n)));
             assert_eq!((r.ci_low, r.ci_high), (Some(ci.low), Some(ci.high)));
         }
+    }
+}
+
+// ---------------------------------------------------------------- fix round 1
+
+fn plain_games(count: u32) -> Vec<Owned> {
+    (0..count)
+        .map(|i| {
+            owned(
+                u128::from(i),
+                NOW - Duration::hours(i64::from(i)),
+                TimeClass::Blitz,
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn adjusted_value_is_clamped_to_the_unit_domain() {
+    // The review's case: a rate of 0 adjusted by -0.06.
+    let mut games = plain_games(20);
+    for o in &mut games {
+        o.metrics.time_trouble = Some(false);
+        o.metrics.opponent_rating = Some(1600);
+        o.metrics.eval_trend_15_to_35 = Some(1.0);
+    }
+    let tt = base(BaseMetric::TimeTroubleRate);
+    let trend = base(BaseMetric::EvalTrend1535);
+    let mut reference = BandReference::new();
+    let mut s = stat(tt, 0.05, 0.1, 0.15, 0.25);
+    s.opp_slope_per_100 = 0.06;
+    reference.insert(tt, s);
+    let mut s = stat(trend, -5.0, -2.0, 0.0, 3.0);
+    s.opp_slope_per_100 = 2.0;
+    reference.insert(trend, s);
+    let out = compute_kpis(&kpi_games(&games), &LAST50, Some(&reference));
+    let r = row(&out, tt);
+    assert_eq!(r.value, Some(0.0));
+    assert_eq!(r.value_adjusted, Some(0.0));
+    assert_eq!(r.value_adjusted_raw, Some(-0.06));
+    let (lo, hi) = r.adjusted_interval().unwrap();
+    assert_eq!(lo, 0.0);
+    assert!((hi - (r.ci_high.unwrap() - 0.06)).abs() < 1e-15 && hi > 0.0);
+    // A row without a unit stays signed.
+    let r = row(&out, trend);
+    assert_eq!((r.value, r.value_adjusted), (Some(1.0), Some(-1.0)));
+    // The clamp per unit.
+    assert_eq!(clamp_to_unit(1.2, Some(MetricUnit::Rate)), 1.0);
+    assert_eq!(clamp_to_unit(101.0, Some(MetricUnit::Pct)), 100.0);
+    assert_eq!(clamp_to_unit(-3.0, Some(MetricUnit::Seconds)), 0.0);
+    assert_eq!(clamp_to_unit(-3.0, Some(MetricUnit::Elo)), 0.0);
+    assert_eq!(clamp_to_unit(5000.0, Some(MetricUnit::PerGame)), 5000.0);
+    assert_eq!(clamp_to_unit(-3.0, None), -3.0);
+}
+
+#[test]
+fn no_rating_pair_means_no_adjustment() {
+    let mut games = plain_games(5);
+    for (i, o) in games.iter_mut().enumerate() {
+        o.metrics.blunders = i as u32;
+        o.metrics.opponent_rating = None;
+        o.ctx.opponent_rating = None;
+    }
+    let metric = base(BaseMetric::BlundersPerGame);
+    let mut s = stat(metric, 1.0, 1.5, 2.0, 3.0);
+    s.opp_slope_per_100 = 2.0;
+    let reference: BandReference = [(metric, s)].into_iter().collect();
+    let out = compute_kpis(&kpi_games(&games), &LAST50, Some(&reference));
+    let r = row(&out, metric);
+    assert_eq!(r.value, Some(2.0));
+    assert_eq!((r.value_adjusted, r.value_adjusted_raw), (None, None));
+    assert_eq!(r.adjusted_interval(), None);
+}
+
+#[test]
+fn rate_rows_weight_the_rating_gap_by_opportunities() {
+    let mut games = plain_games(2);
+    // +1 per 100 over 9 opportunities, -1 per 100 over 1.
+    games[0].metrics.sharp.positions = 9;
+    games[0].metrics.sharp.errors = 3;
+    games[0].metrics.opponent_rating = Some(1600);
+    games[1].metrics.sharp.positions = 1;
+    games[1].metrics.sharp.errors = 0;
+    games[1].metrics.opponent_rating = Some(1400);
+    let metric = base(BaseMetric::SharpErrorRate);
+    let mut s = stat(metric, 0.1, 0.2, 0.3, 0.4);
+    s.opp_slope_per_100 = 0.1;
+    let reference: BandReference = [(metric, s)].into_iter().collect();
+    let out = compute_kpis(&kpi_games(&games), &LAST50, Some(&reference));
+    let r = row(&out, metric);
+    assert_eq!((r.value, r.n), (Some(0.3), 10));
+    // Weighted gap (9 - 1) / 10 = 0.8, so the shift is 0.08 (unweighted it would be 0).
+    let va = r.value_adjusted.unwrap();
+    assert!((va - 0.22).abs() < 1e-15, "{va}");
+}
+
+#[test]
+fn zero_width_count_rows_use_the_garwood_interval() {
+    // 20 games, no blunders: the bootstrap is [0, 0].
+    let games = plain_games(20);
+    let out = compute_kpis(&kpi_games(&games), &LAST50, None);
+    let r = row(&out, base(BaseMetric::BlundersPerGame));
+    assert!(is_count_mean(r.metric));
+    assert_eq!((r.value, r.n, r.ci_low), (Some(0.0), 20, Some(0.0)));
+    // P(X = 0) = 0.1 at mu = ln 10.
+    let hi = r.ci_high.unwrap();
+    assert!((hi - 10f64.ln() / 20.0).abs() < 1e-10, "{hi}");
+    // Five games with one blunder each: chi2(0.1; 10)/2 = 2.432591, chi2(0.9; 12)/2 = 9.274674.
+    let mut games = plain_games(5);
+    for o in &mut games {
+        o.metrics.blunders = 1;
+    }
+    let out = compute_kpis(&kpi_games(&games), &LAST50, None);
+    let r = row(&out, base(BaseMetric::BlundersPerGame));
+    assert_eq!(r.value, Some(1.0));
+    let (lo, hi) = (r.ci_low.unwrap(), r.ci_high.unwrap());
+    assert!((lo - 2.432591 / 5.0).abs() < 2e-6, "{lo}");
+    assert!((hi - 9.274674 / 5.0).abs() < 2e-6, "{hi}");
+    assert_eq!(garwood_rate_interval(5.0, 5.0), Some((lo, hi)));
+    assert_eq!(garwood_rate_interval(1.5, 5.0), None);
+    assert_eq!(garwood_rate_interval(1.0, 0.0), None);
+}
+
+#[test]
+fn zero_width_other_rows_have_no_interval() {
+    let mut games = plain_games(20);
+    for o in &mut games {
+        o.metrics.accuracy = Some(70.0);
+    }
+    let out = compute_kpis(&kpi_games(&games), &LAST50, None);
+    let r = row(&out, base(BaseMetric::Accuracy));
+    assert!(!is_count_mean(r.metric));
+    assert_eq!((r.value, r.n), (Some(70.0), 20));
+    assert_eq!((r.ci_low, r.ci_high), (None, None));
+}
+
+#[test]
+fn need_more_does_not_underflow_when_n_exceeds_min_n() {
+    // accuracy.endgame has n far above min_n but no value: it does not count, and it must not
+    // produce `min_n - n` on a u32.
+    let metric = base(BaseMetric::AccuracyEndgame);
+    let mut r = value_row(metric, 60.0, 500);
+    r.value = None;
+    r.value_adjusted = None;
+    let kpis = vec![r];
+    let mut reference: BandReference = [(metric, stat(metric, 50.0, 55.0, 58.0, 65.0))]
+        .into_iter()
+        .collect();
+    let endgame = |reference: &BandReference| {
+        compute_area_scores(&kpis, Some(reference))
+            .into_iter()
+            .find(|s| s.area == Area::Endgame)
+            .unwrap()
+    };
+    let e = endgame(&reference);
+    assert_eq!(
+        (e.score, e.sufficient, e.need_more, e.n),
+        (None, false, None, 500)
+    );
+    // A benchmarked component with no data reports what it needs.
+    let w8 = MetricId::Weakness(WeaknessKey::W8Basics);
+    reference.insert(w8, stat(w8, 0.01, 0.02, 0.03, 0.05));
+    let e = endgame(&reference);
+    assert_eq!((e.need_more, e.n), (Some(80), 0));
+}
+
+#[test]
+fn without_a_reference_no_area_asks_for_more_games() {
+    let kpis = vec![value_row(base(BaseMetric::AccuracyEndgame), 60.0, 12)];
+    for a in compute_area_scores(&kpis, None) {
+        assert_eq!(
+            (a.score, a.sufficient, a.need_more),
+            (None, false, None),
+            "{:?}",
+            a.area
+        );
+    }
+}
+
+#[test]
+fn duplicates_are_merged_or_refused_independent_of_order() {
+    let mut games = plain_games(6);
+    for (i, o) in games.iter_mut().enumerate() {
+        o.metrics.blunders = i as u32;
+    }
+    let clean = compute_kpis(&kpi_games(&games), &LAST50, None);
+    // Identical copies change nothing.
+    let mut with_copies = games.clone();
+    with_copies.push(games[2].clone());
+    with_copies.push(games[2].clone());
+    let report = compute_kpis_report(&kpi_games(&with_copies), &LAST50, None);
+    assert_eq!(report.skipped.duplicate_game, 2);
+    assert_eq!(report.values, clean);
+    // A conflicting copy refuses the id, whichever copy comes first.
+    let mut conflict = games[3].clone();
+    conflict.metrics.blunders = 30;
+    games.push(conflict);
+    let first = compute_kpis_report(&kpi_games(&games), &LAST50, None);
+    assert_eq!(first.skipped.conflicting_duplicates, 1);
+    let bl = row(&first.values, base(BaseMetric::BlundersPerGame));
+    // Games 0, 1, 2, 4, 5.
+    assert_eq!((bl.value, bl.n), (Some(12.0 / 5.0), 5));
+    let mut rng = Rng::new(3);
+    for _ in 0..10 {
+        shuffle(&mut rng, &mut games);
+        assert_eq!(
+            compute_kpis_report(&kpi_games(&games), &LAST50, None),
+            first
+        );
     }
 }

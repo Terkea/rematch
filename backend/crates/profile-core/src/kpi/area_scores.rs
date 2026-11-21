@@ -76,13 +76,16 @@ fn has_benchmark(area: Area) -> bool {
 /// One score per area, in contract order ([`AREAS`]), from one window's snapshots (the first
 /// row per metric is used). The percentile uses `value_adjusted` when present, else `value`.
 ///
+/// `n` is the smallest component sample (games, or opportunities for rate components) among
+/// the components that matter: the counting ones when sufficient, else the benchmarked ones
+/// (with a reference stat), else all of them. A missing row has `n = 0`.
+///
 /// - Sufficient: `score` = mean percentile of the counting components (each in `[1, 99]`),
-///   `n` = the smallest `n` among them, `need_more = None`.
-/// - Otherwise `score = None`; `n` and `need_more = min_n - n` come from the first component
-///   short of its minimum (a missing row has `n = 0`). When no component is short (the gap is a
-///   missing benchmark, which more games cannot fix), `n` is the first component's and
 ///   `need_more = None`.
-/// - Mindset: `score None, sufficient false, need_more None`, `n` of its first component.
+/// - Otherwise `score = None`, and `need_more = min_n - n` of the first benchmarked component
+///   short of its minimum. `None` when no benchmarked component is short (no reference, or the
+///   gap is a missing benchmark, which more games cannot fix).
+/// - Mindset: `score None, sufficient false, need_more None`.
 pub fn compute_area_scores(kpis: &[KpiValue], reference: Option<&BandReference>) -> Vec<AreaScore> {
     AREAS
         .iter()
@@ -94,12 +97,14 @@ fn area_score(area: Area, kpis: &[KpiValue], reference: Option<&BandReference>) 
     let comps = area_components(area);
     let row_of = |m: MetricId| kpis.iter().find(|k| k.metric == m);
     let n_of = |m: MetricId| row_of(m).map_or(0, |r| r.n);
-    let first_n = comps.first().map_or(0, |&m| n_of(m));
+    let benchmarked = |m: &MetricId| reference.is_some_and(|r| r.contains_key(m));
+    let smallest = |ms: &mut dyn Iterator<Item = MetricId>| ms.map(n_of).min();
+    let all_n = smallest(&mut comps.iter().copied()).unwrap_or(0);
     if !has_benchmark(area) {
         return AreaScore {
             area,
             score: None,
-            n: first_n,
+            n: all_n,
             sufficient: false,
             need_more: None,
         };
@@ -125,15 +130,12 @@ fn area_score(area: Area, kpis: &[KpiValue], reference: Option<&BandReference>) 
             };
         }
     }
-    let short = comps.iter().find_map(|&m| {
+    let n = smallest(&mut comps.iter().copied().filter(benchmarked)).unwrap_or(all_n);
+    // `checked_sub` and the explicit test keep this free of u32 underflow when n >= min_n.
+    let need_more = comps.iter().filter(|m| benchmarked(m)).find_map(|&m| {
         let min_n = kpi_definition(m)?.min_n;
-        let n = n_of(m);
-        (n < min_n).then(|| (n, min_n - n))
+        min_n.checked_sub(n_of(m)).filter(|&need| need > 0)
     });
-    let (n, need_more) = match short {
-        Some((n, need)) => (n, Some(need)),
-        None => (first_n, None),
-    };
     AreaScore {
         area,
         score: None,

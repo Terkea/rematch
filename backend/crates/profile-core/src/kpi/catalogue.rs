@@ -263,9 +263,9 @@ fn score_after_loss(g: &KpiGame<'_>) -> Option<Extracted> {
     value(g.metrics.score?)
 }
 
-/// After a game in the same session that was not lost (a win or a draw): `SessionInfo` carries
-/// only `after_loss` (ADR-R2-7).
-fn score_after_win(g: &KpiGame<'_>) -> Option<Extracted> {
+/// `score_after_non_loss`: after a game in the same session that was not lost (a win or a
+/// draw). `SessionInfo` carries only `after_loss` (ADR-R2-7).
+fn score_after_non_loss(g: &KpiGame<'_>) -> Option<Extracted> {
     let s = g.session?;
     (!s.after_loss && s.index_in_session > 1).then_some(())?;
     value(g.metrics.score?)
@@ -346,6 +346,27 @@ const WEAKNESS_EXTRACT: [Extract; 17] = [
     weakness_rate::<15>,
     weakness_rate::<16>,
 ];
+
+const _: () = assert!(MOTIF_EXTRACT.len() == MotifTag::ALL.len());
+const _: () = assert!(WEAKNESS_EXTRACT.len() == RANKABLE.len());
+
+/// Total catalogue rows: 36 base + 16 motif + 17 weakness.
+pub const CATALOGUE_LEN: usize = BaseMetric::ALL.len() + MotifTag::ALL.len() + RANKABLE.len();
+
+/// Count-type `Mean` rows (an integer count per game): a zero-width bootstrap falls back to the
+/// exact Poisson (Garwood) interval of the total count.
+pub fn is_count_mean(metric: MetricId) -> bool {
+    matches!(
+        metric,
+        MetricId::Base(
+            BaseMetric::BlundersPerGame
+                | BaseMetric::OneMoveBlundersPerGame
+                | BaseMetric::TacticsMissedPerGame
+                | BaseMetric::TacticsAllowedPerGame
+                | BaseMetric::TbErrorsPerEndgame
+        )
+    )
+}
 
 fn motif_label(t: MotifTag) -> &'static str {
     match t {
@@ -445,7 +466,7 @@ const BASE_ROWS: [KpiDefinition; 36] = {
         row(B::EndgameHoldRate, ENDGAME, Rate, RATE, UP, 15, "Drawn endgames held", endgame_hold),
         row(B::TbErrorsPerEndgame, ENDGAME, Mean, PER_GAME, DOWN, 20, "Tablebase errors per endgame", tb_errors),
         row(B::ScoreAfterLoss, MINDSET, Mean, RATE, UP, 20, "Score after a loss", score_after_loss),
-        row(B::ScoreAfterWin, MINDSET, Mean, RATE, UP, 20, "Score after a win or draw", score_after_win),
+        row(B::ScoreAfterNonLoss, MINDSET, Mean, RATE, UP, 20, "Score after a win or draw", score_after_non_loss),
         row(B::SessionAccuracyDecline, MINDSET, Mean, None, UP, 20, "Accuracy change late in a session", session_decline_input),
         row(B::FirstGameAccuracy, MINDSET, Mean, PCT, UP, 20, "First-game accuracy", first_game_accuracy),
         row(B::LaterGamesAccuracy, MINDSET, Mean, PCT, UP, 20, "Later-games accuracy", later_games_accuracy),
