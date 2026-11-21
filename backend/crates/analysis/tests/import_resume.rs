@@ -436,9 +436,19 @@ async fn re_fetches_the_last_30_days_on_lichess_so_late_finishing_correspondence
 async fn records_an_error_code_from_the_typed_platform_error(pool: PgPool) {
     let p = |e: PlatformError| import_error_code(&ImportFailure::Platform(e));
     let url = || "u".to_owned();
+    let not_found = |u: &str| p(PlatformError::NotFound { url: u.to_owned() });
+    // Only a user-level 404 (the chess.com archive list, the Lichess user stream) is not_found.
     assert_eq!(
-        p(PlatformError::NotFound { url: url() }),
+        not_found("https://api.chess.com/pub/player/ghost/games/archives"),
         ImportErrorCode::NotFound
+    );
+    assert_eq!(
+        not_found("https://lichess.org/api/games/user/ghost?sort=dateDesc"),
+        ImportErrorCode::NotFound
+    );
+    assert_eq!(
+        not_found("https://api.chess.com/pub/player/ghost/games/2026/01"),
+        ImportErrorCode::Unknown
     );
     assert_eq!(
         p(PlatformError::RateLimited {

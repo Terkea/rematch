@@ -13,7 +13,12 @@
 //! - a run whose account's newest run is `paused` reuses that row instead of inserting one;
 //! - each `next()` races an idle [`Deadline`] (reset after every game) and the shutdown token;
 //! - an open breaker or a shutdown pauses the run and releases the job without using an attempt;
-//! - `not_found` is unrecoverable: the run fails at once and `job.failed` is published.
+//! - a user-level `not_found` (the chess.com archive list or the Lichess user stream) is
+//!   unrecoverable: the run fails at once and `job.failed` is published. A 404 on one chess.com
+//!   monthly archive stays retryable (`unknown`);
+//! - one handler per account at a time (a session advisory lock): a handler that lost its lease
+//!   and is still running makes the re-claimed job release (`account_busy`) instead of
+//!   interleaving cursor and watermark writes with it.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -35,7 +40,8 @@ use queue::{
     import_key,
 };
 use serde_json::{Value, json};
-use sqlx::PgPool;
+use sqlx::pool::PoolConnection;
+use sqlx::{PgPool, Postgres};
 use time::OffsetDateTime;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
@@ -54,6 +60,11 @@ pub const LICHESS_SINCE_LOOKBACK: Duration = Duration::from_secs(30 * 24 * 3600)
 pub const BREAKER_MIN_DELAY: Duration = Duration::from_secs(5);
 /// The longest a half-open probe can take (the platform request timeout).
 pub const PROBE_TIMEOUT: Duration = Duration::from_secs(30);
+/// How long an import waits before retrying when another handler holds the account.
+pub const ACCOUNT_BUSY_DELAY: Duration = Duration::from_secs(30);
+/// Advisory-lock namespace (`classid`) of the per-account import lock. The two-key form never
+/// conflicts with the single-key locks used elsewhere (the events lock 7262011).
+const IMPORT_LOCK_NAMESPACE: i32 = 7_262_021;
 /// Max attempts of an import job.
 pub const IMPORT_MAX_ATTEMPTS: i32 = 3;
 /// `import_runs.last_error` keeps at most this many characters.
@@ -122,7 +133,9 @@ pub enum ImportFailure {
 /// Maps a failure to the stable code stored on `import_runs.error_code`.
 pub fn import_error_code(err: &ImportFailure) -> ImportErrorCode {
     match err {
-        ImportFailure::Platform(PlatformError::NotFound { .. }) => ImportErrorCode::NotFound,
+        ImportFailure::Platform(PlatformError::NotFound { url }) if is_user_not_found(url) => {
+            ImportErrorCode::NotFound
+        }
         ImportFailure::Platform(PlatformError::RateLimited { .. }) => ImportErrorCode::RateLimited,
         ImportFailure::Platform(PlatformError::Timeout { .. }) | ImportFailure::Deadline(_) => {
             ImportErrorCode::Timeout
@@ -249,6 +262,20 @@ pub async fn handle_import_account(
         }
         Err(e) => return Err(retryable(&ImportFailure::Db(e))),
     };
+    // One handler per account at a time: a lease-lost handler still running must not
+    // interleave its cursor writes (or its end-of-pass watermark) with the re-claimed job's.
+    // The lock lives on a dedicated connection that is closed when dropped, so it is released
+    // however this future ends (completion, error, or the runner dropping it).
+    let _account_lock = match lock_account(&deps.pool, account.id).await {
+        Ok(Some(conn)) => conn,
+        Ok(None) => {
+            return Err(JobError::Release {
+                delay: ACCOUNT_BUSY_DELAY,
+                reason: "account_busy".to_owned(),
+            });
+        }
+        Err(e) => return Err(retryable(&ImportFailure::Db(e))),
+    };
     let (run_id, base_imported) = open_run(&deps.pool, account.id)
         .await
         .map_err(|e| retryable(&ImportFailure::Db(e)))?;
@@ -300,6 +327,36 @@ fn truncate_chars(s: &str, max: usize) -> String {
         Some((at, _)) => s[..at].to_owned(),
         None => s.to_owned(),
     }
+}
+
+/// True for a 404 that means the *user* does not exist: the chess.com archive list or the
+/// Lichess user game stream. A 404 on one chess.com monthly archive is not (it stays retryable).
+fn is_user_not_found(url: &str) -> bool {
+    let path = url.split(['?', '#']).next().unwrap_or(url);
+    path.ends_with("/games/archives") || path.contains("/api/games/user/")
+}
+
+/// Folds the account id into the lock's `objid`. A collision only delays an import.
+fn account_lock_key(account_id: Uuid) -> i32 {
+    let v = account_id.as_u128();
+    let folded = (v as u32) ^ ((v >> 32) as u32) ^ ((v >> 64) as u32) ^ ((v >> 96) as u32);
+    i32::from_ne_bytes(folded.to_ne_bytes())
+}
+
+/// Takes the account's session advisory lock on a dedicated connection, or `None` when another
+/// handler holds it. The connection is closed (not pooled) when dropped, which releases the lock.
+async fn lock_account(
+    pool: &PgPool,
+    account_id: Uuid,
+) -> Result<Option<PoolConnection<Postgres>>, sqlx::Error> {
+    let mut conn = pool.acquire().await?;
+    conn.close_on_drop();
+    let locked: bool = sqlx::query_scalar("SELECT pg_try_advisory_lock($1, $2)")
+        .bind(IMPORT_LOCK_NAMESPACE)
+        .bind(account_lock_key(account_id))
+        .fetch_one(&mut *conn)
+        .await?;
+    Ok(locked.then_some(conn))
 }
 
 fn platform_of(s: &str) -> Option<Platform> {
@@ -602,7 +659,7 @@ impl Run<'_> {
                 delay: Duration::ZERO,
                 reason: code.as_str().to_owned(),
             },
-            ImportFailure::Platform(PlatformError::NotFound { .. }) => {
+            ImportFailure::Platform(PlatformError::NotFound { url }) if is_user_not_found(&url) => {
                 self.publish(UserEventType::JobFailed, job_failed).await;
                 JobError::Unrecoverable {
                     message,
