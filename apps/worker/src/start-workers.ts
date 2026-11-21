@@ -1,11 +1,12 @@
 import os from "node:os";
-import { createDb, type Db } from "@ci/db";
-import { type Job, Worker, type WorkerOptions } from "bullmq";
+import { createDb, type Db, games } from "@ci/db";
+import { DelayedError, type Job, Worker, type WorkerOptions } from "bullmq";
+import { and, eq, notInArray } from "drizzle-orm";
 import type { Redis } from "ioredis";
 import { createDbEvalCache } from "./analysis/eval-cache.js";
 import { EnginePool } from "./engine/engine-pool.js";
 import { publishEvent } from "./events/publish.js";
-import { createCircuitBreaker } from "./http/circuit-breaker.js";
+import { CircuitOpenError, createCircuitBreaker } from "./http/circuit-breaker.js";
 import { createPlatformClient, PlatformNotFoundError } from "./http/platform-client.js";
 import { fetchChesscomGames } from "./importers/chesscom.js";
 import { fetchLichessGames } from "./importers/lichess.js";
@@ -31,6 +32,8 @@ export interface WorkerEnv {
   STOCKFISH_PATH: string;
   CONTACT_EMAIL: string;
   LICHESS_TOKEN?: string | undefined;
+  /** Days the incremental Lichess pass re-fetches below the watermark (default 30). */
+  LICHESS_SINCE_LOOKBACK_DAYS?: string | undefined;
 }
 
 export interface WorkerRuntime {
@@ -46,10 +49,15 @@ const attemptOf = (job: Job): JobAttempt => ({
   attempts: job.opts.attempts ?? 1,
 });
 
+/** Server-side cap on any single query from the worker. */
+export const WORKER_STATEMENT_TIMEOUT_MS = 30_000;
+/** Lower bound on how long an import waits for an open breaker before re-probing. */
+const MIN_BREAKER_DELAY_MS = 100;
+
 function createWorker<T>(
   rt: WorkerRuntime,
   queue: string,
-  processor: (job: Job<T>) => Promise<unknown>,
+  processor: (job: Job<T>, token?: string) => Promise<unknown>,
   concurrency: number,
   context: (data: T) => Record<string, unknown>,
 ): Worker<T> {
@@ -79,18 +87,63 @@ function createWorker<T>(
   return worker;
 }
 
+/**
+ * When BullMQ gives up on an analyse job (attempts used up, or stalled more than
+ * maxStalledCount, where the handler never even ran), make the DB say so. Guarded so a game
+ * already done, failed or skipped is left as it is, and `job.failed` is published once.
+ */
+async function recordFinalFailure(
+  deps: AnalyseGameDeps,
+  log: Logger,
+  job: Job<AnalyseGamePayload>,
+  err: Error,
+): Promise<void> {
+  if ((await job.getState()) !== "failed") return;
+  const reason = errorMessage(err).slice(0, 2000);
+  const [row] = await deps.db
+    .update(games)
+    .set({ analysisStatus: "failed", analysisError: reason })
+    .where(
+      and(
+        eq(games.id, job.data.gameId),
+        notInArray(games.analysisStatus, ["done", "failed", "skipped"]),
+      ),
+    )
+    .returning({ accountId: games.accountId });
+  if (!row) return;
+  log.warn({ gameId: job.data.gameId, jobId: job.id, reason }, "analysis given up by BullMQ");
+  await deps
+    .publish?.(row.accountId, "job.failed", {
+      kind: "analyse-game",
+      gameId: job.data.gameId,
+      reason,
+    })
+    .catch((e) => log.warn({ gameId: job.data.gameId, err: errorMessage(e) }, "publish failed"));
+}
+
 export function createAnalyseWorker(
   rt: WorkerRuntime,
   deps: AnalyseGameDeps,
   concurrency: number,
 ): Worker<AnalyseGamePayload> {
-  return createWorker<AnalyseGamePayload>(
+  const log = rt.log ?? defaultLog;
+  const worker = createWorker<AnalyseGamePayload>(
     rt,
     ANALYSE_GAME_QUEUE,
-    (job) => handleAnalyseGame({ log: rt.log, ...deps }, job.data, attemptOf(job)),
+    (job) => handleAnalyseGame({ log, ...deps }, job.data, attemptOf(job)),
     concurrency,
     (d) => ({ gameId: d.gameId }),
   );
+  worker.on("failed", (job, err) => {
+    if (!job) return;
+    recordFinalFailure(deps, log, job, err).catch((e) =>
+      log.error(
+        { gameId: job.data.gameId, err: errorMessage(e) },
+        "recording final failure failed",
+      ),
+    );
+  });
+  return worker;
 }
 
 export function createImportWorker(
@@ -98,10 +151,25 @@ export function createImportWorker(
   deps: ImportAccountDeps,
   concurrency: number,
 ): Worker<ImportAccountPayload> {
+  const log = rt.log ?? defaultLog;
   return createWorker<ImportAccountPayload>(
     rt,
     IMPORT_ACCOUNT_QUEUE,
-    (job) => handleImportAccount({ log: rt.log, ...deps }, job.data, attemptOf(job)),
+    async (job, token) => {
+      try {
+        return await handleImportAccount({ log, ...deps }, job.data, attemptOf(job));
+      } catch (err) {
+        if (!(err instanceof CircuitOpenError) || !token) throw err;
+        // The platform is down, not this job: wait out the breaker without using an attempt.
+        const delayMs = Math.max(MIN_BREAKER_DELAY_MS, err.retryInMs);
+        log.warn(
+          { jobId: job.id, accountId: job.data.accountId, delayMs },
+          "circuit open; delayed",
+        );
+        await job.moveToDelayed(Date.now() + delayMs, token);
+        throw new DelayedError();
+      }
+    },
     concurrency,
     (d) => ({ accountId: d.accountId }),
   );
@@ -131,42 +199,33 @@ export async function startWorkers(
   opts: { prefix?: string; poolSize?: number; log?: Logger } = {},
 ): Promise<RunningWorkers> {
   const log = opts.log ?? defaultLog;
-  const db = createDb(env.DATABASE_URL);
+  const db = createDb(env.DATABASE_URL, { statementTimeoutMs: WORKER_STATEMENT_TIMEOUT_MS });
   const size = opts.poolSize ?? Math.max(1, os.cpus().length - 1);
-  let pool: EnginePool;
-  try {
-    pool = await EnginePool.create({ size, path: env.STOCKFISH_PATH });
-  } catch (err) {
-    await db.$client.end({ timeout: 5 }).catch(() => {});
-    throw err;
-  }
-  const connection = createRedisConnection(env.REDIS_URL);
-  connection.on("error", (err) => log.error({ err: errorMessage(err) }, "redis error"));
-  const queues = createQueues(connection, { ...(opts.prefix ? { prefix: opts.prefix } : {}), log });
+  let pool: EnginePool | undefined;
+  let connection: Redis | undefined;
+  let queues: Queues | undefined;
   const workers: Worker[] = [];
   try {
+    pool = await EnginePool.create({ size, path: env.STOCKFISH_PATH });
+    const redis = createRedisConnection(env.REDIS_URL);
+    connection = redis;
+    redis.on("error", (err) => log.error({ err: errorMessage(err) }, "redis error"));
+    const q = createQueues(redis, { ...(opts.prefix ? { prefix: opts.prefix } : {}), log });
+    queues = q;
     const cache = createDbEvalCache(db);
     const publish: AnalyseGameDeps["publish"] = (accountId, type, payload) =>
-      publishEvent({ db, redis: connection }, accountId, type, payload);
+      publishEvent({ db, redis }, accountId, type, payload);
     const clients = {
       lichess: createPlatformClient({ name: "lichess", contactEmail: env.CONTACT_EMAIL }),
       chesscom: createPlatformClient({ name: "chesscom", contactEmail: env.CONTACT_EMAIL }),
     };
     const isOutage = (err: unknown) => !(err instanceof PlatformNotFoundError);
-    const breakers = {
-      lichess: createCircuitBreaker({
-        failureThreshold: 5,
-        cooldownMs: 60_000,
-        isFailure: isOutage,
-      }),
-      chesscom: createCircuitBreaker({
-        failureThreshold: 5,
-        cooldownMs: 60_000,
-        isFailure: isOutage,
-      }),
-    };
+    const breaker = () =>
+      createCircuitBreaker({ failureThreshold: 5, cooldownMs: 60_000, isFailure: isOutage });
+    const breakers = { lichess: breaker(), chesscom: breaker() };
+    const lookback = Number(env.LICHESS_SINCE_LOOKBACK_DAYS);
     const rt: WorkerRuntime = {
-      connection,
+      connection: redis,
       ...(opts.prefix ? { prefix: opts.prefix } : {}),
       log,
     };
@@ -179,34 +238,41 @@ export async function startWorkers(
           clients,
           breakers,
           ...(env.LICHESS_TOKEN ? { lichessToken: env.LICHESS_TOKEN } : {}),
-          enqueueAnalyse: queues.enqueueAnalyse,
+          ...(Number.isFinite(lookback) && env.LICHESS_SINCE_LOOKBACK_DAYS
+            ? { lichessSinceLookbackDays: lookback }
+            : {}),
+          enqueueAnalyse: q.enqueueAnalyse,
           publish,
         },
         2,
       ),
       createAnalyseWorker(rt, { db, pool, cache, publish }, size),
-      createReconcileWorker(rt, { db, queues }),
+      createReconcileWorker(rt, { db, queues: q, publish }),
     );
   } catch (err) {
     await Promise.allSettled(workers.map((w) => w.close(true)));
-    await queues.close().catch(() => {});
-    connection.disconnect();
-    await pool.close();
+    await queues?.close().catch(() => {});
+    connection?.disconnect();
+    await pool?.close().catch(() => {});
     await db.$client.end({ timeout: 5 }).catch(() => {});
     throw err;
   }
 
+  if (!pool || !queues || !connection) throw new Error("startWorkers: setup incomplete");
+  const readyPool = pool;
+  const readyQueues = queues;
+  const redis = connection;
   return {
     workers,
-    pool,
+    pool: readyPool,
     db,
-    redis: connection,
-    queues,
+    redis,
+    queues: readyQueues,
     async close() {
       await Promise.all(workers.map((w) => w.close()));
-      await queues.close();
-      connection.disconnect();
-      await pool.close();
+      await readyQueues.close();
+      redis.disconnect();
+      await readyPool.close();
       await db.$client.end({ timeout: 5 });
     },
   };
