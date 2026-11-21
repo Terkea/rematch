@@ -8,7 +8,7 @@
 - `input`: the contract;
 - `output`: schemas, drills and the disclosure;
 - `validator`: evidence, reference tokens, the leak detector and the claim rules;
-- `client`: our own reqwest client for Anthropic Messages, Batches and SSE streaming, plus a breaker and a scripted fake;
+- `client`: the Rust client of the Claude Agent SDK sidecar (`services/ai-sidecar`, ADR-R3-6) for interactive calls, a minimal reqwest Messages Batches client, the chat tool endpoint, a breaker and a scripted fake;
 - `prompts`: versioned prompt files embedded at compile time;
 - `generate`: sectioned generation with repair once, then drop;
 - `jobs` and `db`: the Postgres queue handlers and the AI tables;
@@ -31,6 +31,8 @@ A report is five structured-output calls (`overview`, `weaknesses`, `openings`, 
 
 
 > **Controller amendment (R1 T1 fix, ADR 0031):** `chrono` is NOT used. Every timestamp is `time::OffsetDateTime` (`DateTime<Utc>` in this text means `OffsetDateTime`; `Utc::now()` means `OffsetDateTime::now_utc()`). JSON timestamps that must match the TS reference / `Date.toISOString()` use `#[serde(with = "common::js_time::iso")]` (or `::option`), which always writes UTC with exactly 3 fractional digits. sqlx uses its `time` feature.
+
+> **Controller amendment (ADR-R3-6):** Interactive calls (report sections, weekly reviews, change notes, chat) go through the Node Agent SDK sidecar (Task 10); only Batches use the Messages API from Rust (Task 11). The request and caching rules below bind the batch wire and the prompt layout; on the sidecar path the SDK caches automatically, and Rust still never sends sampling parameters, `thinking` or fallbacks. `ANTHROPIC_API_KEY` is read by the sidecar (and by the worker for batches only); a subscription `CLAUDE_CODE_OAUTH_TOKEN` is development-only and refused in production. npm dependencies are pinned exactly and pass `scripts/check-npm-age.mjs`.
 
 ## Global Constraints
 
@@ -114,7 +116,7 @@ R3 adds these:
   - user text and tool results are data, never instructions that change the rules;
   - every published paragraph passes the validator, with one repair and then a fixed safe fallback sentence.
 - **Events:** AI events are inserted with R1's `events::insert_user_event(&mut tx, …)` inside the same transaction as the state change they announce. That gives exactly one event per transition, delivered on commit.
-- **ADRs:** use the placeholders `ADR-R3-1` … `ADR-R3-7` (files `docs/decisions/ADR-R3-n-<slug>.md`), each written by its owning task. Task 26 renumbers them from the next free number and adds them to the index.
+- **ADRs:** use the placeholders `ADR-R3-1` … `ADR-R3-8` (files `docs/decisions/ADR-R3-n-<slug>.md`), each written by its owning task. Task 26 renumbers them from the next free number and adds them to the index.
 
 ## Review Focus
 
@@ -132,7 +134,7 @@ R3 adds these:
 
    Each is a failed attempt or a typed error. Nothing panics, and a report never throws past its handler. Tests:
    - T9 `thinking_only_content_is_no_text`;
-   - T11 `stream_dropped_mid_message_is_connection_error`;
+   - T11 `stream_dropped_mid_message_is_connection_error` (the sidecar SSE stream);
    - T14 `refusal_then_truncation_drops_section_without_throwing`;
    - T23 `truncated_tool_input_gets_an_error_result`.
 4. **Duplicate or crashed report work:**
@@ -199,7 +201,7 @@ Each lane has its own worktree and branch (`r3/<lane>`), based on the commit of 
 | 0 bootstrap | the Cargo and lockfile changes, the `ai` crate skeleton, shared types, fixtures, TS exports | T1 |
 | A contract and schemas | `ai/src/input/{parse,validate}.rs`, `ai/src/output/**` | T2, T3 |
 | B validator and tokens | `ai/src/validator/**`, `chess-core/src/board.rs` (adds `play_uci` only), `chess-core/tests/board_uci.rs` | T5, T6, T7, T8 |
-| C HTTP client | `ai/src/client/**` | T9, T10, T11, T12 |
+| C AI runtime | `ai/src/client/**`, `services/ai-sidecar/**`, the `ai-sidecar` compose service and its `.env.example` block | T9, T10, T11, T12 |
 | D prompts and generation | `ai/prompts/**` (except `chat/`), `ai/src/prompts.rs`, `ai/src/generate/**` | T13, T14, T15, T16 |
 | E jobs, tables and batch | `db/migrations/20261121030000_ai_coaching.sql`, `ai/src/{db,jobs,events}/**` | T17, T18, T19, T20, T21 |
 | F chat | `ai/src/chat/**`, `ai/prompts/chat/**`, `ai/prompts/chat-summary/**` | T22, T23, T24, T25 |
@@ -227,7 +229,7 @@ R1 tasks per lane, so each lane starts as early as possible in parallel with R1 
 | 0 | T1 |
 | A | T1 only (FEN checks use `cozy_chess::Board::from_fen(fen, false)`, the same rule as R1's `engine::validate_fen`) |
 | B | T1; Task 7 needs T3 (`Position`, chess.js-compatible SAN) |
-| C | T1 only (reqwest, rustls, wiremock) |
+| C | T1 only (reqwest, rustls, wiremock; axum added by the coordinator for T11; the sidecar npm pins for T10) |
 | D | T1 only |
 | E | T12 (`db::connect`, `MIGRATOR`, baseline tables), T13 (`Queue::enqueue`, `live_states`), T14 (`Handler`, `Runner`, `JobError::Release`), T16 (`insert_user_event`) |
 | F | T22 and T23 need nothing beyond T1. T24 (interactive engine) needs R1 T1 (`Analyser`, `AnalyseOptions`), R1 T13 and R1 T14; it uses a test-local fake analyser. T25 needs T2 (`fen_key`), T12, T14, T16, plus the `position_evals` read semantics of T17 |
@@ -791,86 +793,251 @@ pub fn input(name: &str) -> CoachingInput;                          // load + se
 - [ ] **Step 4: Run** the tests. Expected: PASS.
 - [ ] **Step 5: Commit** `feat(ai): anthropic wire types, error taxonomy, cost and custom ids`.
 
-### Task 10 (C): SSE parser and stream accumulator
+### Task 10 (C): Claude Agent SDK sidecar (services/ai-sidecar)
+
+Binding decision: ADR-R3-6. The sidecar is a thin, stateless wrapper around `query()`. It has no database access and holds no business rules. Rust builds every prompt, checks every output, owns budgets, the breaker and metering, and executes every chat tool. This task's contract is the one Task 11 codes against; change it only together with Task 11.
 
 **Files:**
-- Create: `backend/crates/ai/src/client/sse.rs`
-- Test: `backend/crates/ai/tests/sse.rs`, `backend/fixtures/ai/api/{sse-text.sse,sse-tool-use.sse,sse-thinking-text.sse,sse-error-overloaded.sse,sse-split-utf8.bin}`
+- Create: `services/ai-sidecar/{package.json,tsconfig.json,tsconfig.build.json}`, copied from `packages/chess-core`. The name is `@ci/ai-sidecar`, it is private, and `scripts.start` is `node dist/index.js`.
+- Create: `services/ai-sidecar/src/{index.ts,config.ts,server.ts,auth.ts,limiter.ts,options.ts,query.ts,chat.ts,tools.ts,schema-to-zod.ts,errors.ts,sse.ts}`
+- Test: `services/ai-sidecar/test/{config,options,query,chat,tools,schema-to-zod,limiter,server}.test.ts`
+- Create: `services/ai-sidecar/Dockerfile`
+- Modify: `docker-compose.yml` (adds the `ai-sidecar` service and its `ai_sidecar_node_modules` volume in `x-workspace-volumes` and `volumes:`, and nothing else), `.env.example` (the sidecar block below)
+- Modify: `docs/decisions/ADR-R3-6-claude-agent-sdk-sidecar.md` (append "Contract and isolation")
+
+**Dependencies (exact pins, each checked by `node scripts/check-npm-age.mjs`):** The coordinator commits these dependency lists and `pnpm-lock.yaml` before dispatch, as with Cargo, and this task does not change them.
+- `@anthropic-ai/claude-agent-sdk` `0.3.325`. It was published 2026-11-13, so it is the newest release at least 7 days old on 2026-11-21. Its licence is "SEE LICENSE IN README.md", which means Anthropic's commercial terms; record that in the ADR. Its platform binaries come from `optionalDependencies` at the same version, so installs never pass `--no-optional`.
+- The SDK's required peers: `zod` `4.6.7` (the repo's existing pin), `@modelcontextprotocol/sdk` `1.32.2` (MIT) and `@anthropic-ai/sdk` `1.8.0` (Apache-2.0). Each is the newest release published before 2026-11-14.
+- Dev dependencies: `@types/node` `22.20.5` and `vitest` `5.1.0`, as in chess-core. The HTTP server is `node:http`, with no framework.
 
 **Interfaces:**
-- Produces:
-  - `SseEvent { event: Option<String>, data: String }` and `SseDecoder::default()`, with `push(&mut self, chunk: &[u8]) -> Vec<SseEvent>` and `finish(self) -> Result<(), SseError /* trailing partial event */>`. It handles CRLF and LF, multi-line `data:` joined with `\n`, `:` comment lines, a field without a value, chunk splits mid-line and inside a UTF-8 sequence, and dispatch on a blank line;
-  - `StreamAccumulator::default()`, with `apply(&mut self, ev: &SseEvent) -> Result<Option<String /* text delta */>, AiError>` and `finish(self) -> Result<TurnResult, AiError>`. It handles these events:
-    - `message_start` (model, initial usage);
-    - `content_block_start` (`text` / `tool_use {id,name,input:{}}` / `thinking` / other kept raw);
-    - `content_block_delta` (`text_delta.text`, `input_json_delta.partial_json`, `thinking_delta.thinking`, `signature_delta.signature`; other delta types ignored);
-    - `content_block_stop` (a tool_use input is parsed strictly from the concatenated `partial_json`, where `""` is `{}`. On a parse failure the block's `input` is `{}` and `ToolUse.input = None`);
-    - `message_delta` (`delta.stop_reason`, `usage.output_tokens`, and cache usage fields when present);
-    - `message_stop`;
-    - `ping` (ignored);
-    - `error` (`{"type":"error","error":{"type":…}}` is classified with `classify_status(529 for overloaded_error, 500 for api_error, else 500)`).
+- Consumes: nothing from Rust at build time. At runtime it calls Rust's tool endpoint (Task 11 `ToolServer`).
+- Produces the HTTP contract. Every request needs `authorization: Bearer ${AI_SIDECAR_TOKEN}`; without it the reply is 401. Bodies are JSON and keys are camelCase. Every error uses the Anthropic error body, `{"type":"error","error":{"type":"<api error type>","message":"<redacted>"}}`, so Rust's `classify_status` (T9) maps it unchanged.
+  - `POST /v1/query` handles structured JSON calls. The request body:
 
-    `finish` without `message_stop` gives `Unavailable(Connection)`.
+```json
+{"model":"claude-sonnet-5-5","effort":"medium","maxTokens":16000,"timeoutMs":600000,"maxTurns":3,
+ "systemPrompt":"<system blocks joined by \n\n>",
+ "prompt":[{"type":"text","text":"<coaching_input>…</coaching_input>"},{"type":"text","text":"<section task>"}],
+ "outputFormat":{"type":"json_schema","schema":{…}}}
+```
 
-- [ ] **Step 1: Write the failing tests:**
-  - `decodes_events_across_arbitrary_chunk_boundaries`: feed `sse-tool-use.sse` in every split size from 1 to 64 bytes; the events equal a one-shot decode;
-  - `split_utf8_is_reassembled` (an `é` split across two chunks);
-  - `accumulates_text_and_tool_use`: text deltas `["Let me ", "check."]` and a tool_use with input `{"gameId":"g1","ply":24}` from three `partial_json` pieces, with `stop_reason "tool_use"` and `output_tokens` from `message_delta`;
-  - `thinking_block_is_kept_raw_for_replay`: the content keeps `{"type":"thinking","thinking":"","signature":"sig"}` byte-equal after serialisation;
-  - `invalid_partial_json_gives_none_input`;
-  - `error_event_is_overloaded`;
-  - `missing_message_stop_is_connection_error`.
-- [ ] **Step 2: Run** `LANE=C $RUST cargo test -p ai --test sse`. Expected: FAIL.
-- [ ] **Step 3: Implement.** Write the fixture files by hand from the event shapes above (the `claude-api` skill, `curl/examples.md` Streaming). Task 27 may add recorded ones.
-- [ ] **Step 4: Run** the tests. Expected: PASS.
-- [ ] **Step 5: Commit** `feat(ai): sse decoder and stream accumulator`.
+    The response is 200 whenever the SDK produced a result message, including the error subtypes:
 
-### Task 11 (C): Anthropic HTTP client (Messages, streaming, Batches, retries, timeouts)
+```json
+{"subtype":"success","stopReason":"end_turn","structuredOutput":{…},"text":"…","numTurns":1,"durationMs":4210,
+ "modelUsage":{"claude-sonnet-5-5":{"inputTokens":12,"outputTokens":800,"cacheReadInputTokens":5100,"cacheCreationInputTokens":0}},
+ "sdkCostUsd":0.0123}
+```
+
+    `subtype` passes through: `success`, `error_max_turns`, `error_max_structured_output_retries` or `error_during_execution`. The field `structuredOutput` is omitted when it is absent. When the result carries `api_error_status`, the reply instead has that HTTP status and an error body whose type comes from the status: 400 → `invalid_request_error`, 401 → `authentication_error`, 403 → `permission_error`, 429 → `rate_limit_error` (forwarding `retry-after` when it is known), 529 → `overloaded_error`, and any other status ≥ 500 → `api_error`.
+  - `POST /v1/chat` handles a streaming chat turn over SSE (`content-type: text/event-stream`). The body is the `/v1/query` body without `outputFormat`, plus `"tools":[{"name","description","inputSchema"}]` and `"toolCallback":{"url":"http://…/v1/tools","token":"<per-turn token>"}`. `maxTurns` is sent by Rust (T23). The events are:
+    - `event: delta` with `{"text":"…"}`. It covers only `stream_event` messages whose `parent_tool_use_id` is null and whose event is a `content_block_delta` of type `text_delta`.
+    - `event: tool_use` with `{"id","name","input"}`, taken from each `tool_use` block of the assistant messages.
+    - `event: done`, whose data is the same result object as the `/v1/query` response.
+    - `event: error`, whose data is the Anthropic error body plus `"status":<n>`. It is used for failures after the headers have been sent.
+    - a `: ping` comment line every 15 s.
+
+    The stream always ends with exactly one `done` or one `error`. When the client disconnects, the sidecar aborts the query through its `AbortController`.
+  - `GET /health` gives `{"ok":true,"auth":"api_key"|"cloud"|"oauth"|"none","inFlight":n,"queued":n,"maxConcurrency":n,"sdkVersion":"0.3.325"}`. It never makes a model call and never includes a secret. Health needs no bearer token, so that compose healthchecks work.
+  - The tool callback, from the sidecar to Rust, is `POST {toolCallback.url}` with `authorization: Bearer {toolCallback.token}` and the body `{"name":"get_position","input":{…}}`. Rust replies `{"content":"<text>","isError":false}`. Any non-2xx reply, network error or timeout becomes the tool result `{"available":false,"reason":"tool unavailable"}` with `isError: true`. The model never sees the status or the URL.
+- `config.ts`: `loadConfig(env: NodeJS.ProcessEnv) -> SidecarConfig { port: 7310, token, maxConcurrency: 4, maxQueue: 32, queueWaitMs: 30000, workDir: "/var/lib/ai-sidecar/work", configDir: "/var/lib/ai-sidecar/claude", production: boolean, auth: AuthKind }`. It reads `AI_SIDECAR_PORT`, `AI_SIDECAR_TOKEN` (required, at least 32 characters), `AI_SIDECAR_MAX_CONCURRENCY`, `AI_SIDECAR_MAX_QUEUE`, `AI_SIDECAR_QUEUE_WAIT_MS`, `AI_SIDECAR_WORK_DIR`, `AI_SIDECAR_CONFIG_DIR`, and `AI_SIDECAR_ENV` (`production` turns on the guard below; `NODE_ENV=production` does too). The default concurrency of 4 follows the docs' guide of about 1 GiB per session; capacity planning later uses measured RSS (ADR-R3-6).
+  - `auth` is `api_key` when `ANTHROPIC_API_KEY` is non-empty, `cloud` when `CLAUDE_CODE_USE_BEDROCK`, `CLAUDE_CODE_USE_VERTEX` or `CLAUDE_CODE_USE_FOUNDRY` is `1`, `oauth` when only `CLAUDE_CODE_OAUTH_TOKEN` is set, and `none` otherwise.
+  - **Production guard:** in production, `auth` of `oauth` or `none` throws `ConfigError("refusing to start: production needs ANTHROPIC_API_KEY or a cloud provider; a subscription token is not allowed (ADR-R3-6)")`. `index.ts` logs that message and exits with code 78. In development `oauth` is allowed, and `none` starts, reports `auth:"none"`, and answers every call with 401 `authentication_error`.
+- `options.ts`: `buildOptions(req, cfg, extras: { abortController, mcpServer?, toolNames?, partial: boolean }) -> Options` is the single place where the isolation options from ADR-R3-6 are set:
+  - `model` comes from an allowlist of `claude-sonnet-5-5` and `claude-haiku-5-5`. Any other id gets a 400 `invalid_request_error`, and no alias is ever sent.
+  - `effort` comes from the request. `maxTurns` is the request's value, capped at 10.
+  - `systemPrompt` is the request string (a custom prompt, not the Claude Code preset).
+  - `tools: []`, so no built-in tools.
+  - `allowedTools` holds exactly the `mcp__coach__<name>` names, and only in chat.
+  - `mcpServers` holds only `{ coach }`, and only in chat.
+  - `strictMcpConfig: true`, `permissionMode: "dontAsk"` and `settingSources: []`.
+  - `persistSession: false`, and `resume`, `agents`, `hooks`, `fallbackModel`, `thinking` and `maxThinkingTokens` are never set.
+  - `cwd` is `cfg.workDir`, an empty directory created at startup.
+  - `outputFormat` is set only on `/v1/query`. `includePartialMessages` equals `extras.partial`, which is true only for chat.
+  - `env` replaces the environment, as the SDK requires. It holds only `PATH`, `HOME` (= `configDir`), `CLAUDE_CONFIG_DIR` (= `configDir`), `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`, `CLAUDE_CODE_MAX_OUTPUT_TOKENS` (= `maxTokens`), `CLAUDE_AGENT_SDK_CLIENT_APP=chess-improver-sidecar/0.1`, and the one credential variable that `auth` chose (plus the `CLAUDE_CODE_USE_*` and provider region variables when `auth` is `cloud`). `AI_SIDECAR_TOKEN`, `DATABASE_URL` and every other parent variable are left out.
+- `schema-to-zod.ts`: `jsonSchemaToZodShape(schema: unknown) -> ZodRawShape`. `tool()` needs a zod raw shape, but Rust owns the tool schemas as JSON Schema (T22 `ToolDef.input_schema`). The converter supports exactly the subset T22 uses: a top-level `type: "object"` with `properties`, `required` and `additionalProperties: false`; property types `string` (with optional `enum`), `integer` (with optional `minimum`/`maximum`), `number`, `boolean`, and `array` of `string`. Optional properties become `.optional()`. Anything else throws `SchemaUnsupported(path)`, which the chat endpoint turns into a 400 before it spawns anything.
+- `tools.ts`: `buildCoachServer(tools, callback, fetchImpl = fetch) -> McpSdkServerConfigWithInstance`. It calls `createSdkMcpServer({ name: "coach", version: "1", tools, timeout: 60000 })`. The 60 s timeout is above T23's 45 s engine wait. Each `tool(name, description, shape, handler)` posts to the callback with a 55 s `AbortSignal.timeout` and returns `{ content: [{ type: "text", text: reply.content }], isError: reply.isError }`.
+- `limiter.ts`: `Limiter(max, maxQueue, waitMs)`, with `run<T>(fn: (signal) => Promise<T>) -> Promise<T>` and `stats() -> { inFlight, queued }`. It is FIFO. When the queue is full, or the wait passes `waitMs`, it rejects with `Overloaded`, which becomes 529 `overloaded_error` with `retry-after: 5`. A request whose client disconnects while it is queued leaves the queue.
+- `query.ts`: `runQuery(req, cfg, deps: { query = sdk.query }) -> Promise<SidecarResult>`, and `chat.ts`: `runChat(req, cfg, res, deps)`. Both run inside the limiter, abort on `timeoutMs` (504 `api_error`, or an `error` event), and map `modelUsage` keys and token counts unchanged. They log only the route, model, subtype, `numTurns`, duration and token counts, never a prompt, an output, a token or a key.
+
+- [ ] **Step 1: Write the failing tests.** Mock `query()` with `vi.mock("@anthropic-ai/claude-agent-sdk", …)` as an async generator over scripted `SDKMessage`s. No test spawns `claude` or reaches the network; the tool callback goes to a `node:http` server on `127.0.0.1:0`.
+  - `options.test.ts`:
+    - `isolation_options_are_exact`: deep-equal on the keys listed above, `tools` `[]`, `permissionMode` `"dontAsk"`, `settingSources` `[]`, `persistSession` false, and no `resume`, `fallbackModel` or `thinking`;
+    - `child_env_is_an_allowlist`: with a parent env holding `AI_SIDECAR_TOKEN`, `DATABASE_URL` and `CLAUDE_CODE_OAUTH_TOKEN` next to `ANTHROPIC_API_KEY`, the child env has the API key, has neither of the first two, and has no OAuth token;
+    - `unknown_model_is_rejected` (`claude-sonnet-5` and `sonnet` both give 400);
+    - `chat_options_allow_only_coach_tools`.
+  - `config.test.ts`:
+    - `production_refuses_subscription_only_token`;
+    - `production_refuses_no_credentials`;
+    - `production_accepts_api_key_and_cloud`;
+    - `development_allows_oauth`;
+    - `short_sidecar_token_is_rejected`.
+  - `query.test.ts`:
+    - `returns_structured_output_and_model_usage` (two models in `modelUsage` pass through unchanged, and `sdkCostUsd` equals `total_cost_usd`);
+    - `max_structured_output_retries_is_a_200_with_subtype`;
+    - `refusal_stop_reason_passes_through`;
+    - `api_error_status_maps_to_anthropic_error_body`, for 401, 429 with `retry-after`, 529 and 500;
+    - `timeout_aborts_and_returns_504` (the mock waits on the signal);
+    - `logs_never_contain_prompt_or_secrets` (captured logger, fixture prompt `TOPSECRETPROMPT`, key `sk-ant-test-SECRET123`).
+  - `chat.test.ts`:
+    - `streams_top_level_text_deltas_then_done` (a delta with a non-null `parent_tool_use_id` is not forwarded);
+    - `tool_use_blocks_become_tool_use_events`;
+    - `stream_ends_with_exactly_one_terminal_event`;
+    - `sdk_throw_after_headers_is_an_error_event`;
+    - `client_disconnect_aborts_the_query`;
+    - `pings_every_15s` (fake timers).
+  - `tools.test.ts`:
+    - `tool_call_posts_name_and_input_with_turn_token`;
+    - `callback_error_gives_is_error_tool_unavailable` (500, connection refused, and a 56 s delay with fake timers);
+    - `reply_is_error_flag_passes_through`.
+  - `schema-to-zod.test.ts`:
+    - `converts_the_t22_subset` (`gameId` string required, `ply` integer with a minimum, `moves` array of strings optional, an `enum`);
+    - `rejects_unsupported_constructs` (`oneOf`, nested `object`, `$ref`, and `additionalProperties: true` each name their path);
+    - `chat_with_unsupported_schema_is_400_without_query`.
+  - `limiter.test.ts`:
+    - `caps_in_flight_and_runs_fifo` (with max 2, the third waits and starts when the first ends);
+    - `full_queue_rejects_with_overloaded`;
+    - `queue_wait_timeout_rejects`;
+    - `queued_request_leaves_on_disconnect`.
+  - `server.test.ts`:
+    - `missing_or_wrong_bearer_is_401`;
+    - `health_needs_no_token_and_reports_auth_without_secrets`;
+    - `overloaded_is_529_with_retry_after`;
+    - `no_credentials_in_development_is_401_authentication_error`.
+- [ ] **Step 2: Run** `pnpm --filter @ci/ai-sidecar test`. Expected: FAIL (modules missing).
+- [ ] **Step 3: Implement** the modules above. `index.ts` loads the config (exiting 78 on a `ConfigError`), creates `workDir` and `configDir` with mode `0700`, and starts the server.
+- [ ] **Step 4: Write the Dockerfile and the compose service.**
+  - The Dockerfile has two stages on `node:22-bookworm-slim` (glibc, so the SDK's `linux-x64` binary resolves).
+    - The build stage runs `pnpm install --frozen-lockfile --filter @ci/ai-sidecar...` with optional dependencies kept, then `pnpm --filter @ci/ai-sidecar build`, then `pnpm deploy --prod`.
+    - The runtime stage runs as the non-root `node` user, with `/var/lib/ai-sidecar` owned by it, `EXPOSE 7310` and no published port.
+    - The healthcheck is `node -e "fetch('http://127.0.0.1:7310/health').then(r=>process.exit(r.ok?0:1))"`.
+  - The compose service `ai-sidecar` builds `services/ai-sidecar/Dockerfile` and has no `ports:`. Its environment is:
+    - `AI_SIDECAR_TOKEN: ${AI_SIDECAR_TOKEN:-dev-only-sidecar-token-change-me-0000000}`;
+    - `AI_SIDECAR_ENV: ${AI_SIDECAR_ENV:-development}`;
+    - `ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}`;
+    - `CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}`.
+
+    Memory is capped with `mem_limit: 5g`, which is 4 sessions plus headroom.
+  - `.env.example` gets the sidecar block:
+    - `AI_SIDECAR_TOKEN=` with the comment `# 32+ chars; shared by the Rust worker and the sidecar`;
+    - `CLAUDE_CODE_OAUTH_TOKEN=` with the comment `# dev only, your own subscription; refused in production (ADR-R3-6); never commit`.
+- [ ] **Step 5: Run the gate.** Run `pnpm --filter @ci/ai-sidecar test`, `pnpm --filter @ci/ai-sidecar typecheck`, `pnpm --filter @ci/ai-sidecar lint`, `node scripts/check-npm-age.mjs`, `COMPOSE_FILE=docker-compose.yml docker compose -p ci-r3-c build ai-sidecar`, and `COMPOSE_FILE=docker-compose.yml docker compose -p ci-r3-c run --rm -e AI_SIDECAR_ENV=production ai-sidecar`. Expected: PASS on all, and the last command exits 78 with the guard message, because no key is set. Then tear the project down.
+- [ ] **Step 6: Append "Contract and isolation" to ADR-R3-6.** It covers the endpoints and the error-body reuse, the isolation list, the env allowlist, the JSON-Schema-to-zod subset, the callback timeout ordering (55 s for the fetch, 60 s for MCP, 45 s for the engine wait), the limiter defaults, the production guard and the SDK licence.
+- [ ] **Step 7: Commit** `feat(ai-sidecar): claude agent sdk sidecar with json, sse chat and tool callbacks`.
+
+### Task 11 (C): Rust sidecar client + minimal Messages Batches client
 
 **Files:**
-- Create: `backend/crates/ai/src/client/{http.rs,retry.rs}`
-- Test: `backend/crates/ai/tests/http_client.rs`, `backend/fixtures/ai/api/{message-structured-ok.json,message-refusal.json,message-max-tokens.json,error-401.json,error-429.json,error-529.json,batch-create.json,batch-ended.json,batch-results.jsonl}`
-- Modify: `docs/decisions/ADR-R3-1-rust-anthropic-client-and-crates.md` (complete it)
+- Create: `backend/crates/ai/src/client/{sidecar.rs,sidecar_wire.rs,flatten.rs,tool_server.rs,batches.rs,runtime.rs}`; fill `sse.rs` and `retry.rs`; delete `http.rs` and remove it from `client/mod.rs`
+- Modify: `backend/crates/ai/src/client/port.rs` (the trait and result additions below)
+- Test: `backend/crates/ai/tests/{sse.rs,sidecar_client.rs,tool_server.rs,flatten.rs,batches_client.rs}`, `backend/fixtures/ai/sidecar/{query-ok.json,query-two-models.json,query-refusal.json,query-max-retries.json,chat-tool-then-text.sse,chat-error-overloaded.sse}`, `backend/fixtures/ai/api/{batch-create.json,batch-ended.json,batch-results.jsonl,error-429.json,error-529.json}`
+- Modify: `docs/decisions/ADR-R3-1-rust-anthropic-client-and-crates.md` (complete it: the sidecar client, the batch client and axum)
+
+**Dependency (coordinator, before dispatch):** `axum = "=0.8.9"` (MIT, released 2026-04-14), with `default-features = false` and the features `tokio`, `http1` and `json`. It goes in `[workspace.dependencies]` and in `ai`'s dependencies, together with the `Cargo.lock` update. It runs the tool endpoint, which reuses the hyper 1.x already in the lockfile. Nothing else is new: reqwest, wiremock, futures, bytes and tokio are already present.
+
+**Reuse from the paused T10 WIP (`b36215f` on `r3/c`):**
+- Take `SseDecoder`/`SseEvent`/`SseError` and their tests unchanged. Run `git checkout b36215f -- backend/crates/ai/tests/sse.rs backend/fixtures/ai/api/sse-split-utf8.bin backend/fixtures/ai/api/sse-tool-use.sse`, then keep only these tests: `decodes_events_across_arbitrary_chunk_boundaries` (where `sse-tool-use.sse` is only a framing fixture), `crlf_lines_decode_like_lf`, `split_utf8_is_reassembled`, `multi_line_data_comments_and_valueless_fields`, `a_blank_line_without_data_dispatches_nothing` and `trailing_partial_event_is_an_error`.
+- Drop the `StreamAccumulator` tests and the other fixtures: the sidecar forwards no raw Messages events. Their intent moves into `sidecar_client.rs`: `error_event_is_overloaded` becomes `chat_error_event_is_classified`, `missing_message_stop_is_connection_error` becomes `stream_dropped_mid_message_is_connection_error` (Review Focus 3), and `undecodable_event_data_is_a_response_error` keeps its name.
 
 **Interfaces:**
-- Consumes: T9, T10.
+- Consumes: T9 `wire.rs` (`MessagesRequest::structured`, `BatchCreate`, `BatchObject`, `BatchResultLine`, `ErrorBody::error_type`), `errors.rs` (`redact`, `parse_retry_after`, `classify_status`, `classify_transport`, `classify_batch_error_type`), `parse.rs` and `cost.rs`. It also consumes the T10 HTTP contract as written above, and is tested against wiremock with no runtime dependency on the sidecar.
 - Produces:
-  - `ANTHROPIC_VERSION = "2026-10-21"`;
-  - `ApiKey`, with `ApiKey::from_env() -> Option<ApiKey>` (reads `ANTHROPIC_API_KEY`, trimmed; empty means `None`) and a test-only `ApiKey::new(s)`. `Debug` and `Display` print `ApiKey([redacted])`. There is no `Serialize`;
-  - `AnthropicConfig { api_key: ApiKey, base_url: String /* "https://api.anthropic.com" */, max_retries: u32 /* 2 */, connect_timeout: Duration /* 10 s */, request_timeout: Duration /* 600 s */, stream_idle_timeout: Duration /* 60 s */, retry_after_cap: Duration /* 30 s */, backoff_base: Duration /* 500 ms */ }`;
-  - `AnthropicClient::new(cfg) -> Result<AnthropicClient, AiError>` and `impl AiClient for AnthropicClient`;
-  - `retry.rs`: `should_retry(status: Option<u16>, x_should_retry: Option<&str>) -> bool` (408, 409, 429, 5xx, 529, and connection errors; the header `x-should-retry: true/false` overrides) and `retry_delay(attempt: u32, retry_after: Option<Duration>, cfg) -> Option<Duration>`. With a retry-after at or under the cap, the delay is that value; over the cap it is `None`, meaning give up now and surface `retry_after`; otherwise it is `backoff_base * 2^attempt` plus 0 to 250 ms of jitter.
+  - `port.rs` additions:
+    - `ModelUsage { model: String, usage: AiUsage }`;
+    - `StructuredResult` and `TurnResult` gain `model_usage: Vec<ModelUsage>` and `sdk_cost_usd: Option<f64>`. `usage` is the sum over the entries, and `model` is the requested model id. A batch result has exactly one entry, `(message.model, usage)`, and `sdk_cost_usd: None`;
+    - `trait ToolHandler: Send + Sync { fn call<'a>(&'a self, name: &'a str, input: Value) -> BoxFuture<'a, ToolReply>; }` and `ToolReply { content: String, is_error: bool }`;
+    - `AiClient::stream_turn(&'a self, req: &'a ChatTurnRequest, tools: Option<Arc<dyn ToolHandler>>) -> BoxStream<'a, Result<TurnEvent, AiError>>`. One call is one whole agentic turn: the SDK runs the tool rounds and calls `tools` for each tool use;
+    - `AiClient::batches_enabled(&self) -> bool`, defaulting to `true`;
+    - `ChatTurnRequest` gains `max_turns: u32`.
+  - `sse.rs`: the WIP decoder, unchanged.
+  - `sidecar_wire.rs`: serde types for the T10 contract, in camelCase: `SidecarQuery`, `SidecarChat`, `SidecarTool`, `ToolCallback`, `SidecarResult`, `SidecarModelUsage` and `Health { ok, auth: AuthKind, in_flight, queued, max_concurrency, sdk_version }`.
+    - Mapping `SidecarModelUsage` to `AiUsage`: `inputTokens` → `input_tokens`, `outputTokens` → `output_tokens`, `cacheCreationInputTokens` → `cache_creation_tokens`, `cacheReadInputTokens` → `cache_read_tokens`.
+    - `stopReason`/`subtype` to `stop_reason`: `error_max_turns` becomes `"max_turns"`, and every other value is taken as is.
+  - `flatten.rs`: `flatten_for_sidecar(system: &[TextBlock], messages: &[Message]) -> Result<(String /* systemPrompt */, Vec<Value> /* prompt blocks */), AiError>`. The SDK takes user messages only, so Rust, which owns the prompts, flattens the conversation:
+    - the system blocks are joined with `"\n\n"`, and `cache_control` is dropped, because caching on the sidecar path is automatic;
+    - a single user message keeps its text blocks, without `cache_control`;
+    - with history, every message before the last user message is rendered into text blocks, in order: `<previous_assistant_output>…</previous_assistant_output>` (assistant text blocks only; `thinking`, `redacted_thinking` and `tool_use` blocks are dropped), `<instruction>…</instruction>` for a mid-conversation `system` message, and `<previous_user_message>…</previous_user_message>` for an earlier user turn, followed by the last user message's blocks;
+    - a last message that is not `user` gives `AiError::Request { status: 400, api_error_type: Some("invalid_request_error") }`.
+  - `sidecar.rs`:
+    - `SidecarToken`, with `from_env()` reading `AI_SIDECAR_TOKEN` (trimmed; empty means `None`). It redacts in `Debug` and `Display` and has no `Serialize`.
+    - `SidecarConfig { base_url /* AI_SIDECAR_URL, e.g. "http://ai-sidecar:7310" */, token, connect_timeout: 5 s, request_timeout: 600 s, chat_timeout: 180 s, stream_idle_timeout: 60 s, max_retries: 1 }`, with `SidecarConfig::from_env() -> Option<SidecarConfig>`. It is `None` unless both variables are set.
+    - `SidecarClient::new(cfg, tools: Option<Arc<ToolServer>>) -> Result<SidecarClient, AiError>` and `SidecarClient::health() -> Result<Health, AiError>`.
+    - `structured`: `POST /v1/query` with `flatten_for_sidecar`, `outputFormat = req.schema.json()`, `maxTurns: 3`, and `timeoutMs` from `request_timeout`. The result is mapped in this order:
+      1. a refusal stop reason gives `Refusal`;
+      2. `max_tokens` gives `Truncated`;
+      3. `error_max_structured_output_retries` gives `SchemaMismatch` with no issues;
+      4. a missing `structuredOutput` gives `NoText`;
+      5. otherwise Rust runs `req.schema.check(structuredOutput)` itself. A failure gives `SchemaMismatch` with the issues, so the SDK's own validation never replaces ours.
 
-- [ ] **Step 1: Port `anthropic.test.ts` and the adapter parts of `fix-round-1.test.ts`** against `wiremock::MockServer` (with `base_url` set to the mock server):
-  - `structured_sends_output_config_and_no_sampling_params_maps_usage`: the captured body has `output_config.effort == "medium"` and `output_config.format.type == "json_schema"`, has no forbidden fields, and carries the `anthropic-version: 2026-10-21` and `x-api-key` headers; `cache_read_input_tokens` maps to `cache_read_tokens`;
-  - `refusal_gives_parsed_none`, `max_tokens_truncation_gives_parsed_none`;
-  - `maps_500_529_429_and_connection_errors` (with `max_retries: 0`);
-  - `secrets_never_leak_through_errors`;
-  - `_401_and_403_are_auth`, `_400_stays_request`;
-  - `_429_exposes_retry_after` (7 s), `_429_without_retry_after_has_none`;
-  - `submit_with_one_instance_read_results_with_a_fresh_instance` (a resolver by schema id, giving `no_schema` for a foreign id);
-  - `refusal_truncation_and_mismatch_are_reported_like_structured`;
-  - `errored_items_carry_kind_by_error_type`;
-  - `classifies_and_redacts_a_stream_failure_mid_iteration`;
-  - `classifies_a_jsonl_decode_error_without_leaking_content`.
+      `content` is `[{"type":"text","text": <serialised structuredOutput or text>}]`, so `build_repair_messages` (T13) has an assistant turn to flatten.
+    - `stream_turn`: `POST /v1/chat`. When `tools` is `Some`, it registers the handler with the `ToolServer` for the life of the stream and sends `toolCallback`. With `ToolChoice::None`, `tools` is empty in the body and no callback is registered. It yields `TextDelta` for each `delta` event, collects `tool_use` events into `TurnResult.tool_uses`, and ends with `Done` on `done`. An `error` event goes through `classify_status(status, error.type, retry_after)`. A body that ends before a terminal event, or that is idle longer than `stream_idle_timeout`, gives `Unavailable(Connection)`. Undecodable data gives `Response(redacted)`.
+    - Retries: only before the first response byte, only on a connection error or 529, at most `max_retries`, using `retry.rs`.
+  - `retry.rs`: `should_retry(status: Option<u16>, x_should_retry: Option<&str>) -> bool` and `retry_delay(attempt, retry_after, cap, base) -> Option<Duration>`, as specified in the old T11 (408, 409, 429, 5xx, 529 and connection errors; a retry-after at or under the cap is used, over the cap gives `None`, which means give up now and surface `retry_after`; otherwise `base * 2^attempt` plus 0 to 250 ms of jitter).
+  - `tool_server.rs`: `ToolServer::start(bind: SocketAddr /* AI_TOOL_BIND, default 0.0.0.0:7311 */, public_url: String /* AI_TOOL_PUBLIC_URL, e.g. http://rust-worker:7311 */) -> Result<Arc<ToolServer>, AiError>` (axum), and `ToolServer::register(&self, h: Arc<dyn ToolHandler>) -> ToolRegistration { url: String /* {public_url}/v1/tools */, token: String /* 32 random bytes, hex */ }`. Dropping the `ToolRegistration` unregisters it. `POST /v1/tools` with `authorization: Bearer <token>` calls `h.call(name, input)` and replies `{"content","isError"}`. An unknown or expired token gives 404 and a missing one gives 401. The body limit is 64 KiB, and the per-call timeout is 50 s, after which the reply is `isError` with `{"available":false,"reason":"engine busy"}`. Tokens are compared in constant time and never logged.
+  - `batches.rs`, the Messages API, used only for batches:
+    - `ANTHROPIC_VERSION = "2026-10-21"`;
+    - `ApiKey::from_env()` reads `ANTHROPIC_API_KEY`, with redacting `Debug`/`Display` and no `Serialize`;
+    - `BatchesConfig { api_key, base_url: "https://api.anthropic.com", max_retries: 2, connect_timeout: 10 s, request_timeout: 120 s, stream_idle_timeout: 60 s, retry_after_cap: 30 s, backoff_base: 500 ms }`;
+    - `BatchesClient::new(cfg)` with three calls: `submit(items)` (`POST /v1/messages/batches` with `BatchCreate` of `MessagesRequest::structured`), `status(id)` (`GET …/{id}`, mapping `processing_status`) and `results(id, resolver)` (`GET {base}/v1/messages/batches/{id}/results`, never the `results_url` host, streamed line by line with the idle timeout; each line goes through `parse_model_output` with `resolver.resolve(custom_id)`, giving `no_schema` when that is `None`);
+    - the headers are `x-api-key`, `anthropic-version`, `content-type: application/json` and `user-agent: chess-improver/0.1`;
+    - non-streaming calls retry per `retry.rs`.
+  - `runtime.rs`: `AiRuntime { sidecar: SidecarClient, batches: Option<BatchesClient> }` implements `AiClient`. `structured` and `stream_turn` go to the sidecar, and the batch calls go to `batches`. When `batches` is `None`, the batch calls give `Unavailable(NoApiKey)` and `batches_enabled()` is `false`. A dev OAuth token never reaches Rust, so batches need `ANTHROPIC_API_KEY`.
+  - Logging is at `debug` level and covers only the method, path, status, attempt, duration and `request_id`.
 
-  Add:
-  - `retries_529_then_succeeds` (with `max_retries: 2` and backoff zero, the mock answers 529 then 200: one result, 2 requests);
-  - `retry_after_over_cap_is_not_slept` (429 with `retry-after: 3600` fails at once with `retry_after == 3600 s`, after 1 request);
-  - `stream_turn_yields_deltas_then_done` (the mock serves `sse-tool-use.sse` with `content-type: text/event-stream`);
-  - `stream_dropped_mid_message_is_connection_error` (the body ends before `message_stop`);
-  - `stream_idle_timeout_fires` (with `stream_idle_timeout: 200 ms` and a mock delay of 2 s, the error is `Unavailable(Connection)` within 3 s);
-  - `results_url_on_foreign_host_is_not_followed`: a `results_url` pointing at another host is ignored, `{base}/v1/messages/batches/{id}/results` is used instead, and no request reaches the foreign mock;
-  - `api_key_is_not_in_debug_or_logs`: with `tracing` captured by a test subscriber, a failed call logs nothing containing the key.
-- [ ] **Step 2: Run** `LANE=C $RUST cargo test -p ai --test http_client`. Expected: FAIL.
-- [ ] **Step 3: Implement.**
-  - **Client setup:** one `reqwest::Client` with rustls and the timeouts, and the headers `x-api-key`, `anthropic-version`, `content-type: application/json`, `user-agent: chess-improver/0.1`.
-  - **Retries:** non-streaming calls retry per `retry.rs`. A streaming call retries only before the first byte of the body.
-  - **Results stream:** read line by line through `bytes_stream` with the idle timeout, and parse each line with `parse_model_output` and the resolver.
-  - **Logging:** at `debug` level, log only the method, path, status, `request_id`, attempt and duration.
-  - Complete ADR-R3-1: there is no official Rust SDK, so this is our own client; it uses raw HTTP at `2026-10-21` with exact JSON shapes; it keeps raw content blocks for replay; it has the retry and retry-after cap, the results-URL host check, the key newtype and redaction; it uses recorded-fixture tests; it amends ADR 0011.
-- [ ] **Step 4: Run** the tests. Expected: PASS.
-- [ ] **Step 5: Commit** `feat(ai): reqwest anthropic client for messages, streaming and batches`.
+- [ ] **Step 1: Write the failing tests** (wiremock `MockServer` as both the sidecar and the Anthropic base URL):
+  - `sse.rs`: the six reused decoder tests.
+  - `flatten.rs`:
+    - `single_user_message_passes_blocks_without_cache_control`;
+    - `system_blocks_join_with_blank_line`;
+    - `history_renders_tagged_transcript_and_drops_thinking` (`build_repair_messages`-shaped input: an assistant with thinking and text blocks, then a user turn);
+    - `mid_conversation_system_becomes_instruction`;
+    - `last_message_must_be_user`.
+  - `sidecar_client.rs`:
+    - `structured_posts_the_contract_with_bearer`: the captured body has `model`, `effort` `"medium"`, `maxTurns` 3, `outputFormat.schema` equal to `schema.json()`, and no `cache_control`; it has `authorization: Bearer <token>`; it contains none of `temperature`, `top_p`, `top_k`, `thinking`, `fallbacks` or `accountId`;
+    - `model_usage_maps_per_model_and_sums_usage` (`query-two-models.json`: 2 entries, a summed `usage`, and `sdk_cost_usd` kept);
+    - `structured_output_is_checked_by_rust` (a fixture whose output fails `check` gives `SchemaMismatch` with issues of path and code only);
+    - `refusal_gives_parsed_none` and `max_tokens_truncation_gives_parsed_none`;
+    - `max_structured_retries_is_schema_mismatch`;
+    - `missing_structured_output_is_no_text`;
+    - `maps_sidecar_errors_by_status`: 529 gives `Overloaded`, 429 with `retry-after: 7` gives `RateLimited` with 7 s, 401 gives `Auth`, 400 gives `Request`, 500 gives `Server`, and a refused connection gives `Connection` (with `max_retries: 0`);
+    - `retries_529_once_before_first_byte` (2 requests, then success);
+    - `stream_turn_yields_deltas_tool_uses_then_done` (`chat-tool-then-text.sse`);
+    - `tool_choice_none_sends_no_tools_and_no_callback`;
+    - `stream_dropped_mid_message_is_connection_error`;
+    - `stream_idle_timeout_fires` (with an idle timeout of 200 ms and a 2 s delay, it gives `Unavailable(Connection)` within 3 s);
+    - `chat_error_event_is_classified` (`chat-error-overloaded.sse` gives `Overloaded`);
+    - `undecodable_event_data_is_a_response_error`;
+    - `health_parses_auth_kind`;
+    - `secrets_never_leak`: `format!("{e}")`/`{e:?}` of every error, `SidecarToken`, `ApiKey`, and the captured `tracing` output never contain the token, `sk-ant-test-SECRET123` or `sk-ant-oat01-SECRET456`.
+  - `tool_server.rs` (a real axum server on `127.0.0.1:0` and a reqwest caller):
+    - `routes_by_turn_token_to_the_registered_handler`;
+    - `unknown_token_is_404_and_missing_is_401`;
+    - `dropped_registration_is_404`;
+    - `slow_handler_times_out_as_engine_busy` (a 50 ms test override);
+    - `oversized_body_is_413`;
+    - `two_turns_never_cross` (two registrations, each handler sees only its own calls).
+  - `batches_client.rs`:
+    - `batch_create_sends_params_with_api_key_and_version`, where `params` equal the serialised `MessagesRequest::structured` and include `cache_control`;
+    - `batch_status_maps_processing_status`;
+    - `submit_with_one_instance_read_results_with_a_fresh_instance` (the resolver by schema id, with `no_schema` for a foreign id);
+    - `refusal_truncation_and_mismatch_are_reported_like_structured`;
+    - `errored_items_carry_kind_by_error_type`;
+    - `results_url_on_foreign_host_is_not_followed`;
+    - `classifies_a_jsonl_decode_error_without_leaking_content`;
+    - `retries_529_then_succeeds`;
+    - `retry_after_over_cap_is_not_slept`;
+    - `runtime_without_batches_key_gives_no_api_key_and_batches_disabled`.
+- [ ] **Step 2: Run** `LANE=C $RUST cargo test --locked -p ai --test sse --test flatten --test sidecar_client --test tool_server --test batches_client`. Expected: FAIL.
+- [ ] **Step 3: Implement.** Write the sidecar fixtures by hand from the T10 contract and the batch fixtures from the T9 wire shapes. Complete ADR-R3-1:
+  - interactive calls go through the sidecar (ADR-R3-6);
+  - the batch client is our own reqwest client at `2026-10-21`, because there is no official Rust SDK;
+  - Rust flattens the conversation and the sidecar's schema check never replaces ours;
+  - the tool endpoint uses per-turn tokens over axum;
+  - the retry and retry-after cap, the results-URL host check, the key and token newtypes, and redaction (the `sk-ant-` pattern also covers OAuth `sk-ant-oat…` tokens);
+  - it amends ADR 0011.
+- [ ] **Step 4: Run** the tests, then the full gate from `CLAUDE.md`. Expected: PASS.
+- [ ] **Step 5: Commit** `feat(ai): sidecar client, tool endpoint and minimal batches client`.
 
 ### Task 12 (C): Circuit breaker and fake client
 
@@ -879,17 +1046,27 @@ pub fn input(name: &str) -> CoachingInput;                          // load + se
 - Test: `backend/crates/ai/tests/{breaker.rs,fake_client.rs}`
 
 **Interfaces:**
-- Consumes: T9 `parse_model_output`, `classify_batch_error_type`.
+- Consumes: T9 `parse_model_output` and `classify_batch_error_type`; T11 `AiClient` (with `stream_turn(req, tools)` and `batches_enabled`), `ToolHandler`, `ToolReply` and `ModelUsage`.
 - Produces:
-  - `BreakerConfig { failure_threshold: u32 /* 5 */, cooldown: Duration /* 60 s */, now: Arc<dyn Fn() -> Instant + Send + Sync> }`, `Breaker::new(cfg)`, `Breaker::state() -> BreakerState { Closed, Open, HalfOpen }`, and `with_breaker(inner: Arc<dyn AiClient>, b: Arc<Breaker>) -> Arc<dyn AiClient>`. A failure is `Unavailable` with reason `Connection`, `Server` or `Overloaded`. Every other outcome, including `RateLimited`, records a success and is returned unchanged. Open gives `Unavailable(CircuitOpen)` without calling the inner client. Half-open admits one probe. `batch_results` is passed through unguarded;
-  - `FakeStructured { parsed: Option<Value>, text: Option<String>, stop_reason: Option<String>, usage: AiUsage }`, `FakeTurn { deltas: Vec<String>, tool_uses: Vec<(String, String, Value)>, stop_reason: Option<String>, usage: AiUsage }`, `FakeBatchItem { custom_id, outcome, text, stop_reason, error_type }` and `FakeBatch { status: BatchStatus, results: Vec<FakeBatchItem> }`;
-  - `FakeScript { structured: Option<Box<dyn Fn(&StructuredRequest, usize) -> Result<FakeStructured, AiError> + Send + Sync>>, turns: Vec<Box<dyn Fn(&ChatTurnRequest, usize) -> Result<FakeTurn, AiError> + Send + Sync>>, batches: HashMap<String, FakeBatch>, delay: Option<Duration> }`;
-  - `FakeAiClient::new(script)`, `calls() -> Vec<FakeCall { kind: FakeCallKind /* Structured|Turn|BatchSubmit|BatchStatus|BatchResults */, request_json: Value }>` and `max_in_flight() -> usize`. Fake outputs go through `parse_model_output` with the request's schema. Turns emit the deltas in order, then `Done` with content `[text, tool_use…]`. The submitted batch id is `fakebatch_<n>`, and a later `batches` lookup uses it.
+  - `BreakerConfig { failure_threshold: u32 /* 5 */, cooldown: Duration /* 60 s */, now: Arc<dyn Fn() -> Instant + Send + Sync> }`, `Breaker::new(cfg)`, `Breaker::state() -> BreakerState { Closed, Open, HalfOpen }`, and `with_breaker(inner: Arc<dyn AiClient>, b: Arc<Breaker>) -> Arc<dyn AiClient>`.
+    - The breaker wraps `AiRuntime` (T11). It guards `structured`, `stream_turn`, `batch_submit` and `batch_status`; `batch_results` is passed through unguarded. `batches_enabled` delegates.
+    - A failure is `Unavailable` with reason `Connection`, `Server` or `Overloaded`. That includes the sidecar's own 529 when its queue is full: a saturated sidecar is a failure. Every other outcome, including `RateLimited`, `NoApiKey` and `Budget`, records a success and is returned unchanged.
+    - For `stream_turn`, the outcome is the first `Err` or the final `Done`. A stream dropped by the caller records nothing.
+    - Open gives `Unavailable(CircuitOpen)` without calling the inner client. Half-open admits one probe.
+  - `FakeStructured { parsed: Option<Value>, text: Option<String>, stop_reason: Option<String>, usage: AiUsage, model_usage: Option<Vec<ModelUsage>> /* None = [(requested model, usage)] */ }`;
+  - `FakeTurn { tool_calls: Vec<(String /* name */, Value /* input */)>, deltas: Vec<String>, stop_reason: Option<String>, usage: AiUsage, model_usage: Option<Vec<ModelUsage>> }`. This replaces `tool_uses`, because the SDK runs the tool loop inside one turn. The fake first calls the passed `ToolHandler` for each `tool_calls` entry, in order and awaited, and records each `(name, input, ToolReply)`. Then it emits the deltas in order, then `Done` with `tool_uses` from `tool_calls` (ids `fake_tu_<n>`), content `[text]` and the stop reason. With `tools: None`, scripted `tool_calls` are an error, so a test that forgets the handler fails loudly;
+  - `FakeBatchItem { custom_id, outcome, text, stop_reason, error_type }`, `FakeBatch { status: BatchStatus, results: Vec<FakeBatchItem> }`, and `FakeScript { structured, turns, batches, delay, batches_enabled: bool /* true */ }`, with the closures typed as before;
+  - `FakeAiClient::new(script)`, `calls() -> Vec<FakeCall { kind: FakeCallKind /* Structured|Turn|BatchSubmit|BatchStatus|BatchResults */, request_json: Value, tool_replies: Vec<(String, Value, ToolReply)> }>` and `max_in_flight() -> usize`. Fake outputs go through `parse_model_output` with the request's schema. The submitted batch id is `fakebatch_<n>`, and a later `batches` lookup uses it.
 
 - [ ] **Step 1: Port `fake-breaker.test.ts`** (`records_calls_and_replays_deltas_in_order`, `propagates_thrown_errors`, `serves_scripted_batches`, `open_breaker_gives_circuit_open_without_calling_inner`, `passes_through_when_closed_and_keeps_request_errors`, `only_unavailable_counts_as_a_failure`) and the breaker and fake blocks of `fix-round-1.test.ts` (`_429_does_not_count_as_a_failure_but_is_still_rethrown`, `overloaded_counts_as_a_failure`, `scripts_schema_mismatch_invalid_json_refusal_and_no_schema`, `scripts_429_and_overloaded_by_throwing`). Add:
   - `half_open_admits_one_probe_and_closes_on_success` (with an injected clock);
-  - `budget_errors_do_not_trip_the_breaker`.
-- [ ] **Step 2: Run** `LANE=C $RUST cargo test -p ai --test breaker --test fake_client`. Expected: FAIL.
+  - `budget_errors_do_not_trip_the_breaker`;
+  - `no_api_key_does_not_trip_the_breaker`;
+  - `stream_error_event_counts_and_done_resets`;
+  - `fake_turn_calls_the_tool_handler_before_deltas` (the replies are recorded, and the handler sees the inputs in order);
+  - `fake_turn_with_tool_calls_but_no_handler_errors`;
+  - `fake_model_usage_defaults_to_requested_model`.
+- [ ] **Step 2: Run** `LANE=C $RUST cargo test --locked -p ai --test breaker --test fake_client`. Expected: FAIL.
 - [ ] **Step 3: Implement.**
 - [ ] **Step 4: Run** the tests. Expected: PASS.
 - [ ] **Step 5: Commit** `feat(ai): circuit breaker and scripted fake ai client`.
@@ -897,6 +1074,8 @@ pub fn input(name: &str) -> CoachingInput;                          // load + se
 ---
 
 ### Task 13 (D): Versioned prompts and the cached request layout
+
+> **Controller note (ADR-R3-6):** Report and repair calls go through the sidecar, not a reqwest Messages client. T11 `flatten_for_sidecar` joins `system` with `"\n\n"`, drops every `cache_control` (SDK caching is automatic), and renders `build_repair_messages`' assistant turn as `<previous_assistant_output>…</previous_assistant_output>`, dropping its thinking blocks. So `repair/repair.v1.md` must refer to "your previous output above". Keep the cache breakpoints and `section_requests_share_the_cached_prefix`: batches (Messages API) still send them, and a byte-stable prefix also helps SDK caching. `request_json_has_no_account_id_or_sampling_params` also checks the sidecar body (`sidecar_wire::SidecarQuery`).
 
 **Files:**
 - Create: `backend/crates/ai/src/prompts.rs`, `backend/crates/ai/src/generate/{context.rs,request.rs}`
@@ -1021,6 +1200,8 @@ pub fn input(name: &str) -> CoachingInput;                          // load + se
 - [ ] **Step 5: Commit** `feat(ai): weekly review and weakness-change explanations on haiku`.
 
 ### Task 16 (D): Batch request building and result processing
+
+> **Controller note (ADR-R3-6):** Batches go through T11's `BatchesClient` (through `AiRuntime`'s batch methods), with the same `MessagesRequest::structured` wire. The sync fallback (`RetrySync`, `repair_section`) runs through the sidecar, so batch and sync calls no longer share a cache prefix. Drop that rationale from `batch_params_equal_sync_requests`, and keep the test as "batch params equal `MessagesRequest::structured(build_section_request(…))`".
 
 **Files:**
 - Create: `backend/crates/ai/src/generate/batch.rs`
@@ -1226,6 +1407,13 @@ CREATE INDEX ai_batch_items_pending_idx ON ai_batch_items (batch_id) WHERE proce
 
 ### Task 18 (E): `generate-report` job with progressive sections, degradation, budgets and metering
 
+> **Controller note (ADR-R3-6):**
+> - `meter` writes one `ai_usage` row per `CallRecord` per `StructuredResult.model_usage` entry, so a call that used two models gives two rows. Cost is `cost_micro_usd(entry.model, entry.usage, batch)` from the `PricingTable`, never the SDK estimate.
+> - `sdk_cost_usd` is stored for comparison in `ai_usage.sdk_estimate_micro_usd BIGINT NULL`, rounded half up, and is never summed into budgets. T17's migration adds the column; if T17 has already merged, add it in a new migration in R3's range.
+> - `CallRecord` gains `sdk_cost_usd: Option<f64>`, set by T14.
+> - `ai == None` now means no sidecar is configured, or sidecar health reports `auth: "none"` (T26). The run still records `ai_disabled_reason "no_api_key"`.
+> - Add the test `two_model_call_meters_two_rows`.
+
 **Files:**
 - Create: `backend/crates/ai/src/jobs/{report_job.rs,providers.rs,budget.rs}`
 - Test: `backend/crates/ai/tests/report_job.rs`
@@ -1306,6 +1494,8 @@ CREATE INDEX ai_batch_items_pending_idx ON ai_batch_items (batch_id) WHERE proce
 - [ ] **Step 5: Commit** `feat(ai): weekly review and weakness-change jobs`.
 
 ### Task 20 (E): Monthly and weekly regeneration through the Batch API
+
+> **Controller note (ADR-R3-6):** Batches need `ANTHROPIC_API_KEY` in the Rust worker (`BatchesClient`). A dev OAuth token can reach only the sidecar. Both schedule handlers do nothing when `!ai.batches_enabled()`, and they check it before creating any run or row. Add the test `batches_disabled_schedules_nothing` (`FakeScript.batches_enabled = false`). Metering keeps `batch: true` and the single `model_usage` entry per result.
 
 **Files:**
 - Create: `backend/crates/ai/src/jobs/batch_jobs.rs`
@@ -1447,6 +1637,15 @@ pub trait InteractiveEngine: Send + Sync {
 - [ ] **Step 5: Commit** `feat(ai): coach chat tools, anchors and engine-check tool`.
 
 ### Task 23 (F): Chat engine (streaming, paragraph validation, engine pending, off-topic, fallback, summaries)
+
+> **Controller note (ADR-R3-6):** One `stream_turn(req, Some(handler))` is a whole agentic turn: the SDK runs the tool rounds and calls each tool through the handler (T11 `ToolServer`).
+> - **The handler.** T23 builds a `ToolHandler` that wraps `execute_tool` with this turn's `ToolDeps`. It collects the tool evidence into shared turn state (`Arc<Mutex<…>>`), which paragraph validation reads. It runs the engine-pending flow (the interim `on_chunk`, then `engine.wait`, or `abandon` with `engine busy`) inside the call, under T11's 50 s callback timeout.
+> - **Round cap.** Set `max_turns = max_tool_rounds + 1`. On `stop_reason "max_turns"`, make one follow-up `stream_turn` with `ToolChoice::None`, `tools: None`, the flattened transcript, and the system message "Answer now with what you have."
+> - **Tool inputs.** The SDK's MCP layer validates them, so `truncated_tool_input_gets_an_error_result` becomes a handler test: unparsable or schema-invalid input gives `is_error` without executing.
+> - **Dropped tests.** Drop `parallel_tool_calls_answered_in_one_user_message`, because the SDK assembles tool results.
+> - **History.** T11 flattens history, so `verbatim_history_is_append_only` asserts that turn 2's flattened prompt starts with turn 1's, and no thinking block is ever sent.
+> - **Fakes.** Fake turns use `FakeTurn.tool_calls`.
+> - **The ADR.** This task's ADR becomes `ADR-R3-8-ask-your-coach-chat.md`, because ADR-R3-6 is the sidecar decision.
 
 **Files:**
 - Create: `backend/crates/ai/src/chat/{paragraphs.rs,limits.rs,engine.rs,summary.rs}`, `backend/crates/ai/prompts/chat/system.v1.md`, `backend/crates/ai/prompts/chat-summary/{system.v1.md,task.v1.md}`. Registering the three files in `prompts.rs`'s table is the one allowed edit to that file: three lines.
@@ -1645,6 +1844,15 @@ pub trait InteractiveEngine: Send + Sync {
 
 ### Task 26 (I): Integration (worker wiring, R2 contract reconciliation, migrations, ADRs)
 
+> **Controller note (ADR-R3-6):**
+> - **Client.** `start_workers` builds `with_breaker(AiRuntime { sidecar: SidecarClient::new(SidecarConfig::from_env()?, Some(ToolServer::start(AI_TOOL_BIND, AI_TOOL_PUBLIC_URL))), batches: ApiKey::from_env().map(BatchesClient::new) }, Breaker::new(5, 60 s))`, not `AnthropicClient`.
+> - **Enabled check.** AI is enabled only when `SidecarConfig` is set and `health().auth != "none"`.
+> - **Log line.** It is exactly `ai: enabled (sidecar, batches on|off)` or `ai: disabled (<reason>)`.
+> - **Compose.** The worker service gets `AI_SIDECAR_URL: http://ai-sidecar:7310`, `AI_SIDECAR_TOKEN`, `AI_TOOL_BIND: 0.0.0.0:7311` and `AI_TOOL_PUBLIC_URL`, with no published ports, and `depends_on: ai-sidecar (service_healthy)`. `ANTHROPIC_API_KEY` goes to the sidecar, and to the worker only for batches.
+> - **CLAUDE.md.** The line becomes: "AI needs the `ai-sidecar` service (ADR-R3-6) and `ANTHROPIC_API_KEY` (a dev `CLAUDE_CODE_OAUTH_TOKEN` works for the sidecar only, never in production); without them reports are computed-only."
+> - **ADRs.** Renumber `ADR-R3-1`…`8` (8 is the chat ADR from T23).
+> - **Test.** Add `sidecar_without_credentials_disables_ai` (health stub `auth:"none"`).
+
 **Files:**
 - Modify: `backend/crates/worker/src/{config.rs,start.rs}`, `docker-compose.yml` (`rust-worker` env `ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}`, plus the three budget variables), `.env.example` (`ANTHROPIC_API_KEY=` with the comment `# optional; never commit a key`), `CLAUDE.md`, `docs/decisions/README.md`; rename `docs/decisions/ADR-R3-*.md`
 - Create: `backend/crates/worker/tests/ai_wiring.rs`
@@ -1683,6 +1891,15 @@ pub trait InteractiveEngine: Send + Sync {
 
 ### Task 27 (I): Optional live smoke test (gated by `ANTHROPIC_API_KEY`)
 
+> **Controller note (ADR-R3-6):**
+> - **Route.** The live smoke goes through the sidecar. It consumes `AiRuntime`/`SidecarClient` instead of `AnthropicClient`.
+> - **Gate.** Skip with `skipped: sidecar has no credentials` unless `SidecarConfig::from_env()` is set and `health().auth` is `api_key` or `oauth`. That means the sidecar was started with `ANTHROPIC_API_KEY` or, in development only, the owner's `CLAUDE_CODE_OAUTH_TOKEN`.
+> - **Owner command.** `COMPOSE_FILE=docker-compose.yml docker compose -p ci-r3-i up -d ai-sidecar`, with the credential in the shell environment, then `$RUST` run with `-e AI_SIDECAR_URL=http://ai-sidecar:7310 -e AI_SIDECAR_TOKEN` and `cargo test --locked -p ai --test live_smoke -- --ignored --nocapture`.
+> - **Cache test.** `two_sections_share_the_cache` asserts `cache_read_tokens > 0` from `model_usage`.
+> - **Cost.** `cost_is_bounded` uses our `PricingTable` and prints the SDK estimate next to it.
+> - **Batch test.** An optional sixth test, `batch_round_trip_small`, runs only when the worker-side `ApiKey::from_env()` is set.
+> - **Recording.** Recorded fixtures are redacted for both `sk-ant-` keys and OAuth tokens.
+
 **Files:**
 - Create: `backend/crates/ai/tests/live_smoke.rs`, and optionally `backend/fixtures/ai/api/recorded/` (redacted recordings)
 
@@ -1718,7 +1935,7 @@ pub trait InteractiveEngine: Send + Sync {
 | `extract.test.ts` `pvToSan` block | `pv.rs` | T7 |
 | `cost.test.ts` | `cost.rs` | T9 |
 | `client/fix-round-1.test.ts` (parse reasons, taxonomy, custom ids, UnknownModel) | `parse_output.rs`, `client_errors.rs`, `custom_id.rs`, `cost.rs` | T9 |
-| `client/anthropic.test.ts`, `fix-round-1.test.ts` (adapter and batch parts) | `http_client.rs` | T11 |
+| `client/anthropic.test.ts`, `fix-round-1.test.ts` (adapter and batch parts) | `sidecar_client.rs`, `batches_client.rs` | T11 |
 | `client/fake-breaker.test.ts`, `fix-round-1.test.ts` (breaker and fake parts) | `breaker.rs`, `fake_client.rs` | T12 |
 
 Each Rust file keeps the TS test titles in snake_case. A TS test with no Rust equivalent must be listed here with its reason; there are none planned.
@@ -1764,7 +1981,7 @@ Gaps left to other milestones on purpose: the `WeeklyReviewInput` builder and th
 - `Evidence`, `build_evidence`, `resolve_token`, `render_segments` (T7);
 - `validate_text`, `TextRules`, `validate_section`, `select_focuses`, `report_text_rules` (T8);
 - `AiClient`, `StructuredRequest`, `StructuredResult`, `TurnEvent`, `AiError`, `AiUsage`, `cost_micro_usd`, `check_budget`, `encode_custom_id` (T1, T9);
-- `AnthropicClient`, `ApiKey` (T11); `with_breaker`, `FakeAiClient` (T12);
+- `SidecarClient`, `ToolServer`, `ToolHandler`, `BatchesClient`, `AiRuntime`, `ApiKey`, `ModelUsage` (T11); the sidecar HTTP contract (T10); `with_breaker`, `FakeAiClient` (T12);
 - `build_section_request`, `build_repair_messages`, `canonical_json` (T13);
 - `generate_section`, `repair_section`, `generate_report`, `SectionOutcome`, `CallRecord`, `BeforeCall` (T14);
 - `process_report_result`, `RegistryResolver` (T16);
