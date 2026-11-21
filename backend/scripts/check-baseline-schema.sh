@@ -39,6 +39,12 @@ psql_in postgres -c 'DROP DATABASE IF EXISTS schema_drizzle' -c 'DROP DATABASE I
 $COMPOSE run --rm -T -e DATABASE_URL="postgres://$PGUSER:postgres@postgres:5432/schema_drizzle" \
   worker pnpm --filter @ci/db exec drizzle-kit migrate
 
+# Drizzle's recorded timestamps must equal db::baseline::DRIZZLE_MIGRATION_TIMESTAMPS (adoption
+# checks them).
+ts=$(psql_in schema_drizzle -A -t -c 'SELECT string_agg(created_at::text, $$,$$ ORDER BY id) FROM drizzle.__drizzle_migrations')
+want=$(grep 'DRIZZLE_MIGRATION_TIMESTAMPS: ' backend/crates/db/src/baseline.rs | grep -o '[0-9]\{13\}' | paste -sd, -)
+[ "$ts" = "$want" ] || { echo "drizzle created_at $ts != baseline.rs $want" >&2; exit 1; }
+
 # 2. sqlx: only the baseline file, in one transaction.
 psql_in schema_sqlx -1 < "$BASELINE"
 

@@ -7,7 +7,7 @@ use std::time::Duration;
 use db::accounts::{ImportCursor, find_or_create_account, get_account};
 use db::games::{AnalysisStatus, NewGame, get_game, upsert_game};
 use db::import_runs::{ImportErrorCode, ImportRunStatus, list_runs};
-use db::pool::{DbOptions, WORKER_STATEMENT_TIMEOUT, connect};
+use db::pool::{DbOptions, WORKER_STATEMENT_TIMEOUT, connect, connect_for_migrations};
 use sqlx::PgPool;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use time::macros::datetime;
@@ -313,4 +313,33 @@ fn import_error_codes_are_snake_case() {
     for (code, s) in all {
         assert_eq!(code.as_str(), s);
     }
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn connect_for_migrations_disables_the_statement_timeout(
+    _pool_opts: PgPoolOptions,
+    opts: PgConnectOptions,
+) {
+    let pool = connect_for_migrations(&test_db_url(&opts)).await.unwrap();
+    let shown: String = sqlx::query_scalar("SHOW statement_timeout")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(shown, "0");
+}
+
+// Task 19 adds the generation columns. Until then `GameRow` carries placeholder constants.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+#[ignore = "enable in Task 19: generation columns"]
+async fn generation_round_trips(pool: PgPool) {
+    let acc = make_account(&pool).await;
+    let id = upsert_game(&pool, &game_row(acc, "gen1")).await.unwrap().id;
+    sqlx::query("UPDATE games SET analysis_generation = 3, analysed_generation = 2 WHERE id = $1")
+        .bind(id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let g = get_game(&pool, id).await.unwrap().unwrap();
+    assert_eq!(g.analysis_generation, 3);
+    assert_eq!(g.analysed_generation, Some(2));
 }

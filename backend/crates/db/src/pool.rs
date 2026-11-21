@@ -40,7 +40,26 @@ pub async fn connect(url: &str, opts: DbOptions) -> Result<PgPool, sqlx::Error> 
         .await
 }
 
-/// Applies every pending migration from `db/migrations/`.
+/// A pool for running migrations: `statement_timeout` is disabled (`0`), because a migration such
+/// as an index build on a large table can legitimately run longer than the 30 s worker limit.
+/// Use it for [`migrate`] and drop it afterwards; the worker and CLI then use [`connect`].
+/// Caveat: the startup parameter is not accepted by pgbouncer in transaction mode, so point
+/// migrations at Postgres directly (ADR 0033).
+pub async fn connect_for_migrations(url: &str) -> Result<PgPool, sqlx::Error> {
+    connect(
+        url,
+        DbOptions {
+            max_connections: 1,
+            statement_timeout: Duration::ZERO,
+            ..DbOptions::default()
+        },
+    )
+    .await
+}
+
+/// Applies every pending migration from `db/migrations/`. Pass a pool from
+/// [`connect_for_migrations`], not a worker pool: the worker's 30 s `statement_timeout` would abort
+/// a long migration halfway.
 pub async fn migrate(pool: &PgPool) -> Result<(), sqlx::migrate::MigrateError> {
     crate::MIGRATOR.run(pool).await
 }

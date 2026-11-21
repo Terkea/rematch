@@ -1,6 +1,6 @@
 //! Adopting a database that Drizzle already migrated (ADR 0033).
 
-use db::baseline::{AdoptOutcome, DbError, adopt_drizzle_baseline};
+use db::baseline::{AdoptOutcome, DRIZZLE_MIGRATION_TIMESTAMPS, DbError, adopt_drizzle_baseline};
 use db::pool::migrate;
 use sqlx::PgPool;
 
@@ -18,7 +18,12 @@ async fn fake_drizzle_history(pool: &PgPool, rows: usize) {
     for i in 0..rows {
         sqlx::query("INSERT INTO drizzle.__drizzle_migrations (hash, created_at) VALUES ($1, $2)")
             .bind(format!("hash{i}"))
-            .bind(i as i64)
+            .bind(
+                DRIZZLE_MIGRATION_TIMESTAMPS
+                    .get(i)
+                    .copied()
+                    .unwrap_or(i as i64),
+            )
             .execute(pool)
             .await
             .unwrap();
@@ -87,4 +92,43 @@ async fn adopt_refuses_unmanaged_tables_without_history(pool: PgPool) {
     sqlx::raw_sql(BASELINE_SQL).execute(&pool).await.unwrap();
     let err = adopt_drizzle_baseline(&pool).await.unwrap_err();
     assert!(matches!(err, DbError::UnexpectedState(_)), "{err:?}");
+}
+
+#[sqlx::test(migrations = false)]
+async fn adopt_errors_when_three_rows_but_a_table_is_missing(pool: PgPool) {
+    fake_drizzle_history(&pool, 3).await;
+    sqlx::raw_sql(BASELINE_SQL).execute(&pool).await.unwrap();
+    sqlx::raw_sql("DROP TABLE moves")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let err = adopt_drizzle_baseline(&pool).await.unwrap_err();
+    assert!(matches!(err, DbError::UnexpectedState(_)), "{err:?}");
+    assert!(err.to_string().contains("moves"), "{err}");
+    // Nothing was recorded.
+    let has: bool = sqlx::query_scalar("SELECT to_regclass('public._sqlx_migrations') IS NOT NULL")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert!(!has);
+}
+
+#[sqlx::test(migrations = false)]
+async fn adopt_errors_when_three_rows_but_the_games_table_is_missing(pool: PgPool) {
+    fake_drizzle_history(&pool, 3).await;
+    let err = adopt_drizzle_baseline(&pool).await.unwrap_err();
+    assert!(matches!(err, DbError::UnexpectedState(_)), "{err:?}");
+}
+
+#[sqlx::test(migrations = false)]
+async fn adopt_errors_when_the_drizzle_history_is_not_the_known_three(pool: PgPool) {
+    fake_drizzle_history(&pool, 3).await;
+    sqlx::raw_sql(BASELINE_SQL).execute(&pool).await.unwrap();
+    sqlx::raw_sql("UPDATE drizzle.__drizzle_migrations SET created_at = 1 WHERE id = 1")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let err = adopt_drizzle_baseline(&pool).await.unwrap_err();
+    assert!(matches!(err, DbError::UnexpectedState(_)), "{err:?}");
+    assert!(err.to_string().contains("created_at"), "{err}");
 }

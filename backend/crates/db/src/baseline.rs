@@ -6,6 +6,18 @@ use sqlx::PgPool;
 pub const BASELINE_VERSION: i64 = 20261121000000;
 /// How many migrations Drizzle had applied when the baseline was cut.
 const DRIZZLE_MIGRATION_COUNT: i64 = 3;
+/// `created_at` (the journal `when`) of the three Drizzle migrations, in order. The script
+/// `backend/scripts/check-baseline-schema.sh` asserts that drizzle-kit really records these.
+pub const DRIZZLE_MIGRATION_TIMESTAMPS: [i64; 3] = [1795265945036, 1795268564656, 1795269895091];
+/// Everything the baseline creates that adoption verifies before trusting the history.
+const BASELINE_TABLES: [&str; 6] = [
+    "games",
+    "linked_accounts",
+    "moves",
+    "import_runs",
+    "user_events",
+    "position_evals",
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AdoptOutcome {
@@ -73,10 +85,39 @@ pub async fn adopt_drizzle_baseline(pool: &PgPool) -> Result<AdoptOutcome, DbErr
             "drizzle.__drizzle_migrations has {drizzle_rows} rows, expected {DRIZZLE_MIGRATION_COUNT}"
         )));
     }
-    if !has_games {
-        return Err(DbError::UnexpectedState(
-            "drizzle.__drizzle_migrations has 3 rows but table games is missing".to_owned(),
-        ));
+    let timestamps: Vec<i64> =
+        sqlx::query_scalar("SELECT created_at FROM drizzle.__drizzle_migrations ORDER BY id")
+            .fetch_all(&mut *tx)
+            .await?;
+    if timestamps != DRIZZLE_MIGRATION_TIMESTAMPS {
+        return Err(DbError::UnexpectedState(format!(
+            "drizzle.__drizzle_migrations has 3 rows but created_at is {timestamps:?}, expected \
+             {DRIZZLE_MIGRATION_TIMESTAMPS:?}"
+        )));
+    }
+    let mut missing: Vec<&str> = Vec::new();
+    for table in BASELINE_TABLES {
+        let present: bool = sqlx::query_scalar("SELECT to_regclass($1) IS NOT NULL")
+            .bind(format!("public.{table}"))
+            .fetch_one(&mut *tx)
+            .await?;
+        if !present {
+            missing.push(table);
+        }
+    }
+    let has_enum: bool =
+        sqlx::query_scalar("SELECT to_regtype('public.analysis_status') IS NOT NULL")
+            .fetch_one(&mut *tx)
+            .await?;
+    if !has_enum {
+        missing.push("type analysis_status");
+    }
+    if !missing.is_empty() {
+        return Err(DbError::UnexpectedState(format!(
+            "drizzle.__drizzle_migrations has 3 rows but the baseline schema is incomplete, \
+             missing: {}",
+            missing.join(", ")
+        )));
     }
 
     let baseline = crate::MIGRATOR
