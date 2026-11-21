@@ -1,5 +1,35 @@
 name: chess-improver
 
+# Every service that runs workspace code mounts the repo plus one node_modules volume per workspace
+# package (Linux node_modules stay off the host checkout). Each new workspace package needs its own
+# volume here and under volumes:.
+x-workspace-volumes: &workspace-volumes
+  - .:/app
+  - node_modules:/app/node_modules
+  - worker_node_modules:/app/apps/worker/node_modules
+  - web_node_modules:/app/apps/web/node_modules
+  - web_next:/app/apps/web/.next
+  - chess_core_node_modules:/app/packages/chess-core/node_modules
+  - db_node_modules:/app/packages/db/node_modules
+  - ui_node_modules:/app/packages/ui/node_modules
+  - pnpm_store:/pnpm-store
+
+x-web-environment: &web-environment
+  DATABASE_URL: postgres://postgres:postgres@postgres:5432/chess
+  WEB_DATABASE_URL_TEST: postgres://postgres:postgres@postgres:5432/chess_web_test
+  REDIS_URL: redis://redis:6379
+  BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-dev-only-secret-do-not-use-outside-local-compose}
+  BETTER_AUTH_URL: http://localhost:3100
+  BETTER_AUTH_TRUSTED_ORIGINS: http://127.0.0.1:3100
+  SMTP_URL: smtp://mailpit:1025
+  MAIL_FROM: ${MAIL_FROM:-chess-improver <no-reply@chess-improver.local>}
+  GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+  GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+  CONTACT_EMAIL: ${CONTACT_EMAIL:?set CONTACT_EMAIL in .env}
+  LAB_ENABLED: "${LAB_ENABLED:-1}"
+  IN_DOCKER: "1"
+  SKIP_INSTALL: "1"
+
 services:
   postgres:
     image: postgres:17
@@ -34,6 +64,7 @@ services:
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/chess
       DATABASE_URL_TEST: postgres://postgres:postgres@postgres:5432/chess_test
       WORKER_DATABASE_URL_TEST: postgres://postgres:postgres@postgres:5432/chess_worker_test
+      WEB_DATABASE_URL_TEST: postgres://postgres:postgres@postgres:5432/chess_web_test
       REDIS_URL: redis://redis:6379
       STOCKFISH_PATH: /usr/local/bin/stockfish
       IN_DOCKER: "1"
@@ -41,20 +72,100 @@ services:
       # every `-p` project), so the worker itself fails fast on an empty value (requireEnv in src/main.ts, src/cli.ts).
       CONTACT_EMAIL: ${CONTACT_EMAIL:-}
       LICHESS_TOKEN: ${LICHESS_TOKEN:-}
+      SKIP_INSTALL: "1"
     depends_on:
+      deps:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-    volumes:
-      - .:/app
-      # Keep Linux node_modules off the host checkout.
-      # Each new workspace package needs its own node_modules volume (here and under volumes:).
-      - node_modules:/app/node_modules
-      - worker_node_modules:/app/apps/worker/node_modules
-      - chess_core_node_modules:/app/packages/chess-core/node_modules
-      - db_node_modules:/app/packages/db/node_modules
-      - pnpm_store:/pnpm-store
+    volumes: *workspace-volumes
+
+  deps:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+      target: dev
+    working_dir: /app
+    # One-shot install into the shared volumes. Services that depend on it set SKIP_INSTALL=1.
+    command: ["true"]
+    volumes: *workspace-volumes
+
+  mailpit:
+    image: axllent/mailpit:v1.34.0
+    ports:
+      - "127.0.0.1:48025:8025"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      target: dev
+    working_dir: /app
+    environment:
+      <<: *web-environment
+      # Docker bind mounts do not deliver file-change events to Linux.
+      WATCHPACK_POLLING: "true"
+    ports:
+      - "127.0.0.1:3100:3100"
+    depends_on:
+      deps:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mailpit:
+        condition: service_healthy
+    volumes: *workspace-volumes
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3100/api/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 40s
+
+  fakes:
+    profiles: [e2e]
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      target: dev
+    working_dir: /app
+    command: ["pnpm", "--filter", "@ci/web", "exec", "tsx", "test/fakes/main.ts"]
+    environment:
+      SKIP_INSTALL: "1"
+      PORT: "3199"
+    ports:
+      - "127.0.0.1:53199:3199"
+    depends_on:
+      deps:
+        condition: service_completed_successfully
+    volumes: *workspace-volumes
+
+  qa:
+    profiles: [qa]
+    image: mcr.microsoft.com/playwright:v1.65.1-noble
+    working_dir: /app
+    environment:
+      <<: *web-environment
+      BASE_URL: http://web:3100
+    depends_on:
+      deps:
+        condition: service_completed_successfully
+      web:
+        condition: service_healthy
+    volumes: *workspace-volumes
 
   rust-dev:
     build:
@@ -94,8 +205,11 @@ volumes:
   pgdata:
   node_modules:
   worker_node_modules:
+  web_node_modules:
+  web_next:
   chess_core_node_modules:
   db_node_modules:
+  ui_node_modules:
   pnpm_store:
   rust_target:
   cargo_registry:
