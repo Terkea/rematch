@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx src/main.ts",
+    "dev": "tsx --conditions=development src/main.ts",
+    "cli": "tsx --conditions=development src/cli.ts",
     "build": "tsc -p tsconfig.build.json",
     "test": "vitest run",
     "lint": "biome check .",
@@ -12,7 +13,11 @@
   },
   "dependencies": {
     "@ci/chess-core": "workspace:*",
-    "chess.js": "^1.4.0"
+    "@ci/db": "workspace:*",
+    "bullmq": "^6.7.8",
+    "chess.js": "^1.4.0",
+    "drizzle-orm": "~0.45.4",
+    "ioredis": "^6.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

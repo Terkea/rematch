@@ -37,6 +37,7 @@ services:
     environment:
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/chess
       DATABASE_URL_TEST: postgres://postgres:postgres@postgres:5432/chess_test
+      WORKER_DATABASE_URL_TEST: postgres://postgres:postgres@postgres:5432/chess_worker_test
       REDIS_URL: redis://redis:6379
       STOCKFISH_PATH: /usr/local/bin/stockfish
       IN_DOCKER: "1"

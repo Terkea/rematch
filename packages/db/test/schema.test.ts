@@ -3,11 +3,15 @@ import { afterAll, describe, expect, it } from "vitest";
 import {
   createDb,
   games,
+  importRuns,
+  insertUserEvent,
   linkedAccounts,
+  listEventsAfter,
   moves,
   type NewGame,
   positionEvals,
   upsertGame,
+  userEvents,
 } from "../src/index.js";
 
 const db = createDb(process.env.DATABASE_URL_TEST as string);
@@ -57,6 +61,73 @@ describe("schema", () => {
     expect(second.inserted).toBe(false);
     expect(second.id).toBe(first.id);
     expect(await countOf(games)).toBe(1);
+  });
+
+  it("upsertGame returns the current analysisStatus of an existing row", async () => {
+    const acc = await makeAccount();
+    const first = await upsertGame(db, gameRow(acc.id));
+    expect(first.analysisStatus).toBe("pending");
+    await db.update(games).set({ analysisStatus: "done" }).where(eq(games.id, first.id));
+    expect((await upsertGame(db, gameRow(acc.id))).analysisStatus).toBe("done");
+  });
+
+  it("new recovery columns default sensibly; import runs and user events exist", async () => {
+    const acc = await makeAccount();
+    expect(acc.importCursor).toBeNull();
+    const { id } = await upsertGame(db, gameRow(acc.id));
+    const [g] = await db.select().from(games).where(eq(games.id, id));
+    expect(g).toMatchObject({ analysisAttempts: 0, heartbeatAt: null, analysisStartedAt: null });
+    const [run] = await db.insert(importRuns).values({ accountId: acc.id }).returning();
+    expect(run).toMatchObject({
+      status: "running",
+      imported: 0,
+      finishedAt: null,
+      lastError: null,
+    });
+    const evs = await db
+      .insert(userEvents)
+      .values([
+        { accountId: acc.id, type: "a", payload: {} },
+        { accountId: acc.id, type: "b", payload: { n: 1 } },
+      ])
+      .returning();
+    expect((evs[1]?.id as number) > (evs[0]?.id as number)).toBe(true);
+  });
+
+  it("createDb can set a statement_timeout on every connection", async () => {
+    const limited = createDb(process.env.DATABASE_URL_TEST as string, { statementTimeoutMs: 200 });
+    try {
+      const err = (await limited.execute(sql`select pg_sleep(1)`).catch((e) => e)) as Error;
+      // drizzle wraps the driver error; the server message is on `cause`.
+      expect(String((err.cause as Error | undefined)?.message)).toMatch(/statement timeout/);
+      const [row] = await limited.execute<{ statement_timeout: string }>(
+        sql`show statement_timeout`,
+      );
+      expect(row?.statement_timeout).toBe("200ms");
+    } finally {
+      await limited.$client.end();
+    }
+  });
+
+  it("insertUserEvent hands out ids in commit order and listEventsAfter pages by id", async () => {
+    const acc = await makeAccount();
+    const a = await insertUserEvent(db, { accountId: acc.id, type: "a", payload: {} });
+    const b = await insertUserEvent(db, { accountId: acc.id, type: "b", payload: { n: 1 } });
+    expect(b).toBeGreaterThan(a);
+    const page = await listEventsAfter(db, [acc.id], a, 10);
+    expect(page.map((e) => [e.id, e.type, e.payload])).toEqual([[b, "b", { n: 1 }]]);
+  });
+
+  it("games get pendingSince when inserted", async () => {
+    const acc = await makeAccount();
+    const { id } = await upsertGame(db, gameRow(acc.id));
+    const [g] = await db.select().from(games).where(eq(games.id, id));
+    expect(g?.pendingSince).toBeInstanceOf(Date);
+    const [run] = await db
+      .insert(importRuns)
+      .values({ accountId: acc.id, status: "paused", errorCode: "circuit_open" })
+      .returning();
+    expect(run?.errorCode).toBe("circuit_open");
   });
 
   it("defaults analysisStatus to pending", async () => {

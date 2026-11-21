@@ -62,6 +62,13 @@ describe("fetchLichessGames", () => {
     expect(calls[0]?.init?.headers?.Authorization).toBeUndefined();
   });
 
+  it("passes until as epoch ms, for resuming from a cursor", async () => {
+    const { client, calls } = fakeClient();
+    const until = new Date("2026-02-01T00:00:00Z");
+    await collect(fetchLichessGames(client, "x", { until }));
+    expect(calls[0]?.url).toContain(`until=${until.getTime()}`);
+  });
+
   it("passes since as epoch ms and token as bearer", async () => {
     const { client, calls } = fakeClient();
     const since = new Date("2026-01-01T00:00:00Z");

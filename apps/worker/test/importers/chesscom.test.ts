@@ -87,6 +87,16 @@ describe("fetchChesscomGames", () => {
     expect(games).toHaveLength(5);
   });
 
+  it("skips months entirely after until and filters newer games (until inclusive)", async () => {
+    const { client, urls } = fakeClient({ [octUrl]: octGames });
+    const games = await collect(
+      fetchChesscomGames(client, "hikaru", { until: new Date("2026-10-15T00:00:00Z") }),
+    );
+    // November starts after `until`, so only October and older are fetched.
+    expect(urls).toEqual([archivesUrl, octUrl, archives.archives[0]]);
+    expect(games.map((g) => g.platformGameId)).toEqual(["2", "1"]);
+  });
+
   it("filters games older than since within a month", async () => {
     const { client } = fakeClient();
     const cut = month.games[2]?.end_time as number;

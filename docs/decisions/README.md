@@ -27,4 +27,8 @@ One file per decision: context, decision, alternatives, consequences. New decisi
 - [0023. Local stack host ports 55432 and 56379](0023-local-stack-host-ports.md)
 - [0024. Weakness timeline with change-point detection](0024-weakness-timeline-change-points.md)
 - [0025. Tiered import and prioritised analysis for large histories](0025-tiered-import-and-analysis.md)
+- [0026. Workspace packages resolve source via a development condition](0026-workspace-source-resolution.md)
+- [0027. Lichess server evals accepted into the eval cache](0027-lichess-evals-in-eval-cache.md)
+- [0028. BullMQ job ids and analysis persistence](0028-bullmq-job-ids-and-analysis-persistence.md)
+- [0029. State in Postgres, queue as delivery; reconciler instead of an outbox](0029-state-in-postgres-reconciler-not-outbox.md)
 - [0030. Rust for the entire backend](0030-rust-backend.md)

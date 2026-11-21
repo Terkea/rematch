@@ -3,6 +3,7 @@
   "globalPassThroughEnv": [
     "DATABASE_URL",
     "DATABASE_URL_TEST",
+    "WORKER_DATABASE_URL_TEST",
     "REDIS_URL",
     "STOCKFISH_PATH",
     "CONTACT_EMAIL",
@@ -10,9 +11,12 @@
     "IN_DOCKER"
   ],
   "tasks": {
-    "build": { "dependsOn": ["^build"], "outputs": ["dist/**"] },
-    "test": { "dependsOn": ["^build"] },
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"]
+    },
+    "test": {},
     "lint": {},
-    "typecheck": { "dependsOn": ["^build"] }
+    "typecheck": {}
   }
 }

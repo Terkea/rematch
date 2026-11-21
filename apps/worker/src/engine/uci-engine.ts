@@ -1,10 +1,7 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { createInterface } from "node:readline";
+import type { EngineScore } from "@ci/chess-core";
 import { Chess, validateFen } from "chess.js";
-
-// TODO(T11): import type { EngineScore } from "@ci/chess-core"
-/** Structurally identical to `EngineScore` from `@ci/chess-core`. */
-export type EngineScore = { cp: number } | { mate: number };
 
 export interface AnalysisLine {
   multipv: number;

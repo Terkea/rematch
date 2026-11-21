@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  bigserial,
   boolean,
   doublePrecision,
   index,
@@ -35,6 +36,26 @@ export const analysisStatusEnum = pgEnum("analysis_status", [
 export const evalSourceEnum = pgEnum("eval_source", ["stockfish", "lichess", "dump"]);
 export const judgementEnum = pgEnum("judgement", ["inaccuracy", "mistake", "blunder"]);
 export const phaseEnum = pgEnum("phase", ["opening", "middlegame", "endgame"]);
+export const importRunStatusEnum = pgEnum("import_run_status", [
+  "running",
+  "done",
+  "failed",
+  // Stopped by an open circuit breaker; its job was delayed (not failed) and starts a new run.
+  "paused",
+]);
+
+/** Why an import run failed, from the typed platform errors. */
+export type ImportErrorCode = "not_found" | "rate_limited" | "timeout" | "circuit_open" | "unknown";
+
+/**
+ * Import checkpoint on the account. Games stream newest first. `oldestReached` is the oldest
+ * playedAt committed by a pass that has not finished yet (null when no pass is open), and
+ * `newestSeenAt` is the playedAt watermark below which every game has been imported. ISO strings.
+ */
+export interface ImportCursor {
+  oldestReached: string | null;
+  newestSeenAt: string | null;
+}
 
 export const linkedAccounts = pgTable(
   "linked_accounts",
@@ -47,6 +68,7 @@ export const linkedAccounts = pgTable(
     displayName: text("display_name").notNull(),
     verifiedAt: timestamp("verified_at", { withTimezone: true }),
     lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
+    importCursor: jsonb("import_cursor").$type<ImportCursor>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [unique("linked_accounts_platform_username_uq").on(t.platform, t.username)],
@@ -82,10 +104,16 @@ export const games = pgTable(
     analysisError: text("analysis_error"),
     whiteAccuracy: real("white_accuracy"),
     blackAccuracy: real("black_accuracy"),
+    analysisStartedAt: timestamp("analysis_started_at", { withTimezone: true }),
+    heartbeatAt: timestamp("heartbeat_at", { withTimezone: true }),
+    analysisAttempts: integer("analysis_attempts").notNull().default(0),
+    /** When the game last became pending; the reconciler leaves recently pending games alone. */
+    pendingSince: timestamp("pending_since", { withTimezone: true }).defaultNow(),
   },
   (t) => [
     unique("games_platform_game_uq").on(t.platform, t.platformGameId),
     index("games_account_played_idx").on(t.accountId, t.playedAt.desc()),
+    index("games_analysis_status_idx").on(t.analysisStatus),
   ],
 );
 
@@ -128,4 +156,41 @@ export const moves = pgTable(
     decided: boolean("decided").notNull(),
   },
   (t) => [primaryKey({ columns: [t.gameId, t.ply] })],
+);
+
+export const importRuns = pgTable(
+  "import_runs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    accountId: uuid("account_id")
+      .notNull()
+      .references(() => linkedAccounts.id, { onDelete: "cascade" }),
+    status: importRunStatusEnum("status").notNull().default("running"),
+    imported: integer("imported").notNull().default(0),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+    heartbeatAt: timestamp("heartbeat_at", { withTimezone: true }).notNull().defaultNow(),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+    lastError: text("last_error"),
+    errorCode: text("error_code").$type<ImportErrorCode>(),
+  },
+  (t) => [
+    index("import_runs_account_idx").on(t.accountId),
+    index("import_runs_status_heartbeat_idx").on(t.status, t.heartbeatAt),
+  ],
+);
+
+/** Append-only per-account domain events; `id` orders them and is the SSE Last-Event-ID. */
+export const userEvents = pgTable(
+  "user_events",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    accountId: uuid("account_id").notNull(),
+    type: text("type").notNull(),
+    payload: jsonb("payload").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("user_events_account_id_idx").on(t.accountId, t.id),
+    index("user_events_created_idx").on(t.createdAt),
+  ],
 );
