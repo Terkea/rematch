@@ -1,6 +1,10 @@
 //! Text normalisation applied before any extraction, so notation tricks cannot smuggle moves or
-//! numbers. A port of m3's `validator/normalize.ts`, operation for operation, plus the deliberate
-//! hardening of ADR-R3-2 (fix round 1): a missed claim is a leak, so this is stricter than TS.
+//! numbers. A port of m3's `validator/normalize.ts`, operation for operation ([`NormMode::TsExact`]),
+//! plus the deliberate hardening of ADR-R3-2 ([`NormMode::Hardened`]): a missed claim is a leak.
+//!
+//! Hardening alone can also hide a claim: folding a neighbour to ASCII glues it on (`Nf3é` becomes
+//! `Nf3e`, which no boundary check accepts). So the extractors run both modes and return the union
+//! (fix round 2), which is a superset of TS by construction.
 //!
 //! Hardening beyond TS (each is a recorded deviation, H1–H6):
 //! - H1: every `\p{Nd}` digit is folded to ASCII after NFKC (`٣` is `3`);
@@ -23,6 +27,30 @@ fn re(p: &str) -> Regex {
     Regex::new(p).expect("valid regex")
 }
 
+/// Which normalisation to run. Extraction runs both and returns the union (ADR-R3-2, fix round 2):
+/// folding a non-ASCII neighbour to ASCII (H1, H3, H4) can glue it onto a move or date and hide
+/// it from the boundary checks (`Nf3é` becomes `Nf3e`), so the TS-exact path must run too.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NormMode {
+    /// TS's `normalizeText`, step for step, with TS's sets.
+    TsExact,
+    /// TS's steps plus H1–H6.
+    Hardened,
+}
+
+/// The TS-exact steps only: [`NormMode::TsExact`].
+pub fn normalize_ts(s: &str) -> String {
+    normalize_with(s, NormMode::TsExact)
+}
+
+/// TS's `INVISIBLES`, exactly.
+static TS_INVISIBLES: LazyLock<Regex> = LazyLock::new(|| {
+    re(concat!(
+        r"[\x{AD}\x{34F}\x{61C}\x{115F}\x{1160}\x{17B4}\x{17B5}\x{180B}-\x{180E}\x{200B}-\x{200F}",
+        r"\x{202A}-\x{202E}\x{2060}-\x{2069}\x{3164}\x{FE00}-\x{FE0F}\x{FEFF}\x{FFA0}",
+        r"\x{E0000}-\x{E007F}\x{E0100}-\x{E01EF}]+"
+    ))
+});
 /// TS's `INVISIBLES` plus (H2) every `Default_Ignorable_Code_Point`.
 static INVISIBLES: LazyLock<Regex> = LazyLock::new(|| {
     re(concat!(
@@ -32,7 +60,6 @@ static INVISIBLES: LazyLock<Regex> = LazyLock::new(|| {
     ))
 });
 static MN: LazyLock<Regex> = LazyLock::new(|| re(r"\p{Mn}+"));
-static ND: LazyLock<Regex> = LazyLock::new(|| re(r"\A\p{Nd}\z"));
 
 fn char_matches(r: &Regex, c: char) -> bool {
     let mut buf = [0u8; 4];
@@ -45,13 +72,23 @@ pub fn is_invisible(c: char) -> bool {
     !c.is_ascii() && char_matches(&INVISIBLES, c)
 }
 
-/// Removes every [`is_invisible`] code point.
+/// Removes every [`is_invisible`] code point (the hardened set).
 pub fn strip_invisibles(s: &str) -> String {
-    INVISIBLES.replace_all(s, "").into_owned()
+    strip_invisibles_with(s, NormMode::Hardened)
 }
 
-/// The dash set: TS's `DASH` (`\u{2010}-\u{2015}\u{2212}\u{2796}\u{FE58}\u{FE63}\u{FF0D}`) plus
-/// U+02D7, U+2E3A, U+2E3B, U+058A and U+30FC (H5). One table for [`is_dash`] and [`dash_class`].
+/// Removes TS's `INVISIBLES` ([`NormMode::TsExact`]) or the hardened set.
+pub fn strip_invisibles_with(s: &str, mode: NormMode) -> String {
+    let r = match mode {
+        NormMode::TsExact => &TS_INVISIBLES,
+        NormMode::Hardened => &INVISIBLES,
+    };
+    r.replace_all(s, "").into_owned()
+}
+
+/// The dash set: TS's `DASH` (`\u{2010}-\u{2015}\u{2212}\u{2796}\u{FE58}\u{FE63}\u{FF0D}`, the
+/// first [`TS_DASHES`] entries) plus U+02D7, U+2E3A, U+2E3B, U+058A and U+30FC (H5). One table for
+/// [`is_dash`] and [`dash_class`].
 pub const DASH_RANGES: [(char, char); 11] = [
     ('\u{2010}', '\u{2015}'),
     ('\u{2212}', '\u{2212}'),
@@ -65,13 +102,29 @@ pub const DASH_RANGES: [(char, char); 11] = [
     ('\u{058A}', '\u{058A}'),
     ('\u{30FC}', '\u{30FC}'),
 ];
+/// The number of [`DASH_RANGES`] entries that form TS's `DASH`.
+pub const TS_DASHES: usize = 6;
 
-/// True for a member of [`DASH_RANGES`] (not the ASCII hyphen).
-pub fn is_dash(c: char) -> bool {
-    DASH_RANGES.iter().any(|(a, b)| (*a..=*b).contains(&c))
+fn dash_ranges(mode: NormMode) -> &'static [(char, char)] {
+    match mode {
+        NormMode::TsExact => &DASH_RANGES[..TS_DASHES],
+        NormMode::Hardened => &DASH_RANGES,
+    }
 }
 
-/// [`DASH_RANGES`] as the body of a regex character class.
+/// True for a member of the hardened dash set (not the ASCII hyphen).
+pub fn is_dash(c: char) -> bool {
+    is_dash_with(c, NormMode::Hardened)
+}
+
+/// True for a member of TS's `DASH` ([`NormMode::TsExact`]) or the hardened set.
+pub fn is_dash_with(c: char, mode: NormMode) -> bool {
+    dash_ranges(mode)
+        .iter()
+        .any(|(a, b)| (*a..=*b).contains(&c))
+}
+
+/// The hardened [`DASH_RANGES`] as the body of a regex character class.
 pub fn dash_class() -> String {
     DASH_RANGES
         .iter()
@@ -174,52 +227,55 @@ pub fn figurine_letter(c: char) -> Option<char> {
     })
 }
 
+/// The code point of the `0` of every run of ten `\p{Nd}` digits, sorted. Generated from Node 22.22
+/// (ICU 77.1, Unicode 16.0) by testing `/\p{Nd}/u` on every code point; adjacent runs (the
+/// mathematical digits at U+1D7CE, and U+116D0/U+116DA) are listed per ten.
+const ND_ZEROS: [u32; 76] = [
+    0x30, 0x660, 0x6F0, 0x7C0, 0x966, 0x9E6, 0xA66, 0xAE6, 0xB66, 0xBE6, 0xC66, 0xCE6, 0xD66,
+    0xDE6, 0xE50, 0xED0, 0xF20, 0x1040, 0x1090, 0x17E0, 0x1810, 0x1946, 0x19D0, 0x1A80, 0x1A90,
+    0x1B50, 0x1BB0, 0x1C40, 0x1C50, 0xA620, 0xA8D0, 0xA900, 0xA9D0, 0xA9F0, 0xAA50, 0xABF0, 0xFF10,
+    0x104A0, 0x10D30, 0x10D40, 0x11066, 0x110F0, 0x11136, 0x111D0, 0x112F0, 0x11450, 0x114D0,
+    0x11650, 0x116C0, 0x116D0, 0x116DA, 0x11730, 0x118E0, 0x11950, 0x11BF0, 0x11C50, 0x11D50,
+    0x11DA0, 0x11F50, 0x16130, 0x16A60, 0x16AC0, 0x16B50, 0x16D70, 0x1CCF0, 0x1D7CE, 0x1D7D8,
+    0x1D7E2, 0x1D7EC, 0x1D7F6, 0x1E140, 0x1E2F0, 0x1E4F0, 0x1E5F1, 0x1E950, 0x1FBF0,
+];
+
+/// The decimal value of a `\p{Nd}` char, from [`ND_ZEROS`].
+fn nd_value(c: char) -> Option<u32> {
+    let cp = u32::from(c);
+    let i = ND_ZEROS.partition_point(|z| *z <= cp).checked_sub(1)?;
+    let off = cp - ND_ZEROS[i];
+    (off < 10).then_some(off)
+}
+
 /// `\p{Nd}`, as JS's `u`-flag class.
 fn is_nd(c: char) -> bool {
     if c.is_ascii() {
         return c.is_ascii_digit();
     }
-    char_matches(&ND, c)
+    nd_value(c).is_some()
 }
 
-/// H1: the ASCII digit of a `\p{Nd}` char. Unicode keeps decimal digits in contiguous runs of ten,
-/// from 0 to 9, so the value is the number of `Nd` code points before it in its run, modulo 10.
+/// H1: the ASCII digit of a non-ASCII `\p{Nd}` char.
 fn ascii_digit(c: char) -> Option<char> {
-    if c.is_ascii() || !is_nd(c) {
+    if c.is_ascii() {
         return None;
     }
-    let mut before = 0u32;
-    let mut cp = u32::from(c);
-    // The longest run (mathematical digits) is 50 code points long.
-    while before < 64
-        && let Some(p) = cp.checked_sub(1).and_then(char::from_u32)
-        && is_nd(p)
-    {
-        before += 1;
-        cp -= 1;
-    }
-    char::from_digit(before % 10, 10)
+    char::from_digit(nd_value(c)?, 10)
 }
 
-/// `(?<=\p{Nd})[\u{A0}\u{202F}\u{2009}\u{2007}](?=\p{Nd}{3}(?!\p{Nd}))` → `,`, with U+2006, U+2008
-/// and U+200A added (H6).
-fn group_thousands(s: &str) -> String {
+/// `(?<=\p{Nd})[\u{A0}\u{202F}\u{2009}\u{2007}](?=\p{Nd}{3}(?!\p{Nd}))` → `,`. The hardened mode
+/// adds U+2006, U+2008 and U+200A (H6).
+fn group_thousands(s: &str, mode: NormMode) -> String {
     let chars: Vec<char> = s.chars().collect();
     let nd = |i: usize| chars.get(i).is_some_and(|c| is_nd(*c));
+    let hardened = mode == NormMode::Hardened;
     chars
         .iter()
         .enumerate()
         .map(|(i, &c)| {
-            let space = matches!(
-                c,
-                '\u{A0}'
-                    | '\u{202F}'
-                    | '\u{2009}'
-                    | '\u{2007}'
-                    | '\u{2006}'
-                    | '\u{2008}'
-                    | '\u{200A}'
-            );
+            let space = matches!(c, '\u{A0}' | '\u{202F}' | '\u{2009}' | '\u{2007}')
+                || (hardened && matches!(c, '\u{2006}' | '\u{2008}' | '\u{200A}'));
             if space && i > 0 && nd(i - 1) && nd(i + 1) && nd(i + 2) && nd(i + 3) && !nd(i + 4) {
                 ','
             } else {
@@ -265,35 +321,42 @@ fn castling(s: &str) -> String {
     splice(s, &edits)
 }
 
-/// Normalises text before extraction:
+/// Normalises text before extraction with the hardened pipeline ([`NormMode::Hardened`]).
+pub fn normalize_text(s: &str) -> String {
+    normalize_with(s, NormMode::Hardened)
+}
+
+/// Normalises text before extraction. Both modes run TS's steps with that mode's sets:
 /// 1. strip invisibles;
 /// 2. space-grouped thousands become commas, before NFKC erases the space kind (H6 widens the set);
 /// 3. NFKC, then strip invisibles again;
-/// 4. H3: drop combining marks (NFKD, drop `\p{Mn}`, NFC);
-/// 5. H1: fold `\p{Nd}` to ASCII digits;
-/// 6. H4: fold homoglyphs;
-/// 7. then, in TS's order: castling dashes, a minus before a digit, figurines, `0-0` castling.
-pub fn normalize_text(s: &str) -> String {
-    let t = group_thousands(&strip_invisibles(s));
-    let t = strip_invisibles(&t.nfkc().collect::<String>());
-    let t = MN
-        .replace_all(&t.nfkd().collect::<String>(), "")
-        .nfc()
-        .collect::<String>();
-    let t: String = t
-        .chars()
-        .map(|c| {
-            if c.is_ascii() {
-                c
-            } else {
-                ascii_digit(c).or_else(|| homoglyph(c)).unwrap_or(c)
-            }
-        })
-        .collect();
+/// 4. hardened only: H3 drops combining marks (NFKD, drop `\p{Mn}`, NFC), then H1 folds `\p{Nd}`
+///    to ASCII and H4 folds homoglyphs;
+/// 5. castling dashes, a minus before a digit, figurines, `0-0` castling (H5 widens the dashes).
+pub fn normalize_with(s: &str, mode: NormMode) -> String {
+    let t = group_thousands(&strip_invisibles_with(s, mode), mode);
+    let mut t = strip_invisibles_with(&t.nfkc().collect::<String>(), mode);
+    if mode == NormMode::Hardened {
+        let d = MN
+            .replace_all(&t.nfkd().collect::<String>(), "")
+            .nfc()
+            .collect::<String>();
+        t = d
+            .chars()
+            .map(|c| {
+                if c.is_ascii() {
+                    c
+                } else {
+                    ascii_digit(c).or_else(|| homoglyph(c)).unwrap_or(c)
+                }
+            })
+            .collect();
+    }
     let castle = |c: Option<char>| matches!(c, Some('O' | 'o' | '0'));
-    let t = map_dashes(&t, |p, c, n| castle(p) && is_dash(c) && castle(n));
+    let dash = |c: char| is_dash_with(c, mode);
+    let t = map_dashes(&t, |p, c, n| castle(p) && dash(c) && castle(n));
     let t = map_dashes(&t, |_, c, n| {
-        is_dash(c) && n.is_some_and(|n| n.is_ascii_digit())
+        dash(c) && n.is_some_and(|n| n.is_ascii_digit())
     });
     let t: String = t.chars().map(|c| figurine_letter(c).unwrap_or(c)).collect();
     castling(&t)

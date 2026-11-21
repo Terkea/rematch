@@ -9,7 +9,7 @@ use ai::validator::bounded::bounded_matches;
 use ai::validator::extract::{
     ExtractedNumber, NumberKind, extract_dates, extract_moves, extract_numbers,
 };
-use ai::validator::normalize::{normalize_text, strip_invisibles};
+use ai::validator::normalize::{normalize_text, normalize_ts, strip_invisibles};
 use regex::Regex;
 
 fn values(ns: &[ExtractedNumber]) -> Vec<f64> {
@@ -259,11 +259,12 @@ mod rust_only {
 
     type Shape = fn(usize) -> String;
 
-    /// Each hostile shape runs at N and at 4N. Linear work takes about 4x as long, and quadratic
-    /// work about 16x. The bound (10x, plus 40 ms of slack for tiny timings) catches the quadratic
-    /// case without flaking on a linear one. The first shape is the bare-square gap scan from the
-    /// fix round 1 review: an accepted move, a long gap, then many rejected bare squares.
+    /// A timing cross-check of the deterministic byte-count test
+    /// (`extract::tests::scanned_bytes_are_linear_on_hostile_shapes`, the binding one). Each shape
+    /// runs at N and at 4N: linear work takes about 4x as long, quadratic about 16x; the bound is
+    /// 10x plus 40 ms. Release builds only, because debug timings are noisy and slow.
     #[test]
+    #[cfg_attr(debug_assertions, ignore)]
     fn extractors_are_linear_on_large_hostile_text() {
         const N: usize = 1 << 14;
         let shapes: Vec<(&str, Shape)> = vec![
@@ -346,7 +347,12 @@ mod hardening {
         assert_eq!(normalize_text("N\u{301}f3"), "Nf3");
         assert_eq!(normalize_text("e\u{308}4 \u{e9}"), "e4 e");
         assert_eq!(san("N\u{301}f\u{20d7}3"), s(&["Nf3"]));
-        assert_eq!(values(&extract_numbers("4\u{301}2 games")), vec![42.0]);
+        // The union: the TS path reads "4" and "2" either side of the mark, then the hardened path
+        // adds 42.
+        assert_eq!(
+            values(&extract_numbers("4\u{301}2 games")),
+            vec![4.0, 2.0, 42.0]
+        );
     }
 
     #[test]
@@ -376,11 +382,15 @@ mod hardening {
                 s(&["e2e4"]),
                 "{d:?}"
             );
-            assert_eq!(
-                values(&extract_numbers(&format!("{d}3 eval"))),
-                vec![-3.0],
-                "{d:?}"
-            );
+            // TS's own dashes (U+2796) give -3 on both paths; a new dash gives the TS-path 3, then
+            // the hardened -3.
+            let v = values(&extract_numbers(&format!("{d}3 eval")));
+            let want = if d == "\u{2796}" {
+                vec![-3.0]
+            } else {
+                vec![3.0, -3.0]
+            };
+            assert_eq!(v, want, "{d:?}");
         }
     }
 
@@ -388,12 +398,61 @@ mod hardening {
     fn h6_treats_more_spaces_as_thousands_separators() {
         for sp in ['\u{2006}', '\u{2008}', '\u{200a}'] {
             assert_eq!(normalize_text(&format!("1{sp}000")), "1,000", "{sp:?}");
+            // The TS path reads 1 and 0 (000); the hardened path adds 1000.
             assert_eq!(
                 values(&extract_numbers(&format!("1{sp}000 games"))),
-                vec![1000.0],
+                vec![1.0, 0.0, 1000.0],
                 "{sp:?}"
             );
         }
+    }
+}
+
+/// Fix round 2: hardening folds a neighbour to ASCII, which can glue it onto a move or date
+/// (`Nf3é` becomes `Nf3e`). The union keeps every result the TS-exact path finds.
+mod union {
+    use super::*;
+    use ai::validator::extract::ExtractedDate;
+
+    #[test]
+    fn a_folded_neighbour_never_hides_a_ts_result() {
+        for (text, want) in [
+            ("Nf3\u{e9}", "Nf3"),
+            ("\u{e9}Nf3", "Nf3"),
+            ("Nf3\u{430}", "Nf3"),
+            ("Nf3\u{663}", "Nf3"),
+            ("Nf3\u{3bd}", "Nf3"),
+            ("Qxe5\u{e9} wins", "Qxe5"),
+            ("O-O\u{e9}", "O-O"),
+        ] {
+            assert!(
+                san(text).contains(&want.to_owned()),
+                "{text:?}: {:?}",
+                san(text)
+            );
+        }
+        assert_eq!(san("\u{e8}Rd1 and Rd1\u{e8}"), s(&["Rd1", "Rd1"]));
+        assert_eq!(extract_moves("e2e4\u{e9}").uci, s(&["e2e4"]));
+        assert_eq!(extract_moves("e2-e4\u{430}").uci, s(&["e2e4"]));
+        assert_eq!(
+            extract_dates("14 Oct\u{e9}"),
+            vec![ExtractedDate {
+                year: None,
+                month: 10,
+                day: 14
+            }]
+        );
+    }
+
+    #[test]
+    fn ts_results_come_first_then_hardened_extras_without_duplicates() {
+        // Both paths find Nf3; the hardened path adds e4 (from Cyrillic е4) once.
+        assert_eq!(san("Nf3 \u{435}4 and Nf3"), s(&["Nf3", "Nf3", "e4"]));
+        // Identical paths add nothing.
+        assert_eq!(
+            values(&extract_numbers("5 games and 5 moves")),
+            vec![5.0, 5.0]
+        );
     }
 }
 
@@ -429,6 +488,20 @@ mod ts_parity {
         "O\u{2d7}O and 0\u{2e3a}0\u{2e3b}0 and O\u{58a}O\u{30fc}O",
         "e2\u{2d7}e4 and Ng1\u{2e3a}f3",
         "1\u{2006}000 and 1\u{2008}000 and 1\u{200a}000 games",
+        // Fix round 2: the hardened text glues a folded neighbour on, so only the normalisation
+        // differs; the union must still keep every TS result (checked as a prefix).
+        "Nf3\u{e9}",
+        "\u{e9}Nf3",
+        "Nf3\u{430}",
+        "Nf3\u{663}",
+        "Nf3\u{3bd}",
+        "Qxe5\u{e9} wins",
+        "e2e4\u{e9}",
+        "e2-e4\u{430}",
+        "O-O\u{e9}",
+        "\u{e8}Rd1 and Rd1\u{e8}",
+        "14 Oct\u{e9}",
+        "5\u{e9} games and 7\u{663} games",
     ];
 
     fn ts_number(v: &Value) -> ExtractedNumber {
@@ -453,47 +526,98 @@ mod ts_parity {
             .collect()
     }
 
-    /// The fields where Rust and the recorded TS output differ, if any.
-    fn diff(case: &Value) -> Vec<String> {
+    /// The recorded TS output for one corpus row.
+    struct Ts {
+        t: String,
+        numbers: Vec<ExtractedNumber>,
+        san: Vec<String>,
+        uci: Vec<String>,
+        dates: Vec<ExtractedDate>,
+    }
+
+    fn ts_row(case: &Value) -> Ts {
+        Ts {
+            t: case["t"].as_str().unwrap().to_owned(),
+            numbers: case["n"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(ts_number)
+                .collect(),
+            san: strings(&case["m"]["san"]),
+            uci: strings(&case["m"]["uci"]),
+            dates: case["d"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|x| ExtractedDate {
+                    year: x["year"].as_i64().map(|y| i32::try_from(y).unwrap()),
+                    month: u32::try_from(x["month"].as_u64().unwrap()).unwrap(),
+                    day: u32::try_from(x["day"].as_u64().unwrap()).unwrap(),
+                })
+                .collect(),
+        }
+    }
+
+    /// Checks one row. Every row: the TS-exact normalisation equals TS's, and each Rust result list
+    /// starts with TS's list unchanged (so it is a superset, in TS order). Non-hardened rows: the
+    /// hardened normalisation and every list equal TS exactly. Hardened rows must differ somewhere
+    /// (`hardened_differs`), or the `HARDENED` entry is stale.
+    fn check(case: &Value, hardened: bool, bad: &mut Vec<String>) {
         let s = case["s"].as_str().unwrap();
-        let mut bad = Vec::new();
-        if normalize_text(s) != case["t"].as_str().unwrap() {
-            bad.push(format!("normalize {s:?}: {:?}", normalize_text(s)));
+        let ts = ts_row(case);
+        if normalize_ts(s) != ts.t {
+            bad.push(format!("normalize_ts {s:?}: {:?}", normalize_ts(s)));
         }
-        let n: Vec<ExtractedNumber> = case["n"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(ts_number)
-            .collect();
-        let got = extract_numbers(s);
-        if got != n {
-            bad.push(format!("numbers {s:?}: rust {got:?} ts {n:?}"));
-        }
+        let n = extract_numbers(s);
         let m = extract_moves(s);
-        if m.san != strings(&case["m"]["san"]) || m.uci != strings(&case["m"]["uci"]) {
-            bad.push(format!("moves {s:?}: {m:?}"));
+        let d = extract_dates(s);
+        let lists = [
+            (
+                "numbers",
+                n.starts_with(&ts.numbers),
+                n.len() == ts.numbers.len(),
+            ),
+            (
+                "san",
+                m.san.starts_with(&ts.san),
+                m.san.len() == ts.san.len(),
+            ),
+            (
+                "uci",
+                m.uci.starts_with(&ts.uci),
+                m.uci.len() == ts.uci.len(),
+            ),
+            ("dates", d.starts_with(&ts.dates), d.len() == ts.dates.len()),
+        ];
+        let detail = || format!("rust {n:?} {m:?} {d:?}");
+        for (what, prefix, _) in &lists {
+            if !prefix {
+                bad.push(format!("{what} {s:?} lost a TS result: {}", detail()));
+            }
         }
-        let d: Vec<ExtractedDate> = case["d"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|x| ExtractedDate {
-                year: x["year"].as_i64().map(|y| i32::try_from(y).unwrap()),
-                month: u32::try_from(x["month"].as_u64().unwrap()).unwrap(),
-                day: u32::try_from(x["day"].as_u64().unwrap()).unwrap(),
-            })
-            .collect();
-        if extract_dates(s) != d {
-            bad.push(format!("dates {s:?}: {:?}", extract_dates(s)));
+        let same_norm = normalize_text(s) == ts.t;
+        let all_equal = lists.iter().all(|(_, p, l)| *p && *l);
+        if hardened {
+            if same_norm && all_equal {
+                bad.push(format!("hardened {s:?} no longer differs from TS"));
+            }
+        } else {
+            if !same_norm {
+                bad.push(format!("normalize {s:?}: {:?}", normalize_text(s)));
+            }
+            for (what, prefix, len) in &lists {
+                if *prefix && !len {
+                    bad.push(format!("{what} {s:?} has extras: {}", detail()));
+                }
+            }
         }
-        bad
     }
 
     #[test]
     fn rust_matches_the_recorded_ts_output_on_the_edge_corpus() {
         let corpus: Vec<Value> = serde_json::from_str(TS_CORPUS).unwrap();
-        assert!(corpus.len() > 110, "{} rows", corpus.len());
+        assert!(corpus.len() > 163, "{} rows", corpus.len());
         let inputs: Vec<&str> = corpus.iter().map(|c| c["s"].as_str().unwrap()).collect();
         for h in HARDENED {
             assert!(
@@ -504,14 +628,7 @@ mod ts_parity {
         let mut bad = Vec::new();
         for case in &corpus {
             let s = case["s"].as_str().unwrap();
-            let d = diff(case);
-            if HARDENED.contains(&s) {
-                if d.is_empty() {
-                    bad.push(format!("hardened {s:?} no longer differs from TS"));
-                }
-            } else {
-                bad.extend(d);
-            }
+            check(case, HARDENED.contains(&s), &mut bad);
         }
         assert!(
             bad.is_empty(),
@@ -522,7 +639,7 @@ mod ts_parity {
     }
 
     // BEGIN GENERATED by backend/tools/gen-validator-corpus.mjs; do not edit by hand.
-    // node 22.22.0, icu 77.1, unicode 16.0, m3 4ff8220aed41afb2dd23e04314511f6ebcb1f8e7, 163 inputs
+    // node 22.22.0, icu 77.1, unicode 16.0, m3 4ff8220aed41afb2dd23e04314511f6ebcb1f8e7, 175 inputs
     const TS_CORPUS: &str = r#"[
 {"s":"0-0-0x","t":"O-O-0x","n":[{"value":0,"decimals":0,"percent":false,"hedged":false,"kind":"ratio","ambiguous":false}],"m":{"san":["O-O"],"uci":[]},"d":[]},
 {"s":"O-O-Ox","t":"O-O-Ox","n":[],"m":{"san":["O-O"],"uci":[]},"d":[]},
@@ -686,7 +803,19 @@ mod ts_parity {
 {"s":"N\u180ff3 and N\ud834\udd73f3 and N\ufff0f3","t":"N\u180ff3 and N\ud834\udd73f3 and N\ufff0f3","n":[],"m":{"san":[],"uci":[]},"d":[]},
 {"s":"O\u02d7O and 0\u2e3a0\u2e3b0 and O\u058aO\u30fcO","t":"O\u02d7O and 0\u2e3a0\u2e3b0 and O\u058aO\u30fcO","n":[{"value":0,"decimals":0,"percent":false,"hedged":false,"kind":"plain","ambiguous":false},{"value":0,"decimals":0,"percent":false,"hedged":false,"kind":"plain","ambiguous":false},{"value":0,"decimals":0,"percent":false,"hedged":false,"kind":"plain","ambiguous":false}],"m":{"san":[],"uci":[]},"d":[]},
 {"s":"e2\u02d7e4 and Ng1\u2e3af3","t":"e2\u02d7e4 and Ng1\u2e3af3","n":[],"m":{"san":["Ng1"],"uci":[]},"d":[]},
-{"s":"1\u2006000 and 1\u2008000 and 1\u200a000 games","t":"1 000 and 1 000 and 1 000 games","n":[{"value":1,"decimals":0,"percent":false,"hedged":false,"kind":"plain","ambiguous":false},{"value":0,"decimals":0,"percent":false,"hedged":false,"kind":"plain","ambiguous":false},{"value":1,"decimals":0,"percent":false,"hedged":false,"kind":"plain","ambiguous":false},{"value":0,"decimals":0,"percent":false,"hedged":false,"kind":"plain","ambiguous":false},{"value":1,"decimals":0,"percent":false,"hedged":false,"kind":"plain","ambiguous":false},{"value":0,"decimals":0,"percent":false,"hedged":false,"kind":"plain","ambiguous":false}],"m":{"san":[],"uci":[]},"d":[]}
+{"s":"1\u2006000 and 1\u2008000 and 1\u200a000 games","t":"1 000 and 1 000 and 1 000 games","n":[{"value":1,"decimals":0,"percent":false,"hedged":false,"kind":"plain","ambiguous":false},{"value":0,"decimals":0,"percent":false,"hedged":false,"kind":"plain","ambiguous":false},{"value":1,"decimals":0,"percent":false,"hedged":false,"kind":"plain","ambiguous":false},{"value":0,"decimals":0,"percent":false,"hedged":false,"kind":"plain","ambiguous":false},{"value":1,"decimals":0,"percent":false,"hedged":false,"kind":"plain","ambiguous":false},{"value":0,"decimals":0,"percent":false,"hedged":false,"kind":"plain","ambiguous":false}],"m":{"san":[],"uci":[]},"d":[]},
+{"s":"Nf3\u00e9","t":"Nf3\u00e9","n":[],"m":{"san":["Nf3"],"uci":[]},"d":[]},
+{"s":"\u00e9Nf3","t":"\u00e9Nf3","n":[],"m":{"san":["Nf3"],"uci":[]},"d":[]},
+{"s":"Nf3\u0430","t":"Nf3\u0430","n":[],"m":{"san":["Nf3"],"uci":[]},"d":[]},
+{"s":"Nf3\u0663","t":"Nf3\u0663","n":[],"m":{"san":["Nf3"],"uci":[]},"d":[]},
+{"s":"Nf3\u03bd","t":"Nf3\u03bd","n":[],"m":{"san":["Nf3"],"uci":[]},"d":[]},
+{"s":"Qxe5\u00e9 wins","t":"Qxe5\u00e9 wins","n":[],"m":{"san":["Qxe5"],"uci":[]},"d":[]},
+{"s":"e2e4\u00e9","t":"e2e4\u00e9","n":[],"m":{"san":[],"uci":["e2e4"]},"d":[]},
+{"s":"e2-e4\u0430","t":"e2-e4\u0430","n":[],"m":{"san":[],"uci":["e2e4"]},"d":[]},
+{"s":"O-O\u00e9","t":"O-O\u00e9","n":[],"m":{"san":["O-O"],"uci":[]},"d":[]},
+{"s":"\u00e8Rd1 and Rd1\u00e8","t":"\u00e8Rd1 and Rd1\u00e8","n":[],"m":{"san":["Rd1","Rd1"],"uci":[]},"d":[]},
+{"s":"14 Oct\u00e9","t":"14 Oct\u00e9","n":[],"m":{"san":[],"uci":[]},"d":[{"year":null,"month":10,"day":14}]},
+{"s":"5\u00e9 games and 7\u0663 games","t":"5\u00e9 games and 7\u0663 games","n":[{"value":5,"decimals":0,"percent":false,"hedged":false,"kind":"plain","ambiguous":false},{"value":7,"decimals":0,"percent":false,"hedged":false,"kind":"plain","ambiguous":false}],"m":{"san":[],"uci":[]},"d":[]}
 ]"#;
     // END GENERATED
 }

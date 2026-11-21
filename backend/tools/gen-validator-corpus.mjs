@@ -165,6 +165,19 @@ const inputs = [
   "O\u{2d7}O and 0\u{2e3a}0\u{2e3b}0 and O\u{58a}O\u{30fc}O",
   "e2\u{2d7}e4 and Ng1\u{2e3a}f3",
   "1\u{2006}000 and 1\u{2008}000 and 1\u{200a}000 games",
+  // Fix round 2: a folded neighbour must not hide what TS finds (the union keeps the TS result).
+  "Nf3\u{e9}",
+  "\u{e9}Nf3",
+  "Nf3\u{430}",
+  "Nf3\u{663}",
+  "Nf3\u{3bd}",
+  "Qxe5\u{e9} wins",
+  "e2e4\u{e9}",
+  "e2-e4\u{430}",
+  "O-O\u{e9}",
+  "\u{e8}Rd1 and Rd1\u{e8}",
+  "14 Oct\u{e9}",
+  "5\u{e9} games and 7\u{663} games",
 ];
 
 const tmp = mkdtempSync(join(tmpdir(), "validator-corpus-"));

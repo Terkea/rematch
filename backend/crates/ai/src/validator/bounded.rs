@@ -35,6 +35,28 @@ pub(crate) fn is_js_space(c: char) -> bool {
     )
 }
 
+#[cfg(test)]
+thread_local! {
+    static SCANNED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// Counts bytes read by a regex search or a per-candidate check, for the deterministic linearity
+/// test (unit tests only; a no-op otherwise). The model: a search from `pos` that ends at a match
+/// end `e` (or at the text end) reads `e - pos` bytes.
+#[inline]
+pub(crate) fn count_scanned(n: usize) {
+    #[cfg(test)]
+    SCANNED.with(|c| c.set(c.get() + n));
+    #[cfg(not(test))]
+    let _ = n;
+}
+
+/// Returns and resets this thread's scanned-byte count.
+#[cfg(test)]
+pub(crate) fn take_scanned() -> usize {
+    SCANNED.with(|c| c.replace(0))
+}
+
 /// The char that ends at byte `at`, if any.
 pub(crate) fn prev_char(text: &str, at: usize) -> Option<char> {
     text[..at].chars().next_back()
@@ -86,8 +108,11 @@ pub(crate) fn scan<'t, T>(
     let mut pos = 0;
     while pos <= text.len() {
         let Some(caps) = re.captures_at(text, pos) else {
+            count_scanned(text.len() - pos);
             break;
         };
+        // The search read at least from `pos` to the end of the match.
+        count_scanned(caps.get(0).map_or(0, |m| m.end()) - pos);
         let Some(start) = caps.get(0).map(|m| m.start()) else {
             break;
         };
@@ -109,6 +134,7 @@ pub(crate) fn scan<'t, T>(
         while p < text.len() && !before_ok(prev_char(text, p)) {
             p = next_boundary(text, p);
         }
+        count_scanned(p - start);
         pos = p;
     }
     out

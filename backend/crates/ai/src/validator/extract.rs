@@ -11,11 +11,32 @@ use std::sync::LazyLock;
 
 use regex::{Captures, NoExpand, Regex};
 
+use std::collections::HashMap;
+use std::hash::Hash;
+
 use super::bounded::{
-    JS_SPACE, PH, Utf16Cursor, is_js_space, m_end, mask, next_char, prev_char, scan, splice,
-    window_before,
+    JS_SPACE, PH, Utf16Cursor, count_scanned, is_js_space, m_end, mask, next_char, prev_char, scan,
+    splice, window_before,
 };
-use super::normalize::{dash_class, normalize_text};
+use super::normalize::{NormMode, dash_class, normalize_with};
+
+/// The union of the TS-exact and the hardened results (ADR-R3-2, fix round 2): the TS-path list
+/// unchanged, then each hardened result that the TS path did not also find (multiset difference,
+/// keyed by `key`), in hardened order. Linear in the number of results.
+fn union_by<T, K: Hash + Eq>(ts: Vec<T>, hardened: Vec<T>, key: impl Fn(&T) -> K) -> Vec<T> {
+    let mut left: HashMap<K, usize> = HashMap::new();
+    for t in &ts {
+        *left.entry(key(t)).or_default() += 1;
+    }
+    let mut out = ts;
+    for h in hardened {
+        match left.get_mut(&key(&h)) {
+            Some(n) if *n > 0 => *n -= 1,
+            _ => out.push(h),
+        }
+    }
+    out
+}
 
 /// The kind of an extracted number.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -38,7 +59,7 @@ pub struct ExtractedNumber {
 }
 
 /// A date found in free text.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ExtractedDate {
     pub year: Option<i32>,
     pub month: u32,
@@ -81,8 +102,15 @@ fn s_class() -> String {
 
 // ---- moves ----
 
-// Long algebraic: e2-e4, Ng1-f3, e2xd5, Qd1–h5, e7-e8=Q. TS's separator class is
-// `[-\u{2010}-\u{2015}\u{2212}x]`; it uses the shared dash set instead (H5, ADR-R3-2).
+// Long algebraic: e2-e4, Ng1-f3, e2xd5, Qd1–h5, e7-e8=Q. The TS-exact path keeps TS's
+// separator class `[-\u{2010}-\u{2015}\u{2212}x]`; the hardened path uses the shared dash set
+// (H5, ADR-R3-2).
+lazy_re!(
+    LONG_RE_TS,
+    format!(
+        "(?P<m>[KQRBN]?(?P<from>{SQ})[-\u{2010}-\u{2015}\u{2212}x](?P<to>{SQ})(?:=?\\(?(?P<p>[QRBNqrbn])\\)?)?){NA}"
+    )
+);
 lazy_re!(
     LONG_RE,
     format!(
@@ -166,8 +194,12 @@ fn uci_pass(t: &str, re: &Regex, lower: bool) -> (Vec<Hit>, String) {
 }
 
 /// Finds SAN and UCI-like moves and returns text with each hit masked by a placeholder.
-fn scan_moves(t: &str) -> (Vec<Hit>, Vec<Hit>, String) {
-    let (mut uci, work) = uci_pass(t, &LONG_RE, true);
+fn scan_moves(t: &str, mode: NormMode) -> (Vec<Hit>, Vec<Hit>, String) {
+    let long: &Regex = match mode {
+        NormMode::TsExact => &LONG_RE_TS,
+        NormMode::Hardened => &LONG_RE,
+    };
+    let (mut uci, work) = uci_pass(t, long, true);
     let (uci2, work) = uci_pass(&work, &UCI_RE, false);
     uci.extend(uci2);
 
@@ -200,6 +232,7 @@ fn scan_moves(t: &str) -> (Vec<Hit>, Vec<Hit>, String) {
     let mut last_non_gap: Option<usize> = None;
     for (i, c) in cands.iter().enumerate() {
         if c.start > cursor {
+            count_scanned(c.start - cursor);
             for (off, ch) in work[cursor..c.start].char_indices() {
                 if !is_gap(ch) {
                     last_non_gap = Some(cursor + off);
@@ -210,10 +243,12 @@ fn scan_moves(t: &str) -> (Vec<Hit>, Vec<Hit>, String) {
         let gap_after_move = last_end.is_some_and(|e| last_non_gap.is_none_or(|p| p < e));
         let accept = !c.bare || {
             let before = window_before(&work, c.start, 16);
+            count_scanned(before.len());
             MOVE_NO_BEFORE.is_match(before)
                 || PLAY_BEFORE.is_match(before)
                 || gap_after_move
                 || cands.get(i + 1).is_some_and(|next| {
+                    count_scanned(next.start - c.end);
                     !next.bare && GAP_BEFORE_MOVE.is_match(&work[c.end..next.start])
                 })
         };
@@ -230,14 +265,25 @@ fn scan_moves(t: &str) -> (Vec<Hit>, Vec<Hit>, String) {
     (san, uci, masked)
 }
 
-/// Extracts SAN and UCI-like moves, each list in text order.
-pub fn extract_moves(text: &str) -> ExtractedMoves {
-    let (mut san, mut uci, _) = scan_moves(&normalize_text(text));
+/// SAN and UCI-like moves under one normalisation, each list in text order.
+fn moves_with(text: &str, mode: NormMode) -> ExtractedMoves {
+    let (mut san, mut uci, _) = scan_moves(&normalize_with(text, mode), mode);
     san.sort_by_key(|h| h.at);
     uci.sort_by_key(|h| h.at);
     ExtractedMoves {
         san: san.into_iter().map(|h| h.text).collect(),
         uci: uci.into_iter().map(|h| h.text).collect(),
+    }
+}
+
+/// Extracts SAN and UCI-like moves: the TS-exact moves in text order, then any extra moves the
+/// hardened normalisation finds (ADR-R3-2 union).
+pub fn extract_moves(text: &str) -> ExtractedMoves {
+    let ts = moves_with(text, NormMode::TsExact);
+    let hard = moves_with(text, NormMode::Hardened);
+    ExtractedMoves {
+        san: union_by(ts.san, hard.san, String::clone),
+        uci: union_by(ts.uci, hard.uci, String::clone),
     }
 }
 
@@ -391,9 +437,12 @@ fn scan_dates(t: &str) -> (Vec<ExtractedDate>, String) {
     (found.into_iter().map(|f| f.1).collect(), rest)
 }
 
-/// Extracts dates in text order.
+/// Extracts dates: the TS-exact dates in text order, then any extra dates the hardened
+/// normalisation finds (ADR-R3-2 union).
 pub fn extract_dates(text: &str) -> Vec<ExtractedDate> {
-    scan_dates(&normalize_text(text)).0
+    let ts = scan_dates(&normalize_with(text, NormMode::TsExact)).0;
+    let hard = scan_dates(&normalize_with(text, NormMode::Hardened)).0;
+    union_by(ts, hard, |d| *d)
 }
 
 // ---- numbers ----
@@ -751,12 +800,32 @@ fn quantity(q: &str) -> f64 {
     }
 }
 
-/// Extracts numbers (digits, fractions, dozens, counted number words, ratio words) in text order.
+/// Extracts numbers (digits, fractions, dozens, counted number words, ratio words): the TS-exact
+/// numbers in text order, then any extra numbers the hardened normalisation finds (ADR-R3-2
+/// union).
 pub fn extract_numbers(text: &str) -> Vec<ExtractedNumber> {
-    let t = normalize_text(text);
+    let ts = numbers_with(text, NormMode::TsExact);
+    let hard = numbers_with(text, NormMode::Hardened);
+    union_by(ts, hard, |n| {
+        // `-0` and `0` are equal numbers, so they share a key.
+        let v = if n.value == 0.0 { 0.0 } else { n.value };
+        (
+            v.to_bits(),
+            n.decimals,
+            n.percent,
+            n.hedged,
+            n.kind == NumberKind::Ratio,
+            n.ambiguous,
+        )
+    })
+}
+
+/// Numbers under one normalisation, in text order.
+fn numbers_with(text: &str, mode: NormMode) -> Vec<ExtractedNumber> {
+    let t = normalize_with(text, mode);
     let t = CITATION_RE.replace_all(&t, NoExpand("\u{1}")).into_owned();
     let t = scan_dates(&t).1;
-    let t = scan_moves(&t).2;
+    let t = scan_moves(&t, mode).2;
     // move-number prefixes directly before a removed move
     let t = replace_with_ph(&t, &MOVE_NO_PREFIX, not_alnum);
     let t = PER_CENT.replace_all(&t, NoExpand("percent")).into_owned();
@@ -898,4 +967,87 @@ pub fn extract_numbers(text: &str) -> Vec<ExtractedNumber> {
 
     found.sort_by_key(|f| f.0);
     found.into_iter().map(|f| f.1).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::bounded::take_scanned;
+    use super::super::normalize::normalize_text;
+    use super::*;
+
+    type Shape = fn(usize) -> String;
+
+    /// Hostile shapes for every extractor. The first two are the bare-square gap shapes (an
+    /// accepted move, a long gap, then many rejected bare squares) that were quadratic before
+    /// fix round 1; the last ones are the fix round 2 boundary shapes.
+    const SHAPES: &[(&str, Shape)] = &[
+        ("move, gap, rejected squares", |n| {
+            format!("Nf3{}{}", " ".repeat(n / 2), "x e4 ".repeat(n / 10))
+        }),
+        ("move, punctuation gap, squares", |n| {
+            format!("Nf3{}{}", "(.; ".repeat(n / 8), "the e4 ".repeat(n / 14))
+        }),
+        ("glued digits", |n| format!("x{}", "1".repeat(n))),
+        ("glued thousands", |n| format!("x{}", "1,111".repeat(n / 5))),
+        ("comma digits", |n| "1,".repeat(n / 2)),
+        ("glued uci", |n| "e2e4".repeat(n / 4)),
+        ("dangling long", |n| "e2-".repeat(n / 3)),
+        ("castling chain", |n| "O-O-".repeat(n / 4)),
+        ("castling glued", |n| "0-0-0x".repeat(n / 6)),
+        ("glued san", |n| "Nf3".repeat(n / 3)),
+        ("spaced san", |n| "Nf3 ".repeat(n / 4)),
+        ("word run", |n| format!("x{}", "one ".repeat(n / 4))),
+        ("glued words", |n| "xone ".repeat(n / 5)),
+        ("articles", |n| "a ".repeat(n / 2)),
+        ("month day", |n| "Oct 1".repeat(n / 5)),
+        ("month and spaces", |n| {
+            format!("Oct{}x ", " ".repeat(16)).repeat(n / 21)
+        }),
+        ("day month", |n| "14 Oct ".repeat(n / 7)),
+        ("iso prefix", |n| "2026-10-1".repeat(n / 9)),
+        ("half", |n| "half ".repeat(n / 5)),
+        ("half and spaces", |n| format!("half{}", " ".repeat(n))),
+        ("double", |n| "double ".repeat(n / 7)),
+        ("spaces", |n| " ".repeat(n)),
+        ("nbsp digits", |n| "\u{a0}1".repeat(n / 2)),
+        ("move numbers", |n| "12. ".repeat(n / 4)),
+        ("weakness ids", |n| "W1".repeat(n / 2)),
+        ("zero width", |n| "\u{200b}".repeat(n)),
+        ("minus digits", |n| "\u{2212}0".repeat(n / 2)),
+        ("combining marks", |n| "e\u{301}".repeat(n / 2)),
+        ("homoglyphs", |n| "\u{435}4 ".repeat(n / 3)),
+        ("accented neighbours", |n| "Nf3\u{e9} ".repeat(n / 6)),
+        ("cyrillic neighbours", |n| "e2e4\u{430} ".repeat(n / 7)),
+    ];
+
+    /// Deterministic linearity: the bytes read by every regex search in `scan` (which backs
+    /// `bounded_matches` and every extractor pass) and by the per-candidate checks in `scan_moves`,
+    /// over both normalisation paths, stay within a constant times the input length. A quadratic
+    /// rescan (such as the pre-fix gap check) reads about n^2/20 bytes on the first shape, 1600n
+    /// at this n.
+    #[test]
+    fn scanned_bytes_are_linear_on_hostile_shapes() {
+        const N: usize = 1 << 15;
+        const C: usize = 120;
+        let mut worst = (0, "");
+        for (name, make) in SHAPES {
+            let text = make(N);
+            let n = text.len();
+            take_scanned();
+            let _ = normalize_text(&text);
+            let _ = extract_moves(&text);
+            let _ = extract_numbers(&text);
+            let _ = extract_dates(&text);
+            let scanned = take_scanned();
+            assert!(
+                scanned <= C * n,
+                "{name}: {scanned} bytes scanned for {n} bytes of input"
+            );
+            if scanned / n > worst.0 {
+                worst = (scanned / n, name);
+            }
+        }
+        assert!(worst.0 > 0, "nothing counted");
+        eprintln!("worst ratio: {} on {}", worst.0, worst.1);
+    }
 }
