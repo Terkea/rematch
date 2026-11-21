@@ -21,6 +21,7 @@
   --inset-shadow-*: initial;
   --drop-shadow-*: initial;
   --ease-*: initial;
+  --tracking-*: initial;
 
   /* Colour, day */
   --color-paper: #f3f5f8;
@@ -49,6 +50,11 @@
   /* Type. Literata tracks size with font-optical-sizing: auto, so opsz equals the px size. */
   --font-serif: var(--font-literata), serif;
   --font-sans: var(--font-schibsted), sans-serif;
+  /* Annotation comments only, with font-style: italic. Loaded separately and not preloaded. */
+  --font-serif-italic: var(--font-literata-italic), var(--font-literata), serif;
+
+  /* Notation glyphs sit tight against the move (b5?, Nf6?!). */
+  --tracking-glyph: -0.01em;
 
   --text-2xs: 0.6875rem;
   --text-2xs--line-height: 0.875rem;
@@ -85,6 +91,9 @@
   --space-panel-pad: 16px;
   --space-gutter: 16px;
 
+  /* The board: whole pixels per square. Below 768px it fills the column, up to 480px. */
+  --board-size: round(down, min(100vw - 2 * var(--space-gutter), 480px), 8px);
+
   /* Elevation: the one shadow, for things that float */
   --shadow-lift: 0 10px 30px -12px rgb(22 35 59 / 0.35);
 
@@ -118,12 +127,26 @@
 @media (width >= 768px) {
   :root {
     --space-gutter: 24px;
+    --board-size: 448px;
+  }
+}
+
+@media (width >= 1024px) {
+  :root {
+    --board-size: 512px;
   }
 }
 
 @media (width >= 1280px) {
   :root {
     --space-gutter: 32px;
+    --board-size: 560px;
+  }
+}
+
+@media (width >= 1600px) {
+  :root {
+    --board-size: 640px;
   }
 }
 

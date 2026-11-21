@@ -3,6 +3,7 @@
 // value changed in one place and not the others fails a test (ADR-WEB-7).
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { parseColour as parse, type Rgba } from "../src/lib/colour";
 
 const here = (path: string) => fileURLToPath(new URL(path, import.meta.url));
 
@@ -98,38 +99,11 @@ export const css = {
   },
 };
 
-// WCAG 2.x contrast, with alpha colours composited over their background first.
-export type Rgba = [number, number, number, number];
+// The contrast maths is the shared @ci/ui util; the tests want a parse that fails loudly.
+export { contrast, over, type Rgba } from "../src/lib/colour";
 
 export function parseColour(value: string): Rgba {
-  const v = value.trim();
-  const hex = /^#([0-9a-f]{6})$/i.exec(v);
-  if (hex?.[1]) {
-    const n = Number.parseInt(hex[1], 16);
-    return [(n >> 16) & 255, (n >> 8) & 255, n & 255, 1];
-  }
-  const rgb = /^rgb\(\s*(\d+)\s+(\d+)\s+(\d+)\s*(?:\/\s*([\d.]+))?\s*\)$/.exec(v);
-  if (rgb) return [Number(rgb[1]), Number(rgb[2]), Number(rgb[3]), Number(rgb[4] ?? 1)];
-  throw new Error(`unparseable colour: ${value}`);
-}
-
-/** Source-over compositing, rounded to 8 bits per channel as the browser renders it. */
-export function over(top: Rgba, bottom: Rgba): Rgba {
-  const a = top[3];
-  const mix = (i: 0 | 1 | 2) => Math.round(top[i] * a + bottom[i] * (1 - a));
-  return [mix(0), mix(1), mix(2), 1];
-}
-
-function luminance([r, g, b]: Rgba): number {
-  const lin = (c: number) => {
-    const s = c / 255;
-    return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
-  };
-  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
-}
-
-export function contrast(fg: Rgba, bg: Rgba): number {
-  const a = luminance(over(fg, bg));
-  const b = luminance(bg);
-  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+  const rgba = parse(value);
+  if (!rgba) throw new Error(`unparseable colour: ${value}`);
+  return rgba;
 }

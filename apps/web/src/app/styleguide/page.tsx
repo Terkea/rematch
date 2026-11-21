@@ -7,6 +7,7 @@ import { BoardSection } from "./sections/board";
 import { EvalBarSection } from "./sections/eval-bar";
 import { EvalGraphSection } from "./sections/eval-graph";
 import { FoundationsSection } from "./sections/foundations";
+import { HeroSection } from "./sections/hero";
 import { OverlaysSection } from "./sections/overlays";
 import { PrimitivesSection } from "./sections/primitives";
 import { ProgressSection } from "./sections/progress";
@@ -29,6 +30,7 @@ export default function StyleguidePage() {
         <ThemeToggle />
       </header>
       <main className="flex flex-col gap-10 pb-16">
+        <HeroSection />
         <FoundationsSection />
         <PrimitivesSection />
         <OverlaysSection />

@@ -78,29 +78,47 @@ export const spring = {
 export type PieceType = "pawn" | "knight" | "bishop" | "rook" | "queen" | "king";
 
 export interface PieceWeight {
-  readonly mass: number;
+  /** slows travel: the piece settle has stiffness 520 / massFactor at the same ζ */
+  readonly massFactor: number;
   /** uniform scale at the top of the lift */
   readonly lift: number;
   /** the squash set at contact, sprung back to 1 on `land` (origin 50% 90%) */
   readonly squash: { readonly scaleX: number; readonly scaleY: number };
 }
 
-const knightOrBishop: PieceWeight = { mass: 1, lift: 1.05, squash: { scaleX: 1.02, scaleY: 0.97 } };
-const queenOrKing: PieceWeight = { mass: 1.25, lift: 1.07, squash: { scaleX: 1.03, scaleY: 0.96 } };
+const knightOrBishop: PieceWeight = {
+  massFactor: 1,
+  lift: 1.05,
+  squash: { scaleX: 1.02, scaleY: 0.97 },
+};
+const queenOrKing: PieceWeight = {
+  massFactor: 1.3,
+  lift: 1.07,
+  squash: { scaleX: 1.03, scaleY: 0.96 },
+};
 
-/** Mass makes weight visible: heavier pieces travel slower, settle looser and land harder. */
+/** Mass makes weight visible: heavier pieces travel slower, never overtake, and land harder. */
 export const pieceWeight: Readonly<Record<PieceType, PieceWeight>> = {
-  pawn: { mass: 0.8, lift: 1.04, squash: { scaleX: 1.015, scaleY: 0.98 } },
+  pawn: { massFactor: 0.8, lift: 1.04, squash: { scaleX: 1.015, scaleY: 0.98 } },
   knight: knightOrBishop,
   bishop: knightOrBishop,
-  rook: { mass: 1.15, lift: 1.06, squash: { scaleX: 1.025, scaleY: 0.965 } },
+  rook: { massFactor: 1.15, lift: 1.06, squash: { scaleX: 1.025, scaleY: 0.965 } },
   queen: queenOrKing,
   king: queenOrKing,
 };
 
-/** The `settle` spring carrying this piece's mass. */
+const pieceSettle: Readonly<Record<PieceType, Spring>> = {
+  pawn: preset(650, 47),
+  knight: spring.settle,
+  bishop: spring.settle,
+  rook: preset(452, 39.2),
+  queen: preset(400, 36.8),
+  king: preset(400, 36.8),
+};
+
+/** The piece's travel spring from the mass table: ζ 0.92 for all, slower as mass grows. */
 export function settleFor(piece: PieceType): Spring {
-  return { ...spring.settle, mass: pieceWeight[piece].mass };
+  return pieceSettle[piece];
 }
 
 /** ζ = damping / (2 × √(stiffness × mass)). Below 1 the spring overshoots. */
@@ -113,4 +131,46 @@ export function overshoot(s: Spring): number {
   const zeta = dampingRatio(s);
   if (zeta >= 1) return 0;
   return Math.exp((-zeta * Math.PI) / Math.sqrt(1 - zeta * zeta));
+}
+
+/**
+ * The spring's step response: progress from 0 to 1 at `t` seconds, starting at rest. Use it to
+ * predict a contact frame (for sound) or to compare springs.
+ */
+export function springProgress(s: Spring, t: number): number {
+  if (t <= 0) return 0;
+  const mass = s.mass ?? 1;
+  const omega = Math.sqrt(s.stiffness / mass);
+  const zeta = dampingRatio(s);
+  if (zeta < 1) {
+    const omegaD = omega * Math.sqrt(1 - zeta * zeta);
+    return (
+      1 -
+      Math.exp(-zeta * omega * t) *
+        (Math.cos(omegaD * t) + (zeta / Math.sqrt(1 - zeta * zeta)) * Math.sin(omegaD * t))
+    );
+  }
+  if (zeta === 1) return 1 - (1 + omega * t) * Math.exp(-omega * t);
+  const root = Math.sqrt(zeta * zeta - 1);
+  const r1 = -omega * (zeta - root);
+  const r2 = -omega * (zeta + root);
+  return 1 - (r2 * Math.exp(r1 * t) - r1 * Math.exp(r2 * t)) / (r2 - r1);
+}
+
+/** The first time, in seconds, the spring reaches `fraction` of the distance (to 0.1ms). */
+export function arrivalTime(s: Spring, fraction: number): number {
+  const step = 0.0001;
+  for (let t = step; t < 10; t += step) {
+    if (springProgress(s, t) >= fraction) {
+      let lo = t - step;
+      let hi = t;
+      for (let i = 0; i < 30; i++) {
+        const mid = (lo + hi) / 2;
+        if (springProgress(s, mid) >= fraction) hi = mid;
+        else lo = mid;
+      }
+      return hi;
+    }
+  }
+  return Number.POSITIVE_INFINITY;
 }

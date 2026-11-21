@@ -26,8 +26,10 @@ const colourRows = [...tableAfter("## Colour tokens"), ...tableAfter("Added in f
   ([token, day, night]) => ({ token: code(token), day: code(day), night: code(night) }),
 );
 
-const colourNames = (block: Declarations) =>
-  [...block.keys()].filter((name) => name.startsWith("--color-")).sort();
+const tokensNamed = (prefix: string, block: Declarations = css.day) =>
+  [...block.keys()].filter((name) => name.startsWith(prefix)).sort();
+
+const colourNames = (block: Declarations) => tokensNamed("--color-", block);
 
 describe("colour tokens match DESIGN.md", () => {
   it("reads the full colour table from DESIGN.md", () => {
@@ -134,15 +136,25 @@ describe("type, shape and space match DESIGN.md", () => {
   for (const [stepCell, sizeCell, opszCell] of steps) {
     const step = code(stepCell);
     const [size, lineHeight] = (sizeCell ?? "").split("/").map(Number);
-    it(`text-${step} is ${size}/${lineHeight}, and its opsz tracks its size`, () => {
+    // The opsz column is checked against the shipped font in apps/web/test/fonts.test.ts.
+    void opszCell;
+    it(`text-${step} is ${size}/${lineHeight}`, () => {
       expect(px(css.day.get(`--text-${step}`) ?? "")).toBe(size);
       expect(px(css.day.get(`--text-${step}--line-height`) ?? "")).toBe(lineHeight);
-      // font-optical-sizing: auto sets opsz to the px size, which is the table's mapping.
-      expect(Number(opszCell)).toBe(size);
     });
   }
 
-  for (const [tokenCell, value] of tableAfter("**Radii by role.**")) {
+  it("defines exactly DESIGN.md's type steps", () => {
+    const sizes = [...css.day.keys()].filter((n) => /^--text-[^-]+$/.test(n)).sort();
+    expect(sizes).toEqual(steps.map(([step]) => `--text-${code(step)}`).sort());
+  });
+
+  const radii = tableAfter("**Radii by role.**");
+  it("has the four radii and no others", () => {
+    expect(radii).toHaveLength(4);
+    expect(tokensNamed("--radius-")).toEqual(radii.map(([token]) => code(token)).sort());
+  });
+  for (const [tokenCell, value] of radii) {
     it(`${code(tokenCell)} is ${value}`, () => {
       expect(css.day.get(code(tokenCell))).toBe(value);
     });
@@ -165,7 +177,17 @@ describe("type, shape and space match DESIGN.md", () => {
     return steps;
   }
 
-  for (const [tokenCell, description] of tableAfter("**Spacing roles.**")) {
+  const spacing = tableAfter("**Spacing roles.**");
+  it("has the four spacing roles and no others", () => {
+    expect(spacing).toHaveLength(4);
+    const roles = spacing.map(([token]) => code(token)).sort();
+    expect(tokensNamed("--space-")).toEqual(roles);
+    for (const block of css.media().values()) {
+      for (const name of block.keys())
+        if (name.startsWith("--space-")) expect(roles).toContain(name);
+    }
+  });
+  for (const [tokenCell, description] of spacing) {
     const token = code(tokenCell);
     it(`${token} is ${description}`, () => {
       const media = css.media();
@@ -178,6 +200,29 @@ describe("type, shape and space match DESIGN.md", () => {
     });
   }
 
+  it("--board-size follows the board sizes table", () => {
+    const rows = tableAfter("**Board sizes.**");
+    expect(rows).toHaveLength(5);
+    const [first, ...fixed] = rows;
+    // Below 768px: the viewport less both gutters, capped, rounded down to whole 1px squares.
+    const cap = /capped at (\d+)px/.exec(first?.[1] ?? "")?.[1];
+    const base = (css.day.get("--board-size") ?? "").replace(/\s+/g, " ");
+    expect(base).toBe(`round(down, min(100vw - 2 * var(--space-gutter), ${cap}px), 8px)`);
+    const media = css.media();
+    for (const [viewport, size] of fixed) {
+      const from = Number(/^(\d+)/.exec(viewport ?? "")?.[1]);
+      expect(media.get(from)?.get("--board-size")).toBe(size);
+    }
+    const overridden = [...media.values()].filter((block) => block.has("--board-size"));
+    expect(overridden).toHaveLength(fixed.length);
+  });
+
+  it("--tracking-glyph is the notation glyph letter-spacing", () => {
+    const value = /`letter-spacing: ([^`]+)` on the glyph/.exec(designMd)?.[1];
+    expect(value).toBe("-0.01em");
+    expect(css.day.get("--tracking-glyph")).toBe(value);
+  });
+
   it("--shadow-lift matches in both themes", () => {
     const day = /`--shadow-lift: ([^`]+)`/.exec(designMd)?.[1];
     const nightColour = /\(night: `([^`]+)`\)/.exec(designMd)?.[1];
@@ -189,6 +234,20 @@ describe("type, shape and space match DESIGN.md", () => {
 });
 
 describe("motion tokens in tokens.css match DESIGN.md", () => {
+  for (const [marker, prefix] of [
+    ["### Duration tokens", "--dur-"],
+    ["### Easing tokens", "--ease-"],
+    ["### Stagger scale", "--stagger-"],
+  ] as const) {
+    it(`defines exactly DESIGN.md's ${prefix}* tokens`, () => {
+      expect(tokensNamed(prefix)).toEqual(
+        tableAfter(marker)
+          .map(([token]) => code(token))
+          .sort(),
+      );
+    });
+  }
+
   for (const [token, value] of tableAfter("### Duration tokens")) {
     it(`${code(token)} is ${value}`, () => {
       expect(css.day.get(code(token))).toBe(`${ms(value)}ms`);
@@ -210,6 +269,8 @@ describe("fonts and dark mode", () => {
   it("takes --font-serif and --font-sans from the next/font variables", () => {
     expect(css.day.get("--font-serif")).toMatch(/^var\(--font-literata\)/);
     expect(css.day.get("--font-sans")).toMatch(/^var\(--font-schibsted\)/);
+    expect(css.day.get("--font-serif-italic")).toMatch(/^var\(--font-literata-italic\)/);
+    expect(tokensNamed("--font-")).toEqual(["--font-sans", "--font-serif", "--font-serif-italic"]);
   });
   it("declares the data-theme dark variant", () => {
     expect(tokensCss.replaceAll('"', "")).toContain(

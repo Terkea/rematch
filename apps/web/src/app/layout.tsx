@@ -8,12 +8,18 @@ import { Providers } from "./providers";
 // Self-hosted (ADR-WEB-7): the WOFF2 files and their OFL licences are committed in ./fonts, so the
 // build never fetches fonts. Literata is variable in opsz and wght; font-optical-sizing is auto.
 const literata = localFont({
-  src: [
-    { path: "./fonts/Literata-VF.woff2", weight: "200 900", style: "normal" },
-    { path: "./fonts/Literata-Italic-VF.woff2", weight: "200 900", style: "italic" },
-  ],
+  src: [{ path: "./fonts/Literata-VF.woff2", weight: "200 900", style: "normal" }],
   variable: "--font-literata",
   display: "swap",
+  adjustFontFallback: "Times New Roman",
+});
+
+// Italic is only for whole annotation comments (--font-serif-italic), so it is never preloaded.
+const literataItalic = localFont({
+  src: [{ path: "./fonts/Literata-Italic-VF.woff2", weight: "200 900", style: "italic" }],
+  variable: "--font-literata-italic",
+  display: "swap",
+  preload: false,
   adjustFontFallback: "Times New Roman",
 });
 
@@ -30,7 +36,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     // next-themes sets data-theme on <html> before paint, so it differs from the server render.
     <html
       lang="en-GB"
-      className={`${literata.variable} ${schibsted.variable}`}
+      className={`${literata.variable} ${literataItalic.variable} ${schibsted.variable}`}
       suppressHydrationWarning
     >
       <body className="bg-paper font-sans text-ink">

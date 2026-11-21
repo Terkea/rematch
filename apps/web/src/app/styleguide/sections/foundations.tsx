@@ -1,18 +1,8 @@
 "use client";
 
-import {
-  animate,
-  dampingRatio,
-  dur,
-  ease,
-  overshoot,
-  type Spring,
-  settleFor,
-  spring,
-  stagger,
-  useReducedMotion,
-} from "@ci/ui/motion";
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { contrast, over, parseColour, type Rgba } from "@ci/ui/lib";
+import { type ReactNode, useEffect, useRef, useState } from "react";
+import { MotionTokens } from "./foundations-motion";
 
 // Every value on this section is read from tokens.css at run time and every ratio is computed in
 // the browser, so the page shows what ships, not a copy of DESIGN.md.
@@ -26,7 +16,7 @@ export function FoundationsSection() {
       className="flex flex-col gap-6"
     >
       <div className="max-w-prose">
-        <h2 id="foundations-title" className="font-serif text-3xl font-semibold">
+        <h2 id="foundations-title" className="font-serif text-2xl font-semibold">
           Foundations
         </h2>
         <p className="mt-2 text-ink-soft">
@@ -63,38 +53,6 @@ function Panel({ title, children }: { title: string; children: ReactNode }) {
 }
 
 /* Colour ------------------------------------------------------------------------------------- */
-
-type Rgb = [number, number, number, number];
-
-function parseColour(value: string): Rgb | undefined {
-  const hex = /^#([0-9a-f]{6})$/i.exec(value);
-  if (hex?.[1]) {
-    const n = Number.parseInt(hex[1], 16);
-    return [(n >> 16) & 255, (n >> 8) & 255, n & 255, 1];
-  }
-  const rgb = /^rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)\s*(?:[/,]\s*([\d.]+))?\s*\)$/.exec(value);
-  if (rgb) return [Number(rgb[1]), Number(rgb[2]), Number(rgb[3]), Number(rgb[4] ?? 1)];
-  return undefined;
-}
-
-function over(top: Rgb, bottom: Rgb): Rgb {
-  const mix = (i: 0 | 1 | 2) => Math.round(top[i] * top[3] + bottom[i] * (1 - top[3]));
-  return [mix(0), mix(1), mix(2), 1];
-}
-
-function luminance([r, g, b]: Rgb): number {
-  const lin = (c: number) => {
-    const s = c / 255;
-    return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
-  };
-  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
-}
-
-function contrast(fg: Rgb, bg: Rgb): number {
-  const a = luminance(over(fg, bg));
-  const b = luminance(bg);
-  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
-}
 
 type Theme = "light" | "dark";
 
@@ -190,9 +148,9 @@ function ColourPanel({ theme, label }: { theme: Theme; label: string }) {
     const fgToken = typeof check.fg === "string" ? check.fg : check.fg[theme];
     const fg = colour(fgToken);
     let lowest: { ratio: number; bg: string } | undefined;
+    const tint: Rgba | undefined = check.under ? colour(check.under) : undefined;
     for (const bgToken of check.bg) {
       const surface = colour(bgToken);
-      const tint = check.under ? colour(check.under) : undefined;
       if (!fg || !surface || (check.under && !tint)) return undefined;
       const bg = tint ? over(tint, surface) : surface;
       const ratio = contrast(fg, bg);
@@ -212,13 +170,13 @@ function ColourPanel({ theme, label }: { theme: Theme; label: string }) {
         {colourGroups.map((group) => (
           <div key={group.title}>
             <p className="text-sm font-medium text-ink-soft">{group.title}</p>
-            <ul className="mt-2 flex flex-col">
+            <ul className="mt-2 flex flex-col gap-1">
               {group.tokens.map(([token, check]) => {
                 const result = typeof check === "string" ? undefined : measure(check);
                 return (
                   <li
                     key={token}
-                    className="flex items-center gap-3 border-b border-rule py-2 last:border-b-0"
+                    className="flex items-center gap-3 rounded-field px-2 py-2 odd:bg-sheet"
                   >
                     <span
                       aria-hidden
@@ -300,7 +258,11 @@ function Notation({
   return (
     <span className="font-serif font-semibold tabular-nums lining-nums">
       {move}
-      {glyph && <span className={mistake ? "text-pen-text" : "text-good-text"}>{glyph}</span>}
+      {glyph && (
+        <span className={`tracking-glyph ${mistake ? "text-pen-text" : "text-good-text"}`}>
+          {glyph}
+        </span>
+      )}
       {evaluation && <span className="font-normal text-ink-faint"> {evaluation}</span>}
     </span>
   );
@@ -311,7 +273,17 @@ const typeSteps: { step: string; size: string; use: string; sample: ReactNode }[
     step: "2xs",
     size: "11/14",
     use: "glyph-badge text and the eval bar label only",
-    sample: <span className="font-serif text-2xs font-semibold">+5.7 ?? ?!</span>,
+    sample: (
+      <span className="flex items-center gap-3">
+        {(["??", "?", "?!"] as const).map((glyph) => (
+          <GlyphBadge key={glyph} glyph={glyph} tone="pen" />
+        ))}
+        <GlyphBadge glyph="!" tone="good" />
+        <span className="rounded-board border border-rule-strong bg-ink px-1 font-serif text-2xs font-semibold text-on-ink">
+          +5.7
+        </span>
+      </span>
+    ),
   },
   {
     step: "xs",
@@ -347,6 +319,17 @@ const typeSteps: { step: string; size: string; use: string; sample: ReactNode }[
       <span className="font-serif text-prose">
         9…b5? opens the diagonal to the king on e8. After 10. Nxb5 cxb5 11. Bxb5+, White's pieces
         arrive with check.
+      </span>
+    ),
+  },
+  {
+    step: "prose, italic",
+    size: "18/30",
+    use: "an annotation comment: Literata italic, the whole comment, never one word",
+    sample: (
+      <span className="font-serif-italic text-prose italic">
+        Black has lost the thread: two tempi spent on the bishop pair, and the king is still in the
+        centre.
       </span>
     ),
   },
@@ -396,6 +379,17 @@ const typeSteps: { step: string; size: string; use: string; sample: ReactNode }[
   },
 ];
 
+/** A glyph badge as on the board: a filled circle on a 2px sheet halo, the glyph at its floor. */
+function GlyphBadge({ glyph, tone }: { glyph: string; tone: "pen" | "good" }) {
+  return (
+    <span
+      className={`grid size-6 place-items-center rounded-pill font-serif text-2xs font-semibold text-on-ink ring-2 ring-sheet ${tone === "pen" ? "bg-pen" : "bg-good"}`}
+    >
+      {glyph}
+    </span>
+  );
+}
+
 function TypeScale() {
   return (
     <div className="flex flex-col">
@@ -403,11 +397,11 @@ function TypeScale() {
         Literata sets anything a coach would write, with its optical size following the rendered
         size. Schibsted Grotesk sets anything the app says.
       </p>
-      <ul className="mt-4 flex flex-col">
+      <ul className="mt-4 flex flex-col gap-1">
         {typeSteps.map(({ step, size, use, sample }) => (
           <li
             key={step}
-            className="flex flex-col gap-2 border-t border-rule py-4 md:flex-row md:items-baseline md:gap-6"
+            className="flex flex-col gap-2 rounded-field px-3 py-4 odd:bg-paper md:flex-row md:items-baseline md:gap-6"
           >
             <span className="shrink-0 md:w-56">
               <span className="block text-sm font-medium">
@@ -506,272 +500,6 @@ function SpaceAndShape() {
               piece. Everything else separates by tone.
             </p>
           </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* Motion ------------------------------------------------------------------------------------- */
-
-type Transition =
-  | Spring
-  | { type: "tween"; duration: number; ease: readonly [number, number, number, number] };
-
-/** A marker that travels to a target line at 80% of its track, so overshoot shows past it. */
-function Track({ transition, play }: { transition: Transition; play: number }) {
-  const track = useRef<HTMLDivElement>(null);
-  const marker = useRef<HTMLSpanElement>(null);
-  const reduced = useReducedMotion();
-
-  useEffect(() => {
-    if (play === 0 || !track.current || !marker.current) return;
-    const distance = track.current.clientWidth * 0.8 - marker.current.offsetWidth / 2;
-    // M10: no movement, the end state with one opacity cue.
-    const controls = reduced
-      ? animate(
-          marker.current,
-          { x: distance, opacity: [0, 1] },
-          { x: { duration: 0 }, opacity: { duration: dur.quick } },
-        )
-      : animate(
-          marker.current,
-          { x: [0, distance] },
-          transition.type === "spring"
-            ? { ...transition }
-            : { duration: transition.duration, ease: [...transition.ease] },
-        );
-    return () => controls.stop();
-  }, [play, reduced, transition]);
-
-  return (
-    <div ref={track} className="relative h-6 min-w-40 flex-1" aria-hidden>
-      <span className="absolute inset-x-0 top-1/2 h-px bg-rule" />
-      <span className="absolute top-0 left-4/5 h-6 w-0.5 bg-rule-strong" />
-      <span
-        ref={marker}
-        className="absolute top-1/2 left-0 -mt-2 block size-4 rounded-pill bg-ink"
-      />
-    </div>
-  );
-}
-
-function PlayButton({ onClick, label }: { onClick: () => void; label: string }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={label}
-      className="shrink-0 rounded-field border border-rule-strong px-3 py-1 text-sm font-medium text-ink hover:bg-well active:scale-97"
-    >
-      Play
-    </button>
-  );
-}
-
-function usePlay(all: number) {
-  const [play, setPlay] = useState(0);
-  useEffect(() => {
-    if (all > 0) setPlay((n) => n + 1);
-  }, [all]);
-  return [play, useCallback(() => setPlay((n) => n + 1), [])] as const;
-}
-
-const ms = (seconds: number) => `${Math.round(seconds * 1000)}ms`;
-
-const springRows: { name: string; spring: Spring; use: string }[] = [
-  { name: "settle", spring: spring.settle, use: "piece travel between squares" },
-  { name: "settle, pawn", spring: settleFor("pawn"), use: "lighter: travels quicker, no bounce" },
-  { name: "settle, rook", spring: settleFor("rook"), use: "heavier: looser settle" },
-  { name: "settle, queen and king", spring: settleFor("queen"), use: "heaviest" },
-  { name: "land", spring: spring.land, use: "squash on arrival, badges, streak ticks" },
-  { name: "pen", spring: spring.pen, use: "a stroke that follows input" },
-  { name: "swing", spring: spring.swing, use: "eval bar and graph cursor, small changes" },
-  { name: "swing-big", spring: spring.swingBig, use: "eval bar, changes of 0.3 or more" },
-  { name: "page", spring: spring.page, use: "incoming page, layout morphs" },
-  { name: "tilt", spring: spring.tilt, use: "a dragged piece returning upright" },
-];
-
-function SpringRow({ name, spring: s, use, all }: (typeof springRows)[number] & { all: number }) {
-  const [play, replay] = usePlay(all);
-  const shoot = overshoot(s) * 100;
-  return (
-    <li className="flex flex-col gap-3 border-t border-rule py-3 md:flex-row md:items-center">
-      <span className="shrink-0 md:w-80">
-        <span className="block text-sm font-medium">{name}</span>
-        <span className="block text-xs text-ink-faint">
-          stiffness {s.stiffness}, damping {s.damping}
-          {s.mass !== undefined && `, mass ${s.mass}`}; ζ {dampingRatio(s).toFixed(2)}, overshoot{" "}
-          {shoot < 0.01 ? "0" : shoot < 1 ? shoot.toFixed(2) : shoot.toFixed(0)}%
-        </span>
-        <span className="block text-xs text-ink-faint">{use}</span>
-      </span>
-      <span className="flex items-center gap-4 md:flex-1">
-        <Track transition={s} play={play} />
-        <PlayButton onClick={replay} label={`Play ${name}`} />
-      </span>
-    </li>
-  );
-}
-
-const durationRows: { token: string; seconds: number; curve: keyof typeof ease; use: string }[] = [
-  { token: "instant", seconds: dur.instant, curve: "out", use: "press, arrowhead stroke, lift" },
-  { token: "quick", seconds: dur.quick, curve: "out", use: "menus, toggles, retracting marks" },
-  { token: "base", seconds: dur.base, curve: "out", use: "panels, drawers, a captured piece" },
-  { token: "draw-small", seconds: dur.drawSmall, curve: "pen", use: "a small stroke" },
-  { token: "draw", seconds: dur.draw, curve: "pen", use: "one board stroke" },
-  { token: "reveal", seconds: dur.reveal, curve: "pen", use: "the eval graph drawing across" },
-  { token: "turn", seconds: dur.turn, curve: "turn", use: "a page turn" },
-  { token: "stream", seconds: dur.stream, curve: "out", use: "one replayed move" },
-  { token: "soak", seconds: dur.soak, curve: "soak", use: "an ink-soak progress segment" },
-];
-
-function DurationRow({
-  token,
-  seconds,
-  curve,
-  use,
-  all,
-}: (typeof durationRows)[number] & { all: number }) {
-  const [play, replay] = usePlay(all);
-  const transition = useMemo(
-    () => ({ type: "tween", duration: seconds, ease: ease[curve] }) as const,
-    [seconds, curve],
-  );
-  return (
-    <li className="flex flex-col gap-3 border-t border-rule py-3 md:flex-row md:items-center">
-      <span className="shrink-0 md:w-80">
-        <span className="block text-sm font-medium">
-          --dur-{token} <span className="font-normal text-ink-faint">{ms(seconds)}</span>
-        </span>
-        <span className="block text-xs text-ink-faint">
-          {use}, shown on --ease-{curve}
-        </span>
-      </span>
-      <span className="flex items-center gap-4 md:flex-1">
-        <Track transition={transition} play={play} />
-        <PlayButton onClick={replay} label={`Play --dur-${token}`} />
-      </span>
-    </li>
-  );
-}
-
-function EaseCurve({ name }: { name: keyof typeof ease }) {
-  const [x1, y1, x2, y2] = ease[name];
-  // A 0–1 box drawn upside down, so progress rises to the right.
-  const d = `M0 1 C${x1} ${1 - y1} ${x2} ${1 - y2} 1 0`;
-  return (
-    <li className="flex items-center gap-3">
-      <svg
-        viewBox="-0.05 -0.05 1.1 1.1"
-        className="size-16 shrink-0 rounded-field bg-paper"
-        aria-hidden
-      >
-        <path d="M0 1 L1 0" className="stroke-rule" strokeWidth={0.01} fill="none" />
-        <path d={d} className="stroke-ink" strokeWidth={0.03} fill="none" strokeLinecap="round" />
-      </svg>
-      <span>
-        <span className="block text-sm font-medium">--ease-{name}</span>
-        <span className="block text-xs text-ink-faint">cubic-bezier({ease[name].join(", ")})</span>
-      </span>
-    </li>
-  );
-}
-
-function StaggerRow({
-  name,
-  seconds,
-  all,
-}: {
-  name: keyof typeof stagger;
-  seconds: number;
-  all: number;
-}) {
-  const [play, replay] = usePlay(all);
-  const reduced = useReducedMotion();
-  const ticks = useRef<HTMLSpanElement[]>([]);
-  useEffect(() => {
-    if (play === 0) return;
-    const controls = ticks.current.map((tick, i) =>
-      animate(tick, { opacity: [0, 1] }, { duration: dur.quick, delay: reduced ? 0 : i * seconds }),
-    );
-    return () => {
-      for (const c of controls) c.stop();
-    };
-  }, [play, reduced, seconds]);
-  return (
-    <li className="flex items-center gap-4 border-t border-rule py-3">
-      <span className="w-36 shrink-0 text-sm font-medium">
-        --stagger-{name} <span className="font-normal text-ink-faint">{ms(seconds)}</span>
-      </span>
-      <span className="flex min-w-0 flex-1 gap-1.5" aria-hidden>
-        {Array.from({ length: 8 }, (_, i) => (
-          <span
-            // biome-ignore lint/suspicious/noArrayIndexKey: a fixed row of identical ticks
-            key={i}
-            ref={(el) => {
-              if (el) ticks.current[i] = el;
-            }}
-            className="h-5 w-1.5 rounded-board bg-ink-soft"
-          />
-        ))}
-      </span>
-      <PlayButton onClick={replay} label={`Play --stagger-${name}`} />
-    </li>
-  );
-}
-
-function MotionTokens() {
-  const [all, setAll] = useState(0);
-  const reduced = useReducedMotion();
-  return (
-    <div className="flex flex-col gap-8">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="max-w-prose text-sm text-ink-soft">
-          Each marker travels to the line. A spring with ζ below 1 runs past it and swings back.
-          {reduced &&
-            " Your system asks for reduced motion, so markers appear at the end with a fade instead."}
-        </p>
-        <button
-          type="button"
-          onClick={() => setAll((n) => n + 1)}
-          className="rounded-field bg-ink px-4 py-2 text-sm font-medium text-on-ink hover:bg-ink-soft active:scale-97"
-        >
-          Play all
-        </button>
-      </div>
-      <div>
-        <h4 className="font-serif text-lg font-semibold">Springs</h4>
-        <ul className="mt-2">
-          {springRows.map((row) => (
-            <SpringRow key={row.name} {...row} all={all} />
-          ))}
-        </ul>
-      </div>
-      <div>
-        <h4 className="font-serif text-lg font-semibold">Durations</h4>
-        <ul className="mt-2">
-          {durationRows.map((row) => (
-            <DurationRow key={row.token} {...row} all={all} />
-          ))}
-        </ul>
-      </div>
-      <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
-        <div>
-          <h4 className="font-serif text-lg font-semibold">Easings</h4>
-          <ul className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {(Object.keys(ease) as (keyof typeof ease)[]).map((name) => (
-              <EaseCurve key={name} name={name} />
-            ))}
-          </ul>
-        </div>
-        <div>
-          <h4 className="font-serif text-lg font-semibold">Staggers</h4>
-          <ul className="mt-2">
-            {(Object.keys(stagger) as (keyof typeof stagger)[]).map((name) => (
-              <StaggerRow key={name} name={name} seconds={stagger[name]} all={all} />
-            ))}
-          </ul>
         </div>
       </div>
     </div>
