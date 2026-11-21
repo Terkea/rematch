@@ -31,6 +31,11 @@ ALTER TABLE linked_accounts ADD COLUMN analysis_scheduled_at timestamptz;
 
 -- Fair scheduling (R-12): the per-account `served` count and the selection scan.
 CREATE INDEX games_account_started_idx ON games (account_id, analysis_started_at);
+-- The claim query's `served` CTE counts every account's games started in the last hour, a range
+-- on `analysis_started_at` alone: with the column second above, that is a full index scan per
+-- claim. Leading with the time makes it a short range scan, index-only through `account_id`.
+CREATE INDEX games_started_account_idx ON games (analysis_started_at, account_id)
+  WHERE analysis_started_at IS NOT NULL;
 CREATE INDEX games_account_status_tc_idx ON games (account_id, analysis_status, time_class);
 
 -- Per-move enrichment ----------------------------------------------------------------------
@@ -39,8 +44,8 @@ CREATE TABLE move_features (
   ply integer NOT NULL,
   -- raw
   multipv jsonb,
-  best_pv text[] NOT NULL DEFAULT '{}'::text[],
-  refutation_pv text[] NOT NULL DEFAULT '{}'::text[],
+  best_pv text[] NOT NULL,
+  refutation_pv text[] NOT NULL,
   threat jsonb,
   tb_wdl_before smallint,
   tb_wdl_after smallint,
@@ -73,7 +78,7 @@ CREATE TABLE position_threats (
   protocol text NOT NULL,
   score_cp integer,
   score_mate integer,
-  pv text[] NOT NULL DEFAULT '{}'::text[],
+  pv text[] NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (fen_key, protocol)
 );
@@ -89,7 +94,7 @@ CREATE TABLE position_tb (
 -- `metrics` is a serialised `PlayerGameMetrics`; readers must treat `metrics->>'version'` other
 -- than PLAYER_GAME_METRICS_VERSION as stale (global constraints, version gate).
 -- `metrics_version` mirrors that field (a missing version reads as 0) so stale rows are cheap to
--- find: `WHERE metrics_version <> $current`.
+-- find: `WHERE account_id = $1 AND metrics_version <> $current`.
 CREATE TABLE game_metrics (
   game_id uuid PRIMARY KEY REFERENCES games (id) ON DELETE CASCADE,
   account_id uuid NOT NULL REFERENCES linked_accounts (id) ON DELETE CASCADE,
@@ -104,7 +109,9 @@ CREATE TABLE game_metrics (
 );
 CREATE INDEX game_metrics_account_tc_played_idx
   ON game_metrics (account_id, time_class, played_at);
-CREATE INDEX game_metrics_version_idx ON game_metrics (metrics_version, account_id);
+-- An account's stale rows (`account_id = $1 AND metrics_version <> $2`): an index-only scan.
+CREATE INDEX game_metrics_version_idx
+  ON game_metrics (account_id, metrics_version) INCLUDE (game_id);
 
 CREATE TABLE weakness_series_point (
   account_id uuid NOT NULL REFERENCES linked_accounts (id) ON DELETE CASCADE,
@@ -344,5 +351,8 @@ CREATE TABLE game_previews (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
--- R2: per-stage timings for every new job kind (`db::stage_metrics`).
+-- R2: per-stage timings for every new job kind (`db::stage_metrics`), and the spans ADR 0036
+-- logged only in R1 (`engine_stage_ms`, `evaluate_ms` of analyse-game).
 ALTER TABLE job_metrics ADD COLUMN stages jsonb;
+-- Every job kind now writes rows: per-kind windows (the ETA rate, T30) read by kind first.
+CREATE INDEX job_metrics_kind_created_idx ON job_metrics (kind, created_at);
