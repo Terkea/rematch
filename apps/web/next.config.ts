@@ -11,6 +11,9 @@ const source = (path: string) => fileURLToPath(new URL(path, import.meta.url));
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  // The Compose `qa` service loads the dev server as http://web:3100; Next 16 blocks dev assets
+  // (and so hydration) for origins not listed here.
+  allowedDevOrigins: ["web"],
   outputFileTracingRoot: source("../.."),
   transpilePackages: ["@ci/ui", "@ci/db", "@ci/chess-core"],
   webpack(config) {

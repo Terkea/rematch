@@ -1,0 +1,29 @@
+@import "tailwindcss";
+@import "@ci/ui/tokens.css";
+
+/* @ci/ui is linked under node_modules, which Tailwind skips, so its classes are scanned explicitly. */
+@source "../../../../packages/ui/src";
+
+@layer base {
+  html {
+    background-color: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-optical-sizing: auto;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    min-height: 100dvh;
+  }
+
+  ::selection {
+    background-color: var(--color-selection);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-ink);
+    outline-offset: 2px;
+  }
+}
