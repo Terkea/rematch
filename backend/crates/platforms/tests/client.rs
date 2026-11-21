@@ -12,10 +12,11 @@ use tokio::net::TcpListener;
 use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, MockServer, Request, Respond, ResponseTemplate};
 
+const FIXED_UA: &str = "chess-improver/0.1 (+https://github.com/chess-improver)";
+
 fn opts() -> ClientOptions {
     ClientOptions {
         name: Platform::Lichess,
-        contact_email: "ops@example.com".into(),
         retry_after: Duration::ZERO,
         ..ClientOptions::default()
     }
@@ -34,17 +35,11 @@ async fn collect(
 
 #[tokio::test]
 async fn sends_identifying_user_agent() {
-    assert_eq!(
-        user_agent("ops@example.com"),
-        "chess-improver/0.1 (+mailto:ops@example.com)"
-    );
+    assert_eq!(user_agent(), FIXED_UA);
     let server = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path("/a"))
-        .and(header(
-            "user-agent",
-            "chess-improver/0.1 (+mailto:ops@example.com)",
-        ))
+        .and(header("user-agent", FIXED_UA))
         .and(header("accept", "application/json"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"ok": true})))
         .expect(1)
@@ -352,4 +347,28 @@ async fn yields_a_final_line_without_a_trailing_newline() {
         .map(Result::unwrap)
         .collect();
     assert_eq!(out, vec![json!({"a":1}), json!({"a":2})]);
+}
+
+/// ADR 0043: no outbound request carries an email, even when `CONTACT_EMAIL` is set in the environment.
+#[tokio::test]
+async fn user_agent_never_contains_an_email_even_with_contact_email_set() {
+    // The workspace forbids `unsafe`, so the env cannot be set in-process; run with
+    // `CONTACT_EMAIL=someone@example.com` to exercise it. The UA is built without reading the env.
+    for name in [Platform::Chesscom, Platform::Lichess] {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/ua"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({"ok": true})))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let c = client(ClientOptions { name, ..opts() });
+        c.get_json(&format!("{}/ua", server.uri()), vec![])
+            .await
+            .unwrap();
+        let reqs = server.received_requests().await.unwrap();
+        let ua = reqs[0].headers.get("user-agent").unwrap().to_str().unwrap();
+        assert!(!ua.contains('@'), "User-Agent leaked an email: {ua}");
+        assert_eq!(ua, FIXED_UA);
+    }
 }

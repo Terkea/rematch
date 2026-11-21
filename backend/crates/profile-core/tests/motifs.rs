@@ -351,3 +351,74 @@ fn only_the_first_128_plies_are_replayed() {
     assert_eq!(past.swing.depth, None);
     assert_eq!(past.tags, Vec::<MotifTag>::new());
 }
+
+#[test]
+fn a_queen_that_dodges_and_comes_back_is_no_fork() {
+    // Nc7 forks Qa8 and Re8. The queen dodges to a7, the knight leaves (Nb5) and returns (Nc7,
+    // now forking nothing), and the queen walks back to a8 where the knight takes it. The
+    // capture is neither the forker's first move after the fork nor a capture of an unmoved
+    // target, so the fork at ply 1 did not win the queen.
+    let a = tag_line(
+        "q3r2k/8/8/1N6/8/8/7K/8 w - - 0 1",
+        &line(&[
+            "b5c7", "a8a7", "c7b5", "a7b7", "b5c7", "b7a8", "c7a8", "e8a8",
+        ]),
+        Color::White,
+        8,
+    );
+    assert_eq!(a.swing.depth, Some(7));
+    assert_lacks("dodge and return", &a.tags, &[Fork]);
+}
+
+#[test]
+fn a_target_that_dodges_and_returns_while_the_forker_waits_is_no_fork() {
+    // Same fork; the queen dodges and comes back while the knight waits on c7. The target moved
+    // between the fork and the capture, so the fork did not win it (AND timing rule).
+    let a = tag_line(
+        "q3r2k/8/8/1N6/8/8/7K/8 w - - 0 1",
+        &line(&["b5c7", "a8a7", "h2h3", "a7a8", "c7a8", "e8a8"]),
+        Color::White,
+        8,
+    );
+    assert_eq!(a.swing.depth, Some(5));
+    assert_lacks("forker waits, target returns", &a.tags, &[Fork]);
+}
+
+#[test]
+fn a_forker_that_returns_to_re_fork_is_credited_with_the_new_fork() {
+    // Nc7 forks Qa8 and Re8; the knight leaves and returns while both targets stay. The ply-1
+    // fork does not count (the forker moved), but the return Nc7 at ply 5 is a fork of its own,
+    // completed at once, so the line is still tagged. F6 below is the case with no re-fork.
+    let a = tag_line(
+        "q3r2k/8/8/1N6/8/8/7K/8 w - - 0 1",
+        &line(&[
+            "b5c7", "h8g8", "c7b5", "g8h8", "b5c7", "h8g8", "c7a8", "e8a8",
+        ]),
+        Color::White,
+        8,
+    );
+    assert_contains("re-fork", &a.tags, &[Fork]);
+}
+
+#[test]
+fn review_probe_f6_the_other_target_leaves_and_the_forker_returns_is_no_fork() {
+    let a = tag_line(
+        "q3r2k/8/8/1N6/8/8/7K/8 w - - 0 1",
+        &line(&["b5c7", "e8e1", "c7b5", "h8g8", "b5c7", "g8h8", "c7a8"]),
+        Color::White,
+        8,
+    );
+    assert_lacks("F6", &a.tags, &[Fork]);
+}
+
+#[test]
+fn a_fork_completed_at_once_is_still_a_fork() {
+    // Nc7 forks Qa8 and Re8; Black plays a king move and the knight takes the queen at once.
+    let a = tag_line(
+        "q3r2k/8/8/1N6/8/8/7K/8 w - - 0 1",
+        &line(&["b5c7", "h8g8", "c7a8", "e8a8"]),
+        Color::White,
+        8,
+    );
+    assert_contains("immediate fork", &a.tags, &[Fork]);
+}

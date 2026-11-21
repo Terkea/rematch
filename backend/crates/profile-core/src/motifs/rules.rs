@@ -185,11 +185,19 @@ pub fn fork(ctx: &LineContext) -> bool {
             .map(|(sq, _)| sq)
             .collect();
         targets.len() >= 2
-            && replay.iter().skip(i + 1).any(|later| {
+            && replay.iter().enumerate().skip(i + 1).any(|(j, later)| {
                 later.mover == ctx.pov
                     && later.from == step.to
                     && later.captured.is_some()
                     && targets.contains(&later.to)
+                    && {
+                        // ADR-R2-3 (controller ruling, T6 review): neither the forker nor the
+                        // captured target moved between the fork and the capture.
+                        let between = replay.get(i + 1..j).unwrap_or_default();
+                        let untouched =
+                            |sq: &str| between.iter().all(|s| s.from != sq && s.to != sq);
+                        untouched(&step.to) && untouched(&later.to)
+                    }
             })
     })
 }

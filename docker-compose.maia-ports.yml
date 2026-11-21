@@ -1,0 +1,9 @@
+# Dev-only: publish Maia on the host (ADR-R2-13). Use together with docker-compose.maia.yml:
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.ports.yml:docker-compose.maia.yml:docker-compose.maia-ports.yml
+# Docker cannot publish a port from an internal-only network, so here maia also joins the default
+# network and therefore HAS EGRESS. The beta/prod stack keeps maia on the internal network only.
+services:
+  maia:
+    ports:
+      - "127.0.0.1:58080:8080"
+    networks: [maia_internal, default]
