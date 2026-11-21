@@ -8,7 +8,7 @@ const flag = z
 const schema = z.object({
   DATABASE_URL: z.string().min(1),
   REDIS_URL: z.string().min(1),
-  BETTER_AUTH_SECRET: z.string().min(1),
+  BETTER_AUTH_SECRET: z.string().min(32),
   BETTER_AUTH_URL: z.string().default("http://localhost:3100"),
   BETTER_AUTH_TRUSTED_ORIGINS: z.string().default(""),
   SMTP_URL: z.string().default("smtp://mailpit:1025"),

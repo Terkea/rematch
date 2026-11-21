@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "next dev --webpack --port 3100 --hostname 0.0.0.0",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "next start --port 3100",
     "test": "vitest run",
     "lint": "biome check .",

@@ -14,6 +14,10 @@ describe("getEnv", () => {
     expect(() => getEnv(rest)).toThrow(/BETTER_AUTH_SECRET/);
   });
 
+  it("rejects a BETTER_AUTH_SECRET shorter than 32 characters", () => {
+    expect(() => getEnv({ ...base, BETTER_AUTH_SECRET: "short" })).toThrow(/BETTER_AUTH_SECRET/);
+  });
+
   it("parses CHESSCOM_ENABLED=1 to true and absent to false", () => {
     expect(getEnv({ ...base, CHESSCOM_ENABLED: "1" }).CHESSCOM_ENABLED).toBe(true);
     expect(getEnv(base).CHESSCOM_ENABLED).toBe(false);
