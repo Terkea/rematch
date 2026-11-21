@@ -40,21 +40,24 @@ Every version below was published at least 7 days before 2026-11-21 and is pinne
 | sha2 | 0.11.1 | 2026-10-12 | MIT OR Apache-2.0 | Dump and tablebase checksums, salted player hashes. Already in the lockfile through sqlx. |
 | hex | 0.4.3 | 2021-03-03 | MIT OR Apache-2.0 | Hex digests. Already in the lockfile. |
 | rayon | 1.12.0 | 2026-04-14 | MIT OR Apache-2.0 | Parallel PGN parse |
+| jsonschema (dev) | 0.61.2 | 2026-11-12 | MIT | Task 2 schema parity. `default-features = false`: no HTTP resolver, no reqwest or aws-lc. 0.62.0 (2026-11-21) was too new. |
 | tokio-util (existing) | 0.7.20 | | MIT | Adds feature `io` (`StreamReader`) |
 | tokio (existing) | 1.54.1 | | MIT | Adds feature `fs` (Syzygy files, data dir) |
 
-These pull in 18 new crates in total: the six direct crates (minus sha2 and hex, already locked) and their dependencies. `compression-codecs` is pinned back to 0.4.47 in `Cargo.lock`, because 0.4.48 (2026-11-21) was too new.
+These pull in 52 new crates in total. Four were younger than 7 days and are pinned back in `Cargo.lock`:
+- `compression-codecs` 0.4.47 (not 0.4.48);
+- `email_address` 0.2.9 (not 0.2.10);
+- `zerocopy` and `zerocopy-derive` 0.8.63 (not 0.8.64).
 
-Every new licence is on the existing allowlist:
+`scripts/check-crate-age.sh` and `cargo deny --locked check` pass. No statistics crate is added, because Task 11 writes the numerics itself so the TS test values are pinned exactly.
+
+**Addendum: MIT-0 allowed (controller ruling, fix round 1).** jsonschema 0.61.2 (dev-only, for the Task 2 parity test) depends on `borrow-or-share` through `referencing` and `fluent-uri`, and that crate is MIT-0. MIT-0 is the MIT licence without the attribution clause, so it is strictly more permissive than MIT, which is already allowed. `backend/deny.toml` adds `MIT-0` to the allowlist; no other licence changes. Every other new licence was already on the allowlist:
 - MIT, `MIT OR Apache-2.0`, Apache-2.0;
 - `zstd`, `zstd-safe`: BSD-3-Clause;
-- `zstd-sys`: `BSD-3-Clause AND BSD-2-Clause`.
+- `zstd-sys`: `BSD-3-Clause AND BSD-2-Clause`;
+- `r-efi`: `MIT OR Apache-2.0 OR LGPL-2.1-or-later`, taken under MIT, and only on UEFI targets.
 
-`deny.toml` is unchanged. `scripts/check-crate-age.sh` and `cargo deny --locked check` pass. No statistics crate is added, because Task 11 writes the numerics itself so the TS test values are pinned exactly.
-
-**jsonschema is not added.** The plan listed it as a dev-dependency for the Task 2 parity test, but at 0.61.2 (the newest qualifying release) its `referencing` crate needs `fluent-uri`, which needs `borrow-or-share` (licence MIT-0). MIT-0 is permissive but not on the allowlist, and the allowlist is only widened by an ADR addendum. Two more points:
-- In this `deny.toml` configuration, `cargo deny list` and `check` do not report dev-only crates (`wiremock` and `jsonschema` were both absent). So the violation passed `cargo deny`, and was found by listing licences with `cargo metadata`.
-- Task 2 checks parity without a JSON Schema validator. It compares the generated schema with the TS-exported schema structurally (property names, `required`, types including `null`, bounds), and round-trips fixtures through serde (`deny_unknown_fields`) and `validate()`. Alternatively, the controller can approve MIT-0 in an addendum and add jsonschema in a coordinator commit.
+The first bootstrap commit missed this because cargo-deny 0.20 does not licence-check crates reachable only through dev-dependencies by default. The separate commit `fix(deny): include dev-dependencies in licence and advisory checks` sets `[licenses] include-dev = true` (ADR 0031). Proof: `cargo deny list` now shows `wiremock`, `jsonschema` and `borrow-or-share`, and with `MIT-0` removed from the allowlist, `cargo deny check licenses` fails on `borrow-or-share`.
 
 **schemars `required` handling (ledger ruling Q5), verified at 1.2.3.**
 - A plain `Option<T>` field is emitted as `"type": [T, "null"]` and is **not** listed in `required`.
@@ -86,7 +89,7 @@ R2 ADRs are written as `docs/decisions/ADR-R2-<n>-<slug>.md`, numbered 1-18, eac
 - **One `profile` crate holding everything.** Rejected. R3 would depend on sqlx and the engine just to read the contract, and the pure logic could no longer be tested without I/O.
 - **Each task adds its own dependencies.** Rejected. Parallel lanes would conflict on `Cargo.lock` (ADR 0031).
 - **A statistics crate** (`statrs`). Rejected. Pinning the TS reference values exactly needs our own numerics.
-- **jsonschema (any feature set).** Rejected for now: MIT-0 via `borrow-or-share` (see above). Its default features would also pull in reqwest, aws-lc-rs and a network resolver.
+- **jsonschema with default features.** Rejected. These pull in reqwest with aws-lc-rs (an OpenSSL-licensed component) and a network resolver, which tests must not have.
 
 ## Consequences
 

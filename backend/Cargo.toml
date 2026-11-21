@@ -80,6 +80,8 @@ async-compression = { version = "=0.4.52", features = ["tokio", "zstd"] }
 sha2 = "=0.11.1"
 hex = "=0.4.3"
 rayon = "=1.12.0"
+# Dev-only: Task 2 schema parity. No HTTP resolver (no reqwest, no aws-lc).
+jsonschema = { version = "=0.61.2", default-features = false }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
