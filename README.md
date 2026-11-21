@@ -37,3 +37,16 @@ package test suites can run in parallel without truncating each other's rows. Li
 ```sh
 docker compose exec postgres psql -U postgres -c "CREATE DATABASE chess_worker_test"
 ```
+
+## Analyse CLI
+
+Imports an account's games and analyses them in-process, then prints a summary and exits
+(0 on success; 1 if the user is not found or every game failed):
+
+```sh
+docker compose run --rm worker pnpm --filter @ci/worker cli analyse \
+  --platform <lichess|chesscom> --username <name> [--max N] [--timeout MINUTES]
+# games: 20  analysed: 20  skipped: 0  failed: 0  avg accuracy: 65.1  blunders/game: 3.20
+```
+
+Chess.com requires a real `CONTACT_EMAIL` in `.env` for its User-Agent; `--timeout` defaults to 30 minutes.
