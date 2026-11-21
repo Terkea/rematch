@@ -19,6 +19,7 @@ import {
   arrowGeometry,
   BADGE,
   HALO,
+  HALO_SCALE,
   HEAD_SCALE,
   isKnightMove,
   knightCorner,
@@ -27,7 +28,6 @@ import {
   polyline,
   ringPoints,
   samplePath,
-  squareCenter,
   TONE_SCALE,
   timeAtProgress,
 } from "./geometry.js";
@@ -81,6 +81,8 @@ interface StrokeMark {
   kind: "arrow" | "circle";
   key: string;
   tone: Tone;
+  /** the halo's full stroke width (both sides) */
+  halo: number;
   /** each group paints all its halos, then all its fills, so a group reads as one stroke */
   groups: Segment[][];
   tracks: Track[];
@@ -103,6 +105,23 @@ type Plan = StrokeMark | BadgeMark;
 const pts = (d: string): Point[] =>
   parsePath(d).flatMap((c) => (c.type === "M" || c.type === "L" ? [{ x: c.x, y: c.y }] : []));
 
+/** A mark's identity: the same arrow, ring or badge twice is drawn and read once. */
+export function annotationKey(a: Annotation): string {
+  if (a.kind === "arrow") return `arrow:${a.from}${a.to}:${a.tone}`;
+  if (a.kind === "circle") return `circle:${a.square}:${a.tone}`;
+  return `mark:${a.square}:${a.glyph}:${a.tone}`;
+}
+
+function unique(annotations: readonly Annotation[]): Annotation[] {
+  const seen = new Set<string>();
+  return annotations.filter((a) => {
+    const key = annotationKey(a);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function planMarks(
   annotations: readonly Annotation[],
   orientation: Orientation,
@@ -110,19 +129,20 @@ function planMarks(
 ): Plan[] {
   const px = 1 / squarePx;
   const minWidth = 1.1 * px;
-  const pad = 2 * HALO + px;
+  const haloOf = (tone: Tone) => 2 * HALO * HALO_SCALE[tone];
   const ringed = new Set(annotations.flatMap((a) => (a.kind === "circle" ? [a.square] : [])));
   const arrows = annotations.filter(
     (a): a is Extract<Annotation, { kind: "arrow" }> => a.kind === "arrow",
   );
   const plans: Plan[] = [];
-  /** For each target, the x each arrow arrives from (its last leg), to place the badge. */
-  const arrivals = new Map<string, number[]>();
+  /** For each target, the points of every arrowhead that lands on it, to place the badge. */
+  const arrivals = new Map<string, Point[]>();
   let strokeIndex = 0;
   let lastEnd = 0;
 
   for (const a of annotations) {
     const scale = TONE_SCALE[a.tone];
+    const pad = haloOf(a.tone) + px;
     if (a.kind === "arrow") {
       const delay = strokeIndex++ * stagger.pen;
       // A knight's L runs its long leg first, unless that corner sits on another arrow's end.
@@ -132,10 +152,6 @@ function planMarks(
         const sq = cellToSquare(Math.floor(c.x), Math.floor(c.y), orientation);
         if (arrows.some((o) => o !== a && (o.from === sq || o.to === sq))) knight = "short";
       }
-      const leg = isKnightMove(a.from, a.to)
-        ? knightCorner(a.from, a.to, orientation, knight)
-        : squareCenter(a.from, orientation);
-      arrivals.set(a.to, [...(arrivals.get(a.to) ?? []), leg.x]);
       const { shaft, head } = arrowGeometry(a.from, a.to, orientation, {
         ringed: ringed.has(a.to),
         tone: a.tone,
@@ -156,6 +172,7 @@ function planMarks(
       const tracks: Track[] = [{ delay, duration: dur.draw }];
       const headCmds = parsePath(head);
       const tip = { x: (headCmds[0] as Point).x, y: (headCmds[0] as Point).y };
+      arrivals.set(a.to, [...(arrivals.get(a.to) ?? []), ...pts(head)]);
       if (a.tone === "good") {
         // A solid head: the triangle on its halo, wiped on from its base to its tip.
         const [p1, t, p2] = pts(head) as [Point, Point, Point];
@@ -195,6 +212,7 @@ function planMarks(
         kind: "arrow",
         key: `arrow:${a.from}${a.to}:${a.tone}`,
         tone: a.tone,
+        halo: haloOf(a.tone),
         groups: [segments],
         tracks,
       });
@@ -226,6 +244,7 @@ function planMarks(
         kind: "circle",
         key: `circle:${a.square}:${a.tone}`,
         tone: a.tone,
+        halo: haloOf(a.tone),
         // One group: the overrun inks over the start, as a pen does, with no halo cut between.
         groups: [segs],
         tracks: [{ delay, duration: dur.draw }],
@@ -236,18 +255,40 @@ function planMarks(
   // Badges land when the last stroke ends, not by stagger (DESIGN.md, "Stagger scale").
   for (const a of annotations) {
     if (a.kind !== "mark") continue;
-    // Top right, unless any arrow arrives on its last leg from the right of the target as drawn:
-    // then top left, so the badge never covers an arrowhead (ruling 2, Task 10, by leg).
+    // The corner farthest from every arrowhead that lands on the square (Task 12 review: also
+    // from above and from the diagonals), preferring top right, then top left, bottom right and
+    // bottom left. A corner that holds a coordinate (rank numbers top left of the left column,
+    // file letters bottom right of the bottom row) is never used.
     const { col, row } = squareToCell(a.square, orientation);
-    const fromRight = (arrivals.get(a.square) ?? []).some((x) => x > col + 0.5 + 1e-6);
     const r = BADGE.r;
     const inset = px;
-    const left = fromRight;
-    // The left column carries the rank numbers top left: a badge there drops to the bottom-left
-    // corner, so it never covers a coordinate.
-    const bottom = left && col === 0;
-    const cx = left ? col + inset + r : col + 1 - inset - r;
-    const cy = bottom ? row + 1 - inset - r : row + inset + r;
+    const left = col + inset + r;
+    const right = col + 1 - inset - r;
+    const top = row + inset + r;
+    const bottom = row + 1 - inset - r;
+    const corners = [
+      { x: right, y: top, ok: true },
+      { x: left, y: top, ok: col !== 0 },
+      { x: right, y: bottom, ok: row !== 7 },
+      { x: left, y: bottom, ok: true },
+    ].filter((c) => c.ok);
+    const heads = arrivals.get(a.square) ?? [];
+    const clearance = (c: Point) =>
+      heads.reduce(
+        (m, q) => Math.min(m, Math.hypot(q.x - c.x, q.y - c.y)),
+        Number.POSITIVE_INFINITY,
+      );
+    let best = corners[0] as Point;
+    let bestScore = clearance(best);
+    for (const c of corners.slice(1)) {
+      const score = clearance(c);
+      if (score > bestScore + 0.02) {
+        best = c;
+        bestScore = score;
+      }
+    }
+    const cx = best.x;
+    const cy = best.y;
     const font = Math.max(a.glyph.length === 1 ? BADGE.font1 : BADGE.font2, BADGE.minFontPx * px);
     plans.push({
       kind: "mark",
@@ -291,6 +332,7 @@ function Reveal({ segment, progress }: { segment: Segment; progress: MotionValue
   const opacity = useTransform(progress, (v) => (v > lo || v >= 1 ? 1 : 0));
   return (
     <motion.path
+      data-reveal
       d={segment.centre}
       fill="none"
       stroke="white"
@@ -302,87 +344,57 @@ function Reveal({ segment, progress }: { segment: Segment; progress: MotionValue
   );
 }
 
-function StrokeMarkView({
+/**
+ * One paint pass of a stroke mark: its halos, its fills, or both (each group's halos first). With
+ * no `maskId` nothing animates, and the paths are plain (no masks).
+ */
+function MarkPaint({
   mark,
-  maskBase,
-  still,
+  part,
+  maskId,
 }: {
   mark: StrokeMark;
-  maskBase: string;
-  still: boolean;
+  part: "halo" | "fill" | "both";
+  maskId?: ((segment: number) => string) | undefined;
 }) {
-  // One progress value per track; a ring's three pieces share one, split by arc (M2). The key
-  // names the mark's kind, so its number of tracks never changes.
-  const [tracks] = useState(() => mark.tracks.map(() => motionValue(still ? 1 : 0)));
-  // The timing never depends on the square size, so a resize re-plans without replaying.
-  const timing = useRef(mark.tracks);
-  timing.current = mark.tracks;
-  useEffect(() => {
-    if (still) {
-      for (const t of tracks) t.set(1);
-      return;
-    }
-    const controls = tracks.map((t, i) => {
-      const track = timing.current[i] as Track;
-      t.set(0);
-      return animate(t, 1, { delay: track.delay, duration: track.duration, ease: [...ease.pen] });
-    });
-    return () => {
-      for (const c of controls) c.stop();
-    };
-  }, [still, tracks]);
-
   const colour = TONE_COLOUR[mark.tone];
-  const segments = mark.groups.flat();
-  const maskId = (i: number) => `${maskBase}-${i}`;
+  const masked = (i: number) => (maskId ? { mask: `url(#${maskId(i)})` } : {});
   let index = 0;
   return (
     <g data-mark={mark.kind} data-tone={mark.tone}>
-      <defs>
-        {segments.map((s, i) => (
-          <mask
-            // biome-ignore lint/suspicious/noArrayIndexKey: fixed segment order
-            key={i}
-            id={maskId(i)}
-            maskUnits="userSpaceOnUse"
-            x={-1}
-            y={-1}
-            width={10}
-            height={10}
-          >
-            <Reveal segment={s} progress={tracks[s.track] as MotionValue<number>} />
-          </mask>
-        ))}
-      </defs>
       {mark.groups.map((group, g) => {
         const first = index;
         index += group.length;
         return (
           // biome-ignore lint/suspicious/noArrayIndexKey: fixed group order
           <g key={g}>
-            {group.map((s, i) => (
-              <path
-                // biome-ignore lint/suspicious/noArrayIndexKey: fixed segment order
-                key={`h${i}`}
-                data-part="halo"
-                d={s.outline}
-                mask={`url(#${maskId(first + i)})`}
-                fill="var(--color-sheet)"
-                stroke="var(--color-sheet)"
-                strokeWidth={HALO * 2}
-                strokeLinejoin="round"
-              />
-            ))}
-            {group.map((s, i) => (
-              <path
-                // biome-ignore lint/suspicious/noArrayIndexKey: fixed segment order
-                key={`f${i}`}
-                data-part="fill"
-                d={s.outline}
-                mask={`url(#${maskId(first + i)})`}
-                fill={colour}
-              />
-            ))}
+            {part !== "fill"
+              ? group.map((s, i) => (
+                  <path
+                    // biome-ignore lint/suspicious/noArrayIndexKey: fixed segment order
+                    key={`h${i}`}
+                    data-part="halo"
+                    d={s.outline}
+                    {...masked(first + i)}
+                    fill="var(--color-sheet)"
+                    stroke="var(--color-sheet)"
+                    strokeWidth={mark.halo}
+                    strokeLinejoin="round"
+                  />
+                ))
+              : null}
+            {part !== "halo"
+              ? group.map((s, i) => (
+                  <path
+                    // biome-ignore lint/suspicious/noArrayIndexKey: fixed segment order
+                    key={`f${i}`}
+                    data-part="fill"
+                    d={s.outline}
+                    {...masked(first + i)}
+                    fill={colour}
+                  />
+                ))
+              : null}
           </g>
         );
       })}
@@ -429,26 +441,88 @@ function BadgeView({ mark, still }: { mark: BadgeMark; still: boolean }) {
   );
 }
 
+interface Running {
+  key: string;
+  stop: () => void;
+  value: MotionValue<number>;
+}
+
 /**
  * The annotation overlay: an SVG in board units laid over the board, and a visually hidden list
  * that says what each mark is. Strokes draw on in order, `stagger.pen` apart, each over `dur.draw`
  * with `ease.pen`; arrowheads start at 85% of their shaft; badges land on `land` when the last
- * stroke ends. With `animate={false}` or reduced motion, everything is drawn at once.
+ * stroke ends. With `animate={false}` or reduced motion, everything is drawn at once, as plain
+ * paths with no masks. Duplicate annotations are drawn and read once.
+ *
+ * Paint order: ring halos, then each arrow (its halos, then its fills), then ring fills. Arrows
+ * still cut each other with their halos where they cross, but no arrowhead's halo notches a ring.
  */
 export function AnnotationLayer({
-  annotations,
+  annotations: given,
   orientation,
-  animate = true,
+  animate: animated = true,
 }: AnnotationLayerProps) {
   const reduced = useReducedMotion();
-  const still = !animate || reduced;
+  const still = !animated || reduced;
   const ref = useRef<SVGSVGElement>(null);
   const squarePx = useSquarePx(ref);
   const id = `ann-${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
+  const annotations = useMemo(() => unique(given), [given]);
   const plans = useMemo(
     () => planMarks(annotations, orientation, squarePx),
     [annotations, orientation, squarePx],
   );
+  const strokes = plans.filter((p): p is StrokeMark => p.kind !== "mark");
+  const badges = plans.filter((p): p is BadgeMark => p.kind === "mark");
+
+  // One progress value per track, per mark; a ring's three pieces share one, split by arc (M2).
+  // They live here, not in the marks, because a mark is painted in more than one pass.
+  const progress = useRef(new Map<string, MotionValue<number>[]>()).current;
+  const tracksOf = (mark: StrokeMark): MotionValue<number>[] => {
+    let values = progress.get(mark.key);
+    if (!values) {
+      values = mark.tracks.map(() => motionValue(still ? 1 : 0));
+      progress.set(mark.key, values);
+    }
+    return values;
+  };
+  const tracksRef = useRef(tracksOf);
+  tracksRef.current = tracksOf;
+  // The timing never depends on the square size, so a resize re-plans without replaying.
+  const timing = useRef(strokes);
+  timing.current = strokes;
+  const drawn = useRef(new Set<string>()).current;
+  const keys = strokes.map((m) => m.key).join("|");
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `keys` stands for the marks
+  useEffect(() => {
+    const running: Running[] = [];
+    for (const mark of timing.current) {
+      const values = tracksRef.current(mark);
+      if (still) {
+        for (const v of values) v.set(1);
+        continue;
+      }
+      if (drawn.has(mark.key)) continue;
+      drawn.add(mark.key);
+      values.forEach((value, i) => {
+        const track = mark.tracks[i] as Track;
+        value.set(0);
+        const controls = animate(value, 1, {
+          delay: track.delay,
+          duration: track.duration,
+          ease: [...ease.pen],
+        });
+        running.push({ key: mark.key, stop: () => controls.stop(), value });
+      });
+    }
+    return () => {
+      // An unfinished stroke draws again next time (and under StrictMode's double effect).
+      for (const r of running) {
+        r.stop();
+        if (r.value.get() < 1) drawn.delete(r.key);
+      }
+    };
+  }, [still, keys, drawn]);
 
   // Marks never swallow a coordinate (DESIGN.md, "The board"): strokes are cut where the glyphs
   // sit (their boxes plus 2px). Ranks are top left of the left column, files bottom right of the
@@ -476,6 +550,11 @@ export function AnnotationLayer({
 
   if (annotations.length === 0) return null;
 
+  const maskIdOf = (mark: StrokeMark) =>
+    still ? undefined : (segment: number) => `${id}-${strokes.indexOf(mark)}-${segment}`;
+  const rings = strokes.filter((m) => m.kind === "circle");
+  const arrows = strokes.filter((m) => m.kind === "arrow");
+
   return (
     <>
       <svg
@@ -492,24 +571,48 @@ export function AnnotationLayer({
               <rect key={`${r.x},${r.y}`} x={r.x} y={r.y} width={r.w} height={r.h} fill="black" />
             ))}
           </mask>
+          {still
+            ? null
+            : strokes.map((mark, m) => {
+                const values = tracksOf(mark);
+                return mark.groups.flat().map((segment, i) => (
+                  <mask
+                    // biome-ignore lint/suspicious/noArrayIndexKey: fixed segment order
+                    key={`${mark.key}-${i}`}
+                    id={`${id}-${m}-${i}`}
+                    maskUnits="userSpaceOnUse"
+                    x={-1}
+                    y={-1}
+                    width={10}
+                    height={10}
+                  >
+                    <Reveal
+                      segment={segment}
+                      progress={values[segment.track] as MotionValue<number>}
+                    />
+                  </mask>
+                ));
+              })}
         </defs>
         <g mask={`url(#${id}-coords)`}>
-          {plans.map((p, i) =>
-            p.kind === "mark" ? null : (
-              <StrokeMarkView key={p.key} mark={p} maskBase={`${id}-${i}`} still={still} />
-            ),
-          )}
+          {rings.map((m) => (
+            <MarkPaint key={`h-${m.key}`} mark={m} part="halo" maskId={maskIdOf(m)} />
+          ))}
+          {arrows.map((m) => (
+            <MarkPaint key={m.key} mark={m} part="both" maskId={maskIdOf(m)} />
+          ))}
+          {rings.map((m) => (
+            <MarkPaint key={`f-${m.key}`} mark={m} part="fill" maskId={maskIdOf(m)} />
+          ))}
         </g>
-        {plans.map((p) =>
-          p.kind === "mark" ? (
-            // Remount when `still` flips (hydration under reduced motion), so no spring is left running.
-            <BadgeView key={`${p.key}:${still}`} mark={p} still={still} />
-          ) : null,
-        )}
+        {badges.map((p) => (
+          // Remount when `still` flips (hydration under reduced motion), so no spring is left running.
+          <BadgeView key={`${p.key}:${still}`} mark={p} still={still} />
+        ))}
       </svg>
-      <ul className="sr-only">
+      <ul className="sr-only" aria-label="Annotations on the board">
         {annotations.map((a) => (
-          <li key={describeAnnotation(a)}>{describeAnnotation(a)}</li>
+          <li key={annotationKey(a)}>{describeAnnotation(a)}</li>
         ))}
       </ul>
     </>

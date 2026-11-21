@@ -18,6 +18,11 @@ export const TONE_SCALE: Readonly<Record<Tone, number>> = { pen: 1, good: 1, pen
 export const HEAD_SCALE = 0.9;
 /** The `sheet` halo, each side of the outline (a 4px stroke under the fill at 56px). */
 export const HALO = 2 * PX;
+/**
+ * The halo by tone (Task 12 review): pencil's thin graphite line on a full 2px halo read as a
+ * tube at night, so pencil takes half the halo (1px each side at 56px).
+ */
+export const HALO_SCALE: Readonly<Record<Tone, number>> = { pen: 1, good: 1, pencil: 0.5 };
 
 export const ARROW = {
   /** the shaft starts this far from the origin centre */
@@ -32,6 +37,12 @@ export const ARROW = {
   angles: [26, 32] as const,
   /** a knight's L rounds its corner over this radius, as a hand does */
   corner: 0.14,
+  /**
+   * The shortest a straight shaft may be: its head plus 0.2 (Task 12 review). A one-square arrow
+   * into a ringed square would otherwise keep 0.32 of shaft, nearly all under its head, and read
+   * as a wedge; its start and end clearances shrink in proportion until this much is left.
+   */
+  minShaft: 0.3 + 0.2,
 } as const;
 
 export const RING = {
@@ -111,8 +122,17 @@ export function arrowGeometry(
   const corner = isKnightMove(from, to) ? knightCorner(from, to, orientation, knight) : null;
   const first = unit(a, corner ?? b);
   const last = unit(corner ?? a, b);
-  const clear = ringed ? ARROW.endRinged : ARROW.end;
-  const start = { x: a.x + first.x * ARROW.start, y: a.y + first.y * ARROW.start };
+  let clear: number = ringed ? ARROW.endRinged : ARROW.end;
+  let lead: number = ARROW.start;
+  if (!corner) {
+    const length = Math.hypot(b.x - a.x, b.y - a.y);
+    if (length - lead - clear < ARROW.minShaft) {
+      const k = Math.max(0, (length - ARROW.minShaft) / (lead + clear));
+      lead *= k;
+      clear *= k;
+    }
+  }
+  const start = { x: a.x + first.x * lead, y: a.y + first.y * lead };
   const tip = { x: b.x - last.x * clear, y: b.y - last.y * clear };
   let cmds: PathCommand[] = [
     { type: "M", ...start },

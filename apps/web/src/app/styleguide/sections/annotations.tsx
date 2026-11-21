@@ -52,6 +52,7 @@ function Moment({ ply, annotations, caption, replay }: MomentProps) {
             color={move.color}
             san={move.san}
             judgement={move.judgement}
+            side={move.color === game.playerColor ? "player" : "opponent"}
             score={scoreOf(ply)}
           />
         </span>

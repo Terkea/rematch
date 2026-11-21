@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  ARROW,
   arrowGeometry,
   circlePath,
   fnv1a,
@@ -173,5 +174,73 @@ describe("strokeOutline", () => {
     expect(cmds[0]?.type).toBe("M");
     expect(cmds.filter((c) => c.type === "A")).toHaveLength(2);
     expect(cmds.at(-1)?.type).toBe("Z");
+  });
+});
+
+describe("short arrows (Task 12 review)", () => {
+  const shaftLength = (d: string) => {
+    const cmds = parsePath(d).filter((c) => c.type !== "Z") as { x: number; y: number }[];
+    const a = cmds[0] as { x: number; y: number };
+    const b = cmds.at(-1) as { x: number; y: number };
+    return Math.hypot(b.x - a.x, b.y - a.y);
+  };
+  const MIN = ARROW.head + 0.2;
+  for (const [from, to] of [
+    ["e2", "d2"],
+    ["e2", "e3"],
+    ["e4", "d5"],
+  ] as const) {
+    for (const ringed of [false, true]) {
+      it(`keeps at least the head plus 0.2 of shaft for ${from}-${to}${ringed ? ", ringed" : ""}`, () => {
+        for (const tone of ["pen", "good"] as const) {
+          const { shaft } = arrowGeometry(from, to, "white", { ringed, tone });
+          expect(shaftLength(shaft)).toBeGreaterThanOrEqual(MIN - 1e-9);
+        }
+      });
+    }
+  }
+
+  it("leaves longer arrows at the ruled 0.22 start and 0.46 ringed end", () => {
+    const { shaft } = arrowGeometry("e2", "e4", "white", { ringed: true });
+    expect(shaftLength(shaft)).toBeCloseTo(2 - 0.22 - 0.46, 6);
+  });
+});
+
+describe("orientation and edges", () => {
+  it("draws a knight's L on a board seen from Black", () => {
+    const { shaft } = arrowGeometry("g1", "f3", "black");
+    expect(segments(shaft)).toBe(2);
+    // g1 is drawn at (1.5, 0.5) and f3 at (2.5, 2.5): the long leg runs down the g-file first.
+    expect(parsePath(shaft)[1]).toMatchObject({ x: 1.5, y: 2.5 });
+  });
+
+  const inside = (d: string) => {
+    for (const c of parsePath(d)) {
+      if (c.type === "Z") continue;
+      expect(c.x).toBeGreaterThanOrEqual(0);
+      expect(c.x).toBeLessThanOrEqual(8);
+      expect(c.y).toBeGreaterThanOrEqual(0);
+      expect(c.y).toBeLessThanOrEqual(8);
+    }
+  };
+
+  it("keeps edge arrows and corner rings on the board", () => {
+    for (const orientation of ["white", "black"] as const) {
+      for (const [from, to] of [
+        ["a1", "a8"],
+        ["h8", "h1"],
+        ["a1", "h1"],
+        ["h8", "a8"],
+        ["a1", "h8"],
+        ["h1", "g3"],
+        ["a8", "b6"],
+      ] as const) {
+        const seeded = arrowGeometry(from, to, orientation, { seed: `arrow:${from}${to}` });
+        inside(seeded.shaft);
+        inside(seeded.head);
+      }
+      for (const sq of ["a1", "h1", "a8", "h8"] as const)
+        inside(circlePath(sq, orientation, `ring:${sq}`));
+    }
   });
 });

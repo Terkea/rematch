@@ -1,8 +1,11 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup, render } from "@testing-library/react";
+import { act } from "react";
+import { hydrateRoot } from "react-dom/client";
+import { renderToString } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type Annotation, AnnotationLayer } from "../src/annotations/index.js";
-import { Board } from "../src/board/index.js";
+import { Board, NotationText } from "../src/board/index.js";
 
 afterEach(() => {
   cleanup();
@@ -95,27 +98,24 @@ describe("AnnotationLayer", () => {
     );
   });
 
-  it("renders every stroke fully drawn under reduced motion", () => {
+  it("renders plain, fully drawn strokes with no reveal masks under reduced motion", () => {
     stubReducedMotion(true);
     const { container } = render(<AnnotationLayer annotations={all} orientation="white" />);
-    const reveals = [...container.querySelectorAll("mask path")];
-    expect(reveals.length).toBeGreaterThan(0);
-    for (const p of reveals) {
-      // pathLength 1: the dash covers the whole path and starts at its start.
-      expect(parseFloat(p.getAttribute("stroke-dashoffset") ?? "NaN")).toBe(0);
-      expect(p.getAttribute("stroke-dasharray")).toBe("1 1");
-      expect((p as SVGElement).style.opacity).not.toBe("0");
+    expect(container.querySelectorAll("[data-reveal]")).toHaveLength(0);
+    for (const p of container.querySelectorAll("path[data-part]")) {
+      expect(p).not.toHaveAttribute("mask");
+      expect(p.getAttribute("stroke-dasharray")).not.toBe("0 1");
     }
   });
 
-  it("renders every stroke fully drawn with animate={false}", () => {
+  it("renders plain, fully drawn strokes with animate={false}", () => {
     stubReducedMotion(false);
     const { container } = render(
       <AnnotationLayer annotations={all} orientation="white" animate={false} />,
     );
-    for (const p of container.querySelectorAll("mask path")) {
-      expect(parseFloat(p.getAttribute("stroke-dashoffset") ?? "NaN")).toBe(0);
-      expect(p.getAttribute("stroke-dasharray")).toBe("1 1");
+    expect(container.querySelectorAll("[data-reveal]")).toHaveLength(0);
+    for (const p of container.querySelectorAll("path[data-part]")) {
+      expect(p).not.toHaveAttribute("mask");
     }
   });
 
@@ -126,6 +126,7 @@ describe("AnnotationLayer", () => {
     expect(reveals.length).toBeGreaterThan(0);
     // pathLength 0: an empty dash, hidden until its stroke begins (a round cap would show a dot).
     for (const p of reveals) {
+      expect(p).toHaveAttribute("data-reveal");
       expect(p.getAttribute("stroke-dasharray")).toBe("0 1");
       expect((p as SVGElement).style.opacity).toBe("0");
     }
@@ -134,9 +135,10 @@ describe("AnnotationLayer", () => {
   it("stops a shaft on a ringed target's outer edge", () => {
     const shaftTipY = (annotations: Annotation[]) => {
       const { container, unmount } = render(
-        <AnnotationLayer annotations={annotations} orientation="white" animate={false} />,
+        <AnnotationLayer annotations={annotations} orientation="white" />,
       );
-      const shaft = container.querySelector("[data-mark='arrow'] mask path");
+      // The arrow comes first, so its shaft is the first reveal mask.
+      const shaft = container.querySelector("mask [data-reveal]");
       const d = shaft?.getAttribute("d") ?? "";
       unmount();
       return Number(
@@ -214,6 +216,114 @@ describe("AnnotationLayer", () => {
     expect(parts).toEqual(["halo", "halo", "halo", "fill", "fill", "fill"]);
   });
 
+  it("puts the badge in the corner farthest from every arriving tip (28. Nd2?? on d2)", () => {
+    const { container } = render(
+      <AnnotationLayer
+        annotations={[
+          { kind: "circle", square: "d2", tone: "pen" },
+          { kind: "arrow", from: "e4", to: "d2", tone: "pen" },
+          { kind: "arrow", from: "e2", to: "d2", tone: "good" },
+          { kind: "mark", square: "d2", glyph: "??", tone: "pen" },
+        ]}
+        orientation="white"
+        animate={false}
+      />,
+    );
+    const c = container.querySelector("[data-mark='badge'] circle");
+    // d2 spans x 3 to 4 and y 6 to 7. One arrow drops in from above, one comes in from the right.
+    expect(Number(c?.getAttribute("cx"))).toBeLessThan(3.5);
+    expect(Number(c?.getAttribute("cy"))).toBeGreaterThan(6.5);
+  });
+
+  it("moves the badge below an arrow that arrives from above (31...Nf4?? on f4)", () => {
+    const { container } = render(
+      <AnnotationLayer
+        annotations={[
+          { kind: "arrow", from: "h5", to: "f4", tone: "pencil" },
+          { kind: "mark", square: "f4", glyph: "??", tone: "pencil" },
+        ]}
+        orientation="white"
+        animate={false}
+      />,
+    );
+    // f4 spans y 4 to 5.
+    const cy = container.querySelector("[data-mark='badge'] circle")?.getAttribute("cy");
+    expect(Number(cy)).toBeGreaterThan(4.5);
+  });
+
+  it("gives pencil a thinner halo than pen", () => {
+    const { container } = render(
+      <AnnotationLayer
+        annotations={[
+          { kind: "arrow", from: "a2", to: "a4", tone: "pencil" },
+          { kind: "arrow", from: "h2", to: "h4", tone: "pen" },
+        ]}
+        orientation="white"
+        animate={false}
+      />,
+    );
+    const width = (tone: string) =>
+      Number(
+        container
+          .querySelector(`[data-tone='${tone}'] path[data-part='halo']`)
+          ?.getAttribute("stroke-width"),
+      );
+    expect(width("pencil")).toBeLessThan(width("pen"));
+  });
+
+  it("paints every arrow halo under the rings, so no arrowhead notches a ring", () => {
+    const { container } = render(
+      <AnnotationLayer annotations={all} orientation="white" animate={false} />,
+    );
+    const parts = [...container.querySelectorAll("path[data-part]")];
+    const of = (kind: string, part: string) =>
+      parts.filter(
+        (p) =>
+          p.closest("[data-mark]")?.getAttribute("data-mark") === kind &&
+          p.getAttribute("data-part") === part,
+      );
+    const lastHalo = Math.max(...of("arrow", "halo").map((p) => parts.indexOf(p)));
+    const firstRing = Math.min(...of("circle", "fill").map((p) => parts.indexOf(p)));
+    expect(lastHalo).toBeLessThan(firstRing);
+  });
+
+  it("draws a duplicated annotation once, with no duplicate React keys", () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { container } = render(
+      <AnnotationLayer
+        annotations={[...blunder, ...blunder]}
+        orientation="white"
+        animate={false}
+      />,
+    );
+    expect(container.querySelectorAll("li")).toHaveLength(2);
+    expect(container.querySelectorAll("[data-mark='arrow']")).toHaveLength(1);
+    expect(error).not.toHaveBeenCalled();
+    error.mockRestore();
+  });
+
+  it("labels the hidden list", () => {
+    const { container } = render(<AnnotationLayer annotations={blunder} orientation="white" />);
+    expect(container.querySelector("ul")).toHaveAttribute("aria-label", "Annotations on the board");
+  });
+
+  it("hydrates the server markup without a mismatch", async () => {
+    const element = <AnnotationLayer annotations={all} orientation="black" />;
+    const host = document.createElement("div");
+    host.innerHTML = renderToString(element);
+    document.body.append(host);
+    const errors: unknown[] = [];
+    const error = vi.spyOn(console, "error").mockImplementation((...args) => {
+      errors.push(args);
+    });
+    await act(async () => {
+      hydrateRoot(host, element, { onRecoverableError: (e) => errors.push(e) });
+    });
+    expect(errors).toEqual([]);
+    error.mockRestore();
+    host.remove();
+  });
+
   it("keeps a badge off an a-file rank number by dropping it to the bottom corner", () => {
     const { container } = render(
       <AnnotationLayer
@@ -252,5 +362,21 @@ describe("Board with annotations", () => {
     expect(
       (pieces?.compareDocumentPosition(layer as Node) ?? 0) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+  });
+});
+
+describe("NotationText side", () => {
+  it("writes the player's glyph in pen and the opponent's in pencil", () => {
+    const move = { moveNumber: 31, color: "black", san: "Nf4", judgement: "blunder" } as const;
+    const { container } = render(
+      <>
+        <NotationText {...move} />
+        <NotationText {...move} side="opponent" />
+      </>,
+    );
+    const [mine, theirs] = [...container.querySelectorAll("[data-glyph]")];
+    expect(mine).toHaveClass("text-pen-text");
+    expect(theirs).toHaveClass("text-pencil");
+    expect(theirs).not.toHaveClass("text-pen-text");
   });
 });
