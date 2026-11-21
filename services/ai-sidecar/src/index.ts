@@ -26,13 +26,30 @@ function main(): void {
   mkdirSync(cfg.configDir, { recursive: true, mode: 0o700 });
 
   const pool = cfg.databaseUrl
-    ? new pg.Pool({ connectionString: cfg.databaseUrl, max: cfg.maxConcurrency + 2 })
+    ? new pg.Pool({
+        connectionString: cfg.databaseUrl,
+        // Each running chat turn holds one connection for its lock, and the store needs more for
+        // loads and appends meanwhile.
+        max: 2 * cfg.maxConcurrency + 2,
+        // Fail fast when the database is unreachable, so a turn does not sit on a limiter slot.
+        connectionTimeoutMillis: 5000,
+        keepAlive: true,
+      })
     : undefined;
   pool?.on("error", () => stdoutLogger.warn({ msg: "session store pool error" }));
   const metrics = new Metrics();
   const shutdown = new AbortController();
   const store = pool
-    ? new PgSessionStore(pool, { onNulStripped: (n) => metrics.nulStrippedEntries(n) })
+    ? new PgSessionStore(pool, {
+        onNulStripped: (n) => metrics.nulStrippedEntries(n),
+        onLockLost: () => {
+          metrics.lockLostOnce();
+          stdoutLogger.warn({
+            msg: "turn lock connection lost; exclusion gone for this turn",
+            event: "lock_lost",
+          });
+        },
+      })
     : undefined;
   const server = createSidecarServer(cfg, {
     limiter: new Limiter(cfg.maxConcurrency, cfg.maxQueue, cfg.queueWaitMs),

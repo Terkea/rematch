@@ -563,6 +563,34 @@ describe("runChat", () => {
     expect(terminal(res)[0]?.data).toMatchObject({ text: "good text" });
   });
 
+  it("a_superseded_tool_call_message_is_retracted", async () => {
+    useScript([
+      start("msg_1"),
+      stop("tool_use"),
+      {
+        type: "assistant",
+        message: {
+          id: "msg_tool",
+          content: [
+            { type: "tool_use", id: "toolu_bad", name: "mcp__coach__get_position", input: {} },
+          ],
+        },
+        parent_tool_use_id: null,
+        uuid: "a-tool",
+        session_id: "s",
+      } as unknown as SDKMessage,
+      start("msg_2"),
+      textDelta("fixed"),
+      stop("end_turn"),
+      assistant("a-2", "msg_2", "fixed", ["a-tool"]),
+      result({ result: "fixed" }),
+    ]);
+    const res = new FakeRes();
+    await runChat(parseChatRequest(baseBody), testConfig(), res, deps());
+    expect(res.events().map((e) => e.event)).toEqual(["tool_use", "delta", "retract", "done"]);
+    expect(res.events()[2]?.data).toEqual({ messageIds: ["msg_tool"], reason: "superseded" });
+  });
+
   // ---- per-conversation turn lock ----
 
   it("a_concurrent_turn_on_the_same_conversation_is_409", async () => {
@@ -608,6 +636,81 @@ describe("runChat", () => {
     await runChat(parseChatRequest(baseBody), testConfig(), res, d);
     expect(terminal(res)[0]?.event).toBe("done");
     expect(d.store.held.size).toBe(0); // the store lock is released after the turn
+  });
+
+  it("both_locks_are_free_after_every_way_a_turn_can_end", async () => {
+    const hang = (onStart: (signal: AbortSignal) => void) =>
+      async function* (signal: AbortSignal): AsyncGenerator<SDKMessage> {
+        onStart(signal);
+        yield textDelta("a");
+        await new Promise((r) => {
+          if (signal.aborted) r(undefined);
+          signal.addEventListener("abort", r);
+        });
+        throw new Error("aborted");
+      };
+    type Case = { name: string; run: (d: ReturnType<typeof deps>) => Promise<unknown> };
+    const cases: Case[] = [
+      {
+        name: "sdk error",
+        run: (d) => {
+          useScript(async function* () {
+            yield textDelta("a");
+            throw new Error("boom");
+          });
+          return runChat(parseChatRequest(baseBody), testConfig(), new FakeRes(), d);
+        },
+      },
+      {
+        name: "timeout abort",
+        run: (d) => {
+          useScript(hang(() => {}));
+          const req = parseChatRequest({ ...baseBody, timeoutMs: 20 });
+          return runChat(req, testConfig(), new FakeRes(), d);
+        },
+      },
+      {
+        name: "client disconnect",
+        run: (d) => {
+          const res = new FakeRes();
+          useScript(hang(() => res.disconnect()));
+          return runChat(parseChatRequest(baseBody), testConfig(), res, d);
+        },
+      },
+      {
+        name: "SIGTERM",
+        run: (d) => {
+          const shutdown = new AbortController();
+          useScript(hang(() => shutdown.abort()));
+          return runChat(parseChatRequest(baseBody), testConfig(), new FakeRes(), {
+            ...d,
+            shutdown: shutdown.signal,
+          });
+        },
+      },
+      {
+        name: "tool schema 400 never takes a lock",
+        run: (d) =>
+          runChat(
+            parseChatRequest({
+              ...baseBody,
+              tools: [{ name: "x", description: "d", inputSchema: { type: "object", oneOf: [] } }],
+            }),
+            testConfig(),
+            new FakeRes(),
+            d,
+          ).catch(() => {}),
+      },
+    ];
+    for (const c of cases) {
+      const d = deps();
+      await c.run(d);
+      expect([c.name, d.turns.size, d.store.held.size]).toEqual([c.name, 0, 0]);
+      useScript([result()]);
+      const res = new FakeRes();
+      await runChat(parseChatRequest(baseBody), testConfig(), res, d);
+      expect([c.name, res.status, terminal(res)[0]?.event]).toEqual([c.name, 200, "done"]);
+    }
   });
 
   it("other_conversations_are_not_blocked", async () => {

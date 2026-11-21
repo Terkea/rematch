@@ -308,6 +308,8 @@ class TurnStream {
         const blk = b as { type?: string; id?: string; name?: string; input?: unknown };
         if (blk.type === "tool_use") {
           this.w.event("tool_use", { id: blk.id, name: blk.name, input: blk.input });
+          // A superseded message can withdraw its tool calls too, so they count as streamed.
+          if (msg.id && m.parent_tool_use_id === null) this.streamed.add(msg.id);
           wrote = true;
         }
       }

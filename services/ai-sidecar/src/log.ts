@@ -38,6 +38,7 @@ export const stdoutLogger: Logger = {
 export class Metrics {
   private mirrorErrors = 0;
   private nulStripped = 0;
+  private lockLost = 0;
   mirrorError(): void {
     this.mirrorErrors += 1;
   }
@@ -45,7 +46,15 @@ export class Metrics {
   nulStrippedEntries(n: number): void {
     this.nulStripped += n;
   }
-  snapshot(): { mirrorErrors: number; nulStrippedEntries: number } {
-    return { mirrorErrors: this.mirrorErrors, nulStrippedEntries: this.nulStripped };
+  /** Turn-lock connections that dropped mid-turn (exclusion lost for the rest of that turn). */
+  lockLostOnce(): void {
+    this.lockLost += 1;
+  }
+  snapshot(): { mirrorErrors: number; nulStrippedEntries: number; lockLost: number } {
+    return {
+      mirrorErrors: this.mirrorErrors,
+      nulStrippedEntries: this.nulStripped,
+      lockLost: this.lockLost,
+    };
   }
 }

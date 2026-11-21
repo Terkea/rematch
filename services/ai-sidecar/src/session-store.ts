@@ -55,6 +55,8 @@ function stripNul(v: unknown): { value: unknown; changed: boolean } {
 export type PgSessionStoreOptions = {
   /** Called with the number of entries in a batch that had U+0000 removed. */
   onNulStripped?: (entries: number) => void;
+  /** Called when a held turn-lock connection drops; exclusion is gone for the rest of that turn. */
+  onLockLost?: () => void;
 };
 
 export class PgSessionStore implements ChatSessionStore {
@@ -151,31 +153,61 @@ export class PgSessionStore implements ChatSessionStore {
    */
   async tryLockConversation(sessionId: string): Promise<(() => Promise<void>) | null> {
     const c = await this.pool.connect();
+    // A checked-out pg client with no 'error' listener crashes the process when its connection
+    // drops (e.g. pg_terminate_backend, 57P01). The listener stays for the lock's whole lifetime.
+    let lost = false;
+    const onError = () => {
+      if (lost) return;
+      lost = true;
+      // The server already dropped the session lock with the connection: exclusion is gone for
+      // the rest of this turn. The turn itself carries on.
+      this.opts.onLockLost?.();
+    };
+    c.on("error", onError);
+    const done = (destroy: boolean) => {
+      c.off("error", onError);
+      c.release(destroy);
+    };
     try {
+      // Server-side keepalives on this long-held connection, so a partitioned lock holder is
+      // detected and its lock dropped within about two minutes (60 s + 3 x 10 s, plus slack).
+      await c.query(
+        "SET tcp_keepalives_idle = 60; SET tcp_keepalives_interval = 10; SET tcp_keepalives_count = 3",
+      );
       const { rows } = await c.query<{ ok: boolean }>(
         "SELECT pg_try_advisory_lock($1::int, hashtext($2)) AS ok",
         [TURN_LOCK_CLASS, sessionId],
       );
       if (!rows[0]?.ok) {
-        c.release();
+        await c.query(
+          "RESET tcp_keepalives_idle; RESET tcp_keepalives_interval; RESET tcp_keepalives_count",
+        );
+        done(false);
         return null;
       }
     } catch (e) {
-      c.release(true);
+      done(true);
       throw e;
     }
     let released = false;
     return async () => {
       if (released) return;
       released = true;
+      if (lost) {
+        done(true); // the connection is dead; destroy it rather than return it to the pool
+        return;
+      }
       try {
         await c.query("SELECT pg_advisory_unlock($1::int, hashtext($2))", [
           TURN_LOCK_CLASS,
           sessionId,
         ]);
-        c.release();
+        await c.query(
+          "RESET tcp_keepalives_idle; RESET tcp_keepalives_interval; RESET tcp_keepalives_count",
+        );
+        done(false);
       } catch {
-        c.release(true); // destroying the connection drops its session locks
+        done(true); // destroying the connection drops its session locks
       }
     };
   }

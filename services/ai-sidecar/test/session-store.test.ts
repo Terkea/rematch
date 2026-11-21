@@ -4,9 +4,13 @@
 // NUL handling and the role's grants.
 import { randomUUID } from "node:crypto";
 import type pg from "pg";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { PgSessionStore } from "../src/session-store.js";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { runChat } from "../src/chat.js";
+import { Limiter } from "../src/limiter.js";
+import { parseChatRequest } from "../src/options.js";
+import { PgSessionStore, TURN_LOCK_CLASS } from "../src/session-store.js";
 import { createStoreDb, type StoreDb } from "./db.js";
+import { captureLogger, FakeRes, result, testConfig, textDelta } from "./helpers.js";
 
 const ADMIN_URL = process.env.DATABASE_URL_TEST;
 if (!ADMIN_URL && process.env.IN_DOCKER === "1") {
@@ -233,6 +237,64 @@ describe.skipIf(!ADMIN_URL)("PgSessionStore", () => {
     await again?.();
     // Every lock connection went back to the pool.
     expect(pool.totalCount - pool.idleCount).toBe(0);
+  });
+
+  it("a_terminated_lock_connection_is_survived_and_the_turn_finishes", async () => {
+    let lost = 0;
+    const lockStore = new PgSessionStore(pool, { onLockLost: () => (lost += 1) });
+    const conv = randomUUID();
+    let terminated = 0;
+    const query = (() =>
+      (async function* () {
+        yield textDelta("before");
+        // Kill the backend that holds this conversation's turn lock (57P01 on the client).
+        const r = await dbAdmin.query(
+          `SELECT pg_terminate_backend(pid) AS ok FROM pg_locks
+            WHERE locktype = 'advisory' AND classid = $1 AND granted`,
+          [TURN_LOCK_CLASS],
+        );
+        terminated = r.rowCount ?? 0;
+        await new Promise((res) => setTimeout(res, 300)); // let the client see the error
+        yield textDelta("after");
+        yield result();
+      })()) as never;
+    const chatBody = {
+      model: "claude-sonnet-5-5",
+      effort: "low",
+      maxTokens: 100,
+      timeoutMs: 30000,
+      maxTurns: 2,
+      systemPrompt: "s",
+      prompt: [{ type: "text", text: "hi" }],
+      conversationId: conv,
+      tools: [],
+      toolCallback: { url: "http://127.0.0.1:9/v1/tools", token: "t" },
+    };
+    const d = {
+      limiter: new Limiter(2, 2, 1000),
+      logger: captureLogger(),
+      store: lockStore,
+      turns: new Set<string>(),
+      query,
+    };
+    const res = new FakeRes();
+    await runChat(parseChatRequest(chatBody), testConfig(), res, d);
+    expect(terminated).toBe(1);
+    expect(lost).toBe(1);
+    // The process survived (an unhandled 'error' would fail this run) and the turn finished.
+    expect(res.events().map((e) => e.event)).toEqual(["delta", "delta", "done"]);
+    // The lock is free again (the server dropped it with the connection), and a new turn works.
+    const again = new FakeRes();
+    await runChat(parseChatRequest(chatBody), testConfig(), again, {
+      ...d,
+      query: (() =>
+        (async function* () {
+          yield result();
+        })()) as never,
+    });
+    expect(again.events().map((e) => e.event)).toEqual(["done"]);
+    expect(lost).toBe(1);
+    await vi.waitFor(() => expect(pool.totalCount - pool.idleCount).toBe(0));
   });
 
   it("the_role_reaches_only_its_table", async () => {

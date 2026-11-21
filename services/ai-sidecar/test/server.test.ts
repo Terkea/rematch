@@ -100,6 +100,7 @@ describe("server", () => {
       sdkVersion: "0.3.325",
       mirrorErrors: 0,
       nulStrippedEntries: 0,
+      lockLost: 0,
     });
     expect(text).not.toContain("SECRET");
     expect(text).not.toContain(TOKEN);
