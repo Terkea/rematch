@@ -1,7 +1,9 @@
 import { sql } from "drizzle-orm";
 import {
+  bigint,
   bigserial,
   boolean,
+  check,
   doublePrecision,
   foreignKey,
   index,
@@ -287,4 +289,14 @@ export const userEvents = pgTable(
     ),
     index("user_events_created_idx").using("btree", table.createdAt.asc().nullsLast()),
   ],
+);
+
+export const userEventsWatermark = pgTable(
+  "user_events_watermark",
+  {
+    singleton: boolean().default(true).primaryKey().notNull(),
+    // You can use { mode: "bigint" } if numbers are exceeding js number limitations
+    prunedThroughId: bigint("pruned_through_id", { mode: "number" }).default(0).notNull(),
+  },
+  (_table) => [check("user_events_watermark_singleton_check", sql`CHECK (singleton)`)],
 );

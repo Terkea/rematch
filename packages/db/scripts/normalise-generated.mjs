@@ -41,14 +41,18 @@ const isEnum = (b) => b.text.includes("= pgEnum(");
 for (const b of schema.blocks) {
   if (isEnum(b)) continue;
   // timestamps use Date objects, like the hand-written schema
-  b.text = b.text.replace(/mode: (["'])string\1/g, 'mode: "date"');
+  b.text = b.text.replace(/(timestamp\([^)]*?)mode: (["'])string\2/g, '$1mode: "date"');
   // drizzle-kit labels opclasses from the wrong column; Postgres picks the right default anyway
   b.text = b.text.replace(/\.op\((["'])\w+\1\)/g, "");
-  // an empty text[] default is introspected as [""]
-  b.text = b.text.replace(
-    /\.array\(\)\.default\(\[(["'])\1\]\)/g,
-    ".array().default(sql`'{}'::text[]`)",
-  );
+  // an empty text[] default is introspected as [""]; only position_evals.pv is known to have one
+  if (b.name === "positionEvals") {
+    b.text = replaceExact(
+      b.text,
+      /(pv: text\(\)\.array\(\)\.default\()\[(["'])\2\]\)/g,
+      "$1sql`'{}'::text[]`)",
+      "position_evals.pv",
+    );
+  }
   if (b.name === "userEvents") {
     b.text = replaceExact(
       b.text,
@@ -79,7 +83,7 @@ if (!positionEvals?.text.includes("sql`'{}'::text[]`"))
   fail("position_evals.pv default was not normalised");
 for (const b of schema.blocks) {
   if (
-    /mode: (["'])string\1/.test(b.text) ||
+    /timestamp\([^)]*mode: (["'])string\1/.test(b.text) ||
     /\.op\(/.test(b.text) ||
     /default\(\[(["'])\1\]\)/.test(b.text)
   ) {

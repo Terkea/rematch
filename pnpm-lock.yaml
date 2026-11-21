@@ -203,7 +203,7 @@ importers:
         specifier: ^1.4.0
         version: 1.4.0
       drizzle-orm:
-        specifier: ~0.45.4
+        specifier: 0.45.4
         version: 0.45.4(postgres@4.1.1)
       ioredis:
         specifier: ^6.0.0
