@@ -387,26 +387,35 @@ function PenStroke({
 // The one beat: DESIGN.md choreography 1, climax rows, in ms from the start of the hero. The fixed
 // times (lift at 400, contact at 760, ring 100ms after contact, the 30ms head gap of M3) come from
 // that table; everything else follows from the motion tokens.
-const T0 = ms(dur.reveal); // the graph prologue: the eval line draws in first (A only);
-const LIFT = T0 + 400;
-const CONTACT = T0 + 760;
-const RING = CONTACT + 100;
-const ARROW = RING + ms(stagger.pen);
-const HEAD = ARROW + ms(dur.draw * timeAtProgress(ease.pen, 0.85)); // M3: at 85% of the shaft
-const BADGE = ARROW + ms(dur.draw); // the last stroke's soft stop
-const T = {
-  prologue: 0,
-  select: T0,
-  lift: LIFT,
-  travel: LIFT + ms(dur.instant),
-  contact: CONTACT,
-  ring: RING,
-  arrow: ARROW,
-  heads: [HEAD, HEAD + 30],
-  badge: BADGE,
-  link: BADGE, // the link mark draws after the badge lands
-  note: BADGE + ms(dur.draw), // the comment follows the evidence
-} as const;
+/** The beat's times for a beat that starts at t0 (after the graph prologue, or at 0 without it). */
+function beatTimes(t0: number) {
+  const lift = t0 + 400;
+  const contact = t0 + 760;
+  const ring = contact + 100;
+  const arrow = ring + ms(stagger.pen);
+  const head = arrow + ms(dur.draw * timeAtProgress(ease.pen, 0.85)); // M3: at 85% of the shaft
+  const badge = arrow + ms(dur.draw); // the last stroke's soft stop
+  return {
+    prologue: 0,
+    select: t0,
+    lift,
+    travel: lift + ms(dur.instant),
+    contact,
+    ring,
+    arrow,
+    heads: [head, head + 30] as const,
+    badge,
+    link: badge, // the link mark draws after the badge lands
+    note: badge + ms(dur.draw), // the comment follows the evidence
+  };
+}
+// The hero's one clock. A decides once per run whether the graph prologue plays (the graph is in
+// view at the start: the beat waits `--dur-reveal`) or not (the beat starts at 0), and resets this
+// before the run mounts. B and C have no graph and always start at 0.
+const T = beatTimes(0);
+function startBeatAt(t0: number) {
+  Object.assign(T, beatTimes(t0));
+}
 
 function useBeat() {
   const reduced = useReducedMotion();
@@ -844,7 +853,9 @@ function EvalBar({ reduced, vertical }: { reduced: boolean; vertical: boolean })
  * pencil hairline tick, the hero ruling),
  * the cursor on the move shown, and the key move's label.
  */
-function EvalGraph({ reduced }: { reduced: boolean }) {
+function EvalGraph({ reduced, live }: { reduced: boolean; live: boolean }) {
+  // Off screen at the start (phones), the graph is simply there: drawn, cursor resting on the move.
+  const still = reduced || !live;
   const [plotRef, size] = useMeasure<HTMLDivElement>();
   const cursorRef = useRef<HTMLDivElement>(null);
   const W = size.width;
@@ -861,14 +872,14 @@ function EvalGraph({ reduced }: { reduced: boolean }) {
   const ky = y(wcAfter);
   // The cursor drops onto the key move at contact: it grows down from the plot's top edge on
   // `swing`. Its x is recomputed from kx on every render, so it never drifts on resize.
-  useAt(reduced, T.contact, () => {
+  useAt(still, T.contact, () => {
     const el = cursorRef.current;
     if (!el) return undefined;
     const run = animate(el, { scaleY: [0, 1] }, spring.swing);
     return () => run.stop();
   });
   const maskId = `g${useId().replace(/:/g, "")}`;
-  const reveal = reduced
+  const reveal = still
     ? { duration: 0 }
     : { delay: sec(T.prologue), duration: dur.reveal, ease: [...ease.pen] as CubicBezier };
   const label = `${prefix} ${keyPly.san}${keyGlyph}`;
@@ -884,10 +895,10 @@ function EvalGraph({ reduced }: { reduced: boolean }) {
           <motion.span
             className="absolute bottom-0 -translate-x-1/2 font-serif text-sm font-semibold whitespace-nowrap text-pen-text tabular-nums lining-nums"
             style={{ left: Math.min(Math.max(kx, 44), W - 44) }}
-            initial={reduced ? false : { opacity: 0 }}
+            initial={still ? false : { opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={
-              reduced
+              still
                 ? { duration: 0 }
                 : { delay: sec(T.ring) + dur.drawSmall / 2, duration: dur.drawSmall / 2 }
             }
@@ -912,7 +923,7 @@ function EvalGraph({ reduced }: { reduced: boolean }) {
                 height={H + 40}
                 fill="white"
                 style={{ originX: 0 }}
-                initial={reduced ? false : { scaleX: 0 }}
+                initial={still ? false : { scaleX: 0 }}
                 animate={{ scaleX: 1 }}
                 transition={reveal}
               />
@@ -950,7 +961,7 @@ function EvalGraph({ reduced }: { reduced: boolean }) {
               className="stroke-ink"
               strokeWidth={2}
               strokeLinejoin="round"
-              initial={reduced ? false : { pathLength: 0 }}
+              initial={still ? false : { pathLength: 0 }}
               animate={{ pathLength: 1 }}
               transition={reveal}
             />
@@ -959,7 +970,7 @@ function EvalGraph({ reduced }: { reduced: boolean }) {
               const ring = ringPoints(kx, ky, 7 * 1.12, 7, 10, 1);
               return (
                 <PenStroke
-                  reduced={reduced}
+                  reduced={still}
                   segments={[ring.main, ring.tail]}
                   shape={outline(ring.all, 1)}
                   maskWidth={3.2 + 5}
@@ -977,7 +988,7 @@ function EvalGraph({ reduced }: { reduced: boolean }) {
             ref={cursorRef}
             aria-hidden
             className="absolute inset-y-0 w-[1.5px] origin-top bg-ink dark:bg-ink-soft"
-            style={{ left: kx - 0.75, transform: reduced ? undefined : "scaleY(0)" }}
+            style={{ left: kx - 0.75, transform: still ? undefined : "scaleY(0)" }}
           />
         )}
       </div>
@@ -1134,7 +1145,7 @@ const targetBox: CSSProperties = {
   height: "12.5%",
 };
 
-function Hero({ reduced }: { reduced: boolean }) {
+function Hero({ reduced, prologue }: { reduced: boolean; prologue: boolean }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const [boxes, setBoxes] = useState<{ word: Box; board: Box; well: Box; sheet: Box } | null>(null);
   const link = useLinkInView(rootRef, reduced);
@@ -1275,13 +1286,50 @@ function Hero({ reduced }: { reduced: boolean }) {
         </div>
 
         <div className="flex lg:col-start-2 lg:row-start-2 lg:self-stretch">
-          <EvalGraph reduced={reduced} />
+          <div data-hero-graph className="flex w-full">
+            <EvalGraph reduced={reduced} live={prologue} />
+          </div>
         </div>
 
         {boxes && <SheetMarks reduced={reduced} link={link} {...boxes} />}
       </div>
     </div>
   );
+}
+
+/**
+ * Decides, once per run, whether the graph prologue plays: only when the graph is fully in view at
+ * the start (an IntersectionObserver, as for the link). Otherwise the beat starts at the original
+ * token times with no stillness. The run stays hidden for the frame the observer takes to report.
+ */
+function PrologueGate({ reduced, run }: { reduced: boolean; run: string }) {
+  const [decided, setDecided] = useState<{ run: string; prologue: boolean } | null>(null);
+  const holdRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = holdRef.current?.querySelector("[data-hero-graph]");
+    if (!el) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        const seen = entries.some((e) => e.intersectionRatio >= 0.99);
+        io.disconnect();
+        const prologue = seen && !reduced;
+        startBeatAt(prologue ? ms(dur.reveal) : 0);
+        setDecided({ run, prologue });
+      },
+      { threshold: [0, 0.99] },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [run, reduced]);
+  if (decided?.run !== run) {
+    // The layout, still and invisible, so the observer can see where the graph lands.
+    return (
+      <div ref={holdRef} className="invisible" aria-hidden>
+        <Hero key={`hold-${run}`} reduced prologue={false} />
+      </div>
+    );
+  }
+  return <Hero key={run} reduced={reduced} prologue={decided.prologue} />;
 }
 
 export default function StyleguideHeroA() {
@@ -1296,7 +1344,7 @@ export default function StyleguideHeroA() {
       <div className="mx-auto flex max-w-7xl justify-end px-(--space-gutter)">
         <Replay onClick={beat.replay} />
       </div>
-      <Hero key={beat.key} reduced={beat.reduced} />
+      <PrologueGate reduced={beat.reduced} run={beat.key} />
     </LabFrame>
   );
 }
