@@ -104,7 +104,7 @@ function Ruler({
       ))}
       <div
         data-connector
-        className="absolute top-1/2 mt-[9px] h-px bg-pencil"
+        className="absolute top-1/2 mt-2.25 h-px bg-pencil"
         style={{
           left: fmt(Math.min(s, m)),
           width: fmt(Math.abs(s - m)),
@@ -135,7 +135,7 @@ function Ruler({
       >
         <div
           data-tick="score"
-          className="absolute inset-y-0.5 right-0 w-[3px] translate-x-1/2 rounded-full bg-ink outline-2 outline-sheet"
+          className="absolute inset-y-0.5 right-0 w-0.75 translate-x-1/2 rounded-full bg-ink outline-2 outline-sheet"
         />
       </div>
     </div>
@@ -183,7 +183,7 @@ function ScoreRow(props: AreaScoreProps & { domain: RulerDomain }) {
 }
 
 const ROW =
-  "flex flex-col gap-1 py-3.5 @min-[560px]:grid @min-[560px]:grid-cols-[minmax(8rem,11rem)_4rem_1fr] @min-[560px]:items-center @min-[560px]:gap-x-5";
+  "flex flex-col gap-1 py-3.5 @min-[560px]:grid @min-[560px]:grid-cols-[minmax(8rem,11rem)_4rem_1fr] @min-[560px]:items-center @min-[560px]:gap-x-5"; // ban-lint-allow TOK2: grid track template, no spacing token
 
 /** The ruler's numbering: both ends and the middle, aligned to the ruler column. */
 function Scale({ domain }: { domain: RulerDomain }) {
@@ -265,7 +265,7 @@ export function AreaScoreKey({ className }: { className?: string }) {
       )}
     >
       <li className="flex items-center gap-2">
-        <span aria-hidden="true" className="h-4 w-[3px] rounded-full bg-ink" />
+        <span aria-hidden="true" className="h-4 w-0.75 rounded-full bg-ink" />
         Your score
       </li>
       <li className="flex items-center gap-2">
