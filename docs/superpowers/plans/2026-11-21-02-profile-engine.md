@@ -886,7 +886,7 @@ return "not_an_issue"
 | time_in_opening | mean | openings | null | 20 |
 | endgame_conversion_rate / endgame_hold_rate | rate | endgame | ↑ | 15 |
 | tb_errors_per_endgame | mean (tbPositions > 0) | endgame | ↓ | 20 |
-| score_after_loss / score_after_win | mean (session.afterLoss) | mindset | ↑ | 20 |
+| score_after_loss / score_after_non_loss | mean (session.afterLoss) | mindset | ↑ | 20 |
 | session_accuracy_decline | mean accuracy(index ≥ 4) − mean(index 1) | mindset | ↑ | 20 |
 | first_game_accuracy / later_games_accuracy | mean | mindset | ↑ | 20 |
 | saveable_resignation_rate | rate | mindset | ↓ | 10 |
