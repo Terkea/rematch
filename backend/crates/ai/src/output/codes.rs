@@ -4,7 +4,8 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-/// A report section (TS `SECTION_KEYS`, in this order).
+// A report section (TS `SECTION_KEYS`, in this order). A `//` comment, not a doc comment:
+// doc comments become model-facing schema descriptions (ADR-R3-4).
 #[derive(
     Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
 )]
@@ -179,7 +180,7 @@ pub struct DroppedItem {
     pub errors: Vec<ValidationError>,
 }
 
-/// A position the model cites: a game id and the 1-based ply.
+// A position the model cites: a game id and the 1-based ply. (`//`: see `SectionKey`.)
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Citation {

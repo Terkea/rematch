@@ -1,26 +1,31 @@
 //! The weekly review (TS plan B4): its strict input, which Milestone 7 builds, and the model's
 //! output. Bounds the structured output subset cannot carry are checked by
-//! `schema::check_weekly`.
+//! `schema::weekly_bounds`.
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use time::Date;
 
 use super::report::{Item, ValidatedItem};
+use super::schema::{MAX_WEEKLY_EXEMPLARS, MAX_WEEKLY_OUTCOMES, desc};
+use crate::client::port::ParseIssue;
 use crate::input::types::{
-    AreaId, BandId, Basis, ExemplarPosition, TimeClass, TimelineChange, WeaknessState, nullable,
+    AreaId, BandId, Basis, ExemplarPosition, TimeClass, TimelineChange, WeaknessState, iso_date,
+    nullable,
 };
 
-/// The weekly output: at most 3 outcomes and 2 exemplars.
+// The weekly output: at most 3 outcomes and 2 exemplars. `//` comments only: doc comments
+// would become model-facing schema descriptions (see `report.rs`).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WeeklyReviewOutput {
     pub headline: Item,
-    /// Process celebration, kept apart from outcomes (improvement-engine §6.7).
+    // Process celebration, kept apart from outcomes (improvement-engine §6.7).
+    #[schemars(description = desc::WEEKLY_PROCESS)]
     pub process: Item,
-    /// At most 3.
+    #[schemars(length(max = MAX_WEEKLY_OUTCOMES))]
     pub outcomes: Vec<Item>,
-    /// At most 2.
+    #[schemars(length(max = MAX_WEEKLY_EXEMPLARS))]
     pub exemplars: Vec<Item>,
     pub next_week: Item,
 }
@@ -45,25 +50,6 @@ pub enum WeeklyInputVersion {
     #[default]
     #[serde(rename = "weekly-input-v1")]
     V1,
-}
-
-/// `YYYY-MM-DD`, as the coaching input writes dates.
-mod iso_date {
-    use serde::{Deserialize, Deserializer, Serializer, de, ser};
-    use time::Date;
-    use time::format_description::FormatItem;
-    use time::macros::format_description;
-
-    const FORMAT: &[FormatItem<'static>] = format_description!("[year]-[month]-[day]");
-
-    pub fn serialize<S: Serializer>(date: &Date, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_str(&date.format(FORMAT).map_err(ser::Error::custom)?)
-    }
-
-    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Date, D::Error> {
-        let text = String::deserialize(deserializer)?;
-        Date::parse(&text, FORMAT).map_err(de::Error::custom)
-    }
 }
 
 /// Practice done against plan this week; `null` in the input when nothing was planned.
@@ -126,10 +112,10 @@ pub struct WeeklyReviewInput {
     pub time_class: TimeClass,
     pub band: BandId,
     #[serde(with = "iso_date")]
-    #[schemars(with = "String")]
+    #[schemars(schema_with = "coaching_input::schema::iso_date")]
     pub week_start: Date,
     #[serde(with = "iso_date")]
-    #[schemars(with = "String")]
+    #[schemars(schema_with = "coaching_input::schema::iso_date")]
     pub week_end: Date,
     pub games_this_week: u32,
     pub basis: Basis,
@@ -145,13 +131,14 @@ pub struct WeeklyReviewInput {
 pub const WEEKLY_INPUT_MAX_EXEMPLARS: usize = 2;
 
 impl WeeklyReviewInput {
-    /// The bound serde cannot express: at most [`WEEKLY_INPUT_MAX_EXEMPLARS`] exemplars.
-    pub fn check_bounds(&self) -> Result<(), String> {
+    /// The bound serde cannot express: at most [`WEEKLY_INPUT_MAX_EXEMPLARS`] exemplars
+    /// (`exemplars` / `too_big`).
+    pub fn check_bounds(&self) -> Result<(), Vec<ParseIssue>> {
         if self.exemplars.len() > WEEKLY_INPUT_MAX_EXEMPLARS {
-            return Err(format!(
-                "exemplars: at most {WEEKLY_INPUT_MAX_EXEMPLARS}, got {}",
-                self.exemplars.len()
-            ));
+            return Err(vec![ParseIssue {
+                path: "exemplars".into(),
+                code: "too_big".into(),
+            }]);
         }
         Ok(())
     }

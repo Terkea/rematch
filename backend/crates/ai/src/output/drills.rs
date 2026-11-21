@@ -4,8 +4,8 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-/// TS `DRILL_TYPES`, in that order. No variant doc comments: they would turn the schema's `enum`
-/// into a `oneOf` of consts.
+// TS `DRILL_TYPES`, in that order. No doc comments here or on variants: a type doc becomes a
+// model-facing description, and variant docs turn the `enum` into a `oneOf` of consts.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum DrillType {

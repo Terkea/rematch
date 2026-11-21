@@ -5,18 +5,25 @@
 #[path = "../../coaching-input/tests/support/shape.rs"]
 mod shape;
 
+use std::collections::BTreeSet;
+
 use ai::client::port::{OutputSchema, ParseIssue};
-use ai::input::types::TimelineChange;
-use ai::output::change::{WeaknessChangeOutput, change_key};
+use ai::input::types::{AreaId, TimelineChange};
+use ai::output::change::{WeaknessChangeInput, WeaknessChangeOutput, change_key};
+use ai::output::codes::{Citation, SectionKey};
 use ai::output::disclosure::{AI_DISCLOSURE_LABEL, AI_DISCLOSURE_NOTE, make_disclosure};
 use ai::output::drills::{DrillType, drills_for};
-use ai::output::report::ReportSectionEnvelope;
+use ai::output::report::{
+    ReportSectionEnvelope, ValidatedAreaItem, ValidatedAreasSection, ValidatedPart,
+    ValidatedSection,
+};
 use ai::output::schema::{
     ITEM_TEXT_MAX_CHARS, REPORT_SECTION_SCHEMA, WEAKNESS_CHANGE_SCHEMA, WEEKLY_REVIEW_SCHEMA,
-    api_schema, assert_api_subset, schema_by_id,
+    api_schema, assert_api_subset, desc, sanitize, schema_by_id,
 };
-use ai::output::weekly::WeeklyReviewOutput;
-use ai::testing::{fixtures_dir, input};
+use ai::output::weekly::{WeeklyInputVersion, WeeklyReviewInput, WeeklyReviewOutput};
+use ai::segments::Segment;
+use ai::testing::{fixtures_dir, input, load_fixture};
 use serde_json::{Value, json};
 use time::macros::datetime;
 
@@ -97,8 +104,23 @@ fn rejects_unknown_keys_and_5_strengths() {
     extra["extra"] = json!(1);
     assert_eq!(
         codes(check(&REPORT_SECTION_SCHEMA, &extra)),
-        // serde_path_to_error names the unknown key itself.
-        vec![("extra".to_string(), "unknown_field".to_string())]
+        // The parent path, as zod reports it; the model-chosen key never enters the path.
+        vec![(String::new(), "unknown_field".to_string())]
+    );
+    let mut nested = envelope("areas", "areas", json!({ "items": [] }));
+    nested["areas"]["secretKey"] = json!(1);
+    let issues = codes(check(&REPORT_SECTION_SCHEMA, &nested));
+    assert_eq!(
+        issues,
+        vec![("areas".to_string(), "unknown_field".to_string())]
+    );
+    let mut deep = item();
+    deep["area"] = json!("tactics");
+    deep["injected"] = json!(true);
+    let deep = envelope("areas", "areas", json!({ "items": [deep] }));
+    assert_eq!(
+        codes(check(&REPORT_SECTION_SCHEMA, &deep)),
+        vec![("areas.items.0".to_string(), "unknown_field".to_string())]
     );
     let mut s = item();
     s["area"] = json!("tactics");
@@ -362,6 +384,14 @@ fn guard_rejects_ref_and_constraints() {
         ),
         obj(json!({ "type": "object", "properties": {}, "required": [] })),
         json!({ "type": "object", "properties": {}, "required": [], "additionalProperties": false, "$defs": {} }),
+        // The root must be an object.
+        json!({ "type": "string" }),
+        json!({ "anyOf": [{ "type": "object", "properties": {}, "required": [], "additionalProperties": false }] }),
+        // `required` entries must be strings.
+        json!({ "type": "object", "properties": {}, "required": [1], "additionalProperties": false }),
+        obj(
+            json!({ "type": "object", "properties": { "b": { "type": "string" } }, "required": ["b", null], "additionalProperties": false }),
+        ),
     ];
     for b in bad {
         assert!(assert_api_subset(&b).is_err(), "accepted {b}");
@@ -460,4 +490,282 @@ fn change_key_format() {
     c.series_key = "W1:rate".into();
     c.onset_game_id = "g42".into();
     assert_eq!(change_key(&c), "W1:rate@g42");
+}
+
+// --- Fix round 1 ---
+
+/// Every distinct `description` in a schema.
+fn descriptions(n: &Value, out: &mut BTreeSet<String>) {
+    match n {
+        Value::Array(a) => a.iter().for_each(|x| descriptions(x, out)),
+        Value::Object(o) => {
+            if let Some(Value::String(d)) = o.get("description") {
+                out.insert(d.clone());
+            }
+            o.values().for_each(|x| descriptions(x, out));
+        }
+        _ => {}
+    }
+}
+
+fn set(items: &[String]) -> BTreeSet<String> {
+    items.iter().cloned().collect()
+}
+
+#[test]
+fn schema_descriptions_are_pinned() {
+    let text = format!("{}\n\n{{minLength: 1, maxLength: 2000}}", desc::TEXT);
+    let change_text = format!("{}\n\n{{minLength: 1, maxLength: 2000}}", desc::CHANGE_TEXT);
+    let cases = [
+        (
+            &REPORT_SECTION_SCHEMA,
+            set(&[
+                desc::SECTION.into(),
+                text.clone(),
+                desc::CITATIONS.into(),
+                desc::AREA.into(),
+                desc::WEAKNESS_ID.into(),
+                desc::LINE_KEY.into(),
+                desc::VERDICT.into(),
+                desc::DRILL_TYPE.into(),
+                desc::FOCUS_WEAKNESS_ID.into(),
+                "{maxItems: 4}".into(),
+                "{maxItems: 3}".into(),
+                "{minItems: 1, maxItems: 3}".into(),
+            ]),
+        ),
+        (
+            &WEEKLY_REVIEW_SCHEMA,
+            set(&[
+                text.clone(),
+                desc::CITATIONS.into(),
+                desc::WEEKLY_PROCESS.into(),
+                "{maxItems: 3}".into(),
+                "{maxItems: 2}".into(),
+            ]),
+        ),
+        (
+            &WEAKNESS_CHANGE_SCHEMA,
+            set(&[change_text, desc::CITATIONS.into()]),
+        ),
+    ];
+    for (schema, expected) in cases {
+        let mut got = BTreeSet::new();
+        descriptions(&(schema.json)(), &mut got);
+        assert_eq!(got, expected, "{}", schema.id);
+    }
+    // Where the hints sit.
+    let js = (REPORT_SECTION_SCHEMA.json)();
+    let cp = &js["properties"]["climbPlan"]["anyOf"][0]["properties"];
+    assert_eq!(
+        cp["focuses"]["items"]["properties"]["drills"]["description"],
+        "{minItems: 1, maxItems: 3}"
+    );
+    assert_eq!(
+        cp["intro"]["properties"]["text"]["description"],
+        json!(text)
+    );
+}
+
+#[test]
+fn api_schema_has_no_one_of() {
+    for schema in [
+        &REPORT_SECTION_SCHEMA,
+        &WEEKLY_REVIEW_SCHEMA,
+        &WEAKNESS_CHANGE_SCHEMA,
+    ] {
+        let text = (schema.json)().to_string();
+        for k in ["oneOf", "allOf", "$ref", "$defs", "$schema"] {
+            assert!(!text.contains(k), "{}: {k}", schema.id);
+        }
+    }
+}
+
+#[test]
+fn sanitize_rewrites_nullable_and_keeps_title() {
+    let mut v = json!({
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "Root",
+        "type": "object",
+        "properties": {
+            "title": {
+                "type": ["string", "null"], "enum": ["a", null],
+                "description": "d", "maxLength": 3
+            },
+            "n": { "type": ["integer", "null"], "format": "uint32", "minimum": 0 },
+            "default": { "type": "array", "items": { "type": "string" }, "minItems": 1, "default": [] }
+        },
+        "required": ["title", "n", "default"]
+    });
+    sanitize(&mut v);
+    assert_eq!(
+        v,
+        json!({
+            "type": "object",
+            "properties": {
+                "title": {
+                    "anyOf": [{ "enum": ["a"] }, { "type": "null" }],
+                    "description": "d\n\n{maxLength: 3}"
+                },
+                "n": { "anyOf": [{ "type": "integer" }, { "type": "null" }] },
+                "default": {
+                    "type": "array", "items": { "type": "string" },
+                    "description": "{minItems: 1}"
+                }
+            },
+            "required": ["title", "n", "default"],
+            "additionalProperties": false
+        })
+    );
+    assert_eq!(assert_api_subset(&v), Ok(()));
+}
+
+fn area_section() -> ValidatedSection {
+    ValidatedSection::new(ValidatedPart::Areas(ValidatedAreasSection {
+        items: vec![ValidatedAreaItem {
+            text: "x".into(),
+            citations: vec![Citation {
+                game_id: "g1".into(),
+                ply: 3,
+            }],
+            segments: vec![Segment::Text { text: "x".into() }],
+            area: AreaId::Tactics,
+        }],
+    }))
+}
+
+#[test]
+fn validated_section_serialises_the_ts_shape() {
+    let s = area_section();
+    assert_eq!(s.key(), SectionKey::Areas);
+    let v = serde_json::to_value(&s).unwrap();
+    assert_eq!(
+        v,
+        json!({
+            "overview": null, "weaknesses": null, "openings": null, "climbPlan": null,
+            "areas": { "items": [{
+                "text": "x",
+                "citations": [{ "gameId": "g1", "ply": 3 }],
+                "segments": [{ "kind": "text", "text": "x" }],
+                "area": "tactics"
+            }]}
+        })
+    );
+    assert_eq!(
+        serde_json::from_value::<ValidatedSection>(v.clone()).unwrap(),
+        s
+    );
+    // Zero or two non-null parts, a missing key or an unknown key are rejected.
+    let mut none = v.clone();
+    none["areas"] = Value::Null;
+    assert!(serde_json::from_value::<ValidatedSection>(none).is_err());
+    let mut two = v.clone();
+    two["weaknesses"] = json!({ "items": [] });
+    assert!(serde_json::from_value::<ValidatedSection>(two).is_err());
+    let mut missing = v.clone();
+    missing.as_object_mut().unwrap().remove("openings");
+    assert!(serde_json::from_value::<ValidatedSection>(missing).is_err());
+    let mut extra = v;
+    extra["section"] = json!("areas");
+    assert!(serde_json::from_value::<ValidatedSection>(extra).is_err());
+    assert!(matches!(s.into_part(), ValidatedPart::Areas(a) if a.items.len() == 1));
+}
+
+fn weekly_input() -> Value {
+    let b2 = load_fixture("b2-rapid");
+    json!({
+        "inputVersion": "weekly-input-v1",
+        "timeClass": b2["timeClass"],
+        "band": b2["band"],
+        "weekStart": "2026-11-16",
+        "weekEnd": "2026-11-22",
+        "gamesThisWeek": 14,
+        "basis": b2["basis"],
+        "adherence": { "minutesDone": 90, "minutesPlanned": 120 },
+        "metricDeltas": [{
+            "key": "blunder_rate", "area": "tactics", "label": "Blunders",
+            "before": { "value": 0.2, "n": 40, "low": 0.15, "high": 0.25 },
+            "after": { "value": 0.1, "n": 14, "low": null, "high": null },
+            "verdict": "no_clear_change"
+        }],
+        "focusUpdates": [{ "weaknessId": "W1", "label": "Hanging pieces", "pImp": null, "state": "active" }],
+        "exemplars": [b2["weaknesses"][0]["exemplars"][0]],
+        "changes": b2["changes"],
+    })
+}
+
+#[test]
+fn weekly_review_input_is_strict() {
+    let raw = weekly_input();
+    let parsed: WeeklyReviewInput = serde_json::from_value(raw.clone()).unwrap();
+    assert_eq!(parsed.input_version, WeeklyInputVersion::V1);
+    assert_eq!(parsed.check_bounds(), Ok(()));
+    assert_eq!(serde_json::to_value(&parsed).unwrap(), raw);
+    // `adherence` is nullable, but its key must be present.
+    let mut null_adherence = raw.clone();
+    null_adherence["adherence"] = Value::Null;
+    let p: WeeklyReviewInput = serde_json::from_value(null_adherence).unwrap();
+    assert!(p.adherence.is_none());
+    let mut rejected = Vec::new();
+    let mut missing = raw.clone();
+    missing.as_object_mut().unwrap().remove("adherence");
+    rejected.push(("missing adherence", missing));
+    let mut extra = raw.clone();
+    extra["accountId"] = json!("x");
+    rejected.push(("unknown key", extra));
+    let mut version = raw.clone();
+    version["inputVersion"] = json!("coaching-input-v1");
+    rejected.push(("wrong inputVersion", version));
+    let mut date = raw.clone();
+    date["weekStart"] = json!("16.11.2026");
+    rejected.push(("bad date", date));
+    for (what, r) in rejected {
+        assert!(
+            serde_json::from_value::<WeeklyReviewInput>(r).is_err(),
+            "{what} accepted"
+        );
+    }
+    // At most 2 exemplars.
+    let mut three = raw;
+    let ex = three["exemplars"][0].clone();
+    three["exemplars"] = json!([ex.clone(), ex.clone(), ex]);
+    let p: WeeklyReviewInput = serde_json::from_value(three).unwrap();
+    assert_eq!(
+        p.check_bounds(),
+        Err(vec![ParseIssue {
+            path: "exemplars".into(),
+            code: "too_big".into()
+        }])
+    );
+}
+
+#[test]
+fn weakness_change_input_round_trips() {
+    let b2 = load_fixture("b2-rapid");
+    let raw = json!({
+        "change": b2["changes"][0],
+        "band": b2["band"],
+        "timeClass": b2["timeClass"],
+        "basis": b2["basis"],
+    });
+    let parsed: WeaknessChangeInput = serde_json::from_value(raw.clone()).unwrap();
+    assert_eq!(serde_json::to_value(&parsed).unwrap(), raw);
+    let mut extra = raw;
+    extra["accountId"] = json!("x");
+    assert!(serde_json::from_value::<WeaknessChangeInput>(extra).is_err());
+}
+
+#[test]
+fn weekly_exemplars_too_big() {
+    let weekly = json!({
+        "headline": item(), "process": item(), "outcomes": [],
+        "exemplars": [item(), item(), item()], "nextWeek": item()
+    });
+    assert_eq!(
+        codes(check(&WEEKLY_REVIEW_SCHEMA, &weekly)),
+        vec![("exemplars".to_string(), "too_big".to_string())]
+    );
+    let mut two = weekly;
+    two["exemplars"] = json!([item(), item()]);
+    assert_eq!(check(&WEEKLY_REVIEW_SCHEMA, &two), Ok(()));
 }

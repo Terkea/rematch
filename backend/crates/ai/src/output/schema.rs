@@ -55,6 +55,30 @@ const DROPPED: &[&str] = &[
     "default",
 ];
 
+/// Dropped bounds that `sanitize` restates as a description hint, in this order, the way the
+/// TS SDK's `transformJSONSchema` does (`{minLength: 1, maxLength: 2000}`). These are the
+/// bounds the `check` functions enforce; numeric bounds (schemars' `minimum: 0` on a `u32`)
+/// are dropped without a hint.
+const HINTED: &[&str] = &["minLength", "maxLength", "minItems", "maxItems"];
+
+/// Model-facing schema descriptions: the only `description` text in the output schemas apart
+/// from the bound hints (`tests/output.rs` pins the exact set). Doc comments on output types
+/// are `//` comments for this reason.
+pub mod desc {
+    pub const SECTION: &str = "The section this response writes. Fill only the part with this name; every other part is null.";
+    pub const TEXT: &str = "Coaching text addressed to the player as \"you\". Moves, squares, numbers and dates appear only as {{...}} tokens.";
+    pub const CHANGE_TEXT: &str = "A short, hedged note on what changed and when. Moves, squares, numbers and dates appear only as {{...}} tokens.";
+    pub const CITATIONS: &str =
+        "The positions this text is about, each a game id and ply from the input.";
+    pub const AREA: &str = "The coaching area, as given in the input.";
+    pub const WEAKNESS_ID: &str = "A weakness id from the input.";
+    pub const FOCUS_WEAKNESS_ID: &str = "A selected focus weakness id from the input.";
+    pub const LINE_KEY: &str = "An opening line key from the input.";
+    pub const VERDICT: &str = "The computed verdict for this line, copied from the input.";
+    pub const DRILL_TYPE: &str = "One of the drill types allowed for this focus in the input.";
+    pub const WEEKLY_PROCESS: &str = "Celebrates the practice done this week. No outcome numbers.";
+}
+
 /// The only keywords `assert_api_subset` accepts.
 const ALLOWED: &[&str] = &[
     "type",
@@ -85,7 +109,9 @@ pub fn api_schema<T: JsonSchema>() -> Value {
     v
 }
 
-/// Rewrites a schemars schema into the subset, in place (see [`DROPPED`]). Also:
+/// Rewrites a schemars schema into the subset, in place (see [`DROPPED`]). The dropped
+/// [`HINTED`] bounds are restated at the end of the node's description, as the TS SDK does
+/// (`"…\n\n{minLength: 1, maxLength: 2000}"`). Also:
 /// `type: [X, "null"]` becomes `anyOf: [{…X}, {"type": "null"}]`; `type` beside `enum` is
 /// dropped (the enum fixes the type, and the zod export has none); every object gets
 /// `additionalProperties: false`. Recurses through `properties`, `items`, `anyOf`, `oneOf`,
@@ -94,8 +120,20 @@ pub fn sanitize(node: &mut Value) {
     let Value::Object(o) = node else {
         return;
     };
+    let hint: Vec<String> = HINTED
+        .iter()
+        .filter_map(|k| o.get(*k).map(|v| format!("{k}: {v}")))
+        .collect();
     for k in DROPPED {
         o.remove(*k);
+    }
+    if !hint.is_empty() {
+        let hint = format!("{{{}}}", hint.join(", "));
+        let text = match o.get("description").and_then(Value::as_str) {
+            Some(d) if !d.is_empty() => format!("{d}\n\n{hint}"),
+            _ => hint,
+        };
+        o.insert("description".into(), Value::String(text));
     }
     if let Some(Value::Array(types)) = o.get("type")
         && types.len() == 2
@@ -145,6 +183,9 @@ pub fn sanitize(node: &mut Value) {
 /// `Ok` when every node of `v` is inside the subset ([`ALLOWED`]); `Err` names the first node
 /// that is not.
 pub fn assert_api_subset(v: &Value) -> Result<(), String> {
+    if v.get("type") != Some(&json!("object")) {
+        return Err("$: the root must be type \"object\"".into());
+    }
     guard(v, "$")
 }
 
@@ -179,7 +220,9 @@ fn guard(node: &Value, path: &str) -> Result<(), String> {
         (None, None) => {}
         (Some(Value::Object(props)), Some(Value::Array(req))) => {
             let mut names: Vec<&str> = props.keys().map(String::as_str).collect();
-            let mut req: Vec<&str> = req.iter().filter_map(Value::as_str).collect();
+            let Some(mut req) = req.iter().map(Value::as_str).collect::<Option<Vec<&str>>>() else {
+                return Err(format!("{path}: required entries must be strings"));
+            };
             names.sort_unstable();
             req.sort_unstable();
             if names != req {
@@ -226,7 +269,11 @@ fn guard(node: &Value, path: &str) -> Result<(), String> {
 
 /// `a.0.b`, as `parse_coaching_input` writes paths (zod's dotted form).
 fn dotted(path: &serde_path_to_error::Path) -> String {
-    path.iter()
+    dotted_segments(&path.iter().collect::<Vec<_>>())
+}
+
+fn dotted_segments(segs: &[&Segment]) -> String {
+    segs.iter()
         .filter_map(|seg| match seg {
             Segment::Seq { index } => Some(index.to_string()),
             Segment::Map { key } => Some(key.clone()),
@@ -261,7 +308,13 @@ pub fn deserialize_checked<T: DeserializeOwned>(v: &Value) -> Result<T, Vec<Pars
         {
             issue(join(&path, key), "missing_field")
         } else if message.starts_with("unknown field") {
-            issue(path, "unknown_field")
+            // zod reports an unrecognized key at its parent object, and the key itself is
+            // model-chosen text, so it never goes into the path.
+            let mut segs: Vec<&Segment> = e.path().iter().collect();
+            if matches!(segs.last(), Some(Segment::Map { .. })) {
+                segs.pop();
+            }
+            issue(dotted_segments(&segs), "unknown_field")
         } else if message.starts_with("unknown variant") || message.starts_with("invalid value") {
             issue(path, "invalid_value")
         } else {
