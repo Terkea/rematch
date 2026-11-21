@@ -6,10 +6,9 @@
 //! fails soft (nested variations, parentheses inside comments, SAN glued to
 //! a comment) this parser handles the input properly.
 
-use crate::Color;
 use crate::board::Position;
+use crate::types::{ParsedGame, Ply, Terminal};
 use regex::Regex;
-use std::collections::HashMap;
 use std::sync::OnceLock;
 
 /// Errors from [`parse_pgn`].
@@ -28,41 +27,6 @@ pub enum PgnError {
 impl PgnError {
     pub fn is_unsupported(&self) -> bool {
         matches!(self, PgnError::UnsupportedVariant(_))
-    }
-}
-
-/// How a game ended on the board (not the Result tag).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Terminal {
-    Checkmate,
-    Stalemate,
-    Draw,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct Ply {
-    /// 1-based ply number.
-    pub ply: u32,
-    pub color: Color,
-    pub san: String,
-    pub uci: String,
-    pub fen_before: String,
-    pub fen_after: String,
-    /// The mover's clock after the move, in seconds.
-    pub clock_seconds: Option<f64>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct ParsedGame {
-    pub headers: HashMap<String, String>,
-    pub start_fen: String,
-    pub plies: Vec<Ply>,
-    pub terminal: Option<Terminal>,
-}
-
-impl ParsedGame {
-    pub fn header(&self, name: &str) -> Option<&str> {
-        self.headers.get(name).map(String::as_str)
     }
 }
 
@@ -101,8 +65,8 @@ fn unescape(s: &str) -> String {
     out
 }
 
-fn split_pgn(pgn: &str) -> (HashMap<String, String>, String) {
-    let mut headers = HashMap::new();
+fn split_pgn(pgn: &str) -> (Vec<(String, String)>, String) {
+    let mut headers = Vec::new();
     let mut body: Vec<&str> = Vec::new();
     let mut in_headers = true;
     for line in pgn.lines() {
@@ -112,7 +76,7 @@ fn split_pgn(pgn: &str) -> (HashMap<String, String>, String) {
             None
         };
         if let Some(c) = caps {
-            headers.insert(c[1].to_string(), unescape(&c[2]));
+            headers.push((c[1].to_string(), unescape(&c[2])));
         } else if in_headers && line.trim().is_empty() {
             // blank lines between or after the header block
         } else {
@@ -149,6 +113,11 @@ fn tokenize(movetext: &str) -> Result<Vec<(String, Option<f64>)>, PgnError> {
     let bytes = movetext.as_bytes();
     while i < bytes.len() {
         let c = bytes[i];
+        // chess.js rejects `%` escape lines (the PGN spec says to ignore
+        // them); we match chess.js rather than the spec.
+        if c == b'%' && (i == 0 || bytes[i - 1] == b'\n') {
+            return Err(PgnError::Malformed("% escape line".into()));
+        }
         match c {
             b'{' => {
                 let end = movetext[i + 1..]
@@ -217,10 +186,10 @@ fn terminal_of(pos: &Position, seen: &[String]) -> Option<Terminal> {
         Some(Terminal::Checkmate)
     } else if pos.is_stalemate() {
         Some(Terminal::Stalemate)
-    } else if pos.halfmove_clock() >= 100
-        || pos.is_insufficient_material()
-        || seen.iter().filter(|k| **k == pos.repetition_key()).count() >= 3
-    {
+    } else if pos.halfmove_clock() >= 100 || pos.is_insufficient_material() || {
+        let key = pos.repetition_key();
+        seen.iter().filter(|k| **k == key).count() >= 3
+    } {
         Some(Terminal::Draw)
     } else {
         None
@@ -231,7 +200,14 @@ fn terminal_of(pos: &Position, seen: &[String]) -> Option<Terminal> {
 pub fn parse_pgn(pgn: &str) -> Result<ParsedGame, PgnError> {
     let (headers, movetext) = split_pgn(pgn);
 
-    if let Some(variant) = headers.get("Variant") {
+    let find = |name: &str| {
+        headers
+            .iter()
+            .rev()
+            .find(|(k, _)| k == name)
+            .map(|(_, v)| v)
+    };
+    if let Some(variant) = find("Variant") {
         let v = variant.trim().to_lowercase();
         if v != "standard" && v != "chess" {
             return Err(PgnError::UnsupportedVariant(format!(
@@ -239,7 +215,7 @@ pub fn parse_pgn(pgn: &str) -> Result<ParsedGame, PgnError> {
             )));
         }
     }
-    if headers.contains_key("SetUp") || headers.contains_key("FEN") {
+    if find("SetUp").is_some() || find("FEN").is_some() {
         return Err(PgnError::UnsupportedVariant(
             "Games from a custom starting position are not supported".into(),
         ));
