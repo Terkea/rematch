@@ -1,6 +1,6 @@
 import { invites, session, user, verification } from "@ci/db";
 import { eq } from "drizzle-orm";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createTestSession, inviteEmail, resetAuthTables, webTestDb } from "../helpers/session";
 
 vi.mock("../../src/server/mail", async (importOriginal) => ({
@@ -12,28 +12,47 @@ const db = webTestDb();
 const { sendMail } = await import("../../src/server/mail");
 const { GET, POST } = await import("../../src/app/api/auth/[...all]/route");
 const { mapAuthResponse, resetAuth } = await import("../../src/server/auth");
+const { flushBackgroundTasks, pendingBackgroundTasks } = await import(
+  "../../src/server/auth/background"
+);
 const { googleProvider } = await import("../../src/server/auth/google");
+const { normaliseEmail } = await import("../../src/server/auth/invite");
+const { admissionPolicy, secureCookies } = await import("../../src/server/auth/policy");
 const { requireApiUser, getSession } = await import("../../src/server/auth/session");
-const { resetEnvCache } = await import("../../src/env");
+const { getEnv, resetEnvCache } = await import("../../src/env");
 
 const BASE = "http://localhost:3100";
+/** The test harness plays a reverse proxy at 127.0.0.1 that appends the client address. */
+const PROXY = "127.0.0.1";
 const mailed = vi.mocked(sendMail);
-let ipCounter = 0;
-/** The magic-link rate limit is per IP and path, so every test gets its own client address. */
-let ip = "10.0.0.1";
+let clientCounter = 0;
+/** The magic-link rate limit is per client IP, so every test is its own client. */
+let client = "203.0.113.1";
 
-function requestLink(email: string, from = ip): Promise<Response> {
+function viaProxy(from = client): Record<string, string> {
+  return { "x-forwarded-for": `${from}, ${PROXY}` };
+}
+
+/** POSTs a magic-link request without waiting for the mail to go out. */
+function postLink(email: string, headers: Record<string, string> = viaProxy()): Promise<Response> {
   return POST(
     new Request(`${BASE}/api/auth/sign-in/magic-link`, {
       method: "POST",
-      headers: { "content-type": "application/json", origin: BASE, "x-forwarded-for": from },
+      headers: { "content-type": "application/json", origin: BASE, ...headers },
       body: JSON.stringify({ email }),
     }),
   );
 }
 
-function open(url: string): Promise<Response> {
-  return GET(new Request(url, { headers: { "x-forwarded-for": ip } }));
+/** POSTs a magic-link request and lets the detached delivery finish. */
+async function requestLink(email: string, from = client): Promise<Response> {
+  const res = await postLink(email, viaProxy(from));
+  await flushBackgroundTasks();
+  return res;
+}
+
+function open(url: string, headers: Record<string, string> = {}): Promise<Response> {
+  return GET(new Request(url, { headers: { ...viaProxy(), ...headers } }));
 }
 
 function lastLink(): string {
@@ -43,18 +62,25 @@ function lastLink(): string {
   return url;
 }
 
-function setInviteOnly(on: boolean): void {
-  vi.stubEnv("INVITE_ONLY", on ? "1" : "0");
+function setEnv(values: Record<string, string>): void {
+  for (const [key, value] of Object.entries(values)) vi.stubEnv(key, value);
   resetEnvCache();
   resetAuth();
 }
 
+function setInviteOnly(on: boolean): void {
+  setEnv({ INVITE_ONLY: on ? "1" : "0" });
+}
+
+// Requests that are not flushed inside a test must not leak delivery work into the next one.
+afterEach(() => flushBackgroundTasks());
+
 beforeEach(async () => {
   await resetAuthTables(db);
   mailed.mockClear();
-  ipCounter += 1;
-  ip = `10.0.${Math.floor(ipCounter / 250)}.${(ipCounter % 250) + 1}`;
-  setInviteOnly(true);
+  clientCounter += 1;
+  client = `203.0.${Math.floor(clientCounter / 250)}.${(clientCounter % 250) + 1}`;
+  setEnv({ INVITE_ONLY: "1", TRUSTED_PROXIES: `${PROXY}/32`, INVITE_ALLOWLIST: "" });
 });
 
 describe("magic link (invited address)", () => {
@@ -232,5 +258,188 @@ describe("verification table", () => {
     const ms = (row?.expiresAt.getTime() ?? 0) - before;
     expect(ms).toBeGreaterThan(590_000);
     expect(ms).toBeLessThan(610_000);
+  });
+});
+
+describe("detached delivery", () => {
+  it("answers invited and uninvited addresses on the same path, before any delivery work", async () => {
+    await inviteEmail(db, "ana@example.com");
+    const invited = await postLink("ana@example.com");
+    expect(pendingBackgroundTasks()).toBe(1);
+    const stranger = await postLink("stranger@example.com", viaProxy("198.51.100.7"));
+    expect(pendingBackgroundTasks()).toBe(2);
+    // Nothing has been looked up or sent yet: both responses were produced before delivery ran.
+    expect(mailed).not.toHaveBeenCalled();
+    expect([invited.status, await invited.json()]).toEqual([200, { status: true }]);
+    expect([stranger.status, await stranger.json()]).toEqual([200, { status: true }]);
+    await flushBackgroundTasks();
+    expect(mailed.mock.calls.map(([msg]) => msg.to)).toEqual(["ana@example.com"]);
+  });
+
+  it("mails the normalised address", async () => {
+    await inviteEmail(db, "ana@example.com");
+    await requestLink("Ana@Example.COM");
+    expect(mailed.mock.calls[0]?.[0].to).toBe("ana@example.com");
+  });
+});
+
+describe("per-email throttle", () => {
+  it("sends at most 3 links per address in 10 minutes, whatever the client IP", async () => {
+    await inviteEmail(db, "ana@example.com");
+    const responses = [];
+    for (let i = 1; i <= 5; i += 1)
+      responses.push(await requestLink("ana@example.com", `198.51.100.${i}`));
+    expect(responses.map((r) => r.status)).toEqual([200, 200, 200, 200, 200]);
+    expect(mailed).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe("client IP for the rate limit", () => {
+  it("ignores X-Forwarded-For when no proxy is trusted (one shared bucket)", async () => {
+    setEnv({ TRUSTED_PROXIES: "" });
+    const statuses = [];
+    for (let i = 1; i <= 4; i += 1) {
+      statuses.push(
+        (await postLink("x@example.com", { "x-forwarded-for": `192.0.2.${i}` })).status,
+      );
+    }
+    expect(statuses).toEqual([200, 200, 200, 429]);
+  });
+
+  it("takes the address the trusted proxy appended, not a forged left-hand entry", async () => {
+    const statuses = [];
+    for (let i = 1; i <= 4; i += 1) {
+      const forged = `192.0.2.${i}, ${client}, ${PROXY}`;
+      statuses.push((await postLink("x@example.com", { "x-forwarded-for": forged })).status);
+    }
+    expect(statuses).toEqual([200, 200, 200, 429]);
+  });
+});
+
+describe("origin and CSRF checks (forced on, as in production)", () => {
+  it("rejects a magic-link request with an untrusted callbackURL (open redirect)", async () => {
+    const res = await POST(
+      new Request(`${BASE}/api/auth/sign-in/magic-link`, {
+        method: "POST",
+        headers: { "content-type": "application/json", origin: BASE, ...viaProxy() },
+        body: JSON.stringify({ email: "ana@example.com", callbackURL: "https://evil.example/x" }),
+      }),
+    );
+    expect(res.status).toBe(403);
+    expect(pendingBackgroundTasks()).toBe(0);
+  });
+
+  it("rejects verifying with an untrusted callbackURL", async () => {
+    const res = await open(
+      `${BASE}/api/auth/magic-link/verify?token=t&callbackURL=https://evil.example/`,
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("rejects a cross-site request that carries cookies (CSRF)", async () => {
+    const res = await postLink("ana@example.com", {
+      ...viaProxy(),
+      origin: "https://evil.example",
+      cookie: "ci.session_token=x",
+    });
+    expect(res.status).toBe(403);
+    expect(pendingBackgroundTasks()).toBe(0);
+  });
+
+  it("rejects a cross-site navigation sign-in (login CSRF)", async () => {
+    const res = await postLink("ana@example.com", {
+      ...viaProxy(),
+      origin: "https://evil.example",
+      "sec-fetch-site": "cross-site",
+      "sec-fetch-mode": "navigate",
+      "sec-fetch-dest": "document",
+    });
+    expect(res.status).toBe(403);
+    expect(pendingBackgroundTasks()).toBe(0);
+  });
+});
+
+describe("admission policy (validateUserInfo)", () => {
+  const policy = () => admissionPolicy(db, getEnv());
+  const oauth = { method: "oauth" as const, oauth: { providerId: "google" } };
+  const ctx = {} as never;
+
+  it("refuses an OAuth identity with an unverified email, for sign-up and for linking", async () => {
+    await inviteEmail(db, "ana@example.com");
+    const unverified = { email: "ana@example.com", emailVerified: false };
+    for (const action of ["create-user", "link-account"] as const) {
+      expect(await policy()({ user: unverified, source: { ...oauth, action } }, ctx)).toEqual(
+        expect.objectContaining({ error: "email_not_verified" }),
+      );
+    }
+    expect(
+      await policy()(
+        { user: { email: "ana@example.com" }, source: { ...oauth, action: "link-account" } },
+        ctx,
+      ),
+    ).toEqual(expect.objectContaining({ error: "email_not_verified" }));
+  });
+
+  it("admits a verified, invited OAuth identity and refuses a verified, uninvited one", async () => {
+    await inviteEmail(db, "ana@example.com");
+    const source = { ...oauth, action: "create-user" as const };
+    expect(
+      await policy()({ user: { email: "ana@example.com", emailVerified: true }, source }, ctx),
+    ).toBe(undefined);
+    expect(
+      await policy()({ user: { email: "eve@example.com", emailVerified: true }, source }, ctx),
+    ).toEqual(expect.objectContaining({ error: "not_invited" }));
+  });
+
+  it("maps an unverified Google identity to a sign-in message", async () => {
+    const req = new Request(`${BASE}/api/auth/callback/google`);
+    const res = await mapAuthResponse(
+      req,
+      new Response(null, {
+        status: 302,
+        headers: { location: `${BASE}/?error=email_not_verified` },
+      }),
+      BASE,
+    );
+    expect(res.headers.get("location")).toBe(`${BASE}/sign-in?error=email_not_verified`);
+  });
+});
+
+describe("withdrawing an invite", () => {
+  it("deletes that user's sessions", async () => {
+    await inviteEmail(db, "ana@example.com");
+    const { cookie } = await createTestSession(db, { email: "ana@example.com" });
+    const other = await createTestSession(db, { email: "bo@example.com" });
+    await db.delete(invites).where(eq(invites.email, "ana@example.com"));
+    expect(
+      (await requireApiUser(new Request(`${BASE}/api/x`, { headers: { cookie } }))) as Response,
+    ).toHaveProperty("status", 401);
+    const stillIn = await requireApiUser(
+      new Request(`${BASE}/api/x`, { headers: { cookie: other.cookie } }),
+    );
+    expect(stillIn).toEqual(other.user);
+  });
+});
+
+describe("normaliseEmail", () => {
+  it("applies NFKC and rejects anything that is not ASCII afterwards", () => {
+    expect(normaliseEmail(" Ana@Example.COM ")).toBe("ana@example.com");
+    expect(normaliseEmail("ａｎａ@example.com")).toBe("ana@example.com");
+    expect(normaliseEmail("аna@example.com")).toBe(null);
+    expect(normaliseEmail("")).toBe(null);
+  });
+});
+
+describe("secure cookies", () => {
+  const env = (url: string) => ({ ...getEnv(), BETTER_AUTH_URL: url });
+
+  it("follows the base URL: https gives __Secure-ci.session_token", () => {
+    expect(secureCookies(env("https://chess.example"), "production")).toBe(true);
+    expect(secureCookies(env("http://localhost:3100"), "development")).toBe(false);
+  });
+
+  it("requires https in production except on a local host", () => {
+    expect(() => secureCookies(env("http://chess.example"), "production")).toThrow(/https/);
+    expect(secureCookies(env("http://localhost:3100"), "production")).toBe(false);
   });
 });

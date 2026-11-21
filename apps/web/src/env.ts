@@ -7,6 +7,15 @@ const defaultOn = z
   .string()
   .optional()
   .transform((value) => value !== "0");
+const list = z
+  .string()
+  .default("")
+  .transform((value) =>
+    value
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean),
+  );
 const emailList = z
   .string()
   .default("")
@@ -37,6 +46,17 @@ const schema = z.object({
   LAB_ENABLED: flag,
   INVITE_ONLY: defaultOn,
   INVITE_ALLOWLIST: emailList,
+  // Client IP for rate limits (ADR-WEB-3). Empty: no proxy, so forwarding headers are ignored.
+  TRUSTED_PROXIES: list,
+  IP_ADDRESS_HEADERS: z
+    .string()
+    .default("x-forwarded-for")
+    .transform((value) =>
+      value
+        .split(",")
+        .map((item) => item.trim().toLowerCase())
+        .filter(Boolean),
+    ),
 });
 
 export type WebEnv = z.infer<typeof schema>;

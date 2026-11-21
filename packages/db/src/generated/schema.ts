@@ -360,6 +360,7 @@ export const user = pgTable(
   },
   (table) => [
     unique("user_email_unique").on(table.email),
+    check("user_email_lower", sql`email = lower(email)`),
     check(
       "user_birth_month_format",
       sql`(birth_month IS NULL) OR (birth_month ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'::text)`,

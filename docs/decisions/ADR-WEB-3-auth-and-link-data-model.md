@@ -1,6 +1,6 @@
 # ADR-WEB-3. Auth data model, Better Auth configuration and invite-only sign-up
 
-Date: 2026-11-21. Status: accepted. Implements M4 Task 17, which also took over Task 2's auth schema (controller ruling). Builds on ADR 0005 (Better Auth), ADR 0033 (SQL migrations own the schema) and ADR 0041 (private beta).
+Date: 2026-11-21. Status: accepted. Implements M4 Task 17, which also took over Task 2's auth schema (controller ruling). Builds on ADR 0005 (Better Auth), ADR 0033 (SQL migrations own the schema) and ADR 0041 (private beta; `docs/decisions/0041-private-beta-owner-and-friends.md`, on `r1/base`).
 
 ## Context
 
@@ -14,6 +14,7 @@ The web app needs users, sessions, OAuth accounts and magic-link tokens. The pla
 - **uuid ids everywhere** (`gen_random_uuid()` defaults, `advanced.database.generateId: "uuid"`), because `linked_accounts.user_id` is already a uuid.
 - **`session` and `account` cascade on user delete.** The under-13 deletion in Task 20 relies on this.
 - **`user` carries the age and privacy columns.** These are `birth_month` (`YYYY-MM`, with a CHECK on the format), `age_checked_at`, and `marketing_email` and `public_share_default`, both default false. They are Better Auth `additionalFields` with `input: false`, so no client can set them through the auth API.
+- **`user.email` is lower-case** (CHECK), like Better Auth writes it.
 - **`account (provider_id, account_id)` is unique** and has an index on `user_id`. `verification.identifier` is indexed.
 - **Out of this migration:** the `account_links` and `chesscom_verifications` tables from Task 2's plan. They belong to Task 19, which adds them as its own migration.
 - **The schema is regenerated with `scripts/db/generate-drizzle-schema.sh`**, so the drift check stays clean. `@ci/db` re-exports `user`, `session`, `account`, `verification` and `invites` from the generated schema. Task 27 later moves the whole main export over to it.
@@ -24,6 +25,11 @@ The web app needs users, sessions, OAuth accounts and magic-link tokens. The pla
 
 - It uses sqlx's own bookkeeping: the same `_sqlx_migrations` DDL, a SHA-384 checksum of the file, and the description with `_` turned into spaces. A database migrated by it is therefore accepted by `db::MIGRATOR`, and the other way round.
 - A file that changed after it was applied is an error, as in sqlx.
+- **Known differences from sqlx** (acceptable for a test-database tool):
+  - all pending migrations run in one transaction, where sqlx uses one per migration;
+  - there is no support for `-- no-transaction` migrations or for reversible (down) migrations;
+  - it takes its own advisory lock, not sqlx's, so a concurrent sqlx run against the same database is not excluded;
+  - `execution_time` is measured around the statement only.
 - The web tests use it on `chess_web_test` (`WEB_DATABASE_URL_TEST`, guarded by `assertSafeTestDatabase`). Dev and production databases are still migrated by the backend.
 
 ### Better Auth (1.7.24, the repo's existing pin)
@@ -33,13 +39,17 @@ The `auth` instance is built lazily by `getAuth()`, so importing the module duri
 | Setting | Value |
 |---|---|
 | Adapter | drizzle, provider `pg` |
-| `advanced.cookiePrefix` | `ci` (cookie `ci.session_token`) |
+| `advanced.cookiePrefix` | `ci`: the cookie is `ci.session_token` over http and `__Secure-ci.session_token` over https |
+| `advanced.useSecureCookies` | follows `BETTER_AUTH_URL`; in production an http base URL is refused unless the host is local |
+| `advanced.disableOriginCheck`, `disableCSRFCheck` | explicitly `false`: Better Auth skips both under `NODE_ENV=test`, so the tests would otherwise not exercise them |
 | `account.encryptOAuthTokens` | `true` (the option exists in 1.7, so no hand-rolled AES) |
 | `account.accountLinking` | `{ enabled: true, trustedProviders: ["google"] }` |
-| Plugins | `magicLink({ expiresIn: 600 })`, `genericOAuth` (Lichess and chess.com OAuth stubs until Tasks 18 and 19) |
+| Plugins | `magicLink({ expiresIn: 600, storeToken: "hashed" })`, `genericOAuth` (Lichess and chess.com OAuth stubs until Tasks 18 and 19) |
 | Google | configured only when both `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are set |
 
-- **Rate limiting is on in every environment**, with the custom rule `/sign-in/magic-link` at 3 per 600 s per IP.
+- **Rate limiting is on in every environment**, with the custom rule `/sign-in/magic-link` at 3 per 600 s per client IP.
+  - **The client IP comes only from trusted proxies.** Next route handlers do not expose the socket address. So `advanced.ipAddress` reads `IP_ADDRESS_HEADERS` (default `x-forwarded-for`) only when `TRUSTED_PROXIES` (CIDRs) is set, walking the header from the right past the trusted hops. With no proxy configured, no header is read and all clients share one bucket per path (127.0.0.1 in dev and test), so a forged `X-Forwarded-For` never buys a fresh bucket.
+  - **A per-email throttle sits on top:** at most 3 links per address per 600 s, counted from `verification` rows, whatever the IP.
   - It uses the in-memory store, which is enough for the single-process private beta.
   - A multi-instance deployment needs Redis `secondaryStorage` (deferred with the rest of launch hardening).
 - **`/api/auth/*` error redirects are mapped** to the sign-in messages that Task 21 renders.
@@ -53,20 +63,24 @@ The `auth` instance is built lazily by `getAuth()`, so importing the module duri
 - **`INVITE_ONLY` is on by default.** It is off only when set to exactly `"0"`, the opposite of the other flags, so a missing setting fails closed.
   - With it on, an address may sign in or sign up only when it appears in `INVITE_ALLOWLIST` (comma-separated, case-insensitive) or in the `invites` table (emails stored lower-cased; CHECK enforced).
   - With it off, sign-up is open again with no other change.
-- **Magic link.** `sendMagicLink` sends mail only to invited addresses. The endpoint answers `200 { status: true }` either way, so the response reveals nothing about invites or accounts. The person who isn't invited simply gets no mail.
+- **Magic link.** `sendMagicLink` only queues the delivery (`runAfterResponse`). The invite check, the per-email throttle and the SMTP send all run after the response. The endpoint answers `200 { status: true }` on the same code path for every address, so neither the body nor the timing reveals invites or accounts. Mail goes to the normalised address. The person who isn't invited simply gets no mail.
+- **Addresses are normalised** with NFKC, trimmed and lower-cased. Anything that is not printable ASCII afterwards never matches an invite, so look-alike characters cannot.
 - **New accounts from any method** (magic link, Google, generic OAuth) are gated by `user.validateUserInfo` on `create-user`. A rejection redirects with `error=not_invited`.
+- **OAuth needs a provider-verified email.** For OAuth `create-user` and `link-account`, `validateUserInfo` rejects anything but `emailVerified === true` (`error=email_not_verified`). Google is a trusted linking provider, and that skips Better Auth's own verified-email check, so without this rule a Google account that merely claims an invited address could link itself to that account.
 - **Returning users** are gated by a `session.create.before` guard (composed around `db-hooks.ts`, which stays Task 18's file). A user whose invite was withdrawn gets no new session.
-  - Linking a provider to an already signed-in user is not gated, because the user is already admitted.
+  - Linking a provider to an already signed-in user is not invite-gated, because the user is already admitted (it still needs a verified email).
+- **Withdrawing an invite signs the person out.** Deleting an `invites` row deletes that user's sessions (trigger `invites_revoke_sessions`), and the guard then refuses new ones.
+  - `INVITE_ONLY` and `INVITE_ALLOWLIST` are read at start-up, so changing them needs a restart.
+  - Removing an address from `INVITE_ALLOWLIST` does not delete its sessions; delete them by hand.
 - **The message is neutral.** `not_invited` says only that this address cannot sign in yet, never whether an account exists. Suggested copy for Task 21: "This email can't sign in yet. chess-improver is invite-only for now."
 - **Inviting someone, for now:**
   - add the address to `INVITE_ALLOWLIST` in `.env`, or
   - run `insert into invites (email, note) values ('friend@example.com', 'beta')`.
 - **Invite codes are not built.** They need a sign-in field (Task 21) and only matter for public growth.
-- **Known limit: timing.** The not-invited path skips the SMTP send, so it answers slightly faster. With a closed beta this is acceptable. Revisit before public sign-up, for example by queueing the mail.
 
 ### Left out (public launch, deferred by ADR 0041)
 
-Billing, plans and payment-linked quotas, public sign-up flows (codes, waitlist, invite emails), a shared rate-limit store, and production cookie and domain hardening.
+Billing, plans and payment-linked quotas, public sign-up flows (codes, waitlist, invite emails), a shared rate-limit store, a durable mail queue (today a send lost to a crash is not retried), and production domain hardening.
 
 ## Consequences
 

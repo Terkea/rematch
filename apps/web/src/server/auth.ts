@@ -5,12 +5,19 @@ import { APIError } from "better-auth/api";
 import { genericOAuth, magicLink } from "better-auth/plugins";
 import { eq } from "drizzle-orm";
 import { getEnv, type WebEnv } from "../env";
+import { runAfterResponse } from "./auth/background";
 import { authDbHooks } from "./auth/db-hooks";
 import { googleProvider } from "./auth/google";
 import { authHooks } from "./auth/hooks";
 import { isInvited, NOT_INVITED } from "./auth/invite";
 import { oauthProviders } from "./auth/oauth-providers";
-import { magicLinkEmail, sendMail } from "./mail";
+import {
+  admissionPolicy,
+  deliverMagicLink,
+  EMAIL_NOT_VERIFIED,
+  ipAddressOptions,
+  secureCookies,
+} from "./auth/policy";
 
 type DbHooks = NonNullable<BetterAuthOptions["databaseHooks"]>;
 
@@ -30,10 +37,9 @@ function withInviteGuard(hooks: DbHooks, db: Db, env: WebEnv): DbHooks {
       create: {
         ...hooks.session?.create,
         async before(data, ctx) {
-          const [owner] = await db
-            .select({ email: user.email })
-            .from(user)
-            .where(eq(user.id, data.userId));
+          const owner = ctx
+            ? await ctx.context.internalAdapter.findUserById(data.userId)
+            : (await db.select().from(user).where(eq(user.id, data.userId)))[0];
           if (!owner || !(await isInvited(db, env, owner.email))) throw notInvited();
           return next ? next(data, ctx) : undefined;
         },
@@ -57,6 +63,12 @@ export function createAuth(env: WebEnv, db: Db) {
     advanced: {
       database: { generateId: "uuid" },
       cookiePrefix: "ci",
+      useSecureCookies: secureCookies(env),
+      // Better Auth skips origin and CSRF checks under NODE_ENV=test; keep them on everywhere so
+      // tests exercise the production behaviour.
+      disableOriginCheck: false,
+      disableCSRFCheck: false,
+      ipAddress: ipAddressOptions(env),
     },
     account: {
       encryptOAuthTokens: true,
@@ -75,23 +87,18 @@ export function createAuth(env: WebEnv, db: Db) {
         marketingEmail: { type: "boolean", required: false, defaultValue: false, input: false },
         publicShareDefault: { type: "boolean", required: false, defaultValue: false, input: false },
       },
-      // Invite-only sign-up (ADR 0041): every method (magic link, Google, generic OAuth) creates
-      // users through here. Linking and returning sign-ins are covered by the session guard.
-      async validateUserInfo({ user: candidate, source }) {
-        if (source.action !== "create-user") return;
-        if (await isInvited(db, env, String(candidate.email ?? ""))) return;
-        return { error: NOT_INVITED, errorDescription: "This address cannot sign in yet." };
-      },
+      // Verified-only OAuth and invite-only sign-up (ADR 0041): every method creates users here.
+      validateUserInfo: admissionPolicy(db, env),
     },
     socialProviders: googleProvider(env),
     plugins: [
       magicLink({
         expiresIn: 600,
-        // The response is the same whether or not the address is invited; only invited addresses
-        // get mail, so the endpoint reveals nothing about invites or accounts.
-        async sendMagicLink({ email, url }) {
-          if (!(await isInvited(db, env, email))) return;
-          await sendMail(magicLinkEmail(email, url));
+        storeToken: "hashed",
+        // Always answers the same way: delivery (invite check, per-email throttle, SMTP) runs
+        // after the response, so neither the body nor the timing tells addresses apart.
+        sendMagicLink({ email, url }) {
+          runAfterResponse("magic link", () => deliverMagicLink(db, env, email, url));
         },
       }),
       genericOAuth({ config: oauthProviders(env) }),
@@ -158,6 +165,7 @@ export async function mapAuthResponse(
   if (res.status >= 300 && res.status < 400 && location) {
     const error = new URL(location, baseURL).searchParams.get("error")?.toLowerCase();
     if (error === NOT_INVITED) return redirectTo(res, signIn("not_invited"));
+    if (error === EMAIL_NOT_VERIFIED) return redirectTo(res, signIn(EMAIL_NOT_VERIFIED));
     if (isVerify && error && TOKEN_ERRORS.has(error))
       return redirectTo(res, signIn("link_expired"));
     return res;

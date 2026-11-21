@@ -32,6 +32,9 @@ x-web-environment: &web-environment
   # Private beta (ADR 0041, ADR-WEB-3): on unless exactly "0"; comma-separated invited emails.
   INVITE_ONLY: "${INVITE_ONLY:-1}"
   INVITE_ALLOWLIST: ${INVITE_ALLOWLIST:-}
+  # Rate-limit client IP (ADR-WEB-3): forwarding headers are read only from these proxies (CIDRs).
+  TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
+  IP_ADDRESS_HEADERS: ${IP_ADDRESS_HEADERS:-x-forwarded-for}
   IN_DOCKER: "1"
   SKIP_INSTALL: "1"
 

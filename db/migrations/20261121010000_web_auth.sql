@@ -17,6 +17,8 @@ CREATE TABLE "user" (
 	"marketing_email" boolean DEFAULT false NOT NULL,
 	"public_share_default" boolean DEFAULT false NOT NULL,
 	CONSTRAINT "user_email_unique" UNIQUE("email"),
+	-- Better Auth lower-cases emails; the constraint keeps hand-written inserts honest too.
+	CONSTRAINT "user_email_lower" CHECK ("email" = lower("email")),
 	CONSTRAINT "user_birth_month_format" CHECK ("birth_month" IS NULL OR "birth_month" ~ '^[0-9]{4}-(0[1-9]|1[0-2])$')
 );
 
@@ -37,7 +39,8 @@ CREATE TABLE "account" (
 	"account_id" text NOT NULL,
 	"provider_id" text NOT NULL,
 	"user_id" uuid NOT NULL,
-	-- Encrypted by Better Auth (account.encryptOAuthTokens).
+	-- access_token and refresh_token are encrypted by Better Auth (account.encryptOAuthTokens);
+	-- id_token is stored as the provider sent it (a signed, non-secret identity assertion).
 	"access_token" text,
 	"refresh_token" text,
 	"id_token" text,
@@ -75,3 +78,16 @@ ALTER TABLE "account" ADD CONSTRAINT "account_user_id_user_id_fk" FOREIGN KEY ("
 CREATE INDEX "session_user_id_idx" ON "session" USING btree ("user_id");
 CREATE INDEX "account_user_id_idx" ON "account" USING btree ("user_id");
 CREATE INDEX "verification_identifier_idx" ON "verification" USING btree ("identifier");
+
+-- Withdrawing an invite signs that person out everywhere: their sessions are deleted with the row
+-- (ADR-WEB-3). The session guard then refuses new sessions. Addresses that only come from the
+-- INVITE_ALLOWLIST env var are not covered; removing one needs a restart and a manual sign-out.
+CREATE FUNCTION "invites_revoke_sessions"() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+	DELETE FROM "session" s USING "user" u WHERE s."user_id" = u."id" AND u."email" = OLD."email";
+	RETURN OLD;
+END;
+$$;
+
+CREATE TRIGGER "invites_revoke_sessions" AFTER DELETE ON "invites"
+	FOR EACH ROW EXECUTE FUNCTION "invites_revoke_sessions"();
