@@ -14,7 +14,7 @@ use chess_core::{EngineScore, PositionEval};
 use db::games::{AnalysisStatus, GameRow, get_game};
 use engine::{AnalyseOptions, Analyser, AnalysisLine, AnalysisResult, EngineError};
 use futures::future::BoxFuture;
-use queue::queue::Queue;
+use queue::queue::{Backoff, FailOutcome, Queue};
 use queue::runner::{Handler, JobContext};
 use queue::{AnalyseGamePayload, Job, JobError, KIND_ANALYSE};
 use serde_json::{Value, json};
@@ -128,40 +128,67 @@ fn cacheless(pool: &PgPool, analyser: Arc<dyn Analyser>) -> AnalyseGameDeps {
     AnalyseGameDeps::new(pool.clone(), analyser, Arc::new(NoCache))
 }
 
+/// Every await on the handler, the engine or a gate is bounded, so a hang fails in seconds.
+const TEST_TIMEOUT: Duration = Duration::from_secs(30);
+
+async fn within<T>(what: &str, fut: impl std::future::Future<Output = T>) -> T {
+    tokio::time::timeout(TEST_TIMEOUT, fut)
+        .await
+        .unwrap_or_else(|_| panic!("timed out after {TEST_TIMEOUT:?} waiting for {what}"))
+}
+
 /// A chess.com account `username` with one pending game in which it plays white.
 async fn add_game(pool: &PgPool, pgn: &str, username: &str) -> Uuid {
-    let acct = insert_account(pool, "chesscom", username).await;
-    insert_game(
-        pool,
-        acct,
-        GameSeed {
-            pgn: pgn.to_owned(),
-            white: username.to_owned(),
-            black: "x".to_owned(),
-            ..GameSeed::default()
-        },
-    )
+    within("add_game", async {
+        let acct = insert_account(pool, "chesscom", username).await;
+        insert_game(
+            pool,
+            acct,
+            GameSeed {
+                pgn: pgn.to_owned(),
+                white: username.to_owned(),
+                black: "x".to_owned(),
+                ..GameSeed::default()
+            },
+        )
+        .await
+    })
     .await
 }
 
 async fn game(pool: &PgPool, id: Uuid) -> GameRow {
-    get_game(pool, id).await.unwrap().expect("game row")
+    within("get_game", get_game(pool, id))
+        .await
+        .unwrap()
+        .expect("game row")
 }
 
 async fn move_count(pool: &PgPool, id: Uuid) -> i64 {
-    sqlx::query_scalar("SELECT count(*) FROM moves WHERE game_id = $1")
-        .bind(id)
-        .fetch_one(pool)
-        .await
-        .unwrap()
+    within(
+        "move count",
+        sqlx::query_scalar("SELECT count(*) FROM moves WHERE game_id = $1")
+            .bind(id)
+            .fetch_one(pool),
+    )
+    .await
+    .unwrap()
 }
 
 /// `(type, payload)` of every user event, oldest first.
 async fn events(pool: &PgPool) -> Vec<(String, Value)> {
-    sqlx::query_as("SELECT type, payload FROM user_events ORDER BY id")
-        .fetch_all(pool)
+    within(
+        "user events",
+        sqlx::query_as("SELECT type, payload FROM user_events ORDER BY id").fetch_all(pool),
+    )
+    .await
+    .unwrap()
+}
+
+/// Runs one SQL statement (test setup), bounded.
+async fn exec(pool: &PgPool, sql: &'static str, id: Uuid) {
+    within(sql, sqlx::query(sql).bind(id).execute(pool))
         .await
-        .unwrap()
+        .unwrap();
 }
 
 /// A job for `game_id` on attempt `attempts` of `max_attempts`.
@@ -181,15 +208,6 @@ fn job(game_id: Uuid, attempts: i32, max_attempts: i32) -> Job {
         created_at: now - time::Duration::milliseconds(80),
         started_at: now,
     }
-}
-
-/// Every await on the handler, the engine or a gate is bounded, so a hang fails in seconds.
-const TEST_TIMEOUT: Duration = Duration::from_secs(30);
-
-async fn within<T>(what: &str, fut: impl std::future::Future<Output = T>) -> T {
-    tokio::time::timeout(TEST_TIMEOUT, fut)
-        .await
-        .unwrap_or_else(|_| panic!("timed out after {TEST_TIMEOUT:?} waiting for {what}"))
 }
 
 async fn run(
@@ -365,11 +383,12 @@ async fn records_the_start_counts_attempts_and_heartbeats_from_inside_the_evalua
 #[sqlx::test(migrator = "db::MIGRATOR")]
 async fn goes_back_to_pending_not_failed_when_the_queue_will_retry(pool: PgPool) {
     let id = add_game(&pool, "1. e4 c6 2. d4 d5 *", "retrying").await;
-    sqlx::query("UPDATE games SET pending_since = NULL WHERE id = $1")
-        .bind(id)
-        .execute(&pool)
-        .await
-        .unwrap();
+    exec(
+        &pool,
+        "UPDATE games SET pending_since = NULL WHERE id = $1",
+        id,
+    )
+    .await;
     let d = deps(&pool, pool_fake(Arc::new(Mutex::new(true))));
     let res = run(&d, id, 1, 3).await;
     match &res {
@@ -495,11 +514,12 @@ async fn skips_a_game_already_done_at_the_current_protocol_without_touching_it(p
 #[sqlx::test(migrator = "db::MIGRATOR")]
 async fn pool_closed_on_final_attempt_releases_without_attempt(pool: PgPool) {
     let id = add_game(&pool, "1. c4 e5 2. Nc3 Nf6 *", "closing").await;
-    sqlx::query("UPDATE games SET pending_since = NULL WHERE id = $1")
-        .bind(id)
-        .execute(&pool)
-        .await
-        .unwrap();
+    exec(
+        &pool,
+        "UPDATE games SET pending_since = NULL WHERE id = $1",
+        id,
+    )
+    .await;
     let closed = FnAnalyser::new(|_| Box::pin(async { Err(EngineError::PoolClosed) }));
     let res = run(&deps(&pool, closed), id, 3, 3).await;
     match res {
@@ -553,11 +573,12 @@ async fn request_reanalysis_resets_attempts_and_bypasses_done(pool: PgPool) {
     let id = add_game(&pool, "1. e4 e5 2. Nf3 Nf6 *", "again").await;
     let d = deps(&pool, ok_pool());
     assert!(done(&run(&d, id, 1, 3).await));
-    sqlx::query("UPDATE games SET analysis_attempts = 6 WHERE id = $1")
-        .bind(id)
-        .execute(&pool)
-        .await
-        .unwrap();
+    exec(
+        &pool,
+        "UPDATE games SET analysis_attempts = 6 WHERE id = $1",
+        id,
+    )
+    .await;
     let queue = Queue::new(pool.clone());
     assert!(request_reanalysis(&pool, &queue, id).await.unwrap());
     let g = game(&pool, id).await;
@@ -581,11 +602,12 @@ async fn request_reanalysis_resets_attempts_and_bypasses_done(pool: PgPool) {
 #[sqlx::test(migrator = "db::MIGRATOR")]
 async fn request_reanalysis_refuses_a_game_mid_analysis(pool: PgPool) {
     let id = add_game(&pool, "1. e4 e5 2. Nf3 Nf6 *", "busy").await;
-    sqlx::query("UPDATE games SET analysis_status = 'analysing' WHERE id = $1")
-        .bind(id)
-        .execute(&pool)
-        .await
-        .unwrap();
+    exec(
+        &pool,
+        "UPDATE games SET analysis_status = 'analysing' WHERE id = $1",
+        id,
+    )
+    .await;
     let queue = Queue::new(pool.clone());
     assert!(!request_reanalysis(&pool, &queue, id).await.unwrap());
     assert_eq!(game(&pool, id).await.analysis_generation, 0);
@@ -629,12 +651,15 @@ struct MetricsRow {
 }
 
 async fn metrics_rows(pool: &PgPool) -> Vec<MetricsRow> {
-    sqlx::query_as(
-        "SELECT job_id, kind, game_id, account_id, queue_wait_ms, parse_ms, cache_ms, \
-         engine_wall_ms, engine_cpu_ms, persist_ms, total_ms, positions, engine_positions, \
-         cache_hits, lichess_used FROM job_metrics ORDER BY id",
+    within(
+        "job_metrics rows",
+        sqlx::query_as(
+            "SELECT job_id, kind, game_id, account_id, queue_wait_ms, parse_ms, cache_ms, \
+             engine_wall_ms, engine_cpu_ms, persist_ms, total_ms, positions, engine_positions, \
+             cache_hits, lichess_used FROM job_metrics ORDER BY id",
+        )
+        .fetch_all(pool),
     )
-    .fetch_all(pool)
     .await
     .unwrap()
 }
@@ -687,11 +712,12 @@ async fn records_partial_job_metrics_for_a_failed_analysis(pool: PgPool) {
 #[sqlx::test(migrator = "db::MIGRATOR")]
 async fn on_dead_marks_failed_once_and_publishes_once(pool: PgPool) {
     let id = add_game(&pool, "1. e4 e5 2. Nf3 Nc6 *", "dead").await;
-    sqlx::query("UPDATE games SET analysis_status = 'analysing' WHERE id = $1")
-        .bind(id)
-        .execute(&pool)
-        .await
-        .unwrap();
+    exec(
+        &pool,
+        "UPDATE games SET analysis_status = 'analysing', analysis_attempts = 3 WHERE id = $1",
+        id,
+    )
+    .await;
     let handler = AnalyseGameHandler(Arc::new(deps(&pool, ok_pool())));
     assert_eq!(handler.kind(), KIND_ANALYSE);
     let j = job(id, 3, 3);
@@ -752,4 +778,225 @@ async fn the_handler_parses_the_payload_and_returns_the_outcome_json(pool: PgPoo
     .await
     .unwrap();
     assert_eq!(out, json!({ "status": "done" }));
+}
+
+// ---------------------------------------------------------------------------------------------
+// Fix round 1: generation safety
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn on_dead_after_a_reanalysis_leaves_the_new_generation_pending(pool: PgPool) {
+    let id = add_game(&pool, "1. d4 d5 2. c4 c6 *", "dead-again").await;
+    let d = Arc::new(deps(&pool, pool_fake(Arc::new(Mutex::new(true)))));
+    // The final attempt writes failed (and publishes job.failed once).
+    assert!(matches!(
+        run(&d, id, 3, 3).await,
+        Err(JobError::Retryable { .. })
+    ));
+    assert_eq!(
+        game(&pool, id).await.analysis_status,
+        AnalysisStatus::Failed
+    );
+    // The user asks for a re-analysis before the runner dead-letters the job.
+    let queue = Queue::new(pool.clone());
+    assert!(
+        within("request_reanalysis", request_reanalysis(&pool, &queue, id))
+            .await
+            .unwrap()
+    );
+    // Then the runner dead-letters the old job.
+    let handler = AnalyseGameHandler(d.clone());
+    within(
+        "on_dead",
+        handler.on_dead(&job(id, 3, 3), "engine exploded"),
+    )
+    .await;
+    let g = game(&pool, id).await;
+    assert_eq!(g.analysis_status, AnalysisStatus::Pending);
+    assert_eq!(g.analysis_generation, 1);
+    assert_eq!(g.analysis_attempts, 0);
+    let failed = events(&pool)
+        .await
+        .into_iter()
+        .filter(|(t, _)| t == "job.failed")
+        .count();
+    assert_eq!(failed, 1);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_reanalysis_landing_after_the_done_commit_is_run_by_the_same_job(pool: PgPool) {
+    let id = add_game(&pool, "1. e4 e5 2. Nf3 d6 *", "late-request").await;
+    let account = game(&pool, id).await.account_id;
+    // Stands in for `request_reanalysis` landing between the handler's done commit and its
+    // completion: the game.analysed insert (after the commit) runs request_reanalysis's UPDATE.
+    // Its enqueue would dedupe onto the running job, as the job is live.
+    for sql in [
+        "CREATE FUNCTION test_reanalyse() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN \
+           IF NEW.type = 'game.analysed' THEN \
+             UPDATE games SET analysis_generation = analysis_generation + 1, \
+               analysis_attempts = 0, analysis_status = 'pending', analysis_error = NULL, \
+               pending_since = now() \
+             WHERE id = (NEW.payload->>'gameId')::uuid AND analysis_generation = 0 \
+               AND analysis_status <> 'analysing'; \
+           END IF; RETURN NEW; END $$",
+        "CREATE TRIGGER test_reanalyse AFTER INSERT ON user_events \
+           FOR EACH ROW EXECUTE FUNCTION test_reanalyse()",
+    ] {
+        within(sql, sqlx::query(sql).execute(&pool)).await.unwrap();
+    }
+    let queue = Queue::new(pool.clone());
+    assert!(
+        within("enqueue", enqueue_analyse(&queue, id, account))
+            .await
+            .unwrap()
+    );
+    within(
+        "backdate",
+        sqlx::query("UPDATE jobs SET run_at = now() - interval '1 minute'").execute(&pool),
+    )
+    .await
+    .unwrap();
+    let dequeue = || async {
+        within(
+            "dequeue",
+            queue.dequeue(&[KIND_ANALYSE], "test", 1, Duration::from_secs(60)),
+        )
+        .await
+        .unwrap()
+        .pop()
+        .expect("a ready analyse job")
+    };
+    let d = deps(&pool, ok_pool());
+    let first = dequeue().await;
+    let res = within(
+        "first run",
+        handle_analyse_game(
+            &d,
+            &first,
+            AnalyseGamePayload { game_id: id },
+            CancellationToken::new(),
+        ),
+    )
+    .await;
+    let err = match res {
+        Err(e @ JobError::Release { .. }) => e,
+        other => panic!("expected a zero-delay release for the new generation, got {other:?}"),
+    };
+    assert!(
+        matches!(&err, JobError::Release { delay, reason } if delay.is_zero() && reason == "reanalysis")
+    );
+    let g = game(&pool, id).await;
+    assert_eq!(g.analysis_status, AnalysisStatus::Pending);
+    assert_eq!((g.analysis_generation, g.analysed_generation), (1, Some(0)));
+
+    let released = within("release", queue.fail(&first, &err, Backoff::default()))
+        .await
+        .unwrap();
+    assert!(
+        matches!(released, FailOutcome::Released { .. }),
+        "{released:?}"
+    );
+    let second = dequeue().await;
+    assert_eq!(second.id, first.id, "the same job runs again");
+    let res = within(
+        "second run",
+        handle_analyse_game(
+            &d,
+            &second,
+            AnalyseGamePayload { game_id: id },
+            CancellationToken::new(),
+        ),
+    )
+    .await;
+    assert!(done(&res), "{res:?}");
+    let g = game(&pool, id).await;
+    assert_eq!(g.analysis_status, AnalysisStatus::Done);
+    assert_eq!(g.analysed_generation, Some(1));
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn the_generation_fence_stops_a_stale_run_holding_the_same_attempt_number(pool: PgPool) {
+    let id = add_game(&pool, "1. e4 a6 2. d4 b5 *", "stale-generation").await;
+    let (gate, stale) = gated_pool(-400, None);
+    let stale_deps = Arc::new(cacheless(&pool, stale));
+    let started = gate.started.notified();
+    // Generation 0, attempt 1.
+    let stale_run = tokio::spawn({
+        let d = stale_deps.clone();
+        async move { run(&d, id, 1, 3).await }
+    });
+    within("the stale run to reach the engine", started).await;
+    // Its lease is lost and the game reset, then a re-analysis resets attempts to 0.
+    exec(
+        &pool,
+        "UPDATE games SET analysis_status = 'pending' WHERE id = $1",
+        id,
+    )
+    .await;
+    let queue = Queue::new(pool.clone());
+    assert!(
+        within("request_reanalysis", request_reanalysis(&pool, &queue, id))
+            .await
+            .unwrap()
+    );
+    // Generation 1 claims attempt 1 too, and finishes.
+    assert!(done(&run(&cacheless(&pool, ok_pool()), id, 1, 3).await));
+    let fresh = game(&pool, id).await;
+    assert_eq!((fresh.analysis_attempts, fresh.analysis_generation), (1, 1));
+
+    gate.released.send_replace(true);
+    let res = within("the stale run", stale_run).await.unwrap();
+    assert!(matches!(res, Ok(AnalyseOutcome::Superseded)), "{res:?}");
+    let g = game(&pool, id).await;
+    assert_eq!(g.analysis_status, AnalysisStatus::Done);
+    assert_eq!(g.analysed_generation, Some(1));
+    assert_eq!(g.white_accuracy, fresh.white_accuracy);
+    assert_eq!(g.black_accuracy, fresh.black_accuracy);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_superseded_run_stops_at_its_next_heartbeat(pool: PgPool) {
+    let id = add_game(&pool, "1. e4 h6 2. d4 g5 *", "beat-lost").await;
+    // The first call waits for the gate; every later call hangs until cancelled.
+    let gate = Arc::new(Gate {
+        started: Notify::new(),
+        released: tokio::sync::watch::channel(false).0,
+    });
+    let calls = Arc::new(Mutex::new(0usize));
+    let stale = {
+        let (gate, calls) = (gate.clone(), calls.clone());
+        FnAnalyser::new(move |_| {
+            let (gate, calls) = (gate.clone(), calls.clone());
+            Box::pin(async move {
+                let n = {
+                    let mut c = calls.lock().unwrap();
+                    *c += 1;
+                    *c
+                };
+                if n > 1 {
+                    futures::future::pending::<()>().await;
+                }
+                gate.started.notify_one();
+                let mut rx = gate.released.subscribe();
+                rx.wait_for(|r| *r).await.ok();
+                Ok(line(10))
+            })
+        })
+    };
+    let mut stale_deps = cacheless(&pool, stale);
+    stale_deps.heartbeat_every = Duration::ZERO;
+    stale_deps.concurrency = 1;
+    let stale_deps = Arc::new(stale_deps);
+    let started = gate.started.notified();
+    let stale_run = tokio::spawn({
+        let d = stale_deps.clone();
+        async move { run(&d, id, 1, 3).await }
+    });
+    within("the stale run to reach the engine", started).await;
+    assert!(done(&run(&cacheless(&pool, ok_pool()), id, 1, 3).await));
+    gate.released.send_replace(true);
+    // Its heartbeat after the first result misses the fence and cancels the hung second search
+    // (without that it would hang until the 10-minute deadline).
+    let res = within("the superseded run", stale_run).await.unwrap();
+    assert!(matches!(res, Ok(AnalyseOutcome::Superseded)), "{res:?}");
+    assert_eq!(game(&pool, id).await.analysis_status, AnalysisStatus::Done);
 }

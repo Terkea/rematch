@@ -16,6 +16,7 @@
 //! - a deadline overrun is a retryable `timeout`;
 //! - every attempt that claimed the game records a `job_metrics` row (ADR 0036).
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -38,7 +39,7 @@ use sqlx::PgPool;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
-use crate::deadline::{ANALYSE_DEADLINE, Deadline, JobDeadlineError};
+use crate::deadline::{ANALYSE_DEADLINE, JobDeadlineError};
 use crate::eval_cache::EvalCache;
 use crate::evaluate::{DeadlineInfo, EvalStats, EvaluateDeps, EvaluateError, evaluate_game};
 use crate::metrics::{GameMetrics, log_metrics, record_metrics};
@@ -157,7 +158,15 @@ pub async fn request_reanalysis(
     let Some(account_id) = account else {
         return Ok(false);
     };
-    enqueue_analyse(queue, game_id, account_id).await?;
+    if !enqueue_analyse(queue, game_id, account_id).await? {
+        // A live job holds `analyse:<game_id>`. A queued one claims the new generation; a running
+        // one re-reads the game when it finishes and releases itself to run again (the
+        // reconciler is the final backstop).
+        tracing::info!(
+            game_id = %game_id,
+            "re-analysis deduped onto the game's live analyse job"
+        );
+    }
     Ok(true)
 }
 
@@ -184,7 +193,8 @@ impl Handler for AnalyseGameHandler {
     }
 
     /// Marks the game failed when the job is dead-lettered, unless it already reached a final
-    /// status (the handler's own final-attempt write, which also published `job.failed`).
+    /// status (the handler's own final-attempt write, which also published `job.failed`) or a
+    /// re-analysis reset it (`analysis_attempts = 0`: no attempt of the new generation ran yet).
     fn on_dead<'a>(&'a self, job: &'a Job, reason: &'a str) -> BoxFuture<'a, ()> {
         async move {
             let deps = &self.0;
@@ -197,7 +207,7 @@ impl Handler for AnalyseGameHandler {
             let account: Result<Option<Uuid>, sqlx::Error> = sqlx::query_scalar(
                 "UPDATE games SET analysis_status = 'failed', analysis_error = $2 \
                  WHERE id = $1 AND analysis_status NOT IN ('done', 'failed', 'skipped') \
-                 RETURNING account_id",
+                 AND analysis_attempts > 0 RETURNING account_id",
             )
             .bind(payload.game_id)
             .bind(&reason)
@@ -303,6 +313,9 @@ pub async fn handle_analyse_game(
         && game.analysis_protocol.as_deref() == Some(ANALYSIS_PROTOCOL)
         && game.analysed_generation == Some(game.analysis_generation)
     {
+        if reanalysis_requested(&deps.pool, game_id, game.analysis_generation).await {
+            return Err(reanalysis_release());
+        }
         return Ok(AnalyseOutcome::Done {
             accuracy: player_accuracy(&game),
         });
@@ -335,31 +348,34 @@ pub async fn handle_analyse_game(
         ..GameMetrics::default()
     };
 
-    // The deadline's token also fires when the job's token does; `expired()` tells them apart.
-    let deadline = Deadline::new(KIND, deps.deadline);
-    let token = deadline.token();
-    let link = tokio::spawn({
-        let (cancel, token) = (cancel.clone(), token.clone());
-        async move {
-            tokio::select! {
-                _ = cancel.cancelled() => token.cancel(),
-                _ = token.cancelled() => {}
-            }
-        }
-    });
+    // The run's token is a child of the job's: it fires on shutdown or a lost lease, on the
+    // deadline, and when a heartbeat finds the game superseded (`analyse` maps that one to
+    // `Superseded`; `timed_out` marks the deadline). On the deadline the same future is awaited
+    // to its end, so `evaluate_game` returns its partial statistics.
+    let token = cancel.child_token();
     let deadline_info = DeadlineInfo {
         kind: KIND,
         ms: u64::try_from(deps.deadline.as_millis()).unwrap_or(u64::MAX),
     };
-    let result = analyse(deps, &game, fence, &token, deadline_info, &mut metrics).await;
-    link.abort();
+    let mut timed_out = None;
+    let result = {
+        let run = analyse(deps, &game, fence, &token, deadline_info, &mut metrics);
+        tokio::pin!(run);
+        tokio::select! {
+            r = &mut run => r,
+            _ = tokio::time::sleep(deps.deadline) => {
+                timed_out = Some(JobDeadlineError { kind: KIND, ms: deadline_info.ms });
+                token.cancel();
+                run.await
+            }
+        }
+    };
 
     let outcome = match result {
         Ok(outcome) => Ok(outcome),
         Err(Failure::Superseded) => Ok(AnalyseOutcome::Superseded),
-        Err(failure) => Err(on_failure(deps, job, &game, fence, &deadline, &cancel, failure).await),
+        Err(failure) => Err(on_failure(deps, job, &game, fence, timed_out, &cancel, failure).await),
     };
-    drop(deadline);
 
     metrics.outcome = match &outcome {
         Ok(o) => o.status(),
@@ -387,7 +403,40 @@ pub async fn handle_analyse_game(
         tracing::warn!(game_id = %game_id, error = %e, "recording job metrics failed");
     }
     log_metrics(&metrics);
+    // A re-analysis requested while this run finished was deduped onto this job: run it again
+    // (a zero-delay release keeps `run_at`), so it claims the new generation.
+    if matches!(outcome, Ok(AnalyseOutcome::Done { .. }))
+        && reanalysis_requested(&deps.pool, game_id, generation).await
+    {
+        return Err(reanalysis_release());
+    }
     outcome
+}
+
+/// `true` when the game is pending at a newer generation than `processed`.
+async fn reanalysis_requested(pool: &PgPool, game_id: Uuid, processed: i32) -> bool {
+    let newer: Result<Option<bool>, sqlx::Error> = sqlx::query_scalar(
+        "SELECT analysis_status = 'pending' AND analysis_generation > $2 FROM games WHERE id = $1",
+    )
+    .bind(game_id)
+    .bind(processed)
+    .fetch_optional(pool)
+    .await;
+    match newer {
+        Ok(found) => found.unwrap_or(false),
+        Err(e) => {
+            // The reconciler re-enqueues a pending game whose job is gone.
+            tracing::warn!(game_id = %game_id, error = %e, "re-analysis check failed");
+            false
+        }
+    }
+}
+
+fn reanalysis_release() -> JobError {
+    JobError::Release {
+        delay: Duration::ZERO,
+        reason: "reanalysis".to_owned(),
+    }
 }
 
 /// Records a failed attempt on the game (fenced) and maps it to the job's verdict.
@@ -396,7 +445,7 @@ async fn on_failure(
     job: &Job,
     game: &GameRow,
     fence: Fence,
-    deadline: &Deadline,
+    timed_out: Option<JobDeadlineError>,
     cancel: &CancellationToken,
     failure: Failure,
 ) -> JobError {
@@ -428,7 +477,6 @@ async fn on_failure(
         };
     }
 
-    let timed_out = deadline.expired();
     let message = match &timed_out {
         Some(e) => e.to_string(),
         None => failure.to_string(),
@@ -543,11 +591,14 @@ async fn analyse(
         return skipped().await;
     }
 
-    // Heartbeats: fenced, at most every `heartbeat_every`, from inside the evaluation.
+    // Heartbeats: fenced, at most every `heartbeat_every`, from inside the evaluation. A miss
+    // means a newer attempt owns the game: cancel the run, so its engine slots are freed.
     let last_beat = Arc::new(Mutex::new(Instant::now()));
     let every = deps.heartbeat_every;
+    let lost = Arc::new(AtomicBool::new(false));
     let heartbeat = {
         let pool = pool.clone();
+        let (token, lost) = (token.clone(), lost.clone());
         move |_done: usize, _total: usize| -> BoxFuture<'static, Result<(), String>> {
             let due = {
                 let mut last = last_beat.lock().unwrap_or_else(|e| e.into_inner());
@@ -560,13 +611,17 @@ async fn analyse(
             if !due {
                 return futures::future::ready(Ok(())).boxed();
             }
-            let pool = pool.clone();
+            let (pool, token, lost) = (pool.clone(), token.clone(), lost.clone());
             async move {
-                fence
+                let hit = fence
                     .update(&pool, "heartbeat_at = now()", None)
                     .await
-                    .map(|_| ())
-                    .map_err(|e| e.to_string())
+                    .map_err(|e| e.to_string())?;
+                if !hit {
+                    lost.store(true, Ordering::SeqCst);
+                    token.cancel();
+                }
+                Ok(())
             }
             .boxed()
         }
@@ -589,16 +644,14 @@ async fn analyse(
         }
         Err(failure) => {
             apply_stats(metrics, &failure.stats);
+            if lost.load(Ordering::SeqCst) {
+                return Err(Failure::Superseded);
+            }
             return Err(failure.error.into());
         }
     };
-    if token.is_cancelled() {
-        return Err(EvaluateError::Deadline(JobDeadlineError {
-            kind: deadline.kind,
-            ms: deadline.ms,
-        })
-        .into());
-    }
+    // A completed evaluation is persisted even if the deadline fired just after it (the persist
+    // is fenced, so a newer attempt still wins).
 
     let clock = match (game.base_seconds, game.increment_seconds) {
         (Some(base), Some(inc)) => Some(ClockInfo {
