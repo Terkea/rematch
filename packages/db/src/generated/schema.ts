@@ -108,6 +108,11 @@ export const games = pgTable(
       table.playedAt.desc().nullsLast(),
     ),
     index("games_analysis_status_idx").using("btree", table.analysisStatus.asc().nullsLast()),
+    index("games_pending_id_idx")
+      .using("btree", table.analysisStatus.asc().nullsLast(), table.id.asc().nullsLast())
+      .where(
+        sql`(analysis_status = ANY (ARRAY['pending'::analysis_status, 'analysing'::analysis_status]))`,
+      ),
     foreignKey({
       columns: [table.accountId],
       foreignColumns: [linkedAccounts.id],
