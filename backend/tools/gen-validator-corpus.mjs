@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Regenerates the TS_CORPUS block in backend/crates/ai/tests/extract_gaps.rs.
+// Regenerates the TS_CORPUS block in backend/crates/ai/tests/extract_gaps.rs and the
+// TS_LEAK_CORPUS block in backend/crates/ai/tests/leaks.rs (tokens.ts and leaks.ts, Task 6).
 //
 // Provenance: the expected values come from the TS reference validator
 // (.worktrees/m3/packages/ai/src/validator/{normalize,extract}.ts). For each
@@ -24,6 +25,15 @@ const wt = here.indexOf(join("", ".worktrees"));
 const repo = wt > 0 ? here.slice(0, wt - 1) : resolve(backend, "..");
 const src = process.env.M3_VALIDATOR ?? join(repo, ".worktrees/m3/packages/ai/src/validator");
 const target = join(backend, "crates/ai/tests/extract_gaps.rs");
+const leakTarget = join(backend, "crates/ai/tests/leaks.rs");
+
+function writeBlock(file, block, n) {
+  const rs = readFileSync(file, "utf8");
+  const re = /    \/\/ BEGIN GENERATED[\s\S]*?\/\/ END GENERATED/;
+  if (!re.test(rs)) throw new Error(`no generated block in ${file}`);
+  writeFileSync(file, rs.replace(re, () => block));
+  console.log(`wrote ${n} rows to ${file}`);
+}
 
 const sp = (n) => " ".repeat(n);
 const E = "\u{1F600}"; // an astral char: two UTF-16 units
@@ -180,6 +190,80 @@ const inputs = [
   "5\u{e9} games and 7\u{663} games",
 ];
 
+// Leak corpus (tests/leaks.rs): canonicalForTokens, parseTokens and findLeaks on the raw and the
+// token-stripped text. The 56 TS ESCAPES come first (keep them in sync with leaks.test.ts).
+const ESCAPES = [
+  "12. Nf3 d5", "1. e4 e5 2. Nf3 Nc6", "Instead d5 was best", "...d6", "Nxe5 d6 (e4)", "e2-e4",
+  "Ng1-f3", "e2xd5", "e8Q", "e8(Q)", "O–O", "O‑O‑O", "O—O", "O−O", "O-O",
+  "0-0-0", "N⁦f3", "N͏f3", "♞️f3", "forty percent", "thirty games",
+  "ten per cent", "one game", "three openings", "a third of games", "twenty-one games", "2.5x",
+  "3 times", "nf3", "NF3", "♙e4", "Pe4", "Nf3Nc6", "exd6e.p.", "exd6 e.p.",
+  "the 14th of October", "14 Oct", "14/10", "2026-10-14", ".5%", "1,5", "1 000", "1 000",
+  "１２ games", "١٢ games", "half of your games", "a quarter", "a dozen",
+  "twice as often", "the second game", "ten", "е4", "N​f‌3", "Nㅤf3", "♟",
+  "♔",
+];
+const leakInputs = [
+  ...ESCAPES,
+  // Rust extras of the escape loop.
+  "Ｎｆ３", "é4", "Nf3️", "twentieth move", "O‑O‑O",
+  // Clean prose and token strings from the TS tests.
+  "you tend to rush in sharp positions",
+  "the {{sq:e4}} square",
+  "you lost the {{move:li-w1a:6}} knight too early; {{best:li-w1a:6}} was safer",
+  "your rate was {{num:weaknesses.W1.posteriorRate|pct0}} over {{num:basis.analysedGames|int}} games",
+  "Pay attention to king safety and loose pieces. Castling early helps.",
+  "a {{move:g1:6}} b {{best:g1:6}} c {{pv:g1:6:best:2}} d {{pv:g1:6:refutation:1}} e {{line:w-italian}} f {{line:w-italian:3}} g {{num:basis.analysedGames}} h {{num:weaknesses.W1.posteriorRate|pct1}} i {{date:basis.windowStart}} j {{sq:f7}}",
+  "x {{move:g1:6}} y {{sq:e4}}",
+  ...["{{move:g1}}", "{{move:g1:x}}", "{{move:g1:0}}", "{{pv:g1:6:middle:1}}", "{{pv:g1:6:best:0}}",
+    "{{num:a.b|bogus}}", "{{num:}}", "{{sq:i9}}", "{{sq:e44}}", "{{nope:x}}", "{{move:g1:6",
+    "move:g1:6}}", "{{}}"].map((b) => `see ${b} here`),
+  "{{num:a.b|int}} {{num:a.b|pct0}} {{num:a.b|dec2}} {{num:a.b|signed1}}",
+  "{{mo​ve:g1:６}}",
+  "play O-O", "play ♞", "about 40", "about forty", "a 14 Oct date",
+  // Token edges.
+  "a {{move:g1}} {{num:a.b|}} {{nope:x}} } {{sq:e4",
+  "{{line:w:italian:2}} {{line:w:italian:x}} {{num:a#1.b|int}}",
+  "{{line:}} {{line}} {{num}} {{date:}} {{date:a..b}} {{sq:e4:x}} {{best:g 1:3}} {{move:g1:10000}}",
+  "{{pv:g1:6:best:1000}} {{pv:g1:6:best}} {{move:g1:0012}} {{num:a.b|int|pct0}} {{num:a b}}",
+  "{{{sq:e4}}} {{sq:e4}}} {{{{sq:e4}}}}",
+  "été {{sq:e4}} and​ {{move:g1:6}} 😀 {{sq:a1}} {",
+  "{{move:g1:6\n}} {{sq:ｅ４}} {{​sq:h8}}",
+  // Number words: plurals, backtracking, boundaries.
+  "tens tenses tenth tenths sevenths twenties forties nineties fifties",
+  "often attention none alone bones someone",
+  "per  cent percent percents percentage per cent per\u0085cent",
+  "a couple of pairs, thrice, quadruple, halves",
+  "TEN Twenty Million",
+  "fourteenths and hundredths",
+  "xten tenx 1ten ten1",
+  "zeroes dozens",
+  // SAN, promotions, e.p.
+  "e8 = q) and a1 (n)x and h8qa and b1r",
+  "g8 ( Q ) or c1=b!",
+  "ep. e.p e p. e. p. xe.p. e.p.x",
+  "a1-b2 a1xb2 a1—b2 a1－b2 a1˗b2",
+  // Castling.
+  "o-o-o-o 0-0x o - o ao-o o-o1 o--o 0– 0",
+  "O-O-O! and O-O+",
+  // Dates.
+  "jan 5 janx 5 jan. the 3rd", "the 3rd of may", "3 of mayo", "end of march", "march the fifth",
+  "14 junes", "1/2 12 . 3 2026 - 10 - 14", "JAN 5", "jan\u00855", "sept 3 sep 3", "x12 of oct",
+  "12 of oct", "5th of june, 2026",
+  // Confusables, case and other scripts.
+  "Неро", "ΑΝΟ", "πάτησε",
+  "İstanbul", "ΣΟΣ", "Α-Ο", "О-О",
+  // Digits, percent and figurines.
+  "‰ and ٪", "𝟙𝟚", "① ² Ⅻ", "🨀 🩯 🩰",
+  "٣ games",
+  // Hardening deviations (ADR-R3-2, Task 6): TS output recorded, Rust deliberately adds leaks.
+  "fιveé games", "Օ-Օé", "t᠏en games", "tẃenty games",
+  "O˗O", "օnce", "база",
+  // The union keeps what TS finds next to a folded neighbour.
+  "tené", "ten᠏x", "Nf3é", "O-Oé", "e.p.é", "éone game", "threeι",
+  "Café talk: often your pieces are loose.", "Été and naïve plans",
+];
+
 const tmp = mkdtempSync(join(tmpdir(), "validator-corpus-"));
 try {
   writeFileSync(join(tmp, "normalize.ts"), readFileSync(join(src, "normalize.ts")));
@@ -189,6 +273,11 @@ try {
   );
   const { extractNumbers, extractMoves, extractDates } = await import(pathToFileURL(join(tmp, "extract.ts")).href);
   const { normalizeText } = await import(pathToFileURL(join(tmp, "normalize.ts")).href);
+  for (const f of ["tokens.ts", "leaks.ts"]) {
+    writeFileSync(join(tmp, f), readFileSync(join(src, f), "utf8").replace('"./normalize.js"', '"./normalize.ts"'));
+  }
+  const { canonicalForTokens, parseTokens } = await import(pathToFileURL(join(tmp, "tokens.ts")).href);
+  const { findLeaks } = await import(pathToFileURL(join(tmp, "leaks.ts")).href);
   const esc = (s) => Array.from({ length: s.length }, (_, k) => s.charCodeAt(k)).map((c) => (c < 32 || c >= 127 ? String.fromCharCode(92) + "u" + c.toString(16).padStart(4, "0") : String.fromCharCode(c))).join("");
   const rows = inputs.map((s) =>
     esc(JSON.stringify({ s, t: normalizeText(s), n: extractNumbers(s), m: extractMoves(s), d: extractDates(s) })),
@@ -207,11 +296,22 @@ try {
     `]"#;`,
     "    // END GENERATED",
   ].join("\n");
-  const rs = readFileSync(target, "utf8");
-  const re = /    \/\/ BEGIN GENERATED[\s\S]*?\/\/ END GENERATED/;
-  if (!re.test(rs)) throw new Error(`no generated block in ${target}`);
-  writeFileSync(target, rs.replace(re, () => block));
-  console.log(`wrote ${rows.length} rows to ${target}`);
+  writeBlock(target, block, rows.length);
+  if (ESCAPES.length !== 56) throw new Error(`${ESCAPES.length} escapes`);
+  const leakRows = leakInputs.map((s) => {
+    const p = parseTokens(s);
+    return esc(JSON.stringify({ s, c: canonicalForTokens(s), st: p.stripped, tk: p.tokens, er: p.errors, l: findLeaks(p.stripped), r: findLeaks(s) }));
+  });
+  if (leakRows.some((r) => r.includes('"#'))) throw new Error("a row would end the raw string");
+  const leakBlock = [
+    "    // BEGIN GENERATED by backend/tools/gen-validator-corpus.mjs; do not edit by hand.",
+    `    // node ${v.node}, icu ${v.icu}, unicode ${v.unicode}, m3 ${commit}, ${leakRows.length} inputs`,
+    `    const TS_LEAK_CORPUS: &str = r#"[`,
+    leakRows.join(",\n"),
+    `]"#;`,
+    "    // END GENERATED",
+  ].join("\n");
+  writeBlock(leakTarget, leakBlock, leakRows.length);
 } finally {
   rmSync(tmp, { recursive: true, force: true });
 }

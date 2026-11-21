@@ -87,6 +87,16 @@ The pipeline is:
 
 In the differential corpus, the inputs whose hardened normalisation differs from TS are listed in `HARDENED`. **For every row, each Rust list (numbers, SAN, UCI, dates) must start with TS's list unchanged.** That makes it a superset of TS's, in TS's order, and `normalize_ts` must equal TS's `normalizeText`. A `HARDENED` row may add results but never lose one, and must still differ somewhere, so the list cannot go stale. Every other row must equal TS exactly. The corpus has 175 inputs, including every regression example above.
 
+### Leak detector and tokens (Task 6)
+
+- **Tokens.** `canonical_for_tokens` uses TS's exact invisible set, not the hardened one, so `stripped` keeps every char TS keeps and the leak detector can still see a boundary there. Token and token-error indexes are byte offsets in the canonical text; stray-brace errors are byte offsets in `stripped` (TS reports those in `stripped` too). `{{eng:<32 hex>:tried|<1-3>[:<n>]}}` and `{{offtopic}}` are R3 additions.
+- **Leak union.** `find_leaks` runs two paths and returns the TS path's leaks unchanged, then the hardened path's extras, deduplicated by `(kind, text)`. `find_leaks_with(s, NormMode::TsExact)` is TS's `findLeaks` exactly: TS's invisibles, `CONFUSABLES` on `[Α-ωЀ-ӿ]`, `DASH` and detectors. The hardened path adds H2 (invisibles), H3 (marks), H4 (all of `HOMOGLYPHS`) and H5 (dashes). H1 is not needed: `\p{N}+` already flags every non-ASCII digit.
+- **Origin-aware boundaries.** The hardened text lowercases every ASCII letter and writes every folded char (a homoglyph, or a char whose decomposition without marks is ASCII) as ASCII uppercase. The detector bodies match case-insensitively, while the boundary classes (`[a-z]`, `[a-z0-9]`, checked by `before_ok` and in the folded lookahead as `(?-i:[^a-z])`) stay case-sensitive. A folded neighbour therefore never counts as a letter. That closes the homoglyph-plus-accent gap the T5 review found: `fιveé` (TS: ι is not folded; plain folding: `fivee`) is flagged. Hardened leak text is reported lowercased.
+- **The date alternation.** Only alternatives `a` and `c` carry `(?<![a-z])`, so `scan` gets no global before-check, and the check rejects an `a` or `c` candidate whose previous char is `[a-z]`. Retrying at start + 1 is exact, because no other alternative can match at a start where `a` or `c` was chosen.
+- **Corpus.** The same tool records TS's `canonicalForTokens`, `parseTokens` and `findLeaks` (on the stripped and the raw text) into `tests/leaks.rs`: 150 inputs, including all 56 escapes. For every row, the TS path and the tokens equal TS exactly (indexes compared in UTF-16), and `find_leaks` starts with TS's list. Rows in that file's `HARDENED` must add leaks; all other rows must equal TS exactly.
+- **Cost.** Every detector and token pass runs through `bounded::scan`, so `count_scanned` sees it. `leaks::tests::scanned_bytes_are_linear_on_hostile_shapes` asserts at most 80·n on 23 shapes at n = 32 Ki.
+- **Accepted false positives.** `HOMOGLYPHS` folds `б` to 6 and `З` to 3, so Cyrillic prose can be flagged (`база` gives the digit `6`). Coaching text is English, and a false positive only costs a repair.
+
 ### Parity checklist rule
 
 The plan's parity checklist (TS test file → Rust test file → task) is binding:
