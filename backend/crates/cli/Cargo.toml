@@ -18,6 +18,11 @@ engine.workspace = true
 platforms.workspace = true
 analysis.workspace = true
 events.workspace = true
+# R2 (ADR-R2-1)
+profile.workspace = true
+scheduler.workspace = true
+enrich.workspace = true
+refdata.workspace = true
 anyhow.workspace = true
 clap.workspace = true
 tracing.workspace = true

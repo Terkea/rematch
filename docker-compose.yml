@@ -73,6 +73,10 @@ services:
       # Each lane builds into its own target dir in the shared volume (LANE=<lane letter>).
       CARGO_TARGET_DIR: /target/${LANE:-main}
       RUST_LOG: warn
+      # R2 (ADR-R2-1): git-ignored data dir (Syzygy tables, never the Lichess dump) and Maia.
+      DATA_DIR: /work/data
+      SYZYGY_PATH: /work/data/syzygy
+      MAIA_URL: ${MAIA_URL:-}
     depends_on:
       postgres:
         condition: service_healthy

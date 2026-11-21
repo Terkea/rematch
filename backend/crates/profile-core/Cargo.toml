@@ -1,0 +1,28 @@
+[package]
+name = "profile-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+# Pure chess and statistics logic of the profile engine: no sqlx, no I/O, no unseeded RNG.
+[dependencies]
+chess-core.workspace = true
+coaching-input.workspace = true
+common.workspace = true
+cozy-chess.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+time.workspace = true
+sha2.workspace = true
+hex.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+testkit.workspace = true
+tokio = { workspace = true, features = ["test-util"] }

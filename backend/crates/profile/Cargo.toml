@@ -1,0 +1,41 @@
+[package]
+name = "profile"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+# Integration: analyse-game hook, reference-game jobs, build-profile and the CoachingInput builder.
+[dependencies]
+chess-core.workspace = true
+engine.workspace = true
+db.workspace = true
+queue.workspace = true
+events.workspace = true
+analysis.workspace = true
+common.workspace = true
+coaching-input.workspace = true
+profile-core.workspace = true
+refdata.workspace = true
+enrich.workspace = true
+scheduler.workspace = true
+sqlx.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+futures.workspace = true
+uuid.workspace = true
+time.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+hex.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+testkit.workspace = true
+tokio = { workspace = true, features = ["test-util"] }
