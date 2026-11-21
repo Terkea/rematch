@@ -25,7 +25,9 @@ x-web-environment: &web-environment
   MAIL_FROM: ${MAIL_FROM:-chess-improver <no-reply@chess-improver.local>}
   GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
   GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
-  CONTACT_EMAIL: ${CONTACT_EMAIL:?set CONTACT_EMAIL in .env}
+  # No `:?` here: compose evaluates it for the whole file, which would block rust-dev and every `-p`
+  # project. The services that need it fail fast at runtime on an empty value (see the worker below).
+  CONTACT_EMAIL: ${CONTACT_EMAIL:-}
   LAB_ENABLED: "${LAB_ENABLED:-1}"
   IN_DOCKER: "1"
   SKIP_INSTALL: "1"
