@@ -62,13 +62,19 @@ pub struct StoredEvent {
     pub created_at: OffsetDateTime,
 }
 
-#[derive(Clone, Debug, PartialEq, sqlx::FromRow)]
+/// One stored event. It serialises to the same JSON as the live
+/// [`LiveEvent`](crate::listener::LiveEvent), byte for byte, so replay and live delivery look
+/// identical to clients.
+#[derive(Clone, Debug, PartialEq, Serialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
 pub struct UserEventRow {
     pub id: i64,
     pub account_id: Uuid,
+    #[serde(rename = "type")]
     pub ty: String,
-    pub payload: Value,
+    #[serde(with = "common::js_time::iso_micros")]
     pub created_at: OffsetDateTime,
+    pub payload: Value,
 }
 
 /// One page of replay. `reset` means the cursor predates pruned events: refetch state.
@@ -86,8 +92,8 @@ pub(crate) struct Notification {
     pub account_id: Uuid,
     #[serde(rename = "type")]
     pub ty: String,
-    /// RFC 3339 with all fractional digits, so it equals the row's `created_at` exactly.
-    #[serde(with = "time::serde::rfc3339")]
+    /// UTC with exactly six fractional digits, so it equals the row's `created_at` exactly.
+    #[serde(with = "common::js_time::iso_micros")]
     pub created_at: OffsetDateTime,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub payload: Option<Value>,
@@ -128,6 +134,11 @@ pub(crate) fn notification_json(
 /// already inside one (the usual case, so the event commits with the state change it
 /// describes), otherwise its own. The advisory lock is held until the outermost transaction
 /// ends, so ids commit, and NOTIFYs are delivered, in id order.
+///
+/// Make this the last statement before the commit. Every event writer queues on the one
+/// advisory lock, so taking it early holds up all other writers for the rest of the
+/// transaction, and taking row locks after it can deadlock with a writer that holds those rows
+/// and is waiting for the lock.
 pub async fn insert_user_event(
     conn: &mut PgConnection,
     account_id: Uuid,
@@ -223,5 +234,9 @@ pub async fn prune_events(pool: &PgPool, older_than: Duration) -> Result<u64> {
     .bind(older_than.as_secs_f64())
     .fetch_one(pool)
     .await?;
-    Ok(u64::try_from(deleted).unwrap_or(0))
+    u64::try_from(deleted).map_err(|e| {
+        Error::Db(sqlx::Error::Decode(
+            format!("prune count {deleted}: {e}").into(),
+        ))
+    })
 }

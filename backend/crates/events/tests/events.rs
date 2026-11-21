@@ -5,8 +5,8 @@ use std::time::Duration;
 
 use events::listener::{EventListener, LiveEvent};
 use events::store::{
-    CHANNEL, EVENT_RETENTION, USER_EVENTS_LOCK_KEY, UserEventRow, UserEventType, insert_user_event,
-    list_events_after, prune_events, publish,
+    CHANNEL, EVENT_RETENTION, Error, USER_EVENTS_LOCK_KEY, UserEventRow, UserEventType,
+    insert_user_event, list_events_after, prune_events, publish,
 };
 use serde_json::{Value, json};
 use sqlx::PgPool;
@@ -149,12 +149,151 @@ async fn notify_payload_matches_row(pool: PgPool) {
     assert_eq!(wire["accountId"], json!(acct.to_string()));
     assert_eq!(wire["type"], json!("game.analysed"));
     assert_eq!(wire["payload"], payload);
+    // One canonical shape: UTC with exactly six fractional digits.
+    assert_eq!(
+        wire["createdAt"],
+        json!(common::js_time::to_iso_micros_string(stored.created_at))
+    );
     let created = OffsetDateTime::parse(
         wire["createdAt"].as_str().unwrap(),
         &time::format_description::well_known::Rfc3339,
     )
     .unwrap();
     assert_eq!(created, stored.created_at);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn live_and_replay_serialise_identically(pool: PgPool) {
+    let acct = insert_account(&pool, "lichess", "same-bytes").await;
+    let mut listener = EventListener::connect(&pool).await.unwrap();
+    let id = publish(
+        &pool,
+        acct,
+        UserEventType::GameAnalysed,
+        json!({"gameId": "g9", "accuracy": 77.125}),
+    )
+    .await
+    .unwrap();
+
+    let live = serde_json::to_string(&next_event(&mut listener).await).unwrap();
+    let page = list_events_after(&pool, &[acct], 0, 10).await.unwrap();
+    let replayed = page.events.into_iter().next().unwrap();
+    assert_eq!(replayed.id, id);
+    let as_row = serde_json::to_string(&replayed).unwrap();
+    let as_dto = serde_json::to_string(&LiveEvent::from(replayed)).unwrap();
+    assert_eq!(live, as_row);
+    assert_eq!(live, as_dto);
+    let v: Value = serde_json::from_str(&live).unwrap();
+    assert_eq!(
+        v["createdAt"].as_str().unwrap().len(),
+        "2026-11-21T10:00:05.123456Z".len()
+    );
+}
+
+/// The backend pid of the session in this test database that ran LISTEN (other than `not`).
+async fn listen_backend(pool: &PgPool, not: i32) -> i32 {
+    wait_for("the LISTEN session", WAIT, TICK, || {
+        let pool = pool.clone();
+        async move {
+            sqlx::query_scalar(
+                "SELECT pid FROM pg_stat_activity                  WHERE datname = current_database() AND query LIKE 'LISTEN%'                  AND pid <> pg_backend_pid() AND pid <> $1",
+            )
+            .bind(not)
+            .fetch_optional(&pool)
+            .await
+            .unwrap()
+        }
+    })
+    .await
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn listener_reports_reconnected_only_after_listening_again(pool: PgPool) {
+    let acct = insert_account(&pool, "lichess", "reconnect").await;
+    let mut listener = EventListener::connect(&pool).await.unwrap();
+    let id0 = publish(&pool, acct, UserEventType::ImportProgress, json!({"n": 0}))
+        .await
+        .unwrap();
+    assert_eq!(next_event(&mut listener).await.id, id0);
+    let cursor = id0;
+
+    let old_pid = listen_backend(&pool, 0).await;
+    let killed: bool = sqlx::query_scalar("SELECT pg_terminate_backend($1)")
+        .bind(old_pid)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert!(killed);
+
+    let err = tokio::time::timeout(WAIT, listener.next())
+        .await
+        .expect("next() returns within 10 s")
+        .expect_err("a lost LISTEN connection is reported");
+    assert!(matches!(err, Error::Reconnected), "got {err:?}");
+    let new_pid = listen_backend(&pool, old_pid).await;
+    assert_ne!(new_pid, old_pid);
+
+    // Published after Reconnected and before the replay query: replay has it, and so does the
+    // live stream, because the LISTEN was re-established before Reconnected was returned.
+    let id1 = publish(&pool, acct, UserEventType::ImportProgress, json!({"n": 1}))
+        .await
+        .unwrap();
+    let replay = list_events_after(&pool, &[acct], cursor, 100)
+        .await
+        .unwrap();
+    assert_eq!(ids_of(&replay.events), [id1]);
+    assert_eq!(next_event(&mut listener).await.id, id1);
+
+    // Live delivery continues.
+    let id2 = publish(&pool, acct, UserEventType::ImportProgress, json!({"n": 2}))
+        .await
+        .unwrap();
+    assert_eq!(next_event(&mut listener).await.id, id2);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn next_is_cancel_safe_during_the_payload_fetch(pool: PgPool) {
+    let acct = insert_account(&pool, "lichess", "cancelled").await;
+    let mut listener = EventListener::connect(&pool).await.unwrap();
+    let big = json!({"blob": "y".repeat(10_000)});
+    let id = publish(&pool, acct, UserEventType::ImportProgress, big.clone())
+        .await
+        .unwrap();
+
+    // Block every read of user_events, so the truncated event's payload fetch cannot finish.
+    let mut blocker = pool.begin().await.unwrap();
+    sqlx::query("LOCK TABLE user_events IN ACCESS EXCLUSIVE MODE")
+        .execute(&mut *blocker)
+        .await
+        .unwrap();
+
+    let fetch_waits = wait_for(
+        "the payload fetch to wait on the table lock",
+        WAIT,
+        TICK,
+        || {
+            let pool = pool.clone();
+            async move {
+                let waiting: i64 = sqlx::query_scalar(
+                "SELECT count(*) FROM pg_locks l JOIN pg_database d ON d.oid = l.database                  WHERE d.datname = current_database() AND l.locktype = 'relation'                  AND l.relation = 'user_events'::regclass AND NOT l.granted",
+            )
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+                (waiting >= 1).then_some(())
+            }
+        },
+    );
+    tokio::select! {
+        r = listener.next() => panic!("next() must still be fetching, got {r:?}"),
+        () = fetch_waits => {}
+    }
+    // The next() future was dropped mid-fetch.
+    blocker.rollback().await.unwrap();
+
+    let live = next_event(&mut listener).await;
+    assert_eq!(live.id, id);
+    assert_eq!(live.payload, Some(big));
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
@@ -244,7 +383,7 @@ async fn replay_never_skips_a_lower_id_that_commits_after_a_higher_one_was_read(
             let waiting: i64 = sqlx::query_scalar(
                 "SELECT count(*) FROM pg_locks l JOIN pg_database d ON d.oid = l.database \
                  WHERE d.datname = current_database() AND l.locktype = 'advisory' \
-                 AND l.objid = $1 AND NOT l.granted",
+                 AND l.classid = 0 AND l.objid = $1 AND l.objsubid = 1 AND NOT l.granted",
             )
             .bind(USER_EVENTS_LOCK_KEY)
             .fetch_one(&pool)

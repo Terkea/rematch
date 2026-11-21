@@ -5,6 +5,10 @@
 //! that must match TS JSON byte for byte uses [`iso`] (`#[serde(with = "common::js_time::iso")]`)
 //! or [`iso::option`]. `time::serde::rfc3339` is not used for output because it omits the fraction
 //! on whole seconds and prints up to nine digits. Parsing accepts any RFC 3339 timestamp.
+//!
+//! [`iso_micros`] is the same shape with exactly six fractional digits
+//! (`2026-11-21T10:00:05.123456Z`): the full precision of a Postgres `timestamptz`. It is used
+//! where a timestamp must round-trip exactly, such as the user-event stream (ADR 0034).
 
 use time::format_description::FormatItem;
 use time::format_description::well_known::Rfc3339;
@@ -18,6 +22,16 @@ const JS_ISO: &[FormatItem<'static>] =
 pub fn to_iso_string(t: OffsetDateTime) -> String {
     t.to_offset(UtcOffset::UTC)
         .format(JS_ISO)
+        .expect("a UTC timestamp with a four-digit year always formats")
+}
+
+const ISO_MICROS: &[FormatItem<'static>] =
+    format_description!("[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond digits:6]Z");
+
+/// Formats as UTC with exactly six fractional digits; nanoseconds are truncated.
+pub fn to_iso_micros_string(t: OffsetDateTime) -> String {
+    t.to_offset(UtcOffset::UTC)
+        .format(ISO_MICROS)
         .expect("a UTC timestamp with a four-digit year always formats")
 }
 
@@ -64,5 +78,23 @@ pub mod iso {
                 .map(|s| super::super::parse_iso(&s).map_err(serde::de::Error::custom))
                 .transpose()
         }
+    }
+}
+
+/// Serde adapter for `OffsetDateTime` as UTC with exactly six fractional digits (microseconds).
+/// Deserialising accepts any RFC 3339 timestamp.
+pub mod iso_micros {
+    use serde::{Deserialize, Deserializer, Serializer};
+    use time::OffsetDateTime;
+
+    pub fn serialize<S: Serializer>(t: &OffsetDateTime, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&super::to_iso_micros_string(*t))
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<OffsetDateTime, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        super::parse_iso(&s).map_err(serde::de::Error::custom)
     }
 }
