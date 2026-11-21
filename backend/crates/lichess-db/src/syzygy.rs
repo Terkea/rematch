@@ -3,6 +3,7 @@
 //! present with a matching hash are skipped, so a re-run makes no body requests.
 
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 use futures::StreamExt;
 use sha2::{Digest, Sha256};
@@ -73,6 +74,32 @@ pub struct FetchSummary {
     pub bytes: u64,
     /// Files already present with a matching hash.
     pub skipped: u64,
+    /// Time spent re-hashing files that were already present.
+    pub rehash: Duration,
+}
+
+/// Per-file limits. A file is aborted (and its `.part` deleted) when it exceeds either.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FetchLimits {
+    pub max_file_bytes: u64,
+    pub file_timeout: Duration,
+}
+
+/// The largest 3-4-5 table is 32,367,120 bytes (`KBNvKP.rtbz`, mirror `bytes.tsv`); the cap is
+/// 2x that, rounded to 64 MiB.
+pub const MAX_FILE_BYTES: u64 = 64 * 1024 * 1024;
+
+/// Total time allowed for one file (a 32 MB file takes seconds; this only stops a stalled or
+/// trickling mirror, since the client has no total timeout).
+pub const FILE_TIMEOUT: Duration = Duration::from_secs(600);
+
+impl Default for FetchLimits {
+    fn default() -> Self {
+        Self {
+            max_file_bytes: MAX_FILE_BYTES,
+            file_timeout: FILE_TIMEOUT,
+        }
+    }
 }
 
 fn io_err(what: &str, err: std::io::Error) -> DumpError {
@@ -124,16 +151,21 @@ async fn sha_of_file(path: &Path) -> std::io::Result<Option<String>> {
     Ok(Some(hex::encode(hasher.finalize())))
 }
 
-/// Streams one file to `part`, returning its digest and size.
+/// Streams one file to `part`, returning its digest and size. Aborts past `max_bytes`.
 async fn download_to(
     client: &reqwest::Client,
     url: &str,
     part: &Path,
+    max_bytes: u64,
 ) -> Result<(String, u64), DumpError> {
+    let too_big = || DumpError::Decode(format!("{url} exceeds {max_bytes} bytes"));
     let res = client.get(url).send().await.map_err(net_err)?;
     let status = res.status();
     if !status.is_success() {
         return Err(DumpError::Http(status.as_u16()));
+    }
+    if res.content_length().is_some_and(|n| n > max_bytes) {
+        return Err(too_big());
     }
     let mut out = tokio::fs::File::create(part)
         .await
@@ -143,8 +175,11 @@ async fn download_to(
     let mut chunks = res.bytes_stream();
     while let Some(chunk) = chunks.next().await {
         let chunk = chunk.map_err(net_err)?;
-        hasher.update(&chunk);
         total += chunk.len() as u64;
+        if total > max_bytes {
+            return Err(too_big());
+        }
+        hasher.update(&chunk);
         out.write_all(&chunk)
             .await
             .map_err(|e| io_err("write .part", e))?;
@@ -154,14 +189,40 @@ async fn download_to(
     Ok((hex::encode(hasher.finalize()), total))
 }
 
-/// Downloads every manifest file under `base_url` into `dest`, verifying each SHA-256.
-///
-/// Stops at the first error; completed files stay, and no `.part` file is left behind.
+/// Removes leftover `*.part` files of an interrupted run.
+async fn remove_stale_parts(dest: &Path) -> Result<(), DumpError> {
+    let mut rd = tokio::fs::read_dir(dest)
+        .await
+        .map_err(|e| io_err("read dest", e))?;
+    while let Some(entry) = rd.next_entry().await.map_err(|e| io_err("read dest", e))? {
+        if entry.file_name().to_string_lossy().ends_with(".part") {
+            let _ = tokio::fs::remove_file(entry.path()).await;
+        }
+    }
+    Ok(())
+}
+
+/// [`fetch_syzygy_with`] with the default [`FetchLimits`].
 pub async fn fetch_syzygy(
     client: &reqwest::Client,
     base_url: &str,
     manifest: &Manifest,
     dest: &Path,
+) -> Result<FetchSummary, DumpError> {
+    fetch_syzygy_with(client, base_url, manifest, dest, FetchLimits::default()).await
+}
+
+/// Downloads every manifest file under `base_url` into `dest`, verifying each SHA-256.
+///
+/// Stops at the first error; completed files stay, and no `.part` file is left behind (stale
+/// ones from an interrupted run are removed at the start). Redirects are followed by reqwest;
+/// that is safe because every byte is checked against the pinned SHA-256 before the rename.
+pub async fn fetch_syzygy_with(
+    client: &reqwest::Client,
+    base_url: &str,
+    manifest: &Manifest,
+    dest: &Path,
+    limits: FetchLimits,
 ) -> Result<FetchSummary, DumpError> {
     // Validate every name first, so a bad manifest makes no request and writes nothing.
     for e in manifest.entries() {
@@ -170,21 +231,37 @@ pub async fn fetch_syzygy(
     tokio::fs::create_dir_all(dest)
         .await
         .map_err(|e| io_err("create dest", e))?;
+    remove_stale_parts(dest).await?;
     let base = base_url.trim_end_matches('/');
     let mut summary = FetchSummary::default();
     for e in manifest.entries() {
         let name = dest_name(&e.file)?;
         let target: PathBuf = dest.join(name);
+        let started = Instant::now();
         let existing = sha_of_file(&target)
             .await
             .map_err(|err| io_err("hash existing file", err))?;
+        if existing.is_some() {
+            summary.rehash += started.elapsed();
+        }
         if existing.as_deref() == Some(e.sha256.as_str()) {
             summary.skipped += 1;
             continue;
         }
         let part = dest.join(format!("{name}.part"));
         let url = format!("{base}/{}", e.file);
-        let (actual, bytes) = match download_to(client, &url, &part).await {
+        let fetched = tokio::time::timeout(
+            limits.file_timeout,
+            download_to(client, &url, &part, limits.max_file_bytes),
+        )
+        .await
+        .unwrap_or_else(|_| {
+            Err(DumpError::Transport(format!(
+                "{url} timed out after {:?}",
+                limits.file_timeout
+            )))
+        });
+        let (actual, bytes) = match fetched {
             Ok(v) => v,
             Err(err) => {
                 let _ = tokio::fs::remove_file(&part).await;
@@ -198,23 +275,13 @@ pub async fn fetch_syzygy(
                 actual,
             });
         }
-        tokio::fs::rename(&part, &target)
-            .await
-            .map_err(|err| io_err("rename .part", err))?;
+        if let Err(err) = tokio::fs::rename(&part, &target).await {
+            let _ = tokio::fs::remove_file(&part).await;
+            return Err(io_err("rename .part", err));
+        }
         tracing::info!(file = %e.file, bytes, "syzygy file verified");
         summary.files += 1;
         summary.bytes += bytes;
     }
     Ok(summary)
-}
-
-/// The HTTP client for the tablebase mirror. Always the anonymous project User-Agent, never one
-/// carrying `CONTACT_EMAIL` (data-fetch rule).
-pub fn http_client() -> Result<reqwest::Client, reqwest::Error> {
-    let _ = rustls::crypto::ring::default_provider().install_default();
-    reqwest::Client::builder()
-        .user_agent(crate::config::ANONYMOUS_USER_AGENT)
-        .connect_timeout(crate::config::CONNECT_TIMEOUT)
-        .read_timeout(crate::config::READ_TIMEOUT)
-        .build()
 }

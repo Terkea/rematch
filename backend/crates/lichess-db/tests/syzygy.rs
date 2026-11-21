@@ -3,9 +3,9 @@
 
 use std::path::{Path, PathBuf};
 
+use lichess_db::config::http_client;
 use lichess_db::download::DumpError;
-use lichess_db::syzygy::http_client;
-use lichess_db::syzygy::{Manifest, fetch_syzygy};
+use lichess_db::syzygy::{FetchLimits, Manifest, fetch_syzygy, fetch_syzygy_with};
 use sha2::{Digest, Sha256};
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -209,4 +209,133 @@ async fn unsafe_manifest_names_are_rejected_before_any_request() {
         .unwrap_err();
     assert!(matches!(err, DumpError::Decode(_)), "{err:?}");
     assert!(server.received_requests().await.unwrap().is_empty());
+}
+
+/// Runs the real CLI with CONTACT_EMAIL set and checks the header it sends.
+async fn cli_user_agents(args: Vec<String>) -> Vec<String> {
+    let server = MockServer::start().await; // every path 404s; only the headers matter
+    let mut args = args;
+    args.push("--base-url".into());
+    args.push(server.uri());
+    tokio::task::spawn_blocking(move || {
+        std::process::Command::new(env!("CARGO_BIN_EXE_lichess-db"))
+            .args(&args)
+            .env("CONTACT_EMAIL", "someone@example.com")
+            .output()
+            .unwrap()
+    })
+    .await
+    .unwrap();
+    server
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .map(|r| {
+            r.headers
+                .get("user-agent")
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .to_owned()
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn contact_email_never_reaches_the_cli_user_agent() {
+    let dest = tempdir("cli");
+    let syz = cli_user_agents(vec![
+        "syzygy".into(),
+        "--dest".into(),
+        dest.display().to_string(),
+    ])
+    .await;
+    let scan = cli_user_agents(vec!["scan".into(), "--month".into(), "2026-10".into()]).await;
+    assert!(!syz.is_empty() && !scan.is_empty());
+    for ua in syz.iter().chain(&scan) {
+        assert_eq!(ua, "chess-improver-ci (+https://github.com/chess-improver)");
+        assert!(!ua.contains('@'));
+    }
+}
+
+#[tokio::test]
+async fn an_oversized_file_is_aborted_and_deleted() {
+    let server = MockServer::start().await;
+    serve(&server, "/3-4-5-wdl/KPvK.rtbw", &[7u8; 4096]).await;
+    let dest = tempdir("big");
+    let client = http_client().unwrap();
+    let m = Manifest::parse(&format!("{}  3-4-5-wdl/KPvK.rtbw\n", sha(A)));
+    let limits = FetchLimits {
+        max_file_bytes: 1024,
+        ..FetchLimits::default()
+    };
+    let err = fetch_syzygy_with(&client, &server.uri(), &m, &dest, limits)
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, DumpError::Decode(ref m) if m.contains("exceeds")),
+        "{err:?}"
+    );
+    assert!(names(&dest).is_empty(), "left {:?}", names(&dest));
+}
+
+#[tokio::test]
+async fn a_slow_file_times_out_and_leaves_nothing() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/3-4-5-wdl/KPvK.rtbw"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_bytes(A.to_vec())
+                .set_delay(std::time::Duration::from_secs(5)),
+        )
+        .mount(&server)
+        .await;
+    let dest = tempdir("slow");
+    let client = http_client().unwrap();
+    let m = Manifest::parse(&format!("{}  3-4-5-wdl/KPvK.rtbw\n", sha(A)));
+    let limits = FetchLimits {
+        file_timeout: std::time::Duration::from_millis(200),
+        ..FetchLimits::default()
+    };
+    let err = fetch_syzygy_with(&client, &server.uri(), &m, &dest, limits)
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, DumpError::Transport(ref m) if m.contains("timed out")),
+        "{err:?}"
+    );
+    assert!(names(&dest).is_empty());
+}
+
+#[tokio::test]
+async fn stale_part_files_are_removed_at_start() {
+    let server = MockServer::start().await;
+    serve(&server, "/3-4-5-wdl/KPvK.rtbw", A).await;
+    let dest = tempdir("stalepart");
+    std::fs::write(dest.join("OLD.rtbw.part"), b"half").unwrap();
+    let client = http_client().unwrap();
+    let m = Manifest::parse(&format!("{}  3-4-5-wdl/KPvK.rtbw\n", sha(A)));
+    fetch_syzygy(&client, &server.uri(), &m, &dest)
+        .await
+        .unwrap();
+    assert_eq!(names(&dest), ["KPvK.rtbw"]);
+}
+
+#[tokio::test]
+async fn rerun_reports_rehash_time() {
+    let server = MockServer::start().await;
+    serve(&server, "/3-4-5-wdl/KPvK.rtbw", A).await;
+    let dest = tempdir("rehash");
+    let client = http_client().unwrap();
+    let m = Manifest::parse(&format!("{}  3-4-5-wdl/KPvK.rtbw\n", sha(A)));
+    fetch_syzygy(&client, &server.uri(), &m, &dest)
+        .await
+        .unwrap();
+    let s = fetch_syzygy(&client, &server.uri(), &m, &dest)
+        .await
+        .unwrap();
+    assert_eq!(s.skipped, 1);
+    assert!(s.rehash > std::time::Duration::ZERO);
 }

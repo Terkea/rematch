@@ -7,7 +7,7 @@ use futures::StreamExt;
 use lichess_db::config::{DEFAULT_BASE_URL, DumpSource, data_dir, http_client, is_valid_month};
 use lichess_db::download::{drain_to_end, fetch_expected_sha, open_dump};
 use lichess_db::sample::{SampleFilter, Sampler};
-use lichess_db::syzygy::{self, DEFAULT_SYZYGY_BASE_URL, Manifest, fetch_syzygy};
+use lichess_db::syzygy::{DEFAULT_SYZYGY_BASE_URL, Manifest, fetch_syzygy};
 use tracing_subscriber::EnvFilter;
 
 #[derive(Debug, Parser)]
@@ -47,10 +47,11 @@ async fn syzygy(args: SyzygyArgs) -> anyhow::Result<()> {
     let dest = args.dest.unwrap_or_else(|| data_dir().join("syzygy"));
     let s = fetch_syzygy(&client, &args.base_url, &Manifest::pinned(), &dest).await?;
     println!(
-        "syzygy: {} files downloaded ({} bytes), {} already present, in {}",
+        "syzygy: {} files downloaded ({} bytes), {} already present (rehash {:.1?}), in {}",
         s.files,
         s.bytes,
         s.skipped,
+        s.rehash,
         dest.display()
     );
     Ok(())
@@ -80,7 +81,7 @@ fn parse_month(s: &str) -> Result<String, String> {
 const PROGRESS_EVERY: u64 = 1_000_000;
 
 async fn scan(args: ScanArgs) -> anyhow::Result<()> {
-    let client = syzygy::http_client()?;
+    let client = http_client()?;
     let src = DumpSource::new(args.base_url, args.month);
     let expected = fetch_expected_sha(&client, &src).await?;
     let (mut games, sha) = open_dump(&client, &src).await?;
