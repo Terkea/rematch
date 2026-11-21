@@ -14,8 +14,14 @@
 
 use super::dataset::openings;
 use chess_core::Color;
+use chess_core::board::Position;
 use chess_core::fen::fen_key;
 use sha2::{Digest, Sha256};
+
+pub use coaching_input::LineSide;
+
+/// The brief's name for the contract's [`LineSide`]: one type, `chosen` / `faced`.
+pub type LineKind = LineSide;
 
 /// Maximum slug length in a line key, hash suffix included (R-7).
 pub const LINE_SLUG_MAX_CHARS: usize = 40;
@@ -23,55 +29,68 @@ pub const LINE_SLUG_MAX_CHARS: usize = 40;
 /// Hex digits of `sha256(full slug)` appended to a cut slug.
 pub const LINE_SLUG_HASH_CHARS: usize = 6;
 
-/// The deepest named position a game reached.
+/// The deepest named position a game reached, and where its line was entered.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Classified {
     pub eco: String,
     pub name: String,
     pub fen_key: String,
-    /// 1-based ply of the move that reached the position.
+    /// 1-based ply of the move that reached the deepest named position.
     pub ply: u32,
-    /// The side that played that move (the line's entry mover, see [`line_kind`]).
+    /// The side that played the deepest ply. This is not the line's entry mover: use
+    /// [`Classified::entry_mover`] with [`line_kind`].
     pub mover: Color,
-}
-
-/// Whether the player steered into the line (`Chosen`) or the opponent did (`Faced`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum LineKind {
-    Chosen,
-    Faced,
-}
-
-impl LineKind {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            LineKind::Chosen => "chosen",
-            LineKind::Faced => "faced",
-        }
-    }
+    /// 1-based ply of the first named position whose [`line_family`] equals the deepest
+    /// name's family: the move that entered the line (`5...a6` for any Najdorf).
+    pub entry_ply: u32,
+    /// The side that played [`Classified::entry_ply`].
+    pub entry_mover: Color,
 }
 
 /// The deepest named position among `plies` (`(fen_after, mover)` per ply, in game order), or
-/// `None` when no ply reaches one (the start position is not named). Clocks in the FENs are
-/// ignored.
+/// `None` when no ply reaches one (the start position is not named).
+///
+/// Each FEN is normalised through `Position::from_fen(..).fen()` before keying, so clocks are
+/// ignored and an en-passant square is kept only when a capture is legal, whatever the source
+/// printed (an unparsable FEN is keyed as given). Plies are numbered from 1 in slice order: for
+/// a game from a custom start, ply 1 is the first move after that start.
 pub fn classify_opening(plies: &[(String, Color)]) -> Option<Classified> {
     let book = openings();
-    plies
+    let named: Vec<Option<(String, &super::dataset::OpeningName)>> = plies
         .iter()
-        .enumerate()
-        .rev()
-        .find_map(|(index, (fen, mover))| {
-            let key = fen_key(fen);
-            let named = book.get(&key)?;
-            Some(Classified {
-                eco: named.eco.clone(),
-                name: named.name.clone(),
-                fen_key: key,
-                ply: u32::try_from(index + 1).unwrap_or(u32::MAX),
-                mover: *mover,
-            })
+        .map(|(fen, _)| {
+            let key = normalised_key(fen);
+            book.get(&key).map(|o| (key, o))
         })
+        .collect();
+    let deepest = named.iter().rposition(Option::is_some)?;
+    let (key, o) = named.get(deepest)?.as_ref()?;
+    let family = line_family(&o.name);
+    let entry = named
+        .iter()
+        .position(|n| {
+            n.as_ref()
+                .is_some_and(|(_, e)| line_family(&e.name) == family)
+        })
+        .unwrap_or(deepest);
+    let ply_of = |i: usize| u32::try_from(i + 1).unwrap_or(u32::MAX);
+    let mover_of = |i: usize| plies.get(i).map_or(Color::White, |(_, m)| *m);
+    Some(Classified {
+        eco: o.eco.clone(),
+        name: o.name.clone(),
+        fen_key: key.clone(),
+        ply: ply_of(deepest),
+        mover: mover_of(deepest),
+        entry_ply: ply_of(entry),
+        entry_mover: mover_of(entry),
+    })
+}
+
+fn normalised_key(fen: &str) -> String {
+    match Position::from_fen(fen) {
+        Ok(p) => fen_key(&p.fen()),
+        Err(_) => fen_key(fen),
+    }
 }
 
 /// The line a name belongs to: the text before the first `,`
@@ -88,12 +107,13 @@ pub fn line_key(color: Color, name: &str) -> String {
     format!("{}:{}", color.as_str(), capped(&slug(line_family(name))))
 }
 
-/// `Chosen` when the player made the move that entered the line, else `Faced`.
-pub fn line_kind(entry_mover: Color, player: Color) -> LineKind {
+/// `Chosen` when the player made the move that entered the line
+/// ([`Classified::entry_mover`]), else `Faced`.
+pub fn line_kind(entry_mover: Color, player: Color) -> LineSide {
     if entry_mover == player {
-        LineKind::Chosen
+        LineSide::Chosen
     } else {
-        LineKind::Faced
+        LineSide::Faced
     }
 }
 

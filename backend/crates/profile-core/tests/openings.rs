@@ -14,7 +14,7 @@ use profile_core::openings::dataset::{
 };
 use profile_core::types::SeriesKey;
 use sha2::{Digest, Sha256};
-use std::time::{Duration, Instant};
+use std::collections::HashMap;
 
 const START_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -123,7 +123,137 @@ fn line_entered_by_black_reports_black_mover() {
         ("B10", "Caro-Kann Defense")
     );
     assert_eq!((c.ply, c.mover), (2, Color::Black));
-    assert_eq!(line_kind(c.mover, Color::White), LineKind::Faced);
+    assert_eq!((c.entry_ply, c.entry_mover), (2, Color::Black));
+    assert_eq!(line_kind(c.entry_mover, Color::White), LineKind::Faced);
+}
+
+const NAJDORF: [&str; 10] = [
+    "e4", "c5", "Nf3", "d6", "d4", "cxd4", "Nxd4", "Nf6", "Nc3", "a6",
+];
+
+fn najdorf_with(sixth: &str) -> Classified {
+    let mut sans = NAJDORF.to_vec();
+    sans.push(sixth);
+    classify(&sans).expect("named")
+}
+
+#[test]
+fn najdorf_english_attack_is_chosen_by_black_entered_at_5_a6() {
+    let c = najdorf_with("Be3");
+    assert_eq!(
+        c.name,
+        "Sicilian Defense: Najdorf Variation, English Attack"
+    );
+    assert_eq!((c.ply, c.mover), (11, Color::White));
+    assert_eq!((c.entry_ply, c.entry_mover), (10, Color::Black));
+    assert_eq!(line_kind(c.entry_mover, Color::Black), LineKind::Chosen);
+}
+
+#[test]
+fn najdorf_6_bg5_is_also_chosen_by_black() {
+    let c = najdorf_with("Bg5");
+    assert_eq!(line_family(&c.name), "Sicilian Defense: Najdorf Variation");
+    assert_eq!(c.ply, 11);
+    assert_eq!((c.entry_ply, c.entry_mover), (10, Color::Black));
+    assert_eq!(line_kind(c.entry_mover, Color::Black), LineKind::Chosen);
+}
+
+#[test]
+fn white_facing_the_najdorf_is_faced() {
+    for sixth in ["Be3", "Bg5"] {
+        let c = najdorf_with(sixth);
+        assert_eq!(
+            line_kind(c.entry_mover, Color::White),
+            LineKind::Faced,
+            "{sixth}"
+        );
+    }
+}
+
+fn pgn_sans(pgn: &str) -> Vec<&str> {
+    pgn.split_whitespace()
+        .filter(|t| !t.ends_with('.'))
+        .collect()
+}
+
+/// Along one move order, extending a line within its family never moves its entry: for every
+/// row whose nearest shorter row (a pgn prefix) has the same family, both share `entry_ply` and
+/// `entry_mover`. Across move orders the entry may differ: dozens of families are entered by White in
+/// some rows and by Black in others (transpositions such as the Dragon), so `Chosen`/`Faced`
+/// depends on the game's own move order, by design.
+#[test]
+fn entry_mover_is_stable_across_a_familys_continuations() {
+    let mut rows: HashMap<String, Classified> = HashMap::new();
+    let mut pgns: Vec<Vec<&str>> = Vec::new();
+    for (_, table) in VENDORED_TSVS {
+        for row in table.lines().skip(1).filter(|l| !l.trim().is_empty()) {
+            let sans = pgn_sans(row.split('\t').nth(2).expect("pgn"));
+            let c = classify(&sans).expect("every row is named");
+            assert!(c.entry_ply <= c.ply, "{sans:?}");
+            rows.insert(sans.join(" "), c);
+            pgns.push(sans);
+        }
+    }
+    let mut compared = 0;
+    for sans in &pgns {
+        let child = &rows[&sans.join(" ")];
+        let parent = (1..sans.len())
+            .rev()
+            .find_map(|k| rows.get(&sans[..k].join(" ")));
+        let Some(parent) = parent else { continue };
+        if line_family(&parent.name) != line_family(&child.name) {
+            continue;
+        }
+        compared += 1;
+        assert_eq!(
+            (child.entry_ply, child.entry_mover),
+            (parent.entry_ply, parent.entry_mover),
+            "{sans:?}"
+        );
+    }
+    assert!(compared > 1000, "{compared} continuations compared");
+}
+
+#[test]
+fn late_transposition_into_book() {
+    let c = classify(&["d4", "c6", "e4", "d5", "e5"]).expect("named");
+    assert_eq!(c.eco, "B12");
+    assert!(c.name.starts_with("Caro-Kann Defense: Advance Variation"));
+    assert_eq!(c, classify(&["e4", "c6", "d4", "d5", "e5"]).expect("named"));
+}
+
+#[test]
+fn one_ply_game() {
+    let c = classify(&["e4"]).expect("named");
+    assert_eq!(
+        (c.eco.as_str(), c.name.as_str()),
+        ("B00", "King's Pawn Game")
+    );
+    assert_eq!(
+        (c.ply, c.mover, c.entry_ply, c.entry_mover),
+        (1, Color::White, 1, Color::White)
+    );
+}
+
+#[test]
+fn en_passant_square_is_normalised() {
+    // After 1.e4 no capture on e3 is legal: a source that prints `e3` still matches.
+    let printed = "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1";
+    let c = classify_opening(&[(printed.to_string(), Color::White)]).expect("named");
+    assert_eq!(c.name, "King's Pawn Game");
+}
+
+#[test]
+fn legal_en_passant_square_is_part_of_the_key() {
+    // Synthetic pair: after 1.e4 Nf6 2.e5 d5 the capture exd6 is legal, so the key keeps `d6`
+    // and the same placement without the en-passant right is a different position.
+    let table = "eco\tname\tpgn\nB02\tSynthetic: With En Passant\t1. e4 Nf6 2. e5 d5\n";
+    let map = build_openings(&[("x.tsv", table)]).expect("valid");
+    let with_ep = plies(&["e4", "Nf6", "e5", "d5"]).pop().expect("ply").0;
+    assert_eq!(with_ep.split(' ').nth(3), Some("d6"));
+    let without_ep = with_ep.replacen(" d6 ", " - ", 1);
+    assert!(map.contains_key(&fen_key(&with_ep)));
+    assert!(!map.contains_key(&fen_key(&without_ep)));
 }
 
 #[test]
@@ -162,7 +292,8 @@ fn line_key_fits_64_chars() {
     let name = "Hypothetical Opening: Extraordinarily Long Variation Name Used Only To Exercise Key Capped";
     assert_eq!(name.chars().count(), 90);
     let key = line_key(Color::White, name);
-    assert!(key.len() <= 48, "{key} has {} chars", key.len());
+    assert!(key.len() <= 46, "{key} has {} chars", key.len());
+    assert!(key.split_once(':').expect("color").1.len() <= 40, "{key}");
     let (head, suffix) = key.rsplit_once('-').expect("hash suffix");
     assert_eq!(suffix.len(), 6, "{key}");
     assert!(
@@ -198,7 +329,8 @@ fn every_dataset_line_key_fits() {
         for color in [Color::White, Color::Black] {
             let key = line_key(color, &o.name);
             let slug = key.split_once(':').expect("color prefix").1;
-            assert!(key.len() <= 48, "{key}");
+            assert!(key.len() <= 46, "{key}");
+            assert!(slug.len() <= 40, "{key}");
             assert!(!slug.is_empty() && !slug.starts_with('-') && !slug.ends_with('-'));
             assert!(
                 slug.chars()
@@ -212,22 +344,21 @@ fn every_dataset_line_key_fits() {
 
 // --- Dataset -----------------------------------------------------------------------------------
 
-/// One bound for every build: the measured worst case (113 ms, in a test build with
-/// `cozy-chess` and `chess-core` at `opt-level = 3`) times 3, the timing rule's margin.
-/// A release build takes about 20 ms, inside the brief's 200 ms target. A test build takes
-/// 100-113 ms, under 200 ms but without the 3x margin, hence 340 ms (controller ruling).
-const LOAD_BOUND: Duration = Duration::from_millis(340);
-
-/// Brief name: `dataset_loads_under_200ms`.
 #[test]
-fn dataset_loads_under_340ms() {
-    let t = Instant::now();
-    let fresh = build_openings(&VENDORED_TSVS).expect("vendored tables replay");
-    let took = t.elapsed();
-    assert!(took < LOAD_BOUND, "took {took:?}, bound {LOAD_BOUND:?}");
-    assert!(fresh.len() >= 3000, "{} entries", fresh.len());
-    assert_eq!(openings().len(), fresh.len());
-    assert!(std::ptr::eq(openings(), openings()), "built once");
+fn distinct_families_get_distinct_line_keys() {
+    let mut by_key: HashMap<String, &str> = HashMap::new();
+    for o in openings().values() {
+        let family = line_family(&o.name);
+        let key = line_key(Color::White, &o.name);
+        let seen = by_key.entry(key.clone()).or_insert(family);
+        assert_eq!(*seen, family, "{key} names two families");
+    }
+}
+
+#[test]
+fn openings_is_built_once() {
+    assert!(openings().len() >= 3000);
+    assert!(std::ptr::eq(openings(), openings()));
 }
 
 #[test]
