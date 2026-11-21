@@ -1,15 +1,38 @@
-import { type Db, games, type ImportCursor, importRuns, linkedAccounts, upsertGame } from "@ci/db";
+import {
+  type Db,
+  games,
+  type ImportCursor,
+  type ImportErrorCode,
+  importRuns,
+  linkedAccounts,
+  upsertGame,
+} from "@ci/db";
 import { UnrecoverableError } from "bullmq";
 import { eq, max } from "drizzle-orm";
 import type { PublishFn } from "../events/publish.js";
-import { type CircuitBreaker, withCircuitBreaker } from "../http/circuit-breaker.js";
-import type { PlatformClient } from "../http/platform-client.js";
+import {
+  type CircuitBreaker,
+  CircuitOpenError,
+  withCircuitBreaker,
+} from "../http/circuit-breaker.js";
+import {
+  type PlatformClient,
+  PlatformNotFoundError,
+  PlatformRateLimitError,
+  PlatformTimeoutError,
+} from "../http/platform-client.js";
 import type { fetchChesscomGames } from "../importers/chesscom.js";
 import type { fetchLichessGames } from "../importers/lichess.js";
 import type { NormalizedGame } from "../importers/types.js";
 import { log as defaultLog, errorMessage, type Logger } from "../log.js";
 import type { ImportAccountPayload } from "../queue/queues.js";
 import { isFinalAttempt, type JobAttempt } from "./analyse-game.js";
+import {
+  abortable,
+  createDeadline,
+  IMPORT_IDLE_DEADLINE_MS,
+  JobDeadlineError,
+} from "./deadline.js";
 
 export type { ImportCursor } from "@ci/db";
 
@@ -29,7 +52,26 @@ export interface ImportAccountDeps {
   checkpointEvery?: number;
   /** ...or after this long since the last checkpoint (default 15 s), whichever comes first. */
   checkpointMs?: number;
+  /** Abandon the run after this long without a streamed game (default 30 minutes). */
+  idleDeadlineMs?: number;
+  /**
+   * Lichess lists a game by its creation time, so a correspondence game that finishes after a
+   * newer one was imported would sit below the watermark for ever. Incremental Lichess passes
+   * therefore re-fetch this many days below `newestSeenAt` (default 30; upserts make it free).
+   */
+  lichessSinceLookbackDays?: number;
   log?: Logger;
+}
+
+const DAY_MS = 24 * 3600 * 1000;
+
+/** Maps a failure to the stable code stored on `import_runs.error_code`. */
+export function importErrorCode(err: unknown): ImportErrorCode {
+  if (err instanceof PlatformNotFoundError) return "not_found";
+  if (err instanceof PlatformRateLimitError) return "rate_limited";
+  if (err instanceof PlatformTimeoutError || err instanceof JobDeadlineError) return "timeout";
+  if (err instanceof CircuitOpenError) return "circuit_open";
+  return "unknown";
 }
 
 const MAX_ERROR_LENGTH = 2000;
@@ -91,6 +133,10 @@ export async function handleImportAccount(
       : deps.importers.chesscom(client, account.username, opts);
   };
 
+  const lookbackMs = platform === "lichess" ? (deps.lichessSinceLookbackDays ?? 30) * DAY_MS : 0;
+  /** The lower bound for a pass that starts at the watermark. */
+  const sinceOf = (newestSeenAt: string) => new Date(new Date(newestSeenAt).getTime() - lookbackMs);
+
   let cursor: ImportCursor = { ...EMPTY_CURSOR, ...account.importCursor };
   let imported = 0;
   let skipped = 0;
@@ -113,8 +159,23 @@ export async function handleImportAccount(
     await publish("import.progress", { runId: run.id, imported });
   };
 
+  const idleMs = deps.idleDeadlineMs ?? IMPORT_IDLE_DEADLINE_MS;
+  const deadline = createDeadline("import-account", idleMs);
+
   const runPass = async (range: { since?: Date; until?: Date }) => {
-    for await (const g of fetchGames(range)) {
+    const it = fetchGames(range)[Symbol.asyncIterator]();
+    for (;;) {
+      let next: IteratorResult<NormalizedGame>;
+      try {
+        next = await abortable(it.next(), deadline.signal);
+      } catch (err) {
+        // Do not await: a stream stuck in an await cannot run its cleanup until it wakes.
+        void it.return?.()?.catch(() => {});
+        throw err;
+      }
+      if (next.done) break;
+      deadline.reset();
+      const g = next.value;
       const playerColor =
         g.white.name.toLowerCase() === username
           ? "white"
@@ -174,12 +235,17 @@ export async function handleImportAccount(
     if (cursor.oldestReached) {
       await runPass({
         until: new Date(cursor.oldestReached),
-        ...(cursor.newestSeenAt ? { since: new Date(cursor.newestSeenAt) } : {}),
+        ...(cursor.newestSeenAt ? { since: sinceOf(cursor.newestSeenAt) } : {}),
       });
     }
-    await runPass(cursor.newestSeenAt ? { since: new Date(cursor.newestSeenAt) } : {});
+    await runPass(cursor.newestSeenAt ? { since: sinceOf(cursor.newestSeenAt) } : {});
   } catch (err) {
+    deadline.clear();
     const message = errorMessage(err).slice(0, MAX_ERROR_LENGTH);
+    const errorCode = importErrorCode(err);
+    // An open breaker is not this run failing: the job is delayed (not retried) and starts a
+    // new run once the platform is probed again.
+    const paused = err instanceof CircuitOpenError;
     try {
       // Keep the progress made: the retry resumes below the last committed game.
       if (frontier !== null) {
@@ -191,17 +257,24 @@ export async function handleImportAccount(
       }
       await db
         .update(importRuns)
-        .set({ status: "failed", imported, lastError: message, finishedAt: new Date() })
+        .set({
+          status: paused ? "paused" : "failed",
+          imported,
+          lastError: message,
+          errorCode,
+          finishedAt: new Date(),
+        })
         .where(eq(importRuns.id, run.id));
     } catch {
       // Keep the original error; the reconciler handles a run left "running".
     }
-    if (isFinalAttempt(attempt) && !(err instanceof UnrecoverableError)) {
+    if (!paused && isFinalAttempt(attempt) && !(err instanceof UnrecoverableError)) {
       await publish("job.failed", { kind: "import-account", runId: run.id, reason: message });
     }
     throw err;
   }
 
+  deadline.clear();
   const finishedAt = new Date();
   await db
     .update(importRuns)

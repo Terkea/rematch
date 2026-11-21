@@ -36,7 +36,16 @@ export const analysisStatusEnum = pgEnum("analysis_status", [
 export const evalSourceEnum = pgEnum("eval_source", ["stockfish", "lichess", "dump"]);
 export const judgementEnum = pgEnum("judgement", ["inaccuracy", "mistake", "blunder"]);
 export const phaseEnum = pgEnum("phase", ["opening", "middlegame", "endgame"]);
-export const importRunStatusEnum = pgEnum("import_run_status", ["running", "done", "failed"]);
+export const importRunStatusEnum = pgEnum("import_run_status", [
+  "running",
+  "done",
+  "failed",
+  // Stopped by an open circuit breaker; its job was delayed (not failed) and starts a new run.
+  "paused",
+]);
+
+/** Why an import run failed, from the typed platform errors. */
+export type ImportErrorCode = "not_found" | "rate_limited" | "timeout" | "circuit_open" | "unknown";
 
 /**
  * Import checkpoint on the account. Games stream newest first. `oldestReached` is the oldest
@@ -98,6 +107,8 @@ export const games = pgTable(
     analysisStartedAt: timestamp("analysis_started_at", { withTimezone: true }),
     heartbeatAt: timestamp("heartbeat_at", { withTimezone: true }),
     analysisAttempts: integer("analysis_attempts").notNull().default(0),
+    /** When the game last became pending; the reconciler leaves recently pending games alone. */
+    pendingSince: timestamp("pending_since", { withTimezone: true }).defaultNow(),
   },
   (t) => [
     unique("games_platform_game_uq").on(t.platform, t.platformGameId),
@@ -160,6 +171,7 @@ export const importRuns = pgTable(
     heartbeatAt: timestamp("heartbeat_at", { withTimezone: true }).notNull().defaultNow(),
     finishedAt: timestamp("finished_at", { withTimezone: true }),
     lastError: text("last_error"),
+    errorCode: text("error_code").$type<ImportErrorCode>(),
   },
   (t) => [
     index("import_runs_account_idx").on(t.accountId),

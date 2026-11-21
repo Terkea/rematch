@@ -89,4 +89,23 @@ describe.skipIf(!url && process.env.IN_DOCKER !== "1")("queues", () => {
     expect(schedulers).toHaveLength(1);
     expect(schedulers[0]?.every).toBe(RECONCILE_EVERY_MS);
   });
+
+  it("checks job liveness for many games in one pipelined round trip", async () => {
+    await queues.enqueueAnalyse("fin");
+    const worker = new Worker(queues.analyseGame.name, async () => {}, { connection, prefix });
+    try {
+      for (let i = 0; i < 200 && (await queues.analyseJobState("fin")) !== "completed"; i++) {
+        await new Promise((r) => setTimeout(r, 25));
+      }
+    } finally {
+      await worker.close();
+    }
+    await queues.enqueueAnalyse("still-waiting");
+    expect(await queues.analyseLiveness(["fin", "still-waiting", "never-enqueued"])).toEqual([
+      "finished",
+      "live",
+      "none",
+    ]);
+    expect(await queues.analyseLiveness([])).toEqual([]);
+  });
 });

@@ -7,6 +7,7 @@ import {
 } from "@ci/chess-core";
 import type { EnginePool } from "../engine/engine-pool.js";
 import { ANALYSIS_PROTOCOL, ENGINE_NODES } from "../engine/protocol.js";
+import { abortable } from "../jobs/deadline.js";
 import type { EvalCache, EvalCacheEntry } from "./eval-cache.js";
 
 export interface EvaluateGameDeps {
@@ -21,6 +22,8 @@ export interface EvaluateGameDeps {
    * calling it, which is what lets the reconciler spot a stuck analysis.
    */
   onProgress?: (done: number, total: number) => void | Promise<void>;
+  /** Aborting it (a job deadline) rejects the evaluation with the signal reason, even mid-search. */
+  signal?: AbortSignal;
 }
 
 /** Fixed white-POV score for a final position that is checkmate, stalemate or another draw. */
@@ -76,6 +79,7 @@ export async function evaluateGame(
     if (!misses.has(key)) misses.set(key, fens[i] as string);
   }
 
+  deps.signal?.throwIfAborted();
   // Persist Lichess evals first, then each engine result as soon as it resolves, so a failure or
   // crash midway keeps all completed work.
   await deps.cache.putMany([...puts.values()]);
@@ -92,7 +96,11 @@ export async function evaluateGame(
       if (!next) return;
       const [key, fen] = next;
       try {
-        const [line] = await deps.pool.analyse(fen, { nodes: ENGINE_NODES, multipv: 1 });
+        deps.signal?.throwIfAborted();
+        const [line] = await abortable(
+          deps.pool.analyse(fen, { nodes: ENGINE_NODES, multipv: 1 }),
+          deps.signal,
+        );
         if (!line) throw new Error(`Engine returned no analysis for ${fen}`);
         const blackToMove = fen.split(" ")[1] === "b";
         const ev: PositionEval = {

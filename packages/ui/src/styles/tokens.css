@@ -116,6 +116,23 @@
   --stagger-tight: 40ms;
   --stagger-base: 80ms;
   --stagger-pen: 120ms;
+
+  /* Overlay entrance and placement, mirrored in @ci/ui/motion (overlay). */
+  --enter-dialog-y: 8px;
+  --enter-dialog-scale: 0.98;
+  --enter-float-scale: 0.96;
+  --offset-float: 6px;
+}
+
+/* Hover moves one step down the tonal ladder (DESIGN.md, "Interaction states"): paper to sheet,
+ * and sheet to well. Surfaces that are sheet set the next step for everything inside them. */
+:root {
+  --surface-hover: var(--color-sheet);
+}
+
+.bg-sheet,
+[data-surface="sheet"] {
+  --surface-hover: var(--color-well);
 }
 
 /* Whole pixels per square where CSS round() exists. Before the breakpoints, which override it. */

@@ -108,26 +108,34 @@ export async function shutdown(
   return failed ? 1 : 0;
 }
 
-/** On SIGTERM/SIGINT, runs `shutdown` once (later signals are ignored) and exits with its code. */
+/**
+ * On SIGTERM/SIGINT, runs `shutdown` once (later signals are ignored) and exits with its code.
+ * Returns a trigger for shutting down from code (for example when startup fails after this was
+ * installed); `exitCode` then overrides a clean shutdown code.
+ */
 export function installGracefulShutdown(
   handles: ShutdownHandles,
   opts: ShutdownOptions = {},
-): void {
+): (reason: string, exitCode?: number) => void {
   const proc = opts.process ?? process;
   const exit = opts.exit ?? ((code: number) => process.exit(code));
   const log = opts.log ?? defaultLog;
   let running = false;
-  const onSignal = (signal: string) => () => {
+  const trigger = (reason: string, exitCode?: number) => {
     if (running) {
-      log.warn({ signal }, "shutdown already in progress");
+      log.warn({ reason }, "shutdown already in progress");
       return;
     }
     running = true;
-    log.info({ signal }, "shutting down");
-    void shutdown(handles, opts).then(exit, (err) => {
-      log.error({ err: errorMessage(err) }, "shutdown crashed");
-      exit(1);
-    });
+    log.info({ reason }, "shutting down");
+    void shutdown(handles, opts).then(
+      (code) => exit(Math.max(code, exitCode ?? 0)),
+      (err) => {
+        log.error({ err: errorMessage(err) }, "shutdown crashed");
+        exit(1);
+      },
+    );
   };
-  for (const s of opts.signals ?? ["SIGTERM", "SIGINT"]) proc.on(s, onSignal(s));
+  for (const s of opts.signals ?? ["SIGTERM", "SIGINT"]) proc.on(s, () => trigger(s));
+  return trigger;
 }
