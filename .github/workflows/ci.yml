@@ -46,3 +46,22 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm build
       - run: pnpm test
+  rust:
+    runs-on: ubuntu-latest
+    env:
+      CONTACT_EMAIL: ci@example.invalid
+      LANE: "0"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the Rust dev image
+        run: docker compose build rust-dev
+      - name: fmt, clippy, cargo-deny and tests
+        run: >-
+          docker compose run --rm rust-dev sh -c
+          "cargo fmt --check
+          && cargo clippy --workspace --all-targets -- -D warnings
+          && cargo deny check
+          && cargo test --workspace"
+      - name: Stop the stack
+        if: always()
+        run: docker compose down -v

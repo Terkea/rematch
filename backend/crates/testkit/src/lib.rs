@@ -1,0 +1,13 @@
+//! Shared test helpers (dev-dependency of every library crate).
+
+pub mod env;
+pub mod fake_engine;
+pub mod fake_platform;
+pub mod fixtures;
+pub mod seed;
+pub mod wait;
+
+pub use env::{in_docker, stockfish};
+pub use fixtures::fixture;
+pub use seed::{GameSeed, SCHOLARS, insert_account, insert_game};
+pub use wait::wait_for;

@@ -58,6 +58,30 @@ services:
       - db_node_modules:/app/packages/db/node_modules
       - pnpm_store:/pnpm-store
 
+  rust-dev:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      target: dev
+    working_dir: /work/backend
+    environment:
+      # Master connection for #[sqlx::test], which creates and drops one database per test.
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/chess_test
+      STOCKFISH_PATH: /usr/local/bin/stockfish
+      IN_DOCKER: "1"
+      CONTACT_EMAIL: ${CONTACT_EMAIL:?set CONTACT_EMAIL in .env}
+      # Each lane builds into its own target dir in the shared volume (LANE=<lane letter>).
+      CARGO_TARGET_DIR: /target/${LANE:-main}
+      RUST_LOG: warn
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - .:/work
+      - rust_target:/target
+      - cargo_registry:/usr/local/cargo/registry
+      - cargo_git:/usr/local/cargo/git
+
 volumes:
   pgdata:
   node_modules:
@@ -65,3 +89,6 @@ volumes:
   chess_core_node_modules:
   db_node_modules:
   pnpm_store:
+  rust_target:
+  cargo_registry:
+  cargo_git:
