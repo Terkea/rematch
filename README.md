@@ -24,9 +24,16 @@ docker compose run --rm worker pnpm lint
 ```
 
 Postgres and Redis are published on `127.0.0.1:55432` and `127.0.0.1:56379` (ADR 0023).
-`docker/postgres/init.sql` creates the `chess_test` database only on a fresh `pgdata` volume. On an
+`docker/postgres/init.sql` creates the `chess_test` and `chess_worker_test` databases only on a fresh `pgdata` volume. On an
 existing volume, create it once with:
 
 ```sh
 docker compose exec postgres psql -U postgres -c "CREATE DATABASE chess_test"
+```
+
+The worker's tests use their own database, `chess_worker_test` (`WORKER_DATABASE_URL_TEST`), so
+package test suites can run in parallel without truncating each other's rows. Likewise:
+
+```sh
+docker compose exec postgres psql -U postgres -c "CREATE DATABASE chess_worker_test"
 ```

@@ -3,7 +3,7 @@ import { sql } from "drizzle-orm";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { beforeAll, beforeEach } from "vitest";
 import { createDb } from "../src/client.js";
-import { assertSafeTestDatabase } from "./guard.js";
+import { assertSafeTestDatabase } from "../src/test-guard.js";
 
 const url = assertSafeTestDatabase(process.env.DATABASE_URL_TEST, process.env.DATABASE_URL);
 

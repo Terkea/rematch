@@ -133,7 +133,7 @@ describe("evaluateGame", () => {
     ]);
     expect(calls).toHaveLength(2); // start + ply 2
     expect(evals[1]?.score).toEqual({ cp: 20 });
-    expect(evals[2]?.score).toEqual({ cp: 30 }); // white to move after ply 2? black moved, so white to move
+    expect(evals[2]?.score).toEqual({ cp: 30 }); // white to move, engine score used as is
   });
 
   it("analyses duplicate positions once", async () => {
@@ -142,5 +142,35 @@ describe("evaluateGame", () => {
     const evals = await evaluateGame({ pool, cache: createMemoryEvalCache() }, game, null);
     expect(evals).toHaveLength(5);
     expect(calls).toHaveLength(4); // 5 positions, the final one repeats the start
+  });
+
+  it("flips mate scores at black-to-move positions", async () => {
+    const game = parsePgn("1. e4 *");
+    const { pool } = fakePool(() => ({ mate: 2 }));
+    const evals = await evaluateGame({ pool, cache: createMemoryEvalCache() }, game, null);
+    expect(evals[0]?.score).toEqual({ mate: 2 });
+    expect(evals[1]?.score).toEqual({ mate: -2 });
+  });
+
+  it("keeps completed positions when the engine fails midway and resumes from them", async () => {
+    const game = parsePgn("1. e4 e5 2. Nf3 Nc6 3. Bb5 *"); // 6 positions
+    const cache = createMemoryEvalCache();
+    let n = 0;
+    const failing = {
+      async analyse(): Promise<AnalysisLine[]> {
+        n++;
+        if (n === 4) throw new Error("engine died");
+        return [{ multipv: 1, score: { cp: 10 }, pv: [], depth: 1, nodes: 1 }];
+      },
+    };
+    await expect(
+      evaluateGame({ pool: failing, cache, concurrency: 1 }, game, null),
+    ).rejects.toThrow("engine died");
+    const keys = [game.startFen, ...game.plies.map((p) => p.fenAfter)].map(fenKey);
+    expect((await cache.getMany(keys, ANALYSIS_PROTOCOL)).size).toBe(3);
+    const { pool, calls } = fakePool();
+    const evals = await evaluateGame({ pool, cache }, game, null);
+    expect(evals).toHaveLength(6);
+    expect(calls).toHaveLength(3);
   });
 });

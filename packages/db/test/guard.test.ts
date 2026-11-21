@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertSafeTestDatabase } from "./guard.js";
+import { assertSafeTestDatabase } from "../src/test-guard.js";
 
 describe("assertSafeTestDatabase", () => {
   const test = "postgres://u:p@h:5432/chess_test";

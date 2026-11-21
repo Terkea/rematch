@@ -12,6 +12,8 @@ import type { EvalCache, EvalCacheEntry } from "./eval-cache.js";
 export interface EvaluateGameDeps {
   pool: Pick<EnginePool, "analyse">;
   cache: EvalCache;
+  /** Parallel engine requests (default 4). The pool queues beyond its own size. */
+  concurrency?: number;
 }
 
 /** Fixed white-POV score for a final position that is checkmate, stalemate or another draw. */
@@ -67,23 +69,42 @@ export async function evaluateGame(
     if (!misses.has(key)) misses.set(key, fens[i] as string);
   }
 
-  const analysed = new Map<string, PositionEval>();
-  await Promise.all(
-    [...misses].map(async ([key, fen]) => {
-      const [line] = await deps.pool.analyse(fen, { nodes: ENGINE_NODES, multipv: 1 });
-      if (!line) throw new Error(`Engine returned no analysis for ${fen}`);
-      const blackToMove = fen.split(" ")[1] === "b";
-      const ev: PositionEval = {
-        score: blackToMove ? flipScore(line.score) : line.score,
-        bestUci: line.pv[0] ?? null,
-        pv: line.pv,
-      };
-      analysed.set(key, ev);
-      puts.set(key, { fenKey: key, protocol: ANALYSIS_PROTOCOL, eval: ev, source: "stockfish" });
-    }),
-  );
-
+  // Persist Lichess evals first, then each engine result as soon as it resolves, so a failure or
+  // crash midway keeps all completed work.
   await deps.cache.putMany([...puts.values()]);
+
+  const analysed = new Map<string, PositionEval>();
+  const queue = [...misses];
+  let failure: unknown;
+  let failed = false;
+  const worker = async () => {
+    while (!failed) {
+      const next = queue.shift();
+      if (!next) return;
+      const [key, fen] = next;
+      try {
+        const [line] = await deps.pool.analyse(fen, { nodes: ENGINE_NODES, multipv: 1 });
+        if (!line) throw new Error(`Engine returned no analysis for ${fen}`);
+        const blackToMove = fen.split(" ")[1] === "b";
+        const ev: PositionEval = {
+          score: blackToMove ? flipScore(line.score) : line.score,
+          bestUci: line.pv[0] ?? null,
+          pv: line.pv,
+        };
+        analysed.set(key, ev);
+        await deps.cache.putMany([
+          { fenKey: key, protocol: ANALYSIS_PROTOCOL, eval: ev, source: "stockfish" },
+        ]);
+      } catch (err) {
+        if (!failed) failure = err;
+        failed = true;
+        return;
+      }
+    }
+  };
+  const n = Math.max(1, Math.min(deps.concurrency ?? 4, queue.length));
+  await Promise.all(Array.from({ length: n }, worker));
+  if (failed) throw failure;
 
   return result.map((r, i) => r ?? (analysed.get(keys[i] as string) as PositionEval));
 }

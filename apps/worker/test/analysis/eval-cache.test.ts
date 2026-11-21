@@ -1,12 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { fileURLToPath } from "node:url";
-import { createDb } from "@ci/db";
-import { sql } from "drizzle-orm";
-import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { describe, expect, it } from "vitest";
 import { createDbEvalCache, createMemoryEvalCache } from "../../src/analysis/eval-cache.js";
-
-const url = process.env.DATABASE_URL_TEST;
+import { getWorkerTestDb, workerTestDbConfigured } from "../db.js";
 
 function suite(make: () => Promise<ReturnType<typeof createMemoryEvalCache>>) {
   it("round-trips cp and mate scores for the right protocol only", async () => {
@@ -50,17 +45,11 @@ function suite(make: () => Promise<ReturnType<typeof createMemoryEvalCache>>) {
 
 describe("memory eval cache", () => suite(async () => createMemoryEvalCache()));
 
-describe.skipIf(!url)("db eval cache", () => {
+// Inside Docker this suite must fail, not skip, when the test database is not configured.
+describe.skipIf(!workerTestDbConfigured())("db eval cache", () => {
   suite(async () => {
-    const db = createDb(url as string);
-    const exists = await db.execute(sql`select to_regclass('public.position_evals') as t`);
-    if (!exists[0]?.t) {
-      await migrate(db, {
-        migrationsFolder: fileURLToPath(
-          new URL("../../../../packages/db/drizzle", import.meta.url),
-        ),
-      });
-    }
+    const db = await getWorkerTestDb();
+    if (!db) throw new Error("worker test database unavailable");
     return createDbEvalCache(db);
   });
 });

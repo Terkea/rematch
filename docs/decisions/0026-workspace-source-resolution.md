@@ -9,7 +9,7 @@ Status: Accepted
 
 ## Decision
 
-Each workspace package's `exports["."]` is `{ "types": "./src/index.ts", "development": "./src/index.ts", "default": "./dist/index.js" }`. `tsconfig.base.json` sets `customConditions: ["development"]`, Vitest resolves the `development` condition, and the worker `dev` script runs tsx with `--conditions=development`. Production builds still emit `dist` and consumers without the condition use it. Biome excludes `**/test/fixtures/**` so recorded API data is never reformatted.
+Each workspace package's `exports["."]` lists a `development` condition first (`{ types, default }`, both `./src/index.ts`), then `types: ./dist/index.d.ts` and `default: ./dist/index.js`. `tsconfig.base.json` sets `customConditions: ["development"]`; each `tsconfig.build.json` resets it to `[]`, so production builds resolve declarations and runtime from `dist` and never pull foreign source outside `rootDir`. Builds run in dependency order via turbo's `^build`. Vitest resolves `development` by default, and the worker `dev` script runs tsx with `--conditions=development`. `test` and `typecheck` do not depend on `^build`, so a missing prebuild cannot be hidden.
 
 ## Alternatives considered
 
