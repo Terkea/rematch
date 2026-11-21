@@ -58,7 +58,12 @@ export function rangeFraction(iso: string, range: WeaknessTimelineProps["range"]
 
 const pc = (f: number) => `${(f * 100).toFixed(3)}%`;
 
-/** The text alternative of one lane: every state in order, then the onset. */
+/** "Estimated onset 10 Apr 2026, between 28 Mar 2026 and 24 Apr 2026." */
+export function onsetText(onset: NonNullable<TimelineSeries["onset"]>): string {
+  return `Estimated onset ${formatDate(onset.date)}, between ${formatDate(onset.low)} and ${formatDate(onset.high)}.`;
+}
+
+/** A one-paragraph summary of a lane (every state in order, then the onset), for use outside the grid. */
 export function seriesText(s: TimelineSeries): string {
   const sorted = [...s.segments].sort((x, y) => day(x.from) - day(y.from));
   const parts = sorted.map((seg, i) => {
@@ -67,9 +72,7 @@ export function seriesText(s: TimelineSeries): string {
     const end = last ? (seg.to === null ? " to now" : ` until ${formatDate(seg.to)}`) : "";
     return `${label} from ${formatDate(seg.from)}${end}`;
   });
-  const onset = s.onset
-    ? ` Estimated onset ${formatDate(s.onset.date)}, between ${formatDate(s.onset.low)} and ${formatDate(s.onset.high)}.`
-    : "";
+  const onset = s.onset ? ` ${onsetText(s.onset)}` : "";
   return `${s.label}: ${parts.join("; ")}.${onset}`;
 }
 
@@ -803,6 +806,8 @@ export function WeaknessTimeline({
                         Now {stateStyle[now].label.toLowerCase()}
                       </span>
                     )}
+                    {/* The grid is the only text alternative, so the onset lives in the header. */}
+                    {s.onset && <span className="sr-only">{onsetText(s.onset)}</span>}
                   </div>
                   <Lane
                     series={s}
@@ -893,11 +898,6 @@ export function WeaknessTimeline({
           ))}
         </ol>
       )}
-      <div className="sr-only">
-        {series.map((s) => (
-          <p key={s.id}>{s.segments.length ? seriesText(s) : `${s.label}: no data yet.`}</p>
-        ))}
-      </div>
     </figure>
   );
 }

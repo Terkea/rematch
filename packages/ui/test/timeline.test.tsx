@@ -151,12 +151,41 @@ describe("WeaknessTimeline", () => {
     expect(container.querySelectorAll("[data-lane]")).toHaveLength(12);
   });
 
-  it("spells out each lane's states for assistive tech", () => {
-    render(<WeaknessTimeline {...timelineFixtures} />);
+  it("is read once: the grid carries every state, with no duplicate summary", () => {
+    const { container } = render(<WeaknessTimeline {...timelineFixtures} />);
+    expect(screen.queryByText(/not an issue from 1 Mar 2026/)).toBeNull();
+    const rows = within(screen.getByRole("grid")).getAllByRole("row");
+    const rook = rows[0] as HTMLElement;
     expect(
-      screen.getByText(/Rook endgames: not an issue from 1 Mar 2026; emerging from 10 Apr 2026/),
-    ).toBeInTheDocument();
-    expect(screen.getByText(/relapsed from 5 Oct 2026 to now/)).toBeInTheDocument();
+      within(rook)
+        .getAllByRole("gridcell")
+        .map((c) => c.getAttribute("aria-label")),
+    ).toEqual([
+      "Not an issue, 1 Mar 2026 to 10 Apr 2026, 1 of 6",
+      "Emerging, 10 Apr 2026 to 5 May 2026, 2 of 6",
+      "Active, 5 May 2026 to 1 Jul 2026, 3 of 6",
+      "Improving, 1 Jul 2026 to 20 Aug 2026, 4 of 6",
+      "Resolved, 20 Aug 2026 to 5 Oct 2026, 5 of 6",
+      "Relapsed, 5 Oct 2026 to now, 6 of 6",
+    ]);
+    expect(within(rook).getByRole("rowheader")).toHaveTextContent(
+      "Estimated onset 10 Apr 2026, between 28 Mar 2026 and 24 Apr 2026.",
+    );
+    // No sr-only text outside the grid repeats a lane.
+    const outside = [...container.querySelectorAll(".sr-only")].filter(
+      (el) => !el.closest('[role="grid"]'),
+    );
+    for (const el of outside) expect(el.textContent).not.toMatch(/Rook endgames/);
+  });
+
+  it("splits the readout at exactly 640px: @max is below 640, @min is 640 and up", async () => {
+    const { compile } = await import("tailwindcss");
+    const css = (await compile("@tailwind utilities;")).build([
+      "@max-[640px]:hidden",
+      "@min-[640px]:hidden",
+    ]);
+    expect(css).toContain("@container (width < 640px)");
+    expect(css).toContain("@container (width >= 640px)");
   });
 
   it("marks plan and drill events with different shapes", () => {

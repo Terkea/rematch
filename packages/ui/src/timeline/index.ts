@@ -8,6 +8,7 @@ export {
 export {
   eventRows,
   formatDate,
+  onsetText,
   rangeFraction,
   seriesText,
   shortSpan,
