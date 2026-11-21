@@ -19,9 +19,22 @@
 //! - one handler per account at a time (a session advisory lock): a handler that lost its lease
 //!   and is still running makes the re-claimed job release (`account_busy`) instead of
 //!   interleaving cursor and watermark writes with it.
+//!
+//! The account lock is taken *before* the account (and so its cursor) is read, and released
+//! explicitly with `pg_advisory_unlock` when the handler finishes. Its connection is closed
+//! rather than pooled, so an aborted handler (a dropped future) still releases it. The lock
+//! session sets server-side TCP keepalives, so a worker that dies without closing the socket
+//! frees the account within about 90 s.
+//!
+//! Known limitation (deferred to T22): exclusion lasts only as long as the lock session. If the
+//! lock connection dies while the handler is still running (a network fault, an administrator
+//! terminating the backend), the lock is gone but the handler keeps writing through pool
+//! connections, so a re-claimed job could overlap it again. Routing the cursor and run writes
+//! through the lock connection closes that gap.
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use db::accounts::{AccountRow, ImportCursor, get_account};
@@ -84,6 +97,9 @@ pub struct ImportAccountDeps {
     pub lichess_lookback: Duration,
     pub breaker_min_delay: Duration,
     pub probe_timeout: Duration,
+    /// Imports released because another handler held the account (`account_busy`). Shared, so
+    /// the worker can export it.
+    pub busy_releases: Arc<AtomicU64>,
 }
 
 impl ImportAccountDeps {
@@ -101,6 +117,7 @@ impl ImportAccountDeps {
             lichess_lookback: LICHESS_SINCE_LOOKBACK,
             breaker_min_delay: BREAKER_MIN_DELAY,
             probe_timeout: PROBE_TIMEOUT,
+            busy_releases: Arc::new(AtomicU64::new(0)),
         }
     }
 }
@@ -252,26 +269,44 @@ pub async fn handle_import_account(
     payload: ImportAccountPayload,
     cancel: CancellationToken,
 ) -> Result<ImportSummary, JobError> {
+    // One handler per account at a time: a lease-lost handler still running must not
+    // interleave its cursor writes (or its end-of-pass watermark) with the re-claimed job's.
+    // Taken before the account is read, so a run never starts from a pre-lock cursor.
+    let lock = match AccountLock::acquire(&deps.pool, payload.account_id).await {
+        Ok(Some(lock)) => lock,
+        Ok(None) => {
+            let busy = deps.busy_releases.fetch_add(1, Ordering::Relaxed) + 1;
+            tracing::info!(
+                account_id = %payload.account_id,
+                job_id = job.id,
+                busy_releases = busy,
+                "another import handler holds the account; releasing the job (account_busy)"
+            );
+            return Err(JobError::Release {
+                delay: ACCOUNT_BUSY_DELAY,
+                reason: "account_busy".to_owned(),
+            });
+        }
+        Err(e) => return Err(retryable(&ImportFailure::Db(e))),
+    };
+    let res = import_locked(deps, job, payload, cancel).await;
+    lock.release().await;
+    res
+}
+
+/// The import itself, run while the account lock is held.
+async fn import_locked(
+    deps: &ImportAccountDeps,
+    job: &Job,
+    payload: ImportAccountPayload,
+    cancel: CancellationToken,
+) -> Result<ImportSummary, JobError> {
     let account = match get_account(&deps.pool, payload.account_id).await {
         Ok(Some(account)) => account,
         Ok(None) => {
             return Err(JobError::Unrecoverable {
                 message: format!("Linked account not found: {}", payload.account_id),
                 code: None,
-            });
-        }
-        Err(e) => return Err(retryable(&ImportFailure::Db(e))),
-    };
-    // One handler per account at a time: a lease-lost handler still running must not
-    // interleave its cursor writes (or its end-of-pass watermark) with the re-claimed job's.
-    // The lock lives on a dedicated connection that is closed when dropped, so it is released
-    // however this future ends (completion, error, or the runner dropping it).
-    let _account_lock = match lock_account(&deps.pool, account.id).await {
-        Ok(Some(conn)) => conn,
-        Ok(None) => {
-            return Err(JobError::Release {
-                delay: ACCOUNT_BUSY_DELAY,
-                reason: "account_busy".to_owned(),
             });
         }
         Err(e) => return Err(retryable(&ImportFailure::Db(e))),
@@ -336,27 +371,63 @@ fn is_user_not_found(url: &str) -> bool {
     path.ends_with("/games/archives") || path.contains("/api/games/user/")
 }
 
-/// Folds the account id into the lock's `objid`. A collision only delays an import.
-fn account_lock_key(account_id: Uuid) -> i32 {
+/// The `(classid, objid)` of the account's import lock (two-key advisory form; `objsubid = 2` in
+/// `pg_locks`). The account id is folded into the `objid`; a collision only delays an import.
+pub fn account_lock_key(account_id: Uuid) -> (i32, i32) {
     let v = account_id.as_u128();
     let folded = (v as u32) ^ ((v >> 32) as u32) ^ ((v >> 64) as u32) ^ ((v >> 96) as u32);
-    i32::from_ne_bytes(folded.to_ne_bytes())
+    (
+        IMPORT_LOCK_NAMESPACE,
+        i32::from_ne_bytes(folded.to_ne_bytes()),
+    )
 }
 
-/// Takes the account's session advisory lock on a dedicated connection, or `None` when another
-/// handler holds it. The connection is closed (not pooled) when dropped, which releases the lock.
-async fn lock_account(
-    pool: &PgPool,
-    account_id: Uuid,
-) -> Result<Option<PoolConnection<Postgres>>, sqlx::Error> {
-    let mut conn = pool.acquire().await?;
-    conn.close_on_drop();
-    let locked: bool = sqlx::query_scalar("SELECT pg_try_advisory_lock($1, $2)")
-        .bind(IMPORT_LOCK_NAMESPACE)
-        .bind(account_lock_key(account_id))
-        .fetch_one(&mut *conn)
-        .await?;
-    Ok(locked.then_some(conn))
+/// Server-side keepalives on the lock session: a peer that vanished without closing the socket
+/// is detected after `idle + interval * count` (60 + 10 * 3 = 90 s) and its lock is released.
+const LOCK_KEEPALIVES_SQL: &str = "SELECT set_config('tcp_keepalives_idle', '60', false), \
+    set_config('tcp_keepalives_interval', '10', false), \
+    set_config('tcp_keepalives_count', '3', false)";
+
+/// The account's session advisory lock, held on a dedicated connection.
+struct AccountLock {
+    conn: PoolConnection<Postgres>,
+    key: (i32, i32),
+}
+
+impl AccountLock {
+    /// Takes the lock, or `None` when another handler holds it. The connection is closed (never
+    /// returned to the pool) when dropped, so the lock cannot leak into the pool, and a dropped
+    /// handler future still releases it.
+    async fn acquire(pool: &PgPool, account_id: Uuid) -> Result<Option<AccountLock>, sqlx::Error> {
+        let mut conn = pool.acquire().await?;
+        conn.close_on_drop();
+        sqlx::query(LOCK_KEEPALIVES_SQL).execute(&mut *conn).await?;
+        let key = account_lock_key(account_id);
+        let locked: bool = sqlx::query_scalar("SELECT pg_try_advisory_lock($1, $2)")
+            .bind(key.0)
+            .bind(key.1)
+            .fetch_one(&mut *conn)
+            .await?;
+        Ok(locked.then_some(AccountLock { conn, key }))
+    }
+
+    /// Unlocks explicitly, so the next handler can take the lock at once instead of waiting
+    /// for the connection close to reach the server. A failure only logs: closing the
+    /// connection (on drop) releases the lock anyway.
+    async fn release(mut self) {
+        let unlocked = sqlx::query_scalar::<_, bool>("SELECT pg_advisory_unlock($1, $2)")
+            .bind(self.key.0)
+            .bind(self.key.1)
+            .fetch_one(&mut *self.conn)
+            .await;
+        match unlocked {
+            Ok(true) => {}
+            Ok(false) => tracing::warn!(key = ?self.key, "the import account lock was not held"),
+            Err(e) => {
+                tracing::warn!(key = ?self.key, error = %e, "unlocking the import account failed");
+            }
+        }
+    }
 }
 
 fn platform_of(s: &str) -> Option<Platform> {

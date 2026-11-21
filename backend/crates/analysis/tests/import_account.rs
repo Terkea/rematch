@@ -2,11 +2,13 @@
 //! (`not_found`, breaker re-delays reusing one paused run, shutdown).
 
 use std::collections::HashMap;
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use analysis::jobs::import::{
-    ACCOUNT_BUSY_DELAY, ImportAccountDeps, ImportSummary, enqueue_import, handle_import_account,
+    ACCOUNT_BUSY_DELAY, ImportAccountDeps, ImportSummary, account_lock_key, enqueue_import,
+    handle_import_account,
 };
 use db::accounts::{ImportCursor, get_account};
 use db::import_runs::{ImportRunStatus, list_runs};
@@ -14,7 +16,7 @@ use futures::StreamExt;
 use futures::stream::BoxStream;
 use platforms::breaker::{BreakerOptions, CircuitBreaker, CircuitState};
 use platforms::chesscom::ChesscomSource;
-use platforms::lichess::LichessSource;
+use platforms::lichess::{LichessSource, lichess_games_url};
 use platforms::{
     FetchOptions, GameSource, NormalizedGame, Platform, PlatformClient, PlatformError, Player,
 };
@@ -213,11 +215,29 @@ async fn lose_lease(pool: &PgPool, job_id: i64) {
 async fn held_import_locks(pool: &PgPool) -> i64 {
     sqlx::query_scalar(
         "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND classid = 7262021 \
+         AND objsubid = 2 \
          AND database = (SELECT oid FROM pg_database WHERE datname = current_database())",
     )
     .fetch_one(pool)
     .await
     .unwrap()
+}
+
+/// The archive-list URL `ChesscomSource` builds for `user`, read from a probe run against a
+/// fake that knows no URLs (so the test never hand-writes it).
+async fn chesscom_archives_url(user: &str) -> String {
+    let probe = Arc::new(FakeClient::default());
+    let client: Arc<dyn PlatformClient> = probe.clone();
+    let _: Vec<_> = ChesscomSource::new()
+        .fetch(client, user, FetchOptions::default())
+        .collect()
+        .await;
+    probe
+        .calls()
+        .first()
+        .expect("the archive list request")
+        .0
+        .clone()
 }
 
 const JAN_1: OffsetDateTime = datetime!(2026-01-01 00:00 UTC);
@@ -624,6 +644,7 @@ async fn overlapping_handlers_on_one_account_are_exclusive_with_no_gap_and_no_lo
         FailOutcome::Released { .. }
     ));
     assert_eq!(attempts_of(&pool, job_b.id).await, 0);
+    assert_eq!(db.busy_releases.load(Ordering::Relaxed), 1);
 
     // A finishes its stream (its own complete would be fenced off: its lease is gone).
     gate.add_permits(1);
@@ -633,6 +654,8 @@ async fn overlapping_handlers_on_one_account_are_exclusive_with_no_gap_and_no_lo
         .unwrap()
         .unwrap();
     assert_eq!(res_a.imported, 6);
+    // A unlocked explicitly on its way out: no wait for a connection close.
+    assert_eq!(held_import_locks(&pool).await, 0);
 
     // B runs again once A is done.
     let res_b = run(&db, acct).await.unwrap();
@@ -706,14 +729,12 @@ async fn the_account_lock_is_released_when_a_handler_is_dropped(pool: PgPool) {
 #[sqlx::test(migrator = "db::MIGRATOR")]
 async fn a_404_on_one_chesscom_month_stays_retryable(pool: PgPool) {
     let acct = testkit::insert_account(&pool, "chesscom", "gappy").await;
-    let archives = "https://api.chess.com/pub/player/gappy/games/archives";
+    let archives = chesscom_archives_url("gappy").await;
+    // Month URLs come from the API's archive list, so the fake chooses this one.
     let month = "https://api.chess.com/pub/player/gappy/games/2026/01";
     let client = Arc::new(FakeClient {
         // The month itself is unknown to the fake: a 404 on that one archive.
-        json: HashMap::from([(
-            archives.to_owned(),
-            serde_json::json!({ "archives": [month] }),
-        )]),
+        json: HashMap::from([(archives.clone(), serde_json::json!({ "archives": [month] }))]),
         ..FakeClient::default()
     });
     let d = deps_with(&pool, Arc::new(ChesscomSource::new()), client.clone());
@@ -724,7 +745,7 @@ async fn a_404_on_one_chesscom_month_stays_retryable(pool: PgPool) {
         other => panic!("expected a retryable failure, got {other:?}"),
     }
     let urls: Vec<_> = client.calls().into_iter().map(|(u, _)| u).collect();
-    assert_eq!(urls, [archives, month]);
+    assert_eq!(urls, [archives.as_str(), month]);
     let runs = list_runs(&pool, acct).await.unwrap();
     assert_eq!(runs[0].status, ImportRunStatus::Failed);
     assert_eq!(runs[0].error_code.as_deref(), Some("unknown"));
@@ -739,13 +760,20 @@ async fn a_404_on_one_chesscom_month_stays_retryable(pool: PgPool) {
 #[sqlx::test(migrator = "db::MIGRATOR")]
 async fn a_lichess_user_404_fails_immediately_without_retry(pool: PgPool) {
     let acct = testkit::insert_account(&pool, "lichess", "nobody").await;
+    // A first import fetches with no since/until/max; any other URL would stream nothing.
+    let url = lichess_games_url("nobody", &FetchOptions::default());
     let client = Arc::new(FakeClient {
-        ndjson_items: vec![Err(PlatformError::NotFound {
-            url: "https://lichess.org/api/games/user/nobody?sort=dateDesc".to_owned(),
-        })],
+        ndjson_by_url: HashMap::from([(
+            url.clone(),
+            vec![Err(PlatformError::NotFound { url: url.clone() })],
+        )]),
         ..FakeClient::default()
     });
-    let d = deps_with(&pool, Arc::new(LichessSource { token: None }), client);
+    let d = deps_with(
+        &pool,
+        Arc::new(LichessSource { token: None }),
+        client.clone(),
+    );
     let (job, payload) = claim(&d.queue, acct).await;
     let res = handle_import_account(&d, &job, payload, CancellationToken::new()).await;
     match &res {
@@ -754,6 +782,72 @@ async fn a_lichess_user_404_fails_immediately_without_retry(pool: PgPool) {
         }
         other => panic!("expected Unrecoverable not_found, got {other:?}"),
     }
+    let urls: Vec<_> = client.calls().into_iter().map(|(u, _)| u).collect();
+    assert_eq!(urls, [url]);
     assert_eq!(settle(&d.queue, &job, &res).await, FailOutcome::Failed);
     assert_eq!(events(&pool, "job.failed").await.len(), 1);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Fix round 2: lock before the cursor read
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_busy_account_is_released_before_the_account_is_read(pool: PgPool) {
+    // The account does not exist, so reading it first would give Unrecoverable. Holding its
+    // lock elsewhere must give account_busy instead: the lock comes before the read.
+    let missing = Uuid::new_v4();
+    let (classid, objid) = account_lock_key(missing);
+    let mut holder = pool.acquire().await.unwrap();
+    let locked: bool = sqlx::query_scalar("SELECT pg_try_advisory_lock($1, $2)")
+        .bind(classid)
+        .bind(objid)
+        .fetch_one(&mut *holder)
+        .await
+        .unwrap();
+    assert!(locked);
+    assert_eq!(held_import_locks(&pool).await, 1);
+
+    let d = deps(&pool, FnSource::listing(vec![], false));
+    let (job, payload) = claim(&d.queue, missing).await;
+    let res = handle_import_account(&d, &job, payload, CancellationToken::new()).await;
+    match &res {
+        Err(JobError::Release { reason, .. }) => assert_eq!(reason, "account_busy"),
+        other => panic!("expected account_busy, got {other:?}"),
+    }
+    assert_eq!(d.busy_releases.load(Ordering::Relaxed), 1);
+    assert!(matches!(
+        settle(&d.queue, &job, &res).await,
+        FailOutcome::Released { .. }
+    ));
+
+    let unlocked: bool = sqlx::query_scalar("SELECT pg_advisory_unlock($1, $2)")
+        .bind(classid)
+        .bind(objid)
+        .fetch_one(&mut *holder)
+        .await
+        .unwrap();
+    assert!(unlocked);
+    let (job, payload) = claim(&d.queue, missing).await;
+    let res = handle_import_account(&d, &job, payload, CancellationToken::new()).await;
+    assert!(
+        matches!(res, Err(JobError::Unrecoverable { .. })),
+        "{res:?}"
+    );
+    // The missing-account path unlocked too.
+    assert_eq!(held_import_locks(&pool).await, 0);
+    assert_eq!(d.busy_releases.load(Ordering::Relaxed), 1);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn back_to_back_imports_never_see_their_own_lock(pool: PgPool) {
+    let acct = testkit::insert_account(&pool, "lichess", "again").await;
+    let d = deps(
+        &pool,
+        FnSource::listing(vec![make_game("Again", "Villain", JAN_1)], false),
+    );
+    for _ in 0..5 {
+        run(&d, acct).await.unwrap();
+        assert_eq!(held_import_locks(&pool).await, 0);
+    }
+    assert_eq!(d.busy_releases.load(Ordering::Relaxed), 0);
 }
