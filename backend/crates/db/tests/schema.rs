@@ -41,6 +41,7 @@ fn game_row(account_id: Uuid, platform_game_id: &str) -> NewGame {
         eco: None,
         opening_name: None,
         lichess_evals: None,
+        ..Default::default()
     }
 }
 

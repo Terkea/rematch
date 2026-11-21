@@ -781,5 +781,6 @@ fn new_game(account_id: Uuid, player_color: &str, g: &NormalizedGame) -> NewGame
             .lichess_evals
             .as_ref()
             .and_then(|e| serde_json::to_value(e).ok()),
+        ..Default::default()
     }
 }
