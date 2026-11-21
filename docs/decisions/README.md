@@ -44,3 +44,4 @@ One file per decision: context, decision, alternatives, consequences. New decisi
 - [0040. chess.com first; Lichess accounts deferred](0040-chesscom-first-defer-lichess-accounts.md)
 - [0041. First target: a private beta for the owner and a few friends](0041-private-beta-owner-and-friends.md)
 - [0042. Shared Rust build caches across lanes](0042-shared-rust-build-caches.md)
+- [0043. No email address in outbound requests](0043-no-email-in-outbound-requests.md)

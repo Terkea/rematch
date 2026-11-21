@@ -190,8 +190,6 @@ services:
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/chess_test
       STOCKFISH_PATH: /usr/local/bin/stockfish
       IN_DOCKER: "1"
-      # rust-dev makes no external API calls (tests use recorded fixtures), so a placeholder is safe.
-      CONTACT_EMAIL: ${CONTACT_EMAIL:-dev@example.invalid}
       RUST_LOG: warn
       # scripts/check-crate-age.sh caches crates.io publish dates here, shared by every lane.
       CRATE_AGE_CACHE: /crate-age
