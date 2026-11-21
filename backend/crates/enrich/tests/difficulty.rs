@@ -12,8 +12,8 @@ use enrich::difficulty::maia::{
 };
 use enrich::difficulty::select::{DifficultyEstimator, select_difficulty_provider};
 use enrich::difficulty::{
-    DifficultyOutcome, MAIA_FIRST_PLY, NotApplicableReason, PendingReason, half_move_index,
-    is_maia_opening_ply,
+    DifficultyOutcome, MAIA_FIRST_PLY, NotApplicableReason, PendingReason, PlyIndexError,
+    half_move_index, is_maia_opening_ply,
 };
 use enrich::types::{DifficultyError, DifficultyInput, DifficultyProvider};
 use serde_json::{Value, json};
@@ -80,53 +80,139 @@ fn not_applicable(reason: NotApplicableReason) -> DifficultyOutcome {
 fn opening_cut_matches_maia_training() {
     // maia2-training.yaml `first_n_moves: 10`: half-move indices 0..=9 are never trained on.
     assert_eq!(MAIA_FIRST_PLY, 10);
-    assert_eq!(half_move_index(START), Some(0));
+    assert_eq!(half_move_index(START), Ok(0));
     assert!(is_maia_opening_ply(START));
     // Index 9: black's 5th move.
     assert!(is_maia_opening_ply("8/8/8/8/8/8/8/K6k b - - 0 5"));
     // Index 10: white's 6th move is the first one Maia was trained on.
-    assert_eq!(half_move_index("8/8/8/8/8/8/8/K6k w - - 0 6"), Some(10));
+    assert_eq!(half_move_index("8/8/8/8/8/8/8/K6k w - - 0 6"), Ok(10));
     assert!(!is_maia_opening_ply("8/8/8/8/8/8/8/K6k w - - 0 6"));
     assert!(!is_maia_opening_ply(MID));
     // Unparsable FENs are not opening plies: the service rejects them.
     assert!(!is_maia_opening_ply("garbage"));
     assert!(!is_maia_opening_ply("8/8/8/8/8/8/8/K6k w - - 0 0"));
+    assert_eq!(half_move_index("garbage"), Err(PlyIndexError::Unparsable));
+}
+
+#[test]
+fn half_move_index_overflow_is_detected() {
+    let max = u32::MAX;
+    // 2 * (u32::MAX - 1) overflows.
+    let big = format!("8/8/8/8/8/8/8/K6k w - - 0 {max}");
+    assert_eq!(half_move_index(&big), Err(PlyIndexError::Overflow));
+    // The largest representable index: fullmove 2^31, black to move = 2^32 - 1.
+    let edge = "8/8/8/8/8/8/8/K6k b - - 0 2147483648";
+    assert_eq!(half_move_index(edge), Ok(u32::MAX));
+    let past = "8/8/8/8/8/8/8/K6k w - - 0 2147483649";
+    assert_eq!(half_move_index(past), Err(PlyIndexError::Overflow));
+    // A move number with too many digits for u32.
+    let huge = "8/8/8/8/8/8/8/K6k w - - 0 99999999999999999999";
+    assert_eq!(half_move_index(huge), Err(PlyIndexError::Overflow));
+    assert!(!is_maia_opening_ply(huge));
+}
+
+#[tokio::test]
+async fn overflowing_move_number_is_invalid_fen_and_never_sent() {
+    let server = maia_server(MODEL).await;
+    Mock::given(method("POST"))
+        .and(path("/v1/predict"))
+        .respond_with(FixedProbs::standard())
+        .expect(0)
+        .mount(&server)
+        .await;
+    let mut i = std_lines();
+    i.fen = "8/8/8/8/8/8/8/K6k w - - 0 99999999999999999999".to_owned();
+    let out = estimator(&server).estimate(&[i]).await;
+    assert_eq!(out, vec![not_applicable(NotApplicableReason::InvalidFen)]);
 }
 
 // ---- the only provider is Maia ---------------------------------------------------------------
 
+/// The type names after every `impl ... DifficultyProvider for <Type>` in `text`, including
+/// generic (`impl<T: X> DifficultyProvider for W<T>`), path-qualified
+/// (`impl crate::types::DifficultyProvider for X`) and multi-line forms.
+fn provider_impls(text: &str) -> Vec<String> {
+    let flat = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let mut out = Vec::new();
+    let needle = "DifficultyProvider for ";
+    let mut from = 0;
+    while let Some(pos) = flat[from..].find(needle) {
+        let at = from + pos;
+        // The item header starts after the previous `;`, `}` or `{`.
+        let head_start = flat[..at].rfind([';', '}', '{']).map_or(0, |i| i + 1);
+        let head = &flat[head_start..at];
+        let is_impl = head
+            .split(|c: char| !(c.is_alphanumeric() || c == '_'))
+            .any(|w| w == "impl");
+        let rest = &flat[at + needle.len()..];
+        let end = [rest.find(" {"), rest.find('{'), rest.find(" where")]
+            .into_iter()
+            .flatten()
+            .min()
+            .unwrap_or(rest.len());
+        if is_impl {
+            out.push(rest[..end].trim().to_owned());
+        }
+        from = at + needle.len();
+    }
+    out
+}
+
+#[test]
+fn provider_impl_scanner_matches_every_form() {
+    let text = "impl DifficultyProvider for A {}
+        impl crate::types::DifficultyProvider for B { fn x() {} }
+        impl<T: Send + Sync> enrich::types::DifficultyProvider for C<T> where T: Clone {}
+        impl<'a>
+    DifficultyProvider
+    for D<'a> {}
+        // a comment about DifficultyProvider for nothing;
+        fn f(p: &dyn DifficultyProvider) {}";
+    assert_eq!(provider_impls(text), vec!["A", "B", "C<T>", "D<'a>"]);
+}
+
 /// Owner direction: no simple engine-based estimate may produce a difficulty. This scans the
-/// crate's sources: `MaiaDifficulty` is the only `DifficultyProvider`, and no spread or other
-/// fallback estimator exists.
+/// `src/` of every crate under `backend/crates`: `MaiaDifficulty` is the only
+/// `DifficultyProvider`, and the enrich crate has no spread or other fallback estimator.
 #[test]
 fn the_only_difficulty_provider_is_maia() {
-    let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let enrich = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let crates = enrich.parent().unwrap();
     let mut impls = Vec::new();
-    let mut stack = vec![src];
-    while let Some(dir) = stack.pop() {
-        for entry in std::fs::read_dir(&dir).unwrap() {
-            let p = entry.unwrap().path();
-            if p.is_dir() {
-                stack.push(p);
-                continue;
-            }
-            if p.extension().is_some_and(|e| e == "rs") {
-                let text = std::fs::read_to_string(&p).unwrap();
-                let lower = text.to_lowercase();
-                assert!(
-                    !lower.contains("spread"),
-                    "{} mentions a spread estimator",
-                    p.display()
-                );
-                for line in text.lines() {
-                    if let Some(rest) = line.trim().strip_prefix("impl DifficultyProvider for ") {
-                        impls.push(rest.trim_end_matches(" {").to_owned());
+    let mut scanned = 0;
+    for krate in std::fs::read_dir(crates).unwrap() {
+        let src = krate.unwrap().path().join("src");
+        if !src.is_dir() {
+            continue;
+        }
+        let mut stack = vec![src];
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(&dir).unwrap() {
+                let p = entry.unwrap().path();
+                if p.is_dir() {
+                    stack.push(p);
+                    continue;
+                }
+                if p.extension().is_some_and(|e| e == "rs") {
+                    scanned += 1;
+                    let text = std::fs::read_to_string(&p).unwrap();
+                    if p.starts_with(enrich) {
+                        assert!(
+                            !text.to_lowercase().contains("spread"),
+                            "{} mentions a spread estimator",
+                            p.display()
+                        );
+                    }
+                    for name in provider_impls(&text) {
+                        impls.push(format!("{name} ({})", p.display()));
                     }
                 }
             }
         }
     }
-    assert_eq!(impls, vec!["MaiaDifficulty".to_owned()]);
+    assert!(scanned > 50, "only {scanned} files scanned");
+    assert_eq!(impls.len(), 1, "{impls:?}");
+    assert!(impls[0].starts_with("MaiaDifficulty ("), "{impls:?}");
 }
 
 #[tokio::test]
@@ -223,9 +309,9 @@ async fn predict_bodies(server: &MockServer) -> Vec<Value> {
 
 #[tokio::test]
 async fn maia_defaults_match_the_brief() {
-    assert_eq!(DEFAULT_TIMEOUT, Duration::from_secs(10));
+    assert_eq!(DEFAULT_TIMEOUT, Duration::from_secs(30));
     assert_eq!(DEFAULT_CONNECT_TIMEOUT, Duration::from_secs(2));
-    assert_eq!(DEFAULT_BATCH_SIZE, 64);
+    assert_eq!(DEFAULT_BATCH_SIZE, 32);
 }
 
 #[tokio::test]
@@ -368,12 +454,12 @@ async fn maia_validation_failure_is_pending_for_that_item_only() {
 }
 
 #[tokio::test]
-async fn maia_batches_130_inputs_into_3_requests() {
+async fn maia_batches_130_inputs_into_5_requests() {
     let server = maia_server(MODEL).await;
     Mock::given(method("POST"))
         .and(path("/v1/predict"))
         .respond_with(FixedProbs::standard())
-        .expect(3)
+        .expect(5)
         .mount(&server)
         .await;
     let inputs: Vec<DifficultyInput> = (0..130).map(|_| std_lines()).collect();
@@ -385,7 +471,7 @@ async fn maia_batches_130_inputs_into_3_requests() {
         .iter()
         .map(|b| b["items"].as_array().unwrap().len())
         .collect();
-    assert_eq!(sizes, vec![64, 64, 2]);
+    assert_eq!(sizes, vec![32, 32, 32, 32, 2]);
 }
 
 #[tokio::test]
@@ -519,10 +605,10 @@ async fn maia_down_mid_batch_leaves_the_rest_pending() {
     let inputs: Vec<DifficultyInput> = (0..130).map(|_| std_lines()).collect();
     let out = estimator(&server).estimate(&inputs).await;
     assert_eq!(out.len(), 130);
-    for o in &out[..64] {
+    for o in &out[..32] {
         close(ok(o), (0.5, 0.8));
     }
-    for o in &out[64..] {
+    for o in &out[32..] {
         assert_eq!(*o, pending(PendingReason::MaiaUnavailable));
     }
     // After the failure the rest of the call is pending without another request.
@@ -730,8 +816,10 @@ async fn maia_live_contract() {
     assert_distribution(LIVE_BLACK, &black);
     assert!(black.contains_key("e8g8"), "{black:?}");
 
-    // A full 64-item batch completes inside the 10 s timeout.
-    let batch: Vec<DifficultyInput> = (0..64).map(|_| probe(LIVE_RECAPTURE)).collect();
+    // A full batch completes inside the request timeout.
+    let batch: Vec<DifficultyInput> = (0..DEFAULT_BATCH_SIZE)
+        .map(|_| probe(LIVE_RECAPTURE))
+        .collect();
     let started = Instant::now();
     let out = maia.estimate(&batch).await.unwrap();
     assert!(

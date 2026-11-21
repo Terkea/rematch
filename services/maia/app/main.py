@@ -6,11 +6,13 @@
                                     | {"error": "invalid_fen" | "no_legal_moves" | "model_error"}]}
 
 Probabilities are validated (finite, in [0, 1], sum 1 +- 0.01) and renormalised to sum to 1
-(maia2 rounds them to 4 decimals). Anything else from the model becomes `model_error`.
+(maia2 rounds them to 4 decimals). Any other model output, or any unexpected exception for one
+item, becomes `model_error` for that item only; the rest of the batch is answered.
 """
 
 from __future__ import annotations
 
+import logging
 import math
 from contextlib import asynccontextmanager
 
@@ -18,6 +20,8 @@ from fastapi import FastAPI, Request
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr
 
 from .model import InvalidFen, Maia2Model, MoveModel, NoLegalMoves, clamp_elo, validate_fen
+
+log = logging.getLogger("maia")
 
 MAX_ITEMS = 256
 MAX_BODY_BYTES = 64 * 1024
@@ -136,6 +140,12 @@ def create_app(model: MoveModel | None = None) -> FastAPI:
                 continue
             except NoLegalMoves:
                 out.append({"error": "no_legal_moves"})
+                continue
+            except Exception:
+                # One poison position must not fail the batch: log it, report model_error for
+                # this item only (the Rust client treats it as pending_maia/invalid_response).
+                log.exception("maia2 failed on one item", extra={"fen": it.fen})
+                out.append({"error": "model_error"})
                 continue
             out.append({"probs": probs} if probs is not None else {"error": "model_error"})
         return {"items": out}

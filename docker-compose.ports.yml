@@ -8,8 +8,9 @@ services:
     ports:
       - "127.0.0.1:56379:6379"
   # Maia (ADR-R2-13). Docker cannot publish a port from an internal-only network, so with this
-  # overlay maia also joins the default network (which has egress). Parallel and CI projects use
-  # docker-compose.yml alone: maia is then internal-only, with no host port.
+  # dev-only overlay maia also joins the default network and therefore HAS EGRESS. The beta/prod
+  # stack (like parallel and CI projects, docker-compose.yml alone) keeps maia on the internal
+  # network only: no host port, no egress.
   maia:
     ports:
       - "127.0.0.1:58080:8080"

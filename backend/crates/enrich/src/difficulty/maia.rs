@@ -25,9 +25,12 @@ use super::{
 };
 use crate::types::{DifficultyError, DifficultyEstimate, DifficultyInput, DifficultyProvider};
 
-pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);
+/// Per-request timeout. 30 s (coordinator ruling): a 64-item batch took about 5.4 s on CPU with two
+/// threads, so a loaded host must not time a 32-item batch out into `pending_maia`.
+pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 pub const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
-pub const DEFAULT_BATCH_SIZE: usize = 64;
+/// Items per predict request (the service accepts up to 256).
+pub const DEFAULT_BATCH_SIZE: usize = 32;
 /// Accepted deviation of an item's probability sum from 1.
 pub const SUM_TOLERANCE: f64 = 0.01;
 

@@ -28,26 +28,44 @@ pub const OK_WINDOW: f64 = 5.0;
 /// (`first_n_moves: 10` in maia2's `maia2-training.yaml`; `process_per_game` skips `i < 10`).
 pub const MAIA_FIRST_PLY: u32 = 10;
 
+/// Why [`half_move_index`] has no index.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PlyIndexError {
+    /// The FEN does not have six fields, a `w`/`b` side or a numeric move number >= 1.
+    Unparsable,
+    /// The move number is numeric but the index does not fit in `u32`.
+    Overflow,
+}
+
 /// 0-based half-move index of the move about to be played in `fen`, from its side to move and
-/// fullmove number. `None` when the FEN does not carry them.
-pub fn half_move_index(fen: &str) -> Option<u32> {
+/// fullmove number: `2 * (fullmove - 1) + (black to move)`, with checked arithmetic.
+pub fn half_move_index(fen: &str) -> Result<u32, PlyIndexError> {
     let fields: Vec<&str> = fen.split_whitespace().collect();
     let [_, side, _, _, _, fullmove] = fields.as_slice() else {
-        return None;
+        return Err(PlyIndexError::Unparsable);
     };
-    let fullmove: u32 = fullmove.parse().ok().filter(|n| *n >= 1)?;
     let black = match *side {
         "w" => 0,
         "b" => 1,
-        _ => return None,
+        _ => return Err(PlyIndexError::Unparsable),
     };
-    Some(2 * (fullmove - 1) + black)
+    if fullmove.is_empty() || !fullmove.bytes().all(|b| b.is_ascii_digit()) {
+        return Err(PlyIndexError::Unparsable);
+    }
+    // All digits: a parse failure can only be an overflow.
+    let fullmove: u32 = fullmove.parse().map_err(|_| PlyIndexError::Overflow)?;
+    fullmove
+        .checked_sub(1)
+        .ok_or(PlyIndexError::Unparsable)?
+        .checked_mul(2)
+        .and_then(|i| i.checked_add(black))
+        .ok_or(PlyIndexError::Overflow)
 }
 
-/// True for the opening plies Maia was not trained on. An unparsable FEN is not an opening ply:
-/// the service rejects it.
+/// True for the opening plies Maia was not trained on. An unparsable or overflowing FEN is not
+/// an opening ply (the estimator reports an overflow as `invalid_fen`; the service rejects the rest).
 pub fn is_maia_opening_ply(fen: &str) -> bool {
-    half_move_index(fen).is_some_and(|i| i < MAIA_FIRST_PLY)
+    half_move_index(fen).is_ok_and(|i| i < MAIA_FIRST_PLY)
 }
 
 /// Why a difficulty is pending (retry when Maia is healthy).

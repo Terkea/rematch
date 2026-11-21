@@ -12,7 +12,10 @@ use profile_core::types::Difficulty;
 use tokio::sync::Mutex;
 
 use super::maia::{DEFAULT_BATCH_SIZE, DEFAULT_TIMEOUT, MaiaDifficulty, MaiaItem};
-use super::{DifficultyOutcome, NotApplicableReason, PendingReason, is_maia_opening_ply};
+use super::{
+    DifficultyOutcome, NotApplicableReason, PendingReason, PlyIndexError, half_move_index,
+    is_maia_opening_ply,
+};
 use crate::types::DifficultyInput;
 
 pub struct DifficultyEstimator {
@@ -78,7 +81,9 @@ impl DifficultyEstimator {
         let mut out: Vec<Option<DifficultyOutcome>> = inputs
             .iter()
             .map(|i| {
-                let reason = if is_maia_opening_ply(&i.fen) {
+                let reason = if half_move_index(&i.fen) == Err(PlyIndexError::Overflow) {
+                    NotApplicableReason::InvalidFen
+                } else if is_maia_opening_ply(&i.fen) {
                     NotApplicableReason::OpeningPly
                 } else if i.best_uci.is_none() {
                     NotApplicableReason::NoBestMove

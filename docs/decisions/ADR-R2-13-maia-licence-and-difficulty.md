@@ -34,7 +34,7 @@ Residual risk, accepted: the weights' licence rests on the README's project-wide
 
 ### Difficulty comes only from Maia (owner direction, fix round 1)
 
-The owner ruled during Task 24's review: "we must only use maia or stockfish, no simple engine based estimates." The `spread-v1` estimator from the TS plan (difficulty from the MultiPV win% spread) is therefore deleted: there is no spread code, no fallback estimator and no selection between providers. A test (`the_only_difficulty_provider_is_maia`) scans the crate sources: `MaiaDifficulty` is the only `DifficultyProvider`, and no source mentions a spread estimator.
+The owner ruled during Task 24's review: "we must only use maia or stockfish, no simple engine based estimates." The `spread-v1` estimator from the TS plan (difficulty from the MultiPV win% spread) is therefore deleted: there is no spread code, no fallback estimator and no selection between providers. A test (`the_only_difficulty_provider_is_maia`) scans `src/` of every crate under `backend/crates`. It matches plain, path-qualified, generic and multi-line `impl … DifficultyProvider for …` forms, and the scanner is tested on each. `MaiaDifficulty` must be the only implementation, and the enrich crate must not mention a spread estimator.
 
 When Maia cannot give a value, nothing is guessed, nothing blocks, and Stockfish evaluations are unaffected. Each position gets a `DifficultyOutcome` (`enrich::difficulty`), serialised as below:
 
@@ -46,7 +46,7 @@ When Maia cannot give a value, nothing is guessed, nothing blocks, and Stockfish
 
 ### Opening plies
 
-Maia-2 is not trained on the first ten half-moves. `maia2/configs/maia2-training.yaml` sets `first_n_moves: 10`, and `maia2/main.py` `process_per_game` keeps a move only `if i >= cfg.first_n_moves` (0-based half-move index). Its opening output is unreliable. On the live service the start position gave `g1f3 0.33, b1c3 0.24, b1a3 0.076, d2d4 0.075`, with `e2e4` not in the top four. So a position whose half-move index (from the FEN: `2 × (fullmove − 1) + (black to move)`) is below `MAIA_FIRST_PLY = 10` is `not_applicable/opening_ply`. It is never sent to Maia and never marked pending. An unparsable FEN is not an opening ply; the service rejects it as `invalid_fen`.
+Maia-2 is not trained on the first ten half-moves. `maia2/configs/maia2-training.yaml` sets `first_n_moves: 10`, and `maia2/main.py` `process_per_game` keeps a move only `if i >= cfg.first_n_moves` (0-based half-move index). Its opening output is unreliable. On the live service the start position gave `g1f3 0.33, b1c3 0.24, b1a3 0.076, d2d4 0.075`, with `e2e4` not in the top four. So a position whose half-move index (from the FEN: `2 × (fullmove − 1) + (black to move)`) is below `MAIA_FIRST_PLY = 10` is `not_applicable/opening_ply`. It is never sent to Maia and never marked pending. The index uses checked arithmetic. A move number that is numeric but overflows `u32` (or the index) is `not_applicable/invalid_fen`, and it is never sent. Any other unparsable FEN is not an opening ply; the service rejects it as `invalid_fen`.
 
 ### Runtime behaviour when Maia is down
 
@@ -57,9 +57,11 @@ Maia-2 is not trained on the first ten half-moves. `maia2/configs/maia2-training
 
 **Hand-off to Task 25.** Store the outcome per position, so the status and reason sit next to the Stockfish features. Re-enrich the `pending_maia` positions once Maia is healthy again; Task 25 or the reconciler decides when. `not_applicable` positions are final.
 
+A service `model_error` (and any other per-item validation failure) reaches Rust as `pending_maia/invalid_response`. A poison position would then be retried forever, so Task 25 must cap retries per position (for example, after N attempts mark it final). The coordinator assigned that cap to Task 25.
+
 ### Client (`backend/crates/enrich/src/difficulty`)
 
-- `MaiaDifficulty::connect(url, timeout = 10 s, batch_size = 64)` uses a 2 s connect timeout (`DEFAULT_CONNECT_TIMEOUT`) and reads the model id from `GET /healthz` (`maia2-<rapid|blitz>-<version>`, e.g. `maia2-rapid-0.11.0`). Requests are `POST /v1/predict {items:[{fen, eloSelf, eloOppo}]}`, sent in batches of at most 64 (130 inputs = 3 requests).
+- `MaiaDifficulty::connect(url, timeout = 30 s, batch_size = 32)` (named constants `DEFAULT_TIMEOUT`, `DEFAULT_BATCH_SIZE`; coordinator ruling after the first live run, so a loaded run does not time out into `pending_maia`) uses a 2 s connect timeout (`DEFAULT_CONNECT_TIMEOUT`) and reads the model id from `GET /healthz` (`maia2-<rapid|blitz>-<version>`, e.g. `maia2-rapid-0.11.0`). Requests are `POST /v1/predict {items:[{fen, eloSelf, eloOppo}]}`, sent in batches of at most 32 (130 inputs = 5 requests).
 - Per-item validation of the answer: each item is parsed on its own. A probability map is accepted only when it is non-empty, every key looks like a UCI move (`[a-h][1-8][a-h][1-8][qrbn]?`), every value is finite and in `[0, 1]`, and the values sum to `1 ± 0.01`. Anything else, including an unknown `error`, is `invalid_response` for that item. An item-count mismatch or an undecodable body fails the batch.
 - Scoring: `p_best = probs[best_uci]` (0 when Maia gives it no mass). Lines are deduplicated by move, keeping the highest win%. `p_ok = Σ probs[m]` over the lines within 5 win% points of the best line (inclusive), clamped to `[p_best, 1]`; without lines, `p_ok = p_best`.
 - `MaiaDifficulty` also implements the Task 1 `DifficultyProvider` trait (`None` for every non-`Ok` case, `Err(Unavailable)` for a failed call). Production code uses `DifficultyEstimator`, which keeps the reasons.
@@ -73,7 +75,7 @@ Maia-2 is not trained on the first ten half-moves. `maia2/configs/maia2-training
   - at most 256 items (257 → 422);
   - a pure-ASGI middleware rejects bodies over 64 KB with 413, both by `Content-Length` and while streaming chunked bodies. A full 256-item batch is about 25 KB.
 - FENs are validated up front by our own rules: 6 fields, 8 ranks of 8 squares, one king per side, no pawns on the back ranks, and well-formed side, castling, en-passant and counters. Failures give `invalid_fen` without reaching the model. Mate and stalemate give `no_legal_moves`.
-- The model's output is checked (finite, `[0, 1]`, sum `1 ± 0.01`) and renormalised to sum to 1, because maia2 rounds to 4 decimals. Anything else is `model_error`.
+- The model's output is checked (finite, `[0, 1]`, sum `1 ± 0.01`) and renormalised to sum to 1, because maia2 rounds to 4 decimals. Any other output, and any unexpected exception raised by maia2 for one item, is `model_error` for that item only, with the exception logged. The rest of the batch is answered, so one poison position cannot fail the call.
 - Elo is clamped to [1000, 2100], which covers Maia-2's buckets (`<1100` … `>=2000`). An unknown Elo becomes 1500.
 - `services/maia/app` does not import python-chess.
 
@@ -89,20 +91,31 @@ Maia-2 is not trained on the first ten half-moves. `maia2/configs/maia2-training
   - `runtime` stage, the compose target: the venv, the weights and `app/` only, with no pytest, httpx or tests.
 - `/srv` is root-owned and not writable by the `maia` user (uid 10001). Compose also runs the container `read_only: true` with a tmpfs `/tmp` (`HOME=/tmp`).
 - The weights are downloaded at image build into `/opt/maia2_models`, and maia2 verifies their SHA-256. They are never committed.
+- torch 2.8.0 advisories (OSV query, 2026-11-21). maia2 0.11.0 requires `torch>=2.8.0,<2.9`, so torch cannot be upgraded:
+  - CVE-2026-24747 / GHSA-63cw-57p8-fm3p: RCE via untrusted checkpoint files;
+  - CVE-2025-2999, CVE-2025-3000, CVE-2025-3001: memory corruption in `unpack_sequence`, `torch.jit.script` and `lstm_cell`;
+  - CVE-2025-55551, CVE-2025-55552, CVE-2025-55554: DoS or unexpected behaviour in `linalg.lu`, `rot90`/`randn_like` and `nan_to_num`.
+
+  We judge the risk low:
+  - the only checkpoints loaded are the two maia2 releases, whose SHA-256 is verified at build and again at start-up, so no untrusted checkpoint is ever loaded;
+  - requests carry only FEN strings and integer Elo, so none of the affected operators can be reached with attacker-chosen tensors;
+  - the service is internal-only, with no egress and no host port outside the dev overlay.
+
+  Revisit when maia2 allows a newer torch.
 
 ### Network and ports
 
 - Compose service `maia` (profile `maia`, build target `runtime`) is attached only to `maia_internal`, a network with `internal: true`. It has no egress, which was verified with `pypi.org` (DNS fails) and `1.1.1.1` / `8.8.8.8` (network unreachable). `rust-dev` joins `maia_internal` as well as `default`; the `rust-worker` (lane I) must join it when it lands, with `MAIA_URL: ${MAIA_URL:-}`.
-- `docker-compose.yml` publishes no host port for `maia`. The opt-in overlay `docker-compose.ports.yml` adds `127.0.0.1:58080:8080`, the same pattern as Postgres and Redis. Docker cannot publish a port from an internal-only network, so with the overlay `maia` also joins `default`, which has egress, for the main dev stack only. Parallel and CI projects (`COMPOSE_FILE=docker-compose.yml`) keep it internal-only.
+- `docker-compose.yml` publishes no host port for `maia`. The opt-in overlay `docker-compose.ports.yml` adds `127.0.0.1:58080:8080`, the same pattern as Postgres and Redis. Docker cannot publish a port from an internal-only network, so with the overlay `maia` also joins `default`. **On the dev ports overlay, maia therefore has egress.** The overlay is only for the local dev stack. The beta and production stack, like parallel and CI projects (`COMPOSE_FILE=docker-compose.yml`), keeps `maia` on `maia_internal` only: no host port and no egress. Clients reach it as `http://maia:8080` on that network.
 
 ## Consequences
 
 - Positions without Maia have no difficulty. Coaching must treat `pending_maia` and `not_applicable` as "unknown", never as easy or hard. The first ten half-moves of every game have no difficulty.
 - Observed on the live service (CPU, 2 threads):
-  - a 64-item batch took about 5.4 s, inside the 10 s timeout but not by much;
+  - a 64-item batch took about 5.4 s. With 32-item batches, the first call after start-up (cold) took 12.3 s and later calls took 1.4 to 3.5 s. A 10 s timeout would have failed that cold call, so the limit is 30 s;
   - the recapture in `maia_live_contract` scored `p(f1d1) = 1.0`;
   - castling (`e1g1`) went from 0.18 at Elo 1000 to 0.08 at Elo 2100 (L1 distance 0.91 between the two distributions).
-  A busy service could hit the timeout; those batches become `pending_maia/timeout` and are retried, but raising `MAIA_THREADS` or lowering the batch size is the knob if that happens often.
+  Batches are 32 items with a 30 s timeout, which leaves about 2.4x headroom on a cold start and about 9x when warm. A batch that still times out becomes `pending_maia/timeout` and is retried; `MAIA_THREADS` is the knob if that happens often.
 - The `maia` image is large: about 2.6 GB, of which CPU torch and its dependencies are about 1.07 GB and the two checkpoints 559 MB. Its build depends on Google Drive being reachable.
 - `maia_live_contract` (`enrich/tests/difficulty.rs`) runs when `MAIA_URL` is set; with `IN_DOCKER=1` an unreachable Maia then fails it. It checks:
   - the model id;
@@ -110,6 +123,6 @@ Maia-2 is not trained on the first ten half-moves. `maia2/configs/maia2-training
   - finite, in-range probabilities summing to 1 ± 1e-3;
   - keys that are legal canonical UCI for the side to move (black to move, `e1g1`, `e8g8`, `e7e8q`, checked with `chess-core`);
   - `None` for a garbage FEN, mate and stalemate;
-  - a 64-item batch inside the timeout;
+  - a full `DEFAULT_BATCH_SIZE` batch inside the timeout;
   - that Elo changes the distribution.
   To run it: `COMPOSE_FILE=docker-compose.yml docker compose -p <ci> --profile maia up -d --wait maia`, then `... run --rm -e MAIA_URL=http://maia:8080 rust-dev cargo test --locked -p enrich --test difficulty maia_live_contract`.

@@ -21,6 +21,7 @@ from app.model import (
 START = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 MATE = "rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3"
 ODD = "8/8/8/8/8/8/k7/6K1 w - - 0 40"  # the fake returns a bad distribution here
+BOOM = "8/8/8/8/8/8/k7/6K1 b - - 0 41"  # the fake raises an unexpected exception here
 
 
 class FakeModel:
@@ -35,6 +36,8 @@ class FakeModel:
             raise NoLegalMoves(fen)
         if fen == ODD:
             return {"a2a3": 0.2, "a2a4": 0.2}
+        if fen == BOOM:
+            raise RuntimeError("forced failure inside maia2")
         # Rounded like maia2 (4 decimals): sums to 0.9999.
         return {"e2e4": 0.5, "d2d4": 0.3, "g1f3": 0.1999}
 
@@ -95,6 +98,17 @@ def test_bad_model_output_is_a_per_item_error(client: TestClient) -> None:
     items = r.json()["items"]
     assert items[0] == {"error": "model_error"}
     assert "probs" in items[1]
+
+
+def test_unexpected_model_exception_is_a_per_item_error(
+    client: TestClient, fake: FakeModel
+) -> None:
+    r = predict(client, [item(), item(BOOM), item()])
+    assert r.status_code == 200
+    items = r.json()["items"]
+    assert items[1] == {"error": "model_error"}
+    assert "probs" in items[0] and "probs" in items[2]
+    assert len(fake.calls) == 3
 
 
 @pytest.mark.parametrize(
