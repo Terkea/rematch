@@ -78,3 +78,12 @@ unused_dependencies = "allow"
 [profile.release]
 lto = "thin"
 codegen-units = 1
+
+# Move generation dominates chess-heavy tests (PGN replay, opening classification, motif lines).
+# Optimising the chess crates in dev and test builds keeps those tests fast without touching
+# release settings. Our own crates stay at opt-level 0 so debugging is unaffected.
+[profile.dev.package.cozy-chess]
+opt-level = 3
+
+[profile.dev.package.chess-core]
+opt-level = 3
