@@ -313,12 +313,18 @@ fn detectors(mode: NormMode) -> Vec<Detector> {
             Src::Cased,
             Bound::None,
         ),
-        // Alternatives `a` and `c` have a lookbehind (checked per alternative), `b` and `c` a
-        // folded lookahead. JS `\d` and `\w` are ASCII, and `\b` is `(?-u:\b)`.
+        // Alternatives `a`, `t` and `c` have a lookbehind (checked per alternative); `t`, `b` and
+        // `c` a folded lookahead. JS `\d` and `\w` are ASCII. TS's `the\b` (after `e`, a word
+        // char) is the folded lookahead `(?:(?-i:[^a-z0-9_])|$)` outside group `t`, not
+        // `(?-u:\b)`: in the hardened text a folded char is an uppercase ASCII marker and must
+        // count as a non-word char (T6 review probe `jaո theé`). TS's `(?:[0-9]|the\b)` is split
+        // into `a` and `t`; the char after the greedy `\s+` decides between them, so
+        // leftmost-first gives the same match.
         det(
             LeakKind::Date,
             format!(
-                "(?P<a>{MONTH}\\.?{s}+(?:[0-9]|the(?-u:\\b)))\
+                "(?P<a>{MONTH}\\.?{s}+[0-9])\
+                 |(?P<t>{MONTH}\\.?{s}+the)(?:(?-i:[^a-z0-9_])|$)\
                  |(?P<b>[0-9]{{1,2}}(?:st|nd|rd|th)?{s}+(?:of{s}+)?{MONTH}){not_az}\
                  |(?P<c>[A-Za-z0-9_]+{s}+of{s}+{MONTH}){not_az}\
                  |(?P<d>[0-9]{{1,2}}{s}*[/.]{s}*[0-9]{{1,2}})\
@@ -414,13 +420,14 @@ fn run(d: &Detector, text: &str) -> Vec<String> {
             text,
             |_| true,
             |c| {
-                let (name, g) = ["a", "b", "c", "d", "e"]
+                let (name, g) = ["a", "t", "b", "c", "d", "e"]
                     .into_iter()
                     .find_map(|n| c.name(n).map(|g| (n, g)))?;
-                // A rejected `a` or `c` cannot leave another alternative at the same start: `b`,
-                // `d` and `e` need a digit where `a` needs a letter, and `d`/`e` need `/`, `.` or
-                // `-` where `c` needs spaces and "of". So retrying at start + 1 is exact.
-                if matches!(name, "a" | "c") && !not_az(prev_char(text, g.start())) {
+                // A rejected `a`, `t` or `c` cannot leave another alternative at the same start:
+                // `b`, `d` and `e` need a digit where `a` and `t` need a letter, `a` and `t` share
+                // the lookbehind, and `d`/`e` need `/`, `.` or `-` where `c` needs spaces and
+                // "of". So retrying at start + 1 is exact.
+                if matches!(name, "a" | "t" | "c") && !not_az(prev_char(text, g.start())) {
                     return None;
                 }
                 Some((g.end(), g.as_str().to_owned()))
