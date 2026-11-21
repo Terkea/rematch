@@ -20,7 +20,8 @@
     "test": "vitest run",
     "lint": "biome check .",
     "typecheck": "tsc --noEmit",
-    "generate": "drizzle-kit generate"
+    "generate": "drizzle-kit generate",
+    "db:pull": "drizzle-kit pull --config drizzle.pull.config.ts"
   },
   "dependencies": {
     "drizzle-orm": "~0.45.4",

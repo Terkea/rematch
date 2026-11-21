@@ -21,3 +21,9 @@ Until R1 the schema lived in `packages/db/src/schema.ts` and Drizzle generated t
 - One migration history, in one directory, applied by one tool; migrations are never edited after release (sqlx verifies checksums).
 - The schema check needs Docker and the TypeScript worker image, so it runs as a script (CI job `baseline-schema`) rather than in `cargo test`.
 - Until the Drizzle migration files are deleted (R1 Task 27), changing the schema means writing a new SQL migration and regenerating the Drizzle schema.
+
+## Generated schema and M4 hand-off
+
+- `scripts/db/generate-drizzle-schema.sh` creates a scratch database `schema_pull`, applies every `db/migrations/*.sql` in version order (`psql -1`, `ON_ERROR_STOP`), runs `drizzle-kit pull` (`pnpm --filter @ci/db db:pull`, config `packages/db/drizzle.pull.config.ts`, `_sqlx_migrations` excluded), formats with Biome and drops the database. The output, `packages/db/src/generated/schema.ts` and `relations.ts`, is committed.
+- CI job `schema-drift` runs the script and then `git diff --exit-code packages/db/src/generated`. A migration change without regeneration fails it with the command to run. Every lane that adds a migration (T16 `user_events_watermark`, T19, M4) reruns the script as its last step and commits the regenerated files.
+- M4 (`apps/web`) imports the generated schema and adds its own tables (Better Auth) only as SQL migrations in `db/migrations/` with versions after `20261121009999`, then reruns the script. Until R1 Task 27 removes `packages/db/src/schema.ts`, the hand-written schema remains the `@ci/db` export; generated names differ (for example enum `analysisStatusEnum` is `analysisStatus`, and `importCursor`/`errorCode` lose their `$type<>` narrowing, to be re-applied by M4 at the query layer).
