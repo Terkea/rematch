@@ -1082,4 +1082,3 @@ async fn a_non_final_failure_does_not_hand_off(pool: PgPool) {
     assert!(matches!(res, Err(JobError::Retryable { .. })), "{res:?}");
     assert_eq!(game(&pool, id).await.analysis_generation, 1);
 }
-
