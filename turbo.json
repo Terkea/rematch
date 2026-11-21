@@ -23,7 +23,8 @@
     "CHESSCOM_API_BASE_URL",
     "CHESSCOM_ENABLED",
     "CHESSCOM_OAUTH_ENABLED",
-    "LAB_ENABLED"
+    "LAB_ENABLED",
+    "E2E_BASE_URL"
   ],
   "tasks": {
     "build": {

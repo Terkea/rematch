@@ -1,0 +1,41 @@
+# ADR-WEB-14. Weakness timeline and area score encoding
+
+Date: 2026-11-21
+Status: Accepted
+
+## Context
+
+Task 15 builds the area score row and the weakness timeline swimlane (spec §12b). The owner wants to see when a mistake starts, when it improves and when it comes back. Six states must read apart without colour alone (DESIGN.md), and red and green keep their chess meanings.
+
+## Decision
+
+- **State encoding.** Red means the weakness is a problem now, and green means it is getting better. Inside each hue, pattern and bar shape separate the states:
+  - `not_an_issue`: a `rule-strong` hairline, with no bar.
+  - `emerging`: `pen` dots.
+  - `active`: a solid `pen` bar.
+  - `relapsed`: a `pen` cross-hatch.
+  - `improving`: a `good` hatch at 45°.
+  - `resolved`: a solid `good` band, thinner than a bar.
+
+  The patterns are SVG `<pattern>` elements filled with token colours over the lane's `well`: `pen` on `well` is 4.14:1 day and 6.11:1 night, and `good` on `well` is 5.56:1 and 10.20:1. Each lane label also shows its current state as text ("Now relapsed"). The grid (below) is the only text alternative, so nothing is read twice.
+- **Calendar axis.** Every month is the same width, and days spread evenly inside their month. Reports and plans run by the month, the month ruling stays regular, and the brief's check holds: one month in a two-month range is exactly 50%. The cost is skew: a February day is drawn about 11% wider than a 31-day month's day, which puts a date up to about 2.5% of the range out over a two-month range, and under 1% over a year.
+- **Geometry in percentages.** Lane x positions are SVG percentages, so nothing is measured and the layout never shifts. Below a 640px container, the lanes scroll sideways inside their own named, focusable region. The labels stay pinned, and the region opens on the latest months.
+- **Events.** A plan is a `pencil` diamond and a drill a filled `pencil` square. Each runs as a dashed `pencil` rule through every lane. Its label is a numbered note under the chart, so labels never collide.
+- **One clock each.** The timeline reveal is a `sheet` cover. It slides off on `--wipe` (`dur.reveal`, `ease.pen`) as a transform only. The area score needles share one `--sweep` value. Under reduced motion both values are 1 from the start. Input during the reveal finishes it over `dur.quick`.
+- **One composite widget, as an ARIA grid.** Each lane is a `row` with a `rowheader`, and each segment has a focusable `gridcell` over it. The cells share one roving tab stop, so screen readers switch to focus mode and pass the arrow keys through. ←/→ move along a lane and ↑/↓ move between lanes, keeping the place in time. Home and End go to a lane's ends. Each cell is named briefly with its state, dates and position, and the row header gives the lane. The row header also carries the lane's onset as hidden text. There is no separate summary, so browse mode reads each lane once, through the grid. The readout is one fixed line above the chart. It shows the focused or hovered segment, so it is never clipped and never covers a label. It wraps rather than truncating. Below 640px it uses short dates ("20 Aug–5 Oct 2026"). Tailwind v4 compiles `@max-[640px]` to `width < 640px` and `@min-[640px]` to `width >= 640px`, so the two forms never overlap (a test pins this), and no date is split across lines. The scroller is a named tab stop only while it overflows. When it does, the axis gives "Earlier" and "Later" buttons.
+- **Area score.** The list is unruled: DESIGN.md keeps ruling for scoresheet surfaces. All rows share one data-driven scale:
+  - from the lowest score or median minus 5, floored to 10;
+  - to the highest score or next band plus 5, ceiled to 10;
+  - at least 40 points wide.
+
+  It is numbered at both ends and the middle. Each mark has its own shape:
+  - the player: a tall `ink` needle;
+  - the band median: a short `pencil` tick that hangs below the scale;
+  - the next band: a `good` flag that stands above it.
+
+  A 1px `pencil` connector joins the median and the player.
+
+## Consequences
+
+- When real data lands (M2), very long ranges thin the month labels to about 12, but lanes stay one row per series. Twelve or more series make a tall chart. Filtering is left to the Progress page.
+- Ruler positions are relative to the list's own scale. Compare two lists only if they share a domain, which `AreaScore` accepts through its `domain` prop.

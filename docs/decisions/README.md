@@ -33,6 +33,7 @@ One file per decision: context, decision, alternatives, consequences. New decisi
 - [0029. State in Postgres, queue as delivery; reconciler instead of an outbox](0029-state-in-postgres-reconciler-not-outbox.md)
 - [0030. Rust for the entire backend](0030-rust-backend.md)
 - [0031. Rust workspace, toolchain and crates](0031-rust-workspace-toolchain-and-crates.md)
+- [0031 addendum. npm enforcement of the 7-day age and exact-pin rule](0031-addendum-npm-enforcement.md)
 - [0032. Postgres job queue](0032-postgres-job-queue.md)
 - [0033. SQL migrations own the schema, Drizzle is generated](0033-sql-migrations-own-the-schema.md)
 - [0034. User events over LISTEN/NOTIFY with a reset marker](0034-user-events-listen-notify.md)
@@ -40,6 +41,8 @@ One file per decision: context, decision, alternatives, consequences. New decisi
 - [0036. Per-stage timing metrics](0036-per-stage-timing-metrics.md)
 - [0037. Own PGN parser with chess.js-compatible FEN and SAN](0037-own-pgn-parser-chessjs-compatible.md)
 - [0038. Parity acceptance and removal of the TS backend](0038-parity-and-ts-backend-removal.md)
+- [0039. Piece set: Cburnett by default, Chessnut as an option](0039-piece-set.md)
+- [0040. chess.com first; Lichess accounts deferred](0040-chesscom-first-defer-lichess-accounts.md)
 
 R2 (profile engine) records use placeholder numbers until the controller renumbers them after 0038 (ADR-R2-1). Rows without a file yet are written by the R2 task named in the plan.
 
@@ -61,5 +64,18 @@ R2 (profile engine) records use placeholder numbers until the controller renumbe
 - [ADR-R2-16. Tiered analysis scheduler](ADR-R2-16-tiered-analysis-scheduler.md)
 - [ADR-R2-17. ETA and autoscaling hooks](ADR-R2-17-eta-and-autoscaling-hooks.md)
 - [ADR-R2-18. build-profile job and CoachingInput builder](ADR-R2-18-build-profile-and-coaching-input.md)
-- [0031 addendum. npm enforcement of the 7-day age and exact-pin rule](0031-addendum-npm-enforcement.md)
-- [0040. chess.com first; Lichess accounts deferred](0040-chesscom-first-defer-lichess-accounts.md)
+
+R3 (AI) records use placeholder numbers until R3 Task 26 renumbers them.
+
+- [ADR-R3-1. Rust Anthropic client and the `ai` crate's dependencies](ADR-R3-1-rust-anthropic-client-and-crates.md)
+
+Web (M4) records use placeholder numbers until the controller renumbers them.
+
+- [ADR-WEB-1. Source-only UI packages and the web dependency set](ADR-WEB-1-source-only-ui-packages.md)
+- [ADR-WEB-2. Web development stack in Compose](ADR-WEB-2-web-dev-stack.md)
+- [ADR-WEB-7. Design tokens, themes and self-hosted fonts](ADR-WEB-7-design-tokens.md)
+- [ADR-WEB-10. Visual QA loop: Playwright, shots, lab and critique](ADR-WEB-10-visual-qa-loop.md)
+- [ADR-WEB-11. Overlay libraries: sonner, vaul and cmdk](ADR-WEB-11-overlay-libraries.md)
+- [ADR-WEB-12. KPI stats: fixed percent window, outward-rounded ends, host-set halo, honest trend scale](ADR-WEB-12-kpi-stat-honest-uncertainty.md)
+- [ADR-WEB-13. Board: shipped Cburnett pieces, coordinates and piece motion](ADR-WEB-13-board-pieces-and-motion.md)
+- [ADR-WEB-14. Weakness timeline and area score encoding](ADR-WEB-14-weakness-timeline-encoding.md)

@@ -13,10 +13,12 @@
   "scripts": {
     "test": "vitest run",
     "lint": "biome check .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "pieces": "tsx scripts/build-pieces.ts"
   },
   "dependencies": {
     "@base-ui/react": "1.9.0",
+    "@ci/chess-core": "workspace:*",
     "@number-flow/react": "0.6.2",
     "@phosphor-icons/react": "2.1.10",
     "@visx/visx": "4.0.0",

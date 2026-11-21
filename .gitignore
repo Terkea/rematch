@@ -13,6 +13,7 @@ apps/web/test-results/
 apps/web/playwright-report/
 next-env.d.ts
 *.tsbuildinfo
+.scratch/
 
 # npm release-age cache (scripts/check-npm-age.mjs)
 .cache/

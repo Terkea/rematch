@@ -1,0 +1,95 @@
+Cburnett chess pieces
+=====================
+
+Author: Colin M.L. Burnett (Wikimedia Commons user Cburnett)
+Licence used here: BSD 3-Clause (one of the author's offered licences)
+Retrieved: 2026-11-21, by the chess-improver project
+Decision: docs/decisions/0039-piece-set.md
+
+The twelve SVG files in this directory are the unmodified originals from Wikimedia
+Commons. Each file page carries the author's licence tag
+{{self|GFDL|migration=relicense|BSD|GPL}}, so the author offers the drawings under
+the GFDL 1.2+, CC BY-SA 3.0 (by migration), the 3-clause BSD licence (Commons
+{{BSD}} defaults to version 3) or the GPL 2+. This project uses them under the
+BSD 3-Clause licence only. No copy from Lichess or any other redistributor was used.
+
+Sources (file page, then the original file it served):
+
+  Chess_klt45.svg  https://commons.wikimedia.org/wiki/File:Chess_klt45.svg
+                   https://upload.wikimedia.org/wikipedia/commons/4/42/Chess_klt45.svg
+  Chess_kdt45.svg  https://commons.wikimedia.org/wiki/File:Chess_kdt45.svg
+                   https://upload.wikimedia.org/wikipedia/commons/f/f0/Chess_kdt45.svg
+  Chess_qlt45.svg  https://commons.wikimedia.org/wiki/File:Chess_qlt45.svg
+                   https://upload.wikimedia.org/wikipedia/commons/1/15/Chess_qlt45.svg
+  Chess_qdt45.svg  https://commons.wikimedia.org/wiki/File:Chess_qdt45.svg
+                   https://upload.wikimedia.org/wikipedia/commons/4/47/Chess_qdt45.svg
+  Chess_rlt45.svg  https://commons.wikimedia.org/wiki/File:Chess_rlt45.svg
+                   https://upload.wikimedia.org/wikipedia/commons/7/72/Chess_rlt45.svg
+  Chess_rdt45.svg  https://commons.wikimedia.org/wiki/File:Chess_rdt45.svg
+                   https://upload.wikimedia.org/wikipedia/commons/f/ff/Chess_rdt45.svg
+  Chess_blt45.svg  https://commons.wikimedia.org/wiki/File:Chess_blt45.svg
+                   https://upload.wikimedia.org/wikipedia/commons/b/b1/Chess_blt45.svg
+  Chess_bdt45.svg  https://commons.wikimedia.org/wiki/File:Chess_bdt45.svg
+                   https://upload.wikimedia.org/wikipedia/commons/9/98/Chess_bdt45.svg
+  Chess_nlt45.svg  https://commons.wikimedia.org/wiki/File:Chess_nlt45.svg
+                   https://upload.wikimedia.org/wikipedia/commons/7/70/Chess_nlt45.svg
+  Chess_ndt45.svg  https://commons.wikimedia.org/wiki/File:Chess_ndt45.svg
+                   https://upload.wikimedia.org/wikipedia/commons/e/ef/Chess_ndt45.svg
+  Chess_plt45.svg  https://commons.wikimedia.org/wiki/File:Chess_plt45.svg
+                   https://upload.wikimedia.org/wikipedia/commons/4/45/Chess_plt45.svg
+  Chess_pdt45.svg  https://commons.wikimedia.org/wiki/File:Chess_pdt45.svg
+                   https://upload.wikimedia.org/wikipedia/commons/c/c7/Chess_pdt45.svg
+
+SHA-256 of the files as committed. The repository stores text with LF line
+endings (.gitattributes), and Commons served five files (Chess_bdt45, Chess_blt45,
+Chess_ndt45, Chess_nlt45 and Chess_rlt45) with CRLF, so for those five the hash is
+of the LF-normalised bytes; the drawing data is unchanged:
+
+  3ed2bb19629a70ddb8d0f971caa7251b0ab9bf01bcebaa4bac83f7aec0c6dd7a  Chess_bdt45.svg
+  30612a7aec659cd417d9bf258281c9d681896d7eacc3066fe1808cbb180d588a  Chess_blt45.svg
+  025eea92e0ef8eb1fd06b1c58d0d112948f08bf66cea6b5d003659569949b41c  Chess_kdt45.svg
+  56f55c784843b1ac272b8745d740aa2a3e6c585513ef889978916f88e5d0b70b  Chess_klt45.svg
+  9b836351ecb399c64163b5e5083d17b67c1b7273728a369847ba8b1332ca243d  Chess_ndt45.svg
+  3b5d668e3caf7856d3c9c496d73c4b36d095cfda482929097defd7dbade20bc4  Chess_nlt45.svg
+  4413bf7c18a341f9723d97e6f92c985e30b6167b037e80842cea59b7541bb074  Chess_pdt45.svg
+  cc7de30708dcec8f4d593a89d10893d5f9c063682039a1c441e86c44cf2096db  Chess_plt45.svg
+  70191a3fbc729ef629661e2419a66ab8024c49277aab8ccae3a5ef61372ab802  Chess_qdt45.svg
+  b72b864e2a5b6c8f8afb7f260130c10e649ff063f4ef58190c00a35c56364327  Chess_qlt45.svg
+  6abf617a9e26902e0734d85897c9ca55e29d7be2928142aa21032c38967e34ba  Chess_rdt45.svg
+  20d8dfd35151c288db1696630e16f5c25d6ead3f93dd65d776f162866b223dbb  Chess_rlt45.svg
+
+The app does not ship these files directly. packages/ui/scripts/build-pieces.ts
+recolours them at build time (black paint to --color-piece-dark, white paint to
+--color-piece-light) into packages/ui/src/board/pieces.generated.ts, and a test
+fails if that module drifts from these files. The /licenses page will carry
+the notice below (Task 27).
+
+-----------------------------------------------------------------------------
+
+Copyright (c) 2006, Colin M.L. Burnett
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its contributors
+   may be used to endorse or promote products derived from this software
+   without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
