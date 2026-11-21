@@ -12,6 +12,10 @@ const LOAD_BOUND: Duration = Duration::from_millis(340);
 
 /// Brief name: `dataset_loads_under_200ms`. The only test in this binary.
 #[test]
+#[cfg_attr(
+    debug_assertions,
+    ignore = "wall-clock bound: release only (cargo test --release -p profile-core --test openings_load)"
+)]
 fn dataset_loads_under_340ms() {
     let t = Instant::now();
     let fresh = build_openings(&VENDORED_TSVS).expect("vendored tables replay");
