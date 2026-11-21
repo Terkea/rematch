@@ -12,7 +12,9 @@
   },
   "dependencies": {
     "@ci/chess-core": "workspace:*",
-    "chess.js": "^1.4.0"
+    "@ci/db": "workspace:*",
+    "chess.js": "^1.4.0",
+    "drizzle-orm": "~0.45.4"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

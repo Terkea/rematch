@@ -193,9 +193,15 @@ importers:
       '@ci/chess-core':
         specifier: workspace:*
         version: link:../../packages/chess-core
+      '@ci/db':
+        specifier: workspace:*
+        version: link:../../packages/db
       chess.js:
         specifier: ^1.4.0
         version: 1.4.0
+      drizzle-orm:
+        specifier: ~0.45.4
+        version: 0.45.4(postgres@4.1.1)
     devDependencies:
       '@types/node':
         specifier: ^22.0.0

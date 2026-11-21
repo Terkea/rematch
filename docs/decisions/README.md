@@ -28,3 +28,4 @@ One file per decision: context, decision, alternatives, consequences. New decisi
 - [0024. Weakness timeline with change-point detection](0024-weakness-timeline-change-points.md)
 - [0025. Tiered import and prioritised analysis for large histories](0025-tiered-import-and-analysis.md)
 - [0026. Workspace packages resolve source via a development condition](0026-workspace-source-resolution.md)
+- [0027. Lichess server evals accepted into the eval cache](0027-lichess-evals-in-eval-cache.md)
