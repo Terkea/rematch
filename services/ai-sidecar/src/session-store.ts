@@ -8,14 +8,16 @@ import type { ChatSessionStore } from "./chat.js";
  * SELECT, INSERT and DELETE there.
  *
  * Entries are opaque: they go to Postgres as one JSON string and come back as jsonb values, and the
- * sidecar never inspects them. The only field SQL reads is the SDK-documented top-level `uuid`,
- * which the docs ask adapters to use as an idempotency key for retried batches.
+ * sidecar never inspects them. Only the partial unique index on the SDK-documented top-level `uuid`
+ * reads into them, as the idempotency key the docs ask adapters to use for retried batches.
  *
  * Rust owns deletion of a conversation: it deletes this table's rows for the conversation id in the
  * same transaction as the conversation (Tasks 17, 25). The sidecar deletes only to clear a
  * transcript it could not resume, before rebuilding it.
  */
 const T = "ai_sdk_session_entries";
+/** Advisory-lock class of the per-conversation turn lock: (TURN_LOCK_CLASS, hashtext(id)). */
+export const TURN_LOCK_CLASS = 2026112110;
 
 /**
  * Postgres text and jsonb cannot hold U+0000. Strings and keys keep everything else; the count of
@@ -79,15 +81,14 @@ export class PgSessionStore implements ChatSessionStore {
         JSON.stringify([key.projectKey, key.sessionId, key.subpath ?? ""]),
       ]);
       await c.query(
+        // Retried batches re-deliver entries: the partial unique index on the entry uuid (Task 17)
+        // turns a repeat into a no-op, within a batch as well as across batches.
         `INSERT INTO ${T} (project_key, session_id, subpath, seq, entry)
-         SELECT $1, $2::uuid, $3, base.m + row_number() OVER (ORDER BY e.ord), e.value
+         SELECT $1, $2::uuid, $3, base.m + e.ord, e.value
          FROM jsonb_array_elements($4::jsonb) WITH ORDINALITY AS e(value, ord),
               (SELECT coalesce(max(seq), 0) AS m FROM ${T}
                 WHERE project_key = $1 AND session_id = $2::uuid AND subpath = $3) AS base
-         WHERE e.value->>'uuid' IS NULL OR NOT EXISTS (
-           SELECT 1 FROM ${T} x
-            WHERE x.project_key = $1 AND x.session_id = $2::uuid AND x.subpath = $3
-              AND x.entry->>'uuid' = e.value->>'uuid')`,
+         ON CONFLICT DO NOTHING`,
         [key.projectKey, key.sessionId, key.subpath ?? "", JSON.stringify(clean)],
       );
       await c.query("COMMIT");
@@ -139,6 +140,44 @@ export class PgSessionStore implements ChatSessionStore {
       [key.projectKey, key.sessionId],
     );
     return rows.map((r) => r.subpath);
+  }
+
+  /**
+   * Takes the cross-replica turn lock for a conversation: a session-level advisory lock held on a
+   * dedicated pool connection for the whole turn. Returns its release function, or null when
+   * another holder (another replica) has it. The key is the two-int form
+   * (TURN_LOCK_CLASS, hashtext(conversation id)), so it never collides with the single-bigint
+   * per-transcript append locks.
+   */
+  async tryLockConversation(sessionId: string): Promise<(() => Promise<void>) | null> {
+    const c = await this.pool.connect();
+    try {
+      const { rows } = await c.query<{ ok: boolean }>(
+        "SELECT pg_try_advisory_lock($1::int, hashtext($2)) AS ok",
+        [TURN_LOCK_CLASS, sessionId],
+      );
+      if (!rows[0]?.ok) {
+        c.release();
+        return null;
+      }
+    } catch (e) {
+      c.release(true);
+      throw e;
+    }
+    let released = false;
+    return async () => {
+      if (released) return;
+      released = true;
+      try {
+        await c.query("SELECT pg_advisory_unlock($1::int, hashtext($2))", [
+          TURN_LOCK_CLASS,
+          sessionId,
+        ]);
+        c.release();
+      } catch {
+        c.release(true); // destroying the connection drops its session locks
+      }
+    };
   }
 
   /** True when a main transcript exists for the session under any project key. */

@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SidecarError } from "../src/errors.js";
 import { Limiter } from "../src/limiter.js";
 import { parseQueryRequest } from "../src/options.js";
-import { callController, runQuery } from "../src/query.js";
+import { callController, runQuery, StreamUsage } from "../src/query.js";
 import { captureLogger, result, scripted, testConfig, usage } from "./helpers.js";
 
 vi.mock("@anthropic-ai/claude-agent-sdk", async (importOriginal) => ({
@@ -248,5 +248,88 @@ describe("runQuery", () => {
       (x) => x,
     )) as SidecarError;
     expect([e.status, e.type]).toEqual([503, "api_error"]);
+  });
+});
+
+describe("StreamUsage", () => {
+  const ev = (event: unknown, parent: string | null = null) =>
+    ({
+      type: "stream_event",
+      event,
+      parent_tool_use_id: parent,
+      uuid: "u",
+      session_id: "s",
+    }) as never;
+
+  it("sums_messages_per_model_with_the_latest_delta_winning", () => {
+    const s = new StreamUsage();
+    expect(s.empty).toBe(true);
+    // message 1, model A: start, then two deltas (cumulative within the message)
+    s.observe(
+      ev({
+        type: "message_start",
+        message: {
+          id: "m1",
+          model: "A",
+          usage: {
+            input_tokens: 100,
+            output_tokens: 1,
+            cache_read_input_tokens: 50,
+            cache_creation_input_tokens: 10,
+          },
+        },
+      }),
+    );
+    s.observe(ev({ type: "message_delta", usage: { output_tokens: 20 } }));
+    s.observe(
+      ev({
+        type: "message_delta",
+        usage: {
+          output_tokens: 35,
+          input_tokens: 110,
+          cache_read_input_tokens: 60,
+          cache_creation_input_tokens: 12,
+        },
+      }),
+    );
+    // message 2, model A again (after a tool call)
+    s.observe(
+      ev({
+        type: "message_start",
+        message: {
+          id: "m2",
+          model: "A",
+          usage: { input_tokens: 5, output_tokens: 1, cache_read_input_tokens: 200 },
+        },
+      }),
+    );
+    s.observe(ev({ type: "message_delta", usage: { output_tokens: 7 } }));
+    // message 3, model B (a refusal fallback), from a subagent stream: still counted
+    s.observe(
+      ev(
+        { type: "message_start", message: { id: "m3", model: "B", usage: { input_tokens: 9 } } },
+        "toolu_x",
+      ),
+    );
+    s.observe(ev({ type: "message_delta", usage: { output_tokens: 4 } }, "toolu_x"));
+    // noise
+    s.observe(ev({ type: "content_block_delta", delta: { type: "text_delta", text: "x" } }));
+    s.observe({ type: "assistant", message: {}, parent_tool_use_id: null } as never);
+    expect(s.empty).toBe(false);
+    expect(s.totals()).toEqual({
+      A: {
+        inputTokens: 115,
+        outputTokens: 42,
+        cacheReadInputTokens: 260,
+        cacheCreationInputTokens: 12,
+      },
+      B: { inputTokens: 9, outputTokens: 4, cacheReadInputTokens: 0, cacheCreationInputTokens: 0 },
+    });
+  });
+
+  it("a_delta_before_any_start_is_ignored", () => {
+    const s = new StreamUsage();
+    s.observe(ev({ type: "message_delta", usage: { output_tokens: 5 } }));
+    expect(s.totals()).toEqual({});
   });
 });

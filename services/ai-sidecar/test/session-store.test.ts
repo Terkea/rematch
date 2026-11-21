@@ -212,6 +212,29 @@ describe.skipIf(!ADMIN_URL)("PgSessionStore", () => {
     expect(stripped).toBe(1);
   });
 
+  it("a_batch_repeating_a_uuid_keeps_the_first", async () => {
+    await store.append(KEY, [e("user", { uuid: "dup" }), e("assistant", { uuid: "dup" }), e("t")]);
+    expect(await store.load(KEY)).toEqual([e("user", { uuid: "dup" }), e("t")]);
+  });
+
+  it("the_conversation_lock_excludes_a_second_holder_until_released", async () => {
+    const unlock = await store.tryLockConversation(S);
+    expect(unlock).not.toBeNull();
+    // A second store (another replica) cannot take it.
+    const replica = new PgSessionStore(pool);
+    expect(await replica.tryLockConversation(S)).toBeNull();
+    // Other conversations are unaffected.
+    const other = await replica.tryLockConversation(OTHER);
+    expect(other).not.toBeNull();
+    await other?.();
+    await unlock?.();
+    const again = await replica.tryLockConversation(S);
+    expect(again).not.toBeNull();
+    await again?.();
+    // Every lock connection went back to the pool.
+    expect(pool.totalCount - pool.idleCount).toBe(0);
+  });
+
   it("the_role_reaches_only_its_table", async () => {
     await expect(pool.query("SELECT * FROM other_secret")).rejects.toThrow(/permission denied/);
     await expect(

@@ -15,7 +15,8 @@ export type StoreDb = {
 
 /**
  * A throwaway database with the `ai_sdk_session_entries` fixture (the real migration is Task 17's)
- * and a pool that connects as the restricted `ai_sidecar` role.
+ * and a pool that connects as the restricted `ai_sidecar` role. The role is created NOLOGIN, as in
+ * the real migration; LOGIN and the password are granted here, as dev compose does.
  */
 export async function createStoreDb(adminUrl: string): Promise<StoreDb> {
   const dbName = `ai_sidecar_store_${randomBytes(4).toString("hex")}`;
@@ -28,7 +29,7 @@ export async function createStoreDb(adminUrl: string): Promise<StoreDb> {
   const dbAdmin = new pg.Client({ connectionString: url.toString() });
   await dbAdmin.connect();
   await dbAdmin.query(readFileSync(FIXTURE, "utf8"));
-  await dbAdmin.query(`ALTER ROLE ai_sidecar PASSWORD '${password}'`);
+  await dbAdmin.query(`ALTER ROLE ai_sidecar LOGIN PASSWORD '${password}'`);
   url.username = "ai_sidecar";
   url.password = password;
   const pool = new pg.Pool({ connectionString: url.toString(), max: 4 });

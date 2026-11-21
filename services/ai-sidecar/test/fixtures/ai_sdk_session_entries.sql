@@ -1,8 +1,5 @@
--- TEST FIXTURE ONLY. Task 17 owns the real migration in db/migrations/; this mirrors the agreed
--- shape so the sidecar store can be tested in isolation. R3 (ADR-R3-6): Agent SDK chat
--- transcripts, mirrored by the ai-sidecar SessionStore.
--- Entries are opaque SDK JSON; the sidecar never interprets them. Rust deletes a
--- conversation's rows (session_id = conversation id) in the same transaction as the conversation.
+-- TEST FIXTURE ONLY: a copy of the ai_sdk_session_entries part of Task 17's migration
+-- (r3/e db/migrations/20261121030000_ai_coaching.sql), which owns the real schema.
 
 CREATE TABLE ai_sdk_session_entries (
   project_key text NOT NULL,
@@ -11,23 +8,31 @@ CREATE TABLE ai_sdk_session_entries (
   seq bigint NOT NULL,
   entry jsonb NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
-  PRIMARY KEY (project_key, session_id, subpath, seq)
-);
-
--- Rust's per-conversation delete and the sidecar's whole-session lookups filter on session_id alone.
+  PRIMARY KEY (project_key, session_id, subpath, seq));
 CREATE INDEX ai_sdk_session_entries_session_idx ON ai_sdk_session_entries (session_id);
+-- One row per SDK entry uuid within a (project, session, subpath): the sidecar appends with
+-- INSERT ... ON CONFLICT DO NOTHING instead of scanning the session for duplicates.
+CREATE UNIQUE INDEX ai_sdk_session_entries_uuid_uq
+  ON ai_sdk_session_entries (project_key, session_id, subpath, (entry->>'uuid')) WHERE entry ? 'uuid';
 
--- The sidecar's dedicated role. Roles are cluster-wide, so creation tolerates an existing role
--- (and a concurrent creator, as when parallel test databases migrate at once). The password is not
--- set here: deployment sets it from the environment (ALTER ROLE ai_sidecar PASSWORD ...), and the
--- sidecar reads its connection string from AI_SESSION_DATABASE_URL.
+-- The sidecar's restricted role: this one table and nothing else. Created NOLOGIN; operations
+-- grant LOGIN and a password out of band (no secret in a migration). Roles are cluster-wide, so
+-- creation is idempotent and tolerates concurrent migrations (parallel test databases). Where the
+-- migrating user may not create roles, the role is left to operations and the grant is skipped.
 DO $$
 BEGIN
-  CREATE ROLE ai_sidecar LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT;
-EXCEPTION
-  WHEN duplicate_object OR unique_violation THEN NULL;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ai_sidecar')
+     AND EXISTS (SELECT 1 FROM pg_roles WHERE rolname = current_user AND (rolsuper OR rolcreaterole)) THEN
+    BEGIN
+      CREATE ROLE ai_sidecar NOLOGIN;
+    EXCEPTION WHEN duplicate_object OR unique_violation THEN
+      NULL;
+    END;
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ai_sidecar') THEN
+    GRANT SELECT, INSERT, DELETE ON ai_sdk_session_entries TO ai_sidecar;
+  ELSE
+    RAISE NOTICE 'role ai_sidecar not created (no CREATEROLE); grant it access to ai_sdk_session_entries manually';
+  END IF;
 END
 $$;
-
--- This table only, and only what the SessionStore needs.
-GRANT SELECT, INSERT, DELETE ON ai_sdk_session_entries TO ai_sidecar;

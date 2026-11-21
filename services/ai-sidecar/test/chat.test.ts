@@ -4,6 +4,7 @@ import type { SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk"
 import * as sdk from "@anthropic-ai/claude-agent-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type ChatSessionStore, runChat } from "../src/chat.js";
+import { SidecarError } from "../src/errors.js";
 import { Limiter } from "../src/limiter.js";
 import { Metrics } from "../src/log.js";
 import { PROJECT_DIR_NAME, parseChatRequest } from "../src/options.js";
@@ -73,6 +74,15 @@ class FakeStore implements ChatSessionStore {
     this.deleted.push(id);
     this.rows.delete(id);
   }
+  /** Stands in for pg_try_advisory_lock: `held` simulates a turn running on another replica. */
+  held = new Set<string>();
+  async tryLockConversation(id: string) {
+    if (this.held.has(id)) return null;
+    this.held.add(id);
+    return async () => {
+      this.held.delete(id);
+    };
+  }
 }
 
 function deps() {
@@ -81,6 +91,7 @@ function deps() {
     logger: captureLogger(),
     metrics: new Metrics(),
     store: new FakeStore(),
+    turns: new Set<string>(),
   };
 }
 
@@ -319,6 +330,7 @@ describe("runChat", () => {
     expect(msgs).toHaveLength(1);
     expect(msgs[0]?.message.content).toEqual(baseBody.prompt); // no rebuild context, no history
     expect(terminal(res)[0]?.data).toMatchObject({ subtype: "success", session: "resumed" });
+    expect(cli.scratchDirs).toHaveLength(1); // served from the store via a temporary dir
   });
 
   it("resumed_turn_reports_per_turn_usage_and_session_totals", async () => {
@@ -453,25 +465,43 @@ describe("runChat", () => {
     ]);
   });
 
-  it("refusal_fallback_retracts_the_refused_message_and_is_logged", async () => {
-    const start = (id: string) =>
-      ({
-        type: "stream_event",
-        event: { type: "message_start", message: { id, model: "claude-sonnet-5-5", usage: {} } },
-        parent_tool_use_id: null,
-        uuid: "u",
-        session_id: "s",
-      }) as unknown as SDKMessage;
+  const start = (id: string, model = "claude-sonnet-5-5") =>
+    ({
+      type: "stream_event",
+      event: { type: "message_start", message: { id, model, usage: {} } },
+      parent_tool_use_id: null,
+      uuid: "u",
+      session_id: "s",
+    }) as unknown as SDKMessage;
+  const stop = (reason: string) =>
+    ({
+      type: "stream_event",
+      event: { type: "message_delta", delta: { stop_reason: reason }, usage: { output_tokens: 3 } },
+      parent_tool_use_id: null,
+      uuid: "u",
+      session_id: "s",
+    }) as unknown as SDKMessage;
+  const assistant = (uuid: string, id: string, text: string, supersedes?: string[]) =>
+    ({
+      type: "assistant",
+      message: { id, content: [{ type: "text", text }] },
+      parent_tool_use_id: null,
+      ...(supersedes ? { supersedes } : {}),
+      uuid,
+      session_id: "s",
+    }) as unknown as SDKMessage;
+
+  it("refusal_fallback_retracts_only_the_refused_streamed_message", async () => {
     useScript([
       start("msg_1"),
       textDelta("refused text"),
-      {
-        type: "assistant",
-        message: { id: "msg_1", content: [{ type: "text", text: "refused text" }] },
-        parent_tool_use_id: null,
-        uuid: "a-1",
-        session_id: "s",
-      } as unknown as SDKMessage,
+      stop("refusal"),
+      assistant("a-1", "msg_1", "refused text"),
+      start("msg_2", "claude-fallback-x"),
+      textDelta("fallback text"),
+      stop("end_turn"),
+      // The replacement names the refused message (already retracted) and one never seen.
+      assistant("a-2", "msg_2", "fallback text", ["a-1", "a-0"]),
       {
         type: "system",
         subtype: "model_refusal_fallback",
@@ -480,22 +510,13 @@ describe("runChat", () => {
         original_model: "claude-sonnet-5-5",
         fallback_model: "claude-fallback-x",
         request_id: null,
-        retracted_message_uuids: ["a-1"],
+        retracted_message_uuids: ["a-1", "never-seen"],
         content: "SECRET refusal text",
         uuid: "u",
         session_id: "s",
       } as unknown as SDKMessage,
-      start("msg_2"),
-      textDelta("fallback text"),
-      {
-        type: "assistant",
-        message: { id: "msg_2", content: [{ type: "text", text: "fallback text" }] },
-        parent_tool_use_id: null,
-        supersedes: ["a-0"],
-        uuid: "a-2",
-        session_id: "s",
-      } as unknown as SDKMessage,
       result({
+        result: "fallback text",
         modelUsage: {
           "claude-sonnet-5-5": usage(1, 2, 0, 0),
           "claude-fallback-x": usage(3, 4, 0, 0),
@@ -505,13 +526,13 @@ describe("runChat", () => {
     const d = deps();
     const res = new FakeRes();
     await runChat(parseChatRequest(baseBody), testConfig(), res, d);
-    const ev = res.events();
-    expect(ev.slice(0, 4)).toEqual([
+    // The retract comes before any replacement text, names only what was streamed, and the
+    // later notices (already retracted, or unknown uuids) are no-ops.
+    expect(res.events()).toEqual([
       { event: "delta", data: { text: "refused text", messageId: "msg_1" } },
-      { event: "retract", data: { messageIds: ["msg_1"], reason: "model_refusal_fallback" } },
+      { event: "retract", data: { messageIds: ["msg_1"], reason: "refusal" } },
       { event: "delta", data: { text: "fallback text", messageId: "msg_2" } },
-      // a-0 was never seen, so its text cannot be named: retract everything of this turn so far.
-      { event: "retract", data: { messageIds: [], all: true, reason: "superseded" } },
+      { event: "done", data: expect.objectContaining({ text: "fallback text" }) },
     ]);
     // Unknown model keys pass through unchanged for Rust to price conservatively.
     const done = terminal(res)[0]?.data as { modelUsage: object } | undefined;
@@ -519,6 +540,157 @@ describe("runChat", () => {
     const all = d.logger.lines.join("\n");
     expect(all).toContain("model_refusal_fallback");
     expect(all).not.toContain("SECRET");
+  });
+
+  it("superseded_streamed_message_is_retracted_once", async () => {
+    useScript([
+      start("msg_1"),
+      textDelta("bad tool call text"),
+      stop("tool_use"),
+      assistant("a-1", "msg_1", "bad tool call text"),
+      start("msg_2"),
+      textDelta("good text"),
+      stop("end_turn"),
+      assistant("a-2", "msg_2", "good text", ["a-1"]),
+      assistant("a-3", "msg_3", "", ["a-1", "a-2-unknown"]),
+      result({ result: "good text" }),
+    ]);
+    const res = new FakeRes();
+    await runChat(parseChatRequest(baseBody), testConfig(), res, deps());
+    expect(res.events().filter((e) => e.event === "retract")).toEqual([
+      { event: "retract", data: { messageIds: ["msg_1"], reason: "superseded" } },
+    ]);
+    expect(terminal(res)[0]?.data).toMatchObject({ text: "good text" });
+  });
+
+  // ---- per-conversation turn lock ----
+
+  it("a_concurrent_turn_on_the_same_conversation_is_409", async () => {
+    let release!: () => void;
+    useScript(async function* () {
+      await new Promise<void>((r) => {
+        release = r;
+      });
+      yield result();
+    });
+    const d = deps();
+    const first = new FakeRes();
+    const p1 = runChat(parseChatRequest(baseBody), testConfig(), first, d);
+    await vi.waitFor(() => expect(first.headersSent).toBe(true));
+    const second = new FakeRes();
+    const e = await runChat(parseChatRequest(baseBody), testConfig(), second, d).catch((x) => x);
+    expect(e).toBeInstanceOf(SidecarError);
+    expect([e.status, e.type]).toEqual([409, "turn_in_progress"]);
+    expect(second.headersSent).toBe(false);
+    release();
+    await p1;
+    expect(first.status).toBe(200);
+    expect(terminal(first)[0]?.event).toBe("done");
+    // Released: the next turn runs.
+    const third = new FakeRes();
+    useScript([result()]);
+    await runChat(parseChatRequest(baseBody), testConfig(), third, d);
+    expect(terminal(third)[0]?.event).toBe("done");
+  });
+
+  it("a_turn_running_on_another_replica_is_409", async () => {
+    const s = useScript([result()]);
+    const d = deps();
+    d.store.held.add(CONV); // another replica holds the Postgres advisory lock
+    const e = await runChat(parseChatRequest(baseBody), testConfig(), new FakeRes(), d).catch(
+      (x) => x,
+    );
+    expect([e.status, e.type]).toEqual([409, "turn_in_progress"]);
+    expect(s.calls).toHaveLength(0);
+    // The in-process lock was released despite the 409.
+    d.store.held.delete(CONV);
+    const res = new FakeRes();
+    await runChat(parseChatRequest(baseBody), testConfig(), res, d);
+    expect(terminal(res)[0]?.event).toBe("done");
+    expect(d.store.held.size).toBe(0); // the store lock is released after the turn
+  });
+
+  it("other_conversations_are_not_blocked", async () => {
+    const releases: Array<() => void> = [];
+    useScript(async function* () {
+      await new Promise<void>((r) => {
+        releases.push(r);
+      });
+      yield result();
+    });
+    const d = deps();
+    const p1 = runChat(parseChatRequest(baseBody), testConfig(), new FakeRes(), d);
+    await vi.waitFor(() => expect(d.store.held.size).toBe(1));
+    const other = new FakeRes();
+    const p2 = runChat(
+      parseChatRequest({ ...baseBody, conversationId: "0b8f2a52-3f1d-4c7e-9e3a-2f6a1c0d9e11" }),
+      testConfig(),
+      other,
+      d,
+    );
+    await vi.waitFor(() => expect(releases).toHaveLength(2));
+    expect(other.headersSent).toBe(true);
+    for (const r of releases) r();
+    await Promise.all([p1, p2]);
+  });
+
+  it("a_retried_first_turn_leaves_one_clean_transcript", async () => {
+    const { cfg, cli, d } = cliEnv();
+    // A first turn that wrote to the store and then failed (e.g. a timeout) before Rust saw done.
+    d.store.rows.set(CONV, [
+      { type: "user", uuid: "stale-1" },
+      { type: "assistant" },
+      { type: "x" },
+    ]);
+    const res = new FakeRes();
+    await runChat(parseChatRequest(baseBody), cfg, res, d);
+    expect(terminal(res)[0]?.data).toMatchObject({ subtype: "success", session: "new" });
+    expect(d.store.deleted).toEqual([CONV]);
+    const rows = d.store.rows.get(CONV) as Array<{ uuid?: string }>;
+    expect(rows).toHaveLength(2); // only the retried turn's entries
+    expect(rows.some((r) => r.uuid === "stale-1")).toBe(false);
+    expect(cli.calls[0]?.options.sessionId).toBe(CONV);
+  });
+
+  it("a_failed_resume_attempt_usage_is_added_to_the_rebuilt_turn", async () => {
+    useScript(
+      [
+        start("msg_r"),
+        {
+          type: "stream_event",
+          event: {
+            type: "message_delta",
+            delta: {},
+            usage: { input_tokens: 7, output_tokens: 0, cache_read_input_tokens: 0 },
+          },
+          parent_tool_use_id: null,
+          uuid: "u",
+          session_id: "s",
+        } as unknown as SDKMessage,
+        result({ subtype: "error_during_execution", is_error: true, modelUsage: {} }),
+      ],
+      [result({ modelUsage: { "claude-sonnet-5-5": usage(10, 20, 100, 5) } })],
+    );
+    const d = deps();
+    d.store.rows.set(CONV, [{ type: "user" }]);
+    const res = new FakeRes();
+    await runChat(
+      parseChatRequest({ ...baseBody, resume: true, rebuildContext: "CTX" }),
+      testConfig(),
+      res,
+      d,
+    );
+    expect(terminal(res)[0]?.data).toMatchObject({
+      session: "rebuilt",
+      modelUsage: {
+        "claude-sonnet-5-5": {
+          inputTokens: 17,
+          outputTokens: 20,
+          cacheReadInputTokens: 100,
+          cacheCreationInputTokens: 5,
+        },
+      },
+    });
   });
 
   it("mirror_error_is_a_warning_metric", async () => {

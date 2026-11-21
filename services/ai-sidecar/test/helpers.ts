@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { Options, SDKMessage, SessionStore } from "@anthropic-ai/claude-agent-sdk";
@@ -177,6 +177,8 @@ type Usage4 = { input: number; output: number; cacheRead: number; cacheCreate: n
 export class FakeCli {
   calls: Captured[] = [];
   corruptResume = false;
+  /** Temporary resume dirs used (and already deleted), for assertions. */
+  scratchDirs: string[] = [];
   private totals = new Map<string, Usage4>();
 
   constructor(
@@ -204,8 +206,16 @@ export class FakeCli {
       const id = options.resume ?? options.sessionId ?? randomUUID();
       const local = self.localPath(options, id);
       let prev: Usage4 = { input: 0, output: 0, cacheRead: 0, cacheCreate: 0 };
+      // Where this run writes its transcript. A resume served from the store runs in a temporary
+      // config dir that the SDK deletes at run end, as the real SDK does.
+      let writeTo = local;
+      let scratch: string | undefined;
       if (options.resume) {
         const loaded = store ? await store.load({ projectKey, sessionId: id }) : null;
+        if (loaded && !self.corruptResume) {
+          scratch = tempDir("fake-sdk-resume-");
+          writeTo = join(scratch, "projects", projectKey, `${id}.jsonl`);
+        }
         if (self.corruptResume || (!loaded && !existsSync(local))) {
           yield result({
             subtype: "error_during_execution",
@@ -252,8 +262,12 @@ export class FakeCli {
         uuid: randomUUID(),
         session_id: id,
       } as unknown as SDKMessage;
-      mkdirSync(dirname(local), { recursive: true });
-      writeFileSync(local, '{"type":"user"}\n');
+      mkdirSync(dirname(writeTo), { recursive: true });
+      writeFileSync(writeTo, '{"type":"user"}\n');
+      if (scratch) {
+        rmSync(scratch, { recursive: true, force: true });
+        self.scratchDirs.push(scratch);
+      }
       await store?.append({ projectKey, sessionId: id }, [
         { type: "user", uuid: randomUUID() },
         { type: "assistant", uuid: randomUUID() },

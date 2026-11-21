@@ -44,7 +44,7 @@ This section was recorded with the implementation in `services/ai-sidecar` (SDK 
 
   The stream sends these events:
   - `delta {text, messageId?}`, for top-level `text_delta` only;
-  - `retract {messageIds, reason, all?}`, when a refusal fallback or a superseding message withdraws text;
+  - `retract {messageIds, reason}`, naming streamed messages that a refusal or a superseding message withdrew (`done.text` is authoritative);
   - `tool_use {id, name, input}`;
   - exactly one terminal event, either `done` (the query result plus `session: "new" | "resumed" | "rebuilt"` and `sessionModelUsage`) or `error` (the error body plus `status`);
   - a `: ping` comment every 15 s.
@@ -61,7 +61,7 @@ This section was recorded with the implementation in `services/ai-sidecar` (SDK 
 - 529 → `overloaded_error`;
 - any other status ≥ 500 → `api_error`.
 
-A timeout is 504 `api_error`, and a call aborted by shutdown (SIGTERM) is 503 `api_error`. Messages are fixed strings and never echo SDK text, because that text may contain a key.
+A timeout is 504 `api_error`, and a call aborted by shutdown (SIGTERM) is 503 `api_error`. A second concurrent turn of one conversation is 409 with the non-Anthropic type `turn_in_progress`; Rust should treat it as "busy, retry after the running turn". Messages are fixed strings and never echo SDK text, because that text may contain a key.
 
 **Isolation.** `buildOptions` is the single place where the options are set:
 - `model` comes from an allowlist (`claude-sonnet-5-5`, `claude-haiku-5-5`) and is never an alias.
@@ -131,6 +131,19 @@ Owner direction: the coach chat uses the SDK's native sessions, as in the owner'
 ## Notes from the Task 10 review (fix round 1)
 
 - **Verbatim prompts.** `buildOptions` sets `verbatimPrompts: true`, which requires Claude Code 2.1.248 or later; the bundled CLI is 2.1.325. Without it, the CLI expands user text such as `@/proc/self/environ` as a file mention and dispatches `/compact`-style text as a slash command. With it, prompts are delivered as written, and the CLI's turn-start attachment pass (nested CLAUDE.md files, skill listings) is skipped too. That suits a sidecar with an empty cwd and no settings.
-- **Cumulative versus per-turn usage.** The SDK's result `modelUsage` is cumulative for the session. On a resumed turn it includes every earlier turn, because the transcript carries the saved totals. For a resumed turn, the sidecar therefore reports `modelUsage` as the turn's own usage per model, summed from the stream's `message_start` and `message_delta` usage. A new or rebuilt session starts from zero, so there the SDK's figure is already per-turn and is used as is. The SDK's cumulative figure is passed along separately as `sessionModelUsage`. **Rust meters `modelUsage` (per turn) and never `sessionModelUsage`.** `/v1/query` is stateless, so its `modelUsage` is per call. Model keys pass through unchanged, including a refusal-fallback model outside the allowlist; Rust prices unknown keys conservatively.
+- **Cumulative versus per-turn usage, and metering (controller ruling, fix round 2).** The SDK's result `modelUsage` is cumulative for the session: on a resumed turn it includes every earlier turn, because the transcript carries the saved totals. The sidecar reports two fields.
+  - `sessionModelUsage` is the SDK's running total.
+  - `modelUsage` is the turn's own usage per model. On a resumed turn it is summed from the stream's `message_start` and `message_delta` usage. On a new or rebuilt turn it is the SDK's figure, which is per-turn there and also counts internal calls. When a failed resume attempt preceded a rebuild, that attempt's streamed usage is added.
+
+  **Rust meters as follows.** For `/v1/query`, and for new or rebuilt chat turns, it meters `modelUsage`. For a resumed turn, it meters `sessionModelUsage(now) − sessionModelUsage(previous turn)` per model; Rust keeps each turn's `sessionModelUsage` for this. If any difference is negative (for example, after a rebuild reset the totals), it falls back to `modelUsage`. The difference also captures internal calls that the stream does not show.
+
+  `/v1/query` is stateless, so its `modelUsage` is per call. Model keys pass through unchanged, including a refusal-fallback model outside the allowlist, and Rust prices unknown keys conservatively.
 - **Local transcripts are scratch.** Before every new or rebuilt attempt, the sidecar removes `configDir/projects/<projectKey>/<id>.jsonl` and `<id>/`, because the CLI rejects a `sessionId` whose file exists. With a store configured, it also removes them after each turn. The compose service has a read-only root and sized tmpfs mounts for `/var/lib/ai-sidecar` (512 MiB) and `/tmp` (256 MiB).
-- **Retractions.** A `model_refusal_fallback` system message, or an assistant message that `supersedes` earlier ones, produces an SSE `retract` event, `{messageIds, reason, all?}`. Deltas carry the `messageId` of their API message, so the client can drop exactly the withdrawn text. `all: true` means a withdrawn message was never seen, so the turn's text so far should be discarded.
+- **Retractions (SDK-faithful, fix round 2).** Deltas carry the `messageId` of their API message. A `retract {messageIds, reason}` event names only messages the sidecar actually streamed and has not already retracted. It is triggered in three ways:
+  - When a streamed message ends with `stop_reason: "refusal"`, its retract (`reason: "refusal"`) is sent at once, before the fallback model's replacement text.
+  - An assistant message's `supersedes` triggers a retract (`reason: "superseded"`).
+  - A `model_refusal_fallback`'s `retracted_message_uuids` triggers a retract (`reason: "model_refusal_fallback"`).
+
+  The uuids in the last two are mapped to message ids, and unknown or already-retracted uuids are a no-op. `done.text` is authoritative for the turn's final text.
+- **One turn per conversation.** Two overlapping turns of one conversation would delete each other's transcripts and branch the stored session. The sidecar holds an in-process lock per conversation id. When a store is configured, it also holds a Postgres session-level advisory lock, `pg_try_advisory_lock(2026112110, hashtext(conversation_id))`, on a dedicated pool connection for the whole turn, so replicas exclude each other. The two-int key keeps it apart from the store's single-bigint append locks. The lock is taken once a limiter slot is free, so a queued request holds no connection. A second turn gets 409 with error type `turn_in_progress`, before any header. On a `new` turn whose id already has store rows (a retried first turn), those rows are deleted first.
+- **Store writes.** `append` is `INSERT … ON CONFLICT DO NOTHING` against Task 17's partial unique index `(project_key, session_id, subpath, (entry->>'uuid')) WHERE entry ? 'uuid'`, so retried batches and in-batch repeats are no-ops. The `ai_sidecar` role is created NOLOGIN by the migration. Operations grant `LOGIN PASSWORD` out of band; in dev compose that is `docker/postgres/ai-sidecar-role.sh` (profile `ai`).

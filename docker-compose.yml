@@ -192,6 +192,24 @@ services:
       - /tmp:mode=1777,size=256m
     mem_limit: 5g
 
+  # Dev only: grants the NOLOGIN ai_sidecar role LOGIN and AI_SIDECAR_DB_PASSWORD, after the
+  # migrations ran. `docker compose --profile ai run --rm ai-sidecar-role` (ADR-R3-6).
+  ai-sidecar-role:
+    profiles: [ai]
+    image: postgres:17
+    entrypoint: ["sh", "/ai-sidecar-role.sh"]
+    environment:
+      PGHOST: postgres
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: chess
+      AI_SIDECAR_DB_PASSWORD: ${AI_SIDECAR_DB_PASSWORD:-}
+    volumes:
+      - ./docker/postgres/ai-sidecar-role.sh:/ai-sidecar-role.sh:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   rust-dev:
     build:
       context: .

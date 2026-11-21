@@ -145,10 +145,28 @@ describe.skipIf(!LIVE)("live smoke (AI_LIVE_SMOKE=1 only, never in CI)", () => {
     expect(second).toMatchObject({ subtype: "success", session: "resumed" });
     expect(second.text.toLowerCase()).toContain("najdorf");
 
-    // Per-turn usage (metered) excludes turn one; the SDK's session total includes it.
-    const turn = Object.values(second.modelUsage).reduce((s, u) => s + u.outputTokens, 0);
-    const session = Object.values(second.sessionModelUsage).reduce((s, u) => s + u.outputTokens, 0);
-    expect(turn).toBeGreaterThan(0);
-    expect(session).toBeGreaterThan(turn);
-  }, 480000);
+    // Per-turn usage excludes turn one; the SDK's session total includes it.
+    const outputs = (u: Usage) => Object.values(u).reduce((s, x) => s + x.outputTokens, 0);
+    expect(outputs(second.modelUsage)).toBeGreaterThan(0);
+    expect(outputs(second.sessionModelUsage)).toBeGreaterThan(outputs(second.modelUsage));
+
+    const third = await chat({
+      conversationId,
+      resume: true,
+      rebuildContext:
+        "<history>The user asked you to remember a word, then asked for it.</history>",
+      prompt: [{ type: "text", text: "Spell that word backwards." }],
+    });
+    expect(third).toMatchObject({ subtype: "success", session: "resumed" });
+
+    // The metering rule (ADR-R3-6): on a resumed turn Rust meters S3 - S2 per model. It must agree
+    // with the turn's own stream sum, which is the fallback.
+    for (const [model, s3] of Object.entries(third.sessionModelUsage)) {
+      const s2 = second.sessionModelUsage[model] ?? { inputTokens: 0, outputTokens: 0 };
+      const streamed = third.modelUsage[model] ?? { inputTokens: 0, outputTokens: 0 };
+      const near = (a: number, b: number) => Math.abs(a - b) <= Math.max(5, 0.1 * b);
+      expect(near(s3.outputTokens - s2.outputTokens, streamed.outputTokens)).toBe(true);
+      expect(near(s3.inputTokens - s2.inputTokens, streamed.inputTokens)).toBe(true);
+    }
+  }, 720000);
 });

@@ -6,7 +6,9 @@ export type ApiErrorType =
   | "not_found_error"
   | "rate_limit_error"
   | "api_error"
-  | "overloaded_error";
+  | "overloaded_error"
+  /** Not an Anthropic type: another turn of the same conversation is running (409). */
+  | "turn_in_progress";
 
 export type ErrorBody = { type: "error"; error: { type: ApiErrorType; message: string } };
 
@@ -90,6 +92,8 @@ export function upstreamError(status: number, retryAfter?: string): SidecarError
 }
 
 export const timeoutError = () => new SidecarError(504, "api_error", "the call timed out");
+export const turnInProgress = () =>
+  new SidecarError(409, "turn_in_progress", "another turn of this conversation is running");
 export const shuttingDown = () =>
   new SidecarError(503, "api_error", "the sidecar is shutting down");
 export const internalError = () => new SidecarError(500, "api_error", "the sidecar call failed");

@@ -33,11 +33,17 @@ export type SidecarResult = {
   text: string;
   numTurns: number;
   durationMs: number;
-  /** This call's (this turn's) usage per model. Rust meters this field. */
+  /**
+   * This call's (this turn's) own usage per model; on a resumed chat turn it is summed from the
+   * stream. Metering (controller ruling, ADR-R3-6): Rust meters this field for /v1/query and for
+   * new or rebuilt chat turns. On a resumed turn Rust meters sessionModelUsage(now) minus the
+   * previous turn's sessionModelUsage, per model, and falls back to this field when any difference
+   * is negative.
+   */
   modelUsage: Record<string, TokenCounts>;
   /**
    * Chat only: the SDK's running session total, which on a resumed turn includes every earlier
-   * turn. For comparison and diagnostics; never meter it.
+   * turn. Rust stores it per turn so that the next resumed turn can be metered as a difference.
    */
   sessionModelUsage?: Record<string, TokenCounts>;
   sdkCostUsd: number;
@@ -106,6 +112,25 @@ export class StreamUsage {
   get empty(): boolean {
     return this.messages.size === 0;
   }
+}
+
+/** Per-model sum of two usage maps. */
+export function addUsage(
+  a: Record<string, TokenCounts>,
+  b: Record<string, TokenCounts>,
+): Record<string, TokenCounts> {
+  const out: Record<string, TokenCounts> = {};
+  for (const src of [a, b]) {
+    for (const [model, u] of Object.entries(src)) {
+      const t = out[model] ?? ZERO();
+      t.inputTokens += u.inputTokens;
+      t.outputTokens += u.outputTokens;
+      t.cacheReadInputTokens += u.cacheReadInputTokens;
+      t.cacheCreationInputTokens += u.cacheCreationInputTokens;
+      out[model] = t;
+    }
+  }
+  return out;
 }
 
 function apply(t: TokenCounts, u: Record<string, unknown> | undefined): void {
