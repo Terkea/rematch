@@ -341,3 +341,23 @@ async fn generation_round_trips(pool: PgPool) {
     assert_eq!(g.analysis_generation, 3);
     assert_eq!(g.analysed_generation, Some(2));
 }
+
+/// Every pooled connection asks the server for TCP keepalives (idle 60 s, interval 10 s,
+/// count 3), so a peer that vanished is noticed in about 90 s (T21 hand-off).
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn connect_sets_tcp_keepalives(_pool_opts: PgPoolOptions, opts: PgConnectOptions) {
+    let pool = connect(&test_db_url(&opts), DbOptions::default())
+        .await
+        .unwrap();
+    for (name, want) in [
+        ("tcp_keepalives_idle", "60"),
+        ("tcp_keepalives_interval", "10"),
+        ("tcp_keepalives_count", "3"),
+    ] {
+        let shown: String = sqlx::query_scalar(sqlx::AssertSqlSafe(format!("SHOW {name}")))
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(shown, want, "{name}");
+    }
+}
