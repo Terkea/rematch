@@ -981,3 +981,104 @@ async fn every_query_has_a_timeout(pool: PgPool) {
     // The job is untouched and still completes once the lock is gone.
     assert!(q.complete(&job).await.unwrap());
 }
+
+// ---- T13 review follow-ups (Task 14) ----
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn enqueue_rejects_recur_every_of_one_second_or_less(pool: PgPool) {
+    let q = Queue::new(pool.clone());
+    for every in [
+        Duration::ZERO,
+        Duration::from_millis(500),
+        Duration::from_secs(1),
+    ] {
+        let opts = EnqueueOptions {
+            recur_every: Some(every),
+            ..keyed("reconcile")
+        };
+        let err = q.enqueue("reconcile", &json!({}), opts).await.unwrap_err();
+        assert!(
+            matches!(err, QueueError::InvalidOptions(_)),
+            "{every:?}: {err:?}"
+        );
+    }
+    let n: i64 = sqlx::query_scalar("SELECT count(*) FROM jobs")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(n, 0);
+    let opts = EnqueueOptions {
+        recur_every: Some(Duration::from_millis(1001)),
+        ..keyed("reconcile")
+    };
+    assert!(
+        q.enqueue("reconcile", &json!({}), opts)
+            .await
+            .unwrap()
+            .is_some()
+    );
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn recurring_failure_resets_stalls(pool: PgPool) {
+    let q = Queue::new(pool.clone());
+    let opts = EnqueueOptions {
+        recur_every: Some(Duration::from_secs(300)),
+        ..keyed("reconcile")
+    };
+    let id = q
+        .enqueue("reconcile", &json!({}), opts)
+        .await
+        .unwrap()
+        .unwrap();
+    sqlx::query("UPDATE jobs SET stalls = 2 WHERE id = $1")
+        .bind(id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let job = q
+        .dequeue(&["reconcile"], "w", 1, LEASE)
+        .await
+        .unwrap()
+        .pop()
+        .unwrap();
+    q.fail(&job, &retryable("db down"), Backoff::default())
+        .await
+        .unwrap();
+    let stalls: i32 = sqlx::query_scalar("SELECT stalls FROM jobs WHERE id = $1")
+        .bind(id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(stalls, 0, "a new cycle starts with a fresh stall budget");
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn dequeue_skips_a_locked_row_instead_of_blocking(pool: PgPool) {
+    // Distinguishes SKIP LOCKED from a blocking FOR UPDATE: the first job's row lock is held by
+    // another transaction, and dequeue must return the second job at once.
+    let q = Queue::new(pool.clone()).with_query_timeout(Duration::from_secs(2));
+    let first = q
+        .enqueue(KIND, &json!({"i": 1}), EnqueueOptions::default())
+        .await
+        .unwrap()
+        .unwrap();
+    let second = q
+        .enqueue(KIND, &json!({"i": 2}), EnqueueOptions::default())
+        .await
+        .unwrap()
+        .unwrap();
+    let mut tx = pool.begin().await.unwrap();
+    sqlx::query("SELECT 1 FROM jobs WHERE id = $1 FOR UPDATE")
+        .bind(first)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    let jobs = tokio::time::timeout(Duration::from_secs(5), q.dequeue(&[KIND], "w", 1, LEASE))
+        .await
+        .expect("dequeue did not block")
+        .expect("dequeue did not time out");
+    assert_eq!(jobs.iter().map(|j| j.id).collect::<Vec<_>>(), vec![second]);
+    tx.rollback().await.unwrap();
+    assert_eq!(row(&pool, first).await.state, "queued");
+}
