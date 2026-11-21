@@ -30,3 +30,11 @@ The owner: "dw about deployments and launch for now, i want to test it for mysel
 
 - Priority order: the shortest path to the owner analysing their own games, then the profile, then AI reports and chat, then friend invites.
 - Billing and launch plans are not written until the owner asks.
+
+## Sequence after the beta
+
+The owner: "once we get the feedback from tests we can think about fixing the feedback then billing deployment launch and what not". The order is:
+1. the beta;
+2. collect feedback;
+3. fix what the feedback shows;
+4. only then plan billing, deployment and launch.
