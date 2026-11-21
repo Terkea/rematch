@@ -41,5 +41,6 @@ export function formatNotation(m: NotationMove): string {
 
 /** The eval bar's label (`+5.7`, `M2`): it sits at the winning side's end, so mates drop the sign. */
 export function evalBarLabel(score: Score): string {
-  return "mate" in score ? `M${Math.abs(score.mate)}` : formatEval(score);
+  if ("mate" in score) return score.mate === 0 ? "#" : `M${Math.abs(score.mate)}`;
+  return formatEval(score);
 }

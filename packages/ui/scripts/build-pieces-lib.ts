@@ -3,30 +3,9 @@
 // pieces through CSS variables and nothing recolours at runtime with `filter`. Pure, so the board
 // test can rebuild the set from the committed SVGs and fail on drift.
 
-export type PieceCode =
-  | "wK"
-  | "wQ"
-  | "wR"
-  | "wB"
-  | "wN"
-  | "wP"
-  | "bK"
-  | "bQ"
-  | "bR"
-  | "bB"
-  | "bN"
-  | "bP";
+import type { PieceCode, PieceNode, PieceSet } from "../src/board/piece-types.js";
 
-export interface PieceNode {
-  tag: "g" | "path" | "circle";
-  /** geometry and transform, as SVG attributes */
-  attrs: Record<string, string>;
-  /** presentation, as a React style object (camelCase) */
-  style: Record<string, string>;
-  children: PieceNode[];
-}
-
-export type PieceSet = Record<PieceCode, PieceNode[]>;
+export type { PieceCode, PieceNode, PieceSet };
 
 const roles = [
   ["K", "k"],

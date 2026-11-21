@@ -67,6 +67,7 @@ function Moment({ game, ply, orientation = "white", caption }: MomentProps) {
       <div className="flex flex-col gap-2 md:flex-row md:gap-3">
         <EvalBar
           score={scoreAt(game, shown)}
+          fen={fen}
           orientation={orientation}
           label="Evaluation"
           className="md:my-2"

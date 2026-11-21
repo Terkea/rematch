@@ -1,12 +1,13 @@
 "use client";
 
 import { Chess, type Square as ChessSquare } from "chess.js";
-import { useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Chessboard } from "react-chessboard";
-import type { PieceCode } from "../../scripts/build-pieces-lib.js";
+
 import { cn } from "../lib/index.js";
 import { type PieceType, useReducedMotion } from "../motion/index.js";
 import { boardPieces, PieceMotionContext, type PiecePlan } from "./piece.js";
+import type { PieceCode } from "./piece-types.js";
 import { SquareGrid } from "./square-grid.js";
 import {
   boardTheme,
@@ -93,6 +94,7 @@ function planMoves(
   move: { from: Square; to: Square },
   orientation: Orientation,
   dropped: boolean,
+  inflight: ReadonlyMap<Square, () => { dx: number; dy: number }>,
 ): Map<Square, PiecePlan> {
   const plans = new Map<Square, PiecePlan>();
   const mover = before.get(move.from);
@@ -103,7 +105,11 @@ function planMoves(
     const b = squareToCell(to, orientation);
     return { dx: a.col - b.col, dy: a.row - b.row };
   };
-  const { dx, dy } = offset(move.from, move.to);
+  // A mover still in the air travels on from where it is drawn now (M7), already lifted.
+  const air = inflight.get(move.from)?.();
+  const base = offset(move.from, move.to);
+  const dx = base.dx + (air?.dx ?? 0);
+  const dy = base.dy + (air?.dy ?? 0);
   let captured: PiecePlan["captured"];
   const victimSquare =
     before.get(move.to) !== undefined
@@ -118,7 +124,17 @@ function planMoves(
     captured = { code: victim, ...offset(victimSquare, move.to), spin: sign * (12 + 8 * rand) };
   }
   const type = TYPE[(mover[1] ?? "p").toLowerCase()] ?? "pawn";
-  plans.set(move.to, { id: nextPlanId++, code: landed, type, dx, dy, delay: 0, dropped, captured });
+  plans.set(move.to, {
+    id: nextPlanId++,
+    code: landed,
+    type,
+    dx,
+    dy,
+    delay: 0,
+    dropped,
+    flying: air !== undefined,
+    captured,
+  });
   // Castling: the rook follows the king by 70ms, so the king lands first (DESIGN.md, "Sound").
   if (mover[1] === "K" && Math.abs(move.to.charCodeAt(0) - move.from.charCodeAt(0)) === 2) {
     const rank = move.from[1];
@@ -148,6 +164,18 @@ const NAME: Record<string, string> = {
   N: "knight",
   P: "pawn",
 };
+
+/** True when `move` played on `before` gives the placement of `after`. */
+function playsTo(before: string, move: BoardMove, after: string): boolean {
+  const chess = load(before);
+  if (!chess) return false;
+  try {
+    chess.move(move);
+  } catch {
+    return false;
+  }
+  return chess.fen().split(" ")[0] === after.split(" ")[0];
+}
 
 function load(fen: string): Chess | null {
   try {
@@ -183,6 +211,7 @@ export function Board({
   const [selected, setSelected] = useState<Square | null>(null);
   const [focus, setFocus] = useState<Square | null>(null);
   const played = useRef(new Set<number>()).current;
+  const inflight = useRef(new Map<Square, () => { dx: number; dy: number }>()).current;
   const pending = useRef<{ move: BoardMove; dropped: boolean } | null>(null);
 
   // Plan the motion in the render that brings the new position, so the moved piece's first frame
@@ -193,18 +222,32 @@ export function Board({
     plans: new Map(),
   });
   if (motion.current.fen !== fen) {
+    // Our own move counts only if this FEN is that move played on the previous one; a parent that
+    // jumps somewhere else falls back to `lastMove`.
     const own = pending.current;
-    const move = own ?? (lastMove ? { move: lastMove, dropped: false } : null);
+    const ownFits = own !== null && playsTo(motion.current.fen, own.move, fen);
+    const move = ownFits ? own : lastMove ? { move: lastMove, dropped: false } : null;
     const plans = move
-      ? planMoves(motion.current.placement, position, move.move, orientation, move.dropped)
+      ? planMoves(
+          motion.current.placement,
+          position,
+          move.move,
+          orientation,
+          move.dropped,
+          inflight,
+        )
       : new Map<Square, PiecePlan>();
     motion.current = { fen, placement: position, plans };
     pending.current = null;
   }
+  // A pending move lives for one render: whatever the parent did with it, it is spent.
+  useEffect(() => {
+    pending.current = null;
+  });
   // biome-ignore lint/correctness/useExhaustiveDependencies: the plans change with the FEN
   const motionState = useMemo(
-    () => ({ plans: motion.current.plans, reduced, played }),
-    [fen, reduced, played],
+    () => ({ plans: motion.current.plans, reduced, played, inflight }),
+    [fen, reduced, played, inflight],
   );
 
   const turn = chess?.turn() ?? "w";
@@ -295,18 +338,25 @@ export function Board({
     return () => observer.disconnect();
   }, []);
 
-  // On a tinted night square the pale tint drops `ink` below 3:1, so its coordinate turns `on-ink`
-  // (DESIGN.md, "Board coordinates"). react-chessboard styles coordinates per square colour only,
-  // so the tinted squares get the variables from a scoped rule.
-  const tintedCss = useMemo(() => {
+  // Per-square coordinate rules (DESIGN.md, "Board coordinates"); react-chessboard styles
+  // coordinates per square colour only, so these come from a scoped rule:
+  // - on a tinted night square the pale tint drops `ink` below 3:1, so the coordinate turns `on-ink`;
+  // - on the check square the 3px `ink` ring runs under the glyph, so the glyph is `ink` on a 2px
+  //   `sheet` halo (15.28 and 13.32:1) and stays readable over the ring. Emitted last, so it wins.
+  const coordinateCss = useMemo(() => {
     const tinted = [lastMove?.from, lastMove?.to, selected ?? undefined].filter(Boolean);
-    return tinted
-      .map(
-        (sq) =>
-          `[data-theme="dark"] #${id}-square-${sq}{--board-coord-light:var(--color-on-ink);--board-coord-dark:var(--color-on-ink)}`,
-      )
-      .join("");
-  }, [id, lastMove, selected]);
+    const rules = tinted.map(
+      (sq) =>
+        `[data-theme="dark"] #${id}-square-${sq}{--board-coord-light:var(--color-on-ink);--board-coord-dark:var(--color-on-ink)}`,
+    );
+    if (check) {
+      rules.push(
+        `[data-board] #${id}-square-${check}{--board-coord-light:var(--color-ink);--board-coord-dark:var(--color-ink)}`,
+        `[data-board] #${id}-square-${check}>span{-webkit-text-stroke:4px var(--color-sheet);paint-order:stroke fill}`,
+      );
+    }
+    return rules.join("");
+  }, [id, lastMove, selected, check]);
 
   const styles = useMemo(
     () => squareStyles({ lastMove, check, selected }),
@@ -326,7 +376,7 @@ export function Board({
         className,
       )}
     >
-      {tintedCss ? <style data-board-coordinates>{tintedCss}</style> : null}
+      {coordinateCss ? <style data-board-coordinates>{coordinateCss}</style> : null}
       <div className="relative size-(--board-size)">
         <div ref={surface} aria-hidden="true" className="size-full">
           <PieceMotionContext.Provider value={motionState}>

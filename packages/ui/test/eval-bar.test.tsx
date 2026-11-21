@@ -83,3 +83,19 @@ describe("EvalBar", () => {
     expect(bar).toHaveAttribute("data-orientation", "black");
   });
 });
+
+describe("EvalBar mate on the board", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("gives { mate: 0 } to the side that is not to move", async () => {
+    mockReducedMotion(true);
+    // Fool's mate: White to move and mated.
+    const mated = "rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3";
+    const { rerender } = render(<EvalBar score={{ mate: 0 }} fen={mated} label="Evaluation" />);
+    expect(share()).toBe(0);
+    expect(screen.getByRole("meter")).toHaveAttribute("aria-valuetext", "Checkmate, Black wins");
+    rerender(<EvalBar score={{ mate: 0 }} fen={mated.replace(" w ", " b ")} label="Evaluation" />);
+    await wait(30);
+    expect(share()).toBe(1);
+  });
+});

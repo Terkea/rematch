@@ -9,7 +9,7 @@ import {
   useState,
 } from "react";
 import type { PieceRenderObject } from "react-chessboard";
-import type { PieceCode, PieceNode } from "../../scripts/build-pieces-lib.js";
+
 import {
   animate,
   dur,
@@ -22,6 +22,7 @@ import {
   useMotionValue,
   useTransform,
 } from "../motion/index.js";
+import type { PieceCode, PieceNode } from "./piece-types.js";
 import { cburnett } from "./pieces.generated.js";
 import type { Square } from "./theme.js";
 
@@ -36,6 +37,8 @@ export interface PiecePlan {
   delay: number;
   /** the piece was dropped by drag: it only lands */
   dropped: boolean;
+  /** the piece was still in the air from its last move: it travels on from there, already lifted */
+  flying?: boolean;
   captured?: { code: PieceCode; dx: number; dy: number; spin: number } | undefined;
 }
 
@@ -44,12 +47,15 @@ export interface PieceMotionState {
   reduced: boolean;
   /** plan ids already played, so a re-mount never replays a move */
   played: Set<number>;
+  /** pieces in the air, by square: where each is drawn now, in squares from its own square */
+  inflight: Map<Square, () => { dx: number; dy: number }>;
 }
 
 export const PieceMotionContext = createContext<PieceMotionState>({
   plans: new Map(),
   reduced: false,
   played: new Set(),
+  inflight: new Map(),
 });
 
 function renderNode(node: PieceNode, key: number): ReactNode {
@@ -86,7 +92,7 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
  * a square. Under reduced motion the piece appears in place with one opacity cue (M10).
  */
 function AnimatedPiece({ code, square }: { code: PieceCode; square?: string | undefined }) {
-  const { plans, reduced, played } = useContext(PieceMotionContext);
+  const { plans, reduced, played, inflight } = useContext(PieceMotionContext);
   // A move mounts its piece on the destination square, so the plan is read once, at mount: later
   // re-renders (contact, a parent update) never restart or cut the move.
   const [plan] = useState(() => {
@@ -136,7 +142,7 @@ function AnimatedPiece({ code, square }: { code: PieceCode; square?: string | un
     played.add(plan.id);
     // Start from the origin, also when the effect runs a second time (React's StrictMode).
     if (travels) p.jump(0);
-    liftAmount.jump(0);
+    liftAmount.jump(plan.flying && travels ? 1 : 0);
     if (reduced) {
       const fade = animate(opacity, 1, { duration: dur.quick, ease: ease.out });
       setCaptureGone(true);
@@ -163,35 +169,52 @@ function AnimatedPiece({ code, square }: { code: PieceCode; square?: string | un
     const contactAt = 1 - 0.01 / distance;
     let knockedOff = false;
     let landed = false;
+    // While in the air the board can ask where this piece is drawn, so a new move for it starts
+    // from there instead of jumping back to this square (M7).
+    const where = () => {
+      const v = p.get();
+      const arc = knight ? 0.2 * Math.sin(Math.PI * v) : 0;
+      return { dx: plan.dx * (1 - v), dy: plan.dy * (1 - v) - arc };
+    };
+    const at = square as Square;
+    inflight.set(at, where);
+    const leave = () => {
+      if (inflight.get(at) === where) inflight.delete(at);
+    };
+    const touchDown = () => {
+      landed = true;
+      leave();
+      land();
+      setMoving(false);
+    };
     const unsubscribe = p.on("change", (v) => {
       if (!knockedOff && cap && v >= knockAt) {
         knockedOff = true;
-        stops.push(animate(knocked, 1, { duration: dur.base, ease: ease.out }));
+        const knock = animate(knocked, 1, { duration: dur.base, ease: ease.out });
+        stops.push(knock);
+        knock.then(() => {
+          if (!cancelled) setCaptureGone(true);
+        });
       }
-      if (!landed && v >= contactAt) {
-        landed = true;
-        land();
-        setMoving(false);
-      }
+      if (!landed && v >= contactAt) touchDown();
     });
     (async () => {
       if (plan.delay > 0) await sleep(plan.delay);
       if (cancelled) return;
-      const liftAnim = animate(liftAmount, 1, { duration: dur.instant, ease: ease.out });
-      stops.push(liftAnim);
-      await liftAnim;
+      if (!plan.flying) {
+        const liftAnim = animate(liftAmount, 1, { duration: dur.instant, ease: ease.out });
+        stops.push(liftAnim);
+        await liftAnim;
+      }
       if (cancelled) return;
       const travel = animate(p, 1, settleFor(plan.type));
       stops.push(travel);
       await travel;
-      if (!cancelled && !landed) {
-        landed = true;
-        land();
-        setMoving(false);
-      }
+      if (!cancelled && !landed) touchDown();
     })();
     return () => {
       cancelled = true;
+      leave();
       unsubscribe();
       for (const s of stops) s.stop();
       p.jump(1);

@@ -1,7 +1,12 @@
 "use client";
 
-import { type KeyboardEvent, useRef } from "react";
-import { cellToSquare, type Orientation, type Square, squareToCell } from "./theme.js";
+import { type KeyboardEvent, useId, useRef } from "react";
+import { COORDINATE, cellToSquare, type Orientation, type Square, squareToCell } from "./theme.js";
+
+// The coordinate glyph boxes as CSS lengths on a square (theme.ts COORDINATE), plus 2px of clear
+// space, so a capture ring or focus ring is cut where it would run over a rank number or file letter.
+const GLYPH_W = `calc(${COORDINATE.inset + 2}px + ${COORDINATE.size * COORDINATE.advance * 100}%)`;
+const GLYPH_H = `calc(${COORDINATE.inset + 2}px + ${COORDINATE.size * 100}%)`;
 
 export interface SquareGridProps {
   label: string;
@@ -46,6 +51,7 @@ export function SquareGrid({
   onCancel,
 }: SquareGridProps) {
   const buttons = useRef(new Map<Square, HTMLButtonElement>());
+  const uid = useId().replace(/[^a-zA-Z0-9]/g, "");
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const step = ARROWS[event.key];
@@ -85,6 +91,10 @@ export function SquareGrid({
       {cells.map((square) => {
         const capture = targets.get(square);
         const inset = square === check ? 7 : 2;
+        // Ranks are drawn on the left column, files on the bottom row (as seen).
+        const { col, row } = squareToCell(square, orientation);
+        const cut = col === 0 || row === 7 ? `${uid}-cut-${square}` : undefined;
+        const masked = cut ? `url(#${cut})` : undefined;
         return (
           <button
             key={square}
@@ -96,13 +106,39 @@ export function SquareGrid({
             data-square-button={square}
             tabIndex={square === focus ? 0 : -1}
             aria-label={names.get(square) ?? `${square}, empty`}
-            aria-pressed={square === selected}
+            aria-pressed={square === selected ? true : undefined}
             onFocus={() => {
               if (square !== focus) onFocusChange(square);
             }}
             className="group relative appearance-none bg-transparent p-0 outline-none"
           >
             <svg aria-hidden="true" className="absolute inset-0 size-full overflow-visible">
+              {cut ? (
+                <mask id={cut} maskUnits="userSpaceOnUse" x="0" y="0" width="100%" height="100%">
+                  <rect x="0" y="0" width="100%" height="100%" fill="white" />
+                  {col === 0 ? (
+                    <rect
+                      data-cut="rank"
+                      x="0"
+                      y="0"
+                      fill="black"
+                      style={{ width: GLYPH_W, height: GLYPH_H }}
+                    />
+                  ) : null}
+                  {row === 7 ? (
+                    <rect
+                      data-cut="file"
+                      fill="black"
+                      style={{
+                        x: `calc(100% - ${GLYPH_W})`,
+                        y: `calc(100% - ${GLYPH_H})`,
+                        width: GLYPH_W,
+                        height: GLYPH_H,
+                      }}
+                    />
+                  ) : null}
+                </mask>
+              ) : null}
               {capture === false ? (
                 <>
                   <circle
@@ -117,7 +153,7 @@ export function SquareGrid({
                 </>
               ) : null}
               {capture === true ? (
-                <>
+                <g mask={masked} data-capture-ring>
                   <circle
                     cx="50%"
                     cy="50%"
@@ -134,9 +170,9 @@ export function SquareGrid({
                     stroke="var(--color-ink)"
                     strokeWidth="8%"
                   />
-                </>
+                </g>
               ) : null}
-              <g className="hidden group-focus-visible:inline">
+              <g className="hidden group-focus-visible:inline" mask={masked}>
                 <rect
                   x={inset + 1}
                   y={inset + 1}

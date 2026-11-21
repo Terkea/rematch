@@ -1,8 +1,9 @@
 import "@testing-library/jest-dom/vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildPieces, PIECE_FILES } from "../scripts/build-pieces-lib.js";
 import {
@@ -81,7 +82,7 @@ describe("Board keyboard access", () => {
     await user.keyboard("{Enter}");
     expect(square("e2")).toHaveAttribute("aria-pressed", "true");
     await user.keyboard("{Escape}{ArrowUp}{ArrowUp}{Enter}");
-    expect(square("e2")).toHaveAttribute("aria-pressed", "false");
+    expect(square("e2")).not.toHaveAttribute("aria-pressed");
     expect(onMove).not.toHaveBeenCalled();
   });
 
@@ -321,5 +322,214 @@ describe("Board selected-square coordinates", () => {
     await user.keyboard("{Enter}");
     const css = container.querySelector("style[data-board-coordinates]")?.textContent ?? "";
     expect(css).toContain("-square-e2{");
+  });
+});
+
+// ---- Fix round 1 -------------------------------------------------------------------------------
+
+function stubFullMotion(reduce = false) {
+  vi.stubGlobal(
+    "matchMedia",
+    (query: string) =>
+      ({
+        matches: reduce && query.includes("reduce"),
+        media: query,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      }) as unknown as MediaQueryList,
+  );
+}
+const movingSquares = (c: HTMLElement) =>
+  [...c.querySelectorAll("[data-moving]")].map((el) =>
+    el.closest("[data-square]")?.getAttribute("data-square"),
+  );
+/** The travel offset a moving piece starts from, in % of a square (translateY). */
+const travelY = (c: HTMLElement, sq: string) => {
+  const el = c.querySelector<HTMLElement>(`[data-square="${sq}"] [data-moving]`);
+  const m = el?.style.transform.match(/translateY\((-?[\d.e-]+)%\)/);
+  return m ? Number(m[1]) : 0;
+};
+const wait = (ms: number) => act(() => new Promise((r) => setTimeout(r, ms)));
+
+describe("Board check-square coordinates", () => {
+  // Black's rook on h1 checks White's king on e1, a first-rank square that carries the "e".
+  const CHECK_E1 = "4k3/8/8/8/8/8/8/4K2r w - - 0 1";
+
+  it("puts the check square's coordinate in ink on a sheet halo, over the ring", () => {
+    const { container } = render(
+      <Board fen={CHECK_E1} label="Position" check="e1" lastMove={{ from: "h8", to: "h1" }} />,
+    );
+    const css = container.querySelector("style[data-board-coordinates]")?.textContent ?? "";
+    expect(css).toMatch(
+      /-square-e1\{--board-coord-light:var\(--color-ink\);--board-coord-dark:var\(--color-ink\)\}/,
+    );
+    expect(css).toContain(
+      "-square-e1>span{-webkit-text-stroke:4px var(--color-sheet);paint-order:stroke fill}",
+    );
+    // It comes after the tint rules, so it wins on a tinted check square.
+    expect(css.lastIndexOf("-square-e1")).toBeGreaterThan(css.lastIndexOf("-square-h1"));
+  });
+});
+
+describe("Board capture and focus rings near coordinates", () => {
+  // White's rook on h1 can take the rook on a1, which carries both "1" and "a".
+  const FEN = "4k3/8/8/8/8/8/4K3/r6R w - - 0 1";
+
+  it("cuts the capture ring where the glyphs sit", async () => {
+    const user = userEvent.setup();
+    const { container } = render(
+      <Board fen={FEN} label="Position" interactive onMove={() => true} />,
+    );
+    square("h1").focus();
+    await user.keyboard("{Enter}");
+    const ring = container.querySelector('[data-square-button="a1"] [data-capture-ring]');
+    const mask = ring?.getAttribute("mask")?.match(/url\(#(.+)\)/)?.[1];
+    expect(mask).toBeTruthy();
+    const cuts = [...container.querySelectorAll(`[id="${mask}"] [data-cut]`)].map((r) =>
+      r.getAttribute("data-cut"),
+    );
+    expect(cuts).toEqual(["rank", "file"]);
+    // A square without coordinates has no cut.
+    expect(container.querySelector('[data-square-button="e4"] mask')).toBeNull();
+  });
+});
+
+/** A parent that accepts every move and then shows `next`, whatever the move was. */
+function Host({ next }: { next: string }) {
+  const [fen, setFen] = useState(START);
+  return (
+    <Board
+      fen={fen}
+      label="Position"
+      interactive
+      onMove={() => {
+        setFen(next);
+        return true;
+      }}
+    />
+  );
+}
+
+describe("Board pending-move guard", () => {
+  const UNRELATED = "rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 1 2";
+  const AFTER_E4 = "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1";
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("animates its own move when the parent plays it", async () => {
+    stubFullMotion();
+    const user = userEvent.setup();
+    const { container } = render(<Host next={AFTER_E4} />);
+    square("e2").focus();
+    await user.keyboard("{Enter}{ArrowUp}{ArrowUp}{Enter}");
+    expect(movingSquares(container)).toEqual(["e4"]);
+  });
+
+  it("ignores its own move when the parent jumps to an unrelated FEN", async () => {
+    stubFullMotion();
+    const user = userEvent.setup();
+    const { container } = render(<Host next={UNRELATED} />);
+    square("e2").focus();
+    await user.keyboard("{Enter}{ArrowUp}{ArrowUp}{Enter}");
+    expect(movingSquares(container)).toEqual([]);
+  });
+});
+
+describe("Board motion edge cases", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("promotes: the pawn travels and lands as a queen", () => {
+    stubFullMotion();
+    const { container, rerender } = render(
+      <Board fen="4k3/P7/8/8/8/8/8/4K3 w - - 0 1" label="P" />,
+    );
+    rerender(
+      <Board fen="Q3k3/8/8/8/8/8/8/4K3 b - - 0 1" label="P" lastMove={{ from: "a7", to: "a8" }} />,
+    );
+    expect(movingSquares(container)).toEqual(["a8"]);
+    expect(container.querySelector('[data-square="a8"] [data-piece="wQ"]')).not.toBeNull();
+    expect(travelY(container, "a8")).toBe(100);
+  });
+
+  it("promotes with a capture: the rook on b8 is knocked off", () => {
+    stubFullMotion();
+    const { container, rerender } = render(
+      <Board fen="1r2k3/P7/8/8/8/8/8/4K3 w - - 0 1" label="P" />,
+    );
+    rerender(
+      <Board fen="1Q2k3/8/8/8/8/8/8/4K3 b - - 0 1" label="P" lastMove={{ from: "a7", to: "b8" }} />,
+    );
+    expect(movingSquares(container)).toEqual(["b8"]);
+    expect(container.querySelector('[data-square="b8"] [data-captured]')).not.toBeNull();
+  });
+
+  it("captures en passant: the pawn behind the target square is knocked off", () => {
+    stubFullMotion();
+    const { container, rerender } = render(
+      <Board fen="4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 2" label="P" />,
+    );
+    rerender(
+      <Board fen="4k3/8/3P4/8/8/8/8/4K3 b - - 0 2" label="P" lastMove={{ from: "e5", to: "d6" }} />,
+    );
+    const victim = container.querySelector<HTMLElement>('[data-square="d6"] [data-captured]');
+    expect(victim).not.toBeNull();
+    // The victim sits on d5, one square below d6 as White sees it.
+    expect(victim?.style.transform).toMatch(/translateY\(100%\)/);
+  });
+
+  it("castles queenside: king to c1, rook to d1", () => {
+    stubFullMotion();
+    const { container, rerender } = render(
+      <Board fen="4k3/8/8/8/8/8/8/R3K3 w Q - 0 1" label="P" />,
+    );
+    rerender(
+      <Board fen="4k3/8/8/8/8/8/8/2KR4 b - - 1 1" label="P" lastMove={{ from: "e1", to: "c1" }} />,
+    );
+    expect(movingSquares(container).sort()).toEqual(["c1", "d1"]);
+  });
+
+  it("travels in the drawn direction when seen from Black", () => {
+    stubFullMotion();
+    const AFTER = "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1";
+    const white = render(<Board fen={START} label="W" />);
+    white.rerender(<Board fen={AFTER} label="W" lastMove={{ from: "e2", to: "e4" }} />);
+    expect(travelY(white.container, "e4")).toBe(200); // starts two squares below
+    white.unmount();
+    const black = render(<Board fen={START} label="B" orientation="black" />);
+    black.rerender(
+      <Board fen={AFTER} label="B" orientation="black" lastMove={{ from: "e2", to: "e4" }} />,
+    );
+    expect(travelY(black.container, "e4")).toBe(-200); // starts two squares above
+  });
+
+  it("re-plans a piece still in the air from where it is drawn (M7)", async () => {
+    stubFullMotion();
+    const E4 = "4k3/8/8/8/4P3/8/8/4K3 b - - 0 1";
+    const E5 = "4k3/8/8/4P3/8/8/8/4K3 w - - 0 1";
+    const { container, rerender } = render(
+      <Board fen="4k3/8/8/8/8/8/4P3/4K3 w - - 0 1" label="P" />,
+    );
+    rerender(<Board fen={E4} label="P" lastMove={{ from: "e2", to: "e4" }} />);
+    // Lift (90ms) and part of the travel: the pawn is between e2 and e4.
+    await wait(130);
+    const midway = travelY(container, "e4");
+    expect(midway).toBeGreaterThan(0);
+    expect(midway).toBeLessThan(200);
+    rerender(<Board fen={E5} label="P" lastMove={{ from: "e4", to: "e5" }} />);
+    // It travels on from where it was drawn (one square plus what was left), not from e4.
+    const start = travelY(container, "e5");
+    expect(start).toBeGreaterThan(100);
+    expect(Math.abs(start - (100 + midway))).toBeLessThan(15);
+  });
+
+  it("removes the captured piece once it has been knocked off", async () => {
+    stubFullMotion();
+    const BEFORE = "rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2";
+    const AFTER = "rnbqkbnr/ppp1pppp/8/3P4/8/8/PPPP1PPP/RNBQKBNR b KQkq - 0 2";
+    const { container, rerender } = render(<Board fen={BEFORE} label="P" />);
+    rerender(<Board fen={AFTER} label="P" lastMove={{ from: "e4", to: "d5" }} />);
+    expect(container.querySelector('[data-square="d5"] [data-captured]')).not.toBeNull();
+    await wait(900);
+    expect(container.querySelector('[data-square="d5"] [data-captured]')).toBeNull();
   });
 });

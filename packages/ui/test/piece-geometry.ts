@@ -1,6 +1,6 @@
 // Flattens a generated piece (SVG paths, circles, transforms) into points in its 45 × 45 drawing,
 // each with the stroke's half width around it, so tests can check exactly where a piece paints.
-import type { PieceNode } from "../scripts/build-pieces-lib.js";
+import type { PieceNode } from "../src/board/piece-types.js";
 
 export interface InkPoint {
   x: number;

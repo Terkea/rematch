@@ -9,6 +9,11 @@ import type { Orientation } from "./theme.js";
 
 export interface EvalBarProps {
   score: Score;
+  /**
+   * The position, so `{ mate: 0 }` (the side to move is mated) can tell the winner. Without it a
+   * mate-0 score sits level.
+   */
+  fen?: string;
   orientation?: Orientation;
   label: string;
   className?: string;
@@ -17,8 +22,21 @@ export interface EvalBarProps {
 /** A change of 0.3 win chance or more swings on `swing-big`. Shares are (wc + 1) / 2, so 0.15. */
 const BIG_SWING = 0.15;
 
+/** White's share: win percentage for a centipawn score, the end of the bar for a forced mate. */
+function whiteShare(score: Score, fen: string | undefined): number {
+  if (!("mate" in score)) return winPercent(score) / 100;
+  if (score.mate > 0) return 1;
+  if (score.mate < 0) return 0;
+  // Mate on the board: the side to move has been mated.
+  const turn = fen?.split(" ")[1];
+  return turn === "w" ? 0 : turn === "b" ? 1 : 0.5;
+}
+
 function describe(score: Score, share: number): string {
   const text = formatEval(score);
+  if ("mate" in score && score.mate === 0) {
+    return share === 0.5 ? "Checkmate" : `Checkmate, ${share > 0.5 ? "White" : "Black"} wins`;
+  }
   if ("mate" in score) {
     return `${text}, ${score.mate > 0 ? "White" : "Black"} mates in ${Math.abs(score.mate)}`;
   }
@@ -32,9 +50,9 @@ function describe(score: Score, share: number): string {
  * board, with the label outside its end. The boundary moves on `swing`, or `swing-big` for big
  * changes, keeping its velocity when values come quickly; under reduced motion it is set at once.
  */
-export function EvalBar({ score, orientation = "white", label, className }: EvalBarProps) {
+export function EvalBar({ score, fen, orientation = "white", label, className }: EvalBarProps) {
   // A forced mate maps to the end of the bar, as on the graph ("Eval graph", Mapping).
-  const share = "mate" in score ? (score.mate > 0 ? 1 : 0) : winPercent(score) / 100;
+  const share = whiteShare(score, fen);
   const reduced = useReducedMotion();
   const fill = useMotionValue(share);
   const last = useRef(share);

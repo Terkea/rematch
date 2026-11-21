@@ -23,3 +23,10 @@ Task 11 builds the product board on react-chessboard 5.12.1 (variant c "Ink well
 - Pieces are slightly smaller than a full-square set (0.84 and 0.88). Boards with squares under 41px (thumbnails) are not covered by the check, and should hide coordinates.
 - Drag keeps react-chessboard's overlay: the drop lands with the squash, but the drag tilt and the separate shadow layer (choreography 6) are a follow-up; the Task 11 brief does not specify them.
 - The `/licenses` notice for Cburnett is handed to Task 27.
+
+## Addendum (Task 11 review, fix round 1)
+
+- **Our own moves:** a move the board sent through `onMove` animates only if the new FEN's placement is that move played on the previous FEN. Otherwise the board uses `lastMove`. The pending move is spent after one render.
+- **In-flight pieces:** a piece still in the air registers where it is drawn now. When a new FEN moves it again, its plan starts from there, already lifted, instead of jumping back to its square (M7). It does not carry the spring's velocity over yet.
+- **Marks and coordinates:** on the check square the coordinate is `ink` on a 2px `sheet` halo, drawn over the ring. Capture rings and focus rings on coordinate squares are cut by a mask where the glyph sits.
+- **Tracked follow-ups:** underpromotion (the board plays a queen until the drill UI brings a picker); a live region announcing the move played; drag tilt and the drag shadow layer (choreography 6); passing the spring's velocity on when a piece is re-planned mid-flight.

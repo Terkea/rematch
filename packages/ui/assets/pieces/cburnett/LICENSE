@@ -61,8 +61,8 @@ of the LF-normalised bytes; the drawing data is unchanged:
 The app does not ship these files directly. packages/ui/scripts/build-pieces.ts
 recolours them at build time (black paint to --color-piece-dark, white paint to
 --color-piece-light) into packages/ui/src/board/pieces.generated.ts, and a test
-fails if that module drifts from these files. The /licenses page carries the
-notice below.
+fails if that module drifts from these files. The /licenses page will carry
+the notice below (Task 27).
 
 -----------------------------------------------------------------------------
 

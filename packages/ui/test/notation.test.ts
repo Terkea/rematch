@@ -47,5 +47,6 @@ describe("evalBarLabel", () => {
     expect(evalBarLabel({ cp: -570 })).toBe("−5.7");
     expect(evalBarLabel({ mate: 2 })).toBe("M2");
     expect(evalBarLabel({ mate: -2 })).toBe("M2");
+    expect(evalBarLabel({ mate: 0 })).toBe("#");
   });
 });
