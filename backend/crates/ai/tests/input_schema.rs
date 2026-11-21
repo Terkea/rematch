@@ -24,10 +24,9 @@ fn paths(v: &Value) -> Vec<String> {
     issues(v).into_iter().map(|i| i.path).collect()
 }
 
-fn has(v: &Value, path: &str) -> bool {
+fn assert_has(v: &Value, path: &str) {
     let p = paths(v);
     assert!(p.iter().any(|x| x == path), "{path} not in {p:?}");
-    true
 }
 
 fn with_exemplar(patch: Value) -> Value {
@@ -333,7 +332,7 @@ fn rejects_a_per_game_value_declared_as_a_rate() {
     let mut d = raw();
     d["metrics"][0]["unit"] = json!("rate");
     d["metrics"][0]["value"] = json!(3.1);
-    assert!(has(&d, "metrics.0.value"));
+    assert_has(&d, "metrics.0.value");
 }
 
 #[test]
@@ -348,8 +347,8 @@ fn rejects_pct_above_100_and_interval_fields_out_of_0_1() {
     let mut d = raw();
     d["metrics"][3]["value"] = json!(101);
     d["weaknesses"][0]["intervalHigh"] = json!(1.5);
-    assert!(has(&d, "metrics.3.value"));
-    assert!(has(&d, "weaknesses.0.intervalHigh"));
+    assert_has(&d, "metrics.3.value");
+    assert_has(&d, "weaknesses.0.intervalHigh");
 }
 
 #[test]
@@ -357,24 +356,24 @@ fn requires_metric_low_le_high() {
     let mut d = raw();
     d["metrics"][0]["low"] = json!(2);
     d["metrics"][0]["high"] = json!(1);
-    assert!(has(&d, "metrics.0.low"));
+    assert_has(&d, "metrics.0.low");
 }
 
 #[test]
 fn requires_interval_low_le_posterior_le_interval_high() {
     let mut d = raw();
     d["weaknesses"][0]["posteriorRate"] = json!(0.5);
-    assert!(has(&d, "weaknesses.0.posteriorRate"));
+    assert_has(&d, "weaknesses.0.posteriorRate");
     let mut e = raw();
     e["weaknesses"][0]["intervalLow"] = json!(0.3);
-    assert!(has(&e, "weaknesses.0.intervalLow"));
+    assert_has(&e, "weaknesses.0.intervalLow");
 }
 
 #[test]
 fn requires_unique_weakness_ranks() {
     let mut d = raw();
     d["weaknesses"][1]["rank"] = d["weaknesses"][0]["rank"].clone();
-    assert!(has(&d, "weaknesses.1.rank"));
+    assert_has(&d, "weaknesses.1.rank");
 }
 
 #[test]
@@ -382,11 +381,11 @@ fn requires_fen_side_to_move_to_match_ply_parity() {
     let mut d = raw();
     let ply = d["weaknesses"][0]["exemplars"][0]["ply"].as_u64().unwrap();
     d["weaknesses"][0]["exemplars"][0]["ply"] = json!(ply + 1);
-    assert!(has(&d, "weaknesses.0.exemplars.0.fen"));
+    assert_has(&d, "weaknesses.0.exemplars.0.fen");
     let mut c = raw();
     let ply = c["changes"][0]["examples"][0]["ply"].as_u64().unwrap();
     c["changes"][0]["examples"][0]["ply"] = json!(ply + 1);
-    assert!(has(&c, "changes.0.examples.0.fen"));
+    assert_has(&c, "changes.0.examples.0.fen");
 }
 
 #[test]
@@ -397,9 +396,9 @@ fn requires_events_le_opportunities_onset_ordering_analysed_le_imported() {
     d["changes"][0]["onsetFrom"] = json!("2026-12-01");
     let imported = d["basis"]["importedGames"].as_u64().unwrap();
     d["basis"]["analysedGames"] = json!(imported + 1);
-    assert!(has(&d, "weaknesses.0.events"));
-    assert!(has(&d, "changes.0.onsetDate"));
-    assert!(has(&d, "basis.analysedGames"));
+    assert_has(&d, "weaknesses.0.events");
+    assert_has(&d, "changes.0.onsetDate");
+    assert_has(&d, "basis.analysedGames");
 }
 
 // ---- strictness at depth and change examples ----------------------------------------------
@@ -439,7 +438,7 @@ fn requires_a_valid_side_on_change_examples_and_keeps_2_before_2_after() {
     assert_eq!(sides, ["before", "before", "after", "after"]);
     let mut d = raw();
     d["changes"][0]["examples"][0]["side"] = json!("during");
-    assert!(has(&d, "changes.0.examples.0.side"));
+    assert_has(&d, "changes.0.examples.0.side");
     let mut m = raw();
     m["changes"][0]["examples"][0]
         .as_object_mut()
@@ -503,4 +502,45 @@ fn b0_and_b2_have_different_area_scores_and_metrics() {
     };
     assert_ne!(scores(&b0), scores(&b2));
     assert_ne!(b0["metrics"][0]["value"], b2["metrics"][0]["value"]);
+}
+
+// ---- shape errors: zod key paths ----------------------------------------------------------
+
+#[test]
+fn a_missing_key_reports_the_key_path() {
+    let mut d = raw();
+    d["changes"][0]["examples"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("side");
+    let is = issues(&d);
+    assert_eq!(is.len(), 1, "{is:?}");
+    assert_eq!(is[0].path, "changes.0.examples.0.side");
+    assert_eq!(is[0].message, "missing field `side`");
+    let mut t = raw();
+    t.as_object_mut().unwrap().remove("band");
+    assert_eq!(issues(&t)[0].path, "band");
+}
+
+#[test]
+fn unrelated_shape_errors_keep_serdes_message() {
+    // Inside a Score: the path includes the variant, the message is serde's, not a key rewrite.
+    let mut d = raw();
+    d["weaknesses"][0]["exemplars"][0]["evalBefore"] = json!({"cp": "x"});
+    let is = issues(&d);
+    assert_eq!(is.len(), 1);
+    assert_eq!(is[0].path, "weaknesses.0.exemplars.0.evalBefore.cp");
+    assert!(is[0].message.starts_with("invalid type: string"), "{is:?}");
+    // An extra key beside cp is named.
+    let mut e = raw();
+    e["weaknesses"][0]["exemplars"][0]["evalBefore"]["extra"] = json!(1);
+    let is = issues(&e);
+    assert_eq!(is[0].path, "weaknesses.0.exemplars.0.evalBefore");
+    assert_eq!(is[0].message, "Unrecognized key: \"extra\"");
+    // Unknown key on a flattened ChangeExample is rejected by serde itself.
+    let mut f = raw();
+    f["changes"][0]["examples"][0]["extra"] = json!(1);
+    let is = issues(&f);
+    assert_eq!(is[0].path, "changes.0.examples.0");
+    assert!(is[0].message.contains("extra"), "{is:?}");
 }

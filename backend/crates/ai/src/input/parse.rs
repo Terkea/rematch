@@ -4,6 +4,9 @@
 //! enum, missing key) names its path in zod's dotted form (`weaknesses.0.rank`). Then
 //! `validate` applies the refinements.
 
+use std::sync::LazyLock;
+
+use regex::Regex;
 use serde_json::Value;
 use serde_path_to_error::Segment;
 
@@ -12,14 +15,10 @@ pub use super::validate::{CoachingInputIssue, validate};
 
 /// `^W(1[0-2]|[1-9])[a-d]?$`, at most 5 characters.
 pub fn is_weakness_id(s: &str) -> bool {
-    let Some(rest) = s.strip_prefix('W') else {
-        return false;
-    };
-    let digits = rest.strip_suffix(['a', 'b', 'c', 'd']).unwrap_or(rest);
-    s.len() <= 5
-        && digits.bytes().all(|b| b.is_ascii_digit())
-        && !digits.starts_with('0')
-        && matches!(digits.parse::<u8>(), Ok(1..=12))
+    static RE: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(coaching_input::limits::WEAKNESS_ID_PATTERN).expect("valid pattern")
+    });
+    s.chars().count() <= coaching_input::limits::WEAKNESS_ID_MAX_CHARS && RE.is_match(s)
 }
 
 fn dotted(path: &serde_path_to_error::Path) -> String {
@@ -27,57 +26,11 @@ fn dotted(path: &serde_path_to_error::Path) -> String {
         .filter_map(|seg| match seg {
             Segment::Seq { index } => Some(index.to_string()),
             Segment::Map { key } => Some(key.clone()),
-            Segment::Enum { .. } | Segment::Unknown => None,
+            Segment::Enum { variant } => Some(variant.clone()),
+            Segment::Unknown => None,
         })
         .collect::<Vec<_>>()
         .join(".")
-}
-
-/// Keys of `ChangeExample`: the flattened `ExemplarPosition` keys plus `side`.
-const CHANGE_EXAMPLE_KEYS: [&str; 14] = [
-    "gameId",
-    "ply",
-    "playedAt",
-    "fen",
-    "played",
-    "best",
-    "bestPv",
-    "refutationPv",
-    "tags",
-    "evalBefore",
-    "evalAfter",
-    "winBefore",
-    "winAfter",
-    "side",
-];
-
-/// Unknown keys that serde cannot reject: `deny_unknown_fields` does not work with a
-/// `#[serde(flatten)]` field (`ChangeExample`), so those keys are checked on the raw JSON.
-fn flattened_unknown_keys(raw: &Value) -> Vec<CoachingInputIssue> {
-    let mut out = vec![];
-    let Some(changes) = raw.get("changes").and_then(Value::as_array) else {
-        return out;
-    };
-    for (ci, change) in changes.iter().enumerate() {
-        let Some(examples) = change.get("examples").and_then(Value::as_array) else {
-            continue;
-        };
-        for (ei, example) in examples.iter().enumerate() {
-            let Some(obj) = example.as_object() else {
-                continue;
-            };
-            for key in obj
-                .keys()
-                .filter(|k| !CHANGE_EXAMPLE_KEYS.contains(&k.as_str()))
-            {
-                out.push(CoachingInputIssue {
-                    path: format!("changes.{ci}.examples.{ei}"),
-                    message: format!("Unrecognized key: \"{key}\""),
-                });
-            }
-        }
-    }
-    out
 }
 
 /// `Score` is an externally tagged enum, so serde reports an extra key beside `cp`/`mate` as
@@ -99,20 +52,45 @@ fn score_extra_key(raw: &Value, path: &str) -> Option<String> {
     Some(format!("Unrecognized key: \"{first}\""))
 }
 
-/// Deserialises and validates. `Err` lists every issue (a shape error is reported with the raw
-/// flattened-key issues only, since nothing typed exists to refine).
+/// Maps a serde shape error to zod's path and message. serde names the parent for a missing
+/// key (`missing field `k``), zod the key itself, so the key is appended. serde's "expected map
+/// with a single key" (an extra key beside `cp`/`mate` in a `Score`) is rewritten to name the
+/// key. Every other message is serde's own.
+fn shape_issue(
+    raw: &Value,
+    e: &serde_path_to_error::Error<serde_json::Error>,
+) -> CoachingInputIssue {
+    let mut path = dotted(e.path());
+    let message = e.inner().to_string();
+    if let Some(key) = message
+        .strip_prefix("missing field `")
+        .and_then(|m| m.split('`').next())
+    {
+        path = if path.is_empty() {
+            key.to_string()
+        } else {
+            format!("{path}.{key}")
+        };
+        return CoachingInputIssue { path, message };
+    }
+    let message = if message.contains("expected map with a single key") {
+        score_extra_key(raw, &path).unwrap_or(message)
+    } else {
+        message
+    };
+    CoachingInputIssue { path, message }
+}
+
+/// Deserialises and validates. `Err` lists every refinement issue, or the single shape error
+/// (nothing typed exists to refine).
 pub fn parse_coaching_input(raw: &Value) -> Result<CoachingInput, Vec<CoachingInputIssue>> {
-    let mut issues = flattened_unknown_keys(raw);
     let typed: CoachingInput = match serde_path_to_error::deserialize(raw) {
         Ok(t) => t,
         Err(e) => {
-            let path = dotted(e.path());
-            let message = score_extra_key(raw, &path).unwrap_or_else(|| e.inner().to_string());
-            issues.push(CoachingInputIssue { path, message });
-            return Err(issues);
+            return Err(vec![shape_issue(raw, &e)]);
         }
     };
-    issues.extend(validate(&typed));
+    let issues = validate(&typed);
     if issues.is_empty() {
         Ok(typed)
     } else {
