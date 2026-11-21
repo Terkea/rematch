@@ -88,6 +88,9 @@ jsonschema = { version = "=0.61.2", default-features = false }
 # R3 additions (ADR-R3-1). Each was published at least 7 days before 2026-11-21.
 serde_path_to_error = "=0.1.20"
 unicode-normalization = "=0.1.26"
+# R3 Task 11 (coordinator approval): the chat tool-callback endpoint. MIT, released 2026-04-14;
+# reuses the hyper 1.x already in the lockfile.
+axum = { version = "=0.8.9", default-features = false, features = ["tokio", "http1", "json"] }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

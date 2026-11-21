@@ -19,8 +19,9 @@ use super::port::{
 
 /// `anthropic-version` on every call.
 pub const ANTHROPIC_VERSION: &str = "2026-10-21";
-/// The project User-Agent. No personal contact data, ever.
-pub const USER_AGENT: &str = "chess-improver-ci (+https://github.com/chess-improver)";
+/// The User-Agent of every request the `ai` crate sends (ADR 0043): the project URL, never an
+/// email address or other personal contact data.
+pub const USER_AGENT: &str = "chess-improver/0.1 (+https://github.com/chess-improver)";
 /// The response header whose value becomes `request_id`.
 pub const REQUEST_ID_HEADER: &str = "request-id";
 /// Default API base (Task 11 makes it configurable).
