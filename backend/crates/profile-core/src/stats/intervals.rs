@@ -2,6 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::stats::error::StatsError;
 use crate::stats::quantiles::quantile;
 use crate::stats::rng::Rng;
 
@@ -23,22 +24,34 @@ pub struct Interval {
 
 /// Wilson score interval for `k` events in `n` trials at normal quantile `z` (use [`Z80`]).
 ///
-/// Counts may be fractional (recency-weighted). `n <= 0` gives `{0, 1}` (no information); `k` is
-/// clamped to `[0, n]`. The bounds are exactly 0 for `k = 0` and exactly 1 for `k = n`.
-pub fn wilson(k: f64, n: f64, z: f64) -> Interval {
-    if n.is_nan() || n <= 0.0 {
-        return Interval {
+/// Counts may be fractional (recency-weighted). `n = 0` gives `{0, 1}` (no information). A NaN
+/// or negative `k` or `n` is `StatsError::InvalidCounts`, and a NaN, infinite or negative `z` is
+/// `StatsError::InvalidZ`. `k > n` is a caller bug: it fails a `debug_assert!` and is clamped to
+/// `n` in release builds (weighted sums keep `k <= n` exactly, since float addition is
+/// monotone). The bounds are exactly 0 for `k = 0` and exactly 1 for `k = n`.
+pub fn wilson(k: f64, n: f64, z: f64) -> Result<Interval, StatsError> {
+    let counts_valid = k >= 0.0 && n >= 0.0 && n.is_finite();
+    if !counts_valid {
+        return Err(StatsError::InvalidCounts { k, n });
+    }
+    let z_valid = z >= 0.0 && z.is_finite();
+    if !z_valid {
+        return Err(StatsError::InvalidZ { z });
+    }
+    debug_assert!(k <= n, "wilson needs k <= n (k = {k}, n = {n})");
+    if n == 0.0 {
+        return Ok(Interval {
             low: 0.0,
             high: 1.0,
-        };
+        });
     }
-    let k = k.clamp(0.0, n);
+    let k = k.min(n);
     let p = k / n;
     let z2 = z * z;
     let denom = 1.0 + z2 / n;
     let center = (p + z2 / (2.0 * n)) / denom;
     let half = z * (p * (1.0 - p) / n + z2 / (4.0 * n * n)).sqrt() / denom;
-    Interval {
+    Ok(Interval {
         low: if k <= 0.0 {
             0.0
         } else {
@@ -49,7 +62,7 @@ pub fn wilson(k: f64, n: f64, z: f64) -> Interval {
         } else {
             (center + half).min(1.0)
         },
-    }
+    })
 }
 
 /// Percentile-bootstrap interval of the mean (TS `bootstrapMeanInterval`; defaults

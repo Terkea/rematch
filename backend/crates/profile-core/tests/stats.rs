@@ -11,19 +11,24 @@
 //! - `ln Gamma` from CPython's `math.lgamma` and the factorial identity;
 //! - the Beta-binomial grid argmax from an independent log-sum likelihood;
 //! - sampling moments and the sampler's agreement with `beta_quantile`.
+//!
+//! Fix round 1 (review): typed errors instead of NaN at the distribution layer, explicit point
+//! masses for degenerate fits, relative lower-tail quantiles, and artefact-free percentiles
+//! (ties within a relative 1e-9 use the mid-rank; no saturation on flat end segments).
 
 use std::f64::consts::PI;
 
-use profile_core::stats::beta::{beta_quantile, sample_beta};
+use profile_core::stats::beta::{BetaDist, beta_quantile, sample_beta};
 use profile_core::stats::beta_binomial::{BetaBinomialFit, fit_beta_binomial};
 use profile_core::stats::correlation::spearman;
+use profile_core::stats::error::StatsError;
 use profile_core::stats::intervals::{
     BOOTSTRAP_RESAMPLES, BOOTSTRAP_SEED, INTERVAL_LEVEL, Interval, Z80, bootstrap_mean_interval,
     wilson,
 };
 use profile_core::stats::quantiles::{QuartileRef, percentile_from_quartiles, quantile};
 use profile_core::stats::rng::Rng;
-use profile_core::stats::special::{lgamma, reg_inc_beta};
+use profile_core::stats::special::{lgamma, ln_beta, reg_inc_beta};
 use profile_core::stats::weights::{HALF_LIFE_DAYS, recency_weight, weighted_counts};
 
 /// Vitest `toBeCloseTo(want, digits)`: `|got - want| < 10^-digits / 2`.
@@ -56,7 +61,34 @@ fn variance(v: &[f64]) -> f64 {
 
 fn draws(seed: u32, n: usize, a: f64, b: f64) -> Vec<f64> {
     let mut rng = Rng::new(seed);
-    (0..n).map(|_| sample_beta(&mut rng, a, b)).collect()
+    (0..n)
+        .map(|_| sample_beta(&mut rng, a, b).unwrap())
+        .collect()
+}
+
+#[track_caller]
+fn assert_rel(got: f64, want: f64, rel: f64) {
+    assert!(
+        ((got - want) / want).abs() <= rel,
+        "got {got:e}, want {want:e} (relative tol {rel:e})"
+    );
+}
+
+fn q(p: f64, a: f64, b: f64) -> f64 {
+    beta_quantile(p, a, b).unwrap()
+}
+
+fn w(k: f64, n: f64, z: f64) -> Interval {
+    wilson(k, n, z).unwrap()
+}
+
+fn qr(p25: f64, p40: f64, median: f64, p75: f64) -> QuartileRef {
+    QuartileRef {
+        p25,
+        p40,
+        median,
+        p75,
+    }
 }
 
 fn boot(values: &[f64]) -> Option<Interval> {
@@ -69,27 +101,27 @@ fn boot(values: &[f64]) -> Option<Interval> {
 
 #[test]
 fn ts_beta_quantile_and_reg_inc_beta() {
-    assert_close_dp(beta_quantile(0.1, 16.0, 684.0), 0.0159747, 6);
-    assert_close_dp(beta_quantile(0.9, 16.0, 684.0), 0.0303238, 6);
+    assert_close_dp(q(0.1, 16.0, 684.0), 0.0159747, 6);
+    assert_close_dp(q(0.9, 16.0, 684.0), 0.0303238, 6);
     assert_close_dp(1.0 - reg_inc_beta(0.02, 16.0, 684.0), 0.672363, 5);
 }
 
 #[test]
 fn ts_wilson() {
-    let w = wilson(7.0, 20.0, Z80);
-    assert_close_dp(w.low, 0.229497, 5);
-    assert_close_dp(w.high, 0.493269, 5);
-    let w = wilson(0.0, 10.0, Z80);
-    assert_eq!(w.low, 0.0);
-    assert_close_dp(w.high, 0.141069, 5);
+    let i = w(7.0, 20.0, Z80);
+    assert_close_dp(i.low, 0.229497, 5);
+    assert_close_dp(i.high, 0.493269, 5);
+    let i = w(0.0, 10.0, Z80);
+    assert_eq!(i.low, 0.0);
+    assert_close_dp(i.high, 0.141069, 5);
     assert_eq!(
         wilson(0.0, 0.0, Z80),
-        Interval {
+        Ok(Interval {
             low: 0.0,
             high: 1.0
-        }
+        })
     );
-    assert_close_dp(wilson(2.0, 10.0, Z80).high, 0.398404, 5);
+    assert_close_dp(w(2.0, 10.0, Z80).high, 0.398404, 5);
 }
 
 #[test]
@@ -129,13 +161,15 @@ fn ts_percentile_from_quartiles_lower_is_better() {
 fn ts_fit_beta_binomial() {
     assert_eq!(
         fit_beta_binomial(&[(5.0, 100.0); 20]),
-        BetaBinomialFit { mu: 0.05, phi: 1e5 }
+        Ok(BetaBinomialFit::Beta { mu: 0.05, phi: 1e5 })
     );
     let mut mixed = vec![(2.0, 100.0); 10];
     mixed.extend([(8.0, 100.0); 10]);
-    let fit = fit_beta_binomial(&mixed);
-    assert_close_dp(fit.mu, 0.05, 10);
-    assert!(fit.phi < 200.0, "phi {}", fit.phi);
+    let Ok(BetaBinomialFit::Beta { mu, phi }) = fit_beta_binomial(&mixed) else {
+        panic!("mixed data must give a proper Beta fit");
+    };
+    assert_close_dp(mu, 0.05, 10);
+    assert!(phi < 200.0, "phi {phi}");
 }
 
 #[test]
@@ -247,6 +281,31 @@ fn lgamma_matches_reference_values() {
 }
 
 #[test]
+fn ln_beta_matches_exact_factorial_values() {
+    // ln B(a, b) = ln((a-1)! (b-1)! / (a+b-1)!) from exact big integers in 60-digit decimals. The
+    // naive lgamma(a) + lgamma(b) - lgamma(a + b) is off by 1e-10 to 3.5e-10 at the two largest
+    // pairs (huge, nearly cancelling terms); since ln B is exponentiated, the absolute error is
+    // what matters.
+    for (a, b, want) in [
+        (400.0, 400.0, -556.247652098107),
+        (3000.0, 7000.0, -6111.548896978379),
+        (2000.0, 98000.0, -9806.782697632432),
+        (50000.0, 50000.0, -69318.86243051325),
+    ] {
+        assert_close(ln_beta(a, b), want, 2e-11);
+    }
+    // Mixed branch (one shape below 10): ln B(1, b) = -ln b.
+    assert_close(ln_beta(1.0, 1e5), -(1e5_f64.ln()), 1e-13);
+    assert_close(ln_beta(1e5, 2.0), -(1e5_f64 * 100001.0).ln(), 1e-12);
+    // Small branch: the plain lgamma sum.
+    assert_close(
+        ln_beta(2.5, 3.5),
+        lgamma(2.5) + lgamma(3.5) - lgamma(6.0),
+        1e-15,
+    );
+}
+
+#[test]
 fn reg_inc_beta_matches_exact_and_closed_forms() {
     // Exact values for integer parameters (60-digit binomial sums at the binary value of x).
     let exact = [
@@ -265,9 +324,34 @@ fn reg_inc_beta_matches_exact_and_closed_forms() {
         let want = 2.0 / PI * x.sqrt().asin();
         assert_close(reg_inc_beta(x, 0.5, 0.5), want, 1e-13);
     }
-    // ln B(400, 400) cancels terms near lgamma(800) = 4545 (ulp 9e-13), hence 1e-11 there.
     assert_close(reg_inc_beta(0.5, 3.5, 3.5), 0.5, 1e-13);
-    assert_close(reg_inc_beta(0.5, 400.0, 400.0), 0.5, 1e-11);
+    assert_close(reg_inc_beta(0.5, 400.0, 400.0), 0.5, 1e-12);
+    // Large shapes: ln B(a, b) comes from Stirling differences, not lgamma(1e5) - lgamma(1e5 + 1).
+    assert_rel(
+        reg_inc_beta(1e-5, 1.0, 1e5),
+        -(1e5 * (-1e-5_f64).ln_1p()).exp_m1(),
+        1e-12,
+    );
+    assert_rel(
+        reg_inc_beta(1e-7, 1.0, 1e5),
+        -(1e5 * (-1e-7_f64).ln_1p()).exp_m1(),
+        1e-12,
+    );
+    assert_rel(
+        reg_inc_beta(0.9999, 5e4, 1.0),
+        (5e4 * 0.9999_f64.ln()).exp(),
+        1e-12,
+    );
+    assert_close(reg_inc_beta(0.5, 5e4, 5e4), 0.5, 1e-10);
+    // Shapes below 1, deep lower tail: I_x(a, 1) = x^a and I_x(1/2, 1/2) = 2/pi asin(sqrt x).
+    for x in [1e-30_f64, 1e-300] {
+        assert_rel(reg_inc_beta(x, 0.03, 1.0), x.powf(0.03), 1e-13);
+    }
+    assert_rel(
+        reg_inc_beta(1e-20, 0.5, 0.5),
+        2.0 / PI * 1e-10_f64.asin(),
+        1e-12,
+    );
     // Symmetry I_x(a, b) = 1 - I_{1-x}(b, a) on both sides of the switch point.
     for x in [0.05, 0.2, 0.25, 0.6] {
         let s = reg_inc_beta(x, 2.3, 7.1) + reg_inc_beta(1.0 - x, 7.1, 2.3);
@@ -294,27 +378,48 @@ fn beta_quantile_matches_exact_and_inverts() {
         (0.9, 12.0, 988.0, 0.016568158382463737),
     ];
     for (p, a, b, want) in exact {
-        assert_close(beta_quantile(p, a, b), want, 1e-10);
+        assert_close(q(p, a, b), want, 1e-10);
+        assert_rel(q(p, a, b), want, 1e-9);
     }
     // Closed-form inverses.
-    assert_close(
-        beta_quantile(0.37, 1.0, 3.5),
-        1.0 - 0.63_f64.powf(1.0 / 3.5),
-        1e-10,
-    );
-    assert_close(beta_quantile(0.8, 2.5, 1.0), 0.8_f64.powf(0.4), 1e-10);
-    assert_close(
-        beta_quantile(0.15, 0.5, 0.5),
-        (PI * 0.15 / 2.0).sin().powi(2),
-        1e-10,
-    );
+    assert_close(q(0.37, 1.0, 3.5), 1.0 - 0.63_f64.powf(1.0 / 3.5), 1e-10);
+    assert_close(q(0.8, 2.5, 1.0), 0.8_f64.powf(0.4), 1e-10);
+    assert_close(q(0.15, 0.5, 0.5), (PI * 0.15 / 2.0).sin().powi(2), 1e-10);
+    // The lower tail is relative, not absolute: Beta(0.03, 1) has q(p) = p^(1 / 0.03).
+    assert_rel(q(0.1, 0.03, 1.0), 4.641588833612762e-34, 1e-9);
+    assert_rel(q(1e-8, 0.5, 0.5), (PI * 1e-8 / 2.0).sin().powi(2), 1e-9);
+    assert_rel(reg_inc_beta(q(1e-6, 0.2, 3.0), 0.2, 3.0), 1e-6, 1e-8);
+    // Below the smallest normal float the quantile is exactly 0 (0.1^(1/0.001) underflows).
+    assert_eq!(q(0.1, 0.001, 1.0), 0.0);
+    // Reference-sized posteriors Beta(mu 1e5, (1 - mu) 1e5): exact values (60-digit CDF).
+    for (p, want) in [
+        (0.1, 0.019434729157651435),
+        (0.5, 0.019996800076383155),
+        (0.9, 0.020569382057844622),
+    ] {
+        assert_rel(q(p, 2000.0, 98000.0), want, 1e-9);
+    }
+    assert_close(q(0.5, 5e4, 5e4), 0.5, 1e-10);
+    assert_close(q(0.1, 5e4, 5e4) + q(0.9, 5e4, 5e4), 1.0, 1e-10);
     // Round trip through the CDF.
     for (p, a, b) in [(0.1, 16.0, 684.0), (0.5, 0.7, 3.2), (0.95, 40.0, 9.0)] {
-        assert_close(reg_inc_beta(beta_quantile(p, a, b), a, b), p, 1e-8);
+        assert_close(reg_inc_beta(q(p, a, b), a, b), p, 1e-8);
     }
-    assert_eq!(beta_quantile(0.0, 2.0, 3.0), 0.0);
-    assert_eq!(beta_quantile(1.0, 2.0, 3.0), 1.0);
-    assert!(beta_quantile(0.5, -1.0, 3.0).is_nan());
+    assert_eq!(q(0.0, 2.0, 3.0), 0.0);
+    assert_eq!(q(1.0, 2.0, 3.0), 1.0);
+    // Typed errors instead of NaN.
+    assert_eq!(
+        beta_quantile(0.5, -1.0, 3.0),
+        Err(StatsError::InvalidShape { a: -1.0, b: 3.0 })
+    );
+    assert_eq!(
+        beta_quantile(1.5, 2.0, 3.0),
+        Err(StatsError::InvalidProbability { p: 1.5 })
+    );
+    assert!(matches!(
+        beta_quantile(f64::NAN, 2.0, 3.0),
+        Err(StatsError::InvalidProbability { .. })
+    ));
 }
 
 #[test]
@@ -334,8 +439,8 @@ fn sample_beta_moments_and_cdf_agree_with_beta_quantile() {
     for (a, b) in [(2.0, 5.0), (0.3, 0.7), (16.0, 684.0)] {
         let v = draws(11, n, a, b);
         for p in [0.1, 0.5, 0.9] {
-            let q = beta_quantile(p, a, b);
-            let below = v.iter().filter(|&&x| x < q).count() as f64 / n as f64;
+            let qp = q(p, a, b);
+            let below = v.iter().filter(|&&x| x < qp).count() as f64 / n as f64;
             assert_close(below, p, 0.008);
         }
     }
@@ -345,26 +450,59 @@ fn sample_beta_moments_and_cdf_agree_with_beta_quantile() {
     // Tiny shapes stay finite (log-space ratio).
     let v = draws(13, 1000, 0.01, 0.01);
     assert!(v.iter().all(|x| (0.0..=1.0).contains(x)));
-    assert!(sample_beta(&mut Rng::new(1), 0.0, 1.0).is_nan());
+    assert_eq!(
+        sample_beta(&mut Rng::new(1), 0.0, 1.0),
+        Err(StatsError::InvalidShape { a: 0.0, b: 1.0 })
+    );
+    // BetaDist::sample is the same stream as sample_beta.
+    let d = BetaDist::new(3.0, 4.0).unwrap();
+    let mut rng = Rng::new(5);
+    let v: Vec<f64> = (0..20).map(|_| d.sample(&mut rng)).collect();
+    assert_eq!(v, draws(5, 20, 3.0, 4.0));
 }
 
 #[test]
 fn wilson_reference_values_and_edges() {
     assert_eq!(Z80, 1.2815515655446004);
-    let w = wilson(7.0, 20.0, 1.96);
-    assert_close(w.low, 0.18118954786794464, 1e-12);
-    assert_close(w.high, 0.5671494897805354, 1e-12);
+    let i = w(7.0, 20.0, 1.96);
+    assert_close(i.low, 0.18118954786794464, 1e-12);
+    assert_close(i.high, 0.5671494897805354, 1e-12);
     // Fractional (recency-weighted) counts.
-    let w = wilson(3.5, 12.25, Z80);
-    assert_close(w.low, 0.1536671110047927, 1e-12);
-    assert_close(w.high, 0.4684277272775095, 1e-12);
+    let i = w(3.5, 12.25, Z80);
+    assert_close(i.low, 0.1536671110047927, 1e-12);
+    assert_close(i.high, 0.4684277272775095, 1e-12);
     // k = n gives high exactly 1; mirror symmetry.
-    assert_eq!(wilson(10.0, 10.0, Z80).high, 1.0);
-    let (a, b) = (wilson(7.0, 20.0, Z80), wilson(13.0, 20.0, Z80));
+    assert_eq!(w(10.0, 10.0, Z80).high, 1.0);
+    let (a, b) = (w(7.0, 20.0, Z80), w(13.0, 20.0, Z80));
     assert_close(a.low, 1.0 - b.high, 1e-14);
-    // Counts outside [0, n] are clamped instead of producing an invalid interval.
-    assert_eq!(wilson(-1.0, 10.0, Z80), wilson(0.0, 10.0, Z80));
-    assert_eq!(wilson(12.0, 10.0, Z80), wilson(10.0, 10.0, Z80));
+    // Invalid counts or z are typed errors, never {0, 1}.
+    assert!(matches!(
+        wilson(f64::NAN, 10.0, Z80),
+        Err(StatsError::InvalidCounts { .. })
+    ));
+    assert!(matches!(
+        wilson(1.0, f64::NAN, Z80),
+        Err(StatsError::InvalidCounts { .. })
+    ));
+    assert_eq!(
+        wilson(-1.0, 10.0, Z80),
+        Err(StatsError::InvalidCounts { k: -1.0, n: 10.0 })
+    );
+    assert_eq!(
+        wilson(1.0, -2.0, Z80),
+        Err(StatsError::InvalidCounts { k: 1.0, n: -2.0 })
+    );
+    assert_eq!(
+        wilson(1.0, 10.0, -1.0),
+        Err(StatsError::InvalidZ { z: -1.0 })
+    );
+}
+
+#[test]
+#[cfg(debug_assertions)]
+#[should_panic(expected = "k <= n")]
+fn wilson_k_above_n_is_a_bug_caught_in_debug() {
+    let _ = wilson(12.0, 10.0, Z80);
 }
 
 #[test]
@@ -432,26 +570,94 @@ fn percentile_from_quartiles_reference_values() {
     assert_eq!(hi(40.0), 99.0);
     assert_eq!(hi(0.0), 1.0);
     assert_close(percentile_from_quartiles(18.0, &r, false), 55.0, 1e-12);
-    // Degenerate references (rare events: p25 = p40 = 0) stay finite: a value on a tie gets the
-    // middle of the tied knots, outside a flat end segment it saturates.
-    let rare = QuartileRef {
-        p25: 0.0,
-        p40: 0.0,
-        median: 0.001,
-        p75: 0.003,
-    };
+    // Degenerate references (rare events: p25 = p40 = 0). Tied knots merge into one point at
+    // their mid-rank (25 and 40 -> 32.5), and the polyline runs through the merged points:
+    // (0, 32.5), (0.001, 50), (0.003, 75).
+    let rare = qr(0.0, 0.0, 0.001, 0.003);
     assert_eq!(percentile_from_quartiles(0.0, &rare, false), 67.5);
-    assert_close(percentile_from_quartiles(0.0005, &rare, false), 55.0, 1e-12);
-    assert_eq!(percentile_from_quartiles(-0.001, &rare, false), 99.0);
-    let flat = QuartileRef {
-        p25: 0.02,
-        p40: 0.02,
-        median: 0.02,
-        p75: 0.02,
-    };
+    assert_close(percentile_from_quartiles(0.0005, &rare, false), 58.75, 1e-9);
+    // Below the merged point the nearest non-flat slope (17.5 per 0.001) continues: 15 raw.
+    assert_close(percentile_from_quartiles(-0.001, &rare, false), 85.0, 1e-9);
+    // Flat end segments use the nearest non-flat slope, never +-inf.
+    let flat_top = qr(0.01, 0.015, 0.02, 0.02); // (0.01, 25), (0.015, 40), (0.02, 62.5)
+    assert_close(
+        percentile_from_quartiles(0.021, &flat_top, true),
+        67.0,
+        1e-9,
+    );
+    let flat_bottom = qr(0.01, 0.01, 0.015, 0.02); // (0.01, 32.5), (0.015, 50), (0.02, 75)
+    assert_close(
+        percentile_from_quartiles(0.009, &flat_bottom, true),
+        29.0,
+        1e-9,
+    );
+    // All four knots equal: the mid-rank 50 on the point, the knot bounds 25 / 75 beyond it.
+    let flat = qr(0.02, 0.02, 0.02, 0.02);
     assert_eq!(percentile_from_quartiles(0.02, &flat, true), 50.0);
-    assert_eq!(percentile_from_quartiles(0.03, &flat, true), 99.0);
-    assert_eq!(percentile_from_quartiles(0.01, &flat, true), 1.0);
+    assert_eq!(percentile_from_quartiles(0.03, &flat, true), 75.0);
+    assert_eq!(percentile_from_quartiles(0.01, &flat, true), 25.0);
+    // A reference with no scale at all (every quartile exactly 0) steps at 0.
+    let zeros = qr(0.0, 0.0, 0.0, 0.0);
+    assert_eq!(percentile_from_quartiles(0.0, &zeros, false), 50.0);
+    assert_eq!(percentile_from_quartiles(0.001, &zeros, false), 25.0);
+}
+
+#[test]
+fn percentile_of_a_zero_rate_has_one_answer_however_the_quartiles_were_produced() {
+    // A zero rate against a band where most players have zero events. The same band's quartiles
+    // can come out exactly 0, with float noise, or unsorted; each must give ONE answer: the
+    // mid-rank of {p25, p40, median} = 37.5, so 62.5 for a lower-is-better rate.
+    let refs = [
+        qr(0.0, 0.0, 0.0, 0.002),
+        qr(0.0, 0.0, 1e-15, 0.002),
+        qr(1e-15, 0.0, 0.0, 0.002),
+        qr(-1e-16, 1e-16, 0.0, 0.002),
+        qr(0.0, 2e-18, 1e-17, 0.002),
+    ];
+    for r in &refs {
+        for v in [0.0, 1e-13, -1e-13] {
+            assert_eq!(percentile_from_quartiles(v, r, false), 62.5, "{r:?} at {v}");
+        }
+    }
+}
+
+#[test]
+fn percentile_is_continuous_monotone_and_bounded() {
+    let refs = [
+        qr(0.01, 0.015, 0.02, 0.03),
+        qr(0.015, 0.02, 0.02, 0.03),
+        qr(0.02, 0.02, 0.02, 0.02),
+        qr(0.0, 0.0, 0.001, 0.003),
+        qr(0.0, 0.0, 0.0, 0.002),
+        qr(0.01, 0.015, 0.02, 0.02),
+        qr(0.01, 0.01, 0.015, 0.02),
+    ];
+    for r in &refs {
+        for hib in [true, false] {
+            let f = |v: f64| percentile_from_quartiles(v, r, hib);
+            // No jump under a 1e-12 perturbation at the value the review used.
+            for dv in [1e-12, -1e-12] {
+                assert!(
+                    (f(0.02 + dv) - f(0.02)).abs() <= 1e-6,
+                    "{r:?} at 0.02{dv:+e}"
+                );
+            }
+            // Monotone (in the metric's direction), bounded, and free of 1e-12 jumps on a grid.
+            let mut prev = if hib {
+                f64::NEG_INFINITY
+            } else {
+                f64::INFINITY
+            };
+            for i in 0..=1200 {
+                let v = -0.03 + f64::from(i) * 1e-4;
+                let y = f(v);
+                assert!((1.0..=99.0).contains(&y), "{r:?} at {v}: {y}");
+                assert!(if hib { y >= prev } else { y <= prev }, "{r:?} at {v}");
+                assert!((f(v + 1e-12) - y).abs() <= 1e-3, "{r:?} jumps at {v}");
+                prev = y;
+            }
+        }
+    }
 }
 
 #[test]
@@ -468,17 +674,111 @@ fn fit_beta_binomial_matches_independent_grid_argmax() {
         (0.0, 20.0),
         (5.0, 70.0),
     ];
-    let fit = fit_beta_binomial(&data);
-    assert_close(fit.mu, 30.0 / 440.0, 1e-15);
-    assert_close(fit.phi, 49.5353520895917, 1e-9);
+    let Ok(BetaBinomialFit::Beta { mu, phi }) = fit_beta_binomial(&data) else {
+        panic!("proper fit expected");
+    };
+    assert_close(mu, 30.0 / 440.0, 1e-15);
+    assert_close(phi, 49.5353520895917, 1e-9);
     // Mixed case of the TS test: argmax i = 23 (phi = 88.95, gap 0.034 nats).
     let mut mixed = vec![(2.0, 100.0); 10];
     mixed.extend([(8.0, 100.0); 10]);
-    assert_close(fit_beta_binomial(&mixed).phi, 88.95134973108232, 1e-9);
-    // No events (or no data): mu 0 and no detectable over-dispersion.
-    let none = BetaBinomialFit { mu: 0.0, phi: 1e5 };
-    assert_eq!(fit_beta_binomial(&[(0.0, 50.0); 5]), none);
-    assert_eq!(fit_beta_binomial(&[]), none);
+    let fit = fit_beta_binomial(&mixed).unwrap();
+    let Some(phi) = fit.phi() else {
+        panic!("proper fit expected");
+    };
+    assert_close(phi, 88.95134973108232, 1e-9);
+    // The fitted rate distribution is Beta(mu phi, (1 - mu) phi).
+    let want = BetaDist::new(0.05 * phi, (1.0 - 0.05) * phi).unwrap();
+    assert_eq!(fit.rates().unwrap().quantile(0.9), want.quantile(0.9));
+    // Invalid observations are typed errors.
+    for (k, n) in [(-1.0, 10.0), (11.0, 10.0), (1.0, 0.0), (1.0, f64::INFINITY)] {
+        assert_eq!(
+            fit_beta_binomial(&[(1.0, 10.0), (k, n)]),
+            Err(StatsError::InvalidCounts { k, n })
+        );
+    }
+    assert!(matches!(
+        fit_beta_binomial(&[(f64::NAN, 10.0)]),
+        Err(StatsError::InvalidCounts { .. })
+    ));
+}
+
+#[test]
+fn degenerate_fits_are_point_masses_whose_quantiles_are_exact() {
+    let zero = Ok(BetaBinomialFit::PointMass { at: 0.0 });
+    // Zero events in every observation.
+    let no_events = fit_beta_binomial(&[(0.0, 50.0); 5]);
+    assert_eq!(no_events, zero);
+    // Zero opportunities: no observations at all.
+    let no_data = fit_beta_binomial(&[]);
+    assert_eq!(no_data, zero);
+    for fit in [no_events, no_data] {
+        let fit = fit.unwrap();
+        assert_eq!(fit.mu(), 0.0);
+        assert_eq!(fit.phi(), None);
+        let rates = fit.rates().unwrap();
+        for p in [0.0, 0.1, 0.5, 0.9, 1.0] {
+            assert_eq!(rates.quantile(p), Ok(0.0));
+        }
+        assert_eq!(rates.mean(), 0.0);
+        assert_eq!(rates.cdf(0.0), 1.0);
+        assert_eq!(rates.cdf(-1e-9), 0.0);
+        assert_eq!(rates.sample(&mut Rng::new(1)), 0.0);
+    }
+    // Every opportunity an event: a point mass at 1.
+    let all = fit_beta_binomial(&[(10.0, 10.0); 3]).unwrap();
+    assert_eq!(all, BetaBinomialFit::PointMass { at: 1.0 });
+    assert_eq!(all.rates().unwrap().quantile(0.1), Ok(1.0));
+}
+
+#[test]
+fn beta_dist_validates_and_handles_its_limits() {
+    assert_eq!(
+        BetaDist::new(0.0, 1.0),
+        Err(StatsError::InvalidShape { a: 0.0, b: 1.0 })
+    );
+    assert_eq!(
+        BetaDist::new(f64::INFINITY, 1.0),
+        Err(StatsError::InvalidShape {
+            a: f64::INFINITY,
+            b: 1.0
+        })
+    );
+    assert!(matches!(
+        BetaDist::new(1.0, f64::NAN),
+        Err(StatsError::InvalidShape { .. })
+    ));
+    // The limits of Beta(a, b) as one shape goes to 0 are point masses (Beta(0, n0) priors).
+    let at0 = BetaDist::from_shapes(0.0, 300.0).unwrap();
+    assert_eq!(at0.point_mass_at(), Some(0.0));
+    assert_eq!(at0.quantile(0.9), Ok(0.0));
+    let at1 = BetaDist::from_shapes(5.0, 0.0).unwrap();
+    assert_eq!(at1.quantile(0.1), Ok(1.0));
+    assert_eq!(
+        BetaDist::from_shapes(0.0, 0.0),
+        Err(StatsError::InvalidShape { a: 0.0, b: 0.0 })
+    );
+    assert_eq!(
+        BetaDist::point_mass(1.5),
+        Err(StatsError::InvalidProbability { p: 1.5 })
+    );
+    let d = BetaDist::from_shapes(16.0, 684.0).unwrap();
+    assert_eq!(d.shapes(), Some((16.0, 684.0)));
+    assert_close(d.mean(), 16.0 / 700.0, 1e-15);
+    assert_eq!(d.quantile(0.1), beta_quantile(0.1, 16.0, 684.0));
+    assert_eq!(d.cdf(0.02), reg_inc_beta(0.02, 16.0, 684.0));
+    assert!(matches!(
+        d.quantile(f64::NAN),
+        Err(StatsError::InvalidProbability { .. })
+    ));
+}
+
+#[test]
+#[cfg(debug_assertions)]
+#[should_panic(expected = "did not converge")]
+fn continued_fraction_cap_is_signalled_in_debug() {
+    // About sqrt(1e12) terms would be needed at the switch point; the cap is 20 000.
+    let _ = reg_inc_beta(0.5, 1e12, 1e12);
 }
 
 #[test]
@@ -512,4 +812,12 @@ fn weighted_counts_reference_values() {
     assert_eq!(weighted_counts(&[], 60.0), (0.0, 0.0));
     let pts = [(4.0, 40.0, 120.0), (1.0, 8.0, 0.0)];
     assert_eq!(weighted_counts(&pts, 60.0), (2.0, 18.0));
+    // A NaN age is excluded (weight 0), not counted as today.
+    assert_eq!(recency_weight(f64::NAN, 60.0), 0.0);
+    let pts = [
+        (1.0, 10.0, f64::NAN),
+        (1.0, 10.0, 0.0),
+        (f64::NAN, f64::NAN, f64::NAN),
+    ];
+    assert_eq!(weighted_counts(&pts, 60.0), (1.0, 10.0));
 }
