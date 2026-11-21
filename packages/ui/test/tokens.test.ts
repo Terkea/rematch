@@ -97,7 +97,12 @@ describe("WCAG contrast in both themes", () => {
   for (const [fgCell, bgCell, use, dayCell, nightCell, required] of contrastRows) {
     const fg = code(fgCell);
     const bg = code(bgCell);
-    const selection = bgCell?.startsWith("selection on");
+    // A composited background: "selection on `sheet`", "last move on `board-dark`", and so on.
+    const tint = {
+      selection: "selection",
+      "last move": "board-lastmove",
+      selected: "board-select",
+    }[(bgCell ?? "").split(" on ")[0] ?? ""];
     for (const [theme, stated] of [
       ["day", dayCell],
       ["night", nightCell],
@@ -105,7 +110,7 @@ describe("WCAG contrast in both themes", () => {
       if (stated === "n/a") continue;
       it(`${theme}: ${fg} on ${bgCell} (${use}) is ${stated}, at least ${required}`, () => {
         const surface = colour(theme, bg);
-        const background = selection ? over(colour(theme, "selection"), surface) : surface;
+        const background = tint ? over(colour(theme, tint), surface) : surface;
         const ratio = contrast(colour(theme, fg), background);
         expect(Math.abs(ratio - Number(stated))).toBeLessThanOrEqual(0.011);
         expect(ratio).toBeGreaterThanOrEqual(Number.parseFloat(required ?? ""));

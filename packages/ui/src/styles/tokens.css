@@ -206,7 +206,7 @@
   --color-pencil: #97a6c0;
   --color-board-light: #8796b5;
   --color-board-dark: #5a6a8c;
-  --color-board-lastmove: rgb(231 236 244 / 0.18);
+  --color-board-lastmove: rgb(231 236 244 / 0.3);
   --color-selection: rgb(151 166 192 / 0.34);
   --color-board-select: rgb(231 236 244 / 0.26);
   --color-board-premove: rgb(151 166 192 / 0.3);

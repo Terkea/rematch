@@ -5,8 +5,16 @@ import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildPieces, PIECE_FILES } from "../scripts/build-pieces-lib.js";
-import { Board, badgeCorner, PIECE_SCALE, shaftClearance } from "../src/board/index.js";
+import {
+  Board,
+  badgeCorner,
+  COORDINATE,
+  coordinateBoxes,
+  PIECE_SCALE,
+  shaftClearance,
+} from "../src/board/index.js";
 import { cburnett } from "../src/board/pieces.generated.js";
+import { inkPoints } from "./piece-geometry.js";
 
 const START = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 // 1. e4 e5 2. Qh5 Nc6 3. Bc4 Nf6 4. Qxf7#: Black's king on e8 is in check (mate).
@@ -244,5 +252,74 @@ describe("Board piece motion", () => {
     const { container, rerender } = render(<Board fen={START} label="Position" />);
     rerender(<Board fen={AFTER_E4} label="Position" lastMove={{ from: "e2", to: "e4" }} />);
     expect(moving(container)).toEqual([]);
+  });
+});
+
+describe("Board coordinates (controller ruling, Task 11)", () => {
+  it("sets coordinates at 0.2 of the square with a 2px inset: files bottom right, ranks top left", () => {
+    expect(COORDINATE.size).toBe(0.2);
+    expect(COORDINATE.inset).toBe(2);
+    const box = coordinateBoxes(41);
+    const f = 0.2 * 41;
+    // In square units: the rank box hugs the top-left corner, the file box the bottom-right one.
+    expect(box.rank.top).toBeCloseTo(2 / 41);
+    expect(box.rank.left).toBeCloseTo(2 / 41);
+    expect(box.rank.bottom).toBeCloseTo((2 + f) / 41);
+    expect(box.file.bottom).toBeCloseTo(1 - 2 / 41);
+    expect(box.file.right).toBeCloseTo(1 - 2 / 41);
+    expect(box.file.top).toBeCloseTo(1 - (2 + f) / 41);
+  });
+
+  // Every point each piece paints (outline sampled along its curves, plus half its stroke) must
+  // stay out of both glyph boxes, extended to the square's corner, so no piece covers a
+  // coordinate on any square of the first rank or the a-file (or h-file and eighth rank as Black).
+  const cases: [number, number][] = [
+    [41, PIECE_SCALE.phone],
+    [44, PIECE_SCALE.phone],
+    [60, PIECE_SCALE.phone],
+    [56, PIECE_SCALE.wide],
+    [80, PIECE_SCALE.wide],
+  ];
+  for (const [square, scale] of cases) {
+    it(`no piece covers a coordinate on a ${square}px square at scale ${scale}`, () => {
+      const { file, rank } = coordinateBoxes(square);
+      const hits: string[] = [];
+      for (const [code, nodes] of Object.entries(cburnett)) {
+        for (const p of inkPoints(nodes)) {
+          const x = 0.5 + (p.x / 45 - 0.5) * scale;
+          const y = 0.5 + (p.y / 45 - 0.5) * scale;
+          const r = (p.r / 45) * scale;
+          if (x + r > file.left && y + r > file.top)
+            hits.push(`${code} file ${x.toFixed(3)},${y.toFixed(3)}`);
+          if (x - r < rank.right && y - r < rank.bottom)
+            hits.push(`${code} rank ${x.toFixed(3)},${y.toFixed(3)}`);
+        }
+      }
+      expect(hits.slice(0, 5)).toEqual([]);
+    });
+  }
+
+  it("uses on-ink coordinates on tinted night squares (last move and selection)", () => {
+    const { container } = render(
+      <Board fen={MATE} label="Position" lastMove={{ from: "h5", to: "f7" }} />,
+    );
+    const css = container.querySelector("style[data-board-coordinates]")?.textContent ?? "";
+    expect(css.match(/\[data-theme="dark"\] #board-\w+-square-(\w\d)\{/g)).toHaveLength(2);
+    for (const sq of ["h5", "f7"]) expect(css).toContain(`-square-${sq}{`);
+    expect(css).toContain("--board-coord-light:var(--color-on-ink)");
+    expect(css).toContain("--board-coord-dark:var(--color-on-ink)");
+  });
+});
+
+describe("Board selected-square coordinates", () => {
+  it("turns the selected square's coordinate on-ink at night too", async () => {
+    const user = userEvent.setup();
+    const { container } = render(
+      <Board fen={START} label="Position" interactive onMove={() => true} />,
+    );
+    square("e2").focus();
+    await user.keyboard("{Enter}");
+    const css = container.querySelector("style[data-board-coordinates]")?.textContent ?? "";
+    expect(css).toContain("-square-e2{");
   });
 });

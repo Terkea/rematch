@@ -295,6 +295,19 @@ export function Board({
     return () => observer.disconnect();
   }, []);
 
+  // On a tinted night square the pale tint drops `ink` below 3:1, so its coordinate turns `on-ink`
+  // (DESIGN.md, "Board coordinates"). react-chessboard styles coordinates per square colour only,
+  // so the tinted squares get the variables from a scoped rule.
+  const tintedCss = useMemo(() => {
+    const tinted = [lastMove?.from, lastMove?.to, selected ?? undefined].filter(Boolean);
+    return tinted
+      .map(
+        (sq) =>
+          `[data-theme="dark"] #${id}-square-${sq}{--board-coord-light:var(--color-on-ink);--board-coord-dark:var(--color-on-ink)}`,
+      )
+      .join("");
+  }, [id, lastMove, selected]);
+
   const styles = useMemo(
     () => squareStyles({ lastMove, check, selected }),
     [lastMove, check, selected],
@@ -307,11 +320,13 @@ export function Board({
       className={cn(
         "w-fit md:rounded-(--radius-board) md:bg-well md:p-2",
         "[--board-coord-light:var(--color-ink)] dark:[--board-coord-light:var(--color-on-ink)]",
+        "[--board-coord-dark:var(--color-ink)]",
         // PIECE_SCALE (theme.ts), written out so Tailwind sees the classes.
-        "[--piece-scale:0.84] md:[--piece-scale:0.9]",
+        "[--piece-scale:0.84] md:[--piece-scale:0.88]",
         className,
       )}
     >
+      {tintedCss ? <style data-board-coordinates>{tintedCss}</style> : null}
       <div className="relative size-(--board-size)">
         <div ref={surface} aria-hidden="true" className="size-full">
           <PieceMotionContext.Provider value={motionState}>

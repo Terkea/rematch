@@ -15,13 +15,31 @@ export const RANKS: readonly BoardRank[] = [1, 2, 3, 4, 5, 6, 7, 8];
 export const WELL_MIN_WIDTH = 768;
 
 /**
- * Pieces are drawn smaller than the square, centred, so the 12px file letters in the first rank's
- * bottom-right corners stay clear of the piece bases (a knight's base reaches 0.86 of the square
- * at full size, a rook's 0.81). The letters are a fixed 12px, so small squares need the smaller
- * piece: 0.84 below 768px (41 to 60px squares) and 0.9 from 768px (56px squares and up). Checked
- * by measurement on b1 and g1 in the T11 screenshots. The board root sets `--piece-scale`.
+ * Coordinates (controller ruling, Task 11): Schibsted 500 at 0.2 of the square with a 2px inset,
+ * files in the bottom-right corner and ranks in the top-left. `advance` is the widest glyph's
+ * advance in em (Schibsted Grotesk 500: "6" 0.601, "b" and "d" 0.600), measured in Chromium.
  */
-export const PIECE_SCALE = { phone: 0.84, wide: 0.9 } as const;
+export const COORDINATE = { size: 0.2, inset: 2, advance: 0.61 } as const;
+
+/** The two coordinate glyph boxes on a square of `px` pixels, in square units (0 to 1). */
+export function coordinateBoxes(px: number) {
+  const height = (COORDINATE.size * px) / px;
+  const width = (COORDINATE.size * COORDINATE.advance * px) / px;
+  const inset = COORDINATE.inset / px;
+  return {
+    rank: { top: inset, left: inset, bottom: inset + height, right: inset + width },
+    file: { top: 1 - inset - height, left: 1 - inset - width, bottom: 1 - inset, right: 1 - inset },
+  };
+}
+
+/**
+ * Pieces are drawn smaller than the square, centred, so no piece covers a coordinate on any
+ * square: the widest reach is a bishop's base toward the bottom-right and a queen's crown toward
+ * the top-left. The 2px inset weighs more on small squares, so phones (41 to 60px squares) take
+ * 0.84 and boards from 768px (56px squares and up) 0.88. board.test.tsx checks every point each
+ * piece paints against the glyph boxes. The board root sets `--piece-scale`.
+ */
+export const PIECE_SCALE = { phone: 0.84, wide: 0.88 } as const;
 
 /** Column (0 = left as drawn) and row (0 = top as drawn) of a square in the given orientation. */
 export function squareToCell(
@@ -62,12 +80,13 @@ export function badgeCorner(
   return from.col > to.col ? "top-left" : "top-right";
 }
 
-// Coordinates: Schibsted 500 at `xs`, on the squares. Day `ink`; night `on-ink` on light squares
-// and `ink` on dark ones ("Board coordinates"). The light-square colour comes from a variable the
-// board root sets per theme.
+// Coordinates: Schibsted 500 at 0.2 of the square (the board is 8 squares, so 0.025 of
+// --board-size), on the squares. Day `ink`; night `on-ink` on light squares and `ink` on dark ones,
+// and `on-ink` on both when tinted ("Board coordinates"). The colours are variables the board root
+// and its tinted squares set.
 const coordinate: CSSProperties = {
   fontFamily: "var(--font-sans)",
-  fontSize: "var(--text-xs)",
+  fontSize: `calc(var(--board-size) * ${COORDINATE.size / 8})`,
   lineHeight: 1,
   fontWeight: 500,
   position: "absolute",
@@ -79,11 +98,9 @@ export const boardTheme = {
   lightSquareStyle: { backgroundColor: "var(--color-board-light)" },
   darkSquareStyle: { backgroundColor: "var(--color-board-dark)" },
   lightSquareNotationStyle: { color: "var(--board-coord-light)" },
-  darkSquareNotationStyle: { color: "var(--color-ink)" },
-  // Files hug the bottom-right corner and ranks the top-left, so the glyphs sit outside the
-  // 90%-scaled pieces' silhouettes.
-  alphaNotationStyle: { ...coordinate, bottom: 1, right: 2 },
-  numericNotationStyle: { ...coordinate, top: 2, left: 2 },
+  darkSquareNotationStyle: { color: "var(--board-coord-dark)" },
+  alphaNotationStyle: { ...coordinate, bottom: COORDINATE.inset, right: COORDINATE.inset },
+  numericNotationStyle: { ...coordinate, top: COORDINATE.inset, left: COORDINATE.inset },
   boardStyle: { borderRadius: "var(--radius-board)", overflow: "hidden" },
   dropSquareStyle: { boxShadow: "inset 0 0 0 2px var(--color-sheet)" },
   // The origin keeps a 30% ghost while the piece is dragged (DESIGN.md, "Board states").

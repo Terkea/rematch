@@ -53,7 +53,7 @@ Two themes: **day** (light) and **night study** (dark). Night study is the same 
 | `--color-pencil` | `#56657F` | `#97A6C0` | neutral annotations, plan arrows |
 | `--color-board-light` | `#E3E8EF` | `#8796B5` | light squares (night: owner-approved change, round 2) |
 | `--color-board-dark` | `#A7B4C7` | `#5A6A8C` | dark squares (night: owner-approved change, round 2) |
-| `--color-board-lastmove` | `rgb(22 35 59 / 0.16)` | `rgb(231 236 244 / 0.18)` | last-move tint |
+| `--color-board-lastmove` | `rgb(22 35 59 / 0.16)` | `rgb(231 236 244 / 0.30)` | last-move tint (night: controller-approved change, Task 11) |
 
 Added in fix round 1 (derived from the tokens above, no new hues):
 
@@ -72,7 +72,7 @@ Added in fix round 1 (derived from the tokens above, no new hues):
 - **Lines:** `rule` is decorative only (scoresheet ruling, dividers). Anything a user must see to operate the UI, such as input borders, chart axes or checkbox outlines, uses `rule-strong`.
 - **Primary action:** an `ink` fill with `on-ink` text. There is one primary action per view.
 - **The halo rule:** every board mark (ring, arrow, glyph badge, focus ring, check ring, legal-move dot) sits on a 2px `--color-sheet` halo, so the mark's adjacent colour is always its halo and never a square. That makes the `pen`, `good`, `pencil` and `ink` rows against `sheet` below the binding check. Without the halo, night marks fall to 1.01:1 on light squares, so the halo is not optional.
-- **Board coordinates** use `ink` in day. In night they use `on-ink` on light squares and `ink` on dark squares, because no single colour passes on both night squares.
+- **Board coordinates** use `ink` in day. In night they use `on-ink` on light squares and `ink` on dark squares, because no single colour passes on both night squares. On a tinted night square (last move or selected) they use `on-ink` on both colours, because the pale tint drops `ink` below 3:1 there (controller ruling, Task 11).
 - **Last move** is tinted with `board-lastmove`. The tint is under 3:1 against the bare square on purpose, so it never competes with the pen. It is supplementary: the current move is also marked in the move list and announced to assistive tech.
 - **Colour never carries meaning alone.** `pen` and `good` are close in luminance (1.34:1 day and 1.67:1 night after the round 2 green change, up from 1.01 and 1.29), so every mark also differs in shape: pen marks always carry a `?`-family glyph badge and an open two-stroke arrowhead; good marks carry a `!`-family badge and a solid head. See "Severity and marks".
 
@@ -145,6 +145,14 @@ Computed with the WCAG 2.x relative-luminance formula (sRGB to linear, `L = 0.21
 | `ink` | `board-light` | coordinates (day only) | 12.75 | n/a | 4.5:1 | pass |
 | `ink` | `board-dark` | coordinates | 7.47 | 4.57 | 4.5:1 | pass |
 | `on-ink` | `board-light` | coordinates (night only) | n/a | 5.84 | 4.5:1 | pass |
+| `ink` | last move on `board-light` | coordinates on a last-move square (day) | 9.33 | n/a | 4.5:1 | pass |
+| `ink` | last move on `board-dark` | coordinates on a last-move square (day) | 5.71 | n/a | 4.5:1 | pass |
+| `on-ink` | last move on `board-light` | coordinates on a last-move square (night) | n/a | 7.96 | 4.5:1 | pass |
+| `on-ink` | last move on `board-dark` | coordinates on a last-move square (night) | n/a | 5.48 | 4.5:1 | pass |
+| `ink` | selected on `board-light` | coordinates on the selected square (day) | 7.95 | n/a | 4.5:1 | pass |
+| `ink` | selected on `board-dark` | coordinates on the selected square (day) | 4.92 | n/a | 4.5:1 | pass |
+| `on-ink` | selected on `board-light` | coordinates on the selected square (night) | n/a | 7.62 | 4.5:1 | pass |
+| `on-ink` | selected on `board-dark` | coordinates on the selected square (night) | n/a | 5.14 | 4.5:1 | pass |
 | `piece-dark` | `board-light` | piece outline and black body | 12.75 | 6.20 | 3:1 | pass |
 | `piece-dark` | `board-dark` | piece outline and black body | 7.47 | 3.40 | 3:1 | pass |
 | `piece-light` | `piece-dark` | white body inside its outline | 15.28 | 15.54 | 3:1 | pass |
@@ -167,7 +175,7 @@ Informational only, to show why the halo rule exists (a mark drawn straight on a
 | `pencil` | 4.79 | 2.81 | 1.21 | 2.20 |
 | `ink` (focus ring) | 12.75 | 7.47 | 2.51 | 4.57 |
 
-The halo itself against the squares is 1.20 and 2.05 (day) and 5.31 and 2.92 (night). It never needs 3:1, because it is the mark's background, not the mark. Last-move tint over the bare square: 1.37 and 1.31 (day), 1.20 and 1.39 (night), supplementary by design.
+The halo itself against the squares is 1.20 and 2.05 (day) and 5.31 and 2.92 (night). It never needs 3:1, because it is the mark's background, not the mark. Last-move tint over the bare square: 1.37 and 1.31 (day), 1.36 and 1.71 (night, after the Task 11 change from 0.18 to 0.30, which also made the night board livelier), supplementary by design.
 
 ## Type
 
@@ -183,7 +191,7 @@ Size and line height in px, from the classic scale. Literata's `opsz` tracks the
 | Step | Size / line height | Literata `opsz` | Typical use |
 |---|---|---|---|
 | `2xs` | 11/14 | 11 | only glyph-badge text (its floor) and the eval bar label. Nothing else. |
-| `xs` | 12/16 | 12 | board coordinates, chart ticks |
+| `xs` | 12/16 | 12 | chart ticks (board coordinates scale with the square, see "The board") |
 | `sm` | 14/20 | 14 | secondary UI text, captions, graph labels |
 | `base` | 16/24 | 16 | UI body, buttons, inputs, move list (15px rows use `opsz` 15) |
 | `prose` | 18/30 | 18 | serif body (annotations, explanations), with more leading |
@@ -276,7 +284,8 @@ The board is one of the two loud things, so it gets the most specific rules.
 - `react-chessboard` (MIT) with chess.js (BSD-2). Never chessground or chessops (`B12`).
 - Squares are `board-light` and `board-dark`, cool and low in contrast, so pieces and marks carry the eye. The board has `--radius-board` and no frame, shadow or wood.
 - **Well (from 768px only):** the board sits in a `well` with 8px padding, and both have `--radius-board`. The board keeps `--board-size`, and the well is 16px wider. Below 768px there is no well and the board is flush, so a phone gets every pixel. Decision: `design/decisions/board.md` (Task 10, variant c "Ink well").
-- **Coordinates** sit on the squares, never in a lane outside the board: ranks in the top-left corner of the a-file squares and files in the bottom-right corner of the first-rank squares (as seen from the board's orientation), in Schibsted 500 at `xs`, coloured as in "Board coordinates" under the usage rules.
+- **Coordinates** sit on the squares, never in a lane outside the board: ranks in the top-left corner of the a-file squares and files in the bottom-right corner of the first-rank squares (as seen from the board's orientation), in Schibsted 500 at **0.2 of the square** (8.2px on a 41px square, 14px on a 70px one; `calc(var(--board-size) * 0.025)`) with a **2px inset**, line height 1, coloured as in "Board coordinates" under the usage rules (controller ruling, Task 11).
+- **No piece covers a coordinate,** on any square, from 41px squares up: pieces are drawn centred at **0.84** of the square below 768px and **0.88** from 768px (`--piece-scale`). The binding reaches are a bishop's base toward the bottom-right corner and a queen's crown toward the top-left. `packages/ui/test/board.test.tsx` checks every point each piece paints (its outline sampled along its curves, plus half its stroke) against both glyph boxes (0.2 of the square tall, 0.61em wide, the widest glyph's advance) at 41, 44, 56, 60 and 80px squares.
 - **Pieces** come only from the shipped sets under "Piece sets", passed through react-chessboard's `pieces` option on every board. react-chessboard's built-in default pieces are never rendered, because they are Cburnett drawings without attribution (controller ruling, Task 10).
 - **Board states:**
 
@@ -833,3 +842,12 @@ Controller rulings on the styleguide hero lab:
 3. **Link mark:** its 0.9× is relative to the board pen at the current square size; it is omitted when no legal route exists; it is drawn only when both ends are in view at its start time.
 
 **Token values changed in this round:** none.
+
+### 2026-11-21, Task 11: corner coordinates, night last-move tint
+
+Controller rulings on the Task 11 board:
+
+1. **Coordinates** are 0.2 of the square with a 2px inset (files bottom right, ranks top left), and no piece covers one on 41–44px squares, any piece on any rank. Pieces are drawn at 0.84 of the square below 768px and 0.88 from 768px, checked geometrically ("The board"). The `xs` row no longer lists board coordinates.
+2. **Night last-move tint** goes from `rgb(231 236 244 / 0.18)` to `rgb(231 236 244 / 0.30)`: 1.36:1 over the light square (day is 1.37) and 1.71:1 over the dark one, still supplementary, and a livelier night board for the owner. Coordinates on a tinted night square (last move or selected) use `on-ink`: 7.96 and 5.48:1 (last move), 7.62 and 5.14:1 (selected). With the old tint an `ink` coordinate on a tinted dark square was 3.30:1. New rows in the contrast table.
+
+**Token values changed in this round:** night `--color-board-lastmove` (0.18 to 0.30).
