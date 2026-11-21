@@ -21,7 +21,7 @@ Every R1 Global Constraint applies unchanged. Repeated here because each task ne
 - **Toolchain** `1.100.0` (`backend/rust-toolchain.toml`), edition 2024, `unsafe_code = "forbid"`.
 - **Lockfile and manifests:** Task 1 adds every R2 dependency to `[workspace.dependencies]` and every R2 crate's `Cargo.toml`, and commits `Cargo.lock`, as the single coordinator commit on the base branch (R1 lanes rebase onto it). No later R2 task edits a `Cargo.toml` dependency list or `Cargo.lock`; a task that needs a crate stops and reports it. **Supply chain:** every added crate version is at least 7 days old on crates.io at the time of Task 1, pinned exactly (`=x.y.z`), and `cargo deny check` is clean.
 - **Licences:** only MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, Unicode-3.0, Zlib (and combinations). No copyleft crates. Never widen `deny.toml` silently. Licensing §14 as TS M2: our own code from documented rules; nothing from `cook.py`, `lila-openingexplorer`, `lichess-org/database` scripts, chessops or chessground; data only from CC0 Lichess sources; Maia only if Task 24's licence check passes.
-- **Migrations:** R2 owns versions `20261121010000`–`20261121019999`. Task 1 reserves the names; Task 3 creates `db/migrations/20261121010000_profile_engine.sql`, the only R2 migration. A task needing another schema change stops and reports (the coordinator adds `20261121010100_*`). R2 migration branches merge only after R1 T19 (so every R1 migration is older on long-lived databases; `#[sqlx::test]` databases are unaffected). Generated Drizzle files (`packages/db/src/generated/`) are never hand-merged: after a merge, rerun `scripts/db/generate-drizzle-schema.sh` and commit.
+- **Migrations:** R2 owns versions `20261121020000`–`20261121019999`. Task 1 reserves the names; Task 3 creates `db/migrations/20261121020000_profile_engine.sql`, the only R2 migration. A task needing another schema change stops and reports (the coordinator adds `20261121010100_*`). R2 migration branches merge only after R1 T19 (so every R1 migration is older on long-lived databases; `#[sqlx::test]` databases are unaffected). Generated Drizzle files (`packages/db/src/generated/`) are never hand-merged: after a merge, rerun `scripts/db/generate-drizzle-schema.sh` and commit.
 - **SQL style:** runtime `sqlx::query`/`query_as` with `#[derive(sqlx::FromRow)]`, no `query!`; enums bound as text with casts (`$1::band`) and read as `col::text`. `profile-core` and `coaching-input` never depend on sqlx.
 - **Tests:** DB tests are `#[sqlx::test(migrator = "db::MIGRATOR")]`. With `IN_DOCKER=1` a test that needs Postgres, Stockfish or Syzygy files **fails** (panics), never skips. **No live network in tests**: HTTP is `wiremock`, fixtures are recorded or generated in the test. Committed test fixtures are ≤ 50 KB each. Timing assertions use ≥ 3× bounds or `testkit::wait_for`.
 - **Analysis protocol unchanged:** `ANALYSIS_PROTOCOL = "sf19-n300k-v1"` (300 000 nodes, MultiPV 1, no Threads/Hash) for `position_evals`. Enrichment is versioned separately: `ENRICHMENT_PROTOCOL = "enr-v1"`, `MULTIPV_PROTOCOL = "sf19-n300k-mpv3-v1"`, `THREAT_PROTOCOL = "sf19-n50k-null-v1"`, `PREVIEW_PROTOCOL = "sf19-n30k-preview-v1"`. Tablebase probes use a **separate** engine set; the main pool never sets `SyzygyPath`.
@@ -88,7 +88,7 @@ Each lane has its own worktree and branch `r2/<lane>`, based on the Task 1 commi
 | Lane | Scope (disjoint files) | Tasks |
 |---|---|---|
 | 0 bootstrap | all R2 `Cargo.toml`s, `Cargo.lock`, crate skeletons, `profile-core/src/{types,constants,bands}.rs`, `coaching-input/src/enums.rs`, `queue/src/kinds.rs` (append), compose env, `.gitignore`, ADR index rows | 1 |
-| K contracts | `backend/crates/coaching-input/**` (except `enums.rs`), `backend/fixtures/coaching-input/**`; `db/migrations/20261121010000_profile_engine.sql`, `db/src/{games.rs,profile_rows.rs,stage_metrics.rs,lib.rs}` | 2, 3 |
+| K contracts | `backend/crates/coaching-input/**` (except `enums.rs`), `backend/fixtures/coaching-input/**`; `db/migrations/20261121020000_profile_engine.sql`, `db/src/{games.rs,profile_rows.rs,stage_metrics.rs,lib.rs}` | 2, 3 |
 | P1 detectors | `profile-core/src/{board,motifs,features,weakness}/**`, `chess-core/src/board.rs` (append only), `profile-core/tests/{board,motifs,features,episodes,detectors,game_metrics,strengths}.rs`, `profile-core/tests/common/**` | 4 → 5 → 6; 7 (after 4); 8 (after 6, 7) → 9; 10 (after 6, 7) |
 | P3 statistics | `profile-core/src/{stats,timeline,kpi}/**`, their tests | 11 → 12, 13, 15; 14 (after 12, 13) |
 | P2 openings | `profile-core/src/openings/**`, `profile-core/data/**`, `backend/crates/refdata/**` | 16; 17; 18 (after 11, 16, 17) |
@@ -332,7 +332,7 @@ pub const PREVIEW_PRIORITY: i16 = 0; pub const REFERENCE_PRIORITY: i16 = 200;
 ### Task 3: Profile engine schema, row helpers and stage metrics
 
 **Files:**
-- Create: `db/migrations/20261121010000_profile_engine.sql`, `backend/crates/db/src/{profile_rows.rs,stage_metrics.rs}`
+- Create: `db/migrations/20261121020000_profile_engine.sql`, `backend/crates/db/src/{profile_rows.rs,stage_metrics.rs}`
 - Modify: `backend/crates/db/src/games.rs` (enum variant and columns), `backend/crates/db/src/lib.rs` (two `pub mod` lines)
 - Test: `backend/crates/db/tests/profile_schema.rs`
 
