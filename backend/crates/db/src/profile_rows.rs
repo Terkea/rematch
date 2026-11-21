@@ -1,7 +1,8 @@
 //! Row helpers for the profile-engine tables (R2 Tasks 31–33). Plain runtime-checked statements;
 //! enum columns are bound as their Postgres text values with casts, numbers as `f64` (stored as
-//! `real`). Each takes a `&mut PgConnection`, so it runs on a pooled connection or inside a
-//! caller's transaction (`&mut *tx`).
+//! `double precision` in `weakness_estimates` and `kpi_snapshot`, so they round-trip exactly;
+//! `real` elsewhere). Each takes a `&mut PgConnection`, so it runs on a pooled connection or
+//! inside a caller's transaction (`&mut *tx`).
 //!
 //! `game_metrics.metrics` holds a serialised `PlayerGameMetrics`. Readers of that column must
 //! apply the version gate: a row whose `metrics->>'version'` differs from

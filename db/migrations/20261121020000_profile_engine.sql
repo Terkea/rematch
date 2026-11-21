@@ -29,13 +29,18 @@ ALTER TABLE games ADD CONSTRAINT games_analysis_tier_range
 ALTER TABLE games VALIDATE CONSTRAINT games_analysis_tier_range;
 ALTER TABLE linked_accounts ADD COLUMN analysis_scheduled_at timestamptz;
 
--- Fair scheduling (R-12): the per-account `served` count and the selection scan.
-CREATE INDEX games_account_started_idx ON games (account_id, analysis_started_at);
--- The claim query's `served` CTE counts every account's games started in the last hour, a range
--- on `analysis_started_at` alone: with the column second above, that is a full index scan per
--- claim. Leading with the time makes it a short range scan, index-only through `account_id`.
+-- Deleting an account deletes its games (the baseline FK was `no action`, which blocked it);
+-- every per-game table cascades from `games`, every account-scoped one from `linked_accounts`.
+ALTER TABLE games DROP CONSTRAINT games_account_id_linked_accounts_id_fk;
+ALTER TABLE games ADD CONSTRAINT games_account_id_linked_accounts_id_fk
+  FOREIGN KEY (account_id) REFERENCES linked_accounts (id) ON DELETE CASCADE NOT VALID;
+ALTER TABLE games VALIDATE CONSTRAINT games_account_id_linked_accounts_id_fk;
+
+-- Fair scheduling (R-12). The claim query's `served` CTE counts every account's games started in
+-- the last hour: a short range scan on the time, index-only through `account_id`.
 CREATE INDEX games_started_account_idx ON games (analysis_started_at, account_id)
   WHERE analysis_started_at IS NOT NULL;
+-- The selection scan: an account's games in one status and time class.
 CREATE INDEX games_account_status_tc_idx ON games (account_id, analysis_status, time_class);
 
 -- Per-move enrichment ----------------------------------------------------------------------
@@ -44,8 +49,8 @@ CREATE TABLE move_features (
   ply integer NOT NULL,
   -- raw
   multipv jsonb,
-  best_pv text[] NOT NULL,
-  refutation_pv text[] NOT NULL,
+  best_pv text[] NOT NULL DEFAULT '{}'::text[],
+  refutation_pv text[] NOT NULL DEFAULT '{}'::text[],
   threat jsonb,
   tb_wdl_before smallint,
   tb_wdl_after smallint,
@@ -78,7 +83,7 @@ CREATE TABLE position_threats (
   protocol text NOT NULL,
   score_cp integer,
   score_mate integer,
-  pv text[] NOT NULL,
+  pv text[] NOT NULL DEFAULT '{}'::text[],
   created_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (fen_key, protocol)
 );
@@ -129,28 +134,29 @@ CREATE INDEX weakness_series_point_series_played_idx
   ON weakness_series_point (account_id, time_class, series_key, played_at);
 CREATE INDEX weakness_series_point_game_idx ON weakness_series_point (game_id);
 
--- Current estimates, upserted.
+-- Current estimates, upserted. `double precision` like the Rust f64s: build-profile compares a
+-- new estimate with the stored one exactly.
 CREATE TABLE weakness_estimates (
   account_id uuid NOT NULL REFERENCES linked_accounts (id) ON DELETE CASCADE,
   time_class time_class NOT NULL,
   series_key text NOT NULL,
-  k real NOT NULL,
-  n real NOT NULL,
+  k double precision NOT NULL,
+  n double precision NOT NULL,
   n_unweighted integer NOT NULL,
-  k_unweighted real NOT NULL,
-  alpha real NOT NULL,
-  beta real NOT NULL,
-  mean real NOT NULL,
-  ci_low real NOT NULL,
-  ci_high real NOT NULL,
-  band_median real,
-  band_p40 real,
-  confidence real NOT NULL,
-  excess real,
-  priority real NOT NULL,
-  percentile real,
+  k_unweighted double precision NOT NULL,
+  alpha double precision NOT NULL,
+  beta double precision NOT NULL,
+  mean double precision NOT NULL,
+  ci_low double precision NOT NULL,
+  ci_high double precision NOT NULL,
+  band_median double precision,
+  band_p40 double precision,
+  confidence double precision NOT NULL,
+  excess double precision,
+  priority double precision NOT NULL,
+  percentile double precision,
   state weakness_state NOT NULL,
-  p_imp real,
+  p_imp double precision,
   updated_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (account_id, time_class, series_key)
 );
@@ -184,7 +190,7 @@ CREATE TABLE weakness_state_history (
 CREATE INDEX weakness_state_history_series_idx
   ON weakness_state_history (account_id, time_class, series_key, id);
 
--- Append-only: no unique key, identical rows are kept.
+-- Append-only: no unique key, identical rows are kept. Values are `double precision` (exact f64).
 CREATE TABLE kpi_snapshot (
   id bigserial PRIMARY KEY,
   user_id uuid,
@@ -193,11 +199,11 @@ CREATE TABLE kpi_snapshot (
   metric text NOT NULL,
   window_kind kpi_window NOT NULL,
   window_key text NOT NULL,
-  value real,
-  value_adjusted real,
+  value double precision,
+  value_adjusted double precision,
   n integer NOT NULL,
-  ci_low real,
-  ci_high real,
+  ci_low double precision,
+  ci_high double precision,
   protocol text NOT NULL,
   computed_at timestamptz NOT NULL DEFAULT now()
 );
@@ -222,7 +228,6 @@ CREATE TABLE reference_builds (
   activated_at timestamptz,
   error text
 );
-CREATE INDEX reference_builds_kind_status_idx ON reference_builds (kind, status);
 -- At most one active build per kind.
 CREATE UNIQUE INDEX reference_builds_one_active_uq ON reference_builds (kind)
   WHERE status = 'active';
@@ -238,8 +243,6 @@ CREATE TABLE opening_explorer (
   black integer NOT NULL,
   PRIMARY KEY (build_id, fen_key, band, time_class, uci)
 );
-CREATE INDEX opening_explorer_lookup_idx
-  ON opening_explorer (build_id, band, time_class, fen_key);
 
 CREATE TABLE reference_games (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -149,10 +149,10 @@ async fn r1_callers_default_to_pending(pool: PgPool) {
     assert_eq!(row.ply_count, None);
 }
 
-#[sqlx::test(migrator = "db::MIGRATOR")]
-async fn one_row_per_new_table(pool: PgPool) {
-    let acc = make_account(&pool).await;
-    let game = make_game(&pool, acc, "g1").await;
+/// One row in every new table (account-, game- and build-scoped). Returns (account, game).
+async fn seed_every_table(pool: &PgPool) -> (Uuid, Uuid) {
+    let acc = make_account(pool).await;
+    let game = make_game(pool, acc, "g1").await;
     let mut conn = pool.acquire().await.unwrap();
 
     // Helpers used by Tasks 31-33.
@@ -250,7 +250,7 @@ async fn one_row_per_new_table(pool: PgPool) {
          params, games_scanned) VALUES ('opening_explorer', 'building', '2026-10', 'ab', \
          'https://database.lichess.org/x.pgn.zst', '{}', 0) RETURNING id",
     )
-    .fetch_one(&pool)
+    .fetch_one(pool)
     .await
     .unwrap();
     let ref_game: Uuid = sqlx::query_scalar(
@@ -261,7 +261,7 @@ async fn one_row_per_new_table(pool: PgPool) {
     )
     .bind(build)
     .bind(PLAYED_AT)
-    .fetch_one(&pool)
+    .fetch_one(pool)
     .await
     .unwrap();
     let statements = [
@@ -286,7 +286,7 @@ async fn one_row_per_new_table(pool: PgPool) {
     for sql in statements {
         sqlx::query(sqlx::AssertSqlSafe(sql))
             .bind(game)
-            .execute(&pool)
+            .execute(pool)
             .await
             .unwrap();
     }
@@ -300,7 +300,7 @@ async fn one_row_per_new_table(pool: PgPool) {
     for sql in build_statements {
         sqlx::query(sqlx::AssertSqlSafe(sql))
             .bind(build)
-            .execute(&pool)
+            .execute(pool)
             .await
             .unwrap();
     }
@@ -311,15 +311,20 @@ async fn one_row_per_new_table(pool: PgPool) {
     )
     .bind(build)
     .bind(ref_game)
-    .execute(&pool)
+    .execute(pool)
     .await
     .unwrap();
     sqlx::query("UPDATE linked_accounts SET analysis_scheduled_at = now() WHERE id = $1")
         .bind(acc)
-        .execute(&pool)
+        .execute(pool)
         .await
         .unwrap();
+    (acc, game)
+}
 
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn one_row_per_new_table(pool: PgPool) {
+    seed_every_table(&pool).await;
     for table in [
         "move_features",
         "position_multipv",
@@ -492,6 +497,166 @@ async fn cascade_from_games(pool: PgPool) {
         let sql = format!("SELECT count(*) FROM {table} WHERE game_id = $1");
         assert_eq!(count(&pool, &sql, game).await, 0, "{table}");
     }
+}
+
+/// Deleting a linked account removes its games and everything hanging off them or the account
+/// (baseline `games` FK re-added `ON DELETE CASCADE` by the profile migration). `job_metrics`
+/// has no FK and keeps its rows until the 30-day prune (ADR 0036).
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn cascade_from_account(pool: PgPool) {
+    let (acc, game) = seed_every_table(&pool).await;
+    let other = find_or_create_account(&pool, "lichess", "Hikaru")
+        .await
+        .unwrap()
+        .id;
+    let kept = make_game(&pool, other, "kept").await;
+    for g in [game, kept] {
+        sqlx::query(
+            "INSERT INTO moves (game_id, ply, color, san, uci, fen_before, win_before, \
+             win_after, delta_w, accuracy, phase, decided) \
+             VALUES ($1, 1, 'white', 'e4', 'e2e4', 'f', 0.5, 0.5, 0, 100, 'opening', false)",
+        )
+        .bind(g)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+    let by_account = [
+        "games",
+        "game_metrics",
+        "weakness_series_point",
+        "weakness_estimates",
+        "weakness_state_history",
+        "kpi_snapshot",
+        "game_openings",
+        "repertoire_nodes",
+        "opening_lines",
+    ];
+    let by_game = ["moves", "move_features", "game_previews"];
+    let account_sql = |t: &str| format!("SELECT count(*) FROM {t} WHERE account_id = $1");
+    let game_sql = |t: &str| format!("SELECT count(*) FROM {t} WHERE game_id = $1");
+    for t in by_account {
+        assert_eq!(count(&pool, &account_sql(t), acc).await, 1, "{t} before");
+    }
+    for t in by_game {
+        assert_eq!(count(&pool, &game_sql(t), game).await, 1, "{t} before");
+    }
+
+    sqlx::query("DELETE FROM linked_accounts WHERE id = $1")
+        .bind(acc)
+        .execute(&pool)
+        .await
+        .unwrap();
+    for t in by_account {
+        assert_eq!(count(&pool, &account_sql(t), acc).await, 0, "{t}");
+    }
+    for t in by_game {
+        assert_eq!(count(&pool, &game_sql(t), game).await, 0, "{t}");
+    }
+    // The other account is untouched.
+    assert_eq!(count(&pool, &account_sql("games"), other).await, 1);
+    assert_eq!(count(&pool, &game_sql("moves"), kept).await, 1);
+}
+
+/// T33 compares a new estimate or KPI with the stored one by `==`: an f64 must survive the
+/// round trip exactly (the columns are `double precision`, not `real`).
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn estimate_and_kpi_floats_round_trip_exactly(pool: PgPool) {
+    let acc = make_account(&pool).await;
+    let mut conn = pool.acquire().await.unwrap();
+    let x = 0.1_f64 + 0.2; // 0.30000000000000004: not representable as f32
+    let e = WeaknessEstimateRow {
+        account_id: acc,
+        time_class: "blitz".into(),
+        series_key: "W1".into(),
+        k: x,
+        n: 3.0 * x,
+        n_unweighted: 3,
+        k_unweighted: x / 3.0,
+        alpha: 1.0 + x,
+        beta: 2.0 + x,
+        mean: x / 7.0,
+        ci_low: x / 11.0,
+        ci_high: x / 13.0,
+        band_median: Some(x / 17.0),
+        band_p40: Some(x / 19.0),
+        confidence: x / 23.0,
+        excess: Some(-x / 29.0),
+        priority: x / 31.0,
+        percentile: Some(x * 100.0),
+        state: "active".into(),
+        p_imp: Some(x / 37.0),
+    };
+    upsert_weakness_estimate(&mut conn, &e).await.unwrap();
+    type Est = (f64, f64, f64, f64, f64, f64, f64, f64);
+    let got: Est = sqlx::query_as(
+        "SELECT k, n, k_unweighted, alpha, beta, mean, ci_low, ci_high \
+         FROM weakness_estimates WHERE account_id = $1",
+    )
+    .bind(acc)
+    .fetch_one(&mut *conn)
+    .await
+    .unwrap();
+    assert!(
+        got == (
+            e.k,
+            e.n,
+            e.k_unweighted,
+            e.alpha,
+            e.beta,
+            e.mean,
+            e.ci_low,
+            e.ci_high
+        ),
+        "{got:?}"
+    );
+    type Rest = (
+        Option<f64>,
+        Option<f64>,
+        f64,
+        Option<f64>,
+        f64,
+        Option<f64>,
+        Option<f64>,
+    );
+    let rest: Rest = sqlx::query_as(
+        "SELECT band_median, band_p40, confidence, excess, priority, percentile, p_imp \
+         FROM weakness_estimates WHERE account_id = $1",
+    )
+    .bind(acc)
+    .fetch_one(&mut *conn)
+    .await
+    .unwrap();
+    assert!(
+        rest == (
+            e.band_median,
+            e.band_p40,
+            e.confidence,
+            e.excess,
+            e.priority,
+            e.percentile,
+            e.p_imp
+        ),
+        "{rest:?}"
+    );
+
+    let mut kpi = kpi_row(acc);
+    kpi.value = Some(x);
+    kpi.value_adjusted = Some(x / 3.0);
+    kpi.ci_low = Some(x / 7.0);
+    kpi.ci_high = Some(x / 11.0);
+    let id = append_kpi_snapshot(&mut conn, &kpi).await.unwrap();
+    let got: (Option<f64>, Option<f64>, Option<f64>, Option<f64>) = sqlx::query_as(
+        "SELECT value, value_adjusted, ci_low, ci_high FROM kpi_snapshot WHERE id = $1",
+    )
+    .bind(id)
+    .fetch_one(&mut *conn)
+    .await
+    .unwrap();
+    assert!(
+        got == (kpi.value, kpi.value_adjusted, kpi.ci_low, kpi.ci_high),
+        "{got:?}"
+    );
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
@@ -748,8 +913,8 @@ struct HotRead {
     sql: &'static str,
     /// `{acc}`, `{game}`, `{build}` and `{refbuild}` are replaced by seeded ids.
     args: &'static str,
-    /// The plan must use one of these indexes.
-    uses: &'static [&'static str],
+    /// The plan must use exactly this index.
+    uses: &'static str,
     /// The read returns rows in index order: the plan must not sort.
     ordered: bool,
 }
@@ -763,17 +928,7 @@ const HOT_READS: &[HotRead] = &[
               WHERE analysis_started_at > now() - $1 * interval '1 millisecond' \
               GROUP BY account_id",
         args: "3600000",
-        uses: &["games_started_account_idx"],
-        ordered: false,
-    },
-    HotRead {
-        // One account's `served` count.
-        name: "account_served",
-        types: "uuid, float8",
-        sql: "SELECT count(*) FROM games WHERE account_id = $1 \
-              AND analysis_started_at > now() - $2 * interval '1 millisecond'",
-        args: "'{acc}', 3600000",
-        uses: &["games_account_started_idx"],
+        uses: "games_started_account_idx",
         ordered: false,
     },
     HotRead {
@@ -783,7 +938,7 @@ const HOT_READS: &[HotRead] = &[
         sql: "SELECT id, played_at FROM games \
               WHERE account_id = $1 AND analysis_status = $2 AND time_class = $3",
         args: "'{acc}', 'imported', 'blitz'",
-        uses: &["games_account_status_tc_idx"],
+        uses: "games_account_status_tc_idx",
         ordered: false,
     },
     HotRead {
@@ -793,7 +948,7 @@ const HOT_READS: &[HotRead] = &[
         sql: "SELECT metrics FROM game_metrics WHERE account_id = $1 AND time_class = $2 \
               ORDER BY played_at DESC LIMIT $3",
         args: "'{acc}', 'blitz', 50",
-        uses: &["game_metrics_account_tc_played_idx"],
+        uses: "game_metrics_account_tc_played_idx",
         ordered: true,
     },
     HotRead {
@@ -802,7 +957,7 @@ const HOT_READS: &[HotRead] = &[
         types: "uuid, int4",
         sql: "SELECT game_id FROM game_metrics WHERE account_id = $1 AND metrics_version <> $2",
         args: "'{acc}', 1",
-        uses: &["game_metrics_version_idx"],
+        uses: "game_metrics_version_idx",
         ordered: false,
     },
     HotRead {
@@ -813,7 +968,7 @@ const HOT_READS: &[HotRead] = &[
               FROM weakness_series_point WHERE account_id = $1 AND time_class = $2 \
               ORDER BY series_key, played_at",
         args: "'{acc}', 'blitz'",
-        uses: &["weakness_series_point_series_played_idx"],
+        uses: "weakness_series_point_series_played_idx",
         // It reads the whole account and time class: a bitmap scan plus a small sort beats
         // index order there, so only the index is required.
         ordered: false,
@@ -824,7 +979,7 @@ const HOT_READS: &[HotRead] = &[
         types: "uuid",
         sql: "DELETE FROM weakness_series_point WHERE game_id = $1",
         args: "'{game}'",
-        uses: &["weakness_series_point_game_idx"],
+        uses: "weakness_series_point_game_idx",
         ordered: false,
     },
     HotRead {
@@ -835,7 +990,7 @@ const HOT_READS: &[HotRead] = &[
               WHERE account_id = $1 AND time_class = $2 AND series_key = $3 \
               ORDER BY id DESC LIMIT 1",
         args: "'{acc}', 'blitz', 'w3'",
-        uses: &["weakness_state_history_series_idx"],
+        uses: "weakness_state_history_series_idx",
         ordered: true,
     },
     HotRead {
@@ -845,7 +1000,7 @@ const HOT_READS: &[HotRead] = &[
         sql: "SELECT value, n FROM kpi_snapshot WHERE account_id = $1 AND time_class = $2 \
               AND metric = $3 AND window_key = $4 ORDER BY computed_at DESC LIMIT 1",
         args: "'{acc}', 'blitz', 'm2', 'week-3'",
-        uses: &["kpi_snapshot_lookup_idx"],
+        uses: "kpi_snapshot_lookup_idx",
         ordered: true,
     },
     HotRead {
@@ -855,7 +1010,7 @@ const HOT_READS: &[HotRead] = &[
         sql: "SELECT fen_key, uci, white, draws, black FROM opening_explorer \
               WHERE build_id = $1 AND band = $2 AND time_class = $3 AND fen_key = ANY($4)",
         args: "'{build}', 'B2', 'blitz', ARRAY['f1', 'f17', 'f1999']",
-        uses: &["opening_explorer_lookup_idx", "opening_explorer_pkey"],
+        uses: "opening_explorer_pkey",
         ordered: false,
     },
     HotRead {
@@ -864,7 +1019,7 @@ const HOT_READS: &[HotRead] = &[
         types: "uuid, analysis_status",
         sql: "SELECT count(*) FROM reference_games WHERE build_id = $1 AND status = $2",
         args: "'{refbuild}', 'pending'",
-        uses: &["reference_games_build_status_idx"],
+        uses: "reference_games_build_status_idx",
         ordered: false,
     },
     HotRead {
@@ -874,7 +1029,7 @@ const HOT_READS: &[HotRead] = &[
         sql: "SELECT metrics FROM reference_observations \
               WHERE build_id = $1 AND band = $2 AND time_class = $3",
         args: "'{refbuild}', 'B2', 'blitz'",
-        uses: &["reference_observations_cell_idx"],
+        uses: "reference_observations_cell_idx",
         ordered: false,
     },
     HotRead {
@@ -884,7 +1039,7 @@ const HOT_READS: &[HotRead] = &[
         sql: "SELECT game_id, line_key FROM game_openings \
               WHERE account_id = $1 AND time_class = $2 AND color = $3",
         args: "'{acc}', 'blitz', 'white'",
-        uses: &["game_openings_account_idx"],
+        uses: "game_openings_account_idx",
         ordered: false,
     },
     HotRead {
@@ -894,7 +1049,7 @@ const HOT_READS: &[HotRead] = &[
         sql: "SELECT game_id FROM game_openings WHERE account_id = $1 AND time_class = $2 \
               AND line_key = $3 AND line_kind = $4",
         args: "'{acc}', 'blitz', 'l7', 'chosen'",
-        uses: &["game_openings_line_idx"],
+        uses: "game_openings_line_idx",
         ordered: false,
     },
     HotRead {
@@ -904,7 +1059,7 @@ const HOT_READS: &[HotRead] = &[
         sql: "SELECT count(*) FROM job_metrics \
               WHERE kind = $1 AND created_at > now() - $2 * interval '1 millisecond'",
         args: "'analyse-game', 600000",
-        uses: &["job_metrics_kind_created_idx"],
+        uses: "job_metrics_kind_created_idx",
         ordered: false,
     },
 ];
@@ -916,6 +1071,19 @@ async fn hot_reads_use_their_indexes(pool: PgPool) {
         .execute(&pool)
         .await
         .unwrap();
+    // Trimmed by review: no reader needs them (the explorer PK serves every explorer lookup).
+    let dropped: Vec<String> = sqlx::query_scalar(
+        "SELECT indexname::text FROM pg_indexes WHERE indexname = ANY($1) ORDER BY 1",
+    )
+    .bind([
+        "games_account_started_idx",
+        "opening_explorer_lookup_idx",
+        "reference_builds_kind_status_idx",
+    ])
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert!(dropped.is_empty(), "{dropped:?}");
     let (acc, game): (Uuid, Uuid) =
         sqlx::query_as("SELECT account_id, id FROM games ORDER BY platform_game_id LIMIT 1")
             .fetch_one(&pool)
@@ -966,7 +1134,7 @@ async fn hot_reads_use_their_indexes(pool: PgPool) {
             .await
             .unwrap();
             let plan = plan.join("\n");
-            let uses = r.uses.iter().any(|i| plan.contains(i));
+            let uses = plan.contains(&format!(" {} ", r.uses));
             let sorts = r.ordered && plan.contains("Sort");
             if !uses || plan.contains("Seq Scan") || sorts {
                 failures.push(format!("{} {mode}:\n{plan}", r.name));
