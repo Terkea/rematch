@@ -6,7 +6,7 @@
 //! Non-finite values are skipped and counted (`z` is unchanged and the game index still
 //! advances), so with no valid value `z` stays at `level` and nothing alarms.
 
-use super::bocpd::DetectorError;
+use super::DetectorError;
 
 /// Default EWMA weight.
 pub const EWMA_DEFAULT_LAMBDA: f64 = 0.1;

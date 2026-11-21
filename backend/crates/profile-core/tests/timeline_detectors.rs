@@ -13,10 +13,10 @@
 //! reach output, and no detector claims a change from zero evidence.
 
 use profile_core::stats::rng::Rng;
+use profile_core::timeline::DetectorError;
 use profile_core::timeline::bocpd::{
-    BocpdOpts, ChangeSummary, DEFAULT_HAZARD, DEFAULT_LEVEL, DEFAULT_MAX_RUN,
-    DEFAULT_MIN_PRIOR_GAMES, DEFAULT_WINDOW_GAMES, DetectorError, change_summary, run_bocpd,
-    run_bocpd_counted,
+    Bocpd, BocpdOpts, ChangeSummary, DEFAULT_HAZARD, DEFAULT_LEVEL, DEFAULT_MAX_RUN,
+    DEFAULT_MIN_PRIOR_GAMES, DEFAULT_WINDOW_GAMES, change_summary, run_bocpd, run_bocpd_counted,
 };
 use profile_core::timeline::cusum::{CUSUM_DEFAULT_H, cusum, cusum_counted};
 use profile_core::timeline::ewma::{
@@ -679,4 +679,133 @@ fn ewma_invalid_parameters_are_typed_errors() {
         ewma_drift_counted(&x, 0.0, 0.02, 0.01, 2.0),
         Err(DetectorError::InvalidLambda { .. })
     ));
+}
+
+// ---------------------------------------------------------------- Fix round 1
+
+/// Stationary games at 3 % with 40 opportunities each.
+fn stable_series(len: usize, seed: u32) -> Vec<(u32, u32)> {
+    let mut rng = Rng::new(seed);
+    (0..len)
+        .map(|_| (binomial(&mut rng, 40, 0.03), 40))
+        .collect()
+}
+
+#[test]
+fn p_change_excludes_the_capped_bucket_when_max_run_is_below_the_window() {
+    // max_run 30 < window 50: the "at least 30 games" bucket holds the no-change mass and
+    // must not count as a recent change. Reference: the untruncated posterior's mass on the
+    // runs the capped detector can resolve (r < min(window, max_run) = 30).
+    let obs = stable_series(300, 7);
+    let o = BocpdOpts {
+        max_run: 30,
+        ..ts_opts()
+    };
+    let exact = run_bocpd(
+        &obs,
+        &BocpdOpts {
+            max_run: 100_000,
+            ..ts_opts()
+        },
+    );
+    let capped = run_bocpd(&obs, &o);
+    for t in 31..=obs.len() {
+        let got = change_summary(&capped[t - 1], t, 50, 10, 0.8);
+        let want = change_summary(&exact[t - 1], t, 30, 10, 0.8).p_change;
+        // The merged bucket's parameters are approximate, so the short runs differ slightly
+        // (worst case measured: 0.081, see ADR-R2-6), but never towards a false claim.
+        assert!(
+            (got.p_change - want).abs() < 0.1,
+            "t {t}: {} vs {want}",
+            got.p_change
+        );
+        // Stationary noise lifts the exact value to about 0.21 at times; the cap never adds to it.
+        assert!(
+            got.p_change < want + 0.1 && got.p_change < 0.5,
+            "t {t}: {got:?} vs {want}"
+        );
+        // Without the exclusion the bucket alone would read as a change.
+        assert!(capped[t - 1][30] > 0.5, "t {t}");
+    }
+    let t = obs.len();
+    let got = change_summary(&capped[t - 1], t, 50, 10, 0.8).p_change;
+    let want = change_summary(&exact[t - 1], t, 30, 10, 0.8).p_change;
+    assert!((got - want).abs() < 0.02, "{got} vs {want}");
+}
+
+#[test]
+fn a_capped_onset_is_an_open_lower_bound() {
+    // MAP in the capped bucket: the segment started at or before t - max_run + 1.
+    let obs = stable_series(300, 7);
+    let post = run_bocpd(
+        &obs,
+        &BocpdOpts {
+            max_run: 30,
+            ..ts_opts()
+        },
+    );
+    let s = change_summary(post.last().unwrap(), 300, 50, 10, 0.8);
+    assert_eq!(s.map_run, 30);
+    assert_eq!(s.onset_index, 271);
+    assert_eq!(s.onset_low, 1);
+    // Hand-built: the bucket inside the highest-mass set (but not the MAP) also opens it.
+    let post = [0.5, 0.0, 0.0, 0.5 - 1e-9];
+    let s = change_summary(&post, 10, 50, 0, 0.8);
+    assert_eq!(
+        (s.map_run, s.onset_index, s.onset_low, s.onset_high),
+        (0, 11, 1, 11)
+    );
+    assert!(
+        (s.p_change - 0.5).abs() < 1e-8,
+        "the bucket (r = 3) is not a change"
+    );
+    // An uncapped posterior (len = t + 1) keeps the exact bound.
+    let post = [0.5, 0.0, 0.0, 0.5 - 1e-9];
+    let s = change_summary(&post, 3, 50, 0, 0.8);
+    assert_eq!(s.onset_low, 1);
+    // r = 3 is a real run here (the segment began at game 1) but lies outside r < t = 3.
+    assert!((s.p_change - 0.5).abs() < 1e-8);
+    let s = change_summary(&[0.1, 0.9, 0.0, 0.0], 3, 50, 0, 0.8);
+    assert_eq!((s.onset_low, s.onset_high), (3, 3));
+}
+
+#[test]
+fn streaming_step_matches_the_batch_posteriors() {
+    for seed in 0..10u32 {
+        let mut rng = Rng::new(3000 + seed);
+        let max_run = 1 + (rng.next_u32() % 80) as usize;
+        let obs: Vec<(u32, u32)> = (0..200)
+            .map(|_| {
+                let n = rng.next_u32() % 50;
+                if rng.next_f64() < 0.05 {
+                    (n + 1, n)
+                } else {
+                    (binomial(&mut rng, n, 0.05), n)
+                }
+            })
+            .collect();
+        let o = BocpdOpts {
+            max_run,
+            ..ts_opts()
+        };
+        let batch = run_bocpd_counted(&obs, &o).unwrap();
+        let mut det = Bocpd::new(&o).unwrap();
+        assert_eq!(det.posterior(), &[1.0]);
+        assert_eq!(det.t(), 0);
+        for (i, &(k, n)) in obs.iter().enumerate() {
+            let step = det.step(k, n).to_vec();
+            assert_eq!(step, batch.posteriors[i], "seed {seed} t {}", i + 1);
+            assert_eq!(det.posterior(), step.as_slice());
+            assert_eq!(det.t(), i + 1);
+        }
+        assert_eq!(det.skipped(), batch.skipped);
+    }
+    assert_eq!(
+        Bocpd::new(&BocpdOpts {
+            hazard: 0.0,
+            ..ts_opts()
+        })
+        .err(),
+        Some(DetectorError::InvalidHazard { hazard: 0.0 })
+    );
 }

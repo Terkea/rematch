@@ -8,7 +8,7 @@
 //! Observations with `k > n` are skipped and counted (the game index still advances); a game
 //! with no opportunities adds nothing, so zero evidence never alarms.
 
-use super::bocpd::DetectorError;
+use super::DetectorError;
 
 /// Default alarm threshold.
 pub const CUSUM_DEFAULT_H: f64 = 4.0;
