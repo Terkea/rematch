@@ -100,10 +100,6 @@
   --eval-graph-height: 128px;
   --eval-graph-height-wide: 160px;
 
-  /* Stats (ADR-WEB-12): the halo around KPI ticks and the sparkline's last dot is the surface the
-     stat sits on. Sheet by default; a host on another surface sets it. */
-  --stat-surface: var(--color-sheet);
-
   /* The board: below 768px it fills the column, up to 480px. Rounded to whole squares below. */
   --board-size: min(100vw - 2 * var(--space-gutter), 480px);
 

@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { KpiStat } from "../src/stats/index.js";
 
@@ -50,5 +50,12 @@ describe("KpiStat value tick", () => {
     rerender(<KpiStat {...base} value={66} />);
     // Domain 0 to 80: 66 sits at 82.5%.
     expect(tickX(container)).toBe("82.50%");
+  });
+
+  it("brings the value tick to the new value when the roll ends", async () => {
+    stubReducedMotion(false);
+    const { container, rerender } = render(<KpiStat {...base} />);
+    rerender(<KpiStat {...base} value={66} />);
+    await waitFor(() => expect(tickX(container)).toBe("82.50%"), { timeout: 2000 });
   });
 });

@@ -1,21 +1,23 @@
-# ADR-WEB-12. KPI stats: a shared percent window, coarser interval ends and a stat surface halo
+# ADR-WEB-12. KPI stats: a fixed percent window, outward-rounded interval ends, a host-set halo and an honest trend scale
 
 Date: 2026-11-21
-Status: Accepted
+Status: Accepted (amended by controller rulings in the Task 14 review)
 
 ## Context
 
-Task 14 built `Sparkline`, `Stat` and `KpiStat`. Every KPI carries a credible interval from R2's statistics (Wilson for rates, bootstrap for accuracy), and the spec asks us to show uncertainty honestly. Three choices weren't covered by DESIGN.md. First, on a 0–100% scale an accuracy band of 4.8 points was a sliver hidden by the value tick, while a per-row auto-zoom would make every band look equally wide. Second, the interval ends could be shown at the value's precision. Third, the tick halos needed a surface colour.
+Task 14 built `Sparkline`, `Stat` and `KpiStat`. Every KPI carries a credible interval from R2's statistics (Wilson for rates, bootstrap for accuracy), and the spec asks us to show uncertainty honestly. On a 0–100% scale, an accuracy band of 4.8 points was a sliver hidden by the value tick, while a per-row auto-zoom would make every band look equally wide. The first version also printed interval ends at rounded values, defined the halo token on the root, and scaled each sparkline to its own range, which made noise look like progress.
 
 ## Decision
 
-- **A shared 40-point window for percent KPIs.** It is placed around the band, value and target, rounded to 10 points and clamped inside 0–100%. It falls back to 0–100% when they span more than 30 points. Band widths compare across rows, and both ends are labelled. Other formats run from zero to a nice value about 15% past the band and target.
-- **Interval ends are one decimal place coarser than the value for decimals** (`64.20`, but "between 61.0 and 67.5"). Percent and integer ends keep the value's precision. A credible interval's ends are less certain than its centre, so printing them to the hundredth would claim precision we don't have.
-- **`--stat-surface`** (in `tokens.css`, default `var(--color-sheet)`): the 2px halo behind the value and target ticks and the sparkline's last dot, so each mark's neighbour is the surface (DESIGN.md's halo rule). A host on another surface sets it, as with `--eval-graph-surface`.
-- **One clock per value change:** the NumberFlow roll and the value tick share `--dur-reveal` and `--ease-pen`, driven by one progress value, so the tick travels with the number. Reduced motion jumps both to the end.
+- **Every percent KPI gets a 40-point window, never 0–100% (ruling 1).** When the band, value and target fit, the window is centred on them, its start rounded to 10 points (widened back if rounding would cut them). Otherwise it is centred on the value, and it is always clamped inside 0–100%. An interval wider than the window runs off the track's end, square-cut, with an open chevron ("interval continues"), so a wider interval always looks wider. The text stays exact. A target outside the window is named only in text. Other formats run from zero (or below, for negatives, including a negative target) to a nice value about 15% past the band, value and target.
+- **Interval ends round outward (ruling 2).** The low end is floored and the high end ceiled at the shown precision, so the stated range is never narrower than the computed one and never crosses the rounded value. Decimal ends show one place fewer than the value (`64.20`, "between 61.0 and 67.5"). Percent and integer ends keep the value's precision. A target that would read the same as an end gets one more place.
+- **`--stat-surface` follows the eval graph's pattern (ruling 3).** Components read `var(--stat-surface, var(--color-sheet))`. Neither they nor `tokens.css` define it, so a host's value always wins.
+- **The sparkline spans at least twice the current 80% interval (ruling 4),** centred on the series range. `Sparkline` takes an optional `minSpan`, and `KpiStat` passes it (a 90% interval is scaled by 1.2816 / 1.6449). A move smaller than the uncertainty therefore looks small.
+- **Smaller rulings.** The provisional band is not faded. The target label is "Next target". The sparkline reveals through one clip, so the pieces after a gap draw in order. The not-enough-games fallback names the KPI. The heading level is a prop.
+- **One clock per value change.** The NumberFlow roll and the value tick share `--dur-reveal` and `--ease-pen`, driven by one progress value. Reduced motion jumps both to the end.
 
 ## Consequences
 
-- Two percent KPIs with different centres sit in different windows. The labelled ends make this visible, and widths still compare.
-- A percent KPI whose band, value and target span more than 30 points shows the full 0–100% scale.
-- DESIGN.md "KPI stats" holds the rules; changing the window size is a design change, not a tweak.
+- Two percent KPIs with different centres sit in different windows. The labelled ends show this, and widths still compare.
+- The trend of a noisy KPI looks flat. That is intended: it isn't a measured change.
+- Changing the window size or the 2× factor is a design change recorded here, not a tweak.

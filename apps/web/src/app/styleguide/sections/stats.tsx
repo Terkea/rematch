@@ -39,7 +39,8 @@ export function StatsSection() {
           <p className="text-sm text-ink-soft">
             Each KPI shows its value, the range it is likely in, and the games behind it. On each
             scale the band is that range, the solid tick is the value, and the dashed tick with a
-            caret is the next target. Sample numbers until real KPIs land.
+            caret is the next target. Percent scales always span 40 points, so a chevron means the
+            range runs past the scale. Sample numbers until real KPIs land.
           </p>
         </div>
         <button

@@ -1,7 +1,7 @@
 "use client";
 
 import { Shape } from "@visx/visx";
-import { type CSSProperties, useEffect } from "react";
+import { type CSSProperties, useEffect, useId } from "react";
 import { cn } from "../lib/index.js";
 import { animate, dur, ease, motion, useMotionValue, useReducedMotion } from "../motion/index.js";
 
@@ -12,6 +12,11 @@ export interface SparklineProps {
   label: string;
   /** Mark the latest value with an `ink` dot (default true). */
   highlightLast?: boolean;
+  /**
+   * The least vertical span, in the values' units, centred on the series range. KpiStat passes
+   * twice the current 80% interval width, so a move smaller than the uncertainty looks small.
+   */
+  minSpan?: number;
   /** Draw the line in from the left on mount over `dur.reveal` (skipped under reduced motion). */
   drawIn?: boolean;
   className?: string;
@@ -22,6 +27,10 @@ const W = 120;
 const H = 32;
 /** Room for the last dot and its halo, so nothing clips at the box edge. */
 const INSET = 5;
+/** Dots fade in over this many px of the reveal as the clip edge passes them. */
+const FADE = 8;
+/** The halo reads the host's surface, as `--eval-graph-surface` does. */
+const HALO = "stroke-[var(--stat-surface,var(--color-sheet))]";
 
 type Pt = { v: number | null; i: number };
 
@@ -34,14 +43,17 @@ export function Sparkline({
   values,
   label,
   highlightLast = true,
+  minSpan = 0,
   drawIn = false,
   className,
 }: SparklineProps) {
   const reduced = useReducedMotion();
+  const clipId = `sp${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
   const numbers = values.filter((v): v is number => v !== null);
   const enough = numbers.length >= 2;
 
-  // One clock: the line's dash offset and the last dot's opacity both follow `--draw`.
+  // One clock: a single clip sweeps left to right, so the subpaths after a gap reveal in order, and
+  // each dot fades in as the sweep reaches it.
   const revealing = drawIn && !reduced && enough;
   const progress = useMotionValue(revealing ? 0 : 1);
   useEffect(() => {
@@ -58,7 +70,7 @@ export function Sparkline({
     return (
       <span
         role="img"
-        aria-label="Not enough games yet"
+        aria-label={`${label}: not enough games yet`}
         className={cn("block h-8 text-xs text-ink-faint", className)}
       >
         <span aria-hidden="true">Not enough games yet</span>
@@ -66,12 +78,15 @@ export function Sparkline({
     );
   }
 
-  const min = Math.min(...numbers);
-  const max = Math.max(...numbers);
-  const span = max - min;
+  const seriesMin = Math.min(...numbers);
+  const seriesMax = Math.max(...numbers);
+  const mid = (seriesMin + seriesMax) / 2;
+  const span = Math.max(seriesMax - seriesMin, minSpan);
+  const min = span > seriesMax - seriesMin ? mid - span / 2 : seriesMin;
+  const max = span > seriesMax - seriesMin ? mid + span / 2 : seriesMax;
   const step = values.length > 1 ? (W - 2 * INSET) / (values.length - 1) : 0;
   const x = (i: number) => INSET + i * step;
-  // A flat series sits mid-height rather than on an edge.
+  // A flat series with no minSpan sits mid-height rather than on an edge.
   const y = (v: number) => (span === 0 ? H / 2 : INSET + (1 - (v - min) / span) * (H - 2 * INSET));
 
   const pts: Pt[] = values.map((v, i) => ({ v, i }));
@@ -89,12 +104,10 @@ export function Sparkline({
   const lastValue = values[lastIndex] ?? null;
 
   const dot = (p: { i: number; v: number }) => `M${x(p.i)},${y(p.v)}h0`;
-  const lineStyle: CSSProperties = revealing
-    ? { strokeDasharray: 1, strokeDashoffset: "calc(1 - var(--draw, 1))" }
-    : {};
-  const dotStyle: CSSProperties = {
-    opacity: "clamp(0, calc((var(--draw, 1) - 0.85) * 8), 1)" as unknown as number,
-  };
+  const dotStyle = (i: number): CSSProperties => ({
+    opacity:
+      `clamp(0, calc((var(--draw, 1) * ${W + FADE} - ${x(i).toFixed(1)}) / ${FADE}), 1)` as unknown as number,
+  });
 
   return (
     <motion.svg
@@ -102,21 +115,34 @@ export function Sparkline({
       aria-label={label}
       viewBox={`0 0 ${W} ${H}`}
       preserveAspectRatio="none"
+      data-min={min}
+      data-max={max}
       className={cn("block h-8 w-full overflow-visible", className)}
       style={{ "--draw": progress } as never}
     >
-      <path
-        data-part="line"
-        d={d}
-        pathLength={1}
-        fill="none"
-        strokeWidth={1.5}
-        strokeLinejoin="round"
-        strokeLinecap="round"
-        vectorEffect="non-scaling-stroke"
-        className="stroke-pencil"
-        style={lineStyle}
-      />
+      <defs>
+        <clipPath id={clipId}>
+          <rect
+            x={-INSET}
+            y={-INSET}
+            width={W + 2 * INSET}
+            height={H + 2 * INSET}
+            style={{ transform: "scaleX(var(--draw, 1))", transformOrigin: `${-INSET}px 0` }}
+          />
+        </clipPath>
+      </defs>
+      <g clipPath={`url(#${clipId})`}>
+        <path
+          data-part="line"
+          d={d}
+          fill="none"
+          strokeWidth={1.5}
+          strokeLinejoin="round"
+          strokeLinecap="round"
+          vectorEffect="non-scaling-stroke"
+          className="stroke-pencil"
+        />
+      </g>
       {lone.map((p) => (
         <path
           key={p.i}
@@ -125,18 +151,18 @@ export function Sparkline({
           strokeLinecap="round"
           vectorEffect="non-scaling-stroke"
           className="stroke-pencil"
-          style={dotStyle}
+          style={dotStyle(p.i)}
         />
       ))}
       {highlightLast && lastValue !== null && (
-        <g style={dotStyle}>
+        <g style={dotStyle(lastIndex)}>
           {/* The halo rule: the dot's neighbour is always the surface, never the line. */}
           <path
             d={dot({ i: lastIndex, v: lastValue })}
             strokeWidth={10}
             strokeLinecap="round"
             vectorEffect="non-scaling-stroke"
-            className="stroke-[var(--stat-surface,var(--color-sheet))]"
+            className={HALO}
           />
           <path
             data-part="last"
