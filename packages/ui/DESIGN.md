@@ -317,8 +317,8 @@ Severity comes from the mover's loss of win chance, using the Lichess thresholds
 | Plan or idea | pencil arrow or ring, never a badge | none | pencil, 0.7×, open head |
 | Link | one stroke joining a scoresheet or notation ring to the board ring of the same move, never a badge | none | pen, 0.9×, no head |
 
-- **Redundancy, not colour alone:** pen marks always carry a `?`-family badge and an open head. Good marks carry a `!`-family badge and a solid head. Pencil never carries a badge. The one exception is the link mark below: it has neither, because both of its ends already carry the glyph or the badge.
-- **Glyph badge:** a circle of radius 20% of the square in the square's top-right corner (inset 1px), or in its top-left corner when the move's arrow arrives from the right of the target as drawn (the origin's centre is right of the target's in the board's orientation), so the badge never covers the arrowhead, filled `pen` or `good`, with the glyph in `on-ink` Literata 600 (35% of the square for one character, 28% for two, and never below `2xs`, 11px), on a 2px `sheet` halo. A 328px mobile board (41px squares) gives 14px and 11.5px.
+- **Redundancy, not colour alone:** pen marks always carry a `?`-family badge and an open head. Good marks carry a `!`-family badge and a solid head. Pencil plan or idea marks never carry a badge; the opponent's mistakes, drawn in pencil (Task 13 ruling), keep their `?`-family badge filled `pencil` (Task 12). The one exception is the link mark below: it has neither, because both of its ends already carry the glyph or the badge.
+- **Glyph badge:** a circle of radius 20% of the square in the square's top-right corner (inset 1px), or in its top-left corner when any arrow into the square arrives on its last leg from the right of the target as drawn (for a knight's L, its corner; otherwise the origin's centre), so the badge never covers an arrowhead; on the left column, where the rank number sits top left, that badge drops to the bottom-left corner (Task 12), filled `pen` or `good`, with the glyph in `on-ink` Literata 600 (35% of the square for one character, 28% for two, and never below `2xs`, 11px), on a 2px `sheet` halo. A 328px mobile board (41px squares) gives 14px and 11.5px.
 - **Link mark** (controller ruling, Task 6 fix round 1). One pen stroke that ties a move's notation to its square: it runs from the scoresheet ring (or a notation ring) to the board ring of the same move.
   - *Colour:* `pen`, and only when both ends are pen-marked (a ringed `?`/`??` move and its ringed square with its badge). It has no badge and no head.
   - *Shape:* the variable-width profile under "Pen stroke geometry" at 0.9× of the board pen at the board's current square size, so it scales with the square exactly as the board marks do (0.9 × square / 56 times the profile). It keeps the `sheet` halo wherever it crosses the board.
@@ -865,3 +865,14 @@ Controller rulings on the Task 11 board:
 2. **Night last-move tint** goes from `rgb(231 236 244 / 0.18)` to `rgb(231 236 244 / 0.30)`: 1.36:1 over the light square (day is 1.37) and 1.71:1 over the dark one, still supplementary, and a livelier night board for the owner. Coordinates on a tinted night square (last move or selected) use `on-ink`: 7.96 and 5.48:1 (last move), 7.62 and 5.14:1 (selected). With the old tint an `ink` coordinate on a tinted dark square was 3.30:1. New rows in the contrast table.
 
 **Token values changed in this round:** night `--color-board-lastmove` (0.18 to 0.30).
+
+### 2026-11-21, Task 12: the annotation overlay
+
+Rulings taken while building `packages/ui/src/annotations` (ADR-WEB-15):
+
+1. **Ring overrun:** the ring's three mask pieces (0–180°, 180–360°, the 20° overrun) are one paint group, halos first and then fills, so the overrun inks over the start. A halo cut between them read as a dashed ring. This replaces the per-segment halo cut of `design/decisions/board.md` for rings.
+2. **Badge corner** follows each arrow's last leg, and any arrow into the square from the right moves it top left; on the left column it drops to the bottom-left corner ("Glyph badge").
+3. **Knight arrows** are an L with a 0.14 rounded corner, long leg first unless that corner is another arrow's end.
+4. **Pencil badges** for the opponent's mistakes ("Redundancy, not colour alone").
+
+**Token values changed in this round:** none.

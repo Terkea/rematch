@@ -4,6 +4,7 @@ import { Chess, type Square as ChessSquare } from "chess.js";
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Chessboard } from "react-chessboard";
 
+import { type Annotation, AnnotationLayer } from "../annotations/index.js";
 import { cn } from "../lib/index.js";
 import { type PieceType, useReducedMotion } from "../motion/index.js";
 import { boardPieces, PieceMotionContext, type PiecePlan } from "./piece.js";
@@ -19,11 +20,8 @@ import {
   squareToCell,
 } from "./theme.js";
 
-/**
- * A board mark. Task 12 replaces this with its `Annotation` type; until then the board accepts
- * annotations and renders no overlay.
- */
-export type BoardAnnotation = { readonly kind: string };
+/** A board mark: an arrow, a ring or a glyph badge (`@ci/ui/annotations`). */
+export type BoardAnnotation = Annotation;
 
 export interface BoardMove {
   from: Square;
@@ -39,6 +37,7 @@ export interface BoardProps {
   lastMove?: { from: Square; to: Square };
   check?: Square;
   annotations?: readonly BoardAnnotation[];
+  /** Draw the marks on when they change (default true); reduced motion always draws them at once. */
   animateAnnotations?: boolean;
   interactive?: boolean;
   /** Called for a legal move; return false to refuse it. */
@@ -197,9 +196,8 @@ export function Board({
   orientation = "white",
   lastMove,
   check,
-  // Task 12 renders these in an AnnotationLayer above the pieces and below the SquareGrid.
-  annotations: _annotations,
-  animateAnnotations: _animateAnnotations,
+  annotations,
+  animateAnnotations = true,
   interactive = false,
   onMove,
   className,
@@ -405,6 +403,13 @@ export function Board({
             />
           </PieceMotionContext.Provider>
         </div>
+        {annotations && annotations.length > 0 ? (
+          <AnnotationLayer
+            annotations={annotations}
+            orientation={orientation}
+            animate={animateAnnotations}
+          />
+        ) : null}
         <SquareGrid
           label={label}
           orientation={orientation}

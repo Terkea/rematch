@@ -4,6 +4,7 @@ export {
   animate,
   type MotionValue,
   motion,
+  motionValue,
   useAnimate,
   useMotionValue,
   useTransform,
