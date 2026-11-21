@@ -1000,3 +1000,86 @@ async fn a_superseded_run_stops_at_its_next_heartbeat(pool: PgPool) {
     assert!(matches!(res, Ok(AnalyseOutcome::Superseded)), "{res:?}");
     assert_eq!(game(&pool, id).await.analysis_status, AnalysisStatus::Done);
 }
+
+// ---------------------------------------------------------------------------------------------
+// Integration (M2): the re-analysis handoff after skipped and after a final failure
+
+/// Stands in for `request_reanalysis` landing right after this run writes `status`: an AFTER
+/// UPDATE trigger runs its UPDATE once (generation 0 only). Its enqueue would dedupe onto the
+/// running job.
+async fn reanalyse_after_status(pool: &PgPool, status: &'static str) {
+    let function = "CREATE FUNCTION test_reanalyse_after() RETURNS trigger LANGUAGE plpgsql AS $$ \
+        BEGIN \
+          IF NEW.analysis_status::text = TG_ARGV[0] AND NEW.analysis_generation = 0 THEN \
+            UPDATE games SET analysis_generation = analysis_generation + 1, \
+              analysis_attempts = 0, analysis_status = 'pending', analysis_error = NULL, \
+              pending_since = now() \
+            WHERE id = NEW.id; \
+          END IF; RETURN NULL; END $$";
+    within("trigger function", sqlx::query(function).execute(pool))
+        .await
+        .unwrap();
+    let trigger = format!(
+        "CREATE TRIGGER test_reanalyse_after AFTER UPDATE ON games \
+         FOR EACH ROW EXECUTE FUNCTION test_reanalyse_after('{status}')"
+    );
+    within(
+        "trigger",
+        sqlx::query(sqlx::AssertSqlSafe(trigger)).execute(pool),
+    )
+    .await
+    .unwrap();
+}
+
+fn is_reanalysis_release(res: &Result<AnalyseOutcome, JobError>) -> bool {
+    matches!(res, Err(JobError::Release { delay, reason }) if delay.is_zero() && reason == "reanalysis")
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_reanalysis_landing_after_a_skipped_write_is_run_by_the_same_job(pool: PgPool) {
+    let id = add_game(&pool, "1. e4 *", "skip-again").await;
+    reanalyse_after_status(&pool, "skipped").await;
+    let p = ok_pool();
+    let res = run(&deps(&pool, p.clone()), id, 1, 3).await;
+    assert!(is_reanalysis_release(&res), "{res:?}");
+    assert_eq!(p.call_count(), 0);
+    let g = game(&pool, id).await;
+    assert_eq!(g.analysis_status, AnalysisStatus::Pending);
+    assert_eq!((g.analysis_generation, g.analysis_attempts), (1, 0));
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_reanalysis_landing_after_the_final_failed_write_is_run_by_the_same_job(pool: PgPool) {
+    let id = add_game(&pool, "1. d4 e5 2. dxe5 d6 *", "fail-again").await;
+    reanalyse_after_status(&pool, "failed").await;
+    let fail = Arc::new(Mutex::new(true));
+    let d = deps(&pool, pool_fake(fail.clone()));
+    // The final attempt writes failed (and publishes job.failed), then sees the new generation.
+    let res = run(&d, id, 3, 3).await;
+    assert!(is_reanalysis_release(&res), "{res:?}");
+    let g = game(&pool, id).await;
+    assert_eq!(g.analysis_status, AnalysisStatus::Pending);
+    assert_eq!((g.analysis_generation, g.analysis_attempts), (1, 0));
+    let failed = events(&pool)
+        .await
+        .into_iter()
+        .filter(|(t, _)| t == "job.failed")
+        .count();
+    assert_eq!(failed, 1);
+    // The released job runs again and completes the new generation.
+    *fail.lock().unwrap() = false;
+    assert!(done(&run(&d, id, 3, 3).await));
+    assert_eq!(game(&pool, id).await.analysed_generation, Some(1));
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_non_final_failure_does_not_hand_off(pool: PgPool) {
+    let id = add_game(&pool, "1. c4 e5 2. g3 d5 *", "retry-anyway").await;
+    reanalyse_after_status(&pool, "pending").await;
+    let d = deps(&pool, pool_fake(Arc::new(Mutex::new(true))));
+    // A non-final failure is retried by the queue anyway; its next claim takes generation 1.
+    let res = run(&d, id, 1, 3).await;
+    assert!(matches!(res, Err(JobError::Retryable { .. })), "{res:?}");
+    assert_eq!(game(&pool, id).await.analysis_generation, 1);
+}
+

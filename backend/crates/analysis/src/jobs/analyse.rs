@@ -404,10 +404,15 @@ pub async fn handle_analyse_game(
     }
     log_metrics(&metrics);
     // A re-analysis requested while this run finished was deduped onto this job: run it again
-    // (a zero-delay release keeps `run_at`), so it claims the new generation.
-    if matches!(outcome, Ok(AnalyseOutcome::Done { .. }))
-        && reanalysis_requested(&deps.pool, game_id, generation).await
-    {
+    // (a zero-delay release keeps `run_at`), so it claims the new generation. That applies after
+    // every final status this run wrote (done, skipped, or failed on the final attempt); a
+    // non-final failure is retried anyway, and its next claim takes the new generation.
+    let handoff = match &outcome {
+        Ok(AnalyseOutcome::Done { .. } | AnalyseOutcome::Skipped) => true,
+        Err(JobError::Retryable { .. }) => job.is_final_attempt(),
+        _ => false,
+    };
+    if handoff && reanalysis_requested(&deps.pool, game_id, generation).await {
         return Err(reanalysis_release());
     }
     outcome
