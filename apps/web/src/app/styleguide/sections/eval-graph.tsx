@@ -2,7 +2,7 @@
 
 import { EvalGraph, type EvalGraphPoint, plyText } from "@ci/ui/eval-graph";
 import { type GameFixture, games } from "@ci/ui/fixtures";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 // The eval graph on the three real fixture games. The first is linked to a notation readout
 // through `currentPly` (the Board lane replaces the readout once it lands).
@@ -30,8 +30,9 @@ function GameGraph({
   run: number;
 }) {
   const [ply, setPly] = useState(() => firstSerious(game));
-  const points = toPoints(game);
-  const current = points[ply - 1];
+  const points = useMemo(() => toPoints(game), [game]);
+  const phases = useMemo(() => phasesOf(game), [game]);
+  const current = points.find((p) => p.ply === ply);
   return (
     <div className="flex flex-col gap-2">
       <h3 className="font-serif text-xl font-semibold">{title(game)}</h3>
@@ -43,13 +44,14 @@ function GameGraph({
         drawIn={run > 0}
         points={points}
         label={`Win chance, ${title(game)}`}
-        phases={phasesOf(game)}
+        phases={phases}
         playerColor={game.playerColor}
         {...(linked ? { currentPly: ply, onSelectPly: setPly } : {})}
       />
       {linked && current && (
-        <p className="text-sm text-ink-soft" aria-live="polite">
-          Showing {plyText(current)}.
+        // Not a live region: the graph's slider already announces the move.
+        <p className="text-sm text-ink-soft">
+          Showing {plyText(current).replace(/^Move/, "move")}.
         </p>
       )}
     </div>

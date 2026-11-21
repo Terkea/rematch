@@ -327,8 +327,9 @@ Marks are filled, variable-width outlines built around a centreline, never const
 - **Size:** the plot is 120px tall on desktop and 88px tall on mobile, plus a 22px label lane above it.
 - **Plot:** a `well` with `--radius-board`. The zero line uses `rule-strong`. The eval line is `ink` at 2px over a 10% `ink` area fill toward zero.
 - **Markers:** each blunder, mistake or inaccuracy gets a small ring drawn with the same pen geometry (radius 7px, tilted 10°), thin for inaccuracies, centred on the line.
-- **Labels:** in the label lane, never on the line: the move in notation with its glyph (`9…b5?`) in `pen-text`, Literata 600 at `sm`. A 1px `rule-strong` leader tick runs from each label down to its ring. Labels are placed left to right and pushed right to keep a 10px gap. On mobile the lane keeps only blunders and mistakes, and inaccuracies are rings without labels.
+- **Labels:** in the label lane, never on the line: the move in notation with its glyph (`9…b5?`) in `pen-text`, Literata 600 at `sm`. A 1px `pencil` leader runs from each label down to its ring. Labels are placed left to right and pushed right to keep a 10px gap. On mobile the lane keeps only blunders and mistakes, and inaccuracies are rings without labels.
 - **Cursor:** a 1.5px `ink` rule marks the move shown on the board and moves with it.
+- **Lines over the tint:** phase boundaries and label leaders cross the area tint, where `rule-strong` drops to 2.51:1 (day). They use `pencil` instead: 4.08:1 day and 5.88:1 night on the tinted `well` (controller ruling, Task 13 fix round 1). The zero line stays `rule-strong`, because it is the tint's edge, with `well` on its other side.
 - Long games scroll or compress inside the graph's own container, never the page.
 
 ### Eval bar

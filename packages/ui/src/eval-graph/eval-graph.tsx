@@ -3,15 +3,27 @@
 import { Curve, Responsive, Shape } from "@visx/visx";
 import {
   type KeyboardEvent,
+  memo,
   type PointerEvent,
   useCallback,
   useId,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { cn } from "../lib/index.js";
 import { dur, ease, motion, spring, useReducedMotion } from "../motion/index.js";
-import { plyForX, xForPly, yForWin } from "./scales.js";
+import {
+  GLYPH,
+  type LabelMark,
+  movePrefix,
+  type PlacedLabel,
+  placeLabels,
+  plyForX,
+  wipeDelay,
+  xForPly,
+  yForWin,
+} from "./scales.js";
 
 export type EvalGraphJudgement = "inaccuracy" | "mistake" | "blunder";
 
@@ -24,119 +36,308 @@ export interface EvalGraphPoint {
 }
 
 export interface EvalGraphProps {
+  /** One point per ply, in game order. */
   points: EvalGraphPoint[];
   /** Accessible name of the graph, for example "Win chance, DrNykterstein v Night-King96". */
   label: string;
+  /** The ply shown on the board; 0 is the start position (no cursor). */
   currentPly?: number;
   onSelectPly?: (ply: number) => void;
   phases?: { middlegameStartPly?: number; endgameStartPly?: number };
   playerColor?: "white" | "black";
-  /** Plot height in px. Defaults to DESIGN.md's 120px, or 88px below a 480px-wide container. */
+  /**
+   * Plot height in px. By default the plot is 120px (DESIGN.md), or 88px in a container narrower
+   * than 512px (Tailwind's `@lg`), set by a container query so nothing shifts after measuring.
+   */
   height?: number;
   /** Reveal left to right on mount over 2 × `dur.reveal` (no reveal under reduced motion). */
   drawIn?: boolean;
   className?: string;
 }
 
-// Layout, from DESIGN.md "Eval graph": a 22px label lane above the plot; a phase lane below it.
+// Layout, from DESIGN.md "Eval graph": a 22px label lane above the plot and a phase lane below.
 const LANE = 22;
 const AXIS = 18;
 const PAD = 8;
-const LABEL_GAP = 10;
-const MAX_PUSH = 56;
+/** Below this container width (Tailwind's `@lg`, 32rem): 88px plot, SAN labels, lane readout. */
+const NARROW = 512;
+/** From this width, inaccuracies are labelled too. */
+const WIDE = 768;
+/** Where the corner labels ("White (you)") end; the readout never covers them. */
+const CORNER_END = 88;
+const READOUT_W = 148;
+const READOUT_H = 48;
 const IGNORED_DIMENSIONS: ("height" | "top" | "left")[] = ["height", "top", "left"];
-const GLYPH = { blunder: "??", mistake: "?", inaccuracy: "?!" } as const;
+/** Text halo for labels: the surface the graph sits on (set `--eval-graph-surface` off sheet). */
+const HALO = "var(--eval-graph-surface, var(--color-sheet))";
+const NUMERALS = { fontVariantNumeric: "lining-nums tabular-nums" } as const;
+const CORNER_HALO = { strokeWidth: 3, strokeLinejoin: "round", paintOrder: "stroke" } as const;
 
 const isSerious = (j: EvalGraphPoint["judgement"]) => j === "mistake" || j === "blunder";
-const moveNumber = (ply: number) => Math.ceil(ply / 2);
 const sideOf = (ply: number) => (ply % 2 === 1 ? "White" : "Black");
-
-/** Notation with the move number: `16. Rxe6??`, `9…b5?`. */
-function notation(p: EvalGraphPoint): { prefix: string; san: string; glyph: string } {
-  const prefix = p.ply % 2 === 1 ? `${moveNumber(p.ply)}. ` : `${moveNumber(p.ply)}…`;
-  return { prefix, san: p.san, glyph: p.judgement ? GLYPH[p.judgement] : "" };
-}
 
 /** The slider's value text: "Move 16, White Rxe6, blunder, White 22%". */
 export function plyText(p: EvalGraphPoint): string {
-  const parts = [`Move ${moveNumber(p.ply)}`, `${sideOf(p.ply)} ${p.san}`];
+  const parts = [`Move ${Math.ceil(p.ply / 2)}`, `${sideOf(p.ply)} ${p.san}`];
   if (p.judgement) parts.push(p.judgement);
   parts.push(`White ${Math.round(p.winWhite)}%`);
   return parts.join(", ");
-}
-
-// Literata 600 at 14px averages about 0.6em a character; labels only need a safe estimate.
-const textWidth = (s: string) => Math.ceil(s.length * 8.4);
-
-interface PlacedLabel {
-  key: number;
-  x: number;
-  tickX: number;
-  tickTop: number;
-  serious: boolean;
-  parts: { prefix: string; san: string; glyph: string };
-}
-
-/**
- * Places move labels in the lane, left to right, pushed right to keep a 10px gap. A label that
- * would drift too far from its tick falls back to a shorter form (no move number, then the glyph
- * only), and is dropped if even that won't fit; the text alternative still lists every move.
- * Inaccuracies are labelled only on wide graphs, and only where they fit without pushing.
- */
-function placeLabels(
-  marks: { p: EvalGraphPoint; x: number; y: number }[],
-  width: number,
-  wide: boolean,
-): PlacedLabel[] {
-  const placed: PlacedLabel[] = [];
-  const taken: [number, number][] = [];
-  const free = (a: number, b: number) =>
-    taken.every(([s, e]) => b + LABEL_GAP <= s || a >= e + LABEL_GAP);
-  let lastEnd = -Infinity;
-
-  for (const m of marks) {
-    if (!isSerious(m.p.judgement)) continue;
-    const full = notation(m.p);
-    const forms = [
-      full,
-      { prefix: "", san: full.san, glyph: full.glyph },
-      { prefix: "", san: "", glyph: full.glyph },
-    ];
-    for (const parts of forms) {
-      const w = textWidth(parts.prefix + parts.san + parts.glyph);
-      let start = Math.max(m.x - 6, lastEnd + LABEL_GAP, 0);
-      if (start + w > width) start = width - w;
-      if (start < lastEnd + LABEL_GAP || start - m.x > MAX_PUSH || m.x - start > w + 6) continue;
-      placed.push({ key: m.p.ply, x: start, tickX: m.x, tickTop: m.y, serious: true, parts });
-      taken.push([start, start + w]);
-      lastEnd = start + w;
-      break;
-    }
-  }
-  if (wide) {
-    for (const m of marks) {
-      if (m.p.judgement !== "inaccuracy") continue;
-      const parts = notation(m.p);
-      const w = textWidth(parts.prefix + parts.san + parts.glyph);
-      const start = Math.min(Math.max(m.x - 6, 0), width - w);
-      if (!free(start, start + w)) continue;
-      placed.push({ key: m.p.ply, x: start, tickX: m.x, tickTop: m.y, serious: false, parts });
-      taken.push([start, start + w]);
-    }
-  }
-  return placed;
 }
 
 function summary(points: EvalGraphPoint[], playerColor?: "white" | "black"): string {
   const first = points[0];
   const last = points[points.length - 1];
   if (!first || !last) return "";
-  const marked = points.filter((p) => p.judgement);
+  const serious = points.filter((p) => isSerious(p.judgement));
+  const inaccuracies = points.filter((p) => p.judgement === "inaccuracy").length;
   const you = playerColor ? ` You played ${playerColor === "white" ? "White" : "Black"}.` : "";
-  const list = marked.length
-    ? ` Marked moves: ${marked.map((p) => plyText(p)).join("; ")}.`
-    : " No moves are marked.";
-  return `${points.length} half-moves. White's win chance goes from ${Math.round(first.winWhite)}% to ${Math.round(last.winWhite)}%.${you}${list}`;
+  const list = serious.length
+    ? ` Mistakes and blunders: ${serious.map(plyText).join("; ")}.`
+    : " No mistakes or blunders.";
+  const light = inaccuracies
+    ? ` Also ${inaccuracies} inaccurac${inaccuracies === 1 ? "y" : "ies"}.`
+    : "";
+  return `${points.length} half-moves. White's win chance goes from ${Math.round(first.winWhite)}% to ${Math.round(last.winWhite)}%.${you}${list}${light}`;
+}
+
+interface Mark {
+  ply: number;
+  x: number;
+  y: number;
+  judgement: EvalGraphJudgement;
+}
+
+interface Phase {
+  name: string;
+  x: number;
+  labelX: number;
+}
+
+/** The parts of the graph that only change with the data or the size. */
+const StaticLayer = memo(function StaticLayer({
+  width,
+  plotH,
+  linePath,
+  areaPath,
+  baseline,
+  marks,
+  labels,
+  phases,
+  playerColor,
+  reveal,
+  clipId,
+}: {
+  width: number;
+  plotH: number;
+  linePath: string;
+  areaPath: string;
+  baseline: number;
+  marks: Mark[];
+  labels: PlacedLabel[];
+  phases: Phase[];
+  playerColor?: "white" | "black";
+  reveal: boolean;
+  clipId: string;
+}) {
+  const top = LANE + 2;
+  const bottom = LANE + plotH - 2;
+  // Marks and labels fade in (opacity only) as the wipe passes their x.
+  const fade = (x: number) =>
+    reveal
+      ? {
+          initial: { opacity: 0 },
+          animate: { opacity: 1 },
+          transition: {
+            duration: dur.quick,
+            delay: wipeDelay(x / width, 2 * dur.reveal, ease.pen),
+          },
+        }
+      : { initial: false as const };
+  const sideLabel = (side: "white" | "black") =>
+    `${side === "white" ? "White" : "Black"}${playerColor === side ? " (you)" : ""}`;
+  const tickFor = (m: Mark) => {
+    const half = m.judgement === "blunder" ? 9 : m.judgement === "mistake" ? 7 : 5;
+    return { y1: Math.max(top, m.y - half), y2: Math.min(bottom, m.y + half) };
+  };
+  const tickTops = new Map(marks.map((m) => [m.ply, tickFor(m).y1]));
+
+  return (
+    <svg
+      width={width}
+      height={LANE + plotH + AXIS}
+      aria-hidden="true"
+      className="absolute inset-0 block"
+    >
+      {reveal && (
+        <defs>
+          <clipPath id={clipId}>
+            <motion.rect
+              x={0}
+              y={0}
+              width={width}
+              height={LANE + plotH + AXIS}
+              style={{ originX: 0, originY: 0 }}
+              initial={{ scaleX: 0 }}
+              animate={{ scaleX: 1 }}
+              transition={{ duration: 2 * dur.reveal, ease: ease.pen }}
+            />
+          </clipPath>
+        </defs>
+      )}
+      <rect x={0} y={LANE} width={width} height={plotH} rx={2} className="fill-well" />
+      <g clipPath={reveal ? `url(#${clipId})` : undefined}>
+        <path d={areaPath} className="fill-ink/10" />
+      </g>
+      <line
+        x1={0}
+        x2={width}
+        y1={baseline}
+        y2={baseline}
+        strokeWidth={1}
+        className="stroke-rule-strong"
+      />
+      {phases.map((ph) => (
+        <line
+          key={ph.name}
+          data-phase={ph.name}
+          x1={ph.x}
+          x2={ph.x}
+          y1={LANE}
+          y2={LANE + plotH}
+          strokeWidth={1}
+          className="stroke-pencil"
+        />
+      ))}
+      <g className="group-data-readout:invisible">
+        {phases.map((ph) => (
+          <text
+            key={ph.name}
+            x={ph.labelX}
+            y={LANE + plotH + 14}
+            className="fill-ink-faint font-sans text-xs"
+          >
+            {ph.name}
+          </text>
+        ))}
+      </g>
+      <g clipPath={reveal ? `url(#${clipId})` : undefined}>
+        <path
+          d={linePath}
+          data-series="line"
+          fill="none"
+          strokeWidth={2}
+          strokeLinejoin="round"
+          strokeLinecap="round"
+          className="stroke-ink"
+        />
+      </g>
+      <g data-layer="leaders">
+        {labels
+          .filter((l) => l.leader)
+          .map((l) => (
+            <motion.polyline
+              key={l.ply}
+              data-leader={l.ply}
+              points={leaderPoints(l, tickTops.get(l.ply) ?? LANE)}
+              fill="none"
+              strokeWidth={1}
+              strokeLinejoin="round"
+              className="stroke-pencil"
+              {...fade(l.tickX)}
+            />
+          ))}
+      </g>
+      {/* Corner labels sit over the line and leaders on a well halo, under the marks. */}
+      <g className="fill-ink-soft stroke-well font-sans text-xs" style={CORNER_HALO}>
+        <text x={PAD} y={LANE + 14}>
+          {sideLabel("white")}
+        </text>
+        <text x={PAD} y={LANE + plotH - 6}>
+          {sideLabel("black")}
+        </text>
+      </g>
+      <g data-layer="marks">
+        {marks.map((m) => {
+          const serious = isSerious(m.judgement);
+          const w = m.judgement === "blunder" ? 3 : serious ? 2.5 : 1.5;
+          const { y1, y2 } = tickFor(m);
+          return (
+            <motion.g
+              key={m.ply}
+              data-mark={serious ? "pen" : "pencil"}
+              data-ply={m.ply}
+              {...fade(m.x)}
+            >
+              <line
+                x1={m.x}
+                x2={m.x}
+                y1={y1}
+                y2={y2}
+                strokeWidth={w + 2}
+                strokeLinecap="round"
+                className="stroke-well"
+              />
+              <line
+                x1={m.x}
+                x2={m.x}
+                y1={y1}
+                y2={y2}
+                strokeWidth={w}
+                strokeLinecap="round"
+                className={serious ? "stroke-pen" : "stroke-pencil"}
+              />
+            </motion.g>
+          );
+        })}
+      </g>
+      <g data-layer="labels">
+        {labels.map((l) => (
+          <motion.g key={l.ply} data-label={l.ply} {...fade(l.tickX)}>
+            <text
+              x={l.x}
+              y={15}
+              className={cn(
+                "font-serif text-sm",
+                l.serious ? "fill-ink font-semibold" : "fill-ink-faint font-normal",
+              )}
+              style={{
+                ...NUMERALS,
+                stroke: HALO,
+                strokeWidth: 4,
+                strokeLinejoin: "round",
+                paintOrder: "stroke",
+              }}
+            >
+              {l.text.prefix}
+              {l.text.san}
+              <tspan
+                className={cn("tracking-glyph", l.serious ? "fill-pen-text" : "fill-ink-faint")}
+              >
+                {l.text.glyph}
+              </tspan>
+            </text>
+          </motion.g>
+        ))}
+      </g>
+    </svg>
+  );
+});
+
+/** A bent leader: a short diagonal under the label (7px tall), then straight down to the tick. */
+function leaderPoints(l: PlacedLabel, tickTop: number): string {
+  const anchor = Math.min(Math.max(l.tickX, l.x + 3), l.x + l.width - 3);
+  const top = 18;
+  const bend = top + 7;
+  const end = Math.max(LANE, tickTop - 2);
+  if (end <= bend) return `${anchor},${top} ${l.tickX},${end}`;
+  return `${anchor},${top} ${l.tickX},${bend} ${l.tickX},${end}`;
+}
+
+interface Gesture {
+  id: number;
+  startX: number;
+  touch: boolean;
+  scrubbing: boolean;
 }
 
 export function EvalGraph({
@@ -160,42 +361,99 @@ export function EvalGraph({
   });
   const [ownPly, setOwnPly] = useState<number | undefined>(undefined);
   const [hoverPly, setHoverPly] = useState<number | null>(null);
-  const [focused, setFocused] = useState(false);
+  const [focusVisible, setFocusVisible] = useState(false);
+  const gesture = useRef<Gesture | null>(null);
 
   const count = points.length;
+  const first = points[0]?.ply ?? 1;
   const last = points[count - 1]?.ply ?? 1;
-  const active = currentPly ?? ownPly;
-  const plotH = height ?? (width > 0 && width < 480 ? 88 : 120);
-  const totalH = LANE + plotH + AXIS;
+  const narrow = width > 0 && width < NARROW;
+  const plotH = height ?? (narrow ? 88 : 120);
   const innerW = Math.max(0, width - 2 * PAD);
-  const x = useCallback((ply: number) => PAD + xForPly(ply, innerW, count), [innerW, count]);
-  const y = useCallback((win: number) => LANE + yForWin(win, plotH), [plotH]);
+
+  // Scales and paths, built once per data and size. x maps by index, so plies need not start at 1.
+  const geo = useMemo(() => {
+    const xs = points.map((_, i) => PAD + xForPly(i + 1, innerW, count));
+    const ys = points.map((p) => LANE + yForWin(p.winWhite, plotH));
+    const baseline = LANE + yForWin(50, plotH);
+    const index = new Map(points.map((p, i) => [p.ply, i]));
+    const at = (_: EvalGraphPoint, i: number) => xs[i] ?? 0;
+    const yAt = (_: EvalGraphPoint, i: number) => ys[i] ?? baseline;
+    const linePath =
+      Shape.line<EvalGraphPoint>({ x: at, y: yAt, curve: Curve.curveMonotoneX })(points) ?? "";
+    const areaPath =
+      Shape.area<EvalGraphPoint>({ x: at, y0: baseline, y1: yAt, curve: Curve.curveMonotoneX })(
+        points,
+      ) ?? "";
+    return { xs, ys, baseline, index, linePath, areaPath };
+  }, [points, innerW, count, plotH]);
+
+  const marks = useMemo<Mark[]>(
+    () =>
+      points.flatMap((p, i) =>
+        p.judgement
+          ? [{ ply: p.ply, x: geo.xs[i] ?? 0, y: geo.ys[i] ?? 0, judgement: p.judgement }]
+          : [],
+      ),
+    [points, geo],
+  );
+
+  const labels = useMemo(() => {
+    if (width <= 0) return [];
+    const input: LabelMark[] = marks.map((m) => ({
+      ply: m.ply,
+      san: points[geo.index.get(m.ply) ?? 0]?.san ?? "",
+      judgement: m.judgement,
+      x: m.x,
+      mine: playerColor ? sideOf(m.ply).toLowerCase() === playerColor : null,
+    }));
+    return placeLabels(input, width, { narrow, wide: width >= WIDE });
+  }, [marks, points, geo, width, narrow, playerColor]);
+
+  const phaseLines = useMemo<Phase[]>(() => {
+    let end = -Infinity;
+    return [
+      { ply: phases?.middlegameStartPly, name: "Middlegame" },
+      { ply: phases?.endgameStartPly, name: "Endgame" },
+    ].flatMap(({ ply, name }) => {
+      const i = ply === undefined ? undefined : geo.index.get(ply);
+      if (i === undefined || i <= 0) return [];
+      const x = ((geo.xs[i - 1] ?? 0) + (geo.xs[i] ?? 0)) / 2;
+      const w = Math.ceil(name.length * 6.6);
+      let labelX = Math.max(x + 4, end + 8);
+      if (labelX + w > width) labelX = Math.max(end + 8, width - w);
+      end = labelX + w;
+      return [{ name, x, labelX }];
+    });
+  }, [phases?.middlegameStartPly, phases?.endgameStartPly, geo, width]);
+
+  const describe = useMemo(() => summary(points, playerColor), [points, playerColor]);
+
+  const atStart = currentPly === 0;
+  const active = atStart ? undefined : (currentPly ?? ownPly);
+  const activeIndex = active === undefined ? undefined : geo.index.get(active);
 
   const select = useCallback(
     (ply: number) => {
-      const next = Math.min(last, Math.max(1, Math.round(ply)));
-      if (currentPly === undefined) setOwnPly(next);
-      onSelectPly?.(next);
+      if (ply === (currentPly ?? ownPly)) return;
+      if (currentPly === undefined) setOwnPly(ply);
+      onSelectPly?.(ply);
     },
-    [currentPly, last, onSelectPly],
+    [currentPly, ownPly, onSelectPly],
   );
 
-  const marks = useMemo(
-    () => points.filter((p) => p.judgement).map((p) => ({ p, x: x(p.ply), y: y(p.winWhite) })),
-    [points, x, y],
-  );
-  const labels = useMemo(
-    () => (width > 0 ? placeLabels(marks, width, width >= 768) : []),
-    [marks, width],
-  );
-  const describe = useMemo(() => summary(points, playerColor), [points, playerColor]);
+  const boxClass = height === undefined ? "h-32 @lg:h-40" : undefined;
+  const boxStyle = height === undefined ? undefined : { height: LANE + height + AXIS };
 
   if (count === 0) {
     return (
-      <figure className={cn("m-0", className)} aria-label={label}>
+      <figure className={cn("@container m-0", className)} aria-label={label}>
         <div
-          className="flex items-center justify-center rounded-board bg-well text-sm text-ink-soft"
-          style={{ height: LANE + 88 + AXIS }}
+          className={cn(
+            "flex items-center justify-center rounded-board bg-well text-sm text-ink-soft",
+            boxClass,
+          )}
+          style={boxStyle}
         >
           No moves to graph yet
         </div>
@@ -203,235 +461,150 @@ export function EvalGraph({
     );
   }
 
-  const pointAt = (ply: number) => points.find((p) => p.ply === ply);
-  const activePoint = active === undefined ? undefined : pointAt(active);
-  const shown = hoverPly ?? (focused ? (active ?? last) : null);
-  const shownPoint = shown === null ? undefined : pointAt(shown);
-  const valuePoint = activePoint ?? points[count - 1];
+  const valueIndex = activeIndex ?? count - 1;
+  const valuePoint = points[valueIndex];
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
-    const from = active ?? last;
-    const steps: Record<string, number> = {
-      ArrowRight: from + 1,
-      ArrowUp: from + 1,
-      ArrowLeft: from - 1,
-      ArrowDown: from - 1,
-      PageUp: from + 10,
-      PageDown: from - 10,
-      Home: 1,
-      End: last,
+    const from = atStart ? -1 : (activeIndex ?? count - 1);
+    const deltas: Record<string, number> = {
+      ArrowRight: 1,
+      ArrowUp: 1,
+      ArrowLeft: -1,
+      ArrowDown: -1,
+      PageUp: 10,
+      PageDown: -10,
     };
-    const next = steps[e.key];
+    let next: number | undefined;
+    if (e.key === "Home") next = 0;
+    else if (e.key === "End") next = count - 1;
+    else if (deltas[e.key] !== undefined) {
+      const delta = deltas[e.key] ?? 0;
+      if (atStart && delta < 0) return e.preventDefault();
+      next = Math.min(count - 1, Math.max(0, from + delta));
+    }
     if (next === undefined) return;
     e.preventDefault();
-    select(next);
+    setFocusVisible(true);
+    const ply = points[next]?.ply;
+    if (ply !== undefined) select(ply);
   };
 
   const plyFromEvent = (e: PointerEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
-    return points[plyForX(e.clientX - rect.left - PAD, innerW, count) - 1]?.ply ?? 1;
+    const i = plyForX(e.clientX - rect.left - PAD, innerW, count) - 1;
+    return points[i]?.ply ?? first;
   };
 
-  const baseline = y(50);
-  const phaseLines = [
-    { ply: phases?.middlegameStartPly, name: "Middlegame" },
-    { ply: phases?.endgameStartPly, name: "Endgame" },
-  ].flatMap((ph) =>
-    ph.ply && ph.ply > 1 && ph.ply <= last
-      ? [{ name: ph.name, x: (x(ph.ply - 1) + x(ph.ply)) / 2 }]
-      : [],
-  );
-  let phaseEnd = -Infinity;
-  const phaseLabels = phaseLines.map((ph) => {
-    const w = textWidth(ph.name) * 0.8;
-    let lx = Math.max(ph.x + 4, phaseEnd + 8);
-    if (lx + w > width) lx = Math.max(phaseEnd + 8, width - w);
-    phaseEnd = lx + w;
-    return { ...ph, lx };
-  });
+  const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    const touch = e.pointerType !== "mouse";
+    gesture.current = { id: e.pointerId, startX: e.clientX, touch, scrubbing: !touch };
+    if (!touch) {
+      e.currentTarget.setPointerCapture?.(e.pointerId);
+      select(plyFromEvent(e));
+    }
+  };
+  const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
+    const g = gesture.current;
+    const ply = plyFromEvent(e);
+    if (g && g.id === e.pointerId) {
+      // A touch only scrubs after 6px of horizontal travel, so a vertical scroll never selects.
+      if (!g.scrubbing && Math.abs(e.clientX - g.startX) > 6) {
+        g.scrubbing = true;
+        e.currentTarget.setPointerCapture?.(e.pointerId);
+      }
+      if (g.scrubbing) {
+        setHoverPly(ply);
+        select(ply);
+      }
+      return;
+    }
+    if (e.pointerType === "mouse") setHoverPly(ply);
+  };
+  const onPointerUp = (e: PointerEvent<HTMLDivElement>) => {
+    const g = gesture.current;
+    gesture.current = null;
+    if (g && g.id === e.pointerId && g.touch && !g.scrubbing) select(plyFromEvent(e));
+    if (e.pointerType !== "mouse") setHoverPly(null);
+  };
+  const onPointerCancel = () => {
+    gesture.current = null;
+    setHoverPly(null);
+  };
 
-  const reveal = drawIn && !reduced;
-  const clip = reveal ? `url(#${id}-clip)` : undefined;
-  const sideLabel = (side: "white" | "black") =>
-    `${side === "white" ? "White" : "Black"}${playerColor === side ? " (you)" : ""}`;
+  const shownIndex =
+    hoverPly !== null ? geo.index.get(hoverPly) : focusVisible && !atStart ? valueIndex : undefined;
+  const shownPoint = shownIndex === undefined ? undefined : points[shownIndex];
+  const laneReadout = narrow && shownPoint !== undefined;
+  const spring_ = reduced ? { duration: 0 } : spring.swing;
 
   return (
-    <figure className={cn("m-0", className)}>
-      <div ref={parentRef} className="relative w-full" style={{ height: totalH }}>
+    <figure className={cn("@container m-0", className)}>
+      <div
+        ref={parentRef}
+        data-readout={laneReadout ? "" : undefined}
+        className={cn("group relative w-full", boxClass)}
+        style={boxStyle}
+      >
         {width > 0 && (
-          <svg width={width} height={totalH} aria-hidden="true" className="block overflow-visible">
-            {reveal && (
-              <defs>
-                <clipPath id={`${id}-clip`}>
-                  <motion.rect
-                    x={0}
-                    y={0}
-                    width={width}
-                    height={totalH}
-                    style={{ originX: 0, originY: 0 }}
-                    initial={{ scaleX: 0 }}
-                    animate={{ scaleX: 1 }}
-                    transition={{ duration: 2 * dur.reveal, ease: ease.pen }}
-                  />
-                </clipPath>
-              </defs>
-            )}
-            <rect x={0} y={LANE} width={width} height={plotH} rx={2} className="fill-well" />
-            <text x={PAD} y={LANE + 14} className="fill-ink-faint font-sans text-xs">
-              {sideLabel("white")}
-            </text>
-            <text x={PAD} y={LANE + plotH - 6} className="fill-ink-faint font-sans text-xs">
-              {sideLabel("black")}
-            </text>
-            <line
-              x1={0}
-              x2={width}
-              y1={baseline}
-              y2={baseline}
-              strokeWidth={1}
-              className="stroke-rule-strong"
-            />
-            {phaseLines.map((ph) => (
+          <StaticLayer
+            width={width}
+            plotH={plotH}
+            linePath={geo.linePath}
+            areaPath={geo.areaPath}
+            baseline={geo.baseline}
+            marks={marks}
+            labels={labels}
+            phases={phaseLines}
+            playerColor={playerColor}
+            reveal={drawIn && !reduced}
+            clipId={`${id}-clip`}
+          />
+        )}
+        {width > 0 && (
+          <svg
+            width={width}
+            height={LANE + plotH + AXIS}
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 block"
+          >
+            {shownIndex !== undefined && shownIndex !== activeIndex && (
               <line
-                key={ph.name}
-                data-phase={ph.name}
-                x1={ph.x}
-                x2={ph.x}
+                data-hover
+                x1={geo.xs[shownIndex]}
+                x2={geo.xs[shownIndex]}
                 y1={LANE}
                 y2={LANE + plotH}
                 strokeWidth={1}
-                className="stroke-rule-strong"
-              />
-            ))}
-            {phaseLabels.map((ph) => (
-              <text
-                key={ph.name}
-                x={ph.lx}
-                y={LANE + plotH + 14}
-                className="fill-ink-faint font-sans text-xs"
-              >
-                {ph.name}
-              </text>
-            ))}
-            <g clipPath={clip}>
-              <Shape.Area<EvalGraphPoint>
-                data={points}
-                x={(p) => x(p.ply)}
-                y0={baseline}
-                y1={(p) => y(p.winWhite)}
-                curve={Curve.curveMonotoneX}
-                className="fill-ink/10"
-              />
-              <Shape.LinePath<EvalGraphPoint>
-                data={points}
-                x={(p) => x(p.ply)}
-                y={(p) => y(p.winWhite)}
-                curve={Curve.curveMonotoneX}
-                data-series="line"
-                fill="none"
-                strokeWidth={2}
-                strokeLinejoin="round"
-                strokeLinecap="round"
-                className="stroke-ink"
-              />
-              {labels.map((l) => {
-                const anchor = Math.min(
-                  Math.max(l.tickX, l.x + 2),
-                  l.x + textWidth(l.parts.prefix + l.parts.san + l.parts.glyph) - 2,
-                );
-                return (
-                  <g key={l.key}>
-                    <line
-                      x1={anchor}
-                      y1={LANE - 3}
-                      x2={l.tickX}
-                      y2={l.tickTop - (l.serious ? 9 : 7)}
-                      strokeWidth={1}
-                      className="stroke-rule-strong"
-                    />
-                    <text
-                      x={l.x}
-                      y={15}
-                      className={cn(
-                        "font-serif text-sm font-semibold stroke-sheet",
-                        l.serious ? "fill-ink" : "fill-ink-soft",
-                      )}
-                      style={{
-                        fontVariantNumeric: "lining-nums tabular-nums",
-                        paintOrder: "stroke",
-                        strokeWidth: 4,
-                        strokeLinejoin: "round",
-                      }}
-                    >
-                      {l.parts.prefix}
-                      {l.parts.san}
-                      <tspan
-                        className={cn(
-                          "tracking-glyph",
-                          l.serious ? "fill-pen-text" : "fill-ink-soft",
-                        )}
-                      >
-                        {l.parts.glyph}
-                      </tspan>
-                    </text>
-                  </g>
-                );
-              })}
-              {marks.map(({ p, x: mx, y: my }) => {
-                const serious = isSerious(p.judgement);
-                const half = p.judgement === "blunder" ? 9 : serious ? 7 : 5;
-                const w = p.judgement === "blunder" ? 3 : serious ? 2.5 : 1.5;
-                return (
-                  <g key={p.ply} data-mark={serious ? "pen" : "pencil"} data-ply={p.ply}>
-                    <line
-                      x1={mx}
-                      x2={mx}
-                      y1={my - half}
-                      y2={my + half}
-                      strokeWidth={w + 4}
-                      strokeLinecap="round"
-                      className="stroke-well"
-                    />
-                    <line
-                      x1={mx}
-                      x2={mx}
-                      y1={my - half}
-                      y2={my + half}
-                      strokeWidth={w}
-                      strokeLinecap="round"
-                      className={serious ? "stroke-pen" : "stroke-pencil"}
-                    />
-                  </g>
-                );
-              })}
-            </g>
-            {shownPoint && shown !== active && (
-              <line
-                x1={x(shownPoint.ply)}
-                x2={x(shownPoint.ply)}
-                y1={LANE}
-                y2={LANE + plotH}
-                strokeWidth={1}
-                className="stroke-pencil"
+                className="stroke-ink-faint"
               />
             )}
-            {activePoint && (
-              <motion.g
-                initial={false}
-                animate={{ x: x(activePoint.ply), y: y(activePoint.winWhite) }}
-                transition={reduced ? { duration: 0 } : spring.swing}
-                data-cursor={activePoint.ply}
-              >
-                <line
+            {activeIndex !== undefined && (
+              <>
+                <motion.line
+                  data-cursor-rule
                   x1={0}
                   x2={0}
-                  y1={LANE - y(activePoint.winWhite)}
-                  y2={LANE + plotH - y(activePoint.winWhite)}
+                  y1={LANE}
+                  y2={LANE + plotH}
                   strokeWidth={1.5}
                   className="stroke-ink"
+                  initial={false}
+                  animate={{ x: geo.xs[activeIndex] ?? 0 }}
+                  transition={spring_}
                 />
-                <circle r={4} strokeWidth={2} className="fill-ink stroke-well" />
-              </motion.g>
+                <motion.circle
+                  data-cursor-dot
+                  cx={0}
+                  cy={0}
+                  r={4}
+                  strokeWidth={2}
+                  className="fill-ink stroke-well"
+                  initial={false}
+                  animate={{ x: geo.xs[activeIndex] ?? 0, y: geo.ys[activeIndex] ?? 0 }}
+                  transition={spring_}
+                />
+              </>
             )}
           </svg>
         )}
@@ -439,30 +612,47 @@ export function EvalGraph({
           role="slider"
           tabIndex={0}
           aria-label={label}
-          aria-valuemin={1}
+          aria-valuemin={atStart ? 0 : first}
           aria-valuemax={last}
-          aria-valuenow={valuePoint?.ply ?? last}
-          aria-valuetext={valuePoint ? plyText(valuePoint) : undefined}
+          aria-valuenow={atStart ? 0 : (valuePoint?.ply ?? last)}
+          aria-valuetext={atStart ? "Start position" : valuePoint ? plyText(valuePoint) : undefined}
           aria-describedby={`${id}-desc`}
           className="absolute inset-x-0 cursor-crosshair touch-pan-y rounded-board focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
           style={{ top: LANE, height: plotH }}
           onKeyDown={onKeyDown}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          onPointerDown={(e) => {
-            e.currentTarget.setPointerCapture?.(e.pointerId);
-            select(plyFromEvent(e));
+          onFocus={(e) => {
+            let visible = false;
+            try {
+              visible = e.currentTarget.matches(":focus-visible");
+            } catch {
+              // selector unsupported: wait for a key press
+            }
+            setFocusVisible(visible);
           }}
-          onPointerMove={(e) => {
-            const ply = plyFromEvent(e);
-            setHoverPly(ply);
-            if (e.buttons === 1 && ply !== active) select(ply);
+          onBlur={() => setFocusVisible(false)}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerCancel}
+          onPointerLeave={(e) => {
+            if (e.pointerType === "mouse") setHoverPly(null);
           }}
-          onPointerLeave={() => setHoverPly(null)}
         />
-        {shownPoint && width > 0 && (
-          <Readout point={shownPoint} x={x(shownPoint.ply)} width={width} top={LANE + 6} />
-        )}
+        {shownPoint &&
+          width > 0 &&
+          (narrow ? (
+            <LaneReadout point={shownPoint} top={LANE + plotH} />
+          ) : (
+            <Readout
+              point={shownPoint}
+              x={geo.xs[shownIndex ?? 0] ?? 0}
+              lineY={geo.ys[shownIndex ?? 0] ?? 0}
+              xs={geo.xs}
+              ys={geo.ys}
+              plotH={plotH}
+              width={width}
+            />
+          ))}
       </div>
       <p id={`${id}-desc`} className="sr-only">
         {describe}
@@ -471,42 +661,87 @@ export function EvalGraph({
   );
 }
 
-const READOUT_W = 148;
+function Notation({ point }: { point: EvalGraphPoint }) {
+  const glyph = point.judgement ? GLYPH[point.judgement] : "";
+  return (
+    <span className="font-serif text-sm font-semibold text-ink" style={NUMERALS}>
+      {movePrefix(point.ply)}
+      {point.san}
+      <span
+        className={cn(
+          "tracking-glyph",
+          isSerious(point.judgement) ? "text-pen-text" : "text-ink-soft",
+        )}
+      >
+        {glyph}
+      </span>
+    </span>
+  );
+}
 
+const detail = (p: EvalGraphPoint) =>
+  `White ${Math.round(p.winWhite)}%${p.judgement ? `, ${p.judgement}` : ""}`;
+
+/**
+ * From 512px: a popover in the half of the plot away from the line at the hovered move, unless
+ * the other half crosses less of the line and its marks nearby. It never covers the corner labels.
+ */
 function Readout({
   point,
   x,
+  lineY,
+  xs,
+  ys,
+  plotH,
   width,
-  top,
 }: {
   point: EvalGraphPoint;
   x: number;
+  lineY: number;
+  xs: number[];
+  ys: number[];
+  plotH: number;
   width: number;
-  top: number;
 }) {
-  const parts = notation(point);
-  const serious = isSerious(point.judgement);
-  const flip = x + 12 + READOUT_W > width;
-  const left = flip ? Math.max(0, x - 12 - READOUT_W) : x + 12;
+  const right = x + 12;
+  let left = right + READOUT_W > width ? x - 12 - READOUT_W : right;
+  left = Math.min(Math.max(left, CORNER_END), width - READOUT_W);
+  const topBand = LANE + 6;
+  const bottomBand = LANE + plotH - 6 - READOUT_H;
+  // How many points (with their tick's reach) a popover at `top` would cover.
+  const covered = (top: number) =>
+    xs.reduce((n, px, i) => {
+      const py = ys[i] ?? 0;
+      const inX = px >= left - 4 && px <= left + READOUT_W + 4;
+      return inX && py + 9 >= top && py - 9 <= top + READOUT_H ? n + 1 : n;
+    }, 0);
+  const preferred = lineY < LANE + plotH / 2 ? bottomBand : topBand;
+  const other = preferred === topBand ? bottomBand : topBand;
+  const top = covered(preferred) <= covered(other) ? preferred : other;
   return (
     <div
       aria-hidden="true"
+      data-readout-popover
       className="pointer-events-none absolute flex flex-col rounded-field bg-sheet px-3 py-1.5 shadow-lift"
-      style={{ left, top, width: READOUT_W }}
+      style={{ left, top, width: READOUT_W, height: READOUT_H }}
     >
-      <span
-        className="font-serif text-sm font-semibold text-ink"
-        style={{ fontVariantNumeric: "lining-nums tabular-nums" }}
-      >
-        {parts.prefix}
-        {parts.san}
-        <span className={cn("tracking-glyph", serious ? "text-pen-text" : "text-ink-soft")}>
-          {parts.glyph}
-        </span>
-      </span>
-      <span className="font-sans text-xs text-ink-soft">
-        White {Math.round(point.winWhite)}%{point.judgement ? `, ${point.judgement}` : ""}
-      </span>
+      <Notation point={point} />
+      <span className="font-sans text-xs text-ink-soft">{detail(point)}</span>
+    </div>
+  );
+}
+
+/** Below 512px: one line in the phase lane, which hides the phase labels meanwhile. */
+function LaneReadout({ point, top }: { point: EvalGraphPoint; top: number }) {
+  return (
+    <div
+      aria-hidden="true"
+      data-readout-lane
+      className="pointer-events-none absolute inset-x-0 flex items-center gap-2 leading-none"
+      style={{ top, height: AXIS }}
+    >
+      <Notation point={point} />
+      <span className="font-sans text-xs text-ink-soft">{detail(point)}</span>
     </div>
   );
 }

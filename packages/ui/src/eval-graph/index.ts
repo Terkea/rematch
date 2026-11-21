@@ -5,4 +5,12 @@ export {
   type EvalGraphProps,
   plyText,
 } from "./eval-graph.js";
-export { plyForX, xForPly, yForWin } from "./scales.js";
+export {
+  type LabelMark,
+  type PlacedLabel,
+  placeLabels,
+  plyForX,
+  wipeDelay,
+  xForPly,
+  yForWin,
+} from "./scales.js";
