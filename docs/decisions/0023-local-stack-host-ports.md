@@ -20,3 +20,7 @@ Stopping the conflicting local services; not publishing ports at all (breaks hos
 No collisions with common local services. Host-side connection strings differ from in-container ones.
 
 See ADR 0003 and ADR 0004.
+
+## Addendum
+
+Ports are bound to `127.0.0.1` only, so the development databases are not exposed on the network. `docker/postgres/init.sql` (which creates `chess_test`) runs only when the `pgdata` volume is first initialised; on an existing volume run `docker compose exec postgres psql -U postgres -c "CREATE DATABASE chess_test"`.

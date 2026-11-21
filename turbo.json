@@ -6,7 +6,8 @@
     "REDIS_URL",
     "STOCKFISH_PATH",
     "CONTACT_EMAIL",
-    "LICHESS_TOKEN"
+    "LICHESS_TOKEN",
+    "IN_DOCKER"
   ],
   "tasks": {
     "build": { "dependsOn": ["^build"], "outputs": ["dist/**"] },
