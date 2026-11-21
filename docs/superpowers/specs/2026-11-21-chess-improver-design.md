@@ -59,7 +59,9 @@ Players range from about 400 to 2500+ across bullet, blitz, rapid, classical and
 
 Bands use each platform's own rating scale. Lichess and chess.com ratings are not comparable, and we never mix them.
 
-## 6. System architecture (builder's choice, decided here)
+## 6. System architecture
+
+> **Superseded in part by ADR 0030 (2026-11-21): the whole backend is Rust.** The cargo workspace `backend/` holds the crates chess-core, db (sqlx), queue (Postgres SKIP LOCKED), engine, platforms, analysis, events (LISTEN/NOTIFY), profile, ai (an Anthropic HTTP client), plus the `worker` and `cli` binaries. Only `apps/web` (Next.js) and `packages/ui` stay TypeScript. Redis and BullMQ are removed. The schema source of truth is SQL migrations in `db/migrations/`, and the web app's Drizzle schema is generated from them with a CI drift check. The TypeScript backend code is the reference spec until Rust parity is reached. Where the text below names TypeScript, BullMQ, Redis or Drizzle for the backend, ADR 0030 wins.
 
 ```
             ┌──────────────┐   Lichess / chess.com public APIs
@@ -155,6 +157,32 @@ So we import broadly and analyse selectively.
 **Cost envelope.** A heavy Pro user's onboarding (P0 + P1) takes about 200–400 games, roughly 1–2 core-hours. On 16 cores that's about 5–8 minutes of wall time, and results stream in as they finish. P2 backfill adds about 500 games over the following hours at low priority. Per-user CPU-seconds are metered, and hard caps from §13 apply.
 
 **Shown to the user.** Each profile and KPI states its basis ("based on 214 analysed rapid games from 3,912 imported") along with how far the background backfill has got, so a sampled history is never mistaken for a complete one.
+
+## 8d. Capacity and scaling (measured 2026-11-21)
+
+**Measurements:**
+- Stockfish 19 benchmark in the worker image: about 1.97M nodes/s per thread.
+- At 300k nodes, that's about 0.15 s per position.
+- The live smoke run averaged about 70 positions per game, so with overhead one game takes about **12 core-seconds**.
+
+**One user:**
+
+| Games | 24-core dev box | 16-vCPU production worker |
+|---|---|---|
+| 100 | under 1 min | about 1.5 min |
+| 1,000 | about 9 min | about 13 min |
+
+**Sign-up waves set the requirement.** 100 free users × 50 games is 5,000 games, about 17 core-hours. One 16-vCPU worker needs about 70 minutes to drain that. The money cost is negligible (about €0.01 per vCPU-hour, so about €0.25 for the whole wave). The binding constraint is **time to first insight**, so the design targets latency:
+
+1. **Fair scheduling.** The analysis scheduler (§8c) serves users round-robin in slices of 5 games, ordered by priority tier, then by when the user joined. Nobody waits behind another user's whole history. Every new user gets their first 10 games before anyone's 11th.
+2. **Preview pass.** A user's first 20 P0 games are first analysed at **30k nodes** (about 10× faster, giving a provisional "early read" within about 1–2 minutes even during a wave). Those preview evals are labelled `preview`. They are never written to the shared cache, and never used for KPIs, posteriors or the weakness timeline. The full protocol pass replaces them in the background. This is the only exception to "one protocol everywhere", and it's visibly marked as provisional in the UI.
+3. **Cache multiplication.** The shared FEN cache, seeded from the Lichess eval dump, gets more effective with every user: openings and common endgames repeat. Expect about 15–30% fewer engine calls at scale, plus free Lichess server evals for Lichess users.
+4. **Horizontal autoscaling.** Workers are stateless consumers of the queue. An autoscaler watches queue lag (the oldest P0 job's age, and core-seconds queued). When P0 lag exceeds 3 minutes, it adds dedicated-vCPU cloud servers with hourly billing, for example 48-vCPU instances. It scales back down after 15 minutes idle, with a monthly spend cap in config. The baseline is one always-on 16-vCPU worker, burst capacity is about 4 extra servers, and the caps are approved by the owner before deploying (§18).
+5. **Back-pressure UI.** The live analysis screen shows the user's place and an ETA, for example "about 3 min, analysing 38 / 50", computed from queue depth and measured throughput. It's never a spinner.
+
+**Burst capacity target.** With 1 baseline + 2 burst 48-vCPU servers (about 110 engines), a 100-user wave reaches every user's preview within about 2 minutes, and every user's full 50 within about 10 minutes.
+
+Claude cost per report is estimated at $0.05–0.15 (Sonnet, cached prefix, five sections). Monthly regenerations go through the Batch API at a 50% discount.
 
 ## 8. (cont.) Improvement engine: normative spec
 
