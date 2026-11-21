@@ -18,6 +18,7 @@ const { USER_AGENT: WORKER_USER_AGENT } = await import("../../../worker/src/http
 const { checkChesscomVerification, generateVerificationCode, LinkError, startChesscomLink } =
   await import("../../src/server/accounts/chesscom-link");
 const { listAccounts } = await import("../../src/server/accounts/list");
+const { claimProfileRequest } = await import("../../src/server/chesscom/throttle");
 const { removeLink } = await import("../../src/server/accounts/remove");
 const { resetEnvCache, getEnv } = await import("../../src/env");
 const { resetAuth } = await import("../../src/server/auth");
@@ -613,6 +614,97 @@ describe("outbound throttles", () => {
     clock = minuteLater();
     await expect(startChesscomLink(deps(), b.id, "ghost_1")).rejects.toMatchObject({
       code: "not_found",
+    });
+  });
+
+  it("parallel starts for 15 unknown names spend at most 10 tokens (the budget row is locked)", async () => {
+    const a = await newUser();
+    const names = Array.from({ length: 15 }, (_, i) => `ghost_par_${i}`);
+    const results = await Promise.allSettled(
+      names.map((name) => startChesscomLink(deps(), a.id, name)),
+    );
+    const codes = results.map((r) =>
+      r.status === "rejected" ? (r.reason as { code?: string }).code : "ok",
+    );
+    // Every request that got a token reached chess.com (and found nobody); the rest were refused.
+    expect(chesscom.calls.length).toBeLessThanOrEqual(10);
+    expect(codes.filter((c) => c === "not_found")).toHaveLength(chesscom.calls.length);
+    expect(codes.filter((c) => c === "rate_limited").length).toBeGreaterThanOrEqual(5);
+  });
+
+  it("a request refused for budget never erases another request's username window", async () => {
+    const [broke, third] = [await newUser(), await newUser()];
+    for (let i = 0; i < 10; i++) {
+      expect((await claimProfileRequest(db, broke.id, `spent_${i}`, clock)).ok).toBe(true);
+    }
+    for (let round = 0; round < 25; round++) {
+      const name = `contested_${round}`;
+      // A fresh user each round, so only the broke one is ever out of tokens.
+      const other = await newUser();
+      const [refused, granted] = await Promise.all([
+        claimProfileRequest(db, broke.id, name, clock),
+        claimProfileRequest(db, other.id, name, clock),
+      ]);
+      expect(refused.ok).toBe(false);
+      expect(granted).toEqual({ ok: true });
+      // The granted request's 60 s window is recorded, whatever the interleaving.
+      expect(await claimProfileRequest(db, third.id, name, clock)).toMatchObject({
+        ok: false,
+        reason: "username_interval",
+      });
+    }
+  });
+
+  it("pruning old rows never erases a concurrent request's username window", async () => {
+    const [pruner, claimer, third] = [await newUser(), await newUser(), await newUser()];
+    for (let round = 0; round < 25; round++) {
+      // One token refills every 6 minutes, so neither user runs dry.
+      clock = new Date(clock.getTime() + 7 * MINUTE);
+      const name = `stale_${round}`;
+      // A request from 2 hours ago: old enough for the pruner to delete.
+      await db.execute(sql`
+        insert into chesscom_profile_requests (username, requested_at)
+        values (${name}, ${new Date(clock.getTime() - 120 * MINUTE).toISOString()}::timestamptz)`);
+      const [, granted] = await Promise.all([
+        claimProfileRequest(db, pruner.id, `fresh_${round}`, clock),
+        claimProfileRequest(db, claimer.id, name, clock),
+      ]);
+      expect(granted).toEqual({ ok: true });
+      expect(await claimProfileRequest(db, third.id, name, clock)).toMatchObject({
+        ok: false,
+        reason: "username_interval",
+      });
+    }
+  });
+
+  it("a slot row deleted while a request waits for its lock still gets that request's window", async () => {
+    const [claimer, third] = [await newUser(), await newUser()];
+    const name = "stale_locked";
+    await db.execute(sql`
+      insert into chesscom_profile_requests (username, requested_at)
+      values (${name}, ${new Date(clock.getTime() - 120 * MINUTE).toISOString()}::timestamptz)`);
+    // Play the pruner by hand: hold the row's lock, let the claim queue behind it, then delete.
+    const pruner = await db.$client.reserve();
+    try {
+      await pruner`begin`;
+      await pruner`select 1 from chesscom_profile_requests where username = ${name} for update`;
+      const pending = claimProfileRequest(db, claimer.id, name, clock);
+      for (let waiting = 0; waiting === 0; ) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        const [row] = await db.$client<{ n: number }[]>`
+          select count(*)::int as n from pg_stat_activity
+          where wait_event_type = 'Lock' and query ilike '%from chesscom_profile_requests%for update%'`;
+        waiting = row?.n ?? 0;
+      }
+      await pruner`delete from chesscom_profile_requests where username = ${name}`;
+      await pruner`commit`;
+      expect(await pending).toEqual({ ok: true });
+    } finally {
+      pruner.release();
+    }
+    expect(await claimProfileRequest(db, third.id, name, clock)).toMatchObject({
+      ok: false,
+      reason: "username_interval",
     });
   });
 
