@@ -13,6 +13,11 @@ allow = ["MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC", "Unicode-3.
 confidence-threshold = 0.9
 # The allowlist is fixed by the plan; not every licence on it occurs today.
 unused-allowed-license = "allow"
+# cargo-deny skips crates reachable only through dev-dependencies in the licence check unless
+# this is set (it defaults to false). Test-only crates (wiremock, jsonschema, ...) are linked
+# into test binaries we build and run, so they get the same licence rules (ADR 0031).
+# Build-dependencies are already checked, and advisories already cover the whole graph.
+include-dev = true
 
 [licenses.private]
 # Workspace crates are `publish = false` and `license = "UNLICENSED"`.
