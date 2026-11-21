@@ -1068,15 +1068,20 @@ async fn dequeue_skips_a_locked_row_instead_of_blocking(pool: PgPool) {
         .await
         .unwrap()
         .unwrap();
+    // Warm a second connection first, so the dequeue never waits on a cold connect under load.
+    let warm = (pool.acquire().await.unwrap(), pool.acquire().await.unwrap());
+    drop(warm);
     let mut tx = pool.begin().await.unwrap();
     sqlx::query("SELECT 1 FROM jobs WHERE id = $1 FOR UPDATE")
         .bind(first)
         .execute(&mut *tx)
         .await
         .unwrap();
-    let jobs = tokio::time::timeout(Duration::from_secs(5), q.dequeue(&[KIND], "w", 1, LEASE))
+    // Above the 2 s query timeout plus the 5 s client backstop, so a blocking claim is caught by
+    // the queue's own timeout (the inner Err), not by this outer bound.
+    let jobs = tokio::time::timeout(Duration::from_secs(10), q.dequeue(&[KIND], "w", 1, LEASE))
         .await
-        .expect("dequeue did not block")
+        .expect("dequeue returned")
         .expect("dequeue did not time out");
     assert_eq!(jobs.iter().map(|j| j.id).collect::<Vec<_>>(), vec![second]);
     tx.rollback().await.unwrap();

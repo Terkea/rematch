@@ -9,15 +9,21 @@
 //!    (`hung_active`: left alone, its deadline or the reaper ends it).
 //! 3. In both sweeps a game at [`MAX_ANALYSIS_ATTEMPTS`] is marked failed instead (poison games)
 //!    and `job.failed` is published.
-//! 4. `running` import runs with a stale heartbeat are closed as failed and their account's import
-//!    is enqueued again.
+//! 4. `running` import runs with a stale heartbeat: their account's import is enqueued again,
+//!    then the runs are closed as failed.
 //! 5. Accounts whose newest run is `paused` and that have no live import job get one (the job
 //!    reuses the paused run, T21). Changed from TS, where BullMQ kept the delayed job.
 //! 6. Retention: user events (7 days), finished jobs ([`Retention::default`]) and `job_metrics`
 //!    (30 days).
 //!
-//! Each step is its own short statement or transaction, so a sweep that is cut off part-way
-//! leaves nothing half-done; the next sweep picks up the rest.
+//! Interruption: there is no sweep-wide transaction, so a sweep cut off part-way (shutdown, a
+//! lost connection, a crash) can stop between two writes. The writes are ordered so that
+//! whatever such a stop leaves behind is found and repaired by the next sweep:
+//! - a stale import run is closed only after its import is enqueued (step 4);
+//! - a stale game reset to `pending` before its enqueue is caught by step 1 once
+//!   `pending_grace` has passed;
+//! - the one loss is a `job.failed` event when the stop falls between a game's failed update and
+//!   its publish. Clients see the failed status on their next refetch.
 
 use std::collections::HashMap;
 use std::time::Duration;
@@ -99,25 +105,40 @@ struct GameRow {
     id: Uuid,
     account_id: Uuid,
     analysis_attempts: i32,
+    /// Old enough for this sweep (past the grace or the stale cutoff).
+    due: bool,
 }
 
-/// `$1` the status, `$2` the age cutoff in seconds, `$3` the last id of the previous page (or
-/// NULL), `$4` the page size. The age column differs per sweep.
+/// One sweep page: a *window* of the next `$3` games of the status after the keyset cursor `$2`
+/// (NULL for the first), each flagged `due` when its age column is older than `$1` seconds.
+///
+/// The window has no other filter, so it is always an ordered range scan of
+/// `games_pending_id_idx (analysis_status, id) WHERE analysis_status IN ('pending',
+/// 'analysing')` that stops after `$3` entries. Filtering on the age in the scan instead lets
+/// the planner, which guesses that a third of rows pass, prefer a bitmap scan plus a top-N sort
+/// over the whole remaining range. The status is a literal, so even the generic plan proves the
+/// index predicate, and the cursor bound is sargable (`coalesce` to the nil uuid). The cursor
+/// advances to the window's last id, due or not.
 macro_rules! page_sql {
-    ($age:literal) => {
+    ($status:literal, $age:literal) => {
         concat!(
-            "SELECT id, account_id, analysis_attempts FROM games \
-             WHERE analysis_status = $1::analysis_status AND ",
+            "SELECT id, account_id, analysis_attempts, ",
             $age,
-            " < now() - make_interval(secs => $2) \
-             AND ($3::uuid IS NULL OR id > $3) ORDER BY id LIMIT $4"
+            " < now() - make_interval(secs => $1) AS due \
+             FROM games WHERE analysis_status = '",
+            $status,
+            "' AND id > coalesce($2::uuid, '00000000-0000-0000-0000-000000000000'::uuid) \
+             ORDER BY id LIMIT $3"
         )
     };
 }
 
-const PENDING_PAGE_SQL: &str = page_sql!("coalesce(pending_since, 'epoch'::timestamptz)");
-const STALE_PAGE_SQL: &str =
-    page_sql!("coalesce(heartbeat_at, analysis_started_at, 'epoch'::timestamptz)");
+const PENDING_PAGE_SQL: &str =
+    page_sql!("pending", "coalesce(pending_since, 'epoch'::timestamptz)");
+const STALE_PAGE_SQL: &str = page_sql!(
+    "analysing",
+    "coalesce(heartbeat_at, analysis_started_at, 'epoch'::timestamptz)"
+);
 
 const GIVE_UP_SQL: &str = "\
 UPDATE games SET analysis_status = 'failed', analysis_error = $3
@@ -129,11 +150,17 @@ const RESET_STALE_SQL: &str = "\
 UPDATE games SET analysis_status = 'pending', pending_since = now()
 WHERE id = $1 AND analysis_status = 'analysing' AND analysis_attempts = $2";
 
+/// `$1` the staleness in seconds (served by `import_runs_status_heartbeat_idx`).
 const STALE_RUNS_SQL: &str = "\
-UPDATE import_runs SET status = 'failed', finished_at = now(), last_error = $2,
+SELECT id, account_id FROM import_runs
+WHERE status = 'running' AND heartbeat_at < now() - make_interval(secs => $1)";
+
+/// Closes the runs read by [`STALE_RUNS_SQL`], fenced: a run that heartbeated or finished since
+/// it was read is left alone.
+const CLOSE_STALE_RUNS_SQL: &str = "\
+UPDATE import_runs SET status = 'failed', finished_at = now(), last_error = $3,
   error_code = 'timeout'
-WHERE status = 'running' AND heartbeat_at < now() - make_interval(secs => $1)
-RETURNING account_id";
+WHERE id = ANY($1) AND status = 'running' AND heartbeat_at < now() - make_interval(secs => $2)";
 
 /// Accounts whose newest run (the one the import job would reuse) is paused.
 const PAUSED_ACCOUNTS_SQL: &str = "\
@@ -162,13 +189,13 @@ pub async fn reconcile(
     let grace = opts.pending_grace.as_secs_f64();
     let mut after: Option<Uuid> = None;
     loop {
-        let page = fetch_page(pool, PENDING_PAGE_SQL, "pending", grace, after, page_size).await?;
-        let Some(last) = page.last() else { break };
-        after = Some(last.id);
-        let live = live_states(queue, &page).await?;
+        let page = fetch_page(pool, PENDING_PAGE_SQL, grace, after, page_size).await?;
+        let Some(last) = page.last else { break };
+        after = Some(last);
+        let live = live_states(queue, &page.due).await?;
         let mut exhausted = Vec::new();
         let mut lost = Vec::new();
-        for g in &page {
+        for g in &page.due {
             if live.contains_key(&analyse_key(g.id)) {
                 continue;
             }
@@ -180,7 +207,7 @@ pub async fn reconcile(
         }
         result.requeued_pending += enqueue_analysis_page(queue, &lost).await?;
         result.exhausted += give_up(pool, &exhausted, "pending").await?;
-        if (page.len() as i64) < page_size {
+        if (page.len as i64) < page_size {
             break;
         }
     }
@@ -189,20 +216,12 @@ pub async fn reconcile(
     let stale_after = opts.stale_after.as_secs_f64();
     let mut after: Option<Uuid> = None;
     loop {
-        let page = fetch_page(
-            pool,
-            STALE_PAGE_SQL,
-            "analysing",
-            stale_after,
-            after,
-            page_size,
-        )
-        .await?;
-        let Some(last) = page.last() else { break };
-        after = Some(last.id);
-        let live = live_states(queue, &page).await?;
+        let page = fetch_page(pool, STALE_PAGE_SQL, stale_after, after, page_size).await?;
+        let Some(last) = page.last else { break };
+        after = Some(last);
+        let live = live_states(queue, &page.due).await?;
         let mut exhausted = Vec::new();
-        for g in &page {
+        for g in &page.due {
             if live.get(&analyse_key(g.id)) == Some(&JobState::Running) {
                 // A worker holds the lease, so re-enqueueing would be a no-op and resetting the
                 // row would be a lie. Its deadline ends it; the next sweep sees the outcome.
@@ -226,23 +245,34 @@ pub async fn reconcile(
             enqueue_analysis(queue, g.id, g.account_id).await?;
         }
         result.exhausted += give_up(pool, &exhausted, "analysing").await?;
-        if (page.len() as i64) < page_size {
+        if (page.len as i64) < page_size {
             break;
         }
     }
 
-    // 4. Stale import runs: close them, then resume each account.
-    let stale_runs: Vec<Uuid> = sqlx::query_scalar(STALE_RUNS_SQL)
+    // 4. Stale import runs: enqueue each account's import first (deduped, so repeating it is
+    //    harmless), and only then close the runs. A sweep cut off in between leaves the runs
+    //    `running` and stale, so the next sweep finds them again; closing first could lose the
+    //    resume for good.
+    let stale_runs: Vec<(Uuid, Uuid)> = sqlx::query_as(STALE_RUNS_SQL)
         .bind(stale_after)
-        .bind(STALE_RUN_ERROR)
         .fetch_all(pool)
         .await?;
-    result.resumed_imports = stale_runs.len() as u64;
-    let mut accounts = stale_runs;
-    accounts.sort_unstable();
-    accounts.dedup();
-    for account in accounts {
-        enqueue_import(queue, account, None).await?;
+    if !stale_runs.is_empty() {
+        let mut accounts: Vec<Uuid> = stale_runs.iter().map(|r| r.1).collect();
+        accounts.sort_unstable();
+        accounts.dedup();
+        for account in accounts {
+            enqueue_import(queue, account, None).await?;
+        }
+        let ids: Vec<Uuid> = stale_runs.iter().map(|r| r.0).collect();
+        let closed = sqlx::query(CLOSE_STALE_RUNS_SQL)
+            .bind(&ids)
+            .bind(stale_after)
+            .bind(STALE_RUN_ERROR)
+            .execute(pool)
+            .await?;
+        result.resumed_imports = closed.rows_affected();
     }
 
     // 5. Paused runs with no live import job (an import that lost its released job).
@@ -286,21 +316,34 @@ pub async fn reconcile(
     Ok(result)
 }
 
+/// One window of a sweep (see [`page_sql`]).
+struct Page {
+    /// The window's due games.
+    due: Vec<GameRow>,
+    /// The window's highest id: the next cursor (`None` when the window is empty).
+    last: Option<Uuid>,
+    /// Games in the window; fewer than the page size means the sweep is done.
+    len: usize,
+}
+
 async fn fetch_page(
     pool: &PgPool,
     sql: &'static str,
-    status: &str,
     age_secs: f64,
     after: Option<Uuid>,
     limit: i64,
-) -> Result<Vec<GameRow>, sqlx::Error> {
-    sqlx::query_as(sql)
-        .bind(status)
+) -> Result<Page, sqlx::Error> {
+    let rows: Vec<GameRow> = sqlx::query_as(sql)
         .bind(age_secs)
         .bind(after)
         .bind(limit)
         .fetch_all(pool)
-        .await
+        .await?;
+    // Rust's `Uuid` order is Postgres's (bytewise), so the max is the window's last id.
+    let last = rows.iter().map(|g| g.id).max();
+    let len = rows.len();
+    let due = rows.into_iter().filter(|g| g.due).collect();
+    Ok(Page { due, last, len })
 }
 
 async fn live_states(
@@ -528,5 +571,64 @@ mod tests {
                 "coalesce(heartbeat_at, analysis_started_at, 'epoch'::timestamptz) < now()"
             )
         );
+    }
+
+    /// Both sweep windows read `games_pending_id_idx` in id order from the keyset cursor and stop after
+    /// `LIMIT` rows: no Seq Scan and no Sort (top-N) over every pending row, in both the custom and
+    /// the generic (cached) plan, for the first page (NULL cursor) and a later one.
+    #[sqlx::test(migrator = "db::MIGRATOR")]
+    async fn sweep_pages_are_index_ordered(pool: PgPool) {
+        sqlx::query(
+            "WITH a AS (INSERT INTO linked_accounts (platform, username, display_name) \
+               VALUES ('lichess', 'plan', 'plan') RETURNING id) \
+             INSERT INTO games (account_id, platform, platform_game_id, pgn, played_at, \
+               time_class, rated, player_color, white_name, black_name, result, \
+               analysis_status, pending_since) \
+             SELECT a.id, 'lichess', 'p-' || i, '1. e4 *', now(), 'blitz', true, 'white', 'w', \
+               'b', '*', CASE WHEN i % 10 < 3 THEN 'pending' WHEN i % 10 = 3 THEN 'analysing' \
+               ELSE 'done' END::analysis_status, now() - interval '1 hour' \
+             FROM a, generate_series(1, 100000) i",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query("ANALYZE games").execute(&pool).await.unwrap();
+        let mut conn = pool.acquire().await.unwrap();
+        for (name, sql) in [("pend", PENDING_PAGE_SQL), ("stale", STALE_PAGE_SQL)] {
+            sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
+                "PREPARE {name}(float8, uuid, int8) AS {sql}"
+            )))
+            .execute(&mut *conn)
+            .await
+            .unwrap();
+            for mode in ["force_custom_plan", "force_generic_plan"] {
+                sqlx::query("SELECT set_config('plan_cache_mode', $1, false)")
+                    .bind(mode)
+                    .execute(&mut *conn)
+                    .await
+                    .unwrap();
+                for after in ["NULL", "'7fffffff-ffff-ffff-ffff-ffffffffffff'"] {
+                    let plan: Vec<String> = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
+                        "EXPLAIN EXECUTE {name}(60, {after}, 1000)"
+                    )))
+                    .fetch_all(&mut *conn)
+                    .await
+                    .unwrap();
+                    let plan = plan.join("\n");
+                    let at = format!("{name} {mode} after={after}:\n{plan}");
+                    assert!(plan.contains("Scan using games_pending_id_idx"), "{at}");
+                    assert!(!plan.contains("Seq Scan"), "{at}");
+                    assert!(!plan.contains("Sort"), "{at}");
+                }
+            }
+            sqlx::raw_sql(sqlx::AssertSqlSafe(format!("DEALLOCATE {name}")))
+                .execute(&mut *conn)
+                .await
+                .unwrap();
+        }
+        sqlx::raw_sql("RESET plan_cache_mode")
+            .execute(&mut *conn)
+            .await
+            .unwrap();
     }
 }

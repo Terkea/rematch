@@ -5,6 +5,7 @@
 //! back-dated instead. Every margin is at least a minute, well above the ~3 s back-steps of the
 //! Docker VM clock (ADR 0032).
 
+use futures::FutureExt;
 use std::time::Duration;
 
 use analysis::jobs::reconcile::{
@@ -548,7 +549,7 @@ async fn page_enqueue_matches_queue_enqueue(pool: PgPool) {
         async move {
             sqlx::query_as::<_, Row>(
                 "SELECT kind, payload, dedupe_key, user_key, priority, max_attempts, attempts, \
-                 max_stalls, state::text, recur_every IS NULL, run_at <= now() FROM jobs \
+                 max_stalls, state::text, recur_every IS NULL, run_at = created_at FROM jobs \
                  WHERE dedupe_key = $1",
             )
             .bind(analyse_key(id))
@@ -565,4 +566,95 @@ async fn page_enqueue_matches_queue_enqueue(pool: PgPool) {
     };
     assert_eq!(strip(a, single), strip(b, paged));
     assert_eq!(enqueue_analysis_page(&queue, &[]).await.unwrap(), 0);
+}
+
+/// A sweep cut off after enqueueing a stale run's import but before closing the run (here: the
+/// close blocks on a row lock and the sweep is dropped) leaves the run `running` and stale, so
+/// the next sweep finds it again, enqueues the import again (the first job was lost meanwhile)
+/// and closes the run. Closing first would have lost the resume for good.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn an_interrupted_sweep_still_resumes_the_stale_import(pool: PgPool) {
+    let queue = Queue::new(pool.clone());
+    let acct = insert_account(&pool, "chesscom", "interrupted").await;
+    let run: Uuid = sqlx::query_scalar(
+        "INSERT INTO import_runs (account_id, status, started_at, heartbeat_at) \
+         VALUES ($1, 'running', now() - interval '1 hour', now() - interval '11 minutes') \
+         RETURNING id",
+    )
+    .bind(acct)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+
+    let mut lock = pool.begin().await.unwrap();
+    sqlx::query("SELECT 1 FROM import_runs WHERE id = $1 FOR UPDATE")
+        .bind(run)
+        .execute(&mut *lock)
+        .await
+        .unwrap();
+    {
+        let opts = opts();
+        let sweep = reconcile(&pool, &queue, &opts);
+        tokio::pin!(sweep);
+        let blocked = async {
+            loop {
+                let waiting: i64 = sqlx::query_scalar(
+                    "SELECT count(*) FROM pg_stat_activity WHERE wait_event_type = 'Lock' \
+                     AND datname = current_database() AND query LIKE 'UPDATE import_runs%'",
+                )
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+                if waiting > 0 {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        };
+        tokio::select! {
+            res = &mut sweep => panic!("the sweep finished despite the lock: {res:?}"),
+            () = tokio::time::timeout(Duration::from_secs(20), blocked).map(|r| r.expect("close blocked")) => {}
+        }
+        // The import was enqueued before the close was attempted.
+        assert_eq!(
+            live_jobs(&pool, KIND_IMPORT, &import_key(acct)).await.len(),
+            1
+        );
+    } // the sweep is dropped here: cut off mid-close
+    // The dropped connection's UPDATE may still be waiting server-side; cancel it so it cannot
+    // complete the close behind the test's back.
+    sqlx::query(
+        "SELECT pg_cancel_backend(pid) FROM pg_stat_activity WHERE wait_event_type = 'Lock' \
+         AND datname = current_database() AND query LIKE 'UPDATE import_runs%'",
+    )
+    .execute(&mut *lock)
+    .await
+    .unwrap();
+    lock.rollback().await.unwrap();
+    let st: String = sqlx::query_scalar("SELECT status::text FROM import_runs WHERE id = $1")
+        .bind(run)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(st, "running", "the cut-off sweep did not close the run");
+
+    // Meanwhile the enqueued import was lost (as in "drop the job").
+    sqlx::query("DELETE FROM jobs WHERE dedupe_key = $1")
+        .bind(import_key(acct))
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let res = sweep(&pool).await;
+    assert_eq!(res.resumed_imports, 1);
+    assert_eq!(
+        live_jobs(&pool, KIND_IMPORT, &import_key(acct)).await.len(),
+        1
+    );
+    let st: String = sqlx::query_scalar("SELECT status::text FROM import_runs WHERE id = $1")
+        .bind(run)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(st, "failed");
 }
