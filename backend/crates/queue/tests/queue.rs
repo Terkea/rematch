@@ -62,10 +62,16 @@ fn retryable(msg: &str) -> JobError {
     }
 }
 
+/// How far the database clock may step back between a write of `now() + x` and a later read of
+/// `x - now()` (ADR 0032; up to 3.2 s measured in the Docker Desktop VM). A step back only makes
+/// the remaining time look longer, so it widens the upper bound alone.
+const CLOCK_STEP: f64 = 3.5;
+
 fn assert_near(actual: f64, expected: f64, tolerance: f64) {
+    let (low, high) = (expected - tolerance, expected + tolerance + CLOCK_STEP);
     assert!(
-        (actual - expected).abs() <= tolerance,
-        "expected {expected} ± {tolerance}, got {actual}"
+        (low..=high).contains(&actual),
+        "expected {expected} in [{low}, {high}], got {actual}"
     );
 }
 
@@ -228,7 +234,7 @@ async fn dequeue_orders_by_priority_then_run_at(pool: PgPool) {
         .unwrap()
         .unwrap();
     let high = q
-        .enqueue(KIND, &json!({"n": "high"}), mk(10, ago(1)))
+        .enqueue(KIND, &json!({"n": "high"}), mk(10, ago(5)))
         .await
         .unwrap()
         .unwrap();
@@ -240,11 +246,11 @@ async fn dequeue_orders_by_priority_then_run_at(pool: PgPool) {
 
     // A batch claim is returned in the same order.
     let ids: Vec<i64> = vec![
-        q.enqueue(KIND, &json!({}), mk(50, ago(5)))
+        q.enqueue(KIND, &json!({}), mk(50, ago(10)))
             .await
             .unwrap()
             .unwrap(),
-        q.enqueue(KIND, &json!({}), mk(5, ago(1)))
+        q.enqueue(KIND, &json!({}), mk(5, ago(5)))
             .await
             .unwrap()
             .unwrap(),
@@ -455,7 +461,7 @@ async fn future_run_at_is_not_dequeued(pool: PgPool) {
         .unwrap()
         .unwrap();
     assert!(q.dequeue(&[KIND], "w", 10, LEASE).await.unwrap().is_empty());
-    sqlx::query("UPDATE jobs SET run_at = now() - interval '1 second' WHERE id = $1")
+    sqlx::query("UPDATE jobs SET run_at = now() - interval '1 minute' WHERE id = $1")
         .bind(id)
         .execute(&pool)
         .await
@@ -465,28 +471,44 @@ async fn future_run_at_is_not_dequeued(pool: PgPool) {
 
 /// The database wall clock can step backwards (NTP, VM resync; the Docker Desktop VM steps back
 /// about 2.7 s every 27 s). A job enqueued to run at once must stay claimable, while a delayed
-/// job still waits for its `run_at`. Simulated by moving both rows 3 s ahead of the clock, which
-/// is what a later 3 s step back does.
+/// job still waits for its `run_at`. A step back of `d` after the enqueue is simulated by moving
+/// the row's times `d` ahead of the clock. The immediate row is moved 1 h and the control row
+/// (delayed by 1 s) only 3 s, so no "due within a tolerance" rule can pass both: immediacy is
+/// `run_at <= created_at`, not closeness to `now()`.
 #[sqlx::test(migrator = "db::MIGRATOR")]
 async fn an_immediate_job_stays_claimable_after_the_clock_steps_back(pool: PgPool) {
     let q = Queue::new(pool.clone());
-    let now_id = q
-        .enqueue(KIND, &json!({}), EnqueueOptions::default())
-        .await
-        .unwrap()
-        .unwrap();
-    let delayed = EnqueueOptions {
-        run_at: Some(OffsetDateTime::now_utc() + time::Duration::hours(1)),
-        ..EnqueueOptions::default()
+    let enqueue = |run_at| {
+        let q = q.clone();
+        async move {
+            let opts = EnqueueOptions {
+                run_at,
+                ..EnqueueOptions::default()
+            };
+            q.enqueue(KIND, &json!({}), opts).await.unwrap().unwrap()
+        }
     };
-    q.enqueue(KIND, &json!({}), delayed).await.unwrap().unwrap();
-    sqlx::query(
-        "UPDATE jobs SET created_at = created_at + interval '3 seconds', \
-           run_at = run_at + interval '3 seconds'",
+    let now_id = enqueue(None).await;
+    let control = enqueue(None).await;
+    enqueue(Some(OffsetDateTime::now_utc() + time::Duration::hours(1))).await;
+    let shift = |id: i64, sql: &'static str| {
+        let pool = pool.clone();
+        async move {
+            sqlx::query(sql).bind(id).execute(&pool).await.unwrap();
+        }
+    };
+    shift(
+        now_id,
+        "UPDATE jobs SET created_at = created_at + interval '1 hour', \
+           run_at = run_at + interval '1 hour' WHERE id = $1",
     )
-    .execute(&pool)
-    .await
-    .unwrap();
+    .await;
+    shift(
+        control,
+        "UPDATE jobs SET created_at = created_at + interval '3 seconds', \
+           run_at = created_at + interval '4 seconds' WHERE id = $1",
+    )
+    .await;
     let ids: Vec<i64> = q
         .dequeue(&[KIND], "w", 10, LEASE)
         .await
@@ -495,6 +517,29 @@ async fn an_immediate_job_stays_claimable_after_the_clock_steps_back(pool: PgPoo
         .map(|j| j.id)
         .collect();
     assert_eq!(ids, vec![now_id], "only the immediate job is due");
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn dequeue_claims_several_kinds_in_one_call(pool: PgPool) {
+    let q = Queue::new(pool.clone());
+    let mut want = Vec::new();
+    for kind in [KIND, "import-account", "reconcile"] {
+        let id = q.enqueue(kind, &json!({}), EnqueueOptions::default()).await;
+        want.push(id.unwrap().unwrap());
+    }
+    let got: Vec<i64> = q
+        .dequeue(&[KIND, "import-account"], "w", 10, LEASE)
+        .await
+        .unwrap()
+        .iter()
+        .map(|j| j.id)
+        .collect();
+    assert_eq!(got, want[..2], "both named kinds, in claim order");
+    assert_eq!(
+        row(&pool, want[2]).await.state,
+        "queued",
+        "other kinds wait"
+    );
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
@@ -518,7 +563,7 @@ async fn retryable_failure_backs_off_exponentially(pool: PgPool) {
     assert_eq!(r.last_error.as_deref(), Some("boom"));
     assert_eq!(r.lease_token, None, "the lease is cleared");
 
-    sqlx::query("UPDATE jobs SET run_at = now() WHERE id = $1")
+    sqlx::query("UPDATE jobs SET run_at = now() - interval '1 minute' WHERE id = $1")
         .bind(id)
         .execute(&pool)
         .await
@@ -542,7 +587,7 @@ async fn final_retryable_failure_is_dead(pool: PgPool) {
         .unwrap()
         .unwrap();
     for attempt in 1..=3 {
-        sqlx::query("UPDATE jobs SET run_at = now() WHERE id = $1")
+        sqlx::query("UPDATE jobs SET run_at = now() - interval '1 minute' WHERE id = $1")
             .bind(id)
             .execute(&pool)
             .await
@@ -641,9 +686,10 @@ async fn release_on_the_final_attempt_is_not_dead(pool: PgPool) {
     };
     let out = q.fail(&job, &shutdown, Backoff::default()).await.unwrap();
     assert!(matches!(out, FailOutcome::Released { .. }), "{out:?}");
+    // A zero-delay release keeps the job's place: `run_at` is unchanged (ADR 0032).
+    assert_eq!(out, FailOutcome::Released { run_at: job.run_at });
     let r = row(&pool, id).await;
     assert_eq!((r.state.as_str(), r.attempts), ("queued", 2));
-    assert_near(r.run_in, 0.0, 1.0);
     // A fresh worker gets the final attempt again and can complete it.
     let again = claim_one(&q).await;
     assert_eq!(again.attempts, 3);
@@ -679,7 +725,7 @@ async fn recurring_job_requeues_on_complete_and_failure(pool: PgPool) {
     assert_near(r.run_in, 300.0, 2.0);
     assert!(!r.finished);
 
-    sqlx::query("UPDATE jobs SET run_at = now() WHERE id = $1")
+    sqlx::query("UPDATE jobs SET run_at = now() - interval '1 minute' WHERE id = $1")
         .bind(id)
         .execute(&pool)
         .await
@@ -696,7 +742,7 @@ async fn recurring_job_requeues_on_complete_and_failure(pool: PgPool) {
     assert_near(r.run_in, 300.0, 2.0);
     assert_eq!(r.last_error.as_deref(), Some("db down"));
 
-    sqlx::query("UPDATE jobs SET run_at = now() WHERE id = $1")
+    sqlx::query("UPDATE jobs SET run_at = now() - interval '1 minute' WHERE id = $1")
         .bind(id)
         .execute(&pool)
         .await
