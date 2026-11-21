@@ -18,7 +18,7 @@ The coaching layer calls Claude for report sections, change notes, weekly review
 | Change notes | `claude-haiku-5-5` | `low` |
 | Weekly review | `claude-haiku-5-5` | `low` |
 
-- Exact ids, with no date suffix. `cost::pricing` matches ids exactly, so a dated snapshot is an unknown model.
+- Exact ids, with no date suffix. `PricingTable::get` matches ids exactly, so a dated snapshot is an unknown model.
 - Effort is always sent in `output_config.effort`, because Haiku 5.5 defaults to `medium`.
 - `thinking` is never sent. Both models run adaptive thinking by default, and depth is set only by effort.
 - These are never serialised:
@@ -39,6 +39,18 @@ The weekly review summarises facts that were already computed and validated into
 
 Source: https://platform.claude.com/docs/en/about-claude/pricing, read on 2026-11-21 (ruling Q5: re-check live at T9). We also compared it with the `claude-api` skill's model table (cached 2026-10-06). Prices only; no API call was made.
 
+**Prices come from validated config (fix round 1).**
+- `cost_micro_usd(&PricingTable, model, usage, batch)` takes a `PricingTable`. The binary loads it once at startup with `PricingTable::from_env()`:
+  - when `AI_PRICING_FILE` names a JSON file, that file is used;
+  - otherwise the compiled-in dated seed `MODEL_PRICING` is used.
+- The format is documented in `ai::client::cost`. The seed file is `backend/crates/ai/config/pricing.json`. Its header fields `source` (the URL above), `as_of` (`2026-11-21`) and `unit` record where and when the prices were read, and a test keeps the file equal to the const.
+- The table is validated before use. An invalid table is a startup error, not a silent default:
+  - every `AiModel::ALL` id must be priced;
+  - every rate must be finite and ≥ 0, with at most 3 decimals, so the integer metering stays exact;
+  - `long_prompt.above` must be > 0;
+  - unknown keys are rejected.
+- A price change is a config change (plus a dated header) rather than a code change. Changing the seed still needs a code change and this ADR.
+
 | Model | Input | Output | Cache write (5 min) | Cache read | Long-prompt tier |
 |---|---|---|---|---|---|
 | `claude-sonnet-5-5` | 2.00 | 10.00 | 2.50 | **0.10** | none (1M context at standard rates) |
@@ -48,6 +60,7 @@ Source: https://platform.claude.com/docs/en/about-claude/pricing, read on 2026-1
 - The long-prompt threshold counts input + cache write + cache read tokens and is strictly "above". Each request is priced on its own.
 - The Batch API halves the cost. The cache multipliers stack with it.
 - `cost_micro_usd` uses exact integer arithmetic: rates are converted to thousandths of a micro-USD, so every rate in the table is exact. It rounds half up to whole micro-USD.
+- **Only the 5-minute TTL is priced.** We send `cache_control: {"type":"ephemeral"}` only. If a 1-hour TTL (`"ttl":"1h"`) is ever adopted, metering must read `usage.cache_creation.ephemeral_1h_input_tokens` separately and price it at the 2x input rate (Sonnet 5.5: 4.00; Haiku 5.5: 0.20, or 1.00 above the long-prompt threshold). `cache_creation_input_tokens` mixes both TTLs.
 - The minimum cacheable prefix is 512 tokens on both models (prompt-caching docs, re-checked 2026-11-21). A request has at most 4 breakpoints.
 - **Unknown response models.** `cost_micro_usd` returns `AiError::UnknownModel` for an id it does not price. That id is redacted, and the error never contains a key. The metering site prices a response whose `model` is not in the table at the **requested** model's rates and logs a `warn` with both ids. A surprise model id then never loses a usage row and never stops a job.
 
@@ -59,9 +72,12 @@ Source: https://platform.claude.com/docs/en/about-claude/pricing, read on 2026-1
   - 5xx gives `Unavailable(Server)`;
   - 401/403 give `Auth`;
   - any other status gives `Request { status, api_error_type }`.
+  - 402 (`billing_error`), 413 and every other 4xx are non-retryable `Request` errors.
 - Transport errors are classified the same way:
+  - reqwest builder and redirect errors are configuration faults. They give the fatal `Request { status: 0, api_error_type: "client_builder_error" | "client_redirect_error" }`, never a retryable error;
   - a body that does not decode gives `Response` with fixed text, because serde messages can echo content;
   - everything else gives `Unavailable(Connection)`.
+- **Open for the retry task (`client/retry.rs`): 408 and 409.** The Anthropic SDKs retry 408 (request timeout) and 409 (conflict), as well as 429, 5xx and connection errors. Here they are currently plain `Request` errors, so they are not retried. The retry task decides on parity. The likely choice is to retry them with the same backoff as `Server`, while keeping the taxonomy unchanged.
 - Errored batch items are classified by type:
   - `overloaded_error`/`api_error` are retryable;
   - `invalid_request_error`/`authentication_error`/`permission_error` are fatal;

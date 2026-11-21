@@ -1,9 +1,9 @@
 //! The exact JSON the client sends to and reads from the Messages and Batches APIs.
 //!
 //! Requests are plain structs, so their top-level field order is fixed by declaration order;
-//! `None` fields are omitted. Content blocks are raw [`Value`]s (sorted keys, since
-//! `serde_json/preserve_order` is off workspace-wide), so their bytes are deterministic, which
-//! keeps the prompt-cache prefix stable. Responses ignore unknown fields.
+//! `None` fields are omitted. Content blocks are raw [`Value`]s, deterministically re-serialised
+//! (sorted keys, since `serde_json/preserve_order` is off workspace-wide), which keeps the
+//! prompt-cache prefix stable. Responses ignore unknown fields.
 //!
 //! Never sent (Global Constraints): `temperature`, `top_p`, `top_k`, `thinking`,
 //! `budget_tokens`, `fallbacks`, a forced `tool_choice`, or any `anthropic-beta` header.
@@ -188,7 +188,8 @@ impl WireUsage {
     }
 }
 
-/// A Messages response. `content` stays raw so it can be replayed byte-for-byte.
+/// A Messages response. `content` stays raw [`Value`]s; when replayed they are
+/// deterministically re-serialised (sorted keys).
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 pub struct MessageResponse {
     pub id: String,

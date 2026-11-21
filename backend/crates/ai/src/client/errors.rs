@@ -63,10 +63,31 @@ pub fn classify_status(
     }
 }
 
-/// Maps a reqwest failure: a body that does not decode is [`AiError::Response`]; every other
-/// failure (connect, timeout, a broken body stream) is `Unavailable(Connection)`. The message
-/// is fixed text: reqwest and serde messages can echo URLs or response content.
+/// `api_error_type` of the fatal (non-retryable) [`AiError::Request`] for a request reqwest
+/// could not build (bad URL or header), with `status: 0` since no response exists.
+pub const CLIENT_BUILDER_ERROR: &str = "client_builder_error";
+/// The same for a redirect policy failure (the API never redirects; a redirect is a
+/// misconfigured base URL).
+pub const CLIENT_REDIRECT_ERROR: &str = "client_redirect_error";
+
+/// Maps a reqwest failure:
+/// - a builder or redirect error is a configuration fault: the fatal `Request { status: 0 }`;
+/// - a body that does not decode is [`AiError::Response`];
+/// - every other failure (connect, timeout, a broken body stream) is `Unavailable(Connection)`.
+///
+/// Messages are fixed text: reqwest and serde messages can echo URLs or response content.
 pub fn classify_transport(e: &reqwest::Error) -> AiError {
+    if e.is_builder() || e.is_redirect() {
+        let kind = if e.is_builder() {
+            CLIENT_BUILDER_ERROR
+        } else {
+            CLIENT_REDIRECT_ERROR
+        };
+        return AiError::Request {
+            status: 0,
+            api_error_type: Some(kind.to_owned()),
+        };
+    }
     if e.is_decode() {
         return AiError::Response(redact("response body could not be decoded"));
     }

@@ -9,10 +9,13 @@ use regex::Regex;
 
 pub const CUSTOM_ID_MAX: usize = 64;
 
-static SCHEMA_ID: LazyLock<Regex> = LazyLock::new(|| Regex::new("^[A-Za-z0-9-]+$").unwrap());
-static REFERENCE: LazyLock<Regex> = LazyLock::new(|| Regex::new("^[A-Za-z0-9_-]+$").unwrap());
-static CUSTOM_ID: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^([A-Za-z0-9-]+)__v(\d+)__([A-Za-z0-9_-]+)$").unwrap());
+static SCHEMA_ID: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new("^[A-Za-z0-9-]+$").expect("valid schema id pattern"));
+static REFERENCE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new("^[A-Za-z0-9_-]+$").expect("valid reference pattern"));
+static CUSTOM_ID: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^([A-Za-z0-9-]+)__v(\d+)__([A-Za-z0-9_-]+)$").expect("valid custom id pattern")
+});
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct CustomIdParts {

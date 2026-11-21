@@ -5,7 +5,8 @@
 use std::time::{Duration, SystemTime};
 
 use ai::client::errors::{
-    classify_batch_error_type, classify_status, classify_transport, parse_retry_after, redact,
+    CLIENT_BUILDER_ERROR, CLIENT_REDIRECT_ERROR, classify_batch_error_type, classify_status,
+    classify_transport, parse_retry_after, redact,
 };
 use ai::client::model::{AiModel, Effort};
 use ai::client::port::{
@@ -47,6 +48,30 @@ fn _401_and_403_are_ai_auth_error() {
             AiError::Auth { status }
         );
     }
+}
+
+#[test]
+fn _402_billing_error_and_413_are_non_retryable_requests() {
+    let t = error_type(r#"{"type":"error","error":{"type":"billing_error","message":"m"}}"#);
+    let e = classify_status(402, t.as_deref(), Some(Duration::from_secs(3)));
+    assert_eq!(
+        e,
+        AiError::Request {
+            status: 402,
+            api_error_type: Some("billing_error".into())
+        }
+    );
+    assert!(!e.is_unavailable());
+    assert_eq!(e.retry_after(), None);
+    let e = classify_status(413, Some("request_too_large"), None);
+    assert_eq!(
+        e,
+        AiError::Request {
+            status: 413,
+            api_error_type: Some("request_too_large".into())
+        }
+    );
+    assert!(!e.is_unavailable());
 }
 
 #[test]
@@ -228,6 +253,46 @@ async fn decode_errors_are_response_errors_without_content() {
     }
 }
 
+#[tokio::test]
+async fn builder_errors_are_fatal_requests() {
+    let e = http().get("not a url").send().await.unwrap_err();
+    assert!(e.is_builder());
+    let c = classify_transport(&e);
+    assert_eq!(
+        c,
+        AiError::Request {
+            status: 0,
+            api_error_type: Some(CLIENT_BUILDER_ERROR.into())
+        }
+    );
+    assert!(!c.is_unavailable());
+}
+
+#[tokio::test]
+async fn redirect_errors_are_fatal_requests() {
+    let server = MockServer::start().await;
+    Mock::given(any())
+        .respond_with(
+            ResponseTemplate::new(302).insert_header("location", format!("{}/x", server.uri())),
+        )
+        .mount(&server)
+        .await;
+    let _ = rustls::crypto::ring::default_provider().install_default();
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::limited(0))
+        .build()
+        .unwrap();
+    let e = client.get(server.uri()).send().await.unwrap_err();
+    assert!(e.is_redirect(), "{e:?}");
+    assert_eq!(
+        classify_transport(&e),
+        AiError::Request {
+            status: 0,
+            api_error_type: Some(CLIENT_REDIRECT_ERROR.into())
+        }
+    );
+}
+
 // ---- redaction --------------------------------------------------------------------------------
 
 #[test]
@@ -289,7 +354,8 @@ async fn errors_never_render_a_key() {
 }
 
 fn cost_unknown(model: &str, u: &AiUsage) -> AiError {
-    ai::client::cost::cost_micro_usd(model, u, false).unwrap_err()
+    let table = ai::client::cost::PricingTable::seed();
+    ai::client::cost::cost_micro_usd(&table, model, u, false).unwrap_err()
 }
 
 // ---- wire shapes ------------------------------------------------------------------------------

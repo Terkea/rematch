@@ -1,0 +1,26 @@
+{
+  "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+  "as_of": "2026-11-21",
+  "unit": "USD per MTok (= micro-USD per token); cache_write is the 5-minute TTL rate; at most 3 decimals; the Batch API is 50%",
+  "models": {
+    "claude-haiku-5-5": {
+      "input": 0.1,
+      "output": 0.5,
+      "cache_write": 0.125,
+      "cache_read": 0.01,
+      "long_prompt": {
+        "above": 100000,
+        "input": 0.5,
+        "output": 2.5,
+        "cache_write": 0.625,
+        "cache_read": 0.05
+      }
+    },
+    "claude-sonnet-5-5": {
+      "input": 2.0,
+      "output": 10.0,
+      "cache_write": 2.5,
+      "cache_read": 0.1
+    }
+  }
+}
