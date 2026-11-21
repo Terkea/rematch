@@ -1,7 +1,7 @@
 # ADR-WEB-n. Piece set
 
 Date: 2026-11-21
-Status: Proposed (placeholder; the owner makes the final taste call, and the controller assigns the number)
+Status: Accepted (owner decision, 2026-11-21; the controller assigns the number)
 
 ## Context
 
@@ -17,12 +17,19 @@ The licences were read on 2026-11-21. Details are in `packages/ui/design/referen
 | Chessnut (Alexis Luengas) | Apache-2.0 | github.com/LexLuengas/chessnut-pieces |
 | RhosGFX | CC0 1.0 | lichess-org/lila, `public/piece/rhosgfx` |
 
-## Decision (proposed)
+## Decision
 
-Use **Cburnett under its BSD-3-Clause option**, taken from Wikimedia Commons, recoloured at build time to the piece tokens. Ship the BSD notice and attribution on `/licenses`.
+Piece sets are **user-configurable** ("Pieces" in Settings, under Board, stored per user and applied to every board).
+
+- **Default: Cburnett, under its BSD-3-Clause option.** It is taken from Wikimedia Commons, not from Lichess's GPL-labelled copy, and recoloured at build time to `--color-piece-dark` and `--color-piece-light`. The BSD notice and attribution go on `/licenses`.
+- **Option: Chessnut, under Apache-2.0.** It is taken from github.com/LexLuengas/chessnut-pieces and recoloured the same way. The Apache-2.0 licence and attribution go on `/licenses`.
+- **Not offered: RhosGFX.** Its multi-colour, warm palette breaks the recolouring rules (ban `B1`).
+- **Reserved:** a slot for a future commissioned signature set, which needs a written licence or assignment to us.
+- **Licence gate for any future set:** no GPL, AGPL, NC, freeware or unlicensed sets. The licence, author and exact source are recorded in REFERENCES.md and here before the set is added, and attribution goes on `/licenses`. Every set must pass the recolouring rules in DESIGN.md, "Piece sets".
 
 ## Consequences
 
 - The pieces are modified (recoloured), which BSD-3-Clause permits as long as the notice is kept.
 - The most familiar silhouettes in online chess help players read positions fast. The trade-off is that the set is familiar rather than unique, and the board's identity comes from the squares, the marks and the motion.
-- If the owner prefers Chessnut, the Apache-2.0 NOTICE and licence go on `/licenses` instead. RhosGFX would need a redraw to fit the palette (ban `B1`).
+- Shipping two sets means two build-time sprite sets per theme. That cost is small, but it is a cost.
+- Both sets' licence texts must be on `/licenses` from the first release that offers them.

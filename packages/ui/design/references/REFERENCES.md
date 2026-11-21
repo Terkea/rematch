@@ -31,6 +31,7 @@ Inspired by: Lichess studies with drawn shapes, https://lichess.org/study (colou
 
 - **Take:** colour equals meaning. In our system, red pen is the mistake, green is the better move or the punishment, and pencil is a plan.
 - **Don't copy:** uniform, translucent, constant-width strokes. The top-left pair shows the difference at thumbnail size: a mechanical circle and arrow next to ours, which is a tilted, tapered spiral with an unequal two-stroke head on a sheet halo.
+- **Round 2:** rings are ellipses with rx/ry ≈ 1.12, and the large hand-drawn arrow reaches its ring and shows its bow.
 - **Also shown:** the severity scale (blunder, mistake, inaccuracy, good move, brilliant) with the glyph-badge and head-shape redundancy; the marks in day and night; and the draw sequence at 200, 360, 520 and 720ms.
 
 ## 3. The ruled scoresheet and red corrections
@@ -55,21 +56,21 @@ Inspired by: J. Löwenthal (ed.), *Morphy's Games: a selection of the best games
 
 File: `05-night-study-analysis.png`
 
-Reference 1 recomposed in the night theme, to check that night keeps the "desk lamp" character: navy paper, a lighter navy sheet, near-white ink, the warmer night pen, the halo on every mark, `well`-outlined pieces and coordinates that switch colour by square. No external source.
+Reference 1 recomposed in the night theme, with the round 2 night board (`#8796B5` and `#5A6A8C`) and night green (`#76D3A4`), to check that night keeps the "desk lamp" character: navy paper, a lighter navy sheet, near-white ink, the warmer night pen, the halo on every mark, `well`-outlined pieces and coordinates that switch colour by square. No external source.
 
 ## 6. Piece sets
 
 File: `06-piece-set-candidates.png`
 
-Three candidates whose licences allow shipping in a closed-source commercial web app, shown on our squares in day and night. GPL, AGPL, non-commercial (NC) and "freeware" sets were excluded first. Licences were read from the sources below on 2026-11-21.
+Three candidates whose licences allow shipping in a closed-source commercial web app, shown on our squares in day and night. **Owner decision (round 2): piece sets are user-configurable. Cburnett is the default, Chessnut is an option, and RhosGFX is not offered.** GPL, AGPL, non-commercial (NC) and "freeware" sets were excluded first. Licences were read from the sources below on 2026-11-21.
 
 | Set | Author | Licence | Source | Notes |
 |---|---|---|---|---|
-| **Cburnett (recommended)** | Colin M.L. Burnett | Multi-licensed on Commons: GFDL 1.2+, CC BY-SA 3.0, **BSD-3-Clause** or GPLv2+, at the user's choice. We take BSD-3-Clause. | https://commons.wikimedia.org/wiki/File:Chess_klt45.svg and its siblings (`Chess_{k,q,r,b,n,p}{l,d}t45.svg`) | Flat outlines, 1.5px stroke at 45px. It recolours with two values and has the most familiar silhouettes. The BSD notice and attribution go on `/licenses`. Take the files from Commons, not from Lichess's repo, where Lichess lists its copy as GPLv2+. |
-| Chessnut | Alexis Luengas | Apache-2.0 (`LICENSE.txt` in the repo) | https://github.com/LexLuengas/chessnut-pieces (also in `lichess-org/lila`, `public/piece/chessnut`) | Clean and modern, with heavier fills, and it recolours well. Rounder and more toy-like, and its fills dominate our low-contrast squares. The NOTICE and licence go on `/licenses`. |
-| RhosGFX | RhosGFX | CC0 1.0 | `lichess-org/lila`, `public/piece/rhosgfx` (licence listed in lila's `COPYING.md`) | The freest licence, but a multi-colour illustration set in warm orange and clay. It collides with `B1` and would need a full redraw to fit the palette. |
+| **Cburnett (default)** | Colin M.L. Burnett | Multi-licensed on Commons: GFDL 1.2+, CC BY-SA 3.0, **BSD-3-Clause** or GPLv2+, at the user's choice. We take BSD-3-Clause. | https://commons.wikimedia.org/wiki/File:Chess_klt45.svg and its siblings (`Chess_{k,q,r,b,n,p}{l,d}t45.svg`) | Flat outlines, 1.5px stroke at 45px. It recolours with two values and has the most familiar silhouettes. The BSD notice and attribution go on `/licenses`. Take the files from Commons, not from Lichess's repo, where Lichess lists its copy as GPLv2+. |
+| Chessnut (option) | Alexis Luengas | Apache-2.0 (`LICENSE.txt` in the repo) | https://github.com/LexLuengas/chessnut-pieces (also in `lichess-org/lila`, `public/piece/chessnut`) | Clean and modern, with heavier fills, and it recolours well. Rounder and more toy-like, and its fills dominate our low-contrast squares. The NOTICE and licence go on `/licenses`. |
+| RhosGFX (not offered) | RhosGFX | CC0 1.0 | `lichess-org/lila`, `public/piece/rhosgfx` (licence listed in lila's `COPYING.md`) | The freest licence, but a multi-colour illustration set in warm orange and clay. It collides with `B1` and would need a full redraw to fit the palette. |
 
-The decision record is `docs/decisions/ADR-WEB-n-piece-set.md`. The owner makes the final taste call.
+The decision record is `docs/decisions/ADR-WEB-n-piece-set.md` (Accepted). Settings, recolouring rules and the licence gate are in DESIGN.md, "Piece sets".
 
 ## Regenerating
 
