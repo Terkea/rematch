@@ -1,0 +1,66 @@
+name: chess-improver
+
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: chess
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d chess"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7
+    ports:
+      - "127.0.0.1:56379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+      target: dev
+    working_dir: /app
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/chess
+      DATABASE_URL_TEST: postgres://postgres:postgres@postgres:5432/chess_test
+      REDIS_URL: redis://redis:6379
+      STOCKFISH_PATH: /usr/local/bin/stockfish
+      IN_DOCKER: "1"
+      CONTACT_EMAIL: ${CONTACT_EMAIL:?set CONTACT_EMAIL in .env}
+      LICHESS_TOKEN: ${LICHESS_TOKEN:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - .:/app
+      # Keep Linux node_modules off the host checkout.
+      # Each new workspace package needs its own node_modules volume (here and under volumes:).
+      - node_modules:/app/node_modules
+      - worker_node_modules:/app/apps/worker/node_modules
+      - chess_core_node_modules:/app/packages/chess-core/node_modules
+      - db_node_modules:/app/packages/db/node_modules
+      - pnpm_store:/pnpm-store
+
+volumes:
+  pgdata:
+  node_modules:
+  worker_node_modules:
+  chess_core_node_modules:
+  db_node_modules:
+  pnpm_store:

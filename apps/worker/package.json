@@ -1,0 +1,19 @@
+{
+  "name": "@ci/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/main.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "lint": "biome check .",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "postgres": "~4.1.1",
+    "tsx": "^4.20.0",
+    "vitest": "~5.1.1"
+  }
+}
