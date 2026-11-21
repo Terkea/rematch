@@ -29,6 +29,8 @@ refdata = { path = "crates/refdata" }
 enrich = { path = "crates/enrich" }
 scheduler = { path = "crates/scheduler" }
 profile = { path = "crates/profile" }
+# R3 workspace crate (ADR-R3-1)
+ai = { path = "crates/ai" }
 
 # Third-party crates
 tokio = { version = "=1.54.1", features = [
@@ -82,6 +84,9 @@ hex = "=0.4.3"
 rayon = "=1.12.0"
 # Dev-only: Task 2 schema parity. No HTTP resolver (no reqwest, no aws-lc).
 jsonschema = { version = "=0.61.2", default-features = false }
+# R3 additions (ADR-R3-1). Each was published at least 7 days before 2026-11-21.
+serde_path_to_error = "=0.1.20"
+unicode-normalization = "=0.1.26"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

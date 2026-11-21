@@ -68,6 +68,13 @@ jobs:
           docker compose run --rm --no-deps
           -e CRATE_AGE_CACHE=/work/backend/target/crate-age-cache
           rust-dev sh scripts/check-crate-age.sh
+      # R3: canonical_json and the path index rely on sorted keys, so no crate may enable
+      # serde_json/preserve_order (ADR-R3-1).
+      - name: No serde_json preserve_order
+        run: >-
+          docker compose run --rm --no-deps rust-dev sh -c
+          'n=$(cargo tree --locked -e features -i serde_json | grep -c preserve_order);
+          echo "preserve_order: $n"; test "$n" -eq 0'
       # --locked everywhere: a Cargo.lock that does not match the manifests fails the build.
       - name: fmt, clippy, cargo-deny and tests
         run: >-
