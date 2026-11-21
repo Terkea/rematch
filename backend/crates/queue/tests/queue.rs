@@ -62,10 +62,16 @@ fn retryable(msg: &str) -> JobError {
     }
 }
 
+/// How far the database clock may step back between a write of `now() + x` and a later read of
+/// `x - now()` (ADR 0032; up to 3.2 s measured in the Docker Desktop VM). A step back only makes
+/// the remaining time look longer, so it widens the upper bound alone.
+const CLOCK_STEP: f64 = 3.5;
+
 fn assert_near(actual: f64, expected: f64, tolerance: f64) {
+    let (low, high) = (expected - tolerance, expected + tolerance + CLOCK_STEP);
     assert!(
-        (actual - expected).abs() <= tolerance,
-        "expected {expected} ± {tolerance}, got {actual}"
+        (low..=high).contains(&actual),
+        "expected {expected} in [{low}, {high}], got {actual}"
     );
 }
 
@@ -228,7 +234,7 @@ async fn dequeue_orders_by_priority_then_run_at(pool: PgPool) {
         .unwrap()
         .unwrap();
     let high = q
-        .enqueue(KIND, &json!({"n": "high"}), mk(10, ago(1)))
+        .enqueue(KIND, &json!({"n": "high"}), mk(10, ago(5)))
         .await
         .unwrap()
         .unwrap();
@@ -240,11 +246,11 @@ async fn dequeue_orders_by_priority_then_run_at(pool: PgPool) {
 
     // A batch claim is returned in the same order.
     let ids: Vec<i64> = vec![
-        q.enqueue(KIND, &json!({}), mk(50, ago(5)))
+        q.enqueue(KIND, &json!({}), mk(50, ago(10)))
             .await
             .unwrap()
             .unwrap(),
-        q.enqueue(KIND, &json!({}), mk(5, ago(1)))
+        q.enqueue(KIND, &json!({}), mk(5, ago(5)))
             .await
             .unwrap()
             .unwrap(),
@@ -332,10 +338,21 @@ async fn many_concurrent_claimers_claim_each_job_exactly_once(pool: PgPool) {
         tasks.push(tokio::spawn(async move {
             let owner = format!("w{w}");
             let mut mine = Vec::new();
+            let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
             loop {
                 let jobs = q.dequeue(&[KIND], &owner, 3, LEASE).await.unwrap();
                 if jobs.is_empty() {
-                    break;
+                    // Empty is not "no work" (ADR 0032): SKIP LOCKED passes over rows that
+                    // in-flight claims hold. Stop only once no live job is left.
+                    if q.live_count(&[KIND], None).await.unwrap() == 0 {
+                        break;
+                    }
+                    assert!(
+                        tokio::time::Instant::now() < deadline,
+                        "live jobs never drained"
+                    );
+                    tokio::time::sleep(Duration::from_millis(5)).await;
+                    continue;
                 }
                 for job in jobs {
                     assert!(
@@ -444,12 +461,85 @@ async fn future_run_at_is_not_dequeued(pool: PgPool) {
         .unwrap()
         .unwrap();
     assert!(q.dequeue(&[KIND], "w", 10, LEASE).await.unwrap().is_empty());
-    sqlx::query("UPDATE jobs SET run_at = now() - interval '1 second' WHERE id = $1")
+    sqlx::query("UPDATE jobs SET run_at = now() - interval '1 minute' WHERE id = $1")
         .bind(id)
         .execute(&pool)
         .await
         .unwrap();
     assert_eq!(claim_one(&q).await.id, id);
+}
+
+/// The database wall clock can step backwards (NTP, VM resync; the Docker Desktop VM steps back
+/// about 2.7 s every 27 s). A job enqueued to run at once must stay claimable, while a delayed
+/// job still waits for its `run_at`. A step back of `d` after the enqueue is simulated by moving
+/// the row's times `d` ahead of the clock. The immediate row is moved 1 h and the control row
+/// (delayed by 1 s) only 3 s, so no "due within a tolerance" rule can pass both: immediacy is
+/// `run_at <= created_at`, not closeness to `now()`.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn an_immediate_job_stays_claimable_after_the_clock_steps_back(pool: PgPool) {
+    let q = Queue::new(pool.clone());
+    let enqueue = |run_at| {
+        let q = q.clone();
+        async move {
+            let opts = EnqueueOptions {
+                run_at,
+                ..EnqueueOptions::default()
+            };
+            q.enqueue(KIND, &json!({}), opts).await.unwrap().unwrap()
+        }
+    };
+    let now_id = enqueue(None).await;
+    let control = enqueue(None).await;
+    enqueue(Some(OffsetDateTime::now_utc() + time::Duration::hours(1))).await;
+    let shift = |id: i64, sql: &'static str| {
+        let pool = pool.clone();
+        async move {
+            sqlx::query(sql).bind(id).execute(&pool).await.unwrap();
+        }
+    };
+    shift(
+        now_id,
+        "UPDATE jobs SET created_at = created_at + interval '1 hour', \
+           run_at = run_at + interval '1 hour' WHERE id = $1",
+    )
+    .await;
+    shift(
+        control,
+        "UPDATE jobs SET created_at = created_at + interval '3 seconds', \
+           run_at = created_at + interval '4 seconds' WHERE id = $1",
+    )
+    .await;
+    let ids: Vec<i64> = q
+        .dequeue(&[KIND], "w", 10, LEASE)
+        .await
+        .unwrap()
+        .iter()
+        .map(|j| j.id)
+        .collect();
+    assert_eq!(ids, vec![now_id], "only the immediate job is due");
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn dequeue_claims_several_kinds_in_one_call(pool: PgPool) {
+    let q = Queue::new(pool.clone());
+    let mut want = Vec::new();
+    for kind in [KIND, "import-account", "reconcile"] {
+        let id = q.enqueue(kind, &json!({}), EnqueueOptions::default()).await;
+        want.push(id.unwrap().unwrap());
+    }
+    let got: Vec<i64> = q
+        .dequeue(&[KIND, "import-account"], "w", 10, LEASE)
+        .await
+        .unwrap()
+        .iter()
+        .map(|j| j.id)
+        .collect();
+    assert_eq!(got, want[..2], "both named kinds, in claim order");
+    assert_eq!(
+        row(&pool, want[2]).await.state,
+        "queued",
+        "other kinds wait"
+    );
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
@@ -473,7 +563,7 @@ async fn retryable_failure_backs_off_exponentially(pool: PgPool) {
     assert_eq!(r.last_error.as_deref(), Some("boom"));
     assert_eq!(r.lease_token, None, "the lease is cleared");
 
-    sqlx::query("UPDATE jobs SET run_at = now() WHERE id = $1")
+    sqlx::query("UPDATE jobs SET run_at = now() - interval '1 minute' WHERE id = $1")
         .bind(id)
         .execute(&pool)
         .await
@@ -497,7 +587,7 @@ async fn final_retryable_failure_is_dead(pool: PgPool) {
         .unwrap()
         .unwrap();
     for attempt in 1..=3 {
-        sqlx::query("UPDATE jobs SET run_at = now() WHERE id = $1")
+        sqlx::query("UPDATE jobs SET run_at = now() - interval '1 minute' WHERE id = $1")
             .bind(id)
             .execute(&pool)
             .await
@@ -596,9 +686,10 @@ async fn release_on_the_final_attempt_is_not_dead(pool: PgPool) {
     };
     let out = q.fail(&job, &shutdown, Backoff::default()).await.unwrap();
     assert!(matches!(out, FailOutcome::Released { .. }), "{out:?}");
+    // A zero-delay release keeps the job's place: `run_at` is unchanged (ADR 0032).
+    assert_eq!(out, FailOutcome::Released { run_at: job.run_at });
     let r = row(&pool, id).await;
     assert_eq!((r.state.as_str(), r.attempts), ("queued", 2));
-    assert_near(r.run_in, 0.0, 1.0);
     // A fresh worker gets the final attempt again and can complete it.
     let again = claim_one(&q).await;
     assert_eq!(again.attempts, 3);
@@ -634,7 +725,7 @@ async fn recurring_job_requeues_on_complete_and_failure(pool: PgPool) {
     assert_near(r.run_in, 300.0, 2.0);
     assert!(!r.finished);
 
-    sqlx::query("UPDATE jobs SET run_at = now() WHERE id = $1")
+    sqlx::query("UPDATE jobs SET run_at = now() - interval '1 minute' WHERE id = $1")
         .bind(id)
         .execute(&pool)
         .await
@@ -651,7 +742,7 @@ async fn recurring_job_requeues_on_complete_and_failure(pool: PgPool) {
     assert_near(r.run_in, 300.0, 2.0);
     assert_eq!(r.last_error.as_deref(), Some("db down"));
 
-    sqlx::query("UPDATE jobs SET run_at = now() WHERE id = $1")
+    sqlx::query("UPDATE jobs SET run_at = now() - interval '1 minute' WHERE id = $1")
         .bind(id)
         .execute(&pool)
         .await
@@ -889,4 +980,105 @@ async fn every_query_has_a_timeout(pool: PgPool) {
     tx.rollback().await.unwrap();
     // The job is untouched and still completes once the lock is gone.
     assert!(q.complete(&job).await.unwrap());
+}
+
+// ---- T13 review follow-ups (Task 14) ----
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn enqueue_rejects_recur_every_of_one_second_or_less(pool: PgPool) {
+    let q = Queue::new(pool.clone());
+    for every in [
+        Duration::ZERO,
+        Duration::from_millis(500),
+        Duration::from_secs(1),
+    ] {
+        let opts = EnqueueOptions {
+            recur_every: Some(every),
+            ..keyed("reconcile")
+        };
+        let err = q.enqueue("reconcile", &json!({}), opts).await.unwrap_err();
+        assert!(
+            matches!(err, QueueError::InvalidOptions(_)),
+            "{every:?}: {err:?}"
+        );
+    }
+    let n: i64 = sqlx::query_scalar("SELECT count(*) FROM jobs")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(n, 0);
+    let opts = EnqueueOptions {
+        recur_every: Some(Duration::from_millis(1001)),
+        ..keyed("reconcile")
+    };
+    assert!(
+        q.enqueue("reconcile", &json!({}), opts)
+            .await
+            .unwrap()
+            .is_some()
+    );
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn recurring_failure_resets_stalls(pool: PgPool) {
+    let q = Queue::new(pool.clone());
+    let opts = EnqueueOptions {
+        recur_every: Some(Duration::from_secs(300)),
+        ..keyed("reconcile")
+    };
+    let id = q
+        .enqueue("reconcile", &json!({}), opts)
+        .await
+        .unwrap()
+        .unwrap();
+    sqlx::query("UPDATE jobs SET stalls = 2 WHERE id = $1")
+        .bind(id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let job = q
+        .dequeue(&["reconcile"], "w", 1, LEASE)
+        .await
+        .unwrap()
+        .pop()
+        .unwrap();
+    q.fail(&job, &retryable("db down"), Backoff::default())
+        .await
+        .unwrap();
+    let stalls: i32 = sqlx::query_scalar("SELECT stalls FROM jobs WHERE id = $1")
+        .bind(id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(stalls, 0, "a new cycle starts with a fresh stall budget");
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn dequeue_skips_a_locked_row_instead_of_blocking(pool: PgPool) {
+    // Distinguishes SKIP LOCKED from a blocking FOR UPDATE: the first job's row lock is held by
+    // another transaction, and dequeue must return the second job at once.
+    let q = Queue::new(pool.clone()).with_query_timeout(Duration::from_secs(2));
+    let first = q
+        .enqueue(KIND, &json!({"i": 1}), EnqueueOptions::default())
+        .await
+        .unwrap()
+        .unwrap();
+    let second = q
+        .enqueue(KIND, &json!({"i": 2}), EnqueueOptions::default())
+        .await
+        .unwrap()
+        .unwrap();
+    let mut tx = pool.begin().await.unwrap();
+    sqlx::query("SELECT 1 FROM jobs WHERE id = $1 FOR UPDATE")
+        .bind(first)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    let jobs = tokio::time::timeout(Duration::from_secs(5), q.dequeue(&[KIND], "w", 1, LEASE))
+        .await
+        .expect("dequeue did not block")
+        .expect("dequeue did not time out");
+    assert_eq!(jobs.iter().map(|j| j.id).collect::<Vec<_>>(), vec![second]);
+    tx.rollback().await.unwrap();
+    assert_eq!(row(&pool, first).await.state, "queued");
 }

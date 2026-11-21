@@ -102,3 +102,24 @@ jobs:
       - name: Stop the stack
         if: always()
         run: docker compose -p ci-baseline-schema down -v
+  schema-drift:
+    # ADR 0033: packages/db/src/generated is generated from db/migrations. If a migration changed
+    # without regenerating, run `sh scripts/db/generate-drizzle-schema.sh` and commit the result.
+    runs-on: ubuntu-latest
+    env:
+      CONTACT_EMAIL: ci@example.invalid
+      COMPOSE: docker compose -p ci-schema-drift
+    steps:
+      - uses: actions/checkout@v4
+      - name: Regenerate the Drizzle schema from db/migrations
+        run: sh scripts/db/generate-drizzle-schema.sh
+      - name: Fail on drift
+        run: |
+          git add -N packages/db/src/generated
+          git diff --exit-code packages/db/src/generated || {
+            echo "::error::packages/db/src/generated is stale. Run: sh scripts/db/generate-drizzle-schema.sh and commit the result."
+            exit 1
+          }
+      - name: Stop the stack
+        if: always()
+        run: docker compose -p ci-schema-drift down -v
