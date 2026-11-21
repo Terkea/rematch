@@ -1,7 +1,8 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { createInterface } from "node:readline";
-import { validateFen } from "chess.js";
+import { Chess, validateFen } from "chess.js";
 
+// TODO(T11): import type { EngineScore } from "@ci/chess-core"
 /** Structurally identical to `EngineScore` from `@ci/chess-core`. */
 export type EngineScore = { cp: number } | { mate: number };
 
@@ -81,6 +82,19 @@ export function parseInfoLine(line: string): AnalysisLine | null {
   };
 }
 
+/** Stockfish answers `bestmove (none)` with no pv for terminal positions. */
+function terminalLines(fen: string): AnalysisLine[] {
+  try {
+    const chess = new Chess(fen);
+    if (chess.isCheckmate())
+      return [{ multipv: 1, score: { mate: 0 }, pv: [], depth: 0, nodes: 0 }];
+    if (chess.isStalemate()) return [{ multipv: 1, score: { cp: 0 }, pv: [], depth: 0, nodes: 0 }];
+  } catch {
+    // fall through
+  }
+  return [];
+}
+
 type LineListener = (line: string) => void;
 
 export class UciEngine {
@@ -157,6 +171,7 @@ export class UciEngine {
       const info = parseInfoLine(line);
       if (info) best.set(info.multipv, info);
     });
+    if (best.size === 0) return terminalLines(fen);
     return [...best.values()].sort((a, b) => a.multipv - b.multipv);
   }
 

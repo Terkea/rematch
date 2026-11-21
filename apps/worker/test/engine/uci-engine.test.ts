@@ -42,6 +42,17 @@ describe.skipIf(skipEngineTests)("UciEngine", () => {
     expect(lines.length).toBe(1);
   });
 
+  it("returns a synthetic mate-0 line for checkmate", async () => {
+    const fen = "rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3";
+    const lines = await engine.analyse(fen, { nodes: 1000 });
+    expect(lines).toEqual([{ multipv: 1, score: { mate: 0 }, pv: [], depth: 0, nodes: 0 }]);
+  });
+
+  it("returns a synthetic cp-0 line for stalemate", async () => {
+    const lines = await engine.analyse("7k/5Q2/6K1/8/8/8/8/8 b - - 0 1", { nodes: 1000 });
+    expect(lines).toEqual([{ multipv: 1, score: { cp: 0 }, pv: [], depth: 0, nodes: 0 }]);
+  });
+
   it("times out, kills the process and rejects", async () => {
     const e = await UciEngine.start({ path: stockfishPath });
     await expect(e.analyse(START, { nodes: 5_000_000_000, timeoutMs: 200 })).rejects.toThrow(
