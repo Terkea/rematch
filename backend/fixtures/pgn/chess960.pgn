@@ -1,0 +1,10 @@
+[Event "Chess960 game"]
+[Site "?"]
+[White "alice"]
+[Black "bob"]
+[Result "*"]
+[Variant "Chess960"]
+[SetUp "1"]
+[FEN "bbqnnrkr/pppppppp/8/8/8/8/PPPPPPPP/BBQNNRKR w KQkq - 0 1"]
+
+1. e4 e5 *

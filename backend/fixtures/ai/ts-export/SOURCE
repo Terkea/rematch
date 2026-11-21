@@ -1,0 +1,56 @@
+Fixtures for the ai crate (R3 Task 1, ADR-R3-1). All files come from the M3 worktree (branch m3,
+packages/ai), our own code, at commit 4ff8220aed41afb2dd23e04314511f6ebcb1f8e7 ("Merge M3 A3
+(reference): reference tokens, leak detector, evidence index"). Exported on 2026-11-21 with
+zod 4.6 and @anthropic-ai/sdk 1.11.0 (m3 lockfile), Node v22.23.5 (node:22.23.5-slim), pnpm 12.21.0.
+
+Each ts-export file is {"source":"m3/base@4ff8220","schema":<schema>}:
+
+ts-export/coaching-input.schema.json
+  schema = z.toJSONSchema(CoachingInput) of packages/ai/src/input/schema.ts, with zod's default
+  options (target draft-2020-12, unrepresentable "throw", io "output"). The schema is identical
+  to R2's fixtures/coaching-input/ts-schema.json (exported with unrepresentable: "any").
+  sha256 0ebdec9655825c94475fcab72c07fc9f202de9ba77207d724bca6d17bef65f63
+
+ts-export/report-section-envelope.schema.json
+  schema = zodOutputFormat(ReportSectionEnvelope).schema, with zodOutputFormat from
+  "@anthropic-ai/sdk/helpers/zod" and ReportSectionEnvelope from
+  packages/ai/src/output/report-schema.ts (the sanitized, ref-free API output format).
+  sha256 b53ece1429a8d6cc953c42df589d1aa4297fdb956703b276eb166cac4c26bd4b
+
+input/coaching-input.{b2-rapid,b0-blitz,early-read}.json
+  Byte-for-byte copies of packages/ai/test/fixtures/ at the same commit.
+  sha256 8570c10d7efd9abdeeb255189c1d91a04de097adadbc5f3f25685a72f59a5d6a  b2-rapid
+  sha256 be1108cddd408ad9c76632b5670363b097047befbfb6c90bf95568c48911934b  b0-blitz
+  sha256 e1439bdef2bfe92ae478cf4646c7aaf3395727c1931c24529b8a4278f777315c  early-read
+
+How the export ran: Node's type stripping on a throwaway copy of the m3 checkout (mounted
+read-only, so the host node_modules stay untouched). Only the JSON is committed.
+
+  # export.mts (copied into /w/packages/ai)
+  import { z } from "zod";
+  import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
+  import { CoachingInput } from "./src/input/schema.ts";
+  import { ReportSectionEnvelope } from "./src/output/report-schema.ts";
+  const source = "m3/base@4ff8220";
+  const schema = process.argv[2] === "input"
+    ? z.toJSONSchema(CoachingInput)
+    : zodOutputFormat(ReportSectionEnvelope).schema;
+  process.stdout.write(JSON.stringify({ source, schema }, null, 2) + "\n");
+
+  # run.sh
+  set -e
+  mkdir /w
+  cd /src && tar --exclude=node_modules --exclude=.git -cf - . | tar -xf - -C /w
+  cd /w && corepack enable && pnpm install --frozen-lockfile >&2
+  cd /w/packages/ai
+  # Type stripping does not map ".js" specifiers to ".ts" sources: rewrite them in the copy.
+  find src -name '*.ts' -exec sed -i -E 's#(from "\.{1,2}/[^"]+)\.js"#\1.ts"#' {} +
+  cp /scripts/export.mts .
+  node --experimental-strip-types export.mts input > /out/coaching-input.schema.json
+  node --experimental-strip-types export.mts envelope > /out/report-section-envelope.schema.json
+
+  docker run --rm -v <m3 checkout>:/src:ro -v <script dir>:/scripts:ro -v <out dir>:/out \
+    node:22.23.5-slim sh /scripts/run.sh
+
+Refresh: rerun against the new m3 commit, update the commit, date and sha256 values above, then
+run `cargo test -p ai --test input_shape`.

@@ -23,10 +23,19 @@ docker compose run --rm worker pnpm test   # full suite inside the container
 docker compose run --rm worker pnpm lint
 ```
 
-Postgres and Redis are published on `127.0.0.1:55432` and `127.0.0.1:56379` (ADR 0023). The web app is on
-`http://127.0.0.1:3100` (`/api/health` reports Postgres and Redis) and the Mailpit UI on `http://127.0.0.1:48025`.
-`docker compose --profile e2e up -d fakes` adds the fake providers on `127.0.0.1:53199`.
-`docker/postgres/init.sql` creates the `chess_test`, `chess_worker_test` and `chess_web_test` databases only on a fresh `pgdata` volume. On an
+Postgres and Redis are published on `127.0.0.1:55432` and `127.0.0.1:56379` (ADR 0023) only because `.env.example` sets
+`COMPOSE_FILE=docker-compose.yml:docker-compose.ports.yml`. The base `docker-compose.yml` publishes no host ports.
+`COMPOSE_PATH_SEPARATOR=:` is set alongside it because Compose defaults to `;` on Windows.
+
+Parallel or CI projects must not publish ports, or the second project cannot bind them. Override `COMPOSE_FILE` so only the base file is used:
+
+```sh
+COMPOSE_FILE=docker-compose.yml docker compose -p ci-a run --rm -e LANE=a rust-dev cargo test --locked -p db
+COMPOSE_FILE=docker-compose.yml docker compose -p ci-a down -v
+```
+
+`CONTACT_EMAIL` is required only by `worker`, which exits at start-up when it is empty; `rust-dev` falls back to a placeholder.
+`docker/postgres/init.sql` creates the `chess_test` and `chess_worker_test` databases only on a fresh `pgdata` volume. On an
 existing volume, create it once with:
 
 ```sh

@@ -6,6 +6,8 @@ node_modules/
 dist/
 .turbo/
 .worktrees/
+backend/target/
+/data/
 .shots/
 apps/web/test-results/
 apps/web/playwright-report/
@@ -15,3 +17,6 @@ next-env.d.ts
 
 # npm release-age cache (scripts/check-npm-age.mjs)
 .cache/
+
+# Claude Code agent worktrees
+.claude/worktrees/

@@ -1,0 +1,8 @@
+[Event "Casual game"]
+[Site "https://lichess.org/"]
+[White "alice"]
+[Black "bob"]
+[Result "1-0"]
+[TimeControl "180"]
+
+1. e4 {[%clk 0:02:58]} e5 {[%clk 0:02:57]} 2. Bc4 {[%clk 0:02:55]} Nc6 {[%clk 0:02:54]} 3. Qh5 {[%clk 0:02:50]} Nf6 {[%clk 0:02:40]} 4. Qxf7# {[%clk 0:02:49]} 1-0

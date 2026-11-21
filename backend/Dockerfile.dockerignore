@@ -1,0 +1,6 @@
+# BuildKit reads <Dockerfile>.dockerignore next to the Dockerfile; the build context is the repo root,
+# so backend/.dockerignore alone would not apply. Only the backend sources and the migrations are sent.
+*
+!backend/
+!db/
+backend/target/
