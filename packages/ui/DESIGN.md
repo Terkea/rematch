@@ -272,6 +272,9 @@ The board is one of the two loud things, so it gets the most specific rules.
 
 - `react-chessboard` (MIT) with chess.js (BSD-2). Never chessground or chessops (`B12`).
 - Squares are `board-light` and `board-dark`, cool and low in contrast, so pieces and marks carry the eye. The board has `--radius-board` and no frame, shadow or wood.
+- **Well (from 768px only):** the board sits in a `well` with 8px padding, and both have `--radius-board`. The board keeps `--board-size`, and the well is 16px wider. Below 768px there is no well and the board is flush, so a phone gets every pixel. Decision: `design/decisions/board.md` (Task 10, variant c "Ink well").
+- **Coordinates** sit on the squares, never in a lane outside the board: ranks in the top-left corner of the a-file squares and files in the bottom-right corner of the first-rank squares (as seen from the board's orientation), in Schibsted 500 at `xs`, coloured as in "Board coordinates" under the usage rules.
+- **Pieces** come only from the shipped sets under "Piece sets", passed through react-chessboard's `pieces` option on every board. react-chessboard's built-in default pieces are never shipped, because they are Cburnett drawings without attribution (controller ruling, Task 10).
 - **Board states:**
 
 | State | Treatment |
@@ -301,7 +304,7 @@ Severity comes from the mover's loss of win chance, using the Lichess thresholds
 | Plan or idea | pencil arrow or ring, never a badge | none | pencil, 0.7×, open head |
 
 - **Redundancy, not colour alone:** pen marks always carry a `?`-family badge and an open head. Good marks carry a `!`-family badge and a solid head. Pencil never carries a badge.
-- **Glyph badge:** a circle of radius 20% of the square in the square's top-right corner (inset 1px), filled `pen` or `good`, with the glyph in `on-ink` Literata 600 (35% of the square for one character, 28% for two, and never below `2xs`, 11px), on a 2px `sheet` halo. A 328px mobile board (41px squares) gives 14px and 11.5px.
+- **Glyph badge:** a circle of radius 20% of the square in the square's top-right corner (inset 1px), or in its top-left corner when the move's arrow arrives from the right of the target as drawn (the origin's centre is right of the target's in the board's orientation), so the badge never covers the arrowhead, filled `pen` or `good`, with the glyph in `on-ink` Literata 600 (35% of the square for one character, 28% for two, and never below `2xs`, 11px), on a 2px `sheet` halo. A 328px mobile board (41px squares) gives 14px and 11.5px.
 
 ### Pen stroke geometry
 
@@ -311,7 +314,7 @@ Marks are filled, variable-width outlines built around a centreline, never const
 - **Width by mark type:** pen 1.0×, good 1.0×, pencil 0.7× (thinner than pen and good strokes), inaccuracy (thin) 0.75×, arrowhead strokes 0.9× of their shaft's width.
 - **Ring:** an ellipse, not a circle, so it reads at a glance. ry is 38% of the square and rx/ry ≈ 1.12, tilted 8–12° (sign and amount seeded). The radius drifts by `1 + 0.04 sin(2θ + φ₁) + 0.02 sin(3θ + φ₂)`, which is ±6% at most, with seeded phases. The integer frequencies (2 and 3 cycles per revolution) make the drift identical at θ and θ + 360°, so the only difference in the overrun is the outward spiral and the tail never crosses the start. It starts near 1 o'clock (−60° from three o'clock in the ellipse's frame) and runs to 380°, growing linearly by 2.5px per revolution, so the overrun tail sits 2.5px outside the start. It is a spiral, not a closed ring.
 - **Scoresheet ring:** the same stroke at 0.8× width, fitted to the word as an ellipse with `rx = word width / 2 + 10px` and `ry = 14px`, tilted 2–4°. It needs `--space-scoresheet-row` (34px) and is used only for blunders and mistakes on the scoresheet, never in the 26px move list.
-- **Arrow shaft:** starts 22% of a square from the origin centre and ends 16% short of the target centre. It bows 2–4% of its length to one side (seeded) as a quadratic curve.
+- **Arrow shaft:** starts 22% of a square from the origin centre and ends 16% short of the target centre. When the target also carries a ring, it ends 46% short instead, so the tip stops on the ring's outer edge and the head is not buried inside the ring. It bows 2–4% of its length to one side (seeded) as a quadratic curve.
 - **Open head (pen and pencil):** two separate strokes of 0.9 and 1.1 times a base length of 30% of the square, at 26° and 32° to the shaft (which side gets which is seeded).
 - **Solid head (good):** a filled triangle with the same unequal sides, on the halo.
 - **Halo:** the outline is drawn first in `sheet` with a 4px stroke (2px each side), then filled in its colour.
@@ -771,3 +774,13 @@ The full contrast script was re-run over every pair, and there are 0 failures. T
 5. **`--board-size` fallback.** It is declared as plain `min(100vw − 2 × gutter, 480px)`, with the rounded form under `@supports (width: round(down, 10px, 8px))`.
 
 **Token values changed in this round:** the four piece `settle` springs (the minor-piece row keeps 520/42) and the queen and king mass factor (1.25 to 1.3).
+
+### 2026-11-21, Task 10: board lab rulings
+
+The board treatment lab (`/lab/board/{a,b,c}`) compared a printed diagram, book hatching and an ink well. The controller approved variant c, "Ink well", and all three of its proposals. The full record is `design/decisions/board.md`.
+
+1. **Arrow end with a ring:** the shaft ends 46% of a square short of a ringed target (it stays 16% for a bare target), so the tip meets the ring's outer edge ("Pen stroke geometry").
+2. **Badge corner:** the glyph badge moves to the top-left corner when the move's arrow arrives from the right of the target ("Severity and marks").
+3. **Well:** the board sits in an 8px `well` from 768px up, and there is no well below 768px ("The board").
+
+Also recorded: coordinates sit on the squares, and react-chessboard's built-in default pieces never ship (they are unattributed Cburnett). Task 11 provides Cburnett from Commons under BSD-3-Clause at `packages/ui/assets/pieces/cburnett/` with its `LICENSE`.
