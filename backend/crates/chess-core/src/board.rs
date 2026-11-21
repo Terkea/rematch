@@ -634,6 +634,10 @@ impl Position {
     }
 
     /// The underlying cozy-chess board (for attack and piece-set queries).
+    ///
+    /// It is not a chess.js FEN source: its halfmove clock and move number are normalised (this
+    /// wrapper keeps the real ones) and its en-passant file is cozy-chess's, not the square chess.js
+    /// prints. Build FENs with [`Position::fen`].
     pub fn board(&self) -> &Board {
         &self.board
     }

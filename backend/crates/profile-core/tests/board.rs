@@ -92,6 +92,97 @@ fn settled_plies_stop_the_recapture_chain_before_a_mate() {
     assert_eq!(got, [(1, -1)]);
 }
 
+/// `(ply, settled)` of every pov ply, defaults max 8 plies and settle 4.
+fn settled(fen: &str, pv: &[&str]) -> Vec<(u32, i32)> {
+    settled_plies(fen, &line(pv), Color::White, 8, 4)
+        .iter()
+        .map(|p| (p.ply, p.settled))
+        .collect()
+}
+
+#[test]
+fn an_opponent_recapture_that_mates_stays_in_the_chain() {
+    // Rxe1 Rxe1#: the mate is the opponent's, so its material counts (+3 then -5 = -2).
+    let fen = "k3r3/8/8/8/8/8/5PPP/3Rn1K1 w - - 0 1";
+    let plies = settled_plies(fen, &line(&["d1e1", "e8e1"]), Color::White, 8, 4);
+    let got: Vec<(u32, i32, bool)> = plies.iter().map(|p| (p.ply, p.settled, p.mate)).collect();
+    assert_eq!(got, [(1, -2, false)]);
+    assert_eq!(
+        settled_swing(fen, &line(&["d1e1", "e8e1"]), Color::White, 8, 4),
+        swing(-2.0, None, None)
+    );
+}
+
+#[test]
+fn the_settle_cap_still_takes_the_recapture_of_a_pov_capture() {
+    // Six captures on d5. Ply 1's chain reaches the cap at ply 5 (a pov capture), so the
+    // recapture at ply 6 is included: -2, not +1.
+    let fen = "6k1/8/1np2n2/3p4/4PN2/2N5/8/6K1 w - - 0 1";
+    let pv = ["e4d5", "c6d5", "c3d5", "f6d5", "f4d5", "b6d5"];
+    assert_eq!(settled(fen, &pv), [(1, -2), (3, -2), (5, -2)]);
+}
+
+#[test]
+fn a_promotion_inside_a_chain_counts_the_new_piece() {
+    // Rxd8 Rxd8 cxd8=Q: B0 = -4, the queen settles the exchange at +9.
+    let fen = "3r1r2/2P4k/8/8/8/8/8/3R2K1 w - - 0 1";
+    let pv = ["d1d8", "f8d8", "c7d8q"];
+    assert_eq!(settled(fen, &pv), [(1, 13), (3, 13)]);
+    let steps = play_line(fen, &line(&pv), None);
+    assert_eq!(
+        (steps[2].captured, steps[2].promotion),
+        (Some('r'), Some('q'))
+    );
+}
+
+#[test]
+fn an_x_ray_chain_of_four_captures_settles_on_the_last() {
+    // Rxd5 Rxd5 Rxd5 Qxd5: both recaptures come from behind a piece that just left the file.
+    let fen = "3q2k1/3r4/8/3n4/8/8/3R4/3R2K1 w - - 0 1";
+    let pv = ["d2d5", "d7d5", "d1d5", "d8d5"];
+    assert_eq!(settled(fen, &pv), [(1, -2), (3, -2)]);
+}
+
+/// Black shuffles Kh8-g8; White shuffles Ke1-e2 and finally mates with Ra8.
+const DEEP_MATE_FEN: &str = "7k/6pp/1p6/8/8/8/8/R3K3 w - - 0 1";
+
+#[test]
+fn a_mate_past_the_horizon_counts_with_depth_at_the_mating_ply() {
+    let mate_in_5 = [
+        "e1e2", "h8g8", "e2e1", "g8h8", "e1e2", "h8g8", "e2e1", "g8h8", "a1a8",
+    ];
+    assert_eq!(
+        settled_swing(DEEP_MATE_FEN, &line(&mate_in_5), Color::White, 8, 4),
+        swing(MATE_GAIN, Some(9), Some(5))
+    );
+    // mateIn4Plus territory: mate in 6 at ply 11.
+    let mate_in_6 = [
+        "e1e2", "h8g8", "e2e1", "g8h8", "e1e2", "h8g8", "e2e1", "g8h8", "e1e2", "b6b5", "a1a8",
+    ];
+    let s = settled_swing(DEEP_MATE_FEN, &line(&mate_in_6), Color::White, 8, 4);
+    assert_eq!(s, swing(MATE_GAIN, Some(11), Some(6)));
+    assert!(s.mate_in.is_some_and(|m| m >= 4));
+    // The opponent's mate is no gain for pov.
+    assert_eq!(
+        settled_swing(DEEP_MATE_FEN, &line(&mate_in_5), Color::Black, 8, 4),
+        swing(0.0, None, None)
+    );
+}
+
+#[test]
+fn a_material_swing_inside_the_horizon_sets_depth_before_a_deep_mate() {
+    // Hanging queen won at ply 1, then the same mating pattern far past the horizon.
+    let fen = "7k/6pp/1p6/8/q7/8/8/R3K3 w - - 0 1";
+    let pv = [
+        "a1a4", "h8g8", "a4a1", "g8h8", "e1e2", "h8g8", "e2e1", "g8h8", "e1e2", "h8g8", "e2e1",
+        "g8h8", "a1a8",
+    ];
+    assert_eq!(
+        settled_swing(fen, &line(&pv), Color::White, 8, 4),
+        swing(MATE_GAIN, Some(1), Some(7))
+    );
+}
+
 #[test]
 fn swing_horizon_limits_the_counted_plies() {
     let (fen, pv) = fixture("fork");
@@ -188,6 +279,11 @@ fn null_move_flips_the_side_and_keeps_the_clocks() {
     assert_eq!(
         null_move_fen("4k3/8/8/r7/8/8/8/R3K3 b - - 0 1").as_deref(),
         Some("4k3/8/8/r7/8/8/8/R3K3 w - - 0 1")
+    );
+    // Nonzero clocks are kept as they are (a pass is not a move).
+    assert_eq!(
+        null_move_fen("4k3/8/8/r7/8/8/8/R3K3 b - - 7 42").as_deref(),
+        Some("4k3/8/8/r7/8/8/8/R3K3 w - - 7 42")
     );
 }
 

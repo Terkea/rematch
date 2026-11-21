@@ -140,37 +140,50 @@ fn capture_square(step: &LineStep) -> Option<String> {
     Some(format!("{file}{rank}"))
 }
 
-/// `settled(k)` for every `pov` ply k ≤ `max_plies` of the line (TS M2 Task 3): the balance after
-/// ply k, extended through the recapture chain, minus the balance before the line. The chain
-/// follows PV moves that capture on the previous move's destination square, at most
-/// `settle_extra` plies (which may run past `max_plies`). A mating move ends the chain: mate is
-/// credited through `mate`, not as material.
-pub fn settled_plies(
-    fen: &str,
-    pv: &[String],
+/// Index of the last step of the recapture chain that starts at the `pov` step `i`.
+///
+/// The chain follows PV moves that capture on the previous move's destination square, at most
+/// `settle_extra` of them. A `pov` mate ends it (mate is credited as mate, not as material); an
+/// opponent's mating recapture stays in. When the cap lands right after a `pov` capture, the
+/// opponent's recapture on that square is still taken, so the chain never stops one ply short of
+/// the answer to our capture.
+fn chain_end(steps: &[LineStep], i: usize, pov: Color, settle_extra: usize) -> usize {
+    let recaptured = |end: usize| match (steps.get(end), steps.get(end + 1)) {
+        (Some(prev), Some(next)) => {
+            !(next.is_mate && next.mover == pov)
+                && capture_square(next).as_deref() == Some(prev.to.as_str())
+        }
+        _ => false,
+    };
+    let mut end = i;
+    while end - i < settle_extra && recaptured(end) {
+        end += 1;
+    }
+    let capped_after_pov_capture = end - i == settle_extra
+        && steps
+            .get(end)
+            .is_some_and(|s| s.mover == pov && s.captured.is_some());
+    if capped_after_pov_capture && recaptured(end) {
+        end += 1;
+    }
+    end
+}
+
+/// `settled(k)` for every `pov` ply k ≤ `max_plies` of already played steps.
+fn settled_of_steps(
+    steps: &[LineStep],
+    b0: i32,
     pov: Color,
     max_plies: usize,
     settle_extra: usize,
 ) -> Vec<SettledPly> {
-    let steps = play_line(fen, pv, Some(max_plies.saturating_add(settle_extra)));
-    let b0 = material_balance(fen, pov);
     let mut out = Vec::new();
     for (i, step) in steps.iter().enumerate().take(max_plies) {
         if step.mover != pov {
             continue;
         }
-        let mut end = i;
-        while end - i < settle_extra {
-            let (Some(prev), Some(next)) = (steps.get(end), steps.get(end + 1)) else {
-                break;
-            };
-            if next.is_mate || capture_square(next).as_deref() != Some(prev.to.as_str()) {
-                break;
-            }
-            end += 1;
-        }
         let after = steps
-            .get(end)
+            .get(chain_end(steps, i, pov, settle_extra))
             .map_or(b0, |s| material_balance(&s.fen_after, pov));
         out.push(SettledPly {
             ply: u32::try_from(i + 1).unwrap_or(u32::MAX),
@@ -181,10 +194,35 @@ pub fn settled_plies(
     out
 }
 
+/// `settled(k)` for every `pov` ply k ≤ `max_plies` of the line (TS M2 Task 3): the balance after
+/// ply k, extended through its recapture chain (see `chain_end`; the chain may run past
+/// `max_plies`), minus the balance before the line.
+pub fn settled_plies(
+    fen: &str,
+    pv: &[String],
+    pov: Color,
+    max_plies: usize,
+    settle_extra: usize,
+) -> Vec<SettledPly> {
+    // The chain needs at most `settle_extra` plies plus the recapture after the cap.
+    let limit = max_plies.saturating_add(settle_extra).saturating_add(1);
+    let steps = play_line(fen, pv, Some(limit));
+    settled_of_steps(
+        &steps,
+        material_balance(fen, pov),
+        pov,
+        max_plies,
+        settle_extra,
+    )
+}
+
 /// Material swing that a PV realises for `pov` (TS M2 Task 3; defaults `max_plies` 8,
-/// `settle_extra` 4). `depth` is the first `pov` ply with `settled ≥ 2` or delivering mate;
-/// `gain` is the largest `settled` (0 without `pov` plies), or `MATE_GAIN` when `pov` mates within
-/// `max_plies`; `mate_in` is `(mating ply + 1) / 2`.
+/// `settle_extra` 4; controller ruling on mates after the R2 T4 review).
+///
+/// A `pov` mate is detected on the whole PV, whatever `max_plies` is: then `gain = MATE_GAIN` and
+/// `mate_in = mating ply.div_ceil(2)`. `depth` is the first `pov` ply k ≤ `max_plies` with
+/// `settled(k) ≥ 2`; without one it falls back to the mating ply, so a deep mate has a deep depth.
+/// Otherwise `gain` is the largest `settled(k)` (0 without `pov` plies).
 pub fn settled_swing(
     fen: &str,
     pv: &[String],
@@ -192,19 +230,31 @@ pub fn settled_swing(
     max_plies: usize,
     settle_extra: usize,
 ) -> Swing {
-    let plies = settled_plies(fen, pv, pov, max_plies, settle_extra);
-    let mating = plies.iter().find(|p| p.mate);
+    let steps = play_line(fen, pv, None);
+    let plies = settled_of_steps(
+        &steps,
+        material_balance(fen, pov),
+        pov,
+        max_plies,
+        settle_extra,
+    );
+    // A mate ends the line, so only the last step can be one.
+    let mating_ply = steps
+        .last()
+        .filter(|s| s.is_mate && s.mover == pov)
+        .map(|_| u32::try_from(steps.len()).unwrap_or(u32::MAX));
     let depth = plies
         .iter()
-        .find(|p| p.settled >= MIN_SWING || p.mate)
-        .map(|p| p.ply);
-    let gain = match mating {
+        .find(|p| p.settled >= MIN_SWING)
+        .map(|p| p.ply)
+        .or(mating_ply);
+    let gain = match mating_ply {
         Some(_) => MATE_GAIN,
         None => plies.iter().map(|p| p.settled).max().map_or(0.0, f64::from),
     };
     Swing {
         gain,
         depth,
-        mate_in: mating.map(|p| p.ply.div_ceil(2)),
+        mate_in: mating_ply.map(|p| p.div_ceil(2)),
     }
 }
