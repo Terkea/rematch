@@ -142,7 +142,7 @@ const STALE_PAGE_SQL: &str = page_sql!(
 
 const GIVE_UP_SQL: &str = "\
 UPDATE games SET analysis_status = 'failed', analysis_error = $3
-WHERE id = ANY($1) AND analysis_status = $2::analysis_status
+WHERE id = ANY($1) AND analysis_status = $2::analysis_status AND analysis_attempts >= 6
 RETURNING id, account_id";
 
 /// The fenced reset of a stale analysis: only if nothing claimed the game since it was read.
@@ -561,6 +561,12 @@ mod tests {
     #[test]
     fn attempt_cap_count_matches_the_partial_index_predicate() {
         assert!(AT_CAP_SQL.ends_with(&format!(">= {MAX_ANALYSIS_ATTEMPTS}")));
+    }
+
+    #[test]
+    fn give_up_is_fenced_on_the_attempt_cap() {
+        // A reanalysis resets attempts to 0 between the page read and this update; it must survive.
+        assert!(GIVE_UP_SQL.contains(&format!("analysis_attempts >= {MAX_ANALYSIS_ATTEMPTS}")));
     }
 
     #[test]
