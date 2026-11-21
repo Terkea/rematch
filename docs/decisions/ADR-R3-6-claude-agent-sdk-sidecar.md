@@ -17,7 +17,7 @@ Facts checked against the official docs on 2026-11-21 (code.claude.com/docs/en/a
 ## Decision
 
 1. **A small Node service, `services/ai-sidecar`, owns every interactive Claude call** (report sections, weekly reviews, weakness-change notes, the coach chat). It wraps `query()` with: `maxTurns` small, no built-in tools (chat tools are exposed as in-process MCP tools that call back into Rust), `permissionMode: "dontAsk"`, `settingSources: []`, `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, an isolated `cwd` and `CLAUDE_CONFIG_DIR`, a custom `systemPrompt`, `outputFormat` for JSON sections, and pinned full model ids.
-2. **Rust stays in charge.** Rust builds the prompts, owns budgets, the circuit breaker, metering and the fact-checker (validator), and talks to the sidecar over a local HTTP/JSON + server-sent-events contract. The sidecar has no database access and holds no business rules.
+2. **Rust stays in charge.** Rust builds the prompts, owns budgets, the circuit breaker, metering and the fact-checker (validator), and talks to the sidecar over a local HTTP/JSON + server-sent-events contract. The sidecar holds no business rules. *Amended (Amendment 1, Task 10 fix round 1):* its only database access is the chat session store, which uses one table (`ai_sdk_session_entries`) through a restricted role (`ai_sidecar`, with SELECT/INSERT/DELETE on that table only). The sidecar reads no other data.
 3. **Batches stay on the Messages API.** The monthly and weekly regenerations (Tasks 16, 20) keep the 50% batch discount through a minimal Rust batch client built on the merged Task 9 wire types. The planned streaming SSE client (Task 10) is dropped; streaming comes from the SDK.
 4. **Cost is ours, not the SDK's estimate.** Metering computes cost from `modelUsage` token counts with the validated `PricingTable` (Task 9) and stores the SDK estimate only for comparison.
 5. **Auth.** Production uses `ANTHROPIC_API_KEY` (or a cloud provider). The sidecar refuses to start in production with only a subscription token. Local development may use the owner's `CLAUDE_CODE_OAUTH_TOKEN`; the docs don't explicitly cover a developer testing their own product with a personal subscription, so this stays an open owner item.
@@ -29,6 +29,94 @@ Facts checked against the official docs on 2026-11-21 (code.claude.com/docs/en/a
 - Each concurrent call costs a subprocess, so the sidecar has a concurrency cap and a queue; capacity planning uses measured RSS.
 - If the subprocess model proves too heavy at scale, the Rust contract lets us swap the sidecar for a direct Messages client without touching callers.
 
+## Contract and isolation (Task 10)
+
+This section was recorded with the implementation in `services/ai-sidecar` (SDK `0.3.325`). Task 11 codes against this contract, so change the two together.
+
+**Endpoints.** All bodies are JSON with camelCase keys. Every route except `/health` needs `authorization: Bearer ${AI_SIDECAR_TOKEN}` and answers 401 without it.
+- `POST /v1/query` makes one stateless structured call. The request carries `model, effort, maxTokens, timeoutMs, maxTurns, systemPrompt, prompt[] (text blocks), outputFormat?`. The reply is 200 for any SDK result message: `{subtype, stopReason, structuredOutput?, text, numTurns, durationMs, modelUsage{model: {inputTokens, outputTokens, cacheReadInputTokens, cacheCreationInputTokens}}, sdkCostUsd}`. `subtype` passes through: `success`, `error_max_turns`, `error_max_structured_output_retries` or `error_during_execution`. When the result carries `api_error_status`, the reply instead has that HTTP status and an Anthropic error body.
+- `POST /v1/chat` runs one chat turn over SSE. The request is the query body without `outputFormat`, plus:
+  - `tools[] {name, description, inputSchema}`;
+  - `toolCallback {url, token}`;
+  - `conversationId` (a uuid);
+  - `resume` (a boolean);
+  - `rebuildContext`, required when `resume` is true (otherwise 400).
+
+  The stream sends these events:
+  - `delta {text, messageId?}`, for top-level `text_delta` only;
+  - `retract {messageIds, reason}`, naming streamed messages that a refusal or a superseding message withdrew (`done.text` is authoritative);
+  - `tool_use {id, name, input}`;
+  - exactly one terminal event, either `done` (the query result plus `session: "new" | "resumed" | "rebuilt"` and `sessionModelUsage`) or `error` (the error body plus `status`);
+  - a `: ping` comment every 15 s.
+
+  A client disconnect aborts the query.
+- `GET /health` needs no token, makes no model call and returns no secret. Its body is `{ok, auth, inFlight, queued, maxConcurrency, sdkVersion, mirrorErrors}`.
+- The tool callback is `POST {toolCallback.url}` with `Bearer {toolCallback.token}` and the body `{name, input}`. Rust answers `{content, isError}`. A non-2xx reply, a malformed body, a network error or a timeout becomes the tool result `{"available":false,"reason":"tool unavailable"}` with `isError: true`. The model never sees a status or a URL.
+
+**Error bodies.** Every error uses the Anthropic shape `{"type":"error","error":{"type","message"}}`, so Rust's `classify_status` (T9) maps it unchanged. Statuses map to types like this:
+- 400 → `invalid_request_error`;
+- 401 → `authentication_error`;
+- 403 → `permission_error`;
+- 429 → `rate_limit_error`, with `retry-after` from the SDK's last `api_retry` delay;
+- 529 → `overloaded_error`;
+- any other status ≥ 500 → `api_error`.
+
+A timeout is 504 `api_error`, and a call aborted by shutdown (SIGTERM) is 503 `api_error`. A second concurrent turn of one conversation is 409 with the non-Anthropic type `turn_in_progress`; Rust should treat it as "busy, retry after the running turn". Messages are fixed strings and never echo SDK text, because that text may contain a key.
+
+**Isolation.** `buildOptions` is the single place where the options are set:
+- `model` comes from an allowlist (`claude-sonnet-5-5`, `claude-haiku-5-5`) and is never an alias.
+- `maxTurns` is capped at 10.
+- `systemPrompt` is the custom string from the request.
+- `tools: []`, `strictMcpConfig: true`, `permissionMode: "dontAsk"` and `settingSources: []`.
+- `verbatimPrompts: true`, so user text is never expanded as `@path` or dispatched as a slash command.
+- `cwd` is an empty work dir.
+- `agents`, `hooks`, `fallbackModel`, `thinking` and `maxThinkingTokens` are never set.
+- `/v1/query` sets `persistSession: false` and `outputFormat`, and uses no session.
+- `/v1/chat` sets `mcpServers: {coach}`, `allowedTools` (exactly the `mcp__coach__<name>` names) and `includePartialMessages: true`. It also sets `sessionId` on the first turn or `resume` on later turns, together with `sessionStore`.
+- Chat never sets `persistSession: false` or `enableFileCheckpointing`, because the SDK rejects both when a store is present.
+
+**Env allowlist.** The child's `env` replaces the parent environment. It holds only these variables:
+- `PATH`;
+- `HOME` and `CLAUDE_CONFIG_DIR`, both set to the config dir;
+- `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1` and `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`;
+- `CLAUDE_CODE_MAX_OUTPUT_TOKENS`;
+- `CLAUDE_AGENT_SDK_CLIENT_APP=chess-improver-sidecar/0.1`;
+- `CLAUDE_CODE_PROJECT_DIR_NAME=chess-improver-coach`, which keeps the session store's `projectKey` stable across replicas and paths;
+- the one credential that `auth` chose: the API key, the OAuth token (development only), or, for `cloud`, the `CLAUDE_CODE_USE_*` flag and the provider variables.
+
+`AI_SIDECAR_TOKEN`, `AI_SESSION_DATABASE_URL`, `DATABASE_URL` and every other variable are left out.
+
+**Chat sessions (owner direction, controller ruling).** Chat uses the SDK's native sessions, and the session id is the Postgres conversation id.
+- **Turns.** The first turn runs with `sessionId`. Later turns run with `resume` and send only the new user message.
+- **Storage.** A Postgres `SessionStore` (`PgSessionStore`) mirrors the transcripts into one table, `ai_sdk_session_entries`. Its columns are `project_key text`, `session_id uuid`, `subpath text NOT NULL DEFAULT ''`, `seq bigint`, `entry jsonb` and `created_at timestamptz`. The primary key is `(project_key, session_id, subpath, seq)`.
+- **Access.** The sidecar connects as the dedicated role `ai_sidecar`, which has only SELECT, INSERT and DELETE on that table. Task 17 owns the migration, the role and the GRANT; the sidecar's tests use a fixture copy.
+- **Entries.** They are opaque JSON. SQL reads only the documented top-level `uuid`, as the idempotency key for retried batches. Appends are serialized per transcript with an advisory lock.
+- **Conformance.** The adapter passes a port of the SDK's conformance suite, which the npm package does not ship.
+- **Fallback.** Sometimes the transcript is unknown: neither a store row nor a local file exists. Sometimes the resume fails before any output: an `error_during_execution` result, or a throw with no result. In either case the sidecar clears that session's rows and retries once as a new session. The retry's prompt is Rust's `rebuildContext` followed by the new message.
+- **Mirror errors.** Each `system/mirror_error` increments the `mirrorErrors` warning metric and logs a warning without detail.
+- **Local disk.** The CLI's own disk (`/var/lib/ai-sidecar`) is a tmpfs scratch area, with no named volume.
+- **Deletion.** Rust deletes the `ai_sdk_session_entries` rows for the conversation id in the same transaction as the conversation (Tasks 17 and 25). The sidecar has no delete endpoint.
+- **JSON calls.** One-shot JSON calls stay stateless.
+
+**JSON Schema to zod.** Rust owns the tool schemas as JSON Schema, but `tool()` needs a zod raw shape. The converter accepts only the T22 subset:
+- a top-level `object` with `properties`, `required`, `additionalProperties: false` and an optional `description`;
+- the property types `string` (optionally with `enum`), `integer` (optionally with `minimum`/`maximum`), `number`, `boolean`, and `array` of `string`.
+
+Properties that are not required become `.optional()`. Anything else throws `SchemaUnsupported(path)`, which `/v1/chat` returns as a 400 before anything is queued or spawned.
+
+**Timeout ordering.** The timeouts nest from shortest to longest:
+1. T23's engine wait is 45 s.
+2. The callback fetch times out at 55 s.
+3. The MCP per-server tool-call limit (`createSdkMcpServer({ timeout })`) is 60 s.
+
+Separately, each request's `timeoutMs` aborts the whole query.
+
+**Limiter.** At most `maxConcurrency` 4 calls run at once, each in its own subprocess of about 1 GiB. Further requests wait in a FIFO queue of up to 32 for at most 30 s. When the queue is full or the wait runs out, the reply is 529 `overloaded_error` with `retry-after: 5`. A client that disconnects while queued leaves the queue. Compose caps the container with `mem_limit: 5g`, and capacity planning uses measured RSS.
+
+**Production guard.** `AI_SIDECAR_ENV=production` or `NODE_ENV=production` turns the guard on. With `auth` of `oauth` or `none`, the sidecar exits with code 78 and the message "refusing to start: production needs ANTHROPIC_API_KEY or a cloud provider; a subscription token is not allowed (ADR-R3-6)". Production also requires `AI_SESSION_DATABASE_URL`. In development `oauth` is allowed, and `none` starts, reports `auth:"none"` and answers every call with 401 `authentication_error`.
+
+**Licence.** `@anthropic-ai/claude-agent-sdk` is "SEE LICENSE IN README.md": Anthropic's commercial terms, not open source. Its peers are permissive: `@modelcontextprotocol/sdk` 1.32.2 (MIT), `@anthropic-ai/sdk` 1.8.0 (Apache-2.0) and `zod` 4.6.7 (MIT). So is `pg` 8.23.1 (MIT). All are pinned exactly and pass the 7-day age check. The platform `claude` binaries come from the SDK's `optionalDependencies`, so installs must keep optional dependencies.
+
 ## Amendment 1 (2026-11-21): chat uses SDK sessions stored in Postgres
 
 Owner direction: the coach chat uses the SDK's native sessions, as in the owner's reference project. The plain Messages API is stateless, so the history has to be stored either way.
@@ -39,3 +127,23 @@ Owner direction: the coach chat uses the SDK's native sessions, as in the owner'
 - **Deletion and retention.** The SDK never deletes from a store. Rust deletes a conversation's `ai_sdk_session_entries` rows in the same transaction as the conversation itself, so "delete conversation" and "delete all" leave nothing behind.
 - **One-shot calls.** Report sections and other JSON one-shot calls stay stateless.
 - **Unverified items, tested in Task 10:** the version that added `SessionStore`, the result shape for a missing session on resume, and the `deleteSession` signature.
+
+## Notes from the Task 10 review (fix round 1)
+
+- **Verbatim prompts.** `buildOptions` sets `verbatimPrompts: true`, which requires Claude Code 2.1.248 or later; the bundled CLI is 2.1.325. Without it, the CLI expands user text such as `@/proc/self/environ` as a file mention and dispatches `/compact`-style text as a slash command. With it, prompts are delivered as written, and the CLI's turn-start attachment pass (nested CLAUDE.md files, skill listings) is skipped too. That suits a sidecar with an empty cwd and no settings.
+- **Cumulative versus per-turn usage, and metering (controller ruling, fix round 2).** The SDK's result `modelUsage` is cumulative for the session: on a resumed turn it includes every earlier turn, because the transcript carries the saved totals. The sidecar reports two fields.
+  - `sessionModelUsage` is the SDK's running total.
+  - `modelUsage` is the turn's own usage per model. On a resumed turn it is summed from the stream's `message_start` and `message_delta` usage. On a new or rebuilt turn it is the SDK's figure, which is per-turn there and also counts internal calls. When a failed resume attempt preceded a rebuild, that attempt's streamed usage is added.
+
+  **Rust meters as follows.** For `/v1/query`, and for new or rebuilt chat turns, it meters `modelUsage`. For a resumed turn, it meters `sessionModelUsage(now) − sessionModelUsage(previous turn)` per model; Rust keeps each turn's `sessionModelUsage` for this. If any difference is negative (for example, after a rebuild reset the totals), it falls back to `modelUsage`. The difference also captures internal calls that the stream does not show.
+
+  `/v1/query` is stateless, so its `modelUsage` is per call. Model keys pass through unchanged, including a refusal-fallback model outside the allowlist, and Rust prices unknown keys conservatively.
+- **Local transcripts are scratch.** Before every new or rebuilt attempt, the sidecar removes `configDir/projects/<projectKey>/<id>.jsonl` and `<id>/`, because the CLI rejects a `sessionId` whose file exists. With a store configured, it also removes them after each turn. The compose service has a read-only root and sized tmpfs mounts for `/var/lib/ai-sidecar` (512 MiB) and `/tmp` (256 MiB).
+- **Retractions (SDK-faithful, fix round 2).** Deltas carry the `messageId` of their API message. A `retract {messageIds, reason}` event names only messages the sidecar actually streamed and has not already retracted. It is triggered in three ways:
+  - When a streamed message ends with `stop_reason: "refusal"`, its retract (`reason: "refusal"`) is sent at once, before the fallback model's replacement text.
+  - An assistant message's `supersedes` triggers a retract (`reason: "superseded"`).
+  - A `model_refusal_fallback`'s `retracted_message_uuids` triggers a retract (`reason: "model_refusal_fallback"`).
+
+  The uuids in the last two are mapped to message ids, and unknown or already-retracted uuids are a no-op. `done.text` is authoritative for the turn's final text.
+- **One turn per conversation.** Two overlapping turns of one conversation would delete each other's transcripts and branch the stored session. The sidecar holds an in-process lock per conversation id. When a store is configured, it also holds a Postgres session-level advisory lock, `pg_try_advisory_lock(2026112110, hashtext(conversation_id))`, on a dedicated pool connection for the whole turn, so replicas exclude each other. The two-int key keeps it apart from the store's single-bigint append locks. The lock is taken once a limiter slot is free, so a queued request holds no connection. A second turn gets 409 with error type `turn_in_progress`, before any header. On a `new` turn whose id already has store rows (a retried first turn), those rows are deleted first.
+- **Store writes.** `append` is `INSERT … ON CONFLICT DO NOTHING` against Task 17's partial unique index `(project_key, session_id, subpath, (entry->>'uuid')) WHERE entry ? 'uuid'`, so retried batches and in-batch repeats are no-ops. The `ai_sidecar` role is created NOLOGIN by the migration. Operations grant `LOGIN PASSWORD` out of band; in dev compose that is `docker/postgres/ai-sidecar-role.sh` (profile `ai`).
