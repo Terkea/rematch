@@ -4,9 +4,11 @@ use std::sync::Arc;
 
 use chess_core::pgn::parse_pgn;
 use chess_core::{EngineScore, TimeClass};
-use futures::TryStreamExt;
+use futures::{StreamExt, TryStreamExt};
 use platforms::lichess::{LichessSource, lichess_games_url, normalize_lichess};
-use platforms::{FetchOptions, GameSource, NormalizedGame, Platform, PlatformClient};
+use platforms::{
+    FetchOptions, GameSource, Headers, NormalizedGame, Platform, PlatformClient, PlatformError,
+};
 use serde_json::{Value, json};
 use testkit::fake_platform::FakeClient;
 use time::OffsetDateTime;
@@ -309,4 +311,117 @@ fn normalize_returns_none_for_non_standard_variants() {
     });
     assert!(normalize_lichess(&raw).is_none());
     assert!(normalize_lichess(&fixture()[0]).is_some());
+}
+
+fn src() -> LichessSource {
+    LichessSource { token: None }
+}
+
+#[tokio::test]
+async fn an_error_mid_stream_is_yielded_then_the_stream_ends() {
+    let fx = fixture();
+    let fake = FakeClient {
+        ndjson_items: vec![
+            Ok(fx[0].clone()),
+            Err(PlatformError::Transport("boom".into())),
+            Ok(with(&fx[0], |m| {
+                m.insert("id".into(), json!("after"));
+            })),
+        ],
+        ..Default::default()
+    };
+    let client: Arc<dyn PlatformClient> = Arc::new(fake);
+    let items: Vec<_> = src()
+        .fetch(client, "x", FetchOptions::default())
+        .collect()
+        .await;
+    assert_eq!(items.len(), 2);
+    assert!(items[0].is_ok());
+    assert!(matches!(items[1], Err(PlatformError::Transport(_))));
+}
+
+#[tokio::test]
+async fn per_url_ndjson_is_served_by_url() {
+    let url = lichess_games_url("x", &FetchOptions::default());
+    let mut fake = FakeClient::default();
+    fake.ndjson_by_url
+        .insert(url, vec![Ok(fixture()[0].clone())]);
+    let client: Arc<dyn PlatformClient> = Arc::new(fake);
+    let games = src()
+        .fetch(client, "x", FetchOptions::default())
+        .try_collect::<Vec<_>>()
+        .await
+        .unwrap();
+    assert_eq!(games.len(), 1);
+}
+
+/// Serial client like `HttpPlatformClient`: the lock is held for the life of a stream.
+struct LockedClient {
+    lock: Arc<tokio::sync::Mutex<()>>,
+    panic: bool,
+}
+
+impl PlatformClient for LockedClient {
+    fn get_json<'a>(
+        &'a self,
+        _: &'a str,
+        _: Headers,
+    ) -> futures::future::BoxFuture<'a, Result<Value, PlatformError>> {
+        unimplemented!()
+    }
+
+    fn get_ndjson<'a>(
+        &'a self,
+        _: &'a str,
+        _: Headers,
+    ) -> futures::stream::BoxStream<'a, Result<Value, PlatformError>> {
+        if self.panic {
+            panic!("client exploded");
+        }
+        let lock = self.lock.clone();
+        let line = fixture()[0].clone();
+        futures::stream::unfold(None, move |guard| {
+            let lock = lock.clone();
+            let line = line.clone();
+            async move {
+                let guard = match guard {
+                    Some(g) => g,
+                    None => lock.lock_owned().await,
+                };
+                Some((Ok(line), Some(guard)))
+            }
+        })
+        .boxed()
+    }
+}
+
+#[tokio::test]
+async fn dropping_the_stream_mid_way_releases_the_client_lock() {
+    let lock = Arc::new(tokio::sync::Mutex::new(()));
+    let client: Arc<dyn PlatformClient> = Arc::new(LockedClient {
+        lock: lock.clone(),
+        panic: false,
+    });
+    let source = src();
+    let mut stream = source.fetch(client, "x", FetchOptions::default());
+    assert!(stream.next().await.unwrap().is_ok());
+    drop(stream);
+    let guard = tokio::time::timeout(std::time::Duration::from_secs(10), lock.lock())
+        .await
+        .expect("lock released after drop");
+    drop(guard);
+}
+
+#[tokio::test]
+async fn a_panicking_client_yields_a_final_error_not_a_clean_end() {
+    let client: Arc<dyn PlatformClient> = Arc::new(LockedClient {
+        lock: Arc::default(),
+        panic: true,
+    });
+    let items: Vec<_> = src()
+        .fetch(client, "x", FetchOptions::default())
+        .collect()
+        .await;
+    assert_eq!(items.len(), 1);
+    assert!(matches!(items[0], Err(PlatformError::Transport(_))));
 }

@@ -15,6 +15,10 @@ pub struct FakeClient {
     pub json: HashMap<String, Value>,
     /// Every `get_ndjson` call streams these values.
     pub ndjson: Vec<Value>,
+    /// Per-URL ndjson items (including injected errors); wins over `ndjson_items` and `ndjson`.
+    pub ndjson_by_url: HashMap<String, Vec<Result<Value, PlatformError>>>,
+    /// If non-empty, streamed instead of `ndjson`; lets a test inject an error mid-stream.
+    pub ndjson_items: Vec<Result<Value, PlatformError>>,
     /// `(url, headers)` of every call, in order.
     pub calls: Mutex<Vec<(String, Headers)>>,
 }
@@ -55,6 +59,14 @@ impl PlatformClient for FakeClient {
         headers: Headers,
     ) -> BoxStream<'a, Result<Value, PlatformError>> {
         self.calls.lock().unwrap().push((url.to_owned(), headers));
-        futures::stream::iter(self.ndjson.clone().into_iter().map(Ok)).boxed()
+        let items: Vec<Result<Value, PlatformError>> = if let Some(v) = self.ndjson_by_url.get(url)
+        {
+            v.clone()
+        } else if !self.ndjson_items.is_empty() {
+            self.ndjson_items.clone()
+        } else {
+            self.ndjson.iter().cloned().map(Ok).collect()
+        };
+        futures::stream::iter(items).boxed()
     }
 }

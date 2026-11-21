@@ -132,10 +132,20 @@ pub fn normalize_lichess(g: &Value) -> Option<NormalizedGame> {
         return None;
     }
     let pgn = g["pgn"].as_str().filter(|p| !p.is_empty())?;
-    let id = g["id"].as_str()?;
-    let created = g["createdAt"].as_i64()?;
-    let played_at =
-        OffsetDateTime::from_unix_timestamp_nanos(i128::from(created) * 1_000_000).ok()?;
+    let Some(id) = g["id"].as_str() else {
+        tracing::warn!("skipping lichess game without an id");
+        return None;
+    };
+    let Some(played_at) = g["createdAt"]
+        .as_i64()
+        .and_then(|c| OffsetDateTime::from_unix_timestamp_nanos(i128::from(c) * 1_000_000).ok())
+    else {
+        tracing::warn!(
+            game_id = id,
+            "skipping lichess game without a valid createdAt"
+        );
+        return None;
+    };
     let (time_class, base_seconds, increment_seconds) = timing(g);
     Some(NormalizedGame {
         platform: Platform::Lichess,
@@ -180,16 +190,20 @@ fn owned_stream<'a>(
     url: String,
     headers: Headers,
 ) -> BoxStream<'a, Result<NormalizedGame, PlatformError>> {
-    struct Abort(tokio::task::JoinHandle<()>);
+    /// Aborts the task when the consumer drops the stream.
+    struct Abort(Option<tokio::task::JoinHandle<()>>);
     impl Drop for Abort {
         fn drop(&mut self) {
-            self.0.abort();
+            if let Some(h) = &self.0 {
+                h.abort();
+            }
         }
     }
     let (mut tx, rx) = futures::channel::mpsc::channel(1);
     let task = tokio::spawn(async move {
         let mut raw = client.get_ndjson(&url, headers);
         while let Some(item) = raw.next().await {
+            let failed = item.is_err();
             let out = match item {
                 Ok(v) => match normalize_lichess(&v) {
                     Some(g) => Ok(g),
@@ -197,13 +211,27 @@ fn owned_stream<'a>(
                 },
                 Err(e) => Err(e),
             };
-            if futures::SinkExt::send(&mut tx, out).await.is_err() {
+            if futures::SinkExt::send(&mut tx, out).await.is_err() || failed {
                 break;
             }
         }
     });
-    futures::stream::unfold((rx, Abort(task)), |(mut rx, guard)| async move {
-        rx.next().await.map(|item| (item, (rx, guard)))
+    futures::stream::unfold(Some((rx, Abort(Some(task)))), |state| async move {
+        let (mut rx, mut guard) = state?;
+        if let Some(item) = rx.next().await {
+            return Some((item, Some((rx, guard))));
+        }
+        // Channel closed: surface a panicked or cancelled task instead of a clean end.
+        let handle = guard.0.take()?;
+        match handle.await {
+            Ok(()) => None,
+            Err(e) => Some((
+                Err(PlatformError::Transport(format!(
+                    "lichess stream task failed: {e}"
+                ))),
+                None,
+            )),
+        }
     })
     .boxed()
 }
