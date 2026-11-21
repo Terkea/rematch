@@ -1,9 +1,11 @@
 //! Ported from apps/worker/test/engine/uci-engine.test.ts.
 
+mod common;
+
 use std::time::Duration;
 
 use chess_core::EngineScore;
-use engine::uci::{StartOptions, UciEngine, validate_fen};
+use engine::uci::{StartOptions, sent_fen, validate_fen};
 use engine::{AnalyseOptions, AnalysisLine, EngineError};
 
 const START: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
@@ -22,6 +24,7 @@ fn start_opts(path: std::path::PathBuf) -> StartOptions {
         threads: None,
         hash_mb: None,
         syzygy_path: None,
+        handshake_timeout: None,
     }
 }
 
@@ -30,7 +33,7 @@ async fn analyses_the_start_position() {
     let Some(sf) = testkit::stockfish() else {
         return;
     };
-    let mut e = UciEngine::start(start_opts(sf)).await.unwrap();
+    let mut e = common::start_engine(start_opts(sf)).await.unwrap();
     let r = e.analyse(START, opts(50_000, 1)).await.unwrap();
     let first = &r.lines[0];
     match first.score {
@@ -47,7 +50,7 @@ async fn finds_mate_in_one() {
     let Some(sf) = testkit::stockfish() else {
         return;
     };
-    let mut e = UciEngine::start(start_opts(sf)).await.unwrap();
+    let mut e = common::start_engine(start_opts(sf)).await.unwrap();
     let r = e
         .analyse("6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1", opts(50_000, 1))
         .await
@@ -62,7 +65,7 @@ async fn returns_multipv_lines() {
     let Some(sf) = testkit::stockfish() else {
         return;
     };
-    let mut e = UciEngine::start(start_opts(sf)).await.unwrap();
+    let mut e = common::start_engine(start_opts(sf)).await.unwrap();
     let r = e.analyse(START, opts(50_000, 3)).await.unwrap();
     let ids: Vec<u32> = r.lines.iter().map(|l| l.multipv).collect();
     assert_eq!(ids, vec![1, 2, 3]);
@@ -74,7 +77,7 @@ async fn rejects_invalid_fen_without_killing_engine() {
     let Some(sf) = testkit::stockfish() else {
         return;
     };
-    let mut e = UciEngine::start(start_opts(sf)).await.unwrap();
+    let mut e = common::start_engine(start_opts(sf)).await.unwrap();
     let err = e.analyse("not a fen", opts(1000, 1)).await.unwrap_err();
     assert!(matches!(err, EngineError::InvalidFen { .. }));
     assert!(e.is_alive());
@@ -88,7 +91,7 @@ async fn returns_a_synthetic_mate_0_line_for_checkmate() {
     let Some(sf) = testkit::stockfish() else {
         return;
     };
-    let mut e = UciEngine::start(start_opts(sf)).await.unwrap();
+    let mut e = common::start_engine(start_opts(sf)).await.unwrap();
     let fen = "rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3";
     let r = e.analyse(fen, opts(1000, 1)).await.unwrap();
     assert_eq!(
@@ -109,7 +112,7 @@ async fn returns_a_synthetic_cp_0_line_for_stalemate() {
     let Some(sf) = testkit::stockfish() else {
         return;
     };
-    let mut e = UciEngine::start(start_opts(sf)).await.unwrap();
+    let mut e = common::start_engine(start_opts(sf)).await.unwrap();
     let r = e
         .analyse("7k/5Q2/6K1/8/8/8/8/8 b - - 0 1", opts(1000, 1))
         .await
@@ -132,7 +135,7 @@ async fn times_out_kills_the_process_and_rejects() {
     let Some(sf) = testkit::stockfish() else {
         return;
     };
-    let mut e = UciEngine::start(start_opts(sf)).await.unwrap();
+    let mut e = common::start_engine(start_opts(sf)).await.unwrap();
     let err = e
         .analyse(
             START,
@@ -163,7 +166,7 @@ async fn cpu_time_is_reported_on_linux() {
     let Some(sf) = testkit::stockfish() else {
         return;
     };
-    let mut e = UciEngine::start(start_opts(sf)).await.unwrap();
+    let mut e = common::start_engine(start_opts(sf)).await.unwrap();
     let r = e.analyse(START, opts(1_000_000, 1)).await.unwrap();
     assert!(r.cpu.is_some_and(|c| c > Duration::ZERO), "cpu {:?}", r.cpu);
     assert!(r.wall > Duration::ZERO);
@@ -175,7 +178,7 @@ async fn killed_engine_is_detected_as_crashed() {
     let Some(sf) = testkit::stockfish() else {
         return;
     };
-    let mut e = UciEngine::start(start_opts(sf)).await.unwrap();
+    let mut e = common::start_engine(start_opts(sf)).await.unwrap();
     assert!(e.pid().is_some());
     e.kill().await;
     assert!(!e.is_alive());
@@ -197,17 +200,24 @@ async fn a_dropped_analysis_does_not_corrupt_the_next_one() {
     let Some(sf) = testkit::stockfish() else {
         return;
     };
-    let mut e = UciEngine::start(start_opts(sf.clone())).await.unwrap();
-    let mut fresh = UciEngine::start(start_opts(sf)).await.unwrap();
+    let mut e = common::start_engine(start_opts(sf.clone())).await.unwrap();
+    let mut fresh = common::start_engine(start_opts(sf)).await.unwrap();
     let long = AnalyseOptions {
         nodes: 5_000_000_000,
         multipv: 1,
         timeout: Duration::from_secs(60),
     };
+    // Drop the future only once the search is provably running: Stockfish
+    // idles at ~0 CPU, so 150 ms of extra CPU time means `go` is executing.
+    let pid = e.pid().unwrap();
+    let base = cpu_time(pid).unwrap();
     tokio::select! {
         _ = e.analyse(START, long) => panic!("the long search finished"),
-        _ = tokio::time::sleep(Duration::from_millis(300)) => {}
+        _ = testkit::wait_for("the search to burn CPU", Duration::from_secs(20), Duration::from_millis(10), || async {
+            cpu_time(pid).filter(|c| c.saturating_sub(base) >= Duration::from_millis(150))
+        }) => {}
     }
+    assert!(e.is_searching(), "the future was dropped outside a search");
     let o = AnalyseOptions {
         nodes: 200_000,
         multipv: 1,
@@ -234,7 +244,7 @@ async fn an_externally_killed_engine_is_detected_by_eof() {
     let Some(sf) = testkit::stockfish() else {
         return;
     };
-    let mut e = UciEngine::start(start_opts(sf)).await.unwrap();
+    let mut e = common::start_engine(start_opts(sf)).await.unwrap();
     let pid = e.pid().unwrap();
     // `sh`'s builtin kill: the image has no standalone kill binary.
     let st = std::process::Command::new("sh")
@@ -250,6 +260,82 @@ async fn an_externally_killed_engine_is_detected_by_eof() {
     let err = e.analyse(START, opts(1000, 1)).await.unwrap_err();
     assert!(matches!(err, EngineError::Crashed), "{err:?}");
     assert!(!e.is_alive());
+    // The dead child was reaped, not left as a zombie.
+    assert!(!proc_exists(pid), "zombie {pid} left behind");
+}
+
+#[tokio::test]
+async fn a_crash_mid_search_reports_crashed_and_reaps_the_process() {
+    let Some(sf) = testkit::stockfish() else {
+        return;
+    };
+    let mut e = common::start_engine(start_opts(sf)).await.unwrap();
+    let pid = e.pid().unwrap();
+    let long = AnalyseOptions {
+        nodes: 5_000_000_000,
+        multipv: 1,
+        timeout: Duration::from_secs(60),
+    };
+    let killer = async {
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        kill9(pid);
+    };
+    let (r, ()) = tokio::join!(e.analyse(START, long), killer);
+    assert!(matches!(r, Err(EngineError::Crashed)), "{r:?}");
+    assert!(!proc_exists(pid), "zombie {pid} left behind");
+}
+
+#[tokio::test]
+async fn analyses_a_position_with_huge_clocks() {
+    let Some(sf) = testkit::stockfish() else {
+        return;
+    };
+    let mut e = common::start_engine(start_opts(sf)).await.unwrap();
+    // Sent as `... 150 10000`: Stockfish reads the clocks as `int`.
+    let fen = "4k3/8/8/8/8/8/4P3/4K3 w - - 4000000000 4000000000";
+    let r = e.analyse(fen, opts(10_000, 1)).await.unwrap();
+    assert_eq!(r.lines.len(), 1);
+    assert!(e.is_alive());
+    e.quit().await;
+}
+
+#[test]
+fn sent_fen_clamps_the_clocks() {
+    assert_eq!(
+        sent_fen("4k3/8/8/8/8/8/4P3/4K3 w - - 151 10001").unwrap(),
+        "4k3/8/8/8/8/8/4P3/4K3 w - - 150 10000"
+    );
+    assert_eq!(
+        sent_fen("4k3/8/8/8/8/8/4P3/4K3 w - - 4000000000 4000000000").unwrap(),
+        "4k3/8/8/8/8/8/4P3/4K3 w - - 150 10000"
+    );
+    // At or under the caps the clocks pass through.
+    assert_eq!(
+        sent_fen("4k3/8/8/8/8/8/4P3/4K3 w - - 150 10000").unwrap(),
+        "4k3/8/8/8/8/8/4P3/4K3 w - - 150 10000"
+    );
+    assert_eq!(sent_fen(START).unwrap(), START);
+    assert!(sent_fen("not a fen").is_err());
+}
+
+fn kill9(pid: u32) {
+    let _ = std::process::Command::new("sh")
+        .args(["-c", &format!("kill -9 {pid}")])
+        .status();
+}
+
+/// A zombie still has a `/proc` entry; a reaped process does not.
+fn proc_exists(pid: u32) -> bool {
+    std::path::Path::new(&format!("/proc/{pid}")).exists()
+}
+
+/// utime + stime from `/proc/<pid>/stat` (100 ticks/s).
+fn cpu_time(pid: u32) -> Option<Duration> {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    let rest = stat.get(stat.rfind(')')? + 2..)?;
+    let f: Vec<&str> = rest.split_whitespace().collect();
+    let ticks: u64 = f.get(11)?.parse::<u64>().ok()? + f.get(12)?.parse::<u64>().ok()?;
+    Some(Duration::from_millis(ticks * 10))
 }
 
 #[tokio::test]
@@ -257,7 +343,7 @@ async fn analyses_a_position_with_halfmove_clock_over_100() {
     let Some(sf) = testkit::stockfish() else {
         return;
     };
-    let mut e = UciEngine::start(start_opts(sf)).await.unwrap();
+    let mut e = common::start_engine(start_opts(sf)).await.unwrap();
     let fen = "4k3/8/8/8/8/8/4P3/4K3 w - - 150 80";
     let r = e.analyse(fen, opts(10_000, 1)).await.unwrap();
     assert_eq!(r.lines.len(), 1);
