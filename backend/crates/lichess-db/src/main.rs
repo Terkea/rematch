@@ -4,9 +4,10 @@
 
 use clap::{Args, Parser, Subcommand};
 use futures::StreamExt;
-use lichess_db::config::{DEFAULT_BASE_URL, DumpSource, http_client, is_valid_month};
+use lichess_db::config::{DEFAULT_BASE_URL, DumpSource, data_dir, http_client, is_valid_month};
 use lichess_db::download::{drain_to_end, fetch_expected_sha, open_dump};
 use lichess_db::sample::{SampleFilter, Sampler};
+use lichess_db::syzygy::{self, DEFAULT_SYZYGY_BASE_URL, Manifest, fetch_syzygy};
 use tracing_subscriber::EnvFilter;
 
 #[derive(Debug, Parser)]
@@ -27,6 +28,32 @@ enum Command {
     /// Stream one monthly dump without storing it: count and sample games, then verify the
     /// whole-file SHA-256 against sha256sums.txt (the body is always read to the end).
     Scan(ScanArgs),
+    /// Fetch the Syzygy 3-4-5 tablebases (about 1 GB), verified against the pinned manifest.
+    Syzygy(SyzygyArgs),
+}
+
+#[derive(Debug, Args)]
+struct SyzygyArgs {
+    /// Destination directory (default: $DATA_DIR/syzygy, DATA_DIR defaulting to ./data).
+    #[arg(long)]
+    dest: Option<std::path::PathBuf>,
+    /// Mirror root (manifest names carry the 3-4-5-wdl/ and 3-4-5-dtz/ directories).
+    #[arg(long, default_value = DEFAULT_SYZYGY_BASE_URL)]
+    base_url: String,
+}
+
+async fn syzygy(args: SyzygyArgs) -> anyhow::Result<()> {
+    let client = http_client()?;
+    let dest = args.dest.unwrap_or_else(|| data_dir().join("syzygy"));
+    let s = fetch_syzygy(&client, &args.base_url, &Manifest::pinned(), &dest).await?;
+    println!(
+        "syzygy: {} files downloaded ({} bytes), {} already present, in {}",
+        s.files,
+        s.bytes,
+        s.skipped,
+        dest.display()
+    );
+    Ok(())
 }
 
 #[derive(Debug, Args)]
@@ -53,7 +80,7 @@ fn parse_month(s: &str) -> Result<String, String> {
 const PROGRESS_EVERY: u64 = 1_000_000;
 
 async fn scan(args: ScanArgs) -> anyhow::Result<()> {
-    let client = http_client()?;
+    let client = syzygy::http_client()?;
     let src = DumpSource::new(args.base_url, args.month);
     let expected = fetch_expected_sha(&client, &src).await?;
     let (mut games, sha) = open_dump(&client, &src).await?;
@@ -102,6 +129,7 @@ async fn main() -> anyhow::Result<()> {
     match Cli::parse().command {
         Command::Version => println!("lichess-db {}", env!("CARGO_PKG_VERSION")),
         Command::Scan(args) => scan(args).await?,
+        Command::Syzygy(args) => syzygy(args).await?,
     }
     Ok(())
 }
