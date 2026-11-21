@@ -28,8 +28,19 @@ use uuid::Uuid;
 
 use crate::types::{EnqueueOptions, Job, JobError, JobState, UnknownJobState};
 
+/// The NOTIFY channel name, as a literal for `concat!` (every `pg_notify` in this crate uses it).
+macro_rules! jobs_channel {
+    () => {
+        "jobs"
+    };
+}
+pub(crate) use jobs_channel;
+
 /// The NOTIFY channel. Its payload is the job's kind; runners wake on it instead of polling.
-pub const JOBS_CHANNEL: &str = "jobs";
+pub const JOBS_CHANNEL: &str = jobs_channel!();
+
+/// A recurring job must recur less often than this (`recur_every` <= 1 s is rejected).
+pub const MIN_RECUR_EVERY: Duration = Duration::from_secs(1);
 
 /// Server-side bound on every queue statement (matches the worker's `statement_timeout`).
 pub const DEFAULT_QUERY_TIMEOUT: Duration = Duration::from_secs(30);
@@ -51,6 +62,8 @@ pub enum QueueError {
     Timeout { op: &'static str, after: Duration },
     #[error(transparent)]
     UnknownState(#[from] UnknownJobState),
+    #[error("invalid job options: {0}")]
+    InvalidOptions(&'static str),
 }
 
 /// Exponential retry backoff: `delay(attempts) = base * 2^(attempts - 1)`.
@@ -80,8 +93,8 @@ impl Backoff {
 /// What `Queue::fail` did with the job.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum FailOutcome {
-    /// Queued again at `run_at`, with the attempt used (retry backoff, or a recurring job's
-    /// next run).
+    /// Queued again at `run_at`: a retry after backoff with the attempt used, or a recurring
+    /// job's next run, whose attempts (and stalls) are reset to 0.
     Retried { run_at: OffsetDateTime },
     /// Queued again at `run_at` without using an attempt (`JobError::Release`).
     Released { run_at: OffsetDateTime },
@@ -118,7 +131,8 @@ macro_rules! job_columns {
         "j.id, j.kind, j.payload, j.dedupe_key, j.user_key, j.priority, j.attempts,          j.max_attempts, j.lease_token, j.run_at, j.created_at, j.started_at"
     };
 }
-/// For the reaper and other crate-internal `RETURNING` lists (Task 14).
+pub(crate) use job_columns;
+/// For crate-internal `RETURNING` lists.
 #[allow(dead_code)]
 pub(crate) const JOB_COLUMNS: &str = job_columns!();
 
@@ -126,6 +140,15 @@ pub(crate) const JOB_COLUMNS: &str = job_columns!();
 macro_rules! claim_order {
     () => {
         "priority, run_at, id"
+    };
+}
+
+/// When a queued job is due. A job enqueued to run at once has `run_at = created_at` (one
+/// transaction's `now()`), so it is due even when the wall clock has stepped back since, or when
+/// the claim's transaction began before the enqueue's (ADR 0032). A delayed job waits for `now()`.
+macro_rules! due {
+    () => {
+        "(run_at <= now() OR run_at <= created_at)"
     };
 }
 
@@ -180,30 +203,51 @@ impl JobRow {
     }
 }
 
-const ENQUEUE_SQL: &str = "\
-WITH ins AS (
+const ENQUEUE_SQL: &str = concat!(
+    "WITH ins AS (
   INSERT INTO jobs (kind, payload, dedupe_key, user_key, priority, run_at, max_attempts, recur_every)
   VALUES ($1, $2, $3, $4, $5, coalesce($6, now()), $7, $8::float8 * interval '1 millisecond')
   ON CONFLICT (kind, dedupe_key) WHERE dedupe_key IS NOT NULL AND state IN ('queued','running','paused')
   DO NOTHING RETURNING id)
-SELECT id, pg_notify('jobs', $1) IS NULL AS not_notified FROM ins";
+SELECT id, pg_notify('",
+    jobs_channel!(),
+    "', $1) IS NULL AS not_notified FROM ins"
+);
 
-/// One statement; the attempt is counted at claim.
-const DEQUEUE_SQL: &str = concat!(
-    "WITH next AS (
+/// The claim: one statement, and the attempt is counted at claim. `$kind` is the kind predicate
+/// on `$1`.
+macro_rules! dequeue_sql {
+    ($kind:literal) => {
+        concat!(
+            "WITH next AS (
   SELECT id FROM jobs
-  WHERE state = 'queued' AND kind = ANY($1) AND run_at <= now()
+  WHERE state = 'queued' AND ",
+            $kind,
+            " AND ",
+            due!(),
+            "
   ORDER BY ",
-    claim_order!(),
-    "
+            claim_order!(),
+            "
   FOR UPDATE SKIP LOCKED LIMIT $2)
 UPDATE jobs j SET state = 'running', attempts = j.attempts + 1, lease_owner = $3,
   lease_token = gen_random_uuid(), lease_until = now() + $4::float8 * interval '1 millisecond',
   heartbeat_at = now(), started_at = now()
 FROM next WHERE j.id = next.id
 RETURNING ",
-    job_columns!()
-);
+            job_columns!()
+        )
+    };
+}
+
+/// One kind: an Index Scan on `jobs_ready_idx (kind, priority, run_at, id)` in claim order that
+/// stops after `LIMIT` rows, whatever the backlog (unit-tested on the custom and generic plan).
+const DEQUEUE_ONE_SQL: &str = dequeue_sql!("kind = $1");
+
+/// Several kinds: `kind = ANY($1)` cannot be read in index order, and `LockRows` rules out a
+/// top-N sort, so every claim sorts all ready rows of those kinds. That does not scale to a large
+/// backlog: claim one kind per call where it matters.
+const DEQUEUE_ANY_SQL: &str = dequeue_sql!("kind = ANY($1)");
 
 const RENEW_SQL: &str = concat!(
     "UPDATE jobs SET lease_until = now() + $3::float8 * interval '1 millisecond',      heartbeat_at = now() WHERE ",
@@ -225,8 +269,9 @@ WHERE ",
 
 /// `$3` is the mode (`retry`, `unrecoverable` or `release`) and `$4` the delay in milliseconds
 /// (the backoff for `retry`, the release delay for `release`). A release never uses an attempt,
-/// even on the final one; a recurring job is rescheduled whatever the error. A re-queue that is
-/// ready at once (a zero-delay release) wakes the runners.
+/// even on the final one; a recurring job is rescheduled whatever the error. A zero-delay release
+/// keeps the job's `run_at`, so it keeps its place in the queue and an immediate job stays due
+/// across clock steps (ADR 0032). A re-queue that is due at once wakes the runners.
 const FAIL_SQL: &str = concat!(
     "WITH upd AS (
   UPDATE jobs SET
@@ -239,7 +284,9 @@ const FAIL_SQL: &str = concat!(
       WHEN $3 = 'release' THEN greatest(attempts - 1, 0)
       WHEN recur_every IS NOT NULL THEN 0
       ELSE attempts END,
+    stalls = CASE WHEN $3 <> 'release' AND recur_every IS NOT NULL THEN 0 ELSE stalls END,
     run_at = CASE
+      WHEN $3 = 'release' AND $4::float8 <= 0 THEN run_at
       WHEN $3 = 'release' THEN now() + $4::float8 * interval '1 millisecond'
       WHEN recur_every IS NOT NULL THEN now() + recur_every
       WHEN ",
@@ -254,9 +301,13 @@ const FAIL_SQL: &str = concat!(
   WHERE ",
     fence!(),
     "
-  RETURNING kind, state, run_at)
+  RETURNING kind, state, run_at, created_at)
 SELECT state::text AS state, run_at,
-  (CASE WHEN state = 'queued' AND run_at <= now() THEN pg_notify('jobs', kind) END) IS NULL
+  (CASE WHEN state = 'queued' AND ",
+    due!(),
+    " THEN pg_notify('",
+    jobs_channel!(),
+    "', kind) END) IS NULL
     AS not_notified
 FROM upd"
 );
@@ -281,7 +332,7 @@ fn millis(d: Duration) -> f64 {
     d.as_secs_f64() * 1000.0
 }
 
-fn truncate_chars(s: &str, max: usize) -> String {
+pub(crate) fn truncate_chars(s: &str, max: usize) -> String {
     match s.char_indices().nth(max) {
         Some((at, _)) => s[..at].to_owned(),
         None => s.to_owned(),
@@ -368,6 +419,14 @@ impl Queue {
         payload: &Value,
         opts: EnqueueOptions,
     ) -> Result<Option<i64>, QueueError> {
+        if opts
+            .recur_every
+            .is_some_and(|every| every <= MIN_RECUR_EVERY)
+        {
+            return Err(QueueError::InvalidOptions(
+                "recur_every must be longer than 1 s",
+            ));
+        }
         let fut = sqlx::query_scalar::<_, i64>(ENQUEUE_SQL)
             .bind(kind)
             .bind(payload)
@@ -388,6 +447,10 @@ impl Queue {
 
     /// Claims up to `limit` ready jobs of `kinds` for `owner`, in [`PriorityFifo`] order, each
     /// with a fresh lease token valid for `lease`. Concurrent callers never get the same job.
+    ///
+    /// One kind per call is an index-ordered scan that costs the same at any backlog; several
+    /// kinds sort every ready row of those kinds on each call (see `DEQUEUE_ANY_SQL`). An empty
+    /// result is not "no work" (ADR 0032): wait for a notification or the poll timer.
     pub async fn dequeue(
         &self,
         kinds: &[&str],
@@ -398,11 +461,11 @@ impl Queue {
         if kinds.is_empty() || limit <= 0 {
             return Ok(Vec::new());
         }
-        let fut = sqlx::query_as::<_, JobRow>(DEQUEUE_SQL)
-            .bind(kinds)
-            .bind(limit)
-            .bind(owner)
-            .bind(millis(lease));
+        let query = match kinds {
+            [kind] => sqlx::query_as::<_, JobRow>(DEQUEUE_ONE_SQL).bind(*kind),
+            _ => sqlx::query_as::<_, JobRow>(DEQUEUE_ANY_SQL).bind(kinds),
+        };
+        let fut = query.bind(limit).bind(owner).bind(millis(lease));
         let rows = self
             .guard("dequeue", async {
                 let mut tx = self.begin().await?;
@@ -438,7 +501,8 @@ impl Queue {
     ///   `now() + backoff.delay(attempts)`;
     /// - `Unrecoverable` (for example `not_found`): `failed` at once;
     /// - `Release`: queued at `now() + delay` with the attempt given back, even on the final
-    ///   attempt (shutdown, a closed engine pool, an open circuit breaker).
+    ///   attempt (shutdown, a closed engine pool, an open circuit breaker). A zero delay keeps
+    ///   the job's `run_at`, so it keeps its place in the queue.
     ///
     /// A recurring job goes back to queued at `now() + recur_every` whatever the error (a
     /// release still uses its own delay). Every branch stores `last_error` (at most 2000
@@ -533,8 +597,62 @@ mod tests {
 ",
             PriorityFifo.order_by()
         );
-        assert!(DEQUEUE_SQL.contains(&order), "{DEQUEUE_SQL}");
-        assert!(DEQUEUE_SQL.contains("FOR UPDATE SKIP LOCKED"));
+        for sql in [DEQUEUE_ONE_SQL, DEQUEUE_ANY_SQL] {
+            assert!(sql.contains(&order), "{sql}");
+            assert!(sql.contains("FOR UPDATE SKIP LOCKED"));
+        }
+    }
+
+    /// The single-kind claim reads `jobs_ready_idx` in claim order and stops after `LIMIT` rows,
+    /// with no Sort over the backlog, in both the custom and the generic (cached) plan.
+    #[sqlx::test(migrator = "db::MIGRATOR")]
+    async fn single_kind_claim_is_index_ordered(pool: PgPool) {
+        sqlx::query(
+            "INSERT INTO jobs (kind, payload, priority) \
+             SELECT CASE WHEN i % 10 = 0 THEN 'other' ELSE 'analyse-game' END, '{}', \
+               (i % 3 * 50)::int2 \
+             FROM generate_series(1, 25000) i",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query("ANALYZE jobs").execute(&pool).await.unwrap();
+        let mut conn = pool.acquire().await.unwrap();
+        sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
+            "PREPARE claim(text, int8, text, float8) AS {DEQUEUE_ONE_SQL}"
+        )))
+        .execute(&mut *conn)
+        .await
+        .unwrap();
+        for mode in ["force_custom_plan", "force_generic_plan"] {
+            sqlx::query("SELECT set_config('plan_cache_mode', $1, false)")
+                .bind(mode)
+                .execute(&mut *conn)
+                .await
+                .unwrap();
+            let plan: Vec<String> =
+                sqlx::query_scalar("EXPLAIN EXECUTE claim('analyse-game', 3, 'w', 60000)")
+                    .fetch_all(&mut *conn)
+                    .await
+                    .unwrap();
+            let plan = plan.join("\n");
+            assert!(
+                plan.contains("Index Scan using jobs_ready_idx"),
+                "{mode}:\n{plan}"
+            );
+            assert!(!plan.contains("Sort"), "{mode}:\n{plan}");
+        }
+        sqlx::raw_sql("DEALLOCATE claim; RESET plan_cache_mode")
+            .execute(&mut *conn)
+            .await
+            .unwrap();
+    }
+
+    #[test]
+    fn notifying_statements_use_the_jobs_channel() {
+        let notify = format!("pg_notify('{JOBS_CHANNEL}'");
+        assert!(ENQUEUE_SQL.contains(&notify), "{ENQUEUE_SQL}");
+        assert!(FAIL_SQL.contains(&notify), "{FAIL_SQL}");
     }
 
     #[test]
