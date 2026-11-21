@@ -197,6 +197,46 @@ mod union {
         }
     }
 
+    /// T6 review probe: in the hardened text a folded char is an uppercase ASCII marker, so the date
+    /// detector's `the\b` must not treat it as a word char (`the(?:(?-i:[^a-z0-9_])|$)`).
+    #[test]
+    fn the_boundary_after_the_treats_a_folded_char_as_a_non_word_char() {
+        let s = "ja\u{578} the\u{e9}";
+        assert_eq!(
+            find_leaks_with(s, NormMode::TsExact),
+            vec![],
+            "TS misses it"
+        );
+        assert_eq!(
+            find_leaks(s),
+            vec![Leak {
+                kind: LeakKind::Date,
+                text: "jan the".into()
+            }]
+        );
+        // Still a word boundary in the plain cases, and "theory" is not "the".
+        assert!(
+            find_leaks("Jan the 5th")
+                .iter()
+                .any(|l| l.kind == LeakKind::Date)
+        );
+        assert!(
+            find_leaks("since jan the")
+                .iter()
+                .any(|l| l.text == "jan the")
+        );
+        assert!(
+            !find_leaks("jan theory")
+                .iter()
+                .any(|l| l.kind == LeakKind::Date)
+        );
+        assert!(
+            !find_leaks("jan the_x")
+                .iter()
+                .any(|l| l.kind == LeakKind::Date)
+        );
+    }
+
     #[test]
     fn hardened_text_is_reported_in_lowercase() {
         assert!(find_leaks("f\u{3b9}ve\u{e9} games").contains(&Leak {
