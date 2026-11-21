@@ -2,6 +2,20 @@ import { z } from "zod";
 import { flagOn } from "./app/lab/lab-enabled";
 
 const flag = z.string().optional().transform(flagOn);
+// Default-on switch: off only when set to exactly "0" (ADR-WEB-3, invite-only private beta).
+const defaultOn = z
+  .string()
+  .optional()
+  .transform((value) => value !== "0");
+const emailList = z
+  .string()
+  .default("")
+  .transform((value) =>
+    value
+      .split(",")
+      .map((email) => email.trim().toLowerCase())
+      .filter(Boolean),
+  );
 
 const schema = z.object({
   DATABASE_URL: z.string().min(1),
@@ -21,6 +35,8 @@ const schema = z.object({
   CHESSCOM_OAUTH_ENABLED: flag,
   CONTACT_EMAIL: z.string().min(1),
   LAB_ENABLED: flag,
+  INVITE_ONLY: defaultOn,
+  INVITE_ALLOWLIST: emailList,
 });
 
 export type WebEnv = z.infer<typeof schema>;

@@ -68,6 +68,40 @@ export const result = pgEnum("result", ["1-0", "0-1", "1/2-1/2", "*"]);
 
 export const timeClass = pgEnum("time_class", ["bullet", "blitz", "rapid", "classical", "daily"]);
 
+export const account = pgTable(
+  "account",
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    accountId: text("account_id").notNull(),
+    providerId: text("provider_id").notNull(),
+    userId: uuid("user_id").notNull(),
+    accessToken: text("access_token"),
+    refreshToken: text("refresh_token"),
+    idToken: text("id_token"),
+    accessTokenExpiresAt: timestamp("access_token_expires_at", {
+      withTimezone: true,
+      mode: "date",
+    }),
+    refreshTokenExpiresAt: timestamp("refresh_token_expires_at", {
+      withTimezone: true,
+      mode: "date",
+    }),
+    scope: text(),
+    password: text(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("account_user_id_idx").using("btree", table.userId.asc().nullsLast()),
+    foreignKey({
+      columns: [table.userId],
+      foreignColumns: [user.id],
+      name: "account_user_id_user_id_fk",
+    }).onDelete("cascade"),
+    unique("account_provider_account_unique").on(table.accountId, table.providerId),
+  ],
+);
+
 export const games = pgTable(
   "games",
   {
@@ -144,6 +178,20 @@ export const importRuns = pgTable(
       foreignColumns: [linkedAccounts.id],
       name: "import_runs_account_id_linked_accounts_id_fk",
     }).onDelete("cascade"),
+  ],
+);
+
+export const invites = pgTable(
+  "invites",
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    email: text().notNull(),
+    note: text(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  },
+  (table) => [
+    unique("invites_email_unique").on(table.email),
+    check("invites_email_lower", sql`email = lower(email)`),
   ],
 );
 
@@ -272,6 +320,53 @@ export const positionEvals = pgTable(
   ],
 );
 
+export const session = pgTable(
+  "session",
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }).notNull(),
+    token: text().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    ipAddress: text("ip_address"),
+    userAgent: text("user_agent"),
+    userId: uuid("user_id").notNull(),
+  },
+  (table) => [
+    index("session_user_id_idx").using("btree", table.userId.asc().nullsLast()),
+    foreignKey({
+      columns: [table.userId],
+      foreignColumns: [user.id],
+      name: "session_user_id_user_id_fk",
+    }).onDelete("cascade"),
+    unique("session_token_unique").on(table.token),
+  ],
+);
+
+export const user = pgTable(
+  "user",
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    name: text().notNull(),
+    email: text().notNull(),
+    emailVerified: boolean("email_verified").default(false).notNull(),
+    image: text(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    birthMonth: text("birth_month"),
+    ageCheckedAt: timestamp("age_checked_at", { withTimezone: true, mode: "date" }),
+    marketingEmail: boolean("marketing_email").default(false).notNull(),
+    publicShareDefault: boolean("public_share_default").default(false).notNull(),
+  },
+  (table) => [
+    unique("user_email_unique").on(table.email),
+    check(
+      "user_birth_month_format",
+      sql`(birth_month IS NULL) OR (birth_month ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'::text)`,
+    ),
+  ],
+);
+
 export const userEvents = pgTable(
   "user_events",
   {
@@ -299,4 +394,19 @@ export const userEventsWatermark = pgTable(
     prunedThroughId: bigint("pruned_through_id", { mode: "number" }).default(0).notNull(),
   },
   (_table) => [check("user_events_watermark_singleton_check", sql`CHECK (singleton)`)],
+);
+
+export const verification = pgTable(
+  "verification",
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    identifier: text().notNull(),
+    value: text().notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("verification_identifier_idx").using("btree", table.identifier.asc().nullsLast()),
+  ],
 );

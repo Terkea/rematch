@@ -1,5 +1,12 @@
 import { relations } from "drizzle-orm/relations";
-import { games, importRuns, linkedAccounts, moves } from "./schema.js";
+import { account, games, importRuns, linkedAccounts, moves, session, user } from "./schema.js";
+
+export const accountRelations = relations(account, ({ one }) => ({
+  user: one(user, {
+    fields: [account.userId],
+    references: [user.id],
+  }),
+}));
 
 export const gamesRelations = relations(games, ({ one, many }) => ({
   linkedAccount: one(linkedAccounts, {
@@ -26,4 +33,16 @@ export const movesRelations = relations(moves, ({ one }) => ({
     fields: [moves.gameId],
     references: [games.id],
   }),
+}));
+
+export const sessionRelations = relations(session, ({ one }) => ({
+  user: one(user, {
+    fields: [session.userId],
+    references: [user.id],
+  }),
+}));
+
+export const userRelations = relations(user, ({ many }) => ({
+  accounts: many(account),
+  sessions: many(session),
 }));
