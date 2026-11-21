@@ -51,7 +51,6 @@ jobs:
   rust:
     runs-on: ubuntu-latest
     env:
-      CONTACT_EMAIL: ci@example.invalid
       LANE: "0"
     steps:
       - uses: actions/checkout@v4
@@ -93,7 +92,6 @@ jobs:
     # Runs always (cheap), so a change to either side cannot slip past a path filter.
     runs-on: ubuntu-latest
     env:
-      CONTACT_EMAIL: ci@example.invalid
       COMPOSE: docker compose -p ci-baseline-schema
     steps:
       - uses: actions/checkout@v4
@@ -107,7 +105,6 @@ jobs:
     # without regenerating, run `sh scripts/db/generate-drizzle-schema.sh` and commit the result.
     runs-on: ubuntu-latest
     env:
-      CONTACT_EMAIL: ci@example.invalid
       COMPOSE: docker compose -p ci-schema-drift
     steps:
       - uses: actions/checkout@v4

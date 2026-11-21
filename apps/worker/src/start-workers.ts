@@ -30,7 +30,6 @@ export interface WorkerEnv {
   REDIS_URL: string;
   DATABASE_URL: string;
   STOCKFISH_PATH: string;
-  CONTACT_EMAIL: string;
   LICHESS_TOKEN?: string | undefined;
   /** Days the incremental Lichess pass re-fetches below the watermark (default 30). */
   LICHESS_SINCE_LOOKBACK_DAYS?: string | undefined;
@@ -216,8 +215,8 @@ export async function startWorkers(
     const publish: AnalyseGameDeps["publish"] = (accountId, type, payload) =>
       publishEvent({ db, redis }, accountId, type, payload);
     const clients = {
-      lichess: createPlatformClient({ name: "lichess", contactEmail: env.CONTACT_EMAIL }),
-      chesscom: createPlatformClient({ name: "chesscom", contactEmail: env.CONTACT_EMAIL }),
+      lichess: createPlatformClient({ name: "lichess" }),
+      chesscom: createPlatformClient({ name: "chesscom" }),
     };
     const isOutage = (err: unknown) => !(err instanceof PlatformNotFoundError);
     const breaker = () =>

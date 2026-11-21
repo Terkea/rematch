@@ -331,7 +331,6 @@ async function main(argv: string[]): Promise<number> {
         REDIS_URL: requireEnv("REDIS_URL"),
         DATABASE_URL: requireEnv("DATABASE_URL"),
         STOCKFISH_PATH: requireEnv("STOCKFISH_PATH"),
-        CONTACT_EMAIL: requireEnv("CONTACT_EMAIL"),
         LICHESS_TOKEN: process.env.LICHESS_TOKEN,
       });
       return {
