@@ -1,9 +1,7 @@
 import { z } from "zod";
+import { flagOn } from "./app/lab/lab-enabled";
 
-const flag = z
-  .string()
-  .optional()
-  .transform((value) => value === "1");
+const flag = z.string().optional().transform(flagOn);
 
 const schema = z.object({
   DATABASE_URL: z.string().min(1),
