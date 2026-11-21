@@ -30,15 +30,20 @@ pub enum CircuitState {
     HalfOpen,
 }
 
-/// True when the error means the platform is unhealthy. A 404 is the caller's problem and a 429
-/// is the platform being alive and rate limiting us; neither is an outage.
+/// True when the error means the platform is unhealthy: HTTP 5xx, timeouts, transport and decode
+/// errors. A 404 or any other 4xx is specific to one user or request (closed or private account,
+/// bad input) and a 429 is the platform being alive and rate limiting us; none is an outage, and
+/// none may open the platform-wide breaker. `CircuitOpen` carries no information about the platform.
 pub fn is_outage(e: &PlatformError) -> bool {
-    !matches!(
-        e,
+    match e {
+        PlatformError::Http { status, .. } => *status >= 500,
         PlatformError::NotFound { .. }
-            | PlatformError::RateLimited { .. }
-            | PlatformError::CircuitOpen { .. }
-    )
+        | PlatformError::RateLimited { .. }
+        | PlatformError::CircuitOpen { .. } => false,
+        PlatformError::Timeout { .. } | PlatformError::Transport(_) | PlatformError::Decode(_) => {
+            true
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -127,20 +132,24 @@ impl CircuitBreaker {
     where
         F: Future<Output = Result<T, PlatformError>>,
     {
+        // User callbacks (`now`, `jitter`, `is_failure`) run outside the mutex.
         let probe = {
             let now = (self.opts.now)();
+            let jitter = (self.opts.jitter)();
             let mut inner = self.lock();
             match self.state_of(&inner, now) {
                 CircuitState::Closed => false,
                 CircuitState::Open => {
                     let at = inner.opened_at.unwrap_or(now);
-                    let retry_in = (at + self.opts.cooldown).saturating_duration_since(now);
+                    let retry_in = at
+                        .checked_add(self.opts.cooldown)
+                        .map_or(self.opts.cooldown, |t| t.saturating_duration_since(now));
                     return Err(PlatformError::CircuitOpen { retry_in });
                 }
                 CircuitState::HalfOpen if inner.probing => {
                     let floor = PROBE_RETRY_FLOOR.max(self.opts.probe_timeout);
                     return Err(PlatformError::CircuitOpen {
-                        retry_in: floor + (self.opts.jitter)(),
+                        retry_in: floor.saturating_add(jitter),
                     });
                 }
                 CircuitState::HalfOpen => {
@@ -155,18 +164,21 @@ impl CircuitBreaker {
         let result = f().await;
 
         let now = (self.opts.now)();
+        let failure = matches!(&result, Err(e) if (self.opts.is_failure)(e));
         let mut inner = self.lock();
         match &result {
             Ok(_) => {
                 inner.failures = 0;
                 inner.opened_at = None;
             }
-            Err(e) if (self.opts.is_failure)(e) => {
-                inner.failures += 1;
+            Err(_) if failure => {
+                inner.failures = inner.failures.saturating_add(1);
                 if probe || inner.failures >= self.opts.failure_threshold {
                     inner.opened_at = Some(now);
                 }
             }
+            // No information about the platform: leave the state unchanged.
+            Err(PlatformError::CircuitOpen { .. }) => {}
             Err(_) if probe => {
                 // The platform answered: it is up.
                 inner.failures = 0;
@@ -228,11 +240,9 @@ impl PlatformClient for Breaking {
             let res = self
                 .breaker
                 .exec(|| async {
-                    if st.inner.is_none() {
-                        let h = st.headers.take().unwrap_or_default();
-                        st.inner = Some(self.client.get_ndjson(url, h));
-                    }
-                    let inner = st.inner.as_mut().expect("initialised above");
+                    let h = st.headers.take().unwrap_or_default();
+                    let client = &self.client;
+                    let inner = st.inner.get_or_insert_with(|| client.get_ndjson(url, h));
                     match inner.next().await {
                         None => Ok::<_, PlatformError>(None),
                         Some(Ok(v)) => Ok(Some(v)),

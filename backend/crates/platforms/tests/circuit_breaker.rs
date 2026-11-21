@@ -430,3 +430,142 @@ async fn a_cancelled_probe_releases_the_probe_slot() {
     assert_eq!(ok(&b).await.unwrap(), "ok");
     assert_eq!(b.state(), CircuitState::Closed);
 }
+
+fn http(status: u16) -> PlatformError {
+    PlatformError::Http {
+        platform: "lichess".into(),
+        status,
+        url: "u".into(),
+    }
+}
+
+#[test]
+fn is_outage_counts_http_only_from_500() {
+    for s in [400, 401, 403, 404, 410, 422, 429] {
+        assert!(!is_outage(&http(s)), "{s}");
+    }
+    for s in [500, 502, 503, 504] {
+        assert!(is_outage(&http(s)), "{s}");
+    }
+    assert!(is_outage(&PlatformError::Decode("x".into())));
+}
+
+struct StatusClient(u16);
+
+impl PlatformClient for StatusClient {
+    fn get_json<'a>(
+        &'a self,
+        _url: &'a str,
+        _h: Headers,
+    ) -> futures::future::BoxFuture<'a, Result<Value, PlatformError>> {
+        let s = self.0;
+        async move { Err(http(s)) }.boxed()
+    }
+    fn get_ndjson<'a>(
+        &'a self,
+        _url: &'a str,
+        _h: Headers,
+    ) -> BoxStream<'a, Result<Value, PlatformError>> {
+        stream::iter(vec![Err(http(self.0))]).boxed()
+    }
+}
+
+async fn five_streams(status: u16) -> CircuitState {
+    let clock = Clock::new();
+    let breaker = Arc::new(CircuitBreaker::new(clock.opts()));
+    let client = with_circuit_breaker(Arc::new(StatusClient(status)), breaker.clone());
+    for _ in 0..5 {
+        let items: Vec<_> = client.get_ndjson("u", vec![]).collect().await;
+        assert!(matches!(items[0], Err(PlatformError::Http { .. })));
+    }
+    breaker.state()
+}
+
+#[tokio::test]
+async fn five_403_streams_leave_the_breaker_closed() {
+    assert_eq!(five_streams(403).await, CircuitState::Closed);
+}
+
+#[tokio::test]
+async fn five_503_streams_open_the_breaker() {
+    assert_eq!(five_streams(503).await, CircuitState::Open);
+}
+
+#[tokio::test]
+async fn circuit_open_error_from_a_probe_leaves_state_unchanged() {
+    let clock = Clock::new();
+    clock.set(0);
+    let b = CircuitBreaker::new(BreakerOptions {
+        failure_threshold: 1,
+        cooldown: Duration::from_millis(10),
+        ..clock.opts()
+    });
+    let _ = fail(&b).await;
+    clock.set(10);
+    let _: Result<(), _> = b
+        .exec(|| async {
+            Err(PlatformError::CircuitOpen {
+                retry_in: Duration::ZERO,
+            })
+        })
+        .await;
+    assert_eq!(b.state(), CircuitState::HalfOpen);
+}
+
+#[tokio::test]
+async fn a_panicking_probe_releases_the_probe_slot() {
+    let clock = Clock::new();
+    clock.set(0);
+    let b = Arc::new(CircuitBreaker::new(BreakerOptions {
+        failure_threshold: 1,
+        cooldown: Duration::from_millis(10),
+        ..clock.opts()
+    }));
+    let _ = fail(&b).await;
+    clock.set(10);
+    let b2 = b.clone();
+    let h = tokio::spawn(async move {
+        b2.exec(|| async {
+            if true {
+                panic!("probe panics");
+            }
+            Ok::<(), PlatformError>(())
+        })
+        .await
+    });
+    assert!(h.await.unwrap_err().is_panic());
+    assert_eq!(b.state(), CircuitState::HalfOpen);
+    assert_eq!(ok(&b).await.unwrap(), "ok");
+    assert_eq!(b.state(), CircuitState::Closed);
+}
+
+#[tokio::test]
+async fn concurrent_callers_past_the_cooldown_run_exactly_one_probe() {
+    let clock = Clock::new();
+    clock.set(0);
+    let b = CircuitBreaker::new(BreakerOptions {
+        failure_threshold: 1,
+        cooldown: Duration::from_millis(10),
+        ..clock.opts()
+    });
+    let _ = fail(&b).await;
+    clock.set(10);
+    let invoked = AtomicUsize::new(0);
+    let call = || {
+        b.exec(|| async {
+            invoked.fetch_add(1, Ordering::SeqCst);
+            tokio::task::yield_now().await;
+            Ok::<_, PlatformError>(())
+        })
+    };
+    let results = futures::future::join_all((0..8).map(|_| call())).await;
+    assert_eq!(invoked.load(Ordering::SeqCst), 1);
+    assert_eq!(results.iter().filter(|r| r.is_ok()).count(), 1);
+    assert!(
+        results
+            .iter()
+            .filter(|r| r.is_err())
+            .all(|r| matches!(r, Err(PlatformError::CircuitOpen { .. })))
+    );
+    assert_eq!(b.state(), CircuitState::Closed);
+}
