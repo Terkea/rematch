@@ -482,17 +482,9 @@ async fn give_up(pool: &PgPool, ids: &[Uuid], from: &str) -> Result<u64, sqlx::E
     Ok(failed.len() as u64)
 }
 
-/// Deletes `job_metrics` rows older than [`JOB_METRICS_RETENTION`].
-///
-/// The table comes from T19's `20261121000400_job_metrics.sql`; until that lands the step is
-/// skipped (remove the `to_regclass` guard at the T19 merge).
+/// Deletes `job_metrics` rows older than [`JOB_METRICS_RETENTION`] (served by
+/// `job_metrics_created_idx`).
 async fn prune_job_metrics(pool: &PgPool) -> Result<u64, sqlx::Error> {
-    let exists: bool = sqlx::query_scalar("SELECT to_regclass('job_metrics') IS NOT NULL")
-        .fetch_one(pool)
-        .await?;
-    if !exists {
-        return Ok(0);
-    }
     let done =
         sqlx::query("DELETE FROM job_metrics WHERE created_at < now() - make_interval(secs => $1)")
             .bind(JOB_METRICS_RETENTION.as_secs_f64())

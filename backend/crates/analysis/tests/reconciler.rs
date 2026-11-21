@@ -33,15 +33,6 @@ const ZERO: ReconcileResult = ReconcileResult {
     cleaned_jobs: 0,
 };
 
-/// The DDL of T19's `20261121000400_job_metrics.sql`, for branches where it has not landed yet.
-const JOB_METRICS_DDL: &str = "\
-CREATE TABLE IF NOT EXISTS job_metrics (
-  id bigserial PRIMARY KEY, job_id bigint, kind text NOT NULL, game_id uuid, account_id uuid,
-  queue_wait_ms double precision, parse_ms double precision, cache_ms double precision,
-  engine_wall_ms double precision, engine_cpu_ms double precision, persist_ms double precision,
-  total_ms double precision NOT NULL, positions integer, engine_positions integer,
-  cache_hits integer, lichess_used integer, created_at timestamptz NOT NULL DEFAULT now())";
-
 fn opts() -> ReconcileOptions {
     ReconcileOptions::default()
 }
@@ -477,7 +468,7 @@ async fn ensure_reconcile_scheduled_is_idempotent(pool: PgPool) {
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
 async fn prunes_job_metrics_older_than_30_days(pool: PgPool) {
-    sqlx::raw_sql(JOB_METRICS_DDL).execute(&pool).await.unwrap();
+    // The table comes from the migrations (20261121000400_job_metrics.sql), with no shim.
     sqlx::query(
         "INSERT INTO job_metrics (kind, total_ms, created_at) VALUES \
          ('analyse-game', 1, now() - interval '31 days'), ('analyse-game', 2, now() - interval '29 days')",
