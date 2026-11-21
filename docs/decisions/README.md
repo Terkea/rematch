@@ -34,5 +34,6 @@ One file per decision: context, decision, alternatives, consequences. New decisi
 - [0039](0039-piece-set.md) Piece set: Cburnett by default, Chessnut as an option
 - [ADR-WEB-10](ADR-WEB-10-visual-qa-loop.md) Visual QA loop: Playwright, shots, lab and critique
 - [ADR-WEB-11](ADR-WEB-11-overlay-libraries.md) Overlay libraries: sonner, vaul and cmdk
+- [ADR-WEB-12](ADR-WEB-12-kpi-stat-honest-uncertainty.md) KPI stats: fixed percent window, outward-rounded ends, host-set halo, honest trend scale
 - [0030. Rust for the entire backend](0030-rust-backend.md)
 - [0031 addendum. npm enforcement of the 7-day age and exact-pin rule](0031-addendum-npm-enforcement.md)
