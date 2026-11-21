@@ -8,12 +8,27 @@
     "STOCKFISH_PATH",
     "CONTACT_EMAIL",
     "LICHESS_TOKEN",
-    "IN_DOCKER"
+    "IN_DOCKER",
+    "WEB_DATABASE_URL_TEST",
+    "BETTER_AUTH_SECRET",
+    "BETTER_AUTH_URL",
+    "BETTER_AUTH_TRUSTED_ORIGINS",
+    "SMTP_URL",
+    "MAIL_FROM",
+    "GOOGLE_CLIENT_ID",
+    "GOOGLE_CLIENT_SECRET",
+    "LICHESS_CLIENT_ID",
+    "LICHESS_AUTHORIZE_BASE_URL",
+    "LICHESS_API_BASE_URL",
+    "CHESSCOM_API_BASE_URL",
+    "CHESSCOM_ENABLED",
+    "CHESSCOM_OAUTH_ENABLED",
+    "LAB_ENABLED"
   ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "outputs": ["dist/**"]
+      "outputs": ["dist/**", ".next/**", "!.next/cache/**"]
     },
     "test": {},
     "lint": {},

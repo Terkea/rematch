@@ -40,3 +40,4 @@ One file per decision: context, decision, alternatives, consequences. New decisi
 - [0036. Per-stage timing metrics](0036-per-stage-timing-metrics.md)
 - [0037. Own PGN parser with chess.js-compatible FEN and SAN](0037-own-pgn-parser-chessjs-compatible.md)
 - [0038. Parity acceptance and removal of the TS backend](0038-parity-and-ts-backend-removal.md)
+- [0031 addendum. npm enforcement of the 7-day age and exact-pin rule](0031-addendum-npm-enforcement.md)

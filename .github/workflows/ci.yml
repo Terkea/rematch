@@ -41,6 +41,8 @@ jobs:
           cache: pnpm
       - name: Create the worker test database
         run: psql "postgres://postgres:postgres@localhost:5432/chess_test" -c "CREATE DATABASE chess_worker_test"
+      - name: Check npm release age (7 days) and exact pins
+        run: node scripts/check-npm-age.mjs
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm typecheck

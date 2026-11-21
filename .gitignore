@@ -7,3 +7,11 @@ dist/
 .turbo/
 .worktrees/
 backend/target/
+.shots/
+apps/web/test-results/
+apps/web/playwright-report/
+next-env.d.ts
+*.tsbuildinfo
+
+# npm release-age cache (scripts/check-npm-age.mjs)
+.cache/
