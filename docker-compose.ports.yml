@@ -1,0 +1,9 @@
+# Opt-in host port publishing for the main dev stack. Enabled through COMPOSE_FILE in .env
+# (see .env.example). Parallel/CI projects use docker-compose.yml alone, which publishes nothing.
+services:
+  postgres:
+    ports:
+      - "127.0.0.1:55432:5432"
+  redis:
+    ports:
+      - "127.0.0.1:56379:6379"
