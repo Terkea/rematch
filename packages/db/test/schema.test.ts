@@ -4,7 +4,9 @@ import {
   createDb,
   games,
   importRuns,
+  insertUserEvent,
   linkedAccounts,
+  listEventsAfter,
   moves,
   type NewGame,
   positionEvals,
@@ -90,6 +92,42 @@ describe("schema", () => {
       ])
       .returning();
     expect((evs[1]?.id as number) > (evs[0]?.id as number)).toBe(true);
+  });
+
+  it("createDb can set a statement_timeout on every connection", async () => {
+    const limited = createDb(process.env.DATABASE_URL_TEST as string, { statementTimeoutMs: 200 });
+    try {
+      const err = (await limited.execute(sql`select pg_sleep(1)`).catch((e) => e)) as Error;
+      // drizzle wraps the driver error; the server message is on `cause`.
+      expect(String((err.cause as Error | undefined)?.message)).toMatch(/statement timeout/);
+      const [row] = await limited.execute<{ statement_timeout: string }>(
+        sql`show statement_timeout`,
+      );
+      expect(row?.statement_timeout).toBe("200ms");
+    } finally {
+      await limited.$client.end();
+    }
+  });
+
+  it("insertUserEvent hands out ids in commit order and listEventsAfter pages by id", async () => {
+    const acc = await makeAccount();
+    const a = await insertUserEvent(db, { accountId: acc.id, type: "a", payload: {} });
+    const b = await insertUserEvent(db, { accountId: acc.id, type: "b", payload: { n: 1 } });
+    expect(b).toBeGreaterThan(a);
+    const page = await listEventsAfter(db, [acc.id], a, 10);
+    expect(page.map((e) => [e.id, e.type, e.payload])).toEqual([[b, "b", { n: 1 }]]);
+  });
+
+  it("games get pendingSince when inserted", async () => {
+    const acc = await makeAccount();
+    const { id } = await upsertGame(db, gameRow(acc.id));
+    const [g] = await db.select().from(games).where(eq(games.id, id));
+    expect(g?.pendingSince).toBeInstanceOf(Date);
+    const [run] = await db
+      .insert(importRuns)
+      .values({ accountId: acc.id, status: "paused", errorCode: "circuit_open" })
+      .returning();
+    expect(run?.errorCode).toBe("circuit_open");
   });
 
   it("defaults analysisStatus to pending", async () => {
