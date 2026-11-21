@@ -12,8 +12,9 @@ use common::positions::line;
 use profile_core::board::null_move_fen;
 use profile_core::features::{
     DIFFICULTY_MIN_PLY, assemble_enriched_moves, assemble_enriched_moves_counted,
-    derive_move_features, first_capture_square, maia_difficulty,
+    derive_move_features, first_capture_square, is_maia_model_id, maia_difficulty,
 };
+use profile_core::motifs::tag_line;
 use profile_core::types::{Difficulty, MoveFeatures, MultipvLine, RawMoveFeatures, ThreatProbe};
 
 const THREAT_FEN: &str = "4k3/8/8/r7/8/8/8/R3K3 b - - 0 1";
@@ -120,14 +121,13 @@ fn a_different_first_move_capturing_on_the_threat_square_is_not_addressed() {
     assert_eq!(f.threat_existed, Some(true));
     assert_eq!(f.threat_addressed, Some(false));
     // First capture square: the first capture by the line's side within its swing depth.
-    assert_eq!(
-        first_capture_square(&after, &line(&["a1a5"]), Color::White).as_deref(),
-        Some("a5")
-    );
-    assert_eq!(
-        first_capture_square(&after, &line(&["e1d2"]), Color::White),
-        None
-    );
+    let fcs = |pv: &[&str]| {
+        let pv = line(pv);
+        let a = tag_line(&after, &pv, Color::White, 8);
+        first_capture_square(&after, &pv, Color::White, &a)
+    };
+    assert_eq!(fcs(&["a1a5"]).as_deref(), Some("a5"));
+    assert_eq!(fcs(&["e1d2"]), None);
 }
 
 #[test]
@@ -281,14 +281,14 @@ fn diff(model: &str, p_best: f64, p_ok: f64) -> Difficulty {
 #[test]
 fn difficulty_is_maia_only_and_never_in_the_opening_plies() {
     assert_eq!(DIFFICULTY_MIN_PLY, 11);
-    let maia = diff("maia2-rapid-v1", 0.4, 0.9);
+    let maia = diff("maia2-rapid-1.0", 0.4, 0.9);
     assert_eq!(maia_difficulty(11, Some(&maia)), Ok(Some(maia.clone())));
     assert_eq!(maia_difficulty(10, Some(&maia)), Ok(None), "plies <= 10");
     assert_eq!(maia_difficulty(30, None), Ok(None), "Maia down");
     assert!(maia_difficulty(30, Some(&diff("spread-v1", 0.5, 0.6))).is_err());
-    assert!(maia_difficulty(30, Some(&diff("maia2-rapid-v1", f64::NAN, 0.6))).is_err());
-    assert!(maia_difficulty(30, Some(&diff("maia2-rapid-v1", 0.5, 1.5))).is_err());
-    assert!(maia_difficulty(30, Some(&diff("maia2-rapid-v1", 0.5, f64::INFINITY))).is_err());
+    assert!(maia_difficulty(30, Some(&diff("maia2-rapid-1.0", f64::NAN, 0.6))).is_err());
+    assert!(maia_difficulty(30, Some(&diff("maia2-rapid-1.0", 0.5, 1.5))).is_err());
+    assert!(maia_difficulty(30, Some(&diff("maia2-rapid-1.0", 0.5, f64::INFINITY))).is_err());
 }
 
 // --- assemble_enriched_moves ------------------------------------------------------------
@@ -367,7 +367,7 @@ fn raw_features_are_attached_to_their_ply() {
             MultipvLine {
                 uci: "e7e5".to_owned(),
                 score: EngineScore::Cp(-30),
-                pv: line(&["e7e5"]),
+                pv: line(&["d7d6"]),
             },
             MultipvLine {
                 uci: "c7c5".to_owned(),
@@ -396,7 +396,7 @@ fn invalid_inputs_are_skipped_and_counted() {
         ..raw(3)
     });
     raws[3] = Some(RawMoveFeatures {
-        difficulty: Some(diff("maia2-rapid-v1", 0.5, 0.5)),
+        difficulty: Some(diff("maia2-rapid-1.0", 0.5, 0.5)),
         ..raw(4)
     });
     // Evals one short: the final ply has no eval after it.
@@ -429,7 +429,7 @@ fn a_maia_difficulty_past_the_opening_is_kept() {
         r.ply += 4;
     }
     evals.truncate(8);
-    let d = diff("maia2-blitz-v1", 0.25, 0.75);
+    let d = diff("maia2-blitz-2", 0.25, 0.75);
     let mut raws: Vec<Option<RawMoveFeatures>> = vec![None; records.len()];
     raws[6] = Some(RawMoveFeatures {
         difficulty: Some(d.clone()),
@@ -446,4 +446,127 @@ fn features_never_hold_non_finite_numbers() {
         assert!(f.multipv_gap.unwrap().is_finite());
         serde_json::to_string(&f).unwrap();
     }
+}
+
+// --- fix round 1: exact Maia ids and input validation ----------------------------------
+
+#[test]
+fn maia_is_recognised_by_its_exact_model_id() {
+    for ok in ["maia2-rapid-1", "maia2-blitz-0.11.0", "maia2-rapid-1.0"] {
+        assert!(is_maia_model_id(ok), "{ok}");
+    }
+    for bad in [
+        "maia",
+        "maia-fake",
+        "maiaspread-v1",
+        "maia1-1500",
+        "maia2-classical-0.11.0",
+        "maia2-rapid-",
+        "maia2-rapid-1.",
+        "maia2-rapid-.1",
+        "maia2-rapid-1..2",
+        "maia2-rapid-v1",
+        "maia2-rapid-1 ",
+        "spread-v1",
+        "",
+    ] {
+        assert!(!is_maia_model_id(bad), "{bad:?}");
+        assert!(
+            maia_difficulty(30, Some(&diff(bad, 0.2, 0.5))).is_err(),
+            "{bad:?}"
+        );
+    }
+}
+
+#[test]
+fn p_best_above_p_ok_is_rejected_and_counted() {
+    assert!(maia_difficulty(30, Some(&diff("maia2-rapid-1", 0.6, 0.5))).is_err());
+    assert!(maia_difficulty(30, Some(&diff("maia2-rapid-1", 0.5 + 1e-12, 0.5))).is_ok());
+    let (_, mut records, evals) = scholars();
+    for r in &mut records {
+        r.ply += 4;
+    }
+    let mut raws: Vec<Option<RawMoveFeatures>> = vec![None; records.len()];
+    raws[6] = Some(RawMoveFeatures {
+        difficulty: Some(diff("maia2-rapid-1", 0.6, 0.5)),
+        ..raw(11)
+    });
+    let counted = assemble_enriched_moves_counted(&records, &evals, &raws, None);
+    assert_eq!(counted.skipped.difficulty_rejected, 1);
+    assert_eq!(counted.moves[6].raw.as_ref().unwrap().difficulty, None);
+}
+
+#[test]
+fn out_of_range_evals_are_skipped_and_counted() {
+    let (game, records, mut evals) = scholars();
+    evals[2].score = EngineScore::Cp(i32::MIN); // before ply 3, after ply 2
+    evals[4].score = EngineScore::Mate(1001); // before ply 5, after ply 4
+    let counted = assemble_enriched_moves_counted(&records, &evals, &[], game.terminal);
+    assert_eq!(counted.skipped.evals_out_of_range, 4);
+    let plies: Vec<u32> = counted.moves.iter().map(|m| m.rec.ply).collect();
+    assert_eq!(plies, vec![1, 6, 7]);
+    // The bounds themselves are in range.
+    let (_, records, mut evals) = scholars();
+    evals[2].score = EngineScore::Cp(-100_000);
+    evals[4].score = EngineScore::Mate(-1000);
+    let ok = assemble_enriched_moves_counted(&records, &evals, &[], None);
+    assert_eq!(ok.skipped, Default::default());
+}
+
+#[test]
+fn a_threat_probe_for_another_position_is_dropped_and_counted() {
+    let mut r = threat_raw(&["a1a5"]);
+    r.threat.as_mut().unwrap().null_fen = "4k3/8/8/r7/8/8/8/R3K3 w - - 0 2".to_owned();
+    let after = fen_after(THREAT_FEN, "e8e7");
+    let f = derive_move_features(Color::Black, THREAT_FEN, &after, "e8e7", Some(&r));
+    assert_eq!(
+        (f.threat, f.threat_existed, f.threat_addressed),
+        (None, None, None)
+    );
+
+    let (game, records, evals) = scholars();
+    let mut raws: Vec<Option<RawMoveFeatures>> = vec![None; records.len()];
+    raws[1] = Some(RawMoveFeatures {
+        threat: Some(ThreatProbe {
+            null_fen: null_move_fen(THREAT_FEN).unwrap(),
+            pv: line(&["a1a5"]),
+            score: EngineScore::Cp(500),
+        }),
+        ..raw(2)
+    });
+    raws[2] = Some(RawMoveFeatures {
+        threat: Some(ThreatProbe {
+            null_fen: null_move_fen(&records[2].fen_before).unwrap(),
+            pv: line(&["d7d6"]),
+            score: EngineScore::Cp(0),
+        }),
+        ..raw(3)
+    });
+    let counted = assemble_enriched_moves_counted(&records, &evals, &raws, game.terminal);
+    assert_eq!(counted.skipped.threat_fen_mismatch, 1);
+    assert_eq!(counted.moves[1].raw.as_ref().unwrap().threat, None);
+    assert!(counted.moves[2].raw.as_ref().unwrap().threat.is_some());
+}
+
+#[test]
+fn raw_entries_beyond_the_records_are_counted() {
+    let (game, records, evals) = scholars();
+    let mut raws: Vec<Option<RawMoveFeatures>> = vec![None; records.len()];
+    raws.push(Some(raw(8)));
+    raws.push(Some(raw(9)));
+    raws.push(None);
+    let counted = assemble_enriched_moves_counted(&records, &evals, &raws, game.terminal);
+    assert_eq!(counted.skipped.raw_beyond_records, 2);
+    assert_eq!(counted.moves.len(), 7);
+}
+
+#[test]
+fn moves_with_an_unparseable_fen_are_skipped_and_counted() {
+    let (game, mut records, evals) = scholars();
+    records[3].fen_before = "garbage".to_owned();
+    let counted = assemble_enriched_moves_counted(&records, &evals, &[], game.terminal);
+    // Ply 4 has no valid fen_before, and ply 3's fen_after is that same garbage.
+    assert_eq!(counted.skipped.moves_with_invalid_fen, 2);
+    let plies: Vec<u32> = counted.moves.iter().map(|m| m.rec.ply).collect();
+    assert_eq!(plies, vec![1, 2, 5, 6, 7]);
 }

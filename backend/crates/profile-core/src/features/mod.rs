@@ -6,15 +6,19 @@
 //!   a PV cannot silently count as "no tactic".
 //! - Move difficulty comes only from Maia (owner override): it is `None` when Maia was down, at
 //!   plies `≤ 10`, or when the stored value is not a finite Maia probability.
+//! - Maia is recognised by its exact model id ([`is_maia_model_id`]), shared with T24.
 //! - Invalid inputs are skipped and counted ([`SkipCounts`]); no NaN or infinity is emitted.
 
 pub mod assemble;
 pub mod derive;
 
 pub use assemble::{
-    Assembly, SkipCounts, assemble_enriched_moves, assemble_enriched_moves_counted,
+    Assembly, MAX_EVAL_CP, MAX_EVAL_MATE, SkipCounts, assemble_enriched_moves,
+    assemble_enriched_moves_counted, eval_in_range,
 };
 pub use derive::{
-    CRITICAL_GAP, DIFFICULTY_MIN_PLY, InvalidDifficulty, LINE_MAX_PLIES, PLAYABLE_WINDOW,
-    THREAT_MAX_DEPTH, THREAT_MIN_GAIN, derive_move_features, first_capture_square, maia_difficulty,
+    CRITICAL_GAP, DIFFICULTY_EPSILON, DIFFICULTY_MIN_PLY, InvalidDifficulty, LINE_MAX_PLIES,
+    MAIA_MODEL_ID_PATTERN, PLAYABLE_WINDOW, THREAT_MAX_DEPTH, THREAT_MIN_GAIN,
+    derive_move_features, first_capture_square, is_maia_model_id, maia_difficulty,
+    threat_probe_matches,
 };

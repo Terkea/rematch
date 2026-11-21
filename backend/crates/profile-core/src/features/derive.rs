@@ -4,9 +4,11 @@ use chess_core::Color;
 use chess_core::board::Position;
 use chess_core::score::win_percent;
 
-use crate::board::play_line;
+use crate::board::{null_move_fen, play_line};
 use crate::motifs::tag_line;
-use crate::types::{Difficulty, LineAnalysis, MoveFeatures, MultipvLine, RawMoveFeatures};
+use crate::types::{
+    Difficulty, LineAnalysis, MoveFeatures, MultipvLine, RawMoveFeatures, ThreatProbe,
+};
 
 /// A move is critical when the best MultiPV line beats the second by at least this many W%.
 pub const CRITICAL_GAP: f64 = 15.0;
@@ -52,11 +54,17 @@ fn is_threat(a: &LineAnalysis) -> bool {
     a.swing.gain >= THREAT_MIN_GAIN && a.swing.depth.is_some_and(|d| d <= THREAT_MAX_DEPTH)
 }
 
-/// The square of the first capture by `pov` in `pv` from `fen`, within the line's swing depth
-/// (capped at [`THREAT_MAX_DEPTH`] plies; with no swing, the first 4 plies). `None` when that
-/// prefix has no capture by `pov`, or the line cannot be replayed.
-pub fn first_capture_square(fen: &str, pv: &[String], pov: Color) -> Option<String> {
-    let depth = tag_line(fen, pv, pov, LINE_MAX_PLIES)
+/// The square of the first capture by `pov` in `pv` from `fen`, within `line`'s swing depth
+/// (`line` is that line's existing analysis; capped at [`THREAT_MAX_DEPTH`] plies, and the first
+/// 4 plies when it has no swing). `None` when that prefix has no capture by `pov`, or the line
+/// cannot be replayed.
+pub fn first_capture_square(
+    fen: &str,
+    pv: &[String],
+    pov: Color,
+    line: &LineAnalysis,
+) -> Option<String> {
+    let depth = line
         .swing
         .depth
         .unwrap_or(THREAT_MAX_DEPTH)
@@ -66,6 +74,12 @@ pub fn first_capture_square(fen: &str, pv: &[String], pov: Color) -> Option<Stri
         .into_iter()
         .find(|s| s.mover == pov && s.captured.is_some())
         .map(|s| s.to)
+}
+
+/// The threat probe belongs to this move: its null FEN is exactly `null_move_fen(fen_before)`
+/// (so `false` when the mover is in check and no null move exists).
+pub fn threat_probe_matches(fen_before: &str, probe: &ThreatProbe) -> bool {
+    null_move_fen(fen_before).is_some_and(|n| n == probe.null_fen)
 }
 
 /// MultiPV features; `None` without lines. Lines are ranked by mover W% (stable, so the engine
@@ -117,7 +131,10 @@ pub fn derive_move_features(
     }
     f.best = analyse(fen_before, &raw.best_pv, color);
     f.refutation = analyse(fen_after, &raw.refutation_pv, them);
-    let probe = raw.threat.as_ref();
+    let probe = raw
+        .threat
+        .as_ref()
+        .filter(|t| threat_probe_matches(fen_before, t));
     f.threat = probe.and_then(|t| analyse(&t.null_fen, &t.pv, them));
 
     if let (Some(threat), Some(probe)) = (&f.threat, probe) {
@@ -129,8 +146,8 @@ pub fn derive_move_features(
             f.refutation.as_ref().map(|refutation| {
                 let same_start = raw.refutation_pv.first() == probe.pv.first();
                 let same_square = || {
-                    first_capture_square(fen_after, &raw.refutation_pv, them)
-                        == first_capture_square(&probe.null_fen, &probe.pv, them)
+                    first_capture_square(fen_after, &raw.refutation_pv, them, refutation)
+                        == first_capture_square(&probe.null_fen, &probe.pv, them, threat)
                 };
                 !(is_threat(refutation) && (same_start || same_square()))
             })
@@ -139,10 +156,36 @@ pub fn derive_move_features(
     f
 }
 
+/// `p_best` may exceed `p_ok` by at most this much (rounding in the service).
+pub const DIFFICULTY_EPSILON: f64 = 1e-9;
+
+/// The accepted Maia model ids, `^maia2-(rapid|blitz)-[0-9]+(\.[0-9]+)*$` (matched by
+/// [`is_maia_model_id`]; the service's `GET /healthz` id is `maia2-<type>-<version>`).
+pub const MAIA_MODEL_ID_PATTERN: &str = r"^maia2-(rapid|blitz)-[0-9]+(\.[0-9]+)*$";
+
+/// `id` matches [`MAIA_MODEL_ID_PATTERN`] exactly. Shared with the enrichment client (T24), so
+/// both sides accept the same ids.
+pub fn is_maia_model_id(id: &str) -> bool {
+    let Some(rest) = id.strip_prefix("maia2-") else {
+        return false;
+    };
+    let Some(version) = rest
+        .strip_prefix("rapid-")
+        .or_else(|| rest.strip_prefix("blitz-"))
+    else {
+        return false;
+    };
+    version
+        .split('.')
+        .all(|part| !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit()))
+}
+
 /// The difficulty to use for `ply`: Maia only (owner override), `None` when Maia was down
-/// (`d` is `None`) or at plies `≤ 10`. A stored value from another model (the removed
-/// `spread-v1`) or with a probability outside `[0, 1]` (or non-finite) is an error, so the
-/// caller can skip and count it.
+/// (`d` is `None`) or at plies `≤ 10`. A stored value whose model is not an exact Maia id
+/// ([`is_maia_model_id`]; for example the removed `spread-v1`), with a probability outside
+/// `[0, 1]` or non-finite, or with `p_best > p_ok + 1e-9` (the best move is one of the ok
+/// moves) is an error, so the caller can skip and count it. Validity is checked before the ply
+/// rule.
 pub fn maia_difficulty(
     ply: u32,
     d: Option<&Difficulty>,
@@ -150,9 +193,9 @@ pub fn maia_difficulty(
     let Some(d) = d else {
         return Ok(None);
     };
-    if !d.model.starts_with("maia") {
+    if !is_maia_model_id(&d.model) {
         return Err(InvalidDifficulty(format!(
-            "model {:?} is not Maia",
+            "model {:?} is not a Maia model id",
             d.model
         )));
     }
@@ -160,6 +203,12 @@ pub fn maia_difficulty(
     if !unit(d.p_best) || !unit(d.p_ok) {
         return Err(InvalidDifficulty(format!(
             "probabilities ({}, {}) outside [0, 1]",
+            d.p_best, d.p_ok
+        )));
+    }
+    if d.p_best > d.p_ok + DIFFICULTY_EPSILON {
+        return Err(InvalidDifficulty(format!(
+            "p_best {} exceeds p_ok {}",
             d.p_best, d.p_ok
         )));
     }

@@ -191,12 +191,12 @@ pub fn fork(ctx: &LineContext) -> bool {
                     && later.captured.is_some()
                     && targets.contains(&later.to)
                     && {
-                        // ADR-R2-3: the capture is the forker's first move after the fork, or
-                        // the target has not moved since the fork.
+                        // ADR-R2-3 (controller ruling, T6 review): neither the forker nor the
+                        // captured target moved between the fork and the capture.
                         let between = replay.get(i + 1..j).unwrap_or_default();
                         let untouched =
                             |sq: &str| between.iter().all(|s| s.from != sq && s.to != sq);
-                        untouched(&step.to) || untouched(&later.to)
+                        untouched(&step.to) && untouched(&later.to)
                     }
             })
     })
