@@ -215,6 +215,27 @@ services:
       - sccache:/sccache
       - crate_age:/crate-age
 
+  # Maia-2 difficulty service (R2 Task 24, ADR-R2-13). Opt-in: `docker compose --profile maia up -d
+  # maia`, then set MAIA_URL=http://maia:8080 for the Rust worker. Unset MAIA_URL = spread-v1 fallback.
+  maia:
+    profiles: [maia]
+    build:
+      context: services/maia
+    environment:
+      MAIA_MODEL: ${MAIA_MODEL:-rapid}
+    ports:
+      - "127.0.0.1:58080:8080"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=3)"
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
 volumes:
   pgdata:
   node_modules:
