@@ -297,3 +297,107 @@ fn play_uci_promotion_and_en_passant() {
         "rnbqkbnr/1pp1pppp/p2P4/8/8/8/PPPP1PPP/RNBQKBNR b KQkq - 0 3"
     );
 }
+
+#[test]
+fn fen_round_trips_large_clocks_unchanged() {
+    // cozy-chess caps the halfmove clock at 100; Position must not.
+    let fen = "4k3/8/8/8/8/8/8/R3K3 w - - 150 80";
+    let pos = Position::from_fen(fen).unwrap();
+    assert_eq!(pos.fen(), fen);
+    assert_eq!(pos.halfmove_clock(), 150);
+}
+
+#[test]
+fn halfmove_clock_counts_past_100() {
+    let mut pos = Position::from_fen("4k3/8/8/8/8/8/8/R3K3 w - - 96 60").unwrap();
+    for (i, san) in ["Ra2", "Kd7", "Ra3", "Ke7", "Ra4", "Kd7"]
+        .iter()
+        .enumerate()
+    {
+        pos.play_san(san).unwrap();
+        assert_eq!(pos.halfmove_clock(), 97 + i as u32, "after {san}");
+    }
+    assert_eq!(pos.halfmove_clock(), 102);
+    assert_eq!(pos.fen(), "8/3k4/8/8/R7/8/8/4K3 w - - 102 63");
+    // A capture still resets it.
+    let mut cap = Position::from_fen("4k3/8/8/p7/8/8/8/R3K3 w - - 120 70").unwrap();
+    cap.play_san("Rxa5").unwrap();
+    assert_eq!(cap.halfmove_clock(), 0);
+}
+
+#[test]
+fn coordinate_promotion_without_piece_picks_knight_like_chess_js() {
+    // chess.js 1.4.0: move('e7e8') promotes to a knight (first of its
+    // promotion list). Not reachable from Lichess/chess.com PGN, but pinned.
+    let mut pos = Position::from_fen("7k/4P3/8/8/8/8/8/K7 w - - 0 1").unwrap();
+    let played = pos.play_san("e7e8").unwrap();
+    assert_eq!(
+        (played.san.as_str(), played.uci.as_str()),
+        ("e8=N", "e7e8n")
+    );
+    // An explicit piece still wins.
+    let mut pos = Position::from_fen("7k/4P3/8/8/8/8/8/K7 w - - 0 1").unwrap();
+    assert_eq!(pos.play_san("e7e8q").unwrap().san, "e8=Q+");
+}
+
+#[test]
+fn fixture_covers_required_scenarios() {
+    let reference = reference();
+    let mut ep = 0;
+    let mut printed_ep = 0;
+    let (mut wk, mut wq, mut bk, mut bq) = (0, 0, 0, 0);
+    let (mut mates, mut stales, mut threes) = (0, 0, 0);
+    let mut square_disamb = 0;
+    for case in &reference.cases {
+        mates += case.fin.checkmate as u32;
+        stales += case.fin.stalemate as u32;
+        threes += case.fin.threefold as u32;
+        for m in &case.moves {
+            let fields: Vec<&str> = m.before.split(' ').collect();
+            let white = fields[1] == "w";
+            if m.after.split(' ').nth(3) != Some("-") {
+                printed_ep += 1;
+            }
+            // En passant: a pawn capture onto the previously printed ep square.
+            if m.san.contains('x') && Some(m.to.as_str()) == Some(fields[3]) {
+                let pawn_move = m.san.chars().next().is_some_and(|c| c.is_ascii_lowercase());
+                ep += pawn_move as u32;
+            }
+            match (m.san.starts_with("O-O-O"), m.san.starts_with("O-O"), white) {
+                (true, _, true) => wq += 1,
+                (true, _, false) => bq += 1,
+                (_, true, true) => wk += 1,
+                (_, true, false) => bk += 1,
+                _ => {}
+            }
+            let b = m.san.as_bytes();
+            if b.len() >= 5
+                && b"NBRQK".contains(&b[0])
+                && b[1].is_ascii_lowercase()
+                && b[2].is_ascii_digit()
+            {
+                square_disamb += 1;
+            }
+        }
+    }
+    assert!(ep >= 10, "ep captures {ep}");
+    assert!(printed_ep >= 10, "printed ep squares {printed_ep}");
+    assert!(wk > 0 && wq > 0 && bk > 0 && bq > 0, "{wk} {wq} {bk} {bq}");
+    assert!(
+        mates >= 5 && stales >= 3 && threes >= 3,
+        "{mates} {stales} {threes}"
+    );
+    assert!(square_disamb >= 3, "square disambiguation {square_disamb}");
+    assert!(
+        reference
+            .cases
+            .iter()
+            .any(|c| c.name.starts_with("real_lichess_"))
+    );
+    assert!(
+        reference
+            .cases
+            .iter()
+            .any(|c| c.name.starts_with("real_chesscom_"))
+    );
+}

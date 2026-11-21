@@ -20,7 +20,19 @@ The TypeScript stack uses chess.js 1.4.0 for PGN parsing, SAN, FEN and UCI. `fen
 
 ## Reference fixture
 
-`backend/fixtures/board/chessjs-reference.json` was generated with chess.js 1.4.0 (`Chess#move` verbose output: `san`, `from`, `to`, `promotion`, `before`, `after`, plus the final `isCheckmate`, `isStalemate`, `isInsufficientMaterial`, `isThreefoldRepetition`). It holds the hand-picked lines of the plan (Scholar's mate, promotion captures, both castlings, en passant, pinned and unpinned double pushes, disambiguation, Sam Loyd's stalemate, threefold) and 12 seeded random games (about 1,200 moves) biased to captures, castling and promotions. `tests/board.rs` replays every move.
+`backend/fixtures/board/chessjs-reference.json` is produced by `backend/fixtures/board/gen.cjs` with chess.js 1.4.0 (`Chess#move` verbose output: `san`, `from`, `to`, `promotion`, `before`, `after`, plus the final `isCheckmate`, `isStalemate`, `isInsufficientMaterial`, `isThreefoldRepetition`). It holds the hand-picked lines of the plan, curated lines for square disambiguation (three queens, knights and rooks), all four castling combinations, ep captures and printed ep squares, mates, stalemates, threefold and clocks above 100; the games recorded in `apps/worker/test/fixtures` (Lichess and chess.com); and seeded random games (capture, ep, castling and endgame biases, plus a seeded hunt for mate, stalemate and threefold endings). `tests/board.rs` replays every move and asserts the coverage.
+
+Regenerate from the repository root (the generator finds chess.js in the nearest `node_modules`, or `$CHESSJS_DIR`, and refuses any version but 1.4.0):
+
+```
+node backend/fixtures/board/gen.cjs           # rewrite the fixture
+node backend/fixtures/board/gen.cjs --check   # fail if the committed file is stale
+node backend/fixtures/board/gen.cjs --stats   # also print coverage counts
+```
+
+Output is deterministic (seeded PRNG), so a regeneration must leave the committed file byte-identical unless chess.js, the generator or the recorded fixtures changed.
+
+**Coordinate promotion without a piece.** `play_san("e7e8")` promotes to a knight, exactly as chess.js 1.4.0 does (it takes the first match of its promotion list). Lichess and chess.com PGN always carry `=Q`-style suffixes, so this is not reachable from real input, but we match chess.js and pin it with a test. `play_uci` is deliberately stricter: a promoting UCI move without its suffix is an error, because UCI engines always send one.
 
 ## Consequences
 
