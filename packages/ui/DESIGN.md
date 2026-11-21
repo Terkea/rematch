@@ -235,6 +235,8 @@ Size and line height in px, from the classic scale. Literata's `opsz` tracks the
 
 **Focus.** Everywhere outside the board: a 2px `ink` outline with a 2px offset, so the ring sits on the surface behind (`paper`, `sheet` or `well`, all ≥ 13:1). On the board: an inset **dashed** ring (dash 4, gap 3), a 2px `sheet` halo at 2px inside the square's edge, with a 2px dashed `ink` ring inside it, so the ring's neighbour is always the halo. The dashes keep focus distinct from the solid 3px check ring. The focused square is also announced ("e4, white knight").
 
+**Touch targets.** On a coarse pointer every control's hit area is at least 44 × 44px, without changing its visual size: buttons (`md` 40px and `sm` 32px tall), tabs (32px), switches and icon-only controls (such as the dialog close, 32px) grow an invisible centred hit area. It reaches 2px past an `md` control and 6px past an `sm` one, so stacked controls need a gap of at least **4px between `md` controls** and at least **12px between `sm` controls** (and 6px from an `sm` control to the edge of any scrolling container), or neighbouring hit areas overlap and the later one wins. `apps/web/e2e/touch-targets.spec.ts` checks this with a real hit test.
+
 **Icons.** Phosphor, regular weight, `currentColor`. 20px in UI controls and 16px inline with text. Always paired with a text label unless the control has an accessible name and a universal meaning (close, menu). Never Lucide or emoji (`B13`).
 
 ## Pieces

@@ -4,6 +4,7 @@ import { Button as ButtonPrimitive } from "@base-ui/react/button";
 import { cva } from "class-variance-authority";
 import {
   type ButtonHTMLAttributes,
+  type CSSProperties,
   cloneElement,
   forwardRef,
   isValidElement,
@@ -112,24 +113,19 @@ function composeRefs<T>(...refs: (Ref<T> | undefined)[]): RefCallback<T> {
 
 type Handler<E extends SyntheticEvent> = ((event: E) => void) | undefined;
 
-/** Calls each handler in order, skipping the rest once one calls preventDefault. */
-function chain<E extends SyntheticEvent>(...handlers: Handler<E>[]): (event: E) => void {
+/**
+ * Calls the first handler, then the second unless the first called preventDefault. The first
+ * always runs, even for an event that arrives already prevented.
+ */
+function chain<E extends SyntheticEvent>(
+  first: Handler<E>,
+  second: Handler<E>,
+): (event: E) => void {
   return (event) => {
-    for (const handler of handlers) {
-      if (event.defaultPrevented) return;
-      handler?.(event);
-    }
+    first?.(event);
+    if (!event.defaultPrevented) second?.(event);
   };
 }
-
-const HANDLERS = [
-  "onPointerDown",
-  "onPointerUp",
-  "onPointerLeave",
-  "onPointerCancel",
-  "onKeyDown",
-  "onKeyUp",
-] as const;
 
 type ChildProps = Record<string, unknown> & { className?: string; ref?: Ref<HTMLElement> };
 
@@ -168,23 +164,33 @@ export const Button = forwardRef<HTMLElement, ButtonProps>(function Button(
   };
 
   // asChild keeps the child's own element and role (a link stays a link), so it skips Base UI's
-  // button behaviour and only takes the look and the press. The child's ref and handlers run
-  // first, and ours after them unless the child called preventDefault.
+  // button behaviour and only takes the look and the press. Props merge as Radix Slot merges them:
+  // handlers both run (the child's first, ours unless it called preventDefault), class names and
+  // styles combine (the child's style wins per property), refs compose, and any other prop the
+  // child sets itself wins over the Button's.
   if (asChild && isValidElement(children)) {
     const child = children as ReactElement<ChildProps>;
-    const composed: Record<string, unknown> = {};
-    for (const name of HANDLERS) {
-      composed[name] = chain(
-        child.props[name] as Handler<SyntheticEvent>,
-        own[name] as Handler<SyntheticEvent>,
-      );
+    const childProps = child.props;
+    const merged: Record<string, unknown> = {};
+    const buttonProps: Record<string, unknown> = { ...props, ...own };
+    for (const [name, value] of Object.entries(buttonProps)) {
+      const childValue = childProps[name];
+      if (/^on[A-Z]/.test(name) && typeof value === "function") {
+        merged[name] =
+          typeof childValue === "function"
+            ? chain(childValue as Handler<SyntheticEvent>, value as Handler<SyntheticEvent>)
+            : value;
+      } else if (name === "style") {
+        merged.style = { ...(value as CSSProperties), ...(childProps.style as CSSProperties) };
+      } else if (!(name in childProps)) {
+        merged[name] = value;
+      }
     }
     return cloneElement(child, {
-      ...props,
-      ...composed,
-      ref: composeRefs(child.props.ref, ref),
+      ...merged,
+      ref: composeRefs(childProps.ref, ref),
       "data-slot": "button",
-      className: cn(classes, child.props.className),
+      className: cn(classes, childProps.className),
     });
   }
 

@@ -276,6 +276,73 @@ describe("Button asChild composition", () => {
     fireEvent.keyDown(link, { key: "Enter" });
     expect(calls).toEqual(["child", "button", "child-key"]);
   });
+
+  it("merges onClick, className and style with the child's, as Radix Slot does", () => {
+    const calls: string[] = [];
+    render(
+      <Button
+        asChild
+        variant="outline"
+        className="w-full"
+        style={{ color: "red", marginTop: 4 }}
+        title="from button"
+        onClick={() => calls.push("button")}
+      >
+        <a
+          href="/games"
+          className="underline"
+          style={{ color: "blue" }}
+          title="from child"
+          onClick={(e) => {
+            e.preventDefault();
+            calls.push("child");
+          }}
+        >
+          Open games
+        </a>
+      </Button>,
+    );
+    const link = screen.getByRole("link", { name: "Open games" });
+    expect(link).toHaveClass("border-rule-strong", "w-full", "underline");
+    expect(link.style.color).toBe("blue");
+    expect(link.style.marginTop).toBe("4px");
+    expect(link).toHaveAttribute("title", "from child");
+    fireEvent.click(link);
+    // The child prevented the default, so the Button's handler is skipped.
+    expect(calls).toEqual(["child"]);
+  });
+
+  it("runs both onClick handlers, the child's first", () => {
+    const calls: string[] = [];
+    render(
+      <Button asChild onClick={() => calls.push("button")}>
+        <button type="button" onClick={() => calls.push("child")}>
+          Review game
+        </button>
+      </Button>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Review game" }));
+    expect(calls).toEqual(["child", "button"]);
+  });
+
+  it("always runs the first handler, even for an event that arrives already prevented", () => {
+    const calls: string[] = [];
+    const prevent = (e: Event) => e.preventDefault();
+    window.addEventListener("click", prevent, { capture: true });
+    try {
+      render(
+        <Button asChild onClick={() => calls.push("button")}>
+          <a href="/games" onClick={() => calls.push("child")}>
+            Open games
+          </a>
+        </Button>,
+      );
+      fireEvent.click(screen.getByRole("link", { name: "Open games" }));
+    } finally {
+      window.removeEventListener("click", prevent, { capture: true });
+    }
+    expect(calls).toEqual(["child"]);
+  });
 });
 
 describe("Field error is announced", () => {

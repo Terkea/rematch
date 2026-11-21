@@ -27,10 +27,16 @@ export function Tabs({ className, ...props }: TabsPrimitive.Root.Props) {
 }
 
 // The track scrolls in a square wrapper, not on the pill itself: overflow on a rounded box clips to
-// its curve, which would cut the focus ring at the pill's ends.
+// its curve, which would cut the focus ring at the pill's ends. Scrolling on x makes overflow-y
+// auto too, so on a coarse pointer the wrapper pads 2px top and bottom (with a matching negative
+// margin, so layout doesn't move): a 32px tab's 44px hit area reaches 6px past it, 4px of which
+// is the pill's own padding. Without this the wrapper clips the hit area to 40px and scrolls 2px.
 export function TabsList({ className, ...props }: TabsPrimitive.List.Props) {
   return (
-    <div data-slot="tabs-scroll" className="max-w-full overflow-x-auto">
+    <div
+      data-slot="tabs-scroll"
+      className="max-w-full overflow-x-auto pointer-coarse:-my-0.5 pointer-coarse:py-0.5"
+    >
       <TabsPrimitive.List
         data-slot="tabs-list"
         className={cn(
