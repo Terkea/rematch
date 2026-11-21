@@ -95,7 +95,7 @@ describe("schema", () => {
   it("rejects a duplicate (fenKey, protocol) in positionEvals", async () => {
     const row = {
       fenKey: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -",
-      protocol: "sf19-d18",
+      protocol: "sf19-n300k-v1",
       scoreCp: 20,
       pv: ["e2e4"],
       source: "stockfish" as const,
