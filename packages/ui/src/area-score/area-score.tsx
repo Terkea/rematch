@@ -183,7 +183,7 @@ function ScoreRow(props: AreaScoreProps & { domain: RulerDomain }) {
 }
 
 const ROW =
-  "flex flex-col gap-1 py-3.5 @min-[560px]:grid @min-[560px]:grid-cols-[minmax(8rem,11rem)_4rem_1fr] @min-[560px]:items-center @min-[560px]:gap-x-5";
+  "flex flex-col gap-1 py-3.5 @min-[560px]:grid @min-[560px]:grid-cols-[minmax(8rem,11rem)_4rem_1fr] @min-[560px]:items-center @min-[560px]:gap-x-5"; // ban-lint-allow TOK2: grid track template, no spacing token
 
 /** The ruler's numbering: both ends and the middle, aligned to the ruler column. */
 function Scale({ domain }: { domain: RulerDomain }) {
