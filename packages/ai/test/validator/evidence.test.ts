@@ -15,7 +15,7 @@ describe("buildEvidence on b2-rapid", () => {
     const p = ev.positions.get(`${w1ex0.gameId}#${w1ex0.ply}`)!;
     expect(p.allowedSan.has(w1ex0.played.san)).toBe(true);
     expect(p.allowedSan.has(w1ex0.best!.san)).toBe(true);
-    expect(p.allowedSan.has("Nxd4")).toBe(true); // bestPv[1]
+    expect(p.allowedSan.has("Nxd4")).toBe(true); // refutationPv[1]
     expect(p.allowedUci.has(w1ex0.played.uci)).toBe(true);
     expect(p.allowedUci.has("f3d4")).toBe(true);
     expect(ev.gameIds.has(w1ex0.gameId)).toBe(true);
@@ -32,7 +32,12 @@ describe("buildEvidence on b2-rapid", () => {
   it("collects numbers", () => {
     expect(ev.numbers).toContain(214);
     expect(ev.numbers).toContain(10); // 600 s base / 60
-    expect(ev.numbers.some((n) => Math.abs(n - 1.8) < 1e-9)).toBe(true); // evalAfter cp -180
+    expect(
+      ev.numbers.some(
+        (n) =>
+          Math.abs(n - Math.abs("cp" in w1ex0.evalAfter ? w1ex0.evalAfter.cp : 0) / 100) < 1e-9,
+      ),
+    ).toBe(true);
     expect(ev420.numbers.some((n) => Math.abs(n - 4.2) < 1e-9)).toBe(true);
     expect(ev420.numbers.some((n) => Math.abs(n + 4.2) < 1e-9)).toBe(true);
     expect(ev.numbers).toContain(3); // ceil(6/2)

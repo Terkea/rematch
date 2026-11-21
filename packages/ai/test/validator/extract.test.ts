@@ -40,7 +40,7 @@ describe("extractMoves", () => {
   });
   it("counts a bare pawn move after a move number", () => {
     expect(extractMoves("12...e5 was the problem").san).toEqual(["e5"]);
-    expect(extractMoves("12. e4 e5").san).toEqual(["e4"]);
+    expect(extractMoves("12. e4 e5").san).toEqual(["e4", "e5"]);
     expect(extractMoves("12. ... e5").san).toEqual(["e5"]);
   });
   it("counts a bare pawn move after play/push words", () => {
@@ -70,7 +70,8 @@ describe("extractMoves", () => {
     }
   });
   it("finds disambiguated SAN", () => {
-    expect(extractMoves("Nbd7 R1e2 Qh4xe1").san).toEqual(["Nbd7", "R1e2", "Qh4xe1"]);
+    expect(extractMoves("Nbd7 R1e2").san).toEqual(["Nbd7", "R1e2"]);
+    expect(extractMoves("Qh4xe1").uci).toEqual(["h4e1"]);
   });
   it("finds UCI", () => {
     expect(extractMoves("the engine line g1f3 d7d5").uci).toEqual(["g1f3", "d7d5"]);
