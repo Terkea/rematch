@@ -5,6 +5,8 @@
 //! `played_at - (prev.played_at + prev.est_duration) >= gap`. `after_loss` means the previous game
 //! of the same session was lost; `residual = score - expected_score` when both are known.
 
+use std::collections::HashSet;
+
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -26,15 +28,19 @@ pub struct SessionGame {
     pub expected_score: Option<f64>,
 }
 
-/// [`build_sessions`] with its skip counts.
+/// [`build_sessions`] with its counts of invalid inputs.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct SessionBuild {
     pub sessions: Vec<SessionInfo>,
-    /// Games left out because `est_duration_seconds` is not a finite value `>= 0`.
-    pub skipped_games: u32,
-    /// Games kept whose `score` (not 0, 0.5 or 1) or `expected_score` (not finite in [0, 1]) was
+    /// Games whose `score` (not 0, 0.5 or 1) or `expected_score` (not finite in [0, 1]) was
     /// invalid; that value is treated as unknown.
     pub invalid_scores: u32,
+    /// Games whose `est_duration_seconds` is not a finite value `>= 0`. They stay in the timeline
+    /// with duration 0.
+    pub invalid_durations: u32,
+    /// Repeated `game_id`s dropped: only the earliest copy (by `played_at`, then input order) is
+    /// kept.
+    pub duplicate_games: u32,
 }
 
 /// `base + 40 * increment` seconds; `None` without a base (daily games).
@@ -59,19 +65,29 @@ pub fn build_sessions(games: &[SessionGame], gap_minutes: i64) -> Vec<SessionInf
 }
 
 pub fn build_sessions_counted(games: &[SessionGame], gap_minutes: i64) -> SessionBuild {
-    let valid_duration =
-        |g: &&SessionGame| g.est_duration_seconds.is_finite() && g.est_duration_seconds >= 0.0;
-    let mut sorted: Vec<&SessionGame> = games.iter().filter(valid_duration).collect();
-    let skipped_games = (games.len() - sorted.len()) as u32;
+    let mut sorted: Vec<&SessionGame> = games.iter().collect();
+    // Stable: equal (played_at, game_id) keep their input order.
     sorted.sort_by_key(|g| (g.played_at, g.game_id));
+    let mut seen = HashSet::new();
+    let before = sorted.len();
+    sorted.retain(|g| seen.insert(g.game_id));
+    let duplicate_games = (before - sorted.len()) as u32;
 
     let gap_seconds = gap_minutes as f64 * 60.0;
     let mut invalid_scores = 0;
+    let mut invalid_durations = 0;
     let mut sessions = Vec::with_capacity(sorted.len());
     let mut session_id = 0;
     let mut index = 0;
-    let mut prev: Option<(&SessionGame, Option<f64>)> = None;
+    // (played_at, duration, valid score) of the previous game.
+    let mut prev: Option<(OffsetDateTime, f64, Option<f64>)> = None;
     for g in sorted {
+        let duration = if g.est_duration_seconds.is_finite() && g.est_duration_seconds >= 0.0 {
+            g.est_duration_seconds
+        } else {
+            invalid_durations += 1;
+            0.0
+        };
         let score = g
             .score
             .filter(|s| (*s == 0.0) || (*s == 0.5) || (*s == 1.0));
@@ -84,10 +100,7 @@ pub fn build_sessions_counted(games: &[SessionGame], gap_minutes: i64) -> Sessio
         }
         let new_session = match prev {
             None => true,
-            Some((p, _)) => {
-                let since = (g.played_at - p.played_at).as_seconds_f64() - p.est_duration_seconds;
-                since >= gap_seconds
-            }
+            Some((at, dur, _)) => (g.played_at - at).as_seconds_f64() - dur >= gap_seconds,
         };
         let after_loss = if new_session {
             session_id += 1;
@@ -95,7 +108,7 @@ pub fn build_sessions_counted(games: &[SessionGame], gap_minutes: i64) -> Sessio
             false
         } else {
             index += 1;
-            prev.and_then(|(_, s)| s) == Some(0.0)
+            prev.and_then(|(_, _, s)| s) == Some(0.0)
         };
         let residual = match (score, expected) {
             (Some(s), Some(e)) => Some(s - e),
@@ -108,11 +121,12 @@ pub fn build_sessions_counted(games: &[SessionGame], gap_minutes: i64) -> Sessio
             after_loss,
             residual,
         });
-        prev = Some((g, score));
+        prev = Some((g.played_at, duration, score));
     }
     SessionBuild {
         sessions,
-        skipped_games,
         invalid_scores,
+        invalid_durations,
+        duplicate_games,
     }
 }

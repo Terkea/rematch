@@ -102,7 +102,9 @@ pub fn extract_episodes_counted(
     score: Option<f64>,
     o: &EpisodeOpts,
 ) -> EpisodeScan {
-    let own: Vec<&MoveRecord> = moves.iter().filter(|m| m.color == player).collect();
+    let mut own: Vec<&MoveRecord> = moves.iter().filter(|m| m.color == player).collect();
+    // Runs and the drop search follow ply order, whatever the input order.
+    own.sort_by_key(|m| m.ply);
     let skipped_moves = own
         .iter()
         .filter(|m| !m.win_before.is_finite() || !m.win_after.is_finite())
@@ -118,6 +120,7 @@ pub fn extract_episodes_counted(
     };
     let min_moves = o.min_moves.max(1) as usize;
 
+    // Only own moves at ply >= min_ply count, so a run that starts earlier begins at min_ply.
     let winning = first_run(&own, min_moves, |m| {
         m.ply >= o.min_ply && m.win_before.is_finite() && m.win_before >= o.t_win
     })

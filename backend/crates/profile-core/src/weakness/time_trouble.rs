@@ -31,6 +31,8 @@ pub struct TimeTroubleScan {
     pub trouble: TimeTrouble,
     /// Own moves whose clock is present but not a finite value `>= 0`, or whose ply is 0.
     pub skipped_clocks: u32,
+    /// Own moves without a clock reading (a first move may legitimately have none).
+    pub missing_clocks: u32,
 }
 
 pub fn detect_time_trouble(
@@ -46,7 +48,9 @@ pub fn detect_time_trouble_counted(
     player: Color,
     base_seconds: Option<u32>,
 ) -> TimeTroubleScan {
-    let own: Vec<&MoveRecord> = moves.iter().filter(|m| m.color == player).collect();
+    let mut own: Vec<&MoveRecord> = moves.iter().filter(|m| m.color == player).collect();
+    // Move numbers, remaining moves and the first ply follow ply order, whatever the input order.
+    own.sort_by_key(|m| m.ply);
     let valid = |m: &MoveRecord| -> Option<f64> {
         m.clock_before
             .filter(|c| c.is_finite() && *c >= 0.0 && m.ply > 0)
@@ -55,9 +59,11 @@ pub fn detect_time_trouble_counted(
         .iter()
         .filter(|m| m.clock_before.is_some() && valid(m).is_none())
         .count() as u32;
+    let missing_clocks = own.iter().filter(|m| m.clock_before.is_none()).count() as u32;
     let unknown = TimeTroubleScan {
         trouble: TimeTrouble::default(),
         skipped_clocks,
+        missing_clocks,
     };
     let Some(base) = base_seconds.filter(|b| *b > 0) else {
         return unknown;
@@ -79,6 +85,7 @@ pub fn detect_time_trouble_counted(
             first_ply,
         },
         skipped_clocks,
+        missing_clocks,
     }
 }
 

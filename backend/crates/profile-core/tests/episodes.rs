@@ -206,6 +206,31 @@ fn non_finite_win_values_are_skipped_counted_and_break_runs() {
 }
 
 #[test]
+fn episodes_do_not_depend_on_input_order() {
+    let mut drawn = white_run(21, &[90.0, 88.0, 91.0, 70.0]);
+    drawn.iter_mut().find(|m| m.ply == 27).unwrap().win_after = 60.0;
+    let cases = [
+        drawn,
+        white_run(17, &[90.0, 90.0, 90.0, 90.0, 90.0]),
+        white_run(21, &[90.0, 90.0, 90.0, 50.0, 90.0, 90.0, 90.0, 90.0]),
+        white_run(3, &[10.0, 12.0, 9.0, 50.0, 10.0, 10.0, 10.0]),
+    ];
+    for moves in cases {
+        for player in [Color::White, Color::Black] {
+            let want = extract_episodes_counted(&moves, player, Some(0.5), &EpisodeOpts::default());
+            let mut reversed = moves.clone();
+            reversed.reverse();
+            for input in [reversed, shuffled(&moves)] {
+                assert_eq!(
+                    extract_episodes_counted(&input, player, Some(0.5), &EpisodeOpts::default()),
+                    want
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn episode_opts_default_values() {
     let o = EpisodeOpts::default();
     assert_eq!(
@@ -342,6 +367,58 @@ fn no_clocks_or_no_base_is_unknown() {
     assert_eq!(detect_time_trouble(&moves, Color::White, None), unknown);
     assert_eq!(detect_time_trouble(&moves, Color::White, Some(0)), unknown);
     assert_eq!(detect_time_trouble(&[], Color::White, Some(300)), unknown);
+    // Missing clocks are counted apart from invalid ones.
+    let scan = detect_time_trouble_counted(&white_run(1, &[50.0; 30]), Color::White, Some(300));
+    assert_eq!((scan.missing_clocks, scan.skipped_clocks), (30, 0));
+}
+
+#[test]
+fn a_first_move_without_a_clock_is_missing_not_invalid() {
+    let mut moves = clocked(61, 61, 25.0);
+    moves[0].clock_before = None;
+    let scan = detect_time_trouble_counted(&moves, Color::White, Some(300));
+    assert_eq!((scan.missing_clocks, scan.skipped_clocks), (1, 0));
+    assert_eq!(scan.trouble.first_ply, Some(61));
+}
+
+/// A fixed permutation of `v` that is neither the identity nor a reversal.
+fn shuffled<T: Clone>(v: &[T]) -> Vec<T> {
+    let n = v.len();
+    let step = (1..n)
+        .rev()
+        .find(|s| gcd(*s, n) == 1 && *s != n - 1)
+        .unwrap_or(1);
+    (0..n).map(|i| v[(i * step + 3) % n].clone()).collect()
+}
+
+fn gcd(a: usize, b: usize) -> usize {
+    if b == 0 { a } else { gcd(b, a % b) }
+}
+
+#[test]
+fn time_trouble_does_not_depend_on_input_order() {
+    for (last, ply) in [(61, 61), (107, 89), (93, 89), (77, 77)] {
+        let moves = clocked(last, ply, 25.0);
+        let want = detect_time_trouble_counted(&moves, Color::White, Some(300));
+        let mut reversed = moves.clone();
+        reversed.reverse();
+        for input in [reversed, shuffled(&moves)] {
+            assert_eq!(
+                detect_time_trouble_counted(&input, Color::White, Some(300)),
+                want,
+                "last {last} ply {ply}"
+            );
+        }
+    }
+    // Two low clocks: the first ply is the earliest, whatever the order.
+    let mut moves = clocked(61, 41, 10.0);
+    moves.iter_mut().find(|m| m.ply == 21).unwrap().clock_before = Some(10.0);
+    let mut reversed = moves.clone();
+    reversed.reverse();
+    assert_eq!(
+        detect_time_trouble(&reversed, Color::White, Some(300)).first_ply,
+        Some(21)
+    );
 }
 
 #[test]
@@ -539,6 +616,29 @@ fn sessions_sort_by_played_at_and_track_losses_and_residuals() {
 }
 
 #[test]
+fn duplicate_game_ids_are_counted_and_only_the_first_is_kept() {
+    let a = sg(datetime!(2026-11-01 10:00 UTC), Some(0.0), None);
+    let mut dup = a.clone();
+    dup.played_at = datetime!(2026-11-01 10:04 UTC);
+    dup.score = Some(1.0);
+    let b = sg(datetime!(2026-11-01 10:08 UTC), Some(1.0), None);
+    for input in [
+        vec![a.clone(), dup.clone(), b.clone()],
+        vec![b.clone(), dup.clone(), a.clone()],
+    ] {
+        let build = build_sessions_counted(&input, 15);
+        assert_eq!(build.duplicate_games, 1);
+        assert_eq!(
+            build.sessions.iter().map(|x| x.game_id).collect::<Vec<_>>(),
+            [a.game_id, b.game_id]
+        );
+        // The kept copy is the earliest one (lost), so b follows a loss.
+        assert!(build.sessions[1].after_loss);
+        assert_eq!(build.sessions[1].index_in_session, 2);
+    }
+}
+
+#[test]
 fn a_loss_does_not_carry_into_the_next_session() {
     let a = sg(datetime!(2026-11-01 10:00 UTC), Some(0.0), None);
     let b = sg(datetime!(2026-11-01 13:00 UTC), Some(1.0), None);
@@ -564,7 +664,7 @@ fn the_gap_counts_from_the_estimated_end_of_the_previous_game() {
 }
 
 #[test]
-fn invalid_session_inputs_are_skipped_and_counted() {
+fn invalid_session_inputs_are_kept_and_counted() {
     let mut bad_duration = sg(datetime!(2026-11-01 10:02 UTC), Some(0.0), None);
     bad_duration.est_duration_seconds = f64::NAN;
     let mut negative = sg(datetime!(2026-11-01 10:03 UTC), Some(0.0), None);
@@ -576,40 +676,45 @@ fn invalid_session_inputs_are_skipped_and_counted() {
         Some(f64::INFINITY),
     );
     let first = sg(datetime!(2026-11-01 10:00 UTC), Some(1.0), Some(0.5));
-    let build = build_sessions_counted(
-        &[
-            first.clone(),
-            bad_duration,
-            negative,
-            bad_score.clone(),
-            bad_expected.clone(),
-        ],
-        15,
-    );
-    assert_eq!(build.skipped_games, 2);
+    let all = [
+        first.clone(),
+        bad_duration.clone(),
+        negative.clone(),
+        bad_score.clone(),
+        bad_expected.clone(),
+    ];
+    let build = build_sessions_counted(&all, 15);
+    // Invalid durations stay in the timeline with duration 0 and are counted.
+    assert_eq!(build.invalid_durations, 2);
     assert_eq!(build.invalid_scores, 2);
+    assert_eq!(build.duplicate_games, 0);
     let ids: Vec<_> = build.sessions.iter().map(|x| x.game_id).collect();
-    assert_eq!(
-        ids,
-        [first.game_id, bad_score.game_id, bad_expected.game_id]
-    );
+    assert_eq!(ids, all.iter().map(|g| g.game_id).collect::<Vec<_>>());
     assert_eq!(
         build
             .sessions
             .iter()
             .map(|x| x.index_in_session)
             .collect::<Vec<_>>(),
-        [1, 2, 3]
+        [1, 2, 3, 4, 5]
     );
     // An invalid score is not a loss and has no residual.
-    assert!(!build.sessions[2].after_loss);
-    assert!(build.sessions.iter().skip(1).all(|x| x.residual.is_none()));
-    assert!(
+    assert_eq!(
         build
             .sessions
             .iter()
-            .all(|x| x.residual.is_none_or(f64::is_finite))
+            .map(|x| x.after_loss)
+            .collect::<Vec<_>>(),
+        [false, false, true, true, false]
     );
+    assert_eq!(build.sessions[0].residual, Some(0.5));
+    assert!(build.sessions.iter().skip(1).all(|x| x.residual.is_none()));
+    // Duration 0: a game 15 minutes after an invalid-duration game starts a new session.
+    let mut a = sg(datetime!(2026-11-01 10:00 UTC), None, None);
+    a.est_duration_seconds = f64::INFINITY;
+    let b = sg(datetime!(2026-11-01 10:15 UTC), None, None);
+    let s = build_sessions(&[a, b], 15);
+    assert_eq!(s.iter().map(|x| x.session_id).collect::<Vec<_>>(), [1, 2]);
     assert!(build_sessions(&[], 15).is_empty());
 }
 
