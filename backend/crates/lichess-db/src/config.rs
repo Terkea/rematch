@@ -23,7 +23,8 @@ pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 /// Longest silence between two body reads. There is no total timeout: a month is ~30 GB.
 pub const READ_TIMEOUT: Duration = Duration::from_secs(120);
 
-/// User-Agent when `CONTACT_EMAIL` is unset (lane rules).
+/// The fixed User-Agent of every outbound request. Project-wide rule: no request ever carries an
+/// email address, so this crate has no `CONTACT_EMAIL` plumbing.
 pub const ANONYMOUS_USER_AGENT: &str = "chess-improver-ci (+https://github.com/chess-improver)";
 
 /// One monthly standard-rated dump, e.g. `lichess_db_standard_rated_2026-10.pgn.zst`.
@@ -74,15 +75,9 @@ pub fn is_valid_month(s: &str) -> bool {
         && matches!(s[5..].parse::<u8>(), Ok(1..=12))
 }
 
-/// The same identifying format as R1's `platforms::client::user_agent` when `CONTACT_EMAIL` is
-/// set; [`ANONYMOUS_USER_AGENT`] otherwise. (`platforms` is not a dependency of this crate.)
+/// The fixed project User-Agent ([`ANONYMOUS_USER_AGENT`]); never derived from the environment.
 pub fn user_agent() -> String {
-    match std::env::var("CONTACT_EMAIL") {
-        Ok(email) if !email.trim().is_empty() => {
-            format!("chess-improver/0.1 (+mailto:{})", email.trim())
-        }
-        _ => ANONYMOUS_USER_AGENT.to_owned(),
-    }
+    ANONYMOUS_USER_AGENT.to_owned()
 }
 
 /// The HTTP client for the dump and `sha256sums.txt`: identifying User-Agent, connect and
