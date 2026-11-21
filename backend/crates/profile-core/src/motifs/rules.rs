@@ -30,6 +30,10 @@ pub struct LineContext<'a> {
     pub window: usize,
     /// `settled(k)` for every pov ply `k ≤ max_plies`.
     pub settled: &'a [SettledPly],
+    /// Number of leading steps the settled replay covers: `min(max(window, max_plies +
+    /// settle_extra + 1), steps.len())`. A fork's completing capture may come from here
+    /// (ADR-R2-3, the fork exception to the window).
+    pub settled_limit: usize,
 }
 
 impl LineContext<'_> {
@@ -40,6 +44,10 @@ impl LineContext<'_> {
     /// The step at index `i` if it lies inside the window.
     fn in_window(&self, i: usize) -> Option<&LineStep> {
         self.window_steps().get(i)
+    }
+
+    fn settled_steps(&self) -> &[LineStep] {
+        self.steps.get(..self.settled_limit).unwrap_or(self.steps)
     }
 
     /// The last step of the whole PV when it is a pov checkmate.
@@ -131,23 +139,30 @@ fn legal_move_to(fen: &str, square: &str) -> bool {
         .generate_moves(|moves| moves.into_iter().any(|m| m.to == sq))
 }
 
-/// `hangingPiece`: pov's first ply captures a non-pawn piece, and no LEGAL recapture on that
-/// square exists afterwards (an illegal king recapture into a guarded square does not count).
+/// `hangingPiece`: pov's first ply captures a non-pawn piece that no non-king piece defended
+/// before the capture, and no LEGAL recapture on that square exists afterwards (an illegal king
+/// recapture into a guarded square does not count; a mating capture has no recapture at all).
 pub fn hanging_piece(ctx: &LineContext) -> bool {
+    let them = opponent(ctx.pov);
     let Some(first) = ctx.in_window(0).filter(|s| s.mover == ctx.pov) else {
         return false;
     };
+    let defended_by_a_piece = defenders_of(&first.fen_before, &first.to, them)
+        .iter()
+        .any(|sq| own_piece(&first.fen_before, sq, them) != Some('k'));
     matches!(first.captured, Some('n' | 'b' | 'r' | 'q'))
+        && !defended_by_a_piece
         && !legal_move_to(&first.fen_after, &first.to)
 }
 
 /// `fork`: after a pov move, the moved piece attacks at least two enemy non-pawn pieces, each the
-/// king, worth more than the mover, or undefended; the mover is not en prise on its square; and a
-/// later pov move in the window captures on one of the target squares.
+/// king, worth more than the mover, or undefended; the mover is not en prise on its square; and
+/// the forking piece itself later captures on one of the target squares. The fork move lies in
+/// the window; the completing capture may come from anywhere in the settled replay (ADR-R2-3).
 pub fn fork(ctx: &LineContext) -> bool {
     let them = opponent(ctx.pov);
-    let window = ctx.window_steps();
-    window.iter().enumerate().any(|(i, step)| {
+    let replay = ctx.settled_steps();
+    ctx.window_steps().iter().enumerate().any(|(i, step)| {
         if step.mover != ctx.pov {
             return false;
         }
@@ -170,8 +185,11 @@ pub fn fork(ctx: &LineContext) -> bool {
             .map(|(sq, _)| sq)
             .collect();
         targets.len() >= 2
-            && window.iter().skip(i + 1).any(|later| {
-                later.mover == ctx.pov && later.captured.is_some() && targets.contains(&later.to)
+            && replay.iter().skip(i + 1).any(|later| {
+                later.mover == ctx.pov
+                    && later.from == step.to
+                    && later.captured.is_some()
+                    && targets.contains(&later.to)
             })
     })
 }
@@ -269,8 +287,9 @@ pub fn discovered_attack(ctx: &LineContext) -> bool {
     })
 }
 
-/// `deflection`: a pov capture or check at ply k makes opponent piece D move at k+1 (to t); at
-/// k+2 pov captures on a square x ≠ t that D defended before ply k+1.
+/// `deflection`: a pov capture or check at ply k makes opponent piece D move at k+1 (to t): the
+/// reply recaptures on the square of ply k or gives check. At k+2 pov captures on a square x ≠ t
+/// that D defended before ply k+1. A voluntary reply is no deflection.
 pub fn deflection(ctx: &LineContext) -> bool {
     let them = opponent(ctx.pov);
     ctx.window_steps().iter().enumerate().any(|(i, step)| {
@@ -280,6 +299,7 @@ pub fn deflection(ctx: &LineContext) -> bool {
         step.mover == ctx.pov
             && (step.captured.is_some() || step.is_check)
             && reply.mover == them
+            && ((reply.captured.is_some() && reply.to == step.to) || reply.is_check)
             && hit.mover == ctx.pov
             && hit.captured.is_some()
             && hit.to != reply.to
@@ -318,7 +338,7 @@ pub fn mate(ctx: &LineContext) -> Vec<MotifTag> {
     let mut tags = vec![
         MotifTag::Mate,
         match n {
-            0 | 1 => MotifTag::MateIn1,
+            1 => MotifTag::MateIn1,
             2 => MotifTag::MateIn2,
             3 => MotifTag::MateIn3,
             _ => MotifTag::MateIn4Plus,

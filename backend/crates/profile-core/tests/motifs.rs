@@ -250,3 +250,104 @@ fn a_forking_piece_that_is_en_prise_is_no_fork() {
     assert_eq!(a.swing.depth, Some(3));
     assert_lacks("en prise fork", &a.tags, &[Fork]);
 }
+
+// ---- Fix round 1 ----
+
+#[test]
+fn a_capture_fork_completed_past_the_window_is_a_fork() {
+    // Nxd6+ wins a rook (depth 1) and forks king and queen; Nxb5 comes at ply 3.
+    let a = tag_line(
+        "4k3/8/3r4/1q6/2N5/8/8/7K w - - 0 1",
+        &line(&["c4d6", "e8e7", "d6b5"]),
+        Color::White,
+        8,
+    );
+    assert_eq!(a.swing.depth, Some(1));
+    assert_contains("capture fork", &a.tags, &[Fork]);
+}
+
+#[test]
+fn a_promotion_fork_completed_past_the_window_is_a_fork() {
+    // e8=N+ (depth 1: +2) forks king and queen; Nxc7 comes at ply 3.
+    let a = tag_line(
+        "8/2q1P3/5k2/8/8/8/8/K7 w - - 0 1",
+        &line(&["e7e8n", "f6f5", "e8c7"]),
+        Color::White,
+        8,
+    );
+    assert_eq!(a.swing.depth, Some(1));
+    assert_contains("promotion fork", &a.tags, &[Fork, Promotion]);
+}
+
+#[test]
+fn a_fork_is_completed_only_by_the_forking_piece() {
+    // Ne4 blocks the check and "forks" queen and bishop, but the knight is pinned to its king;
+    // the rook, not the knight, takes the queen.
+    let a = tag_line(
+        "4r2k/8/3q4/6b1/8/2N2P2/8/3RK3 w - - 0 1",
+        &line(&["c3e4", "h8g8", "d1d6"]),
+        Color::White,
+        8,
+    );
+    assert_eq!(a.swing.depth, Some(3));
+    assert_lacks("pinned forker", &a.tags, &[Fork]);
+}
+
+#[test]
+fn a_voluntary_reply_is_no_deflection() {
+    // Rxe6 (not check) and the rook leaves b8 of its own accord; Qxb7 wins what it guarded.
+    let a = tag_line(
+        "1r4k1/1q6/4p3/3Q4/8/8/8/4R1K1 w - - 0 1",
+        &line(&["e1e6", "b8c8", "d5b7"]),
+        Color::White,
+        8,
+    );
+    assert_eq!(a.swing.depth, Some(3));
+    assert_lacks("voluntary reply", &a.tags, &[Deflection]);
+}
+
+#[test]
+fn a_piece_defended_by_a_piece_is_not_hanging_even_in_double_check() {
+    // Nxd6 is double check, so the bishop on f8 cannot recapture, but it did defend d6.
+    let a = tag_line(
+        "4kb2/8/3r4/8/4N3/8/8/4R2K w - - 0 1",
+        &line(&["e4d6"]),
+        Color::White,
+        8,
+    );
+    assert_eq!(a.swing.depth, Some(1));
+    assert_lacks("double check", &a.tags, &[HangingPiece]);
+}
+
+#[test]
+fn a_mating_capture_defended_only_by_the_king_is_a_hanging_piece() {
+    let a = tag_line(
+        "7k/6r1/8/8/8/8/1B6/6QK w - - 0 1",
+        &line(&["g1g7"]),
+        Color::White,
+        8,
+    );
+    assert_eq!(a.tags, vec![HangingPiece, Mate, MateIn1]);
+}
+
+/// `cycles` king shuffles (4 plies each) from `DEEP_MATE_FEN`, then the back-rank mate.
+fn shuffle_then_mate(cycles: usize) -> Vec<String> {
+    let mut pv = Vec::new();
+    for _ in 0..cycles {
+        pv.extend(line(&["e1e2", "h8g8", "e2e1", "g8h8"]));
+    }
+    pv.push("a1a8".to_owned());
+    pv
+}
+
+#[test]
+fn only_the_first_128_plies_are_replayed() {
+    // Mate at ply 125: inside the cap.
+    let inside = tag_line(DEEP_MATE_FEN, &shuffle_then_mate(31), Color::White, 8);
+    assert_eq!(inside.swing.mate_in, Some(63));
+    assert_contains("ply 125", &inside.tags, &[Mate, MateIn4Plus]);
+    // Mate at ply 129: past the cap, so no swing and no tags.
+    let past = tag_line(DEEP_MATE_FEN, &shuffle_then_mate(32), Color::White, 8);
+    assert_eq!(past.swing.depth, None);
+    assert_eq!(past.tags, Vec::<MotifTag>::new());
+}

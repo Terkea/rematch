@@ -6,4 +6,4 @@
 pub mod rules;
 pub mod tag_line;
 
-pub use tag_line::{SETTLE_EXTRA, tag_line};
+pub use tag_line::{MAX_REPLAY_PLIES, SETTLE_EXTRA, tag_line};
