@@ -131,6 +131,9 @@ export function parseChatRequest(body: unknown): ChatRequest {
     resume: b.resume === true,
   };
   if (b.rebuildContext !== undefined) req.rebuildContext = str(b.rebuildContext, "rebuildContext");
+  if (req.resume && !req.rebuildContext) {
+    throw bad("rebuildContext is required when resume is true");
+  }
   return req;
 }
 
@@ -177,6 +180,8 @@ export function buildOptions(
     settingSources: [],
     cwd: cfg.workDir,
     includePartialMessages: extras.partial,
+    // User text is sent as written: no @path file expansion, no slash-command dispatch (CLI >= 2.1.248).
+    verbatimPrompts: true,
     abortController: extras.abortController,
     env: childEnv(req, cfg),
   };

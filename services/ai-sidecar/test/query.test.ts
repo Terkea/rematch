@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SidecarError } from "../src/errors.js";
 import { Limiter } from "../src/limiter.js";
 import { parseQueryRequest } from "../src/options.js";
-import { runQuery } from "../src/query.js";
+import { callController, runQuery } from "../src/query.js";
 import { captureLogger, result, scripted, testConfig, usage } from "./helpers.js";
 
 vi.mock("@anthropic-ai/claude-agent-sdk", async (importOriginal) => ({
@@ -210,5 +210,43 @@ describe("runQuery", () => {
     ]) {
       expect(all).not.toContain(secret);
     }
+  });
+
+  it("verbatim_prompts_reach_query", async () => {
+    const s = useScript([result()]);
+    await runQuery(req, testConfig(), deps());
+    expect(s.calls[0]?.options.verbatimPrompts).toBe(true);
+    expect(s.calls[0]?.options.tools).toEqual([]);
+    expect(s.calls[0]?.options.permissionMode).toBe("dontAsk");
+  });
+
+  it("stateless_query_has_no_session_model_usage", async () => {
+    useScript([result()]);
+    const r = await runQuery(req, testConfig(), deps());
+    expect(r).not.toHaveProperty("sessionModelUsage");
+  });
+
+  it("an_already_aborted_parent_aborts_at_once", () => {
+    const parent = new AbortController();
+    parent.abort();
+    const ctl = callController(60000, parent.signal);
+    expect(ctl.ac.signal.aborted).toBe(true);
+    ctl.dispose();
+  });
+
+  it("shutdown_aborts_the_call_with_503", async () => {
+    const shutdown = new AbortController();
+    useScript(async function* (signal) {
+      shutdown.abort();
+      await new Promise((r) => {
+        if (signal.aborted) r(undefined);
+        signal.addEventListener("abort", r);
+      });
+      throw new Error("aborted");
+    });
+    const e = (await runQuery(req, testConfig(), { ...deps(), shutdown: shutdown.signal }).catch(
+      (x) => x,
+    )) as SidecarError;
+    expect([e.status, e.type]).toEqual([503, "api_error"]);
   });
 });

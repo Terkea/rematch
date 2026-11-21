@@ -6,7 +6,13 @@ import type {
 } from "@anthropic-ai/claude-agent-sdk";
 import * as sdk from "@anthropic-ai/claude-agent-sdk";
 import type { SidecarConfig } from "./config.js";
-import { internalError, type SidecarError, timeoutError, upstreamError } from "./errors.js";
+import {
+  internalError,
+  type SidecarError,
+  shuttingDown,
+  timeoutError,
+  upstreamError,
+} from "./errors.js";
 import type { Limiter } from "./limiter.js";
 import type { LogFields, Logger } from "./log.js";
 import { buildOptions, type QueryRequest, type TextBlock } from "./options.js";
@@ -27,7 +33,13 @@ export type SidecarResult = {
   text: string;
   numTurns: number;
   durationMs: number;
+  /** This call's (this turn's) usage per model. Rust meters this field. */
   modelUsage: Record<string, TokenCounts>;
+  /**
+   * Chat only: the SDK's running session total, which on a resumed turn includes every earlier
+   * turn. For comparison and diagnostics; never meter it.
+   */
+  sessionModelUsage?: Record<string, TokenCounts>;
   sdkCostUsd: number;
 };
 
@@ -37,7 +49,73 @@ export type QueryDeps = {
   logger: Logger;
   /** Aborts the call when the HTTP client goes away. */
   signal?: AbortSignal;
+  /** Aborts the call when the process shuts down (503). */
+  shutdown?: AbortSignal;
 };
+
+const ZERO = (): TokenCounts => ({
+  inputTokens: 0,
+  outputTokens: 0,
+  cacheReadInputTokens: 0,
+  cacheCreationInputTokens: 0,
+});
+
+/**
+ * Per-turn usage summed from the stream (`includePartialMessages`): each `message_start` opens an
+ * API message with its model and input-side usage, and each `message_delta` carries the message's
+ * cumulative usage so far, so the latest value per message wins. Messages are summed per model.
+ */
+export class StreamUsage {
+  private readonly messages = new Map<string, { model: string; u: TokenCounts }>();
+  private current: string | undefined;
+  private seq = 0;
+
+  observe(m: SDKMessage): void {
+    if (m.type !== "stream_event") return;
+    const ev = m.event as {
+      type?: string;
+      message?: { id?: string; model?: string; usage?: Record<string, unknown> };
+      usage?: Record<string, unknown>;
+    };
+    if (ev.type === "message_start") {
+      this.seq += 1;
+      const key = `${ev.message?.id ?? "anon"}#${this.seq}`;
+      const entry = { model: ev.message?.model ?? "unknown", u: ZERO() };
+      apply(entry.u, ev.message?.usage);
+      this.messages.set(key, entry);
+      this.current = key;
+    } else if (ev.type === "message_delta" && this.current) {
+      const entry = this.messages.get(this.current);
+      if (entry) apply(entry.u, ev.usage);
+    }
+  }
+
+  totals(): Record<string, TokenCounts> {
+    const out: Record<string, TokenCounts> = {};
+    for (const { model, u } of this.messages.values()) {
+      const t = out[model] ?? ZERO();
+      t.inputTokens += u.inputTokens;
+      t.outputTokens += u.outputTokens;
+      t.cacheReadInputTokens += u.cacheReadInputTokens;
+      t.cacheCreationInputTokens += u.cacheCreationInputTokens;
+      out[model] = t;
+    }
+    return out;
+  }
+
+  get empty(): boolean {
+    return this.messages.size === 0;
+  }
+}
+
+function apply(t: TokenCounts, u: Record<string, unknown> | undefined): void {
+  if (!u) return;
+  const n = (k: string) => (typeof u[k] === "number" ? (u[k] as number) : undefined);
+  t.inputTokens = n("input_tokens") ?? t.inputTokens;
+  t.outputTokens = n("output_tokens") ?? t.outputTokens;
+  t.cacheReadInputTokens = n("cache_read_input_tokens") ?? t.cacheReadInputTokens;
+  t.cacheCreationInputTokens = n("cache_creation_input_tokens") ?? t.cacheCreationInputTokens;
+}
 
 /** The request's text blocks as one streaming-input user message (the only way to send blocks). */
 export async function* userPrompt(blocks: TextBlock[]): AsyncGenerator<SDKUserMessage> {
@@ -110,24 +188,43 @@ export function usageFields(r: SidecarResult): Partial<LogFields> {
   return { subtype: r.subtype, numTurns: r.numTurns, durationMs: r.durationMs, ...sum };
 }
 
-/** An AbortController that fires on the request timeout or when `parent` (the client) aborts. */
-export function callController(timeoutMs: number, parent?: AbortSignal) {
+export type AbortCause = "timeout" | "shutdown" | "client" | undefined;
+
+/**
+ * An AbortController for one call. It fires on the request timeout, on process shutdown, or when
+ * the client goes away, and remembers which came first.
+ */
+export function callController(timeoutMs: number, client?: AbortSignal, shutdown?: AbortSignal) {
   const ac = new AbortController();
-  let timedOut = false;
-  const timer = setTimeout(() => {
-    timedOut = true;
+  let cause: AbortCause;
+  const fire = (c: Exclude<AbortCause, undefined>) => {
+    if (cause === undefined) cause = c;
     ac.abort();
-  }, timeoutMs);
-  const onParent = () => ac.abort();
-  parent?.addEventListener("abort", onParent, { once: true });
+  };
+  const timer = setTimeout(() => fire("timeout"), timeoutMs);
+  const onClient = () => fire("client");
+  const onShutdown = () => fire("shutdown");
+  if (shutdown?.aborted) fire("shutdown");
+  else shutdown?.addEventListener("abort", onShutdown, { once: true });
+  if (client?.aborted) fire("client");
+  else client?.addEventListener("abort", onClient, { once: true });
   return {
     ac,
-    timedOut: () => timedOut,
+    cause: () => cause,
+    timedOut: () => cause === "timeout",
     dispose: () => {
       clearTimeout(timer);
-      parent?.removeEventListener("abort", onParent);
+      client?.removeEventListener("abort", onClient);
+      shutdown?.removeEventListener("abort", onShutdown);
     },
   };
+}
+
+/** The error for a call that ended without a usable result. */
+export function abortError(cause: AbortCause): SidecarError {
+  if (cause === "timeout") return timeoutError();
+  if (cause === "shutdown") return shuttingDown();
+  return internalError();
 }
 
 /** Runs one stateless structured call (`/v1/query`). */
@@ -141,7 +238,7 @@ export async function runQuery(
   return deps.limiter.run(
     async () => {
       const started = Date.now();
-      const ctl = callController(req.timeoutMs, deps.signal);
+      const ctl = callController(req.timeoutMs, deps.signal, deps.shutdown);
       const retry = new RetryAfterTracker();
       let final: SDKResultMessage | undefined;
       try {
@@ -152,16 +249,11 @@ export async function runQuery(
         }
       } catch {
         // A single-shot query throws after an error result; the result is what counts.
-        if (!final) {
-          const e = ctl.timedOut() ? timeoutError() : internalError();
-          deps.logger.warn({ ...log, status: e.status, durationMs: Date.now() - started });
-          throw e;
-        }
       } finally {
         ctl.dispose();
       }
       if (!final) {
-        const e = ctl.timedOut() ? timeoutError() : internalError();
+        const e = abortError(ctl.cause());
         deps.logger.warn({ ...log, status: e.status, durationMs: Date.now() - started });
         throw e;
       }
@@ -176,6 +268,7 @@ export async function runQuery(
         });
         throw e;
       }
+      // Stateless: the SDK's modelUsage covers exactly this one call.
       const out = mapResult(final);
       deps.logger.info({ ...log, status: 200, ...usageFields(out) });
       return out;

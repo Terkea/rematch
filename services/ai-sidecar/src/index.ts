@@ -29,11 +29,17 @@ function main(): void {
     ? new pg.Pool({ connectionString: cfg.databaseUrl, max: cfg.maxConcurrency + 2 })
     : undefined;
   pool?.on("error", () => stdoutLogger.warn({ msg: "session store pool error" }));
+  const metrics = new Metrics();
+  const shutdown = new AbortController();
+  const store = pool
+    ? new PgSessionStore(pool, { onNulStripped: (n) => metrics.nulStrippedEntries(n) })
+    : undefined;
   const server = createSidecarServer(cfg, {
     limiter: new Limiter(cfg.maxConcurrency, cfg.maxQueue, cfg.queueWaitMs),
     logger: stdoutLogger,
-    metrics: new Metrics(),
-    ...(pool ? { store: new PgSessionStore(pool) } : {}),
+    metrics,
+    shutdown: shutdown.signal,
+    ...(store ? { store } : {}),
   });
   // Chat turns stream for minutes; the default request timeout would cut them off.
   server.requestTimeout = 0;
@@ -41,6 +47,9 @@ function main(): void {
     stdoutLogger.info({ msg: `listening on ${cfg.port} (auth ${cfg.auth})` });
   });
   const stop = () => {
+    // Abort in-flight calls first (each ends with a 503 or an error event and kills its claude
+    // subprocess), so close() does not wait out a long chat turn.
+    shutdown.abort();
     server.close(() => {
       void pool?.end().finally(() => process.exit(0));
       if (!pool) process.exit(0);

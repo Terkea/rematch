@@ -133,6 +133,23 @@ describe("coach tools", () => {
     expect(CALLBACK_TIMEOUT_MS).toBe(55000);
   });
 
+  it("mcp_cancellation_aborts_the_callback", async () => {
+    let sawAbort = false;
+    const hang: typeof fetch = (_u, init) =>
+      new Promise((_r, reject) => {
+        init?.signal?.addEventListener("abort", () => {
+          sawAbort = true;
+          reject(new Error("aborted"));
+        });
+      });
+    const [def] = buildCoachTools(SPEC, { url: "http://127.0.0.1:9/v1/tools", token: "t" }, hang);
+    const mcp = new AbortController();
+    const p = def?.handler({ gameId: "g", ply: 1 }, { signal: mcp.signal });
+    mcp.abort();
+    expect(await p).toEqual(UNAVAILABLE);
+    expect(sawAbort).toBe(true);
+  });
+
   it("server_is_named_coach_with_a_60s_timeout", () => {
     const s = buildCoachServer(SPEC, { url: "http://127.0.0.1:9/v1/tools", token: "t" });
     expect(s).toMatchObject({ type: "sdk", name: "coach", timeout: 60000 });

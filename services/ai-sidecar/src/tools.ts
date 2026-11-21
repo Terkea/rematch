@@ -27,10 +27,15 @@ async function callBack(
   input: unknown,
   fetchImpl: typeof fetch,
   timeoutMs: number,
+  cancel: AbortSignal | undefined,
 ): Promise<ToolResult> {
-  // A plain timer (not AbortSignal.timeout) so fake timers can drive it in tests.
+  // A plain timer (not AbortSignal.timeout) so fake timers can drive it in tests. The MCP
+  // request signal (the query was aborted, or the 60 s tool limit fired) cancels the fetch too.
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), timeoutMs);
+  const onCancel = () => ac.abort();
+  if (cancel?.aborted) ac.abort();
+  else cancel?.addEventListener("abort", onCancel, { once: true });
   try {
     const res = await fetchImpl(cb.url, {
       method: "POST",
@@ -46,7 +51,13 @@ async function callBack(
     return UNAVAILABLE;
   } finally {
     clearTimeout(timer);
+    cancel?.removeEventListener("abort", onCancel);
   }
+}
+
+function signalOf(extra: unknown): AbortSignal | undefined {
+  const s = (extra as { signal?: unknown } | undefined)?.signal;
+  return s instanceof AbortSignal ? s : undefined;
 }
 
 /** One SDK tool per Rust tool spec. Each call posts `{name, input}` to Rust with the turn token. */
@@ -58,8 +69,8 @@ export function buildCoachTools(
 ): Array<SdkMcpToolDefinition> {
   return tools.map(
     (t) =>
-      tool(t.name, t.description, jsonSchemaToZodShape(t.inputSchema), (args) =>
-        callBack(callback, t.name, args, fetchImpl, timeoutMs),
+      tool(t.name, t.description, jsonSchemaToZodShape(t.inputSchema), (args, extra) =>
+        callBack(callback, t.name, args, fetchImpl, timeoutMs, signalOf(extra)),
       ) as unknown as SdkMcpToolDefinition,
   );
 }

@@ -1,8 +1,10 @@
 # syntax=docker/dockerfile:1
 # Claude Agent SDK sidecar (ADR-R3-6). Build context: the repository root.
 # bookworm (glibc), so the SDK's linux-x64 `claude` binary resolves from its optionalDependencies.
+# The base image is pinned by digest (the multi-arch index of node:22-bookworm-slim on 2026-11-21).
+ARG NODE_IMAGE=node:22-bookworm-slim@sha256:e9f565d32859f0cbfb52125eafe8be39390f24dac302dc3cdf566e8ba3ab21ee
 
-FROM node:22-bookworm-slim AS build
+FROM ${NODE_IMAGE} AS build
 RUN npm i -g pnpm@12.21.0
 WORKDIR /src
 # The workspace manifests first, so the install layer is cached until a dependency changes.
@@ -19,9 +21,10 @@ COPY services/ai-sidecar services/ai-sidecar
 RUN pnpm --filter @ci/ai-sidecar build \
  && pnpm --filter @ci/ai-sidecar deploy --prod --legacy /out
 
-FROM node:22-bookworm-slim AS runtime
+FROM ${NODE_IMAGE} AS runtime
 WORKDIR /app
-COPY --from=build --chown=node:node /out /app
+# Root-owned, so the node user cannot modify the code or its dependencies.
+COPY --from=build /out /app
 # workDir and configDir live here. Compose mounts a tmpfs over it: the CLI's disk is scratch, and
 # durable chat transcripts are in Postgres through the session store.
 RUN mkdir -p /var/lib/ai-sidecar \

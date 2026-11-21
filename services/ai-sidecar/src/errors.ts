@@ -90,6 +90,8 @@ export function upstreamError(status: number, retryAfter?: string): SidecarError
 }
 
 export const timeoutError = () => new SidecarError(504, "api_error", "the call timed out");
+export const shuttingDown = () =>
+  new SidecarError(503, "api_error", "the sidecar is shutting down");
 export const internalError = () => new SidecarError(500, "api_error", "the sidecar call failed");
 export const noCredentials = () =>
   new SidecarError(401, "authentication_error", "the sidecar has no model credentials");

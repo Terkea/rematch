@@ -184,8 +184,12 @@ services:
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
       # postgres://ai_sidecar:<password>@postgres:5432/chess. Empty = no session store (dev only).
       AI_SESSION_DATABASE_URL: ${AI_SESSION_DATABASE_URL:-}
+    # Read-only root; the only writable paths are sized tmpfs scratch areas (they count toward
+    # mem_limit). The CLI's config dir and cwd live in the first; /tmp is for the CLI's temp files.
+    read_only: true
     tmpfs:
-      - /var/lib/ai-sidecar:uid=1000,gid=1000,mode=0700
+      - /var/lib/ai-sidecar:uid=1000,gid=1000,mode=0700,size=512m
+      - /tmp:mode=1777,size=256m
     mem_limit: 5g
 
   rust-dev:

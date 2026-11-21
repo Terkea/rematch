@@ -17,6 +17,8 @@ export type ServerDeps = {
   metrics: Metrics;
   query?: QueryFn;
   store?: ChatDeps["store"];
+  /** Fires on SIGTERM: in-flight calls end with 503 before the server closes. */
+  shutdown?: AbortSignal;
 };
 
 function sendJson(
@@ -91,6 +93,7 @@ export function createSidecarServer(cfg: SidecarConfig, deps: ServerDeps): Serve
         limiter: deps.limiter,
         logger: deps.logger,
         signal: client.signal,
+        ...(deps.shutdown ? { shutdown: deps.shutdown } : {}),
         ...(deps.query ? { query: deps.query } : {}),
       });
       return sendJson(res, 200, out);
@@ -100,6 +103,7 @@ export function createSidecarServer(cfg: SidecarConfig, deps: ServerDeps): Serve
       limiter: deps.limiter,
       logger: deps.logger,
       metrics: deps.metrics,
+      ...(deps.shutdown ? { shutdown: deps.shutdown } : {}),
       ...(deps.query ? { query: deps.query } : {}),
       ...(deps.store ? { store: deps.store } : {}),
     });

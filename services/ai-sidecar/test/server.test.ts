@@ -31,12 +31,17 @@ const chatBody = {
 };
 
 let server: Server | undefined;
-async function start(env: NodeJS.ProcessEnv = {}, limiter = new Limiter(4, 32, 30000)) {
+async function start(
+  env: NodeJS.ProcessEnv = {},
+  limiter = new Limiter(4, 32, 30000),
+  shutdown?: AbortSignal,
+) {
   const cfg = testConfig(env);
   server = createSidecarServer(cfg, {
     limiter,
     logger: captureLogger(),
     metrics: new Metrics(),
+    ...(shutdown ? { shutdown } : {}),
   });
   await new Promise<void>((r) => server?.listen(0, "127.0.0.1", r));
   const { port } = server.address() as AddressInfo;
@@ -94,6 +99,7 @@ describe("server", () => {
       maxConcurrency: 4,
       sdkVersion: "0.3.325",
       mirrorErrors: 0,
+      nulStrippedEntries: 0,
     });
     expect(text).not.toContain("SECRET");
     expect(text).not.toContain(TOKEN);
@@ -192,5 +198,25 @@ describe("server", () => {
       );
     }
     expect(sdk.query).not.toHaveBeenCalled();
+  });
+
+  it("sigterm_aborts_in_flight_calls_with_503", async () => {
+    let aborted = false;
+    const s = scripted([
+      async function* (signal) {
+        await new Promise((r) => signal.addEventListener("abort", r));
+        aborted = true;
+        throw new Error("aborted");
+      },
+    ]);
+    vi.mocked(sdk.query).mockImplementation(s.fn as never);
+    const shutdown = new AbortController();
+    const base = await start({}, new Limiter(4, 32, 30000), shutdown.signal);
+    const pending = post(`${base}/v1/query`, queryBody);
+    await vi.waitFor(() => expect(s.calls).toHaveLength(1));
+    shutdown.abort();
+    const r = await pending;
+    expect(aborted).toBe(true);
+    expect(r.status).toBe(503);
   });
 });

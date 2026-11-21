@@ -17,11 +17,59 @@ import type { ChatSessionStore } from "./chat.js";
  */
 const T = "ai_sdk_session_entries";
 
+/**
+ * Postgres text and jsonb cannot hold U+0000. Strings and keys keep everything else; the count of
+ * affected entries goes to a metric, so a lossy transcript is visible.
+ */
+function stripNul(v: unknown): { value: unknown; changed: boolean } {
+  if (typeof v === "string") {
+    return v.includes("\u0000")
+      ? { value: v.replaceAll("\u0000", ""), changed: true }
+      : { value: v, changed: false };
+  }
+  if (Array.isArray(v)) {
+    let changed = false;
+    const value = v.map((x) => {
+      const r = stripNul(x);
+      changed ||= r.changed;
+      return r.value;
+    });
+    return { value, changed };
+  }
+  if (v && typeof v === "object") {
+    let changed = false;
+    const out: Record<string, unknown> = {};
+    for (const [k, x] of Object.entries(v)) {
+      const key = stripNul(k);
+      const r = stripNul(x);
+      changed ||= key.changed || r.changed;
+      out[key.value as string] = r.value;
+    }
+    return { value: out, changed };
+  }
+  return { value: v, changed: false };
+}
+
+export type PgSessionStoreOptions = {
+  /** Called with the number of entries in a batch that had U+0000 removed. */
+  onNulStripped?: (entries: number) => void;
+};
+
 export class PgSessionStore implements ChatSessionStore {
-  constructor(private readonly pool: pg.Pool) {}
+  constructor(
+    private readonly pool: pg.Pool,
+    private readonly opts: PgSessionStoreOptions = {},
+  ) {}
 
   async append(key: SessionKey, entries: SessionStoreEntry[]): Promise<void> {
     if (entries.length === 0) return;
+    let stripped = 0;
+    const clean = entries.map((e) => {
+      const r = stripNul(e);
+      if (r.changed) stripped += 1;
+      return r.value;
+    });
+    if (stripped > 0) this.opts.onNulStripped?.(stripped);
     const c = await this.pool.connect();
     try {
       await c.query("BEGIN");
@@ -40,7 +88,7 @@ export class PgSessionStore implements ChatSessionStore {
            SELECT 1 FROM ${T} x
             WHERE x.project_key = $1 AND x.session_id = $2::uuid AND x.subpath = $3
               AND x.entry->>'uuid' = e.value->>'uuid')`,
-        [key.projectKey, key.sessionId, key.subpath ?? "", JSON.stringify(entries)],
+        [key.projectKey, key.sessionId, key.subpath ?? "", JSON.stringify(clean)],
       );
       await c.query("COMMIT");
     } catch (e) {

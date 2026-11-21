@@ -17,7 +17,7 @@ Facts checked against the official docs on 2026-11-21 (code.claude.com/docs/en/a
 ## Decision
 
 1. **A small Node service, `services/ai-sidecar`, owns every interactive Claude call** (report sections, weekly reviews, weakness-change notes, the coach chat). It wraps `query()` with: `maxTurns` small, no built-in tools (chat tools are exposed as in-process MCP tools that call back into Rust), `permissionMode: "dontAsk"`, `settingSources: []`, `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, an isolated `cwd` and `CLAUDE_CONFIG_DIR`, a custom `systemPrompt`, `outputFormat` for JSON sections, and pinned full model ids.
-2. **Rust stays in charge.** Rust builds the prompts, owns budgets, the circuit breaker, metering and the fact-checker (validator), and talks to the sidecar over a local HTTP/JSON + server-sent-events contract. The sidecar has no database access and holds no business rules.
+2. **Rust stays in charge.** Rust builds the prompts, owns budgets, the circuit breaker, metering and the fact-checker (validator), and talks to the sidecar over a local HTTP/JSON + server-sent-events contract. The sidecar holds no business rules. *Amended (Amendment 1, Task 10 fix round 1):* its only database access is the chat session store, which uses one table (`ai_sdk_session_entries`) through a restricted role (`ai_sidecar`, with SELECT/INSERT/DELETE on that table only). The sidecar reads no other data.
 3. **Batches stay on the Messages API.** The monthly and weekly regenerations (Tasks 16, 20) keep the 50% batch discount through a minimal Rust batch client built on the merged Task 9 wire types. The planned streaming SSE client (Task 10) is dropped; streaming comes from the SDK.
 4. **Cost is ours, not the SDK's estimate.** Metering computes cost from `modelUsage` token counts with the validated `PricingTable` (Task 9) and stores the SDK estimate only for comparison.
 5. **Auth.** Production uses `ANTHROPIC_API_KEY` (or a cloud provider). The sidecar refuses to start in production with only a subscription token. Local development may use the owner's `CLAUDE_CODE_OAUTH_TOKEN`; the docs don't explicitly cover a developer testing their own product with a personal subscription, so this stays an open owner item.
@@ -40,12 +40,13 @@ This section was recorded with the implementation in `services/ai-sidecar` (SDK 
   - `toolCallback {url, token}`;
   - `conversationId` (a uuid);
   - `resume` (a boolean);
-  - `rebuildContext` (optional).
+  - `rebuildContext`, required when `resume` is true (otherwise 400).
 
   The stream sends these events:
-  - `delta {text}`, for top-level `text_delta` only;
+  - `delta {text, messageId?}`, for top-level `text_delta` only;
+  - `retract {messageIds, reason, all?}`, when a refusal fallback or a superseding message withdraws text;
   - `tool_use {id, name, input}`;
-  - exactly one terminal event, either `done` (the query result plus `session: "new" | "resumed" | "rebuilt"`) or `error` (the error body plus `status`);
+  - exactly one terminal event, either `done` (the query result plus `session: "new" | "resumed" | "rebuilt"` and `sessionModelUsage`) or `error` (the error body plus `status`);
   - a `: ping` comment every 15 s.
 
   A client disconnect aborts the query.
@@ -60,13 +61,14 @@ This section was recorded with the implementation in `services/ai-sidecar` (SDK 
 - 529 → `overloaded_error`;
 - any other status ≥ 500 → `api_error`.
 
-A timeout is 504 `api_error`. Messages are fixed strings and never echo SDK text, because that text may contain a key.
+A timeout is 504 `api_error`, and a call aborted by shutdown (SIGTERM) is 503 `api_error`. Messages are fixed strings and never echo SDK text, because that text may contain a key.
 
 **Isolation.** `buildOptions` is the single place where the options are set:
 - `model` comes from an allowlist (`claude-sonnet-5-5`, `claude-haiku-5-5`) and is never an alias.
 - `maxTurns` is capped at 10.
 - `systemPrompt` is the custom string from the request.
 - `tools: []`, `strictMcpConfig: true`, `permissionMode: "dontAsk"` and `settingSources: []`.
+- `verbatimPrompts: true`, so user text is never expanded as `@path` or dispatched as a slash command.
 - `cwd` is an empty work dir.
 - `agents`, `hooks`, `fallbackModel`, `thinking` and `maxThinkingTokens` are never set.
 - `/v1/query` sets `persistSession: false` and `outputFormat`, and uses no session.
@@ -125,3 +127,10 @@ Owner direction: the coach chat uses the SDK's native sessions, as in the owner'
 - **Deletion and retention.** The SDK never deletes from a store. Rust deletes a conversation's `ai_sdk_session_entries` rows in the same transaction as the conversation itself, so "delete conversation" and "delete all" leave nothing behind.
 - **One-shot calls.** Report sections and other JSON one-shot calls stay stateless.
 - **Unverified items, tested in Task 10:** the version that added `SessionStore`, the result shape for a missing session on resume, and the `deleteSession` signature.
+
+## Notes from the Task 10 review (fix round 1)
+
+- **Verbatim prompts.** `buildOptions` sets `verbatimPrompts: true`, which requires Claude Code 2.1.248 or later; the bundled CLI is 2.1.325. Without it, the CLI expands user text such as `@/proc/self/environ` as a file mention and dispatches `/compact`-style text as a slash command. With it, prompts are delivered as written, and the CLI's turn-start attachment pass (nested CLAUDE.md files, skill listings) is skipped too. That suits a sidecar with an empty cwd and no settings.
+- **Cumulative versus per-turn usage.** The SDK's result `modelUsage` is cumulative for the session. On a resumed turn it includes every earlier turn, because the transcript carries the saved totals. For a resumed turn, the sidecar therefore reports `modelUsage` as the turn's own usage per model, summed from the stream's `message_start` and `message_delta` usage. A new or rebuilt session starts from zero, so there the SDK's figure is already per-turn and is used as is. The SDK's cumulative figure is passed along separately as `sessionModelUsage`. **Rust meters `modelUsage` (per turn) and never `sessionModelUsage`.** `/v1/query` is stateless, so its `modelUsage` is per call. Model keys pass through unchanged, including a refusal-fallback model outside the allowlist; Rust prices unknown keys conservatively.
+- **Local transcripts are scratch.** Before every new or rebuilt attempt, the sidecar removes `configDir/projects/<projectKey>/<id>.jsonl` and `<id>/`, because the CLI rejects a `sessionId` whose file exists. With a store configured, it also removes them after each turn. The compose service has a read-only root and sized tmpfs mounts for `/var/lib/ai-sidecar` (512 MiB) and `/tmp` (256 MiB).
+- **Retractions.** A `model_refusal_fallback` system message, or an assistant message that `supersedes` earlier ones, produces an SSE `retract` event, `{messageIds, reason, all?}`. Deltas carry the `messageId` of their API message, so the client can drop exactly the withdrawn text. `all: true` means a withdrawn message was never seen, so the turn's text so far should be discarded.

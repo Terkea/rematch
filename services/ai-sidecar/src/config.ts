@@ -84,7 +84,10 @@ export function loadConfig(env: NodeJS.ProcessEnv): SidecarConfig {
   if (token.length < 32) {
     throw new ConfigError("AI_SIDECAR_TOKEN is required and must be at least 32 characters");
   }
-  const production = env.AI_SIDECAR_ENV === "production" || env.NODE_ENV === "production";
+  // Fail safe: only an explicit development or test mode relaxes the guard. AI_SIDECAR_ENV wins
+  // over NODE_ENV, except that NODE_ENV=production always means production.
+  const mode = set(env.AI_SIDECAR_ENV) ? env.AI_SIDECAR_ENV : env.NODE_ENV;
+  const production = env.NODE_ENV === "production" || !(mode === "development" || mode === "test");
   const auth = authKind(env);
   if (production && (auth === "oauth" || auth === "none")) {
     throw new ConfigError(GUARD_MESSAGE);

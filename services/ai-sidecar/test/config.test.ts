@@ -4,11 +4,12 @@ import { ConfigError, loadConfig } from "../src/config.js";
 const TOKEN = "x".repeat(32);
 const GUARD =
   "refusing to start: production needs ANTHROPIC_API_KEY or a cloud provider; a subscription token is not allowed (ADR-R3-6)";
+const DEV = { AI_SIDECAR_ENV: "development" };
 const DB = { AI_SESSION_DATABASE_URL: "postgres://ai_sidecar@db/chess" };
 
 describe("loadConfig", () => {
   it("applies_the_defaults", () => {
-    const c = loadConfig({ AI_SIDECAR_TOKEN: TOKEN });
+    const c = loadConfig({ ...DEV, AI_SIDECAR_TOKEN: TOKEN });
     expect(c).toMatchObject({
       port: 7310,
       token: TOKEN,
@@ -25,19 +26,25 @@ describe("loadConfig", () => {
   it("production_refuses_subscription_only_token", () => {
     for (const flag of [{ AI_SIDECAR_ENV: "production" }, { NODE_ENV: "production" }]) {
       expect(() =>
-        loadConfig({ AI_SIDECAR_TOKEN: TOKEN, CLAUDE_CODE_OAUTH_TOKEN: "oat-1", ...DB, ...flag }),
+        loadConfig({
+          ...DEV,
+          AI_SIDECAR_TOKEN: TOKEN,
+          CLAUDE_CODE_OAUTH_TOKEN: "oat-1",
+          ...DB,
+          ...flag,
+        }),
       ).toThrow(new ConfigError(GUARD));
     }
   });
 
   it("production_refuses_no_credentials", () => {
     expect(() =>
-      loadConfig({ AI_SIDECAR_TOKEN: TOKEN, AI_SIDECAR_ENV: "production", ...DB }),
+      loadConfig({ ...DEV, AI_SIDECAR_TOKEN: TOKEN, AI_SIDECAR_ENV: "production", ...DB }),
     ).toThrow(GUARD);
     // The auth guard is checked first, so a bare production start reports it.
-    expect(() => loadConfig({ AI_SIDECAR_TOKEN: TOKEN, AI_SIDECAR_ENV: "production" })).toThrow(
-      GUARD,
-    );
+    expect(() =>
+      loadConfig({ ...DEV, AI_SIDECAR_TOKEN: TOKEN, AI_SIDECAR_ENV: "production" }),
+    ).toThrow(GUARD);
   });
 
   it("production_accepts_api_key_and_cloud", () => {
@@ -57,24 +64,51 @@ describe("loadConfig", () => {
 
   it("production_needs_the_session_store_database", () => {
     expect(() =>
-      loadConfig({ AI_SIDECAR_TOKEN: TOKEN, AI_SIDECAR_ENV: "production", ANTHROPIC_API_KEY: "k" }),
+      loadConfig({
+        ...DEV,
+        AI_SIDECAR_TOKEN: TOKEN,
+        AI_SIDECAR_ENV: "production",
+        ANTHROPIC_API_KEY: "k",
+      }),
     ).toThrow(ConfigError);
   });
 
+  it("anything_but_development_or_test_is_production", () => {
+    const oauth = { AI_SIDECAR_TOKEN: TOKEN, CLAUDE_CODE_OAUTH_TOKEN: "oat-1", ...DB };
+    for (const env of [{}, { NODE_ENV: "staging" }, { AI_SIDECAR_ENV: "prod" }, { NODE_ENV: "" }]) {
+      expect(() => loadConfig({ ...oauth, ...env })).toThrow(GUARD);
+    }
+    for (const env of [
+      { AI_SIDECAR_ENV: "development" },
+      { AI_SIDECAR_ENV: "test" },
+      { NODE_ENV: "development" },
+      { NODE_ENV: "test" },
+    ]) {
+      expect(loadConfig({ ...oauth, ...env }).production).toBe(false);
+    }
+    // NODE_ENV=production wins over a development AI_SIDECAR_ENV.
+    expect(() =>
+      loadConfig({ ...oauth, AI_SIDECAR_ENV: "development", NODE_ENV: "production" }),
+    ).toThrow(GUARD);
+  });
+
   it("development_allows_oauth", () => {
-    const c = loadConfig({ AI_SIDECAR_TOKEN: TOKEN, CLAUDE_CODE_OAUTH_TOKEN: "oat-1" });
+    const c = loadConfig({ ...DEV, AI_SIDECAR_TOKEN: TOKEN, CLAUDE_CODE_OAUTH_TOKEN: "oat-1" });
     expect(c.auth).toBe("oauth");
     expect(c.production).toBe(false);
-    expect(loadConfig({ AI_SIDECAR_TOKEN: TOKEN, ANTHROPIC_API_KEY: "" }).auth).toBe("none");
+    expect(loadConfig({ ...DEV, AI_SIDECAR_TOKEN: TOKEN, ANTHROPIC_API_KEY: "" }).auth).toBe(
+      "none",
+    );
   });
 
   it("short_sidecar_token_is_rejected", () => {
-    expect(() => loadConfig({ AI_SIDECAR_TOKEN: "x".repeat(31) })).toThrow(ConfigError);
+    expect(() => loadConfig({ ...DEV, AI_SIDECAR_TOKEN: "x".repeat(31) })).toThrow(ConfigError);
     expect(() => loadConfig({})).toThrow(ConfigError);
   });
 
   it("reads_the_overrides", () => {
     const c = loadConfig({
+      ...DEV,
       AI_SIDECAR_TOKEN: TOKEN,
       AI_SIDECAR_PORT: "9000",
       AI_SIDECAR_MAX_CONCURRENCY: "2",
@@ -85,7 +119,7 @@ describe("loadConfig", () => {
     });
     expect(c).toMatchObject({ port: 9000, maxConcurrency: 2, maxQueue: 5, queueWaitMs: 100 });
     expect([c.workDir, c.configDir]).toEqual(["/w", "/c"]);
-    expect(() => loadConfig({ AI_SIDECAR_TOKEN: TOKEN, AI_SIDECAR_PORT: "abc" })).toThrow(
+    expect(() => loadConfig({ ...DEV, AI_SIDECAR_TOKEN: TOKEN, AI_SIDECAR_PORT: "abc" })).toThrow(
       ConfigError,
     );
   });

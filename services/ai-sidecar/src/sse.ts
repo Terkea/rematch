@@ -6,6 +6,7 @@ export type SseSink = {
   write(chunk: string): unknown;
   end(chunk?: string): unknown;
   on(event: "close", fn: () => void): unknown;
+  flushHeaders?(): void;
 };
 
 export const PING_MS = 15_000;
@@ -24,6 +25,8 @@ export class SseWriter {
       connection: "keep-alive",
       "x-accel-buffering": "no",
     });
+    // Send the headers now: a turn can think for a while before its first event.
+    this.res.flushHeaders?.();
     this.ping = setInterval(() => this.raw(": ping\n\n"), pingMs);
   }
 
@@ -31,7 +34,7 @@ export class SseWriter {
     return this.finished;
   }
 
-  event(name: "delta" | "tool_use", data: unknown): void {
+  event(name: "delta" | "tool_use" | "retract", data: unknown): void {
     this.raw(`event: ${name}\ndata: ${JSON.stringify(data)}\n\n`);
   }
 

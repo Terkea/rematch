@@ -37,10 +37,15 @@ export const stdoutLogger: Logger = {
 /** Process counters surfaced on /health. */
 export class Metrics {
   private mirrorErrors = 0;
+  private nulStripped = 0;
   mirrorError(): void {
     this.mirrorErrors += 1;
   }
-  snapshot(): { mirrorErrors: number } {
-    return { mirrorErrors: this.mirrorErrors };
+  /** Transcript entries that had U+0000 removed before they reached Postgres. */
+  nulStrippedEntries(n: number): void {
+    this.nulStripped += n;
+  }
+  snapshot(): { mirrorErrors: number; nulStrippedEntries: number } {
+    return { mirrorErrors: this.mirrorErrors, nulStrippedEntries: this.nulStripped };
   }
 }

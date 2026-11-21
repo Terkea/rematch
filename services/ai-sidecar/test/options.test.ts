@@ -42,6 +42,7 @@ describe("buildOptions", () => {
       cwd: cfg.workDir,
       outputFormat: body.outputFormat,
       includePartialMessages: false,
+      verbatimPrompts: true,
       abortController,
     });
     for (const k of [
@@ -180,6 +181,7 @@ describe("buildOptions", () => {
       { ...chatBody, conversationId: "not-a-uuid" },
       { ...chatBody, toolCallback: { url: "ftp://x", token: "t" } },
       { ...chatBody, outputFormat: body.outputFormat },
+      { ...chatBody, resume: true }, // a resumable turn must carry its rebuild context
     ]) {
       expect(() => parseChatRequest(bad)).toThrow(SidecarError);
     }

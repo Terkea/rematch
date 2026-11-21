@@ -1,16 +1,14 @@
 // Port of the Agent SDK's SessionStore conformance suite (examples/session-stores/shared/conformance.ts,
 // not shipped in the npm package): the 13 contracts, re-written for vitest. Session ids are UUIDs here
-// because `ai_sdk_session_entries.session_id` is a uuid column. Plus dedup, ordering under concurrency
-// and the role's grants.
-import { randomBytes, randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import pg from "pg";
+// because `ai_sdk_session_entries.session_id` is a uuid column. Plus dedup, ordering under concurrency,
+// NUL handling and the role's grants.
+import { randomUUID } from "node:crypto";
+import type pg from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { PgSessionStore } from "../src/session-store.js";
+import { createStoreDb, type StoreDb } from "./db.js";
 
 const ADMIN_URL = process.env.DATABASE_URL_TEST;
-const MIGRATION = fileURLToPath(new URL("./fixtures/ai_sdk_session_entries.sql", import.meta.url));
 if (!ADMIN_URL && process.env.IN_DOCKER === "1") {
   throw new Error("DATABASE_URL_TEST is required with IN_DOCKER=1");
 }
@@ -37,35 +35,20 @@ function canon(v: unknown): unknown {
 }
 
 describe.skipIf(!ADMIN_URL)("PgSessionStore", () => {
-  const dbName = `ai_sidecar_store_${randomBytes(4).toString("hex")}`;
-  const password = randomBytes(12).toString("hex");
-  let admin: pg.Client;
+  let db: StoreDb;
   let dbAdmin: pg.Client;
   let pool: pg.Pool;
   let store: PgSessionStore;
 
   beforeAll(async () => {
-    admin = new pg.Client({ connectionString: ADMIN_URL });
-    await admin.connect();
-    await admin.query(`CREATE DATABASE ${dbName}`);
-    const url = new URL(ADMIN_URL as string);
-    url.pathname = `/${dbName}`;
-    dbAdmin = new pg.Client({ connectionString: url.toString() });
-    await dbAdmin.connect();
-    await dbAdmin.query(readFileSync(MIGRATION, "utf8"));
-    await dbAdmin.query(`ALTER ROLE ai_sidecar PASSWORD '${password}'`);
+    db = await createStoreDb(ADMIN_URL as string);
+    ({ dbAdmin, pool } = db);
     await dbAdmin.query("CREATE TABLE other_secret (x int)");
-    url.username = "ai_sidecar";
-    url.password = password;
-    pool = new pg.Pool({ connectionString: url.toString(), max: 4 });
     store = new PgSessionStore(pool);
   });
 
   afterAll(async () => {
-    await pool?.end();
-    await dbAdmin?.end();
-    await admin?.query(`DROP DATABASE IF EXISTS ${dbName} WITH (FORCE)`);
-    await admin?.end();
+    await db?.close();
   });
 
   beforeEach(async () => {
@@ -213,6 +196,20 @@ describe.skipIf(!ADMIN_URL)("PgSessionStore", () => {
       [S],
     );
     expect(rows[0].n).toBe(0);
+  });
+
+  it("nul_characters_are_stripped_and_counted", async () => {
+    let stripped = 0;
+    const counting = new PgSessionStore(pool, { onNulStripped: (n) => (stripped += n) });
+    await counting.append(KEY, [
+      e("user", { text: "a\u0000b", "k\u0000": ["x\u0000"] }),
+      e("plain", { text: "literal \\u0000 stays" }),
+    ]);
+    expect(await counting.load(KEY)).toEqual([
+      e("user", { text: "ab", k: ["x"] }),
+      e("plain", { text: "literal \\u0000 stays" }),
+    ]);
+    expect(stripped).toBe(1);
   });
 
   it("the_role_reaches_only_its_table", async () => {

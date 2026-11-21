@@ -1,4 +1,8 @@
-import type { Options, SDKMessage } from "@anthropic-ai/claude-agent-sdk";
+import { randomUUID } from "node:crypto";
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import type { Options, SDKMessage, SessionStore } from "@anthropic-ai/claude-agent-sdk";
 import { loadConfig, type SidecarConfig } from "../src/config.js";
 import type { LogFields, Logger } from "../src/log.js";
 
@@ -7,6 +11,7 @@ export const TOKEN = "test-sidecar-token-0123456789abcdef";
 export function testConfig(extra: NodeJS.ProcessEnv = {}): SidecarConfig {
   return loadConfig({
     PATH: "/usr/bin",
+    AI_SIDECAR_ENV: "test",
     AI_SIDECAR_TOKEN: TOKEN,
     ANTHROPIC_API_KEY: "sk-ant-test-SECRET123",
     AI_SIDECAR_WORK_DIR: "/tmp/ai-sidecar-test/work",
@@ -110,12 +115,16 @@ export class FakeRes {
   chunks: string[] = [];
   headersSent = false;
   writableEnded = false;
+  flushed = 0;
   private closeHandlers: Array<() => void> = [];
   writeHead(status: number, headers: Record<string, string>) {
     this.status = status;
     this.headers = headers;
     this.headersSent = true;
     return this;
+  }
+  flushHeaders() {
+    this.flushed += 1;
   }
   write(chunk: string) {
     this.chunks.push(chunk);
@@ -151,3 +160,117 @@ export class FakeRes {
 }
 
 export const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+export const tempDir = (prefix = "ai-sidecar-") => mkdtempSync(join(tmpdir(), prefix));
+
+type Usage4 = { input: number; output: number; cacheRead: number; cacheCreate: number };
+
+/**
+ * A fake `query()` that behaves like the CLI where sessions are concerned:
+ * - `sessionId` fails with "Session ID … is already in use" when a local transcript exists;
+ * - `resume` calls `sessionStore.load`, and fails (error_during_execution) when neither the store
+ *   nor the local disk has the transcript, or when `corruptResume` is set;
+ * - every turn writes the local transcript under CLAUDE_CONFIG_DIR and appends entries to the store;
+ * - it streams `message_start` / `message_delta` usage, and the result's `modelUsage` is the
+ *   running session total, cumulative across resumed turns, as the real SDK reports it.
+ */
+export class FakeCli {
+  calls: Captured[] = [];
+  corruptResume = false;
+  private totals = new Map<string, Usage4>();
+
+  constructor(
+    readonly turn: Usage4 = { input: 10, output: 20, cacheRead: 100, cacheCreate: 5 },
+    readonly model = "claude-sonnet-5-5",
+  ) {}
+
+  localPath(options: Options, id: string): string {
+    const env = options.env ?? {};
+    return join(
+      env.CLAUDE_CONFIG_DIR ?? "",
+      "projects",
+      env.CLAUDE_CODE_PROJECT_DIR_NAME ?? "",
+      `${id}.jsonl`,
+    );
+  }
+
+  fn = (p: { prompt: unknown; options?: Options }): AsyncGenerator<SDKMessage, void> => {
+    const options = p.options ?? {};
+    this.calls.push({ prompt: p.prompt, options });
+    const self = this;
+    return (async function* () {
+      const store = options.sessionStore as SessionStore | undefined;
+      const projectKey = options.env?.CLAUDE_CODE_PROJECT_DIR_NAME ?? "";
+      const id = options.resume ?? options.sessionId ?? randomUUID();
+      const local = self.localPath(options, id);
+      let prev: Usage4 = { input: 0, output: 0, cacheRead: 0, cacheCreate: 0 };
+      if (options.resume) {
+        const loaded = store ? await store.load({ projectKey, sessionId: id }) : null;
+        if (self.corruptResume || (!loaded && !existsSync(local))) {
+          yield result({
+            subtype: "error_during_execution",
+            is_error: true,
+            errors: [`No conversation found with session ID: ${id}`],
+            modelUsage: {},
+          });
+          return;
+        }
+        prev = self.totals.get(id) ?? prev;
+      } else if (existsSync(local)) {
+        throw new Error(`Session ID ${id} is already in use`);
+      }
+      const t = self.turn;
+      const msgId = `msg_${randomUUID()}`;
+      yield {
+        type: "stream_event",
+        event: {
+          type: "message_start",
+          message: {
+            id: msgId,
+            model: self.model,
+            usage: {
+              input_tokens: t.input,
+              output_tokens: 1,
+              cache_read_input_tokens: t.cacheRead,
+              cache_creation_input_tokens: t.cacheCreate,
+            },
+          },
+        },
+        parent_tool_use_id: null,
+        uuid: randomUUID(),
+        session_id: id,
+      } as unknown as SDKMessage;
+      yield textDelta("reply");
+      yield {
+        type: "stream_event",
+        event: {
+          type: "message_delta",
+          delta: { stop_reason: "end_turn" },
+          usage: { output_tokens: t.output },
+        },
+        parent_tool_use_id: null,
+        uuid: randomUUID(),
+        session_id: id,
+      } as unknown as SDKMessage;
+      mkdirSync(dirname(local), { recursive: true });
+      writeFileSync(local, '{"type":"user"}\n');
+      await store?.append({ projectKey, sessionId: id }, [
+        { type: "user", uuid: randomUUID() },
+        { type: "assistant", uuid: randomUUID() },
+      ]);
+      const total = {
+        input: prev.input + t.input,
+        output: prev.output + t.output,
+        cacheRead: prev.cacheRead + t.cacheRead,
+        cacheCreate: prev.cacheCreate + t.cacheCreate,
+      };
+      self.totals.set(id, total);
+      yield result({
+        session_id: id,
+        modelUsage: {
+          [self.model]: usage(total.input, total.output, total.cacheRead, total.cacheCreate),
+        },
+      });
+    })();
+  };
+}
