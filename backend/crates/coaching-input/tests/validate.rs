@@ -55,6 +55,36 @@ fn invalid_fen() {
     let mut input = sample();
     input.strengths[0].exemplars[1].fen = "x".repeat(101);
     issue_at(&input, "strengths.0.exemplars.1.fen");
+
+    // chess.js's structural rules, which `Position::from_fen` alone does not enforce: exactly
+    // six single-space-separated fields, eight ranks, no two digits in a row.
+    let fen = sample().weaknesses[0].exemplars[0].fen.clone();
+    assert_eq!(fen.split('/').nth(4), Some("4P3"), "fixture's fifth rank");
+    // White to move, like the fixture exemplar (ply 5), so only the shape differs.
+    let start = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+    let mut input = sample();
+    input.weaknesses[0].exemplars[0].fen = start.into();
+    assert_eq!(input.validate(), Ok(()));
+    let shapes = [
+        format!(" {fen}"),
+        format!("{fen} "),
+        format!("{fen}\n"),
+        fen.replacen(' ', "  ", 1),
+        fen.replacen(' ', "\t", 1),
+        fen.replacen("4P3", "4P12", 1),
+        fen.replacen("4P3", "4X3", 1),
+        start.replacen("/8/", "/44/", 1),
+        start.replacen("/8/", "/8/8/", 1),
+    ];
+    for bad in shapes {
+        let mut input = sample();
+        input.weaknesses[0].exemplars[0].fen = bad.clone();
+        assert_eq!(
+            issue_at(&input, "weaknesses.0.exemplars.0.fen"),
+            "invalid FEN",
+            "{bad:?}"
+        );
+    }
 }
 
 #[test]
@@ -243,9 +273,13 @@ fn string_too_long() {
     let mut input = sample();
     input.weaknesses[0].label = "x".repeat(LIMITS.label_chars);
     assert_eq!(input.validate(), Ok(()));
-    // zod counts UTF-16 code units: 61 astral characters are 122 units.
+    // zod 4.6 counts Unicode code points (`util.codePointLength`), not UTF-16 units: 120
+    // astral characters (240 UTF-16 units) fit, 121 do not.
     let mut input = sample();
-    input.weaknesses[0].label = "\u{1F600}".repeat(61);
+    input.weaknesses[0].label = "\u{1F600}".repeat(LIMITS.label_chars);
+    assert_eq!(input.validate(), Ok(()));
+    let mut input = sample();
+    input.weaknesses[0].label = "\u{1F600}".repeat(LIMITS.label_chars + 1);
     issue_at(&input, "weaknesses.0.label");
 }
 

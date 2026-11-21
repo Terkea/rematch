@@ -6,8 +6,8 @@
 /// zod `z.literal("coaching-input-v1")`.
 pub const INPUT_VERSION: &str = "coaching-input-v1";
 
-/// zod `LIMITS`: size bounds applied at the trust boundary. Lengths count UTF-16 code units, as
-/// JavaScript's `String.length` does.
+/// zod `LIMITS`: size bounds applied at the trust boundary. Lengths count Unicode code points, as
+/// zod 4.6 (`util.codePointLength`) and JSON Schema's `maxLength` do.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Limits {
     pub pv_plies: usize,

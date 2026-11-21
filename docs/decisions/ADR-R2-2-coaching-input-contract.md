@@ -30,7 +30,7 @@ Every struct is `#[serde(rename_all = "camelCase", deny_unknown_fields)]`. Every
 | `X.nullable()` | `Option<X>` with `#[serde(deserialize_with = "nullable")]`: `null` is `None`, a missing key is an error (serde alone would read it as `None`) |
 | `inputVersion: z.literal("coaching-input-v1")` | `InputVersion::V1`; the schema is `{"const": "coaching-input-v1"}` |
 | `accountId: z.uuid()` | `uuid::Uuid`; the schema has zod's pattern; `validate` checks it (version 1-8 or nil/max) |
-| `platform`, `timeClass`, `color`, `side`, `verdict`, `kind`, `unit`, example `side` | `Platform`, `TimeClass` (`From<chess_core::TimeClass>`), `PlayerColor`, `LineSide`, `Verdict`, `CauseKind`, `MetricUnit`, `ExampleSide` |
+| `platform`, `timeClass`, `color`, `side`, `verdict`, `kind`, `unit`, example `side` | `Platform`, `TimeClass` (`From<chess_core::TimeClass>`), `PlayerColor` (`From<chess_core::Color>`), `LineSide`, `Verdict`, `CauseKind`, `MetricUnit`, `ExampleSide`. All are built with Task 1's `wire_enum!`, so like `AreaId` they have `ALL`, `as_str`, `Display` and `FromStr`. |
 | `IsoDatetime` (`generatedAt`, `playedAt`) | `OffsetDateTime` with `common::js_time::iso` (`YYYY-MM-DDTHH:mm:ss.sssZ`) |
 | `IsoDate` (`windowStart`, `windowEnd`, `onsetDate`, `onsetFrom`, `onsetTo`) | `time::Date` as `YYYY-MM-DD`. No chrono (ADR-R2-1), so not `NaiveDate`. |
 | `Count`, `ply`, `rank`, `deviationPly`, `baseSeconds`, `incrementSeconds` | `u32`; `rating` is `u16` |
@@ -56,13 +56,20 @@ The output is committed as `backend/crates/coaching-input/schema/coaching-input-
 
 `tests/parity.rs` checks the following:
 - `sample_validates_against_ts_schema` and `sample_validates_against_rust_schema` run jsonschema 0.61.2 with format validation on. The inputs are the sample and `to_json()` of an input built in Rust with every `Option` `Some`, and again with every `Option` `None`.
-- `ts_schema_rejects_what_rust_rejects`: an unknown key, a missing nullable key, a two-key score and another input version are rejected by the TS schema, the Rust schema and serde alike.
-- `schemars_schema_matches_ts_schema_shape` walks both schemas from the root by property path. It resolves `$ref`s, ignores `$defs` names, and treats `{"type": [T, "null"]}` and `anyOf [T, null]` as the same, and `oneOf` and `anyOf` as the same. For every object it asserts the same property names, `required` equal to all properties, and `additionalProperties: false`. It asserts the same value set for every enum or const, and the same type everywhere. For `minLength`, `maxLength`, `minItems`, `maxItems`, `minimum`, `maximum`, `exclusiveMinimum`, `exclusiveMaximum`, `pattern` and `format`, the check runs both ways: a bound present on one side must be present and equal on the other. A guard asserts that the walk reached at least the 41 object sites and 17 enum sites of the contract.
+- `ts_schema_rejects_what_rust_rejects`: an unknown key, a missing nullable key, a score with two keys or with none, and another input version are rejected by the TS schema, the Rust schema and serde alike. Both schemas must report the error at the expected instance path.
+- `schemars_schema_matches_ts_schema_shape` walks both schemas from the root by property path. It resolves `$ref`s, ignores `$defs` names, and treats `{"type": [T, "null"]}` and `anyOf [T, null]` as the same, and `oneOf` and `anyOf` as the same.
+  - For every object it asserts the same property names, `required` equal to all properties, and `additionalProperties: false`.
+  - It asserts the same value set for every enum or const, and the same type everywhere.
+  - For `minLength`, `maxLength`, `minItems`, `maxItems`, `minimum`, `maximum`, `exclusiveMinimum`, `exclusiveMaximum`, `pattern` and `format`, the check runs both ways: a bound present on one side must be present and equal on the other.
+  - Keywords beside a `$ref` count as part of its target, and a value that conflicts with the target is a difference. Keywords beside a union are compared too, including those beside a single nullable member.
+  - Every keyword on either side must be one the walker compares or a known annotation (`$schema`, `$defs`, `title`, `description`). A new keyword such as `uniqueItems`, `allOf`, `not`, `prefixItems` or `default` fails the test.
+  - A guard asserts that the walk reached at least the 41 object sites and 17 enum sites of the contract.
+  - `walker_reports_unknown_keywords_and_sibling_differences` checks these rules on small hand-made schemas.
 
 ### Refinements and bounds in `validate()`
 
 JSON Schema cannot express the zod refinements. `validate()` checks them with zod's paths and messages:
-- the FEN is valid (`chess_core::board::Position::from_fen`), and its side to move agrees with the ply parity (odd = `w`; the second FEN field is read as zod reads it);
+- the FEN is valid, and its side to move agrees with the ply parity (odd = `w`; the second FEN field is read as zod reads it). Validity takes two checks. The first is chess.js's structural rules: exactly six fields separated by single spaces with no other whitespace, and eight ranks of pieces and digits 1-8 that fill eight squares with no two digits in a row. `Position::from_fen` alone splits on any whitespace and accepts `44`. The second is `chess_core::board::Position::from_fen`;
 - the metric `value`, `low`, `high` and `bandMedian` lie within the unit range, and `low <= high`;
 - `intervalLow <= posteriorRate <= intervalHigh`, and `events <= opportunities`;
 - ranks are unique (the issue is at the second occurrence);
@@ -70,12 +77,20 @@ JSON Schema cannot express the zod refinements. `validate()` checks them with zo
 - `onsetFrom <= onsetDate <= onsetTo`, `analysedGames <= importedGames`, and `windowStart <= windowEnd`.
 
 `validate()` also re-checks every schema bound, so a Rust value that passes it also passes zod:
-- string lengths count UTF-16 code units, as JavaScript's `String.length` does (JSON Schema counts code points, so this is the stricter of the two);
+- string lengths count Unicode code points (`chars().count()`). zod 4.6.7 measures `min`/`max` with `util.codePointLength`, which counts a surrogate pair once, and JSON Schema's `maxLength` counts code points too. So 120 emoji fit a 120-character label;
 - array sizes, number ranges, the UCI and weakness-id patterns and the UUID pattern;
 - dates and datetimes must have a four-digit year;
 - every `f64` must be finite, because serde_json would write NaN as `null`.
 
-It walks the whole value and returns every issue, not only the first. Two gaps remain, both bounded. `Position::from_fen` reproduces chess.js 1.4.0 (ADR 0037) but is not chess.js's `validateFen` itself. serde reads JSON `48.0` into an integer field as an error, where zod accepts it. R2 only writes integers there, so this matters only for hand-made input.
+It walks the whole value and returns every issue, not only the first. Two gaps remain, both bounded. First, the structural pre-check plus `Position::from_fen` (which reproduces chess.js 1.4.0, ADR 0037) stand in for chess.js's `validateFen`; they are not that function itself. Second, serde reads JSON `48.0` into an integer field as an error, where zod accepts it. R2 only writes integers there, so this matters only for hand-made input.
+
+### What the gate covers: `to_json()` output, not foreign bytes
+
+serde plus `validate()` equals zod only for what `to_json()` writes. Deserialisation is more lenient than zod in places that `to_json()` never produces:
+- `common::js_time::iso` parses any RFC 3339 timestamp, including other offsets (`+02:00`), where zod requires `Z`;
+- `uuid::Uuid` parses the simple, braced and URN forms, where zod requires the hyphenated form.
+
+The typed value forgets which form was read, and `validate()` checks the typed value, so it cannot see these differences. `to_json()` always writes the canonical forms. So R3, or anything else that passes a `CoachingInput` on to zod, must forward `to_json()` output of a validated value. It must never forward raw bytes it received from elsewhere.
 
 ### Rulings carried by this contract (global constraints R-1 to R-8)
 

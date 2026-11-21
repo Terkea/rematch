@@ -9,7 +9,7 @@ use coaching_input::{
     MetricUnit, MoveRef, OpeningVerdict, Platform, PlayerColor, RankedWeakness, Score, Strength,
     TimeClass, TimeControl, TimelineChange, Verdict, WeaknessState, json_schema,
 };
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 use time::macros::{date, datetime};
 
 fn fixture_path(name: &str) -> String {
@@ -245,30 +245,50 @@ fn sample_validates_against_rust_schema() {
 fn ts_schema_rejects_what_rust_rejects() {
     let ts = validator(&ts_schema());
     let rs = validator(&json_schema());
-    let mut cases: Vec<(&str, Value)> = Vec::new();
+    // (case, value, JSON pointer of the instance both schemas must report)
+    let mut cases: Vec<(&str, Value, &str)> = Vec::new();
 
     let mut v = sample_value();
     v["focus"] = json!([]);
-    cases.push(("unknown root key", v));
+    cases.push(("unknown root key", v, ""));
     let mut v = sample_value();
     v["changes"][0]["examples"][0]["note"] = json!("x");
-    cases.push(("unknown key in a change example", v));
+    cases.push((
+        "unknown key in a change example",
+        v,
+        "/changes/0/examples/0",
+    ));
     let mut v = sample_value();
     v["weaknesses"][0]["exemplars"][0]
         .as_object_mut()
         .unwrap()
         .remove("best");
-    cases.push(("missing nullable key", v));
+    cases.push(("missing nullable key", v, "/weaknesses/0/exemplars/0"));
     let mut v = sample_value();
     v["openings"][0]["avgEvalAtOpeningEnd"] = json!({"cp": 1, "mate": 2});
-    cases.push(("score with two keys", v));
+    cases.push(("score with two keys", v, "/openings/0/avgEvalAtOpeningEnd"));
+    let mut v = sample_value();
+    v["openings"][0]["avgEvalAtOpeningEnd"] = json!({});
+    cases.push((
+        "score with neither key",
+        v,
+        "/openings/0/avgEvalAtOpeningEnd",
+    ));
     let mut v = sample_value();
     v["inputVersion"] = json!("coaching-input-v2");
-    cases.push(("other input version", v));
+    cases.push(("other input version", v, "/inputVersion"));
 
-    for (name, v) in cases {
-        assert!(!ts.is_valid(&v), "TS schema accepts {name}");
-        assert!(!rs.is_valid(&v), "Rust schema accepts {name}");
+    for (name, v, pointer) in cases {
+        for (side, validator) in [("TS", &ts), ("Rust", &rs)] {
+            let paths: Vec<String> = validator
+                .iter_errors(&v)
+                .map(|e| e.instance_path().to_string())
+                .collect();
+            assert!(
+                paths.iter().any(|p| p == pointer),
+                "{side} schema: {name} must fail at {pointer:?}, got {paths:?}"
+            );
+        }
         assert!(
             serde_json::from_value::<CoachingInput>(v).is_err(),
             "Rust deserialises {name}"
@@ -324,6 +344,30 @@ const BOUNDS: &[&str] = &[
     "format",
 ];
 
+/// Keywords the walker descends into or compares structurally.
+const STRUCTURE: &[&str] = &[
+    "type",
+    "enum",
+    "const",
+    "properties",
+    "required",
+    "additionalProperties",
+    "items",
+    "anyOf",
+    "oneOf",
+];
+
+/// Keywords without validation meaning. Every keyword outside `STRUCTURE`, `BOUNDS` and these
+/// (`uniqueItems`, `allOf`, `not`, `prefixItems`, `default`, ...) is reported, so a constraint
+/// the walker does not understand cannot pass unnoticed on either side.
+const ANNOTATIONS: &[&str] = &["$schema", "$defs", "title", "description"];
+
+#[derive(Clone, Copy, Debug)]
+enum Side {
+    Ts,
+    Rust,
+}
+
 struct Walk<'a> {
     ts_root: &'a Value,
     rs_root: &'a Value,
@@ -332,46 +376,14 @@ struct Walk<'a> {
     enums: usize,
 }
 
-fn deref<'a>(root: &'a Value, mut s: &'a Value) -> &'a Value {
-    while let Some(r) = s.get("$ref").and_then(Value::as_str) {
-        let pointer = r.strip_prefix('#').expect("only local $refs");
-        s = root
-            .pointer(pointer)
-            .unwrap_or_else(|| panic!("dangling $ref {r}"));
+fn walk<'a>(ts_root: &'a Value, rs_root: &'a Value) -> Walk<'a> {
+    Walk {
+        ts_root,
+        rs_root,
+        diffs: Vec::new(),
+        objects: 0,
+        enums: 0,
     }
-    s
-}
-
-/// Splits nullability off a schema: `{"type": [T, "null"]}` and `{"anyOf": [S, {"type":
-/// "null"}]}` both become `(true, S)`.
-fn split_null(root: &Value, s: &Value) -> (bool, Value) {
-    let mut s = deref(root, s).clone();
-    let mut nullable = false;
-    if let Some(Value::Array(types)) = s.get_mut("type") {
-        let before = types.len();
-        types.retain(|t| t != "null");
-        nullable |= types.len() != before;
-        if types.len() == 1 {
-            let t = types[0].clone();
-            s["type"] = t;
-        }
-    }
-    if let Some(Value::Array(branches)) = s.get("anyOf").cloned() {
-        let rest: Vec<Value> = branches
-            .iter()
-            .filter(|b| deref(root, b).get("type") != Some(&json!("null")))
-            .cloned()
-            .collect();
-        if rest.len() != branches.len() {
-            nullable = true;
-            if rest.len() == 1 {
-                s = deref(root, &rest[0]).clone();
-            } else {
-                s["anyOf"] = Value::Array(rest);
-            }
-        }
-    }
-    (nullable, s)
 }
 
 fn branches(s: &Value) -> Option<&Vec<Value>> {
@@ -407,43 +419,152 @@ fn key_set(s: &Value, key: &str) -> BTreeSet<String> {
     }
 }
 
-impl Walk<'_> {
+fn as_map(s: &Value) -> Map<String, Value> {
+    s.as_object()
+        .cloned()
+        .unwrap_or_else(|| panic!("expected an object schema, got {s}"))
+}
+
+impl<'a> Walk<'a> {
     fn diff(&mut self, path: &str, what: String) {
         self.diffs.push(format!("{path}: {what}"));
     }
 
+    fn root(&self, side: Side) -> &'a Value {
+        match side {
+            Side::Ts => self.ts_root,
+            Side::Rust => self.rs_root,
+        }
+    }
+
+    /// Adds the validation keywords of `extra` (the siblings of a `$ref`, or of a union whose
+    /// only non-null member is `base`) to `base`. In 2020-12 they apply next to it, so they are
+    /// compared like the member's own keywords; a keyword both sides set differently is a diff.
+    fn merge_siblings(
+        &mut self,
+        side: Side,
+        path: &str,
+        base: &mut Map<String, Value>,
+        extra: &Map<String, Value>,
+    ) {
+        for (k, v) in extra {
+            if ANNOTATIONS.contains(&k.as_str()) {
+                continue;
+            }
+            match base.get(k) {
+                None => {
+                    base.insert(k.clone(), v.clone());
+                }
+                Some(existing) if existing == v => {}
+                Some(existing) => {
+                    let what = format!("{side:?} sibling {k} {v} conflicts with {existing}");
+                    self.diff(path, what);
+                }
+            }
+        }
+    }
+
+    /// Resolves `$ref`s, keeping their sibling keywords.
+    fn resolve(&mut self, side: Side, path: &str, s: &Value) -> Value {
+        let mut s = s.clone();
+        while let Some(r) = s.get("$ref").and_then(Value::as_str).map(str::to_owned) {
+            let pointer = r.strip_prefix('#').expect("only local $refs");
+            let target = self
+                .root(side)
+                .pointer(pointer)
+                .unwrap_or_else(|| panic!("dangling $ref {r}"));
+            let mut merged = as_map(target);
+            let mut siblings = as_map(&s);
+            siblings.remove("$ref");
+            self.merge_siblings(side, path, &mut merged, &siblings);
+            s = Value::Object(merged);
+        }
+        s
+    }
+
+    /// Resolves a schema and splits its nullability off: `{"type": [T, "null"]}` and
+    /// `{"anyOf": [S, {"type": "null"}]}` both become `(true, S)`, with the union's other
+    /// keywords merged into `S`.
+    fn normalize(&mut self, side: Side, path: &str, s: &Value) -> (bool, Value) {
+        let mut s = self.resolve(side, path, s);
+        let mut nullable = false;
+        if let Some(Value::Array(types)) = s.get_mut("type") {
+            let before = types.len();
+            types.retain(|t| t != "null");
+            nullable |= types.len() != before;
+            if types.len() == 1 {
+                let t = types[0].clone();
+                s["type"] = t;
+            }
+        }
+        if let Some(Value::Array(members)) = s.get("anyOf").cloned() {
+            let mut rest = Vec::new();
+            let mut had_null = false;
+            for m in &members {
+                let resolved = self.resolve(side, path, m);
+                if resolved.get("type") == Some(&json!("null")) {
+                    had_null = true;
+                    let extra: Vec<String> = as_map(&resolved)
+                        .keys()
+                        .filter(|k| *k != "type" && !ANNOTATIONS.contains(&k.as_str()))
+                        .cloned()
+                        .collect();
+                    if !extra.is_empty() {
+                        self.diff(path, format!("{side:?} null member has keywords {extra:?}"));
+                    }
+                } else {
+                    rest.push(m.clone());
+                }
+            }
+            if had_null {
+                nullable = true;
+                if rest.len() == 1 {
+                    let mut outer = as_map(&s);
+                    outer.remove("anyOf");
+                    let member = self.resolve(side, path, &rest[0]);
+                    let mut member = as_map(&member);
+                    self.merge_siblings(side, path, &mut member, &outer);
+                    s = Value::Object(member);
+                } else {
+                    s["anyOf"] = Value::Array(rest);
+                }
+            }
+        }
+        (nullable, s)
+    }
+
+    fn check_keywords(&mut self, path: &str, side: Side, s: &Value) {
+        let Some(obj) = s.as_object() else {
+            self.diff(path, format!("{side:?} schema is not an object: {s}"));
+            return;
+        };
+        for k in obj.keys() {
+            let k = k.as_str();
+            if !(STRUCTURE.contains(&k) || BOUNDS.contains(&k) || ANNOTATIONS.contains(&k)) {
+                self.diff(
+                    path,
+                    format!("{side:?} uses keyword {k:?} the walker does not compare"),
+                );
+            }
+        }
+        if obj.contains_key("anyOf") && obj.contains_key("oneOf") {
+            self.diff(path, format!("{side:?} has both anyOf and oneOf"));
+        }
+    }
+
     fn compare(&mut self, path: &str, ts: &Value, rs: &Value) {
-        let (ts_null, t) = split_null(self.ts_root, ts);
-        let (rs_null, r) = split_null(self.rs_root, rs);
+        let (ts_null, t) = self.normalize(Side::Ts, path, ts);
+        let (rs_null, r) = self.normalize(Side::Rust, path, rs);
         if ts_null != rs_null {
             self.diff(path, format!("nullable ts={ts_null} rs={rs_null}"));
         }
-        match (branches(&t), branches(&r)) {
-            (Some(tb), Some(rb)) => {
-                if tb.len() != rb.len() {
-                    self.diff(path, format!("{} vs {} union members", tb.len(), rb.len()));
-                    return;
-                }
-                for (i, (tb, rb)) in tb.iter().zip(rb).enumerate() {
-                    self.compare(&format!("{path}|{i}"), tb, rb);
-                }
-                return;
-            }
-            (None, None) => {}
-            _ => {
-                self.diff(path, "union on one side only".into());
-                return;
-            }
-        }
-        let (t, r) = (
-            deref(self.ts_root, &t).clone(),
-            deref(self.rs_root, &r).clone(),
-        );
+        self.check_keywords(path, Side::Ts, &t);
+        self.check_keywords(path, Side::Rust, &r);
+
+        // This node's own keywords, including those beside a union's members.
         if t.get("type") != r.get("type") {
-            self.diff(
-                path,
-                format!("type {:?} vs {:?}", t.get("type"), r.get("type")),
-            );
+            let what = format!("type {:?} vs {:?}", t.get("type"), r.get("type"));
+            self.diff(path, what);
         }
         let (te, re) = (enum_set(&t), enum_set(&r));
         if te.is_some() {
@@ -459,7 +580,27 @@ impl Walk<'_> {
                 (a, b) => self.diff(path, format!("{key} {a:?} vs {b:?}")),
             }
         }
-        if t.get("properties").is_some() || r.get("properties").is_some() {
+
+        match (branches(&t), branches(&r)) {
+            (Some(tb), Some(rb)) => {
+                if tb.len() == rb.len() {
+                    for (i, (tm, rm)) in tb.iter().zip(rb).enumerate() {
+                        self.compare(&format!("{path}|{i}"), tm, rm);
+                    }
+                } else {
+                    let what = format!("{} vs {} union members", tb.len(), rb.len());
+                    self.diff(path, what);
+                }
+            }
+            (None, None) => {}
+            _ => self.diff(path, "union on one side only".into()),
+        }
+
+        let object_keys = ["properties", "required", "additionalProperties"];
+        if object_keys
+            .iter()
+            .any(|k| t.get(k).is_some() || r.get(k).is_some())
+        {
             self.objects += 1;
             let (tp, rp) = (key_set(&t, "properties"), key_set(&r, "properties"));
             if tp != rp {
@@ -472,9 +613,12 @@ impl Walk<'_> {
             if rr != rp {
                 self.diff(path, format!("Rust required {rr:?} is not every property"));
             }
-            for (side, s) in [("TS", &t), ("Rust", &r)] {
+            for (side, s) in [(Side::Ts, &t), (Side::Rust, &r)] {
                 if s.get("additionalProperties") != Some(&Value::Bool(false)) {
-                    self.diff(path, format!("{side} object allows additional properties"));
+                    self.diff(
+                        path,
+                        format!("{side:?} object allows additional properties"),
+                    );
                 }
             }
             for key in tp.intersection(&rp) {
@@ -498,18 +642,12 @@ fn schemars_schema_matches_ts_schema_shape() {
         rs["$schema"],
         json!("https://json-schema.org/draft/2020-12/schema")
     );
-    let mut walk = Walk {
-        ts_root: &ts,
-        rs_root: &rs,
-        diffs: Vec::new(),
-        objects: 0,
-        enums: 0,
-    };
-    walk.compare("$", &ts, &rs);
+    let mut w = walk(&ts, &rs);
+    w.compare("$", &ts, &rs);
     assert!(
-        walk.diffs.is_empty(),
+        w.diffs.is_empty(),
         "schema shape differs:\n{}",
-        walk.diffs.join("\n")
+        w.diffs.join("\n")
     );
     // Guard against a walker that silently stops early. Objects: 13 (CoachingInput,
     // TimeControl, Basis, AreaScore, Metric, RankedWeakness, Strength, OpeningVerdict, its two
@@ -517,12 +655,61 @@ fn schemars_schema_matches_ts_schema_shape() {
     // (exemplar, played, best, two Score members each for evalBefore and evalAfter) at 4 sites.
     // Enums: 4 at the root (inputVersion, platform, timeClass, band), area x4, unit, state x3,
     // color, side x2, verdict, kind.
-    assert!(
-        walk.objects >= 13 + 7 * 4,
-        "walked only {} objects",
-        walk.objects
-    );
-    assert!(walk.enums >= 17, "walked only {} enums", walk.enums);
+    assert!(w.objects >= 13 + 7 * 4, "walked only {} objects", w.objects);
+    assert!(w.enums >= 17, "walked only {} enums", w.enums);
+}
+
+#[test]
+fn walker_reports_unknown_keywords_and_sibling_differences() {
+    fn diffs(ts: &Value, rs: &Value) -> Vec<String> {
+        let mut w = walk(ts, rs);
+        w.compare("$", ts, rs);
+        w.diffs
+    }
+    fn object(a: Value) -> Value {
+        json!({
+            "$defs": {"A": {"type": "string", "maxLength": 3}},
+            "type": "object",
+            "properties": {"a": a},
+            "required": ["a"],
+            "additionalProperties": false
+        })
+    }
+    fn has(diffs: &[String], needle: &str) -> bool {
+        diffs.iter().any(|d| d.contains(needle))
+    }
+    let base = object(json!({"type": "string", "maxLength": 3}));
+    assert_eq!(diffs(&base, &base), Vec::<String>::new());
+
+    // A keyword the walker does not compare, on either side.
+    for keyword in ["uniqueItems", "allOf", "not", "prefixItems", "default"] {
+        let mut other = base.clone();
+        other["properties"]["a"][keyword] = json!(true);
+        let d = diffs(&base, &other);
+        assert!(has(&d, &format!("Rust uses keyword {keyword:?}")), "{d:?}");
+        let d = diffs(&other, &base);
+        assert!(has(&d, &format!("Ts uses keyword {keyword:?}")), "{d:?}");
+    }
+
+    // A `$ref` with its target's keywords matches the inline form; a sibling bound counts.
+    let by_ref = object(json!({"$ref": "#/$defs/A", "description": "x"}));
+    assert_eq!(diffs(&base, &by_ref), Vec::<String>::new());
+    let sibling = object(json!({"$ref": "#/$defs/A", "minLength": 1}));
+    assert!(has(&diffs(&base, &sibling), "$.a: minLength"));
+    let conflict = object(json!({"$ref": "#/$defs/A", "maxLength": 4}));
+    assert!(has(&diffs(&base, &conflict), "conflicts with 3"));
+
+    // Keywords beside a union are compared, and so are those beside a nullable member.
+    let union = object(json!({"anyOf": [{"type": "string"}, {"type": "number"}]}));
+    let mut union_bound = union.clone();
+    union_bound["properties"]["a"]["maxLength"] = json!(5);
+    assert!(has(&diffs(&union, &union_bound), "$.a: maxLength"));
+    let nullable = object(json!({"anyOf": [{"$ref": "#/$defs/A"}, {"type": "null"}]}));
+    let inline = object(json!({"type": ["string", "null"], "maxLength": 3}));
+    assert_eq!(diffs(&nullable, &inline), Vec::<String>::new());
+    let mut nullable_bound = nullable.clone();
+    nullable_bound["properties"]["a"]["minLength"] = json!(1);
+    assert!(has(&diffs(&nullable, &nullable_bound), "$.a: minLength"));
 }
 
 #[test]

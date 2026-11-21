@@ -1,7 +1,7 @@
 //! `CoachingInput::validate`: every check of the M3 zod schema, in Rust (ADR-R2-2).
 //!
 //! The types already fix the shape (strict keys, enums, integer types). This module checks the
-//! rest: zod's bounds (string lengths in UTF-16 code units, array sizes, number ranges,
+//! rest: zod's bounds (string lengths in Unicode code points, array sizes, number ranges,
 //! patterns, finite numbers) and the refinements JSON Schema cannot express (FEN validity, side to
 //! move vs ply, unit ranges, `low <= high`, the posterior inside its interval, events <=
 //! opportunities, unique ranks, each area exactly once, onset order, analysed <= imported,
@@ -75,9 +75,46 @@ fn join(prefix: &str, segment: impl fmt::Display) -> String {
     }
 }
 
-/// JavaScript `String.length`.
-fn js_len(s: &str) -> usize {
-    s.encode_utf16().count()
+/// String length as zod 4.6 measures it: Unicode code points (`util.codePointLength`, which
+/// counts a surrogate pair once), the same unit as JSON Schema's `maxLength`. A Rust `str` holds
+/// no lone surrogates, so this is `chars().count()`.
+fn char_len(s: &str) -> usize {
+    s.chars().count()
+}
+
+/// chess.js `validateFen`'s structural rules, which `Position::from_fen` alone does not enforce
+/// (it splits on any run of whitespace and accepts `44` as a rank): exactly six fields separated
+/// by single spaces, no other whitespace, and eight ranks of pieces and digits 1-8 that fill
+/// eight squares with no two digits in a row.
+fn fen_shape_ok(fen: &str) -> bool {
+    let fields: Vec<&str> = fen.split(' ').collect();
+    if fields.len() != 6
+        || fields
+            .iter()
+            .any(|f| f.is_empty() || f.chars().any(char::is_whitespace))
+    {
+        return false;
+    }
+    let ranks: Vec<&str> = fields[0].split('/').collect();
+    ranks.len() == 8
+        && ranks.iter().all(|rank| {
+            let mut squares = 0;
+            let mut previous_digit = false;
+            for c in rank.chars() {
+                match c.to_digit(10) {
+                    Some(d @ 1..=8) if !previous_digit => {
+                        squares += d;
+                        previous_digit = true;
+                    }
+                    None if "prnbqkPRNBQK".contains(c) => {
+                        squares += 1;
+                        previous_digit = false;
+                    }
+                    _ => return false,
+                }
+            }
+            squares == 8
+        })
 }
 
 #[derive(Default)]
@@ -96,7 +133,7 @@ impl Checker {
     // ---- zod primitives --------------------------------------------------------------------
 
     fn string(&mut self, path: String, s: &str, min: usize, max: usize) {
-        let len = js_len(s);
+        let len = char_len(s);
         if len < min {
             self.push(
                 path,
@@ -571,7 +608,7 @@ impl Checker {
         self.ply(join(p, "ply"), e.ply);
         self.datetime(join(p, "playedAt"), e.played_at);
         self.string(join(p, "fen"), &e.fen, 0, FEN_MAX_CHARS);
-        if Position::from_fen(&e.fen).is_err() {
+        if !fen_shape_ok(&e.fen) || Position::from_fen(&e.fen).is_err() {
             self.push(join(p, "fen"), "invalid FEN");
         }
         self.move_ref(&join(p, "played"), &e.played);

@@ -8,13 +8,15 @@
 //! live in `validate.rs`.
 
 use std::borrow::Cow;
+use std::fmt;
+use std::str::FromStr;
 
 use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
 use serde::{Deserialize, Deserializer, Serialize};
 use time::{Date, OffsetDateTime};
 use uuid::Uuid;
 
-use crate::enums::{AreaId, BandId, WeaknessState};
+use crate::enums::{AreaId, BandId, UnknownVariant, WeaknessState};
 use crate::limits::{
     ECO_MAX_CHARS, FEN_MAX_CHARS, INPUT_VERSION, LIMITS, MAX_BASE_SECONDS, MAX_COUNT, MAX_CP,
     MAX_EXCESS_EPL, MAX_INCREMENT_SECONDS, MAX_MATE, MAX_PLY, MAX_PRIORITY, MAX_RATING,
@@ -79,24 +81,28 @@ impl JsonSchema for InputVersion {
     }
 }
 
-/// `CoachingInput.platform`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "lowercase")]
-pub enum Platform {
-    Lichess,
-    Chesscom,
-}
+// The enums below use Task 1's `wire_enum!` (`enums.rs`), so they have `ALL`, `as_str`,
+// `Display` and `FromStr` like `AreaId`. No variant doc comments: they would turn the schema's
+// `enum` into a `oneOf` of consts.
 
-/// `CoachingInput.timeClass`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "lowercase")]
-pub enum TimeClass {
-    Bullet,
-    Blitz,
-    Rapid,
-    Classical,
-    Daily,
-}
+wire_enum!(
+    /// `CoachingInput.platform`.
+    Platform, "platform", "lowercase", {
+        Lichess => "lichess",
+        Chesscom => "chesscom",
+    }
+);
+
+wire_enum!(
+    /// `CoachingInput.timeClass`.
+    TimeClass, "time class", "lowercase", {
+        Bullet => "bullet",
+        Blitz => "blitz",
+        Rapid => "rapid",
+        Classical => "classical",
+        Daily => "daily",
+    }
+);
 
 impl From<chess_core::TimeClass> for TimeClass {
     fn from(tc: chess_core::TimeClass) -> Self {
@@ -187,36 +193,28 @@ pub struct ChangeExample {
     pub side: ExampleSide,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "lowercase")]
-pub enum ExampleSide {
-    Before,
-    After,
-}
+wire_enum!(
+    /// `TimelineChange.examples[].side`.
+    ExampleSide, "example side", "lowercase", {
+        Before => "before",
+        After => "after",
+    }
+);
 
-/// What a metric's `value`, `low`, `high` and `bandMedian` measure: `rate` (events per
-/// opportunity, 0..1), `per_game` (a count per game, 0..1000), `pct` (0..100), `seconds`
-/// (0..100 000) or `elo` (a rating-point quantity, 0..4000).
-// No variant doc comments: they would turn the schema's `enum` into a `oneOf` of consts.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum MetricUnit {
-    Rate,
-    PerGame,
-    Pct,
-    Seconds,
-    Elo,
-}
+wire_enum!(
+    /// What a metric's `value`, `low`, `high` and `bandMedian` measure: `rate` (events per
+    /// opportunity, 0..1), `per_game` (a count per game, 0..1000), `pct` (0..100), `seconds`
+    /// (0..100 000) or `elo` (a rating-point quantity, 0..4000).
+    MetricUnit, "metric unit", "snake_case", {
+        Rate => "rate",
+        PerGame => "per_game",
+        Pct => "pct",
+        Seconds => "seconds",
+        Elo => "elo",
+    }
+);
 
 impl MetricUnit {
-    pub const ALL: [MetricUnit; 5] = [
-        MetricUnit::Rate,
-        MetricUnit::PerGame,
-        MetricUnit::Pct,
-        MetricUnit::Seconds,
-        MetricUnit::Elo,
-    ];
-
     /// zod `UNIT_MAX`: the upper end of the unit's range (the lower end is 0).
     pub fn max(self) -> f64 {
         match self {
@@ -225,17 +223,6 @@ impl MetricUnit {
             MetricUnit::Pct => 100.0,
             MetricUnit::Seconds => 100_000.0,
             MetricUnit::Elo => 4000.0,
-        }
-    }
-
-    /// The wire string.
-    pub fn as_str(self) -> &'static str {
-        match self {
-            MetricUnit::Rate => "rate",
-            MetricUnit::PerGame => "per_game",
-            MetricUnit::Pct => "pct",
-            MetricUnit::Seconds => "seconds",
-            MetricUnit::Elo => "elo",
         }
     }
 }
@@ -339,30 +326,40 @@ pub struct Strength {
     pub exemplars: Vec<ExemplarPosition>,
 }
 
-/// The player's colour in an opening line's games.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "lowercase")]
-pub enum PlayerColor {
-    White,
-    Black,
+wire_enum!(
+    /// The player's colour in an opening line's games.
+    PlayerColor, "player color", "lowercase", {
+        White => "white",
+        Black => "black",
+    }
+);
+
+impl From<chess_core::Color> for PlayerColor {
+    fn from(color: chess_core::Color) -> Self {
+        match color {
+            chess_core::Color::White => PlayerColor::White,
+            chess_core::Color::Black => PlayerColor::Black,
+        }
+    }
 }
 
-/// `chosen`: the player plays the line; `faced`: the opponent plays it against the player.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "lowercase")]
-pub enum LineSide {
-    Chosen,
-    Faced,
-}
+wire_enum!(
+    /// `chosen`: the player plays the line; `faced`: the opponent plays it against the player.
+    LineSide, "line side", "lowercase", {
+        Chosen => "chosen",
+        Faced => "faced",
+    }
+);
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "lowercase")]
-pub enum Verdict {
-    Keep,
-    Fix,
-    Learn,
-    Replace,
-}
+wire_enum!(
+    /// `OpeningVerdict.verdict`.
+    Verdict, "verdict", "lowercase", {
+        Keep => "keep",
+        Fix => "fix",
+        Learn => "learn",
+        Replace => "replace",
+    }
+);
 
 /// `OpeningVerdict.alternatives[]`.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -441,16 +438,16 @@ pub struct AreaScore {
     pub need_more: Option<u32>,
 }
 
-/// `CandidateCause.kind` (M3's names).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum CauseKind {
-    TimeControlMix,
-    NewOpening,
-    SessionLength,
-    RatingLevel,
-    ProtocolVersion,
-}
+wire_enum!(
+    /// `CandidateCause.kind` (M3's names).
+    CauseKind, "cause kind", "snake_case", {
+        TimeControlMix => "time_control_mix",
+        NewOpening => "new_opening",
+        SessionLength => "session_length",
+        RatingLevel => "rating_level",
+        ProtocolVersion => "protocol_version",
+    }
+);
 
 /// `CandidateCause.before`/`after`: a short text or a number.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]

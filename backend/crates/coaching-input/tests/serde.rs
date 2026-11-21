@@ -1,7 +1,10 @@
 //! Wire shape of the contract types: the M3 zod objects are strict, every key is present, and
 //! nullable fields are `null` (never skipped).
 
-use coaching_input::{CoachingInput, INPUT_VERSION, InputVersion, Score};
+use coaching_input::{
+    CauseKind, CoachingInput, ExampleSide, INPUT_VERSION, InputVersion, LineSide, MetricUnit,
+    Platform, PlayerColor, Score, TimeClass, Verdict,
+};
 use serde_json::{Value, json};
 
 fn sample_value() -> Value {
@@ -52,6 +55,65 @@ fn score_shapes() {
     assert!(serde_json::from_value::<Score>(json!({"cp": 1, "mate": 2})).is_err());
     assert!(serde_json::from_value::<Score>(json!({"cp": 1.5})).is_err());
     assert!(serde_json::from_value::<Score>(json!({"pawns": 1})).is_err());
+    assert!(serde_json::from_value::<Score>(json!({})).is_err());
+}
+
+/// Every new contract enum has `ALL`, `as_str`, `Display` and `FromStr` like the Task 1 enums,
+/// and its serde name is `as_str`.
+#[test]
+fn contract_enums_round_trip_their_wire_names() {
+    fn check<T>(all: &[T], kind: &str)
+    where
+        T: Copy
+            + std::fmt::Debug
+            + PartialEq
+            + std::fmt::Display
+            + std::str::FromStr
+            + serde::Serialize
+            + serde::de::DeserializeOwned,
+        <T as std::str::FromStr>::Err: std::fmt::Debug,
+    {
+        for &v in all {
+            let wire = v.to_string();
+            assert_eq!(serde_json::to_value(v).unwrap(), json!(wire), "{kind}");
+            assert_eq!(serde_json::from_value::<T>(json!(wire)).unwrap(), v);
+            assert_eq!(wire.parse::<T>().unwrap(), v);
+        }
+        assert!("nope".parse::<T>().is_err(), "{kind}");
+    }
+    check(&Platform::ALL, "platform");
+    check(&TimeClass::ALL, "time class");
+    check(&PlayerColor::ALL, "player color");
+    check(&LineSide::ALL, "line side");
+    check(&Verdict::ALL, "verdict");
+    check(&CauseKind::ALL, "cause kind");
+    check(&ExampleSide::ALL, "example side");
+    check(&MetricUnit::ALL, "metric unit");
+    assert_eq!(MetricUnit::PerGame.as_str(), "per_game");
+    assert_eq!(CauseKind::TimeControlMix.as_str(), "time_control_mix");
+    assert_eq!(Platform::Chesscom.as_str(), "chesscom");
+}
+
+#[test]
+fn chess_core_conversions_cover_every_variant() {
+    use chess_core::{Color, TimeClass as CoreTimeClass};
+    let core = [
+        CoreTimeClass::Bullet,
+        CoreTimeClass::Blitz,
+        CoreTimeClass::Rapid,
+        CoreTimeClass::Classical,
+        CoreTimeClass::Daily,
+    ];
+    let mapped: Vec<TimeClass> = core.iter().map(|&tc| TimeClass::from(tc)).collect();
+    assert_eq!(mapped, TimeClass::ALL);
+    for tc in core {
+        assert_eq!(TimeClass::from(tc).as_str(), tc.as_str());
+    }
+    assert_eq!(PlayerColor::from(Color::White), PlayerColor::White);
+    assert_eq!(PlayerColor::from(Color::Black), PlayerColor::Black);
+    for c in [Color::White, Color::Black] {
+        assert_eq!(PlayerColor::from(c).as_str(), c.as_str());
+    }
 }
 
 #[test]
