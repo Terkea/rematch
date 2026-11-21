@@ -554,27 +554,77 @@ async fn a_429_on_submit_is_retried() {
     assert_eq!(server.received_requests().await.unwrap().len(), 2);
 }
 
+/// The fixture's lines, plus a *valid* `succeeded` line padded with an ignored field to `pad`
+/// bytes: without the cap it would decode fine, so only the cap can reject it.
+fn padded_lines(pad: usize) -> (Vec<String>, String) {
+    let lines: Vec<String> = fixture("batch-results.jsonl")
+        .lines()
+        .map(str::to_owned)
+        .collect();
+    let mut v: Value = serde_json::from_str(&lines[0]).unwrap();
+    v["custom_id"] = json!("probe__v1__big");
+    v["pad"] = json!("x".repeat(pad));
+    let big = v.to_string();
+    serde_json::from_str::<ai::client::wire::BatchResultLine>(&big).expect("decodes uncapped");
+    (lines, big)
+}
+
+fn too_large(r: &Result<BatchResultItem, AiError>) {
+    let Err(AiError::Response(msg)) = r else {
+        panic!("{:?}", r.as_ref().map(|i| &i.custom_id))
+    };
+    assert!(msg.contains("too large"), "{msg}");
+    assert!(!msg.contains("could not be decoded"), "{msg}");
+    assert!(!msg.contains("xxxx"));
+}
+
+fn capped_client(server: &MockServer, max: usize) -> BatchesClient {
+    let mut cfg = config(server);
+    cfg.max_result_line = max;
+    BatchesClient::new(cfg).unwrap()
+}
+
 #[tokio::test]
 async fn an_oversized_results_line_is_a_response_error_and_is_skipped() {
+    // With the real 4 MiB cap.
     let server = MockServer::start().await;
-    let lines: Vec<&str> = fixture("batch-results.jsonl").leak().lines().collect();
-    let huge = format!(
-        "{{\"custom_id\":\"probe__v1__big\",\"pad\":\"{}\"}}",
-        "x".repeat(ai::client::batches::MAX_RESULT_LINE)
-    );
-    let body = format!("{}\n{huge}\n{}\n", lines[0], lines[1]);
-    mount_results(&server, body).await;
+    let (lines, big) = padded_lines(ai::client::batches::MAX_RESULT_LINE);
+    mount_results(&server, format!("{}\n{big}\n{}\n", lines[0], lines[1])).await;
     let all = results(&client(&server)).await;
-    assert_eq!(
-        all.len(),
-        3,
-        "{:?}",
-        all.iter().map(|r| r.is_ok()).collect::<Vec<_>>()
-    );
+    assert_eq!(all.len(), 3);
     assert_eq!(all[0].as_ref().unwrap().custom_id, "probe__v1__weekly-u1");
-    let Err(AiError::Response(msg)) = &all[1] else {
-        panic!("{:?}", all[1].as_ref().err())
-    };
-    assert!(!msg.contains("xxxx"));
+    too_large(&all[1]);
     assert_eq!(all[2].as_ref().unwrap().custom_id, "probe__v1__weekly-u2");
+}
+
+#[tokio::test]
+async fn a_complete_oversized_line_is_too_large() {
+    // A small body arrives as one chunk, so the oversized line is complete (newline included)
+    // when it is checked: this pins the complete-line cap.
+    let server = MockServer::start().await;
+    let (lines, big) = padded_lines(1500);
+    mount_results(&server, format!("{}\n{big}\n{}\n", lines[0], lines[1])).await;
+    let all: Vec<_> = capped_client(&server, 1024)
+        .results(BATCH, &ById)
+        .collect()
+        .await;
+    assert_eq!(all.len(), 3);
+    assert!(all[0].is_ok());
+    too_large(&all[1]);
+    assert_eq!(all[2].as_ref().unwrap().custom_id, "probe__v1__weekly-u2");
+}
+
+#[tokio::test]
+async fn an_oversized_last_line_without_a_newline_is_too_large() {
+    // No newline ever arrives: only the no-newline guard can reject it.
+    let server = MockServer::start().await;
+    let (lines, big) = padded_lines(1500);
+    mount_results(&server, format!("{}\n{big}", lines[0])).await;
+    let all: Vec<_> = capped_client(&server, 1024)
+        .results(BATCH, &ById)
+        .collect()
+        .await;
+    assert_eq!(all.len(), 2);
+    assert!(all[0].is_ok());
+    too_large(&all[1]);
 }

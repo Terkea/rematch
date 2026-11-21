@@ -87,6 +87,8 @@ pub struct BatchesConfig {
     /// A `retry-after` above this is not slept: the call gives up and surfaces it.
     pub retry_after_cap: Duration,
     pub backoff_base: Duration,
+    /// The longest results line accepted ([`MAX_RESULT_LINE`]).
+    pub max_result_line: usize,
 }
 
 impl BatchesConfig {
@@ -100,6 +102,7 @@ impl BatchesConfig {
             stream_idle_timeout: Duration::from_secs(60),
             retry_after_cap: Duration::from_secs(30),
             backoff_base: Duration::from_millis(500),
+            max_result_line: MAX_RESULT_LINE,
         }
     }
 
@@ -316,6 +319,7 @@ impl BatchesClient {
             Ok(Lines::new(
                 resp.bytes_stream().boxed(),
                 self.cfg.stream_idle_timeout,
+                self.cfg.max_result_line,
             ))
         };
         stream::once(start)
@@ -360,14 +364,18 @@ fn too_long() -> AiError {
 }
 
 impl Lines {
-    fn new(body: BoxStream<'static, reqwest::Result<bytes::Bytes>>, idle: Duration) -> Self {
+    fn new(
+        body: BoxStream<'static, reqwest::Result<bytes::Bytes>>,
+        idle: Duration,
+        max: usize,
+    ) -> Self {
         Lines {
             body,
             buf: Vec::new(),
             start: 0,
             scanned: 0,
             skipping: false,
-            max: MAX_RESULT_LINE,
+            max,
             idle,
             done: false,
         }

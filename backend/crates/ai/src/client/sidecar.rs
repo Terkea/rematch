@@ -360,8 +360,13 @@ impl SidecarClient {
         let (system_prompt, prompt) = flatten_for_sidecar(&req.system, &req.messages)?;
         let offer = req.tool_choice != ToolChoice::None;
         let registration = match (offer, tools, &self.tools) {
-            // The sidecar aborts the turn at `timeoutMs`, so no tool call can arrive later.
-            (true, Some(h), Some(server)) => Some(server.register(h, self.cfg.chat_timeout)),
+            // The longest this turn can run on our side: the sidecar's `timeoutMs`, the HTTP
+            // grace past it, and one idle wait (headers while queued). The registration is
+            // dropped earlier, as soon as the terminal event is queued or the stream is dropped.
+            (true, Some(h), Some(server)) => Some(server.register(
+                h,
+                self.cfg.chat_timeout + TIMEOUT_GRACE + self.cfg.stream_idle_timeout,
+            )),
             _ => None,
         };
         let mut wire_tools: Vec<SidecarTool> = if registration.is_some() {

@@ -137,6 +137,26 @@ fn an_oversized_line_overflows_whether_split_or_whole() {
 }
 
 #[test]
+fn the_no_newline_guard_fires_before_any_newline() {
+    let mut d = SseDecoder::with_max_line(32);
+    assert!(d.push(b"data: ").is_empty());
+    assert!(!d.overflowed());
+    assert!(d.push("x".repeat(40).as_bytes()).is_empty());
+    assert!(d.overflowed(), "flagged while the line is still open");
+}
+
+#[test]
+fn an_oversized_non_data_line_overflows() {
+    // An `event:` field and a comment never grow the data, so only the line cap catches them.
+    for prefix in ["event: ", ": "] {
+        let mut d = SseDecoder::with_max_line(32);
+        let line = format!("{prefix}{}\ndata: ok\n\n", "x".repeat(40));
+        assert!(d.push(line.as_bytes()).is_empty(), "{prefix}");
+        assert!(d.overflowed(), "{prefix}");
+    }
+}
+
+#[test]
 fn oversized_event_data_overflows() {
     // Many short data lines whose joined data exceeds the limit.
     let mut d = SseDecoder::with_max_line(32);

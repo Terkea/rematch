@@ -4,7 +4,7 @@
 //!
 //! Each turn registers its [`ToolHandler`] and gets a fresh token (32 random bytes, hex), so two
 //! turns never see each other's calls. Dropping the [`ToolRegistration`] unregisters it, and the
-//! token also expires after its TTL (the turn timeout). An
+//! token also expires after its TTL (the longest the turn can run). An
 //! unknown or expired token is 404, a missing one 401. The body limit is 64 KiB. A call that runs
 //! longer than the per-call timeout (50 s: under the sidecar's 55 s callback fetch, over T23's
 //! 45 s engine wait) answers `isError` with `{"available":false,"reason":"engine busy"}`.
@@ -245,8 +245,8 @@ impl ToolServer {
         self.local_addr
     }
 
-    /// Registers one turn's handler under a fresh token that expires after `ttl` (the turn
-    /// timeout), even if the registration is never dropped.
+    /// Registers one turn's handler under a fresh token that expires after `ttl` (the longest
+    /// the turn can run), even if the registration is never dropped.
     pub fn register(&self, h: Arc<dyn ToolHandler>, ttl: Duration) -> ToolRegistration {
         let token = hex::encode(rand::random::<[u8; 32]>());
         let key = key_of(&token);
