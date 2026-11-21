@@ -1,18 +1,22 @@
 "use client";
 
-// Lab variant A, "Scoresheet margin": the ruled scoresheet is the hero, the board sits in its
-// margin, and the red pen rings the move on its row as well as on the board. Dev only (LP).
+// Lab variant A, "Scoresheet margin": the board heads a ruled scoresheet, the red pen rings the
+// move on its row and on its square, one link stroke ties them, and the comment sits in the
+// margin. Dev only (LP).
 // The board is a token-coloured placeholder until Task 11; the pen geometry is a close lab
 // approximation of DESIGN.md "Pen stroke geometry" until Task 12 owns it in @ci/ui/annotations.
 
 import { games } from "@ci/ui/fixtures";
 import {
+  animate,
+  type CubicBezier,
   dur,
   ease,
   motion,
   pieceWeight,
   settleFor,
   spring,
+  stagger,
   useAnimate,
   useReducedMotion,
 } from "@ci/ui/motion";
@@ -258,59 +262,110 @@ function arrowGeometry(fromSq: string, toSq: string) {
   return { shaft, heads: [head(26, 0.9), head(-32, 1.1)] };
 }
 
-const PEN_MAIN_EASE = [0.6, 0.05, 1, 1] as const; // the eased sweep up to 360°
-const PEN_TAIL_EASE = [0, 0, 0.3, 1] as const; // the soft stop lands on the overrun
 const sec = (ms: number) => ms / 1000;
+const ms = (s: number) => Math.round(s * 1000);
 
-/** One pen stroke: a filled outline on its sheet halo, revealed by a mask along its centreline. */
+/** The real-time fraction at which a cubic-bezier ease reaches `progress` (DESIGN.md M2, M3). */
+function timeAtProgress(e: CubicBezier, progress: number): number {
+  const [x1, y1, x2, y2] = e;
+  const at = (a: number, b: number, s: number) =>
+    3 * (1 - s) * (1 - s) * s * a + 3 * (1 - s) * s * s * b + s * s * s;
+  let lo = 0;
+  let hi = 1;
+  for (let i = 0; i < 40; i++) {
+    const mid = (lo + hi) / 2;
+    if (at(y1, y2, mid) < progress) lo = mid;
+    else hi = mid;
+  }
+  return at(x1, x2, (lo + hi) / 2);
+}
+
+const polyLength = (pts: Pt[]) =>
+  pts.reduce((sum, p, i) => {
+    const q = pts[i - 1];
+    return q ? sum + Math.hypot(p[0] - q[0], p[1] - q[1]) : sum;
+  }, 0);
+
+/**
+ * One pen stroke: a filled outline on its sheet halo, revealed by a mask along its centreline.
+ * One `--ease-pen` progress drives every mask segment, split by arc length, so a ring's overrun
+ * draws after its first 360° and the soft stop lands on the overrun (M2).
+ */
 function PenStroke({
   segments,
   shape,
-  timing,
+  at,
+  duration,
   maskWidth,
   reduced,
   className = "fill-pen",
 }: {
   segments: Pt[][];
   shape: string;
-  timing: { delay: number; duration: number; ease: readonly number[] }[];
+  /** Start, in ms on the beat. */
+  at: number;
+  /** A duration token, in seconds. */
+  duration: number;
   maskWidth: number;
   reduced: boolean;
   className?: string;
 }) {
   const id = useId().replace(/:/g, "");
+  const paths = useRef<(SVGPathElement | null)[]>([]);
+  const lengths = segments.map(polyLength);
+  const total = lengths.reduce((a, b) => a + b, 0) || 1;
+  let acc = 0;
+  const bounds = lengths.map((l) => {
+    const lo = acc / total;
+    acc += l;
+    return [lo, acc / total] as const;
+  });
+  const boundsRef = useRef(bounds);
+  boundsRef.current = bounds;
+
+  useEffect(() => {
+    if (reduced) return;
+    const paint = (p: number) => {
+      paths.current.forEach((el, i) => {
+        const [lo, hi] = boundsRef.current[i] ?? [0, 1];
+        if (!el) return;
+        const local = Math.min(1, Math.max(0, (p - lo) / (hi - lo || 1)));
+        el.style.strokeDashoffset = String(1 - local);
+        el.style.opacity = p > lo ? "1" : "0";
+      });
+    };
+    paint(0);
+    const controls = animate(0, 1, {
+      delay: sec(at),
+      duration,
+      ease: [...ease.pen],
+      onUpdate: paint,
+    });
+    return () => controls.stop();
+  }, [reduced, at, duration]);
+
   return (
     <g>
       <mask id={`m${id}`} maskUnits="userSpaceOnUse" x="-2000" y="-2000" width="6000" height="6000">
-        {segments.map((seg, i) => {
-          const t = timing[i] ?? must(timing[0]);
-          return (
-            <motion.path
-              // biome-ignore lint/suspicious/noArrayIndexKey: fixed segment order
-              key={i}
-              d={line(seg)}
-              fill="none"
-              stroke="white"
-              strokeWidth={maskWidth}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              initial={reduced ? false : { pathLength: 0, opacity: 0 }}
-              animate={{ pathLength: 1, opacity: 1 }}
-              transition={
-                reduced
-                  ? { duration: 0 }
-                  : {
-                      pathLength: {
-                        delay: sec(t.delay),
-                        duration: sec(t.duration),
-                        ease: [...t.ease] as [number, number, number, number],
-                      },
-                      opacity: { delay: sec(t.delay), duration: 0.001 },
-                    }
-              }
-            />
-          );
-        })}
+        {segments.map((seg, i) => (
+          <path
+            // biome-ignore lint/suspicious/noArrayIndexKey: fixed segment order
+            key={i}
+            ref={(el) => {
+              paths.current[i] = el;
+            }}
+            d={line(seg)}
+            fill="none"
+            stroke="white"
+            strokeWidth={maskWidth}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            pathLength={1}
+            strokeDasharray="1 2"
+            strokeDashoffset={reduced ? 0 : 1}
+            opacity={reduced ? 1 : 0}
+          />
+        ))}
       </mask>
       <g mask={`url(#m${id})`}>
         <path
@@ -325,17 +380,26 @@ function PenStroke({
   );
 }
 
-// The one beat (DESIGN.md choreography 1, climax rows), in ms from the start of the hero.
+// The one beat: DESIGN.md choreography 1, climax rows, in ms from the start of the hero. The fixed
+// times (lift at 400, contact at 760, ring 100ms after contact, the 30ms head gap of M3) come from
+// that table; everything else follows from the motion tokens.
+const LIFT = 400;
+const CONTACT = 760;
+const RING = CONTACT + 100;
+const ARROW = RING + ms(stagger.pen);
+const HEAD = ARROW + ms(dur.draw * timeAtProgress(ease.pen, 0.85)); // M3: at 85% of the shaft
+const BADGE = ARROW + ms(dur.draw); // the last stroke's soft stop
 const T = {
   select: 0,
-  lift: 400,
-  travel: 490,
-  contact: 760,
-  ring: 860,
-  arrow: 980,
-  heads: [1246, 1276],
-  badge: 1400,
-  note: 1400,
+  lift: LIFT,
+  travel: LIFT + ms(dur.instant),
+  contact: CONTACT,
+  ring: RING,
+  arrow: ARROW,
+  heads: [HEAD, HEAD + 30],
+  badge: BADGE,
+  link: BADGE, // the link mark draws after the badge lands
+  note: BADGE + ms(dur.draw), // the comment follows the evidence
 } as const;
 
 function useBeat() {
@@ -365,7 +429,7 @@ const badgeText: CSSProperties = {
 };
 
 function Board({ reduced, className }: { reduced: boolean; className?: string }) {
-  const [scope, animate] = useAnimate();
+  const [scope, animateIn] = useAnimate();
   const before = parseFen(prevPly.fenAfter).filter((p) => p.sq !== from);
   const mover = must(parseFen(prevPly.fenAfter).find((p) => p.sq === from));
   const [fx, fy] = sqXY(from);
@@ -380,23 +444,23 @@ function Board({ reduced, className }: { reduced: boolean; className?: string })
     const timers: ReturnType<typeof setTimeout>[] = [];
     const at = (ms: number, fn: () => void) => timers.push(setTimeout(fn, ms));
     at(T.lift, () =>
-      animate(
+      animateIn(
         "[data-lift]",
         { scale: w.lift, y: -4 },
         { duration: dur.instant, ease: [...ease.out] },
       ),
     );
-    at(T.travel, () => animate("[data-travel]", { x: tx - fx, y: ty - fy }, settleFor(kind)));
+    at(T.travel, () => animateIn("[data-travel]", { x: tx - fx, y: ty - fy }, settleFor(kind)));
     at(T.contact, async () => {
-      await animate(
+      await animateIn(
         "[data-lift]",
         { scale: 1, y: 0, scaleX: w.squash.scaleX, scaleY: w.squash.scaleY },
         { duration: 0 },
       );
-      animate("[data-lift]", { scaleX: 1, scaleY: 1 }, spring.land);
+      animateIn("[data-lift]", { scaleX: 1, scaleY: 1 }, spring.land);
     });
     return () => timers.forEach(clearTimeout);
-  }, [reduced, animate, w, kind, fx, fy, tx, ty]);
+  }, [reduced, animateIn, w, kind, fx, fy, tx, ty]);
 
   const ring = ringPoints(...centre(to), 1.12 * 0.38 * SQ, 0.38 * SQ, -10, 2.5 * S);
   const arrow = arrowGeometry(from, to);
@@ -462,17 +526,16 @@ function Board({ reduced, className }: { reduced: boolean; className?: string })
         segments={[ring.main, ring.tail]}
         shape={outline(ring.all, S)}
         maskWidth={3.2 * S + 5}
-        timing={[
-          { delay: T.ring, duration: 318, ease: PEN_MAIN_EASE },
-          { delay: T.ring + 318, duration: 102, ease: PEN_TAIL_EASE },
-        ]}
+        at={T.ring}
+        duration={dur.draw}
       />
       <PenStroke
         reduced={reduced}
         segments={[arrow.shaft]}
         shape={outline(arrow.shaft, S)}
         maskWidth={3.2 * S + 5}
-        timing={[{ delay: T.arrow, duration: 420, ease: ease.pen }]}
+        at={T.arrow}
+        duration={dur.draw}
       />
       {arrow.heads.map((h, i) => (
         <PenStroke
@@ -482,11 +545,12 @@ function Board({ reduced, className }: { reduced: boolean; className?: string })
           segments={[h]}
           shape={outline(h, S * 0.9)}
           maskWidth={3 * S + 5}
-          timing={[{ delay: T.heads[i] ?? T.heads[0], duration: 90, ease: ease.out }]}
+          at={T.heads[i] ?? T.heads[0]}
+          duration={dur.instant}
         />
       ))}
       <motion.g
-        style={{ originX: `${bcx}px`, originY: `${bcy}px` }}
+        style={{ originX: 0.5, originY: 0.5 }}
         initial={reduced ? false : { scale: 0, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         transition={
@@ -495,7 +559,7 @@ function Board({ reduced, className }: { reduced: boolean; className?: string })
             : {
                 delay: sec(T.badge),
                 ...spring.land,
-                opacity: { delay: sec(T.badge), duration: 0.05 },
+                opacity: { delay: sec(T.badge), duration: 0 },
               }
         }
       >
@@ -550,64 +614,90 @@ function Replay({ onClick }: { onClick: () => void }) {
   );
 }
 
-/** Tracks an element's box, so a pen mark can be fitted to a word or a board. */
-function useMeasure<E extends HTMLElement>() {
-  const ref = useRef<E>(null);
-  const [size, setSize] = useState({ width: 0, height: 0 });
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const measure = () => setSize({ width: el.offsetWidth, height: el.offsetHeight });
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-  return [ref, size] as const;
-}
-
 // ---------------------------------------------------------------------------------------------
 // Variant A layout
 // ---------------------------------------------------------------------------------------------
 
-/** The scoresheet ring: the same pen stroke at 0.8×, fitted to the word (rx = w/2 + 10, ry 14). */
-function SheetRing({
-  reduced,
-  width,
-  height,
-}: {
-  reduced: boolean;
-  width: number;
-  height: number;
-}) {
-  if (!width) return null;
-  const ring = ringPoints(width / 2, height / 2, width / 2 + 10, 14, -3, 2.5);
+// The scoresheet opens on the ringed move, so the link rises from its ring straight into the board.
+const sheetRows = rows.filter((r) => r.n >= keyNo);
+const toMove = keyPly.color === "white" ? "Black" : "White";
+
+function cubic(a: Pt, b: Pt, c: Pt, d: Pt, steps = 48): Pt[] {
+  const pts: Pt[] = [];
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const u = 1 - t;
+    pts.push([
+      u * u * u * a[0] + 3 * u * u * t * b[0] + 3 * u * t * t * c[0] + t * t * t * d[0],
+      u * u * u * a[1] + 3 * u * u * t * b[1] + 3 * u * t * t * c[1] + t * t * t * d[1],
+    ]);
+  }
+  return pts;
+}
+
+type Box = { x: number; y: number; w: number; h: number };
+const boxOf = (el: Element | null, root: Element | null): Box | null => {
+  if (!el || !root) return null;
+  const a = el.getBoundingClientRect();
+  const r = root.getBoundingClientRect();
+  return { x: a.left - r.left, y: a.top - r.top, w: a.width, h: a.height };
+};
+
+/**
+ * The scoresheet ring (the board stroke at 0.8×, fitted to the word: rx = w/2 + 10, ry 14) and the
+ * link mark: one pen stroke from that ring up through the gutter into the board, over the empty
+ * squares below the target, stopping short of the board ring.
+ */
+function SheetMarks({ reduced, word, board }: { reduced: boolean; word: Box; board: Box }) {
+  const cx = word.x + word.w / 2;
+  const cy = word.y + word.h / 2;
+  const rx = word.w / 2 + 10;
+  const ry = 14;
+  const ring = ringPoints(cx, cy, rx, ry, -3, 2.5);
+  const sq = board.w / 8;
+  const tx = board.x + (to.charCodeAt(0) - 97 + 0.5) * sq;
+  const ty = board.y + (8 - Number(to[1]) + 0.5) * sq;
+  // Leave the ring toward the square, rising steeply first to clear the evaluation beside it.
+  const ang = Math.atan2((ty - cy) / ry, (tx - cx) / rx);
+  const start: Pt = [cx + (rx + 5) * Math.cos(ang), cy + (ry + 5) * Math.sin(ang)];
+  const end: Pt = [tx, ty + 0.38 * sq + 6];
+  const rise = start[1] - end[1];
+  const link = cubic(
+    start,
+    [start[0], start[1] - rise * 0.55],
+    [end[0], end[1] + rise * 0.45],
+    end,
+  );
+  // The link rule: on a phone, draw it only when both ends fit on screen together.
+  const fits = typeof window === "undefined" || cy + ry - board.y <= window.innerHeight - 32;
   return (
-    <svg
-      className="pointer-events-none absolute top-0 left-0 overflow-visible"
-      width={width}
-      height={height}
-      aria-hidden
-    >
+    <svg className="pointer-events-none absolute inset-0 size-full overflow-visible" aria-hidden>
       <PenStroke
         reduced={reduced}
         segments={[ring.main, ring.tail]}
         shape={outline(ring.all, 0.8)}
         maskWidth={3.2 * 0.8 + 5}
-        timing={[
-          { delay: T.ring, duration: 182, ease: PEN_MAIN_EASE },
-          { delay: T.ring + 182, duration: 58, ease: PEN_TAIL_EASE },
-        ]}
+        at={T.ring}
+        duration={dur.drawSmall}
       />
+      {fits && (
+        <PenStroke
+          reduced={reduced}
+          segments={[link]}
+          shape={outline(link, 0.9)}
+          maskWidth={3.2 * 0.9 + 5}
+          at={T.link}
+          duration={dur.draw}
+        />
+      )}
     </svg>
   );
 }
 
 function KeyMove({ reduced }: { reduced: boolean }) {
-  const [ref, size] = useMeasure<HTMLSpanElement>();
   return (
-    <span className="relative inline-block">
-      <span ref={ref} className="relative inline-block">
+    <>
+      <span data-link-word className="inline-block">
         {keyPly.san}
         <motion.span className="tracking-glyph text-pen-text" {...appear(reduced, T.ring)}>
           {keyGlyph}
@@ -616,49 +706,66 @@ function KeyMove({ reduced }: { reduced: boolean }) {
       <motion.span className="ml-5 font-normal text-ink-faint" {...appear(reduced, T.ring)}>
         {keyEval}
       </motion.span>
-      <SheetRing reduced={reduced} width={size.width} height={size.height} />
-    </span>
+    </>
   );
 }
 
 function Hero({ reduced }: { reduced: boolean }) {
-  const keyRow = rows.findIndex((r) => r.n === keyNo);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [boxes, setBoxes] = useState<{ word: Box; board: Box } | null>(null);
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    const measure = () => {
+      const word = boxOf(root.querySelector("[data-link-word]"), root);
+      const board = boxOf(root.querySelector("[data-link-board]"), root);
+      setBoxes(word && board ? { word, board } : null);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(root);
+    void document.fonts?.ready.then(measure);
+    return () => ro.disconnect();
+  }, []);
+
   return (
     <div className="mx-auto max-w-7xl px-(--space-gutter) pt-6 pb-16 md:pt-10">
-      <header className="max-w-3xl">
-        <h1 className="font-serif text-3xl font-semibold">{title}</h1>
-        <p className="mt-2 text-ink-soft">{context}</p>
-      </header>
+      <div
+        ref={rootRef}
+        className="relative grid grid-cols-1 gap-y-6 xl:grid-cols-[var(--board-size)_minmax(0,1fr)] xl:gap-x-16"
+      >
+        <header className="max-w-[60ch] xl:col-start-2 xl:row-start-1">
+          <h1 className="font-serif text-3xl font-semibold">{title}</h1>
+          <p className="mt-2 text-ink-soft">{context}</p>
+          <p className="mt-1 text-ink-soft">
+            The board shows the position after {prefix}&nbsp;{keyPly.san}, {toMove} to move.
+          </p>
+        </header>
 
-      <div className="mt-8 rounded-sheet bg-sheet md:grid md:grid-cols-[auto_minmax(0,1fr)]">
-        {/* The margin: the board as the coach's sketch beside the rows. */}
-        <figure className="border-rule p-(--space-panel-pad) md:border-r md:pr-8">
-          <Board reduced={reduced} className="w-full max-w-90 md:w-72 lg:w-96 lg:max-w-96" />
-          <figcaption className="mt-3 text-center font-serif text-sm text-ink-soft">
-            After {prefix} {keyPly.san}
-          </figcaption>
-        </figure>
+        <div data-link-board className="w-(--board-size) xl:col-start-1 xl:row-start-1">
+          <Board reduced={reduced} className="w-(--board-size) rounded-board" />
+        </div>
 
-        <div className="min-w-0 p-(--space-panel-pad) pt-0 md:pt-(--space-panel-pad) md:pl-8 lg:grid lg:grid-cols-[minmax(0,32rem)_minmax(0,1fr)] lg:gap-10">
-          <table className="w-full self-start border-collapse font-serif tabular-nums lining-nums">
+        {/* The scoresheet: reference 3's grid, with the columns set off by vertical rules. */}
+        <div className="w-(--board-size) rounded-sheet bg-sheet p-(--space-panel-pad) xl:col-start-1 xl:row-start-2">
+          <table className="w-full table-fixed border-collapse font-serif tabular-nums lining-nums xl:w-auto">
             <caption className="sr-only">
-              Moves {rows[0]?.n} to {rows.at(-1)?.n}
+              Moves {sheetRows[0]?.n} to {sheetRows.at(-1)?.n}
             </caption>
-            <thead>
-              <tr className="h-(--space-scoresheet-row) border-b border-rule text-left font-sans text-sm text-ink-faint">
-                <th scope="col" className="w-12 font-normal">
-                  Move
-                </th>
-                <th scope="col" className="font-normal">
-                  White
-                </th>
-                <th scope="col" className="font-normal">
-                  Black
-                </th>
+            <colgroup>
+              <col className="w-14" />
+              <col className="xl:w-52" />
+              <col className="xl:w-52" />
+            </colgroup>
+            <thead className="sr-only">
+              <tr>
+                <th scope="col">Move</th>
+                <th scope="col">White</th>
+                <th scope="col">Black</th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => {
+              {sheetRows.map((row) => {
                 const isKey = row.n === keyNo;
                 const cell = (ply: Row["white"], side: "white" | "black") =>
                   isKey && keyPly.color === side ? (
@@ -667,28 +774,31 @@ function Hero({ reduced }: { reduced: boolean }) {
                     <San ply={ply} />
                   );
                 return (
-                  <tr key={row.n} className="h-(--space-scoresheet-row) border-b border-rule">
-                    <td className="relative pl-2 text-ink-faint">
+                  <tr
+                    key={row.n}
+                    className="h-(--space-scoresheet-row) border-b border-rule last:border-b-0"
+                  >
+                    <td className="relative border-r border-rule pr-3 text-right text-ink-faint">
                       {isKey && (
                         <motion.span
                           aria-hidden
-                          className="absolute inset-y-0.5 left-0 right-0 rounded-l-field bg-well"
+                          className="absolute inset-y-0.5 right-0 left-0 rounded-l-field bg-well"
                           {...appear(reduced, T.select)}
                         />
                       )}
                       <span className="relative">{row.n}</span>
                     </td>
-                    <td className="relative font-semibold">
+                    <td className="relative border-r border-rule pl-4 font-semibold">
                       {isKey && (
                         <motion.span
                           aria-hidden
-                          className="absolute inset-y-0.5 inset-x-0 bg-well"
+                          className="absolute inset-x-0 inset-y-0.5 bg-well"
                           {...appear(reduced, T.select)}
                         />
                       )}
                       <span className="relative">{cell(row.white, "white")}</span>
                     </td>
-                    <td className="relative font-semibold">
+                    <td className="relative pl-4 font-semibold">
                       {isKey && (
                         <motion.span
                           aria-hidden
@@ -703,20 +813,17 @@ function Hero({ reduced }: { reduced: boolean }) {
               })}
             </tbody>
           </table>
-
-          {/* The right margin: the coach's comment, level with the ringed row. */}
-          <motion.p
-            className="mt-6 max-w-[62ch] font-serif-italic text-prose text-ink italic lg:mt-0 lg:pt-(--note-offset)"
-            style={
-              {
-                "--note-offset": `calc(var(--space-scoresheet-row) * ${keyRow + 1})`,
-              } as CSSProperties
-            }
-            {...appear(reduced, T.note)}
-          >
-            {note}
-          </motion.p>
         </div>
+
+        {/* The margin comment, level with the ringed row, or under the rows when it can't fit. */}
+        <motion.p
+          className="max-w-[52ch] font-serif-italic text-prose text-ink italic xl:col-start-2 xl:row-start-2 xl:pt-(--space-panel-pad)"
+          {...appear(reduced, T.note)}
+        >
+          {note}
+        </motion.p>
+
+        {boxes && <SheetMarks reduced={reduced} {...boxes} />}
       </div>
     </div>
   );
@@ -729,7 +836,7 @@ export default function StyleguideHeroA() {
       surface="styleguide-hero"
       variant="a"
       title="Scoresheet margin"
-      rationale="The ruled scoresheet is the hero; the board sits in its margin; the red pen rings the move on its row and on the board in the same beat."
+      rationale="The board heads the scoresheet; the red pen rings the move on its row and on its square, one link stroke ties the two, and the coach's comment sits in the margin."
     >
       <div className="mx-auto flex max-w-7xl justify-end px-(--space-gutter)">
         <Replay onClick={beat.replay} />

@@ -7,12 +7,15 @@
 
 import { games } from "@ci/ui/fixtures";
 import {
+  animate,
+  type CubicBezier,
   dur,
   ease,
   motion,
   pieceWeight,
   settleFor,
   spring,
+  stagger,
   useAnimate,
   useReducedMotion,
 } from "@ci/ui/motion";
@@ -258,59 +261,110 @@ function arrowGeometry(fromSq: string, toSq: string) {
   return { shaft, heads: [head(26, 0.9), head(-32, 1.1)] };
 }
 
-const PEN_MAIN_EASE = [0.6, 0.05, 1, 1] as const; // the eased sweep up to 360°
-const PEN_TAIL_EASE = [0, 0, 0.3, 1] as const; // the soft stop lands on the overrun
 const sec = (ms: number) => ms / 1000;
+const ms = (s: number) => Math.round(s * 1000);
 
-/** One pen stroke: a filled outline on its sheet halo, revealed by a mask along its centreline. */
+/** The real-time fraction at which a cubic-bezier ease reaches `progress` (DESIGN.md M2, M3). */
+function timeAtProgress(e: CubicBezier, progress: number): number {
+  const [x1, y1, x2, y2] = e;
+  const at = (a: number, b: number, s: number) =>
+    3 * (1 - s) * (1 - s) * s * a + 3 * (1 - s) * s * s * b + s * s * s;
+  let lo = 0;
+  let hi = 1;
+  for (let i = 0; i < 40; i++) {
+    const mid = (lo + hi) / 2;
+    if (at(y1, y2, mid) < progress) lo = mid;
+    else hi = mid;
+  }
+  return at(x1, x2, (lo + hi) / 2);
+}
+
+const polyLength = (pts: Pt[]) =>
+  pts.reduce((sum, p, i) => {
+    const q = pts[i - 1];
+    return q ? sum + Math.hypot(p[0] - q[0], p[1] - q[1]) : sum;
+  }, 0);
+
+/**
+ * One pen stroke: a filled outline on its sheet halo, revealed by a mask along its centreline.
+ * One `--ease-pen` progress drives every mask segment, split by arc length, so a ring's overrun
+ * draws after its first 360° and the soft stop lands on the overrun (M2).
+ */
 function PenStroke({
   segments,
   shape,
-  timing,
+  at,
+  duration,
   maskWidth,
   reduced,
   className = "fill-pen",
 }: {
   segments: Pt[][];
   shape: string;
-  timing: { delay: number; duration: number; ease: readonly number[] }[];
+  /** Start, in ms on the beat. */
+  at: number;
+  /** A duration token, in seconds. */
+  duration: number;
   maskWidth: number;
   reduced: boolean;
   className?: string;
 }) {
   const id = useId().replace(/:/g, "");
+  const paths = useRef<(SVGPathElement | null)[]>([]);
+  const lengths = segments.map(polyLength);
+  const total = lengths.reduce((a, b) => a + b, 0) || 1;
+  let acc = 0;
+  const bounds = lengths.map((l) => {
+    const lo = acc / total;
+    acc += l;
+    return [lo, acc / total] as const;
+  });
+  const boundsRef = useRef(bounds);
+  boundsRef.current = bounds;
+
+  useEffect(() => {
+    if (reduced) return;
+    const paint = (p: number) => {
+      paths.current.forEach((el, i) => {
+        const [lo, hi] = boundsRef.current[i] ?? [0, 1];
+        if (!el) return;
+        const local = Math.min(1, Math.max(0, (p - lo) / (hi - lo || 1)));
+        el.style.strokeDashoffset = String(1 - local);
+        el.style.opacity = p > lo ? "1" : "0";
+      });
+    };
+    paint(0);
+    const controls = animate(0, 1, {
+      delay: sec(at),
+      duration,
+      ease: [...ease.pen],
+      onUpdate: paint,
+    });
+    return () => controls.stop();
+  }, [reduced, at, duration]);
+
   return (
     <g>
       <mask id={`m${id}`} maskUnits="userSpaceOnUse" x="-2000" y="-2000" width="6000" height="6000">
-        {segments.map((seg, i) => {
-          const t = timing[i] ?? must(timing[0]);
-          return (
-            <motion.path
-              // biome-ignore lint/suspicious/noArrayIndexKey: fixed segment order
-              key={i}
-              d={line(seg)}
-              fill="none"
-              stroke="white"
-              strokeWidth={maskWidth}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              initial={reduced ? false : { pathLength: 0, opacity: 0 }}
-              animate={{ pathLength: 1, opacity: 1 }}
-              transition={
-                reduced
-                  ? { duration: 0 }
-                  : {
-                      pathLength: {
-                        delay: sec(t.delay),
-                        duration: sec(t.duration),
-                        ease: [...t.ease] as [number, number, number, number],
-                      },
-                      opacity: { delay: sec(t.delay), duration: 0.001 },
-                    }
-              }
-            />
-          );
-        })}
+        {segments.map((seg, i) => (
+          <path
+            // biome-ignore lint/suspicious/noArrayIndexKey: fixed segment order
+            key={i}
+            ref={(el) => {
+              paths.current[i] = el;
+            }}
+            d={line(seg)}
+            fill="none"
+            stroke="white"
+            strokeWidth={maskWidth}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            pathLength={1}
+            strokeDasharray="1 2"
+            strokeDashoffset={reduced ? 0 : 1}
+            opacity={reduced ? 1 : 0}
+          />
+        ))}
       </mask>
       <g mask={`url(#m${id})`}>
         <path
@@ -325,17 +379,26 @@ function PenStroke({
   );
 }
 
-// The one beat (DESIGN.md choreography 1, climax rows), in ms from the start of the hero.
+// The one beat: DESIGN.md choreography 1, climax rows, in ms from the start of the hero. The fixed
+// times (lift at 400, contact at 760, ring 100ms after contact, the 30ms head gap of M3) come from
+// that table; everything else follows from the motion tokens.
+const LIFT = 400;
+const CONTACT = 760;
+const RING = CONTACT + 100;
+const ARROW = RING + ms(stagger.pen);
+const HEAD = ARROW + ms(dur.draw * timeAtProgress(ease.pen, 0.85)); // M3: at 85% of the shaft
+const BADGE = ARROW + ms(dur.draw); // the last stroke's soft stop
 const T = {
   select: 0,
-  lift: 400,
-  travel: 490,
-  contact: 760,
-  ring: 860,
-  arrow: 980,
-  heads: [1246, 1276],
-  badge: 1400,
-  note: 1400,
+  lift: LIFT,
+  travel: LIFT + ms(dur.instant),
+  contact: CONTACT,
+  ring: RING,
+  arrow: ARROW,
+  heads: [HEAD, HEAD + 30],
+  badge: BADGE,
+  link: BADGE, // the link mark draws after the badge lands
+  note: BADGE + ms(dur.draw), // the comment follows the evidence
 } as const;
 
 function useBeat() {
@@ -365,7 +428,7 @@ const badgeText: CSSProperties = {
 };
 
 function Board({ reduced, className }: { reduced: boolean; className?: string }) {
-  const [scope, animate] = useAnimate();
+  const [scope, animateIn] = useAnimate();
   const before = parseFen(prevPly.fenAfter).filter((p) => p.sq !== from);
   const mover = must(parseFen(prevPly.fenAfter).find((p) => p.sq === from));
   const [fx, fy] = sqXY(from);
@@ -380,23 +443,23 @@ function Board({ reduced, className }: { reduced: boolean; className?: string })
     const timers: ReturnType<typeof setTimeout>[] = [];
     const at = (ms: number, fn: () => void) => timers.push(setTimeout(fn, ms));
     at(T.lift, () =>
-      animate(
+      animateIn(
         "[data-lift]",
         { scale: w.lift, y: -4 },
         { duration: dur.instant, ease: [...ease.out] },
       ),
     );
-    at(T.travel, () => animate("[data-travel]", { x: tx - fx, y: ty - fy }, settleFor(kind)));
+    at(T.travel, () => animateIn("[data-travel]", { x: tx - fx, y: ty - fy }, settleFor(kind)));
     at(T.contact, async () => {
-      await animate(
+      await animateIn(
         "[data-lift]",
         { scale: 1, y: 0, scaleX: w.squash.scaleX, scaleY: w.squash.scaleY },
         { duration: 0 },
       );
-      animate("[data-lift]", { scaleX: 1, scaleY: 1 }, spring.land);
+      animateIn("[data-lift]", { scaleX: 1, scaleY: 1 }, spring.land);
     });
     return () => timers.forEach(clearTimeout);
-  }, [reduced, animate, w, kind, fx, fy, tx, ty]);
+  }, [reduced, animateIn, w, kind, fx, fy, tx, ty]);
 
   const ring = ringPoints(...centre(to), 1.12 * 0.38 * SQ, 0.38 * SQ, -10, 2.5 * S);
   const arrow = arrowGeometry(from, to);
@@ -462,17 +525,16 @@ function Board({ reduced, className }: { reduced: boolean; className?: string })
         segments={[ring.main, ring.tail]}
         shape={outline(ring.all, S)}
         maskWidth={3.2 * S + 5}
-        timing={[
-          { delay: T.ring, duration: 318, ease: PEN_MAIN_EASE },
-          { delay: T.ring + 318, duration: 102, ease: PEN_TAIL_EASE },
-        ]}
+        at={T.ring}
+        duration={dur.draw}
       />
       <PenStroke
         reduced={reduced}
         segments={[arrow.shaft]}
         shape={outline(arrow.shaft, S)}
         maskWidth={3.2 * S + 5}
-        timing={[{ delay: T.arrow, duration: 420, ease: ease.pen }]}
+        at={T.arrow}
+        duration={dur.draw}
       />
       {arrow.heads.map((h, i) => (
         <PenStroke
@@ -482,11 +544,12 @@ function Board({ reduced, className }: { reduced: boolean; className?: string })
           segments={[h]}
           shape={outline(h, S * 0.9)}
           maskWidth={3 * S + 5}
-          timing={[{ delay: T.heads[i] ?? T.heads[0], duration: 90, ease: ease.out }]}
+          at={T.heads[i] ?? T.heads[0]}
+          duration={dur.instant}
         />
       ))}
       <motion.g
-        style={{ originX: `${bcx}px`, originY: `${bcy}px` }}
+        style={{ originX: 0.5, originY: 0.5 }}
         initial={reduced ? false : { scale: 0, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         transition={
@@ -495,7 +558,7 @@ function Board({ reduced, className }: { reduced: boolean; className?: string })
             : {
                 delay: sec(T.badge),
                 ...spring.land,
-                opacity: { delay: sec(T.badge), duration: 0.05 },
+                opacity: { delay: sec(T.badge), duration: 0 },
               }
         }
       >
@@ -538,9 +601,6 @@ function Replay({ onClick }: { onClick: () => void }) {
 // ---------------------------------------------------------------------------------------------
 // Variant C layout
 // ---------------------------------------------------------------------------------------------
-
-const LINK_AT = 1400; // the linking stroke draws as the badge lands, over --dur-draw
-const NOTE_AT = LINK_AT + 420;
 
 function cubic(a: Pt, b: Pt, c: Pt, d: Pt, steps = 48): Pt[] {
   const pts: Pt[] = [];
@@ -619,17 +679,16 @@ function PenLink({
         segments={[ring.main, ring.tail]}
         shape={outline(ring.all, s)}
         maskWidth={3.2 * s + 5}
-        timing={[
-          { delay: T.ring, duration: 318, ease: PEN_MAIN_EASE },
-          { delay: T.ring + 318, duration: 102, ease: PEN_TAIL_EASE },
-        ]}
+        at={T.ring}
+        duration={dur.draw}
       />
       <PenStroke
         reduced={reduced}
         segments={[link]}
         shape={outline(link, 0.9)}
         maskWidth={3.2 * 0.9 + 5}
-        timing={[{ delay: LINK_AT, duration: 420, ease: ease.pen }]}
+        at={T.link}
+        duration={dur.draw}
       />
     </svg>
   );
@@ -663,7 +722,7 @@ function Hero({ reduced }: { reduced: boolean }) {
       >
         <div className="md:pt-4">
           <h1 className="font-serif text-5xl font-semibold tabular-nums lining-nums">
-            <span className="font-normal text-ink-faint">{prefix} </span>
+            <span className="font-normal text-ink-faint">{prefix}&nbsp;</span>
             <span ref={wordRef} className="mx-3 inline-block">
               {keyPly.san}
               <motion.span className="tracking-glyph text-pen-text" {...appear(reduced, T.ring)}>
@@ -680,7 +739,7 @@ function Hero({ reduced }: { reduced: boolean }) {
           </h1>
           <motion.p
             className="mt-8 max-w-[34ch] font-serif-italic text-2xl text-ink italic"
-            {...appear(reduced, NOTE_AT)}
+            {...appear(reduced, T.note)}
           >
             {note}
           </motion.p>

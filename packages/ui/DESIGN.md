@@ -299,9 +299,17 @@ Severity comes from the mover's loss of win chance, using the Lichess thresholds
 | Good move | good arrow for the better move or the punishment, badge when it was played | `!` | good, solid head |
 | Brilliant | good ring, good arrow, badge | `!!` | good, solid head |
 | Plan or idea | pencil arrow or ring, never a badge | none | pencil, 0.7×, open head |
+| Link | one stroke joining a scoresheet or notation ring to the board ring of the same move, never a badge | none | pen, 0.9×, no head |
 
-- **Redundancy, not colour alone:** pen marks always carry a `?`-family badge and an open head. Good marks carry a `!`-family badge and a solid head. Pencil never carries a badge.
+- **Redundancy, not colour alone:** pen marks always carry a `?`-family badge and an open head. Good marks carry a `!`-family badge and a solid head. Pencil never carries a badge. The one exception is the link mark below: it has neither, because both of its ends already carry the glyph or the badge.
 - **Glyph badge:** a circle of radius 20% of the square in the square's top-right corner (inset 1px), filled `pen` or `good`, with the glyph in `on-ink` Literata 600 (35% of the square for one character, 28% for two, and never below `2xs`, 11px), on a 2px `sheet` halo. A 328px mobile board (41px squares) gives 14px and 11.5px.
+- **Link mark** (controller ruling, Task 6 fix round 1). One pen stroke that ties a move's notation to its square: it runs from the scoresheet ring (or a notation ring) to the board ring of the same move.
+  - *Colour:* `pen`, and only when both ends are pen-marked (a ringed `?`/`??` move and its ringed square with its badge). It has no badge and no head.
+  - *Shape:* the variable-width profile under "Pen stroke geometry" at 0.9×, with the `sheet` halo wherever it crosses the board.
+  - *Routing:* never across a text box or an occupied square, and at least 16px from any text and from the viewport edge. It enters the board through the gutter between the board and the text, over empty squares only, and stops short of the board ring.
+  - *Timing:* it draws after the badge lands, from 1400 to 1820 in the climax (`--dur-draw` with `--ease-pen`), and it retracts with the other marks.
+  - *Reduced motion:* it appears fully drawn (M10).
+  - *Budget:* at most one per view, and it counts toward the 12 animating marks (M9). On mobile it is dropped when both ends are not in view together.
 
 ### Pen stroke geometry
 
@@ -771,3 +779,9 @@ The full contrast script was re-run over every pair, and there are 0 failures. T
 5. **`--board-size` fallback.** It is declared as plain `min(100vw − 2 × gutter, 480px)`, with the rounded form under `@supports (width: round(down, 10px, 8px))`.
 
 **Token values changed in this round:** the four piece `settle` springs (the minor-piece row keeps 520/42) and the queen and king mass factor (1.25 to 1.3).
+
+### 2026-11-21, Task 6 fix round 1: the link mark
+
+The styleguide hero lab (`packages/ui/design/decisions/styleguide-hero.md`) adopted variant C's pen stroke from the notation to the board into the winning variant A, by controller ruling. "Severity and marks" gains a **Link** row and its rules (colour, shape, routing, timing, reduced motion, budget), and the redundancy rule names it as its one exception.
+
+**Token values changed in this round:** none.
