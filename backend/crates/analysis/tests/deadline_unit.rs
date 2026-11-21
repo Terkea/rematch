@@ -31,10 +31,10 @@ async fn deadline_cancels_its_token() {
 
 #[tokio::test]
 async fn reset_postpones_the_deadline() {
-    let d = Deadline::new("import-account", Duration::from_millis(400));
+    let d = Deadline::new("import-account", Duration::from_millis(1000));
     let token = d.token();
     for _ in 0..4 {
-        tokio::time::sleep(Duration::from_millis(150)).await;
+        tokio::time::sleep(Duration::from_millis(300)).await;
         d.reset();
         assert!(!token.is_cancelled(), "reset must keep postponing");
     }

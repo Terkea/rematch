@@ -21,6 +21,8 @@ pub struct FakeAnalyser {
     pub fail_after: Option<usize>,
     /// Never resolves (until the caller drops the future).
     pub hang: bool,
+    /// Sleeps this long per call and reports it as the wall time (zero: reports `FAKE_WALL`).
+    pub delay: Duration,
 }
 
 impl FakeAnalyser {
@@ -35,6 +37,7 @@ impl FakeAnalyser {
             calls: Mutex::new(Vec::new()),
             fail_after: None,
             hang: false,
+            delay: Duration::ZERO,
         }
     }
 
@@ -69,6 +72,9 @@ impl Analyser for FakeAnalyser {
             if self.hang {
                 futures::future::pending::<()>().await;
             }
+            if !self.delay.is_zero() {
+                tokio::time::sleep(self.delay).await;
+            }
             if self.fail_after.is_some_and(|limit| n > limit) {
                 return Err(EngineError::Crashed);
             }
@@ -80,7 +86,11 @@ impl Analyser for FakeAnalyser {
                     depth: 10,
                     nodes: 1,
                 }],
-                wall: FAKE_WALL,
+                wall: if self.delay.is_zero() {
+                    FAKE_WALL
+                } else {
+                    self.delay
+                },
                 cpu: Some(FAKE_CPU),
             })
         })

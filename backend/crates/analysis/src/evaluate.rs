@@ -23,6 +23,23 @@ use crate::eval_cache::{EvalCache, EvalCacheEntry, EvalSource};
 pub type ProgressFn<'a> =
     &'a (dyn Fn(usize, usize) -> BoxFuture<'static, Result<(), String>> + Sync);
 
+/// Which deadline a cancelled token stands for, reported in `EvaluateError::Deadline`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DeadlineInfo {
+    /// `"analyse-game"` or `"import-account"`.
+    pub kind: &'static str,
+    pub ms: u64,
+}
+
+impl Default for DeadlineInfo {
+    fn default() -> Self {
+        Self {
+            kind: "analyse-game",
+            ms: u64::try_from(ANALYSE_DEADLINE.as_millis()).unwrap_or(u64::MAX),
+        }
+    }
+}
+
 pub struct EvaluateDeps<'a> {
     pub analyser: &'a dyn Analyser,
     pub cache: &'a dyn EvalCache,
@@ -31,26 +48,39 @@ pub struct EvaluateDeps<'a> {
     /// Called after each engine result is persisted. Because it runs only when work completes, a
     /// hung loop stops calling it, which is how the reconciler spots a stuck analysis.
     pub on_progress: Option<ProgressFn<'a>>,
-    /// Cancelling it (a job deadline) aborts the evaluation with `Deadline`, even mid-search.
+    /// Cancelling it (a job deadline or shutdown) aborts the evaluation with `Deadline`, even
+    /// mid-search.
     pub cancel: Option<CancellationToken>,
+    /// Kind and duration reported when `cancel` fires. `None` means analyse-game at 10 minutes.
+    pub deadline: Option<DeadlineInfo>,
 }
 
+/// Statistics of one `evaluate_game` call. Also returned (partial) when the call fails.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct EvalStats {
-    /// Positions in the game (`plies + 1`).
+    /// Positions in the game (`plies + 1`), counted per occurrence (repeated positions count each
+    /// time).
     pub positions: usize,
-    /// Positions served from the cache (excluding a terminal position).
+    /// Positions (per occurrence, terminal excluded) served from the cache.
     pub cache_hits: usize,
-    /// Positions served from the supplied Lichess evals.
+    /// Positions (per occurrence) served from the supplied Lichess evals.
     pub lichess_used: usize,
-    /// Distinct positions analysed by the engine.
+    /// Distinct positions (per distinct key) whose engine analysis completed successfully. On a
+    /// failed call this is the number finished before the failure.
     pub engine_positions: usize,
-    /// Time spent in cache calls.
+    /// Sum of the time spent inside cache calls across all workers (it can exceed the elapsed
+    /// time when workers overlap).
     pub cache_ms: f64,
-    /// Sum of the engine wall time of every analysis.
+    /// SUM over every completed analysis of the engine-reported wall time. Workers run in
+    /// parallel, so this exceeds `engine_stage_elapsed_ms` by about the concurrency factor.
     pub engine_wall_ms: f64,
-    /// Sum of the engine CPU time; `None` when the engine reported none.
+    /// SUM over every completed analysis of the engine-reported CPU time; `None` when the engine
+    /// reported none.
     pub engine_cpu_ms: Option<f64>,
+    /// Real elapsed wall-clock span of the engine stage (first worker start to last worker end).
+    pub engine_stage_elapsed_ms: f64,
+    /// Real elapsed wall-clock span of the whole `evaluate_game` call.
+    pub total_elapsed_ms: f64,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -71,11 +101,21 @@ pub enum EvaluateError {
     NoAnalysis(String),
 }
 
-fn cancelled() -> EvaluateError {
-    // The caller that owns the real `Deadline` can map this to its own kind and duration.
+/// A failed evaluation together with the statistics gathered up to the failure.
+#[derive(thiserror::Error, Debug)]
+#[error("{error}")]
+pub struct EvaluateFailure {
+    #[source]
+    pub error: EvaluateError,
+    /// Boxed to keep the `Err` variant small.
+    pub stats: Box<EvalStats>,
+}
+
+fn cancelled(deps: &EvaluateDeps<'_>) -> EvaluateError {
+    let info = deps.deadline.unwrap_or_default();
     EvaluateError::Deadline(JobDeadlineError {
-        kind: "analyse-game",
-        ms: u64::try_from(ANALYSE_DEADLINE.as_millis()).unwrap_or(u64::MAX),
+        kind: info.kind,
+        ms: info.ms,
     })
 }
 
@@ -117,7 +157,26 @@ pub async fn evaluate_game(
     deps: &EvaluateDeps<'_>,
     game: &ParsedGame,
     lichess_evals: Option<&[Option<EngineScore>]>,
-) -> Result<Evaluated, EvaluateError> {
+) -> Result<Evaluated, EvaluateFailure> {
+    let started = Instant::now();
+    let mut stats = EvalStats::default();
+    let outcome = run(deps, game, lichess_evals, &mut stats).await;
+    stats.total_elapsed_ms = ms(started.elapsed());
+    match outcome {
+        Ok(evals) => Ok(Evaluated { evals, stats }),
+        Err(error) => Err(EvaluateFailure {
+            error,
+            stats: Box::new(stats),
+        }),
+    }
+}
+
+async fn run(
+    deps: &EvaluateDeps<'_>,
+    game: &ParsedGame,
+    lichess_evals: Option<&[Option<EngineScore>]>,
+    stats: &mut EvalStats,
+) -> Result<Vec<PositionEval>, EvaluateError> {
     let cancel = deps.cancel.clone().unwrap_or_default();
     let fens: Vec<&str> = std::iter::once(game.start_fen.as_str())
         .chain(game.plies.iter().map(|p| p.fen_after.as_str()))
@@ -125,10 +184,7 @@ pub async fn evaluate_game(
     let keys: Vec<String> = fens.iter().map(|f| fen_key(f)).collect();
     let last = fens.len() - 1;
     let mut result: Vec<Option<PositionEval>> = vec![None; fens.len()];
-    let mut stats = EvalStats {
-        positions: fens.len(),
-        ..EvalStats::default()
-    };
+    stats.positions = fens.len();
 
     if let Some(t) = terminal_eval(game) {
         result[last] = Some(t);
@@ -141,7 +197,7 @@ pub async fn evaluate_game(
         .map(|(_, k)| k.clone())
         .collect();
     if cancel.is_cancelled() {
-        return Err(cancelled());
+        return Err(cancelled(deps));
     }
     let t = Instant::now();
     let cached = deps.cache.get_many(&wanted, ANALYSIS_PROTOCOL).await?;
@@ -191,7 +247,7 @@ pub async fn evaluate_game(
     }
 
     if cancel.is_cancelled() {
-        return Err(cancelled());
+        return Err(cancelled(deps));
     }
     // Persist Lichess evals first, then each engine result as soon as it resolves, so a failure
     // or crash midway keeps all completed work.
@@ -200,7 +256,6 @@ pub async fn evaluate_game(
     stats.cache_ms += ms(t.elapsed());
 
     let total = misses.len();
-    stats.engine_positions = total;
     let n = deps.concurrency.max(1).min(total);
     let shared = Mutex::new(Shared {
         queue: misses,
@@ -228,15 +283,18 @@ pub async fn evaluate_game(
         }
     };
     // All workers are awaited, so in-flight calls finish (or are cancelled) before we return.
+    let stage = Instant::now();
     futures::future::join_all((0..n).map(|_| worker())).await;
+    stats.engine_stage_elapsed_ms = ms(stage.elapsed());
 
     let s = shared.into_inner().unwrap_or_else(|e| e.into_inner());
-    if let Some(err) = s.failure {
-        return Err(err);
-    }
     stats.cache_ms += s.cache_ms;
     stats.engine_wall_ms = s.wall_ms;
     stats.engine_cpu_ms = s.cpu_ms;
+    stats.engine_positions = s.analysed.len();
+    if let Some(err) = s.failure {
+        return Err(err);
+    }
 
     let evals = result
         .into_iter()
@@ -246,7 +304,7 @@ pub async fn evaluate_game(
                 .ok_or_else(|| EvaluateError::NoAnalysis(format!("No eval for {}", fens[i])))
         })
         .collect::<Result<Vec<_>, _>>()?;
-    Ok(Evaluated { evals, stats })
+    Ok(evals)
 }
 
 async fn process(
@@ -259,7 +317,7 @@ async fn process(
     fen: &str,
 ) -> Result<(), EvaluateError> {
     if cancel.is_cancelled() {
-        return Err(cancelled());
+        return Err(cancelled(deps));
     }
     let opts = AnalyseOptions {
         nodes: ENGINE_NODES,
@@ -268,7 +326,7 @@ async fn process(
     };
     let res = tokio::select! {
         biased;
-        _ = cancel.cancelled() => return Err(cancelled()),
+        _ = cancel.cancelled() => return Err(cancelled(deps)),
         r = deps.analyser.analyse(fen, opts) => r?,
     };
     let line = res.lines.into_iter().next().ok_or_else(|| {

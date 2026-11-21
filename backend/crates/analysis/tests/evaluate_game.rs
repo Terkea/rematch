@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 use analysis::deadline::JobDeadlineError;
 use analysis::eval_cache::{EvalCache, EvalCacheEntry, EvalSource, MemoryEvalCache};
-use analysis::evaluate::{EvaluateDeps, EvaluateError, evaluate_game};
+use analysis::evaluate::{DeadlineInfo, EvaluateDeps, EvaluateError, evaluate_game};
 use chess_core::fen::fen_key;
 use chess_core::{Color, EngineScore, ParsedGame, Ply, PositionEval, START_FEN, Terminal};
 use engine::{ANALYSIS_PROTOCOL, ENGINE_NODES};
@@ -71,6 +71,7 @@ fn deps<'a>(a: &'a FakeAnalyser, c: &'a dyn EvalCache) -> EvaluateDeps<'a> {
         concurrency: 4,
         on_progress: None,
         cancel: None,
+        deadline: None,
     }
 }
 
@@ -344,7 +345,7 @@ async fn keeps_completed_positions_when_the_engine_fails_midway_and_resumes_from
     failing.fail_after = Some(3);
     let mut d = deps(&failing, &cache);
     d.concurrency = 1;
-    let err = evaluate_game(&d, &g, None).await.unwrap_err();
+    let err = evaluate_game(&d, &g, None).await.unwrap_err().error;
     assert!(matches!(err, EvaluateError::Engine(_)), "{err:?}");
     assert_eq!(
         cache
@@ -468,10 +469,90 @@ async fn cancel_token_aborts_mid_search() {
         token.cancel();
     });
     let started = Instant::now();
-    let err = evaluate_game(&d, &g, None).await.unwrap_err();
+    let err = evaluate_game(&d, &g, None).await.unwrap_err().error;
     assert!(
         matches!(err, EvaluateError::Deadline(JobDeadlineError { .. })),
         "{err:?}"
     );
     assert!(started.elapsed() < Duration::from_secs(2));
+}
+
+fn synthetic_game(n_plies: usize) -> ParsedGame {
+    let fens: Vec<String> = (1..=n_plies)
+        .map(|i| format!("pos{i} {} - -", if i % 2 == 1 { "b" } else { "w" }))
+        .collect();
+    let refs: Vec<&str> = fens.iter().map(String::as_str).collect();
+    game(&refs, None)
+}
+
+#[tokio::test]
+async fn elapsed_span_is_shorter_than_the_summed_engine_wall_time() {
+    let g = synthetic_game(7); // 8 positions
+    let mut an = FakeAnalyser::new();
+    an.delay = Duration::from_millis(50);
+    let cache = MemoryEvalCache::default();
+    let out = evaluate_game(&deps(&an, &cache), &g, None).await.unwrap();
+    let s = out.stats;
+    assert_eq!(s.engine_positions, 8);
+    // The sum is 8 x 50 ms; four workers overlap, so the span is about 100 ms.
+    assert!(
+        (s.engine_wall_ms - 400.0).abs() < 1e-6,
+        "{}",
+        s.engine_wall_ms
+    );
+    assert!(
+        s.engine_stage_elapsed_ms >= 90.0 && s.engine_stage_elapsed_ms < 350.0,
+        "{}",
+        s.engine_stage_elapsed_ms
+    );
+    assert!(
+        s.engine_wall_ms >= 4.0 * s.engine_stage_elapsed_ms - 150.0,
+        "sum {} span {}",
+        s.engine_wall_ms,
+        s.engine_stage_elapsed_ms
+    );
+    assert!(s.total_elapsed_ms >= s.engine_stage_elapsed_ms);
+}
+
+#[tokio::test]
+async fn failed_evaluation_still_reports_partial_stats() {
+    let g = game(&[E4, E5, NF3, NC6, BB5], None); // 6 positions
+    let cache = MemoryEvalCache::default();
+    let mut failing = FakeAnalyser::new();
+    failing.fail_after = Some(3);
+    failing.delay = Duration::from_millis(5);
+    let mut d = deps(&failing, &cache);
+    d.concurrency = 1;
+    let fail = evaluate_game(&d, &g, None).await.unwrap_err();
+    assert!(matches!(fail.error, EvaluateError::Engine(_)));
+    let s = fail.stats;
+    assert_eq!(s.positions, 6);
+    assert_eq!(s.engine_positions, 3);
+    assert!((s.engine_wall_ms - 15.0).abs() < 1e-6);
+    assert!(s.engine_stage_elapsed_ms > 0.0);
+    assert!(s.total_elapsed_ms >= s.engine_stage_elapsed_ms);
+}
+
+#[tokio::test]
+async fn pre_cancelled_token_makes_no_engine_calls_and_reports_its_deadline() {
+    let g = short_game();
+    let an = FakeAnalyser::new();
+    let cache = MemoryEvalCache::default();
+    let token = CancellationToken::new();
+    token.cancel();
+    let mut d = deps(&an, &cache);
+    d.cancel = Some(token);
+    d.deadline = Some(DeadlineInfo {
+        kind: "import-account",
+        ms: 1234,
+    });
+    let fail = evaluate_game(&d, &g, None).await.unwrap_err();
+    match fail.error {
+        EvaluateError::Deadline(e) => {
+            assert_eq!(e.kind, "import-account");
+            assert_eq!(e.ms, 1234);
+        }
+        other => panic!("{other:?}"),
+    }
+    assert_eq!(an.call_count(), 0);
 }
