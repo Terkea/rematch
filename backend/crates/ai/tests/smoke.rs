@@ -72,3 +72,24 @@ fn text_block_and_segment_json() {
         json!({"kind": "eng", "evalId": "e", "line": null, "n": null, "text": "t"})
     );
 }
+
+#[test]
+fn segment_nullable_keys_are_present() {
+    use ai::segments::Segment;
+    use serde_json::json;
+
+    let line = json!({"kind": "line", "lineKey": "k", "n": null, "san": "e4"});
+    let seg: Segment = serde_json::from_value(line.clone()).unwrap();
+    assert_eq!(serde_json::to_value(&seg).unwrap(), line);
+    // A nullable key is never skipped: a missing `n`, `line` or `n` (eng) is rejected.
+    for raw in [
+        json!({"kind": "line", "lineKey": "k", "san": "e4"}),
+        json!({"kind": "eng", "evalId": "e", "n": null, "text": "t"}),
+        json!({"kind": "eng", "evalId": "e", "line": 1, "text": "t"}),
+    ] {
+        assert!(
+            serde_json::from_value::<Segment>(raw.clone()).is_err(),
+            "accepted {raw}"
+        );
+    }
+}

@@ -23,7 +23,9 @@ impl PvSide {
     }
 }
 
-/// One rendered piece of narrative.
+/// One rendered piece of narrative. As in the input contract, an `Option` is always serialised
+/// (as `null`) and its key must be present when deserialising; schemas built from these types
+/// go through `coaching_input::schema::contract_transform`.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(
     tag = "kind",
@@ -53,6 +55,7 @@ pub enum Segment {
     },
     Line {
         line_key: String,
+        #[serde(deserialize_with = "coaching_input::nullable")]
         n: Option<u32>,
         san: String,
     },
@@ -72,7 +75,9 @@ pub enum Segment {
     /// evaluation text.
     Eng {
         eval_id: String,
+        #[serde(deserialize_with = "coaching_input::nullable")]
         line: Option<u32>,
+        #[serde(deserialize_with = "coaching_input::nullable")]
         n: Option<u32>,
         text: String,
     },

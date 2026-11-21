@@ -1,93 +1,15 @@
-//! The Rust `CoachingInput` mirror has the same shape as the zod contract, exported once from
-//! m3/base@4ff8220 into `fixtures/ai/ts-export/coaching-input.schema.json`.
+//! `ai::input::types` (R2's `coaching-input` contract, re-exported) has the shape of the zod
+//! contract exported once from m3/base@4ff8220 into
+//! `fixtures/ai/ts-export/coaching-input.schema.json` (provenance in `ts-export/SOURCE`).
 
-use std::collections::BTreeMap;
+#[path = "../../coaching-input/tests/support/shape.rs"]
+mod shape;
 
-use ai::input::types::{CoachingInput, Score};
+use ai::input::types::{CoachingInput, Score, json_schema};
 use ai::testing::{fixtures_dir, input, load_fixture, make_input};
 use serde_json::{Value, json};
 
-/// Per schema path: (sorted property names, sorted required names, enum values, nullable).
-type Shape = BTreeMap<String, (Vec<String>, Vec<String>, Vec<String>, bool)>;
-
-fn resolve<'a>(root: &'a Value, mut node: &'a Value) -> &'a Value {
-    while let Some(Value::String(r)) = node.get("$ref") {
-        let name = r
-            .strip_prefix("#/$defs/")
-            .unwrap_or_else(|| panic!("unsupported $ref {r}"));
-        node = &root["$defs"][name];
-    }
-    node
-}
-
-fn is_null_schema(v: &Value) -> bool {
-    v.get("type") == Some(&json!("null"))
-}
-
-fn walk(root: &Value, node: &Value, path: &str, nullable: bool, out: &mut Shape) {
-    let node = resolve(root, node);
-    // anyOf: [X, {type: null}] is a nullable X.
-    if let Some(Value::Array(any)) = node.get("anyOf") {
-        let non_null: Vec<&Value> = any.iter().filter(|v| !is_null_schema(v)).collect();
-        let has_null = non_null.len() < any.len();
-        if non_null.len() == 1 {
-            return walk(root, non_null[0], path, nullable || has_null, out);
-        }
-        out.insert(
-            path.to_owned(),
-            (vec![], vec![], vec![], nullable || has_null),
-        );
-        for (i, branch) in non_null.iter().enumerate() {
-            walk(root, branch, &format!("{path}|{i}"), false, out);
-        }
-        return;
-    }
-    let mut nullable = nullable;
-    // type: [X, "null"] is a nullable X.
-    if let Some(Value::Array(types)) = node.get("type") {
-        nullable |= types.contains(&json!("null"));
-    }
-    let mut props: Vec<String> = node
-        .get("properties")
-        .and_then(Value::as_object)
-        .map(|p| p.keys().cloned().collect())
-        .unwrap_or_default();
-    props.sort();
-    let mut required: Vec<String> = node
-        .get("required")
-        .and_then(Value::as_array)
-        .map(|r| r.iter().map(|v| v.as_str().unwrap().to_owned()).collect())
-        .unwrap_or_default();
-    required.sort();
-    let mut values: Vec<String> = Vec::new();
-    if let Some(Value::Array(e)) = node.get("enum") {
-        for v in e {
-            if v.is_null() {
-                nullable = true;
-            } else {
-                values.push(v.to_string());
-            }
-        }
-    }
-    if let Some(c) = node.get("const") {
-        values.push(c.to_string());
-    }
-    out.insert(path.to_owned(), (props, required, values, nullable));
-    if let Some(Value::Object(p)) = node.get("properties") {
-        for (k, v) in p {
-            walk(root, v, &format!("{path}.{k}"), false, out);
-        }
-    }
-    if let Some(items) = node.get("items") {
-        walk(root, items, &format!("{path}[]"), false, out);
-    }
-}
-
-fn schema_shape(schema: &Value) -> Shape {
-    let mut out = Shape::new();
-    walk(schema, schema, "$", false, &mut out);
-    out
-}
+const FIXTURES: [&str; 3] = ["b2-rapid", "b0-blitz", "early-read"];
 
 fn ts_export() -> Value {
     let path = fixtures_dir().join("ts-export/coaching-input.schema.json");
@@ -99,17 +21,20 @@ fn ts_export() -> Value {
 fn coaching_input_shape_matches_ts_export() {
     let ts = ts_export();
     assert_eq!(ts["source"], "m3/base@4ff8220");
-    let rust = serde_json::to_value(schemars::schema_for!(CoachingInput)).unwrap();
-    let (r, t) = (schema_shape(&rust), schema_shape(&ts["schema"]));
-    let r_keys: Vec<_> = r.keys().collect();
-    let t_keys: Vec<_> = t.keys().collect();
-    assert_eq!(r_keys, t_keys, "schema paths differ");
-    for (path, shape) in &t {
-        assert_eq!(&r[path], shape, "shape differs at {path}");
-    }
+    let rs = json_schema();
+    // R2's walker: types, enums, bounds, required, nullability, unions, additionalProperties.
+    let w = shape::compare_schemas(&ts["schema"], &rs);
+    assert!(
+        w.diffs.is_empty(),
+        "schema shape differs:\n{}",
+        w.diffs.join("\n")
+    );
+    // Same guards as R2's parity test: the walk did not stop early.
+    assert!(w.objects >= 13 + 7 * 4, "walked only {} objects", w.objects);
+    assert!(w.enums >= 17, "walked only {} enums", w.enums);
 }
 
-/// Every number as an f64, so `48` (fixture) and `48.0` (an `f64` field) compare equal.
+/// JSON has one number type: `48` (fixture) and `48.0` (an `f64` field) are the same value.
 fn numbers_as_f64(v: &Value) -> Value {
     match v {
         Value::Number(n) => json!(n.as_f64().unwrap()),
@@ -125,11 +50,11 @@ fn numbers_as_f64(v: &Value) -> Value {
 
 #[test]
 fn fixtures_deserialize() {
-    for name in ["b2-rapid", "b0-blitz", "early-read"] {
+    for name in FIXTURES {
         let parsed = input(name);
-        // The mirror round-trips: every key is serialised (nulls included).
+        // Every key is serialised (nulls included) and the typed dates write back unchanged.
         assert_eq!(
-            numbers_as_f64(&serde_json::to_value(&parsed).unwrap()),
+            numbers_as_f64(&parsed.to_json()),
             numbers_as_f64(&load_fixture(name)),
             "{name} round-trip"
         );
@@ -143,10 +68,121 @@ fn unknown_key_is_rejected() {
 }
 
 #[test]
+fn unknown_key_in_a_change_example_is_rejected() {
+    // `ChangeExample` flattens `ExemplarPosition` and denies unknown fields: an extra key at
+    // that level, or inside a nested exemplar object, must still fail.
+    let base = input("b2-rapid");
+    assert!(
+        !base.changes.is_empty() && !base.changes[0].examples.is_empty(),
+        "b2-rapid has a change example"
+    );
+    for over in [
+        json!({ "changes": [{ "examples": [{ "note": "x" }] }] }),
+        json!({ "changes": [{ "examples": [{ "played": { "lan": "e2e4" } }] }] }),
+        json!({ "changes": [{ "examples": [{ "evalBefore": { "cp": 1, "x": 2 } }] }] }),
+    ] {
+        let raw = make_input(over.clone());
+        assert!(
+            serde_json::from_value::<CoachingInput>(raw).is_err(),
+            "accepted {over}"
+        );
+    }
+    // The untouched example still deserialises (the merge itself is valid).
+    let same = make_input(json!({ "changes": [{ "examples": [{}] }] }));
+    assert!(serde_json::from_value::<CoachingInput>(same).is_ok());
+}
+
+/// Every nullable property path of the schema, as segments (`[]` = any array element).
+fn nullable_paths(root: &Value, node: &Value, path: &mut Vec<String>, out: &mut Vec<Vec<String>>) {
+    let mut node = node;
+    while let Some(Value::String(r)) = node.get("$ref") {
+        node = root.pointer(r.strip_prefix('#').unwrap()).unwrap();
+    }
+    if let Some(Value::Array(any)) = node.get("anyOf") {
+        for member in any.iter().filter(|m| m.get("type") != Some(&json!("null"))) {
+            nullable_paths(root, member, path, out);
+        }
+        return;
+    }
+    if let Some(Value::Object(props)) = node.get("properties") {
+        for (key, prop) in props {
+            let mut p = prop;
+            while let Some(Value::String(r)) = p.get("$ref") {
+                p = root.pointer(r.strip_prefix('#').unwrap()).unwrap();
+            }
+            let is_nullable = match (p.get("type"), p.get("anyOf")) {
+                (Some(Value::Array(t)), _) => t.contains(&json!("null")),
+                (_, Some(Value::Array(a))) => {
+                    a.iter().any(|m| m.get("type") == Some(&json!("null")))
+                }
+                _ => false,
+            };
+            path.push(key.clone());
+            if is_nullable {
+                out.push(path.clone());
+            }
+            nullable_paths(root, prop, path, out);
+            path.pop();
+        }
+    }
+    if let Some(items) = node.get("items") {
+        path.push("[]".into());
+        nullable_paths(root, items, path, out);
+        path.pop();
+    }
+}
+
+/// Removes the key at `path` (taking element 0 of every array); false if the parent is absent.
+fn remove_at(v: &mut Value, path: &[String]) -> bool {
+    let (last, parents) = path.split_last().unwrap();
+    let mut cur = v;
+    for seg in parents {
+        let next = if seg == "[]" {
+            cur.get_mut(0)
+        } else {
+            cur.get_mut(seg)
+        };
+        match next {
+            Some(n) if !n.is_null() => cur = n,
+            _ => return false,
+        }
+    }
+    cur.as_object_mut().and_then(|o| o.remove(last)).is_some()
+}
+
+#[test]
 fn missing_nullable_key_is_rejected() {
-    let mut raw = load_fixture("b2-rapid");
-    raw.as_object_mut().unwrap().remove("rating");
-    assert!(serde_json::from_value::<CoachingInput>(raw).is_err());
+    let schema = json_schema();
+    let mut paths = Vec::new();
+    nullable_paths(&schema, &schema, &mut Vec::new(), &mut paths);
+    // 19 nullable fields in the contract; `best` appears at four exemplar sites.
+    assert_eq!(paths.len(), 22, "{paths:?}");
+    // No fixture has an opening example, so add a variant of b2-rapid with one (a weakness
+    // exemplar; the shape is what matters here).
+    let mut with_opening_example = load_fixture("b2-rapid");
+    let exemplar = with_opening_example["weaknesses"][0]["exemplars"][0].clone();
+    with_opening_example["openings"][0]["examples"] = json!([exemplar]);
+    assert!(
+        serde_json::from_value::<CoachingInput>(with_opening_example.clone()).is_ok(),
+        "the variant itself deserialises"
+    );
+    let mut inputs: Vec<(&str, Value)> = FIXTURES.iter().map(|n| (*n, load_fixture(n))).collect();
+    inputs.push(("b2-rapid+opening-example", with_opening_example));
+    for path in &paths {
+        let mut tested = false;
+        for (name, base) in &inputs {
+            let mut raw = base.clone();
+            if remove_at(&mut raw, path) {
+                tested = true;
+                assert!(
+                    serde_json::from_value::<CoachingInput>(raw).is_err(),
+                    "{name}: missing {} accepted",
+                    path.join(".")
+                );
+            }
+        }
+        assert!(tested, "no fixture reaches {}", path.join("."));
+    }
 }
 
 #[test]
@@ -157,10 +193,10 @@ fn make_input_merges_arrays_by_index() {
     assert_eq!(raw["weaknesses"][0]["id"], base["weaknesses"][0]["id"]);
     // As in make-input.ts, the result has the override array's length.
     assert_eq!(raw["weaknesses"].as_array().unwrap().len(), 1);
-    let appended = make_input(
-        json!({ "strengths": [{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {"x": 1}] }),
-    );
-    assert_eq!(appended["strengths"][12], json!({"x": 1}));
+    let mut over = vec![json!({}); 12];
+    over.push(json!({ "x": 1 }));
+    let appended = make_input(json!({ "strengths": over }));
+    assert_eq!(appended["strengths"][12], json!({ "x": 1 }));
     assert!(raw["rating"].is_null());
 }
 

@@ -26,16 +26,15 @@ From R1's table, unchanged: reqwest, rustls, tokio, tokio-util, futures, bytes, 
 
 ### Crate wiring
 
-- `ai` depends on `chess-core`, `common`, `db`, `queue`, `events`, `engine` (for `ANALYSIS_PROTOCOL` only) and `coaching-input` (for the Task 26 reconciliation with R2's contract type), and dev-depends on `testkit`, `wiremock` and tokio `test-util`.
+- `ai` depends on `chess-core`, `common`, `db`, `queue`, `events`, `engine` (for `ANALYSIS_PROTOCOL` only) and `coaching-input` (the contract type), and dev-depends on `testkit`, `wiremock` and tokio `test-util`.
 - `worker` depends on `ai` now, so Task 26 can wire it without editing a manifest.
-- No crate may enable `serde_json/preserve_order`: `canonical_json` and the path index rely on sorted keys. CI's `rust` job checks `cargo tree -e features -i serde_json | grep -c preserve_order` is `0`.
+- No crate may enable `serde_json/preserve_order`: `canonical_json` and the path index rely on sorted keys. CI's `rust` job checks that `cargo tree -e features -i serde_json | grep -c preserve_order` is `0`, failing closed if `cargo tree` fails; an `ai` unit test asserts sorted map keys.
 
 ### Shared types and fixtures
 
-- `ai::input::types` is a field-for-field serde mirror of the zod `CoachingInput`. Nullable fields are `Option`s whose key must be present, and their JSON schema stays required and nullable (`Nullable<T>`, because `#[schemars(required)]` would drop the `null`). `tests/input_shape.rs` compares its schemars schema with the zod export.
-- `backend/fixtures/ai/input/` holds byte-for-byte copies of the three M3 fixtures. `backend/fixtures/ai/ts-export/` holds `z.toJSONSchema(CoachingInput)` and `zodOutputFormat(ReportSectionEnvelope).schema` from m3/base@4ff8220, each wrapped as `{"source":"m3/base@4ff8220","schema":…}`. They were exported in `node:22.23.5-slim` with `pnpm install --frozen-lockfile` and Node type stripping on a throwaway copy of the m3 checkout. Only the JSON is committed. The CoachingInput export equals R2's `fixtures/coaching-input/ts-schema.json`.
+- `ai::input::types` re-exports R2's `coaching-input` crate (ADR-R2-2), so there is one contract type (fix round 1). Required + nullable JSON schemas use one mechanism, R2's `contract_transform` (every property required, `Option` stays `T | null`), which is re-exported for Task 3's output schemas. Serde-side, nullable keys must be present (`coaching_input::nullable`, now public). `tests/input_shape.rs` runs R2's schema walker (`coaching-input/tests/support/shape.rs`, shared via `#[path]`) against the zod export.
+- `backend/fixtures/ai/input/` holds byte-for-byte copies of the three M3 fixtures. `backend/fixtures/ai/ts-export/` holds `z.toJSONSchema(CoachingInput)` and `zodOutputFormat(ReportSectionEnvelope).schema` from m3/base@4ff8220, each wrapped as `{"source":"m3/base@4ff8220","schema":…}`. Provenance (full commit, zod options, sha256) is in `fixtures/ai/ts-export/SOURCE`. They were exported in `node:22.23.5-slim` with `pnpm install --frozen-lockfile` and Node type stripping on a throwaway copy of the m3 checkout. Only the JSON is committed. The CoachingInput export equals R2's `fixtures/coaching-input/ts-schema.json`.
 
 ## Consequences
 
 - Lanes add behaviour inside the declared modules only. A lane that needs a new crate stops and reports it.
-- `ai::input::types` and R2's `coaching-input` crate duplicate one contract until Task 26 reconciles them.

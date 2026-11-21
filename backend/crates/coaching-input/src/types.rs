@@ -25,7 +25,7 @@ use crate::limits::{
 
 /// Deserialises a zod `.nullable()` field: `null` or a value, but the key must be present.
 /// (`#[serde(deserialize_with)]` turns off serde's missing-`Option`-is-`None` rule.)
-fn nullable<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+pub fn nullable<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
 where
     D: Deserializer<'de>,
     T: Deserialize<'de>,

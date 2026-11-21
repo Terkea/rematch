@@ -142,3 +142,17 @@ fn chat_anchor_json_shape() {
     assert!(serde_json::from_value::<ChatAnchor>(json!({"kind": "move", "gameId": "g1"})).is_err());
     assert!(serde_json::from_value::<ChatAnchor>(json!({"kind": "nope"})).is_err());
 }
+
+#[test]
+fn chat_anchor_rejects_extra_keys() {
+    for raw in [
+        json!({"kind": "move", "gameId": "g1", "ply": 24, "x": 1}),
+        json!({"kind": "game", "gameId": "g1", "accountId": "a"}),
+        json!({"kind": "weakness", "weaknessId": "W1", "weakness_id": "W2"}),
+    ] {
+        assert!(
+            serde_json::from_value::<ChatAnchor>(raw.clone()).is_err(),
+            "accepted {raw}"
+        );
+    }
+}

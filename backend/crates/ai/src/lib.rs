@@ -20,3 +20,14 @@ pub mod validator;
 
 /// The crate version.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+#[cfg(test)]
+mod tests {
+    /// `canonical_json` and the path index rely on sorted keys: no crate in the build may enable
+    /// `serde_json/preserve_order` (CI also checks `cargo tree`).
+    #[test]
+    fn serde_json_maps_are_sorted() {
+        let v = serde_json::json!({"b": 1, "a": 2});
+        assert_eq!(v.to_string(), r#"{"a":2,"b":1}"#);
+    }
+}
