@@ -692,6 +692,26 @@ async fn records_job_metrics_after_commit(pool: PgPool) {
     assert!((m.engine_wall_ms.unwrap() - 35.0).abs() < 1e-6);
     assert!((m.engine_cpu_ms.unwrap() - 21.0).abs() < 1e-6);
     assert!(m.total_ms >= m.persist_ms.unwrap());
+    // R2 T3 (ADR 0036): the elapsed spans that have no column go into `stages`.
+    let stages = metrics_stages(&pool).await;
+    assert_eq!(stages.len(), 1);
+    let s = stages[0].as_object().expect("stages is a JSON object");
+    let mut keys: Vec<&str> = s.keys().map(String::as_str).collect();
+    keys.sort_unstable();
+    assert_eq!(keys, ["engine_stage_ms", "evaluate_ms"], "{s:?}");
+    let engine_stage = s["engine_stage_ms"].as_f64().unwrap();
+    let evaluate = s["evaluate_ms"].as_f64().unwrap();
+    assert!(engine_stage >= 0.0 && evaluate >= engine_stage, "{s:?}");
+    assert!(evaluate <= m.total_ms, "{s:?} {m:?}");
+}
+
+async fn metrics_stages(pool: &PgPool) -> Vec<Value> {
+    within(
+        "job_metrics stages",
+        sqlx::query_scalar("SELECT stages FROM job_metrics ORDER BY id").fetch_all(pool),
+    )
+    .await
+    .unwrap()
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
@@ -707,6 +727,16 @@ async fn records_partial_job_metrics_for_a_failed_analysis(pool: PgPool) {
     assert_eq!(rows[0].positions, Some(7));
     assert_eq!(rows[0].engine_positions, Some(2));
     assert_eq!(rows[0].persist_ms, None);
+    // The partial spans of the failed evaluation are persisted too.
+    let stages = metrics_stages(&pool).await;
+    assert!(
+        stages[0]["evaluate_ms"].as_f64().unwrap() >= 0.0,
+        "{stages:?}"
+    );
+    assert!(
+        stages[0]["engine_stage_ms"].as_f64().unwrap() >= 0.0,
+        "{stages:?}"
+    );
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
