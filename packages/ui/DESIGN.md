@@ -181,7 +181,8 @@ Size and line height in px, from the classic scale. Literata's `opsz` tracks the
 
 | Step | Size / line height | Literata `opsz` | Typical use |
 |---|---|---|---|
-| `xs` | 12/16 | 12 | board coordinates, chart ticks, eval bar label |
+| `2xs` | 11/14 | 11 | only glyph-badge text (its floor) and the eval bar label. Nothing else. |
+| `xs` | 12/16 | 12 | board coordinates, chart ticks |
 | `sm` | 14/20 | 14 | secondary UI text, captions, graph labels |
 | `base` | 16/24 | 16 | UI body, buttons, inputs, move list (15px rows use `opsz` 15) |
 | `prose` | 18/30 | 18 | serif body (annotations, explanations), with more leading |
@@ -240,7 +241,7 @@ Size and line height in px, from the classic scale. Literata's `opsz` tracks the
 - **Style:** flat, in the ink metaphor. They are line drawings, like a printed diagram, with no gradients, bevels, wood or shadows.
 - **Day:** black pieces are filled `piece-dark` (ink) with `piece-light` interior details. White pieces are filled `piece-light` (sheet) with a `piece-dark` outline about 1.5px at a 45px square, scaling with the square.
 - **Night:** black pieces are filled `piece-dark` (`well`, `#0D1421`), which holds 6.20:1 and 3.40:1 on the two night squares, with `piece-light` interior details. White pieces are filled `piece-light` (pale ink) with the same `piece-dark` outline. Every silhouette therefore has a ≥ 3:1 edge on both squares in both themes.
-- **Default set: Cburnett** (Colin M.L. Burnett, Wikimedia Commons, used under its BSD-3-Clause option). It is drawn as flat outlines with a 1.5px stroke at 45px, which is this exact look, and it recolours with two values. Decision: `docs/decisions/ADR-WEB-n-piece-set.md` (Accepted).
+- **Default set: Cburnett** (Colin M.L. Burnett, Wikimedia Commons, used under its BSD-3-Clause option). It is drawn as flat outlines with a 1.5px stroke at 45px, which is this exact look, and it recolours with two values. Decision: `docs/decisions/0039-piece-set.md` (Accepted).
 - Never use Unicode chess glyphs for pieces.
 
 ### Piece sets
@@ -299,7 +300,7 @@ Severity comes from the mover's loss of win chance, using the Lichess thresholds
 | Plan or idea | pencil arrow or ring, never a badge | none | pencil, 0.7×, open head |
 
 - **Redundancy, not colour alone:** pen marks always carry a `?`-family badge and an open head. Good marks carry a `!`-family badge and a solid head. Pencil never carries a badge.
-- **Glyph badge:** a circle of radius 20% of the square in the square's top-right corner (inset 1px), filled `pen` or `good`, with the glyph in `on-ink` Literata 600 (35% of the square for one character, 28% for two, and never below 11px), on a 2px `sheet` halo. A 328px mobile board (41px squares) gives 14px and 11.5px.
+- **Glyph badge:** a circle of radius 20% of the square in the square's top-right corner (inset 1px), filled `pen` or `good`, with the glyph in `on-ink` Literata 600 (35% of the square for one character, 28% for two, and never below `2xs`, 11px), on a 2px `sheet` halo. A 328px mobile board (41px squares) gives 14px and 11.5px.
 
 ### Pen stroke geometry
 
@@ -333,7 +334,7 @@ Marks are filled, variable-width outlines built around a centreline, never const
 
 - A vertical bar to the left of the board, 16px wide and the board's height, with `--radius-board` and a 1px `rule-strong` outline. Below 768px it becomes an 8px horizontal bar above the board.
 - White's share is `(wc + 1) / 2` on the same win-chance scale as the graph. Day: White is `sheet` and Black is `ink`. Night: White is `ink` and Black is `well`. White is at the bottom when the board is seen from White's side, and it flips with the board.
-- The label (`+5.7`, `M2`) is Literata 600 at 11px, set vertically (rotated −90°) inside the bar at the winning side's end, in the losing side's fill colour, so it is always ink on sheet or the reverse. On the 8px mobile bar, the label moves outside the bar's end.
+- The label (`+5.7`, `M2`) is Literata 600 at `2xs` (11px), set vertically (rotated −90°) inside the bar at the winning side's end, in the losing side's fill colour, so it is always ink on sheet or the reverse. On the 8px mobile bar, the label moves outside the bar's end.
 - The boundary moves with the `swing` spring for changes below 0.3 win chance and with `swing-big` (visible overshoot) for changes of 0.3 or more.
 
 ### Chart series
@@ -379,22 +380,22 @@ Every spring states its damping ratio, `ζ = damping / (2 × √(stiffness × ma
 
 | Preset | Values | ζ | Overshoot | Use |
 |---|---|---|---|---|
-| `settle` | `{ stiffness: 520, damping: 42 }` | 0.92 | 0.2% | piece travel between squares (precise, no visible bounce). This is the brief's `piece`, renamed. |
-| `land` | `{ stiffness: 700, damping: 22 }` | 0.42 | 23% | the landing: scale and y of a piece on arrival, glyph badges landing, streak ticks. Visible squash. |
+| `settle` | `{ stiffness: 520, damping: 42 }` | 0.92 | 0.06% | piece travel between squares (precise, no visible bounce). This is the brief's `piece`, renamed. |
+| `land` | `{ stiffness: 700, damping: 22 }` | 0.42 | 24% | the landing: a piece's squash and y on arrival, glyph badges landing, streak ticks |
 | `pen` | `{ stiffness: 150, damping: 24 }` | 0.98 | 0% | stroke progress when a stroke must follow input mid-draw (a user-drawn arrow, an interrupted sequence) |
-| `swing` | `{ stiffness: 260, damping: 30 }` | 0.93 | 0.1% | eval bar and graph cursor for changes below 0.3 win chance. This is the brief's `evalBar`, renamed. |
+| `swing` | `{ stiffness: 260, damping: 30 }` | 0.93 | 0.04% | eval bar and graph cursor for changes below 0.3 win chance. This is the brief's `evalBar`, renamed. |
 | `swing-big` | `{ stiffness: 260, damping: 20 }` | 0.62 | 8% | eval bar for changes of 0.3 win chance or more: it overshoots past the new value and swings back |
 | `page` | `{ stiffness: 300, damping: 34 }` | 0.98 | 0% | the incoming page of a page turn, layout morphs, and the Motion fallback for shared elements |
 | `tilt` | `{ stiffness: 400, damping: 30 }` | 0.75 | 3% | a dragged piece's tilt returning to upright |
 
 **Mass makes weight visible.** Piece travel uses `settle` with mass by piece. Heavier pieces travel a little slower and settle a little looser, and they land harder:
 
-| Piece | Mass | `settle` ζ | Lift and land scale |
-|---|---|---|---|
-| Pawn | 0.8 | 1.03 | 1.04 |
-| Knight, bishop | 1.0 | 0.92 | 1.05 |
-| Rook | 1.15 | 0.86 | 1.06 |
-| Queen, king | 1.25 | 0.82 | 1.07 |
+| Piece | Mass | `settle` ζ | Lift scale | Landing squash (scaleX / scaleY) |
+|---|---|---|---|---|
+| Pawn | 0.8 | 1.03 | 1.04 | 1.015 / 0.98 |
+| Knight, bishop | 1.0 | 0.92 | 1.05 | 1.02 / 0.97 |
+| Rook | 1.15 | 0.86 | 1.06 | 1.025 / 0.965 |
+| Queen, king | 1.25 | 0.82 | 1.07 | 1.03 / 0.96 |
 
 ### Stagger scale
 
@@ -404,13 +405,13 @@ Every spring states its damping ratio, `ζ = damping / (2 × √(stiffness × ma
 | `--stagger-base` | 80ms | report sections, critical-moment rings on the graph |
 | `--stagger-pen` | 120ms | ring to arrow within one moment, and nothing else |
 
-The badge is timed explicitly, not by stagger: it lands with `land` when the moment's last stroke finishes. That is at 420ms for a ring only, and at about 600ms for a ring and an arrow, where the second head stroke ends at 120 + 357 + 30 + 90 = 597ms.
+The badge is timed explicitly, not by stagger: it lands with `land` when the moment's last stroke finishes. That is at 420ms for a ring only, and at 540ms for a ring and an arrow. The arrow starts at 120, and its shaft reaches 85% of its eased progress at 120 + 266 = 386ms, so the head strokes run 386–476 and 416–506. The shaft's soft stop ends at 120 + 420 = 540.
 
 ### Physical feel
 
 This is what the user should be able to see:
 
-- **Lift and land.** On every move, the piece lifts over `--dur-instant` (scale up to its land scale from the mass table, y −4px, `--ease-out`). It travels on `settle` with its mass. On arrival, scale and y are handed to `land`, so the piece squashes slightly below 1, by about 23% of the lift, and settles. The move sound plays on the arrival frame.
+- **Lift and land.** On every move, the piece lifts over `--dur-instant` (uniform scale up to its lift scale from the mass table, y −4px, `--ease-out`). It travels on `settle` with its mass. At contact it is set to its landing squash (for a knight, scaleX 1.02 and scaleY 0.97, with `transform-origin: 50% 90%`, its base) at y 0, and `land` springs both axes back to 1. With ζ 0.42 it rebounds past 1 (scaleY about 1.007) before settling, so it is a real squash and stretch, using transform only. The move sound plays on the contact frame.
 - **Momentum.** The eval bar uses `swing-big` for big changes, so it swings past the new value by about 8% and comes back. Stepping quickly through moves carries the spring's velocity from one value to the next.
 - **Impact.** A capture knocks the captured piece off in the mover's direction (choreography 6).
 - **Weight.** The mass table: a queen lands harder than a pawn.
@@ -418,13 +419,13 @@ This is what the user should be able to see:
 ### Principles
 
 - `M1` **Every animation means something.** It shows what changed, what is ranked or where you are going, and it is user-caused or one of the named orchestrated moments. Nothing moves on its own to attract attention.
-- `M2` **Pen strokes draw by `pathLength`,** revealing the filled outline through a mask. A ring starts at about 1 o'clock and overruns to 380°. One board stroke takes `--dur-draw` with `--ease-pen`, and a small stroke takes `--dur-draw-small`.
+- `M2` **Pen strokes draw by `pathLength`,** revealing the filled outline through a mask. A ring starts at about 1 o'clock and overruns to 380°. One board stroke takes `--dur-draw` with `--ease-pen`, and a small stroke takes `--dur-draw-small`. A ring's time is split by arc: on the un-eased timeline, 0–360° gets the first 398ms of a 420ms stroke and the 360–380° overrun gets the last 22ms (360/380 and 20/380). One `--ease-pen` progress value drives both mask segments. With the easing applied, 360° is reached at about 318ms of real time and the overrun takes the last ~102ms, so the soft stop lands on the overrun and it visibly slows into place. Head timings are in eased progress too: a shaft reaches 85% at 63% of its duration (266ms of 420, 152ms of 240).
 - `M3` **Arrowheads start when the shaft reaches 85%.** Each head stroke takes `--dur-instant`, and the second starts 30ms after the first.
 - `M4` **Nothing fades up on scroll,** and nothing is scroll-triggered in the app (`B11`).
 - `M5` **There are no hover lifts.** Hover changes tone, never position or shadow.
 - `M6` **Physical, not decorative.** Pieces have mass and land, captures have impact, and the eval bar has momentum. There is no bounce without a physical cause.
 - `M7` **Interruptible.** Input never waits for an animation. During an orchestrated sequence, any input on the board, the move list or the graph, the Skip button or Escape jumps to the end state: unfinished marks complete over `--dur-quick` (they are not snapped or dropped), pieces jump to their final squares, bars go to their final value on `swing`, and pending sounds are cancelled. Outside sequences, new input finishes or reverses in-flight motion, and springs keep their velocity.
-- `M8` **Long sequences run in full once.** Anything over 1s runs in full only on the first view of that game or report. "Seen" is stored on the server per user, per game and per report, so it holds across devices. Later views run the condensed version (at most 600ms). While a long sequence runs, a **Skip** control shows: a ghost button at the top right of the board, Schibsted 500 at `sm`, `ink-soft` text, `sheet` on hover, keyboard-focusable. Escape does the same. When the sequence ends, the control disappears and a polite live region announces "Analysis ready".
+- `M8` **Long sequences run in full once.** Anything over 1s runs in full only on the first view of that game or report. "Seen" is stored on the server per user, per game and per report, so it holds across devices. Later views run the condensed version (at most 600ms). While a long sequence runs, a **Skip** control shows: a ghost button above the board, right-aligned in the board column's header row (never over the board or its corner squares), Schibsted 500 at `sm`, `ink-soft` text, `sheet` on hover, keyboard-focusable. Escape does the same. When the sequence ends, the control disappears and a polite live region announces "Analysis ready".
 - `M9` **Performance budget.** Animate only `transform`, `opacity` and SVG `stroke-dashoffset` (including mask strokes). Never animate layout properties, `filter`, `box-shadow` or `clip-path`. The target is 60 fps on a mid-range phone, tested as a Pixel 6a-class device or Chrome DevTools at 4× CPU throttling, with no frame over 16ms and at most 12 SVG marks animating at once. `will-change` is set only while animating.
 - `M10` **Reduced motion.** Under `prefers-reduced-motion: reduce`, choreography is replaced by instant state changes with a brief opacity cue: the changed element appears at full state with a single opacity fade of at most `--dur-quick` and no movement. Marks appear fully drawn, pieces jump, bars set their value, page turns become an instant swap, and long sequences show their end state. Sound is unaffected.
 
@@ -432,37 +433,46 @@ This is what the user should be able to see:
 
 Times are in ms from the start of the moment. "Seeded" means deterministic per game.
 
-**1. Analysis reveal: the performance.** This runs on the first view of a freshly analysed game (M8), and it is the "huge" beat. It replays the game's turning points: a prologue on the graph, then each critical moment *played* on the board before the coach marks it.
+**1. Analysis reveal: the performance.** This runs on the first view of a freshly analysed game (M8), and it is the "huge" beat. It replays the game's turning points: a prologue on the graph, then the three worst moments *played* on the board in ascending severity, so it builds and ends on the worst.
 
-*Prologue (0–1200).*
+*Prologue (0–1200, fixed).* `n` is the number of marked moments (blunders, mistakes and inaccuracies). Real club games have 8–15 of them.
 
 | Time | What happens |
 |---|---|
 | 0–600 | The eval graph draws left to right: the line's `stroke-dashoffset` over `--dur-reveal` with `--ease-pen`, and the area fill revealed by a mask rect with `scaleX` from 0 to 1. |
-| 600–1200 | Critical-moment rings draw on the graph in game order, `--stagger-base` apart, each over `--dur-draw-small`. Each label and leader tick fades in over `--dur-quick` as its ring finishes. With five moments, the last ring ends at 600 + 4 × 80 + 240 = 1160. |
-| 1200 | The climax starts, at a fixed time. |
+| 600–1200 | Graph marker rings draw in game order, each over `--dur-draw-small` (240ms). The stagger is capped at `s = min(80, 360 / (n − 1))` ms (80ms when `n = 1`), so the last ring starts by 600 + 360 = 960 and ends by 1200, whatever `n` is. Each label and leader tick fades in over `--dur-quick` as its ring finishes. |
+| 1200 | The climax starts, always at this fixed time. |
 
-*Climax: one beat per critical moment, for the top three in rank order (worst first).* Each beat lasts 2060ms. For the first moment, t0 = 1200.
+Worked examples: with `n = 5`, `s = min(80, 90) = 80`, and the last ring runs 920–1160. With `n = 15`, `s = min(80, 360 / 14) = 25.7`, and the last ring starts at 600 + 14 × 25.7 = 960 and ends at 1200.
+
+*Climax: one beat for each of the top three moments, in ascending severity (third worst, second worst, worst).* A beat lasts 2060ms, and the last beat lasts 1900ms because it doesn't retract. The beats start at t0 = 1200, 3260 and 5320.
 
 | t0 + | What happens |
 |---|---|
-| 0–160 | The board cross-fades (`--dur-quick`) to the position **before** the bad move. The graph cursor swings to that ply, and the scoresheet row gets the selected `well`. |
+| 0–160 | The board cross-fades (`--dur-quick`) to the position **before** the bad move. The eval bar swings to the pre-move value on `swing`, the graph cursor moves to that ply on `swing`, and the scoresheet row gets the selected `well`. |
 | 160–400 | Hold. The eye reads the position. |
 | 400–490 | The mover lifts (`--dur-instant`). |
 | 490–760 | The **move is played**: travel on `settle` with the piece's mass (about 270ms for 2–3 squares). |
-| 760 | Contact: the piece lands on `land`, and the move or capture sound plays. A capture knocks the captured piece off. |
-| 760 | The eval bar swings to the new value on `swing-big` (these moments are ≥ 0.2 win-chance changes, so they visibly overshoot). The graph cursor steps on `swing`. |
-| 860–1280 | The pen ring draws on the destination (`--dur-draw`). In parallel, the scoresheet row gets its glyph and evaluation (opacity over `--dur-quick`), and its scoresheet ring draws (`--dur-draw-small`). |
-| 980–1457 | The arrow draws (`--stagger-pen` after the ring): the pen arrow of the played move for a blunder, or the good arrow of Stockfish's move otherwise. The shaft ends at 1400, and the head strokes run 1337–1427 and 1367–1457. |
-| 1460 | The glyph badge lands on `land`, just after the last stroke ends. |
-| 1460–1900 | Hold, with every mark visible. |
-| 1900–2060 | Retract: every mark reverses its `stroke-dashoffset` over `--dur-quick`, and the badge scales to 0.8 and fades. The next beat starts at 2060. |
+| 760 | Contact: the piece lands with its squash on `land`, and the move or capture sound plays. A capture knocks the captured piece off. |
+| 760 | The eval bar swings to the post-move value: on `swing-big` (visible overshoot) when the change is ≥ 0.3 win chance, otherwise on `swing`. The graph cursor steps on `swing`. |
+| 860–1280 | The pen ring draws on the destination (`--dur-draw` with `--ease-pen` over the whole stroke: 398 + 22ms by arc on the un-eased timeline, so 360° arrives at about 1178 and the overrun slows in until 1280). In parallel, the scoresheet row gets its glyph and evaluation (opacity over `--dur-quick`), and its scoresheet ring draws (`--dur-draw-small`). |
+| 980–1400 | The arrow draws (`--stagger-pen` after the ring): the pen arrow of the played move for a blunder, or the good arrow of Stockfish's move otherwise. The shaft reaches 85% at 1246, the head strokes run 1246–1336 and 1276–1366, and the shaft's soft stop ends at 1400. |
+| 1400 | The glyph badge lands on `land` as the last stroke ends. |
+| 1400–1900 | Hold, with every mark visible. |
+| 1900–2060 | Retract (first and second beats only): every mark reverses its `stroke-dashoffset` over `--dur-quick`, and the badge scales to 0.8 and fades. The next beat starts at 2060. |
 
-With three moments, the climax runs from 1200 to 1200 + 3 × 2060 = 7380.
+**Total:** 1200 + 2 × 2060 + 1900 = **7220ms**. The sequence ends on the worst beat's 500ms hold, with its marks drawn, and the board stays on the worst moment (the end state). There is no separate finale and no redraw. With `k` moments in the climax (k ≤ 3), the total is `1200 + (k − 1) × 2060 + 1900`. With no marked moments, the sequence ends after the 600ms graph draw, on the final position.
 
-*Finale (7380–8000).* The board cross-fades back to the worst moment, showing the position after the move (`--dur-quick`). Its marks redraw condensed: ring and arrow together over `--dur-draw-small`, then the badge lands. The sequence ends at about 8000ms. With fewer critical moments, there are fewer beats. With none, the prologue ends on the final position.
+*Condensed version* (M8, later visits, at most 600ms):
 
-*Condensed version* (M8, later visits, at most 600ms): the graph appears drawn, the graph rings draw together with `--stagger-tight`, and the board shows the worst moment with its ring, arrow and badge drawn over `--dur-draw-small`.
+| Time | What happens |
+|---|---|
+| 0 | The graph appears fully drawn, and the board shows the worst moment (the position after the move). |
+| 0–600 | Graph marker rings draw over `--dur-draw-small`, with the stagger capped at `min(40, 360 / (n − 1))` ms, so the last ring starts by 360 and ends by 600. |
+| 0–392 | The board marks draw: the ring over `--dur-draw-small` (0–240), and the arrow from 120 (shaft 120–360, reaching 85% at 272, with heads 272–362 and 302–392). |
+| 400 | The badge lands on `land`. |
+
+Worked example: with `n = 15`, the stagger is `min(40, 25.7) = 25.7`, and the last graph ring runs 360–600.
 
 **2. Report reveal.** This runs on the first view of a report, for the sections in the first viewport only. Sections below the fold are simply there (M4).
 
@@ -500,7 +510,7 @@ Back navigation mirrors it: the outgoing sheet turns on its right edge toward +1
 
 - **Click or keyboard move:** lift, travel and land as described under "Physical feel". The sound plays on the arrival frame.
 - **Capture:** the captured piece is knocked off at contact, when the mover is within 30% of a square. It travels 0.6 of a square further in the move's direction, rotates 12–20° (seeded) the way the mover was travelling, scales to 0.9 and fades out over `--dur-base` with `--ease-out`. The capture sound plays at contact.
-- **Drag:** on pickup the piece scales to its lift scale over `--dur-instant` and gains `--shadow-lift`, and the origin keeps a 30% ghost. While dragging it tilts with the pointer's horizontal velocity `vx` in px/s: `rotate = clamp(vx × 0.008 deg per px/s, −8°, +8°)`, so 1000px/s gives the full 8°. When the pointer slows, the tilt returns to 0° on `tilt`. On drop, the piece travels to the square centre on `settle`, then lands on `land`. An illegal drop sends the piece back to its origin on `settle` with no landing squash, plus the drill-wrong cue where it applies.
+- **Drag:** on pickup the piece scales to its lift scale over `--dur-instant`, and the origin keeps a 30% ghost. Its `--shadow-lift` lives on a separate layer under the piece (a pseudo-element or sibling with the shadow already applied), and only that layer's opacity animates, 0 to 1 over `--dur-instant` and back on drop. `box-shadow` itself is never animated (M9). While dragging it tilts with the pointer's horizontal velocity `vx` in px/s: `rotate = clamp(vx × 0.008 deg per px/s, −8°, +8°)`, so 1000px/s gives the full 8°. When the pointer slows, the tilt returns to 0° on `tilt`. On drop, the piece travels to the square centre on `settle`, then lands on `land`. An illegal drop sends the piece back to its origin on `settle` with no landing squash, plus the drill-wrong cue where it applies.
 
 **7. Micro-interactions.** Each one shows what changed.
 
@@ -543,7 +553,7 @@ The owner asked for "sounds for moving pieces". The character is **paper and woo
 Rules (spec §11):
 
 - **Original sounds only.** They are synthesised with the Web Audio API, or recorded CC0 samples with every source logged. Never copy sounds from chess.com, Lichess or any other product.
-- **Sound starts only after the first user gesture,** because of browser autoplay rules.
+- **Sound starts only after the first user gesture,** because of browser autoplay rules. A first-view reveal on a cold page load (no gesture yet) therefore plays silently. Its sounds are not queued, and they are not replayed after the first gesture. Sound simply starts with the next sounded event.
 - There is a **global mute and volume control** in the header and in settings, remembered per user. The **default volume is 60%**. Board sounds are on by default, and ambient sounds (the pen scratch) are off by default.
 - **`prefers-reduced-motion` does not mute sound.** Sound has its own setting.
 - **Sound never carries information alone.** Every sound has a visual equivalent.
@@ -716,3 +726,23 @@ The full contrast script was re-run over every pair, and there are 0 failures. T
 - The badge text has an 11px floor, and two-character glyphs are 28% of the square.
 
 **Token values from the brief changed in this round:** `--color-good` and `--color-good-text` (both themes), and night `--color-board-light` and `--color-board-dark`. All are owner-approved (decision A above). No other brief value changed. New tokens: `--dur-draw-small`, `--space-scoresheet-row`, and the springs `land`, `swing-big` and `tilt`.
+
+### 2026-11-21, fix round 3: re-critique ("the right kind of big"), polish
+
+**Important:**
+
+1. **Prologue stagger overflow.** I chose the capped stagger, not grouping inaccuracies. Graph rings stagger by `min(80, 360 / (n − 1))` ms in the full version and `min(40, 360 / (n − 1))` ms in the condensed one, so the prologue always ends by 1200ms and the condensed version by 600ms. Worked examples for `n = 5` and `n = 15` are in choreography 1.
+2. **Climax order.** The top three now play in ascending severity (third, second, worst), so the sequence builds and ends on the worst. The duplicate finale was removed: the last beat doesn't retract and ends on its 500ms hold. The total is now 1200 + 2 × 2060 + 1900 = 7220ms (was about 8000ms). Both timeline tables were updated, and the condensed version got its own table.
+
+**Minor:**
+
+3. Each beat's 0–160ms row now swings the eval bar to the pre-move value on `swing`.
+4. A `2xs` step (11/14, `opsz` 11) is used only by the badge text floor and the eval bar label. The eval bar was removed from the `xs` row.
+5. A ring's 420ms is split by arc, 398ms for 0–360° and 22ms for 360–380° on the un-eased timeline, with one `--ease-pen` progress driving both mask segments (M2 and the climax table). I also found that every head and badge time had been computed linearly. With `--ease-pen`, a shaft reaches 85% at 63% of its duration, so the heads, the badge times (540 standalone, 1400 in the climax, 400 condensed) and the hold (now 500ms) were corrected. Reference 2's frames now use eased progress, with matching captions.
+6. The drag shadow lives on its own layer, and only its opacity animates. `box-shadow` is never animated.
+7. Landing is a non-uniform squash (knight: scaleX 1.02, scaleY 0.97, origin at the base), springing back on `land` with a real rebound. Squash amounts are now per piece in the mass table.
+8. Skip sits above the board, right-aligned in the board column's header row.
+9. Overshoots corrected: `settle` 0.06%, `swing` 0.04% and `land` 24%. The piece-set ADR is numbered **0039**: renamed to `docs/decisions/0039-piece-set.md` and listed in `docs/decisions/README.md`.
+10. Sound: a cold-load first-view reveal is silent (autoplay), and its sounds are not replayed after the first gesture.
+
+**Token values from the brief changed in this round:** none. New: the `2xs` type step.

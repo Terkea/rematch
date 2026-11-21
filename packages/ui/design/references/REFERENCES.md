@@ -32,6 +32,7 @@ Inspired by: Lichess studies with drawn shapes, https://lichess.org/study (colou
 - **Take:** colour equals meaning. In our system, red pen is the mistake, green is the better move or the punishment, and pencil is a plan.
 - **Don't copy:** uniform, translucent, constant-width strokes. The top-left pair shows the difference at thumbnail size: a mechanical circle and arrow next to ours, which is a tilted, tapered spiral with an unequal two-stroke head on a sheet halo.
 - **Round 2:** rings are ellipses with rx/ry ≈ 1.12, and the large hand-drawn arrow reaches its ring and shows its bow.
+- **Round 3:** the draw-sequence frames use `--ease-pen` progress, with the 398 / 22ms arc split stated in the captions.
 - **Also shown:** the severity scale (blunder, mistake, inaccuracy, good move, brilliant) with the glyph-badge and head-shape redundancy; the marks in day and night; and the draw sequence at 200, 360, 520 and 720ms.
 
 ## 3. The ruled scoresheet and red corrections
@@ -70,7 +71,7 @@ Three candidates whose licences allow shipping in a closed-source commercial web
 | Chessnut (option) | Alexis Luengas | Apache-2.0 (`LICENSE.txt` in the repo) | https://github.com/LexLuengas/chessnut-pieces (also in `lichess-org/lila`, `public/piece/chessnut`) | Clean and modern, with heavier fills, and it recolours well. Rounder and more toy-like, and its fills dominate our low-contrast squares. The NOTICE and licence go on `/licenses`. |
 | RhosGFX (not offered) | RhosGFX | CC0 1.0 | `lichess-org/lila`, `public/piece/rhosgfx` (licence listed in lila's `COPYING.md`) | The freest licence, but a multi-colour illustration set in warm orange and clay. It collides with `B1` and would need a full redraw to fit the palette. |
 
-The decision record is `docs/decisions/ADR-WEB-n-piece-set.md` (Accepted). Settings, recolouring rules and the licence gate are in DESIGN.md, "Piece sets".
+The decision record is `docs/decisions/0039-piece-set.md` (Accepted). Settings, recolouring rules and the licence gate are in DESIGN.md, "Piece sets".
 
 ## Regenerating
 

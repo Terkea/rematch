@@ -1,7 +1,7 @@
-# ADR-WEB-n. Piece set
+# 0039. Piece set: Cburnett by default, Chessnut as an option
 
 Date: 2026-11-21
-Status: Accepted (owner decision, 2026-11-21; the controller assigns the number)
+Status: Accepted (owner decision, 2026-11-21)
 
 ## Context
 
