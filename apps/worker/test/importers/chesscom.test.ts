@@ -115,6 +115,25 @@ describe("fetchChesscomGames", () => {
     expect(daily?.platformGameId).toBe("900000000002");
   });
 
+  it("maps 1/259200 to daily with base 259200", async () => {
+    const g = { ...(month.games[5] as RawGame), time_control: "1/259200" };
+    const { client } = fakeClient({ [novUrl]: [g] });
+    const [r] = await collect(fetchChesscomGames(client, "hikaru", { max: 1 }));
+    expect(r).toMatchObject({ timeClass: "daily", baseSeconds: 259200, incrementSeconds: 0 });
+  });
+
+  it("skips games with an unparseable time_control", async () => {
+    const bad = {
+      ...(month.games[0] as RawGame),
+      time_control: "-",
+      url: "https://www.chess.com/game/live/777",
+    };
+    const { client } = fakeClient({ [novUrl]: [bad, month.games[1] as RawGame] });
+    const games = await collect(fetchChesscomGames(client, "hikaru", { max: 5 }));
+    expect(games.map((g) => g.platformGameId)).not.toContain("777");
+    expect(games.every((g) => g.timeClass !== "daily")).toBe(true);
+  });
+
   it("takes result and metadata from the PGN", async () => {
     const { client } = fakeClient();
     const games = await collect(fetchChesscomGames(client, "hikaru"));

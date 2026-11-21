@@ -24,11 +24,12 @@ interface LichessGame {
   clock?: { initial: number; increment: number };
 }
 
-const DRAW_STATUSES = new Set(["draw", "stalemate"]);
+const DRAW_STATUSES = new Set(["draw", "stalemate", "outoftime"]);
 
 function toResult(g: LichessGame): NormalizedGame["result"] {
   if (g.winner === "white") return "1-0";
   if (g.winner === "black") return "0-1";
+  // outoftime without a winner means timeout vs insufficient material: a draw.
   if (g.status && DRAW_STATUSES.has(g.status)) return "1/2-1/2";
   return "*";
 }
@@ -86,6 +87,8 @@ export async function* fetchLichessGames(
 
   for await (const g of client.getNdjson<LichessGame>(url, { headers })) {
     if (g.variant && g.variant !== "standard") continue;
+    if (g.status === "aborted" || g.status === "noStart") continue;
+    if (!g.pgn) continue;
     yield {
       platform: "lichess",
       platformGameId: g.id,

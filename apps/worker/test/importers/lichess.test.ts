@@ -89,18 +89,41 @@ describe("fetchLichessGames", () => {
 
   it("derives result from winner/status", async () => {
     const base = fixture[0] as Raw;
-    const mk = (id: string, patch: Raw): Raw => {
+    const cases: [string, string | undefined, string][] = [
+      ["mate", "white", "1-0"],
+      ["mate", "black", "0-1"],
+      ["resign", "white", "1-0"],
+      ["resign", "black", "0-1"],
+      ["outoftime", "white", "1-0"],
+      ["outoftime", "black", "0-1"],
+      ["timeout", "white", "1-0"],
+      ["timeout", "black", "0-1"],
+      ["draw", undefined, "1/2-1/2"],
+      ["stalemate", undefined, "1/2-1/2"],
+      ["outoftime", undefined, "1/2-1/2"],
+      ["started", undefined, "*"],
+    ];
+    const lines = cases.map(([status, winner], i): Raw => {
       const { winner: _w, ...rest } = base;
-      return { ...rest, id, ...patch };
-    };
+      return { ...rest, id: `r${i}`, status, ...(winner ? { winner } : {}) };
+    });
+    const { client } = fakeClient(lines);
+    const games = await collect(fetchLichessGames(client, "x"));
+    expect(games.map((g) => g.result)).toEqual(cases.map((c) => c[2]));
+  });
+
+  it("skips aborted, noStart and pgn-less games", async () => {
+    const base = fixture[0] as Raw;
+    const { pgn: _p, ...noPgn } = base;
     const { client } = fakeClient([
-      mk("a", { winner: "black" }),
-      mk("b", { status: "draw" }),
-      mk("c", { status: "stalemate" }),
-      mk("d", { status: "started" }),
+      { ...base, id: "ab", status: "aborted" },
+      { ...base, id: "ns", status: "noStart" },
+      { ...noPgn, id: "np" },
+      { ...base, id: "ep", pgn: "" },
+      { ...base, id: "ok" },
     ]);
     const games = await collect(fetchLichessGames(client, "x"));
-    expect(games.map((g) => g.result)).toEqual(["0-1", "1/2-1/2", "1/2-1/2", "*"]);
+    expect(games.map((g) => g.platformGameId)).toEqual(["ok"]);
   });
 
   it("maps correspondence games to daily with null clocks", async () => {

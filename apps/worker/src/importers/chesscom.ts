@@ -32,15 +32,15 @@ function toResult(pgn: string): NormalizedGame["result"] {
 
 function timing(tc: string): {
   timeClass: TimeClass;
-  baseSeconds: number | null;
-  incrementSeconds: number | null;
-} {
+  baseSeconds: number;
+  incrementSeconds: number;
+} | null {
   const daily = /^1\/(\d+)$/.exec(tc);
   if (daily?.[1]) {
     return { timeClass: "daily", baseSeconds: Number(daily[1]), incrementSeconds: 0 };
   }
   const m = /^(\d+)(?:\+(\d+))?$/.exec(tc);
-  if (!m?.[1]) return { timeClass: "daily", baseSeconds: null, incrementSeconds: null };
+  if (!m?.[1]) return null;
   const base = Number(m[1]);
   const inc = Number(m[2] ?? 0);
   return {
@@ -60,13 +60,20 @@ function openingName(pgn: string): string | null {
   return (cut === -1 ? words : words.slice(0, cut)).join(" ") || null;
 }
 
-function normalize(g: ChesscomGame): NormalizedGame {
+function normalize(g: ChesscomGame): NormalizedGame | null {
+  const t = timing(g.time_control);
+  if (!t) {
+    console.warn(
+      `chesscom: skipping game with unparseable time_control "${g.time_control}": ${g.url}`,
+    );
+    return null;
+  }
   return {
     platform: "chesscom",
     platformGameId: g.url.split("/").filter(Boolean).pop() ?? g.url,
     pgn: g.pgn,
     playedAt: new Date(g.end_time * 1000),
-    ...timing(g.time_control),
+    ...t,
     rated: g.rated ?? false,
     white: { name: g.white.username, rating: g.white.rating ?? null },
     black: { name: g.black.username, rating: g.black.rating ?? null },
@@ -100,7 +107,9 @@ export async function* fetchChesscomGames(
     for (const g of ordered) {
       if (sinceMs !== undefined && g.end_time * 1000 < sinceMs) continue;
       if (g.rules && g.rules !== "chess") continue;
-      yield normalize(g);
+      const n = normalize(g);
+      if (!n) continue;
+      yield n;
       yielded++;
       if (opts.max !== undefined && yielded >= opts.max) return;
     }
