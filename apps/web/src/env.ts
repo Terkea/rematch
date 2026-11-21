@@ -42,7 +42,6 @@ const schema = z.object({
   CHESSCOM_API_BASE_URL: z.string().default("https://api.chess.com"),
   CHESSCOM_ENABLED: flag,
   CHESSCOM_OAUTH_ENABLED: flag,
-  CONTACT_EMAIL: z.string().min(1),
   LAB_ENABLED: flag,
   INVITE_ONLY: defaultOn,
   INVITE_ALLOWLIST: emailList,

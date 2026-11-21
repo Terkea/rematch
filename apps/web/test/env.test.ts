@@ -5,7 +5,6 @@ const base = {
   DATABASE_URL: "postgres://postgres:postgres@localhost:5432/chess",
   REDIS_URL: "redis://localhost:6379",
   BETTER_AUTH_SECRET: "test-secret-test-secret-test-secret-1234",
-  CONTACT_EMAIL: "dev@example.invalid",
 };
 
 describe("getEnv", () => {
