@@ -16,7 +16,6 @@ import {
   settleFor,
   spring,
   stagger,
-  useAnimate,
   useReducedMotion,
 } from "@ci/ui/motion";
 import { type CSSProperties, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
@@ -232,15 +231,17 @@ function quad(a: Pt, c: Pt, b: Pt, steps = 24): Pt[] {
   return pts;
 }
 
-// The pen arrow of the played move: bowed shaft, open two-stroke head with unequal strokes.
-function arrowGeometry(fromSq: string, toSq: string) {
+// The pen arrow of the played move: bowed shaft, open two-stroke head with unequal strokes. A
+// ringed target ends the shaft 46% short, so the head meets the ring's outer edge (Task 10).
+function arrowGeometry(fromSq: string, toSq: string, ringed: boolean) {
   const a = centre(fromSq);
   const b = centre(toSq);
   const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
   const ux = (b[0] - a[0]) / len;
   const uy = (b[1] - a[1]) / len;
   const start: Pt = [a[0] + ux * 0.22 * SQ, a[1] + uy * 0.22 * SQ];
-  const end: Pt = [b[0] - ux * 0.16 * SQ, b[1] - uy * 0.16 * SQ];
+  const short = ringed ? 0.46 : 0.16;
+  const end: Pt = [b[0] - ux * short * SQ, b[1] - uy * short * SQ];
   const bow = 0.03 * len;
   const ctrl: Pt = [(start[0] + end[0]) / 2 - uy * bow, (start[1] + end[1]) / 2 + ux * bow];
   const shaft = quad(start, ctrl, end);
@@ -298,6 +299,7 @@ function PenStroke({
   maskWidth,
   reduced,
   className = "fill-pen",
+  halo = true,
 }: {
   segments: Pt[][];
   shape: string;
@@ -308,6 +310,8 @@ function PenStroke({
   maskWidth: number;
   reduced: boolean;
   className?: string;
+  /** The 2px `sheet` halo (the halo rule). Off only where the mark already holds 3:1 alone. */
+  halo?: boolean;
 }) {
   const id = useId().replace(/:/g, "");
   const paths = useRef<(SVGPathElement | null)[]>([]);
@@ -370,7 +374,7 @@ function PenStroke({
         <path
           d={shape}
           className={`${className} stroke-sheet`}
-          strokeWidth={4}
+          strokeWidth={halo ? 4 : 0}
           paintOrder="stroke"
           strokeLinejoin="round"
         />
@@ -427,50 +431,108 @@ const badgeText: CSSProperties = {
   letterSpacing: "var(--tracking-glyph)",
 };
 
+const pieceKinds = {
+  p: "pawn",
+  n: "knight",
+  b: "bishop",
+  r: "rook",
+  q: "queen",
+  k: "king",
+} as const;
+
+// Knights arc (DESIGN.md "Physical feel", Task 6 fix round 2): a knight jumps. Over its travel its
+// lift grows by these amounts at the midpoint, along sin(π × travel progress); other pieces slide.
+const KNIGHT_ARC = { scale: 0.08, rise: 0.2 } as const; // rise in squares
+
 function Board({ reduced, className }: { reduced: boolean; className?: string }) {
-  const [scope, animateIn] = useAnimate();
+  const travelRef = useRef<SVGGElement>(null);
+  const liftRef = useRef<SVGGElement>(null);
   const before = parseFen(prevPly.fenAfter).filter((p) => p.sq !== from);
   const mover = must(parseFen(prevPly.fenAfter).find((p) => p.sq === from));
   const [fx, fy] = sqXY(from);
   const [tx, ty] = sqXY(to);
-  const kind = ({ p: "pawn", n: "knight", b: "bishop", r: "rook", q: "queen", k: "king" } as const)[
-    mover.code.toLowerCase() as Kind
-  ];
+  const dx = tx - fx;
+  const dy = ty - fy;
+  const kind = pieceKinds[mover.code.toLowerCase() as Kind];
   const w = pieceWeight[kind];
+  const arc = kind === "knight";
 
+  // Lift, travel and land (DESIGN.md "Physical feel"), driven imperatively so the knight's arc can
+  // follow the travel spring's own progress. Transform only (M9).
   useEffect(() => {
     if (reduced) return;
+    const travel = travelRef.current;
+    const lift = liftRef.current;
+    if (!travel || !lift) return;
+    const pose = { x: 0, y: 0, s: 1, sx: 1, sy: 1, ly: 0 };
+    const paint = () => {
+      travel.style.transform = `translate(${pose.x}px, ${pose.y}px)`;
+      lift.style.transform = `translateY(${pose.ly}px) scale(${pose.s * pose.sx}, ${pose.s * pose.sy})`;
+    };
+    paint();
+    const running: { stop: () => void }[] = [];
     const timers: ReturnType<typeof setTimeout>[] = [];
-    const at = (ms: number, fn: () => void) => timers.push(setTimeout(fn, ms));
+    const at = (msAt: number, fn: () => void) => timers.push(setTimeout(fn, msAt));
     at(T.lift, () =>
-      animateIn(
-        "[data-lift]",
-        { scale: w.lift, y: -4 },
-        { duration: dur.instant, ease: [...ease.out] },
+      running.push(
+        animate(0, 1, {
+          duration: dur.instant,
+          ease: [...ease.out],
+          onUpdate: (p) => {
+            pose.s = 1 + (w.lift - 1) * p;
+            pose.ly = -4 * p;
+            paint();
+          },
+        }),
       ),
     );
-    at(T.travel, () => animateIn("[data-travel]", { x: tx - fx, y: ty - fy }, settleFor(kind)));
-    at(T.contact, async () => {
-      await animateIn(
-        "[data-lift]",
-        { scale: 1, y: 0, scaleX: w.squash.scaleX, scaleY: w.squash.scaleY },
-        { duration: 0 },
+    at(T.travel, () =>
+      running.push(
+        animate(0, 1, {
+          ...settleFor(kind),
+          onUpdate: (p) => {
+            const hop = arc ? Math.sin(Math.PI * Math.min(1, Math.max(0, p))) : 0;
+            pose.x = dx * p;
+            pose.y = dy * p;
+            pose.s = w.lift + KNIGHT_ARC.scale * hop;
+            pose.ly = -4 - KNIGHT_ARC.rise * SQ * hop;
+            paint();
+          },
+        }),
+      ),
+    );
+    at(T.contact, () => {
+      for (const r of running) r.stop();
+      Object.assign(pose, { x: dx, y: dy, s: 1, ly: 0, sx: w.squash.scaleX, sy: w.squash.scaleY });
+      paint();
+      running.push(
+        animate(0, 1, {
+          ...spring.land,
+          onUpdate: (p) => {
+            pose.sx = w.squash.scaleX + (1 - w.squash.scaleX) * p;
+            pose.sy = w.squash.scaleY + (1 - w.squash.scaleY) * p;
+            paint();
+          },
+        }),
       );
-      animateIn("[data-lift]", { scaleX: 1, scaleY: 1 }, spring.land);
     });
-    return () => timers.forEach(clearTimeout);
-  }, [reduced, animateIn, w, kind, fx, fy, tx, ty]);
+    return () => {
+      for (const t of timers) clearTimeout(t);
+      for (const r of running) r.stop();
+    };
+  }, [reduced, w, kind, arc, dx, dy]);
 
   const ring = ringPoints(...centre(to), 1.12 * 0.38 * SQ, 0.38 * SQ, -10, 2.5 * S);
-  const arrow = arrowGeometry(from, to);
+  const arrow = arrowGeometry(from, to, true);
   const [bx, by] = sqXY(to);
   const r = 0.2 * SQ;
-  const bcx = bx + SQ - 1 - r;
+  // The badge moves to the top-left corner when the arrow arrives from the right (Task 10 ruling).
+  const fromRight = centre(from)[0] > centre(to)[0];
+  const bcx = fromRight ? bx + 1 + r : bx + SQ - 1 - r;
   const bcy = by + 1 + r;
 
   return (
     <svg
-      ref={scope}
       viewBox={`0 0 ${8 * SQ} ${8 * SQ}`}
       className={`block aspect-square overflow-visible ${className ?? ""}`}
       role="img"
@@ -514,11 +576,14 @@ function Board({ reduced, className }: { reduced: boolean; className?: string })
         );
       })}
       <g transform={`translate(${fx} ${fy})`}>
-        <motion.g data-travel style={reduced ? { x: tx - fx, y: ty - fy } : undefined}>
-          <motion.g data-lift style={{ originX: 0.5, originY: 0.9 }}>
+        <g
+          ref={travelRef}
+          style={reduced ? { transform: `translate(${dx}px, ${dy}px)` } : undefined}
+        >
+          <g ref={liftRef} style={{ transformBox: "fill-box", transformOrigin: "50% 90%" }}>
             <Piece code={mover.code} />
-          </motion.g>
-        </motion.g>
+          </g>
+        </g>
       </g>
       <PenStroke
         reduced={reduced}

@@ -17,7 +17,6 @@ import {
   settleFor,
   spring,
   stagger,
-  useAnimate,
   useReducedMotion,
 } from "@ci/ui/motion";
 import { type CSSProperties, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
@@ -233,15 +232,17 @@ function quad(a: Pt, c: Pt, b: Pt, steps = 24): Pt[] {
   return pts;
 }
 
-// The pen arrow of the played move: bowed shaft, open two-stroke head with unequal strokes.
-function arrowGeometry(fromSq: string, toSq: string) {
+// The pen arrow of the played move: bowed shaft, open two-stroke head with unequal strokes. A
+// ringed target ends the shaft 46% short, so the head meets the ring's outer edge (Task 10).
+function arrowGeometry(fromSq: string, toSq: string, ringed: boolean) {
   const a = centre(fromSq);
   const b = centre(toSq);
   const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
   const ux = (b[0] - a[0]) / len;
   const uy = (b[1] - a[1]) / len;
   const start: Pt = [a[0] + ux * 0.22 * SQ, a[1] + uy * 0.22 * SQ];
-  const end: Pt = [b[0] - ux * 0.16 * SQ, b[1] - uy * 0.16 * SQ];
+  const short = ringed ? 0.46 : 0.16;
+  const end: Pt = [b[0] - ux * short * SQ, b[1] - uy * short * SQ];
   const bow = 0.03 * len;
   const ctrl: Pt = [(start[0] + end[0]) / 2 - uy * bow, (start[1] + end[1]) / 2 + ux * bow];
   const shaft = quad(start, ctrl, end);
@@ -299,6 +300,7 @@ function PenStroke({
   maskWidth,
   reduced,
   className = "fill-pen",
+  halo = true,
 }: {
   segments: Pt[][];
   shape: string;
@@ -309,6 +311,8 @@ function PenStroke({
   maskWidth: number;
   reduced: boolean;
   className?: string;
+  /** The 2px `sheet` halo (the halo rule). Off only where the mark already holds 3:1 alone. */
+  halo?: boolean;
 }) {
   const id = useId().replace(/:/g, "");
   const paths = useRef<(SVGPathElement | null)[]>([]);
@@ -371,7 +375,7 @@ function PenStroke({
         <path
           d={shape}
           className={`${className} stroke-sheet`}
-          strokeWidth={4}
+          strokeWidth={halo ? 4 : 0}
           paintOrder="stroke"
           strokeLinejoin="round"
         />
@@ -428,50 +432,108 @@ const badgeText: CSSProperties = {
   letterSpacing: "var(--tracking-glyph)",
 };
 
+const pieceKinds = {
+  p: "pawn",
+  n: "knight",
+  b: "bishop",
+  r: "rook",
+  q: "queen",
+  k: "king",
+} as const;
+
+// Knights arc (DESIGN.md "Physical feel", Task 6 fix round 2): a knight jumps. Over its travel its
+// lift grows by these amounts at the midpoint, along sin(π × travel progress); other pieces slide.
+const KNIGHT_ARC = { scale: 0.08, rise: 0.2 } as const; // rise in squares
+
 function Board({ reduced, className }: { reduced: boolean; className?: string }) {
-  const [scope, animateIn] = useAnimate();
+  const travelRef = useRef<SVGGElement>(null);
+  const liftRef = useRef<SVGGElement>(null);
   const before = parseFen(prevPly.fenAfter).filter((p) => p.sq !== from);
   const mover = must(parseFen(prevPly.fenAfter).find((p) => p.sq === from));
   const [fx, fy] = sqXY(from);
   const [tx, ty] = sqXY(to);
-  const kind = ({ p: "pawn", n: "knight", b: "bishop", r: "rook", q: "queen", k: "king" } as const)[
-    mover.code.toLowerCase() as Kind
-  ];
+  const dx = tx - fx;
+  const dy = ty - fy;
+  const kind = pieceKinds[mover.code.toLowerCase() as Kind];
   const w = pieceWeight[kind];
+  const arc = kind === "knight";
 
+  // Lift, travel and land (DESIGN.md "Physical feel"), driven imperatively so the knight's arc can
+  // follow the travel spring's own progress. Transform only (M9).
   useEffect(() => {
     if (reduced) return;
+    const travel = travelRef.current;
+    const lift = liftRef.current;
+    if (!travel || !lift) return;
+    const pose = { x: 0, y: 0, s: 1, sx: 1, sy: 1, ly: 0 };
+    const paint = () => {
+      travel.style.transform = `translate(${pose.x}px, ${pose.y}px)`;
+      lift.style.transform = `translateY(${pose.ly}px) scale(${pose.s * pose.sx}, ${pose.s * pose.sy})`;
+    };
+    paint();
+    const running: { stop: () => void }[] = [];
     const timers: ReturnType<typeof setTimeout>[] = [];
-    const at = (ms: number, fn: () => void) => timers.push(setTimeout(fn, ms));
+    const at = (msAt: number, fn: () => void) => timers.push(setTimeout(fn, msAt));
     at(T.lift, () =>
-      animateIn(
-        "[data-lift]",
-        { scale: w.lift, y: -4 },
-        { duration: dur.instant, ease: [...ease.out] },
+      running.push(
+        animate(0, 1, {
+          duration: dur.instant,
+          ease: [...ease.out],
+          onUpdate: (p) => {
+            pose.s = 1 + (w.lift - 1) * p;
+            pose.ly = -4 * p;
+            paint();
+          },
+        }),
       ),
     );
-    at(T.travel, () => animateIn("[data-travel]", { x: tx - fx, y: ty - fy }, settleFor(kind)));
-    at(T.contact, async () => {
-      await animateIn(
-        "[data-lift]",
-        { scale: 1, y: 0, scaleX: w.squash.scaleX, scaleY: w.squash.scaleY },
-        { duration: 0 },
+    at(T.travel, () =>
+      running.push(
+        animate(0, 1, {
+          ...settleFor(kind),
+          onUpdate: (p) => {
+            const hop = arc ? Math.sin(Math.PI * Math.min(1, Math.max(0, p))) : 0;
+            pose.x = dx * p;
+            pose.y = dy * p;
+            pose.s = w.lift + KNIGHT_ARC.scale * hop;
+            pose.ly = -4 - KNIGHT_ARC.rise * SQ * hop;
+            paint();
+          },
+        }),
+      ),
+    );
+    at(T.contact, () => {
+      for (const r of running) r.stop();
+      Object.assign(pose, { x: dx, y: dy, s: 1, ly: 0, sx: w.squash.scaleX, sy: w.squash.scaleY });
+      paint();
+      running.push(
+        animate(0, 1, {
+          ...spring.land,
+          onUpdate: (p) => {
+            pose.sx = w.squash.scaleX + (1 - w.squash.scaleX) * p;
+            pose.sy = w.squash.scaleY + (1 - w.squash.scaleY) * p;
+            paint();
+          },
+        }),
       );
-      animateIn("[data-lift]", { scaleX: 1, scaleY: 1 }, spring.land);
     });
-    return () => timers.forEach(clearTimeout);
-  }, [reduced, animateIn, w, kind, fx, fy, tx, ty]);
+    return () => {
+      for (const t of timers) clearTimeout(t);
+      for (const r of running) r.stop();
+    };
+  }, [reduced, w, kind, arc, dx, dy]);
 
   const ring = ringPoints(...centre(to), 1.12 * 0.38 * SQ, 0.38 * SQ, -10, 2.5 * S);
-  const arrow = arrowGeometry(from, to);
+  const arrow = arrowGeometry(from, to, true);
   const [bx, by] = sqXY(to);
   const r = 0.2 * SQ;
-  const bcx = bx + SQ - 1 - r;
+  // The badge moves to the top-left corner when the arrow arrives from the right (Task 10 ruling).
+  const fromRight = centre(from)[0] > centre(to)[0];
+  const bcx = fromRight ? bx + 1 + r : bx + SQ - 1 - r;
   const bcy = by + 1 + r;
 
   return (
     <svg
-      ref={scope}
       viewBox={`0 0 ${8 * SQ} ${8 * SQ}`}
       className={`block aspect-square overflow-visible ${className ?? ""}`}
       role="img"
@@ -515,11 +577,14 @@ function Board({ reduced, className }: { reduced: boolean; className?: string })
         );
       })}
       <g transform={`translate(${fx} ${fy})`}>
-        <motion.g data-travel style={reduced ? { x: tx - fx, y: ty - fy } : undefined}>
-          <motion.g data-lift style={{ originX: 0.5, originY: 0.9 }}>
+        <g
+          ref={travelRef}
+          style={reduced ? { transform: `translate(${dx}px, ${dy}px)` } : undefined}
+        >
+          <g ref={liftRef} style={{ transformBox: "fill-box", transformOrigin: "50% 90%" }}>
             <Piece code={mover.code} />
-          </motion.g>
-        </motion.g>
+          </g>
+        </g>
       </g>
       <PenStroke
         reduced={reduced}
@@ -619,8 +684,29 @@ function Replay({ onClick }: { onClick: () => void }) {
 // ---------------------------------------------------------------------------------------------
 
 // The scoresheet opens on the ringed move, so the link rises from its ring straight into the board.
-const sheetRows = rows.filter((r) => r.n >= keyNo);
+// It ends before the next blunder, so no second `??` competes with the key move.
+const sheetRows: Row[] = [];
+for (const row of rows.filter((r) => r.n >= keyNo)) {
+  const other = [row.white, row.black].some(
+    (p) => p && p.ply !== keyPly.ply && p.judgement === "blunder",
+  );
+  if (other) break;
+  sheetRows.push(row);
+}
 const toMove = keyPly.color === "white" ? "Black" : "White";
+
+// Win chance on Lichess's scale (DESIGN.md "Eval graph"), from White's point of view.
+const winChance = (p: { cpWhite: number | null; mateWhite: number | null }) => {
+  if (p.mateWhite !== null) return p.mateWhite > 0 ? 1 : -1;
+  const wc = 2 / (1 + Math.exp(-0.00368208 * (p.cpWhite ?? 0))) - 1;
+  return Math.min(1, Math.max(-1, wc));
+};
+const wcBefore = winChance(prevPly);
+const wcAfter = winChance(keyPly);
+// White's share of the eval bar, before and after the move. A change of 0.3 or more swings big.
+const shareBefore = (wcBefore + 1) / 2;
+const shareAfter = (wcAfter + 1) / 2;
+const barSpring = Math.abs(wcAfter - wcBefore) >= 0.3 ? spring.swingBig : spring.swing;
 
 function cubic(a: Pt, b: Pt, c: Pt, d: Pt, steps = 48): Pt[] {
   const pts: Pt[] = [];
@@ -643,33 +729,295 @@ const boxOf = (el: Element | null, root: Element | null): Box | null => {
   return { x: a.left - r.left, y: a.top - r.top, w: a.width, h: a.height };
 };
 
+/** Tracks an element's box. */
+function useMeasure<E extends HTMLElement>() {
+  const ref = useRef<E>(null);
+  const [size, setSize] = useState({ width: 0, height: 0 });
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const measure = () => setSize({ width: el.offsetWidth, height: el.offsetHeight });
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return [ref, size] as const;
+}
+
+/** Runs `fn` once at a beat time, unless motion is reduced. */
+function useAt(reduced: boolean, atMs: number, fn: () => (() => void) | undefined) {
+  const fnRef = useRef(fn);
+  fnRef.current = fn;
+  useEffect(() => {
+    if (reduced) return;
+    let stop: (() => void) | undefined;
+    const timer = setTimeout(() => {
+      stop = fnRef.current();
+    }, atMs);
+    return () => {
+      clearTimeout(timer);
+      stop?.();
+    };
+  }, [reduced, atMs]);
+}
+
 /**
- * The scoresheet ring (the board stroke at 0.8×, fitted to the word: rx = w/2 + 10, ry 14) and the
- * link mark: one pen stroke from that ring up through the gutter into the board, over the empty
- * squares below the target, stopping short of the board ring.
+ * The eval bar (DESIGN.md "Eval bar"): 16px and vertical beside the board from 768px, 8px and
+ * horizontal above it on a phone. At contact it swings to the new value, on `swing-big` when the
+ * win chance moves by 0.3 or more, so it visibly overshoots and comes back.
  */
-function SheetMarks({ reduced, word, board }: { reduced: boolean; word: Box; board: Box }) {
+function EvalBar({ reduced, vertical }: { reduced: boolean; vertical: boolean }) {
+  const whiteRef = useRef<HTMLDivElement>(null);
+  useAt(reduced, T.contact, () => {
+    const el = whiteRef.current;
+    if (!el) return undefined;
+    const run = animate(
+      el,
+      vertical ? { scaleY: [shareBefore, shareAfter] } : { scaleX: [shareBefore, shareAfter] },
+      barSpring,
+    );
+    return () => run.stop();
+  });
+  const start = reduced ? shareAfter : shareBefore;
+  const label = (value: string, show: "before" | "after", whiteWins: boolean) => {
+    const motionProps =
+      show === "after"
+        ? appear(reduced, T.contact)
+        : {
+            initial: { opacity: reduced ? 0 : 1 },
+            animate: { opacity: 0 },
+            transition: { delay: reduced ? 0 : sec(T.contact), duration: 0 },
+          };
+    if (vertical) {
+      // Inside the bar at the winning side's end, in the losing side's fill colour.
+      return (
+        <motion.span
+          className={`absolute left-0 w-full rotate-180 text-center font-serif text-2xs font-semibold tabular-nums lining-nums [writing-mode:vertical-rl] ${
+            whiteWins ? "bottom-1 text-ink dark:text-well" : "top-1 text-sheet dark:text-ink"
+          }`}
+          {...motionProps}
+        >
+          {value}
+        </motion.span>
+      );
+    }
+    return (
+      <motion.span
+        className="absolute top-1/2 right-0 -translate-y-1/2 font-serif text-2xs font-semibold tabular-nums lining-nums"
+        {...motionProps}
+      >
+        {value}
+      </motion.span>
+    );
+  };
+  return (
+    <div
+      className={vertical ? "relative h-(--board-size) w-4 shrink-0" : "relative h-3.5 w-full pr-9"}
+      role="img"
+      aria-label={`Evaluation ${keyEval} after ${prefix} ${keyPly.san}, ${prevEval} before it.`}
+    >
+      <div
+        className={`relative overflow-hidden rounded-board border border-rule-strong bg-ink dark:bg-well ${
+          vertical ? "size-full" : "top-0.75 h-2 w-full"
+        }`}
+      >
+        <div
+          ref={whiteRef}
+          className={`absolute inset-0 bg-sheet dark:bg-ink ${vertical ? "origin-bottom" : "origin-left"}`}
+          style={{ transform: vertical ? `scaleY(${start})` : `scaleX(${start})` }}
+        />
+        {vertical && label(prevEval, "before", wcBefore >= 0)}
+        {vertical && label(keyEval, "after", wcAfter >= 0)}
+      </div>
+      {!vertical && label(prevEval, "before", wcBefore >= 0)}
+      {!vertical && label(keyEval, "after", wcAfter >= 0)}
+    </div>
+  );
+}
+
+/**
+ * The eval graph and label lane (DESIGN.md "Eval graph"), a lab placeholder at real size: the
+ * win-chance line over the whole game, a pen ring on every marked move (thin for inaccuracies),
+ * the cursor on the move shown, and the key move's label with its leader tick.
+ */
+function EvalGraph({ reduced }: { reduced: boolean }) {
+  const [plotRef, size] = useMeasure<HTMLDivElement>();
+  const cursorRef = useRef<HTMLDivElement>(null);
+  const W = size.width;
+  const H = size.height;
+  const padX = 10;
+  const padY = 9;
+  const n = plies.length;
+  const x = (ply: number) => padX + (ply / n) * Math.max(0, W - 2 * padX);
+  const y = (wc: number) => padY + ((1 - wc) / 2) * Math.max(0, H - 2 * padY);
+  const pts: Pt[] = [[x(0), y(0)], ...plies.map((p): Pt => [x(p.ply), y(winChance(p))])];
+  const zero = y(0);
+  const area = `${line(pts)} L${f2(x(n))} ${f2(zero)} L${f2(x(0))} ${f2(zero)}Z`;
+  const kx = x(keyPly.ply);
+  const ky = y(wcAfter);
+  useAt(reduced, T.contact, () => {
+    const el = cursorRef.current;
+    if (!el) return undefined;
+    const run = animate(el, { x: [0, kx - x(prevPly.ply)] }, spring.swing);
+    return () => run.stop();
+  });
+  const label = `${prefix} ${keyPly.san}${keyGlyph}`;
+  return (
+    <figure className="w-full">
+      <figcaption className="sr-only">
+        White's win chance through the game. {label} took it from {Math.round(shareBefore * 100)}%
+        to {Math.round(shareAfter * 100)}%.
+      </figcaption>
+      {/* Label lane: 22px, never on the line. */}
+      <div className="relative h-5.5" aria-hidden>
+        {W > 0 && (
+          <motion.span
+            className="absolute bottom-0 -translate-x-1/2 font-serif text-sm font-semibold whitespace-nowrap text-pen-text tabular-nums lining-nums"
+            style={{ left: Math.min(Math.max(kx, 44), W - 44) }}
+            initial={reduced ? false : { opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={
+              reduced
+                ? { duration: 0 }
+                : { delay: sec(T.ring) + dur.drawSmall / 2, duration: dur.drawSmall / 2 }
+            }
+          >
+            {prefix}&nbsp;{keyPly.san}
+            <span className="tracking-glyph">{keyGlyph}</span>
+          </motion.span>
+        )}
+      </div>
+      <div ref={plotRef} className="relative h-22 rounded-board bg-well md:h-30">
+        {W > 0 && (
+          <svg className="absolute inset-0 size-full overflow-visible" aria-hidden>
+            <path
+              d={`M${f2(x(0))} ${f2(zero)} L${f2(x(n))} ${f2(zero)}`}
+              className="stroke-rule-strong"
+              strokeWidth={1}
+            />
+            <path d={area} className="fill-ink/10" />
+            <path
+              d={line(pts)}
+              fill="none"
+              className="stroke-ink"
+              strokeWidth={2}
+              strokeLinejoin="round"
+            />
+            {/* Leader tick from the label lane down to the key ring. */}
+            <motion.path
+              d={`M${f2(kx)} -2 L${f2(kx)} ${f2(ky - 10)}`}
+              className="stroke-rule-strong"
+              strokeWidth={1}
+              initial={reduced ? false : { opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={
+                reduced
+                  ? { duration: 0 }
+                  : { delay: sec(T.ring) + dur.drawSmall / 2, duration: dur.drawSmall / 2 }
+              }
+            />
+            {plies.map((p) => {
+              if (!p.judgement) return null;
+              const cx = x(p.ply);
+              const cy = y(winChance(p));
+              const ring = ringPoints(cx, cy, 7 * 1.12, 7, 10, 1);
+              // Pen on `well` holds 4.14:1 on its own, so the small graph rings drop the halo.
+              const scale = p.judgement === "inaccuracy" ? 0.75 : 1;
+              const isKey = p.ply === keyPly.ply;
+              return (
+                <PenStroke
+                  key={p.ply}
+                  reduced={reduced || !isKey}
+                  segments={[ring.main, ring.tail]}
+                  shape={outline(ring.all, scale)}
+                  maskWidth={3.2 * scale + 5}
+                  at={T.ring}
+                  duration={dur.drawSmall}
+                  halo={false}
+                />
+              );
+            })}
+          </svg>
+        )}
+        {/* Cursor: a 1.5px ink rule on the move shown; it steps to the key move at contact. */}
+        {W > 0 && (
+          <div
+            ref={cursorRef}
+            aria-hidden
+            className="absolute inset-y-0 w-[1.5px] bg-ink"
+            style={{
+              left: x(prevPly.ply) - 0.75,
+              transform: reduced ? `translateX(${kx - x(prevPly.ply)}px)` : undefined,
+            }}
+          />
+        )}
+      </div>
+    </figure>
+  );
+}
+
+/**
+ * The scoresheet ring (the board stroke at 0.8×, fitted to the word: rx = w/2 + 10, ry 14) and,
+ * when both ends are in view at T.link, the link mark: one pen stroke from that ring up into the
+ * gutter, along it, and into the board over the empty square below the target (DESIGN.md "Link").
+ */
+function SheetMarks({
+  reduced,
+  link,
+  word,
+  board,
+  well,
+  sheet,
+}: {
+  reduced: boolean;
+  link: boolean;
+  word: Box;
+  board: Box;
+  well: Box;
+  sheet: Box;
+}) {
   const cx = word.x + word.w / 2;
   const cy = word.y + word.h / 2;
   const rx = word.w / 2 + 10;
   const ry = 14;
   const ring = ringPoints(cx, cy, rx, ry, -3, 2.5);
   const sq = board.w / 8;
+  const scale = (0.9 * sq) / 56; // 0.9× the board pen at this square size
   const tx = board.x + (to.charCodeAt(0) - 97 + 0.5) * sq;
   const ty = board.y + (8 - Number(to[1]) + 0.5) * sq;
-  // Leave the ring toward the square, rising steeply first to clear the evaluation beside it.
-  const ang = Math.atan2((ty - cy) / ry, (tx - cx) / rx);
-  const start: Pt = [cx + (rx + 5) * Math.cos(ang), cy + (ry + 5) * Math.sin(ang)];
+  const dir = tx >= cx ? 1 : -1;
+  const sx = cx + dir * 0.35 * rx;
+  const sy = cy - 0.94 * ry - 6;
+  const gy = (well.y + well.h + sheet.y) / 2; // the middle of the gutter
   const end: Pt = [tx, ty + 0.38 * sq + 6];
-  const rise = start[1] - end[1];
-  const link = cubic(
-    start,
-    [start[0], start[1] - rise * 0.55],
-    [end[0], end[1] + rise * 0.45],
-    end,
-  );
-  // The link rule: on a phone, draw it only when both ends fit on screen together.
-  const fits = typeof window === "undefined" || cy + ry - board.y <= window.innerHeight - 32;
+  const r = Math.min(10, Math.abs(tx - sx) / 2);
+  const k = 0.5523; // quarter-circle control distance
+  const path: Pt[] = [
+    ...cubic([sx, sy], [sx, sy], [sx, gy + r], [sx, gy + r], 6),
+    ...cubic(
+      [sx, gy + r],
+      [sx, gy + r - k * r],
+      [sx + dir * (r - k * r), gy],
+      [sx + dir * r, gy],
+      8,
+    ).slice(1),
+    ...cubic(
+      [sx + dir * r, gy],
+      [sx + dir * r, gy],
+      [tx - dir * r, gy],
+      [tx - dir * r, gy],
+      12,
+    ).slice(1),
+    ...cubic(
+      [tx - dir * r, gy],
+      [tx - dir * (r - k * r), gy],
+      [tx, gy - r + k * r],
+      [tx, gy - r],
+      8,
+    ).slice(1),
+    ...cubic([tx, gy - r], [tx, gy - r], end, end, 12).slice(1),
+  ];
   return (
     <svg className="pointer-events-none absolute inset-0 size-full overflow-visible" aria-hidden>
       <PenStroke
@@ -680,13 +1028,13 @@ function SheetMarks({ reduced, word, board }: { reduced: boolean; word: Box; boa
         at={T.ring}
         duration={dur.drawSmall}
       />
-      {fits && (
+      {link && (
         <PenStroke
           reduced={reduced}
-          segments={[link]}
-          shape={outline(link, 0.9)}
-          maskWidth={3.2 * 0.9 + 5}
-          at={T.link}
+          segments={[path]}
+          shape={outline(path, scale)}
+          maskWidth={3.2 * scale + 5}
+          at={0}
           duration={dur.draw}
         />
       )}
@@ -710,16 +1058,68 @@ function KeyMove({ reduced }: { reduced: boolean }) {
   );
 }
 
+/** The link is drawn only when both of its ends are fully in view at T.link (DESIGN.md "Link"). */
+function useLinkInView(rootRef: { current: HTMLDivElement | null }, reduced: boolean) {
+  const [on, setOn] = useState(false);
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    const ends = [
+      root.querySelector("[data-link-word]"),
+      root.querySelector("[data-link-target]"),
+    ].filter((e): e is Element => e !== null);
+    const seen = new Map<Element, boolean>();
+    let due = false;
+    let decided = false;
+    const decide = () => {
+      if (decided || !due || seen.size < ends.length) return;
+      decided = true;
+      setOn(ends.every((e) => seen.get(e)));
+    };
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) seen.set(e.target, e.intersectionRatio >= 0.99);
+        decide();
+      },
+      { threshold: [0, 0.99, 1] },
+    );
+    for (const e of ends) io.observe(e);
+    const timer = setTimeout(
+      () => {
+        due = true;
+        decide();
+      },
+      reduced ? 0 : T.link,
+    );
+    return () => {
+      io.disconnect();
+      clearTimeout(timer);
+    };
+  }, [rootRef, reduced]);
+  return on;
+}
+
+const targetBox: CSSProperties = {
+  left: `${(to.charCodeAt(0) - 97) * 12.5}%`,
+  top: `${(8 - Number(to[1])) * 12.5}%`,
+  width: "12.5%",
+  height: "12.5%",
+};
+
 function Hero({ reduced }: { reduced: boolean }) {
   const rootRef = useRef<HTMLDivElement>(null);
-  const [boxes, setBoxes] = useState<{ word: Box; board: Box } | null>(null);
+  const [boxes, setBoxes] = useState<{ word: Box; board: Box; well: Box; sheet: Box } | null>(null);
+  const link = useLinkInView(rootRef, reduced);
   useLayoutEffect(() => {
     const root = rootRef.current;
     if (!root) return;
     const measure = () => {
-      const word = boxOf(root.querySelector("[data-link-word]"), root);
-      const board = boxOf(root.querySelector("[data-link-board]"), root);
-      setBoxes(word && board ? { word, board } : null);
+      const get = (sel: string) => boxOf(root.querySelector(sel), root);
+      const word = get("[data-link-word]");
+      const board = get("[data-link-board]");
+      const well = get("[data-link-well]");
+      const sheet = get("[data-link-sheet]");
+      setBoxes(word && board && well && sheet ? { word, board, well, sheet } : null);
     };
     measure();
     const ro = new ResizeObserver(measure);
@@ -728,13 +1128,12 @@ function Hero({ reduced }: { reduced: boolean }) {
     return () => ro.disconnect();
   }, []);
 
+  // From lg the left column is the bar, an 8px gap and the board in its 8px well.
+  const cols = "lg:grid-cols-[calc(var(--board-size)+2.5rem)_minmax(0,1fr)] lg:gap-x-8 xl:gap-x-16";
   return (
     <div className="mx-auto max-w-7xl px-(--space-gutter) pt-6 pb-16 md:pt-10">
-      <div
-        ref={rootRef}
-        className="relative grid grid-cols-1 gap-y-6 xl:grid-cols-[var(--board-size)_minmax(0,1fr)] xl:gap-x-16"
-      >
-        <header className="max-w-[60ch] xl:col-start-2 xl:row-start-1">
+      <div ref={rootRef} className={`relative grid grid-cols-1 gap-y-6 ${cols}`}>
+        <header className="max-w-[60ch] lg:col-start-2 lg:row-start-1 lg:self-start">
           <h1 className="font-serif text-3xl font-semibold">{title}</h1>
           <p className="mt-2 text-ink-soft">{context}</p>
           <p className="mt-1 text-ink-soft">
@@ -742,20 +1141,41 @@ function Hero({ reduced }: { reduced: boolean }) {
           </p>
         </header>
 
-        <div data-link-board className="w-(--board-size) xl:col-start-1 xl:row-start-1">
-          <Board reduced={reduced} className="w-(--board-size) rounded-board" />
+        <div className="lg:col-start-1 lg:row-span-2 lg:row-start-1">
+          <div className="mb-2 w-(--board-size) md:hidden">
+            <EvalBar reduced={reduced} vertical={false} />
+          </div>
+          <div className="flex items-start gap-2">
+            <div className="hidden md:mt-2 md:block">
+              <EvalBar reduced={reduced} vertical />
+            </div>
+            <div data-link-well className="md:rounded-board md:bg-well md:p-2">
+              <div data-link-board className="relative w-(--board-size)">
+                <Board reduced={reduced} className="w-(--board-size) rounded-board" />
+                <span
+                  data-link-target
+                  aria-hidden
+                  className="pointer-events-none absolute"
+                  style={targetBox}
+                />
+              </div>
+            </div>
+          </div>
         </div>
 
-        {/* The scoresheet: reference 3's grid, with the columns set off by vertical rules. */}
-        <div className="w-(--board-size) rounded-sheet bg-sheet p-(--space-panel-pad) xl:col-start-1 xl:row-start-2">
-          <table className="w-full table-fixed border-collapse font-serif tabular-nums lining-nums xl:w-auto">
+        {/* The scoresheet: reference 3's grid, with its comment in the sheet's right margin. */}
+        <div
+          data-link-sheet
+          className="rounded-sheet bg-sheet p-(--space-panel-pad) lg:col-span-2 lg:row-start-3 lg:grid lg:grid-cols-[calc(var(--board-size)+2.5rem-var(--space-panel-pad))_minmax(0,1fr)] lg:items-start lg:gap-x-8 xl:gap-x-16"
+        >
+          <table className="w-full table-fixed border-collapse font-serif tabular-nums lining-nums">
             <caption className="sr-only">
               Moves {sheetRows[0]?.n} to {sheetRows.at(-1)?.n}
             </caption>
             <colgroup>
-              <col className="w-14" />
-              <col className="xl:w-52" />
-              <col className="xl:w-52" />
+              <col className="w-10 sm:w-14" />
+              <col />
+              <col />
             </colgroup>
             <thead className="sr-only">
               <tr>
@@ -788,7 +1208,7 @@ function Hero({ reduced }: { reduced: boolean }) {
                       )}
                       <span className="relative">{row.n}</span>
                     </td>
-                    <td className="relative border-r border-rule pl-4 font-semibold">
+                    <td className="relative border-r border-rule pr-2 pl-5 font-semibold">
                       {isKey && (
                         <motion.span
                           aria-hidden
@@ -796,9 +1216,9 @@ function Hero({ reduced }: { reduced: boolean }) {
                           {...appear(reduced, T.select)}
                         />
                       )}
-                      <span className="relative">{cell(row.white, "white")}</span>
+                      <span className="relative whitespace-nowrap">{cell(row.white, "white")}</span>
                     </td>
-                    <td className="relative pl-4 font-semibold">
+                    <td className="relative pr-2 pl-5 font-semibold">
                       {isKey && (
                         <motion.span
                           aria-hidden
@@ -806,24 +1226,28 @@ function Hero({ reduced }: { reduced: boolean }) {
                           {...appear(reduced, T.select)}
                         />
                       )}
-                      <span className="relative">{cell(row.black, "black")}</span>
+                      <span className="relative whitespace-nowrap">{cell(row.black, "black")}</span>
                     </td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
+
+          {/* The margin comment, level with the ringed row (under the rows on narrow screens). */}
+          <motion.p
+            className="mt-4 max-w-[52ch] font-serif-italic text-prose text-pretty text-ink italic lg:mt-0 lg:pt-0.5"
+            {...appear(reduced, T.note)}
+          >
+            {note}
+          </motion.p>
         </div>
 
-        {/* The margin comment, level with the ringed row, or under the rows when it can't fit. */}
-        <motion.p
-          className="max-w-[52ch] font-serif-italic text-prose text-ink italic xl:col-start-2 xl:row-start-2 xl:pt-(--space-panel-pad)"
-          {...appear(reduced, T.note)}
-        >
-          {note}
-        </motion.p>
+        <div className="lg:col-start-2 lg:row-start-2 lg:self-end">
+          <EvalGraph reduced={reduced} />
+        </div>
 
-        {boxes && <SheetMarks reduced={reduced} {...boxes} />}
+        {boxes && <SheetMarks reduced={reduced} link={link} {...boxes} />}
       </div>
     </div>
   );
@@ -836,7 +1260,7 @@ export default function StyleguideHeroA() {
       surface="styleguide-hero"
       variant="a"
       title="Scoresheet margin"
-      rationale="The board heads the scoresheet; the red pen rings the move on its row and on its square, one link stroke ties the two, and the coach's comment sits in the margin."
+      rationale="The board heads the scoresheet; the red pen rings the move on its row and on its square, one link stroke ties the two, the eval bar and graph swing with the move, and the coach's comment sits in the sheet's margin."
     >
       <div className="mx-auto flex max-w-7xl justify-end px-(--space-gutter)">
         <Replay onClick={beat.replay} />

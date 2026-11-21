@@ -311,11 +311,11 @@ Severity comes from the mover's loss of win chance, using the Lichess thresholds
 - **Glyph badge:** a circle of radius 20% of the square in the square's top-right corner (inset 1px), or in its top-left corner when the move's arrow arrives from the right of the target as drawn (the origin's centre is right of the target's in the board's orientation), so the badge never covers the arrowhead, filled `pen` or `good`, with the glyph in `on-ink` Literata 600 (35% of the square for one character, 28% for two, and never below `2xs`, 11px), on a 2px `sheet` halo. A 328px mobile board (41px squares) gives 14px and 11.5px.
 - **Link mark** (controller ruling, Task 6 fix round 1). One pen stroke that ties a move's notation to its square: it runs from the scoresheet ring (or a notation ring) to the board ring of the same move.
   - *Colour:* `pen`, and only when both ends are pen-marked (a ringed `?`/`??` move and its ringed square with its badge). It has no badge and no head.
-  - *Shape:* the variable-width profile under "Pen stroke geometry" at 0.9×, with the `sheet` halo wherever it crosses the board.
-  - *Routing:* never across a text box or an occupied square, and at least 16px from any text and from the viewport edge. It enters the board through the gutter between the board and the text, over empty squares only, and stops short of the board ring.
+  - *Shape:* the variable-width profile under "Pen stroke geometry" at 0.9× of the board pen at the board's current square size, so it scales with the square exactly as the board marks do (0.9 × square / 56 times the profile). It keeps the `sheet` halo wherever it crosses the board.
+  - *Routing:* never across a text box or an occupied square, and at least 16px from any text and from the viewport edge. It enters the board through the gutter between the board and the text, over empty squares only, and stops short of the board ring. When no legal route exists, the link is omitted.
   - *Timing:* it draws after the badge lands, from 1400 to 1820 in the climax (`--dur-draw` with `--ease-pen`), and it retracts with the other marks.
   - *Reduced motion:* it appears fully drawn (M10).
-  - *Budget:* at most one per view, and it counts toward the 12 animating marks (M9). On mobile it is dropped when both ends are not in view together.
+  - *Budget and visibility:* at most one per view, and it counts toward the 12 animating marks (M9). It is drawn only when both ends are fully in view at its start time (an `IntersectionObserver` on both ends, checked at 1400ms, or at once under reduced motion); otherwise it is omitted for that view.
 
 ### Pen stroke geometry
 
@@ -439,6 +439,7 @@ This is what the user should be able to see:
 
 - **Lift and land.** On every move, the piece lifts over `--dur-instant` (uniform scale up to its lift scale from the mass table, y −4px, `--ease-out`). It travels on its `settle` from the mass table. At contact it is set to its landing squash (for a knight, scaleX 1.02 and scaleY 0.97, with `transform-origin: 50% 90%`, its base) at y 0, and `land` springs both axes back to 1. With ζ 0.42 it rebounds past 1 (scaleY about 1.007) before settling, so it is a real squash and stretch, using transform only. The move sound plays on the contact frame.
 - **Momentum.** The eval bar uses `swing-big` for big changes, so it swings past the new value by about 8% and comes back. Stepping quickly through moves carries the spring's velocity from one value to the next.
+- **Knights arc** (controller ruling, Task 6 fix round 2). A knight jumps; every other piece slides. During its travel the knight's lift grows into a raised arc driven by the travel spring's own progress `p`: scale = lift scale + 0.08 × sin(πp), and y = −4px − 0.2 square × sin(πp). At the midpoint a knight is at 1.13 and about 0.2 of a square above its line, so it visibly passes over the pieces it jumps (in the reference blunder, between d3's queen and e3's bishop) instead of sliding through them. Contact is unchanged: squash, then `land`.
 - **Impact.** A capture knocks the captured piece off in the mover's direction (choreography 6).
 - **Weight.** The mass table: a queen lands harder than a pawn.
 
@@ -629,29 +630,33 @@ Six annotated references live in `design/references/`. `REFERENCES.md` there say
 
 ## Styleguide hero (for `/styleguide`)
 
-The first thing on `/styleguide` is the system doing its job on a real game, not a swatch grid:
+The first thing on `/styleguide` is the system doing its job on a real game, not a swatch grid. The scoresheet sits directly under the board so the link mark can rise from the ringed move into its square; the eval graph is the second loud surface beside the board; the coach's comment is a margin comment on the sheet (reference 3). Decision: `design/decisions/styleguide-hero.md` (Task 6, variant A).
 
 ```
 +----------------------------------------------------------------------+
 | Chess Improver                                      Day  Night       |
 +----------------------------------------------------------------------+
-| Morphy v Duke Karl of Brunswick and Count Isouard, Paris 1858        |
-|                                                                      |
-|  +-+-----------------------+   +------------------------------------+|
-|  |b|                       |   |  8  Nc3      c6                    ||
-|  |a|   board, 9...b5       |   |  9  Bg5      b5?  +5.7   <- pen    ||
-|  |r|   (pen ring on b5     |   | 10  Nxb5     cxb5?! +8.1           ||
-|  | |    draws itself,      |   |     ruled scoresheet, sheet tone   ||
-|  | |    then green Nxb5)   |   |                                    ||
-|  +-+-----------------------+   +------------------------------------+|
-|  [ label lane: 4...Bxf3?!  6. Bc4?!  6...Nf6?  9...b5?  10...cxb5?! ]|
-|  [ eval graph, win-chance scale, pen rings on the line             ]|
-|                                                                      |
+| +-+ +---------------------------+   Game title (h1, Literata 600 3xl)|
+| |e| | board in its 8px well     |   one line of context, side to move|
+| |v| | (the key move is played:  |                                    |
+| |a| |  lift, travel, land; pen  |   [ label lane: the key move     ] |
+| |l| |  ring, arrow, ?? badge)   |   [ eval graph, win-chance scale,] |
+| | | |            ^ link         |   [ rings on every mark, cursor  ] |
+| +-+ +------------|--------------+   [ on the move shown            ] |
+|                  | (gutter)                                          |
+| +----------------|----------------------------------------------------+
+| | 28 | (Nd2??) −1.1 | e4?! −0.2   |  Margin comment, italic, level  |
+| | 29 |  Nxe4        | Bxf3+       |  with the ringed row            |
+| | 30 |  Kd2         | Ra8?! +0.1  |                                 |
+| +---------------------------------------------------------------------+
 |  Tokens follow below as plain sections: colour, type, shape, motion. |
 +----------------------------------------------------------------------+
 ```
 
-Left aligned. The heading is the game itself, set in Literata 600 at `3xl`. There is no marketing headline, eyebrow or badge. On first view, the hero plays the analysis reveal.
+- **From 1024px:** two columns: the eval bar, the board in its well, and then the header and the eval graph beside them (the graph's bottom level with the board's). The sheet spans both columns: the ruled table under the board, and the comment in the sheet's right margin, level with the ringed row.
+- **On a phone:** board (with the 8px horizontal eval bar above it), scoresheet, note, then graph.
+- **The excerpt** opens on the ringed move and ends before the next blunder, so no second `??` competes with the key move. The hero's label lane names only the move on the board; the game's other marks are rings on the line.
+- Left aligned. The heading is the game itself, set in Literata 600 at `3xl`. There is no marketing headline, eyebrow or badge. On first view, the hero plays the key move's beat: the climax rows of choreography 1, then the link mark, then the comment.
 
 ## How this direction was chosen
 
@@ -660,7 +665,7 @@ Left aligned. The heading is the game itself, set in Literata 600 at `3xl`. Ther
 - **Direction:** the owner's pick from §11, "Annotated scoresheet".
 - **Colour:** paper `#F3F5F8`, sheet `#FBFCFD`, navy ink `#16233B`, red pen `#D3312B`, green `#2F7D5B` (now `#24684B`), pencil `#56657F`.
 - **Type:** Literata for anything a coach would write (headlines, notation, comments), and Schibsted Grotesk for anything the app says (controls).
-- **Layout:** the board left, the scoresheet right, and the eval graph spanning under both. On a phone: board, then graph, then scoresheet. Everything left aligned.
+- **Layout:** the board left with its eval bar, the eval graph beside it, and the ruled scoresheet under the board with the coach's comment in its margin. On a phone: board, scoresheet, note, then graph. Everything left aligned. (Revised in Task 6 fix round 2; the original plan put the scoresheet right of the board and the graph under both.)
 - **Principles:** boldness on the board, the eval graph and motion; red means a mistake; tone instead of shadow.
 
 ### Cliché review and what changed
@@ -810,5 +815,15 @@ Also recorded: coordinates sit on the squares, and react-chessboard's built-in d
 ### 2026-11-21, Task 6 fix round 1: the link mark
 
 The styleguide hero lab (`packages/ui/design/decisions/styleguide-hero.md`) adopted variant C's pen stroke from the notation to the board into the winning variant A, by controller ruling. "Severity and marks" gains a **Link** row and its rules (colour, shape, routing, timing, reduced motion, budget), and the redundancy rule names it as its one exception.
+
+**Token values changed in this round:** none.
+
+### 2026-11-21, Task 6 fix round 2: hero composition, knights arc, link visibility
+
+Controller rulings on the styleguide hero lab:
+
+1. **Hero composition.** The board heads the scoresheet (no legal side-by-side route exists for the link in the reference position). The eval graph and label lane sit beside the board as the second loud surface, with the eval bar left of the board. The comment is a margin comment on the sheet, level with the ringed row. "Styleguide hero" and the plan pass's layout line are rewritten to match.
+2. **Knights arc** is a ruled value under "Physical feel".
+3. **Link mark:** its 0.9× is relative to the board pen at the current square size; it is omitted when no legal route exists; it is drawn only when both ends are in view at its start time.
 
 **Token values changed in this round:** none.
