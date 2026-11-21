@@ -100,6 +100,8 @@ export const games = pgTable(
     heartbeatAt: timestamp("heartbeat_at", { withTimezone: true, mode: "date" }),
     analysisAttempts: integer("analysis_attempts").default(0).notNull(),
     pendingSince: timestamp("pending_since", { withTimezone: true, mode: "date" }).defaultNow(),
+    analysisGeneration: integer("analysis_generation").default(0).notNull(),
+    analysedGeneration: integer("analysed_generation"),
   },
   (table) => [
     index("games_account_played_idx").using(
@@ -108,6 +110,14 @@ export const games = pgTable(
       table.playedAt.desc().nullsLast(),
     ),
     index("games_analysis_status_idx").using("btree", table.analysisStatus.asc().nullsLast()),
+    index("games_attempt_cap_idx")
+      .using("btree", table.analysisStatus.asc().nullsLast())
+      .where(sql`(analysis_attempts >= 6)`),
+    index("games_pending_id_idx")
+      .using("btree", table.analysisStatus.asc().nullsLast(), table.id.asc().nullsLast())
+      .where(
+        sql`(analysis_status = ANY (ARRAY['pending'::analysis_status, 'analysing'::analysis_status]))`,
+      ),
     foreignKey({
       columns: [table.accountId],
       foreignColumns: [linkedAccounts.id],
@@ -134,6 +144,9 @@ export const importRuns = pgTable(
   },
   (table) => [
     index("import_runs_account_idx").using("btree", table.accountId.asc().nullsLast()),
+    index("import_runs_paused_idx")
+      .using("btree", table.accountId.asc().nullsLast())
+      .where(sql`(status = 'paused'::import_run_status)`),
     index("import_runs_status_heartbeat_idx").using(
       "btree",
       table.status.asc().nullsLast(),
@@ -145,6 +158,31 @@ export const importRuns = pgTable(
       name: "import_runs_account_id_linked_accounts_id_fk",
     }).onDelete("cascade"),
   ],
+);
+
+export const jobMetrics = pgTable(
+  "job_metrics",
+  {
+    id: bigserial({ mode: "bigint" }).primaryKey().notNull(),
+    // You can use { mode: "bigint" } if numbers are exceeding js number limitations
+    jobId: bigint("job_id", { mode: "number" }),
+    kind: text().notNull(),
+    gameId: uuid("game_id"),
+    accountId: uuid("account_id"),
+    queueWaitMs: doublePrecision("queue_wait_ms"),
+    parseMs: doublePrecision("parse_ms"),
+    cacheMs: doublePrecision("cache_ms"),
+    engineWallMs: doublePrecision("engine_wall_ms"),
+    engineCpuMs: doublePrecision("engine_cpu_ms"),
+    persistMs: doublePrecision("persist_ms"),
+    totalMs: doublePrecision("total_ms").notNull(),
+    positions: integer(),
+    enginePositions: integer("engine_positions"),
+    cacheHits: integer("cache_hits"),
+    lichessUsed: integer("lichess_used"),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  },
+  (table) => [index("job_metrics_created_idx").using("btree", table.createdAt.asc().nullsLast())],
 );
 
 export const jobs = pgTable(

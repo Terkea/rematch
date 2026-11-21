@@ -133,15 +133,13 @@ pub struct GameRow {
     pub analysed_generation: Option<i32>,
 }
 
-// Task 19 adds `analysis_generation` and `analysed_generation`; until then they are constants.
-// When that migration lands, replace the last two items with the plain column names.
 const GAME_COLUMNS: &str = "id, account_id, platform::text AS platform, platform_game_id, pgn, \
     played_at, time_class::text AS time_class, base_seconds, increment_seconds, rated, \
     player_color::text AS player_color, white_name, black_name, white_rating, black_rating, \
     result::text AS result, termination, eco, opening_name, lichess_evals, \
     analysis_status::text AS analysis_status, analysis_protocol, analysis_error, \
     white_accuracy, black_accuracy, analysis_started_at, heartbeat_at, analysis_attempts, \
-    pending_since, 0::int4 AS analysis_generation, NULL::int4 AS analysed_generation";
+    pending_since, analysis_generation, analysed_generation";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UpsertResult {
