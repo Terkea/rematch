@@ -1,0 +1,44 @@
+Fixtures for the coaching-input contract crate (R2 Task 2, ADR-R2-2). Both files come from the
+M3 worktree (branch m3, packages/ai), our own code, at commit
+4ff8220aed41afb2dd23e04314511f6ebcb1f8e7 ("Merge M3 A3 (reference): reference tokens, leak
+detector, evidence index"). Exported on 2026-11-21.
+
+ts-schema.json
+  z.toJSONSchema(CoachingInput, { target: "draft-2020-12", unrepresentable: "any" }) of
+  packages/ai/src/input/schema.ts, with zod 4.6 (lockfile), Node v22.23.5, pnpm 12.21.0.
+  sha256 361ee9f944b38a16f30989133afc83b223063a4268957588bdd82aa654ebfef8
+  The zod refinements (superRefine, refine: FEN validity, side to move, unit ranges, low <= high,
+  posterior inside the interval, events <= opportunities, unique ranks, each area once, onset
+  order, analysed <= imported, windowStart <= windowEnd) are not exported; CoachingInput::validate
+  covers them.
+
+  The workspace has no tsx, and installing Linux node_modules into the m3 checkout would replace
+  its host node_modules. So the sources were copied inside the container (read-only mount) and
+  the export ran with Node's type stripping. With the m3 checkout at that commit:
+
+    # export-schema.mts
+    import { z } from "zod";
+    import { CoachingInput } from "./src/input/schema.ts";
+    console.log(JSON.stringify(
+      z.toJSONSchema(CoachingInput, { target: "draft-2020-12", unrepresentable: "any" }),
+      null, 2));
+
+    # run.sh
+    set -e
+    mkdir /w
+    cd /src && tar --exclude=node_modules --exclude=.git -cf - . | tar -xf - -C /w
+    cd /w && corepack enable && pnpm install --frozen-lockfile >&2
+    cp /scripts/export-schema.mts /w/packages/ai/ && cd /w/packages/ai
+    node --experimental-strip-types export-schema.mts
+
+    docker run --rm -v <m3 checkout>:/src:ro -v <dir with the two scripts>:/scripts:ro \
+      node:22-slim sh /scripts/run.sh > backend/fixtures/coaching-input/ts-schema.json
+
+  Refresh: rerun the command against the new m3 commit, update the commit, date and sha256
+  above, then run the coaching-input tests (parity.rs). A shape change in the TS contract fails
+  schemars_schema_matches_ts_schema_shape until the Rust types follow.
+
+valid-sample.json
+  A byte-for-byte copy of packages/ai/test/fixtures/coaching-input.b2-rapid.json, the fixture
+  M3's own test ("accepts fixture b2-rapid" in test/input/schema.test.ts) asserts is valid.
+  sha256 8570c10d7efd9abdeeb255189c1d91a04de097adadbc5f3f25685a72f59a5d6a
