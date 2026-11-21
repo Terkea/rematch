@@ -1,0 +1,22 @@
+{
+  "name": "chess-improver",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.21.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "format": "biome format --write ."
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.6.8",
+    "turbo": "~2.11.13",
+    "typescript": "~5.9.3",
+    "vitest": "~5.1.1"
+  }
+}

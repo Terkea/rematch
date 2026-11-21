@@ -22,3 +22,5 @@ One file per decision: context, decision, alternatives, consequences. New decisi
 - [0018. Age gate and privacy defaults](0018-children-and-privacy.md)
 - [0019. Hosting: Vercel for the web app, a dedicated-CPU host for the workers](0019-hosting.md)
 - [0020. Post-launch backlog](0020-post-launch-backlog.md)
+- [0021. TypeScript everywhere; Rust only for a profiled hot job](0021-typescript-not-rust.md)
+- [0022. Biome for lint and format, Vitest for tests](0022-tooling-biome-vitest.md)
