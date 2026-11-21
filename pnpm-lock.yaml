@@ -190,6 +190,9 @@ importers:
 
   apps/worker:
     dependencies:
+      '@ci/chess-core':
+        specifier: workspace:*
+        version: link:../../packages/chess-core
       chess.js:
         specifier: ^1.4.0
         version: 1.4.0
