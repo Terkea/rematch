@@ -2,8 +2,8 @@
 //! review-finding cases the TS version only failed soft on, and parity with
 //! chess.js 1.4.0 on recorded Lichess and chess.com games.
 
-use chess_core::Color;
-use chess_core::pgn::{PgnError, Terminal, parse_pgn};
+use chess_core::pgn::{PgnError, parse_pgn};
+use chess_core::{Color, Terminal};
 use serde::Deserialize;
 
 fn fixture(name: &str) -> String {
