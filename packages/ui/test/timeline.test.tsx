@@ -1,15 +1,20 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, screen, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { timelineFixtures } from "../src/fixtures/index.js";
 import {
+  eventRows,
+  stateAtEnd,
   stateStyle,
   type WeaknessState,
   WeaknessTimeline,
   type WeaknessTimelineProps,
 } from "../src/timeline/index.js";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 const pct = (el: Element | null, attr: string) => {
   const v = el?.getAttribute(attr);
@@ -38,6 +43,15 @@ const STATES: WeaknessState[] = [
 const LABELS = ["Not an issue", "Emerging", "Active", "Improving", "Resolved", "Relapsed"];
 
 describe("stateStyle", () => {
+  it("separates every state without colour: pattern, angle and weight are unique together", () => {
+    const shapes = new Set(
+      STATES.map(
+        (s) => `${stateStyle[s].pattern}|${stateStyle[s].angle ?? ""}|${stateStyle[s].weight}`,
+      ),
+    );
+    expect(shapes.size).toBe(6);
+  });
+
   it("labels the six states, and no two share both colour and pattern", () => {
     expect(STATES.map((s) => stateStyle[s].label)).toEqual(LABELS);
     expect(new Set(STATES.map((s) => stateStyle[s].pattern))).toEqual(
@@ -103,9 +117,27 @@ describe("WeaknessTimeline", () => {
     const wrapper = container.firstElementChild as HTMLElement;
     expect(wrapper).not.toBe(scroller);
     expect(getComputedStyle(wrapper).overflowX).not.toBe("auto");
-    // A scrolling region is reachable from the keyboard and named.
+  });
+
+  it("makes the scroller a named tab stop only when it overflows", () => {
+    const { container, unmount } = render(<WeaknessTimeline {...timelineFixtures} />);
+    let scroller = container.querySelector("[data-timeline-scroll]") as HTMLElement;
+    expect(scroller).not.toHaveAttribute("tabindex");
+    expect(scroller).not.toHaveAttribute("role");
+    unmount();
+    vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockReturnValue(608);
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(296);
+    const second = render(<WeaknessTimeline {...timelineFixtures} />);
+    scroller = second.container.querySelector("[data-timeline-scroll]") as HTMLElement;
     expect(scroller).toHaveAttribute("tabindex", "0");
-    expect(scroller).toHaveAccessibleName();
+    expect(scroller).toHaveAccessibleName("Weakness timeline, scrolls sideways");
+    // It opens on the latest months, and offers the way back.
+    expect(screen.getByRole("button", { name: "Show earlier months" })).toBeInTheDocument();
+  });
+
+  it("names the figure", () => {
+    render(<WeaknessTimeline {...timelineFixtures} label="Progress, weaknesses" />);
+    expect(screen.getByRole("figure", { name: "Progress, weaknesses" })).toBeInTheDocument();
   });
 
   it("renders one lane per series: 12 series, 12 lanes", () => {
@@ -130,5 +162,113 @@ describe("WeaknessTimeline", () => {
     const { container } = render(<WeaknessTimeline {...timelineFixtures} />);
     expect(container.querySelectorAll("[data-event='plan'] path")).toHaveLength(1);
     expect(container.querySelectorAll("[data-event='drill'] rect")).toHaveLength(1);
+  });
+
+  it("shows each lane's current state as visible text with a swatch", () => {
+    const { container } = render(<WeaknessTimeline {...timelineFixtures} />);
+    expect(screen.getByText("Now relapsed")).toBeVisible();
+    const now = container.querySelector("[data-now]");
+    expect(now?.querySelector("svg")).not.toBeNull();
+    expect(now?.className).toContain("text-ink-soft");
+  });
+
+  it("takes now from the segment covering range.to, whatever the input order", () => {
+    const s = {
+      id: "x",
+      label: "X",
+      segments: [
+        { state: "resolved" as const, from: "2026-10-10", to: "2026-12-01" },
+        { state: "active" as const, from: "2026-09-01", to: "2026-10-10" },
+      ],
+    };
+    expect(stateAtEnd(s, range)).toBe("resolved");
+    expect(stateAtEnd({ ...s, segments: [...s.segments].reverse() }, range)).toBe("resolved");
+  });
+
+  it("says No data yet for an empty series", () => {
+    render(<WeaknessTimeline range={range} series={[{ id: "e", label: "Empty", segments: [] }]} />);
+    expect(screen.getByText("No data yet")).toBeInTheDocument();
+  });
+
+  it("labels the range end", () => {
+    const { container } = render(<WeaknessTimeline {...timelineFixtures} />);
+    expect(container.querySelector("[data-range-end]")?.textContent).toBe("1 Nov");
+  });
+
+  it("offsets colliding events onto a second row", () => {
+    expect(eventRows([0.1, 0.11, 0.5])).toEqual([0, 1, 0]);
+    const { container } = render(
+      <WeaknessTimeline
+        {...timelineFixtures}
+        events={[
+          { date: "2026-05-20", kind: "plan", label: "A" },
+          { date: "2026-05-20", kind: "drill", label: "B" },
+        ]}
+      />,
+    );
+    const rows = [...container.querySelectorAll("[data-event]")].map((e) =>
+      e.getAttribute("data-row"),
+    );
+    expect(rows).toEqual(["0", "1"]);
+  });
+});
+
+describe("WeaknessTimeline keyboard", () => {
+  const cells = (container: HTMLElement, lane: string) =>
+    [...container.querySelectorAll(`[data-lane="${lane}"] [data-cell]`)] as HTMLElement[];
+  const key = (k: string) => fireEvent.keyDown(document.activeElement as Element, { key: k });
+
+  it("has one tab stop: the first lane's latest segment", () => {
+    const { container } = render(<WeaknessTimeline {...timelineFixtures} />);
+    const stops = container.querySelectorAll('[data-cell][tabindex="0"]');
+    expect(stops).toHaveLength(1);
+    expect(stops[0]).toBe(cells(container, "rook-endgames").at(-1));
+  });
+
+  it("moves with the arrow keys, Home and End, and shows the readout on focus", () => {
+    const { container } = render(<WeaknessTimeline {...timelineFixtures} />);
+    const rook = cells(container, "rook-endgames");
+    const readout = container.querySelector("[data-readout]") as HTMLElement;
+    expect(readout).toHaveTextContent("Hover, tap or use the arrow keys");
+
+    act(() => rook.at(-1)?.focus());
+    expect(readout).toHaveTextContent("Rook endgames: Relapsed, 5 Oct 2026 to now");
+    key("ArrowLeft");
+    expect(document.activeElement).toBe(rook[4]);
+    expect(readout).toHaveTextContent("Resolved, 20 Aug 2026 to 5 Oct 2026");
+    expect(rook[4]).toHaveAttribute("tabindex", "0");
+    expect(rook.at(-1)).toHaveAttribute("tabindex", "-1");
+
+    key("Home");
+    expect(document.activeElement).toBe(rook[0]);
+    key("End");
+    expect(document.activeElement).toBe(rook.at(-1));
+
+    // Down keeps the place in time: from 5 Oct the next lane is resolved.
+    key("ArrowDown");
+    const time = cells(container, "time-trouble");
+    expect(document.activeElement).toBe(time.at(-1));
+    // Up from "resolved since 1 Sep" lands on what rook endgames were mid-range: resolved.
+    key("ArrowUp");
+    expect(document.activeElement).toBe(rook[4]);
+  });
+
+  it("names every cell with its lane, state and dates", () => {
+    const { container } = render(<WeaknessTimeline {...timelineFixtures} />);
+    expect(cells(container, "rook-endgames")[2]).toHaveAccessibleName(
+      "Rook endgames, Active, 5 May 2026 to 1 Jul 2026, state 3 of 6",
+    );
+  });
+
+  it("shows the readout outside the scroller, also for the last lane on hover", () => {
+    const { container } = render(<WeaknessTimeline {...timelineFixtures} />);
+    const scroller = container.querySelector("[data-timeline-scroll]") as HTMLElement;
+    const readout = container.querySelector("[data-readout]") as HTMLElement;
+    expect(scroller.contains(readout)).toBe(false);
+    const last = cells(container, "knight-forks").at(-1) as HTMLElement;
+    fireEvent.pointerEnter(last);
+    expect(readout).toHaveTextContent("Missed knight forks: Emerging, 1 Aug 2026 to now");
+    fireEvent.pointerLeave(last);
+    expect(readout).toHaveTextContent("Hover, tap or use the arrow keys");
   });
 });

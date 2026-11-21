@@ -1,7 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { AreaScore, AreaScoreList, areaLabels } from "../src/area-score/index.js";
+import { AreaScore, AreaScoreList, areaLabels, rulerDomain } from "../src/area-score/index.js";
 import { areaScoreFixtures } from "../src/fixtures/index.js";
 
 afterEach(cleanup);
@@ -34,7 +34,8 @@ describe("AreaScoreList", () => {
     ).toBeInTheDocument();
   });
 
-  it("places the score, median and next-band ticks on a 0-100 ruler", () => {
+  it("places the score, median and next-band ticks on a data-driven ruler", () => {
+    // 62 / 55 / 68: 50 to 80 after the margin, widened to the 40-point minimum: 40 to 80.
     const { container } = render(
       <AreaScore
         area="endgame"
@@ -43,11 +44,35 @@ describe("AreaScoreList", () => {
         basis={{ games: 22, timeClass: "rapid" }}
       />,
     );
-    const at = (name: string) =>
+    const left = (name: string) =>
       (container.querySelector(`[data-tick="${name}"]`) as HTMLElement | null)?.style.left;
-    expect(at("median")).toBe("55%");
-    expect(at("next")).toBe("68%");
-    expect(container.querySelector('[data-tick="score"]')).not.toBeNull();
+    expect(left("median")).toBe("37.5%");
+    expect(left("next")).toBe("70%");
+    // The needle moves by transform on the one clock, never by `left`.
+    const needle = container.querySelector("[data-needle]") as HTMLElement;
+    expect(needle.style.transform).toBe("translateX(calc(var(--sweep, 1) * 55%))");
+    // A standalone row numbers its own scale.
+    expect(container.querySelector("[data-scale]")?.textContent).toBe("406080");
+  });
+
+  it("shares one domain across the list, numbered once", () => {
+    const { container } = render(<AreaScoreList items={areaScoreFixtures.items} />);
+    expect(container.querySelectorAll("[data-scale]")).toHaveLength(1);
+    expect(container.querySelector("[data-scale]")?.textContent).toBe("406080");
+    // Openings 71 on 40 to 80.
+    const first = container.querySelector("[data-needle]") as HTMLElement;
+    expect(first.style.transform).toBe("translateX(calc(var(--sweep, 1) * 77.5%))");
+  });
+
+  it("derives the domain from the data, floored and ceiled to 10, at least 40 wide", () => {
+    const row = (score: number, median: number, next: number) => ({
+      score,
+      band: { median, next },
+    });
+    expect(rulerDomain(areaScoreFixtures.items)).toEqual([40, 80]);
+    expect(rulerDomain([row(20, 35, 90)])).toEqual([10, 100]);
+    expect(rulerDomain([row(96, 97, 99)])).toEqual([60, 100]);
+    expect(rulerDomain([row(2, 3, 5)])).toEqual([0, 40]);
   });
 });
 

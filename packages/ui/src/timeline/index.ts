@@ -6,9 +6,11 @@ export {
   weaknessStates,
 } from "./states.js";
 export {
+  eventRows,
   formatDate,
   rangeFraction,
   seriesText,
+  stateAtEnd,
   type TimelineSeries,
   WeaknessTimeline,
   type WeaknessTimelineProps,

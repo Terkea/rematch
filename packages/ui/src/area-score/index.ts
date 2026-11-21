@@ -7,4 +7,6 @@ export {
   areaLabels,
   areaScoreText,
   deltaText,
+  type RulerDomain,
+  rulerDomain,
 } from "./area-score.js";

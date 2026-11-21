@@ -1,4 +1,4 @@
-# ADR-WEB-13. Weakness timeline and area score encoding
+# ADR-WEB-14. Weakness timeline and area score encoding
 
 Date: 2026-11-21
 Status: Accepted
@@ -18,18 +18,24 @@ Task 15 builds the area score row and the weakness timeline swimlane (spec §12b
   - `resolved`: a solid `good` band, thinner than a bar.
 
   The patterns are SVG `<pattern>` elements filled with token colours over the lane's `well`: `pen` on `well` is 4.14:1 day and 6.11:1 night, and `good` on `well` is 5.56:1 and 10.20:1. Each lane label also shows its current state as text ("Now relapsed"). A hidden paragraph per lane lists every state and date for assistive tech.
-- **Calendar axis.** Every month is the same width, and days spread evenly inside their month. Reports and plans run by the month, the month ruling stays regular, and the brief's check holds: one month in a two-month range is exactly 50%. The cost is a skew of under 2% between months of different lengths.
+- **Calendar axis.** Every month is the same width, and days spread evenly inside their month. Reports and plans run by the month, the month ruling stays regular, and the brief's check holds: one month in a two-month range is exactly 50%. The cost is skew: a February day is drawn about 11% wider than a 31-day month's day, which puts a date up to about 2.5% of the range out over a two-month range, and under 1% over a year.
 - **Geometry in percentages.** Lane x positions are SVG percentages, so nothing is measured and the layout never shifts. Below a 640px container, the lanes scroll sideways inside their own named, focusable region. The labels stay pinned, and the region opens on the latest months.
 - **Events.** A plan is a `pencil` diamond and a drill a filled `pencil` square. Each runs as a dashed `pencil` rule through every lane. Its label is a numbered note under the chart, so labels never collide.
 - **One clock each.** The timeline reveal is a `sheet` cover. It slides off on `--wipe` (`dur.reveal`, `ease.pen`) as a transform only. The area score needles share one `--sweep` value. Under reduced motion both values are 1 from the start. Input during the reveal finishes it over `dur.quick`.
-- **Area score.** The list is unruled: DESIGN.md keeps ruling for scoresheet surfaces. Its numbers sit on one shared 0 to 100 scale. Each mark has its own shape:
+- **One composite widget.** Each segment has a focusable cell over it, and the cells share one roving tab stop. ←/→ move along a lane and ↑/↓ move between lanes, keeping the place in time. Home and End go to a lane's ends. Each cell is named with its lane, state, dates and position. The readout is one fixed line above the chart. It shows the focused or hovered segment, so it is never clipped and never covers a label. The scroller is a named tab stop only while it overflows. When it does, the axis gives "Earlier" and "Later" buttons.
+- **Area score.** The list is unruled: DESIGN.md keeps ruling for scoresheet surfaces. All rows share one data-driven scale:
+  - from the lowest score or median minus 5, floored to 10;
+  - to the highest score or next band plus 5, ceiled to 10;
+  - at least 40 points wide.
+
+  It is numbered at both ends and the middle. Each mark has its own shape:
   - the player: a tall `ink` needle;
   - the band median: a short `pencil` tick that hangs below the scale;
   - the next band: a `good` flag that stands above it.
 
-  An `ink`/15 tint spans the gap between the median and the player.
+  A 1px `pencil` connector joins the median and the player.
 
 ## Consequences
 
 - When real data lands (M2), very long ranges thin the month labels to about 12, but lanes stay one row per series. Twelve or more series make a tall chart. Filtering is left to the Progress page.
-- The hover readout is pointer-only. Keyboard and screen reader users get the same dates from the per-lane text.
+- Ruler positions are relative to the list's own scale. Compare two lists only if they share a domain, which `AreaScore` accepts through its `domain` prop.

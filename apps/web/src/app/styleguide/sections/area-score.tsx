@@ -21,8 +21,8 @@ export function AreaScoreSection() {
             Area score
           </h2>
           <p className="text-sm text-ink-soft">
-            Each area on one 0 to 100 ruler: your score against the median of players at your
-            rating, and the score that would put you in the next band.
+            Each area on one shared ruler, scaled to these scores: your score against the median of
+            players at your rating, and the score that would put you in the next band.
           </p>
         </div>
         <button

@@ -22,8 +22,8 @@ export function TimelineSection() {
             Weakness timeline
           </h2>
           <p className="text-sm text-ink-soft">
-            When each weakness started, when it improved and whether it came back. Hover a lane to
-            read a state's dates.
+            When each weakness started, when it improved and whether it came back. Hover, tap or use
+            the arrow keys to read a state's dates.
           </p>
         </div>
         <button

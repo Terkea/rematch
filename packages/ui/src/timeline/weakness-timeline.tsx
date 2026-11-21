@@ -1,9 +1,20 @@
 "use client";
 
-import { type CSSProperties, type PointerEvent, useEffect, useId, useRef, useState } from "react";
+import {
+  type KeyboardEvent,
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { TimelineSeries, WeaknessTimelineProps } from "../fixtures/types.js";
+import { CaretLeftIcon, CaretRightIcon, Icon } from "../icons/index.js";
 import { cn } from "../lib/index.js";
 import { animate, dur, ease, motion, useMotionValue, useReducedMotion } from "../motion/index.js";
+import { touchTarget } from "../primitives/touch.js";
 import { type StateStyle, stateStyle, type WeaknessState, weaknessStates } from "./states.js";
 
 export type { TimelineSeries, WeaknessTimelineProps } from "../fixtures/types.js";
@@ -49,9 +60,10 @@ const pc = (f: number) => `${(f * 100).toFixed(3)}%`;
 
 /** The text alternative of one lane: every state in order, then the onset. */
 export function seriesText(s: TimelineSeries): string {
-  const parts = s.segments.map((seg, i) => {
+  const sorted = [...s.segments].sort((x, y) => day(x.from) - day(y.from));
+  const parts = sorted.map((seg, i) => {
     const label = stateStyle[seg.state].label.toLowerCase();
-    const last = i === s.segments.length - 1;
+    const last = i === sorted.length - 1;
     const end = last ? (seg.to === null ? " to now" : ` until ${formatDate(seg.to)}`) : "";
     return `${label} from ${formatDate(seg.from)}${end}`;
   });
@@ -245,53 +257,78 @@ function monthTicks(range: WeaknessTimelineProps["range"]): Month[] {
     }));
 }
 
-interface Hover {
-  lane: string;
+/** A lane's segments in date order, each with its span across the range. */
+interface Span {
+  seg: Segment;
+  a: number;
+  b: number;
+}
+
+function spans(series: TimelineSeries, range: WeaknessTimelineProps["range"]): Span[] {
+  return [...series.segments]
+    .sort((x, y) => day(x.from) - day(y.from))
+    .map((seg) => ({
+      seg,
+      a: rangeFraction(seg.from, range),
+      b: seg.to === null ? 1 : rangeFraction(seg.to, range),
+    }));
+}
+
+/** The state at `range.to`: the segment covering the range's end, else the latest one. */
+export function stateAtEnd(
+  series: TimelineSeries,
+  range: WeaknessTimelineProps["range"],
+): WeaknessState | undefined {
+  const end = day(range.to);
+  const sorted = [...series.segments].sort((x, y) => day(x.from) - day(y.from));
+  const covering = sorted.filter((s) => day(s.from) <= end && (s.to === null || day(s.to) >= end));
+  return (covering[covering.length - 1] ?? sorted[sorted.length - 1])?.state;
+}
+
+/** "Resolved, 20 Aug 2026 to 5 Oct 2026". */
+const spanText = (seg: Segment) =>
+  `${stateStyle[seg.state].label}, ${formatDate(seg.from)} to ${seg.to === null ? "now" : formatDate(seg.to)}`;
+
+interface Cell {
+  lane: number;
   index: number;
 }
 
+const sameCell = (x: Cell | null, y: Cell | null) =>
+  x !== null && y !== null && x.lane === y.lane && x.index === y.index;
+
 function Lane({
   series,
-  range,
+  laneIndex,
+  segs,
   prefix,
   months,
   events,
-  hover,
+  range,
+  cursor,
+  shown,
   onHover,
+  onFocusCell,
+  onKey,
+  cellRef,
 }: {
   series: TimelineSeries;
-  range: WeaknessTimelineProps["range"];
+  laneIndex: number;
+  segs: Span[];
   prefix: string;
   months: Month[];
-  events: TimelineEvent[];
-  hover: number | null;
-  onHover: (index: number | null) => void;
+  events: { f: number; key: string }[];
+  range: WeaknessTimelineProps["range"];
+  cursor: Cell | null;
+  shown: Cell | null;
+  onHover: (cell: Cell | null) => void;
+  onFocusCell: (cell: Cell | null) => void;
+  onKey: (e: KeyboardEvent<HTMLDivElement>, cell: Cell) => void;
+  cellRef: (cell: Cell, el: HTMLDivElement | null) => void;
 }) {
-  const segs = series.segments.map((seg: Segment) => {
-    const a = rangeFraction(seg.from, range);
-    const b = seg.to === null ? 1 : rangeFraction(seg.to, range);
-    return { seg, a, b };
-  });
-  const onPointer = (e: PointerEvent<SVGSVGElement>) => {
-    const box = e.currentTarget.getBoundingClientRect();
-    if (box.width <= 0) return;
-    const f = (e.clientX - box.left) / box.width;
-    const i = segs.findIndex(({ a, b }) => f >= a && f <= b);
-    onHover(i < 0 ? null : i);
-  };
-  const shown = hover === null ? undefined : segs[hover];
-
   return (
     <div data-lane={series.id} className="relative" style={{ height: LANE_H }}>
-      <svg
-        aria-hidden="true"
-        width="100%"
-        height={LANE_H}
-        className="block overflow-visible"
-        onPointerMove={onPointer}
-        onPointerDown={onPointer}
-        onPointerLeave={() => onHover(null)}
-      >
+      <svg aria-hidden="true" width="100%" height={LANE_H} className="block overflow-visible">
         <rect x="0" y={TRACK.y} width="100%" height={TRACK.h} rx={2} className="fill-well" />
         {/* Month ruling: a sheet hairline pressed into the well at each month start. */}
         {months.map((m) => (
@@ -307,10 +344,10 @@ function Lane({
         ))}
         {events.map((ev) => (
           <line
-            key={`${ev.kind}-${ev.date}`}
-            data-event-line={ev.kind}
-            x1={pc(rangeFraction(ev.date, range))}
-            x2={pc(rangeFraction(ev.date, range))}
+            key={ev.key}
+            data-event-line
+            x1={pc(ev.f)}
+            x2={pc(ev.f)}
             y1={0}
             y2={LANE_H}
             strokeWidth={1}
@@ -318,14 +355,13 @@ function Lane({
             className="stroke-pencil"
           />
         ))}
-        {segs.map(({ seg, a, b }, i) => {
+        {segs.map(({ seg, a, b }) => {
           const s = stateStyle[seg.state];
           const bar = BAR[s.weight];
           return (
             <rect
               key={`${seg.state}-${seg.from}`}
               data-segment={seg.state}
-              data-hover={hover === i ? "" : undefined}
               x={pc(a)}
               y={bar.y}
               width={pc(b - a)}
@@ -336,18 +372,6 @@ function Lane({
             />
           );
         })}
-        {shown && (
-          <rect
-            x={pc(shown.a)}
-            y={TRACK.y}
-            width={pc(shown.b - shown.a)}
-            height={TRACK.h}
-            rx={2}
-            fill="none"
-            strokeWidth={1.5}
-            className="stroke-ink"
-          />
-        )}
         {series.onset && <Onset onset={series.onset} range={range} />}
         {/* The reveal: a sheet cover slides off to the right on the one clock (`--wipe`). */}
         <rect
@@ -363,7 +387,37 @@ function Lane({
           }}
         />
       </svg>
-      {shown && <Readout seg={shown.seg} a={shown.a} b={shown.b} />}
+      {segs.length === 0 && (
+        <span
+          className="absolute left-3 text-xs text-ink-faint"
+          style={{ top: TRACK.y, lineHeight: `${TRACK.h}px` }}
+        >
+          No data yet
+        </span>
+      )}
+      {/* The keyboard and pointer layer: one cell over each segment, a roving tab stop. */}
+      {segs.map(({ seg, a, b }, index) => {
+        const cell = { lane: laneIndex, index };
+        return (
+          <div
+            key={`${seg.state}-${seg.from}`}
+            ref={(el) => cellRef(cell, el)}
+            role="img"
+            data-cell={seg.state}
+            aria-label={`${series.label}, ${spanText(seg)}, state ${index + 1} of ${segs.length}`}
+            tabIndex={sameCell(cursor, cell) ? 0 : -1}
+            data-shown={sameCell(shown, cell) ? "" : undefined}
+            className="absolute rounded-[2px] outline-ink focus-visible:outline-2 focus-visible:outline-offset-1 data-shown:outline-1"
+            style={{ left: pc(a), width: pc(b - a), top: TRACK.y, height: TRACK.h }}
+            onPointerEnter={() => onHover(cell)}
+            onPointerDown={() => onHover(cell)}
+            onPointerLeave={() => onHover(null)}
+            onFocus={() => onFocusCell(cell)}
+            onBlur={() => onFocusCell(null)}
+            onKeyDown={(e) => onKey(e, cell)}
+          />
+        );
+      })}
     </div>
   );
 }
@@ -415,56 +469,42 @@ function Onset({
   );
 }
 
-/** The hover readout: the state and its dates, floating under the lane (it is lifted, so it may shadow). */
-function Readout({ seg, a, b }: { seg: Segment; a: number; b: number }) {
-  const mid = (a + b) / 2;
-  const style: CSSProperties =
-    mid < 0.2
-      ? { left: pc(Math.max(0, a)) }
-      : mid > 0.8
-        ? { right: pc(1 - b) }
-        : { left: pc(mid), transform: "translateX(-50%)" };
-  return (
-    <div
-      aria-hidden="true"
-      className="pointer-events-none absolute top-full z-20 -mt-1 rounded-field bg-ink px-2.5 py-1 text-sm whitespace-nowrap text-on-ink shadow-lift"
-      style={style}
-    >
-      <span className="font-medium">{stateStyle[seg.state].label}</span> {formatDate(seg.from)} to{" "}
-      {seg.to === null ? "now" : formatDate(seg.to)}
-    </div>
-  );
+/** Greedy rows for event markers: one closer than `gap` to the last marker in a row moves down. */
+export function eventRows(fs: number[], gap = 0.04): number[] {
+  const last: number[] = [];
+  return fs.map((f) => {
+    let row = last.findIndex((l) => f - l >= gap);
+    if (row < 0) row = last.length < 2 ? last.length : 1;
+    last[row] = f;
+    return row;
+  });
 }
+
+const EVENT_ROW = 13;
 
 function EventsLane({
   events,
-  range,
 }: {
-  events: TimelineEvent[];
-  range: WeaknessTimelineProps["range"];
+  events: { f: number; key: string; kind: TimelineEvent["kind"]; row: number }[];
 }) {
+  const h = EVENTS_H + EVENT_ROW * Math.max(0, ...events.map((e) => e.row));
   return (
-    <svg
-      aria-hidden="true"
-      width="100%"
-      height={EVENTS_H}
-      className="block overflow-visible"
-      data-events
-    >
+    <svg aria-hidden="true" width="100%" height={h} className="block overflow-visible" data-events>
       {events.map((ev, i) => (
         <svg
-          key={`${ev.kind}-${ev.date}`}
+          key={ev.key}
           aria-hidden="true"
           data-event={ev.kind}
-          x={pc(rangeFraction(ev.date, range))}
-          y={0}
+          data-row={ev.row}
+          x={pc(ev.f)}
+          y={ev.row * EVENT_ROW}
           overflow="visible"
         >
           <line
             x1={0}
             x2={0}
             y1={19}
-            y2={EVENTS_H}
+            y2={h - ev.row * EVENT_ROW}
             strokeWidth={1}
             strokeDasharray="2 3"
             className="stroke-pencil"
@@ -484,14 +524,35 @@ function EventsLane({
   );
 }
 
+/** "1 Nov": the range's end, labelled at the axis's right edge. */
+const shortDate = (iso: string) => formatDate(iso).replace(/ \d{4}$/, "");
+/** Room a month label needs (px) before it would run into the end label. */
+const END_LABEL_ROOM = 84;
+
 const LABEL_CELL = "sticky left-0 z-10 flex flex-col justify-center bg-sheet pr-3";
+const NAV_BUTTON = cn(
+  "relative flex size-8 items-center justify-center rounded-field text-ink-soft hover:bg-well focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink",
+  touchTarget,
+);
+
+interface Overflow {
+  overflows: boolean;
+  earlier: boolean;
+  later: boolean;
+  plot: number;
+}
 
 /**
  * The weakness timeline (spec §12b): one swimlane per weakness on a shared time axis. Each lane is
  * painted by state, and each state differs by pattern and by bar shape as well as by colour. The
  * onset is a pen tick with a whisker across its likely range, and plan and drill events run as
- * dashed pencil rules through every lane. Below a 640px container it scrolls sideways inside its
- * own region, with the lane labels pinned. Pass `drawIn` to reveal it left to right once.
+ * dashed pencil rules through every lane.
+ *
+ * It is one composite widget: a roving tab stop over the segments, where ←/→ move along a lane,
+ * ↑/↓ between lanes and Home/End to a lane's ends. The focused or hovered segment's state and
+ * dates show in one fixed line above the chart, so nothing is ever clipped or covers a label.
+ * Below a 640px container the lanes scroll inside their own region with the labels pinned, opening
+ * on the latest months. Pass `drawIn` to reveal it left to right once.
  */
 export function WeaknessTimeline({
   series,
@@ -503,12 +564,67 @@ export function WeaknessTimeline({
 }: WeaknessTimelineProps & { drawIn?: boolean; label?: string; className?: string }) {
   const rawId = useId();
   const prefix = `wt${rawId.replace(/[^a-zA-Z0-9]/g, "")}`;
-  const [hover, setHover] = useState<Hover | null>(null);
   const months = monthTicks(range);
-  const sorted = [...events].sort((x, y) => day(x.date) - day(y.date));
+  const lanes = useMemo(() => series.map((s) => spans(s, range)), [series, range]);
+  const placed = useMemo(() => {
+    const sorted = [...events].sort((x, y) => day(x.date) - day(y.date));
+    const fs = sorted.map((ev) => rangeFraction(ev.date, range));
+    const rows = eventRows(fs);
+    return sorted.map((ev, i) => ({
+      ...ev,
+      f: fs[i] ?? 0,
+      row: rows[i] ?? 0,
+      key: `${i}-${ev.kind}-${ev.date}`,
+    }));
+  }, [events, range]);
+
+  // The composite widget: one roving cursor, plus what the pointer is over.
+  const firstLane = lanes.findIndex((l) => l.length > 0);
+  const [cursor, setCursor] = useState<Cell | null>(null);
+  const roving: Cell | null =
+    cursor ??
+    (firstLane < 0 ? null : { lane: firstLane, index: (lanes[firstLane]?.length ?? 1) - 1 });
+  const [hover, setHover] = useState<Cell | null>(null);
+  const [focused, setFocused] = useState<Cell | null>(null);
+  const shown = focused ?? hover;
+  const cells = useRef(new Map<string, HTMLDivElement>());
+  const cellRef = useCallback((c: Cell, el: HTMLDivElement | null) => {
+    const k = `${c.lane}:${c.index}`;
+    if (el) cells.current.set(k, el);
+    else cells.current.delete(k);
+  }, []);
+  const moveTo = (c: Cell) => {
+    setCursor(c);
+    cells.current.get(`${c.lane}:${c.index}`)?.focus();
+  };
+  const onKey = (e: KeyboardEvent<HTMLDivElement>, c: Cell) => {
+    const lane = lanes[c.lane] ?? [];
+    const here = lane[c.index];
+    let next: Cell | null = null;
+    if (e.key === "ArrowLeft") next = { ...c, index: Math.max(0, c.index - 1) };
+    else if (e.key === "ArrowRight") next = { ...c, index: Math.min(lane.length - 1, c.index + 1) };
+    else if (e.key === "Home") next = { ...c, index: 0 };
+    else if (e.key === "End") next = { ...c, index: lane.length - 1 };
+    else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+      const step = e.key === "ArrowUp" ? -1 : 1;
+      let l = c.lane + step;
+      while (l >= 0 && l < lanes.length && (lanes[l]?.length ?? 0) === 0) l += step;
+      const target = lanes[l];
+      if (target && here) {
+        // Keep the place in time: the segment under the current one's midpoint.
+        const mid = (here.a + here.b) / 2;
+        const i = target.findIndex((s) => mid >= s.a && mid <= s.b);
+        next = { lane: l, index: i < 0 ? target.length - 1 : i };
+      } else next = c;
+    } else return;
+    e.preventDefault();
+    if (next) moveTo(next);
+  };
+  const shownSpan = shown ? lanes[shown.lane]?.[shown.index] : undefined;
+  const shownSeries = shown ? series[shown.lane] : undefined;
 
   // The one clock: `--wipe` runs 0 to 1 over `dur.reveal` on `ease.pen`, and is 1 at rest and
-  // under reduced motion (M10). Input finishes it over `dur.quick` (M7).
+  // under reduced motion (M10). Any input finishes it over `dur.quick` (M7).
   const reduced = useReducedMotion();
   const revealing = drawIn && !reduced;
   const wipe = useMotionValue(revealing ? 0 : 1);
@@ -521,87 +637,203 @@ export function WeaknessTimeline({
     const controls = animate(wipe, 1, { duration: dur.reveal, ease: ease.pen });
     return () => controls.stop();
   }, [revealing, wipe]);
-  // On a narrow screen the region opens on its latest months: where the player is now.
-  const scrollRef = useRef<HTMLElement | null>(null);
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (el && el.scrollWidth > el.clientWidth) el.scrollLeft = el.scrollWidth;
-  }, []);
   const finish = () => {
     if (wipe.get() < 1) animate(wipe, 1, { duration: dur.quick, ease: ease.out });
   };
 
+  // Overflow: the scroller is a named, focusable region only while it actually scrolls.
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const axisRef = useRef<HTMLDivElement | null>(null);
+  const [overflow, setOverflow] = useState<Overflow>({
+    overflows: false,
+    earlier: false,
+    later: false,
+    plot: 0,
+  });
+  const measure = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const overflows = el.scrollWidth > el.clientWidth + 1;
+    const next = {
+      overflows,
+      earlier: overflows && el.scrollLeft > 1,
+      later: overflows && el.scrollLeft + el.clientWidth < el.scrollWidth - 1,
+      plot: axisRef.current?.clientWidth ?? 0,
+    };
+    setOverflow((o) =>
+      o.overflows === next.overflows &&
+      o.earlier === next.earlier &&
+      o.later === next.later &&
+      o.plot === next.plot
+        ? o
+        : next,
+    );
+  }, []);
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    // Open on the latest months: where the player is now.
+    if (el.scrollWidth > el.clientWidth) el.scrollLeft = el.scrollWidth;
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [measure]);
+  const page = (dir: -1 | 1) => {
+    const el = scrollRef.current;
+    if (el)
+      el.scrollBy({ left: dir * el.clientWidth * 0.6, behavior: reduced ? "auto" : "smooth" });
+  };
+  const monthRoom = (m: Month) =>
+    overflow.plot > 0 ? m.f * overflow.plot < overflow.plot - END_LABEL_ROOM : m.f < 0.85;
+
   return (
-    <figure className={cn("@container relative m-0 flex flex-col gap-5", className)}>
+    <figure
+      aria-label={label}
+      className={cn("@container relative m-0 flex flex-col gap-4", className)}
+    >
       <PatternDefs prefix={prefix} />
-      <Key prefix={prefix} events={sorted} />
-      <section
+      <Key prefix={prefix} events={placed} />
+      {/* The readout: one fixed line above the chart, so it is never clipped and never covers a label. */}
+      <p
+        data-readout
+        aria-hidden="true"
+        className="m-0 flex h-10 min-w-0 items-start gap-2 text-sm @min-[640px]:h-6"
+      >
+        {shownSpan && shownSeries ? (
+          <>
+            <span className="mt-px shrink-0">
+              <Swatch prefix={prefix} state={shownSpan.seg.state} />
+            </span>
+            <span className="line-clamp-2">
+              <span className="font-medium text-ink">{shownSeries.label}:</span>{" "}
+              <span className="text-ink-soft">{spanText(shownSpan.seg)}</span>
+            </span>
+          </>
+        ) : (
+          <span className="text-ink-faint">
+            Hover, tap or use the arrow keys to read a state's dates.
+          </span>
+        )}
+      </p>
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: these handlers only finish the reveal; the cells inside are the widget. */}
+      <div
         ref={scrollRef}
         data-timeline-scroll
-        aria-label={`${label}, scrolls sideways`}
-        // biome-ignore lint/a11y/noNoninteractiveTabindex: a scrolling region must be keyboard-reachable.
-        tabIndex={0}
+        {...(overflow.overflows
+          ? { role: "region", "aria-label": `${label}, scrolls sideways`, tabIndex: 0 }
+          : {})}
         style={{ overflowX: "auto" }}
         className="rounded-field pb-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
         onPointerDown={finish}
+        onKeyDown={finish}
+        onWheel={finish}
+        onScroll={measure}
       >
         <motion.div
-          className="grid grid-cols-[7.5rem_minmax(0,1fr)] @max-[640px]:min-w-[38rem] @min-[640px]:grid-cols-[13rem_minmax(0,1fr)]"
+          role="group"
+          aria-label={`${label}: ${series.length} weaknesses. Arrow keys move between states and lanes.`}
+          className="grid grid-cols-[7.5rem_minmax(0,1fr)] items-center @max-[640px]:min-w-[38rem] @min-[640px]:grid-cols-[13rem_minmax(0,1fr)]"
           style={{ "--wipe": wipe } as never}
         >
-          {sorted.length > 0 && (
+          {placed.length > 0 && (
             <>
-              <div className={cn(LABEL_CELL, "text-sm text-ink-soft")} style={{ height: EVENTS_H }}>
+              <div className={cn(LABEL_CELL, "self-stretch text-sm text-ink-soft")}>
                 Plan and drills
               </div>
-              <EventsLane events={sorted} range={range} />
+              <EventsLane events={placed} />
             </>
           )}
-          {series.map((s) => {
-            const now = s.segments[s.segments.length - 1]?.state;
+          {series.map((s, laneIndex) => {
+            const now = stateAtEnd(s, range);
             return (
               <div key={s.id} className="contents">
-                <div className={LABEL_CELL} style={{ minHeight: LANE_H }}>
+                <div className={cn(LABEL_CELL, "py-1")} style={{ minHeight: LANE_H }}>
                   <span className="text-sm leading-tight font-medium text-ink">{s.label}</span>
                   {now && (
-                    <span className="text-xs text-ink-faint">
+                    <span
+                      data-now
+                      className="mt-0.5 flex items-center gap-1.5 text-xs text-ink-soft"
+                    >
+                      <MiniSwatch prefix={prefix} state={now} />
                       Now {stateStyle[now].label.toLowerCase()}
                     </span>
                   )}
                 </div>
                 <Lane
                   series={s}
-                  range={range}
+                  laneIndex={laneIndex}
+                  segs={lanes[laneIndex] ?? []}
                   prefix={prefix}
                   months={months}
-                  events={sorted}
-                  hover={hover?.lane === s.id ? hover.index : null}
-                  onHover={(index) => setHover(index === null ? null : { lane: s.id, index })}
+                  events={placed}
+                  range={range}
+                  cursor={roving}
+                  shown={shown}
+                  onHover={setHover}
+                  onFocusCell={(c) => {
+                    setFocused(c);
+                    if (c) {
+                      setCursor(c);
+                      finish();
+                    }
+                  }}
+                  onKey={onKey}
+                  cellRef={cellRef}
                 />
               </div>
             );
           })}
-          <div className={LABEL_CELL} />
-          <div aria-hidden="true" className="relative h-6 overflow-hidden">
+          <div className={cn(LABEL_CELL, "flex-row items-center gap-1 self-stretch")}>
+            {overflow.earlier && (
+              <button
+                type="button"
+                aria-label="Show earlier months"
+                className={NAV_BUTTON}
+                onClick={() => page(-1)}
+              >
+                <Icon icon={CaretLeftIcon} size={16} />
+              </button>
+            )}
+            {overflow.later && (
+              <button
+                type="button"
+                aria-label="Show later months"
+                className={NAV_BUTTON}
+                onClick={() => page(1)}
+              >
+                <Icon icon={CaretRightIcon} size={16} />
+              </button>
+            )}
+            {overflow.earlier && <span className="text-xs text-ink-faint">Earlier</span>}
+          </div>
+          <div ref={axisRef} aria-hidden="true" data-axis className="relative h-6 overflow-hidden">
             <div className="absolute inset-x-0 top-0 h-px bg-rule-strong" />
             {months.map((m) => (
               <div key={m.iso} className="absolute top-0 flex flex-col" style={{ left: pc(m.f) }}>
                 <span className="h-1.5 w-px bg-rule-strong" />
-                {m.f < 0.95 && (
+                {m.f < 1 && monthRoom(m) && (
                   <span className="pl-1 text-xs whitespace-nowrap text-ink-faint">{m.label}</span>
                 )}
               </div>
             ))}
+            <div className="absolute top-0 right-0 flex flex-col items-end">
+              <span className="h-1.5 w-px bg-rule-strong" />
+              <span data-range-end className="pr-0.5 text-xs whitespace-nowrap text-ink-soft">
+                {shortDate(range.to)}
+              </span>
+            </div>
           </div>
         </motion.div>
-      </section>
-      {sorted.length > 0 && (
+      </div>
+      {placed.length > 0 && (
         <ol
           aria-label="Plan and drills"
           className="m-0 flex list-none flex-col gap-1 p-0 text-sm text-ink-soft"
         >
-          {sorted.map((ev, i) => (
-            <li key={`${ev.kind}-${ev.date}`} className="flex items-center gap-2">
+          {placed.map((ev, i) => (
+            <li key={ev.key} className="flex items-center gap-2">
               <span
                 className="w-4 text-right font-medium text-ink"
                 style={{ fontVariantNumeric: "lining-nums tabular-nums" }}
@@ -619,9 +851,27 @@ export function WeaknessTimeline({
       )}
       <div className="sr-only">
         {series.map((s) => (
-          <p key={s.id}>{seriesText(s)}</p>
+          <p key={s.id}>{s.segments.length ? seriesText(s) : `${s.label}: no data yet.`}</p>
         ))}
       </div>
     </figure>
+  );
+}
+
+/** A 12 × 8 swatch for the "Now" line. */
+function MiniSwatch({ prefix, state }: { prefix: string; state: WeaknessState }) {
+  const bar = BAR[stateStyle[state].weight];
+  const scale = 6 / BAR.full.h;
+  return (
+    <svg aria-hidden="true" width={14} height={10} className="shrink-0">
+      <rect x={0} y={0} width={14} height={10} rx={1.5} className="fill-well" />
+      <rect
+        x={1.5}
+        y={2 + (bar.y - BAR.full.y) * scale}
+        width={11}
+        height={Math.max(1.5, bar.h * scale)}
+        style={{ fill: paint(prefix, state) }}
+      />
+    </svg>
   );
 }
