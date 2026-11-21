@@ -59,6 +59,12 @@ export type PgSessionStoreOptions = {
   onLockLost?: () => void;
 };
 
+/** Stays on a lock connection after release: a late error on the pooled client must not crash. */
+const noop = () => {};
+const QUIET = new WeakSet<object>();
+const RESET_KEEPALIVES =
+  "RESET tcp_keepalives_idle; RESET tcp_keepalives_interval; RESET tcp_keepalives_count";
+
 export class PgSessionStore implements ChatSessionStore {
   constructor(
     private readonly pool: pg.Pool,
@@ -156,15 +162,22 @@ export class PgSessionStore implements ChatSessionStore {
     // A checked-out pg client with no 'error' listener crashes the process when its connection
     // drops (e.g. pg_terminate_backend, 57P01). The listener stays for the lock's whole lifetime.
     let lost = false;
+    let held = false;
     const onError = () => {
-      if (lost) return;
+      // Only a drop while the lock is held loses it; a later error belongs to the pooled client.
+      if (lost || !held) return;
       lost = true;
       // The server already dropped the session lock with the connection: exclusion is gone for
       // the rest of this turn. The turn itself carries on.
       this.opts.onLockLost?.();
     };
     c.on("error", onError);
+    if (!QUIET.has(c)) {
+      c.on("error", noop);
+      QUIET.add(c);
+    }
     const done = (destroy: boolean) => {
+      held = false;
       c.off("error", onError);
       c.release(destroy);
     };
@@ -179,12 +192,17 @@ export class PgSessionStore implements ChatSessionStore {
         [TURN_LOCK_CLASS, sessionId],
       );
       if (!rows[0]?.ok) {
-        await c.query(
-          "RESET tcp_keepalives_idle; RESET tcp_keepalives_interval; RESET tcp_keepalives_count",
-        );
-        done(false);
+        // Held elsewhere. A failed RESET must not turn into a throw: the caller would then run
+        // the turn without any lock (fail open). Destroy the connection instead.
+        try {
+          await c.query(RESET_KEEPALIVES);
+          done(false);
+        } catch {
+          done(true);
+        }
         return null;
       }
+      held = true;
     } catch (e) {
       done(true);
       throw e;
@@ -202,9 +220,7 @@ export class PgSessionStore implements ChatSessionStore {
           TURN_LOCK_CLASS,
           sessionId,
         ]);
-        await c.query(
-          "RESET tcp_keepalives_idle; RESET tcp_keepalives_interval; RESET tcp_keepalives_count",
-        );
+        await c.query(RESET_KEEPALIVES);
         done(false);
       } catch {
         done(true); // destroying the connection drops its session locks

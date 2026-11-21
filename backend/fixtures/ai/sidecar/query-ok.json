@@ -1,0 +1,17 @@
+{
+  "subtype": "success",
+  "stopReason": "end_turn",
+  "structuredOutput": { "section": "Your knight was loose on move 24.", "n": 3 },
+  "text": "",
+  "numTurns": 1,
+  "durationMs": 4210,
+  "modelUsage": {
+    "claude-sonnet-5-5": {
+      "inputTokens": 3120,
+      "outputTokens": 412,
+      "cacheReadInputTokens": 2048,
+      "cacheCreationInputTokens": 0
+    }
+  },
+  "sdkCostUsd": 0.0071
+}

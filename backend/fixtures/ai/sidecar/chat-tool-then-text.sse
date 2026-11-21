@@ -1,0 +1,19 @@
+: ping
+
+event: delta
+data: {"text":"Let me check.","messageId":"msg_01"}
+
+event: tool_use
+data: {"id":"toolu_01","name":"mcp__coach__get_position","input":{"gameId":"g1","ply":24}}
+
+: ping
+
+event: delta
+data: {"text":"Your knight ","messageId":"msg_02"}
+
+event: delta
+data: {"text":"was loose.","messageId":"msg_02"}
+
+event: done
+data: {"subtype":"success","stopReason":"end_turn","text":"Your knight was loose.","numTurns":2,"durationMs":6120,"modelUsage":{"claude-sonnet-5-5":{"inputTokens":4096,"outputTokens":57,"cacheReadInputTokens":1500,"cacheCreationInputTokens":300}},"sessionModelUsage":{"claude-sonnet-5-5":{"inputTokens":4096,"outputTokens":57,"cacheReadInputTokens":1500,"cacheCreationInputTokens":300}},"sdkCostUsd":0.0118,"session":"new"}
+

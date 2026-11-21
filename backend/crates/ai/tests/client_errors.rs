@@ -407,6 +407,10 @@ fn chat(choice: ToolChoice) -> ChatTurnRequest {
         }],
         max_tokens: 64000,
         effort: Effort::Low,
+        max_turns: 1,
+        conversation_id: uuid::Uuid::nil(),
+        resume: false,
+        rebuild_context: None,
     }
 }
 
