@@ -111,6 +111,51 @@ Local development uses Docker Compose (Postgres, Redis, worker). Production runs
 
 **Budgets:** a free user gets up to their last 50 games in each time control. A paid user gets their full history, analysed newest first. Results stream in: the profile updates as each batch finishes, and the UI shows live progress.
 
+## 8c. Handling large game histories (how many games we fetch and analyse)
+
+Owner's requirement: some players have thousands of games, so we must decide how many to poll and analyse.
+
+The costs are very different:
+- **Importing** a game (downloading its PGN with clocks, opening and ratings) is almost free. Lichess streams about 20 games/s without a token and 60/s with one. chess.com serves a whole month in one request.
+- **Engine analysis** costs about 15–20 core-seconds per game (around 80 positions at roughly 0.25 s each, minus cache hits).
+
+So we import broadly and analyse selectively.
+
+**Tier 1: import (no engine).**
+- Pro: up to **10,000 most recent games per account**. Free: up to **1,000**.
+- Stored as compressed PGN plus metadata.
+- This alone powers several features across the player's whole history with no engine cost:
+  - the full rating curve;
+  - opening repertoire and results;
+  - time-control mix;
+  - clock-usage patterns;
+  - session and tilt statistics;
+  - game counts.
+- Runs in the background at low priority, newest first, streamed and resumable (it checkpoints the oldest month or `until` cursor reached).
+
+**Tier 2: engine analysis, by priority.** Each user gets a priority-ordered analysis queue:
+
+| Priority | Which games | Free | Pro |
+|---|---|---|---|
+| P0 Onboarding | Most recent games in the primary time control | 50 | 200 |
+| P1 Other active time controls | Most recent per other time control with ≥ 20 games in the last 90 days | — | 100 each |
+| P2 History sample | **Stratified sample across the history**: up to 15 games per calendar month per time control, going back up to 3 years. This feeds the weakness timeline (§12b) and the 90-day median baseline | — | backfilled at low priority |
+| P3 New games from sync | Every new rated game in an active time control | up to 20 per week | all, with a fair-use cap of 300 per week |
+| P4 On demand | A game the user opens in the explorer | free in the browser (WASM) | free in the browser (WASM) |
+
+**Adaptive stopping.** P1 and P2 stop early for a time control once every weakness posterior there is precise enough. That means the 80% credible-interval width is ≤ 25% of the band median, or the §6.6 minimum evidence is met. Extra games beyond that change nothing, so we don't pay for them.
+
+**Selection rules:**
+- Rated games come before casual ones.
+- Games under 10 plies and aborted games are skipped.
+- Bullet is analysed only if it's the player's primary time control.
+- Games that already have Lichess server evals are analysed first, since they cost no CPU.
+- The analysis protocol is the same in every tier, so sampled and recent games stay comparable.
+
+**Cost envelope.** A heavy Pro user's onboarding (P0 + P1) takes about 200–400 games, roughly 1–2 core-hours. On 16 cores that's about 5–8 minutes of wall time, and results stream in as they finish. P2 backfill adds about 500 games over the following hours at low priority. Per-user CPU-seconds are metered, and hard caps from §13 apply.
+
+**Shown to the user.** Each profile and KPI states its basis ("based on 214 analysed rapid games from 3,912 imported") along with how far the background backfill has got, so a sampled history is never mistaken for a complete one.
+
 ## 8. (cont.) Improvement engine: normative spec
 
 The section **"Proposed improvement engine spec" in `docs/research/improvement-engine.md` is normative** for weakness detection, prioritisation, prescriptions, re-measurement and progress wording. Where it differs from the sketches in §8 and §12a, the spec wins. The key points:
@@ -429,7 +474,7 @@ Every significant decision is recorded as a Markdown ADR in `docs/decisions/NNNN
 
 ## 16. Calls made by Claude (owner delegated: "you are in charge of everything")
 
-1. **Cost envelope.** We evaluate every position once. That gives the quality of both the player's and the opponent's moves at no extra cost, so the §8.6 benchmarks need no extra engine work. The default budget is about 300k nodes per position (about 0.2–0.3 s on one core), deepened only on critical positions. A free user gets their last 50 games in their *primary* time control, which works out to roughly 4,000 positions, or about 15–20 core-minutes before cache hits. Pro analyses the full history, newest first, with a hidden fair-use cap of the last 2,000 games per time control. Launch is sized for one worker host with 16 dedicated vCPUs, scaled by adding workers. We meter CPU-seconds and tokens per user, and hard-stop at budget.
+1. **Cost envelope** (§8c now replaces the game counts below). We evaluate every position once. That gives the quality of both the player's and the opponent's moves at no extra cost, so the §8.6 benchmarks need no extra engine work. The default budget is about 300k nodes per position (about 0.2–0.3 s on one core), deepened only on critical positions. A free user gets their last 50 games in their *primary* time control, which works out to roughly 4,000 positions, or about 15–20 core-minutes before cache hits. Pro analyses the full history, newest first, with a hidden fair-use cap of the last 2,000 games per time control. Launch is sized for one worker host with 16 dedicated vCPUs, scaled by adding workers. We meter CPU-seconds and tokens per user, and hard-stop at budget.
 2. **Tiers in §12 are approved as the launch config.** They live in a single entitlements module, and Stripe price IDs come from env vars, so changing tiers is a config change, not a rewrite.
 3. **Report scope.** One report per (linked account × time control). Free gets one, for the primary time control. Pro gets one for every time control with at least 20 games, plus a short cross-report overview. Reports never mix platforms.
 4. **Browser engine.** Stockfish (WASM build) runs in a Web Worker for interactive features: drills, retry, and explorer eval. It runs as a separate program, with its license and a source link shown, which meets GPL-3.0 without affecting our own code. Batch analysis stays server-side. Endgame drills also use the Lichess tablebase API for exact results with 7 pieces or fewer.

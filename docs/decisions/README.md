@@ -26,3 +26,4 @@ One file per decision: context, decision, alternatives, consequences. New decisi
 - [0022. Biome for lint and format, Vitest for tests](0022-tooling-biome-vitest.md)
 - [0023. Local stack host ports 55432 and 56379](0023-local-stack-host-ports.md)
 - [0024. Weakness timeline with change-point detection](0024-weakness-timeline-change-points.md)
+- [0025. Tiered import and prioritised analysis for large histories](0025-tiered-import-and-analysis.md)
