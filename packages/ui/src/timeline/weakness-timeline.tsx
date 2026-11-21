@@ -429,7 +429,7 @@ function Lane({
             aria-label={`${spanText(seg)}, ${index + 1} of ${segs.length}`}
             tabIndex={sameCell(cursor, cell) ? 0 : -1}
             data-shown={sameCell(shown, cell) ? "" : undefined}
-            className="absolute rounded-[2px] outline-ink focus-visible:outline-2 focus-visible:outline-offset-1 data-shown:outline-1"
+            className="absolute rounded-board outline-ink focus-visible:outline-2 focus-visible:outline-offset-1 data-shown:outline-1"
             style={{ left: pc(a), width: pc(b - a), top: TRACK.y, height: TRACK.h }}
             onPointerEnter={() => onHover(cell)}
             onPointerDown={() => onHover(cell)}

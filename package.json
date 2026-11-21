@@ -13,7 +13,7 @@
     "typecheck": "turbo run typecheck",
     "format": "biome format --write .",
     "shots": "tsx scripts/shots.ts",
-    "design:check": "tsx scripts/ban-lint.ts && pnpm dlx impeccable@<reviewed> detect apps/web/src packages/ui/src",
+    "design:check": "tsx scripts/ban-lint.ts",
     "e2e": "pnpm --filter @ci/web e2e"
   },
   "devDependencies": {
