@@ -33,10 +33,11 @@ const row = [
 const popup = [
   "fixed top-[12vh] left-1/2 z-50 w-[calc(100%-2*var(--space-gutter))] max-w-lg -translate-x-1/2 overflow-hidden",
   "rounded-sheet border border-rule bg-sheet text-ink shadow-lift outline-none",
-  "transition-[opacity,translate] duration-(--dur-base) ease-out",
-  "data-starting-style:translate-y-(--enter-dialog-y) data-starting-style:opacity-0",
-  "data-ending-style:opacity-0 data-ending-style:duration-(--dur-quick)",
-  "motion-reduce:data-starting-style:translate-y-0 motion-reduce:duration-(--dur-quick)",
+  "origin-top transition-[opacity,scale,translate] duration-(--dur-base) ease-out",
+  "data-starting-style:translate-y-(--enter-dialog-y) data-starting-style:scale-(--enter-dialog-scale) data-starting-style:opacity-0",
+  "data-ending-style:scale-(--enter-dialog-scale) data-ending-style:opacity-0 data-ending-style:duration-(--dur-quick)",
+  "motion-reduce:data-starting-style:translate-y-0 motion-reduce:data-starting-style:scale-100",
+  "motion-reduce:data-ending-style:scale-100 motion-reduce:duration-(--dur-quick)",
 ].join(" ");
 
 const heading = [
@@ -44,6 +45,19 @@ const heading = [
   "[&_[cmdk-group-heading]]:font-sans [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:text-ink-faint",
 ].join(" ");
 
+function isEditable(target: EventTarget | null): boolean {
+  return (
+    target instanceof HTMLElement &&
+    (target.isContentEditable ||
+      target.closest("input, textarea, select, [contenteditable]:not([contenteditable=false])") !==
+        null)
+  );
+}
+
+/**
+ * Opens on Ctrl+K and Cmd+K from anywhere except a text field, textarea, select or contenteditable
+ * (unless it is already open), so typing shortcuts are never hijacked.
+ */
 export function CommandMenu({ items, open: openProp, onOpenChange }: CommandMenuProps) {
   const [inner, setInner] = useState(false);
   const controlled = openProp !== undefined;
@@ -72,6 +86,8 @@ export function CommandMenu({ items, open: openProp, onOpenChange }: CommandMenu
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        // Typing in a field keeps Ctrl+K, unless the menu is already open.
+        if (!open && isEditable(event.target)) return;
         event.preventDefault();
         setOpen(!open);
       }
@@ -105,7 +121,7 @@ export function CommandMenu({ items, open: openProp, onOpenChange }: CommandMenu
       <DialogPrimitive.Portal>
         <DialogPrimitive.Backdrop
           data-slot="command-overlay"
-          className="fixed inset-0 z-50 bg-paper/80 transition-opacity duration-(--dur-base) ease-out data-ending-style:opacity-0 data-starting-style:opacity-0"
+          className="fixed inset-0 z-50 bg-paper/80 transition-opacity duration-(--dur-base) ease-out motion-reduce:duration-(--dur-quick) data-ending-style:opacity-0 data-starting-style:opacity-0"
         />
         <DialogPrimitive.Popup data-slot="command-menu" className={popup}>
           <DialogPrimitive.Title className="sr-only">Command menu</DialogPrimitive.Title>

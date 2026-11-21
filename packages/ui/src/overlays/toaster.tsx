@@ -1,8 +1,16 @@
 "use client";
 
-import { type ComponentProps, type CSSProperties, useSyncExternalStore } from "react";
-import { Toaster as Sonner, toast } from "sonner";
+import {
+  type ComponentProps,
+  type CSSProperties,
+  type ReactNode,
+  useSyncExternalStore,
+} from "react";
+import { Toaster as Sonner, toast as sonnerToast } from "sonner";
+import { Icon } from "../icons/icon.js";
+import { CheckCircleIcon, WarningCircleIcon, XIcon } from "../icons/index.js";
 import { cn } from "../lib/cn.js";
+import { touchTarget } from "../primitives/touch.js";
 
 // Sonner, restyled to the scoresheet: a `sheet` slip with a `rule-strong` hairline, lifted by the
 // one shadow because it floats. Stock sonner colours, rich-colour variants and icons are off; a
@@ -10,9 +18,24 @@ import { cn } from "../lib/cn.js";
 // 640px, bottom-right above. Sonner animates transform and opacity; under reduced motion its
 // transitions are cut to the instant token (M10).
 
-export { toast };
+// Sonner has one polite live region for everything. An error must interrupt, so `toast.error`
+// wraps its message in `role="alert"` (implicitly assertive); every other toast stays polite.
+// Mount `<Toaster />` ONCE, in the root layout: a second one renders every toast twice.
+export const toast = Object.assign(
+  (...args: Parameters<typeof sonnerToast>) => sonnerToast(...args),
+  sonnerToast,
+  {
+    error: (message: ReactNode, data?: Parameters<typeof sonnerToast.error>[1]) =>
+      sonnerToast.error(<span role="alert">{message}</span>, data),
+  },
+);
 
+// Sonner takes one `position` and has no CSS-only responsive form, so the side is chosen in JS:
+// the server render and first client paint use bottom-centre, and a wide viewport flips to
+// bottom-right right after hydration. No toast exists at first paint, so nothing visibly jumps.
+// Offsets use the gutter token, and the width never exceeds the viewport minus both gutters.
 const WIDE = "(min-width: 640px)";
+const GUTTER = "var(--space-gutter)";
 
 function subscribe(onChange: () => void): () => void {
   if (typeof window === "undefined" || typeof window.matchMedia !== "function") return () => {};
@@ -37,8 +60,9 @@ export function Toaster({ className, ...props }: ComponentProps<typeof Sonner>) 
   return (
     <Sonner
       position={wide ? "bottom-right" : "bottom-center"}
-      offset={{ bottom: 16, right: 16, left: 16 }}
-      mobileOffset={{ bottom: 12, left: 16, right: 16 }}
+      offset={{ bottom: GUTTER, right: GUTTER, left: GUTTER }}
+      mobileOffset={{ bottom: GUTTER, right: GUTTER, left: GUTTER }}
+      closeButton
       gap={8}
       visibleToasts={3}
       className={cn(
@@ -47,25 +71,34 @@ export function Toaster({ className, ...props }: ComponentProps<typeof Sonner>) 
       )}
       style={
         {
-          "--width": "min(356px, calc(100vw - 2 * var(--space-gutter)))",
+          "--width": `min(22rem, calc(100vw - 2 * ${GUTTER}))`,
         } as CSSProperties
       }
+      icons={{
+        success: <Icon icon={CheckCircleIcon} />,
+        error: <Icon icon={WarningCircleIcon} />,
+        close: <Icon icon={XIcon} size={16} />,
+      }}
       toastOptions={{
         unstyled: true,
+        closeButtonAriaLabel: "Dismiss",
         classNames: {
           toast: cn(
-            "pointer-events-auto flex w-full items-center gap-3 rounded-sheet border border-rule-strong bg-sheet",
-            "px-4 py-3 font-sans text-sm text-ink shadow-lift",
+            "relative flex w-full items-center gap-3 rounded-sheet border border-rule-strong bg-sheet",
+            "py-3 pr-12 pl-4 font-sans text-sm text-ink shadow-lift",
           ),
-          title: "font-medium text-ink",
+          icon: "flex shrink-0 items-center",
+          title: "font-medium",
           description: "text-ink-soft",
-          actionButton: cn(
-            "relative ml-auto inline-flex h-8 items-center rounded-field bg-ink px-3 text-sm font-medium text-on-ink",
-            "pointer-coarse:after:absolute pointer-coarse:after:top-1/2 pointer-coarse:after:left-1/2 pointer-coarse:after:size-full",
-            "pointer-coarse:after:min-h-11 pointer-coarse:after:min-w-11 pointer-coarse:after:-translate-x-1/2 pointer-coarse:after:-translate-y-1/2",
-            "hover:bg-ink-soft focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink",
+          // DESIGN.md, "Semantic states": red text is pen-text, green text is good-text.
+          error: "text-pen-text",
+          success: "text-good-text",
+          closeButton: cn(
+            "absolute top-1/2 right-2 inline-flex size-8 -translate-y-1/2 items-center justify-center rounded-field text-ink-soft",
+            "transition-colors duration-(--dur-quick) ease-out hover:bg-(--surface-hover) hover:text-ink",
+            touchTarget,
+            "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink",
           ),
-          closeButton: "rounded-field border border-rule-strong bg-sheet text-ink-soft",
         },
       }}
       {...props}
