@@ -4,9 +4,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use chess_core::{EngineScore, TimeClass};
-use chrono::{DateTime, Utc};
 use futures::future::BoxFuture;
 use futures::stream::BoxStream;
+use time::OffsetDateTime;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Platform {
@@ -34,7 +34,7 @@ pub struct NormalizedGame {
     pub platform: Platform,
     pub platform_game_id: String,
     pub pgn: String,
-    pub played_at: DateTime<Utc>,
+    pub played_at: OffsetDateTime,
     pub time_class: TimeClass,
     pub base_seconds: Option<i32>,
     pub increment_seconds: Option<i32>,
@@ -89,8 +89,8 @@ pub trait PlatformClient: Send + Sync {
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct FetchOptions {
-    pub since: Option<DateTime<Utc>>,
-    pub until: Option<DateTime<Utc>>,
+    pub since: Option<OffsetDateTime>,
+    pub until: Option<OffsetDateTime>,
     pub max: Option<u32>,
 }
 

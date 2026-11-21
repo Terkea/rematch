@@ -4,7 +4,7 @@ use std::fmt;
 use std::str::FromStr;
 use std::time::Duration;
 
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -76,9 +76,9 @@ pub struct Job {
     pub attempts: i32,
     pub max_attempts: i32,
     pub lease_token: Uuid,
-    pub run_at: DateTime<Utc>,
-    pub created_at: DateTime<Utc>,
-    pub started_at: DateTime<Utc>,
+    pub run_at: OffsetDateTime,
+    pub created_at: OffsetDateTime,
+    pub started_at: OffsetDateTime,
 }
 
 impl Job {
@@ -110,7 +110,7 @@ pub struct EnqueueOptions {
     pub user_key: Option<Uuid>,
     /// Lower runs first. Default 100.
     pub priority: i16,
-    pub run_at: Option<DateTime<Utc>>,
+    pub run_at: Option<OffsetDateTime>,
     /// Default 3.
     pub max_attempts: i32,
     pub recur_every: Option<Duration>,

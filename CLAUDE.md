@@ -19,11 +19,11 @@ TypeScript monorepo (pnpm workspaces + Turborepo, Node 22, ESM only). Packages u
 
 - Cargo workspace in `backend/` (ADRs 0030, 0031). Build and test only in Docker: `$RUST` means `docker compose run --rm rust-dev`.
 - Set `LANE=<lane letter>` before `$RUST`, so each lane builds into its own `/target/$LANE` in the shared volume.
-- One crate: `$RUST cargo test -p <crate>`. Full gate: `$RUST sh -c "cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings && cargo deny check && cargo test --workspace"`.
+- One crate: `$RUST cargo test --locked -p <crate>`. Full gate: `$RUST sh -c "cargo fmt --check && cargo clippy --locked --workspace --all-targets -- -D warnings && cargo deny --locked check && cargo test --locked --workspace && sh scripts/check-crate-age.sh"`.
 - Migrations live in `db/migrations/` (plain SQL, applied by sqlx). They are the schema source of truth.
-- Only the coordinator edits `Cargo.toml` dependency lists and `Cargo.lock`. Crates are pinned exactly, at least 7 days old, and licence-checked by `cargo deny`.
+- Only the coordinator edits `Cargo.toml` dependency lists and `Cargo.lock`. Crates are pinned exactly, at least 7 days old (`scripts/check-crate-age.sh`), and checked by `cargo deny`. Always pass `--locked`.
 - DB tests use `#[sqlx::test(migrator = "db::MIGRATOR")]`. With `IN_DOCKER=1`, a missing Postgres or Stockfish fails the test instead of skipping it.
-
+- Use `testkit` only from integration tests in `tests/`, never from `#[cfg(test)]` unit tests: the dev-dependency cycle would compile the crate twice.
 ## Conventions
 
 - TypeScript `strict` and `noUncheckedIndexedAccess`; relative imports use the `.js` extension.

@@ -22,10 +22,11 @@ RUN apt-get update \
  && rm -rf /tmp/sf.tar.gz /tmp/stockfish
 
 # Development and CI image: the repo is bind-mounted at /work, the target dir and the cargo
-# registry live in volumes. git is needed by cargo-deny to fetch the advisory database.
+# registry live in volumes. git is needed by cargo-deny (advisory database), curl by
+# scripts/check-crate-age.sh. Every cargo command in this repo runs with --locked.
 FROM chef AS dev
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates git postgresql-client \
+ && apt-get install -y --no-install-recommends ca-certificates curl git postgresql-client \
  && rm -rf /var/lib/apt/lists/*
 COPY --from=stockfish /usr/local/bin/stockfish /usr/local/bin/stockfish
 ENV STOCKFISH_PATH=/usr/local/bin/stockfish

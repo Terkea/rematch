@@ -3,10 +3,10 @@
 
 [graph]
 all-features = false
-# We build and ship only x86-64 Linux (the dev, CI and runtime images, and the Stockfish asset).
-# Without this, target-specific crates we never compile are checked too, e.g. webpki-root-certs
-# (CDLA-Permissive-2.0), which rustls-platform-verifier pulls in only on wasm32.
-targets = ["x86_64-unknown-linux-gnu"]
+# Every target we build or deploy MUST be listed here (ADR 0031). Crates that only other targets
+# use are not checked, e.g. webpki-root-certs (CDLA-Permissive-2.0), which
+# rustls-platform-verifier pulls in only on wasm32.
+targets = ["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu"]
 
 [licenses]
 allow = ["MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC", "Unicode-3.0", "Zlib"]
@@ -21,11 +21,6 @@ ignore = true
 [advisories]
 version = 2
 yanked = "deny"
-ignore = [
-  # chrono is unmaintained (informational, no vulnerability). sqlx 0.9 and the shared types use it;
-  # moving to jiff or time is a separate decision (ADR 0031, "Known exceptions").
-  { id = "RUSTSEC-2026-0543", reason = "chrono unmaintained, no vulnerability; replacement tracked in ADR 0031" },
-]
 
 [bans]
 multiple-versions = "warn"

@@ -3,6 +3,7 @@
 pub mod board;
 pub mod fen;
 pub mod game_accuracy;
+pub mod js_time;
 pub mod judgement;
 pub mod move_record;
 pub mod pgn;
