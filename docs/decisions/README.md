@@ -31,15 +31,16 @@ One file per decision: context, decision, alternatives, consequences. New decisi
 - [0027. Lichess server evals accepted into the eval cache](0027-lichess-evals-in-eval-cache.md)
 - [0028. BullMQ job ids and analysis persistence](0028-bullmq-job-ids-and-analysis-persistence.md)
 - [0029. State in Postgres, queue as delivery; reconciler instead of an outbox](0029-state-in-postgres-reconciler-not-outbox.md)
-- [0028](0028-bullmq-job-ids-and-analysis-persistence.md) BullMQ job ids and analysis persistence
-- [0029](0029-state-in-postgres-reconciler-not-outbox.md) State in Postgres, queue as delivery; reconciler instead of an outbox
-- [0039](0039-piece-set.md) Piece set: Cburnett by default, Chessnut as an option
+- [0039. Piece set: Cburnett by default, Chessnut as an option](0039-piece-set.md)
 - [ADR-WEB-1. Source-only UI packages and the web dependency set](ADR-WEB-1-source-only-ui-packages.md)
 - [ADR-WEB-2. Web development stack in Compose](ADR-WEB-2-web-dev-stack.md)
 - [ADR-WEB-7. Design tokens, themes and self-hosted fonts](ADR-WEB-7-design-tokens.md)
-- [ADR-WEB-9](ADR-WEB-9-third-party-design-tooling.md) Ban lint; Impeccable not adopted, web-design-guidelines vendored
-- [ADR-WEB-10](ADR-WEB-10-visual-qa-loop.md) Visual QA loop: Playwright, shots, lab and critique
+- [ADR-WEB-9. Ban lint; Impeccable not adopted, web-design-guidelines vendored](ADR-WEB-9-third-party-design-tooling.md)
 - [ADR-WEB-10. Visual QA loop: Playwright, shots, lab and critique](ADR-WEB-10-visual-qa-loop.md)
+- [ADR-WEB-11. Overlay libraries: sonner, vaul and cmdk](ADR-WEB-11-overlay-libraries.md)
+- [ADR-WEB-12. KPI stats: fixed percent window, outward-rounded ends, host-set halo, honest trend scale](ADR-WEB-12-kpi-stat-honest-uncertainty.md)
+- [ADR-WEB-13. Board: shipped Cburnett pieces, coordinates and piece motion](ADR-WEB-13-board-pieces-and-motion.md)
+- [ADR-WEB-14. Weakness timeline and area score encoding](ADR-WEB-14-weakness-timeline-encoding.md)
 - [0030. Rust for the entire backend](0030-rust-backend.md)
 - [0031. Rust workspace, toolchain and crates](0031-rust-workspace-toolchain-and-crates.md)
 - [0031 addendum. npm enforcement of the 7-day age and exact-pin rule](0031-addendum-npm-enforcement.md)
@@ -50,7 +51,6 @@ One file per decision: context, decision, alternatives, consequences. New decisi
 - [0036. Per-stage timing metrics](0036-per-stage-timing-metrics.md)
 - [0037. Own PGN parser with chess.js-compatible FEN and SAN](0037-own-pgn-parser-chessjs-compatible.md)
 - [0038. Parity acceptance and removal of the TS backend](0038-parity-and-ts-backend-removal.md)
-- [0039. Piece set: Cburnett by default, Chessnut as an option](0039-piece-set.md)
 - [0040. chess.com first; Lichess accounts deferred](0040-chesscom-first-defer-lichess-accounts.md)
 
 R2 (profile engine) records use placeholder numbers until the controller renumbers them after 0038 (ADR-R2-1). Rows without a file yet are written by the R2 task named in the plan.
@@ -80,11 +80,3 @@ R3 (AI) records use placeholder numbers until R3 Task 26 renumbers them.
 
 Web (M4) records use placeholder numbers until the controller renumbers them.
 
-- [ADR-WEB-11](ADR-WEB-11-overlay-libraries.md) Overlay libraries: sonner, vaul and cmdk
-- [ADR-WEB-11. Overlay libraries: sonner, vaul and cmdk](ADR-WEB-11-overlay-libraries.md)
-- [ADR-WEB-12](ADR-WEB-12-kpi-stat-honest-uncertainty.md) KPI stats: fixed percent window, outward-rounded ends, host-set halo, honest trend scale
-- [ADR-WEB-12. KPI stats: fixed percent window, outward-rounded ends, host-set halo, honest trend scale](ADR-WEB-12-kpi-stat-honest-uncertainty.md)
-- [ADR-WEB-13](ADR-WEB-13-board-pieces-and-motion.md) Board: shipped Cburnett pieces, coordinates and piece motion
-- [ADR-WEB-13. Board: shipped Cburnett pieces, coordinates and piece motion](ADR-WEB-13-board-pieces-and-motion.md)
-- [ADR-WEB-14](ADR-WEB-14-weakness-timeline-encoding.md) Weakness timeline and area score encoding
-- [ADR-WEB-14. Weakness timeline and area score encoding](ADR-WEB-14-weakness-timeline-encoding.md)
