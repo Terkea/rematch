@@ -29,6 +29,9 @@ pub const PRECISE_REL_WIDTH: f64 = 0.25;
 /// Largest plausible events or opportunities of one point; larger values are invalid (they keep
 /// every sum finite).
 pub const MAX_POINT_COUNT: f64 = 1e9;
+/// Largest usable band EPL per event (expected points lost, in pawns' worth of win share per
+/// event; real values are below 1). Larger values mean a broken reference: no benchmark.
+pub const MAX_EPL_PER_EVENT: f64 = 1e3;
 
 /// Why an estimate can or cannot be ranked (TS `reason`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -81,12 +84,14 @@ pub struct EstimateInput<'a> {
     pub fatigue: f64,
 }
 
-/// The band prior of a reference: `pooled_rate` in `[0, 1]`, a finite `epl_per_event >= 0`,
-/// finite quartiles and a median in `[0, 1]`; otherwise there is no benchmark.
+/// The band prior of a reference: `pooled_rate` in `[0, 1]`, `epl_per_event` in
+/// `[0, MAX_EPL_PER_EVENT]`, finite quartiles and a median in `[0, 1]`; otherwise there is no benchmark.
 fn benchmark(r: Option<&BandReferenceStat>) -> Option<(&BandReferenceStat, f64, f64)> {
     let r = r?;
     let pooled = r.pooled_rate.filter(|p| (0.0..=1.0).contains(p))?;
-    let epl = r.epl_per_event.filter(|e| e.is_finite() && *e >= 0.0)?;
+    let epl = r
+        .epl_per_event
+        .filter(|e| (0.0..=MAX_EPL_PER_EVENT).contains(e))?;
     let finite = [r.p25, r.p40, r.median, r.p75]
         .iter()
         .all(|x| x.is_finite());
@@ -94,11 +99,18 @@ fn benchmark(r: Option<&BandReferenceStat>) -> Option<(&BandReferenceStat, f64, 
 }
 
 /// A usable point: finite, non-negative events, opportunities and EPL with
-/// `events <= opportunities <= MAX_POINT_COUNT`, and a finite age. A negative finite age is
+/// `events <= opportunities <= MAX_POINT_COUNT`, events either 0 or at least 1 (real counts
+/// are integers, so a fraction below 1 is corrupt), and a finite age. A negative finite age is
 /// clock skew and valid (it weighs 1, ADR-R2-5 section 5).
 fn valid_point(&(e, o, epl, age): &(f64, f64, f64, f64)) -> bool {
     let ok = |x: f64| x.is_finite() && x >= 0.0;
-    ok(e) && ok(o) && ok(epl) && age.is_finite() && e <= o && o <= MAX_POINT_COUNT
+    ok(e)
+        && (e == 0.0 || e >= 1.0)
+        && ok(o)
+        && ok(epl)
+        && age.is_finite()
+        && e <= o
+        && o <= MAX_POINT_COUNT
 }
 
 /// Estimate and score one weakness (TS `estimateWeakness`).
@@ -153,7 +165,10 @@ pub fn estimate_weakness(i: &EstimateInput) -> WeaknessEstimate {
             } else {
                 n_unweighted / f64::from(i.games_in_window)
             };
+            // Bounded factors: rate gap <= 1, per_game <= points * MAX_POINT_COUNT,
+            // epl <= MAX_EPL_PER_EVENT, so the product is finite; the guard is defensive.
             let excess = (post.mean - r.median).max(0.0) * per_game * epl;
+            let excess = if excess.is_finite() { excess } else { 0.0 };
             let width = post.interval.high - post.interval.low;
             (
                 Some(r.median),

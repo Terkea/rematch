@@ -13,8 +13,8 @@ use profile_core::stats::posterior::{
     SHAPE_FLOOR, p_improvement, p_regression, posterior, prob_above,
 };
 use profile_core::stats::priority::{
-    EstimateInput, EstimateReason, MIN_GAMES, WINDOW_DAYS, WeaknessEstimate, estimate_weakness,
-    rank_weaknesses,
+    EstimateInput, EstimateReason, MAX_EPL_PER_EVENT, MIN_GAMES, WINDOW_DAYS, WeaknessEstimate,
+    estimate_weakness, rank_weaknesses,
 };
 use profile_core::stats::rng::Rng;
 use profile_core::stats::weights::HALF_LIFE_DAYS;
@@ -446,6 +446,46 @@ fn invalid_points_are_skipped_and_counted() {
 }
 
 #[test]
+fn fractional_events_below_one_are_invalid() {
+    let r = w1_ref();
+    let base = estimate_weakness(&w1_input(&W1_POINTS, 40, Some(&r)));
+    for events in [1e-300, 0.5, 0.999] {
+        let pts = [W1_POINTS[0], (events, 10.0, 0.0, 0.0)];
+        let e = estimate_weakness(&w1_input(&pts, 40, Some(&r)));
+        assert_eq!(e.invalid_points, 1, "events {events}");
+        assert_eq!(e.k_unweighted, 10.0);
+    }
+    // 0 and whole counts (and counts of at least 1) stay valid.
+    let pts = [W1_POINTS[0], (0.0, 10.0, 0.0, 0.0), (1.0, 10.0, 0.0, 0.0)];
+    let e = estimate_weakness(&w1_input(&pts, 40, Some(&r)));
+    assert_eq!(e.invalid_points, 0);
+    assert_eq!(e.k_unweighted, base.k_unweighted + 1.0);
+}
+
+#[test]
+fn huge_epl_per_event_is_no_benchmark() {
+    assert_eq!(MAX_EPL_PER_EVENT, 1e3);
+    for epl in [1e308, f64::INFINITY, f64::NAN, -0.1, 1000.5] {
+        let mut r = w1_ref();
+        r.epl_per_event = Some(epl);
+        let e = estimate_weakness(&w1_input(&W1_POINTS, 40, Some(&r)));
+        assert_eq!(e.reason, EstimateReason::NoBenchmark, "epl {epl}");
+        assert!(e.excess.is_finite() && e.priority.is_finite(), "epl {epl}");
+        assert_eq!(e.priority, 0.0);
+    }
+    // The bound itself is usable, and excess stays finite with the largest counts.
+    let mut r = w1_ref();
+    r.epl_per_event = Some(MAX_EPL_PER_EVENT);
+    let pts = [(1e9, 1e9, 0.0, 0.0); 4];
+    let e = estimate_weakness(&w1_input(&pts, 30, Some(&r)));
+    assert_eq!(e.reason, EstimateReason::Ok);
+    assert!(
+        e.excess.is_finite() && e.excess > 0.0 && e.priority.is_finite(),
+        "{e:?}"
+    );
+}
+
+#[test]
 fn non_finite_priorities_rank_last() {
     let r = w1_ref();
     let mk = |key: WeaknessKey, priority: f64| WeaknessEstimate {
@@ -634,7 +674,7 @@ fn regression_guard_p_improvement_is_a_probability_and_monotone_in_margin() {
 /// A point `estimate_weakness` must skip as invalid (written independently of the code).
 fn is_invalid(&(e, o, epl, age): &(f64, f64, f64, f64)) -> bool {
     let bad = |x: f64| !x.is_finite() || x < 0.0;
-    bad(e) || bad(o) || bad(epl) || !age.is_finite() || e > o || o > 1e9
+    bad(e) || (e > 0.0 && e < 1.0) || bad(o) || bad(epl) || !age.is_finite() || e > o || o > 1e9
 }
 
 #[test]
@@ -643,7 +683,16 @@ fn property_estimate_is_contract_safe() {
     let rates = [0.0, 1e-9, 0.0005, 0.02, 0.3, 0.999, 1.0];
     let ages = [-3.0, 0.0, 10.0, 60.0, 182.9, 183.0, 183.1, 400.0];
     let counts = [0.0, 1.0, 3.0, 40.0, 1000.0];
-    let junk = [f64::NAN, f64::INFINITY, f64::NEG_INFINITY, -1.0, 1e300, 5e9];
+    let junk = [
+        f64::NAN,
+        f64::INFINITY,
+        f64::NEG_INFINITY,
+        -1.0,
+        1e300,
+        5e9,
+        1e-300,
+        0.5,
+    ];
     let games = [0, 1, 29, 30, 31, 200, 5000];
     for _ in 0..3000 {
         let key = WeaknessKey::ALL[(rng.next_f64() * WeaknessKey::ALL.len() as f64) as usize];
