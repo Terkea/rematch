@@ -8,11 +8,9 @@ use serde_json::{Map, Value, json};
 
 use super::anchor::ChatAnchor;
 use super::data_source::PositionRecord;
+use super::execute::{PosRef, add_position};
 use crate::input::types::{CoachingInput, TimeClass};
-use crate::validator::evidence::{
-    Evidence, PositionArgs, PvFrom, PvSides, build_evidence, list_date_paths, list_number_paths,
-};
-use crate::validator::pv::pv_to_san;
+use crate::validator::evidence::{Evidence, build_evidence, list_date_paths, list_number_paths};
 
 /// Top-level sections of the input the context shows; their paths are listed in `refs`.
 const CONTEXT_SECTIONS: &[&str] = &["basis", "areaScores", "weaknesses", "openings", "changes"];
@@ -97,70 +95,58 @@ pub fn build_chat_context(input: &CoachingInput) -> Value {
     })
 }
 
+/// Whether `resolved` is the record of `anchor`: it must carry every id of the anchor, equal.
+/// (`DbCoachDataSource::resolve_anchor` returns records with these camelCase id fields: a
+/// position record's `gameId` and `ply`, a weakness's `id` or `weaknessId`, an opening line's
+/// `lineKey`, a game's `gameId`, a report section's `reportId` and `section`.)
+fn resolved_matches(anchor: &ChatAnchor, resolved: &Value) -> bool {
+    let str_is = |key: &str, want: &str| resolved.get(key).and_then(Value::as_str) == Some(want);
+    let ply_is = |want: u32| resolved.get("ply").and_then(Value::as_u64) == Some(u64::from(want));
+    match anchor {
+        ChatAnchor::Move { game_id, ply } | ChatAnchor::Position { game_id, ply } => {
+            str_is("gameId", game_id) && ply_is(*ply)
+        }
+        ChatAnchor::Game { game_id } => str_is("gameId", game_id),
+        ChatAnchor::Weakness { weakness_id } => {
+            str_is("weaknessId", weakness_id)
+                || (resolved.get("weaknessId").is_none() && str_is("id", weakness_id))
+        }
+        ChatAnchor::OpeningLine { line_key } => str_is("lineKey", line_key),
+        ChatAnchor::ReportSection { report_id, section } => {
+            str_is("reportId", &report_id.to_string())
+                && serde_json::to_value(section).ok().as_ref() == resolved.get("section")
+        }
+    }
+}
+
 /// The details of an anchor for [`anchor_block`]: the anchor's kind and ids, then the fields
 /// the data source resolved (for a `Move` or `Position` anchor, a [`PositionRecord`] with `fen`
-/// and `fenAfterPlayed`, which feed `analyse_position`). A position anchor is added to `ev` and
-/// gets `refs` (`move`, `best`, `pv` tokens) that resolve against it.
+/// and `fenAfterPlayed`, which feed `analyse_position`). A resolved record that does not carry
+/// the anchor's own ids is dropped, for every kind: only the anchor's ids remain. A position
+/// anchor is added to `ev` and gets `refs` (`move`, `best`, `pv` tokens) that resolve against it.
 pub fn anchor_details(ev: &mut Evidence, anchor: &ChatAnchor, resolved: &Value) -> Value {
     let mut out = match serde_json::to_value(anchor) {
         Ok(Value::Object(o)) => o,
         _ => Map::new(),
     };
-    match resolved {
-        Value::Object(r) => {
-            for (k, v) in r {
-                out.entry(k.clone()).or_insert_with(|| v.clone());
-            }
-        }
-        Value::Null => {}
-        other => {
-            out.insert("details".into(), other.clone());
-        }
+    let Value::Object(r) = resolved else {
+        return Value::Object(out);
+    };
+    if !resolved_matches(anchor, resolved) {
+        return Value::Object(out);
     }
-    if let ChatAnchor::Move { game_id, ply } | ChatAnchor::Position { game_id, ply } = anchor
-        && let Ok(rec) = serde_json::from_value::<PositionRecord>(resolved.clone())
-        && rec.game_id == *game_id
-        && rec.ply == *ply
+    for (k, v) in r {
+        out.entry(k.clone()).or_insert_with(|| v.clone());
+    }
+    if matches!(
+        anchor,
+        ChatAnchor::Move { .. } | ChatAnchor::Position { .. }
+    ) && let Ok(rec) = serde_json::from_value::<PositionRecord>(resolved.clone())
+        && let Some(refs) = add_position(ev, PosRef::of(&rec), None)
     {
-        out.insert("refs".into(), position_refs(ev, &rec));
+        out.insert("refs".into(), refs);
     }
     Value::Object(out)
-}
-
-fn position_refs(ev: &mut Evidence, rec: &PositionRecord) -> Value {
-    let best = PvFrom {
-        from_fen: rec.fen.clone(),
-        uci: rec.pv.clone(),
-    };
-    let key = format!("{}#{}", rec.game_id, rec.ply);
-    let existed = ev.positions.contains_key(&key);
-    ev.add_position(PositionArgs {
-        game_id: rec.game_id.clone(),
-        ply: rec.ply,
-        fen: rec.fen.clone(),
-        played: Some(rec.played.clone()),
-        best: rec.best.clone(),
-        pvs: vec![best.clone()],
-        pv_sides: if existed {
-            PvSides::default()
-        } else {
-            PvSides {
-                best: Some(best),
-                refutation: None,
-            }
-        },
-    });
-    let (g, p) = (&rec.game_id, rec.ply);
-    let pv_len = ev.positions.get(&key).map_or_else(
-        || pv_to_san(&rec.fen, &rec.pv).len(),
-        |pe| pe.best_pv_san.len(),
-    );
-    let best = ev.positions.get(&key).and_then(|pe| pe.best.as_ref());
-    json!({
-        "move": format!("{{{{move:{g}:{p}}}}}"),
-        "best": best.map(|_| format!("{{{{best:{g}:{p}}}}}")),
-        "pv": (1..=pv_len.min(999)).map(|n| format!("{{{{pv:{g}:{p}:best:{n}}}}}")).collect::<Vec<_>>(),
-    })
 }
 
 /// `"<anchor>" + canonical_json(details) + "</anchor>"`. Canonical JSON is compact with sorted
