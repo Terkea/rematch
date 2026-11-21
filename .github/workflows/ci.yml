@@ -77,3 +77,17 @@ jobs:
       - name: Stop the stack
         if: always()
         run: docker compose down -v
+  baseline-schema:
+    # ADR 0033: the sqlx baseline must produce exactly the schema the Drizzle migrations do.
+    # Runs always (cheap), so a change to either side cannot slip past a path filter.
+    runs-on: ubuntu-latest
+    env:
+      CONTACT_EMAIL: ci@example.invalid
+      COMPOSE: docker compose -p ci-baseline-schema
+    steps:
+      - uses: actions/checkout@v4
+      - name: Diff the Drizzle and sqlx schemas
+        run: sh backend/scripts/check-baseline-schema.sh
+      - name: Stop the stack
+        if: always()
+        run: docker compose -p ci-baseline-schema down -v
