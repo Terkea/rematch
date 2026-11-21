@@ -33,3 +33,12 @@ Piece sets are **user-configurable** ("Pieces" in Settings, under Board, stored 
 - The most familiar silhouettes in online chess help players read positions fast. The trade-off is that the set is familiar rather than unique, and the board's identity comes from the squares, the marks and the motion.
 - Shipping two sets means two build-time sprite sets per theme. That cost is small, but it is a cost.
 - Both sets' licence texts must be on `/licenses` from the first release that offers them.
+
+## Addendum (2026-11-21, M4 Task 10 review): the copy embedded in react-chessboard
+
+react-chessboard 5.12.1 (MIT, Ryan Gregory) bundles its own default pieces (`defaultPieces` in `dist/index.esm.js`). They are Cburnett drawings, with path data identical to the Commons files, but the package carries no attribution to Colin M.L. Burnett and no BSD notice. The bundle includes them whatever the board passes to `pieces`, so every release that bundles react-chessboard ships them, even though they are never rendered.
+
+- **Never rendered:** every board passes a set from "Piece sets" in DESIGN.md through `pieces`, so react-chessboard's default pieces never appear on screen. The Cburnett set we render comes from Commons, at `packages/ui/assets/pieces/cburnett/` with its `LICENSE` (Task 11).
+- **Always attributed:** the Cburnett BSD-3-Clause notice and attribution on `/licenses` also cover the embedded copy, from the first release that bundles react-chessboard.
+- **It stays:** the notice remains for as long as react-chessboard is bundled, even if the default set later changes to Chessnut or the signature set, or Cburnett stops being offered.
+
