@@ -219,7 +219,7 @@ Size and line height in px, from the classic scale. Literata's `opsz` tracks the
 | `--space-panel-pad` | 20px (16px below 480px) | inner padding of sheets and panels |
 | `--space-gutter` | 16px below 768px, 24px from 768px, 32px from 1280px | page side gutters and column gaps |
 
-**Board sizes.** The board is always a whole number of pixels per square (`8 × floor(size / 8)`). The token is `--board-size`, which rounds down to a multiple of 8px:
+**Board sizes.** The board is always a whole number of pixels per square (`8 × floor(size / 8)`). The token is `--board-size`, which rounds down to a multiple of 8px where CSS `round()` is supported (an unrounded `min()` is the fallback):
 
 | Viewport | Board size |
 |---|---|
@@ -389,7 +389,7 @@ Every spring states its damping ratio, `ζ = damping / (2 × √(stiffness × ma
 | `page` | `{ stiffness: 300, damping: 34 }` | 0.98 | 0% | the incoming page of a page turn, layout morphs, and the Motion fallback for shared elements |
 | `tilt` | `{ stiffness: 400, damping: 30 }` | 0.75 | 3% | a dragged piece's tilt returning to upright |
 
-**Mass makes weight visible.** Every piece travels on its own `settle`, all at the same ζ (0.92), so they all come to rest the same way, and mass only slows them. Stiffness is `520 / mass factor`, and damping keeps ζ at 0.92 (`damping = 2 × 0.92 × √stiffness`, rounded to one decimal), with Motion's `mass` left at 1. Travel time grows with the square root of the mass factor: a queen takes 27% longer than a pawn to cover 90% of the distance. A heavier piece is never ahead of a lighter one on the way in. Checked by step response: the lighter piece leads until it reaches the target, and after that they differ by less than 0.03% of the distance (0.2px over eight 80px squares). Heavier pieces also land harder:
+**Mass makes weight visible.** Every piece travels on its own `settle`, all at the same ζ (0.92), so they all come to rest the same way, and mass only slows them. Stiffness is `520 / mass factor`, and damping keeps ζ at 0.92 (`damping = 2 × 0.92 × √stiffness`, rounded to one decimal), with Motion's `mass` left at 1. Travel time grows with the square root of the mass factor: a queen takes 27% longer than a pawn to cover 90% of the distance. That 27% spread is accepted (controller ruling, Task 5 fix round): it follows from the 0.8 and 1.3 factors, and narrowing it would weaken the weight contrast the owner asked for. A heavier piece is never ahead of a lighter one on the way in. Checked by step response: the lighter piece leads until it reaches the target, and after that they differ by less than 0.03% of the distance (0.2px over eight 80px squares). Heavier pieces also land harder:
 
 | Piece | Mass factor | `settle` values | ζ | 90% arrival | Lift scale | Landing squash (scaleX / scaleY) |
 |---|---|---|---|---|---|---|
@@ -766,5 +766,8 @@ The full contrast script was re-run over every pair, and there are 0 failures. T
 1. **Mass now reads as weight.** The old table varied Motion's `mass` at a fixed stiffness and damping. That changed ζ as well as speed, so heavier pieces were *faster* to 90% (queen 151ms, pawn 159ms) and overtook lighter ones by up to 1.4% of the distance at about 200ms. Now ζ stays at 0.92 and only the speed changes: stiffness is `520 / mass factor`, damping holds ζ, and the queen and king factor is 1.3 (was 1.25). The 90% arrivals are now 138, 154, 165 and 175ms, and a step-response test checks that no heavier piece is ahead of a lighter one on the way in. The two choreography lines that said "with its mass" now point to the table.
 2. **New tokens for existing values:** `--tracking-glyph` (-0.01em, from Notation), `--board-size` (the board sizes table, rounded down to a multiple of 8px) and `--font-serif-italic` (Literata italic, loaded separately and not preloaded).
 3. **The styleguide hero has a reserved slot** at the top of `/styleguide`: the game title (the page's `h1`), a board placeholder at `--board-size`, and the scoresheet and eval graph placeholders. The board and annotation lanes fill it in.
+
+4. **Arrival spread accepted.** The 27% pawn-to-queen spread at 90% arrival (138ms to 175ms) stays, by controller ruling. It follows from the ruled 0.8 and 1.3 factors, and a narrower spread would weaken the weight contrast.
+5. **`--board-size` fallback.** It is declared as plain `min(100vw − 2 × gutter, 480px)`, with the rounded form under `@supports (width: round(down, 10px, 8px))`.
 
 **Token values changed in this round:** the four piece `settle` springs (the minor-piece row keeps 520/42) and the queen and king mass factor (1.25 to 1.3).

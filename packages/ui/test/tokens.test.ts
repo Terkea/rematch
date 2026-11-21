@@ -207,7 +207,14 @@ describe("type, shape and space match DESIGN.md", () => {
     // Below 768px: the viewport less both gutters, capped, rounded down to whole 1px squares.
     const cap = /capped at (\d+)px/.exec(first?.[1] ?? "")?.[1];
     const base = (css.day.get("--board-size") ?? "").replace(/\s+/g, " ");
-    expect(base).toBe(`round(down, min(100vw - 2 * var(--space-gutter), ${cap}px), 8px)`);
+    // Fallback for browsers without CSS round(): the same size, not rounded to whole squares.
+    expect(base).toBe(`min(100vw - 2 * var(--space-gutter), ${cap}px)`);
+    const supports =
+      /@supports \(width: round\(down, 10px, 8px\)\)\s*\{\s*:root\s*\{\s*--board-size:\s*([^;]+);/;
+    const rounded = supports.exec(tokensCss)?.[1];
+    expect(rounded?.replace(/\s+/g, " ")).toBe(`round(down, ${base}, 8px)`);
+    // The rounded form must come before the breakpoint sizes, or it would override them.
+    expect(tokensCss.indexOf("@supports")).toBeLessThan(tokensCss.indexOf("@media"));
     const media = css.media();
     for (const [viewport, size] of fixed) {
       const from = Number(/^(\d+)/.exec(viewport ?? "")?.[1]);

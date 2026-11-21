@@ -91,8 +91,8 @@
   --space-panel-pad: 16px;
   --space-gutter: 16px;
 
-  /* The board: whole pixels per square. Below 768px it fills the column, up to 480px. */
-  --board-size: round(down, min(100vw - 2 * var(--space-gutter), 480px), 8px);
+  /* The board: below 768px it fills the column, up to 480px. Rounded to whole squares below. */
+  --board-size: min(100vw - 2 * var(--space-gutter), 480px);
 
   /* Elevation: the one shadow, for things that float */
   --shadow-lift: 0 10px 30px -12px rgb(22 35 59 / 0.35);
@@ -116,6 +116,13 @@
   --stagger-tight: 40ms;
   --stagger-base: 80ms;
   --stagger-pen: 120ms;
+}
+
+/* Whole pixels per square where CSS round() exists. Before the breakpoints, which override it. */
+@supports (width: round(down, 10px, 8px)) {
+  :root {
+    --board-size: round(down, min(100vw - 2 * var(--space-gutter), 480px), 8px);
+  }
 }
 
 @media (width >= 480px) {

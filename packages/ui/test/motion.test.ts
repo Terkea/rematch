@@ -147,6 +147,8 @@ describe("springs match DESIGN.md", () => {
         lead = Math.max(lead, ahead);
       }
       // After the lighter one arrives, any difference is under 0.03% of the distance.
+      // After arrival the only lead is the lighter piece settling back from its ~0.06% overshoot
+      // (settle at ζ 0.92) while the heavier one is still rising: measured at most 2.3e-4.
       expect(lead).toBeLessThan(0.0003);
     });
   }
