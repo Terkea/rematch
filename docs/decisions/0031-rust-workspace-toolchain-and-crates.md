@@ -62,6 +62,7 @@ ADR 0030 moves the backend to Rust. Milestone R1 builds it in up to nine paralle
 ## Known exceptions
 
 - **Target scope of `cargo deny`.** The check graph is limited to the targets we build or deploy: `x86_64-unknown-linux-gnu` and `aarch64-unknown-linux-gnu`. **Rule: every build or deploy target must be listed in `[graph] targets`.** Adding a target without listing it would let that target's crates escape the licence and advisory checks. Crates for other targets are not checked. For example, `rustls-platform-verifier` (via reqwest 0.13) pulls in `webpki-root-certs` (CDLA-Permissive-2.0) only on `wasm32`, so we never compile it. The licence allowlist itself is unchanged, and there are no ignored advisories.
+- **Dev-dependencies are licence-checked.** By default, cargo-deny 0.20 leaves crates reachable only through dev-dependencies out of `cargo deny list` and the licence check (for example wiremock, assert-json-diff and deadpool). `[licenses] include-dev = true` brings them in, so test-only crates follow the same allowlist. Build-dependencies were already covered (`include-build` adds nothing), and the advisory check already spans the whole graph, dev edges included.
 - **Tool dependencies.** The transitive dependencies of cargo-chef and cargo-deny are not age-checked (see "Crate age is checked" above).
 
 ## Alternatives considered
