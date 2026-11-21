@@ -12,6 +12,7 @@ x-workspace-volumes: &workspace-volumes
   - chess_core_node_modules:/app/packages/chess-core/node_modules
   - db_node_modules:/app/packages/db/node_modules
   - ui_node_modules:/app/packages/ui/node_modules
+  - ai_sidecar_node_modules:/app/services/ai-sidecar/node_modules
   - pnpm_store:/pnpm-store
 
 x-web-environment: &web-environment
@@ -169,6 +170,46 @@ services:
         condition: service_healthy
     volumes: *workspace-volumes
 
+  # R3 (ADR-R3-6): every interactive Claude call goes through this Agent SDK sidecar. No ports:
+  # only the Rust backend on the compose network reaches it. Chat transcripts persist in Postgres
+  # through the session store (role ai_sidecar); the CLI disk is a tmpfs scratch area.
+  ai-sidecar:
+    build:
+      context: .
+      dockerfile: services/ai-sidecar/Dockerfile
+    environment:
+      AI_SIDECAR_TOKEN: ${AI_SIDECAR_TOKEN:-dev-only-sidecar-token-change-me-0000000}
+      AI_SIDECAR_ENV: ${AI_SIDECAR_ENV:-development}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+      # postgres://ai_sidecar:<password>@postgres:5432/chess. Empty = no session store (dev only).
+      AI_SESSION_DATABASE_URL: ${AI_SESSION_DATABASE_URL:-}
+    # Read-only root; the only writable paths are sized tmpfs scratch areas (they count toward
+    # mem_limit). The CLI's config dir and cwd live in the first; /tmp is for the CLI's temp files.
+    read_only: true
+    tmpfs:
+      - /var/lib/ai-sidecar:uid=1000,gid=1000,mode=0700,size=512m
+      - /tmp:mode=1777,size=256m
+    mem_limit: 5g
+
+  # Dev only: grants the NOLOGIN ai_sidecar role LOGIN and AI_SIDECAR_DB_PASSWORD, after the
+  # migrations ran. `docker compose --profile ai run --rm ai-sidecar-role` (ADR-R3-6).
+  ai-sidecar-role:
+    profiles: [ai]
+    image: postgres:17
+    entrypoint: ["sh", "/ai-sidecar-role.sh"]
+    environment:
+      PGHOST: postgres
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: chess
+      AI_SIDECAR_DB_PASSWORD: ${AI_SIDECAR_DB_PASSWORD:-}
+    volumes:
+      - ./docker/postgres/ai-sidecar-role.sh:/ai-sidecar-role.sh:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   rust-dev:
     build:
       context: .
@@ -224,6 +265,7 @@ volumes:
   chess_core_node_modules:
   db_node_modules:
   ui_node_modules:
+  ai_sidecar_node_modules:
   pnpm_store:
   rust_target:
   cargo_registry:
