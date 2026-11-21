@@ -25,10 +25,6 @@ static LIVE_RE: LazyLock<Regex> =
 static MOVE_WORD_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^\d+\.").expect("valid regex"));
 
-/// Opening names whose real spelling contains a hyphen that the ECOUrl slug cannot distinguish
-/// from a word separator.
-const HYPHENATED: &[&str] = &["Caro-Kann", "Nimzo-Indian", "Bogo-Indian", "Semi-Slav"];
-
 /// Value of PGN header `name`, unescaped for `\"` and `\\`.
 fn header(pgn: &str, name: &str) -> Option<String> {
     let prefix = format!("[{name} \"");
@@ -77,48 +73,27 @@ fn timing(tc: &str) -> Option<(TimeClass, i32, i32)> {
     ))
 }
 
-/// Opening name from the ECOUrl slug, dropping the trailing move list. Known hyphenated names
-/// (Caro-Kann, Nimzo-Indian, ...) keep their hyphen.
-fn name_from_slug(slug: &str) -> Option<String> {
+/// Opening name from the ECOUrl slug, dropping the trailing move list (as the TS importer does).
+fn opening_name(pgn: &str) -> Option<String> {
+    let url = header(pgn, "ECOUrl")?;
+    let slug = url.rsplit('/').next()?;
     let words: Vec<&str> = slug.split('-').collect();
     let cut = words
         .iter()
         .position(|w| MOVE_WORD_RE.is_match(w))
         .unwrap_or(words.len());
-    let words = &words[..cut];
-    let mut parts: Vec<String> = Vec::new();
-    let mut i = 0;
-    while i < words.len() {
-        if i + 1 < words.len() {
-            let pair = format!("{}-{}", words[i], words[i + 1]);
-            if HYPHENATED.iter().any(|h| h.eq_ignore_ascii_case(&pair)) {
-                parts.push(pair);
-                i += 2;
-                continue;
-            }
-        }
-        parts.push(words[i].to_string());
-        i += 1;
-    }
-    let name = parts.join(" ");
+    let name = words[..cut].join(" ");
     (!name.is_empty()).then_some(name)
 }
 
-/// Prefers the PGN `Opening` header, else derives the name from the `ECOUrl` slug.
-fn opening_name(pgn: &str) -> Option<String> {
-    if let Some(o) = header(pgn, "Opening") {
-        let o = o.trim();
-        if !o.is_empty() {
-            return Some(o.to_string());
-        }
-    }
-    let url = header(pgn, "ECOUrl")?;
-    name_from_slug(url.rsplit('/').next()?)
-}
-
-fn player(v: &Value) -> Option<Player> {
+fn player(v: Option<&Value>, url: &str, side: &str) -> Option<Player> {
+    let Some(name) = v.and_then(|v| v.get("username")).and_then(Value::as_str) else {
+        tracing::warn!("chesscom: skipping game without {side} player: {url}");
+        return None;
+    };
+    let v = v?;
     Some(Player {
-        name: v.get("username")?.as_str()?.to_string(),
+        name: name.to_string(),
         rating: v
             .get("rating")
             .and_then(Value::as_i64)
@@ -140,9 +115,18 @@ pub fn normalize_chesscom(raw: &Value) -> Option<NormalizedGame> {
     {
         return None;
     }
-    let url = raw.get("url")?.as_str()?;
-    let pgn = raw.get("pgn")?.as_str()?;
-    let tc = raw.get("time_control")?.as_str()?;
+    let Some(url) = raw.get("url").and_then(Value::as_str) else {
+        tracing::warn!("chesscom: skipping game without url");
+        return None;
+    };
+    let Some(pgn) = raw.get("pgn").and_then(Value::as_str) else {
+        tracing::warn!("chesscom: skipping game without pgn: {url}");
+        return None;
+    };
+    let Some(tc) = raw.get("time_control").and_then(Value::as_str) else {
+        tracing::warn!("chesscom: skipping game without time_control: {url}");
+        return None;
+    };
     let Some((time_class, base, inc)) = timing(tc) else {
         tracing::warn!("chesscom: skipping game with unparseable time_control \"{tc}\": {url}");
         return None;
@@ -162,8 +146,8 @@ pub fn normalize_chesscom(raw: &Value) -> Option<NormalizedGame> {
         base_seconds: Some(base),
         increment_seconds: Some(inc),
         rated: raw.get("rated").and_then(Value::as_bool).unwrap_or(false),
-        white: player(raw.get("white")?)?,
-        black: player(raw.get("black")?)?,
+        white: player(raw.get("white"), url, "white")?,
+        black: player(raw.get("black"), url, "black")?,
         result: to_result(pgn),
         termination: header(pgn, "Termination"),
         eco: header(pgn, "ECO"),
@@ -287,7 +271,8 @@ impl ChesscomSource {
         Self::with_base_url(DEFAULT_BASE)
     }
 
-    /// Override the `.../pub/player` base URL (used by tests against a local server).
+    /// Override the `.../pub/player` base URL. Test-only: lets tests target a local server.
+    #[doc(hidden)]
     pub fn with_base_url(base: &str) -> Self {
         Self {
             base: base.trim_end_matches('/').to_string(),
@@ -350,35 +335,4 @@ fn urlencode(s: &str) -> String {
         }
     }
     out
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn slug_keeps_known_hyphenated_names() {
-        assert_eq!(
-            name_from_slug("Caro-Kann-Defense-Advance-Variation-3.e5-c5").as_deref(),
-            Some("Caro-Kann Defense Advance Variation")
-        );
-        assert_eq!(
-            name_from_slug("Nimzo-Indian-Defense-Rubinstein-Variation").as_deref(),
-            Some("Nimzo-Indian Defense Rubinstein Variation")
-        );
-        assert_eq!(
-            name_from_slug("Sicilian-Defense").as_deref(),
-            Some("Sicilian Defense")
-        );
-        assert_eq!(name_from_slug("1.e4-e5"), None);
-    }
-
-    #[test]
-    fn opening_header_wins_over_slug() {
-        let pgn = "[Opening \"Caro-Kann Defense: Advance\"]\n[ECOUrl \"https://www.chess.com/openings/Caro-Kann-Defense\"]\n\n1. e4 *";
-        assert_eq!(
-            opening_name(pgn).as_deref(),
-            Some("Caro-Kann Defense: Advance")
-        );
-    }
 }

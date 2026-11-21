@@ -431,6 +431,7 @@ async fn http_404_maps_to_not_found() {
     Mock::given(method("GET"))
         .and(path("/ghost/games/archives"))
         .respond_with(ResponseTemplate::new(404))
+        .expect(1)
         .mount(&server)
         .await;
     let client: Arc<dyn PlatformClient> = Arc::new(HttpPlatformClient::new(ClientOptions {
@@ -456,14 +457,105 @@ fn normalize_skips_variants_and_defaults_rated_false() {
     assert!(!normalize_chesscom(&g).unwrap().rated);
 }
 
+#[tokio::test]
+async fn december_archive_with_since_in_january_is_skipped() {
+    let f = fixtures();
+    let dec = "https://api.chess.com/pub/player/hikaru/games/2026/12".to_string();
+    let mut list = f.archives.clone();
+    list.push(dec.clone());
+    let (c, _) = fake_with(vec![(dec.clone(), oct_games(&f))], Some(list));
+    // December 2026 ends 2027-01-01T00:00:00Z; since after that skips it and stops.
+    let gs = games(
+        &c,
+        "hikaru",
+        FetchOptions {
+            since: Some(at(1_798_761_600 + 86_400)), // 2027-01-02
+            ..Default::default()
+        },
+    )
+    .await;
+    assert!(gs.is_empty());
+    assert_eq!(urls(&c), [ARCHIVES_URL.to_string()]);
+    // since inside December still fetches it
+    let (c, _) = fake_with(
+        vec![(dec.clone(), oct_games(&f))],
+        Some(vec![f.archives[2].clone(), dec.clone()]),
+    );
+    let gs = games(
+        &c,
+        "hikaru",
+        FetchOptions {
+            since: Some(at(0)),
+            max: Some(1),
+            ..Default::default()
+        },
+    )
+    .await;
+    assert_eq!(urls(&c)[1], dec);
+    assert_eq!(gs.len(), 1);
+}
+
+#[tokio::test]
+async fn since_equal_to_a_month_end_skips_that_month() {
+    let (c, f) = fake(vec![]);
+    // November ends 2026-12-01T00:00:00Z = 1796083200. Since == end: month skipped (<=).
+    let gs = games(
+        &c,
+        "hikaru",
+        FetchOptions {
+            since: Some(at(1_796_083_200)),
+            ..Default::default()
+        },
+    )
+    .await;
+    assert!(gs.is_empty());
+    assert_eq!(urls(&c), [ARCHIVES_URL.to_string()]);
+    let _ = f;
+    // One second earlier the month straddles and is fetched.
+    let (c, f) = fake(vec![]);
+    let _ = games(
+        &c,
+        "hikaru",
+        FetchOptions {
+            since: Some(at(1_796_083_199)),
+            ..Default::default()
+        },
+    )
+    .await;
+    assert_eq!(urls(&c)[1], f.archives[2]);
+}
+
 #[test]
-fn opening_name_prefers_pgn_opening_header_and_keeps_hyphens() {
+fn rated_is_taken_from_the_data() {
+    let f = fixtures();
+    let t = normalize_chesscom(&with(&f.month[0], json!({"rated": true}))).unwrap();
+    let u = normalize_chesscom(&with(&f.month[0], json!({"rated": false}))).unwrap();
+    assert!(t.rated);
+    assert!(!u.rated);
+}
+
+#[test]
+fn one_over_86400_is_daily_with_base_86400() {
+    let f = fixtures();
+    let g = normalize_chesscom(&with(&f.month[0], json!({"time_control": "1/86400"}))).unwrap();
+    assert_eq!(g.time_class, TimeClass::Daily);
+    assert_eq!(g.base_seconds, Some(86400));
+    assert_eq!(g.increment_seconds, Some(0));
+}
+
+#[test]
+fn opening_name_comes_from_the_slug_with_hyphens_as_spaces() {
     let f = fixtures();
     let pgn = f.month[0]["pgn"].as_str().unwrap();
-    let with_header = format!("[Opening \"Caro-Kann Defense\"]\n{pgn}");
+    let with_header = format!(
+        "[Opening \"Ignored Name\"]
+{pgn}"
+    );
     let g = normalize_chesscom(&with(&f.month[0], json!({"pgn": with_header}))).unwrap();
-    assert_eq!(g.opening_name.as_deref(), Some("Caro-Kann Defense"));
-
+    assert_eq!(
+        g.opening_name.as_deref(),
+        Some("Nimzowitsch Larsen Attack Classical Variation")
+    );
     let slug = pgn.replace(
         "Nimzowitsch-Larsen-Attack-Classical-Variation-2.Bb2-Bg4-3.h3-Bh5",
         "Caro-Kann-Defense-Advance-Variation-3.e5-c5",
@@ -471,6 +563,6 @@ fn opening_name_prefers_pgn_opening_header_and_keeps_hyphens() {
     let g = normalize_chesscom(&with(&f.month[0], json!({"pgn": slug}))).unwrap();
     assert_eq!(
         g.opening_name.as_deref(),
-        Some("Caro-Kann Defense Advance Variation")
+        Some("Caro Kann Defense Advance Variation")
     );
 }
