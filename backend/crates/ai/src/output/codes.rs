@@ -56,7 +56,8 @@ impl std::str::FromStr for SectionKey {
     }
 }
 
-/// TS `VALIDATION_CODES` (same order), plus the four R3 codes of ADR-AI-8.
+/// TS `VALIDATION_CODES` (same order), plus the four R3 codes of ADR-AI-8 and the two of R3
+/// Task 8 fix round 1 (`glued_token`, `unrelated_citation`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ValidationCode {
@@ -88,11 +89,14 @@ pub enum ValidationCode {
     UnresolvedToken,
     FreeTextFact,
     UncitedReference,
+    // R3 Task 8 fix round 1.
+    GluedToken,
+    UnrelatedCitation,
 }
 
 impl ValidationCode {
     /// Every code, in declaration order.
-    pub const ALL: [ValidationCode; 27] = [
+    pub const ALL: [ValidationCode; 29] = [
         ValidationCode::SchemaInvalid,
         ValidationCode::Refusal,
         ValidationCode::Truncated,
@@ -120,6 +124,8 @@ impl ValidationCode {
         ValidationCode::UnresolvedToken,
         ValidationCode::FreeTextFact,
         ValidationCode::UncitedReference,
+        ValidationCode::GluedToken,
+        ValidationCode::UnrelatedCitation,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -151,6 +157,8 @@ impl ValidationCode {
             ValidationCode::UnresolvedToken => "unresolved_token",
             ValidationCode::FreeTextFact => "free_text_fact",
             ValidationCode::UncitedReference => "uncited_reference",
+            ValidationCode::GluedToken => "glued_token",
+            ValidationCode::UnrelatedCitation => "unrelated_citation",
         }
     }
 }

@@ -33,7 +33,7 @@ fn run(text: &str, cites: &[Citation], rules: &TextRules) -> Vec<ValidationCode>
 #[test]
 fn a_clean_paragraph_renders_segments() {
     let out = validate_text(
-        "You played {{move:li-w1-0:5}} on {{sq:e4}}.",
+        "You played {{move:li-w1-0:5}} on {{sq:e5}}.",
         &[cite("li-w1-0", 5)],
         &ev(),
         &TextRules::default(),
@@ -55,7 +55,7 @@ fn a_clean_paragraph_renders_segments() {
                 text: " on ".into()
             },
             Segment::Square {
-                square: "e4".into()
+                square: "e5".into()
             },
             Segment::Text { text: ".".into() },
         ]
@@ -79,18 +79,30 @@ fn errors_carry_the_path_and_the_offending_fragment() {
 }
 
 #[test]
-fn the_first_failing_stage_wins() {
-    // A bad citation, a malformed token and a leak: only the citation stage reports.
+fn token_syntax_is_the_only_barrier_and_errors_are_sorted() {
+    // A bad citation, a malformed token and a leak: stages 1 and 2 report, the leak is not
+    // scanned (prose inside a malformed token never is).
     let t = "Qxf7 {{nope}}";
     assert_eq!(
         run(t, &[cite("li-w1-0", 6)], &TextRules::default()),
-        [C::UnknownCitation]
+        [C::UnknownCitation, C::TokenSyntax]
     );
-    // Without the bad citation, token syntax comes before the leak.
-    assert_eq!(run(t, &[], &TextRules::default()), [C::TokenSyntax]);
-    // An unresolved token and an uncited one: resolution comes first.
-    let t = "{{move:li-w1-1:9}} and {{num:basis.nope}}";
-    assert_eq!(run(t, &[], &TextRules::default()), [C::UnresolvedToken]);
+    // Without a syntax error every stage reports, in code order.
+    let t = "Qxf7 {{move:li-w1-1:9}} and {{num:basis.nope}}";
+    assert_eq!(
+        run(t, &[cite("li-w1-0", 6)], &TextRules::default()),
+        [
+            C::UnknownCitation,
+            C::UnresolvedToken,
+            C::FreeTextFact,
+            C::UncitedReference
+        ]
+    );
+    // Stage 4 is skipped when stage 3 fired: "half" alone would be an extracted number.
+    assert_eq!(
+        run("Qxf7 in half the games", &[], &TextRules::default()),
+        [C::FreeTextFact]
+    );
 }
 
 #[test]
@@ -232,17 +244,71 @@ fn extra_rules_run_last_on_the_stripped_text_with_the_tokens() {
         extra: vec![seen],
         ..TextRules::default()
     };
-    let r = validate_text("a {{sq:e4}} b", &[], &ev(), &rules, "p");
+    let r = validate_text("a {{num:basis.analysedGames}} b", &[], &ev(), &rules, "p");
     let e = r.expect_err("probe fires");
     assert_eq!(
         (e[0].code, e[0].detail.as_str(), e[0].path.as_str()),
         (C::Marketing, "probe", "p")
     );
-    // Not reached when an earlier stage fails.
+    // The rules run alongside a leak, but never past a token-syntax error.
+    let probe: TextRule = Box::new(|_, _| vec![(C::Marketing, "probe".into())]);
+    let rules = TextRules {
+        extra: vec![probe],
+        ..TextRules::default()
+    };
+    assert_eq!(run("Qxf7", &[], &rules), [C::Marketing, C::FreeTextFact]);
     let never: TextRule = Box::new(|_, _| panic!("must not run"));
     let rules = TextRules {
         extra: vec![never],
         ..TextRules::default()
     };
-    assert_eq!(run("Qxf7", &[], &rules), [C::FreeTextFact]);
+    assert_eq!(run("Qxf7 {{nope}}", &[], &rules), [C::TokenSyntax]);
+}
+
+#[test]
+fn glued_tokens_and_scoped_squares() {
+    let c = [cite("li-w1-0", 5)];
+    let d = TextRules::default();
+    assert_eq!(run("N{{sq:e5}} here", &c, &d), [C::GluedToken]);
+    assert_eq!(
+        run("{{sq:e5}}{{sq:f3}} here", &c, &d),
+        [C::GluedToken, C::GluedToken]
+    );
+    assert_eq!(
+        run("{{sq:e5}}.{{sq:f3}} here", &c, &d),
+        [C::GluedToken, C::GluedToken]
+    );
+    // Sentence punctuation is not glue.
+    assert_eq!(run("It was {{sq:e5}}. Then {{sq:f3}}, again.", &c, &d), []);
+    // A square must belong to a cited position.
+    assert_eq!(run("It was {{sq:a1}}.", &c, &d), [C::UncitedReference]);
+    // In chat, position tokens are the citations.
+    let chat = TextRules {
+        implicit_citations: true,
+        ..TextRules::default()
+    };
+    assert_eq!(run("{{move:li-w1-0:5}} hit {{sq:e5}}.", &[], &chat), []);
+    assert_eq!(run("{{sq:e5}} matters.", &[], &chat), [C::UncitedReference]);
+}
+
+#[test]
+fn num_formats_are_bound_to_values_and_paths() {
+    let d = TextRules::default();
+    let c = [cite("li-w1-0", 5)];
+    for bad in [
+        "{{num:basis.analysedGames|pct0}} games",
+        "{{num:weaknesses.W1.posteriorRate|int}} games",
+        "{{num:weaknesses.W1.posteriorRate}} games",
+        "{{num:basis.analysedGames|signed1}} games",
+    ] {
+        assert_eq!(run(bad, &c, &d), [C::UnresolvedToken], "{bad}");
+    }
+    for ok in [
+        "{{num:weaknesses.W1.posteriorRate|pct1}} of chances",
+        "{{num:basis.analysedGames|int}} games",
+        "{{num:weaknesses.W1.exemplars.0.evalAfter.pawns|signed1}} pawns",
+        "{{num:weaknesses.W1.excessEplPerGame|dec2}} pawns",
+    ] {
+        assert_eq!(run(ok, &c, &d), [], "{ok}");
+    }
 }

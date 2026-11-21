@@ -3,15 +3,16 @@
 // (R3 Task 8, the claim validator).
 //
 // Provenance. TS M3 has no token-era claim validator (its A4/A5 validator predates facts by
-// reference), so this script holds the TS reference validator: `tsValidateText` below runs the
-// R3 check order (ADR-R3-4 "Claim validator") on m3's own modules for every non-trivial step:
+// reference), so this is a leaf-module parity check: `tsValidateText` below composes the R3
+// check order (ADR-R3-4 "Claim validator", before fix round 1) from m3's own modules:
 // parseTokens (tokens.ts), findLeaks (leaks.ts), normalizeText + extractMoves/Numbers/Dates
 // (normalize.ts, extract.ts), buildEvidence + resolveToken (evidence.ts, chess.js from m3's
 // node_modules). The language rules are the TS plan A5 regexes verbatim, as JS RegExps, in their
 // token forms (the evidence window and the needMore count are num tokens). The rows record the
 // deduplicated codes TS gives. The Rust test `ts_parity::rust_rejects_everything_ts_rejects`
-// asserts superset safety on every row (TS rejects => Rust rejects) and equal codes on every row
-// not listed as a deliberate deviation.
+// asserts superset safety on every row (TS rejects => Rust rejects), and that the rows only Rust
+// rejects are exactly its STRICTER list. The fix round 1 rules TS never had are pinned by the
+// Rust-only `must_reject` vectors instead.
 //
 // Usage: node backend/tools/gen-claim-corpus.mjs (Node >= 22.18 strips TS types by default).
 // Override the m3 package folder with M3_AI=<dir>. Output is deterministic.

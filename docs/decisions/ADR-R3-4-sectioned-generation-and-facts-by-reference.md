@@ -1,7 +1,7 @@
 # ADR-R3-4. Sectioned generation and facts by reference
 
 Date: 2026-11-21
-Status: Accepted ("Schemas" and "Computed focuses and drills", R3 Task 3; "Claim validator" and "Language rules", R3 Task 8). Task 14 appends its section. Placeholder number; Task 26 renumbers it. Ports ADR-AI-7 (TS M3) to the Rust `ai` crate.
+Status: Accepted ("Schemas" and "Computed focuses and drills", R3 Task 3; "Claim validator" and "Language rules", R3 Task 8 and its fix round 1). Task 14 appends its section. Placeholder number; Task 26 renumbers it. Ports ADR-AI-7 (TS M3) to the Rust `ai` crate.
 
 ## Context
 
@@ -33,72 +33,130 @@ Carried over from ADR-AI-7:
 
 ## Claim validator
 
-`validator::text::validate_text(text, citations, evidence, rules, path)` decides whether one paragraph is safe to show. On success it returns the server-rendered segments. On failure it returns the errors of the first failing stage. Every error rejects the paragraph, so stopping at the first failing stage never lets anything through; it only keeps a later stage from restating an earlier failure (a free-text `Qxf7#` is a leak and also an extracted move).
+`validator::text::validate_text(text, citations, evidence, rules, path)` decides whether one paragraph is safe to show. On success it returns the server-rendered segments. On failure it returns every error it found, sorted by a stable key (the code's declaration order, then the path, then the detail). Any error rejects the paragraph. Callers pass schema-checked text of at most `ITEM_TEXT_MAX_CHARS` code points, which a debug assertion checks; the cost is linear either way.
 
 **The check order.**
-1. Citations: each is a key of the evidence `positions` (`unknown_citation`). A rule set that requires a citation, with none, gives `missing_citation`. Duplicates are fine.
-2. Token syntax (`token_syntax`): any `ParsedTokens.errors` entry rejects. Prose inside a malformed `{{…}}` is never leak-scanned, so a malformed token cannot be tolerated. `{{offtopic}}` is valid only as the whole paragraph; anywhere else it is an error. As the whole paragraph it reaches stage 5 and does not resolve, because report text cannot be off-topic; the chat engine handles the marker before it validates. The detail holds the message and the raw token, never an index: token indexes are offsets in the canonical text, and stray-brace indexes are offsets in `stripped`.
-3. Leaks: `find_leaks(stripped)` (`free_text_fact`). The detail lists `kind:"text"` pairs.
-4. Defence in depth: `extract_moves`, `extract_numbers` and `extract_dates` on the stripped text (`unknown_move`, `unknown_number`, `unknown_date`). With facts by reference, any result at all is a fact outside a token, so nothing is compared with the evidence. On the fixtures and on the corpus, stage 3 always fires first; this stage covers a gap in the leak detector. It can reject harmless prose ("half the games" is a ratio claim), which costs a repair.
-5. Every token resolves (`unresolved_token`). This catches unknown positions, paths, line keys and eval ids, out-of-range `pv`/`line` indexes, and numbers `format_number` cannot print. The paragraph must then render (`render_segments`).
-6. Unless `implicit_citations` (chat), every `move`/`best`/`pv` token's `gameId#ply` is one of the item's citations (`uncited_reference`).
-7. With `line_keys: Some(keys)`, `line` tokens are allowed only for those keys (`unknown_line`). `None` allows any line the evidence knows.
-8. The `extra` rules (the language rules), on the stripped text, with the tokens and citations in `TextCtx`.
+1. **Citations.** Each citation must be a key of the evidence `positions` (`unknown_citation`). A rule set that requires a citation, with none given, gives `missing_citation`. Duplicates are fine.
+2. **Token syntax** (`token_syntax`).
+   - Any `ParsedTokens.errors` entry is an error. `{{offtopic}}` is an error anywhere except as the whole paragraph.
+   - **This is the only hard barrier.** Prose inside a malformed `{{…}}` is never leak-scanned, so after a syntax error the result is the errors of stages 1 and 2.
+   - The detail holds the message and the raw token, never an index (token indexes are in the canonical text, stray-brace indexes in `stripped`).
+   - As the whole paragraph, `{{offtopic}}` reaches stage 5 and does not resolve: report text cannot be off-topic, and the chat engine handles the marker before it validates.
+3. **Leaks.** `find_leaks(stripped)` gives `free_text_fact`, and the detail lists `kind:"text"` pairs.
+4. **Defence in depth, only when stage 3 found nothing.** The union extractors run on the stripped text (`unknown_move`, `unknown_number`, `unknown_date`). Any result at all is a fact outside a token. On the fixtures and the corpus, stage 3 always fires first, so this stage covers a gap in the leak detector.
+5. **Tokens** (fix round 1, C1 and C2).
+   - Every token resolves; otherwise `unresolved_token`. This catches unknown positions, paths, line keys and eval ids, out-of-range `pv`/`line` indexes, and numbers `format_number` cannot print.
+   - A `num` token's format must suit its value and path (`num_format_allowed`); otherwise `unresolved_token`:
+     - `pct0`/`pct1` only for a rate or share path (`Evidence::rate_paths`: weakness rates, intervals, band medians, confidence and `pImp`; change rates and `posteriorProb`; opening scores and alternative band scores; metrics with unit `rate`) holding a value in [0, 1];
+     - `int` and no format only for whole numbers;
+     - `signed1` only for an evaluation in pawns (`….eval*.pawns`);
+     - `dec1`/`dec2` for any value.
+   - No token is glued (`glued_token`). A token directly next to a letter, a digit, one of `x # + = - / % ½ ×`, any dash, or another token is glued. So is a `.` or `,` between a token and a letter, a digit or another token (`{{num}}.{{num}}`, `{{num}},5`).
+     - Invisible characters and combining marks between them do not separate them, so `N` U+180F `{{sq:e5}}` is glued.
+     - Sentence punctuation (`{{move}}.` followed by a space or the end of the text) is not glue. Rejecting it would reject almost every sentence that ends on a token, and it cannot build notation.
+6. **Scoping to the cited positions** (`uncited_reference`).
+   - Unless `implicit_citations` is set (chat), every `move`/`best`/`pv` token's `gameId#ply` must be one of the citations.
+   - Every `sq` token must name a square of a cited position's recorded moves or engine lines: the from and to squares of its allowed UCI, and the target squares of its allowed SAN. In chat, the position tokens of the paragraph count as its citations.
+7. **Line keys.** With `line_keys: Some(keys)`, `line` tokens are allowed only for those keys (`unknown_line`). `None` allows any line the evidence knows.
+8. **The `extra` rules** (the language rules). They run on the stripped text, with the tokens, citations, canonical text and the paragraph's single hardened normalisation in `TextCtx`.
 
-**Why the leak detector replaced free-text matching.** TS M3 extracted moves, numbers and dates from free text and compared them with the evidence, with tolerances, hedges and ratio windows. Each tolerance was a way to smuggle in a plausible but wrong fact, and every Unicode trick (full-width digits, homoglyphs, figurines, zero-width characters) was a way to hide one from the extractor. With facts by reference the model never states a fact. The leak detector rejects anything that looks like one: a digit in any script, a number word, a square, SAN, castling, a date form or `%`. Both the detector and the extractors run the TS-exact and the hardened normalisation and take the union (ADR-R3-2). `normalize_text` alone is hardened only, and it is never used for a check.
+Stages 1 and 2 are always reported together. Without a syntax error, stages 3, 5, 6, 7 and 8 all run and all their errors are reported (stage 4 only when stage 3 was empty), so a repair turn sees every problem at once.
 
-**Token scoping to citations.** A report item cites positions in `citations`, and its position tokens may only point at those. So a weakness item cannot quote a move from another weakness's exemplar, and an item without citations (a strength, an area) cannot use position tokens at all. The `line` tokens of an opening item must name that item's line. In chat, the tokens are the citations.
+**Why the leak detector replaced free-text matching.** TS M3 extracted moves, numbers and dates from free text and compared them with the evidence, using tolerances, hedges and ratio windows. Each tolerance was a way to smuggle in a plausible but wrong fact, and every Unicode trick (full-width digits, homoglyphs, figurines, zero-width characters) was a way to hide one from the extractor. With facts by reference the model never states a fact. The leak detector rejects anything that looks like one: a digit in any script, a number word, a square, SAN, castling, a date form or `%`. Both the detector and the extractors run the TS-exact and the hardened normalisation and take the union (ADR-R3-2). `normalize_text` alone is hardened only, and it is never used for a fact check.
+
+**Citations are tied to the item's subject** (fix round 1, C3, `unrelated_citation`). A report item cites positions in `citations`, and its position and square tokens may only point at those. The citations themselves must belong to what the item narrates:
+- a weakness item cites only that weakness's exemplars;
+- a focus `why` cites its weakness's exemplars (the general focus may cite any supplied position);
+- an opening item cites only its line's examples;
+- a strength cites only the exemplars of the computed strengths in its area.
+
+Area texts and the singleton items (headline, summary, intro, habit, weekly rhythm) are not tied to a subject, but their tokens are still scoped to their own citations. An item without citations cannot use position or square tokens at all. The `line` tokens of an opening item must name that item's line. In chat, the tokens are the citations.
 
 **Sections.** `validate_section` keeps TS plan A4's rules.
-- Fatal errors drop the section, which then renders computed-only: `wrong_section` (another section, or the requested part is null), `too_many_focuses` (more than 3) and `area_missing` (not exactly the 7 distinct areas).
-- Item errors drop one item. A singleton becomes `None`, and each drop is listed in `item_errors` with its path, such as `weaknesses.items[1]`. The item codes are:
-  - `unknown_weakness`;
-  - `unknown_line`, and `verdict_mismatch` against the computed verdict;
+- **Fatal errors** drop the section, which then renders computed-only:
+  - `wrong_section`: another section, or the requested part is null;
+  - `too_many_focuses`: more than 3;
+  - `area_missing`: not exactly the 7 distinct areas.
+- **Item errors** drop one item. A singleton becomes `None`, and each drop is listed in `item_errors` with its path, such as `weaknesses.items[1]`. The item codes are:
+  - `unknown_weakness`, also for a second item on a weakness whose item was already accepted;
+  - `unknown_line` (also for a duplicate opening item), and `verdict_mismatch` against the computed verdict;
   - `focus_not_selected`: the id is not in `select_focuses`, or it is repeated. With no selected focus, only `general` is allowed;
-  - `drill_not_allowed`: not in `drills_for(id, variant)`. The general focus allows only `own_game_analysis`, the drill that every weakness except W12 allows.
+  - `drill_not_allowed`: not in `drills_for(id, variant)`. The general focus allows only `own_game_analysis`, the drill that every weakness except W12 allows;
+  - `area_missing` for a strength in an area with no computed strength;
+  - `unrelated_citation`, as above.
+- A focus whose `why` fails is dropped whole.
 - Weakness, focus (`why`) and opening items need a citation; strengths and areas may have none.
-- Model text outside an `Item` is shown too. A weakness `title` and a drill `rationale` are therefore validated with the `Item` rules, and they may not hold tokens, because they carry no segments. A failing title drops its weakness, and a failing rationale drops its focus.
+- A weakness item's `title` is the computed weakness label; the model's `title` is ignored. A drill `rationale` is model text that is shown, so it is validated with the `Item` rules and may not hold tokens, because it carries no segments.
 - `select_focuses` returns ids by ascending rank with confidence ≥ 0.7 and state active, emerging, relapsed or improving, never W12. It returns at most 2 on the first report and 3 otherwise.
 
 **Repair once, then drop.** The generator (Task 14) sends the errors of a failed section or item back once, as a repair turn. If the repaired output still fails, the item or section is dropped and never shown, and the report renders the computed data in its place.
 
-**Known limit: a token's value is not bound to its meaning.** `{{num:basis.importedGames}}` renders a true number, but the prose around it may call it the wrong thing ("you lost {{num:basis.importedGames}} games"). The validator checks that every fact is real, not that the sentence uses it correctly. The evidence-window and needMore rules check for specific paths, which narrows the gap for the claims that matter most. The prompts (Task 13) state what each path means.
+**Known limit: a token's value is not bound to its meaning.** `{{num:basis.importedGames}}` renders a true number, but the prose around it may call it the wrong thing ("you lost {{num:basis.importedGames}} games"). The validator checks that every fact is real, not that the sentence uses it correctly. Fix round 1 narrows the gap:
+- formats are bound to the kind of value;
+- citations are bound to the item's subject;
+- engine words need engine evidence;
+- quantities in words are banned;
+- the evidence-window and needMore rules check for specific paths.
 
-**Differential corpus.** TS M3 has no token-era claim validator. So `backend/tools/gen-claim-corpus.mjs` holds the TS reference: the check order above, run on m3's own `parseTokens`, `findLeaks`, `normalizeText` with the extractors, and `buildEvidence` with `resolveToken`, plus the language rules as the TS plan's JS regexes. It records the codes TS gives for 153 paragraphs in `tests/validator_adversarial.rs`: the 56 leak escapes in context, the adversarial cases, token edges and every language rule. `ts_parity::rust_rejects_everything_ts_rejects` asserts superset safety on every row (TS rejects ⇒ Rust rejects). It also asserts equal deduplicated codes on every row except the listed deviations:
-- `HARDENED`: TS accepts and Rust rejects, through the union below;
-- `DIFFERS`: both reject, with different codes. `{{offtopic}}` and `{{eng:}}` are TS syntax errors and Rust `unresolved_token`s.
+The prompts (Task 13) state what each path means.
 
-Both lists must stay accurate, and the generator's output is deterministic.
+**Leaf-module parity check (the TS corpus).** TS M3 has no token-era claim validator. `backend/tools/gen-claim-corpus.mjs` therefore composes a TS reference from m3's leaf modules (`parseTokens`, `findLeaks`, `normalizeText` with the extractors, and `buildEvidence` with `resolveToken`) plus the TS plan's language regexes. It records the verdict TS gives for 153 paragraphs in `tests/validator_adversarial.rs`: the 56 leak escapes in context, the adversarial cases, token edges and every language rule.
 
-**Cost.** Every pass reports to `count_scanned`. `text::tests::scanned_bytes_are_linear_on_hostile_shapes` bounds the whole check, language rules included, at 200·n.
+It is a parity check of those leaf modules and regexes, not of a TS validator. `ts_parity::rust_rejects_everything_ts_rejects` asserts superset safety on every row: if TS rejects a row, Rust rejects it. The rows only Rust rejects must be exactly `STRICTER`: the hardened-form union, and square scoping. Codes are not compared, because Rust collects more stages and has rules TS lacks.
+
+**Rust-only vectors.** `must_reject::every_review_vector_is_rejected_with_its_code` holds every false-accept vector of the Task 8 review (C1–C6 and the Important items), 68 paragraphs, each with the code it must give. `must_reject::the_supported_forms_pass` pins the legitimate forms next to them: sentence punctuation after a token, squares of the cited position, an engine word with a `best` token or a cited eval, and bound formats.
+
+**Cost.** Every pass reports to `count_scanned`. `text::tests::scanned_bytes_are_linear_on_hostile_shapes` bounds the whole check at 200·n, including the adjacency scan, the language rules and the blunder windows.
 
 ## Language rules
 
-The rules are `TextRule`s over the stripped text (each token is `§`), in `validator::language`. The patterns are the TS plan A5 regexes. JS `/i` without the `u` flag folds only ASCII letters, and JS `\b` is ASCII, so each pattern is written `(?i-u:…)` and matches what JS matches.
+The rules are `TextRule`s over the stripped text (each token is `§`), in `validator::language`. The patterns are the TS plan A5 regexes plus the fix round 1 additions. They are written JS-style and translated once:
+- `\b` becomes the ASCII `(?-u:\b)`;
+- `\s` becomes JS's whitespace set, and every multi-word phrase allows `\s+` between its words;
+- `\w` becomes `[A-Za-z0-9_]`;
+- the whole pattern is wrapped in `(?i:…)`. Unicode case folding adds only U+212A and U+017F to ASCII letters, and NFKC has removed both from the canonical text, so this matches what JS `/i` matches.
 
-| Rule | Code | Token form |
+| Rule | Code | What it checks |
 |---|---|---|
-| `banned_phrases()`: `guarantee[ds]?`, `definitely`, `certainly`, `proven?`, `will (gain\|reach\|get you to\|raise your rating\|improve your rating)` | `banned_phrase` | as TS |
-| `no_marketing()`: `upgrade`, `subscribe`, `subscription`, `premium`, `pro plan`, `discount`, `free trial`, `refer a friend`, `share your (report\|card)` | `marketing` | as TS |
-| `likelihood(required)`: any vocabulary phrase other than `required`, longest first with word boundaries (so `unlikely` is not a phrase) | `likelihood_mismatch` | as TS; `None` makes every phrase a mismatch |
-| `evidence_window(tc)` | `missing_evidence_window` | a `{{num:basis.analysedGames…}}` token and the time-class word (TS: the count as digits) |
-| `no_causal_claims()`: `caused`, `because of`, `due to`, `the reason (is\|was)`, `led to`, `proves?`; plus a required hedge (`may`, `might`, `possibly`, `could`, `coincid…`, `around the time`, `at about the same time`) | `causal_claim`, `missing_hedge` | as TS |
-| `states_insufficient_data(area)` | `insufficient_data_not_stated` | a `{{num:areaScores.<area>.needMore…}}` token (TS: the count as digits) |
+| `banned_phrases()` | `banned_phrase` | `guarantee\w*`, `definitely`, `certain(ty\|ly)?`, `proven?`, near-certainty (`almost surely/certain(ly)`, `virtually certain/guaranteed`, `surely`, `no doubt`, `without (a) doubt`, `bound to`, `sure to`), and promised gains: `(will\|'ll\|’ll\|is/are going to) (gain\|reach\|get you to\|raise your rating\|improve your rating)` |
+| `no_marketing()` | `marketing` | `upgrade`, `subscribe`, `subscription`, `premium`, `pro (plan\|tier\|version\|account)`, `discount`, `free trial`, `refer a friend`, `share your (report\|card)`, `buy`, `unlock`, `pricing`, `paywall` |
+| `likelihood(required)` | `likelihood_mismatch` | Any vocabulary phrase other than `required`, longest first with word boundaries. `(highly\|most\|extremely\|very)[\s-]+likely` are phrases of their own; spaces and hyphens are normalised before comparing. A direction of change (`improving`, `improved`, `getting better/worse`, `fixed`, `worse`, `worsening`, `declining`, `declined`) needs the required phrase in the same text. With `None`, every phrase and every direction word is a mismatch. |
+| `evidence_window(tc)` | `missing_evidence_window` | A `{{num:basis.analysedGames}}` or `{{num:basis.analysedGames\|int}}` token, and the time-class word |
+| `engine_claims()` | `uncited_reference` | `engine`, `stockfish`, `winning`, `losing`, `(check)mate(s/d)`, `advantage`, `equal`, `top choice`, `best move` or `threw away` need, in the same paragraph, a `best`, `pv` or `eng` token, or a `num` token on an evaluation path of a cited position (`Evidence::position_of_path`). Separately, `blunder…` or `mistake…` within four words of a `best` token, or of a `pv` token of the best line, is rejected. |
+| `no_quantity_words()` | `free_text_fact` | `most (of your) games`, `the majority`, `nearly every`, `every (single) game`, `each game`, `a handful`, `a score of`, `\w*fold`, `nil`, `always`, `never` |
+| `no_causal_claims()` | `causal_claim`, `missing_hedge` | `caused`, `because of`, `due to`, `the reason (is\|was)`, `led to`, `proves?`, plus a required hedge (`may`, `might`, `possibly`, `could`, `coincid…`, `around the time`, `at about the same time`); for change notes |
+| `no_causal_phrases()` | `causal_claim` | The causal phrases alone, with no hedge requirement |
+| `states_insufficient_data(area)` | `insufficient_data_not_stated` | A `{{num:areaScores.<area>.needMore…}}` token |
 
+The phrase helpers:
 - `likelihood_phrase(p_imp)` gives "very likely" at ≥ 0.95, "likely" at ≥ 0.85, "unclear yet" at ≥ 0.5, and "no clear change yet" otherwise. It gives `None` when there is no `p_imp`.
 - `confidence_phrase(c)` gives "clearly" at ≥ 0.9, "probably" at ≥ 0.7, and "possibly" otherwise.
 - `evidence_window_token(tc)` is the token form that prompts show the model.
 - `format_evidence_window(basis, tc)` ("over your last 214 analysed rapid games (3,912 imported)") is for computed text only, never for model text.
 
-**The union rule.** A rule that forbids a phrase fires if the phrase is in the stripped text or in its hardened normalisation, where homoglyphs, combining marks and every default-ignorable code point are folded away. So `guаranteed` with a Cyrillic `а`, or `Up` U+180F `grade`, is still caught; TS lets both through. A rule that requires a phrase (a hedge, the time-class word) reads only the stripped text, the form TS reads, because folding could only make a missing phrase appear. A hedge disguised with a homoglyph does not count.
+**The union rule.** A rule that forbids a phrase fires if the phrase is in the stripped text or in its hardened normalisation, where homoglyphs, combining marks and every default-ignorable code point are folded away. The hardened form is computed once per paragraph. So `guаranteed` with a Cyrillic `а`, or `Up` U+180F `grade`, is still caught, where TS lets both through. A rule that requires a phrase (a hedge, the time-class word, the likelihood phrase before a direction word) reads only the stripped text, the form TS reads, because folding could only make a missing phrase appear. A hedge disguised with a homoglyph does not count.
 
 **Which rules apply** (`report_text_rules(input)`):
-- `banned_phrases` and `no_marketing` apply everywhere.
-- Weakness and focus (`why`) texts add a required citation, `likelihood(likelihood_phrase(w.p_imp))` and `evidence_window`.
-- The summary adds `evidence_window`.
-- Area texts for an area below its minimum sample add `states_insufficient_data`.
-- Opening items add a required citation and their own line key.
-- `no_causal_claims` is for change notes (Task 14).
+
+| Kind | Rules |
+|---|---|
+| Every kind | `banned_phrases`, `no_marketing`, `engine_claims` |
+| Weakness, Focus (`why`) | a required citation, `likelihood(likelihood_phrase(w.p_imp))`, `evidence_window`, `no_quantity_words`, `no_causal_phrases` |
+| Summary | `evidence_window`, `no_quantity_words`, `no_causal_phrases` |
+| Area | `no_quantity_words`, and `states_insufficient_data` below the area's minimum sample |
+| Item (headline, strength, intro, habit, weekly rhythm, drill rationale) | `no_causal_phrases` |
+| Opening | a required citation, and `line` tokens only for its own line |
+
+`no_causal_claims`, which also requires a hedge, is for change notes (Task 14).
+
+**Accepted false positives.** These rules reject some honest prose, which costs a repair turn:
+- `buy` also rejects "buy time";
+- `certain` rejects "a certain line";
+- `mate` rejects a rationale for `mate_patterns`;
+- `losing` rejects "losing on time" without an eval token;
+- "{{move}} was a blunder; {{best}} was better" trips the four-word window.
+
+Prompts (Task 13) should steer around them.
 
 Marketing is banned for every user, not only minors, because the report cannot know who reads it (spec §14).
 

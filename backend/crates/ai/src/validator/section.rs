@@ -5,11 +5,17 @@
 //! (the areas are not exactly the 7 distinct areas). Item errors drop one item: a singleton item
 //! becomes `None`, an array entry is removed, and each drop is listed in `item_errors` with its
 //! path (`weaknesses.items[1]`). Each paragraph goes through [`validate_text`] with the rules of
-//! [`report_text_rules`]. Weakness, focus and opening items need a citation; strengths and areas
-//! may have none, and then cannot use position tokens (`uncited_reference`).
+//! [`report_text_rules`].
 //!
-//! Model text outside an `Item` (a weakness `title`, a drill `rationale`) is shown too. It is
-//! validated with the `Item` rules and may not hold tokens, since it carries no segments.
+//! Citations are tied to the item's subject (fix round 1, C3; `unrelated_citation`): a weakness
+//! item and a focus `why` cite only that weakness's exemplars (the general focus may cite any
+//! supplied position), an opening item only its line's examples, a strength only the exemplars of
+//! the computed strengths in its area. Weakness, focus and opening items need a citation;
+//! strengths and areas may have none, and then cannot use position tokens.
+//!
+//! A weakness item's `title` is rendered from the computed weakness label, never from the model's
+//! text. A drill `rationale` is model text that is shown, so it is validated with the `Item`
+//! rules and may not hold tokens (it carries no segments).
 
 use std::collections::HashSet;
 
@@ -17,7 +23,7 @@ use super::evidence::Evidence;
 use super::focus::GENERAL_FOCUS;
 use super::language::{RuleKind, RuleMeta, report_text_rules};
 use super::text::{TextRules, validate_text};
-use crate::input::types::{AreaId, CoachingInput};
+use crate::input::types::{AreaId, CoachingInput, ExemplarPosition};
 use crate::output::codes::{Citation, DroppedItem, SectionKey, ValidationCode, ValidationError};
 use crate::output::drills::{DrillType, drills_for};
 use crate::output::report::{
@@ -54,6 +60,12 @@ fn err(code: ValidationCode, path: &str, detail: impl Into<String>) -> Validatio
     }
 }
 
+fn keys<'e>(xs: impl IntoIterator<Item = &'e ExemplarPosition>) -> HashSet<String> {
+    xs.into_iter()
+        .map(|e| format!("{}#{}", e.game_id, e.ply))
+        .collect()
+}
+
 type Rules = Box<dyn Fn(RuleKind, RuleMeta) -> TextRules>;
 
 struct V<'c, 'a> {
@@ -72,22 +84,46 @@ impl V<'_, '_> {
         });
     }
 
+    /// The paragraph's errors, plus `unrelated_citation` for each supplied citation outside
+    /// `subject` (when given).
     fn text(
         &self,
         text: &str,
         citations: &[Citation],
         kind: RuleKind,
         meta: RuleMeta,
+        subject: Option<&HashSet<String>>,
         path: &str,
     ) -> Result<Vec<Segment>, Vec<ValidationError>> {
         let rules = (self.rules)(kind, meta);
-        validate_text(
+        let result = validate_text(
             text,
             citations,
             self.ctx.evidence,
             &rules,
             &format!("{path}.text"),
-        )
+        );
+        let mut unrelated = Vec::new();
+        if let Some(subject) = subject {
+            for (i, c) in citations.iter().enumerate() {
+                let k = format!("{}#{}", c.game_id, c.ply);
+                if self.ctx.evidence.positions.contains_key(&k) && !subject.contains(&k) {
+                    unrelated.push(err(
+                        ValidationCode::UnrelatedCitation,
+                        &format!("{path}.citations[{i}]"),
+                        format!("{k} is not an exemplar of this item's subject"),
+                    ));
+                }
+            }
+        }
+        match result {
+            Ok(segments) if unrelated.is_empty() => Ok(segments),
+            Ok(_) => Err(unrelated),
+            Err(mut e) => {
+                e.extend(unrelated);
+                Err(e)
+            }
+        }
     }
 
     /// Model text that carries no segments: the `Item` rules, and no tokens.
@@ -104,6 +140,22 @@ impl V<'_, '_> {
         }
     }
 
+    fn validated(
+        &self,
+        it: &Item,
+        kind: RuleKind,
+        meta: RuleMeta,
+        subject: Option<&HashSet<String>>,
+        path: &str,
+    ) -> Result<ValidatedItem, Vec<ValidationError>> {
+        self.text(&it.text, &it.citations, kind, meta, subject, path)
+            .map(|segments| ValidatedItem {
+                text: it.text.clone(),
+                citations: it.citations.clone(),
+                segments,
+            })
+    }
+
     fn item(
         &mut self,
         it: &Item,
@@ -111,12 +163,8 @@ impl V<'_, '_> {
         meta: RuleMeta,
         path: &str,
     ) -> Option<ValidatedItem> {
-        match self.text(&it.text, &it.citations, kind, meta, path) {
-            Ok(segments) => Some(ValidatedItem {
-                text: it.text.clone(),
-                citations: it.citations.clone(),
-                segments,
-            }),
+        match self.validated(it, kind, meta, None, path) {
+            Ok(v) => Some(v),
             Err(e) => {
                 self.drop_item(path, e);
                 None
@@ -140,11 +188,35 @@ impl V<'_, '_> {
         let mut strengths = Vec::new();
         for (i, s) in o.strengths.iter().enumerate() {
             let path = format!("overview.strengths[{i}]");
+            let computed: Vec<_> = self
+                .ctx
+                .input
+                .strengths
+                .iter()
+                .filter(|x| x.area == s.area)
+                .collect();
+            if computed.is_empty() {
+                let e = err(
+                    ValidationCode::AreaMissing,
+                    &format!("{path}.area"),
+                    format!("no computed strength in {}", s.area),
+                );
+                self.drop_item(&path, vec![e]);
+                continue;
+            }
+            let subject = keys(computed.iter().flat_map(|x| &x.exemplars));
             let meta = RuleMeta {
                 area: Some(s.area),
                 ..RuleMeta::default()
             };
-            match self.text(&s.text, &s.citations, RuleKind::Item, meta, &path) {
+            match self.text(
+                &s.text,
+                &s.citations,
+                RuleKind::Item,
+                meta,
+                Some(&subject),
+                &path,
+            ) {
                 Ok(segments) => strengths.push(ValidatedStrengthItem {
                     text: s.text.clone(),
                     citations: s.citations.clone(),
@@ -163,19 +235,30 @@ impl V<'_, '_> {
 
     fn weaknesses(&mut self, w: &WeaknessesSection) -> ValidatedPart {
         let mut items = Vec::new();
+        let mut seen = HashSet::new();
         for (i, it) in w.items.iter().enumerate() {
             let path = format!("weaknesses.items[{i}]");
-            if !self
+            let id_path = format!("{path}.weaknessId");
+            let Some(weakness) = self
                 .ctx
                 .input
                 .weaknesses
                 .iter()
-                .any(|x| x.id == it.weakness_id)
-            {
+                .find(|x| x.id == it.weakness_id)
+            else {
                 let e = err(
                     ValidationCode::UnknownWeakness,
-                    &format!("{path}.weaknessId"),
+                    &id_path,
                     it.weakness_id.clone(),
+                );
+                self.drop_item(&path, vec![e]);
+                continue;
+            };
+            if seen.contains(&it.weakness_id) {
+                let e = err(
+                    ValidationCode::UnknownWeakness,
+                    &id_path,
+                    format!("{}: a duplicate of an accepted item", it.weakness_id),
                 );
                 self.drop_item(&path, vec![e]);
                 continue;
@@ -184,32 +267,38 @@ impl V<'_, '_> {
                 weakness_id: Some(it.weakness_id.clone()),
                 ..RuleMeta::default()
             };
-            let errors = match self.text(&it.text, &it.citations, RuleKind::Weakness, meta, &path) {
+            let subject = keys(&weakness.exemplars);
+            match self.text(
+                &it.text,
+                &it.citations,
+                RuleKind::Weakness,
+                meta,
+                Some(&subject),
+                &path,
+            ) {
                 Ok(segments) => {
-                    let title = self.plain(&it.title, &format!("{path}.title"));
-                    if title.is_empty() {
-                        items.push(ValidatedWeaknessItem {
-                            text: it.text.clone(),
-                            citations: it.citations.clone(),
-                            segments,
-                            weakness_id: it.weakness_id.clone(),
-                            title: it.title.clone(),
-                        });
-                        continue;
-                    }
-                    title
+                    seen.insert(it.weakness_id.clone());
+                    items.push(ValidatedWeaknessItem {
+                        text: it.text.clone(),
+                        citations: it.citations.clone(),
+                        segments,
+                        weakness_id: it.weakness_id.clone(),
+                        // The computed label, never the model's title (fix round 1, I11).
+                        title: weakness.label.clone(),
+                    });
                 }
-                Err(e) => e,
-            };
-            self.drop_item(&path, errors);
+                Err(e) => self.drop_item(&path, e),
+            }
         }
         ValidatedPart::Weaknesses(ValidatedWeaknessesSection { items })
     }
 
     fn openings(&mut self, o: &OpeningsSection) -> ValidatedPart {
         let mut items = Vec::new();
+        let mut seen = HashSet::new();
         for (i, it) in o.items.iter().enumerate() {
             let path = format!("openings.items[{i}]");
+            let key_path = format!("{path}.lineKey");
             let Some(line) = self
                 .ctx
                 .input
@@ -217,14 +306,19 @@ impl V<'_, '_> {
                 .iter()
                 .find(|x| x.line_key == it.line_key)
             else {
-                let e = err(
-                    ValidationCode::UnknownLine,
-                    &format!("{path}.lineKey"),
-                    it.line_key.clone(),
-                );
+                let e = err(ValidationCode::UnknownLine, &key_path, it.line_key.clone());
                 self.drop_item(&path, vec![e]);
                 continue;
             };
+            if seen.contains(&it.line_key) {
+                let e = err(
+                    ValidationCode::UnknownLine,
+                    &key_path,
+                    format!("{}: a duplicate of an accepted item", it.line_key),
+                );
+                self.drop_item(&path, vec![e]);
+                continue;
+            }
             if line.verdict != it.verdict {
                 let e = err(
                     ValidationCode::VerdictMismatch,
@@ -241,14 +335,25 @@ impl V<'_, '_> {
                 line_key: Some(it.line_key.clone()),
                 ..RuleMeta::default()
             };
-            match self.text(&it.text, &it.citations, RuleKind::Opening, meta, &path) {
-                Ok(segments) => items.push(ValidatedOpeningItem {
-                    text: it.text.clone(),
-                    citations: it.citations.clone(),
-                    segments,
-                    line_key: it.line_key.clone(),
-                    verdict: it.verdict,
-                }),
+            let subject = keys(&line.examples);
+            match self.text(
+                &it.text,
+                &it.citations,
+                RuleKind::Opening,
+                meta,
+                Some(&subject),
+                &path,
+            ) {
+                Ok(segments) => {
+                    seen.insert(it.line_key.clone());
+                    items.push(ValidatedOpeningItem {
+                        text: it.text.clone(),
+                        citations: it.citations.clone(),
+                        segments,
+                        line_key: it.line_key.clone(),
+                        verdict: it.verdict,
+                    });
+                }
                 Err(e) => self.drop_item(&path, e),
             }
         }
@@ -317,11 +422,32 @@ impl V<'_, '_> {
                 self.drop_item(&path, errors);
                 continue;
             }
+            // A focus whose `why` fails is dropped whole (fix round 1); the general focus may
+            // cite any supplied position.
+            let subject = self
+                .ctx
+                .input
+                .weaknesses
+                .iter()
+                .find(|w| w.id == id)
+                .map(|w| keys(&w.exemplars));
             let meta = RuleMeta {
                 weakness_id: Some(id.to_owned()),
                 ..RuleMeta::default()
             };
-            let why = self.item(&f.why, RuleKind::Focus, meta, &format!("{path}.why"));
+            let why = match self.validated(
+                &f.why,
+                RuleKind::Focus,
+                meta,
+                subject.as_ref(),
+                &format!("{path}.why"),
+            ) {
+                Ok(v) => v,
+                Err(e) => {
+                    self.drop_item(&path, e);
+                    continue;
+                }
+            };
             let habit = self.item(
                 &f.habit,
                 RuleKind::Item,
@@ -330,7 +456,7 @@ impl V<'_, '_> {
             );
             focuses.push(ValidatedFocus {
                 weakness_id: f.weakness_id.clone(),
-                why,
+                why: Some(why),
                 drills: f.drills.clone(),
                 habit,
             });
@@ -356,7 +482,7 @@ impl V<'_, '_> {
                 area: Some(it.area),
                 ..RuleMeta::default()
             };
-            match self.text(&it.text, &it.citations, RuleKind::Area, meta, &path) {
+            match self.text(&it.text, &it.citations, RuleKind::Area, meta, None, &path) {
                 Ok(segments) => items.push(ValidatedAreaItem {
                     text: it.text.clone(),
                     citations: it.citations.clone(),

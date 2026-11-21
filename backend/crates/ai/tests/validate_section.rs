@@ -42,7 +42,7 @@ fn mixed() -> ReportSectionEnvelope {
         "weaknesses",
         json!({"items": [
             weakness("W1", &format!("{WINDOW} you left pieces loose, as with {{{{move:li-w1-0:5}}}}."), "li-w1-0", 5),
-            weakness("W3", "You missed Nxe4 here.", "li-w3-0", 16),
+            weakness("W3", "You missed Nxe4 here.", "li-w3-1", 18),
             weakness("W3", &format!("{WINDOW} forks slipped past you, as with {{{{move:li-w3-0:16}}}}."), "li-w3-0", 16),
         ]}),
     )
@@ -68,15 +68,21 @@ fn a_mixed_weaknesses_section_keeps_2_valid_items_drops_1() {
             .collect::<Vec<_>>(),
         ["W1", "W3"]
     );
+    // The leaking item is a W3 item too; the valid W3 item after it is not a duplicate,
+    // because a dropped item does not count.
     assert_eq!(v.item_errors.len(), 1);
     let d = &v.item_errors[0];
     assert_eq!(
         (d.section.as_str(), d.path.as_str()),
         ("weaknesses", "weaknesses.items[1]")
     );
+    // Every stage reports: the leak, and the missing evidence window.
     assert_eq!(
         d.errors.iter().map(|e| e.code).collect::<Vec<_>>(),
-        [ValidationCode::FreeTextFact]
+        [
+            ValidationCode::MissingEvidenceWindow,
+            ValidationCode::FreeTextFact
+        ]
     );
     assert_eq!(d.errors[0].path, "weaknesses.items[1].text");
 }
@@ -110,7 +116,7 @@ fn an_invalid_overview_headline_becomes_none_while_summary_is_kept() {
 }
 
 #[test]
-fn an_unknown_weakness_and_a_leaking_title_drop_their_items() {
+fn an_unknown_weakness_drops_and_the_title_is_the_computed_label() {
     let (i, ev) = setup();
     let ctx = SectionContext {
         input: &i,
@@ -139,19 +145,17 @@ fn an_unknown_weakness_and_a_leaking_title_drop_their_items() {
         .collect();
     assert_eq!(
         got,
-        [
-            (
-                "weaknesses.items[0]".into(),
-                vec![ValidationCode::UnknownWeakness],
-                "weaknesses.items[0].weaknessId".into()
-            ),
-            (
-                "weaknesses.items[1]".into(),
-                vec![ValidationCode::FreeTextFact],
-                "weaknesses.items[1].title".into()
-            ),
-        ]
+        [(
+            "weaknesses.items[0]".into(),
+            vec![ValidationCode::UnknownWeakness],
+            "weaknesses.items[0].weaknessId".into()
+        ),]
     );
+    // The model's title ("Hanging the e4 pawn" would leak) is never used.
+    let content = v.content.expect("content");
+    let items = &content.weaknesses().expect("weaknesses").items;
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].title, i.weaknesses[0].label);
 }
 
 #[test]
