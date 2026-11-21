@@ -38,3 +38,7 @@ The owner: "once we get the feedback from tests we can think about fixing the fe
 2. collect feedback;
 3. fix what the feedback shows;
 4. only then plan billing, deployment and launch.
+
+## Amendment (2026-11-21): drills are deferred
+
+Owner direction: "defer the drills for the beta". The interactive drills and training feature (the planned M5 drills plan) is out of the beta. The AI coaching report may still name the drill types it recommends as plain text. There is no drill trainer, puzzle player or spaced repetition in the beta. As with billing and launch, the drills plan is written only once the owner asks after the beta feedback.
