@@ -351,3 +351,50 @@ fn only_the_first_128_plies_are_replayed() {
     assert_eq!(past.swing.depth, None);
     assert_eq!(past.tags, Vec::<MotifTag>::new());
 }
+
+#[test]
+fn a_queen_that_dodges_and_comes_back_is_no_fork() {
+    // Nc7 forks Qa8 and Re8. The queen dodges to a7, the knight leaves (Nb5) and returns (Nc7,
+    // now forking nothing), and the queen walks back to a8 where the knight takes it. The
+    // capture is neither the forker's first move after the fork nor a capture of an unmoved
+    // target, so the fork at ply 1 did not win the queen.
+    let a = tag_line(
+        "q3r2k/8/8/1N6/8/8/7K/8 w - - 0 1",
+        &line(&[
+            "b5c7", "a8a7", "c7b5", "a7b7", "b5c7", "b7a8", "c7a8", "e8a8",
+        ]),
+        Color::White,
+        8,
+    );
+    assert_eq!(a.swing.depth, Some(7));
+    assert_lacks("dodge and return", &a.tags, &[Fork]);
+}
+
+#[test]
+fn a_fork_completed_by_the_forkers_first_move_still_counts_after_a_dodge() {
+    // Same fork; the queen dodges and comes back while the knight waits on c7, so the capture
+    // is the forker's first move after the fork.
+    let a = tag_line(
+        "q3r2k/8/8/1N6/8/8/7K/8 w - - 0 1",
+        &line(&["b5c7", "a8a7", "h2h3", "a7a8", "c7a8", "e8a8"]),
+        Color::White,
+        8,
+    );
+    assert_eq!(a.swing.depth, Some(5));
+    assert_contains("forker waits", &a.tags, &[Fork]);
+}
+
+#[test]
+fn a_fork_completed_on_an_unmoved_target_counts_after_the_forker_moves() {
+    // Nc7 forks Qa8 and Re8; the knight leaves and returns while the queen never moves, so the
+    // capture of the unmoved target completes the fork.
+    let a = tag_line(
+        "q3r2k/8/8/1N6/8/8/7K/8 w - - 0 1",
+        &line(&[
+            "b5c7", "h8g8", "c7b5", "g8h8", "b5c7", "h8g8", "c7a8", "e8a8",
+        ]),
+        Color::White,
+        8,
+    );
+    assert_contains("unmoved target", &a.tags, &[Fork]);
+}

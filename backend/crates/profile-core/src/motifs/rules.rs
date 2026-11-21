@@ -185,11 +185,19 @@ pub fn fork(ctx: &LineContext) -> bool {
             .map(|(sq, _)| sq)
             .collect();
         targets.len() >= 2
-            && replay.iter().skip(i + 1).any(|later| {
+            && replay.iter().enumerate().skip(i + 1).any(|(j, later)| {
                 later.mover == ctx.pov
                     && later.from == step.to
                     && later.captured.is_some()
                     && targets.contains(&later.to)
+                    && {
+                        // ADR-R2-3: the capture is the forker's first move after the fork, or
+                        // the target has not moved since the fork.
+                        let between = replay.get(i + 1..j).unwrap_or_default();
+                        let untouched =
+                            |sq: &str| between.iter().all(|s| s.from != sq && s.to != sq);
+                        untouched(&step.to) || untouched(&later.to)
+                    }
             })
     })
 }
