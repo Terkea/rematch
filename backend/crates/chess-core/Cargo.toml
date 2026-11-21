@@ -14,7 +14,6 @@ cozy-chess.workspace = true
 regex.workspace = true
 serde.workspace = true
 thiserror.workspace = true
-time.workspace = true
 
 [dev-dependencies]
 testkit.workspace = true

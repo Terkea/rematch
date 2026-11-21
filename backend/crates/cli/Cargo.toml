@@ -10,6 +10,7 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+common.workspace = true
 chess-core.workspace = true
 db.workspace = true
 queue.workspace = true

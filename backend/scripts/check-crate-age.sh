@@ -15,6 +15,11 @@ MIN_AGE_DAYS=${MIN_AGE_DAYS:-7}
 CACHE=${CRATE_AGE_CACHE:-${CARGO_TARGET_DIR:-target}/crate-age-cache}
 UA="chess-improver-ci (+https://github.com/chess-improver)"
 
+valid_timestamp() {
+  printf '%s' "$1" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+(Z|[+-][0-9:]+)$' \
+    && date -u -d "$1" +%s > /dev/null 2>&1
+}
+
 mkdir -p "$CACHE"
 cutoff=$(( $(date -u +%s) - MIN_AGE_DAYS * 86400 ))
 
@@ -38,12 +43,18 @@ young=0
 while read -r name version; do
   total=$((total + 1))
   entry="$CACHE/$name-$version"
+  # A cache entry is one RFC 3339 timestamp that GNU date can parse; anything else is refetched.
+  if [ -s "$entry" ] && ! valid_timestamp "$(cat "$entry")"; then
+    echo "warning: corrupt cache entry $entry ($(head -c 80 "$entry")), refetching" >&2
+    : > "$entry"
+  fi
   if [ ! -s "$entry" ]; then
     created=$(curl -fsS --retry 3 --retry-delay 2 -A "$UA" \
         "https://crates.io/api/v1/crates/$name/$version" \
       | grep -o '"created_at":"[^"]*"' | head -n 1 | cut -d'"' -f4) || true
-    if [ -z "$created" ]; then
-      echo "error: could not read the publish date of $name $version from crates.io" >&2
+    if [ -z "$created" ] || ! valid_timestamp "$created"; then
+      echo "error: could not read the publish date of $name $version from crates.io" \
+        "(got: '${created}')" >&2
       exit 2
     fi
     printf '%s\n' "$created" > "$entry"

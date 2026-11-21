@@ -22,6 +22,7 @@ name = "analysis"
 version = "0.1.0"
 dependencies = [
  "chess-core",
+ "common",
  "db",
  "engine",
  "events",
@@ -222,7 +223,6 @@ dependencies = [
  "serde_json",
  "testkit",
  "thiserror",
- "time",
  "tokio",
 ]
 
@@ -274,6 +274,7 @@ dependencies = [
  "anyhow",
  "chess-core",
  "clap",
+ "common",
  "db",
  "engine",
  "events",
@@ -313,6 +314,15 @@ checksum = "4356eba6976435498d05a311ee9fc486da3bc81c200d3f0d7dd9703b41913f92"
 dependencies = [
  "bytes",
  "memchr",
+]
+
+[[package]]
+name = "common"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "time",
 ]
 
 [[package]]
@@ -426,7 +436,7 @@ dependencies = [
 name = "db"
 version = "0.1.0"
 dependencies = [
- "chess-core",
+ "common",
  "futures",
  "serde",
  "serde_json",
@@ -567,7 +577,7 @@ dependencies = [
 name = "events"
 version = "0.1.0"
 dependencies = [
- "chess-core",
+ "common",
  "db",
  "futures",
  "serde",
@@ -1278,6 +1288,7 @@ dependencies = [
  "anyhow",
  "chess-core",
  "clap",
+ "common",
  "db",
  "futures",
  "platforms",
@@ -1345,6 +1356,7 @@ version = "0.1.0"
 dependencies = [
  "bytes",
  "chess-core",
+ "common",
  "futures",
  "regex",
  "reqwest",
@@ -1387,7 +1399,7 @@ dependencies = [
 name = "queue"
 version = "0.1.0"
 dependencies = [
- "chess-core",
+ "common",
  "db",
  "futures",
  "rand",
@@ -2697,6 +2709,7 @@ dependencies = [
  "anyhow",
  "chess-core",
  "clap",
+ "common",
  "db",
  "engine",
  "events",

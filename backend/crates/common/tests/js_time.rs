@@ -1,13 +1,13 @@
-use chess_core::js_time;
+use common::js_time;
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use time::macros::datetime;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 struct Stamped {
-    #[serde(with = "chess_core::js_time::iso")]
+    #[serde(with = "common::js_time::iso")]
     at: OffsetDateTime,
-    #[serde(with = "chess_core::js_time::iso::option")]
+    #[serde(with = "common::js_time::iso::option")]
     maybe: Option<OffsetDateTime>,
 }
 

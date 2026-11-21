@@ -24,6 +24,8 @@ TypeScript monorepo (pnpm workspaces + Turborepo, Node 22, ESM only). Packages u
 - Only the coordinator edits `Cargo.toml` dependency lists and `Cargo.lock`. Crates are pinned exactly, at least 7 days old (`scripts/check-crate-age.sh`), and checked by `cargo deny`. Always pass `--locked`.
 - DB tests use `#[sqlx::test(migrator = "db::MIGRATOR")]`. With `IN_DOCKER=1`, a missing Postgres or Stockfish fails the test instead of skipping it.
 - Use `testkit` only from integration tests in `tests/`, never from `#[cfg(test)]` unit tests: the dev-dependency cycle would compile the crate twice.
+- Timestamps are `time::OffsetDateTime`. JSON that must match TS uses `#[serde(with = "common::js_time::iso")]`.
+
 ## Conventions
 
 - TypeScript `strict` and `noUncheckedIndexedAccess`; relative imports use the `.js` extension.

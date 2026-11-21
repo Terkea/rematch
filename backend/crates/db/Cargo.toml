@@ -10,7 +10,7 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
-chess-core.workspace = true
+common.workspace = true
 sqlx.workspace = true
 time.workspace = true
 uuid.workspace = true

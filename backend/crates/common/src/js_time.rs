@@ -2,7 +2,7 @@
 //!
 //! The TS reference writes `YYYY-MM-DDTHH:mm:ss.sssZ`: always UTC, always exactly three
 //! fractional digits (`.000Z` for whole seconds), sub-millisecond digits dropped. Rust output
-//! that must match TS JSON byte for byte uses [`iso`] (`#[serde(with = "chess_core::js_time::iso")]`)
+//! that must match TS JSON byte for byte uses [`iso`] (`#[serde(with = "common::js_time::iso")]`)
 //! or [`iso::option`]. `time::serde::rfc3339` is not used for output because it omits the fraction
 //! on whole seconds and prints up to nine digits. Parsing accepts any RFC 3339 timestamp.
 
