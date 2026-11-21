@@ -235,28 +235,60 @@ async fn create_fails_with_spawn_for_a_missing_binary() {
 #[tokio::test]
 async fn a_caller_cancelled_during_the_post_call_restart_keeps_the_slot() {
     let Some(pool) = pool(1).await else { return };
-    // The engine times out at 200 ms and is killed; the caller is cancelled
-    // ~60 ms later, while the pool is restarting the engine.
-    let r = tokio::time::timeout(
-        Duration::from_millis(260),
-        pool.analyse(
-            START,
-            AnalyseOptions {
-                nodes: 5_000_000_000,
-                multipv: 1,
-                timeout: Duration::from_millis(200),
-            },
-        ),
-    )
-    .await;
-    assert!(
-        r.is_err(),
-        "the outer timeout did not cancel the call: {r:?}"
-    );
+    let old = pool.pids();
+    assert_eq!(old.len(), 1, "{old:?}");
+    // The engine times out at 200 ms and is killed, then the pool restarts
+    // it before returning. Cancel the caller the moment the kill is visible
+    // (the engine is no longer listed as alive), which is while the restart
+    // is in flight. If the restart wins the race, the call returns normally;
+    // either outcome is fine, the slot must survive both.
+    let mut call = Box::pin(pool.analyse(
+        START,
+        AnalyseOptions {
+            nodes: 5_000_000_000,
+            multipv: 1,
+            timeout: Duration::from_millis(200),
+        },
+    ));
+    let first = tokio::time::timeout(Duration::from_secs(20), async {
+        loop {
+            tokio::select! {
+                biased;
+                r = &mut call => break Some(r),
+                () = tokio::time::sleep(Duration::from_millis(1)) => {
+                    if pool.pids().is_empty() {
+                        break None;
+                    }
+                }
+            }
+        }
+    })
+    .await
+    .expect("the timed-out call neither returned nor showed its engine dying");
+    // `Some`: the restart finished inside the call. `None`: cancelled mid-restart.
+    drop(call);
+    if let Some(r) = first {
+        // Timeouts are surfaced as they are, not retried.
+        assert!(matches!(r, Err(EngineError::Timeout(_))), "{r:?}");
+    }
+    // The slot is not lost: a later call on the single-engine pool succeeds.
     let r = tokio::time::timeout(Duration::from_secs(20), pool.analyse(START, nodes(10_000)))
         .await
         .expect("the slot was lost: the pool deadlocked");
     assert_eq!(r.unwrap().lines.len(), 1);
+    // The killed engine was replaced and reaped, whichever call restarted it.
+    let now = pool.pids();
+    assert_eq!(now.len(), 1, "{now:?}");
+    assert!(!now.contains(&old[0]), "dead pid still listed: {now:?}");
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    while !is_dead(old[0]) {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "engine {} was never reaped",
+            old[0]
+        );
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
     pool.close().await;
 }
 
