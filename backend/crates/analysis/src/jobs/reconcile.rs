@@ -1,1 +1,532 @@
+//! The reconciler (port of `apps/worker/src/jobs/reconcile.ts`, spec §13a): an idempotent repair
+//! sweep. Postgres holds the state of games and import runs; the sweep rebuilds what the queue
+//! should contain.
+//!
+//! 1. Games `pending` for longer than `pending_grace` with no live analyse job are re-enqueued,
+//!    in keyset pages with one `live_states` query per page.
+//! 2. `analysing` games whose heartbeat is older than `stale_after` go back to `pending` (a
+//!    fenced reset) and are re-enqueued, unless their job is still `running` under a lease
+//!    (`hung_active`: left alone, its deadline or the reaper ends it).
+//! 3. In both sweeps a game at [`MAX_ANALYSIS_ATTEMPTS`] is marked failed instead (poison games)
+//!    and `job.failed` is published.
+//! 4. `running` import runs with a stale heartbeat are closed as failed and their account's import
+//!    is enqueued again.
+//! 5. Accounts whose newest run is `paused` and that have no live import job get one (the job
+//!    reuses the paused run, T21). Changed from TS, where BullMQ kept the delayed job.
+//! 6. Retention: user events (7 days), finished jobs ([`Retention::default`]) and `job_metrics`
+//!    (30 days).
+//!
+//! Each step is its own short statement or transaction, so a sweep that is cut off part-way
+//! leaves nothing half-done; the next sweep picks up the rest.
 
+use std::collections::HashMap;
+use std::time::Duration;
+
+use futures::FutureExt;
+use futures::future::BoxFuture;
+use queue::queue::{Queue, QueueError};
+use queue::retention::Retention;
+use queue::runner::{Handler, JobContext};
+use queue::{
+    EnqueueOptions, Job, JobError, JobState, KIND_ANALYSE, KIND_IMPORT, KIND_RECONCILE,
+    RECONCILE_EVERY, RECONCILE_KEY, analyse_key,
+};
+use serde::Serialize;
+use serde_json::{Value, json};
+use sqlx::PgPool;
+use uuid::Uuid;
+
+use crate::jobs::import::enqueue_import;
+
+/// Attempt cap across every path (queue retries, stalled pickups, reconciler re-enqueues): twice
+/// the analyse job's 3 attempts, so a game is only given up on after two full rounds.
+pub const MAX_ANALYSIS_ATTEMPTS: i32 = 6;
+pub const EXHAUSTED_REASON: &str = "exceeded max attempts (stalled or crashed worker)";
+
+/// The error stored on an import run closed for a stale heartbeat.
+pub const STALE_RUN_ERROR: &str = "stale heartbeat: resumed by the reconciler";
+
+/// `job_metrics` rows older than this are deleted (ADR 0036).
+pub const JOB_METRICS_RETENTION: Duration = Duration::from_secs(30 * 24 * 3600);
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ReconcileOptions {
+    /// Heartbeat age after which `analysing` games and `running` imports count as stale (10 min).
+    pub stale_after: Duration,
+    /// Games pending for less than this are left alone: their enqueue may be in flight (2 min).
+    pub pending_grace: Duration,
+    /// Keyset page size of the game sweeps (1000).
+    pub page_size: i64,
+}
+
+impl Default for ReconcileOptions {
+    fn default() -> Self {
+        Self {
+            stale_after: Duration::from_secs(600),
+            pending_grace: Duration::from_secs(120),
+            page_size: 1000,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReconcileResult {
+    pub requeued_pending: u64,
+    pub reset_stale: u64,
+    pub resumed_imports: u64,
+    pub revived_paused: u64,
+    /// Stale heartbeat but the job is still `running` under a lease: left alone.
+    pub hung_active: u64,
+    /// Games marked failed because they used up [`MAX_ANALYSIS_ATTEMPTS`].
+    pub exhausted: u64,
+    pub pruned_events: u64,
+    pub cleaned_jobs: u64,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ReconcileError {
+    #[error("reconcile database error: {0}")]
+    Db(#[from] sqlx::Error),
+    #[error(transparent)]
+    Queue(#[from] QueueError),
+    #[error("reconcile events error: {0}")]
+    Events(#[from] events::store::Error),
+}
+
+/// One game row of a sweep page.
+#[derive(sqlx::FromRow)]
+struct GameRow {
+    id: Uuid,
+    account_id: Uuid,
+    analysis_attempts: i32,
+}
+
+/// `$1` the status, `$2` the age cutoff in seconds, `$3` the last id of the previous page (or
+/// NULL), `$4` the page size. The age column differs per sweep.
+macro_rules! page_sql {
+    ($age:literal) => {
+        concat!(
+            "SELECT id, account_id, analysis_attempts FROM games \
+             WHERE analysis_status = $1::analysis_status AND ",
+            $age,
+            " < now() - make_interval(secs => $2) \
+             AND ($3::uuid IS NULL OR id > $3) ORDER BY id LIMIT $4"
+        )
+    };
+}
+
+const PENDING_PAGE_SQL: &str = page_sql!("coalesce(pending_since, 'epoch'::timestamptz)");
+const STALE_PAGE_SQL: &str =
+    page_sql!("coalesce(heartbeat_at, analysis_started_at, 'epoch'::timestamptz)");
+
+const GIVE_UP_SQL: &str = "\
+UPDATE games SET analysis_status = 'failed', analysis_error = $3
+WHERE id = ANY($1) AND analysis_status = $2::analysis_status
+RETURNING id, account_id";
+
+/// The fenced reset of a stale analysis: only if nothing claimed the game since it was read.
+const RESET_STALE_SQL: &str = "\
+UPDATE games SET analysis_status = 'pending', pending_since = now()
+WHERE id = $1 AND analysis_status = 'analysing' AND analysis_attempts = $2";
+
+const STALE_RUNS_SQL: &str = "\
+UPDATE import_runs SET status = 'failed', finished_at = now(), last_error = $2,
+  error_code = 'timeout'
+WHERE status = 'running' AND heartbeat_at < now() - make_interval(secs => $1)
+RETURNING account_id";
+
+/// Accounts whose newest run (the one the import job would reuse) is paused.
+const PAUSED_ACCOUNTS_SQL: &str = "\
+SELECT DISTINCT p.account_id FROM import_runs p
+WHERE p.status = 'paused' AND NOT EXISTS (
+  SELECT 1 FROM import_runs n WHERE n.account_id = p.account_id
+    AND (n.started_at, n.id) > (p.started_at, p.id))";
+
+/// The literal `6` matches the predicate of `games_attempt_cap_idx`, so the count uses it.
+const AT_CAP_SQL: &str = "SELECT count(*) FROM games WHERE analysis_attempts >= 6";
+
+const STATUS_COUNTS_SQL: &str = "\
+SELECT analysis_status::text, count(*) FROM games
+WHERE analysis_status IN ('pending', 'analysing', 'failed') GROUP BY 1";
+
+/// Runs one sweep (see the module docs) and returns what it did.
+pub async fn reconcile(
+    pool: &PgPool,
+    queue: &Queue,
+    opts: &ReconcileOptions,
+) -> Result<ReconcileResult, ReconcileError> {
+    let mut result = ReconcileResult::default();
+    let page_size = opts.page_size.max(1);
+
+    // 1. Lost pending games. Runs first, so games reset in step 2 are counted only there.
+    let grace = opts.pending_grace.as_secs_f64();
+    let mut after: Option<Uuid> = None;
+    loop {
+        let page = fetch_page(pool, PENDING_PAGE_SQL, "pending", grace, after, page_size).await?;
+        let Some(last) = page.last() else { break };
+        after = Some(last.id);
+        let live = live_states(queue, &page).await?;
+        let mut exhausted = Vec::new();
+        let mut lost = Vec::new();
+        for g in &page {
+            if live.contains_key(&analyse_key(g.id)) {
+                continue;
+            }
+            if g.analysis_attempts >= MAX_ANALYSIS_ATTEMPTS {
+                exhausted.push(g.id);
+            } else {
+                lost.push((g.id, g.account_id));
+            }
+        }
+        result.requeued_pending += enqueue_analysis_page(queue, &lost).await?;
+        result.exhausted += give_up(pool, &exhausted, "pending").await?;
+        if (page.len() as i64) < page_size {
+            break;
+        }
+    }
+
+    // 2. Stale analyses. A null heartbeat falls back to the start time (or counts as stale).
+    let stale_after = opts.stale_after.as_secs_f64();
+    let mut after: Option<Uuid> = None;
+    loop {
+        let page = fetch_page(
+            pool,
+            STALE_PAGE_SQL,
+            "analysing",
+            stale_after,
+            after,
+            page_size,
+        )
+        .await?;
+        let Some(last) = page.last() else { break };
+        after = Some(last.id);
+        let live = live_states(queue, &page).await?;
+        let mut exhausted = Vec::new();
+        for g in &page {
+            if live.get(&analyse_key(g.id)) == Some(&JobState::Running) {
+                // A worker holds the lease, so re-enqueueing would be a no-op and resetting the
+                // row would be a lie. Its deadline ends it; the next sweep sees the outcome.
+                result.hung_active += 1;
+                tracing::warn!(game_id = %g.id, "stale heartbeat but the job is still running");
+                continue;
+            }
+            if g.analysis_attempts >= MAX_ANALYSIS_ATTEMPTS {
+                exhausted.push(g.id);
+                continue;
+            }
+            let reset = sqlx::query(RESET_STALE_SQL)
+                .bind(g.id)
+                .bind(g.analysis_attempts)
+                .execute(pool)
+                .await?;
+            if reset.rows_affected() == 0 {
+                continue; // it moved on meanwhile
+            }
+            result.reset_stale += 1;
+            enqueue_analysis(queue, g.id, g.account_id).await?;
+        }
+        result.exhausted += give_up(pool, &exhausted, "analysing").await?;
+        if (page.len() as i64) < page_size {
+            break;
+        }
+    }
+
+    // 4. Stale import runs: close them, then resume each account.
+    let stale_runs: Vec<Uuid> = sqlx::query_scalar(STALE_RUNS_SQL)
+        .bind(stale_after)
+        .bind(STALE_RUN_ERROR)
+        .fetch_all(pool)
+        .await?;
+    result.resumed_imports = stale_runs.len() as u64;
+    let mut accounts = stale_runs;
+    accounts.sort_unstable();
+    accounts.dedup();
+    for account in accounts {
+        enqueue_import(queue, account, None).await?;
+    }
+
+    // 5. Paused runs with no live import job (an import that lost its released job).
+    let paused: Vec<Uuid> = sqlx::query_scalar(PAUSED_ACCOUNTS_SQL)
+        .fetch_all(pool)
+        .await?;
+    for account in paused {
+        if queue.live_count(&[KIND_IMPORT], Some(account)).await? == 0
+            && enqueue_import(queue, account, None).await?
+        {
+            result.revived_paused += 1;
+        }
+    }
+
+    // 6. Retention.
+    result.pruned_events =
+        events::store::prune_events(pool, events::store::EVENT_RETENTION).await?;
+    result.cleaned_jobs = queue.cleanup(&Retention::default()).await?;
+    let pruned_metrics = prune_job_metrics(pool).await?;
+
+    // 7. Counts for the log.
+    let counts: Vec<(String, i64)> = sqlx::query_as(STATUS_COUNTS_SQL).fetch_all(pool).await?;
+    let counts: HashMap<String, i64> = counts.into_iter().collect();
+    let at_attempt_cap: i64 = sqlx::query_scalar(AT_CAP_SQL).fetch_one(pool).await?;
+    tracing::info!(
+        requeued_pending = result.requeued_pending,
+        reset_stale = result.reset_stale,
+        resumed_imports = result.resumed_imports,
+        revived_paused = result.revived_paused,
+        hung_active = result.hung_active,
+        exhausted = result.exhausted,
+        pruned_events = result.pruned_events,
+        cleaned_jobs = result.cleaned_jobs,
+        pruned_metrics,
+        pending = counts.get("pending").copied().unwrap_or(0),
+        analysing = counts.get("analysing").copied().unwrap_or(0),
+        failed = counts.get("failed").copied().unwrap_or(0),
+        at_attempt_cap,
+        "reconcile sweep"
+    );
+    Ok(result)
+}
+
+async fn fetch_page(
+    pool: &PgPool,
+    sql: &'static str,
+    status: &str,
+    age_secs: f64,
+    after: Option<Uuid>,
+    limit: i64,
+) -> Result<Vec<GameRow>, sqlx::Error> {
+    sqlx::query_as(sql)
+        .bind(status)
+        .bind(age_secs)
+        .bind(after)
+        .bind(limit)
+        .fetch_all(pool)
+        .await
+}
+
+async fn live_states(
+    queue: &Queue,
+    page: &[GameRow],
+) -> Result<HashMap<String, JobState>, QueueError> {
+    let keys: Vec<String> = page.iter().map(|g| analyse_key(g.id)).collect();
+    queue.live_states(KIND_ANALYSE, &keys).await
+}
+
+/// The analyse job options: the same as T19's `enqueue_analyse` (T22 switches to it and checks
+/// they agree).
+fn analyse_options(game_id: Uuid, account_id: Uuid) -> EnqueueOptions {
+    EnqueueOptions {
+        dedupe_key: Some(analyse_key(game_id)),
+        user_key: Some(account_id),
+        max_attempts: 3,
+        ..EnqueueOptions::default()
+    }
+}
+
+/// One analyse enqueue. `false` when a live job already holds the game's key.
+async fn enqueue_analysis(
+    queue: &Queue,
+    game_id: Uuid,
+    account_id: Uuid,
+) -> Result<bool, QueueError> {
+    let id = queue
+        .enqueue(
+            KIND_ANALYSE,
+            &json!({ "gameId": game_id }),
+            analyse_options(game_id, account_id),
+        )
+        .await?;
+    Ok(id.is_some())
+}
+
+/// `$1` kind, `$2` game ids, `$3` dedupe keys, `$4` account ids, `$5` priority, `$6`
+/// max_attempts. The same row and the same live-only conflict rule as the queue's `ENQUEUE_SQL`
+/// (no `run_at` or `recur_every`, so both take their defaults).
+const ENQUEUE_PAGE_SQL: &str = "\
+WITH ins AS (
+  INSERT INTO jobs (kind, payload, dedupe_key, user_key, priority, max_attempts)
+  SELECT $1, jsonb_build_object('gameId', g.id), g.key, g.account, $5, $6
+  FROM unnest($2::uuid[], $3::text[], $4::uuid[]) WITH ORDINALITY AS g(id, key, account, n)
+  ORDER BY g.n
+  ON CONFLICT (kind, dedupe_key) WHERE dedupe_key IS NOT NULL AND state IN ('queued','running','paused')
+  DO NOTHING RETURNING id)
+SELECT count(*) FROM ins";
+
+/// Enqueues analyse jobs for `games` (`(game_id, account_id)`) in one transaction with one
+/// NOTIFY, and returns how many were new (a live job already holds the others' keys).
+///
+/// Each `Queue::enqueue` is its own commit, and its NOTIFY serialises commits, so requeueing a
+/// lost queue row by row is bound by commit latency (2,500 games took 10-25 s under load). One
+/// commit per page keeps it to well under a second. The rows equal what [`Queue::enqueue`]
+/// writes with [`analyse_options`] (the `reconciler` test `page_enqueue_matches_queue_enqueue`
+/// compares them). Move this to a `Queue::enqueue_many` when the queue crate gets one (T22).
+pub async fn enqueue_analysis_page(
+    queue: &Queue,
+    games: &[(Uuid, Uuid)],
+) -> Result<u64, QueueError> {
+    if games.is_empty() {
+        return Ok(0);
+    }
+    let opts = analyse_options(games[0].0, games[0].1);
+    debug_assert!(opts.run_at.is_none() && opts.recur_every.is_none());
+    let ids: Vec<Uuid> = games.iter().map(|g| g.0).collect();
+    let keys: Vec<String> = games.iter().map(|g| analyse_key(g.0)).collect();
+    let accounts: Vec<Uuid> = games.iter().map(|g| g.1).collect();
+    let timeout = queue::queue::DEFAULT_QUERY_TIMEOUT;
+    let fut = async {
+        let mut tx = queue.pool().begin().await?;
+        sqlx::query("SELECT set_config('statement_timeout', $1, true)")
+            .bind(format!("{}ms", timeout.as_millis()))
+            .execute(&mut *tx)
+            .await?;
+        let inserted: i64 = sqlx::query_scalar(ENQUEUE_PAGE_SQL)
+            .bind(KIND_ANALYSE)
+            .bind(&ids)
+            .bind(&keys)
+            .bind(&accounts)
+            .bind(opts.priority)
+            .bind(opts.max_attempts)
+            .fetch_one(&mut *tx)
+            .await?;
+        if inserted > 0 {
+            sqlx::query("SELECT pg_notify($1, $2)")
+                .bind(queue::queue::JOBS_CHANNEL)
+                .bind(KIND_ANALYSE)
+                .execute(&mut *tx)
+                .await?;
+        }
+        tx.commit().await?;
+        Ok::<_, sqlx::Error>(inserted)
+    };
+    match tokio::time::timeout(timeout + queue::queue::CLIENT_BACKSTOP, fut).await {
+        Ok(res) => Ok(res?.max(0) as u64),
+        Err(_) => Err(QueueError::Timeout {
+            op: "enqueue_analysis_page",
+            after: timeout,
+        }),
+    }
+}
+
+/// Marks `ids` failed if they are still `from`, and publishes `job.failed` for each one that
+/// was. Returns how many were marked. A publish error is logged, not raised: the state change
+/// has committed and the client refetches on its next load.
+async fn give_up(pool: &PgPool, ids: &[Uuid], from: &str) -> Result<u64, sqlx::Error> {
+    if ids.is_empty() {
+        return Ok(0);
+    }
+    let failed: Vec<(Uuid, Uuid)> = sqlx::query_as(GIVE_UP_SQL)
+        .bind(ids)
+        .bind(from)
+        .bind(EXHAUSTED_REASON)
+        .fetch_all(pool)
+        .await?;
+    for (game_id, account_id) in &failed {
+        let payload = json!({
+            "kind": KIND_ANALYSE,
+            "gameId": game_id,
+            "reason": EXHAUSTED_REASON,
+        });
+        if let Err(e) = events::store::publish(
+            pool,
+            *account_id,
+            events::store::UserEventType::JobFailed,
+            payload,
+        )
+        .await
+        {
+            tracing::warn!(game_id = %game_id, error = %e, "publishing job.failed failed");
+        }
+    }
+    Ok(failed.len() as u64)
+}
+
+/// Deletes `job_metrics` rows older than [`JOB_METRICS_RETENTION`].
+///
+/// The table comes from T19's `20261121000400_job_metrics.sql`; until that lands the step is
+/// skipped (remove the `to_regclass` guard at the T19 merge).
+async fn prune_job_metrics(pool: &PgPool) -> Result<u64, sqlx::Error> {
+    let exists: bool = sqlx::query_scalar("SELECT to_regclass('job_metrics') IS NOT NULL")
+        .fetch_one(pool)
+        .await?;
+    if !exists {
+        return Ok(0);
+    }
+    let done =
+        sqlx::query("DELETE FROM job_metrics WHERE created_at < now() - make_interval(secs => $1)")
+            .bind(JOB_METRICS_RETENTION.as_secs_f64())
+            .execute(pool)
+            .await?;
+    Ok(done.rows_affected())
+}
+
+/// Schedules the recurring sweep (every [`RECONCILE_EVERY`]). Idempotent: the live dedupe key
+/// keeps one reconcile job.
+pub async fn ensure_reconcile_scheduled(queue: &Queue) -> Result<(), QueueError> {
+    queue
+        .enqueue(
+            KIND_RECONCILE,
+            &json!({}),
+            EnqueueOptions {
+                dedupe_key: Some(RECONCILE_KEY.to_owned()),
+                priority: 0,
+                max_attempts: 1,
+                recur_every: Some(RECONCILE_EVERY),
+                ..EnqueueOptions::default()
+            },
+        )
+        .await?;
+    Ok(())
+}
+
+/// The queue handler for [`KIND_RECONCILE`]: one sweep with the default options.
+pub struct ReconcileHandler {
+    pub pool: PgPool,
+    pub queue: Queue,
+}
+
+impl Handler for ReconcileHandler {
+    fn kind(&self) -> &'static str {
+        KIND_RECONCILE
+    }
+
+    fn handle(&self, _job: Job, ctx: JobContext) -> BoxFuture<'_, Result<Value, JobError>> {
+        async move {
+            let opts = ReconcileOptions::default();
+            let sweep = reconcile(&self.pool, &self.queue, &opts);
+            tokio::select! {
+                res = sweep => match res {
+                    Ok(result) => Ok(json!(result)),
+                    Err(e) => Err(JobError::Retryable {
+                        message: e.to_string(),
+                        code: None,
+                    }),
+                },
+                // Every step is idempotent, so a sweep cut off part-way is safe to drop.
+                () = ctx.cancel.cancelled() => Err(JobError::Release {
+                    delay: Duration::ZERO,
+                    reason: "shutdown".to_owned(),
+                }),
+            }
+        }
+        .boxed()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn attempt_cap_count_matches_the_partial_index_predicate() {
+        assert!(AT_CAP_SQL.ends_with(&format!(">= {MAX_ANALYSIS_ATTEMPTS}")));
+    }
+
+    #[test]
+    fn page_queries_use_their_age_columns() {
+        assert!(PENDING_PAGE_SQL.contains("coalesce(pending_since, 'epoch'::timestamptz) < now()"));
+        assert!(
+            STALE_PAGE_SQL.contains(
+                "coalesce(heartbeat_at, analysis_started_at, 'epoch'::timestamptz) < now()"
+            )
+        );
+    }
+}
