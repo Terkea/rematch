@@ -70,6 +70,10 @@ pub const EXPLORER_INDEX_SQL: &str = "SELECT fen_key, uci, white::int8 AS white,
 /// excluded.white, …`), in one transaction and chunks of [`FLUSH_CHUNK`]. Repeated keys in
 /// `rows` are summed first, and rows are written in key order so concurrent flushes lock rows
 /// in the same order. Negative counts are rejected.
+///
+/// Not retry-safe: counts are added, so re-flushing a chunk after an error that may have
+/// committed double-counts it. The caller (Task 20) must make each chunk idempotent, or fail the
+/// build and start over.
 pub async fn flush_explorer(
     pool: &PgPool,
     build_id: Uuid,
@@ -141,17 +145,20 @@ pub async fn flush_explorer(
     Ok(())
 }
 
-/// Deletes a build's rows whose total is below `min_row_count`; returns how many.
+/// Deletes a `building` build's rows whose total is below `min_row_count`; returns how many.
 pub async fn prune_explorer(pool: &PgPool, build_id: Uuid, min_row_count: i64) -> Result<u64> {
+    let mut tx = pool.begin().await?;
+    ensure_building(&mut tx, build_id).await?;
     let n = sqlx::query(
         "DELETE FROM opening_explorer \
          WHERE build_id = $1 AND (white::int8 + draws + black) < $2",
     )
     .bind(build_id)
     .bind(min_row_count)
-    .execute(pool)
+    .execute(&mut *tx)
     .await?
     .rows_affected();
+    tx.commit().await?;
     Ok(n)
 }
 
@@ -190,17 +197,26 @@ pub async fn load_explorer_index(
     keys.sort_unstable();
     keys.dedup();
     let mut index: HashMap<String, Vec<ExplorerMove>> = HashMap::new();
+    if keys.is_empty() {
+        return Ok(index);
+    }
+    // One snapshot for every batch, so a concurrent activation cannot mix two builds.
+    let mut tx = pool.begin().await?;
+    sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY")
+        .execute(&mut *tx)
+        .await?;
     for batch in keys.chunks(INDEX_BATCH) {
         let rows: Vec<IndexRow> = sqlx::query_as(EXPLORER_INDEX_SQL)
             .bind(batch)
             .bind(band.as_str())
             .bind(tc.as_str())
-            .fetch_all(pool)
+            .fetch_all(&mut *tx)
             .await?;
         for r in rows {
             index.entry(r.fen_key).or_default().push(r.mv);
         }
     }
+    tx.commit().await?;
     for moves in index.values_mut() {
         moves.sort_by(|a, b| b.total.cmp(&a.total).then_with(|| a.uci.cmp(&b.uci)));
     }

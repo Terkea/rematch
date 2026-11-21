@@ -3,8 +3,9 @@
 //! never active, supersede-then-activate under the non-deferrable `reference_builds_one_active_uq`.
 
 use refdata::builds::{
-    BuildKind, BuildStatus, NewBuild, RefdataError, activate_build, active_build, create_build,
-    fail_build, get_build, mark_unverified, set_difficulty_model, set_source_sha,
+    BuildKind, BuildStatus, NewBuild, RefdataError, UNVERIFIED_RETENTION, activate_build,
+    activate_build_in, active_build, create_build, delete_stale_unverified, fail_build, get_build,
+    mark_unverified, set_difficulty_model, set_source_sha,
 };
 use refdata::explorer::{ExplorerCounts, ExplorerKey, flush_explorer};
 use serde_json::json;
@@ -84,12 +85,25 @@ async fn create_build_starts_building_and_round_trips(pool: PgPool) {
     assert_eq!(b.error, None);
     assert!(get_build(&pool, Uuid::new_v4()).await.unwrap().is_none());
 
-    set_source_sha(&pool, id, "cd", 1234).await.unwrap();
+    for bad in [
+        "cd".to_string(),
+        "CD".repeat(32),
+        "g".repeat(64),
+        "a".repeat(63),
+    ] {
+        assert!(matches!(
+            set_source_sha(&pool, id, &bad, 1).await,
+            Err(RefdataError::InvalidSha(_))
+        ));
+    }
+    set_source_sha(&pool, id, &"cd".repeat(32), 1234)
+        .await
+        .unwrap();
     let b = get_build(&pool, id).await.unwrap().unwrap();
-    assert_eq!(b.source_sha256, "cd");
+    assert_eq!(b.source_sha256, "cd".repeat(32));
     assert_eq!(b.games_scanned, 1234);
     assert!(matches!(
-        set_source_sha(&pool, Uuid::new_v4(), "cd", 1).await,
+        set_source_sha(&pool, Uuid::new_v4(), &"cd".repeat(32), 1).await,
         Err(RefdataError::NotFound(_))
     ));
 }
@@ -250,7 +264,9 @@ async fn activate_requires_a_verified_building_build(pool: PgPool) {
         Err(RefdataError::NotFound(_))
     ));
 
-    set_source_sha(&pool, id, "ab", 1).await.unwrap();
+    set_source_sha(&pool, id, &"ab".repeat(32), 1)
+        .await
+        .unwrap();
     activate_build(&pool, id).await.unwrap();
     let at = get_build(&pool, id).await.unwrap().unwrap().activated_at;
     // A second activation (two finalisers) is a no-op.
@@ -388,26 +404,169 @@ async fn concurrent_activations_leave_exactly_one_active(pool: PgPool) {
     let a = verified_explorer(&pool, "2026-09").await;
     let b = verified_explorer(&pool, "2026-10").await;
     let (ra, rb) = tokio::join!(activate_build(&pool, a), activate_build(&pool, b));
-    ra.unwrap();
+    // `b` (newer) always ends active. If `b` won the race, `a` (older) is refused as NotNewer;
+    // otherwise `a` was active briefly and then superseded by `b`.
     rb.unwrap();
-    let statuses: Vec<(Uuid, String)> = sqlx::query_as(
-        "SELECT id, status::text FROM reference_builds WHERE kind = 'opening_explorer' \
-         AND status = 'active'",
+    match ra {
+        Ok(()) => assert_eq!(
+            get_build(&pool, a).await.unwrap().unwrap().status,
+            BuildStatus::Superseded
+        ),
+        Err(RefdataError::NotNewer { .. }) => assert_eq!(
+            get_build(&pool, a).await.unwrap().unwrap().status,
+            BuildStatus::Building
+        ),
+        Err(e) => panic!("{e}"),
+    }
+    let active: Vec<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM reference_builds WHERE kind = 'opening_explorer' AND status = 'active'",
     )
     .fetch_all(&pool)
     .await
     .unwrap();
-    assert_eq!(statuses.len(), 1, "{statuses:?}");
-    let winner = statuses[0].0;
-    assert!(winner == a || winner == b);
-    let loser = if winner == a { b } else { a };
-    assert_eq!(
-        get_build(&pool, loser).await.unwrap().unwrap().status,
-        BuildStatus::Superseded
-    );
-    assert_eq!(explorer_rows(&pool, loser).await, 0);
+    assert_eq!(active, vec![b]);
     assert_eq!(explorer_rows(&pool, old).await, 0);
-    assert_eq!(explorer_rows(&pool, winner).await, 1);
+    assert_eq!(explorer_rows(&pool, b).await, 1);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn an_older_or_equal_month_never_replaces_the_active_build(pool: PgPool) {
+    let current = verified_explorer(&pool, "2026-10").await;
+    activate_build(&pool, current).await.unwrap();
+    for month in ["2026-09", "2026-10"] {
+        let old = verified_explorer(&pool, month).await;
+        assert!(matches!(
+            activate_build(&pool, old).await,
+            Err(RefdataError::NotNewer { ref active_month, .. }) if active_month == "2026-10"
+        ));
+        assert_eq!(
+            get_build(&pool, old).await.unwrap().unwrap().status,
+            BuildStatus::Building
+        );
+    }
+    assert_eq!(
+        active_build(&pool, BuildKind::OpeningExplorer)
+            .await
+            .unwrap(),
+        Some(current)
+    );
+    assert_eq!(explorer_rows(&pool, current).await, 1);
+    // Months are validated at creation, so string order is month order.
+    for bad in ["2026-13", "2026-1", "26-10", "2026/10", ""] {
+        assert!(matches!(
+            create_build(&pool, &new_build(BuildKind::OpeningExplorer, bad)).await,
+            Err(RefdataError::InvalidMonth(_))
+        ));
+    }
+}
+
+/// Writes to a build's own row are refused once it left `building`.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn build_row_updates_need_a_building_build(pool: PgPool) {
+    let id = verified_explorer(&pool, "2026-10").await;
+    activate_build(&pool, id).await.unwrap();
+    assert!(matches!(
+        set_source_sha(&pool, id, &"ef".repeat(32), 9).await,
+        Err(RefdataError::NotBuilding {
+            status: BuildStatus::Active,
+            ..
+        })
+    ));
+    assert!(matches!(
+        set_difficulty_model(&pool, id, Some("maia2-blitz")).await,
+        Err(RefdataError::NotBuilding { .. })
+    ));
+    let b = get_build(&pool, id).await.unwrap().unwrap();
+    assert_eq!(b.source_sha256, "ab".repeat(32));
+    assert_eq!(b.difficulty_model, None);
+    assert!(matches!(
+        set_difficulty_model(&pool, Uuid::new_v4(), None).await,
+        Err(RefdataError::NotFound(_))
+    ));
+}
+
+/// `activate_build_in` runs in the caller's transaction: nothing is visible until it commits,
+/// a rollback undoes the swap, and a bare connection is refused.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn activate_build_in_uses_the_callers_transaction(pool: PgPool) {
+    let first = verified_explorer(&pool, "2026-09").await;
+    activate_build(&pool, first).await.unwrap();
+    let second = verified_explorer(&pool, "2026-10").await;
+
+    let mut tx = pool.begin().await.unwrap();
+    activate_build_in(&mut tx, second).await.unwrap();
+    assert_eq!(
+        active_build(&pool, BuildKind::OpeningExplorer)
+            .await
+            .unwrap(),
+        Some(first),
+        "not visible before commit"
+    );
+    tx.rollback().await.unwrap();
+    assert_eq!(
+        get_build(&pool, second).await.unwrap().unwrap().status,
+        BuildStatus::Building
+    );
+    assert_eq!(explorer_rows(&pool, first).await, 1);
+
+    let mut tx = pool.begin().await.unwrap();
+    activate_build_in(&mut tx, second).await.unwrap();
+    tx.commit().await.unwrap();
+    assert_eq!(
+        active_build(&pool, BuildKind::OpeningExplorer)
+            .await
+            .unwrap(),
+        Some(second)
+    );
+    assert_eq!(explorer_rows(&pool, first).await, 0);
+
+    let third = verified_explorer(&pool, "2026-11").await;
+    let mut conn = pool.acquire().await.unwrap();
+    assert!(matches!(
+        activate_build_in(&mut conn, third).await,
+        Err(RefdataError::Db(_))
+    ));
+    assert_eq!(
+        get_build(&pool, third).await.unwrap().unwrap().status,
+        BuildStatus::Building
+    );
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn stale_unverified_builds_are_deleted_with_their_rows(pool: PgPool) {
+    let old = verified_explorer(&pool, "2026-08").await;
+    mark_unverified(&pool, old).await.unwrap();
+    let recent = verified_explorer(&pool, "2026-09").await;
+    mark_unverified(&pool, recent).await.unwrap();
+    let failed = verified_explorer(&pool, "2026-07").await;
+    fail_build(&pool, failed, "x").await.unwrap();
+    sqlx::query(
+        "UPDATE reference_builds SET finished_at = now() - interval '31 days' \
+         WHERE id = ANY($1)",
+    )
+    .bind([old, failed])
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "UPDATE reference_builds SET finished_at = now() - interval '29 days' WHERE id = $1",
+    )
+    .bind(recent)
+    .execute(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        delete_stale_unverified(&pool, UNVERIFIED_RETENTION)
+            .await
+            .unwrap(),
+        1
+    );
+    assert!(get_build(&pool, old).await.unwrap().is_none());
+    assert_eq!(explorer_rows(&pool, old).await, 0);
+    assert!(get_build(&pool, recent).await.unwrap().is_some());
+    assert_eq!(explorer_rows(&pool, recent).await, 1);
+    // Only unverified builds are cleaned up.
+    assert!(get_build(&pool, failed).await.unwrap().is_some());
 }
 
 #[test]

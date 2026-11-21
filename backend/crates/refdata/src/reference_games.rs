@@ -4,10 +4,12 @@
 //! Players appear only as salted hashes (`white_hash`, `black_hash`, `player_hash`); no column
 //! here takes a username.
 
+use std::collections::HashSet;
+
 use chess_core::{Color, TimeClass};
 use db::games::AnalysisStatus;
 use profile_core::types::{Band, PlayerGameMetrics};
-use sqlx::{PgConnection, PgPool};
+use sqlx::{PgConnection, PgPool, Postgres, Transaction};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -129,18 +131,21 @@ pub async fn set_reference_game_status(
     status: AnalysisStatus,
     error: Option<&str>,
 ) -> Result<()> {
-    let n = sqlx::query(
+    let build: Option<Uuid> =
+        sqlx::query_scalar("SELECT build_id FROM reference_games WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&mut *conn)
+            .await?;
+    let build = build.ok_or(RefdataError::NotFound(id))?;
+    ensure_building(conn, build).await?;
+    sqlx::query(
         "UPDATE reference_games SET status = $2::analysis_status, error = $3 WHERE id = $1",
     )
     .bind(id)
     .bind(status.as_str())
     .bind(error)
     .execute(&mut *conn)
-    .await?
-    .rows_affected();
-    if n == 0 {
-        return Err(RefdataError::NotFound(id));
-    }
+    .await?;
     Ok(())
 }
 
@@ -167,17 +172,35 @@ pub struct ObservationRow {
     pub metrics: PlayerGameMetrics,
 }
 
-/// Upserts observations (one per reference game and colour) of a `building` build, on the
-/// caller's connection or transaction. A re-analysed side replaces its row.
+/// Upserts observations (one per reference game and colour) of a `building` build inside the
+/// caller's transaction (the build's share lock holds until it commits). Every game must belong
+/// to `build_id` ([`RefdataError::BuildMismatch`] otherwise), and a row is never moved between
+/// builds. A re-analysed side replaces its row.
 pub async fn write_observations(
-    conn: &mut PgConnection,
+    tx: &mut Transaction<'_, Postgres>,
     build_id: Uuid,
     rows: &[ObservationRow],
 ) -> Result<()> {
     if rows.is_empty() {
         return Ok(());
     }
+    let conn: &mut PgConnection = tx;
     ensure_building(conn, build_id).await?;
+    let games: Vec<Uuid> = rows.iter().map(|r| r.reference_game_id).collect();
+    let owned: HashSet<Uuid> =
+        sqlx::query_scalar("SELECT id FROM reference_games WHERE id = ANY($1) AND build_id = $2")
+            .bind(&games)
+            .bind(build_id)
+            .fetch_all(&mut *conn)
+            .await?
+            .into_iter()
+            .collect();
+    if let Some(game) = games.iter().find(|g| !owned.contains(g)) {
+        return Err(RefdataError::BuildMismatch {
+            game: *game,
+            build: build_id,
+        });
+    }
     let metrics = rows
         .iter()
         .map(|r| serde_json::to_value(&r.metrics))
@@ -190,13 +213,14 @@ pub async fn write_observations(
          FROM UNNEST($2::uuid[], $3::text[], $4::text[], $5::text[], $6::text[], $7::int4[], \
                      $8::int4[], $9::jsonb[]) AS x(gid, c, ph, b, tc, pr, opr, m) \
          ON CONFLICT (reference_game_id, color) DO UPDATE SET \
-           build_id = excluded.build_id, player_hash = excluded.player_hash, \
+           player_hash = excluded.player_hash, \
            band = excluded.band, time_class = excluded.time_class, \
            player_rating = excluded.player_rating, opponent_rating = excluded.opponent_rating, \
-           metrics = excluded.metrics",
+           metrics = excluded.metrics \
+         WHERE reference_observations.build_id = excluded.build_id",
     )
     .bind(build_id)
-    .bind(rows.iter().map(|r| r.reference_game_id).collect::<Vec<_>>())
+    .bind(&games)
     .bind(rows.iter().map(|r| r.color.as_str()).collect::<Vec<_>>())
     .bind(
         rows.iter()

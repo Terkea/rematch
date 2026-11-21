@@ -38,6 +38,18 @@ pub enum RefdataError {
     NotBuilding { id: Uuid, status: BuildStatus },
     #[error("build {0} has no verified source SHA-256 and cannot be activated")]
     MissingSourceSha(Uuid),
+    #[error("not a SHA-256 (64 lowercase hex characters): {0:?}")]
+    InvalidSha(String),
+    #[error("not a YYYY-MM month: {0:?}")]
+    InvalidMonth(String),
+    #[error("build {id} ({month}) is not newer than the active build ({active_month})")]
+    NotNewer {
+        id: Uuid,
+        month: String,
+        active_month: String,
+    },
+    #[error("reference game {game} does not belong to build {build}")]
+    BuildMismatch { game: Uuid, build: Uuid },
     #[error("value out of range: {0}")]
     OutOfRange(String),
     #[error("decode: {0}")]
@@ -192,8 +204,32 @@ impl TryFrom<RawBuild> for BuildRow {
     }
 }
 
-/// Inserts a `building` build and returns its id.
+/// How long an `unverified` development build is kept after it finished
+/// ([`delete_stale_unverified`]).
+pub const UNVERIFIED_RETENTION: time::Duration = time::Duration::days(30);
+
+/// True for `YYYY-MM` with a month 01-12, so months order as strings.
+fn is_month(s: &str) -> bool {
+    let b = s.as_bytes();
+    b.len() == 7
+        && b[4] == b'-'
+        && b[..4].iter().chain(&b[5..]).all(u8::is_ascii_digit)
+        && matches!(
+            &s[5..],
+            "01" | "02" | "03" | "04" | "05" | "06" | "07" | "08" | "09" | "10" | "11" | "12"
+        )
+}
+
+/// True for exactly 64 lowercase hex characters.
+fn is_sha256(s: &str) -> bool {
+    s.len() == 64 && s.bytes().all(|c| matches!(c, b'0'..=b'9' | b'a'..=b'f'))
+}
+
+/// Inserts a `building` build and returns its id. `source_month` must be `YYYY-MM`.
 pub async fn create_build(pool: &PgPool, b: &NewBuild) -> Result<Uuid> {
+    if !is_month(&b.source_month) {
+        return Err(RefdataError::InvalidMonth(b.source_month.clone()));
+    }
     let id = sqlx::query_scalar(
         "INSERT INTO reference_builds (kind, status, source_month, source_sha256, source_url, \
            params, protocol, enrichment_protocol, difficulty_model) \
@@ -225,34 +261,49 @@ pub async fn get_build(pool: &PgPool, id: Uuid) -> Result<Option<BuildRow>> {
     raw.map(BuildRow::try_from).transpose()
 }
 
-/// Records the verified SHA-256 of the dump and the number of games scanned.
-pub async fn set_source_sha(pool: &PgPool, id: Uuid, sha: &str, games_scanned: i64) -> Result<()> {
-    let n = sqlx::query(
-        "UPDATE reference_builds SET source_sha256 = $2, games_scanned = $3 WHERE id = $1",
-    )
-    .bind(id)
-    .bind(sha)
-    .bind(games_scanned)
-    .execute(pool)
-    .await?
-    .rows_affected();
-    if n == 0 {
-        return Err(RefdataError::NotFound(id));
+/// Locks a `building` build for an update of its own row; any other status is `NotBuilding`.
+async fn lock_building(conn: &mut PgConnection, id: Uuid) -> Result<()> {
+    let (_, status, _) = lock_build(conn, id).await?;
+    if status != BuildStatus::Building {
+        return Err(RefdataError::NotBuilding { id, status });
     }
     Ok(())
 }
 
+/// Records the verified SHA-256 of the dump (64 lowercase hex characters) and the number of
+/// games scanned. Only a `building` build takes it.
+pub async fn set_source_sha(pool: &PgPool, id: Uuid, sha: &str, games_scanned: i64) -> Result<()> {
+    if !is_sha256(sha) {
+        return Err(RefdataError::InvalidSha(sha.to_owned()));
+    }
+    if games_scanned < 0 {
+        return Err(RefdataError::OutOfRange(format!(
+            "games_scanned {games_scanned}"
+        )));
+    }
+    let mut tx = pool.begin().await?;
+    lock_building(&mut tx, id).await?;
+    sqlx::query("UPDATE reference_builds SET source_sha256 = $2, games_scanned = $3 WHERE id = $1")
+        .bind(id)
+        .bind(sha)
+        .bind(games_scanned)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    Ok(())
+}
+
 /// Records the Maia model that produced the build's difficulty values, or NULL when none did.
+/// Only a `building` build takes it.
 pub async fn set_difficulty_model(pool: &PgPool, id: Uuid, model: Option<&str>) -> Result<()> {
-    let n = sqlx::query("UPDATE reference_builds SET difficulty_model = $2 WHERE id = $1")
+    let mut tx = pool.begin().await?;
+    lock_building(&mut tx, id).await?;
+    sqlx::query("UPDATE reference_builds SET difficulty_model = $2 WHERE id = $1")
         .bind(id)
         .bind(model)
-        .execute(pool)
-        .await?
-        .rows_affected();
-    if n == 0 {
-        return Err(RefdataError::NotFound(id));
-    }
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
     Ok(())
 }
 
@@ -310,8 +361,33 @@ async fn delete_build_rows(conn: &mut PgConnection, ids: &[Uuid]) -> Result<()> 
 /// same kind becomes `superseded` and loses its rows, then this build becomes `active` (two
 /// statements, in that order; see the module doc). Activations of one kind are serialised by a
 /// transaction-scoped advisory lock. Activating an already active build is a no-op.
+///
+/// Refused: a build without a SHA-256 ([`RefdataError::MissingSourceSha`]), any status other
+/// than `building`/`active`, and a `source_month` not newer than the active build's
+/// ([`RefdataError::NotNewer`]), so an old dump never replaces a newer one.
 pub async fn activate_build(pool: &PgPool, id: Uuid) -> Result<()> {
     let mut tx = pool.begin().await?;
+    activate_build_in(&mut tx, id).await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+/// [`activate_build`] inside the caller's transaction (pass `&mut tx`), so a finaliser can write
+/// its last rows and activate atomically. `conn` must be inside a transaction: the advisory lock
+/// and the two-statement swap are transaction-scoped, and this fails (Postgres `SAVEPOINT can
+/// only be used in transaction blocks`) on a bare connection. Nothing is committed here.
+pub async fn activate_build_in(conn: &mut PgConnection, id: Uuid) -> Result<()> {
+    sqlx::query("SAVEPOINT refdata_activate")
+        .execute(&mut *conn)
+        .await?;
+    activate_steps(conn, id).await?;
+    sqlx::query("RELEASE SAVEPOINT refdata_activate")
+        .execute(&mut *conn)
+        .await?;
+    Ok(())
+}
+
+async fn activate_steps(tx: &mut PgConnection, id: Uuid) -> Result<()> {
     let kind: Option<String> =
         sqlx::query_scalar("SELECT kind::text FROM reference_builds WHERE id = $1")
             .bind(id)
@@ -322,7 +398,7 @@ pub async fn activate_build(pool: &PgPool, id: Uuid) -> Result<()> {
         .bind(kind.as_str())
         .execute(&mut *tx)
         .await?;
-    let (_, status, sha) = lock_build(&mut tx, id).await?;
+    let (_, status, sha) = lock_build(&mut *tx, id).await?;
     match status {
         BuildStatus::Active => return Ok(()),
         BuildStatus::Building => {}
@@ -337,6 +413,23 @@ pub async fn activate_build(pool: &PgPool, id: Uuid) -> Result<()> {
     if sha.is_empty() {
         return Err(RefdataError::MissingSourceSha(id));
     }
+    let (month, active_month): (String, Option<String>) = sqlx::query_as(
+        "SELECT b.source_month, (SELECT a.source_month FROM reference_builds a \
+           WHERE a.kind = b.kind AND a.status = 'active' AND a.id <> b.id) \
+         FROM reference_builds b WHERE b.id = $1",
+    )
+    .bind(id)
+    .fetch_one(&mut *tx)
+    .await?;
+    if let Some(active_month) = active_month
+        && month <= active_month
+    {
+        return Err(RefdataError::NotNewer {
+            id,
+            month,
+            active_month,
+        });
+    }
     let old: Vec<Uuid> = sqlx::query_scalar(
         "UPDATE reference_builds SET status = 'superseded' \
          WHERE kind = $1::reference_kind AND status = 'active' AND id <> $2 RETURNING id",
@@ -345,7 +438,7 @@ pub async fn activate_build(pool: &PgPool, id: Uuid) -> Result<()> {
     .bind(id)
     .fetch_all(&mut *tx)
     .await?;
-    delete_build_rows(&mut tx, &old).await?;
+    delete_build_rows(&mut *tx, &old).await?;
     sqlx::query(
         "UPDATE reference_builds SET status = 'active', activated_at = now(), \
            finished_at = COALESCE(finished_at, now()) WHERE id = $1",
@@ -353,8 +446,21 @@ pub async fn activate_build(pool: &PgPool, id: Uuid) -> Result<()> {
     .bind(id)
     .execute(&mut *tx)
     .await?;
-    tx.commit().await?;
     Ok(())
+}
+
+/// Deletes `unverified` builds that finished more than `older_than` ago (normally
+/// [`UNVERIFIED_RETENTION`]), with their rows (FK cascade); returns how many builds.
+pub async fn delete_stale_unverified(pool: &PgPool, older_than: time::Duration) -> Result<u64> {
+    let n = sqlx::query(
+        "DELETE FROM reference_builds WHERE status = 'unverified' \
+         AND finished_at < now() - $1 * interval '1 second'",
+    )
+    .bind(older_than.as_seconds_f64())
+    .execute(pool)
+    .await?
+    .rows_affected();
+    Ok(n)
 }
 
 /// Marks a build `failed` with its error and deletes its rows. The active build of the kind is

@@ -9,7 +9,8 @@ use chess_core::board::Position;
 use chess_core::fen::fen_key;
 use profile_core::types::Band;
 use refdata::builds::{
-    BuildKind, NewBuild, activate_build, active_build, create_build, set_source_sha,
+    BuildKind, BuildStatus, NewBuild, RefdataError, activate_build, active_build, create_build,
+    set_source_sha,
 };
 use refdata::explorer::{
     EXPLORER_INDEX_SQL, ExplorerCounts, ExplorerKey, ExplorerMove, QUERY_EXPLORER_SQL,
@@ -217,6 +218,15 @@ async fn prune_removes_rows_below_min_count(pool: PgPool) {
         .unwrap();
     assert_eq!(moves, vec![mv("e2e4", 1, 0, 1)]);
     assert!(!moves.iter().any(|m| m.uci == "d2d4"));
+    assert_eq!(row_count(&pool, id).await, 1);
+    // The active build is served as is: pruning it is refused and deletes nothing.
+    assert!(matches!(
+        prune_explorer(&pool, id, 5).await,
+        Err(RefdataError::NotBuilding {
+            status: BuildStatus::Active,
+            ..
+        })
+    ));
     assert_eq!(row_count(&pool, id).await, 1);
 }
 
