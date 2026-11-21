@@ -1,0 +1,214 @@
+/*
+ * Annotated scoresheet design tokens. packages/ui/DESIGN.md is the source of truth: every value
+ * here is checked against its tables by packages/ui/test/tokens.test.ts and motion.test.ts
+ * (ADR-WEB-7). Raw colour values live only in this file, packages/ui/src/board/** and
+ * packages/ui/src/annotations/**.
+ *
+ * Day values are the Tailwind theme. Night study redefines the theme-dependent tokens under
+ * [data-theme="dark"] (next-themes sets it on <html>). [data-theme="light"] restates the day values
+ * so a day scope can sit inside a night page (the styleguide shows both side by side).
+ */
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+@theme static {
+  /* Only these tokens exist: Tailwind's default palette, fonts, radii, shadows and easings are off (B14). */
+  --color-*: initial;
+  --font-*: initial;
+  --text-*: initial;
+  --radius-*: initial;
+  --shadow-*: initial;
+  --inset-shadow-*: initial;
+  --drop-shadow-*: initial;
+  --ease-*: initial;
+  --tracking-*: initial;
+
+  /* Colour, day */
+  --color-paper: #f3f5f8;
+  --color-sheet: #fbfcfd;
+  --color-well: #e7ebf1;
+  --color-rule: #c9d1dd;
+  --color-rule-strong: #7a879e;
+  --color-ink: #16233b;
+  --color-ink-soft: #3d4a63;
+  --color-ink-faint: #5b6780;
+  --color-on-ink: #fbfcfd;
+  --color-pen: #d3312b;
+  --color-pen-text: #c42b26;
+  --color-good: #24684b;
+  --color-good-text: #24684b;
+  --color-pencil: #56657f;
+  --color-board-light: #e3e8ef;
+  --color-board-dark: #a7b4c7;
+  --color-board-lastmove: rgb(22 35 59 / 0.16);
+  --color-selection: rgb(86 101 127 / 0.28);
+  --color-board-select: rgb(22 35 59 / 0.24);
+  --color-board-premove: rgb(86 101 127 / 0.3);
+  --color-piece-dark: #16233b;
+  --color-piece-light: #fbfcfd;
+
+  /* Type. Literata tracks size with font-optical-sizing: auto, so opsz equals the px size. */
+  --font-serif: var(--font-literata), serif;
+  --font-sans: var(--font-schibsted), sans-serif;
+  /* Annotation comments only, with font-style: italic. Loaded separately and not preloaded. */
+  --font-serif-italic: var(--font-literata-italic), var(--font-literata), serif;
+
+  /* Notation glyphs sit tight against the move (b5?, Nf6?!). */
+  --tracking-glyph: -0.01em;
+
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 0.875rem;
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1rem;
+  --text-sm: 0.875rem;
+  --text-sm--line-height: 1.25rem;
+  --text-base: 1rem;
+  --text-base--line-height: 1.5rem;
+  --text-prose: 1.125rem;
+  --text-prose--line-height: 1.875rem;
+  --text-lg: 1.125rem;
+  --text-lg--line-height: 1.625rem;
+  --text-xl: 1.3125rem;
+  --text-xl--line-height: 1.75rem;
+  --text-2xl: 1.5rem;
+  --text-2xl--line-height: 1.875rem;
+  --text-3xl: 2.25rem;
+  --text-3xl--line-height: 2.625rem;
+  --text-4xl: 3rem;
+  --text-4xl--line-height: 3.375rem;
+  --text-5xl: 3.75rem;
+  --text-5xl--line-height: 4rem;
+
+  /* Shape */
+  --radius-board: 2px;
+  --radius-field: 6px;
+  --radius-sheet: 10px;
+  --radius-pill: 9999px;
+
+  /* Space: named roles beside Tailwind's 0.25rem base. Responsive steps are in the media blocks below. */
+  --space-move-row: 26px;
+  --space-scoresheet-row: 34px;
+  --space-panel-pad: 16px;
+  --space-gutter: 16px;
+
+  /* The board: below 768px it fills the column, up to 480px. Rounded to whole squares below. */
+  --board-size: min(100vw - 2 * var(--space-gutter), 480px);
+
+  /* Elevation: the one shadow, for things that float */
+  --shadow-lift: 0 10px 30px -12px rgb(22 35 59 / 0.35);
+
+  /* Motion. Springs have no CSS form; they live in @ci/ui/motion with these mirrored. */
+  --dur-instant: 90ms;
+  --dur-quick: 160ms;
+  --dur-base: 240ms;
+  --dur-draw-small: 240ms;
+  --dur-draw: 420ms;
+  --dur-reveal: 600ms;
+  --dur-turn: 520ms;
+  --dur-stream: 180ms;
+  --dur-soak: 900ms;
+
+  --ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --ease-pen: cubic-bezier(0.6, 0.05, 0.3, 1);
+  --ease-turn: cubic-bezier(0.7, 0, 0.2, 1);
+  --ease-soak: cubic-bezier(0.3, 0, 0.1, 1);
+
+  --stagger-tight: 40ms;
+  --stagger-base: 80ms;
+  --stagger-pen: 120ms;
+}
+
+/* Whole pixels per square where CSS round() exists. Before the breakpoints, which override it. */
+@supports (width: round(down, 10px, 8px)) {
+  :root {
+    --board-size: round(down, min(100vw - 2 * var(--space-gutter), 480px), 8px);
+  }
+}
+
+@media (width >= 480px) {
+  :root {
+    --space-panel-pad: 20px;
+  }
+}
+
+@media (width >= 768px) {
+  :root {
+    --space-gutter: 24px;
+    --board-size: 448px;
+  }
+}
+
+@media (width >= 1024px) {
+  :root {
+    --board-size: 512px;
+  }
+}
+
+@media (width >= 1280px) {
+  :root {
+    --space-gutter: 32px;
+    --board-size: 560px;
+  }
+}
+
+@media (width >= 1600px) {
+  :root {
+    --board-size: 640px;
+  }
+}
+
+/* Night study: the same scoresheet at a desk lamp. */
+[data-theme="dark"] {
+  color-scheme: dark;
+  --color-paper: #121a2b;
+  --color-sheet: #18223a;
+  --color-well: #0d1421;
+  --color-rule: #2c3956;
+  --color-rule-strong: #6b7b9b;
+  --color-ink: #e7ecf4;
+  --color-ink-soft: #b4bfd2;
+  --color-ink-faint: #8e9ab1;
+  --color-on-ink: #121a2b;
+  --color-pen: #f2695e;
+  --color-pen-text: #f2695e;
+  --color-good: #76d3a4;
+  --color-good-text: #76d3a4;
+  --color-pencil: #97a6c0;
+  --color-board-light: #8796b5;
+  --color-board-dark: #5a6a8c;
+  --color-board-lastmove: rgb(231 236 244 / 0.18);
+  --color-selection: rgb(151 166 192 / 0.34);
+  --color-board-select: rgb(231 236 244 / 0.26);
+  --color-board-premove: rgb(151 166 192 / 0.3);
+  --color-piece-dark: #0d1421;
+  --color-piece-light: #e7ecf4;
+  --shadow-lift: 0 10px 30px -12px rgb(0 0 0 / 0.5);
+}
+
+/* Day restated, for a day scope inside a night page. */
+[data-theme="light"] {
+  color-scheme: light;
+  --color-paper: #f3f5f8;
+  --color-sheet: #fbfcfd;
+  --color-well: #e7ebf1;
+  --color-rule: #c9d1dd;
+  --color-rule-strong: #7a879e;
+  --color-ink: #16233b;
+  --color-ink-soft: #3d4a63;
+  --color-ink-faint: #5b6780;
+  --color-on-ink: #fbfcfd;
+  --color-pen: #d3312b;
+  --color-pen-text: #c42b26;
+  --color-good: #24684b;
+  --color-good-text: #24684b;
+  --color-pencil: #56657f;
+  --color-board-light: #e3e8ef;
+  --color-board-dark: #a7b4c7;
+  --color-board-lastmove: rgb(22 35 59 / 0.16);
+  --color-selection: rgb(86 101 127 / 0.28);
+  --color-board-select: rgb(22 35 59 / 0.24);
+  --color-board-premove: rgb(86 101 127 / 0.3);
+  --color-piece-dark: #16233b;
+  --color-piece-light: #fbfcfd;
+  --shadow-lift: 0 10px 30px -12px rgb(22 35 59 / 0.35);
+}

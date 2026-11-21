@@ -33,6 +33,7 @@ Inspired by: Lichess studies with drawn shapes, https://lichess.org/study (colou
 - **Don't copy:** uniform, translucent, constant-width strokes. The top-left pair shows the difference at thumbnail size: a mechanical circle and arrow next to ours, which is a tilted, tapered spiral with an unequal two-stroke head on a sheet halo.
 - **Round 2:** rings are ellipses with rx/ry ≈ 1.12, and the large hand-drawn arrow reaches its ring and shows its bow.
 - **Round 3:** the draw-sequence frames use `--ease-pen` progress, with the 398 / 22ms arc split stated in the captions.
+- **Task 5:** frame 3's caption (520ms) is "ring complete (360° at 318ms, overrun to 420ms); heads from 386ms". The PNG still shows the round 3 wording, and this text wins.
 - **Also shown:** the severity scale (blunder, mistake, inaccuracy, good move, brilliant) with the glyph-badge and head-shape redundancy; the marks in day and night; and the draw sequence at 200, 360, 520 and 720ms.
 
 ## 3. The ruled scoresheet and red corrections

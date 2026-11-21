@@ -173,7 +173,8 @@ The halo itself against the squares is 1.20 and 2.05 (day) and 5.31 and 2.92 (ni
 
 - **Literata** (variable, with the `opsz` optical-size axis) sets headlines, panel headings, annotations and notation. Weights 400 and 600. Italic 400 is used only for whole annotation comments, never for one word in a sentence or headline (`B16`), and never for moves.
 - **Schibsted Grotesk** sets the UI: labels, buttons, navigation, forms and settings. Weights 400, 500 and 700.
-- Both load through `next/font/google` (self-hosted at build, no runtime request to Google). No other families. In particular, none of the defaults in `B6`, and no monospace anywhere, including for numbers (`B5`).
+- Italic is loaded as its own family, `--font-serif-italic` (Literata italic, not preloaded), so pages without an annotation comment never download it. Use it only with `font-style: italic`.
+- Both are self-hosted through `next/font/local` from WOFF2 files committed with their SIL OFL 1.1 licence texts in `apps/web/src/app/fonts/` (ADR-WEB-7), so neither the build nor the browser ever calls Google. Literata is the upstream variable font (`opsz` 7–72, `wght` 200–900, roman and italic), subset to Latin. Schibsted Grotesk is the upstream variable WOFF2 (`wght` 400–900). No other families. In particular, none of the defaults in `B6`, and no monospace anywhere, including for numbers (`B5`).
 
 ### Scale and optical size
 
@@ -193,7 +194,7 @@ Size and line height in px, from the classic scale. Literata's `opsz` tracks the
 | `4xl` | 48/54 | 48 | rare: the result line of a reviewed game |
 | `5xl` | 60/64 | 60 | landing only (M5) |
 
-- **Notation** (`31. Rxe6?? −4.2`) is a typographic feature in its own right. Set it in Literata 600 with `font-variant-numeric: lining-nums tabular-nums`. Glyphs are kerned tight to the move with no space (`b5?`, `Nf6?!`), using `letter-spacing: -0.01em` on the glyph. Mistake glyphs use `pen-text`, good-move glyphs use `good-text`, and the rest is `ink`. The evaluation follows after a space in `ink-faint` at weight 400. Negative evaluations use the real minus sign, U+2212 (`−4.2`). Castling stays `O-O` and `O-O-O`, with letter O and hyphens.
+- **Notation** (`31. Rxe6?? −4.2`) is a typographic feature in its own right. Set it in Literata 600 with `font-variant-numeric: lining-nums tabular-nums`. Glyphs are kerned tight to the move with no space (`b5?`, `Nf6?!`), using `letter-spacing: -0.01em` on the glyph (`--tracking-glyph`). Mistake glyphs use `pen-text`, good-move glyphs use `good-text`, and the rest is `ink`. The evaluation follows after a space in `ink-faint` at weight 400. Negative evaluations use the real minus sign, U+2212 (`−4.2`). Castling stays `O-O` and `O-O-O`, with letter O and hyphens.
 - **Measure:** ≤ 72ch for serif prose and ≤ 66ch for sans.
 - **Case:** sentence case everywhere, including buttons, headings and table headers. No all-caps labels and no letter-spaced eyebrows (`B5`).
 - **Alignment:** left aligned. Centring is reserved for a diagram's caption under the board and for an empty state's single line.
@@ -218,7 +219,7 @@ Size and line height in px, from the classic scale. Literata's `opsz` tracks the
 | `--space-panel-pad` | 20px (16px below 480px) | inner padding of sheets and panels |
 | `--space-gutter` | 16px below 768px, 24px from 768px, 32px from 1280px | page side gutters and column gaps |
 
-**Board sizes.** The board is always a whole number of pixels per square (`8 × floor(size / 8)`):
+**Board sizes.** The board is always a whole number of pixels per square (`8 × floor(size / 8)`). The token is `--board-size`, which rounds down to a multiple of 8px where CSS `round()` is supported (an unrounded `min()` is the fallback):
 
 | Viewport | Board size |
 |---|---|
@@ -380,22 +381,22 @@ Every spring states its damping ratio, `ζ = damping / (2 × √(stiffness × ma
 
 | Preset | Values | ζ | Overshoot | Use |
 |---|---|---|---|---|
-| `settle` | `{ stiffness: 520, damping: 42 }` | 0.92 | 0.06% | piece travel between squares (precise, no visible bounce). This is the brief's `piece`, renamed. |
+| `settle` | `{ stiffness: 520, damping: 42 }` | 0.92 | 0.06% | piece travel between squares (precise, no visible bounce), as for a knight or bishop. Other pieces use their row in the mass table. This is the brief's `piece`, renamed. |
 | `land` | `{ stiffness: 700, damping: 22 }` | 0.42 | 24% | the landing: a piece's squash and y on arrival, glyph badges landing, streak ticks |
 | `pen` | `{ stiffness: 150, damping: 24 }` | 0.98 | 0% | stroke progress when a stroke must follow input mid-draw (a user-drawn arrow, an interrupted sequence) |
-| `swing` | `{ stiffness: 260, damping: 30 }` | 0.93 | 0.04% | eval bar and graph cursor for changes below 0.3 win chance. This is the brief's `evalBar`, renamed. |
+| `swing` | `{ stiffness: 260, damping: 30 }` | 0.93 | 0.03% | eval bar and graph cursor for changes below 0.3 win chance. This is the brief's `evalBar`, renamed. |
 | `swing-big` | `{ stiffness: 260, damping: 20 }` | 0.62 | 8% | eval bar for changes of 0.3 win chance or more: it overshoots past the new value and swings back |
 | `page` | `{ stiffness: 300, damping: 34 }` | 0.98 | 0% | the incoming page of a page turn, layout morphs, and the Motion fallback for shared elements |
 | `tilt` | `{ stiffness: 400, damping: 30 }` | 0.75 | 3% | a dragged piece's tilt returning to upright |
 
-**Mass makes weight visible.** Piece travel uses `settle` with mass by piece. Heavier pieces travel a little slower and settle a little looser, and they land harder:
+**Mass makes weight visible.** Every piece travels on its own `settle`, all at the same ζ (0.92), so they all come to rest the same way, and mass only slows them. Stiffness is `520 / mass factor`, and damping keeps ζ at 0.92 (`damping = 2 × 0.92 × √stiffness`, rounded to one decimal), with Motion's `mass` left at 1. Travel time grows with the square root of the mass factor: a queen takes 27% longer than a pawn to cover 90% of the distance. That 27% spread is accepted (controller ruling, Task 5 fix round): it follows from the 0.8 and 1.3 factors, and narrowing it would weaken the weight contrast the owner asked for. A heavier piece is never ahead of a lighter one on the way in. Checked by step response: the lighter piece leads until it reaches the target, and after that they differ by less than 0.03% of the distance (0.2px over eight 80px squares). Heavier pieces also land harder:
 
-| Piece | Mass | `settle` ζ | Lift scale | Landing squash (scaleX / scaleY) |
-|---|---|---|---|---|
-| Pawn | 0.8 | 1.03 | 1.04 | 1.015 / 0.98 |
-| Knight, bishop | 1.0 | 0.92 | 1.05 | 1.02 / 0.97 |
-| Rook | 1.15 | 0.86 | 1.06 | 1.025 / 0.965 |
-| Queen, king | 1.25 | 0.82 | 1.07 | 1.03 / 0.96 |
+| Piece | Mass factor | `settle` values | ζ | 90% arrival | Lift scale | Landing squash (scaleX / scaleY) |
+|---|---|---|---|---|---|---|
+| Pawn | 0.8 | `{ stiffness: 650, damping: 47 }` | 0.92 | 138ms | 1.04 | 1.015 / 0.98 |
+| Knight, bishop | 1.0 | `{ stiffness: 520, damping: 42 }` | 0.92 | 154ms | 1.05 | 1.02 / 0.97 |
+| Rook | 1.15 | `{ stiffness: 452, damping: 39.2 }` | 0.92 | 165ms | 1.06 | 1.025 / 0.965 |
+| Queen, king | 1.3 | `{ stiffness: 400, damping: 36.8 }` | 0.92 | 175ms | 1.07 | 1.03 / 0.96 |
 
 ### Stagger scale
 
@@ -411,7 +412,7 @@ The badge is timed explicitly, not by stagger: it lands with `land` when the mom
 
 This is what the user should be able to see:
 
-- **Lift and land.** On every move, the piece lifts over `--dur-instant` (uniform scale up to its lift scale from the mass table, y −4px, `--ease-out`). It travels on `settle` with its mass. At contact it is set to its landing squash (for a knight, scaleX 1.02 and scaleY 0.97, with `transform-origin: 50% 90%`, its base) at y 0, and `land` springs both axes back to 1. With ζ 0.42 it rebounds past 1 (scaleY about 1.007) before settling, so it is a real squash and stretch, using transform only. The move sound plays on the contact frame.
+- **Lift and land.** On every move, the piece lifts over `--dur-instant` (uniform scale up to its lift scale from the mass table, y −4px, `--ease-out`). It travels on its `settle` from the mass table. At contact it is set to its landing squash (for a knight, scaleX 1.02 and scaleY 0.97, with `transform-origin: 50% 90%`, its base) at y 0, and `land` springs both axes back to 1. With ζ 0.42 it rebounds past 1 (scaleY about 1.007) before settling, so it is a real squash and stretch, using transform only. The move sound plays on the contact frame.
 - **Momentum.** The eval bar uses `swing-big` for big changes, so it swings past the new value by about 8% and comes back. Stepping quickly through moves carries the spring's velocity from one value to the next.
 - **Impact.** A capture knocks the captured piece off in the mover's direction (choreography 6).
 - **Weight.** The mass table: a queen lands harder than a pawn.
@@ -425,7 +426,7 @@ This is what the user should be able to see:
 - `M5` **There are no hover lifts.** Hover changes tone, never position or shadow.
 - `M6` **Physical, not decorative.** Pieces have mass and land, captures have impact, and the eval bar has momentum. There is no bounce without a physical cause.
 - `M7` **Interruptible.** Input never waits for an animation. During an orchestrated sequence, any input on the board, the move list or the graph, the Skip button or Escape jumps to the end state: unfinished marks complete over `--dur-quick` (they are not snapped or dropped), pieces jump to their final squares, bars go to their final value on `swing`, and pending sounds are cancelled. Outside sequences, new input finishes or reverses in-flight motion, and springs keep their velocity.
-- `M8` **Long sequences run in full once.** Anything over 1s runs in full only on the first view of that game or report. "Seen" is stored on the server per user, per game and per report, so it holds across devices. Later views run the condensed version (at most 600ms). While a long sequence runs, a **Skip** control shows: a ghost button above the board, right-aligned in the board column's header row (never over the board or its corner squares), Schibsted 500 at `sm`, `ink-soft` text, `sheet` on hover, keyboard-focusable. Escape does the same. When the sequence ends, the control disappears and a polite live region announces "Analysis ready".
+- `M8` **Long sequences run in full once.** Anything over 1s runs in full only on the first view of that game or report. "Seen" is stored on the server per user, per game and per report, so it holds across devices. Later views run the condensed version (at most 600ms). The cap counts to the last scheduled event, which includes the badge landing (at 400ms) and the last graph ring ending (by 600ms). The `land` spring's settle after the badge lands is excluded. While a long sequence runs, a **Skip** control shows: a ghost button above the board, right-aligned in the board column's header row (never over the board or its corner squares), Schibsted 500 at `sm`, `ink-soft` text, `sheet` on hover, keyboard-focusable. Escape does the same. When the sequence ends, the control disappears and a polite live region announces "Analysis ready".
 - `M9` **Performance budget.** Animate only `transform`, `opacity` and SVG `stroke-dashoffset` (including mask strokes). Never animate layout properties, `filter`, `box-shadow` or `clip-path`. The target is 60 fps on a mid-range phone, tested as a Pixel 6a-class device or Chrome DevTools at 4× CPU throttling, with no frame over 16ms and at most 12 SVG marks animating at once. `will-change` is set only while animating.
 - `M10` **Reduced motion.** Under `prefers-reduced-motion: reduce`, choreography is replaced by instant state changes with a brief opacity cue: the changed element appears at full state with a single opacity fade of at most `--dur-quick` and no movement. Marks appear fully drawn, pieces jump, bars set their value, page turns become an instant swap, and long sequences show their end state. Sound is unaffected.
 
@@ -440,7 +441,7 @@ Times are in ms from the start of the moment. "Seeded" means deterministic per g
 | Time | What happens |
 |---|---|
 | 0–600 | The eval graph draws left to right: the line's `stroke-dashoffset` over `--dur-reveal` with `--ease-pen`, and the area fill revealed by a mask rect with `scaleX` from 0 to 1. |
-| 600–1200 | Graph marker rings draw in game order, each over `--dur-draw-small` (240ms). The stagger is capped at `s = min(80, 360 / (n − 1))` ms (80ms when `n = 1`), so the last ring starts by 600 + 360 = 960 and ends by 1200, whatever `n` is. Each label and leader tick fades in over `--dur-quick` as its ring finishes. |
+| 600–1200 | Graph marker rings draw in game order, each over `--dur-draw-small` (240ms). The stagger is capped at `s = min(80, 360 / (n − 1))` ms (80ms when `n = 1`), so the last ring starts by 600 + 360 = 960 and ends by 1200, whatever `n` is. Each label and leader tick fades in while its ring draws: it starts at ring start + 120ms and fades over the ring's remaining 120ms, so it is fully in when its ring ends, and the last label is in by 1200. |
 | 1200 | The climax starts, always at this fixed time. |
 
 Worked examples: with `n = 5`, `s = min(80, 90) = 80`, and the last ring runs 920–1160. With `n = 15`, `s = min(80, 360 / 14) = 25.7`, and the last ring starts at 600 + 14 × 25.7 = 960 and ends at 1200.
@@ -452,7 +453,7 @@ Worked examples: with `n = 5`, `s = min(80, 90) = 80`, and the last ring runs 92
 | 0–160 | The board cross-fades (`--dur-quick`) to the position **before** the bad move. The eval bar swings to the pre-move value on `swing`, the graph cursor moves to that ply on `swing`, and the scoresheet row gets the selected `well`. |
 | 160–400 | Hold. The eye reads the position. |
 | 400–490 | The mover lifts (`--dur-instant`). |
-| 490–760 | The **move is played**: travel on `settle` with the piece's mass (about 270ms for 2–3 squares). |
+| 490–760 | The **move is played**: travel on the piece's `settle` from the mass table (it is within 1% of the square at 214ms for a pawn and 271ms for a queen). |
 | 760 | Contact: the piece lands with its squash on `land`, and the move or capture sound plays. A capture knocks the captured piece off. |
 | 760 | The eval bar swings to the post-move value: on `swing-big` (visible overshoot) when the change is ≥ 0.3 win chance, otherwise on `swing`. The graph cursor steps on `swing`. |
 | 860–1280 | The pen ring draws on the destination (`--dur-draw` with `--ease-pen` over the whole stroke: 398 + 22ms by arc on the un-eased timeline, so 360° arrives at about 1178 and the overrun slows in until 1280). In parallel, the scoresheet row gets its glyph and evaluation (opacity over `--dur-quick`), and its scoresheet ring draws (`--dur-draw-small`). |
@@ -468,7 +469,7 @@ Worked examples: with `n = 5`, `s = min(80, 90) = 80`, and the last ring runs 92
 | Time | What happens |
 |---|---|
 | 0 | The graph appears fully drawn, and the board shows the worst moment (the position after the move). |
-| 0–600 | Graph marker rings draw over `--dur-draw-small`, with the stagger capped at `min(40, 360 / (n − 1))` ms, so the last ring starts by 360 and ends by 600. |
+| 0–600 | Graph marker rings draw over `--dur-draw-small`, with the stagger capped at `min(40, 360 / (n − 1))` ms (40ms when `n = 1`), so the last ring starts by 360 and ends by 600. Labels fade in as in the full version, from ring start + 120ms. |
 | 0–392 | The board marks draw: the ring over `--dur-draw-small` (0–240), and the arrow from 120 (shaft 120–360, reaching 85% at 272, with heads 272–362 and 302–392). |
 | 400 | The badge lands on `land`. |
 
@@ -595,7 +596,7 @@ Every later task cites these IDs. A review that finds one names its ID.
 Six annotated references live in `design/references/`. `REFERENCES.md` there says what each one gives us, what not to copy, and its sources and licences. All of them were drawn from scratch in these tokens with a real game (Morphy v Duke Karl of Brunswick and Count Isouard, Paris 1858), real Stockfish 19 evaluations and the default Cburnett pieces.
 
 1. `01-analysis-density-and-eval-graph.png`: move-list density, the win-chance eval graph with rings and a label lane, and the eval bar.
-2. `02-arrow-semantics-and-pen-stroke.png`: hand-drawn versus mechanical strokes, the severity scale, marks in day and night, and the draw sequence in ms.
+2. `02-arrow-semantics-and-pen-stroke.png`: hand-drawn versus mechanical strokes, the severity scale, marks in day and night, and the draw sequence in ms. Frame 3's caption (520ms) is "ring complete (360° at 318ms, overrun to 420ms); heads from 386ms". Where the PNG's caption differs, this text wins.
 3. `03-scoresheet-grid-and-corrections.png`: the ruled grid, roman 600 moves, scoresheet rings and margin comments.
 4. `04-book-notation-and-diagram-caption.png`: notation in running text and the captioned diagram.
 5. `05-night-study-analysis.png`: reference 1 in night study.
@@ -746,3 +747,27 @@ The full contrast script was re-run over every pair, and there are 0 failures. T
 10. Sound: a cold-load first-view reveal is silent (autoplay), and its sounds are not replayed after the first gesture.
 
 **Token values from the brief changed in this round:** none. New: the `2xs` type step.
+
+### 2026-11-21, Task 5: tokens implemented, minor fixes
+
+`tokens.css` and `@ci/ui/motion` now implement every token here, and `packages/ui/test/tokens.test.ts` and `motion.test.ts` parse this file's tables and fail on any drift, including every ratio in the contrast table and every spring's ζ and overshoot (ADR-WEB-7).
+
+1. **Condensed stagger, `n = 1`.** The condensed graph-ring stagger is 40ms when `n = 1`, as the full version's is 80ms.
+2. **Prologue labels end by 1200.** Labels and leader ticks no longer fade in after their ring (the last one would have ended at 1360). Each starts at ring start + 120ms and fades over the ring's remaining 120ms, so the last is in by 1200 when the climax starts.
+3. **The condensed cap.** M8's 600ms cap counts to the last scheduled event, including the badge landing, with the `land` spring's settle excluded.
+4. **Reference 2, frame 3.** The caption text is "ring complete (360° at 318ms, overrun to 420ms); heads from 386ms" (in References here and in `REFERENCES.md`). The PNG is not re-rendered.
+5. **`swing` overshoot.** The token test recomputed it as 0.035%, so the table now says 0.03% (round 3 had 0.04%). No spring value changed.
+6. **Fonts.** Literata and Schibsted Grotesk are self-hosted through `next/font/local` from committed WOFF2 files (OFL 1.1), replacing `next/font/google`, so builds never need the network.
+
+**Token values changed in this round:** none.
+
+### 2026-11-21, Task 5 fix round
+
+1. **Mass now reads as weight.** The old table varied Motion's `mass` at a fixed stiffness and damping. That changed ζ as well as speed, so heavier pieces were *faster* to 90% (queen 151ms, pawn 159ms) and overtook lighter ones by up to 1.4% of the distance at about 200ms. Now ζ stays at 0.92 and only the speed changes: stiffness is `520 / mass factor`, damping holds ζ, and the queen and king factor is 1.3 (was 1.25). The 90% arrivals are now 138, 154, 165 and 175ms, and a step-response test checks that no heavier piece is ahead of a lighter one on the way in. The two choreography lines that said "with its mass" now point to the table.
+2. **New tokens for existing values:** `--tracking-glyph` (-0.01em, from Notation), `--board-size` (the board sizes table, rounded down to a multiple of 8px) and `--font-serif-italic` (Literata italic, loaded separately and not preloaded).
+3. **The styleguide hero has a reserved slot** at the top of `/styleguide`: the game title (the page's `h1`), a board placeholder at `--board-size`, and the scoresheet and eval graph placeholders. The board and annotation lanes fill it in.
+
+4. **Arrival spread accepted.** The 27% pawn-to-queen spread at 90% arrival (138ms to 175ms) stays, by controller ruling. It follows from the ruled 0.8 and 1.3 factors, and a narrower spread would weaken the weight contrast.
+5. **`--board-size` fallback.** It is declared as plain `min(100vw − 2 × gutter, 480px)`, with the rounded form under `@supports (width: round(down, 10px, 8px))`.
+
+**Token values changed in this round:** the four piece `settle` springs (the minor-piece row keeps 520/42) and the queen and king mass factor (1.25 to 1.3).
