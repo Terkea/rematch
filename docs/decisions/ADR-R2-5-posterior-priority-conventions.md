@@ -1,7 +1,7 @@
 # ADR-R2-5. Posterior and priority conventions
 
 Date: 2026-11-21
-Status: Accepted (statistics layer, R2 Task 11 fix round 1). Placeholder number; the controller renumbers R2 ADRs before merging. R2 Task 12 extends this ADR with the posterior, P_imp and priority rules.
+Status: Accepted (statistics layer, R2 Task 11 fix round 1; posteriors, P_imp and priority, R2 Task 12 in section 7). Placeholder number; the controller renumbers R2 ADRs before merging.
 
 ## Context
 
@@ -65,10 +65,27 @@ The result is monotone, bounded in [1, 99], and continuous except for steps of `
 - **Bit-identical everywhere.** mulberry32 uses 32-bit integer arithmetic and is bit-identical to the canonical JavaScript on every platform. `bootstrap_mean_interval`, `wilson`, `quantile`, `percentile_from_quartiles` and `spearman` use only IEEE-exact operations (`+ − × ÷`, `sqrt`, `floor`). Given the same inputs and seed, they are bit-identical across platforms.
 - **Same image only.** `lgamma`, `ln_beta`, `reg_inc_beta`, `beta_quantile`, `sample_beta`, `fit_beta_binomial` and `recency_weight`/`weighted_counts` call libm (`ln`, `exp`, `ln_1p`, `powf`, `sin`, `cos`). Libm implementations may differ in the last ulp. One ulp can flip a Marsaglia–Tsang acceptance test or a bisection branch, which desyncs a `sample_beta` stream and therefore P_imp. Results are reproducible within one image (same toolchain and libc, which the `rust-dev`/`rust-worker` images pin), not across platforms. Stored snapshots must not assume cross-platform bit equality of these values.
 
-## Consequences
+### 7. Posteriors, P_imp and priority (R2 Task 12)
+
+`stats::posterior` and `stats::priority` port TS M2 Task 16.
+
+- **80% everywhere.** Posterior intervals are the equal-tailed 10% and 90% Beta quantiles (`INTERVAL_LEVEL = 0.8`), like the Wilson and bootstrap intervals of section 1 and the KPI bands.
+- **Window and weights.** Only points with `age_days ≤ 183` (six months, inclusive) count. Inside the window each point is recency-weighted `0.5^(age/60)` (section 5.3 rules for negative and NaN ages; a NaN age is also outside the window). `k`/`n` are the weighted counts and feed the posterior; `k_unweighted`/`n_unweighted` are the raw counts and feed the contract `events`/`opportunities`, `min_evidence_met` and the excess.
+- **Prior.** `posterior(k, n, mu, n0)` is `Beta(n0·mu + k, n0·(1 − mu) + n − k)` with `mu = pooled_rate` and `n0 = N0[key]` (constants). Without a usable benchmark (no reference, or one whose `pooled_rate` or `epl_per_event` is missing or out of range) the prior is `Beta(1, 1)`.
+- **Shape floor.** Both posterior shapes are floored at `SHAPE_FLOOR = 0.1`. This replaces the point-mass route of section 2 for posteriors: a zero pooled rate with no events would otherwise be a point mass at 0, claiming certainty from no data, and equal-tailed intervals of shapes below about 0.04 exclude the mean (Beta(0.02, 40) has q90 = 7.5e-5 < mean 5e-4), which violates the contract rule `intervalLow ≤ posteriorRate ≤ intervalHigh`. At 0.1 the worst case is the Gamma limit, `P(Gamma(0.1) ≤ 0.1) = 0.83 < 0.9`, so the mean always lies inside the interval; the floor adds at most a tenth of a pseudo-event. As a belt-and-braces guard against bisection tolerance the interval is also widened to the mean. Invalid counts or priors fail a `debug_assert!`; release builds clamp them (section 1 policy), so `posterior` is total and never NaN.
+- **Confidence** `= P(theta > band median)` (`prob_above`, 0 without a benchmark).
+- **Excess** `= max(0, mean − median) × (n_unweighted / games_in_window) × epl_per_event`: the player's own opportunities per game times the band's EPL per event, so excess is in expected points lost per game above the band median.
+- **Priority** `= excess × TRAINABILITY[key][band] × confidence × (1 − fatigue)`. Fatigue is 0 until plans exist (M6/M7); the input is clamped to [0, 1] and NaN counts as 0.
+- **No ranking without a benchmark or 30 games.** Fewer than `MIN_GAMES = 30` games in the window is `insufficient_data`; otherwise a missing benchmark is `no_benchmark`. Both force priority 0. `insufficient_data` wins when both apply, because it is what the player can fix. The contract (R-3) only carries `ok` estimates.
+- **Precise** when the interval width is at most `0.25 × median`; **min evidence** when `n_unweighted ≥ MIN_EVIDENCE[key]`. The band percentile is of the posterior mean, lower rate is better.
+- **Ranking.** `rank_weaknesses` keeps `RANKABLE` keys (drops the continuous W9d and W12) and sorts by priority descending, then by the TS key string (`"W10" < "W2"`).
+- **P_imp.** `p_improvement = P(theta_c < theta_b (1 − 0.15))` and `p_regression = P(theta_c > theta_b × 1.15)`, estimated from 10 000 seeded Monte Carlo pairs (seed 1). One mulberry32 stream; each pair draws current first, then baseline. Zero draws or invalid shapes give 0 (no evidence). Per section 6, P_imp is reproducible per seed within one image, not bit-identical to TS or across platforms.
+- **mulberry32** is the only generator (section 6), so every stochastic value in a profile is a function of its inputs and seed.
+
 
 - **Callers handle `Result`** from the distribution layer.
-- **Task 12** builds posteriors with `BetaDist::from_shapes`, so a zero pooled rate gives an exact point mass instead of NaN. Its intervals come from `BetaDist::quantile`, and its P_imp from `BetaDist::sample`.
+- **Task 12** floors posterior shapes at 0.1 (section 7) instead of using the point-mass limit, so a zero pooled rate gives a proper, contract-valid posterior. Its intervals come from `BetaDist::quantile`, and its P_imp from `BetaDist::sample`.
+- **A rare-event band (median 0) gives a small positive excess even with zero events**, because any proper posterior has a mean above 0. This is TS M2's rule (it already happens for any small pooled rate); the resulting priorities are tiny and rank last.
 - **Tasks 15 and 34** never receive NaN or ±inf percentiles from finite references. For distinct quartiles the values equal TS M2's; the TS test values are pinned in `profile-core/tests/stats.rs`. Degenerate references now have defined values, where TS's division by zero gave NaN.
 - **The test suite pins:**
   - the JS mulberry32 goldens;
