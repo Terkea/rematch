@@ -3,6 +3,7 @@ import {
   createPlatformClient,
   PlatformNotFoundError,
   PlatformRateLimitError,
+  PlatformTimeoutError,
 } from "../../src/http/platform-client.js";
 
 const json = (body: unknown, status = 200) =>
@@ -101,5 +102,71 @@ describe("platform client", () => {
     const out: unknown[] = [];
     for await (const o of client.getNdjson("https://example.test/s")) out.push(o);
     expect(out).toEqual([{ a: 1 }, { a: 2 }, { a: 3 }]);
+  });
+});
+
+describe("platform client timeouts and lock release", () => {
+  const hung = ((_url: string | URL | Request, init?: RequestInit) =>
+    new Promise<Response>((_, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(init.signal?.reason));
+    })) as typeof fetch;
+
+  it("times out a hung fetch and the next queued call still proceeds", async () => {
+    let calls = 0;
+    const fetchFn = ((url: string | URL | Request, init?: RequestInit) =>
+      ++calls === 1 ? hung(url, init) : Promise.resolve(json({ ok: 2 }))) as typeof fetch;
+    const client = createPlatformClient({ ...base, requestTimeoutMs: 30, fetch: fetchFn });
+    const first = client.getJson("https://example.test/hang");
+    const second = client.getJson("https://example.test/next");
+    await expect(first).rejects.toBeInstanceOf(PlatformTimeoutError);
+    await expect(second).resolves.toEqual({ ok: 2 });
+  });
+
+  it("times out a stream that goes idle between chunks", async () => {
+    const enc = new TextEncoder();
+    const fetchFn = (async () =>
+      new Response(
+        new ReadableStream({
+          start(c) {
+            c.enqueue(enc.encode('{"a":1}\n'));
+          },
+        }),
+      )) as typeof fetch;
+    const client = createPlatformClient({ ...base, streamIdleTimeoutMs: 30, fetch: fetchFn });
+    const got: unknown[] = [];
+    await expect(
+      (async () => {
+        for await (const o of client.getNdjson("https://example.test/s")) got.push(o);
+      })(),
+    ).rejects.toBeInstanceOf(PlatformTimeoutError);
+    expect(got).toEqual([{ a: 1 }]);
+    await expect(
+      createPlatformClient({
+        ...base,
+        fetch: (async () => json({ ok: 1 })) as typeof fetch,
+      }).getJson("https://example.test/x"),
+    ).resolves.toEqual({ ok: 1 });
+  });
+
+  it("releases the lock on early break from getNdjson", async () => {
+    let calls = 0;
+    const fetchFn = (async () => {
+      calls++;
+      return calls === 1 ? new Response('{"a":1}\n{"a":2}\n{"a":3}\n') : json({ ok: 1 });
+    }) as typeof fetch;
+    const client = createPlatformClient({ ...base, fetch: fetchFn });
+    for await (const o of client.getNdjson<{ a: number }>("https://example.test/s")) {
+      expect(o.a).toBe(1);
+      break;
+    }
+    await expect(client.getJson("https://example.test/next")).resolves.toEqual({ ok: 1 });
+  });
+
+  it("yields a final line without a trailing newline", async () => {
+    const fetchFn = (async () => new Response('{"a":1}\n{"a":2}')) as typeof fetch;
+    const client = createPlatformClient({ ...base, fetch: fetchFn });
+    const out: unknown[] = [];
+    for await (const o of client.getNdjson("https://example.test/s")) out.push(o);
+    expect(out).toEqual([{ a: 1 }, { a: 2 }]);
   });
 });

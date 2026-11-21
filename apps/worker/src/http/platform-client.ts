@@ -12,6 +12,13 @@ export class PlatformRateLimitError extends Error {
   }
 }
 
+export class PlatformTimeoutError extends Error {
+  constructor(url: string, ms: number) {
+    super(`No response within ${ms} ms: ${url}`);
+    this.name = "PlatformTimeoutError";
+  }
+}
+
 export interface RequestInitLite {
   headers?: Record<string, string>;
 }
@@ -27,14 +34,50 @@ export interface PlatformClientOptions {
   fetch?: typeof fetch;
   retryAfterMs?: number;
   maxRetries?: number;
+  /** Per-request timeout for headers (and the whole body for getJson). Default 30 s. */
+  requestTimeoutMs?: number;
+  /** getNdjson: maximum silence between chunks (not a total cap). Default 60 s. */
+  streamIdleTimeoutMs?: number;
 }
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/** A re-armable deadline that aborts a fetch and rejects whatever it is raced against. */
+function createDeadline(url: string) {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let fail!: (err: Error) => void;
+  const expired = new Promise<never>((_, reject) => {
+    fail = reject;
+  });
+  expired.catch(() => {});
+  return {
+    signal: controller.signal,
+    arm(ms: number) {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        const err = new PlatformTimeoutError(url, ms);
+        fail(err);
+        controller.abort(err);
+      }, ms);
+    },
+    clear() {
+      clearTimeout(timer);
+    },
+    race<T>(work: Promise<T>): Promise<T> {
+      return Promise.race([work, expired]);
+    },
+  };
+}
+
+type Deadline = ReturnType<typeof createDeadline>;
 
 export function createPlatformClient(opts: PlatformClientOptions): PlatformClient {
   const fetchFn = opts.fetch ?? fetch;
   const retryAfterMs = opts.retryAfterMs ?? 60_000;
   const maxRetries = opts.maxRetries ?? 3;
+  const requestTimeoutMs = opts.requestTimeoutMs ?? 30_000;
+  const streamIdleTimeoutMs = opts.streamIdleTimeoutMs ?? 60_000;
   const userAgent = `chess-improver/0.1 (+mailto:${opts.contactEmail})`;
 
   // Promise-chain mutex: one request at a time per client (platform).
@@ -50,27 +93,40 @@ export function createPlatformClient(opts: PlatformClientOptions): PlatformClien
     return release;
   };
 
-  // Must be called while holding the lock. Retries 429 responses.
-  async function request(url: string, init?: RequestInitLite): Promise<Response> {
+  // Must be called while holding the lock. Retries 429 responses. On success the
+  // returned deadline is still armed (covering the body); the caller clears it.
+  async function request(
+    url: string,
+    init?: RequestInitLite,
+  ): Promise<{ res: Response; deadline: Deadline }> {
     for (let attempt = 0; ; attempt++) {
-      const res = await fetchFn(url, {
-        headers: { ...init?.headers, "User-Agent": userAgent },
-      });
-      if (res.status === 429) {
-        await res.body?.cancel();
-        if (attempt >= maxRetries) throw new PlatformRateLimitError(url, attempt + 1);
-        await sleep(retryAfterMs);
-        continue;
+      const deadline = createDeadline(url);
+      deadline.arm(requestTimeoutMs);
+      try {
+        const res = await deadline.race(
+          fetchFn(url, {
+            headers: { ...init?.headers, "User-Agent": userAgent },
+            signal: deadline.signal,
+          }),
+        );
+        if (res.status === 429) {
+          await res.body?.cancel().catch(() => {});
+          if (attempt >= maxRetries) throw new PlatformRateLimitError(url, attempt + 1);
+        } else if (res.status === 404) {
+          await res.body?.cancel().catch(() => {});
+          throw new PlatformNotFoundError(url);
+        } else if (!res.ok) {
+          await res.body?.cancel().catch(() => {});
+          throw new Error(`${opts.name} request failed with HTTP ${res.status}: ${url}`);
+        } else {
+          return { res, deadline };
+        }
+      } catch (err) {
+        deadline.clear();
+        throw err;
       }
-      if (res.status === 404) {
-        await res.body?.cancel();
-        throw new PlatformNotFoundError(url);
-      }
-      if (!res.ok) {
-        await res.body?.cancel();
-        throw new Error(`${opts.name} request failed with HTTP ${res.status}: ${url}`);
-      }
-      return res;
+      deadline.clear();
+      await sleep(retryAfterMs);
     }
   }
 
@@ -78,8 +134,12 @@ export function createPlatformClient(opts: PlatformClientOptions): PlatformClien
     async getJson<T>(url: string, init?: RequestInitLite): Promise<T> {
       const release = await acquire();
       try {
-        const res = await request(url, init);
-        return (await res.json()) as T;
+        const { res, deadline } = await request(url, init);
+        try {
+          return (await deadline.race(res.json())) as T;
+        } finally {
+          deadline.clear();
+        }
       } finally {
         release();
       }
@@ -88,13 +148,18 @@ export function createPlatformClient(opts: PlatformClientOptions): PlatformClien
     async *getNdjson<T>(url: string, init?: RequestInitLite): AsyncIterable<T> {
       const release = await acquire();
       try {
-        const res = await request(url, init);
-        if (!res.body) return;
+        const { res, deadline } = await request(url, init);
+        if (!res.body) {
+          deadline.clear();
+          return;
+        }
         const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
         let buffer = "";
         try {
           for (;;) {
-            const { done, value } = await reader.read();
+            deadline.arm(streamIdleTimeoutMs);
+            const { done, value } = await deadline.race(reader.read());
+            deadline.clear();
             if (done) break;
             buffer += value;
             let nl = buffer.indexOf("\n");
@@ -108,6 +173,7 @@ export function createPlatformClient(opts: PlatformClientOptions): PlatformClien
           const rest = buffer.trim();
           if (rest) yield JSON.parse(rest) as T;
         } finally {
+          deadline.clear();
           await reader.cancel().catch(() => {});
         }
       } finally {
