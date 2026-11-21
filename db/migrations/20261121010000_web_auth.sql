@@ -79,15 +79,28 @@ CREATE INDEX "session_user_id_idx" ON "session" USING btree ("user_id");
 CREATE INDEX "account_user_id_idx" ON "account" USING btree ("user_id");
 CREATE INDEX "verification_identifier_idx" ON "verification" USING btree ("identifier");
 
--- Withdrawing an invite signs that person out everywhere: their sessions are deleted with the row
--- (ADR-WEB-3). The session guard then refuses new sessions. Addresses that only come from the
--- INVITE_ALLOWLIST env var are not covered; removing one needs a restart and a manual sign-out.
+-- Magic links actually sent, for the per-address throttle (ADR-WEB-3). Only sends are recorded, so
+-- throttled requests never extend the lockout. Rows older than the window are deleted on insert.
+CREATE TABLE "magic_link_sends" (
+	"id" bigserial PRIMARY KEY NOT NULL,
+	"email" text NOT NULL,
+	"sent_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+
+CREATE INDEX "magic_link_sends_email_sent_at_idx" ON "magic_link_sends" USING btree ("email", "sent_at");
+
+-- Withdrawing an invite signs that person out everywhere: deleting the row, or changing its email,
+-- deletes the sessions of the old address (ADR-WEB-3). The session guard then refuses new
+-- sessions. Not covered: TRUNCATE (row triggers do not fire), and addresses that only come from
+-- the INVITE_ALLOWLIST env var (removing one needs a restart and a manual sign-out).
 CREATE FUNCTION "invites_revoke_sessions"() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
-	DELETE FROM "session" s USING "user" u WHERE s."user_id" = u."id" AND u."email" = OLD."email";
-	RETURN OLD;
+	IF TG_OP = 'DELETE' OR OLD."email" IS DISTINCT FROM NEW."email" THEN
+		DELETE FROM "session" s USING "user" u WHERE s."user_id" = u."id" AND u."email" = OLD."email";
+	END IF;
+	RETURN NULL;
 END;
 $$;
 
-CREATE TRIGGER "invites_revoke_sessions" AFTER DELETE ON "invites"
+CREATE TRIGGER "invites_revoke_sessions" AFTER DELETE OR UPDATE OF "email" ON "invites"
 	FOR EACH ROW EXECUTE FUNCTION "invites_revoke_sessions"();

@@ -270,6 +270,22 @@ export const linkedAccounts = pgTable(
   (table) => [unique("linked_accounts_platform_username_uq").on(table.platform, table.username)],
 );
 
+export const magicLinkSends = pgTable(
+  "magic_link_sends",
+  {
+    id: bigserial({ mode: "bigint" }).primaryKey().notNull(),
+    email: text().notNull(),
+    sentAt: timestamp("sent_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("magic_link_sends_email_sent_at_idx").using(
+      "btree",
+      table.email.asc().nullsLast(),
+      table.sentAt.asc().nullsLast(),
+    ),
+  ],
+);
+
 export const moves = pgTable(
   "moves",
   {

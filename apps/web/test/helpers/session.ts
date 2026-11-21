@@ -39,7 +39,7 @@ export async function resetAuthTables(db: Db): Promise<void> {
     await runMigrations(db);
     migrated = true;
   }
-  await db.execute(sql`truncate table "user", verification, invites cascade`);
+  await db.execute(sql`truncate table "user", verification, invites, magic_link_sends cascade`);
 }
 
 /** Adds an address to the invite allow-list (ADR-WEB-3). */
