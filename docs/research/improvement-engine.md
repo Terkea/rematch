@@ -192,6 +192,8 @@ Reference implementation: Lichess puzzle tagger `cook.py` ([ornicar/lichess-puzz
 
 Plan to port or vendor `cook.py` (AGPL: check licence compatibility, or reimplement from the documented rules using python-chess).
 
+> **Note (R2):** we do not port or vendor `cook.py`. The motif tagger in `profile-core::motifs` is a clean-room implementation of our own rules, written from the descriptions above (ADR-R2-3).
+
 For **in-game error classification** (not puzzles) we need three lines per critical move:
 
 1. **Refutation line** (why the played move was bad): PV after the played move from the opponent's side. Tag it with cook-style detectors from the opponent's perspective. Output examples: "you allowed a fork", "you hung a piece".
@@ -460,7 +462,7 @@ Individual-level noise makes per-user proof impossible, so validate the *engine*
 - [ ] Engine worker: pinned Stockfish, 1M nodes, MultiPV 3 on demand, version hash per eval
 - [ ] Syzygy 7-man WDL lookup
 - [ ] Maia-2 inference service (rating-bucketed `p_best`, `p_ok`)
-- [ ] Motif tagger (port of `cook.py` rules) applied to the best PV, the refutation PV, and the null-move threat probe
+- [ ] Motif tagger applied to the best PV, the refutation PV, and the null-move threat probe. It is a clean-room implementation of our own rules (ADR-R2-3), not a port of `cook.py`.
 - [ ] Per-move feature table (6.1 #6) and episode extraction (W5, W6, W9a)
 - [ ] Band reference builder from the Lichess open DB (quarterly job)
 - [ ] Beta-binomial posterior service with band priors; P_imp Monte Carlo; EWMA monitor

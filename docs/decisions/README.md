@@ -62,3 +62,7 @@ R2 (profile engine) records use placeholder numbers until the controller renumbe
 - [ADR-R2-17. ETA and autoscaling hooks](ADR-R2-17-eta-and-autoscaling-hooks.md)
 - [ADR-R2-18. build-profile job and CoachingInput builder](ADR-R2-18-build-profile-and-coaching-input.md)
 - [0031 addendum. npm enforcement of the 7-day age and exact-pin rule](0031-addendum-npm-enforcement.md)
+- [0040. chess.com first; Lichess accounts deferred](0040-chesscom-first-defer-lichess-accounts.md)
+- [0041. First target: a private beta for the owner and a few friends](0041-private-beta-owner-and-friends.md)
+- [0042. Shared Rust build caches across lanes](0042-shared-rust-build-caches.md)
+- [ADR-R2-22. Syzygy 3-4-5 tablebases: pinned, verified, never committed](ADR-R2-22-syzygy-345-fetch.md)

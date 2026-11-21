@@ -48,10 +48,7 @@ use platforms::{
     FetchOptions, GameSource, NormalizedGame, Platform, PlatformClient, PlatformError,
 };
 use queue::queue::{Queue, QueueError};
-use queue::{
-    EnqueueOptions, ImportAccountPayload, Job, JobError, KIND_ANALYSE, KIND_IMPORT, analyse_key,
-    import_key,
-};
+use queue::{EnqueueOptions, ImportAccountPayload, Job, JobError, KIND_IMPORT, import_key};
 use serde_json::{Value, json};
 use sqlx::pool::PoolConnection;
 use sqlx::{PgPool, Postgres};
@@ -60,6 +57,7 @@ use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use crate::deadline::{Deadline, IMPORT_IDLE_DEADLINE, JobDeadlineError};
+use crate::jobs::analyse::enqueue_analyse;
 
 /// Checkpoint the cursor and the run after this many games...
 pub const CHECKPOINT_EVERY: usize = 50;
@@ -206,27 +204,6 @@ pub async fn enqueue_import(
         )
         .await?;
     Ok(id.is_some())
-}
-
-/// The direct analyse enqueue (T22 switches this to T19's `enqueue_analyse`).
-async fn enqueue_analysis(
-    queue: &Queue,
-    game_id: Uuid,
-    account_id: Uuid,
-) -> Result<(), QueueError> {
-    queue
-        .enqueue(
-            KIND_ANALYSE,
-            &json!({ "gameId": game_id }),
-            EnqueueOptions {
-                dedupe_key: Some(analyse_key(game_id)),
-                user_key: Some(account_id),
-                max_attempts: 3,
-                ..EnqueueOptions::default()
-            },
-        )
-        .await?;
-    Ok(())
 }
 
 /// The queue handler for [`KIND_IMPORT`]. It has the shape of T14's `Handler`
@@ -620,7 +597,7 @@ impl Run<'_> {
                 // Also re-enqueue existing pending games: a previous run may have died between
                 // the insert and the enqueue. The live dedupe key keeps one job per game.
                 if res.analysis_status == AnalysisStatus::Pending {
-                    enqueue_analysis(&self.deps.queue, res.id, self.account.id).await?;
+                    enqueue_analyse(&self.deps.queue, res.id, self.account.id).await?;
                 }
             }
         }
@@ -781,5 +758,7 @@ fn new_game(account_id: Uuid, player_color: &str, g: &NormalizedGame) -> NewGame
             .lichess_evals
             .as_ref()
             .and_then(|e| serde_json::to_value(e).ok()),
+        status: AnalysisStatus::Pending,
+        ply_count: None,
     }
 }

@@ -31,6 +31,8 @@ pub enum AnalysisStatus {
     Done,
     Failed,
     Skipped,
+    /// Imported but not (yet) selected for analysis (R2 scheduler).
+    Imported,
 }
 
 impl AnalysisStatus {
@@ -41,6 +43,7 @@ impl AnalysisStatus {
             Self::Done => "done",
             Self::Failed => "failed",
             Self::Skipped => "skipped",
+            Self::Imported => "imported",
         }
     }
 }
@@ -54,6 +57,7 @@ impl FromStr for AnalysisStatus {
             "done" => Self::Done,
             "failed" => Self::Failed,
             "skipped" => Self::Skipped,
+            "imported" => Self::Imported,
             _ => {
                 return Err(ParseEnumError {
                     kind: "analysis_status",
@@ -94,6 +98,10 @@ pub struct NewGame {
     pub eco: Option<String>,
     pub opening_name: Option<String>,
     pub lichess_evals: Option<serde_json::Value>,
+    /// Status of a newly inserted row (`Pending` is the R1 behaviour). The R2 importer
+    /// passes `Imported` for games the scheduler has not selected. Ignored on conflict.
+    pub status: AnalysisStatus,
+    pub ply_count: Option<i32>,
 }
 
 /// Every `games` column.
@@ -131,17 +139,22 @@ pub struct GameRow {
     pub pending_since: Option<OffsetDateTime>,
     pub analysis_generation: i32,
     pub analysed_generation: Option<i32>,
+    pub ply_count: Option<i32>,
+    pub analysis_tier: Option<i16>,
+    pub analysis_priority: Option<i16>,
+    pub selected_at: Option<OffsetDateTime>,
+    pub analysed_at: Option<OffsetDateTime>,
+    pub enrichment_protocol: Option<String>,
 }
 
-// Task 19 adds `analysis_generation` and `analysed_generation`; until then they are constants.
-// When that migration lands, replace the last two items with the plain column names.
 const GAME_COLUMNS: &str = "id, account_id, platform::text AS platform, platform_game_id, pgn, \
     played_at, time_class::text AS time_class, base_seconds, increment_seconds, rated, \
     player_color::text AS player_color, white_name, black_name, white_rating, black_rating, \
     result::text AS result, termination, eco, opening_name, lichess_evals, \
     analysis_status::text AS analysis_status, analysis_protocol, analysis_error, \
     white_accuracy, black_accuracy, analysis_started_at, heartbeat_at, analysis_attempts, \
-    pending_since, 0::int4 AS analysis_generation, NULL::int4 AS analysed_generation";
+    pending_since, analysis_generation, analysed_generation, \
+    ply_count, analysis_tier, analysis_priority, selected_at, analysed_at, enrichment_protocol";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UpsertResult {
@@ -157,9 +170,10 @@ pub async fn upsert_game(pool: &PgPool, g: &NewGame) -> Result<UpsertResult, sql
     let created: Option<(Uuid, String)> = sqlx::query_as(
         "INSERT INTO games (account_id, platform, platform_game_id, pgn, played_at, time_class, \
          base_seconds, increment_seconds, rated, player_color, white_name, black_name, \
-         white_rating, black_rating, result, termination, eco, opening_name, lichess_evals) \
+         white_rating, black_rating, result, termination, eco, opening_name, lichess_evals, \
+         analysis_status, ply_count) \
          VALUES ($1, $2::platform, $3, $4, $5, $6::time_class, $7, $8, $9, $10::color, $11, $12, \
-         $13, $14, $15::result, $16, $17, $18, $19) \
+         $13, $14, $15::result, $16, $17, $18, $19, $20::analysis_status, $21) \
          ON CONFLICT (platform, platform_game_id) DO NOTHING \
          RETURNING id, analysis_status::text",
     )
@@ -182,6 +196,8 @@ pub async fn upsert_game(pool: &PgPool, g: &NewGame) -> Result<UpsertResult, sql
     .bind(&g.eco)
     .bind(&g.opening_name)
     .bind(&g.lichess_evals)
+    .bind(g.status.as_str())
+    .bind(g.ply_count)
     .fetch_optional(pool)
     .await?;
     let (id, status, inserted) = match created {
