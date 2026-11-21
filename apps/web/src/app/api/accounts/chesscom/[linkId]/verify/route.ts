@@ -8,6 +8,7 @@ import {
   linkErrorResponse,
   linkIdFrom,
   notFound,
+  rejectCrossSite,
 } from "../../../../../../server/accounts/http";
 import { requireApiUser } from "../../../../../../server/auth/session";
 import { getDb } from "../../../../../../server/db";
@@ -21,6 +22,8 @@ export async function POST(
 ): Promise<Response> {
   const disabled = chesscomDisabled();
   if (disabled) return disabled;
+  const crossSite = rejectCrossSite(req);
+  if (crossSite) return crossSite;
   const user = await requireApiUser(req);
   if (user instanceof Response) return user;
   const linkId = await linkIdFrom(ctx);

@@ -2,16 +2,58 @@
  * chess.com public profile lookup (read-only Published-Data API, no auth). Used to check that a
  * username exists and to read its `location` field for the verification code (ADR-WEB-5).
  *
- * - The User-Agent identifies the project without any email address (no address ever goes into a
- *   request header from the web app).
+ * - The User-Agent is the project's anonymous one (ADR 0043), the same string the worker sends; no
+ *   email address ever goes into a request header.
  * - Requests are serial: one in flight at a time per process, as chess.com asks of API clients.
  * - A 429 is retried once after a short backoff (Retry-After, capped); a second 429 gives up.
  */
 
-export const CHESSCOM_USER_AGENT = "chess-improver-ci (+https://github.com/chess-improver)";
+/** ADR 0043. Must equal the worker's `USER_AGENT` (apps/worker/src/http/platform-client.ts; tested). */
+export const CHESSCOM_USER_AGENT = "chess-improver/0.1 (+https://github.com/chess-improver)";
+/** Largest profile body read; chess.com profiles are a few KB. */
+export const MAX_BODY_BYTES = 256 * 1024;
 export const DEFAULT_TIMEOUT_MS = 5000;
 /** Longest wait for a 429's Retry-After before the one retry; the request is interactive. */
 export const MAX_BACKOFF_MS = 2000;
+
+/**
+ * The API base must be https, except in development and tests (the e2e fakes and the unit-test
+ * mock server are plain http). Throws otherwise.
+ */
+export function assertChesscomBaseUrl(baseUrl: string, nodeEnv = process.env.NODE_ENV): void {
+  const protocol = new URL(baseUrl).protocol;
+  if (protocol === "https:") return;
+  if (protocol === "http:" && (nodeEnv === "test" || nodeEnv === "development")) return;
+  throw new Error("CHESSCOM_API_BASE_URL must be https");
+}
+
+/** Reads the body as JSON, giving up beyond `MAX_BODY_BYTES`. */
+async function readJson(res: Response): Promise<unknown> {
+  const declared = Number(res.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) {
+    await res.body?.cancel().catch(() => {});
+    throw new ChesscomUnavailableError("profile body too large");
+  }
+  if (!res.body) return null;
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > MAX_BODY_BYTES) {
+      await reader.cancel().catch(() => {});
+      throw new ChesscomUnavailableError("profile body too large");
+    }
+    chunks.push(value);
+  }
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  } catch {
+    return null;
+  }
+}
 
 export class ChesscomUnavailableError extends Error {
   constructor(reason: string) {
@@ -36,6 +78,8 @@ export type ChesscomDeps = {
   sleep?: (ms: number) => Promise<void>;
 };
 
+const USERNAME_SHAPE = /^[a-z0-9_-]{3,25}$/;
+
 const realSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 // Promise-chain queue: one chess.com request at a time in this process.
@@ -58,7 +102,7 @@ async function getOnce(url: string, deps: ChesscomDeps): Promise<Response> {
     return await deps.fetch(url, {
       headers: { "User-Agent": CHESSCOM_USER_AGENT, Accept: "application/json" },
       signal: AbortSignal.timeout(timeoutMs),
-      redirect: "follow",
+      redirect: "error",
     });
   } catch (error) {
     const name = (error as { name?: string } | null)?.name;
@@ -100,11 +144,12 @@ export function fetchChesscomProfile(
       await res.body?.cancel().catch(() => {});
       throw new ChesscomUnavailableError(`HTTP ${res.status}`);
     }
-    const body = (await res.json().catch(() => null)) as Record<string, unknown> | null;
-    if (!body || typeof body.username !== "string") {
+    const body = (await readJson(res)) as Record<string, unknown> | null;
+    const name = typeof body?.username === "string" ? body.username.toLowerCase() : "";
+    // The profile must be the one asked for, and a name we would accept ourselves.
+    if (!body || name !== username.toLowerCase() || !USERNAME_SHAPE.test(name)) {
       throw new ChesscomUnavailableError("unexpected profile body");
     }
-    const name = body.username.toLowerCase();
     return {
       username: name,
       displayName: displayNameFrom(body.url, name),

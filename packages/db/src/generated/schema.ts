@@ -132,8 +132,29 @@ export const accountLinks = pgTable(
       columns: [table.linkedAccountId],
       foreignColumns: [linkedAccounts.id],
       name: "account_links_linked_account_id_linked_accounts_id_fk",
-    }),
+    }).onDelete("cascade"),
     unique("account_links_user_account_unique").on(table.userId, table.linkedAccountId),
+  ],
+);
+
+export const chesscomProfileRequests = pgTable("chesscom_profile_requests", {
+  username: text().primaryKey().notNull(),
+  requestedAt: timestamp("requested_at", { withTimezone: true, mode: "date" }).notNull(),
+});
+
+export const chesscomRequestBudgets = pgTable(
+  "chesscom_request_budgets",
+  {
+    userId: uuid("user_id").primaryKey().notNull(),
+    tokens: doublePrecision().notNull(),
+    refilledAt: timestamp("refilled_at", { withTimezone: true, mode: "date" }).notNull(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.userId],
+      foreignColumns: [user.id],
+      name: "chesscom_request_budgets_user_id_user_id_fk",
+    }).onDelete("cascade"),
   ],
 );
 

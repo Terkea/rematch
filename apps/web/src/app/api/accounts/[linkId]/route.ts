@@ -1,4 +1,9 @@
-import { linkErrorResponse, linkIdFrom, notFound } from "../../../../server/accounts/http";
+import {
+  linkErrorResponse,
+  linkIdFrom,
+  notFound,
+  rejectCrossSite,
+} from "../../../../server/accounts/http";
 import { removeLink } from "../../../../server/accounts/remove";
 import { requireApiUser } from "../../../../server/auth/session";
 import { getDb } from "../../../../server/db";
@@ -10,6 +15,8 @@ export async function DELETE(
   req: Request,
   ctx: { params: Promise<{ linkId: string }> },
 ): Promise<Response> {
+  const crossSite = rejectCrossSite(req);
+  if (crossSite) return crossSite;
   const user = await requireApiUser(req);
   if (user instanceof Response) return user;
   const linkId = await linkIdFrom(ctx);

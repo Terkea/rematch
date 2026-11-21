@@ -7,9 +7,14 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { createTestSession, resetAuthTables, webTestDb } from "../helpers/session";
 
 const db = webTestDb();
-const { CHESSCOM_USER_AGENT, ChesscomUnavailableError, fetchChesscomProfile } = await import(
-  "../../src/server/chesscom/profile"
-);
+const {
+  assertChesscomBaseUrl,
+  CHESSCOM_USER_AGENT,
+  ChesscomUnavailableError,
+  fetchChesscomProfile,
+  MAX_BODY_BYTES,
+} = await import("../../src/server/chesscom/profile");
+const { USER_AGENT: WORKER_USER_AGENT } = await import("../../../worker/src/http/platform-client");
 const { checkChesscomVerification, generateVerificationCode, LinkError, startChesscomLink } =
   await import("../../src/server/accounts/chesscom-link");
 const { listAccounts } = await import("../../src/server/accounts/list");
@@ -38,10 +43,10 @@ const DAY = 24 * 3600 * 1000;
 function fakeChesscom() {
   const profiles = new Map<string, string | null>([["hikaru", "Florida"]]);
   const statuses: number[] = [];
-  const calls: { url: string; headers: Headers }[] = [];
+  const calls: { url: string; headers: Headers; redirect?: RequestRedirect }[] = [];
   const fetchFn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
-    calls.push({ url, headers: new Headers(init?.headers) });
+    calls.push({ url, headers: new Headers(init?.headers), redirect: init?.redirect });
     const forced = statuses.shift();
     if (forced) return new Response("{}", { status: forced });
     const name = decodeURIComponent(url.split("/pub/player/")[1] ?? "");
@@ -86,7 +91,7 @@ function setEnv(values: Record<string, string>): void {
 
 beforeEach(async () => {
   await resetAuthTables(db);
-  await db.execute(sql`truncate table linked_accounts cascade`);
+  await db.execute(sql`truncate table linked_accounts, chesscom_profile_requests cascade`);
   chesscom = fakeChesscom();
   clock = new Date("2026-11-21T12:00:00Z");
   nextCode = undefined;
@@ -167,15 +172,60 @@ describe("linking tables (migration 20261121010100_web_linking)", () => {
 describe("fetchChesscomProfile", () => {
   const profileDeps = () => ({ fetch: chesscom.fetch, baseUrl: BASE_URL, sleep: noSleep });
 
-  it("sends the project User-Agent and no email address in any header", async () => {
+  it("sends the ADR 0043 User-Agent (the worker's) and no email address in any header", async () => {
     await fetchChesscomProfile("Hikaru", profileDeps());
     const call = chesscom.calls[0];
     expect(call?.url).toBe(`${BASE_URL}/pub/player/hikaru`);
     expect(call?.headers.get("user-agent")).toBe(
-      "chess-improver-ci (+https://github.com/chess-improver)",
+      "chess-improver/0.1 (+https://github.com/chess-improver)",
     );
-    expect(CHESSCOM_USER_AGENT).toBe(call?.headers.get("user-agent"));
+    expect(CHESSCOM_USER_AGENT).toBe(WORKER_USER_AGENT);
     for (const [, value] of call?.headers ?? []) expect(value).not.toMatch(/@|mailto/);
+  });
+
+  it("refuses redirects", async () => {
+    await fetchChesscomProfile("hikaru", profileDeps());
+    expect(chesscom.calls[0]?.redirect).toBe("error");
+  });
+
+  it("rejects a profile for another name, or an unacceptable one", async () => {
+    for (const username of ["magnus", "bad name!", ""]) {
+      const other = (async () =>
+        Response.json({ username, location: null })) as unknown as typeof fetch;
+      await expect(
+        fetchChesscomProfile("hikaru", { fetch: other, baseUrl: BASE_URL }),
+      ).rejects.toBeInstanceOf(ChesscomUnavailableError);
+    }
+    const sameName = (async () => Response.json({ username: "HiKaRu" })) as unknown as typeof fetch;
+    expect(
+      await fetchChesscomProfile("hikaru", { fetch: sameName, baseUrl: BASE_URL }),
+    ).toMatchObject({ username: "hikaru" });
+  });
+
+  it("gives up on a body over 256 KB", async () => {
+    expect(MAX_BODY_BYTES).toBe(256 * 1024);
+    const padding = "x".repeat(MAX_BODY_BYTES);
+    const huge = (async () =>
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(
+              new TextEncoder().encode(`{"username":"hikaru","bio":"${padding}"}`),
+            );
+            controller.close();
+          },
+        }),
+      )) as unknown as typeof fetch;
+    await expect(
+      fetchChesscomProfile("hikaru", { fetch: huge, baseUrl: BASE_URL }),
+    ).rejects.toBeInstanceOf(ChesscomUnavailableError);
+  });
+
+  it("requires an https API base outside development and tests", () => {
+    expect(() => assertChesscomBaseUrl("https://api.chess.com", "production")).not.toThrow();
+    expect(() => assertChesscomBaseUrl("http://api.chess.com", "production")).toThrow(/https/);
+    expect(() => assertChesscomBaseUrl("http://127.0.0.1:1", "test")).not.toThrow();
+    expect(() => assertChesscomBaseUrl("ftp://api.chess.com", "test")).toThrow(/https/);
   });
 
   it("returns the profile with its display name and location", async () => {
@@ -247,7 +297,14 @@ describe("generateVerificationCode", () => {
     for (let i = 0; i < 200; i++)
       expect(generateVerificationCode()).toMatch(/^CI-[2-9A-HJKMNP-Z]{6}$/);
     expect(generateVerificationCode(() => 0)).toBe("CI-222222");
-    expect(generateVerificationCode(() => 0.999999)).toBe("CI-ZZZZZZ");
+    expect(generateVerificationCode((n) => n - 1)).toBe("CI-ZZZZZZ");
+    const bounds: number[] = [];
+    generateVerificationCode((n) => {
+      bounds.push(n);
+      return 0;
+    });
+    // randomInt(0, 31) per character: unbiased over the whole alphabet.
+    expect(bounds).toEqual([31, 31, 31, 31, 31, 31]);
   });
 });
 
@@ -328,6 +385,8 @@ describe("checkChesscomVerification", () => {
     nextCode = code;
     const link = await startChesscomLink(deps(), userId, "hikaru");
     nextCode = undefined;
+    // The start may have requested this username; its 60 s slot is over by the first check.
+    clock = new Date(clock.getTime() + MINUTE);
     return link;
   }
 
@@ -436,7 +495,10 @@ describe("listAccounts and removeLink", () => {
     nextCode = "CI-BBBBBB";
     const other = await startChesscomLink(deps(), a.id, "second_2");
     chesscom.profiles.set("second_2", "CI-BBBBBB");
-    await checkChesscomVerification(deps(), a.id, other.linkId, clock);
+    clock = new Date(clock.getTime() + MINUTE);
+    expect((await checkChesscomVerification(deps(), a.id, other.linkId, clock)).status).toBe(
+      "verified",
+    );
 
     expect(await listAccounts(db, a.id, clock)).toEqual([
       {
@@ -497,6 +559,190 @@ describe("listAccounts and removeLink", () => {
   });
 });
 
+describe("outbound throttles", () => {
+  const minuteLater = () => new Date(clock.getTime() + MINUTE);
+
+  it("caps each user at 10 profile requests an hour, unknown usernames included", async () => {
+    const a = await newUser();
+    for (let i = 0; i < 10; i++) {
+      await expect(startChesscomLink(deps(), a.id, `ghost_${i}`)).rejects.toMatchObject({
+        code: "not_found",
+      });
+    }
+    const before = chesscom.calls.length;
+    await expect(startChesscomLink(deps(), a.id, "ghost_x")).rejects.toMatchObject({
+      code: "rate_limited",
+      retryAt: new Date(clock.getTime() + 6 * MINUTE),
+    });
+    expect(chesscom.calls.length).toBe(before);
+    // Another user has their own bucket.
+    const b = await newUser();
+    await expect(startChesscomLink(deps(), b.id, "ghost_x")).rejects.toMatchObject({
+      code: "not_found",
+    });
+    // One token refills every 6 minutes.
+    clock = new Date(clock.getTime() + 6 * MINUTE);
+    await expect(startChesscomLink(deps(), a.id, "ghost_y")).rejects.toMatchObject({
+      code: "not_found",
+    });
+  });
+
+  it("counts verify checks against the same bucket", async () => {
+    const a = await newUser();
+    const link = await startChesscomLink(deps(), a.id, "hikaru");
+    for (let i = 0; i < 9; i++) {
+      await startChesscomLink(deps(), a.id, `ghost_${i}`).catch(() => {});
+    }
+    clock = minuteLater();
+    await expect(checkChesscomVerification(deps(), a.id, link.linkId, clock)).rejects.toMatchObject(
+      { code: "rate_limited" },
+    );
+  });
+
+  it("allows one request per username per 60 s across all users", async () => {
+    const [a, b] = [await newUser(), await newUser()];
+    await expect(startChesscomLink(deps(), a.id, "ghost_1")).rejects.toMatchObject({
+      code: "not_found",
+    });
+    const before = chesscom.calls.length;
+    await expect(startChesscomLink(deps(), b.id, "Ghost_1")).rejects.toMatchObject({
+      code: "rate_limited",
+      retryAt: minuteLater(),
+    });
+    expect(chesscom.calls.length).toBe(before);
+    clock = minuteLater();
+    await expect(startChesscomLink(deps(), b.id, "ghost_1")).rejects.toMatchObject({
+      code: "not_found",
+    });
+  });
+
+  it("an account some user already linked needs no request to start", async () => {
+    const [a, b] = [await newUser(), await newUser()];
+    await startChesscomLink(deps(), a.id, "hikaru");
+    const before = chesscom.calls.length;
+    await startChesscomLink(deps(), b.id, "hikaru");
+    expect(chesscom.calls.length).toBe(before);
+  });
+
+  it("deleting and re-adding a link does not reset the check cooldown", async () => {
+    const a = await newUser();
+    const first = await startChesscomLink(deps(), a.id, "hikaru");
+    clock = minuteLater();
+    const checkedAt = clock;
+    expect((await checkChesscomVerification(deps(), a.id, first.linkId, clock)).status).toBe(
+      "pending",
+    );
+    await removeLink(db, a.id, first.linkId);
+    const again = await startChesscomLink(deps(), a.id, "hikaru");
+    expect(again.linkId).not.toBe(first.linkId);
+    const before = chesscom.calls.length;
+    expect(await checkChesscomVerification(deps(), a.id, again.linkId, clock)).toEqual({
+      status: "pending",
+      nextCheckAt: new Date(checkedAt.getTime() + MINUTE),
+    });
+    expect(chesscom.calls.length).toBe(before);
+  });
+});
+
+describe("single-use codes and ownership races", () => {
+  it("spends the code on verification and never hands it back", async () => {
+    const a = await newUser();
+    nextCode = "CI-7K3QXM";
+    const link = await startChesscomLink(deps(), a.id, "hikaru");
+    chesscom.profiles.set("hikaru", "CI-7K3QXM");
+    clock = new Date(clock.getTime() + MINUTE);
+    expect((await checkChesscomVerification(deps(), a.id, link.linkId, clock)).status).toBe(
+      "verified",
+    );
+    const [code] = await db.select().from(chesscomVerifications);
+    expect(code?.expiresAt).toEqual(clock);
+    expect(await startChesscomLink(deps(), a.id, "hikaru")).toEqual({
+      linkId: link.linkId,
+      username: "hikaru",
+      code: null,
+      verified: true,
+    });
+    expect((await listAccounts(db, a.id, clock))[0]).not.toHaveProperty("code");
+  });
+
+  it("a displaced owner gets a fresh code, not the spent one", async () => {
+    const [a, b] = [await newUser(), await newUser()];
+    nextCode = "CI-AAAAAA";
+    const linkA = await startChesscomLink(deps(), a.id, "hikaru");
+    nextCode = "CI-BBBBBB";
+    const linkB = await startChesscomLink(deps(), b.id, "hikaru");
+    chesscom.profiles.set("hikaru", "CI-AAAAAA");
+    clock = new Date(clock.getTime() + MINUTE);
+    await checkChesscomVerification(deps(), a.id, linkA.linkId, clock);
+    chesscom.profiles.set("hikaru", "CI-BBBBBB");
+    clock = new Date(clock.getTime() + MINUTE);
+    await checkChesscomVerification(deps(), b.id, linkB.linkId, clock);
+    expect((await listAccounts(db, a.id, clock))[0]).toMatchObject({ status: "expired" });
+    nextCode = "CI-CCCCCC";
+    expect(await startChesscomLink(deps(), a.id, "hikaru")).toMatchObject({
+      code: "CI-CCCCCC",
+      verified: false,
+    });
+  });
+
+  it("two users verifying at once leave exactly one verified owner", async () => {
+    const [a, b] = [await newUser(), await newUser()];
+    nextCode = "CI-AAAAAA";
+    const linkA = await startChesscomLink(deps(), a.id, "hikaru");
+    nextCode = "CI-BBBBBB";
+    const linkB = await startChesscomLink(deps(), b.id, "hikaru");
+    chesscom.profiles.set("hikaru", "CI-AAAAAA CI-BBBBBB");
+    for (let round = 0; round < 3; round++) {
+      clock = new Date(clock.getTime() + MINUTE);
+      const results = await Promise.all([
+        checkChesscomVerification(deps(), a.id, linkA.linkId, clock),
+        checkChesscomVerification(deps(), b.id, linkB.linkId, clock),
+      ]);
+      expect(results.filter((r) => r.status === "verified").length).toBeGreaterThanOrEqual(1);
+      const verified = await db
+        .select()
+        .from(accountLinks)
+        .where(sql`${accountLinks.verifiedAt} is not null`);
+      expect(verified).toHaveLength(1);
+    }
+  });
+
+  it("does not verify with a code reissued while the check was in flight", async () => {
+    const a = await newUser();
+    nextCode = "CI-AAAAAA";
+    const link = await startChesscomLink(deps(), a.id, "hikaru");
+    chesscom.profiles.set("hikaru", "CI-AAAAAA");
+    clock = new Date(clock.getTime() + MINUTE);
+    // The profile answer arrives after the code was replaced (as by an expiry and a restart).
+    const base = deps();
+    const slowDeps = {
+      ...base,
+      chesscom: {
+        ...base.chesscom,
+        fetch: (async (input: RequestInfo | URL, init?: RequestInit) => {
+          await db
+            .update(chesscomVerifications)
+            .set({ code: "CI-BBBBBB" })
+            .where(eq(chesscomVerifications.accountLinkId, link.linkId));
+          return chesscom.fetch(input, init);
+        }) as typeof fetch,
+      },
+    };
+    expect((await checkChesscomVerification(slowDeps, a.id, link.linkId, clock)).status).toBe(
+      "pending",
+    );
+    expect((await db.select().from(accountLinks))[0]?.verifiedAt).toBeNull();
+  });
+
+  it("deleting a linked account cascades its links and codes", async () => {
+    const a = await newUser();
+    await startChesscomLink(deps(), a.id, "hikaru");
+    await db.delete(linkedAccounts);
+    expect(await db.select().from(accountLinks)).toHaveLength(0);
+    expect(await db.select().from(chesscomVerifications)).toHaveLength(0);
+  });
+});
+
 describe("routes", () => {
   // A local mock of chess.com's API: the routes use the real fetch against CHESSCOM_API_BASE_URL.
   let server: Server;
@@ -541,6 +787,13 @@ describe("routes", () => {
     }) satisfies RequestInit;
   const params = (linkId: string) => ({ params: Promise.resolve({ linkId }) });
 
+  /** The routes use the real clock: move every username's last request 2 minutes back. */
+  async function freeUsernameSlots(): Promise<void> {
+    await db.execute(
+      sql`update chesscom_profile_requests set requested_at = requested_at - interval '2 minutes'`,
+    );
+  }
+
   async function post(body: unknown, cookie: string): Promise<Response> {
     return chesscomRoute.POST(new Request(`${BASE}/api/accounts/chesscom`, json(body, cookie)));
   }
@@ -550,8 +803,9 @@ describe("routes", () => {
     const created = await post({ username: "Hikaru" }, a.cookie);
     expect(created.status).toBe(201);
     const body = (await created.json()) as { linkId: string; code: string };
-    expect(seenAgents.at(-1)).toBe("chess-improver-ci (+https://github.com/chess-improver)");
+    expect(seenAgents.at(-1)).toBe("chess-improver/0.1 (+https://github.com/chess-improver)");
 
+    await freeUsernameSlots();
     locations.set("hikaru", `Paris ${body.code} `);
     const verify = await verifyRoute.POST(
       new Request(`${BASE}/api/accounts/chesscom/${body.linkId}/verify`, json({}, a.cookie)),
@@ -588,6 +842,82 @@ describe("routes", () => {
     const fresh = await newUser();
     const down = await post({ username: "hikaru" }, fresh.cookie);
     expect([down.status, await down.json()]).toEqual([503, { error: "chesscom_unavailable" }]);
+  });
+
+  it("answers 429 rate_limited with Retry-After once the user's bucket is empty", async () => {
+    const a = await newUser();
+    for (let i = 0; i < 10; i++) await post({ username: `ghost_${i}` }, a.cookie);
+    const limited = await post({ username: "ghost_x" }, a.cookie);
+    expect(limited.status).toBe(429);
+    expect(await limited.json()).toMatchObject({
+      error: "rate_limited",
+      retryAt: expect.any(String),
+    });
+    expect(Number(limited.headers.get("retry-after"))).toBeGreaterThan(0);
+  });
+
+  it("refuses a foreign or missing Origin with 403 and a non-JSON body with 415", async () => {
+    const a = await newUser();
+    setEnv({ BETTER_AUTH_TRUSTED_ORIGINS: "http://127.0.0.1:3100" });
+    const send = (headers: Record<string, string>) =>
+      chesscomRoute.POST(
+        new Request(`${BASE}/api/accounts/chesscom`, {
+          method: "POST",
+          headers: { cookie: a.cookie, ...headers },
+          body: JSON.stringify({ username: "hikaru" }),
+        }),
+      );
+    const foreign = await send({
+      origin: "https://evil.example",
+      "content-type": "application/json",
+    });
+    expect([foreign.status, await foreign.json()]).toEqual([403, { error: "invalid_origin" }]);
+    expect((await send({ "content-type": "application/json" })).status).toBe(403);
+    const form = await send({ origin: BASE, "content-type": "text/plain" });
+    expect([form.status, await form.json()]).toEqual([415, { error: "unsupported_media_type" }]);
+    // The trusted origin from BETTER_AUTH_TRUSTED_ORIGINS is accepted.
+    expect(
+      (await send({ origin: "http://127.0.0.1:3100", "content-type": "application/json" })).status,
+    ).toBe(201);
+
+    const linkIdValue = (await db.select().from(accountLinks))[0]?.id ?? "";
+    const verify = await verifyRoute.POST(
+      new Request(`${BASE}/api/accounts/chesscom/${linkIdValue}/verify`, {
+        method: "POST",
+        headers: {
+          cookie: a.cookie,
+          origin: "https://evil.example",
+          "content-type": "application/json",
+        },
+      }),
+      params(linkIdValue),
+    );
+    expect(verify.status).toBe(403);
+    const removed = await linkRoute.DELETE(
+      new Request(`${BASE}/api/accounts/${linkIdValue}`, {
+        method: "DELETE",
+        headers: { cookie: a.cookie, origin: BASE },
+      }),
+      params(linkIdValue),
+    );
+    expect(removed.status).toBe(415);
+    const read = await accountsRoute.GET(
+      new Request(`${BASE}/api/accounts`, {
+        headers: { cookie: a.cookie, origin: "https://evil.example" },
+      }),
+    );
+    expect(read.status).toBe(403);
+    expect(await db.select().from(accountLinks)).toHaveLength(1);
+  });
+
+  it("hides chess.com links from GET /api/accounts while CHESSCOM_ENABLED is off", async () => {
+    const a = await newUser();
+    expect((await post({ username: "hikaru" }, a.cookie)).status).toBe(201);
+    setEnv({ CHESSCOM_ENABLED: "0" });
+    const list = await accountsRoute.GET(
+      new Request(`${BASE}/api/accounts`, { headers: { cookie: a.cookie } }),
+    );
+    expect(await list.json()).toEqual([]);
   });
 
   it("needs a signed-in user", async () => {

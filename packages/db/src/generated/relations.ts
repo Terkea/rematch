@@ -2,6 +2,7 @@ import { relations } from "drizzle-orm/relations";
 import {
   account,
   accountLinks,
+  chesscomRequestBudgets,
   chesscomVerifications,
   games,
   importRuns,
@@ -26,6 +27,13 @@ export const accountLinksRelations = relations(accountLinks, ({ one, many }) => 
 export const accountRelations = relations(account, ({ one }) => ({
   user: one(user, {
     fields: [account.userId],
+    references: [user.id],
+  }),
+}));
+
+export const chesscomRequestBudgetsRelations = relations(chesscomRequestBudgets, ({ one }) => ({
+  user: one(user, {
+    fields: [chesscomRequestBudgets.userId],
     references: [user.id],
   }),
 }));
@@ -75,5 +83,6 @@ export const sessionRelations = relations(session, ({ one }) => ({
 export const userRelations = relations(user, ({ many }) => ({
   accountLinks: many(accountLinks),
   accounts: many(account),
+  chesscomRequestBudgets: many(chesscomRequestBudgets),
   sessions: many(session),
 }));

@@ -18,7 +18,7 @@ CREATE TABLE "account_links" (
 );
 
 ALTER TABLE "account_links" ADD CONSTRAINT "account_links_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;
-ALTER TABLE "account_links" ADD CONSTRAINT "account_links_linked_account_id_linked_accounts_id_fk" FOREIGN KEY ("linked_account_id") REFERENCES "public"."linked_accounts"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "account_links" ADD CONSTRAINT "account_links_linked_account_id_linked_accounts_id_fk" FOREIGN KEY ("linked_account_id") REFERENCES "public"."linked_accounts"("id") ON DELETE cascade ON UPDATE no action;
 
 -- One verified owner per platform account.
 CREATE UNIQUE INDEX "account_links_one_verified_owner" ON "account_links" USING btree ("linked_account_id") WHERE "verified_at" IS NOT NULL;
@@ -37,3 +37,21 @@ CREATE TABLE "chesscom_verifications" (
 );
 
 ALTER TABLE "chesscom_verifications" ADD CONSTRAINT "chesscom_verifications_account_link_id_account_links_id_fk" FOREIGN KEY ("account_link_id") REFERENCES "public"."account_links"("id") ON DELETE cascade ON UPDATE no action;
+
+-- Outbound chess.com throttles (ADR-WEB-5), so no single user can get the project's User-Agent
+-- blocked. Both live outside account_links, so deleting and re-adding a link resets neither.
+-- Per user: a token bucket of 10 profile requests per hour (start and verify alike).
+CREATE TABLE "chesscom_request_budgets" (
+	"user_id" uuid PRIMARY KEY NOT NULL,
+	"tokens" double precision NOT NULL,
+	"refilled_at" timestamp with time zone NOT NULL
+);
+
+ALTER TABLE "chesscom_request_budgets" ADD CONSTRAINT "chesscom_request_budgets_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;
+
+-- Per chess.com username (lower-case), across all users: at most one profile request per 60 s.
+-- Rows older than an hour are pruned when a request is claimed.
+CREATE TABLE "chesscom_profile_requests" (
+	"username" text PRIMARY KEY NOT NULL,
+	"requested_at" timestamp with time zone NOT NULL
+);

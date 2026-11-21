@@ -1,6 +1,10 @@
 import { getEnv } from "../../../../env";
 import { linkDeps, startChesscomLink } from "../../../../server/accounts/chesscom-link";
-import { chesscomDisabled, linkErrorResponse } from "../../../../server/accounts/http";
+import {
+  chesscomDisabled,
+  linkErrorResponse,
+  rejectCrossSite,
+} from "../../../../server/accounts/http";
 import { requireApiUser } from "../../../../server/auth/session";
 import { getDb } from "../../../../server/db";
 
@@ -10,6 +14,8 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request): Promise<Response> {
   const disabled = chesscomDisabled();
   if (disabled) return disabled;
+  const crossSite = rejectCrossSite(req);
+  if (crossSite) return crossSite;
   const user = await requireApiUser(req);
   if (user instanceof Response) return user;
   const body = (await req.json().catch(() => null)) as { username?: unknown } | null;
