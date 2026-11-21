@@ -38,12 +38,14 @@ Each scan has a partial index that it reads in order. A test guards each plan wi
 
 | Scan | Index |
 |---|---|
-| live runs (`runs::runs_in_status`, `status = ANY($1::report_run_status[])`) | `report_runs (created_at)`, partial on the live statuses |
+| live runs (`runs::live_runs`, the four live statuses as literals) | `report_runs (created_at)`, partial on the live statuses |
+| one status (`runs::runs_with_status`, the status as a literal) | `report_runs_live_idx` or `report_runs_status_idx`, never a seq scan |
+| `ai-reconcile` pages (`jobs::reconcile::sweep_pages`) | the partial `created_at` index of each table, including `coach_messages (created_at) WHERE status = 'pending'` (migration `20261121030100`) |
 | pending evals (`interactive::stale_pending`) | `interactive_evals (created_at)`, partial on `WHERE status = 'pending'` |
 | pending reviews and notes | `weekly_reviews (created_at)` and `weakness_change_notes (created_at)`, partial on `WHERE status = 'pending'` |
 | open batches (`batches::open_batches`) | `ai_batches (last_polled_at NULLS FIRST, submitted_at)`, partial on `WHERE status IN ('submitted','ended')` |
 
-The statuses are bound as a real `report_run_status[]`. A text array cast in SQL is not constant-folded (`enum_in` is stable), so the planner could not prove the partial predicate. The FK lookups have their own indexes: `interactive_evals (message_id)` serves the `SET NULL`, `ai_batch_items (report_run_id)` and `(weekly_review_id)` serve the cascades, and `coach_conversations (user_id)` serves the M4 cascade.
+Statuses are literals in the SQL, never bound. A bound `report_run_status[]` proved the partial predicate only in a custom plan: under a cached generic plan the planner fell back to `report_runs_status_idx` plus a sort (amendment 1). The plan guards run every scan under both `force_custom_plan` and `force_generic_plan`. The FK lookups have their own indexes: `interactive_evals (message_id)` serves the `SET NULL`, `ai_batch_items (report_run_id)` and `(weekly_review_id)` serve the cascades, and `coach_conversations (user_id)` serves the M4 cascade.
 
 ### Deletion
 
@@ -110,3 +112,28 @@ M4 inserts `coach_messages` rows (the user turn `done`, then the assistant turn 
 - Every repository function takes `&mut PgConnection`, so state changes and their events compose into one transaction.
 - `load_report_rows` returns the raw report and its sections. Task 14's `assemble_report_payload` builds the `ReportPayload` from them, which keeps the db layer free of payload types.
 - Session entries written by an in-flight turn after a delete are swept by `ai-reconcile` after 10 minutes. The chat handler should still check that the conversation exists before it streams (Task 25).
+
+## Amendment 1 (Task 21): the `ai-reconcile` sweep
+
+`jobs::reconcile::reconcile_ai(pool, queue, now)` runs every 300 s through `AiReconcileHandler`. It follows R1's reconciler: fenced updates, keyset pages, and every await bounded. Every step runs even if an earlier one fails; the errors come back together (`AiReconcileError::Steps`).
+
+| Sweep | Repair |
+|---|---|
+| `queued` runs older than 5 min with no live `report:<id>` job | enqueue. A batch-mode run younger than `BATCH_SUBMIT_GRACE` (30 min) may be mid-submit and is skipped. |
+| `running` runs with a heartbeat older than 10 min and no live job | set `queued` (fenced on `running` and the stale heartbeat), then enqueue |
+| `awaiting_retry` runs more than 5 min past `next_attempt_at` with no live job | enqueue |
+| due `pending` weekly reviews and change notes older than 5 min with no live job | enqueue. A batch-mode review is skipped while it is younger than `BATCH_SUBMIT_GRACE` or has an unprocessed item in a `submitted` or `ended` batch (the poller's). |
+| `pending` chat messages older than 2 min with no live job | set `failed` with `"lost"` and emit `chat.message.failed` in the same transaction. A chat answer is stale by then, so it is never retried. |
+| `streaming` chat messages whose `streaming_at` is older than `CHAT_TURN_TIMEOUT` (10 min) + 30 s + 60 s, with no live job | the same, fenced on `streaming` and the cutoff |
+| `pending` interactive evals older than 2 min with no live `ieval:<id>` job | set `failed` with `charged = false` (a refund) |
+| session entries with no conversation, between 10 min and 24 h old | delete in pages of 1,000 (`chat::sweep_orphan_session_entries_page`), on every sweep, within a 60 s budget. Older orphans cannot exist: the delete trigger removes a deleted conversation's entries. |
+
+`awaiting_batch` runs belong to the batch poller. `runs::set_awaiting_batch` is fenced on `queued` only, so a run a worker is generating synchronously cannot also be paid for in a batch.
+
+**Crash cap.** Each reconciler re-enqueue (the queued, stale-running, retry, weekly and note sweeps) first bumps the row's `reconcile_count` (`smallint`, migration `20261121030100`) in a fenced update in its own transaction. When the count passes `RECONCILE_CAP = 3`, the row is failed instead (`last_error = 'reconcile_cap'` on runs; weekly reviews and notes have no error column) and the same transaction emits `report.degraded` (a run with a linked report, so the computed report still shows) or `job.failed {kind, reason: "reconcile_cap"}`. The bump precedes the enqueue, so a sweep cut off in between over-counts by one and never loops.
+
+**Batch grace.** `BATCH_SUBMIT_GRACE` is 30 minutes. Task 20 keeps its whole submit (retries included) below it and inserts batch-mode rows so the sweep ignores them until the submit commits.
+
+**Ordering.** A stale run is reset before its enqueue. If the enqueue came first, a job could claim nothing, because the row is still `running`, and then finish. A reset whose enqueue is lost leaves a `queued` run past the grace, and the next sweep's first step finds it.
+
+**Paging.** Pages are keyset windows ordered by `(age column, id)`, with a literal status, read from each table's partial index on that column (an Incremental Sort adds the `id` tie-break). Where the age is the order column, the cutoff bounds the scan. Otherwise a `due` flag carries the age test, as in R1. Migration `20261121030100_ai_reconcile_indexes.sql` adds `coach_messages_pending_idx (created_at) WHERE status = 'pending'`, `coach_messages.streaming_at` (set by `chat::set_streaming`) with `coach_messages_streaming_idx (streaming_at) WHERE status = 'streaming'`, and the `reconcile_count` columns. The orphan page reads `ai_sdk_session_entries_created_idx` from an inclusive cursor. All pages are plan-guarded under the custom and the generic plan.

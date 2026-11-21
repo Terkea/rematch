@@ -31,7 +31,7 @@ text_enum!(
 );
 
 text_enum!(
-    /// `report_run_status`. Also a Postgres type (and array) for binding `report_run_status[]`.
+    /// `report_run_status`. Also a Postgres type, for callers that bind it directly.
     #[derive(sqlx::Type)]
     #[sqlx(type_name = "report_run_status", rename_all = "snake_case")]
     RunStatus, "report_run_status", {
@@ -170,11 +170,12 @@ pub async fn set_awaiting_retry(
     Ok(r.rows_affected() == 1)
 }
 
-/// Sections went to the Message Batches API; the batch poller finishes the run.
+/// Sections went to the Message Batches API; the batch poller finishes the run. Fenced on
+/// `queued`: a run a worker claimed (`running`) is being generated synchronously and must not
+/// be paid for twice.
 pub async fn set_awaiting_batch(conn: &mut PgConnection, id: Uuid) -> Result<bool, sqlx::Error> {
     let r = sqlx::query(
-        "UPDATE report_runs SET status = 'awaiting_batch' \
-         WHERE id = $1 AND status IN ('queued', 'running')",
+        "UPDATE report_runs SET status = 'awaiting_batch' WHERE id = $1 AND status = 'queued'",
     )
     .bind(id)
     .execute(conn)
@@ -254,29 +255,46 @@ pub async fn heartbeat(conn: &mut PgConnection, id: Uuid) -> Result<bool, sqlx::
     Ok(r.rows_affected() == 1)
 }
 
-/// Runs in `statuses`, oldest first (for the reconciler).
-///
-/// For the live statuses (`queued`, `running`, `awaiting_retry`, `awaiting_batch`) this reads
-/// `report_runs_live_idx` in order; `$1` is cast to the enum array so the planner can prove the
-/// partial-index predicate. The statuses are bound as a real `report_run_status[]`: a text array
-/// cast in SQL is not constant-folded (`enum_in` is stable), and the planner could not prove it.
-pub async fn runs_in_status(
-    conn: &mut PgConnection,
-    statuses: &[RunStatus],
-    limit: i64,
-) -> Result<Vec<RunRow>, sqlx::Error> {
-    sqlx::query_as(sqlx::AssertSqlSafe(runs_in_status_sql()))
-        .bind(statuses)
+/// Unfinished runs (`queued`, `running`, `awaiting_retry`, `awaiting_batch`), oldest first. Reads
+/// `report_runs_live_idx` in order. The statuses are literals in the SQL, so the planner proves
+/// the partial-index predicate in the generic plan too (a bound status array would not; with a
+/// cached generic plan it fell back to `report_runs_status_idx` plus a sort).
+pub async fn live_runs(conn: &mut PgConnection, limit: i64) -> Result<Vec<RunRow>, sqlx::Error> {
+    sqlx::query_as(sqlx::AssertSqlSafe(live_runs_sql()))
         .bind(limit)
         .fetch_all(conn)
         .await
 }
 
-/// The SQL of [`runs_in_status`] (`$1` a `&[RunStatus]`, `$2` limit), for plan guards.
-pub fn runs_in_status_sql() -> String {
+/// The SQL of [`live_runs`] (`$1` limit), for plan guards.
+pub fn live_runs_sql() -> String {
     format!(
-        "SELECT {COLS} FROM report_runs WHERE status = ANY($1::report_run_status[]) \
-         ORDER BY created_at LIMIT $2"
+        "SELECT {COLS} FROM report_runs \
+         WHERE status IN ('queued', 'running', 'awaiting_retry', 'awaiting_batch') \
+         ORDER BY created_at LIMIT $1"
+    )
+}
+
+/// Runs in one status, oldest first. The status is a literal in the SQL (one fixed statement
+/// per status), never a bound parameter. The live statuses read `report_runs_live_idx` in order.
+/// The reconciler's keyset pages are in `jobs::reconcile`.
+pub async fn runs_with_status(
+    conn: &mut PgConnection,
+    status: RunStatus,
+    limit: i64,
+) -> Result<Vec<RunRow>, sqlx::Error> {
+    sqlx::query_as(sqlx::AssertSqlSafe(runs_with_status_sql(status)))
+        .bind(limit)
+        .fetch_all(conn)
+        .await
+}
+
+/// The SQL of [`runs_with_status`] (`$1` limit), for plan guards. `status.as_str()` is one of
+/// the enum's fixed labels, so the literal is safe.
+pub fn runs_with_status_sql(status: RunStatus) -> String {
+    format!(
+        "SELECT {COLS} FROM report_runs WHERE status = '{}' ORDER BY created_at LIMIT $1",
+        status.as_str()
     )
 }
 

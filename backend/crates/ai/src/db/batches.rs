@@ -166,7 +166,8 @@ pub async fn open_batches(conn: &mut PgConnection) -> Result<Vec<BatchRow>, sqlx
 /// The SQL of [`open_batches`], for plan guards.
 pub fn open_batches_sql() -> String {
     format!(
-        "SELECT {BATCH_COLS} FROM ai_batches WHERE status IN ('submitted', 'ended')          ORDER BY last_polled_at NULLS FIRST, submitted_at"
+        "SELECT {BATCH_COLS} FROM ai_batches WHERE status IN ('submitted', 'ended') \
+         ORDER BY last_polled_at NULLS FIRST, submitted_at"
     )
 }
 

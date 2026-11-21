@@ -43,6 +43,11 @@ pub const WEEKLY_BATCH_HOUR: u8 = 4;
 pub const AI_BATCH_POLL_EVERY: Duration = Duration::from_secs(600);
 pub const AI_RECONCILE_EVERY: Duration = Duration::from_secs(300);
 
+/// The longest a coach-chat turn may run. T25 passes it to the sidecar as `timeoutMs`;
+/// `ai-reconcile` fails a turn that has streamed for longer than this plus the sidecar's 30 s
+/// slack and a 60 s grace, with no live job.
+pub const CHAT_TURN_TIMEOUT: Duration = Duration::from_secs(600);
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GenerateReportPayload {

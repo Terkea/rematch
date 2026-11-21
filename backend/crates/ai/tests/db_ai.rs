@@ -1372,7 +1372,7 @@ async fn orphan_sweep_removes_only_old_entries_without_a_conversation(pool: PgPo
     .await
     .unwrap();
     let mut conn = pool.acquire().await.unwrap();
-    let swept = chat::sweep_orphan_session_entries(&mut conn, chat::ORPHAN_SESSION_MIN_AGE)
+    let swept = chat::sweep_orphan_session_entries(&mut conn, OffsetDateTime::now_utc())
         .await
         .unwrap();
     assert_eq!(swept, 2);
@@ -1469,34 +1469,62 @@ async fn previous_session_model_usage_is_the_last_metered_assistant_turn(pool: P
     assert_eq!(stored.session_model_usage, Some(u6));
 }
 
-/// The plan with sequential and bitmap scans disabled: on empty test tables the planner would
-/// otherwise pick a seq scan or a bitmap scan plus a sort whatever the indexes.
-macro_rules! plan {
-    ($pool:expr, $sql:expr $(, $bind:expr)*) => {{
-        let mut tx = $pool.begin().await.unwrap();
-        for off in ["enable_seqscan", "enable_bitmapscan"] {
-            sqlx::query(sqlx::AssertSqlSafe(format!("SET LOCAL {off} = off")))
-                .execute(&mut *tx)
-                .await
-                .unwrap();
-        }
+/// The plans of `sql`, prepared as `name(types)` and run with the literal `args`, under the
+/// custom and the generic plan (sqlx caches its statements, and Postgres may switch a cached
+/// statement to the generic plan), with sequential and bitmap scans disabled: on empty test
+/// tables the planner would otherwise pick a seq scan or a bitmap scan plus a sort whatever the
+/// indexes.
+async fn plans(pool: &PgPool, name: &str, types: &str, sql: &str, args: &str) -> Vec<String> {
+    let mut tx = pool.begin().await.unwrap();
+    for off in ["enable_seqscan", "enable_bitmapscan"] {
+        sqlx::query(sqlx::AssertSqlSafe(format!("SET LOCAL {off} = off")))
+            .execute(&mut *tx)
+            .await
+            .unwrap();
+    }
+    let types = if types.is_empty() {
+        String::new()
+    } else {
+        format!("({types})")
+    };
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
+        "PREPARE {name}{types} AS {sql}"
+    )))
+    .execute(&mut *tx)
+    .await
+    .unwrap();
+    let args = if args.is_empty() {
+        String::new()
+    } else {
+        format!("({args})")
+    };
+    let mut out = Vec::new();
+    for mode in ["force_custom_plan", "force_generic_plan"] {
+        sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
+            "SET LOCAL plan_cache_mode = {mode}"
+        )))
+        .execute(&mut *tx)
+        .await
+        .unwrap();
         let plan: Vec<String> =
-            sqlx::query_scalar(sqlx::AssertSqlSafe(format!("EXPLAIN {}", $sql)))
-                $(.bind($bind))*
+            sqlx::query_scalar(sqlx::AssertSqlSafe(format!("EXPLAIN EXECUTE {name}{args}")))
                 .fetch_all(&mut *tx)
                 .await
                 .unwrap();
-        plan.join("
-")
-    }};
+        out.push(format!("{name} {mode}:\n{}", plan.join("\n")));
+    }
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("DEALLOCATE {name}")))
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    out
 }
 
 /// The plan reads `index` in order: no sort and no seq scan.
 fn assert_ordered_by(plan: &str, index: &str) {
     assert!(
         plan.contains(&format!("Index Scan using {index}")),
-        "expected {index} in
-{plan}"
+        "expected {index} in\n{plan}"
     );
     assert!(
         !plan.contains("Sort") && !plan.contains("Seq Scan"),
@@ -1506,44 +1534,76 @@ fn assert_ordered_by(plan: &str, index: &str) {
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
 async fn reconciler_scans_use_their_partial_indexes(pool: PgPool) {
-    let live = [
+    // All live statuses (literals): one ordered read of the partial index, in both plans.
+    for p in plans(&pool, "live", "int8", &runs::live_runs_sql(), "50").await {
+        assert_ordered_by(&p, "report_runs_live_idx");
+    }
+    // Each status alone, generic plan included: an index, never a seq scan. The literal implies
+    // the live partial predicate, but on these empty tables `status_idx` plus a small sort is
+    // as cheap; the reconciler's keyset pages (`ai_reconcile.rs`) are guarded on real volumes.
+    for status in [
         RunStatus::Queued,
         RunStatus::Running,
         RunStatus::AwaitingRetry,
         RunStatus::AwaitingBatch,
-    ];
-    // All live statuses: one ordered read of the partial index.
-    let p = plan!(pool, runs::runs_in_status_sql(), &live[..], 50_i64);
-    assert_ordered_by(&p, "report_runs_live_idx");
-    // One status: either index, never a seq scan (status_idx plus a small sort is fine).
-    let p = plan!(
-        pool,
-        runs::runs_in_status_sql(),
-        &[RunStatus::AwaitingRetry][..],
-        50_i64
+        RunStatus::Done,
+        RunStatus::Failed,
+    ] {
+        let sql = runs::runs_with_status_sql(status);
+        for p in plans(&pool, "one", "int8", &sql, "50").await {
+            assert!(
+                p.contains("Index Scan using report_runs_live_idx")
+                    || p.contains("Index Scan using report_runs_status_idx"),
+                "{p}"
+            );
+            assert!(!p.contains("Seq Scan"), "{p}");
+        }
+    }
+    let sql = interactive::stale_pending_sql();
+    for p in plans(&pool, "evals", "float8, int8", &sql, "120, 50").await {
+        assert_ordered_by(&p, "interactive_evals_pending_idx");
+    }
+    for p in plans(&pool, "batches", "", &batches::open_batches_sql(), "").await {
+        assert_ordered_by(&p, "ai_batches_open_idx");
+    }
+    assert!(
+        !batches::open_batches_sql().contains("  "),
+        "{}",
+        batches::open_batches_sql()
     );
     assert!(
-        p.contains("report_runs_live_idx") || p.contains("report_runs_status_idx"),
-        "{p}"
+        !runs::live_runs_sql().contains("  "),
+        "{}",
+        runs::live_runs_sql()
     );
-    assert!(!p.contains("Seq Scan"), "{p}");
-    let p = plan!(pool, interactive::stale_pending_sql(), 120.0_f64, 50_i64);
-    assert_ordered_by(&p, "interactive_evals_pending_idx");
-    let p = plan!(pool, batches::open_batches_sql());
-    assert_ordered_by(&p, "ai_batches_open_idx");
 
-    // And the statuses still bind and filter.
+    // And the queries still filter.
     let acct = account(&pool, "plans").await;
     let mut conn = pool.acquire().await.unwrap();
     let id = runs::insert_run(&mut conn, &new_run(acct)).await.unwrap();
-    let found = runs::runs_in_status(&mut conn, &[RunStatus::Queued], 10)
+    let found = runs::runs_with_status(&mut conn, RunStatus::Queued, 10)
         .await
         .unwrap();
     assert_eq!(found.iter().map(|r| r.id).collect::<Vec<_>>(), [id]);
+    assert_eq!(
+        runs::live_runs(&mut conn, 10)
+            .await
+            .unwrap()
+            .iter()
+            .map(|r| r.id)
+            .collect::<Vec<_>>(),
+        [id]
+    );
+    assert!(runs::set_done(&mut conn, id, None).await.unwrap());
     assert!(
-        runs::runs_in_status(&mut conn, &[RunStatus::Done], 10)
+        runs::runs_with_status(&mut conn, RunStatus::Queued, 10)
             .await
             .unwrap()
             .is_empty()
     );
+    assert!(runs::live_runs(&mut conn, 10).await.unwrap().is_empty());
+    let done = runs::runs_with_status(&mut conn, RunStatus::Done, 10)
+        .await
+        .unwrap();
+    assert_eq!(done.len(), 1);
 }
