@@ -1,7 +1,7 @@
 "use client";
 
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
-import { X } from "@phosphor-icons/react/dist/ssr";
+import { XIcon } from "@phosphor-icons/react/dist/ssr";
 import type { ComponentProps } from "react";
 import { Icon } from "../icons/icon.js";
 import { cn } from "../lib/cn.js";
@@ -63,7 +63,7 @@ export function DialogContent({
               "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink",
             )}
           >
-            <Icon icon={X} label="Close" />
+            <Icon icon={XIcon} label="Close" />
           </DialogPrimitive.Close>
         ) : null}
       </DialogPrimitive.Popup>

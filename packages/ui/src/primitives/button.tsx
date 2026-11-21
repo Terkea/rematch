@@ -44,9 +44,13 @@ export const buttonVariants = cva(
           "active:bg-well active:shadow-[inset_0_0_0_1px_var(--color-rule-strong)]",
           "disabled:text-ink-faint",
         ],
+        // Destructive actions are ink-outlined, never red: red marks chess mistakes and form
+        // errors only (DESIGN.md, "Direction"). The severity is carried by a heavier ink edge, 700
+        // weight and an explicit verb ("Delete account").
         danger: [
-          "border-pen-text bg-transparent text-pen-text hover:bg-well",
-          "active:bg-well disabled:border-rule disabled:text-ink-faint",
+          "border-2 border-ink bg-transparent font-bold text-ink hover:bg-well",
+          "active:bg-well active:shadow-[inset_0_0_0_1px_var(--color-rule-strong)]",
+          "disabled:border disabled:border-rule disabled:font-medium disabled:text-ink-faint",
         ],
       },
       size: {
