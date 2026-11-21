@@ -326,6 +326,50 @@ This is how we show, honestly, that the plan is working.
 
 **Notifications:** a weekly digest email ("your endgame accuracy rose from 58% to 66% over 40 games") and in-app milestone moments. Both can be switched off.
 
+## 12b. Weakness timeline: when mistakes start, improve, or come back
+
+Owner's requirement: "players may evolve making new mistakes over a period of time, we need to be able to figure out when they start making certain mistakes and when they are improving them".
+
+**What is tracked.** Every weakness W1–W12 (improvement-engine §6.2) is tracked, with each tactical motif, each opening line and each endgame type as its own series. Each series is a time-ordered sequence of per-game counts: events and opportunities, taken from `game_metrics`. All series are monitored all the time, not only the ones in the active plan.
+
+**Detecting a change.**
+- Each series runs a **Bayesian online change-point detector** (Beta-binomial, run-length posterior) on per-opportunity rates.
+- A **CUSUM** check runs alongside it as a fast early warning.
+- A change is confirmed when the posterior probability of a change in the last *k* games is ≥ 0.8 and the new rate differs from the old by ≥ 15% relative, with at least the minimum evidence per weakness from improvement-engine §6.6.
+- The detector records the **estimated onset**: the game and date where the change most likely began, with an interval.
+
+**Weakness states.** Each series is always in one state, and every transition is stored with its onset game, its evidence and its confidence (`weakness_state_history`):
+
+| State | Meaning |
+|---|---|
+| `not_an_issue` | Rate at or below the band median |
+| `emerging` | A change upward was detected, but the rate isn't yet clearly above peers |
+| `active` | Clearly above the band median (the Confidence rule in improvement-engine §6.3) |
+| `improving` | A downward change was detected, or `P_imp` ≥ 0.85 (§6.6) |
+| `resolved` | At or below band P40 and holding |
+| `relapsed` | A `resolved` weakness has drifted back, caught by the EWMA drift rule in §6.6 |
+
+**Explaining why.** When a change is confirmed, the system checks what else changed around the onset:
+- time-control mix;
+- a new opening adopted;
+- session length or games per day (fatigue);
+- rating level, since stronger opponents punish more;
+- the protocol version, which rules out engine artefacts.
+
+Claude gets the change, the candidate causes and 2–3 example games from either side of the onset. It writes a short, evidence-backed note, for example: *"Since about 14 Oct you've been missing back-rank threats about twice as often. That started when you switched mostly to 3+0 blitz. Here are three examples."* Correlated changes are presented as possible causes, never as proven ones.
+
+**UI.**
+- A **weakness timeline** on the Progress page: one swimlane per weakness, coloured by state, with onset markers, plan events and drill blocks on the same time axis.
+- Each area page shows the timeline for its own weaknesses.
+- "New this month" and "Fixed this month" appear in the report and the monthly card.
+- An `emerging` weakness gets a gentle in-app heads-up. It is promoted to the plan only through the normal Priority rule (§5.4), so players aren't sent chasing noise.
+
+**Data.**
+- `weakness_series_point`: per game, per series, the events and opportunities.
+- `weakness_state_history`: series, state, onset game, from/to, posterior probability, detector version.
+
+Detection reruns incrementally after each sync. If the analysis protocol changes, the series are recomputed from scratch.
+
 ## 13. Robustness
 
 - Idempotent jobs with retries and exponential back-off, a dead-letter queue, and per-user job priority (paid first, then onboarding first).
