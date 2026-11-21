@@ -386,14 +386,16 @@ function PenStroke({
 // The one beat: DESIGN.md choreography 1, climax rows, in ms from the start of the hero. The fixed
 // times (lift at 400, contact at 760, ring 100ms after contact, the 30ms head gap of M3) come from
 // that table; everything else follows from the motion tokens.
-const LIFT = 400;
-const CONTACT = 760;
+const T0 = 0; // no graph prologue in this variant;
+const LIFT = T0 + 400;
+const CONTACT = T0 + 760;
 const RING = CONTACT + 100;
 const ARROW = RING + ms(stagger.pen);
 const HEAD = ARROW + ms(dur.draw * timeAtProgress(ease.pen, 0.85)); // M3: at 85% of the shaft
 const BADGE = ARROW + ms(dur.draw); // the last stroke's soft stop
 const T = {
-  select: 0,
+  prologue: 0,
+  select: T0,
   lift: LIFT,
   travel: LIFT + ms(dur.instant),
   contact: CONTACT,

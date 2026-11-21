@@ -387,14 +387,16 @@ function PenStroke({
 // The one beat: DESIGN.md choreography 1, climax rows, in ms from the start of the hero. The fixed
 // times (lift at 400, contact at 760, ring 100ms after contact, the 30ms head gap of M3) come from
 // that table; everything else follows from the motion tokens.
-const LIFT = 400;
-const CONTACT = 760;
+const T0 = ms(dur.reveal); // the graph prologue: the eval line draws in first (A only);
+const LIFT = T0 + 400;
+const CONTACT = T0 + 760;
 const RING = CONTACT + 100;
 const ARROW = RING + ms(stagger.pen);
 const HEAD = ARROW + ms(dur.draw * timeAtProgress(ease.pen, 0.85)); // M3: at 85% of the shaft
 const BADGE = ARROW + ms(dur.draw); // the last stroke's soft stop
 const T = {
-  select: 0,
+  prologue: 0,
+  select: T0,
   lift: LIFT,
   travel: LIFT + ms(dur.instant),
   contact: CONTACT,
@@ -838,8 +840,9 @@ function EvalBar({ reduced, vertical }: { reduced: boolean; vertical: boolean })
 
 /**
  * The eval graph and label lane (DESIGN.md "Eval graph"), a lab placeholder at real size: the
- * win-chance line over the whole game, a pen ring on every marked move (thin for inaccuracies),
- * the cursor on the move shown, and the key move's label with its leader tick.
+ * win-chance line drawing in as the prologue, one pen ring on the key move (every other mark is a
+ * pencil hairline tick, the hero ruling),
+ * the cursor on the move shown, and the key move's label.
  */
 function EvalGraph({ reduced }: { reduced: boolean }) {
   const [plotRef, size] = useMeasure<HTMLDivElement>();
@@ -856,12 +859,18 @@ function EvalGraph({ reduced }: { reduced: boolean }) {
   const area = `${line(pts)} L${f2(x(n))} ${f2(zero)} L${f2(x(0))} ${f2(zero)}Z`;
   const kx = x(keyPly.ply);
   const ky = y(wcAfter);
+  // The cursor drops onto the key move at contact: it grows down from the plot's top edge on
+  // `swing`. Its x is recomputed from kx on every render, so it never drifts on resize.
   useAt(reduced, T.contact, () => {
     const el = cursorRef.current;
     if (!el) return undefined;
-    const run = animate(el, { x: [0, kx - x(prevPly.ply)] }, spring.swing);
+    const run = animate(el, { scaleY: [0, 1] }, spring.swing);
     return () => run.stop();
   });
+  const maskId = `g${useId().replace(/:/g, "")}`;
+  const reveal = reduced
+    ? { duration: 0 }
+    : { delay: sec(T.prologue), duration: dur.reveal, ease: [...ease.pen] as CubicBezier };
   const label = `${prefix} ${keyPly.san}${keyGlyph}`;
   return (
     <figure className="flex w-full flex-col">
@@ -894,65 +903,81 @@ function EvalGraph({ reduced }: { reduced: boolean }) {
       >
         {W > 0 && (
           <svg className="absolute inset-0 size-full overflow-visible" aria-hidden>
+            {/* The prologue: a rect sweeps left to right on ease.pen, revealing the tint and ticks. */}
+            <mask id={maskId} maskUnits="userSpaceOnUse" x={0} y={-20} width={W} height={H + 40}>
+              <motion.rect
+                x={0}
+                y={-20}
+                width={W}
+                height={H + 40}
+                fill="white"
+                style={{ originX: 0 }}
+                initial={reduced ? false : { scaleX: 0 }}
+                animate={{ scaleX: 1 }}
+                transition={reveal}
+              />
+            </mask>
             <path
               d={`M${f2(x(0))} ${f2(zero)} L${f2(x(n))} ${f2(zero)}`}
               className="stroke-rule-strong"
               strokeWidth={1}
             />
-            <path d={area} className="fill-ink/10" />
-            <path
+            <g mask={`url(#${maskId})`}>
+              <path d={area} className="fill-ink/10" />
+              {/* Hero ruling: one pen mark. Every other mark is a quiet pencil hairline tick. */}
+              {plies.map((p) => {
+                if (!p.judgement || p.ply === keyPly.ply) return null;
+                const cx = x(p.ply);
+                const cy = y(winChance(p));
+                const half = p.judgement === "blunder" ? 9 : p.judgement === "mistake" ? 7 : 5;
+                return (
+                  <line
+                    key={p.ply}
+                    x1={cx}
+                    x2={cx}
+                    y1={Math.max(2, cy - half)}
+                    y2={Math.min(H - 2, cy + half)}
+                    strokeWidth={1}
+                    strokeLinecap="round"
+                    className="stroke-pencil"
+                  />
+                );
+              })}
+            </g>
+            <motion.path
               d={line(pts)}
               fill="none"
               className="stroke-ink"
               strokeWidth={2}
               strokeLinejoin="round"
+              initial={reduced ? false : { pathLength: 0 }}
+              animate={{ pathLength: 1 }}
+              transition={reveal}
             />
-            {/* Leader tick from the label lane down to the key ring. */}
-            <motion.path
-              d={`M${f2(kx)} -2 L${f2(kx)} ${f2(ky - 10)}`}
-              className="stroke-rule-strong"
-              strokeWidth={1}
-              initial={reduced ? false : { opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={
-                reduced
-                  ? { duration: 0 }
-                  : { delay: sec(T.ring) + dur.drawSmall / 2, duration: dur.drawSmall / 2 }
-              }
-            />
-            {plies.map((p) => {
-              if (!p.judgement) return null;
-              const cx = x(p.ply);
-              const cy = y(winChance(p));
-              const ring = ringPoints(cx, cy, 7 * 1.12, 7, 10, 1);
-              // Pen on `well` holds 4.14:1 on its own, so the small graph rings drop the halo.
-              const scale = p.judgement === "inaccuracy" ? 0.75 : 1;
-              const isKey = p.ply === keyPly.ply;
+            {(() => {
+              // The one pen mark: the key move's ring, drawn in the same beat as the board ring.
+              const ring = ringPoints(kx, ky, 7 * 1.12, 7, 10, 1);
               return (
                 <PenStroke
-                  key={p.ply}
-                  reduced={reduced || !isKey}
+                  reduced={reduced}
                   segments={[ring.main, ring.tail]}
-                  shape={outline(ring.all, scale)}
-                  maskWidth={3.2 * scale + 5}
+                  shape={outline(ring.all, 1)}
+                  maskWidth={3.2 + 5}
                   at={T.ring}
                   duration={dur.drawSmall}
                   halo={false}
                 />
               );
-            })}
+            })()}
           </svg>
         )}
-        {/* Cursor: a 1.5px ink rule on the move shown; it steps to the key move at contact. */}
+        {/* Cursor: a 1.5px rule on the move shown (ink-soft at night, so it doesn't compete). */}
         {W > 0 && (
           <div
             ref={cursorRef}
             aria-hidden
-            className="absolute inset-y-0 w-[1.5px] bg-ink"
-            style={{
-              left: x(prevPly.ply) - 0.75,
-              transform: reduced ? `translateX(${kx - x(prevPly.ply)}px)` : undefined,
-            }}
+            className="absolute inset-y-0 w-[1.5px] origin-top bg-ink dark:bg-ink-soft"
+            style={{ left: kx - 0.75, transform: reduced ? undefined : "scaleY(0)" }}
           />
         )}
       </div>
@@ -1132,10 +1157,10 @@ function Hero({ reduced }: { reduced: boolean }) {
   }, []);
 
   // From lg the left column is the bar, an 8px gap and the board in its 8px well.
-  // --hero-graph-height (DESIGN.md "Styleguide hero"): the board in its well; the header sits at its
+  // --hero-graph-height (tokens.css, DESIGN.md "Styleguide hero"): the board in its well; the header sits at its
   // top and the graph fills the rest, so the right column has no void.
   const cols =
-    "lg:grid-cols-[calc(var(--board-size)+2.5rem)_minmax(0,1fr)] lg:grid-rows-[auto_minmax(0,1fr)_auto] lg:gap-x-8 xl:gap-x-16 [--hero-graph-height:calc(var(--board-size)+1rem)]";
+    "lg:grid-cols-[calc(var(--board-size)+2.5rem)_minmax(0,1fr)] lg:grid-rows-[auto_minmax(0,1fr)_auto] lg:gap-x-8 xl:gap-x-16";
   return (
     <div className="mx-auto max-w-7xl px-(--space-gutter) pt-6 pb-16 md:pt-10">
       <div ref={rootRef} className={`relative grid grid-cols-1 gap-y-6 ${cols}`}>
