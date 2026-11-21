@@ -1,50 +1,90 @@
-# Exact pins for services/maia (python:3.12-slim, linux x86_64), installed with --no-deps.
-# Every version was at least 7 days old on PyPI on 2026-11-21 (ADR-R2-13). Regenerate by
-# resolving pyproject.toml in python:3.12-slim and re-checking ages and licences.
-annotated-types==0.8.0
-anyio==4.16.0
-backports.zstd==1.8.0
-beautifulsoup4==4.15.0
-certifi==2026.10.23
-charset-normalizer==3.5.2
-chess==1.10.0
-click==8.5.1
-einops==0.8.0
-fastapi==0.115.12
-filelock==4.2.10
-fsspec==2026.9.0
-gdown==5.2.2
-h11==0.16.0
-httpcore==1.0.9
-httpx==0.28.1
-idna==3.20
-iniconfig==2.3.1
-Jinja2==3.1.6
-maia2==0.11.0
-MarkupSafe==3.0.4
-mpmath==1.3.0
-networkx==3.7
-numpy==2.1.3
-packaging==26.3
-pandas==2.2.3
-pluggy==1.7.0
-pydantic==2.11.4
-pydantic_core==2.33.2
-PySocks==1.7.1
-pytest==8.3.5
-python-dateutil==4.0.0
-pytz==2026.6
-PyYAML==6.0.2
-pyzstd==0.19.1
-requests==2.33.0
-setuptools==84.2.1
-soupsieve==4.1
-starlette==0.46.2
-sympy==1.14.0
-torch==2.8.0+cpu
-tqdm==4.66.3
-typing-inspection==0.4.5
-typing_extensions==4.16.0
-tzdata==2026.6
-urllib3==2.8.0
-uvicorn==0.34.2
+# Runtime pins for services/maia: python:3.12-slim (digest in the Dockerfile), linux x86_64, CPython 3.12.
+# Installed with: pip install --require-hashes --no-deps --only-binary=:all: (torch from the PyTorch CPU index,
+# everything else from PyPI). One hash per pin: the exact wheel for this platform. Every version was at least
+# 7 days old on 2026-11-21 (ADR-R2-13). Regenerate: resolve in that image, pip download each pin, sha256sum.
+annotated-doc==0.0.6 \
+    --hash=sha256:361ca0950cc7082f53fa69e9328409f40a62c61e57e0a47e1825a08078a58a53
+annotated-types==0.8.0 \
+    --hash=sha256:f072f4d804ea359e4eaf198b1af7a8b0943881a87f31bb764f8bf219bb9419e0
+anyio==4.16.0 \
+    --hash=sha256:c66ae634e0b8228396b801741beb3294326d4b6102f7bba4041c0dfb58c29026
+backports.zstd==1.8.0 \
+    --hash=sha256:f9e9aa28a44db1897fb637f037175566f3b75890d4bae6cae7ba34f1df1e0804
+beautifulsoup4==4.15.0 \
+    --hash=sha256:d6f88de62e1d4e38ecb1077eb9724cd0eff29d2a08ca16a401e9b9e93f117cf9
+certifi==2026.10.23 \
+    --hash=sha256:e9b54de76e530bb6cf0ccd036787103acb58fd42ba930ea8bf948ddbaa2f61d1
+charset-normalizer==3.5.2 \
+    --hash=sha256:3d31298449090ab8d47b7b1b2a555ff73cac7ed438a08b7ac160980c7ebed649
+chess==1.10.0 \
+    --hash=sha256:48ff7c084a370811819cfc753c2ee159942356ada70824666bd01ee3fca170d0
+click==8.5.1 \
+    --hash=sha256:8bb5376d2006950386f8c6427613334a2acadc5f559cb80e638d00b4df957e37
+einops==0.8.0 \
+    --hash=sha256:9572fb63046264a862693b0a87088af3bdc8c068fde03de63453cbbde245465f
+fastapi==0.162.4 \
+    --hash=sha256:f093bc306d3958278d30ffd14f3834ca3d9b144fbb898ab5c9b652cf6e75f869
+filelock==4.2.10 \
+    --hash=sha256:9479aaeb4db20b5a53e3da28493edd24720b66b8a0b84030aa56ccdf243d6857
+fsspec==2026.9.0 \
+    --hash=sha256:8dd6e646e99ea382bd85f97a45e6b526a442d79423a7dc673f1e2756d05fcb5f
+gdown==5.2.2 \
+    --hash=sha256:e1ed2638abb931668725c79298900629b31e20f02b7c55a2685e9249edb51e09
+h11==0.16.0 \
+    --hash=sha256:63cf8bbe7522de3bf65932fda1d9c2772064ffb3dae62d55932da54b31cb6c86
+idna==3.20 \
+    --hash=sha256:ab7ae7122974553370f0bdb919e1a960b2cd1bc1ef0276416d896db81c14582c
+Jinja2==3.1.6 \
+    --hash=sha256:85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67
+maia2==0.11.0 \
+    --hash=sha256:939e69587026be62cd003b8cd1e6e2e66f1120390f68b9d363ce3da099c85029
+MarkupSafe==3.0.3 \
+    --hash=sha256:d6dd0be5b5b189d31db7cda48b91d7e0a9795f31430b7f271219ab30f1d3ac9d
+mpmath==1.3.0 \
+    --hash=sha256:a0b2b9fe80bbcd81a6647ff13108738cfb482d481d826cc0e02f5b35e5c88d2c
+networkx==3.7 \
+    --hash=sha256:e3fd2c13a7814cee3746340d8d7f8598a67f16a58bf47fb7f8793fab6efca1b0
+numpy==2.1.3 \
+    --hash=sha256:2312b2aa89e1f43ecea6da6ea9a810d06aae08321609d8dc0d0eda6d946a541b
+opentelemetry-api==1.45.2 \
+    --hash=sha256:2cbd737377e710ee740d261c94e93fa0f08e6d037c18f17513cc0a2d94479a34
+pandas==2.2.3 \
+    --hash=sha256:fffb8ae78d8af97f849404f21411c95062db1496aeb3e56f146f0355c9989319
+pydantic==2.11.4 \
+    --hash=sha256:d9615eaa9ac5a063471da949c8fc16376a84afb5024688b3ff885693506764eb
+pydantic_core==2.33.2 \
+    --hash=sha256:8f57a69461af2a5fa6e6bbd7a5f60d3b7e6cebb687f55106933188e79ad155c1
+PySocks==1.7.1 \
+    --hash=sha256:2725bd0a9925919b9b51739eea5f9e2bae91e83288108a9ad338b2e3a4435ee5
+python-dateutil==4.0.0 \
+    --hash=sha256:a5e246f79eb80475e691bf93862cead98decd8a498cf53ba0516fcdc0f50dc1c
+pytz==2026.6 \
+    --hash=sha256:7fed3fee8fd6bd4a2b7b75a8d56021d0624127bf69bd5691f115db929ac570b3
+PyYAML==6.0.2 \
+    --hash=sha256:80bab7bfc629882493af4aa31a4cfa43a4c57c83813253626916b8c7ada83476
+pyzstd==0.19.1 \
+    --hash=sha256:267e2eb0de0291dfcb7ccfebc4ffe75b2f9d84e7007ac38844f6ccafc6dce081
+requests==2.33.0 \
+    --hash=sha256:3324635456fa185245e24865e810cecec7b4caf933d7eb133dcde67d48cee69b
+setuptools==78.1.0 \
+    --hash=sha256:3e386e96793c8702ae83d17b853fb93d3e09ef82ec62722e61da5cd22376dcd8
+soupsieve==4.1 \
+    --hash=sha256:e4d667b3974ce6e038e7390486b8093369854a1d345ffdd4c121dfc4a782e809
+starlette==1.10.0 \
+    --hash=sha256:478c0ab3b4ced6e82719849c118fa406f0278a3499c1a898cd15cd31bdc38ce4
+sympy==1.14.0 \
+    --hash=sha256:e091cc3e99d2141a0ba2847328f5479b05d94a6635cb96148ccb3f34671bd8f5
+torch==2.8.0+cpu \
+    --hash=sha256:cb9a8ba8137ab24e36bf1742cb79a1294bd374db570f09fc15a5e1318160db4e
+tqdm==4.66.3 \
+    --hash=sha256:4f41d54107ff9a223dca80b53efe4fb654c67efaba7f47bada3ee9d50e05bd53
+typing-inspection==0.4.5 \
+    --hash=sha256:bc210535442b39e1bf2805e0c7a17dfd6a4ace760c84c7f7d16245d23a6b1c39
+typing_extensions==4.16.0 \
+    --hash=sha256:481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8
+tzdata==2026.6 \
+    --hash=sha256:0a10eec6e13ef16b627fabed9a5f2ba61a62b1c67f327305f4e7e412a70b4aec
+urllib3==2.8.0 \
+    --hash=sha256:0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3
+uvicorn==0.34.2 \
+    --hash=sha256:deb49af569084536d269fe0a6d67e3754f104cf03aba7c11c40f01aadf33c403

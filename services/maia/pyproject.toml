@@ -3,12 +3,14 @@ name = "ci-maia"
 version = "0.1.0"
 description = "Maia-2 move-probability service for chess-improver difficulty estimates (ADR-R2-13)."
 requires-python = ">=3.12,<3.13"
-# Direct dependencies, pinned exactly. The full transitive set is pinned in requirements.lock,
-# which the Dockerfile installs with --no-deps. torch comes from the CPU wheel index (2.8.0+cpu).
+# Direct dependencies, pinned exactly. The full transitive set is pinned with hashes in
+# requirements.lock (runtime) and requirements-test.lock, installed with --require-hashes --no-deps.
+# torch comes from the PyTorch CPU wheel index (2.8.0+cpu).
 dependencies = [
     "maia2==0.11.0",
     "torch==2.8.0",
-    "fastapi==0.115.12",
+    "fastapi==0.162.4",
+    "starlette==1.10.0",
     "uvicorn==0.34.2",
     "pydantic==2.11.4",
 ]

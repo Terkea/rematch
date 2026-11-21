@@ -1,12 +1,15 @@
-"""Model interface and the real Maia-2 backend.
+"""Model interface, FEN validation and the real Maia-2 backend.
 
 The API depends only on the `MoveModel` protocol, so tests inject a fake and never import torch.
-`maia2` (MIT) and its dependencies are imported lazily, inside `Maia2Model.load`.
+`maia2` (MIT) and its dependencies are imported lazily, inside `Maia2Model.load`. This module
+does not import python-chess: FENs are validated here by our own rules, and maia2 runs the
+legal-move generation inside its own package.
 """
 
 from __future__ import annotations
 
 import os
+import re
 import threading
 from importlib.metadata import version
 from typing import Protocol
@@ -20,17 +23,54 @@ DEFAULT_ELO = 1500
 
 MODEL_TYPES = ("rapid", "blitz")
 
+_RANK = re.compile(r"^[pnbrqkPNBRQK1-8]+$")
+_CASTLING = re.compile(r"^(-|K?Q?k?q?)$")
+_EP = re.compile(r"^(-|[a-h][36])$")
+
 
 class InvalidFen(ValueError):
-    """The position cannot be evaluated (malformed FEN, or no legal moves)."""
+    """The FEN is malformed."""
+
+
+class NoLegalMoves(ValueError):
+    """Checkmate or stalemate: there is no move to predict."""
 
 
 class MoveModel(Protocol):
     model_id: str
 
     def predict(self, fen: str, elo_self: int, elo_oppo: int) -> dict[str, float]:
-        """Move probabilities keyed by UCI. Raises `InvalidFen`."""
+        """Move probabilities keyed by UCI. Raises `InvalidFen` or `NoLegalMoves`."""
         ...
+
+
+def validate_fen(fen: str) -> None:
+    """Raises `InvalidFen` unless `fen` is a well-formed six-field FEN with one king per side
+    and no pawns on the back ranks. Legality beyond that is maia2's (python-chess's) job."""
+    fields = fen.split(" ")
+    if len(fields) != 6:
+        raise InvalidFen("expected 6 fields")
+    placement, side, castling, ep, halfmove, fullmove = fields
+    ranks = placement.split("/")
+    if len(ranks) != 8:
+        raise InvalidFen("expected 8 ranks")
+    for i, rank in enumerate(ranks):
+        if not _RANK.match(rank):
+            raise InvalidFen(f"bad rank {rank!r}")
+        if sum(int(c) if c.isdigit() else 1 for c in rank) != 8:
+            raise InvalidFen(f"rank {rank!r} is not 8 squares")
+        if i in (0, 7) and ("p" in rank or "P" in rank):
+            raise InvalidFen("pawn on a back rank")
+    if placement.count("K") != 1 or placement.count("k") != 1:
+        raise InvalidFen("each side needs exactly one king")
+    if side not in ("w", "b"):
+        raise InvalidFen("bad side to move")
+    if castling == "" or not _CASTLING.match(castling):
+        raise InvalidFen("bad castling field")
+    if not _EP.match(ep):
+        raise InvalidFen("bad en-passant field")
+    if not halfmove.isdigit() or not fullmove.isdigit() or int(fullmove) < 1:
+        raise InvalidFen("bad move counters")
 
 
 def clamp_elo(elo: int | None) -> int:
@@ -71,6 +111,12 @@ class Maia2Model:
                 probs, _ = inference.inference_each(
                     self._model, self._prepared, fen, elo_self, elo_oppo
                 )
-        except (ValueError, IndexError, KeyError, AssertionError) as e:
+        except ValueError as e:
+            # maia2.inference.preprocessing: "Cannot run inference on a position without legal
+            # moves" for mate and stalemate; python-chess's ValueError for an illegal FEN.
+            if "without legal moves" in str(e):
+                raise NoLegalMoves(fen) from e
+            raise InvalidFen(str(e)) from e
+        except (IndexError, KeyError, AssertionError) as e:
             raise InvalidFen(str(e)) from e
         return {uci: float(p) for uci, p in probs.items()}
