@@ -31,7 +31,9 @@ text_enum!(
 );
 
 text_enum!(
-    /// `report_run_status`.
+    /// `report_run_status`. Also a Postgres type (and array) for binding `report_run_status[]`.
+    #[derive(sqlx::Type)]
+    #[sqlx(type_name = "report_run_status", rename_all = "snake_case")]
     RunStatus, "report_run_status", {
         Queued => "queued",
         Running => "running",
@@ -253,20 +255,29 @@ pub async fn heartbeat(conn: &mut PgConnection, id: Uuid) -> Result<bool, sqlx::
 }
 
 /// Runs in `statuses`, oldest first (for the reconciler).
+///
+/// For the live statuses (`queued`, `running`, `awaiting_retry`, `awaiting_batch`) this reads
+/// `report_runs_live_idx` in order; `$1` is cast to the enum array so the planner can prove the
+/// partial-index predicate. The statuses are bound as a real `report_run_status[]`: a text array
+/// cast in SQL is not constant-folded (`enum_in` is stable), and the planner could not prove it.
 pub async fn runs_in_status(
     conn: &mut PgConnection,
     statuses: &[RunStatus],
     limit: i64,
 ) -> Result<Vec<RunRow>, sqlx::Error> {
-    let statuses: Vec<&str> = statuses.iter().map(|s| s.as_str()).collect();
-    sqlx::query_as(sqlx::AssertSqlSafe(format!(
-        "SELECT {COLS} FROM report_runs WHERE status::text = ANY($1) \
+    sqlx::query_as(sqlx::AssertSqlSafe(runs_in_status_sql()))
+        .bind(statuses)
+        .bind(limit)
+        .fetch_all(conn)
+        .await
+}
+
+/// The SQL of [`runs_in_status`] (`$1` a `&[RunStatus]`, `$2` limit), for plan guards.
+pub fn runs_in_status_sql() -> String {
+    format!(
+        "SELECT {COLS} FROM report_runs WHERE status = ANY($1::report_run_status[]) \
          ORDER BY created_at LIMIT $2"
-    )))
-    .bind(statuses)
-    .bind(limit)
-    .fetch_all(conn)
-    .await
+    )
 }
 
 /// When the newest report for (account, time class) was created; `None` if there is none.

@@ -2,6 +2,10 @@
 //!
 //! `user_key` is the account id (fair scheduling). Payloads are camelCase JSON; the web (M4)
 //! enqueues `coach-chat` jobs through the same `jobs` table with [`CoachChatPayload`].
+//!
+//! `Queue::enqueue` commits in its own transaction, so a row can commit while its enqueue is
+//! lost (an error or a crash in between). `ai-reconcile` is the recovery: it re-enqueues unfinished
+//! rows that have no live job, and the dedupe keys make a double enqueue harmless.
 
 use std::time::Duration;
 

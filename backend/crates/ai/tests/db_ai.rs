@@ -140,17 +140,52 @@ async fn report_versions_are_unique_and_sequential(pool: PgPool) {
 #[sqlx::test(migrator = "db::MIGRATOR")]
 async fn concurrent_first_reports_get_distinct_versions(pool: PgPool) {
     let acct = account(&pool, "racing").await;
-    let a = tokio::spawn({
-        let pool = pool.clone();
-        async move { run_and_report(&pool, acct).await.1.version }
-    });
+    // A creates version 1 and holds its transaction (and the advisory lock) open.
+    let mut a = pool.begin().await.unwrap();
+    let run_a = runs::insert_run(&mut a, &new_run(acct)).await.unwrap();
+    let first = reports::create_report_with_next_version(
+        &mut a,
+        &NewReport {
+            account_id: acct,
+            time_class: "blitz".into(),
+            report_run_id: run_a,
+            schema_version: "report-payload-v1".into(),
+            computed: json!({}),
+            status: ReportStatus::ComputedOnly,
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(first.version, 1);
+
+    // B starts and must block on the lock, not read max() = 0.
     let b = tokio::spawn({
         let pool = pool.clone();
         async move { run_and_report(&pool, acct).await.1.version }
     });
-    let mut v = [a.await.unwrap(), b.await.unwrap()];
-    v.sort_unstable();
-    assert_eq!(v, [1, 2]);
+    testkit::wait_for(
+        "B to wait on the version lock",
+        Duration::from_secs(10),
+        Duration::from_millis(20),
+        || {
+            let pool = pool.clone();
+            async move {
+                let waiting: i64 = sqlx::query_scalar(
+                    "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND NOT granted \
+                     AND classid = 30001",
+                )
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+                (waiting == 1).then_some(())
+            }
+        },
+    )
+    .await;
+    assert!(!b.is_finished());
+
+    a.commit().await.unwrap();
+    assert_eq!(b.await.unwrap(), 2);
 }
 
 fn ready(content: Value) -> SectionWrite {
@@ -400,6 +435,7 @@ async fn duplicate_conversation_seq_is_rejected(pool: PgPool) {
                 dropped_count: 0,
                 ai_disclosure: Some(json!({"label": "Written by AI"})),
                 session: Some(SessionPath::Resumed),
+                session_model_usage: Some(json!({"claude-sonnet-5-5": {"inputTokens": 10}})),
             }
         )
         .await
@@ -1150,40 +1186,6 @@ async fn notes_weekly_and_batches_round_trip(pool: PgPool) {
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
-async fn sidecar_role_reaches_only_the_session_table(pool: PgPool) {
-    let can = |table: &'static str, privilege: &'static str| {
-        let pool = pool.clone();
-        async move {
-            sqlx::query_scalar::<_, bool>("SELECT has_table_privilege('ai_sidecar', $1, $2)")
-                .bind(table)
-                .bind(privilege)
-                .fetch_one(&pool)
-                .await
-                .unwrap()
-        }
-    };
-    for p in ["SELECT", "INSERT", "DELETE"] {
-        assert!(can("ai_sdk_session_entries", p).await, "{p}");
-    }
-    assert!(!can("ai_sdk_session_entries", "UPDATE").await);
-    for t in [
-        "coach_conversations",
-        "coach_messages",
-        "reports",
-        "linked_accounts",
-        "jobs",
-    ] {
-        assert!(!can(t, "SELECT").await, "{t}");
-    }
-    let login: bool =
-        sqlx::query_scalar("SELECT rolcanlogin FROM pg_roles WHERE rolname = 'ai_sidecar'")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-    assert!(!login, "ops grants LOGIN and the password");
-}
-
-#[sqlx::test(migrator = "db::MIGRATOR")]
 async fn duplicate_session_entry_uuid_is_a_no_op(pool: PgPool) {
     let session = Uuid::new_v4();
     let insert = |seq: i64, subpath: &'static str, entry: Value| {
@@ -1228,4 +1230,320 @@ async fn duplicate_session_entry_uuid_is_a_no_op(pool: PgPool) {
             .await
             .unwrap();
     assert_eq!(n, 5);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn sidecar_role_reaches_only_the_session_table(pool: PgPool) {
+    // Every privilege the role holds on any relation or sequence in `public` (direct or through
+    // PUBLIC), checked with has_*_privilege.
+    let held: Vec<(String, String)> = sqlx::query_as(
+        "SELECT c.relname::text, p.priv FROM pg_class c \
+         JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'public' \
+         CROSS JOIN LATERAL unnest(CASE WHEN c.relkind = 'S' \
+           THEN ARRAY['USAGE', 'SELECT', 'UPDATE'] \
+           ELSE ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', \
+                      'TRIGGER', 'MAINTAIN'] END) AS p(priv) \
+         WHERE c.relkind IN ('r', 'p', 'v', 'm', 'f', 'S') \
+         AND CASE WHEN c.relkind = 'S' THEN has_sequence_privilege('ai_sidecar', c.oid, p.priv) \
+                  ELSE has_table_privilege('ai_sidecar', c.oid, p.priv) END \
+         ORDER BY 1, 2",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    let relations: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace \
+         WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p', 'v', 'm', 'f', 'S')",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(
+        relations > 20,
+        "the check saw the schema ({relations} relations)"
+    );
+    let session = |p: &str| ("ai_sdk_session_entries".to_owned(), p.to_owned());
+    assert_eq!(
+        held,
+        [session("DELETE"), session("INSERT"), session("SELECT")]
+    );
+    let usage: bool =
+        sqlx::query_scalar("SELECT has_schema_privilege('ai_sidecar', 'public', 'USAGE')")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert!(usage);
+}
+
+async fn add_entries(pool: &PgPool, session: Uuid, n: i64) {
+    for seq in 0..n {
+        sqlx::query(
+            "INSERT INTO ai_sdk_session_entries (project_key, session_id, subpath, seq, entry) \
+             VALUES ('p', $1, '', $2, '{}')",
+        )
+        .bind(session)
+        .bind(seq)
+        .execute(pool)
+        .await
+        .unwrap();
+    }
+}
+
+async fn session_entries(pool: &PgPool, session: Uuid) -> i64 {
+    sqlx::query_scalar("SELECT count(*) FROM ai_sdk_session_entries WHERE session_id = $1")
+        .bind(session)
+        .fetch_one(pool)
+        .await
+        .unwrap()
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn every_conversation_delete_path_removes_session_entries(pool: PgPool) {
+    let acct = account(&pool, "paths").await;
+    let rust = conversation(&pool, acct).await;
+    let raw = conversation(&pool, acct).await;
+    let cascaded = conversation(&pool, acct).await;
+    for c in [&rust, &raw, &cascaded] {
+        add_entries(&pool, c.id, 2).await;
+    }
+
+    let mut conn = pool.acquire().await.unwrap();
+    assert!(
+        chat::delete_conversation(&mut conn, acct, rust.id)
+            .await
+            .unwrap()
+    );
+    assert_eq!(session_entries(&pool, rust.id).await, 0, "Rust delete");
+
+    sqlx::query("DELETE FROM coach_conversations WHERE id = $1")
+        .bind(raw.id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert_eq!(session_entries(&pool, raw.id).await, 0, "raw SQL delete");
+
+    // Unlinking the account cascades to its conversations, and the trigger fires for each.
+    // (Report runs etc. cascade too; nothing else references this account.)
+    sqlx::query("DELETE FROM linked_accounts WHERE id = $1")
+        .bind(acct)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        session_entries(&pool, cascaded.id).await,
+        0,
+        "linked_accounts cascade"
+    );
+    let left: i64 = sqlx::query_scalar("SELECT count(*) FROM ai_sdk_session_entries")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(left, 0);
+
+    // A rolled-back delete keeps the entries.
+    let acct2 = account(&pool, "rollback").await;
+    let kept = conversation(&pool, acct2).await;
+    add_entries(&pool, kept.id, 1).await;
+    let mut tx = pool.begin().await.unwrap();
+    assert!(
+        chat::delete_conversation(&mut tx, acct2, kept.id)
+            .await
+            .unwrap()
+    );
+    tx.rollback().await.unwrap();
+    assert_eq!(session_entries(&pool, kept.id).await, 1);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn orphan_sweep_removes_only_old_entries_without_a_conversation(pool: PgPool) {
+    let acct = account(&pool, "sweep").await;
+    let live = conversation(&pool, acct).await;
+    let old_orphan = Uuid::new_v4();
+    let new_orphan = Uuid::new_v4();
+    for id in [live.id, old_orphan, new_orphan] {
+        add_entries(&pool, id, 2).await;
+    }
+    sqlx::query(
+        "UPDATE ai_sdk_session_entries SET created_at = now() - interval '11 minutes' \
+         WHERE session_id = ANY($1)",
+    )
+    .bind(vec![live.id, old_orphan])
+    .execute(&pool)
+    .await
+    .unwrap();
+    let mut conn = pool.acquire().await.unwrap();
+    let swept = chat::sweep_orphan_session_entries(&mut conn, chat::ORPHAN_SESSION_MIN_AGE)
+        .await
+        .unwrap();
+    assert_eq!(swept, 2);
+    assert_eq!(session_entries(&pool, old_orphan).await, 0);
+    assert_eq!(
+        session_entries(&pool, new_orphan).await,
+        2,
+        "younger than 10 min"
+    );
+    assert_eq!(
+        session_entries(&pool, live.id).await,
+        2,
+        "has a conversation"
+    );
+    assert_eq!(chat::ORPHAN_SESSION_MIN_AGE, Duration::from_secs(600));
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn previous_session_model_usage_is_the_last_metered_assistant_turn(pool: PgPool) {
+    let acct = account(&pool, "usage").await;
+    let conv = conversation(&pool, acct).await;
+    let mut conn = pool.acquire().await.unwrap();
+    let assistant = |seq| NewMessage {
+        role: ChatRole::Assistant,
+        status: ChatStatus::Pending,
+        text: None,
+        ..user_msg(conv.id, seq)
+    };
+    let finish = |usage: Option<Value>| MessageFinish {
+        text: "t".into(),
+        segments: json!([]),
+        citations: json!([]),
+        api_messages: None,
+        dropped_count: 0,
+        ai_disclosure: None,
+        session: Some(SessionPath::Resumed),
+        session_model_usage: usage,
+    };
+    assert_eq!(
+        chat::previous_session_model_usage(&mut conn, conv.id, 1)
+            .await
+            .unwrap(),
+        None
+    );
+    chat::insert_message(&mut conn, &user_msg(conv.id, 1))
+        .await
+        .unwrap();
+    let a2 = chat::insert_message(&mut conn, &assistant(2))
+        .await
+        .unwrap();
+    let u2 = json!({"claude-sonnet-5-5": {"inputTokens": 100, "outputTokens": 10}});
+    chat::finish_message(&mut conn, a2.id, &finish(Some(u2.clone())))
+        .await
+        .unwrap();
+    chat::insert_message(&mut conn, &user_msg(conv.id, 3))
+        .await
+        .unwrap();
+    let a4 = chat::insert_message(&mut conn, &assistant(4))
+        .await
+        .unwrap();
+    // A failed turn stores nothing; the previous value is still turn 2's.
+    chat::fail_message(&mut conn, a4.id, "unavailable")
+        .await
+        .unwrap();
+    chat::insert_message(&mut conn, &user_msg(conv.id, 5))
+        .await
+        .unwrap();
+    let a6 = chat::insert_message(&mut conn, &assistant(6))
+        .await
+        .unwrap();
+    assert_eq!(
+        chat::previous_session_model_usage(&mut conn, conv.id, 6)
+            .await
+            .unwrap(),
+        Some(u2.clone())
+    );
+    let u6 = json!({"claude-sonnet-5-5": {"inputTokens": 250, "outputTokens": 30}});
+    chat::finish_message(&mut conn, a6.id, &finish(Some(u6.clone())))
+        .await
+        .unwrap();
+    assert_eq!(
+        chat::previous_session_model_usage(&mut conn, conv.id, 7)
+            .await
+            .unwrap(),
+        Some(u6.clone())
+    );
+    assert_eq!(
+        chat::previous_session_model_usage(&mut conn, conv.id, 6)
+            .await
+            .unwrap(),
+        Some(u2)
+    );
+    let stored = chat::get_message(&mut conn, a6.id).await.unwrap().unwrap();
+    assert_eq!(stored.session_model_usage, Some(u6));
+}
+
+/// The plan with sequential and bitmap scans disabled: on empty test tables the planner would
+/// otherwise pick a seq scan or a bitmap scan plus a sort whatever the indexes.
+macro_rules! plan {
+    ($pool:expr, $sql:expr $(, $bind:expr)*) => {{
+        let mut tx = $pool.begin().await.unwrap();
+        for off in ["enable_seqscan", "enable_bitmapscan"] {
+            sqlx::query(sqlx::AssertSqlSafe(format!("SET LOCAL {off} = off")))
+                .execute(&mut *tx)
+                .await
+                .unwrap();
+        }
+        let plan: Vec<String> =
+            sqlx::query_scalar(sqlx::AssertSqlSafe(format!("EXPLAIN {}", $sql)))
+                $(.bind($bind))*
+                .fetch_all(&mut *tx)
+                .await
+                .unwrap();
+        plan.join("
+")
+    }};
+}
+
+/// The plan reads `index` in order: no sort and no seq scan.
+fn assert_ordered_by(plan: &str, index: &str) {
+    assert!(
+        plan.contains(&format!("Index Scan using {index}")),
+        "expected {index} in
+{plan}"
+    );
+    assert!(
+        !plan.contains("Sort") && !plan.contains("Seq Scan"),
+        "{plan}"
+    );
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn reconciler_scans_use_their_partial_indexes(pool: PgPool) {
+    let live = [
+        RunStatus::Queued,
+        RunStatus::Running,
+        RunStatus::AwaitingRetry,
+        RunStatus::AwaitingBatch,
+    ];
+    // All live statuses: one ordered read of the partial index.
+    let p = plan!(pool, runs::runs_in_status_sql(), &live[..], 50_i64);
+    assert_ordered_by(&p, "report_runs_live_idx");
+    // One status: either index, never a seq scan (status_idx plus a small sort is fine).
+    let p = plan!(
+        pool,
+        runs::runs_in_status_sql(),
+        &[RunStatus::AwaitingRetry][..],
+        50_i64
+    );
+    assert!(
+        p.contains("report_runs_live_idx") || p.contains("report_runs_status_idx"),
+        "{p}"
+    );
+    assert!(!p.contains("Seq Scan"), "{p}");
+    let p = plan!(pool, interactive::stale_pending_sql(), 120.0_f64, 50_i64);
+    assert_ordered_by(&p, "interactive_evals_pending_idx");
+    let p = plan!(pool, batches::open_batches_sql());
+    assert_ordered_by(&p, "ai_batches_open_idx");
+
+    // And the statuses still bind and filter.
+    let acct = account(&pool, "plans").await;
+    let mut conn = pool.acquire().await.unwrap();
+    let id = runs::insert_run(&mut conn, &new_run(acct)).await.unwrap();
+    let found = runs::runs_in_status(&mut conn, &[RunStatus::Queued], 10)
+        .await
+        .unwrap();
+    assert_eq!(found.iter().map(|r| r.id).collect::<Vec<_>>(), [id]);
+    assert!(
+        runs::runs_in_status(&mut conn, &[RunStatus::Done], 10)
+            .await
+            .unwrap()
+            .is_empty()
+    );
 }

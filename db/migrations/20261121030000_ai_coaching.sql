@@ -24,6 +24,9 @@ CREATE TABLE report_runs (
   created_at timestamptz NOT NULL DEFAULT now());
 CREATE INDEX report_runs_account_idx ON report_runs (account_id, time_class, created_at DESC);
 CREATE INDEX report_runs_status_idx ON report_runs (status, next_attempt_at);
+-- The reconciler scans unfinished runs oldest first (db::runs::runs_in_status).
+CREATE INDEX report_runs_live_idx ON report_runs (created_at)
+  WHERE status IN ('queued','running','awaiting_retry','awaiting_batch');
 CREATE TABLE reports (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id uuid NOT NULL REFERENCES linked_accounts(id) ON DELETE CASCADE,
@@ -46,6 +49,7 @@ CREATE TABLE weekly_reviews (
   model text, prompt_hash text, retry_count integer NOT NULL DEFAULT 0, next_attempt_at timestamptz,
   ai_disclosure jsonb, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (account_id, time_class, week_start));
+CREATE INDEX weekly_reviews_pending_idx ON weekly_reviews (created_at) WHERE status = 'pending';
 CREATE TABLE weakness_change_notes (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id uuid NOT NULL REFERENCES linked_accounts(id) ON DELETE CASCADE,
@@ -55,14 +59,19 @@ CREATE TABLE weakness_change_notes (
   next_attempt_at timestamptz, ai_disclosure jsonb,
   created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (account_id, change_key));
+CREATE INDEX weakness_change_notes_pending_idx ON weakness_change_notes (created_at)
+  WHERE status = 'pending';
 CREATE TABLE coach_conversations (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id uuid NOT NULL REFERENCES linked_accounts(id) ON DELETE CASCADE,
-  user_id uuid,                          -- M4's user; the FK is added by M4's Better Auth migration
+  -- M4's user. The FK (REFERENCES "user"(id) ON DELETE CASCADE) is added by Task 26's
+  -- integration migration: r3/base has no web auth tables.
+  user_id uuid,
   time_class time_class NOT NULL, title text, anchor jsonb,
   summary text, summary_through_seq integer NOT NULL DEFAULT 0,
   created_at timestamptz NOT NULL DEFAULT now(), last_message_at timestamptz NOT NULL DEFAULT now());
 CREATE INDEX coach_conversations_owner_idx ON coach_conversations (account_id, last_message_at DESC);
+CREATE INDEX coach_conversations_user_idx ON coach_conversations (user_id) WHERE user_id IS NOT NULL;
 CREATE TABLE coach_messages (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   conversation_id uuid NOT NULL REFERENCES coach_conversations(id) ON DELETE CASCADE,
@@ -71,6 +80,8 @@ CREATE TABLE coach_messages (
   dropped_count integer NOT NULL DEFAULT 0, failure_reason text, ai_disclosure jsonb,
   -- How the Agent SDK session was used for this assistant turn (metrics; ADR-R3-6 amendment 1).
   session text CHECK (session IN ('new','resumed','rebuilt')),
+  -- The SDK's cumulative per-session modelUsage after this turn; the next turn meters the delta.
+  session_model_usage jsonb,
   created_at timestamptz NOT NULL DEFAULT now(), UNIQUE (conversation_id, seq));
 CREATE TYPE interactive_eval_status AS ENUM ('pending','done','failed');
 -- Interactive engine checks: NEVER read by KPI, stats, profile or report code (Global Constraints).
@@ -85,6 +96,9 @@ CREATE TABLE interactive_evals (
   created_at timestamptz NOT NULL DEFAULT now(), finished_at timestamptz);
 CREATE INDEX interactive_evals_quota_idx ON interactive_evals (account_id, created_at) WHERE charged;
 CREATE INDEX interactive_evals_reuse_idx ON interactive_evals (account_id, fen, protocol, created_at DESC);
+-- ON DELETE SET NULL from coach_messages looks rows up by message_id.
+CREATE INDEX interactive_evals_message_idx ON interactive_evals (message_id) WHERE message_id IS NOT NULL;
+CREATE INDEX interactive_evals_pending_idx ON interactive_evals (created_at) WHERE status = 'pending';
 CREATE TABLE ai_usage (
   id bigserial PRIMARY KEY, account_id uuid NOT NULL, feature ai_feature NOT NULL, model text NOT NULL,
   batch boolean NOT NULL DEFAULT false, input_tokens integer NOT NULL, output_tokens integer NOT NULL,
@@ -96,18 +110,26 @@ CREATE TABLE ai_batches (
   id text PRIMARY KEY, kind text NOT NULL CHECK (kind IN ('report','weekly_review')),
   status ai_batch_status NOT NULL DEFAULT 'submitted', request_count integer NOT NULL,
   submitted_at timestamptz NOT NULL DEFAULT now(), ended_at timestamptz, processed_at timestamptz, last_polled_at timestamptz);
+-- The poller's scan (db::batches::open_batches).
+CREATE INDEX ai_batches_open_idx ON ai_batches (last_polled_at NULLS FIRST, submitted_at)
+  WHERE status IN ('submitted','ended');
 CREATE TABLE ai_batch_items (
   id uuid PRIMARY KEY, batch_id text NOT NULL REFERENCES ai_batches(id) ON DELETE CASCADE,
   custom_id text NOT NULL UNIQUE, kind text NOT NULL CHECK (kind IN ('report','weekly_review')),
   report_run_id uuid REFERENCES report_runs(id) ON DELETE CASCADE, section text,
   weekly_review_id uuid REFERENCES weekly_reviews(id) ON DELETE CASCADE, processed_at timestamptz);
 CREATE INDEX ai_batch_items_pending_idx ON ai_batch_items (batch_id) WHERE processed_at IS NULL;
+-- The ON DELETE CASCADE from report_runs and weekly_reviews looks items up by these.
+CREATE INDEX ai_batch_items_run_idx ON ai_batch_items (report_run_id) WHERE report_run_id IS NOT NULL;
+CREATE INDEX ai_batch_items_weekly_idx ON ai_batch_items (weekly_review_id)
+  WHERE weekly_review_id IS NOT NULL;
 
 -- Claude Agent SDK session store (ADR-R3-6 amendment 1). The sidecar's Postgres SessionStore
 -- adapter writes opaque transcript entries here; session_id is the coach_conversations id. The
--- SDK never deletes: Rust deletes a conversation's rows in the same transaction as the
--- conversation (db::chat::delete_conversation, delete_all_conversations). No FK, so the sidecar
--- may write a turn's entries before Rust commits anything about it.
+-- SDK never deletes: the trigger below deletes a conversation's rows in the same transaction as
+-- the conversation, on every delete path (Rust, raw SQL, the linked_accounts cascade). No FK, so
+-- the sidecar may write a turn's entries before Rust commits anything about it; ai-reconcile
+-- sweeps entries left without a conversation (db::chat::sweep_orphan_session_entries).
 CREATE TABLE ai_sdk_session_entries (
   project_key text NOT NULL,
   session_id uuid NOT NULL,
@@ -117,10 +139,23 @@ CREATE TABLE ai_sdk_session_entries (
   created_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (project_key, session_id, subpath, seq));
 CREATE INDEX ai_sdk_session_entries_session_idx ON ai_sdk_session_entries (session_id);
+-- The orphan sweep's age filter.
+CREATE INDEX ai_sdk_session_entries_created_idx ON ai_sdk_session_entries (created_at);
 -- One row per SDK entry uuid within a (project, session, subpath): the sidecar appends with
 -- INSERT ... ON CONFLICT DO NOTHING instead of scanning the session for duplicates.
 CREATE UNIQUE INDEX ai_sdk_session_entries_uuid_uq
   ON ai_sdk_session_entries (project_key, session_id, subpath, (entry->>'uuid')) WHERE entry ? 'uuid';
+
+CREATE FUNCTION coach_conversations_delete_session_entries() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  DELETE FROM ai_sdk_session_entries WHERE session_id = OLD.id;
+  RETURN NULL;
+END
+$$;
+CREATE TRIGGER coach_conversations_delete_session_entries
+  AFTER DELETE ON coach_conversations
+  FOR EACH ROW EXECUTE FUNCTION coach_conversations_delete_session_entries();
 
 -- The sidecar's restricted role: this one table and nothing else. Created NOLOGIN; operations
 -- grant LOGIN and a password out of band (no secret in a migration). Roles are cluster-wide, so
@@ -137,6 +172,7 @@ BEGIN
     END;
   END IF;
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ai_sidecar') THEN
+    GRANT USAGE ON SCHEMA public TO ai_sidecar;
     GRANT SELECT, INSERT, DELETE ON ai_sdk_session_entries TO ai_sidecar;
   ELSE
     RAISE NOTICE 'role ai_sidecar not created (no CREATEROLE); grant it access to ai_sdk_session_entries manually';

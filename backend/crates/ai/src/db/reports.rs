@@ -106,6 +106,11 @@ const SECTION_COLS: &str = "report_id, section, status::text AS status, content,
 /// caller's transaction ends (or this call's own, outside one): a `FOR UPDATE` on the existing
 /// rows cannot lock a first report that does not exist yet, and `max()` cannot be combined with
 /// `FOR UPDATE`.
+///
+/// Call it under READ COMMITTED (the default). Under REPEATABLE READ or SERIALIZABLE the
+/// caller's snapshot predates the lock wait, so `max()` misses a version committed meanwhile
+/// and the insert fails on the unique `(account_id, time_class, version)` (or with a
+/// serialization failure). The data stays correct, but the caller must retry.
 pub async fn create_report_with_next_version(
     conn: &mut PgConnection,
     report: &NewReport,

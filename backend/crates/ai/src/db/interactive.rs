@@ -172,18 +172,24 @@ pub async fn reusable(
     .await
 }
 
-/// Pending evals created before `now() - older_than` (for the reconciler), oldest first.
+/// Pending evals created before `now() - older_than` (for the reconciler), oldest first. Reads
+/// `interactive_evals_pending_idx` in order.
 pub async fn stale_pending(
     conn: &mut PgConnection,
     older_than: Duration,
     limit: i64,
 ) -> Result<Vec<EvalRow>, sqlx::Error> {
-    sqlx::query_as(sqlx::AssertSqlSafe(format!(
+    sqlx::query_as(sqlx::AssertSqlSafe(stale_pending_sql()))
+        .bind(older_than.as_secs_f64())
+        .bind(limit)
+        .fetch_all(conn)
+        .await
+}
+
+/// The SQL of [`stale_pending`] (`$1` seconds, `$2` limit), for plan guards.
+pub fn stale_pending_sql() -> String {
+    format!(
         "SELECT {COLS} FROM interactive_evals WHERE status = 'pending' \
          AND created_at < now() - $1::float8 * interval '1 second' ORDER BY created_at LIMIT $2"
-    )))
-    .bind(older_than.as_secs_f64())
-    .bind(limit)
-    .fetch_all(conn)
-    .await
+    )
 }

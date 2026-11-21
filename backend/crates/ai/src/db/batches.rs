@@ -155,14 +155,19 @@ pub async fn get_batch(conn: &mut PgConnection, id: &str) -> Result<Option<Batch
     .await
 }
 
-/// Batches still to poll or process (`submitted`, `ended`), least recently polled first.
+/// Batches still to poll or process (`submitted`, `ended`), least recently polled first. Reads
+/// `ai_batches_open_idx` in order.
 pub async fn open_batches(conn: &mut PgConnection) -> Result<Vec<BatchRow>, sqlx::Error> {
-    sqlx::query_as(sqlx::AssertSqlSafe(format!(
-        "SELECT {BATCH_COLS} FROM ai_batches WHERE status IN ('submitted', 'ended') \
-         ORDER BY last_polled_at NULLS FIRST, submitted_at"
-    )))
-    .fetch_all(conn)
-    .await
+    sqlx::query_as(sqlx::AssertSqlSafe(open_batches_sql()))
+        .fetch_all(conn)
+        .await
+}
+
+/// The SQL of [`open_batches`], for plan guards.
+pub fn open_batches_sql() -> String {
+    format!(
+        "SELECT {BATCH_COLS} FROM ai_batches WHERE status IN ('submitted', 'ended')          ORDER BY last_polled_at NULLS FIRST, submitted_at"
+    )
 }
 
 pub async fn mark_polled(conn: &mut PgConnection, id: &str) -> Result<bool, sqlx::Error> {

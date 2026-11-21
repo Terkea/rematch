@@ -133,6 +133,12 @@ export const aiBatchItems = pgTable(
     index("ai_batch_items_pending_idx")
       .using("btree", table.batchId.asc().nullsLast())
       .where(sql`(processed_at IS NULL)`),
+    index("ai_batch_items_run_idx")
+      .using("btree", table.reportRunId.asc().nullsLast())
+      .where(sql`(report_run_id IS NOT NULL)`),
+    index("ai_batch_items_weekly_idx")
+      .using("btree", table.weeklyReviewId.asc().nullsLast())
+      .where(sql`(weekly_review_id IS NOT NULL)`),
     foreignKey({
       columns: [table.batchId],
       foreignColumns: [aiBatches.id],
@@ -170,7 +176,10 @@ export const aiBatches = pgTable(
     processedAt: timestamp("processed_at", { withTimezone: true, mode: "date" }),
     lastPolledAt: timestamp("last_polled_at", { withTimezone: true, mode: "date" }),
   },
-  (_table) => [
+  (table) => [
+    index("ai_batches_open_idx")
+      .using("btree", table.lastPolledAt.asc().nullsFirst(), table.submittedAt.asc().nullsLast())
+      .where(sql`(status = ANY (ARRAY['submitted'::ai_batch_status, 'ended'::ai_batch_status]))`),
     check("ai_batches_kind_check", sql`kind = ANY (ARRAY['report'::text, 'weekly_review'::text])`),
   ],
 );
@@ -187,6 +196,7 @@ export const aiSdkSessionEntries = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   },
   (table) => [
+    index("ai_sdk_session_entries_created_idx").using("btree", table.createdAt.asc().nullsLast()),
     index("ai_sdk_session_entries_session_idx").using("btree", table.sessionId.asc().nullsLast()),
     uniqueIndex("ai_sdk_session_entries_uuid_uq")
       .using(
@@ -253,6 +263,9 @@ export const coachConversations = pgTable(
       table.accountId.asc().nullsLast(),
       table.lastMessageAt.desc().nullsFirst(),
     ),
+    index("coach_conversations_user_idx")
+      .using("btree", table.userId.asc().nullsLast())
+      .where(sql`(user_id IS NOT NULL)`),
     foreignKey({
       columns: [table.accountId],
       foreignColumns: [linkedAccounts.id],
@@ -278,6 +291,7 @@ export const coachMessages = pgTable(
     failureReason: text("failure_reason"),
     aiDisclosure: jsonb("ai_disclosure"),
     session: text(),
+    sessionModelUsage: jsonb("session_model_usage"),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   },
   (table) => [
@@ -392,6 +406,12 @@ export const interactiveEvals = pgTable(
     finishedAt: timestamp("finished_at", { withTimezone: true, mode: "date" }),
   },
   (table) => [
+    index("interactive_evals_message_idx")
+      .using("btree", table.messageId.asc().nullsLast())
+      .where(sql`(message_id IS NOT NULL)`),
+    index("interactive_evals_pending_idx")
+      .using("btree", table.createdAt.asc().nullsLast())
+      .where(sql`(status = 'pending'::interactive_eval_status)`),
     index("interactive_evals_quota_idx")
       .using("btree", table.accountId.asc().nullsLast(), table.createdAt.asc().nullsLast())
       .where(sql`charged`),
@@ -573,6 +593,11 @@ export const reportRuns = pgTable(
       table.timeClass.asc().nullsLast(),
       table.createdAt.desc().nullsFirst(),
     ),
+    index("report_runs_live_idx")
+      .using("btree", table.createdAt.asc().nullsLast())
+      .where(
+        sql`(status = ANY (ARRAY['queued'::report_run_status, 'running'::report_run_status, 'awaiting_retry'::report_run_status, 'awaiting_batch'::report_run_status]))`,
+      ),
     index("report_runs_status_idx").using(
       "btree",
       table.status.asc().nullsLast(),
@@ -703,6 +728,9 @@ export const weaknessChangeNotes = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   },
   (table) => [
+    index("weakness_change_notes_pending_idx")
+      .using("btree", table.createdAt.asc().nullsLast())
+      .where(sql`(status = 'pending'::ai_item_status)`),
     foreignKey({
       columns: [table.accountId],
       foreignColumns: [linkedAccounts.id],
@@ -733,6 +761,9 @@ export const weeklyReviews = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   },
   (table) => [
+    index("weekly_reviews_pending_idx")
+      .using("btree", table.createdAt.asc().nullsLast())
+      .where(sql`(status = 'pending'::ai_item_status)`),
     foreignKey({
       columns: [table.accountId],
       foreignColumns: [linkedAccounts.id],

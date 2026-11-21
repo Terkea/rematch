@@ -1,9 +1,14 @@
 //! `coach_conversations` and `coach_messages`, the system of record for the coach chat
 //! (ADR-R3-3, ADR-R3-6 amendment 1). The Agent SDK's transcript lives in
-//! `ai_sdk_session_entries` (session id = conversation id); deleting a conversation deletes it too.
+//! `ai_sdk_session_entries` (session id = conversation id). The trigger
+//! `coach_conversations_delete_session_entries` deletes a conversation's entries on every delete
+//! path; [`sweep_orphan_session_entries`] (run by `ai-reconcile`) removes entries the sidecar wrote
+//! for a conversation that never committed or was deleted mid-turn.
 //!
 //! Message states: `pending` (the job is queued) → `streaming` → `done` | `failed`. User
 //! messages are inserted `done`.
+
+use std::time::Duration;
 
 use serde_json::Value;
 use sqlx::PgConnection;
@@ -82,6 +87,8 @@ pub struct MessageRow {
     pub ai_disclosure: Option<Value>,
     #[sqlx(try_from = "OptText")]
     pub session: Option<SessionPath>,
+    /// The SDK's cumulative per-session `modelUsage` after this turn.
+    pub session_model_usage: Option<Value>,
     pub created_at: OffsetDateTime,
 }
 
@@ -95,6 +102,9 @@ pub struct MessageFinish {
     pub dropped_count: i32,
     pub ai_disclosure: Option<Value>,
     pub session: Option<SessionPath>,
+    /// The SDK's cumulative per-session `modelUsage` after this turn (the next turn meters the
+    /// difference; see [`previous_session_model_usage`]).
+    pub session_model_usage: Option<Value>,
 }
 
 /// A nullable text column, decoded through `TryFrom` (sqlx's `try_from` needs a named type).
@@ -114,7 +124,7 @@ const CONV_COLS: &str = "id, account_id, user_id, time_class::text AS time_class
 
 const MSG_COLS: &str = "id, conversation_id, seq, role::text AS role, status::text AS status, \
     anchor, text, segments, citations, api_messages, dropped_count, failure_reason, \
-    ai_disclosure, session, created_at";
+    ai_disclosure, session, session_model_usage, created_at";
 
 pub async fn create_conversation(
     conn: &mut PgConnection,
@@ -271,6 +281,7 @@ pub async fn finish_message(
     let r = sqlx::query(
         "UPDATE coach_messages SET status = 'done', text = $2, segments = $3, citations = $4, \
          api_messages = $5, dropped_count = $6, ai_disclosure = $7, session = $8, \
+         session_model_usage = $9, \
          failure_reason = NULL WHERE id = $1 AND status IN ('pending', 'streaming')",
     )
     .bind(id)
@@ -281,6 +292,7 @@ pub async fn finish_message(
     .bind(f.dropped_count)
     .bind(&f.ai_disclosure)
     .bind(f.session.map(SessionPath::as_str))
+    .bind(&f.session_model_usage)
     .execute(conn)
     .await?;
     Ok(r.rows_affected() == 1)
@@ -303,40 +315,73 @@ pub async fn fail_message(
     Ok(r.rows_affected() == 1)
 }
 
-/// Deletes one of the account's conversations, its messages (cascade) and its Agent SDK session
-/// entries, in one statement (so one transaction). `interactive_evals.message_id` is set NULL;
-/// the eval rows stay, so deleting never refunds the engine-check quota. `false` when the
-/// conversation does not exist or belongs to another account.
+/// Deletes one of the account's conversations; its messages go by cascade and its Agent SDK
+/// session entries by the `coach_conversations_delete_session_entries` trigger, in the same
+/// transaction. `interactive_evals.message_id` is set NULL; the eval rows stay, so deleting never
+/// refunds the engine-check quota. `false` when the conversation does not exist or belongs to
+/// another account.
 pub async fn delete_conversation(
     conn: &mut PgConnection,
     account_id: Uuid,
     id: Uuid,
 ) -> Result<bool, sqlx::Error> {
-    let n: i64 = sqlx::query_scalar(
-        "WITH c AS (DELETE FROM coach_conversations WHERE id = $1 AND account_id = $2 RETURNING id), \
-         s AS (DELETE FROM ai_sdk_session_entries WHERE session_id IN (SELECT id FROM c)) \
-         SELECT count(*) FROM c",
-    )
-    .bind(id)
-    .bind(account_id)
-    .fetch_one(conn)
-    .await?;
-    Ok(n == 1)
+    let r = sqlx::query("DELETE FROM coach_conversations WHERE id = $1 AND account_id = $2")
+        .bind(id)
+        .bind(account_id)
+        .execute(conn)
+        .await?;
+    Ok(r.rows_affected() == 1)
 }
 
-/// Deletes all of the account's conversations and their session entries in one statement.
-/// Returns the number of conversations deleted.
+/// Deletes all of the account's conversations (and, by cascade and trigger, their messages and
+/// session entries). Returns the number of conversations deleted.
 pub async fn delete_all_conversations(
     conn: &mut PgConnection,
     account_id: Uuid,
 ) -> Result<u64, sqlx::Error> {
-    let n: i64 = sqlx::query_scalar(
-        "WITH c AS (DELETE FROM coach_conversations WHERE account_id = $1 RETURNING id), \
-         s AS (DELETE FROM ai_sdk_session_entries WHERE session_id IN (SELECT id FROM c)) \
-         SELECT count(*) FROM c",
+    let r = sqlx::query("DELETE FROM coach_conversations WHERE account_id = $1")
+        .bind(account_id)
+        .execute(conn)
+        .await?;
+    Ok(r.rows_affected())
+}
+
+/// The previous assistant turn's `session_model_usage` in a conversation (the newest one with
+/// `seq < before_seq` that has a value), so a turn meters only its own share of the SDK's
+/// cumulative per-session usage. `None` for the first metered turn or after a rebuilt session.
+pub async fn previous_session_model_usage(
+    conn: &mut PgConnection,
+    conversation_id: Uuid,
+    before_seq: i32,
+) -> Result<Option<Value>, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT session_model_usage FROM coach_messages WHERE conversation_id = $1 \
+         AND seq < $2 AND role = 'assistant' AND session_model_usage IS NOT NULL \
+         ORDER BY seq DESC LIMIT 1",
     )
-    .bind(account_id)
-    .fetch_one(conn)
+    .bind(conversation_id)
+    .bind(before_seq)
+    .fetch_optional(conn)
+    .await
+}
+
+/// Session entries older than this with no conversation are orphans.
+pub const ORPHAN_SESSION_MIN_AGE: Duration = Duration::from_secs(600);
+
+/// Deletes session entries whose session has no conversation and that are older than
+/// `min_age` (the sidecar may write a new conversation's first entries before Rust commits it).
+/// Run by `ai-reconcile` with [`ORPHAN_SESSION_MIN_AGE`]. Returns the rows deleted.
+pub async fn sweep_orphan_session_entries(
+    conn: &mut PgConnection,
+    min_age: Duration,
+) -> Result<u64, sqlx::Error> {
+    let r = sqlx::query(
+        "DELETE FROM ai_sdk_session_entries e \
+         WHERE e.created_at < now() - $1::float8 * interval '1 second' \
+         AND NOT EXISTS (SELECT 1 FROM coach_conversations c WHERE c.id = e.session_id)",
+    )
+    .bind(min_age.as_secs_f64())
+    .execute(conn)
     .await?;
-    Ok(u64::try_from(n).unwrap_or(0))
+    Ok(r.rows_affected())
 }
