@@ -6,3 +6,8 @@ node_modules/
 dist/
 .turbo/
 .worktrees/
+.shots/
+apps/web/test-results/
+apps/web/playwright-report/
+next-env.d.ts
+*.tsbuildinfo
