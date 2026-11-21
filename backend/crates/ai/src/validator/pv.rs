@@ -9,7 +9,7 @@
 use chess_core::board::{PlayedMove, Position};
 
 /// TS `UCI = /^([a-h][1-8])([a-h][1-8])([qrbn])?$/`.
-fn is_uci(u: &str) -> bool {
+pub(crate) fn is_uci(u: &str) -> bool {
     let b = u.as_bytes();
     let square = |f: u8, r: u8| (b'a'..=b'h').contains(&f) && (b'1'..=b'8').contains(&r);
     match b {

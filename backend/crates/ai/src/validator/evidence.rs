@@ -152,7 +152,7 @@ fn is_uuid(s: &str) -> bool {
 }
 
 /// TS `/^(\d{4})-(\d{2})-(\d{2})(?:$|T)/` (ASCII digits): year, month, day.
-fn iso_prefix(s: &str) -> Option<(i32, u32, u32)> {
+pub(crate) fn iso_prefix(s: &str) -> Option<(i32, u32, u32)> {
     let b = s.as_bytes();
     if b.len() < 10 || !(b.len() == 10 || b[10] == b'T') {
         return None;
