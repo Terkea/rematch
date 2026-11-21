@@ -51,18 +51,23 @@ impl BetaBinomialFit {
 
 /// Fits a Beta-binomial to `(events, opportunities)` pairs (TS `fitBetaBinomial`).
 ///
-/// Every pair must have a finite `n > 0` and `0 <= k <= n` (`StatsError::InvalidCounts`
-/// otherwise; callers drop players without opportunities first). `mu = sum(k) / sum(n)`. With no
+/// Pairs with `k = n = 0` (players without opportunities) carry no information and are skipped,
+/// as in TS. Every other pair must have a finite `n > 0` and `0 <= k <= n`
+/// (`StatsError::InvalidCounts` for NaN, infinite or negative values, `k > n`, or `k > 0 = n`).
+/// `mu = sum(k) / sum(n)`. With no
 /// events, or no pairs at all, the fit is `PointMass { at: 0 }`; with every opportunity an event
 /// it is `PointMass { at: 1 }`. Otherwise `phi` maximises the log-likelihood over
 /// [`PHI_GRID_POINTS`] log-spaced values from [`PHI_MIN`] to [`PHI_MAX`] (the first maximum wins).
 pub fn fit_beta_binomial(data: &[(f64, f64)]) -> Result<BetaBinomialFit, StatsError> {
     for &(k, n) in data {
+        let empty = k == 0.0 && n == 0.0;
         let valid = n.is_finite() && n > 0.0 && k >= 0.0 && k <= n;
-        if !valid {
+        if !(empty || valid) {
             return Err(StatsError::InvalidCounts { k, n });
         }
     }
+    let data: Vec<(f64, f64)> = data.iter().copied().filter(|&(_, n)| n > 0.0).collect();
+    let data = data.as_slice();
     let (sum_k, sum_n) = data
         .iter()
         .fold((0.0, 0.0), |(k, n), &(dk, dn)| (k + dk, n + dn));

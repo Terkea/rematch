@@ -725,6 +725,16 @@ fn degenerate_fits_are_point_masses_whose_quantiles_are_exact() {
         assert_eq!(rates.cdf(-1e-9), 0.0);
         assert_eq!(rates.sample(&mut Rng::new(1)), 0.0);
     }
+    // Zero-opportunity players (k = n = 0) carry no information and are skipped.
+    assert_eq!(fit_beta_binomial(&[(0.0, 0.0); 5]), zero);
+    assert_eq!(
+        fit_beta_binomial(&[(3.0, 50.0), (0.0, 0.0)]),
+        fit_beta_binomial(&[(3.0, 50.0)])
+    );
+    assert!(matches!(
+        fit_beta_binomial(&[(3.0, 50.0), (0.0, 0.0)]),
+        Ok(BetaBinomialFit::Beta { .. })
+    ));
     // Every opportunity an event: a point mass at 1.
     let all = fit_beta_binomial(&[(10.0, 10.0); 3]).unwrap();
     assert_eq!(all, BetaBinomialFit::PointMass { at: 1.0 });

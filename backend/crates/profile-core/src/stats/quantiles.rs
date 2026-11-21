@@ -51,8 +51,11 @@ pub const TIE_REL_TOL: f64 = 1e-9;
 ///   values above it 75 (the knot bounds).
 ///
 /// For finite input the result is monotone in `value` and in `[1, 99]`; it is continuous except
-/// for steps of at most `slope * tolerance` at the snap edges, and, for a reference whose
-/// quartiles are all exactly 0 (no scale), the step at 0. NaN if the value or a knot is NaN.
+/// for steps of `slope * tolerance` at the snap edges. That is negligible when merged points are
+/// far apart compared with the tolerance, but can reach the full percentile gap between two
+/// points that sit between `tol` and `2 tol` apart (unreachable for quartiles of a real
+/// Beta-fit or per-player rate distribution); and, for a reference whose quartiles are all
+/// exactly 0 (no scale), there is the step at 0. NaN if the value or a knot is NaN.
 pub fn percentile_from_quartiles(value: f64, r: &QuartileRef, higher_is_better: bool) -> f64 {
     let raw = raw_percentile(value, r).clamp(1.0, 99.0);
     if higher_is_better { raw } else { 100.0 - raw }

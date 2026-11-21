@@ -21,17 +21,17 @@ The first review found that the numerics were accurate on the TS test values, bu
   - `beta_quantile` and `sample_beta`;
   - `wilson`;
   - `fit_beta_binomial`, which also validates its input.
-- **The special functions keep the libm convention.** `lgamma`, `ln_beta` and `reg_inc_beta` give NaN for NaN or invalid input and `+inf` at poles. The same holds for `BetaDist::cdf` at a NaN `x`.
+- **The special functions keep the libm convention.** Only NaN input gives NaN. `lgamma` is `ln |Gamma|` (`+inf` at poles and at `+-inf`). `ln_beta` expects positive shapes; at negative shapes it gives `ln |B|` or `+inf` (a pole), not an error. `reg_inc_beta` gives NaN for NaN `x` or invalid shapes, and `BetaDist::cdf` gives NaN at a NaN `x`.
 - **Sample-statistics primitives keep their documented empty cases.** `quantile` of an empty slice is NaN. `bootstrap_mean_interval` returns `None` for fewer than two values. `spearman` returns `None` for constant or mismatched input. `percentile_from_quartiles` is NaN only if an input is NaN.
 - **A condition that valid data cannot produce is a `debug_assert!`** with documented release behaviour:
   - Wilson `k > n` is clamped to `n`;
   - a continued fraction that hits its 20 000-term cap returns the partial value (realistic shapes need about √max(a, b) terms);
-  - a non-positive half-life.
+  - a non-positive or NaN half-life: release builds give weight 0 to every observation, never NaN.
 
 ### 2. Degenerate fits and priors are point masses
 
 - **The fit.** `fit_beta_binomial` returns `BetaBinomialFit::PointMass { at: 0 }` when no observation has an event, or when there are no observations at all (zero opportunities). It returns `PointMass { at: 1 }` when every opportunity was an event. Otherwise it returns `Beta { mu, phi }`. `fit.rates()` gives the matching `BetaDist`, and a point mass's quantiles are exactly its location.
-- **Valid input only.** Every observation needs a finite `n > 0` and `0 ≤ k ≤ n`, otherwise the result is `InvalidCounts`. Callers drop players without opportunities before fitting.
+- **Valid input only.** Pairs with `k = n = 0` (players without opportunities, expected in thin band cells) carry no information and are skipped, as in TS. Every other observation needs a finite `n > 0` and `0 ≤ k ≤ n`; NaN, infinite or negative values, `k > n` and `k > 0 = n` are `InvalidCounts`.
 - **Prior limits.** `BetaDist::from_shapes(0, b)` is the point mass at 0, the limit of Beta(a, b) as a → 0. Likewise `(a, 0)` is the point mass at 1. This is how a prior `Beta(n0·pooled, n0·(1 − pooled))` with `pooled = 0` is represented (Task 12). `(0, 0)` stays `InvalidShape`.
 
 ### 3. Quantiles are relative in the lower tail
@@ -50,7 +50,7 @@ The first review found that the numerics were accurate on the TS test values, bu
 - **Interpolation.** Otherwise the polyline runs through the merged points. Beyond the ends it extends the nearest non-flat segment, so there are never infinite slopes.
 - **Fully flat reference.** When all four knots merge, the point gets 50, values below it 25 and values above it 75 (the knot bounds).
 
-The result is monotone, bounded in [1, 99], and continuous except for steps of at most `slope·tolerance` at the snap edges. The one exception is a reference whose quartiles are all exactly 0, which has no scale and steps at 0. Float noise in the quartiles (exact zeros, 1e-15 residues, unsorted knots) no longer changes the answer. A zero rate against a band whose p25, p40 and median are 0 always gets raw 37.5, so 62.5 for a lower-is-better rate.
+The result is monotone, bounded in [1, 99], and continuous except for steps of `slope·tolerance` at the snap edges. These are negligible when merged points are far apart compared with the tolerance, but can reach the full percentile gap between two points that sit between `tol` and `2·tol` apart, which real Beta-fit or per-player-rate quartiles never do. The one exception is a reference whose quartiles are all exactly 0, which has no scale and steps at 0. Float noise in the quartiles (exact zeros, 1e-15 residues, unsorted knots) no longer changes the answer. A zero rate against a band whose p25, p40 and median are 0 always gets raw 37.5, so 62.5 for a lower-is-better rate.
 
 ### 5. Edge conventions
 
