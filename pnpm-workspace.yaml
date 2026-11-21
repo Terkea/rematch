@@ -6,3 +6,6 @@ packages:
 allowBuilds:
   esbuild: true
   msgpackr-extract: false
+
+minimumReleaseAgeExclude:
+  - "@anthropic-ai/sdk@1.12.0"

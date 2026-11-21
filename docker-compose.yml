@@ -43,6 +43,7 @@ services:
       IN_DOCKER: "1"
       CONTACT_EMAIL: ${CONTACT_EMAIL:?set CONTACT_EMAIL in .env}
       LICHESS_TOKEN: ${LICHESS_TOKEN:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -56,6 +57,7 @@ services:
       - worker_node_modules:/app/apps/worker/node_modules
       - chess_core_node_modules:/app/packages/chess-core/node_modules
       - db_node_modules:/app/packages/db/node_modules
+      - ai_node_modules:/app/packages/ai/node_modules
       - pnpm_store:/pnpm-store
 
 volumes:
@@ -64,4 +66,5 @@ volumes:
   worker_node_modules:
   chess_core_node_modules:
   db_node_modules:
+  ai_node_modules:
   pnpm_store:

@@ -1,0 +1,246 @@
+{
+  "inputVersion": "coaching-input-v1",
+  "accountId": "6f1c1d52-3a4b-4c8e-9d2a-0b7a5e1f3c44",
+  "platform": "lichess",
+  "timeClass": "blitz",
+  "timeControl": {
+    "baseSeconds": 180,
+    "incrementSeconds": 0
+  },
+  "band": "B0",
+  "rating": 620,
+  "generatedAt": "2026-11-20T09:00:00.000Z",
+  "basis": {
+    "analysedGames": 96,
+    "importedGames": 410,
+    "windowStart": "2026-04-01",
+    "windowEnd": "2026-11-19",
+    "backfillComplete": false
+  },
+  "areaScores": [
+    {
+      "area": "openings",
+      "score": 40,
+      "n": 120,
+      "sufficient": true,
+      "needMore": null
+    },
+    {
+      "area": "middlegame",
+      "score": 47,
+      "n": 115,
+      "sufficient": true,
+      "needMore": null
+    },
+    {
+      "area": "endgame",
+      "score": 54,
+      "n": 110,
+      "sufficient": true,
+      "needMore": null
+    },
+    {
+      "area": "tactics",
+      "score": 61,
+      "n": 105,
+      "sufficient": true,
+      "needMore": null
+    },
+    {
+      "area": "calculation",
+      "score": 68,
+      "n": 100,
+      "sufficient": true,
+      "needMore": null
+    },
+    {
+      "area": "time",
+      "score": 75,
+      "n": 95,
+      "sufficient": true,
+      "needMore": null
+    },
+    {
+      "area": "mindset",
+      "score": 82,
+      "n": 90,
+      "sufficient": true,
+      "needMore": null
+    }
+  ],
+  "metrics": [
+    {
+      "key": "blunder_rate",
+      "area": "tactics",
+      "label": "Blunders per 100 moves",
+      "value": 3.1,
+      "unit": "rate",
+      "n": 4200,
+      "low": 2.7,
+      "high": 3.5,
+      "bandMedian": 2.2,
+      "bandPercentile": 78,
+      "sufficient": true,
+      "needMore": null
+    },
+    {
+      "key": "time_per_move",
+      "area": "time",
+      "label": "Average time per move",
+      "value": 11.4,
+      "unit": "seconds",
+      "n": 4200,
+      "low": null,
+      "high": null,
+      "bandMedian": 9.8,
+      "bandPercentile": null,
+      "sufficient": true,
+      "needMore": null
+    }
+  ],
+  "weaknesses": [
+    {
+      "id": "W1",
+      "variant": null,
+      "label": "Hanging pieces",
+      "area": "tactics",
+      "rank": 1,
+      "posteriorRate": 0.16999999999999998,
+      "intervalLow": 0.1,
+      "intervalHigh": 0.28,
+      "bandMedian": 0.09,
+      "bandPercentile": 75,
+      "excessEplPerGame": 0.8,
+      "confidence": 0.82,
+      "priority": 9,
+      "state": "active",
+      "pImp": null,
+      "events": 29,
+      "opportunities": 190,
+      "exemplars": [
+        {
+          "gameId": "li-b0w1a",
+          "ply": 6,
+          "playedAt": "2026-11-01T18:30:00.000Z",
+          "fen": "rnbqkbnr/ppp2ppp/3p4/4p3/3PP3/5N2/PPP2PPP/RNBQKB1R b KQkq - 0 3",
+          "played": {
+            "san": "Bg4",
+            "uci": "c8g4"
+          },
+          "best": {
+            "san": "exd4",
+            "uci": "e5d4"
+          },
+          "bestPv": [
+            "e5d4",
+            "f3d4",
+            "b8d7",
+            "d4b5"
+          ],
+          "refutationPv": [
+            "d4e5",
+            "d6e5",
+            "f3e5"
+          ],
+          "tags": [
+            "hung_piece"
+          ],
+          "evalBefore": {
+            "cp": 20
+          },
+          "evalAfter": {
+            "cp": -180
+          },
+          "winBefore": 52,
+          "winAfter": 31
+        },
+        {
+          "gameId": "li-b0w1b",
+          "ply": 10,
+          "playedAt": "2026-11-02T18:30:00.000Z",
+          "fen": "rn1qkbnr/ppp2ppp/3p4/4P3/4P3/5Q2/PPP2PPP/RNB1KB1R b KQkq - 0 5",
+          "played": {
+            "san": "dxe5",
+            "uci": "d6e5"
+          },
+          "best": {
+            "san": "Nd7",
+            "uci": "b8d7"
+          },
+          "bestPv": [
+            "b8d7",
+            "e5d6",
+            "f8d6",
+            "f3f7"
+          ],
+          "refutationPv": [
+            "f3f7",
+            "e8f7",
+            "f1c4"
+          ],
+          "tags": [
+            "hung_piece",
+            "time_trouble"
+          ],
+          "evalBefore": {
+            "cp": 60
+          },
+          "evalAfter": {
+            "cp": -240
+          },
+          "winBefore": 56,
+          "winAfter": 27
+        }
+      ]
+    },
+    {
+      "id": "W2",
+      "variant": null,
+      "label": "Missed one-move threats",
+      "area": "tactics",
+      "rank": 2,
+      "posteriorRate": 0.16,
+      "intervalLow": 0.1,
+      "intervalHigh": 0.28,
+      "bandMedian": 0.09,
+      "bandPercentile": 70,
+      "excessEplPerGame": 0.7,
+      "confidence": 0.79,
+      "priority": 8,
+      "state": "active",
+      "pImp": null,
+      "events": 28,
+      "opportunities": 180,
+      "exemplars": []
+    }
+  ],
+  "strengths": [],
+  "openings": [
+    {
+      "lineKey": "w-italian",
+      "name": "Italian Game",
+      "eco": "C50",
+      "color": "white",
+      "side": "chosen",
+      "movesSan": [
+        "e4",
+        "e5",
+        "Nf3",
+        "Nc6",
+        "Bc4"
+      ],
+      "games": 41,
+      "score": 0.58,
+      "performanceVsExpected": 0.04,
+      "avgEvalAtOpeningEnd": {
+        "cp": 25
+      },
+      "verdict": "keep",
+      "deviationPly": null,
+      "deviationMoveSan": null,
+      "alternatives": [],
+      "examples": []
+    }
+  ],
+  "changes": []
+}
