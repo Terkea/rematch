@@ -29,6 +29,11 @@ x-web-environment: &web-environment
   # project. The services that need it fail fast at runtime on an empty value (see the worker below).
   CONTACT_EMAIL: ${CONTACT_EMAIL:-}
   LAB_ENABLED: "${LAB_ENABLED:-1}"
+  # chess.com linking (ADR 0040: on in development); OAuth stays off until chess.com approves it.
+  CHESSCOM_ENABLED: "${CHESSCOM_ENABLED:-1}"
+  CHESSCOM_OAUTH_ENABLED: ${CHESSCOM_OAUTH_ENABLED:-}
+  CHESSCOM_CLIENT_ID: ${CHESSCOM_CLIENT_ID:-}
+  CHESSCOM_CLIENT_SECRET: ${CHESSCOM_CLIENT_SECRET:-}
   # Private beta (ADR 0041, ADR-WEB-3): on unless exactly "0"; comma-separated invited emails.
   INVITE_ONLY: "${INVITE_ONLY:-1}"
   INVITE_ALLOWLIST: ${INVITE_ALLOWLIST:-}
