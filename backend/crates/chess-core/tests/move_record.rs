@@ -241,3 +241,21 @@ fn book_exit_ply_is_plumbed_through_to_phases() {
     assert_eq!(capped[29].phase, Phase::Opening);
     assert_eq!(capped[30].phase, Phase::Middlegame);
 }
+
+#[test]
+fn parse_pgn_output_is_the_canonical_parsed_game() {
+    fn takes_canonical(game: &chess_core::ParsedGame) -> usize {
+        game.plies.len()
+    }
+    let game = parse_pgn(&fixture("scholars-mate.pgn")).unwrap();
+    assert_eq!(takes_canonical(&game), 7);
+    let r = build_move_records(&game, &scholars_evals(), None).unwrap();
+    assert_eq!(r.len(), 7);
+}
+
+#[test]
+fn header_last_wins_for_duplicate_tags() {
+    let game = parse_pgn("[Event \"A\"]\n[Event \"B\"]\n\n1. e4 *").unwrap();
+    assert_eq!(game.header("Event"), Some("B"));
+    assert_eq!(game.headers.len(), 2);
+}

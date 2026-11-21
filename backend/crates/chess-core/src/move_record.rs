@@ -1,10 +1,9 @@
 //! Per-move records from a parsed game and its position evaluations (port of `move-record.ts`).
 
 use crate::judgement::judge;
-use crate::pgn::{ParsedGame, Terminal};
 use crate::phase::{OPENING_MIN_PLY, detect_phases};
 use crate::score::{flip_score, move_accuracy, win_percent};
-use crate::{ClockInfo, Color, EngineScore, MoveRecord, PositionEval};
+use crate::{ClockInfo, Color, EngineScore, MoveRecord, ParsedGame, PositionEval, Terminal};
 
 /// The game was already decided when `|win_before - 50| >= DECIDED_THRESHOLD`.
 pub const DECIDED_THRESHOLD: f64 = 40.0;
