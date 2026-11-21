@@ -65,6 +65,8 @@ export interface PlacedLabel {
   serious: boolean;
   /** False for a glyph-only label sitting straight above its tick. */
   leader: boolean;
+  /** Whose move: the player's (true), the opponent's (false) or unknown (null). */
+  mine: boolean | null;
   text: LabelText;
 }
 
@@ -126,6 +128,7 @@ function placeSerious(marks: LabelMark[], width: number, form: LabelForm): Place
       tickTop: m.top,
       serious: true,
       leader,
+      mine: m.mine,
       text,
     });
     return true;
@@ -195,6 +198,7 @@ export function placeLabels(
       tickTop: m.top,
       serious: false,
       leader: true,
+      mine: m.mine,
       text,
     });
   }
@@ -267,7 +271,10 @@ export function segmentHitsBox(a: Point, b: Point, box: Box): boolean {
 
 export type Side = "left" | "right";
 
-/** The box a corner label occupies inside the plot. */
+/** Clearance around a corner label's ink: the eval line's 2px stroke plus its halo. */
+const CORNER_CLEAR = 3;
+
+/** The box a corner label's ink occupies inside the plot, grown by CORNER_CLEAR on every side. */
 export function cornerBox(
   corner: "top" | "bottom",
   side: Side,
@@ -275,59 +282,127 @@ export function cornerBox(
   width: number,
   plotH: number,
 ): Box {
-  // The text's ink (12px Schibsted: cap top to descender) plus its 1.5px halo.
-  const x0 = side === "left" ? PAD - 2 : width - PAD - textWidth - 2;
-  const y0 = corner === "top" ? LANE + 4 : LANE + plotH - 17;
-  return { x0, x1: x0 + textWidth + 4, y0, y1: y0 + 14 };
+  // 12px Schibsted, baseline at LANE + 14 (top) or LANE + plotH - 6 (bottom): cap top 9px above
+  // the baseline, descender 3px below.
+  const baseline = corner === "top" ? LANE + 14 : LANE + plotH - 6;
+  const x0 = side === "left" ? PAD : width - PAD - textWidth;
+  return {
+    x0: x0 - CORNER_CLEAR,
+    x1: x0 + textWidth + CORNER_CLEAR,
+    y0: baseline - 9 - CORNER_CLEAR,
+    y1: baseline + 3 + CORNER_CLEAR,
+  };
+}
+
+export interface CornerObstacles {
+  labels: PlacedLabel[];
+  ticks: { x: number; y1: number; y2: number }[];
+  /** The eval line's vertices. */
+  line: Point[];
+}
+
+/** Every leader, tick and line segment that touches `box`. */
+export function collisions(box: Box, { labels, ticks, line }: CornerObstacles): number {
+  const segments: [Point, Point][] = [];
+  for (let i = 1; i < line.length; i++) segments.push([line[i - 1] as Point, line[i] as Point]);
+  for (const l of labels.filter((l) => l.leader)) {
+    const pts = leaderPoints(l);
+    for (let i = 1; i < pts.length; i++) segments.push([pts[i - 1] as Point, pts[i] as Point]);
+  }
+  for (const t of ticks) {
+    segments.push([
+      [t.x, t.y1],
+      [t.x, t.y2],
+    ]);
+  }
+  return segments.filter(([a, b]) => segmentHitsBox(a, b, box)).length;
 }
 
 /**
- * Puts each corner label ("White (you)", "Black") at the left end of the plot unless something
- * crosses it there. Leaders and the eval line count most: the label moves to the right end when
- * fewer of them cross it there, with ticks as the tie-break.
+ * Puts each corner label ("White (you)", "Black") at the left end of the plot, and moves it to
+ * the right end only when nothing at all (leader, tick or line) touches it there. Otherwise it
+ * stays left and its halo breaks whatever crosses it.
  */
 export function placeCorners({
   width,
   plotH,
   top,
   bottom,
-  labels,
-  ticks,
-  line = [],
-}: {
+  measure = cornerWidth,
+  ...obstacles
+}: CornerObstacles & {
   width: number;
   plotH: number;
   top: string;
   bottom: string;
-  labels: PlacedLabel[];
-  ticks: { x: number; y1: number; y2: number }[];
-  /** The eval line's vertices. */
-  line?: Point[];
+  /** The text's rendered width; defaults to an estimate. */
+  measure?: (text: string) => number;
 }): { top: Side; bottom: Side } {
-  const leaders: [Point, Point][] = [];
-  for (let i = 1; i < line.length; i++) leaders.push([line[i - 1] as Point, line[i] as Point]);
-  for (const l of labels.filter((l) => l.leader)) {
-    const pts = leaderPoints(l);
-    for (let i = 1; i < pts.length; i++) leaders.push([pts[i - 1] as Point, pts[i] as Point]);
-  }
-  const tickEdges: [Point, Point][] = ticks.flatMap((t) => [
-    [
-      [t.x - 2, t.y1],
-      [t.x - 2, t.y2],
-    ],
-    [
-      [t.x + 2, t.y1],
-      [t.x + 2, t.y2],
-    ],
-  ]);
-  const count = (segments: [Point, Point][], box: Box) =>
-    segments.filter(([a, b]) => segmentHitsBox(a, b, box)).length;
-  const score = (box: Box) => count(leaders, box) * 1000 + count(tickEdges, box);
   const side = (corner: "top" | "bottom", text: string): Side => {
-    const w = cornerWidth(text);
-    const left = score(cornerBox(corner, "left", w, width, plotH));
-    if (left === 0) return "left";
-    return score(cornerBox(corner, "right", w, width, plotH)) < left ? "right" : "left";
+    const w = measure(text);
+    if (collisions(cornerBox(corner, "left", w, width, plotH), obstacles) === 0) return "left";
+    return collisions(cornerBox(corner, "right", w, width, plotH), obstacles) === 0
+      ? "right"
+      : "left";
   };
   return { top: side("top", top), bottom: side("bottom", bottom) };
+}
+
+// --- Readout ----------------------------------------------------------------------------------
+
+export const READOUT_W = 148;
+export const READOUT_H = 48;
+
+/**
+ * Where the hover popover goes, from the threshold up: beside the hovered x on the side away from
+ * the cursor rule (and never over it), clear of the corner label in its band, in the half of the
+ * plot away from the line unless the other half covers fewer points.
+ */
+export function readoutPlacement({
+  x,
+  lineY,
+  cursorX,
+  xs,
+  ys,
+  plotH,
+  width,
+  corners,
+}: {
+  x: number;
+  lineY: number;
+  cursorX?: number;
+  xs: number[];
+  ys: number[];
+  plotH: number;
+  width: number;
+  corners: { top: { side: Side; width: number }; bottom: { side: Side; width: number } };
+}): { left: number; top: number } {
+  const rightOf = x + 12;
+  const leftOf = x - 12 - READOUT_W;
+  const preferLeft = cursorX !== undefined && cursorX > x ? true : rightOf + READOUT_W > width;
+  const covers = (l: number) =>
+    cursorX !== undefined && cursorX >= l - 6 && cursorX <= l + READOUT_W + 6;
+  const leftFor = (corner: { side: Side; width: number }) => {
+    const reserved = PAD + corner.width + 8;
+    const lo = corner.side === "left" ? reserved : 0;
+    const hi = width - READOUT_W - (corner.side === "right" ? reserved : 0);
+    const clamp = (l: number) => Math.min(Math.max(l, lo), Math.max(lo, hi));
+    const first = clamp(preferLeft ? leftOf : rightOf);
+    if (!covers(first)) return first;
+    const second = clamp(preferLeft ? rightOf : leftOf);
+    return covers(second) ? first : second;
+  };
+  const bands = {
+    top: { top: LANE + 6, left: leftFor(corners.top) },
+    bottom: { top: LANE + plotH - 6 - READOUT_H, left: leftFor(corners.bottom) },
+  };
+  const covered = ({ top, left }: { top: number; left: number }) =>
+    xs.reduce((n, px, i) => {
+      const py = ys[i] ?? 0;
+      const inX = px >= left - 4 && px <= left + READOUT_W + 4;
+      return inX && py + 9 >= top && py - 9 <= top + READOUT_H ? n + 1 : n;
+    }, 0);
+  const preferred = lineY < LANE + plotH / 2 ? bands.bottom : bands.top;
+  const other = preferred === bands.top ? bands.bottom : bands.top;
+  return covered(preferred) <= covered(other) ? preferred : other;
 }

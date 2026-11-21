@@ -12,6 +12,7 @@ import {
   yForWin,
 } from "../src/eval-graph/index.js";
 import {
+  collisions,
   cornerBox,
   cornerWidth,
   GRAPH_NARROW,
@@ -20,6 +21,8 @@ import {
   PAD,
   type Point,
   placeCorners,
+  READOUT_W,
+  readoutPlacement,
   segmentHitsBox,
 } from "../src/eval-graph/scales.js";
 import { type GameFixture, games } from "../src/fixtures/index.js";
@@ -301,8 +304,15 @@ describe("leaders and corners", () => {
     expect(pts.every(([x]) => x === 100)).toBe(true);
   });
 
-  it("flips a corner label only when something crosses it", () => {
-    const base = { width: 326, plotH: PLOT_H, top: "White (you)", bottom: "Black", ticks: [] };
+  it("flips a corner label only when the right end is completely clear", () => {
+    const base = {
+      width: 326,
+      plotH: PLOT_H,
+      top: "White (you)",
+      bottom: "Black",
+      ticks: [],
+      line: [] as Point[],
+    };
     expect(placeCorners({ ...base, labels: [] })).toEqual({ top: "left", bottom: "left" });
     const through: PlacedLabel = {
       ply: 25,
@@ -312,9 +322,49 @@ describe("leaders and corners", () => {
       tickTop: 80,
       serious: true,
       leader: true,
+      mine: true,
       text: { prefix: "", san: "Nb4", glyph: "??" },
     };
     expect(placeCorners({ ...base, labels: [through] })).toEqual({ top: "right", bottom: "left" });
+    // A line skimming the right end's cap height (within the 3px clearance) keeps it left.
+    const skim: Point[] = [
+      [200, LANE + 3],
+      [320, LANE + 3],
+    ];
+    expect(placeCorners({ ...base, labels: [through], line: skim }).top).toBe("left");
+    // So does a tick there.
+    const tick = { x: 300, y1: LANE + 2, y2: LANE + 20 };
+    expect(placeCorners({ ...base, labels: [through], ticks: [tick] }).top).toBe("left");
+  });
+});
+
+describe("readoutPlacement", () => {
+  const flat = { xs: [] as number[], ys: [] as number[], plotH: 120, width: 560, lineY: 100 };
+  const corners = (side: "left" | "right") => ({
+    top: { side, width: 70 },
+    bottom: { side, width: 40 },
+  });
+
+  it("keeps clear of a corner label on the right", () => {
+    const { left, top } = readoutPlacement({ ...flat, x: 540, corners: corners("right") });
+    const reserved = PAD + (top === LANE + 6 ? 70 : 40) + 8;
+    expect(left + READOUT_W).toBeLessThanOrEqual(560 - reserved);
+  });
+
+  it("keeps clear of a corner label on the left", () => {
+    const { left, top } = readoutPlacement({ ...flat, x: 10, corners: corners("left") });
+    expect(left).toBeGreaterThanOrEqual(PAD + (top === LANE + 6 ? 70 : 40) + 8);
+  });
+
+  it("opens on the side away from the cursor rule, never over it", () => {
+    const toLeft = readoutPlacement({ ...flat, x: 300, cursorX: 340, corners: corners("left") });
+    expect(toLeft.left + READOUT_W).toBeLessThan(300);
+    const toRight = readoutPlacement({ ...flat, x: 300, cursorX: 260, corners: corners("left") });
+    expect(toRight.left).toBeGreaterThan(300);
+    for (const cursorX of [120, 200, 260, 340, 420]) {
+      const { left } = readoutPlacement({ ...flat, x: 300, cursorX, corners: corners("left") });
+      expect(cursorX < left || cursorX > left + READOUT_W).toBe(true);
+    }
   });
 });
 
@@ -646,33 +696,62 @@ describe("EvalGraph", () => {
     }
   });
 
-  it("moves a corner label to the right when a leader would cross it, at 390", async () => {
+  it("moves a corner label right only onto clear ground, at 390", async () => {
     measured = 326; // the graph's width in a 390px viewport
-    const { container } = await renderGraph({
-      points: toPoints(games.endgameGrind),
-      playerColor: "white",
-    });
+    const game = games.endgameGrind;
+    const { container } = await renderGraph({ points: toPoints(game), playerColor: "white" });
+    const n = game.plies.length;
+    const obstacles = {
+      labels: [] as PlacedLabel[],
+      line: game.plies.map(
+        (p, i) =>
+          [PAD + xForPly(i + 1, 326 - 2 * PAD, n), LANE + yForWin(p.winWhite, PLOT_H)] as Point,
+      ),
+      ticks: [...container.querySelectorAll("[data-mark] line, line[data-mark]")].map((l) => ({
+        x: Number(l.getAttribute("x1")),
+        y1: Number(l.getAttribute("y1")),
+        y2: Number(l.getAttribute("y2")),
+      })),
+    };
     const leaders = [...container.querySelectorAll("polyline[data-leader]")].map((p) =>
       pairs(p.getAttribute("points")),
     );
     expect(leaders.length).toBeGreaterThan(0);
+    const hits = (box: ReturnType<typeof cornerBox>) =>
+      collisions(box, obstacles) +
+      leaders.filter((pts) =>
+        pts.some((_, i) => i > 0 && segmentHitsBox(pts[i - 1] as Point, pts[i] as Point, box)),
+      ).length;
     const corners = [...container.querySelectorAll("[data-corner]")];
     expect(corners).toHaveLength(2);
     for (const c of corners) {
-      const box = cornerBox(
-        c.getAttribute("data-corner") as "top" | "bottom",
-        c.getAttribute("data-side") as "left" | "right",
-        cornerWidth(c.textContent ?? ""),
-        326,
-        PLOT_H,
-      );
-      for (const pts of leaders) {
-        for (let i = 1; i < pts.length; i++) {
-          expect(segmentHitsBox(pts[i - 1] as Point, pts[i] as Point, box)).toBe(false);
-        }
-      }
+      const corner = c.getAttribute("data-corner") as "top" | "bottom";
+      const side = c.getAttribute("data-side") as "left" | "right";
+      const w = cornerWidth(c.textContent ?? "");
+      const here = hits(cornerBox(corner, side, w, 326, PLOT_H));
+      if (side === "right") expect(here).toBe(0);
+      else if (here > 0)
+        expect(hits(cornerBox(corner, "right", w, 326, PLOT_H))).toBeGreaterThan(0);
     }
-    expect(container.querySelector('[data-corner="top"]')).toHaveAttribute("data-side", "right");
+  });
+
+  it("draws the opponent's marks as pencil hairlines and the player's in pen", async () => {
+    const { container } = await renderGraph({ playerColor: "white" });
+    const plies = games.middlegameBlunder.plies;
+    const serious = (c: string) =>
+      plies.filter((p) => p.color === c && (p.judgement === "mistake" || p.judgement === "blunder"))
+        .length;
+    expect(container.querySelectorAll('[data-mark="pen"]')).toHaveLength(serious("white"));
+    const opponent = container.querySelectorAll('line[data-mark="opponent"]');
+    expect(opponent).toHaveLength(plies.filter((p) => p.color === "black" && p.judgement).length);
+    for (const l of opponent) {
+      expect(l).toHaveAttribute("stroke-width", "1");
+      expect(l).toHaveClass("stroke-pencil");
+    }
+    for (const label of container.querySelectorAll("[data-label]")) {
+      const ply = Number(label.getAttribute("data-label"));
+      if (ply % 2 === 0) expect(label.querySelector("tspan")).not.toHaveClass("fill-pen-text");
+    }
   });
 
   it("renders 400 plies inside the width", async () => {

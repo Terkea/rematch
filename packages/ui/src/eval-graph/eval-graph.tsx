@@ -40,6 +40,9 @@ import {
   placeCorners,
   placeLabels,
   plyForX,
+  READOUT_H,
+  READOUT_W,
+  readoutPlacement,
   type Side,
   xForPly,
   yForWin,
@@ -78,8 +81,6 @@ export interface EvalGraphProps {
   className?: string;
 }
 
-const READOUT_W = 148;
-const READOUT_H = 48;
 /** Marks fade in over this many px as the reveal passes them. */
 const FADE_SPAN = 24;
 const IGNORED_DIMENSIONS: ("height" | "top" | "left")[] = ["height", "top", "left"];
@@ -135,6 +136,8 @@ interface Mark {
   y1: number;
   y2: number;
   judgement: EvalGraphJudgement;
+  /** Whose move: the player's, the opponent's (false: a pencil hairline) or unknown (null). */
+  mine: boolean | null;
 }
 
 interface Phase {
@@ -146,6 +149,8 @@ interface Phase {
 interface Corner {
   text: string;
   side: Side;
+  /** The text's rendered width in px. */
+  width: number;
 }
 
 /** The parts of the graph that only change with the data or the size. */
@@ -284,6 +289,24 @@ const StaticLayer = memo(function StaticLayer({
       <g data-layer="marks">
         {marks.map((m) => {
           const serious = isSerious(m.judgement);
+          // The opponent's marks: a pencil hairline with no halo, so red means "your mistake".
+          if (m.mine === false) {
+            return (
+              <line
+                key={m.ply}
+                data-mark="opponent"
+                data-ply={m.ply}
+                x1={m.x}
+                x2={m.x}
+                y1={m.y1}
+                y2={m.y2}
+                strokeWidth={1}
+                strokeLinecap="round"
+                className="stroke-pencil"
+                style={wipeOpacity(m.x, width)}
+              />
+            );
+          }
           const w = m.judgement === "blunder" ? 3 : serious ? 2.5 : 1.5;
           return (
             <g
@@ -323,7 +346,11 @@ const StaticLayer = memo(function StaticLayer({
             y={15}
             className={cn(
               "font-serif text-sm",
-              l.serious ? "fill-ink font-semibold" : "fill-ink-faint font-normal",
+              !l.serious
+                ? "fill-ink-faint font-normal"
+                : l.mine === false
+                  ? "fill-ink-soft font-semibold"
+                  : "fill-ink font-semibold",
             )}
             style={{
               ...NUMERALS,
@@ -336,7 +363,16 @@ const StaticLayer = memo(function StaticLayer({
           >
             {l.text.prefix}
             {l.text.san}
-            <tspan className={cn("tracking-glyph", l.serious ? "fill-pen-text" : "fill-ink-faint")}>
+            <tspan
+              className={cn(
+                "tracking-glyph",
+                !l.serious
+                  ? "fill-ink-faint"
+                  : l.mine === false
+                    ? "fill-ink-soft"
+                    : "fill-pen-text",
+              )}
+            >
               {l.text.glyph}
             </tspan>
           </text>
@@ -378,6 +414,8 @@ export function EvalGraph({
   const [hoverPly, setHoverPly] = useState<number | null>(null);
   const [focusVisible, setFocusVisible] = useState(false);
   const gesture = useRef<Gesture | null>(null);
+  const measureRef = useRef<HTMLDivElement | null>(null);
+  const [cornerWidths, setCornerWidths] = useState<Record<string, number>>({});
 
   // The reveal's one clock: the clip's scaleX and every mark's opacity (via --wipe) follow it.
   const revealing = drawIn && !reduced;
@@ -436,10 +474,11 @@ export function EvalGraph({
             y1: Math.max(LANE + 2, y - half),
             y2: Math.min(LANE + plotH - 2, y + half),
             judgement: p.judgement,
+            mine: playerColor ? sideOf(p.ply).toLowerCase() === playerColor : null,
           },
         ];
       }),
-    [points, geo, plotH],
+    [points, geo, plotH, playerColor],
   );
 
   const labels = useMemo(() => {
@@ -450,10 +489,10 @@ export function EvalGraph({
       judgement: m.judgement,
       x: m.x,
       top: m.y1,
-      mine: playerColor ? sideOf(m.ply).toLowerCase() === playerColor : null,
+      mine: m.mine,
     }));
     return placeLabels(input, width, { narrow, wide: width >= LABEL_WIDE });
-  }, [marks, points, geo, width, narrow, playerColor]);
+  }, [marks, points, geo, width, narrow]);
 
   const corners = useMemo(() => {
     const text = (side: "white" | "black") =>
@@ -461,9 +500,13 @@ export function EvalGraph({
     const top = text("white");
     const bottom = text("black");
     const line = geo.xs.map((x, i) => [x, geo.ys[i] ?? 0] as const);
-    const sides = placeCorners({ width, plotH, top, bottom, labels, ticks: marks, line });
-    return { top: { text: top, side: sides.top }, bottom: { text: bottom, side: sides.bottom } };
-  }, [playerColor, width, plotH, labels, marks, geo]);
+    const measure = (t: string) => cornerWidths[t] ?? cornerWidth(t);
+    const sides = placeCorners({ width, plotH, top, bottom, labels, ticks: marks, line, measure });
+    return {
+      top: { text: top, side: sides.top, width: measure(top) },
+      bottom: { text: bottom, side: sides.bottom, width: measure(bottom) },
+    };
+  }, [playerColor, width, plotH, labels, marks, geo, cornerWidths]);
 
   const phaseLines = useMemo<Phase[]>(() => {
     let end = -Infinity;
@@ -483,6 +526,34 @@ export function EvalGraph({
   }, [phases?.middlegameStartPly, phases?.endgameStartPly, geo, width]);
 
   const describe = useMemo(() => summary(points, playerColor), [points, playerColor]);
+
+  // Corner labels are measured in their real font (12px sans) once fonts are ready; until then,
+  // and where canvas is unavailable, an estimate stands in.
+  const measured = width > 0;
+  useEffect(() => {
+    const node = measureRef.current;
+    if (!measured || !node) return;
+    let live = true;
+    const run = () => {
+      const ctx = document.createElement("canvas").getContext?.("2d");
+      if (!ctx || !live) return;
+      const family = getComputedStyle(node).getPropertyValue("--font-sans").trim() || "sans-serif";
+      ctx.font = `12px ${family}`;
+      const texts = ["White", "Black", "White (you)", "Black (you)"];
+      setCornerWidths(
+        Object.fromEntries(texts.map((t) => [t, Math.ceil(ctx.measureText(t).width)])),
+      );
+    };
+    try {
+      run();
+      void document.fonts?.ready.then(run);
+    } catch {
+      // no canvas (tests, old engines): keep the estimate
+    }
+    return () => {
+      live = false;
+    };
+  }, [measured]);
 
   const atStart = currentPly === 0;
   const active = atStart ? undefined : (currentPly ?? ownPly);
@@ -592,7 +663,10 @@ export function EvalGraph({
       }
       return;
     }
-    if (e.pointerType === "mouse") setHoverPly(ply);
+    if (e.pointerType === "mouse") {
+      finishReveal();
+      setHoverPly(ply);
+    }
   };
   const onPointerUp = (e: PointerEvent<HTMLDivElement>) => {
     const g = gesture.current;
@@ -615,7 +689,7 @@ export function EvalGraph({
   const cursorX = activeIndex === undefined ? 0 : (geo.xs[activeIndex] ?? 0);
 
   return (
-    <figure className={cn("@container m-0", className)}>
+    <figure ref={measureRef} className={cn("@container m-0", className)}>
       <motion.div
         ref={parentRef}
         data-readout={laneReadout ? "" : undefined}
@@ -731,6 +805,7 @@ export function EvalGraph({
               plotH={plotH}
               width={width}
               corners={corners}
+              cursorX={activeIndex === undefined ? undefined : cursorX}
             />
           ))}
       </motion.div>
@@ -768,58 +843,29 @@ function Notation({ point, size = "sm" }: { point: EvalGraphPoint; size?: "sm" |
 const detail = (p: EvalGraphPoint) =>
   `White ${Math.round(p.winWhite)}%${p.judgement ? `, ${p.judgement}` : ""}`;
 
-/**
- * From 496px: a popover in the half of the plot away from the line at the hovered move, unless
- * the other half crosses less of the line and its marks nearby. It never covers a corner label.
- */
+/** From 496px: a popover placed by `readoutPlacement`, away from the cursor and corner labels. */
 function Readout({
   point,
-  x,
-  lineY,
-  xs,
-  ys,
-  plotH,
-  width,
   corners,
+  ...geometry
 }: {
   point: EvalGraphPoint;
   x: number;
   lineY: number;
+  cursorX: number | undefined;
   xs: number[];
   ys: number[];
   plotH: number;
   width: number;
   corners: { top: Corner; bottom: Corner };
 }) {
-  const right = x + 12;
-  const natural = right + READOUT_W > width ? x - 12 - READOUT_W : right;
-  /** Keeps the popover clear of the corner label in its band. */
-  const leftFor = (corner: Corner) => {
-    const reserved = PAD + cornerWidth(corner.text) + 8;
-    return corner.side === "left"
-      ? Math.min(Math.max(natural, reserved), width - READOUT_W)
-      : Math.max(0, Math.min(natural, width - reserved - READOUT_W));
-  };
-  const bands = {
-    top: { top: LANE + 6, left: leftFor(corners.top) },
-    bottom: { top: LANE + plotH - 6 - READOUT_H, left: leftFor(corners.bottom) },
-  };
-  // How many points (with their tick's reach) a popover in `band` would cover.
-  const covered = ({ top, left }: { top: number; left: number }) =>
-    xs.reduce((n, px, i) => {
-      const py = ys[i] ?? 0;
-      const inX = px >= left - 4 && px <= left + READOUT_W + 4;
-      return inX && py + 9 >= top && py - 9 <= top + READOUT_H ? n + 1 : n;
-    }, 0);
-  const preferred = lineY < LANE + plotH / 2 ? bands.bottom : bands.top;
-  const other = preferred === bands.top ? bands.bottom : bands.top;
-  const band = covered(preferred) <= covered(other) ? preferred : other;
+  const { left, top } = readoutPlacement({ ...geometry, corners });
   return (
     <div
       aria-hidden="true"
       data-readout-popover
       className="pointer-events-none absolute flex flex-col rounded-field bg-sheet px-3 py-1.5 shadow-lift"
-      style={{ left: band.left, top: band.top, width: READOUT_W, height: READOUT_H }}
+      style={{ left, top, width: READOUT_W, height: READOUT_H }}
     >
       <Notation point={point} />
       <span className="font-sans text-xs text-ink-soft">{detail(point)}</span>
