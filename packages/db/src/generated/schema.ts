@@ -293,11 +293,15 @@ export const coachMessages = pgTable(
     session: text(),
     sessionModelUsage: jsonb("session_model_usage"),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    streamingAt: timestamp("streaming_at", { withTimezone: true, mode: "date" }),
   },
   (table) => [
     index("coach_messages_pending_idx")
       .using("btree", table.createdAt.asc().nullsLast())
       .where(sql`(status = 'pending'::chat_status)`),
+    index("coach_messages_streaming_idx")
+      .using("btree", table.streamingAt.asc().nullsLast())
+      .where(sql`(status = 'streaming'::chat_status)`),
     foreignKey({
       columns: [table.conversationId],
       foreignColumns: [coachConversations.id],
@@ -626,6 +630,7 @@ export const reportRuns = pgTable(
     reportId: uuid("report_id"),
     aiDisabledReason: text("ai_disabled_reason"),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    reconcileCount: smallint("reconcile_count").default(0).notNull(),
   },
   (table) => [
     index("report_runs_account_idx").using(
@@ -767,6 +772,7 @@ export const weaknessChangeNotes = pgTable(
     aiDisclosure: jsonb("ai_disclosure"),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    reconcileCount: smallint("reconcile_count").default(0).notNull(),
   },
   (table) => [
     index("weakness_change_notes_pending_idx")
@@ -800,6 +806,7 @@ export const weeklyReviews = pgTable(
     aiDisclosure: jsonb("ai_disclosure"),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    reconcileCount: smallint("reconcile_count").default(0).notNull(),
   },
   (table) => [
     index("weekly_reviews_pending_idx")

@@ -170,11 +170,12 @@ pub async fn set_awaiting_retry(
     Ok(r.rows_affected() == 1)
 }
 
-/// Sections went to the Message Batches API; the batch poller finishes the run.
+/// Sections went to the Message Batches API; the batch poller finishes the run. Fenced on
+/// `queued`: a run a worker claimed (`running`) is being generated synchronously and must not
+/// be paid for twice.
 pub async fn set_awaiting_batch(conn: &mut PgConnection, id: Uuid) -> Result<bool, sqlx::Error> {
     let r = sqlx::query(
-        "UPDATE report_runs SET status = 'awaiting_batch' \
-         WHERE id = $1 AND status IN ('queued', 'running')",
+        "UPDATE report_runs SET status = 'awaiting_batch' WHERE id = $1 AND status = 'queued'",
     )
     .bind(id)
     .execute(conn)

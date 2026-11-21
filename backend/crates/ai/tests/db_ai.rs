@@ -1372,7 +1372,7 @@ async fn orphan_sweep_removes_only_old_entries_without_a_conversation(pool: PgPo
     .await
     .unwrap();
     let mut conn = pool.acquire().await.unwrap();
-    let swept = chat::sweep_orphan_session_entries(&mut conn, chat::ORPHAN_SESSION_MIN_AGE)
+    let swept = chat::sweep_orphan_session_entries(&mut conn, OffsetDateTime::now_utc())
         .await
         .unwrap();
     assert_eq!(swept, 2);

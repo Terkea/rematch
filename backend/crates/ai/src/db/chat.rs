@@ -261,10 +261,12 @@ pub async fn list_messages(
     .await
 }
 
-/// `pending` → `streaming`.
+/// `pending` → `streaming`, stamping `streaming_at` (`ai-reconcile` fails a turn that streams
+/// for longer than `jobs::kinds::CHAT_TURN_TIMEOUT` with no live job).
 pub async fn set_streaming(conn: &mut PgConnection, id: Uuid) -> Result<bool, sqlx::Error> {
     let r = sqlx::query(
-        "UPDATE coach_messages SET status = 'streaming' WHERE id = $1 AND status = 'pending'",
+        "UPDATE coach_messages SET status = 'streaming', streaming_at = now() \
+         WHERE id = $1 AND status = 'pending'",
     )
     .bind(id)
     .execute(conn)
@@ -368,20 +370,79 @@ pub async fn previous_session_model_usage(
 /// Session entries older than this with no conversation are orphans.
 pub const ORPHAN_SESSION_MIN_AGE: Duration = Duration::from_secs(600);
 
-/// Deletes session entries whose session has no conversation and that are older than
-/// `min_age` (the sidecar may write a new conversation's first entries before Rust commits it).
-/// Run by `ai-reconcile` with [`ORPHAN_SESSION_MIN_AGE`]. Returns the rows deleted.
+/// Orphans are only ever young: the delete trigger removes a deleted conversation's entries, so
+/// an orphan is a first turn whose conversation never committed, or a turn that wrote after its
+/// conversation was deleted. The sweep looks no further back than this.
+pub const ORPHAN_SESSION_MAX_AGE: Duration = Duration::from_secs(24 * 3600);
+
+/// Rows deleted per orphan-sweep page.
+pub const ORPHAN_SWEEP_PAGE: i64 = 1000;
+
+/// The orphans of one page: `$1` the window start (now − [`ORPHAN_SESSION_MAX_AGE`]), `$2` the
+/// cursor (the previous page's newest deleted `created_at`; NULL first), `$3` the window end
+/// (now − [`ORPHAN_SESSION_MIN_AGE`]), `$4` the limit. It reads
+/// `ai_sdk_session_entries_created_idx` in order (plan-guarded, custom and generic plan).
+pub const ORPHAN_PAGE_SQL: &str = "SELECT e.ctid FROM ai_sdk_session_entries e \
+    WHERE e.created_at >= greatest($1::timestamptz, \
+    coalesce($2::timestamptz, '-infinity'::timestamptz)) AND e.created_at < $3::timestamptz \
+    AND NOT EXISTS (SELECT 1 FROM coach_conversations c WHERE c.id = e.session_id) \
+    ORDER BY e.created_at LIMIT $4";
+
+/// One page of the orphan sweep.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct OrphanPage {
+    pub deleted: u64,
+    /// The next cursor; `None` when the page was short (the sweep is done).
+    pub next: Option<OffsetDateTime>,
+}
+
+/// Deletes up to `limit` session entries whose session has no conversation, created between
+/// `now - ORPHAN_SESSION_MAX_AGE` and `now - ORPHAN_SESSION_MIN_AGE` (the sidecar may write a
+/// new conversation's first entries before Rust commits it), oldest first from `after`.
+///
+/// The cursor is inclusive (`>=` the newest deleted time): rows before it are done, and orphans
+/// tied with it that did not fit are found again. A full page deletes `limit` rows, so the sweep
+/// always advances.
+pub async fn sweep_orphan_session_entries_page(
+    conn: &mut PgConnection,
+    now: OffsetDateTime,
+    after: Option<OffsetDateTime>,
+    limit: i64,
+) -> Result<OrphanPage, sqlx::Error> {
+    let limit = limit.max(1);
+    let deleted: Vec<OffsetDateTime> = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
+        "DELETE FROM ai_sdk_session_entries WHERE ctid = ANY(ARRAY({ORPHAN_PAGE_SQL})) \
+         RETURNING created_at"
+    )))
+    .bind(now - ORPHAN_SESSION_MAX_AGE)
+    .bind(after)
+    .bind(now - ORPHAN_SESSION_MIN_AGE)
+    .bind(limit)
+    .fetch_all(conn)
+    .await?;
+    let n = deleted.len() as u64;
+    let next = if (n as i64) < limit {
+        None
+    } else {
+        deleted.into_iter().max()
+    };
+    Ok(OrphanPage { deleted: n, next })
+}
+
+/// Runs [`sweep_orphan_session_entries_page`] until a page is short; returns the rows deleted.
+/// `ai-reconcile` runs the pages itself, within its step budget.
 pub async fn sweep_orphan_session_entries(
     conn: &mut PgConnection,
-    min_age: Duration,
+    now: OffsetDateTime,
 ) -> Result<u64, sqlx::Error> {
-    let r = sqlx::query(
-        "DELETE FROM ai_sdk_session_entries e \
-         WHERE e.created_at < now() - $1::float8 * interval '1 second' \
-         AND NOT EXISTS (SELECT 1 FROM coach_conversations c WHERE c.id = e.session_id)",
-    )
-    .bind(min_age.as_secs_f64())
-    .execute(conn)
-    .await?;
-    Ok(r.rows_affected())
+    let mut total = 0;
+    let mut after = None;
+    loop {
+        let page = sweep_orphan_session_entries_page(conn, now, after, ORPHAN_SWEEP_PAGE).await?;
+        total += page.deleted;
+        match page.next {
+            Some(next) => after = Some(next),
+            None => return Ok(total),
+        }
+    }
 }
