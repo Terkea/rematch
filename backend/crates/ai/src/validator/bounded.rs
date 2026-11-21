@@ -50,8 +50,16 @@ fn next_boundary(text: &str, at: usize) -> usize {
 }
 
 /// Finds the matches of `re` in `text` whose preceding char passes `before_ok` and whose following
-/// char passes `after_ok` (`None` is the start or end of the text). A rejected match is retried
-/// from its start plus one char, as a JS engine would. Returns byte spans of the whole match.
+/// char passes `after_ok` (`None` is the start or end of the text). Returns byte spans of the
+/// whole match.
+///
+/// A rejected match is retried from its start plus one char. For `before_ok` this is exactly what a
+/// JS engine does with a lookbehind. `after_ok` is a post-check on the leftmost-first match, so it
+/// equals a JS lookahead **only when the pattern's match end is fixed** (no optional, repeated or
+/// alternative parts that change the length). A JS engine would backtrack to a shorter match
+/// instead: `[a-c]+(?!\d)` matches "ab" in "abc1", but here "abc" is rejected outright. Every
+/// variable-length pattern must fold its lookahead into the regex as `(?P<m>X)(?:[^C]|$)` and use
+/// [`scan`] with [`m_end`] (ADR-R3-2).
 pub fn bounded_matches(
     re: &Regex,
     text: &str,

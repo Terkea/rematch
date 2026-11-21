@@ -15,7 +15,7 @@ use super::bounded::{
     JS_SPACE, PH, Utf16Cursor, is_js_space, m_end, mask, next_char, prev_char, scan, splice,
     window_before,
 };
-use super::normalize::normalize_text;
+use super::normalize::{dash_class, normalize_text};
 
 /// The kind of an extracted number.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -81,11 +81,13 @@ fn s_class() -> String {
 
 // ---- moves ----
 
-// Long algebraic: e2-e4, Ng1-f3, e2xd5, Qd1–h5, e7-e8=Q
+// Long algebraic: e2-e4, Ng1-f3, e2xd5, Qd1–h5, e7-e8=Q. TS's separator class is
+// `[-\u{2010}-\u{2015}\u{2212}x]`; it uses the shared dash set instead (H5, ADR-R3-2).
 lazy_re!(
     LONG_RE,
     format!(
-        "(?P<m>[KQRBN]?(?P<from>{SQ})[-\u{2010}-\u{2015}\u{2212}x](?P<to>{SQ})(?:=?\\(?(?P<p>[QRBNqrbn])\\)?)?){NA}"
+        "(?P<m>[KQRBN]?(?P<from>{SQ})[-{dashes}x](?P<to>{SQ})(?:=?\\(?(?P<p>[QRBNqrbn])\\)?)?){NA}",
+        dashes = dash_class()
     )
 );
 lazy_re!(
@@ -112,10 +114,14 @@ lazy_re!(
         s = s_class()
     )
 );
-lazy_re!(
-    GAP_AFTER_MOVE,
-    format!("^[{JS_SPACE}().,;:\\-+#!?\u{2026}]*$")
-);
+/// A member of TS's `GAP_AFTER_MOVE` class, `[\s().,;:\-+#!?…]`.
+fn is_gap(c: char) -> bool {
+    is_js_space(c)
+        || matches!(
+            c,
+            '(' | ')' | '.' | ',' | ';' | ':' | '-' | '+' | '#' | '!' | '?' | '\u{2026}'
+        )
+}
 lazy_re!(GAP_BEFORE_MOVE, format!("^{}*$", s_class()));
 lazy_re!(PROMO_SAN, "^([a-h](?:x[a-h])?[18])=?([QRBN])$");
 
@@ -186,12 +192,27 @@ fn scan_moves(t: &str) -> (Vec<Hit>, Vec<Hit>, String) {
     let mut san = Vec::new();
     let mut ranges = Vec::new();
     let mut last_end: Option<usize> = None;
+    // TS tests `GAP_AFTER_MOVE` (`^[gap]*$`) on `work.slice(lastEnd, c.at)`, which rescans the
+    // gap for every rejected bare square: quadratic. Instead, walk `work` once and keep the
+    // position of the last non-gap char before the cursor. The slice is all gap iff that
+    // position is before `last_end`.
+    let mut cursor = 0;
+    let mut last_non_gap: Option<usize> = None;
     for (i, c) in cands.iter().enumerate() {
+        if c.start > cursor {
+            for (off, ch) in work[cursor..c.start].char_indices() {
+                if !is_gap(ch) {
+                    last_non_gap = Some(cursor + off);
+                }
+            }
+            cursor = c.start;
+        }
+        let gap_after_move = last_end.is_some_and(|e| last_non_gap.is_none_or(|p| p < e));
         let accept = !c.bare || {
             let before = window_before(&work, c.start, 16);
             MOVE_NO_BEFORE.is_match(before)
                 || PLAY_BEFORE.is_match(before)
-                || last_end.is_some_and(|e| GAP_AFTER_MOVE.is_match(&work[e..c.start]))
+                || gap_after_move
                 || cands.get(i + 1).is_some_and(|next| {
                     !next.bare && GAP_BEFORE_MOVE.is_match(&work[c.end..next.start])
                 })
@@ -843,22 +864,22 @@ pub fn extract_numbers(text: &str) -> Vec<ExtractedNumber> {
     // ratio words
     let not_alnum_dash = |c: Option<char>| not_alnum(c) && c != Some('-');
     let twice = scan(&TWICE_RE, &t, not_alnum, |c| {
-        Some((m_end(c), c.get(0)?.start()))
+        Some((m_end(c), (c.get(0)?.start(), m_end(c))))
     });
     let double = scan(&DOUBLE_RE, &t, not_alnum, |c| {
         let m = c.get(0)?;
         let ok = not_alnum_dash(next_char(&t, m.end())) && !CHECK_AFTER.is_match(&t[m.end()..]);
-        ok.then_some((m.end(), m.start()))
+        ok.then_some((m.end(), (m.start(), m.end())))
     });
     let half = scan(&HALF_RE, &t, not_alnum, |c| {
         let m = c.get(0)?;
-        not_alnum_dash(next_char(&t, m.end())).then_some((m.end(), m.start()))
+        not_alnum_dash(next_char(&t, m.end())).then_some((m.end(), (m.start(), m.end())))
     });
     for (hits, value) in [(twice, 2.0), (double, 2.0), (half, 0.5)] {
         let mut cur = Utf16Cursor::new(&t);
-        for at in hits {
+        for (at, end) in hits {
             if value == 0.5 {
-                let next = &t[at + 4..];
+                let next = &t[end..];
                 let quant_next = QUANT_HALF_NEXT.is_match(next) || QUANT_HALF_UNIT.is_match(next);
                 if !quant_next || NONQ_HALF_PREV.is_match(window_before(&t, at, 12)) {
                     continue;

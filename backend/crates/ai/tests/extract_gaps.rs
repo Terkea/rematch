@@ -1,5 +1,6 @@
 //! Port of `.worktrees/m3/packages/ai/test/validator/extract-gaps.test.ts`, plus the Rust-only
-//! checks for `bounded_matches` (deviation 2, ADR-R3-2) and linear time on hostile input.
+//! checks for `bounded_matches` (deviation 2, ADR-R3-2), linear time on hostile input, the
+//! hardening deviations H1-H6 and the differential TS corpus.
 
 use std::cell::Cell;
 use std::time::{Duration, Instant};
@@ -183,11 +184,15 @@ mod rust_only {
         );
     }
 
+    /// `after_ok` is a post-check on the char after the match, which is only valid for patterns
+    /// whose match end is fixed. `[a-c]+` has a variable end, so this result is NOT what JS
+    /// `[a-c]+(?!\d)` gives: JS backtracks to "ab" in "abc1". A variable-length pattern must fold
+    /// its lookahead into the regex instead (`(?P<m>…)(?:[^…]|$)`, ADR-R3-2).
     #[test]
     fn bounded_matches_checks_the_char_after_and_retries_from_start_plus_one() {
         let re = Regex::new("[a-c]+").unwrap();
-        // "abc" is followed by a digit, so it is rejected; the retry from start + 1 finds "bc",
-        // whose end is the same, so it is rejected too, and so on: nothing matches.
+        // "abc" is followed by a digit, so it is rejected. The retries from start + 1 find "bc"
+        // and "c", which end at the same digit, so they are rejected too. Only the last "ab" passes.
         let not_digit = |c: Option<char>| !c.is_some_and(|c| c.is_ascii_digit());
         assert_eq!(
             bounded_matches(&re, "abc1 ab", |_| true, not_digit),
@@ -195,18 +200,27 @@ mod rust_only {
         );
     }
 
-    /// The TS output for the same input, recorded with Node 22 on m3's `extract.ts`:
-    /// `extractNumbers("٣ games")` is `[]` (JS `\d` is ASCII-only and NFKC keeps U+0663).
+    /// The TS output for this input, recorded by `backend/tools/gen-validator-corpus.mjs`, is
+    /// `extractNumbers("\u{663} games") == []`: JS `\d` is ASCII-only, and NFKC keeps U+0663. The
+    /// Rust digit class is ASCII too (first assert). But hardening H1 (ADR-R3-2) folds every
+    /// `\p{Nd}` digit to ASCII before extraction, so Rust deliberately reads 3.
     #[test]
     fn rust_digit_class_is_ascii_like_js() {
-        assert_eq!(extract_numbers("\u{663} games"), vec![]);
-        assert_eq!(extract_numbers("\u{663}\u{661}\u{664} games"), vec![]);
+        let re = Regex::new("[0-9]+").unwrap();
+        assert_eq!(bounded_matches(&re, "\u{663}", |_| true, |_| true), vec![]);
+        assert_eq!(values(&extract_numbers("\u{663} games")), vec![3.0]);
+        assert_eq!(
+            values(&extract_numbers("\u{663}\u{661}\u{664} games")),
+            vec![314.0]
+        );
     }
 
     #[test]
     fn strip_invisibles_removes_the_tag_and_variation_planes() {
         assert_eq!(strip_invisibles("a\u{e0001}b\u{e0100}c\u{e01ef}d"), "abcd");
-        assert_eq!(strip_invisibles("a\u{e01f0}b"), "a\u{e01f0}b");
+        // U+E01F0 is unassigned, but it is in the Default_Ignorable block range (H2).
+        assert_eq!(strip_invisibles("a\u{e01f0}b"), "ab");
+        assert_eq!(strip_invisibles("a\u{1f600}b"), "a\u{1f600}b");
     }
 
     /// Before-check rejections must not rescan: the predicate runs O(n) times.
@@ -224,62 +238,198 @@ mod rust_only {
         assert!(calls.get() <= n + 2, "{} predicate calls", calls.get());
     }
 
-    /// Hostile text for every extractor: long runs that the lookaround emulation rejects again and
-    /// again. A quadratic retry would take minutes at this size; the bound is generous.
+    fn run_all(text: &str) {
+        let _ = normalize_text(text);
+        let _ = extract_moves(text);
+        let _ = extract_numbers(text);
+        let _ = extract_dates(text);
+    }
+
+    /// The fastest of three runs, to damp scheduler noise.
+    fn cost(text: &str) -> Duration {
+        (0..3)
+            .map(|_| {
+                let t0 = Instant::now();
+                run_all(text);
+                t0.elapsed()
+            })
+            .min()
+            .unwrap()
+    }
+
+    type Shape = fn(usize) -> String;
+
+    /// Each hostile shape runs at N and at 4N. Linear work takes about 4x as long, and quadratic
+    /// work about 16x. The bound (10x, plus 40 ms of slack for tiny timings) catches the quadratic
+    /// case without flaking on a linear one. The first shape is the bare-square gap scan from the
+    /// fix round 1 review: an accepted move, a long gap, then many rejected bare squares.
     #[test]
     fn extractors_are_linear_on_large_hostile_text() {
-        const N: usize = 1 << 17;
-        let hostile = [
-            format!("x{}", "1".repeat(N)),
-            format!("x{}", "1,111".repeat(N / 5)),
-            "1,".repeat(N / 2),
-            "e2e4".repeat(N / 4),
-            "e2-".repeat(N / 3),
-            "O-O-".repeat(N / 4),
-            "0-0-0x".repeat(N / 6),
-            "Nf3".repeat(N / 3),
-            format!("x{}", "one ".repeat(N / 4)),
-            "xone ".repeat(N / 5),
-            "a ".repeat(N / 2),
-            "Oct 1".repeat(N / 5),
-            "14 Oct ".repeat(N / 7),
-            "2026-10-1".repeat(N / 9),
-            "half ".repeat(N / 5),
-            "double ".repeat(N / 7),
-            " ".repeat(N),
-            "\u{a0}1".repeat(N / 2),
-            "12. ".repeat(N / 4),
-            "W1".repeat(N / 2),
-            "\u{200b}".repeat(N),
-            "\u{2212}0".repeat(N / 2),
+        const N: usize = 1 << 14;
+        let shapes: Vec<(&str, Shape)> = vec![
+            ("move, gap, rejected squares", |n| {
+                format!("Nf3{}{}", " ".repeat(n / 2), "x e4 ".repeat(n / 10))
+            }),
+            ("move, punctuation gap, squares", |n| {
+                format!("Nf3{}{}", "(.; ".repeat(n / 8), "the e4 ".repeat(n / 14))
+            }),
+            ("glued digits", |n| format!("x{}", "1".repeat(n))),
+            ("glued thousands", |n| format!("x{}", "1,111".repeat(n / 5))),
+            ("comma digits", |n| "1,".repeat(n / 2)),
+            ("glued uci", |n| "e2e4".repeat(n / 4)),
+            ("dangling long", |n| "e2-".repeat(n / 3)),
+            ("castling chain", |n| "O-O-".repeat(n / 4)),
+            ("castling glued", |n| "0-0-0x".repeat(n / 6)),
+            ("glued san", |n| "Nf3".repeat(n / 3)),
+            ("word run", |n| format!("x{}", "one ".repeat(n / 4))),
+            ("glued words", |n| "xone ".repeat(n / 5)),
+            ("articles", |n| "a ".repeat(n / 2)),
+            ("month day", |n| "Oct 1".repeat(n / 5)),
+            ("month and spaces", |n| {
+                format!("Oct{}x ", " ".repeat(16)).repeat(n / 21)
+            }),
+            ("day month", |n| "14 Oct ".repeat(n / 7)),
+            ("iso prefix", |n| "2026-10-1".repeat(n / 9)),
+            ("half", |n| "half ".repeat(n / 5)),
+            ("half and spaces", |n| format!("half{}", " ".repeat(n))),
+            ("double", |n| "double ".repeat(n / 7)),
+            ("spaces", |n| " ".repeat(n)),
+            ("nbsp digits", |n| "\u{a0}1".repeat(n / 2)),
+            ("move numbers", |n| "12. ".repeat(n / 4)),
+            ("weakness ids", |n| "W1".repeat(n / 2)),
+            ("zero width", |n| "\u{200b}".repeat(n)),
+            ("minus digits", |n| "\u{2212}0".repeat(n / 2)),
+            ("combining marks", |n| "e\u{301}".repeat(n / 2)),
+            ("homoglyphs", |n| "\u{435}4 ".repeat(n / 3)),
         ];
-        let started = Instant::now();
-        for text in &hostile {
-            let t0 = Instant::now();
-            let _ = normalize_text(text);
-            let _ = extract_moves(text);
-            let _ = extract_numbers(text);
-            let _ = extract_dates(text);
-            let took = t0.elapsed();
+        for (name, make) in shapes {
+            let small = cost(&make(N));
+            let big = cost(&make(4 * N));
             assert!(
-                took < Duration::from_secs(20),
-                "{took:?} on {:?}…",
-                text.chars().take(12).collect::<String>()
+                big <= small * 10 + Duration::from_millis(40),
+                "{name}: {small:?} at N, {big:?} at 4N"
             );
         }
-        assert!(started.elapsed() < Duration::from_secs(120));
     }
 }
 
-/// Differential parity with the TS reference on edge cases where an exact port matters: lookaheads
-/// that the JS engine satisfies by backtracking (`0-0-0x` normalises to `O-O-0x`), inner lookaheads
-/// (`1,234,5678`, `Oct 14th:`), UTF-16 window sizes (astral chars before a hedge word), JS `\s`,
-/// and the masks. `TS_CORPUS` is the output of m3's `normalizeText`, `extractNumbers`,
-/// `extractMoves` and `extractDates` for each input, recorded with Node 22 type stripping.
+/// Hardening beyond TS, ruled in fix round 1 and recorded as deviations H1-H6 in ADR-R3-2.
+mod hardening {
+    use super::*;
+
+    #[test]
+    fn h1_folds_every_decimal_digit_to_ascii() {
+        assert_eq!(
+            normalize_text("\u{663}\u{966}\u{96f}\u{e53}\u{1d7d8}"),
+            "30930"
+        );
+        assert_eq!(values(&extract_numbers("\u{967}\u{968} games")), vec![12.0]);
+        assert_eq!(san("\u{967}\u{968}. e\u{666}"), s(&["e6"]));
+    }
+
+    #[test]
+    fn h2_strips_every_default_ignorable_code_point() {
+        for c in [
+            '\u{180f}',
+            '\u{206a}',
+            '\u{fff0}',
+            '\u{1bca0}',
+            '\u{1d173}',
+            '\u{e0fff}',
+        ] {
+            assert_eq!(san(&format!("N{c}f3")), s(&["Nf3"]), "{c:?}");
+        }
+    }
+
+    #[test]
+    fn h3_removes_combining_marks() {
+        assert_eq!(normalize_text("N\u{301}f3"), "Nf3");
+        assert_eq!(normalize_text("e\u{308}4 \u{e9}"), "e4 e");
+        assert_eq!(san("N\u{301}f\u{20d7}3"), s(&["Nf3"]));
+        assert_eq!(values(&extract_numbers("4\u{301}2 games")), vec![42.0]);
+    }
+
+    #[test]
+    fn h4_folds_cyrillic_and_greek_homoglyphs() {
+        assert_eq!(normalize_text("\u{435}4"), "e4");
+        assert_eq!(san("\u{39d}f3 \u{41a}\u{430}4"), s(&["Nf3", "Ka4"]));
+        assert_eq!(san("\u{41e}-\u{41e}-\u{41e}"), s(&["O-O-O"]));
+        assert_eq!(extract_moves("\u{441}7\u{441}5").uci, s(&["c7c5"]));
+        assert_eq!(values(&extract_numbers("\u{417} games")), vec![3.0]);
+        // One table: each entry maps to a single ASCII char, and no code point appears twice.
+        let table = ai::validator::normalize::HOMOGLYPHS;
+        let mut keys: Vec<char> = table.iter().map(|(k, _)| *k).collect();
+        keys.sort_unstable();
+        keys.dedup();
+        assert_eq!(keys.len(), table.len());
+        assert!(table.iter().all(|(k, v)| !k.is_ascii() && v.is_ascii()));
+    }
+
+    #[test]
+    fn h5_extends_the_shared_dash_set() {
+        for d in [
+            "\u{2796}", "\u{2d7}", "\u{2e3a}", "\u{2e3b}", "\u{58a}", "\u{30fc}",
+        ] {
+            assert_eq!(san(&format!("O{d}O{d}O")), s(&["O-O-O"]), "{d:?}");
+            assert_eq!(
+                extract_moves(&format!("e2{d}e4")).uci,
+                s(&["e2e4"]),
+                "{d:?}"
+            );
+            assert_eq!(
+                values(&extract_numbers(&format!("{d}3 eval"))),
+                vec![-3.0],
+                "{d:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn h6_treats_more_spaces_as_thousands_separators() {
+        for sp in ['\u{2006}', '\u{2008}', '\u{200a}'] {
+            assert_eq!(normalize_text(&format!("1{sp}000")), "1,000", "{sp:?}");
+            assert_eq!(
+                values(&extract_numbers(&format!("1{sp}000 games"))),
+                vec![1000.0],
+                "{sp:?}"
+            );
+        }
+    }
+}
+
+/// Differential parity with the TS reference on edge cases where an exact port matters:
+/// - lookaheads that the JS engine satisfies by backtracking (`0-0-0x` normalises to `O-O-0x`);
+/// - inner lookaheads (`1,234,5678`, `Oct 14th:`);
+/// - UTF-16 window sizes (astral chars across the 12-, 16- and 20-unit windows);
+/// - JS `\s` (U+0085 is not a member, U+1680 and U+2029 are);
+/// - the masks.
+///
+/// `TS_CORPUS` is generated by `backend/tools/gen-validator-corpus.mjs`, which records m3's
+/// `normalizeText`, `extractNumbers`, `extractMoves` and `extractDates` for each input. Inputs in
+/// `HARDENED` deliberately differ (H1-H6): for those the test asserts that Rust does differ, so the
+/// list cannot go stale; their Rust values are pinned in `mod hardening`.
 mod ts_parity {
     use super::*;
     use ai::validator::extract::ExtractedDate;
     use serde_json::Value;
+
+    const HARDENED: &[&str] = &[
+        "\u{661}\u{a0}000",
+        "\u{663}\u{661}\u{664}",
+        "Q\u{e9}e5",
+        "\u{e9}e4",
+        "e4\u{e9}",
+        "\u{663} games",
+        "\u{966}\u{96f} games",
+        "\u{435}4 and \u{41d}\u{435}4",
+        "\u{39d}f3 \u{41a}\u{430}4",
+        "N\u{301}f3",
+        "e\u{308}4",
+        "N\u{180f}f3 and N\u{1d173}f3 and N\u{fff0}f3",
+        "O\u{2d7}O and 0\u{2e3a}0\u{2e3b}0 and O\u{58a}O\u{30fc}O",
+        "e2\u{2d7}e4 and Ng1\u{2e3a}f3",
+        "1\u{2006}000 and 1\u{2008}000 and 1\u{200a}000 games",
+    ];
 
     fn ts_number(v: &Value) -> ExtractedNumber {
         ExtractedNumber {
@@ -303,51 +453,64 @@ mod ts_parity {
             .collect()
     }
 
+    /// The fields where Rust and the recorded TS output differ, if any.
+    fn diff(case: &Value) -> Vec<String> {
+        let s = case["s"].as_str().unwrap();
+        let mut bad = Vec::new();
+        if normalize_text(s) != case["t"].as_str().unwrap() {
+            bad.push(format!("normalize {s:?}: {:?}", normalize_text(s)));
+        }
+        let n: Vec<ExtractedNumber> = case["n"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(ts_number)
+            .collect();
+        let got = extract_numbers(s);
+        if got != n {
+            bad.push(format!("numbers {s:?}: rust {got:?} ts {n:?}"));
+        }
+        let m = extract_moves(s);
+        if m.san != strings(&case["m"]["san"]) || m.uci != strings(&case["m"]["uci"]) {
+            bad.push(format!("moves {s:?}: {m:?}"));
+        }
+        let d: Vec<ExtractedDate> = case["d"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|x| ExtractedDate {
+                year: x["year"].as_i64().map(|y| i32::try_from(y).unwrap()),
+                month: u32::try_from(x["month"].as_u64().unwrap()).unwrap(),
+                day: u32::try_from(x["day"].as_u64().unwrap()).unwrap(),
+            })
+            .collect();
+        if extract_dates(s) != d {
+            bad.push(format!("dates {s:?}: {:?}", extract_dates(s)));
+        }
+        bad
+    }
+
     #[test]
     fn rust_matches_the_recorded_ts_output_on_the_edge_corpus() {
         let corpus: Vec<Value> = serde_json::from_str(TS_CORPUS).unwrap();
-        assert_eq!(corpus.len(), 110);
+        assert!(corpus.len() > 110, "{} rows", corpus.len());
+        let inputs: Vec<&str> = corpus.iter().map(|c| c["s"].as_str().unwrap()).collect();
+        for h in HARDENED {
+            assert!(
+                inputs.contains(h),
+                "HARDENED input {h:?} is not in the corpus"
+            );
+        }
         let mut bad = Vec::new();
         for case in &corpus {
             let s = case["s"].as_str().unwrap();
-            if normalize_text(s) != case["t"].as_str().unwrap() {
-                bad.push(format!("normalize {s:?}: {:?}", normalize_text(s)));
-            }
-            let n: Vec<ExtractedNumber> = case["n"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .map(ts_number)
-                .collect();
-            let got = extract_numbers(s);
-            let same = got.len() == n.len()
-                && got.iter().zip(&n).all(|(a, b)| {
-                    a.value == b.value
-                        && a.decimals == b.decimals
-                        && a.percent == b.percent
-                        && a.hedged == b.hedged
-                        && a.kind == b.kind
-                        && a.ambiguous == b.ambiguous
-                });
-            if !same {
-                bad.push(format!("numbers {s:?}: rust {got:?} ts {n:?}"));
-            }
-            let m = extract_moves(s);
-            if m.san != strings(&case["m"]["san"]) || m.uci != strings(&case["m"]["uci"]) {
-                bad.push(format!("moves {s:?}: {m:?}"));
-            }
-            let d: Vec<ExtractedDate> = case["d"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .map(|x| ExtractedDate {
-                    year: x["year"].as_i64().map(|y| i32::try_from(y).unwrap()),
-                    month: u32::try_from(x["month"].as_u64().unwrap()).unwrap(),
-                    day: u32::try_from(x["day"].as_u64().unwrap()).unwrap(),
-                })
-                .collect();
-            if extract_dates(s) != d {
-                bad.push(format!("dates {s:?}: {:?}", extract_dates(s)));
+            let d = diff(case);
+            if HARDENED.contains(&s) {
+                if d.is_empty() {
+                    bad.push(format!("hardened {s:?} no longer differs from TS"));
+                }
+            } else {
+                bad.extend(d);
             }
         }
         assert!(
@@ -358,8 +521,9 @@ mod ts_parity {
         );
     }
 
-    const TS_CORPUS: &str = r#"
-[
+    // BEGIN GENERATED by backend/tools/gen-validator-corpus.mjs; do not edit by hand.
+    // node 22.22.0, icu 77.1, unicode 16.0, m3 4ff8220aed41afb2dd23e04314511f6ebcb1f8e7, 163 inputs
+    const TS_CORPUS: &str = r#"[
 {"s":"0-0-0x","t":"O-O-0x","n":[{"value":0,"decimals":0,"percent":false,"hedged":false,"kind":"ratio","ambiguous":false}],"m":{"san":["O-O"],"uci":[]},"d":[]},
 {"s":"O-O-Ox","t":"O-O-Ox","n":[],"m":{"san":["O-O"],"uci":[]},"d":[]},
 {"s":"O-O-O-O","t":"O-O-O-O","n":[],"m":{"san":["O-O-O"],"uci":[]},"d":[]},
@@ -469,7 +633,60 @@ mod ts_parity {
 {"s":"007 moves","t":"007 moves","n":[{"value":7,"decimals":0,"percent":false,"hedged":false,"kind":"plain","ambiguous":false}],"m":{"san":[],"uci":[]},"d":[]},
 {"s":"1e5 games","t":"1e5 games","n":[{"value":1,"decimals":0,"percent":false,"hedged":false,"kind":"plain","ambiguous":false}],"m":{"san":[],"uci":[]},"d":[]},
 {"s":"3.0 games","t":"3.0 games","n":[{"value":3,"decimals":1,"percent":false,"hedged":false,"kind":"plain","ambiguous":false}],"m":{"san":[],"uci":[]},"d":[]},
-{"s":"-0 games","t":"-0 games","n":[{"value":0,"decimals":0,"percent":false,"hedged":false,"kind":"plain","ambiguous":false}],"m":{"san":[],"uci":[]},"d":[]}
-]
-"#;
+{"s":"-0 games","t":"-0 games","n":[{"value":0,"decimals":0,"percent":false,"hedged":false,"kind":"plain","ambiguous":false}],"m":{"san":[],"uci":[]},"d":[]},
+{"s":"12.\u0085e4","t":"12.\u0085e4","n":[{"value":12,"decimals":0,"percent":false,"hedged":false,"kind":"plain","ambiguous":false}],"m":{"san":[],"uci":[]},"d":[]},
+{"s":"about\u00855 games","t":"about\u00855 games","n":[{"value":5,"decimals":0,"percent":false,"hedged":false,"kind":"plain","ambiguous":false}],"m":{"san":[],"uci":[]},"d":[]},
+{"s":"three\u0085games","t":"three\u0085games","n":[],"m":{"san":[],"uci":[]},"d":[]},
+{"s":"you played\u1680h4","t":"you played\u1680h4","n":[],"m":{"san":["h4"],"uci":[]},"d":[]},
+{"s":"12.\te4 and 13.\u000bd4","t":"12.\te4 and 13.\u000bd4","n":[],"m":{"san":["e4","d4"],"uci":[]},"d":[]},
+{"s":"about\u20295 games","t":"about\u20295 games","n":[{"value":5,"decimals":0,"percent":false,"hedged":true,"kind":"plain","ambiguous":false}],"m":{"san":[],"uci":[]},"d":[]},
+{"s":"five\u2029games","t":"five\u2029games","n":[{"value":5,"decimals":0,"percent":false,"hedged":false,"kind":"plain","ambiguous":false}],"m":{"san":[],"uci":[]},"d":[]},
+{"s":"Oct 14th, 2026","t":"Oct 14th, 2026","n":[],"m":{"san":[],"uci":[]},"d":[{"year":2026,"month":10,"day":14}]},
+{"s":"Oct\u000b14th,\u00852026","t":"Oct\u000b14th,\u00852026","n":[{"value":2026,"decimals":0,"percent":false,"hedged":false,"kind":"plain","ambiguous":false}],"m":{"san":[],"uci":[]},"d":[{"year":null,"month":10,"day":14}]},
+{"s":"x\ud83d\ude001.           e4","t":"x\ud83d\ude001.           e4","n":[],"m":{"san":["e4"],"uci":[]},"d":[]},
+{"s":"\ud83d\ude00\ud83d\ude001.           e4","t":"\ud83d\ude00\ud83d\ude001.           e4","n":[],"m":{"san":["e4"],"uci":[]},"d":[]},
+{"s":"\ud83d\ude00...           d5","t":"\ud83d\ude00...           d5","n":[],"m":{"san":["d5"],"uci":[]},"d":[]},
+{"s":"x\ud83d\ude001.            e4","t":"x\ud83d\ude001.            e4","n":[],"m":{"san":["e4"],"uci":[]},"d":[]},
+{"s":"\ud83d\ude00\ud83d\ude001.            e4","t":"\ud83d\ude00\ud83d\ude001.            e4","n":[],"m":{"san":["e4"],"uci":[]},"d":[]},
+{"s":"\ud83d\ude00...            d5","t":"\ud83d\ude00...            d5","n":[],"m":{"san":["d5"],"uci":[]},"d":[]},
+{"s":"x\ud83d\ude001.             e4","t":"x\ud83d\ude001.             e4","n":[],"m":{"san":["e4"],"uci":[]},"d":[]},
+{"s":"\ud83d\ude00\ud83d\ude001.             e4","t":"\ud83d\ude00\ud83d\ude001.             e4","n":[],"m":{"san":["e4"],"uci":[]},"d":[]},
+{"s":"\ud83d\ude00...             d5","t":"\ud83d\ude00...             d5","n":[],"m":{"san":["d5"],"uci":[]},"d":[]},
+{"s":"x\ud83d\ude001.              e4","t":"x\ud83d\ude001.              e4","n":[],"m":{"san":["e4"],"uci":[]},"d":[]},
+{"s":"\ud83d\ude00\ud83d\ude001.              e4","t":"\ud83d\ude00\ud83d\ude001.              e4","n":[],"m":{"san":["e4"],"uci":[]},"d":[]},
+{"s":"\ud83d\ude00...              d5","t":"\ud83d\ude00...              d5","n":[],"m":{"san":[],"uci":[]},"d":[]},
+{"s":"x\ud83d\ude001.               e4","t":"x\ud83d\ude001.               e4","n":[{"value":1,"decimals":0,"percent":false,"hedged":false,"kind":"plain","ambiguous":false}],"m":{"san":[],"uci":[]},"d":[]},
+{"s":"\ud83d\ude00\ud83d\ude001.               e4","t":"\ud83d\ude00\ud83d\ude001.               e4","n":[{"value":1,"decimals":0,"percent":false,"hedged":false,"kind":"plain","ambiguous":false}],"m":{"san":[],"uci":[]},"d":[]},
+{"s":"\ud83d\ude00...               d5","t":"\ud83d\ude00...               d5","n":[],"m":{"san":[],"uci":[]},"d":[]},
+{"s":"\ud83d\ude00first    half of games","t":"\ud83d\ude00first    half of games","n":[],"m":{"san":[],"uci":[]},"d":[]},
+{"s":"\ud83d\ude00last    half the games","t":"\ud83d\ude00last    half the games","n":[],"m":{"san":[],"uci":[]},"d":[]},
+{"s":"\ud83d\ude00first     half of games","t":"\ud83d\ude00first     half of games","n":[],"m":{"san":[],"uci":[]},"d":[]},
+{"s":"\ud83d\ude00last     half the games","t":"\ud83d\ude00last     half the games","n":[],"m":{"san":[],"uci":[]},"d":[]},
+{"s":"\ud83d\ude00first      half of games","t":"\ud83d\ude00first      half of games","n":[],"m":{"san":[],"uci":[]},"d":[]},
+{"s":"\ud83d\ude00last      half the games","t":"\ud83d\ude00last      half the games","n":[],"m":{"san":[],"uci":[]},"d":[]},
+{"s":"\ud83d\ude00first       half of games","t":"\ud83d\ude00first       half of games","n":[],"m":{"san":[],"uci":[]},"d":[]},
+{"s":"\ud83d\ude00last       half the games","t":"\ud83d\ude00last       half the games","n":[],"m":{"san":[],"uci":[]},"d":[]},
+{"s":"\ud83d\ude00first        half of games","t":"\ud83d\ude00first        half of games","n":[{"value":0.5,"decimals":1,"percent":false,"hedged":false,"kind":"ratio","ambiguous":false}],"m":{"san":[],"uci":[]},"d":[]},
+{"s":"\ud83d\ude00last        half the games","t":"\ud83d\ude00last        half the games","n":[],"m":{"san":[],"uci":[]},"d":[]},
+{"s":"\ud83d\ude00about             5 games","t":"\ud83d\ude00about             5 games","n":[{"value":5,"decimals":0,"percent":false,"hedged":true,"kind":"plain","ambiguous":false}],"m":{"san":[],"uci":[]},"d":[]},
+{"s":"\ud83d\ude00\ud83d\ude00more than         7 games","t":"\ud83d\ude00\ud83d\ude00more than         7 games","n":[{"value":7,"decimals":0,"percent":false,"hedged":true,"kind":"plain","ambiguous":false}],"m":{"san":[],"uci":[]},"d":[]},
+{"s":"\ud83d\ude00about              5 games","t":"\ud83d\ude00about              5 games","n":[{"value":5,"decimals":0,"percent":false,"hedged":true,"kind":"plain","ambiguous":false}],"m":{"san":[],"uci":[]},"d":[]},
+{"s":"\ud83d\ude00\ud83d\ude00more than          7 games","t":"\ud83d\ude00\ud83d\ude00more than          7 games","n":[{"value":7,"decimals":0,"percent":false,"hedged":true,"kind":"plain","ambiguous":false}],"m":{"san":[],"uci":[]},"d":[]},
+{"s":"\ud83d\ude00about               5 games","t":"\ud83d\ude00about               5 games","n":[{"value":5,"decimals":0,"percent":false,"hedged":true,"kind":"plain","ambiguous":false}],"m":{"san":[],"uci":[]},"d":[]},
+{"s":"\ud83d\ude00\ud83d\ude00more than           7 games","t":"\ud83d\ude00\ud83d\ude00more than           7 games","n":[{"value":7,"decimals":0,"percent":false,"hedged":true,"kind":"plain","ambiguous":false}],"m":{"san":[],"uci":[]},"d":[]},
+{"s":"\ud83d\ude00about                5 games","t":"\ud83d\ude00about                5 games","n":[{"value":5,"decimals":0,"percent":false,"hedged":false,"kind":"plain","ambiguous":false}],"m":{"san":[],"uci":[]},"d":[]},
+{"s":"\ud83d\ude00\ud83d\ude00more than            7 games","t":"\ud83d\ude00\ud83d\ude00more than            7 games","n":[{"value":7,"decimals":0,"percent":false,"hedged":false,"kind":"plain","ambiguous":false}],"m":{"san":[],"uci":[]},"d":[]},
+{"s":"Nf3                                        x e4 x e4 x e4 x e4 x e4 x e4 x e4 x e4 ","t":"Nf3                                        x e4 x e4 x e4 x e4 x e4 x e4 x e4 x e4 ","n":[],"m":{"san":["Nf3"],"uci":[]},"d":[]},
+{"s":"\u0663 games","t":"\u0663 games","n":[],"m":{"san":[],"uci":[]},"d":[]},
+{"s":"\u0966\u096f games","t":"\u0966\u096f games","n":[],"m":{"san":[],"uci":[]},"d":[]},
+{"s":"\u04354 and \u041d\u04354","t":"\u04354 and \u041d\u04354","n":[{"value":4,"decimals":0,"percent":false,"hedged":false,"kind":"plain","ambiguous":false},{"value":4,"decimals":0,"percent":false,"hedged":false,"kind":"plain","ambiguous":false}],"m":{"san":[],"uci":[]},"d":[]},
+{"s":"\u039df3 \u041a\u04304","t":"\u039df3 \u041a\u04304","n":[{"value":4,"decimals":0,"percent":false,"hedged":false,"kind":"plain","ambiguous":false}],"m":{"san":[],"uci":[]},"d":[]},
+{"s":"N\u0301f3","t":"\u0143f3","n":[],"m":{"san":[],"uci":[]},"d":[]},
+{"s":"e\u03084","t":"\u00eb4","n":[{"value":4,"decimals":0,"percent":false,"hedged":false,"kind":"plain","ambiguous":false}],"m":{"san":[],"uci":[]},"d":[]},
+{"s":"N\u180ff3 and N\ud834\udd73f3 and N\ufff0f3","t":"N\u180ff3 and N\ud834\udd73f3 and N\ufff0f3","n":[],"m":{"san":[],"uci":[]},"d":[]},
+{"s":"O\u02d7O and 0\u2e3a0\u2e3b0 and O\u058aO\u30fcO","t":"O\u02d7O and 0\u2e3a0\u2e3b0 and O\u058aO\u30fcO","n":[{"value":0,"decimals":0,"percent":false,"hedged":false,"kind":"plain","ambiguous":false},{"value":0,"decimals":0,"percent":false,"hedged":false,"kind":"plain","ambiguous":false},{"value":0,"decimals":0,"percent":false,"hedged":false,"kind":"plain","ambiguous":false}],"m":{"san":[],"uci":[]},"d":[]},
+{"s":"e2\u02d7e4 and Ng1\u2e3af3","t":"e2\u02d7e4 and Ng1\u2e3af3","n":[],"m":{"san":["Ng1"],"uci":[]},"d":[]},
+{"s":"1\u2006000 and 1\u2008000 and 1\u200a000 games","t":"1 000 and 1 000 and 1 000 games","n":[{"value":1,"decimals":0,"percent":false,"hedged":false,"kind":"plain","ambiguous":false},{"value":0,"decimals":0,"percent":false,"hedged":false,"kind":"plain","ambiguous":false},{"value":1,"decimals":0,"percent":false,"hedged":false,"kind":"plain","ambiguous":false},{"value":0,"decimals":0,"percent":false,"hedged":false,"kind":"plain","ambiguous":false},{"value":1,"decimals":0,"percent":false,"hedged":false,"kind":"plain","ambiguous":false},{"value":0,"decimals":0,"percent":false,"hedged":false,"kind":"plain","ambiguous":false}],"m":{"san":[],"uci":[]},"d":[]}
+]"#;
+    // END GENERATED
 }
