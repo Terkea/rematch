@@ -5,7 +5,7 @@ TypeScript monorepo (pnpm workspaces + Turborepo, Node 22, ESM only). Packages u
 ## Run
 
 - Install: `pnpm install` (pnpm 12; Node version in `.nvmrc`).
-- Stack (Postgres, Redis, worker with Stockfish): `docker compose up -d`.
+- Stack (Postgres, Redis, worker with Stockfish): `docker compose up -d`. Host ports 55432 (Postgres) and 56379 (Redis) are opt-in via `COMPOSE_FILE=docker-compose.yml:docker-compose.ports.yml` in `.env` (see `.env.example`; keep `COMPOSE_PATH_SEPARATOR=:`). Parallel or CI projects run `COMPOSE_FILE=docker-compose.yml docker compose -p <name> ...`, which publishes no host ports.
 - Build / lint / typecheck: `pnpm build`, `pnpm lint`, `pnpm typecheck` (all via `turbo run`).
 - Format: `pnpm format` (Biome does both lint and format).
 
@@ -17,8 +17,8 @@ TypeScript monorepo (pnpm workspaces + Turborepo, Node 22, ESM only). Packages u
 
 ## Rust backend
 
-- Cargo workspace in `backend/` (ADRs 0030, 0031). Build and test only in Docker: `$RUST` means `docker compose run --rm rust-dev`.
-- Set `LANE=<lane letter>` before `$RUST`, so each lane builds into its own `/target/$LANE` in the shared volume.
+- Cargo workspace in `backend/` (ADRs 0030, 0031). Build and test only in Docker: `$RUST` means `COMPOSE_FILE=docker-compose.yml docker compose -p ci-<lane> run --rm -e LANE=<lane> rust-dev` (no host ports; `CONTACT_EMAIL` is not needed).
+- `-e LANE=<lane letter>` makes the entrypoint build into its own `/target/<lane>` in the shared volume (default `main`). Tear down with `COMPOSE_FILE=docker-compose.yml docker compose -p ci-<lane> down -v`.
 - One crate: `$RUST cargo test --locked -p <crate>`. Full gate: `$RUST sh -c "cargo fmt --check && cargo clippy --locked --workspace --all-targets -- -D warnings && cargo deny --locked check && cargo test --locked --workspace && sh scripts/check-crate-age.sh"`.
 - Migrations live in `db/migrations/` (plain SQL, applied by sqlx). They are the schema source of truth.
 - Only the coordinator edits `Cargo.toml` dependency lists and `Cargo.lock`. Crates are pinned exactly, at least 7 days old (`scripts/check-crate-age.sh`), and checked by `cargo deny`. Always pass `--locked`.
