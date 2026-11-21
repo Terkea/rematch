@@ -150,18 +150,18 @@ macro_rules! terminal {
 
 #[derive(sqlx::FromRow)]
 pub(crate) struct JobRow {
-    id: i64,
-    kind: String,
-    payload: Value,
-    dedupe_key: Option<String>,
-    user_key: Option<Uuid>,
-    priority: i16,
-    attempts: i32,
-    max_attempts: i32,
-    lease_token: Option<Uuid>,
-    run_at: OffsetDateTime,
-    created_at: OffsetDateTime,
-    started_at: Option<OffsetDateTime>,
+    pub(crate) id: i64,
+    pub(crate) kind: String,
+    pub(crate) payload: Value,
+    pub(crate) dedupe_key: Option<String>,
+    pub(crate) user_key: Option<Uuid>,
+    pub(crate) priority: i16,
+    pub(crate) attempts: i32,
+    pub(crate) max_attempts: i32,
+    pub(crate) lease_token: Option<Uuid>,
+    pub(crate) run_at: OffsetDateTime,
+    pub(crate) created_at: OffsetDateTime,
+    pub(crate) started_at: Option<OffsetDateTime>,
 }
 
 impl JobRow {

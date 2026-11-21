@@ -7,11 +7,13 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use futures::future::BoxFuture;
-use queue::queue::Queue;
+use queue::queue::{Queue, QueueError};
 use queue::runner::{Handler, JobContext, Runner, RunnerConfig};
 use queue::strategy::SelectStrategy;
 use queue::{EnqueueOptions, Job, JobError};
-use scheduler::fair::{FairRoundRobin, fair_claim_sql};
+use scheduler::fair::{
+    FairRoundRobin, NotAServedKind, ServedKind, fair_claim_sql, first_candidates,
+};
 use scheduler::priority::job_priority;
 use scheduler::select::Plan;
 use serde_json::{Value, json};
@@ -232,11 +234,20 @@ async fn several_kinds_share_one_round_robin(pool: PgPool) {
             .unwrap();
         }
     }
-    let fair = FairRoundRobin::default();
+    // FairRoundRobin only claims served kinds, so the statement itself is driven here.
     let mut got = Vec::new();
     for _ in 0..12 {
-        let jobs = fair.dequeue(&q, &["x", "y"], "w", 1, LEASE).await.unwrap();
-        let job = jobs.into_iter().next().expect("a job");
+        let claimed = q
+            .claim_with(
+                fair_claim_sql(),
+                &["x", "y"],
+                &[first_candidates(1), 3_600_000, 5, 1],
+                "w",
+                LEASE,
+            )
+            .await
+            .unwrap();
+        let job = claimed.jobs.into_iter().next().expect("a job");
         // Served is counted from games; mark one served game per claim.
         games(&pool, job.user_key.unwrap(), 1, Some(0)).await;
         got.push(job.user_key);
@@ -331,11 +342,17 @@ async fn racing_fair_claimers_never_share_a_job(pool: PgPool) {
         tasks.push(tokio::spawn(async move {
             let fair = FairRoundRobin::default();
             let owner = format!("w{w}");
-            let mut empty = 0;
-            while empty < 20 {
+            loop {
                 let jobs = fair.dequeue(&q, &[KIND], &owner, 3, LEASE).await.unwrap();
                 if jobs.is_empty() {
-                    empty += 1;
+                    let queued: i64 =
+                        sqlx::query_scalar("SELECT count(*) FROM jobs WHERE state = 'queued'")
+                            .fetch_one(q.pool())
+                            .await
+                            .unwrap();
+                    if queued == 0 {
+                        break;
+                    }
                     tokio::time::sleep(Duration::from_millis(5)).await;
                 }
                 for j in jobs {
@@ -551,7 +568,7 @@ async fn fair_claim_plan_is_index_backed(pool: PgPool) {
     seed_scale(&pool).await;
     let mut conn = pool.acquire().await.unwrap();
     sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
-        "PREPARE fair_claim(text[], int8, int8, int8, text, int8) AS {}",
+        "PREPARE fair_claim(text[], int8, int8, int8, int8, text, int8) AS {}",
         fair_claim_sql()
     )))
     .execute(&mut *conn)
@@ -565,7 +582,8 @@ async fn fair_claim_plan_is_index_backed(pool: PgPool) {
         .iter()
         .flat_map(|c| ["force_custom_plan", "force_generic_plan"].map(|m| (*c, m)))
     {
-        let execute = format!("EXECUTE fair_claim('{kinds}', 16, 3600000, 5, 'w', 60000)");
+        let execute =
+            format!("EXECUTE fair_claim('{kinds}', 64, 3600000, 5, 16, 'w', 60000)");
         sqlx::query("SELECT set_config('plan_cache_mode', $1, false)")
             .bind(mode)
             .execute(&mut *conn)
@@ -618,4 +636,226 @@ async fn fair_claim_plan_is_index_backed(pool: PgPool) {
         .execute(&mut *conn)
         .await
         .unwrap();
+}
+
+// Fix round 1 ---------------------------------------------------------------------------------
+
+/// Review counterexample: one account, 10 jobs with equal priority and `run_at` whose ids are
+/// out of heap order. With `limit 1` the claim must return the smallest id (claim order is
+/// `(priority, run_at, id)`), not whichever tuple the index range meets first.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn equal_priority_and_run_at_claims_the_smallest_id(pool: PgPool) {
+    let q = Queue::new(pool.clone());
+    let a = account(&pool, "a", 1).await;
+    // Inserted largest id first, so heap (and insertion) order is descending by id.
+    let ids: Vec<i64> = sqlx::query_scalar(
+        "INSERT INTO jobs (id, kind, payload, user_key, priority, run_at, created_at) \
+         SELECT 1000 - i, $1, '{}', $2, 4, t, t \
+         FROM generate_series(1, 10) i, (SELECT now() - interval '1 minute' AS t) c \
+         ORDER BY i RETURNING id",
+    )
+    .bind(KIND)
+    .bind(a)
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    let smallest = *ids.iter().min().unwrap();
+    assert_eq!(smallest, 990);
+    let fair = FairRoundRobin::default();
+    let got = fair.dequeue(&q, &[KIND], "w", 1, LEASE).await.unwrap();
+    assert_eq!(got.iter().map(|j| j.id).collect::<Vec<_>>(), vec![smallest]);
+    // And then in id order, one at a time.
+    let mut order = vec![got[0].id];
+    for _ in 0..9 {
+        let got = fair.dequeue(&q, &[KIND], "w", 1, LEASE).await.unwrap();
+        order.push(got[0].id);
+    }
+    assert_eq!(order, (990..1000).collect::<Vec<i64>>());
+}
+
+#[test]
+fn only_served_kinds_build_a_fair_strategy() {
+    assert_eq!(ServedKind::ALL, &[ServedKind::AnalyseGame]);
+    assert_eq!(ServedKind::AnalyseGame.as_str(), KIND);
+    assert_eq!(FairRoundRobin::default().kinds(), &[ServedKind::AnalyseGame]);
+    assert!(FairRoundRobin::for_kinds(&[KIND]).is_ok());
+    for bad in [
+        queue::KIND_PREVIEW,
+        queue::KIND_REFERENCE_GAME,
+        queue::KIND_BUILD_PROFILE,
+        queue::KIND_IMPORT,
+        "x",
+    ] {
+        assert_eq!(
+            FairRoundRobin::for_kinds(&[KIND, bad]),
+            Err(NotAServedKind(bad.to_owned()))
+        );
+    }
+    let fair = FairRoundRobin::default();
+    assert!(fair.check(&[KIND]).is_ok());
+    assert_eq!(
+        fair.check(&[KIND, queue::KIND_PREVIEW]),
+        Err(NotAServedKind(queue::KIND_PREVIEW.to_owned()))
+    );
+}
+
+/// Asked for a kind outside its allow-list, the strategy errors and claims nothing.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn fair_dequeue_refuses_kinds_that_do_not_record_served(pool: PgPool) {
+    let q = Queue::new(pool.clone());
+    let a = account(&pool, "a", 1).await;
+    for kind in [KIND, queue::KIND_BUILD_PROFILE] {
+        q.enqueue(
+            kind,
+            &json!({}),
+            EnqueueOptions {
+                user_key: Some(a),
+                ..EnqueueOptions::default()
+            },
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    }
+    let fair = FairRoundRobin::default();
+    for kinds in [
+        vec![queue::KIND_BUILD_PROFILE],
+        vec![KIND, queue::KIND_BUILD_PROFILE],
+    ] {
+        let err = fair.dequeue(&q, &kinds, "w", 5, LEASE).await.unwrap_err();
+        assert!(matches!(err, QueueError::InvalidOptions(_)), "{err:?}");
+    }
+    let queued: i64 = sqlx::query_scalar("SELECT count(*) FROM jobs WHERE state = 'queued'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(queued, 2, "nothing was claimed");
+}
+
+/// Eight claimers racing (limit 1) over one heavy and three light users: a claim may come back
+/// empty only when the other seven could hold every remaining job (at most 7 locks), never
+/// while more due work remains. The first candidate window (4) can be fully held by the other
+/// seven; the retry's window (40) cannot.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn contended_claimers_never_come_back_empty_while_work_remains(pool: PgPool) {
+    const CLAIMERS: usize = 8;
+    const LIMIT: i64 = 1;
+    let q = Queue::new(pool.clone());
+    let mut total = 0;
+    for u in 0..4 {
+        let acc = account(&pool, &format!("u{u}"), 10 - u).await;
+        let g = games(&pool, acc, if u == 0 { 150 } else { 30 }, None).await;
+        total += enqueue(&q, Some(acc), &g, p0()).await.len();
+    }
+    let spurious = Arc::new(Mutex::new(Vec::new()));
+    let claimed = Arc::new(Mutex::new(Vec::new()));
+    let mut tasks = Vec::new();
+    for w in 0..CLAIMERS {
+        let (q, spurious, claimed) = (q.clone(), spurious.clone(), claimed.clone());
+        tasks.push(tokio::spawn(async move {
+            let fair = FairRoundRobin::default();
+            let owner = format!("w{w}");
+            loop {
+                let jobs = fair.dequeue(&q, &[KIND], &owner, LIMIT, LEASE).await.unwrap();
+                if jobs.is_empty() {
+                    // Counted after the claim, so it can only be lower than at claim time.
+                    let queued: i64 = sqlx::query_scalar(
+                        "SELECT count(*) FROM jobs WHERE state = 'queued'",
+                    )
+                    .fetch_one(q.pool())
+                    .await
+                    .unwrap();
+                    if queued == 0 {
+                        break;
+                    }
+                    if queued > (CLAIMERS as i64 - 1) * LIMIT {
+                        spurious.lock().unwrap().push(queued);
+                    }
+                    tokio::task::yield_now().await;
+                    continue;
+                }
+                for j in jobs {
+                    start_game(q.pool(), &j).await;
+                    assert!(q.complete(&j).await.unwrap());
+                    claimed.lock().unwrap().push(j.id);
+                }
+            }
+        }));
+    }
+    for t in tasks {
+        t.await.unwrap();
+    }
+    let claimed = claimed.lock().unwrap().clone();
+    assert_eq!(claimed.len(), total);
+    assert_eq!(claimed.iter().collect::<HashSet<_>>().len(), total);
+    let spurious = spurious.lock().unwrap().clone();
+    assert!(
+        spurious.is_empty(),
+        "empty claims with this many jobs still queued: {spurious:?}"
+    );
+}
+
+/// Deterministic contention: another transaction holds the first candidate window (the best
+/// 4 × limit jobs) locked. The first attempt claims nothing although it had candidates, so the
+/// claim is re-run once with the wider window and takes the next job.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn short_claim_retries_past_rows_locked_by_others(pool: PgPool) {
+    let q = Queue::new(pool.clone());
+    let a = account(&pool, "a", 1).await;
+    let g = games(&pool, a, 6, None).await;
+    let ids = enqueue(&q, Some(a), &g, p0()).await;
+    let mut other = pool.begin().await.unwrap();
+    let held: Vec<i64> = sqlx::query_scalar(
+        "SELECT id FROM jobs WHERE id = ANY($1) ORDER BY id LIMIT $2 FOR UPDATE",
+    )
+    .bind(&ids)
+    .bind(first_candidates(1))
+    .fetch_all(&mut *other)
+    .await
+    .unwrap();
+    assert_eq!(held, ids[..4]);
+    let got = FairRoundRobin::default()
+        .dequeue(&q, &[KIND], "w", 1, LEASE)
+        .await
+        .unwrap();
+    assert_eq!(got.iter().map(|j| j.id).collect::<Vec<_>>(), vec![ids[4]]);
+    other.rollback().await.unwrap();
+}
+
+/// Scale guard at 2 000 accounts with work (release builds only: it is a wall-clock bound).
+/// ADR-R2-15: the claim is linear in accounts with work, about 12 µs each; 2 000 accounts must
+/// stay well under 3 × 2 000 × 12 µs ≈ 72 ms, and the rows read from `jobs` stay bounded.
+#[cfg_attr(debug_assertions, ignore)]
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn fair_claim_at_2000_accounts_stays_linear(pool: PgPool) {
+    sqlx::raw_sql(
+        "INSERT INTO linked_accounts (platform, username, display_name, created_at) \
+           SELECT 'lichess', 'p' || a, 'p' || a, now() - a * interval '1 minute' \
+           FROM generate_series(1, 2000) a; \
+         INSERT INTO jobs (kind, payload, user_key, priority, run_at, created_at) \
+           SELECT 'analyse-game', '{}', a.id, 4, t.at, t.at \
+           FROM linked_accounts a, generate_series(1, 10) g, \
+                LATERAL (SELECT now() - (g + random()) * interval '1 minute' AS at) t",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    for table in ["jobs", "linked_accounts"] {
+        sqlx::raw_sql(sqlx::AssertSqlSafe(format!("VACUUM ANALYZE {table}")))
+            .execute(&pool)
+            .await
+            .unwrap();
+    }
+    let q = Queue::new(pool.clone());
+    let fair = FairRoundRobin::default();
+    fair.dequeue(&q, &[KIND], "warm", 1, LEASE).await.unwrap();
+    let mut best = Duration::MAX;
+    for _ in 0..5 {
+        let t = Instant::now();
+        let jobs = fair.dequeue(&q, &[KIND], "w", 4, LEASE).await.unwrap();
+        best = best.min(t.elapsed());
+        assert_eq!(jobs.len(), 4);
+    }
+    eprintln!("fair claim at 2000 accounts: best of 5 = {best:?}");
+    assert!(best < Duration::from_millis(72), "claim took {best:?}");
 }
