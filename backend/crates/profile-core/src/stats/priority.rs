@@ -7,7 +7,10 @@
 //! - `confidence = P(theta > band median)`;
 //! - `excess = max(0, mean - median) * (n_unweighted / games) * epl_per_event`;
 //! - `priority = excess * trainability * confidence * (1 - fatigue)`, 0 unless the reason is
-//!   `Ok` (benchmark present and at least [`MIN_GAMES`] games).
+//!   `Ok` (benchmark present, at least [`MIN_GAMES`] games and at least one in-window event);
+//! - with no in-window event, confidence is 0 and the percentile is `None`: we never express
+//!   certainty about a weakness that was never observed;
+//! - invalid points are skipped and counted, so no NaN or infinity reaches the output.
 
 use serde::{Deserialize, Serialize};
 
@@ -23,6 +26,9 @@ pub const WINDOW_DAYS: f64 = 183.0;
 pub const MIN_GAMES: u32 = 30;
 /// An estimate is precise when its 80% interval is at most this fraction of the band median.
 pub const PRECISE_REL_WIDTH: f64 = 0.25;
+/// Largest plausible events or opportunities of one point; larger values are invalid (they keep
+/// every sum finite).
+pub const MAX_POINT_COUNT: f64 = 1e9;
 
 /// Why an estimate can or cannot be ranked (TS `reason`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -31,6 +37,8 @@ pub enum EstimateReason {
     Ok,
     NoBenchmark,
     InsufficientData,
+    /// Benchmark and games are sufficient, but no event in the window: nothing is claimed.
+    NoEvents,
 }
 
 /// A scored weakness (TS `WeaknessEstimate`, plus the unweighted event count for the contract).
@@ -56,6 +64,8 @@ pub struct WeaknessEstimate {
     pub precise: bool,
     pub min_evidence_met: bool,
     pub reason: EstimateReason,
+    /// Points skipped as invalid (see [`estimate_weakness`]).
+    pub invalid_points: u32,
 }
 
 /// Input of [`estimate_weakness`]. `points` are `(events, opportunities, epl, age_days)`; `epl`
@@ -71,25 +81,43 @@ pub struct EstimateInput<'a> {
     pub fatigue: f64,
 }
 
-/// The band prior of a reference: both `pooled_rate` and `epl_per_event` must be present and
-/// finite, with the pooled rate in `[0, 1]`; otherwise there is no benchmark.
+/// The band prior of a reference: `pooled_rate` in `[0, 1]`, a finite `epl_per_event >= 0`,
+/// finite quartiles and a median in `[0, 1]`; otherwise there is no benchmark.
 fn benchmark(r: Option<&BandReferenceStat>) -> Option<(&BandReferenceStat, f64, f64)> {
     let r = r?;
     let pooled = r.pooled_rate.filter(|p| (0.0..=1.0).contains(p))?;
     let epl = r.epl_per_event.filter(|e| e.is_finite() && *e >= 0.0)?;
-    r.median.is_finite().then_some((r, pooled, epl))
+    let finite = [r.p25, r.p40, r.median, r.p75]
+        .iter()
+        .all(|x| x.is_finite());
+    (finite && (0.0..=1.0).contains(&r.median)).then_some((r, pooled, epl))
+}
+
+/// A usable point: finite, non-negative events, opportunities and EPL with
+/// `events <= opportunities <= MAX_POINT_COUNT`, and a finite age. A negative finite age is
+/// clock skew and valid (it weighs 1, ADR-R2-5 section 5).
+fn valid_point(&(e, o, epl, age): &(f64, f64, f64, f64)) -> bool {
+    let ok = |x: f64| x.is_finite() && x >= 0.0;
+    ok(e) && ok(o) && ok(epl) && age.is_finite() && e <= o && o <= MAX_POINT_COUNT
 }
 
 /// Estimate and score one weakness (TS `estimateWeakness`).
 ///
 /// Reasons: fewer than [`MIN_GAMES`] games is `InsufficientData` (it wins over a missing
 /// benchmark, because it is what the player can fix); otherwise no usable reference is
-/// `NoBenchmark`. Both force priority 0. Without a benchmark the posterior uses `Beta(1, 1)`,
-/// `band_*` and `percentile` are `None`, and confidence and excess are 0.
+/// `NoBenchmark`; otherwise no in-window event is `NoEvents`. All three force priority 0.
+/// Without a benchmark the posterior uses `Beta(1, 1)`, `band_*` and `percentile` are `None`,
+/// and confidence and excess are 0. Whenever `k_unweighted == 0` (whatever the reason),
+/// confidence is 0 and `percentile` is `None`.
+///
+/// Invalid points (see `valid_point`: non-finite or negative values, events above
+/// opportunities, implausibly large counts, a non-finite age) are skipped and counted in
+/// `invalid_points`. Valid points older than [`WINDOW_DAYS`] are ignored, not invalid.
 pub fn estimate_weakness(i: &EstimateInput) -> WeaknessEstimate {
-    let in_window: Vec<_> = i
-        .points
-        .iter()
+    let valid: Vec<_> = i.points.iter().filter(|p| valid_point(p)).collect();
+    let invalid_points = u32::try_from(i.points.len() - valid.len()).unwrap_or(u32::MAX);
+    let in_window: Vec<_> = valid
+        .into_iter()
         .filter(|p| p.3 <= WINDOW_DAYS)
         .copied()
         .collect();
@@ -139,10 +167,19 @@ pub fn estimate_weakness(i: &EstimateInput) -> WeaknessEstimate {
         None => (None, None, None, 0.0, 0.0, false),
     };
 
+    let no_events = k_unweighted == 0.0;
+    let (confidence, percentile) = if no_events {
+        (0.0, None)
+    } else {
+        (confidence, percentile)
+    };
+
     let reason = if i.games_in_window < MIN_GAMES {
         EstimateReason::InsufficientData
     } else if bench.is_none() {
         EstimateReason::NoBenchmark
+    } else if no_events {
+        EstimateReason::NoEvents
     } else {
         EstimateReason::Ok
     };
@@ -168,19 +205,28 @@ pub fn estimate_weakness(i: &EstimateInput) -> WeaknessEstimate {
         precise,
         min_evidence_met: n_unweighted >= min_evidence(i.key),
         reason,
+        invalid_points,
     }
 }
 
 /// Rankable estimates (every key but W9d and W12) by priority descending, then by key string
-/// (TS `rankWeaknesses`).
+/// (TS `rankWeaknesses`). Non-finite priorities (only possible in hand-built estimates) sort
+/// after every finite one, by key.
 pub fn rank_weaknesses(v: Vec<WeaknessEstimate>) -> Vec<WeaknessEstimate> {
     let mut v: Vec<_> = v
         .into_iter()
         .filter(|e| RANKABLE.contains(&e.key))
         .collect();
     v.sort_by(|a, b| {
-        b.priority
-            .total_cmp(&a.priority)
+        let (fa, fb) = (a.priority.is_finite(), b.priority.is_finite());
+        fb.cmp(&fa)
+            .then_with(|| {
+                if fa && fb {
+                    b.priority.total_cmp(&a.priority)
+                } else {
+                    std::cmp::Ordering::Equal
+                }
+            })
             .then_with(|| a.key.as_str().cmp(b.key.as_str()))
     });
     v

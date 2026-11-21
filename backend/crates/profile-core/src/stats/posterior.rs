@@ -1,11 +1,10 @@
 //! Shrunk posteriors and P_imp (R2 Task 12, TS M2 Task 16, ADR-R2-5).
 //!
 //! A weakness rate gets the conjugate Beta posterior of a band prior `{mu, n0}`:
-//! `alpha = n0 mu + k`, `beta = n0 (1 - mu) + n - k`, with both shapes floored at
-//! [`SHAPE_FLOOR`]. The floor keeps a zero pooled rate (prior `Beta(0, n0)`) a proper
-//! distribution instead of a point mass that would claim certainty from no data, and it keeps
-//! the posterior mean inside the equal-tailed 80% interval (below a shape of about 0.04 the
-//! 90% quantile falls under the mean).
+//! `alpha = n0 mu + k`, `beta = n0 (1 - mu) + n - k`. A shape that is exactly 0 (a zero pooled
+//! rate and no events) is replaced by [`SHAPE_FLOOR`], so the posterior stays a proper
+//! distribution instead of a point mass; positive shapes are never changed. Because tiny shapes
+//! can put the mean outside the equal-tailed 80% interval, the interval is widened to the mean.
 
 use serde::{Deserialize, Serialize};
 
@@ -13,10 +12,14 @@ use crate::stats::beta::BetaDist;
 use crate::stats::intervals::{INTERVAL_LEVEL, Interval};
 use crate::stats::rng::Rng;
 
-/// Smallest posterior shape. At 0.1 the worst case (the Gamma limit, `b -> inf`) has
-/// `P(X <= mean) = P(Gamma(0.1) <= 0.1) = 0.83 < 0.9`, so the mean is always inside the 80%
-/// interval, and the floor adds at most a tenth of a pseudo-event.
-pub const SHAPE_FLOOR: f64 = 0.1;
+/// Replacement for a posterior shape that is exactly 0 (coordinator ruling, ADR-R2-5 section 7).
+/// It is a thousandth of a pseudo-event, so it barely moves the mean; the lightest real
+/// in-window event weighs `0.5^(183/60) = 0.121`, so the floor never applies once there is one.
+pub const SHAPE_FLOOR: f64 = 1e-3;
+/// Largest `alpha + beta`. Larger counts are scaled down together (the mean is kept, the
+/// interval becomes wider, i.e. conservative), so `posterior` stays total and the incomplete
+/// beta continued fraction stays far below its term cap. Real series stay below 1e6.
+pub const MAX_SHAPE: f64 = 1e7;
 /// Relative improvement P_imp asks for: `theta_c < theta_b (1 - 0.15)`.
 pub const P_IMP_DELTA_REL: f64 = 0.15;
 /// Regression factor: `theta_c > theta_b * 1.15`.
@@ -46,8 +49,10 @@ impl BetaPosterior {
 /// The posterior of `k` events in `n` opportunities under the prior `Beta(n0 mu, n0 (1 - mu))`
 /// (TS `posterior(k, n, { mu, n0 })`). `k` and `n` may be recency-weighted (fractional).
 ///
-/// Shapes are floored at [`SHAPE_FLOOR`]. The interval is the 10% and 90% quantiles, widened
-/// to the mean if the bisection tolerance (5e-11 relative) ever put it on the wrong side.
+/// A shape that is exactly 0 becomes [`SHAPE_FLOOR`]; `n0 + n` above [`MAX_SHAPE`] is scaled
+/// down to it, keeping the mean. The interval is the 10% and 90% quantiles, widened to include
+/// the mean (equal-tailed intervals of shapes below about 0.04 exclude it: Beta(0.02, 40) has
+/// q90 = 7.5e-5 < mean 5e-4).
 ///
 /// Valid input is finite with `0 <= k <= n`, `0 <= mu <= 1` and `n0 >= 0`; anything else fails
 /// a `debug_assert!`. Release builds clamp it: NaN or negative counts and `n0` become 0, `k` is
@@ -67,16 +72,28 @@ pub fn posterior(k: f64, n: f64, mu: f64, n0: f64) -> BetaPosterior {
         "prior strength must be >= 0 ({n0})"
     );
     let nonneg = |x: f64| if x.is_finite() && x > 0.0 { x } else { 0.0 };
-    let n = nonneg(n);
-    let k = nonneg(k).min(n);
-    let n0 = nonneg(n0);
+    let mut n = nonneg(n);
+    let mut k = nonneg(k).min(n);
+    let mut n0 = nonneg(n0);
     let mu = if mu.is_nan() { 0.5 } else { mu.clamp(0.0, 1.0) };
 
-    let alpha = (n0 * mu + k).max(SHAPE_FLOOR);
-    let beta = (n0 * (1.0 - mu) + (n - k)).max(SHAPE_FLOOR);
+    // Scale `n0 + n` down to MAX_SHAPE without forming a sum that could overflow.
+    let big = n0.max(n);
+    if big > 0.0 {
+        let rel_total = n0 / big + n / big;
+        if rel_total > MAX_SHAPE / big {
+            let f = (MAX_SHAPE / big) / rel_total;
+            n0 *= f;
+            n *= f;
+            k = (k * f).min(n);
+        }
+    }
+
+    let floor_zero = |x: f64| if x > 0.0 { x } else { SHAPE_FLOOR };
+    let alpha = floor_zero(n0 * mu + k);
+    let beta = floor_zero(n0 * (1.0 - mu) + (n - k));
     let Ok(dist) = BetaDist::new(alpha, beta) else {
-        // Only reachable if the shapes overflow to infinity (counts near f64::MAX).
-        debug_assert!(false, "posterior shapes overflowed ({alpha}, {beta})");
+        // Unreachable: both shapes are in (0, MAX_SHAPE].
         return BetaPosterior {
             alpha: 1.0,
             beta: 1.0,
