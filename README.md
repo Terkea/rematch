@@ -50,3 +50,7 @@ docker compose run --rm worker pnpm --filter @ci/worker cli analyse \
 ```
 
 Chess.com requires a real `CONTACT_EMAIL` in `.env` for its User-Agent; `--timeout` defaults to 30 minutes.
+
+Note: the CLI writes into the main `chess` database (`DATABASE_URL`), not a test database, and it does not
+schedule the reconciler. SIGINT/SIGTERM stop the wait, shut the workers down cleanly and exit 130/143;
+a second signal exits immediately.

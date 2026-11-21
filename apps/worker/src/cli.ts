@@ -16,6 +16,12 @@ export interface AnalyseDeps {
   printError(line: string): void;
   /** DB polling interval (default 1 s). */
   pollMs?: number;
+  /** Aborts the wait (set by runCli on SIGINT/SIGTERM). */
+  signal?: AbortSignal;
+  /** Idle-queue grace before giving up on unfinished games (default 60 s). */
+  graceMs?: number;
+  /** Test seam: the account's import runs (default: select from import_runs). */
+  listRuns?(accountId: string): Promise<RunRow[]>;
 }
 
 const PLATFORMS = ["lichess", "chesscom"] as const;
@@ -135,6 +141,41 @@ async function summarise(db: Db, accountId: string) {
   };
 }
 
+/** The machine-readable failure class of an import run (null until the column is populated). */
+export function importRunErrorCode(run: { errorCode?: string | null }): string | null {
+  return run.errorCode ?? null;
+}
+
+interface RunRow {
+  id: string;
+  status: string;
+  lastError: string | null;
+  errorCode?: string | null;
+}
+
+const TERMINAL: readonly string[] = ["done", "failed", "skipped"];
+
+async function nonTerminalIds(db: Db, accountId: string): Promise<string[]> {
+  const rows = await db
+    .select({ id: games.id, status: games.analysisStatus })
+    .from(games)
+    .where(eq(games.accountId, accountId));
+  return rows.filter((r) => !TERMINAL.includes(r.status)).map((r) => r.id);
+}
+
+function sleepAbortable(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal?.aborted) return resolve();
+    const done = () => {
+      clearTimeout(t);
+      signal?.removeEventListener("abort", done);
+      resolve();
+    };
+    const t = setTimeout(done, ms);
+    signal?.addEventListener("abort", done);
+  });
+}
+
 /** Runs one `analyse` command against already-running workers; resolves with the exit code. */
 export async function runAnalyse(argv: string[], deps: AnalyseDeps): Promise<number> {
   const args = parse(argv);
@@ -142,29 +183,33 @@ export async function runAnalyse(argv: string[], deps: AnalyseDeps): Promise<num
     deps.printError(args);
     return 1;
   }
-  const { db } = deps;
+  const { db, signal } = deps;
   const pollMs = deps.pollMs ?? 1000;
+  const graceMs = deps.graceMs ?? 60_000;
   const account = await findOrCreateAccount(db, args.platform, args.username);
-  const knownRuns = new Set(
-    (
-      await db
-        .select({ id: importRuns.id })
-        .from(importRuns)
-        .where(eq(importRuns.accountId, account.id))
-    ).map((r) => r.id),
-  );
+  const listRuns = async (): Promise<RunRow[]> =>
+    deps.listRuns
+      ? deps.listRuns(account.id)
+      : db.select().from(importRuns).where(eq(importRuns.accountId, account.id));
+  const knownRuns = new Set((await listRuns()).map((r) => r.id));
+  // Games left pending/analysing by an earlier killed run. Only those the import re-enqueues
+  // will move, so they must not stall this invocation.
+  const stale = new Set(await nonTerminalIds(db, account.id));
   await deps.enqueueImport({
     accountId: account.id,
     ...(args.max !== undefined ? { max: args.max } : {}),
   });
 
   const deadline = Date.now() + args.timeoutMs;
-  let lastProgress = 0;
+  let lastProgress = Math.floor((await statusCounts(db, account.id)).done / 10) * 10;
+  let idleSince: number | null = null;
   for (;;) {
-    const runs = (
-      await db.select().from(importRuns).where(eq(importRuns.accountId, account.id))
-    ).filter((r) => !knownRuns.has(r.id));
-    if (runs.some((r) => r.status === "failed" && r.lastError?.startsWith("Not found:"))) {
+    if (signal?.aborted) {
+      deps.printError("interrupted");
+      return 1;
+    }
+    const runs = (await listRuns()).filter((r) => !knownRuns.has(r.id));
+    if (runs.some((r) => r.status === "failed" && importRunErrorCode(r) === "not_found")) {
       deps.printError(`User "${args.username}" not found on ${args.platform}`);
       return 1;
     }
@@ -176,13 +221,30 @@ export async function runAnalyse(argv: string[], deps: AnalyseDeps): Promise<num
       deps.print(`analysed ${lastProgress}/${total} games`);
     }
     if (await deps.queuesIdle()) {
-      const imported = runs.some((r) => r.status === "done");
-      if (!imported) {
+      if (!runs.some((r) => r.status === "done")) {
         const failed = runs.find((r) => r.status === "failed");
         deps.printError(`import failed: ${failed?.lastError ?? "no import run completed"}`);
         return 1;
       }
-      if (settled === total) break;
+      const open = await nonTerminalIds(db, account.id);
+      const inScope = open.filter((id) => !stale.has(id));
+      idleSince ??= Date.now();
+      if (inScope.length === 0) {
+        if (open.length > 0) {
+          deps.printError(
+            `warning: ${open.length} game(s) left over from an earlier run are still pending/analysing and were ignored`,
+          );
+        }
+        break;
+      }
+      if (Date.now() - idleSince >= graceMs) {
+        deps.printError(
+          `warning: queues are idle but ${inScope.length} game(s) are not finished; giving up (${settled}/${total} settled)`,
+        );
+        break;
+      }
+    } else {
+      idleSince = null;
     }
     if (Date.now() >= deadline) {
       deps.printError(
@@ -190,11 +252,67 @@ export async function runAnalyse(argv: string[], deps: AnalyseDeps): Promise<num
       );
       return 1;
     }
-    await sleep(pollMs);
+    await sleepAbortable(pollMs, signal);
   }
   const s = await summarise(db, account.id);
+  if (s.total === 0) {
+    deps.print(`no standard games found for ${args.username} on ${args.platform}`);
+    return 0;
+  }
   deps.print(s.line);
-  return s.total > 0 && s.counts.failed === s.total ? 1 : 0;
+  return s.counts.failed === s.total ? 1 : 0;
+}
+
+type SignalName = "SIGINT" | "SIGTERM";
+
+export interface SignalSource {
+  on(event: SignalName, fn: () => void): unknown;
+  off(event: SignalName, fn: () => void): unknown;
+}
+
+export interface CliDeps {
+  /** Starts the workers and returns what `runAnalyse` needs plus a closer (the shutdown path). */
+  start(): Promise<{ analyse: Omit<AnalyseDeps, "signal">; close(): Promise<number> }>;
+  signals: SignalSource;
+  /** Used for a second signal: exits immediately. */
+  exit(code: number): void;
+  printError(line: string): void;
+}
+
+const SIGNAL_CODES: Record<SignalName, number> = { SIGINT: 130, SIGTERM: 143 };
+
+/** Runs the CLI: SIGINT/SIGTERM abort the wait, the workers are shut down, and 128+n is returned. */
+export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
+  const controller = new AbortController();
+  let signalCode: number | null = null;
+  const handlers = (["SIGINT", "SIGTERM"] as const).map((sig) => {
+    const fn = () => {
+      if (signalCode !== null) {
+        deps.printError("second signal received; exiting immediately");
+        deps.exit(SIGNAL_CODES[sig]);
+        return;
+      }
+      signalCode = SIGNAL_CODES[sig];
+      deps.printError(`${sig} received; shutting down`);
+      controller.abort();
+    };
+    deps.signals.on(sig, fn);
+    return [sig, fn] as const;
+  });
+  try {
+    const running = await deps.start();
+    let code = 1;
+    try {
+      code = await runAnalyse(argv, { ...running.analyse, signal: controller.signal });
+    } finally {
+      const closeCode = await running.close();
+      if (code === 0) code = closeCode;
+    }
+    return signalCode ?? code;
+  } finally {
+    // Handlers stay installed through shutdown so a second signal still forces an exit.
+    for (const [sig, fn] of handlers) deps.signals.off(sig, fn);
+  }
 }
 
 function requireEnv(name: string): string {
@@ -204,34 +322,37 @@ function requireEnv(name: string): string {
 }
 
 async function main(argv: string[]): Promise<number> {
-  const running = await startWorkers({
-    REDIS_URL: requireEnv("REDIS_URL"),
-    DATABASE_URL: requireEnv("DATABASE_URL"),
-    STOCKFISH_PATH: requireEnv("STOCKFISH_PATH"),
-    CONTACT_EMAIL: requireEnv("CONTACT_EMAIL"),
-    LICHESS_TOKEN: process.env.LICHESS_TOKEN,
+  return runCli(argv, {
+    signals: process,
+    exit: (code) => process.exit(code),
+    printError: (l) => console.error(l),
+    start: async () => {
+      const running = await startWorkers({
+        REDIS_URL: requireEnv("REDIS_URL"),
+        DATABASE_URL: requireEnv("DATABASE_URL"),
+        STOCKFISH_PATH: requireEnv("STOCKFISH_PATH"),
+        CONTACT_EMAIL: requireEnv("CONTACT_EMAIL"),
+        LICHESS_TOKEN: process.env.LICHESS_TOKEN,
+      });
+      return {
+        analyse: {
+          db: running.db,
+          enqueueImport: (p) => running.queues.enqueueImport(p),
+          queuesIdle: async () => {
+            const states = ["waiting", "active", "delayed", "prioritized"] as const;
+            for (const q of [running.queues.importAccount, running.queues.analyseGame]) {
+              const counts = await q.getJobCounts(...states);
+              if (states.some((st) => (counts[st] ?? 0) > 0)) return false;
+            }
+            return true;
+          },
+          print: (l) => console.log(l),
+          printError: (l) => console.error(l),
+        },
+        close: () => shutdown(running, { graceMs: 25_000 }),
+      };
+    },
   });
-  let code = 1;
-  try {
-    code = await runAnalyse(argv, {
-      db: running.db,
-      enqueueImport: (p) => running.queues.enqueueImport(p),
-      queuesIdle: async () => {
-        const states = ["waiting", "active", "delayed", "prioritized"] as const;
-        for (const q of [running.queues.importAccount, running.queues.analyseGame]) {
-          const counts = await q.getJobCounts(...states);
-          if (states.some((s) => (counts[s] ?? 0) > 0)) return false;
-        }
-        return true;
-      },
-      print: (l) => console.log(l),
-      printError: (l) => console.error(l),
-    });
-  } finally {
-    const closeCode = await shutdown(running, { graceMs: 25_000 });
-    if (code === 0) code = closeCode;
-  }
-  return code;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
