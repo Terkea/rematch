@@ -36,6 +36,7 @@ One file per decision: context, decision, alternatives, consequences. New decisi
 - [ADR-WEB-2. Web development stack in Compose](ADR-WEB-2-web-dev-stack.md)
 - [ADR-WEB-3. Auth data model, Better Auth configuration and invite-only sign-up](ADR-WEB-3-auth-and-link-data-model.md)
 - [ADR-WEB-5. chess.com linking and location-code verification](ADR-WEB-5-chesscom-verification.md)
+- [ADR-WEB-6. Age gate, under-13 block and private defaults](ADR-WEB-6-age-gate.md)
 - [ADR-WEB-7. Design tokens, themes and self-hosted fonts](ADR-WEB-7-design-tokens.md)
 - [ADR-WEB-9. Ban lint; Impeccable not adopted, web-design-guidelines vendored](ADR-WEB-9-third-party-design-tooling.md)
 - [ADR-WEB-10. Visual QA loop: Playwright, shots, lab and critique](ADR-WEB-10-visual-qa-loop.md)
