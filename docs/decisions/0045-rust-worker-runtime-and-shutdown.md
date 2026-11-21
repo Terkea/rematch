@@ -1,4 +1,4 @@
-# 0044. Rust worker runtime image and graceful shutdown
+# 0045. Rust worker runtime image and graceful shutdown
 
 Date: 2026-11-21. Status: accepted.
 
@@ -13,7 +13,8 @@ small, locked-down image.
 - **One process, one runner per job kind:** import (concurrency 2, no hard timeout: the handler
   owns its 30-minute idle deadline), analyse (concurrency = engine pool size, hard timeout 11 min
   over the handler's own 10-minute deadline) and reconcile (concurrency 1, hard timeout 5 min).
-  The pool size defaults to `max(1, cores - 1)` (`WORKER_POOL_SIZE`). The database pool has
+  The pool size is `WORKER_POOL_SIZE` (passed through compose; `.env.example` sets 8 for a
+  desktop), else `min(cores - 2, 8)` and at least 1, so a backfill cannot saturate the machine. The database pool has
   `pool_size + 8` connections (budget in `worker/src/start.rs`), and every connection asks the
   server for TCP keepalives (60/10/3 s).
 - **Boot order:** check that `STOCKFISH_PATH` is Stockfish 19.x (the `sf19-n300k-v1` protocol is
@@ -23,7 +24,9 @@ small, locked-down image.
 - **Shutdown** (25 s grace; compose `stop_grace_period: 30s`): stop claiming, drain for 60 % of the
   grace, then close the engine pool (in-flight analyses put their game back to `pending` and
   release their job without using an attempt, even on the final attempt), drain until 90 %, then
-  force the runners (cancel and `release_owned`), then close the engines and the database pool.
+  force the runners within the 90 %-100 % window (cancel, abort, and always `release_owned`
+  before the window ends, even for a handler that ignores cancellation), then close the engines
+  and the database pool.
   Every step is bounded by the remaining budget (at least 100 ms); exit code 1 only if a close
   failed or timed out. SIGTERM and SIGINT start it once; later signals are logged and ignored.
 - **Batched enqueue:** `Queue::enqueue_many` inserts many jobs of one kind in one statement with
@@ -43,9 +46,13 @@ small, locked-down image.
 
 ## Consequences
 
-- A deploy never burns an attempt: a job interrupted by shutdown is re-run by the next worker.
+- A deploy never burns a *job* attempt: a job interrupted by shutdown is released and re-run by
+  the next worker. It does still count against the game's `games.analysis_attempts`, which every
+  claim increments (the attempt fence, ADR 0035): an interrupted run is one of the game's
+  `MAX_ANALYSIS_ATTEMPTS` (6) after which the reconciler fails it. Frequent restarts mid-analysis
+  can therefore exhaust a game; deferred to T23/T24.
 - A hard-timed-out analysis whose handler never winds down leaves its game `analysing`; the
   reconciler's stale sweep (10 min) resets or fails it.
 - Writes of an import are still not routed through its lock connection: if that connection dies
-  mid-import, a re-claimed job can overlap the old handler (T21 limitation, still open).
+  mid-import, a re-claimed job can overlap the old handler (T21 limitation, deferred to T23/T24).
 - Bumping the Debian base means updating the digest by hand.

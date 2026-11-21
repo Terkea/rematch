@@ -63,7 +63,7 @@ impl Drainable for FakeRunner {
         .boxed()
     }
 
-    fn force(&self) -> BoxFuture<'_, ()> {
+    fn force(&self, _budget: Duration) -> BoxFuture<'_, ()> {
         push(&self.log, "force");
         async {}.boxed()
     }
@@ -138,8 +138,8 @@ async fn a_second_signal_does_not_close_anything_twice() {
         fn wait_idle(&self) -> BoxFuture<'_, ()> {
             self.0.wait_idle()
         }
-        fn force(&self) -> BoxFuture<'_, ()> {
-            self.0.force()
+        fn force(&self, budget: Duration) -> BoxFuture<'_, ()> {
+            self.0.force(budget)
         }
     }
     let engines = FakeClose::new("engines", &log);
@@ -457,4 +457,103 @@ async fn sigterm_on_final_attempt_then_fresh_worker_completes(
         .await,
         0
     );
+}
+
+/// Never finishes and never looks at its cancel token.
+struct Stubborn;
+
+impl queue::runner::Handler for Stubborn {
+    fn kind(&self) -> &'static str {
+        queue::KIND_ANALYSE
+    }
+
+    fn handle(
+        &self,
+        _job: queue::Job,
+        _ctx: queue::runner::JobContext,
+    ) -> BoxFuture<'_, Result<serde_json::Value, queue::JobError>> {
+        futures::future::pending().boxed()
+    }
+}
+
+async fn job_state(pool: &PgPool, id: i64) -> (String, i32, bool) {
+    sqlx::query_as("SELECT state::text, attempts, lease_owner IS NULL FROM jobs WHERE id = $1")
+        .bind(id)
+        .fetch_one(pool)
+        .await
+        .unwrap()
+}
+
+/// The force step gets the 90 %-100 % window and always hands the job back within it, even
+/// when the handler ignores its cancellation.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn the_force_step_releases_a_job_whose_handler_ignores_cancellation(pool: PgPool) {
+    let queue = Queue::new(pool.clone());
+    let id = queue
+        .enqueue(
+            queue::KIND_ANALYSE,
+            &serde_json::json!({}),
+            queue::EnqueueOptions::default(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    let runner = queue::runner::Runner::spawn(
+        queue.clone(),
+        Arc::new(Stubborn),
+        RunnerConfig::fast_for_tests(),
+    );
+    wait_until("the job to run", Duration::from_secs(10), || {
+        let pool = pool.clone();
+        async move { (job_state(&pool, id).await.0 == "running").then_some(()) }
+    })
+    .await;
+    let handles = ShutdownHandles {
+        runners: vec![Box::new(runner)],
+        engines: Box::new(Noop),
+        db: Box::new(Noop),
+    };
+    let grace = Duration::from_secs(1);
+    let started = Instant::now();
+    let code = shutdown(handles, ShutdownOptions { grace }).await;
+    assert!(
+        started.elapsed() < grace + Duration::from_millis(400),
+        "{:?}",
+        started.elapsed()
+    );
+    assert_eq!(code, 0);
+    // Released: queued again, the attempt given back, no lease.
+    assert_eq!(job_state(&pool, id).await, ("queued".to_owned(), 0, true));
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn force_within_a_tiny_budget_still_releases(pool: PgPool) {
+    let queue = Queue::new(pool.clone());
+    let id = queue
+        .enqueue(
+            queue::KIND_ANALYSE,
+            &serde_json::json!({}),
+            queue::EnqueueOptions::default(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    let runner = queue::runner::Runner::spawn(
+        queue.clone(),
+        Arc::new(Stubborn),
+        RunnerConfig::fast_for_tests(),
+    );
+    wait_until("the job to run", Duration::from_secs(10), || {
+        let pool = pool.clone();
+        async move { (job_state(&pool, id).await.0 == "running").then_some(()) }
+    })
+    .await;
+    let started = Instant::now();
+    runner.force_within(Duration::from_millis(100)).await;
+    assert!(
+        started.elapsed() < Duration::from_millis(100 + 400),
+        "{:?}",
+        started.elapsed()
+    );
+    assert_eq!(job_state(&pool, id).await, ("queued".to_owned(), 0, true));
 }

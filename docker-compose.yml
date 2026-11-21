@@ -229,6 +229,8 @@ services:
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/chess
       STOCKFISH_PATH: /usr/local/bin/stockfish
       LICHESS_TOKEN: ${LICHESS_TOKEN:-}
+      # Engines (and analyses at once). Empty: min(cores - 2, 8). See .env.example.
+      WORKER_POOL_SIZE: ${WORKER_POOL_SIZE:-}
       RUST_LOG: ${RUST_LOG:-info}
     depends_on:
       postgres:

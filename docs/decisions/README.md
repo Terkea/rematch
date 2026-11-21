@@ -45,5 +45,5 @@ One file per decision: context, decision, alternatives, consequences. New decisi
 - [0041. First target: a private beta for the owner and a few friends](0041-private-beta-owner-and-friends.md)
 - [0042. Shared Rust build caches across lanes](0042-shared-rust-build-caches.md)
 - [0043. No email address in outbound requests](0043-no-email-in-outbound-requests.md)
-- [0044. Rust worker runtime image and graceful shutdown](0044-rust-worker-runtime-and-shutdown.md)
 - [0044. Postgres runs under an init process with an exec-form TCP healthcheck](0044-postgres-init-process-and-tcp-healthcheck.md)
+- [0045. Rust worker runtime image and graceful shutdown](0045-rust-worker-runtime-and-shutdown.md)

@@ -5,8 +5,9 @@
 //! 2. if they have not, the engine pool is closed: in-flight analyses fail with `PoolClosed`,
 //!    put their game back to `pending` and release their job without using an attempt; the
 //!    runners drain again until 90 %;
-//! 3. runners still busy are forced: their handlers are cancelled and their jobs released
-//!    (`release_owned`), again without using an attempt;
+//! 3. runners still busy are forced within the rest of the grace (90 %-100 %): their handlers
+//!    are cancelled, then aborted, and their jobs always released (`release_owned`) before the
+//!    budget ends, again without using an attempt;
 //! 4. the engines (if not closed yet) and the database pool are closed.
 //!
 //! Every step is bounded by the remaining budget (at least [`MIN_STEP`]); failures and timeouts
@@ -35,8 +36,8 @@ pub trait Drainable: Send + Sync {
     fn stop(&self);
     /// Resolves once every in-flight job has finished.
     fn wait_idle(&self) -> BoxFuture<'_, ()>;
-    /// Cancel in-flight jobs and hand them back to the queue.
-    fn force(&self) -> BoxFuture<'_, ()>;
+    /// Cancel in-flight jobs and hand them back to the queue within `budget`.
+    fn force(&self, budget: Duration) -> BoxFuture<'_, ()>;
 }
 
 impl Drainable for RunnerHandle {
@@ -48,8 +49,8 @@ impl Drainable for RunnerHandle {
         RunnerHandle::wait_idle(self).boxed()
     }
 
-    fn force(&self) -> BoxFuture<'_, ()> {
-        RunnerHandle::force(self).boxed()
+    fn force(&self, budget: Duration) -> BoxFuture<'_, ()> {
+        RunnerHandle::force_within(self, budget).boxed()
     }
 }
 
@@ -131,8 +132,14 @@ pub async fn shutdown(handles: ShutdownHandles, opts: ShutdownOptions) -> i32 {
             .is_ok();
         if !settled {
             tracing::warn!("forcing the runners; their jobs are released without an attempt");
-            let forced = join_all(handles.runners.iter().map(|r| r.force()));
-            if tokio::time::timeout(budget(1.0), forced).await.is_err() {
+            // The 90 %-100 % window: each runner cancels, aborts and always releases its jobs
+            // (`release_owned`) within it. The outer bound only catches a broken `force`.
+            let window = budget(1.0);
+            let forced = join_all(handles.runners.iter().map(|r| r.force(window)));
+            if tokio::time::timeout(window + MIN_STEP, forced)
+                .await
+                .is_err()
+            {
                 failed = true;
                 tracing::error!(resource = "runners", "force timed out");
             }
