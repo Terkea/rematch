@@ -44,13 +44,31 @@ for (const b of schema.blocks) {
   b.text = b.text.replace(/(timestamp\([^)]*?)mode: (["'])string\2/g, '$1mode: "date"');
   // drizzle-kit labels opclasses from the wrong column; Postgres picks the right default anyway
   b.text = b.text.replace(/\.op\((["'])\w+\1\)/g, "");
-  // an empty text[] default is introspected as [""]; only position_evals.pv is known to have one
+  // an empty text[] default is introspected as [""]; position_evals.pv has one
   if (b.name === "positionEvals") {
     b.text = replaceExact(
       b.text,
       /(pv: text\(\)\.array\(\)\.default\()\[(["'])\2\]\)/g,
       "$1sql`'{}'::text[]`)",
       "position_evals.pv",
+    );
+  }
+  // the same for interactive_evals.moves (R3, ADR-R3-3)
+  if (b.name === "interactiveEvals") {
+    b.text = replaceExact(
+      b.text,
+      /(moves: text\(\)\.array\(\)\.default\()\[(["'])\2\]\)/g,
+      "$1sql`'{}'::text[]`)",
+      "interactive_evals.moves",
+    );
+  }
+  // drizzle-kit emits an empty-string default as the broken literal `default(')`
+  if (b.name === "aiSdkSessionEntries") {
+    b.text = replaceExact(
+      b.text,
+      /(subpath: text\(\)\.default\()'\)/g,
+      '$1"")',
+      "ai_sdk_session_entries.subpath",
     );
   }
   if (b.name === "userEvents") {

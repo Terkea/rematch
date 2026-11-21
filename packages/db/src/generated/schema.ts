@@ -4,6 +4,7 @@ import {
   bigserial,
   boolean,
   check,
+  date,
   doublePrecision,
   foreignKey,
   index,
@@ -35,6 +36,24 @@ export interface ImportCursor {
   newestSeenAt: string | null;
 }
 
+export const aiBatchStatus = pgEnum("ai_batch_status", [
+  "submitted",
+  "ended",
+  "processed",
+  "failed",
+]);
+
+export const aiFeature = pgEnum("ai_feature", [
+  "report",
+  "weekly_review",
+  "weakness_change",
+  "chat",
+]);
+
+export const aiItemStatus = pgEnum("ai_item_status", ["pending", "ready", "dropped", "failed"]);
+
+export const aiPlan = pgEnum("ai_plan", ["free", "pro"]);
+
 export const analysisStatus = pgEnum("analysis_status", [
   "pending",
   "analysing",
@@ -43,11 +62,21 @@ export const analysisStatus = pgEnum("analysis_status", [
   "skipped",
 ]);
 
+export const chatRole = pgEnum("chat_role", ["user", "assistant"]);
+
+export const chatStatus = pgEnum("chat_status", ["pending", "streaming", "done", "failed"]);
+
 export const color = pgEnum("color", ["white", "black"]);
 
 export const evalSource = pgEnum("eval_source", ["stockfish", "lichess", "dump"]);
 
 export const importRunStatus = pgEnum("import_run_status", ["running", "done", "failed", "paused"]);
+
+export const interactiveEvalStatus = pgEnum("interactive_eval_status", [
+  "pending",
+  "done",
+  "failed",
+]);
 
 export const jobState = pgEnum("job_state", [
   "queued",
@@ -64,9 +93,206 @@ export const phase = pgEnum("phase", ["opening", "middlegame", "endgame"]);
 
 export const platform = pgEnum("platform", ["lichess", "chesscom"]);
 
+export const reportMode = pgEnum("report_mode", ["sync", "batch"]);
+
+export const reportRunStatus = pgEnum("report_run_status", [
+  "queued",
+  "running",
+  "awaiting_retry",
+  "awaiting_batch",
+  "done",
+  "failed",
+]);
+
+export const reportStatus = pgEnum("report_status", ["computed_only", "partial", "complete"]);
+
+export const reportTrigger = pgEnum("report_trigger", [
+  "onboarding",
+  "manual",
+  "scheduled",
+  "profile_change",
+]);
+
 export const result = pgEnum("result", ["1-0", "0-1", "1/2-1/2", "*"]);
 
 export const timeClass = pgEnum("time_class", ["bullet", "blitz", "rapid", "classical", "daily"]);
+
+export const aiBatchItems = pgTable(
+  "ai_batch_items",
+  {
+    id: uuid().primaryKey().notNull(),
+    batchId: text("batch_id").notNull(),
+    customId: text("custom_id").notNull(),
+    kind: text().notNull(),
+    reportRunId: uuid("report_run_id"),
+    section: text(),
+    weeklyReviewId: uuid("weekly_review_id"),
+    processedAt: timestamp("processed_at", { withTimezone: true, mode: "date" }),
+  },
+  (table) => [
+    index("ai_batch_items_pending_idx")
+      .using("btree", table.batchId.asc().nullsLast())
+      .where(sql`(processed_at IS NULL)`),
+    foreignKey({
+      columns: [table.batchId],
+      foreignColumns: [aiBatches.id],
+      name: "ai_batch_items_batch_id_fkey",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [table.reportRunId],
+      foreignColumns: [reportRuns.id],
+      name: "ai_batch_items_report_run_id_fkey",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [table.weeklyReviewId],
+      foreignColumns: [weeklyReviews.id],
+      name: "ai_batch_items_weekly_review_id_fkey",
+    }).onDelete("cascade"),
+    unique("ai_batch_items_custom_id_key").on(table.customId),
+    check(
+      "ai_batch_items_kind_check",
+      sql`kind = ANY (ARRAY['report'::text, 'weekly_review'::text])`,
+    ),
+  ],
+);
+
+export const aiBatches = pgTable(
+  "ai_batches",
+  {
+    id: text().primaryKey().notNull(),
+    kind: text().notNull(),
+    status: aiBatchStatus().default("submitted").notNull(),
+    requestCount: integer("request_count").notNull(),
+    submittedAt: timestamp("submitted_at", { withTimezone: true, mode: "date" })
+      .defaultNow()
+      .notNull(),
+    endedAt: timestamp("ended_at", { withTimezone: true, mode: "date" }),
+    processedAt: timestamp("processed_at", { withTimezone: true, mode: "date" }),
+    lastPolledAt: timestamp("last_polled_at", { withTimezone: true, mode: "date" }),
+  },
+  (_table) => [
+    check("ai_batches_kind_check", sql`kind = ANY (ARRAY['report'::text, 'weekly_review'::text])`),
+  ],
+);
+
+export const aiSdkSessionEntries = pgTable(
+  "ai_sdk_session_entries",
+  {
+    projectKey: text("project_key").notNull(),
+    sessionId: uuid("session_id").notNull(),
+    subpath: text().default("").notNull(),
+    // You can use { mode: "bigint" } if numbers are exceeding js number limitations
+    seq: bigint({ mode: "number" }).notNull(),
+    entry: jsonb().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("ai_sdk_session_entries_session_idx").using("btree", table.sessionId.asc().nullsLast()),
+    uniqueIndex("ai_sdk_session_entries_uuid_uq")
+      .using(
+        "btree",
+        sql`project_key`,
+        sql`session_id`,
+        sql`subpath`,
+        sql`((entry ->> 'uuid'::text))`,
+      )
+      .where(sql`(entry ? 'uuid'::text)`),
+    primaryKey({
+      columns: [table.projectKey, table.sessionId, table.subpath, table.seq],
+      name: "ai_sdk_session_entries_pkey",
+    }),
+  ],
+);
+
+export const aiUsage = pgTable(
+  "ai_usage",
+  {
+    id: bigserial({ mode: "bigint" }).primaryKey().notNull(),
+    accountId: uuid("account_id").notNull(),
+    feature: aiFeature().notNull(),
+    model: text().notNull(),
+    batch: boolean().default(false).notNull(),
+    inputTokens: integer("input_tokens").notNull(),
+    outputTokens: integer("output_tokens").notNull(),
+    cacheCreationTokens: integer("cache_creation_tokens").notNull(),
+    cacheReadTokens: integer("cache_read_tokens").notNull(),
+    // You can use { mode: "bigint" } if numbers are exceeding js number limitations
+    costMicroUsd: bigint("cost_micro_usd", { mode: "number" }).notNull(),
+    refId: text("ref_id"),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("ai_usage_account_idx").using(
+      "btree",
+      table.accountId.asc().nullsLast(),
+      table.createdAt.asc().nullsLast(),
+    ),
+    index("ai_usage_created_idx").using("btree", table.createdAt.asc().nullsLast()),
+  ],
+);
+
+export const coachConversations = pgTable(
+  "coach_conversations",
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    accountId: uuid("account_id").notNull(),
+    userId: uuid("user_id"),
+    timeClass: timeClass("time_class").notNull(),
+    title: text(),
+    anchor: jsonb(),
+    summary: text(),
+    summaryThroughSeq: integer("summary_through_seq").default(0).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    lastMessageAt: timestamp("last_message_at", { withTimezone: true, mode: "date" })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("coach_conversations_owner_idx").using(
+      "btree",
+      table.accountId.asc().nullsLast(),
+      table.lastMessageAt.desc().nullsFirst(),
+    ),
+    foreignKey({
+      columns: [table.accountId],
+      foreignColumns: [linkedAccounts.id],
+      name: "coach_conversations_account_id_fkey",
+    }).onDelete("cascade"),
+  ],
+);
+
+export const coachMessages = pgTable(
+  "coach_messages",
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    conversationId: uuid("conversation_id").notNull(),
+    seq: integer().notNull(),
+    role: chatRole().notNull(),
+    status: chatStatus().notNull(),
+    anchor: jsonb(),
+    text: text(),
+    segments: jsonb(),
+    citations: jsonb().default([]).notNull(),
+    apiMessages: jsonb("api_messages"),
+    droppedCount: integer("dropped_count").default(0).notNull(),
+    failureReason: text("failure_reason"),
+    aiDisclosure: jsonb("ai_disclosure"),
+    session: text(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.conversationId],
+      foreignColumns: [coachConversations.id],
+      name: "coach_messages_conversation_id_fkey",
+    }).onDelete("cascade"),
+    unique("coach_messages_conversation_id_seq_key").on(table.conversationId, table.seq),
+    check(
+      "coach_messages_session_check",
+      sql`session = ANY (ARRAY['new'::text, 'resumed'::text, 'rebuilt'::text])`,
+    ),
+  ],
+);
 
 export const games = pgTable(
   "games",
@@ -144,6 +370,49 @@ export const importRuns = pgTable(
       foreignColumns: [linkedAccounts.id],
       name: "import_runs_account_id_linked_accounts_id_fk",
     }).onDelete("cascade"),
+  ],
+);
+
+export const interactiveEvals = pgTable(
+  "interactive_evals",
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    accountId: uuid("account_id").notNull(),
+    messageId: uuid("message_id"),
+    source: text().default("interactive").notNull(),
+    protocol: text().notNull(),
+    baseFen: text("base_fen").notNull(),
+    moves: text().array().default(sql`'{}'::text[]`).notNull(),
+    fen: text().notNull(),
+    status: interactiveEvalStatus().default("pending").notNull(),
+    lines: jsonb(),
+    error: text(),
+    charged: boolean().default(true).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    finishedAt: timestamp("finished_at", { withTimezone: true, mode: "date" }),
+  },
+  (table) => [
+    index("interactive_evals_quota_idx")
+      .using("btree", table.accountId.asc().nullsLast(), table.createdAt.asc().nullsLast())
+      .where(sql`charged`),
+    index("interactive_evals_reuse_idx").using(
+      "btree",
+      table.accountId.asc().nullsLast(),
+      table.fen.asc().nullsLast(),
+      table.protocol.asc().nullsLast(),
+      table.createdAt.desc().nullsFirst(),
+    ),
+    foreignKey({
+      columns: [table.accountId],
+      foreignColumns: [linkedAccounts.id],
+      name: "interactive_evals_account_id_fkey",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [table.messageId],
+      foreignColumns: [coachMessages.id],
+      name: "interactive_evals_message_id_fkey",
+    }).onDelete("set null"),
+    check("interactive_evals_source_check", sql`source = 'interactive'::text`),
   ],
 );
 
@@ -272,6 +541,118 @@ export const positionEvals = pgTable(
   ],
 );
 
+export const reportRuns = pgTable(
+  "report_runs",
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    accountId: uuid("account_id").notNull(),
+    timeClass: timeClass("time_class").notNull(),
+    trigger: reportTrigger().notNull(),
+    plan: aiPlan().notNull(),
+    mode: reportMode().default("sync").notNull(),
+    status: reportRunStatus().default("queued").notNull(),
+    retryCount: integer("retry_count").default(0).notNull(),
+    lastError: text("last_error"),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true, mode: "date" }),
+    startedAt: timestamp("started_at", { withTimezone: true, mode: "date" }),
+    heartbeatAt: timestamp("heartbeat_at", { withTimezone: true, mode: "date" }),
+    finishedAt: timestamp("finished_at", { withTimezone: true, mode: "date" }),
+    promptVersion: text("prompt_version").notNull(),
+    promptHash: text("prompt_hash"),
+    inputHash: text("input_hash"),
+    input: jsonb(),
+    isFirstReport: boolean("is_first_report").notNull(),
+    reportId: uuid("report_id"),
+    aiDisabledReason: text("ai_disabled_reason"),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("report_runs_account_idx").using(
+      "btree",
+      table.accountId.asc().nullsLast(),
+      table.timeClass.asc().nullsLast(),
+      table.createdAt.desc().nullsFirst(),
+    ),
+    index("report_runs_status_idx").using(
+      "btree",
+      table.status.asc().nullsLast(),
+      table.nextAttemptAt.asc().nullsLast(),
+    ),
+    foreignKey({
+      columns: [table.accountId],
+      foreignColumns: [linkedAccounts.id],
+      name: "report_runs_account_id_fkey",
+    }).onDelete("cascade"),
+  ],
+);
+
+export const reportSections = pgTable(
+  "report_sections",
+  {
+    reportId: uuid("report_id").notNull(),
+    section: text().notNull(),
+    status: aiItemStatus().notNull(),
+    content: jsonb(),
+    dropped: jsonb().default([]).notNull(),
+    attempts: smallint().notNull(),
+    model: text().notNull(),
+    validatedAt: timestamp("validated_at", { withTimezone: true, mode: "date" })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.reportId],
+      foreignColumns: [reports.id],
+      name: "report_sections_report_id_fkey",
+    }).onDelete("cascade"),
+    primaryKey({ columns: [table.reportId, table.section], name: "report_sections_pkey" }),
+    check(
+      "report_sections_section_check",
+      sql`section = ANY (ARRAY['overview'::text, 'weaknesses'::text, 'openings'::text, 'climb_plan'::text, 'areas'::text])`,
+    ),
+    check(
+      "report_sections_status_check",
+      sql`status = ANY (ARRAY['ready'::ai_item_status, 'dropped'::ai_item_status])`,
+    ),
+  ],
+);
+
+export const reports = pgTable(
+  "reports",
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    accountId: uuid("account_id").notNull(),
+    timeClass: timeClass("time_class").notNull(),
+    version: integer().notNull(),
+    reportRunId: uuid("report_run_id").notNull(),
+    schemaVersion: text("schema_version").notNull(),
+    computed: jsonb().notNull(),
+    status: reportStatus().notNull(),
+    aiDisclosure: jsonb("ai_disclosure"),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.accountId],
+      foreignColumns: [linkedAccounts.id],
+      name: "reports_account_id_fkey",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [table.reportRunId],
+      foreignColumns: [reportRuns.id],
+      name: "reports_report_run_id_fkey",
+    }),
+    unique("reports_account_id_time_class_version_key").on(
+      table.accountId,
+      table.timeClass,
+      table.version,
+    ),
+    unique("reports_report_run_id_key").on(table.reportRunId),
+  ],
+);
+
 export const userEvents = pgTable(
   "user_events",
   {
@@ -299,4 +680,68 @@ export const userEventsWatermark = pgTable(
     prunedThroughId: bigint("pruned_through_id", { mode: "number" }).default(0).notNull(),
   },
   (_table) => [check("user_events_watermark_singleton_check", sql`CHECK (singleton)`)],
+);
+
+export const weaknessChangeNotes = pgTable(
+  "weakness_change_notes",
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    accountId: uuid("account_id").notNull(),
+    changeKey: text("change_key").notNull(),
+    seriesKey: text("series_key").notNull(),
+    onsetDate: date("onset_date"),
+    status: aiItemStatus().default("pending").notNull(),
+    input: jsonb().notNull(),
+    text: text(),
+    segments: jsonb(),
+    citations: jsonb().default([]).notNull(),
+    model: text(),
+    retryCount: integer("retry_count").default(0).notNull(),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true, mode: "date" }),
+    aiDisclosure: jsonb("ai_disclosure"),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.accountId],
+      foreignColumns: [linkedAccounts.id],
+      name: "weakness_change_notes_account_id_fkey",
+    }).onDelete("cascade"),
+    unique("weakness_change_notes_account_id_change_key_key").on(table.accountId, table.changeKey),
+  ],
+);
+
+export const weeklyReviews = pgTable(
+  "weekly_reviews",
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    accountId: uuid("account_id").notNull(),
+    timeClass: timeClass("time_class").notNull(),
+    weekStart: date("week_start").notNull(),
+    status: aiItemStatus().default("pending").notNull(),
+    mode: reportMode().default("sync").notNull(),
+    input: jsonb().notNull(),
+    content: jsonb(),
+    dropped: jsonb().default([]).notNull(),
+    model: text(),
+    promptHash: text("prompt_hash"),
+    retryCount: integer("retry_count").default(0).notNull(),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true, mode: "date" }),
+    aiDisclosure: jsonb("ai_disclosure"),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.accountId],
+      foreignColumns: [linkedAccounts.id],
+      name: "weekly_reviews_account_id_fkey",
+    }).onDelete("cascade"),
+    unique("weekly_reviews_account_id_time_class_week_start_key").on(
+      table.accountId,
+      table.timeClass,
+      table.weekStart,
+    ),
+  ],
 );
