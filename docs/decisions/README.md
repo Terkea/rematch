@@ -42,3 +42,5 @@ One file per decision: context, decision, alternatives, consequences. New decisi
 - [0038. Parity acceptance and removal of the TS backend](0038-parity-and-ts-backend-removal.md)
 - [0031 addendum. npm enforcement of the 7-day age and exact-pin rule](0031-addendum-npm-enforcement.md)
 - [0040. chess.com first; Lichess accounts deferred](0040-chesscom-first-defer-lichess-accounts.md)
+- [0041. First target: a private beta for the owner and a few friends](0041-private-beta-owner-and-friends.md)
+- [0042. Shared Rust build caches across lanes](0042-shared-rust-build-caches.md)
