@@ -45,6 +45,21 @@ export const stagger = {
   pen: 0.12,
 } as const;
 
+/**
+ * Overlay entrance and placement (DESIGN.md, "Overlay values"), mirrored in tokens.css. Lengths are
+ * in px. Under reduced motion only the opacity part of an entrance runs (M10).
+ */
+export const overlay = {
+  /** a dialog starts 8px low and rises into place over `dur.base` */
+  dialogY: 8,
+  /** a dialog starts at 0.98 scale */
+  dialogScale: 0.98,
+  /** popovers and tooltips grow from 0.96 at their trigger's origin over `dur.quick` */
+  floatScale: 0.96,
+  /** the gap between a trigger and its popover or tooltip */
+  floatOffset: 6,
+} as const;
+
 export interface Spring {
   readonly type: "spring";
   readonly stiffness: number;

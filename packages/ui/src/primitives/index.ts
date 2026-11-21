@@ -25,3 +25,4 @@ export {
 export { Switch } from "./switch.js";
 export { Tabs, TabsContent, TabsList, TabsTrigger } from "./tabs.js";
 export { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./tooltip.js";
+export { touchTarget } from "./touch.js";

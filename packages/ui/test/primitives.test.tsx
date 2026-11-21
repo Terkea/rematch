@@ -1,11 +1,26 @@
 import "@testing-library/jest-dom/vitest";
 import { readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { createRef } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import { GearSixIcon, Icon, TrashIcon } from "../src/icons/index.js";
-import { Button, Field, Input, Switch } from "../src/primitives/index.js";
+import { overlay } from "../src/motion/index.js";
+import {
+  Button,
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  Field,
+  Input,
+  Switch,
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  touchTarget,
+} from "../src/primitives/index.js";
+import { code, designMd, tableAfter, tokensCss } from "./design-md.js";
 
 afterEach(cleanup);
 
@@ -130,5 +145,175 @@ describe("Icon dependency owner", () => {
       ),
     );
     expect(offenders).toEqual([]);
+  });
+});
+
+describe("touch targets (44px on coarse pointers)", () => {
+  const coarse = touchTarget.split(" ");
+
+  it("expands the hit area only for coarse pointers, never the visual size", () => {
+    expect(coarse.length).toBeGreaterThan(0);
+    for (const c of coarse) expect(c.startsWith("pointer-coarse:")).toBe(true);
+    expect(coarse).toContain("pointer-coarse:after:min-h-11");
+    expect(coarse).toContain("pointer-coarse:after:min-w-11");
+  });
+
+  it("applies to both button sizes, asChild links and tabs", () => {
+    render(
+      <>
+        <Button size="md">Review game</Button>
+        <Button size="sm">Skip</Button>
+        <Button asChild>
+          <a href="/games">Open games</a>
+        </Button>
+        <Tabs defaultValue="moves">
+          <TabsList>
+            <TabsTrigger value="moves">Moves</TabsTrigger>
+          </TabsList>
+        </Tabs>
+      </>,
+    );
+    const targets = [
+      screen.getByRole("button", { name: "Review game" }),
+      screen.getByRole("button", { name: "Skip" }),
+      screen.getByRole("link", { name: "Open games" }),
+      screen.getByRole("tab", { name: "Moves" }),
+    ];
+    for (const el of targets) expect(el).toHaveClass(...coarse);
+  });
+
+  it("applies to the dialog close", () => {
+    render(
+      <Dialog open>
+        <DialogContent>
+          <DialogTitle>Disconnect chess.com?</DialogTitle>
+        </DialogContent>
+      </Dialog>,
+    );
+    expect(screen.getByRole("button", { name: "Close" })).toHaveClass(...coarse);
+  });
+});
+
+describe("Tabs", () => {
+  it("reserves the selected weight so labels never reflow", () => {
+    render(
+      <Tabs defaultValue="moves">
+        <TabsList>
+          <TabsTrigger value="moves">Moves</TabsTrigger>
+          <TabsTrigger value="plans">Plans</TabsTrigger>
+        </TabsList>
+      </Tabs>,
+    );
+    for (const name of ["Moves", "Plans"]) {
+      const tab = screen.getByRole("tab", { name });
+      const ghost = tab.querySelector('[data-slot="tabs-label-reserve"]');
+      expect(ghost).toHaveAttribute("aria-hidden", "true");
+      expect(ghost).toHaveClass("invisible", "font-semibold");
+      expect(ghost).toHaveTextContent(name);
+    }
+  });
+
+  it("keeps the scrolling track off the pill, so focus rings aren't clipped at its rounded ends", () => {
+    render(
+      <Tabs defaultValue="moves">
+        <TabsList>
+          <TabsTrigger value="moves">Moves</TabsTrigger>
+        </TabsList>
+      </Tabs>,
+    );
+    const list = screen.getByRole("tablist");
+    expect(list).not.toHaveClass("overflow-x-auto");
+    expect(list.parentElement).toHaveClass("overflow-x-auto");
+    expect(list.parentElement).not.toHaveClass("rounded-pill");
+  });
+});
+
+describe("hover follows the tonal ladder", () => {
+  it("uses the surface-hover step, not a fixed well", () => {
+    render(
+      <>
+        <Button variant="outline">Find a game</Button>
+        <Button variant="quiet">Skip</Button>
+        <Button variant="danger">Delete account</Button>
+      </>,
+    );
+    for (const name of ["Find a game", "Skip", "Delete account"]) {
+      const button = screen.getByRole("button", { name });
+      expect(button).toHaveClass("hover:bg-(--surface-hover)");
+      expect(button).not.toHaveClass("hover:bg-well");
+    }
+  });
+
+  it("steps paper to sheet, and sheet to well, in tokens.css", () => {
+    expect(tokensCss).toMatch(/:root\s*\{[^}]*--surface-hover:\s*var\(--color-sheet\)/);
+    expect(tokensCss).toMatch(
+      /\.bg-sheet,\s*\[data-surface="sheet"\]\s*\{[^}]*--surface-hover:\s*var\(--color-well\)/,
+    );
+  });
+});
+
+describe("Button asChild composition", () => {
+  it("keeps the child's own ref and handlers, and forwards a non-button ref", () => {
+    const childRef = createRef<HTMLAnchorElement>();
+    const outerRef = createRef<HTMLElement>();
+    const calls: string[] = [];
+    render(
+      <Button asChild ref={outerRef} onPointerDown={() => calls.push("button")}>
+        <a
+          href="/games"
+          ref={childRef}
+          onPointerDown={() => calls.push("child")}
+          onKeyDown={() => calls.push("child-key")}
+        >
+          Open games
+        </a>
+      </Button>,
+    );
+    const link = screen.getByRole("link", { name: "Open games" });
+    expect(childRef.current).toBe(link);
+    expect(outerRef.current).toBe(link);
+    fireEvent.pointerDown(link, { button: 0 });
+    fireEvent.keyDown(link, { key: "Enter" });
+    expect(calls).toEqual(["child", "button", "child-key"]);
+  });
+});
+
+describe("Field error is announced", () => {
+  it("sits in a polite live region", () => {
+    render(
+      <Field label="Email" error="Enter a valid email address.">
+        <Input />
+      </Field>,
+    );
+    const error = screen.getByText("Enter a valid email address.");
+    expect(error.closest('[aria-live="polite"]')).not.toBeNull();
+  });
+});
+
+describe("overlay values match DESIGN.md and tokens.css", () => {
+  const rows = tableAfter("### Overlay values");
+  const keys: Record<string, keyof typeof overlay> = {
+    "--enter-dialog-y": "dialogY",
+    "--enter-dialog-scale": "dialogScale",
+    "--enter-float-scale": "floatScale",
+    "--offset-float": "floatOffset",
+  };
+
+  it("has every overlay value and no others", () => {
+    expect(rows.map(([token]) => code(token)).sort()).toEqual(Object.keys(keys).sort());
+    expect(Object.keys(overlay).sort()).toEqual(Object.values(keys).sort());
+  });
+
+  for (const [token, key] of Object.entries(keys)) {
+    it(`${token} agrees in DESIGN.md, tokens.css and @ci/ui/motion`, () => {
+      const row = rows.find(([t]) => code(t) === token);
+      const value = code(row?.[1]);
+      expect(Number.parseFloat(value)).toBe(overlay[key]);
+      expect(tokensCss).toContain(`${token}: ${value};`);
+    });
+  }
+
+  it("DESIGN.md names them", () => {
+    expect(designMd).toContain("### Overlay values");
   });
 });

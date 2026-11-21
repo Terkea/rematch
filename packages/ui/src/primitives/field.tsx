@@ -63,12 +63,15 @@ export function Field({ label, hint, error, className, children }: FieldProps) {
           {hint}
         </p>
       ) : null}
-      {error ? (
-        <p id={errorId} className="flex items-start gap-1.5 font-sans text-sm text-pen-text">
-          <Icon icon={WarningCircleIcon} size={16} className="mt-0.5" />
-          {error}
-        </p>
-      ) : null}
+      {/* Always mounted, so a newly shown error is announced. While empty, it cancels its gap. */}
+      <div aria-live="polite" className="empty:-mt-1.5">
+        {error ? (
+          <p id={errorId} className="flex items-start gap-1.5 font-sans text-sm text-pen-text">
+            <Icon icon={WarningCircleIcon} size={16} className="mt-0.5" />
+            {error}
+          </p>
+        ) : null}
+      </div>
     </div>
   );
 }

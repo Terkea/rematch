@@ -87,7 +87,7 @@ Added in fix round 1 (derived from the tokens above, no new hues):
 
 ### Interaction states
 
-The tonal ladder runs `paper`, then `sheet`, then `well`. Hover moves one step down the ladder and never lifts.
+The tonal ladder runs `paper`, then `sheet`, then `well`. Hover moves one step down the ladder and never lifts. In code, hover fills use `--surface-hover`: `sheet` on the page, and `well` inside anything that is `bg-sheet` or marked `data-surface="sheet"`.
 
 | State | Surface items (rows, secondary buttons, menu items) | Primary button (ink) |
 |---|---|---|
@@ -407,6 +407,17 @@ Every spring states its damping ratio, `ζ = damping / (2 × √(stiffness × ma
 | `--stagger-pen` | 120ms | ring to arrow within one moment, and nothing else |
 
 The badge is timed explicitly, not by stagger: it lands with `land` when the moment's last stroke finishes. That is at 420ms for a ring only, and at 540ms for a ring and an arrow. The arrow starts at 120, and its shaft reaches 85% of its eased progress at 120 + 266 = 386ms, so the head strokes run 386–476 and 416–506. The shaft's soft stop ends at 120 + 420 = 540.
+
+### Overlay values
+
+Floating things enter with a small, quiet move, and under reduced motion only their opacity runs (M10). Mirrored in `tokens.css` and `@ci/ui/motion` (`overlay`).
+
+| Token | Value | Use |
+|---|---|---|
+| `--enter-dialog-y` | `8px` | a dialog starts this far below its place and rises in over `--dur-base` |
+| `--enter-dialog-scale` | `0.98` | a dialog's starting scale |
+| `--enter-float-scale` | `0.96` | popovers and tooltips grow from this scale at their trigger's origin over `--dur-quick` |
+| `--offset-float` | `6px` | the gap between a trigger and its popover or tooltip |
 
 ### Physical feel
 
