@@ -83,3 +83,7 @@ R3 (AI) records use placeholder numbers until R3 Task 26 renumbers them.
 
 Web (M4) records use placeholder numbers until the controller renumbers them.
 
+- [0041. First target: a private beta for the owner and a few friends](0041-private-beta-owner-and-friends.md)
+- [0042. Shared Rust build caches across lanes](0042-shared-rust-build-caches.md)
+- [0043. No email address in outbound requests](0043-no-email-in-outbound-requests.md)
+- [0044. Postgres runs under an init process with an exec-form TCP healthcheck](0044-postgres-init-process-and-tcp-healthcheck.md)
