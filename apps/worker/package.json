@@ -10,6 +10,9 @@
     "lint": "biome check .",
     "typecheck": "tsc --noEmit"
   },
+  "dependencies": {
+    "chess.js": "^1.4.0"
+  },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "tsx": "^4.20.0",
