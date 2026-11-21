@@ -60,6 +60,13 @@ export const jobState = pgEnum("job_state", [
 
 export const judgement = pgEnum("judgement", ["inaccuracy", "mistake", "blunder"]);
 
+export const linkMethod = pgEnum("link_method", [
+  "username",
+  "location_code",
+  "lichess_oauth",
+  "chesscom_oauth",
+]);
+
 export const phase = pgEnum("phase", ["opening", "middlegame", "endgame"]);
 
 export const platform = pgEnum("platform", ["lichess", "chesscom"]);
@@ -99,6 +106,80 @@ export const account = pgTable(
       name: "account_user_id_user_id_fk",
     }).onDelete("cascade"),
     unique("account_provider_account_unique").on(table.accountId, table.providerId),
+  ],
+);
+
+export const accountLinks = pgTable(
+  "account_links",
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    userId: uuid("user_id").notNull(),
+    linkedAccountId: uuid("linked_account_id").notNull(),
+    method: linkMethod().notNull(),
+    verifiedAt: timestamp("verified_at", { withTimezone: true, mode: "date" }),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("account_links_one_verified_owner")
+      .using("btree", table.linkedAccountId.asc().nullsLast())
+      .where(sql`(verified_at IS NOT NULL)`),
+    foreignKey({
+      columns: [table.userId],
+      foreignColumns: [user.id],
+      name: "account_links_user_id_user_id_fk",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [table.linkedAccountId],
+      foreignColumns: [linkedAccounts.id],
+      name: "account_links_linked_account_id_linked_accounts_id_fk",
+    }).onDelete("cascade"),
+    unique("account_links_user_account_unique").on(table.userId, table.linkedAccountId),
+  ],
+);
+
+export const chesscomProfileRequests = pgTable("chesscom_profile_requests", {
+  username: text().primaryKey().notNull(),
+  requestedAt: timestamp("requested_at", { withTimezone: true, mode: "date" }).notNull(),
+});
+
+export const chesscomRequestBudgets = pgTable(
+  "chesscom_request_budgets",
+  {
+    userId: uuid("user_id").primaryKey().notNull(),
+    tokens: doublePrecision().notNull(),
+    refilledAt: timestamp("refilled_at", { withTimezone: true, mode: "date" }).notNull(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.userId],
+      foreignColumns: [user.id],
+      name: "chesscom_request_budgets_user_id_user_id_fk",
+    }).onDelete("cascade"),
+  ],
+);
+
+export const chesscomVerifications = pgTable(
+  "chesscom_verifications",
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    accountLinkId: uuid("account_link_id").notNull(),
+    code: text().notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }).notNull(),
+    lastCheckedAt: timestamp("last_checked_at", { withTimezone: true, mode: "date" }),
+    checks: integer().default(0).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.accountLinkId],
+      foreignColumns: [accountLinks.id],
+      name: "chesscom_verifications_account_link_id_account_links_id_fk",
+    }).onDelete("cascade"),
+    unique("chesscom_verifications_account_link_id_unique").on(table.accountLinkId),
+    check(
+      "chesscom_verifications_code_format",
+      sql`code ~ '^CI-[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{6}$'::text`,
+    ),
   ],
 );
 

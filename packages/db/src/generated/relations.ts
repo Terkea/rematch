@@ -1,10 +1,47 @@
 import { relations } from "drizzle-orm/relations";
-import { account, games, importRuns, linkedAccounts, moves, session, user } from "./schema.js";
+import {
+  account,
+  accountLinks,
+  chesscomRequestBudgets,
+  chesscomVerifications,
+  games,
+  importRuns,
+  linkedAccounts,
+  moves,
+  session,
+  user,
+} from "./schema.js";
+
+export const accountLinksRelations = relations(accountLinks, ({ one, many }) => ({
+  chesscomVerifications: many(chesscomVerifications),
+  linkedAccount: one(linkedAccounts, {
+    fields: [accountLinks.linkedAccountId],
+    references: [linkedAccounts.id],
+  }),
+  user: one(user, {
+    fields: [accountLinks.userId],
+    references: [user.id],
+  }),
+}));
 
 export const accountRelations = relations(account, ({ one }) => ({
   user: one(user, {
     fields: [account.userId],
     references: [user.id],
+  }),
+}));
+
+export const chesscomRequestBudgetsRelations = relations(chesscomRequestBudgets, ({ one }) => ({
+  user: one(user, {
+    fields: [chesscomRequestBudgets.userId],
+    references: [user.id],
+  }),
+}));
+
+export const chesscomVerificationsRelations = relations(chesscomVerifications, ({ one }) => ({
+  accountLink: one(accountLinks, {
+    fields: [chesscomVerifications.accountLinkId],
+    references: [accountLinks.id],
   }),
 }));
 
@@ -24,6 +61,7 @@ export const importRunsRelations = relations(importRuns, ({ one }) => ({
 }));
 
 export const linkedAccountsRelations = relations(linkedAccounts, ({ many }) => ({
+  accountLinks: many(accountLinks),
   games: many(games),
   importRuns: many(importRuns),
 }));
@@ -43,6 +81,8 @@ export const sessionRelations = relations(session, ({ one }) => ({
 }));
 
 export const userRelations = relations(user, ({ many }) => ({
+  accountLinks: many(accountLinks),
   accounts: many(account),
+  chesscomRequestBudgets: many(chesscomRequestBudgets),
   sessions: many(session),
 }));

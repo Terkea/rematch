@@ -17,17 +17,35 @@ const url = new URL(base);
 url.pathname = `/${name}`;
 let db: ReturnType<typeof createDb>;
 
+// CREATE/DROP DATABASE checkpoint, which can take seconds on a loaded Docker host.
+const HOOK_TIMEOUT_MS = 60_000;
+const DROP_WAIT_MS = 45_000;
+
 beforeAll(async () => {
-  await admin.unsafe(`DROP DATABASE IF EXISTS ${name}`);
+  await admin.unsafe(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`);
   await admin.unsafe(`CREATE DATABASE ${name}`);
   db = createDb(url.toString());
-});
+}, HOOK_TIMEOUT_MS);
 
 afterAll(async () => {
-  await db.$client.end();
-  await admin.unsafe(`DROP DATABASE IF EXISTS ${name}`);
-  await admin.end();
-});
+  await db.$client.end({ timeout: 5 });
+  // FORCE: a connection the pool has not closed yet must not keep the scratch database alive.
+  // DROP DATABASE waits for a checkpoint, whose fsync can stall for a minute on a Docker volume
+  // while other suites write heavily; cleanup is best-effort, so a slow drop never fails the run
+  // (the scratch database is per-pid and lives in a throwaway test server).
+  const dropped = admin.unsafe(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`).then(() => true);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const gaveUp = new Promise<false>((resolve) => {
+    timer = setTimeout(() => resolve(false), DROP_WAIT_MS);
+  });
+  const done = await Promise.race([dropped, gaveUp]);
+  clearTimeout(timer);
+  if (!done) {
+    console.warn(`migrate.test: ${name} not dropped within ${DROP_WAIT_MS} ms (slow checkpoint)`);
+    dropped.catch(() => {});
+  }
+  await admin.end({ timeout: 1 });
+}, HOOK_TIMEOUT_MS);
 
 describe("runMigrations", () => {
   it("applies db/migrations, records them like sqlx and is idempotent", async () => {
