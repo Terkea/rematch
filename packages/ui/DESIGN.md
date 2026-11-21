@@ -655,7 +655,8 @@ The first thing on `/styleguide` is the system doing its job on a real game, not
 
 - **From 1024px:** two columns: the eval bar, the board in its well, and then the header and the eval graph beside them (the graph's bottom level with the board's). The sheet spans both columns: the ruled table under the board, and the comment in the sheet's right margin, level with the ringed row.
 - **On a phone:** board (with the 8px horizontal eval bar above it), scoresheet, note, then graph.
-- **The excerpt** opens on the ringed move and ends before the next blunder, so no second `??` competes with the key move. The hero's label lane names only the move on the board; the game's other marks are rings on the line.
+- **`--hero-graph-height`** (hero-only token, controller ruling, Task 6 fix round 3): `calc(--board-size + 16px)`, the height of the board in its well. From 1024px the right column is exactly this tall: the header sits at its top, and after a 24px gap the eval graph (label lane and plot) fills the rest, so the graph's top meets the header block and its bottom meets the board's. The plot never drops below its 120px desktop height. Elsewhere the graph keeps its real sizes.
+- **The excerpt** opens on the ringed move and ends before the next blunder, so no second `??` competes with the key move. The hero's label lane names only the move on the board; the game's other marks are rings on the line. (Accepted by controller ruling: the hero tells one moment.)
 - Left aligned. The heading is the game itself, set in Literata 600 at `3xl`. There is no marketing headline, eyebrow or badge. On first view, the hero plays the key move's beat: the climax rows of choreography 1, then the link mark, then the comment.
 
 ## How this direction was chosen

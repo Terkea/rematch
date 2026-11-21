@@ -864,7 +864,7 @@ function EvalGraph({ reduced }: { reduced: boolean }) {
   });
   const label = `${prefix} ${keyPly.san}${keyGlyph}`;
   return (
-    <figure className="w-full">
+    <figure className="flex w-full flex-col">
       <figcaption className="sr-only">
         White's win chance through the game. {label} took it from {Math.round(shareBefore * 100)}%
         to {Math.round(shareAfter * 100)}%.
@@ -888,7 +888,10 @@ function EvalGraph({ reduced }: { reduced: boolean }) {
           </motion.span>
         )}
       </div>
-      <div ref={plotRef} className="relative h-22 rounded-board bg-well md:h-30">
+      <div
+        ref={plotRef}
+        className="relative h-22 rounded-board bg-well md:h-30 lg:h-auto lg:min-h-30 lg:flex-1"
+      >
         {W > 0 && (
           <svg className="absolute inset-0 size-full overflow-visible" aria-hidden>
             <path
@@ -1129,7 +1132,10 @@ function Hero({ reduced }: { reduced: boolean }) {
   }, []);
 
   // From lg the left column is the bar, an 8px gap and the board in its 8px well.
-  const cols = "lg:grid-cols-[calc(var(--board-size)+2.5rem)_minmax(0,1fr)] lg:gap-x-8 xl:gap-x-16";
+  // --hero-graph-height (DESIGN.md "Styleguide hero"): the board in its well; the header sits at its
+  // top and the graph fills the rest, so the right column has no void.
+  const cols =
+    "lg:grid-cols-[calc(var(--board-size)+2.5rem)_minmax(0,1fr)] lg:grid-rows-[auto_minmax(0,1fr)_auto] lg:gap-x-8 xl:gap-x-16 [--hero-graph-height:calc(var(--board-size)+1rem)]";
   return (
     <div className="mx-auto max-w-7xl px-(--space-gutter) pt-6 pb-16 md:pt-10">
       <div ref={rootRef} className={`relative grid grid-cols-1 gap-y-6 ${cols}`}>
@@ -1141,7 +1147,7 @@ function Hero({ reduced }: { reduced: boolean }) {
           </p>
         </header>
 
-        <div className="lg:col-start-1 lg:row-span-2 lg:row-start-1">
+        <div className="lg:col-start-1 lg:row-span-2 lg:row-start-1 lg:h-(--hero-graph-height)">
           <div className="mb-2 w-(--board-size) md:hidden">
             <EvalBar reduced={reduced} vertical={false} />
           </div>
@@ -1243,7 +1249,7 @@ function Hero({ reduced }: { reduced: boolean }) {
           </motion.p>
         </div>
 
-        <div className="lg:col-start-2 lg:row-start-2 lg:self-end">
+        <div className="flex lg:col-start-2 lg:row-start-2 lg:self-stretch">
           <EvalGraph reduced={reduced} />
         </div>
 

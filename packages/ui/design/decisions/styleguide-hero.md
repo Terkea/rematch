@@ -105,7 +105,7 @@ and it stops short of the board ring. It follows DESIGN.md "Severity and marks",
 
 The excerpt opens on the ringed move and ends before the next blunder (31…Nf4??), so no second `??` competes with the key move.
 
-The hero's label lane names only the key move. The game's other 18 marks are rings on the line. This is a **proposal recorded in DESIGN.md's hero section**: the game has 19 marks, and their labels can't fit a 392–552px lane even with the mobile rule (7 blunders and mistakes, six of them inside about 90px). Please confirm or overrule it.
+The hero's label lane names only the key move. The game's other 18 marks are rings on the line. This is **accepted by controller ruling** (the hero tells one moment) and recorded in DESIGN.md's hero section: the game has 19 marks, and their labels can't fit a 392–552px lane even with the mobile rule (7 blunders and mistakes, six of them inside about 90px).
 
 ### Taken from the losers
 
@@ -118,8 +118,8 @@ The `5xl` notation headline (landing-only), the footnote rule, and bold running 
 
 ### Follow-ups for the lanes building on A
 
-- **Right column at 1279 and 1440:** there is a quiet stretch between the header and the 120px graph, about 300px beside the board. Filling it would take a hero-specific graph height, which is not ruled. The graph stays at its real size.
-- **Graph rings:** the cluster of rings after the key move (plies 62–70) overlaps at this width. DESIGN.md's "scroll or compress" rule for long games will decide that in the eval graph task.
+- **Right column:** resolved in fix round 3. The hero-only token `--hero-graph-height` (the board in its well) sets the right column's height: the header sits at its top, and the graph fills the rest down to the board's bottom edge, with no void from 1024 to 1440.
+- **Graph rings:** the cluster after the key move (plies 62–70) overlaps at this width. By controller ruling this is deferred to T12 (pen rings).
 - **Pen geometry:** it is still a lab approximation (fixed drift phases instead of the FNV-1a and mulberry32 seed, and a constant mask width per segment).
 - **Coordinates on the squares:** these are not drawn on the placeholder board. When they arrive, the link's entry through d1 must keep 16px from the "c" and "d" file labels. Entering at d1's centre does that.
 
@@ -156,3 +156,10 @@ The variant pages stay at `/lab/styleguide-hero/{a,b,c}`. They are dev-only.
 - **Spacing:** "−1.1" now sits at least 8px from the column rule, and the White and Black cells have 20px of left padding (at 360 the number column is 40px).
 - **Note text** uses `text-wrap: pretty`.
 - **Table** fills its column.
+
+### Fix round 3
+
+- The label lane naming only the key move is accepted.
+- `--hero-graph-height` fills the right column. Shots at 1024, 1279 and 1440 were re-taken.
+- The ring overlap is deferred to T12.
+- Variant C's link is left as it is.
