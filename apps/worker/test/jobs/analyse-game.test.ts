@@ -208,4 +208,78 @@ describe.skipIf(!workerTestDbConfigured())("handleAnalyseGame", () => {
       },
     ]);
   });
+
+  function gatedPool(cp: number) {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let started!: () => void;
+    const hasStarted = new Promise<void>((r) => (started = r));
+    return {
+      release: () => release(),
+      hasStarted,
+      analyse: async () => {
+        started();
+        await gate;
+        return [{ multipv: 1, score: { cp }, pv: ["e2e4"], depth: 1, nodes: 1 }];
+      },
+    };
+  }
+  const cacheless = { getMany: async () => new Map(), putMany: async () => {} };
+
+  it("fences the final write: a stale duplicate run cannot overwrite a newer done", async () => {
+    const id = await addGame("1. e4 g6 2. d4 Bg7 *", "fenced");
+    const stale = gatedPool(-400);
+    const staleRun = handleAnalyseGame({ db, pool: stale, cache: cacheless }, { gameId: id });
+    await stale.hasStarted;
+    // A second delivery of the same game (for example after a stalled-job pickup) runs to the end.
+    expect(await handleAnalyseGame({ db, pool: pool(), cache: cacheless }, { gameId: id })).toEqual(
+      {
+        status: "done",
+      },
+    );
+    const afterFresh = await getGame(id);
+    expect(afterFresh?.analysisAttempts).toBe(2);
+
+    stale.release();
+    expect(await staleRun).toEqual({ status: "superseded" });
+    const g = await getGame(id);
+    expect(g?.analysisStatus).toBe("done");
+    expect(g?.whiteAccuracy).toBe(afterFresh?.whiteAccuracy);
+    expect(g?.blackAccuracy).toBe(afterFresh?.blackAccuracy);
+    expect(await moveCount(id)).toBe(4);
+  });
+
+  it("fences the failure write too", async () => {
+    const id = await addGame("1. e4 b6 2. d4 Bb7 *", "fenced-fail");
+    const stale = gatedPool(0);
+    const failing = {
+      analyse: async () => {
+        await stale.analyse();
+        throw new Error("late failure");
+      },
+    };
+    const staleRun = handleAnalyseGame({ db, pool: failing, cache: cacheless }, { gameId: id });
+    await stale.hasStarted;
+    await handleAnalyseGame({ db, pool: pool(), cache: cacheless }, { gameId: id });
+    stale.release();
+    await expect(staleRun).rejects.toThrow("late failure");
+    const g = await getGame(id);
+    expect(g?.analysisStatus).toBe("done");
+    expect(g?.analysisError).toBeNull();
+  });
+
+  it("skips a game already done at the current protocol without touching it", async () => {
+    const id = await addGame("1. Nf3 d5 2. g3 c5 *", "already");
+    const deps = { db, pool: pool(), cache: createDbEvalCache(db) };
+    await handleAnalyseGame(deps, { gameId: id });
+    const before = await getGame(id);
+    const p = pool();
+    expect(await handleAnalyseGame({ ...deps, pool: p }, { gameId: id })).toEqual({
+      status: "done",
+    });
+    expect(p.calls).toHaveLength(0);
+    const after = await getGame(id);
+    expect(after?.analysisAttempts).toBe(before?.analysisAttempts);
+    expect(after?.analysisStartedAt).toEqual(before?.analysisStartedAt);
+  });
 });

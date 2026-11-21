@@ -1,4 +1,4 @@
-import { type Db, userEvents } from "@ci/db";
+import { type Db, insertUserEvent } from "@ci/db";
 
 export type UserEventType = "import.progress" | "game.analysed" | "job.failed";
 
@@ -21,18 +21,15 @@ export async function publishEvent(
   type: UserEventType,
   payload: object,
 ): Promise<number> {
-  const [row] = await deps.db
-    .insert(userEvents)
-    .values({ accountId, type, payload })
-    .returning({ id: userEvents.id, createdAt: userEvents.createdAt });
-  if (!row) throw new Error("publishEvent: insert returned no row");
+  // Committed (in id order, see insertUserEvent) before anyone is told about it.
+  const id = await insertUserEvent(deps.db, { accountId, type, payload });
   try {
     await deps.redis.publish(
       userEventsChannel(accountId),
-      JSON.stringify({ id: row.id, type, payload, createdAt: row.createdAt.toISOString() }),
+      JSON.stringify({ id, type, payload, createdAt: new Date().toISOString() }),
     );
   } catch {
     // Live subscribers miss it; replay from the table delivers it.
   }
-  return row.id;
+  return id;
 }

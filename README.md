@@ -45,3 +45,20 @@ The web app's tests use `chess_web_test` (`WEB_DATABASE_URL_TEST`):
 ```sh
 docker compose exec postgres psql -U postgres -c "CREATE DATABASE chess_web_test"
 ```
+
+## Analyse CLI
+
+Imports an account's games and analyses them in-process, then prints a summary and exits
+(0 on success; 1 if the user is not found or every game failed):
+
+```sh
+docker compose run --rm worker pnpm --filter @ci/worker cli analyse \
+  --platform <lichess|chesscom> --username <name> [--max N] [--timeout MINUTES]
+# games: 20  analysed: 20  skipped: 0  failed: 0  avg accuracy: 65.1  blunders/game: 3.20
+```
+
+Chess.com requires a real `CONTACT_EMAIL` in `.env` for its User-Agent; `--timeout` defaults to 30 minutes.
+
+Note: the CLI writes into the main `chess` database (`DATABASE_URL`), not a test database, and it does not
+schedule the reconciler. SIGINT/SIGTERM stop the wait, shut the workers down cleanly and exit 130/143;
+a second signal exits immediately.
