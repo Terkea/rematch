@@ -135,7 +135,9 @@ export function CommandMenu({ items, open: openProp, onOpenChange }: CommandMenu
               />
               <Kbd className="max-sm:hidden">Esc</Kbd>
             </div>
-            <Command.List className="max-h-[min(60dvh,24rem)] overflow-y-auto overscroll-contain p-2">
+            <Command.List
+              className="max-h-[min(60dvh,24rem)] overflow-y-auto overscroll-contain p-2" /* ban-lint-allow TOK2: viewport-relative cap, no token */
+            >
               <Command.Empty className="px-3 py-6 text-center font-sans text-sm text-ink-soft">
                 No match
               </Command.Empty>

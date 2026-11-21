@@ -275,7 +275,9 @@ export function KpiStat(props: KpiStatProps) {
   const minSpan = 2 * (interval.high - interval.low) * TO_80[interval.level];
   return (
     <div className={cn("@container", className)}>
-      <div className="grid grid-cols-[minmax(0,1fr)_minmax(5rem,7.5rem)] items-end gap-x-4 gap-y-2 @min-[40rem]:grid-cols-[minmax(9rem,1fr)_7rem_minmax(14rem,22rem)_7.5rem] @min-[40rem]:gap-x-6">
+      <div
+        className="grid grid-cols-[minmax(0,1fr)_minmax(5rem,7.5rem)] items-end gap-x-4 gap-y-2 @min-[40rem]:grid-cols-[minmax(9rem,1fr)_7rem_minmax(14rem,22rem)_7.5rem] @min-[40rem]:gap-x-6" /* ban-lint-allow TOK2: grid track template, no spacing token */
+      >
         <div className="col-span-2 flex flex-wrap items-baseline gap-x-3 gap-y-1 @min-[40rem]:col-span-1 @min-[40rem]:flex-col @min-[40rem]:gap-0.5 @min-[40rem]:self-center">
           <Heading className="text-base font-medium text-ink">{label}</Heading>
           <p className="text-sm text-ink-faint">

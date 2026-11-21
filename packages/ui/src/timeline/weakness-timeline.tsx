@@ -764,7 +764,7 @@ export function WeaknessTimeline({
         onScroll={measure}
       >
         <motion.div
-          className="grid grid-cols-[7.5rem_minmax(0,1fr)] items-center @max-[640px]:min-w-[38rem] @min-[640px]:grid-cols-[13rem_minmax(0,1fr)]"
+          className="grid grid-cols-[7.5rem_minmax(0,1fr)] items-center @max-[640px]:min-w-[38rem] @min-[640px]:grid-cols-[13rem_minmax(0,1fr)]" /* ban-lint-allow TOK2: grid track template and min-width, no token */
           style={{ "--wipe": wipe } as never}
         >
           {placed.length > 0 && (

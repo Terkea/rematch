@@ -1,7 +1,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import { banRules } from "./ban-rules.js";
+import { lintFile } from "./ban-rules.js";
 
 export type BanFinding = { rule: string; path: string; line: number; match: string };
 
@@ -37,10 +37,8 @@ export async function runBanLint(root: string): Promise<{ findings: BanFinding[]
     const path = relative(root, abs).replace(/[\\]/g, "/");
     if (LAB_EXEMPT.test(path)) continue;
     const text = await readFile(abs, "utf8");
-    for (const rule of banRules) {
-      for (const hit of rule.test({ path, text })) {
-        findings.push({ rule: rule.id, path, line: hit.line, match: hit.match });
-      }
+    for (const hit of lintFile({ path, text })) {
+      findings.push({ rule: hit.rule, path, line: hit.line, match: hit.match });
     }
   }
   return { findings };

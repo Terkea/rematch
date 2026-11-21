@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { runBanLint } from "../ban-lint.js";
-import { banRules } from "../ban-rules.js";
+import { banRules, lintFile } from "../ban-rules.js";
 
 function run(rule: string, text: string, path = "packages/ui/src/primitives/button.tsx") {
   const r = banRules.find((x) => x.id === rule);
@@ -163,6 +163,94 @@ describe("banRules", () => {
   it("reports the line of a multi-line font import name", () => {
     const hits = run("B6", `import {\n  Literata,\n  Space_Grotesk,\n} from "next/font/google";`);
     expect(hits).toEqual([{ line: 3, match: "Space_Grotesk" }]);
+  });
+});
+
+describe("tightened rules", () => {
+  it("B5a joins adjacent literals in cn/clsx/className={}, across lines", () => {
+    expect(run("B5a", `cn("uppercase", "tracking-wide")`)).toHaveLength(1);
+    expect(
+      run("B5a", `clsx(\n  "text-xs uppercase",\n  active && "md:tracking-widest",\n)`),
+    ).toHaveLength(1);
+    expect(
+      run("B5a", `<p className={cn("a", cond ? "uppercase" : "", "tracking-tight")} />`),
+    ).toHaveLength(1);
+    expect(run("B5a", `cn("uppercase", "font-bold")`)).toEqual([]);
+    expect(run("B5a", `cn("uppercase")\ncn("tracking-wide")`)).toEqual([]);
+  });
+
+  it("HEX ignores anchors and SVG references but flags colours in more contexts", () => {
+    expect(run("TOK1", `<a href="#fade">x</a>`)).toEqual([]);
+    expect(run("TOK1", `<use href="#abc" />`)).toEqual([]);
+    expect(run("TOK1", `fill="url(#def)"`)).toEqual([]);
+    expect(run("TOK1", `<div id="#add" />`)).toEqual([]);
+    expect(run("TOK1", `const c = ["#fff"];`)).toHaveLength(1);
+    expect(run("TOK1", `style={{ color: '#D3312B' }}`)).toHaveLength(1);
+    expect(run("TOK1", `box-shadow: 0 0 0 1px #abc;`, "packages/ui/src/x.css")).toHaveLength(1);
+    expect(run("TOK1", `a#fff`)).toEqual([]);
+    expect(run("B5c", `<a href="#111">x</a>`)).toEqual([]);
+    expect(run("B5c", `x = "#111"`)).toHaveLength(1);
+  });
+
+  it("allow comments need a reason", () => {
+    const path = "packages/ui/src/primitives/button.tsx";
+    const flagged = (text: string) => lintFile({ path, text }).map((f) => f.rule);
+    expect(flagged(`const c = "#D3312B";`)).toEqual(["TOK1"]);
+    expect(
+      flagged(`const c = "#D3312B"; // ban-lint-allow TOK1: brand mark from the logo file`),
+    ).toEqual([]);
+    expect(flagged(`// ban-lint-allow TOK1: brand mark\nconst c = "#D3312B";`)).toEqual([]);
+    expect(flagged(`const c = "#D3312B"; // ban-lint-allow TOK1`)).toEqual(["TOK1"]);
+    expect(flagged(`const c = "#D3312B"; // ban-lint-allow TOK1:   `)).toEqual(["TOK1"]);
+    expect(flagged(`const c = "#D3312B"; // ban-lint-allow TOK2: wrong rule`)).toEqual(["TOK1"]);
+    expect(flagged(`const c = "#D3312B";\n\n// ban-lint-allow TOK1: too far\n`)).toEqual(["TOK1"]);
+  });
+
+  it("TOK2 widens to rem/em, spaces, case, arbitrary properties and calc", () => {
+    for (const c of [
+      "w-[2rem]",
+      "p-[1.5em]",
+      "w-[ 7PX ]",
+      "[width:7px]",
+      "[--gap:0.5rem]",
+      "w-[calc(100%-2px)]",
+      "h-[calc(var(--x)+1rem)]",
+      "mt-[-3px]",
+      "grid-cols-[7.5rem_minmax(0,1fr)]",
+      "shadow-[inset_0_0_0_1px_red]",
+    ])
+      expect(run("TOK2", `<div className="${c}">`), c).toHaveLength(1);
+    for (const c of [
+      "w-[var(--board-size)]",
+      "grid-cols-[1fr_auto]",
+      "@min-[560px]:flex",
+      "@max-[40rem]:hidden",
+      "h-[100svh]",
+      "[&>svg]:size-4",
+    ])
+      expect(run("TOK2", `<div className="${c}">`), c).toEqual([]);
+  });
+
+  it("B5b skips JSX comments and flags &rarr; and the glyph", () => {
+    expect(run("B5b", `<p>{/* a → b */}</p>`)).toEqual([]);
+    expect(run("B5b", `{/*\n a → b\n*/}\n<p>x</p>`)).toEqual([]);
+    expect(run("B5b", `<p>Go &rarr;</p>`)).toHaveLength(1);
+    expect(run("B5b", `<p>Go →</p>`)).toHaveLength(1);
+  });
+
+  it("B6 catches default and namespace imports", () => {
+    expect(run("B6", `import Inter from "next/font/google";`)).toHaveLength(1);
+    expect(run("B6", `import * as Geist from "next/font/google";`)).toHaveLength(1);
+    expect(
+      run("B6", `import * as fonts from "next/font/google";\nconst f = fonts.Inter({});`),
+    ).toHaveLength(1);
+    expect(
+      run("B6", `import * as fonts from "next/font/google";\nconst f = fonts.Literata({});`),
+    ).toEqual([]);
+    expect(run("B6", `import localFont from "next/font/local";`)).toEqual([]);
+    expect(run("B6", `import Space_Grotesk, { Literata } from "next/font/google";`)).toHaveLength(
+      1,
+    );
   });
 });
 

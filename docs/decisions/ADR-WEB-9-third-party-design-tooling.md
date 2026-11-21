@@ -17,6 +17,10 @@ M4 wants automated design QA (spec ban list B5-B18, token rules TOK1/TOK2) and t
 - TOK2 does not flag container-query breakpoints (`@min-[560px]:`): they are breakpoints, not lengths, and Tailwind has no token for them yet. Real arbitrary lengths are flagged.
 - The first run found four TOK2 hits in `area-score.tsx` and `weakness-timeline.tsx` (`mt-[9px]`, `w-[3px]` x2, `rounded-[2px]`). They were replaced by the equivalent scale and token classes (`mt-2.25`, `w-0.75`, `rounded-board`); computed values are unchanged.
 
+### Tightening round
+
+B5a joins literals inside `cn()`/`clsx()`/`className={}`; hex ignores anchors (`href="#x"`, `url(#x)`, ids); TOK2 covers px/rem/em, `[prop:len]` and `calc()`; B5b skips comments and flags `&rarr;`; B6 catches default and namespace imports. A line can opt out with `ban-lint-allow <RULE>: <reason>` (own line or the line before; a missing reason is ignored). Used for grid track templates, a viewport cap and the styleguide's `--board-size` demo; hairline shadows became `inset-ring-1`.
+
 ### Impeccable: NOT adopted in `design:check`
 
 Reviewed `impeccable@4.10.0` (npm, Apache-2.0, author Paul Bakaus), tarball only, never installed or run.
@@ -33,6 +37,7 @@ Reviewed `impeccable@4.10.0` (npm, Apache-2.0, author Paul Bakaus), tarball only
 
 - Source `vercel-labs/agent-skills`, `skills/web-design-guidelines`, commit `5a37a6329fbad3666c3207392a6a7c0110e92efb` (2026-11-20). Licence MIT (repo README; the rules repo `vercel-labs/web-interface-guidelines` is MIT too).
 - It does not fetch at runtime: SKILL.md says "Do not fetch rules from the network" and reads `references/command.md`, pinned upstream to `web-interface-guidelines@434b7f9...` with SHA-256 `d246b026...0234`. We verified that digest on the vendored copy.
+- The agent-skills repo has no LICENSE file (its README says MIT); the MIT text vendored as `LICENSE` is from `vercel-labs/web-interface-guidelines`, where the rules originate.
 - Vendored to `.claude/skills/web-design-guidelines/` (SKILL.md with a header naming commit and licence, plus the `references/command.md` it reads).
 
 ### Deferred
