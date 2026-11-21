@@ -1,0 +1,110 @@
+[workspace]
+resolver = "3"
+members = ["crates/*", "tools/parity"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.100"
+license = "UNLICENSED"
+publish = false
+
+# Every version is pinned exactly and was published at least 7 days before it was adopted
+# (supply-chain rule, ADR 0031). Only the coordinator edits this table and Cargo.lock.
+[workspace.dependencies]
+# Workspace crates
+chess-core = { path = "crates/chess-core" }
+common = { path = "crates/common" }
+db = { path = "crates/db" }
+queue = { path = "crates/queue" }
+engine = { path = "crates/engine" }
+platforms = { path = "crates/platforms" }
+analysis = { path = "crates/analysis" }
+events = { path = "crates/events" }
+testkit = { path = "crates/testkit" }
+# R2 workspace crates (ADR-R2-1)
+coaching-input = { path = "crates/coaching-input" }
+profile-core = { path = "crates/profile-core" }
+refdata = { path = "crates/refdata" }
+enrich = { path = "crates/enrich" }
+scheduler = { path = "crates/scheduler" }
+profile = { path = "crates/profile" }
+# R3 workspace crate (ADR-R3-1)
+ai = { path = "crates/ai" }
+
+# Third-party crates
+tokio = { version = "=1.54.1", features = [
+    "rt-multi-thread",
+    "macros",
+    "process",
+    "io-util",
+    "time",
+    "signal",
+    "sync",
+    "net",
+    "fs",
+] }
+sqlx = { version = "=0.9.0", default-features = false, features = [
+    "postgres",
+    "runtime-tokio",
+    "tls-rustls-ring-native-roots",
+    "macros",
+    "migrate",
+    "time",
+    "uuid",
+    "json",
+] }
+reqwest = { version = "=0.13.5", default-features = false, features = [
+    "rustls-no-provider",
+    "stream",
+    "json",
+] }
+rustls = { version = "=0.23.46", default-features = false, features = ["ring", "std"] }
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.154"
+cozy-chess = "=0.3.4"
+thiserror = "=2.0.21"
+anyhow = "=1.0.104"
+tracing = "=0.1.44"
+tracing-subscriber = { version = "=0.3.23", features = ["json", "env-filter", "fmt"] }
+clap = { version = "=4.6.7", features = ["derive"] }
+uuid = { version = "=1.29.2", features = ["v4", "serde"] }
+time = { version = "=0.3.55", features = ["serde", "formatting", "parsing", "macros"] }
+futures = "=0.3.34"
+tokio-util = { version = "=0.7.20", features = ["io"] }
+bytes = "=1.12.1"
+regex = "=1.13.1"
+rand = "=0.10.3"
+wiremock = "=0.6.5"
+# R2 additions (ADR-R2-1). Each was published at least 7 days before 2026-11-21.
+schemars = { version = "=1.2.3", features = ["derive", "uuid1"] }
+async-compression = { version = "=0.4.52", features = ["tokio", "zstd"] }
+sha2 = "=0.11.1"
+hex = "=0.4.3"
+rayon = "=1.12.0"
+# Dev-only: Task 2 schema parity. No HTTP resolver (no reqwest, no aws-lc).
+jsonschema = { version = "=0.61.2", default-features = false }
+# R3 additions (ADR-R3-1). Each was published at least 7 days before 2026-11-21.
+serde_path_to_error = "=0.1.20"
+unicode-normalization = "=0.1.26"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.cargo]
+# Task 1 pre-declares every dependency of every crate (lockfile ownership, ADR 0031), so most are
+# unused until the owning task lands. Re-enable once R1 is complete.
+unused_dependencies = "allow"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+
+# Move generation dominates chess-heavy tests (PGN replay, opening classification, motif lines).
+# Optimising the chess crates in dev and test builds keeps those tests fast without touching
+# release settings. Our own crates stay at opt-level 0 so debugging is unaffected.
+[profile.dev.package.cozy-chess]
+opt-level = 3
+
+[profile.dev.package.chess-core]
+opt-level = 3

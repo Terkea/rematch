@@ -1,0 +1,54 @@
+[package]
+name = "lichess-db"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "lichess-db"
+path = "src/main.rs"
+
+# Operator CLI (R-11): streams a monthly Lichess dump (HTTP -> SHA-256 + zstd -> parser), builds
+# the explorer and the reference-game set, and fetches Syzygy 3-4-5.
+[dependencies]
+chess-core.workspace = true
+profile-core.workspace = true
+refdata.workspace = true
+db.workspace = true
+queue.workspace = true
+common.workspace = true
+sqlx.workspace = true
+reqwest.workspace = true
+rustls.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+futures.workspace = true
+bytes.workspace = true
+async-compression.workspace = true
+sha2.workspace = true
+hex.workspace = true
+rayon.workspace = true
+rand.workspace = true
+regex.workspace = true
+uuid.workspace = true
+time.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+clap.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[dev-dependencies]
+testkit.workspace = true
+tokio = { workspace = true, features = ["test-util"] }
+wiremock.workspace = true

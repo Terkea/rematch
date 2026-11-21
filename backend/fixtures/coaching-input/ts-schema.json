@@ -1,0 +1,1627 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "inputVersion": {
+      "type": "string",
+      "const": "coaching-input-v1"
+    },
+    "accountId": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+    },
+    "platform": {
+      "type": "string",
+      "enum": [
+        "lichess",
+        "chesscom"
+      ]
+    },
+    "timeClass": {
+      "type": "string",
+      "enum": [
+        "bullet",
+        "blitz",
+        "rapid",
+        "classical",
+        "daily"
+      ]
+    },
+    "timeControl": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "baseSeconds": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10000000
+            },
+            "incrementSeconds": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100000
+            }
+          },
+          "required": [
+            "baseSeconds",
+            "incrementSeconds"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "band": {
+      "type": "string",
+      "enum": [
+        "B0",
+        "B1",
+        "B2",
+        "B3",
+        "B4",
+        "B5"
+      ]
+    },
+    "rating": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4000
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "generatedAt": {
+      "type": "string",
+      "maxLength": 40,
+      "format": "date-time",
+      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+    },
+    "basis": {
+      "type": "object",
+      "properties": {
+        "analysedGames": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100000000
+        },
+        "importedGames": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100000000
+        },
+        "windowStart": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+        },
+        "windowEnd": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+        },
+        "backfillComplete": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "analysedGames",
+        "importedGames",
+        "windowStart",
+        "windowEnd",
+        "backfillComplete"
+      ],
+      "additionalProperties": false
+    },
+    "areaScores": {
+      "maxItems": 7,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "area": {
+            "type": "string",
+            "enum": [
+              "openings",
+              "middlegame",
+              "endgame",
+              "tactics",
+              "calculation",
+              "time",
+              "mindset"
+            ]
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "n": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100000000
+          },
+          "sufficient": {
+            "type": "boolean"
+          },
+          "needMore": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 100000000
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "area",
+          "score",
+          "n",
+          "sufficient",
+          "needMore"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "metrics": {
+      "maxItems": 80,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "area": {
+            "type": "string",
+            "enum": [
+              "openings",
+              "middlegame",
+              "endgame",
+              "tactics",
+              "calculation",
+              "time",
+              "mindset"
+            ]
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "value": {
+            "type": "number"
+          },
+          "unit": {
+            "type": "string",
+            "enum": [
+              "rate",
+              "per_game",
+              "pct",
+              "seconds",
+              "elo"
+            ]
+          },
+          "n": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100000000
+          },
+          "low": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "high": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "bandMedian": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "bandPercentile": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sufficient": {
+            "type": "boolean"
+          },
+          "needMore": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 100000000
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "key",
+          "area",
+          "label",
+          "value",
+          "unit",
+          "n",
+          "low",
+          "high",
+          "bandMedian",
+          "bandPercentile",
+          "sufficient",
+          "needMore"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "weaknesses": {
+      "maxItems": 24,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 5,
+            "pattern": "^W(1[0-2]|[1-9])[a-d]?$"
+          },
+          "variant": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 40
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "area": {
+            "type": "string",
+            "enum": [
+              "openings",
+              "middlegame",
+              "endgame",
+              "tactics",
+              "calculation",
+              "time",
+              "mindset"
+            ]
+          },
+          "rank": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 24
+          },
+          "posteriorRate": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "intervalLow": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "intervalHigh": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "bandMedian": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "bandPercentile": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "excessEplPerGame": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "priority": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1000
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "not_an_issue",
+              "emerging",
+              "active",
+              "improving",
+              "resolved",
+              "relapsed"
+            ]
+          },
+          "pImp": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "events": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100000000
+          },
+          "opportunities": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100000000
+          },
+          "exemplars": {
+            "maxItems": 5,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "gameId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64
+                },
+                "ply": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1000
+                },
+                "playedAt": {
+                  "type": "string",
+                  "maxLength": 40,
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                },
+                "fen": {
+                  "type": "string",
+                  "maxLength": 100
+                },
+                "played": {
+                  "type": "object",
+                  "properties": {
+                    "san": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 12
+                    },
+                    "uci": {
+                      "type": "string",
+                      "pattern": "^[a-h][1-8][a-h][1-8][qrbn]?$"
+                    }
+                  },
+                  "required": [
+                    "san",
+                    "uci"
+                  ],
+                  "additionalProperties": false
+                },
+                "best": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "san": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 12
+                        },
+                        "uci": {
+                          "type": "string",
+                          "pattern": "^[a-h][1-8][a-h][1-8][qrbn]?$"
+                        }
+                      },
+                      "required": [
+                        "san",
+                        "uci"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "bestPv": {
+                  "maxItems": 16,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[a-h][1-8][a-h][1-8][qrbn]?$"
+                  }
+                },
+                "refutationPv": {
+                  "maxItems": 16,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[a-h][1-8][a-h][1-8][qrbn]?$"
+                  }
+                },
+                "tags": {
+                  "maxItems": 12,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  }
+                },
+                "evalBefore": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "cp": {
+                          "type": "integer",
+                          "minimum": -100000,
+                          "maximum": 100000
+                        }
+                      },
+                      "required": [
+                        "cp"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "mate": {
+                          "type": "integer",
+                          "minimum": -500,
+                          "maximum": 500
+                        }
+                      },
+                      "required": [
+                        "mate"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                "evalAfter": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "cp": {
+                          "type": "integer",
+                          "minimum": -100000,
+                          "maximum": 100000
+                        }
+                      },
+                      "required": [
+                        "cp"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "mate": {
+                          "type": "integer",
+                          "minimum": -500,
+                          "maximum": 500
+                        }
+                      },
+                      "required": [
+                        "mate"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                "winBefore": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 100
+                },
+                "winAfter": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 100
+                }
+              },
+              "required": [
+                "gameId",
+                "ply",
+                "playedAt",
+                "fen",
+                "played",
+                "best",
+                "bestPv",
+                "refutationPv",
+                "tags",
+                "evalBefore",
+                "evalAfter",
+                "winBefore",
+                "winAfter"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "id",
+          "variant",
+          "label",
+          "area",
+          "rank",
+          "posteriorRate",
+          "intervalLow",
+          "intervalHigh",
+          "bandMedian",
+          "bandPercentile",
+          "excessEplPerGame",
+          "confidence",
+          "priority",
+          "state",
+          "pImp",
+          "events",
+          "opportunities",
+          "exemplars"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "strengths": {
+      "maxItems": 12,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "area": {
+            "type": "string",
+            "enum": [
+              "openings",
+              "middlegame",
+              "endgame",
+              "tactics",
+              "calculation",
+              "time",
+              "mindset"
+            ]
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "metricKey": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "exemplars": {
+            "maxItems": 5,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "gameId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64
+                },
+                "ply": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1000
+                },
+                "playedAt": {
+                  "type": "string",
+                  "maxLength": 40,
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                },
+                "fen": {
+                  "type": "string",
+                  "maxLength": 100
+                },
+                "played": {
+                  "type": "object",
+                  "properties": {
+                    "san": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 12
+                    },
+                    "uci": {
+                      "type": "string",
+                      "pattern": "^[a-h][1-8][a-h][1-8][qrbn]?$"
+                    }
+                  },
+                  "required": [
+                    "san",
+                    "uci"
+                  ],
+                  "additionalProperties": false
+                },
+                "best": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "san": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 12
+                        },
+                        "uci": {
+                          "type": "string",
+                          "pattern": "^[a-h][1-8][a-h][1-8][qrbn]?$"
+                        }
+                      },
+                      "required": [
+                        "san",
+                        "uci"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "bestPv": {
+                  "maxItems": 16,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[a-h][1-8][a-h][1-8][qrbn]?$"
+                  }
+                },
+                "refutationPv": {
+                  "maxItems": 16,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[a-h][1-8][a-h][1-8][qrbn]?$"
+                  }
+                },
+                "tags": {
+                  "maxItems": 12,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  }
+                },
+                "evalBefore": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "cp": {
+                          "type": "integer",
+                          "minimum": -100000,
+                          "maximum": 100000
+                        }
+                      },
+                      "required": [
+                        "cp"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "mate": {
+                          "type": "integer",
+                          "minimum": -500,
+                          "maximum": 500
+                        }
+                      },
+                      "required": [
+                        "mate"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                "evalAfter": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "cp": {
+                          "type": "integer",
+                          "minimum": -100000,
+                          "maximum": 100000
+                        }
+                      },
+                      "required": [
+                        "cp"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "mate": {
+                          "type": "integer",
+                          "minimum": -500,
+                          "maximum": 500
+                        }
+                      },
+                      "required": [
+                        "mate"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                "winBefore": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 100
+                },
+                "winAfter": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 100
+                }
+              },
+              "required": [
+                "gameId",
+                "ply",
+                "playedAt",
+                "fen",
+                "played",
+                "best",
+                "bestPv",
+                "refutationPv",
+                "tags",
+                "evalBefore",
+                "evalAfter",
+                "winBefore",
+                "winAfter"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "area",
+          "label",
+          "metricKey",
+          "exemplars"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "openings": {
+      "maxItems": 30,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "lineKey": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "eco": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 8
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "color": {
+            "type": "string",
+            "enum": [
+              "white",
+              "black"
+            ]
+          },
+          "side": {
+            "type": "string",
+            "enum": [
+              "chosen",
+              "faced"
+            ]
+          },
+          "movesSan": {
+            "maxItems": 40,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 12
+            }
+          },
+          "games": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100000000
+          },
+          "score": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "performanceVsExpected": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": -1,
+                "maximum": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "avgEvalAtOpeningEnd": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "cp": {
+                        "type": "integer",
+                        "minimum": -100000,
+                        "maximum": 100000
+                      }
+                    },
+                    "required": [
+                      "cp"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "mate": {
+                        "type": "integer",
+                        "minimum": -500,
+                        "maximum": 500
+                      }
+                    },
+                    "required": [
+                      "mate"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "keep",
+              "fix",
+              "learn",
+              "replace"
+            ]
+          },
+          "deviationPly": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "deviationMoveSan": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 12
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "alternatives": {
+            "maxItems": 5,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 120
+                },
+                "movesSan": {
+                  "maxItems": 40,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 12
+                  }
+                },
+                "bandScore": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "games": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 100000000
+                }
+              },
+              "required": [
+                "name",
+                "movesSan",
+                "bandScore",
+                "games"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "examples": {
+            "maxItems": 3,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "gameId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64
+                },
+                "ply": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1000
+                },
+                "playedAt": {
+                  "type": "string",
+                  "maxLength": 40,
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                },
+                "fen": {
+                  "type": "string",
+                  "maxLength": 100
+                },
+                "played": {
+                  "type": "object",
+                  "properties": {
+                    "san": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 12
+                    },
+                    "uci": {
+                      "type": "string",
+                      "pattern": "^[a-h][1-8][a-h][1-8][qrbn]?$"
+                    }
+                  },
+                  "required": [
+                    "san",
+                    "uci"
+                  ],
+                  "additionalProperties": false
+                },
+                "best": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "san": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 12
+                        },
+                        "uci": {
+                          "type": "string",
+                          "pattern": "^[a-h][1-8][a-h][1-8][qrbn]?$"
+                        }
+                      },
+                      "required": [
+                        "san",
+                        "uci"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "bestPv": {
+                  "maxItems": 16,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[a-h][1-8][a-h][1-8][qrbn]?$"
+                  }
+                },
+                "refutationPv": {
+                  "maxItems": 16,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[a-h][1-8][a-h][1-8][qrbn]?$"
+                  }
+                },
+                "tags": {
+                  "maxItems": 12,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  }
+                },
+                "evalBefore": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "cp": {
+                          "type": "integer",
+                          "minimum": -100000,
+                          "maximum": 100000
+                        }
+                      },
+                      "required": [
+                        "cp"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "mate": {
+                          "type": "integer",
+                          "minimum": -500,
+                          "maximum": 500
+                        }
+                      },
+                      "required": [
+                        "mate"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                "evalAfter": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "cp": {
+                          "type": "integer",
+                          "minimum": -100000,
+                          "maximum": 100000
+                        }
+                      },
+                      "required": [
+                        "cp"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "mate": {
+                          "type": "integer",
+                          "minimum": -500,
+                          "maximum": 500
+                        }
+                      },
+                      "required": [
+                        "mate"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                "winBefore": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 100
+                },
+                "winAfter": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 100
+                }
+              },
+              "required": [
+                "gameId",
+                "ply",
+                "playedAt",
+                "fen",
+                "played",
+                "best",
+                "bestPv",
+                "refutationPv",
+                "tags",
+                "evalBefore",
+                "evalAfter",
+                "winBefore",
+                "winAfter"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "lineKey",
+          "name",
+          "eco",
+          "color",
+          "side",
+          "movesSan",
+          "games",
+          "score",
+          "performanceVsExpected",
+          "avgEvalAtOpeningEnd",
+          "verdict",
+          "deviationPly",
+          "deviationMoveSan",
+          "alternatives",
+          "examples"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "changes": {
+      "maxItems": 20,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "seriesKey": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "weaknessId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 5,
+                "pattern": "^W(1[0-2]|[1-9])[a-d]?$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "fromState": {
+            "type": "string",
+            "enum": [
+              "not_an_issue",
+              "emerging",
+              "active",
+              "improving",
+              "resolved",
+              "relapsed"
+            ]
+          },
+          "toState": {
+            "type": "string",
+            "enum": [
+              "not_an_issue",
+              "emerging",
+              "active",
+              "improving",
+              "resolved",
+              "relapsed"
+            ]
+          },
+          "onsetGameId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "onsetDate": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "onsetFrom": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "onsetTo": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "rateBefore": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "rateAfter": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "posteriorProb": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "candidateCauses": {
+            "maxItems": 6,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "time_control_mix",
+                    "new_opening",
+                    "session_length",
+                    "rating_level",
+                    "protocol_version"
+                  ]
+                },
+                "description": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 600
+                },
+                "before": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 120
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "after": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 120
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "kind",
+                "description",
+                "before",
+                "after"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "examples": {
+            "maxItems": 6,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "gameId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64
+                },
+                "ply": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1000
+                },
+                "playedAt": {
+                  "type": "string",
+                  "maxLength": 40,
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                },
+                "fen": {
+                  "type": "string",
+                  "maxLength": 100
+                },
+                "played": {
+                  "type": "object",
+                  "properties": {
+                    "san": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 12
+                    },
+                    "uci": {
+                      "type": "string",
+                      "pattern": "^[a-h][1-8][a-h][1-8][qrbn]?$"
+                    }
+                  },
+                  "required": [
+                    "san",
+                    "uci"
+                  ],
+                  "additionalProperties": false
+                },
+                "best": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "san": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 12
+                        },
+                        "uci": {
+                          "type": "string",
+                          "pattern": "^[a-h][1-8][a-h][1-8][qrbn]?$"
+                        }
+                      },
+                      "required": [
+                        "san",
+                        "uci"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "bestPv": {
+                  "maxItems": 16,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[a-h][1-8][a-h][1-8][qrbn]?$"
+                  }
+                },
+                "refutationPv": {
+                  "maxItems": 16,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[a-h][1-8][a-h][1-8][qrbn]?$"
+                  }
+                },
+                "tags": {
+                  "maxItems": 12,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  }
+                },
+                "evalBefore": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "cp": {
+                          "type": "integer",
+                          "minimum": -100000,
+                          "maximum": 100000
+                        }
+                      },
+                      "required": [
+                        "cp"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "mate": {
+                          "type": "integer",
+                          "minimum": -500,
+                          "maximum": 500
+                        }
+                      },
+                      "required": [
+                        "mate"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                "evalAfter": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "cp": {
+                          "type": "integer",
+                          "minimum": -100000,
+                          "maximum": 100000
+                        }
+                      },
+                      "required": [
+                        "cp"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "mate": {
+                          "type": "integer",
+                          "minimum": -500,
+                          "maximum": 500
+                        }
+                      },
+                      "required": [
+                        "mate"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                "winBefore": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 100
+                },
+                "winAfter": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 100
+                },
+                "side": {
+                  "type": "string",
+                  "enum": [
+                    "before",
+                    "after"
+                  ]
+                }
+              },
+              "required": [
+                "gameId",
+                "ply",
+                "playedAt",
+                "fen",
+                "played",
+                "best",
+                "bestPv",
+                "refutationPv",
+                "tags",
+                "evalBefore",
+                "evalAfter",
+                "winBefore",
+                "winAfter",
+                "side"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "seriesKey",
+          "weaknessId",
+          "label",
+          "fromState",
+          "toState",
+          "onsetGameId",
+          "onsetDate",
+          "onsetFrom",
+          "onsetTo",
+          "rateBefore",
+          "rateAfter",
+          "posteriorProb",
+          "candidateCauses",
+          "examples"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "inputVersion",
+    "accountId",
+    "platform",
+    "timeClass",
+    "timeControl",
+    "band",
+    "rating",
+    "generatedAt",
+    "basis",
+    "areaScores",
+    "metrics",
+    "weaknesses",
+    "strengths",
+    "openings",
+    "changes"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,567 @@
+{
+  "source": "m3/base@4ff8220",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "section": {
+        "enum": [
+          "overview",
+          "weaknesses",
+          "openings",
+          "climb_plan",
+          "areas"
+        ]
+      },
+      "overview": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "headline": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "description": "{minLength: 1}"
+                  },
+                  "citations": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "gameId": {
+                          "type": "string"
+                        },
+                        "ply": {
+                          "type": "integer",
+                          "description": "{minimum: -9007199254740991, maximum: 9007199254740991}"
+                        }
+                      },
+                      "additionalProperties": false,
+                      "required": [
+                        "gameId",
+                        "ply"
+                      ]
+                    }
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "text",
+                  "citations"
+                ]
+              },
+              "summary": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "description": "{minLength: 1}"
+                  },
+                  "citations": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "gameId": {
+                          "type": "string"
+                        },
+                        "ply": {
+                          "type": "integer",
+                          "description": "{minimum: -9007199254740991, maximum: 9007199254740991}"
+                        }
+                      },
+                      "additionalProperties": false,
+                      "required": [
+                        "gameId",
+                        "ply"
+                      ]
+                    }
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "text",
+                  "citations"
+                ]
+              },
+              "strengths": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "text": {
+                      "type": "string",
+                      "description": "{minLength: 1}"
+                    },
+                    "citations": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "gameId": {
+                            "type": "string"
+                          },
+                          "ply": {
+                            "type": "integer",
+                            "description": "{minimum: -9007199254740991, maximum: 9007199254740991}"
+                          }
+                        },
+                        "additionalProperties": false,
+                        "required": [
+                          "gameId",
+                          "ply"
+                        ]
+                      }
+                    },
+                    "area": {
+                      "enum": [
+                        "openings",
+                        "middlegame",
+                        "endgame",
+                        "tactics",
+                        "calculation",
+                        "time",
+                        "mindset"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "text",
+                    "citations",
+                    "area"
+                  ]
+                },
+                "description": "{maxItems: 4}"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "headline",
+              "summary",
+              "strengths"
+            ]
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "weaknesses": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "text": {
+                      "type": "string",
+                      "description": "{minLength: 1}"
+                    },
+                    "citations": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "gameId": {
+                            "type": "string"
+                          },
+                          "ply": {
+                            "type": "integer",
+                            "description": "{minimum: -9007199254740991, maximum: 9007199254740991}"
+                          }
+                        },
+                        "additionalProperties": false,
+                        "required": [
+                          "gameId",
+                          "ply"
+                        ]
+                      }
+                    },
+                    "weaknessId": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "text",
+                    "citations",
+                    "weaknessId",
+                    "title"
+                  ]
+                }
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "items"
+            ]
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "openings": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "text": {
+                      "type": "string",
+                      "description": "{minLength: 1}"
+                    },
+                    "citations": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "gameId": {
+                            "type": "string"
+                          },
+                          "ply": {
+                            "type": "integer",
+                            "description": "{minimum: -9007199254740991, maximum: 9007199254740991}"
+                          }
+                        },
+                        "additionalProperties": false,
+                        "required": [
+                          "gameId",
+                          "ply"
+                        ]
+                      }
+                    },
+                    "lineKey": {
+                      "type": "string"
+                    },
+                    "verdict": {
+                      "enum": [
+                        "keep",
+                        "fix",
+                        "learn",
+                        "replace"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "text",
+                    "citations",
+                    "lineKey",
+                    "verdict"
+                  ]
+                }
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "items"
+            ]
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "climbPlan": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "intro": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "description": "{minLength: 1}"
+                  },
+                  "citations": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "gameId": {
+                          "type": "string"
+                        },
+                        "ply": {
+                          "type": "integer",
+                          "description": "{minimum: -9007199254740991, maximum: 9007199254740991}"
+                        }
+                      },
+                      "additionalProperties": false,
+                      "required": [
+                        "gameId",
+                        "ply"
+                      ]
+                    }
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "text",
+                  "citations"
+                ]
+              },
+              "focuses": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "weaknessId": {
+                      "type": "string"
+                    },
+                    "why": {
+                      "type": "object",
+                      "properties": {
+                        "text": {
+                          "type": "string",
+                          "description": "{minLength: 1}"
+                        },
+                        "citations": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "gameId": {
+                                "type": "string"
+                              },
+                              "ply": {
+                                "type": "integer",
+                                "description": "{minimum: -9007199254740991, maximum: 9007199254740991}"
+                              }
+                            },
+                            "additionalProperties": false,
+                            "required": [
+                              "gameId",
+                              "ply"
+                            ]
+                          }
+                        }
+                      },
+                      "additionalProperties": false,
+                      "required": [
+                        "text",
+                        "citations"
+                      ]
+                    },
+                    "drills": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "drillType": {
+                            "enum": [
+                              "own_mistake_puzzles",
+                              "safe_unsafe",
+                              "themed_puzzles",
+                              "long_calculation",
+                              "mate_patterns",
+                              "convert_vs_engine",
+                              "defend_vs_engine",
+                              "opening_trainer",
+                              "opening_trap_puzzles",
+                              "tablebase_drills",
+                              "clock_pressure",
+                              "critical_or_not",
+                              "blitz_safety",
+                              "model_games",
+                              "guess_the_move",
+                              "session_rules",
+                              "slow_games",
+                              "own_game_analysis"
+                            ]
+                          },
+                          "rationale": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": false,
+                        "required": [
+                          "drillType",
+                          "rationale"
+                        ]
+                      },
+                      "minItems": 1,
+                      "description": "{maxItems: 3}"
+                    },
+                    "habit": {
+                      "type": "object",
+                      "properties": {
+                        "text": {
+                          "type": "string",
+                          "description": "{minLength: 1}"
+                        },
+                        "citations": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "gameId": {
+                                "type": "string"
+                              },
+                              "ply": {
+                                "type": "integer",
+                                "description": "{minimum: -9007199254740991, maximum: 9007199254740991}"
+                              }
+                            },
+                            "additionalProperties": false,
+                            "required": [
+                              "gameId",
+                              "ply"
+                            ]
+                          }
+                        }
+                      },
+                      "additionalProperties": false,
+                      "required": [
+                        "text",
+                        "citations"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "weaknessId",
+                    "why",
+                    "drills",
+                    "habit"
+                  ]
+                },
+                "description": "{maxItems: 3}"
+              },
+              "weeklyRhythm": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "description": "{minLength: 1}"
+                  },
+                  "citations": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "gameId": {
+                          "type": "string"
+                        },
+                        "ply": {
+                          "type": "integer",
+                          "description": "{minimum: -9007199254740991, maximum: 9007199254740991}"
+                        }
+                      },
+                      "additionalProperties": false,
+                      "required": [
+                        "gameId",
+                        "ply"
+                      ]
+                    }
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "text",
+                  "citations"
+                ]
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "intro",
+              "focuses",
+              "weeklyRhythm"
+            ]
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "areas": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "text": {
+                      "type": "string",
+                      "description": "{minLength: 1}"
+                    },
+                    "citations": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "gameId": {
+                            "type": "string"
+                          },
+                          "ply": {
+                            "type": "integer",
+                            "description": "{minimum: -9007199254740991, maximum: 9007199254740991}"
+                          }
+                        },
+                        "additionalProperties": false,
+                        "required": [
+                          "gameId",
+                          "ply"
+                        ]
+                      }
+                    },
+                    "area": {
+                      "enum": [
+                        "openings",
+                        "middlegame",
+                        "endgame",
+                        "tactics",
+                        "calculation",
+                        "time",
+                        "mindset"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "text",
+                    "citations",
+                    "area"
+                  ]
+                }
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "items"
+            ]
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "additionalProperties": false,
+    "required": [
+      "section",
+      "overview",
+      "weaknesses",
+      "openings",
+      "climbPlan",
+      "areas"
+    ]
+  }
+}

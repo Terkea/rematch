@@ -1,0 +1,39 @@
+# cargo-deny configuration (ADR 0031). CI runs `cargo deny check`; any violation fails the build.
+# Never widen the licence allowlist without an ADR addendum.
+
+[graph]
+all-features = false
+# Every target we build or deploy MUST be listed here (ADR 0031). Crates that only other targets
+# use are not checked, e.g. webpki-root-certs (CDLA-Permissive-2.0), which
+# rustls-platform-verifier pulls in only on wasm32.
+targets = ["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu"]
+
+[licenses]
+# MIT-0 (MIT without the attribution clause) added by ADR-R2-1 addendum: strictly more permissive.
+allow = ["MIT", "MIT-0", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC", "Unicode-3.0", "Zlib"]
+confidence-threshold = 0.9
+# The allowlist is fixed by the plan; not every licence on it occurs today.
+unused-allowed-license = "allow"
+# cargo-deny skips crates reachable only through dev-dependencies in the licence check unless
+# this is set (it defaults to false). Test-only crates (wiremock, jsonschema, ...) are linked
+# into test binaries we build and run, so they get the same licence rules (ADR 0031).
+# Build-dependencies are already checked, and advisories already cover the whole graph.
+include-dev = true
+
+[licenses.private]
+# Workspace crates are `publish = false` and `license = "UNLICENSED"`.
+ignore = true
+
+[advisories]
+version = 2
+yanked = "deny"
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

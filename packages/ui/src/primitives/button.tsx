@@ -43,12 +43,12 @@ export const buttonVariants = cva(
         ],
         outline: [
           "border-rule-strong bg-transparent text-ink hover:bg-(--surface-hover)",
-          "active:bg-well active:shadow-[inset_0_0_0_1px_var(--color-rule-strong)]",
+          "active:bg-well active:inset-ring-1 active:inset-ring-rule-strong",
           "disabled:border-rule disabled:text-ink-faint",
         ],
         quiet: [
           "border-transparent bg-transparent text-ink-soft hover:bg-(--surface-hover) hover:text-ink",
-          "active:bg-well active:shadow-[inset_0_0_0_1px_var(--color-rule-strong)]",
+          "active:bg-well active:inset-ring-1 active:inset-ring-rule-strong",
           "disabled:text-ink-faint",
         ],
         // Destructive actions are ink-outlined, never red: red marks chess mistakes and form
@@ -56,7 +56,7 @@ export const buttonVariants = cva(
         // weight and an explicit verb ("Delete account").
         danger: [
           "border-2 border-ink bg-transparent font-bold text-ink hover:bg-(--surface-hover)",
-          "active:bg-well active:shadow-[inset_0_0_0_1px_var(--color-rule-strong)]",
+          "active:bg-well active:inset-ring-1 active:inset-ring-rule-strong",
           "disabled:border disabled:border-rule disabled:font-medium disabled:text-ink-faint",
         ],
       },
