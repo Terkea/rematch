@@ -1,0 +1,24 @@
+# Decision records
+
+One file per decision: context, decision, alternatives, consequences. New decisions get the next number.
+
+- [0001. Monorepo in TypeScript with pnpm workspaces and Turborepo](0001-monorepo-typescript-turborepo.md)
+- [0002. Next.js (App Router) for the web app](0002-nextjs-web-app.md)
+- [0003. Background workers on BullMQ with a native Stockfish 19 pool](0003-worker-bullmq-native-stockfish.md)
+- [0004. Postgres with Drizzle ORM](0004-postgres-drizzle.md)
+- [0005. Better Auth for authentication](0005-better-auth.md)
+- [0006. chess.com integration behind a flag, with a Lichess-first fallback](0006-chesscom-behind-flag.md)
+- [0007. Pinned analysis protocol and a shared position cache](0007-analysis-protocol-pinned.md)
+- [0008. Lichess win% formulas for accuracy and move classification](0008-lichess-win-percent-classification.md)
+- [0009. The improvement engine follows the research spec](0009-improvement-engine-spec.md)
+- [0010. Maia-2 as a separate Python service, with a fallback](0010-maia-difficulty-service.md)
+- [0011. Claude API with structured outputs and a claim validator](0011-claude-structured-outputs.md)
+- [0012. Build our own rating-band opening explorer](0012-own-opening-explorer.md)
+- [0013. Local 5-piece Syzygy plus the Lichess tablebase API](0013-tablebases-local-plus-api.md)
+- [0014. Stockfish WASM in the browser, GPL-compliant](0014-browser-stockfish-wasm.md)
+- [0015. UI stack and an anti-slop design process](0015-ui-stack-and-process.md)
+- [0016. Freemium, with Pro at $7.99/month or $59.99/year via Stripe Managed Payments](0016-monetisation.md)
+- [0017. Per-game metrics plus append-only KPI snapshots](0017-kpi-snapshots.md)
+- [0018. Age gate and privacy defaults](0018-children-and-privacy.md)
+- [0019. Hosting: Vercel for the web app, a dedicated-CPU host for the workers](0019-hosting.md)
+- [0020. Post-launch backlog](0020-post-launch-backlog.md)
