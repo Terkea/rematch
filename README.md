@@ -17,7 +17,7 @@ Design decisions live in `docs/decisions/`; the spec is in `docs/superpowers/spe
 ## Local stack
 
 ```sh
-cp .env.example .env                       # set CONTACT_EMAIL (never a real personal address)
+cp .env.example .env
 docker compose up -d --build               # Postgres 17, Redis 7, worker with Stockfish 19, web, Mailpit
 docker compose run --rm worker pnpm test   # full suite inside the container
 docker compose run --rm worker pnpm lint
@@ -34,7 +34,6 @@ COMPOSE_FILE=docker-compose.yml docker compose -p ci-a run --rm -e LANE=a rust-d
 COMPOSE_FILE=docker-compose.yml docker compose -p ci-a down -v
 ```
 
-`CONTACT_EMAIL` is required only by `worker`, which exits at start-up when it is empty; `rust-dev` falls back to a placeholder.
 `docker/postgres/init.sql` creates the `chess_test` and `chess_worker_test` databases only on a fresh `pgdata` volume. On an
 existing volume, create it once with:
 
@@ -66,7 +65,7 @@ docker compose run --rm worker pnpm --filter @ci/worker cli analyse \
 # games: 20  analysed: 20  skipped: 0  failed: 0  avg accuracy: 65.1  blunders/game: 3.20
 ```
 
-Chess.com requires a real `CONTACT_EMAIL` in `.env` for its User-Agent; `--timeout` defaults to 30 minutes.
+`--timeout` defaults to 30 minutes.
 
 Note: the CLI writes into the main `chess` database (`DATABASE_URL`), not a test database, and it does not
 schedule the reconciler. SIGINT/SIGTERM stop the wait, shut the workers down cleanly and exit 130/143;

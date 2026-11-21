@@ -28,9 +28,10 @@ export interface PlatformClient {
   getNdjson<T>(url: string, init?: RequestInitLite): AsyncIterable<T>;
 }
 
+export const USER_AGENT = "chess-improver/0.1 (+https://github.com/chess-improver)";
+
 export interface PlatformClientOptions {
   name: "lichess" | "chesscom";
-  contactEmail: string;
   fetch?: typeof fetch;
   retryAfterMs?: number;
   maxRetries?: number;
@@ -78,7 +79,7 @@ export function createPlatformClient(opts: PlatformClientOptions): PlatformClien
   const maxRetries = opts.maxRetries ?? 3;
   const requestTimeoutMs = opts.requestTimeoutMs ?? 30_000;
   const streamIdleTimeoutMs = opts.streamIdleTimeoutMs ?? 60_000;
-  const userAgent = `chess-improver/0.1 (+mailto:${opts.contactEmail})`;
+  const userAgent = USER_AGENT;
 
   // Promise-chain mutex: one request at a time per client (platform).
   let tail: Promise<void> = Promise.resolve();

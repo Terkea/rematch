@@ -9,7 +9,7 @@ import {
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
-const base = { name: "lichess", contactEmail: "ops@example.com", retryAfterMs: 0 } as const;
+const base = { name: "lichess", retryAfterMs: 0 } as const;
 
 describe("platform client", () => {
   it("sends identifying user agent", async () => {
@@ -20,8 +20,27 @@ describe("platform client", () => {
     }) as typeof fetch;
     const client = createPlatformClient({ ...base, fetch: fetchFn });
     await client.getJson("https://example.test/a", { headers: { Accept: "application/json" } });
-    expect(seen?.get("user-agent")).toBe("chess-improver/0.1 (+mailto:ops@example.com)");
+    expect(seen?.get("user-agent")).toBe("chess-improver/0.1 (+https://github.com/chess-improver)");
+    expect(seen?.get("user-agent")).not.toContain("@");
     expect(seen?.get("accept")).toBe("application/json");
+  });
+
+  it("sends no @ in the user agent even when CONTACT_EMAIL is set", async () => {
+    const prev = process.env.CONTACT_EMAIL;
+    process.env.CONTACT_EMAIL = "someone@example.com";
+    try {
+      let seen: Headers | undefined;
+      const fetchFn = (async (_url: string | URL | Request, init?: RequestInit) => {
+        seen = new Headers(init?.headers);
+        return json({ ok: true });
+      }) as typeof fetch;
+      const client = createPlatformClient({ ...base, fetch: fetchFn });
+      await client.getJson("https://example.test/a");
+      expect(seen?.get("user-agent")).not.toContain("@");
+    } finally {
+      if (prev === undefined) delete process.env.CONTACT_EMAIL;
+      else process.env.CONTACT_EMAIL = prev;
+    }
   });
 
   it("serialises requests", async () => {
