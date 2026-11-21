@@ -33,8 +33,8 @@ where
     Option::<T>::deserialize(deserializer)
 }
 
-/// `YYYY-MM-DD` (zod `z.iso.date()`).
-mod iso_date {
+/// `YYYY-MM-DD` (zod `z.iso.date()`). Public so R3 contracts reuse it (`#[serde(with)]`).
+pub mod iso_date {
     use serde::{Deserialize, Deserializer, Serializer, de, ser};
     use time::Date;
     use time::format_description::FormatItem;

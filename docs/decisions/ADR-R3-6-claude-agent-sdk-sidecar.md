@@ -114,3 +114,14 @@ Separately, each request's `timeoutMs` aborts the whole query.
 **Production guard.** `AI_SIDECAR_ENV=production` or `NODE_ENV=production` turns the guard on. With `auth` of `oauth` or `none`, the sidecar exits with code 78 and the message "refusing to start: production needs ANTHROPIC_API_KEY or a cloud provider; a subscription token is not allowed (ADR-R3-6)". Production also requires `AI_SESSION_DATABASE_URL`. In development `oauth` is allowed, and `none` starts, reports `auth:"none"` and answers every call with 401 `authentication_error`.
 
 **Licence.** `@anthropic-ai/claude-agent-sdk` is "SEE LICENSE IN README.md": Anthropic's commercial terms, not open source. Its peers are permissive: `@modelcontextprotocol/sdk` 1.32.2 (MIT), `@anthropic-ai/sdk` 1.8.0 (Apache-2.0) and `zod` 4.6.7 (MIT). So is `pg` 8.23.1 (MIT). All are pinned exactly and pass the 7-day age check. The platform `claude` binaries come from the SDK's `optionalDependencies`, so installs must keep optional dependencies.
+
+## Amendment 1 (2026-11-21): chat uses SDK sessions stored in Postgres
+
+Owner direction: the coach chat uses the SDK's native sessions, as in the owner's reference project. The plain Messages API is stateless, so the history has to be stored either way.
+
+- **Sessions.** A new conversation runs `sessionId = conversation uuid`, and each later turn runs `resume = conversation uuid` with only the new user message. Claude sees its own earlier replies verbatim, and caching across turns is automatic (5-minute TTL; `ENABLE_PROMPT_CACHING_1H=1` for longer).
+- **Storage.** We use the documented pluggable `options.sessionStore` (agent-sdk/session-storage). The sidecar's Postgres adapter writes opaque entries to one table, `ai_sdk_session_entries`, through a dedicated role granted access to that table only. The CLI's local transcript disk is scratch (tmpfs). This supersedes "the sidecar has no database access" for this single table.
+- **System of record.** Postgres conversations and messages (Tasks 17 and 25) remain the record for display, titles, rollover summaries and deletion. If a resume fails, the sidecar retries once as a new session seeded with Rust's rebuilt context (summary plus recent turns).
+- **Deletion and retention.** The SDK never deletes from a store. Rust deletes a conversation's `ai_sdk_session_entries` rows in the same transaction as the conversation itself, so "delete conversation" and "delete all" leave nothing behind.
+- **One-shot calls.** Report sections and other JSON one-shot calls stay stateless.
+- **Unverified items, tested in Task 10:** the version that added `SessionStore`, the result shape for a missing session on resume, and the `deleteSession` signature.
