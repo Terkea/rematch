@@ -250,14 +250,23 @@ async fn registration_expires_after_its_ttl() {
     install_crypto();
     let s = server().await;
     let h = Recorder::new("a");
-    // Never dropped: the TTL (the turn timeout) still ends it.
-    let reg = s.register(h.clone(), Duration::from_millis(100));
+    // Never dropped: the TTL (the turn timeout) still ends it. Expiry runs on tokio's clock, so
+    // the test moves it with paused time instead of racing a wall-clock window: the TTL is long
+    // enough that a loaded host cannot expire it early, and time is resumed before real I/O.
+    let ttl = Duration::from_secs(60);
+    let reg = s.register(h.clone(), ttl);
     let body = json!({"name": "x", "input": {}});
     assert_eq!(post(&s, Some(&reg.token), body.clone()).await.0, 200);
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    tokio::time::pause();
+    tokio::time::advance(ttl / 2).await;
+    tokio::time::resume();
+    assert_eq!(post(&s, Some(&reg.token), body.clone()).await.0, 200, "not yet expired");
+    tokio::time::pause();
+    tokio::time::advance(ttl).await;
+    tokio::time::resume();
     assert_eq!(post(&s, Some(&reg.token), body).await.0, 404);
     assert_eq!(s.registrations(), 0);
-    assert_eq!(h.calls.lock().unwrap().len(), 1);
+    assert_eq!(h.calls.lock().unwrap().len(), 2);
     drop(reg); // dropping an expired registration is harmless
     let live = s.register(Recorder::new("b"), TTL);
     assert_eq!(s.registrations(), 1);
