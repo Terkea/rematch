@@ -1082,3 +1082,39 @@ async fn a_non_final_failure_does_not_hand_off(pool: PgPool) {
     assert!(matches!(res, Err(JobError::Retryable { .. })), "{res:?}");
     assert_eq!(game(&pool, id).await.analysis_generation, 1);
 }
+
+// ---------------------------------------------------------------------------------------------
+// Task 22: the on_dead generation fence (T19 re-review M4)
+
+/// Between the dead commit and `on_dead`, a re-analysis can start a new generation whose first
+/// attempt is already running (`analysing`, fresh heartbeat). `on_dead` must leave it alone.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn on_dead_leaves_a_fresh_analysing_run_of_a_new_generation_alone(pool: PgPool) {
+    let id = add_game(&pool, "1. e4 c5 2. Nf3 d6 *", "fresh-gen").await;
+    exec(
+        &pool,
+        "UPDATE games SET analysis_status = 'analysing', analysis_attempts = 1, \
+         analysis_generation = 1, heartbeat_at = now(), analysis_started_at = now() \
+         WHERE id = $1",
+        id,
+    )
+    .await;
+    let handler = AnalyseGameHandler(Arc::new(deps(&pool, ok_pool())));
+    within("on_dead", handler.on_dead(&job(id, 3, 3), "stalled")).await;
+    let g = game(&pool, id).await;
+    assert_eq!(g.analysis_status, AnalysisStatus::Analysing);
+    assert!(events(&pool).await.is_empty());
+
+    // A stalled run's heartbeat is old: that one is the dead job's own, and it is failed.
+    exec(
+        &pool,
+        "UPDATE games SET heartbeat_at = now() - interval '1 hour' WHERE id = $1",
+        id,
+    )
+    .await;
+    within("on_dead", handler.on_dead(&job(id, 3, 3), "stalled")).await;
+    assert_eq!(
+        game(&pool, id).await.analysis_status,
+        AnalysisStatus::Failed
+    );
+}

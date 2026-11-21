@@ -77,3 +77,35 @@ ENV RUSTC_WRAPPER=/usr/local/bin/sccache \
 # (Debian bookworm), 13.8 s with mold 2.42.1 (bookworm only ships the AGPL mold 1.10) and 18.6 s
 # with GNU ld. Re-measure before adding -C linker-features=-lld or a -fuse-ld override.
 WORKDIR /work/backend
+
+# ---- Runtime image (Task 22) ----------------------------------------------------------------
+# cargo-chef: `planner` reduces the workspace to a dependency recipe, so `builder` compiles every
+# dependency in a layer that only changes with Cargo.toml/Cargo.lock.
+FROM chef AS planner
+WORKDIR /work
+COPY backend backend
+COPY db db
+WORKDIR /work/backend
+RUN cargo chef prepare --recipe-path recipe.json
+
+FROM chef AS builder
+WORKDIR /work/backend
+COPY --from=planner /work/backend/recipe.json recipe.json
+RUN cargo chef cook --release --locked --recipe-path recipe.json
+COPY backend /work/backend
+COPY db /work/db
+RUN cargo build --release --locked -p worker -p cli
+
+# The worker: a digest-pinned Debian base (bookworm-slim of 2026-11-04), CA roots for the platform
+# clients' TLS, the checksum-pinned Stockfish 19 from the `stockfish` stage, and both binaries.
+# It runs as an unprivileged user, publishes no ports, and carries no CONTACT_EMAIL (ADR 0043).
+FROM debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc AS worker
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+COPY --from=stockfish /usr/local/bin/stockfish /usr/local/bin/stockfish
+COPY --from=builder /work/backend/target/release/worker /usr/local/bin/worker
+COPY --from=builder /work/backend/target/release/cli /usr/local/bin/cli
+ENV STOCKFISH_PATH=/usr/local/bin/stockfish
+USER 10001:10001
+ENTRYPOINT ["worker"]

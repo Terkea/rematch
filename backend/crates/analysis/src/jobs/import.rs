@@ -26,7 +26,7 @@
 //! session sets server-side TCP keepalives, so a worker that dies without closing the socket
 //! frees the account within about 90 s.
 //!
-//! Known limitation (deferred to T22): exclusion lasts only as long as the lock session. If the
+//! Known limitation (still open): exclusion lasts only as long as the lock session. If the
 //! lock connection dies while the handler is still running (a network fault, an administrator
 //! terminating the backend), the lock is gone but the handler keeps writing through pool
 //! connections, so a re-claimed job could overlap it again. Routing the cursor and run writes
@@ -48,6 +48,7 @@ use platforms::{
     FetchOptions, GameSource, NormalizedGame, Platform, PlatformClient, PlatformError,
 };
 use queue::queue::{Queue, QueueError};
+use queue::runner::{Handler, JobContext};
 use queue::{EnqueueOptions, ImportAccountPayload, Job, JobError, KIND_IMPORT, import_key};
 use serde_json::{Value, json};
 use sqlx::pool::PoolConnection;
@@ -76,6 +77,8 @@ pub const ACCOUNT_BUSY_DELAY: Duration = Duration::from_secs(30);
 /// Advisory-lock namespace (`classid`) of the per-account import lock. The two-key form never
 /// conflicts with the single-key locks used elsewhere (the events lock 7262011).
 const IMPORT_LOCK_NAMESPACE: i32 = 7_262_021;
+/// Bound on the explicit unlock of the account lock (closing its connection unlocks anyway).
+const UNLOCK_TIMEOUT: Duration = Duration::from_secs(5);
 /// Max attempts of an import job.
 pub const IMPORT_MAX_ATTEMPTS: i32 = 3;
 /// `import_runs.last_error` keeps at most this many characters.
@@ -206,8 +209,8 @@ pub async fn enqueue_import(
     Ok(id.is_some())
 }
 
-/// The queue handler for [`KIND_IMPORT`]. It has the shape of T14's `Handler`
-/// (`kind`, `handle(job, ctx)`); the `impl Handler` delegates here once the runner lands.
+/// The queue handler for [`KIND_IMPORT`]. The inherent `handle(job, cancel)` is what
+/// [`Handler::handle`] runs with the job's cancel token.
 pub struct ImportAccountHandler {
     pub deps: Arc<ImportAccountDeps>,
 }
@@ -236,6 +239,16 @@ impl ImportAccountHandler {
             Ok(json!(summary))
         }
         .boxed()
+    }
+}
+
+impl Handler for ImportAccountHandler {
+    fn kind(&self) -> &'static str {
+        KIND_IMPORT
+    }
+
+    fn handle(&self, job: Job, ctx: JobContext) -> BoxFuture<'_, Result<Value, JobError>> {
+        ImportAccountHandler::handle(self, job, ctx.cancel)
     }
 }
 
@@ -378,7 +391,11 @@ impl AccountLock {
     async fn acquire(pool: &PgPool, account_id: Uuid) -> Result<Option<AccountLock>, sqlx::Error> {
         let mut conn = pool.acquire().await?;
         conn.close_on_drop();
-        sqlx::query(LOCK_KEEPALIVES_SQL).execute(&mut *conn).await?;
+        // Best effort: the pool sets the same keepalives on every connection (db::pool), and a
+        // lock without them is still a lock.
+        if let Err(e) = sqlx::query(LOCK_KEEPALIVES_SQL).execute(&mut *conn).await {
+            tracing::warn!(account_id = %account_id, error = %e, "setting lock keepalives failed");
+        }
         let key = account_lock_key(account_id);
         let locked: bool = sqlx::query_scalar("SELECT pg_try_advisory_lock($1, $2)")
             .bind(key.0)
@@ -391,18 +408,25 @@ impl AccountLock {
     /// Unlocks explicitly, so the next handler can take the lock at once instead of waiting
     /// for the connection close to reach the server. A failure only logs: closing the
     /// connection (on drop) releases the lock anyway.
+    /// The unlock is bounded by [`UNLOCK_TIMEOUT`], so a dead lock connection cannot hold up the
+    /// job's completion.
     async fn release(mut self) {
-        let unlocked = sqlx::query_scalar::<_, bool>("SELECT pg_advisory_unlock($1, $2)")
+        let unlock = sqlx::query_scalar::<_, bool>("SELECT pg_advisory_unlock($1, $2)")
             .bind(self.key.0)
             .bind(self.key.1)
-            .fetch_one(&mut *self.conn)
-            .await;
-        match unlocked {
-            Ok(true) => {}
-            Ok(false) => tracing::warn!(key = ?self.key, "the import account lock was not held"),
-            Err(e) => {
+            .fetch_one(&mut *self.conn);
+        match tokio::time::timeout(UNLOCK_TIMEOUT, unlock).await {
+            Ok(Ok(true)) => {}
+            Ok(Ok(false)) => {
+                tracing::warn!(key = ?self.key, "the import account lock was not held");
+            }
+            Ok(Err(e)) => {
                 tracing::warn!(key = ?self.key, error = %e, "unlocking the import account failed");
             }
+            Err(_) => tracing::warn!(
+                key = ?self.key,
+                "unlocking the import account timed out; closing the connection releases it"
+            ),
         }
     }
 }
@@ -640,15 +664,25 @@ impl Run<'_> {
         Ok(())
     }
 
+    /// Closes the run as done, fenced on `running`: a run the reconciler already closed for a
+    /// stale heartbeat (a hung handler) stays failed, since a fresh import was enqueued for it.
+    /// The games and the cursor this handler committed are kept either way.
     async fn finish(&self) -> Result<(), sqlx::Error> {
-        sqlx::query(
+        let closed = sqlx::query(
             "UPDATE import_runs SET status = 'done', imported = $2, finished_at = now(), \
-             heartbeat_at = now() WHERE id = $1",
+             heartbeat_at = now() WHERE id = $1 AND status = 'running'",
         )
         .bind(self.run_id)
         .bind(self.run_imported())
         .execute(&self.deps.pool)
         .await?;
+        if closed.rows_affected() == 0 {
+            tracing::warn!(
+                run_id = %self.run_id,
+                account_id = %self.account.id,
+                "the import finished after its run was closed (stale heartbeat); leaving it closed"
+            );
+        }
         sqlx::query("UPDATE linked_accounts SET last_synced_at = now() WHERE id = $1")
             .bind(self.account.id)
             .execute(&self.deps.pool)
@@ -679,7 +713,8 @@ impl Run<'_> {
         }
         let recorded = sqlx::query(
             "UPDATE import_runs SET status = $2::import_run_status, imported = $3, \
-             last_error = $4, error_code = $5, finished_at = now() WHERE id = $1",
+             last_error = $4, error_code = $5, finished_at = now() \
+             WHERE id = $1 AND status = 'running'",
         )
         .bind(self.run_id)
         .bind(status.as_str())

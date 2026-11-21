@@ -851,3 +851,53 @@ async fn back_to_back_imports_never_see_their_own_lock(pool: PgPool) {
     }
     assert_eq!(d.busy_releases.load(Ordering::Relaxed), 0);
 }
+
+// ---------------------------------------------------------------------------------------------
+// Task 22
+
+/// The reconciler closes a run with a stale heartbeat as failed (and enqueues a fresh import).
+/// A hung handler that later reaches the end must not flip that run to done.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn finish_does_not_overwrite_a_run_the_reconciler_closed(pool: PgPool) {
+    let acct = testkit::insert_account(&pool, "lichess", "hung").await;
+    let game = make_game("Hung", "Villain", datetime!(2026-03-04 12:00 UTC));
+    let source = {
+        let pool = pool.clone();
+        FnSource::new(move |_| {
+            let pool = pool.clone();
+            let close = futures::stream::once(async move {
+                sqlx::query(
+                    "UPDATE import_runs SET status = 'failed', error_code = 'timeout', \
+                     finished_at = now() WHERE account_id = $1",
+                )
+                .bind(acct)
+                .execute(&pool)
+                .await
+                .unwrap();
+            })
+            .filter_map(|()| async { None });
+            futures::stream::iter(vec![Ok(game.clone())])
+                .chain(close)
+                .boxed()
+        })
+    };
+    let d = deps(&pool, source);
+    let res = run(&d, acct).await;
+    assert!(res.is_ok(), "{res:?}");
+    let runs = list_runs(&pool, acct).await.unwrap();
+    assert_eq!(runs.len(), 1);
+    assert_eq!(runs[0].status, ImportRunStatus::Failed);
+    assert_eq!(runs[0].error_code.as_deref(), Some("timeout"));
+    assert_eq!(game_rows(&pool, acct).await.len(), 1);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn the_import_handler_is_a_queue_handler(pool: PgPool) {
+    use analysis::jobs::import::ImportAccountHandler;
+    use queue::runner::Handler;
+    let handler: Arc<dyn Handler> = Arc::new(ImportAccountHandler::new(Arc::new(deps(
+        &pool,
+        FnSource::listing(Vec::new(), false),
+    ))));
+    assert_eq!(handler.kind(), KIND_IMPORT);
+}

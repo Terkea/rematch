@@ -35,13 +35,14 @@ use queue::retention::Retention;
 use queue::runner::{Handler, JobContext};
 use queue::{
     EnqueueOptions, Job, JobError, JobState, KIND_ANALYSE, KIND_IMPORT, KIND_RECONCILE,
-    RECONCILE_EVERY, RECONCILE_KEY, analyse_key,
+    RECONCILE_EVERY, RECONCILE_KEY, analyse_key, import_key,
 };
 use serde::Serialize;
 use serde_json::{Value, json};
 use sqlx::PgPool;
 use uuid::Uuid;
 
+use crate::jobs::analyse::{analyse_enqueue_options, analyse_payload, enqueue_analyse};
 use crate::jobs::import::enqueue_import;
 
 /// Attempt cap across every path (queue retries, stalled pickups, reconciler re-enqueues): twice
@@ -242,7 +243,7 @@ pub async fn reconcile(
                 continue; // it moved on meanwhile
             }
             result.reset_stale += 1;
-            enqueue_analysis(queue, g.id, g.account_id).await?;
+            enqueue_analyse(queue, g.id, g.account_id).await?;
         }
         result.exhausted += give_up(pool, &exhausted, "analysing").await?;
         if (page.len as i64) < page_size {
@@ -280,7 +281,10 @@ pub async fn reconcile(
         .fetch_all(pool)
         .await?;
     for account in paused {
-        if queue.live_count(&[KIND_IMPORT], Some(account)).await? == 0
+        if queue
+            .live_states(KIND_IMPORT, &[import_key(account)])
+            .await?
+            .is_empty()
             && enqueue_import(queue, account, None).await?
         {
             result.revived_paused += 1;
@@ -354,99 +358,26 @@ async fn live_states(
     queue.live_states(KIND_ANALYSE, &keys).await
 }
 
-/// The analyse job options: the same as T19's `enqueue_analyse` (T22 switches to it and checks
-/// they agree).
-fn analyse_options(game_id: Uuid, account_id: Uuid) -> EnqueueOptions {
-    EnqueueOptions {
-        dedupe_key: Some(analyse_key(game_id)),
-        user_key: Some(account_id),
-        max_attempts: 3,
-        ..EnqueueOptions::default()
-    }
-}
-
-/// One analyse enqueue. `false` when a live job already holds the game's key.
-async fn enqueue_analysis(
-    queue: &Queue,
-    game_id: Uuid,
-    account_id: Uuid,
-) -> Result<bool, QueueError> {
-    let id = queue
-        .enqueue(
-            KIND_ANALYSE,
-            &json!({ "gameId": game_id }),
-            analyse_options(game_id, account_id),
-        )
-        .await?;
-    Ok(id.is_some())
-}
-
-/// `$1` kind, `$2` game ids, `$3` dedupe keys, `$4` account ids, `$5` priority, `$6`
-/// max_attempts. The same row and the same live-only conflict rule as the queue's `ENQUEUE_SQL`
-/// (no `run_at` or `recur_every`, so both take their defaults).
-const ENQUEUE_PAGE_SQL: &str = "\
-WITH ins AS (
-  INSERT INTO jobs (kind, payload, dedupe_key, user_key, priority, max_attempts)
-  SELECT $1, jsonb_build_object('gameId', g.id), g.key, g.account, $5, $6
-  FROM unnest($2::uuid[], $3::text[], $4::uuid[]) WITH ORDINALITY AS g(id, key, account, n)
-  ORDER BY g.n
-  ON CONFLICT (kind, dedupe_key) WHERE dedupe_key IS NOT NULL AND state IN ('queued','running','paused')
-  DO NOTHING RETURNING id)
-SELECT count(*) FROM ins";
-
 /// Enqueues analyse jobs for `games` (`(game_id, account_id)`) in one transaction with one
-/// NOTIFY, and returns how many were new (a live job already holds the others' keys).
-///
-/// Each `Queue::enqueue` is its own commit, and its NOTIFY serialises commits, so requeueing a
-/// lost queue row by row is bound by commit latency (2,500 games took 10-25 s under load). One
-/// commit per page keeps it to well under a second. The rows equal what [`Queue::enqueue`]
-/// writes with [`analyse_options`] (the `reconciler` test `page_enqueue_matches_queue_enqueue`
-/// compares them). Move this to a `Queue::enqueue_many` when the queue crate gets one (T22).
+/// NOTIFY ([`Queue::enqueue_many`]), and returns how many were new (a live job already holds the
+/// others' keys). Each `Queue::enqueue` is its own commit, and its NOTIFY serialises commits, so
+/// requeueing a lost queue row by row is bound by commit latency (2,500 games took 10-25 s under
+/// load); one commit per page keeps it to well under a second. The rows equal what
+/// [`enqueue_analyse`] writes.
 pub async fn enqueue_analysis_page(
     queue: &Queue,
     games: &[(Uuid, Uuid)],
 ) -> Result<u64, QueueError> {
-    if games.is_empty() {
-        return Ok(0);
-    }
-    let opts = analyse_options(games[0].0, games[0].1);
-    debug_assert!(opts.run_at.is_none() && opts.recur_every.is_none());
-    let ids: Vec<Uuid> = games.iter().map(|g| g.0).collect();
-    let keys: Vec<String> = games.iter().map(|g| analyse_key(g.0)).collect();
-    let accounts: Vec<Uuid> = games.iter().map(|g| g.1).collect();
-    let timeout = queue::queue::DEFAULT_QUERY_TIMEOUT;
-    let fut = async {
-        let mut tx = queue.pool().begin().await?;
-        sqlx::query("SELECT set_config('statement_timeout', $1, true)")
-            .bind(format!("{}ms", timeout.as_millis()))
-            .execute(&mut *tx)
-            .await?;
-        let inserted: i64 = sqlx::query_scalar(ENQUEUE_PAGE_SQL)
-            .bind(KIND_ANALYSE)
-            .bind(&ids)
-            .bind(&keys)
-            .bind(&accounts)
-            .bind(opts.priority)
-            .bind(opts.max_attempts)
-            .fetch_one(&mut *tx)
-            .await?;
-        if inserted > 0 {
-            sqlx::query("SELECT pg_notify($1, $2)")
-                .bind(queue::queue::JOBS_CHANNEL)
-                .bind(KIND_ANALYSE)
-                .execute(&mut *tx)
-                .await?;
-        }
-        tx.commit().await?;
-        Ok::<_, sqlx::Error>(inserted)
-    };
-    match tokio::time::timeout(timeout + queue::queue::CLIENT_BACKSTOP, fut).await {
-        Ok(res) => Ok(res?.max(0) as u64),
-        Err(_) => Err(QueueError::Timeout {
-            op: "enqueue_analysis_page",
-            after: timeout,
-        }),
-    }
+    let jobs: Vec<(Value, EnqueueOptions)> = games
+        .iter()
+        .map(|&(game_id, account_id)| {
+            (
+                analyse_payload(game_id),
+                analyse_enqueue_options(game_id, account_id),
+            )
+        })
+        .collect();
+    queue.enqueue_many(KIND_ANALYSE, &jobs).await
 }
 
 /// Marks `ids` failed if they are still `from`, and publishes `job.failed` for each one that

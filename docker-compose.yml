@@ -209,6 +209,25 @@ services:
       - sccache:/sccache
       - crate_age:/crate-age
 
+  # The Rust worker (Task 22): the runtime image of backend/Dockerfile. It reaches chess.com and
+  # Lichess with the fixed project User-Agent and never sends an email (ADR 0043), so it gets no
+  # CONTACT_EMAIL. No ports. On `docker compose stop` it drains within its 25 s grace.
+  rust-worker:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      target: worker
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/chess
+      STOCKFISH_PATH: /usr/local/bin/stockfish
+      LICHESS_TOKEN: ${LICHESS_TOKEN:-}
+      RUST_LOG: ${RUST_LOG:-info}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    stop_grace_period: 30s
+    restart: unless-stopped
+
 volumes:
   pgdata:
   node_modules:
