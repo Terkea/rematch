@@ -1,0 +1,12 @@
+# Override for the web service when running the Playwright e2e suite against the fake providers:
+#   docker compose -f docker-compose.yml -f docker-compose.e2e.yml --profile e2e up -d web fakes
+services:
+  web:
+    environment:
+      LICHESS_AUTHORIZE_BASE_URL: http://localhost:53199
+      LICHESS_API_BASE_URL: http://fakes:3199
+      CHESSCOM_API_BASE_URL: http://fakes:3199/chesscom
+      CHESSCOM_ENABLED: "1"
+    depends_on:
+      fakes:
+        condition: service_started

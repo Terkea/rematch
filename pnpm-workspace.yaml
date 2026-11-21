@@ -6,3 +6,9 @@ packages:
 allowBuilds:
   esbuild: true
   msgpackr-extract: false
+
+# Supply-chain policy (ADR 0031): no version younger than 7 days (minutes).
+# pnpm 11+ defaults to 1440 (1 day, non-strict); setting it explicitly also
+# turns on minimumReleaseAgeStrict so resolution fails instead of falling back.
+minimumReleaseAge: 10080
+minimumReleaseAgeStrict: true

@@ -598,3 +598,52 @@ impl Position {
         Ok(next)
     }
 }
+
+/// Profile-engine additions (R2 Task 4): in-place UCI play with SAN, board access and check state.
+/// [`Position::play_uci`] keeps its R1 signature, so the in-place variant is `push_uci`.
+impl Position {
+    /// Play a UCI move in place and return its chess.js SAN and UCI. Castling is accepted as the
+    /// king's two-square step (`e1g1`) or king-takes-rook (`e1h1`) and reported as the former; a
+    /// promotion needs its suffix. The position is unchanged on error.
+    pub fn push_uci(&mut self, uci: &str) -> Result<PlayedMove, IllegalMove> {
+        let illegal = || IllegalMove(uci.to_string());
+        if !uci.is_ascii() || !(4..=5).contains(&uci.len()) {
+            return Err(illegal());
+        }
+        let from = parse_square(&uci[0..2]).ok_or_else(illegal)?;
+        let to = parse_square(&uci[2..4]).ok_or_else(illegal)?;
+        let promotion = match uci.chars().nth(4) {
+            None => None,
+            Some(c) => Some(parse_promotion(c).ok_or_else(illegal)?),
+        };
+        let all = self.legal_moves();
+        let found = all
+            .iter()
+            .find(|m| m.from == from && m.to == to && m.promotion == promotion)
+            .or_else(|| {
+                all.iter().find(|m| {
+                    m.castle.is_some() && promotion.is_none() && m.from == from && m.cozy.to == to
+                })
+            })
+            .copied()
+            .ok_or_else(illegal)?;
+        let san = self.full_san(&found, &all);
+        let uci = Self::uci_of(&found);
+        self.apply(&found);
+        Ok(PlayedMove { san, uci })
+    }
+
+    /// The underlying cozy-chess board (for attack and piece-set queries).
+    ///
+    /// It is not a chess.js FEN source: its halfmove clock and move number are normalised (this
+    /// wrapper keeps the real ones) and its en-passant file is cozy-chess's, not the square chess.js
+    /// prints. Build FENs with [`Position::fen`].
+    pub fn board(&self) -> &Board {
+        &self.board
+    }
+
+    /// Whether the side to move is in check.
+    pub fn is_check(&self) -> bool {
+        !self.board.checkers().is_empty()
+    }
+}

@@ -301,7 +301,14 @@ Source: `docs/research/competitors-and-users.md`. Paid rivals cost $8–14/month
    - powers a human-like sparring bot for conversion and defence drills.
 7. **Own-mistake puzzles default to the last 30 days,** with filters by motif, phase, opening and time control.
 8. **Refutations play out on the board,** drawn as red-pen arrows. This is the signature motion moment from §11.
-9. **"Ask your coach" chat.** Claude answers questions about the player's own games using only their computed data and the engine (as tools), through the same claim validator. Pro only, with a fair-use cap.
+9. **"Ask your coach" chat** (expanded at the owner's request, 2026-11-21: "allow the user to talk to the AI to ask clarifying questions"):
+   - It opens anchored to whatever the player is looking at (a report section, weakness, move, position, opening line or game).
+   - It answers follow-ups ("why is this a mistake?", "what should I play instead?", "show me another game like this").
+   - For "what if I'd played X?" questions it runs an **on-demand server-side engine check**. That's a high-priority interactive job, MultiPV 3, never used for stats. Results are cited through `{{eng:…}}` tokens, so answers stay facts-by-reference.
+   - Threads are saved and can be deleted.
+   - Limits: Pro gets 30 messages/day and 300/month, plus 20 engine checks/day. Free gets 3 messages/week and 3 engine checks/week, as a taste.
+   - Safety: chess and own-games only, a minor-safe tone, no rating promises, prompt-injection resistant, and every paragraph validated.
+   - The original definition follows. The "Ask your coach" chat: Claude answers questions about the player's own games using only their computed data and the engine (as tools), through the same claim validator. Pro only, with a fair-use cap.
 10. **Free acquisition tools:**
     - unlimited single-game review in the browser (WASM Stockfish), with no signup needed;
     - a no-signup **quick diagnosis** by username: the last 20 games and a teaser report, cached and rate-limited.
