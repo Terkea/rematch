@@ -106,24 +106,7 @@ pub enum FailOutcome {
     LeaseLost,
 }
 
-/// How the next jobs are chosen. The R2 fair-scheduling hook (§8c/§8d round robin per account):
-/// a per-`user_key` strategy would walk the `jobs_user_ready_idx (kind, user_key, priority,
-/// run_at)` index. R1 has exactly one implementation, [`PriorityFifo`], and uses it for nothing
-/// else.
-pub trait SelectStrategy: Send + Sync {
-    /// The `ORDER BY` of the claim query (served by `jobs_ready_idx`).
-    fn order_by(&self) -> &'static str;
-}
-
-/// Lower `priority` first, then the earliest `run_at`, then insertion order.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct PriorityFifo;
-
-impl SelectStrategy for PriorityFifo {
-    fn order_by(&self) -> &'static str {
-        "priority, run_at, id"
-    }
-}
+pub use crate::strategy::{PriorityFifo, SelectStrategy};
 
 /// The columns that make up a [`Job`] (table alias `j`), for `RETURNING` and `SELECT` lists.
 macro_rules! job_columns {
@@ -132,8 +115,7 @@ macro_rules! job_columns {
     };
 }
 pub(crate) use job_columns;
-/// For crate-internal `RETURNING` lists.
-#[allow(dead_code)]
+/// For `RETURNING` lists (re-exported as `strategy::JOB_COLUMNS`).
 pub(crate) const JOB_COLUMNS: &str = job_columns!();
 
 /// The claim order; must equal `PriorityFifo.order_by()` (unit-tested).
@@ -328,7 +310,7 @@ fn is_statement_timeout(e: &sqlx::Error) -> bool {
         .is_some_and(|code| code == "57014")
 }
 
-fn millis(d: Duration) -> f64 {
+pub(crate) fn millis(d: Duration) -> f64 {
     d.as_secs_f64() * 1000.0
 }
 

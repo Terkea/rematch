@@ -5,6 +5,7 @@ pub mod queue;
 pub mod reaper;
 pub mod retention;
 pub mod runner;
+pub mod strategy;
 pub mod types;
 
 pub use kinds::*;
