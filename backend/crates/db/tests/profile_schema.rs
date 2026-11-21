@@ -28,7 +28,7 @@ async fn make_account(pool: &PgPool) -> Uuid {
         .id
 }
 
-/// A game built the R2 way: R1 fields plus `..Default::default()`.
+/// An exhaustive `NewGame` literal, as the R1 callers write it (status `Pending`).
 fn new_game(account_id: Uuid, platform_game_id: &str) -> NewGame {
     NewGame {
         account_id,
@@ -42,7 +42,16 @@ fn new_game(account_id: Uuid, platform_game_id: &str) -> NewGame {
         black_name: "Hikaru".into(),
         result: "*".into(),
         rated: true,
-        ..Default::default()
+        base_seconds: None,
+        increment_seconds: None,
+        white_rating: None,
+        black_rating: None,
+        termination: None,
+        eco: None,
+        opening_name: None,
+        lichess_evals: None,
+        status: AnalysisStatus::Pending,
+        ply_count: None,
     }
 }
 
@@ -132,13 +141,12 @@ async fn imported_status_round_trips(pool: PgPool) {
 #[sqlx::test(migrator = "db::MIGRATOR")]
 async fn r1_callers_default_to_pending(pool: PgPool) {
     let acc = make_account(&pool).await;
-    // No `status` and no `ply_count`: the R1 shape, completed by `Default`.
+    // The R1 call sites set `status: Pending, ply_count: None` explicitly.
     let up = upsert_game(&pool, &new_game(acc, "r1style")).await.unwrap();
     assert_eq!(up.analysis_status, AnalysisStatus::Pending);
     let row = get_game(&pool, up.id).await.unwrap().unwrap();
     assert_eq!(row.analysis_status, AnalysisStatus::Pending);
     assert_eq!(row.ply_count, None);
-    assert_eq!(NewGame::default().status, AnalysisStatus::Pending);
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
@@ -269,8 +277,8 @@ async fn one_row_per_new_table(pool: PgPool) {
          FROM games WHERE id = $1",
         "INSERT INTO repertoire_nodes (account_id, time_class, color, fen_key, games, stats) \
          SELECT account_id, 'blitz', 'white', 'a', 1, '{}' FROM games WHERE id = $1",
-        "INSERT INTO opening_lines (account_id, time_class, color, line_key, games, verdict, \
-         summary) SELECT account_id, 'blitz', 'white', 'white:italian', 1, 'keep', '{}' \
+        "INSERT INTO opening_lines (account_id, time_class, color, line_key, kind, games, verdict, \
+         summary) SELECT account_id, 'blitz', 'white', 'white:italian', 'chosen', 1, 'keep', '{}' \
          FROM games WHERE id = $1",
         "INSERT INTO game_previews (game_id, protocol, white_accuracy, black_accuracy, moves) \
          VALUES ($1, 'sf19-n30k-preview-v1', 80, 70, '[]')",
@@ -517,4 +525,134 @@ async fn record_stage_metrics_writes_stages_json(pool: PgPool) {
     assert_eq!(job_id, Some(42));
     assert_eq!(total, 20.0);
     assert_eq!(multipv, "12.5");
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn opening_line_can_be_both_chosen_and_faced(pool: PgPool) {
+    let acc = make_account(&pool).await;
+    for kind in ["chosen", "faced"] {
+        sqlx::query(
+            "INSERT INTO opening_lines (account_id, time_class, color, line_key, kind, games, \
+             verdict, summary) VALUES ($1, 'blitz', 'white', 'white:italian', $2::line_kind, 3, \
+             NULL, '{}')",
+        )
+        .bind(acc)
+        .bind(kind)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+    let kinds: Vec<String> = sqlx::query_scalar(
+        "SELECT kind::text FROM opening_lines WHERE account_id = $1 ORDER BY kind",
+    )
+    .bind(acc)
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(kinds, ["chosen", "faced"]);
+    // The same side twice is still a key violation.
+    let dup = sqlx::query(
+        "INSERT INTO opening_lines (account_id, time_class, color, line_key, kind, games, summary) \
+         VALUES ($1, 'blitz', 'white', 'white:italian', 'faced', 1, '{}')",
+    )
+    .bind(acc)
+    .execute(&pool)
+    .await;
+    assert!(dup.is_err());
+}
+
+fn metrics_row(game_id: Uuid, account_id: Uuid, metrics: serde_json::Value) -> GameMetricsRow {
+    GameMetricsRow {
+        game_id,
+        account_id,
+        time_class: "blitz".into(),
+        played_at: PLAYED_AT,
+        protocol: "sf19-n300k-v1".into(),
+        enrichment_protocol: None,
+        difficulty_model: None,
+        metrics,
+    }
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn game_metrics_version_is_generated_and_missing_reads_as_0(pool: PgPool) {
+    let acc = make_account(&pool).await;
+    let mut games = Vec::new();
+    for (id, metrics) in [
+        ("v1", json!({ "version": 1 })),
+        ("v0", json!({ "version": 0 })),
+        ("none", json!({ "blunders": 2 })),
+    ] {
+        let game = make_game(&pool, acc, id).await;
+        let mut conn = pool.acquire().await.unwrap();
+        insert_game_metrics(&mut conn, &metrics_row(game, acc, metrics))
+            .await
+            .unwrap();
+        games.push(game);
+    }
+    let versions: Vec<i32> = sqlx::query_scalar(
+        "SELECT metrics_version FROM game_metrics WHERE game_id = ANY($1) \
+         ORDER BY array_position($1, game_id)",
+    )
+    .bind(&games)
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(versions, [1, 0, 0]);
+    let stale: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM game_metrics WHERE metrics_version <> 1 AND account_id = $1",
+    )
+    .bind(acc)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(stale, 2);
+
+    // An upsert with the current version refreshes the generated column.
+    let mut conn = pool.acquire().await.unwrap();
+    insert_game_metrics(
+        &mut conn,
+        &metrics_row(games[2], acc, json!({ "version": 1 })),
+    )
+    .await
+    .unwrap();
+    let v: i32 = sqlx::query_scalar("SELECT metrics_version FROM game_metrics WHERE game_id = $1")
+        .bind(games[2])
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(v, 1);
+}
+
+async fn insert_build(pool: &PgPool, kind: &str, status: &str) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "INSERT INTO reference_builds (kind, status, source_month, source_sha256) \
+         VALUES ($1::reference_kind, $2::build_status, '2026-10', 'ab')",
+    )
+    .bind(kind)
+    .bind(status)
+    .execute(pool)
+    .await
+    .map(|_| ())
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn at_most_one_active_reference_build_per_kind(pool: PgPool) {
+    insert_build(&pool, "opening_explorer", "active")
+        .await
+        .unwrap();
+    insert_build(&pool, "band_reference", "active")
+        .await
+        .unwrap();
+    insert_build(&pool, "opening_explorer", "superseded")
+        .await
+        .unwrap();
+    insert_build(&pool, "opening_explorer", "superseded")
+        .await
+        .unwrap();
+    assert!(
+        insert_build(&pool, "opening_explorer", "active")
+            .await
+            .is_err()
+    );
 }

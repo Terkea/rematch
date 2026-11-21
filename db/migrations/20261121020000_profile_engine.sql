@@ -25,7 +25,8 @@ ALTER TABLE games ADD COLUMN selected_at timestamptz;
 ALTER TABLE games ADD COLUMN analysed_at timestamptz;
 ALTER TABLE games ADD COLUMN enrichment_protocol text;
 ALTER TABLE games ADD CONSTRAINT games_analysis_tier_range
-  CHECK (analysis_tier IS NULL OR analysis_tier BETWEEN 0 AND 3);
+  CHECK (analysis_tier IS NULL OR analysis_tier BETWEEN 0 AND 3) NOT VALID;
+ALTER TABLE games VALIDATE CONSTRAINT games_analysis_tier_range;
 ALTER TABLE linked_accounts ADD COLUMN analysis_scheduled_at timestamptz;
 
 -- Fair scheduling (R-12): the per-account `served` count and the selection scan.
@@ -87,6 +88,8 @@ CREATE TABLE position_tb (
 -- Per-game metrics and weakness series ------------------------------------------------------
 -- `metrics` is a serialised `PlayerGameMetrics`; readers must treat `metrics->>'version'` other
 -- than PLAYER_GAME_METRICS_VERSION as stale (global constraints, version gate).
+-- `metrics_version` mirrors that field (a missing version reads as 0) so stale rows are cheap to
+-- find: `WHERE metrics_version <> $current`.
 CREATE TABLE game_metrics (
   game_id uuid PRIMARY KEY REFERENCES games (id) ON DELETE CASCADE,
   account_id uuid NOT NULL REFERENCES linked_accounts (id) ON DELETE CASCADE,
@@ -96,10 +99,12 @@ CREATE TABLE game_metrics (
   enrichment_protocol text,
   difficulty_model text,
   metrics jsonb NOT NULL,
+  metrics_version integer GENERATED ALWAYS AS (COALESCE((metrics->>'version')::int, 0)) STORED,
   created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX game_metrics_account_tc_played_idx
   ON game_metrics (account_id, time_class, played_at);
+CREATE INDEX game_metrics_version_idx ON game_metrics (metrics_version, account_id);
 
 CREATE TABLE weakness_series_point (
   account_id uuid NOT NULL REFERENCES linked_accounts (id) ON DELETE CASCADE,
@@ -143,6 +148,9 @@ CREATE TABLE weakness_estimates (
   PRIMARY KEY (account_id, time_class, series_key)
 );
 
+-- Append-only. No dedupe key: a series can legitimately transition twice at the same game (a
+-- re-analysis flips the state back), and `at_game_id` is nullable. The caller (build-profile)
+-- owns dedupe: it appends only when the new state differs from the latest row's `to_state`.
 CREATE TABLE weakness_state_history (
   id bigserial PRIMARY KEY,
   account_id uuid NOT NULL REFERENCES linked_accounts (id) ON DELETE CASCADE,
@@ -208,6 +216,9 @@ CREATE TABLE reference_builds (
   error text
 );
 CREATE INDEX reference_builds_kind_status_idx ON reference_builds (kind, status);
+-- At most one active build per kind.
+CREATE UNIQUE INDEX reference_builds_one_active_uq ON reference_builds (kind)
+  WHERE status = 'active';
 
 CREATE TABLE opening_explorer (
   build_id uuid NOT NULL REFERENCES reference_builds (id) ON DELETE CASCADE,
@@ -296,6 +307,8 @@ CREATE TABLE game_openings (
   player_deviation_ply integer
 );
 CREATE INDEX game_openings_account_idx ON game_openings (account_id, time_class, color);
+CREATE INDEX game_openings_line_idx
+  ON game_openings (account_id, time_class, line_key, line_kind);
 
 CREATE TABLE repertoire_nodes (
   account_id uuid NOT NULL REFERENCES linked_accounts (id) ON DELETE CASCADE,
@@ -312,11 +325,13 @@ CREATE TABLE opening_lines (
   time_class time_class NOT NULL,
   color color NOT NULL,
   line_key text NOT NULL,
+  -- One line can be both chosen and faced (T16/T18 ruling): the side is part of the key.
+  kind line_kind NOT NULL,
   games integer NOT NULL,
   verdict opening_verdict,
   summary jsonb NOT NULL,
   updated_at timestamptz NOT NULL DEFAULT now(),
-  PRIMARY KEY (account_id, time_class, color, line_key)
+  PRIMARY KEY (account_id, time_class, color, line_key, kind)
 );
 
 -- R2: quick preview evals (R-13). Never in position_evals, moves, game_metrics or series.

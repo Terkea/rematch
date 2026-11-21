@@ -77,10 +77,6 @@ impl TryFrom<String> for AnalysisStatus {
 
 /// A game to insert. Enum columns are given as their Postgres text values
 /// (`platform`: lichess | chesscom, `time_class`, `player_color`: white | black, `result`).
-///
-/// `Default` lets callers write `NewGame { .., ..Default::default() }` and stay unchanged when
-/// columns are added; its placeholder values (nil account, empty strings, the Unix epoch) are not
-/// a valid game on their own.
 #[derive(Debug, Clone)]
 pub struct NewGame {
     pub account_id: Uuid,
@@ -102,38 +98,10 @@ pub struct NewGame {
     pub eco: Option<String>,
     pub opening_name: Option<String>,
     pub lichess_evals: Option<serde_json::Value>,
-    /// Status of a newly inserted row (default `Pending`, the R1 behaviour). The R2 importer
+    /// Status of a newly inserted row (`Pending` is the R1 behaviour). The R2 importer
     /// passes `Imported` for games the scheduler has not selected. Ignored on conflict.
     pub status: AnalysisStatus,
     pub ply_count: Option<i32>,
-}
-
-impl Default for NewGame {
-    fn default() -> Self {
-        Self {
-            account_id: Uuid::nil(),
-            platform: String::new(),
-            platform_game_id: String::new(),
-            pgn: String::new(),
-            played_at: OffsetDateTime::UNIX_EPOCH,
-            time_class: String::new(),
-            base_seconds: None,
-            increment_seconds: None,
-            rated: false,
-            player_color: String::new(),
-            white_name: String::new(),
-            black_name: String::new(),
-            white_rating: None,
-            black_rating: None,
-            result: String::new(),
-            termination: None,
-            eco: None,
-            opening_name: None,
-            lichess_evals: None,
-            status: AnalysisStatus::Pending,
-            ply_count: None,
-        }
-    }
 }
 
 /// Every `games` column.
