@@ -87,8 +87,7 @@ export function parsePgn(pgn: string): ParsedGame {
   const moves = loaded.history({ verbose: true });
   const clocks = extractClocks(movetext);
 
-  const replay = new Chess();
-  const startFen = replay.fen();
+  const startFen = new Chess().fen();
   const plies: Ply[] = moves.map((move, i) => ({
     ply: i + 1,
     color: move.color === "w" ? "white" : "black",
