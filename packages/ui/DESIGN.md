@@ -365,6 +365,18 @@ For the KPI timelines (up to 12 series), we use a tonal ink ramp, not a rainbow:
 - **Labels:** direct labels at the line ends, with the text in `ink-soft` (`ink` at 600 weight for the highlighted series), Schibsted 500 at `sm`. Beside each label is a 16px line swatch in the series' tone and dash pattern, so the label text keeps 4.5:1 while the swatch carries the identity. There is no legend box.
 - Red and green are never series colours, because they keep their chess meanings.
 
+### KPI stats (ADR-WEB-12)
+
+A KPI is a list row, never a stat banner (`B9`): label and basis ("Based on 38 rapid games"), the value rolling with NumberFlow (Literata 600 at `3xl`, tabular lining figures), the credible interval as a band, and a sparkline.
+
+- **Value precision:** percent to 0.1 (`64.2%`), decimal to 0.01 (`1.84`), integer whole.
+- **Interval ends are one place coarser than the value** for decimals (`61.0 and 67.5` beside `64.20`), and as precise as the value for percent and integer. The band is written out in words ("80% likely between 61.0 and 67.5"), so it never rests on the drawing. A target uses the interval ends' precision.
+- **The scale.** Percent KPIs share one **40-point window** (for example 50%–90%), placed around the band, value and target inside 0–100% and falling back to 0–100% when they span more than 30 points. A band's width therefore means the same on every percent row, and a tight band is never zoomed into a wide one. Other formats run from zero (or the lowest value, if negative) to a nice value about 15% past the band and target. Both ends are labelled in `xs` `ink-faint`.
+- **Marks:** a decorative `rule` track, the band in `rule-strong` (8px, `--radius-board`), the value as a solid 2.5px `ink` tick, and the target as a dashed 2px `good` tick with a caret, so shape and not colour tells them apart. The target's text label carries the same caret swatch. A provisional KPI shows "Early estimate" (a `well` pill, `ink-soft`).
+- **Halo:** both ticks and the sparkline's last dot sit on a halo in `--stat-surface` (default `sheet`), which a host on another surface sets, as with `--eval-graph-surface`.
+- **Sparkline:** no axes, `pencil` at 1.5px, linear segments, a null breaks the line (a lone value is a 3px pencil dot), and the latest value is a 6px `ink` dot. Fewer than two values reads "Not enough games yet". Its accessible name gives the snapshot count, the gaps and the first and last values.
+- **Motion:** one clock per row. The sparkline draws over `--dur-reveal` on `--ease-pen`, and on a value change the number rolls and the value tick travels on one progress value over the same `--dur-reveal` and `--ease-pen`. Reduced motion jumps both to the end (M10). No change is called "improved" or "worse" unless the intervals separate.
+
 ## Motion
 
 Motion is a headline feature. The rule is rich, choreographed and physical, never generic, and the owner wants it **huge**: the analysis reveal is a full performance of the game's turning points, pieces have visible weight, and the eval bar swings. Motion (formerly Framer Motion) is used for all app animation, the View Transitions API for shared elements, and NumberFlow for rolling numbers. GSAP and Lenis are landing-only (M5).

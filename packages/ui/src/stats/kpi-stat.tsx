@@ -1,7 +1,9 @@
 "use client";
 
 import { Scale } from "@visx/visx";
+import { useEffect, useRef } from "react";
 import { cn } from "../lib/index.js";
+import { animate, dur, ease, motion, useMotionValue, useReducedMotion } from "../motion/index.js";
 import { Sparkline } from "./sparkline.js";
 import { DEFAULT_LOCALE, Stat, type StatFormat } from "./stat.js";
 
@@ -89,6 +91,35 @@ function BandScale(props: KpiStatProps) {
   const pct = (v: number) => `${(((v - lo) / (hi - lo)) * 100).toFixed(2)}%`;
   const width = (a: number, b: number) => `${(((b - a) / (hi - lo)) * 100).toFixed(2)}%`;
   const { interval, value, target, format } = props;
+  const reduced = useReducedMotion();
+
+  // The number's clock: one progress value, on NumberFlow's own `dur.reveal` and `ease.pen`, carries
+  // the tick from the shown value to the new one, so it travels with the roll. Reduced motion jumps.
+  const x = useMotionValue(pct(value));
+  const shown = useRef(value);
+  const progress = useMotionValue(1);
+  useEffect(() => {
+    const from = shown.current;
+    const place = (v: number) => {
+      shown.current = v;
+      x.set(`${(((v - lo) / (hi - lo)) * 100).toFixed(2)}%`);
+    };
+    if (reduced || from === value) {
+      progress.jump(1);
+      place(value);
+      return;
+    }
+    progress.jump(0);
+    const controls = animate(progress, 1, {
+      duration: dur.reveal,
+      ease: ease.pen,
+      onUpdate: (p) => place(from + (value - from) * p),
+    });
+    return () => controls.stop();
+  }, [value, reduced, lo, hi, progress, x]);
+  // Under reduced motion the tick renders straight at the value, with no frame in between.
+  const tickX = reduced ? pct(value) : x;
+
   return (
     <div aria-hidden="true" className="flex items-center gap-2 text-xs text-ink-faint">
       <span>{end(lo, format)}</span>
@@ -128,19 +159,19 @@ function BandScale(props: KpiStatProps) {
             <path d="M-4,0 L4,0 L0,4 Z" className="fill-good" />
           </svg>
         )}
-        <line
-          x1={pct(value)}
-          x2={pct(value)}
+        <motion.line
+          x1={tickX}
+          x2={tickX}
           y1="2"
           y2="22"
           strokeWidth="6"
           strokeLinecap="round"
           className="stroke-(--stat-surface)"
         />
-        <line
+        <motion.line
           data-part="value"
-          x1={pct(value)}
-          x2={pct(value)}
+          x1={tickX}
+          x2={tickX}
           y1="2"
           y2="22"
           strokeWidth="2.5"
