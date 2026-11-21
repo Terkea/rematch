@@ -264,6 +264,7 @@ Piece sets are user-configurable (owner decision, round 2).
   - Recolouring happens at build time into per-theme SVG sprites. Pieces never use runtime `filter` recolouring.
   - The set is checked in reference 6's format (day and night strips) before it is offered.
 - **The licence gate.** No GPL, AGPL, NC (non-commercial), "freeware" or unlicensed sets. Each set's licence, author and exact source URL are recorded in `design/references/REFERENCES.md` and the ADR before it is added. Every shipped set gets its attribution and licence text on `/licenses` (the BSD-3-Clause notice for Cburnett, and the Apache-2.0 licence and NOTICE for Chessnut). Files come from the original source. Cburnett is taken from Commons, not from Lichess's GPL-labelled copy.
+- **The embedded copy.** react-chessboard bundles its own Cburnett copy (`defaultPieces`) in the client JavaScript whatever we pass to `pieces`, so it ships even though it is never rendered. The Cburnett BSD-3-Clause notice and attribution on `/licenses` therefore also cover that embedded copy, from the first release that bundles react-chessboard. The notice stays for as long as react-chessboard is bundled, even if the default set later changes to Chessnut or the signature set (controller ruling, Task 10 review; ADR 0039 addendum).
 - **Signature set (future).** There is a reserved slot for a commissioned original set drawn in the ink metaphor. It needs a written licence or assignment to us and must pass the same recolouring rules. Until then, the slot doesn't appear in Settings.
 
 ## The board
@@ -274,7 +275,7 @@ The board is one of the two loud things, so it gets the most specific rules.
 - Squares are `board-light` and `board-dark`, cool and low in contrast, so pieces and marks carry the eye. The board has `--radius-board` and no frame, shadow or wood.
 - **Well (from 768px only):** the board sits in a `well` with 8px padding, and both have `--radius-board`. The board keeps `--board-size`, and the well is 16px wider. Below 768px there is no well and the board is flush, so a phone gets every pixel. Decision: `design/decisions/board.md` (Task 10, variant c "Ink well").
 - **Coordinates** sit on the squares, never in a lane outside the board: ranks in the top-left corner of the a-file squares and files in the bottom-right corner of the first-rank squares (as seen from the board's orientation), in Schibsted 500 at `xs`, coloured as in "Board coordinates" under the usage rules.
-- **Pieces** come only from the shipped sets under "Piece sets", passed through react-chessboard's `pieces` option on every board. react-chessboard's built-in default pieces are never shipped, because they are Cburnett drawings without attribution (controller ruling, Task 10).
+- **Pieces** come only from the shipped sets under "Piece sets", passed through react-chessboard's `pieces` option on every board. react-chessboard's built-in default pieces are never rendered, because they are Cburnett drawings without attribution (controller ruling, Task 10).
 - **Board states:**
 
 | State | Treatment |
@@ -783,4 +784,4 @@ The board treatment lab (`/lab/board/{a,b,c}`) compared a printed diagram, book 
 2. **Badge corner:** the glyph badge moves to the top-left corner when the move's arrow arrives from the right of the target ("Severity and marks").
 3. **Well:** the board sits in an 8px `well` from 768px up, and there is no well below 768px ("The board").
 
-Also recorded: coordinates sit on the squares, and react-chessboard's built-in default pieces never ship (they are unattributed Cburnett). Task 11 provides Cburnett from Commons under BSD-3-Clause at `packages/ui/assets/pieces/cburnett/` with its `LICENSE`.
+Also recorded: coordinates sit on the squares, and react-chessboard's built-in default pieces are never rendered (they are unattributed Cburnett). The package still bundles them, so the `/licenses` Cburnett notice also covers that embedded copy ("Piece sets", "The embedded copy"). Task 11 provides Cburnett from Commons under BSD-3-Clause at `packages/ui/assets/pieces/cburnett/` with its `LICENSE`.
