@@ -28,8 +28,19 @@ use uuid::Uuid;
 
 use crate::types::{EnqueueOptions, Job, JobError, JobState, UnknownJobState};
 
+/// The NOTIFY channel name, as a literal for `concat!` (every `pg_notify` in this crate uses it).
+macro_rules! jobs_channel {
+    () => {
+        "jobs"
+    };
+}
+pub(crate) use jobs_channel;
+
 /// The NOTIFY channel. Its payload is the job's kind; runners wake on it instead of polling.
-pub const JOBS_CHANNEL: &str = "jobs";
+pub const JOBS_CHANNEL: &str = jobs_channel!();
+
+/// A recurring job must recur less often than this (`recur_every` <= 1 s is rejected).
+pub const MIN_RECUR_EVERY: Duration = Duration::from_secs(1);
 
 /// Server-side bound on every queue statement (matches the worker's `statement_timeout`).
 pub const DEFAULT_QUERY_TIMEOUT: Duration = Duration::from_secs(30);
@@ -51,6 +62,8 @@ pub enum QueueError {
     Timeout { op: &'static str, after: Duration },
     #[error(transparent)]
     UnknownState(#[from] UnknownJobState),
+    #[error("invalid job options: {0}")]
+    InvalidOptions(&'static str),
 }
 
 /// Exponential retry backoff: `delay(attempts) = base * 2^(attempts - 1)`.
@@ -80,8 +93,8 @@ impl Backoff {
 /// What `Queue::fail` did with the job.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum FailOutcome {
-    /// Queued again at `run_at`, with the attempt used (retry backoff, or a recurring job's
-    /// next run).
+    /// Queued again at `run_at`: a retry after backoff with the attempt used, or a recurring
+    /// job's next run, whose attempts (and stalls) are reset to 0.
     Retried { run_at: OffsetDateTime },
     /// Queued again at `run_at` without using an attempt (`JobError::Release`).
     Released { run_at: OffsetDateTime },
@@ -118,7 +131,8 @@ macro_rules! job_columns {
         "j.id, j.kind, j.payload, j.dedupe_key, j.user_key, j.priority, j.attempts,          j.max_attempts, j.lease_token, j.run_at, j.created_at, j.started_at"
     };
 }
-/// For the reaper and other crate-internal `RETURNING` lists (Task 14).
+pub(crate) use job_columns;
+/// For crate-internal `RETURNING` lists.
 #[allow(dead_code)]
 pub(crate) const JOB_COLUMNS: &str = job_columns!();
 
@@ -180,13 +194,16 @@ impl JobRow {
     }
 }
 
-const ENQUEUE_SQL: &str = "\
-WITH ins AS (
+const ENQUEUE_SQL: &str = concat!(
+    "WITH ins AS (
   INSERT INTO jobs (kind, payload, dedupe_key, user_key, priority, run_at, max_attempts, recur_every)
   VALUES ($1, $2, $3, $4, $5, coalesce($6, now()), $7, $8::float8 * interval '1 millisecond')
   ON CONFLICT (kind, dedupe_key) WHERE dedupe_key IS NOT NULL AND state IN ('queued','running','paused')
   DO NOTHING RETURNING id)
-SELECT id, pg_notify('jobs', $1) IS NULL AS not_notified FROM ins";
+SELECT id, pg_notify('",
+    jobs_channel!(),
+    "', $1) IS NULL AS not_notified FROM ins"
+);
 
 /// One statement; the attempt is counted at claim.
 const DEQUEUE_SQL: &str = concat!(
@@ -239,6 +256,7 @@ const FAIL_SQL: &str = concat!(
       WHEN $3 = 'release' THEN greatest(attempts - 1, 0)
       WHEN recur_every IS NOT NULL THEN 0
       ELSE attempts END,
+    stalls = CASE WHEN $3 <> 'release' AND recur_every IS NOT NULL THEN 0 ELSE stalls END,
     run_at = CASE
       WHEN $3 = 'release' THEN now() + $4::float8 * interval '1 millisecond'
       WHEN recur_every IS NOT NULL THEN now() + recur_every
@@ -256,7 +274,9 @@ const FAIL_SQL: &str = concat!(
     "
   RETURNING kind, state, run_at)
 SELECT state::text AS state, run_at,
-  (CASE WHEN state = 'queued' AND run_at <= now() THEN pg_notify('jobs', kind) END) IS NULL
+  (CASE WHEN state = 'queued' AND run_at <= now() THEN pg_notify('",
+    jobs_channel!(),
+    "', kind) END) IS NULL
     AS not_notified
 FROM upd"
 );
@@ -368,6 +388,14 @@ impl Queue {
         payload: &Value,
         opts: EnqueueOptions,
     ) -> Result<Option<i64>, QueueError> {
+        if opts
+            .recur_every
+            .is_some_and(|every| every <= MIN_RECUR_EVERY)
+        {
+            return Err(QueueError::InvalidOptions(
+                "recur_every must be longer than 1 s",
+            ));
+        }
         let fut = sqlx::query_scalar::<_, i64>(ENQUEUE_SQL)
             .bind(kind)
             .bind(payload)
@@ -535,6 +563,13 @@ mod tests {
         );
         assert!(DEQUEUE_SQL.contains(&order), "{DEQUEUE_SQL}");
         assert!(DEQUEUE_SQL.contains("FOR UPDATE SKIP LOCKED"));
+    }
+
+    #[test]
+    fn notifying_statements_use_the_jobs_channel() {
+        let notify = format!("pg_notify('{JOBS_CHANNEL}'");
+        assert!(ENQUEUE_SQL.contains(&notify), "{ENQUEUE_SQL}");
+        assert!(FAIL_SQL.contains(&notify), "{FAIL_SQL}");
     }
 
     #[test]

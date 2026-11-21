@@ -51,3 +51,23 @@ enqueue ─▶ queued ──claim (attempts + 1)──▶ running ──complete
 - Claims cost one indexed statement; at our volume (tens of jobs per second at most) Postgres is far from its limit. A busier deployment would partition by kind or batch claims.
 - Terminal rows accumulate until retention runs (Task 14).
 - Rejected: advisory-lock queues (no row-level state), `LISTEN`-only delivery (lost on disconnect), and keeping BullMQ next to a Rust worker (two sources of truth, and the final-attempt shutdown bug).
+
+## Addendum (Task 14): runner, stall recovery and retention
+
+**One runner per kind.** `Runner::spawn(queue, handler, cfg)` runs one tokio task that claims jobs of `handler.kind()` up to `cfg.concurrency` at once, so concurrency is per job kind. Defaults: lease 60 s, renew every 20 s, reap every 30 s, idle poll 500 ms, backoff 5 s, no hard timeout.
+
+**Wake-ups.** A listener task `LISTEN`s on `jobs` and wakes the loop only for its own kind (a `Notify` permit, so a notification that arrives while the loop is busy is not lost). The loop also polls every `idle_poll`, and the listener reconnects every second after an error, so a lost notification or a dropped listener costs latency only.
+
+**`dequeue` is never raced.** It is not cancel-safe (dropping it after COMMIT orphans the claimed jobs until their leases expire), so it is never a `select!` branch; the stop flag is checked between calls.
+
+**Leases and fencing.** Each job renews its lease every `renew_every`. A renew that returns `false` (or failing renews past the local lease deadline) cancels the job's `CancellationToken`; the handler gets 1 s, and its result is dropped without a write. The per-handler hard deadline cancels the token, gives 1 s, then fails the attempt as `Retryable { code: "timeout" }`. A panicking handler is a `Retryable { code: "panic" }` failure.
+
+**Stall recovery.** Every `reap_every` the runner runs `Queue::recover_expired(&[kind])`, one statement: running rows with `lease_until < now()` (re-checked in the outer `WHERE`, so a renew that commits first wins; `FOR UPDATE SKIP LOCKED` in the inner scan) get `stalls + 1`. With `stalls ≤ max_stalls` (2) they are queued at once with the attempt given back; beyond it they are `dead` with `error_code = 'stalled'` and `last_error = 'job stalled more than max_stalls times'`, keeping the attempt, and the reaping runner calls `Handler::on_dead` once. A job that keeps killing its worker therefore ends after three stalls. Recovered queued jobs are NOTIFYed.
+
+**Shutdown.** `stop()` stops claiming and lets in-flight jobs finish (`wait_idle()`). `force()` cancels every handler, waits up to 1 s, aborts what is left and calls `Queue::release_owned(worker_id)`, which re-queues this owner's running jobs at once with `attempts − 1` and `error_code = 'shutdown'`; a handler error after `force` is recorded as a release too, so a forced shutdown never uses an attempt. `shutdown(grace)` is `stop`, then `wait_idle` within `grace`, else `force`. All are re-entrant. `abort()` kills the tasks without touching the database (a simulated crash).
+
+**Logging and metering.** Every failed attempt logs `job failed` at error level with `job_id`, `kind`, `attempt`, `max_attempts`, `error`, `error_code` and `outcome` (`retried`, `failed`, `dead`). Releases (for example an open breaker, unbounded by design) log a warning with the reason and delay and are counted, like stalls, lost leases and timeouts, in `RunnerHandle::stats()`. `on_dead` is called only for `dead` (final retryable attempt, or stalls); an `Unrecoverable` failure is the handler's own decision and gets no callback.
+
+**Retention.** `Queue::cleanup(&Retention)` deletes `done` rows older than 24 h, then those beyond the newest 1000 per kind, and `failed`/`dead` rows older than 7 days. Live rows are never touched. Each DELETE removes at most `batch_size` (1000) rows in its own transaction under the statement timeout, repeated until a batch comes back short. Scheduling it (for example from the reconciler or the worker binary) belongs to the worker (Task 22).
+
+**Queue core follow-ups.** `enqueue` rejects `recur_every ≤ 1 s` (`QueueError::InvalidOptions`); a recurring job's failure resets `stalls` as its completion does; every `pg_notify` channel name is built from `JOBS_CHANNEL`.
