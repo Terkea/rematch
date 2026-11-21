@@ -1138,6 +1138,2348 @@
      "exd5",
      "Qxd5"
     ]
+   },
+   "numberFormats": {
+    "areaScores.calculation.n": [
+     "100",
+     "100",
+     "10000%",
+     "10000.0%",
+     "100.0",
+     "100.00",
+     "+100.0"
+    ],
+    "areaScores.calculation.score": [
+     "52",
+     "52",
+     "5200%",
+     "5200.0%",
+     "52.0",
+     "52.00",
+     "+52.0"
+    ],
+    "areaScores.count": [
+     "7",
+     "7",
+     "700%",
+     "700.0%",
+     "7.0",
+     "7.00",
+     "+7.0"
+    ],
+    "areaScores.endgame.n": [
+     "110",
+     "110",
+     "11000%",
+     "11000.0%",
+     "110.0",
+     "110.00",
+     "+110.0"
+    ],
+    "areaScores.endgame.score": [
+     "41",
+     "41",
+     "4100%",
+     "4100.0%",
+     "41.0",
+     "41.00",
+     "+41.0"
+    ],
+    "areaScores.middlegame.n": [
+     "115",
+     "115",
+     "11500%",
+     "11500.0%",
+     "115.0",
+     "115.00",
+     "+115.0"
+    ],
+    "areaScores.middlegame.score": [
+     "55",
+     "55",
+     "5500%",
+     "5500.0%",
+     "55.0",
+     "55.00",
+     "+55.0"
+    ],
+    "areaScores.mindset.n": [
+     "90",
+     "90",
+     "9000%",
+     "9000.0%",
+     "90.0",
+     "90.00",
+     "+90.0"
+    ],
+    "areaScores.mindset.score": [
+     "66",
+     "66",
+     "6600%",
+     "6600.0%",
+     "66.0",
+     "66.00",
+     "+66.0"
+    ],
+    "areaScores.openings.n": [
+     "120",
+     "120",
+     "12000%",
+     "12000.0%",
+     "120.0",
+     "120.00",
+     "+120.0"
+    ],
+    "areaScores.openings.score": [
+     "48",
+     "48",
+     "4800%",
+     "4800.0%",
+     "48.0",
+     "48.00",
+     "+48.0"
+    ],
+    "areaScores.tactics.n": [
+     "105",
+     "105",
+     "10500%",
+     "10500.0%",
+     "105.0",
+     "105.00",
+     "+105.0"
+    ],
+    "areaScores.tactics.score": [
+     "37",
+     "37",
+     "3700%",
+     "3700.0%",
+     "37.0",
+     "37.00",
+     "+37.0"
+    ],
+    "areaScores.time.n": [
+     "95",
+     "95",
+     "9500%",
+     "9500.0%",
+     "95.0",
+     "95.00",
+     "+95.0"
+    ],
+    "areaScores.time.score": [
+     "60",
+     "60",
+     "6000%",
+     "6000.0%",
+     "60.0",
+     "60.00",
+     "+60.0"
+    ],
+    "basis.analysedGames": [
+     "214",
+     "214",
+     "21400%",
+     "21400.0%",
+     "214.0",
+     "214.00",
+     "+214.0"
+    ],
+    "basis.importedGames": [
+     "3,912",
+     "3,912",
+     "391200%",
+     "391200.0%",
+     "3912.0",
+     "3912.00",
+     "+3912.0"
+    ],
+    "changes.count": [
+     "2",
+     "2",
+     "200%",
+     "200.0%",
+     "2.0",
+     "2.00",
+     "+2.0"
+    ],
+    "changes.tactics_blunder_rate.candidateCauses.count": [
+     "1",
+     "1",
+     "100%",
+     "100.0%",
+     "1.0",
+     "1.00",
+     "+1.0"
+    ],
+    "changes.tactics_blunder_rate.examples.0.evalAfter.cp": [
+     "-190",
+     "-190",
+     "-19000%",
+     "-19000.0%",
+     "-190.0",
+     "-190.00",
+     "-190.0"
+    ],
+    "changes.tactics_blunder_rate.examples.0.evalAfter.pawns": [
+     "-1.9",
+     "-2",
+     "-190%",
+     "-190.0%",
+     "-1.9",
+     "-1.90",
+     "-1.9"
+    ],
+    "changes.tactics_blunder_rate.examples.0.evalBefore.cp": [
+     "10",
+     "10",
+     "1000%",
+     "1000.0%",
+     "10.0",
+     "10.00",
+     "+10.0"
+    ],
+    "changes.tactics_blunder_rate.examples.0.evalBefore.pawns": [
+     "0.1",
+     "0",
+     "10%",
+     "10.0%",
+     "0.1",
+     "0.10",
+     "+0.1"
+    ],
+    "changes.tactics_blunder_rate.examples.0.moveNumber": [
+     "11",
+     "11",
+     "1100%",
+     "1100.0%",
+     "11.0",
+     "11.00",
+     "+11.0"
+    ],
+    "changes.tactics_blunder_rate.examples.0.ply": [
+     "21",
+     "21",
+     "2100%",
+     "2100.0%",
+     "21.0",
+     "21.00",
+     "+21.0"
+    ],
+    "changes.tactics_blunder_rate.examples.0.winAfter": [
+     "33.2",
+     "33",
+     "3320%",
+     "3320.0%",
+     "33.2",
+     "33.20",
+     "+33.2"
+    ],
+    "changes.tactics_blunder_rate.examples.0.winBefore": [
+     "50.9",
+     "51",
+     "5090%",
+     "5090.0%",
+     "50.9",
+     "50.90",
+     "+50.9"
+    ],
+    "changes.tactics_blunder_rate.examples.1.evalAfter.cp": [
+     "-190",
+     "-190",
+     "-19000%",
+     "-19000.0%",
+     "-190.0",
+     "-190.00",
+     "-190.0"
+    ],
+    "changes.tactics_blunder_rate.examples.1.evalAfter.pawns": [
+     "-1.9",
+     "-2",
+     "-190%",
+     "-190.0%",
+     "-1.9",
+     "-1.90",
+     "-1.9"
+    ],
+    "changes.tactics_blunder_rate.examples.1.evalBefore.cp": [
+     "10",
+     "10",
+     "1000%",
+     "1000.0%",
+     "10.0",
+     "10.00",
+     "+10.0"
+    ],
+    "changes.tactics_blunder_rate.examples.1.evalBefore.pawns": [
+     "0.1",
+     "0",
+     "10%",
+     "10.0%",
+     "0.1",
+     "0.10",
+     "+0.1"
+    ],
+    "changes.tactics_blunder_rate.examples.1.moveNumber": [
+     "12",
+     "12",
+     "1200%",
+     "1200.0%",
+     "12.0",
+     "12.00",
+     "+12.0"
+    ],
+    "changes.tactics_blunder_rate.examples.1.ply": [
+     "23",
+     "23",
+     "2300%",
+     "2300.0%",
+     "23.0",
+     "23.00",
+     "+23.0"
+    ],
+    "changes.tactics_blunder_rate.examples.1.winAfter": [
+     "33.2",
+     "33",
+     "3320%",
+     "3320.0%",
+     "33.2",
+     "33.20",
+     "+33.2"
+    ],
+    "changes.tactics_blunder_rate.examples.1.winBefore": [
+     "50.9",
+     "51",
+     "5090%",
+     "5090.0%",
+     "50.9",
+     "50.90",
+     "+50.9"
+    ],
+    "changes.tactics_blunder_rate.examples.2.evalAfter.cp": [
+     "-190",
+     "-190",
+     "-19000%",
+     "-19000.0%",
+     "-190.0",
+     "-190.00",
+     "-190.0"
+    ],
+    "changes.tactics_blunder_rate.examples.2.evalAfter.pawns": [
+     "-1.9",
+     "-2",
+     "-190%",
+     "-190.0%",
+     "-1.9",
+     "-1.90",
+     "-1.9"
+    ],
+    "changes.tactics_blunder_rate.examples.2.evalBefore.cp": [
+     "10",
+     "10",
+     "1000%",
+     "1000.0%",
+     "10.0",
+     "10.00",
+     "+10.0"
+    ],
+    "changes.tactics_blunder_rate.examples.2.evalBefore.pawns": [
+     "0.1",
+     "0",
+     "10%",
+     "10.0%",
+     "0.1",
+     "0.10",
+     "+0.1"
+    ],
+    "changes.tactics_blunder_rate.examples.2.moveNumber": [
+     "13",
+     "13",
+     "1300%",
+     "1300.0%",
+     "13.0",
+     "13.00",
+     "+13.0"
+    ],
+    "changes.tactics_blunder_rate.examples.2.ply": [
+     "25",
+     "25",
+     "2500%",
+     "2500.0%",
+     "25.0",
+     "25.00",
+     "+25.0"
+    ],
+    "changes.tactics_blunder_rate.examples.2.winAfter": [
+     "33.2",
+     "33",
+     "3320%",
+     "3320.0%",
+     "33.2",
+     "33.20",
+     "+33.2"
+    ],
+    "changes.tactics_blunder_rate.examples.2.winBefore": [
+     "50.9",
+     "51",
+     "5090%",
+     "5090.0%",
+     "50.9",
+     "50.90",
+     "+50.9"
+    ],
+    "changes.tactics_blunder_rate.examples.3.evalAfter.cp": [
+     "-190",
+     "-190",
+     "-19000%",
+     "-19000.0%",
+     "-190.0",
+     "-190.00",
+     "-190.0"
+    ],
+    "changes.tactics_blunder_rate.examples.3.evalAfter.pawns": [
+     "-1.9",
+     "-2",
+     "-190%",
+     "-190.0%",
+     "-1.9",
+     "-1.90",
+     "-1.9"
+    ],
+    "changes.tactics_blunder_rate.examples.3.evalBefore.cp": [
+     "10",
+     "10",
+     "1000%",
+     "1000.0%",
+     "10.0",
+     "10.00",
+     "+10.0"
+    ],
+    "changes.tactics_blunder_rate.examples.3.evalBefore.pawns": [
+     "0.1",
+     "0",
+     "10%",
+     "10.0%",
+     "0.1",
+     "0.10",
+     "+0.1"
+    ],
+    "changes.tactics_blunder_rate.examples.3.moveNumber": [
+     "14",
+     "14",
+     "1400%",
+     "1400.0%",
+     "14.0",
+     "14.00",
+     "+14.0"
+    ],
+    "changes.tactics_blunder_rate.examples.3.ply": [
+     "27",
+     "27",
+     "2700%",
+     "2700.0%",
+     "27.0",
+     "27.00",
+     "+27.0"
+    ],
+    "changes.tactics_blunder_rate.examples.3.winAfter": [
+     "33.2",
+     "33",
+     "3320%",
+     "3320.0%",
+     "33.2",
+     "33.20",
+     "+33.2"
+    ],
+    "changes.tactics_blunder_rate.examples.3.winBefore": [
+     "50.9",
+     "51",
+     "5090%",
+     "5090.0%",
+     "50.9",
+     "50.90",
+     "+50.9"
+    ],
+    "changes.tactics_blunder_rate.examples.count": [
+     "4",
+     "4",
+     "400%",
+     "400.0%",
+     "4.0",
+     "4.00",
+     "+4.0"
+    ],
+    "changes.tactics_blunder_rate.posteriorProb": [
+     "0.92",
+     "1",
+     "92%",
+     "92.0%",
+     "0.9",
+     "0.92",
+     "+0.9"
+    ],
+    "changes.tactics_blunder_rate.rateAfter": [
+     "0.14",
+     "0",
+     "14%",
+     "14.0%",
+     "0.1",
+     "0.14",
+     "+0.1"
+    ],
+    "changes.tactics_blunder_rate.rateBefore": [
+     "0.22",
+     "0",
+     "22%",
+     "22.0%",
+     "0.2",
+     "0.22",
+     "+0.2"
+    ],
+    "changes.tactics_blunder_rate.ratioAfterBefore": [
+     "0.64",
+     "1",
+     "64%",
+     "63.6%",
+     "0.6",
+     "0.64",
+     "+0.6"
+    ],
+    "changes.tactics_blunder_rate.ratioBeforeAfter": [
+     "1.57",
+     "2",
+     "157%",
+     "157.1%",
+     "1.6",
+     "1.57",
+     "+1.6"
+    ],
+    "changes.time_flag_rate.candidateCauses.count": [
+     "0",
+     "0",
+     "0%",
+     "0.0%",
+     "0.0",
+     "0.00",
+     "0.0"
+    ],
+    "changes.time_flag_rate.examples.count": [
+     "0",
+     "0",
+     "0%",
+     "0.0%",
+     "0.0",
+     "0.00",
+     "0.0"
+    ],
+    "changes.time_flag_rate.posteriorProb": [
+     "0.81",
+     "1",
+     "81%",
+     "81.0%",
+     "0.8",
+     "0.81",
+     "+0.8"
+    ],
+    "changes.time_flag_rate.rateAfter": [
+     "0.12",
+     "0",
+     "12%",
+     "12.0%",
+     "0.1",
+     "0.12",
+     "+0.1"
+    ],
+    "changes.time_flag_rate.rateBefore": [
+     "0.05",
+     "0",
+     "5%",
+     "5.0%",
+     "0.1",
+     "0.05",
+     "+0.1"
+    ],
+    "changes.time_flag_rate.ratioAfterBefore": [
+     "2.4",
+     "2",
+     "240%",
+     "240.0%",
+     "2.4",
+     "2.40",
+     "+2.4"
+    ],
+    "changes.time_flag_rate.ratioBeforeAfter": [
+     "0.42",
+     "0",
+     "42%",
+     "41.7%",
+     "0.4",
+     "0.42",
+     "+0.4"
+    ],
+    "metrics.blunders_per_game.bandMedian": [
+     "0.6",
+     "1",
+     "60%",
+     "60.0%",
+     "0.6",
+     "0.60",
+     "+0.6"
+    ],
+    "metrics.blunders_per_game.bandPercentile": [
+     "78",
+     "78",
+     "7800%",
+     "7800.0%",
+     "78.0",
+     "78.00",
+     "+78.0"
+    ],
+    "metrics.blunders_per_game.high": [
+     "1.1",
+     "1",
+     "110%",
+     "110.0%",
+     "1.1",
+     "1.10",
+     "+1.1"
+    ],
+    "metrics.blunders_per_game.low": [
+     "0.7",
+     "1",
+     "70%",
+     "70.0%",
+     "0.7",
+     "0.70",
+     "+0.7"
+    ],
+    "metrics.blunders_per_game.n": [
+     "214",
+     "214",
+     "21400%",
+     "21400.0%",
+     "214.0",
+     "214.00",
+     "+214.0"
+    ],
+    "metrics.blunders_per_game.value": [
+     "0.9",
+     "1",
+     "90%",
+     "90.0%",
+     "0.9",
+     "0.90",
+     "+0.9"
+    ],
+    "metrics.count": [
+     "4",
+     "4",
+     "400%",
+     "400.0%",
+     "4.0",
+     "4.00",
+     "+4.0"
+    ],
+    "metrics.endgame_conversion.bandMedian": [
+     "70",
+     "70",
+     "7000%",
+     "7000.0%",
+     "70.0",
+     "70.00",
+     "+70.0"
+    ],
+    "metrics.endgame_conversion.bandPercentile": [
+     "35",
+     "35",
+     "3500%",
+     "3500.0%",
+     "35.0",
+     "35.00",
+     "+35.0"
+    ],
+    "metrics.endgame_conversion.high": [
+     "75",
+     "75",
+     "7500%",
+     "7500.0%",
+     "75.0",
+     "75.00",
+     "+75.0"
+    ],
+    "metrics.endgame_conversion.low": [
+     "48",
+     "48",
+     "4800%",
+     "4800.0%",
+     "48.0",
+     "48.00",
+     "+48.0"
+    ],
+    "metrics.endgame_conversion.n": [
+     "41",
+     "41",
+     "4100%",
+     "4100.0%",
+     "41.0",
+     "41.00",
+     "+41.0"
+    ],
+    "metrics.endgame_conversion.value": [
+     "62",
+     "62",
+     "6200%",
+     "6200.0%",
+     "62.0",
+     "62.00",
+     "+62.0"
+    ],
+    "metrics.hung_piece_rate.bandMedian": [
+     "0.04",
+     "0",
+     "4%",
+     "4.0%",
+     "0.0",
+     "0.04",
+     "0.0"
+    ],
+    "metrics.hung_piece_rate.bandPercentile": [
+     "74",
+     "74",
+     "7400%",
+     "7400.0%",
+     "74.0",
+     "74.00",
+     "+74.0"
+    ],
+    "metrics.hung_piece_rate.high": [
+     "0.07",
+     "0",
+     "7%",
+     "7.0%",
+     "0.1",
+     "0.07",
+     "+0.1"
+    ],
+    "metrics.hung_piece_rate.low": [
+     "0.05",
+     "0",
+     "5%",
+     "5.0%",
+     "0.1",
+     "0.05",
+     "+0.1"
+    ],
+    "metrics.hung_piece_rate.n": [
+     "3,400",
+     "3,400",
+     "340000%",
+     "340000.0%",
+     "3400.0",
+     "3400.00",
+     "+3400.0"
+    ],
+    "metrics.hung_piece_rate.value": [
+     "0.06",
+     "0",
+     "6%",
+     "6.0%",
+     "0.1",
+     "0.06",
+     "+0.1"
+    ],
+    "metrics.time_per_move.bandMedian": [
+     "9.8",
+     "10",
+     "980%",
+     "980.0%",
+     "9.8",
+     "9.80",
+     "+9.8"
+    ],
+    "metrics.time_per_move.n": [
+     "4,200",
+     "4,200",
+     "420000%",
+     "420000.0%",
+     "4200.0",
+     "4200.00",
+     "+4200.0"
+    ],
+    "metrics.time_per_move.value": [
+     "11.4",
+     "11",
+     "1140%",
+     "1140.0%",
+     "11.4",
+     "11.40",
+     "+11.4"
+    ],
+    "openings.b-sicilian-najdorf.alternatives.0.bandScore": [
+     "0.5",
+     "1",
+     "50%",
+     "50.0%",
+     "0.5",
+     "0.50",
+     "+0.5"
+    ],
+    "openings.b-sicilian-najdorf.alternatives.0.games": [
+     "3,000",
+     "3,000",
+     "300000%",
+     "300000.0%",
+     "3000.0",
+     "3000.00",
+     "+3000.0"
+    ],
+    "openings.b-sicilian-najdorf.alternatives.count": [
+     "1",
+     "1",
+     "100%",
+     "100.0%",
+     "1.0",
+     "1.00",
+     "+1.0"
+    ],
+    "openings.b-sicilian-najdorf.avgEvalAtOpeningEnd.cp": [
+     "70",
+     "70",
+     "7000%",
+     "7000.0%",
+     "70.0",
+     "70.00",
+     "+70.0"
+    ],
+    "openings.b-sicilian-najdorf.avgEvalAtOpeningEnd.pawns": [
+     "0.7",
+     "1",
+     "70%",
+     "70.0%",
+     "0.7",
+     "0.70",
+     "+0.7"
+    ],
+    "openings.b-sicilian-najdorf.deviationMoveNumber": [
+     "5",
+     "5",
+     "500%",
+     "500.0%",
+     "5.0",
+     "5.00",
+     "+5.0"
+    ],
+    "openings.b-sicilian-najdorf.deviationPly": [
+     "9",
+     "9",
+     "900%",
+     "900.0%",
+     "9.0",
+     "9.00",
+     "+9.0"
+    ],
+    "openings.b-sicilian-najdorf.examples.0.evalAfter.cp": [
+     "140",
+     "140",
+     "14000%",
+     "14000.0%",
+     "140.0",
+     "140.00",
+     "+140.0"
+    ],
+    "openings.b-sicilian-najdorf.examples.0.evalAfter.pawns": [
+     "1.4",
+     "1",
+     "140%",
+     "140.0%",
+     "1.4",
+     "1.40",
+     "+1.4"
+    ],
+    "openings.b-sicilian-najdorf.examples.0.evalBefore.cp": [
+     "30",
+     "30",
+     "3000%",
+     "3000.0%",
+     "30.0",
+     "30.00",
+     "+30.0"
+    ],
+    "openings.b-sicilian-najdorf.examples.0.evalBefore.pawns": [
+     "0.3",
+     "0",
+     "30%",
+     "30.0%",
+     "0.3",
+     "0.30",
+     "+0.3"
+    ],
+    "openings.b-sicilian-najdorf.examples.0.moveNumber": [
+     "6",
+     "6",
+     "600%",
+     "600.0%",
+     "6.0",
+     "6.00",
+     "+6.0"
+    ],
+    "openings.b-sicilian-najdorf.examples.0.ply": [
+     "12",
+     "12",
+     "1200%",
+     "1200.0%",
+     "12.0",
+     "12.00",
+     "+12.0"
+    ],
+    "openings.b-sicilian-najdorf.examples.0.winAfter": [
+     "37.4",
+     "37",
+     "3740%",
+     "3740.0%",
+     "37.4",
+     "37.40",
+     "+37.4"
+    ],
+    "openings.b-sicilian-najdorf.examples.0.winBefore": [
+     "47.2",
+     "47",
+     "4720%",
+     "4720.0%",
+     "47.2",
+     "47.20",
+     "+47.2"
+    ],
+    "openings.b-sicilian-najdorf.examples.count": [
+     "1",
+     "1",
+     "100%",
+     "100.0%",
+     "1.0",
+     "1.00",
+     "+1.0"
+    ],
+    "openings.b-sicilian-najdorf.games": [
+     "23",
+     "23",
+     "2300%",
+     "2300.0%",
+     "23.0",
+     "23.00",
+     "+23.0"
+    ],
+    "openings.b-sicilian-najdorf.performanceVsExpected": [
+     "-0.09",
+     "0",
+     "-9%",
+     "-9.0%",
+     "-0.1",
+     "-0.09",
+     "-0.1"
+    ],
+    "openings.b-sicilian-najdorf.score": [
+     "0.39",
+     "0",
+     "39%",
+     "39.0%",
+     "0.4",
+     "0.39",
+     "+0.4"
+    ],
+    "openings.count": [
+     "3",
+     "3",
+     "300%",
+     "300.0%",
+     "3.0",
+     "3.00",
+     "+3.0"
+    ],
+    "openings.w-italian.alternatives.count": [
+     "0",
+     "0",
+     "0%",
+     "0.0%",
+     "0.0",
+     "0.00",
+     "0.0"
+    ],
+    "openings.w-italian.avgEvalAtOpeningEnd.cp": [
+     "25",
+     "25",
+     "2500%",
+     "2500.0%",
+     "25.0",
+     "25.00",
+     "+25.0"
+    ],
+    "openings.w-italian.avgEvalAtOpeningEnd.pawns": [
+     "0.25",
+     "0",
+     "25%",
+     "25.0%",
+     "0.3",
+     "0.25",
+     "+0.3"
+    ],
+    "openings.w-italian.examples.count": [
+     "0",
+     "0",
+     "0%",
+     "0.0%",
+     "0.0",
+     "0.00",
+     "0.0"
+    ],
+    "openings.w-italian.games": [
+     "41",
+     "41",
+     "4100%",
+     "4100.0%",
+     "41.0",
+     "41.00",
+     "+41.0"
+    ],
+    "openings.w-italian.performanceVsExpected": [
+     "0.04",
+     "0",
+     "4%",
+     "4.0%",
+     "0.0",
+     "0.04",
+     "0.0"
+    ],
+    "openings.w-italian.score": [
+     "0.58",
+     "1",
+     "58%",
+     "58.0%",
+     "0.6",
+     "0.58",
+     "+0.6"
+    ],
+    "openings.w-scandi-faced.alternatives.count": [
+     "0",
+     "0",
+     "0%",
+     "0.0%",
+     "0.0",
+     "0.00",
+     "0.0"
+    ],
+    "openings.w-scandi-faced.examples.count": [
+     "0",
+     "0",
+     "0%",
+     "0.0%",
+     "0.0",
+     "0.00",
+     "0.0"
+    ],
+    "openings.w-scandi-faced.games": [
+     "9",
+     "9",
+     "900%",
+     "900.0%",
+     "9.0",
+     "9.00",
+     "+9.0"
+    ],
+    "openings.w-scandi-faced.score": [
+     "0.44",
+     "0",
+     "44%",
+     "44.0%",
+     "0.4",
+     "0.44",
+     "+0.4"
+    ],
+    "rating": [
+     "1,450",
+     "1,450",
+     "145000%",
+     "145000.0%",
+     "1450.0",
+     "1450.00",
+     "+1450.0"
+    ],
+    "strengths.0.exemplars.0.evalAfter.cp": [
+     "40",
+     "40",
+     "4000%",
+     "4000.0%",
+     "40.0",
+     "40.00",
+     "+40.0"
+    ],
+    "strengths.0.exemplars.0.evalAfter.pawns": [
+     "0.4",
+     "0",
+     "40%",
+     "40.0%",
+     "0.4",
+     "0.40",
+     "+0.4"
+    ],
+    "strengths.0.exemplars.0.evalBefore.cp": [
+     "30",
+     "30",
+     "3000%",
+     "3000.0%",
+     "30.0",
+     "30.00",
+     "+30.0"
+    ],
+    "strengths.0.exemplars.0.evalBefore.pawns": [
+     "0.3",
+     "0",
+     "30%",
+     "30.0%",
+     "0.3",
+     "0.30",
+     "+0.3"
+    ],
+    "strengths.0.exemplars.0.moveNumber": [
+     "6",
+     "6",
+     "600%",
+     "600.0%",
+     "6.0",
+     "6.00",
+     "+6.0"
+    ],
+    "strengths.0.exemplars.0.ply": [
+     "11",
+     "11",
+     "1100%",
+     "1100.0%",
+     "11.0",
+     "11.00",
+     "+11.0"
+    ],
+    "strengths.0.exemplars.0.winAfter": [
+     "53.7",
+     "54",
+     "5370%",
+     "5370.0%",
+     "53.7",
+     "53.70",
+     "+53.7"
+    ],
+    "strengths.0.exemplars.0.winBefore": [
+     "52.8",
+     "53",
+     "5280%",
+     "5280.0%",
+     "52.8",
+     "52.80",
+     "+52.8"
+    ],
+    "strengths.0.exemplars.1.evalAfter.mate": [
+     "1",
+     "1",
+     "100%",
+     "100.0%",
+     "1.0",
+     "1.00",
+     "+1.0"
+    ],
+    "strengths.0.exemplars.1.evalBefore.mate": [
+     "2",
+     "2",
+     "200%",
+     "200.0%",
+     "2.0",
+     "2.00",
+     "+2.0"
+    ],
+    "strengths.0.exemplars.1.moveNumber": [
+     "16",
+     "16",
+     "1600%",
+     "1600.0%",
+     "16.0",
+     "16.00",
+     "+16.0"
+    ],
+    "strengths.0.exemplars.1.ply": [
+     "31",
+     "31",
+     "3100%",
+     "3100.0%",
+     "31.0",
+     "31.00",
+     "+31.0"
+    ],
+    "strengths.0.exemplars.1.winAfter": [
+     "100",
+     "100",
+     "10000%",
+     "10000.0%",
+     "100.0",
+     "100.00",
+     "+100.0"
+    ],
+    "strengths.0.exemplars.1.winBefore": [
+     "100",
+     "100",
+     "10000%",
+     "10000.0%",
+     "100.0",
+     "100.00",
+     "+100.0"
+    ],
+    "strengths.0.exemplars.count": [
+     "2",
+     "2",
+     "200%",
+     "200.0%",
+     "2.0",
+     "2.00",
+     "+2.0"
+    ],
+    "strengths.count": [
+     "1",
+     "1",
+     "100%",
+     "100.0%",
+     "1.0",
+     "1.00",
+     "+1.0"
+    ],
+    "timeControl.baseMinutes": [
+     "10",
+     "10",
+     "1000%",
+     "1000.0%",
+     "10.0",
+     "10.00",
+     "+10.0"
+    ],
+    "timeControl.baseSeconds": [
+     "600",
+     "600",
+     "60000%",
+     "60000.0%",
+     "600.0",
+     "600.00",
+     "+600.0"
+    ],
+    "timeControl.incrementSeconds": [
+     "5",
+     "5",
+     "500%",
+     "500.0%",
+     "5.0",
+     "5.00",
+     "+5.0"
+    ],
+    "weaknesses.W1.bandMedian": [
+     "0.09",
+     "0",
+     "9%",
+     "9.0%",
+     "0.1",
+     "0.09",
+     "+0.1"
+    ],
+    "weaknesses.W1.bandPercentile": [
+     "75",
+     "75",
+     "7500%",
+     "7500.0%",
+     "75.0",
+     "75.00",
+     "+75.0"
+    ],
+    "weaknesses.W1.confidence": [
+     "0.82",
+     "1",
+     "82%",
+     "82.0%",
+     "0.8",
+     "0.82",
+     "+0.8"
+    ],
+    "weaknesses.W1.events": [
+     "29",
+     "29",
+     "2900%",
+     "2900.0%",
+     "29.0",
+     "29.00",
+     "+29.0"
+    ],
+    "weaknesses.W1.excessEplPerGame": [
+     "0.8",
+     "1",
+     "80%",
+     "80.0%",
+     "0.8",
+     "0.80",
+     "+0.8"
+    ],
+    "weaknesses.W1.exemplars.0.evalAfter.cp": [
+     "-160",
+     "-160",
+     "-16000%",
+     "-16000.0%",
+     "-160.0",
+     "-160.00",
+     "-160.0"
+    ],
+    "weaknesses.W1.exemplars.0.evalAfter.pawns": [
+     "-1.6",
+     "-2",
+     "-160%",
+     "-160.0%",
+     "-1.6",
+     "-1.60",
+     "-1.6"
+    ],
+    "weaknesses.W1.exemplars.0.evalBefore.cp": [
+     "20",
+     "20",
+     "2000%",
+     "2000.0%",
+     "20.0",
+     "20.00",
+     "+20.0"
+    ],
+    "weaknesses.W1.exemplars.0.evalBefore.pawns": [
+     "0.2",
+     "0",
+     "20%",
+     "20.0%",
+     "0.2",
+     "0.20",
+     "+0.2"
+    ],
+    "weaknesses.W1.exemplars.0.moveNumber": [
+     "3",
+     "3",
+     "300%",
+     "300.0%",
+     "3.0",
+     "3.00",
+     "+3.0"
+    ],
+    "weaknesses.W1.exemplars.0.ply": [
+     "5",
+     "5",
+     "500%",
+     "500.0%",
+     "5.0",
+     "5.00",
+     "+5.0"
+    ],
+    "weaknesses.W1.exemplars.0.winAfter": [
+     "35.7",
+     "36",
+     "3570%",
+     "3570.0%",
+     "35.7",
+     "35.70",
+     "+35.7"
+    ],
+    "weaknesses.W1.exemplars.0.winBefore": [
+     "51.8",
+     "52",
+     "5180%",
+     "5180.0%",
+     "51.8",
+     "51.80",
+     "+51.8"
+    ],
+    "weaknesses.W1.exemplars.1.evalAfter.cp": [
+     "-200",
+     "-200",
+     "-20000%",
+     "-20000.0%",
+     "-200.0",
+     "-200.00",
+     "-200.0"
+    ],
+    "weaknesses.W1.exemplars.1.evalAfter.pawns": [
+     "-2",
+     "-2",
+     "-200%",
+     "-200.0%",
+     "-2.0",
+     "-2.00",
+     "-2.0"
+    ],
+    "weaknesses.W1.exemplars.1.evalBefore.cp": [
+     "40",
+     "40",
+     "4000%",
+     "4000.0%",
+     "40.0",
+     "40.00",
+     "+40.0"
+    ],
+    "weaknesses.W1.exemplars.1.evalBefore.pawns": [
+     "0.4",
+     "0",
+     "40%",
+     "40.0%",
+     "0.4",
+     "0.40",
+     "+0.4"
+    ],
+    "weaknesses.W1.exemplars.1.moveNumber": [
+     "5",
+     "5",
+     "500%",
+     "500.0%",
+     "5.0",
+     "5.00",
+     "+5.0"
+    ],
+    "weaknesses.W1.exemplars.1.ply": [
+     "9",
+     "9",
+     "900%",
+     "900.0%",
+     "9.0",
+     "9.00",
+     "+9.0"
+    ],
+    "weaknesses.W1.exemplars.1.winAfter": [
+     "32.4",
+     "32",
+     "3240%",
+     "3240.0%",
+     "32.4",
+     "32.40",
+     "+32.4"
+    ],
+    "weaknesses.W1.exemplars.1.winBefore": [
+     "53.7",
+     "54",
+     "5370%",
+     "5370.0%",
+     "53.7",
+     "53.70",
+     "+53.7"
+    ],
+    "weaknesses.W1.exemplars.2.evalAfter.cp": [
+     "-240",
+     "-240",
+     "-24000%",
+     "-24000.0%",
+     "-240.0",
+     "-240.00",
+     "-240.0"
+    ],
+    "weaknesses.W1.exemplars.2.evalAfter.pawns": [
+     "-2.4",
+     "-2",
+     "-240%",
+     "-240.0%",
+     "-2.4",
+     "-2.40",
+     "-2.4"
+    ],
+    "weaknesses.W1.exemplars.2.evalBefore.cp": [
+     "60",
+     "60",
+     "6000%",
+     "6000.0%",
+     "60.0",
+     "60.00",
+     "+60.0"
+    ],
+    "weaknesses.W1.exemplars.2.evalBefore.pawns": [
+     "0.6",
+     "1",
+     "60%",
+     "60.0%",
+     "0.6",
+     "0.60",
+     "+0.6"
+    ],
+    "weaknesses.W1.exemplars.2.moveNumber": [
+     "7",
+     "7",
+     "700%",
+     "700.0%",
+     "7.0",
+     "7.00",
+     "+7.0"
+    ],
+    "weaknesses.W1.exemplars.2.ply": [
+     "13",
+     "13",
+     "1300%",
+     "1300.0%",
+     "13.0",
+     "13.00",
+     "+13.0"
+    ],
+    "weaknesses.W1.exemplars.2.winAfter": [
+     "29.2",
+     "29",
+     "2920%",
+     "2920.0%",
+     "29.2",
+     "29.20",
+     "+29.2"
+    ],
+    "weaknesses.W1.exemplars.2.winBefore": [
+     "55.5",
+     "56",
+     "5550%",
+     "5550.0%",
+     "55.5",
+     "55.50",
+     "+55.5"
+    ],
+    "weaknesses.W1.exemplars.count": [
+     "3",
+     "3",
+     "300%",
+     "300.0%",
+     "3.0",
+     "3.00",
+     "+3.0"
+    ],
+    "weaknesses.W1.intervalHigh": [
+     "0.28",
+     "0",
+     "28%",
+     "28.0%",
+     "0.3",
+     "0.28",
+     "+0.3"
+    ],
+    "weaknesses.W1.intervalLow": [
+     "0.1",
+     "0",
+     "10%",
+     "10.0%",
+     "0.1",
+     "0.10",
+     "+0.1"
+    ],
+    "weaknesses.W1.opportunities": [
+     "190",
+     "190",
+     "19000%",
+     "19000.0%",
+     "190.0",
+     "190.00",
+     "+190.0"
+    ],
+    "weaknesses.W1.posteriorRate": [
+     "0.17",
+     "0",
+     "17%",
+     "17.0%",
+     "0.2",
+     "0.17",
+     "+0.2"
+    ],
+    "weaknesses.W1.priority": [
+     "9",
+     "9",
+     "900%",
+     "900.0%",
+     "9.0",
+     "9.00",
+     "+9.0"
+    ],
+    "weaknesses.W1.rank": [
+     "1",
+     "1",
+     "100%",
+     "100.0%",
+     "1.0",
+     "1.00",
+     "+1.0"
+    ],
+    "weaknesses.W11.bandMedian": [
+     "0.09",
+     "0",
+     "9%",
+     "9.0%",
+     "0.1",
+     "0.09",
+     "+0.1"
+    ],
+    "weaknesses.W11.bandPercentile": [
+     "50",
+     "50",
+     "5000%",
+     "5000.0%",
+     "50.0",
+     "50.00",
+     "+50.0"
+    ],
+    "weaknesses.W11.confidence": [
+     "0.67",
+     "1",
+     "67%",
+     "67.0%",
+     "0.7",
+     "0.67",
+     "+0.7"
+    ],
+    "weaknesses.W11.events": [
+     "24",
+     "24",
+     "2400%",
+     "2400.0%",
+     "24.0",
+     "24.00",
+     "+24.0"
+    ],
+    "weaknesses.W11.excessEplPerGame": [
+     "0.3",
+     "0",
+     "30%",
+     "30.0%",
+     "0.3",
+     "0.30",
+     "+0.3"
+    ],
+    "weaknesses.W11.exemplars.count": [
+     "0",
+     "0",
+     "0%",
+     "0.0%",
+     "0.0",
+     "0.00",
+     "0.0"
+    ],
+    "weaknesses.W11.intervalHigh": [
+     "0.28",
+     "0",
+     "28%",
+     "28.0%",
+     "0.3",
+     "0.28",
+     "+0.3"
+    ],
+    "weaknesses.W11.intervalLow": [
+     "0.1",
+     "0",
+     "10%",
+     "10.0%",
+     "0.1",
+     "0.10",
+     "+0.1"
+    ],
+    "weaknesses.W11.opportunities": [
+     "140",
+     "140",
+     "14000%",
+     "14000.0%",
+     "140.0",
+     "140.00",
+     "+140.0"
+    ],
+    "weaknesses.W11.pImp": [
+     "0.7",
+     "1",
+     "70%",
+     "70.0%",
+     "0.7",
+     "0.70",
+     "+0.7"
+    ],
+    "weaknesses.W11.posteriorRate": [
+     "0.12",
+     "0",
+     "12%",
+     "12.0%",
+     "0.1",
+     "0.12",
+     "+0.1"
+    ],
+    "weaknesses.W11.priority": [
+     "4",
+     "4",
+     "400%",
+     "400.0%",
+     "4.0",
+     "4.00",
+     "+4.0"
+    ],
+    "weaknesses.W11.rank": [
+     "6",
+     "6",
+     "600%",
+     "600.0%",
+     "6.0",
+     "6.00",
+     "+6.0"
+    ],
+    "weaknesses.W3.bandMedian": [
+     "0.09",
+     "0",
+     "9%",
+     "9.0%",
+     "0.1",
+     "0.09",
+     "+0.1"
+    ],
+    "weaknesses.W3.bandPercentile": [
+     "70",
+     "70",
+     "7000%",
+     "7000.0%",
+     "70.0",
+     "70.00",
+     "+70.0"
+    ],
+    "weaknesses.W3.confidence": [
+     "0.79",
+     "1",
+     "79%",
+     "79.0%",
+     "0.8",
+     "0.79",
+     "+0.8"
+    ],
+    "weaknesses.W3.events": [
+     "28",
+     "28",
+     "2800%",
+     "2800.0%",
+     "28.0",
+     "28.00",
+     "+28.0"
+    ],
+    "weaknesses.W3.excessEplPerGame": [
+     "0.7",
+     "1",
+     "70%",
+     "70.0%",
+     "0.7",
+     "0.70",
+     "+0.7"
+    ],
+    "weaknesses.W3.exemplars.0.evalAfter.cp": [
+     "140",
+     "140",
+     "14000%",
+     "14000.0%",
+     "140.0",
+     "140.00",
+     "+140.0"
+    ],
+    "weaknesses.W3.exemplars.0.evalAfter.pawns": [
+     "1.4",
+     "1",
+     "140%",
+     "140.0%",
+     "1.4",
+     "1.40",
+     "+1.4"
+    ],
+    "weaknesses.W3.exemplars.0.evalBefore.cp": [
+     "-40",
+     "-40",
+     "-4000%",
+     "-4000.0%",
+     "-40.0",
+     "-40.00",
+     "-40.0"
+    ],
+    "weaknesses.W3.exemplars.0.evalBefore.pawns": [
+     "-0.4",
+     "0",
+     "-40%",
+     "-40.0%",
+     "-0.4",
+     "-0.40",
+     "-0.4"
+    ],
+    "weaknesses.W3.exemplars.0.moveNumber": [
+     "8",
+     "8",
+     "800%",
+     "800.0%",
+     "8.0",
+     "8.00",
+     "+8.0"
+    ],
+    "weaknesses.W3.exemplars.0.ply": [
+     "16",
+     "16",
+     "1600%",
+     "1600.0%",
+     "16.0",
+     "16.00",
+     "+16.0"
+    ],
+    "weaknesses.W3.exemplars.0.winAfter": [
+     "37.4",
+     "37",
+     "3740%",
+     "3740.0%",
+     "37.4",
+     "37.40",
+     "+37.4"
+    ],
+    "weaknesses.W3.exemplars.0.winBefore": [
+     "53.7",
+     "54",
+     "5370%",
+     "5370.0%",
+     "53.7",
+     "53.70",
+     "+53.7"
+    ],
+    "weaknesses.W3.exemplars.1.evalAfter.cp": [
+     "220",
+     "220",
+     "22000%",
+     "22000.0%",
+     "220.0",
+     "220.00",
+     "+220.0"
+    ],
+    "weaknesses.W3.exemplars.1.evalAfter.pawns": [
+     "2.2",
+     "2",
+     "220%",
+     "220.0%",
+     "2.2",
+     "2.20",
+     "+2.2"
+    ],
+    "weaknesses.W3.exemplars.1.evalBefore.cp": [
+     "-20",
+     "-20",
+     "-2000%",
+     "-2000.0%",
+     "-20.0",
+     "-20.00",
+     "-20.0"
+    ],
+    "weaknesses.W3.exemplars.1.evalBefore.pawns": [
+     "-0.2",
+     "0",
+     "-20%",
+     "-20.0%",
+     "-0.2",
+     "-0.20",
+     "-0.2"
+    ],
+    "weaknesses.W3.exemplars.1.moveNumber": [
+     "9",
+     "9",
+     "900%",
+     "900.0%",
+     "9.0",
+     "9.00",
+     "+9.0"
+    ],
+    "weaknesses.W3.exemplars.1.ply": [
+     "18",
+     "18",
+     "1800%",
+     "1800.0%",
+     "18.0",
+     "18.00",
+     "+18.0"
+    ],
+    "weaknesses.W3.exemplars.1.winAfter": [
+     "30.8",
+     "31",
+     "3080%",
+     "3080.0%",
+     "30.8",
+     "30.80",
+     "+30.8"
+    ],
+    "weaknesses.W3.exemplars.1.winBefore": [
+     "51.8",
+     "52",
+     "5180%",
+     "5180.0%",
+     "51.8",
+     "51.80",
+     "+51.8"
+    ],
+    "weaknesses.W3.exemplars.2.evalAfter.cp": [
+     "300",
+     "300",
+     "30000%",
+     "30000.0%",
+     "300.0",
+     "300.00",
+     "+300.0"
+    ],
+    "weaknesses.W3.exemplars.2.evalAfter.pawns": [
+     "3",
+     "3",
+     "300%",
+     "300.0%",
+     "3.0",
+     "3.00",
+     "+3.0"
+    ],
+    "weaknesses.W3.exemplars.2.evalBefore.cp": [
+     "0",
+     "0",
+     "0%",
+     "0.0%",
+     "0.0",
+     "0.00",
+     "0.0"
+    ],
+    "weaknesses.W3.exemplars.2.evalBefore.pawns": [
+     "0",
+     "0",
+     "0%",
+     "0.0%",
+     "0.0",
+     "0.00",
+     "0.0"
+    ],
+    "weaknesses.W3.exemplars.2.moveNumber": [
+     "10",
+     "10",
+     "1000%",
+     "1000.0%",
+     "10.0",
+     "10.00",
+     "+10.0"
+    ],
+    "weaknesses.W3.exemplars.2.ply": [
+     "20",
+     "20",
+     "2000%",
+     "2000.0%",
+     "20.0",
+     "20.00",
+     "+20.0"
+    ],
+    "weaknesses.W3.exemplars.2.winAfter": [
+     "24.9",
+     "25",
+     "2490%",
+     "2490.0%",
+     "24.9",
+     "24.90",
+     "+24.9"
+    ],
+    "weaknesses.W3.exemplars.2.winBefore": [
+     "50",
+     "50",
+     "5000%",
+     "5000.0%",
+     "50.0",
+     "50.00",
+     "+50.0"
+    ],
+    "weaknesses.W3.exemplars.count": [
+     "3",
+     "3",
+     "300%",
+     "300.0%",
+     "3.0",
+     "3.00",
+     "+3.0"
+    ],
+    "weaknesses.W3.intervalHigh": [
+     "0.28",
+     "0",
+     "28%",
+     "28.0%",
+     "0.3",
+     "0.28",
+     "+0.3"
+    ],
+    "weaknesses.W3.intervalLow": [
+     "0.1",
+     "0",
+     "10%",
+     "10.0%",
+     "0.1",
+     "0.10",
+     "+0.1"
+    ],
+    "weaknesses.W3.opportunities": [
+     "180",
+     "180",
+     "18000%",
+     "18000.0%",
+     "180.0",
+     "180.00",
+     "+180.0"
+    ],
+    "weaknesses.W3.posteriorRate": [
+     "0.16",
+     "0",
+     "16%",
+     "16.0%",
+     "0.2",
+     "0.16",
+     "+0.2"
+    ],
+    "weaknesses.W3.priority": [
+     "8",
+     "8",
+     "800%",
+     "800.0%",
+     "8.0",
+     "8.00",
+     "+8.0"
+    ],
+    "weaknesses.W3.rank": [
+     "2",
+     "2",
+     "200%",
+     "200.0%",
+     "2.0",
+     "2.00",
+     "+2.0"
+    ],
+    "weaknesses.W5.bandMedian": [
+     "0.09",
+     "0",
+     "9%",
+     "9.0%",
+     "0.1",
+     "0.09",
+     "+0.1"
+    ],
+    "weaknesses.W5.bandPercentile": [
+     "65",
+     "65",
+     "6500%",
+     "6500.0%",
+     "65.0",
+     "65.00",
+     "+65.0"
+    ],
+    "weaknesses.W5.confidence": [
+     "0.76",
+     "1",
+     "76%",
+     "76.0%",
+     "0.8",
+     "0.76",
+     "+0.8"
+    ],
+    "weaknesses.W5.events": [
+     "27",
+     "27",
+     "2700%",
+     "2700.0%",
+     "27.0",
+     "27.00",
+     "+27.0"
+    ],
+    "weaknesses.W5.excessEplPerGame": [
+     "0.6",
+     "1",
+     "60%",
+     "60.0%",
+     "0.6",
+     "0.60",
+     "+0.6"
+    ],
+    "weaknesses.W5.exemplars.count": [
+     "0",
+     "0",
+     "0%",
+     "0.0%",
+     "0.0",
+     "0.00",
+     "0.0"
+    ],
+    "weaknesses.W5.intervalHigh": [
+     "0.28",
+     "0",
+     "28%",
+     "28.0%",
+     "0.3",
+     "0.28",
+     "+0.3"
+    ],
+    "weaknesses.W5.intervalLow": [
+     "0.1",
+     "0",
+     "10%",
+     "10.0%",
+     "0.1",
+     "0.10",
+     "+0.1"
+    ],
+    "weaknesses.W5.opportunities": [
+     "170",
+     "170",
+     "17000%",
+     "17000.0%",
+     "170.0",
+     "170.00",
+     "+170.0"
+    ],
+    "weaknesses.W5.posteriorRate": [
+     "0.15",
+     "0",
+     "15%",
+     "15.0%",
+     "0.2",
+     "0.15",
+     "+0.2"
+    ],
+    "weaknesses.W5.priority": [
+     "7",
+     "7",
+     "700%",
+     "700.0%",
+     "7.0",
+     "7.00",
+     "+7.0"
+    ],
+    "weaknesses.W5.rank": [
+     "3",
+     "3",
+     "300%",
+     "300.0%",
+     "3.0",
+     "3.00",
+     "+3.0"
+    ],
+    "weaknesses.W7a.bandMedian": [
+     "0.09",
+     "0",
+     "9%",
+     "9.0%",
+     "0.1",
+     "0.09",
+     "+0.1"
+    ],
+    "weaknesses.W7a.bandPercentile": [
+     "60",
+     "60",
+     "6000%",
+     "6000.0%",
+     "60.0",
+     "60.00",
+     "+60.0"
+    ],
+    "weaknesses.W7a.confidence": [
+     "0.73",
+     "1",
+     "73%",
+     "73.0%",
+     "0.7",
+     "0.73",
+     "+0.7"
+    ],
+    "weaknesses.W7a.events": [
+     "26",
+     "26",
+     "2600%",
+     "2600.0%",
+     "26.0",
+     "26.00",
+     "+26.0"
+    ],
+    "weaknesses.W7a.excessEplPerGame": [
+     "0.5",
+     "1",
+     "50%",
+     "50.0%",
+     "0.5",
+     "0.50",
+     "+0.5"
+    ],
+    "weaknesses.W7a.exemplars.count": [
+     "0",
+     "0",
+     "0%",
+     "0.0%",
+     "0.0",
+     "0.00",
+     "0.0"
+    ],
+    "weaknesses.W7a.intervalHigh": [
+     "0.28",
+     "0",
+     "28%",
+     "28.0%",
+     "0.3",
+     "0.28",
+     "+0.3"
+    ],
+    "weaknesses.W7a.intervalLow": [
+     "0.1",
+     "0",
+     "10%",
+     "10.0%",
+     "0.1",
+     "0.10",
+     "+0.1"
+    ],
+    "weaknesses.W7a.opportunities": [
+     "160",
+     "160",
+     "16000%",
+     "16000.0%",
+     "160.0",
+     "160.00",
+     "+160.0"
+    ],
+    "weaknesses.W7a.posteriorRate": [
+     "0.14",
+     "0",
+     "14%",
+     "14.0%",
+     "0.1",
+     "0.14",
+     "+0.1"
+    ],
+    "weaknesses.W7a.priority": [
+     "6",
+     "6",
+     "600%",
+     "600.0%",
+     "6.0",
+     "6.00",
+     "+6.0"
+    ],
+    "weaknesses.W7a.rank": [
+     "4",
+     "4",
+     "400%",
+     "400.0%",
+     "4.0",
+     "4.00",
+     "+4.0"
+    ],
+    "weaknesses.W9b.bandMedian": [
+     "0.09",
+     "0",
+     "9%",
+     "9.0%",
+     "0.1",
+     "0.09",
+     "+0.1"
+    ],
+    "weaknesses.W9b.bandPercentile": [
+     "55",
+     "55",
+     "5500%",
+     "5500.0%",
+     "55.0",
+     "55.00",
+     "+55.0"
+    ],
+    "weaknesses.W9b.confidence": [
+     "0.7",
+     "1",
+     "70%",
+     "70.0%",
+     "0.7",
+     "0.70",
+     "+0.7"
+    ],
+    "weaknesses.W9b.events": [
+     "25",
+     "25",
+     "2500%",
+     "2500.0%",
+     "25.0",
+     "25.00",
+     "+25.0"
+    ],
+    "weaknesses.W9b.excessEplPerGame": [
+     "0.4",
+     "0",
+     "40%",
+     "40.0%",
+     "0.4",
+     "0.40",
+     "+0.4"
+    ],
+    "weaknesses.W9b.exemplars.count": [
+     "0",
+     "0",
+     "0%",
+     "0.0%",
+     "0.0",
+     "0.00",
+     "0.0"
+    ],
+    "weaknesses.W9b.intervalHigh": [
+     "0.28",
+     "0",
+     "28%",
+     "28.0%",
+     "0.3",
+     "0.28",
+     "+0.3"
+    ],
+    "weaknesses.W9b.intervalLow": [
+     "0.1",
+     "0",
+     "10%",
+     "10.0%",
+     "0.1",
+     "0.10",
+     "+0.1"
+    ],
+    "weaknesses.W9b.opportunities": [
+     "150",
+     "150",
+     "15000%",
+     "15000.0%",
+     "150.0",
+     "150.00",
+     "+150.0"
+    ],
+    "weaknesses.W9b.pImp": [
+     "0.4",
+     "0",
+     "40%",
+     "40.0%",
+     "0.4",
+     "0.40",
+     "+0.4"
+    ],
+    "weaknesses.W9b.posteriorRate": [
+     "0.13",
+     "0",
+     "13%",
+     "13.0%",
+     "0.1",
+     "0.13",
+     "+0.1"
+    ],
+    "weaknesses.W9b.priority": [
+     "5",
+     "5",
+     "500%",
+     "500.0%",
+     "5.0",
+     "5.00",
+     "+5.0"
+    ],
+    "weaknesses.W9b.rank": [
+     "5",
+     "5",
+     "500%",
+     "500.0%",
+     "5.0",
+     "5.00",
+     "+5.0"
+    ],
+    "weaknesses.count": [
+     "6",
+     "6",
+     "600%",
+     "600.0%",
+     "6.0",
+     "6.00",
+     "+6.0"
+    ]
    }
   },
   "b0-blitz": {
@@ -1445,6 +3787,854 @@
      "Nc6",
      "Bc4"
     ]
+   },
+   "numberFormats": {
+    "areaScores.calculation.n": [
+     "40",
+     "40",
+     "4000%",
+     "4000.0%",
+     "40.0",
+     "40.00",
+     "+40.0"
+    ],
+    "areaScores.calculation.score": [
+     "25",
+     "25",
+     "2500%",
+     "2500.0%",
+     "25.0",
+     "25.00",
+     "+25.0"
+    ],
+    "areaScores.count": [
+     "7",
+     "7",
+     "700%",
+     "700.0%",
+     "7.0",
+     "7.00",
+     "+7.0"
+    ],
+    "areaScores.endgame.n": [
+     "50",
+     "50",
+     "5000%",
+     "5000.0%",
+     "50.0",
+     "50.00",
+     "+50.0"
+    ],
+    "areaScores.endgame.score": [
+     "22",
+     "22",
+     "2200%",
+     "2200.0%",
+     "22.0",
+     "22.00",
+     "+22.0"
+    ],
+    "areaScores.middlegame.n": [
+     "55",
+     "55",
+     "5500%",
+     "5500.0%",
+     "55.0",
+     "55.00",
+     "+55.0"
+    ],
+    "areaScores.middlegame.score": [
+     "28",
+     "28",
+     "2800%",
+     "2800.0%",
+     "28.0",
+     "28.00",
+     "+28.0"
+    ],
+    "areaScores.mindset.n": [
+     "30",
+     "30",
+     "3000%",
+     "3000.0%",
+     "30.0",
+     "30.00",
+     "+30.0"
+    ],
+    "areaScores.mindset.score": [
+     "40",
+     "40",
+     "4000%",
+     "4000.0%",
+     "40.0",
+     "40.00",
+     "+40.0"
+    ],
+    "areaScores.openings.n": [
+     "60",
+     "60",
+     "6000%",
+     "6000.0%",
+     "60.0",
+     "60.00",
+     "+60.0"
+    ],
+    "areaScores.openings.score": [
+     "30",
+     "30",
+     "3000%",
+     "3000.0%",
+     "30.0",
+     "30.00",
+     "+30.0"
+    ],
+    "areaScores.tactics.n": [
+     "45",
+     "45",
+     "4500%",
+     "4500.0%",
+     "45.0",
+     "45.00",
+     "+45.0"
+    ],
+    "areaScores.tactics.score": [
+     "18",
+     "18",
+     "1800%",
+     "1800.0%",
+     "18.0",
+     "18.00",
+     "+18.0"
+    ],
+    "areaScores.time.n": [
+     "35",
+     "35",
+     "3500%",
+     "3500.0%",
+     "35.0",
+     "35.00",
+     "+35.0"
+    ],
+    "areaScores.time.score": [
+     "35",
+     "35",
+     "3500%",
+     "3500.0%",
+     "35.0",
+     "35.00",
+     "+35.0"
+    ],
+    "basis.analysedGames": [
+     "96",
+     "96",
+     "9600%",
+     "9600.0%",
+     "96.0",
+     "96.00",
+     "+96.0"
+    ],
+    "basis.importedGames": [
+     "410",
+     "410",
+     "41000%",
+     "41000.0%",
+     "410.0",
+     "410.00",
+     "+410.0"
+    ],
+    "changes.count": [
+     "0",
+     "0",
+     "0%",
+     "0.0%",
+     "0.0",
+     "0.00",
+     "0.0"
+    ],
+    "metrics.blunders_per_game.bandMedian": [
+     "0.6",
+     "1",
+     "60%",
+     "60.0%",
+     "0.6",
+     "0.60",
+     "+0.6"
+    ],
+    "metrics.blunders_per_game.bandPercentile": [
+     "78",
+     "78",
+     "7800%",
+     "7800.0%",
+     "78.0",
+     "78.00",
+     "+78.0"
+    ],
+    "metrics.blunders_per_game.high": [
+     "2.64",
+     "3",
+     "264%",
+     "264.0%",
+     "2.6",
+     "2.64",
+     "+2.6"
+    ],
+    "metrics.blunders_per_game.low": [
+     "1.68",
+     "2",
+     "168%",
+     "168.0%",
+     "1.7",
+     "1.68",
+     "+1.7"
+    ],
+    "metrics.blunders_per_game.n": [
+     "214",
+     "214",
+     "21400%",
+     "21400.0%",
+     "214.0",
+     "214.00",
+     "+214.0"
+    ],
+    "metrics.blunders_per_game.value": [
+     "2.16",
+     "2",
+     "216%",
+     "216.0%",
+     "2.2",
+     "2.16",
+     "+2.2"
+    ],
+    "metrics.count": [
+     "4",
+     "4",
+     "400%",
+     "400.0%",
+     "4.0",
+     "4.00",
+     "+4.0"
+    ],
+    "metrics.endgame_conversion.bandMedian": [
+     "70",
+     "70",
+     "7000%",
+     "7000.0%",
+     "70.0",
+     "70.00",
+     "+70.0"
+    ],
+    "metrics.endgame_conversion.bandPercentile": [
+     "35",
+     "35",
+     "3500%",
+     "3500.0%",
+     "35.0",
+     "35.00",
+     "+35.0"
+    ],
+    "metrics.endgame_conversion.high": [
+     "75",
+     "75",
+     "7500%",
+     "7500.0%",
+     "75.0",
+     "75.00",
+     "+75.0"
+    ],
+    "metrics.endgame_conversion.low": [
+     "48",
+     "48",
+     "4800%",
+     "4800.0%",
+     "48.0",
+     "48.00",
+     "+48.0"
+    ],
+    "metrics.endgame_conversion.n": [
+     "41",
+     "41",
+     "4100%",
+     "4100.0%",
+     "41.0",
+     "41.00",
+     "+41.0"
+    ],
+    "metrics.endgame_conversion.value": [
+     "62",
+     "62",
+     "6200%",
+     "6200.0%",
+     "62.0",
+     "62.00",
+     "+62.0"
+    ],
+    "metrics.hung_piece_rate.bandMedian": [
+     "0.04",
+     "0",
+     "4%",
+     "4.0%",
+     "0.0",
+     "0.04",
+     "0.0"
+    ],
+    "metrics.hung_piece_rate.bandPercentile": [
+     "74",
+     "74",
+     "7400%",
+     "7400.0%",
+     "74.0",
+     "74.00",
+     "+74.0"
+    ],
+    "metrics.hung_piece_rate.high": [
+     "0.07",
+     "0",
+     "7%",
+     "7.0%",
+     "0.1",
+     "0.07",
+     "+0.1"
+    ],
+    "metrics.hung_piece_rate.low": [
+     "0.05",
+     "0",
+     "5%",
+     "5.0%",
+     "0.1",
+     "0.05",
+     "+0.1"
+    ],
+    "metrics.hung_piece_rate.n": [
+     "3,400",
+     "3,400",
+     "340000%",
+     "340000.0%",
+     "3400.0",
+     "3400.00",
+     "+3400.0"
+    ],
+    "metrics.hung_piece_rate.value": [
+     "0.06",
+     "0",
+     "6%",
+     "6.0%",
+     "0.1",
+     "0.06",
+     "+0.1"
+    ],
+    "metrics.time_per_move.bandMedian": [
+     "9.8",
+     "10",
+     "980%",
+     "980.0%",
+     "9.8",
+     "9.80",
+     "+9.8"
+    ],
+    "metrics.time_per_move.n": [
+     "4,200",
+     "4,200",
+     "420000%",
+     "420000.0%",
+     "4200.0",
+     "4200.00",
+     "+4200.0"
+    ],
+    "metrics.time_per_move.value": [
+     "11.4",
+     "11",
+     "1140%",
+     "1140.0%",
+     "11.4",
+     "11.40",
+     "+11.4"
+    ],
+    "openings.count": [
+     "1",
+     "1",
+     "100%",
+     "100.0%",
+     "1.0",
+     "1.00",
+     "+1.0"
+    ],
+    "openings.w-italian.alternatives.count": [
+     "0",
+     "0",
+     "0%",
+     "0.0%",
+     "0.0",
+     "0.00",
+     "0.0"
+    ],
+    "openings.w-italian.avgEvalAtOpeningEnd.cp": [
+     "25",
+     "25",
+     "2500%",
+     "2500.0%",
+     "25.0",
+     "25.00",
+     "+25.0"
+    ],
+    "openings.w-italian.avgEvalAtOpeningEnd.pawns": [
+     "0.25",
+     "0",
+     "25%",
+     "25.0%",
+     "0.3",
+     "0.25",
+     "+0.3"
+    ],
+    "openings.w-italian.examples.count": [
+     "0",
+     "0",
+     "0%",
+     "0.0%",
+     "0.0",
+     "0.00",
+     "0.0"
+    ],
+    "openings.w-italian.games": [
+     "41",
+     "41",
+     "4100%",
+     "4100.0%",
+     "41.0",
+     "41.00",
+     "+41.0"
+    ],
+    "openings.w-italian.performanceVsExpected": [
+     "0.04",
+     "0",
+     "4%",
+     "4.0%",
+     "0.0",
+     "0.04",
+     "0.0"
+    ],
+    "openings.w-italian.score": [
+     "0.58",
+     "1",
+     "58%",
+     "58.0%",
+     "0.6",
+     "0.58",
+     "+0.6"
+    ],
+    "rating": [
+     "620",
+     "620",
+     "62000%",
+     "62000.0%",
+     "620.0",
+     "620.00",
+     "+620.0"
+    ],
+    "strengths.count": [
+     "0",
+     "0",
+     "0%",
+     "0.0%",
+     "0.0",
+     "0.00",
+     "0.0"
+    ],
+    "timeControl.baseMinutes": [
+     "3",
+     "3",
+     "300%",
+     "300.0%",
+     "3.0",
+     "3.00",
+     "+3.0"
+    ],
+    "timeControl.baseSeconds": [
+     "180",
+     "180",
+     "18000%",
+     "18000.0%",
+     "180.0",
+     "180.00",
+     "+180.0"
+    ],
+    "timeControl.incrementSeconds": [
+     "0",
+     "0",
+     "0%",
+     "0.0%",
+     "0.0",
+     "0.00",
+     "0.0"
+    ],
+    "weaknesses.W1.bandMedian": [
+     "0.09",
+     "0",
+     "9%",
+     "9.0%",
+     "0.1",
+     "0.09",
+     "+0.1"
+    ],
+    "weaknesses.W1.bandPercentile": [
+     "75",
+     "75",
+     "7500%",
+     "7500.0%",
+     "75.0",
+     "75.00",
+     "+75.0"
+    ],
+    "weaknesses.W1.confidence": [
+     "0.82",
+     "1",
+     "82%",
+     "82.0%",
+     "0.8",
+     "0.82",
+     "+0.8"
+    ],
+    "weaknesses.W1.events": [
+     "29",
+     "29",
+     "2900%",
+     "2900.0%",
+     "29.0",
+     "29.00",
+     "+29.0"
+    ],
+    "weaknesses.W1.excessEplPerGame": [
+     "0.8",
+     "1",
+     "80%",
+     "80.0%",
+     "0.8",
+     "0.80",
+     "+0.8"
+    ],
+    "weaknesses.W1.exemplars.0.evalAfter.cp": [
+     "-180",
+     "-180",
+     "-18000%",
+     "-18000.0%",
+     "-180.0",
+     "-180.00",
+     "-180.0"
+    ],
+    "weaknesses.W1.exemplars.0.evalAfter.pawns": [
+     "-1.8",
+     "-2",
+     "-180%",
+     "-180.0%",
+     "-1.8",
+     "-1.80",
+     "-1.8"
+    ],
+    "weaknesses.W1.exemplars.0.evalBefore.cp": [
+     "0",
+     "0",
+     "0%",
+     "0.0%",
+     "0.0",
+     "0.00",
+     "0.0"
+    ],
+    "weaknesses.W1.exemplars.0.evalBefore.pawns": [
+     "0",
+     "0",
+     "0%",
+     "0.0%",
+     "0.0",
+     "0.00",
+     "0.0"
+    ],
+    "weaknesses.W1.exemplars.0.moveNumber": [
+     "4",
+     "4",
+     "400%",
+     "400.0%",
+     "4.0",
+     "4.00",
+     "+4.0"
+    ],
+    "weaknesses.W1.exemplars.0.ply": [
+     "7",
+     "7",
+     "700%",
+     "700.0%",
+     "7.0",
+     "7.00",
+     "+7.0"
+    ],
+    "weaknesses.W1.exemplars.0.winAfter": [
+     "34",
+     "34",
+     "3400%",
+     "3400.0%",
+     "34.0",
+     "34.00",
+     "+34.0"
+    ],
+    "weaknesses.W1.exemplars.0.winBefore": [
+     "50",
+     "50",
+     "5000%",
+     "5000.0%",
+     "50.0",
+     "50.00",
+     "+50.0"
+    ],
+    "weaknesses.W1.exemplars.1.evalAfter.cp": [
+     "-220",
+     "-220",
+     "-22000%",
+     "-22000.0%",
+     "-220.0",
+     "-220.00",
+     "-220.0"
+    ],
+    "weaknesses.W1.exemplars.1.evalAfter.pawns": [
+     "-2.2",
+     "-2",
+     "-220%",
+     "-220.0%",
+     "-2.2",
+     "-2.20",
+     "-2.2"
+    ],
+    "weaknesses.W1.exemplars.1.evalBefore.cp": [
+     "20",
+     "20",
+     "2000%",
+     "2000.0%",
+     "20.0",
+     "20.00",
+     "+20.0"
+    ],
+    "weaknesses.W1.exemplars.1.evalBefore.pawns": [
+     "0.2",
+     "0",
+     "20%",
+     "20.0%",
+     "0.2",
+     "0.20",
+     "+0.2"
+    ],
+    "weaknesses.W1.exemplars.1.moveNumber": [
+     "6",
+     "6",
+     "600%",
+     "600.0%",
+     "6.0",
+     "6.00",
+     "+6.0"
+    ],
+    "weaknesses.W1.exemplars.1.ply": [
+     "11",
+     "11",
+     "1100%",
+     "1100.0%",
+     "11.0",
+     "11.00",
+     "+11.0"
+    ],
+    "weaknesses.W1.exemplars.1.winAfter": [
+     "30.8",
+     "31",
+     "3080%",
+     "3080.0%",
+     "30.8",
+     "30.80",
+     "+30.8"
+    ],
+    "weaknesses.W1.exemplars.1.winBefore": [
+     "51.8",
+     "52",
+     "5180%",
+     "5180.0%",
+     "51.8",
+     "51.80",
+     "+51.8"
+    ],
+    "weaknesses.W1.exemplars.count": [
+     "2",
+     "2",
+     "200%",
+     "200.0%",
+     "2.0",
+     "2.00",
+     "+2.0"
+    ],
+    "weaknesses.W1.intervalHigh": [
+     "0.28",
+     "0",
+     "28%",
+     "28.0%",
+     "0.3",
+     "0.28",
+     "+0.3"
+    ],
+    "weaknesses.W1.intervalLow": [
+     "0.1",
+     "0",
+     "10%",
+     "10.0%",
+     "0.1",
+     "0.10",
+     "+0.1"
+    ],
+    "weaknesses.W1.opportunities": [
+     "190",
+     "190",
+     "19000%",
+     "19000.0%",
+     "190.0",
+     "190.00",
+     "+190.0"
+    ],
+    "weaknesses.W1.posteriorRate": [
+     "0.17",
+     "0",
+     "17%",
+     "17.0%",
+     "0.2",
+     "0.17",
+     "+0.2"
+    ],
+    "weaknesses.W1.priority": [
+     "9",
+     "9",
+     "900%",
+     "900.0%",
+     "9.0",
+     "9.00",
+     "+9.0"
+    ],
+    "weaknesses.W1.rank": [
+     "1",
+     "1",
+     "100%",
+     "100.0%",
+     "1.0",
+     "1.00",
+     "+1.0"
+    ],
+    "weaknesses.W2.bandMedian": [
+     "0.09",
+     "0",
+     "9%",
+     "9.0%",
+     "0.1",
+     "0.09",
+     "+0.1"
+    ],
+    "weaknesses.W2.bandPercentile": [
+     "70",
+     "70",
+     "7000%",
+     "7000.0%",
+     "70.0",
+     "70.00",
+     "+70.0"
+    ],
+    "weaknesses.W2.confidence": [
+     "0.79",
+     "1",
+     "79%",
+     "79.0%",
+     "0.8",
+     "0.79",
+     "+0.8"
+    ],
+    "weaknesses.W2.events": [
+     "28",
+     "28",
+     "2800%",
+     "2800.0%",
+     "28.0",
+     "28.00",
+     "+28.0"
+    ],
+    "weaknesses.W2.excessEplPerGame": [
+     "0.7",
+     "1",
+     "70%",
+     "70.0%",
+     "0.7",
+     "0.70",
+     "+0.7"
+    ],
+    "weaknesses.W2.exemplars.count": [
+     "0",
+     "0",
+     "0%",
+     "0.0%",
+     "0.0",
+     "0.00",
+     "0.0"
+    ],
+    "weaknesses.W2.intervalHigh": [
+     "0.28",
+     "0",
+     "28%",
+     "28.0%",
+     "0.3",
+     "0.28",
+     "+0.3"
+    ],
+    "weaknesses.W2.intervalLow": [
+     "0.1",
+     "0",
+     "10%",
+     "10.0%",
+     "0.1",
+     "0.10",
+     "+0.1"
+    ],
+    "weaknesses.W2.opportunities": [
+     "180",
+     "180",
+     "18000%",
+     "18000.0%",
+     "180.0",
+     "180.00",
+     "+180.0"
+    ],
+    "weaknesses.W2.posteriorRate": [
+     "0.16",
+     "0",
+     "16%",
+     "16.0%",
+     "0.2",
+     "0.16",
+     "+0.2"
+    ],
+    "weaknesses.W2.priority": [
+     "8",
+     "8",
+     "800%",
+     "800.0%",
+     "8.0",
+     "8.00",
+     "+8.0"
+    ],
+    "weaknesses.W2.rank": [
+     "2",
+     "2",
+     "200%",
+     "200.0%",
+     "2.0",
+     "2.00",
+     "+2.0"
+    ],
+    "weaknesses.count": [
+     "2",
+     "2",
+     "200%",
+     "200.0%",
+     "2.0",
+     "2.00",
+     "+2.0"
+    ]
    }
   },
   "early-read": {
@@ -1651,7 +4841,666 @@
     }
    },
    "lines": {},
-   "lineMoves": {}
+   "lineMoves": {},
+   "numberFormats": {
+    "areaScores.calculation.n": [
+     "7",
+     "7",
+     "700%",
+     "700.0%",
+     "7.0",
+     "7.00",
+     "+7.0"
+    ],
+    "areaScores.calculation.needMore": [
+     "13",
+     "13",
+     "1300%",
+     "1300.0%",
+     "13.0",
+     "13.00",
+     "+13.0"
+    ],
+    "areaScores.count": [
+     "7",
+     "7",
+     "700%",
+     "700.0%",
+     "7.0",
+     "7.00",
+     "+7.0"
+    ],
+    "areaScores.endgame.n": [
+     "4",
+     "4",
+     "400%",
+     "400.0%",
+     "4.0",
+     "4.00",
+     "+4.0"
+    ],
+    "areaScores.endgame.needMore": [
+     "16",
+     "16",
+     "1600%",
+     "1600.0%",
+     "16.0",
+     "16.00",
+     "+16.0"
+    ],
+    "areaScores.middlegame.n": [
+     "25",
+     "25",
+     "2500%",
+     "2500.0%",
+     "25.0",
+     "25.00",
+     "+25.0"
+    ],
+    "areaScores.middlegame.score": [
+     "50",
+     "50",
+     "5000%",
+     "5000.0%",
+     "50.0",
+     "50.00",
+     "+50.0"
+    ],
+    "areaScores.mindset.n": [
+     "3",
+     "3",
+     "300%",
+     "300.0%",
+     "3.0",
+     "3.00",
+     "+3.0"
+    ],
+    "areaScores.mindset.needMore": [
+     "17",
+     "17",
+     "1700%",
+     "1700.0%",
+     "17.0",
+     "17.00",
+     "+17.0"
+    ],
+    "areaScores.openings.n": [
+     "30",
+     "30",
+     "3000%",
+     "3000.0%",
+     "30.0",
+     "30.00",
+     "+30.0"
+    ],
+    "areaScores.openings.score": [
+     "45",
+     "45",
+     "4500%",
+     "4500.0%",
+     "45.0",
+     "45.00",
+     "+45.0"
+    ],
+    "areaScores.tactics.n": [
+     "15",
+     "15",
+     "1500%",
+     "1500.0%",
+     "15.0",
+     "15.00",
+     "+15.0"
+    ],
+    "areaScores.tactics.score": [
+     "40",
+     "40",
+     "4000%",
+     "4000.0%",
+     "40.0",
+     "40.00",
+     "+40.0"
+    ],
+    "areaScores.time.n": [
+     "5",
+     "5",
+     "500%",
+     "500.0%",
+     "5.0",
+     "5.00",
+     "+5.0"
+    ],
+    "areaScores.time.score": [
+     "55",
+     "55",
+     "5500%",
+     "5500.0%",
+     "55.0",
+     "55.00",
+     "+55.0"
+    ],
+    "basis.analysedGames": [
+     "30",
+     "30",
+     "3000%",
+     "3000.0%",
+     "30.0",
+     "30.00",
+     "+30.0"
+    ],
+    "basis.importedGames": [
+     "30",
+     "30",
+     "3000%",
+     "3000.0%",
+     "30.0",
+     "30.00",
+     "+30.0"
+    ],
+    "changes.count": [
+     "0",
+     "0",
+     "0%",
+     "0.0%",
+     "0.0",
+     "0.00",
+     "0.0"
+    ],
+    "metrics.blunders_per_game.bandMedian": [
+     "0.6",
+     "1",
+     "60%",
+     "60.0%",
+     "0.6",
+     "0.60",
+     "+0.6"
+    ],
+    "metrics.blunders_per_game.bandPercentile": [
+     "78",
+     "78",
+     "7800%",
+     "7800.0%",
+     "78.0",
+     "78.00",
+     "+78.0"
+    ],
+    "metrics.blunders_per_game.high": [
+     "1.1",
+     "1",
+     "110%",
+     "110.0%",
+     "1.1",
+     "1.10",
+     "+1.1"
+    ],
+    "metrics.blunders_per_game.low": [
+     "0.7",
+     "1",
+     "70%",
+     "70.0%",
+     "0.7",
+     "0.70",
+     "+0.7"
+    ],
+    "metrics.blunders_per_game.n": [
+     "214",
+     "214",
+     "21400%",
+     "21400.0%",
+     "214.0",
+     "214.00",
+     "+214.0"
+    ],
+    "metrics.blunders_per_game.value": [
+     "0.9",
+     "1",
+     "90%",
+     "90.0%",
+     "0.9",
+     "0.90",
+     "+0.9"
+    ],
+    "metrics.count": [
+     "3",
+     "3",
+     "300%",
+     "300.0%",
+     "3.0",
+     "3.00",
+     "+3.0"
+    ],
+    "metrics.hung_piece_rate.bandMedian": [
+     "0.04",
+     "0",
+     "4%",
+     "4.0%",
+     "0.0",
+     "0.04",
+     "0.0"
+    ],
+    "metrics.hung_piece_rate.bandPercentile": [
+     "74",
+     "74",
+     "7400%",
+     "7400.0%",
+     "74.0",
+     "74.00",
+     "+74.0"
+    ],
+    "metrics.hung_piece_rate.high": [
+     "0.07",
+     "0",
+     "7%",
+     "7.0%",
+     "0.1",
+     "0.07",
+     "+0.1"
+    ],
+    "metrics.hung_piece_rate.low": [
+     "0.05",
+     "0",
+     "5%",
+     "5.0%",
+     "0.1",
+     "0.05",
+     "+0.1"
+    ],
+    "metrics.hung_piece_rate.n": [
+     "3,400",
+     "3,400",
+     "340000%",
+     "340000.0%",
+     "3400.0",
+     "3400.00",
+     "+3400.0"
+    ],
+    "metrics.hung_piece_rate.value": [
+     "0.06",
+     "0",
+     "6%",
+     "6.0%",
+     "0.1",
+     "0.06",
+     "+0.1"
+    ],
+    "metrics.time_per_move.bandMedian": [
+     "9.8",
+     "10",
+     "980%",
+     "980.0%",
+     "9.8",
+     "9.80",
+     "+9.8"
+    ],
+    "metrics.time_per_move.n": [
+     "4,200",
+     "4,200",
+     "420000%",
+     "420000.0%",
+     "4200.0",
+     "4200.00",
+     "+4200.0"
+    ],
+    "metrics.time_per_move.value": [
+     "11.4",
+     "11",
+     "1140%",
+     "1140.0%",
+     "11.4",
+     "11.40",
+     "+11.4"
+    ],
+    "openings.count": [
+     "0",
+     "0",
+     "0%",
+     "0.0%",
+     "0.0",
+     "0.00",
+     "0.0"
+    ],
+    "rating": [
+     "1,450",
+     "1,450",
+     "145000%",
+     "145000.0%",
+     "1450.0",
+     "1450.00",
+     "+1450.0"
+    ],
+    "strengths.count": [
+     "0",
+     "0",
+     "0%",
+     "0.0%",
+     "0.0",
+     "0.00",
+     "0.0"
+    ],
+    "timeControl.baseMinutes": [
+     "10",
+     "10",
+     "1000%",
+     "1000.0%",
+     "10.0",
+     "10.00",
+     "+10.0"
+    ],
+    "timeControl.baseSeconds": [
+     "600",
+     "600",
+     "60000%",
+     "60000.0%",
+     "600.0",
+     "600.00",
+     "+600.0"
+    ],
+    "timeControl.incrementSeconds": [
+     "5",
+     "5",
+     "500%",
+     "500.0%",
+     "5.0",
+     "5.00",
+     "+5.0"
+    ],
+    "weaknesses.W1.bandMedian": [
+     "0.09",
+     "0",
+     "9%",
+     "9.0%",
+     "0.1",
+     "0.09",
+     "+0.1"
+    ],
+    "weaknesses.W1.bandPercentile": [
+     "75",
+     "75",
+     "7500%",
+     "7500.0%",
+     "75.0",
+     "75.00",
+     "+75.0"
+    ],
+    "weaknesses.W1.confidence": [
+     "0.5",
+     "1",
+     "50%",
+     "50.0%",
+     "0.5",
+     "0.50",
+     "+0.5"
+    ],
+    "weaknesses.W1.events": [
+     "29",
+     "29",
+     "2900%",
+     "2900.0%",
+     "29.0",
+     "29.00",
+     "+29.0"
+    ],
+    "weaknesses.W1.excessEplPerGame": [
+     "0.8",
+     "1",
+     "80%",
+     "80.0%",
+     "0.8",
+     "0.80",
+     "+0.8"
+    ],
+    "weaknesses.W1.exemplars.0.evalAfter.cp": [
+     "-180",
+     "-180",
+     "-18000%",
+     "-18000.0%",
+     "-180.0",
+     "-180.00",
+     "-180.0"
+    ],
+    "weaknesses.W1.exemplars.0.evalAfter.pawns": [
+     "-1.8",
+     "-2",
+     "-180%",
+     "-180.0%",
+     "-1.8",
+     "-1.80",
+     "-1.8"
+    ],
+    "weaknesses.W1.exemplars.0.evalBefore.cp": [
+     "0",
+     "0",
+     "0%",
+     "0.0%",
+     "0.0",
+     "0.00",
+     "0.0"
+    ],
+    "weaknesses.W1.exemplars.0.evalBefore.pawns": [
+     "0",
+     "0",
+     "0%",
+     "0.0%",
+     "0.0",
+     "0.00",
+     "0.0"
+    ],
+    "weaknesses.W1.exemplars.0.moveNumber": [
+     "2",
+     "2",
+     "200%",
+     "200.0%",
+     "2.0",
+     "2.00",
+     "+2.0"
+    ],
+    "weaknesses.W1.exemplars.0.ply": [
+     "3",
+     "3",
+     "300%",
+     "300.0%",
+     "3.0",
+     "3.00",
+     "+3.0"
+    ],
+    "weaknesses.W1.exemplars.0.winAfter": [
+     "34",
+     "34",
+     "3400%",
+     "3400.0%",
+     "34.0",
+     "34.00",
+     "+34.0"
+    ],
+    "weaknesses.W1.exemplars.0.winBefore": [
+     "50",
+     "50",
+     "5000%",
+     "5000.0%",
+     "50.0",
+     "50.00",
+     "+50.0"
+    ],
+    "weaknesses.W1.exemplars.count": [
+     "1",
+     "1",
+     "100%",
+     "100.0%",
+     "1.0",
+     "1.00",
+     "+1.0"
+    ],
+    "weaknesses.W1.intervalHigh": [
+     "0.28",
+     "0",
+     "28%",
+     "28.0%",
+     "0.3",
+     "0.28",
+     "+0.3"
+    ],
+    "weaknesses.W1.intervalLow": [
+     "0.1",
+     "0",
+     "10%",
+     "10.0%",
+     "0.1",
+     "0.10",
+     "+0.1"
+    ],
+    "weaknesses.W1.opportunities": [
+     "190",
+     "190",
+     "19000%",
+     "19000.0%",
+     "190.0",
+     "190.00",
+     "+190.0"
+    ],
+    "weaknesses.W1.posteriorRate": [
+     "0.17",
+     "0",
+     "17%",
+     "17.0%",
+     "0.2",
+     "0.17",
+     "+0.2"
+    ],
+    "weaknesses.W1.priority": [
+     "9",
+     "9",
+     "900%",
+     "900.0%",
+     "9.0",
+     "9.00",
+     "+9.0"
+    ],
+    "weaknesses.W1.rank": [
+     "1",
+     "1",
+     "100%",
+     "100.0%",
+     "1.0",
+     "1.00",
+     "+1.0"
+    ],
+    "weaknesses.W4.bandMedian": [
+     "0.09",
+     "0",
+     "9%",
+     "9.0%",
+     "0.1",
+     "0.09",
+     "+0.1"
+    ],
+    "weaknesses.W4.bandPercentile": [
+     "70",
+     "70",
+     "7000%",
+     "7000.0%",
+     "70.0",
+     "70.00",
+     "+70.0"
+    ],
+    "weaknesses.W4.confidence": [
+     "0.4",
+     "0",
+     "40%",
+     "40.0%",
+     "0.4",
+     "0.40",
+     "+0.4"
+    ],
+    "weaknesses.W4.events": [
+     "28",
+     "28",
+     "2800%",
+     "2800.0%",
+     "28.0",
+     "28.00",
+     "+28.0"
+    ],
+    "weaknesses.W4.excessEplPerGame": [
+     "0.7",
+     "1",
+     "70%",
+     "70.0%",
+     "0.7",
+     "0.70",
+     "+0.7"
+    ],
+    "weaknesses.W4.exemplars.count": [
+     "0",
+     "0",
+     "0%",
+     "0.0%",
+     "0.0",
+     "0.00",
+     "0.0"
+    ],
+    "weaknesses.W4.intervalHigh": [
+     "0.28",
+     "0",
+     "28%",
+     "28.0%",
+     "0.3",
+     "0.28",
+     "+0.3"
+    ],
+    "weaknesses.W4.intervalLow": [
+     "0.1",
+     "0",
+     "10%",
+     "10.0%",
+     "0.1",
+     "0.10",
+     "+0.1"
+    ],
+    "weaknesses.W4.opportunities": [
+     "180",
+     "180",
+     "18000%",
+     "18000.0%",
+     "180.0",
+     "180.00",
+     "+180.0"
+    ],
+    "weaknesses.W4.posteriorRate": [
+     "0.16",
+     "0",
+     "16%",
+     "16.0%",
+     "0.2",
+     "0.16",
+     "+0.2"
+    ],
+    "weaknesses.W4.priority": [
+     "8",
+     "8",
+     "800%",
+     "800.0%",
+     "8.0",
+     "8.00",
+     "+8.0"
+    ],
+    "weaknesses.W4.rank": [
+     "2",
+     "2",
+     "200%",
+     "200.0%",
+     "2.0",
+     "2.00",
+     "+2.0"
+    ],
+    "weaknesses.count": [
+     "2",
+     "2",
+     "200%",
+     "200.0%",
+     "2.0",
+     "2.00",
+     "+2.0"
+    ]
+   }
   }
  },
  "format": [

@@ -4,7 +4,8 @@
 // Provenance: the expected values come from the TS reference evidence index
 // (.worktrees/m3/packages/ai/src/validator/{evidence,pv,extract,normalize}.ts) and chess.js from
 // m3's node_modules. For each AI input fixture this script records what `buildEvidence` indexes
-// (number and date paths, numbers, ratios, dates, game ids, positions, lines), and it records
+// (number and date paths, numbers, ratios, dates, game ids, positions, lines) and `formatNumber`
+// of every number path in all 7 formats, and it records
 // `formatNumber` over a grid of values and formats. Numbers are written as JS `String(n)` (the
 // shortest round-trip form), so Rust's correctly rounded `str::parse` reads the exact double. The Rust test `tests/evidence.rs`
 // (`ts_parity`) compares the Rust port against it. Sets are written sorted.
@@ -24,6 +25,9 @@ const repo = wt > 0 ? here.slice(0, wt - 1) : resolve(backend, "..");
 const pkg = process.env.M3_AI ?? join(repo, ".worktrees/m3/packages/ai");
 const src = join(pkg, "src/validator");
 const chessJs = pathToFileURL(join(pkg, "node_modules/chess.js/dist/esm/chess.js")).href;
+const chessJsVersion = JSON.parse(
+  readFileSync(join(pkg, "node_modules/chess.js/package.json"), "utf8"),
+).version;
 const outDir = join(backend, "fixtures/ai/evidence");
 const target = join(outDir, "ts-evidence.json");
 
@@ -48,6 +52,7 @@ const num = (a, b) => a - b;
 const obj = (m, f = (x) => x) =>
   Object.fromEntries([...m.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([k, v]) => [k, f(v)]));
 
+const formats = [null, "int", "pct0", "pct1", "dec1", "dec2", "signed1"];
 const fixtures = {};
 for (const name of ["b2-rapid", "b0-blitz", "early-read"]) {
   const input = JSON.parse(
@@ -74,6 +79,8 @@ for (const name of ["b2-rapid", "b0-blitz", "early-read"]) {
     })),
     lines: obj(ev.lines, sorted),
     lineMoves: obj(ev.lineMoves),
+    // formatNumber of every number path in every format (null, then FORMATS order).
+    numberFormats: obj(ev.numberPaths, (v) => formats.map((f) => formatNumber(v, f))),
   };
 }
 
@@ -82,7 +89,6 @@ const values = [
   1.5, -1.5, 2.5, -2.5, 3.5, 0.5, -0.5, 12.345, 99.995, 214.4, 3912, -3912, 1234567, 1234567.891,
   -0.001, 0.1 + 0.2, 1 / 3, 2 / 3, -2 / 3, 1e6, 123456.789, 0.999, -0.999, 4.2, -4.2, 0.3333333333333,
 ];
-const formats = [null, "int", "pct0", "pct1", "dec1", "dec2", "signed1"];
 const format = [];
 for (const v of values) for (const f of formats) format.push([String(v), f, formatNumber(v, f)]);
 
@@ -93,7 +99,7 @@ try {
 
 mkdirSync(outDir, { recursive: true });
 const out = {
-  provenance: `node ${process.versions.node}, chess.js 1.4.0, m3 ${commit}`,
+  provenance: `node ${process.versions.node}, chess.js ${chessJsVersion}, m3 ${commit}`,
   fixtures,
   format,
 };

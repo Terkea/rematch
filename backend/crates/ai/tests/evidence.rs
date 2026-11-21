@@ -10,6 +10,8 @@ use ai::testing::{fixtures_dir, input, load_fixture, make_input};
 use ai::validator::evidence::{
     EngineEvidence, EngineLine, Evidence, PositionArgs, PvFrom, build_evidence, create_evidence,
 };
+use ai::validator::format::format_number;
+use ai::validator::tokens::NumFormat;
 use chess_core::Color;
 use serde_json::{Value, json};
 
@@ -348,11 +350,20 @@ mod ts_parity {
             .collect()
     }
 
-    /// `serde_json` (without `float_roundtrip`) may read a decimal one ulp off: the fixture's
-    /// `0.13999999999999999` reads as `0.14`, so the typed input itself differs from what JS
-    /// parses. The index is compared to within a few ulps; formats and paths exactly.
+    /// A secondary check on the values: at most `MAX_ULPS` representable doubles apart (the
+    /// primary check is the exact `formatNumber` strings below). With `serde_json`'s
+    /// `float_roundtrip` the fixtures read exactly, so the index normally matches bit for bit.
+    const MAX_ULPS: u64 = 1;
+
+    /// Maps a double onto a line where adjacent doubles differ by 1 (-0 and 0 are both 0).
+    fn ordered(x: f64) -> i64 {
+        let b = x.to_bits();
+        let mag = (b & !(1u64 << 63)) as i64;
+        if b >> 63 == 1 { -mag } else { mag }
+    }
+
     fn close(a: f64, b: f64) -> bool {
-        a == b || (a - b).abs() <= 4.0 * f64::EPSILON * a.abs().max(b.abs())
+        a == b || ordered(a).abs_diff(ordered(b)) <= MAX_ULPS
     }
 
     fn all_close(a: &[f64], b: &[f64]) -> bool {
@@ -382,6 +393,24 @@ mod ts_parity {
                 paths.keys().collect::<Vec<_>>(),
                 "{name}: number paths"
             );
+            // Primary: TS's `formatNumber` of every path in every format, as exact strings.
+            let formats: Vec<Option<NumFormat>> = std::iter::once(None)
+                .chain(NumFormat::ALL.map(Some))
+                .collect();
+            let mut bad = Vec::new();
+            let mut cases = 0;
+            for (k, row) in want["numberFormats"].as_object().unwrap() {
+                let v = ev.number_paths[k];
+                for (fmt, w) in formats.iter().zip(row.as_array().unwrap()) {
+                    cases += 1;
+                    let got = format_number(v, *fmt);
+                    if got.as_deref() != w.as_str() {
+                        bad.push(format!("{k} {fmt:?}: {got:?} vs {w}"));
+                    }
+                }
+            }
+            assert!(cases >= 7 * paths.len(), "{name}: {cases} format cases");
+            assert!(bad.is_empty(), "{name}: {bad:#?}");
             let dates: BTreeMap<String, String> =
                 serde_json::from_value(want["datePaths"].clone()).unwrap();
             assert_eq!(ev.date_paths, dates, "{name}: date paths");

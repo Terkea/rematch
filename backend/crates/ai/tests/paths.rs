@@ -121,15 +121,42 @@ mod format_number {
 
     #[test]
     fn formats_every_fmt() {
-        assert_eq!(format_number(214.4, Some(NumFormat::Int)), "214");
-        assert_eq!(format_number(0.3149, Some(NumFormat::Pct0)), "31%");
-        assert_eq!(format_number(0.3149, Some(NumFormat::Pct1)), "31.5%");
-        assert_eq!(format_number(1.234, Some(NumFormat::Dec1)), "1.2");
-        assert_eq!(format_number(1.235, Some(NumFormat::Dec2)), "1.24");
-        assert_eq!(format_number(1.5, Some(NumFormat::Signed1)), "+1.5");
-        assert_eq!(format_number(-1.5, Some(NumFormat::Signed1)), "-1.5");
-        assert_eq!(format_number(0.0, Some(NumFormat::Signed1)), "0.0");
-        assert_eq!(format_number(3912.0, Some(NumFormat::Int)), "3,912");
+        assert_eq!(
+            format_number(214.4, Some(NumFormat::Int)).as_deref(),
+            Some("214")
+        );
+        assert_eq!(
+            format_number(0.3149, Some(NumFormat::Pct0)).as_deref(),
+            Some("31%")
+        );
+        assert_eq!(
+            format_number(0.3149, Some(NumFormat::Pct1)).as_deref(),
+            Some("31.5%")
+        );
+        assert_eq!(
+            format_number(1.234, Some(NumFormat::Dec1)).as_deref(),
+            Some("1.2")
+        );
+        assert_eq!(
+            format_number(1.235, Some(NumFormat::Dec2)).as_deref(),
+            Some("1.24")
+        );
+        assert_eq!(
+            format_number(1.5, Some(NumFormat::Signed1)).as_deref(),
+            Some("+1.5")
+        );
+        assert_eq!(
+            format_number(-1.5, Some(NumFormat::Signed1)).as_deref(),
+            Some("-1.5")
+        );
+        assert_eq!(
+            format_number(0.0, Some(NumFormat::Signed1)).as_deref(),
+            Some("0.0")
+        );
+        assert_eq!(
+            format_number(3912.0, Some(NumFormat::Int)).as_deref(),
+            Some("3,912")
+        );
     }
 
     /// JS `Math.round` rounds half up (towards +inf): 2.5 is 3 and -2.5 is -2. `round(v, d)` adds
@@ -137,15 +164,99 @@ mod format_number {
     /// not the brief's "-1.2"; the TS behaviour wins (task-7-report.md).
     #[test]
     fn format_number_rounds_half_up_like_js() {
-        assert_eq!(format_number(2.5, Some(NumFormat::Int)), "3");
-        assert_eq!(format_number(-2.5, Some(NumFormat::Int)), "-2");
-        assert_eq!(format_number(-1.25, Some(NumFormat::Dec1)), "-1.3");
-        assert_eq!(format_number(1.25, Some(NumFormat::Dec1)), "1.3");
-        assert_eq!(format_number(-0.04, Some(NumFormat::Dec1)), "0.0", "no -0");
-        assert_eq!(format_number(-0.4, Some(NumFormat::Int)), "0", "no -0");
-        assert_eq!(format_number(1234567.0, None), "1,234,567");
-        assert_eq!(format_number(-3912.0, None), "-3,912");
-        assert_eq!(format_number(1.0 / 3.0, None), "0.33");
+        assert_eq!(
+            format_number(2.5, Some(NumFormat::Int)).as_deref(),
+            Some("3")
+        );
+        assert_eq!(
+            format_number(-2.5, Some(NumFormat::Int)).as_deref(),
+            Some("-2")
+        );
+        assert_eq!(
+            format_number(-1.25, Some(NumFormat::Dec1)).as_deref(),
+            Some("-1.3")
+        );
+        assert_eq!(
+            format_number(1.25, Some(NumFormat::Dec1)).as_deref(),
+            Some("1.3")
+        );
+        assert_eq!(
+            format_number(-0.04, Some(NumFormat::Dec1)).as_deref(),
+            Some("0.0"),
+            "no -0"
+        );
+        assert_eq!(
+            format_number(-0.4, Some(NumFormat::Int)).as_deref(),
+            Some("0"),
+            "no -0"
+        );
+        assert_eq!(format_number(1234567.0, None).as_deref(), Some("1,234,567"));
+        assert_eq!(format_number(-3912.0, None).as_deref(), Some("-3,912"));
+        assert_eq!(format_number(1.0 / 3.0, None).as_deref(), Some("0.33"));
+    }
+
+    /// Regression (fix round 1): `serde_json` with `float_roundtrip` reads the shortest JS form of
+    /// a double exactly. Without it these read one ulp off and format differently.
+    #[test]
+    fn json_numbers_parse_exactly_so_formats_match_js() {
+        let p = |s: &str| serde_json::from_str::<f64>(s).unwrap();
+        assert_eq!(
+            p("0.9134999999999999"),
+            "0.9134999999999999".parse::<f64>().unwrap()
+        );
+        assert_eq!(
+            format_number(p("0.9134999999999999"), Some(NumFormat::Pct1)).as_deref(),
+            Some("91.3%")
+        );
+        assert_eq!(
+            format_number(p("116.32499999999999"), Some(NumFormat::Dec2)).as_deref(),
+            Some("116.32")
+        );
+        assert_eq!(
+            format_number(p("0.09499999999999999"), Some(NumFormat::Pct0)).as_deref(),
+            Some("9%")
+        );
+        let v: serde_json::Value = serde_json::from_str(r#"{"x": 0.13999999999999999}"#).unwrap();
+        assert_eq!(
+            v["x"].as_f64(),
+            Some("0.13999999999999999".parse().unwrap())
+        );
+    }
+
+    /// JS prints non-finite values and magnitudes >= 1e21 differently (`Infinity`, `1e+21`); the
+    /// port refuses them instead, so such a token does not resolve.
+    #[test]
+    fn non_finite_and_huge_values_do_not_format() {
+        let all = std::iter::once(None).chain(NumFormat::ALL.map(Some));
+        for fmt in all {
+            for v in [
+                f64::INFINITY,
+                f64::NEG_INFINITY,
+                f64::NAN,
+                1e21,
+                -1e21,
+                1e300,
+            ] {
+                assert_eq!(format_number(v, fmt), None, "{v} {fmt:?}");
+            }
+        }
+        assert_eq!(
+            format_number(9.9e20, None).as_deref(),
+            Some("990,000,000,000,000,000,000")
+        );
+        assert_eq!(
+            format_number(1e19, Some(NumFormat::Pct0)),
+            None,
+            "1e21 after x100"
+        );
+        assert_eq!(
+            format_number(9e18, Some(NumFormat::Pct1)).as_deref(),
+            Some("900000000000000000000.0%")
+        );
+        assert_eq!(
+            format_number(123456789012345680000.0, Some(NumFormat::Int)).as_deref(),
+            Some("123,456,789,012,345,680,000")
+        );
     }
 
     /// Every row of `formatNumber` recorded from TS (values × formats).
@@ -161,7 +272,7 @@ mod format_number {
             let v: f64 = r[0].as_str().unwrap().parse().unwrap();
             let fmt = r[1].as_str().map(|f| NumFormat::parse(f).unwrap());
             let want = r[2].as_str().unwrap();
-            let got = format_number(v, fmt);
+            let got = format_number(v, fmt).unwrap_or_default();
             if got != want {
                 bad.push(format!("{v} {fmt:?}: got {got}, want {want}"));
             }
@@ -376,7 +487,7 @@ mod render_segments {
             Segment::Num {
                 path: "weaknesses.W1.posteriorRate".into(),
                 value: rate,
-                display: format_number(rate, Some(NumFormat::Pct0)),
+                display: format_number(rate, Some(NumFormat::Pct0)).unwrap(),
             },
             Segment::Date {
                 path: "basis.windowStart".into(),

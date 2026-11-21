@@ -42,7 +42,7 @@ fn segment(ev: &Evidence, t: &TokenBody) -> Option<Segment> {
             Segment::Num {
                 path: path.clone(),
                 value,
-                display: format_number(value, *fmt),
+                display: format_number(value, *fmt)?,
             }
         }
         TokenBody::Date { path } => Segment::Date {

@@ -1,10 +1,20 @@
 //! Token rendering: a port of m3's `formatNumber` and `resolveToken` (`validator/evidence.ts`),
 //! plus the R3 `{{eng:}}` tokens.
 //!
-//! JS number semantics that matter here: `Math.round` rounds half towards +inf; `String(n)` and
-//! `toFixed` never print `-0`; `Number.isInteger`. Rust's shortest `{}` for `f64` equals JS
-//! `String(n)` for every value this can print (integers below 1e21 and values rounded to two
-//! decimals); JS switches to exponent form at 1e21, which no evidence number reaches.
+//! JS number semantics that matter here:
+//! - `Math.round` rounds half towards +inf (`js_round`), and `Math.sign(0)` is 0.
+//! - `String(n)` and `toFixed` never print `-0`.
+//! - `String(n)` is the shortest round-trip form, as is Rust's `{}` for `f64`. They print the
+//!   same text when the magnitude is in [1e-6, 1e21) or is 0. JS switches to exponent form
+//!   outside that range, and Rust never does. The values printed here are integers or are
+//!   rounded to two decimals, so the lower end cannot occur; the upper end is refused.
+//! - `toFixed(d)` and Rust's `{:.d$}` both expand the exact binary value. They differ only on
+//!   an exact decimal tie (JS rounds it up in magnitude, Rust to even). `toFixed` only ever sees
+//!   values already rounded to `d` decimals, which are never ties.
+//! - `toFixed` also switches to `String(n)` at 1e21.
+//!
+//! So [`format_number`] returns `None` for a non-finite value and for any printed magnitude of
+//! 1e21 or more (for `pct0`/`pct1` that is the value times 100). The token then does not resolve.
 
 use super::evidence::{EngineLine, Evidence};
 use super::tokens::{NumFormat, PvSide, TokenBody};
@@ -75,9 +85,20 @@ fn group(s: &str) -> String {
     out
 }
 
+/// The largest magnitude JS prints without an exponent.
+const JS_EXPONENT_AT: f64 = 1e21;
+
 /// TS `formatNumber`. `Pct0`/`Pct1` treat the value as a fraction (0.31 renders as `31%`).
-pub fn format_number(value: f64, fmt: Option<NumFormat>) -> String {
-    match fmt {
+/// `None` for a value JS would print as `Infinity`, `NaN` or in exponent form (module docs).
+pub fn format_number(value: f64, fmt: Option<NumFormat>) -> Option<String> {
+    let printed = match fmt {
+        Some(NumFormat::Pct0 | NumFormat::Pct1) => value * 100.0,
+        _ => value,
+    };
+    if !printed.is_finite() || printed.abs() >= JS_EXPONENT_AT {
+        return None;
+    }
+    Some(match fmt {
         Some(NumFormat::Int) => group(&js_string(js_round(value))),
         Some(NumFormat::Pct0) => format!("{}%", to_fixed(round(value * 100.0, 0), 0)),
         Some(NumFormat::Pct1) => format!("{}%", to_fixed(round(value * 100.0, 1), 1)),
@@ -102,7 +123,7 @@ pub fn format_number(value: f64, fmt: Option<NumFormat>) -> String {
                 js_string(round(value, 2))
             }
         }
-    }
+    })
 }
 
 /// An engine line's evaluation, from White's point of view: centipawns as `signed1` pawns
@@ -110,7 +131,8 @@ pub fn format_number(value: f64, fmt: Option<NumFormat>) -> String {
 /// for a mate score of 0 (the side to move is already mated).
 pub fn eval_text(line: &EngineLine) -> String {
     match line.score {
-        Score::Cp(c) => format_number(f64::from(c) / 100.0, Some(NumFormat::Signed1)),
+        Score::Cp(c) => format_number(f64::from(c) / 100.0, Some(NumFormat::Signed1))
+            .expect("an i32 centipawn score is finite and small"),
         Score::Mate(0) => "checkmate".to_owned(),
         Score::Mate(m) if m > 0 => format!("mate in {m}"),
         Score::Mate(m) => format!("mated in {}", m.unsigned_abs()),
@@ -148,7 +170,7 @@ pub fn resolve_token(ev: &Evidence, t: &TokenBody) -> Option<String> {
                 Some(n) => nth(moves, *n).cloned(),
             }
         }
-        TokenBody::Num { path, fmt } => Some(format_number(*ev.number_paths.get(path)?, *fmt)),
+        TokenBody::Num { path, fmt } => format_number(*ev.number_paths.get(path)?, *fmt),
         TokenBody::Date { path } => ev.date_paths.get(path).cloned(),
         TokenBody::Sq { square } => Some(square.clone()),
         TokenBody::Eng { eval_id, line, n } => {
