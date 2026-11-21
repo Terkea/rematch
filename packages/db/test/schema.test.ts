@@ -3,11 +3,13 @@ import { afterAll, describe, expect, it } from "vitest";
 import {
   createDb,
   games,
+  importRuns,
   linkedAccounts,
   moves,
   type NewGame,
   positionEvals,
   upsertGame,
+  userEvents,
 } from "../src/index.js";
 
 const db = createDb(process.env.DATABASE_URL_TEST as string);
@@ -57,6 +59,37 @@ describe("schema", () => {
     expect(second.inserted).toBe(false);
     expect(second.id).toBe(first.id);
     expect(await countOf(games)).toBe(1);
+  });
+
+  it("upsertGame returns the current analysisStatus of an existing row", async () => {
+    const acc = await makeAccount();
+    const first = await upsertGame(db, gameRow(acc.id));
+    expect(first.analysisStatus).toBe("pending");
+    await db.update(games).set({ analysisStatus: "done" }).where(eq(games.id, first.id));
+    expect((await upsertGame(db, gameRow(acc.id))).analysisStatus).toBe("done");
+  });
+
+  it("new recovery columns default sensibly; import runs and user events exist", async () => {
+    const acc = await makeAccount();
+    expect(acc.importCursor).toBeNull();
+    const { id } = await upsertGame(db, gameRow(acc.id));
+    const [g] = await db.select().from(games).where(eq(games.id, id));
+    expect(g).toMatchObject({ analysisAttempts: 0, heartbeatAt: null, analysisStartedAt: null });
+    const [run] = await db.insert(importRuns).values({ accountId: acc.id }).returning();
+    expect(run).toMatchObject({
+      status: "running",
+      imported: 0,
+      finishedAt: null,
+      lastError: null,
+    });
+    const evs = await db
+      .insert(userEvents)
+      .values([
+        { accountId: acc.id, type: "a", payload: {} },
+        { accountId: acc.id, type: "b", payload: { n: 1 } },
+      ])
+      .returning();
+    expect((evs[1]?.id as number) > (evs[0]?.id as number)).toBe(true);
   });
 
   it("defaults analysisStatus to pending", async () => {

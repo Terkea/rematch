@@ -8,6 +8,13 @@
       "when": 1795265945036,
       "tag": "0000_core_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1795268564656,
+      "tag": "0001_recovery_and_events",
+      "breakpoints": true
     }
   ]
 }
