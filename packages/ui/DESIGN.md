@@ -87,7 +87,7 @@ Added in fix round 1 (derived from the tokens above, no new hues):
 
 ### Interaction states
 
-The tonal ladder runs `paper`, then `sheet`, then `well`. Hover moves one step down the ladder and never lifts.
+The tonal ladder runs `paper`, then `sheet`, then `well`. Hover moves one step down the ladder and never lifts. In code, hover fills use `--surface-hover`: `sheet` on the page, and `well` inside anything that is `bg-sheet` or marked `data-surface="sheet"`.
 
 | State | Surface items (rows, secondary buttons, menu items) | Primary button (ink) |
 |---|---|---|
@@ -234,6 +234,8 @@ Size and line height in px, from the classic scale. Literata's `opsz` tracks the
 **Ruling.** Ruled lines are scoresheet-native, so they appear only on scoresheet and move-list surfaces, in `rule`. They never decorate a page, never separate every section, and never form newspaper columns (`B3`). Panels keep `--radius-sheet`.
 
 **Focus.** Everywhere outside the board: a 2px `ink` outline with a 2px offset, so the ring sits on the surface behind (`paper`, `sheet` or `well`, all ≥ 13:1). On the board: an inset **dashed** ring (dash 4, gap 3), a 2px `sheet` halo at 2px inside the square's edge, with a 2px dashed `ink` ring inside it, so the ring's neighbour is always the halo. The dashes keep focus distinct from the solid 3px check ring. The focused square is also announced ("e4, white knight").
+
+**Touch targets.** On a coarse pointer every control's hit area is at least 44 × 44px, without changing its visual size: buttons (`md` 40px and `sm` 32px tall), tabs (32px), switches and icon-only controls (such as the dialog close, 32px) grow an invisible centred hit area. It reaches 2px past an `md` control and 6px past an `sm` one, so stacked controls need a gap of at least **4px between `md` controls** and at least **12px between `sm` controls** (and 6px from an `sm` control to the edge of any scrolling container), or neighbouring hit areas overlap and the later one wins. `apps/web/e2e/touch-targets.spec.ts` checks this with a real hit test.
 
 **Icons.** Phosphor, regular weight, `currentColor`. 20px in UI controls and 16px inline with text. Always paired with a text label unless the control has an accessible name and a universal meaning (close, menu). Never Lucide or emoji (`B13`).
 
@@ -411,6 +413,17 @@ Every spring states its damping ratio, `ζ = damping / (2 × √(stiffness × ma
 | `--stagger-pen` | 120ms | ring to arrow within one moment, and nothing else |
 
 The badge is timed explicitly, not by stagger: it lands with `land` when the moment's last stroke finishes. That is at 420ms for a ring only, and at 540ms for a ring and an arrow. The arrow starts at 120, and its shaft reaches 85% of its eased progress at 120 + 266 = 386ms, so the head strokes run 386–476 and 416–506. The shaft's soft stop ends at 120 + 420 = 540.
+
+### Overlay values
+
+Floating things enter with a small, quiet move, and under reduced motion only their opacity runs (M10). Mirrored in `tokens.css` and `@ci/ui/motion` (`overlay`).
+
+| Token | Value | Use |
+|---|---|---|
+| `--enter-dialog-y` | `8px` | a dialog starts this far below its place and rises in over `--dur-base` |
+| `--enter-dialog-scale` | `0.98` | a dialog's starting scale |
+| `--enter-float-scale` | `0.96` | popovers and tooltips grow from this scale at their trigger's origin over `--dur-quick` |
+| `--offset-float` | `6px` | the gap between a trigger and its popover or tooltip |
 
 ### Physical feel
 
