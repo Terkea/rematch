@@ -51,7 +51,6 @@ jobs:
   rust:
     runs-on: ubuntu-latest
     env:
-      CONTACT_EMAIL: ci@example.invalid
       LANE: "0"
     steps:
       - uses: actions/checkout@v4

@@ -17,7 +17,7 @@ TypeScript monorepo (pnpm workspaces + Turborepo, Node 22, ESM only). Packages u
 
 ## Rust backend
 
-- Cargo workspace in `backend/` (ADRs 0030, 0031). Build and test only in Docker: `$RUST` means `COMPOSE_FILE=docker-compose.yml docker compose -p ci-<lane> run --rm -e LANE=<lane> rust-dev` (no host ports; `CONTACT_EMAIL` is not needed).
+- Cargo workspace in `backend/` (ADRs 0030, 0031). Build and test only in Docker: `$RUST` means `COMPOSE_FILE=docker-compose.yml docker compose -p ci-<lane> run --rm -e LANE=<lane> rust-dev` (no host ports).
 - Once per Docker host (and in CI): `sh scripts/rust-cache-init.sh`. It creates the external volumes `ci-cargo-registry`, `ci-cargo-git`, `ci-sccache` and `ci-crate-age` (cached crates.io publish dates), which every project shares (ADR 0042). Without them compose stops with `external volume "ci-…" not found`.
 - `-e LANE=<lane letter>` makes the entrypoint build into its own `/target/<lane>` (default `main`), in the project's `rust_target` volume, seen by cargo as `/lane-target`. Dependencies come from the shared sccache, so a new lane only compiles workspace crates. Tear down with `COMPOSE_FILE=docker-compose.yml docker compose -p ci-<lane> down -v`. That removes the lane's target dir and database but never the shared caches. Never `docker volume rm` the `ci-cargo-*`, `ci-sccache` or `ci-crate-age` volumes during lane cleanup.
 - `scripts/check-crate-age.sh` only queries crates.io for versions no lane has cached. It retries 429/5xx with backoff for up to 60 s, then fails closed. `CRATE_AGE_OFFLINE=1` makes no network calls. Its tests: `$RUST sh scripts/test-check-crate-age.sh`.
@@ -26,6 +26,8 @@ TypeScript monorepo (pnpm workspaces + Turborepo, Node 22, ESM only). Packages u
 - Migrations live in `db/migrations/` (plain SQL, applied by sqlx). They are the schema source of truth.
 - Only the coordinator edits `Cargo.toml` dependency lists and `Cargo.lock`. Crates are pinned exactly, at least 7 days old (`scripts/check-crate-age.sh`), and checked by `cargo deny`. Always pass `--locked`.
 - DB tests use `#[sqlx::test(migrator = "db::MIGRATOR")]`. With `IN_DOCKER=1`, a missing Postgres or Stockfish fails the test instead of skipping it.
+- Maia (ADR-R2-13) is opt-in: add `docker-compose.maia.yml` to `COMPOSE_FILE` (and `docker-compose.maia-ports.yml` for the dev host port). The base file creates one network per project, so parallel lanes don't exhaust Docker's address pools.
+- The `postgres` service keeps `init: true` and an exec-form TCP healthcheck (ADR 0044). Without them, an orphaned `pg_isready` makes Postgres crash-restart mid-run, and tests fail with EOF or "in recovery mode". Regression test: `COMPOSE_FILE=docker-compose.yml sh scripts/test-postgres-orphan-reap.sh ci-<lane>-pg`.
 - Use `testkit` only from integration tests in `tests/`, never from `#[cfg(test)]` unit tests: the dev-dependency cycle would compile the crate twice.
 - Timestamps are `time::OffsetDateTime`. JSON that must match TS uses `#[serde(with = "common::js_time::iso")]`.
 

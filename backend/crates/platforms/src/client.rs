@@ -19,7 +19,6 @@ use crate::types::{Headers, Platform, PlatformClient, PlatformError};
 #[derive(Clone, Debug)]
 pub struct ClientOptions {
     pub name: Platform,
-    pub contact_email: String,
     pub retry_after: Duration,
     pub max_retries: u32,
     /// Per-request timeout for headers (and the whole body for `get_json`).
@@ -32,7 +31,6 @@ impl Default for ClientOptions {
     fn default() -> Self {
         Self {
             name: Platform::Lichess,
-            contact_email: String::new(),
             retry_after: Duration::from_secs(60),
             max_retries: 3,
             request_timeout: Duration::from_secs(30),
@@ -41,8 +39,9 @@ impl Default for ClientOptions {
     }
 }
 
-pub fn user_agent(contact_email: &str) -> String {
-    format!("chess-improver/0.1 (+mailto:{contact_email})")
+/// Fixed, anonymous User-Agent: the project URL only, never an email (ADR 0043).
+pub fn user_agent() -> String {
+    "chess-improver/0.1 (+https://github.com/chess-improver)".to_owned()
 }
 
 pub struct HttpPlatformClient {
@@ -60,7 +59,7 @@ enum Attempt {
 impl HttpPlatformClient {
     pub fn new(opts: ClientOptions) -> Self {
         let _ = rustls::crypto::ring::default_provider().install_default();
-        let user_agent = user_agent(&opts.contact_email);
+        let user_agent = user_agent();
         Self {
             opts,
             http: reqwest::Client::new(),
