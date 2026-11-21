@@ -10,6 +10,7 @@ export {
   formatDate,
   rangeFraction,
   seriesText,
+  shortSpan,
   stateAtEnd,
   type TimelineSeries,
   WeaknessTimeline,

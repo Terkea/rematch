@@ -285,7 +285,21 @@ export function stateAtEnd(
   return (covering[covering.length - 1] ?? sorted[sorted.length - 1])?.state;
 }
 
-/** "Resolved, 20 Aug 2026 to 5 Oct 2026". */
+/**
+ * The span in short form for narrow containers: "20 Aug–5 Oct 2026", the year once when both ends
+ * share it, "20 Dec 2025–5 Jan 2026" when they don't, and "since 5 Oct 2026" while open.
+ */
+export function shortSpan(seg: Segment): string {
+  // No-break spaces inside each date, so a wrap never splits one ("5 / Oct").
+  const nb = (iso: string) => formatDate(iso).replace(/ /g, "\u00a0");
+  if (seg.to === null) return `since ${nb(seg.from)}`;
+  const from = nb(seg.from);
+  const to = nb(seg.to);
+  const sameYear = from.slice(-4) === to.slice(-4);
+  return `${sameYear ? from.slice(0, -5) : from}\u2013${to}`;
+}
+
+/** "Resolved, 20 Aug 2026 to 5 Oct 2026" (the readout keeps each date on one line). */
 const spanText = (seg: Segment) =>
   `${stateStyle[seg.state].label}, ${formatDate(seg.from)} to ${seg.to === null ? "now" : formatDate(seg.to)}`;
 
@@ -327,7 +341,7 @@ function Lane({
   cellRef: (cell: Cell, el: HTMLDivElement | null) => void;
 }) {
   return (
-    <div data-lane={series.id} className="relative" style={{ height: LANE_H }}>
+    <div data-lane={series.id} role="none" className="relative" style={{ height: LANE_H }}>
       <svg aria-hidden="true" width="100%" height={LANE_H} className="block overflow-visible">
         <rect x="0" y={TRACK.y} width="100%" height={TRACK.h} rx={2} className="fill-well" />
         {/* Month ruling: a sheet hairline pressed into the well at each month start. */}
@@ -388,7 +402,10 @@ function Lane({
         />
       </svg>
       {segs.length === 0 && (
+        // biome-ignore lint/a11y/useSemanticElements: a CSS grid lays the cells out, so the ARIA grid is built from divs.
         <span
+          role="gridcell"
+          tabIndex={-1}
           className="absolute left-3 text-xs text-ink-faint"
           style={{ top: TRACK.y, lineHeight: `${TRACK.h}px` }}
         >
@@ -399,12 +416,14 @@ function Lane({
       {segs.map(({ seg, a, b }, index) => {
         const cell = { lane: laneIndex, index };
         return (
+          // biome-ignore lint/a11y/useSemanticElements: a CSS grid lays the cells out, so the ARIA grid is built from divs.
           <div
             key={`${seg.state}-${seg.from}`}
             ref={(el) => cellRef(cell, el)}
-            role="img"
+            role="gridcell"
             data-cell={seg.state}
-            aria-label={`${series.label}, ${spanText(seg)}, state ${index + 1} of ${segs.length}`}
+            // Short: the row header gives the lane, and the hidden paragraphs give the whole story.
+            aria-label={`${spanText(seg)}, ${index + 1} of ${segs.length}`}
             tabIndex={sameCell(cursor, cell) ? 0 : -1}
             data-shown={sameCell(shown, cell) ? "" : undefined}
             className="absolute rounded-[2px] outline-ink focus-visible:outline-2 focus-visible:outline-offset-1 data-shown:outline-1"
@@ -581,12 +600,16 @@ export function WeaknessTimeline({
   // The composite widget: one roving cursor, plus what the pointer is over.
   const firstLane = lanes.findIndex((l) => l.length > 0);
   const [cursor, setCursor] = useState<Cell | null>(null);
-  const roving: Cell | null =
-    cursor ??
-    (firstLane < 0 ? null : { lane: firstLane, index: (lanes[firstLane]?.length ?? 1) - 1 });
+  const valid = (c: Cell | null): c is Cell =>
+    c !== null && c.index >= 0 && c.index < (lanes[c.lane]?.length ?? 0);
+  const roving: Cell | null = valid(cursor)
+    ? cursor
+    : firstLane < 0
+      ? null
+      : { lane: firstLane, index: (lanes[firstLane]?.length ?? 1) - 1 };
   const [hover, setHover] = useState<Cell | null>(null);
   const [focused, setFocused] = useState<Cell | null>(null);
-  const shown = focused ?? hover;
+  const shown = (valid(focused) ? focused : null) ?? (valid(hover) ? hover : null);
   const cells = useRef(new Map<string, HTMLDivElement>());
   const cellRef = useCallback((c: Cell, el: HTMLDivElement | null) => {
     const k = `${c.lane}:${c.index}`;
@@ -699,16 +722,22 @@ export function WeaknessTimeline({
       <p
         data-readout
         aria-hidden="true"
-        className="m-0 flex h-10 min-w-0 items-start gap-2 text-sm @min-[640px]:h-6"
+        className="m-0 flex min-h-10 min-w-0 items-start gap-2 text-sm @min-[640px]:min-h-6"
       >
         {shownSpan && shownSeries ? (
           <>
             <span className="mt-px shrink-0">
               <Swatch prefix={prefix} state={shownSpan.seg.state} />
             </span>
-            <span className="line-clamp-2">
+            <span data-readout-text className="min-w-0 flex-1 break-words">
               <span className="font-medium text-ink">{shownSeries.label}:</span>{" "}
-              <span className="text-ink-soft">{spanText(shownSpan.seg)}</span>
+              <span data-readout-long className="text-ink-soft @max-[640px]:hidden">
+                {spanText(shownSpan.seg).replace(/(\d+) (\w{3}) (\d{4})/g, "$1\u00a0$2\u00a0$3")}
+              </span>
+              <span data-readout-short className="text-ink-soft @min-[640px]:hidden">
+                {stateStyle[shownSpan.seg.state].label},{" "}
+                <span className="whitespace-nowrap">{shortSpan(shownSpan.seg)}</span>
+              </span>
             </span>
           </>
         ) : (
@@ -732,59 +761,74 @@ export function WeaknessTimeline({
         onScroll={measure}
       >
         <motion.div
-          role="group"
-          aria-label={`${label}: ${series.length} weaknesses. Arrow keys move between states and lanes.`}
           className="grid grid-cols-[7.5rem_minmax(0,1fr)] items-center @max-[640px]:min-w-[38rem] @min-[640px]:grid-cols-[13rem_minmax(0,1fr)]"
           style={{ "--wipe": wipe } as never}
         >
           {placed.length > 0 && (
             <>
-              <div className={cn(LABEL_CELL, "self-stretch text-sm text-ink-soft")}>
+              <div
+                aria-hidden="true"
+                className={cn(LABEL_CELL, "self-stretch text-sm text-ink-soft")}
+              >
                 Plan and drills
               </div>
               <EventsLane events={placed} />
             </>
           )}
-          {series.map((s, laneIndex) => {
-            const now = stateAtEnd(s, range);
-            return (
-              <div key={s.id} className="contents">
-                <div className={cn(LABEL_CELL, "py-1")} style={{ minHeight: LANE_H }}>
-                  <span className="text-sm leading-tight font-medium text-ink">{s.label}</span>
-                  {now && (
-                    <span
-                      data-now
-                      className="mt-0.5 flex items-center gap-1.5 text-xs text-ink-soft"
-                    >
-                      <MiniSwatch prefix={prefix} state={now} />
-                      Now {stateStyle[now].label.toLowerCase()}
-                    </span>
-                  )}
+          {/* biome-ignore lint/a11y/useSemanticElements: a CSS grid lays the cells out, so the ARIA grid is built from divs. */}
+          <div
+            role="grid"
+            aria-label={`${label}: ${series.length} weaknesses. Arrow keys move between states and lanes.`}
+            aria-rowcount={series.length}
+            className="contents"
+          >
+            {series.map((s, laneIndex) => {
+              const now = stateAtEnd(s, range);
+              return (
+                // biome-ignore lint/a11y/useSemanticElements lint/a11y/useFocusableInteractive: a CSS grid lays the cells out, so the ARIA grid is built from divs; rows are not focus targets.
+                <div key={s.id} role="row" aria-rowindex={laneIndex + 1} className="contents">
+                  {/* biome-ignore lint/a11y/useSemanticElements lint/a11y/useFocusableInteractive: a CSS grid lays the cells out, so the ARIA grid is built from divs; the header is not a focus target. */}
+                  <div
+                    role="rowheader"
+                    className={cn(LABEL_CELL, "py-1")}
+                    style={{ minHeight: LANE_H }}
+                  >
+                    <span className="text-sm leading-tight font-medium text-ink">{s.label}</span>
+                    {now && (
+                      <span
+                        data-now
+                        className="mt-0.5 flex items-center gap-1.5 text-xs text-ink-soft"
+                      >
+                        <MiniSwatch prefix={prefix} state={now} />
+                        Now {stateStyle[now].label.toLowerCase()}
+                      </span>
+                    )}
+                  </div>
+                  <Lane
+                    series={s}
+                    laneIndex={laneIndex}
+                    segs={lanes[laneIndex] ?? []}
+                    prefix={prefix}
+                    months={months}
+                    events={placed}
+                    range={range}
+                    cursor={roving}
+                    shown={shown}
+                    onHover={setHover}
+                    onFocusCell={(c) => {
+                      setFocused(c);
+                      if (c) {
+                        setCursor(c);
+                        finish();
+                      }
+                    }}
+                    onKey={onKey}
+                    cellRef={cellRef}
+                  />
                 </div>
-                <Lane
-                  series={s}
-                  laneIndex={laneIndex}
-                  segs={lanes[laneIndex] ?? []}
-                  prefix={prefix}
-                  months={months}
-                  events={placed}
-                  range={range}
-                  cursor={roving}
-                  shown={shown}
-                  onHover={setHover}
-                  onFocusCell={(c) => {
-                    setFocused(c);
-                    if (c) {
-                      setCursor(c);
-                      finish();
-                    }
-                  }}
-                  onKey={onKey}
-                  cellRef={cellRef}
-                />
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
           <div className={cn(LABEL_CELL, "flex-row items-center gap-1 self-stretch")}>
             {overflow.earlier && (
               <button

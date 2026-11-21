@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { timelineFixtures } from "../src/fixtures/index.js";
 import {
   eventRows,
+  shortSpan,
   stateAtEnd,
   stateStyle,
   type WeaknessState,
@@ -256,7 +257,7 @@ describe("WeaknessTimeline keyboard", () => {
   it("names every cell with its lane, state and dates", () => {
     const { container } = render(<WeaknessTimeline {...timelineFixtures} />);
     expect(cells(container, "rook-endgames")[2]).toHaveAccessibleName(
-      "Rook endgames, Active, 5 May 2026 to 1 Jul 2026, state 3 of 6",
+      "Active, 5 May 2026 to 1 Jul 2026, 3 of 6",
     );
   });
 
@@ -270,5 +271,72 @@ describe("WeaknessTimeline keyboard", () => {
     expect(readout).toHaveTextContent("Missed knight forks: Emerging, 1 Aug 2026 to now");
     fireEvent.pointerLeave(last);
     expect(readout).toHaveTextContent("Hover, tap or use the arrow keys");
+  });
+
+  it("is an ARIA grid: one row per lane, a row header, and gridcells that take the keys", () => {
+    render(<WeaknessTimeline {...timelineFixtures} />);
+    const grid = screen.getByRole("grid");
+    const rows = within(grid).getAllByRole("row");
+    expect(rows).toHaveLength(3);
+    const first = rows[0] as HTMLElement;
+    expect(within(first).getByRole("rowheader")).toHaveTextContent("Rook endgames");
+    expect(within(first).getAllByRole("gridcell")).toHaveLength(6);
+    expect(within(grid).queryByRole("img")).toBeNull();
+  });
+
+  it("keeps the roving cursor inside the data when the series change", () => {
+    const { container, rerender } = render(<WeaknessTimeline {...timelineFixtures} />);
+    const rook = cells(container, "rook-endgames");
+    act(() => rook.at(-1)?.focus());
+    rerender(
+      <WeaknessTimeline
+        {...timelineFixtures}
+        series={[
+          {
+            id: "short",
+            label: "Short",
+            segments: [{ state: "active", from: "2026-03-01", to: null }],
+          },
+        ]}
+      />,
+    );
+    const stops = container.querySelectorAll('[data-cell][tabindex="0"]');
+    expect(stops).toHaveLength(1);
+    expect(stops[0]).toBe(cells(container, "short")[0]);
+  });
+});
+
+describe("WeaknessTimeline readout", () => {
+  it("formats short spans for narrow screens", () => {
+    expect(shortSpan({ state: "resolved", from: "2026-08-20", to: "2026-10-05" })).toBe(
+      "20\u00a0Aug\u20135\u00a0Oct\u00a02026",
+    );
+    expect(shortSpan({ state: "active", from: "2025-12-20", to: "2026-01-05" })).toBe(
+      "20\u00a0Dec\u00a02025\u20135\u00a0Jan\u00a02026",
+    );
+    expect(shortSpan({ state: "relapsed", from: "2026-10-05", to: null })).toBe(
+      "since 5\u00a0Oct\u00a02026",
+    );
+  });
+
+  it("wraps instead of truncating, with the short dates below 640px and the long ones above", () => {
+    const { container } = render(<WeaknessTimeline {...timelineFixtures} />);
+    const cell = container.querySelectorAll('[data-lane="rook-endgames"] [data-cell]')[4];
+    fireEvent.pointerEnter(cell as Element);
+    const readout = container.querySelector("[data-readout]") as HTMLElement;
+    for (const el of [readout, ...readout.querySelectorAll("*")]) {
+      expect(el.getAttribute("class") ?? "").not.toMatch(
+        /truncate|line-clamp|text-ellipsis|(^|[\s:])h-\d/,
+      );
+    }
+    const text = readout.querySelector("[data-readout-text]") as HTMLElement;
+    expect(text.className).toContain("min-w-0");
+    expect(text.className).toContain("flex-1");
+    const short = readout.querySelector("[data-readout-short]") as HTMLElement;
+    const long = readout.querySelector("[data-readout-long]") as HTMLElement;
+    expect(short.textContent).toBe("Resolved, 20\u00a0Aug\u20135\u00a0Oct\u00a02026");
+    expect(short.className).toContain("@min-[640px]:hidden");
+    expect(long.textContent).toBe("Resolved, 20\u00a0Aug\u00a02026 to 5\u00a0Oct\u00a02026");
+    expect(long.className).toContain("@max-[640px]:hidden");
   });
 });
