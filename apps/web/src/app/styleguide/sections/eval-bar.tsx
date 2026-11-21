@@ -61,6 +61,7 @@ export function EvalBarSection() {
                   color={move.color}
                   san={move.san}
                   judgement={move.judgement}
+                  side={move.color === game.playerColor ? "player" : "opponent"}
                   score={scoreOf(ply)}
                 />
               </p>
