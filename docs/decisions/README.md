@@ -32,3 +32,4 @@ One file per decision: context, decision, alternatives, consequences. New decisi
 - [0028. BullMQ job ids and analysis persistence](0028-bullmq-job-ids-and-analysis-persistence.md)
 - [0029. State in Postgres, queue as delivery; reconciler instead of an outbox](0029-state-in-postgres-reconciler-not-outbox.md)
 - [0030. Rust for the entire backend](0030-rust-backend.md)
+- [0031 addendum. npm enforcement of the 7-day age and exact-pin rule](0031-addendum-npm-enforcement.md)
