@@ -295,6 +295,9 @@ export const coachMessages = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   },
   (table) => [
+    index("coach_messages_pending_idx")
+      .using("btree", table.createdAt.asc().nullsLast())
+      .where(sql`(status = 'pending'::chat_status)`),
     foreignKey({
       columns: [table.conversationId],
       foreignColumns: [coachConversations.id],
