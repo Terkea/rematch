@@ -354,6 +354,53 @@ expect(judge({ mate: 3 }, { mate: 2 })).toBeNull();
 - [ ] **Step 4:** Run the tests. Expected: PASS.
 - [ ] **Step 5:** Commit `feat(worker): import and analysis jobs on bullmq`.
 
+### Task 12b: Crash recovery, reconciler, graceful shutdown and user events
+
+Added after the plan was written. The owner requires an async pipeline that detects crashes and picks work back up, and a UI that receives results as they surface (spec §13a, ADR 0026).
+
+**Files:**
+- Modify: `packages/db/src/schema.ts` (+ a generated migration).
+  - `games` gets `analysisStartedAt timestamptz null`, `heartbeatAt timestamptz null`, `analysisAttempts int default 0`.
+  - `linkedAccounts` gets `importCursor jsonb null` (`{ oldestReached: string | null; newestSeenAt: string | null }`).
+  - A new table `importRuns` (`id uuid pk`, `accountId fk`, `status enum('running','done','failed')`, `imported int`, `startedAt`, `heartbeatAt`, `finishedAt null`, `lastError text null`).
+  - A new table `userEvents` (`id bigserial pk`, `accountId uuid`, `type text`, `payload jsonb`, `createdAt`), indexed on `(accountId, id)`.
+- Create: `apps/worker/src/jobs/reconcile.ts`, `apps/worker/src/events/publish.ts`, `apps/worker/src/lifecycle/shutdown.ts`, `apps/worker/src/http/circuit-breaker.ts`, tests `apps/worker/test/recovery/*.test.ts`
+- Modify: `apps/worker/src/jobs/import-account.ts`, `apps/worker/src/jobs/analyse-game.ts`, `apps/worker/src/main.ts`, `apps/worker/src/queue/queues.ts`
+
+**Interfaces:**
+- Consumes: Task 12 handlers, queues and `startWorkers`; Task 7 `PlatformClient` and its typed errors.
+- Produces:
+  - `publishEvent(deps: { db; redis }, accountId: string, type: "import.progress" | "game.analysed" | "job.failed", payload: object): Promise<number>`. It inserts into `userEvents` *after* the caller's commit, then `PUBLISH user-events:<accountId>`, and returns the event id.
+  - `reconcile(deps: { db; queues; now?: () => Date }, opts?: { staleAfterMs?: number }): Promise<{ requeuedPending: number; resetStale: number; resumedImports: number }>`. `staleAfterMs` defaults to 600_000.
+  - `createCircuitBreaker(opts: { failureThreshold: number; cooldownMs: number }): { exec<T>(fn: () => Promise<T>): Promise<T>; state(): "closed" | "open" | "half-open" }`. Defaults: threshold 5, cooldown 60_000. `CircuitOpenError` when open.
+  - `installGracefulShutdown(handles: { workers; pool; db; redis }, opts?: { graceMs?: number }): void`. `graceMs` defaults to 25_000.
+  - Queue `"reconcile"`: a repeatable job every 5 minutes. BullMQ worker options: `lockDuration: 60_000`, `maxStalledCount: 2`.
+
+- [ ] **Step 1: Write failing tests** (real Postgres and Redis in the container):
+  - `kill mid-analysis still completes`:
+    - Start the analyse worker with a fake pool that hangs on position 4.
+    - Force-close the worker (simulating a crash).
+    - Start a fresh worker. After the stalled-job pickup, the game is `done`, `moves` has exactly one row per ply, and the fake pool saw the first positions only once (they came from the cache).
+  - `reconciler requeues lost pending`: insert a `pending` game with no job in Redis; `reconcile` returns `requeuedPending: 1` and the job exists.
+  - `reconciler resets stale analysing`: a game `analysing` with `heartbeatAt` 11 minutes ago becomes `pending` and is re-enqueued. One with a 1-minute-old heartbeat is untouched.
+  - `import resumes from cursor`:
+    - The fake importer throws after 2 of 4 games.
+    - The `importCursor` reflects the 2 that were imported.
+    - A re-run asks the importer for games only beyond the cursor, and ends with 4 rows and no duplicates.
+  - `poison game fails after 3 attempts`: an unparseable PGN that throws a non-variant error gives `failed`, `analysisAttempts: 3`, `analysisError` set, and a `job.failed` event published.
+  - `circuit opens after 5 failures`: 5 failing calls lead to `state() === "open"` and the 6th rejects with `CircuitOpenError` without calling fn. After the cooldown it goes half-open, and one success closes it.
+  - `SIGTERM loses nothing`: during a running analysis, the shutdown handler resolves within `graceMs`. The game is either `done` or back to `pending` (never stuck in `analysing` without a live job), and every engine pid is dead.
+  - `events are ordered and replayable`: 3 events for an account have increasing ids. A subscriber on `user-events:<accountId>` receives all 3. `select ... where id > <first>` returns the last 2.
+- [ ] **Step 2:** Run `docker compose run --rm worker pnpm --filter @ci/worker test recovery`. Expected: FAIL.
+- [ ] **Step 3: Implement.**
+  - The analyse job sets `analysing`, `analysisStartedAt` and an incremented `analysisAttempts`, and updates `heartbeatAt` at least every 15 s while it evaluates (from inside the evaluate loop).
+  - The import job writes `importRuns` and `importCursor` after each batch of 50 games, and calls the platform through a per-platform circuit breaker.
+  - Events are published after commit only.
+  - `main.ts` registers the repeatable reconcile job and installs graceful shutdown.
+  - Write ADR 0026: "State in Postgres, queue as delivery; reconciler instead of an outbox".
+- [ ] **Step 4:** Run the tests. Expected: PASS.
+- [ ] **Step 5:** Commit `feat(worker): crash recovery, reconciler, graceful shutdown and user events`.
+
 ### Task 13: CLI and end-to-end live smoke test
 
 **Files:**

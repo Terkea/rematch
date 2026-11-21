@@ -415,6 +415,85 @@ Claude gets the change, the candidate causes and 2–3 example games from either
 
 Detection reruns incrementally after each sync. If the analysis protocol changes, the series are recomputed from scratch.
 
+## 13a. Async pipeline, crash detection and recovery
+
+The owner requires that "the flow needs to be async and we need to be able to figure out when things crash and be able to pick up things if errors happen for whatever reason".
+
+**Everything is asynchronous.**
+- Web requests never wait on the engine, imports or Claude. They create work and return straight away.
+- Work runs as BullMQ jobs: `import-account`, `analyse-game`, `build-profile`, `generate-report`, `sync-account`, `reconcile`.
+- Progress is pushed to the browser over server-sent events, read from job progress plus DB state. The UI never polls the engine.
+
+**State lives in Postgres; the queue is only a delivery mechanism.**
+- Each unit of work has a durable state row: `games.analysis_status` (`pending → analysing → done | failed | skipped`), `import_runs`, and `report_runs`.
+- Each row records `attempts`, `last_error`, `started_at`, `heartbeat_at` and `finished_at`.
+- If Redis lost every job, the DB alone would be enough to rebuild the queues.
+
+**Idempotent, resumable jobs.**
+- Re-running any job is safe:
+  - games are upserted on `(platform, platformGameId)`;
+  - a game's moves are replaced in one transaction;
+  - evals are cached per position.
+- An analysis that crashes halfway therefore resumes almost for free. Positions already evaluated come from the cache, so only the remainder is sent to the engine.
+- Imports checkpoint a cursor on the account (`import_cursor`: the oldest month or `until` timestamp reached, plus `newest_seen_at`) after each batch, and resume from it.
+
+**Crash detection.**
+1. **Worker crash or kill:** BullMQ's stalled-job detection (lock duration about 60 s, renewed while a job runs) moves the job of a dead worker back to waiting. It's retried up to `maxStalledCount`, then failed.
+2. **Engine crash or hang:** handled inside the pool (restart, retry once, 30 s per-position timeout, §6).
+3. **A job that silently stops making progress:** jobs write `heartbeat_at` during work. The **reconciler** catches stale heartbeats.
+4. **External API outages:** typed errors (`PlatformRateLimitError`, `PlatformTimeoutError`, 5xx). A per-platform **circuit breaker** pauses that platform's import queue after 5 consecutive failures, then probes again with back-off. Analysis carries on unaffected.
+5. **Poison jobs:** after 3 attempts with exponential back-off, a job is marked `failed` with its reason and moved to a dead-letter view. Nothing retries forever. The user sees an honest count, such as "3 games couldn't be analysed".
+
+**The reconciler** is a repeatable job that runs every 5 minutes and is idempotent. Its sweeps:
+- Re-enqueue games that are `pending` with no live job. This covers a lost enqueue, for example a crash between the DB commit and the enqueue.
+- Find games stuck in `analysing` whose `heartbeat_at` is more than 10 minutes old, reset them to `pending` and re-enqueue them.
+- Resume import runs stuck in `running` from their cursor.
+- Report counts and anomalies as metrics.
+
+The queue is always fed *after* the DB commit, and the reconciler covers the gap, so no separate outbox table is needed (ADR 0026).
+
+**Graceful shutdown.** On SIGTERM, workers stop taking new jobs. In-flight work is either finished within 25 s or left for the stalled-job and reconciler path, and engines are closed. Deploys and restarts lose nothing.
+
+**Visibility.**
+- Structured logs (pino) carry a `jobId`, `userId` and `gameId` correlation.
+- Sentry captures every failure along with its job context.
+- A Bull Board admin view shows queue state.
+- The DB and queue reports carry counts by state.
+- Health endpoints check Redis, Postgres, engine pool liveness and queue lag.
+- Alerts fire when the failure rate goes above 5%, the oldest waiting job is older than 15 minutes, or a circuit breaker opens.
+
+**Non-blocking, progressive UI.** The owner requires that "the UI needs to be able to pick up things as they surface in a non-blocking way".
+- **Event stream.** Workers publish domain events after each DB commit, for example:
+  - `import.progress {imported, total?}`
+  - `game.analysed {gameId, accuracy}`
+  - `profile.updated {area, kpis}`
+  - `weakness.changed {id, state}`
+  - `report.section.ready {section}`
+  - `job.failed {kind, reason}`
+
+  Events are appended to a per-user `user_events` table with an increasing id, and then fanned out through Redis pub/sub.
+- **Delivery.** The browser keeps one **server-sent events** connection per session (`/api/events`). On reconnect it sends `Last-Event-ID`, and the server replays any missed events from `user_events`, so a dropped connection never loses anything. Events are kept for 7 days. Older state comes from normal queries.
+- **Client state.** TanStack Query holds server data. Each event either patches the relevant query cache entry directly or invalidates that one entry, never the whole page.
+- **Rendering.**
+  - The first load uses React Server Components with Suspense streaming, so the page shell and each section render on their own as their data resolves.
+  - A section with no data yet shows a designed placeholder that states progress ("analysing 38 / 200 rapid games"), never a blocking spinner.
+  - Sections fill in with the orchestrated reveal motion from §11 as their events arrive.
+  - Partial results are labelled with their basis (§8c) and refine as more games land.
+- **Never blocking.**
+  - No page waits for the engine, imports or Claude.
+  - Every action (sync, re-analyse, generate report) returns immediately with a toast, and its result arrives through the stream.
+  - The user can navigate, train or read while work continues. A small global activity indicator shows background work, and failures appear as a non-modal notice with a retry button.
+- **Fallback.** If SSE is unavailable (some proxies block it), the client falls back to polling `/api/events?after=<id>` every 5 s, using the same event format.
+
+**Tests (required).**
+- Kill a worker mid-analysis, and the game still finishes, with no duplicate moves.
+- Drop a job from Redis, and the reconciler re-enqueues it.
+- An import that dies mid-stream resumes from its cursor without duplicates.
+- A poison PGN ends up `failed` after 3 attempts.
+- An API that keeps failing trips the circuit breaker.
+- SIGTERM during work loses nothing.
+- An SSE client that disconnects and reconnects with `Last-Event-ID` receives every missed event, exactly once, in order.
+
 ## 13. Robustness
 
 - Idempotent jobs with retries and exponential back-off, a dead-letter queue, and per-user job priority (paid first, then onboarding first).
