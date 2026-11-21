@@ -53,9 +53,11 @@ async fn cleanup_applies_retention(pool: PgPool) {
     insert(&pool, "analyse-game", "dead", 1, Some("2 days")).await;
     // Another kind has its own 1000.
     insert(&pool, "import-account", "done", 10, Some("1 hour")).await;
-    // Live rows are never touched, however old.
-    insert(&pool, "analyse-game", "queued", 2, None).await;
-    insert(&pool, "analyse-game", "running", 1, None).await;
+    // Live rows are never touched, however old: they carry a stale `finished_at` (a recurring
+    // or re-queued job), so only the state filter protects them.
+    insert(&pool, "analyse-game", "queued", 2, Some("30 days")).await;
+    insert(&pool, "analyse-game", "running", 1, Some("30 days")).await;
+    insert(&pool, "analyse-game", "paused", 1, Some("30 days")).await;
 
     let deleted = q.cleanup(&Retention::default()).await.unwrap();
     assert_eq!(deleted, 3 + 5 + 2 + 1);
@@ -65,6 +67,7 @@ async fn cleanup_applies_retention(pool: PgPool) {
     assert_eq!(count(&pool, "import-account", "done").await, 10);
     assert_eq!(count(&pool, "analyse-game", "queued").await, 2);
     assert_eq!(count(&pool, "analyse-game", "running").await, 1);
+    assert_eq!(count(&pool, "analyse-game", "paused").await, 1);
     // The newest 1000 are the ones kept.
     let oldest_kept_age: f64 = sqlx::query_scalar(
         "SELECT extract(epoch FROM now() - min(finished_at))::float8 FROM jobs \

@@ -62,6 +62,11 @@ fn retryable(msg: &str) -> JobError {
     }
 }
 
+/// Tolerance for a delay measured as `run_at - now()` across two transactions: the Docker
+/// Desktop VM clock (Postgres included) steps back about 2.7 s every ~27 s, so a step between the
+/// write and the read can shift the measurement by that much (ADR 0032).
+const CLOCK_STEP: f64 = 5.0;
+
 fn assert_near(actual: f64, expected: f64, tolerance: f64) {
     assert!(
         (actual - expected).abs() <= tolerance,
@@ -211,6 +216,8 @@ fn priority_fifo_is_the_only_strategy() {
 async fn dequeue_orders_by_priority_then_run_at(pool: PgPool) {
     let q = Queue::new(pool.clone());
     let now = OffsetDateTime::now_utc();
+    // Offsets of at least 10 s: a step back of the shared VM clock (about 2.7 s) between this
+    // read and the claim must not make a past `run_at` look delayed.
     let ago = |s: i64| Some(now - time::Duration::seconds(s));
     let mk = |priority: i16, run_at| EnqueueOptions {
         priority,
@@ -218,17 +225,17 @@ async fn dequeue_orders_by_priority_then_run_at(pool: PgPool) {
         ..EnqueueOptions::default()
     };
     let late_low = q
-        .enqueue(KIND, &json!({"n": "late_low"}), mk(100, ago(10)))
+        .enqueue(KIND, &json!({"n": "late_low"}), mk(100, ago(100)))
         .await
         .unwrap()
         .unwrap();
     let early_low = q
-        .enqueue(KIND, &json!({"n": "early_low"}), mk(100, ago(20)))
+        .enqueue(KIND, &json!({"n": "early_low"}), mk(100, ago(200)))
         .await
         .unwrap()
         .unwrap();
     let high = q
-        .enqueue(KIND, &json!({"n": "high"}), mk(10, ago(1)))
+        .enqueue(KIND, &json!({"n": "high"}), mk(10, ago(10)))
         .await
         .unwrap()
         .unwrap();
@@ -240,11 +247,11 @@ async fn dequeue_orders_by_priority_then_run_at(pool: PgPool) {
 
     // A batch claim is returned in the same order.
     let ids: Vec<i64> = vec![
-        q.enqueue(KIND, &json!({}), mk(50, ago(5)))
+        q.enqueue(KIND, &json!({}), mk(50, ago(50)))
             .await
             .unwrap()
             .unwrap(),
-        q.enqueue(KIND, &json!({}), mk(5, ago(1)))
+        q.enqueue(KIND, &json!({}), mk(5, ago(10)))
             .await
             .unwrap()
             .unwrap(),
@@ -468,7 +475,7 @@ async fn retryable_failure_backs_off_exponentially(pool: PgPool) {
     assert!(matches!(out, FailOutcome::Retried { .. }), "{out:?}");
     let r = row(&pool, id).await;
     assert_eq!((r.state.as_str(), r.attempts), ("queued", 1));
-    assert_near(r.run_in, 5.0, 1.0);
+    assert_near(r.run_in, 5.0, CLOCK_STEP);
     assert_eq!(r.error_code.as_deref(), Some("engine"));
     assert_eq!(r.last_error.as_deref(), Some("boom"));
     assert_eq!(r.lease_token, None, "the lease is cleared");
@@ -485,7 +492,7 @@ async fn retryable_failure_backs_off_exponentially(pool: PgPool) {
         .unwrap();
     let r = row(&pool, id).await;
     assert_eq!((r.state.as_str(), r.attempts), ("queued", 2));
-    assert_near(r.run_in, 10.0, 1.0);
+    assert_near(r.run_in, 10.0, CLOCK_STEP);
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
@@ -568,7 +575,7 @@ async fn release_does_not_use_an_attempt(pool: PgPool) {
     assert!(matches!(out, FailOutcome::Released { .. }), "{out:?}");
     let r = row(&pool, id).await;
     assert_eq!((r.state.as_str(), r.attempts), ("queued", 0));
-    assert_near(r.run_in, 30.0, 1.0);
+    assert_near(r.run_in, 30.0, CLOCK_STEP);
     assert_eq!(r.error_code.as_deref(), Some("circuit_open"));
     assert_eq!(r.lease_token, None);
     assert!(!r.finished);
@@ -598,7 +605,7 @@ async fn release_on_the_final_attempt_is_not_dead(pool: PgPool) {
     assert!(matches!(out, FailOutcome::Released { .. }), "{out:?}");
     let r = row(&pool, id).await;
     assert_eq!((r.state.as_str(), r.attempts), ("queued", 2));
-    assert_near(r.run_in, 0.0, 1.0);
+    assert_near(r.run_in, 0.0, CLOCK_STEP);
     // A fresh worker gets the final attempt again and can complete it.
     let again = claim_one(&q).await;
     assert_eq!(again.attempts, 3);
@@ -631,7 +638,7 @@ async fn recurring_job_requeues_on_complete_and_failure(pool: PgPool) {
     assert!(q.complete(&job).await.unwrap());
     let r = row(&pool, id).await;
     assert_eq!((r.state.as_str(), r.attempts), ("queued", 0));
-    assert_near(r.run_in, 300.0, 2.0);
+    assert_near(r.run_in, 300.0, CLOCK_STEP);
     assert!(!r.finished);
 
     sqlx::query("UPDATE jobs SET run_at = now() WHERE id = $1")
@@ -648,7 +655,7 @@ async fn recurring_job_requeues_on_complete_and_failure(pool: PgPool) {
     assert!(matches!(out, FailOutcome::Retried { .. }), "{out:?}");
     let r = row(&pool, id).await;
     assert_eq!((r.state.as_str(), r.attempts), ("queued", 0));
-    assert_near(r.run_in, 300.0, 2.0);
+    assert_near(r.run_in, 300.0, CLOCK_STEP);
     assert_eq!(r.last_error.as_deref(), Some("db down"));
 
     sqlx::query("UPDATE jobs SET run_at = now() WHERE id = $1")
@@ -667,7 +674,7 @@ async fn recurring_job_requeues_on_complete_and_failure(pool: PgPool) {
     ));
     let r = row(&pool, id).await;
     assert_eq!((r.state.as_str(), r.attempts), ("queued", 0));
-    assert_near(r.run_in, 300.0, 2.0);
+    assert_near(r.run_in, 300.0, CLOCK_STEP);
     // Still one row: the recurring job is the same live job.
     let n: i64 = sqlx::query_scalar("SELECT count(*) FROM jobs")
         .fetch_one(&pool)

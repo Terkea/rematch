@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 use std::future::Future;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use futures::future::BoxFuture;
@@ -58,9 +58,13 @@ where
     })
 }
 
+/// `fast_for_tests` with a 6 s lease (renewed every 500 ms): none of these tests wants a lease
+/// to expire, and a runner that must stay alive keeps its jobs through a loaded host and a
+/// ±3 s step of the VM clock (ADR 0032).
 fn cfg(concurrency: usize) -> RunnerConfig {
     RunnerConfig {
         concurrency,
+        lease: Duration::from_secs(6),
         ..RunnerConfig::fast_for_tests()
     }
 }
@@ -235,6 +239,8 @@ async fn notify_wakes_idle_runner_quickly(pool: PgPool) {
         h,
         RunnerConfig {
             idle_poll: Duration::from_secs(5),
+            // No reap ticks either: only the notification can wake the loop.
+            reap_every: Duration::from_secs(60),
             ..cfg(1)
         },
     );
@@ -242,7 +248,11 @@ async fn notify_wakes_idle_runner_quickly(pool: PgPool) {
     // Let the runner finish its first (empty) claim and go idle.
     tokio::time::sleep(Duration::from_millis(300)).await;
     let enqueued = Instant::now();
-    enqueue(&q, KIND, json!({})).await;
+    let past = EnqueueOptions {
+        run_at: Some(time::OffsetDateTime::now_utc() - time::Duration::seconds(10)),
+        ..EnqueueOptions::default()
+    };
+    q.enqueue(KIND, &json!({}), past).await.unwrap().unwrap();
     let started = tokio::time::timeout(Duration::from_secs(5), rx.recv())
         .await
         .expect("job started")
@@ -263,19 +273,23 @@ async fn polls_when_no_notification_arrives(pool: PgPool) {
         h,
         RunnerConfig {
             idle_poll: Duration::from_millis(200),
+            // No reap ticks either: only the poll can find the job.
+            reap_every: Duration::from_secs(60),
             ..cfg(1)
         },
     );
     wait_listening(&pool, 1).await;
     tokio::time::sleep(Duration::from_millis(300)).await;
     // A plain INSERT sends no NOTIFY: only the poll can find it.
-    let id: i64 =
-        sqlx::query_scalar("INSERT INTO jobs (kind, payload) VALUES ($1, '{}') RETURNING id")
-            .bind(KIND)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-    wait_state(&pool, id, "done", Duration::from_secs(5)).await;
+    let id: i64 = sqlx::query_scalar(
+        "INSERT INTO jobs (kind, payload, run_at) \
+             VALUES ($1, '{}', now() - interval '10 seconds') RETURNING id",
+    )
+    .bind(KIND)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    wait_state(&pool, id, "done", Duration::from_secs(10)).await;
     runner.stop();
     runner.wait_idle().await;
 }
@@ -330,20 +344,19 @@ async fn hard_timeout_fails_as_retryable_timeout(pool: PgPool) {
             backoff: Backoff {
                 base: Duration::from_secs(60),
             },
+            // A lease far beyond the deadline and no reaper: only the hard timeout acts.
+            lease: Duration::from_secs(10),
+            renew_every: Duration::from_secs(1),
+            reap_every: Duration::from_secs(60),
             ..cfg(1)
         },
     );
-    let r = wait_state(&pool, id, "queued", Duration::from_secs(3)).await;
-    // `queued` before the claim too: make sure this is the retry.
-    let r = if r.error_code.is_none() {
-        wait_for("timeout retry", Duration::from_secs(3), POLL, || async {
-            let r = row(&pool, id).await;
-            (r.error_code.is_some()).then_some(r)
-        })
-        .await
-    } else {
-        r
-    };
+    // `queued` before the claim too: wait for the retry itself.
+    let r = wait_for("timeout retry", Duration::from_secs(10), POLL, || async {
+        let r = row(&pool, id).await;
+        (r.error_code.is_some()).then_some(r)
+    })
+    .await;
     assert_eq!(r.state, "queued");
     assert_eq!(r.error_code.as_deref(), Some("timeout"));
     assert_eq!(r.attempts, 1);
@@ -440,6 +453,102 @@ async fn force_cancels_handlers_and_releases_leases(pool: PgPool) {
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
+async fn force_releases_retryable_failures_but_keeps_unrecoverable_ones(pool: PgPool) {
+    // Every handler stops promptly, so `force` sees their own writes (not `release_owned`):
+    // a retryable error and a panic after force are releases, an unrecoverable verdict is kept.
+    // The runner gets its own pool so its writes never wait for the shared test-pool permits
+    // and land within the force grace period.
+    let own = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(4)
+        .connect_with((*pool.connect_options()).clone())
+        .await
+        .unwrap();
+    let q = Queue::new(own);
+    let erroring = enqueue(&q, KIND, json!({ "mode": "error" })).await;
+    let panicking = enqueue(&q, KIND, json!({ "mode": "panic" })).await;
+    let verdict = enqueue(&q, KIND, json!({ "mode": "unrecoverable" })).await;
+    let h = handler(KIND, |job, ctx| async move {
+        ctx.cancel.cancelled().await;
+        match job.payload["mode"].as_str().unwrap() {
+            "panic" => panic!("cancelled mid-write"),
+            "unrecoverable" => Err(JobError::Unrecoverable {
+                message: "account gone".into(),
+                code: Some("not_found".into()),
+            }),
+            _ => Err(JobError::Retryable {
+                message: "interrupted".into(),
+                code: Some("engine".into()),
+            }),
+        }
+    });
+    let runner = Runner::spawn(q.clone(), h, cfg(3));
+    wait_for("3 running", Duration::from_secs(10), POLL, || async {
+        (runner.in_flight() == 3).then_some(())
+    })
+    .await;
+    runner.force().await;
+    let stats = runner.stats();
+    assert_eq!((stats.released, stats.failed, stats.retried), (2, 1, 0));
+    let r = row(&pool, verdict).await;
+    assert_eq!(r.state, "failed", "an unrecoverable verdict stays failed");
+    assert_eq!(r.error_code.as_deref(), Some("not_found"));
+    for id in [erroring, panicking] {
+        let r = row(&pool, id).await;
+        assert_eq!((r.state.as_str(), r.attempts), ("queued", 0), "job {id}");
+        assert_eq!(r.error_code.as_deref(), Some("shutdown"));
+    }
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn force_releases_only_this_runners_jobs(pool: PgPool) {
+    // Two runners of one process share a worker_id; forcing one must not hand the other's
+    // running jobs back.
+    let q = Queue::new(pool.clone());
+    let analyse = enqueue(&q, KIND, json!({})).await;
+    let import = enqueue(&q, "import-account", json!({})).await;
+    let hang = |_: Job, _: JobContext| async {
+        std::future::pending::<()>().await;
+        Ok(json!({}))
+    };
+    let shared = RunnerConfig {
+        worker_id: "shared-worker".to_owned(),
+        // The other runner's job must survive the ~2 s force on a busy host.
+        lease: Duration::from_secs(10),
+        renew_every: Duration::from_secs(1),
+        ..cfg(1)
+    };
+    let ra = Runner::spawn(q.clone(), handler(KIND, hang), shared.clone());
+    let rb = Runner::spawn(q.clone(), handler("import-account", hang), shared);
+    assert_eq!(ra.lease_owner(), "shared-worker/analyse-game");
+    assert_eq!(rb.lease_owner(), "shared-worker/import-account");
+    wait_for("both running", Duration::from_secs(10), POLL, || async {
+        (ra.in_flight() == 1 && rb.in_flight() == 1).then_some(())
+    })
+    .await;
+    let before = wait_state(&pool, import, "running", Duration::from_secs(5)).await;
+    assert_eq!(
+        before.lease_owner.as_deref(),
+        Some("shared-worker/import-account")
+    );
+
+    ra.force().await;
+    let r = row(&pool, analyse).await;
+    assert_eq!((r.state.as_str(), r.attempts), ("queued", 0));
+    let after = row(&pool, import).await;
+    assert_eq!(
+        after.state, "running",
+        "the other runner's job is untouched"
+    );
+    assert_eq!(after.lease_token, before.lease_token);
+    assert_eq!(after.lease_owner, before.lease_owner);
+    assert_eq!(rb.in_flight(), 1);
+
+    rb.force().await;
+    let r = row(&pool, import).await;
+    assert_eq!((r.state.as_str(), r.attempts), ("queued", 0));
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
 async fn shutdown_drains_within_grace_or_releases(pool: PgPool) {
     let q = Queue::new(pool.clone());
     let quick = enqueue(&q, KIND, json!({ "ms": 100 })).await;
@@ -449,7 +558,16 @@ async fn shutdown_drains_within_grace_or_releases(pool: PgPool) {
         tokio::time::sleep(Duration::from_millis(ms)).await;
         Ok(json!({}))
     });
-    let runner = Runner::spawn(q.clone(), h, cfg(2));
+    let runner = Runner::spawn(
+        q.clone(),
+        h,
+        RunnerConfig {
+            // The slow job must still hold its lease when the grace period ends.
+            lease: Duration::from_secs(10),
+            renew_every: Duration::from_secs(1),
+            ..cfg(2)
+        },
+    );
     wait_for("2 running", Duration::from_secs(10), POLL, || async {
         (runner.in_flight() == 2).then_some(())
     })
@@ -532,6 +650,36 @@ async fn final_failure_is_dead_and_calls_on_dead_once(pool: PgPool) {
     );
     let stats = runner.stats();
     assert_eq!((stats.retried, stats.dead), (1, 1));
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn on_dead_reason_is_truncated_to_2000_characters(pool: PgPool) {
+    let q = Queue::new(pool.clone());
+    let id = q
+        .enqueue(
+            KIND,
+            &json!({}),
+            EnqueueOptions {
+                max_attempts: 1,
+                ..EnqueueOptions::default()
+            },
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    let h = handler(KIND, |_, _| async {
+        Err(JobError::Retryable {
+            message: "é".repeat(3000),
+            code: None,
+        })
+    });
+    let runner = Runner::spawn(q.clone(), h.clone(), cfg(1));
+    wait_state(&pool, id, "dead", Duration::from_secs(10)).await;
+    runner.stop();
+    runner.wait_idle().await;
+    let dead = h.dead.lock().unwrap().clone();
+    assert_eq!(dead.len(), 1);
+    assert_eq!(dead[0].1.chars().count(), 2000);
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
@@ -636,14 +784,22 @@ impl tracing::Subscriber for Capture {
     fn exit(&self, _: &tracing::span::Id) {}
 }
 
+/// The process-wide capturing subscriber, installed once. A thread-scoped dispatcher misses
+/// events when other tests in this binary register the same callsites concurrently, so it is
+/// global; tests filter on a kind only they use.
+fn capture() -> &'static Capture {
+    static CAPTURE: OnceLock<Capture> = OnceLock::new();
+    CAPTURE.get_or_init(|| {
+        let c = Capture::default();
+        tracing::subscriber::set_global_default(c.clone()).expect("no other global subscriber");
+        c
+    })
+}
+
 #[sqlx::test(migrator = "db::MIGRATOR")]
 async fn failed_jobs_are_logged_with_id_kind_and_attempt(pool: PgPool) {
-    // A thread-scoped dispatcher misses events when other tests in this binary register the
-    // same callsites concurrently, so this test installs a global one and filters on a kind
-    // that only it uses.
     const LOGGED: &str = "logged-kind";
-    let capture = Capture::default();
-    tracing::subscriber::set_global_default(capture.clone()).expect("only this test sets it");
+    let capture = capture();
     let q = Queue::new(pool.clone());
     let id = q
         .enqueue(

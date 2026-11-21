@@ -6,9 +6,15 @@
 //! - **Claiming:** `dequeue` is never raced against anything in `select!` (it is not
 //!   cancel-safe: dropping it after COMMIT would orphan the claimed jobs until their lease
 //!   expires). The stop flag is checked between calls instead.
-//! - **Leases:** every job renews its lease every `renew_every`. When a renew says the lease is
-//!   lost (the reaper re-queued the job and someone else may hold it), the job's
-//!   [`JobContext::cancel`] fires and its result is dropped.
+//! - **Leases:** jobs are leased under the runner's own owner, `<worker_id>/<kind>`, so two
+//!   runners of one process never release each other's jobs. Every job renews its lease every
+//!   `renew_every`; the renew runs beside the handler (which keeps being polled) and is bounded
+//!   by the local lease deadline. The local deadline starts before the claim, so it is never
+//!   later than the database's `lease_until`. When a renew says the lease is lost (the reaper
+//!   re-queued the job and someone else may hold it), or when no renew has succeeded by
+//!   `lease_until - CANCEL_GRACE`, the job's [`JobContext::cancel`] fires, the handler gets
+//!   [`CANCEL_GRACE`], and its result is dropped: a cancelled handler never outlives its lease
+//!   by more than that.
 //! - **Hard deadline:** after `hard_timeout` the token is cancelled, the handler gets 1 s to
 //!   wind down, and the attempt fails as `Retryable { code: "timeout" }`.
 //! - **Stalls:** every `reap_every` the loop runs [`Queue::recover_expired`] for its kind; a job
@@ -16,7 +22,8 @@
 //! - **Shutdown:** [`RunnerHandle::stop`] stops claiming and lets in-flight jobs finish
 //!   ([`RunnerHandle::wait_idle`]); [`RunnerHandle::force`] cancels every handler, waits up to
 //!   1 s, then hands the remaining jobs back with [`Queue::release_owned`] without using an
-//!   attempt. A handler error after `force` is recorded as a release too. Both are re-entrant;
+//!   attempt. A retryable failure after `force` (handler error, hard timeout or panic) is
+//!   recorded as a release too; an `Unrecoverable` one stays failed. Both are re-entrant;
 //!   [`RunnerHandle::shutdown`] combines them with a grace period.
 
 use std::any::Any;
@@ -36,11 +43,12 @@ use tokio::time::{Instant, MissedTickBehavior};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
-use crate::queue::{Backoff, FailOutcome, JOBS_CHANNEL, Queue};
+use crate::queue::{Backoff, FailOutcome, JOBS_CHANNEL, MAX_ERROR_CHARS, Queue, QueueError};
 use crate::reaper::STALLED_REASON;
 use crate::types::{Job, JobError};
 
-/// How long a cancelled handler (hard timeout, lost lease) gets before it is dropped.
+/// How long a cancelled handler (hard timeout, lost lease) gets before it is dropped. A job's
+/// token is cancelled this long before its local lease deadline (at most half the lease).
 pub const CANCEL_GRACE: Duration = Duration::from_secs(1);
 /// How long `force` waits for cancelled handlers before releasing their jobs.
 pub const FORCE_GRACE: Duration = Duration::from_secs(1);
@@ -170,6 +178,8 @@ struct Shared {
     queue: Queue,
     handler: Arc<dyn Handler>,
     cfg: RunnerConfig,
+    /// The `lease_owner` of this runner's jobs: `<worker_id>/<kind>`.
+    owner: String,
     /// Stop claiming.
     stop: CancellationToken,
     /// Cancel every handler (parent of each job's token).
@@ -205,19 +215,22 @@ impl Runner {
     /// Starts a runner for `handler.kind()` on the current tokio runtime.
     ///
     /// # Panics
-    /// When `concurrency` is 0 or `renew_every` is not shorter than `lease`.
+    /// When `concurrency` is 0, or when `renew_every` does not fit before the local lease
+    /// deadline (`lease - min(CANCEL_GRACE, lease / 2)`).
     pub fn spawn(queue: Queue, handler: Arc<dyn Handler>, cfg: RunnerConfig) -> RunnerHandle {
         assert!(cfg.concurrency > 0, "runner concurrency must be at least 1");
         assert!(
-            cfg.renew_every < cfg.lease,
-            "renew_every ({:?}) must be shorter than the lease ({:?})",
+            cfg.renew_every + CANCEL_GRACE.min(cfg.lease / 2) < cfg.lease,
+            "renew_every ({:?}) must be shorter than the lease ({:?}) minus the cancel grace",
             cfg.renew_every,
             cfg.lease
         );
+        let owner = format!("{}/{}", cfg.worker_id, handler.kind());
         let shared = Arc::new(Shared {
             queue,
             handler,
             cfg,
+            owner,
             stop: CancellationToken::new(),
             force: CancellationToken::new(),
             finished: CancellationToken::new(),
@@ -259,7 +272,8 @@ impl RunnerHandle {
 
     /// Stops claiming, cancels every handler, waits up to [`FORCE_GRACE`] for them, then aborts
     /// the rest and hands this runner's running jobs back to the queue without using an attempt
-    /// ([`Queue::release_owned`]). Re-entrant.
+    /// ([`Queue::release_owned`] for its own `<worker_id>/<kind>` owner only, so other runners
+    /// sharing the `worker_id` are untouched). Re-entrant.
     pub async fn force(&self) {
         let s = &self.shared;
         self.stop();
@@ -269,16 +283,16 @@ impl RunnerHandle {
         self.main.abort();
         let _ = tokio::time::timeout(FORCE_GRACE, s.finished.cancelled()).await;
         let _ = tokio::time::timeout(FORCE_GRACE, rx.wait_for(|n| *n == 0)).await;
-        match s.queue.release_owned(&s.cfg.worker_id).await {
+        match s.queue.release_owned(&s.owner).await {
             Ok(0) => {}
             Ok(n) => tracing::warn!(
-                worker_id = %s.cfg.worker_id,
+                lease_owner = %s.owner,
                 kind = s.handler.kind(),
                 released = n,
                 "force-released in-flight jobs without using an attempt"
             ),
             Err(e) => tracing::error!(
-                worker_id = %s.cfg.worker_id,
+                lease_owner = %s.owner,
                 kind = s.handler.kind(),
                 error = %e,
                 "releasing in-flight jobs failed; their leases will expire"
@@ -319,6 +333,11 @@ impl RunnerHandle {
         &self.shared.cfg.worker_id
     }
 
+    /// The `lease_owner` this runner claims under: `<worker_id>/<kind>`.
+    pub fn lease_owner(&self) -> &str {
+        &self.shared.owner
+    }
+
     pub fn stats(&self) -> RunnerStats {
         let c = &self.shared.counters;
         let get = |a: &AtomicU64| a.load(Ordering::Relaxed);
@@ -352,17 +371,20 @@ async fn run(s: Arc<Shared>) {
         }
         let free = s.cfg.concurrency.saturating_sub(*s.in_flight.borrow());
         if free > 0 {
+            // Measured before the claim, so the local lease deadline is never later than the
+            // database's `lease_until = now() + lease`.
+            let claimed_at = Instant::now();
             // Not raced against anything: see the module docs.
             match s
                 .queue
-                .dequeue(&[kind], &s.cfg.worker_id, free as i64, s.cfg.lease)
+                .dequeue(&[kind], &s.owner, free as i64, s.cfg.lease)
                 .await
             {
                 Ok(jobs) => {
                     for job in jobs {
                         s.in_flight.send_modify(|n| *n += 1);
                         let guard = InFlight(s.clone());
-                        tasks.spawn(run_job(s.clone(), job, guard));
+                        tasks.spawn(run_job(s.clone(), job, claimed_at, guard));
                     }
                 }
                 Err(e) => tracing::error!(kind, error = %e, "claiming jobs failed"),
@@ -380,7 +402,7 @@ async fn run(s: Arc<Shared>) {
     while let Some(res) = tasks.join_next().await {
         log_join(kind, res);
     }
-    tracing::info!(worker_id = %s.cfg.worker_id, kind, "runner stopped");
+    tracing::info!(lease_owner = %s.owner, kind, "runner stopped");
 }
 
 fn log_join(kind: &str, res: Result<(), JoinError>) {
@@ -458,12 +480,20 @@ async fn reap_expired(s: &Arc<Shared>, tasks: &mut JoinSet<()>) {
 
 enum Ended {
     Finished(std::thread::Result<Result<Value, JobError>>),
-    LeaseLost,
+    /// The lease is gone (`why`): the result must be dropped.
+    LeaseLost(&'static str),
     TimedOut,
 }
 
-/// Runs one claimed job: renews its lease, enforces the hard deadline, then records the result.
-async fn run_job(s: Arc<Shared>, job: Job, _guard: InFlight) {
+/// One renew: when it started, and its outcome unless it ran into the local lease deadline.
+type RenewOut = (
+    Instant,
+    Result<Result<bool, QueueError>, tokio::time::error::Elapsed>,
+);
+
+/// Runs one claimed job: renews its lease beside the handler, enforces the hard deadline and the
+/// local lease deadline, then records the result.
+async fn run_job(s: Arc<Shared>, job: Job, claimed_at: Instant, _guard: InFlight) {
     let token = s.force.child_token();
     let handler = s.handler.clone();
     let started = Instant::now();
@@ -477,46 +507,69 @@ async fn run_job(s: Arc<Shared>, job: Job, _guard: InFlight) {
     tokio::pin!(fut);
 
     let lease = s.cfg.lease;
-    let mut renew = tokio::time::interval_at(started + s.cfg.renew_every, s.cfg.renew_every);
+    let grace = CANCEL_GRACE.min(lease / 2);
+    let mut renew = tokio::time::interval_at(claimed_at + s.cfg.renew_every, s.cfg.renew_every);
     renew.set_missed_tick_behavior(MissedTickBehavior::Delay);
-    let mut lease_until = started + lease;
+    // The local view of the lease; never later than the database's.
+    let mut lease_until = claimed_at + lease;
     let deadline = s.cfg.hard_timeout.map(|d| started + d);
+    // At most one renew in flight, polled beside the handler and the deadlines.
+    let mut renewing: Option<BoxFuture<'_, RenewOut>> = None;
+    let (queue, job_ref) = (&s.queue, &job);
     let ended = loop {
         tokio::select! {
             biased;
             res = &mut fut => break Ended::Finished(res),
             _ = sleep_until_opt(deadline), if deadline.is_some() => break Ended::TimedOut,
-            _ = renew.tick() => {
-                let at = Instant::now();
-                match s.queue.renew(&job, lease).await {
-                    Ok(true) => lease_until = at + lease,
-                    Ok(false) => break Ended::LeaseLost,
-                    Err(e) => {
-                        tracing::warn!(job_id = job.id, kind = %job.kind, error = %e, "lease renewal failed");
-                        if Instant::now() >= lease_until {
-                            break Ended::LeaseLost;
-                        }
+            _ = tokio::time::sleep_until(lease_until - grace) => {
+                break Ended::LeaseLost("not renewed before the lease deadline");
+            }
+            (at, out) = async { renewing.as_mut().expect("guarded").await },
+                if renewing.is_some() =>
+            {
+                renewing = None;
+                match out {
+                    Ok(Ok(true)) => lease_until = at + lease,
+                    Ok(Ok(false)) => break Ended::LeaseLost("another owner holds the lease"),
+                    Ok(Err(e)) => tracing::warn!(
+                        job_id = job.id,
+                        kind = %job.kind,
+                        error = %e,
+                        "lease renewal failed"
+                    ),
+                    Err(_) => {
+                        break Ended::LeaseLost("renewal did not finish before the lease deadline");
                     }
                 }
             }
+            _ = renew.tick(), if renewing.is_none() => {
+                let until = lease_until;
+                renewing = Some(Box::pin(async move {
+                    let at = Instant::now();
+                    (at, tokio::time::timeout_at(until, queue.renew(job_ref, lease)).await)
+                }));
+            }
         }
     };
+    // An unfinished renew is dropped (its transaction rolls back); nothing more is renewed.
+    drop(renewing);
 
     match ended {
-        Ended::LeaseLost => {
+        Ended::LeaseLost(why) => {
             token.cancel();
-            let _ = tokio::time::timeout(CANCEL_GRACE, &mut fut).await;
             bump(&s.counters.lease_lost);
             tracing::warn!(
                 job_id = job.id,
                 kind = %job.kind,
                 attempt = job.attempts,
+                reason = why,
                 "lease lost; handler cancelled and its result dropped"
             );
+            let _ = tokio::time::timeout(grace, &mut fut).await;
         }
         Ended::TimedOut => {
             token.cancel();
-            let _ = tokio::time::timeout(CANCEL_GRACE, &mut fut).await;
+            let _ = tokio::time::timeout(grace, &mut fut).await;
             bump(&s.counters.timed_out);
             let limit = s.cfg.hard_timeout.unwrap_or_default();
             let err = JobError::Retryable {
@@ -553,18 +606,7 @@ async fn run_job(s: Arc<Shared>, job: Job, _guard: InFlight) {
                 "completing the job failed; if it did not commit, the reaper recovers it"
             ),
         },
-        Ended::Finished(Ok(Err(err))) => {
-            // A handler that fails because it was force-cancelled must not use an attempt.
-            let err = if s.force.is_cancelled() && !matches!(err, JobError::Release { .. }) {
-                JobError::Release {
-                    delay: Duration::ZERO,
-                    reason: "shutdown".to_owned(),
-                }
-            } else {
-                err
-            };
-            record_failure(&s, &job, err).await;
-        }
+        Ended::Finished(Ok(Err(err))) => record_failure(&s, &job, err).await,
         Ended::Finished(Err(panic)) => {
             let err = JobError::Retryable {
                 message: format!("handler panicked: {}", panic_message(panic.as_ref())),
@@ -592,8 +634,25 @@ fn panic_message(p: &(dyn Any + Send)) -> String {
     }
 }
 
+fn truncate_chars(s: &str, max: usize) -> String {
+    match s.char_indices().nth(max) {
+        Some((at, _)) => s[..at].to_owned(),
+        None => s.to_owned(),
+    }
+}
+
 /// `Queue::fail`, then logs (job id, kind and attempt), meters and calls `on_dead` when dead.
+/// After `force`, a retryable failure (handler error, hard timeout or panic) is most likely the
+/// cancellation itself, so it is recorded as a release that uses no attempt; an `Unrecoverable`
+/// one is the handler's own verdict and stays failed.
 async fn record_failure(s: &Arc<Shared>, job: &Job, err: JobError) {
+    let err = match err {
+        JobError::Retryable { .. } if s.force.is_cancelled() => JobError::Release {
+            delay: Duration::ZERO,
+            reason: "shutdown".to_owned(),
+        },
+        other => other,
+    };
     let code = match &err {
         JobError::Retryable { code, .. } | JobError::Unrecoverable { code, .. } => {
             code.clone().unwrap_or_default()
@@ -665,6 +724,8 @@ async fn record_failure(s: &Arc<Shared>, job: &Job, err: JobError) {
         "job failed"
     );
     if outcome == FailOutcome::Dead {
-        s.handler.on_dead(job, &err.to_string()).await;
+        // The same bound as the stored `last_error` (TS parity).
+        let reason = truncate_chars(&err.to_string(), MAX_ERROR_CHARS);
+        s.handler.on_dead(job, &reason).await;
     }
 }
