@@ -51,10 +51,8 @@ export async function claimProfileRequest(
       Number(budget?.tokens ?? USER_BUCKET_CAPACITY) + elapsed / USER_BUCKET_REFILL_MS,
     );
     if (tokens < 1) {
-      // Leave no placeholder behind for a name that was never requested.
-      await tx.execute(sql`
-        delete from chesscom_profile_requests
-        where username = ${username} and requested_at = 'epoch'::timestamptz`);
+      // The placeholder row stays (pruned later): deleting it here would let a request waiting on
+      // its lock find no row and lose its 60 s window.
       const retryAt = new Date(now.getTime() + Math.ceil((1 - tokens) * USER_BUCKET_REFILL_MS));
       return { ok: false, reason: "user_budget", retryAt };
     }
@@ -62,11 +60,18 @@ export async function claimProfileRequest(
     await tx.execute(sql`
       update chesscom_request_budgets set tokens = ${tokens - 1}, refilled_at = ${ts(now)}
       where user_id = ${userId}`);
+    // An upsert, not an update: the row may have been pruned while this request waited for it,
+    // and the window must be recorded either way.
     await tx.execute(sql`
-      update chesscom_profile_requests set requested_at = ${ts(now)} where username = ${username}`);
+      insert into chesscom_profile_requests (username, requested_at) values (${username}, ${ts(now)})
+      on conflict (username) do update set requested_at = excluded.requested_at`);
+    // Prune only rows nobody holds: a row another request has locked is skipped (it is about to be
+    // rewritten), which also avoids a deadlock between two pruning requests.
     await tx.execute(sql`
-      delete from chesscom_profile_requests
-      where requested_at < ${ts(new Date(now.getTime() - PRUNE_AFTER_MS))}`);
+      delete from chesscom_profile_requests where username in (
+        select username from chesscom_profile_requests
+        where requested_at < ${ts(new Date(now.getTime() - PRUNE_AFTER_MS))}
+        for update skip locked)`);
     return { ok: true };
   });
 }
