@@ -35,6 +35,11 @@ x-web-environment: &web-environment
 services:
   postgres:
     image: postgres:17
+    # ADR 0044: an init process as PID 1, so the postmaster is not the container's reaper. Without
+    # it, an orphan such as a timed-out healthcheck's pg_isready is reparented to the postmaster,
+    # and its exit code 2 reads as a crashed backend: every connection is killed and crash recovery
+    # runs (tests see EOF, "connection reset", "in recovery mode").
+    init: true
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -43,7 +48,10 @@ services:
       - pgdata:/var/lib/postgresql/data
       - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d chess"]
+      # Exec form, so there is no shell whose kill on timeout would orphan pg_isready. TCP
+      # (-h 127.0.0.1), so it fails against the image's unix-socket-only init server and only passes
+      # once the final server is up.
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "postgres", "-d", "chess"]
       interval: 3s
       timeout: 3s
       retries: 20
