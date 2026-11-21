@@ -56,13 +56,13 @@ describe("fake client", () => {
       batches: {
         b1: {
           status: "ended",
-          results: [{ customId: "x", outcome: "expired", result: null, errorType: null }],
+          results: [{ customId: "x", outcome: "expired" }],
         },
       },
     });
     expect(await ai.batch.status("b1")).toBe("ended");
     const out = [];
-    for await (const r of ai.batch.results("b1")) out.push(r);
+    for await (const r of ai.batch.results("b1", () => undefined)) out.push(r);
     expect(out).toHaveLength(1);
     expect(ai.calls.some((c) => c.kind === "batch")).toBe(true);
   });

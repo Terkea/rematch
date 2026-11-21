@@ -22,7 +22,8 @@ export function withBreaker(ai: AiClient, breaker: Breaker): AiClient {
         try {
           return await fn();
         } catch (e) {
-          if (e instanceof AiUnavailableError) throw e;
+          // Rate limits are not outages: only other unavailable reasons trip the breaker.
+          if (e instanceof AiUnavailableError && e.reason !== "rate_limited") throw e;
           carried = { error: e };
           return undefined as T;
         }
@@ -41,7 +42,7 @@ export function withBreaker(ai: AiClient, breaker: Breaker): AiClient {
     batch: {
       submit: (items) => guard(() => ai.batch.submit(items)),
       status: (id) => guard(() => ai.batch.status(id)),
-      results: (id) => ai.batch.results(id),
+      results: (id, resolveSchema) => ai.batch.results(id, resolveSchema),
     },
   };
 }

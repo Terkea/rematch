@@ -1,11 +1,16 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import type { z } from "zod";
-import { AiUnavailableError, classifyAiError } from "./errors.js";
+import {
+  AiUnavailableError,
+  classifyAiError,
+  classifyBatchErrorType,
+  classifyStreamError,
+} from "./errors.js";
+import { parseModelOutput } from "./parse.js";
 import type {
   AiClient,
   AiUsage,
-  BatchOutcome,
   BatchResultItem,
   ChatTurnRequest,
   StructuredRequest,
@@ -28,23 +33,12 @@ function toUsage(u: Anthropic.Usage): AiUsage {
   };
 }
 
-function safeParse(schema: z.ZodType, text: string): unknown | null {
-  try {
-    const r = schema.safeParse(JSON.parse(text));
-    return r.success ? r.data : null;
-  } catch {
-    return null;
-  }
-}
-
-function firstText(content: Anthropic.ContentBlock[]): string | null {
-  for (const b of content) if (b.type === "text") return b.text;
-  return null;
-}
-
-function toResult(message: Anthropic.Message, parsed: unknown | null): StructuredResult {
+function toResult(message: Anthropic.Message, schema: z.ZodType | undefined): StructuredResult {
+  const o = parseModelOutput(message.content, message.stop_reason, schema);
   return {
-    parsed,
+    parsed: o.parsed,
+    parseError: o.parseError,
+    parseIssues: o.parseIssues,
     content: message.content,
     stopReason: message.stop_reason,
     usage: toUsage(message.usage),
@@ -85,9 +79,7 @@ export function createAnthropicAiClient(opts: AnthropicAiClientOptions): AiClien
         // `messages.parse` throws on refusals and truncated JSON, losing the message (and its usage).
         // So send the same zodOutputFormat via `create` and parse ourselves; null = failed attempt.
         const message = await client.messages.create(structuredParams(req));
-        const text = firstText(message.content);
-        const usable = message.stop_reason !== "refusal" && message.stop_reason !== "max_tokens";
-        return toResult(message, usable && text !== null ? safeParse(req.schema, text) : null);
+        return toResult(message, req.schema);
       }),
 
     streamTurn: (req: ChatTurnRequest, onTextDelta) =>
@@ -106,50 +98,57 @@ export function createAnthropicAiClient(opts: AnthropicAiClientOptions): AiClien
         return { message, usage: toUsage(message.usage) };
       }),
 
-    batch: (() => {
-      const registry = new Map<string, Map<string, z.ZodType>>();
-      return {
-        submit: (items: { customId: string; req: StructuredRequest }[]) =>
-          wrap(async () => {
-            const batch = await client.messages.batches.create({
-              requests: items.map((i) => ({
-                custom_id: i.customId,
-                params: structuredParams(i.req),
-              })),
-            });
-            registry.set(batch.id, new Map(items.map((i) => [i.customId, i.req.schema])));
-            return batch.id;
-          }),
-        status: (id: string) =>
-          wrap(async () => (await client.messages.batches.retrieve(id)).processing_status),
-        results: (id: string): AsyncIterable<BatchResultItem> => ({
-          async *[Symbol.asyncIterator]() {
-            const schemas = registry.get(id);
-            const stream = await wrap(() => client.messages.batches.results(id));
-            for await (const line of stream) {
-              const r = line.result;
-              const outcome: BatchOutcome = r.type;
-              if (r.type !== "succeeded") {
-                const errorType = r.type === "errored" ? (r.error?.error?.type ?? "unknown") : null;
-                yield { customId: line.custom_id, outcome, result: null, errorType };
-                continue;
-              }
-              const schema = schemas?.get(line.custom_id);
-              const text = firstText(r.message.content);
-              const parsed =
-                schema && text !== null && r.message.stop_reason !== "refusal"
-                  ? safeParse(schema, text)
-                  : null;
+    batch: {
+      submit: (items) =>
+        wrap(async () => {
+          const batch = await client.messages.batches.create({
+            requests: items.map((i) => ({
+              custom_id: i.customId,
+              params: structuredParams(i.req),
+            })),
+          });
+          return batch.id;
+        }),
+      status: (id) =>
+        wrap(async () => (await client.messages.batches.retrieve(id)).processing_status),
+      results: (id, resolveSchema): AsyncIterable<BatchResultItem> => ({
+        async *[Symbol.asyncIterator]() {
+          const stream = await wrap(() => client.messages.batches.results(id));
+          const iterator = stream[Symbol.asyncIterator]();
+          for (;;) {
+            let next: IteratorResult<Anthropic.Messages.MessageBatchIndividualResponse>;
+            try {
+              next = await iterator.next();
+            } catch (e) {
+              throw classifyStreamError(e);
+            }
+            if (next.done) return;
+            const line = next.value;
+            const r = line.result;
+            if (r.type !== "succeeded") {
+              const errorType = r.type === "errored" ? (r.error?.error?.type ?? "unknown") : null;
               yield {
                 customId: line.custom_id,
-                outcome,
-                result: toResult(r.message, parsed),
-                errorType: null,
+                outcome: r.type,
+                result: null,
+                errorType,
+                errorKind: r.type === "errored" ? classifyBatchErrorType(errorType) : null,
+                parseError: null,
               };
+              continue;
             }
-          },
-        }),
-      };
-    })(),
+            const result = toResult(r.message, resolveSchema(line.custom_id));
+            yield {
+              customId: line.custom_id,
+              outcome: "succeeded",
+              result,
+              errorType: null,
+              errorKind: null,
+              parseError: result.parseError,
+            };
+          }
+        },
+      }),
+    },
   };
 }

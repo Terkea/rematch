@@ -188,7 +188,7 @@ describe("anthropic adapter batch", () => {
     expect(cap.body?.requests[0]?.params.output_config.format.type).toBe("json_schema");
     expect(await ai.batch.status(id)).toBe("ended");
     const out = [];
-    for await (const r of ai.batch.results(id)) out.push(r);
+    for await (const r of ai.batch.results(id, () => schema)) out.push(r);
     expect(out.map((o) => [o.customId, o.outcome])).toEqual([
       ["a", "succeeded"],
       ["b", "succeeded"],

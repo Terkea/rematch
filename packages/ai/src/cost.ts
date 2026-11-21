@@ -38,8 +38,16 @@ export const MODEL_PRICING: Record<AiModel, ModelPricing> = {
   },
 };
 
+export class UnknownModelError extends Error {
+  constructor(readonly model: string) {
+    super(`No pricing for model "${model}"`);
+    this.name = "UnknownModelError";
+  }
+}
+
 export function costMicroUsd(model: AiModel, u: AiUsage, opts?: { batch?: boolean }): number {
-  const p = MODEL_PRICING[model];
+  const p = Object.hasOwn(MODEL_PRICING, model) ? MODEL_PRICING[model] : undefined;
+  if (!p) throw new UnknownModelError(model);
   const prompt = u.inputTokens + u.cacheCreationTokens + u.cacheReadTokens;
   const r: Rates = p.longPrompt && prompt > p.longPrompt.above ? p.longPrompt : p;
   const raw =

@@ -18,8 +18,29 @@ export interface StructuredRequest {
   schema: z.ZodType;
 }
 
+export type ParseError =
+  | "no_text"
+  | "invalid_json"
+  | "schema_mismatch"
+  | "refusal"
+  | "truncated"
+  | "no_schema";
+
+/** Zod issue location and code only; never model content. */
+export interface ParseIssue {
+  path: string;
+  code: string;
+}
+
+export type AiErrorKind = "retryable" | "fatal" | "unknown";
+
+export type SchemaResolver = (customId: string) => z.ZodType | undefined;
+
 export interface StructuredResult {
   parsed: unknown | null;
+  /** Why `parsed` is null; null when parsing succeeded. */
+  parseError: ParseError | null;
+  parseIssues: ParseIssue[] | null;
   content: Anthropic.ContentBlock[];
   stopReason: string | null;
   usage: AiUsage;
@@ -43,6 +64,10 @@ export interface BatchResultItem {
   outcome: BatchOutcome;
   result: StructuredResult | null;
   errorType: string | null;
+  /** Taxonomy of `errorType` for errored items; null otherwise. */
+  errorKind: AiErrorKind | null;
+  /** Mirrors `result.parseError` for succeeded items. */
+  parseError: ParseError | null;
 }
 
 export interface AiClient {
@@ -54,6 +79,6 @@ export interface AiClient {
   batch: {
     submit(items: { customId: string; req: StructuredRequest }[]): Promise<string>;
     status(id: string): Promise<"in_progress" | "canceling" | "ended">;
-    results(id: string): AsyncIterable<BatchResultItem>;
+    results(id: string, resolveSchema: SchemaResolver): AsyncIterable<BatchResultItem>;
   };
 }
