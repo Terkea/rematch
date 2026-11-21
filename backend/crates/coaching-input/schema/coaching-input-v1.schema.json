@@ -1,0 +1,1160 @@
+{
+  "$defs": {
+    "Alternative": {
+      "additionalProperties": false,
+      "description": "`OpeningVerdict.alternatives[]`.",
+      "properties": {
+        "bandScore": {
+          "description": "Band-average score with this alternative, 0..1.",
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "games": {
+          "maximum": 100000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "movesSan": {
+          "items": {
+            "maxLength": 12,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 40,
+          "type": "array"
+        },
+        "name": {
+          "maxLength": 120,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "bandScore",
+        "games",
+        "movesSan",
+        "name"
+      ],
+      "type": "object"
+    },
+    "AreaId": {
+      "description": "One of the seven coaching areas (zod `AreaId`).",
+      "enum": [
+        "openings",
+        "middlegame",
+        "endgame",
+        "tactics",
+        "calculation",
+        "time",
+        "mindset"
+      ],
+      "type": "string"
+    },
+    "AreaScore": {
+      "additionalProperties": false,
+      "properties": {
+        "area": {
+          "$ref": "#/$defs/AreaId"
+        },
+        "n": {
+          "description": "Observations behind the score.",
+          "maximum": 100000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "needMore": {
+          "description": "More observations needed to reach sufficiency; null when sufficient.",
+          "maximum": 100000000,
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "score": {
+          "description": "0..100 (higher = stronger); null when there is not enough data.",
+          "maximum": 100,
+          "minimum": 0,
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "sufficient": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "area",
+        "n",
+        "needMore",
+        "score",
+        "sufficient"
+      ],
+      "type": "object"
+    },
+    "BandId": {
+      "description": "Rating band on the Lichess-equivalent scale (zod `BandId`).",
+      "enum": [
+        "B0",
+        "B1",
+        "B2",
+        "B3",
+        "B4",
+        "B5"
+      ],
+      "type": "string"
+    },
+    "Basis": {
+      "additionalProperties": false,
+      "properties": {
+        "analysedGames": {
+          "description": "Games with engine analysis, the evidence window size.",
+          "maximum": 100000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "backfillComplete": {
+          "description": "Whether the full history import finished.",
+          "type": "boolean"
+        },
+        "importedGames": {
+          "description": "Games imported from the platform (>= `analysedGames`).",
+          "maximum": 100000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "windowEnd": {
+          "format": "date",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+          "type": "string"
+        },
+        "windowStart": {
+          "format": "date",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "analysedGames",
+        "backfillComplete",
+        "importedGames",
+        "windowEnd",
+        "windowStart"
+      ],
+      "type": "object"
+    },
+    "CandidateCause": {
+      "additionalProperties": false,
+      "description": "A correlated possible cause of a change, never proven.",
+      "properties": {
+        "after": {
+          "$ref": "#/$defs/CauseValue",
+          "description": "Value after the change point."
+        },
+        "before": {
+          "$ref": "#/$defs/CauseValue",
+          "description": "Value before the change point."
+        },
+        "description": {
+          "maxLength": 600,
+          "minLength": 1,
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/CauseKind"
+        }
+      },
+      "required": [
+        "after",
+        "before",
+        "description",
+        "kind"
+      ],
+      "type": "object"
+    },
+    "CauseKind": {
+      "description": "`CandidateCause.kind` (M3's names).",
+      "enum": [
+        "time_control_mix",
+        "new_opening",
+        "session_length",
+        "rating_level",
+        "protocol_version"
+      ],
+      "type": "string"
+    },
+    "CauseValue": {
+      "anyOf": [
+        {
+          "maxLength": 120,
+          "type": "string"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "`CandidateCause.before`/`after`: a short text or a number."
+    },
+    "ChangeExample": {
+      "additionalProperties": false,
+      "description": "`TimelineChange.examples[]`: an exemplar plus which side of the change point it is from.",
+      "properties": {
+        "best": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MoveRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The engine's preferred move, or null when `played` was already best."
+        },
+        "bestPv": {
+          "description": "Engine line starting with the best move from `fen` (UCI).",
+          "items": {
+            "pattern": "^[a-h][1-8][a-h][1-8][qrbn]?$",
+            "type": "string"
+          },
+          "maxItems": 16,
+          "type": "array"
+        },
+        "evalAfter": {
+          "$ref": "#/$defs/Score"
+        },
+        "evalBefore": {
+          "$ref": "#/$defs/Score"
+        },
+        "fen": {
+          "description": "Position BEFORE `played`, standard FEN.",
+          "maxLength": 100,
+          "type": "string"
+        },
+        "gameId": {
+          "description": "Platform game id (R-7).",
+          "maxLength": 64,
+          "minLength": 1,
+          "type": "string"
+        },
+        "played": {
+          "$ref": "#/$defs/MoveRef"
+        },
+        "playedAt": {
+          "format": "date-time",
+          "maxLength": 40,
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+          "type": "string"
+        },
+        "ply": {
+          "description": "1-based half-move number of the position's side to move: odd = White, even = Black.",
+          "maximum": 1000,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "refutationPv": {
+          "description": "Engine line starting from the position AFTER `played` (UCI).",
+          "items": {
+            "pattern": "^[a-h][1-8][a-h][1-8][qrbn]?$",
+            "type": "string"
+          },
+          "maxItems": 16,
+          "type": "array"
+        },
+        "side": {
+          "$ref": "#/$defs/ExampleSide"
+        },
+        "tags": {
+          "description": "Short classifier tags such as `hanging_piece`.",
+          "items": {
+            "maxLength": 40,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 12,
+          "type": "array"
+        },
+        "winAfter": {
+          "description": "The mover's win percentage after the move, 0..100.",
+          "maximum": 100,
+          "minimum": 0,
+          "type": "number"
+        },
+        "winBefore": {
+          "description": "The mover's win percentage before the move, 0..100.",
+          "maximum": 100,
+          "minimum": 0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "best",
+        "bestPv",
+        "evalAfter",
+        "evalBefore",
+        "fen",
+        "gameId",
+        "played",
+        "playedAt",
+        "ply",
+        "refutationPv",
+        "side",
+        "tags",
+        "winAfter",
+        "winBefore"
+      ],
+      "type": "object"
+    },
+    "ExampleSide": {
+      "description": "`TimelineChange.examples[].side`.",
+      "enum": [
+        "before",
+        "after"
+      ],
+      "type": "string"
+    },
+    "ExemplarPosition": {
+      "additionalProperties": false,
+      "description": "A concrete position from one of the player's games, cited as evidence.",
+      "properties": {
+        "best": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MoveRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The engine's preferred move, or null when `played` was already best."
+        },
+        "bestPv": {
+          "description": "Engine line starting with the best move from `fen` (UCI).",
+          "items": {
+            "pattern": "^[a-h][1-8][a-h][1-8][qrbn]?$",
+            "type": "string"
+          },
+          "maxItems": 16,
+          "type": "array"
+        },
+        "evalAfter": {
+          "$ref": "#/$defs/Score"
+        },
+        "evalBefore": {
+          "$ref": "#/$defs/Score"
+        },
+        "fen": {
+          "description": "Position BEFORE `played`, standard FEN.",
+          "maxLength": 100,
+          "type": "string"
+        },
+        "gameId": {
+          "description": "Platform game id (R-7).",
+          "maxLength": 64,
+          "minLength": 1,
+          "type": "string"
+        },
+        "played": {
+          "$ref": "#/$defs/MoveRef"
+        },
+        "playedAt": {
+          "format": "date-time",
+          "maxLength": 40,
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+          "type": "string"
+        },
+        "ply": {
+          "description": "1-based half-move number of the position's side to move: odd = White, even = Black.",
+          "maximum": 1000,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "refutationPv": {
+          "description": "Engine line starting from the position AFTER `played` (UCI).",
+          "items": {
+            "pattern": "^[a-h][1-8][a-h][1-8][qrbn]?$",
+            "type": "string"
+          },
+          "maxItems": 16,
+          "type": "array"
+        },
+        "tags": {
+          "description": "Short classifier tags such as `hanging_piece`.",
+          "items": {
+            "maxLength": 40,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 12,
+          "type": "array"
+        },
+        "winAfter": {
+          "description": "The mover's win percentage after the move, 0..100.",
+          "maximum": 100,
+          "minimum": 0,
+          "type": "number"
+        },
+        "winBefore": {
+          "description": "The mover's win percentage before the move, 0..100.",
+          "maximum": 100,
+          "minimum": 0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "best",
+        "bestPv",
+        "evalAfter",
+        "evalBefore",
+        "fen",
+        "gameId",
+        "played",
+        "playedAt",
+        "ply",
+        "refutationPv",
+        "tags",
+        "winAfter",
+        "winBefore"
+      ],
+      "type": "object"
+    },
+    "LineSide": {
+      "description": "`chosen`: the player plays the line; `faced`: the opponent plays it against the player.",
+      "enum": [
+        "chosen",
+        "faced"
+      ],
+      "type": "string"
+    },
+    "Metric": {
+      "additionalProperties": false,
+      "properties": {
+        "area": {
+          "$ref": "#/$defs/AreaId"
+        },
+        "bandMedian": {
+          "description": "Median of the player's rating band for this metric, in `unit`.",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "bandPercentile": {
+          "description": "Percentile within the band, 0..100.",
+          "maximum": 100,
+          "minimum": 0,
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "high": {
+          "description": "Upper end of the credible interval, in `unit`.",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "key": {
+          "description": "Stable metric key.",
+          "maxLength": 64,
+          "minLength": 1,
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 120,
+          "minLength": 1,
+          "type": "string"
+        },
+        "low": {
+          "description": "Lower end of the credible interval, in `unit`.",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "n": {
+          "description": "Number of observations behind the estimate.",
+          "maximum": 100000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "needMore": {
+          "description": "More observations needed to become sufficient; null when sufficient.",
+          "maximum": 100000000,
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "sufficient": {
+          "description": "True when `n` meets the minimum sample for this metric.",
+          "type": "boolean"
+        },
+        "unit": {
+          "$ref": "#/$defs/MetricUnit"
+        },
+        "value": {
+          "description": "Point estimate in `unit` (range checked by `validate`).",
+          "type": "number"
+        }
+      },
+      "required": [
+        "area",
+        "bandMedian",
+        "bandPercentile",
+        "high",
+        "key",
+        "label",
+        "low",
+        "n",
+        "needMore",
+        "sufficient",
+        "unit",
+        "value"
+      ],
+      "type": "object"
+    },
+    "MetricUnit": {
+      "description": "What a metric's `value`, `low`, `high` and `bandMedian` measure: `rate` (events per\nopportunity, 0..1), `per_game` (a count per game, 0..1000), `pct` (0..100), `seconds`\n(0..100 000) or `elo` (a rating-point quantity, 0..4000).",
+      "enum": [
+        "rate",
+        "per_game",
+        "pct",
+        "seconds",
+        "elo"
+      ],
+      "type": "string"
+    },
+    "MoveRef": {
+      "additionalProperties": false,
+      "description": "A move as SAN (display) and UCI (machine, e.g. `e2e4` or `e7e8q`).",
+      "properties": {
+        "san": {
+          "maxLength": 12,
+          "minLength": 1,
+          "type": "string"
+        },
+        "uci": {
+          "pattern": "^[a-h][1-8][a-h][1-8][qrbn]?$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "san",
+        "uci"
+      ],
+      "type": "object"
+    },
+    "OpeningVerdict": {
+      "additionalProperties": false,
+      "properties": {
+        "alternatives": {
+          "items": {
+            "$ref": "#/$defs/Alternative"
+          },
+          "maxItems": 5,
+          "type": "array"
+        },
+        "avgEvalAtOpeningEnd": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Score"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Evaluation at the end of the opening phase, White POV (R-8)."
+        },
+        "color": {
+          "$ref": "#/$defs/PlayerColor"
+        },
+        "deviationMoveSan": {
+          "description": "The move played at `deviationPly`, SAN.",
+          "maxLength": 12,
+          "minLength": 1,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "deviationPly": {
+          "description": "Ply where the player left theory.",
+          "maximum": 1000,
+          "minimum": 1,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "eco": {
+          "description": "ECO code such as `B90`.",
+          "maxLength": 8,
+          "minLength": 1,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "examples": {
+          "items": {
+            "$ref": "#/$defs/ExemplarPosition"
+          },
+          "maxItems": 3,
+          "type": "array"
+        },
+        "games": {
+          "maximum": 100000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "lineKey": {
+          "description": "Stable key for the line (R-7).",
+          "maxLength": 64,
+          "minLength": 1,
+          "type": "string"
+        },
+        "movesSan": {
+          "description": "Moves of the line in SAN from the starting position.",
+          "items": {
+            "maxLength": 12,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 40,
+          "type": "array"
+        },
+        "name": {
+          "maxLength": 120,
+          "minLength": 1,
+          "type": "string"
+        },
+        "performanceVsExpected": {
+          "description": "`score` minus the expected score at this rating, -1..1.",
+          "maximum": 1,
+          "minimum": -1,
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "score": {
+          "description": "Average result for the player, 0..1.",
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "side": {
+          "$ref": "#/$defs/LineSide"
+        },
+        "verdict": {
+          "$ref": "#/$defs/Verdict"
+        }
+      },
+      "required": [
+        "alternatives",
+        "avgEvalAtOpeningEnd",
+        "color",
+        "deviationMoveSan",
+        "deviationPly",
+        "eco",
+        "examples",
+        "games",
+        "lineKey",
+        "movesSan",
+        "name",
+        "performanceVsExpected",
+        "score",
+        "side",
+        "verdict"
+      ],
+      "type": "object"
+    },
+    "Platform": {
+      "description": "`CoachingInput.platform`.",
+      "enum": [
+        "lichess",
+        "chesscom"
+      ],
+      "type": "string"
+    },
+    "PlayerColor": {
+      "description": "The player's colour in an opening line's games.",
+      "enum": [
+        "white",
+        "black"
+      ],
+      "type": "string"
+    },
+    "RankedWeakness": {
+      "additionalProperties": false,
+      "properties": {
+        "area": {
+          "$ref": "#/$defs/AreaId"
+        },
+        "bandMedian": {
+          "description": "Median event rate of the player's band.",
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "bandPercentile": {
+          "maximum": 100,
+          "minimum": 0,
+          "type": "number"
+        },
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "events": {
+          "maximum": 100000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "excessEplPerGame": {
+          "description": "Expected points lost per game beyond the band median.",
+          "maximum": 100,
+          "minimum": 0,
+          "type": "number"
+        },
+        "exemplars": {
+          "items": {
+            "$ref": "#/$defs/ExemplarPosition"
+          },
+          "maxItems": 5,
+          "type": "array"
+        },
+        "id": {
+          "description": "Weakness catalogue id `W1`..`W12`, optionally with a variant letter (`W9b`).",
+          "maxLength": 5,
+          "pattern": "^W(1[0-2]|[1-9])[a-d]?$",
+          "type": "string"
+        },
+        "intervalHigh": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "intervalLow": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "label": {
+          "maxLength": 120,
+          "minLength": 1,
+          "type": "string"
+        },
+        "opportunities": {
+          "maximum": 100000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "pImp": {
+          "description": "Probability the player is improving.",
+          "maximum": 1,
+          "minimum": 0,
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "posteriorRate": {
+          "description": "Posterior event rate, events per opportunity.",
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "priority": {
+          "maximum": 1000,
+          "minimum": 0,
+          "type": "number"
+        },
+        "rank": {
+          "description": "1 = highest priority; unique across `weaknesses`.",
+          "maximum": 24,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "state": {
+          "$ref": "#/$defs/WeaknessState"
+        },
+        "variant": {
+          "description": "Variant name within the weakness (e.g. `fork`).",
+          "maxLength": 40,
+          "minLength": 1,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "area",
+        "bandMedian",
+        "bandPercentile",
+        "confidence",
+        "events",
+        "excessEplPerGame",
+        "exemplars",
+        "id",
+        "intervalHigh",
+        "intervalLow",
+        "label",
+        "opportunities",
+        "pImp",
+        "posteriorRate",
+        "priority",
+        "rank",
+        "state",
+        "variant"
+      ],
+      "type": "object"
+    },
+    "Score": {
+      "description": "An engine evaluation from WHITE's point of view: `{\"cp\": n}` (centipawns, positive = White\nbetter) or `{\"mate\": n}` (moves to mate, positive = White mates).",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "cp": {
+              "maximum": 100000,
+              "minimum": -100000,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cp"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "mate": {
+              "maximum": 500,
+              "minimum": -500,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "mate"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Strength": {
+      "additionalProperties": false,
+      "description": "A strength cited with exemplar positions (R-1: exactly these four fields).",
+      "properties": {
+        "area": {
+          "$ref": "#/$defs/AreaId"
+        },
+        "exemplars": {
+          "items": {
+            "$ref": "#/$defs/ExemplarPosition"
+          },
+          "maxItems": 5,
+          "type": "array"
+        },
+        "label": {
+          "maxLength": 120,
+          "minLength": 1,
+          "type": "string"
+        },
+        "metricKey": {
+          "description": "Key of the supporting `Metric`, when there is one.",
+          "maxLength": 64,
+          "minLength": 1,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "area",
+        "exemplars",
+        "label",
+        "metricKey"
+      ],
+      "type": "object"
+    },
+    "TimeClass": {
+      "description": "`CoachingInput.timeClass`.",
+      "enum": [
+        "bullet",
+        "blitz",
+        "rapid",
+        "classical",
+        "daily"
+      ],
+      "type": "string"
+    },
+    "TimeControl": {
+      "additionalProperties": false,
+      "description": "Typical time control in seconds.",
+      "properties": {
+        "baseSeconds": {
+          "maximum": 10000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "incrementSeconds": {
+          "maximum": 100000,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "baseSeconds",
+        "incrementSeconds"
+      ],
+      "type": "object"
+    },
+    "TimelineChange": {
+      "additionalProperties": false,
+      "properties": {
+        "candidateCauses": {
+          "items": {
+            "$ref": "#/$defs/CandidateCause"
+          },
+          "maxItems": 6,
+          "type": "array"
+        },
+        "examples": {
+          "items": {
+            "$ref": "#/$defs/ChangeExample"
+          },
+          "maxItems": 6,
+          "type": "array"
+        },
+        "fromState": {
+          "$ref": "#/$defs/WeaknessState"
+        },
+        "label": {
+          "maxLength": 120,
+          "minLength": 1,
+          "type": "string"
+        },
+        "onsetDate": {
+          "format": "date",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+          "type": "string"
+        },
+        "onsetFrom": {
+          "description": "Uncertainty window for the onset: `onsetFrom <= onsetDate <= onsetTo`.",
+          "format": "date",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+          "type": "string"
+        },
+        "onsetGameId": {
+          "description": "Game at which the change is placed.",
+          "maxLength": 64,
+          "minLength": 1,
+          "type": "string"
+        },
+        "onsetTo": {
+          "format": "date",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+          "type": "string"
+        },
+        "posteriorProb": {
+          "description": "Posterior probability that a change happened, 0..1.",
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "rateAfter": {
+          "description": "Event rate (0..1) after the change.",
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "rateBefore": {
+          "description": "Event rate (0..1) before the change.",
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "seriesKey": {
+          "description": "Key of the time series the change was detected on.",
+          "maxLength": 64,
+          "minLength": 1,
+          "type": "string"
+        },
+        "toState": {
+          "$ref": "#/$defs/WeaknessState"
+        },
+        "weaknessId": {
+          "maxLength": 5,
+          "pattern": "^W(1[0-2]|[1-9])[a-d]?$",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "candidateCauses",
+        "examples",
+        "fromState",
+        "label",
+        "onsetDate",
+        "onsetFrom",
+        "onsetGameId",
+        "onsetTo",
+        "posteriorProb",
+        "rateAfter",
+        "rateBefore",
+        "seriesKey",
+        "toState",
+        "weaknessId"
+      ],
+      "type": "object"
+    },
+    "Verdict": {
+      "description": "`OpeningVerdict.verdict`.",
+      "enum": [
+        "keep",
+        "fix",
+        "learn",
+        "replace"
+      ],
+      "type": "string"
+    },
+    "WeaknessState": {
+      "description": "Weakness timeline state (zod `WeaknessState`).",
+      "enum": [
+        "not_an_issue",
+        "emerging",
+        "active",
+        "improving",
+        "resolved",
+        "relapsed"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "What R2 produces for the AI coach (R3) and the web: the M3 `CoachingInput`.",
+  "properties": {
+    "accountId": {
+      "format": "uuid",
+      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+      "type": "string"
+    },
+    "areaScores": {
+      "description": "Each `AreaId` exactly once.",
+      "items": {
+        "$ref": "#/$defs/AreaScore"
+      },
+      "maxItems": 7,
+      "type": "array"
+    },
+    "band": {
+      "$ref": "#/$defs/BandId"
+    },
+    "basis": {
+      "$ref": "#/$defs/Basis"
+    },
+    "changes": {
+      "items": {
+        "$ref": "#/$defs/TimelineChange"
+      },
+      "maxItems": 20,
+      "type": "array"
+    },
+    "generatedAt": {
+      "format": "date-time",
+      "maxLength": 40,
+      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+      "type": "string"
+    },
+    "inputVersion": {
+      "const": "coaching-input-v1",
+      "type": "string"
+    },
+    "metrics": {
+      "items": {
+        "$ref": "#/$defs/Metric"
+      },
+      "maxItems": 80,
+      "type": "array"
+    },
+    "openings": {
+      "items": {
+        "$ref": "#/$defs/OpeningVerdict"
+      },
+      "maxItems": 30,
+      "type": "array"
+    },
+    "platform": {
+      "$ref": "#/$defs/Platform"
+    },
+    "rating": {
+      "description": "Current rating; null when unknown.",
+      "maximum": 4000,
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "strengths": {
+      "items": {
+        "$ref": "#/$defs/Strength"
+      },
+      "maxItems": 12,
+      "type": "array"
+    },
+    "timeClass": {
+      "$ref": "#/$defs/TimeClass"
+    },
+    "timeControl": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TimeControl"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Typical time control; null when mixed or unknown."
+    },
+    "weaknesses": {
+      "description": "Ranked weaknesses; `rank` values are unique.",
+      "items": {
+        "$ref": "#/$defs/RankedWeakness"
+      },
+      "maxItems": 24,
+      "type": "array"
+    }
+  },
+  "required": [
+    "accountId",
+    "areaScores",
+    "band",
+    "basis",
+    "changes",
+    "generatedAt",
+    "inputVersion",
+    "metrics",
+    "openings",
+    "platform",
+    "rating",
+    "strengths",
+    "timeClass",
+    "timeControl",
+    "weaknesses"
+  ],
+  "title": "CoachingInput",
+  "type": "object"
+}
