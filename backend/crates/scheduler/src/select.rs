@@ -96,36 +96,62 @@ fn length_rank(tc: TimeClass) -> u8 {
     }
 }
 
-fn recent_counts(games: &[CandidateGame], now: OffsetDateTime) -> HashMap<TimeClass, usize> {
-    let cutoff = now - Duration::days(RECENT_DAYS);
+fn counts_since(
+    games: &[CandidateGame],
+    now: OffsetDateTime,
+    cutoff: Option<OffsetDateTime>,
+) -> HashMap<TimeClass, usize> {
     let mut m = HashMap::new();
-    for g in games.iter().filter(|g| g.played_at >= cutoff) {
+    for g in games
+        .iter()
+        .filter(|g| g.played_at <= now && cutoff.is_none_or(|c| g.played_at >= c))
+    {
         *m.entry(g.time_class).or_insert(0) += 1;
     }
     m
 }
 
+/// Counts over the first non-empty window: 90 days, else 365 days, else all time.
+/// The flag says whether the 90-day window had any game (an active account).
+fn window_counts(
+    games: &[CandidateGame],
+    now: OffsetDateTime,
+) -> (HashMap<TimeClass, usize>, bool) {
+    for (days, active) in [(RECENT_DAYS, true), (365, false)] {
+        let m = counts_since(games, now, Some(now - Duration::days(days)));
+        if !m.is_empty() {
+            return (m, active);
+        }
+    }
+    (counts_since(games, now, None), false)
+}
+
 /// The time class with the most games in the last 90 days; ties go to the longer one.
+/// A dormant account (nothing in 90 days) falls back to 365 days, then to all time.
+/// Future-dated games are ignored.
 pub fn primary_time_class(games: &[CandidateGame], now: OffsetDateTime) -> Option<TimeClass> {
-    recent_counts(games, now)
+    window_counts(games, now)
+        .0
         .into_iter()
         .max_by_key(|(tc, n)| (*n, length_rank(*tc)))
         .map(|(tc, _)| tc)
 }
 
 /// The primary plus every time class with at least `P1_MIN_RECENT` recent games, ordered by
-/// recent count then length (descending).
+/// recent count then length (descending). A dormant account has only its primary.
 pub fn active_time_classes(games: &[CandidateGame], now: OffsetDateTime) -> Vec<TimeClass> {
     let primary = primary_time_class(games, now);
-    let mut v: Vec<(TimeClass, usize)> = recent_counts(games, now)
+    let (counts, recent) = window_counts(games, now);
+    let mut v: Vec<(TimeClass, usize)> = counts
         .into_iter()
-        .filter(|(tc, n)| *n >= P1_MIN_RECENT || Some(*tc) == primary)
+        .filter(|(tc, n)| Some(*tc) == primary || (recent && *n >= P1_MIN_RECENT))
         .collect();
     v.sort_by_key(|(tc, n)| std::cmp::Reverse((*n, length_rank(*tc))));
     v.into_iter().map(|(tc, _)| tc).collect()
 }
 
 fn month_index(t: OffsetDateTime) -> i32 {
+    let t = t.to_offset(time::UtcOffset::UTC);
     t.year() * 12 + i32::from(u8::from(t.month())) - 1
 }
 
@@ -136,6 +162,16 @@ fn order(a: &&CandidateGame, b: &&CandidateGame) -> std::cmp::Ordering {
         std::cmp::Reverse(b.played_at),
         b.id,
     ))
+}
+
+/// `k` evenly spaced picks (chronologically) from a newest-first slice; all when `k >= len`.
+fn spaced<'a>(pool: &[&'a CandidateGame], k: usize) -> Vec<&'a CandidateGame> {
+    let n = pool.len();
+    if n <= k {
+        return pool.to_vec();
+    }
+    let asc: Vec<&CandidateGame> = pool.iter().rev().copied().collect();
+    (0..k).map(|j| asc[j * n / k]).collect()
 }
 
 fn taken_contains(out: &[Selected], id: Uuid) -> bool {
@@ -166,9 +202,18 @@ pub fn select_for_analysis(i: &SelectInput) -> Vec<Selected> {
             g.status == AnalysisStatus::Pending
                 && g.tier.is_none()
                 && g.ply_count.is_none_or(|p| p >= MIN_PLIES)
+                && g.played_at <= i.now
                 && allowed(g.time_class)
         })
         .collect();
+    let future = i
+        .games
+        .iter()
+        .filter(|g| g.played_at > i.now && g.status == AnalysisStatus::Pending && g.tier.is_none())
+        .count();
+    if future > 0 {
+        tracing::warn!(future, "skipping future-dated games in tier selection");
+    }
     cands.sort_by(order);
 
     let mut out: Vec<Selected> = Vec::new();
@@ -200,6 +245,7 @@ pub fn select_for_analysis(i: &SelectInput) -> Vec<Selected> {
         .iter()
         .filter(|g| {
             !taken_contains(&out, g.id)
+                && g.rated
                 && g.created_at > i.first_scheduled_at
                 && active.contains(&g.time_class)
         })
@@ -249,11 +295,14 @@ pub fn select_for_analysis(i: &SelectInput) -> Vec<Selected> {
             if batch == 0 {
                 break;
             }
+            // Every analysed game of the month counts, whatever its tier, plus this run's picks.
             let have = i
                 .games
                 .iter()
                 .filter(|g| {
-                    g.time_class == tc && g.tier == Some(2) && month_index(g.played_at) == m
+                    g.time_class == tc
+                        && month_index(g.played_at) == m
+                        && (g.tier.is_some() || taken_contains(&out, g.id))
                 })
                 .count();
             let k = P2_PER_MONTH.saturating_sub(have).min(batch);
@@ -269,15 +318,14 @@ pub fn select_for_analysis(i: &SelectInput) -> Vec<Selected> {
                 })
                 .copied()
                 .collect();
-            let rated: Vec<&CandidateGame> = pool.iter().filter(|g| g.rated).copied().collect();
-            let pool = if rated.len() >= k { rated } else { pool };
-            // Evenly spaced across the pool (newest first).
-            let n = pool.len();
-            let picks: Vec<&CandidateGame> = if n <= k {
-                pool
-            } else {
-                (0..k).map(|j| pool[j * n / k]).collect()
-            };
+            // Rated first; casual only fills what rated cannot. Pool is newest first, so
+            // reverse for chronological spacing, then emit newest first again.
+            let (rated, casual): (Vec<_>, Vec<_>) = pool.into_iter().partition(|g| g.rated);
+            let mut picks = spaced(&rated, k);
+            if picks.len() < k {
+                picks.extend(spaced(&casual, k - picks.len()));
+            }
+            picks.sort_by_key(|g| (std::cmp::Reverse(g.played_at), g.id));
             batch -= picks.len();
             for g in picks {
                 push(&mut out, plan, g, 2);

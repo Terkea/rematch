@@ -225,6 +225,8 @@ fn pro_p2_from_month_11_newest_first_within_36_months() {
     let sel = run(&games, Plan::Pro, now(), 0, &env());
     assert_eq!(sel.len(), 25);
     assert!(sel.iter().all(|s| s.tier == 2 && s.priority == 21));
+    let first = by_id(&games, sel[0].game_id).played_at;
+    assert_eq!((first.year(), u8::from(first.month())), (2026, 1));
     let ages: Vec<_> = sel
         .iter()
         .map(|s| by_id(&games, s.game_id).played_at)
@@ -254,7 +256,7 @@ fn p2_never_picks_games_older_than_36_months() {
     // Recent blitz keeps the time class active and P0 satisfied.
     games.extend((0..200).map(|i| done(game(TimeClass::Blitz, i / 4), 0)));
     let sel = run(&games, Plan::Pro, now(), 0, &env());
-    assert!(sel.is_empty(), "{sel:?}");
+    assert_eq!(tier_count(&sel, 2), 0, "{sel:?}");
 }
 
 #[test]
@@ -334,7 +336,7 @@ fn stopped_tc_and_in_flight_backfill_block_p1_p2() {
 fn primary_time_class_ties_go_to_longer_and_old_games_ignored() {
     assert_eq!(primary_time_class(&[], now()), None);
     let old: Vec<_> = (0..10).map(|_| game(TimeClass::Blitz, 200)).collect();
-    assert_eq!(primary_time_class(&old, now()), None);
+    assert_eq!(primary_time_class(&old, now()), Some(TimeClass::Blitz)); // dormant fallback
     let tie = vec![game(TimeClass::Blitz, 1), game(TimeClass::Rapid, 2)];
     assert_eq!(primary_time_class(&tie, now()), Some(TimeClass::Rapid));
     let boundary = vec![game(TimeClass::Blitz, 90), game(TimeClass::Rapid, 91)];
@@ -419,4 +421,269 @@ fn is_precise_table() {
     for (i, (v, want)) in cases.iter().enumerate() {
         assert_eq!(is_precise(v), *want, "case {i}");
     }
+}
+
+fn at(y: i32, mo: time::Month, d: u8, h: u8) -> OffsetDateTime {
+    time::Date::from_calendar_date(y, mo, d)
+        .unwrap()
+        .with_hms(h, 0, 0)
+        .unwrap()
+        .assume_utc()
+}
+
+fn game_at(t: OffsetDateTime) -> CandidateGame {
+    let mut g = game(TimeClass::Blitz, 0);
+    g.played_at = t;
+    g.created_at = t;
+    g
+}
+
+fn recent_done(n: i64) -> Vec<CandidateGame> {
+    (0..n)
+        .map(|i| done(game(TimeClass::Blitz, i / 4), 0))
+        .collect()
+}
+
+#[test]
+fn dormant_account_uses_365_day_then_all_time_primary() {
+    // 10 blitz 200 days ago, 5 rapid 300 days ago: nothing in 90 days, blitz wins on 365 days.
+    let mut games: Vec<_> = (0..10).map(|i| game(TimeClass::Blitz, 200 + i)).collect();
+    games.extend((0..5).map(|i| game(TimeClass::Rapid, 300 + i)));
+    assert_eq!(primary_time_class(&games, now()), Some(TimeClass::Blitz));
+    assert_eq!(active_time_classes(&games, now()), vec![TimeClass::Blitz]);
+    let sel = run(&games, Plan::Free, now(), 0, &env());
+    assert_eq!(sel.len(), 10, "P0 takes old games regardless of date");
+    assert!(sel.iter().all(|s| s.tier == 0));
+    // Nothing within 365 days: all-time counts decide.
+    let mut games: Vec<_> = (0..3).map(|i| game(TimeClass::Blitz, 500 + i)).collect();
+    games.extend((0..6).map(|i| game(TimeClass::Classical, 600 + i)));
+    assert_eq!(
+        primary_time_class(&games, now()),
+        Some(TimeClass::Classical)
+    );
+    assert_eq!(run(&games, Plan::Free, now(), 0, &env()).len(), 6);
+    // Recent activity beats a bigger old history.
+    let mut games: Vec<_> = (0..50).map(|i| game(TimeClass::Blitz, 200 + i)).collect();
+    games.push(game(TimeClass::Rapid, 1));
+    assert_eq!(primary_time_class(&games, now()), Some(TimeClass::Rapid));
+}
+
+#[test]
+fn p3_takes_rated_games_only() {
+    let first = now() - Duration::days(10);
+    let mut games: Vec<_> = (0..50)
+        .map(|i| done(game(TimeClass::Blitz, 40 + i), 0))
+        .collect();
+    games.extend((0..10).map(|i| {
+        let mut g = game(TimeClass::Blitz, 0);
+        g.rated = i % 2 == 0;
+        g.played_at = now() - Duration::hours(i);
+        g
+    }));
+    let sel = run(&games, Plan::Free, first, 0, &env());
+    assert_eq!(sel.len(), 5);
+    assert!(
+        sel.iter()
+            .all(|s| s.tier == 3 && by_id(&games, s.game_id).rated)
+    );
+}
+
+#[test]
+fn new_games_go_to_p0_while_it_has_room_then_p3() {
+    // Free user with 30 analysed games: 20 slots of P0 remain, so new games fill P0 first.
+    let first = now() - Duration::days(10);
+    let mut games: Vec<_> = (0..30)
+        .map(|i| done(game(TimeClass::Blitz, 40 + i), 0))
+        .collect();
+    games.extend((0..25).map(|i| {
+        let mut g = game(TimeClass::Blitz, 0);
+        g.played_at = now() - Duration::hours(i);
+        g
+    }));
+    let sel = run(&games, Plan::Free, first, 0, &env());
+    assert_eq!(tier_count(&sel, 0), 20);
+    assert_eq!(tier_count(&sel, 3), 5);
+}
+
+#[test]
+fn p3_requires_created_strictly_after_first_scheduled() {
+    let first = now() - Duration::days(1);
+    let mut games: Vec<_> = (0..50)
+        .map(|i| done(game(TimeClass::Blitz, 40 + i), 0))
+        .collect();
+    for off in [-1i64, 0, 1] {
+        let mut g = game(TimeClass::Blitz, 2);
+        g.created_at = first + Duration::seconds(off);
+        games.push(g);
+    }
+    let sel = run(&games, Plan::Free, first, 0, &env());
+    assert_eq!(sel.len(), 1);
+    assert_eq!(
+        by_id(&games, sel[0].game_id).created_at,
+        first + Duration::seconds(1)
+    );
+}
+
+#[test]
+fn month_boundaries_use_utc() {
+    use time::Month::*;
+    // 2023-10-31 19:00 UTC shown at +05:00 reads as 1 November, but is month 37 back: out.
+    let mut out_game = game(TimeClass::Blitz, 0);
+    out_game.played_at =
+        at(2023, October, 31, 19).to_offset(time::UtcOffset::from_hms(5, 0, 0).unwrap());
+    assert_eq!(out_game.played_at.month(), November);
+    // 2023-11-01 04:00 UTC shown at -05:00 reads as 31 October, but is month 36 back: in.
+    let mut in_game = game(TimeClass::Blitz, 0);
+    in_game.played_at =
+        at(2023, November, 1, 4).to_offset(time::UtcOffset::from_hms(-5, 0, 0).unwrap());
+    assert_eq!(in_game.played_at.month(), October);
+    let (oid, iid) = (out_game.id, in_game.id);
+    let mut games = vec![out_game, in_game];
+    games.extend(recent_done(200));
+    let sel = run(&games, Plan::Pro, now(), 0, &env());
+    let ids: Vec<_> = sel.iter().map(|s| s.game_id).collect();
+    assert!(ids.contains(&iid));
+    assert!(!ids.contains(&oid));
+}
+
+#[test]
+fn p2_month_36_is_in_and_37_is_out() {
+    use time::Month::*;
+    let mut games = recent_done(200);
+    let m36 = game_at(at(2023, November, 10, 12));
+    let m37 = game_at(at(2023, October, 10, 12));
+    let (i36, i37) = (m36.id, m37.id);
+    games.extend([m36, m37]);
+    let sel = run(&games, Plan::Pro, now(), 0, &env());
+    let ids: Vec<_> = sel.iter().map(|s| s.game_id).collect();
+    assert!(ids.contains(&i36));
+    assert!(!ids.contains(&i37));
+}
+
+#[test]
+fn future_dated_games_are_skipped() {
+    let mut games = vec![game(TimeClass::Blitz, 1)];
+    let mut f = game(TimeClass::Blitz, 0);
+    f.played_at = now() + Duration::days(1);
+    let fid = f.id;
+    games.push(f);
+    let sel = run(&games, Plan::Free, now(), 0, &env());
+    assert_eq!(sel.len(), 1);
+    assert_ne!(sel[0].game_id, fid);
+    // A future game does not make a time class primary either.
+    let mut g = game(TimeClass::Rapid, 0);
+    g.played_at = now() + Duration::days(2);
+    let only_future = vec![g];
+    assert_eq!(primary_time_class(&only_future, now()), None);
+    assert!(run(&only_future, Plan::Free, now(), 0, &env()).is_empty());
+}
+
+#[test]
+fn p2_prefers_rated_then_fills_with_casual_and_spaces_chronologically() {
+    use time::Month::*;
+    let mut games = recent_done(200);
+    // March 2026: 10 rated + 20 casual -> 15 picks = all 10 rated + 5 casual.
+    for h in 0..10u8 {
+        games.push(game_at(at(2026, March, 5, h)));
+    }
+    for h in 0..20u8 {
+        let mut g = game_at(at(2026, March, 20, h));
+        g.rated = false;
+        games.push(g);
+    }
+    // February 2026: 30 rated games; only 10 batch slots remain after March's 15.
+    for h in 0..24u8 {
+        games.push(game_at(at(2026, February, 5, h)));
+    }
+    for h in 0..6u8 {
+        games.push(game_at(at(2026, February, 6, h)));
+    }
+    let sel = run(&games, Plan::Pro, now(), 0, &env());
+    let in_month = |m: time::Month| -> Vec<&CandidateGame> {
+        sel.iter()
+            .map(|s| by_id(&games, s.game_id))
+            .filter(|g| g.played_at.month() == m && g.played_at.year() == 2026)
+            .collect()
+    };
+    let march = in_month(March);
+    assert_eq!(march.len(), 15);
+    assert_eq!(march.iter().filter(|g| g.rated).count(), 10);
+    let feb = in_month(February);
+    assert_eq!(feb.len(), 10);
+    assert!(feb.windows(2).all(|w| w[0].played_at >= w[1].played_at));
+    let mut asc: Vec<_> = games
+        .iter()
+        .filter(|g| g.played_at.month() == February && g.played_at.year() == 2026)
+        .map(|g| g.played_at)
+        .collect();
+    asc.sort();
+    let idx: Vec<usize> = feb
+        .iter()
+        .rev()
+        .map(|g| asc.iter().position(|a| *a == g.played_at).unwrap())
+        .collect();
+    assert!(idx.windows(2).all(|w| w[1] - w[0] == 3), "{idx:?}");
+}
+
+#[test]
+fn p2_quota_counts_analysed_games_of_any_tier() {
+    use time::Month::*;
+    let mut games = recent_done(210);
+    for (h, tier) in [(0u8, 0i16), (1, 1), (2, 3), (3, 2)] {
+        games.push(done(game_at(at(2026, May, 3, h)), tier));
+    }
+    for h in 0..20u8 {
+        games.push(game_at(at(2026, May, 20, h)));
+    }
+    let sel = run(&games, Plan::Pro, now(), 0, &env());
+    assert_eq!(sel.len(), 11); // 15 - 4 analysed in May
+}
+
+#[test]
+fn p2_runs_for_primary_in_same_pass_as_p0() {
+    let mut games = Vec::new();
+    for m in 0..40i64 {
+        for h in 0..20 {
+            games.push(mid_month_game(m, h));
+        }
+    }
+    let sel = run(&games, Plan::Pro, now(), 0, &env());
+    assert_eq!(tier_count(&sel, 0), 200);
+    assert_eq!(tier_count(&sel, 2), 25);
+    assert!(
+        sel.iter()
+            .filter(|s| s.tier == 2)
+            .all(|s| by_id(&games, s.game_id).time_class == TimeClass::Blitz)
+    );
+}
+
+#[test]
+fn equal_played_at_breaks_ties_by_id() {
+    let t = now() - Duration::days(1);
+    let mut games: Vec<_> = (0..49)
+        .map(|i| done(game(TimeClass::Blitz, 10 + i), 0))
+        .collect();
+    for n in [9u128, 3, 7] {
+        let mut g = game_at(t);
+        g.id = Uuid::from_u128(n);
+        games.push(g);
+    }
+    let sel = run(&games, Plan::Free, now(), 0, &env());
+    assert_eq!(sel.len(), 1);
+    assert_eq!(sel[0].game_id, Uuid::from_u128(3));
+}
+
+#[test]
+fn daily_and_longer_time_classes() {
+    let games = vec![game(TimeClass::Classical, 1), game(TimeClass::Daily, 2)];
+    assert_eq!(primary_time_class(&games, now()), Some(TimeClass::Daily));
+    let games: Vec<_> = (0..5).map(|i| game(TimeClass::Daily, i)).collect();
+    assert_eq!(run(&games, Plan::Free, now(), 0, &env()).len(), 5);
+    let mut games: Vec<_> = (0..40).map(|i| game(TimeClass::Daily, i)).collect();
+    games.extend((0..25).map(|i| game(TimeClass::Classical, i)));
+    games.extend((0..30).map(|i| game(TimeClass::Rapid, i)));
+    assert_eq!(
+        active_time_classes(&games, now()),
+        vec![TimeClass::Daily, TimeClass::Rapid, TimeClass::Classical]
+    );
 }
