@@ -6,14 +6,28 @@ import {
   type EvalGraphPoint,
   type EvalGraphProps,
   type LabelMark,
+  type PlacedLabel,
   placeLabels,
-  wipeDelay,
   xForPly,
   yForWin,
 } from "../src/eval-graph/index.js";
-import { games } from "../src/fixtures/index.js";
+import {
+  cornerBox,
+  cornerWidth,
+  GRAPH_NARROW,
+  LABEL_WIDE,
+  leaderPoints,
+  PAD,
+  type Point,
+  placeCorners,
+  segmentHitsBox,
+} from "../src/eval-graph/scales.js";
+import { type GameFixture, games } from "../src/fixtures/index.js";
+import { tokensCss } from "./design-md.js";
 
 const WIDTH = 320;
+/** The width the ResizeObserver stub reports; tests at real board widths change it. */
+let measured = WIDTH;
 // At 320px the container is narrow: an 88px plot under a 22px label lane.
 const LANE = 22;
 const PLOT_H = 88;
@@ -22,7 +36,8 @@ const PLOT_H = 88;
 class FixedResizeObserver {
   constructor(private readonly callback: ResizeObserverCallback) {}
   observe(target: Element) {
-    const rect = { width: WIDTH, height: 0, top: 0, left: 0, right: WIDTH, bottom: 0, x: 0, y: 0 };
+    const width = measured;
+    const rect = { width, height: 0, top: 0, left: 0, right: width, bottom: 0, x: 0, y: 0 };
     this.callback(
       [{ target, contentRect: rect } as unknown as ResizeObserverEntry],
       this as unknown as ResizeObserver,
@@ -36,7 +51,10 @@ beforeAll(() => {
   vi.stubGlobal("ResizeObserver", FixedResizeObserver);
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  measured = WIDTH;
+});
 
 const fixturePoints = (): EvalGraphPoint[] =>
   games.middlegameBlunder.plies.map((p) => ({
@@ -45,6 +63,71 @@ const fixturePoints = (): EvalGraphPoint[] =>
     san: p.san,
     judgement: p.judgement,
   }));
+
+const toPoints = (game: GameFixture): EvalGraphPoint[] =>
+  game.plies.map((p) => ({ ply: p.ply, winWhite: p.winWhite, san: p.san, judgement: p.judgement }));
+
+/** A fixture's marks as the graph builds them at `width`. */
+function fixtureMarks(game: GameFixture, width: number): LabelMark[] {
+  const plotH = width < GRAPH_NARROW ? 88 : 120;
+  const n = game.plies.length;
+  return game.plies.flatMap((p, i) => {
+    if (!p.judgement) return [];
+    const y = LANE + yForWin(p.winWhite, plotH);
+    const half = p.judgement === "blunder" ? 9 : p.judgement === "mistake" ? 7 : 5;
+    return [
+      {
+        ply: p.ply,
+        san: p.san,
+        judgement: p.judgement,
+        x: PAD + xForPly(i + 1, width - 2 * PAD, n),
+        top: Math.max(LANE + 2, y - half),
+        mine: p.color === game.playerColor,
+      },
+    ];
+  });
+}
+
+const pairs = (s: string | null): Point[] =>
+  (s ?? "")
+    .trim()
+    .split(/\s+/)
+    .map((xy) => xy.split(",").map(Number) as unknown as Point);
+
+const orient = (a: Point, b: Point, c: Point) =>
+  Math.sign((b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]));
+
+const onSegment = (a: Point, b: Point, c: Point) =>
+  Math.min(a[0], b[0]) <= c[0] &&
+  c[0] <= Math.max(a[0], b[0]) &&
+  Math.min(a[1], b[1]) <= c[1] &&
+  c[1] <= Math.max(a[1], b[1]);
+
+function segmentsCross(p1: Point, p2: Point, q1: Point, q2: Point): boolean {
+  const o1 = orient(p1, p2, q1);
+  const o2 = orient(p1, p2, q2);
+  const o3 = orient(q1, q2, p1);
+  const o4 = orient(q1, q2, p2);
+  if (o1 !== o2 && o3 !== o4) return true;
+  return (
+    (o1 === 0 && onSegment(p1, p2, q1)) ||
+    (o2 === 0 && onSegment(p1, p2, q2)) ||
+    (o3 === 0 && onSegment(q1, q2, p1)) ||
+    (o4 === 0 && onSegment(q1, q2, p2))
+  );
+}
+
+/** Whether two leader polylines touch anywhere. */
+function crosses(a: readonly Point[], b: readonly Point[]): boolean {
+  for (let i = 1; i < a.length; i++) {
+    for (let j = 1; j < b.length; j++) {
+      if (segmentsCross(a[i - 1] as Point, a[i] as Point, b[j - 1] as Point, b[j] as Point)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
 
 const nextFrame = () =>
   act(async () => {
@@ -76,16 +159,6 @@ describe("scales", () => {
     expect(xForPly(91, 320, 91)).toBe(320);
     expect(xForPly(1, 320, 1)).toBe(160);
   });
-
-  it("times the wipe by the pen easing", () => {
-    expect(wipeDelay(0, 1.2, [0.6, 0.05, 0.3, 1])).toBeCloseTo(0, 5);
-    expect(wipeDelay(1, 1.2, [0.6, 0.05, 0.3, 1])).toBeCloseTo(1.2, 5);
-    const at = [0.25, 0.5, 0.75].map((p) => wipeDelay(p, 1.2, [0.6, 0.05, 0.3, 1]));
-    expect(at[0]).toBeLessThan(at[1] ?? 0);
-    expect(at[1]).toBeLessThan(at[2] ?? 0);
-    // The pen's slow start: the first quarter of the width takes longer than a quarter of the time.
-    expect(at[0]).toBeGreaterThan(0.3);
-  });
 });
 
 const mk = (
@@ -94,7 +167,8 @@ const mk = (
   judgement: LabelMark["judgement"],
   x: number,
   mine: boolean | null,
-): LabelMark => ({ ply, san, judgement, x, mine });
+  top = 60,
+): LabelMark => ({ ply, san, judgement, x, top, mine });
 
 describe("placeLabels", () => {
   const narrow = { narrow: true, wide: false };
@@ -173,6 +247,83 @@ describe("placeLabels", () => {
     const wide = placeLabels(marks, 900, { narrow: false, wide: true });
     expect(wide.filter((l) => !l.serious).map((l) => l.ply)).toEqual([46, 56]);
     expect(placeLabels(marks, 600, { narrow: false, wide: false })).toHaveLength(1);
+  });
+});
+
+describe("leaders and corners", () => {
+  const widths = [320, 326, 448, 496, 512, 560, 1176];
+  const sets: [string, GameFixture][] = [
+    ["middlegameBlunder", games.middlegameBlunder],
+    ["endgameGrind", games.endgameGrind],
+    ["shortAttack", games.shortAttack],
+  ];
+
+  it.each(sets)("never crosses two leaders in %s", (_, game) => {
+    for (const width of widths) {
+      const labels = placeLabels(fixtureMarks(game, width), width, {
+        narrow: width < GRAPH_NARROW,
+        wide: width >= LABEL_WIDE,
+      });
+      const led = labels.filter((l) => l.leader);
+      for (const a of led) {
+        for (const b of led) {
+          if (a.ply >= b.ply) continue;
+          expect(a.x < b.x, `labels ${a.ply}/${b.ply} at ${width}px`).toBe(a.tickX < b.tickX);
+          expect(crosses(leaderPoints(a), leaderPoints(b)), `${a.ply}/${b.ply} at ${width}px`).toBe(
+            false,
+          );
+        }
+      }
+    }
+  });
+
+  it("keeps game 2's Nb4?? and f4? in tick order", () => {
+    const labels = placeLabels(fixtureMarks(games.endgameGrind, 1176), 1176, {
+      narrow: false,
+      wide: true,
+    });
+    const nb4 = labels.find((l) => l.ply === 25);
+    const f4 = labels.find((l) => l.ply === 26);
+    expect(nb4?.leader).toBe(true); // the player's blunder keeps its label
+    // f4? may be dropped (it can't sit left of Nb4??'s label), but never placed out of order.
+    if (f4) expect(f4.x).toBeGreaterThan(nb4?.x ?? 0);
+    if (f4?.leader) expect(crosses(leaderPoints(nb4 as PlacedLabel), leaderPoints(f4))).toBe(false);
+  });
+
+  it("gives a tick at the top of the plot a straight vertical leader", () => {
+    const [label] = placeLabels([mk(55, "Nd2", "blunder", 100, true, LANE + 2)], 320, {
+      narrow: true,
+      wide: false,
+    });
+    expect(label).toBeDefined();
+    const pts = leaderPoints(label as PlacedLabel);
+    expect(pts).toHaveLength(2);
+    expect(pts.every(([x]) => x === 100)).toBe(true);
+  });
+
+  it("flips a corner label only when something crosses it", () => {
+    const base = { width: 326, plotH: PLOT_H, top: "White (you)", bottom: "Black", ticks: [] };
+    expect(placeCorners({ ...base, labels: [] })).toEqual({ top: "left", bottom: "left" });
+    const through: PlacedLabel = {
+      ply: 25,
+      x: 10,
+      width: 40,
+      tickX: 30,
+      tickTop: 80,
+      serious: true,
+      leader: true,
+      text: { prefix: "", san: "Nb4", glyph: "??" },
+    };
+    expect(placeCorners({ ...base, labels: [through] })).toEqual({ top: "right", bottom: "left" });
+  });
+});
+
+describe("tokens", () => {
+  it("shares the graph threshold and heights with tokens.css", () => {
+    const css = tokensCss;
+    expect(css).toContain(`--container-graph: ${GRAPH_NARROW}px;`);
+    expect(css).toContain(`--eval-graph-height: ${LANE + 88 + 18}px;`);
+    expect(css).toContain(`--eval-graph-height-wide: ${LANE + 120 + 18}px;`);
   });
 });
 
@@ -294,13 +445,13 @@ describe("EvalGraph", () => {
     expect(slider).toHaveAttribute("aria-valuetext", "Move 1, White d4, White 51%");
   });
 
-  it("treats ply 0 as the start position, with no cursor", async () => {
+  it("treats ply 0 as the start position, with no cursor and the minimum still 1", async () => {
     const onSelectPly = vi.fn();
     const { container } = await renderGraph({ currentPly: 0, onSelectPly });
     const slider = screen.getByRole("slider");
-    expect(slider).toHaveAttribute("aria-valuenow", "0");
-    expect(slider).toHaveAttribute("aria-valuemin", "0");
-    expect(slider).toHaveAttribute("aria-valuetext", "Start position");
+    expect(slider).toHaveAttribute("aria-valuemin", "1");
+    expect(slider).toHaveAttribute("aria-valuenow", "1");
+    expect(slider).toHaveAttribute("aria-valuetext", "Start position, before move 1");
     expect(container.querySelector("[data-cursor-rule]")).toBeNull();
     fireEvent.keyDown(slider, { key: "ArrowLeft" });
     expect(onSelectPly).not.toHaveBeenCalled();
@@ -349,9 +500,20 @@ describe("EvalGraph", () => {
     expect(text).toContain("Also 12 inaccuracies.");
   });
 
-  it("reveals with a clip, but not under reduced motion", async () => {
-    const { container, unmount } = await renderGraph({ drawIn: true });
+  it("reveals with a clip on the line and area only, but not under reduced motion", async () => {
+    const { container, unmount } = await renderGraph({ drawIn: true, currentPly: 30 });
     expect(container.querySelector("clipPath")).not.toBeNull();
+    expect(container.querySelector('[data-series="line"]')?.closest("[clip-path]")).not.toBeNull();
+    for (const layer of ["marks", "labels", "leaders"]) {
+      const g = container.querySelector(`[data-layer="${layer}"]`);
+      expect(g).not.toBeNull();
+      expect(g?.closest("[clip-path]")).toBeNull();
+    }
+    // Marks, labels and the cursor fade on the reveal's one clock (--wipe), not on timers.
+    const style = (el: Element | null) => el?.getAttribute("style") ?? "";
+    expect(style(container.querySelector('[data-mark="pen"]'))).toMatch(/var\(--wipe/);
+    expect(style(container.querySelector("[data-label]"))).toMatch(/var\(--wipe/);
+    expect(style(container.querySelector("[data-cursor]"))).toMatch(/var\(--wipe/);
     unmount();
     const media = { matches: true, addEventListener() {}, removeEventListener() {} };
     Object.defineProperty(window, "matchMedia", { configurable: true, value: () => media });
@@ -368,7 +530,7 @@ describe("EvalGraph", () => {
     const onSelectPly = vi.fn();
     await renderGraph({ currentPly: 30, onSelectPly });
     const slider = screen.getByRole("slider");
-    const touch = { pointerType: "touch", pointerId: 7, button: 0 };
+    const touch = { pointerType: "touch", pointerId: 7, button: 0, isPrimary: true };
 
     fireEvent.pointerDown(slider, { ...touch, clientX: 100 });
     expect(onSelectPly).not.toHaveBeenCalled();
@@ -385,15 +547,40 @@ describe("EvalGraph", () => {
     fireEvent.pointerDown(slider, { ...touch, clientX: 100 });
     fireEvent.pointerMove(slider, { ...touch, clientX: 160 });
     expect(onSelectPly).toHaveBeenCalledTimes(1);
+    fireEvent.pointerUp(slider, { ...touch, clientX: 160 });
+
+    // A tap that wandered more than 10px in total is not a tap.
+    onSelectPly.mockClear();
+    fireEvent.pointerDown(slider, { ...touch, clientX: 100, clientY: 50 });
+    fireEvent.pointerMove(slider, { ...touch, clientX: 104, clientY: 70 });
+    fireEvent.pointerUp(slider, { ...touch, clientX: 100, clientY: 52 });
+    expect(onSelectPly).not.toHaveBeenCalled();
+
+    // A second finger is ignored.
+    fireEvent.pointerDown(slider, { ...touch, pointerId: 8, isPrimary: false, clientX: 100 });
+    fireEvent.pointerUp(slider, { ...touch, pointerId: 8, isPrimary: false, clientX: 100 });
+    expect(onSelectPly).not.toHaveBeenCalled();
   });
 
   it("selects on mouse press, but not on other buttons", async () => {
     const onSelectPly = vi.fn();
     await renderGraph({ currentPly: 30, onSelectPly });
     const slider = screen.getByRole("slider");
-    fireEvent.pointerDown(slider, { pointerType: "mouse", pointerId: 1, button: 2, clientX: 200 });
+    fireEvent.pointerDown(slider, {
+      pointerType: "mouse",
+      pointerId: 1,
+      isPrimary: true,
+      button: 2,
+      clientX: 200,
+    });
     expect(onSelectPly).not.toHaveBeenCalled();
-    fireEvent.pointerDown(slider, { pointerType: "mouse", pointerId: 1, button: 0, clientX: 200 });
+    fireEvent.pointerDown(slider, {
+      pointerType: "mouse",
+      pointerId: 1,
+      isPrimary: true,
+      button: 0,
+      clientX: 200,
+    });
     expect(onSelectPly).toHaveBeenCalledTimes(1);
   });
 
@@ -409,15 +596,83 @@ describe("EvalGraph", () => {
     expect(lane()).not.toBeNull();
     await act(async () => {
       slider.blur();
-      fireEvent.pointerMove(slider, { pointerType: "mouse", pointerId: 1, clientX: 200 });
+      fireEvent.pointerMove(slider, {
+        pointerType: "mouse",
+        pointerId: 1,
+        isPrimary: true,
+        clientX: 200,
+      });
     });
-    // Below 512px the readout takes the phase lane, which hides the phase labels meanwhile.
+    // Below 496px the readout takes the phase lane, which hides the phase labels meanwhile, and
+    // sits 6px under the plot, clear of the focus ring (2px offset plus 2px width).
     expect(lane()?.textContent).toMatch(/White \d+%/);
+    expect(lane()).toHaveStyle({ top: `${LANE + PLOT_H + 6}px` });
     expect(container.querySelector("[data-readout]")).not.toBeNull();
     await act(async () => {
       fireEvent.pointerLeave(slider, { pointerType: "mouse", pointerId: 1 });
     });
     expect(lane()).toBeNull();
+  });
+
+  it("shows a popover from 496px, clear of the corner labels", async () => {
+    measured = 560;
+    const { container } = await renderGraph({ currentPly: 30, playerColor: "white" });
+    const slider = screen.getByRole("slider");
+    const popover = () => container.querySelector("[data-readout-popover]") as HTMLElement | null;
+    for (const clientX of [0, 280, 560]) {
+      await act(async () => {
+        fireEvent.pointerMove(slider, {
+          pointerType: "mouse",
+          pointerId: 1,
+          isPrimary: true,
+          clientX,
+        });
+      });
+      expect(container.querySelector("[data-readout-lane]")).toBeNull();
+      const box = popover();
+      expect(box).not.toBeNull();
+      const left = Number.parseFloat(box?.style.left ?? "");
+      const top = Number.parseFloat(box?.style.top ?? "");
+      expect(left).toBeGreaterThanOrEqual(0);
+      expect(left + 148).toBeLessThanOrEqual(560);
+      const band = top === LANE + 6 ? "top" : "bottom";
+      const corner = container.querySelector(`[data-corner="${band}"]`);
+      const reserved = PAD + cornerWidth(corner?.textContent ?? "") + 8;
+      if (corner?.getAttribute("data-side") === "left") {
+        expect(left).toBeGreaterThanOrEqual(reserved);
+      } else {
+        expect(left + 148).toBeLessThanOrEqual(560 - reserved);
+      }
+    }
+  });
+
+  it("moves a corner label to the right when a leader would cross it, at 390", async () => {
+    measured = 326; // the graph's width in a 390px viewport
+    const { container } = await renderGraph({
+      points: toPoints(games.endgameGrind),
+      playerColor: "white",
+    });
+    const leaders = [...container.querySelectorAll("polyline[data-leader]")].map((p) =>
+      pairs(p.getAttribute("points")),
+    );
+    expect(leaders.length).toBeGreaterThan(0);
+    const corners = [...container.querySelectorAll("[data-corner]")];
+    expect(corners).toHaveLength(2);
+    for (const c of corners) {
+      const box = cornerBox(
+        c.getAttribute("data-corner") as "top" | "bottom",
+        c.getAttribute("data-side") as "left" | "right",
+        cornerWidth(c.textContent ?? ""),
+        326,
+        PLOT_H,
+      );
+      for (const pts of leaders) {
+        for (let i = 1; i < pts.length; i++) {
+          expect(segmentHitsBox(pts[i - 1] as Point, pts[i] as Point, box)).toBe(false);
+        }
+      }
+    }
+    expect(container.querySelector('[data-corner="top"]')).toHaveAttribute("data-side", "right");
   });
 
   it("renders 400 plies inside the width", async () => {
@@ -468,7 +723,10 @@ describe("EvalGraph", () => {
     const { container } = await renderGraph({ points: [] });
     expect(screen.getByText("No moves to graph yet")).toBeInTheDocument();
     expect(screen.queryByRole("slider")).toBeNull();
-    expect(screen.getByText("No moves to graph yet")).toHaveClass("h-32", "@lg:h-40");
+    expect(screen.getByText("No moves to graph yet")).toHaveClass(
+      "h-(--eval-graph-height)",
+      "@graph:h-(--eval-graph-height-wide)",
+    );
     const sized = await renderGraph({ points: [], height: 100 });
     expect(sized.getAllByText("No moves to graph yet")[1]).toHaveStyle({ height: "140px" });
     expect(container).toBeTruthy();

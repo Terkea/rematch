@@ -91,6 +91,15 @@
   --space-panel-pad: 16px;
   --space-gutter: 16px;
 
+  /*
+   * The eval graph: one container width (the @graph container query) sets its height, label form
+   * and readout. 496px sits between the board sizes (448px below, 512px above). Heights are the
+   * 22px label lane + the plot (88px, or 120px from @graph) + the 18px phase lane.
+   */
+  --container-graph: 496px;
+  --eval-graph-height: 128px;
+  --eval-graph-height-wide: 160px;
+
   /* The board: below 768px it fills the column, up to 480px. Rounded to whole squares below. */
   --board-size: min(100vw - 2 * var(--space-gutter), 480px);
 

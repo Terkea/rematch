@@ -1,5 +1,12 @@
 // The app's one entry point to Motion, so every animation uses the same version and these tokens.
-export { AnimatePresence, animate, motion, useAnimate } from "motion/react";
+export {
+  AnimatePresence,
+  animate,
+  type MotionValue,
+  motion,
+  useAnimate,
+  useMotionValue,
+} from "motion/react";
 export {
   arrivalTime,
   type CubicBezier,

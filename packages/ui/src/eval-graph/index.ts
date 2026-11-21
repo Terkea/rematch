@@ -6,11 +6,11 @@ export {
   plyText,
 } from "./eval-graph.js";
 export {
+  GRAPH_NARROW,
   type LabelMark,
   type PlacedLabel,
   placeLabels,
   plyForX,
-  wipeDelay,
   xForPly,
   yForWin,
 } from "./scales.js";

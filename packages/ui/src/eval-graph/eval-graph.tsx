@@ -2,25 +2,45 @@
 
 import { Curve, Responsive, Shape } from "@visx/visx";
 import {
+  type CSSProperties,
   type KeyboardEvent,
   memo,
   type PointerEvent,
   useCallback,
+  useEffect,
   useId,
   useMemo,
   useRef,
   useState,
 } from "react";
 import { cn } from "../lib/index.js";
-import { dur, ease, motion, spring, useReducedMotion } from "../motion/index.js";
 import {
+  animate,
+  dur,
+  ease,
+  type MotionValue,
+  motion,
+  spring,
+  useMotionValue,
+  useReducedMotion,
+} from "../motion/index.js";
+import {
+  AXIS,
+  cornerWidth,
   GLYPH,
+  GRAPH_NARROW,
+  LABEL_WIDE,
+  LANE,
   type LabelMark,
+  leaderPoints,
   movePrefix,
+  PAD,
+  PLOT_HEIGHT,
   type PlacedLabel,
+  placeCorners,
   placeLabels,
   plyForX,
-  wipeDelay,
+  type Side,
   xForPly,
   yForWin,
 } from "./scales.js";
@@ -40,14 +60,17 @@ export interface EvalGraphProps {
   points: EvalGraphPoint[];
   /** Accessible name of the graph, for example "Win chance, DrNykterstein v Night-King96". */
   label: string;
-  /** The ply shown on the board; 0 is the start position (no cursor). */
+  /**
+   * The ply shown on the board. 0 is the start position: no cursor, and the slider reads "Start
+   * position" (it still reports 1, its minimum; ArrowRight then selects ply 1).
+   */
   currentPly?: number;
   onSelectPly?: (ply: number) => void;
   phases?: { middlegameStartPly?: number; endgameStartPly?: number };
   playerColor?: "white" | "black";
   /**
    * Plot height in px. By default the plot is 120px (DESIGN.md), or 88px in a container narrower
-   * than 512px (Tailwind's `@lg`), set by a container query so nothing shifts after measuring.
+   * than `--container-graph` (496px), set by a container query so nothing shifts on measuring.
    */
   height?: number;
   /** Reveal left to right on mount over 2 × `dur.reveal` (no reveal under reduced motion). */
@@ -55,26 +78,32 @@ export interface EvalGraphProps {
   className?: string;
 }
 
-// Layout, from DESIGN.md "Eval graph": a 22px label lane above the plot and a phase lane below.
-const LANE = 22;
-const AXIS = 18;
-const PAD = 8;
-/** Below this container width (Tailwind's `@lg`, 32rem): 88px plot, SAN labels, lane readout. */
-const NARROW = 512;
-/** From this width, inaccuracies are labelled too. */
-const WIDE = 768;
-/** Where the corner labels ("White (you)") end; the readout never covers them. */
-const CORNER_END = 88;
 const READOUT_W = 148;
 const READOUT_H = 48;
+/** Marks fade in over this many px as the reveal passes them. */
+const FADE_SPAN = 24;
 const IGNORED_DIMENSIONS: ("height" | "top" | "left")[] = ["height", "top", "left"];
 /** Text halo for labels: the surface the graph sits on (set `--eval-graph-surface` off sheet). */
 const HALO = "var(--eval-graph-surface, var(--color-sheet))";
 const NUMERALS = { fontVariantNumeric: "lining-nums tabular-nums" } as const;
 const CORNER_HALO = { strokeWidth: 3, strokeLinejoin: "round", paintOrder: "stroke" } as const;
+/** A tap may wander this far in total before it stops counting as a tap. */
+const TAP_SLOP = 10;
+/** Horizontal travel that turns a touch into a scrub. */
+const SCRUB_START = 6;
 
 const isSerious = (j: EvalGraphPoint["judgement"]) => j === "mistake" || j === "blunder";
 const sideOf = (ply: number) => (ply % 2 === 1 ? "White" : "Black");
+
+/**
+ * Opacity on the reveal clock: `--wipe` runs 0 to 1 with the clip, and an element at `x` fades in
+ * over FADE_SPAN px as the wipe passes it. With no reveal running `--wipe` is 1, so everything,
+ * including marks that arrive later, is fully drawn at once.
+ */
+const wipeOpacity = (x: number, width: number): CSSProperties => ({
+  opacity:
+    `clamp(0, calc((var(--wipe, 1) * ${width + FADE_SPAN} - ${x.toFixed(1)}) / ${FADE_SPAN}), 1)` as unknown as number,
+});
 
 /** The slider's value text: "Move 16, White Rxe6, blunder, White 22%". */
 export function plyText(p: EvalGraphPoint): string {
@@ -103,7 +132,8 @@ function summary(points: EvalGraphPoint[], playerColor?: "white" | "black"): str
 interface Mark {
   ply: number;
   x: number;
-  y: number;
+  y1: number;
+  y2: number;
   judgement: EvalGraphJudgement;
 }
 
@@ -111,6 +141,11 @@ interface Phase {
   name: string;
   x: number;
   labelX: number;
+}
+
+interface Corner {
+  text: string;
+  side: Side;
 }
 
 /** The parts of the graph that only change with the data or the size. */
@@ -123,7 +158,8 @@ const StaticLayer = memo(function StaticLayer({
   marks,
   labels,
   phases,
-  playerColor,
+  corners,
+  progress,
   reveal,
   clipId,
 }: {
@@ -135,31 +171,25 @@ const StaticLayer = memo(function StaticLayer({
   marks: Mark[];
   labels: PlacedLabel[];
   phases: Phase[];
-  playerColor?: "white" | "black";
+  corners: { top: Corner; bottom: Corner };
+  progress: MotionValue<number>;
+  /** Clip the line and area to the reveal's wipe; without a reveal there is no clip at all. */
   reveal: boolean;
   clipId: string;
 }) {
-  const top = LANE + 2;
-  const bottom = LANE + plotH - 2;
-  // Marks and labels fade in (opacity only) as the wipe passes their x.
-  const fade = (x: number) =>
-    reveal
-      ? {
-          initial: { opacity: 0 },
-          animate: { opacity: 1 },
-          transition: {
-            duration: dur.quick,
-            delay: wipeDelay(x / width, 2 * dur.reveal, ease.pen),
-          },
-        }
-      : { initial: false as const };
-  const sideLabel = (side: "white" | "black") =>
-    `${side === "white" ? "White" : "Black"}${playerColor === side ? " (you)" : ""}`;
-  const tickFor = (m: Mark) => {
-    const half = m.judgement === "blunder" ? 9 : m.judgement === "mistake" ? 7 : 5;
-    return { y1: Math.max(top, m.y - half), y2: Math.min(bottom, m.y + half) };
-  };
-  const tickTops = new Map(marks.map((m) => [m.ply, tickFor(m).y1]));
+  const clip = reveal ? `url(#${clipId})` : undefined;
+  const cornerText = (c: Corner, y: number, key: string) => (
+    <text
+      key={key}
+      data-corner={key}
+      data-side={c.side}
+      x={c.side === "left" ? PAD : width - PAD}
+      y={y}
+      textAnchor={c.side === "left" ? "start" : "end"}
+    >
+      {c.text}
+    </text>
+  );
 
   return (
     <svg
@@ -176,16 +206,13 @@ const StaticLayer = memo(function StaticLayer({
               y={0}
               width={width}
               height={LANE + plotH + AXIS}
-              style={{ originX: 0, originY: 0 }}
-              initial={{ scaleX: 0 }}
-              animate={{ scaleX: 1 }}
-              transition={{ duration: 2 * dur.reveal, ease: ease.pen }}
+              style={{ scaleX: progress, originX: 0, originY: 0 }}
             />
           </clipPath>
         </defs>
       )}
       <rect x={0} y={LANE} width={width} height={plotH} rx={2} className="fill-well" />
-      <g clipPath={reveal ? `url(#${clipId})` : undefined}>
+      <g clipPath={clip}>
         <path d={areaPath} className="fill-ink/10" />
       </g>
       <line
@@ -213,14 +240,14 @@ const StaticLayer = memo(function StaticLayer({
           <text
             key={ph.name}
             x={ph.labelX}
-            y={LANE + plotH + 14}
+            y={LANE + plotH + 15}
             className="fill-ink-faint font-sans text-xs"
           >
             {ph.name}
           </text>
         ))}
       </g>
-      <g clipPath={reveal ? `url(#${clipId})` : undefined}>
+      <g clipPath={clip}>
         <path
           d={linePath}
           data-series="line"
@@ -235,44 +262,41 @@ const StaticLayer = memo(function StaticLayer({
         {labels
           .filter((l) => l.leader)
           .map((l) => (
-            <motion.polyline
+            <polyline
               key={l.ply}
               data-leader={l.ply}
-              points={leaderPoints(l, tickTops.get(l.ply) ?? LANE)}
+              points={leaderPoints(l)
+                .map(([x, y]) => `${x},${y}`)
+                .join(" ")}
               fill="none"
               strokeWidth={1}
               strokeLinejoin="round"
               className="stroke-pencil"
-              {...fade(l.tickX)}
+              style={wipeOpacity(l.tickX, width)}
             />
           ))}
       </g>
       {/* Corner labels sit over the line and leaders on a well halo, under the marks. */}
       <g className="fill-ink-soft stroke-well font-sans text-xs" style={CORNER_HALO}>
-        <text x={PAD} y={LANE + 14}>
-          {sideLabel("white")}
-        </text>
-        <text x={PAD} y={LANE + plotH - 6}>
-          {sideLabel("black")}
-        </text>
+        {cornerText(corners.top, LANE + 14, "top")}
+        {cornerText(corners.bottom, LANE + plotH - 6, "bottom")}
       </g>
       <g data-layer="marks">
         {marks.map((m) => {
           const serious = isSerious(m.judgement);
           const w = m.judgement === "blunder" ? 3 : serious ? 2.5 : 1.5;
-          const { y1, y2 } = tickFor(m);
           return (
-            <motion.g
+            <g
               key={m.ply}
               data-mark={serious ? "pen" : "pencil"}
               data-ply={m.ply}
-              {...fade(m.x)}
+              style={wipeOpacity(m.x, width)}
             >
               <line
                 x1={m.x}
                 x2={m.x}
-                y1={y1}
-                y2={y2}
+                y1={m.y1}
+                y2={m.y2}
                 strokeWidth={w + 2}
                 strokeLinecap="round"
                 className="stroke-well"
@@ -280,62 +304,53 @@ const StaticLayer = memo(function StaticLayer({
               <line
                 x1={m.x}
                 x2={m.x}
-                y1={y1}
-                y2={y2}
+                y1={m.y1}
+                y2={m.y2}
                 strokeWidth={w}
                 strokeLinecap="round"
                 className={serious ? "stroke-pen" : "stroke-pencil"}
               />
-            </motion.g>
+            </g>
           );
         })}
       </g>
       <g data-layer="labels">
         {labels.map((l) => (
-          <motion.g key={l.ply} data-label={l.ply} {...fade(l.tickX)}>
-            <text
-              x={l.x}
-              y={15}
-              className={cn(
-                "font-serif text-sm",
-                l.serious ? "fill-ink font-semibold" : "fill-ink-faint font-normal",
-              )}
-              style={{
-                ...NUMERALS,
-                stroke: HALO,
-                strokeWidth: 4,
-                strokeLinejoin: "round",
-                paintOrder: "stroke",
-              }}
-            >
-              {l.text.prefix}
-              {l.text.san}
-              <tspan
-                className={cn("tracking-glyph", l.serious ? "fill-pen-text" : "fill-ink-faint")}
-              >
-                {l.text.glyph}
-              </tspan>
-            </text>
-          </motion.g>
+          <text
+            key={l.ply}
+            data-label={l.ply}
+            x={l.x}
+            y={15}
+            className={cn(
+              "font-serif text-sm",
+              l.serious ? "fill-ink font-semibold" : "fill-ink-faint font-normal",
+            )}
+            style={{
+              ...NUMERALS,
+              ...wipeOpacity(l.tickX, width),
+              stroke: HALO,
+              strokeWidth: 4,
+              strokeLinejoin: "round",
+              paintOrder: "stroke",
+            }}
+          >
+            {l.text.prefix}
+            {l.text.san}
+            <tspan className={cn("tracking-glyph", l.serious ? "fill-pen-text" : "fill-ink-faint")}>
+              {l.text.glyph}
+            </tspan>
+          </text>
         ))}
       </g>
     </svg>
   );
 });
 
-/** A bent leader: a short diagonal under the label (7px tall), then straight down to the tick. */
-function leaderPoints(l: PlacedLabel, tickTop: number): string {
-  const anchor = Math.min(Math.max(l.tickX, l.x + 3), l.x + l.width - 3);
-  const top = 18;
-  const bend = top + 7;
-  const end = Math.max(LANE, tickTop - 2);
-  if (end <= bend) return `${anchor},${top} ${l.tickX},${end}`;
-  return `${anchor},${top} ${l.tickX},${bend} ${l.tickX},${end}`;
-}
-
 interface Gesture {
   id: number;
   startX: number;
+  startY: number;
+  travel: number;
   touch: boolean;
   scrubbing: boolean;
 }
@@ -364,11 +379,30 @@ export function EvalGraph({
   const [focusVisible, setFocusVisible] = useState(false);
   const gesture = useRef<Gesture | null>(null);
 
+  // The reveal's one clock: the clip's scaleX and every mark's opacity (via --wipe) follow it.
+  const revealing = drawIn && !reduced;
+  const progress = useMotionValue(revealing ? 0 : 1);
+  const ready = width > 0;
+  useEffect(() => {
+    if (!ready) return;
+    if (!revealing) {
+      progress.jump(1);
+      return;
+    }
+    if (progress.get() >= 1) return;
+    const controls = animate(progress, 1, { duration: 2 * dur.reveal, ease: ease.pen });
+    return () => controls.stop();
+  }, [ready, revealing, progress]);
+  /** M7: input during the reveal finishes it over `dur.quick`. */
+  const finishReveal = () => {
+    if (progress.get() < 1) animate(progress, 1, { duration: dur.quick, ease: ease.out });
+  };
+
   const count = points.length;
   const first = points[0]?.ply ?? 1;
   const last = points[count - 1]?.ply ?? 1;
-  const narrow = width > 0 && width < NARROW;
-  const plotH = height ?? (narrow ? 88 : 120);
+  const narrow = width > 0 && width < GRAPH_NARROW;
+  const plotH = height ?? (narrow ? PLOT_HEIGHT.narrow : PLOT_HEIGHT.wide);
   const innerW = Math.max(0, width - 2 * PAD);
 
   // Scales and paths, built once per data and size. x maps by index, so plies need not start at 1.
@@ -388,14 +422,24 @@ export function EvalGraph({
     return { xs, ys, baseline, index, linePath, areaPath };
   }, [points, innerW, count, plotH]);
 
+  // Ticks, clamped inside the plot: blunders longest, inaccuracies shortest.
   const marks = useMemo<Mark[]>(
     () =>
-      points.flatMap((p, i) =>
-        p.judgement
-          ? [{ ply: p.ply, x: geo.xs[i] ?? 0, y: geo.ys[i] ?? 0, judgement: p.judgement }]
-          : [],
-      ),
-    [points, geo],
+      points.flatMap((p, i) => {
+        if (!p.judgement) return [];
+        const y = geo.ys[i] ?? 0;
+        const half = p.judgement === "blunder" ? 9 : p.judgement === "mistake" ? 7 : 5;
+        return [
+          {
+            ply: p.ply,
+            x: geo.xs[i] ?? 0,
+            y1: Math.max(LANE + 2, y - half),
+            y2: Math.min(LANE + plotH - 2, y + half),
+            judgement: p.judgement,
+          },
+        ];
+      }),
+    [points, geo, plotH],
   );
 
   const labels = useMemo(() => {
@@ -405,10 +449,21 @@ export function EvalGraph({
       san: points[geo.index.get(m.ply) ?? 0]?.san ?? "",
       judgement: m.judgement,
       x: m.x,
+      top: m.y1,
       mine: playerColor ? sideOf(m.ply).toLowerCase() === playerColor : null,
     }));
-    return placeLabels(input, width, { narrow, wide: width >= WIDE });
+    return placeLabels(input, width, { narrow, wide: width >= LABEL_WIDE });
   }, [marks, points, geo, width, narrow, playerColor]);
+
+  const corners = useMemo(() => {
+    const text = (side: "white" | "black") =>
+      `${side === "white" ? "White" : "Black"}${playerColor === side ? " (you)" : ""}`;
+    const top = text("white");
+    const bottom = text("black");
+    const line = geo.xs.map((x, i) => [x, geo.ys[i] ?? 0] as const);
+    const sides = placeCorners({ width, plotH, top, bottom, labels, ticks: marks, line });
+    return { top: { text: top, side: sides.top }, bottom: { text: bottom, side: sides.bottom } };
+  }, [playerColor, width, plotH, labels, marks, geo]);
 
   const phaseLines = useMemo<Phase[]>(() => {
     let end = -Infinity;
@@ -419,7 +474,7 @@ export function EvalGraph({
       const i = ply === undefined ? undefined : geo.index.get(ply);
       if (i === undefined || i <= 0) return [];
       const x = ((geo.xs[i - 1] ?? 0) + (geo.xs[i] ?? 0)) / 2;
-      const w = Math.ceil(name.length * 6.6);
+      const w = cornerWidth(name);
       let labelX = Math.max(x + 4, end + 8);
       if (labelX + w > width) labelX = Math.max(end + 8, width - w);
       end = labelX + w;
@@ -442,7 +497,10 @@ export function EvalGraph({
     [currentPly, ownPly, onSelectPly],
   );
 
-  const boxClass = height === undefined ? "h-32 @lg:h-40" : undefined;
+  const boxClass =
+    height === undefined
+      ? "h-(--eval-graph-height) @graph:h-(--eval-graph-height-wide)"
+      : undefined;
   const boxStyle = height === undefined ? undefined : { height: LANE + height + AXIS };
 
   if (count === 0) {
@@ -465,7 +523,6 @@ export function EvalGraph({
   const valuePoint = points[valueIndex];
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
-    const from = atStart ? -1 : (activeIndex ?? count - 1);
     const deltas: Record<string, number> = {
       ArrowRight: 1,
       ArrowUp: 1,
@@ -479,11 +536,17 @@ export function EvalGraph({
     else if (e.key === "End") next = count - 1;
     else if (deltas[e.key] !== undefined) {
       const delta = deltas[e.key] ?? 0;
-      if (atStart && delta < 0) return e.preventDefault();
-      next = Math.min(count - 1, Math.max(0, from + delta));
+      // From the start position only a step forward moves, to the first move.
+      if (atStart) next = delta > 0 ? 0 : undefined;
+      else next = Math.min(count - 1, Math.max(0, valueIndex + delta));
+      if (next === undefined) {
+        e.preventDefault();
+        return;
+      }
     }
     if (next === undefined) return;
     e.preventDefault();
+    finishReveal();
     setFocusVisible(true);
     const ply = points[next]?.ply;
     if (ply !== undefined) select(ply);
@@ -496,20 +559,30 @@ export function EvalGraph({
   };
 
   const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
-    if (e.button !== 0) return;
+    if (e.button !== 0 || e.isPrimary === false) return;
+    finishReveal();
     const touch = e.pointerType !== "mouse";
-    gesture.current = { id: e.pointerId, startX: e.clientX, touch, scrubbing: !touch };
+    gesture.current = {
+      id: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      travel: 0,
+      touch,
+      scrubbing: !touch,
+    };
     if (!touch) {
       e.currentTarget.setPointerCapture?.(e.pointerId);
       select(plyFromEvent(e));
     }
   };
   const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
+    if (e.isPrimary === false) return;
     const g = gesture.current;
     const ply = plyFromEvent(e);
     if (g && g.id === e.pointerId) {
+      g.travel = Math.max(g.travel, Math.hypot(e.clientX - g.startX, e.clientY - g.startY));
       // A touch only scrubs after 6px of horizontal travel, so a vertical scroll never selects.
-      if (!g.scrubbing && Math.abs(e.clientX - g.startX) > 6) {
+      if (!g.scrubbing && Math.abs(e.clientX - g.startX) > SCRUB_START) {
         g.scrubbing = true;
         e.currentTarget.setPointerCapture?.(e.pointerId);
       }
@@ -523,8 +596,10 @@ export function EvalGraph({
   };
   const onPointerUp = (e: PointerEvent<HTMLDivElement>) => {
     const g = gesture.current;
+    if (!g || g.id !== e.pointerId) return;
     gesture.current = null;
-    if (g && g.id === e.pointerId && g.touch && !g.scrubbing) select(plyFromEvent(e));
+    const travel = Math.max(g.travel, Math.hypot(e.clientX - g.startX, e.clientY - g.startY));
+    if (g.touch && !g.scrubbing && travel <= TAP_SLOP) select(plyFromEvent(e));
     if (e.pointerType !== "mouse") setHoverPly(null);
   };
   const onPointerCancel = () => {
@@ -536,15 +611,16 @@ export function EvalGraph({
     hoverPly !== null ? geo.index.get(hoverPly) : focusVisible && !atStart ? valueIndex : undefined;
   const shownPoint = shownIndex === undefined ? undefined : points[shownIndex];
   const laneReadout = narrow && shownPoint !== undefined;
-  const spring_ = reduced ? { duration: 0 } : spring.swing;
+  const cursorSpring = reduced ? { duration: 0 } : spring.swing;
+  const cursorX = activeIndex === undefined ? 0 : (geo.xs[activeIndex] ?? 0);
 
   return (
     <figure className={cn("@container m-0", className)}>
-      <div
+      <motion.div
         ref={parentRef}
         data-readout={laneReadout ? "" : undefined}
         className={cn("group relative w-full", boxClass)}
-        style={boxStyle}
+        style={{ ...boxStyle, "--wipe": progress } as never}
       >
         {width > 0 && (
           <StaticLayer
@@ -556,8 +632,9 @@ export function EvalGraph({
             marks={marks}
             labels={labels}
             phases={phaseLines}
-            playerColor={playerColor}
-            reveal={drawIn && !reduced}
+            corners={corners}
+            progress={progress}
+            reveal={revealing}
             clipId={`${id}-clip`}
           />
         )}
@@ -580,7 +657,7 @@ export function EvalGraph({
               />
             )}
             {activeIndex !== undefined && (
-              <>
+              <g data-cursor style={wipeOpacity(cursorX, width)}>
                 <motion.line
                   data-cursor-rule
                   x1={0}
@@ -590,8 +667,8 @@ export function EvalGraph({
                   strokeWidth={1.5}
                   className="stroke-ink"
                   initial={false}
-                  animate={{ x: geo.xs[activeIndex] ?? 0 }}
-                  transition={spring_}
+                  animate={{ x: cursorX }}
+                  transition={cursorSpring}
                 />
                 <motion.circle
                   data-cursor-dot
@@ -601,10 +678,10 @@ export function EvalGraph({
                   strokeWidth={2}
                   className="fill-ink stroke-well"
                   initial={false}
-                  animate={{ x: geo.xs[activeIndex] ?? 0, y: geo.ys[activeIndex] ?? 0 }}
-                  transition={spring_}
+                  animate={{ x: cursorX, y: geo.ys[activeIndex] ?? 0 }}
+                  transition={cursorSpring}
                 />
-              </>
+              </g>
             )}
           </svg>
         )}
@@ -612,12 +689,14 @@ export function EvalGraph({
           role="slider"
           tabIndex={0}
           aria-label={label}
-          aria-valuemin={atStart ? 0 : first}
+          aria-valuemin={first}
           aria-valuemax={last}
-          aria-valuenow={atStart ? 0 : (valuePoint?.ply ?? last)}
-          aria-valuetext={atStart ? "Start position" : valuePoint ? plyText(valuePoint) : undefined}
+          aria-valuenow={atStart ? first : (valuePoint?.ply ?? last)}
+          aria-valuetext={
+            atStart ? "Start position, before move 1" : valuePoint ? plyText(valuePoint) : undefined
+          }
           aria-describedby={`${id}-desc`}
-          className="absolute inset-x-0 cursor-crosshair touch-pan-y rounded-board focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+          className="absolute inset-x-0 cursor-crosshair touch-pan-y touch-pinch-zoom rounded-board focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
           style={{ top: LANE, height: plotH }}
           onKeyDown={onKeyDown}
           onFocus={(e) => {
@@ -651,9 +730,10 @@ export function EvalGraph({
               ys={geo.ys}
               plotH={plotH}
               width={width}
+              corners={corners}
             />
           ))}
-      </div>
+      </motion.div>
       <p id={`${id}-desc`} className="sr-only">
         {describe}
       </p>
@@ -661,10 +741,16 @@ export function EvalGraph({
   );
 }
 
-function Notation({ point }: { point: EvalGraphPoint }) {
+function Notation({ point, size = "sm" }: { point: EvalGraphPoint; size?: "sm" | "xs" }) {
   const glyph = point.judgement ? GLYPH[point.judgement] : "";
   return (
-    <span className="font-serif text-sm font-semibold text-ink" style={NUMERALS}>
+    <span
+      className={cn(
+        "font-serif font-semibold text-ink",
+        size === "sm" ? "text-sm" : "text-xs leading-none",
+      )}
+      style={NUMERALS}
+    >
       {movePrefix(point.ply)}
       {point.san}
       <span
@@ -683,8 +769,8 @@ const detail = (p: EvalGraphPoint) =>
   `White ${Math.round(p.winWhite)}%${p.judgement ? `, ${p.judgement}` : ""}`;
 
 /**
- * From 512px: a popover in the half of the plot away from the line at the hovered move, unless
- * the other half crosses less of the line and its marks nearby. It never covers the corner labels.
+ * From 496px: a popover in the half of the plot away from the line at the hovered move, unless
+ * the other half crosses less of the line and its marks nearby. It never covers a corner label.
  */
 function Readout({
   point,
@@ -694,6 +780,7 @@ function Readout({
   ys,
   plotH,
   width,
+  corners,
 }: {
   point: EvalGraphPoint;
   x: number;
@@ -702,28 +789,37 @@ function Readout({
   ys: number[];
   plotH: number;
   width: number;
+  corners: { top: Corner; bottom: Corner };
 }) {
   const right = x + 12;
-  let left = right + READOUT_W > width ? x - 12 - READOUT_W : right;
-  left = Math.min(Math.max(left, CORNER_END), width - READOUT_W);
-  const topBand = LANE + 6;
-  const bottomBand = LANE + plotH - 6 - READOUT_H;
-  // How many points (with their tick's reach) a popover at `top` would cover.
-  const covered = (top: number) =>
+  const natural = right + READOUT_W > width ? x - 12 - READOUT_W : right;
+  /** Keeps the popover clear of the corner label in its band. */
+  const leftFor = (corner: Corner) => {
+    const reserved = PAD + cornerWidth(corner.text) + 8;
+    return corner.side === "left"
+      ? Math.min(Math.max(natural, reserved), width - READOUT_W)
+      : Math.max(0, Math.min(natural, width - reserved - READOUT_W));
+  };
+  const bands = {
+    top: { top: LANE + 6, left: leftFor(corners.top) },
+    bottom: { top: LANE + plotH - 6 - READOUT_H, left: leftFor(corners.bottom) },
+  };
+  // How many points (with their tick's reach) a popover in `band` would cover.
+  const covered = ({ top, left }: { top: number; left: number }) =>
     xs.reduce((n, px, i) => {
       const py = ys[i] ?? 0;
       const inX = px >= left - 4 && px <= left + READOUT_W + 4;
       return inX && py + 9 >= top && py - 9 <= top + READOUT_H ? n + 1 : n;
     }, 0);
-  const preferred = lineY < LANE + plotH / 2 ? bottomBand : topBand;
-  const other = preferred === topBand ? bottomBand : topBand;
-  const top = covered(preferred) <= covered(other) ? preferred : other;
+  const preferred = lineY < LANE + plotH / 2 ? bands.bottom : bands.top;
+  const other = preferred === bands.top ? bands.bottom : bands.top;
+  const band = covered(preferred) <= covered(other) ? preferred : other;
   return (
     <div
       aria-hidden="true"
       data-readout-popover
       className="pointer-events-none absolute flex flex-col rounded-field bg-sheet px-3 py-1.5 shadow-lift"
-      style={{ left, top, width: READOUT_W, height: READOUT_H }}
+      style={{ left: band.left, top: band.top, width: READOUT_W, height: READOUT_H }}
     >
       <Notation point={point} />
       <span className="font-sans text-xs text-ink-soft">{detail(point)}</span>
@@ -731,17 +827,20 @@ function Readout({
   );
 }
 
-/** Below 512px: one line in the phase lane, which hides the phase labels meanwhile. */
+/**
+ * Below 496px: one line in the phase lane (which hides the phase labels meanwhile), 6px under
+ * the plot so it clears the 2px focus ring and its 2px offset.
+ */
 function LaneReadout({ point, top }: { point: EvalGraphPoint; top: number }) {
   return (
     <div
       aria-hidden="true"
       data-readout-lane
-      className="pointer-events-none absolute inset-x-0 flex items-center gap-2 leading-none"
-      style={{ top, height: AXIS }}
+      className="pointer-events-none absolute inset-x-0 flex items-end gap-2 leading-none"
+      style={{ top: top + 6, height: AXIS - 6 }}
     >
-      <Notation point={point} />
-      <span className="font-sans text-xs text-ink-soft">{detail(point)}</span>
+      <Notation point={point} size="xs" />
+      <span className="font-sans text-xs leading-none text-ink-soft">{detail(point)}</span>
     </div>
   );
 }
