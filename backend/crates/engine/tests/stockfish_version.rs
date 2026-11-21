@@ -44,3 +44,44 @@ async fn fails_to_spawn_a_missing_binary() {
     let r = stockfish_version(Path::new("/nonexistent/stockfish"), Duration::from_secs(1)).await;
     assert!(matches!(r, Err(EngineError::Spawn(_))), "{r:?}");
 }
+
+/// A throwaway executable script in its own temp directory.
+#[cfg(unix)]
+fn script(name: &str, body: &str) -> std::path::PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = std::env::temp_dir().join(format!("sfv-{}-{name}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("engine");
+    std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    path
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn falls_back_to_the_id_name_line() {
+    let p = script(
+        "idname",
+        "read l; echo 'id name Stockfish 19'; echo 'id author x'; echo uciok; sleep 30",
+    );
+    let started = std::time::Instant::now();
+    let v = stockfish_version(&p, Duration::from_secs(10))
+        .await
+        .unwrap();
+    assert_eq!(v, "Stockfish 19");
+    // Returned at `uciok`, not at the timeout.
+    assert!(started.elapsed() < Duration::from_secs(5));
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn returns_early_at_uciok_without_a_stockfish_name() {
+    let p = script(
+        "other",
+        "read l; echo 'id name Komodo'; echo uciok; sleep 30",
+    );
+    let started = std::time::Instant::now();
+    let r = stockfish_version(&p, Duration::from_secs(10)).await;
+    assert!(matches!(r, Err(EngineError::Spawn(_))), "{r:?}");
+    assert!(started.elapsed() < Duration::from_secs(5));
+}

@@ -11,10 +11,11 @@ use crate::types::EngineError;
 
 /// Start the binary, send `uci`, and return the first stdout line that starts
 /// with `Stockfish` (for example `Stockfish 19 by the Stockfish developers`),
-/// trimmed. The process is killed and reaped afterwards.
+/// trimmed. Without such a banner, the `id name Stockfish …` value seen before
+/// `uciok` is returned. The process is killed and reaped afterwards.
 ///
-/// Errors: `Spawn` if it cannot start, `Crashed` if its output ends before
-/// the banner, `Timeout(timeout)` if no banner arrives within `timeout`.
+/// Errors: `Spawn` if it cannot start or reaches `uciok` with neither, `Crashed`
+/// if its output ends first, `Timeout(timeout)` if none of this arrives in time.
 pub async fn stockfish_version(path: &Path, timeout: Duration) -> Result<String, EngineError> {
     let mut child = Command::new(path)
         .stdin(Stdio::piped())
@@ -31,6 +32,7 @@ pub async fn stockfish_version(path: &Path, timeout: Duration) -> Result<String,
         let _ = stdin.flush().await;
         let mut reader = BufReader::new(stdout);
         let mut buf = Vec::new();
+        let mut id_name: Option<String> = None;
         loop {
             buf.clear();
             match reader.read_until(b'\n', &mut buf).await {
@@ -40,6 +42,20 @@ pub async fn stockfish_version(path: &Path, timeout: Duration) -> Result<String,
                     let line = line.trim();
                     if line.starts_with("Stockfish") {
                         return Ok(line.to_string());
+                    }
+                    if let Some(name) = line.strip_prefix("id name ")
+                        && name.starts_with("Stockfish")
+                    {
+                        id_name = Some(name.trim().to_string());
+                    }
+                    if line == "uciok" {
+                        // The handshake is over: no banner will follow.
+                        return id_name.take().ok_or_else(|| {
+                            EngineError::Spawn(format!(
+                                "{} is not Stockfish (no banner or id name before uciok)",
+                                path.display()
+                            ))
+                        });
                     }
                 }
             }

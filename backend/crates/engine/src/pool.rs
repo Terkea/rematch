@@ -17,11 +17,15 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
 
 use futures::future::BoxFuture;
-use tokio::sync::{oneshot, watch};
+use tokio::sync::{Semaphore, oneshot, watch};
 use tokio_util::sync::CancellationToken;
 
 use crate::types::{AnalyseOptions, Analyser, AnalysisResult, EngineError};
-use crate::uci::{StartOptions, UciEngine, validate_fen};
+use crate::uci::{AliveHandle, StartOptions, UciEngine, validate_fen};
+
+/// Engines started at once per pool. A cold start loads the NNUE net from
+/// disk, and a burst of starts can exceed the handshake deadline.
+pub const SPAWN_CONCURRENCY: usize = 2;
 
 #[derive(Clone, Debug)]
 pub struct PoolOptions {
@@ -56,8 +60,9 @@ struct State {
     idle: Vec<Pooled>,
     waiters: VecDeque<oneshot::Sender<Pooled>>,
     closed: bool,
-    /// Engine id -> pid of every started engine not yet retired or replaced.
-    pids: BTreeMap<u64, u32>,
+    /// Engine id -> pid and liveness of every started engine not yet
+    /// retired or replaced.
+    pids: BTreeMap<u64, (u32, AliveHandle)>,
     next_id: u64,
 }
 
@@ -68,6 +73,8 @@ struct Inner {
     live: watch::Sender<usize>,
     /// Interrupts in-flight searches on `close()`.
     cancel: CancellationToken,
+    /// Bounds concurrent engine starts ([`SPAWN_CONCURRENCY`]).
+    spawn_permits: Semaphore,
 }
 
 impl Inner {
@@ -86,9 +93,11 @@ pub struct EnginePool {
     inner: Arc<Inner>,
 }
 
-/// An engine checked out of the pool. Dropping it (for example when the
-/// caller's future is cancelled) returns the engine; `UciEngine::analyse` is
-/// cancel-safe, so the next user stops and drains any abandoned search.
+/// An engine checked out of the pool. The engine stays inside the lease for
+/// the whole call, including the post-call restart and the closed-pool kill,
+/// so dropping it at any await point (a cancelled caller) returns the engine
+/// and the pool never loses a slot. An abandoned search is stopped on
+/// release (`UciEngine::analyse` is cancel-safe either way).
 struct Lease {
     pooled: Option<Pooled>,
     inner: Arc<Inner>,
@@ -132,6 +141,7 @@ impl EnginePool {
                 state: Mutex::new(State::default()),
                 live,
                 cancel: CancellationToken::new(),
+                spawn_permits: Semaphore::new(SPAWN_CONCURRENCY),
             }),
         });
         for _ in 0..size {
@@ -146,10 +156,15 @@ impl EnginePool {
         Ok(pool)
     }
 
-    /// Pids of the pool's engines (idle and in use). An engine that died
-    /// while idle stays listed until it is next used or the pool closes.
+    /// Pids of the pool's live engines (idle and in use).
     pub fn pids(&self) -> Vec<u32> {
-        self.inner.state().pids.values().copied().collect()
+        self.inner
+            .state()
+            .pids
+            .values()
+            .filter(|(_, alive)| alive.is_alive())
+            .map(|(pid, _)| *pid)
+            .collect()
     }
 
     /// Analyse one position on a pooled engine.
@@ -164,23 +179,26 @@ impl EnginePool {
         }
         // An invalid FEN fails at once, without waiting for a free engine.
         validate_fen(fen)?;
-        // The engine stays in the lease while in use, so a cancelled caller
-        // still returns it.
+        // The engine never leaves the lease until it is released, so a
+        // caller cancelled at any await below still returns it (no lost slot).
         let mut lease = acquire(inner).await?;
         let result = run(inner, &mut lease, fen, opts).await;
-        let Some(mut p) = lease.pooled.take() else {
-            return result;
-        };
         if inner.is_closed() {
-            retire(p).await;
+            // Kill and reap in place; dropping the lease then retires it.
+            if let Some(p) = lease.pooled.as_mut() {
+                p.engine.kill().await;
+            }
+            drop(lease);
             return Err(EngineError::PoolClosed);
         }
-        if !p.engine.is_alive() {
+        if let Some(p) = lease.pooled.as_mut()
+            && !p.engine.is_alive()
+        {
             // Restart so the slot is not lost (for example after a timeout kill).
             // On failure the dead engine goes back, and its next user retries.
-            let _ = replace(inner, &mut p).await;
+            let _ = replace(inner, p).await;
         }
-        release(inner, p);
+        drop(lease);
         result
     }
 
@@ -298,8 +316,22 @@ async fn acquire(inner: &Arc<Inner>) -> Result<Lease, EngineError> {
 }
 
 /// Hand an engine to the first live waiter, or push it on the idle stack.
-/// After close() it is retired instead.
+/// An engine still running an abandoned search is stopped first, so it burns
+/// no CPU while idle. After close() it is retired instead.
 fn release(inner: &Arc<Inner>, mut p: Pooled) {
+    if p.engine.is_searching()
+        && p.engine.is_alive()
+        && !inner.is_closed()
+        && let Ok(h) = tokio::runtime::Handle::try_current()
+    {
+        let inner = inner.clone();
+        h.spawn(async move {
+            // On failure the engine is dead and is replaced by its next user.
+            let _ = p.engine.stop_search().await;
+            release(&inner, p);
+        });
+        return;
+    }
     {
         let mut st = inner.state();
         if !st.closed {
@@ -324,7 +356,15 @@ fn release(inner: &Arc<Inner>, mut p: Pooled) {
 }
 
 /// Start one engine and register it.
+///
+/// At most [`SPAWN_CONCURRENCY`] starts run at once, and a start whose
+/// handshake times out (a cold net load) is retried once.
 async fn spawn(inner: &Arc<Inner>) -> Result<Pooled, EngineError> {
+    let _permit = inner
+        .spawn_permits
+        .acquire()
+        .await
+        .map_err(|_| EngineError::PoolClosed)?;
     let id = {
         let mut st = inner.state();
         if st.closed {
@@ -339,20 +379,29 @@ async fn spawn(inner: &Arc<Inner>) -> Result<Pooled, EngineError> {
         id,
         inner: Arc::downgrade(inner),
     };
-    let engine = UciEngine::start(StartOptions {
-        path: inner.opts.path.clone(),
-        threads: None,
-        hash_mb: inner.opts.hash_mb,
-        syzygy_path: None,
-    })
-    .await?;
+    let start = || {
+        UciEngine::start(StartOptions {
+            path: inner.opts.path.clone(),
+            threads: None,
+            hash_mb: inner.opts.hash_mb,
+            syzygy_path: None,
+            handshake_timeout: None,
+        })
+    };
+    let engine = match start().await {
+        Err(EngineError::Timeout(t)) if !inner.is_closed() => {
+            tracing::warn!(?t, "engine handshake timed out; retrying once");
+            start().await?
+        }
+        r => r?,
+    };
     let p = Pooled { engine, ticket };
     let closed = {
         let mut st = inner.state();
         if !st.closed
             && let Some(pid) = p.engine.pid()
         {
-            st.pids.insert(id, pid);
+            st.pids.insert(id, (pid, p.engine.alive_handle()));
         }
         st.closed
     };

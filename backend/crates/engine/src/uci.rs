@@ -15,8 +15,12 @@ use tokio::sync::mpsc;
 
 use crate::types::{AnalyseOptions, AnalysisLine, AnalysisResult, EngineError};
 
-/// Deadline for each handshake step (`uciok`, `readyok`).
+/// Default deadline for the `uciok` handshake step. The first `readyok`,
+/// which waits for the NNUE net to load, gets [`READY_FACTOR`] times as long.
 pub const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
+/// The first `readyok` deadline is this multiple of the handshake timeout
+/// (30 s by default): a cold start loads the net from disk.
+pub const READY_FACTOR: u32 = 3;
 /// Deadline for the engine to answer `stop` with `bestmove` after a cancelled search.
 pub const STOP_TIMEOUT: Duration = Duration::from_secs(5);
 /// Largest halfmove clock sent to the engine. Stockfish reads it as `int`, and
@@ -31,6 +35,20 @@ pub struct StartOptions {
     pub threads: Option<u32>,
     pub hash_mb: Option<u32>,
     pub syzygy_path: Option<String>,
+    /// `uciok` deadline; `None` means [`HANDSHAKE_TIMEOUT`]. The first
+    /// `readyok` gets [`READY_FACTOR`] times this.
+    pub handshake_timeout: Option<Duration>,
+}
+
+/// A cloneable view of an engine's liveness (false once its output ended or
+/// it was killed).
+#[derive(Clone, Debug)]
+pub struct AliveHandle(Arc<AtomicBool>);
+
+impl AliveHandle {
+    pub fn is_alive(&self) -> bool {
+        self.0.load(Ordering::SeqCst)
+    }
 }
 
 /// Parse one `info` line; `None` for lines that must be ignored (bounds, no pv, no score).
@@ -242,15 +260,11 @@ impl UciEngine {
     }
 
     async fn handshake(&mut self, opts: &StartOptions) -> Result<(), EngineError> {
+        let uci_budget = opts.handshake_timeout.unwrap_or(HANDSHAKE_TIMEOUT);
+        let ready_budget = uci_budget.saturating_mul(READY_FACTOR);
         self.send("uci").await?;
-        self.wait_for(
-            "uciok",
-            "handshake",
-            after(HANDSHAKE_TIMEOUT),
-            HANDSHAKE_TIMEOUT,
-            |_| {},
-        )
-        .await?;
+        self.wait_for("uciok", "uciok", after(uci_budget), uci_budget, |_| {})
+            .await?;
         if let Some(t) = opts.threads {
             self.send(&format!("setoption name Threads value {t}"))
                 .await?;
@@ -265,9 +279,9 @@ impl UciEngine {
         self.send("isready").await?;
         self.wait_for(
             "readyok",
-            "handshake",
-            after(HANDSHAKE_TIMEOUT),
-            HANDSHAKE_TIMEOUT,
+            "net load",
+            after(ready_budget),
+            ready_budget,
             |_| {},
         )
         .await
@@ -284,6 +298,28 @@ impl UciEngine {
     /// True between `go` and its `bestmove`, including after a dropped `analyse`.
     pub fn is_searching(&self) -> bool {
         self.searching
+    }
+
+    pub fn alive_handle(&self) -> AliveHandle {
+        AliveHandle(self.alive.clone())
+    }
+
+    /// End an abandoned search (`stop`, then drain its `bestmove`) within
+    /// [`STOP_TIMEOUT`]. A no-op when no search is running. On timeout the
+    /// engine is killed.
+    pub async fn stop_search(&mut self) -> Result<(), EngineError> {
+        self.stop_until(after(STOP_TIMEOUT)).await
+    }
+
+    async fn stop_until(&mut self, deadline: tokio::time::Instant) -> Result<(), EngineError> {
+        if !self.searching {
+            return Ok(());
+        }
+        self.send("stop").await?;
+        self.wait_for("bestmove", "stop", deadline, STOP_TIMEOUT, |_| {})
+            .await?;
+        self.searching = false;
+        Ok(())
     }
 
     /// Analyse one position.
@@ -314,16 +350,7 @@ impl UciEngine {
             // A previous analyse was dropped mid-search: end that search first.
             // On timeout `wait_for` kills the engine.
             deadline += STOP_TIMEOUT;
-            self.send("stop").await?;
-            self.wait_for(
-                "bestmove",
-                "stop",
-                entry + STOP_TIMEOUT,
-                STOP_TIMEOUT,
-                |_| {},
-            )
-            .await?;
-            self.searching = false;
+            self.stop_until(entry + STOP_TIMEOUT).await?;
         }
         self.drain_stale();
         let nodes = opts.nodes.max(1);

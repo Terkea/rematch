@@ -1,6 +1,8 @@
 //! Ported from apps/worker/test/engine/engine-pool.test.ts, plus Rust-only
 //! supervision cases (timeouts, cancelled callers, Hash option).
 
+mod common;
+
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -20,7 +22,7 @@ fn nodes(n: u64) -> AnalyseOptions {
 async fn pool(size: usize) -> Option<Arc<EnginePool>> {
     let path = testkit::stockfish()?;
     Some(
-        EnginePool::create(PoolOptions {
+        common::create_pool(PoolOptions {
             size,
             path,
             hash_mb: None,
@@ -202,7 +204,7 @@ async fn works_through_the_analyser_trait_with_a_hash_size() {
     let Some(path) = testkit::stockfish() else {
         return;
     };
-    let pool = EnginePool::create(PoolOptions {
+    let pool = common::create_pool(PoolOptions {
         size: 1,
         path,
         hash_mb: Some(16),
@@ -221,11 +223,112 @@ async fn works_through_the_analyser_trait_with_a_hash_size() {
 
 #[tokio::test]
 async fn create_fails_with_spawn_for_a_missing_binary() {
-    let r = EnginePool::create(PoolOptions {
+    let r = common::create_pool(PoolOptions {
         size: 2,
         path: "/nonexistent/stockfish".into(),
         hash_mb: None,
     })
     .await;
     assert!(matches!(r, Err(EngineError::Spawn(_))), "{:?}", r.err());
+}
+
+#[tokio::test]
+async fn a_caller_cancelled_during_the_post_call_restart_keeps_the_slot() {
+    let Some(pool) = pool(1).await else { return };
+    // The engine times out at 200 ms and is killed; the caller is cancelled
+    // ~60 ms later, while the pool is restarting the engine.
+    let r = tokio::time::timeout(
+        Duration::from_millis(260),
+        pool.analyse(
+            START,
+            AnalyseOptions {
+                nodes: 5_000_000_000,
+                multipv: 1,
+                timeout: Duration::from_millis(200),
+            },
+        ),
+    )
+    .await;
+    assert!(
+        r.is_err(),
+        "the outer timeout did not cancel the call: {r:?}"
+    );
+    let r = tokio::time::timeout(Duration::from_secs(20), pool.analyse(START, nodes(10_000)))
+        .await
+        .expect("the slot was lost: the pool deadlocked");
+    assert_eq!(r.unwrap().lines.len(), 1);
+    pool.close().await;
+}
+
+#[tokio::test]
+async fn an_engine_handed_to_a_dropped_waiter_is_recovered() {
+    let Some(pool) = pool(1).await else { return };
+    // `a` takes the only engine; `b` queues behind it.
+    let mut a = Box::pin(pool.analyse(START, nodes(5_000_000_000)));
+    assert!(futures::poll!(a.as_mut()).is_pending());
+    let mut b = Box::pin(pool.analyse(START, nodes(1000)));
+    assert!(futures::poll!(b.as_mut()).is_pending());
+    // Dropping `a` hands the engine to `b`'s queue entry; dropping `b`
+    // before it is polled again must put the engine back.
+    drop(a);
+    drop(b);
+    let r = tokio::time::timeout(Duration::from_secs(20), pool.analyse(START, nodes(10_000)))
+        .await
+        .expect("the engine was lost to a dropped waiter");
+    assert_eq!(r.unwrap().lines.len(), 1);
+    pool.close().await;
+}
+
+#[tokio::test]
+async fn an_abandoned_search_is_stopped_on_release() {
+    let Some(pool) = pool(1).await else { return };
+    let pid = pool.pids()[0];
+    tokio::select! {
+        _ = pool.analyse(START, nodes(5_000_000_000)) => panic!("the long search finished"),
+        _ = tokio::time::sleep(Duration::from_millis(300)) => {}
+    }
+    // Once the stop lands, the idle engine burns no CPU.
+    testkit::wait_for(
+        "the abandoned search to stop",
+        Duration::from_secs(10),
+        Duration::from_millis(100),
+        || async move {
+            let a = cpu_time(pid)?;
+            tokio::time::sleep(Duration::from_millis(300)).await;
+            let b = cpu_time(pid)?;
+            (b.saturating_sub(a) < Duration::from_millis(100)).then_some(())
+        },
+    )
+    .await;
+    pool.close().await;
+}
+
+#[tokio::test]
+async fn pids_omits_an_engine_killed_while_idle() {
+    let Some(pool) = pool(2).await else { return };
+    let pids = pool.pids();
+    assert_eq!(pids.len(), 2);
+    let victim = pids[0];
+    kill9(victim);
+    testkit::wait_for(
+        "the killed engine to leave pids()",
+        Duration::from_secs(5),
+        Duration::from_millis(20),
+        || {
+            let now = pool.pids();
+            async move { (!now.contains(&victim)).then_some(()) }
+        },
+    )
+    .await;
+    assert_eq!(pool.pids().len(), 1);
+    pool.close().await;
+}
+
+/// utime + stime from `/proc/<pid>/stat` (100 ticks/s).
+fn cpu_time(pid: u32) -> Option<Duration> {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    let rest = stat.get(stat.rfind(')')? + 2..)?;
+    let f: Vec<&str> = rest.split_whitespace().collect();
+    let ticks: u64 = f.get(11)?.parse::<u64>().ok()? + f.get(12)?.parse::<u64>().ok()?;
+    Some(Duration::from_millis(ticks * 10))
 }
