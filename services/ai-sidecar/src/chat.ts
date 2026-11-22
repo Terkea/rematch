@@ -389,7 +389,7 @@ function finish(
   // `sessionModelUsage` is the SDK's running session total (on a resumed turn it includes every
   // earlier turn). `modelUsage` is this turn's own: the stream sum on a resumed turn, the SDK's
   // figure on a new or rebuilt one (it starts at zero and also counts internal calls), plus any
-  // usage of a failed resume attempt that preceded a rebuild. See ADR-R3-6 for how Rust meters.
+  // usage of a failed resume attempt that preceded a rebuild. See ADR 0062 for how Rust meters.
   out.sessionModelUsage = out.modelUsage;
   if (session === "resumed") out.modelUsage = a.usage.totals();
   if (failed) out.modelUsage = addUsage(out.modelUsage, failed.usage.totals());

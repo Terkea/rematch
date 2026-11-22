@@ -1,4 +1,4 @@
-//! The cache-friendly request of one report section (Task 13, ADR-R3-4). The five sections of a
+//! The cache-friendly request of one report section (Task 13, ADR 0060). The five sections of a
 //! report share a byte-identical prefix with three cache breakpoints:
 //!
 //! 1. `system[0]`: [`rules_block`], `core/rules` + `core/tokens`: the format-neutral rules and
@@ -8,7 +8,7 @@
 //! 3. user block 1: `<coaching_input>` + the canonical prompt context (shared within a report);
 //!
 //! and then the uncached section task, the only part that differs. The Messages API (batches)
-//! uses the breakpoints; the sidecar drops them (ADR-R3-6) and benefits from the stable prefix.
+//! uses the breakpoints; the sidecar drops them (ADR 0062) and benefits from the stable prefix.
 
 use crate::client::model::{Effort, Models};
 use crate::client::port::{Message, Role, StructuredRequest, StructuredResult, TextBlock};

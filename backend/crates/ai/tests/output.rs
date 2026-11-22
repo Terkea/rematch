@@ -410,7 +410,7 @@ fn envelope_shape_matches_ts_export() {
     assert_eq!(ts["source"], "m3/base@4ff8220");
     let mut ts_schema = ts["schema"].clone();
     // The SDK keeps `minItems: 1` on `drills` (the API accepts minItems 0 and 1). We drop every
-    // array bound from the API schema and check it client-side instead (ADR-R3-4), so that one
+    // array bound from the API schema and check it client-side instead (ADR 0060), so that one
     // keyword is removed from the TS side before the comparison.
     let drills = ts_schema
         .pointer_mut("/properties/climbPlan/anyOf/0/properties/focuses/items/properties/drills")

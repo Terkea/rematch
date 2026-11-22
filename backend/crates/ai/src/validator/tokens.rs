@@ -2,7 +2,7 @@
 //! A port of m3's `validator/tokens.ts`, plus the R3 tokens `{{eng:…}}` (interactive engine
 //! results) and `{{offtopic}}` (the chat's off-topic marker).
 //!
-//! Deviation 2 (ADR-R3-2): `Token.index` and a token error's `index` are byte offsets in the
+//! Deviation 2 (ADR 0058): `Token.index` and a token error's `index` are byte offsets in the
 //! canonical text ([`canonical_for_tokens`]); a stray-brace error's `index` is a byte offset in
 //! `stripped`, where TS reports it too. None of the patterns here need a lookaround.
 
@@ -149,7 +149,7 @@ static BRACES_RE: LazyLock<Regex> = LazyLock::new(|| re(r"[{}]+"));
 /// The text tokens are parsed from: invisible characters stripped, NFKC applied, stripped again.
 /// Renderers must use the same form. It uses TS's exact invisible set, not the hardened one, so
 /// `stripped` keeps every char TS keeps and the leak detector can run both of its paths on it
-/// (ADR-R3-2: deleting a hardened-only invisible could glue a neighbour onto a leak).
+/// (ADR 0058: deleting a hardened-only invisible could glue a neighbour onto a leak).
 pub fn canonical_for_tokens(s: &str) -> String {
     let t: String = strip_invisibles_with(s, NormMode::TsExact).nfkc().collect();
     strip_invisibles_with(&t, NormMode::TsExact)

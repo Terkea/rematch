@@ -1,6 +1,6 @@
 //! Text normalisation applied before any extraction, so notation tricks cannot smuggle moves or
 //! numbers. A port of m3's `validator/normalize.ts`, operation for operation ([`NormMode::TsExact`]),
-//! plus the deliberate hardening of ADR-R3-2 ([`NormMode::Hardened`]): a missed claim is a leak.
+//! plus the deliberate hardening of ADR 0058 ([`NormMode::Hardened`]): a missed claim is a leak.
 //!
 //! Hardening alone can also hide a claim: folding a neighbour to ASCII glues it on (`Nf3é` becomes
 //! `Nf3e`, which no boundary check accepts). So the extractors run both modes and return the union
@@ -27,7 +27,7 @@ fn re(p: &str) -> Regex {
     Regex::new(p).expect("valid regex")
 }
 
-/// Which normalisation to run. Extraction runs both and returns the union (ADR-R3-2, fix round 2):
+/// Which normalisation to run. Extraction runs both and returns the union (ADR 0058, fix round 2):
 /// folding a non-ASCII neighbour to ASCII (H1, H3, H4) can glue it onto a move or date and hide
 /// it from the boundary checks (`Nf3é` becomes `Nf3e`), so the TS-exact path must run too.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

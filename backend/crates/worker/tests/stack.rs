@@ -61,12 +61,11 @@ async fn refuses_to_start_unless_the_engine_is_stockfish_19(
     opts: PgConnectOptions,
 ) {
     let env = WorkerEnv {
-        database_url: common::test_db_url(&opts),
-        stockfish_path: fake_engine("sf18", "Stockfish 18 by the Stockfish developers"),
-        lichess_token: None,
-        lichess_lookback_days: None,
         pool_size: Some(1),
-        syzygy_path: None,
+        ..WorkerEnv::new(
+            common::test_db_url(&opts),
+            fake_engine("sf18", "Stockfish 18 by the Stockfish developers"),
+        )
     };
     let err = match start_workers(&env, StartOptions::default()).await {
         Ok(_) => panic!("started with Stockfish 18"),
@@ -93,21 +92,47 @@ async fn starts_with_stockfish_19_and_shuts_down_cleanly(
             pool_size: Some(1),
             runner: Some(RunnerConfig::fast_for_tests()),
             with_reconciler: true,
+            ..StartOptions::default()
         },
     )
     .await
     .expect("start_workers");
     assert!(running.stockfish_version.starts_with("Stockfish 19"));
     assert_eq!(running.engines.pids().len(), 1);
-    // Import, analyse and reconcile.
-    assert_eq!(running.runners.len(), 3);
-    let reconcile: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM jobs WHERE kind = 'reconcile' AND state <> 'done'",
+    // 18 runners, every one registered through `Spawned::spawn` (`claims` lists them in order):
+    // - R1: import-account, analyse-game, schedule-analysis, preview-game (4);
+    // - R2 Task 35: build-profile, analyse-reference-game, difficulty-sweep,
+    //   reference-difficulty-sweep (4);
+    // - R3 Task 26: generate-report, weekly-review, explain-weakness-change, coach-chat,
+    //   interactive-analyse, report-batch-schedule, weekly-batch-schedule, ai-batch-poll,
+    //   ai-reconcile (9);
+    // - reconcile (with_reconciler: 1).
+    assert_eq!(
+        running.runners.len(),
+        4 + 4 + worker::ai_jobs::AI_RUNNER_KINDS.len() + 1
+    );
+    assert_eq!(running.runners.len(), 18);
+    assert_eq!(running.claims.len(), running.runners.len());
+    let claimed: Vec<&str> = running.claims.iter().map(|c| c.kind).collect();
+    assert_eq!(claimed, running.runner_kinds());
+    let recurring: Vec<String> = sqlx::query_scalar(
+        "SELECT kind FROM jobs WHERE recur_every IS NOT NULL AND state <> 'done' ORDER BY kind",
     )
-    .fetch_one(&running.pool)
+    .fetch_all(&running.pool)
     .await
     .unwrap();
-    assert_eq!(reconcile, 1);
+    assert_eq!(
+        recurring,
+        [
+            "ai-batch-poll",
+            "ai-reconcile",
+            "difficulty-sweep",
+            "reconcile",
+            "reference-difficulty-sweep",
+            "report-batch-schedule",
+            "weekly-batch-schedule"
+        ]
+    );
     let code = shutdown(
         running.into_shutdown_handles(),
         ShutdownOptions::with_grace(Duration::from_secs(5)),

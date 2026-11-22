@@ -1,4 +1,4 @@
-//! Persistence of runs, reports, notes, chat and usage (runtime-checked sqlx, ADR-R3-3).
+//! Persistence of runs, reports, notes, chat and usage (runtime-checked sqlx, ADR 0059).
 //!
 //! Every repository function takes `&mut PgConnection`, so callers compose transactions. Enums
 //! are bound as text and cast in SQL (`$1::report_run_status`), and read back as `col::text`.
@@ -75,7 +75,7 @@ text_enum!(
 
 text_enum!(
     /// How the Agent SDK session served an assistant turn (`coach_messages.session`, metrics;
-    /// ADR-R3-6 amendment 1).
+    /// ADR 0062 amendment 1).
     SessionPath, "coach_messages.session", {
         New => "new",
         Resumed => "resumed",

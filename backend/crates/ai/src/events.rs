@@ -1,4 +1,4 @@
-//! AI user events (ADR-R3-3). They are emitted inside the transaction that writes the state they
+//! AI user events (ADR 0059). They are emitted inside the transaction that writes the state they
 //! describe, through R1's `insert_user_event`, so a client never sees an event for state that
 //! did not commit, and a rolled-back write leaves no event.
 
@@ -20,6 +20,35 @@ pub const CHAT_CHUNK: &str = "chat.chunk";
 pub const CHAT_MESSAGE_READY: &str = "chat.message.ready";
 pub const CHAT_MESSAGE_FAILED: &str = "chat.message.failed";
 pub const JOB_FAILED: &str = "job.failed";
+
+/// Who an event is for (`user_events.user_id`, ADR 0064, section 16).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Audience {
+    /// Every user linked to the account (`user_id` NULL). The payload carries ids and codes
+    /// only; the text lives in the account's own rows.
+    Account,
+    /// One user only: the event is about their chat thread, and `chat.chunk` carries model
+    /// text. Emitted only through [`emit_for_user`]; [`emit`] refuses it.
+    User,
+}
+
+/// Every event kind and its audience.
+pub const EVENT_KINDS: [(&str, Audience); 9] = [
+    (REPORT_SECTION_READY, Audience::Account),
+    (REPORT_READY, Audience::Account),
+    (REPORT_DEGRADED, Audience::Account),
+    (WEEKLY_REVIEW_READY, Audience::Account),
+    (WEAKNESS_NOTE_READY, Audience::Account),
+    (CHAT_CHUNK, Audience::User),
+    (CHAT_MESSAGE_READY, Audience::User),
+    (CHAT_MESSAGE_FAILED, Audience::User),
+    (JOB_FAILED, Audience::Account),
+];
+
+/// The audience of `ty`, `None` for a kind this crate does not emit.
+pub fn audience(ty: &str) -> Option<Audience> {
+    EVENT_KINDS.iter().find(|(k, _)| *k == ty).map(|(_, a)| *a)
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -108,16 +137,28 @@ pub enum EmitError {
     Events(#[from] ::events::store::Error),
     #[error("event payload does not serialise: {0}")]
     Json(#[from] serde_json::Error),
+    /// A user-owned kind ([`Audience::User`]) emitted without its owner.
+    #[error("event {0} belongs to one user; emit it with emit_for_user")]
+    NeedsOwner(String),
+    /// A kind missing from [`EVENT_KINDS`]: refused until it is classified (deny by default).
+    #[error("event {0} is not in EVENT_KINDS")]
+    UnknownKind(String),
 }
 
-/// Inserts one user event on `tx` (make it the last statement before the commit; see
-/// `insert_user_event`). Returns the event id.
+/// Inserts one account event on `tx` (make it the last statement before the commit; see
+/// `insert_user_event`). Returns the event id. A user-owned kind is refused: every user linked
+/// to the account would receive it, and so is a kind missing from [`EVENT_KINDS`].
 pub async fn emit(
     tx: &mut PgConnection,
     account_id: Uuid,
     ty: &str,
     payload: &impl Serialize,
 ) -> Result<i64, EmitError> {
+    match audience(ty) {
+        Some(Audience::Account) => {}
+        Some(Audience::User) => return Err(EmitError::NeedsOwner(ty.to_owned())),
+        None => return Err(EmitError::UnknownKind(ty.to_owned())),
+    }
     let payload = serde_json::to_value(payload)?;
     let stored = ::events::store::insert_user_event(tx, account_id, ty, &payload).await?;
     Ok(stored.id)

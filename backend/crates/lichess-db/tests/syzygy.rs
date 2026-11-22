@@ -127,7 +127,10 @@ async fn requests_carry_the_project_user_agent() {
         .to_str()
         .unwrap()
         .to_owned();
-    assert_eq!(ua, "chess-improver-ci (+https://github.com/chess-improver)");
+    assert_eq!(
+        ua,
+        "chess-improver/0.1 (+https://github.com/chess-improver)"
+    );
     assert!(!ua.contains('@'), "{ua}");
 }
 
@@ -254,7 +257,10 @@ async fn contact_email_never_reaches_the_cli_user_agent() {
     let scan = cli_user_agents(vec!["scan".into(), "--month".into(), "2026-10".into()]).await;
     assert!(!syz.is_empty() && !scan.is_empty());
     for ua in syz.iter().chain(&scan) {
-        assert_eq!(ua, "chess-improver-ci (+https://github.com/chess-improver)");
+        assert_eq!(
+            ua,
+            "chess-improver/0.1 (+https://github.com/chess-improver)"
+        );
         assert!(!ua.contains('@'));
     }
 }

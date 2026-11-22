@@ -1,4 +1,4 @@
-//! `ai-reconcile` (every 300 s, ADR-R3-3 amendment 1): an idempotent repair sweep over the AI
+//! `ai-reconcile` (every 300 s, ADR 0059 amendment 1): an idempotent repair sweep over the AI
 //! tables, in the pattern of R1's `analysis::jobs::reconcile`. `Queue::enqueue` commits on its
 //! own, so a row can commit while its job is lost; Postgres holds the state, and the sweep
 //! rebuilds what the queue should contain.
@@ -20,8 +20,8 @@
 //! 6. `pending` interactive evals older than [`EVAL_LOST_AFTER`] with no live `ieval:<id>` job are
 //!    set `failed` with `charged = false` (a refund).
 //! 7. Agent SDK session entries with no conversation, between [`chat::ORPHAN_SESSION_MIN_AGE`]
-//!    and [`chat::ORPHAN_SESSION_MAX_AGE`] old, are deleted in pages, on every sweep, within
-//!    [`ORPHAN_SWEEP_BUDGET`].
+//!    and [`chat::ORPHAN_SESSION_MAX_AGE`] old, are deleted in pages within
+//!    [`ORPHAN_SWEEP_BUDGET`], each sweep resuming where the last one stopped.
 //!
 //! `awaiting_batch` runs and finished rows belong to their owners (the batch poller, the user)
 //! and are never touched.
@@ -102,6 +102,10 @@ pub const EVAL_LOST_AFTER: Duration = Duration::from_secs(2 * 60);
 pub const ORPHAN_SESSION_GRACE: Duration = chat::ORPHAN_SESSION_MIN_AGE;
 /// The orphan sweep stops starting new pages after this long (the next sweep continues).
 pub const ORPHAN_SWEEP_BUDGET: Duration = Duration::from_secs(60);
+/// The whole sweep starts no new step after this long; the skipped steps run next sweep. The
+/// last step (the orphan sweep) may still take its budget plus one bounded page, so 3 min +
+/// 60 s + 35 s stays below the runner's 5 min hard timeout (review m2).
+pub const SWEEP_DEADLINE: Duration = Duration::from_secs(3 * 60);
 /// Reconciler repairs of one row before it is failed instead (the crash cap).
 pub const RECONCILE_CAP: i16 = 3;
 /// `report_runs.last_error` (and the `job.failed` reason) of a row failed by the crash cap.
@@ -126,6 +130,8 @@ pub struct AiReconcileCounts {
     pub evals: u32,
     pub capped: u32,
     pub session_entries: u64,
+    /// Steps not started because the sweep passed [`SWEEP_DEADLINE`].
+    pub skipped_steps: u32,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -539,17 +545,74 @@ pub async fn reconcile_ai_paged(
     now: OffsetDateTime,
     page_size: i64,
 ) -> Result<AiReconcileCounts, AiReconcileError> {
+    reconcile_ai_within(pool, queue, now, page_size, SWEEP_DEADLINE).await
+}
+
+/// [`reconcile_ai_paged`] that starts no step once `deadline` has passed since it began.
+pub async fn reconcile_ai_within(
+    pool: &PgPool,
+    queue: &Queue,
+    now: OffsetDateTime,
+    page_size: i64,
+    deadline: Duration,
+) -> Result<AiReconcileCounts, AiReconcileError> {
+    let opts = SweepOptions {
+        page_size,
+        deadline,
+        ..SweepOptions::default()
+    };
+    reconcile_ai_with(pool, queue, now, &opts).await
+}
+
+/// The sweep's limits (tests shrink them).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SweepOptions {
+    /// Rows per page of the repair steps ([`PAGE_SIZE`]).
+    pub page_size: i64,
+    /// No step starts after this ([`SWEEP_DEADLINE`]).
+    pub deadline: Duration,
+    /// Entries per orphan page ([`chat::ORPHAN_SWEEP_PAGE`]).
+    pub orphan_page: i64,
+    /// The orphan step starts no page after this ([`ORPHAN_SWEEP_BUDGET`]).
+    pub orphan_budget: Duration,
+}
+
+impl Default for SweepOptions {
+    fn default() -> Self {
+        SweepOptions {
+            page_size: PAGE_SIZE,
+            deadline: SWEEP_DEADLINE,
+            orphan_page: chat::ORPHAN_SWEEP_PAGE,
+            orphan_budget: ORPHAN_SWEEP_BUDGET,
+        }
+    }
+}
+
+/// One sweep with `opts`.
+pub async fn reconcile_ai_with(
+    pool: &PgPool,
+    queue: &Queue,
+    now: OffsetDateTime,
+    opts: &SweepOptions,
+) -> Result<AiReconcileCounts, AiReconcileError> {
+    let deadline = opts.deadline;
+    let started = tokio::time::Instant::now();
     let s = Sweep {
         pool,
         queue,
         now,
-        limit: page_size.max(1),
+        limit: opts.page_size.max(1),
+        orphan_page: opts.orphan_page.max(1),
+        orphan_budget: opts.orphan_budget,
     };
     let mut c = AiReconcileCounts::default();
     let mut errors = Vec::new();
     macro_rules! step {
         ($name:literal, $call:expr) => {
-            if let Err(e) = $call.await {
+            if started.elapsed() >= deadline {
+                tracing::warn!(step = $name, "ai reconcile: sweep deadline passed; step skipped");
+                c.skipped_steps += 1;
+            } else if let Err(e) = $call.await {
                 tracing::warn!(step = $name, error = %e, "ai reconcile step failed");
                 errors.push(($name, e));
             }
@@ -590,6 +653,7 @@ pub async fn reconcile_ai_paged(
         evals = c.evals,
         capped = c.capped,
         session_entries = c.session_entries,
+        skipped_steps = c.skipped_steps,
         failed_steps = errors.len(),
         "ai reconcile sweep"
     );
@@ -605,6 +669,8 @@ struct Sweep<'a> {
     queue: &'a Queue,
     now: OffsetDateTime,
     limit: i64,
+    orphan_page: i64,
+    orphan_budget: Duration,
 }
 
 impl Sweep<'_> {
@@ -835,14 +901,22 @@ impl Sweep<'_> {
         Ok(())
     }
 
-    /// Orphan Agent SDK session entries, in pages of [`chat::ORPHAN_SWEEP_PAGE`], until a page is
-    /// short or [`ORPHAN_SWEEP_BUDGET`] is spent (the next sweep continues).
+    /// Orphan Agent SDK session entries, in pages, from where the last sweep stopped
+    /// (`ai_sweep_cursors`, clamped to the 24 h window), until the window is done or the orphan
+    /// budget is spent; the stop point is stored for the next sweep (review I1). At the window's
+    /// end the cursor stays at the newest entry read: an entry's orphan status is fixed once it is
+    /// past the 10 min grace (its conversation either committed or never will, and a deleted
+    /// conversation's entries go with it), so nothing behind the cursor needs reading again.
     async fn orphan_session_entries(
         &self,
         c: &mut AiReconcileCounts,
     ) -> Result<(), AiReconcileError> {
-        let deadline = tokio::time::Instant::now() + ORPHAN_SWEEP_BUDGET;
-        let mut after = None;
+        let deadline = tokio::time::Instant::now() + self.orphan_budget;
+        let mut after = bounded("orphan_cursor", async {
+            let mut conn = self.pool.acquire().await?;
+            chat::orphan_cursor(&mut conn).await
+        })
+        .await?;
         loop {
             let page = bounded("sweep_orphan_session_entries", async {
                 let mut conn = self.pool.acquire().await?;
@@ -850,15 +924,26 @@ impl Sweep<'_> {
                     &mut conn,
                     self.now,
                     after,
-                    chat::ORPHAN_SWEEP_PAGE,
+                    self.orphan_page,
                 )
                 .await
             })
             .await?;
             c.session_entries += page.deleted;
-            match page.next {
-                Some(next) if tokio::time::Instant::now() < deadline => after = Some(next),
-                _ => return Ok(()),
+            let (stop, done) = match page.next {
+                Some(next) => (Some(next), tokio::time::Instant::now() >= deadline),
+                None => (page.newest.or(after), true),
+            };
+            after = stop;
+            if done {
+                if let Some(position) = stop {
+                    bounded("set_orphan_cursor", async {
+                        let mut conn = self.pool.acquire().await?;
+                        chat::set_orphan_cursor(&mut conn, position).await
+                    })
+                    .await?;
+                }
+                return Ok(());
             }
         }
     }

@@ -1,7 +1,7 @@
-# ADR-R3-2. Porting the TS AI reference to Rust, and how parity is kept
+# 0058. Porting the TS AI reference to Rust, and how parity is kept
 
 Date: 2026-11-21
-Status: Accepted (R3 Task 5). Placeholder number; Task 26 renumbers it. Builds on 0030, ADR-R3-1 and ADR-AI-8.
+Status: Accepted (R3 Task 5). Renumbered by R3 Task 26 (it was the R3 placeholder record). Builds on 0030, ADR 0057 and ADR-AI-8.
 
 ## Context
 

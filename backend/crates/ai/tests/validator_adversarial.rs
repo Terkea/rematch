@@ -384,7 +384,7 @@ fn case_18_envelope_for_another_section_is_fatal_wrong_section() {
     );
 }
 
-/// Differential corpus against the TS reference validator (ADR-R3-4 "Claim validator").
+/// Differential corpus against the TS reference validator (ADR 0060 "Claim validator").
 mod ts_parity {
     use super::*;
     use ai::input::types::AreaId;

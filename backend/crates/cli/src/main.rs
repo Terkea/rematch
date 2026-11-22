@@ -1,12 +1,10 @@
 //! The `cli` entry point: `cli analyse ...` starts the workers in-process (no reconciler);
-
-//! `cli db migrate` only migrates.
+//! `cli db migrate` only migrates; `cli profile`, `cli eta` and `cli queue-lag` only read.
 
 use std::time::Duration;
 
-use cli::{AnalyseDeps, CliDeps, Signal, Started, db_cmd, run_cli};
+use cli::{AnalyseDeps, CliDeps, Signal, Started, db_cmd, profile_cmd, queue_cmd, run_cli};
 use futures::FutureExt;
-use queue::kinds::{KIND_ANALYSE, KIND_IMPORT};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use worker::config::WorkerEnv;
@@ -18,6 +16,11 @@ async fn main() {
     let argv: Vec<String> = std::env::args().skip(1).collect();
     if argv.first().map(String::as_str) == Some("db") {
         let code = db_cmd::run_db(&argv, &|l| println!("{l}"), &|l| eprintln!("{l}")).await;
+        std::process::exit(code);
+    }
+    // Read-only views: the database only, no workers (R2 Task 35).
+    if let Some(cmd @ ("profile" | "eta" | "queue-lag")) = argv.first().map(String::as_str) {
+        let code = read_only(cmd, &argv).await;
         std::process::exit(code);
     }
     let mut raw = signals(); // before the slow startup
@@ -40,6 +43,9 @@ async fn main() {
             &env,
             StartOptions {
                 with_reconciler: false,
+                ai: worker::ai_jobs::AiSetup::None,
+                // Benchmark knob: R1's analysis without the profile hook (ADR-R2-25).
+                profile_hook: std::env::var("CLI_ANALYSIS_ONLY").as_deref() != Ok("1"),
                 ..StartOptions::default()
             },
         )
@@ -57,16 +63,7 @@ async fn main() {
                 }
                 .boxed()
             }),
-            queues_idle: Box::new(move |account| {
-                let queue = queue.clone();
-                async move {
-                    Ok(queue
-                        .live_count(&[KIND_IMPORT, KIND_ANALYSE], Some(account))
-                        .await?
-                        == 0)
-                }
-                .boxed()
-            }),
+            queues_idle: cli::analyse::queues_idle_on(queue),
             print: Box::new(|l| println!("{l}")),
             print_error: Box::new(|l| eprintln!("{l}")),
             poll: Duration::from_secs(1),
@@ -96,4 +93,36 @@ async fn main() {
     )
     .await;
     std::process::exit(code);
+}
+
+async fn read_only(cmd: &str, argv: &[String]) -> i32 {
+    let print = |l: &str| println!("{l}");
+    let print_error = |l: &str| eprintln!("{l}");
+    let Ok(url) = std::env::var("DATABASE_URL") else {
+        eprintln!("DATABASE_URL is not set");
+        return 1;
+    };
+    let pool = match db::pool::connect(&url, db::pool::DbOptions::default()).await {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("connecting to DATABASE_URL: {e:#}");
+            return 1;
+        }
+    };
+    let code = match cmd {
+        "profile" => {
+            profile_cmd::run_profile(
+                argv,
+                &pool,
+                time::OffsetDateTime::now_utc(),
+                &print,
+                &print_error,
+            )
+            .await
+        }
+        "eta" => profile_cmd::run_eta(argv, &pool, &print, &print_error).await,
+        _ => queue_cmd::run_queue_lag(argv, &pool, &print, &print_error).await,
+    };
+    pool.close().await;
+    code
 }

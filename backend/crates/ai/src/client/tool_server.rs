@@ -1,4 +1,4 @@
-//! The chat tool-callback endpoint (ADR-R3-1, ADR-R3-6). The sidecar's SDK runs the tool rounds
+//! The chat tool-callback endpoint (ADR 0057, ADR 0062). The sidecar's SDK runs the tool rounds
 //! of a turn and posts each call here: `POST /v1/tools` with `authorization: Bearer <token>` and
 //! `{name, input}`; we answer `{content, isError}`.
 //!

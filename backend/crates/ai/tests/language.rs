@@ -1,4 +1,4 @@
-//! Port of TS plan A5's `language.test.ts` in token form (R3 Task 8, ADR-R3-4 "Language
+//! Port of TS plan A5's `language.test.ts` in token form (R3 Task 8, ADR 0060 "Language
 //! rules"), plus the union cases.
 
 use ai::input::types::{AreaId, CoachingInput, TimeClass};

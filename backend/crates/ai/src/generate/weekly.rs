@@ -46,7 +46,7 @@ pub const WEEKLY_MAX_TOKENS: u32 = 4000;
 /// `DroppedItem::section` of the weekly review.
 pub const WEEKLY_SECTION: &str = "weekly";
 
-/// The detail of a process text that quotes an outcome number (ADR-R3-4: a reuse of
+/// The detail of a process text that quotes an outcome number (ADR 0060: a reuse of
 /// `likelihood_mismatch`, since an outcome number in the process text claims an outcome). The
 /// other non-outcome items use the same wording with their own name.
 pub const PROCESS_OUTCOME_NUMBER: &str = "process quotes an outcome number";
@@ -208,7 +208,7 @@ fn states_not_enough_practice() -> TextRule {
     })
 }
 
-/// The rules of one weekly item (ADR-R3-4 "Weekly review and change notes"):
+/// The rules of one weekly item (ADR 0060 "Weekly review and change notes"):
 /// - every item: `banned_phrases` and `no_marketing` (TS B4), plus the report's `Item` rules
 ///   (`engine_claims`, `no_quantity_words`, `no_causal_phrases`);
 /// - an outcome: `likelihood` and `outcome_direction` with the phrase of its own focus (named by

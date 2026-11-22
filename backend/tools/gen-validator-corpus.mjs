@@ -7,7 +7,7 @@
 // input below, this script records normalizeText, extractNumbers, extractMoves
 // and extractDates. The Rust test `ts_parity::rust_matches_the_recorded_ts_output_on_the_edge_corpus`
 // asserts equality, except for the inputs it lists as deliberate hardening
-// deviations (ADR-R3-2). The Node, ICU and Unicode versions and the m3 commit
+// deviations (ADR 0058). The Node, ICU and Unicode versions and the m3 commit
 // are written into the generated block, because NFKC and \p{Nd} depend on them.
 //
 // Usage: node backend/tools/gen-validator-corpus.mjs (Node >= 22.18 strips TS types by default;
@@ -164,7 +164,7 @@ const inputs = [
   ...[13, 14, 15, 16].flatMap((k) => [`${E}about${sp(k)}5 games`, `${E}${E}more than${sp(k - 4)}7 games`]),
   // The gap shape that made the bare-square scan quadratic, at a small size.
   `Nf3${sp(40)}${"x e4 ".repeat(8)}`,
-  // Hardening deviations (ADR-R3-2): TS output recorded, Rust deliberately differs.
+  // Hardening deviations (ADR 0058): TS output recorded, Rust deliberately differs.
   "\u{663} games",
   "\u{966}\u{96f} games",
   "\u{435}4 and \u{41d}\u{435}4",
@@ -256,7 +256,7 @@ const leakInputs = [
   // Digits, percent and figurines.
   "‰ and ٪", "𝟙𝟚", "① ² Ⅻ", "🨀 🩯 🩰",
   "٣ games",
-  // Hardening deviations (ADR-R3-2, Task 6): TS output recorded, Rust deliberately adds leaks.
+  // Hardening deviations (ADR 0058, Task 6): TS output recorded, Rust deliberately adds leaks.
   "fιveé games", "Օ-Օé", "t᠏en games", "tẃenty games",
   "O˗O", "օnce", "база",
   // The union keeps what TS finds next to a folded neighbour.

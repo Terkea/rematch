@@ -23,7 +23,8 @@ profile.workspace = true
 scheduler.workspace = true
 enrich.workspace = true
 refdata.workspace = true
-# R3 (ADR-R3-1): wired in R3 Task 26
+lichess-db.workspace = true
+# R3 (ADR 0057): wired in R3 Task 26
 ai.workspace = true
 anyhow.workspace = true
 clap.workspace = true

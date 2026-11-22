@@ -1,6 +1,6 @@
 //! The scripted fake client. Ports the `fake client` block of
 //! `packages/ai/test/client/fake-breaker.test.ts` and the `fake client resolver path` block of
-//! `fix-round-1.test.ts`, plus the sidecar contract the fake models (ADR-R3-6): the tool loop
+//! `fix-round-1.test.ts`, plus the sidecar contract the fake models (ADR 0062): the tool loop
 //! inside one turn, per-turn usage against `sessionModelUsage`, retractions, 409
 //! `turn_in_progress`, refusals, truncation and the SDK's structured-output failure.
 

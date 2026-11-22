@@ -173,7 +173,7 @@ async fn request_json_has_no_account_id_or_sampling_params() {
         assert!(!wire.contains("\"thinking\""), "{k}");
     }
 
-    // The sidecar body (interactive calls, ADR-R3-6), captured from the real client.
+    // The sidecar body (interactive calls, ADR 0062), captured from the real client.
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/v1/query"))

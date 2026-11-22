@@ -684,7 +684,9 @@ pub struct BandReferenceStat {
     pub pooled_rate: Option<f64>,
     pub epl_per_event: Option<f64>,
     pub opps_per_game: Option<f64>,
-    pub opp_slope_per_100: f64,
+    /// OLS slope of the per-game value on `(opponent - own) / 100`; `None` when it could not be
+    /// estimated (no adjustment then). Never NaN.
+    pub opp_slope_per_100: Option<f64>,
     pub n_players: u32,
     pub n_games: u32,
     pub low_sample: bool,

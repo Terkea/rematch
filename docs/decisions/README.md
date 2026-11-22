@@ -59,6 +59,15 @@ One file per decision: context, decision, alternatives, consequences. New decisi
 - [0054. Game review layout: the graph as the spine, with the mistakes ledger](0054-review-layout.md)
 - [0055. The overview page: honest rows, a broken trend line, a server-safe band, a session reveal](0055-overview-page.md)
 - [0056. Live refresh of the game pages, and a dev-only account link](0056-live-refresh-and-dev-account-link.md)
+- [0057. Rust Anthropic client and the `ai` crate's dependencies](0057-rust-anthropic-client-and-crates.md)
+- [0058. Porting the TS AI reference to Rust, and how parity is kept](0058-ts-reference-port-and-parity.md)
+- [0059. AI tables, jobs and events](0059-ai-tables-jobs-and-events.md)
+- [0060. Sectioned generation and facts by reference](0060-sectioned-generation-and-facts-by-reference.md)
+- [0061. Models, budgets and degradation](0061-models-budgets-and-degradation.md)
+- [0062. Claude calls go through a Claude Agent SDK sidecar](0062-claude-agent-sdk-sidecar.md)
+- [0063. Monthly and weekly regeneration through the Message Batches API](0063-batch-regeneration.md)
+- [0064. "Ask your coach": the chat engine](0064-ask-your-coach-chat.md)
+- [0065. Postgres connection limit for the integrated worker](0065-postgres-connection-limit.md)
 
 Web records use placeholder numbers until the controller renumbers them.
 
@@ -78,35 +87,27 @@ Web records use placeholder numbers until the controller renumbers them.
 - [ADR-WEB-15. Annotation overlay: geometry, draw-on and placement rules](ADR-WEB-15-annotation-overlay.md)
 - [ADR-WEB-16. App shell, sign-in, age and account-linking screens](ADR-WEB-16-app-shell-and-auth-screens.md)
 
-R2 (profile engine) records use placeholder numbers until the controller renumbers them after 0038 (ADR-R2-1). Rows without a file yet are written by the R2 task named in the plan.
+R2 (profile engine) records use placeholder numbers until the controller renumbers them (ADR-R2-1). Every R2 record now has a file (titles final at R2 Task 35); numbers 19-21 were never used.
 
 - [ADR-R2-1. Profile engine crates, dependencies and data layout](ADR-R2-1-profile-crates-and-data-layout.md)
-- [ADR-R2-2. CoachingInput contract crate with schema parity](ADR-R2-2-coaching-input-contract.md)
+- [ADR-R2-2. The coaching-input contract crate](ADR-R2-2-coaching-input-contract.md)
 - [ADR-R2-3. Clean-room motif tagger](ADR-R2-3-motif-tagger-clean-room.md)
-- [ADR-R2-4. Weakness metric rulings](ADR-R2-4-weakness-metric-rulings.md)
+- [ADR-R2-4. Weakness metric rulings (detectors W1-W12)](ADR-R2-4-weakness-metric-rulings.md)
 - [ADR-R2-5. Posterior and priority conventions](ADR-R2-5-posterior-priority-conventions.md)
 - [ADR-R2-6. Timeline change detector and states](ADR-R2-6-timeline-detector-and-states.md)
-- [ADR-R2-7. KPI catalogue and area scores](ADR-R2-7-kpi-catalogue-and-area-scores.md)
-- [ADR-R2-8. Repertoire tree and opening verdicts](ADR-R2-8-repertoire-and-verdicts.md)
-- [ADR-R2-9. Lichess database pipeline](ADR-R2-9-lichess-db-data-pipeline.md)
-- [ADR-R2-10. Opening explorer build](ADR-R2-10-opening-explorer-build.md)
+- [ADR-R2-7. KPI catalogue, snapshots and area scores](ADR-R2-7-kpi-catalogue-and-area-scores.md)
+- [ADR-R2-8. Repertoire tree, line keys, struggles and opening verdicts](ADR-R2-8-repertoire-and-verdicts.md)
+- [ADR-R2-9. Lichess database pipeline: streamed, verified, never stored](ADR-R2-9-lichess-db-data-pipeline.md)
+- [ADR-R2-10. Opening explorer build: one parallel pass, verified before activation](ADR-R2-10-opening-explorer-build.md)
 - [ADR-R2-11. Band reference method](ADR-R2-11-band-reference-method.md)
-- [ADR-R2-12. Local Syzygy probe](ADR-R2-12-local-syzygy-probe.md)
+- [ADR-R2-12. Local Syzygy probe through a separate Stockfish set](ADR-R2-12-local-syzygy-probe.md)
 - [ADR-R2-13. Maia licence check and difficulty providers](ADR-R2-13-maia-licence-and-difficulty.md)
 - [ADR-R2-14. Enrichment protocol](ADR-R2-14-enrichment-protocol.md)
-- [ADR-R2-15. Fair scheduling and the preview pass](ADR-R2-15-fair-scheduling-and-preview.md)
+- [ADR-R2-15. Fair scheduling and preview](ADR-R2-15-fair-scheduling-and-preview.md)
 - [ADR-R2-16. Tiered analysis scheduler](ADR-R2-16-tiered-analysis-scheduler.md)
 - [ADR-R2-17. ETA and autoscaling hooks](ADR-R2-17-eta-and-autoscaling-hooks.md)
 - [ADR-R2-18. build-profile job and CoachingInput builder](ADR-R2-18-build-profile-and-coaching-input.md)
 - [ADR-R2-22. Syzygy 3-4-5 tablebases: pinned, verified, never committed](ADR-R2-22-syzygy-345-fetch.md)
 - [ADR-R2-23. Reference build storage: lifecycle guards and per-metric band fallback](ADR-R2-23-reference-build-storage.md)
-
-R3 (AI) records use placeholder numbers until R3 Task 26 renumbers them.
-
-- [ADR-R3-1. Rust Anthropic client and the `ai` crate's dependencies](ADR-R3-1-rust-anthropic-client-and-crates.md)
-- [ADR-R3-2. Porting the TS AI reference to Rust, and how parity is kept](ADR-R3-2-ts-reference-port-and-parity.md)
-- [ADR-R3-3. AI tables, jobs and events](ADR-R3-3-ai-tables-jobs-and-events.md)
-- [ADR-R3-4. Sectioned generation and facts by reference](ADR-R3-4-sectioned-generation-and-facts-by-reference.md)
-- [ADR-R3-5. Models, budgets and degradation](ADR-R3-5-models-budgets-and-degradation.md)
-- [ADR-R3-6. Claude calls go through a Claude Agent SDK sidecar](ADR-R3-6-claude-agent-sdk-sidecar.md)
-- [ADR-R3-8. "Ask your coach": the chat engine](ADR-R3-8-ask-your-coach-chat.md)
+- [ADR-R2-24. The analyse-game hook: per-game features at analysis time](ADR-R2-24-analyse-hook.md)
+- [ADR-R2-25. Worker wiring of the profile engine, and the read-only CLI](ADR-R2-25-worker-wiring-and-cli.md)

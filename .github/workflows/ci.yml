@@ -74,7 +74,7 @@ jobs:
           -e CRATE_AGE_CACHE=/work/backend/target/crate-age-cache
           rust-dev sh scripts/check-crate-age.sh
       # R3: canonical_json and the path index rely on sorted keys, so no crate may enable
-      # serde_json/preserve_order (ADR-R3-1).
+      # serde_json/preserve_order (ADR 0057).
       - name: No serde_json preserve_order
         # Fails closed: a failing `cargo tree` fails the step instead of counting 0.
         run: >-

@@ -1,11 +1,11 @@
 //! Coaching language rules (TS plan A5, improvement-engine §6.7, spec §8 cont., §12b), in their
-//! token forms (ADR-R3-4 "Language rules"), and the rule set each report paragraph gets.
+//! token forms (ADR 0060 "Language rules"), and the rule set each report paragraph gets.
 //!
 //! Every rule reads the stripped text, where each token is `§`. The patterns are the TS plan's
 //! regexes plus the fix round 1 additions, written JS-style and translated by `js`: JS `\b` is
 //! ASCII, `\s` is JS's whitespace set, and `/i` matches what JS matches on the NFKC text.
 //!
-//! Union rule (ADR-R3-2). A rule that *forbids* a phrase runs on the stripped text and on its
+//! Union rule (ADR 0058). A rule that *forbids* a phrase runs on the stripped text and on its
 //! hardened normalisation (homoglyphs, marks and every invisible folded away; computed once per
 //! paragraph, [`TextCtx::hardened`]), and fires if either matches, so `guаranteed` with a
 //! Cyrillic `а` is still banned. A rule that *requires* a phrase (a hedge, the time-class word,

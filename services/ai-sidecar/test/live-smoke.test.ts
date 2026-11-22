@@ -159,7 +159,7 @@ describe.skipIf(!LIVE)("live smoke (AI_LIVE_SMOKE=1 only, never in CI)", () => {
     });
     expect(third).toMatchObject({ subtype: "success", session: "resumed" });
 
-    // The metering rule (ADR-R3-6): on a resumed turn Rust meters S3 - S2 per model. It must agree
+    // The metering rule (ADR 0062): on a resumed turn Rust meters S3 - S2 per model. It must agree
     // with the turn's own stream sum, which is the fallback.
     for (const [model, s3] of Object.entries(third.sessionModelUsage)) {
       const s2 = second.sessionModelUsage[model] ?? { inputTokens: 0, outputTokens: 0 };
