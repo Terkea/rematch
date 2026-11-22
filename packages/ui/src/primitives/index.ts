@@ -22,6 +22,8 @@ export {
   PopoverTitle,
   PopoverTrigger,
 } from "./popover.js";
+export { SegmentedControl, type SegmentedControlProps } from "./segmented-control.js";
+export { Select, type SelectOption, type SelectProps } from "./select.js";
 export { Switch } from "./switch.js";
 export { Tabs, TabsContent, TabsList, TabsTrigger } from "./tabs.js";
 export { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./tooltip.js";

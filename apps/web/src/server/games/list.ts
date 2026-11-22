@@ -35,6 +35,22 @@ function filterConditions(ids: string[], f: GameFilters): SQL {
 }
 
 /**
+ * How many of the user's games match `filters`, scoped like `listGames` and in the same READ ONLY
+ * transaction style, with no rows and no moves read (the explorer's "widen it" counts).
+ */
+export function countGames(db: Db, userId: string, filters: GameFilters): Promise<number> {
+  return readOnly(db, async (tx) => {
+    const ids = await scopedAccountIds(tx, userId, filters.accountId);
+    if (ids.length === 0) return 0;
+    const [row] = await tx
+      .select({ total: sql<number>`count(*)::int` })
+      .from(games)
+      .where(filterConditions(ids, filters));
+    return row?.total ?? 0;
+  });
+}
+
+/**
  * One page of the user's games (ADR 0046, 0048), scoped to their linked accounts and read in a
  * READ ONLY transaction. A page past the end clamps to the last page. Accuracy and judgement
  * counts are set only for finished analyses, and the counts cover the player's own moves.

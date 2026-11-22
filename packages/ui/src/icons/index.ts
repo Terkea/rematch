@@ -18,6 +18,7 @@ export {
   ClockIcon,
   EnvelopeIcon,
   FlagIcon,
+  FunnelSimpleIcon,
   GearSixIcon,
   InfoIcon,
   KeyboardIcon,

@@ -1,6 +1,16 @@
 import type { GameFilters, GameListQuery, GameSortKey, TimeClass } from "./types";
 
 type Params = Record<string, string | string[] | undefined>;
+
+/** No filter set: every game of every linked account. */
+export const NO_FILTERS: GameFilters = {
+  timeClass: null,
+  result: null,
+  colour: null,
+  from: null,
+  to: null,
+  accountId: null,
+};
 type Sort = GameListQuery["sort"];
 
 const TIME_CLASSES: readonly TimeClass[] = ["bullet", "blitz", "rapid", "classical", "daily"];
