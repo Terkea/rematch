@@ -44,4 +44,17 @@ describe("the licences page", () => {
     expect(text()).toContain("lichess-org/chess-openings");
     expect(text()).toContain("CC0 1.0");
   });
+
+  it("carries the shipped code's licences word for word (review-t27 M2)", () => {
+    render(<LicensesPage />);
+    for (const file of [
+      "../../packages/ui/node_modules/@phosphor-icons/react/LICENSE",
+      "node_modules/chess.js/LICENSE",
+      "node_modules/react-chessboard/LICENSE",
+    ]) {
+      expect(squash(text())).toContain(squash(readFileSync(resolve(file), "utf8")));
+    }
+    expect(text()).toContain("Stockfish");
+    expect(text()).toContain("Maia-2");
+  });
 });

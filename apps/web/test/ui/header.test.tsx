@@ -136,6 +136,13 @@ describe("shell header", () => {
     expect(push).toHaveBeenLastCalledWith("/app/games");
   });
 
+  it("reaches the licences from the command menu (review-t27 M2)", async () => {
+    renderHeader();
+    await userEvent.click(screen.getByRole("button", { name: /Search/ }));
+    await userEvent.click(within(await screen.findByRole("dialog")).getByText("Go to licences"));
+    expect(push).toHaveBeenLastCalledWith("/licenses");
+  });
+
   it("signs out from the user menu", async () => {
     const signOutTo = vi.fn();
     render(

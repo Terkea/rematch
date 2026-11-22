@@ -1,7 +1,14 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { brand } from "../../brand";
-import { CBURNETT_BSD, LITERATA_OFL, PHOSPHOR_MIT, SCHIBSTED_OFL } from "./texts";
+import {
+  CBURNETT_BSD,
+  CHESSJS_BSD2,
+  LITERATA_OFL,
+  PHOSPHOR_MIT,
+  REACT_CHESSBOARD_MIT,
+  SCHIBSTED_OFL,
+} from "./texts";
 
 export const metadata = { title: "Licences" };
 
@@ -59,8 +66,8 @@ export default function LicensesPage() {
         <header className="flex flex-col gap-2">
           <h1 className="font-serif text-2xl font-semibold text-ink">Licences</h1>
           <p className="text-ink-soft">
-            The pieces, typefaces, icons and opening names in {brand.wordmark} come from other
-            people's work. Here is who made them, and the terms we use them under.
+            The pieces, board, rules, typefaces, icons and opening names in {brand.wordmark} come
+            from other people's work. Here is who made them, and the terms we use them under.
           </p>
         </header>
 
@@ -91,6 +98,14 @@ export default function LicensesPage() {
           <p>Phosphor Icons, under the MIT License.</p>
         </Credit>
 
+        <Credit id="chessjs" title="Chess rules: chess.js" text={CHESSJS_BSD2}>
+          <p>By Jeff Hlywa, under the BSD 2-Clause licence.</p>
+        </Credit>
+
+        <Credit id="board" title="Board: react-chessboard" text={REACT_CHESSBOARD_MIT}>
+          <p>By Ryan Gregory, under the MIT License.</p>
+        </Credit>
+
         <Credit id="openings" title="Opening names">
           <p>
             From{" "}
@@ -98,6 +113,20 @@ export default function LicensesPage() {
               lichess-org/chess-openings
             </a>
             , dedicated to the public domain under CC0 1.0 Universal. Thank you to its contributors.
+          </p>
+        </Credit>
+
+        <Credit id="engines" title="Analysis engines">
+          <p>
+            Games are analysed on our servers by{" "}
+            <a className={link} href="https://github.com/official-stockfish/Stockfish">
+              Stockfish
+            </a>{" "}
+            (GPL-3.0) and{" "}
+            <a className={link} href="https://github.com/CSSLab/maia2">
+              Maia-2
+            </a>{" "}
+            (MIT). Neither is sent to your browser.
           </p>
         </Credit>
       </main>

@@ -57,7 +57,8 @@ test("import progress reaches the header over SSE, and by polling when SSE is bl
     (url) => url.pathname === "/api/events" && !url.searchParams.has("after"),
     (route) => route.abort(),
   );
-  const polled = page.waitForRequest((r) => new URL(r.url()).searchParams.has("after"));
+  // The first poll's answer, not just its request: under next dev it compiles the route first.
+  const polled = page.waitForResponse((r) => new URL(r.url()).searchParams.has("after"));
   await gotoSettled(page, "/app/accounts");
   await polled;
   publish(200, 400);

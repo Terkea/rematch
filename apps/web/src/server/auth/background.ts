@@ -1,3 +1,5 @@
+import { redactedLog } from "./redacted-log";
+
 /** At most this many tasks are queued or running; more are dropped with a warning. */
 export const MAX_PENDING_TASKS = 100;
 /** At most this many tasks run at once. */
@@ -20,7 +22,8 @@ function pump(): void {
     job
       .task()
       .catch((error: unknown) => {
-        console.error(`[auth] ${job.label} failed`, error);
+        // A delivery error carries the address (Drizzle params, nodemailer recipients): review-t27 I1.
+        redactedLog("error", `${job.label} failed`, error);
         if (collectErrors) errors.push(error);
       })
       .finally(() => {
@@ -40,7 +43,7 @@ function pump(): void {
 export function runAfterResponse(label: string, task: () => Promise<void>): boolean {
   if (inFlight.size >= MAX_PENDING_TASKS) {
     dropped += 1;
-    console.warn(`[auth] background queue full (${MAX_PENDING_TASKS}); dropped ${label}`);
+    redactedLog("warn", `background queue full (${MAX_PENDING_TASKS}); dropped ${label}`);
     return false;
   }
   let done = () => {};

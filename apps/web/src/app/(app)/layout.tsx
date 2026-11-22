@@ -2,9 +2,7 @@ import type { ReactNode } from "react";
 import { ActivityIndicator } from "../../components/activity-indicator";
 import { RealtimeProvider } from "../../lib/realtime/realtime-provider";
 import { requireUser } from "../../server/auth/session";
-import { getDb } from "../../server/db";
-import { requestEventCursor } from "../../server/events/request-cursor";
-import { userAccountIds } from "../../server/events/user-accounts";
+import { requestAccountIds, requestEventCursor } from "../../server/events/request-cursor";
 import { Header } from "./_shell/header";
 
 export const dynamic = "force-dynamic";
@@ -18,7 +16,7 @@ export const dynamic = "force-dynamic";
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const user = await requireUser();
   const cursor = await requestEventCursor(user.id);
-  const accountIds = await userAccountIds(getDb(), user.id);
+  const accountIds = await requestAccountIds(user.id);
   return (
     <RealtimeProvider accountIds={accountIds} initialEventId={cursor}>
       <div className="flex min-h-dvh flex-col bg-paper">

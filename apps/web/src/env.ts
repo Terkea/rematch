@@ -26,6 +26,12 @@ const emailList = z
       .filter(Boolean),
   );
 
+/**
+ * docker-compose.yml's fallback BETTER_AUTH_SECRET. It is published in the repository, so it
+ * signs nothing outside local development: a production server refuses it (review-t27 I2).
+ */
+export const DEV_AUTH_SECRET = "dev-only-secret-do-not-use-outside-local-compose";
+
 const schema = z.object({
   DATABASE_URL: z.string().min(1),
   REDIS_URL: z.string().min(1),
@@ -83,6 +89,15 @@ function parse(source: Record<string, string | undefined>): WebEnv {
       .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
       .join("; ");
     throw new Error(`Invalid environment: ${problems}`);
+  }
+  const secret = result.data.BETTER_AUTH_SECRET;
+  if (
+    source.NODE_ENV === "production" &&
+    (secret === DEV_AUTH_SECRET || secret.startsWith("dev-only-"))
+  ) {
+    throw new Error(
+      "Invalid environment: BETTER_AUTH_SECRET is the public compose default; set a random secret of at least 32 characters",
+    );
   }
   return result.data;
 }

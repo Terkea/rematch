@@ -1,3 +1,5 @@
+import { readdirSync, readFileSync } from "node:fs";
+import { join, relative } from "node:path";
 import type { ReactElement, ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -29,9 +31,7 @@ vi.mock("../../src/server/events/request-cursor", () => ({
     order.push(`cursor:${userId}`);
     return 41;
   },
-}));
-vi.mock("../../src/server/events/user-accounts", () => ({
-  userAccountIds: async () => {
+  requestAccountIds: async () => {
     order.push("accounts");
     return ["acc-b", "acc-a"];
   },
@@ -150,5 +150,26 @@ describe("every signed-in page reads the cursor before its data", () => {
     ).rejects.toThrow("notFound");
     expect(order[0]).toBe("cursor:user-1");
     expect(order).toContain("data");
+  });
+});
+
+describe("every page under (app)", () => {
+  // review-t27 M7: a new signed-in page must read the cursor too, or the stream can skip events
+  // stored while it renders.
+  const root = "src/app/(app)";
+  const pages = (dir: string): string[] =>
+    readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) return pages(path);
+      return entry.name === "page.tsx" ? [path] : [];
+    });
+
+  it("imports requestEventCursor", () => {
+    const found = pages(root);
+    expect(found.length).toBeGreaterThanOrEqual(4);
+    const missing = found.filter(
+      (path) => !/requestEventCursor\(user\.id\)/.test(readFileSync(path, "utf8")),
+    );
+    expect(missing.map((path) => relative(root, path))).toEqual([]);
   });
 });

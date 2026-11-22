@@ -24,7 +24,7 @@ TypeScript monorepo (pnpm workspaces + Turborepo, Node 22, ESM only). Packages u
 - Web stack: `docker compose up -d web` serves `localhost:3100`, and Mailpit (sign-in mail) is at `localhost:48025`. Both need the ports file in `COMPOSE_FILE`.
 - e2e: `COMPOSE_FILE=docker-compose.yml:docker-compose.e2e.yml docker compose -p <name> --profile e2e up -d web fakes`, then `... --profile e2e --profile qa run --rm --no-deps qa sh -c "cd apps/web && node node_modules/@playwright/test/cli.js test --project=e2e"`. Put a spec name before `--project`.
 - Visual tests: the same `qa` run with `--project='visual-*'`. Baselines are made in that Linux container only.
-- Production e2e (what CI runs, ADR 0067): add `docker-compose.e2e-prod.yml` to `COMPOSE_FILE`, `up -d --wait`, and pass `-e E2E_PRODUCTION=1` and `--grep-invert @fakes` to the run.
+- Production e2e (what CI runs, ADR 0067): `export E2E_BETTER_AUTH_SECRET=$(openssl rand -hex 32)` (production refuses the compose default), add `docker-compose.e2e-prod.yml` to `COMPOSE_FILE`, `up -d --wait`, and pass `-e E2E_PRODUCTION=1` and `--grep-invert @fakes` to the run.
 
 ## Rust backend
 

@@ -9,7 +9,8 @@ The CI workflow had drifted from how the gates run locally. The TS job ran on th
 ## Decision
 
 - **Every CI job runs its gate the way it runs locally:** in the compose services, in its own project with no host ports, then `down -v`. The TS gate runs every package but web in the `worker` container. That container has Stockfish, `DATABASE_URL_TEST`, `WORKER_DATABASE_URL_TEST` and `IN_DOCKER=1`, so a missing database or engine fails instead of skipping. Web runs in the `web` container, with compose's dev-only `BETTER_AUTH_SECRET` default and `WEB_DATABASE_URL_TEST`. The compose Postgres creates every test database on init. Runner-side service containers were dropped: a second way to provide the same environment would drift again.
-- **No secret in any workflow.** The only auth secret is compose's public dev default, which is no secret.
+- **No secret in any workflow.** The TS jobs use compose's public dev default, which signs only test sessions. A production server refuses that default (`env.ts`, `DEV_AUTH_SECRET`, or anything starting `dev-only-`), so the production e2e lane makes its own random, masked secret per run (`openssl rand -hex 32` into `E2E_BETTER_AUTH_SECRET`); `docker-compose.e2e-prod.yml` stops when it is unset. That guard is what keeps a compose-based deploy that forgets the variable from booting with a published signing key (review-t27 I2).
+- **Least privilege.** The workflow grants `permissions: contents: read` at the top; no job needs more (cache and upload-artifact use the runner's token). A `concurrency` group per ref cancels superseded runs.
 - **Format drift fails CI.** The new root `pnpm format:check` (`biome format .`) runs before the build. The drift was committed once, as `style: biome format`. Biome no longer formats Rust-owned generated JSON (`backend/fixtures/**`, `backend/crates/*/schema/**`): `serde_json` and the generators write those files, so formatting them would only make them drift again.
 - **`pnpm design:check` runs in CI.**
 - **e2e on a production build.** `docker-compose.e2e-prod.yml` layers on `docker-compose.e2e.yml`: web runs `turbo run build --filter=@ci/web...`, then `next start`, with `LAB_ENABLED=1` for the styleguide. The `qa` run sets `E2E_PRODUCTION=1`. So the trend's keyboard budget (key to paint within 16 ms at a 4× throttle, ADR 0065) is now enforced on every change. `next start` warns that `output: standalone` prefers `server.js`. The warning is accepted: the standalone server is the deploy image's job (the Dockerfile `runtime` target), and `next start` serves the same build.
@@ -21,6 +22,10 @@ The CI workflow had drifted from how the gates run locally. The TS job ran on th
 
 - **The development alias broke `/api/events`.** `next.config.ts` aliased `@ci/db` to `src/index.ts`, and webpack applies an alias as a prefix. So `@ci/db/generated` resolved to `src/index.ts/generated`, and the events route failed to compile under `next dev`. The aliases are now exact (`@ci/db$`, `@ci/chess-core$`), and the `./generated` and `./generated/relations` subpaths map to their source files.
 - **"Read the cursor before the page data" needs every page.** The App Router renders a layout and its page in parallel, so a cursor read only in the layout can come after the page's queries. `requestEventCursor` wraps `eventCursor` in React `cache()`, so it is read once per request. Every signed-in page awaits it before its data, and the layout passes the same value to `RealtimeProvider`.
+
+## Logging (review-t27 I1)
+
+Better Auth's logger, the background-task logs (magic-link delivery) and the Lichess link hook all go through `redactedLog`. It redacts every email address in the message and, recursively, in its arguments: an Error's message, stack, `cause` and own fields (a pg `code` and `detail`, nodemailer's `response`, `rejected` and `envelope`), which are kept for diagnosis. A Drizzle query error carries the bound address in its message, so this is the realistic failure path.
 
 ## What the production lane changed in the specs
 

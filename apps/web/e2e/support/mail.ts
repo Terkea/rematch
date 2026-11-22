@@ -31,7 +31,7 @@ export async function gotoSettled(page: Page, url: string): Promise<void> {
  * a strict locator sees both (T27, the production e2e lane). A boundary that never reveals (a
  * page that called `notFound()`) keeps its hidden node, so that last wait is bounded.
  */
-async function streamed(page: Page): Promise<void> {
+async function streamed(page: Page, attempt = 1): Promise<void> {
   try {
     await page.waitForFunction(() => document.readyState !== "loading", undefined, {
       timeout: 120_000,
@@ -44,9 +44,10 @@ async function streamed(page: Page): Promise<void> {
         if (!String(error).includes("Timeout")) throw error;
       });
   } catch (error) {
-    // A navigation that replaced the document (a redirect) restarts the wait on the new one.
-    if (!String(error).includes("Execution context was destroyed")) throw error;
-    await streamed(page);
+    // A navigation that replaced the document (a redirect) restarts the wait on the new one, at
+    // most three times, so a redirect loop fails here instead of at the test timeout.
+    if (!String(error).includes("Execution context was destroyed") || attempt >= 3) throw error;
+    await streamed(page, attempt + 1);
   }
 }
 

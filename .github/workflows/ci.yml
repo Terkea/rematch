@@ -9,6 +9,16 @@ on:
 env:
   COMPOSE_FILE: docker-compose.yml
 
+# Least privilege (review-t27 I3): every job only reads the repository. upload-artifact and cache
+# use the runner's own token, not GITHUB_TOKEN scopes. Widen per job only where one needs more.
+permissions:
+  contents: read
+
+# A newer push to the same branch or PR cancels the run it supersedes.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   ts:
     # The TS gate: Biome format drift, the npm age rule, the design ban lint, then turbo
@@ -60,6 +70,13 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build the images
         run: $COMPOSE build deps web fakes
+      # A production server refuses the public dev secret, so this run makes its own. It is
+      # masked, and it signs only this run's throwaway sessions.
+      - name: A random auth secret for this run
+        run: |
+          secret=$(openssl rand -hex 32)
+          echo "::add-mask::$secret"
+          echo "E2E_BETTER_AUTH_SECRET=$secret" >> "$GITHUB_ENV"
       - name: Start web (production build) and the fakes
         run: $COMPOSE up -d --wait web fakes
       - name: e2e on the production build
