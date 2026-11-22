@@ -18,8 +18,7 @@ ADR 0030 moves the whole backend to Rust. The TS worker is the reference, so it 
 - **Pending state.** Every game is `pending`, with `pending_since` an hour ago.
 - **Enqueueing.**
   - TS: `apps/worker/scripts/enqueue-pending.ts` (Task 27 deletes it).
-  - Rust: `parity seed --enqueue` or `parity enqueue-pending`.
-  - `tools/parity` doesn't depend on the `analysis` crate (that would be a Cargo edit). So its `enqueue_analyse` repeats the options of `analysis::jobs::analyse::analyse_enqueue_options`: the same kind, the same dedupe key, the account as `user_key`, and 3 attempts.
+  - Rust: `parity seed --enqueue` or `parity enqueue-pending`, both through the worker's own `analysis::jobs::analyse::enqueue_analyse`.
 - **The engine.** Both workers run the same checksum-pinned Stockfish 19 binary with the same settings: Threads 1, the default Hash, `ucinewgame` per position, and `go nodes 300000`. Every engine eval is therefore reproducible.
 - **Phases.** The games are analysed in phases (`parity phases`): each Lichess-eval game alone, in fixture order, then all the rest.
   - The eval cache keeps the first write per position (ADR 0027).

@@ -3,11 +3,11 @@
 
 use std::path::Path;
 
+use analysis::jobs::analyse::enqueue_analyse;
 use anyhow::Context;
 use db::games::{NewGame, upsert_game};
 use platforms::{NormalizedGame, chesscom::normalize_chesscom, lichess::normalize_lichess};
 use queue::queue::Queue;
-use queue::{AnalyseGamePayload, EnqueueOptions, KIND_ANALYSE, analyse_key};
 use serde_json::Value;
 use sqlx::PgPool;
 use time::OffsetDateTime;
@@ -52,34 +52,6 @@ pub const PGN_ROWS: &[(&str, PgnSource)] = &[
     ),
     ("pgn-ruy", PgnSource::Inline(RUY)),
 ];
-
-/// `analysis::jobs::analyse::ANALYSE_MAX_ATTEMPTS`. This tool does not depend on the analysis
-/// crate (a Cargo edit), so [`enqueue_analyse`] repeats its options.
-pub const ANALYSE_MAX_ATTEMPTS: i32 = 3;
-
-/// Enqueues an analysis of the game with the options of
-/// `analysis::jobs::analyse::enqueue_analyse`: deduped on `analyse:<game_id>`, owned by the
-/// account, 3 attempts. `false` when a live job already holds the key.
-pub async fn enqueue_analyse(
-    queue: &Queue,
-    game_id: Uuid,
-    account_id: Uuid,
-) -> anyhow::Result<bool> {
-    let payload = serde_json::to_value(AnalyseGamePayload { game_id })?;
-    let id = queue
-        .enqueue(
-            KIND_ANALYSE,
-            &payload,
-            EnqueueOptions {
-                dedupe_key: Some(analyse_key(game_id)),
-                user_key: Some(account_id),
-                max_attempts: ANALYSE_MAX_ATTEMPTS,
-                ..EnqueueOptions::default()
-            },
-        )
-        .await?;
-    Ok(id.is_some())
-}
 
 async fn account(pool: &PgPool, platform: &str, username: &str) -> anyhow::Result<Uuid> {
     Ok(sqlx::query_scalar(

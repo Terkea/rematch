@@ -91,7 +91,7 @@ async fn seed_with_enqueue_creates_one_analyse_job_per_game(pool: PgPool) {
             &pool,
             "SELECT count(*) FROM jobs j JOIN games g \
              ON j.dedupe_key = 'analyse:' || g.id AND j.payload->>'gameId' = g.id::text \
-             AND j.user_key = g.account_id WHERE j.kind = 'analyse-game' AND j.max_attempts = 3"
+             AND j.user_key = g.account_id WHERE j.kind = 'analyse-game'"
         )
         .await,
         n as i64
