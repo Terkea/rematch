@@ -24,7 +24,8 @@
 //!   current state, read under the build's lock: `weakness_estimates.state` for weakness keys,
 //!   the latest stored transition's `to_state` for other series, `not_an_issue` when nothing is
 //!   stored (R-7). A replay that only moves rows publishes nothing. `onsetAt` is the onset of the
-//!   latest onset row that led into the current state, else null.
+//!   latest onset row that led into the current state within its current episode (at or after
+//!   the transition that entered it; T33 N3), else null.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -413,20 +414,32 @@ pub fn state_changes(
             .copied()
             .unwrap_or(WeaknessState::NotAnIssue);
             (from != to).then(|| StateChange {
-                onset_at: outcome.and_then(|o| {
-                    o.rows
-                        .iter()
-                        .filter(|r| r.kind == RowKind::Onset && r.to == to)
-                        .filter_map(|r| r.onset.as_ref().map(|on| (r.at_played_at, on.played_at)))
-                        .max()
-                        .map(|(_, onset)| onset)
-                }),
+                onset_at: outcome.and_then(|o| current_episode_onset(o, to)),
                 key,
                 from,
                 to,
             })
         })
         .collect()
+}
+
+/// The onset of the current episode of `to` (T33 N3, fixed in T34): the latest onset row into
+/// `to` dated at or after the transition that entered the current state. An episode entered
+/// without its own onset row has none: an earlier episode's onset is never borrowed.
+fn current_episode_onset(o: &SeriesOutcome, to: WeaknessState) -> Option<OffsetDateTime> {
+    let entered = o
+        .rows
+        .iter()
+        .rfind(|r| r.kind == RowKind::Transition)
+        .filter(|r| r.to == to)
+        .map(|r| r.at_played_at);
+    o.rows
+        .iter()
+        .filter(|r| r.kind == RowKind::Onset && r.to == to)
+        .filter(|r| entered.is_none_or(|at| r.at_played_at >= at))
+        .filter_map(|r| r.onset.as_ref().map(|on| (r.at_played_at, on.played_at)))
+        .max()
+        .map(|(_, onset)| onset)
 }
 
 /// The stored `weakness_estimates.state` per series key (run it under the build's lock).
