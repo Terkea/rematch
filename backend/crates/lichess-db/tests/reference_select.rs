@@ -15,8 +15,9 @@ use lichess_db::download::{DumpError, RetryPolicy};
 use lichess_db::explorer_build::{BuildOptions, Verify, build};
 use lichess_db::pipeline::{PipelineConfig, run_pipeline};
 use lichess_db::reference_select::{
-    ReferenceSink, SelectOptions, SelectedGame, enqueue_reference_games, hash_fraction,
-    memory_bound_bytes, parse_salt, player_hash, player_rate, redact_pgn, reference_filter,
+    ReferenceSink, SelectOptions, SelectedGame, admission_cap, enqueue_reference_games,
+    hash_fraction, memory_bound_bytes, parse_salt, player_hash, player_rate, redact_pgn,
+    reference_filter, resume_reference_enqueue,
 };
 use profile_core::types::Band;
 use queue::queue::Queue;
@@ -322,7 +323,33 @@ async fn players_need_enough_games_in_the_time_class_within_the_month() {
 
 #[tokio::test]
 async fn selection_ignores_results_and_rating_changes() {
-    let games = three_players();
+    // Asymmetric (review m1): `loser` (White) loses all 10 games, `winner` (White) wins all 10,
+    // and both sit exactly at the thresholds (10 games per player, 10 in the time class). Any
+    // filter or count that looks at results drops one of them, before or after the flip.
+    let mut games: Vec<String> = (0..10)
+        .map(|i| {
+            game(
+                &format!("lo{i}"),
+                "loser",
+                1500,
+                &format!("lx{i}"),
+                2400,
+                "0-1",
+                10,
+            )
+        })
+        .collect();
+    games.extend((0..10).map(|i| {
+        game(
+            &format!("wi{i}"),
+            "winner",
+            1500,
+            &format!("wx{i}"),
+            2400,
+            "1-0",
+            11,
+        )
+    }));
     let flipped: Vec<String> = games
         .iter()
         .map(|g| {
@@ -333,9 +360,15 @@ async fn selection_ignores_results_and_rating_changes() {
                 .replace("\"-5\"", "\"-60\"")
         })
         .collect();
-    let a = players_of(&select(&games, SALT_A, opts(2, 5), 2).await);
-    let b = players_of(&select(&flipped, SALT_A, opts(2, 5), 2).await);
-    assert_eq!(a, b);
+    let both = BTreeSet::from([hex_of(&SALT_A, "loser"), hex_of(&SALT_A, "winner")]);
+    let b2 = |sel: Vec<SelectedGame>| -> BTreeSet<String> {
+        sel.into_iter()
+            .filter(|g| g.band == Band::B2)
+            .map(|g| g.player_hash)
+            .collect()
+    };
+    assert_eq!(b2(select(&games, SALT_A, opts(2, 10), 2).await), both);
+    assert_eq!(b2(select(&flipped, SALT_A, opts(2, 10), 2).await), both);
 }
 
 #[tokio::test]
@@ -393,10 +426,12 @@ async fn a_player_rate_keeps_the_same_bottom_k_with_fewer_games_admitted() {
 }
 
 #[tokio::test]
-async fn max_scan_games_caps_admission() {
+async fn max_scan_games_caps_admission_with_a_half_margin() {
+    assert_eq!(admission_cap(3_000_000), 4_500_000);
+    assert_eq!(admission_cap(8), 12);
     let games = three_players();
     let o = SelectOptions {
-        max_scan_games: 12,
+        max_scan_games: 8,
         ..opts(2, 5)
     };
     let sink = Arc::new(ReferenceSink::new(SALT_A, o));
@@ -808,4 +843,212 @@ async fn a_band_reference_build_without_enough_players_fails(pool: PgPool) {
         .unwrap();
     assert_eq!(st, "failed");
     let _ = Verify::Full;
+}
+
+#[tokio::test]
+async fn cell_fill_is_reported_for_every_cell() {
+    let sink = Arc::new(ReferenceSink::new(SALT_A, opts(2, 5)));
+    let src = stream::iter(three_players().into_iter().map(Ok::<_, DumpError>));
+    run_pipeline(src, &reference_filter(), &sink, &cfg(2))
+        .await
+        .unwrap();
+    let (sel, fill) = Arc::try_unwrap(sink).ok().unwrap().finish_with_fill();
+    assert_eq!(sel.len(), 10);
+    assert_eq!(fill.len(), 24, "every band x time class, even empty ones");
+    let b2 = fill
+        .iter()
+        .find(|c| c.band == Band::B2 && c.tc == TimeClass::Blitz)
+        .unwrap();
+    // 3 players + 30 one-off opponents held; 3 with 5 games; all 3 eligible; 2 chosen.
+    assert_eq!(
+        (b2.target, b2.candidates, b2.full, b2.eligible, b2.chosen),
+        (2, 33, 3, 3, 2)
+    );
+    assert!(!b2.under_filled());
+    let empty = fill
+        .iter()
+        .find(|c| c.band == Band::B5 && c.tc == TimeClass::Classical)
+        .unwrap();
+    assert_eq!((empty.candidates, empty.chosen), (0, 0));
+    assert!(empty.under_filled());
+}
+
+#[tokio::test]
+async fn a_player_rate_under_fills_a_sparse_cell() {
+    // Review I2: the rate keeps the bottom-k only when enough eligible players fall below it.
+    // A threshold between the smallest and the second smallest player leaves the cell with one.
+    let names = ["p1", "p2", "p3"];
+    let mut fr: Vec<f64> = names
+        .iter()
+        .map(|n| hash_fraction(&player_hash(&SALT_A, n)))
+        .collect();
+    fr.sort_by(f64::total_cmp);
+    let o = SelectOptions {
+        player_rate: (fr[0] + fr[1]) / 2.0,
+        ..opts(2, 5)
+    };
+    let sink = Arc::new(ReferenceSink::new(SALT_A, o));
+    let src = stream::iter(three_players().into_iter().map(Ok::<_, DumpError>));
+    run_pipeline(src, &reference_filter(), &sink, &cfg(2))
+        .await
+        .unwrap();
+    let (sel, fill) = Arc::try_unwrap(sink).ok().unwrap().finish_with_fill();
+    assert_eq!(players_of(&sel), smallest(&SALT_A, &names, 1));
+    let b2 = fill
+        .iter()
+        .find(|c| c.band == Band::B2 && c.tc == TimeClass::Blitz)
+        .unwrap();
+    assert_eq!((b2.target, b2.chosen), (2, 1));
+    assert!(b2.under_filled());
+}
+
+async fn selected_flags(pool: &PgPool) -> Vec<(String, bool, bool)> {
+    sqlx::query_as(
+        "SELECT lichess_game_id, white_selected, black_selected FROM reference_games \
+         ORDER BY lichess_game_id",
+    )
+    .fetch_all(pool)
+    .await
+    .unwrap()
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn the_selected_colour_is_stored_with_the_game(pool: PgPool) {
+    // three_players: the players are always White against a one-off Black.
+    let sel = select(&three_players(), SALT_A, opts(2, 5), 2).await;
+    let build = verified_build(&pool).await;
+    enqueue_reference_games(&pool, &Queue::new(pool.clone()), build, &sel)
+        .await
+        .unwrap();
+    let flags = selected_flags(&pool).await;
+    assert_eq!(flags.len(), 10);
+    assert!(flags.iter().all(|(_, w, b)| *w && !*b), "{flags:?}");
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_game_selected_for_both_colours_stores_both(pool: PgPool) {
+    let games: Vec<String> = (0..5)
+        .map(|i| game(&format!("ab{i}"), "a", 1500, "b", 1510, "1/2-1/2", 7))
+        .collect();
+    let sel = select(&games, SALT_A, opts(2, 5), 2).await;
+    let build = verified_build(&pool).await;
+    enqueue_reference_games(&pool, &Queue::new(pool.clone()), build, &sel)
+        .await
+        .unwrap();
+    let flags = selected_flags(&pool).await;
+    assert_eq!(flags.len(), 5);
+    assert!(flags.iter().all(|(_, w, b)| *w && *b), "{flags:?}");
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_crash_mid_enqueue_is_resumed(pool: PgPool) {
+    let sel = select(&three_players(), SALT_A, opts(2, 5), 2).await;
+    let build = verified_build(&pool).await;
+    let q = Queue::new(pool.clone());
+    enqueue_reference_games(&pool, &q, build, &sel)
+        .await
+        .unwrap();
+    // The crash: the rows committed, but only 4 of the 10 jobs did.
+    sqlx::query("DELETE FROM jobs WHERE id NOT IN (SELECT id FROM jobs ORDER BY id LIMIT 4)")
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert_eq!(jobs(&pool).await.len(), 4);
+    assert_eq!(resume_reference_enqueue(&pool, &q, build).await.unwrap(), 6);
+    assert_eq!(
+        resume_reference_enqueue(&pool, &q, build).await.unwrap(),
+        0,
+        "idempotent"
+    );
+    let js = jobs(&pool).await;
+    assert_eq!(js.len(), 10);
+    let keys: BTreeSet<Option<String>> = js.iter().map(|j| j.3.clone()).collect();
+    assert_eq!(keys.len(), 10, "no duplicate job");
+    let rows: BTreeSet<String> = sqlx::query_scalar(
+        "SELECT 'refgame:' || id::text FROM reference_games WHERE build_id = $1",
+    )
+    .bind(build)
+    .fetch_all(&pool)
+    .await
+    .unwrap()
+    .into_iter()
+    .collect();
+    assert_eq!(keys.into_iter().flatten().collect::<BTreeSet<_>>(), rows);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn resume_refuses_a_build_that_is_not_building(pool: PgPool) {
+    let build = verified_build(&pool).await;
+    refdata::builds::fail_build(&pool, build, "test")
+        .await
+        .unwrap();
+    let err = resume_reference_enqueue(&pool, &Queue::new(pool.clone()), build)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, DumpError::Store(_)), "{err:?}");
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_capped_reference_build_enqueues_nothing_and_fails(pool: PgPool) {
+    // max_scan_games 8 (cap 12) with the rate at 1: the 30 games pass the cap.
+    let body = zstd(three_players().concat().as_bytes()).await;
+    let sum = hex::encode(Sha256::digest(&body));
+    let srv = server(body, sum).await;
+    let o = BuildOptions {
+        reference: SelectOptions {
+            max_scan_games: 8,
+            ..opts(2, 5)
+        },
+        expected_games: Some(4),
+        ..ref_opts()
+    };
+    let err = build(
+        &pool,
+        &http_client().unwrap(),
+        &DumpSource::new(srv.uri(), "2026-10"),
+        &o,
+    )
+    .await
+    .unwrap_err();
+    assert!(err.to_string().contains("capped"), "{err}");
+    let (st, capped): (String, Option<bool>) =
+        sqlx::query_as("SELECT status::text, (params->>'capped')::bool FROM reference_builds")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(st, "failed", "a capped reference build never activates");
+    assert_eq!(capped, Some(true));
+    let n: i64 = sqlx::query_scalar("SELECT count(*) FROM reference_games")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(n, 0);
+    assert!(jobs(&pool).await.is_empty());
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn the_build_records_cell_fill(pool: PgPool) {
+    let body = zstd(three_players().concat().as_bytes()).await;
+    let sum = hex::encode(Sha256::digest(&body));
+    let srv = server(body, sum).await;
+    let id = build(
+        &pool,
+        &http_client().unwrap(),
+        &DumpSource::new(srv.uri(), "2026-10"),
+        &ref_opts(),
+    )
+    .await
+    .unwrap()
+    .reference_build
+    .unwrap();
+    let p = get_build(&pool, id).await.unwrap().unwrap().params;
+    let cells = p["cells"].as_array().unwrap();
+    assert_eq!(cells.len(), 24);
+    let b2 = cells
+        .iter()
+        .find(|c| c["band"] == "B2" && c["time_class"] == "blitz")
+        .unwrap();
+    assert_eq!(b2["target"], 2);
+    assert_eq!(b2["chosen"], 2);
+    assert_eq!(p["under_filled_cells"], 23);
 }

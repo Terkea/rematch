@@ -40,8 +40,8 @@ use crate::headers::DumpHeader;
 use crate::movetext::movetext_sans;
 use crate::pipeline::{GameSink, PipelineConfig, PipelineStats, run_pipeline};
 use crate::reference_select::{
-    ReferenceSink, ReferenceSinkStats, SelectOptions, enqueue_reference_games, memory_bound_bytes,
-    player_rate, reference_filter,
+    CellFill, ReferenceSink, ReferenceSinkStats, SelectOptions, admission_cap,
+    enqueue_reference_games, memory_bound_bytes, player_rate, reference_filter,
 };
 use crate::sample::{SampleFilter, proportional_rate};
 
@@ -639,6 +639,57 @@ async fn run_build(
     Ok(())
 }
 
+/// Records every cell's fill in `params.cells` (and the count in `params.under_filled_cells`)
+/// and logs the under-filled ones (T21 review I2).
+async fn record_cell_fill(pool: &PgPool, id: Uuid, fill: &[CellFill]) -> Result<(), DumpError> {
+    let mut under = 0usize;
+    for c in fill.iter().filter(|c| c.under_filled()) {
+        under += 1;
+        tracing::warn!(
+            build = %id,
+            band = c.band.as_str(),
+            time_class = c.tc.as_str(),
+            target = c.target,
+            chosen = c.chosen,
+            candidates = c.candidates,
+            full = c.full,
+            eligible = c.eligible,
+            "under-filled reference cell"
+        );
+    }
+    let cells: Vec<_> = fill
+        .iter()
+        .map(|c| {
+            json!({
+                "band": c.band.as_str(),
+                "time_class": c.tc.as_str(),
+                "target": c.target,
+                "candidates": c.candidates,
+                "full": c.full,
+                "eligible": c.eligible,
+                "chosen": c.chosen,
+            })
+        })
+        .collect();
+    let updated = sqlx::query(
+        "UPDATE reference_builds SET params = params || jsonb_build_object('cells', $2::jsonb, \
+           'under_filled_cells', $3::int4) WHERE id = $1 AND status = 'building'",
+    )
+    .bind(id)
+    .bind(serde_json::Value::Array(cells))
+    .bind(i32::try_from(under).unwrap_or(i32::MAX))
+    .execute(pool)
+    .await
+    .map_err(store)?
+    .rows_affected();
+    if updated != 1 {
+        return Err(DumpError::Store(format!(
+            "build {id} is no longer building"
+        )));
+    }
+    Ok(())
+}
+
 /// What a band-reference pass produced.
 struct ReferencePass {
     id: Uuid,
@@ -654,8 +705,9 @@ struct ReferencePass {
 ///    (`opts.reference_salt`, else fresh OS randomness), so the build is auditable and
 ///    reproducible;
 /// 4. the whole month through a [`ReferenceSink`];
-/// 5. Full: drain, `verify`, `params.capped`, `set_source_sha`, then the selection is inserted
-///    and enqueued ([`enqueue_reference_games`]). Nothing is inserted before the digest matches.
+/// 5. Full: drain, `verify`, `params.capped` (a capped build fails here, enqueueing nothing),
+///    `set_source_sha`, the cell fill (`params.cells`), then the selection is inserted and
+///    enqueued ([`enqueue_reference_games`]). Nothing is inserted before the digest matches.
 ///    None: the build is marked `unverified` and nothing is enqueued.
 ///
 /// The build stays `building`: Task 32's finaliser activates it once every game is analysed.
@@ -696,6 +748,7 @@ async fn build_band_reference(
         "games_per_player": sel.games_per_player,
         "oversample": sel.oversample,
         "max_scan_games": sel.max_scan_games,
+        "admission_cap": admission_cap(sel.max_scan_games),
         "min_games_in_time_class": sel.min_games_in_time_class,
         "player_rate": sel.player_rate,
         "expected_games": expected,
@@ -797,15 +850,18 @@ async fn run_reference(
     stats.stage_ms.insert("drain".into(), ms_since(t));
     stats.bytes_compressed = sha.bytes_read();
     let digest = sha.verify(expected)?;
-    if sink_stats.capped {
-        tracing::warn!(
-            build = %id,
-            admitted = sink_stats.games_admitted,
-            "max_scan_games stopped admission before the end of the month, so later players \
-             are missing; pass --expected-games with the real month size and rebuild"
-        );
-    }
     set_capped(pool, id, sink_stats.capped).await?;
+    if sink_stats.capped {
+        // Admission stopped before the end of the month: a first-N cut of the rest of it, so
+        // late-month players are missing and activity counts lean early (T21 review I3). Like a
+        // capped explorer until `--allow-capped` exists, it is never activated: nothing is
+        // enqueued and the build fails (with `params.capped`).
+        return Err(DumpError::Config(format!(
+            "reference scan capped at {} admitted games before the end of the month; pass \
+             --expected-games with the real month size and rebuild",
+            sink_stats.games_admitted
+        )));
+    }
     let scanned = i64::try_from(stats.games_seen).unwrap_or(i64::MAX);
     set_source_sha(pool, id, &digest, scanned)
         .await
@@ -813,7 +869,8 @@ async fn run_reference(
 
     let sink = Arc::try_unwrap(sink)
         .map_err(|_| DumpError::Config("the reference sink is still shared".into()))?;
-    let selected = sink.finish();
+    let (selected, fill) = sink.finish_with_fill();
+    record_cell_fill(pool, id, &fill).await?;
     if selected.is_empty() {
         return Err(DumpError::Config(
             "no reference player qualified in any cell".into(),

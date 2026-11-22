@@ -18,8 +18,12 @@ streamed. It has no provisional flag and must not leave usernames in our databas
 - **Player-sampled cells.** A cell is `(band_of(the player's rating at the game), time class)`,
   with the six bands B0–B5 and bullet, blitz, rapid and classical (no correspondence). Each
   cell selects **20 players × 10 games** (`players_per_cell`, `games_per_player`). **Both
-  colours** count: each side of a game is offered to its own cell; a game selected for both
-  sides is inserted once and observed for both (Part 2 analyses both colours anyway).
+  colours** count: each side of a game is offered to its own cell. **Only the sampled side is
+  a reference player** (T21 review I1): `reference_games.white_selected` / `black_selected`
+  record which side(s) were selected, and Part 2 writes observations only for them. The
+  one-game opponent of a sampled player is game-weighted (biased toward high-volume accounts),
+  never passed the activity rule and may be provisional, so it never enters a cell. A game
+  selected for both sides is inserted once with both flags.
 - **Bottom-k by a salted hash, one pass.** `h = sha256(salt ‖ lower(name))`. Per cell a max-heap
   holds at most `players_per_cell × oversample` (20 × 20 = 400) candidates with the smallest `h`.
   A player evicted from the heap never re-enters: its hash is fixed and the heap's maximum only
@@ -36,11 +40,23 @@ streamed. It has no provisional flag and must not leave usernames in our databas
   player's games below 10. Instead, a side is admitted only when `fraction(h) < player_rate`,
   with `player_rate = min(1, max_scan_games / (2 × expected games))` and `max_scan_games =
   3 000 000` (each admitted player brings all their games; a game passes when either side
-  does). The bottom-k players are below the threshold whenever a cell has enough of them, so the
-  rate bounds the work without changing the selection; a thin cell is under-filled, not filled
-  with other players. The expected size comes from `--expected-games`, else the last full build,
-  else 100M (as ADR-R2-10). Admission stops at `max_scan_games` (the build records
-  `params.capped` and warns; a correct estimate never reaches it).
+  does). The expected size comes from `--expected-games`, else the last full build, else 100M
+  (as ADR-R2-10).
+- **The rate changes sparse cells** (T21 review I2, corrected). A cell keeps its exact bottom-k
+  only when at least `players_per_cell` of its *eligible* players fall below the threshold:
+  about `20 / player_rate` eligible players, roughly 1 300 at a rate of 0.015 (100M games).
+  Sparse cells (classical, B5 rapid) plausibly have fewer, and the activity rule thins dense
+  ones too, so such a cell is **under-filled** (fewer than 20 players; never filled with
+  others). Every cell's fill (`target`, `candidates`, `full`, `eligible`, `chosen`) is recorded
+  in `params.cells`, `params.under_filled_cells` counts the short ones, and each is logged. An
+  adaptive per-cell rate is deferred; Part 2's evidence gate and low-sample flag already refuse
+  thin cells.
+- **Admission cap with a 1.5× margin; a capped build never activates** (T21 review I3).
+  Admission stops at `1.5 × max_scan_games` (`params.admission_cap`), so a month up to half
+  again as large as estimated still reads to the end. Stopping admission is a first-N cut of
+  the rest of the month (late players missing, activity counts leaning early), so a build that
+  reaches the cap records `params.capped = true`, enqueues nothing and fails, as capped explorer
+  builds do not activate until `--allow-capped` exists.
 - **Memory bound** = cells × candidates × games × PGN size = 24 × 400 × 10 × about 2 KB, about
   200 MB, logged when the pass starts and stored in `params.memory_bound_bytes`. A game held for
   both colours is shared. The per-(player, time class) game counters are bounded by the admitted
@@ -60,8 +76,8 @@ streamed. It has no provisional flag and must not leave usernames in our databas
 - **Hashed names, per-build salt stored for audit (coordinator ruling).** The salt is 32 bytes
   of fresh OS randomness per build, or the `--salt <64 hex>` override, and is recorded in the
   build's `params.salt` (where `capped` is recorded), so a build is auditable and
-  `--salt <params.salt>` reproduces its selection from the same dump. No new migration was
-  needed. Names are never stored: only the hex hashes (`white_hash`, `black_hash`,
+  `--salt <params.salt> --expected-games <params.expected_games>` reproduces its selection from
+  the same dump (the player rate depends on the expected size too). Names are never stored: only the hex hashes (`white_hash`, `black_hash`,
   `player_hash`), and the stored PGN has its `White`/`Black` tags replaced by `?`. Because the
   salt is stored next to the hashes, a hash can be matched to a name by hashing candidate
   Lichess usernames; the hashes are pseudonyms that group a player's games, not a secret. (The
@@ -72,6 +88,10 @@ streamed. It has no provisional flag and must not leave usernames in our databas
   `enqueue_reference_games` refuses a build without a source SHA. A mismatch fails the build
   with no reference games. A selection with no game fails the build. The build stays
   `building` until Part 2's finaliser activates it.
+- **Resumable enqueue** (T21 review I4). The rows commit in one transaction and the jobs follow
+  in batches, so a crash in between leaves pending rows without jobs. The jobs are built from
+  the database (`resume_reference_enqueue`: every `pending` game of a verified `building`
+  build), and the `refgame:<id>` dedupe makes a re-run safe. Task 35 schedules it.
 
 ### Consequences
 
@@ -83,8 +103,10 @@ streamed. It has no provisional flag and must not leave usernames in our databas
 - `protocol` and `enrichment_protocol` stay NULL when the build is created: `lichess-db` does
   not depend on the engine or enrich crates. Task 35's worker, which has both, fills them at
   finalisation; Part 2 records the difficulty model.
-- A rare cell (for example B5 classical) can be under-filled; Part 2's low-sample flag and the
-  band fallback (Task 17) handle it.
+- A rare cell (for example B5 classical) can be under-filled, visibly in `params.cells`; Part
+  2's low-sample flag, its evidence gate and the band fallback (Task 17) handle it.
+- One migration (`20261121020600_reference_games_selected_sides`) adds the two selection flags,
+  with a check that at least one side is selected.
 
 ### Alternatives
 
@@ -109,8 +131,9 @@ come from the reference games that Task 21 samples per band × time class.
 - **Both colours of every reference game are analysed**, with the user pipeline: our own
   `sf19-n300k-v1` evaluation (never the dump's `[%eval]`, which is another protocol), enrichment
   of both colours (`enr-v1`), then features and metrics per side. One `reference_observations`
-  row per side that has both ratings; a side without ratings has no band and no gap, so it gives
-  no observation (counted in `job_metrics`).
+  row per **sampled** side (`white_selected` / `black_selected`, Part 1) that has both ratings;
+  the unsampled opponent gives no observation (`sides_not_sampled` in `job_metrics`), and a side
+  without ratings has no band and no gap, so it gives none either.
 - **Binomial rows use a Beta-binomial fit, not raw per-player rates.** Per player, events and
   opportunities are summed over the player's games in the cell. `pooled_rate = Σk / Σn`. The
   quartiles are those of the fitted Beta of per-player rates: at 10 games per player, raw rates

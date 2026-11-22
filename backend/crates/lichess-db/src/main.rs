@@ -107,8 +107,9 @@ struct BuildArgs {
     /// Build the band reference (R2 Task 21).
     #[arg(long)]
     band_reference: bool,
-    /// Reference selection salt, 64 hex digits: a stored build's `params.salt` reproduces its
-    /// selection (default: a fresh random salt, recorded on the build).
+    /// Reference selection salt, 64 hex digits (default: a fresh random salt, recorded on the
+    /// build). To reproduce a stored build, pass its `params.salt` together with
+    /// `--expected-games <params.expected_games>`: the player rate depends on both.
     #[arg(long, value_parser = lichess_db::reference_select::parse_salt)]
     salt: Option<[u8; 32]>,
     #[arg(long, value_enum, default_value_t = VerifyArg::Full)]
