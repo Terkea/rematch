@@ -1,0 +1,58 @@
+import { CoachScopeSwitch } from "../../../../../components/coach-scope-switch";
+import { requireUser } from "../../../../../server/auth/session";
+import { chatAllowance } from "../../../../../server/coach/allowance";
+import { type ChatAnchor, decodeAnchor } from "../../../../../server/coach/anchor";
+import { getDb } from "../../../../../server/db";
+import { resolveCoachScope } from "../../../../../server/profile/scope";
+import { PageHeading } from "../../../_shell/page-heading";
+import { AnchorCard, loadAnchorView } from "../[threadId]/anchor-card";
+import { allowanceView } from "../allowance";
+import { NoScope } from "../no-scope";
+import { NewConversation } from "./new-view";
+
+export const dynamic = "force-dynamic";
+export const metadata = { title: "New conversation" };
+
+type Params = Record<string, string | string[] | undefined>;
+
+const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? null;
+
+/**
+ * `/app/coach/new?account&tc&anchor`: a new conversation in the scope, opened from an anchor. A
+ * malformed anchor, or one this user cannot see (another account's game, a ply past the end),
+ * is dropped silently: the question is then asked without it.
+ */
+export default async function NewCoachPage({ searchParams }: { searchParams: Promise<Params> }) {
+  const user = await requireUser();
+  const db = getDb();
+  const params = await searchParams;
+  const scope = await resolveCoachScope(db, user.id, params);
+  if (!scope) {
+    return (
+      <>
+        <PageHeading title="New conversation" />
+        <NoScope />
+      </>
+    );
+  }
+  const raw = first(params.anchor);
+  const decoded = raw ? decodeAnchor(raw) : null;
+  const [view, allowance] = await Promise.all([
+    decoded ? loadAnchorView(db, user.id, scope.accountId, decoded) : Promise.resolve(null),
+    chatAllowance(db, scope.accountId),
+  ]);
+  const anchor: ChatAnchor | null = view ? decoded : null;
+  const q = new URLSearchParams({ account: scope.accountId, tc: scope.timeClass });
+  return (
+    <NewConversation
+      scope={{ accountId: scope.accountId, timeClass: scope.timeClass }}
+      anchor={anchor}
+      allowance={allowanceView(allowance)}
+      listHref={`/app/coach?${q.toString()}`}
+      // An anchor belongs to one account's games: switching scope would drop it, so no switch.
+      scopeSwitch={view ? null : <CoachScopeSwitch scope={scope} basePath="/app/coach/new" />}
+    >
+      {view ? <AnchorCard view={view} /> : null}
+    </NewConversation>
+  );
+}

@@ -83,3 +83,26 @@ same operations without a Rust HTTP API, and without ever talking to the sidecar
   account. The billing-backed entitlements should scope it per user, or count verified links only.
 - If the worker's plan variable and the web's ever disagree, the composer's count is wrong but
   the quota still holds (the job decides).
+
+## Addendum: the chat pages (M5b Task 9)
+
+1. **The stored answer is authoritative.** The thread page shows an unfinished answer's chunks as
+   `chat.chunk` events reach the query cache (merged with the chunks `getThread` replayed, one per
+   `seq`). When the stream ends (`chat.message.ready` or `chat.message.failed`) the page reads the
+   thread again and renders the stored segments, so a retracted or repaired stream (`replace`)
+   never stays on screen. A failure reads `failureCopy(reason)` at once, even before the re-read.
+2. **No open stream, no "live".** While `useRealtime().mode` is not `sse` (connecting, polling, or
+   no provider mounted), the page reads the thread every `POLL_INTERVAL_MS` while an answer runs
+   and says "Updates every few seconds". An answer therefore finishes on screen even without the
+   event stream.
+3. **Platform game ids.** Chat segments and anchors name a game by its platform id, as the worker
+   resolves them; the review page takes `games.id`. `server/profile/game-ids.ts`
+   (`reviewGameIds`, shared with the weaknesses pages) maps them on the conversation's own
+   account, behind the user's link. An id it cannot map links nowhere and an anchor it cannot map
+   is dropped, so no answer links to a not-found page.
+4. **Composer states.** A used-up allowance disables the composer with the cap copy and the
+   allowance line gives the reset day. An answer in progress disables it with a status line
+   ("Your coach is answering"), not the "paused until they reset" placeholder. A post shows the
+   question as sending until the server accepts it; a refused post keeps the text in the box and
+   says why. A failed answer offers "Ask again" only when asking again could succeed (an outage
+   or an unknown error, never a cap, the spending limit or an unlinked account).
