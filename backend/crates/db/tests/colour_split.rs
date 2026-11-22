@@ -149,7 +149,7 @@ async fn applies_on_existing_rows_and_marks_them_both(pool: PgPool) {
             .unwrap();
     }
     let rows: Vec<(String, String)> = sqlx::query_as(
-        "SELECT side::text, state::text FROM weakness_estimates WHERE account_id = $1 \
+        "SELECT side::text AS s, state::text FROM weakness_estimates WHERE account_id = $1 \
          ORDER BY side",
     )
     .bind(account)

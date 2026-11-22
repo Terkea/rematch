@@ -103,7 +103,7 @@ async fn last50(pool: &PgPool, a: Uuid, side: Side, metric: &str) -> (Option<f64
 /// Rows per side of a table for the account.
 async fn rows_per_side(pool: &PgPool, table: &str, a: Uuid) -> Vec<(String, i64)> {
     sqlx::query_as(sqlx::AssertSqlSafe(format!(
-        "SELECT side::text, count(*) FROM {table} WHERE account_id = $1 GROUP BY side ORDER BY side"
+        "SELECT side::text AS s, count(*) FROM {table} WHERE account_id = $1 GROUP BY side ORDER BY side"
     )))
     .bind(a)
     .fetch_all(pool)
@@ -145,7 +145,7 @@ async fn snapshots_and_estimates_are_split_by_colour(pool: PgPool) {
 
     // Area scores per side, in every window the side has games in.
     let areas: Vec<(String, i64)> = sqlx::query_as(
-        "SELECT side::text, count(*) FROM kpi_snapshot WHERE account_id = $1 \
+        "SELECT side::text AS s, count(*) FROM kpi_snapshot WHERE account_id = $1 \
          AND metric LIKE 'area:%' GROUP BY side ORDER BY side",
     )
     .bind(s.account_id)
