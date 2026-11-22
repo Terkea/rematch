@@ -1,26 +1,33 @@
-import { Button } from "@ci/ui/primitives";
-import Link from "next/link";
+import { cookies } from "next/headers";
 import { requireUser } from "../../../server/auth/session";
-import { EmptySheet, PageHeading } from "../_shell/page-heading";
+import { getDb } from "../../../server/db";
+import { getOverview } from "../../../server/overview";
+import { OverviewSheet } from "./_overview/sheet";
+import { knownTimeClass, parseTimeClass, REVEAL_COOKIE, toOverviewView } from "./_overview/view";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Dashboard" };
+export const metadata = { title: "Overview" };
 
-/** Placeholder until the dashboard lands (M5a). The route and its nav entry are already final. */
-export default async function DashboardPage() {
-  await requireUser();
-  return (
-    <div className="flex flex-col gap-8">
-      <PageHeading title="Dashboard" lede="Where your games go wrong, and what to practise." />
-      <EmptySheet
-        action={
-          <Button asChild variant="outline">
-            <Link href="/app/accounts">Go to Accounts</Link>
-          </Button>
-        }
-      >
-        Your dashboard fills in once your games are imported and analysed.
-      </EmptySheet>
-    </div>
+/**
+ * The overview (`/app?tc=<timeClass>`): the signed-in player's analysed games. A server component;
+ * only the trend is a client island, and it gets a narrow view model. An unknown or unanalysed
+ * `tc` falls back to All.
+ */
+export default async function OverviewPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tc?: string | string[] }>;
+}) {
+  const user = await requireUser();
+  const db = getDb();
+  const asked = knownTimeClass((await searchParams).tc);
+  let overview = await getOverview(db, user.id, { timeClass: asked });
+  const tc = parseTimeClass(
+    asked ?? undefined,
+    overview.timeClasses.map((c) => c.timeClass),
   );
+  if (asked !== null && tc === null) overview = await getOverview(db, user.id, { timeClass: null });
+  // The report reveal runs on the first view in a browser session only (DESIGN.md choreography 2).
+  const reveal = !(await cookies()).has(REVEAL_COOKIE);
+  return <OverviewSheet view={toOverviewView(overview, tc)} reveal={reveal} />;
 }

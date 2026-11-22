@@ -69,6 +69,16 @@ export interface AccuracyTrendProps {
   label: string;
   /** Sweep the chart in from the left on mount over 2 × `dur.reveal` (not under reduced motion). */
   drawIn?: boolean;
+  /**
+   * Break the line and band between two games more than this many days apart, so a stretch with
+   * no games is never drawn over as if it had an average. Off by default.
+   */
+  gapDays?: number;
+  /**
+   * The fewest games drawn as a chart (default 2); below it, "Not enough games yet". A host that
+   * wants a lone game plotted as its dot passes 1.
+   */
+  minPoints?: number;
   className?: string;
 }
 
@@ -134,7 +144,7 @@ function Dot({ result, r, soft = false }: { result: TrendResult; r: number; soft
           r={r - 0.6}
           strokeWidth={1.2}
           fill="none"
-          className={soft ? "stroke-rule-strong" : "stroke-ink-soft"}
+          className={soft ? "stroke-ink-faint" : "stroke-ink-soft"}
         />
       </>
     );
@@ -264,6 +274,8 @@ export function AccuracyTrend({
   rolling,
   label,
   drawIn = false,
+  gapDays,
+  minPoints = 2,
   className,
 }: AccuracyTrendProps) {
   const reduced = useReducedMotion();
@@ -285,7 +297,7 @@ export function AccuracyTrend({
     [points],
   );
   const omitted = points.length - sorted.length;
-  const enough = sorted.length >= 2;
+  const enough = sorted.length >= Math.max(1, minPoints);
 
   // One clock: a single clip sweeps left to right over the band and line, and each dot fades in
   // as the sweep reaches it. Under reduced motion it starts, and stays, at the end. The clip's
@@ -328,13 +340,19 @@ export function AccuracyTrend({
     const byId = new Map(rolling.map((r) => [r.id, r]));
     const at = (d: PlacedDot) => byId.get(d.id);
     type Row = { d: PlacedDot; r: AccuracyTrendRolling };
+    const gap = gapDays === undefined ? Number.POSITIVE_INFINITY : gapDays * 86_400_000;
+    const joins = (a: PlacedDot, b: PlacedDot) => b.time.getTime() - a.time.getTime() <= gap;
     const rows = (run: PlacedDot[]): Row[] =>
       run.map((d) => ({ d, r: at(d) as AccuracyTrendRolling }));
     // The band and the mean break separately: a null interval keeps its mean, without a band.
-    const bands = runs(dots, (d) => {
-      const r = at(d);
-      return !!r && finite(r.low) && finite(r.high) && r.high > r.low;
-    }).map((run) => ({
+    const bands = runs(
+      dots,
+      (d) => {
+        const r = at(d);
+        return !!r && finite(r.low) && finite(r.high) && r.high > r.low;
+      },
+      joins,
+    ).map((run) => ({
       key: run[0]?.id ?? "",
       d:
         Shape.area<Row>({
@@ -343,10 +361,14 @@ export function AccuracyTrend({
           y1: (row) => yForAccuracy(clamp100(row.r.high as number)),
         })(rows(run)) ?? "",
     }));
-    const means = runs(dots, (d) => {
-      const r = at(d);
-      return !!r && Number.isFinite(r.mean);
-    }).map((run) => ({
+    const means = runs(
+      dots,
+      (d) => {
+        const r = at(d);
+        return !!r && Number.isFinite(r.mean);
+      },
+      joins,
+    ).map((run) => ({
       key: run[0]?.id ?? "",
       d:
         Shape.line<Row>({
@@ -355,7 +377,7 @@ export function AccuracyTrend({
         })(rows(run)) ?? "",
     }));
     return { dots, bands, means, ticks: dateTicks(x, width) };
-  }, [ready, enough, sorted, rolling, width]);
+  }, [ready, enough, sorted, rolling, width, gapDays]);
 
   const summary = useMemo(() => trendSummary(sorted, rolling), [sorted, rolling]);
 
@@ -509,7 +531,12 @@ export function AccuracyTrend({
               ))}
               <g clipPath={`url(#${clipId})`}>
                 {geo.bands.map((b) => (
-                  <path key={b.key} data-part="band" d={b.d} className="fill-pencil/45" />
+                  <path
+                    key={b.key}
+                    data-part="band"
+                    d={b.d}
+                    className="fill-pencil/45 dark:fill-pencil/60"
+                  />
                 ))}
               </g>
               <DotLayer dots={geo.dots} r={r} soft={dense} width={width} />
@@ -641,7 +668,14 @@ export function AccuracyTrend({
         {geo && geo.means.length > 0 && (
           <span className="flex items-center gap-2">
             <svg aria-hidden="true" width={18} height={12} className="shrink-0">
-              <rect x={0} y={2} width={18} height={8} rx={1} className="fill-pencil/45" />
+              <rect
+                x={0}
+                y={2}
+                width={18}
+                height={8}
+                rx={1}
+                className="fill-pencil/45 dark:fill-pencil/60"
+              />
               <line x1={0} x2={18} y1={6} y2={6} strokeWidth={2} className="stroke-ink" />
             </svg>
             <span>Rolling average, 80% band</span>

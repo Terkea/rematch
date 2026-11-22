@@ -1,7 +1,7 @@
-// The app's sections, in header order. Dashboard and Games are the next pages to land (the
-// owner's analysed games); their routes already exist as quiet placeholders.
+// The app's sections, in header order. Each label matches its page's title (ruling: "Overview",
+// not "Dashboard"; the old name stays a command-palette keyword).
 export const navItems = [
-  { label: "Dashboard", href: "/app", keywords: ["home", "overview"] },
+  { label: "Overview", href: "/app", keywords: ["home", "dashboard"] },
   { label: "Games", href: "/app/games", keywords: ["reviews", "analysis"] },
   { label: "Accounts", href: "/app/accounts", keywords: ["chess.com", "lichess", "link"] },
 ] as const;
