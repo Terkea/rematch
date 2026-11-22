@@ -451,8 +451,22 @@ async fn sigterm_on_final_attempt_then_fresh_worker_completes(
     );
 }
 
-/// Never finishes and never looks at its cancel token.
-struct Stubborn;
+/// Never finishes and never looks at its cancel token. `started` counts the handler calls,
+/// `dropped` the handler futures that were dropped (which only an abort does).
+#[derive(Default)]
+struct Stubborn {
+    started: Arc<AtomicUsize>,
+    dropped: Arc<AtomicUsize>,
+}
+
+/// Counts one drop of the future that owns it.
+struct CountDrop(Arc<AtomicUsize>);
+
+impl Drop for CountDrop {
+    fn drop(&mut self) {
+        self.0.fetch_add(1, Ordering::SeqCst);
+    }
+}
 
 impl queue::runner::Handler for Stubborn {
     fn kind(&self) -> &'static str {
@@ -464,7 +478,13 @@ impl queue::runner::Handler for Stubborn {
         _job: queue::Job,
         _ctx: queue::runner::JobContext,
     ) -> BoxFuture<'_, Result<serde_json::Value, queue::JobError>> {
-        futures::future::pending().boxed()
+        self.started.fetch_add(1, Ordering::SeqCst);
+        let guard = CountDrop(self.dropped.clone());
+        async move {
+            let _guard = guard;
+            futures::future::pending().await
+        }
+        .boxed()
     }
 }
 
@@ -476,10 +496,10 @@ async fn job_state(pool: &PgPool, id: i64) -> (String, i32, bool) {
         .unwrap()
 }
 
-/// The force step gets the 90 %-100 % window and always hands the job back within it, even
-/// when the handler ignores its cancellation.
-#[sqlx::test(migrator = "db::MIGRATOR")]
-async fn the_force_step_releases_a_job_whose_handler_ignores_cancellation(pool: PgPool) {
+/// Enqueues one analyse job and starts a `Stubborn` runner on it; returns once its handler is
+/// running. (The job shows `running` as soon as the claim commits, which is before the runner
+/// has spawned the handler.)
+async fn stubborn_running(pool: &PgPool) -> (i64, queue::runner::RunnerHandle, Arc<AtomicUsize>) {
     let queue = Queue::new(pool.clone());
     let id = queue
         .enqueue(
@@ -490,62 +510,106 @@ async fn the_force_step_releases_a_job_whose_handler_ignores_cancellation(pool: 
         .await
         .unwrap()
         .unwrap();
+    let handler = Stubborn::default();
+    let (started, dropped) = (handler.started.clone(), handler.dropped.clone());
     let runner = queue::runner::Runner::spawn(
         queue.clone(),
-        Arc::new(Stubborn),
+        Arc::new(handler),
         RunnerConfig::fast_for_tests(),
     );
-    wait_until("the job to run", Duration::from_secs(10), || {
-        let pool = pool.clone();
-        async move { (job_state(&pool, id).await.0 == "running").then_some(()) }
+    wait_until("the handler to start", Duration::from_secs(10), || {
+        let started = started.clone();
+        async move { (started.load(Ordering::SeqCst) == 1).then_some(()) }
     })
     .await;
+    assert_eq!(job_state(pool, id).await.0, "running");
+    (id, runner, dropped)
+}
+
+/// The force aborted the handler: its future is dropped (the abort completes asynchronously).
+async fn aborted(dropped: &Arc<AtomicUsize>) {
+    wait_until("the handler to be dropped", Duration::from_secs(10), || {
+        let dropped = dropped.clone();
+        async move { (dropped.load(Ordering::SeqCst) == 1).then_some(()) }
+    })
+    .await;
+}
+
+/// The force step gets the 90 %-100 % window for the handlers and always hands the job back,
+/// even when the handler ignores its cancellation. Asserted on state, not on wall-clock time:
+/// the shutdown's timing bounds are covered on the paused clock in `hard_deadline.rs`, and exit
+/// code 0 means the hard deadline did not cut it off.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn the_force_step_releases_a_job_whose_handler_ignores_cancellation(pool: PgPool) {
+    let (id, runner, dropped) = stubborn_running(&pool).await;
     let handles = ShutdownHandles {
         runners: vec![Box::new(runner)],
         engines: Box::new(Noop),
         db: Box::new(Noop),
     };
-    let grace = Duration::from_secs(1);
-    let started = Instant::now();
-    let code = shutdown(handles, ShutdownOptions::with_grace(grace)).await;
-    assert!(
-        started.elapsed() < grace + Duration::from_millis(400),
-        "{:?}",
-        started.elapsed()
-    );
+    let code = shutdown(handles, ShutdownOptions::with_grace(Duration::from_secs(1))).await;
     assert_eq!(code, 0);
+    // The handler was aborted, not waited for.
+    aborted(&dropped).await;
     // Released: queued again, the attempt given back, no lease.
     assert_eq!(job_state(&pool, id).await, ("queued".to_owned(), 0, true));
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
 async fn force_within_a_tiny_budget_still_releases(pool: PgPool) {
-    let queue = Queue::new(pool.clone());
-    let id = queue
-        .enqueue(
-            queue::KIND_ANALYSE,
-            &serde_json::json!({}),
-            queue::EnqueueOptions::default(),
-        )
-        .await
-        .unwrap()
-        .unwrap();
-    let runner = queue::runner::Runner::spawn(
-        queue.clone(),
-        Arc::new(Stubborn),
-        RunnerConfig::fast_for_tests(),
-    );
-    wait_until("the job to run", Duration::from_secs(10), || {
-        let pool = pool.clone();
-        async move { (job_state(&pool, id).await.0 == "running").then_some(()) }
-    })
-    .await;
-    let started = Instant::now();
+    let (id, runner, dropped) = stubborn_running(&pool).await;
+    // Returning at all means the force did not wait for the handler, which never finishes.
     runner.force_within(Duration::from_millis(100)).await;
-    assert!(
-        started.elapsed() < Duration::from_millis(100 + 400),
-        "{:?}",
-        started.elapsed()
-    );
+    aborted(&dropped).await;
+    assert_eq!(job_state(&pool, id).await, ("queued".to_owned(), 0, true));
+}
+
+/// The release is the write that makes a forced shutdown lossless, so the force budget (which
+/// bounds the wait for the handlers) must not cut it off: a release that is slow (a loaded host,
+/// a row lock) and dropped leaves the job leased for a whole lease and costs it a stall. Here the
+/// job's row stays locked until well after the budget has run out, which on any clock outlasts
+/// every timer the budget could set; the release must wait for the lock and still land.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_release_slower_than_the_force_budget_still_lands(pool: PgPool) {
+    let (id, runner, dropped) = stubborn_running(&pool).await;
+    let budget = Duration::from_millis(100);
+    let mut lock = pool.begin().await.unwrap();
+    sqlx::query("SELECT id FROM jobs WHERE id = $1 FOR UPDATE")
+        .bind(id)
+        .execute(&mut *lock)
+        .await
+        .unwrap();
+    let started = tokio::time::Instant::now();
+    let runner = Arc::new(runner);
+    let force = tokio::spawn({
+        let runner = runner.clone();
+        async move { runner.force_within(budget).await }
+    });
+    // The release has started and is blocked on the lock.
+    wait_until(
+        "the release to block on the row lock",
+        Duration::from_secs(10),
+        || {
+            let pool = pool.clone();
+            async move {
+                let waiting: bool = sqlx::query_scalar(
+                    "SELECT EXISTS (SELECT 1 FROM pg_stat_activity
+                 WHERE wait_event_type = 'Lock' AND query LIKE '%released: shutdown%')",
+                )
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+                waiting.then_some(())
+            }
+        },
+    )
+    .await;
+    // Hold the lock past every timer the budget could set: the budget itself, and any floor
+    // given to a release that started once the budget was spent.
+    let observed = tokio::time::Instant::now();
+    tokio::time::sleep_until(observed.max(started + budget) + budget * 2).await;
+    lock.commit().await.unwrap();
+    force.await.unwrap();
+    aborted(&dropped).await;
     assert_eq!(job_state(&pool, id).await, ("queued".to_owned(), 0, true));
 }
