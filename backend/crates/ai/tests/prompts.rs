@@ -12,7 +12,7 @@ use ai::prompts::{
     PROMPTS, PromptError, REPORT_PROMPT_SET, REPORT_PROMPT_VERSION, TemplateVarProblem,
     load_prompt, prompt_set_hash, render_template,
 };
-use ai::testing::{fixtures_dir, input, load_fixture};
+use ai::testing::{fixtures_dir, input};
 use ai::validator::evidence::build_evidence;
 use ai::validator::format::resolve_token;
 use ai::validator::language::{
@@ -624,8 +624,8 @@ fn model_facing_copy_passes_the_validator_rules() {
         }
         checked += 1;
     }
-    // core/rules and core/tokens v1 and v2.
-    assert_eq!(checked, PROMPTS.len() - 3);
+    // core/rules, core/tokens v1 and v2, and core/glossary (reference text, not copy).
+    assert_eq!(checked, PROMPTS.len() - 4);
 }
 
 /// The ruling of the T23 review: the shared rules block (what the chat includes too) carries no
@@ -636,7 +636,12 @@ fn shared_rules_have_no_json_output_instruction() {
     assert!(shared.cache);
     assert_eq!(
         shared.text,
-        format!("{}\n\n{}", rendered("core/rules"), rendered("core/tokens"))
+        // core/tokens at its set version (v2, sent since ADR 0084).
+        format!(
+            "{}\n\n{}",
+            rendered("core/rules"),
+            load_prompt("core/tokens", 2).unwrap().text
+        )
     );
     let lower = shared.text.to_lowercase();
     for f in [
@@ -665,17 +670,22 @@ fn v2_prompts_teach_the_colour_split_and_the_benchmark_words() {
         "`sufficient`",
         "not enough games with that colour",
         "no clear difference",
-        "never apply a both-colour number",
+        "do not apply a both-colour number",
         "`peerRate`",
-        "players you've faced on chess.com, rated about {{num:benchmark.ratingLow}} to \
-         {{num:benchmark.ratingHigh}}",
-        "Never call them \"players at your level\"",
+        "`players you've faced on chess.com, rated about {{num:benchmark.ratingLow}} to \
+         {{num:benchmark.ratingHigh}}`",
+        "Do not call them \"players at your level\"",
         "rough guide, not a rating-band average",
         "`<glossary>`",
     ] {
         assert!(report.contains(f), "report/report v2 says {f:?}");
     }
-    assert!(!load_prompt("report/report", 1).unwrap().text.contains("byColor"));
+    assert!(
+        !load_prompt("report/report", 1)
+            .unwrap()
+            .text
+            .contains("byColor")
+    );
     let overview = load_prompt("report/section-overview", 2).unwrap().text;
     assert!(overview.contains("White and Black games differ"));
     let chat = load_prompt("chat/system", 3).unwrap().text;
@@ -683,7 +693,7 @@ fn v2_prompts_teach_the_colour_split_and_the_benchmark_words() {
         "`byColor`",
         "how the player does as Black",
         "not enough games with that colour",
-        "never \"players at your level\"",
+        "not \"players at your level\"",
         "rough guide",
         "`<glossary>`",
     ] {
@@ -692,7 +702,7 @@ fn v2_prompts_teach_the_colour_split_and_the_benchmark_words() {
     let glossary = load_prompt("core/glossary", 1).unwrap().text;
     assert!(glossary.starts_with("# Plain-language glossary\n"));
     let inner = glossary
-        .split_once("<glossary>")
+        .split_once("\n<glossary>")
         .and_then(|(_, rest)| rest.strip_suffix("</glossary>\n"))
         .expect("one glossary block");
     let parsed: Value = serde_json::from_str(inner).expect("the glossary is JSON");
@@ -722,5 +732,8 @@ fn report_blocks_use_the_set_versions() {
             .ends_with(load_prompt("core/glossary", 1).unwrap().text)
     );
     let task = req.messages[0].content[1]["text"].as_str().unwrap();
-    assert_eq!(task, load_prompt("report/section-overview", 2).unwrap().text);
+    assert_eq!(
+        task,
+        load_prompt("report/section-overview", 2).unwrap().text
+    );
 }

@@ -19,17 +19,16 @@ use time::{Date, OffsetDateTime, UtcOffset};
 use uuid::Uuid;
 
 use crate::enums::AreaId;
+use crate::limits::MIN_COLOR_GAMES;
 use crate::limits::{
     ECO_MAX_CHARS, FEN_MAX_CHARS, LIMITS, MAX_BASE_SECONDS, MAX_COUNT, MAX_CP, MAX_EXCESS_EPL,
     MAX_INCREMENT_SECONDS, MAX_MATE, MAX_PLY, MAX_PRIORITY, MAX_RATING, UCI_PATTERN, UUID_PATTERN,
     WEAKNESS_ID_MAX_CHARS, WEAKNESS_ID_PATTERN,
 };
-use crate::limits::MIN_COLOR_GAMES;
 use crate::types::{
-    Alternative, AreaScore, Basis, Benchmark, BenchmarkSource, ByColor, CandidateCause,
-    CauseValue, CoachingInput, ColorMetric, ColorSummary, ColorWeakness, ExemplarPosition,
-    InputVersion, Metric, MetricUnit, MoveRef, OpeningVerdict, RankedWeakness, Score, Strength,
-    TimelineChange,
+    Alternative, AreaScore, Basis, Benchmark, BenchmarkSource, ByColor, CandidateCause, CauseValue,
+    CoachingInput, ColorMetric, ColorSummary, ColorWeakness, ExemplarPosition, InputVersion,
+    Metric, MetricUnit, MoveRef, OpeningVerdict, RankedWeakness, Score, Strength, TimelineChange,
 };
 
 /// One problem, as `parseCoachingInput` reports it: `{ path, message }`.
@@ -498,7 +497,10 @@ impl Checker {
 
     fn color_metric(&mut self, p: &str, m: &ColorMetric, unit: MetricUnit) {
         if m.unit != unit {
-            self.push(join(p, "unit"), format!("unit must be \"{}\"", unit.as_str()));
+            self.push(
+                join(p, "unit"),
+                format!("unit must be \"{}\"", unit.as_str()),
+            );
         }
         self.count(join(p, "n"), m.n);
         self.need_more(p, m.sufficient, m.need_more);

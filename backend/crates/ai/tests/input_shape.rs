@@ -152,7 +152,8 @@ fn remove_at(v: &mut Value, path: &[String]) -> bool {
 
 #[test]
 fn missing_nullable_key_is_rejected() {
-    let schema = json_schema();
+    // The v1 contract's nullable fields (v2's optional keys are tested in coaching-input).
+    let schema = shape::v1_shape(json_schema());
     let mut paths = Vec::new();
     nullable_paths(&schema, &schema, &mut Vec::new(), &mut paths);
     // 19 nullable fields in the contract; `best` appears at four exemplar sites.

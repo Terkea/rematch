@@ -515,7 +515,10 @@ mod colour_split {
         assert_eq!(n("byColor.white.blundersPerGame.value"), Some(0.9));
         // Weakness rows are keyed by their series key.
         assert_eq!(n("byColor.white.weaknesses.W4_missed.rate"), Some(0.14));
-        assert_eq!(n("byColor.white.weaknesses.W4_missed.peerRate"), Some(0.096));
+        assert_eq!(
+            n("byColor.white.weaknesses.W4_missed.peerRate"),
+            Some(0.096)
+        );
         assert_eq!(n("byColor.white.weaknesses.W1.opportunities"), Some(240.0));
         assert_eq!(n("benchmark.ratingLow"), Some(675.0));
         assert_eq!(n("benchmark.players"), Some(25.0));
@@ -547,9 +550,15 @@ mod colour_split {
             assert!(!ev.rate_paths.contains(p), "{p} is not a rate");
         }
         let f = |p: &str, fmt| format_num_at(&ev, p, fmt).unwrap();
-        assert_eq!(f("byColor.white.accuracy.value", Some(NumFormat::Dec1)), "78.4%");
+        assert_eq!(
+            f("byColor.white.accuracy.value", Some(NumFormat::Dec1)),
+            "78.4%"
+        );
         assert_eq!(f("byColor.white.score.value", Some(NumFormat::Pct0)), "52%");
-        assert_eq!(f("byColor.white.blundersPerGame.value", Some(NumFormat::Dec1)), "0.9");
+        assert_eq!(
+            f("byColor.white.blundersPerGame.value", Some(NumFormat::Dec1)),
+            "0.9"
+        );
         assert_eq!(f("byColor.white.games", Some(NumFormat::Int)), "42");
         assert_eq!(f("benchmark.ratingHigh", None), "975");
     }

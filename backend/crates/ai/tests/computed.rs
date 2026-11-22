@@ -41,7 +41,10 @@ fn computed_report_carries_the_colour_split() {
     assert_eq!(c.benchmark, v2.benchmark);
     let json = serde_json::to_value(&c).unwrap();
     assert_eq!(json["byColor"]["white"]["games"], json!(42));
-    assert_eq!(json["byColor"]["black"]["score"]["value"], serde_json::Value::Null);
+    assert_eq!(
+        json["byColor"]["black"]["score"]["value"],
+        serde_json::Value::Null
+    );
     assert_eq!(json["benchmark"]["ratingHigh"], json!(975));
     let back: ComputedReport = serde_json::from_value(json).unwrap();
     assert_eq!(back, c);

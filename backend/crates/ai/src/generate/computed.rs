@@ -6,8 +6,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::input::types::{
-    AreaScore, BandId, Basis, Benchmark, ByColor, CoachingInput, Metric, OpeningVerdict, Platform, RankedWeakness,
-    Strength, TimeClass, TimelineChange, WeaknessState,
+    AreaScore, BandId, Basis, Benchmark, ByColor, CoachingInput, Metric, OpeningVerdict, Platform,
+    RankedWeakness, Strength, TimeClass, TimelineChange, WeaknessState,
 };
 use crate::validator::focus::select_focuses;
 use crate::validator::language::format_evidence_window;

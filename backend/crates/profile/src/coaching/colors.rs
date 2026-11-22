@@ -80,7 +80,11 @@ pub fn results<'a>(contexts: impl IntoIterator<Item = &'a GameContext>) -> Resul
         .into_iter()
         .filter_map(|c| Some((c, c.score.filter(|s| s.is_finite())?)))
         .collect();
-    scored.sort_by(|a, b| b.0.played_at.cmp(&a.0.played_at).then(a.0.game_id.cmp(&b.0.game_id)));
+    scored.sort_by(|a, b| {
+        b.0.played_at
+            .cmp(&a.0.played_at)
+            .then(a.0.game_id.cmp(&b.0.game_id))
+    });
     let mut r = Results::default();
     for (_, s) in scored.into_iter().take(LAST_N) {
         if s >= 1.0 {
@@ -137,7 +141,9 @@ pub fn snapshot_metric(
     let clamp = |x: f64| clamp_to_unit(x, Some(unit)).clamp(0.0, unit.max());
     let value = clamp(value);
     let (low, high) = match row.and_then(|r| Some((finite(r.ci_low?)?, finite(r.ci_high?)?))) {
-        Some((lo, hi)) if clamp(lo) <= value && value <= clamp(hi) => (Some(clamp(lo)), Some(clamp(hi))),
+        Some((lo, hi)) if clamp(lo) <= value && value <= clamp(hi) => {
+            (Some(clamp(lo)), Some(clamp(hi)))
+        }
         _ => (None, None),
     };
     ColorMetric {
@@ -153,13 +159,17 @@ pub fn snapshot_metric(
 
 /// A colour's estimate as a [`ColorWeakness`] when it may be stated (module docs); `None`
 /// otherwise, or when a number is unknown or the interval does not hold the rate.
-pub fn color_weakness(e: &WeaknessEstimate, reference: Option<&BandReference>) -> Option<ColorWeakness> {
+pub fn color_weakness(
+    e: &WeaknessEstimate,
+    reference: Option<&BandReference>,
+) -> Option<ColorWeakness> {
     let compared = match e.reason {
         EstimateReason::Ok => e.priority > 0.0 && e.priority.is_finite(),
         EstimateReason::NoBenchmark => false,
         EstimateReason::InsufficientData | EstimateReason::NoEvents => return None,
     };
-    if !e.min_evidence_met || e.k_unweighted <= 0.0 || (e.reason == EstimateReason::Ok && !compared) {
+    if !e.min_evidence_met || e.k_unweighted <= 0.0 || (e.reason == EstimateReason::Ok && !compared)
+    {
         return None;
     }
     let rate = in_unit(e.posterior.mean)?;
@@ -344,7 +354,13 @@ mod tests {
         }
     }
 
-    fn estimate(key: WeaknessKey, reason: EstimateReason, k: f64, n: f64, priority: f64) -> WeaknessEstimate {
+    fn estimate(
+        key: WeaknessKey,
+        reason: EstimateReason,
+        k: f64,
+        n: f64,
+        priority: f64,
+    ) -> WeaknessEstimate {
         let post = posterior(k, n, 0.5, 2.0);
         let compared = reason == EstimateReason::Ok;
         WeaknessEstimate {
@@ -371,18 +387,40 @@ mod tests {
     #[test]
     fn results_take_the_most_recent_games_with_a_result() {
         let games: Vec<GameContext> = (0..60)
-            .map(|i| ctx(i, Some(if i < 10 { 0.0 } else if i % 2 == 0 { 1.0 } else { 0.5 })))
+            .map(|i| {
+                ctx(
+                    i,
+                    Some(if i < 10 {
+                        0.0
+                    } else if i % 2 == 0 {
+                        1.0
+                    } else {
+                        0.5
+                    }),
+                )
+            })
             .chain([ctx(100, None)])
             .collect();
         let r = results(&games);
         // The 50 newest scored games are 10..60: 25 wins, 25 draws, no losses.
-        assert_eq!(r, Results { wins: 25, draws: 25, losses: 0 });
+        assert_eq!(
+            r,
+            Results {
+                wins: 25,
+                draws: 25,
+                losses: 0
+            }
+        );
         assert_eq!(r.games(), 50);
     }
 
     #[test]
     fn score_is_insufficient_below_ten_games_never_zero() {
-        let r = Results { wins: 0, draws: 0, losses: 9 };
+        let r = Results {
+            wins: 0,
+            draws: 0,
+            losses: 9,
+        };
         let m = score_metric(&r);
         assert_eq!(m.value, None);
         assert_eq!((m.low, m.high), (None, None));
@@ -393,13 +431,21 @@ mod tests {
 
     #[test]
     fn score_has_an_interval_around_the_share() {
-        let m = score_metric(&Results { wins: 6, draws: 2, losses: 4 });
+        let m = score_metric(&Results {
+            wins: 6,
+            draws: 2,
+            losses: 4,
+        });
         let v = m.value.unwrap();
         assert!((v - 7.0 / 12.0).abs() < 1e-12);
         let (lo, hi) = (m.low.unwrap(), m.high.unwrap());
         assert!(lo < v && v < hi && lo > 0.3 && hi < 0.8, "{lo} {hi}");
         // Every game won: the interval still holds the share.
-        let all = score_metric(&Results { wins: 12, draws: 0, losses: 0 });
+        let all = score_metric(&Results {
+            wins: 12,
+            draws: 0,
+            losses: 0,
+        });
         assert_eq!(all.value, Some(1.0));
         assert_eq!(all.high, Some(1.0));
         assert!(all.low.unwrap() < 1.0);
@@ -409,7 +455,10 @@ mod tests {
     fn snapshot_metric_keeps_the_metric_minimum_and_the_colour_minimum() {
         let row = kpi(BaseMetric::Accuracy, 78.0, 25, Some((76.0, 80.0)));
         let m = snapshot_metric(BaseMetric::Accuracy, MetricUnit::Pct, Some(&row), true);
-        assert_eq!((m.value, m.low, m.high, m.n), (Some(78.0), Some(76.0), Some(80.0), 25));
+        assert_eq!(
+            (m.value, m.low, m.high, m.n),
+            (Some(78.0), Some(76.0), Some(80.0), 25)
+        );
         // Accuracy needs 20 games (the catalogue's min_n).
         let few = kpi(BaseMetric::Accuracy, 78.0, 15, Some((70.0, 85.0)));
         let m = snapshot_metric(BaseMetric::Accuracy, MetricUnit::Pct, Some(&few), true);
@@ -422,7 +471,12 @@ mod tests {
         assert_eq!((m.value, m.n, m.need_more), (None, 0, Some(20)));
         // A broken interval is dropped, not widened.
         let bad = kpi(BaseMetric::BlundersPerGame, 1.0, 30, Some((1.2, 1.5)));
-        let m = snapshot_metric(BaseMetric::BlundersPerGame, MetricUnit::PerGame, Some(&bad), true);
+        let m = snapshot_metric(
+            BaseMetric::BlundersPerGame,
+            MetricUnit::PerGame,
+            Some(&bad),
+            true,
+        );
         assert_eq!((m.value, m.low, m.high), (Some(1.0), None, None));
     }
 
@@ -447,23 +501,47 @@ mod tests {
         stat.metric = MetricId::Weakness(WeaknessKey::W2);
         reference.insert(stat.metric, stat);
         let estimates = vec![
-            estimate(WeaknessKey::W1, EstimateReason::NoBenchmark, 30.0, 300.0, 0.0),
+            estimate(
+                WeaknessKey::W1,
+                EstimateReason::NoBenchmark,
+                30.0,
+                300.0,
+                0.0,
+            ),
             estimate(WeaknessKey::W4Missed, EstimateReason::Ok, 9.0, 61.0, 0.4),
             estimate(WeaknessKey::W2, EstimateReason::Ok, 20.0, 100.0, 0.9),
             // Better than its peers: not a weakness.
             estimate(WeaknessKey::W3Shallow, EstimateReason::Ok, 1.0, 100.0, 0.0),
             // Below 30 games of the colour, or no event: nothing is stated.
-            estimate(WeaknessKey::W5, EstimateReason::InsufficientData, 5.0, 20.0, 0.0),
+            estimate(
+                WeaknessKey::W5,
+                EstimateReason::InsufficientData,
+                5.0,
+                20.0,
+                0.0,
+            ),
             estimate(WeaknessKey::W6, EstimateReason::NoEvents, 0.0, 50.0, 0.0),
             // Not rankable.
-            estimate(WeaknessKey::W12, EstimateReason::NoBenchmark, 5.0, 20.0, 0.0),
+            estimate(
+                WeaknessKey::W12,
+                EstimateReason::NoBenchmark,
+                5.0,
+                20.0,
+                0.0,
+            ),
         ];
         let got = color_weaknesses(&estimates, Some(&reference));
         let keys: Vec<&str> = got.iter().map(|w| w.series_key.as_str()).collect();
         assert_eq!(keys, vec!["W2", "W4.missed", "W1"]);
         let w4 = &got[1];
-        assert_eq!((w4.id.as_str(), w4.variant.as_deref()), ("W4", Some("missed")));
-        assert_eq!((w4.peer_rate, w4.peer_percentile, w4.peer_players), (Some(0.05), Some(30.0), Some(14)));
+        assert_eq!(
+            (w4.id.as_str(), w4.variant.as_deref()),
+            ("W4", Some("missed"))
+        );
+        assert_eq!(
+            (w4.peer_rate, w4.peer_percentile, w4.peer_players),
+            (Some(0.05), Some(30.0), Some(14))
+        );
         assert_eq!((w4.events, w4.opportunities), (9, 61));
         assert_eq!(got[2].peer_rate, None, "uncompared: no peer numbers");
         let mut thin = estimates[1].clone();
@@ -476,7 +554,10 @@ mod tests {
         let games: Vec<GameContext> = (0..4).map(|i| ctx(i, Some(1.0))).collect();
         let rows = [kpi(BaseMetric::Accuracy, 80.0, 4, None)];
         let s = color_summary(&games, &rows, &[], None);
-        assert_eq!((s.games, s.wins, s.sufficient, s.need_more), (4, 4, false, Some(6)));
+        assert_eq!(
+            (s.games, s.wins, s.sufficient, s.need_more),
+            (4, 4, false, Some(6))
+        );
         assert_eq!(s.score.value, None);
         assert_eq!(s.accuracy.value, None);
         assert_eq!(s.blunders_per_game.value, None);
@@ -486,9 +567,18 @@ mod tests {
     #[test]
     fn benchmark_info_states_a_peer_band_or_nothing() {
         let b = benchmark_info("peers", Some(675), Some(975), Some(25), Some(61)).unwrap();
-        assert_eq!((b.rating_low, b.rating_high, b.players), (Some(675), Some(975), Some(25)));
-        assert_eq!(benchmark_info("peers", Some(675), None, Some(25), Some(61)), None);
-        assert_eq!(benchmark_info("peers", Some(900), Some(800), Some(1), Some(1)), None);
+        assert_eq!(
+            (b.rating_low, b.rating_high, b.players),
+            (Some(675), Some(975), Some(25))
+        );
+        assert_eq!(
+            benchmark_info("peers", Some(675), None, Some(25), Some(61)),
+            None
+        );
+        assert_eq!(
+            benchmark_info("peers", Some(900), Some(800), Some(1), Some(1)),
+            None
+        );
         let l = benchmark_info("lichess_bands", None, None, None, None).unwrap();
         assert_eq!(l.source, BenchmarkSource::LichessBands);
         assert_eq!(benchmark_info("other", None, None, None, None), None);

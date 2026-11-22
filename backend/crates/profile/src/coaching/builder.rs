@@ -35,8 +35,8 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use chess_core::TimeClass;
 use chess_core::fen::fen_key;
 use coaching_input::{
-    AreaScore, Basis, ByColor, ChangeExample, CoachingInput, ExampleSide, InputVersion, Issue, LIMITS,
-    Metric, RankedWeakness, Strength, TimeControl, TimelineChange, WeaknessState,
+    AreaScore, Basis, ByColor, ChangeExample, CoachingInput, ExampleSide, InputVersion, Issue,
+    LIMITS, Metric, RankedWeakness, Strength, TimeControl, TimelineChange, WeaknessState,
 };
 use db::games::AnalysisStatus;
 use profile_core::constants::{weakness_area, weakness_label};
@@ -786,14 +786,19 @@ async fn by_color(
             .filter(|(c, _)| side.covers(c.player_color))
             .collect();
         let ids: HashSet<Uuid> = side_games.iter().map(|(c, _)| c.game_id).collect();
-        let side_series: BTreeMap<SeriesKey, Vec<profile_core::timeline::series::SeriesPoint>> = series
-            .iter()
-            .map(|(k, pts)| {
-                let kept: Vec<_> = pts.iter().filter(|p| ids.contains(&p.game_id)).cloned().collect();
-                (k.clone(), kept)
-            })
-            .filter(|(_, pts)| !pts.is_empty())
-            .collect();
+        let side_series: BTreeMap<SeriesKey, Vec<profile_core::timeline::series::SeriesPoint>> =
+            series
+                .iter()
+                .map(|(k, pts)| {
+                    let kept: Vec<_> = pts
+                        .iter()
+                        .filter(|p| ids.contains(&p.game_id))
+                        .cloned()
+                        .collect();
+                    (k.clone(), kept)
+                })
+                .filter(|(_, pts)| !pts.is_empty())
+                .collect();
         let reference = load_account_benchmark_side(pool, account_id, tc, side).await?;
         let in_window = games_in_window(side_games.iter().map(|(c, _)| c.played_at), now);
         let estimates = compute_estimates(&side_series, in_window, band, reference.as_ref(), now);

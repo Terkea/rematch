@@ -367,7 +367,10 @@ async fn coaching_input_splits_by_colour(pool: PgPool) {
     assert_eq!(b.score.value, Some(0.0));
     assert!(b.score.high.unwrap() > 0.0, "an interval, not a point");
     assert_eq!(w.blunders_per_game.value, Some(2.0));
-    assert_eq!((b.blunders_per_game.value, b.blunders_per_game.n), (Some(0.0), 20));
+    assert_eq!(
+        (b.blunders_per_game.value, b.blunders_per_game.n),
+        (Some(0.0), 20)
+    );
 
     // White's W1 against White's own peers; Black's 20 games are below MIN_GAMES (30).
     let w1 = w
@@ -419,7 +422,10 @@ async fn coaching_input_colour_below_minimum_is_insufficient(pool: PgPool) {
     let b = &input.by_color.as_ref().unwrap().black;
     assert_eq!((b.games, b.sufficient, b.need_more), (4, false, Some(6)));
     for m in [&b.score, &b.accuracy, &b.blunders_per_game] {
-        assert_eq!((m.value, m.low, m.high, m.sufficient), (None, None, None, false));
+        assert_eq!(
+            (m.value, m.low, m.high, m.sufficient),
+            (None, None, None, false)
+        );
     }
     assert!(b.weaknesses.is_empty());
     assert_eq!(input.benchmark, None, "no stored benchmark rows");

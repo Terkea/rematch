@@ -78,7 +78,10 @@ fn v2_input_validates_and_round_trips() {
     let json = input.to_json();
     assert_eq!(json["inputVersion"], json!("coaching-input-v2"));
     assert_eq!(json["byColor"]["white"]["wins"], json!(20));
-    assert_eq!(json["byColor"]["white"]["blundersPerGame"]["unit"], json!("per_game"));
+    assert_eq!(
+        json["byColor"]["white"]["blundersPerGame"]["unit"],
+        json!("per_game")
+    );
     // Insufficient numbers are null, never 0.
     assert_eq!(json["byColor"]["black"]["score"]["value"], Value::Null);
     assert_eq!(json["byColor"]["black"]["needMore"], json!(3));

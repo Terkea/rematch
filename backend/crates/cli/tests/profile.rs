@@ -182,7 +182,10 @@ async fn profile_json_prints_a_valid_coaching_input(pool: PgPool) {
         .iter_errors(&doc)
         .map(|e| format!("{e} at {}", e.instance_path()))
         .collect();
-    assert!(errors.is_empty(), "the contract schema rejects the output: {errors:?}");
+    assert!(
+        errors.is_empty(),
+        "the contract schema rejects the output: {errors:?}"
+    );
     let mut v1 = doc.clone();
     let o = v1.as_object_mut().unwrap();
     o.remove("byColor");
