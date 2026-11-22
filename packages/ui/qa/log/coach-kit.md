@@ -31,6 +31,12 @@ Fixed in this pass:
    a `disabledReason` the hint is gone and the reason sits left, under the box, in place of the
    send row.
 
+2. **Coordinator, before review: honest progress labels.** Building and writing no longer read
+   "Analysing": `ProgressPlaceholder` takes `Building` and `Writing` ("Building 2 / 5 sections",
+   "Writing").
+3. **Coordinator, before review: the compact disclosure on touch.** The note is now a popover that
+   opens on click, tap or Enter, from a 32px button with a 44px coarse-pointer hit area.
+
 Open for the critic:
 
 - The `writing` placeholder inside a conversation (title at `xl` over a ruled list skeleton and

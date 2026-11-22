@@ -85,7 +85,11 @@ export function CoachState({
           <Title className="m-0 font-serif text-xl font-semibold text-ink">{title}</Title>
           {body ? <p className="m-0 font-sans text-sm text-ink-soft">{body}</p> : null}
         </div>
-        <ProgressPlaceholder shape="list" verb="Analysing" {...(progress ? { progress } : {})} />
+        <ProgressPlaceholder
+          shape="list"
+          verb={kind === "building" ? "Building" : "Writing"}
+          {...(progress ? { progress } : {})}
+        />
       </div>
     );
   }

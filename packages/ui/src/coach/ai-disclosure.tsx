@@ -2,7 +2,7 @@
 
 import { Icon, InfoIcon } from "../icons/index.js";
 import { cn } from "../lib/index.js";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../primitives/tooltip.js";
+import { Popover, PopoverContent, PopoverTrigger } from "../primitives/popover.js";
 import { touchTarget } from "../primitives/touch.js";
 import { dayOf } from "./segment-text.js";
 import { AI_LABEL, type AiDisclosureData } from "./types.js";
@@ -25,7 +25,7 @@ export function AiLabel({ label = AI_LABEL }: { label?: string }) {
 
 export interface AiDisclosureProps {
   disclosure: AiDisclosureData;
-  /** Label and date on one line, with the note behind an info tooltip (and kept for screen readers). */
+  /** Label and date on one line, the note in a popover that opens on click, tap or Enter (and kept for screen readers). */
   compact?: boolean;
   className?: string;
 }
@@ -50,8 +50,8 @@ export function AiDisclosure({ disclosure, compact = false, className }: AiDiscl
         {written}
         {note ? (
           <>
-            <Tooltip>
-              <TooltipTrigger
+            <Popover>
+              <PopoverTrigger
                 render={
                   <button
                     type="button"
@@ -66,9 +66,11 @@ export function AiDisclosure({ disclosure, compact = false, className }: AiDiscl
                 }
               >
                 <Icon icon={InfoIcon} size={16} />
-              </TooltipTrigger>
-              <TooltipContent className="whitespace-normal">{note}</TooltipContent>
-            </Tooltip>
+              </PopoverTrigger>
+              <PopoverContent aria-label="About this AI text">
+                <p className="m-0 text-ink-soft">{note}</p>
+              </PopoverContent>
+            </Popover>
             <span className="sr-only">{note}</span>
           </>
         ) : null}

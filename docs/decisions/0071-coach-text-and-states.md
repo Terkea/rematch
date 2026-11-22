@@ -31,12 +31,15 @@ spinner. `@ci/ui` must not import from the web app.
   nothing and never throws, so a newer worker never breaks an older page. No `NaN`, `Infinity`,
   `undefined` or `null` text can come out of a segment.
 - **Disclosure.** `AiDisclosure` shows the stored label (a quiet `well` pill), the stored note and
-  "Written on 12 Nov 2026"; `compact` keeps the note behind an info tooltip and in screen-reader
-  text. While an answer streams and no disclosure is stored yet, the message shows the fixed
+  "Written on 12 Nov 2026"; `compact` keeps the note behind an info button that opens a popover on
+  click, tap or Enter (a 44px touch target), and in screen-reader text. A tooltip was rejected:
+  it never opens on touch. While an answer streams and no disclosure is stored yet, the message shows the fixed
   label (`AI_LABEL`, the Rust `AI_DISCLOSURE_LABEL`). A done message with no stored disclosure
   (fixed server copy) shows no label.
 - **States (`CoachState`).** `building` and `writing` are a title and body over a
-  `ProgressPlaceholder` (shape `list`), never a spinner (B18). `failed` and `budget` use the
+  `ProgressPlaceholder` (shape `list`) whose label says what is happening ("Building 2 / 5
+  sections", "Writing"), never "Analysing" and never a spinner (B18). `ProgressPlaceholder`'s verb
+  gains `Building` and `Writing` for this; existing callers are unchanged. `failed` and `budget` use the
   warning treatment (ink on `well`, `rule-strong` edge, Warning or Clock icon), `unavailable` and
   `computed_only` the info treatment, `empty` a plain note; red is never used, because none of
   these is the player's mistake.
@@ -62,6 +65,3 @@ spinner. `@ci/ui` must not import from the web app.
 - The component prop is named `role` as the plan's interface says; Biome's
   `useValidAriaRole` flags a literal `role="user"` on the component, so callers pass it through a
   spread or a variable.
-- The compact disclosure's tooltip does not open on touch; the label and date stay visible and
-  the note stays in the accessible text. A surface that must show the note on phones uses the
-  full form.

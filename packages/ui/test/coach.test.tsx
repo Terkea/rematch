@@ -145,6 +145,16 @@ describe("AiDisclosure", () => {
     expect(container.querySelector(".sr-only")?.textContent).toContain("It can contain mistakes.");
   });
 
+  it("compact note opens on tap and the trigger has a 44px touch target", async () => {
+    render(<AiDisclosure disclosure={disclosure} compact />);
+    const trigger = screen.getByRole("button", { name: "About this AI text" });
+    expect(trigger.className).toContain("pointer-coarse:after:min-h-11");
+    expect(trigger.className).toContain("pointer-coarse:after:min-w-11");
+    fireEvent.click(trigger);
+    const popup = await screen.findByRole("dialog");
+    expect(popup.textContent).toContain("It can contain mistakes.");
+  });
+
   it("leaves out an unreadable date rather than printing it", () => {
     const { container } = render(
       <AiDisclosure disclosure={{ ...disclosure, generatedAt: "garbage" }} />,
@@ -186,6 +196,21 @@ describe("CoachState", () => {
     );
     expect(container.querySelector("[data-shape]")).not.toBeNull();
     expect(container.textContent).toContain("2 / 5 sections");
+  });
+
+  it("building and writing name their own work, never Analysing", () => {
+    const { container: b } = render(
+      <CoachState
+        kind="building"
+        title="Building your report"
+        progress={{ done: 2, total: 5, unit: "sections" }}
+      />,
+    );
+    expect(b.querySelector("[data-part='label']")?.textContent).toBe("Building 2 / 5 sections");
+    cleanup();
+    const { container: w } = render(<CoachState kind="writing" title={"Your coach is reading"} />);
+    expect(w.querySelector("[data-part='label']")?.textContent).toBe("Writing");
+    expect(w.textContent).not.toContain("Analysing");
   });
 
   it("an action renders a button that calls back", async () => {
