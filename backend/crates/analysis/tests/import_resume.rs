@@ -19,7 +19,9 @@ use platforms::{
     FetchOptions, GameSource, NormalizedGame, Platform, PlatformClient, PlatformError, Player,
 };
 use queue::queue::{Backoff, Queue};
-use queue::{ImportAccountPayload, Job, JobError, KIND_ANALYSE, KIND_IMPORT, analyse_key};
+use queue::{
+    ImportAccountPayload, Job, JobError, KIND_ANALYSE, KIND_IMPORT, KIND_SCHEDULE, schedule_key,
+};
 use sqlx::PgPool;
 use testkit::fake_platform::FakeClient;
 use time::OffsetDateTime;
@@ -126,6 +128,9 @@ fn deps_with(
     client: Arc<dyn PlatformClient>,
 ) -> ImportAccountDeps {
     let mut deps = ImportAccountDeps::new(pool.clone(), Queue::new(pool.clone()));
+    // These tests pin the cursor's fetch ranges; the default budget (R2) is tested in
+    // import_account.rs.
+    deps.default_max = None;
     deps.sources = HashMap::from([
         (Platform::Lichess, source.clone()),
         (Platform::Chesscom, source),
@@ -200,6 +205,18 @@ async fn game_ids(pool: &PgPool, account_id: Uuid) -> Vec<(Uuid, String)> {
         .fetch_all(pool)
         .await
         .unwrap()
+}
+
+async fn live_keys(pool: &PgPool, kind: &str) -> Vec<String> {
+    let mut keys: Vec<String> = sqlx::query_scalar(
+        "SELECT dedupe_key FROM jobs WHERE kind = $1 AND state IN ('queued','running','paused')",
+    )
+    .bind(kind)
+    .fetch_all(pool)
+    .await
+    .unwrap();
+    keys.sort();
+    keys
 }
 
 async fn live_analyse_keys(pool: &PgPool) -> Vec<String> {
@@ -337,17 +354,21 @@ async fn checkpoints_the_cursor_and_the_run_every_batch(pool: PgPool) {
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
-async fn re_import_enqueues_every_game_that_is_still_pending(pool: PgPool) {
+async fn re_import_enqueues_the_schedule_job_again(pool: PgPool) {
     let acct = testkit::insert_account(&pool, "lichess", "requeue").await;
     let list: Vec<_> = four_games("Requeue").into_iter().take(2).collect();
     run(&deps(&pool, importer(list.clone(), None)), acct)
         .await
         .unwrap();
-    let first = live_analyse_keys(&pool).await;
-    assert_eq!(first.len(), 2);
-    // Simulate a crash between insert and enqueue: drop the jobs, reset the cursor, re-run.
+    // R2: no per-game analyse jobs, one schedule job for the account.
+    assert!(live_analyse_keys(&pool).await.is_empty());
+    assert_eq!(
+        live_keys(&pool, KIND_SCHEDULE).await,
+        vec![schedule_key(acct)]
+    );
+    // Simulate a crash after the commit, before the schedule job ran: drop it and re-run.
     sqlx::query("DELETE FROM jobs WHERE kind = $1")
-        .bind(KIND_ANALYSE)
+        .bind(KIND_SCHEDULE)
         .execute(&pool)
         .await
         .unwrap();
@@ -358,14 +379,28 @@ async fn re_import_enqueues_every_game_that_is_still_pending(pool: PgPool) {
         .unwrap();
     let res = run(&deps(&pool, importer(list, None)), acct).await.unwrap();
     assert_eq!(res.imported, 0);
-    assert_eq!(live_analyse_keys(&pool).await, first);
-    let mut expected: Vec<_> = game_ids(&pool, acct)
-        .await
-        .into_iter()
-        .map(|(id, _)| analyse_key(id))
-        .collect();
-    expected.sort();
-    assert_eq!(first, expected);
+    assert!(live_analyse_keys(&pool).await.is_empty());
+    assert_eq!(
+        live_keys(&pool, KIND_SCHEDULE).await,
+        vec![schedule_key(acct)]
+    );
+    let statuses: Vec<String> =
+        sqlx::query_scalar("SELECT analysis_status::text FROM games WHERE account_id = $1")
+            .bind(acct)
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    assert_eq!(statuses, vec!["imported", "imported"]);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_failed_import_enqueues_no_schedule_job(pool: PgPool) {
+    // The games it committed stay `imported`; the reconciler schedules them (see reconciler.rs).
+    let acct = testkit::insert_account(&pool, "lichess", "failsched").await;
+    let list: Vec<_> = four_games("Failsched").into_iter().take(2).collect();
+    let source = importer(list, Some(1));
+    assert!(run(&deps(&pool, source), acct).await.is_err());
+    assert!(live_keys(&pool, KIND_SCHEDULE).await.is_empty());
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]

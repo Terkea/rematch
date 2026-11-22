@@ -330,6 +330,25 @@ async fn ignores_stale_games_and_warns(pool: PgPool) {
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
+async fn unselected_imported_games_do_not_stall_the_run(pool: PgPool) {
+    // R2 (ADR-R2-16): games the scheduler did not select stay `imported`; the run ends as soon as
+    // the queues are idle, without waiting out the grace or warning about them.
+    let h = harness(
+        &pool,
+        Mode::Games(vec![
+            fake("done", "white", 70.0),
+            fake("imported", "white", 0.0),
+        ]),
+    );
+    let started = std::time::Instant::now();
+    assert_eq!(run_analyse(&args("Unselected"), &h.deps).await, 0);
+    assert!(started.elapsed() < Duration::from_secs(30));
+    let l = lines(&h);
+    assert!(l.iter().all(|x| !x.starts_with("warning")), "{l:?}");
+    assert!(l.last().unwrap().contains("analysed: 1"), "{l:?}");
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
 async fn gives_up_after_the_idle_grace(pool: PgPool) {
     let mut h = harness(&pool, Mode::Games(vec![fake("done", "white", 70.0)]));
     let inner = h.deps.enqueue_import;

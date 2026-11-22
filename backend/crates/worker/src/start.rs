@@ -8,8 +8,9 @@
 //! Connection budget: `max_connections = pool_size + POOL_HEADROOM`. The analyse runner holds at
 //! most one connection per in-flight game (`pool_size` of them), each in-flight import holds its
 //! dedicated account-lock connection plus at most one pooled connection at a time
-//! (`2 * IMPORT_CONCURRENCY = 4`), the reconciler one, and each runner's NOTIFY listener one (3).
-//! That leaves no slack below `pool_size + 8`, but every statement is short and the import's
+//! (`2 * IMPORT_CONCURRENCY = 4`), the reconciler one, each schedule-analysis job one (its
+//! transaction, [`SCHEDULE_CONCURRENCY`] = 2), each preview one ([`PREVIEW_CONCURRENCY`] = 1),
+//! and each runner's NOTIFY listener one (5). That leaves no slack below `pool_size + 13`, but every statement is short and the import's
 //! busy checks open short-lived connections, so the pool's acquire timeout (10 s) is the bound.
 //! Import concurrency must stay well below `max_connections`.
 
@@ -39,6 +40,10 @@ use platforms::lichess::LichessSource;
 use platforms::{GameSource, Platform, PlatformClient};
 use queue::queue::Queue;
 use queue::runner::{Runner, RunnerConfig, RunnerHandle};
+use queue::strategy::PriorityFifo;
+use scheduler::fair::FairRoundRobin;
+use scheduler::preview::{PreviewDeps, PreviewHandler};
+use scheduler::schedule_job::{ScheduleDeps, ScheduleHandler};
 use sqlx::PgPool;
 use tokio::task::AbortHandle;
 
@@ -48,7 +53,16 @@ use crate::shutdown::{Closable, Drainable, ShutdownHandles};
 /// Imports at once (each holds an account-lock connection).
 pub const IMPORT_CONCURRENCY: usize = 2;
 /// Connections beyond one per engine (see the module docs).
-pub const POOL_HEADROOM: usize = 8;
+pub const POOL_HEADROOM: usize = 13;
+/// Schedule-analysis jobs at once (each holds one connection for its transaction).
+pub const SCHEDULE_CONCURRENCY: usize = 2;
+/// The runner's hard deadline on a schedule-analysis job (an account of 10k games takes well
+/// under a second).
+pub const SCHEDULE_HARD_TIMEOUT: Duration = Duration::from_secs(120);
+/// Preview passes at once (each evaluates two positions at a time, ADR-R2-15).
+pub const PREVIEW_CONCURRENCY: usize = 1;
+/// The runner's hard deadline on a preview pass.
+pub const PREVIEW_HARD_TIMEOUT: Duration = Duration::from_secs(300);
 /// The runner's hard deadline on an analysis: past the handler's own 10-minute deadline, so the
 /// handler normally ends it and records the game itself.
 pub const ANALYSE_HARD_TIMEOUT: Duration = Duration::from_secs(11 * 60);
@@ -154,20 +168,25 @@ pub fn default_pool_size() -> usize {
     pool_size_for(std::thread::available_parallelism().map_or(1, |n| n.get()))
 }
 
+/// The analyse runner claims with the fair round robin (ADR-R2-15): `analyse-game` is the only
+/// kind whose handler records `analysis_started_at`, which the round robin counts as served.
 pub fn analyse_runner_config(base: &RunnerConfig, concurrency: usize) -> RunnerConfig {
     RunnerConfig {
         concurrency: concurrency.max(1),
         hard_timeout: Some(ANALYSE_HARD_TIMEOUT),
+        strategy: Arc::new(FairRoundRobin::default()),
         ..base.clone()
     }
 }
 
 /// No hard timeout: the import handler owns its idle deadline (an import of a large account can
-/// legitimately run for a long time while it makes progress).
+/// legitimately run for a long time while it makes progress). Every runner but the analyse one
+/// keeps R1's claim ([`PriorityFifo`]).
 pub fn import_runner_config(base: &RunnerConfig) -> RunnerConfig {
     RunnerConfig {
         concurrency: IMPORT_CONCURRENCY,
         hard_timeout: None,
+        strategy: Arc::new(PriorityFifo),
         ..base.clone()
     }
 }
@@ -176,8 +195,47 @@ pub fn reconcile_runner_config(base: &RunnerConfig) -> RunnerConfig {
     RunnerConfig {
         concurrency: 1,
         hard_timeout: Some(RECONCILE_HARD_TIMEOUT),
+        strategy: Arc::new(PriorityFifo),
         ..base.clone()
     }
+}
+
+pub fn schedule_runner_config(base: &RunnerConfig) -> RunnerConfig {
+    RunnerConfig {
+        concurrency: SCHEDULE_CONCURRENCY,
+        hard_timeout: Some(SCHEDULE_HARD_TIMEOUT),
+        strategy: Arc::new(PriorityFifo),
+        ..base.clone()
+    }
+}
+
+pub fn preview_runner_config(base: &RunnerConfig) -> RunnerConfig {
+    RunnerConfig {
+        concurrency: PREVIEW_CONCURRENCY,
+        hard_timeout: Some(PREVIEW_HARD_TIMEOUT),
+        strategy: Arc::new(PriorityFifo),
+        ..base.clone()
+    }
+}
+
+pub fn spawn_schedule_runner(queue: Queue, pool: PgPool, base: &RunnerConfig) -> RunnerHandle {
+    Runner::spawn(
+        queue.clone(),
+        Arc::new(ScheduleHandler(Arc::new(ScheduleDeps {
+            pool,
+            queue,
+            now: time::OffsetDateTime::now_utc,
+        }))),
+        schedule_runner_config(base),
+    )
+}
+
+pub fn spawn_preview_runner(queue: Queue, deps: PreviewDeps, base: &RunnerConfig) -> RunnerHandle {
+    Runner::spawn(
+        queue,
+        Arc::new(PreviewHandler(Arc::new(deps))),
+        preview_runner_config(base),
+    )
 }
 
 pub fn spawn_analyse_runner(
@@ -305,7 +363,7 @@ pub struct RunningWorkers {
     pub pool: PgPool,
     pub queue: Queue,
     pub engines: Arc<EnginePool>,
-    /// Import, analyse and (with the reconciler) reconcile.
+    /// Import, analyse, schedule-analysis, preview and (with the reconciler) reconcile.
     pub runners: Vec<RunnerHandle>,
     pub stockfish_version: String,
     /// `None` when `SYZYGY_PATH` is unset (see [`start_tablebase`]).
@@ -425,6 +483,11 @@ pub async fn start_workers(env: &WorkerEnv, opts: StartOptions) -> anyhow::Resul
     let import = import_deps(env, &pool, &queue);
     let busy_releases = import.busy_releases.clone();
     let analyser: Arc<dyn Analyser> = engines.clone();
+    let preview = PreviewDeps {
+        pool: pool.clone(),
+        analyser: analyser.clone(),
+        concurrency: 2,
+    };
     let analyse = AnalyseGameDeps::new(
         pool.clone(),
         analyser,
@@ -433,6 +496,8 @@ pub async fn start_workers(env: &WorkerEnv, opts: StartOptions) -> anyhow::Resul
     let mut runners = vec![
         spawn_import_runner(queue.clone(), import, &base),
         spawn_analyse_runner(queue.clone(), analyse, &base, pool_size),
+        spawn_schedule_runner(queue.clone(), pool.clone(), &base),
+        spawn_preview_runner(queue.clone(), preview, &base),
     ];
     if opts.with_reconciler {
         runners.push(spawn_reconcile_runner(queue.clone(), pool.clone(), &base));
@@ -489,6 +554,7 @@ async fn log_busy_releases(counter: Arc<AtomicU64>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use queue::strategy::SelectStrategy;
 
     #[test]
     fn recognises_stockfish_19_banners() {
@@ -522,6 +588,23 @@ mod tests {
             (1, Some(RECONCILE_HARD_TIMEOUT))
         );
         assert_eq!(a.worker_id, base.worker_id);
+        // Only the analyse runner claims fairly (ADR-R2-15); every other kind keeps R1's claim.
+        let fifo = PriorityFifo.order_by();
+        assert_eq!(a.strategy.order_by(), FairRoundRobin::default().order_by());
+        assert_ne!(a.strategy.order_by(), fifo);
+        let s = schedule_runner_config(&base);
+        assert_eq!(
+            (s.concurrency, s.hard_timeout),
+            (SCHEDULE_CONCURRENCY, Some(SCHEDULE_HARD_TIMEOUT))
+        );
+        let p = preview_runner_config(&base);
+        assert_eq!(
+            (p.concurrency, p.hard_timeout),
+            (PREVIEW_CONCURRENCY, Some(PREVIEW_HARD_TIMEOUT))
+        );
+        for c in [&i, &r, &s, &p] {
+            assert_eq!(c.strategy.order_by(), fifo);
+        }
         assert_eq!(ANALYSE_HARD_TIMEOUT, Duration::from_secs(660));
         assert_eq!(RECONCILE_HARD_TIMEOUT, Duration::from_secs(300));
         assert!((1..=MAX_DEFAULT_POOL_SIZE).contains(&default_pool_size()));

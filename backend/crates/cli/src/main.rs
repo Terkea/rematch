@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use cli::{AnalyseDeps, CliDeps, Signal, Started, db_cmd, run_cli};
 use futures::FutureExt;
-use queue::kinds::{KIND_ANALYSE, KIND_IMPORT};
+use queue::kinds::{KIND_ANALYSE, KIND_IMPORT, KIND_SCHEDULE};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use worker::config::WorkerEnv;
@@ -61,7 +61,7 @@ async fn main() {
                 let queue = queue.clone();
                 async move {
                     Ok(queue
-                        .live_count(&[KIND_IMPORT, KIND_ANALYSE], Some(account))
+                        .live_count(&[KIND_IMPORT, KIND_SCHEDULE, KIND_ANALYSE], Some(account))
                         .await?
                         == 0)
                 }

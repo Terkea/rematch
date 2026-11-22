@@ -116,13 +116,26 @@ impl serde::Serialize for AnalyseOutcome {
     }
 }
 
+/// The priority of an analyse job the scheduler did not tier (R1's default, 100).
+pub const DEFAULT_ANALYSE_PRIORITY: i16 = 100;
+
 /// The options of every analyse job: deduped on `analyse:<game_id>`, owned by the account,
-/// [`ANALYSE_MAX_ATTEMPTS`] attempts. [`enqueue_analyse`] and the reconciler's batched enqueue
-/// both use them.
+/// [`ANALYSE_MAX_ATTEMPTS`] attempts, R1's priority. [`enqueue_analyse`] and the reconciler's
+/// batched enqueue both use them.
 pub fn analyse_enqueue_options(game_id: Uuid, account_id: Uuid) -> EnqueueOptions {
+    analyse_enqueue_options_with_priority(game_id, account_id, DEFAULT_ANALYSE_PRIORITY)
+}
+
+/// [`analyse_enqueue_options`] at `priority` (lower runs first; the scheduler's tier priority).
+pub fn analyse_enqueue_options_with_priority(
+    game_id: Uuid,
+    account_id: Uuid,
+    priority: i16,
+) -> EnqueueOptions {
     EnqueueOptions {
         dedupe_key: Some(analyse_key(game_id)),
         user_key: Some(account_id),
+        priority,
         max_attempts: ANALYSE_MAX_ATTEMPTS,
         ..EnqueueOptions::default()
     }
@@ -134,17 +147,29 @@ pub fn analyse_payload(game_id: Uuid) -> Value {
         .unwrap_or_else(|_| json!({ "gameId": game_id }))
 }
 
-/// Enqueues an analysis of the game. `false` when a live job already holds `analyse:<game_id>`.
+/// Enqueues an analysis of the game at R1's priority (100). `false` when a live job already
+/// holds `analyse:<game_id>`.
 pub async fn enqueue_analyse(
     queue: &Queue,
     game_id: Uuid,
     account_id: Uuid,
 ) -> Result<bool, QueueError> {
+    enqueue_analyse_with_priority(queue, game_id, account_id, DEFAULT_ANALYSE_PRIORITY).await
+}
+
+/// Enqueues an analysis of the game at `priority`. `false` when a live job already holds
+/// `analyse:<game_id>` (its priority is left as it is).
+pub async fn enqueue_analyse_with_priority(
+    queue: &Queue,
+    game_id: Uuid,
+    account_id: Uuid,
+    priority: i16,
+) -> Result<bool, QueueError> {
     let id = queue
         .enqueue(
             KIND_ANALYSE,
             &analyse_payload(game_id),
-            analyse_enqueue_options(game_id, account_id),
+            analyse_enqueue_options_with_priority(game_id, account_id, priority),
         )
         .await?;
     Ok(id.is_some())

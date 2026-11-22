@@ -19,7 +19,9 @@ pub const USAGE: &str = "usage: cli analyse --platform <lichess|chesscom> --user
 
 const DEFAULT_TIMEOUT_MIN: f64 = 30.0;
 const PLATFORMS: [&str; 2] = ["lichess", "chesscom"];
-const TERMINAL: [&str; 3] = ["done", "failed", "skipped"];
+/// Statuses this command does not wait for. `imported` games were not selected by the scheduler
+/// (ADR-R2-16): they wait for a later schedule run, not for this one.
+const TERMINAL: [&str; 4] = ["done", "failed", "skipped", "imported"];
 
 pub type Printer = Box<dyn Fn(&str) + Send + Sync>;
 pub type EnqueueImport =

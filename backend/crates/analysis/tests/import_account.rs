@@ -7,8 +7,8 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use analysis::jobs::import::{
-    ACCOUNT_BUSY_DELAY, ImportAccountDeps, ImportSummary, account_lock_key, enqueue_import,
-    handle_import_account,
+    ACCOUNT_BUSY_DELAY, DEFAULT_IMPORT_MAX, ImportAccountDeps, ImportSummary, account_lock_key,
+    enqueue_import, handle_import_account,
 };
 use db::accounts::{ImportCursor, get_account};
 use db::import_runs::{ImportRunStatus, list_runs};
@@ -21,7 +21,9 @@ use platforms::{
     FetchOptions, GameSource, NormalizedGame, Platform, PlatformClient, PlatformError, Player,
 };
 use queue::queue::{Backoff, FailOutcome, Queue};
-use queue::{ImportAccountPayload, Job, JobError, KIND_ANALYSE, KIND_IMPORT, analyse_key};
+use queue::{
+    ImportAccountPayload, Job, JobError, KIND_ANALYSE, KIND_IMPORT, KIND_SCHEDULE, schedule_key,
+};
 use sqlx::PgPool;
 use testkit::fake_platform::FakeClient;
 use time::OffsetDateTime;
@@ -183,6 +185,21 @@ async fn live_analyse_keys(pool: &PgPool) -> Vec<String> {
     keys
 }
 
+/// Live schedule jobs: `(dedupe_key, payload)`.
+async fn live_schedule_jobs(pool: &PgPool) -> Vec<(String, serde_json::Value)> {
+    sqlx::query_as(
+        "SELECT dedupe_key, payload FROM jobs WHERE kind = $1          AND state IN ('queued','running','paused') ORDER BY id",
+    )
+    .bind(KIND_SCHEDULE)
+    .fetch_all(pool)
+    .await
+    .unwrap()
+}
+
+fn json_account(account_id: Uuid) -> serde_json::Value {
+    serde_json::json!({ "accountId": account_id })
+}
+
 async fn events(pool: &PgPool, ty: &str) -> Vec<serde_json::Value> {
     sqlx::query_scalar("SELECT payload FROM user_events WHERE type = $1 ORDER BY id")
         .bind(ty)
@@ -246,7 +263,7 @@ const JAN_1: OffsetDateTime = datetime!(2026-01-01 00:00 UTC);
 // Ported from import-account.test.ts
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
-async fn import_twice_yields_same_rows_still_pending_games_are_re_enqueued(pool: PgPool) {
+async fn import_twice_yields_same_rows_imported_with_one_schedule_job(pool: PgPool) {
     let acct = testkit::insert_account(&pool, "lichess", "twice").await;
     let list = vec![
         make_game("Twice", "Villain", JAN_1),
@@ -260,7 +277,12 @@ async fn import_twice_yields_same_rows_still_pending_games_are_re_enqueued(pool:
             skipped: 0
         }
     );
-    let first = live_analyse_keys(&pool).await;
+    // R2 (ADR-R2-16): imported games wait for the scheduler; no per-game analyse job.
+    assert!(live_analyse_keys(&pool).await.is_empty());
+    assert_eq!(
+        live_schedule_jobs(&pool).await,
+        vec![(schedule_key(acct), json_account(acct))]
+    );
     // Reset the cursor so the second import streams the same games again.
     sqlx::query("UPDATE linked_accounts SET import_cursor = NULL WHERE id = $1")
         .bind(acct)
@@ -276,12 +298,76 @@ async fn import_twice_yields_same_rows_still_pending_games_are_re_enqueued(pool:
     );
     let rows = game_rows(&pool, acct).await;
     assert_eq!(rows.len(), 2);
-    assert!(rows.iter().all(|(_, _, status)| status == "pending"));
-    // Both games were enqueued, and the second import's re-enqueue deduped onto the live jobs.
-    let mut expected: Vec<String> = rows.iter().map(|(id, _, _)| analyse_key(*id)).collect();
-    expected.sort();
-    assert_eq!(first, expected);
-    assert_eq!(live_analyse_keys(&pool).await, expected);
+    assert!(rows.iter().all(|(_, _, status)| status == "imported"));
+    assert!(live_analyse_keys(&pool).await.is_empty());
+    // The second import's schedule enqueue deduped onto the live job.
+    assert_eq!(live_schedule_jobs(&pool).await.len(), 1);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn imported_games_store_their_ply_count(pool: PgPool) {
+    let acct = testkit::insert_account(&pool, "lichess", "plies").await;
+    let mut annotated = make_game("Plies", "Villain", JAN_1);
+    annotated.pgn = "[Event \"x\"]\n[White \"Plies\"]\n\n1. e4 {[%clk 0:03:00]} 1... e5 \
+        2. Nf3 $1 (2. Qh5 Nc6) 2... Nc6 ; a comment\n3. Bb5 a6 1/2-1/2"
+        .to_owned();
+    let empty = {
+        let mut g = make_game("Plies", "Villain", JAN_1 - time::Duration::days(1));
+        g.pgn = "[Event \"x\"]\n\n*".to_owned();
+        g
+    };
+    let d = deps(
+        &pool,
+        FnSource::listing(
+            vec![make_game("Plies", "Villain", JAN_1), annotated, empty],
+            false,
+        ),
+    );
+    run(&d, acct).await.unwrap();
+    let mut plies: Vec<Option<i32>> =
+        sqlx::query_scalar("SELECT ply_count FROM games WHERE account_id = $1")
+            .bind(acct)
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    plies.sort();
+    assert_eq!(plies, vec![Some(0), Some(6), Some(7)]);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn import_max_defaults_to_the_free_plan_limit(pool: PgPool) {
+    assert_eq!(DEFAULT_IMPORT_MAX, 1000);
+    let acct = testkit::insert_account(&pool, "lichess", "defmax").await;
+    let source = FnSource::listing(vec![make_game("Defmax", "Villain", JAN_1)], false);
+    let d = deps(&pool, source.clone());
+    run(&d, acct).await.unwrap();
+    let calls = source.calls.lock().unwrap().clone();
+    assert!(!calls.is_empty());
+    assert!(
+        calls.iter().all(|c| c.max == Some(DEFAULT_IMPORT_MAX)),
+        "{calls:?}"
+    );
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_legacy_pending_game_is_not_re_enqueued_by_the_import(pool: PgPool) {
+    // R1 stored games as `pending` and enqueued each one; the reconciler now owns lost jobs.
+    let acct = testkit::insert_account(&pool, "lichess", "legacyimp").await;
+    let list = vec![make_game("Legacyimp", "Villain", JAN_1)];
+    let d = deps(&pool, FnSource::listing(list, false));
+    run(&d, acct).await.unwrap();
+    sqlx::query("UPDATE games SET analysis_status = 'pending' WHERE account_id = $1")
+        .bind(acct)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE linked_accounts SET import_cursor = NULL WHERE id = $1")
+        .bind(acct)
+        .execute(&pool)
+        .await
+        .unwrap();
+    run(&d, acct).await.unwrap();
+    assert!(live_analyse_keys(&pool).await.is_empty());
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
@@ -762,8 +848,15 @@ async fn a_404_on_one_chesscom_month_stays_retryable(pool: PgPool) {
 #[sqlx::test(migrator = "db::MIGRATOR")]
 async fn a_lichess_user_404_fails_immediately_without_retry(pool: PgPool) {
     let acct = testkit::insert_account(&pool, "lichess", "nobody").await;
-    // A first import fetches with no since/until/max; any other URL would stream nothing.
-    let url = lichess_games_url("nobody", &FetchOptions::default());
+    // A first import fetches with no since/until and the default max; any other URL would
+    // stream nothing.
+    let url = lichess_games_url(
+        "nobody",
+        &FetchOptions {
+            max: Some(DEFAULT_IMPORT_MAX),
+            ..FetchOptions::default()
+        },
+    );
     let client = Arc::new(FakeClient {
         ndjson_by_url: HashMap::from([(
             url.clone(),

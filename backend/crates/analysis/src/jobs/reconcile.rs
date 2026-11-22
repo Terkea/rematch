@@ -8,7 +8,14 @@
 //!    fenced reset) and are re-enqueued, unless their job is still `running` under a lease
 //!    (`hung_active`: left alone, its deadline or the reaper ends it).
 //! 3. In both sweeps a game at [`MAX_ANALYSIS_ATTEMPTS`] is marked failed instead (poison games)
-//!    and `job.failed` is published.
+//!    and `job.failed` is published. Re-enqueued games keep their scheduler priority
+//!    (`coalesce(analysis_priority, 100)`, R2 Task 29).
+//!
+//!    Step 3a: `imported` games are never enqueued for analysis. An account with an `imported`
+//!    game still waiting for the scheduler (`pending_since` set and older than `pending_grace`;
+//!    the schedule-analysis job clears it on every game it has seen) and with no live import job
+//!    gets a schedule-analysis job (deduped), so no imported game is lost when an import fails
+//!    for good or a schedule job is lost or deduped onto a run that had already read the games.
 //! 4. `running` import runs with a stale heartbeat: their account's import is enqueued again,
 //!    then the runs are closed as failed.
 //! 5. Accounts whose newest run is `paused` and that have no live import job get one (the job
@@ -42,8 +49,11 @@ use serde_json::{Value, json};
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::jobs::analyse::{analyse_enqueue_options, analyse_payload, enqueue_analyse};
-use crate::jobs::import::enqueue_import;
+use crate::jobs::analyse::{
+    DEFAULT_ANALYSE_PRIORITY, analyse_enqueue_options_with_priority, analyse_payload,
+    enqueue_analyse_with_priority,
+};
+use crate::jobs::import::{enqueue_import, enqueue_schedule};
 
 /// Attempt cap across every path (queue retries, stalled pickups, reconciler re-enqueues): twice
 /// the analyse job's 3 attempts, so a game is only given up on after two full rounds.
@@ -88,6 +98,8 @@ pub struct ReconcileResult {
     pub exhausted: u64,
     pub pruned_events: u64,
     pub cleaned_jobs: u64,
+    /// Accounts given a schedule-analysis job for `imported` games still waiting (step 3a).
+    pub scheduled_imports: u64,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -106,6 +118,8 @@ struct GameRow {
     id: Uuid,
     account_id: Uuid,
     analysis_attempts: i32,
+    /// The scheduler's priority (`None` for games it never tiered).
+    analysis_priority: Option<i16>,
     /// Old enough for this sweep (past the grace or the stale cutoff).
     due: bool,
 }
@@ -123,7 +137,7 @@ struct GameRow {
 macro_rules! page_sql {
     ($status:literal, $age:literal) => {
         concat!(
-            "SELECT id, account_id, analysis_attempts, ",
+            "SELECT id, account_id, analysis_attempts, analysis_priority, ",
             $age,
             " < now() - make_interval(secs => $1) AS due \
              FROM games WHERE analysis_status = '",
@@ -170,6 +184,16 @@ WHERE p.status = 'paused' AND NOT EXISTS (
   SELECT 1 FROM import_runs n WHERE n.account_id = p.account_id
     AND (n.started_at, n.id) > (p.started_at, p.id))";
 
+/// Accounts with an `imported` game still waiting for the scheduler for longer than `$1` seconds.
+/// One `games_account_status_tc_idx (account_id, analysis_status, …)` probe per account; it reads
+/// the account's `imported` rows until the first match.
+const UNSCHEDULED_ACCOUNTS_SQL: &str = "SELECT la.id FROM linked_accounts la
+WHERE EXISTS (
+  SELECT 1 FROM games g
+  WHERE g.account_id = la.id AND g.analysis_status = 'imported'
+    AND g.pending_since < now() - make_interval(secs => $1))
+ORDER BY la.id";
+
 /// The literal `6` matches the predicate of `games_attempt_cap_idx`, so the count uses it.
 const AT_CAP_SQL: &str = "SELECT count(*) FROM games WHERE analysis_attempts >= 6";
 
@@ -203,10 +227,10 @@ pub async fn reconcile(
             if g.analysis_attempts >= MAX_ANALYSIS_ATTEMPTS {
                 exhausted.push(g.id);
             } else {
-                lost.push((g.id, g.account_id));
+                lost.push((g.id, g.account_id, priority_of(g)));
             }
         }
-        result.requeued_pending += enqueue_analysis_page(queue, &lost).await?;
+        result.requeued_pending += enqueue_analysis_page_with_priority(queue, &lost).await?;
         result.exhausted += give_up(pool, &exhausted, "pending").await?;
         if (page.len as i64) < page_size {
             break;
@@ -243,11 +267,30 @@ pub async fn reconcile(
                 continue; // it moved on meanwhile
             }
             result.reset_stale += 1;
-            enqueue_analyse(queue, g.id, g.account_id).await?;
+            enqueue_analyse_with_priority(queue, g.id, g.account_id, priority_of(g)).await?;
         }
         result.exhausted += give_up(pool, &exhausted, "analysing").await?;
         if (page.len as i64) < page_size {
             break;
+        }
+    }
+
+    // 3a. Imported games still waiting for the scheduler, in accounts with no import or schedule
+    //     job that will reach them.
+    let unscheduled: Vec<Uuid> = sqlx::query_scalar(UNSCHEDULED_ACCOUNTS_SQL)
+        .bind(grace)
+        .fetch_all(pool)
+        .await?;
+    for account in unscheduled {
+        let importing = !queue
+            .live_states(KIND_IMPORT, &[import_key(account)])
+            .await?
+            .is_empty();
+        if importing {
+            continue; // the import enqueues the schedule job when its run commits
+        }
+        if enqueue_schedule(queue, account).await? {
+            result.scheduled_imports += 1;
         }
     }
 
@@ -310,6 +353,7 @@ pub async fn reconcile(
         exhausted = result.exhausted,
         pruned_events = result.pruned_events,
         cleaned_jobs = result.cleaned_jobs,
+        scheduled_imports = result.scheduled_imports,
         pruned_metrics,
         pending = counts.get("pending").copied().unwrap_or(0),
         analysing = counts.get("analysing").copied().unwrap_or(0),
@@ -358,6 +402,10 @@ async fn live_states(
     queue.live_states(KIND_ANALYSE, &keys).await
 }
 
+fn priority_of(g: &GameRow) -> i16 {
+    g.analysis_priority.unwrap_or(DEFAULT_ANALYSE_PRIORITY)
+}
+
 /// Enqueues analyse jobs for `games` (`(game_id, account_id)`) in one transaction with one
 /// NOTIFY ([`Queue::enqueue_many`]), and returns how many were new (a live job already holds the
 /// others' keys). Each `Queue::enqueue` is its own commit, and its NOTIFY serialises commits, so
@@ -368,12 +416,25 @@ pub async fn enqueue_analysis_page(
     queue: &Queue,
     games: &[(Uuid, Uuid)],
 ) -> Result<u64, QueueError> {
+    let games: Vec<(Uuid, Uuid, i16)> = games
+        .iter()
+        .map(|&(g, a)| (g, a, DEFAULT_ANALYSE_PRIORITY))
+        .collect();
+    enqueue_analysis_page_with_priority(queue, &games).await
+}
+
+/// [`enqueue_analysis_page`] with a priority per game (`(game_id, account_id, priority)`); the
+/// rows equal what [`enqueue_analyse_with_priority`] writes.
+pub async fn enqueue_analysis_page_with_priority(
+    queue: &Queue,
+    games: &[(Uuid, Uuid, i16)],
+) -> Result<u64, QueueError> {
     let jobs: Vec<(Value, EnqueueOptions)> = games
         .iter()
-        .map(|&(game_id, account_id)| {
+        .map(|&(game_id, account_id, priority)| {
             (
                 analyse_payload(game_id),
-                analyse_enqueue_options(game_id, account_id),
+                analyse_enqueue_options_with_priority(game_id, account_id, priority),
             )
         })
         .collect();
