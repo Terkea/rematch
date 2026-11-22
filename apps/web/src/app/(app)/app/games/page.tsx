@@ -1,26 +1,75 @@
-import { Button } from "@ci/ui/primitives";
-import Link from "next/link";
 import { requireUser } from "../../../../server/auth/session";
-import { EmptySheet, PageHeading } from "../../_shell/page-heading";
+import { getDb } from "../../../../server/db";
+import { loadExplorer } from "../../../../server/games/explorer";
+import { PageHeading } from "../../_shell/page-heading";
+import { NoGames, NoLinks, NoMatch } from "./_explorer/empty";
+import { FilterBar } from "./_explorer/filter-bar";
+import { toRowView } from "./_explorer/game-row";
+import { GamesList, showingText } from "./_explorer/games-list";
+import { describeFilters, explorerHref, NO_FILTERS, suggestions } from "./_explorer/href";
+import { Pagination } from "./_explorer/pagination";
+import { ExplorerTransition, PendingRegion } from "./_explorer/transition";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Games" };
 
-/** Placeholder until the games list lands (M5a). The route and its nav entry are already final. */
-export default async function GamesPage() {
-  await requireUser();
+type Params = Record<string, string | string[] | undefined>;
+
+/**
+ * The games explorer: every game of the user's linked accounts, filtered, sorted and paged by the
+ * URL (ADR 0048). Rows link to the review. The filter bar and the list share one transition, so
+ * a change dims the list in place until the new page arrives.
+ */
+export default async function GamesPage({ searchParams }: { searchParams: Promise<Params> }) {
+  const user = await requireUser();
+  const explorer = await loadExplorer(getDb(), user.id, await searchParams);
+
+  if (explorer.state !== "games") {
+    return (
+      <div className="flex flex-col gap-8">
+        <PageHeading title="Games" />
+        {explorer.state === "no-links" ? (
+          <NoLinks />
+        ) : (
+          <NoGames
+            importState={explorer.importState}
+            accounts={explorer.accounts.map((a) => a.label)}
+          />
+        )}
+      </div>
+    );
+  }
+
+  const { query, page, accounts } = explorer;
+  const rows = page.rows.map(toRowView);
+  const clearHref = explorerHref({ ...query, filters: NO_FILTERS, page: 1 });
+
   return (
-    <div className="flex flex-col gap-8">
-      <PageHeading title="Games" lede="Every game you've played, reviewed move by move." />
-      <EmptySheet
-        action={
-          <Button asChild variant="outline">
-            <Link href="/app/accounts">Go to Accounts</Link>
-          </Button>
-        }
-      >
-        Your games appear here once an account is connected and they're imported.
-      </EmptySheet>
-    </div>
+    <ExplorerTransition>
+      <div className="flex flex-col gap-6 md:gap-8">
+        <PageHeading title="Games" />
+        <FilterBar
+          query={query}
+          accounts={accounts}
+          summary={
+            <p aria-live="polite" className="text-sm text-ink-soft tabular-nums">
+              {page.total === 0 ? "Showing 0 games" : showingText(page)}
+            </p>
+          }
+        />
+        <PendingRegion>
+          {rows.length === 0 ? (
+            <NoMatch
+              description={describeFilters(query.filters, accounts)}
+              suggestions={suggestions(query, explorer.relax ?? [])}
+              clearHref={clearHref}
+            />
+          ) : (
+            <GamesList rows={rows} grouped={query.sort.key === "played"} />
+          )}
+          <Pagination query={query} page={page.page} pageCount={page.pageCount} />
+        </PendingRegion>
+      </div>
+    </ExplorerTransition>
   );
 }

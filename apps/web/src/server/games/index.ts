@@ -1,6 +1,6 @@
 export { scoreFromWin } from "./evals";
-export { listGames } from "./list";
-export { parseGameQuery, serializeGameQuery } from "./query";
+export { countGames, listGames } from "./list";
+export { NO_FILTERS, parseGameQuery, serializeGameQuery } from "./query";
 export { readOnly } from "./read-only";
 export { playerResult } from "./result";
 export {
