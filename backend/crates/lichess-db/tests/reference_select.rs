@@ -16,7 +16,7 @@ use lichess_db::explorer_build::{BuildOptions, Verify, build};
 use lichess_db::pipeline::{PipelineConfig, run_pipeline};
 use lichess_db::reference_select::{
     ReferenceSink, SelectOptions, SelectedGame, enqueue_reference_games, hash_fraction,
-    memory_bound_bytes, player_hash, player_rate, redact_pgn, reference_filter,
+    memory_bound_bytes, parse_salt, player_hash, player_rate, redact_pgn, reference_filter,
 };
 use profile_core::types::Band;
 use queue::queue::Queue;
@@ -650,7 +650,10 @@ async fn band_reference_build_verifies_then_enqueues(pool: PgPool) {
         "T32 activates after analysis"
     );
     assert_eq!(row.source_sha256, sum);
-    assert!(row.params.get("salt").is_none(), "the salt is never stored");
+    let salt = row.params["salt"]
+        .as_str()
+        .expect("the salt is stored for audit");
+    assert_eq!(salt.len(), 64, "32 bytes, hex");
     assert_eq!(row.params["players_per_cell"], 2);
     let n: i64 = sqlx::query_scalar(
         "SELECT count(*) FROM reference_games WHERE build_id = $1 AND status = 'pending'",
@@ -661,6 +664,102 @@ async fn band_reference_build_verifies_then_enqueues(pool: PgPool) {
     .unwrap();
     assert_eq!(n, 10);
     assert_eq!(jobs(&pool).await.len(), 10);
+}
+
+async fn selected_players(pool: &PgPool, build: Uuid) -> BTreeSet<String> {
+    let rows: Vec<(String, String)> =
+        sqlx::query_as("SELECT white_hash, black_hash FROM reference_games WHERE build_id = $1")
+            .bind(build)
+            .fetch_all(pool)
+            .await
+            .unwrap();
+    rows.into_iter().flat_map(|(w, b)| [w, b]).collect()
+}
+
+async fn games_of(pool: &PgPool, build: Uuid) -> BTreeSet<String> {
+    sqlx::query_scalar("SELECT lichess_game_id FROM reference_games WHERE build_id = $1")
+        .bind(build)
+        .fetch_all(pool)
+        .await
+        .unwrap()
+        .into_iter()
+        .collect()
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_stored_salt_reproduces_the_selection(pool: PgPool) {
+    let body = zstd(three_players().concat().as_bytes()).await;
+    let sum = hex::encode(Sha256::digest(&body));
+    let srv = server(body, sum).await;
+    let client = http_client().unwrap();
+    let src = DumpSource::new(srv.uri(), "2026-10");
+    let first = build(&pool, &client, &src, &ref_opts())
+        .await
+        .unwrap()
+        .reference_build
+        .unwrap();
+    let row = get_build(&pool, first).await.unwrap().unwrap();
+    let salt: [u8; 32] = hex::decode(row.params["salt"].as_str().unwrap())
+        .unwrap()
+        .try_into()
+        .unwrap();
+    let again = build(
+        &pool,
+        &client,
+        &src,
+        &BuildOptions {
+            reference_salt: Some(salt),
+            ..ref_opts()
+        },
+    )
+    .await
+    .unwrap()
+    .reference_build
+    .unwrap();
+    assert_ne!(first, again);
+    let row2 = get_build(&pool, again).await.unwrap().unwrap();
+    assert_eq!(row2.params["salt"], row.params["salt"]);
+    assert_eq!(games_of(&pool, first).await, games_of(&pool, again).await);
+    assert_eq!(
+        selected_players(&pool, first).await,
+        selected_players(&pool, again).await
+    );
+    // The stored hashes are those of the stored salt.
+    assert!(
+        selected_players(&pool, first)
+            .await
+            .contains(&hex_of(&salt, "p1"))
+            || selected_players(&pool, first)
+                .await
+                .contains(&hex_of(&salt, "p2"))
+    );
+
+    // Another salt is honoured too (and recorded).
+    let other = build(
+        &pool,
+        &client,
+        &src,
+        &BuildOptions {
+            reference_salt: Some(SALT_B),
+            ..ref_opts()
+        },
+    )
+    .await
+    .unwrap()
+    .reference_build
+    .unwrap();
+    let row3 = get_build(&pool, other).await.unwrap().unwrap();
+    assert_eq!(row3.params["salt"], hex::encode(SALT_B));
+    let want = smallest(&SALT_B, &["p1", "p2", "p3"], 2);
+    let got = selected_players(&pool, other).await;
+    assert!(want.is_subset(&got), "{want:?} in {got:?}");
+}
+
+#[test]
+fn parse_salt_takes_64_hex_digits() {
+    assert_eq!(parse_salt(&hex::encode(SALT_A)).unwrap(), SALT_A);
+    assert!(parse_salt("abcd").is_err());
+    assert!(parse_salt(&"zz".repeat(32)).is_err());
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]

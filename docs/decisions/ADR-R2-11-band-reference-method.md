@@ -57,12 +57,15 @@ streamed. It has no provisional flag and must not leave usernames in our databas
 - **Other filters:** rated games with a real clock and both ratings, `[%clk]` comments required
   (the reference metrics use clocks, as the users' games have them), no BOT on either side, no
   `Abandoned` or `Rules infraction` terminations (ADR-R2-9).
-- **Hashed names, per-build salt never stored.** The salt is 32 bytes of fresh OS randomness per
-  build, held only in memory: it is not in `params`, not logged, not in `Debug` output. Only the
-  hex hashes are stored (`white_hash`, `black_hash`, `player_hash`). The stored PGN has its
-  `White`/`Black` tags replaced by `?`. Without the salt a stored hash cannot be matched to a
-  name by hashing a list of Lichess usernames. (The Lichess game id stays, so the public game
-  itself can be found on Lichess; that is public data and not stored here as a name.)
+- **Hashed names, per-build salt stored for audit (coordinator ruling).** The salt is 32 bytes
+  of fresh OS randomness per build, or the `--salt <64 hex>` override, and is recorded in the
+  build's `params.salt` (where `capped` is recorded), so a build is auditable and
+  `--salt <params.salt>` reproduces its selection from the same dump. No new migration was
+  needed. Names are never stored: only the hex hashes (`white_hash`, `black_hash`,
+  `player_hash`), and the stored PGN has its `White`/`Black` tags replaced by `?`. Because the
+  salt is stored next to the hashes, a hash can be matched to a name by hashing candidate
+  Lichess usernames; the hashes are pseudonyms that group a player's games, not a secret. (The
+  Lichess game id stays too, so the public game itself can be looked up on Lichess.)
 - **Verification before selection.** The pass streams the whole month, drains it, verifies the
   SHA-256, sets `source_sha256`, and only then inserts the games (`pending`) and enqueues one
   `analyse-reference-game` job per game (priority 200, dedupe `refgame:<id>`).
@@ -72,13 +75,14 @@ streamed. It has no provisional flag and must not leave usernames in our databas
 
 ### Consequences
 
-- Two builds of the same month select different players (a fresh salt). That is the price of
-  never storing the salt: a build cannot be reproduced later. For a given salt and dump the
-  selection is deterministic, which the tests check.
+- Two default builds of the same month select different players (a fresh salt each). Passing a
+  stored build's `params.salt` reproduces its selection exactly; for a given salt and dump the
+  selection is deterministic at any thread count (tested).
 - With `--explorer --band-reference`, the month is downloaded twice (one pass each). A combined
-  sink would save the second download; it is left for later.
-- `protocol` and `enrichment_protocol` stay NULL on the build: `lichess-db` does not depend on
-  the engine or enrich crates. Part 2 records the difficulty model.
+  sink would save the second download; **parked for Task 35**.
+- `protocol` and `enrichment_protocol` stay NULL when the build is created: `lichess-db` does
+  not depend on the engine or enrich crates. Task 35's worker, which has both, fills them at
+  finalisation; Part 2 records the difficulty model.
 - A rare cell (for example B5 classical) can be under-filled; Part 2's low-sample flag and the
   band fallback (Task 17) handle it.
 
@@ -88,6 +92,6 @@ streamed. It has no provisional flag and must not leave usernames in our databas
   with one or two games.
 - **First N games of the month**: rejected, time-biased (the T19 ruling).
 - **Reservoir sampling of games**: rejected, it samples games, not players.
-- **Deterministic salt derived from the seed and month**: rejected; anyone with the seed could
-  map the stored hashes back to names.
+- **A salt never stored** (Task 21's first version): rejected by the coordinator, because a
+  build must be auditable and reproducible. It would have kept the hashes unlinkable to names.
 - **Provisional filter on `|RatingDiff|`**: rejected for the reference, it depends on results.

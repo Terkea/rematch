@@ -303,6 +303,9 @@ pub struct BuildOptions {
     /// Reference selection sizes; `player_rate` is derived by [`build`] from the expected
     /// month size ([`crate::reference_select::player_rate`]).
     pub reference: SelectOptions,
+    /// Reference selection salt; `None` draws a fresh one. Recorded in `params.salt`, so passing
+    /// a stored build's salt reproduces its selection from the same dump.
+    pub reference_salt: Option<[u8; 32]>,
     /// Sample rate; `None` derives `max_games / expected games` (T19 review ruling).
     pub sample_rate: Option<f64>,
     /// Games expected in the month; `None` takes the last full build's count, else
@@ -330,6 +333,7 @@ impl BuildOptions {
             explorer: true,
             band_reference: false,
             reference: SelectOptions::default(),
+            reference_salt: None,
             sample_rate: None,
             expected_games: None,
             seed: 0,
@@ -646,8 +650,9 @@ struct ReferencePass {
 /// The band-reference pass (Task 21, ADR-R2-11 Part 1). In order:
 /// 1. the player rate from the expected month size ([`player_rate`]);
 /// 2. the expected SHA-256 (Full only);
-/// 3. a `band_reference` build (`building`) whose `params` hold the selection sizes but never the
-///    salt; the salt is fresh OS randomness, kept only in memory;
+/// 3. a `band_reference` build (`building`) whose `params` hold the selection sizes and the salt
+///    (`opts.reference_salt`, else fresh OS randomness), so the build is auditable and
+///    reproducible;
 /// 4. the whole month through a [`ReferenceSink`];
 /// 5. Full: drain, `verify`, `params.capped`, `set_source_sha`, then the selection is inserted
 ///    and enqueued ([`enqueue_reference_games`]). Nothing is inserted before the digest matches.
@@ -683,8 +688,10 @@ async fn build_band_reference(
         Verify::None => None,
     };
     let filter = reference_filter();
+    let salt: [u8; 32] = opts.reference_salt.unwrap_or_else(rand::random);
     let params = json!({
         "selection": "bottom-k sha256(salt || lower(name)) per band x time class",
+        "salt": hex::encode(salt),
         "players_per_cell": sel.players_per_cell,
         "games_per_player": sel.games_per_player,
         "oversample": sel.oversample,
@@ -714,7 +721,6 @@ async fn build_band_reference(
     .await
     .map_err(store)?;
 
-    let salt: [u8; 32] = rand::random();
     let sink = Arc::new(ReferenceSink::new(salt, sel));
     let mut stats = None;
     let result = run_reference(

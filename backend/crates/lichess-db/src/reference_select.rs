@@ -22,8 +22,12 @@
 //! falls below a threshold; the bottom-k players are below it whenever a cell has enough of them,
 //! so it bounds the work without changing the selection.
 //!
-//! Privacy: the salt is generated per build and never stored or logged; names never leave this
-//! module (PGN `White`/`Black` tags are redacted to `?`, headers are blanked in [`SelectedGame`]).
+//! Audit and privacy: the salt is generated per build (or given with `--salt` to reproduce a
+//! stored build) and recorded in the build's `params.salt`, so a build can be audited and its
+//! selection reproduced from the same dump. Names are never stored: PGN `White`/`Black` tags are
+//! redacted to `?` and headers are blanked in [`SelectedGame`]. With the stored salt, a hash can
+//! be matched to a name by hashing candidate usernames, so the hashes are pseudonyms for
+//! grouping a player's games, not a secret (ADR-R2-11).
 
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap, HashSet};
@@ -92,6 +96,14 @@ impl Default for SelectOptions {
             player_rate: 1.0,
         }
     }
+}
+
+/// A 32-byte salt from 64 hex digits (the `--salt` override, `params.salt`).
+pub fn parse_salt(s: &str) -> Result<[u8; 32], String> {
+    let bytes = hex::decode(s.trim()).map_err(|e| format!("salt is not hex: {e}"))?;
+    bytes
+        .try_into()
+        .map_err(|b: Vec<u8>| format!("salt must be 32 bytes (64 hex digits), got {}", b.len()))
 }
 
 /// `sha256(salt ‖ lower(name))`.
@@ -272,7 +284,7 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 }
 
 impl ReferenceSink {
-    /// Logs the buffer bound (at 2 KB per PGN). The salt is never logged.
+    /// Logs the buffer bound (at 2 KB per PGN).
     pub fn new(salt: [u8; 32], opts: SelectOptions) -> Self {
         tracing::info!(
             players_per_cell = opts.players_per_cell,
