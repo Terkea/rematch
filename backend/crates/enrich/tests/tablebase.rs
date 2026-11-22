@@ -15,7 +15,7 @@ use engine::pool::{EnginePool, PoolOptions};
 use engine::types::{AnalyseOptions, AnalysisLine};
 use engine::uci::{StartOptions, UciEngine};
 use enrich::tablebase::cached::CachedTbProbe;
-use enrich::tablebase::pool::SyzygyPool;
+use enrich::tablebase::pool::{SyzygyPool, TablebaseStatus};
 use enrich::tablebase::wdl::wdl_from_lines;
 use enrich::types::TablebaseProbe;
 use futures::future::BoxFuture;
@@ -26,6 +26,10 @@ use sqlx::PgPool;
 const KPK_DRAW: &str = "8/4k3/8/4K3/4P3/8/8/8 w - - 0 1";
 const KPK_LOSS: &str = "8/4k3/8/4K3/4P3/8/8/8 b - - 0 1";
 const KQK_WIN: &str = "8/8/8/8/8/4k3/8/KQ6 w - - 0 1";
+// Lichess API (2026-11-22): KRvK win with dtz 27 for White to move, loss with dtz -30 for
+// Black to move.
+const KRK_WIN: &str = "8/8/8/8/8/2k5/8/KR6 w - - 0 1";
+const KRK_LOSS: &str = "8/8/8/8/8/2k5/8/KR6 b - - 0 1";
 // Lichess API: draw.
 const KRKR_DRAW: &str = "8/8/8/4k3/8/8/r7/4K2R w - - 0 1";
 // Lichess API: win, dtz 57.
@@ -141,6 +145,7 @@ async fn six_piece_fen_makes_no_engine_call() {
         .unwrap();
     assert_eq!(pool.max_pieces(), 5);
     assert_eq!(pool.probe(SIX).await, None);
+    assert_eq!(pool.probe_dtz(SIX).await, None);
     assert_eq!(pool.engine_calls(), 0);
     pool.close().await;
     assert_eq!(f.gos(), 0, "log: {}", f.log());
@@ -206,6 +211,8 @@ async fn pool_sets_syzygy_path_and_sends_normalised_clocks() {
         .await
         .unwrap();
     assert_eq!(pool.tables_found(), 1);
+    assert_eq!(pool.status(), TablebaseStatus::Available { tables: 1 });
+    assert_eq!(pool.status().as_str(), "available");
     // The halfmove clock is reset so the answer depends only on the fen_key.
     assert_eq!(
         pool.probe("8/8/8/8/8/4k3/8/KQ6 w - - 77 120").await,
@@ -240,8 +247,11 @@ async fn missing_tablebase_files_returns_none() {
         .await
         .unwrap();
     assert_eq!(pool.tables_found(), 0);
+    assert_eq!(pool.status(), TablebaseStatus::Unavailable);
+    assert_eq!(pool.status().as_str(), "unavailable");
     assert_eq!(pool.probe(KQK_WIN).await, None);
     assert_eq!(pool.probe(KPK_DRAW).await, None);
+    assert_eq!(pool.probe_dtz(KQK_WIN).await, None);
     assert_eq!(pool.engine_calls(), 0);
     pool.close().await;
     let _ = std::fs::remove_dir_all(&dir);
@@ -255,6 +265,7 @@ async fn missing_tablebase_files_returns_none() {
     )
     .await
     .unwrap();
+    assert_eq!(gone.status(), TablebaseStatus::Unavailable);
     assert_eq!(gone.probe(KQK_WIN).await, None);
 }
 
@@ -513,4 +524,29 @@ async fn real_cached_probe_answers_second_lookup_without_engine(pg: PgPool) {
         Some((-1, "syzygy5".to_owned()))
     );
     syz.close().await;
+}
+
+/// DTZ from the real tables, read through Stockfish's root rule (a win counts only when
+/// dtz + halfmove clock <= 99; see ADR-R2-12), against the Lichess API values.
+#[tokio::test]
+async fn real_tables_give_lichess_dtz() {
+    let Some((sf, tables)) = real() else {
+        eprintln!("skipped: SYZYGY_PATH unset");
+        return;
+    };
+    let pool = SyzygyPool::start(&sf, &tables, 1, 1000).await.unwrap();
+    assert_eq!(pool.status(), TablebaseStatus::Available { tables: 145 });
+    let t0 = std::time::Instant::now();
+    assert_eq!(pool.probe(KRK_WIN).await, Some(1), "KRvK w");
+    assert_eq!(pool.probe(KRK_LOSS).await, Some(-1), "KRvK b");
+    assert_eq!(pool.probe_dtz(KQK_WIN).await, Some(13), "KQvK");
+    assert_eq!(pool.probe_dtz(KRK_WIN).await, Some(27), "KRvK w");
+    assert_eq!(pool.probe_dtz(KBNK_WIN).await, Some(57), "KBNvK");
+    assert_eq!(pool.probe_dtz(KRK_LOSS).await, Some(-30), "KRvK b");
+    assert_eq!(pool.probe_dtz(KPK_LOSS).await, Some(-4), "KPvK b");
+    assert_eq!(pool.probe_dtz(NO_EP_LOSS).await, Some(-2), "no ep loses");
+    assert_eq!(pool.probe_dtz(KPK_DRAW).await, Some(0), "KPvK w");
+    assert_eq!(pool.probe_dtz(CASTLING).await, None, "castling");
+    eprintln!("dtz probes took {:?}", t0.elapsed());
+    pool.close().await;
 }

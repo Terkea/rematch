@@ -129,21 +129,82 @@ impl SyzygyPool {
         self.tables.contains(&format!("{w}v{b}")) || self.tables.contains(&format!("{b}v{w}"))
     }
 
-    async fn probe_fen(&self, fen: &str) -> Option<Wdl> {
-        let start = self.start.as_ref()?;
-        let canon = covered_fen(fen, MAX_PIECES)?;
+    /// `available` with the number of `.rtbw` tables found, or `unavailable` when there are none
+    /// (then every probe answers `None`).
+    pub fn status(&self) -> TablebaseStatus {
+        match self.start {
+            Some(_) => TablebaseStatus::Available {
+                tables: self.tables.len(),
+            },
+            None => TablebaseStatus::Unavailable,
+        }
+    }
+
+    /// The position as sent (without clocks), `Ok(None)` for bare kings (a draw without an
+    /// engine call), or `Err(())` when the tables cannot answer it.
+    fn covered_head(&self, fen: &str) -> Result<Option<String>, ()> {
+        if self.start.is_none() {
+            return Err(());
+        }
+        let canon = covered_fen(fen, MAX_PIECES).ok_or(())?;
         let mut it = canon.rsplitn(3, ' ');
-        let (_full, _half, head) = (it.next()?, it.next()?, it.next()?);
-        let placement = head.split(' ').next()?;
+        let (_full, _half, head) = (it.next(), it.next(), it.next().ok_or(())?);
+        let placement = head.split(' ').next().ok_or(())?;
         if placement.chars().filter(char::is_ascii_alphabetic).count() == 2 {
-            return Some(0); // bare kings: no table file, always a draw
+            return Ok(None); // bare kings: no table file, always a draw
         }
         if !self.has_table(placement) {
-            return None; // Stockfish would search, not probe: never a guess
+            return Err(()); // Stockfish would search, not probe: never a guess
         }
-        // Clocks reset: the answer depends only on the fen_key (cacheable), with the 50-move rule
-        // counted from this position (ADR-R2-12).
-        let sent = format!("{head} 0 1");
+        Ok(Some(head.to_owned()))
+    }
+
+    async fn probe_fen(&self, fen: &str) -> Option<Wdl> {
+        match self.covered_head(fen).ok()? {
+            None => Some(0),
+            // Clocks reset: the answer depends only on the fen_key (cacheable), with the 50-move
+            // rule counted from this position (ADR-R2-12).
+            Some(head) => self.search(&head, 0).await,
+        }
+    }
+
+    /// Distance to zeroing (plies to a capture, pawn move or mate with best play, Syzygy's sign
+    /// convention: positive when the side to move wins, negative when it loses, 0 for a draw),
+    /// counted from this position with a fresh 50-move clock. `None` when the tables cannot
+    /// answer, as [`TablebaseProbe::probe`]. A win needing more than 99 plies (cursed) is 0, as
+    /// its WDL.
+    ///
+    /// Stockfish does not print DTZ, but its root rule uses it: with halfmove clock `h` the
+    /// result stays a win (or a loss) only while `|dtz| + h <= 100`, and turns into a cursed win
+    /// (blessed loss), read as 0, past that. The largest `h` in `0..=99` that keeps the result is
+    /// found by bisection (7 searches) and gives `|dtz| = 100 - h`. The rule was measured on
+    /// Stockfish 19 against the Lichess API values (ADR-R2-12). Meant for drills, not for the
+    /// per-move pipeline.
+    pub async fn probe_dtz(&self, fen: &str) -> Option<i32> {
+        let Some(head) = self.covered_head(fen).ok()? else {
+            return Some(0);
+        };
+        let wdl = self.search(&head, 0).await?;
+        if wdl == 0 {
+            return Some(0);
+        }
+        // Largest clock in 0..=99 that still gives `wdl` (the result is monotone in the clock).
+        let (mut lo, mut hi) = (0_i32, 100_i32);
+        while hi - lo > 1 {
+            let mid = (lo + hi) / 2;
+            if self.search(&head, mid).await? == wdl {
+                lo = mid;
+            } else {
+                hi = mid;
+            }
+        }
+        Some(i32::from(wdl) * (100 - lo))
+    }
+
+    /// One search of `head` (a FEN without clocks) with halfmove clock `halfmove`.
+    async fn search(&self, head: &str, halfmove: i32) -> Option<Wdl> {
+        let start = self.start.as_ref()?;
+        let sent = format!("{head} {halfmove} 1");
         let opts = AnalyseOptions {
             nodes: self.nodes,
             multipv: 1,
@@ -183,6 +244,24 @@ impl SyzygyPool {
             }
         }
         None
+    }
+}
+
+/// Whether the local tables can answer at all.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TablebaseStatus {
+    /// `tables` `.rtbw` files were found and the engines started.
+    Available { tables: usize },
+    /// No `.rtbw` file (or no directory): every probe answers `None`, analysis goes on.
+    Unavailable,
+}
+
+impl TablebaseStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            TablebaseStatus::Available { .. } => "available",
+            TablebaseStatus::Unavailable => "unavailable",
+        }
     }
 }
 

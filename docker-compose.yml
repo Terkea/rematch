@@ -236,6 +236,11 @@ services:
       # Engines (and analyses at once). Empty: min(cores - 2, 8). See .env.example.
       WORKER_POOL_SIZE: ${WORKER_POOL_SIZE:-}
       RUST_LOG: ${RUST_LOG:-info}
+      # R2 T23 (ADR-R2-12): the 3-4-5 Syzygy tables, read-only. Without them the tablebase probe
+      # is unavailable and analysis goes on.
+      SYZYGY_PATH: /work/data/syzygy
+    volumes:
+      - ./data/syzygy:/work/data/syzygy:ro
     depends_on:
       postgres:
         condition: service_healthy
