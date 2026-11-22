@@ -48,7 +48,7 @@ export function Header({
 
   return (
     <header data-app-chrome="" className="sticky top-0 z-40 bg-paper">
-      <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 px-(--space-gutter) pt-3 md:h-16 md:flex-nowrap md:pt-0">
+      <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-4 px-(--space-gutter) md:gap-x-6 pt-3 md:h-16 md:flex-nowrap md:pt-0">
         <Link
           href="/"
           className="flex h-10 shrink-0 items-center rounded-field font-serif text-xl font-semibold whitespace-nowrap text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
@@ -86,28 +86,36 @@ export function Header({
           </ul>
         </nav>
 
-        <div className="ml-auto flex min-w-0 items-center gap-2">
+        {/* A zero basis: on a phone this group never wraps under the wordmark, it takes the rest
+            of the row; only the activity line gives way (I7). */}
+        <div className="group/right flex min-w-0 flex-1 basis-0 items-center justify-end gap-2">
           <div data-slot="activity" className="flex min-w-0 items-center empty:hidden">
             {activity}
           </div>
-          <Button
-            variant="quiet"
-            size="sm"
-            onClick={() => setMenuOpen(true)}
-            className="max-sm:w-8 max-sm:px-0"
-          >
-            <Icon icon={MagnifyingGlassIcon} />
-            <span className="max-sm:sr-only">Search</span>
-            <Kbd className="max-sm:hidden">Ctrl K</Kbd>
-          </Button>
-          <ThemeToggle />
-          <UserMenu
-            email={email}
-            name={name}
-            signOutTo={signOutTo}
-            morePages={sections.filter((item) => !onPhoneRow(item.href))}
-            pathname={pathname}
-          />
+          <div className="flex shrink-0 items-center gap-2">
+            <Button
+              variant="quiet"
+              size="sm"
+              onClick={() => setMenuOpen(true)}
+              className="max-sm:w-8 max-sm:px-0"
+            >
+              <Icon icon={MagnifyingGlassIcon} />
+              {/* Beside the one-row nav the icon and Ctrl K say it, and while background work shows
+                there the icon alone; the word stays for AT. */}
+              <span className="max-sm:sr-only md:sr-only">Search</span>
+              <Kbd className="max-sm:hidden md:group-has-[[data-slot=activity-indicator]]/right:hidden">
+                Ctrl K
+              </Kbd>
+            </Button>
+            <ThemeToggle />
+            <UserMenu
+              email={email}
+              name={name}
+              signOutTo={signOutTo}
+              morePages={sections.filter((item) => !onPhoneRow(item.href))}
+              pathname={pathname}
+            />
+          </div>
         </div>
       </div>
       <NavCommandMenu open={menuOpen} onOpenChange={setMenuOpen} onSignOut={signOut.run} />

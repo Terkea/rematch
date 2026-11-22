@@ -1,6 +1,7 @@
 "use client";
 
 import { Icon, WarningCircleIcon } from "@ci/ui/icons";
+import { cn } from "@ci/ui/lib";
 import { dur, ease, motion, useReducedMotion } from "@ci/ui/motion";
 import {
   Button,
@@ -114,7 +115,11 @@ function WorkLine({
         </span>
       ) : null}
       <span className="sr-only sm:not-sr-only md:sr-only">{text}</span>
-      <span aria-hidden="true" className="truncate sm:hidden md:inline">
+      {/* On a phone the stroke stands for a count, which a squeezed row would cut short. */}
+      <span
+        aria-hidden="true"
+        className={cn("truncate sm:hidden md:inline", fraction !== null && "max-sm:hidden")}
+      >
         {short}
       </span>
     </span>

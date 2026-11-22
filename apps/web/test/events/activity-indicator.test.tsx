@@ -161,6 +161,8 @@ describe("ActivityIndicator", () => {
       // Never wider than the room it is given: it truncates instead of pushing the wordmark.
       expect(line?.className).toMatch(/(^| )min-w-0( |$)/);
       expect(short.className).toMatch(/(^| )truncate( |$)/);
+      // On a phone a stroke stands for the count, which a squeezed row would cut to "50…".
+      expect(short.className).toMatch(/(^| )max-sm:hidden( |$)/);
     });
 
     it("an import from the stream comes first", async () => {
