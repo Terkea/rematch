@@ -4,7 +4,10 @@
 //! - a binomial key is present only with at least one opportunity (absent = no evidence);
 //! - EPL (`ΔW / 100`) is attributed once per move by [`EPL_PRECEDENCE`]: the first key in that
 //!   list that claims a move takes its ΔW, the later ones get 0 for it. Keys outside the list keep
-//!   the ΔW of their own events (W9a, W9b, W9c, W11) or their game-level cost (W5, W6);
+//!   the ΔW of their own events (W9a, W9b, W9c, W11) or their game-level cost (W5, W6). Each is
+//!   computed independently of every other key, so there is no order for the result to depend
+//!   on. Their EPL overlaps the precedence keys' and each other's, so consumers must never sum
+//!   EPL across keys outside `EPL_PRECEDENCE` (ADR-R2-4 §8);
 //! - `exemplar_plies` are the event plies by ΔW descending (ties by ply);
 //! - series: every binomial key, `motif.missed:*`, `motif.allowed:*`, `endgame:*`, `opening:*`.
 
@@ -32,6 +35,8 @@ pub struct ObservationScan {
     pub invalid_difficulty: u32,
     /// Eligible own moves without a best line; any of them leaves W3 and W10 out for the game.
     pub moves_without_best_line: u32,
+    /// Moves dropped because their ply appears more than once (all copies dropped).
+    pub duplicate_plies: u32,
     /// `ctx.score` missing or not 1 / 0.5 / 0: no episode, endgame or opening evidence.
     pub invalid_score: bool,
     /// `t_win` not finite or outside (50, 100]: no winning episode.
@@ -131,6 +136,7 @@ pub fn observe_game_counted(game: &AnalysedGame, t_win: f64) -> ObservationScan 
         invalid_tablebase: v.counts.invalid_tablebase,
         invalid_difficulty: v.counts.invalid_difficulty,
         moves_without_best_line: v.counts.moves_without_best_line,
+        duplicate_plies: v.counts.duplicate_plies,
         invalid_score,
         invalid_t_win: valid_t_win.is_none(),
     }

@@ -872,3 +872,238 @@ fn tilt_splits_residuals() {
     assert_eq!(split.invalid, 1);
     assert_eq!(tilt_residual_difference(&[]), (vec![], vec![]));
 }
+
+// ---------------------------------------------------------------- fix round 1: honesty filters
+
+#[test]
+fn w3_coverage_guard_bites_on_a_real_tactic() {
+    // A missed fork on own move 15, so W3 and motif.missed:fork have evidence...
+    let tactic = with_move(make_game(), own(15), |m| {
+        lose(m, 16.0);
+        m.f.best = Some(line(3.0, Some(2), None, &[MotifTag::Fork]));
+    });
+    let o = obs(&tactic);
+    assert_eq!(ev(&o, W3Shallow), (1, 1));
+    assert!(series(&o, "motif.missed:fork").is_some());
+    // ...until another eligible own move lacks its best line: then W3 is left out entirely.
+    let gap = with_move(tactic, own(20), |m| m.f.best = None);
+    let o = obs(&gap);
+    assert!(!o.binomial.contains_key(&W3Shallow));
+    assert!(!o.binomial.contains_key(&W3Deep));
+    assert!(series(&o, "motif.missed:fork").is_none());
+    // A decided move without a best line does not count against coverage.
+    let decided = with_move(gap, own(20), |m| set_w(m, 95.0, 95.0));
+    assert_eq!(ev(&obs(&decided), W3Shallow), (1, 1));
+}
+
+#[test]
+fn motif_allowed_leaves_out_decisive_moves_without_a_refutation() {
+    let g = with_move(make_game(), own(15), |m| {
+        lose(m, 20.0);
+        m.f.refutation = None;
+    });
+    let o = obs(&g);
+    for t in ["fork", "pin", "hangingPiece"] {
+        let s = series(&o, &format!("motif.allowed:{t}")).unwrap();
+        assert_eq!((s.events, s.opportunities), (0, 29), "{t}");
+    }
+    // A non-decisive move without a refutation is still a computable opportunity.
+    let g = with_move(make_game(), own(15), |m| m.f.refutation = None);
+    let s = series(&obs(&g), "motif.allowed:fork").map(|s| s.opportunities);
+    assert_eq!(s, Some(30));
+}
+
+#[test]
+fn w9c_unknown_criticality_is_no_opportunity() {
+    // Without MultiPV, `is_critical` is None on almost every move: none of them may enter W9c.
+    let mut g = make_game();
+    for m in &mut g.moves {
+        m.f.is_critical = None;
+    }
+    assert!(!obs(&g).binomial.contains_key(&W9c));
+    let g = with_move(g, own(20), |m| {
+        m.f.is_critical = Some(true);
+        m.rec.time_spent = Some(1.0);
+        lose(m, 12.0);
+    });
+    assert_eq!(ev(&obs(&g), W9c), (1, 1));
+}
+
+// ---------------------------------------------------------------- fix round 1: boundaries
+
+#[test]
+fn eligibility_boundary_is_strictly_under_40_from_50() {
+    for (w, eligible) in [(89.9, true), (90.0, false), (10.1, true), (10.0, false)] {
+        let g = with_move(make_game(), own(15), |m| set_w(m, w, w));
+        let opps = if eligible { 30 } else { 29 };
+        assert_eq!(ev(&obs(&g), W1), (0, opps), "W_before {w}");
+    }
+}
+
+#[test]
+fn decisive_boundary_is_15() {
+    for (dw, event) in [(15.0, 1), (14.9, 0)] {
+        let g = with_move(make_game(), own(15), |m| {
+            lose(m, dw);
+            m.f.refutation = Some(line(3.0, Some(3), None, &[]));
+        });
+        assert_eq!(ev(&obs(&g), W1), (event, 30), "ΔW {dw}");
+    }
+}
+
+#[test]
+fn w4_missed_includes_mate_in_4() {
+    let g = with_move(make_game(), own(15), |m| {
+        set_w(m, 97.0, 85.0);
+        m.score_before = EngineScore::Mate(4);
+        m.score_after = EngineScore::Cp(400);
+    });
+    assert_eq!(ev(&obs(&g), W4Missed), (1, 1));
+}
+
+#[test]
+fn w5_and_w6_thresholds_are_inclusive() {
+    for (w, present) in [(85.0, true), (84.9, false)] {
+        let mut g = make_game();
+        for k in 11..=13 {
+            g = with_move(g, own(k), |m| set_w(m, w, w));
+        }
+        assert_eq!(obs(&g).binomial.contains_key(&W5), present, "W {w}");
+    }
+    for (w, present) in [(15.0, true), (15.1, false)] {
+        let mut g = make_game();
+        for k in 11..=13 {
+            g = with_move(g, own(k), |m| set_w(m, w, w));
+        }
+        assert_eq!(obs(&g).binomial.contains_key(&W6), present, "W {w}");
+    }
+}
+
+#[test]
+fn w7_boundaries() {
+    // A trap at ply 19 (the player's last move by ply 20) counts.
+    let g = with_move(make_game(), at_ply(19), |m| lose(m, 20.0));
+    assert_eq!(ev(&obs(&g), W7Traps), (1, 1));
+    // For Black, ply 20 is an own move and still a trap; ply 22 is not.
+    for (ply, event) in [(20, 1), (22, 0)] {
+        let mut g = with_move(make_game(), at_ply(ply), |m| lose(m, 20.0));
+        g.ctx.player_color = chess_core::Color::Black;
+        assert_eq!(ev(&obs(&g), W7Traps), (event, 1), "Black ply {ply}");
+    }
+    // Opening-end W 40 is "worse", 40.1 is not. Ply 20 is Black's: player W = 100 - Black's W.
+    for (black_w, event) in [(60.0, 1), (60.1, 1), (59.9, 0)] {
+        let g = with_move(make_game(), at_ply(20), |m| set_w(m, 50.0, black_w));
+        assert_eq!(ev(&obs(&g), W7Prep), (event, 1), "Black W {black_w}");
+    }
+}
+
+#[test]
+fn w7_prep_exemplar_is_the_last_opening_ply() {
+    let g = with_move(make_game(), at_ply(20), |m| set_w(m, 50.0, 65.0));
+    assert_eq!(key(&obs(&g), W7Prep).exemplar_plies, vec![20]);
+    let g = with_move(make_game(), at_ply(20), |m| set_w(m, 50.0, 55.0));
+    assert!(key(&obs(&g), W7Prep).exemplar_plies.is_empty());
+}
+
+#[test]
+fn w9b_clock_boundary_is_strictly_under_30() {
+    for (clock, opp) in [(29.9, true), (30.0, false), (30.1, false)] {
+        let g = with_move(make_game(), own(20), |m| m.rec.clock_before = Some(clock));
+        assert_eq!(obs(&g).binomial.contains_key(&W9b), opp, "clock {clock}");
+    }
+}
+
+#[test]
+fn w9c_rush_boundary_is_strictly_under_half_the_median() {
+    // The median own time spent is 5, so the bound is 2.5.
+    for (t, event) in [(2.4, 1), (2.5, 0)] {
+        let g = with_move(make_game(), own(20), |m| {
+            m.f.is_critical = Some(true);
+            m.rec.time_spent = Some(t);
+            lose(m, 12.0);
+        });
+        assert_eq!(ev(&obs(&g), W9c), (event, 1), "time {t}");
+    }
+}
+
+#[test]
+fn w10_boundaries() {
+    for (cp, opps) in [(150, 20), (-150, 20), (151, 19), (-151, 19)] {
+        let g = with_move(make_game(), own(20), |m| {
+            m.score_before = EngineScore::Cp(cp)
+        });
+        assert_eq!(ev(&obs(&g), W10), (0, opps), "cp {cp}");
+    }
+    for (dw, event) in [(5.0, 1), (4.9, 0)] {
+        let g = with_move(make_game(), own(20), |m| lose(m, dw));
+        assert_eq!(ev(&obs(&g), W10), (event, 20), "ΔW {dw}");
+    }
+}
+
+#[test]
+fn w11_p_ok_boundary_is_inclusive() {
+    for (p, present) in [(0.8, true), (0.79, false), (0.81, true)] {
+        let g = with_move(make_game(), own(20), |m| {
+            m.raw.as_mut().unwrap().difficulty = Some(maia(p));
+        });
+        assert_eq!(obs(&g).binomial.contains_key(&W11), present, "p_ok {p}");
+    }
+}
+
+#[test]
+fn endgame_series_boundaries() {
+    let s = |entry, score| series(&obs(&rook_endgame(entry, score)), "endgame:rook").cloned();
+    assert_eq!(s(70.0, 0.5).unwrap().events, 1);
+    assert_eq!(s(69.9, 0.5).unwrap().events, 0);
+    assert_eq!(
+        s(30.0, 0.0).map(|r| (r.events, r.opportunities)),
+        Some((1, 1))
+    );
+    assert!(s(29.9, 0.0).is_none());
+}
+
+// ---------------------------------------------------------------- fix round 1: invalid input
+
+#[test]
+fn an_invalid_own_move_breaks_an_episode_run() {
+    // 90, invalid, 90, 90: only two valid moves after the break, so no 3-move winning episode.
+    let mut g = make_game();
+    for k in [11, 13, 14] {
+        g = with_move(g, own(k), |m| set_w(m, 90.0, 90.0));
+    }
+    let g = with_move(g, own(12), |m| m.rec.win_before = f64::NAN);
+    let scan = observe_game_counted(&g, T_WIN);
+    assert!(!scan.observation.binomial.contains_key(&W5));
+    assert_eq!(scan.skipped_moves, 1);
+    // With the middle move valid, the run is 4 moves long.
+    let g = with_move(g, own(12), |m| set_w(m, 90.0, 90.0));
+    assert!(obs(&g).binomial.contains_key(&W5));
+    // An invalid move whose W values look fine (out-of-range score) breaks the run too.
+    let g = with_move(g, own(12), |m| m.score_before = EngineScore::Cp(1_000_000));
+    let scan = observe_game_counted(&g, T_WIN);
+    assert!(!scan.observation.binomial.contains_key(&W5));
+    assert_eq!(scan.skipped_moves, 1);
+}
+
+#[test]
+fn a_skipped_early_own_move_makes_no_trap_unknown() {
+    let g = with_move(make_game(), at_ply(9), |m| m.rec.delta_w = f64::NAN);
+    assert!(!obs(&g).binomial.contains_key(&W7Traps));
+    // A trap found elsewhere by ply 20 still counts.
+    let g = with_move(g, at_ply(15), |m| lose(m, 20.0));
+    assert_eq!(ev(&obs(&g), W7Traps), (1, 1));
+}
+
+#[test]
+fn duplicate_plies_are_dropped_and_counted() {
+    let mut g = w1_game();
+    let mut copy = g.moves[own(15)].clone();
+    lose(&mut copy, 3.0);
+    g.moves.push(copy);
+    let scan = observe_game_counted(&g, T_WIN);
+    assert_eq!(scan.duplicate_plies, 2);
+    assert_eq!(ev(&scan.observation, W1), (0, 29));
+    let mut r = g.clone();
+    r.moves.reverse();
+    assert_eq!(observe_game(&r, T_WIN), scan.observation);
+}

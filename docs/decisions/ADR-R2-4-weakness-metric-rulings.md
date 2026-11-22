@@ -29,6 +29,8 @@ Improvement-engine §6.2 defines the weaknesses W1-W12 in prose. TS M2 Task 7 (A
 
    W7.prep claims the player's opening-phase moves when its event fires, so its EPL is the opening loss that no higher key claimed. W9a's EPL is the player's ΔW from the first low-clock ply on.
 
+   The keys outside the precedence list (W5, W6, W9a, W9b, W9c, W11) are each computed on their own, independently of every other key and of input order. So their EPL has no attribution order: it overlaps the precedence keys' EPL and each other's. For example, a decisive move under 30 s that hung a piece counts in W1, W9b and possibly W9a and W11. Consumers (T31, T34) must never sum EPL across keys outside `EPL_PRECEDENCE` (improvement-engine §5.3 already warns that such a total overstates the loss). Only the precedence keys' EPLs are disjoint and may be added up.
+
 ### R2 honesty rulings
 
 9. **Opportunities are moves whose event can be decided.** A missing input counts as unknown, never as a non-event. When the missing value cannot change the answer, the move stays an opportunity.
@@ -39,7 +41,13 @@ Improvement-engine §6.2 defines the weaknesses W1-W12 in prose. TS M2 Task 7 (A
    - **W9:** W9a and W9b need a valid clock, and W9c needs a valid time spent.
 10. **W3 and W10 need complete best-line coverage.** Enrichment fills a missing PV only on critical plies (R2 Task 25: ΔW ≥ 5, or after a ΔW ≥ 10 ply). In a game whose evals came from Lichess without PVs, the moves that have a best line were therefore selected on their outcome, and a denominator built from them would push the W3 and W10 rates towards 100%. If any eligible own move lacks its best line, the game reports no W3, no W10 and no `motif.missed:*`, and counts the missing lines in `moves_without_best_line`. Games analysed by our own Stockfish have a PV on every ply and are unaffected.
 11. **MultiPV-only flags keep TS's "≠ true".** W3 requires `in_top2 != Some(true)`, and W10 requires `is_critical != Some(true)`. MultiPV runs only on critical plies, so requiring `Some(false)` would select on the outcome in the same way as ruling 10.
-12. **W9d never substitutes a gap.** TS used `multipvGap ?? 0`. R2 uses only own moves that have both a time spent and a MultiPV gap, needs at least 10 of them, and otherwise reports `None`. W9d uses `stats::correlation::spearman` from Task 11, which merged before this task. The plan asked for a local helper only to avoid waiting on Lane P3.
+
+    **Caveat:** `is_critical` and `multipv_gap` exist only on T25's critical plies (ΔW ≥ 5, or after an opponent ΔW ≥ 10), so these values are conditional on that selection:
+    - W9c's denominator (`is_critical == Some(true)`) consists mostly of error plies, so its rate is a rate among selected plies.
+    - W10's "≠ true" drops critical events but keeps critical non-events, whose flag is unknown.
+
+    W9c and W10 are therefore comparable only with band references built by the same enrichment (same selection rule and `ENRICHMENT_PROTOCOL`; ADR-R2-14).
+12. **W9d never substitutes a gap.** TS used `multipvGap ?? 0`. R2 uses only own moves that have both a time spent and a MultiPV gap, needs at least 10 of them, and otherwise reports `None`. W9d uses `stats::correlation::spearman` from Task 11, which merged before this task. The plan asked for a local helper only to avoid waiting on Lane P3. Because the gap exists only on critical plies (ruling 11), W9d's ρ is conditional on that selection. It is comparable only with references built by the same enrichment, and it is not a correlation over all moves.
 13. **Difficulty is Maia only.** W11 passes every value through `features::maia_difficulty` again. A non-Maia model or an invalid probability is skipped and counted (`invalid_difficulty`). Plies ≤ 10 have no difficulty. Nothing is ever substituted.
 14. **Game-level keys need their evidence.** Each of these keys gets its single opportunity only when its condition holds; otherwise the key is absent.
 
@@ -64,7 +72,25 @@ Improvement-engine §6.2 defines the weaknesses W1-W12 in prose. TS M2 Task 7 (A
     - invalid difficulty;
     - an unknown result.
 
-    Moves are read in ply order whatever the input order. Every EPL is finite.
+    Moves are read in ply order whatever the input order. A ply that appears more than once is dropped in every copy and counted (`duplicate_plies`). Keeping "the first" copy would depend on input order, and the copies contradict each other.
+
+    An invalid own move is unknown, never a non-event:
+    - it breaks an episode run (it is passed to the episode scan with W = NaN, as T7 requires), so it cannot silently join a run or drop out from between two run moves;
+    - a skipped own move by ply 20 makes "no trap" unknown, so W7.traps has no opportunity unless a trap was found on a valid move.
+
+    Every EPL is finite.
+
+17. **Exemplars.** The binomial keys give these exemplar plies:
+
+    | Key | Exemplar plies |
+    |---|---|
+    | Per-move keys | their event plies, by ΔW descending, ties by ply |
+    | W5 | the drop ply |
+    | W9a | the first low-clock ply |
+    | W7.prep | the last opening ply, the position the player came out of the opening with |
+    | W6 | none |
+
+    W6 has no exemplar because a lost losing episode has no single "mistake" ply to show. The brief asks only for "event plies by ΔW descending", and W6 is a game-level outcome.
 
 ### Side effects of Task 4's whole-PV mate detection
 

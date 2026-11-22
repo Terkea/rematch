@@ -104,6 +104,9 @@ pub struct ViewCounts {
     pub invalid_difficulty: u32,
     /// Eligible own moves without a best line (W3 and W10 are then left out).
     pub moves_without_best_line: u32,
+    /// Moves dropped because their ply appears more than once (every copy is dropped, so the
+    /// result does not depend on input order).
+    pub duplicate_plies: u32,
 }
 
 /// The game as the detectors see it.
@@ -114,6 +117,8 @@ pub struct GameView<'a> {
     pub all: Vec<&'a EnrichedMove>,
     /// The player's valid moves, in ply order.
     pub own: Vec<OwnMove<'a>>,
+    /// Plies of the player's moves that failed validation (unknown, not non-events).
+    pub skipped_own_plies: Vec<u32>,
     pub player: Color,
     /// From `ctx.score` (1, 0.5 or 0); `None` when unknown or invalid.
     pub outcome: Option<Outcome>,
@@ -149,10 +154,21 @@ impl<'a> GameView<'a> {
         let mut all: Vec<&EnrichedMove> = game.moves.iter().collect();
         all.sort_by_key(|m| m.rec.ply);
         let mut counts = ViewCounts::default();
+        let before = all.len();
+        let mut per_ply: BTreeMap<u32, u32> = BTreeMap::new();
+        for m in &all {
+            *per_ply.entry(m.rec.ply).or_default() += 1;
+        }
+        all.retain(|m| per_ply[&m.rec.ply] == 1);
+        counts.duplicate_plies = (before - all.len()) as u32;
         let mut own = Vec::new();
+        let mut skipped_own_plies = Vec::new();
         for m in &all {
             if !move_is_valid(m) {
                 counts.skipped_moves += 1;
+                if m.rec.color == player {
+                    skipped_own_plies.push(m.rec.ply);
+                }
                 continue;
             }
             if m.rec.color != player {
@@ -202,6 +218,7 @@ impl<'a> GameView<'a> {
             game,
             all,
             own,
+            skipped_own_plies,
             player,
             outcome: game.ctx.score.and_then(Outcome::from_score),
             best_lines_complete: counts.moves_without_best_line == 0,
@@ -224,12 +241,17 @@ impl<'a> GameView<'a> {
 
     /// Player W after the last opening ply; `None` without an opening ply or when it is invalid.
     pub fn win_at_opening_end(&self) -> Option<f64> {
+        self.opening_end().map(|(_, w)| w)
+    }
+
+    /// The last opening ply and the player's W after it.
+    pub fn opening_end(&self) -> Option<(u32, f64)> {
         let last = self
             .all
             .iter()
             .rev()
             .find(|m| m.rec.phase == Phase::Opening)?;
-        move_is_valid(last).then(|| self.player_pov(last, last.rec.win_after))
+        move_is_valid(last).then(|| (last.rec.ply, self.player_pov(last, last.rec.win_after)))
     }
 
     /// The first endgame ply and the player's W before it; `None` without one or when invalid.
@@ -279,21 +301,23 @@ fn tactic(l: &crate::types::LineAnalysis) -> bool {
     l.swing.gain >= TACTIC_MIN_GAIN || l.swing.mate_in.is_some()
 }
 
+/// W1 and `motif.allowed:*` opportunity: an eligible move whose refutation is known, or that is
+/// not decisive (then no refutation can make it an event).
+pub fn refutation_opportunity(o: &OwnMove) -> bool {
+    o.eligible && (o.m.f.refutation.is_some() || !o.decisive)
+}
+
 /// W1 hung material: eligible moves; decisive with a refutation winning ≥ 2 within 3 plies and no
 /// mate. A decisive move without a refutation line is not computable.
 pub fn w1(v: &GameView) -> Detection {
-    Detection::per_move(
-        v.eligible()
-            .filter(|o| o.m.f.refutation.is_some() || !o.decisive),
-        |o| {
-            o.decisive
-                && o.m.f.refutation.as_ref().is_some_and(|r| {
-                    r.swing.gain >= TACTIC_MIN_GAIN
-                        && r.swing.depth.is_some_and(|d| d <= W1_MAX_DEPTH)
-                        && r.swing.mate_in.is_none()
-                })
-        },
-    )
+    Detection::per_move(v.own.iter().filter(|o| refutation_opportunity(o)), |o| {
+        o.decisive
+            && o.m.f.refutation.as_ref().is_some_and(|r| {
+                r.swing.gain >= TACTIC_MIN_GAIN
+                    && r.swing.depth.is_some_and(|d| d <= W1_MAX_DEPTH)
+                    && r.swing.mate_in.is_none()
+            })
+    })
 }
 
 /// W2 missed threat: eligible moves where a threat existed; decisive and not addressed.
@@ -363,7 +387,21 @@ pub fn episodes(
     Option<crate::weakness::episodes::Episode>,
     Option<crate::weakness::episodes::Episode>,
 ) {
-    let recs: Vec<_> = v.own.iter().map(|o| o.m.rec.clone()).collect();
+    // Every own move, invalid ones with W = NaN: an invalid move breaks a run (T7); it never
+    // silently drops out from between two run moves.
+    let recs: Vec<_> = v
+        .all
+        .iter()
+        .filter(|m| m.rec.color == v.player)
+        .map(|m| {
+            let mut r = m.rec.clone();
+            if !move_is_valid(m) {
+                r.win_before = f64::NAN;
+                r.win_after = f64::NAN;
+            }
+            r
+        })
+        .collect();
     let opts = EpisodeOpts {
         t_win: t_win.unwrap_or(f64::INFINITY),
         ..EpisodeOpts::default()
@@ -430,6 +468,10 @@ pub fn w7_traps(v: &GameView) -> Detection {
         .filter(|o| o.decisive)
         .map(|o| o.at())
         .collect();
+    // A skipped early own move could have been the trap: "no trap" is then unknown.
+    if claims.is_empty() && v.skipped_own_plies.iter().any(|p| *p <= TRAP_MAX_PLY) {
+        return Detection::default();
+    }
     Detection {
         opportunities: 1,
         events: u32::from(!claims.is_empty()),
@@ -442,7 +484,7 @@ pub fn w7_traps(v: &GameView) -> Detection {
 /// W7.prep: one opportunity when the player's W at the opening end is known; event W ≤ 40. Its
 /// EPL is the player's opening-phase ΔW (moves not claimed by a higher-precedence key).
 pub fn w7_prep(v: &GameView) -> Detection {
-    let Some(w) = v.win_at_opening_end() else {
+    let Some((end_ply, w)) = v.opening_end() else {
         return Detection::default();
     };
     let worse = w <= PREP_MAX_WIN;
@@ -459,7 +501,8 @@ pub fn w7_prep(v: &GameView) -> Detection {
             vec![]
         },
         fixed_epl: None,
-        exemplars: vec![],
+        // The position the player came out of the opening with.
+        exemplars: if worse { vec![(end_ply, 0.0)] } else { vec![] },
     }
 }
 
@@ -630,10 +673,7 @@ pub fn motif_missed(v: &GameView) -> MotifCounts {
 /// `motif.allowed:<t>`: every W1 opportunity, for every tag; events are decisive moves whose
 /// refutation has `t`.
 pub fn motif_allowed(v: &GameView) -> MotifCounts {
-    let opps: Vec<&OwnMove> = v
-        .eligible()
-        .filter(|o| o.m.f.refutation.is_some() || !o.decisive)
-        .collect();
+    let opps: Vec<&OwnMove> = v.own.iter().filter(|o| refutation_opportunity(o)).collect();
     let mut out = MotifCounts::new();
     if opps.is_empty() {
         return out;
