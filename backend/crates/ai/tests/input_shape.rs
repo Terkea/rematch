@@ -21,7 +21,7 @@ fn ts_export() -> Value {
 fn coaching_input_shape_matches_ts_export() {
     let ts = ts_export();
     assert_eq!(ts["source"], "m3/base@4ff8220");
-    let rs = json_schema();
+    let rs = shape::v1_shape(json_schema());
     // R2's walker: types, enums, bounds, required, nullability, unions, additionalProperties.
     let w = shape::compare_schemas(&ts["schema"], &rs);
     assert!(

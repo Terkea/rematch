@@ -3,8 +3,13 @@
 //! The schemars attributes in `types.rs` and the checks in `validate.rs` both read these, so the
 //! generated schema and `CoachingInput::validate` cannot drift apart.
 
-/// zod `z.literal("coaching-input-v1")`.
-pub const INPUT_VERSION: &str = "coaching-input-v1";
+/// The version the builder writes (ADR 0084): v1 plus `byColor` and `benchmark`.
+pub const INPUT_VERSION: &str = "coaching-input-v2";
+/// zod `z.literal("coaching-input-v1")`: the M3 contract, still accepted when parsing.
+pub const INPUT_VERSION_V1: &str = "coaching-input-v1";
+/// v2: games a colour needs (in its window) before its numbers are stated (the honesty rule of
+/// the colour split, ADR 0082; the web's `KPI_MIN_GAMES`).
+pub const MIN_COLOR_GAMES: u32 = 10;
 
 /// zod `LIMITS`: size bounds applied at the trust boundary. Lengths count Unicode code points, as
 /// zod 4.6 (`util.codePointLength`) and JSON Schema's `maxLength` do.
@@ -28,6 +33,8 @@ pub struct Limits {
     pub exemplars_per_item: usize,
     pub examples_per_opening: usize,
     pub examples_per_change: usize,
+    /// v2: weakness rows per colour in `byColor`.
+    pub color_weaknesses: usize,
 }
 
 pub const LIMITS: Limits = Limits {
@@ -49,6 +56,7 @@ pub const LIMITS: Limits = Limits {
     exemplars_per_item: 5,
     examples_per_opening: 3,
     examples_per_change: 6,
+    color_weaknesses: 5,
 };
 
 /// zod `UCI_RE`.

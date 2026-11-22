@@ -78,7 +78,8 @@ fn exemplar(some: bool, black: bool) -> ExemplarPosition {
     }
 }
 
-/// A contract value built in Rust with every `Option` either `Some` or `None`.
+/// A v1 contract value built in Rust with every `Option` either `Some` or `None` (the zod
+/// schema is v1's; the v2 additions are tested in `v2.rs`).
 fn full_input(some: bool) -> CoachingInput {
     CoachingInput {
         input_version: InputVersion::V1,
@@ -201,6 +202,8 @@ fn full_input(some: bool) -> CoachingInput {
                 },
             ],
         }],
+        by_color: None,
+        benchmark: None,
     }
 }
 
@@ -275,7 +278,7 @@ fn ts_schema_rejects_what_rust_rejects() {
         "/openings/0/avgEvalAtOpeningEnd",
     ));
     let mut v = sample_value();
-    v["inputVersion"] = json!("coaching-input-v2");
+    v["inputVersion"] = json!("coaching-input-v3");
     cases.push(("other input version", v, "/inputVersion"));
 
     for (name, v, pointer) in cases {
@@ -331,12 +334,12 @@ fn rust_schema_requires_every_property_and_keeps_null() {
 
 #[path = "support/shape.rs"]
 mod shape;
-use shape::walk;
+use shape::{v1_shape, walk};
 
 #[test]
 fn schemars_schema_matches_ts_schema_shape() {
     let ts = ts_schema();
-    let rs = json_schema();
+    let rs = v1_shape(json_schema());
     assert_eq!(
         rs["$schema"],
         json!("https://json-schema.org/draft/2020-12/schema")
@@ -426,7 +429,7 @@ fn walker_reports_unknown_keywords_and_sibling_differences() {
 #[test]
 fn committed_schema_is_current() {
     let path = format!(
-        "{}/schema/coaching-input-v1.schema.json",
+        "{}/schema/coaching-input.schema.json",
         env!("CARGO_MANIFEST_DIR")
     );
     let generated = json_schema();
@@ -438,7 +441,7 @@ fn committed_schema_is_current() {
     let committed = read_json(&path);
     assert!(
         generated == committed,
-        "schema/coaching-input-v1.schema.json is stale: regenerate with COACHING_SCHEMA_WRITE=1 \
+        "schema/coaching-input.schema.json is stale: regenerate with COACHING_SCHEMA_WRITE=1 \
          cargo test -p coaching-input --test parity committed_schema_is_current"
     );
 }

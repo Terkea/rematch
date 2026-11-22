@@ -48,7 +48,7 @@ Every struct is `#[serde(rename_all = "camelCase", deny_unknown_fields)]`. Every
 
 Timestamps, dates and the UUID use `schema_with` functions that emit zod's exact `format`, `pattern` and `maxLength`. Unit-only enums carry no per-variant doc comments, because those would turn `enum` into a `oneOf` of consts.
 
-The output is committed as `backend/crates/coaching-input/schema/coaching-input-v1.schema.json`. `committed_schema_is_current` fails when it is stale. To regenerate it, run `COACHING_SCHEMA_WRITE=1 cargo test -p coaching-input --test parity committed_schema_is_current` in `rust-dev`.
+The output is committed as `backend/crates/coaching-input/schema/coaching-input.schema.json` (renamed with v2, ADR 0084). `committed_schema_is_current` fails when it is stale. To regenerate it, run `COACHING_SCHEMA_WRITE=1 cargo test -p coaching-input --test parity committed_schema_is_current` in `rust-dev`.
 
 ### Parity with the TS schema
 
