@@ -38,6 +38,7 @@ One file per decision: context, decision, alternatives, consequences. New decisi
 - [ADR-WEB-5. chess.com linking and location-code verification](ADR-WEB-5-chesscom-verification.md)
 - [ADR-WEB-6. Age gate, under-13 block and private defaults](ADR-WEB-6-age-gate.md)
 - [ADR-WEB-7. Design tokens, themes and self-hosted fonts](ADR-WEB-7-design-tokens.md)
+- [ADR-WEB-8. Live user events: one LISTEN per process, SSE with replay, polling fallback](ADR-WEB-8-sse-delivery.md)
 - [ADR-WEB-9. Ban lint; Impeccable not adopted, web-design-guidelines vendored](ADR-WEB-9-third-party-design-tooling.md)
 - [ADR-WEB-10. Visual QA loop: Playwright, shots, lab and critique](ADR-WEB-10-visual-qa-loop.md)
 - [ADR-WEB-11. Overlay libraries: sonner, vaul and cmdk](ADR-WEB-11-overlay-libraries.md)
