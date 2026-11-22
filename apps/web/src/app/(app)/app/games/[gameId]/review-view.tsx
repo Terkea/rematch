@@ -1,5 +1,6 @@
 "use client";
 
+import { type BoardSound, soundForSan, useBoardSounds } from "@ci/ui/audio";
 import { Board, EvalBar } from "@ci/ui/board";
 import { EvalGraph } from "@ci/ui/eval-graph";
 import { ArrowCounterClockwiseIcon, Icon, ListIcon } from "@ci/ui/icons";
@@ -78,6 +79,8 @@ export interface GameReviewViewProps {
 const URL_DEBOUNCE_MS = 150;
 /** A graph scrub reports one jump this long after it stops. */
 const SCRUB_SETTLE_MS = 150;
+/** While a key is held, step sounds are at most this far apart. */
+const REPEAT_SOUND_MS = 120;
 /** More ledger rows than this collapse to the three worst. */
 const LEDGER_MAX = 8;
 const LEDGER_COLLAPSED = 3;
@@ -124,6 +127,7 @@ function useReview(
   view: ReviewView,
   initialPly: string | undefined,
   onStep: GameReviewViewProps["onStep"],
+  playSound: (s: BoardSound) => void,
 ) {
   const [state, rawDispatch] = useReducer(
     (s: ReviewState, a: ReviewAction) => reviewReducer(view, s, a),
@@ -134,16 +138,58 @@ function useReview(
   stateRef.current = state;
   const onStepRef = useRef(onStep);
   onStepRef.current = onStep;
+  const playSoundRef = useRef(playSound);
+  playSoundRef.current = playSound;
+
+  /** The ply a graph scrub started from (updated by every reported step too). */
+  const scrubFrom = useRef(state.ply);
+  const held = useRef(false);
+  const lastSound = useRef(Number.NEGATIVE_INFINITY);
+  useEffect(() => {
+    // Capture phase, so it runs before the review's own key handler on `window`.
+    const down = (e: KeyboardEvent) => {
+      held.current = e.repeat;
+    };
+    const up = () => {
+      held.current = false;
+    };
+    window.addEventListener("keydown", down, true);
+    window.addEventListener("keyup", up, true);
+    return () => {
+      window.removeEventListener("keydown", down, true);
+      window.removeEventListener("keyup", up, true);
+    };
+  }, []);
+
+  /** One sound for a move the user stepped or jumped to; a step back sounds the move it undoes. */
+  const sound = useCallback(
+    (from: number, to: number) => {
+      if (from === to) return;
+      // A held key plays its first step, then at most one sound per REPEAT_SOUND_MS.
+      const t = performance.now();
+      if (held.current && t - lastSound.current < REPEAT_SOUND_MS) return;
+      lastSound.current = t;
+      const ply = to > from ? to : from;
+      const san = view.plies[ply - 1]?.san;
+      if (san) playSoundRef.current(soundForSan(san));
+    },
+    [view],
+  );
 
   /** Dispatch, then report the ply it lands on (when it moved). */
   const act = useCallback(
     (a: ReviewAction, kind: StepKind | null) => {
-      const next = reviewReducer(view, stateRef.current, a);
+      const prev = stateRef.current;
+      const next = reviewReducer(view, prev, a);
       rawDispatch(a);
       stateRef.current = next;
-      if (kind) onStepRef.current?.(kind, next.ply);
+      if (kind) {
+        onStepRef.current?.(kind, next.ply);
+        sound(prev.ply, next.ply);
+        scrubFrom.current = next.ply;
+      }
     },
-    [view],
+    [view, sound],
   );
 
   // Autoplay: one ply a second, stopping at the end.
@@ -180,12 +226,14 @@ function useReview(
     (ply: number) => {
       act({ type: "go", ply }, null);
       if (scrub.current) clearTimeout(scrub.current);
-      scrub.current = setTimeout(
-        () => onStepRef.current?.("jump", stateRef.current.ply),
-        SCRUB_SETTLE_MS,
-      );
+      scrub.current = setTimeout(() => {
+        onStepRef.current?.("jump", stateRef.current.ply);
+        // A scrub sounds once, when it settles, never per frame.
+        sound(scrubFrom.current, stateRef.current.ply);
+        scrubFrom.current = stateRef.current.ply;
+      }, SCRUB_SETTLE_MS);
     },
-    [act],
+    [act, sound],
   );
 
   const controls = {
@@ -213,7 +261,8 @@ function spentFor(spent: { seconds: number } | null, ply: number, flipped: boole
 }
 
 export function GameReviewView({ view, gameId, initialPly, onStep }: GameReviewViewProps) {
-  const { state, controls: c } = useReview(view, initialPly, onStep);
+  const sounds = useBoardSounds();
+  const { state, controls: c } = useReview(view, initialPly, onStep, sounds.play);
   const reducedMotion = useReducedMotion();
   // The analysis reveal (T11): while it runs it decides the shown ply and marks; the review's own
   // state already sits on the end state (the worst moment), so when it ends nothing jumps.
@@ -226,6 +275,7 @@ export function GameReviewView({ view, gameId, initialPly, onStep }: GameReviewV
   const ply = reveal.state.ply ?? state.ply;
   const wide = useWide();
   const engineId = useId();
+  const soundId = useId();
   const lastPly = view.plies.length;
   const analysed = view.status === "analysed";
 
@@ -490,6 +540,14 @@ export function GameReviewView({ view, gameId, initialPly, onStep }: GameReviewV
               ) : null}
             </div>
           </section>
+          <div className="flex items-center gap-3 text-sm text-ink-soft">
+            <Switch
+              checked={!sounds.muted}
+              onCheckedChange={(on) => sounds.setMuted(!on)}
+              aria-labelledby={soundId}
+            />
+            <span id={soundId}>Board sounds</span>
+          </div>
           {analysed ? (
             <div className="flex items-center gap-3 text-sm text-ink-soft">
               <Switch checked={showEngine} onCheckedChange={c.engine} aria-labelledby={engineId} />
