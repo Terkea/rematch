@@ -73,10 +73,11 @@ macro_rules! prompt {
     };
 }
 
-static TABLE: [Prompt; 19] = [
-    prompt!("core/system", 1),
+static TABLE: [Prompt; 20] = [
+    prompt!("core/rules", 1),
     prompt!("core/tokens", 1),
     prompt!("report/report", 1),
+    prompt!("report/output", 1),
     prompt!("report/section-overview", 1),
     prompt!("report/section-weaknesses", 1),
     prompt!("report/section-openings", 1),
@@ -111,9 +112,10 @@ pub fn load_prompt(id: &str, version: u32) -> Result<&'static Prompt, PromptErro
 
 /// The prompts a report section call can use, in hash order.
 pub const REPORT_PROMPT_SET: &[(&str, u32)] = &[
-    ("core/system", 1),
+    ("core/rules", 1),
     ("core/tokens", 1),
     ("report/report", 1),
+    ("report/output", 1),
     ("tone/b0", 1),
     ("tone/b1", 1),
     ("tone/b2", 1),

@@ -6,20 +6,22 @@ use std::collections::BTreeSet;
 use std::path::Path;
 
 use ai::generate::context::{canonical_json, canonical_json_escaped, input_hash};
-use ai::input::types::BandId;
+use ai::input::types::{BandId, CoachingInput};
 use ai::output::codes::Citation;
 use ai::prompts::{
     PROMPTS, PromptError, REPORT_PROMPT_SET, REPORT_PROMPT_VERSION, TemplateVarProblem,
     load_prompt, prompt_set_hash, render_template,
 };
-use ai::testing::{fixtures_dir, input};
+use ai::testing::{fixtures_dir, input, load_fixture};
 use ai::validator::evidence::build_evidence;
 use ai::validator::format::resolve_token;
 use ai::validator::language::{
-    RuleKind, RuleMeta, banned_phrases, no_marketing, report_text_rules,
+    RuleKind, RuleMeta, banned_phrases, engine_claims, no_causal_phrases, no_marketing,
+    no_quantity_words, report_text_rules,
 };
+use ai::validator::leaks::find_leaks;
 use ai::validator::normalize::normalize_text;
-use ai::validator::text::{TextCtx, num_format_allowed, validate_text};
+use ai::validator::text::{TextCtx, TextRules, num_format_allowed, validate_text};
 use ai::validator::tokens::{NumFormat, TokenBody, canonical_for_tokens, parse_tokens};
 use serde_json::Value;
 
@@ -32,7 +34,7 @@ fn is_hex64(s: &str) -> bool {
 /// The variables each prompt is rendered with (only the repair prompt has one).
 fn vars_for(id: &str) -> Vec<(&'static str, &'static str)> {
     if id == "repair/repair" {
-        vec![("errors", "- free_text_fact: text:\"3\"")]
+        vec![("errors", "- overview.summary: free_text_fact: text:\"3\"")]
     } else {
         Vec::new()
     }
@@ -47,15 +49,15 @@ fn rendered(id: &str) -> String {
 
 #[test]
 fn load_prompt_sha_is_64_hex_and_stable() {
-    let p = load_prompt("core/system", 1).unwrap();
+    let p = load_prompt("core/rules", 1).unwrap();
     let a = p.sha256();
     assert!(is_hex64(a), "{a}");
-    assert_eq!(a, load_prompt("core/system", 1).unwrap().sha256());
+    assert_eq!(a, load_prompt("core/rules", 1).unwrap().sha256());
     assert!(std::ptr::eq(a, p.sha256()), "computed once");
     use sha2::Digest;
     assert_eq!(a, hex::encode(sha2::Sha256::digest(p.text.as_bytes())));
     assert_ne!(a, load_prompt("core/tokens", 1).unwrap().sha256());
-    assert_eq!(p.id, "core/system");
+    assert_eq!(p.id, "core/rules");
     assert_eq!(p.version, 1);
 }
 
@@ -66,7 +68,7 @@ fn missing_prompt_is_not_found() {
         Err(PromptError::NotFound { .. })
     ));
     assert!(matches!(
-        load_prompt("core/system", 2),
+        load_prompt("core/rules", 2),
         Err(PromptError::NotFound { .. })
     ));
 }
@@ -123,8 +125,8 @@ fn prompt_files_are_lf_and_end_with_one_newline() {
 
 #[test]
 fn core_prompt_is_at_least_2400_chars() {
-    let n = load_prompt("core/system", 1).unwrap().text.chars().count();
-    assert!(n >= 2400, "core/system has {n} chars");
+    let n = load_prompt("core/rules", 1).unwrap().text.chars().count();
+    assert!(n >= 2400, "core/rules has {n} chars");
 }
 
 #[test]
@@ -143,9 +145,10 @@ fn report_prompt_set_is_the_brief_list() {
     assert_eq!(
         ids,
         [
-            "core/system",
+            "core/rules",
             "core/tokens",
             "report/report",
+            "report/output",
             "tone/b0",
             "tone/b1",
             "tone/b2",
@@ -312,7 +315,7 @@ fn report_prompts_address_the_player_as_you_and_never_by_name() {
         assert!(!t.to_ascii_lowercase().contains("username"), "{id}");
     }
     assert!(
-        load_prompt("core/system", 1)
+        load_prompt("core/rules", 1)
             .unwrap()
             .text
             .contains("\"you\"")
@@ -369,6 +372,7 @@ fn instantiate(schematic: &str) -> String {
         ("<gameId>", "li-w1-0"),
         ("<ply>", "5"),
         ("<n>", "1"),
+        ("<datePath>", "basis.windowEnd"),
         ("<path>", "basis.analysedGames"),
         ("<fmt>", "int"),
         ("<lineKey>", "w-italian"),
@@ -380,12 +384,27 @@ fn instantiate(schematic: &str) -> String {
     s
 }
 
+/// b2-rapid with its endgame area below the minimum sample (`needMore` 16), so every schematic
+/// form, the `needMore` path included, resolves against a real input.
+fn synthetic_input() -> CoachingInput {
+    let mut v = load_fixture("b2-rapid");
+    let area = v["areaScores"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|a| a["area"] == "endgame")
+        .unwrap();
+    area["sufficient"] = Value::Bool(false);
+    area["needMore"] = serde_json::json!(16);
+    serde_json::from_value(v).unwrap()
+}
+
 /// The tokens a prompt teaches, each instantiated and parsed: none may be a syntax error, and
-/// each concrete example (no `<…>` placeholder) must resolve against b2-rapid with a format its
-/// value allows.
+/// each one, schematic forms instantiated, must resolve against the synthetic input with a format
+/// its value allows.
 #[test]
 fn every_token_form_the_prompts_teach_is_accepted_by_the_validator() {
-    let ev = build_evidence(&input("b2-rapid"));
+    let ev = build_evidence(&synthetic_input());
     let mut kinds = BTreeSet::new();
     let mut formats = BTreeSet::new();
     let mut checked = 0;
@@ -408,9 +427,6 @@ fn every_token_form_the_prompts_teach_is_accepted_by_the_validator() {
                 "{}: report prompts teach no chat-only token ({raw})",
                 p.id
             );
-            if schematic {
-                continue;
-            }
             assert!(
                 resolve_token(&ev, body).is_some(),
                 "{}: {raw} does not resolve",
@@ -419,9 +435,13 @@ fn every_token_form_the_prompts_teach_is_accepted_by_the_validator() {
             if let TokenBody::Num { path, fmt } = body {
                 let v = ev.number_paths[path];
                 assert!(num_format_allowed(&ev, path, v, *fmt), "{}: {raw}", p.id);
-                formats.insert(fmt.map_or("none", NumFormat::as_str));
+                if !schematic {
+                    formats.insert(fmt.map_or("none", NumFormat::as_str));
+                }
             }
-            kinds.insert(body.kind());
+            if !schematic {
+                kinds.insert(body.kind());
+            }
             checked += 1;
         }
     }
@@ -482,4 +502,140 @@ fn token_rewrites_before_fail_and_after_pass() {
             panic!("after form rejected: {a}\n{e:?}");
         }
     }
+}
+
+/// The backtick spans of a line that contain a reference token, and how many reference tokens
+/// the line has outside every span.
+fn token_spans(line: &str) -> (Vec<String>, usize) {
+    let mut spans = Vec::new();
+    let mut inside = 0;
+    for (i, part) in line.split('`').enumerate() {
+        let n = reference_tokens(part).len();
+        if i % 2 == 1 && n > 0 {
+            spans.push(part.to_owned());
+            inside += n;
+        }
+    }
+    (spans, reference_tokens(line).len() - inside)
+}
+
+/// Every example a prompt shows is valid in its own context: each reference token sits in a
+/// backtick span (or in a rewrite `After:` line, checked by `token_rewrites_before_fail_and_after_pass`),
+/// and each span, schematic forms instantiated, passes `validate_text` against the synthetic
+/// input with the positions it refers to cited (a lone `sq` example cites the prompt's example
+/// positions). This runs the square-membership, glue, format and path checks on every example.
+#[test]
+fn every_example_span_passes_the_validator_in_context() {
+    let ev = build_evidence(&synthetic_input());
+    let mut spans_checked = 0;
+    for p in PROMPTS {
+        let text = render_template(p.text, &vars_for(p.id)).unwrap();
+        let mut spans = Vec::new();
+        for line in text.lines() {
+            let l = line.trim_start().trim_start_matches("- ");
+            if l.starts_with("After: ") {
+                continue;
+            }
+            let (s, outside) = token_spans(line);
+            assert_eq!(
+                outside, 0,
+                "{}: a token outside backticks in {line:?}",
+                p.id
+            );
+            spans.extend(s);
+        }
+        let spans: Vec<String> = spans.iter().map(|s| instantiate(s)).collect();
+        let example_positions: Vec<Citation> =
+            spans
+                .iter()
+                .flat_map(|s| citations_of(s))
+                .fold(Vec::new(), |mut acc, c| {
+                    if !acc.contains(&c) {
+                        acc.push(c);
+                    }
+                    acc
+                });
+        for span in &spans {
+            let mut cites = citations_of(span);
+            if cites.is_empty() && span.contains("{{sq:") {
+                cites = example_positions.clone();
+            }
+            if let Err(e) = validate_text(span, &cites, &ev, &TextRules::default(), "example") {
+                panic!("{}: example `{span}` is rejected: {e:?}", p.id);
+            }
+            spans_checked += 1;
+        }
+    }
+    assert!(spans_checked >= 20, "{spans_checked}");
+}
+
+/// The model-facing copy (everything but `core/*`, which names the forbidden forms on purpose)
+/// passes the rules the validator applies to model text: no leaked fact or number word, no
+/// quantity word, no causal phrase, no engine claim, no banned phrase and no marketing. A prompt
+/// that used such wording would invite the model to echo it.
+#[test]
+fn model_facing_copy_passes_the_validator_rules() {
+    let ev = build_evidence(&synthetic_input());
+    let rules = [
+        no_quantity_words(),
+        no_causal_phrases(),
+        engine_claims(),
+        banned_phrases(),
+        no_marketing(),
+    ];
+    let mut checked = 0;
+    for p in PROMPTS.iter().filter(|p| !p.id.starts_with("core/")) {
+        let vars: Vec<(&str, &str)> = vars_for(p.id).iter().map(|(k, _)| (*k, "")).collect();
+        // Headings are structure, not wording: a tone file's heading names its band and rating
+        // range (`B0`, `900`), which the copy rules would read as leaked digits.
+        let text: String = render_template(p.text, &vars)
+            .unwrap()
+            .lines()
+            .filter(|l| !l.starts_with('#'))
+            .map(|l| format!("{l}\n"))
+            .collect();
+        let parsed = parse_tokens(&text);
+        let leaks = find_leaks(&parsed.stripped);
+        assert!(leaks.is_empty(), "{}: {leaks:?}", p.id);
+        let canonical = canonical_for_tokens(&text);
+        let hardened = normalize_text(&parsed.stripped);
+        let ctx = TextCtx {
+            tokens: &parsed.tokens,
+            citations: &[],
+            evidence: &ev,
+            canonical: &canonical,
+            hardened: &hardened,
+        };
+        for r in &rules {
+            let found = r(&parsed.stripped, &ctx);
+            assert!(found.is_empty(), "{}: {found:?}", p.id);
+        }
+        checked += 1;
+    }
+    assert_eq!(checked, PROMPTS.len() - 2);
+}
+
+/// The ruling of the T23 review: the shared rules block (what the chat includes too) carries no
+/// output-format instruction; the report's JSON instructions live only in `report/output`.
+#[test]
+fn shared_rules_have_no_json_output_instruction() {
+    let shared = ai::generate::request::rules_block();
+    assert!(shared.cache);
+    assert_eq!(
+        shared.text,
+        format!("{}\n\n{}", rendered("core/rules"), rendered("core/tokens"))
+    );
+    let lower = shared.text.to_lowercase();
+    for f in [
+        "json",
+        "schema",
+        "`citations`",
+        "`null`",
+        "commentary",
+        "section field",
+    ] {
+        assert!(!lower.contains(f), "shared rules mention {f:?}");
+    }
+    let out = rendered("report/output");
+    assert!(out.contains("JSON") && out.contains("`citations`") && out.contains("`null`"));
 }

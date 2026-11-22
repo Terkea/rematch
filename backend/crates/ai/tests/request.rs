@@ -80,15 +80,26 @@ fn section_requests_share_the_cached_prefix() {
     let p = |id: &str| load_prompt(id, 1).unwrap().text;
     assert_eq!(
         first.system[0].text,
-        format!("{}\n\n{}", p("core/system"), p("core/tokens"))
+        format!("{}\n\n{}", p("core/rules"), p("core/tokens"))
     );
+    assert_eq!(first.system[0], ai::generate::request::rules_block());
     assert_eq!(
         first.system[1].text,
-        format!("{}\n\n{}", p("report/report"), p("tone/b2"))
+        format!(
+            "{}\n\n{}\n\n{}",
+            p("report/report"),
+            p("report/output"),
+            p("tone/b2")
+        )
     );
     assert_eq!(
         b0_req.system[1].text,
-        format!("{}\n\n{}", p("report/report"), p("tone/b0"))
+        format!(
+            "{}\n\n{}\n\n{}",
+            p("report/report"),
+            p("report/output"),
+            p("tone/b0")
+        )
     );
     let ctx = build_prompt_context(&b2, false);
     assert_eq!(
@@ -304,7 +315,7 @@ fn repair_messages_append_raw_assistant_content_then_user() {
         load_prompt("repair/repair", 1).unwrap().text,
         &[(
             "errors",
-            "- free_text_fact: number:\"3\"\n- missing_citation: no citation",
+            "- overview.summary: free_text_fact: number:\"3\"\n- overview.headline: missing_citation: no citation",
         )],
     )
     .unwrap();

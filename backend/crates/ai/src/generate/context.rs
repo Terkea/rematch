@@ -48,6 +48,8 @@ fn js_number(x: f64) -> String {
     if x < 0.0 { format!("-{body}") } else { body }
 }
 
+/// Integers print exactly. JS would round an integer above 2^53, but no `CoachingInput` field can
+/// hold one (counts are `u32`, ratings `u16`), so the two agree on every input.
 fn number(n: &Number) -> String {
     if n.is_u64() || n.is_i64() {
         n.to_string()
@@ -98,7 +100,7 @@ pub fn canonical_json(v: &Value) -> String {
     out
 }
 
-/// [`canonical_json`] with every `<` written as `<` (the same JSON value), for embedding in
+/// [`canonical_json`] with every `<` written as `\u003c` (the same JSON value), for embedding in
 /// a tagged prompt block: text inside the input can never close `</coaching_input>`. Only the
 /// prompt uses it; hashes use [`canonical_json`].
 pub fn canonical_json_escaped(v: &Value) -> String {
