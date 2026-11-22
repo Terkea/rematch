@@ -78,8 +78,19 @@ describe("shell header", () => {
     expect(within(trigger).getByText("Ctrl K")).toBeInTheDocument();
     await userEvent.click(trigger);
     const menu = await screen.findByRole("dialog");
-    expect(within(menu).getByText("Accounts")).toBeInTheDocument();
+    expect(within(menu).getByText("Go to accounts")).toBeInTheDocument();
     expect(within(menu).getByText("Sign out")).toBeInTheDocument();
+  });
+
+  it("offers Go to overview and Go to games in the command menu", async () => {
+    renderHeader();
+    await userEvent.click(screen.getByRole("button", { name: /Search/ }));
+    const menu = await screen.findByRole("dialog");
+    await userEvent.click(within(menu).getByText("Go to overview"));
+    expect(push).toHaveBeenLastCalledWith("/app");
+    await userEvent.click(screen.getByRole("button", { name: /Search/ }));
+    await userEvent.click(within(await screen.findByRole("dialog")).getByText("Go to games"));
+    expect(push).toHaveBeenLastCalledWith("/app/games");
   });
 
   it("signs out from the user menu", async () => {

@@ -20,8 +20,8 @@ export function NavCommandMenu({ open, onOpenChange, onSignOut }: NavCommandMenu
     () => [
       ...navItems.map((item) => ({
         id: `go:${item.href}`,
-        label: item.label,
-        group: "Go to",
+        label: `Go to ${item.label.toLowerCase()}`,
+        group: "Pages",
         keywords: [...item.keywords],
         onSelect: () => router.push(item.href),
       })),
@@ -29,8 +29,8 @@ export function NavCommandMenu({ open, onOpenChange, onSignOut }: NavCommandMenu
         ? [
             {
               id: "go:/styleguide",
-              label: "Styleguide",
-              group: "Go to",
+              label: "Go to styleguide",
+              group: "Pages",
               keywords: ["design", "tokens"],
               onSelect: () => router.push("/styleguide"),
             },
