@@ -49,7 +49,8 @@ the protocols of band-reference builds, and expose the profile on the command li
   the engines while a band-reference build runs. Raising it is a one-line change once a build's
   wall time matters more than user latency.
 - **Start-up maintenance.** The opening dataset is warmed off the async threads; the two
-  recurring sweeps are scheduled (deduped); `requeue_unenriched` runs once. A failed requeue is
+  recurring sweeps are scheduled (deduped); `requeue_unenriched` and the reference-job resume run
+  once. A failed requeue is
   logged and the worker still starts; the next start retries it.
 - **Connections.** `max_connections = pool_size + preview + 24`. The module docs list what the 24
   cover.
@@ -63,11 +64,9 @@ the protocols of band-reference builds, and expose the profile on the command li
 - At activation, the band-reference finaliser fills NULL `protocol` and `enrichment_protocol` with
   `sf19-n300k-v1` and `enr-v1` (T21 hand-off), in the activation transaction.
 - `lichess-db resume [--build <id>]` re-enqueues the jobs of every verified `building`
-  band-reference build (`resume_all_reference_enqueues`; idempotent). The worker does not schedule
-  it: `worker` does not depend on `lichess-db`, and only the coordinator edits `Cargo.toml`. The
-  enqueue that can crash runs in the `lichess-db` process, so the operator reruns `resume` (or
-  `build`) after a crash. Scheduling it in the worker needs a coordinator edit (see the task
-  report).
+  band-reference build (`resume_all_reference_enqueues`; idempotent). The worker also runs it once
+  at start (not fatal), so jobs lost by a crash of `lichess-db build` come back with the next
+  worker start.
 
 ### CLI
 

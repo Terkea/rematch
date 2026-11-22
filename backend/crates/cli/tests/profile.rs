@@ -168,8 +168,35 @@ async fn profile_json_prints_a_valid_coaching_input(pool: PgPool) {
     assert_eq!(doc["accountId"], json!(account.to_string()));
     assert_eq!(doc["basis"]["analysedGames"], json!(3));
     assert_eq!(doc["areaScores"].as_array().map(Vec::len), Some(7));
+    let errors: Vec<String> = ts_validator()
+        .iter_errors(&doc)
+        .map(|e| format!("{e} at {}", e.instance_path()))
+        .collect();
+    assert!(errors.is_empty(), "the TS schema rejects the output: {errors:?}");
     let input: CoachingInput = serde_json::from_value(doc).expect("the contract type");
     input.validate().expect("the M3 contract's rules");
+}
+
+/// The zod export R3 parses with (`fixtures/coaching-input/ts-schema.json`).
+fn ts_validator() -> jsonschema::Validator {
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../fixtures/coaching-input/ts-schema.json"
+    );
+    let schema: Value =
+        serde_json::from_str(&std::fs::read_to_string(path).expect("ts-schema.json")).unwrap();
+    jsonschema::options()
+        .should_validate_formats(true)
+        .build(&schema)
+        .expect("the TS schema compiles")
+}
+
+/// The validator is not vacuous: a document the TS schema must refuse is refused.
+#[test]
+fn the_ts_schema_refuses_a_broken_document() {
+    let v = ts_validator();
+    assert!(!v.is_valid(&json!({})));
+    assert!(!v.is_valid(&json!({ "inputVersion": 1, "band": "B9" })));
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]

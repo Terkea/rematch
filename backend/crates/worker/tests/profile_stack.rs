@@ -193,3 +193,61 @@ async fn unenriched_games_are_requeued_at_start_and_enriched_by_the_hook(
     .await;
     stop(running).await;
 }
+
+/// T21 hand-off I4: a verified `building` band-reference build whose jobs were lost (a crash of
+/// `lichess-db build` between the row insert and the last job batch) gets them back at start.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn start_resumes_lost_reference_game_jobs(pool_opts: PgPoolOptions, o: PgConnectOptions) {
+    use refdata::builds::{BuildKind, NewBuild, create_build, set_source_sha};
+    use refdata::reference_games::{NewReferenceGame, insert_reference_games};
+    let Some(env) = env_for(&o) else {
+        return;
+    };
+    let pool: PgPool = pool_opts.connect_with(o).await.unwrap();
+    let build = create_build(
+        &pool,
+        &NewBuild {
+            kind: BuildKind::BandReference,
+            source_month: "2026-10".to_owned(),
+            source_url: None,
+            params: serde_json::json!({}),
+            protocol: None,
+            enrichment_protocol: None,
+            difficulty_model: None,
+        },
+    )
+    .await
+    .unwrap();
+    set_source_sha(&pool, build, &"ab".repeat(32), 2)
+        .await
+        .unwrap();
+    let games: Vec<NewReferenceGame> = (0..2)
+        .map(|i| NewReferenceGame {
+            lichess_game_id: format!("lost-{i}"),
+            pgn: format!("[Event \"Rated Blitz game\"]\n[Result \"1/2-1/2\"]\n\n{RUY} 1/2-1/2\n"),
+            time_class: chess_core::TimeClass::Blitz,
+            base_seconds: Some(180),
+            increment_seconds: Some(0),
+            white_rating: Some(1500),
+            black_rating: Some(1550),
+            white_hash: format!("{:064x}", 2 * i + 1),
+            black_hash: format!("{:064x}", 2 * i + 2),
+            white_selected: true,
+            black_selected: true,
+            result: "1/2-1/2".to_owned(),
+            termination: Some("Normal".to_owned()),
+            played_at: time::OffsetDateTime::UNIX_EPOCH,
+        })
+        .collect();
+    insert_reference_games(&pool, build, &games).await.unwrap();
+    assert_eq!(live_jobs(&pool, "analyse-reference-game").await, 0, "the jobs were lost");
+    let running = start_workers(&env, opts(1)).await.expect("start_workers");
+    let jobs: i64 = sqlx::query_scalar(
+        "SELECT count(DISTINCT dedupe_key) FROM jobs WHERE kind = 'analyse-reference-game'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(jobs, 2, "one job per pending reference game");
+    stop(running).await;
+}

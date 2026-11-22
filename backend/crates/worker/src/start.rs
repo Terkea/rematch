@@ -3,8 +3,9 @@
 //! Order: check the engine is Stockfish 19, adopt a Drizzle-migrated database and migrate it
 //! (on a separate pool without a statement timeout), connect the worker pool, start the engine
 //! pool, the optional tablebase probe (`SYZYGY_PATH`) and the Maia client (`MAIA_URL`, lazy),
-//! warm the opening dataset, then one runner per job kind, schedule the recurring jobs and
-//! requeue the games without the current enrichment once (ADR-R2-25). Whatever was created is
+//! warm the opening dataset, then one runner per job kind, schedule the recurring jobs, requeue
+//! the games without the current enrichment once and resume lost reference-game jobs
+//! (ADR-R2-25). Whatever was created is
 //! closed again if a later step fails.
 //!
 //! Runners (kind: concurrency; every kind but `analyse-game` keeps R1's [`PriorityFifo`] claim):
@@ -750,6 +751,16 @@ pub async fn start_workers(env: &WorkerEnv, opts: StartOptions) -> anyhow::Resul
     match requeue_unenriched(&pool, &queue).await {
         Ok(n) => tracing::info!(requeued = n, "unenriched games requeued"),
         Err(e) => tracing::warn!(error = %e, "requeueing unenriched games failed"),
+    }
+    // Reference-game jobs lost by a crash of `lichess-db build` between its row insert and its
+    // last job batch (T21 review I4; idempotent through the `refgame:<id>` dedupe). Not fatal.
+    match lichess_db::reference_select::resume_all_reference_enqueues(&pool, &queue).await {
+        Ok(resumed) => {
+            for (build, added) in resumed.into_iter().filter(|(_, n)| *n > 0) {
+                tracing::info!(%build, added, "reference-game jobs resumed");
+            }
+        }
+        Err(e) => tracing::warn!(error = %e, "resuming reference-game jobs failed"),
     }
     let Spawned { runners, claims } = s;
     let monitor = tokio::spawn(log_busy_releases(busy_releases.clone())).abort_handle();
