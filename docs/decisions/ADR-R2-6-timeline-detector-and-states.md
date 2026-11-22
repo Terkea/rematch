@@ -67,6 +67,7 @@ The weakness timeline has to say when a weakness started improving or relapsing.
    - The change window is 50 games (`SERIES_WINDOW_GAMES`, which a test caps at 100). At least 10 games of the current segment must precede a change.
    - The current segment is the run of games since the last confirmed change. A change is searched only inside it, over run lengths `1 ≤ r < limit` with `limit = min(50, games in segment − 10)`. `p_change` is `change_summary` with `min_prior_games = segment start + 10`, so the capped bucket and older segments never count.
    - **Onset = the MAP run restricted to `r < limit`.** Its bounds come from the smallest highest-mass subset of that range covering 0.8. Ties go to the longer run.
+   - **The onset window is never zero-width** (`MIN_ONSET_WINDOW_GAMES = 2`). When one run alone covers 0.8 (a sharp jump), the next most likely run is added, which only raises the coverage. With fewer than two candidate runs nothing is confirmed yet. Test `onset_window_is_never_zero_width`, and every onset row in the property test.
 
 9. **Confirmation rule.** A change is confirmed only when all three hold:
    - `p_change ≥ 0.8`;

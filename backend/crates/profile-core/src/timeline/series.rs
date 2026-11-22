@@ -6,7 +6,8 @@
 //! 1. steps a streaming [`Bocpd`] (hazard 1/200, prior `Beta(50 mu, 50 (1 - mu))`);
 //! 2. looks for a change inside the current segment: run lengths `1 <= r < limit` with
 //!    `limit = min(50, games in segment - 10)`. The onset is the MAP run restricted to that
-//!    range, and its bounds come from the smallest highest-mass subset of it covering 0.8;
+//!    range, and its bounds come from the smallest highest-mass subset of it covering 0.8,
+//!    holding at least two runs so the window is never zero-width;
 //! 3. confirms that change only when `p_change >= 0.8`, the relative rate change is at least
 //!    0.15 and the games since the onset hold at least `min_evidence` opportunities. A
 //!    confirmation starts a new segment at the onset game (so CUSUM resets) and appends an
@@ -55,6 +56,9 @@ pub const CONFIRM_REL_CHANGE: f64 = 0.15;
 pub const CUSUM_FACTOR: f64 = 1.5;
 /// Games in the current segment before CUSUM runs.
 pub const CUSUM_MIN_GAMES: usize = 10;
+/// Fewest games an onset window spans: the 0.8 highest-mass set is widened by the next most
+/// likely run when one run alone covers it, so the window is never zero-width.
+pub const MIN_ONSET_WINDOW_GAMES: usize = 2;
 
 /// One game of a weakness series.
 #[derive(Clone, Debug, PartialEq)]
@@ -172,7 +176,9 @@ fn candidate(post: &[f64], t: usize, limit: usize, level: f64) -> Option<Candida
         .map(|r| (r, post[r]))
         .filter(|(_, p)| p.is_finite() && *p > 0.0)
         .collect();
-    if runs.is_empty() {
+    // The onset window must span at least two games (never zero-width), so a change needs at
+    // least two candidate runs; until then nothing is confirmed.
+    if runs.len() < MIN_ONSET_WINDOW_GAMES {
         return None;
     }
     let total: f64 = runs.iter().map(|(_, p)| p).sum();
@@ -180,11 +186,12 @@ fn candidate(post: &[f64], t: usize, limit: usize, level: f64) -> Option<Candida
     runs.sort_by(|x, y| y.1.total_cmp(&x.1).then(y.0.cmp(&x.0)));
     let map = runs[0].0;
     let (mut r_min, mut r_max, mut cum) = (map, map, 0.0);
-    for &(r, p) in &runs {
+    for (taken, &(r, p)) in runs.iter().enumerate() {
         r_min = r_min.min(r);
         r_max = r_max.max(r);
         cum += p;
-        if cum >= level * total * (1.0 - 1e-12) {
+        // Adding the next most likely run only raises coverage above `level` (conservative).
+        if taken + 1 >= MIN_ONSET_WINDOW_GAMES && cum >= level * total * (1.0 - 1e-12) {
             break;
         }
     }

@@ -11,8 +11,8 @@ use profile_core::stats::rng::Rng;
 use profile_core::timeline::bocpd::DEFAULT_HAZARD;
 use profile_core::timeline::causes::{CauseGame, MIN_CAUSE_GAMES, cause_hints};
 use profile_core::timeline::series::{
-    CONFIRM_P_CHANGE, CONFIRM_REL_CHANGE, RowKind, SERIES_WINDOW_GAMES, SeriesOutcome, SeriesPoint,
-    SeriesRef, TimelineRow, evaluate_series,
+    CONFIRM_P_CHANGE, CONFIRM_REL_CHANGE, Onset, RowKind, SERIES_WINDOW_GAMES, SeriesOutcome,
+    SeriesPoint, SeriesRef, TimelineRow, evaluate_series,
 };
 use profile_core::timeline::states::{DETECTOR_VERSION, Signals, next_state};
 use profile_core::types::WeaknessState;
@@ -193,6 +193,7 @@ fn assert_honest(o: &SeriesOutcome, min_evidence: f64, label: &str) {
                 );
                 let on = r.onset.as_ref().expect("onset row has an onset");
                 assert!(on.low <= on.played_at && on.played_at <= on.high);
+                assert!(on.low < on.high, "{label}: zero-width onset window {on:?}");
                 assert!(
                     on.high <= r.at_played_at,
                     "{label}: onset after the confirming game"
@@ -826,6 +827,24 @@ fn onset_rows_are_dated_inside_their_bounds_and_huge_counts_stay_finite() {
     v.extend(repeat(30, (u32::MAX / 2, u32::MAX)));
     let o = evaluate_series(&points(&v), Some(&ts_ref()), N0, MIN_EVIDENCE);
     assert_honest(&o, MIN_EVIDENCE, "huge");
+}
+
+/// Honesty: an onset window is never zero-width. Even when one run holds almost all the mass
+/// (a sharp jump), the window spans at least two distinct games.
+#[test]
+fn onset_window_is_never_zero_width() {
+    let mut sharp = repeat(60, (0, 50));
+    sharp.extend(repeat(60, (25, 50)));
+    let mut huge = repeat(30, (40_000_000, u32::MAX));
+    huge.extend(repeat(30, (u32::MAX / 2, u32::MAX)));
+    for (label, obs) in [("sharp", sharp), ("huge", huge), ("relapse", relapse_obs())] {
+        let o = eval(&obs);
+        let onsets: Vec<&Onset> = o.rows.iter().filter_map(|r| r.onset.as_ref()).collect();
+        assert!(!onsets.is_empty(), "{label}: no onset at all: {:?}", o.rows);
+        for on in onsets {
+            assert!(on.low < on.high, "{label}: zero-width onset window {on:?}");
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------------------------
