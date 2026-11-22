@@ -277,7 +277,7 @@ function OwnClaims({ claims }: { claims: OwnClaim[] }) {
 }
 
 function ownShortfall(t: OwnTrends): string {
-  return `Not enough games yet. This compares your last ${RECENT_GAMES} games with your earlier ones, and needs ${plural(t.needEarlier, "more earlier game", "more earlier games")} (you have ${plural(t.earlierGames, "earlier game", "earlier games")}).`;
+  return `Not enough games yet. This compares your last ${RECENT_GAMES} games with the games before them, so it needs ${plural(t.needGames, "more analysed game", "more analysed games")} (you have ${plural(t.measured, "game", "games")} with these measures).`;
 }
 
 function AboveLevel({ above }: { above: StrengthsModel["above"] }) {

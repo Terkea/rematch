@@ -49,7 +49,7 @@ function base(): StrengthsModel {
     analysedGames: 214,
     above: {
       mode: "own",
-      trends: { claims: [], enough: true, earlierGames: 164, needEarlier: 0 },
+      trends: { claims: [], enough: true, measured: 214, needGames: 0 },
     },
     improving: { weaknesses: [], kpis: null },
     openings: { lines: [], judged: 0 },
@@ -99,11 +99,11 @@ describe("StrengthsView", () => {
     const m = base();
     m.above = {
       mode: "own",
-      trends: { claims: [], enough: false, earlierGames: 12, needEarlier: 8 },
+      trends: { claims: [], enough: false, measured: 62, needGames: 8 },
     };
     const { body } = show(m);
     expect(section(body, "above").textContent).toContain(
-      "Not enough games yet. This compares your last 50 games with your earlier ones, and needs 8 more earlier games (you have 12 earlier games).",
+      "Not enough games yet. This compares your last 50 games with the games before them, so it needs 8 more analysed games (you have 62 games with these measures).",
     );
   });
 
@@ -113,8 +113,8 @@ describe("StrengthsView", () => {
       mode: "own",
       trends: {
         enough: true,
-        earlierGames: 40,
-        needEarlier: 0,
+        measured: 90,
+        needGames: 0,
         claims: [
           {
             metric: "accuracy",
@@ -160,13 +160,13 @@ describe("StrengthsView", () => {
         },
       ],
     };
-    m.improving.kpis = { claims: [], enough: false, earlierGames: 3, needEarlier: 17 };
+    m.improving.kpis = { claims: [], enough: false, measured: 53, needGames: 17 };
     const { body } = show(m);
     expect(section(body, "above").textContent).not.toContain(OWN_BASELINE_TEXT);
     expect(body.querySelector('[data-claim="blunders_per_game"]')?.textContent).toContain(
       "80% range 0.60 to 1.00, over your last 50 games. Players in your rating band: 1.20.",
     );
-    expect(section(body, "improving").textContent).toContain("needs 17 more earlier games");
+    expect(section(body, "improving").textContent).toContain("needs 17 more analysed games");
   });
 
   it("shows a confirmed weakness change with its evidence, linked to its page", () => {

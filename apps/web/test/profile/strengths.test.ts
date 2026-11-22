@@ -156,12 +156,20 @@ describe("ownTrends", () => {
     expect(r.enough).toBe(true);
   });
 
-  it("says when there are too few earlier games to compare", () => {
+  it("says how many more games it needs before anything can be compared", () => {
     const r = ownTrends(games(12, [60], [80]), "seed");
     expect(r.claims).toEqual([]);
     expect(r.enough).toBe(false);
-    expect(r.earlierGames).toBe(12);
-    expect(r.needEarlier).toBe(8);
+    expect(r.measured).toBe(62);
+    expect(r.needGames).toBe(8);
+  });
+
+  it("counts from the smallest minimum when no game has a measure yet", () => {
+    const r = ownTrends(
+      Array.from({ length: 15 }, () => ({})),
+      "s",
+    );
+    expect(r).toEqual({ claims: [], enough: false, measured: 0, needGames: RECENT_GAMES + 15 });
   });
 
   it("is deterministic for a seed", () => {

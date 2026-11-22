@@ -210,9 +210,10 @@ export type OwnTrends = {
   claims: OwnClaim[];
   /** Whether at least one metric had its minimum on both sides. */
   enough: boolean;
-  earlierGames: number;
-  /** Earlier games still needed before the first metric can be compared (0 when enough). */
-  needEarlier: number;
+  /** Games with at least one of the page's measures. */
+  measured: number;
+  /** Games still needed before the first metric can be compared (0 when enough). */
+  needGames: number;
 };
 
 const mean = (v: number[]) => v.reduce((a, b) => a + b, 0) / v.length;
@@ -252,14 +253,10 @@ export function ownTrends(games: Record<string, number>[], seed: string): OwnTre
   const earlier = games.slice(0, Math.max(0, games.length - RECENT_GAMES));
   const claims: OwnClaim[] = [];
   let enough = false;
-  let needEarlier = Number.POSITIVE_INFINITY;
   for (const def of defs()) {
     const r = recent.map((g) => g[def.metric]).filter(fin);
     const e = earlier.map((g) => g[def.metric]).filter(fin);
-    if (r.length < def.minN || e.length < def.minN) {
-      if (r.length >= def.minN) needEarlier = Math.min(needEarlier, def.minN - e.length);
-      continue;
-    }
+    if (r.length < def.minN || e.length < def.minN) continue;
     enough = true;
     const diff = bootstrapDiff(r, e, `${seed}:${def.metric}`);
     if (!diff) continue;
@@ -275,16 +272,15 @@ export function ownTrends(games: Record<string, number>[], seed: string): OwnTre
       diff,
     });
   }
-  const minN = Math.min(...defs().map((d) => d.minN));
+  // The first comparable metric needs its minimum on top of the recent games.
+  const present = defs().filter((d) => games.some((g) => fin(g[d.metric])));
+  const minN = Math.min(...(present.length > 0 ? present : defs()).map((d) => d.minN));
+  const measured = games.filter((g) => defs().some((d) => fin(g[d.metric]))).length;
   return {
     claims,
     enough,
-    earlierGames: earlier.length,
-    needEarlier: enough
-      ? 0
-      : Number.isFinite(needEarlier)
-        ? needEarlier
-        : Math.max(0, minN - earlier.length),
+    measured,
+    needGames: enough ? 0 : Math.max(1, RECENT_GAMES + minN - measured),
   };
 }
 
