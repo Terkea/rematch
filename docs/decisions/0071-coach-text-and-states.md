@@ -26,7 +26,8 @@ spinner. `@ci/ui` must not import from the web app.
   "Engine check: …".
 - **The link rule.** A `move`, `best`, `pv` or `line` segment is a link exactly when the host's
   `hrefFor` returns a URL (the web's `segmentHref`). `@ci/ui` builds no URLs itself; a throwing
-  `hrefFor` is treated as no link.
+  `hrefFor` is treated as no link, and only internal paths, fragments and http(s) URLs are emitted
+  (external ones with `rel="noopener noreferrer"`).
 - **Unknown kinds.** A segment whose `kind` this build does not know (or a malformed one) renders
   nothing and never throws, so a newer worker never breaks an older page. No `NaN`, `Infinity`,
   `undefined` or `null` text can come out of a segment.
@@ -34,8 +35,8 @@ spinner. `@ci/ui` must not import from the web app.
   "Written on 12 Nov 2026"; `compact` keeps the note behind an info button that opens a popover on
   click, tap or Enter (a 44px touch target), and in screen-reader text. A tooltip was rejected:
   it never opens on touch. While an answer streams and no disclosure is stored yet, the message shows the fixed
-  label (`AI_LABEL`, the Rust `AI_DISCLOSURE_LABEL`). A done message with no stored disclosure
-  (fixed server copy) shows no label.
+  label (`AI_LABEL`, the Rust `AI_DISCLOSURE_LABEL`). A done message with text but no stored
+  disclosure still shows the fixed label.
 - **States (`CoachState`).** `building` and `writing` are a title and body over a
   `ProgressPlaceholder` (shape `list`) whose label says what is happening ("Building 2 / 5
   sections", "Writing"), never "Analysing" and never a spinner (B18). `ProgressPlaceholder`'s verb
@@ -52,7 +53,10 @@ spinner. `@ci/ui` must not import from the web app.
   The streamed block settles in on the `pen` spring on mount (reduced motion: instant). A failed
   answer hides any partial stream, which was never validated. The message is `aria-busy` while
   pending or streaming, inside a polite live region, so assistive tech reads the answer once.
-  Engine checks read "Engine check: 1. e4 e5 2. Nf3 (done)", counted from move 1. The composer
+  Engine checks read "Engine check: 28. Nd2 e4 29. Nxe4 (done)", numbered from the check's
+  `startPly`; without one the moves are unnumbered, never counted from move 1. Done, pending
+  ("checking") and failed checks differ in mark as well as word. The answer's wrapper is a polite
+  live region only while pending or streaming, so the final text is not read a second time. The composer
   counts code points as the server does, shows the count from 200 characters left ("1 character
   over" in `pen-text`, a form error), sends on Enter, breaks on Shift+Enter, refuses empty or
   over-limit text, ignores a second send while one is in flight, keeps the text when `onSubmit`
