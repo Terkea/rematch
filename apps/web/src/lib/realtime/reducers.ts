@@ -4,6 +4,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import { queryKeys } from "../query-keys";
 import { isImportKind, kindLabel, MAX_FAILURES, updateActivity } from "./activity";
 import { applyCoachEvent } from "./coach-events";
+import { applySyncEvent } from "./sync-events";
 
 export type { StreamEvent };
 
@@ -20,6 +21,8 @@ const article = (word: string) => (/^[aeiou]/i.test(word) ? "An" : "A");
  * Unknown types and malformed payloads are ignored, so a newer worker never breaks the page.
  */
 export function applyEvent(qc: QueryClient, e: StreamEvent): void {
+  // Sync and analysis progress (Task P2) refreshes on its own keys first.
+  applySyncEvent(qc, e);
   const p = e.payload;
   switch (e.type) {
     case "import.progress": {

@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { AccuracySection } from "./accuracy-section";
 import { OverviewEmpty } from "./empty-state";
 import { Headline, WorkOn } from "./headline";
@@ -16,13 +17,22 @@ import type { OverviewView } from "./view";
  * `reveal` (the first view in a session) the first viewport assembles once: rules draw, the
  * trend draws in, numbers roll. Nothing below the fold animates.
  */
-export function OverviewSheet({ view, reveal }: { view: OverviewView; reveal: boolean }) {
+export function OverviewSheet({
+  view,
+  reveal,
+  sync,
+}: {
+  view: OverviewView;
+  reveal: boolean;
+  /** The compact sync and analysis panel (Task P2); it replaces the status line when given. */
+  sync?: ReactNode;
+}) {
   return (
     <div {...(reveal ? { "data-reveal": "first" } : {})} className="flex flex-col gap-10">
       {reveal && <RevealSeen />}
       <header className="flex flex-col gap-4">
         <h1 className="font-serif text-3xl font-semibold text-ink">Overview</h1>
-        <StatusLine header={view.header} />
+        {sync ?? <StatusLine header={view.header} />}
       </header>
 
       {view.empty !== null ? (

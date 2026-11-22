@@ -91,4 +91,71 @@ describe("ActivityIndicator", () => {
     expect(qc.getQueryData<Activity>(queryKeys.activity())?.failures).toEqual([]);
     expect(container).toBeEmptyDOMElement();
   });
+
+  describe("sync and analysis", () => {
+    const counts = {
+      waiting: 0,
+      analysing: 0,
+      done: 0,
+      failed: 0,
+      retrying: 0,
+      notSelected: 0,
+      skipped: 0,
+    };
+    const acct = (over: Record<string, unknown>) => ({
+      accountId: "a1",
+      platform: "chesscom",
+      name: "alice",
+      phase: "idle",
+      retryAt: null,
+      lastCheck: null,
+      lastRunFailed: false,
+      nextManualAt: null,
+      analysis: counts,
+      eta: null,
+      profileUpdating: false,
+      ...over,
+    });
+    const withSync = async (...accounts: Record<string, unknown>[]) => {
+      const { syncStatusKey } = await import("../../src/lib/realtime/sync-events.js");
+      qc.setQueryData(syncStatusKey(), { generatedAt: new Date(at).toISOString(), accounts });
+    };
+
+    it("shows a running sync", async () => {
+      await withSync(acct({ phase: "checking" }));
+      show();
+      expect(screen.getByText("Checking for new games")).toBeInTheDocument();
+      expect(screen.getByText("Syncing")).toBeInTheDocument();
+      expect(screen.queryByText(/live/i)).toBeNull();
+    });
+
+    it("adds up analysis across accounts", async () => {
+      await withSync(
+        acct({ analysis: { ...counts, done: 80, analysing: 2, waiting: 18 } }),
+        acct({ accountId: "a2", analysis: { ...counts, done: 6, waiting: 108 } }),
+      );
+      show();
+      expect(screen.getByText("Analysing 86 / 214 games")).toBeInTheDocument();
+      expect(screen.queryByText(/live/i)).toBeNull();
+    });
+
+    it("says the profile is updating when nothing else runs", async () => {
+      await withSync(acct({ profileUpdating: true, analysis: { ...counts, done: 4 } }));
+      show();
+      expect(screen.getByText("Updating your profile")).toBeInTheDocument();
+    });
+
+    it("an import from the stream comes first", async () => {
+      await withSync(acct({ phase: "checking" }));
+      show({ imports: { a1: { imported: 12 } }, failures: [] });
+      expect(screen.getByText("Importing: 12 games so far")).toBeInTheDocument();
+      expect(screen.queryByText("Checking for new games")).toBeNull();
+    });
+
+    it("finished analysis and an idle sync render nothing", async () => {
+      await withSync(acct({ analysis: { ...counts, done: 40, failed: 2 } }));
+      const { container } = show();
+      expect(container).toBeEmptyDOMElement();
+    });
+  });
 });

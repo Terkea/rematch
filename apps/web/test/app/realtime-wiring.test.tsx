@@ -54,6 +54,12 @@ vi.mock("../../src/server/games", () => ({
     return [];
   },
 }));
+vi.mock("../../src/server/sync", () => ({
+  getSyncStatus: async () => {
+    order.push("data");
+    return { generatedAt: "2026-11-22T12:00:00.000Z", accounts: [] };
+  },
+}));
 vi.mock("../../src/server/games/explorer", () => ({
   loadExplorer: async () => {
     order.push("data");
