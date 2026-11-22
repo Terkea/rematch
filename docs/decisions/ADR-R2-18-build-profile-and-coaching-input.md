@@ -57,6 +57,9 @@ Mapping choices recorded from T33 (§Concerns 4):
   into the current state dated at or after the transition that entered that state. An episode
   entered without its own onset row reports `null`, never an earlier episode's onset. This is
   pinned by `onset_at_names_only_the_current_episode`.
+  - It **fails closed** (T34 review m1): without a latest transition, or when the latest
+    transition does not enter the current state, it reports `null`. Pinned by
+    `onset_fails_closed_when_the_last_transition_enters_another_state`.
 
 ### Event payloads
 
@@ -159,6 +162,42 @@ statistics, so with R3's user scoping they go only to the linked account's owner
 4. **An alternative's `movesSan` is its single move.** If a stored PV line existed for an
    alternative, it would be used, cut to 16 plies. Task 18's `AlternativeMove` stores none, so
    today it is always the single move.
+
+### T34 review, fix round 1
+
+- **Strengths from weaknesses cite their own claim (review m2).** A weakness strength takes
+  exemplars only of the kinds that show that weakness is not a problem (`weakness_kinds`):
+  - W3.shallow, W3.deep and W4.missed → `tactic_found`;
+  - W5 → `conversion`;
+  - W6 → `defence`;
+  - W8.basics and W8.advanced → `conversion` in the endgame phase.
+
+  Every other key has no matching kind, so it is never a strength. This covers hung material,
+  missed threats, allowed mates, vision errors, opening, time and positional keys. Its area's
+  exemplars never stand in for it, for example a found only-move for "Few errors: Hung
+  material". Area strengths keep the area kinds. Pinned by
+  `weakness_strength_needs_exemplars_of_its_own_claim`.
+- **`priority > 0` is pinned** by `below_median_weakness_is_never_ranked`: W1 at 0.04 against a
+  band median of 0.08, with exemplars. Without the guard, it was ranked #1 at priority 0.
+- **Metric percentile (review m3).** `bandPercentile` uses `value_adjusted`, and falls back to
+  the raw `value` when no adjustment exists (no reference slope, or no game knowing both
+  ratings). That is the same rule as the area scores (Task 15's `compute_area_scores`), so a
+  metric and its area never disagree. No number is invented: the raw value is the measured
+  one, only not opponent-adjusted.
+- **Opening change keys (review m4).** An `opening:<line>` series key is mapped through
+  `contract_line_key`, so a long legacy key still yields its change instead of being dropped. A
+  history row that still cannot be stated is left out and logged.
+- **Determinism (review m5).** The fix-spot candidate moves are read `ORDER BY game_id, ply`,
+  so with a repeated position the earliest ply is chosen. Pinned by
+  `same_data_and_now_give_the_same_input`.
+- **`skipped_exemplars` counts distinct `(game, ply)` rows (review m6),** however many lists
+  tried the row.
+- **A past `now` (review m7).** Estimates, the 6-month exemplar window and the 90-day change
+  window use `now`. The series replay (state and `P_imp`), `rating`, `basis`, `timeControl` and
+  the snapshots use every stored row, including games after `now`. Live builds use the wall
+  clock, so they are unaffected. A backdated build is therefore not a true snapshot at `now`.
+  Making it one would need an `at`-bounded load everywhere, which is parked until something
+  needs historical inputs.
 
 ### Snapshot time and `now`
 

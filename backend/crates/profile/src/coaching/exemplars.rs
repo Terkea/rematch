@@ -257,7 +257,7 @@ pub async fn load_exemplar_rows(
             parse_color(&r.player_color),
             parse_color(&r.color),
         ) else {
-            skipped.add(1);
+            skipped.add(r.game_id, u32::try_from(r.ply).unwrap_or(u32::MAX));
             continue;
         };
         let protocol = protocols.get(&r.game_id);
@@ -293,17 +293,19 @@ pub async fn load_exemplar_rows(
     Ok(out)
 }
 
-/// Counts stored rows that could not become a position (skipped, never fabricated).
+/// The stored rows that could not become a position (skipped, never fabricated), each counted
+/// once however many lists tried it (T34 review m6).
 #[derive(Debug, Default)]
-pub struct Skipped(std::cell::Cell<u32>);
+pub struct Skipped(std::cell::RefCell<HashSet<(Uuid, u32)>>);
 
 impl Skipped {
-    pub fn add(&self, n: u32) {
-        self.0.set(self.0.get().saturating_add(n));
+    pub fn add(&self, game_id: Uuid, ply: u32) {
+        self.0.borrow_mut().insert((game_id, ply));
     }
 
+    /// Distinct rows skipped.
     pub fn get(&self) -> u32 {
-        self.0.get()
+        u32::try_from(self.0.borrow().len()).unwrap_or(u32::MAX)
     }
 }
 
@@ -330,7 +332,7 @@ pub fn pick_distinct<'a>(
                 games.insert(r.game_id);
                 out.push(p);
             }
-            None => skipped.add(1),
+            None => skipped.add(r.game_id, r.ply),
         }
     }
     out

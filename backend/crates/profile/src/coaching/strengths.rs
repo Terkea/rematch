@@ -59,6 +59,21 @@ pub fn area_kinds(area: AreaId) -> (&'static [StrengthKind], bool) {
     }
 }
 
+/// The exemplar kinds that show a weakness is *not* a problem for the player, and whether they
+/// must be in the endgame phase (T34 review m2: a weakness strength cites its own claim, never
+/// only its area). Keys without a matching kind (hung material, missed threats, opening,
+/// time and vision keys, positional drift) have none, so they are never a strength.
+pub fn weakness_kinds(key: WeaknessKey) -> (&'static [StrengthKind], bool) {
+    use WeaknessKey as W;
+    match key {
+        W::W3Shallow | W::W3Deep | W::W4Missed => (&[StrengthKind::TacticFound], false),
+        W::W5 => (&[StrengthKind::Conversion], false),
+        W::W6 => (&[StrengthKind::Defence], false),
+        W::W8Basics | W::W8Advanced => (&[StrengthKind::Conversion], true),
+        _ => (&[], false),
+    }
+}
+
 /// The selected strengths (module docs).
 pub fn select_strengths(candidates: Vec<StrengthCandidate>) -> Vec<Strength> {
     let mut v: Vec<StrengthCandidate> = candidates

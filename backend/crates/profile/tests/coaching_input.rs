@@ -696,7 +696,7 @@ fn w3_stat() -> BandReferenceStat {
         pooled_rate: Some(0.03),
         epl_per_event: Some(0.2),
         opps_per_game: Some(40.0),
-        opp_slope_per_100: 0.0,
+        opp_slope_per_100: Some(0.0),
         n_players: 200,
         n_games: 2000,
         low_sample: false,
@@ -1192,4 +1192,168 @@ async fn undecodable_exemplar_is_skipped_and_counted(pool: PgPool) {
     assert_eq!(w1.exemplars.len(), 2, "the other two, nothing invented");
     assert!(w1.exemplars.iter().all(|e| e.played.san == "Bc4"));
     assert!(r.skipped_exemplars >= 1, "counted: {}", r.skipped_exemplars);
+}
+
+// ------------------------------------------------------------------ fix round 1 (T34 review)
+
+/// The seed's W1 (2 / 50, with exemplars) against a band whose W1 median is 0.08: the player is
+/// better than most of the band.
+fn w1_high_band() -> BandReferenceStat {
+    BandReferenceStat {
+        median: 0.08,
+        p25: 0.06,
+        p40: 0.072,
+        p75: 0.1,
+        pooled_rate: Some(0.08),
+        ..w1_stat()
+    }
+}
+
+async fn seed_below_median(pool: &PgPool) -> Fixture {
+    let f = seed_with_moves(
+        pool,
+        SeedOptions {
+            games: 40,
+            reference: false,
+        },
+    )
+    .await;
+    common::seed::insert_reference(pool, &[w1_high_band()]).await;
+    f
+}
+
+/// Review I1 (coordinator ruling 1): a claimable estimate below the band median has priority 0
+/// and is never a weakness, even with exemplars.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn below_median_weakness_is_never_ranked(pool: PgPool) {
+    let f = seed_below_median(&pool).await;
+    run_build(&pool, f.account_id).await;
+    let input = coaching(&pool, f.account_id).await;
+    assert!(
+        input.weaknesses.iter().all(|w| w.id != "W1"),
+        "{:?}",
+        input.weaknesses
+    );
+    assert_eq!(input.validate(), Ok(()));
+}
+
+/// Review m2: a weakness strength cites only exemplars of its own claim. "Few errors: Hung
+/// material" has no matching strength kind, so found only-moves (a calculation-area kind) never
+/// stand in for it, and the strength is dropped.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn weakness_strength_needs_exemplars_of_its_own_claim(pool: PgPool) {
+    let f = seed_below_median(&pool).await;
+    for i in [3usize, 33] {
+        set_metrics_path(
+            &pool,
+            f.games[i],
+            &["strengths"],
+            json!([{"kind": "only_move_found", "ply": 7}]),
+        )
+        .await;
+    }
+    run_build(&pool, f.account_id).await;
+    let input = coaching(&pool, f.account_id).await;
+    assert!(
+        input
+            .strengths
+            .iter()
+            .all(|s| !s.label.contains("Hung material")),
+        "{:?}",
+        input.strengths
+    );
+}
+
+/// Review m1: when the latest transition does not enter the state asked about, no onset is
+/// named (fail closed), even if an older onset row led into that state.
+#[test]
+fn onset_fails_closed_when_the_last_transition_enters_another_state() {
+    use WeaknessState::{Active, Improving, NotAnIssue};
+    let key = SeriesKey::Weakness(WeaknessKey::W1);
+    let mut outcomes = BTreeMap::new();
+    outcomes.insert(
+        key.clone(),
+        SeriesOutcome {
+            // Inconsistent on purpose: the state says active, the last transition improving.
+            state: Active,
+            rows: vec![
+                row(RowKind::Transition, None, NotAnIssue, 1),
+                row(RowKind::Transition, Some(NotAnIssue), Active, 5),
+                row(RowKind::Onset, Some(NotAnIssue), Active, 5),
+                row(RowKind::Transition, Some(Active), Improving, 9),
+            ],
+            p_imp: None,
+            invalid_points: 0,
+        },
+    );
+    let stored = HashMap::from([("W1".to_owned(), Improving)]);
+    let changes = state_changes(&outcomes, &stored, &StoredHistory::default());
+    let w1 = changes.iter().find(|c| c.key == key).expect("W1 changed");
+    assert_eq!(w1.onset_at, None);
+
+    // No transition at all: nothing to date an episode by, so no onset either.
+    outcomes.get_mut(&key).unwrap().rows = vec![row(RowKind::Onset, None, Active, 5)];
+    let changes = state_changes(&outcomes, &stored, &StoredHistory::default());
+    let w1 = changes.iter().find(|c| c.key == key).unwrap();
+    assert_eq!(w1.onset_at, None);
+}
+
+/// Review m6: a row skipped by several lists counts once.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_skipped_row_counts_once(pool: PgPool) {
+    let f = seed_with_moves(&pool, SeedOptions::default()).await;
+    sqlx::query("UPDATE moves SET uci = 'a1a8' WHERE game_id = $1 AND ply = $2")
+        .bind(f.games[EXEMPLAR_GAMES[0]])
+        .bind(i32::try_from(EXEMPLAR_PLY).unwrap())
+        .execute(&pool)
+        .await
+        .unwrap();
+    run_build(&pool, f.account_id).await;
+    // Tried by the W1 weakness and by the opening line's examples.
+    let r = build_coaching_input_report(&pool, f.account_id, TimeClass::Blitz, SEED_NOW)
+        .await
+        .unwrap();
+    assert_eq!(r.skipped_exemplars, 1);
+}
+
+/// Review m4: a change on an opening series whose key is over 64 characters is kept, with the
+/// key mapped by R-7.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn long_opening_series_key_is_mapped_not_dropped(pool: PgPool) {
+    let (f, _) = built_fixture(&pool).await;
+    let onset_at: OffsetDateTime = sqlx::query_scalar("SELECT played_at FROM games WHERE id = $1")
+        .bind(f.games[20])
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    insert_onset_row(&pool, f.account_id, f.games[25], f.games[20], onset_at).await;
+    let line = format!("white:{}", "a-very-long-opening-family-name".repeat(3));
+    sqlx::query("UPDATE weakness_state_history SET series_key = $2 WHERE account_id = $1 AND kind = 'onset'")
+        .bind(f.account_id)
+        .bind(format!("opening:{line}"))
+        .execute(&pool)
+        .await
+        .unwrap();
+    let input = coaching(&pool, f.account_id).await;
+    let c = input
+        .changes
+        .iter()
+        .find(|c| c.series_key.starts_with("opening:"))
+        .unwrap_or_else(|| panic!("the change is kept: {:?}", input.changes));
+    assert_eq!(
+        c.series_key,
+        format!("opening:{}", contract_line_key(&line))
+    );
+    assert!(c.series_key.chars().count() <= LIMITS.id_chars);
+    assert_eq!(c.weakness_id, None);
+}
+
+/// Same database, same `now`: the same input (review, determinism).
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn same_data_and_now_give_the_same_input(pool: PgPool) {
+    let f = seed_with_strength(&pool).await;
+    run_build(&pool, f.account_id).await;
+    let a = coaching(&pool, f.account_id).await;
+    let b = coaching(&pool, f.account_id).await;
+    assert_eq!(a.to_json(), b.to_json());
 }

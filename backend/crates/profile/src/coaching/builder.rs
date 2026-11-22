@@ -65,12 +65,12 @@ use super::exemplars::{
     ExemplarRow, Skipped, by_delta_then_recency, by_recency, load_exemplar_rows, pick_distinct,
 };
 use super::mapping::{
-    candidate_causes, claimable_weakness, contract_platform, has_time_control, metric,
-    opening_verdict, ranked_weakness, series_label, weakness_id_of_series,
+    candidate_causes, claimable_weakness, contract_line_key, contract_platform, has_time_control,
+    metric, opening_verdict, ranked_weakness, series_label, weakness_id_of_series,
 };
 use super::strengths::{
     AREA_STRENGTH_SCORE, MAX_STRENGTH_EXEMPLARS, StrengthCandidate, StrengthSource,
-    WEAKNESS_STRENGTH_CONFIDENCE, area_kinds, select_strengths,
+    WEAKNESS_STRENGTH_CONFIDENCE, area_kinds, select_strengths, weakness_kinds,
 };
 use crate::analyse_features::parse_time_class;
 use crate::estimates::{age_days, compute_estimates, games_in_window};
@@ -388,13 +388,12 @@ fn weaknesses(
 }
 
 fn strength_exemplars(
-    area: coaching_input::AreaId,
+    (kinds, endgame_only): (&[StrengthKind], bool),
     plies: &Plies,
     rows: &HashMap<(Uuid, u32), ExemplarRow>,
     now: OffsetDateTime,
     skipped: &Skipped,
 ) -> Vec<coaching_input::ExemplarPosition> {
-    let (kinds, endgame_only) = area_kinds(area);
     let candidates: Vec<&ExemplarRow> = plies
         .strength
         .iter()
@@ -431,7 +430,7 @@ fn strengths(
             metric_key: None,
             band_percentile: Some(score),
             n: a.n,
-            exemplars: strength_exemplars(a.area, plies, rows, now, skipped),
+            exemplars: strength_exemplars(area_kinds(a.area), plies, rows, now, skipped),
         });
     }
     let ranked_ids: HashSet<(String, Option<String>)> = ranked
@@ -461,7 +460,7 @@ fn strengths(
                 .then_some(metric_id),
             band_percentile: Some(percentile),
             n: e.n_unweighted.round().clamp(0.0, f64::from(u32::MAX)) as u32,
-            exemplars: strength_exemplars(area, plies, rows, now, skipped),
+            exemplars: strength_exemplars(weakness_kinds(e.key), plies, rows, now, skipped),
         });
     }
     select_strengths(candidates)
@@ -557,7 +556,7 @@ async fn opening_example_refs(
     let moves: Vec<OpeningMove> = sqlx::query_as(
         "SELECT m.game_id, m.ply, m.uci, m.fen_before, m.delta_w FROM moves m \
          JOIN games g ON g.id = m.game_id \
-         WHERE m.game_id = ANY($1) AND m.color = g.player_color AND m.ply <= $2",
+         WHERE m.game_id = ANY($1) AND m.color = g.player_color AND m.ply <= $2          ORDER BY m.game_id, m.ply",
     )
     .bind(&ids)
     .bind(i32::try_from(MAX_REPERTOIRE_PLIES).unwrap_or(i32::MAX))
@@ -714,10 +713,16 @@ async fn changes(
             utc_date(o.onset_high),
         );
         let id_len = o.platform_game_id.chars().count();
+        // R-7: an opening series is keyed by its (cut) line key; any other key is short.
+        let series_key = match &key {
+            SeriesKey::Opening(line) => format!("opening:{}", contract_line_key(line)),
+            other => other.to_string(),
+        };
         if !(onset_from <= onset_date && onset_date <= onset_to)
             || !(1..=LIMITS.id_chars).contains(&id_len)
-            || o.series_key.chars().count() > LIMITS.id_chars
+            || series_key.chars().count() > LIMITS.id_chars
         {
+            tracing::warn!(%account_id, key = o.series_key, "history onset row not stateable, left out");
             continue;
         }
         let candidates = series_rows(&key, plies, rows);
@@ -738,7 +743,7 @@ async fn changes(
             _ => None,
         };
         out.push(TimelineChange {
-            series_key: o.series_key.clone(),
+            series_key,
             weakness_id: weakness_id_of_series(&key),
             label: series_label(&key, opening_name),
             from_state,

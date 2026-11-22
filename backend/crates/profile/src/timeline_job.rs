@@ -425,18 +425,20 @@ pub fn state_changes(
 
 /// The onset of the current episode of `to` (T33 N3, fixed in T34): the latest onset row into
 /// `to` dated at or after the transition that entered the current state. An episode entered
-/// without its own onset row has none: an earlier episode's onset is never borrowed.
+/// without its own onset row has none: an earlier episode's onset is never borrowed. It fails
+/// closed (T34 review m1): without a latest transition, or when that transition does not enter
+/// `to`, no onset is named.
 fn current_episode_onset(o: &SeriesOutcome, to: WeaknessState) -> Option<OffsetDateTime> {
     let entered = o
         .rows
         .iter()
         .rfind(|r| r.kind == RowKind::Transition)
-        .filter(|r| r.to == to)
-        .map(|r| r.at_played_at);
+        .filter(|r| r.to == to)?
+        .at_played_at;
     o.rows
         .iter()
         .filter(|r| r.kind == RowKind::Onset && r.to == to)
-        .filter(|r| entered.is_none_or(|at| r.at_played_at >= at))
+        .filter(|r| r.at_played_at >= entered)
         .filter_map(|r| r.onset.as_ref().map(|on| (r.at_played_at, on.played_at)))
         .max()
         .map(|(_, onset)| onset)
