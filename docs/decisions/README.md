@@ -69,6 +69,7 @@ One file per decision: context, decision, alternatives, consequences. New decisi
 - [0064. "Ask your coach": the chat engine](0064-ask-your-coach-chat.md)
 - [0065. Game pages e2e: a guarded seed, their own quality and visual specs](0065-game-pages-e2e-and-visual-baselines.md)
 - [0066. Postgres connection limit for the integrated worker](0066-postgres-connection-limit.md)
+- [0076. Recurring incremental sync of linked accounts](0076-recurring-account-sync.md)
 
 Web records use placeholder numbers until the controller renumbers them.
 

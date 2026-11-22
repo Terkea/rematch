@@ -296,6 +296,9 @@ services:
       MAIA_URL: ${MAIA_URL:-}
       # Plan of schedule-analysis jobs that name none: beta (default, ADR 0041), free or pro.
       WORKER_DEFAULT_PLAN: ${WORKER_DEFAULT_PLAN:-}
+      # How often each linked account's newest games are fetched (sync-accounts, ADR 0076).
+      # Empty: 30 minutes.
+      SYNC_INTERVAL_MINUTES: ${SYNC_INTERVAL_MINUTES:-}
       # R3 AI coaching (ADR 0062). Interactive calls go to the sidecar; the token defaults to the
       # sidecar's own dev default. Without a sidecar credential, reports are computed-only.
       AI_SIDECAR_URL: http://ai-sidecar:7310
