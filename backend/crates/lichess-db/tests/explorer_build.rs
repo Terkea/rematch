@@ -144,6 +144,10 @@ fn build_options_defaults_match_adr_0035() {
     assert!(!o.band_reference);
     assert_eq!(o.sample_rate, None, "derived from the expected month size");
     assert_eq!(safety_cap(2_000_000), 2_500_000);
+    assert!(
+        !o.exclude_provisional,
+        "the provisional heuristic filters partly by result: opt-in only"
+    );
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
@@ -393,6 +397,10 @@ async fn pipeline_is_deterministic_across_thread_counts(pool: PgPool) {
             max_ply: 30,
             min_row_count: 1,
             flush_every_games: 37,
+            // A cap inside the stream, so the kept set depends on merge order. Sums commute and
+            // these batches finish nearly in order, so the merge-order guard proper is the
+            // pipeline tests (cap and order), which fail under `buffer_unordered`.
+            max_games: 200,
             pipeline: PipelineConfig {
                 threads,
                 batch_games: 9,
@@ -411,6 +419,38 @@ async fn pipeline_is_deterministic_across_thread_counts(pool: PgPool) {
     let bands: std::collections::BTreeSet<&str> = rows[0].iter().map(|r| r.1.as_str()).collect();
     assert!(bands.len() >= 4, "{bands:?}");
     assert_eq!(rows[0], rows[1]);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_capped_full_build_still_drains_verifies_and_activates(pool: PgPool) {
+    let body = zstd(varied_games(400).as_bytes()).await;
+    let srv = server(&[("2026-10", body.clone())], &[("2026-10", sha_hex(&body))]).await;
+    let o = BuildOptions {
+        max_games: 40,
+        min_row_count: 1,
+        ..opts("2026-10")
+    };
+    let out = build(
+        &pool,
+        &http_client().unwrap(),
+        &DumpSource::new(srv.uri(), "2026-10"),
+        &o,
+    )
+    .await
+    .unwrap();
+    assert!(out.stats.capped);
+    assert_eq!(out.stats.games_kept, safety_cap(40));
+    assert!(out.stats.games_seen < 400);
+    assert_eq!(
+        out.stats.bytes_compressed,
+        body.len() as u64,
+        "drained to the end"
+    );
+    let id = out.explorer_build.unwrap();
+    let row = get_build(&pool, id).await.unwrap().unwrap();
+    assert_eq!(row.status, BuildStatus::Active);
+    assert_eq!(row.source_sha256, sha_hex(&body));
+    assert_eq!(row.params["capped"], serde_json::json!(true));
 }
 
 /// A raw HTTP server: the sums file, and a dump body that closes after half its bytes (no

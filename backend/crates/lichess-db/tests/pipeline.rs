@@ -496,6 +496,8 @@ struct RawPlan {
     honour_range: bool,
     /// Every ranged response closes after `cut_after` bytes too.
     cut_ranged: bool,
+    /// The first this many ranged requests are answered 503.
+    ranged_fail_first: usize,
 }
 
 #[derive(Default)]
@@ -519,12 +521,14 @@ async fn raw_server(body: Vec<u8>, plan: RawPlan) -> (String, Arc<Mutex<RawLog>>
     let log = Arc::new(Mutex::new(RawLog::default()));
     let log2 = log.clone();
     let plain_gets = Arc::new(AtomicUsize::new(0));
+    let ranged = Arc::new(AtomicUsize::new(0));
     tokio::spawn(async move {
         loop {
             let Ok((mut sock, _)) = listener.accept().await else {
                 return;
             };
             let (body, log, plain_gets) = (body.clone(), log2.clone(), plain_gets.clone());
+            let ranged = ranged.clone();
             tokio::spawn(async move {
                 let mut buf = vec![0u8; 8192];
                 let n = sock.read(&mut buf).await.unwrap_or(0);
@@ -535,6 +539,20 @@ async fn raw_server(body: Vec<u8>, plan: RawPlan) -> (String, Arc<Mutex<RawLog>>
                     .and_then(|r| r.strip_suffix('-'))
                     .and_then(|r| r.parse::<usize>().ok());
                 let if_range = header_value(&req, "if-range");
+                if range.is_some() && ranged.fetch_add(1, Ordering::SeqCst) < plan.ranged_fail_first
+                {
+                    let _ = sock
+                        .write_all(
+                            b"HTTP/1.1 503 Service Unavailable
+content-length: 0
+connection: close
+
+",
+                        )
+                        .await;
+                    let _ = sock.flush().await;
+                    return;
+                }
                 let etag_line = plan
                     .etag
                     .map(|e| format!("etag: {e}\r\n"))
@@ -591,6 +609,7 @@ async fn a_mid_body_close_resumes_with_range_and_verifies() {
         cuts: 1,
         honour_range: true,
         cut_ranged: false,
+        ranged_fail_first: 0,
     };
     let (base, log) = raw_server(body.clone(), plan).await;
     let (mut games, sha) = open_dump_with(&client(), &DumpSource::new(&base, MONTH), &fast())
@@ -624,6 +643,7 @@ async fn a_resume_answered_with_200_is_a_transport_error() {
         cuts: 1,
         honour_range: false,
         cut_ranged: false,
+        ranged_fail_first: 0,
     };
     let (base, _) = raw_server(body, plan).await;
     let (mut games, sha) = open_dump_with(&client(), &DumpSource::new(&base, MONTH), &fast())
@@ -645,6 +665,7 @@ async fn no_etag_means_no_resume() {
         cuts: 1,
         honour_range: true,
         cut_ranged: false,
+        ranged_fail_first: 0,
     };
     let (base, log) = raw_server(body, plan).await;
     let (mut games, _) = open_dump_with(&client(), &DumpSource::new(&base, MONTH), &fast())
@@ -666,6 +687,7 @@ async fn resumes_are_capped() {
         cuts: 1,
         honour_range: true,
         cut_ranged: true,
+        ranged_fail_first: 0,
     };
     let (base, log) = raw_server(body, plan).await;
     let (mut games, sha) = open_dump_with(&client(), &DumpSource::new(&base, MONTH), &fast())
@@ -741,4 +763,100 @@ async fn a_404_is_not_retried() {
         .await
         .unwrap_err();
     assert_eq!(err, DumpError::Http(404));
+}
+
+#[tokio::test]
+async fn a_failed_resume_request_uses_a_resume_and_is_retried() {
+    let (text, body) = dump_body(300).await;
+    let digest = hex::encode(Sha256::digest(&body));
+    let plan = RawPlan {
+        etag: Some("\"v1\""),
+        cut_after: body.len() / 3,
+        cuts: 1,
+        honour_range: true,
+        cut_ranged: false,
+        ranged_fail_first: 2,
+    };
+    let (base, log) = raw_server(body.clone(), plan).await;
+    let (mut games, sha) = open_dump_with(&client(), &DumpSource::new(&base, MONTH), &fast())
+        .await
+        .unwrap();
+    assert_eq!(
+        collect(&mut games).await.unwrap(),
+        split_games(text.lines())
+    );
+    assert_eq!(sha.verify(&digest).unwrap(), digest);
+    assert_eq!(
+        log.lock().unwrap().requests.len(),
+        1 + 3,
+        "1 GET + two 503s + one 206"
+    );
+}
+
+#[tokio::test]
+async fn failed_resume_requests_stop_when_the_budget_is_spent() {
+    let (_, body) = dump_body(300).await;
+    let plan = RawPlan {
+        etag: Some("\"v1\""),
+        cut_after: body.len() / 3,
+        cuts: 1,
+        honour_range: true,
+        cut_ranged: false,
+        ranged_fail_first: 100,
+    };
+    let (base, log) = raw_server(body, plan).await;
+    let (mut games, sha) = open_dump_with(&client(), &DumpSource::new(&base, MONTH), &fast())
+        .await
+        .unwrap();
+    let err = collect(&mut games).await.unwrap_err();
+    assert!(
+        matches!(err, DumpError::Transport(ref m) if m.contains("503")),
+        "{err:?}"
+    );
+    assert!(!sha.is_complete());
+    assert_eq!(
+        log.lock().unwrap().requests.len(),
+        1 + 3,
+        "1 GET + max_resumes"
+    );
+}
+
+/// ADR 0043: one fixed User-Agent, no email, on the dump and the sums requests.
+#[tokio::test]
+async fn dump_and_sums_requests_send_the_exact_project_user_agent() {
+    const UA: &str = "chess-improver/0.1 (+https://github.com/chess-improver)";
+    assert_eq!(lichess_db::config::user_agent(), UA);
+    let (_, body) = dump_body(3).await;
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path(DUMP_PATH))
+        .and(wiremock::matchers::header("user-agent", UA))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(body.clone()))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let sums = format!(
+        "{}  lichess_db_standard_rated_2026-10.pgn.zst
+",
+        hex::encode(Sha256::digest(&body))
+    );
+    Mock::given(method("GET"))
+        .and(path("/standard/sha256sums.txt"))
+        .and(wiremock::matchers::header("user-agent", UA))
+        .respond_with(ResponseTemplate::new(200).set_body_string(sums))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let src = DumpSource::new(server.uri(), MONTH);
+    lichess_db::download::fetch_expected_sha_with(&client(), &src, &fast())
+        .await
+        .unwrap();
+    let (mut games, _) = open_dump_with(&client(), &src, &fast()).await.unwrap();
+    assert_eq!(collect(&mut games).await.unwrap().len(), 3);
+    let reqs = server.received_requests().await.unwrap();
+    for r in &reqs {
+        let ua = r.headers.get("user-agent").unwrap().to_str().unwrap();
+        assert_eq!(ua, UA);
+        assert!(!ua.contains('@'));
+    }
 }

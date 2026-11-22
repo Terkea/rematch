@@ -46,6 +46,10 @@ pub const PROVISIONAL_DIFF: i32 = 25;
 /// rating (RD about 60) by about 10 points and even a large upset by about 20, while a provisional
 /// one (RD at least 110, the Lichess threshold) moves by about 30 in an even game. `None` (no
 /// `RatingDiff` tag) is never flagged.
+///
+/// An unverified estimate: not checked against Lichess data. It also depends on the result (an
+/// upset moves a rating more), so filtering on it biases win/draw/loss counts; the explorer
+/// keeps it off (ADR-R2-10).
 pub fn looks_provisional(rating_diff: Option<i32>) -> bool {
     rating_diff.is_some_and(|d| d.saturating_abs() >= PROVISIONAL_DIFF)
 }

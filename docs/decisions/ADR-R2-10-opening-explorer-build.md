@@ -23,15 +23,17 @@ The repertoire's "in theory" test (≥ 50 games and a ≥ 5 % share) and its ope
 - The dump is in time order. Taking the first 2M games would sample only the first hours of the month, so the build samples by rate: `sample_rate = min(1, max_games / expected_games)`.
   - The sample uses the deterministic FNV hash of `Site` and the seed (ADR-R2-9).
   - `expected_games` comes from `--expected-games` if given. Otherwise it is the `games_scanned` of the newest active or superseded build that was not capped. With neither, it is `DEFAULT_EXPECTED_GAMES` = 100M, a rough 2026 figure.
-- `max_games` is the **target**. The pipeline stops only at a **safety cap** of `max_games × 1.25`.
+- `max_games` is an **upper target**. The rate divides by every game in the month, but the filters (BOT, correspondence, abandoned, missing ratings) also drop games, so the sample lands a little below `max_games` (kept ≈ target × eligible share). That makes the sample smaller, not biased.
+- A build that reaches the safety cap logs a warning, since the explorer then lacks the end of the month. It still activates, and is recorded as capped.
+- The estimate comes from the newest uncapped build **before** the month being built, so rebuilding an older month never uses a later month's count.
+- The pipeline stops only at a **safety cap** of `max_games × 1.25`.
   - A build that reaches the cap is recorded with `params.capped = true`. Its count is never used as the next month's estimate.
   - With a correct estimate, the binomial spread at 2M is about ±0.1 %, so the cap is not reached.
 - **BOT games are excluded**: either side has `WhiteTitle` or `BlackTitle` `"BOT"`.
-- **Provisional-looking games are excluded** from the explorer, because a provisional rating would put a game in the wrong band. The dump has no provisional flag, so this is a heuristic:
-  - A side looks provisional when `|RatingDiff| ≥ 25` in that game.
-  - Under Glicko-2, an established rating (RD ≈ 60) moves about 10 points in an even game, and about 20 even in a large upset. A provisional rating (RD ≥ 110, the Lichess threshold) moves about 30 points in an even game.
-  - A game with no `RatingDiff` tag is not flagged.
-  - The heuristic lives in `headers::looks_provisional`. `SampleFilter::exclude_provisional` turns it on; it is off by default and on for the explorer.
+- **Provisional-looking games are not excluded** (fix round 1, controller ruling). The dump has no provisional flag. `headers::looks_provisional` flags a side when `|RatingDiff| ≥ 25` in that game, and `BuildOptions::exclude_provisional` / `SampleFilter::exclude_provisional` (both off by default) can drop such games. The option stays off for the explorer, for two reasons:
+  - **The threshold is an unverified estimate.** It comes from Glicko-2 arithmetic: at RD ≈ 60 an even game moves a rating by about 10 points and a large upset by about 20, and at RD ≥ 110 (the Lichess provisional threshold) an even game moves it by about 30. It has not been checked against Lichess data, and its drop rate is unknown.
+  - **It filters partly by result.** A rating change scales with how surprising the result was, so a raw threshold drops upsets more often than other games. It also flags established but inactive players (RD 80-110) in ordinary decisive games, and misses provisional players who draw an equal opponent. Those results are exactly what the explorer counts (White wins, draws, Black wins), so turning it on would bias the counts by an unknown amount.
+  - A result-independent rule, such as an RD estimate normalised by `|score − expected|`, is left to Task 21, which owns reference-player selection. Until then, a game's band can be off when one side is provisional. That error does not select games by their result, so it is preferred to a filter that does.
 
 ### Single-pass parallel pipeline
 
@@ -42,7 +44,7 @@ The repertoire's "in theory" test (≥ 50 games and a ≥ 5 % share) and its ope
 4. At most two batches are in flight. Their results come back **in batch order**, through `buffered`, not `buffer_unordered`.
 5. `GameSink::merge` runs on the async side, one batch after another.
 
-Memory is bounded by `channel_batches + 2` batches plus one flush interval of explorer keys.
+Memory is bounded by `channel_batches + 2` batches plus one flush interval of explorer keys. The channel scales with the thread count: at 24 threads, 48 + 2 batches of 2,000 games is about 100,000 games, or roughly 100-150 MB of PGN. That is bounded but not small; lower `--threads` (or `channel_batches`) on a small host.
 
 ### Deterministic merges
 
@@ -77,7 +79,8 @@ A build records one `job_metrics` row: `kind = "lichess-db:build"`, `total_ms`, 
 ### Transfer robustness (T19 review ruling)
 
 - Before the body starts, a connect error, a timeout, a 5xx or a 429 is retried: 3 tries in total, with a doubling backoff from 2 s. A 4xx such as 404 is not retried.
-- A transport error mid-body is resumed in-process. The resume is a GET with `Range: bytes=<read>-` and `If-Range: <strong ETag>`, and the answer must be a `206` whose `Content-Range` starts exactly at the offset. The resumed bytes go into the same hashing stream. There are at most 5 resumes.
+- A transport error mid-body is resumed in-process. The resume is a GET with `Range: bytes=<read>-` and `If-Range: <strong ETag>`, and the answer must be a `206` whose `Content-Range` starts exactly at the offset. The resumed bytes go into the same hashing stream.
+- The budget is 5 resumes. **Every ranged request uses one**, with a backoff of `2 s × n` before the n-th. A ranged request that fails to connect, times out, or gets a 5xx or 429 is tried again while the budget lasts (fix round 1), so a short mirror outage does not abort a 2.5-hour transfer. A `200` (the file changed, so `If-Range` failed), another status or a wrong `Content-Range` is final at once.
 - Without a strong ETag, or with a `200`, the error is final, and the hash stays incomplete, so `verify` can never pass.
 - The zstd window is capped at 2^24 (`window_log_max`; Lichess uses 2^23), so a hostile frame cannot force a large allocation.
 
@@ -95,6 +98,7 @@ A full month is therefore set by its transfer, about 2.5 hours at that rate, not
 - **First-N sampling.** It is biased to the start of the month (rejected by the T19 review).
 - **`buffer_unordered` merges.** They are faster on a skewed batch, but the cap would no longer be deterministic, and nor would the results under a cap.
 - **Bottom-k by hash (R-10)** gives an exact sample size without an estimate. It was kept for the reference-player selection (Task 21). For the explorer, a ±25 % miss on the sample size is harmless.
+- **Idempotent flush chunks** (chunk ids, or a marker written in the same transaction) were the T17 review's wording. The controller accepted "never retry, fail the build" instead (fix round 1), as safe: an ambiguous commit leads to `fail_build`, which deletes the rows, so a double-counted chunk can never be activated. Chunk markers would need a migration, and they pay off only if flushes are retried in-process.
 
 ## Consequences
 

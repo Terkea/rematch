@@ -40,6 +40,10 @@ Command: `lichess-db bench --synthetic 500000 --threads 1,4,0`
   one, so the compressed MB/s is meaningless here. They also add few distinct explorer keys, so the
   merge is cheaper than on real data. Treat these rows as a ceiling for the parser.
 
+The bench filter is not the build filter. It keeps every eligible game (rate 1.0, BOT and
+correspondence excluded), and since fix round 1 the build also leaves provisional-looking games
+in by default.
+
 ## Real dump (network, run once, not a test)
 
 Command: `lichess-db bench --month 2026-10 --max-games 1000000 --threads 0`. It streams the
@@ -51,8 +55,9 @@ first ~1M games of `lichess_db_standard_rated_2026-10.pgn.zst` from database.lic
 | 24 | 1009984 | 93.48 | 10805 | 3.5 | 25.1 | 93440 | 9008 | 22876 | 0 | read |
 
 - The run is **bound by the network**: `read` equals the elapsed time. 3.5 MB/s is what this host
-  got from the mirror at that moment. The synthetic rows show that zstd and the splitter manage
-  at least 128 MB/s of PGN on their own.
+  got from the mirror at that moment. On the synthetic dump, zstd and the splitter delivered
+  about 128 MB/s of PGN. Real frames compress less and may decode at a different rate, which
+  was not measured separately.
 - 1,009,984 games were seen to keep 1,000,000. The other 9,984 were dropped by the filter (BOT,
   correspondence, abandoned or missing ratings); the bench does not break them down.
 - On real games the merge costs 22.9 s per 1M kept games (about 44k games/s). That is the next

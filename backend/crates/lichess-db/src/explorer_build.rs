@@ -274,7 +274,10 @@ pub enum Verify {
 pub struct BuildOptions {
     /// `YYYY-MM`; must match the source.
     pub month: String,
-    /// Target sample size (2 000 000). The sample rate aims at it over the whole month; the
+    /// Upper target of the sample (2 000 000). The rate is `max_games / expected games` and the
+    /// filters (BOT, correspondence, missing ratings, ...) apply too, so the sample lands a
+    /// little below it (kept is about target x eligible share). The rate spreads it over the
+    /// whole month; the
     /// pipeline stops only at the safety cap [`safety_cap`]`(max_games)`, which a correct
     /// estimate of the month's size never reaches.
     pub max_games: u64,
@@ -295,6 +298,11 @@ pub struct BuildOptions {
     /// [`DEFAULT_EXPECTED_GAMES`].
     pub expected_games: Option<u64>,
     pub seed: u32,
+    /// Drop games where a side looks provisional ([`crate::headers::looks_provisional`]).
+    /// Off by default: the heuristic is an unverified estimate, and because a rating change
+    /// scales with the surprise of the result it drops upsets more often than other games,
+    /// which would bias the explorer's win/draw/loss counts (ADR-R2-10).
+    pub exclude_provisional: bool,
     pub pipeline: PipelineConfig,
     pub retry: RetryPolicy,
 }
@@ -313,6 +321,7 @@ impl BuildOptions {
             sample_rate: None,
             expected_games: None,
             seed: 0,
+            exclude_provisional: false,
             pipeline: PipelineConfig::default(),
             retry: RetryPolicy::default(),
         }
@@ -330,14 +339,15 @@ pub struct BuildOutcome {
     pub explorer: ExplorerSinkStats,
 }
 
-/// `games_scanned` of the newest build that read its whole month (not capped).
-async fn last_full_month_games(pool: &PgPool) -> Result<Option<u64>, DumpError> {
+/// `games_scanned` of the newest build before `month` that read its whole month (not capped).
+async fn last_full_month_games(pool: &PgPool, month: &str) -> Result<Option<u64>, DumpError> {
     let n: Option<i64> = sqlx::query_scalar(
         "SELECT games_scanned FROM reference_builds \
          WHERE status IN ('active', 'superseded') AND games_scanned > 0 \
-           AND params->>'capped' = 'false' \
+           AND params->>'capped' = 'false' AND source_month < $1 \
          ORDER BY source_month DESC, started_at DESC LIMIT 1",
     )
+    .bind(month)
     .fetch_optional(pool)
     .await
     .map_err(store)?;
@@ -355,7 +365,7 @@ async fn resolve_rate(pool: &PgPool, opts: &BuildOptions) -> Result<f64, DumpErr
     }
     let expected = match opts.expected_games {
         Some(n) => n,
-        None => last_full_month_games(pool)
+        None => last_full_month_games(pool, &opts.month)
             .await?
             .unwrap_or(DEFAULT_EXPECTED_GAMES),
     };
@@ -404,7 +414,7 @@ pub async fn build(
         require_clock: false,
         time_classes: Some(EXPLORER_TIME_CLASSES.to_vec()),
         exclude_bots: true,
-        exclude_provisional: true,
+        exclude_provisional: opts.exclude_provisional,
     };
     let params = json!({
         "max_games": opts.max_games,
@@ -416,7 +426,7 @@ pub async fn build(
         "seed": opts.seed,
         "time_classes": EXPLORER_TIME_CLASSES.iter().map(|t| t.as_str()).collect::<Vec<_>>(),
         "exclude_bots": true,
-        "exclude_provisional": true,
+        "exclude_provisional": opts.exclude_provisional,
         "verify": format!("{:?}", opts.verify).to_lowercase(),
     });
     let id = create_build(
@@ -529,15 +539,30 @@ async fn run_build(
     stats.stage_ms.insert("drain".into(), ms_since(t));
     stats.bytes_compressed = sha.bytes_read();
     let digest = sha.verify(expected)?;
-    sqlx::query(
+    if stats.capped {
+        tracing::warn!(
+            build = %id,
+            kept = stats.games_kept,
+            seen = stats.games_seen,
+            "the safety cap stopped the sample before the end of the month, so the explorer lacks \
+             the rest of it; pass --expected-games with the real month size and rebuild"
+        );
+    }
+    let updated = sqlx::query(
         "UPDATE reference_builds SET params = params || jsonb_build_object('capped', $2::bool) \
-         WHERE id = $1",
+         WHERE id = $1 AND status = 'building'",
     )
     .bind(id)
     .bind(stats.capped)
     .execute(pool)
     .await
-    .map_err(store)?;
+    .map_err(store)?
+    .rows_affected();
+    if updated != 1 {
+        return Err(DumpError::Store(format!(
+            "build {id} is no longer building"
+        )));
+    }
     let scanned = i64::try_from(stats.games_seen).unwrap_or(i64::MAX);
     set_source_sha(pool, id, &digest, scanned)
         .await

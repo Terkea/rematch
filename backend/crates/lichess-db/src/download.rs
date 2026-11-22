@@ -262,52 +262,87 @@ impl Resumable {
         })
     }
 
-    /// Re-requests the rest of the body after `cause`. Needs a strong ETag, a resume left, and a
-    /// `206` whose `Content-Range` starts exactly at the offset; anything else is fatal.
+    /// Re-requests the rest of the body after `cause`. Needs a strong ETag and a `206` whose
+    /// `Content-Range` starts exactly at the offset. Every ranged request uses one resume of
+    /// the budget, with a growing backoff: a request that fails to connect, times out or gets
+    /// a 5xx or 429 is tried again while resumes are left. A `200` (the file changed), another
+    /// status or a wrong `Content-Range` is fatal at once.
     async fn resume(&mut self, cause: &str) -> Result<BodyStream, String> {
         let Some(etag) = self.etag.clone() else {
             return Err(format!("{cause} (no strong ETag, so no resume)"));
         };
-        if self.resumes >= self.policy.max_resumes {
-            return Err(format!("{cause} (gave up after {} resumes)", self.resumes));
+        let mut last = String::from("no resume left");
+        while self.resumes < self.policy.max_resumes {
+            self.resumes += 1;
+            tracing::warn!(
+                offset = self.offset,
+                resume = self.resumes,
+                cause,
+                "resuming dump"
+            );
+            tokio::time::sleep(self.policy.base_delay.saturating_mul(self.resumes)).await;
+            match ranged_get(&self.client, &self.url, self.offset, &etag).await {
+                Ok(body) => return Ok(body),
+                Err(ResumeError::Retry(msg)) => last = msg,
+                Err(ResumeError::Fatal(msg)) => return Err(format!("{cause}; {msg}")),
+            }
         }
-        self.resumes += 1;
-        tracing::warn!(
-            offset = self.offset,
-            resume = self.resumes,
-            cause,
-            "resuming dump"
-        );
-        tokio::time::sleep(self.policy.base_delay.saturating_mul(self.resumes)).await;
-        let res = self
-            .client
-            .get(&self.url)
-            .header(reqwest::header::RANGE, format!("bytes={}-", self.offset))
-            .header(reqwest::header::IF_RANGE, &etag)
-            .send()
-            .await
-            .map_err(|e| format!("{cause}; resume failed: {}", error_chain(&e)))?;
-        if res.status() != reqwest::StatusCode::PARTIAL_CONTENT {
-            return Err(format!(
-                "{cause}; resume answered {} instead of 206",
-                res.status().as_u16()
-            ));
-        }
-        let start = res
-            .headers()
-            .get(reqwest::header::CONTENT_RANGE)
-            .and_then(|v| v.to_str().ok())
-            .and_then(|v| v.strip_prefix("bytes "))
-            .and_then(|v| v.split('-').next())
-            .and_then(|v| v.parse::<u64>().ok());
-        if start != Some(self.offset) {
-            return Err(format!(
-                "{cause}; resume Content-Range starts at {start:?}, not {}",
-                self.offset
-            ));
-        }
-        Ok(res.bytes_stream().boxed())
+        Err(format!(
+            "{cause} (gave up after {} resumes; last: {last})",
+            self.resumes
+        ))
     }
+}
+
+/// One ranged request for the rest of the body from `offset`. A free function, so the future
+/// holds no borrow of the (non-`Sync`) body stream.
+async fn ranged_get(
+    client: &reqwest::Client,
+    url: &str,
+    offset: u64,
+    etag: &str,
+) -> Result<BodyStream, ResumeError> {
+    let res = client
+        .get(url)
+        .header(reqwest::header::RANGE, format!("bytes={offset}-"))
+        .header(reqwest::header::IF_RANGE, etag)
+        .send()
+        .await
+        .map_err(|e| ResumeError::Retry(format!("resume request failed: {}", error_chain(&e))))?;
+    let status = res.status();
+    if retryable_status(status) {
+        return Err(ResumeError::Retry(format!(
+            "resume answered {}",
+            status.as_u16()
+        )));
+    }
+    if status != reqwest::StatusCode::PARTIAL_CONTENT {
+        return Err(ResumeError::Fatal(format!(
+            "resume answered {} instead of 206",
+            status.as_u16()
+        )));
+    }
+    let start = res
+        .headers()
+        .get(reqwest::header::CONTENT_RANGE)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("bytes "))
+        .and_then(|v| v.split('-').next())
+        .and_then(|v| v.parse::<u64>().ok());
+    if start != Some(offset) {
+        return Err(ResumeError::Fatal(format!(
+            "resume Content-Range starts at {start:?}, not {offset}"
+        )));
+    }
+    Ok(res.bytes_stream().boxed())
+}
+
+/// Why one ranged request did not give the rest of the body.
+enum ResumeError {
+    /// Worth another resume: connect or read failure, timeout, 5xx, 429.
+    Retry(String),
+    /// Never worth another resume.
+    Fatal(String),
 }
 
 /// Reads the rest of the compressed body through the hasher without decompressing or parsing
