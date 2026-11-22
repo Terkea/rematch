@@ -275,7 +275,7 @@ async fn events(pool: &PgPool, account_id: Uuid) -> Vec<(String, Value)> {
 
 async fn usage_rows(pool: &PgPool, account_id: Uuid) -> Vec<(String, i64, String, i64)> {
     sqlx::query_as(
-        "SELECT model, cost_micro_usd, ref_id, input_tokens::bigint FROM ai_usage \
+        "SELECT model, cost_micro_usd, coalesce(ref_id, ''), input_tokens::bigint FROM ai_usage \
          WHERE account_id = $1 ORDER BY id",
     )
     .bind(account_id)
@@ -1313,4 +1313,381 @@ async fn report_usage_is_keyed_per_claim_and_section(pool: PgPool) {
     let claims: std::collections::BTreeSet<&str> =
         keys.iter().map(|k| k.split(':').nth(2).unwrap()).collect();
     assert_eq!(claims.len(), 2, "{keys:?}");
+}
+
+// ---------------------------------------------------------------------------------------------
+// Fix round 1: every paid call is metered on every path (cancel, degrade, fail, takeover), and
+// a zombie can never finish a run.
+// ---------------------------------------------------------------------------------------------
+
+/// The token count that marks overview's paid first attempt in `ai_usage`.
+const MARK: u64 = 7_777;
+
+/// Overview's attempt 1 is a paid refusal (marked), so a repair follows, answered by `repair`.
+/// Every other section is valid.
+fn overview_repair(
+    repair: impl Fn() -> Result<FakeStructured, AiError> + Send + Sync + 'static,
+) -> FakeAiClient {
+    per_section(&b2(), move |k, attempt| {
+        if k == SectionKey::Overview {
+            if attempt == 1 {
+                return Ok(FakeStructured {
+                    usage: AiUsage {
+                        input_tokens: MARK,
+                        output_tokens: 0,
+                        cache_creation_tokens: 0,
+                        cache_read_tokens: 0,
+                    },
+                    ..stop("refusal")
+                });
+            }
+            return repair();
+        }
+        Ok(out(valid(k)))
+    })
+}
+
+async fn marked_rows(pool: &PgPool, account_id: Uuid) -> usize {
+    usage_rows(pool, account_id)
+        .await
+        .iter()
+        .filter(|r| r.3 == MARK as i64)
+        .count()
+}
+
+type Hook = Box<dyn Fn(usize) -> BoxFuture<'static, ()> + Send + Sync>;
+
+/// Delegates to `inner`; `before(n)` runs before structured call `n` (0-based) is sent and
+/// `after(n)` after it returned.
+struct Hooked {
+    inner: Arc<dyn AiClient>,
+    n: AtomicUsize,
+    before: Hook,
+    after: Hook,
+}
+
+fn nothing() -> Hook {
+    Box::new(|_| Box::pin(async {}))
+}
+
+impl AiClient for Hooked {
+    fn structured<'a>(
+        &'a self,
+        req: &'a StructuredRequest,
+    ) -> BoxFuture<'a, Result<StructuredResult, AiError>> {
+        Box::pin(async move {
+            let n = self.n.fetch_add(1, Ordering::SeqCst);
+            (self.before)(n).await;
+            let r = self.inner.structured(req).await;
+            (self.after)(n).await;
+            r
+        })
+    }
+    fn stream_turn<'a>(
+        &'a self,
+        req: &'a ChatTurnRequest,
+        tools: Option<Arc<dyn ToolHandler>>,
+    ) -> BoxStream<'a, Result<TurnEvent, AiError>> {
+        self.inner.stream_turn(req, tools)
+    }
+    fn batch_submit<'a>(
+        &'a self,
+        items: &'a [BatchItem],
+    ) -> BoxFuture<'a, Result<String, AiError>> {
+        self.inner.batch_submit(items)
+    }
+    fn batch_status<'a>(&'a self, id: &'a str) -> BoxFuture<'a, Result<BatchStatus, AiError>> {
+        self.inner.batch_status(id)
+    }
+    fn batch_results<'a>(
+        &'a self,
+        id: &'a str,
+        resolver: &'a dyn SchemaResolver,
+    ) -> BoxStream<'a, Result<BatchResultItem, AiError>> {
+        self.inner.batch_results(id, resolver)
+    }
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_cancel_meters_the_calls_already_paid(pool: PgPool) {
+    let a = account(&pool).await;
+    // The repair hangs; the handler is cancelled while it is in flight.
+    let started = Arc::new(tokio::sync::Notify::new());
+    let s = started.clone();
+    let ai = Hooked {
+        inner: Arc::new(overview_repair(|| Ok(out(valid(SectionKey::Overview))))),
+        n: AtomicUsize::new(0),
+        before: Box::new(move |n| {
+            let s = s.clone();
+            Box::pin(async move {
+                if n == 1 {
+                    s.notify_one();
+                    tokio::time::sleep(Duration::from_secs(60)).await;
+                }
+            })
+        }),
+        after: nothing(),
+    };
+    let d = deps(&pool, Some(Arc::new(ai)), now_micros());
+    let run = request(&pool, a, ReportTrigger::Onboarding, Plan::Pro).await;
+    let c = ctx();
+    let cancel = c.cancel.clone();
+    let worker = tokio::spawn({
+        let d = d.clone();
+        async move { GenerateReportHandler(d).handle(job(run), c).await }
+    });
+    tokio::time::timeout(Duration::from_secs(20), started.notified())
+        .await
+        .expect("the repair started");
+    cancel.cancel();
+    let res = worker.await.unwrap();
+    assert!(matches!(res, Err(JobError::Release { .. })), "{res:?}");
+    assert_eq!(marked_rows(&pool, a).await, 1, "attempt 1 was paid");
+    assert_eq!(run_row(&pool, run).await.status, RunStatus::Queued);
+
+    // The next delivery regenerates overview; attempt 1 stays metered once.
+    let d2 = deps(
+        &pool,
+        Some(Arc::new(valid_fake(some_usage()))),
+        now_micros(),
+    );
+    handle(&d2, run).await.unwrap();
+    assert_eq!(run_row(&pool, run).await.status, RunStatus::Done);
+    assert_eq!(marked_rows(&pool, a).await, 1);
+    assert_eq!(usage_rows(&pool, a).await.len(), 6);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_budget_refusing_the_repair_meters_the_paid_first_attempt(pool: PgPool) {
+    let a = account(&pool).await;
+    // Another call of the scope spends the budget while attempt 1 runs.
+    let p = pool.clone();
+    let ai = Hooked {
+        inner: Arc::new(overview_repair(|| Ok(out(valid(SectionKey::Overview))))),
+        n: AtomicUsize::new(0),
+        before: nothing(),
+        after: Box::new(move |n| {
+            let p = p.clone();
+            Box::pin(async move {
+                if n == 0 {
+                    seed_spend(&p, a, 2_000_000).await;
+                }
+            })
+        }),
+    };
+    let d = deps(&pool, Some(Arc::new(ai)), now_micros());
+    let run = request(&pool, a, ReportTrigger::Onboarding, Plan::Pro).await;
+    handle(&d, run).await.unwrap();
+    let r = run_row(&pool, run).await;
+    assert_eq!(r.status, RunStatus::Done);
+    assert_eq!(r.ai_disabled_reason.as_deref(), Some("budget"));
+    assert_eq!(marked_rows(&pool, a).await, 1);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn exhausted_retries_meter_the_paid_first_attempt(pool: PgPool) {
+    let a = account(&pool).await;
+    let run = request(&pool, a, ReportTrigger::Onboarding, Plan::Pro).await;
+    sqlx::query("UPDATE report_runs SET retry_count = 5 WHERE id = $1")
+        .bind(run)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let d = deps(
+        &pool,
+        Some(Arc::new(overview_repair(|| Err(unavailable())))),
+        now_micros(),
+    );
+    handle(&d, run).await.unwrap();
+    assert_eq!(run_row(&pool, run).await.status, RunStatus::Failed);
+    assert_eq!(marked_rows(&pool, a).await, 1);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn auth_on_the_repair_meters_the_paid_first_attempt(pool: PgPool) {
+    let a = account(&pool).await;
+    let run = request(&pool, a, ReportTrigger::Onboarding, Plan::Pro).await;
+    let fake = overview_repair(|| Err(AiError::Auth { status: 401 }));
+    let d = deps(&pool, Some(Arc::new(fake)), now_micros());
+    let res = handle(&d, run).await;
+    assert!(
+        matches!(res, Err(JobError::Unrecoverable { .. })),
+        "{res:?}"
+    );
+    assert_eq!(
+        run_row(&pool, run).await.last_error.as_deref(),
+        Some("ai_auth")
+    );
+    assert_eq!(marked_rows(&pool, a).await, 1);
+}
+
+/// Entitlements that let another delivery take the run over (stale-reclaim it) when the job
+/// asks for the plan (`at_plan`) or for the budget scope.
+struct Takeover {
+    pool: PgPool,
+    run: Uuid,
+    at_plan: bool,
+}
+
+impl Takeover {
+    async fn take(&self) {
+        let mut c = self.pool.acquire().await.unwrap();
+        runs::claim_run_or_stale(&mut c, self.run, Duration::ZERO)
+            .await
+            .unwrap()
+            .expect("taken over");
+    }
+}
+
+impl Entitlements for Takeover {
+    fn plan<'a>(&'a self, _account_id: Uuid) -> BoxFuture<'a, Plan> {
+        Box::pin(async move {
+            if self.at_plan {
+                self.take().await;
+            }
+            Plan::Pro
+        })
+    }
+    fn budget_scope<'a>(&'a self, account_id: Uuid) -> BoxFuture<'a, Vec<Uuid>> {
+        Box::pin(async move {
+            if !self.at_plan {
+                self.take().await;
+            }
+            vec![account_id]
+        })
+    }
+}
+
+async fn report_ready_count(pool: &PgPool, a: Uuid) -> usize {
+    event_labels(pool, a)
+        .await
+        .iter()
+        .filter(|l| *l == "report.ready")
+        .count()
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_zombie_cannot_finish_a_run_taken_over(pool: PgPool) {
+    let a = account(&pool).await;
+    let d = deps(
+        &pool,
+        Some(Arc::new(valid_fake(some_usage()))),
+        now_micros(),
+    );
+    let run = request(&pool, a, ReportTrigger::Onboarding, Plan::Pro).await;
+    handle(&d, run).await.unwrap();
+    // The run crashed after its last section, before the finish: it is redelivered.
+    sqlx::query("UPDATE report_runs SET status = 'queued', finished_at = NULL WHERE id = $1")
+        .bind(run)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let ready_before = report_ready_count(&pool, a).await;
+    let mut z = d.clone();
+    z.entitlements = Arc::new(Takeover {
+        pool: pool.clone(),
+        run,
+        at_plan: true,
+    });
+    let res = handle(&z, run).await.unwrap();
+    assert_eq!(res["lost"], json!(true), "{res}");
+    assert_eq!(run_row(&pool, run).await.status, RunStatus::Running);
+    assert_eq!(
+        report_ready_count(&pool, a).await,
+        ready_before,
+        "the zombie announced nothing"
+    );
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_zombie_failing_after_a_takeover_meters_its_paid_calls(pool: PgPool) {
+    let a = account(&pool).await;
+    let run = request(&pool, a, ReportTrigger::Onboarding, Plan::Pro).await;
+    let mut d = deps(
+        &pool,
+        Some(Arc::new(overview_repair(|| Err(unavailable())))),
+        now_micros(),
+    );
+    d.entitlements = Arc::new(Takeover {
+        pool: pool.clone(),
+        run,
+        at_plan: false,
+    });
+    let res = handle(&d, run).await.unwrap();
+    assert_eq!(res["lost"], json!(true), "{res}");
+    let r = run_row(&pool, run).await;
+    assert_eq!(
+        r.status,
+        RunStatus::Running,
+        "the new holder's run is untouched"
+    );
+    assert_eq!(r.retry_count, 0);
+    assert_eq!(
+        marked_rows(&pool, a).await,
+        1,
+        "the zombie still meters what it paid"
+    );
+    assert!(
+        !event_labels(&pool, a)
+            .await
+            .iter()
+            .any(|l| l == "report.degraded")
+    );
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_dead_job_leaves_a_live_run_alone(pool: PgPool) {
+    let a = account(&pool).await;
+    let d = deps(&pool, None, now_micros());
+    let run = request(&pool, a, ReportTrigger::Onboarding, Plan::Pro).await;
+    let mut c = pool.acquire().await.unwrap();
+    runs::claim_run(&mut c, run).await.unwrap().unwrap();
+    GenerateReportHandler(d.clone())
+        .on_dead(&job(run), "boom")
+        .await;
+    assert_eq!(run_row(&pool, run).await.status, RunStatus::Running);
+    assert!(events(&pool, a).await.is_empty());
+}
+
+/// Serves the fixture after every caller reached the barrier: both runs pass the early plan
+/// check before either creates its report.
+struct BarrierInputs(Arc<tokio::sync::Barrier>);
+
+impl CoachingInputProvider for BarrierInputs {
+    fn coaching_input<'a>(
+        &'a self,
+        _account_id: Uuid,
+        _tc: TimeClass,
+    ) -> BoxFuture<'a, anyhow::Result<Option<Value>>> {
+        Box::pin(async move {
+            self.0.wait().await;
+            Ok(Some(load_fixture("b2-rapid")))
+        })
+    }
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn two_racing_free_runs_get_one_report(pool: PgPool) {
+    let a = account(&pool).await;
+    let mut d = deps(
+        &pool,
+        Some(Arc::new(valid_fake(some_usage()))),
+        now_micros(),
+    );
+    d.entitlements = Arc::new(FixedPlan(Plan::Free));
+    d.inputs = Arc::new(BarrierInputs(Arc::new(tokio::sync::Barrier::new(2))));
+    let r1 = request(&pool, a, ReportTrigger::Manual, Plan::Free).await;
+    let r2 = request(&pool, a, ReportTrigger::Manual, Plan::Free).await;
+    let (x, y) = tokio::join!(handle(&d, r1), handle(&d, r2));
+    let failed = [x, y]
+        .iter()
+        .filter(|r| matches!(r, Err(JobError::Unrecoverable { code: Some(c), .. }) if c == "plan_interval"))
+        .count();
+    assert_eq!(failed, 1);
+    let n: i64 = sqlx::query_scalar("SELECT count(*) FROM reports WHERE account_id = $1")
+        .bind(a)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(n, 1, "one report inside the free interval");
 }

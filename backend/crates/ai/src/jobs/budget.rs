@@ -2,7 +2,7 @@
 //!
 //! - [`BudgetConfig`]: the monthly budget per plan and an optional global monthly cap, in
 //!   micro-USD, from the environment ([`BudgetConfig::from_env`]).
-//! - [`budget_guard`]: the hard stop run before every model call (the `BeforeCall` hook of the
+//! - [`budget_guard`]: the budget check run before every model call (the `BeforeCall` hook of the
 //!   generators and the chat).
 //! - [`meter`]: one `ai_usage` row per metered model entry, priced from the [`PricingTable`]
 //!   (never the SDK's estimate, which is kept beside it for comparison).
@@ -98,9 +98,10 @@ fn db_unavailable() -> AiError {
     }
 }
 
-/// The hard stop run before every model call: the spend of `scope` (the accounts sharing one
-/// budget) and, with a global cap, of everyone, since the start of `now`'s UTC month. Spend at
-/// or above the budget is `Err(AiError::Budget)`. A database error fails closed as
+/// The budget check run before every model call (not a strict cap: calls in flight can pass
+/// the budget by a few calls; ADR-R3-5 "Degradation"): the spend of `scope` (the accounts
+/// sharing one budget) and, with a global cap, of everyone, since the start of `now`'s UTC
+/// month. Spend at or above the budget is `Err(AiError::Budget)`. A database error fails closed as
 /// `Unavailable` (the job retries later; no call is made).
 pub fn budget_guard(
     pool: PgPool,
@@ -161,6 +162,8 @@ fn cost_of(pricing: &PricingTable, c: &CallRecord, requested_model: AiModel) -> 
         .model_ids()
         .filter_map(|m| cost_micro_usd(pricing, m, &c.usage, c.batch).ok())
         .max()
+        // Unreachable: `PricingTable` validation requires a price for every `AiModel`, so the
+        // requested model is always priced (review m6). Kept fail-closed regardless.
         .unwrap_or(u64::MAX)
 }
 

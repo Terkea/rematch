@@ -204,6 +204,28 @@ pub async fn release_claim(conn: &mut PgConnection, claim: &RunClaim) -> Result<
     Ok(r.rows_affected() == 1)
 }
 
+/// [`set_failed`], except for a run some worker holds alive (`running` with a heartbeat newer
+/// than `stale_after`): a dead job never fails a run another delivery is generating (review m5).
+pub async fn set_failed_unless_live(
+    conn: &mut PgConnection,
+    id: Uuid,
+    error: &str,
+    stale_after: std::time::Duration,
+) -> Result<bool, sqlx::Error> {
+    let r = sqlx::query(
+        "UPDATE report_runs SET status = 'failed', finished_at = now(), next_attempt_at = NULL, \
+         last_error = $2 WHERE id = $1 AND status NOT IN ('done', 'failed') \
+         AND NOT (status = 'running' \
+         AND coalesce(heartbeat_at, started_at, created_at) >= now() - make_interval(secs => $3))",
+    )
+    .bind(id)
+    .bind(error)
+    .bind(stale_after.as_secs_f64())
+    .execute(conn)
+    .await?;
+    Ok(r.rows_affected() == 1)
+}
+
 /// When the newest report of (account, time class) not made by `run_id` was created.
 pub async fn latest_other_report_at(
     conn: &mut PgConnection,

@@ -736,6 +736,7 @@ export const jobs = pgTable(
         table.userKey.asc().nullsLast(),
         table.priority.asc().nullsLast(),
         table.runAt.asc().nullsLast(),
+        table.id.asc().nullsLast(),
       )
       .where(sql`(state = 'queued'::job_state)`),
   ],
