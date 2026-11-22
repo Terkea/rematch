@@ -28,6 +28,11 @@ pub struct SampleFilter {
     pub require_clock: bool,
     /// Keep only these classes (`None` = all).
     pub time_classes: Option<Vec<TimeClass>>,
+    /// Drop games where either side has the `BOT` title (default `true`).
+    pub exclude_bots: bool,
+    /// Drop games where either side looks provisional
+    /// ([`crate::headers::looks_provisional`]; default `false`).
+    pub exclude_provisional: bool,
 }
 
 impl Default for SampleFilter {
@@ -38,6 +43,8 @@ impl Default for SampleFilter {
             seed: 0,
             require_clock: false,
             time_classes: None,
+            exclude_bots: true,
+            exclude_provisional: false,
         }
     }
 }
@@ -80,6 +87,17 @@ pub fn sample_fraction(site: &str, seed: u32) -> f64 {
     f64::from(hash) / 4_294_967_296.0
 }
 
+/// The sample rate that keeps about `target` of `expected` games, spread over the whole dump:
+/// `min(1, target / expected)`, or `1` when nothing is expected. The dump is in time order, so
+/// stopping after the first `target` games would sample only the first hours of the month; with
+/// this rate `max_games` is only a safety cap.
+pub fn proportional_rate(target: u64, expected: u64) -> f64 {
+    if expected == 0 {
+        return 1.0;
+    }
+    (target as f64 / expected as f64).min(1.0)
+}
+
 /// The game's time class when `filter` keeps it, else `None`.
 pub fn keep(h: &DumpHeader, f: &SampleFilter) -> Option<TimeClass> {
     if h.time_control == "-" {
@@ -94,6 +112,12 @@ pub fn keep(h: &DumpHeader, f: &SampleFilter) -> Option<TimeClass> {
     }
     h.white_elo?;
     h.black_elo?;
+    if f.exclude_bots && h.has_bot() {
+        return None;
+    }
+    if f.exclude_provisional && (h.white_provisional() || h.black_provisional()) {
+        return None;
+    }
     if f.require_clock && !h.has_clock {
         return None;
     }

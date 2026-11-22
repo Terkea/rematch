@@ -14,6 +14,10 @@ pub const MAX_GAME_BYTES: usize = 1024 * 1024;
 /// Read buffer between the zstd decoder and the line splitter.
 pub const DECODE_BUFFER_BYTES: usize = 64 * 1024;
 
+/// Largest zstd window the decoder accepts, as a power of two (16 MiB; Lichess uses 2^23). A
+/// frame asking for more is a decode error instead of a large allocation.
+pub const MAX_ZSTD_WINDOW_LOG: u32 = 24;
+
 /// Upper bound for `sha256sums.txt` (about 18 KB in 2026, one line per month).
 pub const MAX_SUMS_BYTES: usize = 1024 * 1024;
 
