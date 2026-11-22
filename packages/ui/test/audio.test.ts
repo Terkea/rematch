@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createSoundEngine, soundForMove } from "../src/audio/index";
+import { createSoundEngine, soundForMove, soundForSan } from "../src/audio/index";
 
 describe("soundForMove", () => {
   it.each([
@@ -12,6 +12,19 @@ describe("soundForMove", () => {
     [{ san: "exd8=Q+", flags: "cp" }, "check"],
   ] as const)("%j -> %s", (m, s) => {
     expect(soundForMove(m)).toBe(s);
+  });
+});
+
+describe("soundForSan", () => {
+  it.each([
+    ["Nf3", "move"],
+    ["exd5", "capture"],
+    ["O-O", "castle"],
+    ["O-O-O+", "check"],
+    ["e8=Q", "promote"],
+    ["Qxf7#", "gameEnd"],
+  ])("%s -> %s", (san, s) => {
+    expect(soundForSan(san)).toBe(s);
   });
 });
 
@@ -80,6 +93,14 @@ describe("createSoundEngine", () => {
 
   it("plays nothing before unlock", () => {
     const { e, log } = make();
+    e.play("move");
+    expect(log.master).toBe(0);
+  });
+
+  it("stays silent while the context is created but the browser has not let it run", () => {
+    const { e, ctx, log } = make();
+    (ctx as unknown as { resume: () => Promise<void> }).resume = () => new Promise(() => {});
+    void e.unlock();
     e.play("move");
     expect(log.master).toBe(0);
   });

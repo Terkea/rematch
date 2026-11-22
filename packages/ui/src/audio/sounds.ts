@@ -19,3 +19,13 @@ export function soundForMove(move: { san: string; flags: string }): BoardSound {
   if (flags.includes("c") || flags.includes("e")) return "capture";
   return "move";
 }
+
+/** The sound for a move known only by its SAN, such as a review's move list. */
+export function soundForSan(san: string): BoardSound {
+  const flags = san.startsWith("O-O-O")
+    ? "q"
+    : san.startsWith("O-O")
+      ? "k"
+      : `${san.includes("x") ? "c" : "n"}${san.includes("=") ? "p" : ""}`;
+  return soundForMove({ san, flags });
+}
