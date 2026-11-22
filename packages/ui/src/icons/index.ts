@@ -5,6 +5,7 @@
 export {
   ArrowCounterClockwiseIcon,
   ArrowsClockwiseIcon,
+  ArrowsOutSimpleIcon,
   BookOpenIcon,
   CaretDoubleLeftIcon,
   CaretDoubleRightIcon,

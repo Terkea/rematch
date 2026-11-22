@@ -53,6 +53,8 @@ export interface CitedPosition {
   ply: number;
   /** The review at that ply (`/app/games/<games.id>?ply=N`). */
   href: string;
+  /** The review's game id (`games.id`): the explorer loads the game around the ply by it. */
+  reviewGameId?: string;
   /** The position before the move. */
   fen: string;
   /** The player's side. */

@@ -14,7 +14,12 @@ export {
   READING_COPY,
   streamRuns,
 } from "./chat-message.js";
-export { CitedBoard, citedAnnotations, citedLabel } from "./cited-board.js";
+export {
+  CitedBoard,
+  citedAnnotations,
+  citedLabel,
+  type LoadLine,
+} from "./cited-board.js";
 export {
   CoachState,
   type CoachStateAction,

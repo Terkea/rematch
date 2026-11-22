@@ -166,6 +166,61 @@ test.describe
       await page.unroute("**/api/coach/threads");
     });
 
+    // feat/position-explorer: an answer that cites a move shows its board, which expands into
+    // the explorer; it steps through the game and plays a tried move, never evaluated.
+    test("4c. a cited position expands, steps through the game and tries a move", async () => {
+      await live(page, "/app/coach/new", "textarea");
+      await page.getByRole("textbox").fill("Where did the game against Night-King96 turn?");
+      await page.getByRole("button", { name: "Send" }).click();
+      await page.waitForURL(/\/app\/coach\/[0-9a-f-]{36}$/);
+      const messageId = latestAnswer();
+      // 28. Nd2 of the analysed fixture (ply 55), seen from Black, the e2e player's side.
+      simulate({
+        kind: "chat-done",
+        messageId,
+        text: "The game turned on Nd2.",
+        segments: [
+          { kind: "text", text: "The game turned on " },
+          { kind: "move", gameId: "e2e-analysed", ply: 55, san: "Nd2" },
+          { kind: "text", text: "." },
+        ],
+      });
+      const answer = page.locator("article[data-role='assistant']").last();
+      const expand = answer.getByRole("button", { name: "Expand the position before 28. Nd2" });
+      await expect(expand).toBeVisible();
+      await expand.click();
+      const dialog = page.getByRole("dialog", { name: "Position before 28. Nd2" });
+      await expect(dialog).toBeVisible();
+      // The game around the ply arrives; the board starts on the position before the move.
+      const cited = dialog.locator("[data-ply='55']");
+      await expect(cited).toBeVisible();
+      await expect(dialog.locator("[data-ply='54']")).toHaveAttribute("aria-current", "step");
+      await dialog.getByRole("button", { name: "Next move" }).click();
+      await expect(cited).toHaveAttribute("aria-current", "step");
+      await page.keyboard.press("ArrowLeft");
+      await expect(dialog.locator("[data-ply='54']")).toHaveAttribute("aria-current", "step");
+
+      // Try 28. Nc3 instead, from the keyboard (seen from Black: c is right of e, 3 is above 4).
+      await dialog.locator("[data-square-button='e4']").focus();
+      for (const key of ["Enter", "ArrowRight", "ArrowRight", "ArrowUp", "Enter"]) {
+        await page.keyboard.press(key);
+      }
+      await expect(dialog.getByRole("button", { name: "Try a move" })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+      await expect(dialog.getByRole("button", { name: /Nc3/ })).toHaveAttribute(
+        "aria-current",
+        "step",
+      );
+      await expect(dialog.getByText(/not checked by the engine/)).toBeVisible();
+      await dialog.getByRole("button", { name: "Reset" }).click();
+      await expect(dialog.getByRole("button", { name: /Nc3/ })).toHaveCount(0);
+      await page.keyboard.press("Escape");
+      await expect(dialog).toBeHidden();
+      await expect(expand).toBeFocused();
+    });
+
     test("5. another user of the account gets not-found and none of the owner's chunks", async ({
       browser,
       request,
@@ -218,9 +273,9 @@ test.describe
     });
 
     test("6. a weekly_cap denial shows the cap copy and disables the composer", async () => {
-      // With steps 4 and 4b's answers, 99 of the week's 100 are used; another device uses the
-      // last while this question waits.
-      spendAllowance(97);
+      // With steps 4, 4b and 4c's answers, 99 of the week's 100 are used; another device uses
+      // the last while this question waits.
+      spendAllowance(96);
       await live(page, "/app/coach/new", "textarea");
       await page.getByRole("textbox").fill("One more question about my endgames?");
       await page.getByRole("button", { name: "Send" }).click();

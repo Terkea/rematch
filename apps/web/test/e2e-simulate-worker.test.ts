@@ -128,6 +128,23 @@ describe("simulateWorker: chat", () => {
     expect((await events()).at(-1)?.payload).toEqual({ messageId, replace: true, attempt: 1 });
   });
 
+  it("done stores the step's segments when it gives them (a cited move)", async () => {
+    const messageId = await answer();
+    const segments = [
+      { kind: "text", text: "You played " },
+      { kind: "move", gameId: "e2e-analysed", ply: 55, san: "Nd2" },
+    ];
+    await simulateWorker(db, {
+      kind: "chat-done",
+      messageId,
+      text: "You played Nd2",
+      segments,
+    });
+    const [done] = await db.select().from(coachMessages).where(eq(coachMessages.id, messageId));
+    expect(done?.text).toBe("You played Nd2");
+    expect(done?.segments).toEqual(segments);
+  });
+
   it("a failure stores its reason and emits it once", async () => {
     const messageId = await answer();
     await simulateWorker(db, { kind: "chat-failed", messageId, reason: "weekly_cap" });
