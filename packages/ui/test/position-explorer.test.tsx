@@ -5,9 +5,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { games } from "../src/fixtures/index.js";
 import {
   type ExplorerMove,
+  PositionExplorer,
   type PositionExplorerProps,
   type PositionLine,
-  PositionExplorer,
 } from "../src/position-explorer/index.js";
 
 afterEach(cleanup);
@@ -66,7 +66,9 @@ describe("PositionExplorer, compact", () => {
       "href",
       props.href,
     );
-    expect(screen.getByRole("button", { name: "Expand the position before 28. Nd2" })).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Expand the position before 28. Nd2" }),
+    ).toBeVisible();
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
@@ -200,9 +202,7 @@ describe("PositionExplorer, expanded", () => {
       throw new Error("offline");
     });
     const { dialog } = await expand({ loadLine });
-    expect(
-      await within(dialog).findByText(/Couldn't load the rest of the game/),
-    ).toBeVisible();
+    expect(await within(dialog).findByText(/Couldn't load the rest of the game/)).toBeVisible();
     await act(async () => {
       fireEvent.keyDown(dialog, { key: "ArrowRight" });
     });

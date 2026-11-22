@@ -5,7 +5,7 @@ import { CheckCircleIcon, Icon, InfoIcon, WarningCircleIcon, WarningIcon } from 
 import { cn } from "../lib/index.js";
 import { motion, spring, useReducedMotion } from "../motion/index.js";
 import { AiDisclosure, AiLabel } from "./ai-disclosure.js";
-import { CitedBoard } from "./cited-board.js";
+import { CitedBoard, type LoadLine } from "./cited-board.js";
 import { CoachState } from "./coach-state.js";
 import { notationClass, SegmentText } from "./segment-text.js";
 import {
@@ -34,6 +34,8 @@ export interface ChatMessageProps {
   hrefFor?: ((s: Segment) => string | null) | undefined;
   /** The positions the answer cites, by `citedKey` (Fix D, N5); each shows under its paragraph. */
   positions?: Readonly<Record<string, CitedPosition>> | undefined;
+  /** Loads a cited position's game and engine line when its board is expanded. */
+  loadLine?: LoadLine | undefined;
   className?: string;
 }
 
@@ -128,10 +130,12 @@ function AnswerWithPositions({
   segments,
   positions,
   hrefFor,
+  loadLine,
 }: {
   segments: readonly Segment[];
   positions: Readonly<Record<string, CitedPosition>>;
   hrefFor: ChatMessageProps["hrefFor"];
+  loadLine: LoadLine | undefined;
 }) {
   const shown = new Set<string>();
   return (
@@ -149,7 +153,7 @@ function AnswerWithPositions({
             {boards.length > 0 ? (
               <div className="flex flex-wrap gap-6">
                 {boards.map((p) => (
-                  <CitedBoard key={citedKey(p.gameId, p.ply)} position={p} />
+                  <CitedBoard key={citedKey(p.gameId, p.ply)} position={p} loadLine={loadLine} />
                 ))}
               </div>
             ) : null}
@@ -297,6 +301,7 @@ export function ChatMessage({
   disclosure,
   hrefFor,
   positions,
+  loadLine,
   className,
 }: ChatMessageProps) {
   if (role === "user") {
@@ -341,7 +346,12 @@ export function ChatMessage({
     body = <CoachState kind="writing" title={READING_COPY} titleAs="p" />;
   } else if (positions && Object.keys(positions).length > 0) {
     body = (
-      <AnswerWithPositions segments={segments ?? []} positions={positions} hrefFor={hrefFor} />
+      <AnswerWithPositions
+        segments={segments ?? []}
+        positions={positions}
+        hrefFor={hrefFor}
+        loadLine={loadLine}
+      />
     );
   } else {
     body = (

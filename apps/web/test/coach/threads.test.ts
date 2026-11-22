@@ -313,6 +313,7 @@ describe("threads", () => {
         gameId: pid,
         ply: 2,
         href: `/app/games/${gameId}?ply=2`,
+        reviewGameId: gameId,
         fen: expect.stringMatching(/^rnbqkbnr\/pppppppp\/8\/8\/4P3\/8\/PPPP1PPP\/RNBQKBNR b /),
         orientation: "black",
         moveText: "1… e5",

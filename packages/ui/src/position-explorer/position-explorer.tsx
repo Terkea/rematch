@@ -39,6 +39,7 @@ import { ArrowSwatch } from "../profile/arrow-swatch.js";
 import { Scoresheet, type ScoresheetMove } from "../review/scoresheet.js";
 import {
   derivedLine,
+  type ExplorerAction,
   type ExplorerMode,
   type ExplorerMove,
   explorerReducer,
@@ -334,8 +335,12 @@ function Step({ label, icon, keys, disabled, onClick }: StepProps) {
 
 // ban-lint-allow TOK2: the dialog keeps a gutter round it at every height and width
 const DIALOG_SIZE = "max-h-[calc(100dvh-2*var(--space-gutter))] max-w-5xl overflow-y-auto";
-// ban-lint-allow TOK2: the board fills its column in whole-pixel squares and leaves room for the controls below it
-const BOARD_SIZE = "[--board-size:round(down,min(100cqi,100dvh_-_--spacing(64)),8px)] md:[--board-size:round(down,min(100cqi_-_16px,100dvh_-_--spacing(64)),8px)]";
+// The board fills its column in whole-pixel squares and leaves room for the controls below it;
+// from 768px the well's 16px comes off.
+// ban-lint-allow TOK2: a whole-pixel board capped by the viewport height
+const BOARD_SIZE = "[--board-size:round(down,min(100cqi,100dvh_-_--spacing(64)),8px)]";
+// ban-lint-allow TOK2: the same, less the well's padding
+const BOARD_SIZE_MD = "md:[--board-size:round(down,min(100cqi_-_16px,100dvh_-_--spacing(64)),8px)]";
 
 function ExplorerDialog({
   ply,
@@ -350,13 +355,11 @@ function ExplorerDialog({
   load,
   boardLabel,
 }: PositionExplorerProps & { load: Load; boardLabel: string }) {
-  const start = useMemo(
-    () => line ?? derivedLine({ ply, fenBefore, played, best }),
-    // The first line only: a loaded line arrives through the reducer.
-    // biome-ignore lint/correctness/useExhaustiveDependencies: see above
-    [],
+  // The first line only (the derived one until the fetch answers); a loaded line arrives through
+  // the reducer.
+  const [state, dispatch] = useReducer(explorerReducer, null, () =>
+    initialExplorerState(line ?? derivedLine({ ply, fenBefore, played, best }), ply),
   );
-  const [state, dispatch] = useReducer(explorerReducer, initialExplorerState(start, ply));
   useEffect(() => {
     if (line && line !== state.line) dispatch({ type: "loaded", line });
   }, [line, state.line]);
@@ -403,17 +406,22 @@ function ExplorerDialog({
     if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
     const t = e.target as HTMLElement;
     if (t.closest("[data-square-button],[role='radiogroup'],input,textarea,select")) return;
-    const act: Record<string, () => void> = {
-      ArrowLeft: () => dispatch({ type: "step", by: -1 }),
-      ArrowRight: () => dispatch({ type: "step", by: 1 }),
-      Home: () => dispatch({ type: "start" }),
-      End: () => dispatch({ type: "end" }),
-      f: () => setSide((s) => (s === "white" ? "black" : "white")),
-    };
-    const run = act[e.key];
-    if (!run) return;
+    const action: ExplorerAction | "flip" | null =
+      e.key === "ArrowLeft"
+        ? { type: "step", by: -1 }
+        : e.key === "ArrowRight"
+          ? { type: "step", by: 1 }
+          : e.key === "Home"
+            ? { type: "start" }
+            : e.key === "End"
+              ? { type: "end" }
+              : e.key === "f" || e.key === "F"
+                ? "flip"
+                : null;
+    if (!action) return;
     e.preventDefault();
-    run();
+    if (action === "flip") setSide((s) => (s === "white" ? "black" : "white"));
+    else dispatch(action);
   };
 
   const match = tryMatch(state);
@@ -442,7 +450,7 @@ function ExplorerDialog({
       </div>
       <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_--spacing(76)] lg:gap-6">
         <div className="flex min-w-0 flex-col gap-3">
-          <div className={cn("@container w-full", BOARD_SIZE)}>
+          <div className={cn("@container w-full", BOARD_SIZE, BOARD_SIZE_MD)}>
             <Board
               fen={fen}
               label={`${boardLabel}. Shown: ${last ? `after ${last.san}` : "the start of the line"}`}
@@ -509,8 +517,8 @@ function ExplorerDialog({
             <p className="m-0 text-ink">{note}</p>
             {state.mode === "try" && state.tried.length > 0 ? (
               <p className="m-0 text-ink-soft">
-                Moves you try are not checked by the engine. The game review shows the engine's
-                move at every point of the game.
+                Moves you try are not checked by the engine. The game review shows the engine's move
+                at every point of the game.
               </p>
             ) : null}
             {load === "failed" ? (

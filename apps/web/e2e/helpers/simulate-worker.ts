@@ -14,7 +14,14 @@ import { DISCLOSURE, payloadFixture } from "../../test/helpers/coaching";
 export type WorkerStep =
   | { kind: "report-section"; runId: string; section: SectionKey }
   | { kind: "chat-chunk"; messageId: string; seq: number; text: string }
-  | { kind: "chat-done"; messageId: string; replace?: boolean; text?: string }
+  | {
+      kind: "chat-done";
+      messageId: string;
+      replace?: boolean;
+      text?: string;
+      /** The validated segments (default one text segment of `text`), e.g. a cited move. */
+      segments?: unknown[];
+    }
   | { kind: "chat-failed"; messageId: string; reason: string }
   | { kind: "report-failed"; runId: string; reason: string }
   | { kind: "import-done"; accountId: string; imported: number };
@@ -244,7 +251,7 @@ async function chat(
   const done = await rows(
     db,
     sql`update coach_messages set status = 'done', text = ${text},
-      segments = ${JSON.stringify([{ kind: "text", text }])}::jsonb, citations = '[]'::jsonb,
+      segments = ${JSON.stringify(step.segments ?? [{ kind: "text", text }])}::jsonb, citations = '[]'::jsonb,
       dropped_count = 0, ai_disclosure = ${JSON.stringify(disclosure("chat@1"))}::jsonb,
       failure_reason = null
       where id = ${step.messageId} and status in ('pending', 'streaming') returning id`,

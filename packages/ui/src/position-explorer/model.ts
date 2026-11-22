@@ -73,8 +73,8 @@ export function moveFrom(fen: string, uci: string, ply: number): ExplorerMove | 
 export function derivedLine(p: {
   ply: number;
   fenBefore: string;
-  played: { uci: string };
-  best: { uci: string } | null;
+  played: { uci: string; san?: string };
+  best: { uci: string; san?: string } | null;
 }): PositionLine {
   const played = moveFrom(p.fenBefore, p.played.uci, p.ply);
   const best =
@@ -135,7 +135,8 @@ export function explorerReducer(state: ExplorerState, action: ExplorerAction): E
     case "mode": {
       if (action.mode === state.mode) return state;
       if (action.mode === "try") {
-        return { ...state, mode: "try", tryBase: state.mode, tryFrom: state.cursor, tried: [] };
+        const tryBase = state.mode === "try" ? state.tryBase : state.mode;
+        return { ...state, mode: "try", tryBase, tryFrom: state.cursor, tried: [] };
       }
       return { ...state, mode: action.mode, cursor: rootOf(state.line, state.ply), tried: [] };
     }
@@ -145,9 +146,16 @@ export function explorerReducer(state: ExplorerState, action: ExplorerAction): E
       const next =
         state.mode === "try"
           ? state
-          : { ...state, mode: "try" as const, tryBase: state.mode, tryFrom: state.cursor, tried: [] };
+          : {
+              ...state,
+              mode: "try" as const,
+              tryBase: state.mode,
+              tryFrom: state.cursor,
+              tried: [],
+            };
       const tryFrom = Math.min(next.tryFrom, state.cursor);
-      const kept = state.cursor > next.tryFrom ? next.tried.slice(0, state.cursor - next.tryFrom) : [];
+      const kept =
+        state.cursor > next.tryFrom ? next.tried.slice(0, state.cursor - next.tryFrom) : [];
       return { ...next, tryFrom, tried: [...kept, action.move], cursor: state.cursor + 1 };
     }
     case "reset":
