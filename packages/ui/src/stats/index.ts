@@ -4,6 +4,8 @@ export {
   bandEnds,
   bandText,
   basisText,
+  bound,
+  formatAt,
   INTERVAL_LEVEL,
   KPI_MIN_GAMES,
   needText,
