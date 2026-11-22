@@ -260,7 +260,10 @@ fn sides_are_aggregated_per_colour_and_pooled_for_both() {
             .clone()
     };
     let (both, white, black) = (of(Side::Both), of(Side::White), of(Side::Black));
-    assert_eq!((both.n_players, white.n_players, black.n_players), (20, 10, 10));
+    assert_eq!(
+        (both.n_players, white.n_players, black.n_players),
+        (20, 10, 10)
+    );
     assert!((both.pooled_rate.unwrap() - 0.04).abs() < 1e-12);
     assert!((white.pooled_rate.unwrap() - 0.02).abs() < 1e-12);
     assert!((black.pooled_rate.unwrap() - 0.06).abs() < 1e-12);
@@ -282,8 +285,14 @@ fn sides_are_aggregated_per_colour_and_pooled_for_both() {
         })
         .collect();
     let rows = aggregate_band_reference(&few);
-    assert!(rows.iter().all(|r| r.side != Side::White), "no white sides, no white rows");
-    assert!(rows.iter().all(|r| r.stat.low_sample || r.stat.metric != W1));
+    assert!(
+        rows.iter().all(|r| r.side != Side::White),
+        "no white sides, no white rows"
+    );
+    assert!(
+        rows.iter()
+            .all(|r| r.stat.low_sample || r.stat.metric != W1)
+    );
 }
 
 #[test]

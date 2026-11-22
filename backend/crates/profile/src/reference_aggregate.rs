@@ -78,9 +78,7 @@ pub fn aggregate_band_reference(sides: &[ReferenceSide]) -> Vec<BandReferenceRow
 /// would only remove benchmarks, so it is never activated.
 pub fn has_minimum_evidence(rows: &[BandReferenceRow]) -> bool {
     rows.iter().any(|r| {
-        r.side == Side::Both
-            && matches!(r.stat.metric, MetricId::Weakness(_))
-            && !r.stat.low_sample
+        r.side == Side::Both && matches!(r.stat.metric, MetricId::Weakness(_)) && !r.stat.low_sample
     })
 }
 

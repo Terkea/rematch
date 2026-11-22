@@ -302,7 +302,10 @@ async fn profiles_from_before_the_split_are_rebuilt_once(pool: PgPool) {
     let s = seed(&pool, fixture()).await;
     build(&pool, s.account_id).await;
     let queue = Queue::new(pool.clone());
-    sqlx::query("DELETE FROM jobs").execute(&pool).await.unwrap();
+    sqlx::query("DELETE FROM jobs")
+        .execute(&pool)
+        .await
+        .unwrap();
     assert_eq!(requeue_colour_split(&pool, &queue).await.unwrap(), 0);
 
     // What the migration leaves behind: both rows only.

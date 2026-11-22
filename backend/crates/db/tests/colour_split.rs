@@ -182,11 +182,12 @@ async fn applies_on_existing_rows_and_marks_them_both(pool: PgPool) {
     .await
     .unwrap();
     assert_eq!(pk, "PRIMARY KEY (account_id, time_class, side, series_key)");
-    let idx: String =
-        sqlx::query_scalar("SELECT indexdef FROM pg_indexes WHERE indexname = 'kpi_snapshot_lookup_idx'")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let idx: String = sqlx::query_scalar(
+        "SELECT indexdef FROM pg_indexes WHERE indexname = 'kpi_snapshot_lookup_idx'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
     assert!(
         idx.contains("(account_id, time_class, side, metric, window_key, computed_at DESC)"),
         "{idx}"

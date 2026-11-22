@@ -295,9 +295,7 @@ ORDER BY 1, 2";
 /// start). The build recomputes the per-side rows from the stored metrics and series points: no
 /// engine runs. Deduped onto a live build. Returns how many pairs were due.
 pub async fn requeue_colour_split(pool: &PgPool, queue: &Queue) -> Result<usize, QueueError> {
-    let due: Vec<(Uuid, String)> = sqlx::query_as(COLOUR_SPLIT_DUE_SQL)
-        .fetch_all(pool)
-        .await?;
+    let due: Vec<(Uuid, String)> = sqlx::query_as(COLOUR_SPLIT_DUE_SQL).fetch_all(pool).await?;
     for (account_id, tc) in &due {
         let Some(tc) = crate::analyse_features::parse_time_class(tc) else {
             continue;
