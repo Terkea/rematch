@@ -73,3 +73,35 @@ The implementer was told not to dispatch subagents, so this round is a self-crit
 - **Shots.** All retaken after hydration from the fixed code. There is no horizontal overflow, and no console errors on the review pages.
 
 Verdict: pass after fixes (pending the re-review).
+
+## Round 3: the analysis reveal (M5a T11, ADR 0052)
+
+Real data in the lab project (ci-m5a-t11): one analysed game with at least three of the player's marks, and a second game set to `pending` in the lab database only. Frames were taken with Playwright on the reveal's own clock (0, 300, 900, 1360, 1700, 2000, 2300, 3100, 3600, 5700, 6600 and 7400 ms) at 1440 light and dark and 390 light, plus condensed, reduced motion, a key skip and the pending game. Shots stay in the git-ignored `.superpowers` (owner data).
+
+- **Against Choreography §1** (the implementer's read; a fresh critic is still to judge the strip):
+  - 0 to 1200: the graph draws left to right and its marks fade in as the wipe passes. The board holds the end position, unmarked. Skip sits above the board, right-aligned.
+  - Each beat: the position before the move at t0, the move played from t0 + 400, the pen arrow, green arrow and badge drawing from t0 + 860, and the marks gone after t0 + 1900. The second beat (3260) shows the position before its move at 3600.
+  - It ends at 7220 on the worst moment with its marks drawn. Skip becomes "Replay analysis", and the status reads "Analysis ready".
+  - Condensed (seen): the worst moment from 0 with its marks drawing, done by 600 ms, no Skip.
+  - Reduced motion: the end state at once, with no Skip, no Replay, nothing marked seen and nothing announced.
+  - ArrowRight mid-reveal: the end state, then one step.
+  - Pending: the "Analysing" placeholder, the waiting sentence, no eval bar, no marks, no reveal.
+- **No horizontal overflow and no console errors** at either width.
+- **Known gaps (ADR 0052):** the graph's prologue is the M4 one-wipe `drawIn`, not per-ring strokes; retracts are removals; the Skip row adds about 32 px above the board, so at 390 the verdict starts lower (still above the thumb bar).
+
+Verdict: pass, pending the fresh critic on the strip.
+
+## Round 4: reveal fix round 1 (review-t11.md)
+
+- **I1, layout shift.** The Skip and Replay slots are in the server HTML for every analysed game, and they keep their size when empty. From 768px the slot is the header row above the board. On a phone it is the end of the move line under the board, so it adds no height.
+  - The desktop graph panel also reserves its rendered height (T10's parked first-paint swap). Before, the board moved 56 px down at hydration.
+  - Lab measurements over the full reveal: the board top is constant (1440: 462 px, 390: 318 px), and so are the verdict and the ledger heading. CLS is 0.0024 at 1440 and 0.0098 at 390, all from board-internal elements such as a captured piece knocked off.
+  - Under reduced motion and on condensed visits, CLS is 0.
+- **I2, the column beside the board.** The verdict reserves three lines, and the green-arrow caption reserves one line. During a beat the caption appears only once the beat's marks are drawn.
+- **Phone first screen.** The verdict starts at 718 px with two full lines above the 788 px thumb bar, the same as T10.
+- **e2e.** `e2e/review-reveal.spec.ts` uses synthetic data at 390 px.
+  - It checks CLS < 0.02 from first paint to the end of the reveal, and that the board top doesn't move.
+  - It checks that Skip by click, Enter or Space never starts a replay.
+  - A mutant restoring the old row was killed (CLS 0.036).
+
+Verdict: the critic's two blocking points are addressed. Re-check pending.

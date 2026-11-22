@@ -63,11 +63,13 @@ describe("game review page", () => {
     await expect(Page(args())).rejects.toThrow(/NEXT_HTTP_ERROR_FALLBACK;404/);
   });
 
-  it("hands the client view the narrow model and the ply param only", async () => {
+  it("hands the client view the narrow model, the URL's game id and the ply param only", async () => {
     const tree = (await Page(args("7"))) as ReactElement;
     const props = findView(tree);
-    expect(Object.keys(props ?? {}).sort()).toEqual(["initialPly", "view"]);
+    expect(Object.keys(props ?? {}).sort()).toEqual(["gameId", "initialPly", "view"]);
     expect(props?.initialPly).toBe("7");
+    // The id is already in the URL; the reveal keys "seen on this device" on it (T11, R10).
+    expect(props?.gameId).toBe(ID);
     const json = JSON.stringify(props?.view);
     for (const leak of ["chess.com/game", "C20", "King's Pawn", "won on time", ID])
       expect(json).not.toContain(leak);

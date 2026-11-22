@@ -45,6 +45,7 @@ export default async function GameReviewPage({ params, searchParams }: Props) {
       <div className="md:col-span-2">
         <GameReviewView
           view={toReviewView(game)}
+          gameId={game.id}
           {...(typeof ply === "string" ? { initialPly: ply } : {})}
         />
       </div>
