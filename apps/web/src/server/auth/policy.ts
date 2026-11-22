@@ -10,6 +10,9 @@ import { isInvited, NOT_INVITED, normaliseEmail } from "./invite";
 export const MAGIC_LINKS_PER_EMAIL = 3;
 export const MAGIC_LINK_WINDOW_SECONDS = 600;
 
+/** Error code for an implicit (by-email) link of a provider that does not assert email. */
+export const ACCOUNT_NOT_LINKED = "account_not_linked";
+
 /** Error code for an OAuth identity whose email the provider has not verified. */
 export const EMAIL_NOT_VERIFIED = "email_not_verified";
 
@@ -17,9 +20,10 @@ type ValidateUserInfo = NonNullable<NonNullable<BetterAuthOptions["user"]>["vali
 type EndpointContext = Parameters<ValidateUserInfo>[1];
 
 /**
- * OAuth providers whose email does not prove anything about the person (Lichess, chess.com): the
- * verified-email rule does not apply to linking them, and under INVITE_ONLY their email cannot
- * prove an invite, so they cannot create accounts (Task 18 revisits this for Lichess).
+ * OAuth providers whose email does not prove anything about the person (Lichess, chess.com,
+ * ADR-WEB-4): they link to an existing account only from that account's own live session (never
+ * implicitly by email), and under INVITE_ONLY their email cannot prove an invite, so they cannot
+ * create accounts. Invited players sign in by email and connect Lichess from Accounts.
  */
 export const NON_EMAIL_PROVIDERS: ReadonlySet<string> = new Set(["lichess", "chesscom"]);
 
@@ -55,6 +59,15 @@ export function admissionPolicy(
       if (NON_EMAIL_PROVIDERS.has(providerId)) {
         if (creates && env.INVITE_ONLY) {
           return { error: NOT_INVITED, errorDescription: "This address cannot sign in yet." };
+        }
+        if (source.action === "link-account") {
+          const fromLiveSession =
+            typeof user.id === "string" && (await sessionUserId(ctx)) === user.id;
+          if (fromLiveSession) return;
+          return {
+            error: ACCOUNT_NOT_LINKED,
+            errorDescription: "Sign in first, then connect this account from Accounts.",
+          };
         }
         if (!creates) return;
       } else if (user.emailVerified !== true) {

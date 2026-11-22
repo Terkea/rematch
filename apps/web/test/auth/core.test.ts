@@ -491,9 +491,18 @@ describe("admission policy (validateUserInfo)", () => {
     for (const providerId of ["lichess", "chesscom"]) {
       const source = { method: "oauth" as const, oauth: { providerId } };
       const user = { id: "user-1", email: "ana@example.com", emailVerified: false };
-      // Linking is not gated on their email ...
-      expect(await policy()({ user, source: { ...source, action: "link-account" } }, ctx)).toBe(
+      // Linking is not gated on their email, but only the account's own live session may link
+      // them: an implicit link by email is refused (T17 final review) ...
+      expect(await policy()({ user, source: { ...source, action: "link-account" } }, ctx)).toEqual(
+        expect.objectContaining({ error: "account_not_linked" }),
+      );
+      const owner = admissionPolicy(db, getEnv(), async () => "user-1");
+      const stranger = admissionPolicy(db, getEnv(), async () => "user-2");
+      expect(await owner({ user, source: { ...source, action: "link-account" } }, ctx)).toBe(
         undefined,
+      );
+      expect(await stranger({ user, source: { ...source, action: "link-account" } }, ctx)).toEqual(
+        expect.objectContaining({ error: "account_not_linked" }),
       );
       // ... and under INVITE_ONLY their email cannot prove an invite.
       expect(

@@ -56,7 +56,7 @@ export type VerificationResult = { status: "verified" | "pending" | "expired"; n
 
 /** Advisory-lock namespaces (two-int form): per user for linking, per account for ownership. */
 const LINK_LOCK_SPACE = 7_262_014;
-const OWNER_LOCK_SPACE = 7_262_015;
+export const OWNER_LOCK_SPACE = 7_262_015;
 
 /**
  * `CI-` plus 6 characters from `CODE_ALPHABET`. `pick(n)` returns an index in [0, n); the default

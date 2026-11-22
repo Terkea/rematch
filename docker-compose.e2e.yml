@@ -9,11 +9,12 @@ services:
   web:
     environment:
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/chess_e2e_test
-      LICHESS_AUTHORIZE_BASE_URL: http://localhost:53199
+      # The browser runs in the qa container, which resolves the fakes service by name.
+      LICHESS_AUTHORIZE_BASE_URL: http://fakes:3199
       LICHESS_API_BASE_URL: http://fakes:3199
       CHESSCOM_API_BASE_URL: http://fakes:3199/chesscom
       CHESSCOM_ENABLED: "1"
-      INVITE_ALLOWLIST: dev@example.invalid,adult@example.invalid,kid@example.invalid,games@example.invalid,reveal@example.invalid,rival@example.invalid
+      INVITE_ALLOWLIST: dev@example.invalid,adult@example.invalid,kid@example.invalid,games@example.invalid,reveal@example.invalid,rival@example.invalid,lichess@example.invalid
     depends_on:
       fakes:
         condition: service_started
