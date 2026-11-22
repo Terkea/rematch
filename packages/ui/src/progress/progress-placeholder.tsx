@@ -1,17 +1,24 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { CheckCircleIcon, Icon } from "../icons/index.js";
 import { cn } from "../lib/index.js";
 import { dur, ease, motion, useReducedMotion } from "../motion/index.js";
 
 export interface ProgressPlaceholderProps {
   /** The shape of the section this stands in for. */
   shape: "graph" | "stat" | "list" | "board";
-  verb: "Analysing" | "Importing";
+  /** What is happening: games analysed or imported, a report built, coaching text written. */
+  verb: "Analysing" | "Importing" | "Building" | "Writing";
   /** Omit for "no count yet". Without a `total` the count reads "so far" and the stroke idles. */
   progress?: { done: number; total?: number; unit: string };
   /** A quiet line under the status, for example what the numbers will be based on. */
   basisNote?: string;
+  /**
+   * `list` only: the real rows, finished or not ("Overview", done). Shown instead of the generic
+   * skeleton, so a count like "2 / 5 sections" matches what the list shows.
+   */
+  items?: readonly { label: string; done: boolean }[];
 }
 
 /** The visible status text. */
@@ -84,6 +91,31 @@ const RULED = "bg-(image:--ruled-sheet)";
 /** One scoresheet row: the unit the ruled lines are drawn on, so bars sit between the rules. */
 const ROW = "flex h-(--space-scoresheet-row) items-center";
 
+/** Named rows: finished ones carry the success check, the rest wait in `ink-faint`. */
+function ItemRows({ items }: { items: NonNullable<ProgressPlaceholderProps["items"]> }) {
+  return (
+    <ul className="m-0 flex list-none flex-col p-0">
+      {items.map((item, i) => (
+        <li
+          // biome-ignore lint/suspicious/noArrayIndexKey: rows are a fixed, ordered list.
+          key={i}
+          data-row
+          data-done={item.done ? "" : undefined}
+          className={cn(ROW, "gap-3 font-sans text-sm", item.done ? "text-ink" : "text-ink-faint")}
+        >
+          {item.done ? (
+            <Icon icon={CheckCircleIcon} size={16} className="shrink-0 text-good-text" />
+          ) : (
+            <span aria-hidden="true" className="h-2.5 w-4 shrink-0 rounded-pill bg-well" />
+          )}
+          <span>{item.label}</span>
+          <span className="sr-only">{item.done ? " (written)" : " (not written yet)"}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 /** A static skeleton in the shape of what will be there, drawn in pencil, never a spinner (B18). */
 function Skeleton({ shape }: { shape: ProgressPlaceholderProps["shape"] }) {
   const line = "stroke-pencil/50 fill-none [stroke-linecap:round] [stroke-linejoin:round]";
@@ -155,6 +187,7 @@ export function ProgressPlaceholder({
   verb,
   progress,
   basisNote,
+  items,
 }: ProgressPlaceholderProps) {
   const reduced = useReducedMotion();
   const known = progress?.total !== undefined;
@@ -167,7 +200,11 @@ export function ProgressPlaceholder({
       className="flex flex-col gap-4 rounded-sheet bg-sheet p-(--space-panel-pad)"
     >
       <div className={cn("rounded-field px-2", RULED)}>
-        <Skeleton shape={shape} />
+        {shape === "list" && items && items.length > 0 ? (
+          <ItemRows items={items} />
+        ) : (
+          <Skeleton shape={shape} />
+        )}
       </div>
       <div className="flex flex-col gap-1.5">
         <p data-part="label" className="m-0 font-serif text-base text-ink">
