@@ -81,6 +81,7 @@ One file per decision: context, decision, alternatives, consequences. New decisi
 - [0076. Recurring incremental sync of linked accounts](0076-recurring-account-sync.md)
 - [0077. "Sync now" and the analysis-progress panel](0077-sync-now-and-analysis-progress.md)
 - [0078. Honest coach availability, uncompared weaknesses and R2-backed examples](0078-honest-coach-availability-and-benchmarks.md)
+- [0080. One filter URL contract, and honest period comparison](0080-filters-and-period-comparison.md)
 
 ## Records with placeholder numbers
 
