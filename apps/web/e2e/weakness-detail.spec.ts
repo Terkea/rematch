@@ -61,9 +61,12 @@ test("the weakness detail tells its story, with the player's own examples", asyn
   const ply = new URL((await link.getAttribute("href")) ?? "", "http://x").searchParams.get("ply");
 
   // Each example is a position explorer (N14): it expands into the game around the move.
-  await first.getByRole("button", { name: /^Expand the position before / }).click();
   const dialog = page.getByRole("dialog", { name: /^Position before / });
-  await expect(dialog).toBeVisible();
+  // The explorer is a client island: retry the click until it has hydrated.
+  await expect(async () => {
+    await first.getByRole("button", { name: /^Expand the position before / }).click();
+    await expect(dialog).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 60_000 });
   // The cited move is on the scoresheet, not yet played: the board shows the position before it.
   await expect(dialog.locator(`[data-ply='${ply}']`)).toBeVisible();
   await expect(dialog.locator(`[data-ply='${ply}']`)).not.toHaveAttribute("aria-current", "step");

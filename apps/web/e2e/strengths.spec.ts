@@ -88,9 +88,15 @@ test.describe
       await expect(spots.nth(1)).toContainText("27… Rf8");
 
       // Each board is a position explorer (N14): it expands into the game around the move.
-      await spots.nth(0).getByRole("button", { name: "Expand the position before 8… Qb6" }).click();
       const dialog = page.getByRole("dialog", { name: "Position before 8… Qb6" });
-      await expect(dialog).toBeVisible();
+      // The explorer is a client island: retry the click until it has hydrated.
+      await expect(async () => {
+        await spots
+          .nth(0)
+          .getByRole("button", { name: "Expand the position before 8… Qb6" })
+          .click();
+        await expect(dialog).toBeVisible({ timeout: 2_000 });
+      }).toPass({ timeout: 60_000 });
       await expect(dialog.locator("[data-ply='16']")).toBeVisible();
       await expect(dialog.locator("[data-ply='15']")).toHaveAttribute("aria-current", "step");
       await page.keyboard.press("Escape");
