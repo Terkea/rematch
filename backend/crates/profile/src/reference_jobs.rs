@@ -209,6 +209,9 @@ struct RefGame {
     black_rating: Option<i32>,
     white_hash: String,
     black_hash: String,
+    /// The sampled sides (T21 review I1): only they are reference players.
+    white_selected: bool,
+    black_selected: bool,
     result: String,
     termination: Option<String>,
     played_at: OffsetDateTime,
@@ -218,7 +221,8 @@ struct RefGame {
 
 const GAME_SQL: &str = "SELECT g.id, g.build_id, g.lichess_game_id, g.pgn, \
        g.time_class::text AS time_class, g.base_seconds, g.increment_seconds, g.white_rating, \
-       g.black_rating, g.white_hash, g.black_hash, g.result::text AS result, g.termination, \
+       g.black_rating, g.white_hash, g.black_hash, g.white_selected, g.black_selected, \
+       g.result::text AS result, g.termination, \
        g.played_at, g.status::text AS status, b.status::text AS build_status \
      FROM reference_games g JOIN reference_builds b ON b.id = g.build_id WHERE g.id = $1";
 
@@ -598,11 +602,28 @@ async fn run_pipeline(
     let wins: Vec<f64> = evals.iter().map(|e| win_percent(e.score)).collect();
     let mut rows = Vec::with_capacity(2);
     let mut unrated = 0u32;
+    let mut unsampled = 0u32;
     for color in [Color::White, Color::Black] {
-        let (own, opp, player_hash) = match color {
-            Color::White => (g.white_rating, g.black_rating, &g.white_hash),
-            Color::Black => (g.black_rating, g.white_rating, &g.black_hash),
+        let (own, opp, player_hash, selected) = match color {
+            Color::White => (
+                g.white_rating,
+                g.black_rating,
+                &g.white_hash,
+                g.white_selected,
+            ),
+            Color::Black => (
+                g.black_rating,
+                g.white_rating,
+                &g.black_hash,
+                g.black_selected,
+            ),
         };
+        if !selected {
+            // The opponent of a sampled player is not a reference player: analysed (both
+            // colours are enriched) but never observed.
+            unsampled += 1;
+            continue;
+        }
         let (Some(own), Some(opp)) = (own, opp) else {
             // Without both ratings a side has no band and no gap: no evidence, never a guess.
             unrated += 1;
@@ -637,6 +658,7 @@ async fn run_pipeline(
     }
     stages.insert("features_ms".to_owned(), ms(t));
     stages.insert("sides_without_ratings".to_owned(), f64::from(unrated));
+    stages.insert("sides_not_sampled".to_owned(), f64::from(unsampled));
     Ok(Prepared {
         rows,
         difficulty_model: enriched.difficulty_model,
@@ -716,6 +738,7 @@ async fn load_sides(conn: &mut PgConnection, build: Uuid) -> Result<LoadedSides,
            g.termination, g.played_at \
          FROM reference_observations o JOIN reference_games g ON g.id = o.reference_game_id \
          WHERE o.build_id = $1 AND g.status = 'done' \
+           AND CASE o.color WHEN 'white' THEN g.white_selected ELSE g.black_selected END \
          ORDER BY o.reference_game_id, o.color",
     )
     .bind(build)
@@ -755,6 +778,8 @@ async fn load_sides(conn: &mut PgConnection, build: Uuid) -> Result<LoadedSides,
             black_rating: r.black_rating,
             white_hash: r.white_hash,
             black_hash: r.black_hash,
+            white_selected: true,
+            black_selected: true,
             result: r.result,
             termination: r.termination,
             played_at: r.played_at,

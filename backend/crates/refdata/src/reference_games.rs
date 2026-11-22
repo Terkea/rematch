@@ -35,6 +35,10 @@ pub struct NewReferenceGame {
     /// `sha256(salt ‖ lower(name))`, hex.
     pub white_hash: String,
     pub black_hash: String,
+    /// Which sides were sampled as reference players (at least one). Only these are observed:
+    /// the opponent of a sampled player is not a reference player (T21 review I1).
+    pub white_selected: bool,
+    pub black_selected: bool,
     /// The `result` enum label: `1-0`, `0-1`, `1/2-1/2` or `*`.
     pub result: String,
     pub termination: Option<String>,
@@ -61,13 +65,14 @@ pub async fn insert_reference_games(
         sqlx::query(
             "INSERT INTO reference_games (build_id, lichess_game_id, pgn, time_class, \
                base_seconds, increment_seconds, white_rating, black_rating, white_hash, \
-               black_hash, result, termination, played_at, status) \
+               black_hash, result, termination, played_at, status, white_selected, \
+               black_selected) \
              SELECT $1, gid, pgn, tc::time_class, bs, inc, wr, br, wh, bh, res::result, term, \
-               at, 'pending' \
+               at, 'pending', ws, bsel \
              FROM UNNEST($2::text[], $3::text[], $4::text[], $5::int4[], $6::int4[], \
                          $7::int4[], $8::int4[], $9::text[], $10::text[], $11::text[], \
-                         $12::text[], $13::timestamptz[]) \
-               AS x(gid, pgn, tc, bs, inc, wr, br, wh, bh, res, term, at) \
+                         $12::text[], $13::timestamptz[], $14::bool[], $15::bool[]) \
+               AS x(gid, pgn, tc, bs, inc, wr, br, wh, bh, res, term, at, ws, bsel) \
              ON CONFLICT (build_id, lichess_game_id) DO NOTHING",
         )
         .bind(build_id)
@@ -103,6 +108,8 @@ pub async fn insert_reference_games(
                 .collect::<Vec<_>>(),
         )
         .bind(chunk.iter().map(|g| g.played_at).collect::<Vec<_>>())
+        .bind(chunk.iter().map(|g| g.white_selected).collect::<Vec<_>>())
+        .bind(chunk.iter().map(|g| g.black_selected).collect::<Vec<_>>())
         .execute(&mut *tx)
         .await?;
         let found: Vec<(String, Uuid)> = sqlx::query_as(

@@ -23,6 +23,7 @@ use db::stage_metrics::{StageMetrics, record_stage_metrics};
 use futures::future::BoxFuture;
 use profile_core::bands::band_of;
 use profile_core::types::Band;
+use queue::queue::Queue;
 use refdata::builds::{
     BuildKind, NewBuild, activate_build, create_build, fail_build, mark_unverified, set_source_sha,
 };
@@ -38,10 +39,17 @@ use crate::download::{
 use crate::headers::DumpHeader;
 use crate::movetext::movetext_sans;
 use crate::pipeline::{GameSink, PipelineConfig, PipelineStats, run_pipeline};
+use crate::reference_select::{
+    CellFill, ReferenceSink, ReferenceSinkStats, SelectOptions, admission_cap,
+    enqueue_reference_games, memory_bound_bytes, player_rate, reference_filter,
+};
 use crate::sample::{SampleFilter, proportional_rate};
 
 /// `job_metrics.kind` of a build.
 pub const BUILD_METRICS_KIND: &str = "lichess-db:build";
+
+/// `job_metrics.kind` of a band-reference selection pass.
+pub const REFERENCE_METRICS_KIND: &str = "lichess-db:reference-select";
 
 /// Games in a month when no earlier full build says otherwise. A rough figure for 2026
 /// (2026-10 is 31 GB compressed); the operator overrides it with `--expected-games`, and every
@@ -290,8 +298,14 @@ pub struct BuildOptions {
     pub verify: Verify,
     /// Build the opening explorer (default `true`).
     pub explorer: bool,
-    /// Build the band reference (Task 21; refused until then).
+    /// Build the band reference (Task 21, ADR-R2-11): a separate pass over the same month.
     pub band_reference: bool,
+    /// Reference selection sizes; `player_rate` is derived by [`build`] from the expected
+    /// month size ([`crate::reference_select::player_rate`]).
+    pub reference: SelectOptions,
+    /// Reference selection salt; `None` draws a fresh one. Recorded in `params.salt`, so passing
+    /// a stored build's salt reproduces its selection from the same dump.
+    pub reference_salt: Option<[u8; 32]>,
     /// Sample rate; `None` derives `max_games / expected games` (T19 review ruling).
     pub sample_rate: Option<f64>,
     /// Games expected in the month; `None` takes the last full build's count, else
@@ -318,6 +332,8 @@ impl BuildOptions {
             verify: Verify::Full,
             explorer: true,
             band_reference: false,
+            reference: SelectOptions::default(),
+            reference_salt: None,
             sample_rate: None,
             expected_games: None,
             seed: 0,
@@ -337,6 +353,10 @@ pub struct BuildOutcome {
     /// The sample rate used.
     pub sample_rate: f64,
     pub explorer: ExplorerSinkStats,
+    /// Counters of the reference pass, when it ran.
+    pub reference: Option<ReferenceSinkStats>,
+    /// Distinct reference games enqueued.
+    pub reference_games: usize,
 }
 
 /// `games_scanned` of the newest build before `month` that read its whole month (not capped).
@@ -379,21 +399,18 @@ fn ms_since(t: Instant) -> f64 {
 /// Builds the opening explorer from one monthly dump; see the module doc for the order of steps.
 /// Records one `job_metrics` row (`kind = "lichess-db:build"`, stages `<stage>_ms`) once the
 /// pipeline has run, whether or not the build was activated.
+///
+/// With `band_reference`, a second pass over the month selects the reference players
+/// ([`build_band_reference`]); with both flags the explorer runs first.
 pub async fn build(
     pool: &PgPool,
     client: &reqwest::Client,
     src: &DumpSource,
     opts: &BuildOptions,
 ) -> Result<BuildOutcome, DumpError> {
-    let started = Instant::now();
-    if opts.band_reference {
+    if !opts.explorer && !opts.band_reference {
         return Err(DumpError::Config(
-            "the band reference build is not wired yet (R2 Task 21)".into(),
-        ));
-    }
-    if !opts.explorer {
-        return Err(DumpError::Config(
-            "nothing to build: pass --explorer".into(),
+            "nothing to build: pass --explorer or --band-reference".into(),
         ));
     }
     if !is_valid_month(&opts.month) || opts.month != src.month {
@@ -402,6 +419,71 @@ pub async fn build(
             opts.month, src.month
         )));
     }
+    let mut out = if opts.explorer {
+        build_explorer(pool, client, src, opts).await?
+    } else {
+        BuildOutcome {
+            explorer_build: None,
+            reference_build: None,
+            stats: PipelineStats::default(),
+            sample_rate: 1.0,
+            explorer: ExplorerSinkStats::default(),
+            reference: None,
+            reference_games: 0,
+        }
+    };
+    if opts.band_reference {
+        let r = build_band_reference(pool, client, src, opts).await?;
+        out.reference_build = Some(r.id);
+        out.reference = Some(r.sink);
+        out.reference_games = r.games;
+        if !opts.explorer {
+            out.stats = r.stats;
+        }
+    }
+    Ok(out)
+}
+
+fn stage_metrics(kind: &str, started: Instant, stats: &PipelineStats) -> StageMetrics {
+    StageMetrics {
+        kind: kind.to_owned(),
+        total_ms: ms_since(started),
+        stages: stats
+            .stage_ms
+            .iter()
+            .map(|(k, v)| (format!("{k}_ms"), *v))
+            .collect(),
+        ..StageMetrics::default()
+    }
+}
+
+/// Records `params.capped` on a build that is still `building`.
+async fn set_capped(pool: &PgPool, id: Uuid, capped: bool) -> Result<(), DumpError> {
+    let updated = sqlx::query(
+        "UPDATE reference_builds SET params = params || jsonb_build_object('capped', $2::bool) \
+         WHERE id = $1 AND status = 'building'",
+    )
+    .bind(id)
+    .bind(capped)
+    .execute(pool)
+    .await
+    .map_err(store)?
+    .rows_affected();
+    if updated != 1 {
+        return Err(DumpError::Store(format!(
+            "build {id} is no longer building"
+        )));
+    }
+    Ok(())
+}
+
+async fn build_explorer(
+    pool: &PgPool,
+    client: &reqwest::Client,
+    src: &DumpSource,
+    opts: &BuildOptions,
+) -> Result<BuildOutcome, DumpError> {
+    let started = Instant::now();
     let rate = resolve_rate(pool, opts).await?;
     let expected_sha = match opts.verify {
         Verify::Full => Some(fetch_expected_sha_with(client, src, &opts.retry).await?),
@@ -464,16 +546,7 @@ pub async fn build(
     )
     .await;
     if let Some(stats) = &stats {
-        let m = StageMetrics {
-            kind: BUILD_METRICS_KIND.to_owned(),
-            total_ms: ms_since(started),
-            stages: stats
-                .stage_ms
-                .iter()
-                .map(|(k, v)| (format!("{k}_ms"), *v))
-                .collect(),
-            ..StageMetrics::default()
-        };
+        let m = stage_metrics(BUILD_METRICS_KIND, started, stats);
         if let Err(e) = record_stage_metrics(pool, &m).await {
             tracing::warn!(error = %e, "could not record build metrics");
         }
@@ -485,6 +558,8 @@ pub async fn build(
             stats: stats.unwrap_or_default(),
             sample_rate: rate,
             explorer: sink.stats(),
+            reference: None,
+            reference_games: 0,
         }),
         Err(err) => {
             tracing::error!(build = %id, error = %err, "explorer build failed");
@@ -548,21 +623,7 @@ async fn run_build(
              the rest of it; pass --expected-games with the real month size and rebuild"
         );
     }
-    let updated = sqlx::query(
-        "UPDATE reference_builds SET params = params || jsonb_build_object('capped', $2::bool) \
-         WHERE id = $1 AND status = 'building'",
-    )
-    .bind(id)
-    .bind(stats.capped)
-    .execute(pool)
-    .await
-    .map_err(store)?
-    .rows_affected();
-    if updated != 1 {
-        return Err(DumpError::Store(format!(
-            "build {id} is no longer building"
-        )));
-    }
+    set_capped(pool, id, stats.capped).await?;
     let scanned = i64::try_from(stats.games_seen).unwrap_or(i64::MAX);
     set_source_sha(pool, id, &digest, scanned)
         .await
@@ -576,4 +637,248 @@ async fn run_build(
     activate_build(pool, id).await.map_err(store)?;
     stats.stage_ms.insert("activate".into(), ms_since(t));
     Ok(())
+}
+
+/// Records every cell's fill in `params.cells` (and the count in `params.under_filled_cells`)
+/// and logs the under-filled ones (T21 review I2).
+async fn record_cell_fill(pool: &PgPool, id: Uuid, fill: &[CellFill]) -> Result<(), DumpError> {
+    let mut under = 0usize;
+    for c in fill.iter().filter(|c| c.under_filled()) {
+        under += 1;
+        tracing::warn!(
+            build = %id,
+            band = c.band.as_str(),
+            time_class = c.tc.as_str(),
+            target = c.target,
+            chosen = c.chosen,
+            candidates = c.candidates,
+            full = c.full,
+            eligible = c.eligible,
+            "under-filled reference cell"
+        );
+    }
+    let cells: Vec<_> = fill
+        .iter()
+        .map(|c| {
+            json!({
+                "band": c.band.as_str(),
+                "time_class": c.tc.as_str(),
+                "target": c.target,
+                "candidates": c.candidates,
+                "full": c.full,
+                "eligible": c.eligible,
+                "chosen": c.chosen,
+            })
+        })
+        .collect();
+    let updated = sqlx::query(
+        "UPDATE reference_builds SET params = params || jsonb_build_object('cells', $2::jsonb, \
+           'under_filled_cells', $3::int4) WHERE id = $1 AND status = 'building'",
+    )
+    .bind(id)
+    .bind(serde_json::Value::Array(cells))
+    .bind(i32::try_from(under).unwrap_or(i32::MAX))
+    .execute(pool)
+    .await
+    .map_err(store)?
+    .rows_affected();
+    if updated != 1 {
+        return Err(DumpError::Store(format!(
+            "build {id} is no longer building"
+        )));
+    }
+    Ok(())
+}
+
+/// What a band-reference pass produced.
+struct ReferencePass {
+    id: Uuid,
+    stats: PipelineStats,
+    sink: ReferenceSinkStats,
+    games: usize,
+}
+
+/// The band-reference pass (Task 21, ADR-R2-11 Part 1). In order:
+/// 1. the player rate from the expected month size ([`player_rate`]);
+/// 2. the expected SHA-256 (Full only);
+/// 3. a `band_reference` build (`building`) whose `params` hold the selection sizes and the salt
+///    (`opts.reference_salt`, else fresh OS randomness), so the build is auditable and
+///    reproducible;
+/// 4. the whole month through a [`ReferenceSink`];
+/// 5. Full: drain, `verify`, `params.capped` (a capped build fails here, enqueueing nothing),
+///    `set_source_sha`, the cell fill (`params.cells`), then the selection is inserted and
+///    enqueued ([`enqueue_reference_games`]). Nothing is inserted before the digest matches.
+///    None: the build is marked `unverified` and nothing is enqueued.
+///
+/// The build stays `building`: Task 32's finaliser activates it once every game is analysed.
+/// A selection without a single game fails the build. Any error fails the build, which deletes
+/// its rows.
+async fn build_band_reference(
+    pool: &PgPool,
+    client: &reqwest::Client,
+    src: &DumpSource,
+    opts: &BuildOptions,
+) -> Result<ReferencePass, DumpError> {
+    let started = Instant::now();
+    let expected = match opts.expected_games {
+        Some(n) => n,
+        None => last_full_month_games(pool, &opts.month)
+            .await?
+            .unwrap_or(DEFAULT_EXPECTED_GAMES),
+    };
+    let sel = SelectOptions {
+        player_rate: player_rate(opts.reference.max_scan_games, expected),
+        ..opts.reference.clone()
+    };
+    if sel.players_per_cell == 0 || sel.games_per_player == 0 || sel.oversample == 0 {
+        return Err(DumpError::Config(
+            "players_per_cell, games_per_player and oversample must be positive".into(),
+        ));
+    }
+    let expected_sha = match opts.verify {
+        Verify::Full => Some(fetch_expected_sha_with(client, src, &opts.retry).await?),
+        Verify::None => None,
+    };
+    let filter = reference_filter();
+    let salt: [u8; 32] = opts.reference_salt.unwrap_or_else(rand::random);
+    let params = json!({
+        "selection": "bottom-k sha256(salt || lower(name)) per band x time class",
+        "salt": hex::encode(salt),
+        "players_per_cell": sel.players_per_cell,
+        "games_per_player": sel.games_per_player,
+        "oversample": sel.oversample,
+        "max_scan_games": sel.max_scan_games,
+        "admission_cap": admission_cap(sel.max_scan_games),
+        "min_games_in_time_class": sel.min_games_in_time_class,
+        "player_rate": sel.player_rate,
+        "expected_games": expected,
+        "memory_bound_bytes": memory_bound_bytes(&sel, 2_048),
+        "time_classes": filter.time_classes.iter().flatten().map(|t| t.as_str()).collect::<Vec<_>>(),
+        "require_clock": filter.require_clock,
+        "exclude_bots": filter.exclude_bots,
+        "exclude_provisional": filter.exclude_provisional,
+        "verify": format!("{:?}", opts.verify).to_lowercase(),
+    });
+    let id = create_build(
+        pool,
+        &NewBuild {
+            kind: BuildKind::BandReference,
+            source_month: opts.month.clone(),
+            source_url: Some(src.url()),
+            params,
+            protocol: None,
+            enrichment_protocol: None,
+            difficulty_model: None,
+        },
+    )
+    .await
+    .map_err(store)?;
+
+    let sink = Arc::new(ReferenceSink::new(salt, sel));
+    let mut stats = None;
+    let result = run_reference(
+        pool,
+        client,
+        src,
+        opts,
+        id,
+        &filter,
+        sink,
+        expected_sha.as_deref(),
+        &mut stats,
+    )
+    .await;
+    if let Some((stats, _)) = &stats {
+        let m = stage_metrics(REFERENCE_METRICS_KIND, started, stats);
+        if let Err(e) = record_stage_metrics(pool, &m).await {
+            tracing::warn!(error = %e, "could not record reference build metrics");
+        }
+    }
+    match result {
+        Ok(games) => {
+            let (stats, sink) = stats.unwrap_or_default();
+            Ok(ReferencePass {
+                id,
+                stats,
+                sink,
+                games,
+            })
+        }
+        Err(err) => {
+            tracing::error!(build = %id, error = %err, "band reference build failed");
+            if let Err(e) = fail_build(pool, id, &err.to_string()).await {
+                tracing::error!(build = %id, error = %e, "could not mark the build failed");
+            }
+            Err(err)
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_reference(
+    pool: &PgPool,
+    client: &reqwest::Client,
+    src: &DumpSource,
+    opts: &BuildOptions,
+    id: Uuid,
+    filter: &SampleFilter,
+    sink: Arc<ReferenceSink>,
+    expected_sha: Option<&str>,
+    out: &mut Option<(PipelineStats, ReferenceSinkStats)>,
+) -> Result<usize, DumpError> {
+    let (mut games, sha): (_, ShaHandle) = open_dump_with(client, src, &opts.retry).await?;
+    let mut stats = run_pipeline(&mut games, filter, &sink, &opts.pipeline).await?;
+    stats.bytes_compressed = sha.bytes_read();
+    let sink_stats = sink.stats();
+    *out = Some((stats, sink_stats));
+    let (stats, _) = out.as_mut().expect("just set");
+    tracing::info!(
+        build = %id,
+        seen = stats.games_seen,
+        eligible = stats.games_kept,
+        admitted = sink_stats.games_admitted,
+        capped = sink_stats.capped,
+        "reference pipeline done"
+    );
+
+    let Some(expected) = expected_sha else {
+        mark_unverified(pool, id).await.map_err(store)?;
+        return Ok(0);
+    };
+    let t = Instant::now();
+    drain_to_end(games).await?;
+    stats.stage_ms.insert("drain".into(), ms_since(t));
+    stats.bytes_compressed = sha.bytes_read();
+    let digest = sha.verify(expected)?;
+    set_capped(pool, id, sink_stats.capped).await?;
+    if sink_stats.capped {
+        // Admission stopped before the end of the month: a first-N cut of the rest of it, so
+        // late-month players are missing and activity counts lean early (T21 review I3). Like a
+        // capped explorer until `--allow-capped` exists, it is never activated: nothing is
+        // enqueued and the build fails (with `params.capped`).
+        return Err(DumpError::Config(format!(
+            "reference scan capped at {} admitted games before the end of the month; pass \
+             --expected-games with the real month size and rebuild",
+            sink_stats.games_admitted
+        )));
+    }
+    let scanned = i64::try_from(stats.games_seen).unwrap_or(i64::MAX);
+    set_source_sha(pool, id, &digest, scanned)
+        .await
+        .map_err(store)?;
+
+    let sink = Arc::try_unwrap(sink)
+        .map_err(|_| DumpError::Config("the reference sink is still shared".into()))?;
+    let (selected, fill) = sink.finish_with_fill();
+    record_cell_fill(pool, id, &fill).await?;
+    if selected.is_empty() {
+        return Err(DumpError::Config(
+            "no reference player qualified in any cell".into(),
+        ));
+    }
+    let t = Instant::now();
+    let n = enqueue_reference_games(pool, &Queue::new(pool.clone()), id, &selected).await?;
+    stats.stage_ms.insert("enqueue".into(), ms_since(t));
+    tracing::info!(build = %id, games = n, "reference games enqueued");
+    Ok(n)
 }

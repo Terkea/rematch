@@ -420,6 +420,8 @@ fn reference_game(tag: &str, moves: &str) -> NewReferenceGame {
         black_rating: Some(1550),
         white_hash: hash(&format!("white-{tag}")),
         black_hash: hash(&format!("black-{tag}")),
+        white_selected: true,
+        black_selected: true,
         result: "1/2-1/2".to_owned(),
         termination: Some("Normal".to_owned()),
         played_at: OffsetDateTime::UNIX_EPOCH,
@@ -540,6 +542,62 @@ fn finalize_of(o: &ReferenceOutcome) -> Option<&FinalizeOutcome> {
         | ReferenceOutcome::Failed { finalize, .. } => finalize.as_ref(),
         ReferenceOutcome::Missing | ReferenceOutcome::NotBuilding { .. } => None,
     }
+}
+
+/// T21 review I1: only the sampled side of a reference game is a reference player. The
+/// one-game opponent of a sampled player is analysed (enrichment needs both colours) but gives
+/// no observation, so it never enters a cell.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn an_unsampled_opponent_contributes_nothing_to_a_cell(pool: PgPool) {
+    let games: Vec<NewReferenceGame> = ten_games("u")
+        .into_iter()
+        .map(|g| NewReferenceGame {
+            black_selected: false,
+            ..g
+        })
+        .collect();
+    let blacks: Vec<String> = games.iter().map(|g| g.black_hash.clone()).collect();
+    let (build, ids) = build_with(&pool, "2026-09", &games).await;
+    let d = deps(&pool, None);
+    for id in &ids {
+        let out = run(&d, *id).await;
+        assert!(
+            matches!(
+                out,
+                ReferenceOutcome::Done {
+                    observations: 1,
+                    ..
+                }
+            ),
+            "{out:?}"
+        );
+    }
+    let colours: Vec<String> =
+        sqlx::query_scalar("SELECT color::text FROM reference_observations WHERE build_id = $1")
+            .bind(build)
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    assert_eq!(colours, vec!["white".to_owned(); 10]);
+    let leaked: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM reference_observations WHERE build_id = $1 \
+         AND player_hash = ANY($2)",
+    )
+    .bind(build)
+    .bind(&blacks)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(leaked, 0);
+    let w1: (i32, i32) = sqlx::query_as(
+        "SELECT n_players, n_games FROM band_reference \
+         WHERE build_id = $1 AND band = 'B2' AND time_class = 'blitz' AND metric = 'weakness:W1'",
+    )
+    .bind(build)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(w1, (10, 10), "only the ten sampled white players");
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]

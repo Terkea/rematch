@@ -107,6 +107,11 @@ struct BuildArgs {
     /// Build the band reference (R2 Task 21).
     #[arg(long)]
     band_reference: bool,
+    /// Reference selection salt, 64 hex digits (default: a fresh random salt, recorded on the
+    /// build). To reproduce a stored build, pass its `params.salt` together with
+    /// `--expected-games <params.expected_games>`: the player rate depends on both.
+    #[arg(long, value_parser = lichess_db::reference_select::parse_salt)]
+    salt: Option<[u8; 32]>,
     #[arg(long, value_enum, default_value_t = VerifyArg::Full)]
     verify: VerifyArg,
     /// Parse threads (0 = all cores).
@@ -135,6 +140,7 @@ async fn run_build(args: BuildArgs) -> anyhow::Result<()> {
         sample_rate: args.sample_rate,
         explorer: args.explorer || !args.band_reference,
         band_reference: args.band_reference,
+        reference_salt: args.salt,
         verify: match args.verify {
             VerifyArg::Full => Verify::Full,
             VerifyArg::None => Verify::None,
@@ -145,6 +151,10 @@ async fn run_build(args: BuildArgs) -> anyhow::Result<()> {
     let out = build(&pool, &client, &src, &opts).await?;
     let s = &out.stats;
     println!("explorer build: {:?}", out.explorer_build);
+    println!(
+        "reference build: {:?} ({} games enqueued)",
+        out.reference_build, out.reference_games
+    );
     println!("sample rate: {}", out.sample_rate);
     println!(
         "games seen: {}, kept: {}, malformed: {}, capped: {}",
