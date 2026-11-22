@@ -18,7 +18,7 @@ use serde_json::Value;
 
 use super::request::build_repair_messages;
 use super::section::{BeforeCall, CallRecord, SectionError, SectionStatus, call, parse_errors};
-use crate::client::port::{AiClient, StructuredRequest, StructuredResult};
+use crate::client::port::{AiClient, AiError, StructuredRequest, StructuredResult};
 use crate::output::codes::{DroppedItem, ValidationError};
 
 /// How one result fared.
@@ -58,7 +58,7 @@ pub(crate) async fn attempt_and_repair<T>(
     check: impl Fn(&StructuredResult) -> Checked<T>,
 ) -> Result<Attempted<T>, SectionError> {
     let first = call(ai, before_call, req).await?;
-    let mut calls = CallRecord::from_result(&first, false);
+    let calls = CallRecord::from_result(&first, false);
     let errors = match check(&first) {
         Checked::Clean(content) => {
             return Ok(Attempted {
@@ -71,22 +71,40 @@ pub(crate) async fn attempt_and_repair<T>(
         Checked::Partial(_, items) => items.into_iter().flat_map(|d| d.errors).collect(),
         Checked::Unusable(errors) => errors,
     };
+    match repair_once(ai, before_call, req, label, &first, errors, &check).await {
+        Ok(mut out) => {
+            out.calls.splice(0..0, calls);
+            Ok(out)
+        }
+        // Attempt 1 was sent and billed: hand its records back with the error.
+        Err(error) => Err(SectionError { error, calls }),
+    }
+}
+
+/// The one repair of a result `first` (synchronous, or a batch result) that failed with
+/// `errors`, and its outcome. `calls` holds only the repair call: the caller records `first`
+/// (Task 16 marks a batch result `batch: true`). The rules are the module's steps 3 and 4.
+pub(crate) async fn repair_once<T>(
+    ai: &dyn AiClient,
+    before_call: BeforeCall<'_>,
+    req: &StructuredRequest,
+    label: &str,
+    first: &StructuredResult,
+    errors: Vec<ValidationError>,
+    check: impl Fn(&StructuredResult) -> Checked<T>,
+) -> Result<Attempted<T>, AiError> {
     let mut repair = req.clone();
     if !first.content.is_empty() {
         repair
             .messages
-            .extend(build_repair_messages(&first, &errors));
+            .extend(build_repair_messages(first, &errors));
     }
-    let second = match call(ai, before_call, &repair).await {
-        Ok(r) => r,
-        // Attempt 1 was sent and billed: hand its records back with the error.
-        Err(error) => return Err(SectionError { error, calls }),
-    };
-    calls.extend(CallRecord::from_result(&second, false));
+    let second = call(ai, before_call, &repair).await?;
+    let calls = CallRecord::from_result(&second, false);
     let (status, content, dropped) = match check(&second) {
         Checked::Clean(content) => (SectionStatus::Ready, Some(content), Vec::new()),
         Checked::Partial(content, items) => (SectionStatus::Ready, Some(content), items),
-        Checked::Unusable(errors) => match check(&first) {
+        Checked::Unusable(errors) => match check(first) {
             Checked::Partial(content, items) => (SectionStatus::Ready, Some(content), items),
             _ => (
                 SectionStatus::Dropped,

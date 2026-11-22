@@ -128,3 +128,105 @@ from the plan's signature:
   quota atomically (two concurrent questions can both pass the pure pre-check).
 - **Task 24.** If a turn is cancelled while a tool call waits on the engine, the check may never
   be abandoned; the reconciler must expire stale pending checks and refund them.
+
+## The coach-chat job (Task 25)
+
+Decisions made when the job, the DB data source and the threads were built:
+
+1. **One turn per conversation.** The job holds a session advisory lock (class 30003, the
+   conversation id) on a dedicated connection that is closed, never pooled, when the handler
+   ends; a dropped handler or a crashed worker frees it with the connection. A second handler
+   (a redelivered job, or another answer of the thread) is released and retried. Under the lock,
+   an answer waits while an earlier answer of the thread is unfinished, so turns run in `seq`
+   order. `post_user_message` also refuses a question while an answer is pending or streaming
+   (`Busy`, under a row lock on the conversation). The finish transaction runs on the lock
+   connection, so a lost lock fails the write rather than interleaving it.
+2. **The chat allowance is reserved atomically** (hand-off above). Under a transaction lock per
+   account of the budget scope (class 30004), the job counts the scope's assistant answers per
+   window and moves the message to `streaming` in the same transaction. Counted: `streaming`
+   answers, and `done` answers that carry an AI disclosure. The fixed no-data copy has none, so
+   it does not use the allowance. The reservation happens before the no-data and no-AI checks
+   (the brief's order of the checks is kept).
+3. **State that survives restarts** lives in Postgres (migration `20261121030200`):
+   `coach_conversations.next_call_index` (the next turn's first tool-call index; raised with
+   `greatest` in the finish transaction), `coach_messages.session_in_sync` and
+   `coach_messages.turn_attempts`. The next turn resumes only when the previous assistant row is
+   `done` with `session_in_sync = true` and the history did not roll over. A failed or lost turn
+   is never in sync, so the turn after it sends the full Postgres history with `resume: false`
+   and the sidecar replaces the partial session.
+4. **Unavailable retries.** A `Release` gives its queue attempt back, so the job cannot count
+   attempts from the queue. `turn_attempts` counts the turn's AI attempts: the first unavailable
+   attempt puts the message back to `pending` (the retry reserves again) and releases for 60 s;
+   the second fails with `unavailable`. The whole turn runs under `CHAT_TURN_TIMEOUT` (600 s); a
+   timeout counts as unavailable.
+5. **Timeouts** (amended by fix round 1, review I2). A turn is the rollover summary plus up to
+   three sequential chat calls (main, follow-up, repair), all inside `CHAT_TURN_TIMEOUT` (600 s):
+   `SUMMARY_CALL_TIMEOUT` (60 s) bounds the summary call, and `CHAT_CALL_TIMEOUT` (180 s, which
+   `SidecarConfig::chat_timeout` must not exceed) bounds each chat call; 60 + 3 × 180 = 600, which
+   a test pins. A summary that runs over is skipped (the old summary is kept, and the turn still
+   starts a new session). The title call after the turn has the same 60 s bound. This supersedes
+   the earlier note to pass `CHAT_TURN_TIMEOUT` itself as `timeoutMs`.
+6. **History after a rollover.** Once a summary exists, later turns (until the next rollover) use
+   `Rollover { stored summary, the last replay_turns turns }` without a new summary call. Only a
+   turn that writes a new summary counts as a rollover for `resume_next_turn`, so the session
+   started by the rollover turn is resumed afterwards.
+7. **Deleted mid-turn.** The finish transaction re-checks the conversation with `FOR SHARE`
+   (waiting for a delete in progress). If it is gone, the paid calls are still metered (usage rows
+   have no content) and the conversation's orphaned session entries are deleted.
+8. **Titles.** After the first answered turn, `summarise_thread` (metered as chat) gives the
+   title, or the anchor's fallback title when the call fails or the title does not pass.
+   Refusal, off-topic and fallback turns get the fallback title without a call.
+9. **The data source** reads weaknesses, openings and exemplars from the conversation's coaching
+   input (the newest report-run snapshot of the account and time class), and positions, games,
+   cached evals and report sections from Postgres, always filtered on the account. `get_games` is
+   limited to the conversation's time class. `openingContains` matches literally (`\`, `%` and `_`
+   escaped). Position tags come from the matching exemplars until R2's per-move tags exist.
+10. **Threads belong to the user** (fix round 1, review I3; supersedes "threads take the
+    account"). Linked accounts are shared between users (M4 `account_links`), so
+    `coach_conversations.user_id` is NOT NULL (migration `20261121030300`, with an index on
+    `(user_id, account_id, last_message_at)`; the FK to `"user"` is added by Task 26's integration
+    migration, and the tests create real users with `testkit::insert_user`). Every read, post, list and delete is
+    scoped by `user_id`; the account is the context. A thread is created, and posted to, only for
+    an account the user is currently linked to (`AccountAccess`; `LegacyAccountAccess` reads M1's
+    `linked_accounts.user_id`, and Task 26 wires the `account_links` lookup). A user may still
+    read and delete their threads after unlinking. Quotas and budgets stay per account (ruling
+    Q3).
+11. **Task 18 stand-ins.** T18 is not on this base. `jobs/budget.rs` holds minimal versions of
+    `BudgetConfig`, `budget_guard` and `meter`, and `ChatDeps` carries a `PricingTable`. At merge,
+    T18's file replaces them and the call sites in `chat/job.rs` are adapted.
+12. **Every paid call is metered** (coordinator ruling, the T14 class of bug). `run_chat_turn`
+    returns `ChatTurnError { error, calls }`, like T14's `SectionError`: `calls` holds the calls
+    already paid for when a later call (a follow-up or repair) fails or the budget hook stops it.
+    The job meters them (`chat`, ref = the message id) on every error path, including
+    `Unavailable` and `Budget`. A call that fails mid-stream reports no usage, so it cannot be
+    metered.
+13. **Retries are never in sync** (fix round 1, review I1). A retried AI attempt of the same
+    message (`turn_attempts > 1`: an unavailable release, a timeout or a worker crash) sends the
+    full Postgres history with `resume: false`, because the SDK session may hold the failed
+    attempt's question, answer and tool results; the sidecar replaces it. A failed attempt stores
+    its call-index counter before it is retried; a redelivery after a crash (nobody stored it)
+    skips the counter by `CALL_INDEX_RETRY_GAP` (1000). So a `tools.<k>` path is never reused.
+14. **Idempotent metering** (fix round 1, review I1 and m1). `ai_usage.idempotency_key` is unique.
+    A chat call is keyed `chat:<message>:<attempt>:<n>` (summary calls `…:summary:<n>`, the title
+    `chat:<message>:title:<n>`), so metering the same calls again (a finish that rolled back
+    after metering, a retried write) adds nothing, while a retry's own calls, paid again, get new
+    keys. The turn's calls are collected in a `TurnSink` outside the timed future, so a timeout
+    meters them too (review I2). A call whose response never arrived reports no usage and cannot
+    be metered. An unpriced model is metered at the most expensive known rate, never at zero.
+15. **Known gaps** (review m3): the windows count an answer by its message's `created_at` (the
+    post time), not the reservation time, so a question posted just before a window boundary
+    counts in the old window; and a turn that fails after paid calls uses no chat allowance (the
+    budget guard bounds the spend).
+16. **Chat events belong to the thread owner** (fix round 2, review N1; binding hand-off to M4
+    and the R3 integration). `user_events.user_id` (nullable, migration `20261121030400`): an
+    event with a non-null `user_id` is for that user only. Every chat event (`chat.chunk` with
+    answer text, `chat.message.ready`, `chat.message.failed`, including the reconciler's lost-chat
+    failure) is written with the conversation's `user_id` (`events::emit_for_user`, R1's
+    `insert_owned_event`; the NOTIFY JSON carries `userId`). The web SSE hub and the poll route
+    **MUST** deliver an event to a user only when `user_id IS NULL OR user_id = <that user>`;
+    account events keep `user_id` NULL. Chat must not be exposed before that filter lands.
+17. **The link is re-checked at the reservation** (fix round 2). `ChatDeps.access` is the same
+    `AccountAccess` as the thread API. If the thread owner is no longer linked to the account when
+    the job runs, the message fails with `not_linked` (its event to the owner), before the
+    allowance, with no AI call and nothing metered. An unlinked owner can still read, list and
+    delete their own threads, but not post (§10).

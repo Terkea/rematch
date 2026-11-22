@@ -13,14 +13,14 @@ use std::collections::HashSet;
 
 use serde_json::{Value, json};
 
-use super::attempt::{Attempted, Checked, attempt_and_repair, parsed};
+use super::attempt::{Attempted, Checked, attempt_and_repair, parsed, repair_once};
 use super::context::canonical_json_escaped;
 use super::payload::PayloadDroppedItem;
 use super::request::rules_block;
 use super::section::{BeforeCall, CallRecord, SectionError};
 use crate::client::model::{Effort, Models};
 use crate::client::port::{
-    AiClient, Message, Role, StructuredRequest, StructuredResult, TextBlock,
+    AiClient, AiError, Message, Role, StructuredRequest, StructuredResult, TextBlock,
 };
 use crate::output::codes::{DroppedItem, ValidationCode, ValidationError};
 use crate::output::report::{Item, ValidatedItem};
@@ -483,7 +483,7 @@ fn empty_review() -> ValidatedWeeklyReview {
     }
 }
 
-fn check(
+pub(crate) fn check(
     r: &StructuredResult,
     input: &WeeklyReviewInput,
     ev: &Evidence,
@@ -515,6 +515,15 @@ fn check(
     }
 }
 
+/// The outcome of an attempted weekly review (an empty review when nothing was usable).
+pub(crate) fn weekly_outcome(a: Attempted<ValidatedWeeklyReview>) -> WeeklyOutcome {
+    WeeklyOutcome {
+        content: a.content.unwrap_or_else(empty_review),
+        dropped: a.dropped,
+        calls: a.calls,
+    }
+}
+
 /// Writes the weekly review: attempt, validate, repair once, drop what still fails.
 /// Client errors (`Unavailable`, `Budget` from the hook, which runs before each call) come back
 /// as a [`SectionError`] with the records of the calls already paid for.
@@ -525,18 +534,29 @@ pub async fn generate_weekly_review(
 ) -> Result<WeeklyOutcome, SectionError> {
     let ev = build_weekly_evidence(input);
     let req = build_weekly_request(input);
-    let Attempted {
-        content,
-        dropped,
-        calls,
-        ..
-    } = attempt_and_repair(ai, before_call, &req, WEEKLY_SECTION, |r| {
+    let a = attempt_and_repair(ai, before_call, &req, WEEKLY_SECTION, |r| {
         check(r, input, &ev)
     })
     .await?;
-    Ok(WeeklyOutcome {
-        content: content.unwrap_or_else(empty_review),
-        dropped,
-        calls,
+    Ok(weekly_outcome(a))
+}
+
+/// The one repair of a weekly review whose first result (`first`, synchronous or from a batch)
+/// failed with `errors`: the standalone entry of the batch path (Task 16), with the same rules
+/// as [`generate_weekly_review`]'s repair. `calls` holds only the repair call: the caller
+/// records `first`. A client error is returned as is; the caller still meters `first`.
+pub async fn repair_weekly_review(
+    ai: &dyn AiClient,
+    before_call: BeforeCall<'_>,
+    input: &WeeklyReviewInput,
+    first: &StructuredResult,
+    errors: Vec<ValidationError>,
+) -> Result<WeeklyOutcome, AiError> {
+    let ev = build_weekly_evidence(input);
+    let req = build_weekly_request(input);
+    let a = repair_once(ai, before_call, &req, WEEKLY_SECTION, first, errors, |r| {
+        check(r, input, &ev)
     })
+    .await?;
+    Ok(weekly_outcome(a))
 }

@@ -122,3 +122,19 @@ pub async fn emit(
     let stored = ::events::store::insert_user_event(tx, account_id, ty, &payload).await?;
     Ok(stored.id)
 }
+
+/// [`emit`] for an event owned by one user: it is for that user only (`user_events.user_id`).
+/// Every chat event is emitted this way, with the thread owner's user (review N1): a linked
+/// account is shared between users, and readers deliver an event with a user only to that user.
+pub async fn emit_for_user(
+    tx: &mut PgConnection,
+    account_id: Uuid,
+    user_id: Uuid,
+    ty: &str,
+    payload: &impl Serialize,
+) -> Result<i64, EmitError> {
+    let payload = serde_json::to_value(payload)?;
+    let stored =
+        ::events::store::insert_owned_event(tx, account_id, Some(user_id), ty, &payload).await?;
+    Ok(stored.id)
+}

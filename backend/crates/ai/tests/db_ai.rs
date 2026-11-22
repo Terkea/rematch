@@ -369,13 +369,19 @@ async fn spend_since_sums_two_accounts_and_ignores_older_rows(pool: PgPool) {
     );
 }
 
+/// The test user of an account's conversations.
+fn owner(account_id: Uuid) -> Uuid {
+    Uuid::from_u128(account_id.as_u128() ^ 0x5EED)
+}
+
 async fn conversation(pool: &PgPool, account_id: Uuid) -> chat::ConversationRow {
+    testkit::insert_user_with_id(pool, owner(account_id), "owner").await;
     let mut conn = pool.acquire().await.unwrap();
     chat::create_conversation(
         &mut conn,
         &NewConversation {
             account_id,
-            user_id: None,
+            user_id: owner(account_id),
             time_class: "blitz".into(),
             title: Some("Why do I lose endgames?".into()),
             anchor: None,
@@ -467,7 +473,7 @@ async fn duplicate_conversation_seq_is_rejected(pool: PgPool) {
     assert_eq!(c.title.as_deref(), Some("Why do I lose endgames?"));
     assert!(c.last_message_at >= conv.last_message_at);
     assert_eq!(
-        chat::list_conversations(&mut conn, acct, 10)
+        chat::list_user_conversations(&mut conn, owner(acct), acct, 10)
             .await
             .unwrap()
             .len(),
@@ -973,15 +979,15 @@ async fn deleting_a_conversation_cascades_messages_and_detaches_evals(pool: PgPo
     .await
     .unwrap();
 
-    // Another account cannot delete it.
+    // Another account's user cannot delete it.
     assert!(
-        !chat::delete_conversation(&mut conn, other, conv.id)
+        !chat::delete_user_conversation(&mut conn, owner(other), conv.id)
             .await
             .unwrap()
     );
     let mut tx = conn.begin().await.unwrap();
     assert!(
-        chat::delete_conversation(&mut tx, acct, conv.id)
+        chat::delete_user_conversation(&mut tx, owner(acct), conv.id)
             .await
             .unwrap()
     );
@@ -1024,9 +1030,9 @@ async fn deleting_a_conversation_cascades_messages_and_detaches_evals(pool: PgPo
         "deleting does not reset the quota"
     );
 
-    // Delete all: only this account's conversations and their session entries go.
+    // Delete all: only this user's conversations and their session entries go.
     assert_eq!(
-        chat::delete_all_conversations(&mut conn, acct)
+        chat::delete_all_user_conversations(&mut conn, owner(acct))
             .await
             .unwrap(),
         1
@@ -1034,14 +1040,14 @@ async fn deleting_a_conversation_cascades_messages_and_detaches_evals(pool: PgPo
     assert_eq!(entries(keep.id).await, 0);
     assert_eq!(entries(foreign.id).await, 2);
     assert_eq!(
-        chat::list_conversations(&mut conn, acct, 10)
+        chat::list_user_conversations(&mut conn, owner(acct), acct, 10)
             .await
             .unwrap()
             .len(),
         0
     );
     assert_eq!(
-        chat::list_conversations(&mut conn, other, 10)
+        chat::list_user_conversations(&mut conn, owner(other), other, 10)
             .await
             .unwrap()
             .len(),
@@ -1310,7 +1316,7 @@ async fn every_conversation_delete_path_removes_session_entries(pool: PgPool) {
 
     let mut conn = pool.acquire().await.unwrap();
     assert!(
-        chat::delete_conversation(&mut conn, acct, rust.id)
+        chat::delete_user_conversation(&mut conn, owner(acct), rust.id)
             .await
             .unwrap()
     );
@@ -1347,7 +1353,7 @@ async fn every_conversation_delete_path_removes_session_entries(pool: PgPool) {
     add_entries(&pool, kept.id, 1).await;
     let mut tx = pool.begin().await.unwrap();
     assert!(
-        chat::delete_conversation(&mut tx, acct2, kept.id)
+        chat::delete_user_conversation(&mut tx, owner(acct2), kept.id)
             .await
             .unwrap()
     );
