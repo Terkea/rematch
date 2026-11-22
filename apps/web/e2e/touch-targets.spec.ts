@@ -111,3 +111,21 @@ test("the dialog close hits across its full 44px band", async ({ page }) => {
   expect(box?.width).toBe(32);
   expect(await missesInBand(page, close)).toEqual([]);
 });
+
+test("scoresheet moves are 44px rows that hit across their whole band", async ({ page }) => {
+  const sheet = page.locator('[data-fixture="scoresheet"]');
+  const moves = sheet.locator('[id^="ply-"]');
+  expect(await moves.count()).toBe(16);
+  // Every row of the band is covered by a move of the same row (or its neighbour's own row, never a
+  // dead strip): check each move's own 44px band, which equals its height.
+  for (let i = 0; i < 16; i++) {
+    const move = moves.nth(i);
+    await move.scrollIntoViewIfNeeded();
+    expect((await move.boundingBox())?.height).toBe(44);
+    expect(await missesInBand(page, move), `move ${i + 1}`).toEqual([]);
+  }
+  // Rows touch: the next row's move starts within the 1px ruling of the previous one.
+  const a = await moves.nth(0).boundingBox();
+  const c = await moves.nth(2).boundingBox();
+  expect((c?.y ?? 0) - ((a?.y ?? 0) + (a?.height ?? 0))).toBeLessThanOrEqual(1);
+});

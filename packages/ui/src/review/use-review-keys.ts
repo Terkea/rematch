@@ -29,9 +29,11 @@ export const REVIEW_KEYS: Readonly<Record<string, ReviewKeyAction>> = {
 };
 
 /**
- * Targets that own these keys themselves. The brief's list, plus the Board's `SquareGrid` (a
- * `role="group"` of square buttons whose arrows move focus) and the other composite widgets whose
- * arrows move inside them (tabs, menus, listboxes, radio groups, comboboxes).
+ * Targets that own these keys themselves: the brief's list, plus the other text-entry roles and the
+ * composite widgets whose arrows move inside them. The Board's SquareGrid (a `role="group"` of
+ * square buttons) needs no entry: it prevents the default of its arrows, Enter and Space, and a
+ * prevented key is ignored, so f (flip) and b still work on a focused square. Caveat for hosts: a
+ * review inside a `role="dialog"` (a drawer, say) gets no keys at all.
  */
 export const REVIEW_KEY_GUARD = [
   "input",
@@ -41,14 +43,18 @@ export const REVIEW_KEY_GUARD = [
   '[role="grid"]',
   '[role="slider"]',
   '[role="dialog"]',
-  "[data-square-button]",
   '[role="textbox"]',
+  '[role="searchbox"]',
   '[role="spinbutton"]',
   '[role="combobox"]',
   '[role="listbox"]',
   '[role="menu"]',
+  '[role="menubar"]',
   '[role="tablist"]',
   '[role="radiogroup"]',
+  '[role="toolbar"]',
+  '[role="tree"]',
+  '[role="treegrid"]',
 ].join(",");
 
 /** Space activates a focused button, link or toggle natively; the review leaves it alone. */

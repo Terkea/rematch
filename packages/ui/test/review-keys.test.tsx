@@ -1,7 +1,10 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, renderHook } from "@testing-library/react";
+import { cleanup, render, renderHook, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, type Mock, vi } from "vitest";
-import { type ReviewKeyAction, useReviewKeys } from "../src/review/index.js";
+import { Board } from "../src/board/index.js";
+import { EvalGraph } from "../src/eval-graph/index.js";
+import { games } from "../src/fixtures/index.js";
+import { REVIEW_KEY_GUARD, type ReviewKeyAction, useReviewKeys } from "../src/review/index.js";
 
 afterEach(() => {
   cleanup();
@@ -115,8 +118,6 @@ describe("useReviewKeys", () => {
     ['<textarea id="t"></textarea>', "b"],
     ['<select id="t"></select>', "ArrowDown"],
     ['<div contenteditable="true"><p id="t"></p></div>', "Home"],
-    // The Board's SquareGrid is a role="group" of square buttons: its arrows move focus.
-    ['<div role="group"><button id="t" data-square-button="e4"></button></div>', "ArrowLeft"],
   ])("ignores keys from inside %s", (html, key) => {
     const map = spies();
     renderHook(() => useReviewKeys(map));
@@ -202,5 +203,134 @@ describe("useReviewKeys", () => {
     expect(second).toHaveBeenCalledTimes(1);
     expect(add.mock.calls.filter(([type]) => type === "keydown")).toHaveLength(bound);
     add.mockRestore();
+  });
+});
+
+/** An element matching one guard selector, with a focusable child as the key's target. */
+function guarded(selector: string): HTMLElement {
+  const tag = /^[a-z]+$/.exec(selector)?.[0];
+  if (tag) {
+    const el = document.createElement(tag);
+    el.id = "t";
+    return el;
+  }
+  const outer = document.createElement("div");
+  const role = /^\[role="([a-z]+)"\]$/.exec(selector)?.[1];
+  if (role) outer.setAttribute("role", role);
+  else if (selector.startsWith("[contenteditable]")) outer.setAttribute("contenteditable", "true");
+  else throw new Error(`no builder for ${selector}`);
+  const inner = document.createElement("span");
+  inner.id = "t";
+  outer.append(inner);
+  return outer;
+}
+
+const GUARD = REVIEW_KEY_GUARD.split(",");
+const ALL_KEYS = ["ArrowLeft", "ArrowRight", "Home", "End", "ArrowUp", "ArrowDown", "f", " ", "b"];
+
+describe("the guard list", () => {
+  it("is exactly the brief's selectors plus the text-entry and composite roles", () => {
+    expect([...GUARD].sort()).toEqual(
+      [
+        "input",
+        "textarea",
+        "select",
+        "[contenteditable]:not([contenteditable='false'])",
+        '[role="grid"]',
+        '[role="slider"]',
+        '[role="dialog"]',
+        '[role="textbox"]',
+        '[role="searchbox"]',
+        '[role="spinbutton"]',
+        '[role="combobox"]',
+        '[role="listbox"]',
+        '[role="menu"]',
+        '[role="menubar"]',
+        '[role="tablist"]',
+        '[role="radiogroup"]',
+        '[role="toolbar"]',
+        '[role="tree"]',
+        '[role="treegrid"]',
+      ].sort(),
+    );
+  });
+
+  it.each(GUARD)("ignores every review key from inside %s", (selector) => {
+    const map = spies();
+    renderHook(() => useReviewKeys(map));
+    const el = guarded(selector);
+    const container = document.createElement("div");
+    container.dataset.fixture = "";
+    container.append(el);
+    document.body.append(container);
+    expect(el.matches(selector)).toBe(true);
+    const target = container.querySelector("#t") as HTMLElement;
+    for (const key of ALL_KEYS) press(target, key);
+    expect(calls(map)).toEqual([]);
+  });
+});
+
+const game = games.middlegameBlunder;
+const points = game.plies.map((p) => ({
+  ply: p.ply,
+  winWhite: p.winWhite,
+  san: p.san,
+  judgement: p.judgement,
+}));
+
+function Page({ map }: { map: Partial<Record<ReviewKeyAction, () => void>> }) {
+  useReviewKeys(map);
+  return (
+    <>
+      <Board fen={game.startFen} label="Position" />
+      <EvalGraph points={points} label="Win chance" currentPly={10} onSelectPly={() => {}} />
+    </>
+  );
+}
+
+/** The real widgets, as on the review page. */
+describe("with the real Board and EvalGraph", () => {
+  class FixedResizeObserver {
+    constructor(private readonly callback: ResizeObserverCallback) {}
+    observe(target: Element) {
+      const rect = { width: 320, height: 0, top: 0, left: 0, right: 320, bottom: 0, x: 0, y: 0 };
+      this.callback(
+        [{ target, contentRect: rect } as unknown as ResizeObserverEntry],
+        this as unknown as ResizeObserver,
+      );
+    }
+    unobserve() {}
+    disconnect() {}
+  }
+
+  it("leaves a focused square's arrows to the board, but flips with f", () => {
+    vi.stubGlobal("ResizeObserver", FixedResizeObserver);
+    try {
+      const map = spies();
+      render(<Page map={map} />);
+      const e2 = screen.getByRole("button", { name: /^e2,/ });
+      e2.focus();
+      press(e2, "ArrowRight");
+      press(e2, "ArrowUp");
+      expect(calls(map)).toEqual([]);
+      press(document.activeElement as HTMLElement, "f");
+      expect(calls(map)).toEqual(["flip"]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("leaves the slider's arrows to the graph", () => {
+    vi.stubGlobal("ResizeObserver", FixedResizeObserver);
+    try {
+      const map = spies();
+      render(<Page map={map} />);
+      const slider = screen.getByRole("slider");
+      slider.focus();
+      for (const key of ["ArrowLeft", "ArrowRight", "Home", "End"]) press(slider, key);
+      expect(calls(map)).toEqual([]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

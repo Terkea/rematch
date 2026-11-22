@@ -64,3 +64,15 @@ describe("formatSpent", () => {
     expect(formatSpent(-1)).toBeNull();
   });
 });
+
+describe("whole-second sources", () => {
+  it("formatClock drops the tenths when asked", () => {
+    expect(formatClock(8.43, { tenths: false })).toBe("0:08");
+    expect(formatClock(0, { tenths: false })).toBe("0:00");
+    expect(formatClock(545, { tenths: false })).toBe("9:05");
+  });
+
+  it("formatSpent reads whole seconds when asked", () => {
+    expect(formatSpent(12.43, { tenths: false })).toBe("12 s on this move");
+  });
+});

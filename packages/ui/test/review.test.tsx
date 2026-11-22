@@ -1,5 +1,6 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type GameFixture, games } from "../src/fixtures/index.js";
 import {
@@ -126,8 +127,10 @@ describe("Scoresheet", () => {
 
   it("names the move, its number and its judgement for screen readers", () => {
     sheet();
-    expect(plyButton(55)).toHaveAccessibleName("28. Nd2?? (blunder, your move)");
-    expect(plyButton(62)).toHaveAccessibleName("31… Nf4?? (blunder)");
+    expect(plyButton(55)).toHaveAccessibleName("Move 28, White, Nd2, blunder, your move");
+    expect(plyButton(62)).toHaveAccessibleName("Move 31, Black, Nf4, blunder");
+    expect(plyButton(2)).toHaveAccessibleName("Move 1, Black, Nf6, best move");
+    expect(plyButton(1)).toHaveAccessibleName("Move 1, White, d4");
   });
 
   it("tags a best move with Best", () => {
@@ -153,6 +156,26 @@ describe("Scoresheet", () => {
     ).toEqual(["ply-1"]);
     expect(rows[0]).toHaveTextContent(/^1\./);
     expect(rows[1]).toHaveTextContent(/^2\./);
+  });
+
+  it("numbers rows from startMoveNumber for a game set up mid-way", () => {
+    const moves: ScoresheetMove[] = [
+      { ply: 1, color: "black", san: "Kg7", judgement: null, best: false, mine: false },
+      { ply: 2, color: "white", san: "Rd8", judgement: null, best: false, mine: true },
+    ];
+    render(
+      <Scoresheet
+        moves={moves}
+        currentPly={1}
+        onSelectPly={vi.fn()}
+        label="Moves"
+        startMoveNumber={30}
+      />,
+    );
+    const rows = document.querySelectorAll("li");
+    expect(rows[0]).toHaveTextContent(/^30\./);
+    expect(rows[1]).toHaveTextContent(/^31\./);
+    expect(plyButton(1)).toHaveAccessibleName("Move 30, Black, Kg7");
   });
 
   it("says so when there are no moves", () => {
@@ -253,7 +276,7 @@ describe("ClockPair", () => {
 const NAMES = [
   "First move",
   "Previous move",
-  "Play",
+  "Autoplay",
   "Next move",
   "Last move",
   "Previous mistake",
@@ -318,7 +341,7 @@ describe("ReviewControls", () => {
     const pairs: [string, keyof ReviewControlsProps][] = [
       ["First move", "onFirst"],
       ["Previous move", "onPrev"],
-      ["Play", "onPlayToggle"],
+      ["Autoplay", "onPlayToggle"],
       ["Next move", "onNext"],
       ["Last move", "onLast"],
       ["Previous mistake", "onPrevMoment"],
@@ -337,10 +360,13 @@ describe("ReviewControls", () => {
     expect(p.onPrev).not.toHaveBeenCalled();
   });
 
-  it("reads Pause while playing", () => {
+  it("keeps the name Autoplay and reports the state with aria-pressed", () => {
     controls({ playing: true });
-    expect(button("Pause")).toHaveAttribute("aria-pressed", "true");
-    expect(screen.queryByRole("button", { name: "Play" })).toBeNull();
+    expect(button("Autoplay")).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByRole("button", { name: /pause/i })).toBeNull();
+    cleanup();
+    controls({ playing: false });
+    expect(button("Autoplay")).toHaveAttribute("aria-pressed", "false");
   });
 
   it("names the key of every button", () => {
@@ -349,7 +375,7 @@ describe("ReviewControls", () => {
     expect(button("Previous move")).toHaveAttribute("aria-keyshortcuts", "ArrowLeft");
     expect(button("First move")).toHaveAttribute("aria-keyshortcuts", "Home");
     expect(button("Last move")).toHaveAttribute("aria-keyshortcuts", "End");
-    expect(button("Play")).toHaveAttribute("aria-keyshortcuts", "Space");
+    expect(button("Autoplay")).toHaveAttribute("aria-keyshortcuts", "Space");
     expect(button("Previous mistake")).toHaveAttribute("aria-keyshortcuts", "ArrowUp");
     expect(button("Next mistake")).toHaveAttribute("aria-keyshortcuts", "ArrowDown");
     expect(button("Flip board")).toHaveAttribute("aria-keyshortcuts", "F");
@@ -391,5 +417,284 @@ describe("ReviewControls focus", () => {
     button("Next move").focus();
     rerender(<ReviewControls {...props(41)} />);
     expect(button("Next move")).toHaveFocus();
+  });
+});
+
+describe("Scoresheet announcements", () => {
+  const status = () => screen.getByRole("status");
+
+  function view(ply: number, announce?: boolean) {
+    return (
+      <Scoresheet
+        moves={blunderMoves}
+        currentPly={ply}
+        onSelectPly={() => {}}
+        label="Moves"
+        {...(announce === undefined ? {} : { announce })}
+      />
+    );
+  }
+
+  it("is a polite, atomic, visually hidden status that is empty on mount", () => {
+    vi.useFakeTimers();
+    try {
+      render(view(31));
+      act(() => vi.advanceTimersByTime(1000));
+      expect(status()).toHaveAttribute("aria-live", "polite");
+      expect(status()).toHaveAttribute("aria-atomic", "true");
+      expect(status()).toHaveClass("sr-only");
+      expect(status()).toBeEmptyDOMElement();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("announces the move landed on, 300 ms after the last step", () => {
+    vi.useFakeTimers();
+    try {
+      const { rerender } = render(view(52));
+      for (const ply of [53, 54, 55]) {
+        rerender(view(ply));
+        act(() => vi.advanceTimersByTime(100));
+      }
+      expect(status()).toBeEmptyDOMElement();
+      act(() => vi.advanceTimersByTime(300));
+      expect(status()).toHaveTextContent("Move 28, White, Nd2, blunder, your move");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("announces the start position", () => {
+    vi.useFakeTimers();
+    try {
+      const { rerender } = render(view(3));
+      rerender(view(0));
+      act(() => vi.advanceTimersByTime(300));
+      expect(status()).toHaveTextContent("Start position");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stays quiet with announce false, then announces where it stopped", () => {
+    vi.useFakeTimers();
+    try {
+      const { rerender } = render(view(10, false));
+      for (const ply of [11, 12, 13]) {
+        rerender(view(ply, false));
+        act(() => vi.advanceTimersByTime(1000));
+      }
+      expect(status()).toBeEmptyDOMElement();
+      rerender(view(13, true));
+      act(() => vi.advanceTimersByTime(300));
+      expect(status()).toHaveTextContent("Move 7, White");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("Scoresheet keyboard", () => {
+  function withNeighbours(ply = 31, onSelect = vi.fn()) {
+    render(
+      <>
+        <button type="button">Before</button>
+        <Scoresheet moves={blunderMoves} currentPly={ply} onSelectPly={onSelect} label="Moves" />
+        <button type="button">After</button>
+      </>,
+    );
+    return onSelect;
+  }
+
+  const tabbable = () =>
+    [...document.querySelectorAll<HTMLElement>("[id^=ply-]")].filter((b) => b.tabIndex >= 0);
+
+  it("is one tab stop, on the current move", () => {
+    withNeighbours(31);
+    expect(tabbable().map((b) => b.id)).toEqual(["ply-31"]);
+  });
+
+  it("puts the tab stop on the first move at the start position", () => {
+    withNeighbours(0);
+    expect(tabbable().map((b) => b.id)).toEqual(["ply-1"]);
+  });
+
+  it("Tab passes the whole sheet in one press", async () => {
+    const user = userEvent.setup();
+    withNeighbours(31);
+    screen.getByRole("button", { name: "Before" }).focus();
+    await user.tab();
+    expect(plyButton(31)).toHaveFocus();
+    await user.tab();
+    expect(screen.getByRole("button", { name: "After" })).toHaveFocus();
+  });
+
+  it("moves focus with the arrows, without selecting, and keeps the keys from the page", () => {
+    const onSelect = withNeighbours(31);
+    plyButton(31).focus();
+    const right = new KeyboardEvent("keydown", {
+      key: "ArrowRight",
+      bubbles: true,
+      cancelable: true,
+    });
+    plyButton(31).dispatchEvent(right);
+    expect(right.defaultPrevented).toBe(true);
+    expect(plyButton(32)).toHaveFocus();
+    fireEvent.keyDown(plyButton(32), { key: "ArrowDown" });
+    expect(plyButton(34)).toHaveFocus();
+    fireEvent.keyDown(plyButton(34), { key: "ArrowLeft" });
+    expect(plyButton(33)).toHaveFocus();
+    fireEvent.keyDown(plyButton(33), { key: "ArrowUp" });
+    expect(plyButton(31)).toHaveFocus();
+    fireEvent.keyDown(plyButton(31), { key: "End" });
+    expect(plyButton(91)).toHaveFocus();
+    fireEvent.keyDown(plyButton(91), { key: "ArrowRight" });
+    expect(plyButton(91)).toHaveFocus();
+    fireEvent.keyDown(plyButton(91), { key: "Home" });
+    expect(plyButton(1)).toHaveFocus();
+    fireEvent.keyDown(plyButton(1), { key: "ArrowLeft" });
+    expect(plyButton(1)).toHaveFocus();
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(tabbable().map((b) => b.id)).toEqual(["ply-1"]);
+  });
+
+  it("leaves keys with a modifier to the page", () => {
+    withNeighbours(31);
+    plyButton(31).focus();
+    fireEvent.keyDown(plyButton(31), { key: "ArrowRight", ctrlKey: true });
+    expect(plyButton(31)).toHaveFocus();
+  });
+
+  it("jumps to the focused move with Enter or Space", async () => {
+    const user = userEvent.setup();
+    const onSelect = withNeighbours(31);
+    plyButton(31).focus();
+    await user.keyboard("{ArrowRight}{Enter}");
+    expect(onSelect).toHaveBeenLastCalledWith(32);
+    await user.keyboard("{ArrowRight} ");
+    expect(onSelect).toHaveBeenLastCalledWith(33);
+  });
+
+  it("keeps focus on the current move when the ply changes under it", () => {
+    const { rerender } = render(
+      <Scoresheet moves={blunderMoves} currentPly={31} onSelectPly={() => {}} label="Moves" />,
+    );
+    plyButton(31).focus();
+    rerender(
+      <Scoresheet moves={blunderMoves} currentPly={32} onSelectPly={() => {}} label="Moves" />,
+    );
+    expect(plyButton(32)).toHaveFocus();
+    expect(tabbable().map((b) => b.id)).toEqual(["ply-32"]);
+  });
+
+  it("leaves focus outside the sheet alone when the ply changes", () => {
+    const tree = (ply: number) => (
+      <>
+        <button type="button">Elsewhere</button>
+        <Scoresheet moves={blunderMoves} currentPly={ply} onSelectPly={() => {}} label="Moves" />
+      </>
+    );
+    const { rerender } = render(tree(31));
+    screen.getByRole("button", { name: "Elsewhere" }).focus();
+    rerender(tree(32));
+    expect(screen.getByRole("button", { name: "Elsewhere" })).toHaveFocus();
+    expect(tabbable().map((b) => b.id)).toEqual(["ply-32"]);
+  });
+});
+
+describe("Scoresheet scrolling", () => {
+  function layout(clientHeight = 340) {
+    Element.prototype.scrollIntoView = vi.fn();
+    vi.spyOn(HTMLElement.prototype, "offsetTop", "get").mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      const ply = Number(this.id.replace("ply-", ""));
+      return this.id.startsWith("ply-") ? Math.ceil(ply / 2) * 34 : 0;
+    });
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(34);
+    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(clientHeight);
+  }
+  const scroller = () => document.querySelector("[data-scoresheet-scroll]") as HTMLElement;
+  const view = (ply: number, moves = blunderMoves) => (
+    <Scoresheet moves={moves} currentPly={ply} onSelectPly={() => {}} label="Moves" />
+  );
+
+  it("scrolls back up to a move above the window", () => {
+    layout();
+    const { rerender } = render(view(81));
+    scroller().scrollTop = 1000;
+    rerender(view(5));
+    // Ply 5 is row 3, whose top is 3 × 34.
+    expect(scroller().scrollTop).toBe(102);
+  });
+
+  it("leaves the scroll alone when the move is already in view", () => {
+    layout();
+    const { rerender } = render(view(81));
+    scroller().scrollTop = 1000;
+    rerender(view(65));
+    expect(scroller().scrollTop).toBe(1000);
+  });
+
+  it("scrolls when the moves arrive after the ply", () => {
+    layout();
+    const { rerender } = render(view(81, []));
+    rerender(view(81));
+    expect(scroller().scrollTop).toBe(1428 - 340);
+  });
+});
+
+describe("ClockPair details", () => {
+  it("marks a missing clock with a quiet dash when the other side has one", () => {
+    render(<ClockPair top={side({ seconds: null })} bottom={side()} spent={null} />);
+    const missing = document.querySelector('[data-side="top"] [data-no-clock]');
+    expect(missing).not.toBeNull();
+    expect(missing?.querySelector(".sr-only")).toHaveTextContent("no clock");
+    expect(document.querySelectorAll("time")).toHaveLength(1);
+  });
+
+  it("shows neither clock nor dash when no side has a clock", () => {
+    render(
+      <ClockPair top={side({ seconds: null })} bottom={side({ seconds: null })} spent={null} />,
+    );
+    expect(document.querySelectorAll("[data-no-clock]")).toHaveLength(0);
+  });
+
+  it("shows whole seconds when the source has no tenths", () => {
+    render(
+      <ClockPair
+        top={side({ seconds: 8 })}
+        bottom={side()}
+        spent={{ seconds: 12 }}
+        tenths={false}
+      />,
+    );
+    expect(document.querySelectorAll("time")[0]).toHaveTextContent(/^0:08$/);
+    expect(screen.getByText("12 s on this move")).toBeInTheDocument();
+  });
+});
+
+describe("ReviewControls focus, blurred", () => {
+  it("does not pull focus back from the page once the controls lost it", () => {
+    const p = (ply: number): ReviewControlsProps => ({
+      ply,
+      lastPly: 91,
+      playing: false,
+      hasMoments: true,
+      onFirst: () => {},
+      onPrev: () => {},
+      onPlayToggle: () => {},
+      onNext: () => {},
+      onLast: () => {},
+      onFlip: () => {},
+      onPrevMoment: () => {},
+      onNextMoment: () => {},
+    });
+    const { rerender } = render(<ReviewControls {...p(90)} />);
+    button("Next move").focus();
+    button("Next move").blur();
+    rerender(<ReviewControls {...p(91)} />);
+    expect(document.body).toHaveFocus();
   });
 });

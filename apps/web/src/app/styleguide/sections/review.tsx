@@ -61,7 +61,10 @@ function checkSquare(fen: string): Square | undefined {
   return undefined;
 }
 
-/** A side's clock at the shown ply: the clock before its next move, or before its last one. */
+/**
+ * A side's clock at the shown ply: the clock before its next move, or before its last one. Demo
+ * only: at the final position that is the clock before the last move, not the time remaining.
+ */
 function clockAt(color: "white" | "black", ply: number): number | null {
   const next = game.plies.find((p) => p.ply > ply && p.color === color);
   if (next) return next.clockSeconds;
@@ -85,7 +88,7 @@ const KEY_LEGEND: { action: ReviewKeyAction; cap: string; text: string }[] = [
   { action: "last", cap: "End", text: "Last move" },
   { action: "prevMoment", cap: "Up", text: "Previous mistake" },
   { action: "nextMoment", cap: "Down", text: "Next mistake" },
-  { action: "play", cap: "Space", text: "Play or pause" },
+  { action: "play", cap: "Space", text: "Autoplay" },
   { action: "flip", cap: "F", text: "Flip board" },
 ];
 
@@ -214,12 +217,14 @@ function ReviewDemo() {
         />
       </div>
       <div className="flex min-w-0 flex-col gap-4 max-md:px-(--space-panel-pad)">
-        <ClockPair top={top} bottom={bottom} spent={spentAt(ply)} />
+        {/* The fixture's %clk is whole seconds: no tenths it doesn't have. */}
+        <ClockPair top={top} bottom={bottom} spent={spentAt(ply)} tenths={false} />
         <Scoresheet
           moves={moves}
           currentPly={ply}
           onSelectPly={go}
           label={`Moves, ${title}`}
+          announce={!playing}
           className="h-72 bg-paper lg:h-96"
         />
         <EvalGraph

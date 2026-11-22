@@ -81,7 +81,7 @@ function Control({
         render={
           <Button
             ref={(el) => register(id, el as HTMLButtonElement | null)}
-            variant={primary ? "primary" : "quiet"}
+            variant={primary ? (pressed ? "primary" : "outline") : "quiet"}
             size="md"
             aria-label={label}
             aria-keyshortcuts={KEYS[id].aria}
@@ -140,6 +140,7 @@ export function ReviewControls({
   const reduced = useReducedMotion();
   const buttons = useRef(new Map<Key, HTMLButtonElement>());
   const focused = useRef<Key | null>(null);
+  const group = useRef<HTMLDivElement>(null);
   const register = (id: Key, el: HTMLButtonElement | null) => {
     if (el) buttons.current.set(id, el);
     else buttons.current.delete(id);
@@ -164,13 +165,25 @@ export function ReviewControls({
   return (
     // biome-ignore lint/a11y/useSemanticElements: a group of controls, not a form fieldset
     <div
+      ref={group}
       role="group"
       aria-label="Move controls"
       onFocus={(e) => {
         const id = (e.target as HTMLElement).dataset.control as Key | undefined;
         focused.current = id ?? null;
       }}
-      className={cn("flex flex-wrap items-center justify-between gap-x-4 gap-y-3", className)}
+      onBlur={(e) => {
+        // Focus left for somewhere else: forget it, so a later disable never pulls focus back.
+        // A button that loses focus because it was just disabled keeps it, for the fallback.
+        const to = e.relatedTarget as Node | null;
+        if (to && group.current?.contains(to)) return;
+        if (!to && e.target instanceof HTMLButtonElement && e.target.disabled) return;
+        focused.current = null;
+      }}
+      className={cn(
+        "flex flex-wrap items-center justify-between gap-x-4 gap-y-3 max-sm:justify-center",
+        className,
+      )}
     >
       <div className="flex items-center gap-1">
         <Control
@@ -191,7 +204,7 @@ export function ReviewControls({
         />
         <Control
           id="play"
-          label={playing ? "Pause" : "Play"}
+          label="Autoplay"
           icon={playing ? PauseIcon : PlayIcon}
           disabled={false}
           onClick={onPlayToggle}
