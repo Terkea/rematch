@@ -26,6 +26,7 @@ import {
   type Benchmark,
   benchmarkGroupLabel,
   benchmarkLabel,
+  peerRateText,
 } from "../../../../../server/profile/benchmark-text";
 import { ESTIMATE_WINDOW_TEXT } from "../../../../../server/profile/window";
 import { SectionHead } from "../../_overview/section-head";
@@ -239,6 +240,7 @@ function Standing({ detail, benchmark }: { detail: WeaknessDetail; benchmark: Be
   const early = !detail.evidence.sufficient;
   const none = detail.evidence.chances <= 0;
   const median = detail.compared ? detail.band.median : null;
+  const peer = median === null ? null : peerRateText(benchmark, detail.seriesKey, median);
   const counts = `${countsText(detail.evidence)} ${ESTIMATE_WINDOW_TEXT}`;
   return (
     <section
@@ -301,12 +303,25 @@ function Standing({ detail, benchmark }: { detail: WeaknessDetail; benchmark: Be
             <p className="text-ink-soft">{NO_BENCHMARK_TEXT}</p>
           ) : (
             <>
-              <p className="font-medium text-ink">Band median {shareText(median)}</p>
-              <p className="text-ink-soft">
-                {early || none
-                  ? `${group}. A comparison waits for more chances.`
-                  : `${group}, ${bandRelation(detail.rate, median)}.`}
-              </p>
+              {peer === null ? (
+                <>
+                  <p className="font-medium text-ink">Band median {shareText(median)}</p>
+                  <p className="text-ink-soft">
+                    {early || none
+                      ? `${group}. A comparison waits for more chances.`
+                      : `${group}, ${bandRelation(detail.rate, median)}.`}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="font-medium text-ink">{peer}</p>
+                  <p className="text-ink-soft">
+                    {early || none
+                      ? "A comparison waits for more chances."
+                      : `That is ${bandRelation(detail.rate, median)}.`}
+                  </p>
+                </>
+              )}
               {label === null ? null : (
                 <p data-benchmark="peers" className="text-ink-soft">
                   {label}. {BENCHMARK_BIAS_TEXT}

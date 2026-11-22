@@ -365,7 +365,7 @@ fn compute(tc: TimeClass, l: &Loaded, started_at: OffsetDateTime) -> Computed {
     let t = Instant::now();
     let (peer, reference) = match &l.peers {
         Some((sides, Some(center))) => {
-            let b = aggregate_peer_benchmark(sides, *center);
+            let b = aggregate_peer_benchmark(sides, *center, started_at);
             let r = b.reference();
             (Some(b), r)
         }

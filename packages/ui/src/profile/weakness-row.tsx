@@ -29,9 +29,10 @@ export interface WeaknessRowProps {
   evidence: { events: number; chances: number; sufficient: boolean; needMore: number | null };
   /**
    * The rating band's median rate, or null when there is no band reference, and the band's name
-   * ("Players rated 1400–1600"; default "Players in your rating band").
+   * ("Players rated 1400–1600"; default "Players in your rating band"), and what the figure is
+   * ("pooled over 65 of their chances"), said in brackets after it.
    */
-  band: { median: number | null; label?: string };
+  band: { median: number | null; label?: string; basis?: string };
   href: string;
   /** Weekly rates, oldest first; null is a week with no chances (a gap, never a zero). */
   trend: (number | null)[];
@@ -312,7 +313,7 @@ export function WeaknessRow({
               <RateStrip rate={rate} median={compared ? band.median : null} max={max} />
               <span className="text-sm text-ink-soft" style={LINING}>
                 {compared
-                  ? bandComparisonText(rate, band.median, band.label)
+                  ? bandComparisonText(rate, band.median, band.label, band.basis)
                   : bandComparisonText(rate, null)}
               </span>
             </>
