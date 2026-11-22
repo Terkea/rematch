@@ -1,0 +1,864 @@
+{
+  "kpis": [
+    {
+      "area": null,
+      "higherIsBetter": true,
+      "kind": "last",
+      "label": "Rating",
+      "metric": "rating",
+      "minN": 1,
+      "unit": "elo"
+    },
+    {
+      "area": null,
+      "higherIsBetter": true,
+      "kind": "mean",
+      "label": "Score vs expected",
+      "metric": "perf_vs_expected",
+      "minN": 20,
+      "unit": null
+    },
+    {
+      "area": null,
+      "higherIsBetter": true,
+      "kind": "mean",
+      "label": "Accuracy",
+      "metric": "accuracy",
+      "minN": 20,
+      "unit": "pct"
+    },
+    {
+      "area": "openings",
+      "higherIsBetter": true,
+      "kind": "mean",
+      "label": "Opening accuracy",
+      "metric": "accuracy.opening",
+      "minN": 20,
+      "unit": "pct"
+    },
+    {
+      "area": "middlegame",
+      "higherIsBetter": true,
+      "kind": "mean",
+      "label": "Middlegame accuracy",
+      "metric": "accuracy.middlegame",
+      "minN": 20,
+      "unit": "pct"
+    },
+    {
+      "area": "endgame",
+      "higherIsBetter": true,
+      "kind": "mean",
+      "label": "Endgame accuracy",
+      "metric": "accuracy.endgame",
+      "minN": 20,
+      "unit": "pct"
+    },
+    {
+      "area": "calculation",
+      "higherIsBetter": false,
+      "kind": "mean",
+      "label": "Blunders per game",
+      "metric": "blunders_per_game",
+      "minN": 20,
+      "unit": "per_game"
+    },
+    {
+      "area": "calculation",
+      "higherIsBetter": false,
+      "kind": "mean",
+      "label": "One-move blunders per game",
+      "metric": "one_move_blunders_per_game",
+      "minN": 20,
+      "unit": "per_game"
+    },
+    {
+      "area": "time",
+      "higherIsBetter": false,
+      "kind": "rate",
+      "label": "Blunder rate on a low clock",
+      "metric": "blunder_rate_low_clock",
+      "minN": 40,
+      "unit": "rate"
+    },
+    {
+      "area": "middlegame",
+      "higherIsBetter": true,
+      "kind": "rate",
+      "label": "Winning positions converted",
+      "metric": "conversion_rate",
+      "minN": 15,
+      "unit": "rate"
+    },
+    {
+      "area": "middlegame",
+      "higherIsBetter": true,
+      "kind": "rate",
+      "label": "Lost positions saved",
+      "metric": "resilience_rate",
+      "minN": 15,
+      "unit": "rate"
+    },
+    {
+      "area": "tactics",
+      "higherIsBetter": false,
+      "kind": "rate",
+      "label": "Mistakes left unpunished",
+      "metric": "missed_punish_rate",
+      "minN": 30,
+      "unit": "rate"
+    },
+    {
+      "area": "tactics",
+      "higherIsBetter": false,
+      "kind": "mean",
+      "label": "Tactics missed per game",
+      "metric": "tactics_missed_per_game",
+      "minN": 20,
+      "unit": "per_game"
+    },
+    {
+      "area": "tactics",
+      "higherIsBetter": false,
+      "kind": "mean",
+      "label": "Tactics allowed per game",
+      "metric": "tactics_allowed_per_game",
+      "minN": 20,
+      "unit": "per_game"
+    },
+    {
+      "area": "calculation",
+      "higherIsBetter": false,
+      "kind": "rate",
+      "label": "Errors in sharp positions",
+      "metric": "sharp_error_rate",
+      "minN": 30,
+      "unit": "rate"
+    },
+    {
+      "area": "middlegame",
+      "higherIsBetter": false,
+      "kind": "mean",
+      "label": "Win% lost per quiet move",
+      "metric": "quiet_loss_per_move",
+      "minN": 20,
+      "unit": "pct"
+    },
+    {
+      "area": "middlegame",
+      "higherIsBetter": true,
+      "kind": "mean",
+      "label": "Eval trend, moves 15-35",
+      "metric": "eval_trend_15_35",
+      "minN": 20,
+      "unit": null
+    },
+    {
+      "area": "time",
+      "higherIsBetter": false,
+      "kind": "rate",
+      "label": "Games in time trouble",
+      "metric": "time_trouble_rate",
+      "minN": 20,
+      "unit": "rate"
+    },
+    {
+      "area": "time",
+      "higherIsBetter": false,
+      "kind": "rate",
+      "label": "Games lost on time",
+      "metric": "losses_on_time_rate",
+      "minN": 20,
+      "unit": "rate"
+    },
+    {
+      "area": "time",
+      "higherIsBetter": null,
+      "kind": "mean",
+      "label": "Time per opening move",
+      "metric": "time_per_move.opening",
+      "minN": 20,
+      "unit": "seconds"
+    },
+    {
+      "area": "time",
+      "higherIsBetter": null,
+      "kind": "mean",
+      "label": "Time per middlegame move",
+      "metric": "time_per_move.middlegame",
+      "minN": 20,
+      "unit": "seconds"
+    },
+    {
+      "area": "time",
+      "higherIsBetter": null,
+      "kind": "mean",
+      "label": "Time per endgame move",
+      "metric": "time_per_move.endgame",
+      "minN": 20,
+      "unit": "seconds"
+    },
+    {
+      "area": "time",
+      "higherIsBetter": true,
+      "kind": "mean",
+      "label": "Time on critical moves vs others",
+      "metric": "critical_time_ratio",
+      "minN": 20,
+      "unit": null
+    },
+    {
+      "area": "openings",
+      "higherIsBetter": true,
+      "kind": "mean",
+      "label": "Win% after the opening",
+      "metric": "eval_after_opening",
+      "minN": 20,
+      "unit": "pct"
+    },
+    {
+      "area": "openings",
+      "higherIsBetter": false,
+      "kind": "rate",
+      "label": "Openings left worse",
+      "metric": "opening_out_worse_rate",
+      "minN": 20,
+      "unit": "rate"
+    },
+    {
+      "area": "openings",
+      "higherIsBetter": true,
+      "kind": "mean",
+      "label": "Book exit ply",
+      "metric": "book_exit_ply",
+      "minN": 20,
+      "unit": null
+    },
+    {
+      "area": "openings",
+      "higherIsBetter": null,
+      "kind": "mean",
+      "label": "Time spent in the opening",
+      "metric": "time_in_opening",
+      "minN": 20,
+      "unit": "seconds"
+    },
+    {
+      "area": "endgame",
+      "higherIsBetter": true,
+      "kind": "rate",
+      "label": "Winning endgames converted",
+      "metric": "endgame_conversion_rate",
+      "minN": 15,
+      "unit": "rate"
+    },
+    {
+      "area": "endgame",
+      "higherIsBetter": true,
+      "kind": "rate",
+      "label": "Drawn endgames held",
+      "metric": "endgame_hold_rate",
+      "minN": 15,
+      "unit": "rate"
+    },
+    {
+      "area": "endgame",
+      "higherIsBetter": false,
+      "kind": "mean",
+      "label": "Tablebase errors per endgame",
+      "metric": "tb_errors_per_endgame",
+      "minN": 20,
+      "unit": "per_game"
+    },
+    {
+      "area": "mindset",
+      "higherIsBetter": true,
+      "kind": "mean",
+      "label": "Score after a loss",
+      "metric": "score_after_loss",
+      "minN": 20,
+      "unit": "rate"
+    },
+    {
+      "area": "mindset",
+      "higherIsBetter": true,
+      "kind": "mean",
+      "label": "Score after a win or draw",
+      "metric": "score_after_non_loss",
+      "minN": 20,
+      "unit": "rate"
+    },
+    {
+      "area": "mindset",
+      "higherIsBetter": true,
+      "kind": "mean",
+      "label": "Accuracy change late in a session",
+      "metric": "session_accuracy_decline",
+      "minN": 20,
+      "unit": null
+    },
+    {
+      "area": "mindset",
+      "higherIsBetter": true,
+      "kind": "mean",
+      "label": "First-game accuracy",
+      "metric": "first_game_accuracy",
+      "minN": 20,
+      "unit": "pct"
+    },
+    {
+      "area": "mindset",
+      "higherIsBetter": true,
+      "kind": "mean",
+      "label": "Later-games accuracy",
+      "metric": "later_games_accuracy",
+      "minN": 20,
+      "unit": "pct"
+    },
+    {
+      "area": "mindset",
+      "higherIsBetter": false,
+      "kind": "rate",
+      "label": "Resignations in saveable positions",
+      "metric": "saveable_resignation_rate",
+      "minN": 10,
+      "unit": "rate"
+    },
+    {
+      "area": "tactics",
+      "higherIsBetter": false,
+      "kind": "rate",
+      "label": "Missed hanging pieces",
+      "metric": "motif_miss_rate:hangingPiece",
+      "minN": 20,
+      "unit": "rate"
+    },
+    {
+      "area": "tactics",
+      "higherIsBetter": false,
+      "kind": "rate",
+      "label": "Missed forks",
+      "metric": "motif_miss_rate:fork",
+      "minN": 20,
+      "unit": "rate"
+    },
+    {
+      "area": "tactics",
+      "higherIsBetter": false,
+      "kind": "rate",
+      "label": "Missed pins",
+      "metric": "motif_miss_rate:pin",
+      "minN": 20,
+      "unit": "rate"
+    },
+    {
+      "area": "tactics",
+      "higherIsBetter": false,
+      "kind": "rate",
+      "label": "Missed skewers",
+      "metric": "motif_miss_rate:skewer",
+      "minN": 20,
+      "unit": "rate"
+    },
+    {
+      "area": "tactics",
+      "higherIsBetter": false,
+      "kind": "rate",
+      "label": "Missed discovered attacks",
+      "metric": "motif_miss_rate:discoveredAttack",
+      "minN": 20,
+      "unit": "rate"
+    },
+    {
+      "area": "tactics",
+      "higherIsBetter": false,
+      "kind": "rate",
+      "label": "Missed deflections",
+      "metric": "motif_miss_rate:deflection",
+      "minN": 20,
+      "unit": "rate"
+    },
+    {
+      "area": "tactics",
+      "higherIsBetter": false,
+      "kind": "rate",
+      "label": "Missed sacrifices",
+      "metric": "motif_miss_rate:sacrifice",
+      "minN": 20,
+      "unit": "rate"
+    },
+    {
+      "area": "tactics",
+      "higherIsBetter": false,
+      "kind": "rate",
+      "label": "Missed promotions",
+      "metric": "motif_miss_rate:promotion",
+      "minN": 20,
+      "unit": "rate"
+    },
+    {
+      "area": "tactics",
+      "higherIsBetter": false,
+      "kind": "rate",
+      "label": "Missed mates",
+      "metric": "motif_miss_rate:mate",
+      "minN": 20,
+      "unit": "rate"
+    },
+    {
+      "area": "tactics",
+      "higherIsBetter": false,
+      "kind": "rate",
+      "label": "Missed mates in 1",
+      "metric": "motif_miss_rate:mateIn1",
+      "minN": 20,
+      "unit": "rate"
+    },
+    {
+      "area": "tactics",
+      "higherIsBetter": false,
+      "kind": "rate",
+      "label": "Missed mates in 2",
+      "metric": "motif_miss_rate:mateIn2",
+      "minN": 20,
+      "unit": "rate"
+    },
+    {
+      "area": "tactics",
+      "higherIsBetter": false,
+      "kind": "rate",
+      "label": "Missed mates in 3",
+      "metric": "motif_miss_rate:mateIn3",
+      "minN": 20,
+      "unit": "rate"
+    },
+    {
+      "area": "tactics",
+      "higherIsBetter": false,
+      "kind": "rate",
+      "label": "Missed mates in 4+",
+      "metric": "motif_miss_rate:mateIn4Plus",
+      "minN": 20,
+      "unit": "rate"
+    },
+    {
+      "area": "tactics",
+      "higherIsBetter": false,
+      "kind": "rate",
+      "label": "Missed mating nets",
+      "metric": "motif_miss_rate:matingNet",
+      "minN": 20,
+      "unit": "rate"
+    },
+    {
+      "area": "tactics",
+      "higherIsBetter": false,
+      "kind": "rate",
+      "label": "Missed back-rank mates",
+      "metric": "motif_miss_rate:backRankMate",
+      "minN": 20,
+      "unit": "rate"
+    },
+    {
+      "area": "tactics",
+      "higherIsBetter": false,
+      "kind": "rate",
+      "label": "Missed smothered mates",
+      "metric": "motif_miss_rate:smotheredMate",
+      "minN": 20,
+      "unit": "rate"
+    },
+    {
+      "area": "calculation",
+      "higherIsBetter": false,
+      "kind": "rate",
+      "label": "Hung material",
+      "metric": "weakness:W1",
+      "minN": 300,
+      "unit": "rate"
+    },
+    {
+      "area": "calculation",
+      "higherIsBetter": false,
+      "kind": "rate",
+      "label": "Missed opponent threat",
+      "metric": "weakness:W2",
+      "minN": 100,
+      "unit": "rate"
+    },
+    {
+      "area": "tactics",
+      "higherIsBetter": false,
+      "kind": "rate",
+      "label": "Missed own tactic (shallow)",
+      "metric": "weakness:W3.shallow",
+      "minN": 60,
+      "unit": "rate"
+    },
+    {
+      "area": "tactics",
+      "higherIsBetter": false,
+      "kind": "rate",
+      "label": "Missed own tactic (deep)",
+      "metric": "weakness:W3.deep",
+      "minN": 60,
+      "unit": "rate"
+    },
+    {
+      "area": "tactics",
+      "higherIsBetter": false,
+      "kind": "rate",
+      "label": "Missed mate",
+      "metric": "weakness:W4.missed",
+      "minN": 40,
+      "unit": "rate"
+    },
+    {
+      "area": "calculation",
+      "higherIsBetter": false,
+      "kind": "rate",
+      "label": "Allowed mate",
+      "metric": "weakness:W4.allowed",
+      "minN": 40,
+      "unit": "rate"
+    },
+    {
+      "area": "middlegame",
+      "higherIsBetter": false,
+      "kind": "rate",
+      "label": "Conversion failure",
+      "metric": "weakness:W5",
+      "minN": 30,
+      "unit": "rate"
+    },
+    {
+      "area": "middlegame",
+      "higherIsBetter": false,
+      "kind": "rate",
+      "label": "Defence / resourcefulness",
+      "metric": "weakness:W6",
+      "minN": 30,
+      "unit": "rate"
+    },
+    {
+      "area": "openings",
+      "higherIsBetter": false,
+      "kind": "rate",
+      "label": "Opening traps",
+      "metric": "weakness:W7.traps",
+      "minN": 40,
+      "unit": "rate"
+    },
+    {
+      "area": "openings",
+      "higherIsBetter": false,
+      "kind": "rate",
+      "label": "Opening preparation",
+      "metric": "weakness:W7.prep",
+      "minN": 40,
+      "unit": "rate"
+    },
+    {
+      "area": "endgame",
+      "higherIsBetter": false,
+      "kind": "rate",
+      "label": "Endgame technique (basics)",
+      "metric": "weakness:W8.basics",
+      "minN": 80,
+      "unit": "rate"
+    },
+    {
+      "area": "endgame",
+      "higherIsBetter": false,
+      "kind": "rate",
+      "label": "Endgame technique (advanced)",
+      "metric": "weakness:W8.advanced",
+      "minN": 80,
+      "unit": "rate"
+    },
+    {
+      "area": "time",
+      "higherIsBetter": false,
+      "kind": "rate",
+      "label": "Time trouble",
+      "metric": "weakness:W9a",
+      "minN": 30,
+      "unit": "rate"
+    },
+    {
+      "area": "time",
+      "higherIsBetter": false,
+      "kind": "rate",
+      "label": "Time-pressure collapse",
+      "metric": "weakness:W9b",
+      "minN": 40,
+      "unit": "rate"
+    },
+    {
+      "area": "time",
+      "higherIsBetter": false,
+      "kind": "rate",
+      "label": "Rushing critical moves",
+      "metric": "weakness:W9c",
+      "minN": 60,
+      "unit": "rate"
+    },
+    {
+      "area": "middlegame",
+      "higherIsBetter": false,
+      "kind": "rate",
+      "label": "Positional drift",
+      "metric": "weakness:W10",
+      "minN": 600,
+      "unit": "rate"
+    },
+    {
+      "area": "calculation",
+      "higherIsBetter": false,
+      "kind": "rate",
+      "label": "Easy-move errors (vision)",
+      "metric": "weakness:W11",
+      "minN": 300,
+      "unit": "rate"
+    }
+  ],
+  "motifs": [
+    {
+      "contractTag": "hanging_piece",
+      "tag": "hangingPiece"
+    },
+    {
+      "contractTag": "fork",
+      "tag": "fork"
+    },
+    {
+      "contractTag": "pin",
+      "tag": "pin"
+    },
+    {
+      "contractTag": "skewer",
+      "tag": "skewer"
+    },
+    {
+      "contractTag": "discovered_attack",
+      "tag": "discoveredAttack"
+    },
+    {
+      "contractTag": "deflection",
+      "tag": "deflection"
+    },
+    {
+      "contractTag": "sacrifice",
+      "tag": "sacrifice"
+    },
+    {
+      "contractTag": "promotion",
+      "tag": "promotion"
+    },
+    {
+      "contractTag": "mate",
+      "tag": "mate"
+    },
+    {
+      "contractTag": "mate_in_1",
+      "tag": "mateIn1"
+    },
+    {
+      "contractTag": "mate_in_2",
+      "tag": "mateIn2"
+    },
+    {
+      "contractTag": "mate_in_3",
+      "tag": "mateIn3"
+    },
+    {
+      "contractTag": "mate_in_4_plus",
+      "tag": "mateIn4Plus"
+    },
+    {
+      "contractTag": "mating_net",
+      "tag": "matingNet"
+    },
+    {
+      "contractTag": "back_rank_mate",
+      "tag": "backRankMate"
+    },
+    {
+      "contractTag": "smothered_mate",
+      "tag": "smotheredMate"
+    }
+  ],
+  "weaknesses": [
+    {
+      "area": "calculation",
+      "contractId": "W1",
+      "key": "W1",
+      "label": "Hung material",
+      "minEvidence": 1000.0,
+      "rankable": true,
+      "variant": null
+    },
+    {
+      "area": "calculation",
+      "contractId": "W2",
+      "key": "W2",
+      "label": "Missed opponent threat",
+      "minEvidence": 1000.0,
+      "rankable": true,
+      "variant": null
+    },
+    {
+      "area": "tactics",
+      "contractId": "W3",
+      "key": "W3.shallow",
+      "label": "Missed own tactic (shallow)",
+      "minEvidence": 40.0,
+      "rankable": true,
+      "variant": "shallow"
+    },
+    {
+      "area": "tactics",
+      "contractId": "W3",
+      "key": "W3.deep",
+      "label": "Missed own tactic (deep)",
+      "minEvidence": 40.0,
+      "rankable": true,
+      "variant": "deep"
+    },
+    {
+      "area": "tactics",
+      "contractId": "W4",
+      "key": "W4.missed",
+      "label": "Missed mate",
+      "minEvidence": 40.0,
+      "rankable": true,
+      "variant": "missed"
+    },
+    {
+      "area": "calculation",
+      "contractId": "W4",
+      "key": "W4.allowed",
+      "label": "Allowed mate",
+      "minEvidence": 40.0,
+      "rankable": true,
+      "variant": "allowed"
+    },
+    {
+      "area": "middlegame",
+      "contractId": "W5",
+      "key": "W5",
+      "label": "Conversion failure",
+      "minEvidence": 15.0,
+      "rankable": true,
+      "variant": null
+    },
+    {
+      "area": "middlegame",
+      "contractId": "W6",
+      "key": "W6",
+      "label": "Defence / resourcefulness",
+      "minEvidence": 15.0,
+      "rankable": true,
+      "variant": null
+    },
+    {
+      "area": "openings",
+      "contractId": "W7",
+      "key": "W7.traps",
+      "label": "Opening traps",
+      "minEvidence": 40.0,
+      "rankable": true,
+      "variant": "traps"
+    },
+    {
+      "area": "openings",
+      "contractId": "W7",
+      "key": "W7.prep",
+      "label": "Opening preparation",
+      "minEvidence": 40.0,
+      "rankable": true,
+      "variant": "prep"
+    },
+    {
+      "area": "endgame",
+      "contractId": "W8",
+      "key": "W8.basics",
+      "label": "Endgame technique (basics)",
+      "minEvidence": 50.0,
+      "rankable": true,
+      "variant": "basics"
+    },
+    {
+      "area": "endgame",
+      "contractId": "W8",
+      "key": "W8.advanced",
+      "label": "Endgame technique (advanced)",
+      "minEvidence": 50.0,
+      "rankable": true,
+      "variant": "advanced"
+    },
+    {
+      "area": "time",
+      "contractId": "W9a",
+      "key": "W9a",
+      "label": "Time trouble",
+      "minEvidence": 20.0,
+      "rankable": true,
+      "variant": null
+    },
+    {
+      "area": "time",
+      "contractId": "W9b",
+      "key": "W9b",
+      "label": "Time-pressure collapse",
+      "minEvidence": 40.0,
+      "rankable": true,
+      "variant": null
+    },
+    {
+      "area": "time",
+      "contractId": "W9c",
+      "key": "W9c",
+      "label": "Rushing critical moves",
+      "minEvidence": 60.0,
+      "rankable": true,
+      "variant": null
+    },
+    {
+      "area": "time",
+      "contractId": "W9d",
+      "key": "W9d",
+      "label": "Time misallocation",
+      "minEvidence": 20.0,
+      "rankable": false,
+      "variant": null
+    },
+    {
+      "area": "middlegame",
+      "contractId": "W10",
+      "key": "W10",
+      "label": "Positional drift",
+      "minEvidence": 1500.0,
+      "rankable": true,
+      "variant": null
+    },
+    {
+      "area": "calculation",
+      "contractId": "W11",
+      "key": "W11",
+      "label": "Easy-move errors (vision)",
+      "minEvidence": 1000.0,
+      "rankable": true,
+      "variant": null
+    },
+    {
+      "area": "mindset",
+      "contractId": "W12",
+      "key": "W12",
+      "label": "Tilt / fatigue",
+      "minEvidence": 60.0,
+      "rankable": false,
+      "variant": null
+    }
+  ]
+}
