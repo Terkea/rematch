@@ -21,7 +21,7 @@ use ai::client::port::{
 use ai::db::reports::{self, ReportStatus};
 use ai::db::runs::{self, ReportTrigger, RunStatus};
 use ai::db::usage::AiFeature;
-use ai::entitlements::{Entitlements, Plan};
+use ai::entitlements::{BetaLimits, ConfiguredEntitlements, Entitlements, Plan};
 use ai::generate::section::CallRecord;
 use ai::input::types::{CoachingInput, TimeClass};
 use ai::jobs::budget::{BudgetConfig, BudgetConfigError, budget_guard, meter};
@@ -1741,4 +1741,97 @@ async fn report_run_enqueues_change_notes(pool: PgPool) {
     handle(&d, run2).await.unwrap();
     assert_eq!(note_keys(&pool, a).await.len(), 2);
     assert_eq!(change_jobs(&pool).await, 2);
+}
+
+// ---------------------------------------------------------------------------------------------
+// M5b Task B, ruling G1: the beta plan's daily manual reports
+// ---------------------------------------------------------------------------------------------
+
+fn beta(manual_reports_per_day: u32) -> Arc<dyn Entitlements> {
+    Arc::new(ConfiguredEntitlements {
+        plan: Plan::Beta,
+        beta: BetaLimits {
+            chat_per_week: 100,
+            manual_reports_per_day,
+        },
+    })
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn beta_plan_gets_one_manual_report_a_day(pool: PgPool) {
+    let a = account(&pool).await;
+    let now = now_micros();
+    let mut d = deps(&pool, Some(Arc::new(valid_fake(some_usage()))), now);
+    d.entitlements = beta(1);
+    // The first report (onboarding) and a manual one the same day are both built: the free
+    // plan's 30-day interval does not apply to beta.
+    let first = request(&pool, a, ReportTrigger::Onboarding, Plan::Beta).await;
+    handle(&d, first).await.unwrap();
+    assert_eq!(run_row(&pool, first).await.plan, Plan::Beta);
+    let manual = request(&pool, a, ReportTrigger::Manual, Plan::Beta).await;
+    handle(&d, manual).await.unwrap();
+    assert_eq!(run_row(&pool, manual).await.status, RunStatus::Done);
+
+    // A second manual report the same UTC day is refused.
+    let second = request(&pool, a, ReportTrigger::Manual, Plan::Beta).await;
+    let res = handle(&d, second).await;
+    assert!(
+        matches!(res, Err(JobError::Unrecoverable { .. })),
+        "{res:?}"
+    );
+    let r = run_row(&pool, second).await;
+    assert_eq!(r.status, RunStatus::Failed);
+    assert_eq!(r.last_error.as_deref(), Some("plan_interval"));
+    assert!(report_of(&pool, second).await.is_none());
+
+    // Onboarding and scheduled runs are never gated.
+    let scheduled = request(&pool, a, ReportTrigger::Scheduled, Plan::Beta).await;
+    handle(&d, scheduled).await.unwrap();
+    assert_eq!(run_row(&pool, scheduled).await.status, RunStatus::Done);
+
+    // The next UTC day the manual report is allowed again.
+    sqlx::query("UPDATE reports SET created_at = created_at - interval '1 day'")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let tomorrow = request(&pool, a, ReportTrigger::Manual, Plan::Beta).await;
+    handle(&d, tomorrow).await.unwrap();
+    assert_eq!(run_row(&pool, tomorrow).await.status, RunStatus::Done);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn beta_manual_reports_per_day_is_configurable(pool: PgPool) {
+    let a = account(&pool).await;
+    let now = now_micros();
+    let mut d = deps(&pool, Some(Arc::new(valid_fake(some_usage()))), now);
+    d.entitlements = beta(2);
+    for _ in 0..2 {
+        let run = request(&pool, a, ReportTrigger::Manual, Plan::Beta).await;
+        handle(&d, run).await.unwrap();
+        assert_eq!(run_row(&pool, run).await.status, RunStatus::Done);
+    }
+    let third = request(&pool, a, ReportTrigger::Manual, Plan::Beta).await;
+    assert!(handle(&d, third).await.is_err());
+    assert_eq!(
+        run_row(&pool, third).await.last_error.as_deref(),
+        Some("plan_interval")
+    );
+}
+
+/// Two manual beta runs racing for the last slot of the day get one report.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn two_racing_beta_manual_runs_get_one_report(pool: PgPool) {
+    let a = account(&pool).await;
+    let now = now_micros();
+    let mut d = deps(&pool, Some(Arc::new(valid_fake(some_usage()))), now);
+    d.entitlements = beta(1);
+    let r1 = request(&pool, a, ReportTrigger::Manual, Plan::Beta).await;
+    let r2 = request(&pool, a, ReportTrigger::Manual, Plan::Beta).await;
+    let (x, y) = tokio::join!(handle(&d, r1), handle(&d, r2));
+    assert_eq!([x.is_ok(), y.is_ok()].iter().filter(|ok| **ok).count(), 1);
+    let reports: i64 = sqlx::query_scalar("SELECT count(*) FROM reports")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(reports, 1);
 }

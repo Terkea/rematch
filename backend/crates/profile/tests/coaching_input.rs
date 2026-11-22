@@ -2,6 +2,7 @@
 //! limits, on the Task 33 seed with real moves.
 
 mod common {
+    pub mod moves;
     pub mod seed;
 }
 
@@ -15,7 +16,8 @@ use coaching_input::limits::{WEAKNESS_ID_MAX_CHARS, WEAKNESS_ID_PATTERN};
 use coaching_input::{
     AreaId, BandId, CoachingInput, ExampleSide, LIMITS, LineSide, Platform, Verdict, WeaknessState,
 };
-use common::seed::{PROTOCOL, SEED_NOW, SeedOptions, seed, seed_now, w1_stat};
+use common::moves::*;
+use common::seed::{PROTOCOL, SEED_NOW, SeedOptions, seed_now, w1_stat};
 use profile::build_profile::{BuildProfileDeps, handle_build_profile};
 use profile::coaching::builder::{BuildError, build_coaching_input, build_coaching_input_report};
 use profile::coaching::exemplars::{ExemplarRow, to_exemplar_position};
@@ -42,149 +44,6 @@ async fn within<T>(what: &str, fut: impl std::future::Future<Output = T>) -> T {
     tokio::time::timeout(TEST_TIMEOUT, fut)
         .await
         .unwrap_or_else(|_| panic!("timed out after {TEST_TIMEOUT:?} waiting for {what}"))
-}
-
-// ------------------------------------------------------------------ seed with real moves
-
-/// The W1 exemplar ply of the seed (White's `3. Bc4` of Scholar's mate).
-const EXEMPLAR_PLY: u32 = 5;
-/// ΔW of the exemplar move in the three exemplar games (the order the builder must keep).
-const EXEMPLAR_DELTAS: [f64; 3] = [30.0, 20.0, 10.0];
-/// Seed game indices that carry a W1 exemplar ply (one early, two late: both sides of an onset).
-const EXEMPLAR_GAMES: [usize; 3] = [5, 30, 35];
-/// The engine's preferred move at the exemplar ply.
-const BEST_UCI: &str = "g1f3";
-
-struct Fixture {
-    account_id: Uuid,
-    games: Vec<Uuid>,
-}
-
-/// White-POV centipawns of every seeded position.
-const SEED_CP: i32 = 35;
-
-async fn insert_moves(pool: &PgPool, game_id: Uuid, exemplar_delta: Option<f64>) {
-    let parsed = parse_pgn(SCHOLARS).expect("scholar's mate parses");
-    for p in &parsed.plies {
-        let delta = match (p.ply, exemplar_delta) {
-            (EXEMPLAR_PLY, Some(d)) => d,
-            _ => 0.0,
-        };
-        sqlx::query(
-            "INSERT INTO moves (game_id, ply, color, san, uci, fen_before, best_uci, win_before, \
-               win_after, delta_w, accuracy, judgement, phase, clock_before, time_spent, decided) \
-             VALUES ($1, $2, $3::color, $4, $5, $6, $7, $8, $9, $10, 100, NULL, 'opening', \
-               NULL, NULL, false)",
-        )
-        .bind(game_id)
-        .bind(i32::try_from(p.ply).unwrap())
-        .bind(p.color.as_str())
-        .bind(&p.san)
-        .bind(&p.uci)
-        .bind(&p.fen_before)
-        .bind((p.ply == EXEMPLAR_PLY).then_some(BEST_UCI))
-        .bind(55.0)
-        .bind(55.0 - delta)
-        .bind(delta)
-        .execute(pool)
-        .await
-        .expect("insert moves");
-    }
-}
-
-async fn insert_evals(pool: &PgPool) {
-    let parsed = parse_pgn(SCHOLARS).unwrap();
-    let fens = std::iter::once(parsed.start_fen.clone())
-        .chain(parsed.plies.iter().map(|p| p.fen_after.clone()));
-    for fen in fens {
-        sqlx::query(
-            "INSERT INTO position_evals (fen_key, protocol, score_cp, score_mate, best_uci, pv, \
-               source) VALUES ($1, $2, $3, NULL, NULL, '{}', 'stockfish') ON CONFLICT DO NOTHING",
-        )
-        .bind(chess_core::fen::fen_key(&fen))
-        .bind(PROTOCOL)
-        .bind(SEED_CP)
-        .execute(pool)
-        .await
-        .expect("insert eval");
-    }
-}
-
-async fn insert_features(
-    pool: &PgPool,
-    game_id: Uuid,
-    ply: u32,
-    best_pv: &[&str],
-    refutation_pv: &[&str],
-) {
-    sqlx::query(
-        "INSERT INTO move_features (game_id, ply, best_pv, refutation_pv, best_line, \
-           refutation_line, enrichment_protocol) VALUES ($1, $2, $3, $4, $5, $6, 'enr-v1') \
-         ON CONFLICT (game_id, ply) DO UPDATE SET best_pv = EXCLUDED.best_pv, \
-           refutation_pv = EXCLUDED.refutation_pv",
-    )
-    .bind(game_id)
-    .bind(i32::try_from(ply).unwrap())
-    .bind(best_pv.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>())
-    .bind(
-        refutation_pv
-            .iter()
-            .map(|s| (*s).to_owned())
-            .collect::<Vec<_>>(),
-    )
-    .bind(json!({"gain": 1.0, "depth": 2, "mateIn": null, "tags": ["fork"]}))
-    .bind(json!({"gain": 99.0, "depth": 2, "mateIn": 1, "tags": ["mateIn1", "mate", "fork"]}))
-    .execute(pool)
-    .await
-    .expect("insert move_features");
-}
-
-/// Sets a metrics field of a game (jsonb path, camelCase as stored).
-async fn set_metrics_path(pool: &PgPool, game_id: Uuid, path: &[&str], value: Value) {
-    let path: Vec<String> = path.iter().map(|s| (*s).to_owned()).collect();
-    sqlx::query("UPDATE game_metrics SET metrics = jsonb_set(metrics, $2, $3) WHERE game_id = $1")
-        .bind(game_id)
-        .bind(&path)
-        .bind(value)
-        .execute(pool)
-        .await
-        .expect("set metrics path");
-}
-
-/// The Task 33 seed plus real moves: every game gets Scholar's-mate moves and evals; three games
-/// carry the W1 exemplar ply with enrichment.
-async fn seed_with_moves(pool: &PgPool, opts: SeedOptions) -> Fixture {
-    let s = seed(pool, opts).await;
-    insert_evals(pool).await;
-    for (i, g) in s.games.iter().enumerate() {
-        let delta = EXEMPLAR_GAMES
-            .iter()
-            .position(|x| *x == i)
-            .map(|j| EXEMPLAR_DELTAS[j]);
-        insert_moves(pool, *g, delta).await;
-        if delta.is_some() {
-            insert_features(
-                pool,
-                *g,
-                EXEMPLAR_PLY,
-                &[BEST_UCI, "g8f6"],
-                // The third move is illegal after the mate: the builder keeps the legal prefix.
-                &["g8f6", "h5f7", "e8e7"],
-            )
-            .await;
-            set_metrics_path(
-                pool,
-                *g,
-                &["weakness", "W1", "exemplarPlies"],
-                json!([EXEMPLAR_PLY]),
-            )
-            .await;
-        }
-    }
-    Fixture {
-        account_id: s.account_id,
-        games: s.games,
-    }
 }
 
 async fn run_build(pool: &PgPool, account_id: Uuid) {

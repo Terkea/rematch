@@ -62,7 +62,7 @@ use super::engine::{
 };
 use super::execute::OwnedToolDeps;
 use super::interactive::DbInteractiveEngine;
-use super::limits::{CHAT_LIMITS, CHAT_NO_DATA_TEXT, check_chat_allowance};
+use super::limits::{CHAT_LIMITS, CHAT_NO_DATA_TEXT, check_chat_allowance_with};
 use super::summary::{fallback_title, summarise_thread};
 use super::threads::AccountAccess;
 use crate::client::model::{AiModel, Models};
@@ -540,6 +540,7 @@ impl CoachChatHandler {
         debug_assert_eq!(t.account_id, account_hint);
         let account_id = t.account_id;
         let plan = d.entitlements.plan(account_id).await;
+        let quotas = d.entitlements.chat_quotas(plan);
         let mut scope = d.entitlements.budget_scope(account_id).await;
         if !scope.contains(&account_id) {
             scope.push(account_id);
@@ -575,8 +576,8 @@ impl CoachChatHandler {
                 .await
                 .map_err(|e| retryable("count answers", e))?;
             let turns = u32::try_from(t.prior.len()).unwrap_or(u32::MAX);
-            let allowed = check_chat_allowance(
-                plan,
+            let allowed = check_chat_allowance_with(
+                &quotas,
                 |w| match w {
                     QuotaWindow::Day => used[0],
                     QuotaWindow::Week => used[1],

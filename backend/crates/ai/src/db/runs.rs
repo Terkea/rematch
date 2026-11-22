@@ -244,6 +244,28 @@ pub async fn latest_other_report_at(
     .await
 }
 
+/// Reports of (account, time class) created at or after `since` by manual runs other than
+/// `run_id` (the beta plan's daily manual-report limit).
+pub async fn other_manual_reports_since(
+    conn: &mut PgConnection,
+    account_id: Uuid,
+    time_class: &str,
+    run_id: Uuid,
+    since: OffsetDateTime,
+) -> Result<i64, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT count(*) FROM reports r JOIN report_runs x ON x.id = r.report_run_id \
+         WHERE r.account_id = $1 AND r.time_class = $2::time_class AND r.report_run_id <> $3 \
+           AND x.trigger = 'manual' AND r.created_at >= $4",
+    )
+    .bind(account_id)
+    .bind(time_class)
+    .bind(run_id)
+    .bind(since)
+    .fetch_one(conn)
+    .await
+}
+
 pub async fn get_run(conn: &mut PgConnection, id: Uuid) -> Result<Option<RunRow>, sqlx::Error> {
     sqlx::query_as(sqlx::AssertSqlSafe(format!(
         "SELECT {COLS} FROM report_runs WHERE id = $1"

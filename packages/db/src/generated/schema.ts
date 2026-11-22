@@ -52,7 +52,7 @@ export const aiFeature = pgEnum("ai_feature", [
 
 export const aiItemStatus = pgEnum("ai_item_status", ["pending", "ready", "dropped", "failed"]);
 
-export const aiPlan = pgEnum("ai_plan", ["free", "pro"]);
+export const aiPlan = pgEnum("ai_plan", ["free", "pro", "beta"]);
 
 export const analysisStatus = pgEnum("analysis_status", [
   "pending",

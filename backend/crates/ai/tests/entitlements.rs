@@ -1,5 +1,6 @@
 use ai::chat::anchor::ChatAnchor;
 use ai::entitlements::{
+    BETA_CHAT_WEEKLY_ENV, BETA_MANUAL_REPORTS_PER_DAY_ENV, BetaLimits, ConfiguredEntitlements,
     DefaultEntitlements, Entitlements, Plan, Quota, QuotaWindow, chat_quotas, engine_quotas,
     exhausted, window_reset, window_start,
 };
@@ -155,4 +156,113 @@ fn chat_anchor_rejects_extra_keys() {
             "accepted {raw}"
         );
     }
+}
+
+// --- M5b Task B, ruling G1: the beta plan ---
+
+#[test]
+fn beta_quota_tables_are_the_g1_defaults() {
+    assert_eq!(chat_quotas(Plan::Beta), &[q(100, QuotaWindow::Week)]);
+    // Engine checks: the Pro allowance (G1 sets only chat and reports).
+    assert_eq!(engine_quotas(Plan::Beta), engine_quotas(Plan::Pro));
+    assert_eq!(serde_json::to_value(Plan::Beta).unwrap(), "beta");
+    assert_eq!(
+        BetaLimits::default(),
+        BetaLimits {
+            chat_per_week: 100,
+            manual_reports_per_day: 1
+        }
+    );
+}
+
+#[test]
+fn beta_limits_read_their_env_vars() {
+    let vars = |pairs: &'static [(&'static str, &'static str)]| {
+        move |k: &str| {
+            pairs
+                .iter()
+                .find(|(n, _)| *n == k)
+                .map(|(_, v)| (*v).to_owned())
+        }
+    };
+    assert_eq!(BetaLimits::from_vars(vars(&[])), Ok(BetaLimits::default()));
+    assert_eq!(
+        BetaLimits::from_vars(vars(&[
+            (BETA_CHAT_WEEKLY_ENV, " 40 "),
+            (BETA_MANUAL_REPORTS_PER_DAY_ENV, "3"),
+        ])),
+        Ok(BetaLimits {
+            chat_per_week: 40,
+            manual_reports_per_day: 3
+        })
+    );
+    // Empty counts as unset.
+    assert_eq!(
+        BetaLimits::from_vars(vars(&[(BETA_CHAT_WEEKLY_ENV, "  ")])),
+        Ok(BetaLimits::default())
+    );
+    let err = BetaLimits::from_vars(vars(&[(BETA_MANUAL_REPORTS_PER_DAY_ENV, "-1")])).unwrap_err();
+    assert_eq!(err.var, BETA_MANUAL_REPORTS_PER_DAY_ENV);
+    assert!(BetaLimits::from_vars(vars(&[(BETA_CHAT_WEEKLY_ENV, "lots")])).is_err());
+    // Manual reports per day are 1 to 24 (the coordinator's contract with the web).
+    for bad in ["0", "25"] {
+        let pairs: &'static [(&'static str, &'static str)] = match bad {
+            "0" => &[(BETA_MANUAL_REPORTS_PER_DAY_ENV, "0")],
+            _ => &[(BETA_MANUAL_REPORTS_PER_DAY_ENV, "25")],
+        };
+        let err = BetaLimits::from_vars(vars(pairs)).unwrap_err();
+        assert_eq!(err.var, BETA_MANUAL_REPORTS_PER_DAY_ENV, "{bad}");
+    }
+    for ok in [1, 24] {
+        let pairs: &'static [(&'static str, &'static str)] = if ok == 1 {
+            &[(BETA_MANUAL_REPORTS_PER_DAY_ENV, "1")]
+        } else {
+            &[(BETA_MANUAL_REPORTS_PER_DAY_ENV, "24")]
+        };
+        assert_eq!(
+            BetaLimits::from_vars(vars(pairs))
+                .unwrap()
+                .manual_reports_per_day,
+            ok
+        );
+    }
+    assert_eq!(BETA_CHAT_WEEKLY_ENV, "AI_BETA_CHAT_WEEKLY");
+    assert_eq!(
+        BETA_MANUAL_REPORTS_PER_DAY_ENV,
+        "AI_BETA_MANUAL_REPORTS_PER_DAY"
+    );
+}
+
+#[tokio::test]
+async fn configured_entitlements_give_their_plan_and_beta_limits() {
+    let id = Uuid::from_u128(9);
+    let limits = BetaLimits {
+        chat_per_week: 7,
+        manual_reports_per_day: 2,
+    };
+    let e = ConfiguredEntitlements {
+        plan: Plan::Beta,
+        beta: limits,
+    };
+    assert_eq!(e.plan(id).await, Plan::Beta);
+    assert_eq!(e.budget_scope(id).await, vec![id]);
+    assert_eq!(e.chat_quotas(Plan::Beta), vec![q(7, QuotaWindow::Week)]);
+    assert_eq!(e.manual_reports_per_day(Plan::Beta), Some(2));
+    // Other plans keep their tables, and only beta has a daily manual-report limit.
+    assert_eq!(e.chat_quotas(Plan::Free), chat_quotas(Plan::Free).to_vec());
+    assert_eq!(e.manual_reports_per_day(Plan::Free), None);
+    assert_eq!(e.manual_reports_per_day(Plan::Pro), None);
+    // The trait's defaults are the built-in beta limits.
+    assert_eq!(
+        DefaultEntitlements.chat_quotas(Plan::Beta),
+        vec![q(100, QuotaWindow::Week)]
+    );
+    assert_eq!(
+        DefaultEntitlements.manual_reports_per_day(Plan::Beta),
+        Some(1)
+    );
+    // The deployment is a beta: the default plan is beta.
+    let beta = ConfiguredEntitlements::default();
+    assert_eq!(beta.plan(id).await, Plan::Beta);
+    assert_eq!(beta.beta, BetaLimits::default());
 }
