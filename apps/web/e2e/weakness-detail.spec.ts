@@ -64,11 +64,9 @@ test("the weakness detail tells its story, with the player's own examples", asyn
   await first.getByRole("button", { name: /^Expand the position before / }).click();
   const dialog = page.getByRole("dialog", { name: /^Position before / });
   await expect(dialog).toBeVisible();
+  // The cited move is on the scoresheet, not yet played: the board shows the position before it.
   await expect(dialog.locator(`[data-ply='${ply}']`)).toBeVisible();
-  await expect(dialog.locator(`[data-ply='${Number(ply) - 1}']`)).toHaveAttribute(
-    "aria-current",
-    "step",
-  );
+  await expect(dialog.locator(`[data-ply='${ply}']`)).not.toHaveAttribute("aria-current", "step");
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
 
