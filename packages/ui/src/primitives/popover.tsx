@@ -32,7 +32,7 @@ export function PopoverContent({
           data-slot="popover-content"
           className={cn(
             "flex w-72 max-w-[calc(100vw-2*var(--space-gutter))] flex-col gap-2 rounded-field border border-rule bg-sheet p-4",
-            "font-sans text-sm text-ink shadow-lift outline-none",
+            "font-sans text-sm text-ink shadow-lift outline-none dark:border-rule-strong",
             "origin-(--transform-origin) transition-[opacity,scale] duration-(--dur-quick) ease-out",
             "data-starting-style:scale-(--enter-float-scale) data-starting-style:opacity-0",
             "data-ending-style:scale-(--enter-float-scale) data-ending-style:opacity-0",

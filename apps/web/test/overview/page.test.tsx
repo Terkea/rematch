@@ -294,6 +294,13 @@ describe("sections", () => {
     for (const b of screen.getAllByText("Based on 14 analysed games"))
       expect(b).toHaveClass("sr-only");
     expect(container.textContent).toContain("Lower is better");
+    // T13 critic I3: each sparkline's ends name their week and its games.
+    const ends = [...container.querySelectorAll("[data-part='trend-ends']")];
+    expect(ends).toHaveLength(3);
+    for (const e of ends) {
+      expect(e.textContent).toMatch(/First week \d+\.\d · \d+ games?/);
+      expect(e.textContent).toMatch(/Latest week \d+\.\d · \d+ games?/);
+    }
   });
 
   it("splits results by time control with a score and accuracy per class", async () => {

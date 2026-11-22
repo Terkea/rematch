@@ -274,6 +274,30 @@ describe("AccuracyTrend", () => {
     expect(screen.getByText("1 game has no accuracy and isn't shown.")).toBeInTheDocument();
   });
 
+  // T4 parked minor, settled in T13: a bad date is not "no accuracy".
+  it("says which games it left out for a bad date and which for no accuracy", async () => {
+    const pts = points(["win", "loss", "draw", "win"]);
+    (pts[0] as Point).date = "not a date";
+    (pts[1] as Point).accuracy = Number.NaN;
+    (pts[2] as Point).date = "2026-13-45";
+    await renderTrend({ points: pts, minPoints: 1 });
+    expect(screen.getByText("2 games have no valid date and aren't shown.")).toBeInTheDocument();
+    expect(screen.getByText("1 game has no accuracy and isn't shown.")).toBeInTheDocument();
+  });
+
+  // T4 parked minor, settled in T13: the legend names only what is drawn.
+  it("keys the band only when a band is drawn", async () => {
+    const pts = points(["win", "loss", "draw", "win"]);
+    const noBand = pts.map((p) => ({ id: p.id, mean: 70, low: null, high: null }));
+    const { unmount } = await renderTrend({ points: pts, rolling: noBand });
+    expect(screen.getByText("Rolling average")).toBeInTheDocument();
+    expect(screen.queryByText(/80% band/)).toBeNull();
+    unmount();
+    const band = pts.map((p) => ({ id: p.id, mean: 70, low: 65, high: 75 }));
+    await renderTrend({ points: pts, rolling: band });
+    expect(screen.getByText("Rolling average, 80% band")).toBeInTheDocument();
+  });
+
   it("summarises the trend for screen readers", async () => {
     const pts = points(["win", "loss", "draw"]);
     const rolling = [{ id: "g2", mean: 71.26, low: 68.04, high: 74.4 }];
@@ -436,16 +460,18 @@ describe("JudgementColumns, honesty and access", () => {
     expect(screen.getByRole("link", { name: "Game 1" })).toHaveFocus();
   });
 
-  it("puts the latest game at the right edge", async () => {
+  // M5a T13 critic I1: right-aligned columns left the heading's side of the row empty at 1440.
+  // They start under the heading, oldest first, so the latest game is the rightmost column.
+  it("starts the columns at the left edge, the latest game rightmost", async () => {
     measured = 900;
-    const { container } = render(
-      <JudgementColumns games={[game(1, 1, 0, 0), game(2, 0, 1, 0)]} label="Mistakes" />,
-    );
+    render(<JudgementColumns games={[game(1, 1, 0, 0), game(2, 0, 1, 0)]} label="Mistakes" />);
     await nextFrame();
-    const svg = container.querySelector("[data-part='scroller'] > svg");
+    const first = screen.getByRole("link", { name: "Game 1" });
     const last = screen.getByRole("link", { name: "Game 2" });
-    const w = Number(last.getAttribute("data-w"));
-    expect(Number(last.getAttribute("data-x")) + w).toBeCloseTo(Number(svg?.getAttribute("width")));
+    expect(Number(first.getAttribute("data-x"))).toBe(0);
+    expect(Number(last.getAttribute("data-x"))).toBeGreaterThan(
+      Number(first.getAttribute("data-x")),
+    );
   });
 
   it("opens scrolled to the latest games", async () => {

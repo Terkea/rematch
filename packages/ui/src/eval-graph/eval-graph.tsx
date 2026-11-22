@@ -176,7 +176,6 @@ const StaticLayer = memo(function StaticLayer({
   plotH,
   lane,
   axis,
-  compact,
   linePath,
   areaPath,
   baseline,
@@ -203,8 +202,6 @@ const StaticLayer = memo(function StaticLayer({
   clipId: string;
   lane: number;
   axis: number;
-  /** A strip with no lanes: no corner labels and no scale text. */
-  compact: boolean;
 }) {
   const clip = reveal ? `url(#${clipId})` : undefined;
   const cornerText = (c: Corner, y: number, key: string) => {
@@ -335,25 +332,22 @@ const StaticLayer = memo(function StaticLayer({
             />
           ))}
       </g>
-      {/* Corner labels sit over the line and leaders on a well halo, under the marks. */}
-      {compact ? null : (
-        <g className="fill-ink-soft stroke-well font-sans text-xs" style={CORNER_HALO}>
-          {cornerText(corners.top, lane + 14, "top")}
-          {cornerText(corners.bottom, lane + plotH - 6, "bottom")}
-        </g>
-      )}
-      {compact ? null : (
-        <text
-          data-scale
-          x={width - PAD}
-          y={baseline - 3}
-          textAnchor="end"
-          className="fill-ink-faint stroke-well font-sans text-2xs"
-          style={CORNER_HALO}
-        >
-          50%
-        </text>
-      )}
+      {/* Corner labels sit over the line and leaders on a well halo, under the marks. The phone
+          strip keeps them too, so it says what it plots (T13 critic). */}
+      <g className="fill-ink-soft stroke-well font-sans text-xs" style={CORNER_HALO}>
+        {cornerText(corners.top, lane + 14, "top")}
+        {cornerText(corners.bottom, lane + plotH - 6, "bottom")}
+      </g>
+      <text
+        data-scale
+        x={width - PAD}
+        y={baseline - 3}
+        textAnchor="end"
+        className="fill-ink-faint stroke-well font-sans text-2xs"
+        style={CORNER_HALO}
+      >
+        50%
+      </text>
       <g data-layer="marks">
         {marks.map((m) => {
           const serious = isSerious(m.judgement);
@@ -793,7 +787,6 @@ export function EvalGraph({
             clipId={`${id}-clip`}
             lane={lane}
             axis={axis}
-            compact={compact}
           />
         )}
         {width > 0 && (

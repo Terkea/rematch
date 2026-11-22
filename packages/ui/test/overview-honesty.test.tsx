@@ -82,6 +82,25 @@ describe("KpiStat honest options", () => {
     // Never a verdict: the words name the convention, not "improved" or "worse".
     expect(container.textContent).not.toMatch(/improved|worse/i);
   });
+
+  // M5a T13 critic I3: bare "1.0 … 4.0" beside "1.50" read as a contradiction. With the games
+  // behind each point, the ends say which weeks they are and how many games each rests on.
+  it("names the end weeks and their game counts when it has them", () => {
+    const { container } = render(
+      <KpiStat
+        {...kpi}
+        trend={[null, 1, 2.5, null, 4]}
+        trendGames={[0, 2, 3, 0, 1]}
+        trendEnds
+        better="lower"
+      />,
+    );
+    const ends = container.querySelector("[data-part='trend-ends']");
+    expect(ends?.textContent).toContain("First week 1.0 · 2 games");
+    expect(ends?.textContent).toContain("Latest week 4.0 · 1 game");
+    // Read out too, not only drawn.
+    expect(ends?.querySelector("[aria-hidden='true']")).toBeNull();
+  });
 });
 
 const DAY = 86_400_000;
@@ -151,6 +170,28 @@ describe("AccuracyTrend minPoints", () => {
     expect(days.length).toBeGreaterThan(0);
     // Each label sits on its day's midnight, so the spacing is even.
     expect(days).toEqual(["2026-11-20", "2026-11-21"]);
+  });
+
+  // M5a T13 critic I2: a phone-width axis over two months showed only "1 Oct".
+  it("labels both ends of the span at every width, with no label crowding an end", () => {
+    const first = new Date(Date.UTC(2026, 8, 6, 10));
+    const last = new Date(Date.UTC(2026, 9, 31, 18));
+    for (const width of [320, 360, 640, 1048]) {
+      const ticks = dateTicks(timeScale([first, last], width), width);
+      expect(ticks[0], `${width}`).toMatchObject({ text: "6 Sep", anchor: "start" });
+      expect(ticks.at(-1), `${width}`).toMatchObject({ text: "31 Oct", anchor: "end" });
+      for (let i = 1; i < ticks.length; i++) {
+        expect(
+          (ticks[i]?.x ?? 0) - (ticks[i - 1]?.x ?? 0),
+          `${width}: ${ticks.map((t) => t.text)}`,
+        ).toBeGreaterThanOrEqual(56);
+      }
+      expect(new Set(ticks.map((t) => t.text)).size).toBe(ticks.length);
+    }
+    // Long spans label months, ends included.
+    const long = dateTicks(timeScale([new Date(Date.UTC(2025, 0, 9)), last], 360), 360);
+    expect(long[0]?.text).toBe("Jan 2025");
+    expect(long.at(-1)?.text).toBe("Oct 2026");
   });
 
   it("keeps the two-game minimum by default", async () => {

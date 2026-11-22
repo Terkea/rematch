@@ -1,0 +1,199 @@
+import { describe, expect, it } from "vitest";
+import { createSoundEngine, soundForMove, soundForSan } from "../src/audio/index";
+
+describe("soundForMove", () => {
+  it.each([
+    [{ san: "Nf3", flags: "n" }, "move"],
+    [{ san: "Bxe5", flags: "c" }, "capture"],
+    [{ san: "O-O", flags: "k" }, "castle"],
+    [{ san: "e8=Q", flags: "np" }, "promote"],
+    [{ san: "Qxf7+", flags: "c" }, "check"],
+    [{ san: "Qxf7#", flags: "c" }, "gameEnd"],
+    [{ san: "exd8=Q+", flags: "cp" }, "check"],
+  ] as const)("%j -> %s", (m, s) => {
+    expect(soundForMove(m)).toBe(s);
+  });
+});
+
+describe("soundForSan", () => {
+  it.each([
+    ["Nf3", "move"],
+    ["exd5", "capture"],
+    ["O-O", "castle"],
+    ["O-O-O+", "check"],
+    ["e8=Q", "promote"],
+    ["Qxf7#", "gameEnd"],
+  ])("%s -> %s", (san, s) => {
+    expect(soundForSan(san)).toBe(s);
+  });
+});
+
+function fakeCtx() {
+  const log = { master: 0, gain: 0.6 };
+  const param = () => ({
+    value: 0,
+    setValueAtTime: () => undefined,
+    linearRampToValueAtTime: () => undefined,
+    exponentialRampToValueAtTime: () => undefined,
+  });
+  const node = (): Record<string, unknown> => ({
+    connect: () => undefined,
+    start: () => undefined,
+    stop: () => undefined,
+    frequency: param(),
+    Q: param(),
+    gain: param(),
+    type: "",
+  });
+  let first = true;
+  const ctx = {
+    currentTime: 0,
+    state: "suspended",
+    sampleRate: 8000,
+    destination: {},
+    resume: async () => {
+      ctx.state = "running";
+    },
+    createBuffer: (_c: number, n: number) => ({ getChannelData: () => new Float32Array(n) }),
+    createBufferSource: node,
+    createOscillator: node,
+    createBiquadFilter: node,
+    createGain: () => {
+      const n = node();
+      if (first) {
+        // the first gain is the master; the test counts what connects into it
+        first = false;
+        n.gain = {
+          get value() {
+            return log.gain;
+          },
+          set value(v: number) {
+            log.gain = v;
+          },
+        };
+        n.isMaster = true;
+        return n;
+      }
+      n.connect = (dest: unknown) => {
+        if ((dest as { isMaster?: boolean }).isMaster) log.master++;
+      };
+      return n;
+    },
+  };
+  return { ctx: ctx as unknown as AudioContext, log };
+}
+
+describe("createSoundEngine", () => {
+  const make = () => {
+    const f = fakeCtx();
+    let t = 1000;
+    const e = createSoundEngine({ ctxFactory: () => f.ctx, now: () => t });
+    return { ...f, e, advance: (ms: number) => (t += ms) };
+  };
+
+  it("plays nothing before unlock", () => {
+    const { e, log } = make();
+    e.play("move");
+    expect(log.master).toBe(0);
+  });
+
+  it("stays silent while the context is created but the browser has not let it run", () => {
+    const { e, ctx, log } = make();
+    (ctx as unknown as { resume: () => Promise<void> }).resume = () => new Promise(() => {});
+    void e.unlock();
+    e.play("move");
+    expect(log.master).toBe(0);
+  });
+
+  it("schedules one voice after unlock and throttles within 40 ms", async () => {
+    const { e, log, advance } = make();
+    await e.unlock();
+    e.play("move");
+    expect(log.master).toBe(1);
+    advance(20);
+    e.play("capture");
+    expect(log.master).toBe(1);
+    advance(30);
+    e.play("capture");
+    expect(log.master).toBe(2);
+  });
+
+  it("is silent while muted, and sets the master gain", async () => {
+    const { e, log } = make();
+    await e.unlock();
+    e.setMuted(true);
+    e.play("move");
+    expect(log.master).toBe(0);
+    e.setMuted(false);
+    e.setVolume(0.3);
+    expect(log.gain).toBeCloseTo(0.3);
+  });
+
+  it("retries unlock after a refused resume, and plays once it runs", async () => {
+    const { e, ctx, log, advance } = make();
+    const resume = ctx.resume.bind(ctx);
+    let refuse = true;
+    (ctx as unknown as { resume: () => Promise<void> }).resume = async () => {
+      if (refuse) throw new Error("NotAllowedError");
+      return resume();
+    };
+    expect(await e.unlock()).toBe(false);
+    e.play("move");
+    expect(log.master).toBe(0);
+    refuse = false;
+    expect(await e.unlock()).toBe(true);
+    advance(100);
+    e.play("move");
+    expect(log.master).toBe(1);
+  });
+
+  it("wakes a suspended context on the next play, then plays", async () => {
+    const { e, ctx, log, advance } = make();
+    await e.unlock();
+    (ctx as unknown as { state: string }).state = "interrupted";
+    let resumed = 0;
+    (ctx as unknown as { resume: () => Promise<void> }).resume = async () => {
+      resumed++;
+      (ctx as unknown as { state: string }).state = "running";
+    };
+    e.play("move");
+    expect(log.master).toBe(0);
+    expect(resumed).toBe(1);
+    await Promise.resolve();
+    advance(100);
+    e.play("move");
+    expect(log.master).toBe(1);
+  });
+
+  it("replaces a closed context lazily and never throws into the caller", async () => {
+    const first = fakeCtx();
+    const second = fakeCtx();
+    const made: AudioContext[] = [];
+    const queue = [first.ctx, second.ctx];
+    let t = 1000;
+    const e = createSoundEngine({
+      ctxFactory: () => {
+        const c = queue.shift() as AudioContext;
+        made.push(c);
+        return c;
+      },
+      now: () => (t += 100),
+    });
+    await e.unlock();
+    (first.ctx as unknown as { state: string }).state = "closed";
+    expect(() => e.play("move")).not.toThrow();
+    expect(made).toHaveLength(2);
+    await Promise.resolve();
+    e.play("move");
+    expect(second.log.master).toBe(1);
+  });
+
+  it("swallows a synthesis failure so stepping never breaks", async () => {
+    const { e, ctx } = make();
+    await e.unlock();
+    (ctx as unknown as { createBufferSource: () => never }).createBufferSource = () => {
+      throw new Error("boom");
+    };
+    expect(() => e.play("move")).not.toThrow();
+  });
+});

@@ -32,6 +32,46 @@ const COLOUR = { white: "White", black: "Black" } as const;
 /** "1 Oct 2026" for a `YYYY-MM-DD` day. */
 export const dayWords = (day: string) => dayText(new Date(`${day}T00:00:00Z`));
 
+const MONTH_NAMES = [
+  "january",
+  "february",
+  "march",
+  "april",
+  "may",
+  "june",
+  "july",
+  "august",
+  "september",
+  "october",
+  "november",
+  "december",
+];
+
+/**
+ * A typed day as `YYYY-MM-DD`, or null: "2026-10-01", "1 Oct 2026" (any month name from three
+ * letters), or day-first "1/10/2026". A four-digit year is required, and the day must exist.
+ */
+export function parseDayText(text: string): string | null {
+  const t = text.trim().toLowerCase();
+  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(t);
+  const slash = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(t);
+  const words = /^(\d{1,2})\s+([a-z]{3,})\.?\s+(\d{4})$/.exec(t);
+  let parts: [number, number, number] | null = null; // year, month, day
+  if (iso) parts = [Number(iso[1]), Number(iso[2]), Number(iso[3])];
+  else if (slash) parts = [Number(slash[3]), Number(slash[2]), Number(slash[1])];
+  else if (words) {
+    const name = words[2] as string;
+    const i = MONTH_NAMES.findIndex((n) => n.startsWith(name));
+    if (i >= 0) parts = [Number(words[3]), i + 1, Number(words[1])];
+  }
+  if (!parts) return null;
+  const [y, m, d] = parts;
+  const date = new Date(Date.UTC(y, m - 1, d));
+  if (date.getUTCFullYear() !== y || date.getUTCMonth() !== m - 1 || date.getUTCDate() !== d)
+    return null;
+  return date.toISOString().slice(0, 10);
+}
+
 const accountLabel = (id: string, accounts: AccountOption[]) =>
   accounts.find((a) => a.id === id)?.label ?? "that account";
 

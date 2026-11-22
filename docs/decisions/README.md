@@ -67,13 +67,15 @@ One file per decision: context, decision, alternatives, consequences. New decisi
 - [0062. Claude calls go through a Claude Agent SDK sidecar](0062-claude-agent-sdk-sidecar.md)
 - [0063. Monthly and weekly regeneration through the Message Batches API](0063-batch-regeneration.md)
 - [0064. "Ask your coach": the chat engine](0064-ask-your-coach-chat.md)
-- [0065. Postgres connection limit for the integrated worker](0065-postgres-connection-limit.md)
+- [0065. Game pages e2e: a guarded seed, their own quality and visual specs](0065-game-pages-e2e-and-visual-baselines.md)
+- [0066. Postgres connection limit for the integrated worker](0066-postgres-connection-limit.md)
 
 Web records use placeholder numbers until the controller renumbers them.
 
 - [ADR-WEB-1. Source-only UI packages and the web dependency set](ADR-WEB-1-source-only-ui-packages.md)
 - [ADR-WEB-2. Web development stack in Compose](ADR-WEB-2-web-dev-stack.md)
 - [ADR-WEB-3. Auth data model, Better Auth configuration and invite-only sign-up](ADR-WEB-3-auth-and-link-data-model.md)
+- [ADR-WEB-4. Lichess OAuth (PKCE) and Lichess linking](ADR-WEB-4-lichess-oauth.md)
 - [ADR-WEB-5. chess.com linking and location-code verification](ADR-WEB-5-chesscom-verification.md)
 - [ADR-WEB-6. Age gate, under-13 block and private defaults](ADR-WEB-6-age-gate.md)
 - [ADR-WEB-7. Design tokens, themes and self-hosted fonts](ADR-WEB-7-design-tokens.md)
@@ -86,6 +88,7 @@ Web records use placeholder numbers until the controller renumbers them.
 - [ADR-WEB-14. Weakness timeline and area score encoding](ADR-WEB-14-weakness-timeline-encoding.md)
 - [ADR-WEB-15. Annotation overlay: geometry, draw-on and placement rules](ADR-WEB-15-annotation-overlay.md)
 - [ADR-WEB-16. App shell, sign-in, age and account-linking screens](ADR-WEB-16-app-shell-and-auth-screens.md)
+- [ADR-WEB-17. Original procedural board sounds](ADR-WEB-17-original-procedural-sounds.md)
 
 R2 (profile engine) records use placeholder numbers until the controller renumbers them (ADR-R2-1). Every R2 record now has a file (titles final at R2 Task 35); numbers 19-21 were never used.
 

@@ -18,7 +18,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       >
         Skip to content
       </a>
-      <Header email={user.email} />
+      <Header email={user.email} name={user.name} />
       <main
         id="main"
         className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-(--space-gutter) pt-6 pb-16 md:pt-10"

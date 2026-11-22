@@ -40,6 +40,7 @@ export function JudgementsSection({ judgements: j }: { judgements: JudgementsVie
               format="decimal"
               basisClass={j.basisClass}
               trend={row.trend}
+              trendGames={row.trendGames}
               sectionGames={j.games}
               better="lower"
             />

@@ -152,7 +152,9 @@ export function JudgementColumns({ games, label, className }: JudgementColumnsPr
   const baseline = plotH;
   const height = plotH + 1;
   const colW = Math.min(COLUMN_MAX_W, svgW / games.length);
-  const offset = svgW - colW * games.length;
+  // Left-aligned under the heading, oldest first (T13 critic); a row wider than the container
+  // scrolls, and opens at its right end on the latest games.
+  const offset = 0;
   const cellW = Math.max(2, colW - CELL_GAP);
   const total = counts.reduce(
     (t, c) => ({

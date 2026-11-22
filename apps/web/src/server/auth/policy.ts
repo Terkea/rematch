@@ -5,10 +5,14 @@ import { sql } from "drizzle-orm";
 import type { WebEnv } from "../../env";
 import { magicLinkEmail, sendMail } from "../mail";
 import { isInvited, NOT_INVITED, normaliseEmail } from "./invite";
+import { isLichessPlaceholderEmail } from "./lichess";
 
 /** Magic links sent to one address per window (on top of the per-IP limit). */
 export const MAGIC_LINKS_PER_EMAIL = 3;
 export const MAGIC_LINK_WINDOW_SECONDS = 600;
+
+/** Error code for an implicit (by-email) link of a provider that does not assert email. */
+export const ACCOUNT_NOT_LINKED = "account_not_linked";
 
 /** Error code for an OAuth identity whose email the provider has not verified. */
 export const EMAIL_NOT_VERIFIED = "email_not_verified";
@@ -17,9 +21,10 @@ type ValidateUserInfo = NonNullable<NonNullable<BetterAuthOptions["user"]>["vali
 type EndpointContext = Parameters<ValidateUserInfo>[1];
 
 /**
- * OAuth providers whose email does not prove anything about the person (Lichess, chess.com): the
- * verified-email rule does not apply to linking them, and under INVITE_ONLY their email cannot
- * prove an invite, so they cannot create accounts (Task 18 revisits this for Lichess).
+ * OAuth providers whose email does not prove anything about the person (Lichess, chess.com,
+ * ADR-WEB-4): they link to an existing account only from that account's own live session (never
+ * implicitly by email), and under INVITE_ONLY their email cannot prove an invite, so they cannot
+ * create accounts. Invited players sign in by email and connect Lichess from Accounts.
  */
 export const NON_EMAIL_PROVIDERS: ReadonlySet<string> = new Set(["lichess", "chesscom"]);
 
@@ -55,6 +60,15 @@ export function admissionPolicy(
       if (NON_EMAIL_PROVIDERS.has(providerId)) {
         if (creates && env.INVITE_ONLY) {
           return { error: NOT_INVITED, errorDescription: "This address cannot sign in yet." };
+        }
+        if (source.action === "link-account") {
+          const fromLiveSession =
+            typeof user.id === "string" && (await sessionUserId(ctx)) === user.id;
+          if (fromLiveSession) return;
+          return {
+            error: ACCOUNT_NOT_LINKED,
+            errorDescription: "Sign in first, then connect this account from Accounts.",
+          };
         }
         if (!creates) return;
       } else if (user.emailVerified !== true) {
@@ -114,7 +128,8 @@ export async function deliverMagicLink(
   url: string,
 ): Promise<void> {
   const to = normaliseEmail(email);
-  if (!to) return;
+  // A Lichess-created account's placeholder can never receive a link (ADR-WEB-4, review I5).
+  if (!to || isLichessPlaceholderEmail(to)) return;
   if (!(await isInvited(db, env, to))) return;
   if (!(await claimMagicLinkSend(db, to))) return;
   await sendMail(magicLinkEmail(to, url));

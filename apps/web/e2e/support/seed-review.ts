@@ -12,7 +12,7 @@ const db = createDb(assertSafeTestDatabase(process.env.E2E_DATABASE_URL));
 const [u] = await db.select({ id: user.id }).from(user).where(eq(user.email, email));
 if (!u) throw new Error(`no e2e user ${email}`);
 
-const { accountId } = await seedAccount(db, { userId: u.id, username: "SyntheticReviewer" });
+const { accountId } = await seedAccount(db, { userId: u.id, username: "e2e-SyntheticReviewer" });
 const { gameId } = await seedSyntheticGame(db, accountId, {
   playedAt: "2026-10-10T10:00:00.000Z",
   timeClass: "rapid",

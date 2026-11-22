@@ -49,7 +49,7 @@ services:
     # and its exit code 2 reads as a crashed backend: every connection is killed and crash recovery
     # runs (tests see EOF, "connection reset", "in recovery mode").
     init: true
-    # ADR 0065: one worker may hold pool_size + preview + 54 connections (R2 + R3 runners), so
+    # ADR 0066: one worker may hold pool_size + preview + 54 connections (R2 + R3 runners), so
     # the default 100 cannot fit a worker beside the web app, and parallel worker tests exhaust it.
     command: ["postgres", "-c", "max_connections=300"]
     environment:

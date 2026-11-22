@@ -45,7 +45,7 @@ export function Select({ label, value, options, onValueChange, name, className }
           className={cn(
             "flex h-10 w-full min-w-0 items-center justify-between gap-2 rounded-field border border-rule-strong bg-well px-3",
             "text-left font-sans text-base text-ink",
-            "transition-colors duration-(--dur-quick) ease-out hover:bg-(--surface-hover)",
+            "transition-colors duration-(--dur-quick) ease-out hover:border-ink-soft hover:bg-(--surface-hover)",
             "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink",
             "data-popup-open:bg-sheet",
           )}
@@ -65,7 +65,7 @@ export function Select({ label, value, options, onValueChange, name, className }
           <SelectPrimitive.Popup
             data-slot="select-popup"
             className={cn(
-              "min-w-(--anchor-width) rounded-field border border-rule bg-sheet p-1 shadow-lift outline-none",
+              "min-w-(--anchor-width) rounded-field border border-rule bg-sheet p-1 shadow-lift outline-none dark:border-rule-strong",
               "origin-(--transform-origin) transition-[opacity,scale] duration-(--dur-quick) ease-out",
               "data-starting-style:scale-(--enter-float-scale) data-starting-style:opacity-0",
               "data-ending-style:scale-(--enter-float-scale) data-ending-style:opacity-0",

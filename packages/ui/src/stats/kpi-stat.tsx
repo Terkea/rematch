@@ -33,6 +33,11 @@ export interface KpiStatProps {
   basisHidden?: boolean;
   /** Write the trend's first and last values under the sparkline. */
   trendEnds?: boolean;
+  /**
+   * The games behind each trend point (weeks, aligned with `trend`). With it, the ends are named
+   * ("First week 1.0, 2 games") and read out, so a one-game week can't pass for a rate.
+   */
+  trendGames?: number[];
   /** Which way is better for this KPI, written under the sparkline (never a verdict). */
   better?: "higher" | "lower";
   /** Roll the value up from zero on a first view (see `Stat`). */
@@ -240,6 +245,7 @@ export function KpiStat(props: KpiStatProps) {
     scale = true,
     basisHidden = false,
     trendEnds = false,
+    trendGames,
     better,
     rollIn,
     rollDelay,
@@ -251,7 +257,7 @@ export function KpiStat(props: KpiStatProps) {
   return (
     <div className={cn("@container", className)}>
       <div
-        className="grid grid-cols-[minmax(0,1fr)_minmax(5rem,7.5rem)] items-end gap-x-4 gap-y-2 @min-[40rem]:grid-cols-[minmax(9rem,1fr)_7rem_minmax(14rem,22rem)_7.5rem] @min-[40rem]:gap-x-6" /* ban-lint-allow TOK2: grid track template, no spacing token */
+        className="grid grid-cols-[minmax(0,1fr)_minmax(5rem,8.5rem)] items-end gap-x-4 gap-y-2 @min-[40rem]:grid-cols-[minmax(9rem,1fr)_7rem_minmax(14rem,22rem)_8.5rem] @min-[40rem]:gap-x-6" /* ban-lint-allow TOK2: grid track template, no spacing token */
       >
         <div className="col-span-2 flex flex-wrap items-baseline gap-x-3 gap-y-1 @min-[40rem]:col-span-1 @min-[40rem]:flex-col @min-[40rem]:gap-0.5 @min-[40rem]:self-center">
           <Heading className="text-base font-medium text-ink">{label}</Heading>
@@ -284,7 +290,13 @@ export function KpiStat(props: KpiStatProps) {
             />
           )}
           {trend && (trendEnds || better) && (
-            <TrendEnds trend={trend} format={format} ends={trendEnds} better={better} />
+            <TrendEnds
+              trend={trend}
+              format={format}
+              ends={trendEnds}
+              better={better}
+              {...(trendGames ? { games: trendGames } : {})}
+            />
           )}
         </div>
         <div className="col-span-2 flex flex-col gap-1 @min-[40rem]:col-span-1 @min-[40rem]:col-start-3 @min-[40rem]:row-start-1 @min-[40rem]:self-center">
@@ -326,24 +338,46 @@ function TrendEnds({
   format,
   ends,
   better,
+  games,
 }: {
   trend: (number | null)[];
   format: StatFormat;
   ends: boolean;
   better: "higher" | "lower" | undefined;
+  games?: number[];
 }) {
-  const numbers = trend.filter((v): v is number => v !== null);
-  const first = numbers[0];
-  const last = numbers[numbers.length - 1];
-  const shown = ends && numbers.length >= 2 && first !== undefined && last !== undefined;
+  const at = trend.flatMap((v, i) => (v === null ? [] : [i]));
+  const firstAt = at[0];
+  const lastAt = at[at.length - 1];
+  const first = firstAt === undefined ? undefined : trend[firstAt];
+  const last = lastAt === undefined ? undefined : trend[lastAt];
+  const shown = ends && at.length >= 2 && first != null && last != null;
+  const gamesText = (i: number | undefined) => {
+    const n = i === undefined ? undefined : games?.[i];
+    return n === undefined ? "" : ` · ${n} ${n === 1 ? "game" : "games"}`;
+  };
   return (
     <div data-part="trend-ends" className="mt-1 text-xs text-ink-soft">
-      {shown && (
-        <p aria-hidden="true" className="flex justify-between gap-2">
-          <span>{bound(first, format)}</span>
-          <span className="font-medium text-ink">{bound(last, format)}</span>
-        </p>
-      )}
+      {shown &&
+        (games ? (
+          // One end per line; "week" is for screen readers, the section says "one point a week".
+          <>
+            <p className="whitespace-nowrap">
+              First<span className="sr-only"> week</span> {bound(first, format)}
+              {gamesText(firstAt)}
+            </p>
+            <p className="whitespace-nowrap">
+              Latest<span className="sr-only"> week</span>{" "}
+              <span className="font-medium text-ink">{bound(last, format)}</span>
+              {gamesText(lastAt)}
+            </p>
+          </>
+        ) : (
+          <p aria-hidden="true" className="flex justify-between gap-2">
+            <span>{bound(first, format)}</span>
+            <span className="font-medium text-ink">{bound(last, format)}</span>
+          </p>
+        ))}
       {better && <p>{better === "lower" ? "Lower is better" : "Higher is better"}</p>}
     </div>
   );

@@ -136,13 +136,21 @@ describe("graph marks and scale", () => {
     expect(container.querySelectorAll("[data-corner-ground]")).toHaveLength(2);
   });
 
-  it("draws a compact strip: plot only, no lanes, labels or corners", async () => {
+  // M5a T13 critic I6: the bare phone strip didn't say what it plots. It keeps no lanes or move
+  // labels, but names its ends (White at the top, the player's side marked) and the 50% line.
+  it("draws a compact strip: no lanes or move labels, but its ends and 50% named", async () => {
     measured = 358;
-    const { container } = await graph(longGame(60), { compact: true, height: 70 });
+    const { container } = await graph(longGame(60), {
+      compact: true,
+      height: 70,
+      playerColor: "black",
+    });
     const svg = container.querySelector("svg");
     expect(svg).toHaveAttribute("height", "70");
     expect(container.querySelectorAll("[data-label]")).toHaveLength(0);
-    expect(container.querySelectorAll("[data-corner]")).toHaveLength(0);
+    const corners = [...container.querySelectorAll("[data-corner]")].map((c) => c.textContent);
+    expect(corners).toEqual(["White", "Black (you)"]);
+    expect(container.querySelector("[data-scale]")).toHaveTextContent("50%");
     expect(screen.getByRole("slider").style.top).toBe("0px");
     expect(container.querySelector('[data-mark="pen"]')).not.toBeNull();
   });
@@ -245,6 +253,58 @@ describe("board marks", () => {
     );
     const disc = container.querySelectorAll('[data-mark="badge"] circle')[1];
     expect(Number(disc?.getAttribute("cx"))).toBeCloseTo(3, 3);
+  });
+
+  // M5a T13 critic I7: a knight's L ran its long leg straight through the bishop on e3. With the
+  // occupied squares known, the L takes the leg order that crosses no piece, and when both do,
+  // the arrow goes straight (between the pieces) instead of over one.
+  it("routes a knight's arrow around pieces, straight when both L's cross one", () => {
+    const route = (occupied: string[]) => {
+      const { container, unmount } = render(
+        <AnnotationLayer
+          annotations={[{ kind: "arrow", from: "f3", to: "d4", tone: "pen" }]}
+          orientation="white"
+          animate={false}
+          occupied={new Set(occupied)}
+        />,
+      );
+      const r = container.querySelector("[data-mark='arrow']")?.getAttribute("data-route");
+      unmount();
+      return r;
+    };
+    expect(route([])).toBe("long");
+    expect(route(["f3", "d4"])).toBe("long");
+    expect(route(["e3"])).toBe("short");
+    expect(route(["e3", "e4"])).toBe("straight");
+    expect(route(["d3"])).toBe("short");
+  });
+
+  // M5a T10 re-review m1: on the a-file the top-left corner holds the rank number.
+  it("never moves an a-file edge badge onto the rank number", () => {
+    for (const orientation of ["white", "black"] as const) {
+      const square = orientation === "white" ? "a5" : "h4";
+      const from = orientation === "white" ? "c7" : "f2";
+      const { container, unmount } = render(
+        <AnnotationLayer
+          annotations={[
+            { kind: "arrow", from, to: square, tone: "good" },
+            { kind: "mark", square, glyph: "??", tone: "pen", place: "edge" },
+          ]}
+          orientation={orientation}
+          animate={false}
+        />,
+      );
+      const disc = container.querySelectorAll('[data-mark="badge"] circle')[1];
+      const cx = Number(disc?.getAttribute("cx"));
+      const cy = Number(disc?.getAttribute("cy"));
+      const r = Number(disc?.getAttribute("r"));
+      // The square is column 0, row 3 as seen; its rank glyph box is about x 0 to 0.2, y 3 to 3.25.
+      const coversRank = cx - r < 0.2 && cy - r < 3.25 && cy + r > 3;
+      expect(coversRank, `${orientation} ${square}`).toBe(false);
+      // And still on the square's own column.
+      expect(cx).toBeLessThanOrEqual(1);
+      unmount();
+    }
   });
 
   it("describes a toEdge arrow like any arrow", () => {

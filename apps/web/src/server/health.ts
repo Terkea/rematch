@@ -1,17 +1,20 @@
-import { createDb } from "@ci/db";
 import { sql } from "drizzle-orm";
 import { Redis } from "ioredis";
 import { getEnv } from "../env";
+import { getDb } from "./db";
 
 export type Health = { ok: boolean; db: boolean; redis: boolean };
 
-let db: ReturnType<typeof createDb> | undefined;
 let redis: Redis | undefined;
+
+/** Health checks use the process's one pool. */
+export function healthDb() {
+  return getDb();
+}
 
 async function checkDb(): Promise<boolean> {
   try {
-    db ??= createDb(getEnv().DATABASE_URL);
-    await db.execute(sql`select 1`);
+    await healthDb().execute(sql`select 1`);
     return true;
   } catch {
     return false;

@@ -103,7 +103,13 @@ export function GamesList({ rows, grouped }: { rows: RowView[]; grouped: boolean
         ))}
       </table>
       <div className="md:hidden">
-        <p className={`pt-2 pr-4 pb-1 ${PAD_FIRST} text-xs text-ink-faint`}>{LEGEND}</p>
+        <p className={`pt-2 pr-4 pb-1 ${PAD_FIRST} text-xs text-ink-faint`}>
+          {LEGEND}{" "}
+          <span data-part="marks-key" className="whitespace-nowrap">
+            <span className="font-serif text-pen-text">??</span> blunder,{" "}
+            <span className="font-serif text-pen-text">?</span> mistake
+          </span>
+        </p>
         {grouped ? (
           groups.map((g) => (
             <section key={g.date}>

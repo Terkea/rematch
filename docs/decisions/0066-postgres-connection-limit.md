@@ -1,4 +1,4 @@
-# 0065. Postgres connection limit for the integrated worker
+# 0066. Postgres connection limit for the integrated worker
 
 Date: 2026-11-22. Status: accepted (R3/R2 integration merge). Builds on ADR 0044 (the
 `postgres` service), ADR-R2-25 (R2 worker wiring) and R3 Task 26 (AI runners, ADR 0062).

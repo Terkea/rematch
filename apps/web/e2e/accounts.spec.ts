@@ -34,7 +34,7 @@ test("an adult links chess.com, verifies it by location code, then removes it", 
   // Empty state.
   await expect(page.getByRole("heading", { name: "Accounts", level: 1 })).toBeVisible();
   await expect(
-    page.getByText("Connect your chess.com account to import your games."),
+    page.getByText("Connect a Lichess or chess.com account to import your games."),
   ).toBeVisible();
 
   // Connect chess.com: a pending row with a code.
@@ -69,19 +69,49 @@ test("an adult links chess.com, verifies it by location code, then removes it", 
   ).toBeVisible();
   await dialog.getByRole("button", { name: "Remove account" }).click();
   await expect(
-    page.getByText("Connect your chess.com account to import your games."),
+    page.getByText("Connect a Lichess or chess.com account to import your games."),
   ).toBeVisible();
 });
 
-// Lichess accounts are deferred (ADR 0040); Task 18 brings the provider and its fake.
-test("Continue with Lichess signs a new player in through the fake", async ({ browser }) => {
-  test.fixme(process.env.E2E_LICHESS !== "1", "Lichess accounts are deferred (ADR 0040, Task 18)");
-  const context = await browser.newContext();
-  const page = await context.newPage();
-  await page.goto("/sign-in");
-  await page.getByRole("button", { name: "Continue with Lichess" }).click();
+// Lichess OAuth against the fake (ADR-WEB-4): the browser in the qa container reaches it as
+// http://fakes:3199 (LICHESS_AUTHORIZE_BASE_URL), and the fake sends it straight back. Under
+// INVITE_ONLY a Lichess identity cannot create an account, so the player signs in by email,
+// connects Lichess from Accounts, and can then sign in with Lichess.
+test("a player connects Lichess, then signs in with it", async ({ page, request, browser }) => {
+  await signInByMagicLink(page, request, "lichess@example.invalid");
   await expect(page).toHaveURL(/\/welcome\/age$/);
+  await enterAge(page, 1992, 3);
+  await expect(page).toHaveURL(/\/app\/accounts$/);
+  await hydrated(page);
+
+  await page.getByRole("button", { name: "Connect Lichess" }).click();
+  // Out to the fake and straight back, with the toast from ?connected=lichess.
+  await expect(page.getByText("Lichess connected")).toBeVisible({ timeout: 90_000 });
+  await expect(page.getByText("FakeUser")).toBeVisible();
+  await expect(page.getByText("Connected", { exact: true })).toBeVisible();
+
+  // A fresh browser: "Continue with Lichess" signs the same player in.
+  const context = await browser.newContext();
+  const other = await context.newPage();
+  await gotoSettled(other, "/sign-in");
+  await hydrated(other);
+  await other.getByRole("button", { name: "Continue with Lichess" }).click();
+  const app = new URL(page.url()).host;
+  await other.waitForURL((url) => url.host === app && !/^\/(sign-in|api)\b/.test(url.pathname), {
+    timeout: 90_000,
+  });
+  await gotoSettled(other, "/app/accounts");
+  await expect(other.getByText("FakeUser")).toBeVisible();
   await context.close();
+
+  // Leave no verified link behind: the games seed refuses a database holding real accounts.
+  await page.reload();
+  await hydrated(page);
+  await page.getByRole("button", { name: "Remove" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Remove account" }).click();
+  await expect(
+    page.getByText("Connect a Lichess or chess.com account to import your games."),
+  ).toBeVisible();
 });
 
 test("an under-13 is blocked and the sign-in page stays blocked", async ({ page, request }) => {

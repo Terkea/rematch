@@ -49,3 +49,10 @@ For the keyboard and screen readers each game also has a `pointer-events: none` 
 - At 500 games on a phone the dot cloud is dense, so it is toned down; the mean line carries the trend, and the popover steppers carry the detail. The overview page (Task 6/8) defaults narrow screens to the last 100 games, with a "Last 100 / All 500" control.
 - Judgement columns keep a 12px least width, so 40 games need 480px; narrower containers scroll inside the chart, never the page.
 - Changing a result's shape or a judgement's pattern is a design change: it updates this ADR, DESIGN.md and `packages/ui/test/charts.test.tsx` together.
+
+## Amendment (M5a Task 13, critic fix round)
+
+- **Judgement columns start at the left**, under their heading, oldest first, so the latest game is the rightmost column. A row wider than its container still scrolls and opens at its right end. The right-alignment of T4 (M7) left the heading's side of the row empty on a wide screen.
+- **The trend's date axis always labels both ends** (the first and last games' dates, anchored inward), and drops any inner label within 56 px of another. A phone axis over two months had shown a single date.
+- **The trend's legend keys the band only when a band is drawn** ("Rolling average" alone otherwise), and the omitted-games note tells a game with no valid date from one with no accuracy (T4's two parked minors).
+- **Sparkline ends are named**: "First week 1.0, 2 games" and "Latest week 4.0, 1 game", read out as well as drawn, so a one-game week is never mistaken for the headline rate.

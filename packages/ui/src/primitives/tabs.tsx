@@ -76,7 +76,7 @@ export function TabsTrigger({
         "transition-colors duration-(--dur-quick) ease-out hover:text-ink",
         "data-active:font-semibold data-active:text-ink",
         "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink",
-        "disabled:text-ink-faint data-disabled:pointer-events-none",
+        "data-disabled:text-ink-faint data-disabled:pointer-events-none",
         "[&_svg]:size-4 [&_svg]:shrink-0",
         touchTarget,
         typeof className === "string" ? className : undefined,

@@ -32,7 +32,7 @@ const row = [
 
 const popup = [
   "fixed top-[12vh] left-1/2 z-50 w-[calc(100%-2*var(--space-gutter))] max-w-lg -translate-x-1/2 overflow-hidden",
-  "rounded-sheet border border-rule bg-sheet text-ink shadow-lift outline-none",
+  "rounded-sheet border border-rule bg-sheet text-ink shadow-lift outline-none dark:border-rule-strong",
   "origin-top transition-[opacity,scale,translate] duration-(--dur-base) ease-out",
   "data-starting-style:translate-y-(--enter-dialog-y) data-starting-style:scale-(--enter-dialog-scale) data-starting-style:opacity-0",
   "data-ending-style:scale-(--enter-dialog-scale) data-ending-style:opacity-0 data-ending-style:duration-(--dur-quick)",
@@ -121,7 +121,7 @@ export function CommandMenu({ items, open: openProp, onOpenChange }: CommandMenu
       <DialogPrimitive.Portal>
         <DialogPrimitive.Backdrop
           data-slot="command-overlay"
-          className="fixed inset-0 z-50 bg-paper/80 transition-opacity duration-(--dur-base) ease-out motion-reduce:duration-(--dur-quick) data-ending-style:opacity-0 data-starting-style:opacity-0"
+          className="fixed inset-0 z-50 bg-paper/80 transition-opacity dark:bg-well/90 duration-(--dur-base) ease-out motion-reduce:duration-(--dur-quick) data-ending-style:opacity-0 data-starting-style:opacity-0"
         />
         <DialogPrimitive.Popup data-slot="command-menu" className={popup}>
           <DialogPrimitive.Title className="sr-only">Command menu</DialogPrimitive.Title>

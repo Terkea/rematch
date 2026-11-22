@@ -1,24 +1,21 @@
 "use client";
 
 import { Toaster } from "@ci/ui/overlays";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ThemeProvider } from "next-themes";
-import { type ReactNode, useState } from "react";
+import type { ReactNode } from "react";
+import { QueryProvider } from "../lib/realtime/query-provider";
 
 /**
- * App-wide client providers: theme, TanStack Query (Task 21's account mutations) and the one
- * Toaster. Task 27 adds the realtime provider.
+ * App-wide client providers: theme, TanStack Query (Task 21's account mutations, Task 23's
+ * stream cache) and the one Toaster. The signed-in layout adds `RealtimeProvider` (Task 27).
  */
 export function Providers({ children }: { children: ReactNode }) {
-  const [client] = useState(
-    () => new QueryClient({ defaultOptions: { queries: { staleTime: 30_000, retry: 1 } } }),
-  );
   return (
     <ThemeProvider attribute="data-theme" defaultTheme="system" enableSystem enableColorScheme>
-      <QueryClientProvider client={client}>
+      <QueryProvider>
         {children}
         <Toaster />
-      </QueryClientProvider>
+      </QueryProvider>
     </ThemeProvider>
   );
 }

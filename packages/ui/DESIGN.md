@@ -89,6 +89,12 @@ Added in fix round 1 (derived from the tokens above, no new hues):
 
 The tonal ladder runs `paper`, then `sheet`, then `well`. Hover moves one step down the ladder and never lifts. In code, hover fills use `--surface-hover`: `sheet` on the page, and `well` inside anything that is `bg-sheet` or marked `data-surface="sheet"`.
 
+Night study is the exception inside a sheet: night `well` is near-black, so a step down there barely shows (about 1.1:1). Inside a night sheet, hover steps up instead, to `sheet` mixed 14% toward `ink` (1.48:1 on `sheet`, where 10% gave 1.31:1 and a step down to `well` gave 1.17:1; `ink` on it is 8.99:1) (`color-mix`, no new colour). A day scope inside a night page keeps the day step (Task 9 critic).
+
+Controls that already sit in a `well` (text field, select trigger) show hover on their edge, which steps from `rule-strong` to `ink-soft` (2.45:1 against the rest edge in day, 2.30:1 at night; `ink-faint` was too close to read, Task 9 critic re-check). A disabled or invalid field keeps its own edge. The switch's edge does the same when off, and when on its track steps from `ink` to `ink-soft`, as the primary button does. A disabled tab drops to `ink-faint`.
+
+Night floating surfaces (dialog, drawer, command menu, popover, select list) carry a 1px `rule-strong` edge, because the one shadow is lost on navy. Behind a modal, the night scrim is `well` at 90%, not `paper` at 80%, so the page behind stops competing (Task 9 critic).
+
 | State | Surface items (rows, secondary buttons, menu items) | Primary button (ink) |
 |---|---|---|
 | Rest | its surface (`paper` or `sheet`) | `ink` fill, `on-ink` text |
@@ -579,7 +585,7 @@ Fade-up on every section, hover lift and shadow on cards, parallax and scroll-ja
 
 ## Sound
 
-The owner asked for "sounds for moving pieces". The character is **paper and wood: quiet, close and dry, like a club game in a library**. It is never arcade, never bright synth bleeps, and never louder than a pen on paper. Synthesis parameters are left to Task 12b.
+The owner asked for "sounds for moving pieces". The character is **paper and wood: quiet, close and dry, like a club game in a library**. It is never arcade, never bright synth bleeps, and never louder than a pen on paper. Task 12b synthesises every sound with Web Audio (`packages/ui/src/audio/`), with no sample files.
 
 | Sound | Character | Plays when |
 |---|---|---|
@@ -612,6 +618,22 @@ Rules (spec §11):
 - **Sound never carries information alone.** Every sound has a visual equivalent.
 - **Throttling:** fast replay and scrubbing don't play a sound per move. Only stepping and play do. The onboarding stream plays at most one move sound per 250ms, plus the game-end sound.
 - **One module:** `useBoardSounds()` in `@ci/ui`, with one shared `AudioContext` and preloading, triggered from board events worked out with chess.js. Every board in the app sounds the same.
+
+**Synthesis parameters (Task 12b, original, no assets).** Master volume default 0.6. Voices are summed on one bus per play; throttle 40 ms.
+
+| Sound | Voices |
+|---|---|
+| Move | band-pass noise 1.8 kHz, Q 1.1, 35 ms decay, peak 0.55; sine 180 Hz gliding to 120 Hz, 60 ms, peak 0.7 |
+| Capture | the move voice at gain 1.35, pitch x0.92, plus a second at gain 0.6, pitch x1.1, 28 ms later |
+| Check | the move voice, then a triangle at 1.2 kHz, 70 ms, peak 0.16, 20 ms later |
+| Castle | the move voice, then a second at gain 0.9, pitch x1.08, 70 ms later |
+| Promotion | the move voice, then sines at 660 Hz (+60 ms, 120 ms) and 990 Hz (+120 ms, 200 ms) |
+| Game end | sines at 98, 147 and 196 Hz, peak 0.2 each, 900 ms decay |
+| Drill correct | sines at 523 Hz (280 ms) and 784 Hz (+90 ms, 400 ms) |
+| Drill wrong | sine 110 Hz gliding to 80 Hz, 160 ms, peak 0.5, plus noise 400 Hz, 60 ms |
+| Pen scratch | band-pass noise 3.2 kHz, peak 0.05, 140 ms. Off by default. |
+
+Settings persist in `localStorage` under `ci.sound` (mute, volume, pen), and the context unlocks on the first pointer or key gesture. `soundForMove({ san, flags })` picks the sound; precedence is game end, check, promotion, castle, capture, move. The parameters still need an owner listening pass in the styleguide Sound section.
 
 ## Ban list
 
@@ -877,3 +899,11 @@ Rulings taken while building `packages/ui/src/annotations` (ADR-WEB-15):
 5. **Review fix round:** short shafts keep their head plus 0.2, pencil has half the halo, and ring halos sit under every arrow ("Pen stroke geometry").
 
 **Token values changed in this round:** none.
+
+### 2026-11-22, Task 9 critic: states that read, night separation
+
+1. **Night hover inside a sheet** steps up (`sheet` 14% toward `ink`) instead of down to a near-black `well` ("Interaction states").
+2. **Hover on well controls** is an edge step to `ink-soft`. The switch gets hovers for both off and on, and disabled tabs drop to `ink-faint`.
+3. **Night overlays:** floating surfaces get a `rule-strong` edge, and the modal scrim is `well` at 90%.
+
+**Token values changed in this round:** none (`--surface-hover` gains a night value derived from existing tokens).

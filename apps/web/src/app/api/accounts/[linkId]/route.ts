@@ -1,3 +1,5 @@
+import { decryptOAuthToken } from "better-auth/oauth2";
+import { getEnv } from "../../../../env";
 import {
   linkErrorResponse,
   linkIdFrom,
@@ -5,8 +7,13 @@ import {
   rejectCrossSite,
 } from "../../../../server/accounts/http";
 import { removeLink } from "../../../../server/accounts/remove";
+import { getAuth } from "../../../../server/auth";
+import { runAfterResponse } from "../../../../server/auth/background";
+import { revokeLichessToken } from "../../../../server/auth/lichess";
 import { requireApiUser } from "../../../../server/auth/session";
 import { getDb } from "../../../../server/db";
+
+type DecryptContext = Parameters<typeof decryptOAuthToken>[1];
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +29,17 @@ export async function DELETE(
   const linkId = await linkIdFrom(ctx);
   if (!linkId) return notFound();
   try {
-    await removeLink(getDb(), user.id, linkId);
+    await removeLink(getDb(), user.id, linkId, {
+      // Revoked at Lichess after the response, best effort (ADR-WEB-4, review I2).
+      revokeLichessToken: (stored) => {
+        runAfterResponse("lichess token revoke", async () => {
+          // The instance's context is an AuthContext; its inferred options type is narrower.
+          const context = (await getAuth().$context) as unknown as DecryptContext;
+          const token = await decryptOAuthToken(stored, context);
+          if (token) await revokeLichessToken(getEnv(), token);
+        });
+      },
+    });
     return new Response(null, { status: 204 });
   } catch (error) {
     return linkErrorResponse(error);

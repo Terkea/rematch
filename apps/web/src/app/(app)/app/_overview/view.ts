@@ -78,7 +78,14 @@ export type AccuracyView = {
 export type JudgementsView = {
   basisClass: string;
   games: number;
-  rows: { key: string; label: string; estimate: Estimate; trend: (number | null)[] }[];
+  rows: {
+    key: string;
+    label: string;
+    estimate: Estimate;
+    trend: (number | null)[];
+    /** Analysed games behind each weekly point, aligned with `trend`. */
+    trendGames: number[];
+  }[];
   columns: JudgementColumnsGame[];
 };
 
@@ -161,6 +168,7 @@ function asPercent(e: Estimate): Estimate {
 
 const weekly = (o: Overview, key: "blunders" | "mistakes" | "inaccuracies") =>
   o.judgements.weekly.map((w) => w[key]);
+const weekGames = (o: Overview) => o.judgements.weekly.map((w) => w.games);
 
 /** The page's view of one Overview, scoped to `tc` (null is All). */
 export function toOverviewView(o: Overview, tc: TimeClass | null): OverviewView {
@@ -224,18 +232,21 @@ export function toOverviewView(o: Overview, tc: TimeClass | null): OverviewView 
               label: "Blunders",
               estimate: o.judgements.blunders,
               trend: weekly(o, "blunders"),
+              trendGames: weekGames(o),
             },
             {
               key: "mistakes",
               label: "Mistakes",
               estimate: o.judgements.mistakes,
               trend: weekly(o, "mistakes"),
+              trendGames: weekGames(o),
             },
             {
               key: "inaccuracies",
               label: "Inaccuracies",
               estimate: o.judgements.inaccuracies,
               trend: weekly(o, "inaccuracies"),
+              trendGames: weekGames(o),
             },
           ]
         : [],
