@@ -26,7 +26,7 @@ use ai::input::types::{CoachingInput, TimeClass};
 use ai::jobs::batch_jobs::{
     AiBatchPollHandler, BATCH_GIVE_UP_AFTER, BATCH_RESULTS_GIVE_UP_AFTER, BATCH_SUBMIT_TIMEOUT,
     BatchDeps, NullWeeklyProvider, ReportBatchScheduleHandler, WeeklyBatchScheduleHandler,
-    WeeklyInputProvider,
+    WeeklyInputProvider, reviewed_week,
 };
 use ai::jobs::budget::BudgetConfig;
 use ai::jobs::kinds::{KIND_AI_BATCH_POLL, KIND_GENERATE_REPORT, KIND_WEEKLY_REVIEW};
@@ -1181,7 +1181,8 @@ async fn weekly_batch_round_trip(pool: PgPool) {
     assert_eq!(rows.len(), 2);
     for r in &rows {
         assert_eq!((r.1.as_str(), r.2.as_str()), ("pending", "batch"));
-        assert_eq!(r.3, monday(OffsetDateTime::now_utc()));
+        // M5b Task B: the review is of the week that just ended, not the one starting today.
+        assert_eq!(r.3, monday(OffsetDateTime::now_utc()) - TDuration::days(7));
     }
     // Scheduling the same week again adds nothing.
     run(&WeeklyBatchScheduleHandler(d.clone())).await;
@@ -1489,4 +1490,25 @@ async fn concurrent_pollers_apply_and_meter_once(pool: PgPool) {
             "duplicate event {p}"
         );
     }
+}
+
+/// M5b Task B (G2): the Monday schedule reviews the complete week before it.
+#[test]
+fn the_reviewed_week_is_the_last_complete_one() {
+    use time::macros::{date, datetime};
+    // Monday 04:00 UTC, when the schedule runs: the week of Monday 16 Nov.
+    assert_eq!(
+        reviewed_week(datetime!(2026-11-23 04:00 UTC)),
+        date!(2026 - 11 - 16)
+    );
+    // Sunday night is still inside the week of 16 Nov, so the complete week is the one before.
+    assert_eq!(
+        reviewed_week(datetime!(2026-11-22 23:59 UTC)),
+        date!(2026 - 11 - 09)
+    );
+    // Another offset is converted to UTC first.
+    assert_eq!(
+        reviewed_week(datetime!(2026-11-23 01:00 +2)),
+        date!(2026 - 11 - 09)
+    );
 }

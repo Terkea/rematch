@@ -89,6 +89,7 @@ impl TryFrom<String> for crate::entitlements::Plan {
         match s.as_str() {
             "free" => Ok(Self::Free),
             "pro" => Ok(Self::Pro),
+            "beta" => Ok(Self::Beta),
             _ => Err(ParseEnumError {
                 kind: "ai_plan",
                 value: s,
@@ -101,6 +102,7 @@ pub(crate) fn plan_str(plan: crate::entitlements::Plan) -> &'static str {
     match plan {
         crate::entitlements::Plan::Free => "free",
         crate::entitlements::Plan::Pro => "pro",
+        crate::entitlements::Plan::Beta => "beta",
     }
 }
 

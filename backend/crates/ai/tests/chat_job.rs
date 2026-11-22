@@ -25,7 +25,7 @@ use ai::client::port::{
     StructuredRequest, StructuredResult, ToolHandler, ToolReply, TurnEvent, UnavailableReason,
 };
 use ai::client::sidecar::{SidecarConfig, SidecarToken};
-use ai::entitlements::Plan;
+use ai::entitlements::{BetaLimits, ConfiguredEntitlements, Plan};
 use ai::input::types::TimeClass;
 use ai::jobs::kinds::CHAT_TURN_TIMEOUT;
 use ai::segments::Segment;
@@ -1470,4 +1470,44 @@ async fn what_if_round_trip_through_the_job(pool: PgPool) {
             .unwrap();
     assert_eq!(linked, Some(msg));
     pool.close().await;
+}
+
+// --- M5b Task B, ruling G1: the beta plan ---
+
+/// A beta tester is past the free plan's 3 messages a week: the fourth turn is answered.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn beta_plan_answers_past_the_free_weekly_cap(pool: PgPool) {
+    let a = account(&pool, "alice").await;
+    store_input(&pool, a).await;
+    seed_done_answers(&pool, a, 3).await;
+    let (_, m) = ask(&pool, a, "And now?").await;
+    let f = fake(vec![answer(&[OK2, OK3])]);
+    assert!(run(&pool, &f, Plan::Beta, m).await.is_ok());
+    let s = stored(&pool, m).await;
+    assert_eq!(s.status, "done", "{:?}", s.failure_reason);
+    assert_eq!(turn_requests(&f).len(), 1);
+}
+
+/// The beta weekly cap comes from the entitlements (`AI_BETA_CHAT_WEEKLY`), not a constant.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn beta_weekly_cap_is_the_configured_one(pool: PgPool) {
+    let a = account(&pool, "alice").await;
+    store_input(&pool, a).await;
+    seed_done_answers(&pool, a, 4).await;
+    let (_, m) = ask(&pool, a, "Once more?").await;
+    let f = fake(vec![answer(&[OK2, OK3])]);
+    let mut d = deps(&pool, Some(f.clone()), Plan::Beta);
+    d.entitlements = Arc::new(ConfiguredEntitlements {
+        plan: Plan::Beta,
+        beta: BetaLimits {
+            chat_per_week: 4,
+            manual_reports_per_day: 1,
+        },
+    });
+    assert!(CoachChatHandler(d).handle(job(m, 1), ctx()).await.is_ok());
+    assert_eq!(
+        stored(&pool, m).await.failure_reason.as_deref(),
+        Some("weekly_cap")
+    );
+    assert!(turn_requests(&f).is_empty());
 }

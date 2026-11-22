@@ -9,6 +9,9 @@
 //!    ([`runs::lock_claim`]), so a zombie worker can never overwrite a reclaimed or reset run.
 //! 2. **Plan gate.** A free plan with another report in the last [`FREE_REPORT_INTERVAL_DAYS`]
 //!    days, and a trigger other than onboarding, fails with `plan_interval` (`Unrecoverable`).
+//!    So does a manual run of a plan with a daily manual-report limit (beta, M5b ruling G1:
+//!    `Entitlements::manual_reports_per_day`) once that many other manual reports exist in the
+//!    current UTC day.
 //! 3. **Snapshot.** The first claim takes the input from the [`CoachingInputProvider`], validates
 //!    it (`parse_coaching_input`) and stores it with its hashes; retries reuse the snapshot. A
 //!    missing or invalid input fails the run (`no_input` / `invalid_input`) with no report row.
@@ -61,7 +64,7 @@ use crate::client::port::{
 use crate::db::reports::{self, NewReport, ReportStatus, SectionWrite, SectionWriteStatus};
 use crate::db::runs::{self, NewRun, ReportMode, ReportTrigger, RunClaim, RunRow};
 use crate::db::usage::AiFeature;
-use crate::entitlements::{Entitlements, Plan};
+use crate::entitlements::{Entitlements, Plan, QuotaWindow, window_start};
 use crate::events::{
     self, DegradedReason, JOB_FAILED, JobFailed, REPORT_DEGRADED, REPORT_READY,
     REPORT_SECTION_READY, ReportDegraded, ReportReady, SectionReady,
@@ -151,6 +154,15 @@ pub async fn request_report(
         tracing::warn!(run = %id, error = %e, "report job not enqueued; ai-reconcile will");
     }
     Ok(id)
+}
+
+/// A plan gate (step 2).
+#[derive(Clone, Copy, Debug)]
+enum Gate {
+    /// The free plan: one non-onboarding report per [`FREE_REPORT_INTERVAL_DAYS`].
+    FreeInterval,
+    /// At most this many manual reports per UTC day (beta).
+    ManualPerDay(u32),
 }
 
 /// Why processing stopped early.
@@ -730,21 +742,49 @@ impl Run<'_> {
         Ok(input)
     }
 
-    /// Whether the free plan's interval applies to this run (step 2).
-    fn gated(&self, plan: Plan) -> bool {
-        plan == Plan::Free && self.row.trigger != ReportTrigger::Onboarding
+    /// The plan gate of this run (step 2), if one applies.
+    fn gate(&self, plan: Plan) -> Option<Gate> {
+        if plan == Plan::Free && self.row.trigger != ReportTrigger::Onboarding {
+            return Some(Gate::FreeInterval);
+        }
+        if self.row.trigger == ReportTrigger::Manual {
+            return self
+                .d
+                .entitlements
+                .manual_reports_per_day(plan)
+                .map(Gate::ManualPerDay);
+        }
+        None
     }
 
-    /// Whether another report of (account, time class) is inside the free interval.
-    async fn inside_interval(&self, conn: &mut PgConnection) -> Result<bool, sqlx::Error> {
-        let last = runs::latest_other_report_at(
-            conn,
-            self.row.account_id,
-            &self.row.time_class,
-            self.claim.id,
-        )
-        .await?;
-        Ok(last.is_some_and(|at| self.now - at < time::Duration::days(FREE_REPORT_INTERVAL_DAYS)))
+    /// Whether the gate refuses this run: another report of (account, time class) inside the
+    /// free interval, or the day's manual reports already used.
+    async fn gate_refuses(&self, conn: &mut PgConnection, gate: Gate) -> Result<bool, sqlx::Error> {
+        match gate {
+            Gate::FreeInterval => {
+                let last = runs::latest_other_report_at(
+                    conn,
+                    self.row.account_id,
+                    &self.row.time_class,
+                    self.claim.id,
+                )
+                .await?;
+                Ok(last.is_some_and(|at| {
+                    self.now - at < time::Duration::days(FREE_REPORT_INTERVAL_DAYS)
+                }))
+            }
+            Gate::ManualPerDay(limit) => {
+                let used = runs::other_manual_reports_since(
+                    conn,
+                    self.row.account_id,
+                    &self.row.time_class,
+                    self.claim.id,
+                    window_start(QuotaWindow::Day, self.now),
+                )
+                .await?;
+                Ok(used >= i64::from(limit))
+            }
+        }
     }
 
     /// Step 4: the run's report, created with its computed part if it does not exist yet. A
@@ -760,9 +800,9 @@ impl Run<'_> {
         if let Some(r) = reports::report_for_run(&mut tx, self.claim.id).await? {
             return Ok(r.id);
         }
-        if self.gated(plan) {
+        if let Some(gate) = self.gate(plan) {
             reports::lock_versions(&mut tx, self.row.account_id, &self.row.time_class).await?;
-            if self.inside_interval(&mut tx).await? {
+            if self.gate_refuses(&mut tx, gate).await? {
                 drop(tx);
                 self.fail(PLAN_INTERVAL, &[]).await?;
                 return Err(unrecoverable(PLAN_INTERVAL));
@@ -828,9 +868,9 @@ impl Run<'_> {
 
         // 2. The free plan's interval (only before this run has a report).
         // (An early exit before the provider call; step 4 re-checks under the lock.)
-        if self.row.report_id.is_none() && self.gated(plan) {
+        if let Some(gate) = self.gate(plan).filter(|_| self.row.report_id.is_none()) {
             let mut conn = d.pool.acquire().await?;
-            let inside = self.inside_interval(&mut conn).await?;
+            let inside = self.gate_refuses(&mut conn, gate).await?;
             drop(conn);
             if inside {
                 self.fail(PLAN_INTERVAL, &[]).await?;

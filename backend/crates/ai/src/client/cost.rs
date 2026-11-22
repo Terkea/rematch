@@ -338,10 +338,11 @@ pub struct Budgets {
 }
 
 impl Budgets {
+    /// The beta plan has the Pro budget (M5b ruling G1).
     pub fn for_plan(&self, plan: Plan) -> u64 {
         match plan {
             Plan::Free => self.free,
-            Plan::Pro => self.pro,
+            Plan::Pro | Plan::Beta => self.pro,
         }
     }
 }

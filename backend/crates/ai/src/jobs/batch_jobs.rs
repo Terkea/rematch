@@ -11,8 +11,10 @@
 //!   within budget, with a valid input from the provider that names that account and time
 //!   class: a `mode = batch`, `trigger = scheduled` run with the input snapshot and the computed
 //!   report, in one transaction. Then one batch item per section.
-//! - [`WeeklyBatchScheduleHandler`]: for the current week's Monday, a `mode = batch` pending
-//!   weekly review per due item (an existing review for the week is left alone), then its item.
+//! - [`WeeklyBatchScheduleHandler`]: for the last complete week ([`reviewed_week`]: the Monday
+//!   before the current week's; M5b Task B, so the Monday 04:00 run reviews the week that just
+//!   ended), a `mode = batch` pending weekly review per due item (an existing review for the
+//!   week is left alone), then its item.
 //!
 //! The rows are created `queued` / `pending` in batch mode, which `ai-reconcile` ignores for
 //! [`BATCH_SUBMIT_GRACE`]. Items are packed into batches by whole runs (a run never spans two
@@ -141,7 +143,8 @@ const POLL_LOCK_CLASS: i32 = 30_020;
 const _: () = assert!(BATCH_SUBMIT_TIMEOUT.as_secs() < BATCH_SUBMIT_GRACE.as_secs());
 
 /// The weekly reviews due for the week starting `week_start` (a Monday): (account, time class,
-/// `WeeklyReviewInput` JSON). M7 wires the real one; the JSON is validated here, never trusted.
+/// `WeeklyReviewInput` JSON). The worker wires R2's builder (M5b Task B); the JSON is validated
+/// here, never trusted.
 pub trait WeeklyInputProvider: Send + Sync {
     fn due<'a>(
         &'a self,
@@ -195,6 +198,11 @@ impl BatchDeps {
 pub fn week_monday(now: OffsetDateTime) -> Date {
     let d = now.to_offset(time::UtcOffset::UTC).date();
     d - time::Duration::days(i64::from(d.weekday().number_days_from_monday()))
+}
+
+/// The Monday of the last complete UTC week before `now`: the week a weekly review covers.
+pub fn reviewed_week(now: OffsetDateTime) -> Date {
+    week_monday(now) - time::Duration::days(7)
 }
 
 // -------------------------------------------------------------------------------------------
@@ -349,7 +357,7 @@ async fn schedule_weekly(d: &BatchDeps) -> anyhow::Result<Value> {
         return Ok(json!({ "skipped": "batches_disabled" }));
     };
     let now = (d.now)();
-    let week_start = week_monday(now);
+    let week_start = reviewed_week(now);
     let mut planned = Vec::new();
     let mut due = d.weekly.due(week_start);
     while let Some(next) = due.next().await {
