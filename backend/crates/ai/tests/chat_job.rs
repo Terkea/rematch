@@ -693,6 +693,7 @@ async fn metering_is_idempotent_per_call_key(pool: PgPool) {
         cache_read_tokens: 0,
         cost_micro_usd: 5,
         ref_id: Some("x".into()),
+        sdk_estimate_micro_usd: None,
     };
     let mut conn = pool.acquire().await.unwrap();
     let once = ai::db::usage::record_usage_once;

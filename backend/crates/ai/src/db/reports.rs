@@ -101,6 +101,23 @@ const COLS: &str = "id, account_id, time_class::text AS time_class, version, rep
 const SECTION_COLS: &str = "report_id, section, status::text AS status, content, dropped, \
     attempts, model, validated_at";
 
+/// Takes the versioning lock of (account, time class) until the caller's transaction ends
+/// (re-entrant). Checks that must hold for the next version, such as the free plan's interval,
+/// run under it in the same transaction as [`create_report_with_next_version`].
+pub async fn lock_versions(
+    conn: &mut PgConnection,
+    account_id: Uuid,
+    time_class: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query("SELECT pg_advisory_xact_lock($1, hashtext($2::text || ':' || $3))")
+        .bind(VERSION_LOCK_CLASS)
+        .bind(account_id)
+        .bind(time_class)
+        .execute(conn)
+        .await?;
+    Ok(())
+}
+
 /// Inserts the next version (1 for the first) for (account, time class). Versions are
 /// serialised with a transaction-scoped advisory lock on (account, time class), held until the
 /// caller's transaction ends (or this call's own, outside one): a `FOR UPDATE` on the existing
@@ -116,12 +133,7 @@ pub async fn create_report_with_next_version(
     report: &NewReport,
 ) -> Result<ReportRow, sqlx::Error> {
     let mut tx = conn.begin().await?;
-    sqlx::query("SELECT pg_advisory_xact_lock($1, hashtext($2::text || ':' || $3))")
-        .bind(VERSION_LOCK_CLASS)
-        .bind(report.account_id)
-        .bind(&report.time_class)
-        .execute(&mut *tx)
-        .await?;
+    lock_versions(&mut tx, report.account_id, &report.time_class).await?;
     // A new statement after the lock, so its snapshot sees a version committed meanwhile.
     let row = sqlx::query_as(sqlx::AssertSqlSafe(format!(
         "INSERT INTO reports (account_id, time_class, version, report_run_id, schema_version, \

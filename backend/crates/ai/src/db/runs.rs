@@ -120,6 +120,130 @@ pub async fn claim_run(conn: &mut PgConnection, id: Uuid) -> Result<Option<RunRo
     .await
 }
 
+/// A worker's hold on a `running` run: the claim's `started_at` is its token. Every write of
+/// the generate-report job is fenced on it, so a zombie worker whose run was reclaimed (a new
+/// `started_at`) or reset by the reconciler can no longer write (T21 review M1).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RunClaim {
+    pub id: Uuid,
+    pub started_at: OffsetDateTime,
+}
+
+impl RunClaim {
+    /// The claim of a run row returned by a claim (`None` when it has no `started_at`).
+    pub fn of(row: &RunRow) -> Option<RunClaim> {
+        row.started_at.map(|started_at| RunClaim {
+            id: row.id,
+            started_at,
+        })
+    }
+}
+
+/// [`claim_run`], plus a `running` run whose heartbeat (or start) is older than `stale_after`:
+/// a redelivered job takes over the run of a worker that died (T21 review M2). The new claim has
+/// a new `started_at`, which fences the old worker out.
+pub async fn claim_run_or_stale(
+    conn: &mut PgConnection,
+    id: Uuid,
+    stale_after: std::time::Duration,
+) -> Result<Option<RunRow>, sqlx::Error> {
+    sqlx::query_as(sqlx::AssertSqlSafe(format!(
+        "UPDATE report_runs SET status = 'running', started_at = clock_timestamp(), \
+         heartbeat_at = clock_timestamp() \
+         WHERE id = $1 AND (status IN ('queued', 'awaiting_retry') OR (status = 'running' \
+         AND coalesce(heartbeat_at, started_at, created_at) < now() - make_interval(secs => $2))) \
+         RETURNING {COLS}"
+    )))
+    .bind(id)
+    .bind(stale_after.as_secs_f64())
+    .fetch_optional(conn)
+    .await
+}
+
+/// Locks the run row (`FOR UPDATE`, until the caller's transaction ends) when `claim` still
+/// holds it. Run it first in a transaction; the unfenced writers below are then safe to use.
+pub async fn lock_claim(conn: &mut PgConnection, claim: &RunClaim) -> Result<bool, sqlx::Error> {
+    let r: Option<i32> = sqlx::query_scalar(
+        "SELECT 1 FROM report_runs WHERE id = $1 AND status = 'running' AND started_at = $2 \
+         FOR UPDATE",
+    )
+    .bind(claim.id)
+    .bind(claim.started_at)
+    .fetch_optional(conn)
+    .await?;
+    Ok(r.is_some())
+}
+
+/// [`heartbeat`], fenced on the claim.
+pub async fn heartbeat_claim(
+    conn: &mut PgConnection,
+    claim: &RunClaim,
+) -> Result<bool, sqlx::Error> {
+    let r = sqlx::query(
+        "UPDATE report_runs SET heartbeat_at = clock_timestamp() \
+         WHERE id = $1 AND status = 'running' AND started_at = $2",
+    )
+    .bind(claim.id)
+    .bind(claim.started_at)
+    .execute(conn)
+    .await?;
+    Ok(r.rows_affected() == 1)
+}
+
+/// Hands a claimed run back (`queued`) so the next delivery claims it at once (a cancelled or
+/// failed attempt). Fenced on the claim.
+pub async fn release_claim(conn: &mut PgConnection, claim: &RunClaim) -> Result<bool, sqlx::Error> {
+    let r = sqlx::query(
+        "UPDATE report_runs SET status = 'queued' \
+         WHERE id = $1 AND status = 'running' AND started_at = $2",
+    )
+    .bind(claim.id)
+    .bind(claim.started_at)
+    .execute(conn)
+    .await?;
+    Ok(r.rows_affected() == 1)
+}
+
+/// [`set_failed`], except for a run some worker holds alive (`running` with a heartbeat newer
+/// than `stale_after`): a dead job never fails a run another delivery is generating (review m5).
+pub async fn set_failed_unless_live(
+    conn: &mut PgConnection,
+    id: Uuid,
+    error: &str,
+    stale_after: std::time::Duration,
+) -> Result<bool, sqlx::Error> {
+    let r = sqlx::query(
+        "UPDATE report_runs SET status = 'failed', finished_at = now(), next_attempt_at = NULL, \
+         last_error = $2 WHERE id = $1 AND status NOT IN ('done', 'failed') \
+         AND NOT (status = 'running' \
+         AND coalesce(heartbeat_at, started_at, created_at) >= now() - make_interval(secs => $3))",
+    )
+    .bind(id)
+    .bind(error)
+    .bind(stale_after.as_secs_f64())
+    .execute(conn)
+    .await?;
+    Ok(r.rows_affected() == 1)
+}
+
+/// When the newest report of (account, time class) not made by `run_id` was created.
+pub async fn latest_other_report_at(
+    conn: &mut PgConnection,
+    account_id: Uuid,
+    time_class: &str,
+    run_id: Uuid,
+) -> Result<Option<OffsetDateTime>, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT max(created_at) FROM reports WHERE account_id = $1 \
+         AND time_class = $2::time_class AND report_run_id <> $3",
+    )
+    .bind(account_id)
+    .bind(time_class)
+    .bind(run_id)
+    .fetch_one(conn)
+    .await
+}
+
 pub async fn get_run(conn: &mut PgConnection, id: Uuid) -> Result<Option<RunRow>, sqlx::Error> {
     sqlx::query_as(sqlx::AssertSqlSafe(format!(
         "SELECT {COLS} FROM report_runs WHERE id = $1"
