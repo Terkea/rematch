@@ -80,8 +80,8 @@ use profile_core::kpi::snapshots::KpiValue;
 use profile_core::stats::priority::WeaknessEstimate;
 use profile_core::timeline::series::{SeriesOutcome, SeriesPoint};
 use profile_core::types::{
-    BandReference, BandReferenceStat, GameContext, PlayerGameMetrics, SeriesKey, SessionInfo,
-    Side, WeaknessState,
+    BandReference, BandReferenceStat, GameContext, PlayerGameMetrics, SeriesKey, SessionInfo, Side,
+    WeaknessState,
 };
 use profile_core::weakness::sessions::{
     SESSION_GAP_MINUTES, SessionGame, build_sessions, est_duration_seconds,
@@ -459,14 +459,7 @@ fn compute(tc: TimeClass, l: &Loaded, started_at: OffsetDateTime) -> Computed {
     let (peers, references) = side_benchmarks(l);
     let estimates: Vec<Vec<WeaknessEstimate>> = Side::ALL
         .iter()
-        .map(|side| {
-            side_estimates(
-                *side,
-                l,
-                references[side_index(*side)].as_ref(),
-                started_at,
-            )
-        })
+        .map(|side| side_estimates(*side, l, references[side_index(*side)].as_ref(), started_at))
         .collect();
     let estimates_ms = ms(t);
 

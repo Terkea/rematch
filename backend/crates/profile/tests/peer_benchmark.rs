@@ -431,7 +431,11 @@ async fn colour_peers_are_the_opponents_who_had_that_colour(pool: PgPool) {
         w5("black").await.is_some(),
         "black is compared with black peers"
     );
-    assert_eq!(w5("white").await, None, "no white peers: no white benchmark");
+    assert_eq!(
+        w5("white").await,
+        None,
+        "no white peers: no white benchmark"
+    );
     // The served (coaching) benchmark is the both one.
     let served = load_account_benchmark(&pool, account, TimeClass::Rapid)
         .await

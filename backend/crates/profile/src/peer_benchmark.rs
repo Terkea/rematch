@@ -585,7 +585,12 @@ pub async fn write_side_stats(
     )
     .bind(account_id)
     .bind(tc.as_str())
-    .bind(stats.iter().map(|s| s.metric.to_string()).collect::<Vec<_>>())
+    .bind(
+        stats
+            .iter()
+            .map(|s| s.metric.to_string())
+            .collect::<Vec<_>>(),
+    )
     .bind(f(|s| s.median))
     .bind(f(|s| s.p25))
     .bind(f(|s| s.p40))
