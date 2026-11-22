@@ -142,3 +142,7 @@ Every R2 record has a file (titles final at R2 Task 35); numbers 19 to 21 were n
 ### Browser check fixes (fix/d): ADR-FIX-D
 
 - [ADR-FIX-D-1. Numbers keep their units, answers show their positions, numbers-only reports say why](ADR-FIX-D-1-units-boards-and-numbers-only-reports.md)
+
+### Position explorer (feat/position-explorer): ADR-FIX-F
+
+- [ADR-FIX-F-1. One position explorer for every cited position](ADR-FIX-F-1-position-explorer.md)
