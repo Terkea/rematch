@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { rejectCrossSite } from "../../../../server/accounts/http";
 import { requireApiUser } from "../../../../server/auth/session";
-import { requestReport } from "../../../../server/coaching";
+import { betaReportIntervalDays, requestReport } from "../../../../server/coaching";
 import { getDb } from "../../../../server/db";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +16,8 @@ const notFound = () => Response.json({ error: "not_found" }, { status: 404 });
 
 /**
  * "Build my report" / "Rebuild report" (ruling R4, ADR 0069). 202 `{ runId }` when queued,
- * 202 `{ runId, building: true }` when a run is already live, 429 inside the plan interval,
+ * 202 `{ runId, building: true }` when a run is already live, 429 `plan_interval` inside the
+ * beta interval or `throttled` after failures or too many runs (both with `availableAt`),
  * 404 for a foreign or malformed account, 400 for a body that is not `{ accountId, timeClass }`.
  */
 export async function POST(req: Request): Promise<Response> {
@@ -35,7 +36,9 @@ export async function POST(req: Request): Promise<Response> {
   if (!body.success) return Response.json({ error: "invalid_body" }, { status: 400 });
   if (!UUID.test(body.data.accountId)) return notFound();
 
-  const res = await requestReport(getDb(), user.id, body.data);
+  const res = await requestReport(getDb(), user.id, body.data, new Date(), {
+    intervalDays: betaReportIntervalDays(),
+  });
   switch (res.kind) {
     case "queued":
       return Response.json({ runId: res.runId }, { status: 202 });
@@ -44,6 +47,11 @@ export async function POST(req: Request): Promise<Response> {
     case "interval":
       return Response.json(
         { error: "plan_interval", availableAt: res.availableAt.toISOString() },
+        { status: 429 },
+      );
+    case "throttled":
+      return Response.json(
+        { error: "throttled", availableAt: res.availableAt.toISOString() },
         { status: 429 },
       );
     case "not_found":

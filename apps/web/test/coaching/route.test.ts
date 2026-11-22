@@ -1,5 +1,6 @@
 import { reportRuns } from "@ci/db/generated";
 import { beforeEach, describe, expect, it } from "vitest";
+import { resetEnvCache } from "../../src/env";
 import { resetCoachingTables, seedReport } from "../helpers/coaching";
 import { resetGameTables, seedAccount } from "../helpers/games";
 import { createTestSession, resetAuthTables, webTestDb } from "../helpers/session";
@@ -8,7 +9,8 @@ const db = webTestDb();
 const { POST } = await import("../../src/app/api/coach/report/route");
 
 const ORIGIN = "http://localhost:3100";
-const DAY = 86_400_000;
+const HOUR = 3_600_000;
+const DAY = 24 * HOUR;
 let cookie: string;
 let accountId: string;
 
@@ -67,15 +69,55 @@ describe("POST /api/coach/report", () => {
     expect(await second.json()).toEqual({ runId, building: true });
   });
 
-  it("inside the interval is a 429 with the date", async () => {
-    const createdAt = new Date(Date.now() - 10 * DAY);
+  it("the beta allows one manual report a day", async () => {
+    await seedReport(db, accountId, {
+      timeClass: "rapid",
+      payload: "example",
+      createdAt: new Date(Date.now() - 2 * DAY),
+    });
+    const res = await post({ accountId, timeClass: "rapid" });
+    expect(res.status).toBe(202);
+  });
+
+  it("inside the beta interval is a 429 with the date", async () => {
+    const createdAt = new Date(Date.now() - 10 * HOUR);
     await seedReport(db, accountId, { timeClass: "rapid", payload: "example", createdAt });
     const res = await post({ accountId, timeClass: "rapid" });
     expect(res.status).toBe(429);
     expect(await res.json()).toEqual({
       error: "plan_interval",
-      availableAt: new Date(createdAt.getTime() + 30 * DAY).toISOString(),
+      availableAt: new Date(createdAt.getTime() + DAY).toISOString(),
     });
+  });
+
+  it("AI_BETA_MANUAL_REPORTS_PER_DAY sets the interval", async () => {
+    process.env.AI_BETA_MANUAL_REPORTS_PER_DAY = "4";
+    resetEnvCache();
+    try {
+      const createdAt = new Date(Date.now() - 2 * HOUR);
+      await seedReport(db, accountId, { timeClass: "rapid", payload: "example", createdAt });
+      const res = await post({ accountId, timeClass: "rapid" });
+      expect(res.status).toBe(429);
+      expect(await res.json()).toEqual({
+        error: "plan_interval",
+        availableAt: new Date(createdAt.getTime() + 6 * HOUR).toISOString(),
+      });
+    } finally {
+      delete process.env.AI_BETA_MANUAL_REPORTS_PER_DAY;
+      resetEnvCache();
+    }
+  });
+
+  it("a request soon after a failed run is throttled", async () => {
+    await seedReport(db, accountId, {
+      timeClass: "rapid",
+      run: { status: "failed", lastError: "ai_unavailable", finishedAt: new Date() },
+    });
+    const res = await post({ accountId, timeClass: "rapid" });
+    expect(res.status).toBe(429);
+    const body = (await res.json()) as { error: string; availableAt: string };
+    expect(body.error).toBe("throttled");
+    expect(new Date(body.availableAt).getTime()).toBeGreaterThan(Date.now());
   });
 
   it("a foreign or malformed account is a 404", async () => {

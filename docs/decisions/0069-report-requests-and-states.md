@@ -26,9 +26,17 @@ inside the 30-day interval only after it is claimed (`plan_interval`).
 4. Trigger `onboarding` and `is_first_report = true` when the scope has no `reports` row,
    otherwise `manual`. A `manual` request less than `FREE_REPORT_INTERVAL_DAYS` (30) after the
    newest report is refused on the web (429 `{ error: "plan_interval", availableAt }`), so the
-   player never waits for a job that would fail. The interval is a parameter (`intervalDays`),
-   so the beta plan (ruling G1, one manual report a day, configured through env) can pass its own
-   value once the worker's beta entitlement lands.
+   player never waits for a job that would fail. The interval is a parameter (`intervalDays`).
+   During the private beta (ruling G1) the route passes `1 / AI_BETA_MANUAL_REPORTS_PER_DAY`
+   days (env, default 1, so one manual report a day); the Rust worker's beta entitlement reads
+   the same variable, so web and worker agree. `getReport` callers pass the same value for
+   `nextManualAt`.
+4b. Throttle (review I2), so a scope whose runs fail cannot spam jobs: after a failed run the
+   next request waits 10 minutes, doubling with each failure in a row (20, 40, ...), capped at
+   6 hours, measured from the newest failure's `finished_at`; a run that did not fail resets it.
+   And at most 5 runs per scope in any 24 hours, whatever their outcome and with or without a
+   report. Either gives 429 `{ error: "throttled", availableAt }` ("You have tried a few times.
+   Try again at 14:20.").
 5. Insert the run (`plan = "free"`, `prompt_version = "report@1"`, `mode = sync`) and its job
    with `enqueueJob` (`kind = generate-report`, payload `{ reportRunId }`, dedupe key
    `report:<runId>`, `user_key` = account id, priority 50, `max_attempts` 3), the exact values of

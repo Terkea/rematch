@@ -47,6 +47,8 @@ const schema = z.object({
   CHESSCOM_CLIENT_SECRET: z.string().optional(),
   LAB_ENABLED: flag,
   INVITE_ONLY: defaultOn,
+  // Beta AI plan (ruling G1): manual reports per scope per day; the worker reads the same name.
+  AI_BETA_MANUAL_REPORTS_PER_DAY: z.coerce.number().int().min(1).max(24).default(1),
   INVITE_ALLOWLIST: emailList,
   // Client IP for rate limits (ADR-WEB-3). Empty: no proxy, so forwarding headers are ignored.
   TRUSTED_PROXIES: list,

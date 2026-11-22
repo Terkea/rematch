@@ -104,7 +104,12 @@ describe("requestReport", () => {
   it("a finished run does not block a new one", async () => {
     await seedReport(db, accountId, {
       timeClass: "rapid",
-      run: { status: "failed", lastError: "no_input" },
+      createdAt: new Date(Date.now() - 2 * 3_600_000),
+      run: {
+        status: "failed",
+        lastError: "no_input",
+        finishedAt: new Date(Date.now() - 3_600_000),
+      },
     });
     expect((await requestReport(db, alice, target())).kind).toBe("queued");
   });
@@ -137,6 +142,78 @@ describe("requestReport", () => {
     await seedReport(db, accountId, { timeClass: "blitz", payload: "example" });
     const res = await requestReport(db, alice, target());
     expect(res.kind).toBe("queued");
+  });
+
+  describe("throttle after failures", () => {
+    const now = new Date("2026-11-22T12:00:00.000Z");
+    const MIN = 60_000;
+    const failed = (finishedAt: Date) =>
+      seedReport(db, accountId, {
+        timeClass: "rapid",
+        createdAt: new Date(finishedAt.getTime() - MIN),
+        run: { status: "failed", lastError: "ai_unavailable", finishedAt },
+      });
+
+    it("one failure waits 10 minutes", async () => {
+      const at = new Date(now.getTime() - 4 * MIN);
+      await failed(at);
+      expect(await requestReport(db, alice, target(), now)).toEqual({
+        kind: "throttled",
+        availableAt: new Date(at.getTime() + 10 * MIN),
+      });
+      expect(await db.select().from(jobs)).toHaveLength(0);
+      const later = new Date(at.getTime() + 10 * MIN);
+      expect((await requestReport(db, alice, target(), later)).kind).toBe("queued");
+    });
+
+    it("the backoff doubles with each failure in a row", async () => {
+      await failed(new Date(now.getTime() - 90 * MIN));
+      await failed(new Date(now.getTime() - 60 * MIN));
+      const last = new Date(now.getTime() - 30 * MIN);
+      await failed(last);
+      expect(await requestReport(db, alice, target(), now)).toEqual({
+        kind: "throttled",
+        availableAt: new Date(last.getTime() + 40 * MIN),
+      });
+    });
+
+    it("the backoff is capped", async () => {
+      let last = now;
+      for (let i = 12; i >= 1; i--) {
+        last = new Date(now.getTime() - i * 24 * 60 * MIN - 60 * MIN);
+        await failed(last);
+      }
+      // Twelve failures in a row, the newest over a day ago: the cap (6 h) has passed.
+      expect((await requestReport(db, alice, target(), now)).kind).toBe("queued");
+    });
+
+    it("a success resets the backoff", async () => {
+      await failed(new Date(now.getTime() - 200 * MIN));
+      await failed(new Date(now.getTime() - 150 * MIN));
+      await seedReport(db, accountId, {
+        timeClass: "rapid",
+        payload: "example",
+        createdAt: new Date(now.getTime() - 40 * 24 * 60 * MIN),
+        run: { status: "done", createdAt: new Date(now.getTime() - 120 * MIN) },
+      });
+      expect((await requestReport(db, alice, target(), now)).kind).toBe("queued");
+    });
+
+    it("at most five runs per scope per day, even with no report", async () => {
+      for (let i = 5; i >= 1; i--) {
+        await seedReport(db, accountId, {
+          timeClass: "rapid",
+          createdAt: new Date(now.getTime() - i * 3 * 60 * MIN),
+          run: { status: "done" },
+        });
+      }
+      const oldest = new Date(now.getTime() - 15 * 60 * MIN);
+      expect(await requestReport(db, alice, target(), now)).toEqual({
+        kind: "throttled",
+        availableAt: new Date(oldest.getTime() + 24 * 60 * MIN),
+      });
+      expect(await db.select().from(jobs)).toHaveLength(0);
+    });
   });
 
   it("run and job commit together", async () => {

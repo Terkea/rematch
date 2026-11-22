@@ -22,6 +22,19 @@ describe("getEnv", () => {
     expect(getEnv(base).CHESSCOM_ENABLED).toBe(false);
   });
 
+  it("defaults AI_BETA_MANUAL_REPORTS_PER_DAY to 1 and rejects nonsense", () => {
+    expect(getEnv(base).AI_BETA_MANUAL_REPORTS_PER_DAY).toBe(1);
+    expect(
+      getEnv({ ...base, AI_BETA_MANUAL_REPORTS_PER_DAY: "3" }).AI_BETA_MANUAL_REPORTS_PER_DAY,
+    ).toBe(3);
+    expect(() => getEnv({ ...base, AI_BETA_MANUAL_REPORTS_PER_DAY: "0" })).toThrow(
+      /AI_BETA_MANUAL_REPORTS_PER_DAY/,
+    );
+    expect(() => getEnv({ ...base, AI_BETA_MANUAL_REPORTS_PER_DAY: "x" })).toThrow(
+      /AI_BETA_MANUAL_REPORTS_PER_DAY/,
+    );
+  });
+
   it("defaults LICHESS_CLIENT_ID to chess-improver", () => {
     expect(getEnv(base).LICHESS_CLIENT_ID).toBe("chess-improver");
   });
