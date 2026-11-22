@@ -38,7 +38,8 @@ text_enum!(
 #[derive(Clone, Debug, PartialEq)]
 pub struct NewConversation {
     pub account_id: Uuid,
-    pub user_id: Option<Uuid>,
+    /// The user who owns the thread (threads are per user; accounts are shared).
+    pub user_id: Uuid,
     pub time_class: String,
     pub title: Option<String>,
     pub anchor: Option<Value>,
@@ -48,7 +49,7 @@ pub struct NewConversation {
 pub struct ConversationRow {
     pub id: Uuid,
     pub account_id: Uuid,
-    pub user_id: Option<Uuid>,
+    pub user_id: Uuid,
     pub time_class: String,
     pub title: Option<String>,
     pub anchor: Option<Value>,
@@ -315,6 +316,65 @@ pub async fn fail_message(
     .execute(conn)
     .await?;
     Ok(r.rows_affected() == 1)
+}
+
+/// The user's conversations on one account, most recently active first.
+pub async fn list_user_conversations(
+    conn: &mut PgConnection,
+    user_id: Uuid,
+    account_id: Uuid,
+    limit: i64,
+) -> Result<Vec<ConversationRow>, sqlx::Error> {
+    sqlx::query_as(sqlx::AssertSqlSafe(format!(
+        "SELECT {CONV_COLS} FROM coach_conversations WHERE user_id = $1 AND account_id = $2          ORDER BY last_message_at DESC LIMIT $3"
+    )))
+    .bind(user_id)
+    .bind(account_id)
+    .bind(limit)
+    .fetch_all(conn)
+    .await
+}
+
+/// One of the user's conversations, or `None` (another user's id is not found).
+pub async fn get_user_conversation(
+    conn: &mut PgConnection,
+    user_id: Uuid,
+    id: Uuid,
+) -> Result<Option<ConversationRow>, sqlx::Error> {
+    sqlx::query_as(sqlx::AssertSqlSafe(format!(
+        "SELECT {CONV_COLS} FROM coach_conversations WHERE id = $1 AND user_id = $2"
+    )))
+    .bind(id)
+    .bind(user_id)
+    .fetch_optional(conn)
+    .await
+}
+
+/// Deletes one of the user's conversations (messages by cascade, session entries by trigger).
+/// `false` when it does not exist or belongs to another user.
+pub async fn delete_user_conversation(
+    conn: &mut PgConnection,
+    user_id: Uuid,
+    id: Uuid,
+) -> Result<bool, sqlx::Error> {
+    let r = sqlx::query("DELETE FROM coach_conversations WHERE id = $1 AND user_id = $2")
+        .bind(id)
+        .bind(user_id)
+        .execute(conn)
+        .await?;
+    Ok(r.rows_affected() == 1)
+}
+
+/// Deletes all of the user's conversations; returns how many.
+pub async fn delete_all_user_conversations(
+    conn: &mut PgConnection,
+    user_id: Uuid,
+) -> Result<u64, sqlx::Error> {
+    let r = sqlx::query("DELETE FROM coach_conversations WHERE user_id = $1")
+        .bind(user_id)
+        .execute(conn)
+        .await?;
+    Ok(r.rows_affected())
 }
 
 /// Deletes one of the account's conversations; its messages go by cascade and its Agent SDK

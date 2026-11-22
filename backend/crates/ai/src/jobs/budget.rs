@@ -79,8 +79,51 @@ fn tokens(n: u64) -> i32 {
     i32::try_from(n).unwrap_or(i32::MAX)
 }
 
-/// One `ai_usage` row per call record, priced from `pricing` (never the SDK estimate). A
-/// response model without a price is metered at the requested model's rates, with a `warn`.
+/// The cost of one call: at its own model's price; an unpriced response model at the requested
+/// model's price; and if that is unpriced too, at the most expensive priced model (fails closed:
+/// never free).
+fn cost_of(pricing: &PricingTable, c: &CallRecord, requested_model: AiModel) -> u64 {
+    if let Ok(v) = cost_micro_usd(pricing, &c.model, &c.usage, c.batch) {
+        return v;
+    }
+    tracing::warn!(
+        requested = requested_model.as_str(),
+        "no pricing for the response model; metered at the requested model's rates"
+    );
+    if let Ok(v) = cost_micro_usd(pricing, requested_model.as_str(), &c.usage, c.batch) {
+        return v;
+    }
+    tracing::error!("no pricing for the requested model; metered at the highest known rates");
+    pricing
+        .model_ids()
+        .filter_map(|m| cost_micro_usd(pricing, m, &c.usage, c.batch).ok())
+        .max()
+        .unwrap_or(u64::MAX)
+}
+
+fn row(
+    pricing: &PricingTable,
+    account_id: Uuid,
+    feature: AiFeature,
+    c: &CallRecord,
+    ref_id: &str,
+    requested_model: AiModel,
+) -> UsageRow {
+    UsageRow {
+        account_id,
+        feature,
+        model: c.model.clone(),
+        batch: c.batch,
+        input_tokens: tokens(c.usage.input_tokens),
+        output_tokens: tokens(c.usage.output_tokens),
+        cache_creation_tokens: tokens(c.usage.cache_creation_tokens),
+        cache_read_tokens: tokens(c.usage.cache_read_tokens),
+        cost_micro_usd: i64::try_from(cost_of(pricing, c, requested_model)).unwrap_or(i64::MAX),
+        ref_id: Some(ref_id.to_owned()),
+    }
+}
+
+/// One `ai_usage` row per call record, priced from `pricing` (never the SDK estimate).
 pub async fn meter(
     conn: &mut PgConnection,
     pricing: &PricingTable,
@@ -91,30 +134,33 @@ pub async fn meter(
     requested_model: AiModel,
 ) -> Result<(), sqlx::Error> {
     for c in calls {
-        let cost = match cost_micro_usd(pricing, &c.model, &c.usage, c.batch) {
-            Ok(v) => v,
-            Err(_) => {
-                tracing::warn!(
-                    requested = requested_model.as_str(),
-                    "no pricing for the response model; metered at the requested model's rates"
-                );
-                cost_micro_usd(pricing, requested_model.as_str(), &c.usage, c.batch).unwrap_or(0)
-            }
-        };
         usage::record_usage(
             conn,
-            &UsageRow {
-                account_id,
-                feature,
-                model: c.model.clone(),
-                batch: c.batch,
-                input_tokens: tokens(c.usage.input_tokens),
-                output_tokens: tokens(c.usage.output_tokens),
-                cache_creation_tokens: tokens(c.usage.cache_creation_tokens),
-                cache_read_tokens: tokens(c.usage.cache_read_tokens),
-                cost_micro_usd: i64::try_from(cost).unwrap_or(i64::MAX),
-                ref_id: Some(ref_id.to_owned()),
-            },
+            &row(pricing, account_id, feature, c, ref_id, requested_model),
+        )
+        .await?;
+    }
+    Ok(())
+}
+
+/// [`meter`], once per call: call `i` is keyed `"{key_prefix}:{i}"`, so metering the same calls
+/// again (a retried write) adds nothing.
+#[allow(clippy::too_many_arguments)]
+pub async fn meter_keyed(
+    conn: &mut PgConnection,
+    pricing: &PricingTable,
+    account_id: Uuid,
+    feature: AiFeature,
+    calls: &[CallRecord],
+    ref_id: &str,
+    requested_model: AiModel,
+    key_prefix: &str,
+) -> Result<(), sqlx::Error> {
+    for (i, c) in calls.iter().enumerate() {
+        usage::record_usage_once(
+            conn,
+            &row(pricing, account_id, feature, c, ref_id, requested_model),
+            &format!("{key_prefix}:{i}"),
         )
         .await?;
     }

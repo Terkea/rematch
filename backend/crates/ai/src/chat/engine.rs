@@ -852,10 +852,59 @@ pub async fn run_chat_turn(
     args: ChatTurnArgs<'_>,
     on_chunk: OnChunk<'_>,
 ) -> Result<ChatTurnOutcome, ChatTurnError> {
-    let mut calls = Vec::new();
-    match turn(ai, before_call, deps, args, on_chunk, &mut calls).await {
+    run_chat_turn_into(ai, before_call, deps, args, on_chunk, &TurnSink::default()).await
+}
+
+/// Where a turn records its paid calls and its call-index counter while it runs, so a caller
+/// that drops the turn (a timeout, review I2) still has them.
+#[derive(Default)]
+pub struct TurnSink {
+    calls: Mutex<Vec<CallRecord>>,
+    session: Mutex<Option<Arc<ToolSession>>>,
+}
+
+impl TurnSink {
+    /// The calls paid for so far, in order.
+    pub fn calls(&self) -> Vec<CallRecord> {
+        self.calls.lock().unwrap_or_else(|p| p.into_inner()).clone()
+    }
+
+    /// The next free tool-call index, once the turn has started its tool session.
+    pub fn next_call_index(&self) -> Option<u32> {
+        self.session
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .as_ref()
+            .map(|s| s.next_call_index())
+    }
+
+    fn push(&self, records: Vec<CallRecord>) {
+        self.calls
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .extend(records);
+    }
+
+    fn set_session(&self, s: Arc<ToolSession>) {
+        *self.session.lock().unwrap_or_else(|p| p.into_inner()) = Some(s);
+    }
+}
+
+/// [`run_chat_turn`] recording into `sink` as it goes.
+pub async fn run_chat_turn_into(
+    ai: &dyn AiClient,
+    before_call: BeforeCall<'_>,
+    deps: &OwnedToolDeps,
+    args: ChatTurnArgs<'_>,
+    on_chunk: OnChunk<'_>,
+    sink: &TurnSink,
+) -> Result<ChatTurnOutcome, ChatTurnError> {
+    match turn(ai, before_call, deps, args, on_chunk, sink).await {
         Ok(o) => Ok(o),
-        Err(error) => Err(ChatTurnError { error, calls }),
+        Err(error) => Err(ChatTurnError {
+            error,
+            calls: sink.calls(),
+        }),
     }
 }
 
@@ -867,7 +916,7 @@ async fn turn(
     deps: &OwnedToolDeps,
     args: ChatTurnArgs<'_>,
     on_chunk: OnChunk<'_>,
-    calls: &mut Vec<CallRecord>,
+    sink: &TurnSink,
 ) -> Result<ChatTurnOutcome, AiError> {
     let ChatTurnArgs {
         evidence,
@@ -882,6 +931,7 @@ async fn turn(
         _ => return Err(invalid_request()),
     };
     let session = Arc::new(ToolSession::starting_at(evidence, first_call_index));
+    sink.set_session(session.clone());
     let state = Arc::new(Mutex::new(TurnToolState::default()));
     let (tx, mut rx) = mpsc::unbounded_channel();
     let closed = Arc::new(AtomicBool::new(false));
@@ -918,7 +968,7 @@ async fn turn(
     let main = s
         .drive(ai.stream_turn(&req, Some(handler)), &mut rx)
         .await?;
-    calls.extend(records(
+    sink.push(records(
         &metered_turn_usage(&main, previous_session_usage),
         main.sdk_cost_usd,
     ));
@@ -939,7 +989,7 @@ async fn turn(
         let r = f
             .drive(ai.stream_turn(&follow, None), &mut closed_channel())
             .await?;
-        calls.extend(records(&r.model_usage, r.sdk_cost_usd));
+        sink.push(records(&r.model_usage, r.sdk_cost_usd));
         refused = r.stop_reason.as_deref() == Some("refusal");
         f.stale |= s.stale;
         f.retracted |= s.retracted;
@@ -971,7 +1021,7 @@ async fn turn(
             let done = r
                 .drive(ai.stream_turn(&fix, None), &mut closed_channel())
                 .await?;
-            calls.extend(records(&done.model_usage, done.sdk_cost_usd));
+            sink.push(records(&done.model_usage, done.sdk_cost_usd));
             if done.stop_reason.as_deref() == Some("refusal") {
                 outcome = ChatOutcomeKind::Refused;
             } else if r.offtopic {
@@ -1060,7 +1110,7 @@ async fn turn(
         citations,
         dropped,
         replaced: stale,
-        calls: std::mem::take(calls),
+        calls: sink.calls(),
         outcome,
         engine_evals,
         session_model_usage,

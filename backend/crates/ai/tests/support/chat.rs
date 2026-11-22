@@ -6,6 +6,7 @@
 use std::sync::Arc;
 
 use ai::chat::job::ChatDeps;
+use ai::chat::threads::AccountAccess;
 use ai::client::cost::{AI_MONTHLY_BUDGET_MICRO_USD, PricingTable};
 use ai::client::fake::{FakeAiClient, FakeTurn};
 use ai::client::port::AiClient;
@@ -24,6 +25,38 @@ use uuid::Uuid;
 
 pub const OK2: &str = "Next time, look at checks and captures before you move.";
 pub const OK3: &str = "Take a moment on each move in sharp positions.";
+
+/// The test user of an account's threads (one per account unless a test says otherwise).
+pub fn user(account_id: Uuid) -> Uuid {
+    Uuid::from_u128(account_id.as_u128() ^ 0x5EED)
+}
+
+/// Every user is linked to every account.
+pub struct AnyLink;
+
+impl AccountAccess for AnyLink {
+    fn is_linked<'a>(
+        &'a self,
+        _user_id: Uuid,
+        _account_id: Uuid,
+    ) -> BoxFuture<'a, anyhow::Result<bool>> {
+        Box::pin(async { Ok(true) })
+    }
+}
+
+/// Exactly these `(user, account)` links.
+pub struct Links(pub Vec<(Uuid, Uuid)>);
+
+impl AccountAccess for Links {
+    fn is_linked<'a>(
+        &'a self,
+        user_id: Uuid,
+        account_id: Uuid,
+    ) -> BoxFuture<'a, anyhow::Result<bool>> {
+        let ok = self.0.contains(&(user_id, account_id));
+        Box::pin(async move { Ok(ok) })
+    }
+}
 
 pub struct FixedPlan(pub Plan);
 
@@ -195,6 +228,7 @@ pub fn deps(pool: &PgPool, ai: Option<Arc<FakeAiClient>>, plan: Plan) -> ChatDep
         },
         pricing: Arc::new(PricingTable::seed()),
         now: Arc::new(OffsetDateTime::now_utc),
+        turn_timeout: ai::jobs::kinds::CHAT_TURN_TIMEOUT,
     }
 }
 

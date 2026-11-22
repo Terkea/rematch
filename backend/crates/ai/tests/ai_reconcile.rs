@@ -93,7 +93,7 @@ async fn conversation(pool: &PgPool, account_id: Uuid) -> Uuid {
         &mut conn,
         &NewConversation {
             account_id,
-            user_id: None,
+            user_id: Uuid::new_v4(),
             time_class: "blitz".into(),
             title: None,
             anchor: None,
@@ -1077,8 +1077,8 @@ async fn sweep_pages_are_index_ordered(pool: PgPool) {
     // cursor), then
     // evals, reviews and notes (2% pending).
     sqlx::query(
-        "WITH c AS (INSERT INTO coach_conversations (account_id, time_class) \
-           SELECT $1, 'blitz' FROM generate_series(1, 1000) RETURNING id), \
+        "WITH c AS (INSERT INTO coach_conversations (account_id, user_id, time_class) \
+           SELECT $1, gen_random_uuid(), 'blitz' FROM generate_series(1, 1000) RETURNING id), \
          n AS (SELECT id, row_number() OVER () AS k FROM c) \
          INSERT INTO coach_messages (conversation_id, seq, role, status, created_at, \
            streaming_at) \

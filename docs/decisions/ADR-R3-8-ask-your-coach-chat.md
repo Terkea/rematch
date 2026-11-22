@@ -159,10 +159,13 @@ Decisions made when the job, the DB data source and the threads were built:
    attempt puts the message back to `pending` (the retry reserves again) and releases for 60 s;
    the second fails with `unavailable`. The whole turn runs under `CHAT_TURN_TIMEOUT` (600 s); a
    timeout counts as unavailable.
-5. **Timeouts.** `CHAT_CALL_TIMEOUT` = 200 s = `CHAT_TURN_TIMEOUT / 3` is the most one sidecar
-   call may take; `SidecarConfig::chat_timeout` (180 s) is under it, which a test pins. This
-   supersedes the earlier note to pass `CHAT_TURN_TIMEOUT` itself as `timeoutMs`: a turn makes up
-   to three sequential calls.
+5. **Timeouts** (amended by fix round 1, review I2). A turn is the rollover summary plus up to
+   three sequential chat calls (main, follow-up, repair), all inside `CHAT_TURN_TIMEOUT` (600 s):
+   `SUMMARY_CALL_TIMEOUT` (60 s) bounds the summary call, and `CHAT_CALL_TIMEOUT` (180 s, which
+   `SidecarConfig::chat_timeout` must not exceed) bounds each chat call; 60 + 3 × 180 = 600, which
+   a test pins. A summary that runs over is skipped (the old summary is kept, and the turn still
+   starts a new session). The title call after the turn has the same 60 s bound. This supersedes
+   the earlier note to pass `CHAT_TURN_TIMEOUT` itself as `timeoutMs`.
 6. **History after a rollover.** Once a summary exists, later turns (until the next rollover) use
    `Rollover { stored summary, the last replay_turns turns }` without a new summary call. Only a
    turn that writes a new summary counts as a rollover for `resume_next_turn`, so the session
@@ -178,8 +181,16 @@ Decisions made when the job, the DB data source and the threads were built:
    cached evals and report sections from Postgres, always filtered on the account. `get_games` is
    limited to the conversation's time class. `openingContains` matches literally (`\`, `%` and `_`
    escaped). Position tags come from the matching exemplars until R2's per-move tags exist.
-10. **Threads take the account.** `post_user_message` takes the account id the caller acts for
-    (it is not in the plan's signature): every thread call is scoped by it.
+10. **Threads belong to the user** (fix round 1, review I3; supersedes "threads take the
+    account"). Linked accounts are shared between users (M4 `account_links`), so
+    `coach_conversations.user_id` is NOT NULL (migration `20261121030300`, with an index on
+    `(user_id, account_id, last_message_at)`; the FK to `"user"` is added where that table exists,
+    which is the integrated schema, and Task 26 checks it). Every read, post, list and delete is
+    scoped by `user_id`; the account is the context. A thread is created, and posted to, only for
+    an account the user is currently linked to (`AccountAccess`; `LegacyAccountAccess` reads M1's
+    `linked_accounts.user_id`, and Task 26 wires the `account_links` lookup). A user may still
+    read and delete their threads after unlinking. Quotas and budgets stay per account (ruling
+    Q3).
 11. **Task 18 stand-ins.** T18 is not on this base. `jobs/budget.rs` holds minimal versions of
     `BudgetConfig`, `budget_guard` and `meter`, and `ChatDeps` carries a `PricingTable`. At merge,
     T18's file replaces them and the call sites in `chat/job.rs` are adapted.
@@ -189,3 +200,20 @@ Decisions made when the job, the DB data source and the threads were built:
     The job meters them (`chat`, ref = the message id) on every error path, including
     `Unavailable` and `Budget`. A call that fails mid-stream reports no usage, so it cannot be
     metered.
+13. **Retries are never in sync** (fix round 1, review I1). A retried AI attempt of the same
+    message (`turn_attempts > 1`: an unavailable release, a timeout or a worker crash) sends the
+    full Postgres history with `resume: false`, because the SDK session may hold the failed
+    attempt's question, answer and tool results; the sidecar replaces it. A failed attempt stores
+    its call-index counter before it is retried; a redelivery after a crash (nobody stored it)
+    skips the counter by `CALL_INDEX_RETRY_GAP` (1000). So a `tools.<k>` path is never reused.
+14. **Idempotent metering** (fix round 1, review I1 and m1). `ai_usage.idempotency_key` is unique.
+    A chat call is keyed `chat:<message>:<attempt>:<n>` (summary calls `…:summary:<n>`, the title
+    `chat:<message>:title:<n>`), so metering the same calls again (a finish that rolled back
+    after metering, a retried write) adds nothing, while a retry's own calls, paid again, get new
+    keys. The turn's calls are collected in a `TurnSink` outside the timed future, so a timeout
+    meters them too (review I2). A call whose response never arrived reports no usage and cannot
+    be metered. An unpriced model is metered at the most expensive known rate, never at zero.
+15. **Known gaps** (review m3): the windows count an answer by its message's `created_at` (the
+    post time), not the reservation time, so a question posted just before a window boundary
+    counts in the old window; and a turn that fails after paid calls uses no chat allowance (the
+    budget guard bounds the spend).

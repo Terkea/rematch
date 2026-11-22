@@ -52,6 +52,32 @@ pub async fn record_usage(conn: &mut PgConnection, row: &UsageRow) -> Result<i64
     .await
 }
 
+/// Records one call once per `key` (`ai_usage.idempotency_key`): `false` when a row with that
+/// key already exists, so a retried write never meters a call twice.
+pub async fn record_usage_once(
+    conn: &mut PgConnection,
+    row: &UsageRow,
+    key: &str,
+) -> Result<bool, sqlx::Error> {
+    let r = sqlx::query(
+        "INSERT INTO ai_usage (account_id, feature, model, batch, input_tokens, output_tokens,          cache_creation_tokens, cache_read_tokens, cost_micro_usd, ref_id, idempotency_key)          VALUES ($1, $2::ai_feature, $3, $4, $5, $6, $7, $8, $9, $10, $11)          ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING",
+    )
+    .bind(row.account_id)
+    .bind(row.feature.as_str())
+    .bind(&row.model)
+    .bind(row.batch)
+    .bind(row.input_tokens)
+    .bind(row.output_tokens)
+    .bind(row.cache_creation_tokens)
+    .bind(row.cache_read_tokens)
+    .bind(row.cost_micro_usd)
+    .bind(&row.ref_id)
+    .bind(key)
+    .execute(conn)
+    .await?;
+    Ok(r.rows_affected() == 1)
+}
+
 /// Micro-USD spent by `account_ids` since `since` (inclusive). An empty list is 0.
 pub async fn spend_since(
     conn: &mut PgConnection,

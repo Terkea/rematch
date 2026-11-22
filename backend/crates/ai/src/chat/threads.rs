@@ -1,6 +1,11 @@
 //! Chat threads (Task 25): what the web calls to start a conversation, post a question, list and
-//! read threads, and delete them. Every call takes the account the signed-in user acts for and
-//! only ever reads or writes that account's rows.
+//! read threads, and delete them.
+//!
+//! **Ownership (review I3).** A thread belongs to the USER who started it. Linked accounts are
+//! shared between users (M4 `account_links`), so the account is only the thread's context: every
+//! read, post and delete is scoped by `user_id`, and another user of the same account never sees,
+//! posts to or deletes it (an id of theirs is simply not found). A thread is started, and posted
+//! to, only for an account the user is currently linked to ([`AccountAccess`]).
 //!
 //! One question is answered at a time per conversation: [`post_user_message`] locks the
 //! conversation row and refuses ([`ThreadError::Busy`]) while an assistant answer is pending or
@@ -12,6 +17,7 @@
 //! (no content) and `interactive_evals` rows (their message link is set NULL) stay, so deleting
 //! never refunds a budget or a quota.
 
+use futures::future::BoxFuture;
 use queue::queue::{Queue, QueueError};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -29,11 +35,50 @@ use crate::jobs::kinds::enqueue_chat;
 /// The most conversations one list call returns.
 pub const MAX_LIST: i64 = 100;
 
+/// Whether a user may act for a platform account. The web wires the M4 `account_links` lookup
+/// (Task 26); [`LegacyAccountAccess`] reads the M1 `linked_accounts.user_id` column.
+pub trait AccountAccess: Send + Sync {
+    fn is_linked<'a>(
+        &'a self,
+        user_id: Uuid,
+        account_id: Uuid,
+    ) -> BoxFuture<'a, anyhow::Result<bool>>;
+}
+
+/// `linked_accounts.user_id = user` (the M1 CLI's single owner). Task 26 replaces it with the
+/// `account_links` lookup, where any number of users may link one account.
+pub struct LegacyAccountAccess(pub PgPool);
+
+impl AccountAccess for LegacyAccountAccess {
+    fn is_linked<'a>(
+        &'a self,
+        user_id: Uuid,
+        account_id: Uuid,
+    ) -> BoxFuture<'a, anyhow::Result<bool>> {
+        Box::pin(async move {
+            let ok: bool = sqlx::query_scalar(
+                "SELECT EXISTS (SELECT 1 FROM linked_accounts WHERE id = $1 AND user_id = $2)",
+            )
+            .bind(account_id)
+            .bind(user_id)
+            .fetch_one(&self.0)
+            .await?;
+            Ok(ok)
+        })
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum ThreadError {
-    /// No such conversation for this account.
+    /// No such conversation for this user.
     #[error("conversation not found")]
     NotFound,
+    /// The user is not linked to the conversation's account.
+    #[error("not linked to this account")]
+    NotLinked,
+    /// The link lookup failed.
+    #[error("account access check failed")]
+    Access(#[source] anyhow::Error),
     /// An answer of this conversation is still pending or streaming.
     #[error("an answer is still in progress")]
     Busy,
@@ -120,14 +165,29 @@ fn message(m: MessageRow) -> ThreadMessage {
     }
 }
 
-/// Starts a conversation of `account_id` (untitled; the first answer sets the title).
+async fn require_link(
+    access: &dyn AccountAccess,
+    user_id: Uuid,
+    account_id: Uuid,
+) -> Result<(), ThreadError> {
+    match access.is_linked(user_id, account_id).await {
+        Ok(true) => Ok(()),
+        Ok(false) => Err(ThreadError::NotLinked),
+        Err(e) => Err(ThreadError::Access(e)),
+    }
+}
+
+/// Starts a conversation of `user_id` on `account_id` (untitled; the first answer sets the
+/// title). The user must be linked to the account.
 pub async fn create_conversation(
     pool: &PgPool,
+    access: &dyn AccountAccess,
+    user_id: Uuid,
     account_id: Uuid,
-    user_id: Option<Uuid>,
     tc: TimeClass,
     anchor: Option<ChatAnchor>,
 ) -> Result<Uuid, ThreadError> {
+    require_link(access, user_id, account_id).await?;
     let mut conn = pool.acquire().await?;
     let row = chat::create_conversation(
         &mut conn,
@@ -143,16 +203,15 @@ pub async fn create_conversation(
     Ok(row.id)
 }
 
-/// Posts a question to one of the account's conversations: inserts the user message and a
-/// pending assistant message (bumping `last_message_at`) in one transaction, then enqueues
-/// `coach-chat` for the assistant message. Returns `(user message, assistant message)`.
-///
-/// The account parameter is not in the brief's signature: it is what scopes the write to the
-/// caller's own conversation.
+/// Posts a question to one of the user's conversations: inserts the user message and a pending
+/// assistant message (bumping `last_message_at`) in one transaction, then enqueues `coach-chat`
+/// for the assistant message. The user must still be linked to the conversation's account.
+/// Returns `(user message, assistant message)`.
 pub async fn post_user_message(
     pool: &PgPool,
     queue: &Queue,
-    account_id: Uuid,
+    access: &dyn AccountAccess,
+    user_id: Uuid,
     conversation_id: Uuid,
     question: &str,
     anchor: Option<ChatAnchor>,
@@ -163,14 +222,25 @@ pub async fn post_user_message(
     if question.chars().count() > CHAT_LIMITS.max_question_chars {
         return Err(ThreadError::TooLong);
     }
+    let account_id: Option<Uuid> = sqlx::query_scalar(
+        "SELECT account_id FROM coach_conversations WHERE id = $1 AND user_id = $2",
+    )
+    .bind(conversation_id)
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await?;
+    let Some(account_id) = account_id else {
+        return Err(ThreadError::NotFound);
+    };
+    require_link(access, user_id, account_id).await?;
     let mut tx = pool.begin().await?;
     // The row lock serialises posts to one conversation; the checks below are new statements,
     // so under READ COMMITTED they see a post that committed while this one waited.
     let found: Option<Uuid> = sqlx::query_scalar(
-        "SELECT id FROM coach_conversations WHERE id = $1 AND account_id = $2 FOR UPDATE",
+        "SELECT id FROM coach_conversations WHERE id = $1 AND user_id = $2 FOR UPDATE",
     )
     .bind(conversation_id)
-    .bind(account_id)
+    .bind(user_id)
     .fetch_optional(&mut *tx)
     .await?;
     if found.is_none() {
@@ -216,30 +286,31 @@ pub async fn post_user_message(
     Ok((user.id, assistant.id))
 }
 
-/// The account's conversations, most recently active first (`limit` is clamped to 1..=100).
+/// The user's conversations on `account_id`, most recently active first (`limit` is clamped to
+/// 1..=100).
 pub async fn list_conversations(
     pool: &PgPool,
+    user_id: Uuid,
     account_id: Uuid,
     limit: i64,
 ) -> Result<Vec<ConversationSummary>, ThreadError> {
     let mut conn = pool.acquire().await?;
-    let rows = chat::list_conversations(&mut conn, account_id, limit.clamp(1, MAX_LIST)).await?;
+    let rows =
+        chat::list_user_conversations(&mut conn, user_id, account_id, limit.clamp(1, MAX_LIST))
+            .await?;
     Ok(rows.iter().map(summary).collect())
 }
 
-/// One of the account's conversations with its messages in order, or `None`.
+/// One of the user's conversations with its messages in order, or `None`.
 pub async fn get_thread(
     pool: &PgPool,
-    account_id: Uuid,
+    user_id: Uuid,
     id: Uuid,
 ) -> Result<Option<Thread>, ThreadError> {
     let mut conn = pool.acquire().await?;
-    let Some(c) = chat::get_conversation(&mut conn, id).await? else {
+    let Some(c) = chat::get_user_conversation(&mut conn, user_id, id).await? else {
         return Ok(None);
     };
-    if c.account_id != account_id {
-        return Ok(None);
-    }
     let messages = chat::list_messages(&mut conn, id).await?;
     Ok(Some(Thread {
         conversation: summary(&c),
@@ -248,23 +319,23 @@ pub async fn get_thread(
     }))
 }
 
-/// Hard-deletes one of the account's conversations. `false` when it does not exist or belongs
-/// to another account.
+/// Hard-deletes one of the user's conversations. `false` when it does not exist or belongs to
+/// another user. A user may delete their threads after unlinking the account.
 pub async fn delete_conversation(
     pool: &PgPool,
-    account_id: Uuid,
+    user_id: Uuid,
     id: Uuid,
 ) -> Result<bool, ThreadError> {
     let mut tx = pool.begin().await?;
-    let deleted = chat::delete_conversation(&mut tx, account_id, id).await?;
+    let deleted = chat::delete_user_conversation(&mut tx, user_id, id).await?;
     tx.commit().await?;
     Ok(deleted)
 }
 
-/// Hard-deletes all of the account's conversations; returns how many.
-pub async fn delete_all_conversations(pool: &PgPool, account_id: Uuid) -> Result<u64, ThreadError> {
+/// Hard-deletes all of the user's conversations (on every account); returns how many.
+pub async fn delete_all_conversations(pool: &PgPool, user_id: Uuid) -> Result<u64, ThreadError> {
     let mut tx = pool.begin().await?;
-    let n = chat::delete_all_conversations(&mut tx, account_id).await?;
+    let n = chat::delete_all_user_conversations(&mut tx, user_id).await?;
     tx.commit().await?;
     Ok(n)
 }

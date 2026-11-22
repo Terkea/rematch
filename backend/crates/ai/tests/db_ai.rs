@@ -374,7 +374,7 @@ async fn conversation(pool: &PgPool, account_id: Uuid) -> chat::ConversationRow 
         &mut conn,
         &NewConversation {
             account_id,
-            user_id: None,
+            user_id: Uuid::new_v4(),
             time_class: "blitz".into(),
             title: Some("Why do I lose endgames?".into()),
             anchor: None,

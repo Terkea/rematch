@@ -25,7 +25,7 @@
 //!    first tool-call index is the conversation's stored `next_call_index` (T23 I2).
 //! 7. **Anchors** are resolved through the account-scoped data source; a foreign or unknown one
 //!    is ignored with a `warn` (its kind only, never its ids).
-//! 8. **Run** `run_chat_turn` within [`CHAT_TURN_TIMEOUT`]; chunks are emitted in short
+//! 8. **Run** `run_chat_turn` within [`CHAT_TURN_TIMEOUT`](crate::jobs::kinds::CHAT_TURN_TIMEOUT); chunks are emitted in short
 //!    transactions.
 //! 9. **Finish** in one transaction on the lock connection, after re-checking (`FOR SHARE`) that
 //!    the conversation still exists: the answer, `session_in_sync`, `next_call_index`, the engine
@@ -57,15 +57,15 @@ use super::context::anchor_details;
 use super::data_source::CoachDataSource;
 use super::db_source::{ChatScope, DbCoachDataSource, latest_coaching_input};
 use super::engine::{
-    ChatChunkOut, ChatHistory, ChatOutcomeKind, ChatTurnArgs, ChatTurnOutcome,
-    build_chat_request_messages, resume_next_turn, run_chat_turn,
+    ChatChunkOut, ChatHistory, ChatOutcomeKind, ChatTurnArgs, ChatTurnOutcome, TurnSink,
+    build_chat_request_messages, resume_next_turn, run_chat_turn_into,
 };
 use super::execute::OwnedToolDeps;
 use super::interactive::DbInteractiveEngine;
 use super::limits::{CHAT_LIMITS, CHAT_NO_DATA_TEXT, check_chat_allowance};
 use super::summary::{fallback_title, summarise_thread};
 use crate::client::cost::PricingTable;
-use crate::client::model::Models;
+use crate::client::model::{AiModel, Models};
 use crate::client::port::{AiClient, AiError, Message, ModelUsage, UnavailableReason};
 use crate::db::chat::{self, ChatRole, ChatStatus, MessageFinish, MessageRow};
 use crate::db::usage::AiFeature;
@@ -75,8 +75,8 @@ use crate::events::{
 };
 use crate::generate::section::CallRecord;
 use crate::input::types::{CoachingInput, TimeClass};
-use crate::jobs::budget::{BudgetConfig, budget_guard, meter};
-use crate::jobs::kinds::{CHAT_MAX_ATTEMPTS, CHAT_TURN_TIMEOUT, CoachChatPayload, KIND_COACH_CHAT};
+use crate::jobs::budget::{BudgetConfig, budget_guard, meter_keyed};
+use crate::jobs::kinds::{CHAT_MAX_ATTEMPTS, CoachChatPayload, KIND_COACH_CHAT};
 use crate::output::codes::Citation;
 use crate::output::disclosure::make_disclosure;
 use crate::prompts::CHAT_PROMPT_VERSION;
@@ -84,10 +84,19 @@ use crate::segments::Segment;
 use crate::validator::evidence::build_evidence;
 
 /// The longest one sidecar call of a turn may take (its `timeoutMs`): a turn makes up to three
-/// sequential calls (main, follow-up, repair), and all of them must fit in [`CHAT_TURN_TIMEOUT`]
+/// sequential calls (main, follow-up, repair), and all of them must fit in [`CHAT_TURN_TIMEOUT`](crate::jobs::kinds::CHAT_TURN_TIMEOUT)
 /// so `ai-reconcile` never fails a live turn (T23 review m5). The runtime's
 /// `SidecarConfig::chat_timeout` must not exceed it.
-pub const CHAT_CALL_TIMEOUT: Duration = Duration::from_secs(200);
+pub const CHAT_CALL_TIMEOUT: Duration = Duration::from_secs(180);
+
+/// The bound on the rollover summary call inside a turn (review I2). With the three chat calls it
+/// fits in [`CHAT_TURN_TIMEOUT`](crate::jobs::kinds::CHAT_TURN_TIMEOUT); a summary that takes longer is skipped (the old summary is kept).
+pub const SUMMARY_CALL_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// How far a redelivered turn (its worker died mid-turn) skips the conversation's call-index
+/// counter: the lost attempt's tool results may still sit in an SDK session or a log, and their
+/// `tools.<k>` paths must never be reused.
+pub const CALL_INDEX_RETRY_GAP: u32 = 1000;
 
 /// The release after an unavailable first attempt.
 pub const CHAT_UNAVAILABLE_RELEASE: Duration = Duration::from_secs(60);
@@ -121,6 +130,8 @@ pub struct ChatDeps {
     pub budgets: BudgetConfig,
     pub pricing: Arc<PricingTable>,
     pub now: Arc<dyn Fn() -> OffsetDateTime + Send + Sync>,
+    /// The whole turn's bound: [`CHAT_TURN_TIMEOUT`](crate::jobs::kinds::CHAT_TURN_TIMEOUT) in production.
+    pub turn_timeout: Duration,
 }
 
 /// R1 `Handler` for `coach-chat`.
@@ -131,6 +142,13 @@ fn retryable(what: &str, e: impl std::fmt::Display) -> JobError {
         message: format!("{what}: {e}"),
         code: None,
     }
+}
+
+/// The metering key prefix of one AI attempt of a turn: a call is keyed by message, attempt and
+/// call number, so re-metering the same calls (a failed finish, a retried write) adds nothing,
+/// while a retry's own calls (genuinely paid again) get new keys.
+fn turn_key(message_id: Uuid, attempt: i16) -> String {
+    format!("chat:{message_id}:{attempt}")
 }
 
 fn skipped(why: &str) -> Value {
@@ -342,8 +360,10 @@ struct Loaded {
     /// The previous assistant row of the thread (any status): `(in sync, session usage)`.
     previous: Option<(bool, Option<Value>)>,
     time_class: TimeClass,
-    /// The conversation's stored first tool-call index of this turn.
+    /// The first tool-call index of this attempt (set by the reservation).
     next_call_index: i32,
+    /// This AI attempt of the turn (1 = the first; set by the reservation).
+    attempt: i16,
 }
 
 impl CoachChatHandler {
@@ -487,6 +507,7 @@ impl CoachChatHandler {
                 .map_err(|e| retryable("load call index", e))?;
         Ok(Ok(Loaded {
             next_call_index,
+            attempt: 0,
             account_id: conversation.account_id,
             conversation,
             message,
@@ -507,7 +528,7 @@ impl CoachChatHandler {
         let d = &self.0;
         let now = (d.now)();
         let conn: &mut PgConnection = &mut lock.conn;
-        let t = match self.load(conn, id).await? {
+        let mut t = match self.load(conn, id).await? {
             Ok(t) => t,
             Err(v) => return Ok(v),
         };
@@ -569,7 +590,26 @@ impl CoachChatHandler {
         .await
         .map_err(|e| retryable("reserve", e))?
         .unwrap_or(i16::MAX);
+        // A message already `streaming` lost its worker mid-turn: nobody recorded how far its
+        // call indexes went, so skip ahead (review I1). Otherwise the stored counter is exact
+        // (a failed attempt stores its own before it is retried).
+        let skip = if t.message.status == ChatStatus::Streaming {
+            i32::try_from(CALL_INDEX_RETRY_GAP).unwrap_or(i32::MAX)
+        } else {
+            0
+        };
+        let first: i32 = sqlx::query_scalar(
+            "UPDATE coach_conversations SET next_call_index = next_call_index + $2 \
+             WHERE id = $1 RETURNING next_call_index",
+        )
+        .bind(t.conversation.id)
+        .bind(skip)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|e| retryable("call index", e))?;
         tx.commit().await.map_err(|e| retryable("commit", e))?;
+        t.attempt = attempts;
+        t.next_call_index = first;
 
         // --- No data, no AI ---
         let input = latest_coaching_input(&d.pool, account_id, t.time_class)
@@ -585,22 +625,51 @@ impl CoachChatHandler {
 
         // --- The turn ---
         let guard = budget_guard(d.pool.clone(), scope.clone(), plan, d.budgets, now);
+        // The sink lives outside the timed future, so a timeout keeps the paid calls and the
+        // call-index counter (review I2).
+        let sink = TurnSink::default();
         let turn = tokio::time::timeout(
-            CHAT_TURN_TIMEOUT,
-            self.answer(ai.as_ref(), &guard, &t, Arc::new(input), now),
+            d.turn_timeout,
+            self.answer(ai.as_ref(), &guard, &t, Arc::new(input), now, &sink),
         )
         .await
         .unwrap_or_else(|_| Err(TurnError::Ai(unavailable())));
+        let key = turn_key(id, attempts);
         let outcome = match turn {
             Ok(o) => o,
-            Err(TurnError::Db(e)) => return Err(retryable("chat turn", format!("{e:#}"))),
-            Err(TurnError::Ai(e)) => {
-                return self.ai_failed(conn, account_id, id, attempts, e).await;
+            Err(e) => {
+                // Every paid call is metered, also when the turn failed or timed out, and the
+                // next attempt starts after this one's call indexes (review I1).
+                self.meter_now(account_id, id, &sink.calls(), &key, Models::CHAT)
+                    .await;
+                if let Some(n) = sink.next_call_index() {
+                    sqlx::query(
+                        "UPDATE coach_conversations SET next_call_index = \
+                         greatest(next_call_index, $2) WHERE id = $1",
+                    )
+                    .bind(t.conversation.id)
+                    .bind(i32::try_from(n).unwrap_or(i32::MAX))
+                    .execute(&mut *conn)
+                    .await
+                    .map_err(|e| retryable("call index", e))?;
+                }
+                return match e {
+                    TurnError::Db(e) => Err(retryable("chat turn", format!("{e:#}"))),
+                    TurnError::Ai(e) => self.ai_failed(conn, account_id, id, attempts, e).await,
+                };
             }
         };
 
         // --- Finish ---
-        let finished = self.finish(conn, &t, &outcome, now).await?;
+        let finished = match self.finish(conn, &t, &outcome, now).await {
+            Ok(f) => f,
+            Err(e) => {
+                // The finish rolled back its usage rows; the calls were paid (review m1).
+                self.meter_now(account_id, id, &outcome.calls, &key, Models::CHAT)
+                    .await;
+                return Err(e);
+            }
+        };
         if !finished {
             return Ok(skipped("deleted"));
         }
@@ -694,20 +763,28 @@ impl CoachChatHandler {
     }
 
     /// Meters `calls` in their own transaction (summaries, or a turn whose conversation went).
-    async fn meter_now(&self, account_id: Uuid, id: Uuid, calls: &[CallRecord]) {
+    async fn meter_now(
+        &self,
+        account_id: Uuid,
+        id: Uuid,
+        calls: &[CallRecord],
+        key: &str,
+        model: AiModel,
+    ) {
         if calls.is_empty() {
             return;
         }
         let r = async {
             let mut tx = self.0.pool.begin().await?;
-            meter(
+            meter_keyed(
                 &mut tx,
                 &self.0.pricing,
                 account_id,
                 AiFeature::Chat,
                 calls,
                 &id.to_string(),
-                Models::CHAT,
+                model,
+                key,
             )
             .await?;
             tx.commit().await
@@ -757,8 +834,34 @@ impl CoachChatHandler {
             ));
         }
         transcript.extend(since.iter().map(|p| (p.question.clone(), p.answer.clone())));
-        let s = summarise_thread(ai, guard, &transcript).await?;
-        self.meter_now(t.account_id, t.message.id, &s.calls).await;
+        let s = match tokio::time::timeout(
+            SUMMARY_CALL_TIMEOUT,
+            summarise_thread(ai, guard, &transcript),
+        )
+        .await
+        {
+            Ok(s) => s?,
+            Err(_) => {
+                // Bounded (review I2): keep the old summary; the turn still starts a new session.
+                tracing::warn!("the rollover summary timed out; the old summary is kept");
+                return Ok((
+                    ChatHistory::Rollover {
+                        summary: t.conversation.summary.clone(),
+                        recent: recent(),
+                    },
+                    true,
+                ));
+            }
+        };
+        let summary_key = format!("{}:summary", turn_key(t.message.id, t.attempt));
+        self.meter_now(
+            t.account_id,
+            t.message.id,
+            &s.calls,
+            &summary_key,
+            Models::EXPLAIN,
+        )
+        .await;
         if let Some(new) = &s.summary {
             let last = since.last().map_or(through, |p| p.seq);
             let mut conn = self.0.pool.acquire().await?;
@@ -780,6 +883,7 @@ impl CoachChatHandler {
         t: &Loaded,
         input: Arc<CoachingInput>,
         now: OffsetDateTime,
+        sink: &TurnSink,
     ) -> Result<ChatTurnOutcome, TurnError> {
         let d = &self.0;
         let id = t.message.id;
@@ -828,7 +932,9 @@ impl CoachChatHandler {
             msg_details.as_ref(),
         );
         let previous_in_sync = t.previous.as_ref().map(|(s, _)| *s);
-        let resume = resume_next_turn(previous_in_sync, rolled_over);
+        // A retried attempt is never in sync (review I1): the SDK session may hold the failed
+        // attempt's question, answer and tool results, so it is replaced from Postgres.
+        let resume = t.attempt <= 1 && resume_next_turn(previous_in_sync, rolled_over);
         let previous_usage: Option<Vec<ModelUsage>> = if resume {
             t.previous
                 .as_ref()
@@ -870,7 +976,7 @@ impl CoachChatHandler {
             })
         };
         let first_call_index = u32::try_from(t.next_call_index).unwrap_or(0);
-        let out = run_chat_turn(
+        let out = run_chat_turn_into(
             ai,
             guard,
             &deps,
@@ -883,16 +989,11 @@ impl CoachChatHandler {
                 first_call_index,
             },
             &on_chunk,
+            sink,
         )
         .await;
-        match out {
-            Ok(o) => Ok(o),
-            Err(e) => {
-                // Every paid call is metered, also when a later call of the turn failed.
-                self.meter_now(account_id, id, &e.calls).await;
-                Err(TurnError::Ai(e.error))
-            }
-        }
+        // The caller meters the sink's calls on an error.
+        out.map_err(|e| TurnError::Ai(e.error))
     }
 
     /// Stores the answer; `false` when the conversation (or the message) is gone.
@@ -953,7 +1054,14 @@ impl CoachChatHandler {
         if !finished {
             tx.rollback().await.map_err(|e| retryable("rollback", e))?;
             // The calls were paid for; usage rows carry no content.
-            self.meter_now(t.account_id, id, &o.calls).await;
+            self.meter_now(
+                t.account_id,
+                id,
+                &o.calls,
+                &turn_key(id, t.attempt),
+                Models::CHAT,
+            )
+            .await;
             sqlx::query(
                 "DELETE FROM ai_sdk_session_entries WHERE session_id = $1 \
                  AND NOT EXISTS (SELECT 1 FROM coach_conversations WHERE id = $1)",
@@ -996,7 +1104,7 @@ impl CoachChatHandler {
             .await
             .map_err(|e| retryable("link evals", e))?;
         }
-        meter(
+        meter_keyed(
             &mut tx,
             &d.pricing,
             t.account_id,
@@ -1004,6 +1112,7 @@ impl CoachChatHandler {
             &o.calls,
             &id.to_string(),
             Models::CHAT,
+            &turn_key(id, t.attempt),
         )
         .await
         .map_err(|e| retryable("meter", e))?;
@@ -1035,12 +1144,20 @@ impl CoachChatHandler {
         let mut title = None;
         if o.outcome == ChatOutcomeKind::Answered {
             let transcript = vec![(t.question.clone(), o.text.clone())];
-            match summarise_thread(ai, guard, &transcript).await {
-                Ok(s) => {
-                    self.meter_now(t.account_id, t.message.id, &s.calls).await;
+            match tokio::time::timeout(
+                SUMMARY_CALL_TIMEOUT,
+                summarise_thread(ai, guard, &transcript),
+            )
+            .await
+            {
+                Ok(Ok(s)) => {
+                    let key = format!("chat:{}:title", t.message.id);
+                    self.meter_now(t.account_id, t.message.id, &s.calls, &key, Models::EXPLAIN)
+                        .await;
                     title = s.title;
                 }
-                Err(e) => tracing::warn!(error = %e, "titling a conversation failed"),
+                Ok(Err(e)) => tracing::warn!(error = %e, "titling a conversation failed"),
+                Err(_) => tracing::warn!("titling a conversation timed out"),
             }
         }
         let title = title.unwrap_or_else(|| fallback_title(anchor.as_ref()).to_owned());

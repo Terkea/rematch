@@ -12,7 +12,8 @@ use std::time::Duration;
 use ai::chat::anchor::ChatAnchor;
 use ai::chat::interactive::InteractiveAnalyseHandler;
 use ai::chat::job::{
-    CHAT_CALL_TIMEOUT, CHAT_QUOTA_LOCK_CLASS, CHAT_UNAVAILABLE_RELEASE, CoachChatHandler,
+    CALL_INDEX_RETRY_GAP, CHAT_CALL_TIMEOUT, CHAT_QUOTA_LOCK_CLASS, CHAT_UNAVAILABLE_RELEASE,
+    CoachChatHandler, SUMMARY_CALL_TIMEOUT,
 };
 use ai::chat::limits::{CHAT_LIMITS, CHAT_NO_DATA_TEXT};
 use ai::chat::threads::{create_conversation, post_user_message};
@@ -39,8 +40,8 @@ use queue::types::JobError;
 use serde_json::{Value, json};
 use sqlx::PgPool;
 use support::{
-    OK2, OK3, account, answer, deps, events, job, seed_game, seed_move, statuses, store_input,
-    usage_rows,
+    AnyLink, OK2, OK3, account, answer, deps, events, job, seed_game, seed_move, statuses,
+    store_input, usage_rows, user,
 };
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
@@ -98,13 +99,21 @@ fn turn_requests(f: &FakeAiClient) -> Vec<Value> {
 
 /// A rapid conversation with a title (so no title call is made) and a posted question.
 async fn ask(pool: &PgPool, a: Uuid, question: &str) -> (Uuid, Uuid) {
-    let c = create_conversation(pool, a, None, TimeClass::Rapid, None)
+    let c = create_conversation(pool, &AnyLink, user(a), a, TimeClass::Rapid, None)
         .await
         .unwrap();
     set_title(pool, c).await;
-    let (_, m) = post_user_message(pool, &Queue::new(pool.clone()), a, c, question, None)
-        .await
-        .unwrap();
+    let (_, m) = post_user_message(
+        pool,
+        &Queue::new(pool.clone()),
+        &AnyLink,
+        user(a),
+        c,
+        question,
+        None,
+    )
+    .await
+    .unwrap();
     (c, m)
 }
 
@@ -117,10 +126,18 @@ async fn set_title(pool: &PgPool, c: Uuid) {
 }
 
 async fn ask_again(pool: &PgPool, a: Uuid, c: Uuid, question: &str) -> Uuid {
-    post_user_message(pool, &Queue::new(pool.clone()), a, c, question, None)
-        .await
-        .unwrap()
-        .1
+    post_user_message(
+        pool,
+        &Queue::new(pool.clone()),
+        &AnyLink,
+        user(a),
+        c,
+        question,
+        None,
+    )
+    .await
+    .unwrap()
+    .1
 }
 
 async fn run(
@@ -169,7 +186,7 @@ async fn conv_state(pool: &PgPool, c: Uuid) -> (Option<String>, Option<String>, 
 
 /// `n` done, AI-answered assistant turns of the account in a separate conversation, created now.
 async fn seed_done_answers(pool: &PgPool, a: Uuid, n: i32) {
-    let c = create_conversation(pool, a, None, TimeClass::Rapid, None)
+    let c = create_conversation(pool, &AnyLink, user(a), a, TimeClass::Rapid, None)
         .await
         .unwrap();
     for i in 0..n {
@@ -537,10 +554,244 @@ async fn a_paid_call_before_an_unavailable_repair_is_metered(pool: PgPool) {
     assert!(usage[0].2 > 0);
 }
 
+fn tokens(n: u64) -> ai::client::port::AiUsage {
+    ai::client::port::AiUsage {
+        input_tokens: n,
+        output_tokens: 10,
+        cache_creation_tokens: 0,
+        cache_read_tokens: 0,
+    }
+}
+
+/// `input_tokens` of the account's usage rows, in id order.
+async fn input_tokens(pool: &PgPool, a: Uuid) -> Vec<i32> {
+    sqlx::query_scalar("SELECT input_tokens FROM ai_usage WHERE account_id = $1 ORDER BY id")
+        .bind(a)
+        .fetch_all(pool)
+        .await
+        .unwrap()
+}
+
+fn with_weakness_tool(t: FakeTurn) -> FakeTurn {
+    FakeTurn {
+        tool_calls: vec![("get_weakness".into(), json!({"weaknessId": "W1"}))],
+        ..t
+    }
+}
+
+fn tool_reply(f: &FakeAiClient, turn: usize) -> String {
+    let calls = f.calls();
+    let t = calls
+        .iter()
+        .filter(|c| c.kind == FakeCallKind::Turn)
+        .nth(turn)
+        .unwrap();
+    t.tool_replies[0].2.content.clone()
+}
+
+/// Review I1, the reviewer's reproduction: turn 1 is clean (in sync); turn 2's main call is paid
+/// and held, its repair is unavailable (released); the retry must start a new SDK session with
+/// the full Postgres history, must not reuse turn 2's call indexes, and must meter only itself.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_retried_turn_starts_a_new_session_without_reusing_call_indexes(pool: PgPool) {
+    let a = account(&pool, "alice").await;
+    store_input(&pool, a).await;
+    let (c, m1) = ask(&pool, a, "First?").await;
+    let t1 = with_weakness_tool(FakeTurn {
+        usage: tokens(100),
+        ..answer(&[OK2])
+    });
+    let t2 = with_weakness_tool(FakeTurn {
+        usage: tokens(200),
+        ..answer(&[BAD])
+    });
+    let t3 = with_weakness_tool(FakeTurn {
+        usage: tokens(300),
+        ..answer(&[OK3])
+    });
+    let scripts: Vec<TurnScript> = vec![
+        Box::new(move |_, _| Ok(t1.clone())),
+        Box::new(move |_, _| Ok(t2.clone())),
+        Box::new(|_, _| Err(unavailable())),
+        Box::new(move |_, _| Ok(t3.clone())),
+    ];
+    let f = Arc::new(FakeAiClient::new(FakeScript {
+        turns: scripts,
+        ..FakeScript::default()
+    }));
+    assert!(run(&pool, &f, Plan::Pro, m1).await.is_ok());
+    let m2 = ask_again(&pool, a, c, "Second?").await;
+    let r = run(&pool, &f, Plan::Pro, m2).await;
+    assert!(matches!(r, Err(JobError::Release { .. })), "{r:?}");
+    assert!(run(&pool, &f, Plan::Pro, m2).await.is_ok());
+
+    let reqs = turn_requests(&f);
+    let flags: Vec<Value> = reqs.iter().map(|r| r["resume"].clone()).collect();
+    assert_eq!(
+        flags,
+        vec![json!(false), json!(true), json!(false), json!(false)]
+    );
+    let retry = &reqs[3];
+    assert_eq!(retry["conversation_id"], json!(c));
+    let msgs = retry["messages"].as_array().unwrap();
+    assert_eq!(msgs.len(), 4, "the full Postgres history: {msgs:?}");
+    assert_eq!(msgs[2]["content"][0]["text"], json!(OK2));
+
+    // Turn 1 used index 0 and turn 2's failed attempt index 1: the retry starts at 2.
+    assert!(tool_reply(&f, 1).contains("tools.1."));
+    let reply = tool_reply(&f, 3);
+    assert!(reply.contains("tools.2."), "{reply}");
+    assert!(!reply.contains("tools.1."), "{reply}");
+    assert_eq!(stored(&pool, m2).await.text.as_deref(), Some(OK3));
+
+    // Each paid call is metered once, at its own usage.
+    assert_eq!(input_tokens(&pool, a).await, vec![100, 200, 300]);
+}
+
+/// Review I1, a crash redelivery: the message is already `streaming` from an attempt whose
+/// worker died. The retry starts a new session and skips past any index the lost attempt used.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_redelivered_turn_after_a_crash_starts_a_new_session(pool: PgPool) {
+    let a = account(&pool, "alice").await;
+    store_input(&pool, a).await;
+    let (c, m1) = ask(&pool, a, "First?").await;
+    let f = fake(vec![
+        with_weakness_tool(answer(&[OK2])),
+        with_weakness_tool(answer(&[OK3])),
+    ]);
+    assert!(run(&pool, &f, Plan::Pro, m1).await.is_ok());
+    let m2 = ask_again(&pool, a, c, "Second?").await;
+    sqlx::query(
+        "UPDATE coach_messages SET status = 'streaming', streaming_at = now(), \
+         turn_attempts = 1 WHERE id = $1",
+    )
+    .bind(m2)
+    .execute(&pool)
+    .await
+    .unwrap();
+    assert!(run(&pool, &f, Plan::Pro, m2).await.is_ok());
+    let reqs = turn_requests(&f);
+    assert_eq!(reqs[1]["resume"], json!(false));
+    assert_eq!(reqs[1]["messages"].as_array().unwrap().len(), 4);
+    let first = 1 + CALL_INDEX_RETRY_GAP;
+    let reply = tool_reply(&f, 1);
+    assert!(reply.contains(&format!("tools.{first}.")), "{reply}");
+    assert_eq!(stored(&pool, m2).await.status, "done");
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn metering_is_idempotent_per_call_key(pool: PgPool) {
+    let a = account(&pool, "alice").await;
+    let row = ai::db::usage::UsageRow {
+        account_id: a,
+        feature: ai::db::usage::AiFeature::Chat,
+        model: "m".into(),
+        batch: false,
+        input_tokens: 1,
+        output_tokens: 1,
+        cache_creation_tokens: 0,
+        cache_read_tokens: 0,
+        cost_micro_usd: 5,
+        ref_id: Some("x".into()),
+    };
+    let mut conn = pool.acquire().await.unwrap();
+    let once = ai::db::usage::record_usage_once;
+    assert!(once(&mut conn, &row, "chat:x:1:0").await.unwrap());
+    assert!(!once(&mut conn, &row, "chat:x:1:0").await.unwrap());
+    assert!(once(&mut conn, &row, "chat:x:1:1").await.unwrap());
+    assert_eq!(input_tokens(&pool, a).await.len(), 2);
+}
+
+/// Delays the n-th `stream_turn` of the T12 fake.
+struct SlowTurn {
+    inner: Arc<FakeAiClient>,
+    n: std::sync::atomic::AtomicUsize,
+    slow: usize,
+    delay: Duration,
+}
+
+impl AiClient for SlowTurn {
+    fn structured<'a>(
+        &'a self,
+        req: &'a StructuredRequest,
+    ) -> BoxFuture<'a, Result<StructuredResult, AiError>> {
+        self.inner.structured(req)
+    }
+
+    fn stream_turn<'a>(
+        &'a self,
+        req: &'a ChatTurnRequest,
+        tools: Option<Arc<dyn ToolHandler>>,
+    ) -> BoxStream<'a, Result<TurnEvent, AiError>> {
+        let i = self.n.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let inner = self.inner.stream_turn(req, tools);
+        if i == self.slow {
+            let d = self.delay;
+            futures::stream::once(async move {
+                tokio::time::sleep(d).await;
+                inner
+            })
+            .flatten()
+            .boxed()
+        } else {
+            inner
+        }
+    }
+
+    fn batch_submit<'a>(
+        &'a self,
+        items: &'a [BatchItem],
+    ) -> BoxFuture<'a, Result<String, AiError>> {
+        self.inner.batch_submit(items)
+    }
+
+    fn batch_status<'a>(&'a self, id: &'a str) -> BoxFuture<'a, Result<BatchStatus, AiError>> {
+        self.inner.batch_status(id)
+    }
+
+    fn batch_results<'a>(
+        &'a self,
+        id: &'a str,
+        resolver: &'a dyn SchemaResolver,
+    ) -> BoxStream<'a, Result<BatchResultItem, AiError>> {
+        self.inner.batch_results(id, resolver)
+    }
+}
+
+/// Review I2: the turn times out after its main call was paid (the repair hangs). The paid call
+/// is metered, and the turn is released like an unavailable one.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_turn_that_times_out_meters_its_paid_calls(pool: PgPool) {
+    let a = account(&pool, "alice").await;
+    store_input(&pool, a).await;
+    let (_, msg) = ask(&pool, a, "Why?").await;
+    let inner = fake(vec![
+        FakeTurn {
+            usage: tokens(50),
+            ..answer(&[BAD])
+        },
+        answer(&[OK2]),
+    ]);
+    let client = Arc::new(SlowTurn {
+        inner: inner.clone(),
+        n: std::sync::atomic::AtomicUsize::new(0),
+        slow: 1,
+        delay: Duration::from_secs(5),
+    });
+    let mut d = deps(&pool, None, Plan::Pro);
+    d.ai = Some(client);
+    d.turn_timeout = Duration::from_millis(800);
+    let r = CoachChatHandler(d).handle(job(msg, 1), ctx()).await;
+    assert!(matches!(r, Err(JobError::Release { .. })), "{r:?}");
+    assert_eq!(input_tokens(&pool, a).await, vec![50]);
+    assert_eq!(stored(&pool, msg).await.status, "pending");
+}
+
 #[test]
 fn per_call_timeout_fits_the_turn_timeout() {
     // Up to three sequential calls per turn (main, follow-up, repair; T23 review m5).
-    assert!(CHAT_CALL_TIMEOUT * 3 <= CHAT_TURN_TIMEOUT);
+    // Plus the rollover summary call, which has its own bound (review I2).
+    assert!(SUMMARY_CALL_TIMEOUT + CHAT_CALL_TIMEOUT * 3 <= CHAT_TURN_TIMEOUT);
     let cfg = SidecarConfig::new("http://sidecar", SidecarToken::new("t"));
     assert!(cfg.chat_timeout <= CHAT_CALL_TIMEOUT);
 }
@@ -551,7 +802,7 @@ fn per_call_timeout_fits_the_turn_timeout() {
 async fn second_turn_replays_history_verbatim(pool: PgPool) {
     let a = account(&pool, "alice").await;
     store_input(&pool, a).await;
-    let c = create_conversation(&pool, a, None, TimeClass::Rapid, None)
+    let c = create_conversation(&pool, &AnyLink, user(a), a, TimeClass::Rapid, None)
         .await
         .unwrap();
     set_title(&pool, c).await;
@@ -579,7 +830,7 @@ async fn second_turn_replays_history_verbatim(pool: PgPool) {
 async fn seventh_turn_rolls_over_into_a_summary(pool: PgPool) {
     let a = account(&pool, "alice").await;
     store_input(&pool, a).await;
-    let c = create_conversation(&pool, a, None, TimeClass::Rapid, None)
+    let c = create_conversation(&pool, &AnyLink, user(a), a, TimeClass::Rapid, None)
         .await
         .unwrap();
     set_title(&pool, c).await;
@@ -624,7 +875,7 @@ async fn seventh_turn_rolls_over_into_a_summary(pool: PgPool) {
 async fn first_answer_sets_a_title(pool: PgPool) {
     let a = account(&pool, "alice").await;
     store_input(&pool, a).await;
-    let c = create_conversation(&pool, a, None, TimeClass::Rapid, None)
+    let c = create_conversation(&pool, &AnyLink, user(a), a, TimeClass::Rapid, None)
         .await
         .unwrap();
     let msg = ask_again(&pool, a, c, "How do I stop hanging pieces?").await;
@@ -647,8 +898,9 @@ async fn first_answer_sets_a_title(pool: PgPool) {
     // An unsafe title falls back to the anchor's fixed title.
     let c2 = create_conversation(
         &pool,
+        &AnyLink,
+        user(a),
         a,
-        None,
         TimeClass::Rapid,
         Some(ChatAnchor::Weakness {
             weakness_id: "W1".into(),
@@ -820,7 +1072,7 @@ async fn a_conversation_deleted_mid_turn_leaves_no_rows(pool: PgPool) {
             },
         )
         .await;
-        ai::chat::threads::delete_conversation(&p, a, c)
+        ai::chat::threads::delete_conversation(&p, user(a), c)
             .await
             .unwrap();
         // The sidecar writes the turn's transcript after the delete.
@@ -862,13 +1114,28 @@ async fn foreign_anchor_is_ignored(pool: PgPool) {
         game_id: "li-b-0".into(),
         ply: 3,
     };
-    let c = create_conversation(&pool, a, None, TimeClass::Rapid, Some(anchor.clone()))
-        .await
-        .unwrap();
+    let c = create_conversation(
+        &pool,
+        &AnyLink,
+        user(a),
+        a,
+        TimeClass::Rapid,
+        Some(anchor.clone()),
+    )
+    .await
+    .unwrap();
     set_title(&pool, c).await;
-    let (_, msg) = post_user_message(&pool, &Queue::new(pool.clone()), a, c, "Why?", Some(anchor))
-        .await
-        .unwrap();
+    let (_, msg) = post_user_message(
+        &pool,
+        &Queue::new(pool.clone()),
+        &AnyLink,
+        user(a),
+        c,
+        "Why?",
+        Some(anchor),
+    )
+    .await
+    .unwrap();
     let f = fake(vec![answer(&[OK2])]);
     assert!(run(&pool, &f, Plan::Free, msg).await.is_ok());
     let req = turn_requests(&f)[0]["messages"].to_string();
@@ -997,14 +1264,15 @@ async fn what_if_round_trip_through_the_job(pool: PgPool) {
         game_id: "li-q-0".into(),
         ply: 3,
     };
-    let c = create_conversation(&pool, a, None, TimeClass::Rapid, None)
+    let c = create_conversation(&pool, &AnyLink, user(a), a, TimeClass::Rapid, None)
         .await
         .unwrap();
     set_title(&pool, c).await;
     let (_, msg) = post_user_message(
         &pool,
         &Queue::new(pool.clone()),
-        a,
+        &AnyLink,
+        user(a),
         c,
         "What if I had played d4 here?",
         Some(anchor),

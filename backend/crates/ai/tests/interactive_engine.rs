@@ -132,7 +132,7 @@ async fn account(pool: &PgPool, name: &str) -> Account {
         &mut conn,
         &NewConversation {
             account_id: id,
-            user_id: None,
+            user_id: Uuid::new_v4(),
             time_class: "blitz".into(),
             title: None,
             anchor: None,
