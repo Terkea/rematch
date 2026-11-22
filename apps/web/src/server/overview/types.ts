@@ -19,7 +19,7 @@ export type Overview = {
   timeClasses: { timeClass: TimeClass; analysed: number }[];
   accuracy: {
     points: { id: string; playedAt: Date; accuracy: number; result: PlayerResult }[];
-    rolling: { id: string; mean: number; low: number; high: number }[];
+    rolling: { id: string; mean: number; low: number | null; high: number | null }[];
     overall: Estimate;
   };
   judgements: {
@@ -33,6 +33,8 @@ export type Overview = {
       mistakes: number | null;
       inaccuracies: number | null;
       accuracy: number | null;
+      /** Analysed games behind the week's numbers. */
+      games: number;
     }[];
   };
   byTimeClass: {

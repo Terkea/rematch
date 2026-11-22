@@ -1,4 +1,4 @@
-import { BOOTSTRAP_RESAMPLES, CONFIDENCE, MIN_HALF_WIDTH } from "./constants";
+import { BOOTSTRAP_RESAMPLES, CONFIDENCE } from "./constants";
 import type { Interval } from "./wilson";
 
 export function fnv1a(text: string): number {
@@ -42,12 +42,18 @@ export function bootstrapMean(
     means[
       Math.min(BOOTSTRAP_RESAMPLES - 1, Math.max(0, Math.floor(q * BOOTSTRAP_RESAMPLES)))
     ] as number;
-  const low = Math.min(at(tail), mean);
-  const high = Math.max(at(1 - tail), mean);
-  return { mean, interval: { low, high, level: CONFIDENCE } };
+  return { mean, interval: { low: at(tail), high: at(1 - tail), level: CONFIDENCE } };
 }
 
-/** Widens a degenerate band so a drawn interval is never zero-width. */
-export function nonDegenerate(mean: number, low: number, high: number): [number, number] {
-  return [Math.min(low, mean - MIN_HALF_WIDTH), Math.max(high, mean + MIN_HALF_WIDTH)];
+export type Domain = { min: number; max: number };
+
+/**
+ * Clamps a band to the metric's domain (counts at least 0, percentages within 0 to 100). A band
+ * with no spread cannot be estimated, so it is null; it is never widened.
+ */
+export function finishInterval(low: number, high: number, domain: Domain): Interval | null {
+  const lo = Math.max(low, domain.min);
+  const hi = Math.min(high, domain.max);
+  if (!Number.isFinite(lo) || !Number.isFinite(hi) || hi - lo <= 0) return null;
+  return { low: lo, high: hi, level: CONFIDENCE };
 }

@@ -15,6 +15,7 @@ import type { Overview } from "./types";
 
 const TIME_CLASS_ORDER: TimeClass[] = ["bullet", "blitz", "rapid", "classical", "daily"];
 const DAY = 86_400_000;
+const PERCENT = { min: 0, max: 100 };
 
 type GameStat = {
   id: string;
@@ -84,10 +85,10 @@ export async function getOverview(
       .where(eq(accountLinks.userId, userId))
       .orderBy(linkedAccounts.createdAt);
     const runs = await tx
-      .select()
+      .selectDistinctOn([importRuns.accountId])
       .from(importRuns)
       .where(inArray(importRuns.accountId, ids))
-      .orderBy(desc(importRuns.startedAt));
+      .orderBy(importRuns.accountId, desc(importRuns.startedAt));
 
     const statusRows = await tx
       .select({ status: games.analysisStatus, n: sql<number>`count(*)::int` })
@@ -214,6 +215,7 @@ export async function getOverview(
           `accuracy:${tc}`,
           accs.map((s) => s.id),
         ),
+        PERCENT,
       ),
     };
   });
@@ -258,7 +260,9 @@ export async function getOverview(
     const byWeek = new Map<string, GameStat[]>();
     for (const s of scoped) {
       const k = isoWeek(s.playedAt).key;
-      byWeek.set(k, [...(byWeek.get(k) ?? []), s]);
+      const bucket = byWeek.get(k);
+      if (bucket) bucket.push(s);
+      else byWeek.set(k, [s]);
     }
     for (let w = TREND_WEEKS - 1; w >= 0; w--) {
       const key = isoWeek(new Date(end - w * 7 * DAY)).key;
@@ -270,6 +274,7 @@ export async function getOverview(
         mistakes: mean(c.map((s) => s.counts?.mistakes ?? 0)),
         inaccuracies: mean(c.map((s) => s.counts?.inaccuracies ?? 0)),
         accuracy: mean(g.flatMap((s) => (s.accuracy === null ? [] : [s.accuracy]))),
+        games: g.length,
       });
     }
   }
@@ -298,6 +303,7 @@ export async function getOverview(
       overall: estimateMean(
         withAcc.map((s) => s.accuracy as number),
         seedOf("accuracy", allAccIds),
+        PERCENT,
       ),
     },
     judgements: {

@@ -18,10 +18,27 @@ describe("rollingMean", () => {
     const window = p.slice(5, 25).map((x) => x.value);
     expect(last?.id).toBe("g25");
     expect(last?.mean).toBeCloseTo(window.reduce((a, b) => a + b, 0) / 20, 9);
+    expect(last?.low).not.toBeNull();
+    expect((last?.low ?? 0) < (last?.mean ?? 0)).toBe(true);
+    expect((last?.high ?? 0) > (last?.mean ?? 0)).toBe(true);
   });
 
-  it("never returns a zero-width band, even for identical values", () => {
+  it("gives a null band, not a widened one, for identical values", () => {
     const flat = Array.from({ length: 12 }, (_, i) => ({ id: `g${i}`, value: 100 }));
-    for (const e of rollingMean(flat, "s")) expect(e.high - e.low).toBeGreaterThan(0);
+    const r = rollingMean(flat, "s");
+    expect(r.length).toBeGreaterThan(0);
+    for (const e of r) {
+      expect(e.mean).toBe(100);
+      expect(e.low).toBeNull();
+      expect(e.high).toBeNull();
+    }
+  });
+
+  it("keeps the band inside 0 to 100", () => {
+    const near = Array.from({ length: 30 }, (_, i) => ({ id: `g${i}`, value: i % 5 ? 100 : 98 }));
+    for (const e of rollingMean(near, "s")) {
+      expect(e.high ?? 0).toBeLessThanOrEqual(100);
+      expect(e.low ?? 0).toBeGreaterThanOrEqual(0);
+    }
   });
 });

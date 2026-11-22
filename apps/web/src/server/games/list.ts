@@ -11,6 +11,11 @@ import {
   type TimeClass,
 } from "./types";
 
+async function countGames(tx: Db, where: SQL | undefined): Promise<number> {
+  const [row] = await tx.select({ total: sql<number>`count(*)::int` }).from(games).where(where);
+  return row?.total ?? 0;
+}
+
 function nextDay(day: string): Date {
   const d = new Date(`${day}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + 1);
@@ -37,6 +42,39 @@ export function listGames(db: Db, userId: string, q: GameListQuery): Promise<Gam
     }
     const where = and(...conds);
 
+    // Judgement counts are only needed for the page's rows, except when sorting by them.
+    let pageIds: string[] | null = null;
+    const total = await countGames(tx, where);
+    const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+    const page = Math.min(Math.max(1, q.page), pageCount);
+    const offset = (page - 1) * PAGE_SIZE;
+    const dir = q.sort.dir === "asc" ? asc : desc;
+    const raw = sql.raw(q.sort.dir);
+    const accuracy = sql<
+      number | null
+    >`case when ${games.analysisStatus} = 'done' then case when ${games.playerColor} = 'white' then ${games.whiteAccuracy} else ${games.blackAccuracy} end end`;
+    const opponentRating = sql<
+      number | null
+    >`case when ${games.playerColor} = 'white' then ${games.blackRating} else ${games.whiteRating} end`;
+    if (q.sort.key !== "blunders") {
+      const first =
+        q.sort.key === "accuracy"
+          ? sql`${accuracy} ${raw} nulls last`
+          : q.sort.key === "opponent"
+            ? sql`${opponentRating} ${raw} nulls last`
+            : dir(games.playedAt);
+      const idRows = await tx
+        .select({ id: games.id })
+        .from(games)
+        .where(where)
+        .orderBy(first, desc(games.playedAt), asc(games.id))
+        .limit(PAGE_SIZE)
+        .offset(offset);
+      pageIds = idRows.map((r) => r.id);
+      if (pageIds.length === 0) return { rows: [], total, page, pageCount };
+    }
+    const only = (): SQL | undefined => (pageIds ? inArray(games.id, pageIds) : undefined);
+
     const mv = tx
       .select({
         gameId: moves.gameId,
@@ -53,36 +91,20 @@ export function listGames(db: Db, userId: string, q: GameListQuery): Promise<Gam
       })
       .from(moves)
       .innerJoin(games, eq(games.id, moves.gameId))
-      .where(and(inArray(games.accountId, ids), eq(moves.color, games.playerColor)))
+      .where(and(inArray(games.accountId, ids), eq(moves.color, games.playerColor), only()))
       .groupBy(moves.gameId)
       .as("mv");
     const allPlies = tx
       .select({ gameId: moves.gameId, n: sql<number>`count(*)::int`.as("n") })
       .from(moves)
       .innerJoin(games, eq(games.id, moves.gameId))
-      .where(inArray(games.accountId, ids))
+      .where(and(inArray(games.accountId, ids), only()))
       .groupBy(moves.gameId)
       .as("ap");
 
-    const [totalRow] = await tx
-      .select({ total: sql<number>`count(*)::int` })
-      .from(games)
-      .where(where);
-    const total = totalRow?.total ?? 0;
-    const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
-    const page = Math.min(Math.max(1, q.page), pageCount);
-
-    const accuracy = sql<
-      number | null
-    >`case when ${games.analysisStatus} = 'done' then case when ${games.playerColor} = 'white' then ${games.whiteAccuracy} else ${games.blackAccuracy} end end`;
     const blunders = sql<
       number | null
     >`case when ${games.analysisStatus} = 'done' then coalesce(${mv.blunders}, 0) end`;
-    const opponentRating = sql<
-      number | null
-    >`case when ${games.playerColor} = 'white' then ${games.blackRating} else ${games.whiteRating} end`;
-    const dir = q.sort.dir === "asc" ? asc : desc;
-    const raw = sql.raw(q.sort.dir);
     const order =
       q.sort.key === "accuracy"
         ? sql`${accuracy} ${raw} nulls last`
@@ -103,11 +125,15 @@ export function listGames(db: Db, userId: string, q: GameListQuery): Promise<Gam
       .from(games)
       .leftJoin(mv, eq(mv.gameId, games.id))
       .leftJoin(allPlies, eq(allPlies.gameId, games.id))
-      .where(where)
-      .orderBy(order, desc(games.playedAt), asc(games.id))
+      .where(pageIds ? inArray(games.id, pageIds) : where)
+      .orderBy(...(pageIds ? [asc(games.id)] : [order, desc(games.playedAt), asc(games.id)]))
       .limit(PAGE_SIZE)
-      .offset((page - 1) * PAGE_SIZE);
+      .offset(pageIds ? 0 : offset);
 
+    if (pageIds) {
+      const rank = new Map(pageIds.map((id, i) => [id, i]));
+      rows.sort((a, b) => (rank.get(a.g.id) ?? 0) - (rank.get(b.g.id) ?? 0));
+    }
     const out: GameRow[] = rows.map(({ g, ...r }) => {
       const white = g.playerColor === "white";
       const done = g.analysisStatus === "done";

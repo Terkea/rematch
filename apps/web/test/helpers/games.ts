@@ -47,6 +47,13 @@ export type SyntheticGame = {
   status?: AnalysisStatus;
   counts?: Partial<JudgementCounts>;
   opponentRating?: number;
+  /** The opponent's judgements and accuracy (must never reach the player's statistics). */
+  opponentCounts?: Partial<JudgementCounts>;
+  opponentAccuracy?: number;
+  /** A game that is not done still carries accuracy and judged moves, as a re-queued game does. */
+  stale?: boolean;
+  /** Player moves written (default 4, or more to fit the judgements). */
+  playerMoves?: number;
   /** Write no moves rows (a game where the player made no analysed move). */
   noMoves?: boolean;
 };
@@ -59,6 +66,7 @@ export async function seedSyntheticGame(
 ): Promise<{ gameId: string }> {
   const colour = row.playerColor ?? "white";
   const status = row.status ?? "done";
+  const written = status === "done" || row.stale === true;
   const accuracy = row.accuracy === undefined ? 70 : row.accuracy;
   const [g] = await db
     .insert(games)
@@ -78,19 +86,32 @@ export async function seedSyntheticGame(
       result: row.result,
       analysisStatus: status,
       analysisProtocol: status === "done" ? "test-1" : null,
-      whiteAccuracy: status === "done" && colour === "white" ? accuracy : null,
-      blackAccuracy: status === "done" && colour === "black" ? accuracy : null,
+      whiteAccuracy: written
+        ? colour === "white"
+          ? accuracy
+          : (row.opponentAccuracy ?? 90)
+        : null,
+      blackAccuracy: written
+        ? colour === "black"
+          ? accuracy
+          : (row.opponentAccuracy ?? 90)
+        : null,
     })
     .returning({ id: games.id });
   if (!g) throw new Error("seedSyntheticGame: no row");
 
-  if (status === "done" && !row.noMoves) {
+  if (written && !row.noMoves) {
     const wanted: ("blunder" | "mistake" | "inaccuracy")[] = [
       ...Array(row.counts?.blunders ?? 0).fill("blunder"),
       ...Array(row.counts?.mistakes ?? 0).fill("mistake"),
       ...Array(row.counts?.inaccuracies ?? 0).fill("inaccuracy"),
     ];
-    const playerMoves = Math.max(4, wanted.length);
+    const theirs: ("blunder" | "mistake" | "inaccuracy")[] = [
+      ...Array(row.opponentCounts?.blunders ?? 0).fill("blunder"),
+      ...Array(row.opponentCounts?.mistakes ?? 0).fill("mistake"),
+      ...Array(row.opponentCounts?.inaccuracies ?? 0).fill("inaccuracy"),
+    ];
+    const playerMoves = Math.max(row.playerMoves ?? 4, wanted.length, theirs.length);
     const rows: (typeof moves.$inferInsert)[] = [];
     for (let i = 0; i < playerMoves * 2; i++) {
       const mover = i % 2 === 0 ? "white" : "black";
@@ -108,7 +129,7 @@ export async function seedSyntheticGame(
         winAfter: 50,
         deltaW: 0,
         accuracy: 80,
-        judgement: mine ? (wanted[k] ?? null) : null,
+        judgement: (mine ? wanted[k] : theirs[k]) ?? null,
         phase: "middlegame",
         decided: false,
       });

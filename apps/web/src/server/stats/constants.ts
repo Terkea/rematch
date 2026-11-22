@@ -9,5 +9,17 @@ export const CHART_GAMES = 500;
 export const PER_GAME_COLUMNS = 40;
 /** Two-sided normal quantiles. */
 export const Z = { 0.8: 1.2815515655446004, 0.9: 1.6448536269514722 } as const;
-/** A band is never narrower than this on each side (identical values say nothing about spread). */
-export const MIN_HALF_WIDTH = 0.05;
+/** One-sided 90% Student t quantiles (an 80% two-sided band) by degrees of freedom, 9 to 19. */
+export const T80: Record<number, number> = {
+  9: 1.383,
+  10: 1.372,
+  11: 1.363,
+  12: 1.356,
+  13: 1.35,
+  14: 1.345,
+  15: 1.341,
+  16: 1.337,
+  17: 1.333,
+  18: 1.33,
+  19: 1.328,
+};
