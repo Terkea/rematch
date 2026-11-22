@@ -64,6 +64,7 @@ use super::execute::OwnedToolDeps;
 use super::interactive::DbInteractiveEngine;
 use super::limits::{CHAT_LIMITS, CHAT_NO_DATA_TEXT, check_chat_allowance};
 use super::summary::{fallback_title, summarise_thread};
+use super::threads::AccountAccess;
 use crate::client::cost::PricingTable;
 use crate::client::model::{AiModel, Models};
 use crate::client::port::{AiClient, AiError, Message, ModelUsage, UnavailableReason};
@@ -71,7 +72,8 @@ use crate::db::chat::{self, ChatRole, ChatStatus, MessageFinish, MessageRow};
 use crate::db::usage::AiFeature;
 use crate::entitlements::{Entitlements, QuotaWindow, window_start};
 use crate::events::{
-    CHAT_CHUNK, CHAT_MESSAGE_FAILED, CHAT_MESSAGE_READY, ChatChunk, ChatFailed, ChatReady, emit,
+    CHAT_CHUNK, CHAT_MESSAGE_FAILED, CHAT_MESSAGE_READY, ChatChunk, ChatFailed, ChatReady,
+    emit_for_user,
 };
 use crate::generate::section::CallRecord;
 use crate::input::types::{CoachingInput, TimeClass};
@@ -118,6 +120,7 @@ const LOCK_KEEPALIVES_SQL: &str = "SELECT set_config('tcp_keepalives_idle', '60'
 
 const REASON_UNAVAILABLE: &str = "unavailable";
 const REASON_BUDGET: &str = "budget";
+const REASON_NOT_LINKED: &str = "not_linked";
 
 /// What the `coach-chat` handler needs. `pricing` prices the metered calls (Task 18's `meter`
 /// may take it from elsewhere at merge).
@@ -127,6 +130,8 @@ pub struct ChatDeps {
     pub queue: Queue,
     pub ai: Option<Arc<dyn AiClient>>,
     pub entitlements: Arc<dyn Entitlements>,
+    /// Whether the thread's owner is still linked to its account (checked at the reservation).
+    pub access: Arc<dyn AccountAccess>,
     pub budgets: BudgetConfig,
     pub pricing: Arc<PricingTable>,
     pub now: Arc<dyn Fn() -> OffsetDateTime + Send + Sync>,
@@ -208,7 +213,7 @@ impl TurnLock {
 /// the message had already finished (or is gone).
 async fn fail_and_emit(
     conn: &mut PgConnection,
-    account_id: Uuid,
+    (account_id, user_id): (Uuid, Uuid),
     message_id: Uuid,
     reason: &str,
 ) -> Result<bool, JobError> {
@@ -217,9 +222,10 @@ async fn fail_and_emit(
         .await
         .map_err(|e| retryable("fail message", e))?;
     if failed {
-        emit(
+        emit_for_user(
             &mut tx,
             account_id,
+            user_id,
             CHAT_MESSAGE_FAILED,
             &ChatFailed {
                 message_id,
@@ -541,6 +547,18 @@ impl CoachChatHandler {
         }
         scope.sort();
         scope.dedup();
+        let who = (account_id, t.conversation.user_id);
+
+        // --- The poster must still be linked to the account (ruling 3) ---
+        let linked = d
+            .access
+            .is_linked(t.conversation.user_id, account_id)
+            .await
+            .map_err(|e| retryable("account access", format!("{e:#}")))?;
+        if !linked {
+            fail_and_emit(conn, who, id, REASON_NOT_LINKED).await?;
+            return Ok(json!({ "failed": REASON_NOT_LINKED }));
+        }
 
         // --- Allowance, reserved atomically with the move to `streaming` ---
         let mut tx = conn.begin().await.map_err(|e| retryable("db", e))?;
@@ -575,7 +593,7 @@ impl CoachChatHandler {
                     .ok()
                     .and_then(|v| v.as_str().map(str::to_owned))
                     .unwrap_or_else(|| "denied".to_owned());
-                fail_and_emit(conn, account_id, id, &reason).await?;
+                fail_and_emit(conn, who, id, &reason).await?;
                 return Ok(json!({ "denied": reason }));
             }
         }
@@ -616,10 +634,10 @@ impl CoachChatHandler {
             .await
             .map_err(|e| retryable("load coaching input", e))?;
         let Some(input) = input else {
-            return self.no_data(conn, account_id, id).await;
+            return self.no_data(conn, who, id).await;
         };
         let Some(ai) = d.ai.clone() else {
-            fail_and_emit(conn, account_id, id, REASON_UNAVAILABLE).await?;
+            fail_and_emit(conn, who, id, REASON_UNAVAILABLE).await?;
             return Ok(json!({ "failed": REASON_UNAVAILABLE }));
         };
 
@@ -655,7 +673,7 @@ impl CoachChatHandler {
                 }
                 return match e {
                     TurnError::Db(e) => Err(retryable("chat turn", format!("{e:#}"))),
-                    TurnError::Ai(e) => self.ai_failed(conn, account_id, id, attempts, e).await,
+                    TurnError::Ai(e) => self.ai_failed(conn, who, id, attempts, e).await,
                 };
             }
         };
@@ -682,7 +700,7 @@ impl CoachChatHandler {
     async fn no_data(
         &self,
         conn: &mut PgConnection,
-        account_id: Uuid,
+        (account_id, user_id): (Uuid, Uuid),
         id: Uuid,
     ) -> Result<Value, JobError> {
         let segments = vec![Segment::Text {
@@ -706,9 +724,10 @@ impl CoachChatHandler {
         .await
         .map_err(|e| retryable("finish", e))?;
         if done {
-            emit(
+            emit_for_user(
                 &mut tx,
                 account_id,
+                user_id,
                 CHAT_MESSAGE_READY,
                 &ChatReady {
                     message_id: id,
@@ -725,7 +744,7 @@ impl CoachChatHandler {
     async fn ai_failed(
         &self,
         conn: &mut PgConnection,
-        account_id: Uuid,
+        who: (Uuid, Uuid),
         id: Uuid,
         attempts: i16,
         e: AiError,
@@ -747,7 +766,7 @@ impl CoachChatHandler {
                 })
             }
             AiError::Budget => {
-                fail_and_emit(conn, account_id, id, REASON_BUDGET).await?;
+                fail_and_emit(conn, who, id, REASON_BUDGET).await?;
                 Ok(json!({ "failed": REASON_BUDGET }))
             }
             other => {
@@ -756,7 +775,7 @@ impl CoachChatHandler {
                 } else if !other.is_unavailable() {
                     tracing::warn!(error = %other, "chat turn failed");
                 }
-                fail_and_emit(conn, account_id, id, REASON_UNAVAILABLE).await?;
+                fail_and_emit(conn, who, id, REASON_UNAVAILABLE).await?;
                 Ok(json!({ "failed": REASON_UNAVAILABLE }))
             }
         }
@@ -953,13 +972,15 @@ impl CoachChatHandler {
         ));
         let deps = OwnedToolDeps { ds, engine };
         let pool = d.pool.clone();
+        let owner = t.conversation.user_id;
         let on_chunk = move |c: ChatChunkOut| -> BoxFuture<'static, anyhow::Result<()>> {
             let pool = pool.clone();
             Box::pin(async move {
                 let mut tx = pool.begin().await?;
-                emit(
+                emit_for_user(
                     &mut tx,
                     account_id,
+                    owner,
                     CHAT_CHUNK,
                     &ChatChunk {
                         message_id: id,
@@ -1116,9 +1137,10 @@ impl CoachChatHandler {
         )
         .await
         .map_err(|e| retryable("meter", e))?;
-        emit(
+        emit_for_user(
             &mut tx,
             t.account_id,
+            t.conversation.user_id,
             CHAT_MESSAGE_READY,
             &ChatReady {
                 message_id: id,
@@ -1196,16 +1218,16 @@ impl Handler for CoachChatHandler {
                     .acquire()
                     .await
                     .map_err(|e| retryable("db", e))?;
-                let account: Option<Uuid> = sqlx::query_scalar(
-                    "SELECT c.account_id FROM coach_messages m \
+                let who: Option<(Uuid, Uuid)> = sqlx::query_as(
+                    "SELECT c.account_id, c.user_id FROM coach_messages m \
                      JOIN coach_conversations c ON c.id = m.conversation_id WHERE m.id = $1",
                 )
                 .bind(p.message_id)
                 .fetch_optional(&mut *conn)
                 .await
                 .map_err(|e| retryable("db", e))?;
-                if let Some(a) = account {
-                    fail_and_emit(&mut conn, a, p.message_id, REASON_UNAVAILABLE).await?;
+                if let Some(who) = who {
+                    fail_and_emit(&mut conn, who, p.message_id, REASON_UNAVAILABLE).await?;
                 }
                 Ok::<(), JobError>(())
             }

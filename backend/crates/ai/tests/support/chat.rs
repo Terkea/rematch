@@ -71,8 +71,11 @@ impl Entitlements for FixedPlan {
     }
 }
 
+/// A platform account and its test user ([`user`]).
 pub async fn account(pool: &PgPool, name: &str) -> Uuid {
-    testkit::insert_account(pool, "chesscom", name).await
+    let a = testkit::insert_account(pool, "chesscom", name).await;
+    testkit::insert_user_with_id(pool, user(a), name).await;
+    a
 }
 
 /// The b2-rapid fixture for `account_id`, stored as the snapshot of a report run.
@@ -222,6 +225,7 @@ pub fn deps(pool: &PgPool, ai: Option<Arc<FakeAiClient>>, plan: Plan) -> ChatDep
         queue: Queue::new(pool.clone()),
         ai: ai.map(|a| a as Arc<dyn AiClient>),
         entitlements: Arc::new(FixedPlan(plan)),
+        access: Arc::new(AnyLink),
         budgets: BudgetConfig {
             per_plan: AI_MONTHLY_BUDGET_MICRO_USD,
             global_monthly: None,

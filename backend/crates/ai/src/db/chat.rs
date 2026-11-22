@@ -156,22 +156,6 @@ pub async fn get_conversation(
     .await
 }
 
-/// The account's conversations, most recently active first.
-pub async fn list_conversations(
-    conn: &mut PgConnection,
-    account_id: Uuid,
-    limit: i64,
-) -> Result<Vec<ConversationRow>, sqlx::Error> {
-    sqlx::query_as(sqlx::AssertSqlSafe(format!(
-        "SELECT {CONV_COLS} FROM coach_conversations WHERE account_id = $1 \
-         ORDER BY last_message_at DESC LIMIT $2"
-    )))
-    .bind(account_id)
-    .bind(limit)
-    .fetch_all(conn)
-    .await
-}
-
 pub async fn set_title(
     conn: &mut PgConnection,
     id: Uuid,
@@ -372,37 +356,6 @@ pub async fn delete_all_user_conversations(
 ) -> Result<u64, sqlx::Error> {
     let r = sqlx::query("DELETE FROM coach_conversations WHERE user_id = $1")
         .bind(user_id)
-        .execute(conn)
-        .await?;
-    Ok(r.rows_affected())
-}
-
-/// Deletes one of the account's conversations; its messages go by cascade and its Agent SDK
-/// session entries by the `coach_conversations_delete_session_entries` trigger, in the same
-/// transaction. `interactive_evals.message_id` is set NULL; the eval rows stay, so deleting never
-/// refunds the engine-check quota. `false` when the conversation does not exist or belongs to
-/// another account.
-pub async fn delete_conversation(
-    conn: &mut PgConnection,
-    account_id: Uuid,
-    id: Uuid,
-) -> Result<bool, sqlx::Error> {
-    let r = sqlx::query("DELETE FROM coach_conversations WHERE id = $1 AND account_id = $2")
-        .bind(id)
-        .bind(account_id)
-        .execute(conn)
-        .await?;
-    Ok(r.rows_affected() == 1)
-}
-
-/// Deletes all of the account's conversations (and, by cascade and trigger, their messages and
-/// session entries). Returns the number of conversations deleted.
-pub async fn delete_all_conversations(
-    conn: &mut PgConnection,
-    account_id: Uuid,
-) -> Result<u64, sqlx::Error> {
-    let r = sqlx::query("DELETE FROM coach_conversations WHERE account_id = $1")
-        .bind(account_id)
         .execute(conn)
         .await?;
     Ok(r.rows_affected())

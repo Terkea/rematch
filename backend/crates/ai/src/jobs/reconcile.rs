@@ -888,7 +888,21 @@ async fn fail_chat(
             message_id,
             reason: LOST_REASON.to_owned(),
         };
-        events::emit(&mut tx, account_id, CHAT_MESSAGE_FAILED, &payload).await?;
+        // A chat event is for the thread owner only (Task 25 review N1).
+        let owner: Option<Uuid> = sqlx::query_scalar(
+            "SELECT c.user_id FROM coach_messages m \
+             JOIN coach_conversations c ON c.id = m.conversation_id WHERE m.id = $1",
+        )
+        .bind(message_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        match owner {
+            Some(u) => {
+                events::emit_for_user(&mut tx, account_id, u, CHAT_MESSAGE_FAILED, &payload)
+                    .await?;
+            }
+            None => return Ok(false),
+        }
         tx.commit().await?;
         Ok(true)
     })

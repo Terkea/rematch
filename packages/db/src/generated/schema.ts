@@ -1220,6 +1220,7 @@ export const userEvents = pgTable(
     type: text().notNull(),
     payload: jsonb().notNull(),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    userId: uuid("user_id"),
   },
   (table) => [
     index("user_events_account_id_idx").using(
@@ -1228,6 +1229,9 @@ export const userEvents = pgTable(
       table.id.asc().nullsLast(),
     ),
     index("user_events_created_idx").using("btree", table.createdAt.asc().nullsLast()),
+    index("user_events_user_idx")
+      .using("btree", table.userId.asc().nullsLast(), table.id.asc().nullsLast())
+      .where(sql`(user_id IS NOT NULL)`),
   ],
 );
 

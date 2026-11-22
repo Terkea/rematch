@@ -8,21 +8,14 @@ DROP INDEX coach_conversations_user_idx;
 CREATE INDEX coach_conversations_user_idx
   ON coach_conversations (user_id, account_id, last_message_at DESC);
 
--- The FK to M4's "user" table. r3/base has no web auth tables, so it is added only where the table
--- exists (the integrated schema, whose M4 migrations sort before this one). Task 26 checks it.
-DO $$
-BEGIN
-  IF to_regclass('public."user"') IS NOT NULL THEN
-    ALTER TABLE coach_conversations ADD CONSTRAINT coach_conversations_user_id_user_id_fk
-      FOREIGN KEY (user_id) REFERENCES "user"(id) ON DELETE CASCADE;
-  END IF;
-END
-$$;
+-- The FK to M4's "user" table is added by Task 26's integration migration (r3/base has no web
+-- auth tables). Tests create their users with testkit::insert_user, so they hold under it.
 
 -- Idempotent metering: one row per paid call. The coach chat keys a call by message, attempt and
 -- call number, so a retried or re-run write never meters a call twice.
-ALTER TABLE ai_usage ADD COLUMN idempotency_key text;
-CREATE UNIQUE INDEX ai_usage_idempotency_uq ON ai_usage (idempotency_key)
+-- T18's 20261121031800 adds the same column and index, so both are IF NOT EXISTS (either order).
+ALTER TABLE ai_usage ADD COLUMN IF NOT EXISTS idempotency_key text;
+CREATE UNIQUE INDEX IF NOT EXISTS ai_usage_idempotency_uq ON ai_usage (idempotency_key)
   WHERE idempotency_key IS NOT NULL;
 
 ALTER TABLE coach_conversations ADD CONSTRAINT coach_conversations_next_call_index_check

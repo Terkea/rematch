@@ -184,8 +184,8 @@ Decisions made when the job, the DB data source and the threads were built:
 10. **Threads belong to the user** (fix round 1, review I3; supersedes "threads take the
     account"). Linked accounts are shared between users (M4 `account_links`), so
     `coach_conversations.user_id` is NOT NULL (migration `20261121030300`, with an index on
-    `(user_id, account_id, last_message_at)`; the FK to `"user"` is added where that table exists,
-    which is the integrated schema, and Task 26 checks it). Every read, post, list and delete is
+    `(user_id, account_id, last_message_at)`; the FK to `"user"` is added by Task 26's integration
+    migration, and the tests create real users with `testkit::insert_user`). Every read, post, list and delete is
     scoped by `user_id`; the account is the context. A thread is created, and posted to, only for
     an account the user is currently linked to (`AccountAccess`; `LegacyAccountAccess` reads M1's
     `linked_accounts.user_id`, and Task 26 wires the `account_links` lookup). A user may still
@@ -217,3 +217,16 @@ Decisions made when the job, the DB data source and the threads were built:
     post time), not the reservation time, so a question posted just before a window boundary
     counts in the old window; and a turn that fails after paid calls uses no chat allowance (the
     budget guard bounds the spend).
+16. **Chat events belong to the thread owner** (fix round 2, review N1; binding hand-off to M4
+    and the R3 integration). `user_events.user_id` (nullable, migration `20261121030400`): an
+    event with a non-null `user_id` is for that user only. Every chat event (`chat.chunk` with
+    answer text, `chat.message.ready`, `chat.message.failed`, including the reconciler's lost-chat
+    failure) is written with the conversation's `user_id` (`events::emit_for_user`, R1's
+    `insert_owned_event`; the NOTIFY JSON carries `userId`). The web SSE hub and the poll route
+    **MUST** deliver an event to a user only when `user_id IS NULL OR user_id = <that user>`;
+    account events keep `user_id` NULL. Chat must not be exposed before that filter lands.
+17. **The link is re-checked at the reservation** (fix round 2). `ChatDeps.access` is the same
+    `AccountAccess` as the thread API. If the thread owner is no longer linked to the account when
+    the job runs, the message fails with `not_linked` (its event to the owner), before the
+    allowance, with no AI call and nothing metered. An unlinked owner can still read, list and
+    delete their own threads, but not post (§10).

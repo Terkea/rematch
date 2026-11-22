@@ -137,7 +137,7 @@ async fn a_second_question_while_an_answer_is_pending_is_busy(pool: PgPool) {
 async fn a_thread_is_started_only_for_a_linked_account(pool: PgPool) {
     let a = account(&pool, "alice").await;
     let b = account(&pool, "bob").await;
-    let u1 = Uuid::new_v4();
+    let u1 = testkit::insert_user(&pool, "u1").await;
     let links = Links(vec![(u1, a)]);
     let r = create_conversation(&pool, &links, u1, b, TimeClass::Rapid, None).await;
     assert!(matches!(r, Err(ThreadError::NotLinked)), "{r:?}");
@@ -156,7 +156,8 @@ async fn a_thread_is_started_only_for_a_linked_account(pool: PgPool) {
 #[sqlx::test(migrator = "db::MIGRATOR")]
 async fn another_user_of_the_same_account_never_reaches_a_thread(pool: PgPool) {
     let a = account(&pool, "alice").await;
-    let (u1, u2) = (Uuid::new_v4(), Uuid::new_v4());
+    let u1 = testkit::insert_user(&pool, "u1").await;
+    let u2 = testkit::insert_user(&pool, "u2").await;
     // Both users are linked to the same platform account.
     let links = Links(vec![(u1, a), (u2, a)]);
     let q = Queue::new(pool.clone());

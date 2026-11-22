@@ -40,7 +40,7 @@ use queue::types::JobError;
 use serde_json::{Value, json};
 use sqlx::PgPool;
 use support::{
-    AnyLink, OK2, OK3, account, answer, deps, events, job, seed_game, seed_move, statuses,
+    AnyLink, Links, OK2, OK3, account, answer, deps, events, job, seed_game, seed_move, statuses,
     store_input, usage_rows, user,
 };
 use tokio_util::sync::CancellationToken;
@@ -785,6 +785,134 @@ async fn a_turn_that_times_out_meters_its_paid_calls(pool: PgPool) {
     assert!(matches!(r, Err(JobError::Release { .. })), "{r:?}");
     assert_eq!(input_tokens(&pool, a).await, vec![50]);
     assert_eq!(stored(&pool, msg).await.status, "pending");
+}
+
+/// `user_id` of the account's events, in id order.
+async fn event_owners(pool: &PgPool, a: Uuid) -> Vec<Option<Uuid>> {
+    sqlx::query_scalar("SELECT user_id FROM user_events WHERE account_id = $1 ORDER BY id")
+        .bind(a)
+        .fetch_all(pool)
+        .await
+        .unwrap()
+}
+
+/// Review N1: chat events carry the thread owner's user, so the web delivers them to that user
+/// only (another user linked to the same account never receives the answer text).
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn chat_events_carry_the_owners_user_id(pool: PgPool) {
+    let a = account(&pool, "alice").await;
+    store_input(&pool, a).await;
+    let (_, m1) = ask(&pool, a, "Why?").await;
+    let f = fake(vec![answer(&[OK2, OK3])]);
+    assert!(run(&pool, &f, Plan::Free, m1).await.is_ok());
+    // A denied turn's failure event too.
+    seed_done_answers(&pool, a, 2).await;
+    let (_, m2) = ask(&pool, a, "Again?").await;
+    assert!(run(&pool, &f, Plan::Free, m2).await.is_ok());
+    assert_eq!(
+        stored(&pool, m2).await.failure_reason.as_deref(),
+        Some("weekly_cap")
+    );
+    let ev = events(&pool, a).await;
+    assert_eq!(
+        types(&ev),
+        vec![
+            "chat.chunk",
+            "chat.chunk",
+            "chat.message.ready",
+            "chat.message.failed"
+        ]
+    );
+    assert_eq!(event_owners(&pool, a).await, vec![Some(user(a)); 4]);
+
+    // The fixed no-data reply as well.
+    let b = account(&pool, "bob").await;
+    let (_, m3) = ask(&pool, b, "Why?").await;
+    assert!(run(&pool, &fake(vec![]), Plan::Free, m3).await.is_ok());
+    assert_eq!(event_owners(&pool, b).await, vec![Some(user(b))]);
+}
+
+/// Ruling 3: the job re-checks the link when it reserves the turn. A poster who unlinked the
+/// account in the meantime gets `not_linked`, with no AI call and nothing metered.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_poster_who_is_no_longer_linked_gets_not_linked(pool: PgPool) {
+    let a = account(&pool, "alice").await;
+    store_input(&pool, a).await;
+    let (_, msg) = ask(&pool, a, "Why?").await;
+    let f = fake(vec![answer(&[OK2])]);
+    let mut d = deps(&pool, Some(f.clone()), Plan::Pro);
+    d.access = Arc::new(Links(vec![]));
+    assert!(CoachChatHandler(d).handle(job(msg, 1), ctx()).await.is_ok());
+    let s = stored(&pool, msg).await;
+    assert_eq!(
+        (s.status.as_str(), s.failure_reason.as_deref()),
+        ("failed", Some("not_linked"))
+    );
+    assert!(f.calls().is_empty());
+    assert!(usage_rows(&pool, a).await.is_empty());
+    let ev = events(&pool, a).await;
+    assert_eq!(
+        ev,
+        vec![(
+            "chat.message.failed".into(),
+            json!({"messageId": msg, "reason": "not_linked"})
+        )]
+    );
+    assert_eq!(event_owners(&pool, a).await, vec![Some(user(a))]);
+}
+
+/// Metering is keyed per call through the job: when the conversation is deleted mid-turn, the
+/// paid call is metered, the orphan cleanup then fails, and the finish error path meters the
+/// same calls again; the keys make that a no-op.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_failed_cleanup_after_metering_never_meters_twice(pool: PgPool) {
+    let a = account(&pool, "alice").await;
+    store_input(&pool, a).await;
+    let (c, msg) = ask(&pool, a, "Why?").await;
+    let f = fake_with(vec![answer(&[OK2])], None, Some(Duration::from_millis(800)));
+    let h = CoachChatHandler(deps(&pool, Some(f.clone()), Plan::Pro));
+    let p = pool.clone();
+    let deleter = async move {
+        testkit::wait_for(
+            "streaming",
+            Duration::from_secs(5),
+            Duration::from_millis(20),
+            || {
+                let p = p.clone();
+                async move {
+                    let s: Option<String> =
+                        sqlx::query_scalar("SELECT status::text FROM coach_messages WHERE id = $1")
+                            .bind(msg)
+                            .fetch_optional(&p)
+                            .await
+                            .unwrap();
+                    (s.as_deref() == Some("streaming")).then_some(())
+                }
+            },
+        )
+        .await;
+        ai::chat::threads::delete_conversation(&p, user(a), c)
+            .await
+            .unwrap();
+        // From now on the orphan cleanup fails.
+        sqlx::query(
+            "CREATE FUNCTION fail_cleanup() RETURNS trigger LANGUAGE plpgsql AS \
+             $$ BEGIN RAISE EXCEPTION 'cleanup fails'; END $$",
+        )
+        .execute(&p)
+        .await
+        .unwrap();
+        sqlx::query(
+            "CREATE TRIGGER fail_cleanup BEFORE DELETE ON ai_sdk_session_entries \
+             FOR EACH STATEMENT EXECUTE FUNCTION fail_cleanup()",
+        )
+        .execute(&p)
+        .await
+        .unwrap();
+    };
+    let (r, ()) = tokio::join!(h.handle(job(msg, 1), ctx()), deleter);
+    assert!(matches!(r, Err(JobError::Retryable { .. })), "{r:?}");
+    assert_eq!(usage_rows(&pool, a).await.len(), 1, "metered exactly once");
 }
 
 #[test]
