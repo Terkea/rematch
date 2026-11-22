@@ -31,7 +31,7 @@ use uuid::Uuid;
 const REPORT_ID: Uuid = uuid::uuid!("7d0c3f4e-2a51-4b8e-9c61-0f2b7a9d1e35");
 const AT: OffsetDateTime = datetime!(2026-11-20 08:30:00 UTC);
 
-/// coaching-input-v2 (ADR 0084): the computed report carries the colour split and the
+/// coaching-input-v2 (ADR 0085): the computed report carries the colour split and the
 /// benchmark for the report's White vs Black block; a v1 input's report has neither key.
 #[test]
 fn computed_report_carries_the_colour_split() {

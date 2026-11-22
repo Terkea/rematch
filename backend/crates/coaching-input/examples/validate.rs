@@ -1,7 +1,7 @@
 //! `cargo run -p coaching-input --example validate -- <file.json>...` (R2 Task 35): checks each
 //! document against the TS zod export (`fixtures/coaching-input/ts-schema.json`) and the
 //! contract's own rules (`CoachingInput::validate`). The zod export is v1's, so a v2 document
-//! (ADR 0084) is checked against the contract's own schema (`json_schema()`) instead. Prints
+//! (ADR 0085) is checked against the contract's own schema (`json_schema()`) instead. Prints
 //! `valid` per file, or every issue and exits 1.
 
 use std::process::ExitCode;

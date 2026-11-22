@@ -3,7 +3,7 @@
 //! The schemars attributes in `types.rs` and the checks in `validate.rs` both read these, so the
 //! generated schema and `CoachingInput::validate` cannot drift apart.
 
-/// The version the builder writes (ADR 0084): v1 plus `byColor` and `benchmark`.
+/// The version the builder writes (ADR 0085): v1 plus `byColor` and `benchmark`.
 pub const INPUT_VERSION: &str = "coaching-input-v2";
 /// zod `z.literal("coaching-input-v1")`: the M3 contract, still accepted when parsing.
 pub const INPUT_VERSION_V1: &str = "coaching-input-v1";

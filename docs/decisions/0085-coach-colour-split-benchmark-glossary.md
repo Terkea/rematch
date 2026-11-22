@@ -1,4 +1,4 @@
-# 0084. The coach reads the colour split, names the peer benchmark and uses the glossary
+# 0085. The coach reads the colour split, names the peer benchmark and uses the glossary
 
 Date: 2026-11-22. Status: accepted (next round, task T4). Builds on ADR 0080 and 0081 (the peer
 benchmark), ADR 0082 (the colour split's profile rows), ADR-FIX-D-1 (numbers keep their units)

@@ -85,7 +85,7 @@ function Side({
 }
 
 /**
- * White vs Black (ADR 0084): the stored report's colour split, side by side. Each colour states
+ * White vs Black (ADR 0085): the stored report's colour split, side by side. Each colour states
  * its own games; below the minimum it shows a dash and the shortfall. The comparison names a
  * direction only when the two 80% ranges separate. Nothing for a report from before the split.
  */

@@ -77,7 +77,7 @@ fn section_requests_share_the_cached_prefix() {
     assert_ne!(b0_req.system[1], first.system[1]);
 
     // The block texts are the brief's layout.
-    // Each prompt at its version in the report's set (ADR 0084: core/tokens v2, report v2,
+    // Each prompt at its version in the report's set (ADR 0085: core/tokens v2, report v2,
     // the overview v2; the glossary ends system[1]).
     let p = |id: &str| {
         let v = REPORT_PROMPT_SET

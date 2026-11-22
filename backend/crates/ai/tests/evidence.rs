@@ -490,7 +490,7 @@ mod ts_parity {
     }
 }
 
-/// coaching-input-v2 (ADR 0084): the colour split and the benchmark are citable, with units.
+/// coaching-input-v2 (ADR 0085): the colour split and the benchmark are citable, with units.
 mod colour_split {
     use ai::segments::Segment;
     use ai::testing::v2_input;

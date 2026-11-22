@@ -1,4 +1,4 @@
-// The words of the report's White vs Black block (ADR 0084), from the stored computed report's
+// The words of the report's White vs Black block (ADR 0085), from the stored computed report's
 // `byColor`. A plain module, so it is unit tested on its own. Honesty rules: n beside every
 // number, a dash and the shortfall for anything below its minimum (never 0), and a difference
 // called only when the two 80% ranges separate.

@@ -1890,7 +1890,7 @@ fn chat_prompts_have_no_json_output_instruction() {
     assert_eq!(system[0], rules_block());
     let chat = load_prompt("chat/system", 3).unwrap();
     assert!(system[1].text.starts_with(chat.text.trim_end()));
-    // ADR 0084: the glossary follows, and the off-topic marker stays the last line.
+    // ADR 0085: the glossary follows, and the off-topic marker stays the last line.
     let glossary = load_prompt("core/glossary", 1).unwrap().text.trim_end();
     assert!(system[1].text.contains(glossary));
     assert!(system[1].text.ends_with(OFFTOPIC_LINE));
@@ -2060,7 +2060,7 @@ async fn tools_after_the_off_topic_marker_are_refused() {
 /// (so boards render) and says what an empty search searched instead of a blanket "none found".
 #[test]
 fn chat_system_v2_teaches_the_move_filter_and_honest_empty_searches() {
-    // ADR 0084: v3 keeps v2's text and adds the colour split, the benchmark and the glossary.
+    // ADR 0085: v3 keeps v2's text and adds the colour split, the benchmark and the glossary.
     assert!(CHAT_PROMPT_SET.contains(&("chat/system", 3)));
     let v2 = load_prompt("chat/system", 3).unwrap().text;
     assert!(chat_system_blocks()[1].text.starts_with(v2.trim_end()));

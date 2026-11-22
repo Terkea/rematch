@@ -187,7 +187,7 @@ fn array_id_field(key: &str) -> Option<&'static str> {
     }
 }
 
-/// v2 (ADR 0084): a colour's weakness rows are keyed by their series key, like the top-level
+/// v2 (ADR 0085): a colour's weakness rows are keyed by their series key, like the top-level
 /// arrays (`byColor.white.weaknesses.W4_missed.rate`).
 const COLOR_WEAKNESS_ARRAYS: [&str; 2] = ["byColor.white.weaknesses", "byColor.black.weaknesses"];
 
@@ -596,7 +596,7 @@ impl Evidence {
                 add(self, format!("{b}.{f}"));
             }
         }
-        // v2 (ADR 0084): the colour split. A score and a weakness rate are shares (`pct0`,
+        // v2 (ADR 0085): the colour split. A score and a weakness rate are shares (`pct0`,
         // `pct1`); an accuracy prints with `%`; blunders per game and counts take no unit.
         if let Some(by) = &input.by_color {
             for (colour, s) in COLORS.into_iter().zip([&by.white, &by.black]) {

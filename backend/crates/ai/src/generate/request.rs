@@ -4,7 +4,7 @@
 //! 1. `system[0]`: [`rules_block`], `core/rules` + `core/tokens`: the format-neutral rules and
 //!    token grammar, byte-identical for reports and the chat, so it caches for both;
 //! 2. `system[1]`: `report/report` + `report/output` (the JSON output instructions, report only)
-//!    + the band's `tone/b<n>` (shared within a band) + `core/glossary` (ADR 0084);
+//!    + the band's `tone/b<n>` (shared within a band) + `core/glossary` (ADR 0085);
 //! 3. user block 1: `<coaching_input>` + the canonical prompt context (shared within a report);
 //!
 //! and then the uncached section task, the only part that differs. The Messages API (batches)
@@ -24,7 +24,7 @@ pub const SECTION_MAX_TOKENS: u32 = 16000;
 
 /// The text of a prompt at its version in `REPORT_PROMPT_SET` (version 1 for an id outside it).
 /// Every id used here is in the set, which `tests/prompts.rs` loads, so a miss is a build defect.
-/// (Before ADR 0084 this always read version 1, so `core/tokens` v2 recorded in the set was
+/// (Before ADR 0085 this always read version 1, so `core/tokens` v2 recorded in the set was
 /// never sent.)
 pub(crate) fn text(id: &str) -> &'static str {
     let v = REPORT_PROMPT_SET

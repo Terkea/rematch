@@ -285,7 +285,7 @@ fn ts_validator() -> jsonschema::Validator {
         .expect("the TS schema compiles")
 }
 
-/// The document's errors: its v1 part (without v2's `byColor` and `benchmark`, ADR 0084)
+/// The document's errors: its v1 part (without v2's `byColor` and `benchmark`, ADR 0085)
 /// against the zod export, which is v1's, and the whole document against the contract's own
 /// schema.
 fn schema_errors(v: &jsonschema::Validator, doc: &Value) -> Vec<String> {

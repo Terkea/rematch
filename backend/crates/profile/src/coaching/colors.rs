@@ -1,4 +1,4 @@
-//! The colour split of the CoachingInput (v2 `byColor`, ADR 0084) and its `benchmark`.
+//! The colour split of the CoachingInput (v2 `byColor`, ADR 0085) and its `benchmark`.
 //!
 //! Per colour, over the player's games with that colour:
 //! - `games`, W-D-L and `score` over the colour's most recent analysed games, at most

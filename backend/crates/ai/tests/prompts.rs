@@ -166,7 +166,7 @@ fn report_prompt_set_is_the_brief_list() {
             "core/glossary",
         ]
     );
-    // Fix D (N1): core/tokens v2 says the server prints a number's unit. ADR 0084: report v2
+    // Fix D (N1): core/tokens v2 says the server prints a number's unit. ADR 0085: report v2
     // teaches the colour split and the peer benchmark, the overview v2 the White vs Black
     // sentence.
     let v2 = ["core/tokens", "report/report", "report/section-overview"];
@@ -396,7 +396,7 @@ fn instantiate(schematic: &str) -> String {
 }
 
 /// b2-rapid as coaching-input-v2 (the colour split and the peer benchmark the v2 prompts cite,
-/// ADR 0084) with its endgame area below the minimum sample (`needMore` 16), so every schematic
+/// ADR 0085) with its endgame area below the minimum sample (`needMore` 16), so every schematic
 /// form, the `needMore` path included, resolves against a real input.
 fn synthetic_input() -> CoachingInput {
     let mut v = ai::testing::v2_input("b2-rapid").to_json();
@@ -636,7 +636,7 @@ fn shared_rules_have_no_json_output_instruction() {
     assert!(shared.cache);
     assert_eq!(
         shared.text,
-        // core/tokens at its set version (v2, sent since ADR 0084).
+        // core/tokens at its set version (v2, sent since ADR 0085).
         format!(
             "{}\n\n{}",
             rendered("core/rules"),
@@ -658,7 +658,7 @@ fn shared_rules_have_no_json_output_instruction() {
     assert!(out.contains("JSON") && out.contains("`citations`") && out.contains("`null`"));
 }
 
-// ---- coaching-input-v2 (ADR 0084) -----------------------------------------------------------
+// ---- coaching-input-v2 (ADR 0085) -----------------------------------------------------------
 
 /// The v2 prompts teach the colour split and the peer benchmark's wording, and carry the
 /// glossary; their old versions stay unchanged for stored hashes.

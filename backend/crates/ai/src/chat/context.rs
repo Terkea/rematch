@@ -46,7 +46,7 @@ fn pick(v: &Value, keys: &[&str]) -> Value {
 /// scores, weaknesses without exemplars, the opening verdict list, changes, and the number and
 /// date paths (`refs`) the model may cite with `{{num:}}` and `{{date:}}`. No account id.
 ///
-/// A v2 input (ADR 0084) adds the colour split `byColor` (each colour's games, W-D-L, score,
+/// A v2 input (ADR 0085) adds the colour split `byColor` (each colour's games, W-D-L, score,
 /// accuracy, blunders per game and its own weakness rows, so the coach can answer "how do I do
 /// as Black?") and the `benchmark` band. A v1 input's context is unchanged.
 pub fn build_chat_context(input: &CoachingInput) -> Value {

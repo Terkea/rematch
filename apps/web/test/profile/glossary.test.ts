@@ -123,7 +123,7 @@ describe("glossary", () => {
   });
 });
 
-// The coach prompts embed the glossary as a generated, versioned prompt file (ADR 0084). A
+// The coach prompts embed the glossary as a generated, versioned prompt file (ADR 0085). A
 // copy edit here fails until the next version is written (`UPDATE_SNAPSHOTS=1`) and registered
 // in `backend/crates/ai/src/prompts.rs`; a prompt file never changes in place.
 const PROMPT_DIR = new URL("../../../../backend/crates/ai/prompts/core/", import.meta.url);

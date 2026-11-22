@@ -54,7 +54,7 @@ pub mod iso_date {
 }
 
 /// `inputVersion`: `"coaching-input-v1"` (the M3 contract) or `"coaching-input-v2"`
-/// ([`INPUT_VERSION`], ADR 0084: v1 plus `byColor` and `benchmark`). The builder writes v2; v1
+/// ([`INPUT_VERSION`], ADR 0085: v1 plus `byColor` and `benchmark`). The builder writes v2; v1
 /// inputs stored before it still parse, without the v2 fields.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum InputVersion {

@@ -335,7 +335,7 @@ async fn profiles_from_before_the_split_are_rebuilt_once(pool: PgPool) {
     assert_eq!(requeue_colour_split(&pool, &queue).await.unwrap(), 0);
 }
 
-/// The CoachingInput's colour split (v2 `byColor`, ADR 0084): each colour from its own games,
+/// The CoachingInput's colour split (v2 `byColor`, ADR 0085): each colour from its own games,
 /// snapshot rows, estimates and benchmark rows, with the minimum evidence kept per colour.
 #[sqlx::test(migrator = "db::MIGRATOR")]
 async fn coaching_input_splits_by_colour(pool: PgPool) {

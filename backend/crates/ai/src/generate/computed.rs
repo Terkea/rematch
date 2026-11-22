@@ -46,7 +46,7 @@ pub struct ComputedReport {
     pub new_this_period: Vec<TimelineChange>,
     /// Changes whose `to_state` is resolved.
     pub fixed_this_period: Vec<TimelineChange>,
-    /// The input's colour split (coaching-input-v2, ADR 0084), for the report's White vs
+    /// The input's colour split (coaching-input-v2, ADR 0085), for the report's White vs
     /// Black block; absent for a v1 input (reports computed before it).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub by_color: Option<ByColor>,

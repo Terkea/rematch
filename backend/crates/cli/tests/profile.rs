@@ -170,7 +170,7 @@ async fn profile_json_prints_a_valid_coaching_input(pool: PgPool) {
     assert_eq!(doc["accountId"], json!(account.to_string()));
     assert_eq!(doc["basis"]["analysedGames"], json!(3));
     assert_eq!(doc["areaScores"].as_array().map(Vec::len), Some(7));
-    // v2 (ADR 0084) is v1 plus `byColor` and `benchmark`: the v1 part still passes the zod
+    // v2 (ADR 0085) is v1 plus `byColor` and `benchmark`: the v1 part still passes the zod
     // export, and the whole document the contract's own schema.
     assert_eq!(doc["inputVersion"], json!("coaching-input-v2"));
     assert!(doc["byColor"]["white"].is_object() && doc["byColor"]["black"].is_object());

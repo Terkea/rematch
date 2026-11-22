@@ -207,7 +207,7 @@ export type TimelineChange = {
   examples: (ExemplarPosition & { side: "before" | "after" })[];
 };
 
-/** Rust `ColorMetric` (coaching-input-v2, ADR 0084): null numbers when not sufficient. */
+/** Rust `ColorMetric` (coaching-input-v2, ADR 0085): null numbers when not sufficient. */
 export type ColorMetric = {
   value: number | null;
   unit: "rate" | "pct" | "per_game";

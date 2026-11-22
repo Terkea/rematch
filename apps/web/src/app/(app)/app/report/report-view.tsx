@@ -150,7 +150,7 @@ function Fresh({ on, children }: { on: boolean; children: ReactNode }) {
 
 /**
  * The coaching report (ADR 0073), top to bottom: the state banner, where you stand (with the AI
- * disclosure), the coach's overview, White and Black (ADR 0084), what's costing you games, openings, the climb plan, the
+ * disclosure), the coach's overview, White and Black (ADR 0085), what's costing you games, openings, the climb plan, the
  * area notes, this month's changes and the count of removed statements. Every section keeps its
  * computed part; the coach's part shows only when its row is `ready`.
  */

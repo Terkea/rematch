@@ -320,7 +320,7 @@ pub fn compare_schemas<'a>(ts: &'a Value, rs: &'a Value) -> Walk<'a> {
 }
 
 /// The v1 shape of the Rust schema: without v2's optional `byColor` and `benchmark` (and their
-/// definitions), and `inputVersion` as v1's literal. The zod export is v1's (ADR 0084).
+/// definitions), and `inputVersion` as v1's literal. The zod export is v1's (ADR 0085).
 pub fn v1_shape(mut rs: Value) -> Value {
     for key in ["byColor", "benchmark"] {
         rs["properties"].as_object_mut().unwrap().remove(key);

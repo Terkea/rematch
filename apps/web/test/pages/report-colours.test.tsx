@@ -14,7 +14,7 @@ import type {
   InputBenchmark,
 } from "../../src/server/coaching/types.js";
 
-// The report's White vs Black block (ADR 0084), from the stored computed report's `byColor`.
+// The report's White vs Black block (ADR 0085), from the stored computed report's `byColor`.
 // The numbers are a synthetic fixture (`backend/fixtures/ai/input/colour-split.v2.json`), never
 // owner data.
 

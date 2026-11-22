@@ -364,7 +364,7 @@ impl Checker {
             self.change(&join("changes", i), ch);
         }
 
-        // v2 (ADR 0084): `byColor` is required, `benchmark` optional; v1 has neither.
+        // v2 (ADR 0085): `byColor` is required, `benchmark` optional; v1 has neither.
         match c.input_version {
             InputVersion::V1 => {
                 if c.by_color.is_some() {
@@ -504,7 +504,7 @@ impl Checker {
         }
         self.count(join(p, "n"), m.n);
         self.need_more(p, m.sufficient, m.need_more);
-        // Insufficient evidence is stated as null, never as a number (ADR 0084).
+        // Insufficient evidence is stated as null, never as a number (ADR 0085).
         if !m.sufficient {
             for (field, v) in [("value", m.value), ("low", m.low), ("high", m.high)] {
                 if v.is_some() {

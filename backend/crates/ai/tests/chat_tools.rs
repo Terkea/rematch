@@ -1532,7 +1532,7 @@ fn chat_context_has_no_account_id() {
     }
 }
 
-/// coaching-input-v2 (ADR 0084): the chat sees each colour's rows and can cite them.
+/// coaching-input-v2 (ADR 0085): the chat sees each colour's rows and can cite them.
 #[test]
 fn chat_context_exposes_the_colour_split() {
     let input = ai::testing::v2_input("b2-rapid");

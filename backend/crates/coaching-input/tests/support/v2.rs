@@ -1,4 +1,4 @@
-//! A v2 colour split for the contract tests (ADR 0084): White with enough games, a compared
+//! A v2 colour split for the contract tests (ADR 0085): White with enough games, a compared
 //! and an uncompared weakness, and Black below the minimum (every number null).
 
 use coaching_input::{

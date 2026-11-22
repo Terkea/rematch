@@ -71,7 +71,7 @@ pub fn colour_split() -> Value {
     serde_json::from_str(&text).unwrap_or_else(|e| panic!("{}: {e}", path.display()))
 }
 
-/// A fixture as coaching-input-v2: [`input`] with [`colour_split`] merged on (ADR 0084).
+/// A fixture as coaching-input-v2: [`input`] with [`colour_split`] merged on (ADR 0085).
 pub fn v2_input(name: &str) -> CoachingInput {
     serde_json::from_value(merge(&load_fixture(name), &colour_split()))
         .unwrap_or_else(|e| panic!("v2 fixture {name} does not deserialize: {e}"))

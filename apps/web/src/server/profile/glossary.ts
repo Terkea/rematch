@@ -990,7 +990,7 @@ export function seriesGlossary(seriesKey: string): GlossaryEntry | null {
 }
 
 /**
- * The coach's glossary (ADR 0084): every section of `glossaryForPrompt()` plus the opening
+ * The coach's glossary (ADR 0085): every section of `glossaryForPrompt()` plus the opening
  * verdicts, each entry cut to its plain words (`name`, `meaning`). The full entries are about
  * 71 KB, sent with every report section and chat turn; the plain words are what the coach
  * needs to name a weakness the way the pages do. Keys sorted, `<` escaped so the text cannot

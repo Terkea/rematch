@@ -1,4 +1,4 @@
-//! coaching-input-v2 (ADR 0084): the colour split `byColor` and the `benchmark`, on top of the
+//! coaching-input-v2 (ADR 0085): the colour split `byColor` and the `benchmark`, on top of the
 //! v1 contract. v1 inputs (stored before) still parse and serialise byte for byte.
 
 #[path = "support/v2.rs"]
