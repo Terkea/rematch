@@ -1,4 +1,5 @@
-import { NO_BENCHMARK_TEXT } from "@ci/ui/profile";
+import { likelyText, NO_BENCHMARK_TEXT, probablyAbove } from "@ci/ui/profile";
+import { stateStyle } from "@ci/ui/timeline";
 import type { Benchmark } from "../server/profile/benchmark-text";
 import { DETECTOR_CONSTANTS as K, VERDICT_CONSTANTS as V } from "../server/profile/glossary";
 import type { WeaknessState } from "../server/profile/types";
@@ -179,9 +180,22 @@ function peerGroup(b: Benchmark | null | undefined): string | null {
   return `players you've faced on ${site}, rated about ${count(b.low)}–${count(b.high)}`;
 }
 
+/** The states the weaknesses page files under "Costing you games" when the comparison backs them. */
+export const COSTING_STATES: readonly WeaknessState[] = ["active", "emerging", "relapsed"];
+
 /**
- * You against the benchmark's median: only a median outside the 80% range says more or less. A
- * peer benchmark (players the user has faced) is named as such, never as "players at your level".
+ * Whether a row's peer comparison backs its costing state (ADR 0084): the stored
+ * `P(rate > benchmark)` is at least 0.7, the same threshold the state and the coach's focus use.
+ */
+export const comparisonBacksState = (state: WeaknessState, confidence: number) =>
+  !COSTING_STATES.includes(state) || probablyAbove(confidence);
+
+/**
+ * You against the benchmark's median: a median outside the 80% range says more or less; inside
+ * it, a stored confidence of 0.7 or more says "probably more often", with the odds (ADR 0084). A
+ * costing state the comparison does not back says where it comes from, so the page never reads
+ * as contradicting itself. A peer benchmark (players the user has faced) is named as such, never
+ * as "players at your level".
  */
 export function levelText(l: {
   rate: { mean: number; low: number; high: number };
@@ -189,6 +203,8 @@ export function levelText(l: {
   compared: boolean;
   sufficient: boolean;
   benchmark?: Benchmark | null;
+  confidence?: number;
+  state?: WeaknessState;
 }): string {
   if (!l.compared || !fin(l.median)) return `${NO_BENCHMARK_TEXT}.`;
   const m = `${(l.median * 100).toFixed(1)}%`;
@@ -201,7 +217,19 @@ export function levelText(l: {
   if (l.median > l.rate.high) {
     return `Less often than ${group} (${m}): their rate is above your whole likely range.`;
   }
-  return `Not clearly different from ${group} (${m}): their rate is inside your likely range.`;
+  if (probablyAbove(l.confidence)) {
+    return `Probably more often than ${group} (${m}): about ${likelyText(l.confidence)}, though their rate is inside your likely range.`;
+  }
+  const plain = `Not clearly different from ${group} (${m}): their rate is inside your likely range.`;
+  if (l.state && fin(l.confidence) && !comparisonBacksState(l.state, l.confidence)) {
+    return `${plain} ${stateOriginText(l.state)}`;
+  }
+  return plain;
+}
+
+/** Where a costing state the comparison does not back comes from (ADR 0084). */
+export function stateOriginText(state: WeaknessState): string {
+  return `${stateStyle[state].label} comes from your game-by-game record (every game since the last change it found), not from this comparison.`;
 }
 
 /** "Your estimated rate is 4.2% of chances, likely between 3.1% and 5.7% (80% range)." */

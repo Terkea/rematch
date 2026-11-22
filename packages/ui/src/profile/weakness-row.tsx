@@ -48,6 +48,11 @@ export interface WeaknessRowProps {
    * given). Without one the stored state is no claim, so the chip reads "Not compared yet".
    */
   compared?: boolean;
+  /**
+   * The stored `P(your rate > the band's)`. At 0.7 or more, a band median inside the range reads
+   * "though yours is probably higher" (ADR 0084). Omitted, only the interval is read.
+   */
+  confidence?: number;
   /** The estimate's evidence window, after the counts ("in the last 6 months"). */
   window?: string;
   /** The glossary entry: its meaning under the label, and an "i" that opens the rest. */
@@ -222,6 +227,7 @@ export function WeaknessRow({
   counts = DEFAULT_COUNTS,
   scaleMax,
   compared = band.median !== null && fin(band.median),
+  confidence,
   window,
   explain,
   className,
@@ -322,7 +328,7 @@ export function WeaknessRow({
               <RateStrip rate={rate} median={compared ? band.median : null} max={max} />
               <span className="text-sm text-ink-soft" style={LINING}>
                 {compared
-                  ? bandComparisonText(rate, band.median, band.label, band.basis)
+                  ? bandComparisonText(rate, band.median, band.label, band.basis, confidence)
                   : bandComparisonText(rate, null)}
               </span>
             </>

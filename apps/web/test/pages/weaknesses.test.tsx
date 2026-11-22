@@ -106,6 +106,66 @@ describe("weaknesses list", () => {
     noBadText(container);
   });
 
+  // ADR 0084 (bug hunt N10): the owner's rapid rows. "Allowed mate" is active at confidence 0.81
+  // with the peers' rate inside its range; "Opening traps" stays active (the timeline's longer
+  // segment) at 0.547. Only a row the comparison backs (>= 0.7) is "Costing you games".
+  it("files a costing state the comparison does not back under worth watching", async () => {
+    await seedProfile(db, accountId, {
+      timeClass: "rapid",
+      games: 3,
+      estimates: [
+        {
+          seriesKey: "W4.allowed",
+          state: "active",
+          mean: 0.00522,
+          ciLow: 0.00293,
+          ciHigh: 0.00782,
+          bandMedian: 0.003498,
+          bandP40: 0.00296,
+          confidence: 0.81,
+          nUnweighted: 1599,
+          kUnweighted: 8,
+          priority: 0.0092,
+        },
+        {
+          seriesKey: "W7.traps",
+          state: "active",
+          mean: 0.4443,
+          ciLow: 0.3819,
+          ciHigh: 0.5071,
+          bandMedian: 0.4381,
+          bandP40: 0.4,
+          confidence: 0.547,
+          nUnweighted: 79,
+          kUnweighted: 37,
+          priority: 0.001,
+        },
+      ],
+    });
+    const { container } = await list();
+    const names = (name: string) =>
+      within(screen.getByRole("region", { name }))
+        .getAllByRole("link")
+        .map((a) => a.textContent);
+    expect(names("Costing you games")).toEqual(["Allowed mate"]);
+    expect(screen.getByRole("region", { name: "Costing you games" }).textContent).toMatch(
+      /inside your likely range, though yours is probably higher \(81% likely\)/,
+    );
+    const watching = screen.getByRole("region", { name: "Worth watching" });
+    expect(within(watching).getAllByRole("link")).toHaveLength(1);
+    expect(watching.textContent).toMatch(/not clearly more often/);
+    noBadText(container);
+
+    const allowed = (await detail("W4.allowed")).container.textContent ?? "";
+    expect(allowed).toMatch(
+      /inside your likely range, though yours is probably higher \(81% likely\)/,
+    );
+    expect(allowed).toMatch(/Probably more often than/);
+    expect(allowed).not.toMatch(/Not clearly different/);
+    const traps = (await detail("W7.traps")).container.textContent ?? "";
+    expect(traps).toMatch(/Active comes from your game-by-game record/);
+  });
+
   // Bug hunt I1: with no rating-band benchmark every estimate is stored `not_an_issue` with a
   // null excess. The page must not file them "Under control": they are not compared yet.
   it("uncompared weaknesses are not compared yet, never under control", async () => {

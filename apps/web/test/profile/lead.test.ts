@@ -39,6 +39,29 @@ describe("leadFinding", () => {
     expect(lead.scope).toMatchObject({ accountId, timeClass: "rapid" });
   });
 
+  // ADR 0084 (bug hunt N10): a costing state the comparison does not back (confidence < 0.7,
+  // the owner's rapid "Opening traps" at 0.547) is never "What to work on".
+  it("a costing state below confidence 0.7 is not a lead", async () => {
+    await seedProfile(db, accountId, {
+      timeClass: "rapid",
+      games: 4,
+      estimates: [
+        { seriesKey: "W7.traps", priority: 9, state: "active", nUnweighted: 79, confidence: 0.547 },
+        {
+          seriesKey: "W4.allowed",
+          priority: 1,
+          state: "active",
+          nUnweighted: 1599,
+          confidence: 0.81,
+        },
+      ],
+    });
+    const lead = await leadFinding(db, userId);
+    expect(lead.kind).toBe("weakness");
+    if (lead.kind !== "weakness") return;
+    expect(lead.weakness.seriesKey).toBe("W4.allowed");
+  });
+
   it("resolved or insufficient weaknesses are not a lead", async () => {
     await seedProfile(db, accountId, {
       timeClass: "rapid",

@@ -1,4 +1,5 @@
 import type { Db } from "@ci/db";
+import { comparisonBacksState } from "../../lib/explain";
 import { readOnly } from "../games";
 import { resolveIn } from "./scope";
 import type { LeadFinding, WeaknessState } from "./types";
@@ -9,7 +10,8 @@ const LEAD_STATES: ReadonlySet<WeaknessState> = new Set(["active", "emerging", "
 
 /**
  * The overview's "What to work on" (ADR 0068): over the default scope, the top weakness with
- * `priority > 0`, a current state, sufficient evidence (R3) and a benchmark. `none` when no
+ * `priority > 0`, a current state its peer comparison backs (confidence >= 0.7, ADR 0084),
+ * sufficient evidence (R3) and a benchmark. `none` when no
  * weakness qualifies, saying whether anything was compared at all (bug hunt I1); `building` when
  * the user has no analysed game yet.
  */
@@ -19,7 +21,12 @@ export async function leadFinding(db: Db, userId: string): Promise<LeadFinding> 
     if (!scope) return { kind: "building" };
     const all = await summariesIn(tx, scope);
     const weakness = all.find(
-      (w) => w.compared && w.priority > 0 && LEAD_STATES.has(w.state) && w.evidence.sufficient,
+      (w) =>
+        w.compared &&
+        w.priority > 0 &&
+        LEAD_STATES.has(w.state) &&
+        comparisonBacksState(w.state, w.confidence) &&
+        w.evidence.sufficient,
     );
     if (weakness) return { kind: "weakness", scope, weakness };
     const analysedGames =
