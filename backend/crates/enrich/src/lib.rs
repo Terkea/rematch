@@ -6,6 +6,7 @@ pub mod difficulty;
 pub mod enrich_game;
 pub mod persist;
 pub mod protocol;
+pub mod reenrich;
 pub mod store;
 pub mod tablebase;
 pub mod types;
