@@ -87,6 +87,36 @@ describe("SegmentedControl", () => {
     expect(screen.getByRole("radio", { name: "All" })).toHaveAttribute("aria-checked", "false");
   });
 
+  it("names every radio, and its form input, by the label and never the raw value (M2)", () => {
+    const options = [
+      {
+        value: "0845062f-0000-4000-8000-000000000001:blitz",
+        label: "Blitz on chess.com (356 games)",
+      },
+      {
+        value: "0845062f-0000-4000-8000-000000000001:rapid",
+        label: "Rapid on chess.com (159 games)",
+      },
+    ];
+    const { container } = render(
+      <SegmentedControl
+        label="Games coached"
+        value={options[0]?.value ?? ""}
+        options={options}
+        onValueChange={vi.fn()}
+      />,
+    );
+    for (const o of options) {
+      expect(screen.getByRole("radio", { name: o.label })).toBeInTheDocument();
+    }
+    // Base UI's hidden native input carries the value; tools that read it must get the label.
+    const inputs = [...container.querySelectorAll<HTMLInputElement>("input[type=radio]")];
+    expect(inputs).toHaveLength(2);
+    for (const [i, input] of inputs.entries()) {
+      expect(input.getAttribute("aria-label")).toBe(options[i]?.label);
+    }
+  });
+
   it("moves the selection with ArrowRight", async () => {
     const onValueChange = vi.fn();
     const user = userEvent.setup();

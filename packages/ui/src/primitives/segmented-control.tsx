@@ -49,6 +49,11 @@ export function SegmentedControl({
               <Radio.Root
                 key={o.value}
                 value={o.value}
+                // Base UI's hidden native input holds the raw value ("<uuid>:blitz"); it is
+                // aria-hidden, but tools that read inputs would name it by that value (M2).
+                inputRef={(input) => {
+                  input?.setAttribute("aria-label", o.label);
+                }}
                 className={cn(
                   "relative isolate inline-flex h-8 shrink-0 cursor-pointer items-center justify-center rounded-pill px-3.5",
                   "font-sans text-sm font-medium whitespace-nowrap text-ink-soft select-none",
