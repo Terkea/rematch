@@ -63,8 +63,9 @@ test("the game pages look as they did", async ({ browser, request }, info) => {
   await page.setViewportSize(base);
   await page.emulateMedia({ colorScheme: colorScheme ?? "light", reducedMotion: "reduce" });
 
-  // The overview, once the trend has drawn (T4: the capture waits for the trend SVG).
-  await ready(page, "/app", "nav[aria-labelledby='tc-label'] a");
+  // The overview, once the trend has drawn (T4: the capture waits for the trend SVG). All time
+  // controls: the default is rapid (I8), and the seed's rapid games are too few for the line.
+  await ready(page, "/app?tc=all", "nav[aria-labelledby='tc-label'] a");
   await expect(page.locator("[data-chart='trend'] svg [data-part='mean']").first()).toBeAttached();
   const drawn = () =>
     page.evaluate(() => {

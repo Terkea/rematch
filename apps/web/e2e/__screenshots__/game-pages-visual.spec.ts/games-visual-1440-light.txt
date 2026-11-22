@@ -1,6 +1,19 @@
 Games
+Sync and analysis
+
+New games are fetched from each account, then analysed move by move.
+
+e2e-fixtures
+chess.com
+
+Sync now
+
+Not synced yet.
+
+34 of 35 games analysed. 1 waiting.
+
 Time control
-All time controls
+Rapid
 Result
 All
 Wins
@@ -13,8 +26,9 @@ Black
 From
 To
 
-Showing 1–25 of 35 games
+Showing 17 games
 
+Clear filters
 Sort by
 Newest first
 Your games
@@ -22,50 +36,6 @@ Date	Result
 Square: your colour
 	Opponent	Time control	Opening	Accuracy	Marks
 ?? blunder, ? mistake
-
-31 Oct 2026
-0
-Loss
-DrNykterstein
-3177
-	Blitz
-Queen's Indian Accelerated
-	79.1%
-3??
-0?
-
-30 Oct 2026
-1
-Win
-ChessArtHouse
-3029
-	Bullet
-Anderssen's Opening
-	79.0%
-4??
-3?
-
-29 Oct 2026
-1
-Win
-oasenegre
-2230
-	Blitz
-Rapport-Jobava System
-	95.2%
-0??
-0?
-
-
-0
-Loss
-opp
-1789
-	Blitz
-Not recorded
-	88.0%
-1??
-3?
 
 27 Oct 2026
 1
@@ -78,17 +48,6 @@ Not recorded
 0??
 0?
 
-25 Oct 2026
-1
-Win
-opp
-1707
-	Blitz
-Not recorded
-	54.0%
-3??
-1?
-
 23 Oct 2026
 ½
 Draw
@@ -99,17 +58,6 @@ Not recorded
 	82.0%
 2??
 2?
-
-21 Oct 2026
-0
-Loss
-opp
-1625
-	Blitz
-Not recorded
-	65.0%
-1??
-3?
 
 20 Oct 2026
 ½
@@ -133,17 +81,6 @@ Not recorded
 0??
 0?
 
-17 Oct 2026
-0
-Loss
-opp
-1543
-	Blitz
-Not recorded
-	76.0%
-3??
-1?
-
 15 Oct 2026
 ½
 Draw
@@ -163,17 +100,6 @@ opp
 	Rapid
 Not recorded
 	Waiting for analysis
-13 Oct 2026
-1
-Win
-opp
-1461
-	Blitz
-Not recorded
-	87.0%
-1??
-3?
-
 11 Oct 2026
 1
 Win
@@ -184,17 +110,6 @@ Not recorded
 	70.0%
 0??
 0?
-
-9 Oct 2026
-0
-Loss
-opp
-1379
-	Blitz
-Not recorded
-	53.0%
-3??
-1?
 
 7 Oct 2026
 ½
@@ -207,17 +122,6 @@ Not recorded
 2??
 2?
 
-5 Oct 2026
-0
-Loss
-opp
-1297
-	Blitz
-Not recorded
-	64.0%
-1??
-3?
-
 3 Oct 2026
 1
 Win
@@ -228,17 +132,6 @@ Not recorded
 	47.0%
 0??
 0?
-
-1 Oct 2026
-1
-Win
-opp
-1215
-	Blitz
-Not recorded
-	75.0%
-3??
-1?
 
 29 Sep 2026
 ½
@@ -251,17 +144,6 @@ Not recorded
 2??
 2?
 
-27 Sep 2026
-0
-Loss
-opp
-1733
-	Blitz
-Not recorded
-	86.0%
-1??
-3?
-
 25 Sep 2026
 0
 Loss
@@ -273,17 +155,6 @@ Not recorded
 0??
 0?
 
-23 Sep 2026
-0
-Loss
-opp
-1651
-	Blitz
-Not recorded
-	52.0%
-3??
-1?
-
 21 Sep 2026
 ½
 Draw
@@ -294,5 +165,58 @@ Not recorded
 	80.0%
 2??
 2?
-Page 1 of 2
-Next page
+
+17 Sep 2026
+1
+Win
+opp
+1528
+	Rapid
+Not recorded
+	46.0%
+0??
+0?
+
+13 Sep 2026
+½
+Draw
+opp
+1446
+	Rapid
+Not recorded
+	57.0%
+2??
+2?
+
+9 Sep 2026
+1
+Win
+opp
+1364
+	Rapid
+Not recorded
+	68.0%
+0??
+0?
+
+5 Sep 2026
+½
+Draw
+opp
+1282
+	Rapid
+Not recorded
+	79.0%
+2??
+2?
+
+1 Sep 2026
+0
+Loss
+opp
+1200
+	Rapid
+Not recorded
+	45.0%
+0??
+0?
