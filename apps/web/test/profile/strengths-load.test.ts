@@ -274,7 +274,7 @@ describe("loadStrengths", () => {
     expect(m?.difficulty).toMatchObject({ positions: 1, pendingMaia: 1 });
   });
 
-  it("skips a strength ply the opponent's blunder just before handed over", async () => {
+  it("keeps refuting the opponent's blunder with a real (non-capture) move", async () => {
     const gameId = await analysed(0, { strengths: [{ kind: "only_move_found", ply: 3 }] });
     await db.insert(moveFeatures).values({
       gameId,
@@ -289,7 +289,10 @@ describe("loadStrengths", () => {
       .set({ judgement: "blunder" })
       .where(and(eq(moves.gameId, gameId), eq(moves.ply, 2)));
     const m = await loadStrengths(db, userId, await scopeOf(userId));
-    expect(m?.hardSpots).toMatchObject({ mode: "none", spots: [] });
+    // Punishing a mistake is a strength (fc92707); only obvious captures are skipped, which the
+    // unit tests in strengths.test.ts pin with the owner's real free-capture positions.
+    expect(m?.hardSpots).toMatchObject({ mode: "critical" });
+    expect(m?.hardSpots.spots.map((s) => s.ply)).toEqual([3]);
   });
 
   it("reads the newest report input's strengths", async () => {
