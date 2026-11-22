@@ -24,7 +24,8 @@ use uuid::Uuid;
 
 use super::weekly_job::{
     AiItemDeps, Metering, REASON_AI_DISABLED, REASON_AI_UNAVAILABLE, REASON_INVALID_INPUT,
-    REASON_JOB_DEAD, TxError, failure_reason, model_of, plan_and_scope, retryable, skipped,
+    REASON_JOB_DEAD, RecordingClient, TxError, cancelled, failure_reason, model_of, plan_and_scope,
+    retryable, skipped,
 };
 use crate::client::model::Models;
 use crate::client::port::AiError;
@@ -189,7 +190,7 @@ impl ExplainChangeHandler {
         Ok(())
     }
 
-    async fn run(&self, job: Job) -> Result<Value, JobError> {
+    async fn run(&self, job: Job, ctx: JobContext) -> Result<Value, JobError> {
         let d = &self.0;
         let payload: ExplainChangePayload =
             serde_json::from_value(job.payload.clone()).map_err(|e| JobError::Unrecoverable {
@@ -233,11 +234,15 @@ impl ExplainChangeHandler {
         let now = (d.now)();
         let (plan, scope) = plan_and_scope(d, account_id).await;
         let guard = budget_guard(d.pool.clone(), scope, plan, d.budgets, now);
-        let result = explain_weakness_change(ai.as_ref(), &guard, &input).await;
-        let calls = match &result {
-            Ok(o) => o.calls.clone(),
-            Err(SectionError { calls, .. }) => calls.clone(),
+        // The one safe point that matters: the generation (the only paid part) stops at a
+        // cancel; the short state transactions that follow always run to the end.
+        let rec = RecordingClient::new(ai);
+        let result = tokio::select! {
+            biased;
+            () = ctx.cancel.cancelled() => None,
+            r = explain_weakness_change(&rec, &guard, &input) => Some(r),
         };
+        let calls = rec.calls();
         let m = Metering {
             account_id,
             feature: AiFeature::WeaknessChange,
@@ -245,6 +250,9 @@ impl ExplainChangeHandler {
             model: Models::EXPLAIN,
             key: format!("wchange:{id}:{}", job.lease_token),
             calls: &calls,
+        };
+        let Some(result) = result else {
+            return Err(cancelled(d, &m).await);
         };
         let written = match result {
             Ok(o) => self
@@ -300,8 +308,8 @@ impl Handler for ExplainChangeHandler {
         KIND_EXPLAIN_CHANGE
     }
 
-    fn handle(&self, job: Job, _ctx: JobContext) -> BoxFuture<'_, Result<Value, JobError>> {
-        Box::pin(self.run(job))
+    fn handle(&self, job: Job, ctx: JobContext) -> BoxFuture<'_, Result<Value, JobError>> {
+        Box::pin(self.run(job, ctx))
     }
 
     fn on_dead<'a>(&'a self, job: &'a Job, _reason: &'a str) -> BoxFuture<'a, ()> {

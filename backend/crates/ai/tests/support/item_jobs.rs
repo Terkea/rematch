@@ -131,3 +131,73 @@ pub async fn jobs(pool: &PgPool) -> Vec<(String, Option<String>, Value)> {
 pub fn empty() -> Value {
     json!([])
 }
+
+/// Delegates to `inner`, but structured call `from` (1-based) and later never return: a call
+/// still in flight when the handler is cancelled.
+pub struct Hang {
+    pub inner: Arc<FakeAiClient>,
+    pub from: usize,
+    pub n: AtomicUsize,
+}
+
+impl Hang {
+    pub fn new(inner: Arc<FakeAiClient>, from: usize) -> Arc<Hang> {
+        Arc::new(Hang {
+            inner,
+            from,
+            n: AtomicUsize::new(0),
+        })
+    }
+}
+
+impl AiClient for Hang {
+    fn structured<'a>(
+        &'a self,
+        req: &'a ai::client::port::StructuredRequest,
+    ) -> BoxFuture<'a, Result<ai::client::port::StructuredResult, AiError>> {
+        let k = self.n.fetch_add(1, Ordering::SeqCst) + 1;
+        Box::pin(async move {
+            if k >= self.from {
+                std::future::pending::<()>().await;
+            }
+            self.inner.structured(req).await
+        })
+    }
+
+    fn stream_turn<'a>(
+        &'a self,
+        req: &'a ai::client::port::ChatTurnRequest,
+        tools: Option<Arc<dyn ai::client::port::ToolHandler>>,
+    ) -> futures::stream::BoxStream<'a, Result<ai::client::port::TurnEvent, AiError>> {
+        self.inner.stream_turn(req, tools)
+    }
+
+    fn batch_submit<'a>(
+        &'a self,
+        items: &'a [ai::client::port::BatchItem],
+    ) -> BoxFuture<'a, Result<String, AiError>> {
+        self.inner.batch_submit(items)
+    }
+
+    fn batch_status<'a>(
+        &'a self,
+        id: &'a str,
+    ) -> BoxFuture<'a, Result<ai::client::port::BatchStatus, AiError>> {
+        self.inner.batch_status(id)
+    }
+
+    fn batch_results<'a>(
+        &'a self,
+        id: &'a str,
+        resolver: &'a dyn ai::client::port::SchemaResolver,
+    ) -> futures::stream::BoxStream<'a, Result<ai::client::port::BatchResultItem, AiError>> {
+        self.inner.batch_results(id, resolver)
+    }
+}
+
+/// `deps` with any client.
+pub fn deps_with(pool: &PgPool, ai: Arc<dyn AiClient>) -> AiItemDeps {
+    let mut d = deps(pool, None);
+    d.ai = Some(ai);
+    d
+}

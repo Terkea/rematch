@@ -293,3 +293,35 @@ async fn a_note_whose_input_is_not_its_change_is_failed_with_no_call(pool: PgPoo
         )]
     );
 }
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_cancelled_note_is_released_pending_and_meters_the_paid_call(pool: PgPool) {
+    let a = account(&pool, "ch9").await;
+    enqueue(&pool, a).await;
+    let id = row(&pool, a, TACTICS).await.id;
+    let inner = fake(|_| Ok(json!({ "nope": true })));
+    let h = ExplainChangeHandler(support::deps_with(&pool, support::Hang::new(inner, 2)));
+    let c = ctx();
+    let cancel = c.cancel.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        cancel.cancel();
+    });
+    let e = tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        h.handle(note_job(id), c),
+    )
+    .await
+    .expect("the handler stops on cancel")
+    .unwrap_err();
+    assert!(
+        matches!(&e, JobError::Release { delay, .. } if delay.is_zero()),
+        "{e:?}"
+    );
+    let r = row(&pool, a, TACTICS).await;
+    assert_eq!(r.status, "pending");
+    assert_eq!(r.text, None);
+    assert_eq!(r.retry_count, 0);
+    assert_eq!(usage_rows(&pool, a).await.len(), 1, "the paid first call");
+    assert!(events(&pool, a).await.is_empty());
+}

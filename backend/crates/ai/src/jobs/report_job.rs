@@ -819,6 +819,15 @@ impl Run<'_> {
 
         // 3 and 4.
         let input = self.input(tc).await?;
+        // Task 19: a pending note and a job for every detected change without a note. It is
+        // idempotent, so a retry repairs a lost enqueue; a failure never blocks the report.
+        if let Err(e) = crate::jobs::change_job::enqueue_missing_change_notes(
+            &d.pool, &d.queue, account_id, &input,
+        )
+        .await
+        {
+            tracing::warn!(run = %self.claim.id, error = %format!("{e:#}"), "change notes not enqueued");
+        }
         let ledger = Arc::new(Ledger::new(&input, self.row.is_first_report));
         *self.ledger.lock().unwrap_or_else(|e| e.into_inner()) = Some(ledger.clone());
         let report_id = self.report(&input, plan).await?;

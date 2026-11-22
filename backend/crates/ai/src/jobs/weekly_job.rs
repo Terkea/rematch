@@ -22,10 +22,15 @@
 //!   6. A database error after the calls meters them in their own transaction and returns
 //!      `Retryable`. Metering is keyed by row and delivery (`lease_token`), so a re-meter adds
 //!      nothing and a new delivery's calls (paid again) are new rows.
+//!   7. A cancel (`ctx.cancel`: hard timeout, lost lease, shutdown) stops the generation, meters
+//!      the calls already returned (within `CANCEL_GRACE`), leaves the row `pending` with its
+//!      retry count unchanged and returns `Release { delay: 0 }`.
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use futures::future::BoxFuture;
+use futures::stream::BoxStream;
 use queue::queue::{Queue, QueueError};
 use queue::runner::{Handler, JobContext};
 use queue::types::{Job, JobError};
@@ -36,7 +41,10 @@ use uuid::Uuid;
 
 use crate::client::cost::PricingTable;
 use crate::client::model::{AiModel, Models};
-use crate::client::port::{AiClient, AiError};
+use crate::client::port::{
+    AiClient, AiError, BatchItem, BatchResultItem, BatchStatus, ChatTurnRequest, SchemaResolver,
+    StructuredRequest, StructuredResult, ToolHandler, TurnEvent,
+};
 use crate::db::ItemStatus;
 use crate::db::runs::ReportMode;
 use crate::db::usage::AiFeature;
@@ -48,6 +56,7 @@ use crate::generate::weekly::{WeeklyOutcome, generate_weekly_review};
 use crate::input::types::TimeClass;
 use crate::jobs::budget::{BudgetConfig, budget_guard, meter_keyed};
 use crate::jobs::kinds::{KIND_WEEKLY_REVIEW, WeeklyReviewPayload, enqueue_weekly};
+use crate::jobs::report_job::CANCEL_GRACE;
 use crate::jobs::retry::retry_delay;
 use crate::output::disclosure::make_disclosure;
 use crate::output::weekly::{ValidatedWeeklyReview, WeeklyReviewInput};
@@ -167,6 +176,94 @@ impl Metering<'_> {
         if let Err(e) = r {
             tracing::error!(error = %e, feature = self.feature.as_str(), "metering AI calls failed");
         }
+    }
+}
+
+/// The item's client: every structured result is recorded the moment the client returns it, so
+/// a handler cancelled mid-generation still meters the calls already paid (a request in flight
+/// at the cancel reports no usage, as in the report job).
+pub(crate) struct RecordingClient {
+    inner: Arc<dyn AiClient>,
+    calls: Mutex<Vec<CallRecord>>,
+}
+
+impl RecordingClient {
+    pub(crate) fn new(inner: Arc<dyn AiClient>) -> RecordingClient {
+        RecordingClient {
+            inner,
+            calls: Mutex::default(),
+        }
+    }
+
+    pub(crate) fn calls(&self) -> Vec<CallRecord> {
+        self.calls.lock().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+}
+
+impl AiClient for RecordingClient {
+    fn structured<'a>(
+        &'a self,
+        req: &'a StructuredRequest,
+    ) -> BoxFuture<'a, Result<StructuredResult, AiError>> {
+        Box::pin(async move {
+            let r = self.inner.structured(req).await;
+            if let Ok(res) = &r {
+                self.calls
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .extend(CallRecord::from_result(res, false));
+            }
+            r
+        })
+    }
+
+    fn stream_turn<'a>(
+        &'a self,
+        req: &'a ChatTurnRequest,
+        tools: Option<Arc<dyn ToolHandler>>,
+    ) -> BoxStream<'a, Result<TurnEvent, AiError>> {
+        self.inner.stream_turn(req, tools)
+    }
+
+    fn batches_enabled(&self) -> bool {
+        self.inner.batches_enabled()
+    }
+
+    fn batch_submit<'a>(
+        &'a self,
+        items: &'a [BatchItem],
+    ) -> BoxFuture<'a, Result<String, AiError>> {
+        self.inner.batch_submit(items)
+    }
+
+    fn batch_status<'a>(&'a self, id: &'a str) -> BoxFuture<'a, Result<BatchStatus, AiError>> {
+        self.inner.batch_status(id)
+    }
+
+    fn batch_results<'a>(
+        &'a self,
+        id: &'a str,
+        resolver: &'a dyn SchemaResolver,
+    ) -> BoxStream<'a, Result<BatchResultItem, AiError>> {
+        self.inner.batch_results(id, resolver)
+    }
+}
+
+/// A cancelled handler: meters what was paid (bounded by [`CANCEL_GRACE`]), leaves the row
+/// `pending` (a cancel is not an AI retry) and releases the job at once for the next delivery.
+pub(crate) async fn cancelled(d: &AiItemDeps, m: &Metering<'_>) -> JobError {
+    if tokio::time::timeout(CANCEL_GRACE, m.alone(&d.pool, &d.pricing))
+        .await
+        .is_err()
+    {
+        tracing::error!(
+            feature = m.feature.as_str(),
+            "paid AI calls not metered (cancel timeout)"
+        );
+    }
+    JobError::Release {
+        delay: Duration::ZERO,
+        reason: "cancelled".to_owned(),
     }
 }
 
@@ -312,7 +409,7 @@ impl WeeklyReviewHandler {
         Ok(())
     }
 
-    async fn run(&self, job: Job) -> Result<Value, JobError> {
+    async fn run(&self, job: Job, ctx: JobContext) -> Result<Value, JobError> {
         let d = &self.0;
         let payload: WeeklyReviewPayload =
             serde_json::from_value(job.payload.clone()).map_err(|e| JobError::Unrecoverable {
@@ -354,11 +451,15 @@ impl WeeklyReviewHandler {
         let now = (d.now)();
         let (plan, scope) = plan_and_scope(d, account_id).await;
         let guard = budget_guard(d.pool.clone(), scope, plan, d.budgets, now);
-        let result = generate_weekly_review(ai.as_ref(), &guard, &input).await;
-        let calls = match &result {
-            Ok(o) => o.calls.clone(),
-            Err(SectionError { calls, .. }) => calls.clone(),
+        // The one safe point that matters: the generation (the only paid part) stops at a
+        // cancel; the short state transactions that follow always run to the end.
+        let rec = RecordingClient::new(ai);
+        let result = tokio::select! {
+            biased;
+            () = ctx.cancel.cancelled() => None,
+            r = generate_weekly_review(&rec, &guard, &input) => Some(r),
         };
+        let calls = rec.calls();
         let m = Metering {
             account_id,
             feature: AiFeature::WeeklyReview,
@@ -366,6 +467,9 @@ impl WeeklyReviewHandler {
             model: Models::WEEKLY,
             key: format!("weekly:{id}:{}", job.lease_token),
             calls: &calls,
+        };
+        let Some(result) = result else {
+            return Err(cancelled(d, &m).await);
         };
         let written = match result {
             Ok(o) => self
@@ -427,8 +531,8 @@ impl Handler for WeeklyReviewHandler {
         KIND_WEEKLY_REVIEW
     }
 
-    fn handle(&self, job: Job, _ctx: JobContext) -> BoxFuture<'_, Result<Value, JobError>> {
-        Box::pin(self.run(job))
+    fn handle(&self, job: Job, ctx: JobContext) -> BoxFuture<'_, Result<Value, JobError>> {
+        Box::pin(self.run(job, ctx))
     }
 
     fn on_dead<'a>(&'a self, job: &'a Job, _reason: &'a str) -> BoxFuture<'a, ()> {

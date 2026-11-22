@@ -392,3 +392,55 @@ async fn a_dead_job_fails_its_review(pool: PgPool) {
         )]
     );
 }
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_cancelled_review_is_released_pending_and_meters_the_paid_call(pool: PgPool) {
+    let a = account(&pool, "wk12").await;
+    let id = request(&pool, a).await.unwrap();
+    // Attempt 1 is paid but unusable; the repair is still in flight when the job is cancelled.
+    let inner = fake(|_| Ok(json!({ "nope": true })));
+    let h = WeeklyReviewHandler(support::deps_with(&pool, support::Hang::new(inner, 2)));
+    let c = ctx();
+    let cancel = c.cancel.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        cancel.cancel();
+    });
+    let e = tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        h.handle(weekly_job(id), c),
+    )
+    .await
+    .expect("the handler stops on cancel")
+    .unwrap_err();
+    assert!(
+        matches!(&e, JobError::Release { delay, .. } if delay.is_zero()),
+        "{e:?}"
+    );
+    let r = row(&pool, id).await;
+    assert_eq!(r.status, "pending");
+    assert_eq!(r.content, None);
+    assert_eq!(r.retry_count, 0, "a cancel is not an AI retry");
+    assert_eq!(usage_rows(&pool, a).await.len(), 1, "the paid first call");
+    assert!(events(&pool, a).await.is_empty());
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn an_already_cancelled_review_makes_no_call(pool: PgPool) {
+    let a = account(&pool, "wk13").await;
+    let id = request(&pool, a).await.unwrap();
+    let ai = fake(|_| Ok(review()));
+    let h = WeeklyReviewHandler(deps(&pool, Some(ai.clone())));
+    let c = ctx();
+    c.cancel.cancel();
+    let e = tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        h.handle(weekly_job(id), c),
+    )
+    .await
+    .expect("the handler stops on cancel")
+    .unwrap_err();
+    assert!(matches!(e, JobError::Release { .. }), "{e:?}");
+    assert_eq!(structured_calls(&ai), 0);
+    assert_eq!(row(&pool, id).await.status, "pending");
+}
