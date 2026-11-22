@@ -10,6 +10,7 @@ import { getDb } from "../../../../../server/db";
 import { requestEventCursor } from "../../../../../server/events/request-cursor";
 import { getBenchmark, getWeakness, resolveCoachScope } from "../../../../../server/profile";
 import { reviewGameIds } from "../../../../../server/profile/game-ids";
+import { withSide } from "../../_filters/side";
 import { noteKeysInScope } from "../queries";
 import { WeaknessView } from "./weakness-view";
 
@@ -46,8 +47,12 @@ const load = cache(async (raw: string, query: string) => {
   const key = decodeKey(raw);
   if (key === null) notFound();
   const params = Object.fromEntries(new URLSearchParams(query));
-  const scope = await resolveCoachScope(db, user.id, params);
-  if (!scope) notFound();
+  const resolved = await resolveCoachScope(db, user.id, params);
+  if (!resolved) notFound();
+  // The colour filter reads that side's estimate and weekly points (ADR 0082).
+  const scope = withSide(resolved, {
+    color: params.color === "white" || params.color === "black" ? params.color : "both",
+  });
   const detail = await getWeakness(db, user.id, scope, key);
   if (!detail) notFound();
   const benchmark = await getBenchmark(db, user.id, scope);
@@ -57,7 +62,7 @@ const load = cache(async (raw: string, query: string) => {
 /** The search params as a stable string, so `cache` sees one key per request. */
 function queryOf(sp: Params): string {
   const q = new URLSearchParams();
-  for (const name of ["account", "tc"]) {
+  for (const name of ["account", "tc", "color"]) {
     const v = sp[name];
     const first = Array.isArray(v) ? v[0] : v;
     if (typeof first === "string") q.set(name, first);

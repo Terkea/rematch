@@ -1,9 +1,12 @@
 import type { Db } from "@ci/db";
 import { games, weaknessChangeNotes, weaknessSeriesPoint } from "@ci/db/generated";
 import { and, eq, inArray, sql } from "drizzle-orm";
+import type { DayRange } from "../../../../server/filters/params";
 import { readOnly } from "../../../../server/games";
 import type { CoachScope } from "../../../../server/profile";
 import { ownsScope } from "../../../../server/profile/scope";
+import { pointOnSide } from "../../../../server/profile/weaknesses";
+import { clipWeeklyRates } from "../_filters/clip";
 
 // Two narrow reads the weaknesses pages need beside T1's read model, each behind its `ownsScope`
 // check, read-only and limited to the scope's own account and time class.
@@ -33,7 +36,10 @@ export function basisText(scope: CoachScope): string {
 
 /** The scope's URL parameters, so a link opens the same games coached. */
 export function scopeQuery(scope: CoachScope): string {
-  return new URLSearchParams({ account: scope.accountId, tc: scope.timeClass }).toString();
+  const q = new URLSearchParams({ account: scope.accountId, tc: scope.timeClass });
+  // The colour filter travels with the scope, so a row opens the same colour's detail.
+  if (scope.side && scope.side !== "both") q.set("color", scope.side);
+  return q.toString();
 }
 
 export function weaknessHref(seriesKey: string, scope: CoachScope): string {
@@ -50,11 +56,13 @@ const WEEK = 7 * DAY;
  * Each series' raw weekly rate (events over chances per ISO week, UTC), oldest first, over the
  * scope's newest `ROW_WEEKS` calendar weeks (ending at its newest week with a point). A week with
  * no point, or fewer than `WEEKLY_MIN_CHANCES` chances, is null: a gap, never a zero or a spike.
+ * The filter bar's `range` (T3) turns the weeks outside it into gaps too.
  */
 export async function weeklyRates(
   db: Db,
   userId: string,
   scope: CoachScope,
+  range: DayRange = { from: null, to: null },
 ): Promise<Map<string, (number | null)[]>> {
   return readOnly(db, async (tx) => {
     const out = new Map<string, (number | null)[]>();
@@ -72,6 +80,8 @@ export async function weeklyRates(
         and(
           eq(weaknessSeriesPoint.accountId, scope.accountId),
           eq(weaknessSeriesPoint.timeClass, scope.timeClass),
+          // One colour's games when the colour filter names one (ADR 0082).
+          pointOnSide(scope),
         ),
       )
       .groupBy(weaknessSeriesPoint.seriesKey, monday);
@@ -86,6 +96,8 @@ export async function weeklyRates(
       list[i] = r.chances >= WEEKLY_MIN_CHANCES ? r.events / r.chances : null;
       out.set(r.seriesKey, list);
     }
+    const firstMonday = new Date(first).toISOString().slice(0, 10);
+    for (const [key, list] of out) out.set(key, clipWeeklyRates(list, firstMonday, range));
     return out;
   });
 }

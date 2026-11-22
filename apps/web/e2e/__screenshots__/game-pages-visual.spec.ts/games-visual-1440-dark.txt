@@ -14,17 +14,29 @@ Not synced yet.
 
 Time control
 Rapid
+17
+Blitz
+17
+Bullet
+1
+All
+35
+Colour
+Both
+White
+Black
+Period
+30 days
+3 months
+6 months
+12 months
+All time
+Custom
 Result
 All
 Wins
 Draws
 Losses
-Colour
-Both
-White
-Black
-From
-To
 
 Showing 17 games
 

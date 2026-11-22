@@ -57,7 +57,31 @@ export interface WeaknessRowProps {
   window?: string;
   /** The glossary entry: its meaning under the label, and an "i" that opens the rest. */
   explain?: ExplainEntry | null;
+  /**
+   * One colour's estimate (ADR 0082). Timeline states are called on every game, so the row
+   * shows no state badge, and a missing colour benchmark reads "No colour benchmark".
+   */
+  side?: "white" | "black";
+  /** In Both mode, each colour's own estimate, shown with its n under the label. */
+  sides?: { white: SideRate | null; black: SideRate | null };
   className?: string;
+}
+
+/** One colour's stored estimate, shares of chances (0 to 1). */
+export type SideRate = { mean: number; chances: number; sufficient: boolean };
+
+const SIDE_NAME = { white: "White", black: "Black" } as const;
+const count = (n: number) => new Intl.NumberFormat("en-GB").format(Math.trunc(n));
+export const NO_COLOUR_BENCHMARK = "No colour benchmark";
+export const NO_COLOUR_BENCHMARK_TEXT =
+  "No colour benchmark: no peer rates for this colour yet, so it is not compared";
+
+/** "White 5.1% of 480 chances", or "Black early read, 12 chances" below the minimum. */
+export function sideRateText(side: "white" | "black", r: SideRate | null, chance = "chances") {
+  const name = SIDE_NAME[side];
+  if (!r || !fin(r.chances) || r.chances <= 0) return `${name} no ${chance} yet`;
+  if (!r.sufficient || !fin(r.mean)) return `${name} early read, ${count(r.chances)} ${chance}`;
+  return `${name} ${shareText(r.mean)} of ${count(r.chances)} ${chance}`;
 }
 
 const NUMERALS = { fontVariantNumeric: "lining-nums tabular-nums" } as const;
@@ -230,11 +254,19 @@ export function WeaknessRow({
   confidence,
   window,
   explain,
+  side,
+  sides,
   className,
 }: WeaknessRowProps) {
   const early = !evidence.sufficient;
   const none = evidence.chances <= 0;
-  const chip = early ? "Early read" : compared ? stateStyle[state].label : NOT_COMPARED_LABEL;
+  const chip = early
+    ? "Early read"
+    : side
+      ? `Your ${SIDE_NAME[side]} games`
+      : compared
+        ? stateStyle[state].label
+        : NOT_COMPARED_LABEL;
   const countLine = `${countsText(evidence, counts)}${window ? ` ${window}` : ""}`;
   const measured = trend.filter((v) => v !== null && fin(v)).length;
   const max =
@@ -264,9 +296,12 @@ export function WeaknessRow({
           {explain ? <p className="m-0 text-sm text-ink-soft">{explain.meaning}</p> : null}
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
             <span className="inline-flex items-center gap-1.5 text-ink-soft">
-              <StateMark state={early || !compared ? "early" : state} />
+              {side && !early ? null : <StateMark state={early || !compared ? "early" : state} />}
               <span>{chip}</span>
             </span>
+            {side && !early && !compared ? (
+              <span className="text-ink-soft">{NO_COLOUR_BENCHMARK}</span>
+            ) : null}
             {onset !== null && !early ? (
               <span className="text-ink-faint">
                 Onset detected{" "}
@@ -276,6 +311,16 @@ export function WeaknessRow({
               </span>
             ) : null}
           </div>
+          {sides ? (
+            <p
+              data-part="sides"
+              className="m-0 flex flex-wrap gap-x-4 text-sm text-ink-soft"
+              style={LINING}
+            >
+              <span>{sideRateText("white", sides.white, counts.chance)}</span>
+              <span>{sideRateText("black", sides.black, counts.chance)}</span>
+            </p>
+          ) : null}
         </div>
 
         <div className="flex flex-col">
@@ -329,7 +374,9 @@ export function WeaknessRow({
               <span className="text-sm text-ink-soft" style={LINING}>
                 {compared
                   ? bandComparisonText(rate, band.median, band.label, band.basis, confidence)
-                  : bandComparisonText(rate, null)}
+                  : side
+                    ? NO_COLOUR_BENCHMARK_TEXT
+                    : bandComparisonText(rate, null)}
               </span>
             </>
           )}

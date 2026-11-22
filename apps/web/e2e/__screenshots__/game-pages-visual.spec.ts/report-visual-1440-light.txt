@@ -3,6 +3,20 @@ Your coaching report
 Report of 13 Oct 2026, version 2
 
 Rebuild report
+Time control
+Rapid
+15
+Colour
+
+The report covers both colours. Weaknesses, areas and progress split by colour.
+
+Period
+30 days
+3 months
+6 months
+12 months
+All time
+Custom
 Where you stand
 
 Rated 1,450 in rapid on lichess, among players rated 1300–1699.

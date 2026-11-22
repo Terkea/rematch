@@ -13,6 +13,20 @@ How well you play once most pieces have been traded.
 
 From 15 analysed rapid games on chess.com
 
+Time control
+Rapid
+15
+Colour
+Both
+White
+Black
+Period
+30 days
+3 months
+6 months
+12 months
+All time
+Custom
 Score
 Your score
 Band median

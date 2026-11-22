@@ -52,12 +52,11 @@ test("the explorer never scrolls sideways at 390 or 360 px", async ({ page, requ
       expect(await overflow(page), `${url} at ${width}`).toBe(0);
     }
 
-    // The open filter panel, with chips for the active filters.
+    // The open shared filter bar (T3), its custom range open for a range that is no preset.
     await gotoSettled(page, "/app/games?tc=rapid&result=loss&from=2026-10-01");
-    await hydrated(page, "section[aria-label='Filters'] button");
-    await page.getByRole("button", { name: /^Filters/ }).click();
-    await expect(page.getByLabel("From", { exact: true })).toBeVisible();
-    await expect(page.getByRole("list", { name: "Active filters" })).toBeVisible();
+    const phoneBar = page.locator("[data-filter-bar] > details");
+    await phoneBar.locator("> summary").click();
+    await expect(phoneBar.getByLabel("From", { exact: true })).toBeVisible();
     expect(await overflow(page), `filters open at ${width}`).toBe(0);
 
     // The no-match state.
@@ -90,11 +89,13 @@ test("overview, explorer and review, end to end", async ({ browser, request }, i
   });
 
   await test.step("2. Rapid in the time-control switch", async () => {
-    await hydrated(page, "nav[aria-labelledby='tc-label'] a");
-    const tc = page.getByRole("navigation", { name: "Time control" });
+    await hydrated(page, "[data-filter-bar] a");
+    // The shared filter bar (T3): its desktop copy is the one shown at this width.
+    const tc = page.locator("[data-filter-bar] > div").getByRole("group", { name: "Time control" });
     await tc.getByRole("link", { name: /^Rapid/ }).click();
-    await expect(page).toHaveURL(/[?&]tc=rapid\b/);
-    await expect(tc.getByRole("link", { name: /^Rapid/ })).toHaveAttribute("aria-current", "page");
+    // Rapid is the default class, so its canonical URL names no class (ADR 0083).
+    await expect(page).toHaveURL(/\/app$/);
+    await expect(tc.getByRole("link", { name: /^Rapid/ })).toHaveAttribute("aria-current", "true");
     await expect(page.getByText(/^Across 16 rapid games your accuracy averages/)).toBeVisible();
     await expect(page.getByText(/^Across 16 rapid games\.$/)).toBeVisible();
   });
@@ -105,10 +106,13 @@ test("overview, explorer and review, end to end", async ({ browser, request }, i
       .getByRole("link", { name: "Games" })
       .click();
     await expect(page).toHaveURL(/\/app\/games$/);
-    await hydrated(page, "section[aria-label='Filters'] button");
+    await hydrated(page, "section[aria-label='Results and sort'] [role='combobox']");
     // The list opens on rapid (I8); the analysed fixture is not rapid, so show every time control.
-    await page.getByRole("combobox", { name: "Time control" }).click();
-    await page.getByRole("option", { name: "All time controls" }).click();
+    await page
+      .locator("[data-filter-bar] > div")
+      .getByRole("group", { name: "Time control" })
+      .getByRole("link", { name: /^All/ })
+      .click();
     await expect(page).toHaveURL(/[?&]tc=all\b/);
     await page
       .getByRole("radiogroup", { name: "Result" })

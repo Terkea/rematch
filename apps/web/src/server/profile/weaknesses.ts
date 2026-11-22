@@ -41,12 +41,23 @@ type HistoryRow = typeof weaknessStateHistory.$inferSelect;
 
 const day = (d: Date) => d.toISOString().slice(0, 10);
 
+/**
+ * A series point of one of the side's games: every point for "both", else only the points of the
+ * games the player had that colour in (how build-profile splits them, ADR 0082).
+ */
+export function pointOnSide(scope: CoachScope) {
+  const side = scope.side ?? "both";
+  if (side === "both") return undefined;
+  return sql`exists (select 1 from ${games} where ${games.id} = ${weaknessSeriesPoint.gameId}
+    and ${games.playerColor} = ${side})`;
+}
+
 const inScope = (scope: CoachScope) => ({
   estimates: and(
     eq(weaknessEstimates.accountId, scope.accountId),
     eq(weaknessEstimates.timeClass, scope.timeClass),
-    // The colour split's per-side rows are not shown yet: these pages read every game.
-    eq(weaknessEstimates.side, "both"),
+    // The colour filter's side (ADR 0082); every game unless the scope names a colour.
+    eq(weaknessEstimates.side, scope.side ?? "both"),
   ),
   history: and(
     eq(weaknessStateHistory.accountId, scope.accountId),
@@ -307,6 +318,7 @@ async function weeklyOf(
         eq(weaknessSeriesPoint.timeClass, scope.timeClass),
         eq(weaknessSeriesPoint.seriesKey, seriesKey),
         gte(weaknessSeriesPoint.playedAt, from),
+        pointOnSide(scope),
       ),
     )
     .groupBy(week)
@@ -391,6 +403,7 @@ async function examplesOf(
         eq(gameMetrics.timeClass, scope.timeClass),
         gte(games.playedAt, from),
         sql`${moves.color} = ${games.playerColor}`,
+        scope.side && scope.side !== "both" ? eq(games.playerColor, scope.side) : undefined,
       ),
     )
     .orderBy(desc(games.playedAt), games.platformGameId, sql`p.ord`)

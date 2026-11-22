@@ -1,8 +1,10 @@
-import { accountLinks, type Db, importRuns, linkedAccounts } from "@ci/db";
-import { asc, desc, eq, inArray } from "drizzle-orm";
+import { accountLinks, type Db, games, importRuns, linkedAccounts } from "@ci/db";
+import { asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { byTimeClass, defaultTimeClass } from "../../lib/time-class";
 import { countGames, listGames } from "./list";
 import { NO_FILTERS, parseGameQuery } from "./query";
-import type { GameFilters, GameListQuery, GamePage } from "./types";
+import { scopedAccountIds } from "./scope";
+import type { GameFilters, GameListQuery, GamePage, TimeClass } from "./types";
 
 type Params = Record<string, string | string[] | undefined>;
 
@@ -33,11 +35,27 @@ export type Explorer =
       accounts: ExplorerAccount[];
       query: GameListQuery;
       page: GamePage;
+      /** Each time class the user has games in, rapid first (I8), with its game count. */
+      classes: ClassCount[];
       /** Set only when a filtered query matched nothing. */
       relax?: Relax[];
     };
 
 const PLATFORM = { chesscom: "chess.com", lichess: "Lichess" } as const;
+
+export type ClassCount = { tc: TimeClass; games: number };
+
+/** Games per time class over the user's linked accounts, rapid first (I8). */
+async function classCounts(db: Db, userId: string): Promise<ClassCount[]> {
+  const ids = await scopedAccountIds(db, userId);
+  if (ids.length === 0) return [];
+  const rows = await db
+    .select({ tc: games.timeClass, games: sql<number>`count(*)::int` })
+    .from(games)
+    .where(inArray(games.accountId, ids))
+    .groupBy(games.timeClass);
+  return rows.filter((r) => r.games > 0).sort((a, b) => byTimeClass(a.tc, b.tc));
+}
 
 /** The user's linked accounts, one per account, with whether each has finished an import. */
 async function explorerAccounts(db: Db, userId: string) {
@@ -120,15 +138,23 @@ export async function loadExplorer(db: Db, userId: string, params: Params): Prom
   const linked = await explorerAccounts(db, userId);
   if (linked.length === 0) return { state: "no-links" };
   const accounts = linked.map(({ id, label }) => ({ id, label }));
-  // Rapid by default when the player has rapid games (I8); `tc=all` shows every game.
-  const rapid = await countGames(db, userId, { ...NO_FILTERS, timeClass: "rapid" });
-  const query = parseGameQuery(params, rapid > 0 ? "rapid" : null);
+  // The first class with games by default, rapid when there is rapid (I8), as on every filtered
+  // page (ADR 0083); `tc=all` shows every game.
+  const classes = await classCounts(db, userId);
+  const query = parseGameQuery(params, defaultTimeClass(classes.map((c) => c.tc)));
   const page = await listGames(db, userId, query);
-  if (page.total > 0) return { state: "games", accounts, query, page };
+  if (page.total > 0) return { state: "games", accounts, query, page, classes };
   const filtered = Object.values(query.filters).some((v) => v !== null);
   const any = filtered ? await countGames(db, userId, NO_FILTERS) : page.total;
   if (any === 0) {
     return { state: "no-games", accounts, importState: await importState(db, linked) };
   }
-  return { state: "games", accounts, query, page, relax: await relaxations(db, userId, query) };
+  return {
+    state: "games",
+    accounts,
+    query,
+    page,
+    classes,
+    relax: await relaxations(db, userId, query),
+  };
 }

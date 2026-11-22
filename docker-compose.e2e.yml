@@ -20,7 +20,7 @@ services:
       # e2e/support/mail.ts sends each user's own x-forwarded-for.
       TRUSTED_PROXIES: 127.0.0.1/32,::1/128
       IP_ADDRESS_HEADERS: x-forwarded-for
-      INVITE_ALLOWLIST: dev@example.invalid,adult@example.invalid,kid@example.invalid,games@example.invalid,reveal@example.invalid,rival@example.invalid,lichess@example.invalid,realtime@example.invalid,quality@example.invalid,quality-adult@example.invalid,cookies@example.invalid,coach-peer@example.invalid
+      INVITE_ALLOWLIST: dev@example.invalid,adult@example.invalid,kid@example.invalid,games@example.invalid,reveal@example.invalid,rival@example.invalid,lichess@example.invalid,realtime@example.invalid,quality@example.invalid,quality-adult@example.invalid,cookies@example.invalid,coach-peer@example.invalid,filters@example.invalid
     depends_on:
       fakes:
         condition: service_started

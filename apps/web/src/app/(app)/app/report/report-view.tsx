@@ -153,7 +153,17 @@ function Fresh({ on, children }: { on: boolean; children: ReactNode }) {
  * area notes, this month's changes and the count of removed statements. Every section keeps its
  * computed part; the coach's part shows only when its row is `ready`.
  */
-export function ReportView({ data }: { data: ReportPageData }) {
+export function ReportView({
+  data,
+  filterBar,
+  accountSwitch = true,
+}: {
+  data: ReportPageData;
+  /** The shared filter bar (T3), rendered on the server; it holds the time control. */
+  filterBar?: ReactNode;
+  /** Whether the scope switch is still needed beside the bar (more than one linked account). */
+  accountSwitch?: boolean;
+}) {
   const { scope, view, notes, trends, gameIds, lines } = data;
   const { state, payload } = view;
   const building = state.kind === "building";
@@ -191,9 +201,12 @@ export function ReportView({ data }: { data: ReportPageData }) {
           />
         ) : null}
       </div>
-      <ScopeRow>
-        <CoachScopeSwitch scope={scope} basePath="/app/report" />
-      </ScopeRow>
+      {accountSwitch || !filterBar ? (
+        <ScopeRow>
+          <CoachScopeSwitch scope={scope} basePath="/app/report" />
+        </ScopeRow>
+      ) : null}
+      {filterBar}
     </header>
   );
 

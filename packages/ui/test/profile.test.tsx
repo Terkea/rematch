@@ -499,3 +499,49 @@ describe("ExemplarBoard", () => {
     expect(text).toBe("4… Nf6.");
   });
 });
+
+describe("WeaknessRow colour split (T3, ADR 0082)", () => {
+  it("shows one colour without a state badge: states are called on every game", () => {
+    const { container } = render(<WeaknessRow {...row} side="white" />);
+    expect(container.textContent).not.toContain("Active");
+    expect(container.textContent).toContain("Your White games");
+    expect(container.textContent).toContain("38 times in 902 chances");
+  });
+
+  it("says no colour benchmark, never the both one, when the colour has no peer row", () => {
+    const { container } = render(
+      <WeaknessRow {...row} band={{ median: null }} compared={false} side="black" />,
+    );
+    expect(container.textContent).toContain("No colour benchmark");
+    expect(container.textContent).not.toContain("Not compared yet");
+  });
+
+  it("keeps the early read per side", () => {
+    const { container } = render(
+      <WeaknessRow
+        {...row}
+        side="black"
+        evidence={{ events: 2, chances: 12, sufficient: false, needMore: 18 }}
+      />,
+    );
+    expect(container.textContent).toContain("Early read");
+    expect(container.textContent).not.toContain("Active");
+  });
+
+  it("in Both mode lists each colour's rate with its n under the row", () => {
+    const { container } = render(
+      <WeaknessRow
+        {...row}
+        sides={{
+          white: { mean: 0.051, chances: 480, sufficient: true },
+          black: { mean: 0.032, chances: 12, sufficient: false },
+        }}
+      />,
+    );
+    const split = container.querySelector("[data-part='sides']");
+    expect(split).toHaveTextContent("White 5.1% of 480 chances");
+    expect(split).toHaveTextContent("Black early read, 12 chances");
+    expect(container.textContent).toContain("Active");
+    expect(container.textContent).not.toMatch(BAD);
+  });
+});

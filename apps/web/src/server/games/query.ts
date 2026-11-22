@@ -80,7 +80,8 @@ export function parseGameQuery(params: Params, defaultTimeClass?: TimeClass | nu
     timeClass:
       tc === ALL_TIME_CLASSES ? null : (pick(tc, TIME_CLASSES) ?? defaultTimeClass ?? null),
     result: pick(one(params, "result"), RESULTS),
-    colour: pick(one(params, "colour"), COLOURS),
+    // `color` is the shared filter contract's name (ADR 0083); `colour` is read as its alias.
+    colour: pick(one(params, "color"), COLOURS) ?? pick(one(params, "colour"), COLOURS),
     from,
     to,
     accountId: uuid(one(params, "account")),
@@ -97,7 +98,7 @@ export function parseGameQuery(params: Params, defaultTimeClass?: TimeClass | nu
 
 /**
  * The inverse of `parseGameQuery`: only valid values, defaults omitted, in a fixed key order
- * (tc, result, colour, from, to, account, sort, page).
+ * (tc, result, color, from, to, account, sort, page).
  */
 export function serializeGameQuery(q: GameListQuery): URLSearchParams {
   const out = new URLSearchParams();
@@ -109,7 +110,7 @@ export function serializeGameQuery(q: GameListQuery): URLSearchParams {
   const fallback = pick(q.defaultTimeClass, TIME_CLASSES);
   if (tc !== fallback) set("tc", tc ?? ALL_TIME_CLASSES);
   set("result", pick(f.result, RESULTS));
-  set("colour", pick(f.colour, COLOURS));
+  set("color", pick(f.colour, COLOURS));
   set("from", day(f.from));
   set("to", day(f.to));
   set("account", uuid(f.accountId));
@@ -117,4 +118,24 @@ export function serializeGameQuery(q: GameListQuery): URLSearchParams {
   if (sort !== DEFAULT_SORT && SORTS.has(sort)) out.set("sort", sort);
   if (Number.isSafeInteger(q.page) && q.page > 1) out.set("page", String(q.page));
   return out;
+}
+
+/**
+ * The games page's old `colour` param, moved to `color` (T3): the URL to redirect to, with every
+ * other param kept in order, or null when there is no `colour`. An invalid colour is dropped.
+ */
+export function colourRedirect(path: string, params: Params): string | null {
+  if (!Object.hasOwn(params, "colour")) return null;
+  const out = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined) continue;
+    if (key === "colour") {
+      const c = pick(typeof value === "string" ? value : null, COLOURS);
+      if (c && !Object.hasOwn(params, "color")) out.set("color", c);
+      continue;
+    }
+    for (const v of [value].flat()) out.append(key, v);
+  }
+  const q = out.toString();
+  return q ? `${path}?${q}` : path;
 }

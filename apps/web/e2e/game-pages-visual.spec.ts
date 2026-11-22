@@ -65,7 +65,7 @@ test("the game pages look as they did", async ({ browser, request }, info) => {
 
   // The overview, once the trend has drawn (T4: the capture waits for the trend SVG). All time
   // controls: the default is rapid (I8), and the seed's rapid games are too few for the line.
-  await ready(page, "/app?tc=all", "nav[aria-labelledby='tc-label'] a");
+  await ready(page, "/app?tc=all", "[data-filter-bar] a");
   await expect(page.locator("[data-chart='trend'] svg [data-part='mean']").first()).toBeAttached();
   const drawn = () =>
     page.evaluate(() => {
@@ -78,7 +78,7 @@ test("the game pages look as they did", async ({ browser, request }, info) => {
   await expect.poll(drawn).toBe(true);
 
   await page.setViewportSize(base);
-  await ready(page, "/app/games", "section[aria-label='Filters'] button");
+  await ready(page, "/app/games", "section[aria-label='Results and sort'] [role='combobox']");
   await wholePage(page, "games.png");
 
   // The review on the player's blunder (62... in the fixture), with the ?ply= that skips the
@@ -106,8 +106,8 @@ test("the coach pages look as they did", async ({ browser, request }, info) => {
   const routes = [
     { url: "/app/report", name: "report.png", ready: "[data-report-version]" },
     { url: "/app/weaknesses/W1", name: "weakness.png", ready: "main h1" },
-    { url: "/app/areas/endgame", name: "area-endgame.png", ready: "main h1" },
-    { url: "/app/progress", name: "progress.png", ready: "main h1" },
+    { url: "/app/areas/endgame", name: "area-endgame.png", ready: "main [data-filter-bar]" },
+    { url: "/app/progress", name: "progress.png", ready: "main [data-filter-bar]" },
     { url: `/app/coach/${threadId}`, name: "coach-thread.png", ready: "textarea" },
   ];
   for (const r of routes) {

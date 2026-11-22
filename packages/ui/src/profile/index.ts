@@ -38,4 +38,12 @@ export {
   weaknessScaleMax,
   weekText,
 } from "./text.js";
-export { WeaknessRow, WeaknessRowKey, type WeaknessRowProps } from "./weakness-row.js";
+export {
+  NO_COLOUR_BENCHMARK,
+  NO_COLOUR_BENCHMARK_TEXT,
+  type SideRate,
+  sideRateText,
+  WeaknessRow,
+  WeaknessRowKey,
+  type WeaknessRowProps,
+} from "./weakness-row.js";
