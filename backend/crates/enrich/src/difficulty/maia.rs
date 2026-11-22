@@ -68,7 +68,8 @@ impl MaiaCallError {
         match self {
             Self::Timeout(_) => PendingReason::Timeout,
             Self::Unavailable(_) => PendingReason::MaiaUnavailable,
-            Self::InvalidResponse(_) => PendingReason::InvalidResponse,
+            // The whole answer was unusable: not a per-position answer.
+            Self::InvalidResponse(_) => PendingReason::BadResponse,
         }
     }
 

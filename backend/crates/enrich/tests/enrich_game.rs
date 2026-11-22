@@ -197,8 +197,8 @@ async fn refutation_pv_falls_back_to_engine_when_cached_pv_is_empty() {
     );
     let r = out.raw[12].as_ref().unwrap();
     assert_eq!(r.refutation_pv, vec!["e2e4", "e7e5"]);
-    // The best line comes from the MultiPV probe of fen_before.
-    assert_eq!(r.best_pv, vec!["e2e4", "e7e5"]);
+    // No main-eval best move: no best line is borrowed from MultiPV (reviewer M3).
+    assert!(r.best_pv.is_empty());
     assert!(out.raw[10].as_ref().unwrap().refutation_pv.is_empty());
 }
 
@@ -516,4 +516,32 @@ async fn real_stockfish_and_tables_enrich_an_endgame() {
     assert_eq!(r1.tb_wdl_before, None, "six pieces");
     assert_eq!(r1.tb_wdl_after, Some(1), "KRPvKP after bxc3 wins for White");
     assert!(r1.threat.is_some());
+}
+
+/// Reviewer M3: the `best_pv` fallback must start with the main eval's `best_uci`, else empty.
+#[tokio::test]
+async fn best_pv_fallback_starts_with_best_uci() {
+    for (best, expected) in [("e2e4", vec!["e2e4", "e7e5"]), ("d2d4", vec![])] {
+        let parsed = game(RUY);
+        let mut evals = common::evals(&parsed, &[]);
+        for e in &mut evals {
+            e.best_uci = Some(best.to_owned());
+        }
+        let records = common::records(&parsed, &evals, &[(13, 6.0)]);
+        let g = Game {
+            parsed,
+            evals,
+            records,
+            colors: WHITE.to_vec(),
+        };
+        let a = Arc::new(FakeAnalyser::new());
+        let out = enrich_game(&deps(a, memory_store(), None, None), &g.input())
+            .await
+            .unwrap();
+        assert_eq!(
+            out.raw[12].as_ref().unwrap().best_pv,
+            expected,
+            "best {best}"
+        );
+    }
 }

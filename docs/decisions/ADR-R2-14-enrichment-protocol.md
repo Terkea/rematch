@@ -32,13 +32,16 @@ Owner override (2026-11-21): difficulty comes only from Maia. There is no heuris
 - Requested eligible plies are batched to the `DifficultySource` (whose only implementation is the Maia-only `DifficultyEstimator`). Input lines are the MultiPV lines (mover win%), the main eval's best move with `win_before` when it is not among them, and the played move with `win_after`.
 - Plies ≤ 10 are `not_applicable/opening_ply` and are never sent (Maia-2 was not trained on them).
 - Maia missing, down, timing out or answering invalidly gives `difficulty = None` with `pending_maia/<reason>`. Enrichment completes, and `difficulty_model` is `None` unless some ply got a Maia estimate.
-- `move_features` stores `difficulty_status` (`ok | pending_maia | not_applicable`), `difficulty_reason` and `difficulty_attempts` (migration `20261121020200`, a placeholder number for the coordinator).
+- `move_features` stores `difficulty_status` (`ok | pending_maia | not_applicable`), `difficulty_reason`, `difficulty_attempts` and `difficulty_call_failures` (migration `20261121020200`, a placeholder number for the coordinator).
+- `best_pv` falls back to the MultiPV line that starts with the main eval's `best_uci`, or stays empty.
 - **Re-enrichment** (`enrich::reenrich::reenrich_pending_difficulty`): a bounded, paged sweep (`page_size` × `max_pages`, keyset on `(game_id, ply)`, a partial index on pending rows).
   - It first checks Maia with a fresh `/healthz`, whose model id must match `^maia2-(rapid|blitz)-[0-9]+(\.[0-9]+)*$`. When Maia is not healthy the sweep changes nothing.
   - Inputs are rebuilt from the stored rows exactly as in the pass.
   - An `ok` answer sets `p_best`, `p_ok` and `difficulty_model`. A `not_applicable` answer is final.
-  - An invalid answer from a healthy Maia counts one attempt. At `MAX_DIFFICULTY_ATTEMPTS = 3` the row becomes `not_applicable/model_error`, so a deterministic model error is not retried forever.
-  - Transport failures (unavailable, timeout) during a sweep count nothing and stop it. An outage never uses up the attempts.
+  - Only an item-level invalid answer about a position that was sent and answered counts an attempt. At `MAX_DIFFICULTY_ATTEMPTS = 3` the row becomes `not_applicable/model_error`, so a deterministic model error is not retried forever.
+  - A call-level failure counts no attempt, leaves the reason unchanged and stops the sweep. That covers transport errors, timeouts, and an unusable whole answer (`pending_maia/bad_response`: undecodable, wrong item count, or a non-Maia `/healthz` id). An outage or a broken Maia deploy never uses up the attempts.
+  - When Maia is still healthy after such a failure, the rows it covered are charged one `difficulty_call_failures`. The sweep orders by that count, so a batch that always fails never blocks the rows after it. At `MAX_CALL_FAILURES = 5` a row is parked: it stays `pending_maia` and is never made final or estimated. `unpark_call_failures` makes parked rows eligible again, for example after a Maia redeploy.
+  - Every sweep update re-checks that the row is still `pending_maia` with the counts it read, so a concurrent re-analysis or a second sweep is never overwritten or double-counted.
   - The sweep returns the changed games so the caller recomputes their metrics. When and how often to run it is the scheduler's call (Task 31/35).
 
 ### Cost

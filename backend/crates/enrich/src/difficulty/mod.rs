@@ -81,8 +81,12 @@ pub enum PendingReason {
     MaiaUnavailable,
     /// The request exceeded its timeout.
     Timeout,
-    /// The answer, or this item of it, failed validation.
+    /// This item of the answer failed validation (a per-position answer; it counts toward
+    /// the re-enrichment attempt cap).
     InvalidResponse,
+    /// The whole answer was unusable (undecodable, wrong item count, or a `/healthz` model id
+    /// that is not Maia's). It says nothing about the position: never counted as an attempt.
+    BadResponse,
 }
 
 /// Why Maia cannot estimate a position. Final: never re-enriched.
@@ -109,6 +113,7 @@ impl PendingReason {
             Self::MaiaUnavailable => "maia_unavailable",
             Self::Timeout => "timeout",
             Self::InvalidResponse => "invalid_response",
+            Self::BadResponse => "bad_response",
         }
     }
 }

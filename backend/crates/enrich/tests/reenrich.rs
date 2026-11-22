@@ -11,12 +11,21 @@ use std::sync::Arc;
 
 use chess_core::Color;
 use common::*;
+use enrich::difficulty::select::DifficultyEstimator;
+use enrich::difficulty::{DifficultyOutcome, DifficultySource};
 use enrich::enrich_game::enrich_game;
 use enrich::persist::persist_move_features;
-use enrich::reenrich::{MAX_DIFFICULTY_ATTEMPTS, SweepOptions, reenrich_pending_difficulty};
+use enrich::reenrich::{
+    MAX_CALL_FAILURES, MAX_DIFFICULTY_ATTEMPTS, SweepOptions, reenrich_pending_difficulty,
+};
+use enrich::types::DifficultyInput;
+use futures::future::BoxFuture;
+use serde_json::json;
 use sqlx::PgPool;
 use testkit::fake_engine::FakeAnalyser;
 use uuid::Uuid;
+use wiremock::matchers::{method, path};
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
 const PV: &[&str] = &["a2a3", "a7a6"];
 
@@ -241,8 +250,21 @@ async fn maia_failing_mid_sweep_counts_no_attempt_and_stops(pool: PgPool) {
     .await
     .unwrap();
     assert!(report.stopped_early);
-    assert_eq!(report.checked, 3, "stops after the first failed page");
+    assert_eq!(
+        report.checked, 0,
+        "no row was answered; stops after the first failed page"
+    );
     assert_eq!(status_counts(&pool).await, (7, 0, 5));
+    // Maia is still healthy, so the failed page's rows are charged one call failure (never an
+    // attempt) and move to the back of the next sweep.
+    assert_eq!(
+        count(
+            &pool,
+            "SELECT count(*) FROM move_features WHERE difficulty_call_failures = 1"
+        )
+        .await,
+        3
+    );
     assert_eq!(
         count(
             &pool,
@@ -277,4 +299,183 @@ async fn sweep_is_paged_and_bounded(pool: PgPool) {
         .unwrap();
     assert_eq!(r.checked, 3);
     assert_eq!(status_counts(&pool).await, (0, 7, 5));
+}
+
+/// Reviewer I1: a call-level invalid answer (wrong item count) from a healthy Maia. One request
+/// is sent for three inputs; none of them may gain an attempt, and the sweep stops.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn call_level_invalid_answer_counts_no_attempt_and_stops(pool: PgPool) {
+    seed_pending(&pool).await;
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/healthz"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "model": MODEL })))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/v1/predict"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "items": [] })))
+        .mount(&server)
+        .await;
+    // Batch size 1: the first request fails, the other two inputs are never sent.
+    let est = DifficultyEstimator::new(Some(&server.uri()), std::time::Duration::from_secs(5), 1);
+    let report = reenrich_pending_difficulty(
+        &pool,
+        &est,
+        SweepOptions {
+            page_size: 3,
+            max_pages: 10,
+        },
+    )
+    .await
+    .unwrap();
+    let predicts = server
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .filter(|r| r.url.path() == "/v1/predict")
+        .count();
+    assert_eq!(predicts, 1);
+    assert!(report.stopped_early);
+    assert_eq!(
+        (report.checked, report.capped, report.still_pending),
+        (0, 0, 0)
+    );
+    assert_eq!(status_counts(&pool).await, (7, 0, 5));
+    assert_eq!(
+        count(
+            &pool,
+            "SELECT count(*) FROM move_features WHERE difficulty_attempts > 0"
+        )
+        .await,
+        0
+    );
+    assert_eq!(
+        count(
+            &pool,
+            "SELECT count(*) FROM move_features WHERE difficulty_status = 'pending_maia' \
+             AND difficulty_reason = 'maia_unavailable'"
+        )
+        .await,
+        7,
+        "reasons unchanged"
+    );
+}
+
+/// Maia goes down during the sweep (its `/healthz` fails on the re-probe): nothing is charged.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn maia_going_down_mid_sweep_charges_nothing(pool: PgPool) {
+    seed_pending(&pool).await;
+    let maia = FakeMaia::new(true, MaiaMode::GoesDown);
+    let report = reenrich_pending_difficulty(&pool, maia.as_ref(), opts())
+        .await
+        .unwrap();
+    assert!(report.stopped_early);
+    assert_eq!(
+        count(
+            &pool,
+            "SELECT count(*) FROM move_features \
+             WHERE difficulty_attempts > 0 OR difficulty_call_failures > 0"
+        )
+        .await,
+        0
+    );
+}
+
+/// Reviewer M2: a batch that always fails while Maia is healthy does not block the rows after
+/// it, and its rows are parked (still `pending_maia`, never final) at `MAX_CALL_FAILURES`.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn always_failing_rows_move_back_and_park_at_the_cap(pool: PgPool) {
+    let (_, g) = seed_pending(&pool).await;
+    let maia = FakeMaia::new(true, MaiaMode::Ok);
+    *maia.fail_fen.lock().unwrap() = Some(g.parsed.plies[10].fen_before.clone()); // ply 11
+    let small = SweepOptions {
+        page_size: 2,
+        max_pages: 10,
+    };
+    let first = reenrich_pending_difficulty(&pool, maia.as_ref(), small)
+        .await
+        .unwrap();
+    assert!(first.stopped_early);
+    assert_eq!(first.resolved, 0, "ply 11 heads the first page");
+    let second = reenrich_pending_difficulty(&pool, maia.as_ref(), small)
+        .await
+        .unwrap();
+    // 15..21 resolve; the last page pairs 23 with 11 and fails.
+    assert_eq!(second.resolved, 4, "the other rows go first and resolve");
+    for _ in 2..MAX_CALL_FAILURES {
+        reenrich_pending_difficulty(&pool, maia.as_ref(), small)
+            .await
+            .unwrap();
+    }
+    // Rows that only shared a page with ply 11 resolve later; ply 11 alone is parked at the
+    // cap, still pending.
+    assert_eq!(
+        count(
+            &pool,
+            &format!(
+                "SELECT count(*) FROM move_features WHERE difficulty_status = 'pending_maia' \
+                 AND difficulty_call_failures = {MAX_CALL_FAILURES} AND difficulty_attempts = 0"
+            )
+        )
+        .await,
+        1
+    );
+    maia.clear();
+    let parked = reenrich_pending_difficulty(&pool, maia.as_ref(), small)
+        .await
+        .unwrap();
+    assert_eq!(parked.checked, 0);
+    assert!(maia.sent().is_empty(), "parked rows are not sent again");
+    assert_eq!(status_counts(&pool).await, (1, 6, 5));
+}
+
+/// Answers Maia-ok for every input, but first changes ply 13's row as a concurrent re-analysis
+/// would (replacing it with a final status).
+struct RacingMaia {
+    pool: PgPool,
+}
+
+impl DifficultySource for RacingMaia {
+    fn estimate<'a>(
+        &'a self,
+        inputs: &'a [DifficultyInput],
+    ) -> BoxFuture<'a, Vec<DifficultyOutcome>> {
+        Box::pin(async move {
+            sqlx::query(
+                "UPDATE move_features SET difficulty_status = 'not_applicable', \
+                   difficulty_reason = 'no_legal_moves' WHERE ply = 13",
+            )
+            .execute(&self.pool)
+            .await
+            .unwrap();
+            inputs
+                .iter()
+                .map(|_| DifficultyOutcome::Ok {
+                    difficulty: FakeMaia::difficulty(),
+                })
+                .collect()
+        })
+    }
+
+    fn healthy(&self) -> BoxFuture<'_, bool> {
+        Box::pin(async { true })
+    }
+}
+
+/// Reviewer M1: sweep updates apply only to rows still pending as read.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn sweep_never_overwrites_a_row_changed_meanwhile(pool: PgPool) {
+    seed_pending(&pool).await;
+    let report = reenrich_pending_difficulty(&pool, &RacingMaia { pool: pool.clone() }, opts())
+        .await
+        .unwrap();
+    assert_eq!(report.resolved, 6);
+    let (status, p_best): (Option<String>, Option<f32>) =
+        sqlx::query_as("SELECT difficulty_status, p_best FROM move_features WHERE ply = 13")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!((status.as_deref(), p_best), (Some("not_applicable"), None));
 }

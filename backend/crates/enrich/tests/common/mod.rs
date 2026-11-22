@@ -142,8 +142,10 @@ pub enum MaiaMode {
     Ok,
     /// The service answers, but every item fails validation (a deterministic model error).
     Invalid,
-    /// `/healthz` answers, but predict calls fail (Maia goes down mid-call).
+    /// `/healthz` answers, but predict calls fail (a call-level failure).
     FailsCalls,
+    /// The predict call fails and Maia is down from then on (`/healthz` fails too).
+    GoesDown,
 }
 
 /// A fake Maia: down or up (`/healthz`), recording every input it is sent.
@@ -152,6 +154,8 @@ pub struct FakeMaia {
     pub mode: Mutex<MaiaMode>,
     pub sent: Mutex<Vec<DifficultyInput>>,
     pub health_checks: Mutex<u32>,
+    /// Every call that includes this FEN fails (call-level), whatever the mode.
+    pub fail_fen: Mutex<Option<String>>,
 }
 
 impl FakeMaia {
@@ -161,6 +165,7 @@ impl FakeMaia {
             mode: Mutex::new(mode),
             sent: Mutex::new(Vec::new()),
             health_checks: Mutex::new(0),
+            fail_fen: Mutex::new(None),
         })
     }
 
@@ -209,6 +214,23 @@ impl DifficultySource for FakeMaia {
             }
             self.sent.lock().unwrap().extend(inputs.iter().cloned());
             let mode = *self.mode.lock().unwrap();
+            let poisoned = self
+                .fail_fen
+                .lock()
+                .unwrap()
+                .as_ref()
+                .is_some_and(|f| inputs.iter().any(|i| &i.fen == f));
+            if poisoned || mode == MaiaMode::GoesDown {
+                if mode == MaiaMode::GoesDown {
+                    self.set_up(false);
+                }
+                return inputs
+                    .iter()
+                    .map(|_| DifficultyOutcome::PendingMaia {
+                        reason: PendingReason::MaiaUnavailable,
+                    })
+                    .collect();
+            }
             inputs
                 .iter()
                 .map(|_| match mode {
@@ -218,7 +240,7 @@ impl DifficultySource for FakeMaia {
                     MaiaMode::Invalid => DifficultyOutcome::PendingMaia {
                         reason: PendingReason::InvalidResponse,
                     },
-                    MaiaMode::FailsCalls => DifficultyOutcome::PendingMaia {
+                    MaiaMode::FailsCalls | MaiaMode::GoesDown => DifficultyOutcome::PendingMaia {
                         reason: PendingReason::MaiaUnavailable,
                     },
                 })

@@ -6,7 +6,8 @@
 //!   ([`select_critical_plies`]), cached in `position_multipv` under `MULTIPV_PROTOCOL`.
 //! - **PV completion**: `refutation_pv = evals[i+1].pv`; when that is empty (Lichess server
 //!   evals) and the ply is critical, a MultiPV probe of `fen_after` supplies it. `best_pv` is
-//!   `evals[i].pv`, or the `fen_before` probe's first line when that is empty.
+//!   `evals[i].pv`; when that is empty, the `fen_before` probe's line for the main eval's
+//!   `best_uci`, or empty when no line starts with it.
 //! - **Threat probe**: `THREAT_NODES`, MultiPV 1 on `null_move_fen(fen_before)` for eligible
 //!   (not decided) plies of the requested colours; skipped in check. Cached in
 //!   `position_threats` under `THREAT_PROTOCOL`.
@@ -398,8 +399,15 @@ pub async fn enrich_game(
                     .map(|l| l.pv.clone())
                     .unwrap_or_default()
             };
+            // The fallback must start with the main eval's best move (MultiPV never replaces
+            // it): the probe's line for that move, or nothing.
             let best_pv = match eval_pv(i) {
-                [] => first_pv(before_lines),
+                [] => r
+                    .best_uci
+                    .as_deref()
+                    .and_then(|b| before_lines?.iter().find(|l| l.uci == b))
+                    .map(|l| l.pv.clone())
+                    .unwrap_or_default(),
                 pv => pv.to_vec(),
             };
             let refutation_pv = match eval_pv(i + 1) {

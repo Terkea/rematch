@@ -660,7 +660,23 @@ async fn item_count_mismatch_is_pending() {
     )
     .await;
     let out = estimator(&server).estimate(&[std_lines()]).await;
-    assert_eq!(out, vec![pending(PendingReason::InvalidResponse)]);
+    // A call-level fault says nothing about the position: not an item-level invalid answer.
+    assert_eq!(out, vec![pending(PendingReason::BadResponse)]);
+}
+
+#[tokio::test]
+async fn undecodable_answer_is_a_call_level_bad_response() {
+    let server = maia_server(MODEL).await;
+    mount_predict(
+        &server,
+        ResponseTemplate::new(200).set_body_string("not json"),
+    )
+    .await;
+    let out = estimator(&server)
+        .estimate(&[std_lines(), std_lines()])
+        .await;
+    assert_eq!(out, vec![pending(PendingReason::BadResponse); 2]);
+    assert_eq!(PendingReason::BadResponse.as_str(), "bad_response");
 }
 
 #[tokio::test]
@@ -887,7 +903,7 @@ async fn healthz_model_id_must_be_an_exact_maia_id() {
         let est = estimator(&server);
         assert_eq!(
             est.estimate(&[std_lines()]).await,
-            vec![pending(PendingReason::InvalidResponse)],
+            vec![pending(PendingReason::BadResponse)],
             "{bad}"
         );
         assert!(!est.healthy().await, "{bad}");
