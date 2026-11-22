@@ -3,14 +3,22 @@
 //!
 //! Steps ([`handle_build_profile`]):
 //! 1. Record `started_at` from the deps' clock.
-//! 2. Read the band reference of the player's band (R-4 with ruling Q2, per-metric fallback of
-//!    Task 17). It is reference data, not account state, so it is read before the lock. Then
+//! 2. The benchmark (ADR 0080). With [`BenchmarkSource::Peers`] (the default), compute the
+//!    opponent sides of new or re-analysed games from the eval cache
+//!    ([`refresh_opponent_metrics`], no engine) before the lock, and under it load them
+//!    ([`load_peer_sides`]); `compute` aggregates them around the player's latest pre-game
+//!    rating, and the result is stored in `account_benchmark` with the estimates. With
+//!    [`BenchmarkSource::LichessBands`] (opt-in), read the Lichess band reference of the
+//!    player's band (R-4 with ruling Q2, per-metric fallback of Task 17) as before: reference
+//!    data, not account state, so it is read before the lock. Then
 //!    open the write transaction and take the build's advisory lock
 //!    (`build-profile:<account>:<tc>`). On the transaction's own connection, fingerprint the
 //!    stored `game_metrics` rows and load:
 //!    - the current-version games ([`load_analysed_games_in`]; stale versions are no evidence);
 //!    - their series points (points of games left out are dropped too);
-//!    - the band again (re-read under the lock; if it moved, the reference is read again);
+//!    - the band again (re-read under the lock; if it moved, the Lichess reference is read
+//!      again);
+//!    - the opponent sides (`Peers`);
 //!    - the line keys, the stored history, the stored estimate states and the latest
 //!      snapshots.
 //!
@@ -87,9 +95,9 @@ use crate::estimates::{compute_estimates, estimate_row, games_in_window};
 use crate::hook_impl::enqueue_build_profile;
 use crate::load::{LoadError, load_analysed_games_in, load_series_points_in};
 use crate::peer_benchmark::{
-    BenchmarkSource, PeerBenchmark, PeerSide, SOURCE_LICHESS_BANDS, SOURCE_PEERS,
-    StoredBenchmark, aggregate_peer_benchmark, center_rating, load_peer_sides,
-    refresh_opponent_metrics, write_account_benchmark,
+    BenchmarkSource, PeerBenchmark, PeerSide, SOURCE_LICHESS_BANDS, SOURCE_PEERS, StoredBenchmark,
+    aggregate_peer_benchmark, center_rating, load_peer_sides, refresh_opponent_metrics,
+    write_account_benchmark,
 };
 use crate::snapshots::{
     Latest, changed_areas, compute_snapshots, latest_snapshots, profile_updated_payload,
@@ -365,13 +373,7 @@ fn compute(tc: TimeClass, l: &Loaded, started_at: OffsetDateTime) -> Computed {
         None => (None, l.reference.clone()),
     };
     let in_window = games_in_window(l.games.iter().map(|(c, _)| c.played_at), started_at);
-    let estimates = compute_estimates(
-        &l.series,
-        in_window,
-        l.band,
-        reference.as_ref(),
-        started_at,
-    );
+    let estimates = compute_estimates(&l.series, in_window, l.band, reference.as_ref(), started_at);
     let estimates_ms = ms(t);
 
     let t = Instant::now();

@@ -254,7 +254,11 @@ fn rate_stat(
             (k + p.k, n + p.n, e + p.epl)
         }),
         Weighting::Players => players.values().fold((0.0, 0.0, 0.0), |(k, n, e), p| {
-            (k + p.per_game(p.k), n + p.per_game(p.n), e + p.per_game(p.epl))
+            (
+                k + p.per_game(p.k),
+                n + p.per_game(p.n),
+                e + p.per_game(p.epl),
+            )
         }),
     };
     let epl_per_event = match metric {

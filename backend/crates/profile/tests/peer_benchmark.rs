@@ -361,7 +361,11 @@ async fn build_profile_compares_with_the_opponents_faced(pool: PgPool) {
     .await
     .unwrap();
     assert_eq!((source.as_str(), low, high), ("peers", 650, 950));
-    assert_eq!((players, games), (12, 12), "the 1400 opponent is outside the window");
+    assert_eq!(
+        (players, games),
+        (12, 12),
+        "the 1400 opponent is outside the window"
+    );
 
     type Row = (String, Option<f64>, Option<f64>);
     let rows: Vec<Row> = sqlx::query_as(
@@ -375,7 +379,11 @@ async fn build_profile_compares_with_the_opponents_faced(pool: PgPool) {
     let w5 = rows.iter().find(|r| r.0 == "W5").unwrap();
     assert!(w5.1.is_some() && w5.2.is_some(), "W5 is compared: {w5:?}");
     let w1 = rows.iter().find(|r| r.0 == "W1").unwrap();
-    assert_eq!((w1.1, w1.2), (None, None), "W1 needs enrichment: never compared");
+    assert_eq!(
+        (w1.1, w1.2),
+        (None, None),
+        "W1 needs enrichment: never compared"
+    );
 
     let served = load_account_benchmark(&pool, account, TimeClass::Rapid)
         .await
@@ -445,7 +453,11 @@ async fn refresh_computes_the_opponent_side_from_cached_evals_once(pool: PgPool)
     let again = refresh_opponent_metrics(&pool, account, TimeClass::Rapid)
         .await
         .unwrap();
-    assert_eq!((again.computed, again.skipped), (0, 0), "a current row is kept");
+    assert_eq!(
+        (again.computed, again.skipped),
+        (0, 0),
+        "a current row is kept"
+    );
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]

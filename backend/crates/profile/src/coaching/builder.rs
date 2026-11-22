@@ -12,8 +12,8 @@
 //!   left for `select_for_analysis` (the schedule job's mapping, the default beta plan);
 //! - `areaScores` and `metrics` come from the latest `last50` snapshots (Task 33), the area
 //!   scores recomputed from those rows so `sufficient`/`needMore` are known (R-2 for metrics);
-//! - `weaknesses` re-estimate every binomial key at `now` with the band reference (the same code
-//!   as build-profile) and replay the series for the state and `P_imp`; only claimable
+//! - `weaknesses` re-estimate every binomial key at `now` with the benchmark the last
+//!   build-profile stored (`account_benchmark`, ADR 0080; the same code as build-profile) and replay the series for the state and `P_imp`; only claimable
 //!   estimates (R-3, T12 ruling, `priority > 0`) with at least one exemplar (R3 T8) are ranked,
 //!   up to 5 exemplars for ranks 1-3 and 2 after, from `exemplar_plies` within 6 months, by ΔW
 //!   then recency, distinct games;
@@ -71,10 +71,10 @@ use super::strengths::{
     AREA_STRENGTH_SCORE, MAX_STRENGTH_EXEMPLARS, StrengthCandidate, StrengthSource,
     WEAKNESS_STRENGTH_CONFIDENCE, area_kinds, select_strengths, weakness_kinds,
 };
-use crate::peer_benchmark::load_account_benchmark;
 use crate::analyse_features::parse_time_class;
 use crate::estimates::{age_days, compute_estimates, games_in_window};
 use crate::load::{LoadError, load_analysed_games, load_series_points};
+use crate::peer_benchmark::load_account_benchmark;
 use crate::snapshots::LAST_N;
 use crate::timeline_job::evaluate_all;
 

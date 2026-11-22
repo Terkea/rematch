@@ -769,6 +769,8 @@ async fn stale_metrics_are_no_evidence(pool: PgPool) {
     .execute(&pool)
     .await
     .unwrap();
+    // The builder compares with the benchmark the last build stored (ADR 0080).
+    run_build(&pool, f.account_id).await;
     let input = coaching(&pool, f.account_id).await;
     assert_eq!(input.basis.analysed_games, 39);
     assert_eq!(input.basis.imported_games, 40);

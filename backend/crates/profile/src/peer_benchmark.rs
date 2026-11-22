@@ -45,9 +45,7 @@ use crate::analyse_features::{
     FeatureInput, compute_game_features, parse_color, parse_time_class, player_score,
 };
 use crate::hook_impl::load_game_explorer;
-use crate::reference_aggregate::{
-    AggregateReport, ReferenceSide, Weighting, aggregate_row,
-};
+use crate::reference_aggregate::{AggregateReport, ReferenceSide, Weighting, aggregate_row};
 use crate::requeue::NoEngine;
 
 /// Half-width of the band, in rating points of the player's own platform.
@@ -376,8 +374,8 @@ pub async fn refresh_opponent_metrics(
             report.skipped += 1;
             continue;
         };
-        let metrics = serde_json::to_value(&metrics)
-            .map_err(|e| sqlx::Error::Encode(Box::new(e)))?;
+        let metrics =
+            serde_json::to_value(&metrics).map_err(|e| sqlx::Error::Encode(Box::new(e)))?;
         sqlx::query(
             "INSERT INTO opponent_game_metrics (game_id, account_id, time_class, opponent, \
                opponent_rating, player_rating, metrics, source_created_at) \
@@ -512,11 +510,13 @@ pub async fn write_account_benchmark(
     tc: TimeClass,
     b: Option<&StoredBenchmark<'_>>,
 ) -> Result<(), sqlx::Error> {
-    sqlx::query("DELETE FROM account_benchmark WHERE account_id = $1 AND time_class = $2::time_class")
-        .bind(account_id)
-        .bind(tc.as_str())
-        .execute(&mut *conn)
-        .await?;
+    sqlx::query(
+        "DELETE FROM account_benchmark WHERE account_id = $1 AND time_class = $2::time_class",
+    )
+    .bind(account_id)
+    .bind(tc.as_str())
+    .execute(&mut *conn)
+    .await?;
     let Some(b) = b else {
         return Ok(());
     };
@@ -558,7 +558,12 @@ pub async fn write_account_benchmark(
     )
     .bind(account_id)
     .bind(tc.as_str())
-    .bind(b.stats.iter().map(|s| s.metric.to_string()).collect::<Vec<_>>())
+    .bind(
+        b.stats
+            .iter()
+            .map(|s| s.metric.to_string())
+            .collect::<Vec<_>>(),
+    )
     .bind(f(|s| s.median))
     .bind(f(|s| s.p25))
     .bind(f(|s| s.p40))
