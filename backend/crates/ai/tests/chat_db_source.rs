@@ -400,3 +400,170 @@ async fn latest_coaching_input_reads_the_newest_snapshot_of_the_account(pool: Pg
         None
     );
 }
+
+/// R2's per-game metrics row of a game, with `exemplarPlies` for one weakness key.
+async fn seed_metrics(pool: &PgPool, game: Uuid, key: &str, plies: &[u32]) {
+    sqlx::query(
+        "INSERT INTO game_metrics (game_id, account_id, time_class, played_at, protocol, metrics) \
+         SELECT id, account_id, time_class, played_at, 'test-1', $2 FROM games WHERE id = $1",
+    )
+    .bind(game)
+    .bind(json!({
+        "version": 1,
+        "weakness": { key: { "events": plies.len(), "opportunities": 4, "epl": 0.1,
+                             "exemplarPlies": plies } },
+    }))
+    .execute(pool)
+    .await
+    .unwrap();
+}
+
+/// The input with nothing ranked: no band reference, so the report has no exemplar at all.
+fn unranked(input: CoachingInput) -> CoachingInput {
+    CoachingInput {
+        weaknesses: Vec::new(),
+        strengths: Vec::new(),
+        openings: Vec::new(),
+        changes: Vec::new(),
+        ..input
+    }
+}
+
+// Bug hunt I10: with no benchmark nothing is ranked, so the input-only search found nothing and
+// the coach said it "found none" while R2 had stored the occurrences. find_examples reads R2's
+// per-game exemplar plies, move features and openings of the account and time class.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn find_examples_reads_r2_occurrences_when_nothing_is_ranked(pool: PgPool) {
+    let a = account(&pool, "alice").await;
+    let input = unranked(store_input(&pool, a).await);
+    let g = seed_game(&pool, a, "li-r2-w1").await;
+    seed_move(&pool, g, 1, START, "e4", "e2e4", Some("d2d4")).await;
+    seed_metrics(&pool, g, "W1", &[1]).await;
+    // Another account's occurrence of the same weakness is never read.
+    let b = account(&pool, "bob").await;
+    let gb = seed_game(&pool, b, "li-r2-bob").await;
+    seed_move(&pool, gb, 1, START, "e4", "e2e4", Some("d2d4")).await;
+    seed_metrics(&pool, gb, "W1", &[1]).await;
+    let src = ds(&pool, a, input);
+
+    let w1 = src
+        .find_examples(ExamplesQuery {
+            weakness_id: Some("W1".into()),
+            limit: 5,
+            ..ExamplesQuery::default()
+        })
+        .await
+        .unwrap();
+    let ids: Vec<(&str, u32)> = w1.iter().map(|p| (p.game_id.as_str(), p.ply)).collect();
+    assert_eq!(ids, vec![("li-r2-w1", 1)]);
+
+    // A motif: the player's erring moves whose best or refuting line has it (R2 move features).
+    sqlx::query(
+        "INSERT INTO move_features (game_id, ply, enrichment_protocol, best_line) \
+         VALUES ($1, 1, 'test-1', $2)",
+    )
+    .bind(g)
+    .bind(json!({"gain": 0.3, "depth": 2, "mateIn": null, "tags": ["fork", "hangingPiece"]}))
+    .execute(&pool)
+    .await
+    .unwrap();
+    let forks = src
+        .find_examples(ExamplesQuery {
+            motif: Some("hanging_piece".into()),
+            limit: 5,
+            ..ExamplesQuery::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(forks.len(), 1);
+    assert_eq!(forks[0].game_id, "li-r2-w1");
+    assert!(
+        forks[0].tags.contains(&"fork".to_owned()),
+        "{:?}",
+        forks[0].tags
+    );
+    assert!(forks[0].tags.contains(&"hanging_piece".to_owned()));
+
+    // An opening line: the player's worst move in the line's first 30 plies, per game.
+    sqlx::query(
+        "INSERT INTO game_openings (game_id, account_id, time_class, color, fen_keys, ucis, sans, \
+         line_key) VALUES ($1, $2, 'rapid', 'white', '{}', '{}', '{}', 'w-kings-pawn')",
+    )
+    .bind(g)
+    .bind(a)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let line = src
+        .find_examples(ExamplesQuery {
+            line_key: Some("w-kings-pawn".into()),
+            limit: 5,
+            ..ExamplesQuery::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(line.len(), 1);
+    assert_eq!((line[0].game_id.as_str(), line[0].ply), ("li-r2-w1", 1));
+}
+
+/// The chat never runs the engine for `find_examples`.
+struct NoEngine;
+
+impl ai::chat::data_source::InteractiveEngine for NoEngine {
+    fn request<'a>(
+        &'a self,
+        _base_fen: &'a str,
+        _moves: &'a [String],
+        _wait: std::time::Duration,
+    ) -> futures::future::BoxFuture<'a, anyhow::Result<ai::chat::data_source::EngineCheck>> {
+        Box::pin(async { anyhow::bail!("no engine in this test") })
+    }
+
+    fn wait<'a>(
+        &'a self,
+        _eval_id: &'a str,
+        _wait: std::time::Duration,
+    ) -> futures::future::BoxFuture<'a, anyhow::Result<ai::chat::data_source::EngineCheck>> {
+        Box::pin(async { anyhow::bail!("no engine in this test") })
+    }
+
+    fn abandon<'a>(
+        &'a self,
+        _eval_id: &'a str,
+    ) -> futures::future::BoxFuture<'a, anyhow::Result<()>> {
+        Box::pin(async { Ok(()) })
+    }
+}
+
+// I10 through the coach's own tool: the model asks for hung-material examples on a profile with
+// nothing ranked and gets the stored occurrence, citable, never an empty "found none".
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn the_find_examples_tool_cites_r2_occurrences(pool: PgPool) {
+    use ai::chat::execute::{ToolDeps, ToolExec, ToolSession, execute_tool};
+    let a = account(&pool, "alice").await;
+    let input = unranked(store_input(&pool, a).await);
+    let g = seed_game(&pool, a, "li-r2-tool").await;
+    seed_move(&pool, g, 1, START, "e4", "e2e4", Some("d2d4")).await;
+    seed_metrics(&pool, g, "W1", &[1]).await;
+    let src = ds(&pool, a, input);
+    let session = ToolSession::new(ai::validator::evidence::create_evidence());
+    let deps = ToolDeps {
+        ds: &src,
+        engine: &NoEngine,
+    };
+    let out = execute_tool(
+        &deps,
+        &session,
+        "find_examples",
+        Some(&json!({"weaknessId": "W1", "limit": 3})),
+    )
+    .await;
+    let ToolExec::Ready(o) = out else {
+        panic!("expected a ready result, got {out:?}");
+    };
+    let v: serde_json::Value = serde_json::from_str(&o.content).unwrap();
+    let examples = v["examples"].as_array().unwrap();
+    assert_eq!(examples.len(), 1, "{v}");
+    assert_eq!(examples[0]["position"]["gameId"], "li-r2-tool");
+    assert!(session.evidence().game_ids.contains("li-r2-tool"));
+}

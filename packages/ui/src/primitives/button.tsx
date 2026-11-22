@@ -14,6 +14,7 @@ import {
   type Ref,
   type RefCallback,
   type SyntheticEvent,
+  use,
   useCallback,
   useRef,
 } from "react";
@@ -129,13 +130,33 @@ function chain<E extends SyntheticEvent>(
 
 type ChildProps = Record<string, unknown> & { className?: string; ref?: Ref<HTMLElement> };
 
+const REACT_LAZY = Symbol.for("react.lazy");
+type Lazy = { $$typeof: symbol; _payload: PromiseLike<unknown> };
+
+const isLazy = (v: unknown): v is Lazy =>
+  typeof v === "object" &&
+  v !== null &&
+  (v as { $$typeof?: unknown }).$$typeof === REACT_LAZY &&
+  typeof (v as { _payload?: { then?: unknown } })._payload?.then === "function";
+
+/**
+ * A server component's child reaches a client component during SSR as a lazy reference (React
+ * Flight), not an element, while the browser may already hold the element. Unwrapping it the way
+ * Radix Slot does keeps `asChild` rendering the same element on both sides (bug hunt B3/I4).
+ */
+function unwrapLazy(value: unknown): unknown {
+  let out = value;
+  while (isLazy(out)) out = use(out._payload);
+  return out;
+}
+
 export const Button = forwardRef<HTMLElement, ButtonProps>(function Button(
   {
     className,
     variant,
     size,
     asChild = false,
-    children,
+    children: rawChildren,
     onPointerDown,
     onPointerUp,
     onPointerLeave,
@@ -147,6 +168,7 @@ export const Button = forwardRef<HTMLElement, ButtonProps>(function Button(
   ref,
 ) {
   const { press, release } = usePenPress();
+  const children = (asChild ? unwrapLazy(rawChildren) : rawChildren) as ButtonProps["children"];
   const classes = cn(buttonVariants({ variant, size }), className);
 
   const releaseOn = (e: SyntheticEvent<HTMLElement>) => release(e.currentTarget);

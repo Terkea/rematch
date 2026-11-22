@@ -51,7 +51,20 @@ describe("leadFinding", () => {
       ],
     });
     const lead = await leadFinding(db, userId);
-    expect(lead).toMatchObject({ kind: "none", analysedGames: 7 });
+    expect(lead).toMatchObject({ kind: "none", analysedGames: 7, compared: true });
+  });
+
+  it("with no benchmark the lead is none and says so", async () => {
+    const none = { state: "not_an_issue" as const, bandMedian: null, excess: null, priority: 0 };
+    await seedProfile(db, accountId, {
+      timeClass: "rapid",
+      games: 7,
+      estimates: [
+        { seriesKey: "W1", ...none },
+        { seriesKey: "W5", ...none },
+      ],
+    });
+    expect(await leadFinding(db, userId)).toMatchObject({ kind: "none", compared: false });
   });
 
   it("no scope gives building", async () => {

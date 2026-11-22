@@ -18,4 +18,9 @@ export { kpiTrends } from "./kpis";
 export { leadFinding } from "./lead";
 export { resolveCoachScope } from "./scope";
 export * from "./types";
-export { getWeakness, listWeaknesses } from "./weaknesses";
+export {
+  ESTIMATE_WINDOW_DAYS,
+  ESTIMATE_WINDOW_TEXT,
+  getWeakness,
+  listWeaknesses,
+} from "./weaknesses";

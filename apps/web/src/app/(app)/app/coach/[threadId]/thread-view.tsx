@@ -18,6 +18,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { reviewHref } from "../../../../../lib/segment-href";
+import { COACH_UNAVAILABLE_TITLE } from "../../../../../server/coach/status-copy";
 import { PendingButton } from "../../../../ui/pending-button";
 import type { AllowanceView } from "../allowance";
 import { AllowanceLine } from "../allowance-line";
@@ -266,10 +267,13 @@ export function ThreadView({
   anchorCard,
   aside,
   gameIds = {},
+  available = true,
 }: {
   thread: ThreadData;
   allowance: AllowanceView | null;
   listHref: string;
+  /** False while no coach could answer (bug hunt I5): answers stay, the composer is off. */
+  available?: boolean;
   /** Platform game id to `games.id`, for the answers' move links (`reviewGameIds`). */
   gameIds?: Record<string, string>;
   anchorCard?: ReactNode;
@@ -360,17 +364,21 @@ export function ThreadView({
         <ChatComposer
           onSubmit={send}
           placeholder={COMPOSER_PLACEHOLDER}
-          disabled={composer.disabled}
-          // Only a used-up allowance pauses questions; an answer in progress is a status line,
-          // so the box never says "paused until they reset" while the coach is writing.
-          disabledReason={allowance?.exhausted ? composer.reason : null}
+          disabled={composer.disabled || !available}
+          // Only a used-up allowance or an unavailable coach pauses questions; an answer in
+          // progress is a status line, so the box never says "paused" while the coach is writing.
+          disabledReason={
+            !available ? COACH_UNAVAILABLE_TITLE : allowance?.exhausted ? composer.reason : null
+          }
           className={COMPACT_COMPOSER}
         />
         <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-          <AllowanceLine
-            allowance={allowance}
-            className={answering && !allowance?.exhausted ? "max-sm:hidden" : undefined}
-          />
+          {available ? (
+            <AllowanceLine
+              allowance={allowance}
+              className={answering && !allowance?.exhausted ? "max-sm:hidden" : undefined}
+            />
+          ) : null}
           {/* Always mounted, so the change is announced when an answer starts. */}
           <p
             ref={statusLine}

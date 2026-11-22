@@ -21,6 +21,7 @@ import {
 afterEach(cleanup);
 
 const BAD = /NaN|undefined|Infinity|null/;
+const NO_BENCHMARK = "Not compared yet: no benchmark for players at your level yet";
 
 const row: WeaknessRowProps = {
   label: "Hanging pieces",
@@ -118,6 +119,14 @@ describe("WeaknessRow", () => {
     );
   });
 
+  // Bug hunt I2: a high end of 98% padded by 10% labelled the scale "110.0%". A rate is a share.
+  it("never puts the interval scale past 100%", () => {
+    const high = { rate: { mean: 0.9, low: 0.8, high: 0.98 }, band: { median: null } };
+    expect(weaknessScaleMax([high])).toBe(1);
+    const { container } = render(<WeaknessRow {...row} {...high} />);
+    expect(container.querySelector("[data-part='scale-max']")?.textContent).toBe("100.0%");
+  });
+
   it("rows in a list share one interval scale", () => {
     const a = { rate: { mean: 0.042, low: 0.031, high: 0.056 }, band: { median: 0.021 } };
     const b = { rate: { mean: 0.118, low: 0.084, high: 0.152 }, band: { median: 0.11 } };
@@ -144,9 +153,30 @@ describe("WeaknessRow", () => {
 
   it("says when there is no band reference, never a zero", () => {
     const { container } = render(<WeaknessRow {...row} band={{ median: null }} onset={null} />);
-    expect(container.textContent).toContain("No rating-band reference yet");
+    expect(container.textContent).toContain(NO_BENCHMARK);
     expect(container.querySelector("time")).toBeNull();
     expect(container.textContent).not.toMatch(BAD);
+  });
+
+  // Bug hunt I1: with no benchmark Rust stores `not_an_issue`, which is no claim at all. The row
+  // says it is not compared yet and still shows its own rate, range and counts.
+  it("never calls an uncompared weakness 'not an issue'", () => {
+    const { container } = render(
+      <WeaknessRow {...row} state="not_an_issue" band={{ median: null }} compared={false} />,
+    );
+    const text = container.textContent ?? "";
+    expect(text).not.toMatch(/not an issue/i);
+    expect(text).toContain("Not compared yet");
+    expect(text).toContain(NO_BENCHMARK);
+    expect(text).toContain("4.2%");
+    expect(text).toContain("80% range 3.1–5.6%");
+    expect(text).toContain("38 times in 902 chances");
+  });
+
+  it("names the estimate's window beside its counts", () => {
+    const { container } = render(<WeaknessRow {...row} window="in the last 6 months" />);
+    expect(container.textContent).toContain("38 times in 902 chances in the last 6 months");
+    expect(container.textContent).toContain("from 38 of 902 in the last 6 months");
   });
 });
 
@@ -170,8 +200,8 @@ describe("bandComparisonText", () => {
     expect(bandComparisonText(r, 0.06)).toContain("inside your likely range");
   });
   it("says when there is no reference", () => {
-    expect(bandComparisonText(r, null)).toBe("No rating-band reference yet");
-    expect(bandComparisonText(r, Number.NaN)).toBe("No rating-band reference yet");
+    expect(bandComparisonText(r, null)).toBe(NO_BENCHMARK);
+    expect(bandComparisonText(r, Number.NaN)).toBe(NO_BENCHMARK);
   });
 });
 

@@ -121,7 +121,7 @@ test.describe
       await page.getByRole("textbox").fill("Why do I miss tactics after captures?");
       await page.getByRole("button", { name: "Send" }).click();
       await page.waitForURL(/\/app\/coach\/[0-9a-f-]{36}$/);
-      await expect(page.getByText("Your coach is reading your games")).toBeVisible();
+      await expect(page.getByText("Reading your games")).toBeVisible();
       const messageId = latestAnswer();
 
       simulate({ kind: "chat-chunk", messageId, seq: 0, text: DRAFT_1 });
@@ -139,6 +139,27 @@ test.describe
       await expect(answer).toContainText(VALIDATED);
       await expect(answer).not.toContainText(DRAFT_2);
       await expect(answer.getByText("Written by AI")).toBeVisible();
+    });
+
+    // Bug hunt B4: with a fast worker the answer is done before the thread page opens. The page
+    // must still open the thread and show the stored answer, never sit on "Sending".
+    test("4b. an answer that finishes before the thread opens still opens it, answered", async () => {
+      await live(page, "/app/coach/new", "textarea");
+      await page.route("**/api/coach/threads", async (route) => {
+        if (route.request().method() !== "POST") return route.fallback();
+        const response = await route.fetch();
+        const messageId = latestAnswer();
+        simulate({ kind: "chat-chunk", messageId, seq: 0, text: DRAFT_1 });
+        simulate({ kind: "chat-done", messageId, replace: true });
+        await route.fulfill({ response });
+      });
+      await page.getByRole("textbox").fill("What should I study first?");
+      await page.getByRole("button", { name: "Send" }).click();
+      await page.waitForURL(/\/app\/coach\/[0-9a-f-]{36}$/, { timeout: 60_000 });
+      const answer = page.locator("article[data-role='assistant']").last();
+      await expect(answer).toContainText(VALIDATED);
+      await expect(page.getByText("Sending", { exact: true })).toHaveCount(0);
+      await page.unroute("**/api/coach/threads");
     });
 
     test("5. another user of the account gets not-found and none of the owner's chunks", async ({
@@ -188,9 +209,9 @@ test.describe
     });
 
     test("6. a weekly_cap denial shows the cap copy and disables the composer", async () => {
-      // With step 4's answer, 99 of the week's 100 are used; another device uses the last while
-      // this question waits.
-      spendAllowance(98);
+      // With steps 4 and 4b's answers, 99 of the week's 100 are used; another device uses the
+      // last while this question waits.
+      spendAllowance(97);
       await live(page, "/app/coach/new", "textarea");
       await page.getByRole("textbox").fill("One more question about my endgames?");
       await page.getByRole("button", { name: "Send" }).click();

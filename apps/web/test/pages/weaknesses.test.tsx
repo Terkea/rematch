@@ -105,6 +105,32 @@ describe("weaknesses list", () => {
     noBadText(container);
   });
 
+  // Bug hunt I1: with no rating-band benchmark every estimate is stored `not_an_issue` with a
+  // null excess. The page must not file them "Under control": they are not compared yet.
+  it("uncompared weaknesses are not compared yet, never under control", async () => {
+    const none = { state: "not_an_issue" as const, bandMedian: null, bandP40: null, excess: null };
+    await seedProfile(db, accountId, {
+      timeClass: "rapid",
+      games: 3,
+      estimates: [
+        { seriesKey: "W5", ...none, mean: 0.325, ciLow: 0.3, ciHigh: 0.35, priority: 0 },
+        { seriesKey: "W1", ...none, priority: 0 },
+      ],
+    });
+    const { container } = await list();
+    const text = container.textContent ?? "";
+    expect(screen.queryByRole("region", { name: "Under control" })).toBeNull();
+    expect(text).not.toMatch(/not an issue/i);
+    const region = screen.getByRole("region", { name: "Not compared yet" });
+    expect(region.textContent).toMatch(/no benchmark for players at your level yet/);
+    expect(within(region).getAllByRole("link")).toHaveLength(2);
+    // Each still shows its own rate, range and n, over its window.
+    expect(region.textContent).toMatch(/32\.5%/);
+    expect(region.textContent).toMatch(/80% range 30\.0–35\.0%/);
+    expect(region.textContent).toMatch(/40 times in 2,000 chances in the last 6 months/);
+    noBadText(container);
+  });
+
   it("early reads get their own group, never a confident one", async () => {
     await seedProfile(db, accountId, {
       timeClass: "rapid",
@@ -255,6 +281,43 @@ describe("weakness detail", () => {
     noBadText(container);
   });
 
+  it("an uncompared weakness says so, with its own rate and window", async () => {
+    await seedProfile(db, accountId, {
+      timeClass: "rapid",
+      games: 1,
+      estimates: [
+        {
+          seriesKey: "W5",
+          state: "not_an_issue",
+          bandMedian: null,
+          bandP40: null,
+          excess: null,
+          mean: 0.325,
+          ciLow: 0.3,
+          ciHigh: 0.35,
+          kUnweighted: 21,
+          nUnweighted: 534,
+        },
+      ],
+      history: [
+        {
+          seriesKey: "W5",
+          kind: "transition",
+          toState: "not_an_issue",
+          atPlayedAt: at("2026-09-01"),
+        },
+      ],
+    });
+    const { container } = await detail("W5");
+    const text = container.textContent ?? "";
+    expect(text).not.toMatch(/not an issue/i);
+    expect(container.querySelector("[data-state]")?.textContent).toBe("Not compared yet");
+    expect(text).toMatch(/Not compared yet: no benchmark for players at your level yet/);
+    expect(text).toMatch(/21 times in 534 chances in the last 6 months/);
+    expect(text).toMatch(/Now not compared yet/);
+    noBadText(container);
+  });
+
   it("an early read looks provisional and says what it needs", async () => {
     await seedProfile(db, accountId, {
       timeClass: "rapid",
@@ -265,7 +328,9 @@ describe("weakness detail", () => {
     });
     const { container } = await detail("W1");
     expect(screen.getByText("Early read: 880 more chances needed")).toBeTruthy();
-    expect(screen.getByText("No band reference yet")).toBeTruthy();
+    expect(
+      screen.getByText("Not compared yet: no benchmark for players at your level yet"),
+    ).toBeTruthy();
     expect(container.textContent).not.toMatch(/Emerging/);
     noBadText(container);
   });

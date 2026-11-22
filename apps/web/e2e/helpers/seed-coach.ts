@@ -122,6 +122,7 @@ async function profile(db: Db, accountId: string): Promise<void> {
     ciHigh: hi,
     bandMedian: mean * 0.7,
     bandP40: mean * 0.6,
+    excess: mean * 0.3,
     confidence: 0.85,
   });
   const points = RAPID.flatMap((g, j) => [
@@ -264,6 +265,13 @@ export async function seedE2eCoach(
   const accountId = account.id;
   await clear(db, accountId);
   await profile(db, accountId);
+  // The simulated worker stands in for one with an AI client (ADR 0078), so the coach pages
+  // offer questions and reports. Its heartbeat is a day ahead: the specs outlast the 2 min window.
+  await db.execute(
+    sql`insert into ai_status (worker_id, enabled, detail, heartbeat_at)
+        values ('00000000-0000-4000-8000-00000000e2e0', true, 'ai: enabled (e2e simulated worker)', now() + interval '1 day')
+        on conflict (worker_id) do update set enabled = true, heartbeat_at = excluded.heartbeat_at`,
+  );
 
   // The first report (onboarding) and the complete one the page shows; its run holds the
   // synthetic coaching input the exemplar boards come from (ruling R2).

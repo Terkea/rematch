@@ -108,6 +108,34 @@ describe("listWeaknesses", () => {
     });
   });
 
+  // Bug hunt I1: without a rating-band benchmark Rust stores `not_an_issue` with a null `excess`
+  // (and band). That is no claim, so the read model marks it uncompared.
+  it("a weakness without a benchmark is not compared", async () => {
+    await seedProfile(db, accountId, {
+      timeClass: "rapid",
+      games: 1,
+      estimates: [
+        { seriesKey: "W1", state: "not_an_issue", bandMedian: null, bandP40: null, excess: null },
+        { seriesKey: "W2", state: "not_an_issue", excess: 0 },
+      ],
+      history: [
+        {
+          seriesKey: "W1",
+          kind: "transition",
+          toState: "not_an_issue",
+          atPlayedAt: at("2026-09-01"),
+        },
+      ],
+    });
+    const scope = await scopeOf(userId);
+    const list = await listWeaknesses(db, userId, scope);
+    expect(list.find((w) => w.seriesKey === "W1")?.compared).toBe(false);
+    expect(list.find((w) => w.seriesKey === "W2")?.compared).toBe(true);
+    const detail = await getWeakness(db, userId, scope, "W1");
+    expect(detail?.compared).toBe(false);
+    expect(detail?.timeline.compared).toBe(false);
+  });
+
   it("another user's scope lists nothing", async () => {
     await seedProfile(db, accountId, {
       timeClass: "rapid",
@@ -180,6 +208,7 @@ describe("getWeakness", () => {
         { state: "emerging", from: "2026-05-04", to: "2026-06-10" },
         { state: "active", from: "2026-06-10", to: null },
       ],
+      compared: true,
     });
     expect(w?.history).toHaveLength(3);
     expect(w?.history[1]).toMatchObject({
@@ -215,6 +244,31 @@ describe("getWeakness", () => {
     ]);
   });
 
+  // Bug hunt I6: the estimate counts only the last 183 days before its build (Rust WINDOW_DAYS),
+  // so the weekly list covers that window too and its chances add up to the estimate's.
+  it("weekly covers the estimate's six-month window only", async () => {
+    const points = Array.from({ length: 40 }, (_, i) => ({
+      playedAt: new Date(Date.UTC(2025, 11, 1 + i * 7, 12)),
+      events: 1,
+      opportunities: 10,
+    }));
+    const built = new Date(Date.UTC(2026, 7, 31, 12));
+    await seedProfile(db, accountId, {
+      timeClass: "rapid",
+      games: 1,
+      estimates: [{ seriesKey: "W1", updatedAt: built }],
+      points,
+    });
+    const w = await getWeakness(db, userId, await scopeOf(userId), "W1");
+    const from = built.getTime() - 183 * 86_400_000;
+    const inWindow = points.filter(
+      (p) => p.playedAt.getTime() >= from && p.playedAt.getTime() <= built.getTime(),
+    );
+    const sum = (w?.weekly ?? []).reduce((n, x) => n + x.chances, 0);
+    expect(sum).toBe(inWindow.length * 10);
+    expect(w?.window).toEqual({ days: 183, from: new Date(from), to: built });
+  });
+
   it("weekly keeps only the newest 26 weeks", async () => {
     const points = Array.from({ length: 30 }, (_, i) => ({
       playedAt: new Date(Date.UTC(2026, 0, 5 + i * 7, 12)),
@@ -224,7 +278,8 @@ describe("getWeakness", () => {
     await seedProfile(db, accountId, {
       timeClass: "rapid",
       games: 1,
-      estimates: [{ seriesKey: "W1" }],
+      // Built just after the last point, so the 183-day window holds the newest 26 weeks.
+      estimates: [{ seriesKey: "W1", updatedAt: new Date(Date.UTC(2026, 6, 30, 12)) }],
       points,
     });
     const w = await getWeakness(db, userId, await scopeOf(userId), "W1");

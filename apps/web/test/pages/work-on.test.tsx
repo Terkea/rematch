@@ -32,6 +32,7 @@ const weakness: WeaknessSummary = {
   rate: { mean: 0.042, low: 0.031, high: 0.056, level: 0.8 },
   evidence: { events: 38, chances: 902, minEvidence: 40, sufficient: true, needMore: null },
   band: { median: 0.03, p40: 0.028 },
+  compared: true,
   priority: 3.2,
   confidence: 0.8,
   pImp: null,
@@ -47,17 +48,35 @@ describe("WorkOn", () => {
     expect(link.getAttribute("href")).toBe(
       `/app/weaknesses/W3.shallow?account=${scope.accountId}&tc=rapid`,
     );
-    expect(container).toHaveTextContent(weaknessRateText(weakness.rate, weakness.evidence));
-    expect(container).toHaveTextContent("Based on 214 analysed rapid games");
+    expect(container).toHaveTextContent(
+      weaknessRateText(weakness.rate, weakness.evidence, "in the last 6 months"),
+    );
+    expect(container).toHaveTextContent("Based on 214 analysed rapid games on lichess");
   });
 
-  it("none says nothing stands out, with the games counted", () => {
-    render(<WorkOn lead={{ kind: "none", scope, analysedGames: 214 }} />);
+  // M6: on the overview's All scope the slot said "across 356 analysed games", which were blitz's.
+  // It names its own scope: the time class and the platform.
+  it("none says nothing stands out, with its own scope's games counted", () => {
+    render(<WorkOn lead={{ kind: "none", scope, analysedGames: 214, compared: true }} />);
     expect(
       screen.getByText(
-        "Nothing stands out above players at your level across 214 analysed games yet.",
+        "Nothing stands out above players at your level across 214 analysed rapid games on lichess yet.",
       ),
     ).toBeInTheDocument();
+  });
+
+  // I1: with no benchmark nothing was compared, so "nothing stands out" overclaims.
+  it("none without a benchmark says not compared yet", () => {
+    const { container } = render(
+      <WorkOn lead={{ kind: "none", scope, analysedGames: 214, compared: false }} />,
+    );
+    expect(container).toHaveTextContent(
+      "Not compared yet: no benchmark for players at your level yet.",
+    );
+    expect(container).toHaveTextContent("214 analysed rapid games on lichess");
+    expect(container).not.toHaveTextContent(/Nothing stands out/);
+    const link = screen.getByRole("link", { name: /your weaknesses/i });
+    expect(link.getAttribute("href")).toBe(`/app/weaknesses?account=${scope.accountId}&tc=rapid`);
   });
 
   it("building keeps the profile-building copy", () => {

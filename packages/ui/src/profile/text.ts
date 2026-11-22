@@ -38,8 +38,10 @@ const count = (n: number) => new Intl.NumberFormat("en-GB").format(n);
 export function weaknessRateText(
   r: { mean: number; low: number; high: number },
   e: { events: number; chances: number },
+  /** The estimate's evidence window, as a phrase ("in the last 6 months"); omitted when unknown. */
+  window?: string,
 ): string {
-  const counts = `from ${count(e.events)} of ${count(e.chances)}`;
+  const counts = `from ${count(e.events)} of ${count(e.chances)}${window ? ` ${window}` : ""}`;
   if (!fin(r.mean) || !fin(r.low) || !fin(r.high)) return `Rate not estimated yet, ${counts}`;
   return `Estimated ${pct1(r.mean)}% of chances (80% range ${pct1(r.low)}–${pct1(r.high)}%), ${counts}`;
 }
@@ -50,6 +52,13 @@ export const shareText = (share: number) => (fin(share) ? `${pct1(share)}%` : "n
 /** "3.1–5.6%". */
 export const shareRangeText = (low: number, high: number) =>
   fin(low) && fin(high) ? `${pct1(low)}–${pct1(high)}%` : "range not measured";
+
+/**
+ * A weakness with no rating-band benchmark has no state worth naming: Rust stores `not_an_issue`
+ * for it, which is no claim at all (bug hunt I1). These say so, never "not an issue".
+ */
+export const NOT_COMPARED_LABEL = "Not compared yet";
+export const NO_BENCHMARK_TEXT = "Not compared yet: no benchmark for players at your level yet";
 
 /** The reference group when the host does not name the band ("Players rated 1400–1600"). */
 export const DEFAULT_BAND_LABEL = "Players in your rating band";
@@ -65,7 +74,7 @@ export function bandComparisonText(
   median: number | null,
   label: string = DEFAULT_BAND_LABEL,
 ): string {
-  if (median === null || !fin(median)) return "No rating-band reference yet";
+  if (median === null || !fin(median)) return NO_BENCHMARK_TEXT;
   const head = `${label}: ${shareText(median)}`;
   if (median < rate.low) return `${head}, lower than your whole likely range`;
   if (median > rate.high) return `${head}, higher than your whole likely range`;
@@ -87,7 +96,8 @@ export const countsText = (
 
 /**
  * One interval scale for a list of rows, from zero to a little past the largest high end or band
- * median, rounded up to a whole percent (to 5% above 10%), so rows compare down the column.
+ * median, rounded up to a whole percent (to 5% above 10%), so rows compare down the column. A rate
+ * is a share of chances, so the scale never runs past 100%.
  */
 export function weaknessScaleMax(
   rows: { rate: { high: number }; band: { median: number | null } }[],
@@ -98,7 +108,7 @@ export function weaknessScaleMax(
   );
   if (top <= 0) return 0.01;
   const step = top * 1.1 > 0.1 ? 0.05 : 0.01;
-  return Math.ceil((top * 1.1) / step - 1e-9) * step;
+  return Math.min(1, Math.ceil((top * 1.1) / step - 1e-9) * step);
 }
 
 /** "Weekly trend after 180 more chances", or a plain line when the shortfall is unknown. */

@@ -2,10 +2,15 @@
 //! stored report sections and coaching input. Every game, move and report query filters on the
 //! scope's account, so another account's id is simply not found.
 //!
-//! - `get_weakness`, `get_opening_line` and `find_examples` read the scope's coaching input (the
-//!   snapshot the report was written from); `find_examples` then looks each exemplar up in the
-//!   account's moves. R2's per-move tags are not stored yet (ruling Q4), so a position's tags are
-//!   the tags of the matching exemplar.
+//! - `get_weakness` and `get_opening_line` read the scope's coaching input (the snapshot the
+//!   report was written from).
+//! - `find_examples` takes the input's exemplars first, then R2's stored occurrences of the
+//!   scope (bug hunt I10: with no band reference nothing is ranked, so the input alone has none):
+//!   a weakness's per-game `exemplarPlies` (`game_metrics`), a motif's erring moves whose best or
+//!   refuting line carries the tag (`move_features`), and an opening line's worst player move in
+//!   its first 30 plies, one per game (`game_openings`). Each is looked up in the account's moves.
+//! - A position's tags are the matching exemplar's plus its stored line tags (`move_features`),
+//!   in the contract's snake_case.
 //! - `get_position` joins `moves` with the account's `games` by `platform_game_id` (the chat's
 //!   game id), with the engine line from `position_evals` (`fen_key`, R1's `ANALYSIS_PROTOCOL`).
 //! - `get_cached_eval` reads `position_evals` only (engine data, never computed here).
@@ -73,7 +78,52 @@ type MoveRow = (
     f64,
     Option<f64>,
     Option<f64>,
+    Option<Value>,
+    Option<Value>,
 );
+
+/// How many plies of an opening line count for its examples (the report's rule, R2 T34).
+const LINE_PLIES: i32 = 30;
+
+/// R2's camelCase motif tag (`hangingPiece`, `mateIn4Plus`) in the contract's snake_case
+/// (`hanging_piece`, `mate_in_4_plus`): a word per capital, digits as their own word.
+fn snake_tag(camel: &str) -> String {
+    let mut out = String::with_capacity(camel.len() + 4);
+    let mut prev_digit = false;
+    for c in camel.chars() {
+        let digit = c.is_ascii_digit();
+        if c.is_ascii_uppercase() || (digit && !prev_digit && !out.is_empty()) {
+            out.push('_');
+        }
+        out.push(c.to_ascii_lowercase());
+        prev_digit = digit;
+    }
+    out
+}
+
+/// The contract's snake_case tag in R2's camelCase (the inverse of [`snake_tag`]).
+fn camel_tag(snake: &str) -> String {
+    let mut out = String::with_capacity(snake.len());
+    for (i, part) in snake.split('_').filter(|p| !p.is_empty()).enumerate() {
+        let mut cs = part.chars();
+        if i == 0 {
+            out.push_str(part);
+        } else if let Some(first) = cs.next() {
+            out.push(first.to_ascii_uppercase());
+            out.push_str(cs.as_str());
+        }
+    }
+    out
+}
+
+/// The string tags of a stored line's `tags` array, in snake_case.
+fn line_tags(v: Option<&Value>) -> impl Iterator<Item = String> + '_ {
+    v.and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(snake_tag)
+}
 
 /// `(score_cp, score_mate, best_uci, pv)` of a `position_evals` row.
 type EvalRow = (Option<i32>, Option<i32>, Option<String>, Vec<String>);
@@ -164,8 +214,9 @@ impl DbCoachDataSource {
         let row: Option<MoveRow> = sqlx::query_as(
             "SELECT g.platform_game_id, m.ply, m.fen_before, m.san, m.uci, m.best_uci, \
              m.judgement::text, m.phase::text, m.win_before, m.win_after, m.clock_before, \
-             m.time_spent \
+             m.time_spent, mf.best_line -> 'tags', mf.refutation_line -> 'tags' \
              FROM moves m JOIN games g ON g.id = m.game_id \
+             LEFT JOIN move_features mf ON mf.game_id = m.game_id AND mf.ply = m.ply \
              WHERE g.account_id = $1 AND g.platform_game_id = $2 AND m.ply = $3 \
              ORDER BY g.played_at DESC LIMIT 1",
         )
@@ -187,6 +238,8 @@ impl DbCoachDataSource {
             win_after,
             clock_before,
             time_spent,
+            best_tags,
+            refutation_tags,
         )) = row
         else {
             return Ok(None);
@@ -208,8 +261,14 @@ impl DbCoachDataSource {
             Some(MoveRef { san, uci: b })
         });
         let ply = u32::try_from(ply_db).unwrap_or(ply);
+        let mut tags = self.tags_of(&gid, ply);
+        for t in line_tags(best_tags.as_ref()).chain(line_tags(refutation_tags.as_ref())) {
+            if !tags.contains(&t) {
+                tags.push(t);
+            }
+        }
         Ok(Some(PositionRecord {
-            tags: self.tags_of(&gid, ply),
+            tags,
             game_id: gid,
             ply,
             fen,
@@ -285,6 +344,81 @@ impl DbCoachDataSource {
         }))
     }
 
+    /// R2's stored occurrences of one selector in the scope, newest game first, as `(platform
+    /// game id, ply)`; at most `limit` (module docs).
+    async fn stored_refs(
+        &self,
+        q: &ExamplesQuery,
+        limit: i64,
+    ) -> anyhow::Result<Vec<(String, i32)>> {
+        let account = self.scope.account_id;
+        let tc = self.scope.time_class.as_str();
+        let rows = if let Some(w) = &q.weakness_id {
+            // `W3` covers `W3.shallow` and `W3.deep`; `W9b` is its own key.
+            sqlx::query_as(
+                "SELECT g.platform_game_id, p.ply::int4 FROM game_metrics gm \
+                 JOIN games g ON g.id = gm.game_id \
+                 CROSS JOIN LATERAL jsonb_each(CASE WHEN jsonb_typeof(gm.metrics -> 'weakness') \
+                 = 'object' THEN gm.metrics -> 'weakness' ELSE '{}'::jsonb END) AS w(key, obs) \
+                 CROSS JOIN LATERAL jsonb_array_elements_text(CASE \
+                 WHEN jsonb_typeof(w.obs -> 'exemplarPlies') = 'array' \
+                 THEN w.obs -> 'exemplarPlies' ELSE '[]'::jsonb END) AS p(ply) \
+                 WHERE gm.account_id = $1 AND g.account_id = $1 \
+                 AND gm.time_class = $2::time_class \
+                 AND (w.key = $3 OR left(w.key, length($3) + 1) = $3 || '.') \
+                 AND p.ply ~ '^[0-9]{1,4}$' \
+                 ORDER BY gm.played_at DESC, g.platform_game_id, p.ply::int4 LIMIT $4",
+            )
+            .bind(account)
+            .bind(tc)
+            .bind(w)
+            .bind(limit)
+            .fetch_all(&self.pool)
+            .await?
+        } else if let Some(m) = &q.motif {
+            // The player's own erring moves whose best line (missed) or refutation (allowed)
+            // carries the motif.
+            sqlx::query_as(
+                "SELECT g.platform_game_id, m.ply FROM moves m \
+                 JOIN games g ON g.id = m.game_id \
+                 JOIN move_features mf ON mf.game_id = m.game_id AND mf.ply = m.ply \
+                 WHERE g.account_id = $1 AND g.time_class = $2::time_class \
+                 AND m.color = g.player_color AND m.judgement IS NOT NULL \
+                 AND (coalesce(mf.best_line -> 'tags', '[]') @> jsonb_build_array($3::text) \
+                 OR coalesce(mf.refutation_line -> 'tags', '[]') @> jsonb_build_array($3::text)) \
+                 ORDER BY g.played_at DESC, m.delta_w DESC, m.ply LIMIT $4",
+            )
+            .bind(account)
+            .bind(tc)
+            .bind(camel_tag(m))
+            .bind(limit)
+            .fetch_all(&self.pool)
+            .await?
+        } else if let Some(l) = &q.line_key {
+            sqlx::query_as(
+                "SELECT platform_game_id, ply FROM ( \
+                 SELECT DISTINCT ON (g.id) g.platform_game_id, m.ply, g.played_at \
+                 FROM game_openings go JOIN games g ON g.id = go.game_id \
+                 JOIN moves m ON m.game_id = g.id \
+                 WHERE go.account_id = $1 AND g.account_id = $1 \
+                 AND go.time_class = $2::time_class AND go.line_key = $3 \
+                 AND m.color = g.player_color AND m.ply <= $5 \
+                 ORDER BY g.id, m.delta_w DESC, m.ply) worst \
+                 ORDER BY played_at DESC, platform_game_id LIMIT $4",
+            )
+            .bind(account)
+            .bind(tc)
+            .bind(l)
+            .bind(limit)
+            .bind(LINE_PLIES)
+            .fetch_all(&self.pool)
+            .await?
+        } else {
+            Vec::new()
+        };
+        Ok(rows)
+    }
+
     async fn examples(&self, q: ExamplesQuery) -> anyhow::Result<Vec<PositionRecord>> {
         let limit = q.limit.clamp(1, MAX_EXAMPLES) as usize;
         let input = &self.scope.input;
@@ -318,6 +452,24 @@ impl DbCoachDataSource {
             }
             if let Some(p) = self.position(&e.game_id, e.ply).await? {
                 out.push(p);
+            }
+        }
+        if out.len() < limit {
+            // A few spare refs: some may repeat an exemplar or no longer have a stored move.
+            let want = i64::try_from(limit * 3).unwrap_or(i64::MAX);
+            for (game_id, ply) in self.stored_refs(&q, want).await? {
+                if out.len() >= limit {
+                    break;
+                }
+                let Ok(ply) = u32::try_from(ply) else {
+                    continue;
+                };
+                if !seen.insert((game_id.clone(), ply)) {
+                    continue;
+                }
+                if let Some(p) = self.position(&game_id, ply).await? {
+                    out.push(p);
+                }
             }
         }
         Ok(out)

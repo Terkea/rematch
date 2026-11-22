@@ -42,6 +42,11 @@ export type WeaknessSummary = {
     needMore: number | null;
   };
   band: { median: number | null; p40: number | null };
+  /**
+   * Whether the estimate was compared with a rating-band benchmark (stored `excess` and band
+   * median). False means its state is no claim: show "Not compared yet", never "not an issue".
+   */
+  compared: boolean;
   priority: number;
   confidence: number;
   pImp: number | null;
@@ -65,6 +70,8 @@ export type Exemplar = {
 };
 
 export type WeaknessDetail = WeaknessSummary & {
+  /** The estimate's evidence window: `days` before its build (`updatedAt`); weekly covers it. */
+  window: { days: number; from: Date; to: Date };
   history: {
     kind: "transition" | "onset";
     fromState: WeaknessState | null;
@@ -142,5 +149,11 @@ export type DifficultyStatus = {
 
 export type LeadFinding =
   | { kind: "weakness"; scope: CoachScope; weakness: WeaknessSummary }
-  | { kind: "none"; scope: CoachScope; analysedGames: number }
+  | {
+      kind: "none";
+      scope: CoachScope;
+      analysedGames: number;
+      /** False when no weakness of the scope had a rating-band benchmark (nothing was compared). */
+      compared: boolean;
+    }
   | { kind: "building" };
