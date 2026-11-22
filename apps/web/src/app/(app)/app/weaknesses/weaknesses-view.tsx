@@ -1,6 +1,7 @@
 import { Button } from "@ci/ui/primitives";
 import { NOT_COMPARED_LABEL, WeaknessRow, WeaknessRowKey, weaknessScaleMax } from "@ci/ui/profile";
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { CoachScopeSwitch } from "../../../../components/coach-scope-switch";
 import { MorphLink } from "../../../../components/shared-morph";
 import type { CoachScope, DifficultyStatus, WeaknessSummary } from "../../../../server/profile";
@@ -127,12 +128,18 @@ export function WeaknessesView({
   trends,
   difficulty,
   benchmark = null,
+  filterBar,
+  accountSwitch = true,
 }: {
   scope: CoachScope | null;
   weaknesses: WeaknessSummary[];
   trends: Map<string, (number | null)[]>;
   difficulty: DifficultyStatus | null;
   benchmark?: Benchmark | null;
+  /** The shared filter bar (T3); it holds the time control, so the scope switch then only picks the account. */
+  filterBar?: ReactNode;
+  /** Whether the scope switch is still needed (more than one linked account). */
+  accountSwitch?: boolean;
 }) {
   const group = benchmarkGroupLabel(benchmark);
   const groups = groupWeaknesses(weaknesses).filter((g) => g.rows.length > 0);
@@ -142,7 +149,10 @@ export function WeaknessesView({
     <div className="flex flex-col gap-10">
       <div className="flex flex-col gap-5">
         <WeaknessesHeader scope={scope} difficulty={difficulty} />
-        {scope ? <CoachScopeSwitch scope={scope} basePath="/app/weaknesses" /> : null}
+        {scope && (accountSwitch || !filterBar) ? (
+          <CoachScopeSwitch scope={scope} basePath="/app/weaknesses" />
+        ) : null}
+        {filterBar}
       </div>
 
       {scope === null || weaknesses.length === 0 ? (

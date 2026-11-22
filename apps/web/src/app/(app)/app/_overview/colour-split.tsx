@@ -8,7 +8,15 @@ import type { ColourSplitView, SplitCell } from "./colour-split-view";
 
 const LINING = { fontVariantNumeric: "lining-nums tabular-nums" } as const;
 
-function Row({ label, cell, explain }: { label: string; cell: SplitCell; explain: keyof typeof STATS_GLOSSARY }) {
+function Row({
+  label,
+  cell,
+  explain,
+}: {
+  label: string;
+  cell: SplitCell;
+  explain: keyof typeof STATS_GLOSSARY;
+}) {
   return (
     <div className="flex flex-col">
       <dt className="flex items-center gap-1 text-sm text-ink-soft">
@@ -29,7 +37,11 @@ function Row({ label, cell, explain }: { label: string; cell: SplitCell; explain
 
 export function ColourSplit({ view }: { view: ColourSplitView }) {
   return (
-    <section aria-labelledby="colour-split-heading" data-slot="colour-split" className="flex flex-col gap-3">
+    <section
+      aria-labelledby="colour-split-heading"
+      data-slot="colour-split"
+      className="flex flex-col gap-3"
+    >
       <div className="flex items-center gap-1.5">
         <h2 id="colour-split-heading" className="m-0 font-sans text-base font-medium text-ink">
           By colour

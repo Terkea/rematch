@@ -1,5 +1,6 @@
 import type { Db } from "@ci/db";
 import { betaReportIntervalDays, getReport, listWeeklyReviews } from "../../../../server/coaching";
+import type { DayRange } from "../../../../server/filters/params";
 import {
   type CoachScope,
   getWeakness,
@@ -7,6 +8,7 @@ import {
   listWeaknesses,
   type WeaknessDetail,
 } from "../../../../server/profile";
+import { clipWeekly } from "../_filters/clip";
 import { PROGRESS_METRICS, type ProgressInput } from "./progress-view";
 
 /**
@@ -18,6 +20,8 @@ export async function loadProgress(
   userId: string,
   scope: CoachScope,
   now: Date = new Date(),
+  /** The filter bar's dates: the stored weekly trends are clipped to these weeks (T3). */
+  range: DayRange = { from: null, to: null },
 ): Promise<ProgressInput> {
   const target = { accountId: scope.accountId, timeClass: scope.timeClass };
   const [trends, summaries, weekly, report] = await Promise.all([
@@ -35,7 +39,8 @@ export async function loadProgress(
   return {
     now,
     basis: option ? { analysedGames: option.analysedGames, timeClass: scope.timeClass } : null,
-    trends,
+    trends: trends.map((t) => ({ ...t, points: clipWeekly(t.points, range) })),
+    clipped: range.from !== null || range.to !== null,
     weaknesses: details.filter((d): d is WeaknessDetail => d != null),
     reportAt: report.createdAt,
     weekly,

@@ -1,5 +1,5 @@
-import { ExplainPopover } from "@ci/ui/profile";
 import { cn } from "@ci/ui/lib";
+import { ExplainPopover } from "@ci/ui/profile";
 import { SectionHead } from "../_overview/section-head";
 import type { CompareCell, CompareView } from "./compare-view";
 import { STATS_GLOSSARY } from "./glossary";
@@ -25,13 +25,7 @@ function Cell({ side, cell }: { side: string; cell: CompareCell }) {
   );
 }
 
-export function CompareBlock({
-  view,
-  id = "compare-heading",
-}: {
-  view: CompareView;
-  id?: string;
-}) {
+export function CompareBlock({ view, id = "compare-heading" }: { view: CompareView; id?: string }) {
   return (
     <section aria-labelledby={id} data-slot="compare" className="flex flex-col gap-5">
       <SectionHead id={id} title="Period A against period B" explain={STATS_GLOSSARY.compare} />

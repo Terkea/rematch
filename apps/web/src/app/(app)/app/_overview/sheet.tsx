@@ -1,7 +1,11 @@
 import type { ReactNode } from "react";
 import { KPI_GLOSSARY } from "../../../../server/profile/glossary";
 import type { LeadFinding } from "../../../../server/profile/types";
+import { CompareBlock } from "../_filters/compare-block";
+import type { CompareView } from "../_filters/compare-view";
 import { AccuracySection } from "./accuracy-section";
+import { ColourSplit } from "./colour-split";
+import type { ColourSplitView } from "./colour-split-view";
 import { OverviewEmpty } from "./empty-state";
 import { Headline, WorkOn } from "./headline";
 import { JudgementsSection } from "./judgements-section";
@@ -24,6 +28,10 @@ export function OverviewSheet({
   reveal,
   sync,
   lead = { kind: "building" },
+  filterBar,
+  colourSplit,
+  compare,
+  filtersNote,
 }: {
   view: OverviewView;
   reveal: boolean;
@@ -31,6 +39,14 @@ export function OverviewSheet({
   sync?: ReactNode;
   /** The coaching profile's lead finding for "What to work on" (default: still building). */
   lead?: LeadFinding;
+  /** The shared filter bar (T3); without it, the plain time-control switch. */
+  filterBar?: ReactNode;
+  /** The White | Black row under the headline, from `gameStats` with the filters applied. */
+  colourSplit?: ColourSplitView | null;
+  /** Period A against period B, when the URL asks for a comparison. */
+  compare?: CompareView | null;
+  /** What the filters beyond the class apply to, when any is set. */
+  filtersNote?: string | null;
 }) {
   return (
     <div {...(reveal ? { "data-reveal": "first" } : {})} className="flex flex-col gap-10">
@@ -45,12 +61,22 @@ export function OverviewSheet({
       ) : (
         <>
           <div className="flex flex-col gap-6">
-            <TimeClassSwitch options={view.switch} />
+            {filterBar ?? <TimeClassSwitch options={view.switch} />}
             <div data-reveal-fig="" style={{ "--reveal-i": 0 } as React.CSSProperties}>
               <Headline lead={view.lead} basisClass={view.basisClass} reveal={reveal} />
             </div>
+            {filtersNote ? (
+              <p data-slot="filters-note" className="m-0 max-w-prose text-sm text-ink-soft">
+                {filtersNote}
+              </p>
+            ) : null}
+            {colourSplit && colourSplit.columns.length > 0 ? (
+              <ColourSplit view={colourSplit} />
+            ) : null}
             <WorkOn lead={lead} />
           </div>
+
+          {compare ? <CompareBlock view={compare} /> : null}
 
           <section aria-labelledby="accuracy-heading" className="flex flex-col gap-5">
             <SectionHead

@@ -35,14 +35,16 @@ export const STATS_GLOSSARY = {
     name: "By colour",
     meaning: "The same numbers for your games with White and your games with Black, apart.",
     measured: `Each colour is counted on its own games only, and below ${KPI_MIN_GAMES} games a colour shows a dash and how many more it needs.`,
-    whyItMatters: "Many players are much stronger with one colour, and an average of both hides it.",
+    whyItMatters:
+      "Many players are much stronger with one colour, and an average of both hides it.",
     tip: "If one colour lags, look at your openings with it first.",
   },
   compare: {
     name: "Compare periods",
     meaning: "Your numbers in an earlier period A against a later period B.",
     measured: `A change is called only when both periods have at least ${KPI_MIN_GAMES} games and the ${PCT}% range of the difference (from resampling each period's games) is all above or all below zero. Otherwise it reads "No clear change", or says how many more games a period needs.`,
-    whyItMatters: "A few good or bad games can look like a trend; this keeps chance from being called progress.",
+    whyItMatters:
+      "A few good or bad games can look like a trend; this keeps chance from being called progress.",
     tip: "Compare periods of at least a few dozen games each before you change your training.",
   },
 } satisfies Record<string, GlossaryEntry>;

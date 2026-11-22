@@ -66,6 +66,10 @@ export type AreaPageModel = {
   coach: CoachStatus;
   /** The render's clock, for when the next rebuild is available. */
   now: Date;
+  /** The shared filter bar (T3); it holds the time control. */
+  filterBar?: ReactNode;
+  /** Whether the scope switch is still needed beside the bar (more than one linked account). */
+  accountSwitch?: boolean;
 };
 
 const ORDER: readonly Area[] = [
@@ -169,9 +173,12 @@ export function AreaView({ model }: { model: AreaPageModel }) {
             </p>
           ) : null}
         </div>
-        <ScrollCue>
-          <CoachScopeSwitch scope={scope} basePath={`/app/areas/${area}`} />
-        </ScrollCue>
+        {model.accountSwitch !== false || !model.filterBar ? (
+          <ScrollCue>
+            <CoachScopeSwitch scope={scope} basePath={`/app/areas/${area}`} />
+          </ScrollCue>
+        ) : null}
+        {model.filterBar}
       </header>
 
       <div className="grid grid-cols-1 gap-x-12 gap-y-10 lg:grid-cols-12">

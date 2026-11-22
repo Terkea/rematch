@@ -8,14 +8,7 @@ import type {
 import { verdictText } from "../../../../server/stats/period-compare";
 import { type GlossaryEntry, STATS_GLOSSARY } from "./glossary";
 import { rangeWords } from "./model";
-import {
-  diffRange,
-  diffValue,
-  gamesText,
-  type StatUnit,
-  statRange,
-  statValue,
-} from "./stat-text";
+import { diffRange, diffValue, gamesText, type StatUnit, statRange, statValue } from "./stat-text";
 
 // The A | B | change block's view (T3): plain strings, built on the server. A change is named only
 // by its verdict (ADR 0083 §6); its difference is shown beside a called or "no clear change"

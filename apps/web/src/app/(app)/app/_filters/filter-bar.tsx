@@ -123,7 +123,15 @@ function CustomCompareForm({ custom }: { custom: CustomCompare }) {
   );
 }
 
-function Body({ model: m, idPrefix, colorNote }: { model: FilterBarModel; idPrefix: string; colorNote: string }) {
+function Body({
+  model: m,
+  idPrefix,
+  colorNote,
+}: {
+  model: FilterBarModel;
+  idPrefix: string;
+  colorNote: string;
+}) {
   const id = (s: string) => `${idPrefix}-${s}`;
   return (
     <div className="flex flex-col gap-4 md:flex-row md:flex-wrap md:items-start md:gap-x-8 md:gap-y-4">
@@ -141,7 +149,10 @@ function Body({ model: m, idPrefix, colorNote }: { model: FilterBarModel; idPref
         </Group>
       ) : m.colorComing ? (
         <Group id={id("color")} label="Colour">
-          <p data-slot="colour-coming" className="m-0 flex min-h-10 max-w-xs items-center text-sm text-ink-soft">
+          <p
+            data-slot="colour-coming"
+            className="m-0 flex min-h-10 max-w-xs items-center text-sm text-ink-soft"
+          >
             {colorNote}
           </p>
         </Group>
@@ -207,7 +218,11 @@ export function FilterBar({
             Filters{m(model)}
           </span>
           <span className="min-w-0 flex-1 truncate text-sm text-ink-soft">{model.summary}</span>
-          <Icon icon={CaretDownIcon} size={20} className="shrink-0 text-ink-soft group-open:rotate-180" />
+          <Icon
+            icon={CaretDownIcon}
+            size={20}
+            className="shrink-0 text-ink-soft group-open:rotate-180"
+          />
         </summary>
         <div className="pt-4">
           <Body model={model} idPrefix="fb-m" colorNote={colorNote} />

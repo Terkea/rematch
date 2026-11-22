@@ -2,6 +2,7 @@ import type { Db } from "@ci/db";
 import { coachStatus } from "../../../../server/coach/status";
 import { changeNotes, getReport } from "../../../../server/coaching";
 import type { ReportPayload } from "../../../../server/coaching/types";
+import type { DayRange } from "../../../../server/filters/params";
 import type { CoachScope } from "../../../../server/profile";
 import { reviewGameIds } from "../../../../server/profile/game-ids";
 import { lineEvidence } from "../../../../server/profile/openings";
@@ -40,6 +41,8 @@ export async function loadReport(
   scope: CoachScope,
   now: Date,
   intervalDays: number,
+  /** The filter bar's dates (T3): the weekly sparklines are clipped to these weeks. */
+  range: DayRange = { from: null, to: null },
 ): Promise<ReportPageData> {
   const view = await getReport(db, userId, scope, now, { intervalDays });
   const computed = view.payload?.computed;
@@ -50,7 +53,7 @@ export async function loadReport(
   const [notes, keysPerSeries, weekly, coach, lines] = await Promise.all([
     series.length > 0 ? changeNotes(db, userId, scope.accountId, series) : [],
     Promise.all(series.map((s) => noteKeysInScope(db, userId, scope, s))),
-    computed && computed.weaknesses.length > 0 ? weeklyRates(db, userId, scope) : new Map(),
+    computed && computed.weaknesses.length > 0 ? weeklyRates(db, userId, scope, range) : new Map(),
     coachStatus(db),
     computed && computed.openings.length > 0 ? lineEvidence(db, userId, scope) : {},
   ]);

@@ -160,7 +160,9 @@ describe("compare periods", () => {
   });
 
   it("fills the custom periods from the URL", () => {
-    const m = model("cmp=custom&a_from=2026-09-01&a_to=2026-09-30&b_from=2026-10-01&b_to=2026-10-31");
+    const m = model(
+      "cmp=custom&a_from=2026-09-01&a_to=2026-09-30&b_from=2026-10-01&b_to=2026-10-31",
+    );
     expect(m.compare?.custom).toMatchObject({
       open: true,
       a: { from: "2026-09-01", to: "2026-09-30" },

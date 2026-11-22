@@ -13,7 +13,16 @@ import type { GameStatRow } from "../../src/server/stats/game-stats.js";
 import { comparePeriodRows } from "../../src/server/stats/period-compare.js";
 
 vi.mock("next/link", () => ({
-  default: ({ href, children, scroll: _s, ...rest }: { href: string; children: React.ReactNode; scroll?: boolean }) => (
+  default: ({
+    href,
+    children,
+    scroll: _s,
+    ...rest
+  }: {
+    href: string;
+    children: React.ReactNode;
+    scroll?: boolean;
+  }) => (
     <a href={href} {...rest}>
       {children}
     </a>
@@ -43,7 +52,10 @@ describe("FilterBar", () => {
     const { container } = render(bar("color=black"));
     const desktop = container.querySelector("section > div") as HTMLElement;
     const colour = within(desktop).getByRole("group", { name: "Colour" });
-    expect(within(colour).getByRole("link", { name: "Black" })).toHaveAttribute("aria-current", "true");
+    expect(within(colour).getByRole("link", { name: "Black" })).toHaveAttribute(
+      "aria-current",
+      "true",
+    );
     expect(within(colour).getByRole("link", { name: "White" })).toHaveAttribute(
       "href",
       "/app?color=white",
@@ -51,7 +63,10 @@ describe("FilterBar", () => {
     const form = desktop.querySelector("form[method='get']") as HTMLFormElement;
     expect(form.getAttribute("action")).toBe("/app");
     expect(form.querySelector("input[type='date'][name='from']")).not.toBeNull();
-    expect(form.querySelector("input[type='hidden'][name='color']")).toHaveAttribute("value", "black");
+    expect(form.querySelector("input[type='hidden'][name='color']")).toHaveAttribute(
+      "value",
+      "black",
+    );
   });
 
   it("folds into one Filters disclosure on phones, naming the active filters", () => {

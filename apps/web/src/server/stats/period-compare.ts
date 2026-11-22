@@ -102,7 +102,11 @@ export async function loadPeriodComparison(
   filters: StatsFilters,
   now: Date,
   opts: { accountId?: string | null } = {},
-): Promise<{ periods: Pair<Period>; spans: Pair<DaySpan | null>; comparison: PeriodComparison } | null> {
+): Promise<{
+  periods: Pair<Period>;
+  spans: Pair<DaySpan | null>;
+  comparison: PeriodComparison;
+} | null> {
   const periods = comparePeriods(filters, now);
   if (!periods) return null;
   const [a, b] = await Promise.all([
@@ -110,7 +114,11 @@ export async function loadPeriodComparison(
     gameStatRows(db, userId, scopeWithPeriod(filters, periods.b), opts),
   ]);
   const seed = `period-compare:${userId}:${JSON.stringify({ ...filters, periods })}`;
-  return { periods, spans: { a: spanOf(a), b: spanOf(b) }, comparison: comparePeriodRows(a, b, seed) };
+  return {
+    periods,
+    spans: { a: spanOf(a), b: spanOf(b) },
+    comparison: comparePeriodRows(a, b, seed),
+  };
 }
 
 /** The first and last UTC day of some games, newest-first or not. */

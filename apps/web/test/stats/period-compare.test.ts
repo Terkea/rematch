@@ -5,10 +5,7 @@ import { comparePeriodRows, verdictText } from "../../src/server/stats/period-co
 // The overview's and progress page's period comparison (T3): A | B | change per game-level stat,
 // where a change is named only by the ADR 0083 verdict rule. Synthetic rows only (B15).
 
-function rows(
-  n: number,
-  f: (i: number) => Partial<GameStatRow> = () => ({}),
-): GameStatRow[] {
+function rows(n: number, f: (i: number) => Partial<GameStatRow> = () => ({})): GameStatRow[] {
   return Array.from({ length: n }, (_, i) => ({
     id: `g${i}`,
     playedAt: new Date(Date.UTC(2026, 9, 1 + (i % 28))),
@@ -63,26 +60,31 @@ describe("comparePeriodRows", () => {
 });
 
 describe("verdictText", () => {
-  const c = (a: number, b: number) => comparePeriodRows(rows(a), rows(b), "t").rows[0]?.result;
+  const first = (p: ReturnType<typeof comparePeriodRows>) => {
+    const r = p.rows[0];
+    if (!r) throw new Error("no rows");
+    return r.result;
+  };
+  const c = (a: number, b: number) => first(comparePeriodRows(rows(a), rows(b), "t"));
 
   it("names how many more games the short period needs", () => {
-    expect(verdictText(c(20, 4)!)).toBe("Not enough games to tell: need 6 more in period B");
-    expect(verdictText(c(9, 20)!)).toBe("Not enough games to tell: need 1 more in period A");
-    expect(verdictText(c(3, 5)!)).toBe(
+    expect(verdictText(c(20, 4))).toBe("Not enough games to tell: need 6 more in period B");
+    expect(verdictText(c(9, 20))).toBe("Not enough games to tell: need 1 more in period A");
+    expect(verdictText(c(3, 5))).toBe(
       "Not enough games to tell: need 7 more in period A and 5 more in period B",
     );
   });
 
   it("words the called verdicts", () => {
-    const up = comparePeriodRows(
-      rows(30, (i) => ({ accuracy: 60 + (i % 3) })),
-      rows(30, (i) => ({ accuracy: 80 + (i % 3) })),
-      "t",
-    ).rows[0]?.result;
-    expect(verdictText(up!)).toBe("Better");
-    const flat = rows(30, (i) => ({ accuracy: 60 + (i % 10) }));
-    expect(verdictText(comparePeriodRows(flat, flat, "t").rows[0]!.result)).toBe(
-      "No clear change",
+    const up = first(
+      comparePeriodRows(
+        rows(30, (i) => ({ accuracy: 60 + (i % 3) })),
+        rows(30, (i) => ({ accuracy: 80 + (i % 3) })),
+        "t",
+      ),
     );
+    expect(verdictText(up)).toBe("Better");
+    const flat = rows(30, (i) => ({ accuracy: 60 + (i % 10) }));
+    expect(verdictText(first(comparePeriodRows(flat, flat, "t")))).toBe("No clear change");
   });
 });
