@@ -98,7 +98,7 @@ pub fn aggregate_band_reference_report(sides: &[ReferenceSide]) -> AggregateRepo
             if def.kind == KpiKind::Last {
                 continue;
             }
-            if let Some(stat) = aggregate_row(def, &cell, &mut report) {
+            if let Some(stat) = aggregate_row(def, &cell, Weighting::Games, &mut report) {
                 report.rows.push(BandReferenceRow {
                     band,
                     time_class: tc,
@@ -110,6 +110,18 @@ pub fn aggregate_band_reference_report(sides: &[ReferenceSide]) -> AggregateRepo
     report
 }
 
+/// How a cell's games are pooled.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Weighting {
+    /// Every game counts once (the Lichess band reference: sampled players, a few games each).
+    Games,
+    /// Every player counts once (the peer benchmark, ADR 0080): each player's sums are divided
+    /// by their games, so one frequent opponent cannot dominate the pooled rate, the EPL per
+    /// event, the opportunities per game or the slope (one point per player). The Beta-binomial
+    /// fit and the mean quantiles already take one value per player.
+    Players,
+}
+
 #[derive(Default)]
 struct PlayerAcc {
     k: f64,
@@ -117,11 +129,26 @@ struct PlayerAcc {
     epl: f64,
     sum: f64,
     values: u32,
+    /// Games with evidence for the row, and the sum of their rating gaps.
+    games: u32,
+    gap: f64,
 }
 
-fn aggregate_row(
+impl PlayerAcc {
+    /// The per-game share of the player's sums (`Players` weighting).
+    fn per_game(&self, x: f64) -> f64 {
+        if self.games == 0 {
+            0.0
+        } else {
+            x / f64::from(self.games)
+        }
+    }
+}
+
+pub(crate) fn aggregate_row(
     def: &KpiDefinition,
     cell: &[&ReferenceSide],
+    weighting: Weighting,
     report: &mut AggregateReport,
 ) -> Option<BandReferenceStat> {
     let mut players: BTreeMap<&str, PlayerAcc> = BTreeMap::new();
@@ -142,6 +169,8 @@ fn aggregate_row(
                 let acc = players.entry(&s.player_hash).or_default();
                 acc.sum += v;
                 acc.values += 1;
+                acc.games += 1;
+                acc.gap += gap;
                 slope_points.push((gap, v));
             }
             (KpiKind::Rate, Extracted::Counts(k, n))
@@ -159,6 +188,8 @@ fn aggregate_row(
                 acc.k += k;
                 acc.n += n;
                 acc.epl += epl;
+                acc.games += 1;
+                acc.gap += gap;
                 if n > 0.0 {
                     slope_points.push((gap, k / n));
                 }
@@ -170,9 +201,22 @@ fn aggregate_row(
         }
         games += 1;
     }
+    if weighting == Weighting::Players {
+        // One point per player: their mean gap against their mean value (a rate's k / n).
+        slope_points = players
+            .values()
+            .filter_map(|p| match def.kind {
+                KpiKind::Mean if p.values > 0 => {
+                    Some((p.per_game(p.gap), p.sum / f64::from(p.values)))
+                }
+                KpiKind::Rate if p.n > 0.0 => Some((p.per_game(p.gap), p.k / p.n)),
+                _ => None,
+            })
+            .collect();
+    }
     let slope = ols_slope(&slope_points);
     let stat = match def.kind {
-        KpiKind::Rate => rate_stat(def.metric, &players, games, slope),
+        KpiKind::Rate => rate_stat(def.metric, &players, games, slope, weighting),
         KpiKind::Mean => mean_stat(def.metric, &players, games, slope),
         KpiKind::Last => None,
     };
@@ -196,6 +240,7 @@ fn rate_stat(
     players: &BTreeMap<&str, PlayerAcc>,
     games: u32,
     slope: Option<f64>,
+    weighting: Weighting,
 ) -> Option<BandReferenceStat> {
     let with: Vec<&PlayerAcc> = players.values().filter(|p| p.n > 0.0).collect();
     if with.is_empty() || games == 0 {
@@ -204,12 +249,31 @@ fn rate_stat(
     let pairs: Vec<(f64, f64)> = with.iter().map(|p| (p.k, p.n)).collect();
     let dist = fit_beta_binomial(&pairs).ok()?.rates().ok()?;
     let q = |p: f64| dist.quantile(p).ok().filter(|x| x.is_finite());
-    let (sum_k, sum_n, sum_epl) = players.values().fold((0.0, 0.0, 0.0), |(k, n, e), p| {
-        (k + p.k, n + p.n, e + p.epl)
-    });
+    let (sum_k, sum_n, sum_epl) = match weighting {
+        Weighting::Games => players.values().fold((0.0, 0.0, 0.0), |(k, n, e), p| {
+            (k + p.k, n + p.n, e + p.epl)
+        }),
+        Weighting::Players => players.values().fold((0.0, 0.0, 0.0), |(k, n, e), p| {
+            (
+                k + p.per_game(p.k),
+                n + p.per_game(p.n),
+                e + p.per_game(p.epl),
+            )
+        }),
+    };
     let epl_per_event = match metric {
         MetricId::Weakness(_) if sum_k > 0.0 => Some(sum_epl / sum_k),
         _ => None,
+    };
+    let opps_per_game = match weighting {
+        Weighting::Games => sum_n / f64::from(games),
+        Weighting::Players => {
+            let units = players.values().filter(|p| p.games > 0).count();
+            if units == 0 {
+                return None;
+            }
+            sum_n / units as f64
+        }
     };
     let n_players = count(with.len());
     Some(BandReferenceStat {
@@ -220,7 +284,7 @@ fn rate_stat(
         p75: q(0.75)?,
         pooled_rate: Some(sum_k / sum_n),
         epl_per_event,
-        opps_per_game: Some(sum_n / f64::from(games)),
+        opps_per_game: Some(opps_per_game),
         opp_slope_per_100: slope,
         n_players,
         n_games: games,
