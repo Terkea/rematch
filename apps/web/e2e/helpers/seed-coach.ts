@@ -122,6 +122,7 @@ async function profile(db: Db, accountId: string): Promise<void> {
     ciHigh: hi,
     bandMedian: mean * 0.7,
     bandP40: mean * 0.6,
+    excess: mean * 0.3,
     confidence: 0.85,
   });
   const points = RAPID.flatMap((g, j) => [

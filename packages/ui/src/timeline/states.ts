@@ -58,3 +58,16 @@ export const stateStyle: Record<WeaknessState, StateStyle> = {
 };
 
 export const weaknessStates = Object.keys(stateStyle) as WeaknessState[];
+
+/** What `not_an_issue` means without a rating-band benchmark: no claim yet (bug hunt I1). */
+export const NOT_COMPARED_STATE_LABEL = "Not compared yet";
+
+/**
+ * A state's label for a lane: `not_an_issue` on an uncompared lane (`compared === false`) says it
+ * is not compared yet, never "not an issue". Every other state keeps its own label.
+ */
+export function stateLabel(state: WeaknessState, compared?: boolean): string {
+  return state === "not_an_issue" && compared === false
+    ? NOT_COMPARED_STATE_LABEL
+    : stateStyle[state].label;
+}

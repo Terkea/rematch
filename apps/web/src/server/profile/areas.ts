@@ -53,8 +53,12 @@ export async function getArea(
       bySeries.set(r.seriesKey, [...(bySeries.get(r.seriesKey) ?? []), r]);
     }
     const names = await openingNames(tx, scope, [...bySeries.keys()]);
+    const uncompared = new Set(weaknesses.filter((w) => !w.compared).map((w) => w.seriesKey));
     const timeline: TimelineSeries[] = [...bySeries]
-      .map(([key, rs]) => timelineOf(key, seriesLabel(key, names.get(key)), rs))
+      .map(([key, rs]) => ({
+        ...timelineOf(key, seriesLabel(key, names.get(key)), rs),
+        ...(uncompared.has(key) ? { compared: false } : {}),
+      }))
       .filter((t) => t.segments.length > 0)
       .sort((a, b) => (a.label < b.label ? -1 : a.label > b.label ? 1 : 0));
 

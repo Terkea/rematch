@@ -82,6 +82,7 @@ export async function seedProfile(
       ciHigh: 0.06,
       bandMedian: 0.03,
       bandP40: 0.025,
+      excess: 0.02,
       confidence: 0.9,
       priority: 1,
       state: "active",

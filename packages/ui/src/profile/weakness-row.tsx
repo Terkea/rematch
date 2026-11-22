@@ -10,6 +10,7 @@ import {
   DEFAULT_BAND_LABEL,
   DEFAULT_COUNTS,
   dayText,
+  NOT_COMPARED_LABEL,
   needMoreText,
   shareRangeText,
   shareText,
@@ -40,6 +41,13 @@ export interface WeaknessRowProps {
   counts?: WeaknessCounts;
   /** The top of the interval scale, shared down a list (`weaknessScaleMax`); default this row's. */
   scaleMax?: number;
+  /**
+   * Whether the estimate was compared with a rating-band benchmark (default: a band median is
+   * given). Without one the stored state is no claim, so the chip reads "Not compared yet".
+   */
+  compared?: boolean;
+  /** The estimate's evidence window, after the counts ("in the last 6 months"). */
+  window?: string;
   className?: string;
 }
 
@@ -209,11 +217,14 @@ export function WeaknessRow({
   onset,
   counts = DEFAULT_COUNTS,
   scaleMax,
+  compared = band.median !== null && fin(band.median),
+  window,
   className,
 }: WeaknessRowProps) {
   const early = !evidence.sufficient;
   const none = evidence.chances <= 0;
-  const chip = early ? "Early read" : stateStyle[state].label;
+  const chip = early ? "Early read" : compared ? stateStyle[state].label : NOT_COMPARED_LABEL;
+  const countLine = `${countsText(evidence, counts)}${window ? ` ${window}` : ""}`;
   const measured = trend.filter((v) => v !== null && fin(v)).length;
   const max =
     scaleMax !== undefined && scaleMax > 0 ? scaleMax : weaknessScaleMax([{ rate, band }]);
@@ -237,7 +248,7 @@ export function WeaknessRow({
           </a>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
             <span className="inline-flex items-center gap-1.5 text-ink-soft">
-              <StateMark state={early ? "early" : state} />
+              <StateMark state={early || !compared ? "early" : state} />
               <span>{chip}</span>
             </span>
             {onset !== null && !early ? (
@@ -254,8 +265,8 @@ export function WeaknessRow({
         <div className="flex flex-col">
           <span className="sr-only">
             {none
-              ? `No estimate yet: ${countsText(evidence, counts)}.`
-              : `${early ? "Early read. " : ""}${weaknessRateText(rate, evidence)}.`}
+              ? `No estimate yet: ${countLine}.`
+              : `${early ? "Early read. " : ""}${weaknessRateText(rate, evidence, window)}.`}
           </span>
           {none ? (
             <span aria-hidden="true" className="text-sm font-medium text-ink-soft">
@@ -284,7 +295,7 @@ export function WeaknessRow({
             </>
           )}
           <span aria-hidden="true" className="text-sm text-ink-faint" style={LINING}>
-            {countsText(evidence, counts)}
+            {countLine}
           </span>
         </div>
 
@@ -298,9 +309,11 @@ export function WeaknessRow({
             </>
           ) : (
             <>
-              <RateStrip rate={rate} median={band.median} max={max} />
+              <RateStrip rate={rate} median={compared ? band.median : null} max={max} />
               <span className="text-sm text-ink-soft" style={LINING}>
-                {bandComparisonText(rate, band.median, band.label)}
+                {compared
+                  ? bandComparisonText(rate, band.median, band.label)
+                  : bandComparisonText(rate, null)}
               </span>
             </>
           )}

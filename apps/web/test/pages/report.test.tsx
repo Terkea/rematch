@@ -316,6 +316,25 @@ describe("report page", () => {
     expect(ask[0]?.getAttribute("href")).toMatch(/^\/app\/coach\/new\?account=.*&anchor=/);
   });
 
+  // Bug hunt I1: with no rating-band benchmark nothing is ranked, and "Nothing stands out above
+  // players at your level" claimed a comparison that never ran.
+  it("with no benchmark the weaknesses say not compared yet", async () => {
+    await previous();
+    const d = await data();
+    const computed = d.view.payload?.computed;
+    if (!computed) throw new Error("no payload");
+    computed.weaknesses = [];
+    computed.metrics = computed.metrics.map((m) => ({
+      ...m,
+      bandMedian: null,
+      bandPercentile: null,
+    }));
+    const screen = within(render(<ReportView data={d} />).container);
+    const text = screen.getByRole("region", { name: "What's costing you games" }).textContent ?? "";
+    expect(text).toContain("Not compared yet: no benchmark for players at your level yet.");
+    expect(text).not.toMatch(/Nothing stands out|compared with players/);
+  });
+
   it("no ask link while the chat pages are not live", async () => {
     chatLive.mockReturnValue(false);
     try {

@@ -73,7 +73,11 @@ describe("Button", () => {
       _payload: payload,
       _init: (p: typeof payload) => p.value,
     } as unknown as ReactElement;
-    const html = renderToString(<Button asChild variant="outline">{lazy}</Button>);
+    const html = renderToString(
+      <Button asChild variant="outline">
+        {lazy}
+      </Button>,
+    );
     expect(html).toMatch(/^<a [^>]*href="\/app\/coach\/new"/);
     expect(html).toContain("border-rule-strong");
     expect(html).not.toContain("<button");

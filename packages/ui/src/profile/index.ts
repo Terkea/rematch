@@ -21,6 +21,8 @@ export {
   type KpiUnit,
   kpiPointText,
   kpiSummary,
+  NO_BENCHMARK_TEXT,
+  NOT_COMPARED_LABEL,
   needMoreText,
   nText,
   onLine,

@@ -15,7 +15,14 @@ import { CaretLeftIcon, CaretRightIcon, Icon } from "../icons/index.js";
 import { cn } from "../lib/index.js";
 import { animate, dur, ease, motion, useMotionValue, useReducedMotion } from "../motion/index.js";
 import { touchTarget } from "../primitives/touch.js";
-import { type StateStyle, stateStyle, type WeaknessState, weaknessStates } from "./states.js";
+import {
+  NOT_COMPARED_STATE_LABEL,
+  type StateStyle,
+  stateLabel,
+  stateStyle,
+  type WeaknessState,
+  weaknessStates,
+} from "./states.js";
 
 export type { TimelineSeries, WeaknessTimelineProps } from "../fixtures/types.js";
 
@@ -67,7 +74,7 @@ export function onsetText(onset: NonNullable<TimelineSeries["onset"]>): string {
 export function seriesText(s: TimelineSeries): string {
   const sorted = [...s.segments].sort((x, y) => day(x.from) - day(y.from));
   const parts = sorted.map((seg, i) => {
-    const label = stateStyle[seg.state].label.toLowerCase();
+    const label = stateLabel(seg.state, s.compared).toLowerCase();
     const last = i === sorted.length - 1;
     const end = last ? (seg.to === null ? " to now" : ` until ${formatDate(seg.to)}`) : "";
     return `${label} from ${formatDate(seg.from)}${end}`;
@@ -200,7 +207,23 @@ function EventSwatch({ kind }: { kind: TimelineEvent["kind"] }) {
   );
 }
 
-function Key({ prefix, events }: { prefix: string; events: TimelineEvent[] }) {
+/** The hairline's key label: "Not compared yet" when no lane has a benchmark, both when mixed. */
+function hairlineLabel(series: TimelineSeries[]): string {
+  const uncompared = series.filter((s) => s.compared === false).length;
+  if (uncompared === 0) return stateStyle.not_an_issue.label;
+  if (uncompared === series.length) return NOT_COMPARED_STATE_LABEL;
+  return `${stateStyle.not_an_issue.label}, or ${NOT_COMPARED_STATE_LABEL.toLowerCase()}`;
+}
+
+function Key({
+  prefix,
+  events,
+  series,
+}: {
+  prefix: string;
+  events: TimelineEvent[];
+  series: TimelineSeries[];
+}) {
   const kinds = (["plan", "drill"] as const).filter((k) => events.some((e) => e.kind === k));
   return (
     <ul
@@ -210,7 +233,7 @@ function Key({ prefix, events }: { prefix: string; events: TimelineEvent[] }) {
       {weaknessStates.map((state) => (
         <li key={state} className="flex items-center gap-2">
           <Swatch prefix={prefix} state={state} />
-          {stateStyle[state].label}
+          {state === "not_an_issue" ? hairlineLabel(series) : stateStyle[state].label}
         </li>
       ))}
       <li className="flex items-center gap-2">
@@ -303,8 +326,8 @@ export function shortSpan(seg: Segment): string {
 }
 
 /** "Resolved, 20 Aug 2026 to 5 Oct 2026" (the readout keeps each date on one line). */
-const spanText = (seg: Segment) =>
-  `${stateStyle[seg.state].label}, ${formatDate(seg.from)} to ${seg.to === null ? "now" : formatDate(seg.to)}`;
+const spanText = (seg: Segment, compared?: boolean) =>
+  `${stateLabel(seg.state, compared)}, ${formatDate(seg.from)} to ${seg.to === null ? "now" : formatDate(seg.to)}`;
 
 interface Cell {
   lane: number;
@@ -426,7 +449,7 @@ function Lane({
             role="gridcell"
             data-cell={seg.state}
             // Short: the row header gives the lane, and the hidden paragraphs give the whole story.
-            aria-label={`${spanText(seg)}, ${index + 1} of ${segs.length}`}
+            aria-label={`${spanText(seg, series.compared)}, ${index + 1} of ${segs.length}`}
             tabIndex={sameCell(cursor, cell) ? 0 : -1}
             data-shown={sameCell(shown, cell) ? "" : undefined}
             className="absolute rounded-board outline-ink focus-visible:outline-2 focus-visible:outline-offset-1 data-shown:outline-1"
@@ -720,7 +743,7 @@ export function WeaknessTimeline({
       className={cn("@container relative m-0 flex flex-col gap-4", className)}
     >
       <PatternDefs prefix={prefix} />
-      <Key prefix={prefix} events={placed} />
+      <Key prefix={prefix} events={placed} series={series} />
       {/* The readout: one fixed line above the chart, so it is never clipped and never covers a label. */}
       <p
         data-readout
@@ -735,10 +758,13 @@ export function WeaknessTimeline({
             <span data-readout-text className="min-w-0 flex-1 break-words">
               <span className="font-medium text-ink">{shownSeries.label}:</span>{" "}
               <span data-readout-long className="text-ink-soft @max-[640px]:hidden">
-                {spanText(shownSpan.seg).replace(/(\d+) (\w{3}) (\d{4})/g, "$1\u00a0$2\u00a0$3")}
+                {spanText(shownSpan.seg, shownSeries.compared).replace(
+                  /(\d+) (\w{3}) (\d{4})/g,
+                  "$1\u00a0$2\u00a0$3",
+                )}
               </span>
               <span data-readout-short className="text-ink-soft @min-[640px]:hidden">
-                {stateStyle[shownSpan.seg.state].label},{" "}
+                {stateLabel(shownSpan.seg.state, shownSeries.compared)},{" "}
                 <span className="whitespace-nowrap">{shortSpan(shownSpan.seg)}</span>
               </span>
             </span>
@@ -803,7 +829,7 @@ export function WeaknessTimeline({
                         className="mt-0.5 flex items-center gap-1.5 text-xs text-ink-soft"
                       >
                         <MiniSwatch prefix={prefix} state={now} />
-                        Now {stateStyle[now].label.toLowerCase()}
+                        Now {stateLabel(now, s.compared).toLowerCase()}
                       </span>
                     )}
                     {/* The grid is the only text alternative, so the onset lives in the header. */}

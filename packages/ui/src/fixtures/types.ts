@@ -98,6 +98,11 @@ export interface TimelineSeries {
   label: string;
   segments: { state: WeaknessState; from: string; to: string | null }[];
   onset?: { date: string; low: string; high: string };
+  /**
+   * False when the weakness has no rating-band benchmark: its stored `not_an_issue` is then no
+   * claim, and reads "Not compared yet" (bug hunt I1). Omitted means compared.
+   */
+  compared?: boolean;
 }
 
 /** Props of `WeaknessTimeline` (Task 15). */

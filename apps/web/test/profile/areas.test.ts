@@ -49,6 +49,26 @@ describe("areas", () => {
     });
   });
 
+  // Bug hunt I1: a lane whose estimate has no benchmark says "not compared yet", not "not an issue".
+  it("an uncompared weakness's lane is marked uncompared", async () => {
+    await seedProfile(db, accountId, {
+      timeClass: "rapid",
+      games: 1,
+      estimates: [
+        { seriesKey: "W8.basics", state: "not_an_issue", bandMedian: null, excess: null },
+        { seriesKey: "W8.advanced" },
+      ],
+      history: [
+        { seriesKey: "W8.basics", toState: "not_an_issue", atPlayedAt: new Date("2026-06-01") },
+        { seriesKey: "W8.advanced", toState: "active", atPlayedAt: new Date("2026-06-01") },
+      ],
+    });
+    const view = await getArea(db, userId, await scopeOf(userId), "endgame");
+    const lane = (id: string) => view.timeline.find((t) => t.id === id);
+    expect(lane("W8.basics")?.compared).toBe(false);
+    expect(lane("W8.advanced")?.compared).not.toBe(false);
+  });
+
   it("area weaknesses are filtered by area", async () => {
     await seedProfile(db, accountId, {
       timeClass: "rapid",

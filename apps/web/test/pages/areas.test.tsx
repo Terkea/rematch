@@ -56,6 +56,7 @@ function weakness(over: Partial<WeaknessSummary> = {}): WeaknessSummary {
     rate: { mean: 0.21, low: 0.15, high: 0.28, level: 0.8 },
     evidence: { events: 31, chances: 148, minEvidence: 80, sufficient: true, needMore: null },
     band: { median: 0.12, p40: 0.1 },
+    compared: true,
     priority: 4,
     confidence: 0.8,
     pImp: null,
@@ -171,6 +172,7 @@ const KPIS: KpiTrend[] = [
 
 const detail = (w: WeaknessSummary): WeaknessDetail => ({
   ...w,
+  window: { days: 183, from: new Date(AT.getTime() - 183 * 86_400_000), to: AT },
   history: [],
   timeline: { id: w.seriesKey, label: w.label, segments: [] },
   weekly: [

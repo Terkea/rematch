@@ -1,9 +1,10 @@
 import { Button } from "@ci/ui/primitives";
-import { WeaknessRow, WeaknessRowKey, weaknessScaleMax } from "@ci/ui/profile";
+import { NOT_COMPARED_LABEL, WeaknessRow, WeaknessRowKey, weaknessScaleMax } from "@ci/ui/profile";
 import Link from "next/link";
 import { CoachScopeSwitch } from "../../../../components/coach-scope-switch";
 import { MorphLink } from "../../../../components/shared-morph";
 import type { CoachScope, DifficultyStatus, WeaknessSummary } from "../../../../server/profile";
+import { ESTIMATE_WINDOW_TEXT } from "../../../../server/profile/window";
 import { EmptySheet } from "../../_shell/page-heading";
 import { SectionHead } from "../_overview/section-head";
 import { basisText, WEEKLY_MIN_CHANCES, weaknessHref } from "./queries";
@@ -42,15 +43,27 @@ export const EARLY_GROUP = {
   lede: "Not enough chances yet to tell what these are doing. Each says how many more it needs.",
 } as const;
 
+/**
+ * Rows with no rating-band benchmark (bug hunt I1): Rust stores them `not_an_issue`, which is no
+ * claim, so they never sit under a group that says what they are doing.
+ */
+export const UNCOMPARED_GROUP = {
+  id: "uncompared",
+  title: NOT_COMPARED_LABEL,
+  lede: "No benchmark for players at your level yet. Each shows your own rate, its range and its chances.",
+} as const;
+
 export function groupWeaknesses(list: WeaknessSummary[]) {
   const settled = list.filter((w) => w.evidence.sufficient);
+  const compared = settled.filter((w) => w.compared);
   return [
     ...GROUPS.map((g) => ({
       id: g.id as string,
       title: g.title as string,
       lede: g.lede as string,
-      rows: settled.filter((w) => (g.states as readonly string[]).includes(w.state)),
+      rows: compared.filter((w) => (g.states as readonly string[]).includes(w.state)),
     })),
+    { ...UNCOMPARED_GROUP, rows: settled.filter((w) => !w.compared) },
     { ...EARLY_GROUP, rows: list.filter((w) => !w.evidence.sufficient) },
   ];
 }
@@ -153,6 +166,8 @@ export function WeaknessesView({
                         rate={w.rate}
                         evidence={w.evidence}
                         band={{ median: w.band.median }}
+                        compared={w.compared}
+                        window={ESTIMATE_WINDOW_TEXT}
                         href={weaknessHref(w.seriesKey, scope)}
                         trend={trends.get(w.seriesKey) ?? []}
                         onset={w.onset ? w.onset.at.toISOString().slice(0, 10) : null}
