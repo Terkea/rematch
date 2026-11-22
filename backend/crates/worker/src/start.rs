@@ -753,6 +753,17 @@ pub async fn start_workers(env: &WorkerEnv, opts: StartOptions) -> anyhow::Resul
         None => None,
         Some(Ok(choice)) => {
             tracing::info!("{}", choice.line);
+            // Which path the monthly and weekly schedules take (ADR 0075); no credential here.
+            if let Some(client) = &choice.client {
+                tracing::info!(
+                    "ai: scheduled regenerations via {}",
+                    if client.batches_enabled() {
+                        "batches"
+                    } else {
+                        "sync jobs (sidecar)"
+                    }
+                );
+            }
             Some(choice.client)
         }
         Some(Err(e)) => {

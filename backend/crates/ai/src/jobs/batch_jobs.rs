@@ -2,9 +2,13 @@
 //! ADR 0063): the same requests as the sync path at half the price, with results applied by a
 //! poller.
 //!
-//! **Scheduling.** Both schedule handlers do nothing without an AI client, or when
-//! `!ai.batches_enabled()` (no `ANTHROPIC_API_KEY`, ADR 0062); that is checked before any row
-//! exists.
+//! **Scheduling.** Both schedule handlers do nothing without an AI client. When the client has
+//! no batches (`!ai.batches_enabled()`: no `ANTHROPIC_API_KEY`, but the sidecar has a
+//! credential, such as the owner's dev OAuth token; ADR 0062), each due item goes to the normal
+//! sync job instead (M5b Task B ruling, ADR 0075): a sync `scheduled` run through
+//! [`request_report`], or a sync weekly review through [`request_weekly_review`]. The same items
+//! are due either way, and the sync jobs meter at sync rates. The result's `path` is `batch` or
+//! `sync`.
 //!
 //! - [`ReportBatchScheduleHandler`]: for each (account, time class) whose newest report is at
 //!   least [`REPORT_BATCH_MIN_AGE_DAYS`] old and has no unfinished run, on the Pro plan and
@@ -78,7 +82,8 @@ use super::kinds::{
 };
 use super::providers::CoachingInputProvider;
 use super::reconcile::BATCH_SUBMIT_GRACE;
-use super::report_job::{is_narrative, persist_section_outcome, refresh_status};
+use super::report_job::{is_narrative, persist_section_outcome, refresh_status, request_report};
+use super::weekly_job::request_weekly_review;
 use crate::client::cost::PricingTable;
 use crate::client::model::{AiModel, Models};
 use crate::client::port::{
@@ -181,11 +186,6 @@ pub struct BatchDeps {
 }
 
 impl BatchDeps {
-    /// The client when batches can work.
-    fn batch_ai(&self) -> Option<&dyn AiClient> {
-        self.ai.as_deref().filter(|a| a.batches_enabled())
-    }
-
     async fn within_budget(&self, account_id: Uuid, plan: Plan, now: OffsetDateTime) -> bool {
         let scope = self.entitlements.budget_scope(account_id).await;
         budget_guard(self.pool.clone(), scope, plan, self.budgets, now)()
@@ -225,9 +225,11 @@ const DUE_REPORTS_SQL: &str = "SELECT r.account_id, r.time_class::text FROM repo
     ORDER BY max(r.created_at), r.account_id LIMIT $2";
 
 async fn schedule_reports(d: &BatchDeps) -> anyhow::Result<Value> {
-    let Some(ai) = d.batch_ai() else {
-        return Ok(json!({ "skipped": "batches_disabled" }));
+    let Some(ai) = d.ai.as_deref() else {
+        return Ok(json!({ "skipped": "ai_disabled" }));
     };
+    let batches = ai.batches_enabled();
+    let mut sync_runs = 0u32;
     let now = (d.now)();
     let due: Vec<(Uuid, String)> = sqlx::query_as(DUE_REPORTS_SQL)
         .bind(now - time::Duration::days(REPORT_BATCH_MIN_AGE_DAYS))
@@ -263,11 +265,28 @@ async fn schedule_reports(d: &BatchDeps) -> anyhow::Result<Value> {
                 continue;
             }
         };
-        planned.push(create_scheduled_run(d, account_id, &tc, &raw, &input).await?);
+        if batches {
+            planned.push(create_scheduled_run(d, account_id, &tc, &raw, &input).await?);
+        } else {
+            // The job takes its own snapshot from the provider; this pass only checked it.
+            request_report(
+                &d.pool,
+                &d.queue,
+                account_id,
+                time_class,
+                ReportTrigger::Scheduled,
+                Plan::Pro,
+            )
+            .await?;
+            sync_runs += 1;
+        }
+    }
+    if !batches {
+        return Ok(json!({ "path": "sync", "runs": sync_runs }));
     }
     let runs = planned.len();
     let submitted = submit_all(d, ai, BatchKind::Report, planned).await?;
-    Ok(json!({ "runs": runs, "batches": submitted }))
+    Ok(json!({ "path": "batch", "runs": runs, "batches": submitted }))
 }
 
 /// The run, its snapshot and its computed report, in one transaction; then its items.
@@ -353,9 +372,11 @@ async fn create_scheduled_run(
 }
 
 async fn schedule_weekly(d: &BatchDeps) -> anyhow::Result<Value> {
-    let Some(ai) = d.batch_ai() else {
-        return Ok(json!({ "skipped": "batches_disabled" }));
+    let Some(ai) = d.ai.as_deref() else {
+        return Ok(json!({ "skipped": "ai_disabled" }));
     };
+    let batches = ai.batches_enabled();
+    let mut sync_reviews = 0u32;
     let now = (d.now)();
     let week_start = reviewed_week(now);
     let mut planned = Vec::new();
@@ -381,6 +402,15 @@ async fn schedule_weekly(d: &BatchDeps) -> anyhow::Result<Value> {
         }
         let plan = d.entitlements.plan(account_id).await;
         if !d.within_budget(account_id, plan, now).await {
+            continue;
+        }
+        if !batches {
+            if request_weekly_review(&d.pool, &d.queue, account_id, tc, week_start, &input)
+                .await?
+                .is_some()
+            {
+                sync_reviews += 1;
+            }
             continue;
         }
         let mut conn = d.pool.acquire().await?;
@@ -415,9 +445,12 @@ async fn schedule_weekly(d: &BatchDeps) -> anyhow::Result<Value> {
             run_id: None,
         });
     }
+    if !batches {
+        return Ok(json!({ "path": "sync", "reviews": sync_reviews }));
+    }
     let reviews = planned.len();
     let submitted = submit_all(d, ai, BatchKind::WeeklyReview, planned).await?;
-    Ok(json!({ "reviews": reviews, "batches": submitted }))
+    Ok(json!({ "path": "batch", "reviews": reviews, "batches": submitted }))
 }
 
 /// Packs whole groups into batches within [`MAX_BATCH_REQUESTS`] and [`MAX_BATCH_BYTES`], in

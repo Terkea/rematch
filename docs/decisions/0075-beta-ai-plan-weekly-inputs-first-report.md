@@ -27,8 +27,8 @@ The M5b coach pages need real data. Three gaps in the R3 wiring blocked that:
   - Onboarding, scheduled and profile-change runs are never gated.
   - The free plan's 30-day interval is unchanged.
 - **Budgets and metering are unchanged.** The beta plan's monthly cap is the Pro one (USD 2 per account, `AI_BUDGET_PRO_MICRO_USD`). The global cap applies on top, and every call is still metered.
-- Engine checks: beta gets the Pro allowance of 20 a day. The ruling sets only chat and reports, and 3 a week would block testing the chat's engine tool.
-- The monthly report batch stays Pro-only, so beta testers rebuild their reports on demand.
+- Engine checks: beta gets the Pro allowance of 20 a day (accepted by the coordinator). The ruling sets only chat and reports, and 3 a week would block testing the chat's engine tool.
+- The monthly report schedule stays Pro-only, so beta testers rebuild their reports on demand.
 
 ### G2: weekly-review inputs from R2 data
 
@@ -47,7 +47,12 @@ The M5b coach pages need real data. Three gaps in the R3 wiring blocked that:
 - `weekly_due(pool, week_start)` lists the account × time classes with a game in the week and at least one linked user (`account_links`, or `linked_accounts.user_id`).
 - The worker's `ProfileWeeklyProvider` wires both into the weekly batch schedule. It runs the non-`Send` builder on a blocking thread, as `ProfileInputProvider` does.
 - **Changed in T20:** the Monday 04:00 schedule now reviews the last complete week (`reviewed_week(now)`, the Monday before this week's). It used to review the week starting that same Monday, which had no games yet. `weekly_reviews.week_start` is the reviewed week.
-- Weekly reviews still go through the Batch API only, so they need `ANTHROPIC_API_KEY`. That is unchanged from ADR 0063.
+- **Sync fallback (coordinator ruling).** Without `ANTHROPIC_API_KEY`, batches are off. If the sidecar still reports a credential (`oauth` or `api_key`; the owner tests with `CLAUDE_CODE_OAUTH_TOKEN`, ADR 0062), an AI client exists, and both schedules enqueue the normal sync jobs through the sidecar instead of submitting a batch:
+  - the monthly report schedule creates a sync `scheduled` run (`request_report`) and its `generate-report` job;
+  - the weekly schedule creates a sync weekly review (`request_weekly_review`) and its `weekly-review` job.
+
+  The same items are due on either path. The jobs meter at sync rates, and the result's `path` is `batch` or `sync`. With the key set, nothing changes from ADR 0063. Without any client, nothing is scheduled.
+- The worker logs the active path once at start, without any credential: `ai: scheduled regenerations via batches` or `ai: scheduled regenerations via sync jobs (sidecar)`.
 
 ### G3: the first report
 
