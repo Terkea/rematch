@@ -89,7 +89,7 @@ impl WorkerEnv {
             pool_size: parse(&get, "WORKER_POOL_SIZE", 1)?,
             syzygy_path: get("SYZYGY_PATH").map(PathBuf::from),
             anthropic_api_key: get("ANTHROPIC_API_KEY").map(|k| ApiKey::new(k.trim())),
-            ai_budgets: BudgetConfig::from_vars(&get)?,
+            ai_budgets: BudgetConfig::from_vars(get)?,
             ai_sidecar: match (get("AI_SIDECAR_URL"), get("AI_SIDECAR_TOKEN")) {
                 (None, _) => None,
                 (Some(_), None) => bail!("AI_SIDECAR_URL is set but AI_SIDECAR_TOKEN is not"),
