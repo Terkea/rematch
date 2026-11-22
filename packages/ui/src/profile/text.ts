@@ -172,6 +172,14 @@ export interface KpiTrendItem {
   points: KpiTrendPoint[];
   /** What `n` counts, singular and plural (default games). */
   nUnit?: { one: string; many: string };
+  /** The glossary entry: its meaning under the heading, and an "i" that opens the rest. */
+  explain?: {
+    name: string;
+    meaning: string;
+    measured: string;
+    whyItMatters: string;
+    tip: string;
+  } | null;
 }
 
 const GAMES = { one: "game", many: "games" };

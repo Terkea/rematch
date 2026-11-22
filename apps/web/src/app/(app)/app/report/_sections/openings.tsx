@@ -2,12 +2,15 @@
 
 import { formatNotation, moveNumberText } from "@ci/ui/board";
 import type { AiDisclosureData } from "@ci/ui/coach";
+import { ExplainPopover } from "@ci/ui/profile";
+import { type LineEvidence, lineEvidenceKey, verdictWhy } from "../../../../../lib/explain";
 import type {
   ComputedReport,
   OpeningsSection,
   OpeningVerdict,
   Verdict,
 } from "../../../../../server/coaching/types";
+import { VERDICT_GLOSSARY } from "../../../../../server/profile/glossary";
 import { CoachText, ReportSection, SectionNote, type SectionStatus } from "./shell";
 
 export const VERDICT_TEXT: Record<Verdict, string> = {
@@ -52,18 +55,31 @@ function deviationText(o: OpeningVerdict): string | null {
   return `Your games leave the main line at ${move}.`;
 }
 
+/**
+ * Why the line has its verdict: from the stored rule evidence when it still gives the verdict the
+ * report shows, otherwise the verdict's glossary meaning (never evidence for another verdict).
+ */
+export function verdictReason(o: OpeningVerdict, lines: Record<string, LineEvidence>): string {
+  const e = lines[lineEvidenceKey(o.lineKey, o.color, o.side)];
+  if (e && e.verdict === o.verdict) return verdictWhy(e);
+  return VERDICT_GLOSSARY[o.verdict]?.meaning ?? "";
+}
+
 /** The openings with their engine verdict (Keep, Fix, Learn deeper, Replace) and the coach's note. */
 export function Openings({
   computed,
   content,
   status,
   disclosure,
+  lines = {},
   order,
 }: {
   computed: ComputedReport;
   content: OpeningsSection | null;
   status: SectionStatus;
   disclosure: AiDisclosureData | null;
+  /** Stored verdict evidence by `lineEvidenceKey` (I9). */
+  lines?: Record<string, LineEvidence>;
   order: number;
 }) {
   const ready = status === "ready" && content !== null;
@@ -83,19 +99,37 @@ export function Openings({
           {computed.openings.map((o) => {
             const note = items.find((it) => it.lineKey === o.lineKey);
             const deviation = deviationText(o);
+            const entry = VERDICT_GLOSSARY[o.verdict];
+            const reason = verdictReason(o, lines);
             return (
               <li key={o.lineKey} className="flex flex-col gap-1.5">
                 <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
                   <h3 className="m-0 text-base font-medium text-ink">{o.name}</h3>
-                  <span className="text-sm text-ink">
-                    <span className="text-ink-soft">Verdict: </span>
-                    <span className="font-medium">{VERDICT_TEXT[o.verdict] ?? o.verdict}</span>
+                  <span className="inline-flex items-center gap-1 text-sm text-ink">
+                    <span>
+                      <span className="text-ink-soft">Verdict: </span>
+                      <span className="font-medium">{VERDICT_TEXT[o.verdict] ?? o.verdict}</span>
+                    </span>
+                    {entry ? (
+                      <ExplainPopover
+                        entry={entry}
+                        label={`What does ${VERDICT_TEXT[o.verdict] ?? entry.name} mean?`}
+                      />
+                    ) : null}
                   </span>
                 </div>
                 <p className="m-0 text-sm text-ink-soft">
                   {o.side === "chosen" ? "You play it" : "You face it"} as{" "}
                   {o.color === "white" ? "White" : "Black"}: {resultText(o)}.
                 </p>
+                {reason ? (
+                  <p
+                    className="m-0 max-w-prose text-base text-ink"
+                    style={{ fontVariantNumeric: "lining-nums" }}
+                  >
+                    {reason}
+                  </p>
+                ) : null}
                 <p className="m-0 font-serif text-sm text-ink-soft">{lineText(o.movesSan)}</p>
                 {deviation ? <p className="m-0 text-sm text-ink-soft">{deviation}</p> : null}
                 {note ? <CoachText item={note} className="mt-1 text-base" /> : null}

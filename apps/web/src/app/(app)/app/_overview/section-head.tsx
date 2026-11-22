@@ -1,3 +1,4 @@
+import { type ExplainEntry, ExplainPopover } from "@ci/ui/profile";
 import type { CSSProperties, ReactNode } from "react";
 
 /**
@@ -10,11 +11,14 @@ export function SectionHead({
   id,
   title,
   order,
+  explain,
   children,
 }: {
   id: string;
   title: string;
   order?: number;
+  /** A glossary entry: an "i" beside the title and its one-sentence meaning under it. */
+  explain?: ExplainEntry | null;
   children?: ReactNode;
 }) {
   const style = order === undefined ? undefined : ({ "--reveal-i": order } as CSSProperties);
@@ -27,9 +31,15 @@ export function SectionHead({
         className="block h-0.5 w-full origin-left bg-rule-strong"
       />
       <div {...(reveal ? { "data-reveal-fig": "" } : {})} className="flex flex-col gap-1">
-        <h2 id={id} className="font-serif text-2xl font-semibold text-ink">
-          {title}
-        </h2>
+        <div className="flex items-center gap-1.5">
+          <h2 id={id} className="font-serif text-2xl font-semibold text-ink">
+            {title}
+          </h2>
+          {explain ? <ExplainPopover entry={explain} /> : null}
+        </div>
+        {explain ? (
+          <p className="m-0 max-w-prose text-sm text-ink-soft">{explain.meaning}</p>
+        ) : null}
         {children}
       </div>
     </div>

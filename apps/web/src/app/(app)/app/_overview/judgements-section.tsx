@@ -1,6 +1,12 @@
 import { JudgementColumns } from "@ci/ui/charts";
 import { EstimateKpi } from "../../../../components/estimate-kpi";
+import { type GlossaryEntry, KPI_GLOSSARY } from "../../../../server/profile/glossary";
 import type { JudgementsView } from "./view";
+
+/** The glossary entry of a row, where the glossary has one (mistakes and inaccuracies have none). */
+const EXPLAIN: Record<string, GlossaryEntry | undefined> = {
+  blunders: KPI_GLOSSARY.blunders_per_game,
+};
 
 const scopeText = (j: JudgementsView) =>
   `Across ${j.games} ${j.basisClass} ${j.games === 1 ? "game" : "games"}.`;
@@ -43,6 +49,7 @@ export function JudgementsSection({ judgements: j }: { judgements: JudgementsVie
               trendGames={row.trendGames}
               sectionGames={j.games}
               better="lower"
+              explain={EXPLAIN[row.key] ?? null}
             />
           </div>
         ))}

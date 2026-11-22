@@ -99,6 +99,19 @@ export type WeaknessDetail = WeaknessSummary & {
     rate: ({ value: number } & StoredInterval) | null;
   }[];
   exemplars: { fromReportAt: Date; items: Exemplar[] } | null;
+  /**
+   * At most `MAX_EXAMPLES` positions for the page: the report's exemplars first, then the scope's
+   * stored occurrences (`game_metrics` exemplar plies, the player's own moves within the window),
+   * newest game first, one per game.
+   */
+  examples: Example[];
+};
+
+/** An example position, from the report (`report`) or from the stored occurrences (`games`). */
+export type Example = Exemplar & {
+  source: "report" | "games";
+  /** The stored judgement of the played move, when it came from `moves`. */
+  judgement: "inaccuracy" | "mistake" | "blunder" | null;
 };
 
 export type KpiPoint = {

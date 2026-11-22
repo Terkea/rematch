@@ -4,6 +4,7 @@ import { AiDisclosure } from "@ci/ui/coach";
 import { dayText } from "@ci/ui/profile";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { CoachScopeSwitch } from "../../../../components/coach-scope-switch";
+import type { LineEvidence } from "../../../../lib/explain";
 import type { CoachStatus } from "../../../../server/coach/status";
 import type { ChangeNoteView } from "../../../../server/coaching/notes";
 import type { ReportView as ReportViewModel } from "../../../../server/coaching/report";
@@ -30,6 +31,8 @@ export type ReportPageData = {
   trends: Record<string, (number | null)[]>;
   /** Platform game id to `games.id`, for the scope's games the report cites (`reviewGameIds`). */
   gameIds: Record<string, string>;
+  /** The scope's stored opening lines' verdict evidence, by `lineEvidenceKey` (I9). */
+  lines?: Record<string, LineEvidence>;
   /** Whether a coach could write a report now (`ai_status`, ADR 0078). Default available. */
   coach?: CoachStatus;
   now: Date;
@@ -151,7 +154,7 @@ function Fresh({ on, children }: { on: boolean; children: ReactNode }) {
  * computed part; the coach's part shows only when its row is `ready`.
  */
 export function ReportView({ data }: { data: ReportPageData }) {
-  const { scope, view, notes, trends, gameIds } = data;
+  const { scope, view, notes, trends, gameIds, lines } = data;
   const { state, payload } = view;
   const building = state.kind === "building";
   const target = { accountId: scope.accountId, timeClass: scope.timeClass };
@@ -273,6 +276,7 @@ export function ReportView({ data }: { data: ReportPageData }) {
             content={content("openings", "openings")}
             status={status("openings")}
             disclosure={disclosure}
+            lines={lines ?? {}}
             order={3}
           />
         </Fresh>

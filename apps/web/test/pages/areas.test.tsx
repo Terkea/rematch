@@ -175,6 +175,7 @@ const detail = (w: WeaknessSummary): WeaknessDetail => ({
   ...w,
   window: { days: 183, from: new Date(AT.getTime() - 183 * 86_400_000), to: AT },
   history: [],
+  examples: [],
   timeline: { id: w.seriesKey, label: w.label, segments: [] },
   weekly: [
     {

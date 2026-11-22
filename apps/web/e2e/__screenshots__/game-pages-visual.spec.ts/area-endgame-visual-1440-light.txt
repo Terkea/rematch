@@ -1,0 +1,91 @@
+Openings
+Middlegame
+Endgame
+Tactics
+Calculation
+Time
+Mindset
+Endgame
+
+How well you play once most pieces have been traded.
+
+41 on a scale where 50 is the typical player in your rating band: 9 points below typical. It has no range yet, so read it as a lean, not a verdict.
+
+From 15 analysed rapid games on chess.com
+
+Score
+Your score
+Band median
+Distance to the band median
+20
+40
+60
+Endgame 41, band median 50, next band not measured yet, no interval yet
+Endgame
+15 in its thinnest measure
+41
+No interval yet
+
+A percentile against players in your rating band, so the band median is 50 by definition. The count is its thinnest measure.
+
+Coach's note
+
+Your endgame play looks sound.
+
+Written by AI
+Written on 20 Nov 2026
+This coaching was written by an AI model (Claude) from your analysed games. It can contain mistakes. The engine data shown alongside it is the source of truth.
+Ask your coach about your endgame
+Measures
+Not enough games for these yet
+Endgame accuracy
+How close your moves were to the engine's best in the endgame.
+Not measured yet
+Winning endgames converted
+How often you win when you reach the endgame with a clear advantage.
+Not measured yet
+Drawn endgames held
+How often you avoid losing when you reach the endgame worse off.
+Not measured yet
+Tablebase errors per endgame
+How many result-changing mistakes you make in small endgames.
+Not measured yet
+Weaknesses
+Estimated rate
+80% range
+Players in your rating band, median
+Endgame technique (basics)
+
+In a basic endgame you made a move that changed a win into a draw, or a draw into a loss.
+
+Improving
+Estimated 9.0% of chances (80% range 5.0–14.0%), from 6 of 70.
+Estimated % of chances
+9.0%
+80% range 5.0–14.0%
+6 times in 70 chances
+0%
+20.0%
+Players in your rating band: 6.3%, inside your likely range
+Weekly trend after more weeks
+How they changed
+Not an issue
+Emerging
+Active
+Improving
+Resolved
+Relapsed
+Onset, with its likely range
+
+Hover, tap or use the arrow keys to read a state's dates.
+
+Endgame technique (basics)
+Now improving
+Oct 2026
+Nov
+22 Nov
+Example positions
+
+Examples from your report of 13 Oct 2026
+
+That report picked no positions for your endgame.

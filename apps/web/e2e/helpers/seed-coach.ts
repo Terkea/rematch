@@ -6,9 +6,11 @@ import {
   createDb,
   type Db,
   linkedAccounts,
+  moves,
   user,
 } from "@ci/db";
-import { gameMetrics } from "@ci/db/generated";
+import { gameMetrics, openingLines } from "@ci/db/generated";
+import { Chess } from "chess.js";
 import { and, eq, sql } from "drizzle-orm";
 import { seedThread } from "../../test/helpers/coach";
 import { DISCLOSURE, seedNote, seedReport, seedWeekly } from "../../test/helpers/coaching";
@@ -66,6 +68,7 @@ async function clear(db: Db, accountId: string): Promise<void> {
     "weekly_reviews",
     "weakness_change_notes",
     "user_events",
+    "opening_lines",
   ]) {
     await db.execute(sql`delete from ${sql.identifier(table)} where account_id = ${accountId}`);
   }
@@ -86,16 +89,67 @@ const WEEKS = Array.from({ length: 12 }, (_, i) => `2026-W${36 + i}`);
 /** The week with no analysed games: stored as a null value with n 0. */
 const NULL_WEEK = "2026-W41";
 
+/** Synthetic win chances for the three example blunders, newest game first. */
+const EXAMPLE_WINS = [
+  [62, 31],
+  [55, 24],
+  [70, 38],
+] as const;
+
+/**
+ * W3.shallow's stored occurrences (the weakness page's examples): the player's first blunder in
+ * each of the three newest rapid games that have one, given synthetic win chances and an engine
+ * move (the first other legal move), so the board draws both arrows. Idempotent.
+ */
+async function examplePlies(db: Db): Promise<Map<string, number>> {
+  type Row = { game_id: string; ply: number; fen: string; uci: string };
+  const rows = (await db.execute(sql`
+    select distinct on (m.game_id) m.game_id, m.ply, m.fen_before as fen, m.uci
+    from moves m join games g on g.id = m.game_id
+    where g.id in (${sql.join(
+      RAPID.map((g) => sql`${g.id}::uuid`),
+      sql`, `,
+    )}) and m.color = g.player_color and m.judgement = 'blunder'
+    order by m.game_id, m.ply`)) as unknown as Row[];
+  const byGame = new Map(rows.map((r) => [r.game_id, r]));
+  const out = new Map<string, number>();
+  const newest = [...RAPID]
+    .reverse()
+    .filter((g) => byGame.has(g.id))
+    .slice(0, 3);
+  for (const [i, g] of newest.entries()) {
+    const r = byGame.get(g.id);
+    const [before, after] = EXAMPLE_WINS[i] ?? [60, 30];
+    if (!r) continue;
+    const best = new Chess(r.fen)
+      .moves({ verbose: true })
+      .map((m) => `${m.from}${m.to}${m.promotion ?? ""}`)
+      .find((uci) => uci !== r.uci);
+    await db
+      .update(moves)
+      .set({ winBefore: before, winAfter: after, deltaW: before - after, bestUci: best ?? null })
+      .where(and(eq(moves.gameId, g.id), eq(moves.ply, r.ply)));
+    out.set(g.id, r.ply);
+  }
+  return out;
+}
+
 async function profile(db: Db, accountId: string): Promise<void> {
-  // The rapid games get their game_metrics rows (the coach scope counts them).
+  // The rapid games get their game_metrics rows (the coach scope counts them); three carry
+  // W3.shallow's stored example plies.
+  const examples = await examplePlies(db);
   for (const g of RAPID) {
+    const ply = examples.get(g.id);
     await db.insert(gameMetrics).values({
       gameId: g.id,
       accountId,
       timeClass: TC,
       playedAt: g.playedAt,
       protocol: "e2e-1",
-      metrics: { version: 1 },
+      metrics:
+        ply === undefined
+          ? { version: 1 }
+          : { version: 1, weakness: { "W3.shallow": { exemplarPlies: [ply] } } },
     });
   }
   const est = (
@@ -246,6 +300,50 @@ async function profile(db: Db, accountId: string): Promise<void> {
 }
 
 /**
+ * The example report's three opening lines as stored verdict evidence (Rust `LineSummary`,
+ * synthetic numbers), so each verdict on the report says why it was given (I9).
+ */
+async function openings(db: Db, accountId: string): Promise<void> {
+  const line = (
+    lineKey: string,
+    color: "white" | "black",
+    kind: "chosen" | "faced",
+    verdict: "keep" | "fix" | "learn",
+    games: number,
+    summary: Record<string, unknown>,
+  ) => ({
+    accountId,
+    timeClass: TC,
+    color,
+    lineKey,
+    kind,
+    games,
+    verdict,
+    summary: { lineKey, color, kind, verdict, games, struggles: [], share: 0.2, ...summary },
+  });
+  await db.insert(openingLines).values([
+    line("w-italian", "white", "chosen", "keep", 41, {
+      perfVsExpected: 0.04,
+      perfGames: 41,
+      perfInterval: { low: -0.03, high: 0.11 },
+    }),
+    line("b-sicilian-najdorf", "black", "chosen", "fix", 23, {
+      perfVsExpected: -0.09,
+      perfGames: 23,
+      errorSpot: { fenKey: "e2e", uci: "d8c7", san: "Qc7", games: 7 },
+      struggles: ["repeated_deviation_error"],
+    }),
+    line("w-scandi-faced", "white", "faced", "learn", 9, {
+      perfVsExpected: null,
+      perfGames: 0,
+      analysedGames: 9,
+      avgWinAtOpeningEnd: 37.6,
+      struggles: ["worse_after_opening"],
+    }),
+  ]);
+}
+
+/**
  * Seeds the coach world for the adult e2e user (see the module comment). Refuses, writing
  * nothing, a database whose linked accounts are not all e2e ones (M5a's guard and message).
  */
@@ -265,6 +363,7 @@ export async function seedE2eCoach(
   const accountId = account.id;
   await clear(db, accountId);
   await profile(db, accountId);
+  await openings(db, accountId);
   // The simulated worker stands in for one with an AI client (ADR 0078), so the coach pages
   // offer questions and reports. Its heartbeat is a day ahead: the specs outlast the 2 min window.
   await db.execute(

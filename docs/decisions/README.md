@@ -81,6 +81,7 @@ One file per decision: context, decision, alternatives, consequences. New decisi
 - [0076. Recurring incremental sync of linked accounts](0076-recurring-account-sync.md)
 - [0077. "Sync now" and the analysis-progress panel](0077-sync-now-and-analysis-progress.md)
 - [0078. Honest coach availability, uncompared weaknesses and R2-backed examples](0078-honest-coach-availability-and-benchmarks.md)
+- [0079. Explained stats: definition lines, an explanation popover and the weakness story](0079-explained-stats-and-weakness-story.md)
 - [0080. A chess.com peer benchmark from the opponents you have faced](0080-chesscom-peer-benchmark.md)
 
 ## Records with placeholder numbers
