@@ -260,7 +260,11 @@ async fn registration_expires_after_its_ttl() {
     tokio::time::pause();
     tokio::time::advance(ttl / 2).await;
     tokio::time::resume();
-    assert_eq!(post(&s, Some(&reg.token), body.clone()).await.0, 200, "not yet expired");
+    assert_eq!(
+        post(&s, Some(&reg.token), body.clone()).await.0,
+        200,
+        "not yet expired"
+    );
     tokio::time::pause();
     tokio::time::advance(ttl).await;
     tokio::time::resume();

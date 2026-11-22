@@ -59,7 +59,7 @@ fn key_of(token: &str) -> Key {
 
 fn purge_expired(reg: &mut HashMap<Key, Entry>) {
     let now = tokio::time::Instant::now();
-    reg.retain(|_, e| { let _ = (e, now); true });
+    reg.retain(|_, e| e.expires_at > now);
 }
 
 fn ct_eq(a: &[u8], b: &[u8]) -> bool {
