@@ -6,4 +6,11 @@ export const queryKeys = {
   games: (accountId: string) => ["games", accountId] as const,
   game: (gameId: string) => ["game", gameId] as const,
   activity: () => ["activity"] as const,
+  // M5b: the coach surfaces. The stream invalidates these (`applyCoachEvent`).
+  report: (accountId: string) => ["report", accountId] as const,
+  weekly: (accountId: string) => ["weekly", accountId] as const,
+  notes: (accountId: string) => ["notes", accountId] as const,
+  thread: (threadId: string) => ["thread", threadId] as const,
+  /** A streaming answer's chunks (`ChatStreamState`), filled by `chat.*` events. */
+  chatStream: (messageId: string) => ["chat-stream", messageId] as const,
 };
