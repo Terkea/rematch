@@ -625,7 +625,7 @@ function SoundToggle({
             data-testid="sound-toggle"
             onClick={() => onChange(!muted)}
             className={cn(
-              "relative -my-1.5 inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-field text-ink-soft",
+              "relative -my-3 inline-flex size-8 shrink-0 self-center cursor-pointer items-center justify-center rounded-field text-ink-soft",
               "transition-colors duration-(--dur-quick) ease-out hover:text-ink",
               "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink",
               touchTarget,
