@@ -11,6 +11,7 @@ use ai::client::sidecar::SidecarToken;
 use ai::client::tool_server::DEFAULT_TOOL_BIND;
 use ai::entitlements::{BetaLimits, Plan as AiPlan};
 use ai::jobs::budget::BudgetConfig;
+use analysis::jobs::sync::SyncOptions;
 use anyhow::{Context, bail};
 use scheduler::select::Plan;
 
@@ -33,6 +34,9 @@ pub struct WorkerEnv {
     pub lichess_token: Option<String>,
     /// `LICHESS_SINCE_LOOKBACK_DAYS`: overrides the incremental Lichess look-back (30 days).
     pub lichess_lookback_days: Option<u32>,
+    /// `SYNC_INTERVAL_MINUTES`: how often each linked account's newest games are fetched (the
+    /// recurring `sync-accounts` job, M5b Task S); default 30, at least 1.
+    pub sync_interval_minutes: Option<u32>,
     /// `WORKER_POOL_SIZE`: Stockfish processes (and analyses at once); default
     /// `min(available_parallelism - 2, 8)`, at least 1.
     pub pool_size: Option<usize>,
@@ -83,6 +87,7 @@ impl WorkerEnv {
             stockfish_path: stockfish_path.into(),
             lichess_token: None,
             lichess_lookback_days: None,
+            sync_interval_minutes: None,
             pool_size: None,
             syzygy_path: None,
             syzygy_stage_dir: None,
@@ -100,6 +105,14 @@ impl WorkerEnv {
         }
     }
 
+    /// The recurring sync's interval and tick (`SYNC_INTERVAL_MINUTES`, default 30).
+    pub fn sync_options(&self) -> SyncOptions {
+        match self.sync_interval_minutes {
+            None => SyncOptions::default(),
+            Some(m) => SyncOptions::every(std::time::Duration::from_secs(u64::from(m) * 60)),
+        }
+    }
+
     pub fn from_env() -> anyhow::Result<WorkerEnv> {
         Self::from_lookup(|name| std::env::var(name).ok())
     }
@@ -113,6 +126,7 @@ impl WorkerEnv {
             stockfish_path: PathBuf::from(required("STOCKFISH_PATH")?),
             lichess_token: get("LICHESS_TOKEN"),
             lichess_lookback_days: parse(&get, "LICHESS_SINCE_LOOKBACK_DAYS", 0)?,
+            sync_interval_minutes: parse(&get, "SYNC_INTERVAL_MINUTES", 1)?,
             pool_size: parse(&get, "WORKER_POOL_SIZE", 1)?,
             syzygy_path: get("SYZYGY_PATH").map(PathBuf::from),
             syzygy_stage_dir: get("SYZYGY_STAGE_DIR").map(PathBuf::from),
@@ -176,6 +190,7 @@ impl std::fmt::Debug for WorkerEnv {
                 &self.lichess_token.as_ref().map(|_| REDACTED),
             )
             .field("lichess_lookback_days", &self.lichess_lookback_days)
+            .field("sync_interval_minutes", &self.sync_interval_minutes)
             .field("pool_size", &self.pool_size)
             .field("syzygy_path", &self.syzygy_path)
             .field("syzygy_stage_dir", &self.syzygy_stage_dir)
@@ -269,6 +284,32 @@ mod tests {
         assert_eq!(plain.lichess_token, None);
         assert_eq!(plain.pool_size, None);
         assert_eq!(plain.syzygy_path, None);
+    }
+
+    #[test]
+    fn reads_the_sync_interval() {
+        assert_eq!(env(&BASE).unwrap().sync_interval_minutes, None);
+        let mut vars = BASE.to_vec();
+        vars.push(("SYNC_INTERVAL_MINUTES", "45"));
+        assert_eq!(env(&vars).unwrap().sync_interval_minutes, Some(45));
+        let mut zero = BASE.to_vec();
+        zero.push(("SYNC_INTERVAL_MINUTES", "0"));
+        let err = env(&zero).unwrap_err().to_string();
+        assert!(err.contains("SYNC_INTERVAL_MINUTES"), "{err}");
+    }
+
+    #[test]
+    fn the_sync_options_follow_the_interval() {
+        let plain = env(&BASE).unwrap();
+        assert_eq!(
+            plain.sync_options().interval,
+            std::time::Duration::from_secs(30 * 60)
+        );
+        let mut vars = BASE.to_vec();
+        vars.push(("SYNC_INTERVAL_MINUTES", "60"));
+        let hourly = env(&vars).unwrap().sync_options();
+        assert_eq!(hourly.interval, std::time::Duration::from_secs(3600));
+        assert_eq!(hourly.tick, std::time::Duration::from_secs(600));
     }
 
     #[test]

@@ -18,6 +18,11 @@
 //! plan (no plan limits until M7). Games of a run that fails for good stay `imported`; the
 //! reconciler schedules them.
 //!
+//! M5b Task S (ADR 0076): an `incremental` payload (the recurring `sync-accounts` job and the web's
+//! "Sync now") fetches only games newer than the last import. It skips the backfill below an open
+//! frontier, and its Lichess passes use [`SYNC_LICHESS_LOOKBACK`] unless it is the account's first
+//! sync of the UTC day (`last_synced_at` before today), which keeps the full look-back.
+//!
 //! Changes from the TS reference (ADRs 0032, 0035):
 //! - a run whose account's newest run is `paused` reuses that row instead of inserting one;
 //! - each `next()` races an idle [`Deadline`] (reset after every game) and the shutdown token;
@@ -79,6 +84,10 @@ pub const CHECKPOINT_INTERVAL: Duration = Duration::from_secs(15);
 /// newer one was imported would sit below the watermark for ever. Incremental Lichess passes
 /// therefore re-fetch this far below `newestSeenAt`.
 pub const LICHESS_SINCE_LOOKBACK: Duration = Duration::from_secs(30 * 24 * 3600);
+/// The look-back of an incremental (sync) Lichess pass, except the first sync of each UTC day,
+/// which uses [`LICHESS_SINCE_LOOKBACK`]: a sync every 30 minutes then re-streams one day of
+/// games, not thirty, and late correspondence games are still caught within a day.
+pub const SYNC_LICHESS_LOOKBACK: Duration = Duration::from_secs(24 * 3600);
 /// The shortest breaker re-delay.
 pub const BREAKER_MIN_DELAY: Duration = Duration::from_secs(5);
 /// The longest a half-open probe can take (the platform request timeout).
@@ -109,6 +118,8 @@ pub struct ImportAccountDeps {
     /// Abandon the run after this long without a streamed game.
     pub idle_deadline: Duration,
     pub lichess_lookback: Duration,
+    /// The Lichess look-back of an incremental import (see [`SYNC_LICHESS_LOOKBACK`]).
+    pub sync_lichess_lookback: Duration,
     pub breaker_min_delay: Duration,
     pub probe_timeout: Duration,
     /// Imports released because another handler held the account (`account_busy`). Shared, so
@@ -132,6 +143,7 @@ impl ImportAccountDeps {
             checkpoint_interval: CHECKPOINT_INTERVAL,
             idle_deadline: IMPORT_IDLE_DEADLINE,
             lichess_lookback: LICHESS_SINCE_LOOKBACK,
+            sync_lichess_lookback: SYNC_LICHESS_LOOKBACK,
             breaker_min_delay: BREAKER_MIN_DELAY,
             probe_timeout: PROBE_TIMEOUT,
             busy_releases: Arc::new(AtomicU64::new(0)),
@@ -209,8 +221,42 @@ pub async fn enqueue_import(
     account_id: Uuid,
     max: Option<u32>,
 ) -> Result<bool, QueueError> {
-    let payload = serde_json::to_value(ImportAccountPayload { account_id, max })
-        .unwrap_or_else(|_| json!({ "accountId": account_id }));
+    enqueue_import_payload(
+        queue,
+        ImportAccountPayload {
+            account_id,
+            max,
+            incremental: false,
+        },
+    )
+    .await
+}
+
+/// Enqueues an incremental import of the account (the sync's, and the web's "Sync now"): only
+/// games newer than the last import. `false` when a live import job already holds
+/// `import:<account_id>`.
+pub async fn enqueue_incremental_import(
+    queue: &Queue,
+    account_id: Uuid,
+) -> Result<bool, QueueError> {
+    enqueue_import_payload(
+        queue,
+        ImportAccountPayload {
+            account_id,
+            max: None,
+            incremental: true,
+        },
+    )
+    .await
+}
+
+async fn enqueue_import_payload(
+    queue: &Queue,
+    payload: ImportAccountPayload,
+) -> Result<bool, QueueError> {
+    let account_id = payload.account_id;
+    let payload =
+        serde_json::to_value(payload).unwrap_or_else(|_| json!({ "accountId": account_id }));
     let id = queue
         .enqueue(
             KIND_IMPORT,
@@ -345,8 +391,16 @@ async fn import_locked(
         .await
         .map_err(|e| retryable(&ImportFailure::Db(e)))?;
 
+    let lookback = lichess_lookback(
+        deps,
+        payload.incremental,
+        account.last_synced_at,
+        OffsetDateTime::now_utc(),
+    );
     let mut run = Run {
         deps,
+        incremental: payload.incremental,
+        lookback,
         cursor: account.import_cursor.clone().unwrap_or_default(),
         frontier: account
             .import_cursor
@@ -382,6 +436,23 @@ async fn import_locked(
             drop(deadline);
             Err(run.fail(failure, job).await)
         }
+    }
+}
+
+/// The Lichess look-back of a run: the full one for a full import and for the first sync of a UTC
+/// day (or an account never synced), the short one for every later sync that day.
+fn lichess_lookback(
+    deps: &ImportAccountDeps,
+    incremental: bool,
+    last_synced_at: Option<OffsetDateTime>,
+    now: OffsetDateTime,
+) -> Duration {
+    let synced_today =
+        last_synced_at.is_some_and(|at| at.to_offset(time::UtcOffset::UTC).date() == now.date());
+    if incremental && synced_today {
+        deps.sync_lichess_lookback
+    } else {
+        deps.lichess_lookback
     }
 }
 
@@ -526,6 +597,10 @@ struct Run<'d> {
     /// The run row's count before this call (non-zero for a reused paused run).
     base_imported: i32,
     max: Option<u32>,
+    /// Only games newer than the last import: no backfill below an open frontier.
+    incremental: bool,
+    /// This run's Lichess look-back ([`lichess_lookback`]).
+    lookback: Duration,
     cursor: ImportCursor,
     /// The oldest game committed in the current pass.
     frontier: Option<OffsetDateTime>,
@@ -550,7 +625,7 @@ impl Run<'_> {
     /// The lower bound for a pass that starts at the watermark.
     fn since_of(&self, platform: Platform, newest_seen_at: OffsetDateTime) -> OffsetDateTime {
         let lookback = match platform {
-            Platform::Lichess => self.deps.lichess_lookback,
+            Platform::Lichess => self.lookback,
             Platform::Chesscom => Duration::ZERO,
         };
         time::Duration::try_from(lookback)
@@ -580,7 +655,8 @@ impl Run<'_> {
                 let (stopped, _) = self
                     .pass(platform, newer, None, self.max, true, deadline, cancel)
                     .await?;
-                if stopped {
+                // An incremental run (the sync) leaves the backfill to a full import.
+                if stopped || self.incremental {
                     return Ok(());
                 }
                 let mut budget = self.max;
