@@ -30,6 +30,7 @@ Postgres and Redis are published on `127.0.0.1:55432` and `127.0.0.1:56379` (ADR
 Parallel or CI projects must not publish ports, or the second project cannot bind them. Override `COMPOSE_FILE` so only the base file is used:
 
 ```sh
+sh scripts/rust-cache-init.sh   # once per Docker host: shared cargo and sccache volumes (ADR 0042)
 COMPOSE_FILE=docker-compose.yml docker compose -p ci-a run --rm -e LANE=a rust-dev cargo test --locked -p db
 COMPOSE_FILE=docker-compose.yml docker compose -p ci-a down -v
 ```

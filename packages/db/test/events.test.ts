@@ -119,6 +119,10 @@ describe("user events (Task 2 helpers, ADR 0034 delivery)", () => {
     expect(small).toBe(
       '{"id":7,"accountId":"a","type":"t","createdAt":"2026-11-21T10:00:05.123456Z","payload":{"n":1}}',
     );
+    // A user-owned event carries userId right after accountId (serde field order in Rust).
+    expect(notificationJson(stored, "a", "t", { n: 1 }, "u")).toBe(
+      '{"id":7,"accountId":"a","userId":"u","type":"t","createdAt":"2026-11-21T10:00:05.123456Z","payload":{"n":1}}',
+    );
     const big = notificationJson(stored, "a", "t", { s: "é".repeat(MAX_NOTIFY_BYTES) });
     expect(big).toBe(
       '{"id":7,"accountId":"a","type":"t","createdAt":"2026-11-21T10:00:05.123456Z","truncated":true}',

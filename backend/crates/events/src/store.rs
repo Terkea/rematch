@@ -90,6 +90,9 @@ pub struct EventsPage {
 pub(crate) struct Notification {
     pub id: i64,
     pub account_id: Uuid,
+    /// Set for a user-owned event: it is for that user only (left out otherwise).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_id: Option<Uuid>,
     #[serde(rename = "type")]
     pub ty: String,
     /// UTC with exactly six fractional digits, so it equals the row's `created_at` exactly.
@@ -110,12 +113,14 @@ impl Notification {
 pub(crate) fn notification_json(
     stored: StoredEvent,
     account_id: Uuid,
+    user_id: Option<Uuid>,
     ty: &str,
     payload: &Value,
 ) -> Result<String> {
     let mut note = Notification {
         id: stored.id,
         account_id,
+        user_id,
         ty: ty.to_owned(),
         created_at: stored.created_at,
         payload: Some(payload.clone()),
@@ -145,22 +150,36 @@ pub async fn insert_user_event(
     ty: &str,
     payload: &Value,
 ) -> Result<StoredEvent> {
+    insert_owned_event(conn, account_id, None, ty, payload).await
+}
+
+/// [`insert_user_event`] for an event owned by one user (`user_id` set): it is for that user
+/// only. Readers deliver an event to a user only when its `user_id` is NULL or theirs (R3 chat
+/// events: a linked account is shared between users). `None` is an account event.
+pub async fn insert_owned_event(
+    conn: &mut PgConnection,
+    account_id: Uuid,
+    user_id: Option<Uuid>,
+    ty: &str,
+    payload: &Value,
+) -> Result<StoredEvent> {
     let mut tx = conn.begin().await?;
     sqlx::query("SELECT pg_advisory_xact_lock($1)")
         .bind(USER_EVENTS_LOCK_KEY)
         .execute(&mut *tx)
         .await?;
     let (id, created_at): (i64, OffsetDateTime) = sqlx::query_as(
-        "INSERT INTO user_events (account_id, type, payload) VALUES ($1, $2, $3) \
+        "INSERT INTO user_events (account_id, user_id, type, payload) VALUES ($1, $2, $3, $4) \
          RETURNING id, created_at",
     )
     .bind(account_id)
+    .bind(user_id)
     .bind(ty)
     .bind(payload)
     .fetch_one(&mut *tx)
     .await?;
     let stored = StoredEvent { id, created_at };
-    let json = notification_json(stored, account_id, ty, payload)?;
+    let json = notification_json(stored, account_id, user_id, ty, payload)?;
     sqlx::query("SELECT pg_notify($1, $2)")
         .bind(CHANNEL)
         .bind(json)

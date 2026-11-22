@@ -4,6 +4,8 @@ import { createEventHub, type ListenFn } from "../../src/server/events/hub";
 
 const A = "11111111-1111-4111-8111-111111111111";
 const B = "22222222-2222-4222-8222-222222222222";
+const U1 = "33333333-3333-4333-8333-333333333333";
+const U2 = "44444444-4444-4444-8444-444444444444";
 
 /** A fake postgres.js `listen`: `notify` delivers a body, `relisten` simulates a reconnect. */
 function fakeListen(opts: { failFirst?: boolean } = {}) {
@@ -50,6 +52,41 @@ describe("event hub", () => {
     expect(gotB.map((e) => e.id)).toEqual([2]);
     expect(pg.listen).toHaveBeenCalledTimes(1);
     expect(vi.mocked(pg.listen).mock.calls[0]?.[0]).toBe("user_events");
+  });
+
+  it("delivers a user-owned notification only to that user's subscribers", async () => {
+    const pg = fakeListen();
+    const fetchEvent = vi.fn(
+      async (id: number): Promise<StreamEvent | null> => ({
+        id,
+        accountId: A,
+        userId: U1,
+        type: "chat.chunk",
+        payload: {},
+      }),
+    );
+    const hub = createEventHub({ listen: pg.listen, fetchEvent });
+    const one: StreamEvent[] = [];
+    const two: StreamEvent[] = [];
+    const nobody: StreamEvent[] = [];
+    hub.subscribe([A], (e) => one.push(e), undefined, U1);
+    hub.subscribe([A], (e) => two.push(e), undefined, U2);
+    hub.subscribe([A], (e) => nobody.push(e));
+    await hub.ready();
+    pg.notify({ ...note(1, A), userId: U1 });
+    pg.notify({
+      id: 2,
+      accountId: A,
+      userId: U1,
+      type: "chat.chunk",
+      createdAt: "x",
+      truncated: true,
+    });
+    pg.notify(note(3, A));
+    await vi.waitFor(() => expect(two).toHaveLength(1));
+    expect(one.map((e) => e.id)).toEqual([1, 2, 3]);
+    expect(two.map((e) => e.id)).toEqual([3]);
+    expect(nobody.map((e) => e.id)).toEqual([3]);
   });
 
   it("refcounts accounts and an unsubscribe is idempotent", () => {

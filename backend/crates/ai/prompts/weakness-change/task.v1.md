@@ -1,0 +1,1 @@
+Write the note for the change in the `<change_input>` above, as a single JSON object in the schema. Cite at least an example position, and write every number, move, square and date as a reference token.

@@ -5,8 +5,10 @@
 //! until: oldestReached)` and checkpoints `oldestReached` (the oldest game committed so far, the
 //! *frontier*) every [`CHECKPOINT_EVERY`] games or [`CHECKPOINT_INTERVAL`], whichever comes
 //! first. When a pass finishes, `newestSeenAt` becomes the newest game stored and
-//! `oldestReached` is cleared. A run first finishes any interrupted pass, then fetches games newer
-//! than everything stored. Upserts make overlaps harmless, and every upserted game that is still
+//! `oldestReached` is cleared. A pass that stops at `max` keeps `oldestReached` (with `backfill`
+//! when it had no lower bound, and `newestSeenAt` then moved up), so the next run continues below
+//! it; for a backfill, `max` is a total and only the shortfall is fetched (TS fix 004307b). A run
+//! first finishes any interrupted pass, then fetches games newer than everything stored. Upserts make overlaps harmless, and every upserted game that is still
 //! `pending` is (re-)enqueued for analysis; the live-only dedupe key keeps one job per game.
 //!
 //! Changes from the TS reference (ADRs 0032, 0035):
@@ -26,7 +28,7 @@
 //! session sets server-side TCP keepalives, so a worker that dies without closing the socket
 //! frees the account within about 90 s.
 //!
-//! Known limitation (deferred to T22): exclusion lasts only as long as the lock session. If the
+//! Known limitation (deferred to T23/T24): exclusion lasts only as long as the lock session. If the
 //! lock connection dies while the handler is still running (a network fault, an administrator
 //! terminating the backend), the lock is gone but the handler keeps writing through pool
 //! connections, so a re-claimed job could overlap it again. Routing the cursor and run writes
@@ -48,10 +50,8 @@ use platforms::{
     FetchOptions, GameSource, NormalizedGame, Platform, PlatformClient, PlatformError,
 };
 use queue::queue::{Queue, QueueError};
-use queue::{
-    EnqueueOptions, ImportAccountPayload, Job, JobError, KIND_ANALYSE, KIND_IMPORT, analyse_key,
-    import_key,
-};
+use queue::runner::{Handler, JobContext};
+use queue::{EnqueueOptions, ImportAccountPayload, Job, JobError, KIND_IMPORT, import_key};
 use serde_json::{Value, json};
 use sqlx::pool::PoolConnection;
 use sqlx::{PgPool, Postgres};
@@ -60,6 +60,7 @@ use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use crate::deadline::{Deadline, IMPORT_IDLE_DEADLINE, JobDeadlineError};
+use crate::jobs::analyse::enqueue_analyse;
 
 /// Checkpoint the cursor and the run after this many games...
 pub const CHECKPOINT_EVERY: usize = 50;
@@ -78,6 +79,8 @@ pub const ACCOUNT_BUSY_DELAY: Duration = Duration::from_secs(30);
 /// Advisory-lock namespace (`classid`) of the per-account import lock. The two-key form never
 /// conflicts with the single-key locks used elsewhere (the events lock 7262011).
 const IMPORT_LOCK_NAMESPACE: i32 = 7_262_021;
+/// Bound on the explicit unlock of the account lock (closing its connection unlocks anyway).
+const UNLOCK_TIMEOUT: Duration = Duration::from_secs(5);
 /// Max attempts of an import job.
 pub const IMPORT_MAX_ATTEMPTS: i32 = 3;
 /// `import_runs.last_error` keeps at most this many characters.
@@ -208,29 +211,8 @@ pub async fn enqueue_import(
     Ok(id.is_some())
 }
 
-/// The direct analyse enqueue (T22 switches this to T19's `enqueue_analyse`).
-async fn enqueue_analysis(
-    queue: &Queue,
-    game_id: Uuid,
-    account_id: Uuid,
-) -> Result<(), QueueError> {
-    queue
-        .enqueue(
-            KIND_ANALYSE,
-            &json!({ "gameId": game_id }),
-            EnqueueOptions {
-                dedupe_key: Some(analyse_key(game_id)),
-                user_key: Some(account_id),
-                max_attempts: 3,
-                ..EnqueueOptions::default()
-            },
-        )
-        .await?;
-    Ok(())
-}
-
-/// The queue handler for [`KIND_IMPORT`]. It has the shape of T14's `Handler`
-/// (`kind`, `handle(job, ctx)`); the `impl Handler` delegates here once the runner lands.
+/// The queue handler for [`KIND_IMPORT`]. The inherent `handle(job, cancel)` is what
+/// [`Handler::handle`] runs with the job's cancel token.
 pub struct ImportAccountHandler {
     pub deps: Arc<ImportAccountDeps>,
 }
@@ -259,6 +241,16 @@ impl ImportAccountHandler {
             Ok(json!(summary))
         }
         .boxed()
+    }
+}
+
+impl Handler for ImportAccountHandler {
+    fn kind(&self) -> &'static str {
+        KIND_IMPORT
+    }
+
+    fn handle(&self, job: Job, ctx: JobContext) -> BoxFuture<'_, Result<Value, JobError>> {
+        ImportAccountHandler::handle(self, job, ctx.cancel)
     }
 }
 
@@ -401,7 +393,11 @@ impl AccountLock {
     async fn acquire(pool: &PgPool, account_id: Uuid) -> Result<Option<AccountLock>, sqlx::Error> {
         let mut conn = pool.acquire().await?;
         conn.close_on_drop();
-        sqlx::query(LOCK_KEEPALIVES_SQL).execute(&mut *conn).await?;
+        // Best effort: the pool sets the same keepalives on every connection (db::pool), and a
+        // lock without them is still a lock.
+        if let Err(e) = sqlx::query(LOCK_KEEPALIVES_SQL).execute(&mut *conn).await {
+            tracing::warn!(account_id = %account_id, error = %e, "setting lock keepalives failed");
+        }
         let key = account_lock_key(account_id);
         let locked: bool = sqlx::query_scalar("SELECT pg_try_advisory_lock($1, $2)")
             .bind(key.0)
@@ -414,18 +410,25 @@ impl AccountLock {
     /// Unlocks explicitly, so the next handler can take the lock at once instead of waiting
     /// for the connection close to reach the server. A failure only logs: closing the
     /// connection (on drop) releases the lock anyway.
+    /// The unlock is bounded by [`UNLOCK_TIMEOUT`], so a dead lock connection cannot hold up the
+    /// job's completion.
     async fn release(mut self) {
-        let unlocked = sqlx::query_scalar::<_, bool>("SELECT pg_advisory_unlock($1, $2)")
+        let unlock = sqlx::query_scalar::<_, bool>("SELECT pg_advisory_unlock($1, $2)")
             .bind(self.key.0)
             .bind(self.key.1)
-            .fetch_one(&mut *self.conn)
-            .await;
-        match unlocked {
-            Ok(true) => {}
-            Ok(false) => tracing::warn!(key = ?self.key, "the import account lock was not held"),
-            Err(e) => {
+            .fetch_one(&mut *self.conn);
+        match tokio::time::timeout(UNLOCK_TIMEOUT, unlock).await {
+            Ok(Ok(true)) => {}
+            Ok(Ok(false)) => {
+                tracing::warn!(key = ?self.key, "the import account lock was not held");
+            }
+            Ok(Err(e)) => {
                 tracing::warn!(key = ?self.key, error = %e, "unlocking the import account failed");
             }
+            Err(_) => tracing::warn!(
+                key = ?self.key,
+                "unlocking the import account timed out; closing the connection releases it"
+            ),
         }
     }
 }
@@ -513,35 +516,105 @@ impl Run<'_> {
             .unwrap_or(newest_seen_at)
     }
 
+    /// One budget (`max`) is shared by the passes of a run:
+    /// - an open backfill first fetches games newer than the watermark (a pending backfill never
+    ///   starves newly played games), then spends what is left below the frontier. For a
+    ///   backfill `max` is a total, the account's newest `max` games, so its pass fetches only
+    ///   the shortfall (plus the inclusive boundary game);
+    /// - an interrupted pass (a gap above an old watermark) is finished first, then the new games
+    ///   get what that pass left of `max`;
+    /// - otherwise one pass fetches the games newer than the watermark.
     async fn run_passes(
         &mut self,
         deadline: &Deadline,
         cancel: &CancellationToken,
     ) -> Result<(), ImportFailure> {
         let platform = self.platform()?;
-        if let Some(oldest) = self.cursor.oldest_reached {
-            let since = self
-                .cursor
-                .newest_seen_at
-                .map(|n| self.since_of(platform, n));
-            self.pass(platform, since, Some(oldest), deadline, cancel)
+        let since = |run: &Self| run.cursor.newest_seen_at.map(|n| run.since_of(platform, n));
+        match self.cursor.oldest_reached {
+            Some(oldest) if self.cursor.backfill => {
+                let newer = since(self);
+                let (stopped, _) = self
+                    .pass(platform, newer, None, self.max, true, deadline, cancel)
+                    .await?;
+                if stopped {
+                    return Ok(());
+                }
+                let mut budget = self.max;
+                if let Some(max) = self.max {
+                    let stored: i64 =
+                        sqlx::query_scalar("SELECT count(*) FROM games WHERE account_id = $1")
+                            .bind(self.account.id)
+                            .fetch_one(&self.deps.pool)
+                            .await?;
+                    let shortfall = i64::from(max) - stored + 1;
+                    if shortfall <= 1 {
+                        return Ok(());
+                    }
+                    budget = Some(u32::try_from(shortfall).unwrap_or(u32::MAX));
+                }
+                // Everything above the frontier is imported: no lower bound.
+                self.pass(
+                    platform,
+                    None,
+                    Some(oldest),
+                    budget,
+                    false,
+                    deadline,
+                    cancel,
+                )
                 .await?;
+            }
+            Some(oldest) => {
+                let (stopped, streamed) = self
+                    .pass(
+                        platform,
+                        since(self),
+                        Some(oldest),
+                        self.max,
+                        false,
+                        deadline,
+                        cancel,
+                    )
+                    .await?;
+                if stopped {
+                    return Ok(());
+                }
+                let left = self.max.map(|m| m.saturating_sub(streamed));
+                self.pass(platform, since(self), None, left, false, deadline, cancel)
+                    .await?;
+            }
+            None => {
+                self.pass(
+                    platform,
+                    since(self),
+                    None,
+                    self.max,
+                    false,
+                    deadline,
+                    cancel,
+                )
+                .await?;
+            }
         }
-        let since = self
-            .cursor
-            .newest_seen_at
-            .map(|n| self.since_of(platform, n));
-        self.pass(platform, since, None, deadline, cancel).await
+        Ok(())
     }
 
+    /// Streams one pass and returns `(stopped, streamed)`: `stopped` when it hit `max` (the
+    /// history may go on), and the frontier is then kept for the next run; otherwise the stream
+    /// ended. With `keep_frontier` (the new-games pass of a backfill) a finished pass moves the
+    /// watermark up and leaves the backfill frontier open.
+    #[allow(clippy::too_many_arguments)]
     async fn pass(
         &mut self,
         platform: Platform,
         since: Option<OffsetDateTime>,
         until: Option<OffsetDateTime>,
+        max: Option<u32>,
+        keep_frontier: bool,
         deadline: &Deadline,
         cancel: &CancellationToken,
-    ) -> Result<(), ImportFailure> {
+    ) -> Result<(bool, u32), ImportFailure> {
         let deps = self.deps;
         let source = deps.sources.get(&platform).cloned().ok_or_else(|| {
             ImportFailure::Config(format!("no game source for {}", platform.as_str()))
@@ -554,11 +627,8 @@ impl Run<'_> {
             client = with_circuit_breaker(client, breaker.clone());
         }
         let username = self.account.username.clone();
-        let opts = FetchOptions {
-            since,
-            until,
-            max: self.max,
-        };
+        let opts = FetchOptions { since, until, max };
+        let mut streamed: u32 = 0;
         let expired = deadline.token();
         {
             let mut stream = source.fetch(client, &username, opts);
@@ -578,11 +648,11 @@ impl Run<'_> {
                 };
                 let Some(item) = next else { break };
                 deadline.reset();
+                streamed = streamed.saturating_add(1);
                 self.store(item?).await?;
                 deadline.reset();
             }
         }
-        // The pass reached its lower bound: everything up to the newest stored game is imported.
         let newest: Option<OffsetDateTime> =
             sqlx::query_scalar("SELECT max(played_at) FROM games WHERE account_id = $1")
                 .bind(self.account.id)
@@ -592,12 +662,36 @@ impl Run<'_> {
             (Some(a), Some(b)) => Some(a.max(b)),
             (a, b) => a.or(b),
         };
-        self.frontier = None;
-        self.cursor = ImportCursor {
-            oldest_reached: None,
-            newest_seen_at: newest,
-        };
-        self.checkpoint().await
+        // The frontier only moves down, so during a backfill's new-games pass it stays at (or,
+        // with a look-back reaching below it, contiguously under) the backfill frontier.
+        self.frontier = self.frontier.or(self.cursor.oldest_reached);
+        // A pass cut off by max has not reached its lower bound: keep the frontier.
+        if max.is_some_and(|m| streamed >= m) {
+            // A pass without a lower bound (a first run, or a backfill) has imported everything
+            // above its frontier, so the watermark moves up. A pass bounded by an old watermark
+            // leaves it: the gap between the two is what the next run resumes.
+            if since.is_none() && self.frontier.is_some() {
+                self.cursor.newest_seen_at = newest;
+                self.cursor.backfill = true;
+            }
+            self.checkpoint().await?;
+            return Ok((true, streamed));
+        }
+        if keep_frontier && self.frontier.is_some() {
+            // Everything above the backfill frontier is imported now.
+            self.cursor.newest_seen_at = newest;
+        } else {
+            // The pass reached its lower bound: everything up to the newest stored game is
+            // imported.
+            self.frontier = None;
+            self.cursor = ImportCursor {
+                oldest_reached: None,
+                newest_seen_at: newest,
+                backfill: false,
+            };
+        }
+        self.checkpoint().await?;
+        Ok((false, streamed))
     }
 
     async fn store(&mut self, g: NormalizedGame) -> Result<(), ImportFailure> {
@@ -620,7 +714,7 @@ impl Run<'_> {
                 // Also re-enqueue existing pending games: a previous run may have died between
                 // the insert and the enqueue. The live dedupe key keeps one job per game.
                 if res.analysis_status == AnalysisStatus::Pending {
-                    enqueue_analysis(&self.deps.queue, res.id, self.account.id).await?;
+                    enqueue_analyse(&self.deps.queue, res.id, self.account.id).await?;
                 }
             }
         }
@@ -663,15 +757,25 @@ impl Run<'_> {
         Ok(())
     }
 
+    /// Closes the run as done, fenced on `running`: a run the reconciler already closed for a
+    /// stale heartbeat (a hung handler) stays failed, since a fresh import was enqueued for it.
+    /// The games and the cursor this handler committed are kept either way.
     async fn finish(&self) -> Result<(), sqlx::Error> {
-        sqlx::query(
+        let closed = sqlx::query(
             "UPDATE import_runs SET status = 'done', imported = $2, finished_at = now(), \
-             heartbeat_at = now() WHERE id = $1",
+             heartbeat_at = now() WHERE id = $1 AND status = 'running'",
         )
         .bind(self.run_id)
         .bind(self.run_imported())
         .execute(&self.deps.pool)
         .await?;
+        if closed.rows_affected() == 0 {
+            tracing::warn!(
+                run_id = %self.run_id,
+                account_id = %self.account.id,
+                "the import finished after its run was closed (stale heartbeat); leaving it closed"
+            );
+        }
         sqlx::query("UPDATE linked_accounts SET last_synced_at = now() WHERE id = $1")
             .bind(self.account.id)
             .execute(&self.deps.pool)
@@ -702,7 +806,8 @@ impl Run<'_> {
         }
         let recorded = sqlx::query(
             "UPDATE import_runs SET status = $2::import_run_status, imported = $3, \
-             last_error = $4, error_code = $5, finished_at = now() WHERE id = $1",
+             last_error = $4, error_code = $5, finished_at = now() \
+             WHERE id = $1 AND status = 'running'",
         )
         .bind(self.run_id)
         .bind(status.as_str())
@@ -781,5 +886,7 @@ fn new_game(account_id: Uuid, player_color: &str, g: &NormalizedGame) -> NewGame
             .lichess_evals
             .as_ref()
             .and_then(|e| serde_json::to_value(e).ok()),
+        status: AnalysisStatus::Pending,
+        ply_count: None,
     }
 }

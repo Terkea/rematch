@@ -1,0 +1,6 @@
+event: delta
+data: {"text":"Same plan as last time.","messageId":"msg_11"}
+
+event: done
+data: {"subtype":"success","stopReason":"end_turn","text":"Same plan as last time.","numTurns":1,"durationMs":2100,"modelUsage":{"claude-haiku-5-5":{"inputTokens":40,"outputTokens":4,"cacheReadInputTokens":0,"cacheCreationInputTokens":0},"claude-sonnet-5-5":{"inputTokens":512,"outputTokens":30,"cacheReadInputTokens":3000,"cacheCreationInputTokens":0}},"sessionModelUsage":{"claude-haiku-5-5":{"inputTokens":160,"outputTokens":16,"cacheReadInputTokens":0,"cacheCreationInputTokens":0},"claude-sonnet-5-5":{"inputTokens":2560,"outputTokens":130,"cacheReadInputTokens":9000,"cacheCreationInputTokens":1200}},"sdkCostUsd":0.0091,"session":"resumed"}
+

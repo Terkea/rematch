@@ -1,4 +1,10 @@
-import { type Db, listEventsPage, type StreamEvent, type UserEventRow } from "@ci/db";
+import {
+  type Db,
+  eventVisibleTo,
+  listEventsPage,
+  type OwnedUserEventRow,
+  type StreamEvent,
+} from "@ci/db";
 import type { EventHub } from "./hub";
 
 /** Event types are dotted names; anything else could inject SSE fields and is refused. */
@@ -41,9 +47,10 @@ export function parseCursor(value: string | null): number | null | "invalid" {
   return Number(value);
 }
 
-const toStreamEvent = (row: UserEventRow): StreamEvent => ({
+const toStreamEvent = (row: OwnedUserEventRow): StreamEvent => ({
   id: row.id,
   accountId: row.accountId,
+  ...(row.userId === null ? {} : { userId: row.userId }),
   type: row.type,
   payload: row.payload,
 });
@@ -93,7 +100,7 @@ export async function openEventStream(opts: {
   cursor: number | null;
   signal: AbortSignal;
 }): Promise<Response> {
-  const { db, hub, accountIds, signal } = opts;
+  const { db, hub, accountIds, signal, userId } = opts;
   const limits = { ...eventStreamLimits };
   const release = acquireSlot(opts.userId);
   if (!release) {
@@ -134,7 +141,8 @@ export async function openEventStream(opts: {
   };
 
   const send = (e: StreamEvent) => {
-    if (closed || e.id <= lastId) return;
+    // Defence in depth: the hub and the replay query already drop other users' events.
+    if (closed || e.id <= lastId || !eventVisibleTo(e, userId)) return;
     write(formatSseEvent(e));
     lastId = e.id;
   };
@@ -145,28 +153,40 @@ export async function openEventStream(opts: {
     if (buffer.length > limits.maxBufferedEvents) close();
   };
 
+  /** Sends every stored event after `lastId`, page by page, or `reset` past pruned events. */
+  async function replay(): Promise<void> {
+    for (;;) {
+      if (closed) return;
+      const page = await listEventsPage(db, accountIds, lastId, limits.replayPageSize, userId);
+      if (page.reset) {
+        lastId = Math.max(lastId, page.headId);
+        write(`id: ${lastId}\nevent: reset\ndata: {}\n\n`);
+        return;
+      }
+      for (const row of page.events) send(toStreamEvent(row));
+      if (page.events.length < limits.replayPageSize) return;
+    }
+  }
+
   async function sync(hello: boolean): Promise<void> {
     if (closed) return;
     replaying = true;
     try {
       if (beforeReplay) await beforeReplay();
       if (hello) {
-        const page = await listEventsPage(db, accountIds, Number.MAX_SAFE_INTEGER, 1);
+        const page = await listEventsPage(db, accountIds, Number.MAX_SAFE_INTEGER, 1, userId);
         lastId = page.headId;
         write(`id: ${lastId}\nevent: hello\ndata: {}\n\n`);
       } else {
-        for (;;) {
-          if (closed) return;
-          const page = await listEventsPage(db, accountIds, lastId, limits.replayPageSize);
-          if (page.reset) {
-            lastId = Math.max(lastId, page.headId);
-            write(`id: ${lastId}\nevent: reset\ndata: {}\n\n`);
-            break;
-          }
-          for (const row of page.events) send(toStreamEvent(row));
-          if (page.events.length < limits.replayPageSize) break;
-        }
+        await replay();
       }
+      // A LISTEN rebuild during this sync may have lost events newer than the ones just read,
+      // while later ones wait in the buffer: replay again first, never flush past a gap.
+      while (resyncPending && !closed) {
+        resyncPending = false;
+        await replay();
+      }
+      if (closed) return;
       for (const e of buffer.splice(0)) send(e);
       replaying = false;
     } catch (error) {
@@ -175,12 +195,34 @@ export async function openEventStream(opts: {
     }
   }
 
-  let syncing: Promise<void> = Promise.resolve();
-  const unsubscribe = hub.subscribe(accountIds, onLive, () => {
-    // Buffer from now on, so nothing sent live can jump over events lost in the gap.
-    replaying = true;
-    syncing = syncing.then(() => sync(false));
-  });
+  // One sync at a time (T22 re-review race): a LISTEN rebuild while a sync runs only marks a
+  // replay as pending, and that sync runs it before flushing the buffer. Before the body starts,
+  // its first sync reads from the cursor anyway.
+  let syncing = false;
+  let resyncPending = false;
+  const runSync = (hello: boolean) => {
+    syncing = true;
+    void sync(hello).finally(() => {
+      syncing = false;
+      // A rebuild that landed after the sync's last check but before this line found
+      // `syncing` still true and only set the flag: run it now, or the stream would stall.
+      if (resyncPending && !closed) {
+        resyncPending = false;
+        runSync(false);
+      }
+    });
+  };
+  const unsubscribe = hub.subscribe(
+    accountIds,
+    onLive,
+    () => {
+      // Buffer from now on, so nothing sent live can jump over events lost in the gap.
+      replaying = true;
+      if (syncing) resyncPending = true;
+      else if (controller) runSync(false);
+    },
+    userId,
+  );
 
   try {
     await hub.ready();
@@ -203,7 +245,7 @@ export async function openEventStream(opts: {
         heartbeat = setInterval(() => write(": ping\n\n"), limits.heartbeatMs);
         maxAge = setTimeout(close, limits.maxAgeMs);
         signal.addEventListener("abort", close, { once: true });
-        syncing = syncing.then(() => sync(opts.cursor === null));
+        runSync(opts.cursor === null);
       },
       cancel: close,
     },

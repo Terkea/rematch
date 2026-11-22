@@ -2,11 +2,13 @@ export { createDb, type Db, type DbOptions } from "./client.js";
 export {
   EVENT_RETENTION_MS,
   type EventsPage,
+  eventVisibleTo,
   insertUserEvent,
   listEventsAfter,
   listEventsPage,
   MAX_NOTIFY_BYTES,
   notificationJson,
+  type OwnedUserEventRow,
   oldestEventId,
   type StreamEvent,
   USER_EVENTS_CHANNEL,
