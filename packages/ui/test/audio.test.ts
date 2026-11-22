@@ -128,4 +128,72 @@ describe("createSoundEngine", () => {
     e.setVolume(0.3);
     expect(log.gain).toBeCloseTo(0.3);
   });
+
+  it("retries unlock after a refused resume, and plays once it runs", async () => {
+    const { e, ctx, log, advance } = make();
+    const resume = ctx.resume.bind(ctx);
+    let refuse = true;
+    (ctx as unknown as { resume: () => Promise<void> }).resume = async () => {
+      if (refuse) throw new Error("NotAllowedError");
+      return resume();
+    };
+    expect(await e.unlock()).toBe(false);
+    e.play("move");
+    expect(log.master).toBe(0);
+    refuse = false;
+    expect(await e.unlock()).toBe(true);
+    advance(100);
+    e.play("move");
+    expect(log.master).toBe(1);
+  });
+
+  it("wakes a suspended context on the next play, then plays", async () => {
+    const { e, ctx, log, advance } = make();
+    await e.unlock();
+    (ctx as unknown as { state: string }).state = "interrupted";
+    let resumed = 0;
+    (ctx as unknown as { resume: () => Promise<void> }).resume = async () => {
+      resumed++;
+      (ctx as unknown as { state: string }).state = "running";
+    };
+    e.play("move");
+    expect(log.master).toBe(0);
+    expect(resumed).toBe(1);
+    await Promise.resolve();
+    advance(100);
+    e.play("move");
+    expect(log.master).toBe(1);
+  });
+
+  it("replaces a closed context lazily and never throws into the caller", async () => {
+    const first = fakeCtx();
+    const second = fakeCtx();
+    const made: AudioContext[] = [];
+    const queue = [first.ctx, second.ctx];
+    let t = 1000;
+    const e = createSoundEngine({
+      ctxFactory: () => {
+        const c = queue.shift() as AudioContext;
+        made.push(c);
+        return c;
+      },
+      now: () => (t += 100),
+    });
+    await e.unlock();
+    (first.ctx as unknown as { state: string }).state = "closed";
+    expect(() => e.play("move")).not.toThrow();
+    expect(made).toHaveLength(2);
+    await Promise.resolve();
+    e.play("move");
+    expect(second.log.master).toBe(1);
+  });
+
+  it("swallows a synthesis failure so stepping never breaks", async () => {
+    const { e, ctx } = make();
+    await e.unlock();
+    (ctx as unknown as { createBufferSource: () => never }).createBufferSource = () => {
+      throw new Error("boom");
+    };
+    expect(() => e.play("move")).not.toThrow();
+  });
 });

@@ -79,6 +79,8 @@ export interface GameReviewViewProps {
 const URL_DEBOUNCE_MS = 150;
 /** A graph scrub reports one jump this long after it stops. */
 const SCRUB_SETTLE_MS = 150;
+/** While a key is held, step sounds are at most this far apart. */
+const REPEAT_SOUND_MS = 120;
 /** More ledger rows than this collapse to the three worst. */
 const LEDGER_MAX = 8;
 const LEDGER_COLLAPSED = 3;
@@ -139,10 +141,34 @@ function useReview(
   const playSoundRef = useRef(playSound);
   playSoundRef.current = playSound;
 
+  /** The ply a graph scrub started from (updated by every reported step too). */
+  const scrubFrom = useRef(state.ply);
+  const held = useRef(false);
+  const lastSound = useRef(Number.NEGATIVE_INFINITY);
+  useEffect(() => {
+    // Capture phase, so it runs before the review's own key handler on `window`.
+    const down = (e: KeyboardEvent) => {
+      held.current = e.repeat;
+    };
+    const up = () => {
+      held.current = false;
+    };
+    window.addEventListener("keydown", down, true);
+    window.addEventListener("keyup", up, true);
+    return () => {
+      window.removeEventListener("keydown", down, true);
+      window.removeEventListener("keyup", up, true);
+    };
+  }, []);
+
   /** One sound for a move the user stepped or jumped to; a step back sounds the move it undoes. */
   const sound = useCallback(
     (from: number, to: number) => {
       if (from === to) return;
+      // A held key plays its first step, then at most one sound per REPEAT_SOUND_MS.
+      const t = performance.now();
+      if (held.current && t - lastSound.current < REPEAT_SOUND_MS) return;
+      lastSound.current = t;
       const ply = to > from ? to : from;
       const san = view.plies[ply - 1]?.san;
       if (san) playSoundRef.current(soundForSan(san));
@@ -160,6 +186,7 @@ function useReview(
       if (kind) {
         onStepRef.current?.(kind, next.ply);
         sound(prev.ply, next.ply);
+        scrubFrom.current = next.ply;
       }
     },
     [view, sound],
@@ -195,7 +222,6 @@ function useReview(
     },
     [],
   );
-  const scrubFrom = useRef(state.ply);
   const fromGraph = useCallback(
     (ply: number) => {
       act({ type: "go", ply }, null);

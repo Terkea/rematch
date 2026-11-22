@@ -105,4 +105,24 @@ describe("review sounds", () => {
     key("ArrowRight");
     expect(played.calls).toEqual([]);
   });
+
+  it("sounds a held key's first step, then at most one per 120 ms, and nothing on release", () => {
+    let t = 10_000;
+    vi.spyOn(performance, "now").mockImplementation(() => t);
+    render(<GameReviewView view={view()} initialPly="0" />);
+    const down = (repeat: boolean) =>
+      act(() => void fireEvent.keyDown(window, { key: "ArrowRight", repeat }));
+    down(false);
+    expect(played.calls).toHaveLength(1);
+    for (let i = 0; i < 6; i++) {
+      t += 30; // OS key repeat
+      down(true);
+    }
+    // 180 ms of repeats: only the one that lands 120 ms after the first sounds
+    expect(played.calls).toHaveLength(2);
+    t += 200;
+    act(() => void fireEvent.keyUp(window, { key: "ArrowRight" }));
+    expect(played.calls).toHaveLength(2);
+    vi.restoreAllMocks();
+  });
 });

@@ -31,11 +31,12 @@ const engine = () => {
   return shared;
 };
 
-const GESTURES = ["pointerdown", "keydown"] as const;
+// iOS grants activation on touchend and click, not pointerdown, so listen on all four.
+const GESTURES = ["pointerdown", "touchend", "click", "keydown"] as const;
 
 /**
  * One engine for the whole app. The audio context unlocks on the first pointer or key gesture,
- * never before (autoplay rules). Reduced motion does not mute sound; sound has its own setting.
+ * never before (autoplay rules), and retries until it runs. Reduced motion does not mute sound; sound has its own setting.
  */
 export function useBoardSounds() {
   const [prefs, setPrefs] = useState<Prefs>(DEFAULTS);
@@ -52,9 +53,14 @@ export function useBoardSounds() {
     const off = () => {
       for (const ev of GESTURES) window.removeEventListener(ev, unlock, true);
     };
+    // Keep trying on every gesture until the context is actually running.
     const unlock = () => {
-      e.unlock().catch(() => undefined);
-      off();
+      e.unlock().then(
+        (running) => {
+          if (running) off();
+        },
+        () => undefined,
+      );
     };
     for (const ev of GESTURES) window.addEventListener(ev, unlock, true);
     return off;
