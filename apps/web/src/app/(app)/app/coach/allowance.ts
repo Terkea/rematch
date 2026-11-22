@@ -54,6 +54,8 @@ const PERIOD: Record<QuotaWindow, string> = {
 export function allowanceText(v: AllowanceView): {
   text: string;
   day: { iso: string; text: string } | null;
+  /** The day follows in brackets (week, day); a month window ends on it ("resets on 1 Dec"). */
+  bracketed: boolean;
 } {
   const day = dayOf(v.resetsAt);
   const unit = v.limit === 1 ? "coach message" : "coach messages";
@@ -68,5 +70,6 @@ export function allowanceText(v: AllowanceView): {
   return {
     text: `${nf.format(v.left)} of ${nf.format(v.limit)} ${unit} left ${PERIOD[v.window]}, resets ${when}`,
     day,
+    bracketed: v.window !== "month",
   };
 }

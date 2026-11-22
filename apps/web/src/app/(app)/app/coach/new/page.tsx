@@ -9,6 +9,7 @@ import { PageHeading } from "../../../_shell/page-heading";
 import { AnchorCard, loadAnchorView } from "../[threadId]/anchor-card";
 import { allowanceView } from "../allowance";
 import { NoScope } from "../no-scope";
+import { ScopeRow } from "../scope-row";
 import { NewConversation } from "./new-view";
 
 export const dynamic = "force-dynamic";
@@ -53,7 +54,13 @@ export default async function NewCoachPage({ searchParams }: { searchParams: Pro
       allowance={allowanceView(allowance)}
       listHref={`/app/coach?${q.toString()}`}
       // An anchor belongs to one account's games: switching scope would drop it, so no switch.
-      scopeSwitch={view ? null : <CoachScopeSwitch scope={scope} basePath="/app/coach/new" />}
+      scopeSwitch={
+        view ? null : (
+          <ScopeRow>
+            <CoachScopeSwitch scope={scope} basePath="/app/coach/new" />
+          </ScopeRow>
+        )
+      }
     >
       {view ? <AnchorCard view={view} /> : null}
     </NewConversation>

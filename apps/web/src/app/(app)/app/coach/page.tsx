@@ -14,6 +14,7 @@ import { allowanceView } from "./allowance";
 import { AllowanceLine } from "./allowance-line";
 import { AI_DISCLOSURE_NOTE, EMPTY_THREADS } from "./copy";
 import { NoScope } from "./no-scope";
+import { ScopeRow } from "./scope-row";
 import { ThreadList } from "./thread-list";
 
 export const dynamic = "force-dynamic";
@@ -50,8 +51,10 @@ export default async function CoachPage({ searchParams }: { searchParams: Promis
   return (
     <>
       <PageHeading title="Ask your coach" lede={LEDE} />
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <CoachScopeSwitch scope={scope} basePath="/app/coach" />
+      <div className="flex flex-wrap items-center justify-between gap-4 [&>*:first-child]:min-w-0">
+        <ScopeRow>
+          <CoachScopeSwitch scope={scope} basePath="/app/coach" />
+        </ScopeRow>
         <Button asChild>
           <Link href={newHref}>
             <Icon icon={PlusIcon} size={20} />

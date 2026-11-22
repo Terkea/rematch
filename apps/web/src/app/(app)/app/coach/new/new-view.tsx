@@ -10,7 +10,13 @@ import type { TimeClass } from "../../../../../server/games/types";
 import { BackLink } from "../[threadId]/thread-view";
 import type { AllowanceView } from "../allowance";
 import { AllowanceLine } from "../allowance-line";
-import { AI_DISCLOSURE_NOTE, COMPOSER_PLACEHOLDER, postErrorCopy, SENDING } from "../copy";
+import {
+  AI_DISCLOSURE_NOTE,
+  COMPACT_COMPOSER,
+  COMPOSER_PLACEHOLDER,
+  postErrorCopy,
+  SENDING,
+} from "../copy";
 
 // A new conversation (Task 9): the anchor it is opened from, then the composer. Sending creates
 // the thread with its first question in one request (T5 `startConversation`) and opens it; until
@@ -114,6 +120,7 @@ export function NewConversation({
           placeholder={COMPOSER_PLACEHOLDER}
           disabled={reason !== null}
           disabledReason={exhausted ? reason : null}
+          className={COMPACT_COMPOSER}
         />
         <AllowanceLine allowance={allowance} />
       </div>

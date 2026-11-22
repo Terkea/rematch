@@ -101,6 +101,10 @@ pub struct NoteReady {
 #[serde(rename_all = "camelCase")]
 pub struct ChatChunk {
     pub message_id: Uuid,
+    /// The turn's AI attempt (`coach_messages.turn_attempts`, 1 = the first). A retried turn
+    /// streams again from `seq` 0, so a client keys chunks by `(attempt, seq)` and drops the
+    /// chunks of any lower attempt.
+    pub attempt: i16,
     pub seq: u32,
     pub text: String,
     pub segments: Vec<Segment>,
@@ -113,6 +117,8 @@ pub struct ChatChunk {
 #[serde(rename_all = "camelCase")]
 pub struct ChatReady {
     pub message_id: Uuid,
+    /// The attempt that finished (0 when no attempt was reserved).
+    pub attempt: i16,
     /// The validated text differs from what was streamed: the client replaces it.
     pub replace: bool,
 }
@@ -121,6 +127,8 @@ pub struct ChatReady {
 #[serde(rename_all = "camelCase")]
 pub struct ChatFailed {
     pub message_id: Uuid,
+    /// The message's last attempt (0 when none was reserved).
+    pub attempt: i16,
     pub reason: String,
 }
 

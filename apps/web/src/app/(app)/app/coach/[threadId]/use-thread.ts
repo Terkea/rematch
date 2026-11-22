@@ -1,7 +1,7 @@
 "use client";
 
 import type { AiDisclosureData, EngineCheck, Segment, StreamedChunk } from "@ci/ui/coach";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { queryKeys } from "../../../../../lib/query-keys";
 import type { ChatStreamState } from "../../../../../lib/realtime/coach-events";
@@ -15,8 +15,11 @@ import { ANSWERING, canRetry, NOT_LIVE, postErrorCopy, SENDING } from "../copy";
 // One coach thread in the browser (Task 9, R5). The page reads the thread on the server; this
 // hook keeps it, shows the unfinished answer's chunks as `chat.chunk` events land in the query
 // cache (`applyCoachEvent`), and when the stream ends it reads the stored thread again: the
-// stored answer is authoritative, so a retracted or repaired stream (`replace`) never stays on
-// screen. While the event stream is not open it reads the thread every few seconds instead.
+// stored answer is authoritative. A `replace` hides the streamed text at once (it was retracted
+// or repaired); a re-read that keeps failing is retried with backoff and, after a bounded wait,
+// shown as an honest error so the composer unlocks. Chunks are keyed by (attempt, seq): a retried
+// turn's newer attempt replaces the older one's text, live and on replay. While the event stream
+// is not open it reads the thread every few seconds instead.
 
 /** The thread as the page or `GET /api/coach/threads/[id]` gives it (dates may be strings). */
 export type ThreadData = Omit<Thread, "messages"> & {
@@ -48,10 +51,24 @@ export type ComposerState = { disabled: boolean; reason: string | null };
 const isLive = (m: { role: string; status: string }) =>
   m.role === "assistant" && (m.status === "pending" || m.status === "streaming");
 
-/** Chunks from both sources, one per seq, in order. */
-function mergeChunks(a: readonly StreamedChunk[], b: readonly StreamedChunk[]): StreamedChunk[] {
+/**
+ * The stored chunks (replayed by `getThread`, of attempt `storedAttempt`) and the live ones (of
+ * `liveAttempt`, absent for payloads without one): only the newer attempt's, one per seq, in order.
+ */
+export function mergeChunks(
+  stored: readonly StreamedChunk[],
+  storedAttempt: number,
+  live: readonly StreamedChunk[],
+  liveAttempt: number | undefined,
+): StreamedChunk[] {
+  const sources =
+    liveAttempt === undefined || liveAttempt === storedAttempt
+      ? [...stored, ...live]
+      : liveAttempt > storedAttempt
+        ? [...live]
+        : [...stored];
   const bySeq = new Map<number, StreamedChunk>();
-  for (const c of [...a, ...b]) if (!bySeq.has(c.seq)) bySeq.set(c.seq, c);
+  for (const c of sources) if (!bySeq.has(c.seq)) bySeq.set(c.seq, c);
   return [...bySeq.values()].sort((x, y) => x.seq - y.seq);
 }
 
@@ -63,9 +80,15 @@ const questionText = (m: { segments: Segment[] | null } | undefined): string | n
   return t === "" ? null : t;
 };
 
-/** How many times an ended stream re-reads a thread that still looks unfinished. */
-const SETTLE_TRIES = 3;
-const SETTLE_RETRY_MS = 1500;
+/** Re-reads after the stream ended: the first waits this long, each next twice as long. */
+const SETTLE_FIRST_MS = 1000;
+/** Re-reads never wait longer than this. */
+const SETTLE_MAX_MS = 30_000;
+/** After this long without the stored answer, the turn is shown as not loaded (composer unlocks). */
+export const SETTLE_GIVE_UP_MS = 20_000;
+/** The honest error for an answer that finished but could not be read. */
+export const UNLOADED_COPY =
+  "Your coach finished this answer, but it didn't load. Reload the page to read it.";
 
 export function useThread(
   threadId: string,
@@ -78,6 +101,8 @@ export function useThread(
   const [sending, setSending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [settled, setSettled] = useState<ReadonlySet<string>>(() => new Set());
+  /** Answers whose stream ended but whose stored row could not be read in time. */
+  const [unloaded, setUnloaded] = useState<ReadonlySet<string>>(() => new Set());
   const onSettled = useRef(opts.onSettled);
   /** The thread as last set, for comparing a fresh read against (no side effects in updaters). */
   const current = useRef(thread);
@@ -88,8 +113,24 @@ export function useThread(
 
   const live = useMemo(() => thread.messages.findLast(isLive) ?? null, [thread]);
   const liveId = live?.id ?? null;
+  const streamKey = queryKeys.chatStream(liveId ?? "none");
 
-  // Watches what the event reducer writes for the unfinished answer; it never fetches.
+  // I1: an observer keeps the stream's cache entry alive while the thread is open (a query
+  // without one is collected after `gcTime`, mid-turn). It never fetches.
+  useQuery<ChatStreamState | null>({
+    queryKey: streamKey,
+    queryFn: () => qc.getQueryData<ChatStreamState>(streamKey) ?? null,
+    enabled: false,
+    gcTime: Number.POSITIVE_INFINITY,
+  });
+  // The entry is dropped when the answer settles or the thread closes.
+  useEffect(() => {
+    if (liveId === null) return;
+    const key = queryKeys.chatStream(liveId);
+    return () => qc.removeQueries({ queryKey: key, exact: true });
+  }, [qc, liveId]);
+
+  // Watches what the event reducer writes for the unfinished answer.
   const subscribe = useCallback((notify: () => void) => qc.getQueryCache().subscribe(notify), [qc]);
   const stream = useSyncExternalStore(
     subscribe,
@@ -115,6 +156,7 @@ export function useThread(
       setThread(next);
       if (finished.length > 0) {
         setSettled((s) => new Set([...s, ...finished]));
+        setUnloaded((s) => new Set([...s].filter((id) => !finished.includes(id))));
         onSettled.current?.();
       }
       return next;
@@ -123,23 +165,33 @@ export function useThread(
     }
   }, [threadId]);
 
-  // The stream ended: read the stored answer, a few times if the read races the commit.
+  // I2: the stream ended. Read the stored answer, retrying with backoff until it is final; after
+  // SETTLE_GIVE_UP_MS the turn is shown as not loaded, and the retries go on in the background.
   const ended = stream?.done === true;
   useEffect(() => {
     if (!ended || liveId === null) return;
-    let tries = 0;
+    const id = liveId;
+    let wait = SETTLE_FIRST_MS;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let cancelled = false;
+    // Still unfinished here after the bounded wait: say so, and unlock the composer.
+    const giveUp = setTimeout(() => {
+      if (current.current.messages.some((m) => m.id === id && isLive(m))) {
+        setUnloaded((s) => (s.has(id) ? s : new Set([...s, id])));
+      }
+    }, SETTLE_GIVE_UP_MS);
     const run = async () => {
-      tries += 1;
       const next = await refetch();
       if (cancelled) return;
-      const still = next?.messages.some((m) => m.id === liveId && isLive(m)) ?? true;
-      if (still && tries < SETTLE_TRIES) timer = setTimeout(run, SETTLE_RETRY_MS);
+      const still = next?.messages.some((m) => m.id === id && isLive(m)) ?? true;
+      if (!still) return;
+      timer = setTimeout(run, wait);
+      wait = Math.min(wait * 2, SETTLE_MAX_MS);
     };
     void run();
     return () => {
       cancelled = true;
+      clearTimeout(giveUp);
       if (timer) clearTimeout(timer);
     };
   }, [ended, liveId, refetch]);
@@ -184,6 +236,7 @@ export function useThread(
             aiDisclosure: null,
             createdAt: new Date().toISOString(),
             streamed: [],
+            streamedAttempt: 0,
             engineChecks: [],
           };
           return {
@@ -221,19 +274,27 @@ export function useThread(
   );
 
   const messages = useMemo<MessageView[]>(() => {
+    const lastAssistant = thread.messages.findLast((m) => m.role === "assistant")?.id ?? null;
     const out = thread.messages.map((m, i): MessageView => {
       const isUnfinished = m.id === liveId;
-      const chunks = isUnfinished ? mergeChunks(m.streamed, stream?.chunks ?? []) : [];
+      const lost = isUnfinished && unloaded.has(m.id);
+      // `replace`: the streamed text was retracted or repaired, so it is hidden at once.
+      const hidden = isUnfinished && stream?.done === true && stream.replace === true;
+      const chunks =
+        isUnfinished && !lost && !hidden
+          ? mergeChunks(m.streamed, m.streamedAttempt ?? 0, stream?.chunks ?? [], stream?.attempt)
+          : [];
       // The stream said it failed and the stored row has not caught up yet.
       const streamFailed = isUnfinished && stream?.done === true && stream.reason !== undefined;
-      const status: MessageView["status"] = streamFailed
-        ? "failed"
-        : isUnfinished
-          ? chunks.length > 0
-            ? "streaming"
-            : "pending"
-          : m.status;
-      const reason = streamFailed ? (stream?.reason ?? null) : m.failureReason;
+      const status: MessageView["status"] =
+        streamFailed || lost
+          ? "failed"
+          : isUnfinished
+            ? chunks.length > 0
+              ? "streaming"
+              : "pending"
+            : m.status;
+      const reason = lost ? "unloaded" : streamFailed ? (stream?.reason ?? null) : m.failureReason;
       const failed = status === "failed" && m.role === "assistant";
       const question = failed ? questionText(thread.messages[i - 1]) : null;
       return {
@@ -243,10 +304,11 @@ export function useThread(
         segments: m.segments,
         streamed: chunks,
         engineChecks: m.engineChecks,
-        failure: failed ? failureCopy(reason ?? "") : null,
+        failure: lost ? UNLOADED_COPY : failed ? failureCopy(reason ?? "") : null,
         failureReason: failed ? reason : null,
         disclosure: m.aiDisclosure,
-        retry: failed && canRetry(reason) ? question : null,
+        // m2: only the latest answer can be asked again.
+        retry: failed && !lost && m.id === lastAssistant && canRetry(reason) ? question : null,
         sending: false,
         settled: settled.has(m.id),
       };
@@ -268,7 +330,7 @@ export function useThread(
       });
     }
     return out;
-  }, [thread, liveId, stream, sending, settled]);
+  }, [thread, liveId, stream, sending, settled, unloaded]);
 
   const answering = messages.some(
     (m) => m.role === "assistant" && (m.status === "pending" || m.status === "streaming"),

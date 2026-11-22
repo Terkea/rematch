@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { queryKeys } from "../../src/lib/query-keys.js";
 
 // The thread hook (Task 9): the answer streams in from `chat.*` events applied to the query
 // cache (`applyCoachEvent`), the stored thread replaces the stream when it ends, and a failure
@@ -11,7 +12,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@ci/ui/overlays", () => ({ toast: vi.fn() }));
 
 const { applyCoachEvent } = await import("../../src/lib/realtime/coach-events.js");
-const { useThread } = await import("../../src/app/(app)/app/coach/[threadId]/use-thread.js");
+const { useThread, SETTLE_GIVE_UP_MS, UNLOADED_COPY } = await import(
+  "../../src/app/(app)/app/coach/[threadId]/use-thread.js"
+);
 
 const ACCOUNT = "00000000-0000-4000-8000-0000000000a1";
 const THREAD = "00000000-0000-4000-8000-0000000000e1";
@@ -86,7 +89,10 @@ beforeEach(() => {
   fetchMock.mockReset();
   vi.stubGlobal("fetch", fetchMock);
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
+});
 
 const answer = (r: { current: ReturnType<typeof useThread> }) =>
   r.current.messages.find((m) => m.id === ANSWER);
@@ -251,5 +257,117 @@ describe("useThread", () => {
     expect(result.current.error).toBe(
       "Your coach is still answering your last question. Ask again once it's done.",
     );
+  });
+});
+
+describe("useThread, review fixes", () => {
+  const at = (attempt: number, seq: number, t: string) =>
+    ev("chat.chunk", {
+      messageId: ANSWER,
+      attempt,
+      seq,
+      text: t,
+      segments: text(t),
+      interim: false,
+    });
+
+  it("I1: the stream outlives the cache's 5-minute collection while the thread is open", async () => {
+    vi.useFakeTimers();
+    fetchMock.mockImplementation(() => respond({ error: "x" }, 500));
+    const { result, unmount } = renderHook(() => useThread(THREAD, thread()), { wrapper });
+    act(() => {
+      applyCoachEvent(qc, chunk(1, "First paragraph."));
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(6 * 60_000);
+    });
+    act(() => {
+      applyCoachEvent(qc, chunk(2, " Second paragraph."));
+    });
+    expect(answer(result)?.streamed.map((c) => c.seq)).toEqual([1, 2]);
+    unmount();
+    // Cleared when the thread closes.
+    expect(qc.getQueryData(queryKeys.chatStream(ANSWER))).toBeUndefined();
+  });
+
+  it("I2: ready with replace hides the retracted text at once", () => {
+    fetchMock.mockImplementation(() => new Promise(() => {}));
+    const { result } = renderHook(() => useThread(THREAD, thread()), { wrapper });
+    act(() => {
+      applyCoachEvent(qc, chunk(1, "A draft that gets retracted."));
+    });
+    expect(answer(result)?.streamed).toHaveLength(1);
+    act(() => {
+      applyCoachEvent(qc, ev("chat.message.ready", { messageId: ANSWER, replace: true }));
+    });
+    expect(answer(result)?.streamed).toEqual([]);
+    expect(answer(result)?.status).toBe("pending");
+  });
+
+  it("I2: failed re-reads keep retrying, then unlock the composer with an honest error", async () => {
+    vi.useFakeTimers();
+    let ok = false;
+    fetchMock.mockImplementation(() =>
+      ok
+        ? respond(thread({ status: "done", segments: text("Stored."), aiDisclosure: DISCLOSURE }))
+        : Promise.reject(new TypeError("network")),
+    );
+    const { result } = renderHook(() => useThread(THREAD, thread()), { wrapper });
+    act(() => {
+      applyCoachEvent(qc, chunk(1, "Retracted draft."));
+      applyCoachEvent(qc, ev("chat.message.ready", { messageId: ANSWER, replace: true }));
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(SETTLE_GIVE_UP_MS + 1000);
+    });
+    expect(answer(result)?.status).toBe("failed");
+    expect(answer(result)?.failure).toBe(UNLOADED_COPY);
+    expect(answer(result)?.streamed).toEqual([]);
+    expect(result.current.composer.disabled).toBe(false);
+    const tries = fetchMock.mock.calls.length;
+    expect(tries).toBeGreaterThan(3);
+    // It keeps trying in the background and settles once a read succeeds.
+    ok = true;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(31_000);
+    });
+    expect(answer(result)?.status).toBe("done");
+    expect(answer(result)?.segments).toEqual(text("Stored."));
+  });
+
+  it("I3: a newer attempt's live chunks replace the stored chunks of an older one", () => {
+    const initial = thread({
+      status: "streaming",
+      streamedAttempt: 1,
+      streamed: [
+        { seq: 0, segments: text("Old zero."), interim: false },
+        { seq: 1, segments: text("Old one."), interim: false },
+      ],
+    });
+    const { result } = renderHook(() => useThread(THREAD, initial), { wrapper });
+    act(() => {
+      applyCoachEvent(qc, at(2, 0, "New zero."));
+    });
+    expect(answer(result)?.streamed).toEqual([
+      { seq: 0, segments: text("New zero."), interim: false },
+    ]);
+    // A late chunk of the old attempt changes nothing.
+    act(() => {
+      applyCoachEvent(qc, at(1, 2, "Old two."));
+    });
+    expect(answer(result)?.streamed.map((c) => c.seq)).toEqual([0]);
+  });
+
+  it("I3: live chunks of the same attempt merge with the stored ones", () => {
+    const initial = thread({
+      status: "streaming",
+      streamedAttempt: 2,
+      streamed: [{ seq: 0, segments: text("Zero."), interim: false }],
+    });
+    const { result } = renderHook(() => useThread(THREAD, initial), { wrapper });
+    act(() => {
+      applyCoachEvent(qc, at(2, 1, " One."));
+    });
+    expect(answer(result)?.streamed.map((c) => c.seq)).toEqual([0, 1]);
   });
 });

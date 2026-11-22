@@ -79,3 +79,27 @@ Open for the critic:
 - Whether the thread rail (1440, other conversations) earns its column.
 - The pending answer is a `ProgressPlaceholder` list ("Your coach is reading your games"): is it
   too tall for a chat turn? (Parked from Task 3's critic as kit polish.)
+
+## Pass 3 (review-t9 fixes, self-critique only)
+
+Shots: `m5b-t9/fix1/` (same names as pass 2, plus `new-plain-*` for a new conversation without an
+anchor). The stack now mounts the event stream (main's T27 wiring). The streaming thread is seeded
+with a released first attempt (attempt 1, seq 0) and the retry's chunks (attempt 2, seq 0 to 2).
+Only the retry's text shows: the replay keeps the latest attempt.
+
+Fixed from the review's visual pass:
+
+- **V1:** the pending answer is one line at answer scale, a dashed pencil ring and "Reading your
+  games", in place of the kit's heading-size title over a skeleton card and "Writing". The
+  composer's status line reads "Your coach is writing", one wording.
+- **V2:** stored prose is set at the streamed size (`text-prose`, 18/30), so a finished answer no
+  longer shrinks. The cause is in the kit: `SegmentText` merges `text-prose` and `text-ink`
+  through `cn`, and tailwind-merge keeps only the last `text-*`. That is a T3 follow-up.
+- **V3:** on a phone the box and Send share one row, the empty box is one line, and it grows as
+  you type. The allowance drops its bracketed day while open, and the status line replaces it
+  while an answer runs. The placeholder is now "Ask about your games", so the empty box stays one
+  line high. Measured composer: see the report.
+- **V4:** the scope switch scrolls in its own row with T6's right-edge fade below 640px (list and
+  new pages).
+- **Polish taken:** the month window reads "resets on 1 Dec 2026" (no brackets), and "Ask again"
+  is offered on the latest answer only. The others are left for the critic and T11.

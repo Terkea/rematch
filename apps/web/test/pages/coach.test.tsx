@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render as rtlRender, screen, waitFor, within } from "@testing-library/react";
+import { act, render as rtlRender, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { isValidElement, type ReactElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -67,6 +67,8 @@ const { AnchorCard, loadAnchorView } = await import(
   "../../src/app/(app)/app/coach/[threadId]/anchor-card.js"
 );
 const { AI_DISCLOSURE_NOTE } = await import("../../src/app/(app)/app/coach/copy.js");
+const { applyCoachEvent } = await import("../../src/lib/realtime/coach-events.js");
+const { allowanceText } = await import("../../src/app/(app)/app/coach/allowance.js");
 
 const ACCOUNT = "00000000-0000-4000-8000-0000000000a1";
 const THREAD = "00000000-0000-4000-8000-0000000000e1";
@@ -186,8 +188,8 @@ function findProps(node: unknown, key: string): Record<string, unknown> | null {
 }
 
 /** Client views need the app's QueryClient. */
-function render(ui: ReactElement) {
-  const qc = new QueryClient();
+/** Client views need the app's QueryClient (pass one to drive the event reducer). */
+function render(ui: ReactElement, qc = new QueryClient()) {
   return rtlRender(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>);
 }
 
@@ -441,5 +443,118 @@ describe("coach pages", () => {
     );
     const m = /pub const AI_DISCLOSURE_NOTE: &str = "([^"]*)";/.exec(rust);
     expect(m?.[1]).toBe(AI_DISCLOSURE_NOTE);
+  });
+});
+
+describe("coach pages, review fixes", () => {
+  const Q2 = "00000000-0000-4000-8000-000000000103";
+  const A2 = "00000000-0000-4000-8000-000000000104";
+
+  it("I4: focus stays with the conversation through a send and returns to the box", async () => {
+    const qc = new QueryClient();
+    const answered = {
+      ...thread,
+      messages: [
+        ...thread.messages,
+        msg({
+          id: Q2,
+          seq: 3,
+          role: "user",
+          segments: text("And the opening?"),
+          aiDisclosure: null,
+          engineChecks: [],
+        }),
+        msg({ id: A2, seq: 4, segments: text("Play e4."), engineChecks: [] }),
+      ],
+    };
+    fetchMock.mockImplementation((_url: string, init?: { method?: string }) =>
+      init?.method === "POST"
+        ? Promise.resolve(
+            new Response(JSON.stringify({ userMessageId: Q2, assistantMessageId: A2 }), {
+              status: 202,
+            }),
+          )
+        : Promise.resolve(new Response(JSON.stringify(answered), { status: 200 })),
+    );
+    const user = userEvent.setup();
+    render(<ThreadView thread={thread} allowance={view(1)} listHref="/app/coach" />, qc);
+    const box = screen.getByRole("textbox", { name: "Your question" });
+    await user.click(box);
+    await user.keyboard("And the opening?{Enter}");
+    // While the coach writes, focus sits on the polite status line, not on <body>.
+    const status = await screen.findByText(/Your coach is writing/);
+    await waitFor(() => expect(status.closest("[role=status]")).toHaveFocus());
+    act(() => {
+      applyCoachEvent(qc, {
+        id: 1,
+        accountId: ACCOUNT,
+        type: "chat.message.ready",
+        payload: { messageId: A2, attempt: 1, replace: false },
+      });
+    });
+    await waitFor(() =>
+      expect(screen.getByRole("textbox", { name: "Your question" })).toHaveFocus(),
+    );
+  });
+
+  it("V1: a pending answer is one calm line", () => {
+    const pending = {
+      ...thread,
+      messages: [
+        thread.messages[0],
+        msg({ status: "pending", segments: null, aiDisclosure: null, engineChecks: [] }),
+      ],
+    };
+    render(<ThreadView thread={pending} allowance={view(1)} listHref="/app/coach" />);
+    expect(screen.getByText("Reading your games")).toBeInTheDocument();
+    expect(screen.queryByText("Your coach is reading your games")).toBeNull();
+    expect(screen.queryByText("Writing")).toBeNull();
+  });
+
+  it("m2: only the latest failed answer offers Ask again", () => {
+    const failed = {
+      ...thread,
+      messages: [
+        thread.messages[0],
+        msg({
+          status: "failed",
+          failureReason: "unavailable",
+          segments: null,
+          aiDisclosure: null,
+          engineChecks: [],
+        }),
+        msg({
+          id: Q2,
+          seq: 3,
+          role: "user",
+          segments: text("Again?"),
+          aiDisclosure: null,
+          engineChecks: [],
+        }),
+        msg({
+          id: A2,
+          seq: 4,
+          status: "failed",
+          failureReason: "unavailable",
+          segments: null,
+          aiDisclosure: null,
+          engineChecks: [],
+        }),
+      ],
+    };
+    render(<ThreadView thread={failed} allowance={view(1)} listHref="/app/coach" />);
+    expect(screen.getAllByRole("button", { name: "Ask again" })).toHaveLength(1);
+  });
+
+  it("m3: a month window resets on its date, without brackets", () => {
+    const t = allowanceText({
+      left: 280,
+      limit: 300,
+      window: "month",
+      resetsAt: "2026-12-01T00:00:00.000Z",
+      exhausted: null,
+    });
+    expect(t.text).toBe("280 of 300 coach messages left this month, resets on");
+    expect(t.bracketed).toBe(false);
   });
 });

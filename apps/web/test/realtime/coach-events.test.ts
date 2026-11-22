@@ -49,6 +49,37 @@ describe("applyCoachEvent", () => {
     });
   });
 
+  it("a higher attempt discards the lower attempt's chunks; a lower one is ignored", () => {
+    // Task 9 review I3: a released and retried turn streams again from seq 0.
+    const at = (attempt: number, seq: number, text: string) =>
+      ev("chat.chunk", {
+        messageId: "m1",
+        attempt,
+        seq,
+        text,
+        segments: seg(text),
+        interim: false,
+      });
+    applyCoachEvent(qc, at(1, 0, "old zero"));
+    applyCoachEvent(qc, at(1, 1, "old one"));
+    applyCoachEvent(qc, at(2, 0, "new zero"));
+    applyCoachEvent(qc, at(1, 2, "late old two"));
+    applyCoachEvent(qc, at(2, 0, "new zero again"));
+    expect(qc.getQueryData(queryKeys.chatStream("m1"))).toEqual({
+      chunks: [{ seq: 0, segments: seg("new zero"), interim: false }],
+      done: false,
+      attempt: 2,
+    });
+    // An end from an older attempt does not end the newer one.
+    applyCoachEvent(qc, ev("chat.message.failed", { messageId: "m1", attempt: 1, reason: "x" }));
+    expect(qc.getQueryData(queryKeys.chatStream("m1"))).toMatchObject({ done: false, attempt: 2 });
+    applyCoachEvent(qc, ev("chat.message.ready", { messageId: "m1", attempt: 2, replace: true }));
+    expect(qc.getQueryData(queryKeys.chatStream("m1"))).toMatchObject({
+      done: true,
+      replace: true,
+    });
+  });
+
   it("ready marks the stream done with replace", () => {
     applyCoachEvent(qc, chunk(1, "a", true));
     applyCoachEvent(qc, ev("chat.message.ready", { messageId: "m1", replace: true }));

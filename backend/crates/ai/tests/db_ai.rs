@@ -623,6 +623,7 @@ fn event_payloads_are_camel_case() {
     assert_eq!(
         serde_json::to_value(ChatChunk {
             message_id: Uuid::nil(),
+            attempt: 2,
             seq: 3,
             text: "hi".into(),
             segments: vec![],
@@ -630,7 +631,7 @@ fn event_payloads_are_camel_case() {
             interim: true
         })
         .unwrap(),
-        json!({"messageId": Uuid::nil(), "seq": 3, "text": "hi", "segments": [], "citations": [], "interim": true})
+        json!({"messageId": Uuid::nil(), "attempt": 2, "seq": 3, "text": "hi", "segments": [], "citations": [], "interim": true})
     );
     assert_eq!(
         serde_json::to_value(NoteReady {
@@ -643,10 +644,11 @@ fn event_payloads_are_camel_case() {
     assert_eq!(
         serde_json::to_value(ChatReady {
             message_id: Uuid::nil(),
+            attempt: 1,
             replace: false
         })
         .unwrap(),
-        json!({"messageId": Uuid::nil(), "replace": false})
+        json!({"messageId": Uuid::nil(), "attempt": 1, "replace": false})
     );
     assert_eq!(
         serde_json::to_value(JobFailed {
@@ -684,6 +686,7 @@ fn event_payloads_are_camel_case() {
         WeeklyReady { id: Uuid::nil() },
         ChatFailed {
             message_id: Uuid::nil(),
+            attempt: 1,
             reason: "r".into(),
         },
     );

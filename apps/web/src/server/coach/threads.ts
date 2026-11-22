@@ -85,6 +85,11 @@ export type ThreadMessage = {
   createdAt: Date;
   /** The chunks already streamed for a `pending` or `streaming` answer (R5), in seq order. */
   streamed: StreamedChunk[];
+  /**
+   * The AI attempt `streamed` belongs to (0 when none, or chunks without one). A retried turn
+   * streams again from seq 0, so only the latest attempt's chunks are kept (Task 9 review I3).
+   */
+  streamedAttempt: number;
   /** The message's interactive engine checks (`interactive_evals.message_id`), oldest first. */
   engineChecks: EngineCheck[];
 };
@@ -292,6 +297,7 @@ export async function getThread(db: Db, userId: string, id: string): Promise<Thr
 
     // R5: what the worker already streamed, from the owner's own `chat.chunk` events only.
     const streamed = new Map<string, StreamedChunk[]>();
+    const attempts = new Map<string, number>();
     if (live.length > 0) {
       const chunks = await tx
         .select({ payload: userEvents.payload })
@@ -310,6 +316,16 @@ export async function getThread(db: Db, userId: string, id: string): Promise<Thr
         const seq = p.seq;
         const segments = segmentsOf(p.segments);
         if (typeof seq !== "number" || !Number.isInteger(seq) || seq < 0 || !segments) continue;
+        const attempt =
+          typeof p.attempt === "number" && Number.isInteger(p.attempt) && p.attempt >= 0
+            ? p.attempt
+            : 0;
+        const current = attempts.get(p.messageId) ?? 0;
+        if (attempt < current) continue;
+        if (attempt > current) {
+          attempts.set(p.messageId, attempt);
+          streamed.set(p.messageId, []);
+        }
         const list = streamed.get(p.messageId) ?? [];
         if (list.some((c) => c.seq === seq)) continue;
         list.push({ seq, segments, interim: p.interim === true });
@@ -342,6 +358,7 @@ export async function getThread(db: Db, userId: string, id: string): Promise<Thr
         aiDisclosure: disclosureOf(m.aiDisclosure),
         createdAt: m.createdAt,
         streamed: streamed.get(m.id) ?? [],
+        streamedAttempt: attempts.get(m.id) ?? 0,
         engineChecks: checks.get(m.id) ?? [],
       })),
     };

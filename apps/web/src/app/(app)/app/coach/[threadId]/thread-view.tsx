@@ -21,7 +21,7 @@ import { reviewHref } from "../../../../../lib/segment-href";
 import { PendingButton } from "../../../../ui/pending-button";
 import type { AllowanceView } from "../allowance";
 import { AllowanceLine } from "../allowance-line";
-import { ANSWERING, COMPOSER_PLACEHOLDER } from "../copy";
+import { COMPACT_COMPOSER, COMPOSER_PLACEHOLDER, READING, WRITING } from "../copy";
 import { type MessageView, type ThreadData, useThread } from "./use-thread";
 
 // One conversation (Task 9): the messages in order, then the composer pinned to the foot of the
@@ -42,6 +42,37 @@ export function BackLink({ href }: { href: string }) {
   );
 }
 
+/**
+ * An answer nothing has streamed for yet: one calm line at answer scale, with the dashed pencil
+ * ring the kit uses for work in progress (review V1). No skeleton, no second wording.
+ */
+function PendingAnswer() {
+  return (
+    <article aria-label="Coach's answer" data-role="assistant" data-status="pending">
+      <p className="m-0 flex items-center gap-2 font-serif text-prose text-ink-soft">
+        <svg
+          viewBox="0 0 16 16"
+          aria-hidden="true"
+          focusable="false"
+          className="size-4 shrink-0 fill-none stroke-pencil"
+        >
+          <ellipse
+            cx="8"
+            cy="8"
+            rx="6.2"
+            ry="5.4"
+            transform="rotate(-10 8 8)"
+            strokeWidth="1.5"
+            strokeDasharray="3 2.2"
+            strokeLinecap="round"
+          />
+        </svg>
+        {READING}
+      </p>
+    </article>
+  );
+}
+
 /** A failed answer: the allowance and the spending limit wait, an outage can be asked again. */
 function FailedAnswer({
   m,
@@ -57,7 +88,17 @@ function FailedAnswer({
   const retry =
     m.retry !== null ? { label: "Ask again", onClick: () => m.retry && onRetry(m.retry) } : null;
   let body: ReactNode;
-  if (CAPS.has(reason) || reason === "budget") {
+  if (reason === "unloaded") {
+    // The answer finished on the server but could not be read here (review I2).
+    body = (
+      <CoachState
+        kind="failed"
+        title={failure}
+        titleAs="p"
+        action={{ label: "Reload", onClick: () => window.location.reload() }}
+      />
+    );
+  } else if (CAPS.has(reason) || reason === "budget") {
     body = <CoachState kind="budget" title={failure} titleAs="p" />;
   } else if (reason === "unavailable" || reason === "lost" || reason === "not_linked") {
     body = (
@@ -111,6 +152,9 @@ function Message({
   if (m.role === "assistant" && m.status === "failed") {
     return <FailedAnswer m={m} onRetry={onRetry} retryDisabled={retryDisabled} />;
   }
+  if (m.role === "assistant" && m.status === "pending" && m.streamed.length === 0) {
+    return <PendingAnswer />;
+  }
   // `role` goes through a variable: Biome reads a literal role="user" as an ARIA role (T3).
   const role = m.role;
   const message = (
@@ -124,8 +168,9 @@ function Message({
       failure={m.failure}
       disclosure={m.disclosure}
       hrefFor={hrefFor}
-      // Stored answers keep their paragraph breaks ("\n\n" text segments).
-      className="[&_p]:whitespace-pre-line"
+      // Stored answers keep their paragraph breaks ("\n\n" text segments), and stored prose is
+      // set at the streamed size, so a finished answer never reflows (review V2).
+      className="[&_p]:whitespace-pre-line [&_p.font-serif]:text-prose"
     />
   );
   if (m.sending) {
@@ -244,6 +289,25 @@ export function ThreadView({
     },
   );
 
+  // I4: the box is disabled while a question is sent and answered, which would drop keyboard
+  // focus on <body>. A send from the box moves focus to the polite "writing" status, and it
+  // returns to the box when the composer opens again.
+  const composerBox = useRef<HTMLDivElement>(null);
+  const statusLine = useRef<HTMLParagraphElement>(null);
+  const restoreFocus = useRef(false);
+  const send = (question: string) => {
+    restoreFocus.current = composerBox.current?.contains(document.activeElement) ?? false;
+    return post(question);
+  };
+  useEffect(() => {
+    if (!restoreFocus.current) return;
+    if (answering) statusLine.current?.focus();
+    else if (!composer.disabled) {
+      composerBox.current?.querySelector("textarea")?.focus();
+      restoreFocus.current = false;
+    }
+  }, [answering, composer.disabled]);
+
   // A new message scrolls into view (instantly under reduced motion); a reload does not.
   const end = useRef<HTMLDivElement>(null);
   const count = useRef(messages.length);
@@ -280,8 +344,9 @@ export function ThreadView({
       </ol>
       <div ref={end} />
       <div
+        ref={composerBox}
         data-part="composer"
-        className="sticky bottom-0 z-10 flex flex-col gap-2 border-t border-rule bg-paper pt-3 pb-4"
+        className="sticky bottom-0 z-10 flex flex-col gap-1.5 border-t border-rule bg-paper pt-2 pb-3 sm:gap-2 sm:pt-3 sm:pb-4"
       >
         {error ? (
           <p
@@ -293,20 +358,29 @@ export function ThreadView({
           </p>
         ) : null}
         <ChatComposer
-          onSubmit={post}
+          onSubmit={send}
           placeholder={COMPOSER_PLACEHOLDER}
           disabled={composer.disabled}
           // Only a used-up allowance pauses questions; an answer in progress is a status line,
           // so the box never says "paused until they reset" while the coach is writing.
           disabledReason={allowance?.exhausted ? composer.reason : null}
+          className={COMPACT_COMPOSER}
         />
         <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-          <AllowanceLine allowance={allowance} />
+          <AllowanceLine
+            allowance={allowance}
+            className={answering && !allowance?.exhausted ? "max-sm:hidden" : undefined}
+          />
           {/* Always mounted, so the change is announced when an answer starts. */}
-          <p role="status" className="m-0 font-sans text-sm text-ink-soft empty:hidden">
+          <p
+            ref={statusLine}
+            role="status"
+            tabIndex={-1}
+            className="m-0 font-sans text-sm text-ink-soft empty:hidden focus:outline-none"
+          >
             {answering && !allowance?.exhausted ? (
               <>
-                {ANSWERING}
+                {WRITING}
                 {pace ? <span className="text-ink-faint">. {pace}</span> : null}
               </>
             ) : null}

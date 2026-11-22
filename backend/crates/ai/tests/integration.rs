@@ -181,6 +181,7 @@ fn sample(kind: &str) -> Value {
         }),
         CHAT_CHUNK => serde_json::to_value(ChatChunk {
             message_id: id,
+            attempt: 1,
             seq: 0,
             text: "model text".to_owned(),
             segments: Vec::new(),
@@ -189,10 +190,12 @@ fn sample(kind: &str) -> Value {
         }),
         CHAT_MESSAGE_READY => serde_json::to_value(ChatReady {
             message_id: id,
+            attempt: 1,
             replace: false,
         }),
         CHAT_MESSAGE_FAILED => serde_json::to_value(ChatFailed {
             message_id: id,
+            attempt: 1,
             reason: "unavailable".to_owned(),
         }),
         JOB_FAILED => serde_json::to_value(JobFailed {

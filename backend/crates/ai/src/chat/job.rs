@@ -208,6 +208,17 @@ impl TurnLock {
 
 // --- Small DB helpers ---
 
+/// The message's `turn_attempts` (0 when it is gone), for the `attempt` of its chat events.
+pub(crate) async fn turn_attempt(conn: &mut PgConnection, message_id: Uuid) -> sqlx::Result<i16> {
+    Ok(
+        sqlx::query_scalar("SELECT turn_attempts FROM coach_messages WHERE id = $1")
+            .bind(message_id)
+            .fetch_optional(conn)
+            .await?
+            .unwrap_or(0),
+    )
+}
+
 /// Fails an unfinished answer and emits `chat.message.failed`, in one transaction. `false` when
 /// the message had already finished (or is gone).
 async fn fail_and_emit(
@@ -221,6 +232,9 @@ async fn fail_and_emit(
         .await
         .map_err(|e| retryable("fail message", e))?;
     if failed {
+        let attempt = turn_attempt(&mut tx, message_id)
+            .await
+            .map_err(|e| retryable("attempt", e))?;
         emit_for_user(
             &mut tx,
             account_id,
@@ -228,6 +242,7 @@ async fn fail_and_emit(
             CHAT_MESSAGE_FAILED,
             &ChatFailed {
                 message_id,
+                attempt,
                 reason: reason.to_owned(),
             },
         )
@@ -724,6 +739,9 @@ impl CoachChatHandler {
         .await
         .map_err(|e| retryable("finish", e))?;
         if done {
+            let attempt = turn_attempt(&mut tx, id)
+                .await
+                .map_err(|e| retryable("attempt", e))?;
             emit_for_user(
                 &mut tx,
                 account_id,
@@ -731,6 +749,7 @@ impl CoachChatHandler {
                 CHAT_MESSAGE_READY,
                 &ChatReady {
                     message_id: id,
+                    attempt,
                     replace: false,
                 },
             )
@@ -973,6 +992,7 @@ impl CoachChatHandler {
         let deps = OwnedToolDeps { ds, engine };
         let pool = d.pool.clone();
         let owner = t.conversation.user_id;
+        let attempt = t.attempt;
         let on_chunk = move |c: ChatChunkOut| -> BoxFuture<'static, anyhow::Result<()>> {
             let pool = pool.clone();
             Box::pin(async move {
@@ -984,6 +1004,7 @@ impl CoachChatHandler {
                     CHAT_CHUNK,
                     &ChatChunk {
                         message_id: id,
+                        attempt,
                         seq: c.seq,
                         text: c.text,
                         citations: citations_of(&c.segments),
@@ -1144,6 +1165,7 @@ impl CoachChatHandler {
             CHAT_MESSAGE_READY,
             &ChatReady {
                 message_id: id,
+                attempt: t.attempt,
                 replace: o.replaced,
             },
         )

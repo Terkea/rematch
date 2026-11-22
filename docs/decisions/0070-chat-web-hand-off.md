@@ -106,3 +106,17 @@ same operations without a Rust HTTP API, and without ever talking to the sidecar
    question as sending until the server accepts it; a refused post keeps the text in the box and
    says why. A failed answer offers "Ask again" only when asking again could succeed (an outage
    or an unknown error, never a cap, the spending limit or an unlinked account).
+5. **Attempts (review I3, coordinator ruling).** A released and retried turn streams again from
+   `seq` 0. Every `chat.chunk`, `chat.message.ready` and `chat.message.failed` payload now carries
+   the turn's `attempt` (Rust `coach_messages.turn_attempts`; 0 when no attempt was reserved).
+   The web keys chunks by (attempt, seq): a higher attempt discards every chunk of a lower one,
+   live (`applyCoachEvent`) and on replay (`getThread` keeps only the latest attempt and reports
+   it as `streamedAttempt`), and an older attempt's events change nothing.
+6. **The stream's cache entry (review I1).** The thread keeps an observer on
+   `chatStream(messageId)` while it is open, so the entry is never collected mid-turn; it is
+   removed when the answer settles or the thread closes.
+7. **Settling (review I2).** `ready` with `replace` hides the streamed text at once. Re-reads after
+   the end back off from 1 s to 30 s and keep going until the stored row is final; after 20 s the
+   turn reads "finished, but it didn't load" with a Reload action and the composer unlocks.
+8. **Focus (review I4).** A send from the box moves focus to the polite "Your coach is writing"
+   status while the box is disabled, and back to the box when it opens again.

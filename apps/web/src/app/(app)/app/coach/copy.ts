@@ -10,10 +10,24 @@ export const AI_DISCLOSURE_NOTE =
 
 export const EMPTY_THREADS = "Ask about any of your games, moves, openings or weaknesses.";
 
-export const COMPOSER_PLACEHOLDER = "Ask about a game, a move, an opening or a weakness";
+/** One line even on a phone, so the empty box stays one line high (review V3). */
+export const COMPOSER_PLACEHOLDER = "Ask about your games";
 
 export const ANSWERING = "Your coach is answering";
 export const SENDING = "Sending your question";
+/** The one line for an answer nothing has streamed for yet (review V1). */
+export const READING = "Reading your games";
+/** The status under the box while an answer runs (a polite live region; focus waits there). */
+export const WRITING = "Your coach is writing";
+
+/**
+ * The composer on a phone (review V3): the box and Send on one row, the box one line high and
+ * growing as you type; the reason (allowance used) spans the row. Class names only, applied to
+ * the kit's `ChatComposer` form.
+ */
+export const COMPACT_COMPOSER =
+  "max-sm:grid max-sm:grid-cols-[minmax(0,1fr)_auto] max-sm:items-end max-sm:gap-x-2 max-sm:gap-y-1.5 max-sm:[&>p]:col-span-2 max-sm:[&_textarea]:min-h-11 max-sm:[&_textarea]:py-2";
+
 /** While the event stream is not open (M4 `useRealtime`): never "live". */
 export const NOT_LIVE = "Updates every few seconds";
 
