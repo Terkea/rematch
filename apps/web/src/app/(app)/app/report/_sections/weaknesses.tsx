@@ -4,6 +4,7 @@ import type { AiDisclosureData } from "@ci/ui/coach";
 import { Button } from "@ci/ui/primitives";
 import { dayText, ExemplarBoard, WeaknessRow, weaknessScaleMax } from "@ci/ui/profile";
 import { type CSSProperties, useState } from "react";
+import { coachChatLive } from "../../../../../lib/coach-chat";
 import { coachHref } from "../../../../../server/coach/anchor";
 import type {
   ComputedReport,
@@ -113,12 +114,14 @@ export function Weaknesses({
                 <div className="flex flex-col gap-4 pl-9">
                   {note ? <CoachText item={note} /> : null}
                   {boards.length > 0 ? <Positions boards={boards} reportDate={reportDate} /> : null}
-                  <a
-                    href={coachHref({ kind: "weakness", weaknessId: w.id }, scope)}
-                    className="inline-flex min-h-6 items-center self-start rounded-field text-sm font-medium text-ink underline decoration-rule-strong underline-offset-4 hover:decoration-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
-                  >
-                    Ask your coach about {w.label.toLowerCase()}
-                  </a>
+                  {coachChatLive() ? (
+                    <a
+                      href={coachHref({ kind: "weakness", weaknessId: w.id }, scope)}
+                      className="inline-flex min-h-6 items-center self-start rounded-field text-sm font-medium text-ink underline decoration-rule-strong underline-offset-4 hover:decoration-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+                    >
+                      Ask your coach about {w.label.toLowerCase()}
+                    </a>
+                  ) : null}
                 </div>
               </li>
             );

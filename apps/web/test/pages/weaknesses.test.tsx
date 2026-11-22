@@ -19,6 +19,8 @@ import { createTestSession, resetAuthTables, webTestDb } from "../helpers/sessio
 const db = webTestDb();
 let user = { id: "", email: "x@example.invalid" };
 const requireUser = vi.fn(async () => user);
+const chatLive = vi.fn(() => true);
+vi.mock("../../src/lib/coach-chat", () => ({ coachChatLive: () => chatLive() }));
 vi.mock("../../src/server/events/request-cursor", () => ({ requestEventCursor: async () => 0 }));
 vi.mock("../../src/server/auth/session", () => ({ requireUser }));
 vi.mock("../../src/server/db", () => ({ getDb: () => db }));
@@ -360,6 +362,21 @@ describe("weakness detail", () => {
     expect(links).toHaveLength(5);
     expect(links[0]?.getAttribute("href")).toBe(`/app/games/${gameId}?ply=7`);
     noBadText(container);
+  });
+
+  it("no ask link while the chat pages are not live", async () => {
+    chatLive.mockReturnValue(false);
+    try {
+      await seedProfile(db, accountId, {
+        timeClass: "rapid",
+        games: 1,
+        estimates: [{ seriesKey: "W3.shallow" }],
+      });
+      await detail("W3.shallow");
+      expect(screen.queryByRole("link", { name: "Ask your coach about this" })).toBeNull();
+    } finally {
+      chatLive.mockReturnValue(true);
+    }
   });
 
   it("ask link carries the weakness anchor", async () => {

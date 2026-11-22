@@ -16,6 +16,7 @@ import {
 import { stateStyle, WeaknessTimeline } from "@ci/ui/timeline";
 import Link from "next/link";
 import { MorphArrival } from "../../../../../components/shared-morph";
+import { coachChatLive } from "../../../../../lib/coach-chat";
 import type { ChangeNoteView } from "../../../../../server/coaching";
 import type { CoachScope, WeaknessDetail } from "../../../../../server/profile";
 import { SectionHead } from "../../_overview/section-head";
@@ -204,9 +205,11 @@ function Header({ detail, scope, askHref }: Props & { askHref: string }) {
             <span>{AREA_LABEL[detail.area]}</span>
           </p>
         </div>
-        <Button asChild variant="outline" className="w-fit shrink-0">
-          <Link href={askHref}>Ask your coach about this</Link>
-        </Button>
+        {coachChatLive() ? (
+          <Button asChild variant="outline" className="w-fit shrink-0">
+            <Link href={askHref}>Ask your coach about this</Link>
+          </Button>
+        ) : null}
       </div>
     </header>
   );

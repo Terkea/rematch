@@ -212,6 +212,8 @@ const getWeakness = vi.fn();
 const getReport = vi.fn();
 const requireUser = vi.fn(async () => ({ id: "u1", email: "x@example.invalid" }));
 
+const chatLive = vi.fn(() => true);
+vi.mock("../../src/lib/coach-chat", () => ({ coachChatLive: () => chatLive() }));
 vi.mock("../../src/server/events/request-cursor", () => ({ requestEventCursor: async () => 0 }));
 vi.mock("../../src/server/auth/session", () => ({ requireUser }));
 vi.mock("../../src/server/db", () => ({ getDb: () => ({}) }));
@@ -416,6 +418,16 @@ describe("skill-area pages", { timeout: 30_000 }, () => {
     expect(
       screen.getByText("Example positions appear once your first report is built."),
     ).toBeInTheDocument();
+  });
+
+  it("no ask link while the chat pages are not live", async () => {
+    chatLive.mockReturnValue(false);
+    try {
+      await show("endgame");
+      expect(screen.queryByRole("link", { name: /Ask your coach/ })).toBeNull();
+    } finally {
+      chatLive.mockReturnValue(true);
+    }
   });
 
   it("shows the coach's note with its disclosure and asks about the area", async () => {

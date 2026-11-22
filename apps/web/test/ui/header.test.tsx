@@ -13,6 +13,8 @@ vi.mock("next/navigation", () => ({
 }));
 const signOut = vi.fn().mockResolvedValue({ data: { success: true }, error: null });
 vi.mock("../../src/lib/auth-client.js", () => ({ signOut: () => signOut() }));
+const chatLive = vi.fn(() => true);
+vi.mock("../../src/lib/coach-chat.js", () => ({ coachChatLive: () => chatLive() }));
 
 const { Header } = await import("../../src/app/(app)/_shell/header.js");
 const { navItems } = await import("../../src/app/(app)/_shell/nav.js");
@@ -175,6 +177,20 @@ describe("shell header", () => {
     ).toEqual(["Openings", "Middlegame", "Endgame", "Tactics", "Calculation", "Time", "Mindset"]);
     await userEvent.click(within(group).getByRole("option", { name: "Endgame" }));
     expect(push).toHaveBeenLastCalledWith("/app/areas/endgame");
+  });
+
+  it("hides Coach and Ask your coach while the chat pages are not live", async () => {
+    chatLive.mockReturnValue(false);
+    try {
+      renderHeader();
+      expect(screen.queryByRole("link", { name: "Coach" })).toBeNull();
+      await userEvent.click(screen.getByRole("button", { name: /Search/ }));
+      const menu = await screen.findByRole("dialog");
+      expect(within(menu).queryByRole("option", { name: "Ask your coach" })).toBeNull();
+      expect(within(menu).queryByText("Go to coach")).toBeNull();
+    } finally {
+      chatLive.mockReturnValue(true);
+    }
   });
 
   it("offers Ask your coach, which opens a new thread", async () => {

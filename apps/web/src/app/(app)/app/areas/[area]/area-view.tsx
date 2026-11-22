@@ -15,6 +15,7 @@ import { WeaknessTimeline } from "@ci/ui/timeline";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { CoachScopeSwitch } from "../../../../../components/coach-scope-switch";
+import { coachChatLive } from "../../../../../lib/coach-chat";
 import { segmentHref } from "../../../../../lib/segment-href";
 import { coachHref } from "../../../../../server/coach/anchor";
 import type { ReportView } from "../../../../../server/coaching";
@@ -343,7 +344,7 @@ function NotePart({ model }: { model: AreaPageModel }) {
   const anchor = payload
     ? ({ kind: "report_section", reportId: payload.reportId, section: "areas" } as const)
     : null;
-  const ask = (
+  const ask = coachChatLive() ? (
     <div>
       <Button
         asChild
@@ -353,7 +354,7 @@ function NotePart({ model }: { model: AreaPageModel }) {
         <Link href={coachHref(anchor, scope)}>Ask your coach about your {NOUN[area]}</Link>
       </Button>
     </div>
-  );
+  ) : null;
   return (
     <div className="flex flex-col gap-5">
       <Note area={area} report={report} scope={scope} />

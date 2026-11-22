@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isCurrent, navItems } from "../src/app/(app)/_shell/nav.js";
+import { isCurrent, navItems, shownNavItems } from "../src/app/(app)/_shell/nav.js";
 
 // The header's sections (M5b Task 11): the coach pages sit after "Games", before "Accounts".
 
@@ -33,5 +33,19 @@ describe("isCurrent", () => {
   it("does not mark a sibling that only shares a prefix", () => {
     expect(isCurrent("/app/weaknessesx", "/app/weaknesses")).toBe(false);
     expect(isCurrent("/app/coach/new", "/app")).toBe(false);
+  });
+});
+
+describe("shownNavItems", () => {
+  it("hides Coach while the chat pages are not live, so nothing links to a missing page", () => {
+    expect(shownNavItems(false).map((i) => i.label)).toEqual([
+      "Overview",
+      "Games",
+      "Report",
+      "Weaknesses",
+      "Progress",
+      "Accounts",
+    ]);
+    expect(shownNavItems(true)).toEqual(navItems);
   });
 });

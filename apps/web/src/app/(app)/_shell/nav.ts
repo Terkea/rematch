@@ -12,6 +12,11 @@ export const navItems = [
 
 export type NavItem = (typeof navItems)[number];
 
+/** The sections the header shows: Coach only once the chat pages are live (`coachChatLive`). */
+export function shownNavItems(chatLive: boolean): readonly NavItem[] {
+  return chatLive ? navItems : navItems.filter((i) => i.href !== "/app/coach");
+}
+
 /**
  * The sections a phone's nav row keeps (seven don't fit at 360px). The rest stay in the header
  * from `sm` up and, on a phone, move into the account menu ("More pages"), so the row never

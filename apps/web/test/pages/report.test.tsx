@@ -23,6 +23,8 @@ import { createTestSession, resetAuthTables, webTestDb } from "../helpers/sessio
 // The view is rendered to HTML as the server sends it and read back through a JSDOM document,
 // so the database helpers run in Node (the jsdom environment breaks their Buffer and file URLs).
 
+const chatLive = vi.fn(() => true);
+vi.mock("../../src/lib/coach-chat", () => ({ coachChatLive: () => chatLive() }));
 vi.mock("../../src/server/events/request-cursor", () => ({ requestEventCursor: async () => 0 }));
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
@@ -312,6 +314,14 @@ describe("report page", () => {
     expect(text.indexOf("Hanging pieces")).toBeLessThan(text.indexOf("Missed forks"));
     const ask = within(section).getAllByRole("link", { name: /Ask your coach/ });
     expect(ask[0]?.getAttribute("href")).toMatch(/^\/app\/coach\/new\?account=.*&anchor=/);
+  });
+
+  it("no ask link while the chat pages are not live", async () => {
+    chatLive.mockReturnValueOnce(false);
+    await previous();
+    const screen = within(render(<ReportView data={await data()} />).container);
+    const section = screen.getByRole("region", { name: "What's costing you games" });
+    expect(within(section).queryAllByRole("link", { name: /Ask your coach/ })).toEqual([]);
   });
 
   it("the climb plan lists drills by name with no train button", async () => {

@@ -7,7 +7,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { type ReactNode, useState } from "react";
 import { brand } from "../../../brand";
-import { isCurrent, navItems, onPhoneRow } from "./nav";
+import { coachChatLive } from "../../../lib/coach-chat";
+import { isCurrent, onPhoneRow, shownNavItems } from "./nav";
 import { NavCommandMenu } from "./nav-command-menu";
 import { ThemeToggle } from "./theme-toggle";
 import { UserMenu, useSignOut } from "./user-menu";
@@ -43,6 +44,7 @@ export function Header({
   const reduced = useReducedMotion();
   const [menuOpen, setMenuOpen] = useState(false);
   const signOut = useSignOut(signOutTo);
+  const sections = shownNavItems(coachChatLive());
 
   return (
     <header data-app-chrome="" className="sticky top-0 z-40 bg-paper">
@@ -59,7 +61,7 @@ export function Header({
           className="order-last -mx-3 basis-full md:order-none md:mx-0 md:basis-auto"
         >
           <ul className="flex items-center gap-1">
-            {navItems.map((item) => {
+            {sections.map((item) => {
               const current = isCurrent(pathname, item.href);
               return (
                 <li key={item.href} className={onPhoneRow(item.href) ? undefined : "max-sm:hidden"}>
@@ -103,7 +105,7 @@ export function Header({
             email={email}
             name={name}
             signOutTo={signOutTo}
-            morePages={navItems.filter((item) => !onPhoneRow(item.href))}
+            morePages={sections.filter((item) => !onPhoneRow(item.href))}
             pathname={pathname}
           />
         </div>

@@ -4,7 +4,8 @@ import { type Area, areaLabels } from "@ci/ui/area-score";
 import { CommandMenu, type CommandMenuItem } from "@ci/ui/overlays";
 import { useRouter } from "next/navigation";
 import { useMemo } from "react";
-import { navItems } from "./nav";
+import { coachChatLive } from "../../../lib/coach-chat";
+import { shownNavItems } from "./nav";
 import { useThemeFlip } from "./theme-toggle";
 
 export interface NavCommandMenuProps {
@@ -22,7 +23,7 @@ export function NavCommandMenu({ open, onOpenChange, onSignOut }: NavCommandMenu
   const theme = useThemeFlip();
   const items = useMemo<CommandMenuItem[]>(
     () => [
-      ...navItems.map((item) => ({
+      ...shownNavItems(coachChatLive()).map((item) => ({
         id: `go:${item.href}`,
         label: `Go to ${item.label.toLowerCase()}`,
         group: "Pages",
@@ -47,13 +48,17 @@ export function NavCommandMenu({ open, onOpenChange, onSignOut }: NavCommandMenu
         keywords: ["area", "skill"],
         onSelect: () => router.push(`/app/areas/${area}`),
       })),
-      {
-        id: "coach:new",
-        label: "Ask your coach",
-        group: "Coach",
-        keywords: ["question", "chat", "ask"],
-        onSelect: () => router.push("/app/coach/new"),
-      },
+      ...(coachChatLive()
+        ? [
+            {
+              id: "coach:new",
+              label: "Ask your coach",
+              group: "Coach",
+              keywords: ["question", "chat", "ask"],
+              onSelect: () => router.push("/app/coach/new"),
+            },
+          ]
+        : []),
       {
         id: "go:/licenses",
         label: "Go to licences",
