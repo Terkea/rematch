@@ -261,6 +261,8 @@ export const aiUsage = pgTable(
     refId: text("ref_id"),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
     idempotencyKey: text("idempotency_key"),
+    // You can use { mode: "bigint" } if numbers are exceeding js number limitations
+    sdkEstimateMicroUsd: bigint("sdk_estimate_micro_usd", { mode: "number" }),
   },
   (table) => [
     index("ai_usage_account_idx").using(
