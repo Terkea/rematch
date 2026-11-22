@@ -102,6 +102,9 @@ pub const EVAL_LOST_AFTER: Duration = Duration::from_secs(2 * 60);
 pub const ORPHAN_SESSION_GRACE: Duration = chat::ORPHAN_SESSION_MIN_AGE;
 /// The orphan sweep stops starting new pages after this long (the next sweep continues).
 pub const ORPHAN_SWEEP_BUDGET: Duration = Duration::from_secs(60);
+/// The whole sweep starts no new step after this long; the skipped steps run next sweep. Below
+/// the runner's 5 min hard timeout, so a slow sweep ends on its own terms.
+pub const SWEEP_DEADLINE: Duration = Duration::from_secs(4 * 60);
 /// Reconciler repairs of one row before it is failed instead (the crash cap).
 pub const RECONCILE_CAP: i16 = 3;
 /// `report_runs.last_error` (and the `job.failed` reason) of a row failed by the crash cap.
@@ -126,6 +129,8 @@ pub struct AiReconcileCounts {
     pub evals: u32,
     pub capped: u32,
     pub session_entries: u64,
+    /// Steps not started because the sweep passed [`SWEEP_DEADLINE`].
+    pub skipped_steps: u32,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -539,6 +544,18 @@ pub async fn reconcile_ai_paged(
     now: OffsetDateTime,
     page_size: i64,
 ) -> Result<AiReconcileCounts, AiReconcileError> {
+    reconcile_ai_within(pool, queue, now, page_size, SWEEP_DEADLINE).await
+}
+
+/// [`reconcile_ai_paged`] that starts no step once `deadline` has passed since it began.
+pub async fn reconcile_ai_within(
+    pool: &PgPool,
+    queue: &Queue,
+    now: OffsetDateTime,
+    page_size: i64,
+    deadline: Duration,
+) -> Result<AiReconcileCounts, AiReconcileError> {
+    let started = tokio::time::Instant::now();
     let s = Sweep {
         pool,
         queue,
@@ -549,7 +566,10 @@ pub async fn reconcile_ai_paged(
     let mut errors = Vec::new();
     macro_rules! step {
         ($name:literal, $call:expr) => {
-            if let Err(e) = $call.await {
+            if started.elapsed() >= deadline {
+                tracing::warn!(step = $name, "ai reconcile: sweep deadline passed; step skipped");
+                c.skipped_steps += 1;
+            } else if let Err(e) = $call.await {
                 tracing::warn!(step = $name, error = %e, "ai reconcile step failed");
                 errors.push(($name, e));
             }
@@ -590,6 +610,7 @@ pub async fn reconcile_ai_paged(
         evals = c.evals,
         capped = c.capped,
         session_entries = c.session_entries,
+        skipped_steps = c.skipped_steps,
         failed_steps = errors.len(),
         "ai reconcile sweep"
     );
