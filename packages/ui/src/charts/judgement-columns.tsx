@@ -1,10 +1,17 @@
 "use client";
 
 import { Responsive } from "@visx/visx";
-import { useId } from "react";
+import { type KeyboardEvent, useId, useLayoutEffect, useRef, useState } from "react";
 import { cn } from "../lib/index.js";
 import { ChartPatterns, patternFill } from "./patterns.js";
-import { CELL_GAP, COLUMNS_MIN_ROWS, cellHeight, columnsWidth } from "./scales.js";
+import {
+  CELL_GAP,
+  COLUMNS_MIN_ROWS,
+  cellHeight,
+  columnsWidth,
+  countText,
+  whole,
+} from "./scales.js";
 
 export interface JudgementColumnsGame {
   id: string;
@@ -17,7 +24,7 @@ export interface JudgementColumnsGame {
 }
 
 export interface JudgementColumnsProps {
-  /** One entry per game, oldest first: the oldest is drawn on the left. */
+  /** One entry per game, oldest first: the oldest is drawn on the left, the latest on the right. */
   games: JudgementColumnsGame[];
   /** Accessible name of the chart. */
   label: string;
@@ -29,20 +36,8 @@ type Kind = "blunder" | "mistake" | "inaccuracy";
 /** The widest a column gets, so a handful of games stay unit columns rather than slabs. */
 const COLUMN_MAX_W = 24;
 const IGNORED_DIMENSIONS: ("height" | "top" | "left")[] = ["height", "top", "left"];
-
-const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-
-const countText = (g: JudgementColumnsGame) =>
-  g.blunders + g.mistakes + g.inaccuracies === 0
-    ? "no marked moves"
-    : [
-        plural(g.blunders, "blunder", "blunders"),
-        plural(g.mistakes, "mistake", "mistakes"),
-        plural(g.inaccuracies, "inaccuracy", "inaccuracies"),
-      ].join(", ");
-
-/** Non-negative whole counts only: a bad count never draws a negative or fractional cell. */
-const whole = (n: number) => (Number.isFinite(n) && n > 0 ? Math.floor(n) : 0);
+/** When the columns scroll, the oldest edge fades over this many px: there is more history. */
+const EDGE_FADE = 24;
 
 /** A move's cell. Blunders are solid pen, mistakes pen hatch, inaccuracies a pencil outline. */
 function Cell({
@@ -54,14 +49,14 @@ function Cell({
   prefix,
   swatch = false,
 }: {
-  /** A legend swatch carries no `data-cell`, so only the chart's own cells count. */
-  swatch?: boolean;
   kind: Kind;
   x: number;
   y: number;
   w: number;
   h: number;
   prefix: string;
+  /** A legend swatch carries no `data-cell`, so only the chart's own cells count. */
+  swatch?: boolean;
 }) {
   if (kind === "blunder") {
     return (
@@ -103,17 +98,47 @@ function Swatch({ kind, prefix }: { kind: Kind; prefix: string }) {
 /**
  * The player's own judged moves per game, one column per game and one cell per move, stacked
  * from the baseline: blunders, then mistakes, then inaccuracies. Counting cells gives the exact
- * number, so the chart needs no value axis. Red means "your mistake" here, as everywhere. Each
- * column links to its game's review. Below 480px the columns keep a 12px least width and the
- * chart scrolls inside its own container, never the page.
+ * number, so the chart needs no value axis. Red means "your mistake" here, as everywhere.
+ *
+ * The latest game sits at the right edge. Below 480px the columns keep a 12px least width, the
+ * chart scrolls inside its own container (never the page) and opens scrolled to the latest
+ * games. Each column links to its game's review and is described by its counts; the columns are
+ * one tab stop, with arrow keys, Home and End between games. Cells shrink to fit a tall column
+ * down to 2px; a game with more than about 33 marked moves draws taller than the usual 132px.
  */
 export function JudgementColumns({ games, label, className }: JudgementColumnsProps) {
-  const prefix = `jc${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
+  const uid = useId().replace(/[^a-zA-Z0-9]/g, "");
+  const prefix = `jc${uid}`;
   const { parentRef, width: measured } = Responsive.useParentSize({
     debounceTime: 50,
     enableDebounceLeadingCall: true,
     ignoreDimensions: IGNORED_DIMENSIONS,
   });
+  const scroller = useRef<HTMLElement | null>(null);
+  const links = useRef<(HTMLAnchorElement | null)[]>([]);
+  const [active, setActive] = useState<number | null>(null);
+
+  const svgW = columnsWidth(measured, games.length);
+  const scrolls = measured > 0 && svgW > measured;
+
+  // Open on the latest games: the right end of the scroll, on mount and whenever they change.
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    if (el && games.length > 0 && svgW > 0) el.scrollLeft = el.scrollWidth;
+  }, [games, svgW]);
+
+  if (games.length === 0) {
+    return (
+      <div
+        className={cn(
+          "flex h-24 items-center justify-center rounded-field bg-well px-4 text-center",
+          className,
+        )}
+      >
+        <p className="m-0 text-sm text-ink-soft">No analysed games yet</p>
+      </div>
+    );
+  }
 
   const counts = games.map((g) => ({
     game: g,
@@ -126,23 +151,72 @@ export function JudgementColumns({ games, label, className }: JudgementColumnsPr
   const plotH = Math.ceil(Math.max(tallest, COLUMNS_MIN_ROWS) * (cellH + CELL_GAP));
   const baseline = plotH;
   const height = plotH + 1;
-  const svgW = columnsWidth(measured, games.length);
-  const colW = games.length ? Math.min(COLUMN_MAX_W, svgW / games.length) : 0;
+  const colW = Math.min(COLUMN_MAX_W, svgW / games.length);
+  const offset = svgW - colW * games.length;
   const cellW = Math.max(2, colW - CELL_GAP);
+  const total = counts.reduce(
+    (t, c) => ({
+      blunders: t.blunders + c.blunders,
+      mistakes: t.mistakes + c.mistakes,
+      inaccuracies: t.inaccuracies + c.inaccuracies,
+    }),
+    { blunders: 0, mistakes: 0, inaccuracies: 0 },
+  );
+  const current = Math.min(active ?? games.length - 1, games.length - 1);
+  const descId = (i: number) => `${uid}-desc-${i}`;
+
+  const onKeyDown = (event: KeyboardEvent<HTMLAnchorElement>, i: number) => {
+    const last = games.length - 1;
+    const next =
+      event.key === "ArrowLeft"
+        ? Math.max(0, i - 1)
+        : event.key === "ArrowRight"
+          ? Math.min(last, i + 1)
+          : event.key === "Home"
+            ? 0
+            : event.key === "End"
+              ? last
+              : null;
+    if (next === null) return;
+    event.preventDefault();
+    setActive(next);
+    links.current[next]?.focus();
+  };
 
   return (
     <div className={cn("relative flex flex-col gap-3", className)}>
       <ChartPatterns prefix={prefix} />
+      <p className="sr-only">
+        {`${games.length} ${games.length === 1 ? "game" : "games"}: ${countText(total)}.`}
+      </p>
+      <ul className="sr-only">
+        {counts.map((c, i) => (
+          <li key={c.game.id} id={descId(i)}>
+            {countText(c)}
+          </li>
+        ))}
+      </ul>
       <figure
-        ref={parentRef}
+        ref={(el) => {
+          parentRef(el as HTMLDivElement | null);
+          scroller.current = el;
+        }}
         aria-label={label}
         data-part="scroller"
         className="m-0 w-full overflow-x-auto pb-1"
+        style={
+          scrolls
+            ? {
+                maskImage: `linear-gradient(to right, transparent, black ${EDGE_FADE}px)`,
+                WebkitMaskImage: `linear-gradient(to right, transparent, black ${EDGE_FADE}px)`,
+              }
+            : undefined
+        }
       >
         <svg width={svgW} height={height} className="block overflow-visible">
           <title>{label}</title>
           {counts.map((c, i) => {
-            const x = i * colW;
+            const x = offset + i * colW;
             const cx = x + CELL_GAP / 2;
             // Each cell's slot is its height above the baseline, and its stable key.
             const kinds = [
@@ -153,12 +227,19 @@ export function JudgementColumns({ games, label, className }: JudgementColumnsPr
             return (
               <a
                 key={c.game.id}
+                ref={(el) => {
+                  links.current[i] = el;
+                }}
                 href={c.game.href}
                 aria-label={c.game.label}
+                aria-describedby={descId(i)}
+                tabIndex={i === current ? 0 : -1}
+                onFocus={() => setActive(i)}
+                onKeyDown={(e) => onKeyDown(e, i)}
                 data-x={x}
+                data-w={colW}
                 className="group outline-none"
               >
-                <title>{`${c.game.label}: ${countText(c.game)}`}</title>
                 {/* Hover moves one step down the tonal ladder; focus gets the ink ring. */}
                 <rect
                   x={x}

@@ -89,6 +89,91 @@ export function runs<T>(items: T[], has: (item: T) => boolean): T[][] {
   return out;
 }
 
+/** How far a tap or click reaches for its nearest dot, in px. */
+export const HIT_RADIUS = { fine: 12, coarse: 22 } as const;
+
+/**
+ * Over half a game per px of plot, dots stay at the fine radius and step one tone down, so the
+ * mean line stays the strongest mark (the nearest-dot overlay keeps them reachable by touch).
+ */
+export function isDense(count: number, width: number): boolean {
+  const plot = Math.max(1, width - TREND_LEFT - TREND_RIGHT);
+  return count / plot > 0.5;
+}
+
+/**
+ * The index of the dot nearest (x, y) within `radius`, or null. `dots` are in x order, so a
+ * binary search finds the window and only dots within `radius` of x are measured.
+ */
+export function nearestIndex(
+  dots: readonly { x: number; y: number }[],
+  x: number,
+  y: number,
+  radius: number,
+): number | null {
+  let lo = 0;
+  let hi = dots.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if ((dots[mid]?.x ?? 0) < x - radius) lo = mid + 1;
+    else hi = mid;
+  }
+  let best: number | null = null;
+  let bestD = radius * radius;
+  for (let i = lo; i < dots.length; i++) {
+    const d = dots[i] as { x: number; y: number };
+    if (d.x > x + radius) break;
+    const dist = (d.x - x) ** 2 + (d.y - y) ** 2;
+    if (dist <= bestD) {
+      bestD = dist;
+      best = i;
+    }
+  }
+  return best;
+}
+
+/** "12 Nov 2026", in UTC (ruling R6). */
+export function dayText(date: Date): string {
+  return `${date.getUTCDate()} ${MONTHS[date.getUTCMonth()]} ${date.getUTCFullYear()}`;
+}
+
+/**
+ * The trend in words for screen readers: the games and their span, then the latest rolling
+ * average with its 80% band, ends rounded outward (DESIGN.md "KPI stats").
+ */
+export function trendSummary(
+  games: readonly { id: string; time: Date }[],
+  rolling: readonly { id: string; mean: number; low: number | null; high: number | null }[],
+): string {
+  const first = games[0];
+  const last = games[games.length - 1];
+  if (!first || !last) return "";
+  const n = games.length;
+  let text = `${n} ${n === 1 ? "game" : "games"}, ${dayText(first.time)} to ${dayText(last.time)}.`;
+  const byId = new Map(rolling.map((r) => [r.id, r]));
+  for (let i = games.length - 1; i >= 0; i--) {
+    const g = games[i] as { id: string; time: Date };
+    const r = byId.get(g.id);
+    if (!r || !Number.isFinite(r.mean)) continue;
+    text += ` Rolling average ${r.mean.toFixed(1)}% on ${dayText(g.time)}`;
+    const { low, high } = r;
+    if (
+      low !== null &&
+      high !== null &&
+      Number.isFinite(low) &&
+      Number.isFinite(high) &&
+      high > low
+    ) {
+      const lo = (Math.floor(low * 10) / 10).toFixed(1);
+      const hi = (Math.ceil(high * 10) / 10).toFixed(1);
+      text += `, 80% likely between ${lo}% and ${hi}%`;
+    }
+    text += ".";
+    break;
+  }
+  return text;
+}
+
 // --- Judgement columns ------------------------------------------------------------------------
 
 /** Below this container width the columns keep their least width and scroll (480 / 40 games). */
@@ -117,6 +202,19 @@ export function cellHeight(maxCells: number): number {
 // --- Copy -------------------------------------------------------------------------------------
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/** A count as whole games or moves: a negative, fractional or non-finite count never draws. */
+export const whole = (n: number) => (Number.isFinite(n) && n > 0 ? Math.floor(n) : 0);
+
+/** "2 blunders, 1 mistake, 3 inaccuracies", or "no marked moves". */
+export function countText(c: { blunders: number; mistakes: number; inaccuracies: number }): string {
+  if (c.blunders + c.mistakes + c.inaccuracies === 0) return "no marked moves";
+  return [
+    plural(c.blunders, "blunder", "blunders"),
+    plural(c.mistakes, "mistake", "mistakes"),
+    plural(c.inaccuracies, "inaccuracy", "inaccuracies"),
+  ].join(", ");
+}
 
 /** "8 wins, 2 draws, 4 losses", with singular forms. */
 export function resultText(wins: number, draws: number, losses: number): string {

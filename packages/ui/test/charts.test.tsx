@@ -7,6 +7,8 @@ import {
   JudgementColumns,
   ResultSplit,
   resultText,
+  TREND_PLOT_H,
+  TREND_TOP,
 } from "../src/charts/index.js";
 
 /** The width the ResizeObserver stub reports. */
@@ -188,8 +190,142 @@ describe("AccuracyTrend", () => {
     const svg = container.querySelector("svg[role='img']") as SVGElement;
     // The clip rect is at its final width on the first render.
     expect(svg.style.getPropertyValue("--draw")).toBe("1");
-    const rect = container.querySelector("clipPath rect");
-    expect(rect?.getAttribute("width")).toBe(String(640));
+    expect(container.querySelector("clipPath rect")?.getAttribute("width")).toBe("640");
+  });
+
+  it("starts the clip rect at zero width when drawing in", async () => {
+    stubMedia();
+    const { container } = await renderTrend({ points: points(["win", "loss"]), drawIn: true });
+    expect(container.querySelector("clipPath rect")?.getAttribute("width")).toBe("0");
+  });
+
+  it("clips the band and the mean line to the reveal", async () => {
+    const pts = points(["win", "win", "loss"]);
+    const rolling = pts.map((p) => ({ id: p.id, mean: 70, low: 65, high: 75 }));
+    const { container } = await renderTrend({ points: pts, rolling });
+    for (const part of ["band", "mean"]) {
+      const el = container.querySelector(`[data-part="${part}"]`);
+      expect(el?.closest("g[clip-path]")).not.toBeNull();
+    }
+  });
+
+  it("puts higher accuracy higher, with 0% and 100% on the plot's edges", async () => {
+    const pts = points(["win", "win", "win", "win"]);
+    const acc = [90, 50, 0, 100];
+    pts.forEach((p, i) => {
+      p.accuracy = acc[i] as number;
+    });
+    const { container } = await renderTrend({ points: pts });
+    const cy = (id: string) =>
+      Number(container.querySelector(`[data-id="${id}"]`)?.getAttribute("data-cy"));
+    expect(cy("g0")).toBeLessThan(cy("g1"));
+    expect(cy("g3")).toBe(TREND_TOP);
+    expect(cy("g2")).toBe(TREND_TOP + TREND_PLOT_H);
+  });
+
+  it("orders games by date whatever the input order", async () => {
+    const pts = points(["win", "loss", "draw", "win"]).reverse();
+    const { container } = await renderTrend({ points: pts });
+    const ids = [...container.querySelectorAll("[data-result]")].map((m) =>
+      m.getAttribute("data-id"),
+    );
+    expect(ids).toEqual(["g0", "g1", "g2", "g3"]);
+    const xs = [...container.querySelectorAll("[data-result]")].map((m) =>
+      Number(m.getAttribute("data-cx")),
+    );
+    expect([...xs].sort((a, b) => a - b)).toEqual(xs);
+    const first = screen.getByRole("button", { name: "Game 1, win" });
+    first.focus();
+    fireEvent.keyDown(first, { key: "ArrowRight" });
+    expect(screen.getByRole("button", { name: "Game 2, loss" })).toHaveFocus();
+  });
+
+  it("draws a loss as an ink-soft ring", async () => {
+    const { container } = await renderTrend({ points: points(["win", "loss"]) });
+    const ring = container.querySelector('[data-result="loss"] [data-part="ring"]');
+    expect(ring?.getAttribute("class")).toContain("stroke-ink-soft");
+  });
+
+  it("draws no band where an interval end is null, and keeps the mean", async () => {
+    const pts = points(["win", "win", "loss", "draw", "win", "loss"]);
+    const rolling = pts.map((p, i) => ({
+      id: p.id,
+      mean: 70,
+      low: i === 2 || i === 3 ? null : 65,
+      high: i === 3 ? null : 75,
+    }));
+    const { container } = await renderTrend({ points: pts, rolling });
+    const bands = [...container.querySelectorAll('[data-part="band"]')];
+    expect(container.querySelectorAll('[data-part="mean"]')).toHaveLength(1);
+    expect(bands).toHaveLength(2);
+    // Never a band along 0%: the plot's bottom edge.
+    for (const b of bands) {
+      expect(b.getAttribute("d")).not.toContain(`,${TREND_TOP + TREND_PLOT_H}`);
+    }
+  });
+
+  it("leaves out a game whose accuracy is not a number, and says so", async () => {
+    const pts = points(["win", "loss", "draw"]);
+    (pts[1] as Point).accuracy = Number.NaN;
+    const { container } = await renderTrend({ points: pts });
+    expect(container.querySelectorAll("[data-result]")).toHaveLength(2);
+    expect(container.querySelectorAll('[data-result="loss"]')).toHaveLength(0);
+    expect(screen.queryByText(/Loss \d/)).toBeNull();
+    expect(screen.getByText("1 game has no accuracy and isn't shown.")).toBeInTheDocument();
+  });
+
+  it("summarises the trend for screen readers", async () => {
+    const pts = points(["win", "loss", "draw"]);
+    const rolling = [{ id: "g2", mean: 71.26, low: 68.04, high: 74.4 }];
+    await renderTrend({ points: pts, rolling });
+    expect(
+      screen.getByText(
+        "3 games, 1 Jan 2026 to 3 Jan 2026. Rolling average 71.3% on 3 Jan 2026, 80% likely between 68.0% and 74.4%.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("tones dots down and keeps them small when they are dense", async () => {
+    measured = 320;
+    stubMedia({ coarse: true });
+    const { container } = await renderTrend({
+      points: points(Array.from({ length: 500 }, () => "win" as Result)),
+    });
+    const fill = container.querySelector('[data-result="win"] [data-part="fill"]');
+    expect(fill?.getAttribute("r")).toBe("3");
+    expect(fill?.getAttribute("class")).toContain("fill-ink-soft");
+  });
+
+  it("leaves pointer hits to one overlay, not the dot buttons", async () => {
+    await renderTrend({ points: points(["win", "loss"]) });
+    for (const b of screen.getAllByRole("button")) {
+      expect(b.className).toContain("pointer-events-none");
+    }
+  });
+
+  it("opens the nearest game to a tap, then steps with Previous and Next", async () => {
+    stubMedia({ coarse: true });
+    const { container } = await renderTrend({ points: points(["win", "loss", "draw"]) });
+    const mark = container.querySelector('[data-id="g1"]');
+    const x = Number(mark?.getAttribute("data-cx"));
+    const y = Number(mark?.getAttribute("data-cy"));
+    const overlay = container.querySelector('[data-part="hit"]') as HTMLElement;
+    fireEvent.click(overlay, { clientX: x + 8, clientY: y + 6 });
+    expect(await screen.findByText("Game 2, loss", { selector: "p" })).toBeInTheDocument();
+    expect(container.querySelector('[data-part="selected"]')).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Next game" }));
+    expect(await screen.findByText("Game 3, draw", { selector: "p" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Next game" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Previous game" }));
+    fireEvent.click(screen.getByRole("button", { name: "Previous game" }));
+    expect(await screen.findByText("Game 1, win", { selector: "p" })).toBeInTheDocument();
+  });
+
+  it("ignores a tap far from every game", async () => {
+    const { container } = await renderTrend({ points: points(["win", "loss"]) });
+    const overlay = container.querySelector('[data-part="hit"]') as HTMLElement;
+    fireEvent.click(overlay, { clientX: 600, clientY: 190 });
+    expect(screen.queryByRole("link", { name: "Review game" })).toBeNull();
   });
 });
 
@@ -264,7 +400,81 @@ describe("JudgementColumns", () => {
   });
 });
 
+describe("JudgementColumns, honesty and access", () => {
+  it("says so when there are no games, with no plot or legend", () => {
+    const { container } = render(<JudgementColumns games={[]} label="Mistakes" />);
+    expect(screen.getByText("No analysed games yet")).toBeInTheDocument();
+    expect(container.querySelector("svg")).toBeNull();
+    expect(screen.queryByText("Blunder")).toBeNull();
+  });
+
+  it("describes each column's counts and the total for screen readers", () => {
+    render(<JudgementColumns games={[game(1, 2, 1, 3), game(2, 0, 0, 0)]} label="Mistakes" />);
+    const link = screen.getByRole("link", { name: "Game 1" });
+    expect(link).toHaveAccessibleDescription("2 blunders, 1 mistake, 3 inaccuracies");
+    expect(screen.getByRole("link", { name: "Game 2" })).toHaveAccessibleDescription(
+      "no marked moves",
+    );
+    expect(screen.getByText("2 games: 2 blunders, 1 mistake, 3 inaccuracies.")).toBeInTheDocument();
+  });
+
+  it("is one tab stop, starting on the latest game, with arrow keys between games", () => {
+    render(
+      <JudgementColumns
+        games={[game(1, 1, 0, 0), game(2, 0, 1, 0), game(3, 0, 0, 1)]}
+        label="Mistakes"
+      />,
+    );
+    const links = screen.getAllByRole("link");
+    expect(links.filter((l) => l.getAttribute("tabindex") === "0")).toHaveLength(1);
+    const latest = screen.getByRole("link", { name: "Game 3" });
+    expect(latest).toHaveAttribute("tabindex", "0");
+    latest.focus();
+    fireEvent.keyDown(latest, { key: "ArrowLeft" });
+    expect(screen.getByRole("link", { name: "Game 2" })).toHaveFocus();
+    fireEvent.keyDown(document.activeElement as Element, { key: "Home" });
+    expect(screen.getByRole("link", { name: "Game 1" })).toHaveFocus();
+  });
+
+  it("puts the latest game at the right edge", async () => {
+    measured = 900;
+    const { container } = render(
+      <JudgementColumns games={[game(1, 1, 0, 0), game(2, 0, 1, 0)]} label="Mistakes" />,
+    );
+    await nextFrame();
+    const svg = container.querySelector("[data-part='scroller'] > svg");
+    const last = screen.getByRole("link", { name: "Game 2" });
+    const w = Number(last.getAttribute("data-w"));
+    expect(Number(last.getAttribute("data-x")) + w).toBeCloseTo(Number(svg?.getAttribute("width")));
+  });
+
+  it("opens scrolled to the latest games", async () => {
+    measured = 320;
+    const set = vi.fn();
+    const proto = HTMLElement.prototype;
+    Object.defineProperty(proto, "scrollWidth", { configurable: true, get: () => 480 });
+    Object.defineProperty(proto, "scrollLeft", { configurable: true, get: () => 0, set });
+    try {
+      const games = Array.from({ length: 40 }, (_, i) => game(i, 1, 0, 0));
+      render(<JudgementColumns games={games} label="Mistakes" />);
+      await nextFrame();
+      expect(set).toHaveBeenLastCalledWith(480);
+    } finally {
+      Reflect.deleteProperty(proto, "scrollWidth");
+      Reflect.deleteProperty(proto, "scrollLeft");
+    }
+  });
+});
+
 describe("ResultSplit", () => {
+  it("treats a negative or fractional count as whole games only", () => {
+    const { container } = render(
+      <ResultSplit rows={[{ key: "rapid", label: "Rapid", wins: -2, draws: 1.6, losses: 1 }]} />,
+    );
+    expect(screen.getByText("0 wins, 1 draw, 1 loss")).toBeInTheDocument();
+    expect(container.querySelector('[data-segment="wins"]')).toBeNull();
+  });
+
   it("states the split in words and sizes the win segment", () => {
     const { container } = render(
       <ResultSplit rows={[{ key: "rapid", label: "Rapid", wins: 8, draws: 2, losses: 4 }]} />,

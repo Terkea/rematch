@@ -102,7 +102,7 @@ function syntheticTrend(): { points: AccuracyTrendPoint[]; rolling: AccuracyTren
     });
   }
   // A trailing 20-game window, shown once it holds 10 games played within 30 days of each other,
-  // so the break leaves a real gap. The band is the mean ± z(0.8) standard errors.
+  // so the break leaves a real gap. The band is the mean ± z(0.8) standard errors, clamped.
   const rolling: AccuracyTrendRolling[] = [];
   points.forEach((p, i) => {
     const end = new Date(p.date).getTime();
@@ -114,7 +114,14 @@ function syntheticTrend(): { points: AccuracyTrendPoint[]; rolling: AccuracyTren
     const mean = window.reduce((a, b) => a + b, 0) / window.length;
     const sd = Math.sqrt(window.reduce((a, b) => a + (b - mean) ** 2, 0) / (window.length - 1));
     const half = (1.2815515655446004 * sd) / Math.sqrt(window.length);
-    rolling.push({ id: p.id, mean, low: mean - half, high: mean + half });
+    // As Task 2's rolling mean: clamped to 0 to 100, and no band at all when there is no spread.
+    const band = half > 0;
+    rolling.push({
+      id: p.id,
+      mean,
+      low: band ? Math.max(0, mean - half) : null,
+      high: band ? Math.min(100, mean + half) : null,
+    });
   });
   return { points, rolling };
 }
@@ -231,6 +238,13 @@ export function ChartsSection() {
         note="Synthetic example: 40 made-up games. On a narrow screen the chart scrolls on its own."
       >
         <JudgementColumns games={syntheticColumns} label="Mistakes in 40 synthetic games" />
+      </Example>
+
+      <Example
+        title="Mistakes with no games"
+        note="With no analysed games there is nothing to count."
+      >
+        <JudgementColumns games={[]} label="Mistakes, no games" />
       </Example>
 
       <Example

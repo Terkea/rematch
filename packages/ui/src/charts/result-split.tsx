@@ -3,7 +3,7 @@
 import { useId } from "react";
 import { cn } from "../lib/index.js";
 import { ChartPatterns, patternFill } from "./patterns.js";
-import { resultText, share } from "./scales.js";
+import { resultText, share, whole } from "./scales.js";
 
 export interface ResultSplitRow {
   key: string;
@@ -15,6 +15,11 @@ export interface ResultSplitRow {
 }
 
 export interface ResultSplitProps {
+  /**
+   * One row per group. Counts are taken as whole games (negative or fractional counts read as
+   * whole games only). Rows with no games are skipped, and with none at all the component
+   * renders nothing: the host owns that empty state.
+   */
   rows: ResultSplitRow[];
   className?: string;
 }
@@ -29,7 +34,9 @@ const SEGMENTS = ["wins", "draws", "losses"] as const;
  */
 export function ResultSplit({ rows, className }: ResultSplitProps) {
   const prefix = `rs${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
-  const shown = rows.filter((r) => r.wins + r.draws + r.losses > 0);
+  const shown = rows
+    .map((r) => ({ ...r, wins: whole(r.wins), draws: whole(r.draws), losses: whole(r.losses) }))
+    .filter((r) => r.wins + r.draws + r.losses > 0);
   if (shown.length === 0) return null;
 
   return (

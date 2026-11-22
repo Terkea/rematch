@@ -4,6 +4,10 @@ import { Responsive, Shape } from "@visx/visx";
 import {
   type CSSProperties,
   type KeyboardEvent,
+  type MouseEvent,
+  memo,
+  type PointerEvent,
+  useCallback,
   useEffect,
   useId,
   useMemo,
@@ -11,20 +15,24 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import { CaretLeftIcon, CaretRightIcon, Icon } from "../icons/index.js";
 import { cn } from "../lib/index.js";
 import { animate, dur, ease, motion, useMotionValue, useReducedMotion } from "../motion/index.js";
 import { Popover, PopoverContent, PopoverTrigger } from "../primitives/index.js";
-import { touchTarget } from "../primitives/touch.js";
 import {
   ACCURACY_TICKS,
   DOT_R,
   dateTicks,
+  HIT_RADIUS,
+  isDense,
+  nearestIndex,
   runs,
   TREND_HEIGHT,
   TREND_LEFT,
   TREND_PLOT_H,
   TREND_TOP,
   timeScale,
+  trendSummary,
   yForAccuracy,
 } from "./scales.js";
 
@@ -34,7 +42,7 @@ export interface AccuracyTrendPoint {
   id: string;
   /** ISO date-time the game was played. */
   date: string;
-  /** The player's accuracy in the game, 0 to 100. */
+  /** The player's accuracy in the game, 0 to 100. A non-finite value is left out, and counted. */
   accuracy: number;
   result: TrendResult;
   /** One line about the game, shown when its dot is opened and used as its accessible name. */
@@ -47,11 +55,13 @@ export interface AccuracyTrendRolling {
   /** The point (game) this window ends on. */
   id: string;
   mean: number;
-  low: number;
-  high: number;
+  /** The 80% band's ends. Null when the window has no spread: the mean is drawn, no band. */
+  low: number | null;
+  high: number | null;
 }
 
 export interface AccuracyTrendProps {
+  /** The games, in any order: they are drawn and walked in date order. */
   points: AccuracyTrendPoint[];
   /** The rolling mean and its band, one entry per game that has a full enough window. */
   rolling: AccuracyTrendRolling[];
@@ -81,21 +91,27 @@ const coarseSnapshot = () =>
     ? window.matchMedia(COARSE).matches
     : false;
 
-/** True on a touch screen, where dots grow to stay findable. The server render assumes fine. */
+/** True on a touch screen, where taps reach further. The server render assumes fine. */
 function useCoarsePointer(): boolean {
   return useSyncExternalStore(subscribeCoarse, coarseSnapshot, () => false);
 }
 
-const clamp100 = (v: number) => (Number.isFinite(v) ? Math.min(100, Math.max(0, v)) : 0);
+const finite = (v: number | null): v is number => v !== null && Number.isFinite(v);
+const clamp100 = (v: number) => Math.min(100, Math.max(0, v));
 
-/** One game's mark, by result (R11): filled, half-filled, a ring, or a cross. */
-function Dot({ result, r }: { result: TrendResult; r: number }) {
+/**
+ * One game's mark, by result (R11): filled, half-filled, a ring, or a cross. `soft` steps every
+ * tone down one (dense plots), so the mean line stays the strongest mark.
+ */
+function Dot({ result, r, soft = false }: { result: TrendResult; r: number; soft?: boolean }) {
   const halo = <circle r={r + 1.5} style={{ fill: SURFACE }} />;
+  const ink = soft ? "fill-ink-soft" : "fill-ink";
+  const inkStroke = soft ? "stroke-ink-soft" : "stroke-ink";
   if (result === "win") {
     return (
       <>
         {halo}
-        <circle data-part="fill" r={r} className="fill-ink" />
+        <circle data-part="fill" r={r} className={ink} />
       </>
     );
   }
@@ -104,8 +120,8 @@ function Dot({ result, r }: { result: TrendResult; r: number }) {
     return (
       <>
         {halo}
-        <path data-part="half" d={`M0,${-r}A${r},${r} 0 0 0 0,${r}Z`} className="fill-ink" />
-        <circle data-part="ring" r={r - 0.6} strokeWidth={1.2} fill="none" className="stroke-ink" />
+        <path data-part="half" d={`M0,${-r}A${r},${r} 0 0 0 0,${r}Z`} className={ink} />
+        <circle data-part="ring" r={r - 0.6} strokeWidth={1.2} fill="none" className={inkStroke} />
       </>
     );
   }
@@ -118,7 +134,7 @@ function Dot({ result, r }: { result: TrendResult; r: number }) {
           r={r - 0.6}
           strokeWidth={1.2}
           fill="none"
-          className="stroke-ink-soft"
+          className={soft ? "stroke-rule-strong" : "stroke-ink-soft"}
         />
       </>
     );
@@ -145,11 +161,103 @@ const LEGEND: { result: TrendResult; text: string }[] = [
   { result: "unfinished", text: "Unfinished" },
 ];
 
+interface PlacedDot extends AccuracyTrendPoint {
+  time: Date;
+  x: number;
+  y: number;
+}
+
+/** The dots. Memoised: keys, hovers and the popover never re-render 500 marks. */
+const DotLayer = memo(function DotLayer({
+  dots,
+  r,
+  soft,
+  width,
+}: {
+  dots: PlacedDot[];
+  r: number;
+  soft: boolean;
+  width: number;
+}) {
+  const fade = (x: number): CSSProperties => ({
+    opacity:
+      `clamp(0, calc((var(--draw, 1) * ${width + FADE} - ${x.toFixed(1)}) / ${FADE}), 1)` as unknown as number,
+  });
+  return (
+    <g data-layer="dots">
+      {dots.map((d) => (
+        <g
+          key={d.id}
+          data-id={d.id}
+          data-result={d.result}
+          data-cx={d.x.toFixed(2)}
+          data-cy={d.y.toFixed(2)}
+          transform={`translate(${d.x.toFixed(2)} ${d.y.toFixed(2)})`}
+          style={fade(d.x)}
+        >
+          <Dot result={d.result} r={r} soft={soft} />
+        </g>
+      ))}
+    </g>
+  );
+});
+
+/**
+ * A game's keyboard and screen-reader handle, centred on its dot. Pointer hits go to the one
+ * overlay instead (nearest dot wins), so these never fight over a tap. Memoised so moving the
+ * roving tab stop re-renders only the two buttons whose `tabbable` changed.
+ */
+const DotButton = memo(function DotButton({
+  dot,
+  index,
+  id,
+  tabbable,
+  setRef,
+  onSelect,
+  onKey,
+  onFocusDot,
+}: {
+  dot: PlacedDot;
+  index: number;
+  id: string;
+  tabbable: boolean;
+  setRef: (index: number, el: HTMLElement | null) => void;
+  onSelect: (index: number) => void;
+  onKey: (event: KeyboardEvent<HTMLButtonElement>, index: number) => void;
+  onFocusDot: (index: number) => void;
+}) {
+  const ref = useCallback((el: HTMLElement | null) => setRef(index, el), [setRef, index]);
+  return (
+    <PopoverTrigger
+      id={id}
+      ref={ref}
+      aria-label={dot.caption}
+      tabIndex={tabbable ? 0 : -1}
+      onClick={() => onSelect(index)}
+      onFocus={() => onFocusDot(index)}
+      onKeyDown={(e: KeyboardEvent<HTMLButtonElement>) => onKey(e, index)}
+      className={cn(
+        "pointer-events-none absolute size-3 -translate-x-1/2 -translate-y-1/2 rounded-full",
+        "outline-offset-2 focus-visible:outline-2 focus-visible:outline-ink",
+      )}
+      style={{ left: dot.x, top: dot.y }}
+    />
+  );
+});
+
+const stepButton =
+  "inline-flex size-8 items-center justify-center rounded-field text-ink-soft hover:bg-well " +
+  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink " +
+  "disabled:text-ink-faint disabled:hover:bg-transparent";
+
 /**
  * The player's accuracy per game over time (R11). Each dot is one game, shaped by its result;
- * the line is the rolling mean over its 80% band, broken wherever the window is too thin to
- * state one. Every dot opens its caption and a "Review game" link. The dots are one tab stop:
- * arrow keys walk the games in date order, Home and End jump to the ends.
+ * the line is the rolling mean over its 80% band. The line breaks where there is no rolling
+ * entry, and the band is left out wherever an end is null, so nothing is bridged or invented.
+ *
+ * Pointer and touch: one overlay picks the dot nearest the tap (within 12px, 22px on touch) and
+ * opens its caption, with Previous and Next to step through a dense cluster. Keyboard: the dots
+ * are one tab stop; arrow keys walk the games in date order, Home and End jump to the ends.
  */
 export function AccuracyTrend({
   points,
@@ -160,7 +268,8 @@ export function AccuracyTrend({
 }: AccuracyTrendProps) {
   const reduced = useReducedMotion();
   const coarse = useCoarsePointer();
-  const clipId = `at${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
+  const uid = useId().replace(/[^a-zA-Z0-9]/g, "");
+  const clipId = `at${uid}`;
   const { parentRef, width } = Responsive.useParentSize({
     debounceTime: 50,
     enableDebounceLeadingCall: true,
@@ -171,17 +280,29 @@ export function AccuracyTrend({
     () =>
       points
         .map((p) => ({ ...p, time: new Date(p.date) }))
-        .filter((p) => Number.isFinite(p.time.getTime()))
+        .filter((p) => Number.isFinite(p.time.getTime()) && Number.isFinite(p.accuracy))
         .sort((a, b) => a.time.getTime() - b.time.getTime()),
     [points],
   );
+  const omitted = points.length - sorted.length;
   const enough = sorted.length >= 2;
 
   // One clock: a single clip sweeps left to right over the band and line, and each dot fades in
-  // as the sweep reaches it. Under reduced motion it starts, and stays, at the end.
+  // as the sweep reaches it. Under reduced motion it starts, and stays, at the end. The clip's
+  // `width` attribute is driven directly (not a CSS transform), which every engine repaints.
   const revealing = drawIn && !reduced && enough;
   const progress = useMotionValue(revealing ? 0 : 1);
+  const clipRect = useRef<SVGRectElement | null>(null);
+  const widthRef = useRef(width);
+  widthRef.current = width;
   const ready = width > 0;
+  useEffect(
+    () =>
+      progress.on("change", (v) => {
+        clipRect.current?.setAttribute("width", (v * widthRef.current).toFixed(1));
+      }),
+    [progress],
+  );
   useEffect(() => {
     if (!ready) return;
     if (!revealing) {
@@ -193,82 +314,72 @@ export function AccuracyTrend({
     return () => controls.stop();
   }, [ready, revealing, progress]);
 
-  const [active, setActive] = useState<number | null>(null);
-  const buttons = useRef<(HTMLButtonElement | null)[]>([]);
-  // One stable ref callback per dot: a fresh callback each render would re-register every
-  // trigger with the popover on every render.
-  const refs = useRef(new Map<number, (el: HTMLElement | null) => void>());
-  const refFor = (i: number) => {
-    let fn = refs.current.get(i);
-    if (!fn) {
-      fn = (el) => {
-        buttons.current[i] = el as HTMLButtonElement | null;
-      };
-      refs.current.set(i, fn);
-    }
-    return fn;
-  };
-  const current = Math.min(active ?? sorted.length - 1, sorted.length - 1);
-
   const geo = useMemo(() => {
     if (!ready || !enough) return null;
     const x = timeScale(
       sorted.map((p) => p.time),
       width,
     );
-    const dots = sorted.map((p) => ({
+    const dots: PlacedDot[] = sorted.map((p) => ({
       ...p,
       x: x(p.time),
       y: yForAccuracy(clamp100(p.accuracy)),
     }));
     const byId = new Map(rolling.map((r) => [r.id, r]));
-    const segments = runs(dots, (d) => byId.has(d.id)).map((run) => {
-      const rows = run.map((d) => ({ d, r: byId.get(d.id) as AccuracyTrendRolling }));
-      type Row = (typeof rows)[number];
-      return {
-        key: run[0]?.id ?? "",
-        band:
-          Shape.area<Row>({
-            x: (row) => row.d.x,
-            y0: (row) => yForAccuracy(clamp100(row.r.low)),
-            y1: (row) => yForAccuracy(clamp100(row.r.high)),
-          })(rows) ?? "",
-        mean:
-          Shape.line<Row>({
-            x: (row) => row.d.x,
-            y: (row) => yForAccuracy(clamp100(row.r.mean)),
-          })(rows) ?? "",
-      };
-    });
-    return { dots, segments, ticks: dateTicks(x, width) };
+    const at = (d: PlacedDot) => byId.get(d.id);
+    type Row = { d: PlacedDot; r: AccuracyTrendRolling };
+    const rows = (run: PlacedDot[]): Row[] =>
+      run.map((d) => ({ d, r: at(d) as AccuracyTrendRolling }));
+    // The band and the mean break separately: a null interval keeps its mean, without a band.
+    const bands = runs(dots, (d) => {
+      const r = at(d);
+      return !!r && finite(r.low) && finite(r.high) && r.high > r.low;
+    }).map((run) => ({
+      key: run[0]?.id ?? "",
+      d:
+        Shape.area<Row>({
+          x: (row) => row.d.x,
+          y0: (row) => yForAccuracy(clamp100(row.r.low as number)),
+          y1: (row) => yForAccuracy(clamp100(row.r.high as number)),
+        })(rows(run)) ?? "",
+    }));
+    const means = runs(dots, (d) => {
+      const r = at(d);
+      return !!r && Number.isFinite(r.mean);
+    }).map((run) => ({
+      key: run[0]?.id ?? "",
+      d:
+        Shape.line<Row>({
+          x: (row) => row.d.x,
+          y: (row) => yForAccuracy(clamp100(row.r.mean)),
+        })(rows(run)) ?? "",
+    }));
+    return { dots, bands, means, ticks: dateTicks(x, width) };
   }, [ready, enough, sorted, rolling, width]);
 
-  if (!enough) {
-    return (
-      <div
-        className={cn(
-          "flex h-24 items-center justify-center rounded-field bg-well px-4 text-center",
-          className,
-        )}
-      >
-        <p className="text-sm text-ink-soft">Not enough games yet</p>
-      </div>
-    );
-  }
+  const summary = useMemo(() => trendSummary(sorted, rolling), [sorted, rolling]);
 
-  const r = coarse ? DOT_R.coarse : DOT_R.fine;
-  const plotBottom = TREND_TOP + TREND_PLOT_H;
-  const counts = LEGEND.map((l) => ({
-    ...l,
-    n: sorted.filter((p) => p.result === l.result).length,
-  })).filter((l) => l.n > 0);
-  const dotStyle = (x: number): CSSProperties => ({
-    opacity:
-      `clamp(0, calc((var(--draw, 1) * ${width + FADE} - ${x.toFixed(1)}) / ${FADE}), 1)` as unknown as number,
-  });
+  // Selection: which game the popover shows, and the roving tab stop.
+  const [active, setActive] = useState<number | null>(null);
+  const [selected, setSelected] = useState<number | null>(null);
+  const [open, setOpen] = useState(false);
+  const [hover, setHover] = useState<number | null>(null);
+  const count = sorted.length;
+  const current = Math.min(active ?? count - 1, count - 1);
+  const buttons = useRef<(HTMLElement | null)[]>([]);
+  const idFor = (i: number) => `${uid}-dot-${i}`;
 
-  const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>, i: number) => {
-    const last = sorted.length - 1;
+  const setRef = useCallback((i: number, el: HTMLElement | null) => {
+    buttons.current[i] = el;
+  }, []);
+  const onSelect = useCallback((i: number) => {
+    setSelected(i);
+    setActive(i);
+  }, []);
+  const countRef = useRef(count);
+  countRef.current = count;
+  const onKey = useCallback((event: KeyboardEvent<HTMLButtonElement>, i: number) => {
+    const last = countRef.current - 1;
     const next =
       event.key === "ArrowLeft" || event.key === "ArrowDown"
         ? Math.max(0, i - 1)
@@ -283,10 +394,57 @@ export function AccuracyTrend({
     event.preventDefault();
     setActive(next);
     buttons.current[next]?.focus();
+  }, []);
+  const onFocusDot = useCallback((i: number) => setActive(i), []);
+
+  if (!enough) {
+    return (
+      <div className={cn("flex flex-col gap-2", className)}>
+        <div className="flex h-24 items-center justify-center rounded-field bg-well px-4 text-center">
+          <p className="m-0 text-sm text-ink-soft">Not enough games yet</p>
+        </div>
+        {omitted > 0 && <OmittedNote count={omitted} />}
+      </div>
+    );
+  }
+
+  const dense = ready && isDense(count, width);
+  const r = !dense && coarse ? DOT_R.coarse : DOT_R.fine;
+  const plotBottom = TREND_TOP + TREND_PLOT_H;
+  const counts = LEGEND.map((l) => ({
+    ...l,
+    n: sorted.filter((p) => p.result === l.result).length,
+  })).filter((l) => l.n > 0);
+
+  const pick = (event: MouseEvent<HTMLElement> | PointerEvent<HTMLElement>, radius: number) => {
+    if (!geo) return null;
+    const box = event.currentTarget.getBoundingClientRect();
+    return nearestIndex(geo.dots, event.clientX - box.left, event.clientY - box.top, radius);
   };
+  const onTap = (event: MouseEvent<HTMLElement>) => {
+    const i = pick(event, coarse ? HIT_RADIUS.coarse : HIT_RADIUS.fine);
+    if (i === null) return;
+    setSelected(i);
+    setActive(i);
+    setOpen(true);
+  };
+  const onHover = (event: PointerEvent<HTMLElement>) => {
+    if (event.pointerType !== "mouse") return;
+    const i = pick(event, HIT_RADIUS.fine);
+    if (i !== hover) setHover(i);
+  };
+  const step = (delta: number) => {
+    if (selected === null) return;
+    const next = Math.min(count - 1, Math.max(0, selected + delta));
+    setSelected(next);
+    setActive(next);
+  };
+  const shown = open && selected !== null ? geo?.dots[selected] : undefined;
+  const hovered = hover !== null && hover !== selected ? geo?.dots[hover] : undefined;
 
   return (
     <div className={cn("flex flex-col gap-3", className)}>
+      <p className="sr-only">{summary}</p>
       <div ref={parentRef} className="relative h-52 w-full">
         {geo && (
           <>
@@ -301,11 +459,11 @@ export function AccuracyTrend({
               <defs>
                 <clipPath id={clipId}>
                   <rect
+                    ref={clipRect}
                     x={0}
                     y={0}
-                    width={width}
+                    width={(progress.get() * width).toFixed(0)}
                     height={TREND_HEIGHT}
-                    style={{ transform: "scaleX(var(--draw, 1))", transformOrigin: "0 0" }}
                   />
                 </clipPath>
               </defs>
@@ -350,28 +508,16 @@ export function AccuracyTrend({
                 </text>
               ))}
               <g clipPath={`url(#${clipId})`}>
-                {geo.segments.map((s) => (
-                  <path key={s.key} data-part="band" d={s.band} className="fill-rule-strong/25" />
+                {geo.bands.map((b) => (
+                  <path key={b.key} data-part="band" d={b.d} className="fill-pencil/45" />
                 ))}
               </g>
-              <g data-layer="dots">
-                {geo.dots.map((d) => (
-                  <g
-                    key={d.id}
-                    data-result={d.result}
-                    data-cx={d.x.toFixed(2)}
-                    transform={`translate(${d.x.toFixed(2)} ${d.y.toFixed(2)})`}
-                    style={dotStyle(d.x)}
-                  >
-                    <Dot result={d.result} r={r} />
-                  </g>
-                ))}
-              </g>
+              <DotLayer dots={geo.dots} r={r} soft={dense} width={width} />
               <g clipPath={`url(#${clipId})`}>
-                {geo.segments.map((s) => (
-                  <g key={s.key}>
+                {geo.means.map((m) => (
+                  <g key={m.key}>
                     <path
-                      d={s.mean}
+                      d={m.d}
                       fill="none"
                       strokeWidth={5}
                       strokeLinejoin="round"
@@ -380,7 +526,7 @@ export function AccuracyTrend({
                     />
                     <path
                       data-part="mean"
-                      d={s.mean}
+                      d={m.d}
                       fill="none"
                       strokeWidth={2}
                       strokeLinejoin="round"
@@ -390,47 +536,91 @@ export function AccuracyTrend({
                   </g>
                 ))}
               </g>
+              {hovered && (
+                <circle
+                  data-part="hover"
+                  cx={hovered.x}
+                  cy={hovered.y}
+                  r={r + 3.5}
+                  fill="none"
+                  strokeWidth={1}
+                  className="stroke-ink-soft"
+                />
+              )}
+              {shown && (
+                <circle
+                  data-part="selected"
+                  cx={shown.x}
+                  cy={shown.y}
+                  r={r + 4}
+                  fill="none"
+                  strokeWidth={2}
+                  className="stroke-ink"
+                />
+              )}
             </motion.svg>
-            <Popover<number>>
-              {({ payload }) => {
-                const open = payload === undefined ? undefined : geo.dots[payload];
-                return (
-                  <>
-                    <div className="absolute inset-0">
-                      {geo.dots.map((d, i) => (
-                        <PopoverTrigger<number>
-                          key={d.id}
-                          payload={i}
-                          ref={refFor(i)}
-                          aria-label={d.caption}
-                          tabIndex={i === current ? 0 : -1}
-                          onFocus={() => setActive(i)}
-                          onKeyDown={(e: KeyboardEvent<HTMLButtonElement>) => onKeyDown(e, i)}
-                          className={cn(
-                            "absolute size-3 -translate-x-1/2 -translate-y-1/2 rounded-full",
-                            "outline-offset-2 hover:outline-1 hover:outline-rule-strong",
-                            "focus-visible:outline-2 focus-visible:outline-ink",
-                            "data-popup-open:outline-2 data-popup-open:outline-ink",
-                            touchTarget,
-                          )}
-                          style={{ left: d.x, top: d.y }}
-                        />
-                      ))}
+            {/* The one pointer target: the nearest dot to a tap or click wins. */}
+            <div
+              data-part="hit"
+              aria-hidden="true"
+              className={cn("absolute inset-0", hovered && "cursor-pointer")}
+              onClick={onTap}
+              onPointerMove={onHover}
+              onPointerLeave={() => setHover(null)}
+            />
+            <Popover
+              open={open}
+              onOpenChange={setOpen}
+              triggerId={selected === null ? null : idFor(selected)}
+            >
+              <div className="pointer-events-none absolute inset-0">
+                {geo.dots.map((d, i) => (
+                  <DotButton
+                    key={d.id}
+                    dot={d}
+                    index={i}
+                    id={idFor(i)}
+                    tabbable={i === current}
+                    setRef={setRef}
+                    onSelect={onSelect}
+                    onKey={onKey}
+                    onFocusDot={onFocusDot}
+                  />
+                ))}
+              </div>
+              {shown && selected !== null && (
+                <PopoverContent side="top" align="center" className="w-64">
+                  <p className="m-0 text-sm text-ink">{shown.caption}</p>
+                  <div className="flex items-center justify-between gap-2">
+                    <a
+                      href={shown.href}
+                      className="rounded-field text-sm font-medium text-ink underline decoration-rule-strong underline-offset-4 hover:decoration-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+                    >
+                      Review game
+                    </a>
+                    <div className="flex gap-3">
+                      <button
+                        type="button"
+                        aria-label="Previous game"
+                        disabled={selected === 0}
+                        onClick={() => step(-1)}
+                        className={stepButton}
+                      >
+                        <Icon icon={CaretLeftIcon} size={16} />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label="Next game"
+                        disabled={selected === count - 1}
+                        onClick={() => step(1)}
+                        className={stepButton}
+                      >
+                        <Icon icon={CaretRightIcon} size={16} />
+                      </button>
                     </div>
-                    {open && (
-                      <PopoverContent side="top" align="center" className="w-64">
-                        <p className="m-0 text-sm text-ink">{open.caption}</p>
-                        <a
-                          href={open.href}
-                          className="self-start rounded-field text-sm font-medium text-ink underline decoration-rule-strong underline-offset-4 hover:decoration-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
-                        >
-                          Review game
-                        </a>
-                      </PopoverContent>
-                    )}
-                  </>
-                );
-              }}
+                  </div>
+                </PopoverContent>
+              )}
             </Popover>
           </>
         )}
@@ -440,7 +630,7 @@ export function AccuracyTrend({
           <span key={c.result} className="flex items-center gap-2">
             <svg aria-hidden="true" width={12} height={12} className="shrink-0 overflow-visible">
               <g transform="translate(6 6)">
-                <Dot result={c.result} r={4} />
+                <Dot result={c.result} r={4} soft={dense} />
               </g>
             </svg>
             <span className="tabular-nums">
@@ -448,16 +638,27 @@ export function AccuracyTrend({
             </span>
           </span>
         ))}
-        {geo && geo.segments.length > 0 && (
+        {geo && geo.means.length > 0 && (
           <span className="flex items-center gap-2">
             <svg aria-hidden="true" width={18} height={12} className="shrink-0">
-              <rect x={0} y={2} width={18} height={8} rx={1} className="fill-rule-strong/25" />
+              <rect x={0} y={2} width={18} height={8} rx={1} className="fill-pencil/45" />
               <line x1={0} x2={18} y1={6} y2={6} strokeWidth={2} className="stroke-ink" />
             </svg>
             <span>Rolling average, 80% band</span>
           </span>
         )}
+        {omitted > 0 && <OmittedNote count={omitted} />}
       </div>
     </div>
+  );
+}
+
+function OmittedNote({ count }: { count: number }) {
+  return (
+    <span className="text-sm text-ink-faint">
+      {count === 1
+        ? "1 game has no accuracy and isn't shown."
+        : `${count} games have no accuracy and aren't shown.`}
+    </span>
   );
 }
