@@ -75,9 +75,11 @@ One file per decision: context, decision, alternatives, consequences. New decisi
 - [0070. Coach chat: the web's hand-off to the worker, and the allowance it shows](0070-chat-web-hand-off.md)
 - [0071. Coach text, disclosure and states in `@ci/ui`](0071-coach-text-and-states.md)
 - [0072. Profile encodings: weakness rate, KPI small multiples, exemplar arrows, optional next band](0072-profile-encodings.md)
+- [0073. Coach surfaces and the report page](0073-coach-surfaces-and-report-page.md)
 - [0074. Coach e2e: a guarded coach seed, a simulated worker, and the coach baselines](0074-coach-e2e-and-simulated-worker.md)
 - [0075. Coach data for the beta: the beta AI plan, weekly-review inputs, the first report](0075-beta-ai-plan-weekly-inputs-first-report.md)
 - [0076. Recurring incremental sync of linked accounts](0076-recurring-account-sync.md)
+- [0077. "Sync now" and the analysis-progress panel](0077-sync-now-and-analysis-progress.md)
 
 ## Records with placeholder numbers
 

@@ -67,7 +67,10 @@ test.describe
       await expect(page.getByRole("heading", { name: "Your climb plan" })).toBeVisible();
       await expect(page.getByRole("heading", { name: "What's costing you games" })).toBeVisible();
       await expect(page.getByText("Written by AI").first()).toBeVisible();
-      expect(navigations, "no reload").toEqual([]);
+      expect(
+        await page.evaluate(() => (window as unknown as { __noReload?: boolean }).__noReload),
+        "no reload",
+      ).toBe(true);
     });
 
     test("a failed build says so; trying again at once is throttled with its time", async () => {

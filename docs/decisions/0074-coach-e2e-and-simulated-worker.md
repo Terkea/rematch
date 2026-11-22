@@ -30,13 +30,18 @@ The coach pages (report, weaknesses, skill areas, progress, the coach chat) show
   - **`chat-chunk`:** `pending` becomes `streaming`, and `chat.chunk` is emitted.
   - **`chat-done`:** stores the validated text (the chunks joined, or with `replace` a fixed validated text), its segments and the disclosure, then emits `chat.message.ready {replace}`.
   - **`chat-failed`:** `failed` with the reason, then `chat.message.failed`. Both chat endings act only on an unfinished message, as `finish_message` and `fail_message` do.
-- Chat events carry the thread owner's `user_id` (`emit_for_user`); report events carry none. No AI call is made.
+  - **`report-failed`:** `runs::set_failed` (`failed`, `last_error`, `finished_at`), the run's job failed, then `job.failed {kind: "generate-report", reason}`.
+  - **`import-done`:** the account's due `import-account` job is done, an `import_runs` row is closed as `done` with its count, and `import.progress {runId, imported, done: true}` follows. It writes no games, and it leaves `linked_accounts.last_synced_at` unset: the web never reads it, and the seeds' guard treats a synced account as a real one.
+- Chat events carry the thread owner's `user_id` (`emit_for_user`); report and import events carry none. Chat events carry their `attempt` (Task 9's Rust field): the first chunk reserves one (`turn_attempts + 1`). No AI call is made.
 - `test/e2e-simulate-worker.test.ts` pins these writes against Postgres. It caught one mistake while being written: a section's content is its envelope (`{ areas: { items } }`).
 
 ### The specs
 
 - `e2e/coach.spec.ts` runs the 9 steps of the brief in order (`describe.serial`). Step 5 reads the second user's event log by wrapping `EventSource.addEventListener` in an init script. It asserts that an account event arrives, so the stream is shown to be live, and that no `chat.chunk` does.
 - Step 6's denial is realistic: 99 of the week's 100 answers are used, another device uses the last while the question waits, and the job's `weekly_cap` then arrives.
+- `report.spec.ts`: "Build my report" from a scope with no report, the five sections arriving in order without a reload, then a failed build whose immediate retry is throttled with its time.
+- `sync.spec.ts`: Sync now enqueues the real `import-account` job, the panel says it is checking and Sync now is unavailable, then a simulated import finishes, and both panels read "Synced just now. No new games." with the cooldown.
+- `touch-targets.spec.ts` hit-tests the coach states' "Try again" across its 44px band (a parked Task 3 item).
 - `game-pages-quality.spec.ts` covers the coach routes too: no sideways scroll at 360, visible focus and no broken numbers. The coach routes also get axe (WCAG 2 A and AA, serious and critical), as `quality.spec.ts` does.
 - `game-pages-visual.spec.ts` gains "the coach pages look as they did": the report, a weakness, the endgame area, progress and a coach thread, at 390 and 1440, day and night, each as a PNG and a text snapshot. The overview, games and review baselines are regenerated because the header now has seven sections. Baselines are made in the Linux `qa` container only (ADR 0065).
 
@@ -46,7 +51,17 @@ The coach pages (report, weaknesses, skill areas, progress, the coach chat) show
 - Seven sections do not fit a 360px row. Below `sm`, the row keeps Overview, Games, Report and Coach, and the account menu lists the rest under "More pages", so the row never scrolls sideways.
 - The command menu adds a "Skill areas" group with the seven area pages and an "Ask your coach" action (`/app/coach/new`).
 
+### What the e2e found
+
+- **The browser dropped every coach event.** `use-event-stream.ts` listened only for the four M4 types, and an `EventSource` delivers only the types it listens for. So in SSE mode no report section, weekly review, note, chat chunk or profile event reached a page; only polling would have brought them. `STREAM_TYPES` now lists every kind, and `test/events/stream-types-parity.test.ts` reads them from the Rust sources (`events::store`, `ai::events`).
+- **Sync now got 415.** The account routes' CSRF guard needs a declared JSON body, and the panel sent none. It now does, and the panel test pins the header.
+
+### Coach chat switch
+
+`lib/coach-chat.ts` `coachChatLive()` is the one place that takes the chat out of the product: when false, the header hides Coach, the command menu drops "Ask your coach", and the report, weakness and area pages leave out their ask links. It was false while Task 9 was still finishing, and it is true now that Task 9 is merged.
+
 ## Consequences
 
 - Every spec that seeds the fixtures also gets the coach rows. A coach-page change can move the overview's baseline (its lead finding), and the baseline is regenerated with it.
+- `seedE2eCoach({ report: false })` (CLI `no-report`) seeds the same world with no report. Each seed also clears the account's imports and import jobs, so the overview reads "Not synced yet." on every run.
 - The simulator mirrors the jobs by hand. If an R3 job changes what it writes, `simulate-worker.ts` and its test change with it.

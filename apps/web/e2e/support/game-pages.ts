@@ -25,6 +25,10 @@ export async function adultPage(browser: Browser, request: APIRequestContext): P
   await page.waitForURL((url) => url.pathname !== "/", { timeout: 120_000 });
   if (new URL(page.url()).pathname.startsWith("/sign-in")) {
     await signInByMagicLink(page, request, E2E_USER);
+    // The sign-in lands on the age question (a new user) or the app; wait for one of them.
+    await page.waitForURL((url) => /^\/(welcome\/age|app)/.test(url.pathname), {
+      timeout: 120_000,
+    });
     if (new URL(page.url()).pathname === "/welcome/age") {
       await enterAge(page, 1990, 6);
       // Let the age screen's own navigation land before the caller navigates.

@@ -32,6 +32,17 @@ async function ready(page: Page, url: string, selector: string): Promise<void> {
     selector,
     { timeout: 180_000 },
   );
+  // The report's first-view reveal (ADR 0073) holds its content back; wait for its end state.
+  await page.waitForFunction(
+    () =>
+      document.querySelector(
+        "[data-report-version][data-reveal='first'], [data-report-version] [data-reveal='first']",
+      ) === null,
+    undefined,
+    {
+      timeout: 60_000,
+    },
+  );
 }
 
 /** Opens a page whose event stream is live (its `/api/events` answered). */
@@ -95,7 +106,10 @@ test.describe
       simulate({ kind: "report-section", runId, section: "weaknesses" });
       await expect(page.getByText(/Building your report: 2 of 5 sections written/)).toBeVisible();
       await expect(page.locator("#report-weaknesses")).toBeVisible();
-      expect(navigations, "no reload").toEqual([]);
+      expect(
+        await page.evaluate(() => (window as unknown as { __noReload?: boolean }).__noReload),
+        "no reload",
+      ).toBe(true);
     });
 
     test("3. a weakness opens its detail; asking about it carries the anchor", async () => {

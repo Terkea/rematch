@@ -21,6 +21,17 @@ async function settle(page: Page, url: string, ready: string): Promise<void> {
     ready,
     { timeout: 180_000 },
   );
+  // The report's first-view reveal (ADR 0073) holds its content back; wait for its end state.
+  await page.waitForFunction(
+    () =>
+      document.querySelector(
+        "[data-report-version][data-reveal='first'], [data-report-version] [data-reveal='first']",
+      ) === null,
+    undefined,
+    {
+      timeout: 60_000,
+    },
+  );
 }
 
 test("the game pages: no sideways scroll at 360px, visible focus, no broken numbers", async ({
