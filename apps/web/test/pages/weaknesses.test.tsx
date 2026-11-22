@@ -147,9 +147,8 @@ describe("weaknesses list", () => {
       within(screen.getByRole("region", { name }))
         .getAllByRole("link")
         .map((a) => a.textContent);
-    const costing = names("Costing you games");
-    expect(costing).toHaveLength(1);
-    expect(costing[0]).toMatch(
+    expect(names("Costing you games")).toEqual(["Allowed mate"]);
+    expect(screen.getByRole("region", { name: "Costing you games" }).textContent).toMatch(
       /inside your likely range, though yours is probably higher \(81% likely\)/,
     );
     const watching = screen.getByRole("region", { name: "Worth watching" });
