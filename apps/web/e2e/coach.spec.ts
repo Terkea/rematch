@@ -190,7 +190,12 @@ test.describe
         } as typeof EventSource.prototype.addEventListener;
       });
       await signInByMagicLink(peer, request, PEER);
-      if (new URL(peer.url()).pathname === "/welcome/age") await enterAge(peer, 1990, 6);
+      await peer.waitForURL((url) => /^\/(welcome\/age|app)/.test(url.pathname));
+      if (new URL(peer.url()).pathname === "/welcome/age") {
+        await enterAge(peer, 1990, 6);
+        // Let the age form's own navigation land before the spec navigates.
+        await peer.waitForURL(/\/app\/accounts$/, { timeout: 120_000 });
+      }
       linkPeer(PEER);
 
       await live(peer, `/app/coach/${seed.threadId}`, "main");
