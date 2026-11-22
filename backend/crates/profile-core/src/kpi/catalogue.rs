@@ -165,8 +165,9 @@ fn missed_punish(g: &KpiGame<'_>) -> Option<Extracted> {
     counts(m.misses, m.opportunities)
 }
 
+/// `None` (W3 unknown for the game) is no evidence: out of the numerator and of `n`.
 fn tactics_missed(g: &KpiGame<'_>) -> Option<Extracted> {
-    per_game(g, g.metrics.tactics.missed)
+    per_game(g, g.metrics.tactics.missed?)
 }
 
 fn tactics_allowed(g: &KpiGame<'_>) -> Option<Extracted> {
