@@ -5,6 +5,7 @@ import { labEnabled } from "../lab/lab-enabled";
 import { AnnotationsSection } from "./sections/annotations";
 import { AreaScoreSection } from "./sections/area-score";
 import { BoardSection } from "./sections/board";
+import { ChartsSection } from "./sections/charts";
 import { EvalBarSection } from "./sections/eval-bar";
 import { EvalGraphSection } from "./sections/eval-graph";
 import { FoundationsSection } from "./sections/foundations";
@@ -40,6 +41,7 @@ export default function StyleguidePage() {
         <EvalBarSection />
         <EvalGraphSection />
         <StatsSection />
+        <ChartsSection />
         <AreaScoreSection />
         <TimelineSection />
         <ProgressSection />
