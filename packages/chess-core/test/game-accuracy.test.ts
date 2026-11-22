@@ -30,7 +30,10 @@ describe("gameAccuracy", () => {
 describe("gameAccuracy against lila (audit examples)", () => {
   type Case = { name: string; whiteCp: number[]; lila: { white: number; black: number } };
   const fixture = JSON.parse(
-    readFileSync(new URL("../../../backend/fixtures/accuracy/lila-examples.json", import.meta.url), "utf8"),
+    readFileSync(
+      new URL("../../../backend/fixtures/accuracy/lila-examples.json", import.meta.url),
+      "utf8",
+    ),
   ) as { cases: Case[] };
   const load = (name: string) => {
     const c = fixture.cases.find((x) => x.name === name);

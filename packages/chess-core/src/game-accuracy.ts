@@ -22,7 +22,7 @@ export function gameAccuracy(winPercentsWhitePov: number[], color: Color): numbe
 }
 
 /**
- * `gameAccuracy` of a series whose first move is `start`'s (a phase slice, ADR 0086), or
+ * `gameAccuracy` of a series whose first move is `start`'s (a phase slice, ADR-FIX-C-1), or
  * null when `color` made no move in it.
  *
  * A port of lila `AccuracyPercent.gameAccuracy`
@@ -69,6 +69,7 @@ export function gameAccuracyFrom(
   const weightSum = weights.reduce((a, b) => a + b, 0);
   const weighted = accuracies.reduce((sum, acc, i) => sum + acc * (weights[i] as number), 0);
   const weightedMean = weighted / weightSum;
-  const harmonicMean = accuracies.length / accuracies.reduce((sum, a) => sum + 1 / Math.max(1, a), 0);
+  const harmonicMean =
+    accuracies.length / accuracies.reduce((sum, a) => sum + 1 / Math.max(1, a), 0);
   return (weightedMean + harmonicMean) / 2;
 }
