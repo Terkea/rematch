@@ -64,7 +64,7 @@ test.describe
     test("1. the report shows the snapshot, seven areas, ranked weaknesses and the disclosure", async () => {
       await ready(page, "/app/report", "[data-report-version]");
       await expect(page.getByRole("heading", { level: 1 })).toHaveText("Your coaching report");
-      const snapshot = page.locator("#report-snapshot").locator("..");
+      const snapshot = page.locator("section", { has: page.locator("#report-snapshot") });
       await expect(page.getByRole("heading", { name: "Where you stand" })).toBeVisible();
       await expect(page.getByRole("heading", { name: "Your seven areas" })).toBeVisible();
       for (const area of ["Openings", "Middlegame", "Endgame", "Tactics", "Calculation", "Time"]) {

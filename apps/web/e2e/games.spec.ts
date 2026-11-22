@@ -82,8 +82,10 @@ test("overview, explorer and review, end to end", async ({ browser, request }, i
     await gotoSettled(page, "/");
     await expect(page).toHaveURL(/\/app$/);
     await expect(page.getByRole("heading", { name: "Overview", level: 1 })).toBeVisible();
-    await expect(page.locator("[data-status]")).toHaveText(
-      "34 of 35 games analysed. 1 waiting for analysis.",
+    // The compact sync panel (M5b Task P2) replaced the status line: its totals line states the
+    // same counts.
+    await expect(page.locator("[data-slot='sync-panel'][data-variant='compact']")).toContainText(
+      "34 of 35 games analysed",
     );
   });
 

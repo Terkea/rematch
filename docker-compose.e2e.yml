@@ -9,6 +9,10 @@ services:
   web:
     environment:
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/chess_e2e_test
+      # next dev restarts itself near its heap limit ("approaching the used memory threshold"),
+      # which resets connections and reloads pages mid-spec once every coach route is compiled
+      # (M5b T11). More heap keeps one dev process for the whole run.
+      NODE_OPTIONS: --max-old-space-size=8192
       # The browser runs in the qa container, which resolves the fakes service by name.
       LICHESS_AUTHORIZE_BASE_URL: http://fakes:3199
       LICHESS_API_BASE_URL: http://fakes:3199
