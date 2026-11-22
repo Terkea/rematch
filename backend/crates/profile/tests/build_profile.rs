@@ -836,3 +836,223 @@ async fn adjusted_value_or_interval_change_appends_a_row(pool: PgPool) {
     assert!(latest_snapshot_id(&pool, s.account_id, "weakness:W1").await > adj);
     assert!(latest_snapshot_id(&pool, s.account_id, "blunders_per_game").await > ci);
 }
+
+// ---------------------------------------------------------------------------------------------
+// Fix round 2: the scope of the history replacement, and series that leave the replay
+
+/// Plants one `weakness_state_history` transition row.
+#[allow(clippy::too_many_arguments)]
+async fn plant_history_row(
+    pool: &PgPool,
+    account_id: Uuid,
+    tc: &str,
+    series_key: &str,
+    from: Option<&str>,
+    to: &str,
+    at_game_id: Option<Uuid>,
+    detector_version: &str,
+) -> i64 {
+    sqlx::query_scalar(
+        "INSERT INTO weakness_state_history (account_id, time_class, series_key, kind, \
+           from_state, to_state, at_game_id, at_played_at, evidence, detector_version, protocol) \
+         VALUES ($1, $2::time_class, $3, 'transition', $4::weakness_state, $5::weakness_state, \
+           $6, '2026-11-10T10:00:00Z', '{}'::jsonb, $7, 'sf19-n300k-v1') RETURNING id",
+    )
+    .bind(account_id)
+    .bind(tc)
+    .bind(series_key)
+    .bind(from)
+    .bind(to)
+    .bind(at_game_id)
+    .bind(detector_version)
+    .fetch_one(pool)
+    .await
+    .unwrap()
+}
+
+async fn history_ids(pool: &PgPool) -> BTreeSet<i64> {
+    sqlx::query_scalar("SELECT id FROM weakness_state_history")
+        .fetch_all(pool)
+        .await
+        .unwrap()
+        .into_iter()
+        .collect()
+}
+
+/// A build replaces only its own account's, time class's and detector version's history:
+/// another account, another time class and an older detector version keep their rows, while
+/// an extra copy of one of its own replayed rows is removed.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn history_replacement_touches_only_its_own_rows(pool: PgPool) {
+    let s = seed(&pool, SeedOptions::default()).await;
+    let other = testkit::insert_account(&pool, "lichess", "otherplayer").await;
+    let game = Some(s.games[0]);
+    let current = profile_core::timeline::states::DETECTOR_VERSION;
+    let foreign = [
+        plant_history_row(&pool, other, "blitz", "W1", None, "active", None, current).await,
+        plant_history_row(
+            &pool,
+            s.account_id,
+            "rapid",
+            "W1",
+            None,
+            "active",
+            game,
+            current,
+        )
+        .await,
+        plant_history_row(
+            &pool,
+            s.account_id,
+            "blitz",
+            "W1",
+            None,
+            "active",
+            game,
+            "old-detector",
+        )
+        .await,
+    ];
+    build(&pool, s.account_id).await;
+    // An extra copy of the account's own first W1 row (legacy data from before the lock).
+    let copy: i64 = sqlx::query_scalar(
+        "INSERT INTO weakness_state_history (account_id, time_class, series_key, kind, \
+           from_state, to_state, at_game_id, at_played_at, onset_game_id, evidence, \
+           detector_version, protocol) \
+         SELECT account_id, time_class, series_key, kind, from_state, to_state, at_game_id, \
+           at_played_at, onset_game_id, evidence, detector_version, protocol \
+         FROM weakness_state_history WHERE account_id = $1 AND time_class = 'blitz' \
+           AND series_key = 'W1' AND from_state IS NULL AND detector_version = $2 \
+         ORDER BY id LIMIT 1 RETURNING id",
+    )
+    .bind(s.account_id)
+    .bind(current)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    build(&pool, s.account_id).await;
+    build(&pool, s.account_id).await;
+
+    let ids = history_ids(&pool).await;
+    for id in foreign {
+        assert!(ids.contains(&id), "row {id} of another scope was deleted");
+    }
+    assert!(!ids.contains(&copy), "the extra copy {copy} was kept");
+    let firsts = count(
+        &pool,
+        "SELECT count(*) FROM weakness_state_history WHERE account_id = $1 \
+         AND time_class = 'blitz' AND series_key = 'W1' AND from_state IS NULL \
+         AND detector_version <> 'old-detector'",
+        s.account_id,
+    )
+    .await;
+    assert_eq!(firsts, 1);
+}
+
+/// A non-weakness series that leaves the replay (its games went stale or were deleted) is no
+/// longer tracked: its rows go, and one event says it is `not_an_issue` now.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn series_leaving_the_replay_announces_not_an_issue_once(pool: PgPool) {
+    let s = seed(&pool, SeedOptions::default()).await;
+    let current = profile_core::timeline::states::DETECTOR_VERSION;
+    let planted = plant_history_row(
+        &pool,
+        s.account_id,
+        "blitz",
+        "endgame:rook",
+        None,
+        "active",
+        Some(s.games[0]),
+        current,
+    )
+    .await;
+    build(&pool, s.account_id).await;
+    assert!(!history_ids(&pool).await.contains(&planted));
+    let rook = |evs: Vec<Value>| -> Vec<Value> {
+        evs.into_iter()
+            .filter(|p| p["id"] == "endgame:rook")
+            .collect()
+    };
+    assert_eq!(
+        rook(events(&pool, s.account_id, "weakness.changed").await),
+        [json!({
+            "id": "endgame:rook",
+            "timeClass": "blitz",
+            "state": "not_an_issue",
+            "fromState": "active",
+            "onsetAt": null,
+        })]
+    );
+    build(&pool, s.account_id).await;
+    assert_eq!(
+        rook(events(&pool, s.account_id, "weakness.changed").await).len(),
+        1
+    );
+}
+
+/// After a detector version bump, a series whose state is unchanged is not announced again:
+/// for a replayed series without current-version rows, the stored state falls back to the
+/// latest row of any version.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn detector_bump_does_not_reannounce_an_unchanged_series(pool: PgPool) {
+    let s = seed(
+        &pool,
+        SeedOptions {
+            reference: false,
+            ..SeedOptions::default()
+        },
+    )
+    .await;
+    // A referenced non-weakness series: missed forks at 0.04 against a band median of 0.02.
+    let mut fork = common::seed::w1_stat();
+    fork.metric = profile_core::types::MetricId::MotifMissRate(profile_core::types::MotifTag::Fork);
+    common::seed::insert_reference(&pool, &[common::seed::w1_stat(), fork]).await;
+    sqlx::query(
+        "INSERT INTO weakness_series_point (account_id, time_class, series_key, game_id, \
+           played_at, events, opportunities, epl, protocol) \
+         SELECT account_id, time_class, 'motif.missed:fork', game_id, played_at, events, \
+           opportunities, epl, protocol \
+         FROM weakness_series_point WHERE account_id = $1 AND series_key = 'W1'",
+    )
+    .bind(s.account_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    // The older detector already said the series is active.
+    plant_history_row(
+        &pool,
+        s.account_id,
+        "blitz",
+        "motif.missed:fork",
+        None,
+        "active",
+        Some(s.games[0]),
+        "old-detector",
+    )
+    .await;
+    build(&pool, s.account_id).await;
+    let current: Vec<String> = sqlx::query_scalar(
+        "SELECT to_state::text FROM weakness_state_history WHERE account_id = $1 \
+         AND series_key = 'motif.missed:fork' AND kind = 'transition' \
+         AND detector_version <> 'old-detector' ORDER BY at_played_at, id",
+    )
+    .bind(s.account_id)
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        current.last().map(String::as_str),
+        Some("active"),
+        "{current:?}"
+    );
+    let fork_events = |evs: Vec<Value>| {
+        evs.into_iter()
+            .filter(|p| p["id"] == "motif.missed:fork")
+            .count()
+    };
+    assert_eq!(
+        fork_events(events(&pool, s.account_id, "weakness.changed").await),
+        0,
+        "active under both detectors: no change to announce"
+    );
+}

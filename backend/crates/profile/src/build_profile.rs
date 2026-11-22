@@ -456,7 +456,15 @@ async fn run_build(
         (l, c)
     })
     .await
-    .map_err(|e| retryable("compute", e))?;
+    .map_err(|e| {
+        // A panic is deterministic for the same inputs: retrying it only delays the dead
+        // letter. Any other join error (the runtime shutting down) is retried.
+        if e.is_panic() {
+            unrecoverable(format!("build-profile compute panicked: {e}"), "panic")
+        } else {
+            retryable("compute", e)
+        }
+    })?;
     stages.insert("estimates_ms".into(), c.estimates_ms);
     stages.insert("timeline_ms".into(), c.timeline_ms);
     stages.insert("kpi_ms".into(), c.kpi_ms);
@@ -472,7 +480,7 @@ async fn run_build(
             .await
             .map_err(|e| retryable("estimates", e))?;
     }
-    let deleted = delete_history_rows(&mut tx, &c.stale_ids)
+    let deleted = delete_history_rows(&mut tx, account_id, tc, &c.stale_ids)
         .await
         .map_err(|e| retryable("history", e))?;
     for r in &c.fresh {

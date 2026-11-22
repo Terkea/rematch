@@ -118,7 +118,11 @@ pub type RowKey = (
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct StoredHistory {
     pub rows: HashMap<RowKey, Vec<i64>>,
+    /// Latest transition state per series, current detector version.
     pub latest_state: HashMap<String, WeaknessState>,
+    /// Latest transition state per series over every detector version (the fallback for a
+    /// replayed series that has no current-version row yet, as after a version bump).
+    pub latest_state_any: HashMap<String, WeaknessState>,
 }
 
 /// Reads [`StoredHistory`] (run it under the build's lock).
@@ -146,7 +150,7 @@ pub async fn stored_history(
     .bind(account_id)
     .bind(tc.as_str())
     .bind(DETECTOR_VERSION)
-    .fetch_all(conn)
+    .fetch_all(&mut *conn)
     .await?;
     let mut out = StoredHistory::default();
     for (id, key, kind, from, to, at, onset) in raw {
@@ -161,6 +165,20 @@ pub async fn stored_history(
             .or_default()
             .push(id);
     }
+    let any: Vec<(String, String)> = sqlx::query_as(
+        "SELECT DISTINCT ON (series_key) series_key, to_state::text \
+         FROM weakness_state_history \
+         WHERE account_id = $1 AND time_class = $2::time_class AND kind = 'transition' \
+         ORDER BY series_key, at_played_at DESC NULLS LAST, id DESC",
+    )
+    .bind(account_id)
+    .bind(tc.as_str())
+    .fetch_all(&mut *conn)
+    .await?;
+    out.latest_state_any = any
+        .into_iter()
+        .filter_map(|(k, s)| s.parse().ok().map(|s| (k, s)))
+        .collect();
     Ok(out)
 }
 
@@ -290,14 +308,28 @@ pub fn stale_row_ids(
 }
 
 /// Deletes history rows by id (in the build's transaction).
-pub async fn delete_history_rows(conn: &mut PgConnection, ids: &[i64]) -> sqlx::Result<u64> {
+///
+/// The statement carries its own scope (account, time class, current detector version), so a
+/// wrong id can never delete another account's, time class's or detector's history.
+pub async fn delete_history_rows(
+    conn: &mut PgConnection,
+    account_id: Uuid,
+    tc: TimeClass,
+    ids: &[i64],
+) -> sqlx::Result<u64> {
     if ids.is_empty() {
         return Ok(0);
     }
-    let done = sqlx::query("DELETE FROM weakness_state_history WHERE id = ANY($1)")
-        .bind(ids)
-        .execute(conn)
-        .await?;
+    let done = sqlx::query(
+        "DELETE FROM weakness_state_history WHERE id = ANY($1) AND account_id = $2 \
+         AND time_class = $3::time_class AND detector_version = $4",
+    )
+    .bind(ids)
+    .bind(account_id)
+    .bind(tc.as_str())
+    .bind(DETECTOR_VERSION)
+    .execute(conn)
+    .await?;
     Ok(done.rows_affected())
 }
 
@@ -351,6 +383,13 @@ pub fn state_changes(
         .map(SeriesKey::Weakness)
         .collect();
     keys.extend(outcomes.keys().cloned());
+    // Series with current-version rows that left the replay: they are `not_an_issue` now.
+    keys.extend(
+        stored
+            .latest_state
+            .keys()
+            .filter_map(|k| k.parse::<SeriesKey>().ok()),
+    );
     keys.sort();
     keys.dedup();
     keys.into_iter()
@@ -360,7 +399,16 @@ pub fn state_changes(
             let to = outcome.map_or(WeaknessState::NotAnIssue, |o| o.state);
             let from = match key {
                 SeriesKey::Weakness(_) => stored_estimates.get(&name),
-                _ => stored.latest_state.get(&name),
+                // A replayed series without current-version rows (a detector bump) falls back
+                // to the latest row of any version, so an unchanged state is not re-announced.
+                // A series outside the replay counts only with current-version rows, or it
+                // would be announced again on every build.
+                _ => stored.latest_state.get(&name).or_else(|| {
+                    outcome
+                        .is_some()
+                        .then(|| stored.latest_state_any.get(&name))
+                        .flatten()
+                }),
             }
             .copied()
             .unwrap_or(WeaknessState::NotAnIssue);
