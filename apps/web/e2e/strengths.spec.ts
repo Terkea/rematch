@@ -75,7 +75,7 @@ test.describe
         "Critical moments you got right",
       );
       await expect(hard).toContainText("Difficulty pending: Maia hasn't rated these positions yet");
-      await expect(hard).toContainText("Until it does, these are critical moments you got right");
+      await expect(hard).toContainText("Until it does, these are moments where the engine");
       const spots = hard.locator("[data-spot]");
       await expect(spots).toHaveCount(3);
       // 10… Qxf4 took a free piece after White's blunder: left out despite the biggest gap.

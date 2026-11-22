@@ -371,7 +371,7 @@ describe("StrengthsView", () => {
     const hard = section(body, "hard-spots");
     expect(within(hard).getByRole("heading", { level: 2 }).textContent).toBe(CRITICAL_TITLE);
     expect(hard.textContent).toContain(
-      "Until it does, these are critical moments you got right: the engine's best move was at least 15 win% points better than its second choice, your win chance was between 25% and 75%, and you found it.",
+      "Until it does, these are moments where the engine's best move was at least 15 win% points better than its second choice, your win chance was between 25% and 75%, and you found it.",
     );
     const spot = body.querySelector('[data-spot="g-1:5"]') as HTMLElement;
     expect(spot.querySelector("[data-position-explorer]")).toBeTruthy();
