@@ -11,6 +11,7 @@ import { googleProvider } from "./auth/google";
 import { authHooks } from "./auth/hooks";
 import { isInvited, NOT_INVITED } from "./auth/invite";
 import { oauthProviders } from "./auth/oauth-providers";
+import { withPendingEmail } from "./auth/pending-email";
 import {
   admissionPolicy,
   deliverMagicLink,
@@ -182,6 +183,14 @@ export async function mapAuthResponse(
 
 /** The `/api/auth/*` route handler. */
 export async function handleAuthRequest(req: Request): Promise<Response> {
+  const env = getEnv();
+  // Read before the handler consumes the body: a successful send carries its address to the
+  // check-email page in a cookie, never in the URL (pending-email.ts).
+  const copy = req.clone();
   const res = await getAuth().handler(req);
-  return mapAuthResponse(req, res, getEnv().BETTER_AUTH_URL);
+  return withPendingEmail(
+    copy,
+    await mapAuthResponse(req, res, env.BETTER_AUTH_URL),
+    secureCookies(env),
+  );
 }
