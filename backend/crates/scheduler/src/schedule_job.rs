@@ -8,13 +8,14 @@
 //! 2. stops backfill (P1/P2) for every time class whose estimates are precise ([`is_precise`]);
 //! 3. runs [`select_for_analysis`] and, in the same transaction, sets the selected games
 //!    `pending` with `analysis_tier`, `analysis_priority`, `selected_at` and `pending_since`
-//!    (fenced on `imported`), clears the "waiting for the scheduler" marker (`pending_since`) of
-//!    every other `imported` game it read, and on the account's first run sets
-//!    `analysis_scheduled_at`;
+//!    (fenced on `imported`) and clears the "waiting for the scheduler" marker (`pending_since`)
+//!    of every other `imported` game it read (unless there is no primary time class);
 //! 4. after the commit, enqueues one analyse job per selected game at its priority (one
 //!    [`enqueue_analysis_page_with_priority`] batch: the rows
 //!    [`analysis::jobs::analyse::enqueue_analyse_with_priority`] writes, in one commit) and, on
-//!    the first run, previews for the first [`PREVIEW_GAMES`] tier-0 games.
+//!    the first run, previews for the account's first [`PREVIEW_GAMES`] tier-0 games (read
+//!    back from the database), and only then sets `analysis_scheduled_at`, so a failed preview
+//!    enqueue is retried as a first run.
 //!
 //! Mapping onto [`select_for_analysis`] (whose candidates are `Pending` with no tier):
 //! - `imported` rows are passed as `Pending` with no tier;
@@ -48,7 +49,9 @@ use uuid::Uuid;
 
 use crate::precision::{PrecisionInput, is_precise};
 use crate::preview::enqueue_previews;
-use crate::select::{CandidateGame, PREVIEW_GAMES, Plan, SelectInput, select_for_analysis};
+use crate::select::{
+    CandidateGame, PREVIEW_GAMES, Plan, SelectInput, primary_time_class, select_for_analysis,
+};
 
 /// The rolling window of the P3 (new games) budget.
 pub const P3_WINDOW: Duration = Duration::days(7);
@@ -134,6 +137,12 @@ UPDATE games g SET analysis_status = 'pending', analysis_tier = s.tier,
 FROM unnest($1::uuid[], $2::int2[], $3::int2[]) AS s(id, tier, priority)
 WHERE g.id = s.id AND g.account_id = $5 AND g.analysis_status = 'imported'
 RETURNING g.id, g.analysis_tier, g.analysis_priority";
+
+/// The account's first tier-0 games still to be analysed, in the order their analyses run.
+const FIRST_PREVIEWS_SQL: &str = "\
+SELECT id FROM games
+WHERE account_id = $1 AND analysis_tier = 0 AND analysis_status IN ('pending', 'analysing')
+ORDER BY analysis_priority, rated DESC, played_at DESC, id LIMIT $2";
 
 /// Clears the marker of `imported` games this run read and did not select.
 const SEEN_SQL: &str = "\
@@ -258,30 +267,20 @@ pub async fn handle_schedule(
         .into_iter()
         .filter(|id| !promoted_ids.contains(id))
         .collect();
-    if !seen.is_empty() {
+    // With no primary time class (every game future-dated) nothing could be selected: keep the
+    // markers, so a later run looks at these games again.
+    if !seen.is_empty() && primary_time_class(&games, now).is_some() {
         sqlx::query(SEEN_SQL)
             .bind(&seen)
             .execute(&mut *tx)
             .await
             .map_err(db_err)?;
     }
-    if first_run {
-        sqlx::query(
-            "UPDATE linked_accounts SET analysis_scheduled_at = $2 \
-             WHERE id = $1 AND analysis_scheduled_at IS NULL",
-        )
-        .bind(account_id)
-        .bind(now)
-        .execute(&mut *tx)
-        .await
-        .map_err(db_err)?;
-    }
     tx.commit().await.map_err(db_err)?;
 
-    // After the commit: in selection order, so the previews are the first tier-0 picks.
+    // After the commit.
     let mut summary = ScheduleSummary::default();
     let mut jobs = Vec::with_capacity(promoted.len());
-    let mut preview_ids = Vec::new();
     let stored: HashMap<Uuid, (i16, i16)> = promoted
         .iter()
         .filter_map(|&(id, tier, priority)| Some((id, (tier?, priority?))))
@@ -298,17 +297,35 @@ pub async fn handle_schedule(
             *n += 1;
         }
         jobs.push((s.game_id, account_id, priority));
-        if tier == 0 && preview_ids.len() < PREVIEW_GAMES {
-            preview_ids.push(s.game_id);
-        }
     }
     enqueue_analysis_page_with_priority(&deps.queue, &jobs)
         .await
         .map_err(|e| retryable(format!("enqueueing analyses: {e}")))?;
-    if first_run && !preview_ids.is_empty() {
-        summary.previews = enqueue_previews(&deps.queue, account_id, &preview_ids)
+    if first_run {
+        // The first run ends only once its previews are queued: the account's first tier-0
+        // games are read back from the database, so a retry after a failed enqueue finds the
+        // same games (the `preview:<game>` dedupe makes a repeat harmless), and
+        // `analysis_scheduled_at` is set last.
+        let preview_ids: Vec<Uuid> = sqlx::query_scalar(FIRST_PREVIEWS_SQL)
+            .bind(account_id)
+            .bind(i64::try_from(PREVIEW_GAMES).unwrap_or(i64::MAX))
+            .fetch_all(&deps.pool)
             .await
-            .map_err(|e| retryable(format!("enqueueing previews: {e}")))?;
+            .map_err(db_err)?;
+        if !preview_ids.is_empty() {
+            summary.previews = enqueue_previews(&deps.queue, account_id, &preview_ids)
+                .await
+                .map_err(|e| retryable(format!("enqueueing previews: {e}")))?;
+        }
+        sqlx::query(
+            "UPDATE linked_accounts SET analysis_scheduled_at = $2 \
+             WHERE id = $1 AND analysis_scheduled_at IS NULL",
+        )
+        .bind(account_id)
+        .bind(now)
+        .execute(&deps.pool)
+        .await
+        .map_err(db_err)?;
     }
     tracing::info!(
         account_id = %account_id,

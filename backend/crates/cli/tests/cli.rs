@@ -537,3 +537,92 @@ async fn a_failed_close_turns_success_into_1(pool: PgPool) {
     };
     assert_eq!(run_cli(&args("Closer"), cli).await, 1);
 }
+
+/// The real wait list (`cli::analyse::queues_idle_on`) against real queues: the import has
+/// finished and stored every game `imported`, and its schedule-analysis job is still queued (its
+/// runner starts late). The command must wait for that job and the analyses it enqueues, not
+/// exit at once with "analysed: 0".
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn waits_for_the_schedule_job_before_counting(pool: PgPool) {
+    use analysis::eval_cache::DbEvalCache;
+    use analysis::jobs::analyse::{AnalyseGameDeps, AnalyseGameHandler};
+    use queue::queue::Queue;
+    use queue::runner::{Runner, RunnerConfig};
+    use scheduler::schedule_job::{ScheduleDeps, ScheduleHandler};
+
+    const ITALIAN: &str = "1. e4 e5 2. Nf3 Nc6 3. Bc4 Bc5 4. c3 Nf6 5. d4 exd4 6. cxd4 Bb4+ *";
+    let queue = Queue::new(pool.clone());
+    let fast = RunnerConfig {
+        idle_poll: Duration::from_millis(50),
+        ..RunnerConfig::default()
+    };
+    let analyse = Runner::spawn(
+        queue.clone(),
+        Arc::new(AnalyseGameHandler(Arc::new(AnalyseGameDeps::new(
+            pool.clone(),
+            Arc::new(testkit::fake_engine::FakeAnalyser::new()),
+            Arc::new(DbEvalCache::new(pool.clone())),
+        )))),
+        fast.clone(),
+    );
+    // The schedule runner starts 1.5 s after the import has finished.
+    let (sched_pool, sched_queue, sched_cfg) = (pool.clone(), queue.clone(), fast.clone());
+    let schedule = tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(1500)).await;
+        Runner::spawn(
+            sched_queue.clone(),
+            Arc::new(ScheduleHandler(Arc::new(ScheduleDeps {
+                pool: sched_pool,
+                queue: sched_queue,
+                now: OffsetDateTime::now_utc,
+            }))),
+            sched_cfg,
+        )
+    });
+
+    let out = Arc::new(Mutex::new(Vec::new()));
+    let (o1, o2) = (out.clone(), out.clone());
+    let (pool_e, queue_e) = (pool.clone(), queue.clone());
+    let deps = AnalyseDeps {
+        pool: pool.clone(),
+        enqueue_import: Box::new(move |account, _max| {
+            let (pool, queue) = (pool_e.clone(), queue_e.clone());
+            async move {
+                // What the importer leaves: `imported` games, a done run, one schedule job.
+                for i in 0..3 {
+                    insert_game(
+                        &pool,
+                        account,
+                        GameSeed {
+                            platform_game_id: format!("w{i}-{}", Uuid::new_v4()),
+                            pgn: ITALIAN.to_owned(),
+                            status: "imported",
+                            ..GameSeed::default()
+                        },
+                    )
+                    .await;
+                }
+                seed_run(&pool, account, "done").await;
+                analysis::jobs::import::enqueue_schedule(&queue, account).await?;
+                Ok(())
+            }
+            .boxed()
+        }),
+        queues_idle: cli::analyse::queues_idle_on(queue.clone()),
+        print: Box::new(move |l| o1.lock().unwrap().push(l.to_owned())),
+        print_error: Box::new(move |l| o2.lock().unwrap().push(l.to_owned())),
+        poll: Duration::from_millis(20),
+        grace: Duration::from_secs(60),
+        cancel: CancellationToken::new(),
+        list_runs: None,
+    };
+    let code = run_analyse(&args("Waiter"), &deps).await;
+    let schedule = schedule.await.unwrap();
+    for r in [&schedule, &analyse] {
+        r.stop();
+        r.wait_idle().await;
+    }
+    let l = out.lock().unwrap().clone();
+    assert_eq!(code, 0, "{l:?}");
+    assert!(l.last().unwrap().contains("analysed: 3"), "{l:?}");
+}

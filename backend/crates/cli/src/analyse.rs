@@ -6,7 +6,10 @@ use std::time::Duration;
 
 use clap::{Arg, Command};
 use db::import_runs::{ImportRunRow, ImportRunStatus, list_runs};
+use futures::FutureExt;
 use futures::future::BoxFuture;
+use queue::kinds::{KIND_ANALYSE, KIND_IMPORT, KIND_SCHEDULE};
+use queue::queue::Queue;
 use sqlx::PgPool;
 use tokio::sync::mpsc;
 use tokio::time::Instant;
@@ -27,13 +30,28 @@ pub type Printer = Box<dyn Fn(&str) + Send + Sync>;
 pub type EnqueueImport =
     Box<dyn Fn(Uuid, Option<u32>) -> BoxFuture<'static, anyhow::Result<()>> + Send + Sync>;
 pub type QueuesIdle = Box<dyn Fn(Uuid) -> BoxFuture<'static, anyhow::Result<bool>> + Send + Sync>;
+/// The job kinds the command waits for. The schedule-analysis job sits between the import and
+/// the analyses (ADR-R2-16): the import enqueues it before its own job ends, and it enqueues the
+/// analyses before its own job ends, so one of these is always live until the analyses finish.
+pub const WAIT_KINDS: [&str; 3] = [KIND_IMPORT, KIND_SCHEDULE, KIND_ANALYSE];
+
+/// [`AnalyseDeps::queues_idle`] on a real queue: no job of [`WAIT_KINDS`] of the account is
+/// queued, running or paused.
+pub fn queues_idle_on(queue: Queue) -> QueuesIdle {
+    Box::new(move |account| {
+        let queue = queue.clone();
+        async move { Ok(queue.live_count(&WAIT_KINDS, Some(account)).await? == 0) }.boxed()
+    })
+}
+
 pub type ListRuns =
     Box<dyn Fn(Uuid) -> BoxFuture<'static, anyhow::Result<Vec<ImportRunRow>>> + Send + Sync>;
 
 pub struct AnalyseDeps {
     pub pool: PgPool,
     pub enqueue_import: EnqueueImport,
-    /// True when no import or analysis job of the account is queued, running or paused.
+    /// True when no import, schedule-analysis or analysis job of the account is queued, running
+    /// or paused ([`queues_idle_on`]).
     pub queues_idle: QueuesIdle,
     pub print: Printer,
     pub print_error: Printer,
@@ -260,8 +278,8 @@ async fn analyse(args: &Parsed, deps: &AnalyseDeps) -> anyhow::Result<i32> {
         .into_iter()
         .map(|r| (r.id, r.status))
         .collect();
-    // Games left pending/analysing by an earlier killed run. Only those the import re-enqueues
-    // will move, so they must not stall this invocation.
+    // Games left pending/analysing by an earlier killed run. Only the reconciler re-enqueues
+    // those, and it does not run in this process, so they must not stall this invocation.
     let stale: HashSet<Uuid> = non_terminal_ids(pool, id).await?.into_iter().collect();
     (deps.enqueue_import)(id, args.max).await?;
 

@@ -753,3 +753,95 @@ async fn cli_max_500_on_500_imported_games_schedules_all_500(pool: PgPool) {
         }
     }
 }
+
+#[test]
+fn beta_priorities_are_pro_s() {
+    for tier in 0..=3_u8 {
+        for evals in [false, true] {
+            assert_eq!(
+                job_priority(tier, Plan::Beta, evals),
+                job_priority(tier, Plan::Pro, evals),
+                "tier {tier}, evals {evals}"
+            );
+        }
+    }
+    assert_eq!(job_priority(0, Plan::Beta, true), 2);
+    assert_eq!(job_priority(3, Plan::Beta, false), 7);
+}
+
+/// A first run whose preview enqueue fails is still a first run on the retry: the previews are
+/// enqueued then, for the same tier-0 games, and only then is `analysis_scheduled_at` set.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_failed_preview_enqueue_is_retried_on_the_next_run(pool: PgPool) {
+    let acct = insert_account(&pool, "lichess", "previewretry").await;
+    let mut ids = Vec::new();
+    for d in 0..25 {
+        ids.push(
+            seed(
+                &pool,
+                acct,
+                Seed {
+                    days_ago: 0.5 + f64::from(d),
+                    ..Seed::default()
+                },
+            )
+            .await,
+        );
+    }
+    sqlx::raw_sql(
+        "CREATE FUNCTION no_previews() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN \
+           RAISE EXCEPTION 'preview enqueue down'; END $$; \
+         CREATE TRIGGER no_previews BEFORE INSERT ON jobs FOR EACH ROW \
+           WHEN (NEW.kind = 'preview-game') EXECUTE FUNCTION no_previews()",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let err = handle_schedule(&deps(&pool), payload(acct, None))
+        .await
+        .unwrap_err();
+    assert!(matches!(err, JobError::Retryable { .. }), "{err:?}");
+    assert_eq!(scheduled_at(&pool, acct).await, None, "still a first run");
+    assert!(live(&pool, KIND_PREVIEW, acct).await.is_empty());
+    assert_eq!(live(&pool, KIND_ANALYSE, acct).await.len(), 25);
+
+    sqlx::raw_sql("DROP TRIGGER no_previews ON jobs; DROP FUNCTION no_previews()")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let s = schedule(&pool, acct, None).await;
+    assert_eq!((s.selected, s.previews), (0, PREVIEW_GAMES));
+    assert!(scheduled_at(&pool, acct).await.is_some());
+    let mut want: Vec<(String, i16)> = ids[..PREVIEW_GAMES]
+        .iter()
+        .map(|id| (format!("preview:{id}"), PREVIEW_PRIORITY))
+        .collect();
+    want.sort();
+    assert_eq!(live(&pool, KIND_PREVIEW, acct).await, want);
+    // And not again.
+    assert_eq!(schedule(&pool, acct, None).await.previews, 0);
+}
+
+/// With no primary time class (every game future-dated, a clock skew) nothing is selected, and
+/// the games keep their "waiting for the scheduler" marker for a later run.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn no_primary_time_class_keeps_the_markers(pool: PgPool) {
+    let acct = insert_account(&pool, "lichess", "future").await;
+    let id = seed(
+        &pool,
+        acct,
+        Seed {
+            days_ago: -2.0,
+            ..Seed::default()
+        },
+    )
+    .await;
+    assert_eq!(schedule(&pool, acct, None).await.selected, 0);
+    let marker: Option<OffsetDateTime> =
+        sqlx::query_scalar("SELECT pending_since FROM games WHERE id = $1")
+            .bind(id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert!(marker.is_some());
+}

@@ -197,7 +197,7 @@ const AT_CAP_SQL: &str = "SELECT count(*) FROM games WHERE analysis_attempts >= 
 
 const STATUS_COUNTS_SQL: &str = "\
 SELECT analysis_status::text, count(*) FROM games
-WHERE analysis_status IN ('pending', 'analysing', 'failed') GROUP BY 1";
+WHERE analysis_status IN ('pending', 'analysing', 'failed', 'imported') GROUP BY 1";
 
 /// Runs one sweep (see the module docs) and returns what it did.
 pub async fn reconcile(
@@ -356,6 +356,7 @@ pub async fn reconcile(
         pending = counts.get("pending").copied().unwrap_or(0),
         analysing = counts.get("analysing").copied().unwrap_or(0),
         failed = counts.get("failed").copied().unwrap_or(0),
+        imported = counts.get("imported").copied().unwrap_or(0),
         at_attempt_cap,
         "reconcile sweep"
     );
