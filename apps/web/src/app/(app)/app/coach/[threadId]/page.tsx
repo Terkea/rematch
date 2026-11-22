@@ -6,6 +6,7 @@ import { requireUser } from "../../../../../server/auth/session";
 import { chatAllowance } from "../../../../../server/coach/allowance";
 import { getThread, listConversations, type Thread } from "../../../../../server/coach/threads";
 import { getDb } from "../../../../../server/db";
+import { requestEventCursor } from "../../../../../server/events/request-cursor";
 import { reviewGameIds } from "../../../../../server/profile/game-ids";
 import { allowanceView } from "../allowance";
 import { ThreadList } from "../thread-list";
@@ -22,6 +23,8 @@ type Props = {
 /** One read per request, shared by the metadata and the page. Not the user's: not found. */
 const load = cache(async (threadId: string): Promise<{ userId: string; thread: Thread }> => {
   const user = await requireUser();
+  // Before any page data, so the event stream replays whatever lands after this read (T27).
+  await requestEventCursor(user.id);
   const thread = await getThread(getDb(), user.id, threadId);
   if (!thread) notFound();
   return { userId: user.id, thread };

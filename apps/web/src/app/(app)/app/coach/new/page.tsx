@@ -3,6 +3,7 @@ import { requireUser } from "../../../../../server/auth/session";
 import { chatAllowance } from "../../../../../server/coach/allowance";
 import { type ChatAnchor, decodeAnchor } from "../../../../../server/coach/anchor";
 import { getDb } from "../../../../../server/db";
+import { requestEventCursor } from "../../../../../server/events/request-cursor";
 import { resolveCoachScope } from "../../../../../server/profile/scope";
 import { PageHeading } from "../../../_shell/page-heading";
 import { AnchorCard, loadAnchorView } from "../[threadId]/anchor-card";
@@ -24,6 +25,8 @@ const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v
  */
 export default async function NewCoachPage({ searchParams }: { searchParams: Promise<Params> }) {
   const user = await requireUser();
+  // Before any page data, so the event stream replays whatever lands after this read (T27).
+  await requestEventCursor(user.id);
   const db = getDb();
   const params = await searchParams;
   const scope = await resolveCoachScope(db, user.id, params);

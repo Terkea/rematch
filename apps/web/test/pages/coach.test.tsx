@@ -25,6 +25,13 @@ vi.mock("@ci/ui/overlays", async (orig) => ({ ...(await orig<object>()), toast }
 const requireUser = vi.fn(async () => ({ id: "u1", email: "x@example.invalid" }));
 vi.mock("../../src/server/auth/session", () => ({ requireUser }));
 vi.mock("../../src/server/db", () => ({ getDb: () => ({}) }));
+const cursorReads: string[] = [];
+vi.mock("../../src/server/events/request-cursor", () => ({
+  requestEventCursor: async (userId: string) => {
+    cursorReads.push(userId);
+    return 0;
+  },
+}));
 
 const resolveCoachScope = vi.fn();
 vi.mock("../../src/server/profile/scope", async (orig) => ({
@@ -301,6 +308,17 @@ describe("coach pages", () => {
     });
     expect(reviewGameIds).toHaveBeenCalledWith({}, "u1", { accountId: ACCOUNT }, [PLATFORM_GAME]);
     expect(findProps(tree, "gameIds")?.gameIds).toEqual({ [PLATFORM_GAME]: GAME });
+  });
+
+  it("every coach page reads the event cursor before its data (T27)", async () => {
+    cursorReads.length = 0;
+    await ListPage({ searchParams: Promise.resolve({}) });
+    await NewPage({ searchParams: Promise.resolve({}) });
+    await ThreadPage({
+      params: Promise.resolve({ threadId: THREAD }),
+      searchParams: Promise.resolve({}),
+    });
+    expect(cursorReads).toEqual(["u1", "u1", "u1"]);
   });
 
   it("foreign thread is not found", async () => {
