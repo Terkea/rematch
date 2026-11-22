@@ -57,6 +57,11 @@ export function applyEvent(qc: QueryClient, e: StreamEvent): void {
         const failures = [...a.failures, { kind, reason, at: Date.now() }].slice(-MAX_FAILURES);
         return { imports, failures };
       });
+      // A failed report run emits only this (report_job.rs step 8): the report page refreshes to
+      // its failed state instead of saying "Building" until a reload (M5b T11).
+      if (kind === "generate-report") {
+        void qc.invalidateQueries({ queryKey: queryKeys.report(e.accountId), exact: true });
+      }
       const label = kindLabel(kind);
       // A toast, never a modal: background work failing must not interrupt what the user does.
       toast(`${article(label)} ${label} job failed: ${reason}`);

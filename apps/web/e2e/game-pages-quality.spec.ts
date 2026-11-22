@@ -63,6 +63,23 @@ test("the game pages: no sideways scroll at 360px, visible focus, no broken numb
       expect(over, `${where}: sideways overflow`).toBeLessThanOrEqual(0);
 
       if ("axe" in r && width === 360) {
+        // Entrance fades (the header's activity indicator starts at opacity 0) read as low
+        // contrast mid-flight: let every finite animation finish before axe measures.
+        await page.evaluate(async () => {
+          const finite = document
+            .getAnimations()
+            .filter((a) => a.effect?.getComputedTiming().endTime !== Number.POSITIVE_INFINITY);
+          await Promise.all(finite.map((a) => a.finished.catch(() => undefined)));
+        });
+        await expect
+          .poll(() =>
+            page.evaluate(() =>
+              [...document.querySelectorAll("[data-slot='activity'] > *")].every(
+                (el) => Number(getComputedStyle(el).opacity) === 1,
+              ),
+            ),
+          )
+          .toBe(true);
         const axe = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
         const bad = axe.violations
           .filter((v) => v.impact === "serious" || v.impact === "critical")
