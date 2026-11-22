@@ -2,7 +2,7 @@
 //! nullable fields are `null` (never skipped).
 
 use coaching_input::{
-    CauseKind, CoachingInput, ExampleSide, INPUT_VERSION, InputVersion, LineSide, MetricUnit,
+    CauseKind, CoachingInput, ExampleSide, INPUT_VERSION_V1, InputVersion, LineSide, MetricUnit,
     Platform, PlayerColor, Score, TimeClass, Verdict,
 };
 use serde_json::{Value, json};
@@ -176,14 +176,16 @@ fn missing_nullable_key_is_rejected() {
 
 #[test]
 fn input_version_is_the_literal() {
-    assert_eq!(INPUT_VERSION, "coaching-input-v1");
+    // The M3 sample is v1; the builder writes v2 (`v2.rs`).
+    assert_eq!(INPUT_VERSION_V1, "coaching-input-v1");
     assert_eq!(
         serde_json::to_value(InputVersion::V1).unwrap(),
-        json!(INPUT_VERSION)
+        json!(INPUT_VERSION_V1)
     );
-    assert_eq!(InputVersion::V1.as_str(), INPUT_VERSION);
+    assert_eq!(InputVersion::V1.as_str(), INPUT_VERSION_V1);
+    assert_eq!(sample().input_version, InputVersion::V1);
     let mut v = sample_value();
-    v["inputVersion"] = json!("coaching-input-v2");
+    v["inputVersion"] = json!("coaching-input-v3");
     assert!(serde_json::from_value::<CoachingInput>(v).is_err());
 }
 

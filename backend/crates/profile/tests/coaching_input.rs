@@ -285,8 +285,22 @@ fn ts_validator() -> jsonschema::Validator {
         .expect("the TS schema compiles")
 }
 
+/// The document's errors: its v1 part (without v2's `byColor` and `benchmark`, ADR 0085)
+/// against the zod export, which is v1's, and the whole document against the contract's own
+/// schema.
 fn schema_errors(v: &jsonschema::Validator, doc: &Value) -> Vec<String> {
-    v.iter_errors(doc)
+    let mut v1 = doc.clone();
+    if let Some(o) = v1.as_object_mut() {
+        o.remove("byColor");
+        o.remove("benchmark");
+        o.insert("inputVersion".into(), json!("coaching-input-v1"));
+    }
+    let contract = jsonschema::options()
+        .should_validate_formats(true)
+        .build(&coaching_input::json_schema())
+        .expect("the contract schema compiles");
+    v.iter_errors(&v1)
+        .chain(contract.iter_errors(doc))
         .map(|e| format!("{e} at {}", e.instance_path()))
         .collect()
 }

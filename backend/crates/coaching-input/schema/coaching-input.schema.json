@@ -145,6 +145,82 @@
       ],
       "type": "object"
     },
+    "Benchmark": {
+      "additionalProperties": false,
+      "description": "v2: the group every `bandMedian`, `bandPercentile` and `peerRate` compares with (the\naccount's stored benchmark, ADR 0080). With `peers` it is the opponents the player has faced\non the platform, rated `ratingLow`..`ratingHigh` on its own scale; the four numbers are then\nall present. Measured only in their games against the player, so a rough guide.",
+      "properties": {
+        "games": {
+          "description": "Their games against the player in the window.",
+          "maximum": 100000000,
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "players": {
+          "description": "Distinct opponents in the window.",
+          "maximum": 100000000,
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "ratingHigh": {
+          "maximum": 4000,
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "ratingLow": {
+          "maximum": 4000,
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "source": {
+          "$ref": "#/$defs/BenchmarkSource"
+        }
+      },
+      "required": [
+        "games",
+        "players",
+        "ratingHigh",
+        "ratingLow",
+        "source"
+      ],
+      "type": "object"
+    },
+    "BenchmarkSource": {
+      "description": "v2 `benchmark.source` (ADR 0080): the players a comparison is made with.",
+      "enum": [
+        "peers",
+        "lichess_bands"
+      ],
+      "type": "string"
+    },
+    "ByColor": {
+      "additionalProperties": false,
+      "description": "v2: the colour split (ADR 0082, 0084).",
+      "properties": {
+        "black": {
+          "$ref": "#/$defs/ColorSummary"
+        },
+        "white": {
+          "$ref": "#/$defs/ColorSummary"
+        }
+      },
+      "required": [
+        "black",
+        "white"
+      ],
+      "type": "object"
+    },
     "CandidateCause": {
       "additionalProperties": false,
       "description": "A correlated possible cause of a change, never proven.",
@@ -303,6 +379,236 @@
         "tags",
         "winAfter",
         "winBefore"
+      ],
+      "type": "object"
+    },
+    "ColorMetric": {
+      "additionalProperties": false,
+      "description": "v2: one number of a colour, with its 80% interval. Below its minimum evidence it is stated\nas insufficient: `value`, `low` and `high` are null (never 0) and `needMore` says how many\nmore observations it needs.",
+      "properties": {
+        "high": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "low": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "n": {
+          "description": "Observations behind it (games).",
+          "maximum": 100000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "needMore": {
+          "description": "More observations needed to become sufficient; null when sufficient.",
+          "maximum": 100000000,
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "sufficient": {
+          "type": "boolean"
+        },
+        "unit": {
+          "$ref": "#/$defs/MetricUnit"
+        },
+        "value": {
+          "description": "In `unit`; null when not sufficient.",
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "high",
+        "low",
+        "n",
+        "needMore",
+        "sufficient",
+        "unit",
+        "value"
+      ],
+      "type": "object"
+    },
+    "ColorSummary": {
+      "additionalProperties": false,
+      "description": "v2: the player's games with one colour.",
+      "properties": {
+        "accuracy": {
+          "$ref": "#/$defs/ColorMetric",
+          "description": "Mean game accuracy, 0..100 (`pct`)."
+        },
+        "blundersPerGame": {
+          "$ref": "#/$defs/ColorMetric",
+          "description": "Mean blunders per game (`per_game`)."
+        },
+        "draws": {
+          "maximum": 100000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "games": {
+          "description": "Analysed games with this colour in the window: the colour's most recent, at most 50\n(the KPI `last50` window). `wins + draws + losses = games`.",
+          "maximum": 100000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "losses": {
+          "maximum": 100000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "needMore": {
+          "maximum": 100000000,
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "score": {
+          "$ref": "#/$defs/ColorMetric",
+          "description": "Points per game, 0..1 (`rate`): a draw is half a point."
+        },
+        "sufficient": {
+          "description": "`games >= MIN_COLOR_GAMES`; below it nothing about the colour is stated.",
+          "type": "boolean"
+        },
+        "weaknesses": {
+          "description": "The colour's top weakness rates (claimable against its own peers, else uncompared), at\nmost `LIMITS.colorWeaknesses`; empty below 30 games of the colour in the 6-month window.",
+          "items": {
+            "$ref": "#/$defs/ColorWeakness"
+          },
+          "maxItems": 5,
+          "type": "array"
+        },
+        "wins": {
+          "maximum": 100000000,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "accuracy",
+        "blundersPerGame",
+        "draws",
+        "games",
+        "losses",
+        "needMore",
+        "score",
+        "sufficient",
+        "weaknesses",
+        "wins"
+      ],
+      "type": "object"
+    },
+    "ColorWeakness": {
+      "additionalProperties": false,
+      "description": "v2: a weakness rate measured over one colour's games only (the stored `side` estimate rows,\nADR 0082), with that colour's own peer comparison when one exists (never the both one).",
+      "properties": {
+        "area": {
+          "$ref": "#/$defs/AreaId"
+        },
+        "events": {
+          "maximum": 100000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "high": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "id": {
+          "maxLength": 5,
+          "pattern": "^W(1[0-2]|[1-9])[a-d]?$",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 120,
+          "minLength": 1,
+          "type": "string"
+        },
+        "low": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "opportunities": {
+          "maximum": 100000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "peerPercentile": {
+          "description": "Where `rate` sits against `peerRate`'s spread, 0..100 (higher = fewer errors).",
+          "maximum": 100,
+          "minimum": 0,
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "peerPlayers": {
+          "description": "Opponents behind `peerRate`.",
+          "maximum": 100000000,
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "peerRate": {
+          "description": "This colour's peers' pooled rate; null when the colour has no comparison of its own.",
+          "maximum": 1,
+          "minimum": 0,
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "rate": {
+          "description": "Posterior event rate over this colour's games, events per opportunity.",
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "seriesKey": {
+          "description": "The weakness series key (`W3.shallow`); unique within the colour.",
+          "maxLength": 64,
+          "minLength": 1,
+          "type": "string"
+        },
+        "variant": {
+          "maxLength": 40,
+          "minLength": 1,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "area",
+        "events",
+        "high",
+        "id",
+        "label",
+        "low",
+        "opportunities",
+        "peerPercentile",
+        "peerPlayers",
+        "peerRate",
+        "rate",
+        "seriesKey",
+        "variant"
       ],
       "type": "object"
     },
@@ -1065,6 +1371,28 @@
     "basis": {
       "$ref": "#/$defs/Basis"
     },
+    "benchmark": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Benchmark"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "v2 only (absent in v1, and in v2 without a stored benchmark): what the profile compares\nwith."
+    },
+    "byColor": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ByColor"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "v2 only (absent in v1): the colour split."
+    },
     "changes": {
       "items": {
         "$ref": "#/$defs/TimelineChange"
@@ -1079,7 +1407,10 @@
       "type": "string"
     },
     "inputVersion": {
-      "const": "coaching-input-v1",
+      "enum": [
+        "coaching-input-v1",
+        "coaching-input-v2"
+      ],
       "type": "string"
     },
     "metrics": {

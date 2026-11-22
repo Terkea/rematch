@@ -15,7 +15,15 @@ use crate::validator::evidence::{Evidence, build_evidence, list_date_paths, list
 use crate::validator::language::evidence_window_token;
 
 /// Top-level sections of the input the context shows; their paths are listed in `refs`.
-const CONTEXT_SECTIONS: &[&str] = &["basis", "areaScores", "weaknesses", "openings", "changes"];
+const CONTEXT_SECTIONS: &[&str] = &[
+    "basis",
+    "areaScores",
+    "weaknesses",
+    "openings",
+    "changes",
+    "byColor",
+    "benchmark",
+];
 
 fn in_context(path: &str) -> bool {
     let section = path.split('.').next().unwrap_or("");
@@ -37,6 +45,10 @@ fn pick(v: &Value, keys: &[&str]) -> Value {
 /// The chat's coaching context: band, time class, basis, the evidence-window token, area
 /// scores, weaknesses without exemplars, the opening verdict list, changes, and the number and
 /// date paths (`refs`) the model may cite with `{{num:}}` and `{{date:}}`. No account id.
+///
+/// A v2 input (ADR 0085) adds the colour split `byColor` (each colour's games, W-D-L, score,
+/// accuracy, blunders per game and its own weakness rows, so the coach can answer "how do I do
+/// as Black?") and the `benchmark` band. A v1 input's context is unchanged.
 pub fn build_chat_context(input: &CoachingInput) -> Value {
     let json = input.to_json();
     let weaknesses: Vec<Value> = json["weaknesses"]
@@ -68,7 +80,7 @@ pub fn build_chat_context(input: &CoachingInput) -> Value {
         .into_iter()
         .filter(|p| in_context(p))
         .collect();
-    json!({
+    let mut ctx = json!({
         "band": json["band"],
         "timeClass": json["timeClass"],
         "basis": json["basis"],
@@ -84,7 +96,13 @@ pub fn build_chat_context(input: &CoachingInput) -> Value {
             &["seriesKey", "weaknessId", "label", "fromState", "toState", "onsetDate"],
         ),
         "refs": {"num": nums, "date": dates},
-    })
+    });
+    for key in ["byColor", "benchmark"] {
+        if let Some(v) = json.get(key) {
+            ctx[key] = v.clone();
+        }
+    }
+    ctx
 }
 
 /// Whether `resolved` is the record of `anchor`: it must carry every id of the anchor, equal.

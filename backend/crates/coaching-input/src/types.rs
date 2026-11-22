@@ -18,9 +18,9 @@ use uuid::Uuid;
 
 use crate::enums::{AreaId, BandId, UnknownVariant, WeaknessState};
 use crate::limits::{
-    ECO_MAX_CHARS, FEN_MAX_CHARS, INPUT_VERSION, LIMITS, MAX_BASE_SECONDS, MAX_COUNT, MAX_CP,
-    MAX_EXCESS_EPL, MAX_INCREMENT_SECONDS, MAX_MATE, MAX_PLY, MAX_PRIORITY, MAX_RATING,
-    UCI_PATTERN, WEAKNESS_ID_MAX_CHARS, WEAKNESS_ID_PATTERN,
+    ECO_MAX_CHARS, FEN_MAX_CHARS, INPUT_VERSION, INPUT_VERSION_V1, LIMITS, MAX_BASE_SECONDS,
+    MAX_COUNT, MAX_CP, MAX_EXCESS_EPL, MAX_INCREMENT_SECONDS, MAX_MATE, MAX_PLY, MAX_PRIORITY,
+    MAX_RATING, UCI_PATTERN, WEAKNESS_ID_MAX_CHARS, WEAKNESS_ID_PATTERN,
 };
 
 /// Deserialises a zod `.nullable()` field: `null` or a value, but the key must be present.
@@ -53,17 +53,24 @@ pub mod iso_date {
     }
 }
 
-/// `inputVersion`: the literal `"coaching-input-v1"` ([`INPUT_VERSION`]).
+/// `inputVersion`: `"coaching-input-v1"` (the M3 contract) or `"coaching-input-v2"`
+/// ([`INPUT_VERSION`], ADR 0085: v1 plus `byColor` and `benchmark`). The builder writes v2; v1
+/// inputs stored before it still parse, without the v2 fields.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum InputVersion {
-    #[default]
     #[serde(rename = "coaching-input-v1")]
     V1,
+    #[default]
+    #[serde(rename = "coaching-input-v2")]
+    V2,
 }
 
 impl InputVersion {
     pub fn as_str(self) -> &'static str {
-        INPUT_VERSION
+        match self {
+            InputVersion::V1 => INPUT_VERSION_V1,
+            InputVersion::V2 => INPUT_VERSION,
+        }
     }
 }
 
@@ -77,7 +84,7 @@ impl JsonSchema for InputVersion {
     }
 
     fn json_schema(_: &mut SchemaGenerator) -> Schema {
-        json_schema!({ "type": "string", "const": INPUT_VERSION })
+        json_schema!({ "type": "string", "enum": [INPUT_VERSION_V1, INPUT_VERSION] })
     }
 }
 
@@ -530,6 +537,142 @@ pub struct Basis {
     pub backfill_complete: bool,
 }
 
+wire_enum!(
+    /// v2 `benchmark.source` (ADR 0080): the players a comparison is made with.
+    BenchmarkSource, "benchmark source", "snake_case", {
+        Peers => "peers",
+        LichessBands => "lichess_bands",
+    }
+);
+
+/// v2: the group every `bandMedian`, `bandPercentile` and `peerRate` compares with (the
+/// account's stored benchmark, ADR 0080). With `peers` it is the opponents the player has faced
+/// on the platform, rated `ratingLow`..`ratingHigh` on its own scale; the four numbers are then
+/// all present. Measured only in their games against the player, so a rough guide.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Benchmark {
+    pub source: BenchmarkSource,
+    #[serde(deserialize_with = "nullable")]
+    #[schemars(range(max = MAX_RATING))]
+    pub rating_low: Option<u16>,
+    #[serde(deserialize_with = "nullable")]
+    #[schemars(range(max = MAX_RATING))]
+    pub rating_high: Option<u16>,
+    /// Distinct opponents in the window.
+    #[serde(deserialize_with = "nullable")]
+    #[schemars(range(max = MAX_COUNT))]
+    pub players: Option<u32>,
+    /// Their games against the player in the window.
+    #[serde(deserialize_with = "nullable")]
+    #[schemars(range(max = MAX_COUNT))]
+    pub games: Option<u32>,
+}
+
+/// v2: one number of a colour, with its 80% interval. Below its minimum evidence it is stated
+/// as insufficient: `value`, `low` and `high` are null (never 0) and `needMore` says how many
+/// more observations it needs.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ColorMetric {
+    /// In `unit`; null when not sufficient.
+    #[serde(deserialize_with = "nullable")]
+    pub value: Option<f64>,
+    pub unit: MetricUnit,
+    /// Observations behind it (games).
+    #[schemars(range(max = MAX_COUNT))]
+    pub n: u32,
+    #[serde(deserialize_with = "nullable")]
+    pub low: Option<f64>,
+    #[serde(deserialize_with = "nullable")]
+    pub high: Option<f64>,
+    pub sufficient: bool,
+    /// More observations needed to become sufficient; null when sufficient.
+    #[serde(deserialize_with = "nullable")]
+    #[schemars(range(max = MAX_COUNT))]
+    pub need_more: Option<u32>,
+}
+
+/// v2: a weakness rate measured over one colour's games only (the stored `side` estimate rows,
+/// ADR 0082), with that colour's own peer comparison when one exists (never the both one).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ColorWeakness {
+    /// The weakness series key (`W3.shallow`); unique within the colour.
+    #[schemars(length(min = 1, max = LIMITS.id_chars))]
+    pub series_key: String,
+    #[schemars(length(max = WEAKNESS_ID_MAX_CHARS), regex(pattern = WEAKNESS_ID_PATTERN))]
+    pub id: String,
+    #[serde(deserialize_with = "nullable")]
+    #[schemars(length(min = 1, max = LIMITS.tag_chars))]
+    pub variant: Option<String>,
+    #[schemars(length(min = 1, max = LIMITS.label_chars))]
+    pub label: String,
+    pub area: AreaId,
+    /// Posterior event rate over this colour's games, events per opportunity.
+    #[schemars(range(min = 0, max = 1))]
+    pub rate: f64,
+    #[schemars(range(min = 0, max = 1))]
+    pub low: f64,
+    #[schemars(range(min = 0, max = 1))]
+    pub high: f64,
+    #[schemars(range(max = MAX_COUNT))]
+    pub events: u32,
+    #[schemars(range(max = MAX_COUNT))]
+    pub opportunities: u32,
+    /// This colour's peers' pooled rate; null when the colour has no comparison of its own.
+    #[serde(deserialize_with = "nullable")]
+    #[schemars(range(min = 0, max = 1))]
+    pub peer_rate: Option<f64>,
+    /// Where `rate` sits against `peerRate`'s spread, 0..100 (higher = fewer errors).
+    #[serde(deserialize_with = "nullable")]
+    #[schemars(range(min = 0, max = 100))]
+    pub peer_percentile: Option<f64>,
+    /// Opponents behind `peerRate`.
+    #[serde(deserialize_with = "nullable")]
+    #[schemars(range(max = MAX_COUNT))]
+    pub peer_players: Option<u32>,
+}
+
+/// v2: the player's games with one colour.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ColorSummary {
+    /// Analysed games with this colour in the window: the colour's most recent, at most 50
+    /// (the KPI `last50` window). `wins + draws + losses = games`.
+    #[schemars(range(max = MAX_COUNT))]
+    pub games: u32,
+    /// `games >= MIN_COLOR_GAMES`; below it nothing about the colour is stated.
+    pub sufficient: bool,
+    #[serde(deserialize_with = "nullable")]
+    #[schemars(range(max = MAX_COUNT))]
+    pub need_more: Option<u32>,
+    #[schemars(range(max = MAX_COUNT))]
+    pub wins: u32,
+    #[schemars(range(max = MAX_COUNT))]
+    pub draws: u32,
+    #[schemars(range(max = MAX_COUNT))]
+    pub losses: u32,
+    /// Points per game, 0..1 (`rate`): a draw is half a point.
+    pub score: ColorMetric,
+    /// Mean game accuracy, 0..100 (`pct`).
+    pub accuracy: ColorMetric,
+    /// Mean blunders per game (`per_game`).
+    pub blunders_per_game: ColorMetric,
+    /// The colour's top weakness rates (claimable against its own peers, else uncompared), at
+    /// most `LIMITS.colorWeaknesses`; empty below 30 games of the colour in the 6-month window.
+    #[schemars(length(max = LIMITS.color_weaknesses))]
+    pub weaknesses: Vec<ColorWeakness>,
+}
+
+/// v2: the colour split (ADR 0082, 0084).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ByColor {
+    pub white: ColorSummary,
+    pub black: ColorSummary,
+}
+
 /// What R2 produces for the AI coach (R3) and the web: the M3 `CoachingInput`.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -565,6 +708,15 @@ pub struct CoachingInput {
     pub openings: Vec<OpeningVerdict>,
     #[schemars(length(max = LIMITS.changes))]
     pub changes: Vec<TimelineChange>,
+    /// v2 only (absent in v1): the colour split.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(extend("x-optional" = true))]
+    pub by_color: Option<ByColor>,
+    /// v2 only (absent in v1, and in v2 without a stored benchmark): what the profile compares
+    /// with.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(extend("x-optional" = true))]
+    pub benchmark: Option<Benchmark>,
 }
 
 impl CoachingInput {

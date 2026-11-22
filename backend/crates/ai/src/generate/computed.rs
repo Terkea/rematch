@@ -6,8 +6,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::input::types::{
-    AreaScore, BandId, Basis, CoachingInput, Metric, OpeningVerdict, Platform, RankedWeakness,
-    Strength, TimeClass, TimelineChange, WeaknessState,
+    AreaScore, BandId, Basis, Benchmark, ByColor, CoachingInput, Metric, OpeningVerdict, Platform,
+    RankedWeakness, Strength, TimeClass, TimelineChange, WeaknessState,
 };
 use crate::validator::focus::select_focuses;
 use crate::validator::language::format_evidence_window;
@@ -46,6 +46,13 @@ pub struct ComputedReport {
     pub new_this_period: Vec<TimelineChange>,
     /// Changes whose `to_state` is resolved.
     pub fixed_this_period: Vec<TimelineChange>,
+    /// The input's colour split (coaching-input-v2, ADR 0085), for the report's White vs
+    /// Black block; absent for a v1 input (reports computed before it).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub by_color: Option<ByColor>,
+    /// The input's benchmark band (v2), named beside the colour split; absent without one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub benchmark: Option<Benchmark>,
 }
 
 /// The computed report of `input`.
@@ -75,5 +82,7 @@ pub fn build_computed_report(input: &CoachingInput, is_first_report: bool) -> Co
         focuses: select_focuses(input, is_first_report),
         new_this_period: changes(|s| matches!(s, WeaknessState::Emerging | WeaknessState::Active)),
         fixed_this_period: changes(|s| s == WeaknessState::Resolved),
+        by_color: input.by_color.clone(),
+        benchmark: input.benchmark.clone(),
     }
 }

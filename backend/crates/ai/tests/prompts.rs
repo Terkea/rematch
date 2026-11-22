@@ -12,7 +12,7 @@ use ai::prompts::{
     PROMPTS, PromptError, REPORT_PROMPT_SET, REPORT_PROMPT_VERSION, TemplateVarProblem,
     load_prompt, prompt_set_hash, render_template,
 };
-use ai::testing::{fixtures_dir, input, load_fixture};
+use ai::testing::{fixtures_dir, input};
 use ai::validator::evidence::build_evidence;
 use ai::validator::format::resolve_token;
 use ai::validator::language::{
@@ -163,13 +163,17 @@ fn report_prompt_set_is_the_brief_list() {
             "report/section-climb_plan",
             "report/section-areas",
             "repair/repair",
+            "core/glossary",
         ]
     );
-    // Fix D (N1): core/tokens v2 says the server prints a number's unit.
+    // Fix D (N1): core/tokens v2 says the server prints a number's unit. ADR 0085: report v2
+    // teaches the colour split and the peer benchmark, the overview v2 the White vs Black
+    // sentence.
+    let v2 = ["core/tokens", "report/report", "report/section-overview"];
     assert!(
         REPORT_PROMPT_SET
             .iter()
-            .all(|(id, v)| *v == if *id == "core/tokens" { 2 } else { 1 })
+            .all(|(id, v)| *v == if v2.contains(id) { 2 } else { 1 })
     );
     assert_eq!(REPORT_PROMPT_VERSION, "report@1");
 }
@@ -391,10 +395,11 @@ fn instantiate(schematic: &str) -> String {
     s
 }
 
-/// b2-rapid with its endgame area below the minimum sample (`needMore` 16), so every schematic
+/// b2-rapid as coaching-input-v2 (the colour split and the peer benchmark the v2 prompts cite,
+/// ADR 0085) with its endgame area below the minimum sample (`needMore` 16), so every schematic
 /// form, the `needMore` path included, resolves against a real input.
 fn synthetic_input() -> CoachingInput {
-    let mut v = load_fixture("b2-rapid");
+    let mut v = ai::testing::v2_input("b2-rapid").to_json();
     let area = v["areaScores"]
         .as_array_mut()
         .unwrap()
@@ -619,8 +624,8 @@ fn model_facing_copy_passes_the_validator_rules() {
         }
         checked += 1;
     }
-    // core/rules and core/tokens v1 and v2.
-    assert_eq!(checked, PROMPTS.len() - 3);
+    // core/rules, core/tokens v1 and v2, and core/glossary (reference text, not copy).
+    assert_eq!(checked, PROMPTS.len() - 4);
 }
 
 /// The ruling of the T23 review: the shared rules block (what the chat includes too) carries no
@@ -631,7 +636,12 @@ fn shared_rules_have_no_json_output_instruction() {
     assert!(shared.cache);
     assert_eq!(
         shared.text,
-        format!("{}\n\n{}", rendered("core/rules"), rendered("core/tokens"))
+        // core/tokens at its set version (v2, sent since ADR 0085).
+        format!(
+            "{}\n\n{}",
+            rendered("core/rules"),
+            load_prompt("core/tokens", 2).unwrap().text
+        )
     );
     let lower = shared.text.to_lowercase();
     for f in [
@@ -646,4 +656,84 @@ fn shared_rules_have_no_json_output_instruction() {
     }
     let out = rendered("report/output");
     assert!(out.contains("JSON") && out.contains("`citations`") && out.contains("`null`"));
+}
+
+// ---- coaching-input-v2 (ADR 0085) -----------------------------------------------------------
+
+/// The v2 prompts teach the colour split and the peer benchmark's wording, and carry the
+/// glossary; their old versions stay unchanged for stored hashes.
+#[test]
+fn v2_prompts_teach_the_colour_split_and_the_benchmark_words() {
+    let report = load_prompt("report/report", 2).unwrap().text;
+    for f in [
+        "`byColor`",
+        "`sufficient`",
+        "not enough games with that colour",
+        "no clear difference",
+        "do not apply a both-colour number",
+        "`peerRate`",
+        "`players you've faced on chess.com, rated about {{num:benchmark.ratingLow}} to \
+         {{num:benchmark.ratingHigh}}`",
+        "Do not call them \"players at your level\"",
+        "rough guide, not a rating-band average",
+        "`<glossary>`",
+    ] {
+        assert!(report.contains(f), "report/report v2 says {f:?}");
+    }
+    assert!(
+        !load_prompt("report/report", 1)
+            .unwrap()
+            .text
+            .contains("byColor")
+    );
+    let overview = load_prompt("report/section-overview", 2).unwrap().text;
+    assert!(overview.contains("White and Black games differ"));
+    let chat = load_prompt("chat/system", 3).unwrap().text;
+    for f in [
+        "`byColor`",
+        "how the player does as Black",
+        "not enough games with that colour",
+        "not \"players at your level\"",
+        "rough guide",
+        "`<glossary>`",
+    ] {
+        assert!(chat.contains(f), "chat/system v3 says {f:?}");
+    }
+    let glossary = load_prompt("core/glossary", 1).unwrap().text;
+    assert!(glossary.starts_with("# Plain-language glossary\n"));
+    let inner = glossary
+        .split_once("\n<glossary>")
+        .and_then(|(_, rest)| rest.strip_suffix("</glossary>\n"))
+        .expect("one glossary block");
+    let parsed: Value = serde_json::from_str(inner).expect("the glossary is JSON");
+    assert_eq!(parsed["weaknesses"]["W1"]["name"], "Leaving pieces hanging");
+    assert!(parsed["verdicts"]["fix"]["meaning"].is_string());
+}
+
+/// The report's first system block is the rules at their set versions (`core/tokens` v2), and
+/// the second ends with the glossary.
+#[test]
+fn report_blocks_use_the_set_versions() {
+    let req = ai::generate::request::build_section_request(
+        &ai::testing::v2_input("b2-rapid"),
+        ai::output::codes::SectionKey::Overview,
+        false,
+    );
+    let tokens2 = load_prompt("core/tokens", 2).unwrap().text;
+    assert!(req.system[0].text.ends_with(tokens2));
+    assert!(
+        req.system[1]
+            .text
+            .starts_with(load_prompt("report/report", 2).unwrap().text)
+    );
+    assert!(
+        req.system[1]
+            .text
+            .ends_with(load_prompt("core/glossary", 1).unwrap().text)
+    );
+    let task = req.messages[0].content[1]["text"].as_str().unwrap();
+    assert_eq!(
+        task,
+        load_prompt("report/section-overview", 2).unwrap().text
+    );
 }

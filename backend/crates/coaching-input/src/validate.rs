@@ -19,14 +19,16 @@ use time::{Date, OffsetDateTime, UtcOffset};
 use uuid::Uuid;
 
 use crate::enums::AreaId;
+use crate::limits::MIN_COLOR_GAMES;
 use crate::limits::{
     ECO_MAX_CHARS, FEN_MAX_CHARS, LIMITS, MAX_BASE_SECONDS, MAX_COUNT, MAX_CP, MAX_EXCESS_EPL,
     MAX_INCREMENT_SECONDS, MAX_MATE, MAX_PLY, MAX_PRIORITY, MAX_RATING, UCI_PATTERN, UUID_PATTERN,
     WEAKNESS_ID_MAX_CHARS, WEAKNESS_ID_PATTERN,
 };
 use crate::types::{
-    Alternative, AreaScore, Basis, CandidateCause, CauseValue, CoachingInput, ExemplarPosition,
-    Metric, MoveRef, OpeningVerdict, RankedWeakness, Score, Strength, TimelineChange,
+    Alternative, AreaScore, Basis, Benchmark, BenchmarkSource, ByColor, CandidateCause, CauseValue,
+    CoachingInput, ColorMetric, ColorSummary, ColorWeakness, ExemplarPosition, InputVersion,
+    Metric, MetricUnit, MoveRef, OpeningVerdict, RankedWeakness, Score, Strength, TimelineChange,
 };
 
 /// One problem, as `parseCoachingInput` reports it: `{ path, message }`.
@@ -360,6 +362,226 @@ impl Checker {
         self.items("changes".into(), c.changes.len(), LIMITS.changes);
         for (i, ch) in c.changes.iter().enumerate() {
             self.change(&join("changes", i), ch);
+        }
+
+        // v2 (ADR 0085): `byColor` is required, `benchmark` optional; v1 has neither.
+        match c.input_version {
+            InputVersion::V1 => {
+                if c.by_color.is_some() {
+                    self.push("byColor".into(), "byColor needs coaching-input-v2");
+                }
+                if c.benchmark.is_some() {
+                    self.push("benchmark".into(), "benchmark needs coaching-input-v2");
+                }
+            }
+            InputVersion::V2 => match &c.by_color {
+                Some(b) => self.by_color("byColor", b),
+                None => self.push(
+                    "byColor".into(),
+                    "Invalid input: expected object, received undefined",
+                ),
+            },
+        }
+        if let Some(b) = &c.benchmark {
+            self.benchmark("benchmark", b);
+        }
+    }
+
+    fn benchmark(&mut self, p: &str, b: &Benchmark) {
+        for (field, v) in [("ratingLow", b.rating_low), ("ratingHigh", b.rating_high)] {
+            if let Some(v) = v {
+                self.int(join(p, field), v.into(), 0, MAX_RATING.into());
+            }
+        }
+        for (field, v) in [("players", b.players), ("games", b.games)] {
+            if let Some(v) = v {
+                self.count(join(p, field), v);
+            }
+        }
+        if b.source == BenchmarkSource::Peers
+            && (b.rating_low.is_none()
+                || b.rating_high.is_none()
+                || b.players.is_none()
+                || b.games.is_none())
+        {
+            self.push(
+                p.to_owned(),
+                "a peers benchmark states ratingLow, ratingHigh, players and games",
+            );
+        }
+        if let (Some(lo), Some(hi)) = (b.rating_low, b.rating_high)
+            && lo > hi
+        {
+            self.push(join(p, "ratingLow"), "ratingLow must be <= ratingHigh");
+        }
+    }
+
+    fn by_color(&mut self, p: &str, b: &ByColor) {
+        self.color_summary(&join(p, "white"), &b.white);
+        self.color_summary(&join(p, "black"), &b.black);
+    }
+
+    fn color_summary(&mut self, p: &str, s: &ColorSummary) {
+        self.count(join(p, "games"), s.games);
+        for (field, v) in [("wins", s.wins), ("draws", s.draws), ("losses", s.losses)] {
+            self.count(join(p, field), v);
+        }
+        if u64::from(s.wins) + u64::from(s.draws) + u64::from(s.losses) != u64::from(s.games) {
+            self.push(join(p, "games"), "wins + draws + losses must equal games");
+        }
+        if s.sufficient != (s.games >= MIN_COLOR_GAMES) {
+            self.push(
+                join(p, "sufficient"),
+                format!("sufficient must be games >= {MIN_COLOR_GAMES}"),
+            );
+        }
+        self.need_more(p, s.sufficient, s.need_more);
+        self.color_metric(&join(p, "score"), &s.score, MetricUnit::Rate);
+        self.color_metric(&join(p, "accuracy"), &s.accuracy, MetricUnit::Pct);
+        self.color_metric(
+            &join(p, "blundersPerGame"),
+            &s.blunders_per_game,
+            MetricUnit::PerGame,
+        );
+        if s.score.n != s.games {
+            self.push(join(p, "score.n"), "score.n must equal games");
+        }
+        if !s.sufficient {
+            for (field, m) in [
+                ("score", &s.score),
+                ("accuracy", &s.accuracy),
+                ("blundersPerGame", &s.blunders_per_game),
+            ] {
+                if m.sufficient {
+                    self.push(
+                        join(&join(p, field), "sufficient"),
+                        "a colour without enough games states no number",
+                    );
+                }
+            }
+        }
+        self.items(
+            join(p, "weaknesses"),
+            s.weaknesses.len(),
+            LIMITS.color_weaknesses,
+        );
+        let mut keys = HashSet::new();
+        for (i, w) in s.weaknesses.iter().enumerate() {
+            let wp = join(&join(p, "weaknesses"), i);
+            self.color_weakness(&wp, w);
+            if !keys.insert(w.series_key.as_str()) {
+                self.push(
+                    join(&wp, "seriesKey"),
+                    format!("duplicate seriesKey {}", w.series_key),
+                );
+            }
+        }
+    }
+
+    /// `needMore` is set exactly when not sufficient.
+    fn need_more(&mut self, p: &str, sufficient: bool, need: Option<u32>) {
+        if let Some(need) = need {
+            self.count(join(p, "needMore"), need);
+        }
+        match (sufficient, need) {
+            (true, Some(_)) => {
+                self.push(join(p, "needMore"), "needMore must be null when sufficient")
+            }
+            (false, None) => self.push(
+                join(p, "needMore"),
+                "needMore is required when not sufficient",
+            ),
+            _ => {}
+        }
+    }
+
+    fn color_metric(&mut self, p: &str, m: &ColorMetric, unit: MetricUnit) {
+        if m.unit != unit {
+            self.push(
+                join(p, "unit"),
+                format!("unit must be \"{}\"", unit.as_str()),
+            );
+        }
+        self.count(join(p, "n"), m.n);
+        self.need_more(p, m.sufficient, m.need_more);
+        // Insufficient evidence is stated as null, never as a number (ADR 0085).
+        if !m.sufficient {
+            for (field, v) in [("value", m.value), ("low", m.low), ("high", m.high)] {
+                if v.is_some() {
+                    self.push(
+                        join(p, field),
+                        format!("{field} must be null when not sufficient"),
+                    );
+                }
+            }
+        } else if m.value.is_none() {
+            self.push(join(p, "value"), "value is required when sufficient");
+        }
+        let max = m.unit.max();
+        for (field, v) in [("value", m.value), ("low", m.low), ("high", m.high)] {
+            if let Some(v) = v
+                && self.finite(join(p, field), v)
+                && !(0.0..=max).contains(&v)
+            {
+                self.push(
+                    join(p, field),
+                    format!(
+                        "{field} {v} is outside 0..{max} for unit \"{}\"",
+                        m.unit.as_str()
+                    ),
+                );
+            }
+        }
+        if m.low.is_some() != m.high.is_some() {
+            self.push(join(p, "low"), "low and high are both null or both set");
+        }
+        if let (Some(low), Some(high)) = (m.low, m.high)
+            && low > high
+        {
+            self.push(join(p, "low"), "low must be <= high");
+        }
+        if let (Some(v), Some(low), Some(high)) = (m.value, m.low, m.high)
+            && (v < low || v > high)
+        {
+            self.push(join(p, "value"), "value must lie within [low, high]");
+        }
+    }
+
+    fn color_weakness(&mut self, p: &str, w: &ColorWeakness) {
+        self.id(join(p, "seriesKey"), &w.series_key);
+        self.weakness_id(join(p, "id"), &w.id);
+        if let Some(variant) = &w.variant {
+            self.string(join(p, "variant"), variant, 1, LIMITS.tag_chars);
+        }
+        self.label(join(p, "label"), &w.label);
+        self.unit(join(p, "rate"), w.rate);
+        self.unit(join(p, "low"), w.low);
+        self.unit(join(p, "high"), w.high);
+        self.count(join(p, "events"), w.events);
+        self.count(join(p, "opportunities"), w.opportunities);
+        if let Some(r) = w.peer_rate {
+            self.unit(join(p, "peerRate"), r);
+        }
+        if let Some(pc) = w.peer_percentile {
+            self.pct(join(p, "peerPercentile"), pc);
+        }
+        if let Some(n) = w.peer_players {
+            self.count(join(p, "peerPlayers"), n);
+        }
+        if w.peer_rate.is_none() && (w.peer_percentile.is_some() || w.peer_players.is_some()) {
+            self.push(
+                join(p, "peerRate"),
+                "peerPercentile and peerPlayers need a peerRate",
+            );
+        }
+        if w.low > w.high {
+            self.push(join(p, "low"), "low must be <= high");
+        }
+        if w.rate < w.low || w.rate > w.high {
+            self.push(join(p, "rate"), "rate must lie within [low, high]");
+        }
+        if w.events > w.opportunities {
+            self.push(join(p, "events"), "events must be <= opportunities");
         }
     }
 

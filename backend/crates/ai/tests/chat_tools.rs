@@ -1532,6 +1532,36 @@ fn chat_context_has_no_account_id() {
     }
 }
 
+/// coaching-input-v2 (ADR 0085): the chat sees each colour's rows and can cite them.
+#[test]
+fn chat_context_exposes_the_colour_split() {
+    let input = ai::testing::v2_input("b2-rapid");
+    let ctx = build_chat_context(&input);
+    assert_eq!(ctx["byColor"]["black"]["games"], 7);
+    assert_eq!(ctx["byColor"]["black"]["score"]["value"], Value::Null);
+    assert_eq!(
+        ctx["byColor"]["white"]["weaknesses"][0]["seriesKey"],
+        "W4.missed"
+    );
+    assert_eq!(ctx["benchmark"]["ratingLow"], 675);
+    let nums = ctx["refs"]["num"].as_array().unwrap();
+    for p in [
+        "byColor.white.score.value",
+        "byColor.black.games",
+        "byColor.white.weaknesses.W4_missed.peerRate",
+        "benchmark.ratingHigh",
+    ] {
+        assert!(nums.contains(&json!(p)), "{p} in refs");
+    }
+    // A v1 input's context has no colour keys.
+    let v1 = build_chat_context(&input_v1());
+    assert!(v1.get("byColor").is_none() && v1.get("benchmark").is_none());
+}
+
+fn input_v1() -> ai::input::types::CoachingInput {
+    input("b2-rapid")
+}
+
 #[tokio::test]
 async fn anchor_block_carries_ids_and_fens() {
     let ds = FakeDs::new();

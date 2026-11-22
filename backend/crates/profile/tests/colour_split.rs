@@ -334,3 +334,99 @@ async fn profiles_from_before_the_split_are_rebuilt_once(pool: PgPool) {
     );
     assert_eq!(requeue_colour_split(&pool, &queue).await.unwrap(), 0);
 }
+
+/// The CoachingInput's colour split (v2 `byColor`, ADR 0085): each colour from its own games,
+/// snapshot rows, estimates and benchmark rows, with the minimum evidence kept per colour.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn coaching_input_splits_by_colour(pool: PgPool) {
+    use chess_core::TimeClass;
+    use coaching_input::{BenchmarkSource, InputVersion};
+
+    let s = seed(&pool, fixture()).await;
+    // White has its own rows; Black has none (so it is never compared).
+    insert_side_reference(&pool, &[(Side::Both, w1_stat()), (Side::White, w1_stat())]).await;
+    build(&pool, s.account_id).await;
+    let input = profile::coaching::build_coaching_input(
+        &pool,
+        s.account_id,
+        TimeClass::Blitz,
+        common::seed::SEED_NOW,
+    )
+    .await
+    .expect("coaching input");
+    assert_eq!(input.input_version, InputVersion::V2);
+    assert_eq!(input.validate(), Ok(()));
+    let by = input.by_color.as_ref().expect("v2 has byColor");
+
+    // 40 White games (all won), 20 Black games (all lost).
+    let (w, b) = (&by.white, &by.black);
+    assert_eq!((w.games, w.wins, w.draws, w.losses), (40, 40, 0, 0));
+    assert_eq!((b.games, b.wins, b.losses), (20, 0, 20));
+    assert!(w.sufficient && b.sufficient);
+    assert_eq!(w.score.value, Some(1.0));
+    assert_eq!(b.score.value, Some(0.0));
+    assert!(b.score.high.unwrap() > 0.0, "an interval, not a point");
+    assert_eq!(w.blunders_per_game.value, Some(2.0));
+    assert_eq!(
+        (b.blunders_per_game.value, b.blunders_per_game.n),
+        (Some(0.0), 20)
+    );
+
+    // White's W1 against White's own peers; Black's 20 games are below MIN_GAMES (30).
+    let w1 = w
+        .weaknesses
+        .iter()
+        .find(|x| x.series_key == "W1")
+        .expect("white W1");
+    assert_eq!((w1.events, w1.opportunities), (80, 2000));
+    assert!((w1.peer_rate.unwrap() - 0.02).abs() < 1e-9);
+    assert!(b.weaknesses.is_empty(), "{:?}", b.weaknesses);
+
+    // The Lichess band path stores its benchmark without a peer band.
+    assert_eq!(
+        input.benchmark.as_ref().map(|b| b.source),
+        Some(BenchmarkSource::LichessBands)
+    );
+}
+
+/// A colour below the minimum says so: no number, never 0.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn coaching_input_colour_below_minimum_is_insufficient(pool: PgPool) {
+    use chess_core::TimeClass;
+
+    fn few_black(i: usize) -> GameShape {
+        GameShape {
+            color: if i < 4 { "black" } else { "white" },
+            w1_events: 2,
+            blunders: 1,
+        }
+    }
+    let s = seed(
+        &pool,
+        SeedOptions {
+            games: 40,
+            reference: false,
+            shape: few_black,
+        },
+    )
+    .await;
+    build(&pool, s.account_id).await;
+    let input = profile::coaching::build_coaching_input(
+        &pool,
+        s.account_id,
+        TimeClass::Blitz,
+        common::seed::SEED_NOW,
+    )
+    .await
+    .expect("coaching input");
+    let b = &input.by_color.as_ref().unwrap().black;
+    assert_eq!((b.games, b.sufficient, b.need_more), (4, false, Some(6)));
+    for m in [&b.score, &b.accuracy, &b.blunders_per_game] {
+        assert_eq!(
+            (m.value, m.low, m.high, m.sufficient),
+            (None, None, None, false)
+        );
+    }
+    assert!(b.weaknesses.is_empty());
+    assert_eq!(input.benchmark, None, "no stored benchmark rows");
+}

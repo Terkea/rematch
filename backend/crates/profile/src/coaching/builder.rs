@@ -23,7 +23,9 @@
 //!   by games descending;
 //! - `changes`: onset rows of the stored history (which equals the current replay, T33 ruling)
 //!   with their onset in the last 90 days, newest first, with their stored causes and up to 3
-//!   examples on each side of the onset.
+//!   examples on each side of the onset;
+//! - v2 (ADR 0085): `byColor` ([`super::colors`]), each colour from its own games, snapshot
+//!   rows, series points and benchmark rows, and `benchmark`, the stored benchmark band.
 //!
 //! Every list is cut to `LIMITS` by its own order (R-6), and [`CoachingInput::validate`] runs
 //! last: a failure is a bug and returns [`BuildError::Contract`].
@@ -33,8 +35,8 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use chess_core::TimeClass;
 use chess_core::fen::fen_key;
 use coaching_input::{
-    AreaScore, Basis, ChangeExample, CoachingInput, ExampleSide, InputVersion, Issue, LIMITS,
-    Metric, RankedWeakness, Strength, TimeControl, TimelineChange, WeaknessState,
+    AreaScore, Basis, ByColor, ChangeExample, CoachingInput, ExampleSide, InputVersion, Issue,
+    LIMITS, Metric, RankedWeakness, Strength, TimeControl, TimelineChange, WeaknessState,
 };
 use db::games::AnalysisStatus;
 use profile_core::constants::{weakness_area, weakness_label};
@@ -49,7 +51,8 @@ use profile_core::stats::priority::{
 use profile_core::timeline::series::SeriesOutcome;
 use profile_core::timeline::states::DETECTOR_VERSION;
 use profile_core::types::{
-    BandReference, GameContext, MetricId, PlayerGameMetrics, SeriesKey, StrengthKind, WeaknessKey,
+    BandReference, GameContext, MetricId, PlayerGameMetrics, SeriesKey, Side, StrengthKind,
+    WeaknessKey,
 };
 use refdata::builds::RefdataError;
 use refdata::repertoire::player_band;
@@ -60,6 +63,7 @@ use sqlx::PgPool;
 use time::{Date, Duration, OffsetDateTime, UtcOffset};
 use uuid::Uuid;
 
+use super::colors::{benchmark_info, color_summary};
 use super::exemplars::{
     ExemplarRow, Skipped, by_delta_then_recency, by_recency, load_exemplar_rows, pick_distinct,
 };
@@ -74,7 +78,7 @@ use super::strengths::{
 use crate::analyse_features::parse_time_class;
 use crate::estimates::{age_days, compute_estimates, games_in_window};
 use crate::load::{LoadError, load_analysed_games, load_series_points};
-use crate::peer_benchmark::load_account_benchmark;
+use crate::peer_benchmark::{load_account_benchmark, load_account_benchmark_side};
 use crate::snapshots::LAST_N;
 use crate::timeline_job::evaluate_all;
 
@@ -273,6 +277,7 @@ async fn latest_last50(
     pool: &PgPool,
     account_id: Uuid,
     tc: TimeClass,
+    side: Side,
 ) -> sqlx::Result<(Vec<KpiValue>, Option<OffsetDateTime>)> {
     type Raw = (
         String,
@@ -285,11 +290,12 @@ async fn latest_last50(
     );
     let key = Window::LastN(LAST_N).key();
     let rows: Vec<Raw> = sqlx::query_as(
-        "SELECT DISTINCT ON (metric) metric, value, value_adjusted, n, ci_low, ci_high,            computed_at          FROM kpi_snapshot WHERE account_id = $1 AND time_class = $2::time_class          AND side = 'both' AND window_key = $3 ORDER BY metric, id DESC",
+        "SELECT DISTINCT ON (metric) metric, value, value_adjusted, n, ci_low, ci_high,            computed_at          FROM kpi_snapshot WHERE account_id = $1 AND time_class = $2::time_class          AND side = $4::side_scope AND window_key = $3 ORDER BY metric, id DESC",
     )
     .bind(account_id)
     .bind(tc.as_str())
     .bind(&key)
+    .bind(side.as_str())
     .fetch_all(pool)
     .await?;
     let computed_at = rows.iter().map(|r| r.6).max();
@@ -762,6 +768,81 @@ async fn changes(
     Ok(out)
 }
 
+/// v2 `byColor` (ADR 0085, [`super::colors`]): each colour from its own games, snapshot rows,
+/// series points and benchmark rows.
+async fn by_color(
+    pool: &PgPool,
+    account_id: Uuid,
+    tc: TimeClass,
+    games: &[(GameContext, PlayerGameMetrics)],
+    series: &BTreeMap<SeriesKey, Vec<profile_core::timeline::series::SeriesPoint>>,
+    band: profile_core::types::Band,
+    now: OffsetDateTime,
+) -> Result<ByColor, BuildError> {
+    let mut out = Vec::with_capacity(2);
+    for side in [Side::White, Side::Black] {
+        let side_games: Vec<&(GameContext, PlayerGameMetrics)> = games
+            .iter()
+            .filter(|(c, _)| side.covers(c.player_color))
+            .collect();
+        let ids: HashSet<Uuid> = side_games.iter().map(|(c, _)| c.game_id).collect();
+        let side_series: BTreeMap<SeriesKey, Vec<profile_core::timeline::series::SeriesPoint>> =
+            series
+                .iter()
+                .map(|(k, pts)| {
+                    let kept: Vec<_> = pts
+                        .iter()
+                        .filter(|p| ids.contains(&p.game_id))
+                        .cloned()
+                        .collect();
+                    (k.clone(), kept)
+                })
+                .filter(|(_, pts)| !pts.is_empty())
+                .collect();
+        let reference = load_account_benchmark_side(pool, account_id, tc, side).await?;
+        let in_window = games_in_window(side_games.iter().map(|(c, _)| c.played_at), now);
+        let estimates = compute_estimates(&side_series, in_window, band, reference.as_ref(), now);
+        let snapshots = if side_games.is_empty() {
+            Vec::new()
+        } else {
+            latest_last50(pool, account_id, tc, side).await?.0
+        };
+        out.push(color_summary(
+            side_games.iter().map(|(c, _)| c),
+            &snapshots,
+            &estimates,
+            reference.as_ref(),
+        ));
+    }
+    let black = out.pop().expect("two colours");
+    let white = out.pop().expect("two colours");
+    Ok(ByColor { white, black })
+}
+
+/// v2 `benchmark`: the account's stored benchmark band, when any of its both rows is served
+/// (the web's `getBenchmark` rule).
+async fn stored_benchmark(
+    pool: &PgPool,
+    account_id: Uuid,
+    tc: TimeClass,
+) -> sqlx::Result<Option<coaching_input::Benchmark>> {
+    type Row = (String, Option<i32>, Option<i32>, Option<i32>, Option<i32>);
+    let row: Option<Row> = sqlx::query_as(
+        "SELECT b.source, b.rating_low, b.rating_high, b.n_players, b.n_games \
+         FROM account_benchmark b \
+         WHERE b.account_id = $1 AND b.time_class = $2::time_class \
+           AND EXISTS (SELECT 1 FROM account_benchmark_stat s WHERE s.account_id = b.account_id \
+             AND s.time_class = b.time_class AND s.side = 'both' AND NOT s.low_sample)",
+    )
+    .bind(account_id)
+    .bind(tc.as_str())
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.and_then(|(source, lo, hi, players, games)| {
+        benchmark_info(&source, lo, hi, players, games)
+    }))
+}
+
 /// A built input with what the contract does not carry.
 #[derive(Clone, Debug, PartialEq)]
 pub struct BuildReport {
@@ -855,7 +936,7 @@ pub async fn build_coaching_input_report(
     let (kpis, snapshots_computed_at) = if games.is_empty() {
         (Vec::new(), None)
     } else {
-        latest_last50(pool, account_id, tc).await?
+        latest_last50(pool, account_id, tc, Side::Both).await?
     };
     let component_rows: Vec<KpiValue> = kpis
         .iter()
@@ -930,8 +1011,11 @@ pub async fn build_coaching_input_report(
     )
     .await?;
 
+    let by_color = by_color(pool, account_id, tc, &games, &series, band, now).await?;
+    let benchmark = stored_benchmark(pool, account_id, tc).await?;
+
     let input = CoachingInput {
-        input_version: InputVersion::V1,
+        input_version: InputVersion::V2,
         account_id,
         platform: contract_platform(platform),
         time_class: tc.into(),
@@ -948,6 +1032,8 @@ pub async fn build_coaching_input_report(
         strengths,
         openings,
         changes,
+        by_color: Some(by_color),
+        benchmark,
     };
     input.validate().map_err(BuildError::Contract)?;
     if skipped.get() > 0 {

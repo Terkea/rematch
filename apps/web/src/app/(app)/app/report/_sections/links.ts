@@ -18,6 +18,18 @@ export const weaknessHref = (seriesKey: string, scope: Scope) =>
 export const areaHref = (area: string, scope: Scope) =>
   `/app/areas/${encodeURIComponent(area)}?${scopeQuery(scope)}`;
 
+/** The Strengths page of the scope (`/app/strengths`, the same `select_strengths` rules). */
+export const strengthsHref = (scope: Scope) => `/app/strengths?${scopeQuery(scope)}`;
+
+/**
+ * A computed strength's label in the page's words: Rust writes an area strength as
+ * "Strong area: <area id>"; the list already names the area beside it, so it reads "A strong
+ * area". Any other label ("Few errors: …") as it is.
+ */
+export function strengthLabel(s: { label: string }): string {
+  return s.label.startsWith("Strong area: ") ? "A strong area" : s.label;
+}
+
 type GameRef = { gameId?: unknown };
 
 /** Every platform game id a report cites: in its coach segments and its example positions. */

@@ -2,6 +2,7 @@
 //! R3 depends only on the `coaching-input` crate's types; this module fills them.
 
 pub mod builder;
+pub mod colors;
 pub mod exemplars;
 pub mod mapping;
 pub mod strengths;

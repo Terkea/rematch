@@ -1,0 +1,67 @@
+{
+  "inputVersion": "coaching-input-v2",
+  "benchmark": {
+    "source": "peers",
+    "ratingLow": 675,
+    "ratingHigh": 975,
+    "players": 25,
+    "games": 61
+  },
+  "byColor": {
+    "white": {
+      "games": 42,
+      "sufficient": true,
+      "needMore": null,
+      "wins": 20,
+      "draws": 4,
+      "losses": 18,
+      "score": { "value": 0.524, "unit": "rate", "n": 42, "low": 0.44, "high": 0.6, "sufficient": true, "needMore": null },
+      "accuracy": { "value": 78.4, "unit": "pct", "n": 40, "low": 76.9, "high": 79.8, "sufficient": true, "needMore": null },
+      "blundersPerGame": { "value": 0.9, "unit": "per_game", "n": 40, "low": 0.7, "high": 1.1, "sufficient": true, "needMore": null },
+      "weaknesses": [
+        {
+          "seriesKey": "W4.missed",
+          "id": "W4",
+          "variant": "missed",
+          "label": "Missed mates",
+          "area": "tactics",
+          "rate": 0.14,
+          "low": 0.09,
+          "high": 0.2,
+          "events": 9,
+          "opportunities": 61,
+          "peerRate": 0.096,
+          "peerPercentile": 28,
+          "peerPlayers": 14
+        },
+        {
+          "seriesKey": "W1",
+          "id": "W1",
+          "variant": null,
+          "label": "Hung material",
+          "area": "calculation",
+          "rate": 0.05,
+          "low": 0.03,
+          "high": 0.07,
+          "events": 12,
+          "opportunities": 240,
+          "peerRate": null,
+          "peerPercentile": null,
+          "peerPlayers": null
+        }
+      ]
+    },
+    "black": {
+      "games": 7,
+      "sufficient": false,
+      "needMore": 3,
+      "wins": 3,
+      "draws": 0,
+      "losses": 4,
+      "score": { "value": null, "unit": "rate", "n": 7, "low": null, "high": null, "sufficient": false, "needMore": 3 },
+      "accuracy": { "value": null, "unit": "pct", "n": 7, "low": null, "high": null, "sufficient": false, "needMore": 13 },
+      "blundersPerGame": { "value": null, "unit": "per_game", "n": 7, "low": null, "high": null, "sufficient": false, "needMore": 13 },
+      "weaknesses": []
+    }
+  }
+}
