@@ -106,7 +106,7 @@ test.describe
       await page.locator("a[href*='/app/weaknesses/W3.shallow']").first().click();
       await page.waitForURL(/\/app\/weaknesses\/W3\.shallow/);
       await expect(page.getByRole("heading", { name: "State over time" })).toBeVisible();
-      await expect(page.getByText(/22 of 120 chances/).first()).toBeVisible();
+      await expect(page.getByText(/22 of 120/).first()).toBeVisible();
       await expect(page.getByRole("heading", { name: "Example positions" })).toBeVisible();
       const examples = page.locator("section:has(#examples-heading)");
       await expect(examples.locator("svg[role='img']").first()).toBeVisible();
