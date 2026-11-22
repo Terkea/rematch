@@ -3,6 +3,9 @@
 -- 1. An opponent slope that cannot be estimated is unknown: NULL (no adjustment), never NaN,
 --    an infinity or a made-up 0. Postgres treats 'NaN' = 'NaN' as true, so NOT IN refuses it.
 ALTER TABLE band_reference ALTER COLUMN opp_slope_per_100 DROP NOT NULL;
+-- A development database that ran the first T32 commit may hold NaN slopes: they are unknown.
+UPDATE band_reference SET opp_slope_per_100 = NULL
+  WHERE opp_slope_per_100 IN ('NaN'::real, 'Infinity'::real, '-Infinity'::real);
 ALTER TABLE band_reference ADD CONSTRAINT band_reference_slope_finite
   CHECK (opp_slope_per_100 IS NULL
          OR opp_slope_per_100 NOT IN ('NaN'::real, 'Infinity'::real, '-Infinity'::real));

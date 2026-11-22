@@ -159,6 +159,12 @@ pub enum FinalizeOutcome {
     WaitingForMaia { games: i64 },
     /// No usable weakness row: the build was failed and the previous active build kept.
     InsufficientEvidence { rows: usize, observations: usize },
+    /// Fewer usable cells than the active build: failed, the active build kept.
+    ThinnerThanActive {
+        active_build: Uuid,
+        usable_cells: i64,
+        active_usable_cells: i64,
+    },
 }
 
 /// Result of one reference-game job.
@@ -707,7 +713,8 @@ async fn load_sides(conn: &mut PgConnection, build: Uuid) -> Result<LoadedSides,
            g.black_rating, g.white_hash, g.black_hash, g.result::text AS result, \
            g.termination, g.played_at \
          FROM reference_observations o JOIN reference_games g ON g.id = o.reference_game_id \
-         WHERE o.build_id = $1 ORDER BY o.reference_game_id, o.color",
+         WHERE o.build_id = $1 AND g.status = 'done' \
+         ORDER BY o.reference_game_id, o.color",
     )
     .bind(build)
     .fetch_all(&mut *conn)
@@ -771,6 +778,39 @@ async fn load_sides(conn: &mut PgConnection, build: Uuid) -> Result<LoadedSides,
         });
     }
     Ok(out)
+}
+
+/// The active band-reference build other than `$1` and its usable (not low-sample) rows.
+pub const ACTIVE_USABLE_SQL: &str = "SELECT b.id, (SELECT count(*) FROM band_reference r \
+       WHERE r.build_id = b.id AND NOT r.low_sample) \
+     FROM reference_builds b \
+     WHERE b.kind = 'band_reference' AND b.status = 'active' AND b.id <> $1";
+
+/// Usable (not low-sample) band x time class x metric cells.
+fn usable_cells(rows: &[refdata::band_reference::BandReferenceRow]) -> usize {
+    rows.iter().filter(|r| !r.stat.low_sample).count()
+}
+
+/// Fails a build that must not be activated, after the finaliser's transaction was rolled back
+/// (`fail_build` locks the build row itself). `Some(NotBuilding)` when a concurrent finaliser
+/// or operator already moved it on; a build failed twice just updates its error.
+async fn fail_finalize(
+    pool: &PgPool,
+    build_id: Uuid,
+    reason: &str,
+) -> Result<Option<FinalizeOutcome>, ReferenceError> {
+    match fail_build(pool, build_id, reason).await {
+        Ok(()) => {
+            tracing::warn!(%build_id, %reason, "band reference build failed; previous build kept");
+            Ok(None)
+        }
+        Err(RefdataError::InvalidTransition { from, .. }) => {
+            Ok(Some(FinalizeOutcome::NotBuilding {
+                status: from.as_str().to_owned(),
+            }))
+        }
+        Err(e) => Err(e.into()),
+    }
 }
 
 /// Writes the build's band reference rows and activates it (see the module docs). Idempotent:
@@ -848,28 +888,43 @@ pub async fn finalize_band_reference_with(
         "band reference aggregated"
     );
     if !has_minimum_evidence(&report.rows) {
-        // Release the lock's transaction first: `fail_build` locks the build row itself. A
-        // concurrent finaliser reaching the same verdict fails it again (allowed) or sees it
-        // failed.
+        // Release the lock's transaction first: `fail_build` locks the build row itself.
         tx.rollback().await?;
         let reason = format!(
             "insufficient evidence: no weakness row with at least {} players ({} observations)",
             crate::reference_aggregate::LOW_SAMPLE_PLAYERS,
             observations
         );
-        match fail_build(pool, build_id, &reason).await {
-            Ok(()) => {}
-            Err(RefdataError::InvalidTransition { from, .. }) => {
-                return Ok(FinalizeOutcome::NotBuilding {
-                    status: from.as_str().to_owned(),
-                });
-            }
-            Err(e) => return Err(e.into()),
+        if let Some(done) = fail_finalize(pool, build_id, &reason).await? {
+            return Ok(done);
         }
-        tracing::warn!(%build_id, %reason, "band reference build failed; previous build kept");
         return Ok(FinalizeOutcome::InsufficientEvidence {
             rows: report.rows.len(),
             observations,
+        });
+    }
+    // Supersede rule (review I1): a build replaces the active one only when it serves at least
+    // as many usable (band, time class, metric) cells. The first build needs only the evidence
+    // gate above.
+    let usable = i64::try_from(usable_cells(&report.rows)).unwrap_or(i64::MAX);
+    let active: Option<(Uuid, i64)> = sqlx::query_as(ACTIVE_USABLE_SQL)
+        .bind(build_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+    if let Some((active_build, active_usable)) = active
+        && usable < active_usable
+    {
+        tx.rollback().await?;
+        let reason = format!(
+            "thinner than active build {active_build}: {usable} vs {active_usable} usable cells"
+        );
+        if let Some(done) = fail_finalize(pool, build_id, &reason).await? {
+            return Ok(done);
+        }
+        return Ok(FinalizeOutcome::ThinnerThanActive {
+            active_build,
+            usable_cells: usable,
+            active_usable_cells: active_usable,
         });
     }
     match write_band_reference(&mut tx, build_id, &report.rows).await {
@@ -883,6 +938,13 @@ pub async fn finalize_band_reference_with(
     }
     activate_build_in(&mut tx, build_id).await?;
     tx.commit().await?;
+    tracing::info!(
+        %build_id,
+        rows = report.rows.len(),
+        usable,
+        maia_pending_games,
+        "band reference build activated"
+    );
     Ok(FinalizeOutcome::Activated {
         rows: report.rows.len(),
         observations,
@@ -969,13 +1031,18 @@ pub struct ReferenceSweepReport {
     pub still_pending: usize,
     /// Re-enrichment failed (logged); the game keeps its observations and its flag.
     pub failed: usize,
+    /// Games whose build stopped taking rows meanwhile.
+    pub not_building: usize,
+    /// Builds whose finaliser failed (logged; retried by the next run).
+    pub finalize_errors: usize,
     /// The finaliser's verdict for every finished `building` band-reference build.
     pub finalized: Vec<(Uuid, FinalizeOutcome)>,
 }
 
-const FLAGGED_GAMES_SQL: &str = "SELECT g.id FROM reference_games g \
+const FLAGGED_GAMES_SQL: &str = "SELECT g.id, g.difficulty_pending_at FROM reference_games g \
      JOIN reference_builds b ON b.id = g.build_id \
      WHERE g.difficulty_pending_at IS NOT NULL AND g.status = 'done' AND b.status = 'building' \
+       AND ($2::timestamptz IS NULL OR (g.difficulty_pending_at, g.id) > ($2, $3)) \
      ORDER BY g.difficulty_pending_at, g.id LIMIT $1";
 
 const FINISHED_BUILDS_SQL: &str = "SELECT b.id FROM reference_builds b \
@@ -1004,39 +1071,50 @@ pub async fn reenrich_reference_games(
         ..ReferenceSweepReport::default()
     };
     if report.maia_healthy {
-        let ids: Vec<Uuid> = sqlx::query_scalar(FLAGGED_GAMES_SQL)
-            .bind(i64::try_from(limit).unwrap_or(i64::MAX))
-            .fetch_all(&deps.pool)
-            .await?;
-        for id in ids {
-            if cancel.is_cancelled() {
-                break;
-            }
-            let game: Option<RefGame> = sqlx::query_as(GAME_SQL)
-                .bind(id)
-                .fetch_optional(&deps.pool)
+        // Pages of `limit` by keyset, until none is left (or a cancel): a re-persisted game that
+        // is still pending keeps its first time, so it is not visited twice in one run.
+        let mut after: Option<(OffsetDateTime, Uuid)> = None;
+        'pages: loop {
+            let page: Vec<(Uuid, OffsetDateTime)> = sqlx::query_as(FLAGGED_GAMES_SQL)
+                .bind(i64::try_from(limit.max(1)).unwrap_or(i64::MAX))
+                .bind(after.map(|a| a.0))
+                .bind(after.map(|a| a.1))
+                .fetch_all(&deps.pool)
                 .await?;
-            let Some(game) = game
-                .filter(|g| g.status == "done" && g.build_status == BuildStatus::Building.as_str())
-            else {
-                continue;
+            let Some(&(last_id, last_at)) = page.last() else {
+                break;
             };
-            let prepared = match run_pipeline(deps, &game, cancel).await {
-                Ok(p) => p,
-                Err(Stop::Cancelled) => break,
-                Err(Stop::Skip(r) | Stop::Poison(r) | Stop::Retry(r)) => {
-                    tracing::warn!(reference_game_id = %id, reason = %r, "re-enrichment failed");
-                    report.failed += 1;
-                    continue;
+            after = Some((last_at, last_id));
+            for (id, _) in page {
+                if cancel.is_cancelled() {
+                    break 'pages;
                 }
-            };
-            match persist(&deps.pool, game.build_id, id, &prepared).await {
-                Ok(()) if prepared.maia_pending => report.still_pending += 1,
-                Ok(()) => report.resolved += 1,
-                Err(PersistError::NotBuilding) => {}
-                Err(PersistError::ModelMismatch(r) | PersistError::Db(r)) => {
-                    tracing::warn!(reference_game_id = %id, reason = %r, "re-enrichment not stored");
-                    report.failed += 1;
+                let game: Option<RefGame> = sqlx::query_as(GAME_SQL)
+                    .bind(id)
+                    .fetch_optional(&deps.pool)
+                    .await?;
+                let Some(game) = game.filter(|g| {
+                    g.status == "done" && g.build_status == BuildStatus::Building.as_str()
+                }) else {
+                    continue;
+                };
+                let prepared = match run_pipeline(deps, &game, cancel).await {
+                    Ok(p) => p,
+                    Err(Stop::Cancelled) => break 'pages,
+                    Err(Stop::Skip(r) | Stop::Poison(r) | Stop::Retry(r)) => {
+                        tracing::warn!(reference_game_id = %id, reason = %r, "re-enrichment failed");
+                        report.failed += 1;
+                        continue;
+                    }
+                };
+                match persist(&deps.pool, game.build_id, id, &prepared).await {
+                    Ok(()) if prepared.maia_pending => report.still_pending += 1,
+                    Ok(()) => report.resolved += 1,
+                    Err(PersistError::NotBuilding) => report.not_building += 1,
+                    Err(PersistError::ModelMismatch(r) | PersistError::Db(r)) => {
+                        tracing::warn!(reference_game_id = %id, reason = %r, "re-enrichment not stored");
+                        report.failed += 1;
+                    }
                 }
             }
         }
@@ -1045,8 +1123,14 @@ pub async fn reenrich_reference_games(
         .fetch_all(&deps.pool)
         .await?;
     for build in builds {
-        let outcome = finalize_band_reference(&deps.pool, build).await?;
-        report.finalized.push((build, outcome));
+        match finalize_band_reference(&deps.pool, build).await {
+            Ok(outcome) => report.finalized.push((build, outcome)),
+            // One build's error never drops the others or the report; the next run retries.
+            Err(e) => {
+                tracing::warn!(%build, error = %e, "finalising a band reference build failed");
+                report.finalize_errors += 1;
+            }
+        }
     }
     Ok(report)
 }

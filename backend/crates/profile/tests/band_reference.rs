@@ -332,6 +332,20 @@ const MAIA_MODEL: &str = "maia2-blitz-0.11.0";
 /// Maia that answers every input with one fixed difficulty while `up`.
 struct FakeMaia {
     up: AtomicBool,
+    /// Healthy, but every item times out (review I2).
+    timeout: AtomicBool,
+    /// Answers with [`OTHER_MODEL`] (a redeployed Maia).
+    other_model: AtomicBool,
+}
+
+const OTHER_MODEL: &str = "maia2-rapid-0.10.0";
+
+fn maia(up: bool) -> Arc<FakeMaia> {
+    Arc::new(FakeMaia {
+        up: AtomicBool::new(up),
+        timeout: AtomicBool::new(false),
+        other_model: AtomicBool::new(false),
+    })
 }
 
 impl DifficultySource for FakeMaia {
@@ -343,12 +357,17 @@ impl DifficultySource for FakeMaia {
             inputs
                 .iter()
                 .map(|_| {
-                    if self.up.load(Ordering::SeqCst) {
+                    if self.up.load(Ordering::SeqCst) && self.timeout.load(Ordering::SeqCst) {
+                        DifficultyOutcome::PendingMaia {
+                            reason: PendingReason::Timeout,
+                        }
+                    } else if self.up.load(Ordering::SeqCst) {
+                        let other = self.other_model.load(Ordering::SeqCst);
                         DifficultyOutcome::Ok {
                             difficulty: Difficulty {
                                 p_best: 0.25,
                                 p_ok: 0.85,
-                                model: MAIA_MODEL.to_owned(),
+                                model: if other { OTHER_MODEL } else { MAIA_MODEL }.to_owned(),
                             },
                         }
                     } else {
@@ -428,6 +447,16 @@ async fn build_with(pool: &PgPool, month: &str, games: &[NewReferenceGame]) -> (
     set_source_sha(pool, id, SHA, 1000).await.unwrap();
     let ids = insert_reference_games(pool, id, games).await.unwrap();
     (id, ids)
+}
+
+fn ten_games_in(prefix: &str, tc: TimeClass) -> Vec<NewReferenceGame> {
+    ten_games(prefix)
+        .into_iter()
+        .map(|g| NewReferenceGame {
+            time_class: tc,
+            ..g
+        })
+        .collect()
 }
 
 fn ten_games(prefix: &str) -> Vec<NewReferenceGame> {
@@ -621,9 +650,7 @@ async fn a_second_build_supersedes_the_first(pool: PgPool) {
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
 async fn reference_rows_keep_the_difficulty_model(pool: PgPool) {
-    let maia = Arc::new(FakeMaia {
-        up: AtomicBool::new(true),
-    });
+    let maia = maia(true);
     let d = deps(&pool, Some(maia));
     let (build, ids) = build_with(&pool, "2026-09", &ten_games("m")).await;
     for id in &ids {
@@ -666,9 +693,7 @@ async fn a_build_waits_for_maia_and_finalising_before_it_returns_excludes_pendin
     pool: PgPool,
 ) {
     // Maia configured but down: difficulty is pending, never estimated, and nothing is recorded.
-    let maia = Arc::new(FakeMaia {
-        up: AtomicBool::new(false),
-    });
+    let maia = maia(false);
     let d = deps(&pool, Some(maia));
     let (build, ids) = build_with(&pool, "2026-09", &ten_games("n")).await;
     let mut last = None;
@@ -715,9 +740,7 @@ async fn a_build_waits_for_maia_and_finalising_before_it_returns_excludes_pendin
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
 async fn reference_games_are_re_enriched_once_maia_returns(pool: PgPool) {
-    let maia = Arc::new(FakeMaia {
-        up: AtomicBool::new(false),
-    });
+    let maia = maia(false);
     let d = deps(&pool, Some(maia.clone()));
     let (build, ids) = build_with(&pool, "2026-09", &ten_games("r")).await;
     for id in &ids {
@@ -737,11 +760,12 @@ async fn reference_games_are_re_enriched_once_maia_returns(pool: PgPool) {
     assert_eq!(count(&pool, FLAGGED, build).await, 10);
     assert_eq!(status(&pool, build).await, BuildStatus::Building);
 
-    // Maia is back: every game is re-enriched, then the build is finalised with W11 evidence.
+    // Maia is back: every game is re-enriched (pages of 3 until none is left), then the build
+    // is finalised with W11 evidence.
     maia.up.store(true, Ordering::SeqCst);
     let report = within(
         "sweep",
-        reenrich_reference_games(&d, 100, &CancellationToken::new()),
+        reenrich_reference_games(&d, 3, &CancellationToken::new()),
     )
     .await
     .unwrap();
@@ -766,9 +790,7 @@ async fn reference_games_are_re_enriched_once_maia_returns(pool: PgPool) {
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
 async fn the_wait_for_maia_ends_after_the_grace(pool: PgPool) {
-    let maia = Arc::new(FakeMaia {
-        up: AtomicBool::new(false),
-    });
+    let maia = maia(false);
     let d = deps(&pool, Some(maia));
     let (build, ids) = build_with(&pool, "2026-09", &ten_games("e")).await;
     for id in &ids {
@@ -829,28 +851,39 @@ async fn an_unknown_slope_is_stored_null_and_nan_is_refused(pool: PgPool) {
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
 async fn a_second_difficulty_model_fails_the_game_not_the_build(pool: PgPool) {
-    let maia = Arc::new(FakeMaia {
-        up: AtomicBool::new(true),
-    });
-    let d = deps(&pool, Some(maia));
+    let maia = maia(true);
+    let d = deps(&pool, Some(maia.clone()));
     let mut games = ten_games("x");
     games.push(reference_game("extra", GAMES[0]));
     let (build, ids) = build_with(&pool, "2026-09", &games).await;
-    sqlx::query(
-        "UPDATE reference_builds SET difficulty_model = 'maia2-rapid-0.10.0' WHERE id = $1",
-    )
-    .bind(build)
-    .execute(&pool)
-    .await
-    .unwrap();
-    let out = run(&d, ids[0]).await;
+    for id in &ids[..10] {
+        run(&d, *id).await;
+    }
+    assert_eq!(status(&pool, build).await, BuildStatus::Building);
+    // Maia is redeployed with another model before the last game.
+    maia.other_model.store(true, Ordering::SeqCst);
+    let out = run(&d, ids[10]).await;
     assert!(
         matches!(&out, ReferenceOutcome::Failed { reason, .. } if reason.contains("difficulty model")),
         "{out:?}"
     );
-    assert_eq!(count(&pool, OBSERVATIONS, build).await, 0);
+    // The other games still finalise the build, with the first model.
+    assert!(
+        matches!(finalize_of(&out), Some(FinalizeOutcome::Activated { .. })),
+        "{out:?}"
+    );
+    assert_eq!(count(&pool, OBSERVATIONS, build).await, 20);
+    let failed: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM reference_games WHERE build_id = $1 AND status = 'failed'",
+    )
+    .bind(build)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(failed, 1);
     let row = get_build(&pool, build).await.unwrap().unwrap();
-    assert_eq!(row.difficulty_model.as_deref(), Some("maia2-rapid-0.10.0"));
+    assert_eq!(row.status, BuildStatus::Active);
+    assert_eq!(row.difficulty_model.as_deref(), Some(MAIA_MODEL));
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
@@ -1073,4 +1106,218 @@ async fn stale_observations_are_left_out_of_the_build(pool: PgPool) {
     .unwrap();
     assert_eq!(n_players, 20, "the stale side is not evidence");
     assert_eq!(pooled, Some(0.0), "its 8 events are not counted");
+}
+
+// =============================================================================================
+// Fix round 2 (review I1, I2, m4)
+
+#[test]
+fn only_a_usable_weakness_row_is_minimum_evidence() {
+    // Twelve players give a usable accuracy row, but the only weakness row has 3 players.
+    let mut sides: Vec<_> = (0..12)
+        .map(|i| accuracy_side(&format!("a{i}"), 1500, 1500, 60.0))
+        .collect();
+    sides.extend((0..3).flat_map(|p| w1_player(&format!("w{p}"), 6, 300, 1)));
+    let rows = aggregate_band_reference(&sides);
+    assert!(!row(&rows, Band::B2, ACCURACY).stat.low_sample);
+    assert!(row(&rows, Band::B2, W1).stat.low_sample);
+    assert!(!has_minimum_evidence(&rows));
+}
+
+async fn analyse_all(d: &ReferenceGameDeps, ids: &[Uuid]) -> Option<ReferenceOutcome> {
+    let mut last = None;
+    for id in ids {
+        last = Some(run(d, *id).await);
+    }
+    last
+}
+
+async fn usable(pool: &PgPool, build: Uuid) -> i64 {
+    count(
+        pool,
+        "SELECT count(*) FROM band_reference WHERE build_id = $1 AND NOT low_sample",
+        build,
+    )
+    .await
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_thinner_build_never_supersedes_a_fuller_one(pool: PgPool) {
+    let d = deps(&pool, None);
+    // The active build covers blitz and rapid.
+    let mut full = ten_games("fb");
+    full.extend(ten_games_in("fr", TimeClass::Rapid));
+    let (active, ids) = build_with(&pool, "2026-08", &full).await;
+    analyse_all(&d, &ids).await;
+    assert_eq!(status(&pool, active).await, BuildStatus::Active);
+    let active_rows = count(&pool, BAND_ROWS, active).await;
+    let active_usable = usable(&pool, active).await;
+
+    // A newer build with only the blitz cell healthy passes the evidence gate but is thinner.
+    let (thin, ids) = build_with(&pool, "2026-09", &ten_games("tb")).await;
+    let last = analyse_all(&d, &ids).await.unwrap();
+    let fin = finalize_of(&last).cloned();
+    match fin {
+        Some(FinalizeOutcome::ThinnerThanActive {
+            active_build,
+            usable_cells,
+            active_usable_cells,
+        }) => {
+            assert_eq!(active_build, active);
+            assert_eq!(active_usable_cells, active_usable);
+            assert!(usable_cells > 0 && usable_cells < active_usable_cells);
+        }
+        other => panic!("expected ThinnerThanActive, got {other:?}"),
+    }
+    let thin_row = get_build(&pool, thin).await.unwrap().unwrap();
+    assert_eq!(thin_row.status, BuildStatus::Failed);
+    let error = thin_row.error.unwrap_or_default();
+    assert!(
+        error.contains(&format!("thinner than active build {active}"))
+            && error.contains("usable cells"),
+        "{error}"
+    );
+    // The active build is untouched and still served for both time classes.
+    assert_eq!(status(&pool, active).await, BuildStatus::Active);
+    assert_eq!(count(&pool, BAND_ROWS, active).await, active_rows);
+    for tc in [TimeClass::Blitz, TimeClass::Rapid] {
+        let loaded = load_band_reference(&pool, Band::B2, tc)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(loaded.build_id, active);
+    }
+
+    // An equally covering build supersedes it.
+    let mut equal = ten_games("eb");
+    equal.extend(ten_games_in("er", TimeClass::Rapid));
+    let (same, ids) = build_with(&pool, "2026-10", &equal).await;
+    analyse_all(&d, &ids).await;
+    assert_eq!(status(&pool, same).await, BuildStatus::Active);
+    assert_eq!(status(&pool, active).await, BuildStatus::Superseded);
+    assert_eq!(usable(&pool, same).await, active_usable);
+
+    // A larger one does too.
+    let mut larger = ten_games("lb");
+    larger.extend(ten_games_in("lr", TimeClass::Rapid));
+    larger.extend(ten_games_in("lc", TimeClass::Classical));
+    let (big, ids) = build_with(&pool, "2026-11", &larger).await;
+    analyse_all(&d, &ids).await;
+    assert_eq!(status(&pool, big).await, BuildStatus::Active);
+    assert_eq!(status(&pool, same).await, BuildStatus::Superseded);
+    assert!(usable(&pool, big).await > active_usable);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn the_grace_starts_at_the_first_pending_time(pool: PgPool) {
+    // Maia answers /healthz but every item times out: each sweep re-persists the games as still
+    // pending. The wait must still end 24 h after the first pending time.
+    let maia = maia(true);
+    maia.timeout.store(true, Ordering::SeqCst);
+    let d = deps(&pool, Some(maia));
+    let (build, ids) = build_with(&pool, "2026-09", &ten_games("q")).await;
+    let last = analyse_all(&d, &ids).await.unwrap();
+    assert_eq!(
+        finalize_of(&last).cloned(),
+        Some(FinalizeOutcome::WaitingForMaia { games: 10 })
+    );
+    sqlx::query(
+        "UPDATE reference_games SET difficulty_pending_at = now() - interval '25 hours' \
+         WHERE build_id = $1",
+    )
+    .bind(build)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let stamps = |pool: PgPool| async move {
+        sqlx::query_scalar::<_, OffsetDateTime>(
+            "SELECT difficulty_pending_at FROM reference_games WHERE build_id = $1 ORDER BY id",
+        )
+        .bind(build)
+        .fetch_all(&pool)
+        .await
+        .unwrap()
+    };
+    let before = stamps(pool.clone()).await;
+
+    let report = within(
+        "sweep",
+        reenrich_reference_games(&d, 100, &CancellationToken::new()),
+    )
+    .await
+    .unwrap();
+    assert!(report.maia_healthy);
+    assert_eq!((report.resolved, report.still_pending), (0, 10));
+    assert_eq!(
+        stamps(pool.clone()).await,
+        before,
+        "the first pending time is kept"
+    );
+    assert!(
+        report.finalized.iter().any(|(b, f)| *b == build
+            && matches!(
+                f,
+                FinalizeOutcome::Activated {
+                    maia_pending_games: 10,
+                    ..
+                }
+            )),
+        "{report:?}"
+    );
+    assert_eq!(status(&pool, build).await, BuildStatus::Active);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn observations_of_a_failed_game_are_not_aggregated(pool: PgPool) {
+    // Review m1: a racing duplicate delivery can fail a game after its observations were stored.
+    let d = deps(&pool, None);
+    let mut games = ten_games("f");
+    games.push(reference_game("failed", GAMES[2]));
+    let (build, ids) = build_with(&pool, "2026-09", &games).await;
+    let mut m = PlayerGameMetrics {
+        version: PLAYER_GAME_METRICS_VERSION,
+        moves: 8,
+        ..PlayerGameMetrics::default()
+    };
+    m.weakness.insert(
+        WeaknessKey::W1,
+        BinomialObs {
+            events: 8,
+            opportunities: 8,
+            epl: 4.0,
+            exemplar_plies: vec![],
+        },
+    );
+    let mut tx = pool.begin().await.unwrap();
+    write_observations(
+        &mut tx,
+        build,
+        &[ObservationRow {
+            reference_game_id: ids[10],
+            color: Color::White,
+            player_hash: hash("failed-player"),
+            band: Band::B2,
+            time_class: TimeClass::Blitz,
+            player_rating: 1500,
+            opponent_rating: 1550,
+            metrics: m,
+        }],
+    )
+    .await
+    .unwrap();
+    set_reference_game_status(&mut tx, ids[10], db::games::AnalysisStatus::Failed, None)
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    analyse_all(&d, &ids[..10]).await;
+    assert_eq!(status(&pool, build).await, BuildStatus::Active);
+    let (n_players, pooled): (i32, Option<f64>) = sqlx::query_as(
+        "SELECT n_players, pooled_rate::float8 FROM band_reference \
+         WHERE build_id = $1 AND band = 'B2' AND time_class = 'blitz' AND metric = 'weakness:W1'",
+    )
+    .bind(build)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!((n_players, pooled), (20, Some(0.0)));
 }

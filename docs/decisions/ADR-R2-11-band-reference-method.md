@@ -67,6 +67,17 @@ come from the reference games that Task 21 samples per band × time class.
 - **Minimum evidence:** a build with no usable (not low-sample) weakness row is **failed, never
   activated**. Activating it would supersede the previous build and delete its rows, leaving users
   with fewer benchmarks.
+- **Supersede rule** (review I1, coordinator ruling):
+  - A new build replaces the active one only if it has at least as many usable cells. A usable
+    cell is a band × time class × metric row that passes minimum evidence (not low-sample).
+  - A thinner build is finalised as `failed` with the reason "thinner than active build `<id>`:
+    X vs Y usable cells", and the active build stays untouched.
+  - The first build ever needs only the evidence gate.
+  - This stops a degraded build from replacing a complete one, for example one where most
+    games failed in a Stockfish outage, or a selection bug that covered a single band.
+- **One Maia model per build.** The per-game model is the model of the first answered ply.
+  This is fine while one batch call is answered by one model. If Maia batches can ever span a
+  model reload, the check must look at every ply (review m7).
 - **Bad games never block the build.** Poison games (an illegal PGN or records) fail, unsupported
   or too-short ones are skipped, and engine errors are retried and then failed on the final
   attempt or by `on_dead`. A job whose game row is gone (its build was superseded) is a no-op.
