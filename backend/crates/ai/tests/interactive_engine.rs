@@ -127,12 +127,13 @@ struct Account {
 
 async fn account(pool: &PgPool, name: &str) -> Account {
     let id = testkit::insert_account(pool, "chesscom", name).await;
+    let user_id = testkit::insert_user(pool, name).await;
     let mut conn = pool.acquire().await.unwrap();
     let conv = chat::create_conversation(
         &mut conn,
         &NewConversation {
             account_id: id,
-            user_id: None,
+            user_id,
             time_class: "blitz".into(),
             title: None,
             anchor: None,

@@ -38,7 +38,8 @@ text_enum!(
 #[derive(Clone, Debug, PartialEq)]
 pub struct NewConversation {
     pub account_id: Uuid,
-    pub user_id: Option<Uuid>,
+    /// The user who owns the thread (threads are per user; accounts are shared).
+    pub user_id: Uuid,
     pub time_class: String,
     pub title: Option<String>,
     pub anchor: Option<Value>,
@@ -48,7 +49,7 @@ pub struct NewConversation {
 pub struct ConversationRow {
     pub id: Uuid,
     pub account_id: Uuid,
-    pub user_id: Option<Uuid>,
+    pub user_id: Uuid,
     pub time_class: String,
     pub title: Option<String>,
     pub anchor: Option<Value>,
@@ -152,22 +153,6 @@ pub async fn get_conversation(
     )))
     .bind(id)
     .fetch_optional(conn)
-    .await
-}
-
-/// The account's conversations, most recently active first.
-pub async fn list_conversations(
-    conn: &mut PgConnection,
-    account_id: Uuid,
-    limit: i64,
-) -> Result<Vec<ConversationRow>, sqlx::Error> {
-    sqlx::query_as(sqlx::AssertSqlSafe(format!(
-        "SELECT {CONV_COLS} FROM coach_conversations WHERE account_id = $1 \
-         ORDER BY last_message_at DESC LIMIT $2"
-    )))
-    .bind(account_id)
-    .bind(limit)
-    .fetch_all(conn)
     .await
 }
 
@@ -317,32 +302,60 @@ pub async fn fail_message(
     Ok(r.rows_affected() == 1)
 }
 
-/// Deletes one of the account's conversations; its messages go by cascade and its Agent SDK
-/// session entries by the `coach_conversations_delete_session_entries` trigger, in the same
-/// transaction. `interactive_evals.message_id` is set NULL; the eval rows stay, so deleting never
-/// refunds the engine-check quota. `false` when the conversation does not exist or belongs to
-/// another account.
-pub async fn delete_conversation(
+/// The user's conversations on one account, most recently active first.
+pub async fn list_user_conversations(
     conn: &mut PgConnection,
+    user_id: Uuid,
     account_id: Uuid,
+    limit: i64,
+) -> Result<Vec<ConversationRow>, sqlx::Error> {
+    sqlx::query_as(sqlx::AssertSqlSafe(format!(
+        "SELECT {CONV_COLS} FROM coach_conversations WHERE user_id = $1 AND account_id = $2          ORDER BY last_message_at DESC LIMIT $3"
+    )))
+    .bind(user_id)
+    .bind(account_id)
+    .bind(limit)
+    .fetch_all(conn)
+    .await
+}
+
+/// One of the user's conversations, or `None` (another user's id is not found).
+pub async fn get_user_conversation(
+    conn: &mut PgConnection,
+    user_id: Uuid,
+    id: Uuid,
+) -> Result<Option<ConversationRow>, sqlx::Error> {
+    sqlx::query_as(sqlx::AssertSqlSafe(format!(
+        "SELECT {CONV_COLS} FROM coach_conversations WHERE id = $1 AND user_id = $2"
+    )))
+    .bind(id)
+    .bind(user_id)
+    .fetch_optional(conn)
+    .await
+}
+
+/// Deletes one of the user's conversations (messages by cascade, session entries by trigger).
+/// `false` when it does not exist or belongs to another user.
+pub async fn delete_user_conversation(
+    conn: &mut PgConnection,
+    user_id: Uuid,
     id: Uuid,
 ) -> Result<bool, sqlx::Error> {
-    let r = sqlx::query("DELETE FROM coach_conversations WHERE id = $1 AND account_id = $2")
+    let r = sqlx::query("DELETE FROM coach_conversations WHERE id = $1 AND user_id = $2")
         .bind(id)
-        .bind(account_id)
+        .bind(user_id)
         .execute(conn)
         .await?;
     Ok(r.rows_affected() == 1)
 }
 
-/// Deletes all of the account's conversations (and, by cascade and trigger, their messages and
-/// session entries). Returns the number of conversations deleted.
-pub async fn delete_all_conversations(
+/// Deletes all of the user's conversations; returns how many.
+pub async fn delete_all_user_conversations(
     conn: &mut PgConnection,
-    account_id: Uuid,
+    user_id: Uuid,
 ) -> Result<u64, sqlx::Error> {
-    let r = sqlx::query("DELETE FROM coach_conversations WHERE account_id = $1")
-        .bind(account_id)
+    let r = sqlx::query("DELETE FROM coach_conversations WHERE user_id = $1")
+        .bind(user_id)
         .execute(conn)
         .await?;
     Ok(r.rows_affected())

@@ -88,12 +88,13 @@ async fn sweep(pool: &PgPool, queue: &Queue) -> AiReconcileCounts {
 }
 
 async fn conversation(pool: &PgPool, account_id: Uuid) -> Uuid {
+    let user_id = testkit::insert_user(pool, "owner").await;
     let mut conn = pool.acquire().await.unwrap();
     chat::create_conversation(
         &mut conn,
         &NewConversation {
             account_id,
-            user_id: None,
+            user_id,
             time_class: "blitz".into(),
             title: None,
             anchor: None,
@@ -482,6 +483,22 @@ async fn lost_chat_message_fails_with_an_event(pool: PgPool) {
             "chat.message.failed".to_owned(),
             json!({"messageId": lost, "reason": "lost"})
         )]
+    );
+    let owners: Vec<Option<Uuid>> =
+        sqlx::query_scalar("SELECT user_id FROM user_events WHERE account_id = $1")
+            .bind(acct)
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    let owner: Uuid = sqlx::query_scalar("SELECT user_id FROM coach_conversations WHERE id = $1")
+        .bind(conv)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        owners,
+        vec![Some(owner)],
+        "a chat event is for its owner only"
     );
     // A stale chat answer is never retried.
     assert_eq!(job_count(&pool, kinds::KIND_COACH_CHAT).await, 0);
@@ -1077,8 +1094,8 @@ async fn sweep_pages_are_index_ordered(pool: PgPool) {
     // cursor), then
     // evals, reviews and notes (2% pending).
     sqlx::query(
-        "WITH c AS (INSERT INTO coach_conversations (account_id, time_class) \
-           SELECT $1, 'blitz' FROM generate_series(1, 1000) RETURNING id), \
+        "WITH c AS (INSERT INTO coach_conversations (account_id, user_id, time_class) \
+           SELECT $1, $2, 'blitz' FROM generate_series(1, 1000) RETURNING id), \
          n AS (SELECT id, row_number() OVER () AS k FROM c) \
          INSERT INTO coach_messages (conversation_id, seq, role, status, created_at, \
            streaming_at) \
@@ -1090,6 +1107,7 @@ async fn sweep_pages_are_index_ordered(pool: PgPool) {
          FROM n, generate_series(1, 100) s",
     )
     .bind(acct)
+    .bind(testkit::insert_user(&pool, "plans").await)
     .execute(&pool)
     .await
     .unwrap();

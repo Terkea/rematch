@@ -260,6 +260,7 @@ export const aiUsage = pgTable(
     costMicroUsd: bigint("cost_micro_usd", { mode: "number" }).notNull(),
     refId: text("ref_id"),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    idempotencyKey: text("idempotency_key"),
   },
   (table) => [
     index("ai_usage_account_idx").using(
@@ -268,6 +269,9 @@ export const aiUsage = pgTable(
       table.createdAt.asc().nullsLast(),
     ),
     index("ai_usage_created_idx").using("btree", table.createdAt.asc().nullsLast()),
+    uniqueIndex("ai_usage_idempotency_uq")
+      .using("btree", table.idempotencyKey.asc().nullsLast())
+      .where(sql`(idempotency_key IS NOT NULL)`),
   ],
 );
 
@@ -308,7 +312,7 @@ export const coachConversations = pgTable(
   {
     id: uuid().defaultRandom().primaryKey().notNull(),
     accountId: uuid("account_id").notNull(),
-    userId: uuid("user_id"),
+    userId: uuid("user_id").notNull(),
     timeClass: timeClass("time_class").notNull(),
     title: text(),
     anchor: jsonb(),
@@ -318,6 +322,7 @@ export const coachConversations = pgTable(
     lastMessageAt: timestamp("last_message_at", { withTimezone: true, mode: "date" })
       .defaultNow()
       .notNull(),
+    nextCallIndex: integer("next_call_index").default(0).notNull(),
   },
   (table) => [
     index("coach_conversations_owner_idx").using(
@@ -325,14 +330,18 @@ export const coachConversations = pgTable(
       table.accountId.asc().nullsLast(),
       table.lastMessageAt.desc().nullsFirst(),
     ),
-    index("coach_conversations_user_idx")
-      .using("btree", table.userId.asc().nullsLast())
-      .where(sql`(user_id IS NOT NULL)`),
+    index("coach_conversations_user_idx").using(
+      "btree",
+      table.userId.asc().nullsLast(),
+      table.accountId.asc().nullsLast(),
+      table.lastMessageAt.desc().nullsFirst(),
+    ),
     foreignKey({
       columns: [table.accountId],
       foreignColumns: [linkedAccounts.id],
       name: "coach_conversations_account_id_fkey",
     }).onDelete("cascade"),
+    check("coach_conversations_next_call_index_check", sql`next_call_index >= 0`),
   ],
 );
 
@@ -356,6 +365,8 @@ export const coachMessages = pgTable(
     sessionModelUsage: jsonb("session_model_usage"),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
     streamingAt: timestamp("streaming_at", { withTimezone: true, mode: "date" }),
+    sessionInSync: boolean("session_in_sync"),
+    turnAttempts: smallint("turn_attempts").default(0).notNull(),
   },
   (table) => [
     index("coach_messages_pending_idx")
@@ -374,6 +385,7 @@ export const coachMessages = pgTable(
       "coach_messages_session_check",
       sql`session = ANY (ARRAY['new'::text, 'resumed'::text, 'rebuilt'::text])`,
     ),
+    check("coach_messages_turn_attempts_check", sql`turn_attempts >= 0`),
   ],
 );
 
@@ -730,6 +742,7 @@ export const jobs = pgTable(
         table.userKey.asc().nullsLast(),
         table.priority.asc().nullsLast(),
         table.runAt.asc().nullsLast(),
+        table.id.asc().nullsLast(),
       )
       .where(sql`(state = 'queued'::job_state)`),
   ],
@@ -1207,6 +1220,7 @@ export const userEvents = pgTable(
     type: text().notNull(),
     payload: jsonb().notNull(),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    userId: uuid("user_id"),
   },
   (table) => [
     index("user_events_account_id_idx").using(
@@ -1215,6 +1229,9 @@ export const userEvents = pgTable(
       table.id.asc().nullsLast(),
     ),
     index("user_events_created_idx").using("btree", table.createdAt.asc().nullsLast()),
+    index("user_events_user_idx")
+      .using("btree", table.userId.asc().nullsLast(), table.id.asc().nullsLast())
+      .where(sql`(user_id IS NOT NULL)`),
   ],
 );
 
