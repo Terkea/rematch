@@ -6,9 +6,11 @@ import {
   dayText,
   KpiTrendGrid,
   type KpiTrendItem,
+  likelyText,
   NO_BENCHMARK_TEXT,
   NOT_COMPARED_LABEL,
   needMoreText,
+  probablyAbove,
   shareRangeText,
   shareText,
   WeaknessRowKey,
@@ -152,10 +154,20 @@ function IntervalScale({
   );
 }
 
-/** Where the band median sits against the stored range; only a clear miss says lower or higher. */
-export function bandRelation(rate: { low: number; high: number }, median: number): string {
+/**
+ * Where the band median sits against the stored range; only a clear miss says lower or higher.
+ * Inside it, a stored confidence of 0.7 or more adds "though yours is probably higher" (ADR 0084).
+ */
+export function bandRelation(
+  rate: { low: number; high: number },
+  median: number,
+  confidence?: number,
+): string {
   if (median < rate.low) return "lower than your whole likely range";
   if (median > rate.high) return "higher than your whole likely range";
+  if (probablyAbove(confidence)) {
+    return `inside your likely range, though yours is probably higher (${likelyText(confidence)})`;
+  }
   return "inside your likely range";
 }
 
@@ -314,7 +326,7 @@ function Standing({ detail, benchmark }: { detail: WeaknessDetail; benchmark: Be
                   <p className="text-ink-soft">
                     {early || none
                       ? `${group}. A comparison waits for more chances.`
-                      : `${group}, ${bandRelation(detail.rate, median)}.`}
+                      : `${group}, ${bandRelation(detail.rate, median, detail.confidence)}.`}
                   </p>
                 </>
               ) : (
@@ -323,7 +335,7 @@ function Standing({ detail, benchmark }: { detail: WeaknessDetail; benchmark: Be
                   <p className="text-ink-soft">
                     {early || none
                       ? "A comparison waits for more chances."
-                      : `That is ${bandRelation(detail.rate, median)}.`}
+                      : `That is ${bandRelation(detail.rate, median, detail.confidence)}.`}
                   </p>
                 </>
               )}
@@ -471,6 +483,8 @@ function HowOften({ detail, benchmark }: { detail: WeaknessDetail; benchmark: Be
           compared: detail.compared,
           sufficient: detail.evidence.sufficient && !none,
           benchmark,
+          confidence: detail.confidence,
+          state: detail.state,
         })}
       </p>
       {label === null ? null : (

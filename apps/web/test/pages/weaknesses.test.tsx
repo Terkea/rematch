@@ -149,14 +149,18 @@ describe("weaknesses list", () => {
         .map((a) => a.textContent);
     const costing = names("Costing you games");
     expect(costing).toHaveLength(1);
-    expect(costing[0]).toMatch(/inside your likely range, though yours is probably higher \(81% likely\)/);
+    expect(costing[0]).toMatch(
+      /inside your likely range, though yours is probably higher \(81% likely\)/,
+    );
     const watching = screen.getByRole("region", { name: "Worth watching" });
     expect(within(watching).getAllByRole("link")).toHaveLength(1);
     expect(watching.textContent).toMatch(/not clearly more often/);
     noBadText(container);
 
     const allowed = (await detail("W4.allowed")).container.textContent ?? "";
-    expect(allowed).toMatch(/inside your likely range, though yours is probably higher \(81% likely\)/);
+    expect(allowed).toMatch(
+      /inside your likely range, though yours is probably higher \(81% likely\)/,
+    );
     expect(allowed).toMatch(/Probably more often than/);
     expect(allowed).not.toMatch(/Not clearly different/);
     const traps = (await detail("W7.traps")).container.textContent ?? "";

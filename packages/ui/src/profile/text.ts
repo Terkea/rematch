@@ -69,19 +69,40 @@ export const DEFAULT_BAND_LABEL = "Players in your rating band";
  * the median says lower or higher; one that contains it (ends included) says "inside", never
  * "about average" (no overclaiming). `basis` says what the figure is, in brackets after it
  * ("pooled over 65 of their chances").
+ *
+ * `confidence` is the stored `P(your rate > their rate)`. Inside the range at
+ * [`PROBABLY_ABOVE`] or more it adds "though yours is probably higher (81% likely)": that is
+ * the evidence an `active` state stands on (ADR 0084), so the row never reads as contradicting it.
  */
 export function bandComparisonText(
   rate: { low: number; high: number },
   median: number | null,
   label: string = DEFAULT_BAND_LABEL,
   basis?: string,
+  confidence?: number,
 ): string {
   if (median === null || !fin(median)) return NO_BENCHMARK_TEXT;
   const head = `${label}: ${shareText(median)}${basis ? ` (${basis})` : ""}`;
   if (median < rate.low) return `${head}, lower than your whole likely range`;
   if (median > rate.high) return `${head}, higher than your whole likely range`;
+  if (probablyAbove(confidence)) {
+    return `${head}, inside your likely range, though yours is probably higher (${likelyText(confidence)})`;
+  }
   return `${head}, inside your likely range`;
 }
+
+/**
+ * `P(rate > benchmark)` at or above which a weakness is probably worse than the benchmark: the
+ * Rust timeline's `ACTIVE_CONFIDENCE`, the coach's focus threshold and its "probably" (ADR 0060).
+ */
+export const PROBABLY_ABOVE = 0.7;
+
+/** Whether a stored confidence is a probability at or above [`PROBABLY_ABOVE`]. */
+export const probablyAbove = (c: number | null | undefined): c is number =>
+  typeof c === "number" && fin(c) && c >= PROBABLY_ABOVE && c <= 1;
+
+/** "81% likely" (whole percent, never 100% when the store said less). */
+export const likelyText = (c: number) => `${Math.min(99, Math.round(c * 100))}% likely`;
 
 /** Plural nouns for what a weakness counts: "38 errors in 902 rook-endgame moves". */
 export interface WeaknessCounts {
