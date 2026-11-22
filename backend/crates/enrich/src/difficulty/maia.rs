@@ -184,10 +184,13 @@ impl MaiaDifficulty {
             .json()
             .await
             .map_err(MaiaCallError::from_reqwest)?;
-        if health.model.is_empty() {
-            return Err(MaiaCallError::InvalidResponse(
-                "empty model id from /healthz".into(),
-            ));
+        // The exact Maia id rule shared with the feature layer (T6 review): anything else, an
+        // empty id included, is not Maia and never tags a difficulty.
+        if !profile_core::features::is_maia_model_id(&health.model) {
+            return Err(MaiaCallError::InvalidResponse(format!(
+                "model id {:?} from /healthz is not a Maia model id",
+                health.model
+            )));
         }
         Ok(Self {
             client,
