@@ -21,12 +21,6 @@ const nextConfig: NextConfig = {
   allowedDevOrigins: ["web"],
   outputFileTracingRoot: source("../.."),
   transpilePackages: ["@ci/ui", "@ci/db", "@ci/chess-core"],
-  experimental: {
-    // `next dev` restarts itself past 80% of its heap. In a long e2e run that drops connections
-    // and reloads pages mid-spec (M5b T11), so docker-compose.e2e.yml turns it off with
-    // NEXT_DEV_MEMORY_RESTART=0 and gives the server a larger heap instead.
-    devMemoryThresholdRestart: process.env.NEXT_DEV_MEMORY_RESTART !== "0",
-  },
   webpack(config) {
     config.resolve.extensionAlias = {
       ...config.resolve.extensionAlias,

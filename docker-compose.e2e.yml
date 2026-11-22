@@ -9,11 +9,6 @@ services:
   web:
     environment:
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/chess_e2e_test
-      # next dev restarts itself past 80% of its heap ("approaching the used memory threshold"),
-      # which resets connections and reloads pages mid-spec in a long run (M5b T11). For e2e, a
-      # larger heap and no self-restart (next.config.ts) keep one dev process for the whole run.
-      NODE_OPTIONS: --max-old-space-size=8192
-      NEXT_DEV_MEMORY_RESTART: "0"
       # The browser runs in the qa container, which resolves the fakes service by name.
       LICHESS_AUTHORIZE_BASE_URL: http://fakes:3199
       LICHESS_API_BASE_URL: http://fakes:3199
