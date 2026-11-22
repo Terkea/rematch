@@ -62,3 +62,14 @@ The other R1 rulings are unchanged:
 - **Cost grows with accounts (scale accepted to about 10 000).** The claim is linear in the number of accounts that have queued work: about 2 index probes, roughly 12 µs, per account. That is about 25 ms at 500 accounts and about 120 ms at 10 000. The trigger for a maintained per-account head table is **5 000 accounts with queued work**. The release-only guard `fair_claim_at_2000_accounts_stays_linear` (ignored in debug builds, since it is a wall-clock bound) asserts a claim at 2 000 accounts stays under 72 ms (3 × 2 000 × 12 µs).
 - **Ties.** Exact ties in `(priority, run_at)` are claimed by `id` (see above).
 - **Contention.** Beyond four concurrent claimers, the one retry covers the window. `contended_claimers_never_come_back_empty_while_work_remains` (8 claimers, limit 1) and `short_claim_retries_past_rows_locked_by_others` guard it.
+
+## Preview pass
+
+Task 28 (`scheduler::preview`). A quick first look at 30 000 nodes, MultiPV 1 (`PREVIEW_NODES`, protocol `sf19-n30k-preview-v1`), so a user sees early results while the full pass is queued.
+
+- **The only exception to one protocol.** Preview evals are never read from or written to the eval cache, and never touch `position_evals`, `moves`, `game_metrics`, `weakness_series_point` or `games.analysis_status`. Each distinct `fen_key` of a game is searched once; terminal positions use the R1 fixed scores.
+- **Stored in `game_previews`** (one row per game, `ON CONFLICT (game_id) DO UPDATE`): both accuracies and `moves = [{ply, judgement, deltaW, accuracy}]`. The write is skipped if the game became `done` while the preview ran.
+- **Clearly a preview.** The event is `game.analysed {gameId, accuracy, preview: true}`. A preview is skipped outright when the game is already `done`.
+- **Never used for KPIs, posteriors or the timeline.** Only the full pass feeds them.
+- **Superseded by the full pass,** which deletes the row on completion (Task 31).
+- **Queue.** `enqueue_previews`: dedupe `preview:<game>`, priority 0, `user_key` = account, 2 attempts. Preview jobs are not an analyse kind, so they stay on the default priority-FIFO claim (the fair round-robin is analyse-only, T27). Metrics: `job_metrics` kind `preview-game`, stages `parse_ms`, `engine_wall_ms`, `persist_ms`.
