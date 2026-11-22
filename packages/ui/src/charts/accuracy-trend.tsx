@@ -213,6 +213,38 @@ const DotLayer = memo(function DotLayer({
 });
 
 /**
+ * The roving tab stop: which game's button is the chart's one tab stop. A small store rather
+ * than state on the chart, so an arrow key re-renders only the two buttons whose stop changed,
+ * never the chart and its 500 marks (T28, the 4x throttle budget). `null` means the latest game.
+ */
+interface Roving {
+  get: () => number | null;
+  set: (index: number) => void;
+  subscribe: (onChange: () => void) => () => void;
+}
+
+function createRoving(): Roving {
+  let value: number | null = null;
+  const listeners = new Set<() => void>();
+  return {
+    get: () => value,
+    set: (index) => {
+      if (index === value) return;
+      value = index;
+      for (const l of listeners) l();
+    },
+    subscribe: (onChange) => {
+      listeners.add(onChange);
+      return () => listeners.delete(onChange);
+    },
+  };
+}
+
+/** The index holding the tab stop, given the games' count. */
+const stopIndex = (active: number | null, count: number) =>
+  Math.min(active ?? count - 1, count - 1);
+
+/**
  * A game's keyboard and screen-reader handle, centred on its dot. Pointer hits go to the one
  * overlay instead (nearest dot wins), so these never fight over a tap. Memoised so moving the
  * roving tab stop re-renders only the two buttons whose `tabbable` changed.
@@ -221,7 +253,8 @@ const DotButton = memo(function DotButton({
   dot,
   index,
   id,
-  tabbable,
+  count,
+  roving,
   setRef,
   onSelect,
   onKey,
@@ -230,13 +263,16 @@ const DotButton = memo(function DotButton({
   dot: PlacedDot;
   index: number;
   id: string;
-  tabbable: boolean;
+  count: number;
+  roving: Roving;
   setRef: (index: number, el: HTMLElement | null) => void;
   onSelect: (index: number) => void;
   onKey: (event: KeyboardEvent<HTMLButtonElement>, index: number) => void;
   onFocusDot: (index: number) => void;
 }) {
   const ref = useCallback((el: HTMLElement | null) => setRef(index, el), [setRef, index]);
+  const isStop = () => stopIndex(roving.get(), count) === index;
+  const tabbable = useSyncExternalStore(roving.subscribe, isStop, isStop);
   return (
     <PopoverTrigger
       id={id}
@@ -247,7 +283,9 @@ const DotButton = memo(function DotButton({
       onFocus={() => onFocusDot(index)}
       onKeyDown={(e: KeyboardEvent<HTMLButtonElement>) => onKey(e, index)}
       className={cn(
-        "pointer-events-none absolute size-3 -translate-x-1/2 -translate-y-1/2 rounded-full",
+        // Centred by margins, not a transform: a transform per button gives each its own paint
+        // chunk, and a moved focus ring then re-layerizes the whole page (T28).
+        "pointer-events-none absolute -mt-1.5 -ml-1.5 size-3 rounded-full",
         "outline-offset-2 focus-visible:outline-2 focus-visible:outline-ink",
       )}
       style={{ left: dot.x, top: dot.y }}
@@ -390,42 +428,47 @@ export function AccuracyTrend({
   const summary = useMemo(() => trendSummary(sorted, rolling), [sorted, rolling]);
 
   // Selection: which game the popover shows, and the roving tab stop.
-  const [active, setActive] = useState<number | null>(null);
+  const [roving] = useState(createRoving);
   const [selected, setSelected] = useState<number | null>(null);
   const [open, setOpen] = useState(false);
   const [hover, setHover] = useState<number | null>(null);
   const count = sorted.length;
-  const current = Math.min(active ?? count - 1, count - 1);
   const buttons = useRef<(HTMLElement | null)[]>([]);
   const idFor = (i: number) => `${uid}-dot-${i}`;
 
   const setRef = useCallback((i: number, el: HTMLElement | null) => {
     buttons.current[i] = el;
   }, []);
-  const onSelect = useCallback((i: number) => {
-    setSelected(i);
-    setActive(i);
-  }, []);
+  const onSelect = useCallback(
+    (i: number) => {
+      setSelected(i);
+      roving.set(i);
+    },
+    [roving],
+  );
   const countRef = useRef(count);
   countRef.current = count;
-  const onKey = useCallback((event: KeyboardEvent<HTMLButtonElement>, i: number) => {
-    const last = countRef.current - 1;
-    const next =
-      event.key === "ArrowLeft" || event.key === "ArrowDown"
-        ? Math.max(0, i - 1)
-        : event.key === "ArrowRight" || event.key === "ArrowUp"
-          ? Math.min(last, i + 1)
-          : event.key === "Home"
-            ? 0
-            : event.key === "End"
-              ? last
-              : null;
-    if (next === null) return;
-    event.preventDefault();
-    setActive(next);
-    buttons.current[next]?.focus();
-  }, []);
-  const onFocusDot = useCallback((i: number) => setActive(i), []);
+  const onKey = useCallback(
+    (event: KeyboardEvent<HTMLButtonElement>, i: number) => {
+      const last = countRef.current - 1;
+      const next =
+        event.key === "ArrowLeft" || event.key === "ArrowDown"
+          ? Math.max(0, i - 1)
+          : event.key === "ArrowRight" || event.key === "ArrowUp"
+            ? Math.min(last, i + 1)
+            : event.key === "Home"
+              ? 0
+              : event.key === "End"
+                ? last
+                : null;
+      if (next === null) return;
+      event.preventDefault();
+      roving.set(next);
+      buttons.current[next]?.focus();
+    },
+    [roving],
+  );
+  const onFocusDot = useCallback((i: number) => roving.set(i), [roving]);
 
   if (!enough) {
     return (
@@ -455,7 +498,7 @@ export function AccuracyTrend({
     const i = pick(event, coarse ? HIT_RADIUS.coarse : HIT_RADIUS.fine);
     if (i === null) return;
     setSelected(i);
-    setActive(i);
+    roving.set(i);
     setOpen(true);
   };
   const onHover = (event: PointerEvent<HTMLElement>) => {
@@ -467,7 +510,7 @@ export function AccuracyTrend({
     if (selected === null) return;
     const next = Math.min(count - 1, Math.max(0, selected + delta));
     setSelected(next);
-    setActive(next);
+    roving.set(next);
   };
   const shown = open && selected !== null ? geo?.dots[selected] : undefined;
   const hovered = hover !== null && hover !== selected ? geo?.dots[hover] : undefined;
@@ -612,14 +655,17 @@ export function AccuracyTrend({
               onOpenChange={setOpen}
               triggerId={selected === null ? null : idFor(selected)}
             >
-              <div className="pointer-events-none absolute inset-0">
+              {/* Its own layer while a dot has focus, so an arrow key repaints this layer
+                  alone, not the page (T28: the 4x throttle budget, ADR-WEB-18). */}
+              <div className="pointer-events-none absolute inset-0 focus-within:will-change-transform">
                 {geo.dots.map((d, i) => (
                   <DotButton
                     key={d.id}
                     dot={d}
                     index={i}
                     id={idFor(i)}
-                    tabbable={i === current}
+                    count={count}
+                    roving={roving}
                     setRef={setRef}
                     onSelect={onSelect}
                     onKey={onKey}

@@ -573,12 +573,22 @@ export function EvalGraph({
     const bottom = text("black");
     const line = geo.xs.map((x, i) => [x, geo.ys[i] ?? 0] as const);
     const measure = (t: string) => cornerWidths[t] ?? cornerWidth(t);
-    const sides = placeCorners({ width, plotH, top, bottom, labels, ticks: marks, line, measure });
+    const sides = placeCorners({
+      width,
+      plotH,
+      lane,
+      top,
+      bottom,
+      labels,
+      ticks: marks,
+      line,
+      measure,
+    });
     return {
       top: { text: top, side: sides.top, width: measure(top) },
       bottom: { text: bottom, side: sides.bottom, width: measure(bottom) },
     };
-  }, [playerColor, width, plotH, labels, marks, geo, cornerWidths]);
+  }, [playerColor, width, plotH, lane, labels, marks, geo, cornerWidths]);
 
   const phaseLines = useMemo<Phase[]>(() => {
     const lines = [

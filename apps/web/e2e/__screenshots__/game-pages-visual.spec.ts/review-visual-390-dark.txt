@@ -1,0 +1,71 @@
+DrNykterstein v Night-King96
+
+Blitz, rated, 31 Oct 2026, lost
+
+You lost
+
+Your accuracy 79.1%
+Opponent 83.7%
+
+White’s win chance, White at the top
+Drag or use the arrow keys to step
+
+Middlegame
+Endgame
+White
+Black (you)
+50%
+
+91 half-moves. White's win chance goes from 51% to 98%. You played Black. Mistakes and blunders: Move 20, White Qd3, mistake, White 72%; Move 28, White Nd2, blunder, White 40%; Move 31, Black Nf4, blunder, White 81%; Move 33, White Nc3, blunder, White 53%; Move 33, Black Bxc3, blunder, White 72%; Move 34, White Qxc3, blunder, White 54%; Move 35, Black Qxf2, blunder, White 88%. Also 12 inaccuracies.
+
+Black
+White
+1
+2
+3
+4
+5
+6
+7
+h
+8
+g
+f
+e
+d
+c
+b
+a
+??
+Red arrow from h5 to f4
+Red ?? on f4
+31… Nf4??
++4.0
+
+31… Nf4?? is a blunder. Your win chance 49% to 19%.
+
+Show the engine's next move
+DrNykterstein
+3177
+, to move
+1:06
+
+Night-King96
+2848
+0:26
+
+Night-King96:
+2 s on this move
+
+Where it went wrong
+Your win chance, before to after
+31… Nf4??
+49% to 19%
+33… Bxc3??
+47% to 28%
+35… Qxf2??
+49% to 12%
+Show all 13 marked moves
+All moves
+Mistake
+Mistake

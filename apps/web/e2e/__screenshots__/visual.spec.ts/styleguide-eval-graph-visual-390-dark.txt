@@ -1,0 +1,49 @@
+Eval graph
+
+White's win chance after every move. Long pen ticks with ? or ?? mark mistakes and blunders, and short pencil ticks mark inaccuracies. Focus a graph and use the arrow keys, Home and End to step through the game.
+
+Replay draw
+DrNykterstein v Night-King96, 1-0
+
+Queen's Indian Accelerated, blitz, 91 half-moves.
+
+Middlegame
+Endgame
+White (you)
+Black
+50%
+Nd2??
+Nc3??
+
+91 half-moves. White's win chance goes from 51% to 98%. You played White. Mistakes and blunders: Move 20, White Qd3, mistake, White 72%; Move 28, White Nd2, blunder, White 40%; Move 31, Black Nf4, blunder, White 81%; Move 33, White Nc3, blunder, White 53%; Move 33, Black Bxc3, blunder, White 72%; Move 34, White Qxc3, blunder, White 54%; Move 35, Black Qxf2, blunder, White 88%. Also 12 inaccuracies.
+
+Showing move 20, White Qd3, mistake, White 72%.
+
+DrNykterstein v ChessArtHouse, 1-0
+
+Anderssen's Opening, bullet, 127 half-moves.
+
+Middlegame
+Endgame
+White (you)
+Black
+50%
+Nb4??
+Bc1??
+g3??
+Nd4??
+
+127 half-moves. White's win chance goes from 49% to 98%. You played White. Mistakes and blunders: Move 13, White Nb4, blunder, White 8%; Move 13, Black f4, mistake, White 22%; Move 15, Black fxe3, mistake, White 38%; Move 17, White Nxd4, mistake, White 24%; Move 21, Black d4, mistake, White 25%; Move 23, White Bc1, blunder, White 10%; Move 38, Black g5, mistake, White 24%; Move 41, White g3, blunder, White 12%; Move 41, Black Rde8, blunder, White 64%; Move 42, Black Re2+, mistake, White 70%; Move 43, White Kf1, mistake, White 59%; Move 44, White Re1, mistake, White 49%; Move 46, Black Re4, mistake, White 68%; Move 47, White Nd4, blunder, White 19%; Move 47, Black Re6, blunder, White 98%. Also 12 inaccuracies.
+
+oasenegre v DrNykterstein, 0-1
+
+Rapport-Jobava System, blitz, 34 half-moves.
+
+Middlegame
+White
+Black (you)
+50%
+Nxc6??
+O-O?
+
+34 half-moves. White's win chance goes from 51% to 6%. You played Black. Mistakes and blunders: Move 10, White Nxc6, blunder, White 9%; Move 16, White O-O, mistake, White 6%. Also 2 inaccuracies.

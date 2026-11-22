@@ -1,0 +1,42 @@
+Weakness timeline
+
+When each weakness started, when it improved and whether it came back. Hover, tap or use the arrow keys to read a state's dates.
+
+Replay draw
+Not an issue
+Emerging
+Active
+Improving
+Resolved
+Relapsed
+Onset, with its likely range
+Plan started
+Drill set
+
+Hover, tap or use the arrow keys to read a state's dates.
+
+Plan and drills
+1
+2
+Rook endgames
+Now relapsed
+Estimated onset 10 Apr 2026, between 28 Mar 2026 and 24 Apr 2026.
+Time trouble in rapid
+Now resolved
+Missed knight forks
+Now emerging
+Earlier
+Mar 2026
+Apr
+May
+Jun
+Jul
+Aug
+Sep
+1 Nov
+1
+20 May 2026: Started rook endgame plan
+(plan)
+2
+2 Jun 2026: Lucena drill set
+(drill)

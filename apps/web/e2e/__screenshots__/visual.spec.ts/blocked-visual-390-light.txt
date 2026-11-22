@@ -1,0 +1,24 @@
+chess-improver
+You need to be 13 or older to use chess-improver.
+
+We've deleted the details you gave us.
+
+You're welcome back once you turn 13.
+
+8
+7
+6
+5
+4
+3
+2
+a
+1
+b
+c
+d
+e
+f
+g
+h
+The starting position

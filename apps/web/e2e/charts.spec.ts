@@ -27,8 +27,8 @@ test("a keyboard step on the 500-game trend stays under 16 ms at 4x CPU throttle
   // `next dev` runs React's development build, about ten times slower per render, so the 16 ms
   // budget is only meaningful on a production build (`next build`, then `next start` with
   // LAB_ENABLED=1 for the styleguide): set E2E_PRODUCTION=1 when E2E_BASE_URL points at one.
-  // Nothing sets it in CI yet: a production-build e2e lane, which would enforce this budget on
-  // every change, is parked for the CI and launch work (ADR 0065).
+  // CI's e2e job runs on a production build and sets it (ADR 0067), so the budget is enforced on
+  // every change. M4 T28 brought the step back under it (ADR-WEB-18).
   test.skip(process.env.E2E_PRODUCTION !== "1", "needs a production build (E2E_PRODUCTION=1)");
   test.setTimeout(300_000);
   const { dots } = await trend(page);

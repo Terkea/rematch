@@ -1,0 +1,113 @@
+Overview charts
+
+How a player's games add up. A result is told by shape as well as tone, and a mistake by pattern as well as red, so nothing rests on colour alone. Red is only ever the player's own mistakes.
+
+Replay draw
+Accuracy over time
+
+Synthetic example: 500 made-up games. Each dot is a game. The line is the average over the last 20 games, with an 80% band, and it breaks where there were too few recent games. Open a dot to review its game.
+
+500 games, 1 Sep 2025 to 19 May 2026. Rolling average 77.0% on 19 May 2026, 80% likely between 73.8% and 80.1%.
+
+25%
+50%
+75%
+Sep 2025
+Oct 2025
+Nov 2025
+Dec 2025
+Jan 2026
+Feb 2026
+Mar 2026
+Apr 2026
+May 2026
+Win 244
+Draw 46
+Loss 201
+Unfinished 9
+Rolling average, 80% band
+Accuracy with one game
+
+With fewer than two games there is no trend to draw.
+
+Not enough games yet
+
+Mistakes per game
+
+The three real fixture games, the player's moves only. Each column links to its game.
+
+3 games: 7 blunders, 4 mistakes, 9 inaccuracies.
+
+3 blunders, 1 mistake, 2 inaccuracies
+4 blunders, 3 mistakes, 6 inaccuracies
+0 blunders, 0 mistakes, 1 inaccuracy
+Blunder
+Mistake
+Inaccuracy
+Each block is one move.
+Mistakes in the last 40 games
+
+Synthetic example: 40 made-up games. On a narrow screen the chart scrolls on its own.
+
+40 games: 23 blunders, 40 mistakes, 44 inaccuracies.
+
+0 blunders, 0 mistakes, 1 inaccuracy
+1 blunder, 0 mistakes, 2 inaccuracies
+1 blunder, 3 mistakes, 2 inaccuracies
+no marked moves
+no marked moves
+1 blunder, 1 mistake, 1 inaccuracy
+0 blunders, 0 mistakes, 1 inaccuracy
+no marked moves
+1 blunder, 0 mistakes, 0 inaccuracies
+1 blunder, 3 mistakes, 6 inaccuracies
+2 blunders, 3 mistakes, 0 inaccuracies
+0 blunders, 0 mistakes, 2 inaccuracies
+no marked moves
+0 blunders, 0 mistakes, 3 inaccuracies
+0 blunders, 0 mistakes, 6 inaccuracies
+1 blunder, 0 mistakes, 0 inaccuracies
+1 blunder, 0 mistakes, 0 inaccuracies
+0 blunders, 0 mistakes, 4 inaccuracies
+0 blunders, 0 mistakes, 1 inaccuracy
+1 blunder, 0 mistakes, 0 inaccuracies
+2 blunders, 0 mistakes, 2 inaccuracies
+0 blunders, 1 mistake, 0 inaccuracies
+1 blunder, 1 mistake, 0 inaccuracies
+1 blunder, 2 mistakes, 0 inaccuracies
+0 blunders, 1 mistake, 0 inaccuracies
+0 blunders, 4 mistakes, 0 inaccuracies
+0 blunders, 0 mistakes, 1 inaccuracy
+3 blunders, 2 mistakes, 0 inaccuracies
+0 blunders, 1 mistake, 0 inaccuracies
+0 blunders, 1 mistake, 2 inaccuracies
+1 blunder, 0 mistakes, 3 inaccuracies
+no marked moves
+0 blunders, 2 mistakes, 1 inaccuracy
+2 blunders, 2 mistakes, 2 inaccuracies
+no marked moves
+1 blunder, 4 mistakes, 3 inaccuracies
+1 blunder, 4 mistakes, 0 inaccuracies
+0 blunders, 2 mistakes, 1 inaccuracy
+0 blunders, 1 mistake, 0 inaccuracies
+1 blunder, 2 mistakes, 0 inaccuracies
+Blunder
+Mistake
+Inaccuracy
+Each block is one move.
+Mistakes with no games
+
+With no analysed games there is nothing to count.
+
+No analysed games yet
+
+Results by time control
+
+The first row is the three real fixture games. The others are synthetic, and a time control with no games is left out.
+
+Fixture games
+3 wins, 0 draws, 0 losses
+Rapid
+21 wins, 6 draws, 11 losses
+Blitz
+1 win, 0 draws, 1 loss

@@ -1,0 +1,23 @@
+Sound
+
+Paper and wood: quiet, close and dry. Every sound is synthesised in the browser, so there are no sample files. Sound starts after your first click or key press, and reduced motion does not mute it.
+
+Mute
+Volume
+60%
+Play Move
+a soft wooden placement
+Play Capture
+heavier, with a second knock
+Play Check
+a placement with a brighter tick
+Play Castle
+two placements, 70 ms apart
+Play Promotion
+a placement, then a rising pair
+Play Game end
+a low, settled close
+Play Drill correct
+a warm two-note chime
+Play Drill wrong
+a muted low thud

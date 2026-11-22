@@ -1,0 +1,104 @@
+Board
+
+Flat token squares, Cburnett pieces and coordinates on the squares. From 768px the board sits in an 8px well. Pieces carry their weight: a pawn is quick, a queen is heavy, and a knight jumps.
+
+−1.1
+8
+7
+6
+5
+4
+3
+2
+a
+1
+b
+c
+d
+e
+f
+g
+h
+28. Nd2??
+(blunder)
+ −1.1The knight retreats and drops the e-pawn
+Play the move
++3.7
+8
+7
+6
+5
+4
+3
+2
+a
+1
+b
+c
+d
+e
+f
+g
+h
+23… Bxh3+?!
+(inaccuracy)
+ +3.7A capture with check
+Play the move
+−6.3
+1
+2
+3
+4
+5
+6
+7
+h
+8
+g
+f
+e
+d
+c
+b
+a
+10. Nxc6??
+(blunder)
+ −6.3Black's view: the knight takes on c6
+Play the move
++0.6
+8
+7
+6
+5
+4
+3
+2
+a
+1
+b
+c
+d
+e
+f
+g
+h
+8. O-O +0.6Castling: the king lands, then the rook
+Play the move
+8
+7
+6
+5
+4
+3
+2
+a
+1
+b
+c
+d
+e
+f
+g
+h
+Click, drag or use the keyboard: Tab to the board, arrows to move, Enter to pick up and drop, Escape to cancel.
+Reset board

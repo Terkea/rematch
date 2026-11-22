@@ -324,6 +324,30 @@ describe("leaders and corners", () => {
   });
 });
 
+describe("placeCorners on the phone strip (no label lane)", () => {
+  it("measures the corner boxes from the strip's own top, not the full graph's lane", () => {
+    // The strip draws its names at y 14 (top) and plotH - 6 (bottom), with no lane above the
+    // plot (M5a parked polish: "White" sat over the line's last moves at the top right).
+    const line: Point[] = [
+      [0, 30],
+      [200, 30],
+      [326, 8],
+    ];
+    const sides = placeCorners({
+      width: 326,
+      plotH: 70,
+      lane: 0,
+      top: "White",
+      bottom: "Black (you)",
+      labels: [],
+      ticks: [],
+      line,
+    });
+    expect(sides.top).toBe("left");
+    expect(cornerBox("top", "left", 34, 326, 70, 0).y0).toBe(14 - 9 - 3);
+  });
+});
+
 describe("readoutPlacement", () => {
   const flat = { xs: [] as number[], ys: [] as number[], plotH: 120, width: 560, lineY: 100 };
   const corners = (side: "left" | "right") => ({

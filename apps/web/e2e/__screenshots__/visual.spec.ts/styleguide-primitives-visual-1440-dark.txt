@@ -1,0 +1,162 @@
+Primitives
+
+Hover changes tone, never position: a surface steps along the tonal ladder, and a control that is already a well steps its edge. Focus is a 2px ink ring on every surface. Disabled drops to faint ink; only the primary button keeps a quiet well fill, so the main action keeps its place. The hover and focus cells are the components' own styles, forced on, not drawings of them.
+
+Buttons
+
+Destructive actions are ink-outlined with an explicit verb. A button has no error look: the field it submits carries the error, and red stays for mistakes.
+
+Rest
+Hover
+Focus-visible
+Disabled
+Error
+Primary
+Rest
+Import games
+Hover
+Import games
+Focus-visible
+Import games
+Disabled
+Import games
+Error
+–
+None
+Outline
+Rest
+Review game
+Hover
+Review game
+Focus-visible
+Review game
+Disabled
+Review game
+Error
+–
+None
+Quiet
+Rest
+Check again
+Hover
+Check again
+Focus-visible
+Check again
+Disabled
+Check again
+Error
+–
+None
+Danger
+Rest
+Delete account
+Hover
+Delete account
+Focus-visible
+Delete account
+Disabled
+Delete account
+Error
+–
+None
+Small
+Rest
+Replay marks
+Hover
+Replay marks
+Focus-visible
+Replay marks
+Disabled
+Replay marks
+Error
+–
+None
+Fields
+
+A field is an inset well with a 3:1 edge. An error turns the edge pen and says what to do, under the field.
+
+Rest
+Hover
+Focus-visible
+Disabled
+Error
+Text field
+Rest
+chess.com username
+Hover
+chess.com username
+Focus-visible
+chess.com username
+Disabled
+chess.com username
+Error
+chess.com username
+
+Enter your chess.com username.
+
+Select
+Rest
+Time control
+Blitz
+Hover
+Time control
+Blitz
+Focus-visible
+Time control
+Blitz
+Disabled
+Not offered: a filter with one choice is hidden, not greyed.
+Error
+No error look: every option is valid.
+Toggles and tracks
+
+The chosen tab or option is a sheet chip in 600 ink that travels on the page spring; the track never moves.
+
+Rest
+Hover
+Focus-visible
+Disabled
+Error
+Switch
+Rest
+Move sounds
+Hover
+Move sounds
+Focus-visible
+Move sounds
+Disabled
+Move sounds
+Error
+No error look: on and off are both valid.
+Tabs
+Rest
+Moves
+Mistakes
+Hover
+Moves
+Mistakes
+Focus-visible
+Moves
+Mistakes
+Disabled
+Moves
+Mistakes
+Error
+No error look: a tab is never wrong.
+Segmented
+Rest
+Colour
+White
+Black
+Hover
+Colour
+White
+Black
+Focus-visible
+Colour
+White
+Black
+Disabled
+Not offered: every choice always applies.
+Error
+No error look: one choice is always made.

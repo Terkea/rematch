@@ -2,6 +2,7 @@
 
 import { contrast, over, parseColour, type Rgba } from "@ci/ui/lib";
 import { type ReactNode, useEffect, useRef, useState } from "react";
+import { tokenValue } from "../token-value";
 import { MotionTokens } from "./foundations-motion";
 
 // Every value on this section is read from tokens.css at run time and every ratio is computed in
@@ -182,7 +183,7 @@ function ColourPanel({ theme, label }: { theme: Theme; label: string }) {
                     <span className="min-w-0 flex-1">
                       <span className="block text-sm font-medium">{token}</span>
                       <span className="block text-xs whitespace-nowrap text-ink-faint">
-                        {values[`--color-${token}`] || " "}
+                        {tokenValue(values[`--color-${token}`] ?? "") || " "}
                       </span>
                     </span>
                     {/* Below 640px the ratio takes its own line, so values never wrap. */}
@@ -548,7 +549,9 @@ function SpaceAndShape() {
         <div className="rounded-field bg-well p-6">
           <div className="rounded-field bg-sheet p-4 shadow-lift">
             <p className="text-sm font-medium">--shadow-lift</p>
-            <p className="text-xs text-ink-faint break-words">{values["--shadow-lift"] || " "}</p>
+            <p className="text-xs text-ink-faint break-words">
+              {tokenValue(values["--shadow-lift"] ?? "") || " "}
+            </p>
             <p className="text-xs text-ink-faint">
               The one shadow, for what floats: popovers, the drawer, the command menu and a dragged
               piece. Everything else separates by tone.

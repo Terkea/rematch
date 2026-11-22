@@ -167,6 +167,44 @@ describe("AccuracyTrend", () => {
     expect(screen.getByRole("button", { name: "Game 1, win" })).toHaveFocus();
   });
 
+  it("keeps exactly one tab stop, on the game last walked to or opened", async () => {
+    stubMedia();
+    await renderTrend({ points: points(["win", "loss", "draw", "win"]) });
+    const stops = () =>
+      screen.getAllByRole("button").filter((b) => b.id.includes("-dot-") && b.tabIndex === 0);
+    const named = (n: string) => screen.getByRole("button", { name: n });
+    named("Game 4, win").focus();
+    fireEvent.keyDown(document.activeElement as Element, { key: "ArrowLeft" });
+    fireEvent.keyDown(document.activeElement as Element, { key: "ArrowLeft" });
+    expect(stops()).toEqual([named("Game 2, loss")]);
+    fireEvent.click(named("Game 3, draw"));
+    expect(stops()).toEqual([named("Game 3, draw")]);
+    fireEvent.keyDown(named("Game 3, draw"), { key: "End" });
+    expect(stops()).toEqual([named("Game 4, win")]);
+    expect(named("Game 4, win")).toHaveFocus();
+  });
+
+  it("centres each dot's button on its dot without a transform (T28: a step repaints locally)", async () => {
+    const { container } = await renderTrend({ points: points(["win", "loss"]) });
+    const mark = container.querySelector('[data-id="g1"]');
+    const button = screen.getByRole("button", { name: "Game 2, loss" });
+    // A transform per button gives each of 500 buttons its own paint chunk, and a moved focus
+    // ring then re-layerizes the whole page (the 4x throttle budget, ADR 0065).
+    expect(button.className).not.toMatch(/translate/);
+    expect(button.style.left).toBe(`${Number(mark?.getAttribute("data-cx"))}px`);
+    expect(button.style.top).toBe(`${Number(mark?.getAttribute("data-cy"))}px`);
+    expect(button.className).toMatch(/-ml-1\.5/);
+    expect(button.className).toMatch(/-mt-1\.5/);
+  });
+
+  it("lifts the dot buttons onto their own layer while one has focus (T28)", async () => {
+    await renderTrend({ points: points(["win", "loss"]) });
+    const overlay = screen.getByRole("button", { name: "Game 2, loss" }).parentElement;
+    // A moved focus ring then repaints that layer alone instead of re-layerizing the page.
+    expect(overlay?.className).toMatch(/(^| )focus-within:will-change-transform( |$)/);
+    expect(overlay?.className).not.toMatch(/(^| )will-change-transform( |$)/);
+  });
+
   it("uses radius 3, or 4.5 on a coarse pointer", async () => {
     stubMedia();
     const fine = await renderTrend({ points: points(["win", "loss"]) });

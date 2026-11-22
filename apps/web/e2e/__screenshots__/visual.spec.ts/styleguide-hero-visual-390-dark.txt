@@ -1,0 +1,40 @@
+DrNykterstein v Night-King96
+
+Lichess blitz, Queen's Indian Accelerated. You had White, and after 28. Nd2?? it is Black to move.
+
+Play the moment again
+−1.1
+8
+7
+6
+5
+4
+3
+2
+a
+1
+b
+c
+d
+e
+f
+g
+h
+??
+Red circle on d2
+Red arrow from e4 to d2
+Red ?? on d2
+Moves 28 to 30
+28	Nd2??
+−1.1	e4?!−0.2
+29	Nxe4	Bxf3+
+30	Kd2	Ra8?!+0.1
+
+Your knight on e4 was holding back Black’s e-pawn. The moment it went to d2, the pawn came forward with 28…e4, and +2.7 became −1.1.
+
+White (you)
+Black
+50%
+Nd2??
+
+91 half-moves. White's win chance goes from 51% to 98%. You played White. Mistakes and blunders: Move 28, White Nd2, blunder, White 40%.
