@@ -14,6 +14,10 @@ pub const MAX_GAME_BYTES: usize = 1024 * 1024;
 /// Read buffer between the zstd decoder and the line splitter.
 pub const DECODE_BUFFER_BYTES: usize = 64 * 1024;
 
+/// Largest zstd window the decoder accepts, as a power of two (16 MiB; Lichess uses 2^23). A
+/// frame asking for more is a decode error instead of a large allocation.
+pub const MAX_ZSTD_WINDOW_LOG: u32 = 24;
+
 /// Upper bound for `sha256sums.txt` (about 18 KB in 2026, one line per month).
 pub const MAX_SUMS_BYTES: usize = 1024 * 1024;
 
@@ -23,9 +27,10 @@ pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 /// Longest silence between two body reads. There is no total timeout: a month is ~30 GB.
 pub const READ_TIMEOUT: Duration = Duration::from_secs(120);
 
-/// The fixed User-Agent of every outbound request. Project-wide rule: no request ever carries an
-/// email address, so this crate has no `CONTACT_EMAIL` plumbing.
-pub const ANONYMOUS_USER_AGENT: &str = "chess-improver-ci (+https://github.com/chess-improver)";
+/// The fixed User-Agent of every outbound request, the same string as `platforms` sends
+/// (ADR 0043: no request ever carries an email address, so this crate has no `CONTACT_EMAIL`
+/// plumbing).
+pub const ANONYMOUS_USER_AGENT: &str = "chess-improver/0.1 (+https://github.com/chess-improver)";
 
 /// One monthly standard-rated dump, e.g. `lichess_db_standard_rated_2026-10.pgn.zst`.
 #[derive(Clone, Debug, PartialEq, Eq)]

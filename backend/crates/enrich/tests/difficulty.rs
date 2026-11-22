@@ -132,9 +132,13 @@ async fn overflowing_move_number_is_invalid_fen_and_never_sent() {
 /// generic (`impl<T: X> DifficultyProvider for W<T>`), path-qualified
 /// (`impl crate::types::DifficultyProvider for X`) and multi-line forms.
 fn provider_impls(text: &str) -> Vec<String> {
+    impls_of(text, "DifficultyProvider for ")
+}
+
+/// Types implementing the trait named in `needle` (`"<Trait> for "`).
+fn impls_of(text: &str, needle: &str) -> Vec<String> {
     let flat = text.split_whitespace().collect::<Vec<_>>().join(" ");
     let mut out = Vec::new();
-    let needle = "DifficultyProvider for ";
     let mut from = 0;
     while let Some(pos) = flat[from..].find(needle) {
         let at = from + pos;
@@ -179,6 +183,7 @@ fn the_only_difficulty_provider_is_maia() {
     let enrich = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let crates = enrich.parent().unwrap();
     let mut impls = Vec::new();
+    let mut sources = Vec::new();
     let mut scanned = 0;
     for krate in std::fs::read_dir(crates).unwrap() {
         let src = krate.unwrap().path().join("src");
@@ -206,6 +211,9 @@ fn the_only_difficulty_provider_is_maia() {
                     for name in provider_impls(&text) {
                         impls.push(format!("{name} ({})", p.display()));
                     }
+                    for name in impls_of(&text, "DifficultySource for ") {
+                        sources.push(format!("{name} ({})", p.display()));
+                    }
                 }
             }
         }
@@ -213,6 +221,13 @@ fn the_only_difficulty_provider_is_maia() {
     assert!(scanned > 50, "only {scanned} files scanned");
     assert_eq!(impls.len(), 1, "{impls:?}");
     assert!(impls[0].starts_with("MaiaDifficulty ("), "{impls:?}");
+    // Task 25: enrichment reads difficulty through `DifficultySource`; its only implementation
+    // is the Maia-only estimator.
+    assert_eq!(sources.len(), 1, "{sources:?}");
+    assert!(
+        sources[0].starts_with("DifficultyEstimator ("),
+        "{sources:?}"
+    );
 }
 
 #[tokio::test]
@@ -645,7 +660,23 @@ async fn item_count_mismatch_is_pending() {
     )
     .await;
     let out = estimator(&server).estimate(&[std_lines()]).await;
-    assert_eq!(out, vec![pending(PendingReason::InvalidResponse)]);
+    // A call-level fault says nothing about the position: not an item-level invalid answer.
+    assert_eq!(out, vec![pending(PendingReason::BadResponse)]);
+}
+
+#[tokio::test]
+async fn undecodable_answer_is_a_call_level_bad_response() {
+    let server = maia_server(MODEL).await;
+    mount_predict(
+        &server,
+        ResponseTemplate::new(200).set_body_string("not json"),
+    )
+    .await;
+    let out = estimator(&server)
+        .estimate(&[std_lines(), std_lines()])
+        .await;
+    assert_eq!(out, vec![pending(PendingReason::BadResponse); 2]);
+    assert_eq!(PendingReason::BadResponse.as_str(), "bad_response");
 }
 
 #[tokio::test]
@@ -847,4 +878,64 @@ async fn maia_live_contract() {
         .map(|(m, p)| (p - high.get(m).copied().unwrap_or(0.0)).abs())
         .sum();
     assert!(l1 > 0.02, "Elo 1000 vs 2100 L1 distance {l1}");
+}
+
+// ---- Task 25: exact model id, health probe, the DifficultySource trait -----------------------
+
+#[tokio::test]
+async fn healthz_model_id_must_be_an_exact_maia_id() {
+    for bad in [
+        "spread-v1",
+        "maia2-rapid",
+        "maia2-classical-1.0",
+        "maia2-rapid-1..0",
+        "xmaia2-rapid-1",
+    ] {
+        let server = maia_server(bad).await;
+        mount_predict(&server, FixedProbs::standard()).await;
+        let err = MaiaDifficulty::connect(&server.uri(), DEFAULT_TIMEOUT, DEFAULT_BATCH_SIZE)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, MaiaCallError::InvalidResponse(_)),
+            "{bad}: {err:?}"
+        );
+        let est = estimator(&server);
+        assert_eq!(
+            est.estimate(&[std_lines()]).await,
+            vec![pending(PendingReason::BadResponse)],
+            "{bad}"
+        );
+        assert!(!est.healthy().await, "{bad}");
+    }
+}
+
+#[tokio::test]
+async fn healthy_probes_healthz_every_time() {
+    use enrich::difficulty::DifficultySource;
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/healthz"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "model": MODEL })))
+        .up_to_n_times(1)
+        .with_priority(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/healthz"))
+        .respond_with(ResponseTemplate::new(503))
+        .mount(&server)
+        .await;
+    mount_predict(&server, FixedProbs::standard()).await;
+    let est = estimator(&server);
+    let src: &dyn DifficultySource = &est;
+    assert!(src.healthy().await, "first probe answers");
+    // Maia went down after connecting: the next health check sees it.
+    assert!(!src.healthy().await);
+    assert!(!select_difficulty_provider(None).healthy().await);
+    // The trait's estimate is the estimator's.
+    assert_eq!(
+        src.estimate(&[std_lines()]).await,
+        vec![pending(PendingReason::MaiaUnavailable)]
+    );
 }

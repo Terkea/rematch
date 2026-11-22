@@ -43,6 +43,12 @@ pub enum UserEventType {
     GameAnalysed,
     #[serde(rename = "job.failed")]
     JobFailed,
+    /// R2 build-profile: an area's KPI snapshots changed.
+    #[serde(rename = "profile.updated")]
+    ProfileUpdated,
+    /// R2 build-profile: a weakness series changed state.
+    #[serde(rename = "weakness.changed")]
+    WeaknessChanged,
 }
 
 impl UserEventType {
@@ -51,6 +57,8 @@ impl UserEventType {
             Self::ImportProgress => "import.progress",
             Self::GameAnalysed => "game.analysed",
             Self::JobFailed => "job.failed",
+            Self::ProfileUpdated => "profile.updated",
+            Self::WeaknessChanged => "weakness.changed",
         }
     }
 }

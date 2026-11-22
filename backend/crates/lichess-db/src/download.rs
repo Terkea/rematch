@@ -20,15 +20,19 @@ use std::io;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::task::{Context, Poll, ready};
+use std::time::Duration;
 
 use async_compression::tokio::bufread::ZstdDecoder;
+use async_compression::zstd::DParameter;
 use bytes::Bytes;
 use futures::stream::{BoxStream, Stream, StreamExt};
 use sha2::{Digest, Sha256};
 use tokio::io::{AsyncBufRead, BufReader};
 use tokio_util::io::StreamReader;
 
-use crate::config::{DECODE_BUFFER_BYTES, DumpSource, MAX_GAME_BYTES, MAX_SUMS_BYTES};
+use crate::config::{
+    DECODE_BUFFER_BYTES, DumpSource, MAX_GAME_BYTES, MAX_SUMS_BYTES, MAX_ZSTD_WINDOW_LOG,
+};
 use crate::split::GameSplitter;
 
 /// Errors of the dump pipeline.
@@ -49,6 +53,12 @@ pub enum DumpError {
     /// `sha256sums.txt` has no (valid) line for this file.
     #[error("no SHA-256 for {0} in sha256sums.txt")]
     SumsMissing(String),
+    /// Writing a build to Postgres failed (R2 Task 20).
+    #[error("store: {0}")]
+    Store(String),
+    /// Invalid options or an unsupported request (R2 Task 20).
+    #[error("config: {0}")]
+    Config(String),
 }
 
 /// `err` and its sources, joined with `": "` (reqwest's own message is terse).
@@ -67,16 +77,77 @@ fn transport(err: reqwest::Error) -> DumpError {
     DumpError::Transport(error_chain(&err))
 }
 
+/// Retry and resume policy for the dump and `sha256sums.txt` (T19 review ruling).
+///
+/// Before a body starts, a connect or timeout error, a 5xx or a 429 is retried, `connect_tries`
+/// tries in total, waiting `base_delay`, then twice that, and so on. Once the dump body streams,
+/// a transport error is resumed in-process with `Range: bytes=<read>-` and `If-Range: <ETag>`,
+/// at most `max_resumes` times; the resumed bytes flow into the same SHA-256.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RetryPolicy {
+    pub connect_tries: u32,
+    pub base_delay: Duration,
+    pub max_resumes: u32,
+}
+
+impl Default for RetryPolicy {
+    fn default() -> Self {
+        Self {
+            connect_tries: 3,
+            base_delay: Duration::from_secs(2),
+            max_resumes: 5,
+        }
+    }
+}
+
+fn retryable_status(status: reqwest::StatusCode) -> bool {
+    status.is_server_error() || status == reqwest::StatusCode::TOO_MANY_REQUESTS
+}
+
+/// Sends the request built by `make` until a success, a status that is not retried, or the last
+/// try.
+async fn send_with_retry(
+    make: impl Fn() -> reqwest::RequestBuilder,
+    policy: &RetryPolicy,
+) -> Result<reqwest::Response, DumpError> {
+    let tries = policy.connect_tries.max(1);
+    let mut delay = policy.base_delay;
+    let mut attempt = 1;
+    loop {
+        let last = attempt >= tries;
+        match make().send().await {
+            Ok(res) if res.status().is_success() => return Ok(res),
+            Ok(res) if !last && retryable_status(res.status()) => {
+                tracing::warn!(status = res.status().as_u16(), attempt, "retrying request");
+            }
+            Ok(res) => return Err(DumpError::Http(res.status().as_u16())),
+            Err(err) if !last && (err.is_connect() || err.is_timeout()) => {
+                tracing::warn!(error = %error_chain(&err), attempt, "retrying request");
+            }
+            Err(err) => return Err(transport(err)),
+        }
+        tokio::time::sleep(delay).await;
+        delay = delay.saturating_mul(2);
+        attempt += 1;
+    }
+}
+
 /// The expected digest of `src` from `<base>/standard/sha256sums.txt` (lowercase hex).
 pub async fn fetch_expected_sha(
     client: &reqwest::Client,
     src: &DumpSource,
 ) -> Result<String, DumpError> {
-    let res = client.get(src.sums_url()).send().await.map_err(transport)?;
-    let status = res.status();
-    if !status.is_success() {
-        return Err(DumpError::Http(status.as_u16()));
-    }
+    fetch_expected_sha_with(client, src, &RetryPolicy::default()).await
+}
+
+/// [`fetch_expected_sha`] with an explicit retry policy.
+pub async fn fetch_expected_sha_with(
+    client: &reqwest::Client,
+    src: &DumpSource,
+    policy: &RetryPolicy,
+) -> Result<String, DumpError> {
+    let url = src.sums_url();
+    let res = send_with_retry(|| client.get(&url), policy).await?;
     let mut body = Vec::new();
     let mut chunks = res.bytes_stream();
     while let Some(chunk) = chunks.next().await {
@@ -111,22 +182,167 @@ pub fn parse_sums(text: &str, file_name: &str) -> Result<String, DumpError> {
     Err(DumpError::SumsMissing(file_name.to_owned()))
 }
 
-/// Opens the dump of `src` as a stream of games plus the handle of its running SHA-256.
+/// Opens the dump of `src` as a stream of games plus the handle of its running SHA-256, with the
+/// default [`RetryPolicy`].
 pub async fn open_dump(
     client: &reqwest::Client,
     src: &DumpSource,
 ) -> Result<(DumpStream, ShaHandle), DumpError> {
+    open_dump_with(client, src, &RetryPolicy::default()).await
+}
+
+/// [`open_dump`] with an explicit retry and resume policy.
+pub async fn open_dump_with(
+    client: &reqwest::Client,
+    src: &DumpSource,
+    policy: &RetryPolicy,
+) -> Result<(DumpStream, ShaHandle), DumpError> {
     let url = src.url();
-    let res = client.get(&url).send().await.map_err(transport)?;
-    let status = res.status();
-    if !status.is_success() {
-        return Err(DumpError::Http(status.as_u16()));
+    let res = send_with_retry(|| client.get(&url), policy).await?;
+    // Only a strong validator makes a ranged resume safe (RFC 9110 If-Range).
+    let etag = res
+        .headers()
+        .get(reqwest::header::ETAG)
+        .and_then(|v| v.to_str().ok())
+        .filter(|e| !e.starts_with("W/"))
+        .map(str::to_owned);
+    tracing::info!(%url, content_length = res.content_length(), etag = ?etag, "streaming dump");
+    let body = Resumable {
+        client: client.clone(),
+        url,
+        etag,
+        policy: policy.clone(),
+        offset: 0,
+        resumes: 0,
+        body: Some(res.bytes_stream().boxed()),
+    };
+    Ok(DumpStream::from_bytes(body.into_stream()))
+}
+
+type BodyStream = BoxStream<'static, reqwest::Result<Bytes>>;
+
+/// The dump body, resumed with HTTP `Range` after a mid-body transport error.
+struct Resumable {
+    client: reqwest::Client,
+    url: String,
+    etag: Option<String>,
+    policy: RetryPolicy,
+    /// Body bytes delivered so far: the next resume starts here.
+    offset: u64,
+    resumes: u32,
+    /// `None` once the body ended or failed for good.
+    body: Option<BodyStream>,
+}
+
+impl Resumable {
+    fn into_stream(self) -> impl Stream<Item = Result<Bytes, String>> + Send + 'static {
+        futures::stream::unfold(self, |mut st| async move {
+            loop {
+                let body = st.body.as_mut()?;
+                match body.next().await {
+                    Some(Ok(chunk)) => {
+                        st.offset += chunk.len() as u64;
+                        return Some((Ok(chunk), st));
+                    }
+                    None => {
+                        return None;
+                    }
+                    Some(Err(err)) => {
+                        let cause = error_chain(&err);
+                        match st.resume(&cause).await {
+                            Ok(next) => st.body = Some(next),
+                            Err(fatal) => {
+                                st.body = None;
+                                return Some((Err(fatal), st));
+                            }
+                        }
+                    }
+                }
+            }
+        })
     }
-    tracing::info!(%url, content_length = res.content_length(), "streaming dump");
-    let body = res
-        .bytes_stream()
-        .map(|chunk| chunk.map_err(|e| error_chain(&e)));
-    Ok(DumpStream::from_bytes(body))
+
+    /// Re-requests the rest of the body after `cause`. Needs a strong ETag and a `206` whose
+    /// `Content-Range` starts exactly at the offset. Every ranged request uses one resume of
+    /// the budget, with a growing backoff: a request that fails to connect, times out or gets
+    /// a 5xx or 429 is tried again while resumes are left. A `200` (the file changed), another
+    /// status or a wrong `Content-Range` is fatal at once.
+    async fn resume(&mut self, cause: &str) -> Result<BodyStream, String> {
+        let Some(etag) = self.etag.clone() else {
+            return Err(format!("{cause} (no strong ETag, so no resume)"));
+        };
+        let mut last = String::from("no resume left");
+        while self.resumes < self.policy.max_resumes {
+            self.resumes += 1;
+            tracing::warn!(
+                offset = self.offset,
+                resume = self.resumes,
+                cause,
+                "resuming dump"
+            );
+            tokio::time::sleep(self.policy.base_delay.saturating_mul(self.resumes)).await;
+            match ranged_get(&self.client, &self.url, self.offset, &etag).await {
+                Ok(body) => return Ok(body),
+                Err(ResumeError::Retry(msg)) => last = msg,
+                Err(ResumeError::Fatal(msg)) => return Err(format!("{cause}; {msg}")),
+            }
+        }
+        Err(format!(
+            "{cause} (gave up after {} resumes; last: {last})",
+            self.resumes
+        ))
+    }
+}
+
+/// One ranged request for the rest of the body from `offset`. A free function, so the future
+/// holds no borrow of the (non-`Sync`) body stream.
+async fn ranged_get(
+    client: &reqwest::Client,
+    url: &str,
+    offset: u64,
+    etag: &str,
+) -> Result<BodyStream, ResumeError> {
+    let res = client
+        .get(url)
+        .header(reqwest::header::RANGE, format!("bytes={offset}-"))
+        .header(reqwest::header::IF_RANGE, etag)
+        .send()
+        .await
+        .map_err(|e| ResumeError::Retry(format!("resume request failed: {}", error_chain(&e))))?;
+    let status = res.status();
+    if retryable_status(status) {
+        return Err(ResumeError::Retry(format!(
+            "resume answered {}",
+            status.as_u16()
+        )));
+    }
+    if status != reqwest::StatusCode::PARTIAL_CONTENT {
+        return Err(ResumeError::Fatal(format!(
+            "resume answered {} instead of 206",
+            status.as_u16()
+        )));
+    }
+    let start = res
+        .headers()
+        .get(reqwest::header::CONTENT_RANGE)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("bytes "))
+        .and_then(|v| v.split('-').next())
+        .and_then(|v| v.parse::<u64>().ok());
+    if start != Some(offset) {
+        return Err(ResumeError::Fatal(format!(
+            "resume Content-Range starts at {start:?}, not {offset}"
+        )));
+    }
+    Ok(res.bytes_stream().boxed())
+}
+
+/// Why one ranged request did not give the rest of the body.
+enum ResumeError {
+    /// Worth another resume: connect or read failure, timeout, 5xx, 429.
+    Retry(String),
+    /// Never worth another resume.
+    Fatal(String),
 }
 
 /// Reads the rest of the compressed body through the hasher without decompressing or parsing
@@ -315,7 +531,11 @@ impl DumpStream {
             state: state.clone(),
             ended: false,
         };
-        let mut decoder = ZstdDecoder::new(StreamReader::new(hashing));
+        // Lichess frames use an 8 MiB window; a larger one is refused, never allocated.
+        let mut decoder = ZstdDecoder::with_params(
+            StreamReader::new(hashing),
+            &[DParameter::window_log_max(MAX_ZSTD_WINDOW_LOG)],
+        );
         // Lichess dumps are pzstd output: many frames, each after a skippable frame.
         decoder.multiple_members(true);
         let stream = DumpStream {

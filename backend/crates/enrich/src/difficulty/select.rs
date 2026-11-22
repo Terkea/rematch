@@ -12,9 +12,11 @@ use profile_core::types::Difficulty;
 use tokio::sync::Mutex;
 
 use super::maia::{DEFAULT_BATCH_SIZE, DEFAULT_TIMEOUT, MaiaDifficulty, MaiaItem};
+use futures::future::BoxFuture;
+
 use super::{
-    DifficultyOutcome, NotApplicableReason, PendingReason, PlyIndexError, half_move_index,
-    is_maia_opening_ply,
+    DifficultyOutcome, DifficultySource, NotApplicableReason, PendingReason, PlyIndexError,
+    half_move_index, is_maia_opening_ply,
 };
 use crate::types::DifficultyInput;
 
@@ -69,6 +71,13 @@ impl DifficultyEstimator {
                 Err(e.pending_reason())
             }
         }
+    }
+
+    /// A fresh `/healthz` probe: forgets the client and connects again. The re-enrichment sweep
+    /// calls it before sending anything, so a Maia that went down after connecting is seen.
+    pub async fn healthy(&self) -> bool {
+        self.reset().await;
+        self.client().await.is_ok()
     }
 
     /// Forgets the client after a failed call, so the next call re-probes `/healthz`.
@@ -145,6 +154,19 @@ impl DifficultyEstimator {
         if failed.is_some() {
             self.reset().await;
         }
+    }
+}
+
+impl DifficultySource for DifficultyEstimator {
+    fn estimate<'a>(
+        &'a self,
+        inputs: &'a [DifficultyInput],
+    ) -> BoxFuture<'a, Vec<DifficultyOutcome>> {
+        Box::pin(DifficultyEstimator::estimate(self, inputs))
+    }
+
+    fn healthy(&self) -> BoxFuture<'_, bool> {
+        Box::pin(DifficultyEstimator::healthy(self))
     }
 }
 

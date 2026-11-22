@@ -314,10 +314,11 @@ fn compute_row(
     }
     if def.kind != KpiKind::Last
         && let Some(stat) = reference.and_then(|r| r.get(&def.metric))
-        && stat.opp_slope_per_100.is_finite()
+        && let Some(slope) = stat.opp_slope_per_100.filter(|s| s.is_finite())
         && let Some(gap) = mean_rating_gap(&contributions)
     {
-        let raw = value - stat.opp_slope_per_100 * gap;
+        // No slope (unknown) means no adjustment, never a guessed one.
+        let raw = value - slope * gap;
         if raw.is_finite() {
             row.value_adjusted_raw = Some(clean(raw));
             row.value_adjusted = Some(clean(clamp_to_unit(raw, def.contract_unit)));

@@ -18,8 +18,11 @@
 pub mod maia;
 pub mod select;
 
+use futures::future::BoxFuture;
 use profile_core::types::Difficulty;
 use serde::{Deserialize, Serialize};
+
+use crate::types::DifficultyInput;
 
 /// A line is acceptable ("ok") when its mover win% is within this many points of the best line.
 pub const OK_WINDOW: f64 = 5.0;
@@ -78,8 +81,12 @@ pub enum PendingReason {
     MaiaUnavailable,
     /// The request exceeded its timeout.
     Timeout,
-    /// The answer, or this item of it, failed validation.
+    /// This item of the answer failed validation (a per-position answer; it counts toward
+    /// the re-enrichment attempt cap).
     InvalidResponse,
+    /// The whole answer was unusable (undecodable, wrong item count, or a `/healthz` model id
+    /// that is not Maia's). It says nothing about the position: never counted as an attempt.
+    BadResponse,
 }
 
 /// Why Maia cannot estimate a position. Final: never re-enriched.
@@ -94,6 +101,33 @@ pub enum NotApplicableReason {
     NoLegalMoves,
     /// The input has no best move to score.
     NoBestMove,
+    /// Maia kept giving an invalid answer for this position while healthy: after
+    /// `reenrich::MAX_DIFFICULTY_ATTEMPTS` attempts it is final (Task 25).
+    ModelError,
+}
+
+impl PendingReason {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::MaiaNotConfigured => "maia_not_configured",
+            Self::MaiaUnavailable => "maia_unavailable",
+            Self::Timeout => "timeout",
+            Self::InvalidResponse => "invalid_response",
+            Self::BadResponse => "bad_response",
+        }
+    }
+}
+
+impl NotApplicableReason {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::OpeningPly => "opening_ply",
+            Self::InvalidFen => "invalid_fen",
+            Self::NoLegalMoves => "no_legal_moves",
+            Self::NoBestMove => "no_best_move",
+            Self::ModelError => "model_error",
+        }
+    }
 }
 
 /// The difficulty result for one position, as stored by Task 25.
@@ -118,6 +152,38 @@ impl DifficultyOutcome {
     pub fn is_pending(&self) -> bool {
         matches!(self, Self::PendingMaia { .. })
     }
+
+    /// `move_features.difficulty_status`: `ok`, `pending_maia` or `not_applicable`.
+    pub fn status(&self) -> &'static str {
+        match self {
+            Self::Ok { .. } => "ok",
+            Self::PendingMaia { .. } => "pending_maia",
+            Self::NotApplicable { .. } => "not_applicable",
+        }
+    }
+
+    /// `move_features.difficulty_reason`: the pending or not-applicable reason; `None` when ok.
+    pub fn reason(&self) -> Option<&'static str> {
+        match self {
+            Self::Ok { .. } => None,
+            Self::PendingMaia { reason } => Some(reason.as_str()),
+            Self::NotApplicable { reason } => Some(reason.as_str()),
+        }
+    }
+}
+
+/// Where enrichment gets difficulty from (Task 25). The only implementation is
+/// [`select::DifficultyEstimator`], so difficulty is Maia's or absent: never estimated otherwise.
+pub trait DifficultySource: Send + Sync {
+    /// One outcome per input, in order. Never fails: when Maia cannot answer, the outcome is
+    /// `pending_maia`.
+    fn estimate<'a>(
+        &'a self,
+        inputs: &'a [DifficultyInput],
+    ) -> BoxFuture<'a, Vec<DifficultyOutcome>>;
+
+    /// A fresh `GET /healthz` (with an exact Maia model id): true when Maia can answer now.
+    fn healthy(&self) -> BoxFuture<'_, bool>;
 }
 
 /// The lines with duplicate moves removed, keeping each move's highest win%.
