@@ -70,6 +70,8 @@ export function linkErrorMessage(error: unknown, username?: string): string {
         : "chess.com checks are paused for a moment. You can check again in a few minutes.";
     case "chesscom_unavailable":
       return "chess.com isn't answering. Try again in a minute.";
+    case "last_sign_in_method":
+      return "You sign in with this Lichess account, so it can't be removed.";
     case "unauthenticated":
       return "You've been signed out. Sign in again to carry on.";
     default:

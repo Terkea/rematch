@@ -21,7 +21,9 @@ export type LinkErrorCode =
   | "not_found"
   | "limit_reached"
   | "link_not_found"
-  | "rate_limited";
+  | "rate_limited"
+  /** Removing the link would leave the account with no way to sign in (Lichess-only accounts). */
+  | "last_sign_in_method";
 
 export class LinkError extends Error {
   constructor(
@@ -56,7 +58,7 @@ export type VerificationResult = { status: "verified" | "pending" | "expired"; n
 
 /** Advisory-lock namespaces (two-int form): per user for linking, per account for ownership. */
 const LINK_LOCK_SPACE = 7_262_014;
-const OWNER_LOCK_SPACE = 7_262_015;
+export const OWNER_LOCK_SPACE = 7_262_015;
 
 /**
  * `CI-` plus 6 characters from `CODE_ALPHABET`. `pick(n)` returns an index in [0, n); the default

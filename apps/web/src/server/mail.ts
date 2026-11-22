@@ -1,13 +1,18 @@
 import nodemailer, { type Transporter } from "nodemailer";
 import { brand } from "../brand";
 import { getEnv } from "../env";
+import { isPlaceholderEmail } from "../lib/placeholder-email";
 
 export type MailMessage = { to: string; subject: string; text: string; html: string };
 
 let transport: Transporter | undefined;
 
-/** Sends one message over `SMTP_URL` (Mailpit in every environment so far, §18.5). */
+/**
+ * Sends one message over `SMTP_URL` (Mailpit in every environment so far, §18.5). This is the one
+ * mail path: a Lichess placeholder address (ADR-WEB-4) is never sent anything, whatever the caller.
+ */
 export async function sendMail(msg: MailMessage): Promise<void> {
+  if (isPlaceholderEmail(msg.to)) return;
   const env = getEnv();
   transport ??= nodemailer.createTransport(env.SMTP_URL);
   await transport.sendMail({ from: env.MAIL_FROM, ...msg });

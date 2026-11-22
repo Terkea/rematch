@@ -59,6 +59,7 @@ const STATUS: Record<LinkError["code"], number> = {
   limit_reached: 409,
   link_not_found: 404,
   rate_limited: 429,
+  last_sign_in_method: 409,
 };
 
 /** Maps the linking errors to their JSON responses; anything else is rethrown. */

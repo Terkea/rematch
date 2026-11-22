@@ -14,6 +14,8 @@ import { UserMenu, useSignOut } from "./user-menu";
 
 export interface HeaderProps {
   email: string;
+  /** The user's name; for a Lichess-created account, the Lichess username. */
+  name?: string;
   signOutTo?: (href: string) => void;
 }
 
@@ -29,7 +31,11 @@ const navLink = [
  * Below `md` the sections drop to their own row. `data-slot="activity"` is Task 27's import
  * indicator.
  */
-export function Header({ email, signOutTo = (href) => window.location.assign(href) }: HeaderProps) {
+export function Header({
+  email,
+  name = "",
+  signOutTo = (href) => window.location.assign(href),
+}: HeaderProps) {
   const pathname = usePathname();
   const reduced = useReducedMotion();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -88,7 +94,7 @@ export function Header({ email, signOutTo = (href) => window.location.assign(hre
             <Kbd className="max-sm:hidden">Ctrl K</Kbd>
           </Button>
           <ThemeToggle />
-          <UserMenu email={email} signOutTo={signOutTo} />
+          <UserMenu email={email} name={name} signOutTo={signOutTo} />
         </div>
       </div>
       <NavCommandMenu open={menuOpen} onOpenChange={setMenuOpen} onSignOut={signOut.run} />

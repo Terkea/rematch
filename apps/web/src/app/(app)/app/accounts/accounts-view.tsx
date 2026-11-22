@@ -225,7 +225,8 @@ function connectLichess() {
   void authClient.linkSocial({
     provider: "lichess",
     callbackURL: "/app/accounts?connected=lichess",
-    errorCallbackURL: "/app/accounts?error=lichess_denied",
+    // No preset error: the auth route sets lichess_denied, lichess_taken or lichess_failed.
+    errorCallbackURL: "/app/accounts",
   });
 }
 
@@ -253,9 +254,14 @@ export function AccountsView({ initialAccounts, chesscom, lichess }: AccountsVie
   // Back from the Lichess consent screen (Task 18).
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    const error = params.get("error");
     if (params.get("connected") === "lichess") toast.success("Lichess connected");
-    else if (params.get("error") === "lichess_denied")
+    else if (error === "lichess_denied")
       toast.error("Lichess wasn't connected. You can try again.");
+    else if (error === "lichess_taken")
+      toast.error("This Lichess account is connected to another user.");
+    else if (error === "lichess_failed")
+      toast.error("Connecting Lichess didn't finish. Try again.");
     else return;
     window.history.replaceState(null, "", window.location.pathname);
   }, []);
