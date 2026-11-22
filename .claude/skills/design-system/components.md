@@ -18,6 +18,24 @@ Every interactive element meets `touchTarget`, has a visible focus ring (2px `in
 - `toast(...)`, with one `Toaster` in the root layout (a second doubles every toast). A toast names the finished action: "chess.com connected", "FEN copied". Failures use `toast.error` (assertive).
 - `Drawer` (phone sheets), `CommandMenu` (the palette).
 
+## Icons
+
+`Icon` (`@ci/ui/icons`) takes a Phosphor icon: `<Icon icon={CopyIcon} size={16} />`. Size 16 inline with text or in a `sm` button, 20 in controls, 24 only for large targets. Decorative by default; pass `label` only when the icon stands alone without text.
+
+Picking: use the existing curated set in `packages/ui/src/icons/index.ts` first. If the icon you need is missing, add its `...Icon` export to that list (alphabetical) from `@phosphor-icons/react/dist/ssr`. That needs no ruling when it comes from the Phosphor set, regular weight, at the sizes above. A different icon library, a custom drawing or an emoji does (B13).
+
+Usual mappings: copy `CopyIcon`; external link `ArrowSquareOutIcon`; close `XIcon`; confirm `CheckIcon`; delete `TrashIcon`; settings `GearSixIcon`; search `MagnifyingGlassIcon`; add `PlusIcon`; retry `ArrowCounterClockwiseIcon`; sync `ArrowsClockwiseIcon`; warning `WarningIcon`; error `WarningCircleIcon`; success `CheckCircleIcon`; info `InfoIcon`; menu `ListIcon`; sound `SpeakerHighIcon` or `SpeakerSlashIcon`. Add those not yet exported (copy, external link) when first needed. An icon never replaces a button's text for a primary action, and never carries meaning alone.
+
+## Failures and toasts
+
+A finished action toasts its name ("FEN copied"). A failure uses `toast.error` and stays short, honest and actionable, naming what failed and the fix, with no apology and no invented cause:
+
+- clipboard denied or unavailable: `toast.error("Couldn't copy the FEN. Select it and copy by hand.")` (and keep the text visible so that works);
+- network: "Couldn't reach the server. Check your connection and try again.";
+- other: say what happened if known, else "Something went wrong. Try again.", and never "failed successfully" or a raw error message.
+
+Never toast success before the action resolved: await the clipboard or request, then toast.
+
 ## Loading, empty, error, long content
 
 Every surface that fetches defines all four:

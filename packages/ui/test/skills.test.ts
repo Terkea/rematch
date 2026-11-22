@@ -79,7 +79,19 @@ describe("project skills", () => {
           ? [name]
           : [];
       });
-      const missing = names.filter((n) => !new RegExp(String.raw`\b${n}(Icon)?\b`).test(sources));
+      // An icon the skill suggests adding may not be exported yet: it must exist in Phosphor.
+      const phosphor = (n: string) =>
+        n.endsWith("Icon") &&
+        existsSync(
+          join(
+            root,
+            "packages/ui/node_modules/@phosphor-icons/react/dist/ssr",
+            `${n.slice(0, -4)}.d.ts`,
+          ),
+        );
+      const missing = names.filter(
+        (n) => !phosphor(n) && !new RegExp(String.raw`\b${n}(Icon)?\b`).test(sources),
+      );
       expect(missing).toEqual([]);
     });
   }

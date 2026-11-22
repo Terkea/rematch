@@ -24,25 +24,26 @@ states), `motion.md` (what animates). For boards, notation, evals and chess char
   - **Labels never overclaim.** No "improved" or "worse" unless the intervals separate. A rate is an estimate with a stated range. A fixture or synthetic number is never presented as the user's.
   - Real chess data only (B15): real games, real evals, real names.
 - **Copy:** sentence case, British spelling, active verbs, an action keeps its name from button to toast ("Connect chess.com" then "chess.com connected"), errors say what happened and how to fix it. No `→`, no all-caps eyebrows.
-- **Icons** only through `Icon` from `@ci/ui/icons` (Phosphor, never Lucide or emoji, B13). Add to the curated list in `packages/ui/src/icons/index.ts`; never import Phosphor elsewhere.
+- **Icons** only through `Icon` from `@ci/ui/icons` (Phosphor, never Lucide or emoji, B13); never import `@phosphor-icons/react` elsewhere (a test fails it). Which icon and how to add one is in `components.md` ("Icons"). No ruling is needed for an existing Phosphor icon at the sizes there.
 - **Colour never carries meaning alone.** Pen red means "your mistake" (and form errors), nothing else.
 - Source-only UI packages (ADR-WEB-1): import from `@ci/ui/<folder>` (`primitives`, `overlays`, `board`, `annotations`, `charts`, `stats`, `review`, `motion`, `icons`, `progress`, `eval-graph`, `timeline`, `area-score`, `audio`, `fixtures`).
 
 ## Workflow
 
+0. **Ambiguity.** If the request says "under the board" (or similar) and the page has several boards, ask which; if you cannot ask, pick the board the action applies to and say so in your reply.
 1. **Plan.** Name the surface's one job, its states (loading, empty, error, long content, night) and which primitives and tokens it uses. Read DESIGN.md for the parts it touches. Decide what moves and why (`motion.md`).
 2. **Lab for a new surface.** A new kind of surface gets two or three real alternatives at `apps/web/src/app/lab/<surface>/<a|b|c>/page.tsx` in `LabFrame` (ADR-WEB-10), a rationale per variant, and a ruling on the pick. Examples to imitate: `packages/ui/design/decisions/board.md`, `packages/ui/design/decisions/styleguide-hero.md`. Small changes to an existing surface skip this.
-3. **Build.** Test first (`packages/ui/test/*.test.tsx`). Compose from `@ci/ui`. Add reusable pieces to `/styleguide` (`apps/web/src/app/styleguide/sections/`).
+3. **Build.** Test first for any behaviour change (`packages/ui/test/*.test.tsx`, or `apps/web/test/`). A lab is required for a new surface or layout, not for a small change to an existing one. A styleguide demo control needs a test only if it has logic of its own. Compose from `@ci/ui`. Add reusable pieces to `/styleguide` (`apps/web/src/app/styleguide/sections/`).
 4. **CL, the critique loop.** Capture with `pnpm shots` (`.shots/<route>/<width>-<theme>.png`). Judge against `packages/ui/qa/critique-prompt.md`: ideally a fresh critic who sees only the screenshots, DESIGN.md and `packages/ui/design/references/REFERENCES.md`, never your code. It returns at most 10 ranked issues and a verdict. Fix, retake, repeat until `pass` (a `pass` allows no blocker or major). Log each round in `packages/ui/qa/log/<surface>.md`: shots, the JSON, what changed, the verdict. If you could not get an independent critic, write "self-critique only"; the gate still wants a fresh `pass`.
 
 ## Definition of done
 
 - Screenshots at **390 and 1440, in both day and night**, each looked at, with no horizontal scroll (also at 360), visible focus, text 4.5:1 and strokes 3:1.
-- `pnpm design:check` reports 0 findings.
+- `pnpm format` run first, then `pnpm lint` and `pnpm design:check` both pass with 0 findings.
 - A critique verdict of `pass`, logged.
 - Every state exists: loading through `ProgressPlaceholder` (no spinner, B18), empty, error, long content.
 - Reduced motion works (M10); nothing animates outside the motion rules.
-- `pnpm lint` and `pnpm typecheck` clean; tests written first and passing.
+- `pnpm typecheck` clean; tests written first and passing.
 - A decision that bends DESIGN.md gets an ADR in `docs/decisions/` and a dated line in DESIGN.md "Revisions".
 
 ## Tried and rejected
