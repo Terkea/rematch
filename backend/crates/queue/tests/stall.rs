@@ -181,7 +181,10 @@ async fn renews_lease_while_running(pool: PgPool) {
         renew_every: Duration::from_millis(200),
         ..RunnerConfig::fast_for_tests()
     };
-    let runner = Runner::spawn(q.clone(), h, cfg);
+    // Renewals on a dedicated pool, so they never wait for a connection behind this test's
+    // reaper loop or other tests (see `testkit::dedicated_pool`).
+    let own = testkit::dedicated_pool(&pool, 4).await;
+    let runner = Runner::spawn(Queue::new(own.clone()), h, cfg);
     let mut done = false;
     for _ in 0..400 {
         // Another reaper keeps looking for an expired lease the whole time.
@@ -202,6 +205,8 @@ async fn renews_lease_while_running(pool: PgPool) {
     assert_eq!(runner.stats().stalled, 0);
     runner.stop();
     runner.wait_idle().await;
+    drop(runner);
+    own.close().await;
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
@@ -407,15 +412,17 @@ async fn lost_lease_cancels_the_handler_and_drops_its_result(pool: PgPool) {
         }
     });
     let cfg = RunnerConfig {
-        // No reaper interference and a lease that outlives a clock step: the takeover alone
-        // must end the job.
+        // No reaper interference, and a lease so long that its deadline fallback cannot fire
+        // during the test: the takeover alone must end the job.
         reap_every: Duration::from_secs(60),
-        lease: Duration::from_secs(6),
+        lease: Duration::from_secs(60),
         renew_every: Duration::from_millis(200),
         ..RunnerConfig::fast_for_tests()
     };
     let owner = owner_of(&cfg);
-    let runner = Runner::spawn(q.clone(), h, cfg);
+    // Renewals on a dedicated pool (see `testkit::dedicated_pool`).
+    let own = testkit::dedicated_pool(&pool, 4).await;
+    let runner = Runner::spawn(Queue::new(own.clone()), h, cfg);
     wait_owned(&pool, id, &owner).await;
     // Someone else now holds the lease (as after a reaper re-queue and a re-claim).
     let thief = Uuid::new_v4();
@@ -428,22 +435,17 @@ async fn lost_lease_cancels_the_handler_and_drops_its_result(pool: PgPool) {
         .await
         .unwrap();
     takeover.commit().await.unwrap();
-    let committed = Instant::now();
-    let cancelled_at = tokio::time::timeout(Duration::from_secs(10), rx.recv())
+    let cancelled_at = tokio::time::timeout(Duration::from_secs(30), rx.recv())
         .await
         .expect("handler cancelled")
         .unwrap();
+    // The deadline fallback fires `CANCEL_GRACE` (1 s) before the local lease deadline, which is
+    // never later than `deadline`. So a cancellation more than 20 s before `deadline` came from
+    // the renew's `false`, whatever the load. The bound is by cause, not by latency.
     assert!(
-        cancelled_at <= deadline + Duration::from_secs(1),
-        "cancelled {:?} after the old lease ran out",
-        cancelled_at.saturating_duration_since(deadline)
-    );
-    // Within ~2 s of the takeover (renews every 200 ms), long before the 6 s lease deadline:
-    // the renew's `false` cancelled it, not the deadline fallback.
-    let after = cancelled_at.saturating_duration_since(committed);
-    assert!(
-        after < Duration::from_secs(2),
-        "cancelled {after:?} after the takeover"
+        cancelled_at + Duration::from_secs(20) < deadline,
+        "cancelled {:?} before the old lease ran out: the deadline fallback, not the renew",
+        deadline.saturating_duration_since(cancelled_at)
     );
     wait_for("lease lost", Duration::from_secs(10), POLL, || async {
         (runner.stats().lease_lost == 1).then_some(())
@@ -455,6 +457,8 @@ async fn lost_lease_cancels_the_handler_and_drops_its_result(pool: PgPool) {
     assert_eq!(r.state, "running", "the result was dropped");
     assert_eq!(r.lease_token, Some(thief));
     assert_eq!(runner.stats().completed, 0);
+    drop(runner);
+    own.close().await;
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
@@ -657,8 +661,12 @@ async fn reaper_ignores_a_lease_that_only_looks_expired(pool: PgPool) {
     // A forward step of the database clock makes a live lease look expired. A runner's reaper
     // confirms an expiry over two passes at least `stall_grace` apart on the monotonic clock,
     // with the lease token and heartbeat unchanged, so the live owner (renewing every 200 ms)
-    // keeps its job.
+    // keeps its job. Its renewals run on a dedicated pool: on the shared 5-connection test
+    // pool (two held by the listeners) they queue behind the other runner, the test and other
+    // tests, and a renew gap of a second lets the reaper confirm the expiry.
     let q = Queue::new(pool.clone());
+    let own = testkit::dedicated_pool(&pool, 4).await;
+    let owner_q = Queue::new(own.clone());
     let id = enqueue(&q).await;
     let release = Arc::new(tokio::sync::Notify::new());
     let r2 = release.clone();
@@ -671,7 +679,7 @@ async fn reaper_ignores_a_lease_that_only_looks_expired(pool: PgPool) {
     });
     let cfg = live();
     let owner = owner_of(&cfg);
-    let owner_runner = Runner::spawn(q.clone(), h, cfg);
+    let owner_runner = Runner::spawn(owner_q, h, cfg);
     wait_owned(&pool, id, &owner).await;
     // A second runner of the kind reaps every 250 ms too.
     let other = Runner::spawn(q.clone(), hanging(), live());
@@ -704,4 +712,6 @@ async fn reaper_ignores_a_lease_that_only_looks_expired(pool: PgPool) {
     other.stop();
     owner_runner.wait_idle().await;
     other.wait_idle().await;
+    drop(owner_runner);
+    own.close().await;
 }
