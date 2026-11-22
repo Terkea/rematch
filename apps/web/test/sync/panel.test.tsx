@@ -92,6 +92,9 @@ describe("SyncPanel", () => {
     await user.click(screen.getByRole("button", { name: "Sync now chess.com alice" }));
     const post = fetchMock.mock.calls.find((c) => c[1]?.method === "POST");
     expect(post?.[0]).toBe(`/api/accounts/${A1}/sync`);
+    // The route's CSRF guard (rejectCrossSite) answers 415 to a body not declared JSON (found
+    // by the sync e2e, M5b T11).
+    expect(new Headers(post?.[1]?.headers).get("content-type")).toBe("application/json");
     expect(await screen.findByText("Checking for new games…")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sync now chess.com alice" })).toHaveAttribute(
       "aria-disabled",

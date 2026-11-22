@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { queryKeys } from "../../src/lib/query-keys.js";
 
 vi.mock("@ci/ui/overlays", () => ({ toast: vi.fn() }));
 
@@ -20,7 +21,7 @@ class FakeEventSource {
   static readonly CLOSED = 2;
   static instances: FakeEventSource[] = [];
   readyState = FakeEventSource.CONNECTING;
-  private listeners = new Map<string, Set<Listener>>();
+  listeners = new Map<string, Set<Listener>>();
   constructor(
     readonly url: string,
     readonly init?: EventSourceInit,
@@ -102,6 +103,44 @@ describe("useEventStream", () => {
     FakeEventSource.last.open();
     FakeEventSource.last.emit("hello", 30, "", {});
     expect(result.current.lastEventId).toBe(30);
+  });
+
+  it("listens for every event type the worker emits (M5b T11: R3 and P2 events were dropped)", () => {
+    renderHook(() => useEventStream(), { wrapper });
+    const es = FakeEventSource.last;
+    // R1 `events::store::UserEventType` and R3 `ai::events::EVENT_KINDS`, every one.
+    for (const type of [
+      "import.progress",
+      "game.analysed",
+      "job.failed",
+      "profile.updated",
+      "weakness.changed",
+      "report.section.ready",
+      "report.ready",
+      "report.degraded",
+      "weekly_review.ready",
+      "weakness.note.ready",
+      "chat.chunk",
+      "chat.message.ready",
+      "chat.message.failed",
+    ]) {
+      expect(es.listeners.get(type)?.size ?? 0, type).toBeGreaterThan(0);
+    }
+  });
+
+  it("a chat chunk over SSE reaches the answer's stream state", () => {
+    renderHook(() => useEventStream(), { wrapper });
+    const es = FakeEventSource.last;
+    es.open();
+    es.emit("chat.chunk", 9, "a1", {
+      messageId: "m1",
+      seq: 0,
+      text: "Hello",
+      segments: [{ kind: "text", text: "Hello" }],
+      citations: [],
+      interim: false,
+    });
+    expect(qc.getQueryData(queryKeys.chatStream("m1"))).toMatchObject({ chunks: [{ seq: 0 }] });
   });
 
   it("applies a duplicate id once", () => {

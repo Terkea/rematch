@@ -17,7 +17,28 @@ const POLL_PAGE_SIZE = 500;
 export const SSE_RETRY_MS = [30_000, 60_000, 120_000, 300_000] as const;
 
 /** The named SSE events `applyEvent` knows; `hello` only carries the head id. */
-const STREAM_TYPES = ["import.progress", "game.analysed", "job.failed", "reset"] as const;
+/**
+ * Every type the server sends as an SSE `event:` (an EventSource only delivers types it listens
+ * for): R1's `events::store::UserEventType`, R3's `ai::events::EVENT_KINDS` (ADR 0059) and the
+ * stream's own `reset`. A type missing here is silently dropped in SSE mode and only arrives by
+ * polling (M5b T11 found the coach and profile events missing).
+ */
+export const STREAM_TYPES = [
+  "import.progress",
+  "game.analysed",
+  "job.failed",
+  "profile.updated",
+  "weakness.changed",
+  "report.section.ready",
+  "report.ready",
+  "report.degraded",
+  "weekly_review.ready",
+  "weakness.note.ready",
+  "chat.chunk",
+  "chat.message.ready",
+  "chat.message.failed",
+  "reset",
+] as const;
 
 /**
  * How updates arrive. Only `"sse"` means an open stream; `"connecting"` covers the first connect

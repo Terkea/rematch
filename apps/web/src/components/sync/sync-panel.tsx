@@ -65,8 +65,11 @@ function useSync() {
   const [busy, setBusy] = useState<string | null>(null);
   /** 0 when it started (or is limited), else the HTTP status (or -1 offline). */
   const one = async (accountId: string): Promise<number> => {
+    // A declared JSON body: the account routes' CSRF guard refuses anything else (415).
     const res = await fetch(`/api/accounts/${encodeURIComponent(accountId)}/sync`, {
       method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
     });
     const body = (await res.json().catch(() => ({}))) as SyncAnswer;
     if (res.status === 429 && "error" in body && body.availableAt) {
