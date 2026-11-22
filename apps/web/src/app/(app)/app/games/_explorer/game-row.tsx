@@ -244,17 +244,37 @@ export function GameRow({ row, withDate = true }: { row: RowView; withDate?: boo
 /**
  * A table row from `md` up: the result mark and word, the opponent (whose link stretches over the
  * row), the clock, the opening (the quietest cell), then the ruled margin: accuracy and the red-pen
- * counts.
+ * counts. With `daySpan` (sorted by date) the day is named once: the day's first row carries a
+ * date cell spanning `daySpan` rows, and the others (`daySpan` 0) leave the column to it.
  */
-export function GameTableRow({ row, withDate }: { row: RowView; withDate: boolean }) {
+export function GameTableRow({
+  row,
+  withDate,
+  daySpan,
+}: {
+  row: RowView;
+  withDate: boolean;
+  daySpan?: number;
+}) {
   const a = row.analysis;
   const first = "py-2.5 pr-4 pl-(--space-panel-pad)";
   return (
     <tr className="relative border-b border-rule align-middle last:border-b-0 hover:bg-(--surface-hover)">
       {withDate ? (
-        <td className={`${first} text-sm whitespace-nowrap text-ink-soft tabular-nums`}>
-          {row.date}
-        </td>
+        daySpan === undefined ? (
+          <td className={`${first} text-sm whitespace-nowrap text-ink-soft tabular-nums`}>
+            {row.date}
+          </td>
+        ) : daySpan > 0 ? (
+          // The day, once, spanning its games (sorted by date): no heading row per day.
+          <th
+            scope="rowgroup"
+            rowSpan={daySpan}
+            className="pt-3.5 pr-4 pb-2.5 pl-(--space-panel-pad) align-top text-left text-sm font-medium whitespace-nowrap text-ink tabular-nums"
+          >
+            {row.date}
+          </th>
+        ) : null
       ) : null}
       <td className={`${withDate ? "py-2.5 pr-4" : first} whitespace-nowrap`}>
         <span className="inline-flex items-center gap-2.5 font-serif text-base font-semibold text-ink">

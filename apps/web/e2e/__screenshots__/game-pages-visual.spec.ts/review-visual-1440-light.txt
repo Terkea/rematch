@@ -48,11 +48,11 @@ Red ?? on f4
 Mistake
 31… Nf4??
 +4.0
+Show the engine's next move
+B
 
 31… Nf4?? is a blunder. Your win chance 49% to 19%.
 
-Show the engine's next move
-B
 DrNykterstein
 3177
 , to move

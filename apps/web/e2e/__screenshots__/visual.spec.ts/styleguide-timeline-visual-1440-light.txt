@@ -1,6 +1,6 @@
 Weakness timeline
 
-When each weakness started, when it improved and whether it came back. Hover, tap or use the arrow keys to read a state's dates.
+When each weakness started, when it improved and whether it came back.
 
 Replay draw
 Not an issue

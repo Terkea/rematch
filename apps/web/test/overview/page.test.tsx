@@ -118,7 +118,7 @@ describe("overview page sections", () => {
     // The one game is plotted (minPoints 1; @ci/ui's test draws its dot), and the line waits.
     expect(view.accuracy.points).toHaveLength(1);
     expect(container.textContent).not.toContain("Not enough games yet");
-    expect(container.textContent).toContain("The line starts once you have 10 analysed games.");
+    expect(container.textContent).toContain("The line starts once you have 20 analysed games.");
   });
 
   it("renders a rich account without NaN, with every section", async () => {

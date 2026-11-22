@@ -101,7 +101,8 @@ function syntheticTrend(): { points: AccuracyTrendPoint[]; rolling: AccuracyTren
       href: "#charts",
     });
   }
-  // A trailing 20-game window, shown once it holds 10 games played within 30 days of each other,
+  // A trailing 20-game window, shown only when all 20 were played within 30 days of each other
+  // (as the overview, ADR-WEB-19: "the last 20 games" is literal),
   // so the break leaves a real gap. The band is the mean ± z(0.8) standard errors, clamped.
   const rolling: AccuracyTrendRolling[] = [];
   points.forEach((p, i) => {
@@ -110,7 +111,7 @@ function syntheticTrend(): { points: AccuracyTrendPoint[]; rolling: AccuracyTren
       .slice(Math.max(0, i - 19), i + 1)
       .filter((q) => end - new Date(q.date).getTime() <= 30 * DAY)
       .map((q) => q.accuracy);
-    if (window.length < 10) return;
+    if (window.length < 20) return;
     const mean = window.reduce((a, b) => a + b, 0) / window.length;
     const sd = Math.sqrt(window.reduce((a, b) => a + (b - mean) ** 2, 0) / (window.length - 1));
     const half = (1.2815515655446004 * sd) / Math.sqrt(window.length);

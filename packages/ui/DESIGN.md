@@ -390,8 +390,9 @@ A KPI is a list row, never a stat banner (`B9`): label and basis ("Based on 38 r
 - **Targets** use the ends' precision. When a target would read the same as an interval end, it gets one more place (`Next target 1.50` beside `between 1.5 and 2.2`). The fixture label is "Next target".
 - **The scale (controller ruling, Task 14 review).** Every percent KPI keeps one **40-point window** and never falls back to 0–100%. When the band, value and target fit, the window is centred on them, with its start rounded to 10 points and widened back if rounding would cut them. Otherwise it is centred on the value. It is clamped inside 0–100%. A wider interval always *looks* wider: one that doesn't fit runs off the track's end, square-cut, with an open `rule-strong` chevron past the end ("interval continues"), so the overflow is shown by shape, not colour. The words stay exact. A target outside the window is named only in text. Other formats run from zero (or below it, for negatives) to a nice value about 15% past the band, value and target. Both ends are labelled in `xs` `ink-faint`.
 - **Marks:** a decorative `rule` track, the band in `rule-strong` (8px, `--radius-board`, the same for provisional KPIs, never faded), the value as a solid 2.5px `ink` tick, and the target as a dashed 2px `good` tick with a caret, so shape and not colour tells them apart. The target's text label carries the same caret swatch. A provisional KPI shows "Early estimate" (a `well` pill, `ink-soft`).
+- **One convention (ADR-WEB-19):** every interval is an 80% one (`INTERVAL_LEVEL`), and below 10 games (`KPI_MIN_GAMES`, ADR 0047 R3) a KPI shows no number, band or trend: its basis and "Need N more games". "Early estimate" is for 10 games or more that are still below the metric's own minimum evidence.
 - **Halo:** both ticks and the sparkline's last dot sit on a halo read as `var(--stat-surface, var(--color-sheet))`, the eval graph's `--eval-graph-surface` pattern. A host on another surface sets `--stat-surface`. The components and `tokens.css` never define it, so an ancestor's value always wins.
-- **Sparkline:** no axes, `pencil` at 1.5px, linear segments, a null breaks the line (a lone value is a 3px pencil dot), and the latest value is a 6px `ink` dot. Its vertical span is at least `minSpan`, centred on the series range. KpiStat passes twice the current 80% interval width (a 90% interval is scaled by 1.2816 / 1.6449), so a move smaller than the uncertainty looks small. Fewer than two values reads "Not enough games yet", and its accessible name names the KPI ("Accuracy trend: not enough games yet"). Otherwise the name gives the snapshot count, the gaps and the first and last values.
+- **Sparkline:** no axes, `pencil` at 1.5px, linear segments, a null breaks the line (a lone value is a 3px pencil dot), and the latest value is a 6px `ink` dot. Its vertical span is at least `minSpan`, centred on the series range. KpiStat passes twice the current 80% interval width, so a move smaller than the uncertainty looks small. Fewer than two values reads "Not enough games yet", and its accessible name names the KPI ("Accuracy trend: not enough games yet"). Otherwise the name gives the snapshot count, the gaps and the first and last values.
 - **Motion:** one clock per row. The sparkline reveals through one clip sweeping left to right over `--dur-reveal` on `--ease-pen`, so the pieces after a gap draw in order, and each dot fades in as the sweep reaches it. On a value change, the number rolls and the value tick travels on one progress value over the same `--dur-reveal` and `--ease-pen`. Reduced motion jumps both to the end (M10). No change is called "improved" or "worse" unless the intervals separate.
 
 ## Motion
@@ -913,5 +914,18 @@ Rulings taken while building `packages/ui/src/annotations` (ADR-WEB-15):
 1. **`will-change` on a focused chart layer** (M9 exception, ADR-WEB-18): the accuracy trend's dot-button overlay takes `will-change: transform` only while one of its buttons has focus (`focus-within`). An arrow key then repaints that one layer instead of re-layerizing the whole page, which brought the 4x throttle step back under 16 ms. Nothing animates on it; the rule's "only while animating" still holds everywhere else.
 2. **Dot buttons are centred by negative margins, not a transform**, so 500 buttons don't make 500 paint chunks. Same pixels.
 3. **The phone strip's corner names** are placed against the strip's own geometry (no label lane), so "White" moves to the left when the line's last moves run along the top right.
+
+**Token values changed in this round:** none.
+
+### 2026-11-22, web polish: the independent T28 critic
+
+1. **One statistics convention** (ADR-WEB-19): 80% intervals only, and no KPI number below 10 games. The 90% path is gone from `KpiStat`.
+2. **The accuracy trend's line starts at 20 games**, so "your average over the last 20 games" holds for every point.
+3. **Mistake columns span their row:** the slot divides the width, and the block is at most 24px wide and centred in it.
+4. **KPI rows without a ruler** share one baseline: label and value, with the interval words under the value.
+5. **The area score's next-band flag** is drawn only while it is ahead of the score; past it, the row says "In the next band (N and up)".
+6. **The games list names each day once**, in a Date cell spanning that day's games; phone rows carry their date inline.
+7. **"What to work on" is ink**, not pen: red stays the player's own mistakes.
+8. **The review's engine switch sits above the verdict**, so a short verdict leaves no gap between them; the verdict's reserved height stays, so nothing under it moves.
 
 **Token values changed in this round:** none.

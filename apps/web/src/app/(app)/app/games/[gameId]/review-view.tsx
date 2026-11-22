@@ -521,8 +521,14 @@ export function GameReviewView({ view, gameId, initialPly, onStep }: GameReviewV
         </div>
 
         <div className="flex min-w-0 flex-col gap-5">
-          {/* The verdict on the shown move: the loudest line on the page. */}
-          <section aria-label="This move" className="flex flex-col gap-2">
+          {/*
+            The verdict on the shown move: the loudest line on the page. The engine switch sits
+            between the move line and the verdict (web polish critic I5: under a verdict reserved
+            for three lines, a short one left a dead gap above it). The verdict and the arrow line
+            keep their reserved height, so nothing under them, the switch included, moves as the
+            moves change (I2).
+          */}
+          <section data-testid="move-block" aria-label="This move" className="flex flex-col gap-2">
             <div
               className={cn("flex items-baseline gap-3 font-sans text-sm text-ink-soft", NUMERALS)}
             >
@@ -543,6 +549,20 @@ export function GameReviewView({ view, gameId, initialPly, onStep }: GameReviewV
                 className={slots ? undefined : "ml-auto"}
               />
             </div>
+            {analysed ? (
+              <div
+                data-testid="engine-switch"
+                className="flex items-center gap-3 text-sm text-ink-soft"
+              >
+                <Switch
+                  checked={showEngine}
+                  onCheckedChange={c.engine}
+                  aria-labelledby={engineId}
+                />
+                <span id={engineId}>{"Show the engine's next move"}</span>
+                <Kbd className="max-md:hidden">B</Kbd>
+              </div>
+            ) : null}
             <p
               data-testid="verdict"
               className="min-h-21 max-w-prose font-serif-italic text-xl text-ink italic md:min-h-22.5 md:text-2xl"
@@ -558,13 +578,6 @@ export function GameReviewView({ view, gameId, initialPly, onStep }: GameReviewV
               ) : null}
             </div>
           </section>
-          {analysed ? (
-            <div className="flex items-center gap-3 text-sm text-ink-soft">
-              <Switch checked={showEngine} onCheckedChange={c.engine} aria-labelledby={engineId} />
-              <span id={engineId}>{"Show the engine's next move"}</span>
-              <Kbd className="max-md:hidden">B</Kbd>
-            </div>
-          ) : null}
 
           <ClockPair
             top={side(flipped ? "white" : "black")}

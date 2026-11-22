@@ -63,7 +63,7 @@ export function SoundSection() {
             <button
               type="button"
               onClick={() => play(s.id)}
-              className="rounded-field px-3 py-1.5 text-sm font-medium hover:bg-well focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+              className="shrink-0 rounded-field px-3 py-1.5 text-left text-sm font-medium whitespace-nowrap hover:bg-well focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
             >
               Play {s.label}
             </button>

@@ -331,6 +331,21 @@ describe("GameReviewView", () => {
     expect(screen.queryByTestId("arrow-key")).toBeNull();
   });
 
+  // Web polish critic I5: the verdict reserved three lines, so a one-line verdict left 80 to 100px
+  // of nothing above the engine switch. The switch now sits above the verdict, under the move
+  // line, so no reserved space separates them and a changing verdict never moves it (I2, CLS).
+  it("puts the engine switch above the verdict, so no reserved gap sits between them", () => {
+    render(<GameReviewView view={analysed()} initialPly="3" />);
+    const verdict = screen.getByTestId("verdict");
+    const toggle = screen.getByRole("switch", { name: "Show the engine's next move" });
+    const block = screen.getByTestId("move-block");
+    expect(block).toContainElement(verdict);
+    expect(block).toContainElement(toggle);
+    expect(toggle.compareDocumentPosition(verdict) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // The verdict keeps its reserved height, so the clocks and ledger under it stay still.
+    expect(verdict.className).toMatch(/min-h-/u);
+  });
+
   // Fix round 1 (review-t10 I2, I3): one page-level announcer, present at every width.
   it("announces a step on a phone, once the steps settle", () => {
     vi.useFakeTimers();
