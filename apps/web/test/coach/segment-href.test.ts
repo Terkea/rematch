@@ -1,6 +1,6 @@
 import { games } from "@ci/ui/fixtures";
 import { describe, expect, it } from "vitest";
-import { segmentHref } from "../../src/lib/segment-href.js";
+import { reviewHref, segmentGameIds, segmentHref } from "../../src/lib/segment-href.js";
 
 describe("segmentHref", () => {
   it("a move links to the review at its ply", () => {
@@ -33,5 +33,38 @@ describe("segmentHref", () => {
     expect(segmentHref({ kind: "eng", evalId: "e", line: null, n: null, text: "+0.3" })).toBeNull();
     expect(segmentHref({ kind: "text", text: "hi" })).toBeNull();
     expect(segmentHref({ kind: "square", square: "e4" })).toBeNull();
+  });
+});
+
+describe("reviewHref", () => {
+  // Segments carry the PLATFORM game id; the review takes `games.id` (T7 hand-off).
+  const ids = { lichessAbc: "00000000-0000-4000-8000-000000000001" };
+  const href = reviewHref(ids);
+
+  it("a move links to the review by games.id", () => {
+    expect(href({ kind: "move", gameId: "lichessAbc", ply: 5, san: "Nf3" })).toBe(
+      "/app/games/00000000-0000-4000-8000-000000000001?ply=5",
+    );
+    expect(href({ kind: "best", gameId: "lichessAbc", ply: 6, san: "e5" })).toBe(
+      "/app/games/00000000-0000-4000-8000-000000000001?ply=6",
+    );
+  });
+
+  it("a game the map does not know links nowhere, never to a 404", () => {
+    expect(href({ kind: "move", gameId: "someoneElse", ply: 5, san: "Nf3" })).toBeNull();
+    expect(href({ kind: "move", gameId: "toString", ply: 5, san: "Nf3" })).toBeNull();
+    expect(href({ kind: "text", text: "hi" })).toBeNull();
+  });
+
+  it("segmentGameIds lists the platform ids that link", () => {
+    expect(
+      segmentGameIds([
+        { kind: "text", text: "a" },
+        { kind: "move", gameId: "g1", ply: 1, san: "e4" },
+        { kind: "pv", gameId: "g2", ply: 2, side: "best", n: 1, san: "e5" },
+        { kind: "best", gameId: "g1", ply: 3, san: "Nf3" },
+      ]),
+    ).toEqual(["g1", "g2"]);
+    expect(segmentGameIds(null)).toEqual([]);
   });
 });

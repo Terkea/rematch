@@ -165,6 +165,34 @@ describe("threads", () => {
     expect(thread?.messages[0]?.streamed).toEqual([]);
   });
 
+  it("a retried turn replays only its latest attempt's chunks", async () => {
+    // Task 9 review I3: a released turn streams again from seq 0 under a higher attempt.
+    const { threadId, messageIds } = await seedThread(db, {
+      userId: a,
+      accountId,
+      timeClass: "rapid",
+      messages: [
+        { role: "user", status: "done", text: "Q" },
+        { role: "assistant", status: "streaming" },
+      ],
+    });
+    const mid = messageIds[1] as string;
+    const chunk = (attempt: number, seq: number, t: string) =>
+      seedChunk(db, { userId: a, accountId, messageId: mid, seq, attempt, segments: text(t) });
+    await chunk(1, 0, "old zero");
+    await chunk(1, 1, "old one");
+    await chunk(1, 2, "old two");
+    await chunk(2, 0, "new zero");
+    await chunk(2, 1, "new one");
+    await chunk(1, 3, "late old three");
+    const thread = await getThread(db, a, threadId);
+    expect(thread?.messages[1]?.streamed).toEqual([
+      { seq: 0, segments: text("new zero"), interim: false },
+      { seq: 1, segments: text("new one"), interim: false },
+    ]);
+    expect(thread?.messages[1]?.streamedAttempt).toBe(2);
+  });
+
   it("streamed chunks are the owner's only", async () => {
     const { threadId, messageIds } = await seedThread(db, {
       userId: a,

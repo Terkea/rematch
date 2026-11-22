@@ -969,8 +969,10 @@ async fn fail_chat(
         if failed.rows_affected() == 0 {
             return Ok::<_, AiReconcileError>(false);
         }
+        let attempt = crate::chat::job::turn_attempt(&mut tx, message_id).await?;
         let payload = ChatFailed {
             message_id,
+            attempt,
             reason: LOST_REASON.to_owned(),
         };
         // A chat event is for the thread owner only (Task 25 review N1).

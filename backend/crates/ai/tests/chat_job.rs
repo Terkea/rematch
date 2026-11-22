@@ -250,7 +250,11 @@ async fn job_happy_path(pool: PgPool) {
     assert_eq!(ev[0].1["text"], json!(OK2));
     assert_eq!(ev[1].1["seq"], json!(1));
     assert_eq!(ev[0].1["messageId"], json!(msg));
-    assert_eq!(ev[2].1, json!({"messageId": msg, "replace": false}));
+    assert_eq!(ev[0].1["attempt"], json!(1));
+    assert_eq!(
+        ev[2].1,
+        json!({"messageId": msg, "attempt": 1, "replace": false})
+    );
 
     let s = stored(&pool, msg).await;
     assert_eq!(s.status, "done");
@@ -312,7 +316,7 @@ async fn no_coaching_input_replies_with_fixed_copy(pool: PgPool) {
         ev,
         vec![(
             "chat.message.ready".into(),
-            json!({"messageId": msg, "replace": false})
+            json!({"messageId": msg, "attempt": 1, "replace": false})
         )]
     );
     // Fixed copy is not an AI answer: it does not use the weekly allowance.
@@ -346,7 +350,7 @@ async fn free_plan_fourth_message_this_week_fails_weekly_cap(pool: PgPool) {
         ev,
         vec![(
             "chat.message.failed".into(),
-            json!({"messageId": msg, "reason": "weekly_cap"})
+            json!({"messageId": msg, "attempt": 0, "reason": "weekly_cap"})
         )]
     );
 }
@@ -528,6 +532,50 @@ async fn unavailable_first_attempt_releases_last_attempt_fails(pool: PgPool) {
     let ev = events(&pool, a).await;
     assert_eq!(types(&ev), vec!["chat.message.failed"]);
     assert_eq!(turn_requests(&f).len(), 2);
+}
+
+/// M5b Task 9 review I3: a retried turn streams again from seq 0, so every chat event names its
+/// attempt and the client drops the chunks of a lower attempt.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn chat_events_carry_the_turns_attempt(pool: PgPool) {
+    let a = account(&pool, "alice").await;
+    store_input(&pool, a).await;
+    let (_, msg) = ask(&pool, a, "Why?").await;
+    let t = answer(&[OK2, OK3]);
+    let scripts: Vec<TurnScript> = vec![
+        Box::new(|_, _| Err(unavailable())),
+        Box::new(move |_, _| Ok(t.clone())),
+    ];
+    let f = Arc::new(FakeAiClient::new(FakeScript {
+        turns: scripts,
+        ..FakeScript::default()
+    }));
+    let h = CoachChatHandler(deps(&pool, Some(f.clone()), Plan::Free));
+    assert!(matches!(
+        h.handle(job(msg, 1), ctx()).await,
+        Err(JobError::Release { .. })
+    ));
+    assert!(h.handle(job(msg, 1), ctx()).await.is_ok());
+    let ev = events(&pool, a).await;
+    assert_eq!(
+        types(&ev),
+        vec!["chat.chunk", "chat.chunk", "chat.message.ready"]
+    );
+    for (_, p) in &ev {
+        assert_eq!(p["attempt"], json!(2), "{p}");
+    }
+    assert_eq!(ev[0].1["seq"], json!(0));
+
+    // A failure names the last attempt too.
+    let (_, m2) = ask(&pool, a, "Again?").await;
+    let r = CoachChatHandler(deps(&pool, None, Plan::Pro))
+        .handle(job(m2, 1), ctx())
+        .await;
+    assert!(r.is_ok(), "{r:?}");
+    let ev = events(&pool, a).await;
+    let last = ev.last().unwrap();
+    assert_eq!(last.0, "chat.message.failed");
+    assert_eq!(last.1["attempt"], json!(1));
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
@@ -856,7 +904,7 @@ async fn a_poster_who_is_no_longer_linked_gets_not_linked(pool: PgPool) {
         ev,
         vec![(
             "chat.message.failed".into(),
-            json!({"messageId": msg, "reason": "not_linked"})
+            json!({"messageId": msg, "attempt": 0, "reason": "not_linked"})
         )]
     );
     assert_eq!(event_owners(&pool, a).await, vec![Some(user(a))]);

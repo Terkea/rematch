@@ -83,3 +83,40 @@ same operations without a Rust HTTP API, and without ever talking to the sidecar
   account. The billing-backed entitlements should scope it per user, or count verified links only.
 - If the worker's plan variable and the web's ever disagree, the composer's count is wrong but
   the quota still holds (the job decides).
+
+## Addendum: the chat pages (M5b Task 9)
+
+1. **The stored answer is authoritative.** The thread page shows an unfinished answer's chunks as
+   `chat.chunk` events reach the query cache (merged with the chunks `getThread` replayed, one per
+   `seq`). When the stream ends (`chat.message.ready` or `chat.message.failed`) the page reads the
+   thread again and renders the stored segments, so a retracted or repaired stream (`replace`)
+   never stays on screen. A failure reads `failureCopy(reason)` at once, even before the re-read.
+2. **No open stream, no "live".** While `useRealtime().mode` is not `sse` (connecting, polling, or
+   no provider mounted), the page reads the thread every `POLL_INTERVAL_MS` while an answer runs
+   and says "Updates every few seconds". An answer therefore finishes on screen even without the
+   event stream.
+3. **Platform game ids.** Chat segments and anchors name a game by its platform id, as the worker
+   resolves them; the review page takes `games.id`. `server/profile/game-ids.ts`
+   (`reviewGameIds`, shared with the weaknesses pages) maps them on the conversation's own
+   account, behind the user's link. An id it cannot map links nowhere and an anchor it cannot map
+   is dropped, so no answer links to a not-found page.
+4. **Composer states.** A used-up allowance disables the composer with the cap copy and the
+   allowance line gives the reset day. An answer in progress disables it with a status line
+   ("Your coach is answering"), not the "paused until they reset" placeholder. A post shows the
+   question as sending until the server accepts it; a refused post keeps the text in the box and
+   says why. A failed answer offers "Ask again" only when asking again could succeed (an outage
+   or an unknown error, never a cap, the spending limit or an unlinked account).
+5. **Attempts (review I3, coordinator ruling).** A released and retried turn streams again from
+   `seq` 0. Every `chat.chunk`, `chat.message.ready` and `chat.message.failed` payload now carries
+   the turn's `attempt` (Rust `coach_messages.turn_attempts`; 0 when no attempt was reserved).
+   The web keys chunks by (attempt, seq): a higher attempt discards every chunk of a lower one,
+   live (`applyCoachEvent`) and on replay (`getThread` keeps only the latest attempt and reports
+   it as `streamedAttempt`), and an older attempt's events change nothing.
+6. **The stream's cache entry (review I1).** The thread keeps an observer on
+   `chatStream(messageId)` while it is open, so the entry is never collected mid-turn; it is
+   removed when the answer settles or the thread closes.
+7. **Settling (review I2).** `ready` with `replace` hides the streamed text at once. Re-reads after
+   the end back off from 1 s to 30 s and keep going until the stored row is final; after 20 s the
+   turn reads "finished, but it didn't load" with a Reload action and the composer unlocks.
+8. **Focus (review I4).** A send from the box moves focus to the polite "Your coach is writing"
+   status while the box is disabled, and back to the box when it opens again.

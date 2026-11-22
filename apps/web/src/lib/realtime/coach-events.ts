@@ -18,7 +18,19 @@ export type ChatStreamState = {
   replace?: boolean;
   /** `chat.message.failed`: the reason (`failureCopy` gives the text). */
   reason?: string;
+  /**
+   * The turn's AI attempt the chunks belong to (Rust `attempt`, Task 9 review I3). A released and
+   * retried turn streams again from seq 0, so a higher attempt discards the lower one's chunks
+   * and a lower one's events are ignored. Absent for payloads without it.
+   */
+  attempt?: number;
 };
+
+/** The payload's attempt, or null when it carries none (an older worker). */
+function attemptOf(p: Record<string, unknown>): number | null {
+  const a = p.attempt;
+  return typeof a === "number" && Number.isInteger(a) && a >= 0 ? a : null;
+}
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
@@ -68,32 +80,48 @@ export function applyCoachEvent(qc: QueryClient, e: StreamEvent): boolean {
       if (typeof messageId !== "string") return false;
       if (typeof seq !== "number" || !Number.isInteger(seq) || seq < 0) return false;
       if (!isSegments(segments)) return false;
-      const old = stream(qc, messageId);
+      let old = stream(qc, messageId);
+      const attempt = attemptOf(p);
+      if (attempt !== null && old.attempt !== undefined) {
+        // An older attempt's chunk is stale; a newer attempt starts over.
+        if (attempt < old.attempt) return true;
+        if (attempt > old.attempt) old = { chunks: [], done: false };
+      }
       // A replayed chunk (reconnect) or one after the end changes nothing.
       if (old.done || old.chunks.some((c) => c.seq === seq)) return true;
       const chunks = [...old.chunks, { seq, segments, interim: p.interim === true }].sort(
         (a, b) => a.seq - b.seq,
       );
-      qc.setQueryData<ChatStreamState>(queryKeys.chatStream(messageId), { ...old, chunks });
+      qc.setQueryData<ChatStreamState>(queryKeys.chatStream(messageId), {
+        ...old,
+        chunks,
+        ...(attempt === null ? {} : { attempt: Math.max(attempt, old.attempt ?? 0) }),
+      });
       return true;
     }
     case "chat.message.ready": {
       if (typeof p.messageId !== "string") return false;
       const old = stream(qc, p.messageId);
+      const attempt = attemptOf(p);
+      if (attempt !== null && old.attempt !== undefined && attempt < old.attempt) return true;
       qc.setQueryData<ChatStreamState>(queryKeys.chatStream(p.messageId), {
         chunks: old.chunks,
         done: true,
         replace: p.replace === true,
+        ...(old.attempt === undefined ? {} : { attempt: old.attempt }),
       });
       return true;
     }
     case "chat.message.failed": {
       if (typeof p.messageId !== "string" || typeof p.reason !== "string") return false;
       const old = stream(qc, p.messageId);
+      const attempt = attemptOf(p);
+      if (attempt !== null && old.attempt !== undefined && attempt < old.attempt) return true;
       qc.setQueryData<ChatStreamState>(queryKeys.chatStream(p.messageId), {
         chunks: old.chunks,
         done: true,
         reason: p.reason,
+        ...(old.attempt === undefined ? {} : { attempt: old.attempt }),
       });
       return true;
     }

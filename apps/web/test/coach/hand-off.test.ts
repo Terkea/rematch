@@ -45,14 +45,15 @@ describe("chat hand-off to the worker", () => {
       expect(events).toContain(`(${name}, Audience::User)`);
     }
     // camelCase payload fields the reducers and the chunk replay read.
+    // `attempt` (Task 9 review I3): a retried turn streams from seq 0 again.
     expect(events).toMatch(
-      /pub struct ChatChunk \{\s*pub message_id: Uuid,\s*pub seq: u32,\s*pub text: String,\s*pub segments: Vec<Segment>,/,
+      /pub struct ChatChunk \{\s*pub message_id: Uuid,[^}]*pub attempt: i16,\s*pub seq: u32,\s*pub text: String,\s*pub segments: Vec<Segment>,/,
     );
     expect(events).toMatch(
-      /pub struct ChatReady \{\s*pub message_id: Uuid,[^}]*pub replace: bool,/,
+      /pub struct ChatReady \{\s*pub message_id: Uuid,[^}]*pub attempt: i16,[^}]*pub replace: bool,/,
     );
     expect(events).toMatch(
-      /pub struct ChatFailed \{\s*pub message_id: Uuid,\s*pub reason: String,/,
+      /pub struct ChatFailed \{\s*pub message_id: Uuid,[^}]*pub attempt: i16,\s*pub reason: String,/,
     );
   });
 

@@ -481,7 +481,7 @@ async fn lost_chat_message_fails_with_an_event(pool: PgPool) {
         events,
         [(
             "chat.message.failed".to_owned(),
-            json!({"messageId": lost, "reason": "lost"})
+            json!({"messageId": lost, "attempt": 0, "reason": "lost"})
         )]
     );
     let owners: Vec<Option<Uuid>> =
@@ -977,7 +977,7 @@ async fn a_lost_streaming_turn_fails_with_an_event(pool: PgPool) {
         events_of(&pool, acct).await,
         [(
             "chat.message.failed".to_owned(),
-            json!({"messageId": lost, "reason": "lost"})
+            json!({"messageId": lost, "attempt": 0, "reason": "lost"})
         )]
     );
     assert_eq!(sweep(&pool, &queue).await.chats, 0);

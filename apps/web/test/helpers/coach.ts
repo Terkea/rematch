@@ -93,6 +93,8 @@ export async function seedChunk(
     seq: number;
     segments: Segment[];
     interim?: boolean;
+    /** The turn's AI attempt (Rust `ChatChunk.attempt`); omitted, the payload has none. */
+    attempt?: number;
   },
 ): Promise<number> {
   await assertSeedable(db);
@@ -102,6 +104,7 @@ export async function seedChunk(
     type: "chat.chunk",
     payload: {
       messageId: opts.messageId,
+      ...(opts.attempt === undefined ? {} : { attempt: opts.attempt }),
       seq: opts.seq,
       text: opts.segments.map((s) => ("text" in s ? s.text : "")).join(""),
       segments: opts.segments,
