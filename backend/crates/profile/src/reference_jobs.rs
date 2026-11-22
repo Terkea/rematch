@@ -165,6 +165,8 @@ pub enum FinalizeOutcome {
         usable_cells: i64,
         active_usable_cells: i64,
     },
+    /// The dump is not newer than the active build's: failed, the active build kept.
+    OlderThanActive { month: String, active_month: String },
 }
 
 /// Result of one reference-game job.
@@ -780,6 +782,12 @@ async fn load_sides(conn: &mut PgConnection, build: Uuid) -> Result<LoadedSides,
     Ok(out)
 }
 
+/// The one global lock held from the supersede comparison to the activation (transaction
+/// scoped). Finalisers take the per-build lock first, then this one, then (inside
+/// `activate_build_in`) the kind lock, always in that order.
+pub const ACTIVATE_LOCK_SQL: &str =
+    "SELECT pg_advisory_xact_lock(hashtext('band-reference-activate'))";
+
 /// The active band-reference build other than `$1` and its usable (not low-sample) rows.
 pub const ACTIVE_USABLE_SQL: &str = "SELECT b.id, (SELECT count(*) FROM band_reference r \
        WHERE r.build_id = b.id AND NOT r.low_sample) \
@@ -906,6 +914,11 @@ pub async fn finalize_band_reference_with(
     // Supersede rule (review I1): a build replaces the active one only when it serves at least
     // as many usable (band, time class, metric) cells. The first build needs only the evidence
     // gate above.
+    //
+    // The comparison and the activation run under one global transaction-scoped lock, and the
+    // active build is read after it is granted. Two builds finalising at once are therefore
+    // compared in turn: the second one compares against the first if the first was activated.
+    sqlx::query(ACTIVATE_LOCK_SQL).execute(&mut *tx).await?;
     let usable = i64::try_from(usable_cells(&report.rows)).unwrap_or(i64::MAX);
     let active: Option<(Uuid, i64)> = sqlx::query_as(ACTIVE_USABLE_SQL)
         .bind(build_id)
@@ -936,7 +949,27 @@ pub async fn finalize_band_reference_with(
         }
         Err(e) => return Err(e.into()),
     }
-    activate_build_in(&mut tx, build_id).await?;
+    match activate_build_in(&mut tx, build_id).await {
+        Ok(()) => {}
+        // An older dump can never be activated: fail it rather than retry it for ever.
+        Err(RefdataError::NotNewer {
+            month,
+            active_month,
+            ..
+        }) => {
+            tx.rollback().await?;
+            let reason =
+                format!("older than the active build: dump month {month} vs {active_month}");
+            if let Some(done) = fail_finalize(pool, build_id, &reason).await? {
+                return Ok(done);
+            }
+            return Ok(FinalizeOutcome::OlderThanActive {
+                month,
+                active_month,
+            });
+        }
+        Err(e) => return Err(e.into()),
+    }
     tx.commit().await?;
     tracing::info!(
         %build_id,

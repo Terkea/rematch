@@ -1321,3 +1321,158 @@ async fn observations_of_a_failed_game_are_not_aggregated(pool: PgPool) {
     .unwrap();
     assert_eq!((n_players, pooled), (20, Some(0.0)));
 }
+
+// =============================================================================================
+// Fix round 3 (the I1 locking gap, m2)
+
+/// Analyses every game but the last, then marks the last one skipped: the build is finished,
+/// but no handler has finalised it.
+async fn finished_unfinalised(d: &ReferenceGameDeps, pool: &PgPool, ids: &[Uuid]) {
+    let (last, rest) = ids.split_last().unwrap();
+    analyse_all(d, rest).await;
+    let mut conn = pool.acquire().await.unwrap();
+    set_reference_game_status(&mut conn, *last, db::games::AnalysisStatus::Skipped, None)
+        .await
+        .unwrap();
+}
+
+/// Sessions of this test database waiting on an advisory lock.
+async fn advisory_waiters(pool: &PgPool) -> i64 {
+    sqlx::query_scalar(
+        "SELECT count(*) FROM pg_stat_activity \
+         WHERE datname = current_database() AND wait_event_type = 'Lock' \
+           AND wait_event = 'advisory'",
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap()
+}
+
+async fn wait_for_waiters(pool: &PgPool, n: i64) {
+    testkit::wait_for(
+        "advisory lock waiters",
+        Duration::from_secs(30),
+        Duration::from_millis(20),
+        || async {
+            let w = advisory_waiters(pool).await;
+            (w >= n).then_some(w)
+        },
+    )
+    .await;
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn concurrent_finalisers_compare_against_each_other(pool: PgPool) {
+    let d = deps(&pool, None);
+    // X: an active blitz-only build.
+    let (x, ids) = build_with(&pool, "2026-09", &ten_games("x")).await;
+    analyse_all(&d, &ids).await;
+    assert_eq!(status(&pool, x).await, BuildStatus::Active);
+    // A (blitz + rapid) and a newer B (blitz only): each is at least as full as X, but B is
+    // thinner than A.
+    let mut full = ten_games("ab");
+    full.extend(ten_games_in("ar", TimeClass::Rapid));
+    let (a, a_ids) = build_with(&pool, "2026-10", &full).await;
+    let (b, b_ids) = build_with(&pool, "2026-11", &ten_games("bb")).await;
+    finished_unfinalised(&d, &pool, &a_ids).await;
+    finished_unfinalised(&d, &pool, &b_ids).await;
+
+    // Hold the activation's kind lock, so both finalisers get as far as they can before either
+    // activates. Without one lock around the comparison and the activation, both compare
+    // against X, and B (newer) then supersedes A.
+    let mut holder = pool.begin().await.unwrap();
+    sqlx::query("SELECT pg_advisory_xact_lock(hashtext('refdata:activate:band_reference'))")
+        .execute(&mut *holder)
+        .await
+        .unwrap();
+    let fa = tokio::spawn({
+        let pool = pool.clone();
+        async move { finalize_band_reference(&pool, a).await }
+    });
+    wait_for_waiters(&pool, 1).await;
+    let fb = tokio::spawn({
+        let pool = pool.clone();
+        async move { finalize_band_reference(&pool, b).await }
+    });
+    wait_for_waiters(&pool, 2).await;
+    holder.rollback().await.unwrap();
+    let (ra, rb) = within("finalisers", async {
+        (fa.await.unwrap(), fb.await.unwrap())
+    })
+    .await;
+    let (ra, rb) = (ra.unwrap(), rb.unwrap());
+
+    assert!(matches!(ra, FinalizeOutcome::Activated { .. }), "A: {ra:?}");
+    assert!(
+        matches!(rb, FinalizeOutcome::ThinnerThanActive { active_build, .. } if active_build == a),
+        "B: {rb:?}"
+    );
+    assert_eq!(status(&pool, a).await, BuildStatus::Active);
+    assert_eq!(status(&pool, b).await, BuildStatus::Failed);
+    assert_eq!(status(&pool, x).await, BuildStatus::Superseded);
+    let active: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM reference_builds WHERE kind = 'band_reference' AND status = 'active'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(active, 1);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn an_older_dump_is_failed_not_retried(pool: PgPool) {
+    let d = deps(&pool, None);
+    let (newer, ids) = build_with(&pool, "2026-10", &ten_games("n")).await;
+    analyse_all(&d, &ids).await;
+    assert_eq!(status(&pool, newer).await, BuildStatus::Active);
+    let (older, ids) = build_with(&pool, "2026-09", &ten_games("o")).await;
+    let last = analyse_all(&d, &ids).await.unwrap();
+    assert_eq!(
+        finalize_of(&last).cloned(),
+        Some(FinalizeOutcome::OlderThanActive {
+            month: "2026-09".to_owned(),
+            active_month: "2026-10".to_owned(),
+        })
+    );
+    assert_eq!(status(&pool, older).await, BuildStatus::Failed);
+    assert_eq!(status(&pool, newer).await, BuildStatus::Active);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn one_finaliser_error_never_stops_the_sweep(pool: PgPool) {
+    // Review m2: two finished builds, the first (by start time) fails to write its rows.
+    let d = deps(&pool, None);
+    let (bad, bad_ids) = build_with(&pool, "2026-09", &ten_games("bad")).await;
+    let (good, good_ids) = build_with(&pool, "2026-10", &ten_games("good")).await;
+    finished_unfinalised(&d, &pool, &bad_ids).await;
+    finished_unfinalised(&d, &pool, &good_ids).await;
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
+        "CREATE FUNCTION t32_refuse() RETURNS trigger LANGUAGE plpgsql AS $$ \
+         BEGIN RAISE EXCEPTION 'injected failure'; END $$; \
+         CREATE TRIGGER t32_refuse BEFORE INSERT ON band_reference FOR EACH ROW \
+           WHEN (NEW.build_id = '{bad}') EXECUTE FUNCTION t32_refuse();"
+    )))
+    .execute(&pool)
+    .await
+    .unwrap();
+    let report = within(
+        "sweep",
+        reenrich_reference_games(&d, 100, &CancellationToken::new()),
+    )
+    .await
+    .unwrap();
+    assert_eq!(report.finalize_errors, 1, "{report:?}");
+    assert!(
+        report
+            .finalized
+            .iter()
+            .any(|(b, f)| *b == good && matches!(f, FinalizeOutcome::Activated { .. })),
+        "{report:?}"
+    );
+    assert_eq!(status(&pool, good).await, BuildStatus::Active);
+    assert_eq!(
+        status(&pool, bad).await,
+        BuildStatus::Building,
+        "retried by the next run"
+    );
+}

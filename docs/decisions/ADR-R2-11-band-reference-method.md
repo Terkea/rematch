@@ -73,6 +73,14 @@ come from the reference games that Task 21 samples per band × time class.
   - A thinner build is finalised as `failed` with the reason "thinner than active build `<id>`:
     X vs Y usable cells", and the active build stays untouched.
   - The first build ever needs only the evidence gate.
+  - The comparison and the activation run in one transaction, under one global advisory lock
+    (`hashtext('band-reference-activate')`), and the active build is re-read under it. Two
+    builds finalising at once are compared in turn, so a thinner build can never supersede one
+    that activated a moment earlier.
+  - Locks are always taken in this order: per build, then global, then the activation's kind
+    lock.
+  - A dump that is not newer than the active one can never activate. It is failed
+    (`OlderThanActive`) rather than retried for ever.
   - This stops a degraded build from replacing a complete one, for example one where most
     games failed in a Stockfish outage, or a selection bug that covered a single band.
 - **One Maia model per build.** The per-game model is the model of the first answered ply.
