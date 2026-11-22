@@ -539,7 +539,7 @@ function HardSpots({
   difficulty: DifficultyStatus;
 }) {
   const pending = `Difficulty pending: Maia hasn't rated these positions yet${waitingText(difficulty)}.`;
-  const fallback = `${pending} Until it does, these are moments where the engine's best move was at least ${CRITICAL_GAP} win% points better than its second choice, your win chance was between ${BALANCED_MIN}% and ${BALANCED_MAX}%, and you found it. Captures of free material and positions your opponent's mistake handed you are left out.`;
+  const fallback = `${pending} Until it does, these are moments where the engine's best move was at least ${CRITICAL_GAP} win% points better than its second choice, your win chance was between ${BALANCED_MIN}% and ${BALANCED_MAX}%, and you found it. Captures of free material are left out; punishing an opponent's mistake with a real move counts.`;
   const lede =
     spots.mode === "maia"
       ? "Positions Maia rates hard for players at your level, where you found the engine's best move."
