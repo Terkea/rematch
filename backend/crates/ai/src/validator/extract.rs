@@ -1,5 +1,5 @@
 //! Free-text extractors for moves, numbers and dates. A port of m3's `validator/extract.ts`,
-//! operation for operation. Regex lookarounds follow ADR-R3-2 deviation 2 (see [`super::bounded`]);
+//! operation for operation. Regex lookarounds follow ADR 0058 deviation 2 (see [`super::bounded`]);
 //! JS `\d` is `[0-9]`, JS `\s` is [`JS_SPACE`], JS `\b` is `(?-u:\b)`, and case-insensitive parts
 //! are scoped `(?i:…)` groups over ASCII words (NFKC has already folded U+212A and U+017F, the
 //! only non-ASCII chars Unicode case folding would add).
@@ -20,7 +20,7 @@ use super::bounded::{
 };
 use super::normalize::{NormMode, dash_class, normalize_with};
 
-/// The union of the TS-exact and the hardened results (ADR-R3-2, fix round 2): the TS-path list
+/// The union of the TS-exact and the hardened results (ADR 0058, fix round 2): the TS-path list
 /// unchanged, then each hardened result that the TS path did not also find (multiset difference,
 /// keyed by `key`), in hardened order. Linear in the number of results.
 fn union_by<T, K: Hash + Eq>(ts: Vec<T>, hardened: Vec<T>, key: impl Fn(&T) -> K) -> Vec<T> {
@@ -104,7 +104,7 @@ fn s_class() -> String {
 
 // Long algebraic: e2-e4, Ng1-f3, e2xd5, Qd1–h5, e7-e8=Q. The TS-exact path keeps TS's
 // separator class `[-\u{2010}-\u{2015}\u{2212}x]`; the hardened path uses the shared dash set
-// (H5, ADR-R3-2).
+// (H5, ADR 0058).
 lazy_re!(
     LONG_RE_TS,
     format!(
@@ -277,7 +277,7 @@ fn moves_with(text: &str, mode: NormMode) -> ExtractedMoves {
 }
 
 /// Extracts SAN and UCI-like moves: the TS-exact moves in text order, then any extra moves the
-/// hardened normalisation finds (ADR-R3-2 union).
+/// hardened normalisation finds (ADR 0058 union).
 pub fn extract_moves(text: &str) -> ExtractedMoves {
     let ts = moves_with(text, NormMode::TsExact);
     let hard = moves_with(text, NormMode::Hardened);
@@ -438,7 +438,7 @@ fn scan_dates(t: &str) -> (Vec<ExtractedDate>, String) {
 }
 
 /// Extracts dates: the TS-exact dates in text order, then any extra dates the hardened
-/// normalisation finds (ADR-R3-2 union).
+/// normalisation finds (ADR 0058 union).
 pub fn extract_dates(text: &str) -> Vec<ExtractedDate> {
     let ts = scan_dates(&normalize_with(text, NormMode::TsExact)).0;
     let hard = scan_dates(&normalize_with(text, NormMode::Hardened)).0;
@@ -801,7 +801,7 @@ fn quantity(q: &str) -> f64 {
 }
 
 /// Extracts numbers (digits, fractions, dozens, counted number words, ratio words): the TS-exact
-/// numbers in text order, then any extra numbers the hardened normalisation finds (ADR-R3-2
+/// numbers in text order, then any extra numbers the hardened normalisation finds (ADR 0058
 /// union).
 pub fn extract_numbers(text: &str) -> Vec<ExtractedNumber> {
     let ts = numbers_with(text, NormMode::TsExact);

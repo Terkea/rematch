@@ -4,7 +4,7 @@
 //
 // Provenance. TS M3 has no token-era claim validator (its A4/A5 validator predates facts by
 // reference), so this is a leaf-module parity check: `tsValidateText` below composes the R3
-// check order (ADR-R3-4 "Claim validator", before fix round 1) from m3's own modules:
+// check order (ADR 0060 "Claim validator", before fix round 1) from m3's own modules:
 // parseTokens (tokens.ts), findLeaks (leaks.ts), normalizeText + extractMoves/Numbers/Dates
 // (normalize.ts, extract.ts), buildEvidence + resolveToken (evidence.ts, chess.js from m3's
 // node_modules). The language rules are the TS plan A5 regexes verbatim, as JS RegExps, in their

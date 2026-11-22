@@ -5,6 +5,12 @@ services:
   rust-dev:
     # maia_internal reaches the Maia service; default keeps Postgres and the internet.
     networks: [default, maia_internal]
+  rust-worker:
+    # R2 Task 35: the worker reaches Maia on the internal network (default keeps Postgres and the
+    # platforms).
+    networks: [default, maia_internal]
+    environment:
+      MAIA_URL: ${MAIA_URL:-http://maia:8080}
   # Maia-2 difficulty service (R2 Task 24, ADR-R2-13). Opt-in: `docker compose --profile maia up -d
   # maia`, then set MAIA_URL=http://maia:8080 for the Rust side. Difficulty comes only from Maia:
   # with MAIA_URL unset or Maia down, positions are recorded as `pending_maia` (never estimated).
@@ -33,7 +39,7 @@ services:
       start_period: 30s
 
 networks:
-  # No route out: services on it reach each other only (Maia and its clients; the rust-worker
-  # joins it when it lands, lane I).
+  # No route out: services on it reach each other only (Maia and its clients rust-dev and
+  # rust-worker).
   maia_internal:
     internal: true

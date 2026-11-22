@@ -8,7 +8,7 @@
 - `input`: the contract;
 - `output`: schemas, drills and the disclosure;
 - `validator`: evidence, reference tokens, the leak detector and the claim rules;
-- `client`: the Rust client of the Claude Agent SDK sidecar (`services/ai-sidecar`, ADR-R3-6) for interactive calls, a minimal reqwest Messages Batches client, the chat tool endpoint, a breaker and a scripted fake;
+- `client`: the Rust client of the Claude Agent SDK sidecar (`services/ai-sidecar`, ADR 0062) for interactive calls, a minimal reqwest Messages Batches client, the chat tool endpoint, a breaker and a scripted fake;
 - `prompts`: versioned prompt files embedded at compile time;
 - `generate`: sectioned generation with repair once, then drop;
 - `jobs` and `db`: the Postgres queue handlers and the AI tables;
@@ -32,7 +32,7 @@ A report is five structured-output calls (`overview`, `weaknesses`, `openings`, 
 
 > **Controller amendment (R1 T1 fix, ADR 0031):** `chrono` is NOT used. Every timestamp is `time::OffsetDateTime` (`DateTime<Utc>` in this text means `OffsetDateTime`; `Utc::now()` means `OffsetDateTime::now_utc()`). JSON timestamps that must match the TS reference / `Date.toISOString()` use `#[serde(with = "common::js_time::iso")]` (or `::option`), which always writes UTC with exactly 3 fractional digits. sqlx uses its `time` feature.
 
-> **Controller amendment (ADR-R3-6):** Interactive calls (report sections, weekly reviews, change notes, chat) go through the Node Agent SDK sidecar (Task 10); only Batches use the Messages API from Rust (Task 11). The request and caching rules below bind the batch wire and the prompt layout; on the sidecar path the SDK caches automatically, and Rust still never sends sampling parameters, `thinking` or fallbacks. `ANTHROPIC_API_KEY` is read by the sidecar (and by the worker for batches only); a subscription `CLAUDE_CODE_OAUTH_TOKEN` is development-only and refused in production. npm dependencies are pinned exactly and pass `scripts/check-npm-age.mjs`.
+> **Controller amendment (ADR 0062):** Interactive calls (report sections, weekly reviews, change notes, chat) go through the Node Agent SDK sidecar (Task 10); only Batches use the Messages API from Rust (Task 11). The request and caching rules below bind the batch wire and the prompt layout; on the sidecar path the SDK caches automatically, and Rust still never sends sampling parameters, `thinking` or fallbacks. `ANTHROPIC_API_KEY` is read by the sidecar (and by the worker for batches only); a subscription `CLAUDE_CODE_OAUTH_TOKEN` is development-only and refused in production. npm dependencies are pinned exactly and pass `scripts/check-npm-age.mjs`.
 
 ## Global Constraints
 
@@ -52,7 +52,7 @@ R1's Global Constraints apply unchanged. In short:
 R3 adds these:
 
 - **Lockfile and Cargo ownership:** Task 1 adds every R3 dependency (in `[workspace.dependencies]` and `backend/crates/ai/Cargo.toml`) and commits `Cargo.lock` on the R1 base branch, as R1's coordinator rule requires. No later R3 task edits a `Cargo.toml` dependency list or `Cargo.lock`. A task that needs a crate stops and reports it.
-- **Supply chain:** every crate R3 adds is at least 7 days old at the time of adding, pinned exactly (`"=x.y.z"`), and licence-checked on crates.io. Task 1 records each one in ADR-R3-1. No crate may enable `serde_json/preserve_order`, because `canonical_json` and the path index rely on sorted keys. Task 1 adds a `cargo tree -e features -i serde_json | grep -c preserve_order` check (expected: `0`) to the CI gate.
+- **Supply chain:** every crate R3 adds is at least 7 days old at the time of adding, pinned exactly (`"=x.y.z"`), and licence-checked on crates.io. Task 1 records each one in ADR 0057. No crate may enable `serde_json/preserve_order`, because `canonical_json` and the path index rely on sorted keys. Task 1 adds a `cargo tree -e features -i serde_json | grep -c preserve_order` check (expected: `0`) to the CI gate.
 - **Migrations:** R3 owns versions `20261121030000` to `20261121039999`. R1 owns `…000000` to `…009999`, and R2 is expected to use `…020000` to `…029999` (Task 26 checks this). The single R3 migration is `db/migrations/20261121030000_ai_coaching.sql`, created by Task 17.
 - **Models (spec §9, ADR-AI-6):**
 
@@ -116,7 +116,7 @@ R3 adds these:
   - user text and tool results are data, never instructions that change the rules;
   - every published paragraph passes the validator, with one repair and then a fixed safe fallback sentence.
 - **Events:** AI events are inserted with R1's `events::insert_user_event(&mut tx, …)` inside the same transaction as the state change they announce. That gives exactly one event per transition, delivered on commit.
-- **ADRs:** use the placeholders `ADR-R3-1` … `ADR-R3-8` (files `docs/decisions/ADR-R3-n-<slug>.md`), each written by its owning task. Task 26 renumbers them from the next free number and adds them to the index.
+- **ADRs:** each owning task wrote a placeholder-numbered record (R3-1 … R3-8); Task 26 renumbered them to 0057 … 0064, the next free numbers after `main` (0056), and added them to the index.
 
 ## Review Focus
 
@@ -181,7 +181,7 @@ R3 adds these:
 | Chat: tools over own data only, per-paragraph validation before publishing, repair replaces. **Changed by owner input:** free users get 3 messages a week, Pro keeps 30 a day and 300 a month. Contextual anchors, `find_examples`, the interactive `analyse_position` engine check (with `{{eng:…}}` tokens and quotas), titled threads summarised at rollover, and deletion | T1, T6, T7, T22–T25 |
 | Input snapshot reused across retries, so a report never mixes inputs | T18 |
 
-## Intentional deviations from the TS reference (recorded in ADR-R3-2)
+## Intentional deviations from the TS reference (recorded in ADR 0058)
 
 1. `parse_coaching_input` reports the first deserialisation error (serde), then every refinement error. Zod reported all issues at once. Paths stay dotted (`weaknesses.0.rank`).
 2. Regex lookarounds, which the `regex` crate lacks, are emulated by `bounded_matches`, which retries from `start + 1` when a boundary check fails. JS `\d` becomes `[0-9]` and JS `\b` becomes `(?-u:\b)`. `Token.index` is a byte offset into the canonical text, not a UTF-16 index.
@@ -248,7 +248,7 @@ The longest chain is T1 → T5 → T7 → T8 → T13 → T14 → T18 → T20 →
 - Create: `backend/fixtures/ai/input/{coaching-input.b2-rapid.json,coaching-input.b0-blitz.json,coaching-input.early-read.json}` (copied byte for byte from `.worktrees/m3/packages/ai/test/fixtures/`)
 - Create: `backend/fixtures/ai/ts-export/{coaching-input.schema.json,report-section-envelope.schema.json}`
 - Test: `backend/crates/ai/tests/{smoke.rs,input_shape.rs}`
-- Create: `docs/decisions/ADR-R3-1-rust-anthropic-client-and-crates.md` (the crate table only; Task 11 completes it)
+- Create: `docs/decisions/0057-rust-anthropic-client-and-crates.md` (the crate table only; Task 11 completes it)
 
 **Interfaces:**
 - Produces the module tree in `lib.rs`:
@@ -403,7 +403,7 @@ pub fn make_input(overrides: serde_json::Value) -> serde_json::Value; // deep-me
 pub fn input(name: &str) -> CoachingInput;                          // load + serde (no refinements)
 ```
 
-- [ ] **Step 1: Verify the versions and licences.** For each crate below, check `https://crates.io/api/v1/crates/<name>` for the newest stable version, its release date (at least 7 days before today) and its licence. Pin exactly, and record the table in ADR-R3-1:
+- [ ] **Step 1: Verify the versions and licences.** For each crate below, check `https://crates.io/api/v1/crates/<name>` for the newest stable version, its release date (at least 7 days before today) and its licence. Pin exactly, and record the table in ADR 0057:
 
   | crate | version | licence | why |
   |---|---|---|---|
@@ -493,7 +493,7 @@ pub fn input(name: &str) -> CoachingInput;                          // load + se
 **Files:**
 - Create: `backend/crates/ai/src/output/{report.rs,weekly.rs,change.rs,drills.rs,disclosure.rs,schema.rs}`
 - Test: `backend/crates/ai/tests/output.rs`
-- Create: `docs/decisions/ADR-R3-4-sectioned-generation-and-facts-by-reference.md` (sections "Schemas" and "Computed focuses and drills"; Tasks 8 and 14 append)
+- Create: `docs/decisions/0060-sectioned-generation-and-facts-by-reference.md` (sections "Schemas" and "Computed focuses and drills"; Tasks 8 and 14 append)
 
 **Interfaces:**
 - Consumes: `Citation`, `SectionKey`, `AreaId`, `ParseIssue`, `OutputSchema` (T1).
@@ -531,7 +531,7 @@ pub fn input(name: &str) -> CoachingInput;                          // load + se
   - `item_text_over_2000_chars_is_too_big`;
   - `change_key_format`.
 - [ ] **Step 2: Run** `LANE=A $RUST cargo test -p ai --test output`. Expected: FAIL.
-- [ ] **Step 3: Implement.** Write ADR-R3-4 "Schemas" (one envelope for every section, sanitised schemars output, bounds checked client-side, the ref-free guard) and "Computed focuses and drills" (ADR-AI-7 carried over).
+- [ ] **Step 3: Implement.** Write ADR 0060 "Schemas" (one envelope for every section, sanitised schemars output, bounds checked client-side, the ref-free guard) and "Computed focuses and drills" (ADR-AI-7 carried over).
 - [ ] **Step 4: Run** the tests. Expected: PASS.
 - [ ] **Step 5: Commit** `feat(ai): output schemas inside the structured-output subset, drills, disclosure`.
 
@@ -542,7 +542,7 @@ pub fn input(name: &str) -> CoachingInput;                          // load + se
 **Files:**
 - Create: `backend/crates/ai/src/validator/{normalize.rs,bounded.rs,extract.rs}`
 - Test: `backend/crates/ai/tests/{extract.rs,extract_gaps.rs}`
-- Create: `docs/decisions/ADR-R3-2-ts-reference-port-and-parity.md`
+- Create: `docs/decisions/0058-ts-reference-port-and-parity.md`
 
 **Interfaces:**
 - Produces:
@@ -557,7 +557,7 @@ pub fn input(name: &str) -> CoachingInput;                          // load + se
   - `bounded_matches_retries_after_a_rejected_boundary`: with `re = "ab"`, text `"xab ab"` and `before_ok` rejecting a letter, the result is `[(4,6)]`;
   - `rust_digit_class_is_ascii_like_js`: `extract_numbers("٣ games")` matches the TS output for the same input (record the TS output as the expected literal).
 - [ ] **Step 2: Run** `LANE=B $RUST cargo test -p ai --test extract --test extract_gaps`. Expected: FAIL.
-- [ ] **Step 3: Implement** a port of `.worktrees/m3/packages/ai/src/validator/{normalize,extract}.ts`, operation for operation, using the regex translation rules of deviation 2. Write ADR-R3-2 with the deviations list, the regex translation table, and the parity checklist rule (the table at the end of this plan).
+- [ ] **Step 3: Implement** a port of `.worktrees/m3/packages/ai/src/validator/{normalize,extract}.ts`, operation for operation, using the regex translation rules of deviation 2. Write ADR 0058 with the deviations list, the regex translation table, and the parity checklist rule (the table at the end of this plan).
 - [ ] **Step 4: Run** the tests. Expected: PASS.
 - [ ] **Step 5: Commit** `feat(ai): text normalisation and extractors with ts parity`.
 
@@ -656,7 +656,7 @@ pub fn input(name: &str) -> CoachingInput;                          // load + se
 **Files:**
 - Create: `backend/crates/ai/src/validator/{text.rs,language.rs,focus.rs,section.rs}`
 - Test: `backend/crates/ai/tests/{validate_text.rs,validator_adversarial.rs,language.rs,validate_section.rs}`
-- Modify: `docs/decisions/ADR-R3-4-sectioned-generation-and-facts-by-reference.md` (append "Claim validator" and "Language rules")
+- Modify: `docs/decisions/0060-sectioned-generation-and-facts-by-reference.md` (append "Claim validator" and "Language rules")
 
 **Interfaces:**
 - Consumes: T3 types, T6 `parse_tokens`/`find_leaks`, T7 `Evidence`/`resolve_token`/`render_segments`, T5 extractors.
@@ -714,7 +714,7 @@ pub fn input(name: &str) -> CoachingInput;                          // load + se
   - `select_focuses_on_b2_rapid` (2 on the first report, 3 otherwise), `select_focuses_on_early_read_is_empty`, and `select_focuses_never_returns_w12`;
   - `validated_items_carry_segments`.
 - [ ] **Step 2: Run** `LANE=B $RUST cargo test -p ai --test validate_text --test validator_adversarial --test language --test validate_section`. Expected: FAIL.
-- [ ] **Step 3: Implement.** Append to ADR-R3-4:
+- [ ] **Step 3: Implement.** Append to ADR 0060:
   - the check order;
   - why the leak detector replaced free-text matching;
   - token scoping to citations;
@@ -731,7 +731,7 @@ pub fn input(name: &str) -> CoachingInput;                          // load + se
 **Files:**
 - Create: `backend/crates/ai/src/client/{wire.rs,errors.rs,cost.rs,custom_id.rs,parse.rs}`
 - Test: `backend/crates/ai/tests/{client_errors.rs,cost.rs,custom_id.rs,parse_output.rs}`
-- Create: `docs/decisions/ADR-R3-5-models-budgets-and-degradation.md` (sections "Models and pricing" and "Budgets"; Task 18 appends "Degradation")
+- Create: `docs/decisions/0061-models-budgets-and-degradation.md` (sections "Models and pricing" and "Budgets"; Task 18 appends "Degradation")
 
 **Interfaces:**
 - Consumes: T1 port types.
@@ -789,13 +789,13 @@ pub fn input(name: &str) -> CoachingInput;                          // load + se
   - `errors_never_render_a_key`: `format!("{e}")` and `format!("{e:?}")` of every `AiError` variant built from a body containing `sk-ant-test-SECRET123` never contain `SECRET123`;
   - `request_serialises_without_forbidden_fields`: the JSON of a `MessagesRequest` has none of `temperature`, `top_p`, `top_k`, `thinking`, `budget_tokens`, `fallbacks`, and `tool_choice` is only `auto` or `none`.
 - [ ] **Step 2: Run** `LANE=C $RUST cargo test -p ai --test client_errors --test cost --test custom_id --test parse_output`. Expected: FAIL.
-- [ ] **Step 3: Implement.** Write ADR-R3-5 "Models and pricing" (the ADR-AI-6 table, the effort levels, why Haiku does the weekly review, the dated pricing table, unknown response models priced at the requested model's rates with a `warn` log at the metering site) and "Budgets" (per account and global, checked before every call, hard stop).
+- [ ] **Step 3: Implement.** Write ADR 0061 "Models and pricing" (the ADR-AI-6 table, the effort levels, why Haiku does the weekly review, the dated pricing table, unknown response models priced at the requested model's rates with a `warn` log at the metering site) and "Budgets" (per account and global, checked before every call, hard stop).
 - [ ] **Step 4: Run** the tests. Expected: PASS.
 - [ ] **Step 5: Commit** `feat(ai): anthropic wire types, error taxonomy, cost and custom ids`.
 
 ### Task 10 (C): Claude Agent SDK sidecar (services/ai-sidecar)
 
-Binding decision: ADR-R3-6. The sidecar is a thin, stateless wrapper around `query()`. It has no database access and holds no business rules. Rust builds every prompt, checks every output, owns budgets, the breaker and metering, and executes every chat tool. This task's contract is the one Task 11 codes against; change it only together with Task 11.
+Binding decision: ADR 0062. The sidecar is a thin, stateless wrapper around `query()`. It has no database access and holds no business rules. Rust builds every prompt, checks every output, owns budgets, the breaker and metering, and executes every chat tool. This task's contract is the one Task 11 codes against; change it only together with Task 11.
 
 **Files:**
 - Create: `services/ai-sidecar/{package.json,tsconfig.json,tsconfig.build.json}`, copied from `packages/chess-core`. The name is `@ci/ai-sidecar`, it is private, and `scripts.start` is `node dist/index.js`.
@@ -803,7 +803,7 @@ Binding decision: ADR-R3-6. The sidecar is a thin, stateless wrapper around `que
 - Test: `services/ai-sidecar/test/{config,options,query,chat,tools,schema-to-zod,limiter,server}.test.ts`
 - Create: `services/ai-sidecar/Dockerfile`
 - Modify: `docker-compose.yml` (adds the `ai-sidecar` service and its `ai_sidecar_node_modules` volume in `x-workspace-volumes` and `volumes:`, and nothing else), `.env.example` (the sidecar block below)
-- Modify: `docs/decisions/ADR-R3-6-claude-agent-sdk-sidecar.md` (append "Contract and isolation")
+- Modify: `docs/decisions/0062-claude-agent-sdk-sidecar.md` (append "Contract and isolation")
 
 **Dependencies (exact pins, each checked by `node scripts/check-npm-age.mjs`):** The coordinator commits these dependency lists and `pnpm-lock.yaml` before dispatch, as with Cargo, and this task does not change them.
 - `@anthropic-ai/claude-agent-sdk` `0.3.325`. It was published 2026-11-13, so it is the newest release at least 7 days old on 2026-11-21. Its licence is "SEE LICENSE IN README.md", which means Anthropic's commercial terms; record that in the ADR. Its platform binaries come from `optionalDependencies` at the same version, so installs never pass `--no-optional`.
@@ -841,10 +841,10 @@ Binding decision: ADR-R3-6. The sidecar is a thin, stateless wrapper around `que
     The stream always ends with exactly one `done` or one `error`. When the client disconnects, the sidecar aborts the query through its `AbortController`.
   - `GET /health` gives `{"ok":true,"auth":"api_key"|"cloud"|"oauth"|"none","inFlight":n,"queued":n,"maxConcurrency":n,"sdkVersion":"0.3.325"}`. It never makes a model call and never includes a secret. Health needs no bearer token, so that compose healthchecks work.
   - The tool callback, from the sidecar to Rust, is `POST {toolCallback.url}` with `authorization: Bearer {toolCallback.token}` and the body `{"name":"get_position","input":{…}}`. Rust replies `{"content":"<text>","isError":false}`. Any non-2xx reply, network error or timeout becomes the tool result `{"available":false,"reason":"tool unavailable"}` with `isError: true`. The model never sees the status or the URL.
-- `config.ts`: `loadConfig(env: NodeJS.ProcessEnv) -> SidecarConfig { port: 7310, token, maxConcurrency: 4, maxQueue: 32, queueWaitMs: 30000, workDir: "/var/lib/ai-sidecar/work", configDir: "/var/lib/ai-sidecar/claude", production: boolean, auth: AuthKind }`. It reads `AI_SIDECAR_PORT`, `AI_SIDECAR_TOKEN` (required, at least 32 characters), `AI_SIDECAR_MAX_CONCURRENCY`, `AI_SIDECAR_MAX_QUEUE`, `AI_SIDECAR_QUEUE_WAIT_MS`, `AI_SIDECAR_WORK_DIR`, `AI_SIDECAR_CONFIG_DIR`, and `AI_SIDECAR_ENV` (`production` turns on the guard below; `NODE_ENV=production` does too). The default concurrency of 4 follows the docs' guide of about 1 GiB per session; capacity planning later uses measured RSS (ADR-R3-6).
+- `config.ts`: `loadConfig(env: NodeJS.ProcessEnv) -> SidecarConfig { port: 7310, token, maxConcurrency: 4, maxQueue: 32, queueWaitMs: 30000, workDir: "/var/lib/ai-sidecar/work", configDir: "/var/lib/ai-sidecar/claude", production: boolean, auth: AuthKind }`. It reads `AI_SIDECAR_PORT`, `AI_SIDECAR_TOKEN` (required, at least 32 characters), `AI_SIDECAR_MAX_CONCURRENCY`, `AI_SIDECAR_MAX_QUEUE`, `AI_SIDECAR_QUEUE_WAIT_MS`, `AI_SIDECAR_WORK_DIR`, `AI_SIDECAR_CONFIG_DIR`, and `AI_SIDECAR_ENV` (`production` turns on the guard below; `NODE_ENV=production` does too). The default concurrency of 4 follows the docs' guide of about 1 GiB per session; capacity planning later uses measured RSS (ADR 0062).
   - `auth` is `api_key` when `ANTHROPIC_API_KEY` is non-empty, `cloud` when `CLAUDE_CODE_USE_BEDROCK`, `CLAUDE_CODE_USE_VERTEX` or `CLAUDE_CODE_USE_FOUNDRY` is `1`, `oauth` when only `CLAUDE_CODE_OAUTH_TOKEN` is set, and `none` otherwise.
-  - **Production guard:** in production, `auth` of `oauth` or `none` throws `ConfigError("refusing to start: production needs ANTHROPIC_API_KEY or a cloud provider; a subscription token is not allowed (ADR-R3-6)")`. `index.ts` logs that message and exits with code 78. In development `oauth` is allowed, and `none` starts, reports `auth:"none"`, and answers every call with 401 `authentication_error`.
-- `options.ts`: `buildOptions(req, cfg, extras: { abortController, mcpServer?, toolNames?, partial: boolean }) -> Options` is the single place where the isolation options from ADR-R3-6 are set:
+  - **Production guard:** in production, `auth` of `oauth` or `none` throws `ConfigError("refusing to start: production needs ANTHROPIC_API_KEY or a cloud provider; a subscription token is not allowed (ADR 0062)")`. `index.ts` logs that message and exits with code 78. In development `oauth` is allowed, and `none` starts, reports `auth:"none"`, and answers every call with 401 `authentication_error`.
+- `options.ts`: `buildOptions(req, cfg, extras: { abortController, mcpServer?, toolNames?, partial: boolean }) -> Options` is the single place where the isolation options from ADR 0062 are set:
   - `model` comes from an allowlist of `claude-sonnet-5-5` and `claude-haiku-5-5`. Any other id gets a 400 `invalid_request_error`, and no alias is ever sent.
   - `effort` comes from the request. `maxTurns` is the request's value, capped at 10.
   - `systemPrompt` is the request string (a custom prompt, not the Claude Code preset).
@@ -921,9 +921,9 @@ Binding decision: ADR-R3-6. The sidecar is a thin, stateless wrapper around `que
     Memory is capped with `mem_limit: 5g`, which is 4 sessions plus headroom.
   - `.env.example` gets the sidecar block:
     - `AI_SIDECAR_TOKEN=` with the comment `# 32+ chars; shared by the Rust worker and the sidecar`;
-    - `CLAUDE_CODE_OAUTH_TOKEN=` with the comment `# dev only, your own subscription; refused in production (ADR-R3-6); never commit`.
+    - `CLAUDE_CODE_OAUTH_TOKEN=` with the comment `# dev only, your own subscription; refused in production (ADR 0062); never commit`.
 - [ ] **Step 5: Run the gate.** Run `pnpm --filter @ci/ai-sidecar test`, `pnpm --filter @ci/ai-sidecar typecheck`, `pnpm --filter @ci/ai-sidecar lint`, `node scripts/check-npm-age.mjs`, `COMPOSE_FILE=docker-compose.yml docker compose -p ci-r3-c build ai-sidecar`, and `COMPOSE_FILE=docker-compose.yml docker compose -p ci-r3-c run --rm -e AI_SIDECAR_ENV=production ai-sidecar`. Expected: PASS on all, and the last command exits 78 with the guard message, because no key is set. Then tear the project down.
-- [ ] **Step 6: Append "Contract and isolation" to ADR-R3-6.** It covers the endpoints and the error-body reuse, the isolation list, the env allowlist, the JSON-Schema-to-zod subset, the callback timeout ordering (55 s for the fetch, 60 s for MCP, 45 s for the engine wait), the limiter defaults, the production guard and the SDK licence.
+- [ ] **Step 6: Append "Contract and isolation" to ADR 0062.** It covers the endpoints and the error-body reuse, the isolation list, the env allowlist, the JSON-Schema-to-zod subset, the callback timeout ordering (55 s for the fetch, 60 s for MCP, 45 s for the engine wait), the limiter defaults, the production guard and the SDK licence.
 - [ ] **Step 7: Commit** `feat(ai-sidecar): claude agent sdk sidecar with json, sse chat and tool callbacks`.
 
 ### Task 11 (C): Rust sidecar client + minimal Messages Batches client
@@ -932,7 +932,7 @@ Binding decision: ADR-R3-6. The sidecar is a thin, stateless wrapper around `que
 - Create: `backend/crates/ai/src/client/{sidecar.rs,sidecar_wire.rs,flatten.rs,tool_server.rs,batches.rs,runtime.rs}`; fill `sse.rs` and `retry.rs`; delete `http.rs` and remove it from `client/mod.rs`
 - Modify: `backend/crates/ai/src/client/port.rs` (the trait and result additions below)
 - Test: `backend/crates/ai/tests/{sse.rs,sidecar_client.rs,tool_server.rs,flatten.rs,batches_client.rs}`, `backend/fixtures/ai/sidecar/{query-ok.json,query-two-models.json,query-refusal.json,query-max-retries.json,chat-tool-then-text.sse,chat-error-overloaded.sse}`, `backend/fixtures/ai/api/{batch-create.json,batch-ended.json,batch-results.jsonl,error-429.json,error-529.json}`
-- Modify: `docs/decisions/ADR-R3-1-rust-anthropic-client-and-crates.md` (complete it: the sidecar client, the batch client and axum)
+- Modify: `docs/decisions/0057-rust-anthropic-client-and-crates.md` (complete it: the sidecar client, the batch client and axum)
 
 **Dependency (coordinator, before dispatch):** `axum = "=0.8.9"` (MIT, released 2026-04-14), with `default-features = false` and the features `tokio`, `http1` and `json`. It goes in `[workspace.dependencies]` and in `ai`'s dependencies, together with the `Cargo.lock` update. It runs the tool endpoint, which reuses the hyper 1.x already in the lockfile. Nothing else is new: reqwest, wiremock, futures, bytes and tokio are already present.
 
@@ -1029,8 +1029,8 @@ Binding decision: ADR-R3-6. The sidecar is a thin, stateless wrapper around `que
     - `retry_after_over_cap_is_not_slept`;
     - `runtime_without_batches_key_gives_no_api_key_and_batches_disabled`.
 - [ ] **Step 2: Run** `LANE=C $RUST cargo test --locked -p ai --test sse --test flatten --test sidecar_client --test tool_server --test batches_client`. Expected: FAIL.
-- [ ] **Step 3: Implement.** Write the sidecar fixtures by hand from the T10 contract and the batch fixtures from the T9 wire shapes. Complete ADR-R3-1:
-  - interactive calls go through the sidecar (ADR-R3-6);
+- [ ] **Step 3: Implement.** Write the sidecar fixtures by hand from the T10 contract and the batch fixtures from the T9 wire shapes. Complete ADR 0057:
+  - interactive calls go through the sidecar (ADR 0062);
   - the batch client is our own reqwest client at `2026-10-21`, because there is no official Rust SDK;
   - Rust flattens the conversation and the sidecar's schema check never replaces ours;
   - the tool endpoint uses per-turn tokens over axum;
@@ -1075,7 +1075,7 @@ Binding decision: ADR-R3-6. The sidecar is a thin, stateless wrapper around `que
 
 ### Task 13 (D): Versioned prompts and the cached request layout
 
-> **Controller note (ADR-R3-6):** Report and repair calls go through the sidecar, not a reqwest Messages client. T11 `flatten_for_sidecar` joins `system` with `"\n\n"`, drops every `cache_control` (SDK caching is automatic), and renders `build_repair_messages`' assistant turn as `<previous_assistant_output>…</previous_assistant_output>`, dropping its thinking blocks. So `repair/repair.v1.md` must refer to "your previous output above". Keep the cache breakpoints and `section_requests_share_the_cached_prefix`: batches (Messages API) still send them, and a byte-stable prefix also helps SDK caching. `request_json_has_no_account_id_or_sampling_params` also checks the sidecar body (`sidecar_wire::SidecarQuery`).
+> **Controller note (ADR 0062):** Report and repair calls go through the sidecar, not a reqwest Messages client. T11 `flatten_for_sidecar` joins `system` with `"\n\n"`, drops every `cache_control` (SDK caching is automatic), and renders `build_repair_messages`' assistant turn as `<previous_assistant_output>…</previous_assistant_output>`, dropping its thinking blocks. So `repair/repair.v1.md` must refer to "your previous output above". Keep the cache breakpoints and `section_requests_share_the_cached_prefix`: batches (Messages API) still send them, and a byte-stable prefix also helps SDK caching. `request_json_has_no_account_id_or_sampling_params` also checks the sidecar body (`sidecar_wire::SidecarQuery`).
 
 **Files:**
 - Create: `backend/crates/ai/src/prompts.rs`, `backend/crates/ai/src/generate/{context.rs,request.rs}`
@@ -1132,7 +1132,7 @@ Binding decision: ADR-R3-6. The sidecar is a thin, stateless wrapper around `que
 **Files:**
 - Create: `backend/crates/ai/src/generate/{section.rs,report.rs,computed.rs,payload.rs}`
 - Test: `backend/crates/ai/tests/{generate_section.rs,generate_report.rs,computed.rs}`
-- Modify: `docs/decisions/ADR-R3-4-sectioned-generation-and-facts-by-reference.md` (append "Generation")
+- Modify: `docs/decisions/0060-sectioned-generation-and-facts-by-reference.md` (append "Generation")
 
 **Interfaces:**
 - Consumes: T12 fake, T13 requests, T8 `validate_section`, `report_text_rules`, T7 `build_evidence`, T3 `make_disclosure`.
@@ -1167,7 +1167,7 @@ Binding decision: ADR-R3-6. The sidecar is a thin, stateless wrapper around `que
   - `assemble_payload_status_rules_and_disclosure`;
   - `payload_json_shape_is_camel_case`: serialising a complete payload gives `schemaVersion`, `aiDisclosure.label == "Written by AI"`, and `sections.climb_plan` items with `segments`. Save it as the snapshot `backend/fixtures/ai/payload/report-payload.example.json`, the hand-off contract for the web; the test fails when the snapshot differs.
 - [ ] **Step 2: Run** `LANE=D $RUST cargo test -p ai --test generate_section --test generate_report --test computed`. Expected: FAIL.
-- [ ] **Step 3: Implement.** Append "Generation" to ADR-R3-4: the five calls, one envelope, overview first, the canonical-JSON input block, repair once, the budget hook, and the payload contract file.
+- [ ] **Step 3: Implement.** Append "Generation" to ADR 0060: the five calls, one envelope, overview first, the canonical-JSON input block, repair once, the budget hook, and the payload contract file.
 - [ ] **Step 4: Run** the tests. Expected: PASS.
 - [ ] **Step 5: Commit** `feat(ai): sectioned report generation with repair-once and computed payload`.
 
@@ -1182,7 +1182,7 @@ Binding decision: ADR-R3-6. The sidecar is a thin, stateless wrapper around `que
 - Produces:
   - `build_weekly_request(input: &WeeklyReviewInput) -> StructuredRequest`. `system[0]` = core/system + core/tokens (cached) and `system[1]` = weekly-review/system (cached); the user message has `<weekly_input>` + canonical JSON (cached) and then weekly-review/task. `Models::WEEKLY`, `Low`, 4000 tokens, `WEEKLY_REVIEW_SCHEMA`;
   - `build_weekly_evidence(input) -> Evidence` (the exemplars, changes and numeric paths of the weekly input);
-  - `validate_weekly(out, input, ev) -> (ValidatedWeeklyReview, Vec<DroppedItem>)`. Every item gets `banned_phrases` and `no_marketing`. Outcome items add `likelihood` from the matching focus `pImp`. `process` may not contain `num` tokens whose paths are under `metricDeltas` (detail `process quotes an outcome number`, code `likelihood_mismatch`; recorded in ADR-R3-4 as a reuse of the code);
+  - `validate_weekly(out, input, ev) -> (ValidatedWeeklyReview, Vec<DroppedItem>)`. Every item gets `banned_phrases` and `no_marketing`. Outcome items add `likelihood` from the matching focus `pImp`. `process` may not contain `num` tokens whose paths are under `metricDeltas` (detail `process quotes an outcome number`, code `likelihood_mismatch`; recorded in ADR 0060 as a reuse of the code);
   - `generate_weekly_review(ai, before_call, input) -> Result<WeeklyOutcome { content: ValidatedWeeklyReview, dropped, calls }, AiError>`;
   - `build_change_request(input: &WeaknessChangeInput) -> StructuredRequest` (`Models::EXPLAIN`, `Low`, 2000 tokens, `WEAKNESS_CHANGE_SCHEMA`), `build_change_evidence(input) -> Evidence` (the change's examples, numbers and dates only), and `explain_weakness_change(ai, before_call, input) -> Result<ChangeOutcome { status: SectionStatus, text: Option<String>, segments: Option<Vec<Segment>>, citations: Vec<Citation>, calls }, AiError>`. Its rules: require a citation, `no_causal_claims`, `banned_phrases` and `no_marketing`;
   - the four prompt files. The change system prompt states that correlated changes are possible causes, never proven.
@@ -1201,7 +1201,7 @@ Binding decision: ADR-R3-6. The sidecar is a thin, stateless wrapper around `que
 
 ### Task 16 (D): Batch request building and result processing
 
-> **Controller note (ADR-R3-6):** Batches go through T11's `BatchesClient` (through `AiRuntime`'s batch methods), with the same `MessagesRequest::structured` wire. The sync fallback (`RetrySync`, `repair_section`) runs through the sidecar, so batch and sync calls no longer share a cache prefix. Drop that rationale from `batch_params_equal_sync_requests`, and keep the test as "batch params equal `MessagesRequest::structured(build_section_request(…))`".
+> **Controller note (ADR 0062):** Batches go through T11's `BatchesClient` (through `AiRuntime`'s batch methods), with the same `MessagesRequest::structured` wire. The sync fallback (`RetrySync`, `repair_section`) runs through the sidecar, so batch and sync calls no longer share a cache prefix. Drop that rationale from `batch_params_equal_sync_requests`, and keep the test as "batch params equal `MessagesRequest::structured(build_section_request(…))`".
 
 **Files:**
 - Create: `backend/crates/ai/src/generate/batch.rs`
@@ -1238,7 +1238,7 @@ Binding decision: ADR-R3-6. The sidecar is a thin, stateless wrapper around `que
 **Files:**
 - Create: `db/migrations/20261121030000_ai_coaching.sql`, `backend/crates/ai/src/db/{runs.rs,reports.rs,notes.rs,weekly.rs,chat.rs,usage.rs,batches.rs,interactive.rs}`, `backend/crates/ai/src/jobs/{kinds.rs,retry.rs}`, `backend/crates/ai/src/events/mod.rs`
 - Test: `backend/crates/ai/tests/db_ai.rs`
-- Create: `docs/decisions/ADR-R3-3-ai-tables-jobs-and-events.md`
+- Create: `docs/decisions/0059-ai-tables-jobs-and-events.md`
 
 **Interfaces:**
 - Consumes: R1 `db::MIGRATOR`, `queue::{Queue, EnqueueOptions}`, `events::insert_user_event`, and the baseline types `time_class` and `linked_accounts`.
@@ -1395,7 +1395,7 @@ CREATE INDEX ai_batch_items_pending_idx ON ai_batch_items (batch_id) WHERE proce
   - `interactive_evals_accept_only_the_interactive_source` (inserting `source = 'stockfish'` violates the check);
   - `deleting_a_conversation_cascades_messages_and_detaches_evals` (`interactive_evals.message_id` becomes NULL, and the quota rows stay so the quota cannot be reset by deleting).
 - [ ] **Step 2: Run** `LANE=E $RUST cargo test -p ai --test db_ai`. Expected: FAIL.
-- [ ] **Step 3: Implement.** Then rerun R1's `scripts/db/generate-drizzle-schema.sh` (R1 Task 15) and commit the regenerated `packages/db/src/generated/*`, if that task has landed. Write ADR-R3-3:
+- [ ] **Step 3: Implement.** Then rerun R1's `scripts/db/generate-drizzle-schema.sh` (R1 Task 15) and commit the regenerated `packages/db/src/generated/*`, if that task has landed. Write ADR 0059:
   - the tables and their states;
   - why events are emitted in-transaction;
   - the job kinds replacing BullMQ queues;
@@ -1407,7 +1407,7 @@ CREATE INDEX ai_batch_items_pending_idx ON ai_batch_items (batch_id) WHERE proce
 
 ### Task 18 (E): `generate-report` job with progressive sections, degradation, budgets and metering
 
-> **Controller note (ADR-R3-6):**
+> **Controller note (ADR 0062):**
 > - `meter` writes one `ai_usage` row per `CallRecord` per `StructuredResult.model_usage` entry, so a call that used two models gives two rows. Cost is `cost_micro_usd(entry.model, entry.usage, batch)` from the `PricingTable`, never the SDK estimate.
 > - `sdk_cost_usd` is stored for comparison in `ai_usage.sdk_estimate_micro_usd BIGINT NULL`, rounded half up, and is never summed into budgets. T17's migration adds the column; if T17 has already merged, add it in a new migration in R3's range.
 > - `CallRecord` gains `sdk_cost_usd: Option<f64>`, set by T14.
@@ -1417,7 +1417,7 @@ CREATE INDEX ai_batch_items_pending_idx ON ai_batch_items (batch_id) WHERE proce
 **Files:**
 - Create: `backend/crates/ai/src/jobs/{report_job.rs,providers.rs,budget.rs}`
 - Test: `backend/crates/ai/tests/report_job.rs`
-- Modify: `docs/decisions/ADR-R3-5-models-budgets-and-degradation.md` (append "Degradation")
+- Modify: `docs/decisions/0061-models-budgets-and-degradation.md` (append "Degradation")
 
 **Interfaces:**
 - Consumes: T14, T17, R1 `queue::{Handler, Job, JobContext, JobError}`, T9 `cost_micro_usd`, `check_budget`.
@@ -1462,7 +1462,7 @@ CREATE INDEX ai_batch_items_pending_idx ON ai_batch_items (batch_id) WHERE proce
   - `heartbeat_advances` (with `heartbeat_every` 50 ms and a slow fake);
   - `disclosure_is_stored_on_complete_reports`.
 - [ ] **Step 2: Run** `LANE=E $RUST cargo test -p ai --test report_job`. Expected: FAIL.
-- [ ] **Step 3: Implement.** Append "Degradation" to ADR-R3-5: computed-only rendering, the retry schedule through `Release`, a missing key means AI disabled with no retries, the budget hard stop (per account and global), and the input snapshot.
+- [ ] **Step 3: Implement.** Append "Degradation" to ADR 0061: computed-only rendering, the retry schedule through `Release`, a missing key means AI disabled with no retries, the budget hard stop (per account and global), and the input snapshot.
 - [ ] **Step 4: Run** the tests. Expected: PASS.
 - [ ] **Step 5: Commit** `feat(ai): generate-report job with progressive sections, budgets and degradation`.
 
@@ -1495,12 +1495,12 @@ CREATE INDEX ai_batch_items_pending_idx ON ai_batch_items (batch_id) WHERE proce
 
 ### Task 20 (E): Monthly and weekly regeneration through the Batch API
 
-> **Controller note (ADR-R3-6):** Batches need `ANTHROPIC_API_KEY` in the Rust worker (`BatchesClient`). A dev OAuth token can reach only the sidecar. Both schedule handlers do nothing when `!ai.batches_enabled()`, and they check it before creating any run or row. Add the test `batches_disabled_schedules_nothing` (`FakeScript.batches_enabled = false`). Metering keeps `batch: true` and the single `model_usage` entry per result.
+> **Controller note (ADR 0062):** Batches need `ANTHROPIC_API_KEY` in the Rust worker (`BatchesClient`). A dev OAuth token can reach only the sidecar. Both schedule handlers do nothing when `!ai.batches_enabled()`, and they check it before creating any run or row. Add the test `batches_disabled_schedules_nothing` (`FakeScript.batches_enabled = false`). Metering keeps `batch: true` and the single `model_usage` entry per result.
 
 **Files:**
 - Create: `backend/crates/ai/src/jobs/batch_jobs.rs`
 - Test: `backend/crates/ai/tests/batch_jobs.rs`
-- Create: `docs/decisions/ADR-R3-7-batch-regeneration.md`
+- Create: `docs/decisions/0063-batch-regeneration.md`
 
 **Interfaces:**
 - Consumes: T16, T17, T18 (section persistence: extract `persist_section_outcome(conn, run, outcome)` from `report_job.rs` into `jobs/report_job.rs` as `pub(crate)` in this task if Task 18 inlined it), T19.
@@ -1525,7 +1525,7 @@ CREATE INDEX ai_batch_items_pending_idx ON ai_batch_items (batch_id) WHERE proce
   - `weekly_batch_round_trip` (2 due items, then poll ended: 2 weekly rows ready, 2 `weekly_review.ready` events);
   - `over_budget_account_is_not_batched`.
 - [ ] **Step 2: Run** `LANE=E $RUST cargo test -p ai --test batch_jobs`. Expected: FAIL.
-- [ ] **Step 3: Implement.** Write ADR-R3-7:
+- [ ] **Step 3: Implement.** Write ADR 0063:
   - monthly reports and weekly reviews both go through Batches, at 50% cost;
   - batch requests are identical to sync ones, so the prefix is shared;
   - items are keyed by custom id, with a cross-process resolver;
@@ -1638,19 +1638,19 @@ pub trait InteractiveEngine: Send + Sync {
 
 ### Task 23 (F): Chat engine (streaming, paragraph validation, engine pending, off-topic, fallback, summaries)
 
-> **Controller note (ADR-R3-6):** One `stream_turn(req, Some(handler))` is a whole agentic turn: the SDK runs the tool rounds and calls each tool through the handler (T11 `ToolServer`).
+> **Controller note (ADR 0062):** One `stream_turn(req, Some(handler))` is a whole agentic turn: the SDK runs the tool rounds and calls each tool through the handler (T11 `ToolServer`).
 > - **The handler.** T23 builds a `ToolHandler` that wraps `execute_tool` with this turn's `ToolDeps`. It collects the tool evidence into shared turn state (`Arc<Mutex<…>>`), which paragraph validation reads. It runs the engine-pending flow (the interim `on_chunk`, then `engine.wait`, or `abandon` with `engine busy`) inside the call, under T11's 50 s callback timeout.
 > - **Round cap.** Set `max_turns = max_tool_rounds + 1`. On `stop_reason "max_turns"`, make one follow-up `stream_turn` with `ToolChoice::None`, `tools: None`, the flattened transcript, and the system message "Answer now with what you have."
 > - **Tool inputs.** The SDK's MCP layer validates them, so `truncated_tool_input_gets_an_error_result` becomes a handler test: unparsable or schema-invalid input gives `is_error` without executing.
 > - **Dropped tests.** Drop `parallel_tool_calls_answered_in_one_user_message`, because the SDK assembles tool results.
 > - **History.** T11 flattens history, so `verbatim_history_is_append_only` asserts that turn 2's flattened prompt starts with turn 1's, and no thinking block is ever sent.
 > - **Fakes.** Fake turns use `FakeTurn.tool_calls`.
-> - **The ADR.** This task's ADR becomes `ADR-R3-8-ask-your-coach-chat.md`, because ADR-R3-6 is the sidecar decision.
+> - **The ADR.** This task's ADR becomes `0064-ask-your-coach-chat.md`, because ADR 0062 is the sidecar decision.
 
 **Files:**
 - Create: `backend/crates/ai/src/chat/{paragraphs.rs,limits.rs,engine.rs,summary.rs}`, `backend/crates/ai/prompts/chat/system.v1.md`, `backend/crates/ai/prompts/chat-summary/{system.v1.md,task.v1.md}`. Registering the three files in `prompts.rs`'s table is the one allowed edit to that file: three lines.
 - Test: `backend/crates/ai/tests/{chat_engine.rs,chat_summary.rs}`
-- Create: `docs/decisions/ADR-R3-6-ask-your-coach-chat.md`
+- Create: `docs/decisions/0062-ask-your-coach-chat.md`
 
 **Interfaces:**
 - Consumes: T22; T8 `validate_text` (`implicit_citations: true`, `require_citation: false`, rules `banned_phrases` and `no_marketing`); T6 `find_leaks`; T12 fake; T13 `load_prompt` and `canonical_json`; T1 `entitlements`.
@@ -1726,7 +1726,7 @@ pub trait InteractiveEngine: Send + Sync {
     - a minor-safe, encouraging, plain tone; no rating promises; no other users exist.
   - `chat-summary/*`: a short neutral title and a summary of the topics discussed, with no moves, numbers or dates.
 
-  Write ADR-R3-6:
+  Write ADR 0062:
   - the chat runs in the worker;
   - anchors are injected into the conversation and their ids feed the tools;
   - paragraphs are validated before they are published, a repair replaces the answer, and the fallback sentence is the last resort;
@@ -1775,7 +1775,7 @@ pub trait InteractiveEngine: Send + Sync {
   - `pool_closed_releases_the_job`;
   - `quota_is_per_account`.
 - [ ] **Step 2: Run** `LANE=F $RUST cargo test -p ai --test interactive_engine`. Expected: FAIL.
-- [ ] **Step 3: Implement.** Append to ADR-R3-6 the interactive protocol, the separate table (and why it is never used for stats), the quotas, reuse and refunds.
+- [ ] **Step 3: Implement.** Append to ADR 0062 the interactive protocol, the separate table (and why it is never used for stats), the quotas, reuse and refunds.
 - [ ] **Step 4: Run** the tests. Expected: PASS.
 - [ ] **Step 5: Commit** `feat(ai): rate-limited interactive engine checks for the coach chat`.
 
@@ -1844,17 +1844,17 @@ pub trait InteractiveEngine: Send + Sync {
 
 ### Task 26 (I): Integration (worker wiring, R2 contract reconciliation, migrations, ADRs)
 
-> **Controller note (ADR-R3-6):**
+> **Controller note (ADR 0062):**
 > - **Client.** `start_workers` builds `with_breaker(AiRuntime { sidecar: SidecarClient::new(SidecarConfig::from_env()?, Some(ToolServer::start(AI_TOOL_BIND, AI_TOOL_PUBLIC_URL))), batches: ApiKey::from_env().map(BatchesClient::new) }, Breaker::new(5, 60 s))`, not `AnthropicClient`.
 > - **Enabled check.** AI is enabled only when `SidecarConfig` is set and `health().auth != "none"`.
 > - **Log line.** It is exactly `ai: enabled (sidecar, batches on|off)` or `ai: disabled (<reason>)`.
 > - **Compose.** The worker service gets `AI_SIDECAR_URL: http://ai-sidecar:7310`, `AI_SIDECAR_TOKEN`, `AI_TOOL_BIND: 0.0.0.0:7311` and `AI_TOOL_PUBLIC_URL`, with no published ports, and `depends_on: ai-sidecar (service_healthy)`. `ANTHROPIC_API_KEY` goes to the sidecar, and to the worker only for batches.
-> - **CLAUDE.md.** The line becomes: "AI needs the `ai-sidecar` service (ADR-R3-6) and `ANTHROPIC_API_KEY` (a dev `CLAUDE_CODE_OAUTH_TOKEN` works for the sidecar only, never in production); without them reports are computed-only."
-> - **ADRs.** Renumber `ADR-R3-1`…`8` (8 is the chat ADR from T23).
+> - **CLAUDE.md.** The line becomes: "AI needs the `ai-sidecar` service (ADR 0062) and `ANTHROPIC_API_KEY` (a dev `CLAUDE_CODE_OAUTH_TOKEN` works for the sidecar only, never in production); without them reports are computed-only."
+> - **ADRs.** Renumber `ADR 0057`…`8` (8 is the chat ADR from T23).
 > - **Test.** Add `sidecar_without_credentials_disables_ai` (health stub `auth:"none"`).
 
 **Files:**
-- Modify: `backend/crates/worker/src/{config.rs,start.rs}`, `docker-compose.yml` (`rust-worker` env `ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}`, plus the three budget variables), `.env.example` (`ANTHROPIC_API_KEY=` with the comment `# optional; never commit a key`), `CLAUDE.md`, `docs/decisions/README.md`; rename `docs/decisions/ADR-R3-*.md`
+- Modify: `backend/crates/worker/src/{config.rs,start.rs}`, `docker-compose.yml` (`rust-worker` env `ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}`, plus the three budget variables), `.env.example` (`ANTHROPIC_API_KEY=` with the comment `# optional; never commit a key`), `CLAUDE.md`, `docs/decisions/README.md`; rename the R3 placeholder ADRs (now `docs/decisions/0057-*.md` … `0064-*.md`)
 - Create: `backend/crates/worker/tests/ai_wiring.rs`
 - Modify, if R2 has landed: `backend/crates/ai/src/input/types.rs` (replace the mirror with a re-export), `backend/crates/ai/tests/input_shape.rs`, `backend/crates/ai/src/chat/db_source.rs` (`find_examples` over R2's per-move tags)
 
@@ -1881,17 +1881,17 @@ pub trait InteractiveEngine: Send + Sync {
 - [ ] **Step 4: Reconcile the contract with R2.** Run `grep -rn "struct CoachingInput" backend/crates`.
   - If R2's struct exists: run `input_shape.rs` against R2's type (`schema_for!(r2::CoachingInput)` against the TS export), and parse every R2 fixture with `ai::input::parse_coaching_input`.
   - If both pass: replace `ai::input::types` with `pub use <r2 crate>::coaching_input::*;` plus the strictness and validation that R2 lacks, kept in `validate.rs`.
-  - If R2 differs (a missing `examples`, `strengths`, or a `Score` vs `EngineScore` representation): write `from_r2(x: &R2CoachingInput) -> serde_json::Value` with a parity test, and record each difference as a follow-up in ADR-R3-4 rather than loosening validation silently.
+  - If R2 differs (a missing `examples`, `strengths`, or a `Score` vs `EngineScore` representation): write `from_r2(x: &R2CoachingInput) -> serde_json::Value` with a parity test, and record each difference as a follow-up in ADR 0060 rather than loosening validation silently.
   - If R2 exposes per-move motif or weakness tags: implement `find_examples` over them, scoped to the account, with the test `find_examples_uses_r2_tags`.
-  - If R2 has not landed: record "pending R2" in ADR-R3-4 and keep the mirror, the exemplar-based `find_examples` and `NullInputProvider`.
-- [ ] **Step 5: Reconcile the migrations.** Run `ls db/migrations`. Expected: R3's `20261121030000_ai_coaching.sql` sorts after every R1 and R2 migration it references (`linked_accounts`, `time_class`), and no other file uses a version in `20261121030000`–`…039999`. If R2 used an overlapping range, renumber R3's file to the next free version before any deployed database has applied it, and record it in ADR-R3-3. Rerun the Drizzle generation script and commit its output.
-- [ ] **Step 6: Renumber the ADRs.** Rename `ADR-R3-1`…`7` to the next free numbers after R1 (0038) and R2, in order. Update the titles and cross references (`grep -rn "ADR-R3-" docs backend` must return nothing afterwards), and add the rows to `docs/decisions/README.md`.
+  - If R2 has not landed: record "pending R2" in ADR 0060 and keep the mirror, the exemplar-based `find_examples` and `NullInputProvider`.
+- [ ] **Step 5: Reconcile the migrations.** Run `ls db/migrations`. Expected: R3's `20261121030000_ai_coaching.sql` sorts after every R1 and R2 migration it references (`linked_accounts`, `time_class`), and no other file uses a version in `20261121030000`–`…039999`. If R2 used an overlapping range, renumber R3's file to the next free version before any deployed database has applied it, and record it in ADR 0059. Rerun the Drizzle generation script and commit its output.
+- [ ] **Step 6: Renumber the ADRs.** Rename the R3 placeholders 1…8 to the next free numbers after R1 (0038), R2 and `main`, in order (done: 0057…0064). Update the titles and cross references (a grep for the placeholder prefix over docs and backend must return nothing afterwards), and add the rows to `docs/decisions/README.md`.
 - [ ] **Step 7: Run the full gate** `LANE=I $RUST sh -c "cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings && cargo deny check && cargo test --workspace"`. Expected: PASS, with no DB tests skipped.
 - [ ] **Step 8: Commit** `feat(worker): wire ai coaching jobs and reconcile the r2 contract`.
 
 ### Task 27 (I): Optional live smoke test (gated by `ANTHROPIC_API_KEY`)
 
-> **Controller note (ADR-R3-6):**
+> **Controller note (ADR 0062):**
 > - **Route.** The live smoke goes through the sidecar. It consumes `AiRuntime`/`SidecarClient` instead of `AnthropicClient`.
 > - **Gate.** Skip with `skipped: sidecar has no credentials` unless `SidecarConfig::from_env()` is set and `health().auth` is `api_key` or `oauth`. That means the sidecar was started with `ANTHROPIC_API_KEY` or, in development only, the owner's `CLAUDE_CODE_OAUTH_TOKEN`.
 > - **Owner command.** `COMPOSE_FILE=docker-compose.yml docker compose -p ci-r3-i up -d ai-sidecar`, with the credential in the shell environment, then `$RUST` run with `-e AI_SIDECAR_URL=http://ai-sidecar:7310 -e AI_SIDECAR_TOKEN` and `cargo test --locked -p ai --test live_smoke -- --ignored --nocapture`.
@@ -1915,7 +1915,7 @@ pub trait InteractiveEngine: Send + Sync {
 
   With `AI_RECORD_FIXTURES=1`, write each raw response, run through `redact`, to `fixtures/ai/api/recorded/<name>.json` for the owner to commit.
 - [ ] **Step 2: Run** `LANE=I $RUST cargo test -p ai --test live_smoke -- --ignored` without the key. Expected: PASS, with the skip lines printed.
-- [ ] **Step 3: Owner action.** The owner runs `LANE=I docker compose run --rm -e ANTHROPIC_API_KEY rust-dev cargo test -p ai --test live_smoke -- --ignored --nocapture`. Expected: PASS with a cost printout. Record the measured cache read tokens in the ADR that was ADR-R3-4.
+- [ ] **Step 3: Owner action.** The owner runs `LANE=I docker compose run --rm -e ANTHROPIC_API_KEY rust-dev cargo test -p ai --test live_smoke -- --ignored --nocapture`. Expected: PASS with a cost printout. Record the measured cache read tokens in the ADR that was ADR 0060.
 - [ ] **Step 4: Commit** `test(ai): optional live smoke gated by ANTHROPIC_API_KEY`.
 
 ---

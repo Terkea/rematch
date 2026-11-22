@@ -1,4 +1,4 @@
-//! Validation of one report section envelope (TS plan A4 `validateSection`, ADR-R3-4).
+//! Validation of one report section envelope (TS plan A4 `validateSection`, ADR 0060).
 //!
 //! Fatal errors drop the whole section: `wrong_section` (the envelope names another section, or
 //! the requested part is null), `too_many_focuses` (more than [`MAX_FOCUSES`]) and `area_missing`

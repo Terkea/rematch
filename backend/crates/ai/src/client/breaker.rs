@@ -1,4 +1,4 @@
-//! The circuit breaker around the AI client (ADR-R3-6: Rust owns it, the sidecar holds no rules).
+//! The circuit breaker around the AI client (ADR 0062: Rust owns it, the sidecar holds no rules).
 //!
 //! - A failure is `Unavailable` with reason `Connection`, `Server` or `Overloaded`; that includes
 //!   the sidecar's own 529 when its queue is full. Every other outcome (a success, `RateLimited`,

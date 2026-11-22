@@ -99,7 +99,7 @@ mod tests {
     use crate::validator::bounded::take_scanned;
     use crate::validator::tokens::{canonical_for_tokens, parse_tokens};
 
-    /// Linear: rendering reads the canonical text once (the scan counter of ADR-R3-2).
+    /// Linear: rendering reads the canonical text once (the scan counter of ADR 0058).
     #[test]
     fn scanned_bytes_are_linear() {
         let ev = Evidence::default();

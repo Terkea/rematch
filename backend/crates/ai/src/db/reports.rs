@@ -1,4 +1,4 @@
-//! `reports` and `report_sections` (ADR-R3-3).
+//! `reports` and `report_sections` (ADR 0059).
 //!
 //! A report is versioned per (account, time class); its five narrative sections are stored as
 //! validated JSON. Status: `computed_only` (no section ready), `partial`, `complete` (all five).

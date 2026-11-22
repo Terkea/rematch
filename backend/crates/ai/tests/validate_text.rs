@@ -1,4 +1,4 @@
-//! `validate_text`: the check order, token scoping and rendering (R3 Task 8, ADR-R3-4).
+//! `validate_text`: the check order, token scoping and rendering (R3 Task 8, ADR 0060).
 
 use ai::output::codes::{Citation, ValidationCode, ValidationError};
 use ai::segments::Segment;

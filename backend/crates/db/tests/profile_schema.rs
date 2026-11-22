@@ -256,8 +256,9 @@ async fn seed_every_table(pool: &PgPool) -> (Uuid, Uuid) {
     let ref_game: Uuid = sqlx::query_scalar(
         "INSERT INTO reference_games (build_id, lichess_game_id, pgn, time_class, base_seconds, \
          increment_seconds, white_rating, black_rating, white_hash, black_hash, result, \
-         termination, played_at) VALUES ($1, 'abcd1234', '1. e4 *', 'blitz', 180, 2, 1500, \
-         1510, 'h1', 'h2', '*', 'Normal', $2) RETURNING id",
+         termination, played_at, white_selected, black_selected) VALUES ($1, 'abcd1234', \
+         '1. e4 *', 'blitz', 180, 2, 1500, 1510, 'h1', 'h2', '*', 'Normal', $2, true, true) \
+         RETURNING id",
     )
     .bind(build)
     .bind(PLAYED_AT)
@@ -881,11 +882,11 @@ INSERT INTO opening_explorer (build_id, fen_key, band, time_class, uci, white, d
        unnest(ARRAY['blitz', 'rapid']) tc, unnest(ARRAY['e2e4', 'd2d4']) uci
   WHERE b.kind = 'opening_explorer';
 INSERT INTO reference_games (build_id, lichess_game_id, pgn, time_class, white_hash, black_hash,
-                             result, played_at, status)
+                             result, played_at, status, white_selected, black_selected)
   SELECT b.id, 'r' || i, '1. e4 *',
          (ARRAY['bullet', 'blitz', 'rapid', 'classical'])[1 + i % 4]::time_class,
          'hw' || i, 'hb' || i, '1-0', now(),
-         CASE WHEN i % 20 = 0 THEN 'pending' ELSE 'done' END::analysis_status
+         CASE WHEN i % 20 = 0 THEN 'pending' ELSE 'done' END::analysis_status, true, true
   FROM reference_builds b, generate_series(1, 10000) i
   WHERE b.kind = 'band_reference';
 INSERT INTO reference_observations (build_id, reference_game_id, color, player_hash, band,

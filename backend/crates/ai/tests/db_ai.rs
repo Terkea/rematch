@@ -1379,9 +1379,18 @@ async fn orphan_sweep_removes_only_old_entries_without_a_conversation(pool: PgPo
     .await
     .unwrap();
     let mut conn = pool.acquire().await.unwrap();
-    let swept = chat::sweep_orphan_session_entries(&mut conn, OffsetDateTime::now_utc())
-        .await
-        .unwrap();
+    let now = OffsetDateTime::now_utc();
+    let (mut swept, mut after) = (0, None);
+    loop {
+        let page = chat::sweep_orphan_session_entries_page(&mut conn, now, after, 1000)
+            .await
+            .unwrap();
+        swept += page.deleted;
+        match page.next {
+            Some(next) => after = Some(next),
+            None => break,
+        }
+    }
     assert_eq!(swept, 2);
     assert_eq!(session_entries(&pool, old_orphan).await, 0);
     assert_eq!(

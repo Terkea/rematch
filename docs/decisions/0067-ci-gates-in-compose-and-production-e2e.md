@@ -1,4 +1,4 @@
-# 0066. CI runs the gates in compose, and e2e on a production build
+# 0067. CI runs the gates in compose, and e2e on a production build
 
 Date: 2026-11-22. Status: accepted (M4 Task 27). Builds on 0022 (Biome), 0042 (Rust caches), 0065 (the throttle budget waits for a production e2e lane), ADR-WEB-2 (web dev stack) and ADR-WEB-8 (live events).
 

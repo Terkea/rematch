@@ -1,4 +1,4 @@
-//! The client of the Agent SDK sidecar (ADR-R3-6): every interactive Claude call goes through it.
+//! The client of the Agent SDK sidecar (ADR 0062): every interactive Claude call goes through it.
 //!
 //! - `structured`: `POST /v1/query` with the flattened prompt and `outputFormat`. Rust checks the
 //!   structured output with its own schema; the SDK's validation never replaces ours.

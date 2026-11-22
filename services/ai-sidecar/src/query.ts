@@ -35,7 +35,7 @@ export type SidecarResult = {
   durationMs: number;
   /**
    * This call's (this turn's) own usage per model; on a resumed chat turn it is summed from the
-   * stream. Metering (controller ruling, ADR-R3-6): Rust meters this field for /v1/query and for
+   * stream. Metering (controller ruling, ADR 0062): Rust meters this field for /v1/query and for
    * new or rebuilt chat turns. On a resumed turn Rust meters sessionModelUsage(now) minus the
    * previous turn's sessionModelUsage, per model, and falls back to this field when any difference
    * is negative.

@@ -1,4 +1,4 @@
-//! `ai_usage`: one row per model call, with our own cost (ADR-R3-6 decision 4). Budgets read it.
+//! `ai_usage`: one row per model call, with our own cost (ADR 0062 decision 4). Budgets read it.
 
 use sqlx::PgConnection;
 use time::OffsetDateTime;

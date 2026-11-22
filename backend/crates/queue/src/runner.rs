@@ -301,6 +301,11 @@ pub struct RunnerHandle {
 }
 
 impl RunnerHandle {
+    /// The job kind this runner claims.
+    pub fn kind(&self) -> &'static str {
+        self.shared.handler.kind()
+    }
+
     /// Stops claiming new jobs; in-flight jobs run to completion. Idempotent.
     pub fn stop(&self) {
         let s = &self.shared;

@@ -33,7 +33,7 @@ use ai::jobs::report_job::{
 };
 use ai::output::codes::SectionKey;
 use ai::output::disclosure::make_disclosure;
-use ai::testing::{input, load_fixture};
+use ai::testing::{input, load_fixture, make_input};
 use futures::future::BoxFuture;
 use futures::stream::BoxStream;
 use queue::queue::Queue;
@@ -1690,4 +1690,55 @@ async fn two_racing_free_runs_get_one_report(pool: PgPool) {
         .await
         .unwrap();
     assert_eq!(n, 1, "one report inside the free interval");
+}
+
+// ---------------------------------------------------------------------------------------------
+// Change notes (Task 19)
+// ---------------------------------------------------------------------------------------------
+
+/// `(change_key, status)` of the account's change notes, by key.
+async fn note_keys(pool: &PgPool, account_id: Uuid) -> Vec<(String, String)> {
+    sqlx::query_as(
+        "SELECT change_key, status::text FROM weakness_change_notes WHERE account_id = $1 \
+         ORDER BY change_key",
+    )
+    .bind(account_id)
+    .fetch_all(pool)
+    .await
+    .unwrap()
+}
+
+async fn change_jobs(pool: &PgPool) -> i64 {
+    sqlx::query_scalar("SELECT count(*) FROM jobs WHERE kind = $1")
+        .bind(kinds::KIND_EXPLAIN_CHANGE)
+        .fetch_one(pool)
+        .await
+        .unwrap()
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn report_run_enqueues_change_notes(pool: PgPool) {
+    let a = account(&pool).await;
+    let mut d = deps(&pool, None, now_micros());
+    d.inputs = Arc::new(FixtureInputs(Some(make_input(json!({ "accountId": a })))));
+    let run = request(&pool, a, ReportTrigger::Onboarding, Plan::Pro).await;
+    handle(&d, run).await.unwrap();
+    // The snapshot's two detected changes get one pending note and one job each.
+    assert_eq!(
+        note_keys(&pool, a).await,
+        vec![
+            (
+                "tactics.blunder_rate@li-c1-2".to_owned(),
+                "pending".to_owned()
+            ),
+            ("time.flag_rate@li-c2a".to_owned(), "pending".to_owned()),
+        ]
+    );
+    assert_eq!(change_jobs(&pool).await, 2);
+
+    // A second run of the same input adds none.
+    let run2 = request(&pool, a, ReportTrigger::Manual, Plan::Pro).await;
+    handle(&d, run2).await.unwrap();
+    assert_eq!(note_keys(&pool, a).await.len(), 2);
+    assert_eq!(change_jobs(&pool).await, 2);
 }

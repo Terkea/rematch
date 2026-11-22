@@ -25,11 +25,12 @@ testkit = { path = "crates/testkit" }
 # R2 workspace crates (ADR-R2-1)
 coaching-input = { path = "crates/coaching-input" }
 profile-core = { path = "crates/profile-core" }
+lichess-db = { path = "crates/lichess-db" }
 refdata = { path = "crates/refdata" }
 enrich = { path = "crates/enrich" }
 scheduler = { path = "crates/scheduler" }
 profile = { path = "crates/profile" }
-# R3 workspace crate (ADR-R3-1)
+# R3 workspace crate (ADR 0057)
 ai = { path = "crates/ai" }
 worker = { path = "crates/worker" }
 
@@ -62,7 +63,7 @@ reqwest = { version = "=0.13.5", default-features = false, features = [
 ] }
 rustls = { version = "=0.23.46", default-features = false, features = ["ring", "std"] }
 serde = { version = "=1.0.229", features = ["derive"] }
-# `float_roundtrip`: read JSON decimals exactly, as JS does (R3 T7 fix round 1, ADR-R3-2).
+# `float_roundtrip`: read JSON decimals exactly, as JS does (R3 T7 fix round 1, ADR 0058).
 serde_json = { version = "=1.0.154", features = ["float_roundtrip"] }
 cozy-chess = "=0.3.4"
 thiserror = "=2.0.21"
@@ -86,7 +87,7 @@ hex = "=0.4.3"
 rayon = "=1.12.0"
 # Dev-only: Task 2 schema parity. No HTTP resolver (no reqwest, no aws-lc).
 jsonschema = { version = "=0.61.2", default-features = false }
-# R3 additions (ADR-R3-1). Each was published at least 7 days before 2026-11-21.
+# R3 additions (ADR 0057). Each was published at least 7 days before 2026-11-21.
 serde_path_to_error = "=0.1.20"
 unicode-normalization = "=0.1.26"
 # R3 Task 11 (coordinator approval): the chat tool-callback endpoint. MIT, released 2026-04-14;

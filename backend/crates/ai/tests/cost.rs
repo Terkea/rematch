@@ -3,7 +3,7 @@
 //!
 //! Sonnet 5.5 cache reads are 0.10 USD/MTok (0.05x input) on the live pricing page checked on
 //! 2026-11-21 (ruling Q5), not the 0.20 the TS table and the brief carried, so the first two
-//! expectations are 13000 and 6500 instead of 14000 and 7000 (ADR-R3-5).
+//! expectations are 13000 and 6500 instead of 14000 and 7000 (ADR 0061).
 
 use std::path::PathBuf;
 

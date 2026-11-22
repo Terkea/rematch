@@ -1,4 +1,4 @@
-//! The claim validator for one paragraph of token text (ADR-R3-4 "Claim validator"). It decides
+//! The claim validator for one paragraph of token text (ADR 0060 "Claim validator"). It decides
 //! whether a paragraph Claude wrote is safe to show and, when it is, renders its segments.
 //!
 //! The checks, in order (fix round 1 collection rules):
@@ -508,7 +508,7 @@ mod tests {
         assert!(!is_eval_pawns_path("basis.analysedGames"));
     }
 
-    /// Linear in the text (the scan counter of ADR-R3-2): every stage, the language rules
+    /// Linear in the text (the scan counter of ADR 0058): every stage, the language rules
     /// included, on hostile shapes.
     #[test]
     fn scanned_bytes_are_linear_on_hostile_shapes() {

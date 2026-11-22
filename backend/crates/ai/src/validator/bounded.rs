@@ -1,4 +1,4 @@
-//! Bounded matching: the lookaround emulation of ADR-R3-2 deviation 2.
+//! Bounded matching: the lookaround emulation of ADR 0058 deviation 2.
 //!
 //! The `regex` crate has no lookarounds, but it never backtracks catastrophically: every search is
 //! linear in the haystack. A TS lookbehind becomes a `before_ok` check on the char before a match.
@@ -81,7 +81,7 @@ fn next_boundary(text: &str, at: usize) -> usize {
 /// alternative parts that change the length). A JS engine would backtrack to a shorter match
 /// instead: `[a-c]+(?!\d)` matches "ab" in "abc1", but here "abc" is rejected outright. Every
 /// variable-length pattern must fold its lookahead into the regex as `(?P<m>X)(?:[^C]|$)` and use
-/// [`scan`] with [`m_end`] (ADR-R3-2).
+/// [`scan`] with [`m_end`] (ADR 0058).
 pub fn bounded_matches(
     re: &Regex,
     text: &str,

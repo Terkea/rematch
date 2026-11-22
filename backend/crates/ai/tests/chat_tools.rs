@@ -455,7 +455,7 @@ fn error_text(o: &ToolOutput) -> String {
 
 // --- Tool definitions ---
 
-/// The JSON Schema subset the sidecar's `jsonSchemaToZodShape` accepts (ADR-R3-6): a top-level
+/// The JSON Schema subset the sidecar's `jsonSchemaToZodShape` accepts (ADR 0062): a top-level
 /// object with `properties`, `required`, `additionalProperties: false` and `description`; the
 /// property types `string` (optionally `enum`), `integer` (optionally `minimum`/`maximum`),
 /// `number`, `boolean`, and `array` of `string`.

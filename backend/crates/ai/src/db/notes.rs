@@ -1,4 +1,4 @@
-//! `weakness_change_notes`: one short AI note per detected weakness change (ADR-R3-3).
+//! `weakness_change_notes`: one short AI note per detected weakness change (ADR 0059).
 //!
 //! States (`ai_item_status`): `pending` → `ready` | `dropped` (validation failed twice) |
 //! `failed` (retries exhausted). A transient failure stays `pending` with `next_attempt_at`.

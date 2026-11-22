@@ -1,4 +1,4 @@
-//! `report_runs`: one attempt to build a report (ADR-R3-3).
+//! `report_runs`: one attempt to build a report (ADR 0059).
 //!
 //! States: `queued` → `running` (claim) → `done` | `failed`, with `awaiting_retry` (a transient
 //! AI failure; claimable again after `next_attempt_at`) and `awaiting_batch` (sections submitted to

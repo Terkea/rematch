@@ -3,7 +3,7 @@ on:
   push:
   pull_request:
 
-# Every job runs its gate the way it runs locally (CLAUDE.md, ADR 0066): in the compose services,
+# Every job runs its gate the way it runs locally (CLAUDE.md, ADR 0067): in the compose services,
 # in its own project, with no host ports, then `down -v`. No secret is used anywhere: the web
 # services fall back to compose's dev-only BETTER_AUTH_SECRET default, which is no secret.
 env:
@@ -48,7 +48,7 @@ jobs:
         run: $COMPOSE down -v
 
   e2e:
-    # The Playwright suite on a production build (ADR 0066): `next build`, then `next start`, so
+    # The Playwright suite on a production build (ADR 0067): `next build`, then `next start`, so
     # the 4x CPU throttle budget in charts.spec.ts is enforced on every change (ADR 0065,
     # E2E_PRODUCTION=1). A production server refuses the plain-http fakes, so the @fakes specs run
     # in e2e-fakes on the dev server. Visual baselines stay a local check (made in the qa image).
@@ -149,7 +149,7 @@ jobs:
           -e CRATE_AGE_CACHE=/work/backend/target/crate-age-cache
           rust-dev sh scripts/check-crate-age.sh
       # R3: canonical_json and the path index rely on sorted keys, so no crate may enable
-      # serde_json/preserve_order (ADR-R3-1).
+      # serde_json/preserve_order (ADR 0057).
       - name: No serde_json preserve_order
         # Fails closed: a failing `cargo tree` fails the step instead of counting 0.
         run: |

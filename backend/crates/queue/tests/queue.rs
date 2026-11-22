@@ -1241,3 +1241,68 @@ async fn enqueue_many_rejects_a_short_recur_every(pool: PgPool) {
         .unwrap_err();
     assert!(matches!(err, QueueError::InvalidOptions(_)), "{err:?}");
 }
+
+/// R2 Task 35 (T33 hand-off): a running job gives up its dedupe key through the queue, fenced by
+/// its lease, so the next enqueue of the key goes through while the job still runs.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_running_job_releases_its_dedupe_key(pool: PgPool) {
+    let q = Queue::new(pool.clone());
+    let first = q
+        .enqueue(KIND, &json!({}), keyed("profile:a"))
+        .await
+        .unwrap()
+        .expect("first job");
+    let job = claim_one(&q).await;
+    assert_eq!(job.id, first);
+    // While it holds the key, a second enqueue dedupes onto it.
+    assert_eq!(
+        q.enqueue(KIND, &json!({}), keyed("profile:a"))
+            .await
+            .unwrap(),
+        None
+    );
+    // A stale lease releases nothing.
+    let mut stale = job.clone();
+    stale.lease_token = Uuid::new_v4();
+    assert!(!q.release_dedupe_key(&stale).await.unwrap());
+    assert!(q.release_dedupe_key(&job).await.unwrap());
+    // Released once: a second release finds no key.
+    assert!(!q.release_dedupe_key(&job).await.unwrap());
+    let key: Option<String> = sqlx::query_scalar("SELECT dedupe_key FROM jobs WHERE id = $1")
+        .bind(job.id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(key, None);
+    assert_eq!(row(&pool, job.id).await.state, "running");
+    let second = q
+        .enqueue(KIND, &json!({}), keyed("profile:a"))
+        .await
+        .unwrap();
+    assert!(second.is_some(), "the key is free while the first job runs");
+}
+
+/// A queued (unclaimed) job keeps its key: only a running job may give it up.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_queued_job_keeps_its_dedupe_key(pool: PgPool) {
+    let q = Queue::new(pool.clone());
+    q.enqueue(KIND, &json!({}), keyed("profile:b"))
+        .await
+        .unwrap()
+        .expect("job");
+    let mut job = claim_one(&q).await;
+    // Put it back to queued (same token) and try to release.
+    sqlx::query("UPDATE jobs SET state = 'queued' WHERE id = $1")
+        .bind(job.id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert!(!q.release_dedupe_key(&job).await.unwrap());
+    job.dedupe_key = None;
+    let key: Option<String> = sqlx::query_scalar("SELECT dedupe_key FROM jobs WHERE id = $1")
+        .bind(job.id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(key.as_deref(), Some("profile:b"));
+}

@@ -63,7 +63,7 @@ fn stat(metric: MetricId, median: f64, n_players: u32) -> BandReferenceStat {
         pooled_rate: Some(median),
         epl_per_event: Some(12.25),
         opps_per_game: None,
-        opp_slope_per_100: -0.125,
+        opp_slope_per_100: Some(-0.125),
         n_players,
         n_games: n_players * 10,
         low_sample: n_players < 10,
@@ -312,6 +312,8 @@ fn game(id: &str) -> NewReferenceGame {
         black_rating: Some(1550),
         white_hash: "a".repeat(64),
         black_hash: "b".repeat(64),
+        white_selected: true,
+        black_selected: true,
         result: "1-0".into(),
         termination: Some("Normal".into()),
         played_at: datetime!(2026-10-03 12:00:00 UTC),
@@ -587,9 +589,10 @@ async fn band_reference_reads_use_their_indexes(pool: PgPool) {
                 generate_series(1, 80) m \
            WHERE b.status IN ('active', 'building'); \
          INSERT INTO reference_games (build_id, lichess_game_id, pgn, time_class, white_hash, \
-             black_hash, result, played_at, status) \
+             black_hash, result, played_at, status, white_selected, black_selected) \
            SELECT b.id, 'g' || i, '1. e4 *', 'blitz', 'w', 'b', '*', now(), \
-                  CASE WHEN i % 20 = 0 THEN 'pending' ELSE 'done' END::analysis_status \
+                  CASE WHEN i % 20 = 0 THEN 'pending' ELSE 'done' END::analysis_status, \
+                  true, true \
            FROM reference_builds b, generate_series(1, 6000) i \
            WHERE b.status IN ('active', 'building')",
     )

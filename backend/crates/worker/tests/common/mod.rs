@@ -37,12 +37,8 @@ pub fn test_db_url(opts: &PgConnectOptions) -> String {
 pub fn env_for(opts: &PgConnectOptions) -> Option<WorkerEnv> {
     let stockfish_path = testkit::stockfish()?;
     Some(WorkerEnv {
-        database_url: test_db_url(opts),
-        stockfish_path,
-        lichess_token: None,
-        lichess_lookback_days: None,
         pool_size: Some(1),
-        syzygy_path: None,
+        ..WorkerEnv::new(test_db_url(opts), stockfish_path)
     })
 }
 

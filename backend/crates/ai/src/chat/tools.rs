@@ -1,7 +1,7 @@
 //! The coach chat's tool definitions (sorted by name).
 //!
 //! The schemas are written out by hand in the JSON Schema subset the sidecar converts to zod
-//! (ADR-R3-6, `services/ai-sidecar/src/schema-to-zod.ts`): a top-level object with
+//! (ADR 0062, `services/ai-sidecar/src/schema-to-zod.ts`): a top-level object with
 //! `additionalProperties: false`; string (optionally `enum`), integer (with `minimum`/`maximum`)
 //! and array-of-string properties. That converter has no `anyOf` or `null`, so an optional
 //! property is left out of `required` (the converter makes it `.optional()`) instead of being

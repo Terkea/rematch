@@ -10,7 +10,7 @@ publish.workspace = true
 workspace = true
 
 # R3: the AI coaching layer (rating-aware report narrative, weekly and change notes, the coach chat).
-# The Anthropic client is our own reqwest client (ADR-R3-1); no Anthropic SDK crate.
+# The Anthropic client is our own reqwest client (ADR 0057); no Anthropic SDK crate.
 # Task 1 pre-declares every dependency; later R3 tasks do not edit this list.
 [dependencies]
 chess-core.workspace = true

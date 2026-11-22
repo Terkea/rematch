@@ -1,4 +1,4 @@
-# The e2e suite on a production build (T27, ADR 0066), layered on docker-compose.e2e.yml:
+# The e2e suite on a production build (T27, ADR 0067), layered on docker-compose.e2e.yml:
 #   COMPOSE_FILE=docker-compose.yml:docker-compose.e2e.yml:docker-compose.e2e-prod.yml \
 #     docker compose -p <name> --profile e2e up -d web fakes
 #   ... --profile e2e --profile qa run --rm --no-deps -e E2E_PRODUCTION=1 qa sh -c \
