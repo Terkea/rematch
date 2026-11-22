@@ -3,11 +3,11 @@
 //! [`next_state`] is the TS rule list, first match wins:
 //! ```text
 //! if prev in {resolved}:            return drift ? relapsed : resolved
-//! if prev in {active,emerging,relapsed,improving} && belowP40Streak >= 10: return resolved
+//! if prev in {active,improving} && belowP40Streak >= 10: return resolved   (TS: also emerging, relapsed)
 //! if prev in {active,emerging,relapsed} && (confirmedDown || (pImp ?? 0) >= 0.85): return improving
 //! if prev == improving && !confirmedUp: return improving
 //! if confidenceAbove >= 0.7:        return active
-//! if confirmedUp || cusumUp:        return emerging
+//! if (confirmedUp && !atOrBelowMedian) || cusumUp: return emerging   (TS: any confirmedUp)
 //! if prev in {active,emerging,relapsed} && !atOrBelowMedian: return prev
 //! return not_an_issue
 //! ```
@@ -62,7 +62,9 @@ pub fn next_state(prev: Option<WeaknessState>, s: &Signals) -> WeaknessState {
     if prev == Some(Resolved) {
         return if s.drift { Relapsed } else { Resolved };
     }
-    if (tracked || prev == Some(Improving)) && s.below_p40_streak >= RESOLVE_STREAK {
+    // R2 deviation from TS (ADR-R2-6 §12): only an established weakness (`active`) or one
+    // already improving can be resolved; `emerging` and `relapsed` must go through them.
+    if matches!(prev, Some(Active | Improving)) && s.below_p40_streak >= RESOLVE_STREAK {
         return Resolved;
     }
     let p_imp = s.p_imp.map_or(0.0, prob);
@@ -75,7 +77,8 @@ pub fn next_state(prev: Option<WeaknessState>, s: &Signals) -> WeaknessState {
     if prob(s.confidence_above) >= ACTIVE_CONFIDENCE {
         return Active;
     }
-    if s.confirmed_up || s.cusum_up {
+    // R2 deviation (ADR-R2-6 §12): a confirmed rise is a weakness only above the band median.
+    if (s.confirmed_up && !s.at_or_below_median) || s.cusum_up {
         return Emerging;
     }
     if tracked

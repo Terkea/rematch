@@ -97,11 +97,17 @@ fn time_control_mix(before: &[CauseGame], after: &[CauseGame]) -> Option<Candida
     // share_after - share_before >= 0.30, exactly: 10 (ca nb - cb na) >= 3 na nb.
     let lhs = 10 * u128::from(a_count) * nb;
     let rhs = 3 * na * nb + 10 * b_count * na;
+    // "Most games" only for a majority (2 a > na); otherwise it is a plurality.
+    let lead = if 2 * u128::from(a_count) > na {
+        "Most games moved"
+    } else {
+        "The most played time control moved"
+    };
     (lhs >= rhs).then(|| {
         hint(
             CauseKind::TimeControlMix,
             format!(
-                "Most games moved from {} to {}",
+                "{lead} from {} to {}",
                 cut(db, QUOTE_CHARS),
                 cut(da, QUOTE_CHARS)
             ),
@@ -131,7 +137,8 @@ fn new_opening(before: &[CauseGame], after: &[CauseGame]) -> Option<CandidateCau
     Some(hint(
         CauseKind::NewOpening,
         format!(
-            "Opening line {} rose from {:.0}% to {:.0}% of games",
+            // One decimal, so a 9.5% share never prints as "10%" next to the "< 10%" rule.
+            "Opening line {} rose from {:.1}% to {:.1}% of games",
             cut(line, QUOTE_CHARS),
             share_b * 100.0,
             share_a * 100.0

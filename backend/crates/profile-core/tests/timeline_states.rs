@@ -115,12 +115,14 @@ fn quiet() -> Signals {
 fn possible(prev: Option<WeaknessState>, next: WeaknessState) -> bool {
     match prev {
         Some(Resolved) => matches!(next, Resolved | Relapsed),
-        Some(Active | Emerging | Relapsed) => {
-            next == prev.unwrap()
-                || matches!(next, Resolved | Improving | Active | Emerging | NotAnIssue)
+        // R2 deviation from TS (ADR-R2-6 §12): `resolved` only from `active` or `improving`.
+        Some(Active) => matches!(next, Resolved | Improving | Active | Emerging | NotAnIssue),
+        Some(Emerging | Relapsed) => {
+            next == prev.unwrap() || matches!(next, Improving | Active | Emerging | NotAnIssue)
         }
-        // Leaving `improving` needs a confirmed rise, which is at least `emerging`.
-        Some(Improving) => matches!(next, Resolved | Improving | Active | Emerging),
+        // Leaving `improving` needs a confirmed rise: `emerging` or more above the median,
+        // `not_an_issue` at or below it (R2 deviation).
+        Some(Improving) => matches!(next, Resolved | Improving | Active | Emerging | NotAnIssue),
         Some(NotAnIssue) | None => matches!(next, Active | Emerging | NotAnIssue),
     }
 }
@@ -418,6 +420,11 @@ fn next_state_every_transition() {
         confirmed_up: true,
         ..quiet()
     };
+    let up_above = Signals {
+        confirmed_up: true,
+        at_or_below_median: false,
+        ..quiet()
+    };
     let conf = Signals {
         confidence_above: 0.7,
         ..quiet()
@@ -488,7 +495,7 @@ fn next_state_every_transition() {
             "streak10",
             streak,
             [
-                NotAnIssue, NotAnIssue, Resolved, Resolved, Resolved, Resolved, Resolved,
+                NotAnIssue, NotAnIssue, NotAnIssue, Resolved, Resolved, Resolved, NotAnIssue,
             ],
         ),
         (
@@ -520,8 +527,16 @@ fn next_state_every_transition() {
             ],
         ),
         (
+            // R2 deviation: a confirmed rise at or below the median is no weakness.
             "up",
             up,
+            [
+                NotAnIssue, NotAnIssue, NotAnIssue, NotAnIssue, NotAnIssue, Resolved, NotAnIssue,
+            ],
+        ),
+        (
+            "up_above",
+            up_above,
             [
                 Emerging, Emerging, Emerging, Emerging, Emerging, Resolved, Emerging,
             ],
@@ -556,7 +571,7 @@ fn next_state_every_transition() {
             "streak_and_down",
             streak_and_down,
             [
-                NotAnIssue, NotAnIssue, Resolved, Resolved, Resolved, Resolved, Resolved,
+                NotAnIssue, NotAnIssue, Improving, Resolved, Resolved, Resolved, Improving,
             ],
         ),
         (
@@ -580,7 +595,7 @@ fn next_state_every_transition() {
             "everything",
             everything,
             [
-                Active, Active, Resolved, Resolved, Resolved, Relapsed, Resolved,
+                Active, Active, Improving, Resolved, Resolved, Relapsed, Improving,
             ],
         ),
     ];
@@ -829,6 +844,312 @@ fn onset_rows_are_dated_inside_their_bounds_and_huge_counts_stay_finite() {
     assert_honest(&o, MIN_EVIDENCE, "huge");
 }
 
+// ---------------------------------------------------------------------------------------------
+// Fix round 1 (review-t14): full state paths, evidence gates, relapse baseline, false alarms
+// ---------------------------------------------------------------------------------------------
+
+fn binom(rng: &mut Rng, n: u32, p: f64) -> u32 {
+    (0..n).filter(|_| rng.next_f64() < p).count() as u32
+}
+
+fn ever(path: &[WeaknessState], s: WeaknessState) -> bool {
+    path.contains(&s)
+}
+
+/// C1/C2/I3: once relapsed on the brief's series, the path never flaps back to `resolved` and
+/// never calls the relapsing player `improving` while every game is 3x the median.
+#[test]
+fn relapse_series_path_does_not_flap_or_improve() {
+    let o = eval(&relapse_obs());
+    let path = state_path(&o);
+    let rel = index_of(&path, Relapsed).expect("relapsed appears");
+    let after = &path[rel..];
+    assert!(
+        !after.contains(&Resolved) && !after.contains(&Improving),
+        "path after the relapse: {path:?}"
+    );
+    assert_eq!(
+        path.iter().filter(|&&s| s == Relapsed).count(),
+        1,
+        "relapsed is entered once: {path:?}"
+    );
+    // C2: P_imp is measured against the relapse segment, not the old peak.
+    assert!(o.p_imp.is_none_or(|p| p < 0.85), "p_imp {:?}", o.p_imp);
+    // 60 more bad games: still no improving.
+    let mut longer = relapse_obs();
+    longer.extend(repeat(60, (3, 50)));
+    let path = state_path(&eval(&longer));
+    let rel = index_of(&path, Relapsed).expect("relapsed appears");
+    assert!(
+        !path[rel..].contains(&Improving) && !path[rel..].contains(&Resolved),
+        "{path:?}"
+    );
+}
+
+/// C1/C3/I3: a strong player's 5-game burst never makes a weakness emerge or resolve.
+#[test]
+fn a_short_burst_never_emerges_or_resolves() {
+    let mut obs = repeat(30, (0, 50));
+    obs.extend(repeat(5, (3, 50)));
+    obs.extend(repeat(100, (0, 50)));
+    let o = eval(&obs);
+    assert_eq!(state_path(&o), vec![NotAnIssue], "{:?}", o.rows);
+    assert_honest(&o, MIN_EVIDENCE, "burst");
+}
+
+/// C3: CUSUM below min evidence raises no state.
+#[test]
+fn a_low_opportunity_burst_is_not_an_issue() {
+    let mut obs = repeat(10, (0, 2));
+    obs.extend(repeat(6, (2, 2)));
+    let o = eval(&obs);
+    assert_eq!(state_path(&o), vec![NotAnIssue], "{:?}", o.rows);
+}
+
+/// C3/I3: stationary data at half the band median rarely emerges (< 2% of 200 seeded series).
+#[test]
+fn stationary_half_median_has_under_2_percent_false_emerging() {
+    let mut rng = Rng::new(7);
+    let (trials, mut emerging, mut non_neutral) = (200, 0, 0);
+    for _ in 0..trials {
+        let obs: Vec<(u32, u32)> = (0..300).map(|_| (binom(&mut rng, 50, 0.01), 50)).collect();
+        let path = state_path(&eval(&obs));
+        emerging += usize::from(ever(&path, Emerging));
+        non_neutral += usize::from(path.iter().any(|&s| s != NotAnIssue));
+    }
+    assert!(
+        emerging * 50 < trials,
+        "false emerging in {emerging}/{trials} series"
+    );
+    assert!(
+        non_neutral * 50 < trials,
+        "false non-neutral state in {non_neutral}/{trials} series"
+    );
+}
+
+/// I1: a resolved player who stays at a stable low rate never relapses (100 seeded players).
+#[test]
+fn a_stable_low_rate_after_resolution_never_relapses() {
+    let mut rng = Rng::new(9);
+    let (trials, mut resolved, mut relapsed) = (100, 0, 0);
+    for _ in 0..trials {
+        let mut obs: Vec<(u32, u32)> = (0..60).map(|_| (binom(&mut rng, 50, 0.02), 50)).collect();
+        obs.extend((0..60).map(|_| (binom(&mut rng, 50, 0.06), 50)));
+        obs.extend((0..380).map(|_| (binom(&mut rng, 50, 0.01), 50)));
+        let o = eval(&obs);
+        resolved += usize::from(ever(&state_path(&o), Resolved));
+        // Only a relapse entered in the stationary phase (from game 121) is false; noise can
+        // resolve a weakness during the first 60 games, and the real rise at game 61 is then
+        // a true relapse.
+        relapsed += usize::from(o.rows.iter().any(|r| {
+            r.kind == RowKind::Transition && r.to == Relapsed && game_index(r.at_game_id) >= 120
+        }));
+    }
+    assert!(
+        resolved >= trials / 2,
+        "only {resolved}/{trials} resolved: vacuous"
+    );
+    assert_eq!(relapsed, 0, "false relapses in {relapsed}/{trials} players");
+}
+
+/// I2 (M5): a change BOCPD is certain of, but under 15% relative, is never confirmed.
+#[test]
+fn a_certain_change_under_15_percent_is_not_confirmed() {
+    let mut obs = repeat(60, (2_000, 100_000));
+    obs.extend(repeat(60, (2_200, 100_000)));
+    let o = eval(&obs);
+    assert!(
+        o.rows
+            .iter()
+            .all(|r| r.kind != RowKind::Onset && r.p_change.is_none()),
+        "{:?}",
+        o.rows
+    );
+    // Control: 0.020 -> 0.024 (20%) is confirmed.
+    let mut obs = repeat(60, (2_000, 100_000));
+    obs.extend(repeat(60, (2_400, 100_000)));
+    let o = eval(&obs);
+    assert!(
+        o.rows.iter().any(|r| r.kind == RowKind::Onset),
+        "{:?}",
+        o.rows
+    );
+}
+
+/// I2 (M6): CUSUM runs only after 10 segment games, so a burst from game 5 raises `emerging`
+/// at game 10, not before.
+#[test]
+fn cusum_waits_for_ten_segment_games() {
+    let mut obs = repeat(4, (1, 50));
+    obs.extend(repeat(20, (5, 50)));
+    // A very strong prior keeps confidence below 0.7 while the rate is above the median.
+    let o = evaluate_series(&points(&obs), Some(&ts_ref()), 1.0e6, 0.0);
+    let first = o
+        .rows
+        .iter()
+        .find(|r| r.to != NotAnIssue)
+        .expect("a state is raised");
+    assert_eq!(first.to, Emerging, "{:?}", o.rows);
+    assert_eq!(game_index(first.at_game_id), 9, "{:?}", o.rows);
+}
+
+/// I2 (H4): resolving needs min evidence since the state began: 15 games below P40 with only
+/// 300 opportunities after entering `improving` do not resolve.
+#[test]
+fn resolve_needs_min_evidence_since_the_state_began() {
+    let full = improve_obs();
+    let o = eval(&full);
+    let imp = o
+        .rows
+        .iter()
+        .find(|r| r.kind == RowKind::Transition && r.to == Improving)
+        .expect("improving appears");
+    let g = game_index(imp.at_game_id);
+    let mut obs = full[..=g].to_vec();
+    obs.extend(repeat(15, (0, 20)));
+    let path = state_path(&eval(&obs));
+    assert!(!ever(&path, Resolved), "{path:?}");
+    // Control: 40 such games at 50 opportunities (2 000) do resolve.
+    let mut obs = full[..=g].to_vec();
+    obs.extend(repeat(40, (0, 50)));
+    let path = state_path(&eval(&obs));
+    assert!(ever(&path, Resolved), "{path:?}");
+}
+
+/// C1: `resolved` is never entered straight from `emerging` or `relapsed`.
+#[test]
+fn resolved_only_follows_active_or_improving_in_random_series() {
+    let mut rng = Rng::new(21);
+    for case in 0..60 {
+        let obs = random_points(&mut rng);
+        let o = evaluate_series(&obs, Some(&ts_ref()), N0, 500.0);
+        for r in o.rows.iter().filter(|r| r.kind == RowKind::Transition) {
+            if r.to == Resolved {
+                assert!(
+                    matches!(r.from, Some(Active | Improving)),
+                    "case {case}: {:?} -> resolved",
+                    r.from
+                );
+            }
+        }
+    }
+}
+
+/// C3: a CUSUM `emerging` needs an alarm at the current game. A burst at games 5-10 alarms
+/// before the evidence gate (100 games x 50) is met; by then the statistic has decayed, so an
+/// alarm somewhere in the past raises nothing. (Once entered, rule 7 keeps a tracked state
+/// while the rate is above the median, as in TS; the current alarm governs entry.)
+#[test]
+fn cusum_emerging_needs_an_alarm_at_the_current_game() {
+    let mut obs = repeat(4, (1, 50));
+    obs.extend(repeat(6, (5, 50)));
+    obs.extend(repeat(150, (1, 50)));
+    let o = evaluate_series(&points(&obs), Some(&ts_ref()), 1.0e6, 5000.0);
+    assert_eq!(state_path(&o), vec![NotAnIssue], "{:?}", o.rows);
+    // Control: with the gate met at game 10 the same burst is current and raises `emerging`.
+    let o = evaluate_series(&points(&obs), Some(&ts_ref()), 1.0e6, 500.0);
+    assert!(ever(&state_path(&o), Emerging), "{:?}", o.rows);
+}
+
+/// Points that resolve a weakness at about `low` with 100 000 opportunities per game: 60 games
+/// at the median, 60 at 3x, then 80 at `low`.
+fn resolved_at(low: f64, median: f64) -> Vec<(u32, u32)> {
+    let n = 100_000u32;
+    let at = |p: f64| ((p * f64::from(n)).round() as u32, n);
+    let mut v = repeat(60, at(median));
+    v.extend(repeat(60, at(3.0 * median)));
+    v.extend(repeat(80, at(low)));
+    v
+}
+
+/// I1: the relapse thresholds. With certain counts (100 000 opportunities per game) a rise
+/// above the median that is under 0.5 pp absolute, or under 15% relative, is no relapse;
+/// a rise over both is.
+#[test]
+fn relapse_needs_both_the_absolute_and_the_relative_rise() {
+    let n = 100_000u32;
+    let at = |p: f64| ((p * f64::from(n)).round() as u32, n);
+    let cases = [
+        // (reference, resolved level, new level, relapse expected)
+        (ts_ref(), 0.0165, 0.0205, false), // +0.4 pp (24%): below the absolute minimum
+        (ts_ref(), 0.0165, 0.0230, true),  // +0.65 pp (39%)
+        (
+            SeriesRef {
+                median: 0.30,
+                p40: 0.27,
+                pooled_rate: 0.30,
+            },
+            0.265,
+            0.302,
+            false,
+        ), // +3.7 pp but 14%: below the relative threshold
+        (
+            SeriesRef {
+                median: 0.30,
+                p40: 0.27,
+                pooled_rate: 0.30,
+            },
+            0.265,
+            0.32,
+            true,
+        ), // +5.5 pp (21%)
+    ];
+    for (reference, low, high, want) in cases {
+        let base = resolved_at(low, reference.median);
+        let o = evaluate_series(&points(&base), Some(&reference), N0, MIN_EVIDENCE);
+        assert_eq!(
+            o.state,
+            Resolved,
+            "precondition at {low}: {:?}",
+            state_path(&o)
+        );
+        let mut obs = base;
+        obs.extend(repeat(40, at(high)));
+        let o = evaluate_series(&points(&obs), Some(&reference), N0, MIN_EVIDENCE);
+        assert_eq!(
+            ever(&state_path(&o), Relapsed),
+            want,
+            "{low} -> {high}: {:?}",
+            state_path(&o)
+        );
+    }
+}
+
+/// I1: drift needs a current EWMA alarm. With no evidence gate, one bad game right after
+/// resolution passes the window tests but not the EWMA limit.
+#[test]
+fn one_bad_game_after_resolution_is_no_relapse() {
+    let eval0 = |obs: &[(u32, u32)]| evaluate_series(&points(obs), Some(&ts_ref()), N0, 0.0);
+    let base = improve_obs();
+    assert_eq!(
+        eval0(&base).state,
+        Resolved,
+        "{:?}",
+        state_path(&eval0(&base))
+    );
+    let mut obs = base;
+    obs.push((3, 50));
+    let o = eval0(&obs);
+    assert_eq!(o.state, Resolved, "{:?}", state_path(&o));
+}
+
+/// C2: a relapse to a level below the old peak (0.03 after a 0.06 peak) stays `relapsed`. It
+/// is neither `improving` against the old peak nor diluted back to `not_an_issue` by the
+/// resolved games.
+#[test]
+fn a_relapse_below_the_old_peak_stays_relapsed() {
+    let mut obs = improve_obs();
+    obs.extend(alternating(60, (2, 50), (1, 50)));
+    let o = eval(&obs);
+    let path = state_path(&o);
+    let rel = index_of(&path, Relapsed).expect("relapsed appears");
+    assert!(
+        path[rel..].iter().all(|s| matches!(s, Relapsed | Active)),
+        "{path:?}"
+    );
+    assert!(o.p_imp.is_none_or(|p| p < 0.85), "p_imp {:?}", o.p_imp);
+}
+
 /// Honesty: an onset window is never zero-width. Even when one run holds almost all the mass
 /// (a sharp jump), the window spans at least two distinct games.
 #[test]
@@ -1022,6 +1343,39 @@ fn ts_cause_time_control_mix() {
     assert_eq!(c[0].after, CauseValue::Text("180+0".to_owned()));
     assert_eq!(c[0].description, "Most games moved from 300+0 to 180+0");
     assert_valid_causes(&c);
+}
+
+/// M-e: "Most games" only when the new time control holds a majority; a plurality is "the
+/// most played time control".
+#[test]
+fn cause_time_control_mix_says_most_only_for_a_majority() {
+    let before = games(20, "300+0", Some(1500), None, 0);
+    let mut after = games(7, "180+0", Some(1500), None, 20);
+    after.extend(games(6, "300+0", Some(1500), None, 27));
+    after.extend(games(4, "600+0", Some(1500), None, 33));
+    after.extend(games(3, "900+0", Some(1500), None, 37));
+    let c = cause_hints(&before, &after);
+    assert_eq!(kinds(&c), vec![CauseKind::TimeControlMix], "{c:?}");
+    assert_eq!(
+        c[0].description,
+        "The most played time control moved from 300+0 to 180+0"
+    );
+}
+
+/// M-f: shares print with one decimal, so a 9.5% share never reads as "10%" next to a
+/// "< 10%" rule.
+#[test]
+fn cause_new_opening_prints_one_decimal() {
+    let mut before = games(19, "300+0", Some(1500), Some("w:other"), 0);
+    before.extend(games(2, "300+0", Some(1500), Some("w:x"), 19));
+    let mut after = games(6, "300+0", Some(1500), Some("w:other"), 21);
+    after.extend(games(4, "300+0", Some(1500), Some("w:x"), 27));
+    let c = cause_hints(&before, &after);
+    assert_eq!(kinds(&c), vec![CauseKind::NewOpening], "{c:?}");
+    assert_eq!(
+        c[0].description,
+        "Opening line w:x rose from 9.5% to 40.0% of games"
+    );
 }
 
 #[test]
