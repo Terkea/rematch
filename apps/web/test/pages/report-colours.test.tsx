@@ -80,9 +80,9 @@ describe("White vs Black text", () => {
     expect(colourCompareText("score", metric(0.62, 0.55, 0.68), metric(0.4, 0.33, 0.47))).toBe(
       "You score more as White.",
     );
-    expect(
-      colourCompareText("blunders", metric(1.4, 1.2, 1.6), metric(0.8, 0.6, 1.0), false),
-    ).toBe("You blunder less as Black.");
+    expect(colourCompareText("blunders", metric(1.4, 1.2, 1.6), metric(0.8, 0.6, 1.0), false)).toBe(
+      "You blunder less as Black.",
+    );
     expect(colourCompareText("score", metric(0.52, 0.44, 0.6), metric(0.5, 0.41, 0.58))).toBe(
       "No clear difference between your White and Black games yet.",
     );
@@ -93,10 +93,11 @@ describe("White vs Black text", () => {
 
   it("names a colour's own peers with the band, never players at your level", () => {
     const [w4, w1] = fixture.byColor.white.weaknesses;
-    expect(colourWeaknessPeerText(w4!, "white", fixture.benchmark)).toBe(
+    if (!w4 || !w1) throw new Error("the fixture has two White weakness rows");
+    expect(colourWeaknessPeerText(w4, "white", fixture.benchmark)).toBe(
       "Players you've faced who had White, rated about 675–975: 9.6% (14 players)",
     );
-    expect(colourWeaknessPeerText(w1!, "white", fixture.benchmark)).toBe(
+    expect(colourWeaknessPeerText(w1, "white", fixture.benchmark)).toBe(
       "Not compared: no players you've faced with White to compare with yet",
     );
   });

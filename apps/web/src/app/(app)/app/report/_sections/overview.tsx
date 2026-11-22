@@ -59,8 +59,8 @@ export function Overview({
           <ul className="m-0 flex list-none flex-col gap-1 p-0 text-sm text-ink-soft">
             {computed.strengths.map((s) => (
               <li key={`${s.area}:${s.label}`}>
-                <span className="text-ink">{strengthLabel(s)}</span>{" "}
-                ({areaLabels[s.area] ?? s.area})
+                <span className="text-ink">{strengthLabel(s)}</span> ({areaLabels[s.area] ?? s.area}
+                )
               </li>
             ))}
           </ul>

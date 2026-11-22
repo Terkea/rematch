@@ -16,7 +16,8 @@ export type ColourMetricKind = "score" | "accuracy" | "blunders";
 export const COLOUR_NAME: Record<Colour, string> = { white: "White", black: "Black" };
 
 const count = new Intl.NumberFormat("en-GB");
-const fin = (n: number | null | undefined): n is number => typeof n === "number" && Number.isFinite(n);
+const fin = (n: number | null | undefined): n is number =>
+  typeof n === "number" && Number.isFinite(n);
 const int = (n: number) => count.format(Math.max(0, Math.trunc(n)));
 const plural = (n: number, one: string, many: string) => `${int(n)} ${n === 1 ? one : many}`;
 

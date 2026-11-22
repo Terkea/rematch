@@ -1,10 +1,6 @@
 "use client";
 
-import type {
-  ByColor,
-  ColorSummary,
-  InputBenchmark,
-} from "../../../../../server/coaching/types";
+import type { ByColor, ColorSummary, InputBenchmark } from "../../../../../server/coaching/types";
 import { BENCHMARK_BIAS_TEXT } from "../../../../../server/profile/benchmark-text";
 import { seriesGlossary } from "../../../../../server/profile/glossary";
 import {
@@ -19,12 +15,15 @@ import {
 } from "./colours-text";
 import { ReportSection } from "./shell";
 
-const ROWS: { kind: ColourMetricKind; label: string; key: "score" | "accuracy" | "blundersPerGame" }[] =
-  [
-    { kind: "score", label: "Score", key: "score" },
-    { kind: "accuracy", label: "Accuracy", key: "accuracy" },
-    { kind: "blunders", label: "Blunders per game", key: "blundersPerGame" },
-  ];
+const ROWS: {
+  kind: ColourMetricKind;
+  label: string;
+  key: "score" | "accuracy" | "blundersPerGame";
+}[] = [
+  { kind: "score", label: "Score", key: "score" },
+  { kind: "accuracy", label: "Accuracy", key: "accuracy" },
+  { kind: "blunders", label: "Blunders per game", key: "blundersPerGame" },
+];
 
 function Side({
   colour,
@@ -73,7 +72,9 @@ function Side({
               <li key={w.seriesKey} className="flex flex-col gap-1 text-sm">
                 <span className="text-ink">{seriesGlossary(w.seriesKey)?.name ?? w.label}</span>
                 <span className="text-ink-soft">{colourWeaknessRateText(w)}</span>
-                <span className="text-ink-faint">{colourWeaknessPeerText(w, colour, benchmark)}</span>
+                <span className="text-ink-faint">
+                  {colourWeaknessPeerText(w, colour, benchmark)}
+                </span>
               </li>
             ))}
           </ul>

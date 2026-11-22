@@ -3,12 +3,12 @@ import { describe, expect, it } from "vitest";
 import { AREAS, KPIS, WEAKNESSES } from "../../src/server/profile/catalogue";
 import {
   AREA_GLOSSARY,
+  coachGlossaryPrompt,
   DETECTOR_CONSTANTS,
   GLOSSARY_STATES,
   GLOSSARY_TERMS,
   GLOSSARY_VERDICTS,
   type GlossaryEntry,
-  coachGlossaryPrompt,
   glossaryEntry,
   glossaryForCoach,
   glossaryForPrompt,
@@ -153,7 +153,14 @@ describe("the coach glossary prompt", () => {
 
   it("keeps every entry's plain words and nothing else", () => {
     const parsed = JSON.parse(glossaryForCoach()) as Record<string, Record<string, object>>;
-    expect(Object.keys(parsed)).toEqual(["areas", "kpis", "states", "terms", "verdicts", "weaknesses"]);
+    expect(Object.keys(parsed)).toEqual([
+      "areas",
+      "kpis",
+      "states",
+      "terms",
+      "verdicts",
+      "weaknesses",
+    ]);
     expect(Object.keys(parsed.weaknesses ?? {})).toHaveLength(WEAKNESSES.length);
     expect(Object.keys(parsed.kpis ?? {})).toHaveLength(KPIS.length);
     expect(parsed.weaknesses?.W5).toEqual({
