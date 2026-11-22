@@ -102,6 +102,10 @@ export const coachConversationsRelations = relations(coachConversations, ({ one,
     fields: [coachConversations.accountId],
     references: [linkedAccounts.id],
   }),
+  user: one(user, {
+    fields: [coachConversations.userId],
+    references: [user.id],
+  }),
 }));
 
 export const coachMessagesRelations = relations(coachMessages, ({ one, many }) => ({
@@ -299,6 +303,7 @@ export const userRelations = relations(user, ({ many }) => ({
   accountLinks: many(accountLinks),
   accounts: many(account),
   chesscomRequestBudgets: many(chesscomRequestBudgets),
+  coachConversations: many(coachConversations),
   sessions: many(session),
 }));
 

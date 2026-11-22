@@ -468,6 +468,11 @@ export const coachConversations = pgTable(
       foreignColumns: [linkedAccounts.id],
       name: "coach_conversations_account_id_fkey",
     }).onDelete("cascade"),
+    foreignKey({
+      columns: [table.userId],
+      foreignColumns: [user.id],
+      name: "coach_conversations_user_id_fk",
+    }).onDelete("cascade"),
     check("coach_conversations_next_call_index_check", sql`next_call_index >= 0`),
   ],
 );
