@@ -26,7 +26,10 @@ const nextConfig: NextConfig = {
     if (dev) {
       config.resolve.alias = {
         ...config.resolve.alias,
-        "@ci/db": source("../../packages/db/src/index.ts"),
+        // Exact matches (`$`), so `@ci/db/generated` is not resolved inside `index.ts`.
+        "@ci/db$": source("../../packages/db/src/index.ts"),
+        "@ci/db/generated$": source("../../packages/db/src/generated/schema.ts"),
+        "@ci/db/generated/relations$": source("../../packages/db/src/generated/relations.ts"),
         "@ci/chess-core": source("../../packages/chess-core/src/index.ts"),
       };
     }
