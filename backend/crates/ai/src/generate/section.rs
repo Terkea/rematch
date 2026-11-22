@@ -179,6 +179,18 @@ fn check(r: &StructuredResult, args: &SectionArgs<'_>) -> Checked {
     }
 }
 
+/// [`check`] in the shape of the generic flow (Task 16's batch triage).
+pub(crate) fn check_section(
+    r: &StructuredResult,
+    args: &SectionArgs<'_>,
+) -> super::attempt::Checked<ValidatedSection> {
+    match check(r, args) {
+        Checked::Clean(c) => super::attempt::Checked::Clean(c),
+        Checked::Partial(c, d) => super::attempt::Checked::Partial(c, d),
+        Checked::Unusable(e) => super::attempt::Checked::Unusable(e),
+    }
+}
+
 pub(crate) async fn call(
     ai: &dyn AiClient,
     before_call: BeforeCall<'_>,

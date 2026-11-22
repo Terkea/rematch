@@ -210,6 +210,13 @@ Marketing is banned for every user, not only minors, because the report cannot k
 - **No model text on the web.** `WeeklyOutcome.dropped` and `ChangeOutcome.dropped` are the audit copies, whose details quote rejected text. The web gets only `web_dropped()`, which is `PayloadDroppedItem` with codes and paths, as in the report payload.
 - **Model ids.** The compile-time per-use table in `client::model` (`Models::REPORT`, `CHAT`, `EXPLAIN`, `WEEKLY`; ADR-AI-6) is the model configuration for every generator, as ruled in the T15 review. No generator hard-codes an id. Prices, not ids, live in `config/pricing.json`.
 
+## Batch results (Task 16)
+
+- **Items.** A batch item is exactly its generator's synchronous request (`MessagesRequest::structured` of `build_section_request`, `build_weekly_request` or `build_change_request`) under the custom id `<schema.id>__v<schema.version>__<item id, simple hex>` (52 characters for `report-section`). `RegistryResolver` maps it back to the schema by exact id and version, so another version resolves to `no_schema`; `batch_item_id` gives the item back.
+- **Chunking.** At most 10,000 requests and 200 MiB of create body per batch (the API allows 256 MB), measured exactly by serialising each entry into a byte counter. Greedy and in order; an item too large on its own goes alone, never dropped.
+- **Same validation as the sync path.** Succeeded and valid: ready, no sync call. Succeeded but invalid, or `refusal` / `truncated`: exactly one synchronous repair through the generator's standalone repair entry (`repair_section`, `repair_weekly_review`, `repair_weakness_change`; the last two are new, sharing `attempt::repair_once` with the interactive flow). Any other parse error, a custom id of another schema, or `errored`, `canceled` or `expired`: `RetrySync`, and the job runs the generator synchronously.
+- **Metering.** A result that carries usage was billed, so its record (`batch: true`, the response's model) is always returned: first in the outcome's `calls`, in `RetrySync { calls }`, or in the `SectionError` of a failed repair. The processors return `SectionError`, not `AiError` (the T14 I1 ruling). Errored, canceled and expired results have no usage and are not billed by the API, so they carry no record.
+
 ## Consequences
 
 - The model cannot promote a weakness that was not selected, override a verdict or invent a drill. Changing the catalogue is a code change with tests.

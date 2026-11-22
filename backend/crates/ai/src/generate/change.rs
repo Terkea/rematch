@@ -9,14 +9,14 @@
 
 use serde_json::{Value, json};
 
-use super::attempt::{Attempted, Checked, attempt_and_repair, parsed};
+use super::attempt::{Attempted, Checked, attempt_and_repair, parsed, repair_once};
 use super::context::canonical_json_escaped;
 use super::payload::PayloadDroppedItem;
 use super::request::rules_block;
 use super::section::{BeforeCall, CallRecord, SectionError, SectionStatus};
 use crate::client::model::{Effort, Models};
 use crate::client::port::{
-    AiClient, Message, Role, StructuredRequest, StructuredResult, TextBlock,
+    AiClient, AiError, Message, Role, StructuredRequest, StructuredResult, TextBlock,
 };
 use crate::output::change::WeaknessChangeInput;
 use crate::output::codes::{Citation, DroppedItem, ValidationCode, ValidationError};
@@ -141,13 +141,13 @@ impl ChangeOutcome {
     }
 }
 
-struct Note {
+pub(crate) struct Note {
     text: String,
     citations: Vec<Citation>,
     segments: Vec<Segment>,
 }
 
-fn check(r: &StructuredResult, rules: &TextRules, ev: &Evidence) -> Checked<Note> {
+pub(crate) fn check(r: &StructuredResult, rules: &TextRules, ev: &Evidence) -> Checked<Note> {
     let value = match parsed(r) {
         Ok(v) => v,
         Err(errors) => return Checked::Unusable(errors),
@@ -177,26 +177,15 @@ fn check(r: &StructuredResult, rules: &TextRules, ev: &Evidence) -> Checked<Note
     }
 }
 
-/// Writes the note for one change: attempt, validate, repair once, else `Dropped` with no text.
-/// Client errors come back as a [`SectionError`] with the records of the calls already paid for.
-pub async fn explain_weakness_change(
-    ai: &dyn AiClient,
-    before_call: BeforeCall<'_>,
-    input: &WeaknessChangeInput,
-) -> Result<ChangeOutcome, SectionError> {
-    let ev = build_change_evidence(input);
-    let rules = change_text_rules(input);
-    let req = build_change_request(input);
+/// The outcome of an attempted change note.
+pub(crate) fn change_outcome(a: Attempted<Note>) -> ChangeOutcome {
     let Attempted {
         status,
         content,
         dropped,
         calls,
-    } = attempt_and_repair(ai, before_call, &req, CHANGE_SECTION, |r| {
-        check(r, &rules, &ev)
-    })
-    .await?;
-    Ok(match content {
+    } = a;
+    match content {
         Some(n) => ChangeOutcome {
             status,
             text: Some(n.text),
@@ -213,5 +202,43 @@ pub async fn explain_weakness_change(
             dropped,
             calls,
         },
+    }
+}
+
+/// Writes the note for one change: attempt, validate, repair once, else `Dropped` with no text.
+/// Client errors come back as a [`SectionError`] with the records of the calls already paid for.
+pub async fn explain_weakness_change(
+    ai: &dyn AiClient,
+    before_call: BeforeCall<'_>,
+    input: &WeaknessChangeInput,
+) -> Result<ChangeOutcome, SectionError> {
+    let ev = build_change_evidence(input);
+    let rules = change_text_rules(input);
+    let req = build_change_request(input);
+    let a = attempt_and_repair(ai, before_call, &req, CHANGE_SECTION, |r| {
+        check(r, &rules, &ev)
     })
+    .await?;
+    Ok(change_outcome(a))
+}
+
+/// The one repair of a change note whose first result (`first`, synchronous or from a batch)
+/// failed with `errors`: the standalone entry of the batch path (Task 16), with the same rules
+/// as [`explain_weakness_change`]'s repair. `calls` holds only the repair call: the caller
+/// records `first`. A client error is returned as is; the caller still meters `first`.
+pub async fn repair_weakness_change(
+    ai: &dyn AiClient,
+    before_call: BeforeCall<'_>,
+    input: &WeaknessChangeInput,
+    first: &StructuredResult,
+    errors: Vec<ValidationError>,
+) -> Result<ChangeOutcome, AiError> {
+    let ev = build_change_evidence(input);
+    let rules = change_text_rules(input);
+    let req = build_change_request(input);
+    let a = repair_once(ai, before_call, &req, CHANGE_SECTION, first, errors, |r| {
+        check(r, &rules, &ev)
+    })
+    .await?;
+    Ok(change_outcome(a))
 }
