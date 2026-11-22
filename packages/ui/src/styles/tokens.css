@@ -157,6 +157,18 @@
   --surface-hover: var(--color-well);
 }
 
+/* Night study: well is near-black, so one step down inside a sheet barely shows. Hover there steps
+ * up instead, toward ink (Task 9 critic). A day scope inside a night page restates the day step. */
+[data-theme="dark"] .bg-sheet,
+[data-theme="dark"] [data-surface="sheet"] {
+  --surface-hover: color-mix(in srgb, var(--color-sheet), var(--color-ink) 14%);
+}
+
+[data-theme="light"] .bg-sheet,
+[data-theme="light"] [data-surface="sheet"] {
+  --surface-hover: var(--color-well);
+}
+
 /* Whole pixels per square where CSS round() exists. Before the breakpoints, which override it. */
 @supports (width: round(down, 10px, 8px)) {
   :root {

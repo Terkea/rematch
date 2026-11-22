@@ -21,7 +21,7 @@ export function DialogOverlay({ className, ...props }: DialogPrimitive.Backdrop.
     <DialogPrimitive.Backdrop
       data-slot="dialog-overlay"
       className={cn(
-        "fixed inset-0 z-50 bg-paper/80",
+        "fixed inset-0 z-50 bg-paper/80 dark:bg-well/90",
         "transition-opacity duration-(--dur-base) ease-out",
         "data-ending-style:opacity-0 data-starting-style:opacity-0",
         typeof className === "string" ? className : undefined,
@@ -44,7 +44,7 @@ export function DialogContent({
         data-slot="dialog-content"
         className={cn(
           "fixed top-1/2 left-1/2 z-50 flex w-[calc(100%-2*var(--space-gutter))] max-w-md -translate-x-1/2 -translate-y-1/2 flex-col gap-4",
-          "rounded-sheet bg-sheet p-(--space-panel-pad) text-ink shadow-lift outline-none",
+          "rounded-sheet border border-transparent bg-sheet p-(--space-panel-pad) text-ink shadow-lift outline-none dark:border-rule-strong",
           "origin-center transition-[opacity,scale,translate] duration-(--dur-base) ease-out",
           "data-starting-style:translate-y-[calc(-50%+var(--enter-dialog-y))] data-starting-style:scale-(--enter-dialog-scale) data-starting-style:opacity-0",
           "data-ending-style:scale-(--enter-dialog-scale) data-ending-style:opacity-0 data-ending-style:duration-(--dur-quick)",

@@ -16,8 +16,13 @@ export function Switch({ className, ...props }: SwitchPrimitive.Root.Props) {
         "group/switch relative inline-flex h-6 w-10 shrink-0 cursor-pointer items-center rounded-pill border p-0.5",
         "border-rule-strong bg-well transition-colors duration-(--dur-quick) ease-out",
         "data-checked:border-ink data-checked:bg-ink",
+        // Hover: off steps its edge to ink-soft, on steps its track to ink-soft, as the primary button does.
+        "not-data-disabled:hover:border-ink-soft",
+        "not-data-disabled:data-checked:hover:border-ink-soft not-data-disabled:data-checked:hover:bg-ink-soft",
         "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink",
         "data-disabled:cursor-not-allowed data-disabled:border-rule",
+        // Disabled stays disabled when on: no ink fill (DESIGN.md "Interaction states").
+        "data-disabled:data-checked:border-rule data-disabled:data-checked:bg-well",
         // A 44px hit area around the 40 × 24 control.
         "after:absolute after:-inset-x-1 after:-inset-y-2.5",
         typeof className === "string" ? className : undefined,
@@ -30,7 +35,7 @@ export function Switch({ className, ...props }: SwitchPrimitive.Root.Props) {
           "pointer-events-none block size-4 rounded-pill bg-ink-soft",
           "transition-[translate,background-color] duration-(--dur-quick) ease-out motion-reduce:transition-none",
           "data-checked:translate-x-4 data-checked:bg-on-ink",
-          "group-data-disabled/switch:bg-rule",
+          "group-data-disabled/switch:bg-rule-strong",
         )}
       />
     </SwitchPrimitive.Root>
