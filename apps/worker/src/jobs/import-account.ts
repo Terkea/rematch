@@ -173,6 +173,8 @@ export async function handleImportAccount(
   const runPass = async (
     range: { since?: Date; until?: Date },
     passMax: number | undefined = payload.max,
+    /** A pass for new games while a backfill is pending: it must not touch the open frontier. */
+    keepFrontier = false,
   ): Promise<boolean> => {
     const it = fetchGames(range, passMax)[Symbol.asyncIterator]();
     let streamed = 0;
@@ -231,6 +233,24 @@ export async function handleImportAccount(
         await checkpoint();
       }
     }
+    if (keepFrontier) {
+      const limited = passMax !== undefined && streamed >= passMax;
+      if (!limited) {
+        // Everything above the backfill frontier is imported: move the watermark up.
+        const [top] = await db
+          .select({ newest: max(games.playedAt) })
+          .from(games)
+          .where(eq(games.accountId, account.id));
+        const seen = cursor.newestSeenAt ? new Date(cursor.newestSeenAt) : null;
+        const newest = [top?.newest, seen]
+          .filter((d): d is Date => d instanceof Date)
+          .sort((a, b) => b.getTime() - a.getTime())[0];
+        cursor = { ...cursor, newestSeenAt: newest ? newest.toISOString() : null };
+      }
+      // Cut off by max: the watermark stays, so the next run fetches the rest of the new games.
+      await checkpoint();
+      return limited;
+    }
     // A pass cut off by max has not reached its lower bound: keep the frontier.
     if (passMax !== undefined && streamed >= passMax) {
       const [top] = await db
@@ -266,8 +286,13 @@ export async function handleImportAccount(
 
   try {
     let stopped = false;
-    if (cursor.oldestReached) {
-      const backfill = cursor.backfill === true;
+    const backfill = cursor.oldestReached !== null && cursor.backfill === true;
+    if (backfill && cursor.newestSeenAt) {
+      // Newest first: games played since the last run come before the older backfill, and both
+      // passes share the --max budget.
+      stopped = await runPass({ since: sinceOf(cursor.newestSeenAt) }, payload.max, true);
+    }
+    if (!stopped && cursor.oldestReached) {
       let budget = payload.max;
       if (backfill && payload.max !== undefined) {
         // --max is a total: only the shortfall is fetched, plus the inclusive boundary game.
@@ -288,7 +313,7 @@ export async function handleImportAccount(
         );
       }
     }
-    if (!stopped) {
+    if (!stopped && !backfill) {
       await runPass(cursor.newestSeenAt ? { since: sinceOf(cursor.newestSeenAt) } : {});
     }
   } catch (err) {

@@ -72,4 +72,46 @@ describe.skipIf(!workerTestDbConfigured())("import --max backfill", () => {
     expect(after?.importCursor?.oldestReached).toBeNull();
     expect(after?.importCursor?.newestSeenAt).toBe(list[0]?.playedAt.toISOString());
   });
+
+  // Games played after the first run, newest first, above the whole history.
+  const newGames = (name: string, count: number) =>
+    Array.from({ length: count }, (_, i) =>
+      makeGame({
+        white: { name, rating: 1 },
+        playedAt: new Date(Date.UTC(2026, 2, 2) + (count - i) * 3600_000),
+      }),
+    );
+
+  it("a pending backfill does not starve newly played games", async () => {
+    const acct = await insertAccount(db, "maxnewfirst", "chesscom");
+    const old = history("maxnewfirst", 10);
+    expect((await run(old, acct.id, 3)).imported).toBe(3);
+
+    const list = [...newGames("maxnewfirst", 2), ...old];
+    expect((await run(list, acct.id, 3)).imported).toBe(2);
+
+    const rows = await db.select().from(games).where(eq(games.accountId, acct.id));
+    expect(rows).toHaveLength(5);
+  });
+
+  it("new games that use up the budget leave the backfill frontier for the next run", async () => {
+    const acct = await insertAccount(db, "maxwaits", "chesscom");
+    const old = history("maxwaits", 10);
+    expect((await run(old, acct.id, 3)).imported).toBe(3);
+    const [before] = await db.select().from(linkedAccounts).where(eq(linkedAccounts.id, acct.id));
+
+    const list = [...newGames("maxwaits", 5), ...old];
+    expect((await run(list, acct.id, 3)).imported).toBe(3);
+    const [mid] = await db.select().from(linkedAccounts).where(eq(linkedAccounts.id, acct.id));
+    expect(mid?.importCursor?.oldestReached).toBe(before?.importCursor?.oldestReached);
+    expect(mid?.importCursor?.backfill).toBe(true);
+
+    // 2 new games left, then the 7 older ones.
+    expect((await run(list, acct.id, 20)).imported).toBe(9);
+    const rows = await db.select().from(games).where(eq(games.accountId, acct.id));
+    expect(rows).toHaveLength(15);
+    const [after] = await db.select().from(linkedAccounts).where(eq(linkedAccounts.id, acct.id));
+    expect(after?.importCursor?.oldestReached).toBeNull();
+    expect(after?.importCursor?.backfill).toBeFalsy();
+  });
 });
