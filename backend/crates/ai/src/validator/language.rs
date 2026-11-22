@@ -136,6 +136,15 @@ lazy_re!(
     ENGINE,
     r"\b(engine|stockfish|winning|losing|(check)?mate[sd]?|advantage|equal|top\s+choice|best\s+move|threw\s+away)\b"
 );
+// R3 Task 15: the direction words of a change in an event rate, for change notes.
+lazy_re!(
+    RATE_UP,
+    r"\b(more\s+(often|frequently)|increas\w*|ris(e|es|en|ing)|rose|went\s+up|higher|worse\w*|worsen\w*|regress\w*|(came|comes|coming)\s+back|return(s|ed|ing)?)\b"
+);
+lazy_re!(
+    RATE_DOWN,
+    r"\b(less\s+(often|frequently)|fewer|decreas\w*|dropp(ed|ing)|fell|falling|went\s+down|lower\w*|reduc\w*|improv\w*|better|resolved|fixed|stopped|declin\w*)\b"
+);
 lazy_re!(BLUNDER, r"\b(blunder|mistake)\w*");
 // Fix round 1 (C6): quantities and absolutes in words.
 lazy_re!(
@@ -397,6 +406,33 @@ pub fn engine_claims() -> TextRule {
             }
         }
         out
+    })
+}
+
+/// A change note describes the change R2 detected, in its own direction (R3 Task 15): when the
+/// event rate went down, a word of increase or worsening ("more often", "worse", "came back") is
+/// a claim the timeline does not support; when it went up, a word of decrease or improvement
+/// ("fewer", "improved", "resolved"); with equal rates, both (`free_text_fact`). A forbidding
+/// rule, so it runs on the stripped and the hardened text.
+pub fn change_direction(rate_before: f64, rate_after: f64) -> TextRule {
+    let mut forbidden: Vec<&'static LazyLock<Regex>> = Vec::new();
+    if rate_after <= rate_before {
+        forbidden.push(&RATE_UP);
+    }
+    if rate_after >= rate_before {
+        forbidden.push(&RATE_DOWN);
+    }
+    Box::new(move |stripped: &str, ctx: &TextCtx| {
+        forbidden
+            .iter()
+            .flat_map(|p| find_all(p, stripped, ctx))
+            .map(|m| {
+                (
+                    ValidationCode::FreeTextFact,
+                    format!("{m:?} is not the direction of the detected change"),
+                )
+            })
+            .collect()
     })
 }
 
