@@ -183,3 +183,9 @@ Decisions made when the job, the DB data source and the threads were built:
 11. **Task 18 stand-ins.** T18 is not on this base. `jobs/budget.rs` holds minimal versions of
     `BudgetConfig`, `budget_guard` and `meter`, and `ChatDeps` carries a `PricingTable`. At merge,
     T18's file replaces them and the call sites in `chat/job.rs` are adapted.
+12. **Every paid call is metered** (coordinator ruling, the T14 class of bug). `run_chat_turn`
+    returns `ChatTurnError { error, calls }`, like T14's `SectionError`: `calls` holds the calls
+    already paid for when a later call (a follow-up or repair) fails or the budget hook stops it.
+    The job meters them (`chat`, ref = the message id) on every error path, including
+    `Unavailable` and `Budget`. A call that fails mid-stream reports no usage, so it cannot be
+    metered.

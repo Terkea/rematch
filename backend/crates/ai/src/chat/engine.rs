@@ -823,14 +823,51 @@ fn citations_of(segments: &[Segment]) -> Vec<Citation> {
     out
 }
 
+/// A failed turn: the error, and the records of the calls already paid for before it (the main
+/// turn when a follow-up or repair fails). The caller must meter them (as T14's
+/// `SectionError`).
+#[derive(Clone, Debug, PartialEq, thiserror::Error)]
+#[error("{error}")]
+pub struct ChatTurnError {
+    pub error: AiError,
+    pub calls: Vec<CallRecord>,
+}
+
+impl From<AiError> for ChatTurnError {
+    fn from(error: AiError) -> Self {
+        ChatTurnError {
+            error,
+            calls: Vec::new(),
+        }
+    }
+}
+
 /// Runs one chat turn (see the module docs). `Unavailable`, `Budget` and request errors of any
-/// call propagate; the caller then stores [`super::limits::CHAT_UNAVAILABLE_TEXT`] or similar.
+/// call propagate as a [`ChatTurnError`] carrying the calls already paid for; the caller meters
+/// them and then stores [`super::limits::CHAT_UNAVAILABLE_TEXT`] or similar.
 pub async fn run_chat_turn(
     ai: &dyn AiClient,
     before_call: BeforeCall<'_>,
     deps: &OwnedToolDeps,
     args: ChatTurnArgs<'_>,
     on_chunk: OnChunk<'_>,
+) -> Result<ChatTurnOutcome, ChatTurnError> {
+    let mut calls = Vec::new();
+    match turn(ai, before_call, deps, args, on_chunk, &mut calls).await {
+        Ok(o) => Ok(o),
+        Err(error) => Err(ChatTurnError { error, calls }),
+    }
+}
+
+/// [`run_chat_turn`]'s body. Each paid call is pushed to `calls` as soon as its usage is known,
+/// so an error after it still returns it.
+async fn turn(
+    ai: &dyn AiClient,
+    before_call: BeforeCall<'_>,
+    deps: &OwnedToolDeps,
+    args: ChatTurnArgs<'_>,
+    on_chunk: OnChunk<'_>,
+    calls: &mut Vec<CallRecord>,
 ) -> Result<ChatTurnOutcome, AiError> {
     let ChatTurnArgs {
         evidence,
@@ -876,7 +913,6 @@ pub async fn run_chat_turn(
         rebuild_context: rebuild,
     };
 
-    let mut calls = Vec::new();
     before_call().await?;
     let mut s = Streamer::new(&session, on_chunk, true, 0, closed.clone());
     let main = s
@@ -1024,7 +1060,7 @@ pub async fn run_chat_turn(
         citations,
         dropped,
         replaced: stale,
-        calls,
+        calls: std::mem::take(calls),
         outcome,
         engine_evals,
         session_model_usage,

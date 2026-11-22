@@ -1372,6 +1372,72 @@ async fn session_usage_comes_from_the_main_done_event() {
     assert!(out.calls.iter().all(|c| !c.batch));
 }
 
+fn paid(n: u64) -> AiUsage {
+    AiUsage {
+        input_tokens: n,
+        output_tokens: n,
+        cache_creation_tokens: 0,
+        cache_read_tokens: 0,
+    }
+}
+
+#[tokio::test]
+async fn a_failed_repair_returns_the_paid_main_call() {
+    let world = World::new(FakeEngine::default());
+    let unavailable = AiError::Unavailable {
+        reason: ai::client::port::UnavailableReason::Server,
+        retry_after: None,
+    };
+    let e = unavailable.clone();
+    let f = FakeAiClient::new(FakeScript {
+        turns: vec![
+            script(FakeTurn {
+                usage: paid(10),
+                ..answer(&[BAD])
+            }),
+            Box::new(move |_, _| Err(e.clone())),
+        ],
+        ..FakeScript::default()
+    });
+    let budget = no_budget();
+    let (_, on_chunk) = recorder();
+    let err = run_chat_turn(&f, &budget, &world.deps(), args(messages("?")), &on_chunk)
+        .await
+        .unwrap_err();
+    assert_eq!(err.error, unavailable);
+    assert_eq!(err.calls.len(), 1, "the main turn was paid for");
+    assert_eq!(err.calls[0].usage, paid(10));
+}
+
+#[tokio::test]
+async fn a_budget_stop_before_the_repair_returns_the_paid_main_call() {
+    let world = World::new(FakeEngine::default());
+    let f = fake(vec![
+        FakeTurn {
+            usage: paid(7),
+            ..answer(&[BAD])
+        },
+        answer(&[OK2]),
+    ]);
+    let n = Arc::new(Mutex::new(0u32));
+    let budget = move || -> BoxFuture<'static, Result<(), AiError>> {
+        let n = n.clone();
+        Box::pin(async move {
+            let mut n = n.lock().unwrap();
+            *n += 1;
+            if *n > 1 { Err(AiError::Budget) } else { Ok(()) }
+        })
+    };
+    let (_, on_chunk) = recorder();
+    let err = run_chat_turn(&f, &budget, &world.deps(), args(messages("?")), &on_chunk)
+        .await
+        .unwrap_err();
+    assert_eq!(err.error, AiError::Budget);
+    assert_eq!(err.calls.len(), 1);
+    assert_eq!(err.calls[0].usage, paid(7));
+    assert_eq!(turn_requests(&f).len(), 1);
+}
+
 #[tokio::test]
 async fn the_budget_hook_stops_before_the_call() {
     let world = World::new(FakeEngine::default());
@@ -1382,7 +1448,8 @@ async fn the_budget_hook_stops_before_the_call() {
     let err = run_chat_turn(&f, &budget, &world.deps(), args(messages("?")), &on_chunk)
         .await
         .unwrap_err();
-    assert_eq!(err, AiError::Budget);
+    assert_eq!(err.error, AiError::Budget);
+    assert!(err.calls.is_empty());
     assert!(turn_requests(&f).is_empty());
 }
 

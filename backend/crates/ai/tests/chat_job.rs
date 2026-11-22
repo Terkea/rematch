@@ -513,6 +513,30 @@ async fn unavailable_first_attempt_releases_last_attempt_fails(pool: PgPool) {
     assert_eq!(turn_requests(&f).len(), 2);
 }
 
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_paid_call_before_an_unavailable_repair_is_metered(pool: PgPool) {
+    let a = account(&pool, "alice").await;
+    store_input(&pool, a).await;
+    let (_, msg) = ask(&pool, a, "Why?").await;
+    // The main turn is paid for and held (an invalid paragraph); the repair is unavailable.
+    let main = answer(&[BAD]);
+    let scripts: Vec<TurnScript> = vec![
+        Box::new(move |_, _| Ok(main.clone())),
+        Box::new(|_, _| Err(unavailable())),
+    ];
+    let f = Arc::new(FakeAiClient::new(FakeScript {
+        turns: scripts,
+        ..FakeScript::default()
+    }));
+    let r = run(&pool, &f, Plan::Pro, msg).await;
+    assert!(matches!(r, Err(JobError::Release { .. })), "{r:?}");
+    let usage = usage_rows(&pool, a).await;
+    assert_eq!(usage.len(), 1, "{usage:?}");
+    assert_eq!(usage[0].0, "chat");
+    assert_eq!(usage[0].3.as_deref(), Some(msg.to_string().as_str()));
+    assert!(usage[0].2 > 0);
+}
+
 #[test]
 fn per_call_timeout_fits_the_turn_timeout() {
     // Up to three sequential calls per turn (main, follow-up, repair; T23 review m5).

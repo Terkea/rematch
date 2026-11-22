@@ -884,8 +884,15 @@ impl CoachChatHandler {
             },
             &on_chunk,
         )
-        .await?;
-        Ok(out)
+        .await;
+        match out {
+            Ok(o) => Ok(o),
+            Err(e) => {
+                // Every paid call is metered, also when a later call of the turn failed.
+                self.meter_now(account_id, id, &e.calls).await;
+                Err(TurnError::Ai(e.error))
+            }
+        }
     }
 
     /// Stores the answer; `false` when the conversation (or the message) is gone.
