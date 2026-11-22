@@ -1,7 +1,6 @@
 "use client";
 
 import { AreaScoreKey, AreaScoreList, areaLabels } from "@ci/ui/area-score";
-import { AiDisclosure, type AiDisclosureData } from "@ci/ui/coach";
 import type { BandId, ComputedReport } from "../../../../../server/coaching/types";
 import { ReportSection } from "./shell";
 
@@ -32,7 +31,7 @@ export function basisText(c: ComputedReport): string {
 }
 
 /** Why an area has no score: Mindset by design, otherwise how many more games it needs. */
-function noScoreText(area: string, needMore: number | null): string {
+export function noScoreText(area: string, needMore: number | null): string {
   if (area === "mindset") return "Mindset is coaching advice, not a score";
   if (needMore !== null && Number.isFinite(needMore) && needMore > 0) {
     return `Need ${plural(needMore, "more game", "more games")}`;
@@ -41,26 +40,19 @@ function noScoreText(area: string, needMore: number | null): string {
 }
 
 /**
- * Where you stand: rating and band, the basis line, the seven area scores on one shared ruler (an
- * area without a score says why) and the AI disclosure for the coach's text below.
+ * Where you stand: rating and band, the basis line and the area scores on one shared ruler (an
+ * area without a score, and Mindset always, says why). All of it is computed, never AI text.
  */
-export function Snapshot({
-  computed,
-  disclosure,
-  order,
-}: {
-  computed: ComputedReport;
-  disclosure: AiDisclosureData | null;
-  order: number;
-}) {
+export function Snapshot({ computed, order }: { computed: ComputedReport; order: number }) {
   const { player } = computed;
   const where = `${player.timeClass} on ${PLATFORM[player.platform]}`;
   const rating =
     player.rating !== null && Number.isFinite(player.rating)
       ? `Rated ${n(player.rating)} in ${where}`
       : `Playing ${where}`;
+  // Mindset has no score by design (ruling R8), whatever the payload carries.
   const scored = computed.areaScores.filter(
-    (a) => a.score !== null && Number.isFinite(a.score) && a.sufficient,
+    (a) => a.area !== "mindset" && a.score !== null && Number.isFinite(a.score) && a.sufficient,
   );
   const unscored = computed.areaScores.filter((a) => !scored.includes(a));
   return (
@@ -104,7 +96,6 @@ export function Snapshot({
           is the band median.
         </p>
       </div>
-      {disclosure ? <AiDisclosure disclosure={disclosure} /> : null}
     </ReportSection>
   );
 }

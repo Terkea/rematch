@@ -27,11 +27,17 @@ export function StateBanner({
   scope,
   first,
   nextManualAt,
+  now,
+  notesCount,
 }: {
   state: ReportState;
   scope: ReportScope;
   first: boolean;
   nextManualAt: Date | null;
+  /** The render's clock (the server's), so server and client agree on "at" or "on". */
+  now: Date;
+  /** How many sections of the shown report have coach notes. */
+  notesCount?: number;
 }) {
   const { request, pending } = useRequestReport(scope, first);
   const retry = {
@@ -57,9 +63,9 @@ export function StateBanner({
       const ready = new Set(state.ready);
       const done = SECTION_KEYS.filter((k) => ready.has(k)).length;
       const lines = [
-        first
-          ? "Your first report is being written. It started on its own when your profile was ready."
-          : null,
+        // Not "started on its own": a first run from G3 and one from "Build my report" look the
+        // same on the run row (both `onboarding`, `is_first_report`), so the copy claims neither.
+        first ? "Your first report is being written." : null,
         state.batch ? "Waiting for the batch, usually within an hour." : null,
         state.retryAt ? `Your coach is busy; retrying at ${utcTime(state.retryAt)}.` : null,
       ].filter((l): l is string => l !== null);
@@ -69,7 +75,6 @@ export function StateBanner({
           titleAs="h2"
           title={`Building your report: ${done} of ${SECTION_KEYS.length} sections written`}
           body={lines.length > 0 ? lines.join(" ") : null}
-          progress={{ done, total: SECTION_KEYS.length, unit: "sections" }}
           items={SECTION_KEYS.map((k) => ({ label: SECTION_NAMES[k], done: ready.has(k) }))}
         />
       );
@@ -84,6 +89,15 @@ export function StateBanner({
             kind="computed_only"
             titleAs="h2"
             title="Your coach's notes are off for now. The numbers below are computed from your games."
+          />
+        );
+      }
+      if (state.status === "partial" && notesCount !== undefined) {
+        return (
+          <CoachState
+            kind="computed_only"
+            titleAs="h2"
+            title={`${notesCount} of ${SECTION_KEYS.length} sections have your coach's notes. The others show the computed numbers.`}
           />
         );
       }
@@ -106,7 +120,7 @@ export function StateBanner({
               titleAs="h2"
               title={
                 nextManualAt
-                  ? `You can rebuild this report ${whenText(nextManualAt)}.`
+                  ? `You can rebuild this report ${whenText(nextManualAt, now)}.`
                   : "The last rebuild came too soon after the previous report. You can rebuild it now."
               }
             />

@@ -60,3 +60,7 @@ export function reviewHref(
   const id = Object.hasOwn(gameIds, s.gameId) ? gameIds[s.gameId] : undefined;
   return id ? `/app/games/${encodeURIComponent(id)}?ply=${s.ply}` : null;
 }
+
+/** Rust `change_key`: `"{seriesKey}@{onsetGameId}"`, the key a change note is written under. */
+export const changeKey = (c: { seriesKey: string; onsetGameId: string }) =>
+  `${c.seriesKey}@${c.onsetGameId}`;

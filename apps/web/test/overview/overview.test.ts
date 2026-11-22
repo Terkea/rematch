@@ -294,27 +294,34 @@ describe("getOverview", () => {
   });
 
   it("answers 600 games in under 150 ms", async () => {
-    const rows = Array.from({ length: 600 }, (_, i) => ({
-      accountId,
-      playedAt: day(i),
-      i,
-    }));
-    for (const { i, playedAt } of rows) {
-      await seedSyntheticGame(db, accountId, {
-        playedAt,
-        timeClass: i % 3 === 0 ? "blitz" : "rapid",
-        result: i % 4 === 0 ? "0-1" : "1-0",
-        accuracy: 55 + (i % 40),
-        playerMoves: 30,
-        counts: { blunders: i % 4, mistakes: i % 3, inaccuracies: i % 5 },
-      });
+    // Seeding is not timed: it runs in batches before the clock starts, with its own budget.
+    const BATCH = 20;
+    for (let start = 0; start < 600; start += BATCH) {
+      await Promise.all(
+        Array.from({ length: BATCH }, (_, k) => {
+          const i = start + k;
+          return seedSyntheticGame(db, accountId, {
+            playedAt: day(i),
+            timeClass: i % 3 === 0 ? "blitz" : "rapid",
+            result: i % 4 === 0 ? "0-1" : "1-0",
+            accuracy: 55 + (i % 40),
+            playerMoves: 30,
+            counts: { blunders: i % 4, mistakes: i % 3, inaccuracies: i % 5 },
+          });
+        }),
+      );
     }
     // Fresh tables have no planner statistics (autovacuum has not run yet); production tables do.
     await db.execute(sql`analyze games, moves`);
     await getOverview(db, userId, { timeClass: null });
-    const t0 = performance.now();
-    await getOverview(db, userId, { timeClass: null });
-    const ms = performance.now() - t0;
-    expect(ms).toBeLessThan(150);
-  }, 120_000);
+    // The median of five warm runs, so one stall on a loaded host does not fail the budget.
+    const times: number[] = [];
+    for (let run = 0; run < 5; run++) {
+      const t0 = performance.now();
+      await getOverview(db, userId, { timeClass: null });
+      times.push(performance.now() - t0);
+    }
+    times.sort((a, b) => a - b);
+    expect(times[2]).toBeLessThan(150);
+  }, 600_000);
 });

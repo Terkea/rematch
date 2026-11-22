@@ -1,11 +1,11 @@
 import "@testing-library/jest-dom/vitest";
 import { createRequire } from "node:module";
-import { reportSections, reports } from "@ci/db/generated";
+import { reportSections, reports, weaknessChangeNotes } from "@ci/db/generated";
 import { within } from "@testing-library/react";
 import { eq, sql } from "drizzle-orm";
 import { renderToString } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { reportGameIds } from "../../src/app/(app)/app/report/_sections/links.js";
+import { loadReport, withoutRawText } from "../../src/app/(app)/app/report/load.js";
 import type { ReportPageData } from "../../src/app/(app)/app/report/report-view.js";
 import {
   hasSeen,
@@ -13,10 +13,8 @@ import {
   revealScript,
   SEEN_KEY,
 } from "../../src/app/(app)/app/report/reveal.js";
-import { getReport } from "../../src/server/coaching/index.js";
 import type { ReportRunRow } from "../../src/server/coaching/types.js";
-import { reviewGameIds } from "../../src/server/profile/game-ids.js";
-import { resetCoachingTables, seedReport } from "../helpers/coaching.js";
+import { payloadFixture, resetCoachingTables, seedNote, seedReport } from "../helpers/coaching.js";
 import { resetGameTables, seedAccount, seedSyntheticGame } from "../helpers/games.js";
 import { createTestSession, resetAuthTables, webTestDb } from "../helpers/session.js";
 
@@ -62,50 +60,25 @@ function render(ui: React.ReactElement) {
 
 const run = (over: Partial<ReportRunRow>) => ({ run: over });
 
-async function data(): Promise<ReportPageData> {
-  const view = await getReport(db, userId, { accountId, timeClass: "rapid" }, NOW, {
-    intervalDays: 30,
-  });
-  const scope = {
-    accountId,
-    timeClass: "rapid" as const,
-    platform: "chesscom" as const,
-    username: "synthetic-report",
-    options: [
-      {
-        accountId,
-        timeClass: "rapid" as const,
-        platform: "chesscom" as const,
-        username: "synthetic-report",
-        analysedGames: 214,
-      },
-    ],
-  };
-  const gameIds = Object.fromEntries(
-    await reviewGameIds(db, userId, scope, view.payload ? reportGameIds(view.payload) : []),
-  );
-  return {
-    scope: {
+const SCOPE = () => ({
+  accountId,
+  timeClass: "rapid" as const,
+  platform: "chesscom" as const,
+  username: "synthetic-report",
+  options: [
+    {
       accountId,
-      timeClass: "rapid",
-      platform: "chesscom",
+      timeClass: "rapid" as const,
+      platform: "chesscom" as const,
       username: "synthetic-report",
-      options: [
-        {
-          accountId,
-          timeClass: "rapid",
-          platform: "chesscom",
-          username: "synthetic-report",
-          analysedGames: 214,
-        },
-      ],
+      analysedGames: 214,
     },
-    view,
-    notes: [],
-    trends: {},
-    gameIds,
-    now: NOW,
-  };
+  ],
+});
+
+/** The page's own loader, as `/app/report` calls it. */
+async function data(): Promise<ReportPageData> {
+  return loadReport(db, userId, SCOPE(), NOW, 30);
 }
 
 /** A report whose run finished with the AI switched off: no section rows at all. */
@@ -400,5 +373,115 @@ describe("report reveal and rebuild copy", () => {
     const now = new Date("2026-11-22T12:00:00.000Z");
     expect(whenText(new Date("2026-11-22T14:05:00.000Z"), now)).toBe("at 14:05 UTC");
     expect(whenText(new Date("2026-12-22T08:00:00.000Z"), now)).toBe("on 22 Dec 2026");
+    expect(whenText(new Date("2026-11-23T08:00:00.000Z"), now)).toBe("on 23 Nov at 08:00 UTC");
   });
 });
+
+describe("review fix round 1", () => {
+  /** A ready note for the fixture's new change, written for `timeClass`. */
+  async function note(changeKey: string, timeClass: string) {
+    const { id } = await seedNote(db, accountId, {
+      changeKey,
+      seriesKey: "time.flag_rate",
+      onsetDate: "2026-10-02",
+    });
+    await db
+      .update(weaknessChangeNotes)
+      .set({ input: { timeClass } })
+      .where(eq(weaknessChangeNotes.id, id));
+  }
+
+  it("a change note shows for its own change in this time class", async () => {
+    await previous();
+    await note("time.flag_rate@li-c2a", "rapid");
+    const screen = within(render(<ReportView data={await data()} />).container);
+    const section = screen.getByRole("region", { name: "This month" });
+    expect(section).toHaveTextContent("This rose after you switched to a new opening.");
+  });
+
+  it("a note from another time class or about an older change is not shown", async () => {
+    await previous();
+    await note("time.flag_rate@li-blitz-onset", "blitz");
+    await note("time.flag_rate@li-older-onset", "rapid");
+    await note("time.flag_rate@li-c2a", "blitz");
+    const { container } = render(<ReportView data={await data()} />);
+    expect(container).not.toHaveTextContent("This rose after you switched to a new opening.");
+  });
+
+  it("a first report never claims it started on its own", async () => {
+    await seedReport(db, accountId, { timeClass: "rapid", createdAt: CREATED });
+    const { container } = render(<ReportView data={await data()} />);
+    expect(container).toHaveTextContent("Your first report is being written.");
+    expect(container).not.toHaveTextContent("on its own");
+  });
+
+  it("mindset is never plotted, even when the payload gives it a score", async () => {
+    await previous();
+    const d = await data();
+    expect(d.view.payload?.computed.areaScores.find((a) => a.area === "mindset")?.score).toBe(66);
+    const { container } = render(<ReportView data={d} />);
+    expect(container).toHaveTextContent("Mindset is coaching advice, not a score");
+    expect(container).not.toHaveTextContent(/Mindset\s*66/);
+  });
+
+  it("sections without coach notes still show their numbers and say why", async () => {
+    await computedOnly("no_api_key");
+    const screen = within(render(<ReportView data={await data()} />).container);
+    const plan = screen.getByRole("region", { name: "Your climb plan" });
+    expect(plan).toHaveTextContent("Estimated 17.0% of chances");
+    expect(plan).toHaveTextContent("Your coach's notes are off for this report");
+    const areas = screen.getByRole("region", { name: "Area notes" });
+    expect(areas).toHaveTextContent("Score 48");
+  });
+
+  it("a section being written is one quiet line, not a skeleton", async () => {
+    await seedReport(db, accountId, {
+      timeClass: "rapid",
+      payload: "partial",
+      createdAt: CREATED,
+      ...run({ status: "running" }),
+    });
+    const screen = within(render(<ReportView data={await data()} />).container);
+    const plan = screen.getByRole("region", { name: "Your climb plan" });
+    expect(plan).toHaveTextContent("Your coach is writing this section");
+    expect(plan.querySelector("[data-coach-state]")).toBeNull();
+  });
+
+  it("a phone shows one example position per weakness with a way to see the rest", async () => {
+    await previous();
+    const screen = within(render(<ReportView data={await data()} />).container);
+    expect(screen.getAllByRole("button", { name: "Show 2 more positions" }).length).toBe(2);
+  });
+
+  it("raw model text never reaches the browser", async () => {
+    await previous();
+    const d = await data();
+    expect(JSON.stringify(d)).not.toContain("{{");
+    expect(withoutRawText({ text: "{{num:x}}", segments: [] })).toEqual({ segments: [] });
+  });
+
+  it("the report loads in a fixed number of reads, whatever the number of weaknesses", async () => {
+    await previous();
+    const many = Array.from({ length: 40 }, (_, i) => ({
+      ...(payloadWeakness() as object),
+      id: `W${i + 100}`,
+      rank: i + 1,
+    }));
+    await db.execute(
+      sql`update reports set computed = jsonb_set(computed, '{weaknesses}', ${JSON.stringify(many)}::jsonb)`,
+    );
+    await data();
+    const times: number[] = [];
+    for (let i = 0; i < 5; i++) {
+      const t0 = performance.now();
+      await data();
+      times.push(performance.now() - t0);
+    }
+    times.sort((a, b) => a - b);
+    expect(times[2]).toBeLessThan(150);
+  });
+});
+
+function payloadWeakness(): unknown {
+  return payloadFixture("example").computed.weaknesses[0];
+}

@@ -27,11 +27,31 @@ export function sectionStatus(
   return ctx.aiOff ? "off" : "missing";
 }
 
+/** A quiet one-line note: a short rule and a sentence, never a skeleton panel. */
+function QuietLine({ children, mark }: { children: ReactNode; mark: "dashed" | "solid" }) {
+  return (
+    <p className="m-0 flex items-center gap-3 text-sm text-ink-soft">
+      <span
+        aria-hidden="true"
+        className={cn(
+          "w-6 shrink-0 border-t-2",
+          mark === "dashed" ? "border-dashed border-rule-strong" : "border-rule-strong",
+        )}
+      />
+      {children}
+    </p>
+  );
+}
+
 /** The note a section shows in place of its coach's text, or nothing. */
 export function SectionNote({ status }: { status: SectionStatus }) {
   switch (status) {
     case "writing":
-      return <CoachState kind="writing" titleAs="p" title="Your coach is writing this section" />;
+      return (
+        <QuietLine mark="dashed">
+          Your coach is writing this section. The numbers below are already final.
+        </QuietLine>
+      );
     case "dropped":
       return (
         <CoachState
@@ -42,11 +62,16 @@ export function SectionNote({ status }: { status: SectionStatus }) {
       );
     case "missing":
       return (
-        <CoachState
-          kind="computed_only"
-          titleAs="p"
-          title="Your coach didn't write this section, so only the numbers are shown"
-        />
+        <QuietLine mark="solid">
+          Your coach didn't write this section, so it shows the computed numbers only.
+        </QuietLine>
+      );
+    case "off":
+      return (
+        <QuietLine mark="solid">
+          Your coach's notes are off for this report, so this section shows the computed numbers
+          only.
+        </QuietLine>
       );
     default:
       return null;

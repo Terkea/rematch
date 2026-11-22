@@ -97,13 +97,18 @@ function analysedIn(scope: CoachScope): number {
  * profile is not ready yet.
  */
 export function WorkOn({ lead }: { lead: LeadFinding }) {
+  // Pen red means the player's own mistake, so only a real finding carries it.
+  const finding = lead.kind === "weakness";
   return (
     <section
       aria-labelledby="work-on-heading"
       data-slot="work-on"
-      className="flex max-w-3xl flex-col gap-1 border-l-2 border-pen pl-4"
+      className={`flex max-w-3xl flex-col gap-1 border-l-2 pl-4 ${finding ? "border-pen" : "border-rule-strong"}`}
     >
-      <h2 id="work-on-heading" className="text-base font-medium text-pen-text">
+      <h2
+        id="work-on-heading"
+        className={`text-base font-medium ${finding ? "text-pen-text" : "text-ink"}`}
+      >
         What to work on
       </h2>
       <WorkOnBody lead={lead} />
@@ -124,7 +129,9 @@ function WorkOnBody({ lead }: { lead: LeadFinding }) {
           >
             {w.label}
           </a>
-          <p className="m-0 text-sm text-ink-soft">{weaknessRateText(w.rate, w.evidence)}.</p>
+          <p className="m-0 text-sm text-ink-soft">
+            {weaknessRateText(w.rate, w.evidence)} chances.
+          </p>
           <p className="m-0 text-sm text-ink-faint">
             Based on {games(analysedIn(scope), `analysed ${scope.timeClass}`)}.
           </p>

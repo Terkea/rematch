@@ -14,10 +14,18 @@ const pad = (n: number) => String(n).padStart(2, "0");
 /** "14:05 UTC". */
 export const utcTime = (d: Date) => `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())} UTC`;
 
-/** "on 22 Dec 2026", or "at 14:05 UTC" when `at` is on the same UTC day as `now`. */
+/**
+ * "at 14:05 UTC" on the same UTC day as `now`, "on 23 Nov at 08:00 UTC" within two days
+ * (the beta's daily interval turns on the hour), else "on 22 Dec 2026".
+ */
 export function whenText(at: Date, now: Date = new Date()): string {
-  const sameDay = at.toISOString().slice(0, 10) === now.toISOString().slice(0, 10);
-  return sameDay ? `at ${utcTime(at)}` : `on ${dayText(at.toISOString())}`;
+  const day = (d: Date) => d.toISOString().slice(0, 10);
+  if (day(at) === day(now)) return `at ${utcTime(at)}`;
+  const date = dayText(at.toISOString());
+  // Within two days the year is plain and the hour is what matters ("on 23 Nov at 08:00 UTC").
+  return at.getTime() - now.getTime() <= 2 * 86_400_000
+    ? `on ${date.replace(/ \d{4}$/, "")} at ${utcTime(at)}`
+    : `on ${date}`;
 }
 
 /** The time a rebuild is refused until, from the 429 body, or null. */
@@ -94,10 +102,13 @@ export function RebuildButton({
   nextManualAt,
   building,
   first = false,
+  now,
 }: {
   scope: ReportScope;
   nextManualAt: Date | null;
   building: boolean;
+  /** The render's clock (the server's), so server and client agree on "at" or "on". */
+  now: Date;
   /** No earlier report: a running build is the first one, not a rebuild. */
   first?: boolean;
 }) {
@@ -109,7 +120,7 @@ export function RebuildButton({
       ? "Building your first report"
       : "Rebuilding your report"
     : until
-      ? `Rebuild available ${whenText(until)}`
+      ? `Rebuild available ${whenText(until, now)}`
       : "Rebuild report";
   return (
     <Button

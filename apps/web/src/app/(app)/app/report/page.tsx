@@ -2,11 +2,10 @@ import { CoachState } from "@ci/ui/coach";
 import { LiveRefreshOn } from "../../../../components/live-refresh-on";
 import { queryKeys } from "../../../../lib/query-keys";
 import { requireUser } from "../../../../server/auth/session";
-import { betaReportIntervalDays, changeNotes, getReport } from "../../../../server/coaching";
+import { betaReportIntervalDays } from "../../../../server/coaching";
 import { getDb } from "../../../../server/db";
-import { getWeakness, resolveCoachScope } from "../../../../server/profile";
-import { reviewGameIds } from "../../../../server/profile/game-ids";
-import { reportGameIds, weaknessSeriesKey } from "./_sections/links";
+import { resolveCoachScope } from "../../../../server/profile";
+import { loadReport } from "./load";
 import { ReportView } from "./report-view";
 
 export const dynamic = "force-dynamic";
@@ -40,38 +39,11 @@ export default async function ReportPage({
       </div>
     );
   }
-  const now = new Date();
-  const view = await getReport(db, user.id, scope, now, { intervalDays: betaReportIntervalDays() });
-  const computed = view.payload?.computed;
-  const changeKeys = computed
-    ? [...computed.newThisPeriod, ...computed.fixedThisPeriod].map((c) => c.seriesKey)
-    : [];
-  const [notes, details] = await Promise.all([
-    changeKeys.length > 0 ? changeNotes(db, user.id, scope.accountId, changeKeys) : [],
-    Promise.all(
-      (computed?.weaknesses ?? []).map((w) =>
-        getWeakness(db, user.id, scope, weaknessSeriesKey(w)),
-      ),
-    ),
-  ]);
-  const cited = [
-    ...(view.payload ? reportGameIds(view.payload) : []),
-    ...reportGameIds({
-      sections: { notes: notes.map((n) => n.item) },
-      computed: { weaknesses: [], openings: [], strengths: [] },
-    }),
-  ];
-  const gameIds = await reviewGameIds(db, user.id, scope, cited);
-  const trends: Record<string, (number | null)[]> = {};
-  for (const d of details) {
-    if (d) trends[d.seriesKey] = d.weekly.map((w) => w.rate?.value ?? null);
-  }
+  const data = await loadReport(db, user.id, scope, new Date(), betaReportIntervalDays());
   return (
     <>
       <LiveRefreshOn keys={[queryKeys.report(scope.accountId), queryKeys.notes(scope.accountId)]} />
-      <ReportView
-        data={{ scope, view, notes, trends, gameIds: Object.fromEntries(gameIds), now }}
-      />
+      <ReportView data={data} />
     </>
   );
 }

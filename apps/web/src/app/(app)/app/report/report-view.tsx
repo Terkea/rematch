@@ -1,5 +1,6 @@
 "use client";
 
+import { AiDisclosure } from "@ci/ui/coach";
 import { dayText } from "@ci/ui/profile";
 import { type ReactNode, useEffect, useRef } from "react";
 import { CoachScopeSwitch } from "../../../../components/coach-scope-switch";
@@ -123,18 +124,28 @@ export function ReportView({ data }: { data: ReportPageData }) {
             nextManualAt={view.nextManualAt}
             building={building}
             first={first}
+            now={data.now}
           />
         ) : null}
       </div>
-      {/* The switch's labels can be wider than a phone; it scrolls inside its own row. */}
-      <div className="-mx-1 max-w-full overflow-x-auto px-1 py-1">
+      {/* The switch's labels can be wider than a phone: it scrolls inside its own row, and below
+          640px the row fades out at its right edge so a cut label reads as "more this way". */}
+      {/* ban-lint-allow TOK2: a mask gradient is alpha only, not a colour */}
+      <div className="-mx-1 max-w-full overflow-x-auto px-1 py-1 max-sm:pr-8 max-sm:[mask-image:linear-gradient(to_right,black_calc(100%_-_2.5rem),transparent)]">
         <CoachScopeSwitch scope={scope} basePath="/app/report" />
       </div>
     </header>
   );
 
   const banner = (
-    <StateBanner state={state} scope={target} first={first} nextManualAt={view.nextManualAt} />
+    <StateBanner
+      state={state}
+      scope={target}
+      first={first}
+      nextManualAt={view.nextManualAt}
+      now={data.now}
+      notesCount={readyKeys.length}
+    />
   );
 
   if (!payload) {
@@ -174,7 +185,9 @@ export function ReportView({ data }: { data: ReportPageData }) {
         ) : null}
         {header}
         {banner}
-        <Snapshot computed={computed} disclosure={disclosure} order={0} />
+        {dropped ? <p className="m-0 -mt-6 text-sm text-ink-soft">{dropped}</p> : null}
+        <Snapshot computed={computed} order={0} />
+        {disclosure ? <AiDisclosure disclosure={disclosure} /> : null}
         <Fresh on={fresh.has("overview")}>
           <Overview
             computed={computed}
@@ -217,6 +230,7 @@ export function ReportView({ data }: { data: ReportPageData }) {
         <Fresh on={fresh.has("areas")}>
           <Areas
             content={content("areas", "areas")}
+            scores={computed.areaScores}
             status={status("areas")}
             disclosure={disclosure}
             scope={target}
@@ -224,7 +238,6 @@ export function ReportView({ data }: { data: ReportPageData }) {
           />
         </Fresh>
         <Changes computed={computed} notes={notes} order={6} />
-        {dropped ? <p className="m-0 text-sm text-ink-soft">{dropped}</p> : null}
       </div>
     </GameIdsContext.Provider>
   );

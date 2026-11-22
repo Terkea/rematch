@@ -1,6 +1,7 @@
 "use client";
 
 import type { AiDisclosureData } from "@ci/ui/coach";
+import { weaknessRateText } from "@ci/ui/profile";
 import type {
   ClimbPlanSection,
   ComputedReport,
@@ -31,6 +32,12 @@ export const DRILL_NAMES: Record<DrillType, string> = {
 };
 
 const MAX_FOCUSES = 3;
+/** One focus reads at prose width; two or three sit side by side from `lg`. */
+const COLUMNS: Record<number, string> = {
+  1: "max-w-prose",
+  2: "lg:grid-cols-2",
+  3: "lg:grid-cols-3",
+};
 
 /**
  * The climb plan: at most three focuses, each with the coach's why, a habit and the drills by
@@ -50,7 +57,8 @@ export function ClimbPlan({
   order: number;
 }) {
   const ready = status === "ready" && content !== null;
-  const label = (id: string) => computed.weaknesses.find((w) => w.id === id)?.label ?? null;
+  const weakness = (id: string) => computed.weaknesses.find((w) => w.id === id) ?? null;
+  const label = (id: string) => weakness(id)?.label ?? null;
   const ids = ready
     ? content.focuses.map((f) => f.weaknessId)
     : computed.focuses.filter((id) => label(id) !== null);
@@ -66,7 +74,9 @@ export function ClimbPlan({
       {focuses.length === 0 ? (
         <p className="m-0 text-sm text-ink-soft">No focus has been picked for this report.</p>
       ) : (
-        <ol className="m-0 grid list-none grid-cols-1 gap-x-10 gap-y-8 p-0 lg:grid-cols-3">
+        <ol
+          className={`m-0 grid list-none grid-cols-1 gap-x-10 gap-y-8 p-0 ${COLUMNS[focuses.length] ?? ""}`}
+        >
           {focuses.map((id, i) => {
             const f = ready ? content.focuses.find((x) => x.weaknessId === id) : undefined;
             return (
@@ -77,6 +87,21 @@ export function ClimbPlan({
                   </span>
                   {label(id) ?? "Focus"}
                 </h3>
+                {(() => {
+                  const w = weakness(id);
+                  return w ? (
+                    <p
+                      className="m-0 text-sm text-ink-soft"
+                      style={{ fontVariantNumeric: "lining-nums" }}
+                    >
+                      {weaknessRateText(
+                        { mean: w.posteriorRate, low: w.intervalLow, high: w.intervalHigh },
+                        { events: w.events, chances: w.opportunities },
+                      )}{" "}
+                      chances.
+                    </p>
+                  ) : null;
+                })()}
                 {f ? (
                   <>
                     <CoachText item={f.why} className="text-base" />
@@ -103,7 +128,12 @@ export function ClimbPlan({
           })}
         </ol>
       )}
-      {ready ? <CoachText item={content.weeklyRhythm} className="text-base" /> : null}
+      {ready && content.weeklyRhythm ? (
+        <div className="flex flex-col gap-0.5">
+          <span className="text-sm font-medium text-ink">Your weekly rhythm</span>
+          <CoachText item={content.weeklyRhythm} className="text-base" />
+        </div>
+      ) : null}
     </ReportSection>
   );
 }

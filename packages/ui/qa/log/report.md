@@ -36,3 +36,26 @@ Open for the critic:
   sections pending this is a lot of skeleton; a slimmer per-section form may be better.
 - Weakness rows without weekly points say "Weekly trend after more weeks" (the kit's copy).
 - `pnpm design:check`: 0 findings.
+
+## Fix round 1 (after review-t6.md; self-review, the fresh critic is still owed)
+
+Shots: `scratchpad/m5b-t6/fix1/<state>-{390,1440}-{light,dark}.png`, same states and lab route.
+No page-level overflow at 360, 390 or 1440; no `NaN|undefined|Infinity|null|{{` in the main HTML.
+
+- V1: the scope switch row scrolls and, below 640px, fades out over its last 2.5rem, so a cut
+  label reads as "more this way" (no shared fix was on base).
+- V2 / I3: Mindset is never on the ruler; it always reads "Mindset is coaching advice, not a
+  score".
+- V3: a section being written is one quiet line (a short dashed rule and "Your coach is writing
+  this section. The numbers below are already final."), not a skeleton panel.
+- V4: sections without notes keep numbers and say why: each area note shows its score ("Score 48,
+  from 120 games", "Need N more games" or the Mindset line), each climb-plan focus its estimated
+  rate; computed-only sections say the notes are off for this report.
+- V5: a phone shows one example position per weakness with "Show 2 more positions" (all three
+  from `lg`). The complete phone page went from 9,831 to 8,219 px.
+- P3: the full disclosure sits above the overview, not inside the computed snapshot. P4: one count
+  in the building banner. P6: one focus reads at prose width; the weekly rhythm is labelled.
+  P7: the removed-statement count sits under the banner. P8: a partial report says "N of 5
+  sections have your coach's notes" at the top. P9: `WorkOn` uses the pen rule only for a real
+  finding. P10: "from 38 of 902 chances". P13: report text links get a 24px hit area.
+- Rebuild label within two days names the hour ("Rebuild available on 23 Nov at 08:00 UTC").

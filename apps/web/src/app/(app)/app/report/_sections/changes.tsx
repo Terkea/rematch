@@ -5,6 +5,7 @@ import { dayText } from "@ci/ui/profile";
 import { stateStyle } from "@ci/ui/timeline";
 import type { ChangeNoteView } from "../../../../../server/coaching/notes";
 import type { ComputedReport, TimelineChange } from "../../../../../server/coaching/types";
+import { changeKey } from "./links";
 import { CoachText, ReportSection } from "./shell";
 
 const pct = (v: number) => (Number.isFinite(v) ? `${Math.round(v * 1000) / 10}%` : null);
@@ -70,7 +71,7 @@ function ChangeList({
               key={`${c.seriesKey}:${c.onsetDate}`}
               change={c}
               note={notes.find(
-                (n) => n.seriesKey === c.seriesKey && n.status === "ready" && n.item !== null,
+                (n) => n.changeKey === changeKey(c) && n.status === "ready" && n.item !== null,
               )}
             />
           ))}
