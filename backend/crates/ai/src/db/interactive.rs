@@ -5,14 +5,16 @@
 //! (`charged`); a failure the player did not cause is refunded with `charged = false`. Deleting
 //! the conversation detaches a row (`message_id` NULL) but keeps it, so the quota holds.
 
+use std::collections::HashMap;
 use std::time::Duration;
 
 use serde_json::Value;
-use sqlx::PgConnection;
+use sqlx::{Connection, PgConnection};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
 use super::text_enum;
+use crate::entitlements::{Quota, exhausted, window_start};
 
 text_enum!(
     /// `interactive_eval_status`.
@@ -192,4 +194,95 @@ pub fn stale_pending_sql() -> String {
         "SELECT {COLS} FROM interactive_evals WHERE status = 'pending' \
          AND created_at < now() - $1::float8 * interval '1 second' ORDER BY created_at LIMIT $2"
     )
+}
+
+/// The advisory-lock class of [`reserve_eval`] (`pg_advisory_xact_lock(class, hashtext(account))`).
+const QUOTA_LOCK_CLASS: i32 = 30_002;
+
+/// One account's eval, or `None` for an unknown id or another account's.
+pub async fn get_account_eval(
+    conn: &mut PgConnection,
+    account_id: Uuid,
+    id: Uuid,
+) -> Result<Option<EvalRow>, sqlx::Error> {
+    sqlx::query_as(sqlx::AssertSqlSafe(format!(
+        "SELECT {COLS} FROM interactive_evals WHERE id = $1 AND account_id = $2"
+    )))
+    .bind(id)
+    .bind(account_id)
+    .fetch_optional(conn)
+    .await
+}
+
+/// Charges one engine check atomically: inserts a pending, charged eval unless a quota is used
+/// up, in which case it returns that quota and its reset time and inserts nothing.
+///
+/// Reservations of one account are serialised by a transaction-scoped advisory lock, and the
+/// counts are new statements after the lock, so under READ COMMITTED (the default) they see
+/// every reservation committed before it. Parallel requests therefore never overspend.
+pub async fn reserve_eval(
+    conn: &mut PgConnection,
+    e: &NewEval,
+    quotas: &[Quota],
+    now: OffsetDateTime,
+) -> Result<Result<EvalRow, (Quota, OffsetDateTime)>, sqlx::Error> {
+    let mut tx = conn.begin().await?;
+    sqlx::query("SELECT pg_advisory_xact_lock($1, hashtext($2::text))")
+        .bind(QUOTA_LOCK_CLASS)
+        .bind(e.account_id)
+        .execute(&mut *tx)
+        .await?;
+    let mut used = HashMap::new();
+    for q in quotas {
+        let n = charged_since(&mut tx, e.account_id, window_start(q.window, now)).await?;
+        used.insert(q.window, n);
+    }
+    if let Some(hit) = exhausted(quotas, |w| used.get(&w).copied().unwrap_or(0), now) {
+        tx.rollback().await?;
+        return Ok(Err(hit));
+    }
+    let row = insert_eval(&mut tx, e).await?;
+    tx.commit().await?;
+    Ok(Ok(row))
+}
+
+/// A free copy of a finished eval for a new request: `done`, the same lines, `charged = false`.
+pub async fn insert_reused(
+    conn: &mut PgConnection,
+    src: &EvalRow,
+    message_id: Option<Uuid>,
+    base_fen: &str,
+    moves: &[String],
+) -> Result<EvalRow, sqlx::Error> {
+    sqlx::query_as(sqlx::AssertSqlSafe(format!(
+        "INSERT INTO interactive_evals (account_id, message_id, protocol, base_fen, moves, fen, \
+         status, lines, charged, finished_at) \
+         VALUES ($1, $2, $3, $4, $5, $6, 'done', $7, false, now()) RETURNING {COLS}"
+    )))
+    .bind(src.account_id)
+    .bind(message_id)
+    .bind(&src.protocol)
+    .bind(base_fen)
+    .bind(moves)
+    .bind(&src.fen)
+    .bind(&src.lines)
+    .fetch_one(conn)
+    .await
+}
+
+/// Clears the quota charge of one account's eval; `false` when there was nothing to refund.
+pub async fn refund(
+    conn: &mut PgConnection,
+    account_id: Uuid,
+    id: Uuid,
+) -> Result<bool, sqlx::Error> {
+    let r = sqlx::query(
+        "UPDATE interactive_evals SET charged = false WHERE id = $1 AND account_id = $2 \
+         AND charged",
+    )
+    .bind(id)
+    .bind(account_id)
+    .execute(conn)
+    .await?;
+    Ok(r.rows_affected() == 1)
 }

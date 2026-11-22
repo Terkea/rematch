@@ -155,3 +155,21 @@ Owner direction: the coach chat uses the SDK's native sessions, as in the owner'
 - **Optional callback.** `toolCallback` is optional when `tools` is empty, and such a turn mounts no `coach` MCP server. A callback that is sent is still validated.
 - **Turn-lock hygiene (final Task 10 review).** `lockLost` counts only while the lock is held. A no-op `error` listener stays on the lock connection after release (once per pooled client, so listeners do not pile up). On the not-acquired path a failing `RESET` destroys the connection and still reports "held elsewhere" (409), instead of throwing, which would have let the turn run with no lock.
 - **Test schema.** The sidecar's store tests read the `ai_sdk_session_entries` table, indexes and role block from Task 17's real migration (`db/migrations/20261121030000_ai_coaching.sql`) at test time; the copied fixture is gone.
+
+## Interactive engine checks (Task 24)
+
+The chat's `analyse_position` tool reaches Stockfish only through `ai::chat::interactive::DbInteractiveEngine`, one per turn (account, assistant message, turn start).
+
+- **Protocol.** `sf19-n1m-mpv3-interactive-v1`: Stockfish 19, 1,000,000 nodes, MultiPV 3, a 30 s timeout. It is deliberately not R1's `sf19-n300k-v1`. The searches are deeper, run on positions the player made up, and are requested on demand, so they are not comparable with the pinned per-game analysis.
+- **The separate store.** Results live only in `interactive_evals` (`source = 'interactive'`), as `lines = [{multipv, score (White's point of view), pv (UCI), san, depth, nodes}]`. `InteractiveAnalyseHandler` never writes `position_evals`, and KPI, stats, profile and report code never read `interactive_evals`. A "what if" line from a hypothetical position must not move a player's accuracy, weakness rates or cached evals, and a protocol mix in `position_evals` would break the R1 cache key. A test asserts that the `position_evals` count is unchanged.
+- **Queue.** Each check is an `interactive-analyse` job on R1's Postgres queue: priority 1, `user_key` = account, dedupe `ieval:<id>`, one attempt. It runs on the shared engine pool, so the claim ordering, leases and clock-step rules of ADR 0032 apply unchanged. The request polls its row every 100 ms for up to the caller's wait. When the wait passes first it returns `Pending`, and Task 23 then calls `wait` or `abandon`.
+- **Quotas.** Free plans get 3 checks a week and Pro plans 20 a day (`entitlements::engine_quotas`, UTC windows). A charged row is one use. The reservation is atomic: `db::interactive::reserve_eval` takes `pg_advisory_xact_lock(30002, hashtext(account))`, counts charged rows per window in new statements under READ COMMITTED, and inserts the pending row only if every quota has room, all in one transaction. A test fires N+1 requests in parallel against N remaining checks and accepts exactly N, and it fails when the lock is removed. A request over the quota writes nothing and returns `Limit { window, resets_at }`. Task 22's cap of 2 checks per turn is applied before any of this, so a third call gets `per_turn` without touching the quota.
+- **Reuse.** A `done` row of the same account, FEN (normalised after the moves) and protocol within 24 h is copied into a new `done` row with `charged = false`, linked to the new message. No engine call is made, and this works even when the quota is used up.
+- **Refunds (`charged = false`).**
+  - An engine failure other than a closed pool marks the row `failed`.
+  - A dead-lettered job (`on_dead`) marks the row `failed`.
+  - `abandon` refunds the check (account-scoped).
+  - A lost job is failed by `ai-reconcile` step 6.
+  - A closed pool (shutdown) releases the job after 5 s without failing the row.
+- **Cancellation (T23 m6).** A drop guard closes this gap. If a `request` or `wait` future is dropped while it polls (the turn was cancelled), the guard spawns the refund. A check whose result nobody saw is never charged. If its job still finishes, the result stays reusable for free.
+- **Scoping.** Eval ids are 32 lowercase hex (`Uuid::simple`). `wait` and `abandon` only see the engine's own account, so a foreign id is `Unavailable` or a no-op.
