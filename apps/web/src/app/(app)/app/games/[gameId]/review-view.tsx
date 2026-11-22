@@ -3,11 +3,25 @@
 import { type BoardSound, soundForSan, useBoardSounds } from "@ci/ui/audio";
 import { Board, EvalBar } from "@ci/ui/board";
 import { EvalGraph } from "@ci/ui/eval-graph";
-import { ArrowCounterClockwiseIcon, Icon, ListIcon } from "@ci/ui/icons";
+import {
+  ArrowCounterClockwiseIcon,
+  Icon,
+  ListIcon,
+  SpeakerHighIcon,
+  SpeakerSlashIcon,
+} from "@ci/ui/icons";
 import { cn } from "@ci/ui/lib";
 import { useReducedMotion } from "@ci/ui/motion";
 import { Drawer } from "@ci/ui/overlays";
-import { buttonVariants, Kbd, Switch } from "@ci/ui/primitives";
+import {
+  buttonVariants,
+  Kbd,
+  Switch,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+  touchTarget,
+} from "@ci/ui/primitives";
 import { ProgressPlaceholder } from "@ci/ui/progress";
 import {
   ClockPair,
@@ -275,7 +289,6 @@ export function GameReviewView({ view, gameId, initialPly, onStep }: GameReviewV
   const ply = reveal.state.ply ?? state.ply;
   const wide = useWide();
   const engineId = useId();
-  const soundId = useId();
   const lastPly = view.plies.length;
   const analysed = view.status === "analysed";
 
@@ -524,6 +537,11 @@ export function GameReviewView({ view, gameId, initialPly, onStep }: GameReviewV
                   {wide ? null : control}
                 </span>
               ) : null}
+              <SoundToggle
+                muted={sounds.muted}
+                onChange={(muted) => sounds.setMuted(muted)}
+                className={slots ? undefined : "ml-auto"}
+              />
             </div>
             <p
               data-testid="verdict"
@@ -540,14 +558,6 @@ export function GameReviewView({ view, gameId, initialPly, onStep }: GameReviewV
               ) : null}
             </div>
           </section>
-          <div className="flex items-center gap-3 text-sm text-ink-soft">
-            <Switch
-              checked={!sounds.muted}
-              onCheckedChange={(on) => sounds.setMuted(!on)}
-              aria-labelledby={soundId}
-            />
-            <span id={soundId}>Board sounds</span>
-          </div>
           {analysed ? (
             <div className="flex items-center gap-3 text-sm text-ink-soft">
               <Switch checked={showEngine} onCheckedChange={c.engine} aria-labelledby={engineId} />
@@ -587,6 +597,47 @@ export function GameReviewView({ view, gameId, initialPly, onStep }: GameReviewV
         <ReviewControls {...transport} layout="thumb" />
       </div>
     </div>
+  );
+}
+
+/**
+ * Board sounds as an icon switch at the end of the verdict line: it adds no row, so the layout
+ * is the same on a phone. A coarse pointer gets a 44px target; the tooltip names it.
+ */
+function SoundToggle({
+  muted,
+  onChange,
+  className,
+}: {
+  muted: boolean;
+  onChange: (muted: boolean) => void;
+  className?: string | undefined;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            role="switch"
+            aria-checked={!muted}
+            aria-label="Board sounds"
+            data-testid="sound-toggle"
+            onClick={() => onChange(!muted)}
+            className={cn(
+              "relative -my-1.5 inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-field text-ink-soft",
+              "transition-colors duration-(--dur-quick) ease-out hover:text-ink",
+              "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink",
+              touchTarget,
+              className,
+            )}
+          />
+        }
+      >
+        <Icon icon={muted ? SpeakerSlashIcon : SpeakerHighIcon} size={20} />
+      </TooltipTrigger>
+      <TooltipContent>{muted ? "Board sounds are off" : "Board sounds are on"}</TooltipContent>
+    </Tooltip>
   );
 }
 

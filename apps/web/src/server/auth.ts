@@ -1,4 +1,4 @@
-import { account, createDb, type Db, session, user, verification } from "@ci/db";
+import { account, type Db, session, user, verification } from "@ci/db";
 import { type BetterAuthOptions, betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError } from "better-auth/api";
@@ -20,6 +20,7 @@ import {
   ipAddressOptions,
   secureCookies,
 } from "./auth/policy";
+import { getDb } from "./db";
 
 type DbHooks = NonNullable<BetterAuthOptions["databaseHooks"]>;
 
@@ -124,16 +125,17 @@ export function createAuth(env: WebEnv, db: Db) {
 export type Auth = ReturnType<typeof createAuth>;
 
 let instance: Auth | undefined;
-let instanceDb: { url: string; db: Db } | undefined;
+
+/** Better Auth shares the process's one pool. */
+export function getAuthDb(): Db {
+  return getDb();
+}
 
 /** The app's Better Auth instance, built on first use from the validated environment. */
 export function getAuth(): Auth {
   if (instance) return instance;
   const env = getEnv();
-  if (instanceDb?.url !== env.DATABASE_URL) {
-    instanceDb = { url: env.DATABASE_URL, db: createDb(env.DATABASE_URL) };
-  }
-  instance = createAuth(env, instanceDb.db);
+  instance = createAuth(env, getAuthDb());
   return instance;
 }
 
