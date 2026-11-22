@@ -32,6 +32,13 @@ async function ready(page: Page, url: string, selector: string): Promise<void> {
     selector,
     { timeout: 180_000 },
   );
+}
+
+/** Opens a page whose event stream is live (its `/api/events` answered). */
+async function live(page: Page, url: string, selector: string): Promise<void> {
+  const opened = page.waitForResponse((r) => new URL(r.url()).pathname === "/api/events", {
+    timeout: 180_000,
+  });
   await ready(page, url, selector);
   await opened;
 }
