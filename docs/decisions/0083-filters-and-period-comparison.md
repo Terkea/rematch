@@ -62,10 +62,15 @@ filter bar and pages come in T2b and T3.
    whole class, and a note says so when such a filter is set. On progress, colour applies to the
    comparison only. Date filters clip the stored weekly series to the weeks that touch the range;
    a dense series keeps its length with gaps (null), never zeros.
-3. **Colour on stored estimates waits for ADR 0082.** Weaknesses, areas and the report show
-   "Colour split for weaknesses is coming" in place of the colour options, and pass the scope
-   through `withSide` (`_filters/side.ts`), whose `storedSide` returns `"both"` until the `side`
-   column lands: then it returns `f.color`, a one-line change.
+3. **Colour on stored rows reads ADR 0082's side.** `CoachScope.side` (default "both") selects
+   the side of `weakness_estimates`, `kpi_snapshot` (KPIs and area scores) and the peer rows'
+   chances; the pages set it from `color` through `withSide` (`_filters/side.ts`). A colour's
+   weekly points and examples are that colour's games (`pointOnSide`). Timeline states have no
+   side, so a colour shows its rate, range, n and its own peer comparison but no state badge and
+   no better-or-worse call, and its list is ranked by priority, not grouped by state. Without
+   its own peer rows a colour reads "No colour benchmark", never Both's. In Both mode each
+   weakness row lists White's and Black's rate with their chances. The report stays Both (its
+   sections have no side) and its bar says so.
 4. **The comparison view** shows A | B | change for accuracy, blunders per game and score (points
    per finished game, compared as a per-game mean by the bootstrap rule of §6), n on each side.
    The change column holds only the verdict's words, and the difference with its 80% range only
