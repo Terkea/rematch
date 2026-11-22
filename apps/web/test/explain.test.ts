@@ -284,6 +284,7 @@ describe("levelText with a peer benchmark (ADR 0080)", () => {
     high: 950,
     players: 12,
     games: 40,
+    chances: {},
   };
   it.each([
     [

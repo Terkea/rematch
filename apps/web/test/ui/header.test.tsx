@@ -86,6 +86,7 @@ describe("shell header", () => {
       "Games",
       "Report",
       "Weaknesses",
+      "Strengths",
       "Progress",
       "Coach",
       "Accounts",
@@ -135,19 +136,20 @@ describe("shell header", () => {
     pathname = "/app/progress";
     renderHeader();
     const nav = screen.getByRole("navigation", { name: "Main" });
-    // Every section stays in the header nav (shown from sm up); only these four show on a phone.
+    // Every section stays in the header nav (shown from lg up); only these four show below lg.
     const phone = within(nav)
       .getAllByRole("link")
-      .filter((a) => !a.closest("li")?.className.includes("max-sm:hidden"))
+      .filter((a) => !a.closest("li")?.className.includes("max-lg:hidden"))
       .map((a) => a.textContent);
     expect(phone).toEqual(["Overview", "Games", "Report", "Coach"]);
     await userEvent.click(screen.getByRole("button", { name: "Account menu" }));
     const more = await screen.findByRole("navigation", { name: "More pages" });
+    expect(more.className).toContain("lg:hidden");
     expect(
       within(more)
         .getAllByRole("link")
         .map((a) => a.textContent),
-    ).toEqual(["Weaknesses", "Progress", "Accounts"]);
+    ).toEqual(["Weaknesses", "Strengths", "Progress", "Accounts"]);
     expect(within(more).getByRole("link", { name: "Progress" })).toHaveAttribute(
       "aria-current",
       "page",

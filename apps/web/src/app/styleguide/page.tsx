@@ -13,6 +13,7 @@ import { EvalGraphSection } from "./sections/eval-graph";
 import { FoundationsSection } from "./sections/foundations";
 import { HeroSection } from "./sections/hero";
 import { OverlaysSection } from "./sections/overlays";
+import { PositionExplorerSection } from "./sections/position-explorer";
 import { PrimitivesSection } from "./sections/primitives";
 import { ProfileSection } from "./sections/profile";
 import { ProgressSection } from "./sections/progress";
@@ -54,6 +55,7 @@ export default function StyleguidePage() {
         <ProfileSection />
         <ProgressSection />
         <CoachSection />
+        <PositionExplorerSection />
         <SoundSection />
       </main>
     </div>

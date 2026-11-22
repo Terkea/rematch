@@ -10,7 +10,10 @@
 //!    rating, and the result is stored in `account_benchmark` with the estimates. With
 //!    [`BenchmarkSource::LichessBands`] (opt-in), read the Lichess band reference of the
 //!    player's band (R-4 with ruling Q2, per-metric fallback of Task 17) as before: reference
-//!    data, not account state, so it is read before the lock. Then
+//!    data, not account state, so it is read before the lock. Either is computed or read once
+//!    per side (`Both`, `White`, `Black`; the colour split, ADR 0082): a colour's peer rows come
+//!    from the opponents who had that colour, its Lichess rows from that side's rows, and a
+//!    `Both` benchmark is never used for a colour. Then
 //!    open the write transaction and take the build's advisory lock
 //!    (`build-profile:<account>:<tc>`). On the transaction's own connection, fingerprint the
 //!    stored `game_metrics` rows and load:
@@ -24,7 +27,11 @@
 //!
 //!    Builds of one account × time class therefore run one at a time, each from one consistent
 //!    view, on one connection (T33 review M1; the earlier optimistic re-load is gone).
-//! 3. to 6. The CPU-heavy part runs in `spawn_blocking` (review M2):
+//! 3. to 6. The CPU-heavy part runs in `spawn_blocking` (review M2). Estimates and KPI
+//!    snapshots are computed three times (the colour split): for every game (`Both`) and for the
+//!    games the player had White or Black in, each side with its own benchmark and its own
+//!    evidence counts. The timeline stays `Both` only (per-colour states would halve the
+//!    evidence), so a colour's estimate rows carry the account's state and no `P_imp`:
 //!    - [`estimate_weakness`](profile_core::stats::priority::estimate_weakness) per binomial
 //!      key ([`crate::estimates`]), upserted with the timeline's state and `P_imp`;
 //!    - [`evaluate_series`](profile_core::timeline::series::evaluate_series) per series. The
@@ -34,7 +41,7 @@
 //!      appended when a compared field changed ([`crate::snapshots`]).
 //!
 //!    Then write and commit.
-//! 7. After the commit, publish:
+//! 7. After the commit, publish (from the `Both` side only):
 //!    - one `profile.updated` per changed benchmarked area;
 //!    - one `weakness.changed` per series whose current state differs from the stored one.
 //!
@@ -73,7 +80,8 @@ use profile_core::kpi::snapshots::KpiValue;
 use profile_core::stats::priority::WeaknessEstimate;
 use profile_core::timeline::series::{SeriesOutcome, SeriesPoint};
 use profile_core::types::{
-    BandReference, GameContext, PlayerGameMetrics, SeriesKey, SessionInfo, WeaknessState,
+    BandReference, BandReferenceStat, GameContext, PlayerGameMetrics, SeriesKey, SessionInfo, Side,
+    WeaknessState,
 };
 use profile_core::weakness::sessions::{
     SESSION_GAP_MINUTES, SessionGame, build_sessions, est_duration_seconds,
@@ -81,7 +89,7 @@ use profile_core::weakness::sessions::{
 use queue::queue::Queue;
 use queue::runner::{Handler, JobContext};
 use queue::{BuildProfilePayload, Job, JobError, KIND_BUILD_PROFILE};
-use refdata::band_reference::load_band_reference;
+use refdata::band_reference::load_band_reference_for;
 use refdata::builds::RefdataError;
 use refdata::repertoire::{player_band, player_band_in, rebuild_repertoire};
 use serde::Serialize;
@@ -96,8 +104,8 @@ use crate::hook_impl::enqueue_build_profile;
 use crate::load::{LoadError, load_analysed_games_in, load_series_points_in};
 use crate::peer_benchmark::{
     BenchmarkSource, PeerBenchmark, PeerSide, SOURCE_LICHESS_BANDS, SOURCE_PEERS, StoredBenchmark,
-    aggregate_peer_benchmark, center_rating, load_peer_sides, refresh_opponent_metrics,
-    write_account_benchmark,
+    aggregate_peer_benchmark, center_rating, load_peer_sides, peer_sides_of,
+    refresh_opponent_metrics, write_account_benchmark, write_side_stats,
 };
 use crate::snapshots::{
     Latest, changed_areas, compute_snapshots, latest_snapshots, profile_updated_payload,
@@ -134,9 +142,9 @@ pub struct BuildProfileDeps {
 /// What a build wrote.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
 pub struct BuildProfileSummary {
-    /// `weakness_estimates` rows upserted (one per binomial key).
+    /// `weakness_estimates` rows upserted (one per binomial key and side).
     pub estimates: usize,
-    /// `kpi_snapshot` rows appended.
+    /// `kpi_snapshot` rows appended (every side).
     pub snapshots: usize,
     /// `weakness_state_history` rows inserted (transitions and onsets). Stale rows deleted to
     /// match the replay are not counted.
@@ -235,6 +243,31 @@ fn sessions(
         .collect()
 }
 
+/// A value per side, in [`Side::ALL`] order.
+type PerSide<T> = [Option<T>; 3];
+/// The served reference of each side.
+type SideReferences = PerSide<BandReference>;
+
+fn side_index(side: Side) -> usize {
+    Side::ALL.iter().position(|s| *s == side).unwrap_or(0)
+}
+
+/// Every side's Lichess band reference of `band` × `tc` (each side read on its own).
+async fn load_side_references(
+    pool: &PgPool,
+    band: profile_core::types::Band,
+    tc: TimeClass,
+) -> Result<SideReferences, JobError> {
+    let mut out = SideReferences::default();
+    for side in Side::ALL {
+        out[side_index(side)] = load_band_reference_for(pool, band, tc, side)
+            .await
+            .map_err(refdata_error)?
+            .map(|r| r.reference());
+    }
+    Ok(out)
+}
+
 /// What the build read under its lock.
 struct Loaded {
     fingerprint: (i64, String),
@@ -242,8 +275,8 @@ struct Loaded {
     games: Vec<(GameContext, PlayerGameMetrics)>,
     series: BTreeMap<SeriesKey, Vec<SeriesPoint>>,
     band: profile_core::types::Band,
-    /// The Lichess band reference (`LichessBands` only).
-    reference: Option<BandReference>,
+    /// The Lichess band reference per side (`LichessBands` only).
+    references: SideReferences,
     /// The opponent sides and the band's centre (`Peers` only; no centre without games).
     peers: Option<(Vec<PeerSide>, Option<i32>)>,
     line_keys: HashMap<Uuid, String>,
@@ -261,7 +294,7 @@ async fn load_locked(
     account_id: Uuid,
     tc: TimeClass,
     source: BenchmarkSource,
-    prefetched: (profile_core::types::Band, Option<BandReference>),
+    prefetched: (profile_core::types::Band, SideReferences),
 ) -> Result<Loaded, JobError> {
     let fingerprint = games_fingerprint(conn, account_id, tc)
         .await
@@ -288,15 +321,12 @@ async fn load_locked(
     let (band, _source) = player_band_in(conn, account_id, tc)
         .await
         .map_err(refdata_error)?;
-    let reference = if source == BenchmarkSource::Peers {
-        None
+    let references = if source == BenchmarkSource::Peers {
+        SideReferences::default()
     } else if band == prefetched.0 {
         prefetched.1
     } else {
-        load_band_reference(pool, band, tc)
-            .await
-            .map_err(refdata_error)?
-            .map(|r| r.reference())
+        load_side_references(pool, band, tc).await?
     };
     let peers = match source {
         BenchmarkSource::Peers => Some((
@@ -333,7 +363,7 @@ async fn load_locked(
         games,
         series,
         band,
-        reference,
+        references,
         peers,
         line_keys,
         stored,
@@ -342,42 +372,102 @@ async fn load_locked(
     })
 }
 
+/// One side's estimates and KPI rows.
+struct SideComputed {
+    side: Side,
+    estimates: Vec<WeaknessEstimate>,
+    snapshot_values: Vec<KpiValue>,
+    appended: Vec<KpiValue>,
+}
+
 /// The pure result of steps 3 to 6.
 struct Computed {
-    /// The peer benchmark (`Peers` with games).
-    peer: Option<PeerBenchmark>,
-    /// The served reference the estimates, states and snapshots compared with.
-    reference: Option<BandReference>,
-    estimates: Vec<WeaknessEstimate>,
+    /// The peer benchmark per side (`Peers` with games).
+    peers: PerSide<PeerBenchmark>,
+    /// The served reference per side the estimates, states and snapshots compared with.
+    references: SideReferences,
+    /// In [`Side::ALL`] order (`Both` first).
+    sides: Vec<SideComputed>,
     outcomes: BTreeMap<SeriesKey, SeriesOutcome>,
     fresh: Vec<NewRow>,
     stale_ids: Vec<i64>,
     changes: Vec<StateChange>,
-    snapshot_values: Vec<KpiValue>,
-    appended: Vec<KpiValue>,
     protocols: HashMap<Uuid, String>,
     estimates_ms: f64,
     timeline_ms: f64,
     kpi_ms: f64,
 }
 
+/// The series points of the games in `ids` (a side's games).
+fn side_series(
+    series: &BTreeMap<SeriesKey, Vec<SeriesPoint>>,
+    ids: &HashSet<Uuid>,
+) -> BTreeMap<SeriesKey, Vec<SeriesPoint>> {
+    series
+        .iter()
+        .map(|(k, pts)| {
+            let kept: Vec<SeriesPoint> = pts
+                .iter()
+                .filter(|p| ids.contains(&p.game_id))
+                .cloned()
+                .collect();
+            (k.clone(), kept)
+        })
+        .filter(|(_, pts)| !pts.is_empty())
+        .collect()
+}
+
+/// The estimates of one side, from its games' series points against its own reference.
+fn side_estimates(
+    side: Side,
+    l: &Loaded,
+    reference: Option<&BandReference>,
+    started_at: OffsetDateTime,
+) -> Vec<WeaknessEstimate> {
+    let games = l.games.iter().filter(|(c, _)| side.covers(c.player_color));
+    let in_window = games_in_window(games.clone().map(|(c, _)| c.played_at), started_at);
+    if side == Side::Both {
+        return compute_estimates(&l.series, in_window, l.band, reference, started_at);
+    }
+    let ids: HashSet<Uuid> = games.map(|(c, _)| c.game_id).collect();
+    let series = side_series(&l.series, &ids);
+    compute_estimates(&series, in_window, l.band, reference, started_at)
+}
+
+/// Each side's peer benchmark and served reference (peers), or the loaded Lichess ones.
+fn side_benchmarks(
+    l: &Loaded,
+    started_at: OffsetDateTime,
+) -> (PerSide<PeerBenchmark>, SideReferences) {
+    match &l.peers {
+        Some((sides, Some(center))) => {
+            let peers: PerSide<PeerBenchmark> = Side::ALL.map(|side| {
+                Some(match side {
+                    Side::Both => aggregate_peer_benchmark(sides, *center, started_at),
+                    _ => aggregate_peer_benchmark(&peer_sides_of(sides, side), *center, started_at),
+                })
+            });
+            let references = peers
+                .each_ref()
+                .map(|p| p.as_ref().and_then(PeerBenchmark::reference));
+            (peers, references)
+        }
+        Some((_, None)) => (PerSide::default(), SideReferences::default()),
+        None => (PerSide::default(), l.references.clone()),
+    }
+}
+
 fn compute(tc: TimeClass, l: &Loaded, started_at: OffsetDateTime) -> Computed {
     let t = Instant::now();
-    let (peer, reference) = match &l.peers {
-        Some((sides, Some(center))) => {
-            let b = aggregate_peer_benchmark(sides, *center);
-            let r = b.reference();
-            (Some(b), r)
-        }
-        Some((_, None)) => (None, None),
-        None => (None, l.reference.clone()),
-    };
-    let in_window = games_in_window(l.games.iter().map(|(c, _)| c.played_at), started_at);
-    let estimates = compute_estimates(&l.series, in_window, l.band, reference.as_ref(), started_at);
+    let (peers, references) = side_benchmarks(l, started_at);
+    let estimates: Vec<Vec<WeaknessEstimate>> = Side::ALL
+        .iter()
+        .map(|side| side_estimates(*side, l, references[side_index(*side)].as_ref(), started_at))
+        .collect();
     let estimates_ms = ms(t);
 
     let t = Instant::now();
-    let outcomes = evaluate_all(&l.series, reference.as_ref());
+    let outcomes = evaluate_all(&l.series, references[side_index(Side::Both)].as_ref());
     let contexts: HashMap<Uuid, &GameContext> =
         l.games.iter().map(|(c, _)| (c.game_id, c)).collect();
     let facts = CauseFacts {
@@ -389,21 +479,36 @@ fn compute(tc: TimeClass, l: &Loaded, started_at: OffsetDateTime) -> Computed {
     let changes = state_changes(&outcomes, &l.stored_states, &l.stored);
     let timeline_ms = ms(t);
 
+    // Sessions span both colours: a game's session is the same on every side.
     let t = Instant::now();
     let session_map = sessions(tc, &l.games);
-    let kpi_games: Vec<KpiGame<'_>> = l
-        .games
-        .iter()
-        .map(|(ctx, metrics)| KpiGame {
-            ctx,
-            metrics,
-            session: session_map.get(&ctx.game_id),
-        })
-        .collect();
-    let snapshot_values = compute_snapshots(&kpi_games, reference.as_ref());
-    let appended: Vec<KpiValue> = rows_to_append(&snapshot_values, &l.latest)
+    let sides: Vec<SideComputed> = Side::ALL
         .into_iter()
-        .cloned()
+        .zip(estimates)
+        .map(|(side, estimates)| {
+            let kpi_games: Vec<KpiGame<'_>> = l
+                .games
+                .iter()
+                .filter(|(ctx, _)| side.covers(ctx.player_color))
+                .map(|(ctx, metrics)| KpiGame {
+                    ctx,
+                    metrics,
+                    session: session_map.get(&ctx.game_id),
+                })
+                .collect();
+            let snapshot_values =
+                compute_snapshots(&kpi_games, references[side_index(side)].as_ref());
+            let appended: Vec<KpiValue> = rows_to_append(side, &snapshot_values, &l.latest)
+                .into_iter()
+                .cloned()
+                .collect();
+            SideComputed {
+                side,
+                estimates,
+                snapshot_values,
+                appended,
+            }
+        })
         .collect();
     let kpi_ms = ms(t);
 
@@ -414,15 +519,13 @@ fn compute(tc: TimeClass, l: &Loaded, started_at: OffsetDateTime) -> Computed {
         .map(|p| (p.game_id, p.protocol.clone()))
         .collect();
     Computed {
-        peer,
-        reference,
-        estimates,
+        peers,
+        references,
+        sides,
         outcomes,
         fresh,
         stale_ids,
         changes,
-        snapshot_values,
-        appended,
         protocols,
         estimates_ms,
         timeline_ms,
@@ -472,12 +575,9 @@ async fn run_build(
             refresh_opponent_metrics(pool, account_id, tc)
                 .await
                 .map_err(|e| retryable("opponent sides", e))?;
-            None
+            SideReferences::default()
         }
-        BenchmarkSource::LichessBands => load_band_reference(pool, band0, tc)
-            .await
-            .map_err(refdata_error)?
-            .map(|r| r.reference()),
+        BenchmarkSource::LichessBands => load_side_references(pool, band0, tc).await?,
     };
     let mut tx = pool.begin().await.map_err(|e| retryable("begin", e))?;
     lock_build(&mut tx, account_id, tc)
@@ -515,30 +615,60 @@ async fn run_build(
 
     // Persist, then commit (which releases the lock).
     let t = Instant::now();
-    let stored = match (&c.peer, deps.benchmark) {
+    // What a side stores: every peer row (low-sample ones flagged), or the served Lichess ones.
+    let side_stats = |side: Side| -> Vec<BandReferenceStat> {
+        let i = side_index(side);
+        match (&c.peers[i], deps.benchmark) {
+            (Some(p), _) => p.stats.clone(),
+            (None, BenchmarkSource::LichessBands) => c.references[i]
+                .as_ref()
+                .map(|r| r.values().cloned().collect())
+                .unwrap_or_default(),
+            (None, BenchmarkSource::Peers) => Vec::new(),
+        }
+    };
+    let both_peer = c.peers[side_index(Side::Both)].as_ref();
+    let both_reference = c.references[side_index(Side::Both)].as_ref();
+    let stored = match (both_peer, deps.benchmark) {
         (Some(p), _) => Some(StoredBenchmark {
             source: SOURCE_PEERS,
             peers: Some(p),
-            stats: p.stats.clone(),
+            stats: side_stats(Side::Both),
         }),
-        (None, BenchmarkSource::LichessBands) => c.reference.as_ref().map(|r| StoredBenchmark {
+        (None, BenchmarkSource::LichessBands) => both_reference.map(|_| StoredBenchmark {
             source: SOURCE_LICHESS_BANDS,
             peers: None,
-            stats: r.values().cloned().collect(),
+            stats: side_stats(Side::Both),
         }),
         (None, BenchmarkSource::Peers) => None,
     };
     write_account_benchmark(&mut tx, account_id, tc, stored.as_ref())
         .await
         .map_err(|e| retryable("benchmark", e))?;
-    for e in &c.estimates {
-        let (state, p_imp) = c
-            .outcomes
-            .get(&SeriesKey::Weakness(e.key))
-            .map_or((WeaknessState::NotAnIssue, None), |o| (o.state, o.p_imp));
-        upsert_weakness_estimate(&mut tx, &estimate_row(account_id, tc, e, state, p_imp))
+    // A colour's rows hang off the stored benchmark (its band and source): without one, none.
+    if stored.is_some() {
+        for side in [Side::White, Side::Black] {
+            let peers = c.peers[side_index(side)].as_ref();
+            write_side_stats(&mut tx, account_id, tc, side, &side_stats(side), peers)
+                .await
+                .map_err(|e| retryable("benchmark", e))?;
+        }
+    }
+    for s in &c.sides {
+        for e in &s.estimates {
+            let (state, p_imp) = c
+                .outcomes
+                .get(&SeriesKey::Weakness(e.key))
+                .map_or((WeaknessState::NotAnIssue, None), |o| (o.state, o.p_imp));
+            // `P_imp` is the timeline's, which is `Both` only.
+            let p_imp = p_imp.filter(|_| s.side == Side::Both);
+            upsert_weakness_estimate(
+                &mut tx,
+                &estimate_row(account_id, tc, s.side, e, state, p_imp),
+            )
             .await
             .map_err(|e| retryable("estimates", e))?;
+        }
     }
     let deleted = delete_history_rows(&mut tx, account_id, tc, &c.stale_ids)
         .await
@@ -552,13 +682,15 @@ async fn run_build(
             .await
             .map_err(|e| retryable("history", e))?;
     }
-    for v in &c.appended {
-        append_kpi_snapshot(
-            &mut tx,
-            &snapshot_row(l.user_id, account_id, tc, v, ANALYSIS_PROTOCOL),
-        )
-        .await
-        .map_err(|e| retryable("snapshots", e))?;
+    for s in &c.sides {
+        for v in &s.appended {
+            append_kpi_snapshot(
+                &mut tx,
+                &snapshot_row(l.user_id, account_id, tc, s.side, v, ANALYSIS_PROTOCOL),
+            )
+            .await
+            .map_err(|e| retryable("snapshots", e))?;
+        }
     }
     tx.commit().await.map_err(|e| retryable("commit", e))?;
     stages.insert("persist_ms".into(), ms(t));
@@ -567,16 +699,17 @@ async fn run_build(
     }
 
     let summary = BuildProfileSummary {
-        estimates: c.estimates.len(),
-        snapshots: c.appended.len(),
+        estimates: c.sides.iter().map(|s| s.estimates.len()).sum(),
+        snapshots: c.sides.iter().map(|s| s.appended.len()).sum(),
         transitions: c.fresh.len(),
     };
 
     // 7. Events, right after the commit. They notify; the state is in Postgres, so a failed
     // publish is logged, not retried (a retry would find nothing new to announce).
-    let appended: Vec<&KpiValue> = c.appended.iter().collect();
+    let both = &c.sides[side_index(Side::Both)];
+    let appended: Vec<&KpiValue> = both.appended.iter().collect();
     for area in changed_areas(&appended) {
-        let p = profile_updated_payload(tc, area, &c.snapshot_values);
+        let p = profile_updated_payload(tc, area, &both.snapshot_values);
         if let Err(e) = publish(pool, account_id, UserEventType::ProfileUpdated, p).await {
             tracing::warn!(%account_id, area = area.as_str(), error = %e, "publish profile.updated failed");
         }

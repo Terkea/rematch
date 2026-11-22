@@ -23,6 +23,7 @@ import {
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type ReactNode, useEffect, useRef, useState } from "react";
+import { fetchPositionLine } from "../../../../../lib/position-line";
 import { reviewHref } from "../../../../../lib/segment-href";
 import { COACH_UNAVAILABLE_TITLE } from "../../../../../server/coach/status-copy";
 import { PendingButton } from "../../../../ui/pending-button";
@@ -179,6 +180,7 @@ function Message({
       disclosure={m.disclosure}
       hrefFor={hrefFor}
       positions={m.role === "assistant" && m.status === "done" ? positions : undefined}
+      loadLine={fetchPositionLine}
       // Stored answers keep their paragraph breaks ("\n\n" text segments), and stored prose is
       // set at the streamed size, so a finished answer never reflows (review V2).
       className="[&_p]:whitespace-pre-line [&_p.font-serif]:text-prose"

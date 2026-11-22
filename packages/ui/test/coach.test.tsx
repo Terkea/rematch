@@ -741,6 +741,24 @@ describe("cited positions", () => {
     expect(tones).not.toContain("good");
   });
 
+  it("expands into the explorer, which loads the game by the review's id", async () => {
+    const user = userEvent.setup();
+    const loadLine = vi.fn(async () => null);
+    render(
+      <ChatMessage
+        {...base}
+        segments={answer}
+        positions={{ [key]: { ...position, reviewGameId: "review-1" } }}
+        loadLine={loadLine}
+      />,
+    );
+    await user.click(
+      screen.getByRole("button", { name: `Expand the position before ${moveText}` }),
+    );
+    expect(await screen.findByRole("dialog")).toBeVisible();
+    expect(loadLine).toHaveBeenCalledWith("review-1", ply.ply);
+  });
+
   it("without positions an answer renders as before, with no board", () => {
     render(<ChatMessage {...base} segments={answer} />);
     expect(screen.queryByRole("group", { name: /^Position before/ })).toBeNull();

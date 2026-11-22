@@ -452,7 +452,7 @@ pub async fn stored_estimate_states(
 ) -> Result<HashMap<String, WeaknessState>, sqlx::Error> {
     let rows: Vec<(String, String)> = sqlx::query_as(
         "SELECT series_key, state::text FROM weakness_estimates \
-         WHERE account_id = $1 AND time_class = $2::time_class",
+         WHERE account_id = $1 AND time_class = $2::time_class AND side = 'both'",
     )
     .bind(account_id)
     .bind(tc.as_str())

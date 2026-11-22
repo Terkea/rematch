@@ -135,7 +135,7 @@ async fn one_estimate_per_binomial_key_and_w1_is_active(pool: PgPool) {
 
     let keys: Vec<String> = sqlx::query_scalar(
         "SELECT series_key FROM weakness_estimates WHERE account_id = $1 \
-         AND time_class = 'blitz' ORDER BY series_key",
+         AND time_class = 'blitz' AND side = 'both' ORDER BY series_key",
     )
     .bind(s.account_id)
     .fetch_all(&pool)
@@ -144,7 +144,8 @@ async fn one_estimate_per_binomial_key_and_w1_is_active(pool: PgPool) {
     let mut expected: Vec<String> = binomial_keys().into_iter().map(String::from).collect();
     expected.sort();
     assert_eq!(keys, expected);
-    assert_eq!(summary.estimates, expected.len());
+    // One row per key and side.
+    assert_eq!(summary.estimates, 3 * expected.len());
 
     let (confidence, state, k_unweighted, n_unweighted, band_median): (
         f64,
@@ -154,7 +155,8 @@ async fn one_estimate_per_binomial_key_and_w1_is_active(pool: PgPool) {
         Option<f64>,
     ) = sqlx::query_as(
         "SELECT confidence, state::text, k_unweighted, n_unweighted, band_median \
-         FROM weakness_estimates WHERE account_id = $1 AND series_key = 'W1'",
+         FROM weakness_estimates WHERE account_id = $1 AND series_key = 'W1' \
+         AND side = 'both'",
     )
     .bind(s.account_id)
     .fetch_one(&pool)
@@ -189,14 +191,15 @@ async fn snapshots_cover_last50_and_both_seed_weeks(pool: PgPool) {
     // Area scores are `area:<area>` snapshots, one per area and window.
     let areas = count(
         &pool,
-        "SELECT count(*) FROM kpi_snapshot WHERE account_id = $1 AND metric LIKE 'area:%'",
+        "SELECT count(*) FROM kpi_snapshot WHERE account_id = $1 AND metric LIKE 'area:%' \
+         AND side = 'both'",
         s.account_id,
     )
     .await;
     assert_eq!(areas, 7 * 3);
     let (kind, n): (String, i32) = sqlx::query_as(
         "SELECT window_kind::text, n FROM kpi_snapshot WHERE account_id = $1 \
-         AND metric = 'blunders_per_game' AND window_key = 'last50'",
+         AND metric = 'blunders_per_game' AND window_key = 'last50' AND side = 'both'",
     )
     .bind(s.account_id)
     .fetch_one(&pool)
@@ -316,12 +319,12 @@ async fn no_reference_build_gives_no_benchmark_and_not_an_issue(pool: PgPool) {
     )
     .await;
     let summary = build(&pool, s.account_id).await;
-    assert_eq!(summary.estimates, binomial_keys().len());
+    assert_eq!(summary.estimates, 3 * binomial_keys().len());
 
     type EstimateCols = (String, Option<f64>, Option<f64>, f64, f64, String);
     let rows: Vec<EstimateCols> = sqlx::query_as(
         "SELECT series_key, band_median, percentile, confidence, priority, state::text \
-         FROM weakness_estimates WHERE account_id = $1",
+         FROM weakness_estimates WHERE account_id = $1 AND side = 'both'",
     )
     .bind(s.account_id)
     .fetch_all(&pool)
@@ -431,7 +434,7 @@ async fn concurrent_builds_serialise_and_append_no_duplicates(pool: PgPool) {
     assert_eq!(dup_history, 0);
     let dup_snapshots = count(
         &pool,
-        "SELECT count(*) - count(DISTINCT (metric, window_key)) FROM kpi_snapshot \
+        "SELECT count(*) - count(DISTINCT (side, metric, window_key)) FROM kpi_snapshot \
          WHERE account_id = $1",
         s.account_id,
     )
@@ -610,7 +613,7 @@ async fn stale_metrics_rows_are_left_out(pool: PgPool) {
     build(&pool, s.account_id).await;
     let n: i32 = sqlx::query_scalar(
         "SELECT n FROM kpi_snapshot WHERE account_id = $1 AND metric = 'blunders_per_game' \
-         AND window_key = 'last50'",
+         AND window_key = 'last50' AND side = 'both'",
     )
     .bind(s.account_id)
     .fetch_one(&pool)
@@ -619,7 +622,8 @@ async fn stale_metrics_rows_are_left_out(pool: PgPool) {
     assert_eq!(n, 39);
     // Its series point (written with the stale metrics) is left out too.
     let opps: i32 = sqlx::query_scalar(
-        "SELECT n_unweighted FROM weakness_estimates WHERE account_id = $1 AND series_key = 'W1'",
+        "SELECT n_unweighted FROM weakness_estimates WHERE account_id = $1 AND series_key = 'W1' \
+         AND side = 'both'",
     )
     .bind(s.account_id)
     .fetch_one(&pool)
@@ -771,7 +775,8 @@ async fn backfilled_older_games_keep_one_consistent_history(pool: PgPool) {
         last.insert(key.as_str(), to.as_str());
     }
     let state: String = sqlx::query_scalar(
-        "SELECT state::text FROM weakness_estimates WHERE account_id = $1 AND series_key = 'W1'",
+        "SELECT state::text FROM weakness_estimates WHERE account_id = $1 AND series_key = 'W1' \
+         AND side = 'both'",
     )
     .bind(s.account_id)
     .fetch_one(&pool)
@@ -792,7 +797,7 @@ async fn backfilled_older_games_keep_one_consistent_history(pool: PgPool) {
 async fn latest_snapshot_id(pool: &PgPool, a: Uuid, metric: &str) -> i64 {
     sqlx::query_scalar(
         "SELECT max(id) FROM kpi_snapshot WHERE account_id = $1 AND metric = $2 \
-         AND window_key = 'last50'",
+         AND window_key = 'last50' AND side = 'both'",
     )
     .bind(a)
     .bind(metric)

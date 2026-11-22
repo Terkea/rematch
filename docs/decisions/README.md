@@ -83,7 +83,9 @@ One file per decision: context, decision, alternatives, consequences. New decisi
 - [0078. Honest coach availability, uncompared weaknesses and R2-backed examples](0078-honest-coach-availability-and-benchmarks.md)
 - [0079. Explained stats: definition lines, an explanation popover and the weakness story](0079-explained-stats-and-weakness-story.md)
 - [0080. A chess.com peer benchmark from the opponents you have faced](0080-chesscom-peer-benchmark.md)
+- [0082. The colour split: profile rows per side the player had](0082-colour-split-profile-rows.md)
 - [0083. One filter URL contract, and honest period comparison](0083-filters-and-period-comparison.md)
+- [0081. The peer benchmark compares with the pooled rate, in the player's window, without mirrors](0081-peer-benchmark-pooled-rate.md)
 
 ## Records with placeholder numbers
 
@@ -149,3 +151,6 @@ Every R2 record has a file (titles final at R2 Task 35); numbers 19 to 21 were n
 ### Coach bug fixes (fix/e): ADR-FIX-E
 
 - [ADR-FIX-E-1. The coach finds the player's own moves by a move filter](ADR-FIX-E-1-find-examples-move-filter.md)
+### Position explorer (feat/position-explorer): ADR-FIX-F
+
+- [ADR-FIX-F-1. One position explorer for every cited position](ADR-FIX-F-1-position-explorer.md)

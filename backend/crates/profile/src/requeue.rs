@@ -280,6 +280,37 @@ pub async fn run_difficulty_sweep(
 /// Marked games per sweep run (the rest wait for the next run).
 pub const RECOMPUTE_BATCH: i64 = 500;
 
+/// The account × time classes whose stored profile predates the colour split: they have
+/// `Both` estimates but no `Black` one. Every build writes one estimate per binomial key and
+/// side (a side without games included), so after one build the pair is never due again.
+pub const COLOUR_SPLIT_DUE_SQL: &str = "\
+SELECT DISTINCT e.account_id, e.time_class::text \
+FROM weakness_estimates e \
+WHERE e.side = 'both' AND NOT EXISTS ( \
+  SELECT 1 FROM weakness_estimates s \
+  WHERE s.account_id = e.account_id AND s.time_class = e.time_class AND s.side = 'black') \
+ORDER BY 1, 2";
+
+/// Enqueues a profile build for every account × time class of [`COLOUR_SPLIT_DUE_SQL`] (worker
+/// start). The build recomputes the per-side rows from the stored metrics and series points: no
+/// engine runs. Deduped onto a live build. Returns how many pairs were due.
+pub async fn requeue_colour_split(pool: &PgPool, queue: &Queue) -> Result<usize, QueueError> {
+    let due: Vec<(Uuid, String)> = sqlx::query_as(COLOUR_SPLIT_DUE_SQL).fetch_all(pool).await?;
+    for (account_id, tc) in &due {
+        let Some(tc) = crate::analyse_features::parse_time_class(tc) else {
+            continue;
+        };
+        enqueue_build_profile(queue, *account_id, tc).await?;
+    }
+    if !due.is_empty() {
+        tracing::info!(
+            due = due.len(),
+            "profiles without colour rows queued for a rebuild"
+        );
+    }
+    Ok(due.len())
+}
+
 /// Marks the `done` games whose metrics row has another version than this code writes (an
 /// existing mark is kept, so its time still orders the queue).
 pub const MARK_STALE_METRICS_SQL: &str = "\

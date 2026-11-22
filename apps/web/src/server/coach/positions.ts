@@ -16,6 +16,8 @@ export type CitedPosition = {
   gameId: string;
   ply: number;
   href: string;
+  /** The review's game id: the explorer loads the game around the ply by it. */
+  reviewGameId: string;
   fen: string;
   orientation: "white" | "black";
   moveText: string;
@@ -110,6 +112,7 @@ export async function citedPositions(
       gameId: r.platformGameId,
       ply: r.ply,
       href: `/app/games/${encodeURIComponent(r.id)}?ply=${r.ply}`,
+      reviewGameId: r.id,
       fen: r.fenBefore,
       orientation: r.playerColor,
       moveText: moveText(r.ply, r.color, r.san),

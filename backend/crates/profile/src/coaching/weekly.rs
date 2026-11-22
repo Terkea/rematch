@@ -199,7 +199,8 @@ async fn weekly_rows(
     let rows: Vec<Raw> = sqlx::query_as(
         "SELECT DISTINCT ON (metric, window_key) metric, window_key, value, value_adjusted, n, \
            ci_low, ci_high FROM kpi_snapshot \
-         WHERE account_id = $1 AND time_class = $2::time_class AND window_kind = 'week' \
+         WHERE account_id = $1 AND time_class = $2::time_class AND side = 'both' \
+           AND window_kind = 'week' \
            AND window_key <= $3 \
          ORDER BY metric, window_key, id DESC",
     )
