@@ -261,41 +261,27 @@ services:
       - cargo_git:/usr/local/cargo/git
       - sccache:/sccache
       - crate_age:/crate-age
-    # maia_internal reaches the Maia service (ADR-R2-13); default keeps Postgres and the internet.
-    networks: [default, maia_internal]
 
-  # Maia-2 difficulty service (R2 Task 24, ADR-R2-13). Opt-in: `docker compose --profile maia up -d
-  # maia`, then set MAIA_URL=http://maia:8080 for the Rust side. Difficulty comes only from Maia:
-  # with MAIA_URL unset or Maia down, positions are recorded as `pending_maia` (never estimated).
-  # The service sits only on the internal network: no egress, and no host port here (the host
-  # port 127.0.0.1:58080 is opt-in through docker-compose.ports.yml, like Postgres and Redis).
-  maia:
-    profiles: [maia]
+  # The Rust worker (Task 22): the runtime image of backend/Dockerfile. It reaches chess.com and
+  # Lichess with the fixed project User-Agent and never sends an email (ADR 0043), so it gets no
+  # CONTACT_EMAIL. No ports. On `docker compose stop` it drains within its 25 s grace.
+  rust-worker:
     build:
-      context: services/maia
-      target: runtime
+      context: .
+      dockerfile: backend/Dockerfile
+      target: worker
     environment:
-      MAIA_MODEL: ${MAIA_MODEL:-rapid}
-    read_only: true
-    tmpfs:
-      - /tmp
-    networks: [maia_internal]
-    healthcheck:
-      test:
-        - CMD
-        - python
-        - -c
-        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=3)"
-      interval: 5s
-      timeout: 5s
-      retries: 30
-      start_period: 30s
-
-networks:
-  # No route out: services on it reach each other only (Maia and its clients; the rust-worker
-  # joins it when it lands, lane I).
-  maia_internal:
-    internal: true
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/chess
+      STOCKFISH_PATH: /usr/local/bin/stockfish
+      LICHESS_TOKEN: ${LICHESS_TOKEN:-}
+      # Engines (and analyses at once). Empty: min(cores - 2, 8). See .env.example.
+      WORKER_POOL_SIZE: ${WORKER_POOL_SIZE:-}
+      RUST_LOG: ${RUST_LOG:-info}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    stop_grace_period: 30s
+    restart: unless-stopped
 
 volumes:
   pgdata:

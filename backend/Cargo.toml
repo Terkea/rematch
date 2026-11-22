@@ -31,6 +31,7 @@ scheduler = { path = "crates/scheduler" }
 profile = { path = "crates/profile" }
 # R3 workspace crate (ADR-R3-1)
 ai = { path = "crates/ai" }
+worker = { path = "crates/worker" }
 
 # Third-party crates
 tokio = { version = "=1.54.1", features = [
