@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { labEnabled } from "./lab-enabled";
 
-const surfaces = ["styleguide-hero", "board"] as const;
+const surfaces = ["styleguide-hero", "board", "overview", "review"] as const;
 const variants = ["a", "b", "c"] as const;
 
 // Guarded here too, so the page stays closed even if the layout is ever bypassed.

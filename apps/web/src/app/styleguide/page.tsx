@@ -5,6 +5,7 @@ import { labEnabled } from "../lab/lab-enabled";
 import { AnnotationsSection } from "./sections/annotations";
 import { AreaScoreSection } from "./sections/area-score";
 import { BoardSection } from "./sections/board";
+import { ChartsSection } from "./sections/charts";
 import { EvalBarSection } from "./sections/eval-bar";
 import { EvalGraphSection } from "./sections/eval-graph";
 import { FoundationsSection } from "./sections/foundations";
@@ -12,6 +13,7 @@ import { HeroSection } from "./sections/hero";
 import { OverlaysSection } from "./sections/overlays";
 import { PrimitivesSection } from "./sections/primitives";
 import { ProgressSection } from "./sections/progress";
+import { ReviewSection } from "./sections/review";
 import { StatsSection } from "./sections/stats";
 import { TimelineSection } from "./sections/timeline";
 import { ThemeToggle } from "./theme-toggle";
@@ -39,7 +41,9 @@ export default function StyleguidePage() {
         <AnnotationsSection />
         <EvalBarSection />
         <EvalGraphSection />
+        <ReviewSection />
         <StatsSection />
+        <ChartsSection />
         <AreaScoreSection />
         <TimelineSection />
         <ProgressSection />

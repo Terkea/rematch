@@ -107,6 +107,15 @@
      then the eval graph filling the rest) is exactly this tall (DESIGN.md "Styleguide hero"). */
   --hero-graph-height: calc(var(--board-size) + 16px);
 
+  /* Progress placeholders: faint writing lines, one per scoresheet row, the rule on each row's bottom edge. */
+  --ruled-sheet: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent calc(var(--space-scoresheet-row) - 1px),
+    var(--color-rule) calc(var(--space-scoresheet-row) - 1px),
+    var(--color-rule) var(--space-scoresheet-row)
+  );
+
   /* Elevation: the one shadow, for things that float */
   --shadow-lift: 0 10px 30px -12px rgb(22 35 59 / 0.35);
 

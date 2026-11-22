@@ -1,8 +1,12 @@
 import { relations } from "drizzle-orm/relations";
 import {
+  account,
+  accountLinks,
   aiBatches,
   aiBatchItems,
   bandReference,
+  chesscomRequestBudgets,
+  chesscomVerifications,
   coachConversations,
   coachMessages,
   gameMetrics,
@@ -24,12 +28,33 @@ import {
   reportRuns,
   reportSections,
   reports,
+  session,
+  user,
   weaknessChangeNotes,
   weaknessEstimates,
   weaknessSeriesPoint,
   weaknessStateHistory,
   weeklyReviews,
 } from "./schema.js";
+
+export const accountLinksRelations = relations(accountLinks, ({ one, many }) => ({
+  chesscomVerifications: many(chesscomVerifications),
+  linkedAccount: one(linkedAccounts, {
+    fields: [accountLinks.linkedAccountId],
+    references: [linkedAccounts.id],
+  }),
+  user: one(user, {
+    fields: [accountLinks.userId],
+    references: [user.id],
+  }),
+}));
+
+export const accountRelations = relations(account, ({ one }) => ({
+  user: one(user, {
+    fields: [account.userId],
+    references: [user.id],
+  }),
+}));
 
 export const aiBatchItemsRelations = relations(aiBatchItems, ({ one }) => ({
   aiBatch: one(aiBatches, {
@@ -54,6 +79,20 @@ export const bandReferenceRelations = relations(bandReference, ({ one }) => ({
   referenceBuild: one(referenceBuilds, {
     fields: [bandReference.buildId],
     references: [referenceBuilds.id],
+  }),
+}));
+
+export const chesscomRequestBudgetsRelations = relations(chesscomRequestBudgets, ({ one }) => ({
+  user: one(user, {
+    fields: [chesscomRequestBudgets.userId],
+    references: [user.id],
+  }),
+}));
+
+export const chesscomVerificationsRelations = relations(chesscomVerifications, ({ one }) => ({
+  accountLink: one(accountLinks, {
+    fields: [chesscomVerifications.accountLinkId],
+    references: [accountLinks.id],
   }),
 }));
 
@@ -141,6 +180,7 @@ export const kpiSnapshotRelations = relations(kpiSnapshot, ({ one }) => ({
 }));
 
 export const linkedAccountsRelations = relations(linkedAccounts, ({ many }) => ({
+  accountLinks: many(accountLinks),
   coachConversations: many(coachConversations),
   gameMetrics: many(gameMetrics),
   gameOpenings: many(gameOpenings),
@@ -246,6 +286,20 @@ export const reportsRelations = relations(reports, ({ one, many }) => ({
     references: [reportRuns.id],
   }),
   reportSections: many(reportSections),
+}));
+
+export const sessionRelations = relations(session, ({ one }) => ({
+  user: one(user, {
+    fields: [session.userId],
+    references: [user.id],
+  }),
+}));
+
+export const userRelations = relations(user, ({ many }) => ({
+  accountLinks: many(accountLinks),
+  accounts: many(account),
+  chesscomRequestBudgets: many(chesscomRequestBudgets),
+  sessions: many(session),
 }));
 
 export const weaknessChangeNotesRelations = relations(weaknessChangeNotes, ({ one }) => ({

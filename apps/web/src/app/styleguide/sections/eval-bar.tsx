@@ -44,7 +44,9 @@ export function EvalBarSection() {
         768px, an 8px bar above the board below that. It flips with the board.
       </p>
 
-      <div className="mt-6 flex flex-col gap-3 max-md:[--board-size:100%] md:[--board-size:320px]">
+      <div
+        className="mt-6 flex flex-col gap-3 max-md:[--board-size:100%] md:[--board-size:320px]" /* ban-lint-allow TOK2: styleguide demo sets the --board-size token itself */
+      >
         <h3 className="font-serif text-xl font-semibold">Swing</h3>
         <div className="flex flex-col gap-4 md:flex-row md:items-end">
           <div className="flex gap-3 max-md:flex-col">
@@ -59,6 +61,7 @@ export function EvalBarSection() {
                   color={move.color}
                   san={move.san}
                   judgement={move.judgement}
+                  side={move.color === game.playerColor ? "player" : "opponent"}
                   score={scoreOf(ply)}
                 />
               </p>
@@ -86,7 +89,9 @@ export function EvalBarSection() {
         </div>
       </div>
 
-      <div className="mt-8 flex flex-col gap-3 max-md:[--board-size:100%] md:[--board-size:192px]">
+      <div
+        className="mt-8 flex flex-col gap-3 max-md:[--board-size:100%] md:[--board-size:192px]" /* ban-lint-allow TOK2: styleguide demo sets the --board-size token itself */
+      >
         <h3 className="font-serif text-xl font-semibold">Values</h3>
         <ul className="flex flex-col gap-4 md:flex-row md:gap-8">
           {samples.map(({ score, text }) => (

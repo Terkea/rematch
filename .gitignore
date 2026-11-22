@@ -20,3 +20,6 @@ next-env.d.ts
 
 # Claude Code agent worktrees
 .claude/worktrees/
+
+# Playwright signed-in storage state (e2e)
+apps/web/e2e/.auth/

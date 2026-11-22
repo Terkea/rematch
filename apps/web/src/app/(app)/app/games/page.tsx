@@ -1,0 +1,81 @@
+import { LiveRefresh } from "../../../../components/live-refresh";
+import { requireUser } from "../../../../server/auth/session";
+import { getDb } from "../../../../server/db";
+import { scopedAccountIds } from "../../../../server/games";
+import { loadExplorer } from "../../../../server/games/explorer";
+import { PageHeading } from "../../_shell/page-heading";
+import { NoGames, NoLinks, NoMatch } from "./_explorer/empty";
+import { FilterBar } from "./_explorer/filter-bar";
+import { toRowView } from "./_explorer/game-row";
+import { GamesList, showingText } from "./_explorer/games-list";
+import { describeFilters, explorerHref, NO_FILTERS, suggestions } from "./_explorer/href";
+import { Pagination } from "./_explorer/pagination";
+import { ExplorerTransition, PendingRegion } from "./_explorer/transition";
+
+export const dynamic = "force-dynamic";
+export const metadata = { title: "Games" };
+
+type Params = Record<string, string | string[] | undefined>;
+
+/**
+ * The games explorer: every game of the user's linked accounts, filtered, sorted and paged by the
+ * URL (ADR 0048). Rows link to the review. The filter bar and the list share one transition, so
+ * a change dims the list in place until the new page arrives.
+ */
+export default async function GamesPage({ searchParams }: { searchParams: Promise<Params> }) {
+  const user = await requireUser();
+  const db = getDb();
+  const explorer = await loadExplorer(db, user.id, await searchParams);
+  const live = <LiveRefresh accountIds={await scopedAccountIds(db, user.id)} />;
+
+  if (explorer.state !== "games") {
+    return (
+      <div className="flex flex-col gap-8">
+        {live}
+        <PageHeading title="Games" />
+        {explorer.state === "no-links" ? (
+          <NoLinks />
+        ) : (
+          <NoGames
+            importState={explorer.importState}
+            accounts={explorer.accounts.map((a) => a.label)}
+          />
+        )}
+      </div>
+    );
+  }
+
+  const { query, page, accounts } = explorer;
+  const rows = page.rows.map(toRowView);
+  const clearHref = explorerHref({ ...query, filters: NO_FILTERS, page: 1 });
+
+  return (
+    <ExplorerTransition>
+      <div className="flex flex-col gap-6 md:gap-8">
+        {live}
+        <PageHeading title="Games" />
+        <FilterBar
+          query={query}
+          accounts={accounts}
+          summary={
+            <p aria-live="polite" className="text-sm text-ink-soft tabular-nums">
+              {page.total === 0 ? "Showing 0 games" : showingText(page)}
+            </p>
+          }
+        />
+        <PendingRegion>
+          {rows.length === 0 ? (
+            <NoMatch
+              description={describeFilters(query.filters, accounts)}
+              suggestions={suggestions(query, explorer.relax ?? [])}
+              clearHref={clearHref}
+            />
+          ) : (
+            <GamesList rows={rows} grouped={query.sort.key === "played"} />
+          )}
+          <Pagination query={query} page={page.page} pageCount={page.pageCount} />
+        </PendingRegion>
+      </div>
+    </ExplorerTransition>
+  );
+}

@@ -104,6 +104,13 @@ export const kpiWindow = pgEnum("kpi_window", ["last_n", "week"]);
 
 export const lineKind = pgEnum("line_kind", ["chosen", "faced"]);
 
+export const linkMethod = pgEnum("link_method", [
+  "username",
+  "location_code",
+  "lichess_oauth",
+  "chesscom_oauth",
+]);
+
 export const openingVerdict = pgEnum("opening_verdict", ["keep", "fix", "learn", "replace"]);
 
 export const phase = pgEnum("phase", ["opening", "middlegame", "endgame"]);
@@ -146,6 +153,68 @@ export const weaknessState = pgEnum("weakness_state", [
   "resolved",
   "relapsed",
 ]);
+
+export const account = pgTable(
+  "account",
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    accountId: text("account_id").notNull(),
+    providerId: text("provider_id").notNull(),
+    userId: uuid("user_id").notNull(),
+    accessToken: text("access_token"),
+    refreshToken: text("refresh_token"),
+    idToken: text("id_token"),
+    accessTokenExpiresAt: timestamp("access_token_expires_at", {
+      withTimezone: true,
+      mode: "date",
+    }),
+    refreshTokenExpiresAt: timestamp("refresh_token_expires_at", {
+      withTimezone: true,
+      mode: "date",
+    }),
+    scope: text(),
+    password: text(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("account_user_id_idx").using("btree", table.userId.asc().nullsLast()),
+    foreignKey({
+      columns: [table.userId],
+      foreignColumns: [user.id],
+      name: "account_user_id_user_id_fk",
+    }).onDelete("cascade"),
+    unique("account_provider_account_unique").on(table.accountId, table.providerId),
+  ],
+);
+
+export const accountLinks = pgTable(
+  "account_links",
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    userId: uuid("user_id").notNull(),
+    linkedAccountId: uuid("linked_account_id").notNull(),
+    method: linkMethod().notNull(),
+    verifiedAt: timestamp("verified_at", { withTimezone: true, mode: "date" }),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("account_links_one_verified_owner")
+      .using("btree", table.linkedAccountId.asc().nullsLast())
+      .where(sql`(verified_at IS NOT NULL)`),
+    foreignKey({
+      columns: [table.userId],
+      foreignColumns: [user.id],
+      name: "account_links_user_id_user_id_fk",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [table.linkedAccountId],
+      foreignColumns: [linkedAccounts.id],
+      name: "account_links_linked_account_id_linked_accounts_id_fk",
+    }).onDelete("cascade"),
+    unique("account_links_user_account_unique").on(table.userId, table.linkedAccountId),
+  ],
+);
 
 export const aiBatchItems = pgTable(
   "ai_batch_items",
@@ -309,6 +378,52 @@ export const bandReference = pgTable(
   ],
 );
 
+export const chesscomProfileRequests = pgTable("chesscom_profile_requests", {
+  username: text().primaryKey().notNull(),
+  requestedAt: timestamp("requested_at", { withTimezone: true, mode: "date" }).notNull(),
+});
+
+export const chesscomRequestBudgets = pgTable(
+  "chesscom_request_budgets",
+  {
+    userId: uuid("user_id").primaryKey().notNull(),
+    tokens: doublePrecision().notNull(),
+    refilledAt: timestamp("refilled_at", { withTimezone: true, mode: "date" }).notNull(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.userId],
+      foreignColumns: [user.id],
+      name: "chesscom_request_budgets_user_id_user_id_fk",
+    }).onDelete("cascade"),
+  ],
+);
+
+export const chesscomVerifications = pgTable(
+  "chesscom_verifications",
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    accountLinkId: uuid("account_link_id").notNull(),
+    code: text().notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }).notNull(),
+    lastCheckedAt: timestamp("last_checked_at", { withTimezone: true, mode: "date" }),
+    checks: integer().default(0).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.accountLinkId],
+      foreignColumns: [accountLinks.id],
+      name: "chesscom_verifications_account_link_id_account_links_id_fk",
+    }).onDelete("cascade"),
+    unique("chesscom_verifications_account_link_id_unique").on(table.accountLinkId),
+    check(
+      "chesscom_verifications_code_format",
+      sql`code ~ '^CI-[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{6}$'::text`,
+    ),
+  ],
+);
+
 export const coachConversations = pgTable(
   "coach_conversations",
   {
@@ -466,14 +581,14 @@ export const gameOpenings = pgTable(
       table.lineKind.asc().nullsLast(),
     ),
     foreignKey({
-      columns: [table.accountId],
-      foreignColumns: [linkedAccounts.id],
-      name: "game_openings_account_id_fkey",
-    }).onDelete("cascade"),
-    foreignKey({
       columns: [table.gameId],
       foreignColumns: [games.id],
       name: "game_openings_game_id_fkey",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [table.accountId],
+      foreignColumns: [linkedAccounts.id],
+      name: "game_openings_account_id_fkey",
     }).onDelete("cascade"),
   ],
 );
@@ -657,6 +772,20 @@ export const interactiveEvals = pgTable(
   ],
 );
 
+export const invites = pgTable(
+  "invites",
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    email: text().notNull(),
+    note: text(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  },
+  (table) => [
+    unique("invites_email_unique").on(table.email),
+    check("invites_email_lower", sql`email = lower(email)`),
+  ],
+);
+
 export const jobMetrics = pgTable(
   "job_metrics",
   {
@@ -802,6 +931,22 @@ export const linkedAccounts = pgTable(
     analysisScheduledAt: timestamp("analysis_scheduled_at", { withTimezone: true, mode: "date" }),
   },
   (table) => [unique("linked_accounts_platform_username_uq").on(table.platform, table.username)],
+);
+
+export const magicLinkSends = pgTable(
+  "magic_link_sends",
+  {
+    id: bigserial({ mode: "bigint" }).primaryKey().notNull(),
+    email: text().notNull(),
+    sentAt: timestamp("sent_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("magic_link_sends_email_sent_at_idx").using(
+      "btree",
+      table.email.asc().nullsLast(),
+      table.sentAt.asc().nullsLast(),
+    ),
+  ],
 );
 
 export const moveFeatures = pgTable(
@@ -1214,6 +1359,54 @@ export const reports = pgTable(
   ],
 );
 
+export const session = pgTable(
+  "session",
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }).notNull(),
+    token: text().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    ipAddress: text("ip_address"),
+    userAgent: text("user_agent"),
+    userId: uuid("user_id").notNull(),
+  },
+  (table) => [
+    index("session_user_id_idx").using("btree", table.userId.asc().nullsLast()),
+    foreignKey({
+      columns: [table.userId],
+      foreignColumns: [user.id],
+      name: "session_user_id_user_id_fk",
+    }).onDelete("cascade"),
+    unique("session_token_unique").on(table.token),
+  ],
+);
+
+export const user = pgTable(
+  "user",
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    name: text().notNull(),
+    email: text().notNull(),
+    emailVerified: boolean("email_verified").default(false).notNull(),
+    image: text(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    birthMonth: text("birth_month"),
+    ageCheckedAt: timestamp("age_checked_at", { withTimezone: true, mode: "date" }),
+    marketingEmail: boolean("marketing_email").default(false).notNull(),
+    publicShareDefault: boolean("public_share_default").default(false).notNull(),
+  },
+  (table) => [
+    unique("user_email_unique").on(table.email),
+    check("user_email_lower", sql`email = lower(email)`),
+    check(
+      "user_birth_month_format",
+      sql`(birth_month IS NULL) OR (birth_month ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'::text)`,
+    ),
+  ],
+);
+
 export const userEvents = pgTable(
   "user_events",
   {
@@ -1245,6 +1438,21 @@ export const userEventsWatermark = pgTable(
     prunedThroughId: bigint("pruned_through_id", { mode: "number" }).default(0).notNull(),
   },
   (_table) => [check("user_events_watermark_singleton_check", sql`CHECK (singleton)`)],
+);
+
+export const verification = pgTable(
+  "verification",
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    identifier: text().notNull(),
+    value: text().notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("verification_identifier_idx").using("btree", table.identifier.asc().nullsLast()),
+  ],
 );
 
 export const weaknessChangeNotes = pgTable(

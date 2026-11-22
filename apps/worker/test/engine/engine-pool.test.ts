@@ -1,3 +1,6 @@
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { EnginePool, EnginePoolClosedError } from "../../src/engine/engine-pool.js";
 import { InvalidFenError } from "../../src/engine/uci-engine.js";
@@ -51,19 +54,6 @@ const isDead = (pid: number): boolean => {
 };
 
 describe.skipIf(skipEngineTests)("EnginePool close semantics", () => {
-  it("rejects invalid FEN without waiting for a free engine", async () => {
-    const pool = await EnginePool.create({ size: 1, path: stockfishPath });
-    try {
-      const busy = pool.analyse(START, { nodes: 3_000_000 });
-      await expect(pool.analyse("not a fen", { nodes: 1000 })).rejects.toBeInstanceOf(
-        InvalidFenError,
-      );
-      await busy;
-    } finally {
-      await pool.close();
-    }
-  });
-
   it("rejects queued and in-flight jobs on close, leaves no processes, rejects later calls", async () => {
     const pool = await EnginePool.create({ size: 1, path: stockfishPath });
     const pids = pool.pids();
@@ -87,4 +77,52 @@ describe.skipIf(skipEngineTests)("EnginePool close semantics", () => {
       EnginePoolClosedError,
     );
   }, 30_000);
+});
+
+// A UCI engine that completes the handshake but never answers `go`, so the
+// pool's only engine stays busy until close() however fast the host is.
+const HUNG_ENGINE = `#!/usr/bin/env node
+const rl = require("node:readline").createInterface({ input: process.stdin });
+rl.on("line", (line) => {
+  const cmd = line.trim();
+  if (cmd === "uci") console.log("uciok");
+  else if (cmd === "isready") console.log("readyok");
+  else if (cmd === "quit") process.exit(0);
+});
+`;
+
+describe.skipIf(process.platform === "win32")("EnginePool input validation", () => {
+  let dir: string;
+  let hungEngine: string;
+  beforeAll(() => {
+    dir = mkdtempSync(join(tmpdir(), "hung-engine-"));
+    hungEngine = join(dir, "hung-engine.cjs");
+    writeFileSync(hungEngine, HUNG_ENGINE);
+    chmodSync(hungEngine, 0o755);
+  });
+  afterAll(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("rejects invalid FEN without waiting for a free engine", async () => {
+    const pool = await EnginePool.create({ size: 1, path: hungEngine });
+    let busySettled = false;
+    const busy = pool.analyse(START, { nodes: 1000 }).finally(() => {
+      busySettled = true;
+    });
+    const busyResult = busy.then(
+      () => "ok",
+      (e: unknown) => e,
+    );
+    try {
+      await expect(pool.analyse("not a fen", { nodes: 1000 })).rejects.toBeInstanceOf(
+        InvalidFenError,
+      );
+      // The only engine is still searching: the rejection did not wait for it.
+      expect(busySettled).toBe(false);
+    } finally {
+      await pool.close();
+    }
+    expect(await busyResult).toBeInstanceOf(EnginePoolClosedError);
+  });
 });

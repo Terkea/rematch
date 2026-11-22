@@ -27,3 +27,49 @@
     outline-offset: 2px;
   }
 }
+
+/*
+ * The overview's report reveal (DESIGN.md choreography 2), on the first view in a session only
+ * (`data-reveal="first"`, set by the server from a session cookie). Each ruled section line draws
+ * on scaleX from its left end, `--stagger-base` apart; its heading and figures appear with opacity
+ * only when the line reaches 60%. No translate, never on scroll, nothing under reduced motion.
+ * Plain CSS, so the server render is already the animation's first frame: no flash, no wait for
+ * JavaScript.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  [data-reveal="first"] [data-reveal-rule] {
+    animation: ci-rule-draw var(--dur-draw-small) var(--ease-pen) both;
+    animation-delay: calc(200ms + var(--reveal-i, 0) * var(--stagger-base));
+  }
+
+  [data-reveal="first"] [data-reveal-fig] {
+    animation: ci-fig-appear var(--dur-quick) ease-out both;
+    animation-delay: calc(
+      200ms +
+      var(--reveal-i, 0) *
+      var(--stagger-base) +
+      0.6 *
+      var(--dur-draw-small)
+    );
+  }
+}
+
+@keyframes ci-rule-draw {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes ci-fig-appear {
+  from {
+    opacity: 0;
+  }
+}
+
+/* Short and long pages keep the same width on desktop, so the header never shifts sideways when a
+   page gains a scrollbar. Phones use overlay scrollbars, and their overflow checks stay exact. */
+@media (min-width: 48rem) {
+  html {
+    scrollbar-gutter: stable;
+  }
+}

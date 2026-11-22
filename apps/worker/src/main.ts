@@ -13,7 +13,6 @@ const running = await startWorkers({
   REDIS_URL: requireEnv("REDIS_URL"),
   DATABASE_URL: requireEnv("DATABASE_URL"),
   STOCKFISH_PATH: requireEnv("STOCKFISH_PATH"),
-  CONTACT_EMAIL: requireEnv("CONTACT_EMAIL"),
   LICHESS_TOKEN: process.env.LICHESS_TOKEN,
   LICHESS_SINCE_LOOKBACK_DAYS: process.env.LICHESS_SINCE_LOOKBACK_DAYS,
 });

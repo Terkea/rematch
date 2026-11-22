@@ -6,8 +6,8 @@ import VariantB from "../src/app/lab/board/b/page.js";
 import VariantC from "../src/app/lab/board/c/page.js";
 
 const variants = [
-  { name: "a", Page: VariantA, squares: "flat", coords: "outside-sans", stroke: "fine" },
-  { name: "b", Page: VariantB, squares: "hatched", coords: "outside-serif", stroke: "marker" },
+  { name: "a", Page: VariantA, squares: "flat", coords: "outside-sans", stroke: "tapered" },
+  { name: "b", Page: VariantB, squares: "hatched", coords: "outside-serif", stroke: "tapered" },
   { name: "c", Page: VariantC, squares: "well", coords: "on-squares", stroke: "tapered" },
 ] as const;
 
@@ -20,13 +20,17 @@ describe("board treatment lab", () => {
         expect(board).not.toBeNull();
         expect(board?.getAttribute("data-ply")).toBe("55");
         expect(container.querySelectorAll('[data-mark="arrow"]')).toHaveLength(1);
-        expect(container.querySelectorAll('[data-mark="ring"]')).toHaveLength(1);
+        // A ring is painted in two passes (halos, then fills), so count it by its description.
+        const marks = [...container.querySelectorAll("[data-lab-marks] li")].map(
+          (li) => li.textContent,
+        );
+        expect(marks).toEqual(["Red circle on d2", "Red arrow from e4 to d2", "Red ?? on d2"]);
         const badges = container.querySelectorAll('[data-mark="badge"]');
         expect(badges).toHaveLength(1);
         expect(badges[0]?.textContent).toBe("??");
       });
 
-      it("differs on square treatment, coordinate placement and stroke character", () => {
+      it("differs on square treatment and coordinate placement, with the product pen (Task 12)", () => {
         const { container } = render(<v.Page />);
         const board = container.querySelector("[data-lab-board]");
         expect(board?.getAttribute("data-squares")).toBe(v.squares);

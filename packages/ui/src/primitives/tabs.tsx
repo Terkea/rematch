@@ -57,7 +57,7 @@ function ActiveChip() {
       layoutId={`${group}-chip`}
       transition={reduced ? { duration: 0 } : spring.page}
       aria-hidden="true"
-      className="absolute inset-0 -z-10 rounded-pill bg-sheet shadow-[inset_0_0_0_1px_var(--color-rule)]"
+      className="absolute inset-0 -z-10 rounded-pill bg-sheet inset-ring-1 inset-ring-rule"
     />
   );
 }

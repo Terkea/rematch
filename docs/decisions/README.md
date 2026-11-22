@@ -48,6 +48,35 @@ One file per decision: context, decision, alternatives, consequences. New decisi
 - [0043. No email address in outbound requests](0043-no-email-in-outbound-requests.md)
 - [0044. Postgres runs under an init process with an exec-form TCP healthcheck](0044-postgres-init-process-and-tcp-healthcheck.md)
 - [0045. Rust worker runtime image and graceful shutdown](0045-rust-worker-runtime-and-shutdown.md)
+- [0046. The games read model: scoped, read-only, no API routes](0046-game-read-model-and-access.md)
+- [0047. Honest overview statistics](0047-honest-overview-statistics.md)
+- [0048. Games explorer: URL state, offset paging and UTC day filters](0048-explorer-url-state-and-paging.md)
+- [0049. Game review data: PGN-first plies, stored engine scores, honest gaps](0049-game-review-data.md)
+- [0050. Overview chart encodings](0050-overview-chart-encodings.md)
+- [0051. Game review interaction, board marks and honest judgements](0051-review-interaction.md)
+- [0052. The analysis reveal on the review page](0052-review-reveal.md)
+- [0053. Overview layout](0053-overview-layout.md)
+- [0054. Game review layout: the graph as the spine, with the mistakes ledger](0054-review-layout.md)
+- [0055. The overview page: honest rows, a broken trend line, a server-safe band, a session reveal](0055-overview-page.md)
+- [0056. Live refresh of the game pages, and a dev-only account link](0056-live-refresh-and-dev-account-link.md)
+
+Web records use placeholder numbers until the controller renumbers them.
+
+- [ADR-WEB-1. Source-only UI packages and the web dependency set](ADR-WEB-1-source-only-ui-packages.md)
+- [ADR-WEB-2. Web development stack in Compose](ADR-WEB-2-web-dev-stack.md)
+- [ADR-WEB-3. Auth data model, Better Auth configuration and invite-only sign-up](ADR-WEB-3-auth-and-link-data-model.md)
+- [ADR-WEB-5. chess.com linking and location-code verification](ADR-WEB-5-chesscom-verification.md)
+- [ADR-WEB-6. Age gate, under-13 block and private defaults](ADR-WEB-6-age-gate.md)
+- [ADR-WEB-7. Design tokens, themes and self-hosted fonts](ADR-WEB-7-design-tokens.md)
+- [ADR-WEB-8. Live user events: one LISTEN per process, SSE with replay, polling fallback](ADR-WEB-8-sse-delivery.md)
+- [ADR-WEB-9. Ban lint; Impeccable not adopted, web-design-guidelines vendored](ADR-WEB-9-third-party-design-tooling.md)
+- [ADR-WEB-10. Visual QA loop: Playwright, shots, lab and critique](ADR-WEB-10-visual-qa-loop.md)
+- [ADR-WEB-11. Overlay libraries: sonner, vaul and cmdk](ADR-WEB-11-overlay-libraries.md)
+- [ADR-WEB-12. KPI stats: fixed percent window, outward-rounded ends, host-set halo, honest trend scale](ADR-WEB-12-kpi-stat-honest-uncertainty.md)
+- [ADR-WEB-13. Board: shipped Cburnett pieces, coordinates and piece motion](ADR-WEB-13-board-pieces-and-motion.md)
+- [ADR-WEB-14. Weakness timeline and area score encoding](ADR-WEB-14-weakness-timeline-encoding.md)
+- [ADR-WEB-15. Annotation overlay: geometry, draw-on and placement rules](ADR-WEB-15-annotation-overlay.md)
+- [ADR-WEB-16. App shell, sign-in, age and account-linking screens](ADR-WEB-16-app-shell-and-auth-screens.md)
 
 R2 (profile engine) records use placeholder numbers until the controller renumbers them after 0038 (ADR-R2-1). Rows without a file yet are written by the R2 task named in the plan.
 
@@ -75,17 +104,9 @@ R2 (profile engine) records use placeholder numbers until the controller renumbe
 R3 (AI) records use placeholder numbers until R3 Task 26 renumbers them.
 
 - [ADR-R3-1. Rust Anthropic client and the `ai` crate's dependencies](ADR-R3-1-rust-anthropic-client-and-crates.md)
+- [ADR-R3-2. Porting the TS AI reference to Rust, and how parity is kept](ADR-R3-2-ts-reference-port-and-parity.md)
 - [ADR-R3-3. AI tables, jobs and events](ADR-R3-3-ai-tables-jobs-and-events.md)
+- [ADR-R3-4. Sectioned generation and facts by reference](ADR-R3-4-sectioned-generation-and-facts-by-reference.md)
 - [ADR-R3-5. Models, budgets and degradation](ADR-R3-5-models-budgets-and-degradation.md)
+- [ADR-R3-6. Claude calls go through a Claude Agent SDK sidecar](ADR-R3-6-claude-agent-sdk-sidecar.md)
 - [ADR-R3-8. "Ask your coach": the chat engine](ADR-R3-8-ask-your-coach-chat.md)
-
-Web (M4) records use placeholder numbers until the controller renumbers them.
-
-- [ADR-WEB-1. Source-only UI packages and the web dependency set](ADR-WEB-1-source-only-ui-packages.md)
-- [ADR-WEB-2. Web development stack in Compose](ADR-WEB-2-web-dev-stack.md)
-- [ADR-WEB-7. Design tokens, themes and self-hosted fonts](ADR-WEB-7-design-tokens.md)
-- [ADR-WEB-10. Visual QA loop: Playwright, shots, lab and critique](ADR-WEB-10-visual-qa-loop.md)
-- [ADR-WEB-11. Overlay libraries: sonner, vaul and cmdk](ADR-WEB-11-overlay-libraries.md)
-- [ADR-WEB-12. KPI stats: fixed percent window, outward-rounded ends, host-set halo, honest trend scale](ADR-WEB-12-kpi-stat-honest-uncertainty.md)
-- [ADR-WEB-13. Board: shipped Cburnett pieces, coordinates and piece motion](ADR-WEB-13-board-pieces-and-motion.md)
-- [ADR-WEB-14. Weakness timeline and area score encoding](ADR-WEB-14-weakness-timeline-encoding.md)

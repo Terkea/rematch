@@ -429,7 +429,7 @@ function Lane({
             aria-label={`${spanText(seg)}, ${index + 1} of ${segs.length}`}
             tabIndex={sameCell(cursor, cell) ? 0 : -1}
             data-shown={sameCell(shown, cell) ? "" : undefined}
-            className="absolute rounded-[2px] outline-ink focus-visible:outline-2 focus-visible:outline-offset-1 data-shown:outline-1"
+            className="absolute rounded-board outline-ink focus-visible:outline-2 focus-visible:outline-offset-1 data-shown:outline-1"
             style={{ left: pc(a), width: pc(b - a), top: TRACK.y, height: TRACK.h }}
             onPointerEnter={() => onHover(cell)}
             onPointerDown={() => onHover(cell)}
@@ -764,7 +764,7 @@ export function WeaknessTimeline({
         onScroll={measure}
       >
         <motion.div
-          className="grid grid-cols-[7.5rem_minmax(0,1fr)] items-center @max-[640px]:min-w-[38rem] @min-[640px]:grid-cols-[13rem_minmax(0,1fr)]"
+          className="grid grid-cols-[7.5rem_minmax(0,1fr)] items-center @max-[640px]:min-w-[38rem] @min-[640px]:grid-cols-[13rem_minmax(0,1fr)]" /* ban-lint-allow TOK2: grid track template and min-width, no token */
           style={{ "--wipe": wipe } as never}
         >
           {placed.length > 0 && (

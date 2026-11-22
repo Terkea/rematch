@@ -5,7 +5,6 @@ const base = {
   DATABASE_URL: "postgres://postgres:postgres@localhost:5432/chess",
   REDIS_URL: "redis://localhost:6379",
   BETTER_AUTH_SECRET: "test-secret-test-secret-test-secret-1234",
-  CONTACT_EMAIL: "dev@example.invalid",
 };
 
 describe("getEnv", () => {
@@ -25,6 +24,20 @@ describe("getEnv", () => {
 
   it("defaults LICHESS_CLIENT_ID to chess-improver", () => {
     expect(getEnv(base).LICHESS_CLIENT_ID).toBe("chess-improver");
+  });
+
+  it("turns INVITE_ONLY on by default and off only for exactly 0", () => {
+    expect(getEnv(base).INVITE_ONLY).toBe(true);
+    expect(getEnv({ ...base, INVITE_ONLY: "1" }).INVITE_ONLY).toBe(true);
+    expect(getEnv({ ...base, INVITE_ONLY: "0" }).INVITE_ONLY).toBe(false);
+  });
+
+  it("parses INVITE_ALLOWLIST into trimmed lower-case emails", () => {
+    expect(getEnv(base).INVITE_ALLOWLIST).toEqual([]);
+    expect(
+      getEnv({ ...base, INVITE_ALLOWLIST: " Dev@Example.invalid, ,b@example.invalid" })
+        .INVITE_ALLOWLIST,
+    ).toEqual(["dev@example.invalid", "b@example.invalid"]);
   });
 
   it("caches the parse of process.env", () => {

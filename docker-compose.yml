@@ -26,10 +26,18 @@ x-web-environment: &web-environment
   MAIL_FROM: ${MAIL_FROM:-chess-improver <no-reply@chess-improver.local>}
   GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
   GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
-  # No `:?` here: compose evaluates it for the whole file, which would block rust-dev and every `-p`
-  # project. The services that need it fail fast at runtime on an empty value (see the worker below).
-  CONTACT_EMAIL: ${CONTACT_EMAIL:-}
   LAB_ENABLED: "${LAB_ENABLED:-1}"
+  # chess.com linking (ADR 0040: on in development); OAuth stays off until chess.com approves it.
+  CHESSCOM_ENABLED: "${CHESSCOM_ENABLED:-1}"
+  CHESSCOM_OAUTH_ENABLED: ${CHESSCOM_OAUTH_ENABLED:-}
+  CHESSCOM_CLIENT_ID: ${CHESSCOM_CLIENT_ID:-}
+  CHESSCOM_CLIENT_SECRET: ${CHESSCOM_CLIENT_SECRET:-}
+  # Private beta (ADR 0041, ADR-WEB-3): on unless exactly "0"; comma-separated invited emails.
+  INVITE_ONLY: "${INVITE_ONLY:-1}"
+  INVITE_ALLOWLIST: ${INVITE_ALLOWLIST:-}
+  # Rate-limit client IP (ADR-WEB-3): forwarding headers are read only from these proxies (CIDRs).
+  TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
+  IP_ADDRESS_HEADERS: ${IP_ADDRESS_HEADERS:-x-forwarded-for}
   IN_DOCKER: "1"
   SKIP_INSTALL: "1"
 
@@ -79,9 +87,6 @@ services:
       REDIS_URL: redis://redis:6379
       STOCKFISH_PATH: /usr/local/bin/stockfish
       IN_DOCKER: "1"
-      # Required, no default. Compose's `:?` is evaluated for the whole file (it would block rust-dev and
-      # every `-p` project), so the worker itself fails fast on an empty value (requireEnv in src/main.ts, src/cli.ts).
-      CONTACT_EMAIL: ${CONTACT_EMAIL:-}
       LICHESS_TOKEN: ${LICHESS_TOKEN:-}
       SKIP_INSTALL: "1"
     depends_on:

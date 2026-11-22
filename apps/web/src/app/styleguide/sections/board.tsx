@@ -87,6 +87,7 @@ function Moment({ game, ply, orientation = "white", caption }: MomentProps) {
             color={move.color}
             san={move.san}
             judgement={move.judgement}
+            side={move.color === game.playerColor ? "player" : "opponent"}
             score={scoreAt(game, ply)}
           />
           <span className="ml-2 text-sm text-ink-soft">{caption}</span>
