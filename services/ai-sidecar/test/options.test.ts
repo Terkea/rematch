@@ -235,4 +235,86 @@ describe("buildOptions", () => {
     expect(r.resume).toBe(CONV);
     expect(r).not.toHaveProperty("sessionId");
   });
+
+  it("local_env_finds_the_host_login_and_carries_no_secret", () => {
+    const cfg = testConfig({
+      ANTHROPIC_API_KEY: "",
+      AI_SIDECAR_LOCAL_CLAUDE: "1",
+      // What the SDK needs to find the login on POSIX and Windows.
+      HOME: "/home/me",
+      USER: "me",
+      LOGNAME: "me",
+      USERPROFILE: "C:/Users/me",
+      APPDATA: "C:/Users/me/AppData/Roaming",
+      LOCALAPPDATA: "C:/Users/me/AppData/Local",
+      HOMEDRIVE: "C:",
+      HOMEPATH: "/Users/me",
+      USERNAME: "me",
+      SystemRoot: "C:/Windows",
+      TEMP: "C:/t",
+      TMP: "C:/t",
+      // Never passed on.
+      DATABASE_URL: "postgres://secret",
+      AI_SESSION_DATABASE_URL: "postgres://ai_sidecar:pw@db/chess",
+      CLAUDE_CODE_OAUTH_TOKEN: "",
+      SOMETHING_ELSE: "x",
+    });
+    const o = buildOptions(parseQueryRequest(body), cfg, {
+      abortController: new AbortController(),
+      partial: false,
+    });
+    const env = o.env ?? {};
+    // The host's own HOME, and no CLAUDE_CONFIG_DIR: the CLI reads the login where it lives.
+    expect(env.HOME).toBe("/home/me");
+    expect(env.USERPROFILE).toBe("C:/Users/me");
+    expect(env).not.toHaveProperty("CLAUDE_CONFIG_DIR");
+    expect(Object.keys(env).sort()).toEqual(
+      [
+        "PATH",
+        "HOME",
+        "USER",
+        "LOGNAME",
+        "USERPROFILE",
+        "APPDATA",
+        "LOCALAPPDATA",
+        "HOMEDRIVE",
+        "HOMEPATH",
+        "USERNAME",
+        "SystemRoot",
+        "TEMP",
+        "TMP",
+        "CLAUDE_CODE_DISABLE_AUTO_MEMORY",
+        "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC",
+        "CLAUDE_CODE_MAX_OUTPUT_TOKENS",
+        "CLAUDE_AGENT_SDK_CLIENT_APP",
+        "CLAUDE_CODE_PROJECT_DIR_NAME",
+      ].sort(),
+    );
+    expect(env.CLAUDE_CODE_DISABLE_AUTO_MEMORY).toBe("1");
+    // Every other isolation option is the same as with a key.
+    expect(o).toMatchObject({
+      tools: [],
+      settingSources: [],
+      permissionMode: "dontAsk",
+      strictMcpConfig: true,
+      persistSession: false,
+      cwd: cfg.workDir,
+    });
+  });
+
+  it("local_env_keeps_a_host_claude_config_dir_as_it_is", () => {
+    const cfg = testConfig({
+      ANTHROPIC_API_KEY: "",
+      AI_SIDECAR_LOCAL_CLAUDE: "1",
+      HOME: "/home/me",
+      CLAUDE_CONFIG_DIR: "/home/me/.claude-work",
+    });
+    const env =
+      buildOptions(parseQueryRequest(body), cfg, {
+        abortController: new AbortController(),
+        partial: false,
+      }).env ?? {};
+    expect(env.CLAUDE_CONFIG_DIR).toBe("/home/me/.claude-work");
+    expect(env.HOME).toBe("/home/me");
+  });
 });

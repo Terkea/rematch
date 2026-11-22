@@ -158,8 +158,8 @@ export type OptionExtras = {
 export function childEnv(req: BaseRequest, cfg: SidecarConfig): Record<string, string> {
   return {
     ...cfg.childBaseEnv,
-    HOME: cfg.configDir,
-    CLAUDE_CONFIG_DIR: cfg.configDir,
+    // Local mode keeps the host's HOME (and CLAUDE_CONFIG_DIR, if set) so the CLI finds the login.
+    ...(cfg.auth === "local" ? {} : { HOME: cfg.configDir, CLAUDE_CONFIG_DIR: cfg.configDir }),
     CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
     CLAUDE_CODE_MAX_OUTPUT_TOKENS: String(req.maxTokens),

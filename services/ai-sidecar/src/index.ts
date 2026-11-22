@@ -23,7 +23,8 @@ function main(): void {
   // An empty cwd and a private config dir for every child (ADR 0062). Both are scratch (tmpfs in
   // compose): durable chat transcripts live in Postgres through the session store.
   mkdirSync(cfg.workDir, { recursive: true, mode: 0o700 });
-  mkdirSync(cfg.configDir, { recursive: true, mode: 0o700 });
+  // Local mode uses the host's own Claude config dir as it is; it is never created here.
+  if (cfg.auth !== "local") mkdirSync(cfg.configDir, { recursive: true, mode: 0o700 });
 
   const pool = cfg.databaseUrl
     ? new pg.Pool({
@@ -60,8 +61,8 @@ function main(): void {
   });
   // Chat turns stream for minutes; the default request timeout would cut them off.
   server.requestTimeout = 0;
-  server.listen(cfg.port, "0.0.0.0", () => {
-    stdoutLogger.info({ msg: `listening on ${cfg.port} (auth ${cfg.auth})` });
+  server.listen(cfg.port, cfg.host, () => {
+    stdoutLogger.info({ msg: `listening on ${cfg.host}:${cfg.port} (auth ${cfg.auth})` });
   });
   const stop = () => {
     // Abort in-flight calls first (each ends with a 503 or an error event and kills its claude

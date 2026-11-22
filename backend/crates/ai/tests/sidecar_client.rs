@@ -880,6 +880,7 @@ async fn health_parses_auth_kind() {
     for (wire, kind) in [
         ("cloud", AuthKind::Cloud),
         ("oauth", AuthKind::Oauth),
+        ("local", AuthKind::Local),
         ("none", AuthKind::None),
     ] {
         let v: AuthKind = serde_json::from_value(json!(wire)).unwrap();

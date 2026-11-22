@@ -458,6 +458,32 @@ async fn without_a_key_the_schedules_run_sync_through_the_sidecar(
     assert!(!logs.contains(FAKE_TOKEN), "the sidecar token was logged");
 }
 
+/// ADR 0062 Amendment 2: the host sidecar runs on the owner's own Claude Code login
+/// (`auth: "local"`, dev only). That is a credential: AI is on, and the start names the path
+/// without any secret.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn the_host_login_counts_as_a_credential(_p: PgPoolOptions, opts_: PgConnectOptions) {
+    let Some(env) = env_for(&opts_) else {
+        return;
+    };
+    let stub = health_stub(json!({"ok": true, "auth": "local", "sdkVersion": "0.3.325"})).await;
+    let env = WorkerEnv {
+        anthropic_api_key: None,
+        ..ai_env(env, stub)
+    };
+    let (enabled, logs) = start_logged(&env).await;
+    assert!(enabled);
+    assert!(
+        logs.contains("ai: enabled (sidecar, batches off)"),
+        "{logs}"
+    );
+    assert!(
+        logs.contains("ai: sidecar auth local (the host's Claude Code login, dev only)"),
+        "{logs}"
+    );
+    assert!(!logs.contains(FAKE_TOKEN), "the sidecar token was logged");
+}
+
 #[sqlx::test(migrator = "db::MIGRATOR")]
 async fn a_transient_health_failure_is_retried(_p: PgPoolOptions, opts_: PgConnectOptions) {
     let Some(env) = env_for(&opts_) else {

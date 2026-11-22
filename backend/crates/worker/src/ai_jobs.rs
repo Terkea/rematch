@@ -3,7 +3,8 @@
 //! - **The client.** Interactive calls go to the Agent SDK sidecar, batches to the Messages
 //!   Batches client (only with `ANTHROPIC_API_KEY`), behind one breaker (5 failures, 60 s). AI is
 //!   enabled only when `AI_SIDECAR_URL` is set and the sidecar's `/health` reports a credential
-//!   (`auth != "none"`). Without it every report is computed-only.
+//!   (`auth != "none"`; `local`, the host's Claude Code login in dev, counts). Without it every
+//!   report is computed-only. The start also logs `ai: sidecar auth <path>`, never a secret.
 //! - **The log line** is exactly `ai: enabled (sidecar, batches on|off)` or
 //!   `ai: disabled (<reason>)`. No key or token is ever logged (the env's `Debug` redacts them).
 //! - **The runners.** One per AI kind ([`AI_RUNNER_KINDS`]), AI or not: without a client the
@@ -163,7 +164,7 @@ pub async fn ai_client_from_env(env: &WorkerEnv) -> anyhow::Result<AiClientChoic
             return Ok(disabled("sidecar health check failed"));
         }
         Ok(h) if h.auth == AuthKind::None => return Ok(disabled("sidecar has no credential")),
-        Ok(_) => {}
+        Ok(h) => tracing::info!("ai: sidecar auth {}", h.auth.describe()),
     }
     let tools = match &env.ai_tool_public_url {
         Some(url) => Some(

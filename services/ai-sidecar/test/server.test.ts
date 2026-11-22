@@ -107,6 +107,12 @@ describe("server", () => {
     expect(sdk.query).not.toHaveBeenCalled();
   });
 
+  it("health_reports_local_for_the_host_login", async () => {
+    const base = await start({ ANTHROPIC_API_KEY: "", AI_SIDECAR_LOCAL_CLAUDE: "1" });
+    const h = (await (await fetch(`${base}/health`)).json()) as { auth: string };
+    expect(h.auth).toBe("local");
+  });
+
   it("unknown_route_is_404_and_bad_json_is_400", async () => {
     const base = await start();
     const r = await post(`${base}/v1/nope`, {});
