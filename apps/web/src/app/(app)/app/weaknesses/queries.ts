@@ -1,6 +1,6 @@
 import type { Db } from "@ci/db";
-import { games, weaknessSeriesPoint } from "@ci/db/generated";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { games, weaknessChangeNotes, weaknessSeriesPoint } from "@ci/db/generated";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { readOnly } from "../../../../server/games";
 import type { CoachScope } from "../../../../server/profile";
 import { ownsScope } from "../../../../server/profile/scope";
@@ -40,9 +40,16 @@ export function weaknessHref(seriesKey: string, scope: CoachScope): string {
   return `/app/weaknesses/${encodeURIComponent(seriesKey)}?${scopeQuery(scope)}`;
 }
 
+/** Weeks with fewer chances than this are left off a line (hollow on the detail's chart). */
+export const WEEKLY_MIN_CHANCES = 20;
+
+const DAY = 86_400_000;
+const WEEK = 7 * DAY;
+
 /**
  * Each series' raw weekly rate (events over chances per ISO week, UTC), oldest first, over the
- * newest `ROW_WEEKS` weeks with a point. A week with no chances is null: a gap, never a zero.
+ * scope's newest `ROW_WEEKS` calendar weeks (ending at its newest week with a point). A week with
+ * no point, or fewer than `WEEKLY_MIN_CHANCES` chances, is null: a gap, never a zero or a spike.
  */
 export async function weeklyRates(
   db: Db,
@@ -52,11 +59,11 @@ export async function weeklyRates(
   return readOnly(db, async (tx) => {
     const out = new Map<string, (number | null)[]>();
     if (!(await ownsScope(tx, userId, scope))) return out;
-    const week = sql<string>`to_char(${weaknessSeriesPoint.playedAt} at time zone 'UTC', 'IYYY-"W"IW')`;
+    const monday = sql<string>`to_char(date_trunc('week', ${weaknessSeriesPoint.playedAt} at time zone 'UTC'), 'YYYY-MM-DD')`;
     const rows = await tx
       .select({
         seriesKey: weaknessSeriesPoint.seriesKey,
-        week,
+        monday,
         events: sql<number>`sum(${weaknessSeriesPoint.events})::int`,
         chances: sql<number>`sum(${weaknessSeriesPoint.opportunities})::int`,
       })
@@ -67,16 +74,46 @@ export async function weeklyRates(
           eq(weaknessSeriesPoint.timeClass, scope.timeClass),
         ),
       )
-      .groupBy(weaknessSeriesPoint.seriesKey, week)
-      .orderBy(weaknessSeriesPoint.seriesKey, desc(week));
+      .groupBy(weaknessSeriesPoint.seriesKey, monday);
+    const at = (iso: string) => Date.parse(`${iso}T00:00:00Z`);
+    const newest = Math.max(...rows.map((r) => at(r.monday)).filter(Number.isFinite));
+    if (!Number.isFinite(newest)) return out;
+    const first = newest - (ROW_WEEKS - 1) * WEEK;
     for (const r of rows) {
-      const list = out.get(r.seriesKey) ?? [];
-      if (list.length >= ROW_WEEKS) continue;
-      list.push(r.chances > 0 ? r.events / r.chances : null);
+      const i = Math.round((at(r.monday) - first) / WEEK);
+      if (!Number.isInteger(i) || i < 0 || i >= ROW_WEEKS) continue;
+      const list = out.get(r.seriesKey) ?? Array.from({ length: ROW_WEEKS }, () => null);
+      list[i] = r.chances >= WEEKLY_MIN_CHANCES ? r.events / r.chances : null;
       out.set(r.seriesKey, list);
     }
-    for (const list of out.values()) list.reverse();
     return out;
+  });
+}
+
+/**
+ * The change keys of the series' notes written for the scope's time class. A note row carries
+ * the time class only in its job input (Rust `WeaknessChangeInput.timeClass`), so a note without
+ * one, or for another time class, is never shown on this scope's page.
+ */
+export async function noteKeysInScope(
+  db: Db,
+  userId: string,
+  scope: CoachScope,
+  seriesKey: string,
+): Promise<Set<string>> {
+  return readOnly(db, async (tx) => {
+    if (!(await ownsScope(tx, userId, scope))) return new Set<string>();
+    const rows = await tx
+      .select({ changeKey: weaknessChangeNotes.changeKey })
+      .from(weaknessChangeNotes)
+      .where(
+        and(
+          eq(weaknessChangeNotes.accountId, scope.accountId),
+          eq(weaknessChangeNotes.seriesKey, seriesKey),
+          sql`${weaknessChangeNotes.input}->>'timeClass' = ${scope.timeClass}`,
+        ),
+      );
+    return new Set(rows.map((r) => r.changeKey));
   });
 }
 

@@ -64,7 +64,7 @@ export function Exemplars({
                   {id ? (
                     <Link
                       href={`/app/games/${encodeURIComponent(id)}?ply=${e.ply}`}
-                      className="rounded-field text-ink underline decoration-rule-strong underline-offset-4 hover:decoration-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+                      className="inline-flex min-h-6 items-center gap-1 rounded-field py-0.5 text-ink underline decoration-rule-strong underline-offset-4 hover:decoration-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
                     >
                       Open <span className="font-serif font-semibold">{move}</span> in the review
                     </Link>

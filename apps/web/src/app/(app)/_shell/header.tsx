@@ -42,7 +42,7 @@ export function Header({
   const signOut = useSignOut(signOutTo);
 
   return (
-    <header className="sticky top-0 z-40 bg-paper">
+    <header data-app-chrome="" className="sticky top-0 z-40 bg-paper">
       <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 px-(--space-gutter) pt-3 md:h-16 md:flex-nowrap md:pt-0">
         <Link
           href="/"

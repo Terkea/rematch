@@ -19,16 +19,13 @@ import { MorphArrival } from "../../../../../components/shared-morph";
 import type { ChangeNoteView } from "../../../../../server/coaching";
 import type { CoachScope, WeaknessDetail } from "../../../../../server/profile";
 import { SectionHead } from "../../_overview/section-head";
-import { scopeQuery } from "../queries";
+import { scopeQuery, WEEKLY_MIN_CHANCES } from "../queries";
 import { morphName } from "../weaknesses-view";
 import { Exemplars } from "./exemplars";
 
 // `/app/weaknesses/[seriesKey]` (M5b Task 7): one weakness in full. The header is the shared
 // element the list row morphs into; below it, where the estimate stands, its state over time,
 // the weekly series, the latest change note, example positions and a way to ask the coach.
-
-/** Weekly points with fewer chances than this are hollow and off the line. */
-export const WEEKLY_MIN_CHANCES = 20;
 
 const AREA_LABEL: Record<WeaknessDetail["area"], string> = {
   openings: "Openings",
@@ -133,7 +130,7 @@ function IntervalScale({
       </div>
       <div className="flex justify-between text-xs text-ink-faint" style={LINING}>
         <span>0%</span>
-        <span>{shareText(max)}</span>
+        <span>{scaleText(max)}</span>
       </div>
     </div>
   );
@@ -144,6 +141,36 @@ export function bandRelation(rate: { low: number; high: number }, median: number
   if (median < rate.low) return "lower than your whole likely range";
   if (median > rate.high) return "higher than your whole likely range";
   return "inside your likely range";
+}
+
+/** A scale end at whole-number precision where it is whole ("7%", "12.5%"), like "0%". */
+const scaleText = (share: number) =>
+  Number.isFinite(share) ? `${Number((share * 100).toFixed(1))}%` : "";
+
+/** The early read's key: the same marks drawn provisional, as the strip draws them. */
+function EarlyKey() {
+  return (
+    <ul
+      aria-label="Key"
+      className="m-0 flex list-none flex-wrap gap-x-5 gap-y-1 p-0 text-xs text-ink-soft"
+    >
+      <li className="flex items-center gap-2">
+        <span aria-hidden="true" className="h-4 w-0.75 rounded-full bg-ink-soft" />
+        Early estimate
+      </li>
+      <li className="flex items-center gap-2">
+        <span
+          aria-hidden="true"
+          className="h-2 w-5 rounded-(--radius-board) border border-dashed border-ink-faint"
+        />
+        80% range, provisional
+      </li>
+      <li className="flex items-center gap-2">
+        <span aria-hidden="true" className="mt-2 h-2.5 w-0.5 rounded-full bg-pencil" />
+        Players in your rating band, median
+      </li>
+    </ul>
+  );
 }
 
 function Header({ detail, scope, askHref }: Props & { askHref: string }) {
@@ -231,7 +258,9 @@ function Standing({ detail }: { detail: WeaknessDetail }) {
         </span>
         {early ? (
           <p className="mt-3 text-sm font-medium text-ink" style={LINING}>
-            Early read: {needMoreText(detail.evidence.needMore)}
+            {detail.evidence.minEvidence === null
+              ? "Early read: no evidence threshold for this series yet"
+              : `Early read: ${needMoreText(detail.evidence.needMore)}`}
           </p>
         ) : null}
       </div>
@@ -240,7 +269,7 @@ function Standing({ detail }: { detail: WeaknessDetail }) {
         {none ? null : (
           <>
             <IntervalScale rate={detail.rate} median={median} early={early} />
-            <WeaknessRowKey className="text-xs" />
+            {early ? <EarlyKey /> : <WeaknessRowKey className="text-xs" />}
           </>
         )}
         <div className="flex flex-col gap-1 text-sm" style={LINING}>

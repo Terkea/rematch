@@ -8,7 +8,7 @@ import { coachHref } from "../../../../../server/coach/anchor";
 import { changeNotes } from "../../../../../server/coaching";
 import { getDb } from "../../../../../server/db";
 import { getWeakness, resolveCoachScope } from "../../../../../server/profile";
-import { reviewGameIds } from "../queries";
+import { noteKeysInScope, reviewGameIds } from "../queries";
 import { MAX_EXEMPLARS } from "./exemplars";
 import { WeaknessView } from "./weakness-view";
 
@@ -19,10 +19,14 @@ type Props = { params: Promise<{ seriesKey: string }>; searchParams: Promise<Par
 
 const MAX_KEY = 200;
 
-/** The URL-decoded series key, or null when it is malformed or too long. */
+/**
+ * The URL-decoded series key, or null when it is malformed or too long. Next may hand the param
+ * over already decoded, so it is decoded only while it still holds a percent escape (no series
+ * key contains "%").
+ */
 function decodeKey(raw: string): string | null {
   try {
-    const key = decodeURIComponent(raw);
+    const key = /%[0-9A-F]{2}/i.test(raw) ? decodeURIComponent(raw) : raw;
     return key.length > 0 && key.length <= MAX_KEY ? key : null;
   } catch {
     return null;
@@ -67,7 +71,12 @@ export default async function WeaknessPage({ params, searchParams }: Props) {
     (await params).seriesKey,
     queryOf(await searchParams),
   );
-  const notes = await changeNotes(db, user.id, scope.accountId, [detail.seriesKey]);
+  // Notes are account rows; only those written for this scope's time class belong here.
+  const [allNotes, inScope] = await Promise.all([
+    changeNotes(db, user.id, scope.accountId, [detail.seriesKey]),
+    noteKeysInScope(db, user.id, scope, detail.seriesKey),
+  ]);
+  const notes = allNotes.filter((n) => inScope.has(n.changeKey));
   const cited = [
     ...(detail.exemplars?.items.slice(0, MAX_EXEMPLARS).map((e) => e.gameId) ?? []),
     ...notes.flatMap((n) =>

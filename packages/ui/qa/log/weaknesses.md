@@ -51,3 +51,24 @@ Checked and kept:
 - Non-`W` series (`endgame:rook`) never reach `min_evidence`, so they always read "Early read" with
   "More chances needed": that is T1's ruling (no Rust minimum), stated honestly.
 - Rows without weekly points say "Weekly trend after more weeks", never an empty sparkline.
+
+## Fix round 1 (review-t7.md; self-critique only)
+
+Shots retaken (same synthetic seed, plus a 0-chance week and the note's `input.timeClass`) into
+the session scratchpad `m5b-t7\fix1\`.
+
+1. **Early reads had confident group headings.** Rows below their evidence minimum now sit only in
+   a fourth group, "Early reads" ("Not enough chances yet to tell what these are doing. Each says
+   how many more it needs."), never under "Costing you games" or "Getting better".
+2. **List sparklines joined thin and missing weeks.** The rows now span the scope's newest 12
+   calendar ISO weeks; a week with fewer than 20 chances, or none, is null, so the line breaks.
+   A line under the key says so.
+3. **The view-transition mid-frame blanked the app nav.** The shell header (`data-app-chrome`) gets
+   its own `view-transition-name` for the morph with no animation, so it holds still; the wait for
+   the new page dropped from 1200 to 400ms.
+4. **Change note from another time class.** The detail shows only notes whose job input names the
+   scope's time class.
+5. Polish: the early read's key now draws the provisional marks (dashed range, soft tick); the
+   detail scale ends read "0%" and "7%"; a series with no evidence threshold says so; the review
+   link is at least 24px tall. Left to T4 (its components): the list strip's "25.0%" label, the
+   doubled "Early read" in a row, the dark "Not an issue" swatch, crossing arrow heads.

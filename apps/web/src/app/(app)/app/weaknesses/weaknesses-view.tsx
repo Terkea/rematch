@@ -6,7 +6,7 @@ import { MorphLink } from "../../../../components/shared-morph";
 import type { CoachScope, DifficultyStatus, WeaknessSummary } from "../../../../server/profile";
 import { EmptySheet } from "../../_shell/page-heading";
 import { SectionHead } from "../_overview/section-head";
-import { basisText, weaknessHref } from "./queries";
+import { basisText, WEEKLY_MIN_CHANCES, weaknessHref } from "./queries";
 
 // `/app/weaknesses` (M5b Task 7): every measured weakness of the scope, grouped by what it is
 // doing to the player's games, each group by priority. Each row opens its detail, and the row
@@ -35,11 +35,24 @@ export const GROUPS = [
   },
 ] as const;
 
+/** Rows below their evidence minimum: never under a group that states what they are doing. */
+export const EARLY_GROUP = {
+  id: "early",
+  title: "Early reads",
+  lede: "Not enough chances yet to tell what these are doing. Each says how many more it needs.",
+} as const;
+
 export function groupWeaknesses(list: WeaknessSummary[]) {
-  return GROUPS.map((g) => ({
-    ...g,
-    rows: list.filter((w) => (g.states as readonly string[]).includes(w.state)),
-  }));
+  const settled = list.filter((w) => w.evidence.sufficient);
+  return [
+    ...GROUPS.map((g) => ({
+      id: g.id as string,
+      title: g.title as string,
+      lede: g.lede as string,
+      rows: settled.filter((w) => (g.states as readonly string[]).includes(w.state)),
+    })),
+    { ...EARLY_GROUP, rows: list.filter((w) => !w.evidence.sufficient) },
+  ];
 }
 
 const count = new Intl.NumberFormat("en-GB");
@@ -110,7 +123,13 @@ export function WeaknessesView({
         </EmptySheet>
       ) : (
         <>
-          <WeaknessRowKey />
+          <div className="flex flex-col gap-2">
+            <WeaknessRowKey />
+            <p className="text-sm text-ink-soft">
+              Weekly rate lines leave out weeks with fewer than {WEEKLY_MIN_CHANCES} chances, and
+              weeks with none, as gaps.
+            </p>
+          </div>
           {groups.map((g) => (
             <section
               key={g.id}

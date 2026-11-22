@@ -1,4 +1,4 @@
-import { games } from "@ci/db/generated";
+import { games, weaknessChangeNotes } from "@ci/db/generated";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { within } from "@testing-library/react";
 import { eq } from "drizzle-orm";
@@ -27,6 +27,8 @@ vi.mock("next/navigation", async (orig) => ({
 }));
 
 const ListPage = (await import("../../src/app/(app)/app/weaknesses/page.js")).default;
+const { weeklyRates, ROW_WEEKS } = await import("../../src/app/(app)/app/weaknesses/queries.js");
+const { resolveCoachScope } = await import("../../src/server/profile/index.js");
 const DetailPage = (await import("../../src/app/(app)/app/weaknesses/[seriesKey]/page.js")).default;
 
 let accountId: string;
@@ -78,7 +80,7 @@ describe("weaknesses list", () => {
         { seriesKey: "W1", state: "active", priority: 3 },
         { seriesKey: "W5", state: "emerging", priority: 5 },
         { seriesKey: "W2", state: "improving", priority: 2 },
-        { seriesKey: "W4", state: "resolved", priority: 1 },
+        { seriesKey: "W4.missed", state: "resolved", priority: 1 },
         { seriesKey: "W6", state: "not_an_issue", priority: 0 },
       ],
     });
@@ -90,13 +92,55 @@ describe("weaknesses list", () => {
     const costing = group("Costing you games");
     expect(costing).toHaveLength(2);
     // By priority: W5 (5) before W1 (3).
-    expect(costing[0]).not.toBe(costing[1]);
+    expect(costing[0]).toMatch(/Conversion failure/);
+    expect(costing[1]).toMatch(/Hung material/);
     expect(group("Getting better")).toHaveLength(1);
     expect(group("Under control")).toHaveLength(2);
     const w1 = screen.getByRole("link", { name: /Hung material/ });
     expect(w1.getAttribute("href")).toMatch(/^\/app\/weaknesses\/W1\?/);
     expect(screen.getByText(/Based on 3 analysed rapid games/)).toBeTruthy();
     noBadText(container);
+  });
+
+  it("early reads get their own group, never a confident one", async () => {
+    await seedProfile(db, accountId, {
+      timeClass: "rapid",
+      games: 3,
+      estimates: [
+        { seriesKey: "W1", state: "active", priority: 3 },
+        { seriesKey: "W2", state: "emerging", priority: 5, nUnweighted: 340 },
+        { seriesKey: "endgame:rook", state: "improving", priority: 2 },
+      ],
+    });
+    await list();
+    const names = (name: string) =>
+      within(screen.getByRole("region", { name }))
+        .getAllByRole("link")
+        .map((a) => a.textContent);
+    expect(names("Costing you games")).toEqual(["Hung material"]);
+    expect(screen.queryByRole("region", { name: "Getting better" })).toBeNull();
+    expect(names("Early reads")).toEqual(["Missed opponent threat", "Rook endgames"]);
+  });
+
+  it("row sparklines leave thin and missing weeks as gaps", async () => {
+    await seedProfile(db, accountId, {
+      timeClass: "rapid",
+      games: 1,
+      estimates: [{ seriesKey: "W1" }],
+      points: [
+        { seriesKey: "W1", playedAt: at("2026-10-05"), events: 3, opportunities: 60 },
+        // A thin week: 1 of 2 would draw a 50% spike.
+        { seriesKey: "W1", playedAt: at("2026-10-12"), events: 1, opportunities: 2 },
+        // 2026-10-19 and 2026-10-26: no points at all.
+        { seriesKey: "W1", playedAt: at("2026-11-02"), events: 2, opportunities: 40 },
+      ],
+    });
+    const scope = await resolveCoachScope(db, user.id, {});
+    if (!scope) throw new Error("no scope");
+    const trend = (await weeklyRates(db, user.id, scope)).get("W1") ?? [];
+    expect(trend).toHaveLength(ROW_WEEKS);
+    expect(trend.slice(-5)).toEqual([0.05, null, null, null, 0.05]);
+    expect(trend.slice(0, -5).every((v) => v === null)).toBe(true);
   });
 
   it("empty list says when weaknesses appear", async () => {
@@ -339,6 +383,74 @@ describe("weakness detail", () => {
     );
   });
 
+  it("a change note from another time class is not shown", async () => {
+    await seedProfile(db, accountId, {
+      timeClass: "rapid",
+      games: 1,
+      estimates: [{ seriesKey: "W1" }],
+    });
+    const { id } = await seedNote(db, accountId, {
+      changeKey: "W1@blitz-game",
+      seriesKey: "W1",
+      onsetDate: "2026-10-02",
+    });
+    await db
+      .update(weaknessChangeNotes)
+      .set({ input: { timeClass: "blitz" } })
+      .where(eq(weaknessChangeNotes.id, id));
+    const { container } = await detail("W1");
+    expect(container.textContent).not.toMatch(/This rose after you switched/);
+    expect(container.querySelector("[data-ai-disclosure]")).toBeNull();
+    noBadText(container);
+  });
+
+  it("an exemplar from another account's game has no review link", async () => {
+    const other = await seedAccount(db, { username: "Stranger" });
+    const { gameId } = await seedSyntheticGame(db, other.accountId, {
+      playedAt: "2026-11-01T10:00:00.000Z",
+      timeClass: "rapid",
+      result: "1-0",
+    });
+    const [g] = await db
+      .select({ platformGameId: games.platformGameId })
+      .from(games)
+      .where(eq(games.id, gameId));
+    await seedProfile(db, accountId, {
+      timeClass: "rapid",
+      games: 1,
+      estimates: [{ seriesKey: "W1" }],
+      input: {
+        weaknesses: [
+          {
+            id: "W1",
+            variant: null,
+            exemplars: [
+              {
+                gameId: g?.platformGameId,
+                ply: 7,
+                playedAt: "2026-11-01T10:00:00.000Z",
+                fen: "r1bqkbnr/pppp1ppp/8/4p3/2BnP3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4",
+                played: { san: "Nxe5", uci: "f3e5" },
+                best: { san: "Nxd4", uci: "f3d4" },
+                bestPv: ["f3d4"],
+                refutationPv: ["d8g5"],
+                tags: [],
+                evalBefore: { cp: 20, mate: null },
+                evalAfter: { cp: -150, mate: null },
+                winBefore: 52,
+                winAfter: 36,
+              },
+            ],
+          },
+        ],
+      },
+    });
+    const { container } = await detail("W1");
+    expect(screen.queryByRole("link", { name: /in the review/ })).toBeNull();
+    expect(screen.getByText("This game is not among your imported games.")).toBeTruthy();
+    expect(container.innerHTML).not.toContain(gameId);
+  });
+
   it("shows the latest ready change note with its disclosure", async () => {
     await seedProfile(db, accountId, {
       timeClass: "rapid",
@@ -352,6 +464,8 @@ describe("weakness detail", () => {
       onsetDate: "2026-11-02",
       status: "pending",
     });
+    // The change job stores its time class in `input` (Rust `WeaknessChangeInput`).
+    await db.update(weaknessChangeNotes).set({ input: { timeClass: "rapid" } });
     const { container } = await detail("W1");
     expect(screen.getByText(/This rose after you switched to a new opening/)).toBeTruthy();
     expect(container.querySelector("[data-ai-disclosure]")).not.toBeNull();

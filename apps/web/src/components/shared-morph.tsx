@@ -24,7 +24,23 @@ let pending: Pending | null = null;
 /** A morph older than this is stale (its navigation failed or was abandoned). */
 const FRESH_MS = 2000;
 /** The longest the view transition waits for the new page before it captures what is there. */
-const WAIT_MS = 1200;
+const WAIT_MS = 400;
+
+/** The app chrome (`data-app-chrome`) holds still through a morph: its own group, not animated. */
+const CHROME = "app-chrome";
+
+/** Drops a morph that will not land (a not-found page), so the next navigation turns the page. */
+export function clearMorph(): void {
+  pending = null;
+}
+
+/** Renders nothing; on mount it drops a morph whose page never arrived (see `clearMorph`). */
+export function MorphReset() {
+  useLayoutEffect(() => {
+    clearMorph();
+  }, []);
+  return null;
+}
 
 /** True while a shared-element morph is taking the current navigation (no page turn then). */
 export function morphPending(): boolean {
@@ -50,6 +66,9 @@ function retime(name: string) {
     [`::view-transition-old(${name})`]: { duration: ms(dur.draw), easing: bezier(ease.turn) },
     [`::view-transition-new(${name})`]: { duration: ms(dur.draw), easing: bezier(ease.turn) },
     "::view-transition-old(root)": { duration: ms(dur.quick), easing: "linear" },
+    [`::view-transition-group(${CHROME})`]: { duration: 0 },
+    [`::view-transition-old(${CHROME})`]: { duration: 0 },
+    [`::view-transition-new(${CHROME})`]: { duration: 0 },
     // The page content arrives 120ms after the header lands, with opacity only.
     "::view-transition-new(root)": {
       delay: ms(dur.draw + 0.12),
@@ -112,6 +131,9 @@ export function MorphLink({
     });
     pending = { name, at: Date.now(), mode: "vt", rect: null, arrived: () => arrived() };
     el.style.setProperty("view-transition-name", name);
+    // The nav is on both pages: named, it is captured on its own and does not fade with the page.
+    const chrome = document.querySelector<HTMLElement>("[data-app-chrome]");
+    chrome?.style.setProperty("view-transition-name", CHROME);
     const t = doc.startViewTransition(async () => {
       // One element per name: the card gives it up as the new page's header takes it.
       el.style.removeProperty("view-transition-name");
@@ -129,6 +151,9 @@ export function MorphLink({
         document.removeEventListener("pointerdown", skip, opts);
         document.removeEventListener("keydown", skip, opts);
         el.style.removeProperty("view-transition-name");
+        document
+          .querySelector<HTMLElement>("[data-app-chrome]")
+          ?.style.removeProperty("view-transition-name");
         pending = null;
       });
   };
