@@ -8,10 +8,13 @@
 //!   in 1 (best line `mate_in = 1`, the played move is not a mate).
 //! - `missed_punish`: own moves right after a valid opponent mistake or blunder; a miss is ΔW ≥ 10.
 //! - `sharp`: eligible own moves with `is_critical = true`; errors have any judgement.
-//! - `tactics`: W3 opportunities and events (from the observation); `allowed` counts eligible
-//!   decisive moves whose refutation is a tactic (gain ≥ 2 or a mate).
+//! - `tactics`: W3 opportunities and events (from the observation). `missed` is `None` when W3
+//!   is unknown for the game (T8's whole-game best-line rule, or an unusable observation), never
+//!   0. `allowed` counts eligible decisive moves whose refutation is a tactic (gain ≥ 2 or a
+//!   mate).
 //! - `missed_by_motif`: the observation's `motif.missed:*` rows that have opportunities.
-//! - `quiet`: the W10 opportunity set; `loss` is the sum of their ΔW (0-100 scale).
+//! - `quiet`: the W10 opportunity set (`detectors::is_quiet_move`); `loss` is the sum of their
+//!   ΔW (0-100 scale).
 //! - `low_clock` / `high_clock`: eligible own moves with clock < 30 s / > 60 s, in bullet, blitz
 //!   and rapid (the W9b population); `decisive` counts ΔW ≥ 15 among them.
 //! - `eval_trend_15_to_35`: player W after ply 70 minus after ply 30.
@@ -37,7 +40,7 @@
 use std::collections::BTreeMap;
 
 use chess_core::score::{flip_score, score_to_cp};
-use chess_core::{Color, EngineScore, Judgement, Phase, TimeClass};
+use chess_core::{Color, Judgement, Phase, TimeClass};
 
 use crate::types::{
     AnalysedGame, BinomialObs, ClockBucket, ConversionMetric, EndgameMetrics, EndgameOutcome,
@@ -46,8 +49,7 @@ use crate::types::{
     SeriesKey, StrengthPly, WeaknessKey,
 };
 use crate::weakness::detectors::{
-    self as d, GameView, LOW_CLOCK_SECONDS, OwnMove, PREP_MAX_WIN, QUIET_MAX_CP, TACTIC_MIN_GAIN,
-    move_is_valid,
+    self as d, GameView, LOW_CLOCK_SECONDS, OwnMove, PREP_MAX_WIN, TACTIC_MIN_GAIN, move_is_valid,
 };
 use crate::weakness::endgame::endgame_type;
 use crate::weakness::episodes::Outcome;
@@ -188,11 +190,19 @@ pub fn compute_game_metrics_counted(
         let (weakness, bad) = valid_binomial(&obs.binomial);
         scan.invalid_observation_rows += bad;
         m.weakness = weakness;
-        for k in [WeaknessKey::W3Shallow, WeaknessKey::W3Deep] {
-            if let Some(b) = m.weakness.get(&k) {
+        // W3 is known for the game only when T8 computed it (every eligible own move has its
+        // best line) and no W3 row was refused; otherwise `missed` stays `None`, never 0.
+        let w3 = [WeaknessKey::W3Shallow, WeaknessKey::W3Deep];
+        let w3_rows_valid = w3
+            .iter()
+            .all(|k| !obs.binomial.contains_key(k) || m.weakness.contains_key(k));
+        if v.best_lines_complete && w3_rows_valid {
+            let mut missed = 0;
+            for b in w3.iter().filter_map(|k| m.weakness.get(k)) {
                 m.tactics.opportunities += b.opportunities;
-                m.tactics.missed += b.events;
+                missed += b.events;
             }
+            m.tactics.missed = Some(missed);
         }
         for s in &obs.series {
             if let SeriesKey::MotifMissed(t) = s.series_key {
@@ -393,19 +403,10 @@ fn final_player_w(v: &GameView) -> Option<f64> {
     move_is_valid(last).then(|| player_pov(v, last, last.rec.win_after))
 }
 
-/// The W10 opportunity set (kept in step with `detectors::w10`, pinned by a test).
+/// The W10 opportunity set (the shared [`d::is_quiet_move`] rule).
 fn quiet(v: &GameView) -> QuietLoss {
     let mut q = QuietLoss::default();
-    if !v.best_lines_complete {
-        return q;
-    }
-    for o in v.own.iter().filter(|o| {
-        o.eligible
-            && o.m.rec.phase == Phase::Middlegame
-            && o.m.f.is_critical != Some(true)
-            && o.m.f.best.as_ref().is_some_and(|b| b.swing.depth.is_none())
-            && matches!(o.m.score_before, EngineScore::Cp(cp) if cp.abs() <= QUIET_MAX_CP)
-    }) {
+    for o in v.own.iter().filter(|o| d::is_quiet_move(v, o)) {
         q.moves += 1;
         q.loss += o.dw();
     }

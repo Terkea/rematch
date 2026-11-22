@@ -99,9 +99,41 @@ Task 4 detects mates on the whole PV, so `mate_in` is set even for a mate far do
 - **W10** drops positions whose best line ends in a deep mate, because the swing then has a depth, so such a position is not "quiet".
 - **"Deep mates count as W3.deep"** holds only when no settled swing ≥ 2 appears at k ≤ 3. An early material swing sets a shallow depth, and the move counts as W3.shallow.
 
+### Per-game metrics (Task 9)
+
+`weakness::game_metrics::compute_game_metrics` fills `PlayerGameMetrics`. It reads the game through the detectors' `GameView`, so it sees the same moves as the observation: sorted by ply, duplicate plies dropped, invalid moves skipped and counted. The TS M2 Task 8 definitions are ported as written:
+- one-move blunders;
+- missed punishment, where a miss is ΔW ≥ 10;
+- sharp positions;
+- the eval trend (W after ply 70 − W after ply 30);
+- the critical time ratio;
+- W at the end of the opening;
+- saveable resignations (final W ≥ 25);
+- the expected score.
+
+These definitions are not in TS:
+
+| Metric | Rule | Reason |
+|---|---|---|
+| `low_clock` / `high_clock` | Eligible own moves with clock < 30 s / > 60 s, in bullet, blitz and rapid only. `decisive` counts ΔW ≥ 15. | improvement-engine §6.2 W9b compares clock < 30 s with clock > 60 s. Using W9b's own population keeps `blunder_rate_low_clock` consistent with W9b. Daily and classical clocks say nothing about time pressure in seconds. Moves between 30 and 60 s belong to neither bucket, so the two rates don't blur. |
+| `endgame.outcome` | Entry W ≥ 70: `converted` if won, else `failed_conversion`. Entry W ≤ 30: `held` if not lost, else `failed_hold`. In between, or with no valid result: `None`. | The 70 matches the endgame series' "should be won" entry (§6.2 W8). The 30 is its mirror, so hold is the symmetric test. A balanced entry is neither a conversion nor a hold chance, and calling it one would dilute both rates. |
+| `endgame.kind` | `endgame_type` of the first endgame ply's FEN; an invalid FEN gives `None`. | No guessed type (T7). |
+| `tactics.missed` | `Option`. `None` when W3 is unknown for the game: the whole-game best-line rule (§10), an observation of another game, or a refused W3 row. **Version 2.** | Under the v1 `u32` a dropped W3 read as "0 missed", which `tactics_missed_per_game` averaged as evidence. `None` games are left out of that KPI's numerator and its n. |
+| `tactics.allowed` | Eligible decisive moves whose refutation is a tactic (gain ≥ 2 or a mate). A missing refutation is unknown and is counted, not claimed. | This is W3's tactic test applied to the opponent's line, so "allowed" and "missed" use one definition. |
+| `one_move_blunders` | A decisive move with a refutation at depth 1, or a missed mate in 1. "The played move is a mate" is read from the SAN `#`. When a missing line could change the answer, the move is unknown and counted. | The SAN is exact. Inferring the mate from the engine score would depend on how the terminal position is scored (R1 scores a delivered mate as `Mate(1)`). |
+| `quiet` | Exactly W10's opportunity set (`detectors::is_quiet_move`, shared). `loss` is the sum of ΔW on a 0–100 scale. | One rule, so `quiet_loss_per_move` and W10 can never diverge. The 0–100 scale matches T15's `pct` unit. |
+| `time_in_opening` | The total own time in the opening phase. `None` when any own opening move (valid or skipped) has no valid time. | A sum with missing terms would be an undercount that reads like a fast opening. |
+| `time_trouble` | `None` for daily games and for games without clocks. | It matches W9a. 10 % of a daily base is days, not time trouble. |
+| `missed_punish` | Opportunity: a valid own move whose ply − 1 is a valid opponent move judged a mistake or blunder. A missing previous ply gives no opportunity. | The opponent's error must be known to be there. |
+| `critical_time_ratio` | Mean time on `is_critical = true` moves over the mean on `= false` moves. `None` when either group is empty or the denominator is 0. | Unknown criticality is in neither group. A zero denominator would give infinity. |
+| `expected_score` | Only with both ratings positive; otherwise `None`, counted. | A rating of 0 or below is a data error, not a rating. |
+| `accuracy`, `accuracy_by_phase` | Only finite values in [0, 100]; others are skipped and counted. | No NaN reaches the means. |
+| Observation | An observation whose `game_id` differs from the game's is refused. Rows with events > opportunities, 0 opportunities, or a non-finite or negative EPL are dropped and counted, as is a non-finite W9d or one with abs(ρ) > 1. | Inconsistent rows can't be evidence. Move-level metrics stay, because they come from the game itself. |
+
 ## Consequences
 
 - Lichess-eval games without PVs contribute no W3 or W10 evidence until they are re-analysed with PVs. This is less data, but no rate is inflated.
 - W1 and W2 rates on such games stay unbiased. Decisive moves always get a PV, because they are critical plies.
 - Task 9 can reuse `observe_game::win_at_opening_end` and the detector constants.
 - Tests: `backend/crates/profile-core/tests/detectors.rs` covers every key with a positive case, a negative case and a no-opportunity case, plus the honesty rules.
+- Task 9: `PlayerGameMetrics` is version 2. Version-1 rows are stale under the version gate (global constraints) and must be recomputed. `GameMetricsScan` reports every skip and unknown count, for T31 to log.

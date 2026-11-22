@@ -177,6 +177,38 @@ fn blunders_mean_over_three_games() {
 }
 
 #[test]
+fn tactics_missed_unknown_is_not_zero_and_not_in_n() {
+    // Games 0-2 have W3 computed (2, 0, 1 missed); games 3-4 had W3 dropped (unknown).
+    let missed = [Some(2), Some(0), Some(1), None, None];
+    let games: Vec<Owned> = missed
+        .iter()
+        .enumerate()
+        .map(|(i, &m)| {
+            let mut o = owned(i as u128, NOW - Duration::hours(i as i64), TimeClass::Blitz);
+            o.metrics.tactics.missed = m;
+            o
+        })
+        .collect();
+    let out = compute_kpis(&kpi_games(&games), &LAST50, None);
+    let r = row(&out, base(BaseMetric::TacticsMissedPerGame));
+    // Unknown games counted as 0 would give 3 / 5 = 0.6 with n 5.
+    assert_eq!(r.value, Some(1.0));
+    assert_eq!(r.n, 2 + 1);
+
+    // Every game unknown: no value and n 0, never "0 missed".
+    let games: Vec<Owned> = (0..5)
+        .map(|i| {
+            let mut o = owned(i, NOW - Duration::hours(i as i64), TimeClass::Blitz);
+            o.metrics.tactics.missed = None;
+            o
+        })
+        .collect();
+    let out = compute_kpis(&kpi_games(&games), &LAST50, None);
+    let r = row(&out, base(BaseMetric::TacticsMissedPerGame));
+    assert_eq!((r.value, r.n, r.ci_low), (None, 0, None));
+}
+
+#[test]
 fn time_trouble_rate_counts_only_clocked_games() {
     let mut games = Vec::new();
     for i in 0..10u128 {
@@ -705,7 +737,7 @@ fn random_games(rng: &mut Rng, count: usize) -> Vec<Owned> {
             m.low_clock.decisive = int(rng, m.low_clock.moves);
             m.missed_punish.opportunities = int(rng, 3);
             m.missed_punish.misses = int(rng, m.missed_punish.opportunities);
-            m.tactics.missed = int(rng, 2);
+            m.tactics.missed = maybe(rng, 0.2).then(|| int(rng, 2));
             m.tactics.allowed = int(rng, 2);
             m.sharp.positions = int(rng, 5);
             m.sharp.errors = int(rng, m.sharp.positions);

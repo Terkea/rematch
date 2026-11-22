@@ -379,6 +379,7 @@ fn observation_of_another_game_is_refused() {
     assert!(s.metrics.missed_by_motif.is_empty());
     assert_eq!(s.metrics.w9d_rho, None);
     assert_eq!(s.metrics.tactics.opportunities, 0);
+    assert_eq!(s.metrics.tactics.missed, None);
     // Move-level metrics are still computed from the game itself.
     assert_eq!(s.metrics.blunders, 1);
 }
@@ -476,10 +477,11 @@ fn strengths_are_passed_through() {
 }
 
 #[test]
-fn json_shape_is_camel_case_version_1() {
+fn json_shape_is_camel_case_current_version() {
     let m = metrics(&make_game());
     let v = serde_json::to_value(&m).unwrap();
-    assert_eq!(v["version"], 1);
+    assert_eq!(v["version"], 2);
+    assert_eq!(PLAYER_GAME_METRICS_VERSION, 2);
     assert!(v.get("accuracyByPhase").is_some());
     assert!(v.get("oneMoveBlunders").is_some());
     assert!(v.get("missedPunish").is_some());
@@ -691,7 +693,7 @@ fn tactics_missed_and_allowed() {
     let obs = observe_game(&g, T_WIN);
     let m = compute_game_metrics(&g, &obs, vec![]);
     assert_eq!(m.tactics.opportunities, 2);
-    assert_eq!(m.tactics.missed, 1);
+    assert_eq!(m.tactics.missed, Some(1));
     assert_eq!(m.tactics.allowed, 1);
     assert_eq!(
         m.missed_by_motif[&MotifTag::Fork],
@@ -710,9 +712,10 @@ fn tactics_missed_and_allowed() {
     assert!(!m.missed_by_motif.contains_key(&MotifTag::Skewer));
 
     let m = metrics(&make_game());
+    // W3 was computable and found nothing: a known zero.
     assert_eq!(
         (m.tactics.opportunities, m.tactics.missed, m.tactics.allowed),
-        (0, 0, 0)
+        (0, Some(0), 0)
     );
     assert!(m.missed_by_motif.is_empty());
 }
@@ -752,8 +755,33 @@ fn tactics_follow_the_whole_game_best_line_rule() {
     });
     let g = with_move(g, own(9), |m| m.f.best = None);
     let m = metrics(&g);
-    assert_eq!((m.tactics.opportunities, m.tactics.missed), (0, 0));
+    // W3 dropped for the game: tactics missed is unknown, never a zero.
+    assert_eq!((m.tactics.opportunities, m.tactics.missed), (0, None));
     assert!(m.missed_by_motif.is_empty());
+
+    // The same game when the line-less move is decided (not eligible): W3 is computed again.
+    let g = with_move(g, own(9), |m| set_w(m, 95.0, 95.0));
+    let m = metrics(&g);
+    assert_eq!((m.tactics.opportunities, m.tactics.missed), (1, Some(1)));
+}
+
+#[test]
+fn tactics_missed_is_unknown_when_a_w3_row_is_refused() {
+    let g = with_move(make_game(), own(5), |m| {
+        m.f.best = Some(line(3.0, Some(1), None, &[MotifTag::Fork]));
+        lose(m, 16.0);
+    });
+    let mut obs = observe_game(&g, T_WIN);
+    assert_eq!(
+        compute_game_metrics(&g, &obs, vec![]).tactics.missed,
+        Some(1)
+    );
+    obs.binomial
+        .get_mut(&WeaknessKey::W3Shallow)
+        .unwrap()
+        .events = 5;
+    let m = compute_game_metrics(&g, &obs, vec![]);
+    assert_eq!(m.tactics.missed, None);
 }
 
 // ------------------------------------------------------------------ quiet moves
@@ -770,7 +798,6 @@ fn quiet_loss_over_w10_moves() {
     let m = compute_game_metrics(&g, &obs, vec![]);
     // Own middlegame moves: plies 21..59 = 20, minus the critical one.
     assert_eq!(m.quiet.moves, 19);
-    assert_eq!(m.quiet.moves, obs.binomial[&WeaknessKey::W10].opportunities);
     assert_eq!(m.quiet.loss, 6.0);
 
     assert_eq!(metrics(&make_game()).quiet.loss, 0.0);
