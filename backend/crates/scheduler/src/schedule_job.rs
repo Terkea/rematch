@@ -71,10 +71,12 @@ pub struct ScheduleSummary {
     pub previews: usize,
 }
 
-/// `"free"` (or none) or `"pro"`; anything else is a bad payload.
+/// `"beta"` (or none: the default until M7), `"free"` or `"pro"`; anything else is a bad
+/// payload.
 pub fn parse_plan(plan: Option<&str>) -> Option<Plan> {
     match plan {
-        None | Some("free") => Some(Plan::Free),
+        None | Some("beta") => Some(Plan::Beta),
+        Some("free") => Some(Plan::Free),
         Some("pro") => Some(Plan::Pro),
         Some(_) => None,
     }

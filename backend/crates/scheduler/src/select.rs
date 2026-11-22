@@ -23,6 +23,9 @@ pub const PREVIEW_GAMES: usize = 20;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Plan {
+    /// The private beta (owner ruling, ADR 0041 and ADR-R2-16): no plan limit. Every imported
+    /// game is selected, in tier-priority order. The default for every account until M7.
+    Beta,
     Free,
     Pro,
 }
@@ -38,6 +41,13 @@ pub struct TierLimits {
 
 pub fn tier_limits(plan: Plan) -> TierLimits {
     match plan {
+        Plan::Beta => TierLimits {
+            import_max: usize::MAX,
+            p0: usize::MAX,
+            p1: usize::MAX,
+            p2: true,
+            p3_per_week: usize::MAX,
+        },
         Plan::Free => TierLimits {
             import_max: 1000,
             p0: 50,
@@ -187,6 +197,9 @@ fn push(out: &mut Vec<Selected>, plan: Plan, g: &CandidateGame, tier: u8) {
 }
 
 pub fn select_for_analysis(i: &SelectInput) -> Vec<Selected> {
+    if i.plan == Plan::Beta {
+        return select_all(i);
+    }
     let limits = tier_limits(i.plan);
     let Some(primary) = primary_time_class(i.games, i.now) else {
         return Vec::new();
@@ -332,5 +345,39 @@ pub fn select_for_analysis(i: &SelectInput) -> Vec<Selected> {
             }
         }
     }
+    out
+}
+
+/// The beta plan: every candidate (`Pending`, no tier), whatever its length, time class or date,
+/// with no budget, batch or stopping rule. Each game gets the tier the plan rules would give it
+/// first: 0 in the primary time class, 3 for a rated game created after the first run in an
+/// active class, 1 in another active class, else 2. Emitted in priority order, then rated first
+/// and newest first.
+fn select_all(i: &SelectInput) -> Vec<Selected> {
+    let Some(primary) = primary_time_class(i.games, i.now) else {
+        return Vec::new();
+    };
+    let active = active_time_classes(i.games, i.now);
+    let mut cands: Vec<&CandidateGame> = i
+        .games
+        .iter()
+        .filter(|g| g.status == AnalysisStatus::Pending && g.tier.is_none())
+        .collect();
+    cands.sort_by(order);
+    let mut out: Vec<Selected> = Vec::with_capacity(cands.len());
+    for g in cands {
+        let tier = if g.time_class == primary {
+            0
+        } else if g.rated && g.created_at > i.first_scheduled_at && active.contains(&g.time_class) {
+            3
+        } else if active.contains(&g.time_class) {
+            1
+        } else {
+            2
+        };
+        push(&mut out, i.plan, g, tier);
+    }
+    // Stable: equal priorities keep the rated-first, newest-first order.
+    out.sort_by_key(|s| s.priority);
     out
 }

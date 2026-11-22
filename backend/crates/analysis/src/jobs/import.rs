@@ -14,9 +14,9 @@
 //! R2 (ADR-R2-16): new games are stored as `imported` with their `ply_count`, and no game is
 //! enqueued for analysis here. After the run commits, one `schedule-analysis` job is enqueued for
 //! the account (deduped on `schedule:<account>`); the scheduler picks the games to analyse. A
-//! payload without `max` imports at most [`ImportAccountDeps::default_max`] games
-//! ([`DEFAULT_IMPORT_MAX`], the free plan's `import_max`), one budget shared by the passes as
-//! above. Games of a run that fails for good stay `imported`; the reconciler schedules them.
+//! payload without `max` uses [`ImportAccountDeps::default_max`]: `None`, no limit, for the beta
+//! plan (no plan limits until M7). Games of a run that fails for good stay `imported`; the
+//! reconciler schedules them.
 //!
 //! Changes from the TS reference (ADRs 0032, 0035):
 //! - a run whose account's newest run is `paused` reuses that row instead of inserting one;
@@ -92,10 +92,6 @@ const IMPORT_LOCK_NAMESPACE: i32 = 7_262_021;
 const UNLOCK_TIMEOUT: Duration = Duration::from_secs(5);
 /// Max attempts of an import job.
 pub const IMPORT_MAX_ATTEMPTS: i32 = 3;
-/// The import budget when the payload has no `max`: the free plan's `import_max`
-/// (`scheduler::select::tier_limits(Plan::Free).import_max`, pinned by a scheduler test). The
-/// import payload carries no plan until M7.
-pub const DEFAULT_IMPORT_MAX: u32 = 1000;
 /// Max attempts of a schedule-analysis job.
 pub const SCHEDULE_MAX_ATTEMPTS: i32 = 3;
 /// `import_runs.last_error` keeps at most this many characters.
@@ -118,7 +114,8 @@ pub struct ImportAccountDeps {
     /// Imports released because another handler held the account (`account_busy`). Shared, so
     /// the worker can export it.
     pub busy_releases: Arc<AtomicU64>,
-    /// The budget of a payload without `max` ([`DEFAULT_IMPORT_MAX`]); `None` for no limit.
+    /// The budget of a payload without `max`; `None` (the default, the beta plan) for no limit.
+    /// With plans (M7) it becomes `tier_limits(plan).import_max`.
     pub default_max: Option<u32>,
 }
 
@@ -138,7 +135,7 @@ impl ImportAccountDeps {
             breaker_min_delay: BREAKER_MIN_DELAY,
             probe_timeout: PROBE_TIMEOUT,
             busy_releases: Arc::new(AtomicU64::new(0)),
-            default_max: Some(DEFAULT_IMPORT_MAX),
+            default_max: None,
         }
     }
 }
@@ -229,7 +226,7 @@ pub async fn enqueue_import(
     Ok(id.is_some())
 }
 
-/// Enqueues the account's schedule-analysis job (no plan, so the free plan, until M7). `false`
+/// Enqueues the account's schedule-analysis job (no plan, so the beta plan, until M7). `false`
 /// when a live one already holds `schedule:<account_id>`.
 pub async fn enqueue_schedule(queue: &Queue, account_id: Uuid) -> Result<bool, QueueError> {
     let payload = serde_json::to_value(SchedulePayload {

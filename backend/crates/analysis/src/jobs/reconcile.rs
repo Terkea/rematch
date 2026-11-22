@@ -14,7 +14,7 @@
 //!    Step 3a: `imported` games are never enqueued for analysis. An account with an `imported`
 //!    game still waiting for the scheduler (`pending_since` set and older than `pending_grace`;
 //!    the schedule-analysis job clears it on every game it has seen) and with no live import job
-//!    gets a schedule-analysis job (deduped), so no imported game is lost when an import fails
+//!    gets a schedule-analysis job (deduped; on `games_imported_waiting_idx`), so no imported game is lost when an import fails
 //!    for good or a schedule job is lost or deduped onto a run that had already read the games.
 //! 4. `running` import runs with a stale heartbeat: their account's import is enqueued again,
 //!    then the runs are closed as failed.
@@ -185,14 +185,12 @@ WHERE p.status = 'paused' AND NOT EXISTS (
     AND (n.started_at, n.id) > (p.started_at, p.id))";
 
 /// Accounts with an `imported` game still waiting for the scheduler for longer than `$1` seconds.
-/// One `games_account_status_tc_idx (account_id, analysis_status, …)` probe per account; it reads
-/// the account's `imported` rows until the first match.
-const UNSCHEDULED_ACCOUNTS_SQL: &str = "SELECT la.id FROM linked_accounts la
-WHERE EXISTS (
-  SELECT 1 FROM games g
-  WHERE g.account_id = la.id AND g.analysis_status = 'imported'
-    AND g.pending_since < now() - make_interval(secs => $1))
-ORDER BY la.id";
+/// Reads only the waiting rows, on the partial `games_imported_waiting_idx` (migration 020300),
+/// so its cost is the number of stragglers, not of imported games (plan-guarded below).
+const UNSCHEDULED_ACCOUNTS_SQL: &str = "SELECT DISTINCT account_id FROM games
+WHERE analysis_status = 'imported' AND pending_since IS NOT NULL
+  AND pending_since < now() - make_interval(secs => $1)
+ORDER BY account_id";
 
 /// The literal `6` matches the predicate of `games_attempt_cap_idx`, so the count uses it.
 const AT_CAP_SQL: &str = "SELECT count(*) FROM games WHERE analysis_attempts >= 6";
@@ -617,6 +615,54 @@ mod tests {
                 .unwrap();
         }
         sqlx::raw_sql("RESET plan_cache_mode")
+            .execute(&mut *conn)
+            .await
+            .unwrap();
+    }
+
+    /// The straggler query reads only the waiting `imported` rows, through the partial
+    /// `games_imported_waiting_idx`, never the account's other imported games: no Seq Scan, in
+    /// both the custom and the generic plan, with 50k seen imported rows and 5 waiting ones.
+    #[sqlx::test(migrator = "db::MIGRATOR")]
+    async fn straggler_query_uses_the_partial_index(pool: PgPool) {
+        sqlx::query(
+            "WITH a AS (INSERT INTO linked_accounts (platform, username, display_name)                VALUES ('lichess', 'strag', 'strag') RETURNING id)              INSERT INTO games (account_id, platform, platform_game_id, pgn, played_at,                time_class, rated, player_color, white_name, black_name, result,                analysis_status, pending_since)              SELECT a.id, 'lichess', 's-' || i, '1. e4 *', now(), 'blitz', true, 'white', 'w',                'b', '*', 'imported',                CASE WHEN i <= 5 THEN now() - interval '1 hour' END              FROM a, generate_series(1, 50000) i",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query("ANALYZE games").execute(&pool).await.unwrap();
+        let mut conn = pool.acquire().await.unwrap();
+        sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
+            "PREPARE strag(float8) AS {UNSCHEDULED_ACCOUNTS_SQL}"
+        )))
+        .execute(&mut *conn)
+        .await
+        .unwrap();
+        for mode in ["force_custom_plan", "force_generic_plan"] {
+            sqlx::query("SELECT set_config('plan_cache_mode', $1, false)")
+                .bind(mode)
+                .execute(&mut *conn)
+                .await
+                .unwrap();
+            let plan: Vec<String> = sqlx::query_scalar("EXPLAIN EXECUTE strag(120)")
+                .fetch_all(&mut *conn)
+                .await
+                .unwrap();
+            let plan = plan.join("\n");
+            assert!(
+                plan.contains("games_imported_waiting_idx"),
+                "{mode}:\n{plan}"
+            );
+            assert!(!plan.contains("Seq Scan on games"), "{mode}:\n{plan}");
+        }
+        let found: Vec<Uuid> = sqlx::query_scalar(UNSCHEDULED_ACCOUNTS_SQL)
+            .bind(120.0_f64)
+            .fetch_all(&mut *conn)
+            .await
+            .unwrap();
+        assert_eq!(found.len(), 1);
+        sqlx::raw_sql("DEALLOCATE strag; RESET plan_cache_mode")
             .execute(&mut *conn)
             .await
             .unwrap();

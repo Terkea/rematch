@@ -7,8 +7,8 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use analysis::jobs::import::{
-    ACCOUNT_BUSY_DELAY, DEFAULT_IMPORT_MAX, ImportAccountDeps, ImportSummary, account_lock_key,
-    enqueue_import, handle_import_account,
+    ACCOUNT_BUSY_DELAY, ImportAccountDeps, ImportSummary, account_lock_key, enqueue_import,
+    handle_import_account,
 };
 use db::accounts::{ImportCursor, get_account};
 use db::import_runs::{ImportRunStatus, list_runs};
@@ -335,18 +335,16 @@ async fn imported_games_store_their_ply_count(pool: PgPool) {
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
-async fn import_max_defaults_to_the_free_plan_limit(pool: PgPool) {
-    assert_eq!(DEFAULT_IMPORT_MAX, 1000);
+async fn a_payload_without_max_has_no_plan_limit_in_the_beta(pool: PgPool) {
+    // Owner ruling (ADR-R2-16): no plan limits until M7; only an explicit `max` bounds a run.
     let acct = testkit::insert_account(&pool, "lichess", "defmax").await;
     let source = FnSource::listing(vec![make_game("Defmax", "Villain", JAN_1)], false);
     let d = deps(&pool, source.clone());
+    assert_eq!(d.default_max, None);
     run(&d, acct).await.unwrap();
     let calls = source.calls.lock().unwrap().clone();
     assert!(!calls.is_empty());
-    assert!(
-        calls.iter().all(|c| c.max == Some(DEFAULT_IMPORT_MAX)),
-        "{calls:?}"
-    );
+    assert!(calls.iter().all(|c| c.max.is_none()), "{calls:?}");
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
@@ -848,15 +846,8 @@ async fn a_404_on_one_chesscom_month_stays_retryable(pool: PgPool) {
 #[sqlx::test(migrator = "db::MIGRATOR")]
 async fn a_lichess_user_404_fails_immediately_without_retry(pool: PgPool) {
     let acct = testkit::insert_account(&pool, "lichess", "nobody").await;
-    // A first import fetches with no since/until and the default max; any other URL would
-    // stream nothing.
-    let url = lichess_games_url(
-        "nobody",
-        &FetchOptions {
-            max: Some(DEFAULT_IMPORT_MAX),
-            ..FetchOptions::default()
-        },
-    );
+    // A first import fetches with no since/until/max; any other URL would stream nothing.
+    let url = lichess_games_url("nobody", &FetchOptions::default());
     let client = Arc::new(FakeClient {
         ndjson_by_url: HashMap::from([(
             url.clone(),

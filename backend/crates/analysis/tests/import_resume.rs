@@ -128,9 +128,6 @@ fn deps_with(
     client: Arc<dyn PlatformClient>,
 ) -> ImportAccountDeps {
     let mut deps = ImportAccountDeps::new(pool.clone(), Queue::new(pool.clone()));
-    // These tests pin the cursor's fetch ranges; the default budget (R2) is tested in
-    // import_account.rs.
-    deps.default_max = None;
     deps.sources = HashMap::from([
         (Platform::Lichess, source.clone()),
         (Platform::Chesscom, source),

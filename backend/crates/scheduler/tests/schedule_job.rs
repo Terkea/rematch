@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use analysis::eval_cache::DbEvalCache;
 use analysis::jobs::analyse::{AnalyseGameDeps, AnalyseGameHandler};
-use analysis::jobs::import::{DEFAULT_IMPORT_MAX, enqueue_schedule};
+use analysis::jobs::import::enqueue_schedule;
 use db::games::{AnalysisStatus, NewGame, upsert_game};
 use queue::queue::Queue;
 use queue::runner::{Runner, RunnerConfig};
@@ -19,7 +19,7 @@ use scheduler::fair::FairRoundRobin;
 use scheduler::preview::{PreviewDeps, PreviewHandler};
 use scheduler::priority::job_priority;
 use scheduler::schedule_job::{ScheduleDeps, ScheduleHandler, ScheduleSummary, handle_schedule};
-use scheduler::select::{PREVIEW_GAMES, Plan, tier_limits};
+use scheduler::select::{PREVIEW_GAMES, Plan};
 use serde_json::json;
 use sqlx::PgPool;
 use testkit::fake_engine::FakeAnalyser;
@@ -49,14 +49,6 @@ async fn schedule(pool: &PgPool, account: Uuid, plan: Option<&str>) -> ScheduleS
     handle_schedule(&deps(pool), payload(account, plan))
         .await
         .expect("schedule")
-}
-
-#[test]
-fn the_import_default_is_the_free_plan_import_max() {
-    assert_eq!(
-        usize::try_from(DEFAULT_IMPORT_MAX).unwrap(),
-        tier_limits(Plan::Free).import_max
-    );
 }
 
 #[derive(Clone)]
@@ -184,7 +176,7 @@ async fn schedule_sets_pending_with_tier_and_priority(pool: PgPool) {
     )
     .await;
 
-    let s = schedule(&pool, acct, None).await;
+    let s = schedule(&pool, acct, Some("free")).await;
     assert_eq!(s.selected, 2);
     assert_eq!(s.by_tier, [2, 0, 0, 0]);
 
@@ -490,7 +482,7 @@ async fn p3_budget_is_a_rolling_seven_day_window(pool: PgPool) {
         )
         .await;
     }
-    let s = schedule(&pool, acct, None).await;
+    let s = schedule(&pool, acct, Some("free")).await;
     assert_eq!(s.by_tier, [0, 0, 0, 5]);
     assert_eq!(s.previews, 0, "not the first run");
 }
@@ -652,8 +644,7 @@ async fn cli_style_flow_still_finishes(pool: PgPool) {
     for r in &runners {
         r.wait_idle().await;
     }
-    // Free plan: the 50 most recent games are selected (tier 0) and analysed; the rest stay
-    // imported for a later run.
+    // The beta plan (the default until M7) selects every imported game.
     let counts: Vec<(String, Option<i16>, i64)> = sqlx::query_as(
         "SELECT analysis_status::text, analysis_tier, count(*) FROM games WHERE account_id = $1 \
          GROUP BY 1, 2 ORDER BY 1, 2",
@@ -662,14 +653,103 @@ async fn cli_style_flow_still_finishes(pool: PgPool) {
     .fetch_all(&pool)
     .await
     .unwrap();
-    assert_eq!(
-        counts,
-        vec![
-            ("done".to_owned(), Some(0), 50),
-            ("imported".to_owned(), None, 10)
-        ]
-    );
-    for id in &ids[..50] {
+    assert_eq!(counts, vec![("done".to_owned(), Some(0), 60)]);
+    for id in &ids {
         assert_eq!(row(&pool, *id).await.status, "done");
+    }
+}
+
+/// Stores a game the way the importer does (`imported`, with its ply count).
+async fn store_imported(
+    pool: &PgPool,
+    account: Uuid,
+    n: usize,
+    time_class: &str,
+    played_at: OffsetDateTime,
+) -> Uuid {
+    upsert_game(
+        pool,
+        &NewGame {
+            account_id: account,
+            platform: "lichess".to_owned(),
+            platform_game_id: format!("beta-{account}-{n}"),
+            pgn: ITALIAN.to_owned(),
+            played_at,
+            time_class: time_class.to_owned(),
+            base_seconds: Some(180),
+            increment_seconds: Some(0),
+            rated: !n.is_multiple_of(7),
+            player_color: "white".to_owned(),
+            white_name: "beta".to_owned(),
+            black_name: "Villain".to_owned(),
+            white_rating: Some(1500),
+            black_rating: Some(1500),
+            result: "1-0".to_owned(),
+            termination: None,
+            eco: None,
+            opening_name: None,
+            lichess_evals: None,
+            status: AnalysisStatus::Imported,
+            ply_count: Some(12),
+        },
+    )
+    .await
+    .unwrap()
+    .id
+}
+
+/// Owner ruling (ADR 0041, ADR-R2-16): until plans exist (M7) every account is on the beta
+/// plan, with no plan limit. The CLI's `--max 500` import of 500 games is followed by the
+/// schedule job the importer enqueues (no plan in the payload), and it schedules all 500, in
+/// tier-priority order: the primary time class first.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn cli_max_500_on_500_imported_games_schedules_all_500(pool: PgPool) {
+    let acct = insert_account(&pool, "lichess", "beta500").await;
+    let now = OffsetDateTime::now_utc();
+    let mut by_tc: Vec<(Uuid, &str)> = Vec::new();
+    for n in 0..500_usize {
+        // 300 blitz (the primary), 150 rapid, 50 bullet, spread over three years.
+        let tc = match n % 10 {
+            0..=5 => "blitz",
+            6..=8 => "rapid",
+            _ => "bullet",
+        };
+        let played = now - time::Duration::hours(i64::try_from(n).unwrap() * 50 + 1);
+        by_tc.push((store_imported(&pool, acct, n, tc, played).await, tc));
+    }
+    let queue = Queue::new(pool.clone());
+    assert!(enqueue_schedule(&queue, acct).await.unwrap());
+    let job_payload: serde_json::Value =
+        sqlx::query_scalar("SELECT payload FROM jobs WHERE kind = $1 AND user_key = $2")
+            .bind(KIND_SCHEDULE)
+            .bind(acct)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let p: SchedulePayload = serde_json::from_value(job_payload).unwrap();
+
+    let s = handle_schedule(&deps(&pool), p).await.unwrap();
+    assert_eq!(s.selected, 500);
+    assert_eq!(s.by_tier.iter().sum::<usize>(), 500);
+    assert_eq!(s.by_tier[0], 300, "{s:?}");
+    assert_eq!(live(&pool, KIND_ANALYSE, acct).await.len(), 500);
+    let imported: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM games WHERE account_id = $1 AND analysis_status <> 'pending'",
+    )
+    .bind(acct)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(imported, 0);
+    // Tier-priority order: every primary game runs before every other game.
+    let worst_primary = by_tc.iter().filter(|g| g.1 == "blitz").map(|g| g.0);
+    let mut max_primary = i16::MIN;
+    for id in worst_primary {
+        max_primary = max_primary.max(row(&pool, id).await.priority.unwrap());
+    }
+    for (id, tc) in &by_tc {
+        if *tc != "blitz" {
+            assert!(row(&pool, *id).await.priority.unwrap() > max_primary);
+        }
     }
 }
