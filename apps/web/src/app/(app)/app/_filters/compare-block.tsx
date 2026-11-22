@@ -9,7 +9,10 @@ import { STATS_GLOSSARY } from "./glossary";
 // The change column only ever holds the verdict's words (ADR 0083 §6) and, when a verdict was
 // reached, the difference with its 80% range.
 
+/** Serif values: lining, tabular figures. */
 const LINING = { fontVariantNumeric: "lining-nums tabular-nums" } as const;
+/** Sans text with figures: lining but proportional (DESIGN.md), so "64.2%" keeps its shape. */
+const PROSE_NUMS = { fontVariantNumeric: "lining-nums" } as const;
 
 function Cell({ side, cell }: { side: string; cell: CompareCell }) {
   return (
@@ -18,7 +21,7 @@ function Cell({ side, cell }: { side: string; cell: CompareCell }) {
       <span className="block font-serif text-xl font-semibold text-ink" style={LINING}>
         {cell.value}
       </span>
-      <span className="block text-sm text-ink-soft" style={LINING}>
+      <span className="block text-sm text-ink-soft" style={PROSE_NUMS}>
         {cell.detail}
       </span>
     </td>
@@ -33,7 +36,7 @@ export function CompareBlock({ view, id = "compare-heading" }: { view: CompareVi
         {[view.a, view.b].map((p) => (
           <div key={p.label} className="flex flex-col">
             <dt className="font-medium text-ink">{p.label}</dt>
-            <dd className="m-0 text-ink-soft" style={LINING}>
+            <dd className="m-0 text-ink-soft" style={PROSE_NUMS}>
               {p.detail}
             </dd>
           </div>
@@ -90,7 +93,7 @@ export function CompareBlock({ view, id = "compare-heading" }: { view: CompareVi
                     {r.change.text}
                   </span>
                   {r.change.detail ? (
-                    <span className="block text-sm text-ink-soft" style={LINING}>
+                    <span className="block text-sm text-ink-soft" style={PROSE_NUMS}>
                       {r.change.detail}
                     </span>
                   ) : null}

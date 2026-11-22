@@ -15,6 +15,19 @@ Bullet
 1
 All
 34
+Colour
+Both
+White
+Black
+Period
+30 days
+3 months
+6 months
+12 months
+All time
+Custom
+Compare periods
+Compare periods
 
 Across 34 analysed games your accuracy averages , with  blunders a game.
 
@@ -22,6 +35,29 @@ Accuracy 80% likely between 65.1% and 71.2%. Blunders 80% likely between 1.2 and
 
 In a typical game you make about 1.5 blunders (moves that cost 15 win% points or more), likely between 1.3 and 1.8. Not compared with players at your level yet.
 
+By colour
+White
+23 games
+Accuracy
+68.8%
+80% range 65.2% to 72.2%, 22 analysed games
+Blunders per game
+1.55 a game
+80% range 1.2 to 1.9, 22 analysed games
+Score
+43.5%
+7 wins, 6 draws, 10 losses
+Black
+12 games
+Accuracy
+67.0%
+80% range 61.4% to 73.2%, 12 analysed games
+Blunders per game
+1.50 a game
+80% range 1.0 to 2.0, 12 analysed games
+Score
+58.3%
+6 wins, 2 draws, 4 losses
 What to work on
 Missed own tactic (shallow)
 

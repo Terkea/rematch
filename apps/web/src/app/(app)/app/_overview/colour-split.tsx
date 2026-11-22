@@ -6,7 +6,10 @@ import type { ColourSplitView, SplitCell } from "./colour-split-view";
 // games, accuracy with its 80% range, blunders per game and score with W-D-L. Body weight, no
 // headline numbers: the headline above stays the page's one big statement.
 
+/** Serif values: lining, tabular figures. */
 const LINING = { fontVariantNumeric: "lining-nums tabular-nums" } as const;
+/** Sans text with figures: lining but proportional (DESIGN.md), so "64.2%" keeps its shape. */
+const PROSE_NUMS = { fontVariantNumeric: "lining-nums" } as const;
 
 function Row({
   label,
@@ -27,7 +30,7 @@ function Row({
         <span className="font-serif text-lg font-semibold text-ink" style={LINING}>
           {cell.value}
         </span>
-        <span className="text-sm text-ink-faint" style={LINING}>
+        <span className="text-sm text-ink-faint" style={PROSE_NUMS}>
           {cell.detail}
         </span>
       </dd>
@@ -53,7 +56,7 @@ export function ColourSplit({ view }: { view: ColourSplitView }) {
           <div key={c.key} data-colour={c.key} className="flex min-w-0 flex-col gap-3">
             <h3 className="m-0 flex items-baseline gap-2 font-sans text-base font-semibold text-ink">
               {c.label}
-              <span className="text-sm font-normal text-ink-soft" style={LINING}>
+              <span className="text-sm font-normal text-ink-soft" style={PROSE_NUMS}>
                 {c.games}
               </span>
             </h3>

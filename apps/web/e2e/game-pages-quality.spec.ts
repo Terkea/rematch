@@ -44,11 +44,12 @@ test("the game pages: no sideways scroll at 360px, visible focus, no broken numb
     { url: `/app/games/${longId}?ply=300`, ready: "[data-review]", main: "300-ply review" },
     // The coach surfaces (M5b Task 11), on the coach seed seedFixtures also writes.
     { axe: true, url: "/app/report", ready: "[data-report-version]", main: "report" },
-    { axe: true, url: "/app/weaknesses", ready: "main h1", main: "weaknesses" },
+    // A filtered page's loading skeleton has an h1 too; only the real page has the filter bar.
+    { axe: true, url: "/app/weaknesses", ready: "main [data-filter-bar]", main: "weaknesses" },
     { axe: true, url: "/app/weaknesses/W3.shallow", ready: "main h1", main: "weakness" },
-    { axe: true, url: "/app/areas/endgame", ready: "main h1", main: "endgame area" },
-    { axe: true, url: "/app/areas/mindset", ready: "main h1", main: "mindset area" },
-    { axe: true, url: "/app/progress", ready: "main h1", main: "progress" },
+    { axe: true, url: "/app/areas/endgame", ready: "main [data-filter-bar]", main: "endgame area" },
+    { axe: true, url: "/app/areas/mindset", ready: "main [data-filter-bar]", main: "mindset area" },
+    { axe: true, url: "/app/progress", ready: "main [data-filter-bar]", main: "progress" },
     { axe: true, url: "/app/coach", ready: "main h1", main: "coach" },
     { axe: true, url: `/app/coach/${coach.threadId}`, ready: "textarea", main: "coach thread" },
     { axe: true, url: "/app/coach/new", ready: "textarea", main: "new question" },

@@ -106,8 +106,8 @@ test("the coach pages look as they did", async ({ browser, request }, info) => {
   const routes = [
     { url: "/app/report", name: "report.png", ready: "[data-report-version]" },
     { url: "/app/weaknesses/W1", name: "weakness.png", ready: "main h1" },
-    { url: "/app/areas/endgame", name: "area-endgame.png", ready: "main h1" },
-    { url: "/app/progress", name: "progress.png", ready: "main h1" },
+    { url: "/app/areas/endgame", name: "area-endgame.png", ready: "main [data-filter-bar]" },
+    { url: "/app/progress", name: "progress.png", ready: "main [data-filter-bar]" },
     { url: `/app/coach/${threadId}`, name: "coach-thread.png", ready: "textarea" },
   ];
   for (const r of routes) {
