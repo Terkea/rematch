@@ -63,7 +63,8 @@ pub struct AccountEta {
     pub queued_ahead: i64,
     /// Finished analyses per second over the last 10 minutes; `None` under [`MIN_RATE_ROWS`].
     pub games_per_sec: Option<f64>,
-    /// `queued_ahead / games_per_sec`; `None` when unknown. `Some(0)` when nothing is queued.
+    /// `queued_ahead / games_per_sec`; `None` when unknown. `Some(0)` only when nothing is queued
+    /// and every selected game is done.
     pub eta: Option<Duration>,
 }
 
@@ -94,12 +95,14 @@ pub async fn account_eta_in(
         .fetch_one(pool)
         .await?;
     if queued == 0 {
+        // A known zero only when nothing is outstanding. Games pending or running without a queued
+        // job (not scheduled yet, or all in flight) have no known finish time.
         return Ok(AccountEta {
             done,
             total,
             queued_ahead: 0,
             games_per_sec,
-            eta: Some(Duration::ZERO),
+            eta: (done == total).then_some(Duration::ZERO),
         });
     }
     let served_ms = i64::try_from(DEFAULT_SERVED_WINDOW.as_millis()).unwrap_or(i64::MAX);

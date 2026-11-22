@@ -176,7 +176,8 @@ async fn too_little_throughput_data_means_unknown(pool: PgPool) {
     let a = account(&pool, "a", 1).await;
     let ga = games(&pool, a, 6, "pending", true).await;
     enqueue(&q, a, &ga).await;
-    metrics(&pool, i32::try_from(MIN_RATE_ROWS).unwrap() - 1, 1).await;
+    assert_eq!(MIN_RATE_ROWS, 5);
+    metrics(&pool, 4, 1).await; // a literal: the constant must not move the guard
     // Rows older than 10 minutes do not count either.
     metrics(&pool, 50, 11).await;
     let e = account_eta(&pool, a).await.unwrap();
@@ -209,6 +210,37 @@ async fn nothing_queued_is_a_known_zero_even_without_a_rate(pool: PgPool) {
     assert_eq!(e.games_per_sec, None);
     assert_eq!(e.eta, Some(Duration::ZERO));
     assert_eq!(format_eta(&e), "under 1 min, analysing 4 / 4");
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn nothing_queued_but_games_outstanding_is_unknown(pool: PgPool) {
+    let a = account(&pool, "a", 1).await;
+    games(&pool, a, 3, "done", true).await;
+    games(&pool, a, 2, "pending", true).await; // not scheduled yet
+    games(&pool, a, 1, "analysing", true).await; // running, not queued
+    metrics(&pool, 60, 1).await;
+    let e = account_eta(&pool, a).await.unwrap();
+    assert_eq!((e.done, e.total, e.queued_ahead), (3, 6, 0));
+    assert_eq!(e.eta, None, "pending or running games are not a known zero");
+    assert_eq!(format_eta(&e), "analysing 3 / 6");
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_target_entirely_past_the_window_is_unknown(pool: PgPool) {
+    let q = Queue::new(pool.clone());
+    let a = account(&pool, "a", 2).await;
+    let b = account(&pool, "b", 1).await;
+    let ga = games(&pool, a, 30, "pending", true).await;
+    enqueue(&q, a, &ga).await;
+    let gb = games(&pool, b, 3, "pending", true).await;
+    enqueue(&q, b, &gb).await;
+    metrics(&pool, 60, 1).await;
+    // Order: A5 B3 A5 A5 ...: B's last job is the 8th, past a window of 6.
+    let e = account_eta_in(&pool, b, 6).await.unwrap();
+    assert_eq!(e.eta, None);
+    let wide = account_eta_in(&pool, b, 20).await.unwrap();
+    assert_eq!(wide.queued_ahead, 8);
+    assert!(wide.eta.is_some());
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]

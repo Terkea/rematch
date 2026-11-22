@@ -75,7 +75,8 @@ pub struct ScaleConfig {
 }
 
 impl Default for ScaleConfig {
-    /// The briefed thresholds with a zero cap: no spending until the owner sets one.
+    /// The briefed thresholds with a zero cap and a zero price: no spending until the owner
+    /// sets both (see [`scale_advice`]).
     fn default() -> Self {
         Self {
             p0_lag_threshold: Duration::from_secs(3 * 60),
@@ -97,8 +98,8 @@ pub enum ScaleAdvice {
 
 /// What an external autoscaler should do. Pure: add servers when P0 lag exceeds the threshold
 /// and the monthly cap leaves room for at least one server-hour; remove one when idle long enough
-/// with extra servers running; else hold. Unusable numbers (NaN cap, spend or price) spend
-/// nothing, and a bad backlog figure asks for one server, never a storm.
+/// with extra servers running; else hold. Unusable numbers (a cap or price that is zero,
+/// negative or NaN, or a NaN spend) spend nothing, `engines_per_server == 0` holds, and a bad backlog figure asks for one server, never a storm.
 pub fn scale_advice(
     lag: &QueueLag,
     idle_for: Duration,
@@ -108,8 +109,12 @@ pub fn scale_advice(
 ) -> ScaleAdvice {
     let lagging = lag.oldest_p0_age.is_some_and(|a| a > cfg.p0_lag_threshold);
     if lagging {
+        // A zero engine count is a misconfiguration, not "one engine": do nothing.
+        if cfg.engines_per_server == 0 {
+            return ScaleAdvice::Hold;
+        }
         let room = cfg.max_extra_servers.saturating_sub(current_extra);
-        let per_server = f64::from(cfg.engines_per_server.max(1)) * WINDOW_SECS;
+        let per_server = f64::from(cfg.engines_per_server) * WINDOW_SECS;
         let wanted = if lag.core_seconds_queued.is_finite() && lag.core_seconds_queued > 0.0 {
             (lag.core_seconds_queued / per_server).ceil().max(1.0)
         } else {
@@ -129,14 +134,12 @@ pub fn scale_advice(
     ScaleAdvice::Hold
 }
 
-/// Whole server-hours the cap still pays for (0 when unusable; unbounded for a free server).
+/// Whole server-hours the cap still pays for. Spend needs a positive, finite cap AND price: a
+/// zero, negative, NaN or missing cap or price pays for nothing (a free price is no licence).
 fn affordable_server_hours(spent: f64, cfg: &ScaleConfig) -> f64 {
     let (cap, price) = (cfg.monthly_cap_eur, cfg.eur_per_server_hour);
-    if !cap.is_finite() || !spent.is_finite() || !price.is_finite() || price < 0.0 {
+    if !(cap.is_finite() && cap > 0.0 && price.is_finite() && price > 0.0 && spent.is_finite()) {
         return 0.0;
-    }
-    if price == 0.0 {
-        return f64::from(u32::MAX);
     }
     ((cap - spent) / price).floor().max(0.0)
 }

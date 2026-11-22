@@ -41,6 +41,42 @@ fn defaults_are_the_briefed_values() {
 }
 
 #[test]
+fn the_default_config_never_spends() {
+    // The reviewer's probe: cap 0 and price 0, lagging, with a big backlog.
+    let c = ScaleConfig::default();
+    for core in [5000.0, 1e9] {
+        assert_eq!(
+            scale_advice(&lag(Some(10), core), Duration::ZERO, 0, 0.0, &c),
+            ScaleAdvice::Hold
+        );
+    }
+    for (cap, price) in [(0.0, 0.5), (100.0, 0.0), (-1.0, 0.5), (100.0, -0.5)] {
+        let c = ScaleConfig {
+            monthly_cap_eur: cap,
+            eur_per_server_hour: price,
+            ..ScaleConfig::default()
+        };
+        assert_eq!(
+            scale_advice(&lag(Some(10), 5000.0), Duration::ZERO, 0, 0.0, &c),
+            ScaleAdvice::Hold,
+            "cap {cap} price {price}"
+        );
+    }
+}
+
+#[test]
+fn zero_engines_per_server_holds() {
+    let c = ScaleConfig {
+        engines_per_server: 0,
+        ..cfg()
+    };
+    assert_eq!(
+        scale_advice(&lag(Some(10), 5000.0), Duration::ZERO, 0, 0.0, &c),
+        ScaleAdvice::Hold
+    );
+}
+
+#[test]
 fn adds_one_server_when_p0_lag_passes_the_threshold() {
     // 2 000 core-seconds / (48 engines x 600 s) rounds up to 1.
     assert_eq!(
@@ -152,9 +188,9 @@ fn bad_numbers_never_produce_nan_or_a_server_storm() {
         ..cfg()
     };
     assert_eq!(
-        scale_advice(&lag(Some(10), 5000.0), Duration::ZERO, 0, 1e9, &free),
-        ScaleAdvice::Add(1),
-        "a free server never hits the cap"
+        scale_advice(&lag(Some(10), 5000.0), Duration::ZERO, 0, 0.0, &free),
+        ScaleAdvice::Hold,
+        "a zero price is not a licence to spend"
     );
     let nan_cap = ScaleConfig {
         monthly_cap_eur: f64::NAN,
@@ -210,6 +246,33 @@ async fn age(pool: &PgPool, id: i64, minutes: i32) {
     .unwrap();
 }
 
+async fn age_secs(pool: &PgPool, id: i64, secs: i32) {
+    sqlx::query(
+        "UPDATE jobs SET created_at = now() - $2 * interval '1 second', \
+         run_at = now() - $2 * interval '1 second' WHERE id = $1",
+    )
+    .bind(id)
+    .bind(secs)
+    .execute(pool)
+    .await
+    .unwrap();
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn p0_is_priority_5_and_below_not_6(pool: PgPool) {
+    let q = Queue::new(pool.clone());
+    let six = job(&q, KIND_ANALYSE, 6, "six").await;
+    age_secs(&pool, six, 3600).await;
+    assert_eq!(queue_lag(&pool).await.unwrap().oldest_p0_age, None);
+    let five = job(&q, KIND_ANALYSE, 5, "five").await;
+    age_secs(&pool, five, 300).await;
+    let a = queue_lag(&pool).await.unwrap().oldest_p0_age.unwrap();
+    assert!(
+        a >= 5 * MIN && a < 10 * MIN,
+        "{a:?}: only the priority-5 job counts"
+    );
+}
+
 #[sqlx::test(migrator = "db::MIGRATOR")]
 async fn empty_queue_has_no_lag(pool: PgPool) {
     let l = queue_lag(&pool).await.unwrap();
@@ -222,13 +285,13 @@ async fn empty_queue_has_no_lag(pool: PgPool) {
 async fn oldest_p0_age_counts_only_tiers_up_to_2(pool: PgPool) {
     let q = Queue::new(pool.clone());
     let p0 = job(&q, KIND_ANALYSE, job_priority(0, Plan::Free, true), "p0").await;
-    age(&pool, p0, 4).await;
+    age_secs(&pool, p0, 4 * 60 + 30).await;
     // Tier 5 (priority 10 / 2) is not P0, however old.
     let p2 = job(&q, KIND_ANALYSE, job_priority(2, Plan::Free, true), "p2").await;
     age(&pool, p2, 60).await;
     let l = queue_lag(&pool).await.unwrap();
     let a = l.oldest_p0_age.unwrap();
-    assert!(a >= 4 * MIN && a < 5 * MIN, "{a:?}");
+    assert!(a >= 4 * MIN && a < 6 * MIN, "{a:?}");
     assert_eq!(l.queued_games, 2);
 }
 
