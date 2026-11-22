@@ -13,7 +13,18 @@ TypeScript monorepo (pnpm workspaces + Turborepo, Node 22, ESM only). Packages u
 
 - All tests: `pnpm test`. One package: `pnpm --filter @ci/chess-core test`.
 - Tests use Vitest; they live in `<package>/test/*.test.ts`. Write the failing test first.
-- DB tests need Postgres and Redis (compose or CI service containers).
+- DB tests need Postgres and Redis. Run the gate in compose, as CI does (ADR 0066): every package but web in the `worker` container (Stockfish), and web in the `web` container (default `BETTER_AUTH_SECRET`). Use `pnpm turbo run build lint typecheck test --concurrency=1`.
+- `pnpm format:check` fails on Biome format drift. Run `pnpm format` and commit the result.
+
+## UI
+
+- Load the `design-system` skill (and `chess-ui` for board or graph work) before any UI change. `packages/ui/DESIGN.md` is the law.
+- Tokens only: no raw colours, sizes or fonts. `pnpm design:check` (the ban lint) enforces it.
+- Before calling a UI change done: `pnpm shots`, `pnpm design:check`, and a critique by a fresh subagent.
+- Web stack: `docker compose up -d web` serves `localhost:3100`, and Mailpit (sign-in mail) is at `localhost:48025`. Both need the ports file in `COMPOSE_FILE`.
+- e2e: `COMPOSE_FILE=docker-compose.yml:docker-compose.e2e.yml docker compose -p <name> --profile e2e up -d web fakes`, then `... --profile e2e --profile qa run --rm --no-deps qa sh -c "cd apps/web && node node_modules/@playwright/test/cli.js test --project=e2e"`. Put a spec name before `--project`.
+- Visual tests: the same `qa` run with `--project='visual-*'`. Baselines are made in that Linux container only.
+- Production e2e (what CI runs, ADR 0066): add `docker-compose.e2e-prod.yml` to `COMPOSE_FILE`, `up -d --wait`, and pass `-e E2E_PRODUCTION=1` and `--grep-invert @fakes` to the run.
 
 ## Rust backend
 

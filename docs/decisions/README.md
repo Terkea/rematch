@@ -1,6 +1,6 @@
 # Decision records
 
-One file per decision: context, decision, alternatives, consequences. New decisions get the next number.
+One file per decision: context, decision, alternatives, consequences. New decisions get the next number. Every record is listed here once.
 
 - [0001. Monorepo in TypeScript with pnpm workspaces and Turborepo](0001-monorepo-typescript-turborepo.md)
 - [0002. Next.js (App Router) for the web app](0002-nextjs-web-app.md)
@@ -33,7 +33,7 @@ One file per decision: context, decision, alternatives, consequences. New decisi
 - [0029. State in Postgres, queue as delivery; reconciler instead of an outbox](0029-state-in-postgres-reconciler-not-outbox.md)
 - [0030. Rust for the entire backend](0030-rust-backend.md)
 - [0031. Rust workspace, toolchain and crates](0031-rust-workspace-toolchain-and-crates.md)
-- [0031 addendum. npm enforcement of the 7-day age and exact-pin rule](0031-addendum-npm-enforcement.md)
+- [0031 addendum. npm enforcement](0031-addendum-npm-enforcement.md)
 - [0032. Postgres job queue](0032-postgres-job-queue.md)
 - [0033. SQL migrations own the schema, Drizzle is generated](0033-sql-migrations-own-the-schema.md)
 - [0034. User events over LISTEN/NOTIFY with a reset marker](0034-user-events-listen-notify.md)
@@ -59,8 +59,16 @@ One file per decision: context, decision, alternatives, consequences. New decisi
 - [0054. Game review layout: the graph as the spine, with the mistakes ledger](0054-review-layout.md)
 - [0055. The overview page: honest rows, a broken trend line, a server-safe band, a session reveal](0055-overview-page.md)
 - [0056. Live refresh of the game pages, and a dev-only account link](0056-live-refresh-and-dev-account-link.md)
+- [0065. Game pages e2e: a guarded seed, their own quality and visual specs](0065-game-pages-e2e-and-visual-baselines.md)
+- [0066. CI runs the gates in compose, and e2e on a production build](0066-ci-gates-in-compose-and-production-e2e.md)
 
-Web records use placeholder numbers until the controller renumbers them.
+0057 to 0064 are taken by the R3 (AI) records, renumbered on the R3 branch; in this tree they are still the ADR-R3 files below.
+
+## Records with placeholder numbers
+
+These lanes wrote their records under a lane prefix. The controller gives each its final number when it renumbers; until then the prefix is the name.
+
+### Web (M4): ADR-WEB
 
 - [ADR-WEB-1. Source-only UI packages and the web dependency set](ADR-WEB-1-source-only-ui-packages.md)
 - [ADR-WEB-2. Web development stack in Compose](ADR-WEB-2-web-dev-stack.md)
@@ -70,75 +78,41 @@ Web records use placeholder numbers until the controller renumbers them.
 - [ADR-WEB-6. Age gate, under-13 block and private defaults](ADR-WEB-6-age-gate.md)
 - [ADR-WEB-7. Design tokens, themes and self-hosted fonts](ADR-WEB-7-design-tokens.md)
 - [ADR-WEB-8. Live user events: one LISTEN per process, SSE with replay, polling fallback](ADR-WEB-8-sse-delivery.md)
-- [ADR-WEB-9. Ban lint; Impeccable not adopted, web-design-guidelines vendored](ADR-WEB-9-third-party-design-tooling.md)
+- [ADR-WEB-9. Third-party design tooling review and the ban lint](ADR-WEB-9-third-party-design-tooling.md)
 - [ADR-WEB-10. Visual QA loop: Playwright, shots, lab and critique](ADR-WEB-10-visual-qa-loop.md)
 - [ADR-WEB-11. Overlay libraries: sonner, vaul and cmdk](ADR-WEB-11-overlay-libraries.md)
-- [ADR-WEB-12. KPI stats: fixed percent window, outward-rounded ends, host-set halo, honest trend scale](ADR-WEB-12-kpi-stat-honest-uncertainty.md)
+- [ADR-WEB-12. KPI stats: a fixed percent window, outward-rounded interval ends, a host-set halo and an honest trend scale](ADR-WEB-12-kpi-stat-honest-uncertainty.md)
 - [ADR-WEB-13. Board: shipped Cburnett pieces, coordinates and piece motion](ADR-WEB-13-board-pieces-and-motion.md)
 - [ADR-WEB-14. Weakness timeline and area score encoding](ADR-WEB-14-weakness-timeline-encoding.md)
 - [ADR-WEB-15. Annotation overlay: geometry, draw-on and placement rules](ADR-WEB-15-annotation-overlay.md)
 - [ADR-WEB-16. App shell, sign-in, age and account-linking screens](ADR-WEB-16-app-shell-and-auth-screens.md)
 - [ADR-WEB-17. Original procedural board sounds](ADR-WEB-17-original-procedural-sounds.md)
-- [0030. Rust for the entire backend](0030-rust-backend.md)
-- [0031. Rust workspace, toolchain and crates](0031-rust-workspace-toolchain-and-crates.md)
-- [0031 addendum. npm enforcement of the 7-day age and exact-pin rule](0031-addendum-npm-enforcement.md)
-- [0032. Postgres job queue](0032-postgres-job-queue.md)
-- [0033. SQL migrations own the schema, Drizzle is generated](0033-sql-migrations-own-the-schema.md)
-- [0034. User events over LISTEN/NOTIFY with a reset marker](0034-user-events-listen-notify.md)
-- [0035. Analysis generations and job outcome rules](0035-analysis-generations-and-job-outcomes.md)
-- [0036. Per-stage timing metrics](0036-per-stage-timing-metrics.md)
-- [0037. Own PGN parser with chess.js-compatible FEN and SAN](0037-own-pgn-parser-chessjs-compatible.md)
-- [0038. Parity acceptance and removal of the TS backend](0038-parity-and-ts-backend-removal.md)
-- [0040. chess.com first; Lichess accounts deferred](0040-chesscom-first-defer-lichess-accounts.md)
 
-R2 (profile engine) records use placeholder numbers until the controller renumbers them after 0038 (ADR-R2-1). Rows without a file yet are written by the R2 task named in the plan.
+### Profile engine (R2): ADR-R2
+
+There is no file for ADR-R2-10, 11, 14 or 17 to 21 in this tree. The earlier index named 10 (opening explorer build), 11 (band reference method), 14 (enrichment protocol), 17 (ETA and autoscaling hooks) and 18 (build-profile job) as still to be written by their R2 tasks.
 
 - [ADR-R2-1. Profile engine crates, dependencies and data layout](ADR-R2-1-profile-crates-and-data-layout.md)
-- [ADR-R2-2. CoachingInput contract crate with schema parity](ADR-R2-2-coaching-input-contract.md)
+- [ADR-R2-2. The coaching-input contract crate](ADR-R2-2-coaching-input-contract.md)
 - [ADR-R2-3. Clean-room motif tagger](ADR-R2-3-motif-tagger-clean-room.md)
-- [ADR-R2-4. Weakness metric rulings](ADR-R2-4-weakness-metric-rulings.md)
+- [ADR-R2-4. Weakness metric rulings (detectors W1-W12)](ADR-R2-4-weakness-metric-rulings.md)
 - [ADR-R2-5. Posterior and priority conventions](ADR-R2-5-posterior-priority-conventions.md)
 - [ADR-R2-6. Timeline change detector and states](ADR-R2-6-timeline-detector-and-states.md)
-- [ADR-R2-7. KPI catalogue and area scores](ADR-R2-7-kpi-catalogue-and-area-scores.md)
-- [ADR-R2-8. Repertoire tree and opening verdicts](ADR-R2-8-repertoire-and-verdicts.md)
-- [ADR-R2-9. Lichess database pipeline](ADR-R2-9-lichess-db-data-pipeline.md)
-- [ADR-R2-10. Opening explorer build](ADR-R2-10-opening-explorer-build.md)
-- [ADR-R2-11. Band reference method](ADR-R2-11-band-reference-method.md)
-- [ADR-R2-12. Local Syzygy probe](ADR-R2-12-local-syzygy-probe.md)
+- [ADR-R2-7. KPI catalogue, snapshots and area scores](ADR-R2-7-kpi-catalogue-and-area-scores.md)
+- [ADR-R2-8. Repertoire tree, line keys, struggles and opening verdicts](ADR-R2-8-repertoire-and-verdicts.md)
+- [ADR-R2-9. Lichess database pipeline: streamed, verified, never stored](ADR-R2-9-lichess-db-data-pipeline.md)
+- [ADR-R2-12. Local Syzygy probe through a separate Stockfish set](ADR-R2-12-local-syzygy-probe.md)
 - [ADR-R2-13. Maia licence check and difficulty providers](ADR-R2-13-maia-licence-and-difficulty.md)
-- [ADR-R2-14. Enrichment protocol](ADR-R2-14-enrichment-protocol.md)
-- [ADR-R2-15. Fair scheduling and the preview pass](ADR-R2-15-fair-scheduling-and-preview.md)
+- [ADR-R2-15. Fair scheduling and preview](ADR-R2-15-fair-scheduling-and-preview.md)
 - [ADR-R2-16. Tiered analysis scheduler](ADR-R2-16-tiered-analysis-scheduler.md)
-- [ADR-R2-17. ETA and autoscaling hooks](ADR-R2-17-eta-and-autoscaling-hooks.md)
-- [ADR-R2-18. build-profile job and CoachingInput builder](ADR-R2-18-build-profile-and-coaching-input.md)
 - [ADR-R2-22. Syzygy 3-4-5 tablebases: pinned, verified, never committed](ADR-R2-22-syzygy-345-fetch.md)
 - [ADR-R2-23. Reference build storage: lifecycle guards and per-metric band fallback](ADR-R2-23-reference-build-storage.md)
 
-R3 (AI) records use placeholder numbers until R3 Task 26 renumbers them.
+### AI (R3): ADR-R3
+
+There is no ADR-R3-7 file in this tree.
 
 - [ADR-R3-1. Rust Anthropic client and the `ai` crate's dependencies](ADR-R3-1-rust-anthropic-client-and-crates.md)
-
-Web (M4) records use placeholder numbers until the controller renumbers them.
-
-- [0041. First target: a private beta for the owner and a few friends](0041-private-beta-owner-and-friends.md)
-- [0042. Shared Rust build caches across lanes](0042-shared-rust-build-caches.md)
-- [0043. No email address in outbound requests](0043-no-email-in-outbound-requests.md)
-- [0044. Postgres runs under an init process with an exec-form TCP healthcheck](0044-postgres-init-process-and-tcp-healthcheck.md)
-
-Web game pages (M5a):
-
-- [0046. The games read model: scoped, read-only, no API routes](0046-game-read-model-and-access.md)
-- [0047. Honest overview statistics](0047-honest-overview-statistics.md)
-- [0048. Games explorer: URL state, offset paging and UTC day filters](0048-explorer-url-state-and-paging.md)
-- [0049. Game review data: PGN-first plies, stored engine scores, honest gaps](0049-game-review-data.md)
-- [0050. Overview chart encodings](0050-overview-chart-encodings.md)
-- [0051. Game review interaction, board marks and honest judgements](0051-review-interaction.md)
-- [0052. The analysis reveal on the review page](0052-review-reveal.md)
-- [0053. Overview layout](0053-overview-layout.md)
-- [0054. Game review layout: the graph as the spine, with the mistakes ledger](0054-review-layout.md)
-- [0055. The overview page: honest rows, a broken trend line, a server-safe band, a session reveal](0055-overview-page.md)
-- [0056. Live refresh of the game pages, and a dev-only account link](0056-live-refresh-and-dev-account-link.md)
-- [0065. Game pages e2e: a guarded seed, their own quality and visual specs](0065-game-pages-e2e-and-visual-baselines.md)
 - [ADR-R3-2. Porting the TS AI reference to Rust, and how parity is kept](ADR-R3-2-ts-reference-port-and-parity.md)
 - [ADR-R3-3. AI tables, jobs and events](ADR-R3-3-ai-tables-jobs-and-events.md)
 - [ADR-R3-4. Sectioned generation and facts by reference](ADR-R3-4-sectioned-generation-and-facts-by-reference.md)

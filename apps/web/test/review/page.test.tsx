@@ -23,6 +23,8 @@ vi.mock("../../src/server/games/review", async (orig) => ({
 }));
 vi.mock("../../src/server/auth/session", () => ({ requireUser }));
 vi.mock("../../src/server/db", () => ({ getDb: () => ({}) }));
+// The page reads the event cursor first (T27); its ordering is covered by realtime-wiring.test.
+vi.mock("../../src/server/events/request-cursor", () => ({ requestEventCursor: async () => 0 }));
 
 const mod = await import("../../src/app/(app)/app/games/[gameId]/page.js");
 const Page = mod.default;

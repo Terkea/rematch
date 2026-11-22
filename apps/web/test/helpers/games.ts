@@ -57,7 +57,12 @@ export async function resetGameTables(db: Db): Promise<void> {
 /** A linked account, plus the user's `account_links` row (method `username`) when `userId` is set. */
 export async function seedAccount(
   db: Db,
-  opts: { userId?: string; platform?: "chesscom"; username: string; verified?: boolean },
+  opts: {
+    userId?: string;
+    platform?: "chesscom" | "lichess";
+    username: string;
+    verified?: boolean;
+  },
 ): Promise<{ accountId: string }> {
   await assertSeedable(db);
   const [row] = await db

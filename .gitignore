@@ -23,3 +23,6 @@ next-env.d.ts
 
 # Playwright signed-in storage state (e2e)
 apps/web/e2e/.auth/
+
+# Written by `next dev` for coding agents (agentRules is off; T24)
+apps/web/AGENTS.md
