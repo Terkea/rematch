@@ -100,6 +100,9 @@ export function diffText(v: number, unit: string | null): string {
 }
 
 const value = (v: number, unit: string | null) => formatKpiValue(v, unit).replace("-", MINUS);
+/** A row's headline figure, with its unit: "76.1%", "0.80 a game". */
+const figureOf = (v: number, unit: string | null) =>
+  unit === "per_game" && fin(v) ? `${value(v, unit)} a game` : value(v, unit);
 const range = (low: number, high: number, unit: string | null) =>
   `${value(low, unit)} to ${value(high, unit)}`;
 
@@ -260,7 +263,7 @@ function OwnClaims({ claims }: { claims: OwnClaim[] }) {
           key={c.metric}
           id={c.metric}
           label={c.label}
-          figure={diffText(c.recent.value - c.earlier.value, c.unit)}
+          figure={figureOf(c.recent.value, c.unit)}
           detail={ownClaimText(c)}
           strip={
             <Strip
@@ -300,7 +303,7 @@ function AboveLevel({ above }: { above: StrengthsModel["above"] }) {
                 key={c.metric}
                 id={c.metric}
                 label={c.label}
-                figure={value(c.value, c.unit)}
+                figure={figureOf(c.value, c.unit)}
                 detail={bandClaimText(c)}
                 strip={
                   <Strip
@@ -357,7 +360,7 @@ function Improving({
               key={w.seriesKey}
               id={w.seriesKey}
               label={w.label}
-              figure={`${MINUS}${pct0((w.before - w.after) / w.before)}`}
+              figure={pct1(w.after)}
               detail={weaknessChangeText(w)}
               href={`/app/weaknesses/${encodeURIComponent(w.seriesKey)}?${scopeQuery(scope)}`}
               strip={

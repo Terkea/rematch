@@ -130,7 +130,7 @@ describe("StrengthsView", () => {
     };
     const { body } = show(m);
     const row = body.querySelector('[data-claim="accuracy"]');
-    expect(row?.textContent).toContain("+11.1 points");
+    expect(row?.querySelector(".font-serif")?.textContent).toBe("76.1%");
     expect(row?.textContent).toContain(
       "76.1% over your last 50 games, against 65.0% over 40 earlier games. The change's 80% range is +9.1 points to +13.2 points.",
     );
