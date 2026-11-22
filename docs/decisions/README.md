@@ -94,6 +94,7 @@ These lanes wrote their records under a lane prefix. The controller gives each i
 - [ADR-WEB-15. Annotation overlay: geometry, draw-on and placement rules](ADR-WEB-15-annotation-overlay.md)
 - [ADR-WEB-16. App shell, sign-in, age and account-linking screens](ADR-WEB-16-app-shell-and-auth-screens.md)
 - [ADR-WEB-17. Original procedural board sounds](ADR-WEB-17-original-procedural-sounds.md)
+- [ADR-WEB-18. Quality sweep, visual baselines and the throttle fix](ADR-WEB-18-quality-sweep-and-visual-baselines.md)
 
 ### Profile engine (R2): ADR-R2
 

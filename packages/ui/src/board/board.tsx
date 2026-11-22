@@ -321,8 +321,11 @@ export function Board({
   };
 
   // dnd-kit makes every draggable piece a tab stop (role="button", tabindex 0). The SquareGrid is
-  // the board's keyboard interface, so the pieces underneath leave the tab order.
+  // the board's keyboard interface, so the pieces underneath leave the tab order. The server
+  // markup still has them, so the surface is inert until this has run: an aria-hidden layer must
+  // never hold a tab stop (axe aria-hidden-focus, M4 T28).
   const surface = useRef<HTMLDivElement>(null);
+  const [untabbed, setUntabbed] = useState(false);
   useLayoutEffect(() => {
     const root = surface.current;
     if (!root) return;
@@ -332,6 +335,7 @@ export function Board({
       }
     };
     untab();
+    setUntabbed(true);
     const observer = new MutationObserver(untab);
     observer.observe(root, { subtree: true, childList: true, attributeFilter: ["tabindex"] });
     return () => observer.disconnect();
@@ -377,7 +381,7 @@ export function Board({
     >
       {coordinateCss ? <style data-board-coordinates>{coordinateCss}</style> : null}
       <div className="relative size-(--board-size)">
-        <div ref={surface} aria-hidden="true" className="size-full">
+        <div ref={surface} aria-hidden="true" inert={!untabbed} className="size-full">
           <PieceMotionContext.Provider value={motionState}>
             <Chessboard
               options={{

@@ -13,6 +13,9 @@ import { gotoSettled } from "./support/mail";
 const SHOT = {
   animations: "disabled",
   maxDiffPixelRatio: 0.001,
+  // On a whole tall page 0.001 is about 600 pixels: a new icon or a moved label fits under it
+  // (the sound toggle and the strip's corner name both did, M4 T28). The stricter bound wins.
+  maxDiffPixels: 40,
   // Hides next dev's own issue badge, which is not part of the page (support/screenshot.css).
   stylePath: fileURLToPath(new URL("./support/screenshot.css", import.meta.url)),
 } as const;
@@ -28,6 +31,12 @@ async function wholePage(page: Page, name: string): Promise<void> {
   await page.setViewportSize({ width, height });
   await page.waitForTimeout(500);
   await expect(page).toHaveScreenshot(name, SHOT);
+  // The visible text too (M4 T28): a copy change moves too few pixels to fail a 0.001 ratio on
+  // its own (M5a T13 found four such edits passing), so the text snapshot catches it.
+  // biome-ignore lint/performance/useDomNodeTextContent: the visible text is the point
+  const text = await page.locator("main").innerText();
+  const lines = text.split("\n").map((l) => l.trimEnd());
+  expect(`${lines.join("\n").trim()}\n`).toMatchSnapshot(name.replace(/\.png$/, ".txt"));
 }
 
 async function ready(page: Page, url: string, selector: string): Promise<void> {

@@ -1,0 +1,34 @@
+Progress
+
+While a section is still being worked out, it shows its own outline on a ruled sheet. A pencil stroke grows with the count when the total is known and idles when it is not.
+
+Replay
+
+Analysing 76 / 200 rapid games
+
+Analysing 76 / 200 rapid games
+
+Analysing
+
+Counts update as games finish.
+
+Analysing started
+
+Importing: 120 games so far
+
+Importing: 120 games so far
+
+Analysing 0 / 200 games
+
+Analysing started
+
+Swapping in
+Accuracy
+
+Based on 38 rapid games
+
+50%
+90%
+
+80% likely between 71.8% and 76.6%
+Next target 78.0%

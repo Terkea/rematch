@@ -1,0 +1,44 @@
+Area score
+
+Each area on one shared ruler, scaled to these scores: your score against the median of players at your rating, and the score that would put you in the next band.
+
+Replay draw
+Your score
+Band median
+Next band
+40
+60
+80
+Openings 71, band median 64, next band 72
+Openings
+38 rapid games
+71
++3 since last report
+Middlegame 58, band median 60, next band 68
+Middlegame
+38 rapid games
+58
+−2 since last report
+Endgame 62, band median 55, next band 68
+Endgame
+22 rapid games
+62
++4 since last report
+Tactics 66, band median 61, next band 70
+Tactics
+38 rapid games
+66
+Calculation 49, band median 57, next band 65
+Calculation
+30 rapid games
+49
++1 since last report
+Time 74, band median 62, next band 71
+Time
+38 rapid games
+74
+Mindset 55, band median 58, next band 66
+Mindset
+38 rapid games
+55
+−5 since last report

@@ -1,0 +1,225 @@
+Overview
+
+chess.com e2e-fixtures
+
+34 of 35 games analysed. 1 waiting for analysis.
+
+Time control
+All
+34
+Bullet
+1
+Blitz
+17
+Rapid
+16
+
+ accuracy,  blunders a game.
+
+34 analysed games. Accuracy 80% likely between 65.1% and 71.2%. Blunders 80% likely between 1.2 and 1.8.
+
+What to work on
+
+Your coaching profile is still being built. When it is ready, its first finding goes here, with the games behind it.
+
+Accuracy over time
+
+34 games, 1 Sep 2026 to 31 Oct 2026. Rolling average 70.1% on 31 Oct 2026, 80% likely between 65.9% and 74.2%.
+
+25%
+50%
+75%
+1 Sep
+1 Oct
+31 Oct
+Win 12
+Draw 8
+Loss 14
+Rolling average, 80% band
+
+Each dot is a game. The line is your average over the last 20 games, with an 80% band.
+
+The line breaks where four weeks or more passed with no games.
+
+Mistakes per game
+
+Across 34 analysed games.
+
+Each small line is your latest 12 weeks of play, one point a week. A gap is a week with no games.
+
+Blunders
+
+Based on 34 analysed games
+
+First
+week
+ 1.0 · 3 games
+
+Latest
+week
+ 1.6 · 5 games
+
+Lower is better
+
+80% likely between 1.2 and 1.8
+
+Mistakes
+
+Based on 34 analysed games
+
+First
+week
+ 1.7 · 3 games
+
+Latest
+week
+ 1.2 · 5 games
+
+Lower is better
+
+80% likely between 1.2 and 1.8
+
+Inaccuracies
+
+Based on 34 analysed games
+
+First
+week
+ 1.0 · 3 games
+
+Latest
+week
+ 4.0 · 5 games
+
+Lower is better
+
+80% likely between 1.1 and 2.0
+
+Your last 34 analysed games
+
+One column per game, newest on the right.
+
+34 games: 52 blunders, 51 mistakes, 51 inaccuracies.
+
+no marked moves
+1 blunder, 3 mistakes, 1 inaccuracy
+2 blunders, 2 mistakes, 2 inaccuracies
+3 blunders, 1 mistake, 0 inaccuracies
+0 blunders, 0 mistakes, 1 inaccuracy
+1 blunder, 3 mistakes, 2 inaccuracies
+2 blunders, 2 mistakes, 0 inaccuracies
+3 blunders, 1 mistake, 1 inaccuracy
+0 blunders, 0 mistakes, 2 inaccuracies
+1 blunder, 3 mistakes, 0 inaccuracies
+2 blunders, 2 mistakes, 1 inaccuracy
+3 blunders, 1 mistake, 2 inaccuracies
+no marked moves
+1 blunder, 3 mistakes, 1 inaccuracy
+2 blunders, 2 mistakes, 2 inaccuracies
+3 blunders, 1 mistake, 0 inaccuracies
+0 blunders, 0 mistakes, 1 inaccuracy
+1 blunder, 3 mistakes, 2 inaccuracies
+2 blunders, 2 mistakes, 0 inaccuracies
+3 blunders, 1 mistake, 1 inaccuracy
+0 blunders, 0 mistakes, 2 inaccuracies
+1 blunder, 3 mistakes, 0 inaccuracies
+2 blunders, 2 mistakes, 1 inaccuracy
+3 blunders, 1 mistake, 2 inaccuracies
+no marked moves
+2 blunders, 3 mistakes, 4 inaccuracies
+1 blunder, 3 mistakes, 1 inaccuracy
+2 blunders, 2 mistakes, 2 inaccuracies
+3 blunders, 1 mistake, 0 inaccuracies
+0 blunders, 0 mistakes, 1 inaccuracy
+1 blunder, 3 mistakes, 2 inaccuracies
+0 blunders, 0 mistakes, 1 inaccuracy
+4 blunders, 3 mistakes, 6 inaccuracies
+3 blunders, 0 mistakes, 10 inaccuracies
+Blunder
+Mistake
+Inaccuracy
+Each block is one move.
+By time control
+Bullet
+1 win, 0 draws, 0 losses
+Blitz
+6 wins, 0 draws, 11 losses
+Rapid
+5 wins, 8 draws, 3 losses
+
+Based on 1 game in bullet. Need 9 more games before a score means anything.
+
+Bullet score
+
+Based on 1 bullet game
+
+–
+Need 9 more games
+
+Bullet accuracy
+
+Based on 1 bullet game
+
+–
+Need 9 more games
+
+Based on 17 games in blitz.
+
+Blitz score
+
+Based on 17 blitz games
+
+80% likely between 22.3% and 50.9%
+
+Blitz accuracy
+
+Based on 17 blitz games
+
+80% likely between 66.7% and 75.5%
+
+Based on 16 games in rapid.
+
+Rapid score
+
+Based on 16 rapid games
+
+80% likely between 40.5% and 70.9%
+
+Rapid accuracy
+
+Based on 16 rapid games
+
+80% likely between 60.1% and 68.6%
+
+Score counts a draw as half a win.
+
+Recent games
+
+Open a game to replay it move by move.
+
+Date	Result	Opponent	Accuracy
+Open
+
+31 Oct	Loss	DrNykterstein
+3177
+	79.1%
+
+30 Oct	Win	ChessArtHouse
+3029
+	79.0%
+
+29 Oct	Win	oasenegre
+2230
+	95.2%
+
+29 Oct	Loss	opp
+1789
+	88.0%
+
+27 Oct	Win	opp
+1748
+	71.0%
+
+25 Oct	Win	opp
+1707
+	54.0%

@@ -1,0 +1,30 @@
+Overlays
+
+Only what floats casts the one shadow, and it grows from where it came from. Nothing blurs the page behind it.
+
+Tooltip
+
+An ink label, no arrow, after the pointer rests. A shortcut sits in it as a key cap.
+
+Popover
+
+A sheet with the field radius, for a short explanation beside its trigger.
+
+How linking works
+Over the page
+
+These take the screen, so each opens from its own control. The page dims behind them; nothing blurs.
+
+Dialog A decision that can't be undone, named by its verb.
+Delete account
+Drawer Filters and panels rise from the bottom edge on a phone.
+Filters
+Command menu Every page and action, by name or keyword.
+Search pages and actions
+
+Or press Ctrl K.
+
+Toasts Bottom centre on a phone, bottom right above 640px. An error is announced at once.
+Show a success
+Show an error
+Show a note

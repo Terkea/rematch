@@ -1,0 +1,54 @@
+Annotations
+Replay marks
+
+A coach's pen, not a vector tool. Every stroke is a tapered outline on a sheet halo, seeded so it looks the same on every visit, and drawn on in order: the ring, the move played, the better move, then the badge lands. On the board, red is only ever your mistake; the opponent's is pencil.
+
+8
+7
+6
+5
+4
+3
+2
+a
+1
+b
+c
+d
+e
+f
+g
+h
+??
+Red circle on d2
+Red arrow from e4 to d2
+Green arrow from e2 to d2
+Red ?? on d2
+28. Nd2??
+(blunder)
+ −1.1
+The knight steps back and drops the e-pawn. The green arrow is Stockfish's choice, 28. Kd2.
+8
+7
+6
+5
+4
+3
+2
+a
+1
+b
+c
+d
+e
+f
+g
+h
+??
+Grey circle on f4
+Grey arrow from h5 to f4
+Grey ?? on f4
+31… Nf4??
+(blunder)
+ +4.0
+The opponent's blunder a few moves later. On the board it is pencil, so a red mark there is always yours.

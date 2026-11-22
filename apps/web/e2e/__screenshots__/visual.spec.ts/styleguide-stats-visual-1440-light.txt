@@ -1,0 +1,46 @@
+Stats
+
+Each KPI shows its value, the range it is likely in, and the games behind it. On each scale the band is that range, the solid tick is the value, and the dashed tick with a caret is the next target. Percent scales always span 40 points, so a chevron means the range runs past the scale. Sample numbers until real KPIs land.
+
+Replay
+Accuracy
+
+Based on 38 rapid games
+
+50%
+90%
+
+80% likely between 71.8% and 76.6%
+Next target 78.0%
+
+Blunders per game
+
+Based on 38 rapid games
+
+0.0
+2.6
+
+80% likely between 1.5 and 2.2
+Next target 1.50
+
+Endgame conversion
+
+Based on 11 rapid games
+.
+Early estimate
+
+40%
+80%
+
+90% likely between 48.0% and 73.0%
+
+Score in time scrambles
+
+Based on 6 rapid games
+.
+Early estimate
+
+30%
+70%
+
+80% likely between 30.0% and 76.0%

@@ -280,10 +280,12 @@ export function cornerBox(
   textWidth: number,
   width: number,
   plotH: number,
+  /** The label lane above the plot: LANE on the full graph, 0 on the phone strip. */
+  lane: number = LANE,
 ): Box {
-  // 12px Schibsted, baseline at LANE + 14 (top) or LANE + plotH - 6 (bottom): cap top 9px above
+  // 12px Schibsted, baseline at lane + 14 (top) or lane + plotH - 6 (bottom): cap top 9px above
   // the baseline, descender 3px below.
-  const baseline = corner === "top" ? LANE + 14 : LANE + plotH - 6;
+  const baseline = corner === "top" ? lane + 14 : lane + plotH - 6;
   const x0 = side === "left" ? PAD : width - PAD - textWidth;
   return {
     x0: x0 - CORNER_CLEAR,
@@ -327,11 +329,14 @@ export function placeCorners({
   plotH,
   top,
   bottom,
+  lane = LANE,
   measure = cornerWidth,
   ...obstacles
 }: CornerObstacles & {
   width: number;
   plotH: number;
+  /** The label lane above the plot: LANE on the full graph (default), 0 on the phone strip. */
+  lane?: number;
   top: string;
   bottom: string;
   /** The text's rendered width; defaults to an estimate. */
@@ -339,10 +344,9 @@ export function placeCorners({
 }): { top: Side; bottom: Side } {
   const side = (corner: "top" | "bottom", text: string): Side => {
     const w = measure(text);
-    if (collisions(cornerBox(corner, "left", w, width, plotH), obstacles) === 0) return "left";
-    return collisions(cornerBox(corner, "right", w, width, plotH), obstacles) === 0
-      ? "right"
-      : "left";
+    const box = (side: Side) => cornerBox(corner, side, w, width, plotH, lane);
+    if (collisions(box("left"), obstacles) === 0) return "left";
+    return collisions(box("right"), obstacles) === 0 ? "right" : "left";
   };
   return { top: side("top", top), bottom: side("bottom", bottom) };
 }

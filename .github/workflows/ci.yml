@@ -61,7 +61,8 @@ jobs:
     # The Playwright suite on a production build (ADR 0067): `next build`, then `next start`, so
     # the 4x CPU throttle budget in charts.spec.ts is enforced on every change (ADR 0065,
     # E2E_PRODUCTION=1). A production server refuses the plain-http fakes, so the @fakes specs run
-    # in e2e-fakes on the dev server. Visual baselines stay a local check (made in the qa image).
+    # in e2e-fakes on the dev server. The visual projects run here too (M4 T28): the baselines are
+    # made in the same qa image, against a production build, and pin each capture's text.
     runs-on: ubuntu-latest
     env:
       COMPOSE_FILE: docker-compose.yml:docker-compose.e2e.yml:docker-compose.e2e-prod.yml
@@ -82,7 +83,7 @@ jobs:
       - name: e2e on the production build
         run: >-
           $COMPOSE --profile qa run --rm --no-deps -e E2E_PRODUCTION=1 qa sh -c
-          "cd apps/web && node node_modules/@playwright/test/cli.js test --project=e2e --grep-invert @fakes"
+          "cd apps/web && node node_modules/@playwright/test/cli.js test --project=e2e --project='visual-*' --grep-invert @fakes"
       - name: Web logs
         if: failure()
         run: $COMPOSE logs --no-color web fakes

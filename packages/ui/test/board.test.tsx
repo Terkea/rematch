@@ -5,6 +5,7 @@ import { act, cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { frame } from "motion/react";
 import { useState } from "react";
+import { renderToString } from "react-dom/server";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { buildPieces, PIECE_FILES } from "../scripts/build-pieces-lib.js";
 import {
@@ -45,6 +46,20 @@ describe("Board keyboard access", () => {
     render(<Board fen={START} label="Position" interactive onMove={() => true} />);
     const tabbable = screen.getAllByRole("button").filter((b) => b.tabIndex === 0);
     expect(tabbable).toHaveLength(1);
+  });
+
+  it("keeps the piece surface inert until its pieces leave the tab order (T28, axe aria-hidden-focus)", () => {
+    // Server markup: dnd-kit renders every piece as a tab stop, inside an aria-hidden surface.
+    // Until hydration takes them out of the tab order the surface must be inert.
+    const host = document.createElement("div");
+    host.innerHTML = renderToString(<Board fen={START} label="Position" />);
+    const ssr = host.querySelector("[data-board] [aria-hidden='true']");
+    expect(ssr?.hasAttribute("inert")).toBe(true);
+    // Mounted: no piece is a tab stop, and the surface takes pointer input again.
+    const { container } = render(<Board fen={START} label="Position" />);
+    const surface = container.querySelector("[data-board] [aria-hidden='true']") as HTMLElement;
+    expect(surface.hasAttribute("inert")).toBe(false);
+    expect(surface.querySelectorAll('[tabindex]:not([tabindex="-1"])')).toHaveLength(0);
   });
 
   it("Enter on e2, ArrowUp twice and Enter plays e2-e4", async () => {

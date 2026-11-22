@@ -907,3 +907,11 @@ Rulings taken while building `packages/ui/src/annotations` (ADR-WEB-15):
 3. **Night overlays:** floating surfaces get a `rule-strong` edge, and the modal scrim is `well` at 90%.
 
 **Token values changed in this round:** none (`--surface-hover` gains a night value derived from existing tokens).
+
+### 2026-11-22, M4 Task 28: the throttle budget and the phone strip
+
+1. **`will-change` on a focused chart layer** (M9 exception, ADR-WEB-18): the accuracy trend's dot-button overlay takes `will-change: transform` only while one of its buttons has focus (`focus-within`). An arrow key then repaints that one layer instead of re-layerizing the whole page, which brought the 4x throttle step back under 16 ms. Nothing animates on it; the rule's "only while animating" still holds everywhere else.
+2. **Dot buttons are centred by negative margins, not a transform**, so 500 buttons don't make 500 paint chunks. Same pixels.
+3. **The phone strip's corner names** are placed against the strip's own geometry (no label lane), so "White" moves to the left when the line's last moves run along the top right.
+
+**Token values changed in this round:** none.

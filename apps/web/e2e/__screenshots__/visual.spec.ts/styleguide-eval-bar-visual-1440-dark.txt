@@ -1,0 +1,21 @@
+Eval bar
+
+White's share on the win-chance scale of the eval graph. 16px and the board's height from 768px, an 8px bar above the board below that. It flips with the board.
+
+Swing
++2.7
++2.7
+
+27… Rf8 +2.7
+
+Previous move
+Next move
+Values
+0.0
+Level
++0.4
+A small edge
+−4.2
+Black is winning
+M2
+White mates in 2
