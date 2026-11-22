@@ -63,6 +63,7 @@ R2 (profile engine) records use placeholder numbers until the controller renumbe
 - [ADR-R2-18. build-profile job and CoachingInput builder](ADR-R2-18-build-profile-and-coaching-input.md)
 - [ADR-R3-3. AI tables, jobs and events](ADR-R3-3-ai-tables-jobs-and-events.md)
 - [ADR-R3-5. Models, budgets and degradation](ADR-R3-5-models-budgets-and-degradation.md)
+- [ADR-R3-7. Monthly and weekly regeneration through the Message Batches API](ADR-R3-7-batch-regeneration.md)
 - [ADR-R3-8. "Ask your coach": the chat engine](ADR-R3-8-ask-your-coach-chat.md)
 - [0031 addendum. npm enforcement of the 7-day age and exact-pin rule](0031-addendum-npm-enforcement.md)
 - [0040. chess.com first; Lichess accounts deferred](0040-chesscom-first-defer-lichess-accounts.md)
