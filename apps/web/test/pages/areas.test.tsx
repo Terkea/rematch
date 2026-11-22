@@ -74,10 +74,33 @@ function trend(over: Partial<KpiTrend> & { metric: string; label: string }): Kpi
   };
 }
 
+function current(metric: string, label: string, unit: string, n: number, minN: number) {
+  return {
+    metric,
+    label,
+    unit,
+    higherIsBetter: false,
+    value: 0.2,
+    low: null,
+    high: null,
+    n,
+    minN,
+    sufficient: n >= minN,
+    needMore: n >= minN ? null : minN - n,
+    computedAt: AT,
+  };
+}
+
 const ENDGAME_VIEW: AreaView = {
   area: "endgame",
   score: { value: 61.6, n: 46, computedAt: AT },
-  kpis: [],
+  // The area's last-50 rows: Rust's area n is the smallest component sample (games for a mean,
+  // chances for a rate), so the page can name it.
+  kpis: [
+    current("accuracy.endgame", "Endgame accuracy", "pct", 46, 20),
+    current("weakness:W8.basics", "Endgame technique (basics)", "rate", 148, 80),
+    current("weakness:W8.advanced", "Endgame technique (advanced)", "rate", 96, 80),
+  ],
   weaknesses: [
     weakness(),
     // A tactics weakness that should never reach the endgame page.
@@ -240,10 +263,14 @@ beforeEach(() => {
   getReport.mockResolvedValue(reportView(payload()));
 });
 
-describe("skill-area pages", () => {
+// Each page render mounts real components (up to three boards, the KPI grid and the timeline),
+// which is slow on a loaded CI host, so the page tests get more than the 5 s default.
+describe("skill-area pages", { timeout: 30_000 }, () => {
   it("unknown area is not found", async () => {
     await expect(Page(args("kingside"))).rejects.toThrow(/NEXT_HTTP_ERROR_FALLBACK;404/);
-    expect(getArea).not.toHaveBeenCalled();
+    // Nothing is read for an unknown area, not even the user.
+    for (const f of [requireUser, resolveCoachScope, getArea, kpiTrends, getWeakness, getReport])
+      expect(f).not.toHaveBeenCalled();
   });
 
   it("reads through the read models as the signed-in user, in the resolved scope", async () => {
@@ -276,14 +303,17 @@ describe("skill-area pages", () => {
     getArea.mockResolvedValue({
       area: "time",
       score: { value: null, n: 6, computedAt: AT },
-      kpis: [],
+      kpis: [current("weakness:W9a", "Time trouble", "rate", 6, 30)],
       weaknesses: [],
       timeline: [],
     });
     const { container } = await show("time");
     const score = within(screen.getByRole("region", { name: "Score" }));
     expect(score.getByText("Not enough games for a score yet")).toBeInTheDocument();
-    expect(score.getByText(/6 analysed rapid games so far/)).toBeInTheDocument();
+    // The n is the thinnest component's, in its own unit: Time trouble counts chances.
+    expect(
+      score.getByText("Its thinnest measure, Time trouble, has 6 chances so far."),
+    ).toBeInTheDocument();
     expect(container.querySelector("[data-area-label]")).toBeNull();
     expect(screen.getByRole("region", { name: "Score" }).textContent).not.toMatch(/\b0\b/);
   });
@@ -294,9 +324,51 @@ describe("skill-area pages", () => {
     if (!row) throw new Error("fixture changed");
     Object.assign(row, { score: null, sufficient: false, needMore: 7, n: 13 });
     getReport.mockResolvedValue(reportView(p));
-    getArea.mockResolvedValue({ ...ENDGAME_VIEW, score: null });
+    // Rust's needMore is the first short component's: here Endgame accuracy, 13 of 20 games.
+    getArea.mockResolvedValue({
+      ...ENDGAME_VIEW,
+      score: null,
+      kpis: [current("accuracy.endgame", "Endgame accuracy", "pct", 13, 20)],
+    });
     await show("endgame");
     expect(screen.getByText("Need 7 more games for an endgame score")).toBeInTheDocument();
+  });
+
+  it("needMore is stated in its component's unit", async () => {
+    const p = payload();
+    const row = p.computed.areaScores.find((a) => a.area === "time");
+    if (!row) throw new Error("fixture changed");
+    Object.assign(row, { score: null, sufficient: false, needMore: 9, n: 21 });
+    getReport.mockResolvedValue(reportView(p));
+    getArea.mockResolvedValue({
+      area: "time",
+      score: { value: null, n: 21, computedAt: AT },
+      kpis: [current("weakness:W9a", "Time trouble", "rate", 21, 30)],
+      weaknesses: [],
+      timeline: [],
+    });
+    await show("time");
+    expect(screen.getByText("Need 9 more chances for a time-management score")).toBeInTheDocument();
+  });
+
+  it("a needMore that matches no measure names no unit", async () => {
+    const p = payload();
+    const row = p.computed.areaScores.find((a) => a.area === "time");
+    if (!row) throw new Error("fixture changed");
+    Object.assign(row, { score: null, sufficient: false, needMore: 9, n: 21 });
+    getReport.mockResolvedValue(reportView(p));
+    getArea.mockResolvedValue({
+      area: "time",
+      score: { value: null, n: 21, computedAt: AT },
+      kpis: [],
+      weaknesses: [],
+      timeline: [],
+    });
+    await show("time");
+    const region = screen.getByRole("region", { name: "Score" });
+    expect(within(region).getByText("Not enough games for a score yet")).toBeInTheDocument();
+    expect(region.textContent).toMatch(/Its thinnest measure needs 9 more\./);
+    expect(region.textContent).not.toMatch(/9 more (games|chances)/);
   });
 
   it("kpis carry n and need-more", async () => {
@@ -395,6 +467,147 @@ describe("skill-area pages", () => {
     expect(getArea).not.toHaveBeenCalled();
   });
 
+  it("the score key names no range while there is no interval", async () => {
+    await show("endgame");
+    const score = within(screen.getByRole("region", { name: "Score" }));
+    expect(score.getByText("No interval yet")).toBeInTheDocument();
+    expect(score.queryByText("Likely range")).toBeNull();
+    expect(score.getByText("Your score")).toBeInTheDocument();
+  });
+
+  it("the score's basis is its thinnest measure, in that measure's unit", async () => {
+    const first = await show("endgame");
+    const region = screen.getByRole("region", { name: "Score" });
+    expect(within(region).getByText("46 rapid games")).toBeInTheDocument();
+    expect(region.textContent).toMatch(/thinnest measure, Endgame accuracy/);
+    // No count other than Rust's n is claimed.
+    expect(region.textContent).not.toMatch(/last 50/);
+    first.unmount();
+
+    getArea.mockResolvedValue({ ...ENDGAME_VIEW, score: { value: 58, n: 96, computedAt: AT } });
+    await show("endgame");
+    const again = screen.getByRole("region", { name: "Score" });
+    expect(within(again).getByText("96 chances")).toBeInTheDocument();
+    expect(again.textContent).toMatch(/thinnest measure, Endgame technique \(advanced\)/);
+  });
+
+  it("a score whose n matches no measure names no unit", async () => {
+    getArea.mockResolvedValue({ ...ENDGAME_VIEW, score: { value: 58, n: 31, computedAt: AT } });
+    await show("endgame");
+    const region = screen.getByRole("region", { name: "Score" });
+    expect(within(region).getByText("31 in its thinnest measure")).toBeInTheDocument();
+    expect(region.textContent).not.toMatch(/31 (rapid )?games|31 chances/);
+  });
+
+  it("an area the profile hasn't scored says so, with no guessed count", async () => {
+    getReport.mockResolvedValue(reportView(null));
+    getArea.mockResolvedValue({ ...ENDGAME_VIEW, score: null });
+    await show("endgame");
+    const region = screen.getByRole("region", { name: "Score" });
+    expect(
+      within(region).getByText("Your profile hasn't scored this area yet."),
+    ).toBeInTheDocument();
+  });
+
+  it("a report older than the live score gives no needMore", async () => {
+    const p = payload();
+    const row = p.computed.areaScores.find((a) => a.area === "endgame");
+    if (!row) throw new Error("fixture changed");
+    Object.assign(row, { score: null, sufficient: false, needMore: 7, n: 13 });
+    getReport.mockResolvedValue({ ...reportView(p), createdAt: new Date("2026-11-01T00:00:00Z") });
+    getArea.mockResolvedValue({ ...ENDGAME_VIEW, score: { value: null, n: 46, computedAt: AT } });
+    await show("endgame");
+    expect(screen.queryByText(/Need 7 more games/)).toBeNull();
+    expect(screen.getByText("Not enough games for a score yet")).toBeInTheDocument();
+  });
+
+  it("the note's states read honestly", async () => {
+    const absent = payload();
+    delete absent.sections.areas;
+    const cases: [ReportView, RegExp][] = [
+      [
+        {
+          ...reportView(absent),
+          state: {
+            kind: "building",
+            runId: "r",
+            since: AT,
+            retryAt: null,
+            batch: false,
+            ready: [],
+          },
+        },
+        /Your coach is writing this section/,
+      ],
+      [
+        {
+          ...reportView(absent),
+          state: { kind: "ready", status: "computed_only", aiOff: "budget" },
+        },
+        /spending limit/,
+      ],
+      [
+        {
+          ...reportView(absent),
+          state: { kind: "ready", status: "computed_only", aiOff: "no_api_key" },
+        },
+        /notes are off for now/,
+      ],
+      // A partial report without the section, with AI on, is not "notes off".
+      [
+        { ...reportView(absent), state: { kind: "ready", status: "partial", aiOff: null } },
+        /didn't write a note on your endgame/,
+      ],
+    ];
+    for (const [view, text] of cases) {
+      getReport.mockResolvedValue(view);
+      const { unmount } = await show("endgame");
+      const note = screen.getByRole("region", { name: "Coach's note" });
+      expect(note.textContent).toMatch(text);
+      expect(note.textContent).not.toMatch(/looks sound/);
+      unmount();
+    }
+    const noItem = payload();
+    const areas = noItem.sections.areas?.areas;
+    if (!areas) throw new Error("fixture changed");
+    areas.items = areas.items.filter((i) => i.area !== "endgame");
+    getReport.mockResolvedValue(reportView(noItem));
+    await show("endgame");
+    expect(screen.getByRole("region", { name: "Coach's note" }).textContent).toMatch(
+      /didn't write a note on your endgame in this report/,
+    );
+  });
+
+  it("scrolls the current tab into view and fades the edges that have more", async () => {
+    // jsdom has no layout: give the tab track a 300px window on 800px of tabs, with the current
+    // tab (Mindset, the last) at 600px.
+    const proto = HTMLElement.prototype;
+    const spies = [
+      vi.spyOn(proto, "clientWidth", "get").mockImplementation(function (this: HTMLElement) {
+        return this.hasAttribute("data-scroller") ? 300 : 0;
+      }),
+      vi.spyOn(proto, "scrollWidth", "get").mockImplementation(function (this: HTMLElement) {
+        return this.hasAttribute("data-scroller") ? 800 : 0;
+      }),
+      vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (
+        this: Element,
+      ) {
+        const current = this.getAttribute("aria-current") === "page";
+        return { left: current ? 600 : 0, width: current ? 80 : 300 } as DOMRect;
+      }),
+    ];
+    try {
+      await show("mindset");
+      const nav = screen.getByRole("navigation", { name: "Skill areas" });
+      const track = nav.hasAttribute("data-scroller") ? nav : null;
+      // Centred on the current tab: 600 - (300 - 80) / 2 = 490, within the 500 that can scroll.
+      expect(track?.scrollLeft).toBe(490);
+      expect(track?.dataset.fade).toBe("start end");
+    } finally {
+      for (const s of spies) s.mockRestore();
+    }
+  });
+
   it("renders no NaN, undefined, Infinity or null on any area", async () => {
     for (const area of [
       "openings",
@@ -412,6 +625,36 @@ describe("skill-area pages", () => {
     getReport.mockResolvedValue(reportView(null));
     const { container } = await show("endgame");
     expect(container.textContent).not.toMatch(BAD);
+  });
+});
+
+describe("area score components", () => {
+  it("mirror Rust's area_components, in order", async () => {
+    const { AREA_COMPONENTS } = await import("../../src/app/(app)/app/areas/[area]/basis.js");
+    const rust = readFileSync(
+      join(
+        dirname(fileURLToPath(import.meta.url)),
+        "../../../../backend/crates/profile-core/src/kpi/area_scores.rs",
+      ),
+      "utf8",
+    );
+    // `Base(B::AccuracyOpening)` and `Weakness(W::W7Traps)` against `accuracy.opening` and
+    // `weakness:W7.traps`, compared without case, dots or underscores.
+    const flat = (x: string) =>
+      x
+        .replace(/^weakness:/, "")
+        .replace(/[._]/g, "")
+        .toLowerCase();
+    for (const [area, metrics] of Object.entries(AREA_COMPONENTS)) {
+      const body = new RegExp(
+        `const ${area.toUpperCase()}: \\[MetricId; \\d+\\] = \\[([^\\]]*)\\]`,
+      ).exec(rust)?.[1];
+      expect(body, area).toBeDefined();
+      const names = [...(body ?? "").matchAll(/(?:B|W)::(\w+)/g)].map((m) =>
+        (m[1] ?? "").toLowerCase(),
+      );
+      expect(metrics.map(flat), area).toEqual(names);
+    }
   });
 });
 

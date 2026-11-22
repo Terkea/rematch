@@ -107,6 +107,17 @@ describe("AreaScore delta", () => {
     render(<AreaScore {...base} />);
     expect(screen.getByText("22 rapid games")).toBeInTheDocument();
   });
+
+  it("names a basis in its own unit when given one", () => {
+    render(
+      <AreaScore
+        {...base}
+        basis={{ games: 148, timeClass: "rapid", unit: { one: "chance", many: "chances" } }}
+      />,
+    );
+    expect(screen.getByText("148 chances")).toBeInTheDocument();
+    expect(screen.queryByText(/148 rapid games/)).toBeNull();
+  });
 });
 
 describe("AreaScore without a measured next band", () => {

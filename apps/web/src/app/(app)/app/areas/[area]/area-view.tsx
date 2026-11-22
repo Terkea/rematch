@@ -23,12 +23,15 @@ import type {
   Area,
   AreaView as AreaReadModel,
   CoachScope,
+  KpiCurrent,
   KpiTrend,
   TimelineSeries,
   WeaknessSummary,
 } from "../../../../../server/profile/types";
 import { EmptySheet } from "../../../_shell/page-heading";
 import { SectionHead } from "../../_overview/section-head";
+import { type ScoreBasis, shortfallUnit } from "./basis";
+import { ScrollCue } from "./scroll-cue";
 
 // The skill-area page's layout, shared by all seven areas (one layout, no card grid, B4): a
 // heading with the area tabs, then ruled sections down one column. Score and the coach's note
@@ -38,6 +41,10 @@ export type AreaPageModel = {
   area: Area;
   scope: CoachScope;
   score: AreaReadModel["score"];
+  /** What the score's n counts (Rust's thinnest component), or null without a score row. */
+  basis: ScoreBasis | null;
+  /** The area's current (last-50) rows, which name the unit of the report's shortfall. */
+  areaKpis: KpiCurrent[];
   kpis: KpiTrend[];
   weaknesses: { summary: WeaknessSummary; trend: (number | null)[] }[];
   timeline: TimelineSeries[];
@@ -149,7 +156,9 @@ export function AreaView({ model }: { model: AreaPageModel }) {
             </p>
           ) : null}
         </div>
-        <CoachScopeSwitch scope={scope} basePath={`/app/areas/${area}`} />
+        <ScrollCue>
+          <CoachScopeSwitch scope={scope} basePath={`/app/areas/${area}`} />
+        </ScrollCue>
       </header>
 
       <div className="grid grid-cols-1 gap-x-12 gap-y-10 lg:grid-cols-12">
@@ -198,39 +207,42 @@ function Section({
 /** The seven areas as links, in a pill track like the app's tabs; the current one is a chip. */
 function AreaTabs({ current, scope }: { current: Area; scope: CoachScope }) {
   return (
-    <nav
-      aria-label="Skill areas"
-      className="max-w-full overflow-x-auto pointer-coarse:-my-1.5 pointer-coarse:py-1.5"
-    >
-      <ul className="m-0 inline-flex w-fit list-none items-center gap-0.5 rounded-pill bg-well p-1">
-        {ORDER.map((a) => (
-          <li key={a}>
-            <Link
-              href={areaHref(a, scope)}
-              aria-current={a === current ? "page" : undefined}
-              className={cn(
-                "relative inline-flex h-8 shrink-0 items-center rounded-pill px-4 font-sans text-sm font-medium whitespace-nowrap",
-                "transition-colors duration-(--dur-quick) ease-out",
-                "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink",
-                a === current
-                  ? "bg-sheet font-semibold text-ink inset-ring-1 inset-ring-rule"
-                  : "text-ink-soft hover:text-ink",
-                touchTarget,
-              )}
-            >
-              {TITLE[a]}
-            </Link>
-          </li>
-        ))}
-      </ul>
-    </nav>
+    <ScrollCue>
+      <nav
+        aria-label="Skill areas"
+        data-scroller
+        className="relative max-w-full overflow-x-auto pointer-coarse:-my-1.5 pointer-coarse:py-1.5"
+      >
+        <ul className="m-0 inline-flex w-fit list-none items-center gap-0.5 rounded-pill bg-well p-1">
+          {ORDER.map((a) => (
+            <li key={a}>
+              <Link
+                href={areaHref(a, scope)}
+                aria-current={a === current ? "page" : undefined}
+                className={cn(
+                  "relative inline-flex h-8 shrink-0 items-center rounded-pill px-4 font-sans text-sm font-medium whitespace-nowrap",
+                  "transition-colors duration-(--dur-quick) ease-out",
+                  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink",
+                  a === current
+                    ? "bg-sheet font-semibold text-ink inset-ring-1 inset-ring-rule"
+                    : "text-ink-soft hover:text-ink",
+                  touchTarget,
+                )}
+              >
+                {TITLE[a]}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </nav>
+    </ScrollCue>
   );
 }
 
 // ---- Score ----
 
 function ScorePart({ model }: { model: AreaPageModel }) {
-  const { area, scope, score, report } = model;
+  const { area, scope, score, basis, report } = model;
   if (area === "mindset") {
     return (
       <Quiet title="Mindset is coaching advice, not a score">
@@ -241,37 +253,74 @@ function ScorePart({ model }: { model: AreaPageModel }) {
   }
   const tc = TIME_CLASS[scope.timeClass];
   if (score && finite(score.value)) {
+    // Rust's area n is the smallest sample among its components: games for a mean, chances for
+    // a rate. It is named in that unit, or with no unit when no component's row matches it.
+    const unit =
+      basis?.unit === "chances"
+        ? { one: "chance", many: "chances" }
+        : basis?.unit === "games"
+          ? undefined
+          : { one: "in its thinnest measure", many: "in its thinnest measure" };
     return (
       <div className="flex flex-col gap-4">
-        <AreaScoreKey next={false} interval />
+        <AreaScoreKey next={false} interval={false} />
         <AreaScore
           area={area}
           score={Math.round(score.value)}
           band={{ median: 50 }}
-          basis={{ games: score.n, timeClass: tc }}
+          basis={{ games: score.n, timeClass: tc, ...(unit ? { unit } : {}) }}
           interval={null}
         />
         <p className="m-0 max-w-prose text-sm text-ink-soft">
-          A percentile against players in your rating band, over your last 50 {tc} games: the band
-          median is 50 by definition.
+          A percentile against players in your rating band, so the band median is 50 by definition.{" "}
+          {basis?.label
+            ? `The count is its thinnest measure, ${basis.label}.`
+            : "The count is its thinnest measure."}
         </p>
       </div>
     );
   }
+  // The report's shortfall only when the report is at least as new as the live row.
   const row = report.payload?.computed.areaScores.find((a) => a.area === area) ?? null;
-  const needMore = row && finite(row.needMore) && row.needMore > 0 ? row.needMore : null;
-  const n = finite(score?.n) ? (score?.n ?? 0) : finite(row?.n) ? (row?.n ?? 0) : 0;
+  const current = !score || (report.createdAt !== null && report.createdAt >= score.computedAt);
+  const needMore = current && row && finite(row.needMore) && row.needMore > 0 ? row.needMore : null;
+  if (!score && needMore === null) {
+    return (
+      <Quiet title="Not enough games for a score yet">
+        Your profile hasn't scored this area yet.
+      </Quiet>
+    );
+  }
+  const n = score ? score.n : (row?.n ?? 0);
+  let sample: string;
+  if (n <= 0) sample = "None of its measures has a sample yet.";
+  else if (basis?.label && basis.unit) {
+    const word =
+      basis.unit === "chances" ? (n === 1 ? "chance" : "chances") : n === 1 ? "game" : "games";
+    sample = `Its thinnest measure, ${basis.label}, has ${count(n)} ${word} so far.`;
+  } else sample = `Its thinnest measure has ${count(n)} so far.`;
+  // The shortfall is in its own component's unit; one that matches no measure is stated bare.
+  const unit = needMore === null ? null : shortfallUnit(area, needMore, model.areaKpis);
+  if (needMore !== null && unit === null) {
+    sample = `${sample} Its thinnest measure needs ${count(needMore)} more.`;
+  }
+  const word =
+    unit === "chances"
+      ? needMore === 1
+        ? "chance"
+        : "chances"
+      : needMore === 1
+        ? "game"
+        : "games";
   return (
     <Quiet
       title={
-        needMore !== null
-          ? `Need ${count(needMore)} more ${needMore === 1 ? "game" : "games"} for ${SCORE_NAME[area]}`
+        needMore !== null && unit !== null
+          ? `Need ${count(needMore)} more ${word} for ${SCORE_NAME[area]}`
           : "Not enough games for a score yet"
       }
     >
-      {n > 0
-        ? `${count(n)} analysed ${tc} ${n === 1 ? "game" : "games"} so far count towards it.`
-        : `None of your analysed ${tc} games count towards it yet.`}
+      {sample}
     </Quiet>
   );
 }
@@ -299,7 +348,7 @@ function NotePart({ model }: { model: AreaPageModel }) {
       <Button
         asChild
         variant="outline"
-        className="h-auto min-h-10 py-2 text-left whitespace-normal"
+        className={cn("h-auto min-h-10 py-2 text-left whitespace-normal", touchTarget)}
       >
         <Link href={coachHref(anchor, scope)}>Ask your coach about your {NOUN[area]}</Link>
       </Button>
@@ -345,7 +394,8 @@ function Note({ area, report, scope }: { area: Area; report: ReportView; scope: 
   }
   if (section === undefined || section.areas == null) {
     if (building) return writing;
-    const aiOff = state.kind === "ready" ? state.aiOff : null;
+    const ready = state.kind === "ready" ? state : null;
+    const aiOff = ready?.aiOff ?? null;
     if (aiOff === "budget") {
       return (
         <CoachState
@@ -355,15 +405,17 @@ function Note({ area, report, scope }: { area: Area; report: ReportView; scope: 
         />
       );
     }
-    return (
-      <CoachState
-        kind="computed_only"
-        title="Your coach's notes are off for now"
-        body="The numbers on this page are computed from your games."
-      />
-    );
+    if (aiOff === "no_api_key" || ready?.status === "computed_only") {
+      return (
+        <CoachState
+          kind="computed_only"
+          title="Your coach's notes are off for now"
+          body="The numbers on this page are computed from your games."
+        />
+      );
+    }
   }
-  const item: NarrativeItem | undefined = section.areas.items.find((i) => i.area === area);
+  const item: NarrativeItem | undefined = section?.areas?.items.find((i) => i.area === area);
   if (!item) {
     return (
       <CoachState
@@ -452,10 +504,10 @@ function ThinMeasure({ kpi }: { kpi: KpiTrend }) {
   }
   return (
     <li
-      className="flex flex-col gap-0.5 border-b border-rule py-2.5 last:border-b-0 sm:flex-row sm:items-baseline sm:justify-between sm:gap-6"
+      className="flex flex-col gap-0.5 border-b border-rule py-2.5 last:border-b-0 sm:flex-row sm:items-baseline sm:gap-6"
       style={LINING}
     >
-      <span className="text-ink">{kpi.label}</span>
+      <span className="text-ink sm:w-72 sm:shrink-0">{kpi.label}</span>
       <span className="text-sm text-ink-soft">{status}</span>
     </li>
   );
@@ -572,7 +624,10 @@ function ExamplesPart({ model }: { model: AreaPageModel }) {
             />
             <Link
               href={`/app/games/${encodeURIComponent(e.gameId)}?ply=${e.ply}`}
-              className="text-sm font-medium text-ink underline decoration-rule-strong underline-offset-4 hover:decoration-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+              className={cn(
+                "relative w-fit text-sm font-medium text-ink underline decoration-rule-strong underline-offset-4 hover:decoration-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink",
+                touchTarget,
+              )}
             >
               Open this game at the move
             </Link>

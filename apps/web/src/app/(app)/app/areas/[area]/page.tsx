@@ -13,6 +13,7 @@ import {
   resolveCoachScope,
 } from "../../../../../server/profile";
 import { AreaEmpty, type AreaPageModel, AreaView } from "./area-view";
+import { scoreBasis } from "./basis";
 
 // One skill area (M5b Task 8): its score, the coach's note, its measures, its weaknesses and
 // their timeline, and up to three example positions from the newest report. Every read goes
@@ -76,6 +77,8 @@ export default async function AreaPage({
     area,
     scope,
     score: view.score,
+    basis: view.score ? scoreBasis(area, view.score.n, view.kpis) : null,
+    areaKpis: view.kpis,
     kpis,
     weaknesses: weaknesses.map((w) => ({ summary: w, trend: weekly.get(w.seriesKey) ?? [] })),
     timeline: view.timeline,

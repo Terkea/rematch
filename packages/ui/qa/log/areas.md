@@ -42,3 +42,37 @@ Checked and kept:
 - In the full-page captures the example boards' arrows are sometimes missing: the tall-viewport
   capture resizes the page and catches the arrows mid-redraw. A settled capture of one board shows
   all three arrows (pen, good, pencil).
+
+## Fix round 1 (review-t8: code I1, I2, M1–M6; visual V1, V2, P1, P2, P6)
+
+Shots: `scratchpad/m5b-t8/fix1/` (same synthetic models, plus each score's basis; Time now has a
+report shortfall of 9 chances). No overflow at 360 or 390; no `NaN|undefined|Infinity|null`.
+
+Fixed:
+
+1. **V1. The area tabs and the scope switch on a phone.** Both tracks centre the current item on
+   load (the tab you're on is in view on Time, Calculation and Mindset) and fade each edge that has
+   more to scroll (a mask, so it works on any surface in both themes).
+2. **V2/I1. "Likely range" in the score key with no range drawn.** The key now has no interval
+   entry; "No interval yet" under the ruler states the gap.
+3. **P1/I2. The caption's count.** No "last 50 games": Rust's area n is the smallest component
+   sample, so the row names it in that component's unit ("46 rapid games", or "96 chances" for a
+   rate component, or "31 in its thinnest measure" when no component row matches) and the caption
+   names the measure ("The count is its thinnest measure, Endgame accuracy."). The report's
+   shortfall is stated in its component's unit too ("Need 9 more chances for a time-management
+   score"), and bare when none matches.
+4. **P2.** A thin measure's status sits right after its label (a fixed label column), not 430px
+   away.
+5. **P6/M6.** "Ask your coach" and "Open this game at the move" reach 44px on touch.
+6. **M1–M3.** A partial report without the area's note says the coach didn't write one (not
+   "notes off"); an unscored area says "Your profile hasn't scored this area yet"; the report's
+   shortfall is shown only when the report is at least as new as the live row.
+
+Parked: P3 (timeline label column tint), P4 (hyphen in weakness-row ranges) and P7 (board
+coordinates at 20rem) are upstream in `WeaknessTimeline`, `WeaknessRow` and `ExemplarBoard` (lane
+U). P5 (a short Score column on Time and Mindset beside a taller note) is acceptable and now
+carries the sample sentence. The thin-measure and weekly KPI counts still say "games" for every
+KPI; the catalogue has no per-KPI count unit (rate KPIs count opportunities), so naming it needs a
+Rust catalogue field.
+
+Verdict: self-critique only; the controller's fresh critic passes are still owed.
