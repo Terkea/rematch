@@ -75,7 +75,8 @@ export interface AreaScoreProps {
   area: Area;
   /** 0 to 100. */
   score: number;
-  band: { median: number; next: number };
+  /** `next` is optional: absent, the next band is not measured yet and no tick is drawn (R8). */
+  band: { median: number; next?: number };
   delta?: number;
   basis: { games: number; timeClass: string };
 }

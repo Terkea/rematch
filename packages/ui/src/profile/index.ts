@@ -1,0 +1,35 @@
+export { ExemplarBoard, type ExemplarBoardProps } from "./exemplar-board.js";
+export {
+  KpiTrendGrid,
+  type KpiTrendGridProps,
+  kpiDomain,
+  kpiYScale,
+} from "./kpi-trend-grid.js";
+export {
+  bandComparisonText,
+  countsText,
+  DEFAULT_BAND_LABEL,
+  DEFAULT_COUNTS,
+  dayText,
+  type ExemplarCaption,
+  exemplarCaption,
+  exemplarMoveText,
+  fenMove,
+  formatKpiValue,
+  type KpiTrendItem,
+  type KpiTrendPoint,
+  type KpiUnit,
+  kpiPointText,
+  kpiSummary,
+  needMoreText,
+  nText,
+  onLine,
+  shareRangeText,
+  shareText,
+  trendPendingText,
+  type WeaknessCounts,
+  weaknessRateText,
+  weaknessScaleMax,
+  weekText,
+} from "./text.js";
+export { WeaknessRow, WeaknessRowKey, type WeaknessRowProps } from "./weakness-row.js";

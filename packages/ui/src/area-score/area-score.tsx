@@ -15,6 +15,23 @@ import {
 
 export type { Area, AreaScoreProps } from "../fixtures/types.js";
 
+/** A stored interval for the score, at its stated level. */
+export type AreaInterval = { low: number; high: number; level: 0.8 | 0.9 };
+
+/**
+ * An area row with its optional interval: absent (`undefined`) draws and says nothing, for hosts
+ * that never have one; `null` says "No interval yet"; a value is drawn as given and stated.
+ */
+export type AreaScoreItem = AreaScoreProps & { interval?: AreaInterval | null };
+
+/** "80% range 55–68", or "No interval yet". */
+export function intervalText(interval: AreaInterval | null): string {
+  if (!interval || !Number.isFinite(interval.low) || !Number.isFinite(interval.high)) {
+    return "No interval yet";
+  }
+  return `${Math.round(interval.level * 100)}% range ${interval.low}\u2013${interval.high}`;
+}
+
 export const areaLabels: Record<Area, string> = {
   openings: "Openings",
   middlegame: "Middlegame",
@@ -43,7 +60,9 @@ const MIN_SPAN = 40;
 export function rulerDomain(items: Pick<AreaScoreProps, "score" | "band">[]): RulerDomain {
   if (items.length === 0) return [0, 100];
   const low = Math.min(...items.flatMap((i) => [i.score, i.band.median]));
-  const high = Math.max(...items.flatMap((i) => [i.score, i.band.next]));
+  const high = Math.max(
+    ...items.flatMap((i) => (i.band.next === undefined ? [i.score] : [i.score, i.band.next])),
+  );
   let lo = Math.max(0, Math.floor((low - MARGIN) / 10) * 10);
   let hi = Math.min(100, Math.ceil((high + MARGIN) / 10) * 10);
   // Widen to the minimum span, a step of 10 at a time, alternating ends (low end first).
@@ -67,9 +86,11 @@ export function deltaText(delta: number): string {
   return `${delta > 0 ? "+" : "−"}${Math.abs(delta)} since last report`;
 }
 
-/** "Endgame 62, band median 55, next band 68". */
-export function areaScoreText({ area, score, band }: AreaScoreProps): string {
-  return `${areaLabels[area]} ${score}, band median ${band.median}, next band ${band.next}`;
+/** "Endgame 62, band median 55, next band 68", or "…, next band not measured yet" without one (R8). */
+export function areaScoreText({ area, score, band, interval }: AreaScoreItem): string {
+  const next = band.next === undefined ? "not measured yet" : `${band.next}`;
+  const range = interval === undefined ? "" : `, ${intervalText(interval).toLowerCase()}`;
+  return `${areaLabels[area]} ${score}, band median ${band.median}, next band ${next}${range}`;
 }
 
 /**
@@ -82,8 +103,9 @@ export function areaScoreText({ area, score, band }: AreaScoreProps): string {
 function Ruler({
   score,
   band,
+  interval,
   domain,
-}: Pick<AreaScoreProps, "score" | "band"> & { domain: RulerDomain }) {
+}: Pick<AreaScoreItem, "score" | "band" | "interval"> & { domain: RulerDomain }) {
   const [lo, hi] = domain;
   const ruling: number[] = [];
   for (let n = lo; n <= hi; n += 5) ruling.push(n);
@@ -92,6 +114,16 @@ function Ruler({
   return (
     <div aria-hidden="true" className="relative h-9 w-full">
       <div className="absolute inset-x-0 top-1/2 h-px bg-rule-strong" />
+      {interval && Number.isFinite(interval.low) && Number.isFinite(interval.high) ? (
+        <div
+          data-part="interval"
+          className="absolute top-1/2 -mt-1 h-2 rounded-(--radius-board) bg-pencil/35"
+          style={{
+            left: fmt(at(interval.low, domain)),
+            width: fmt(at(interval.high, domain) - at(interval.low, domain)),
+          }}
+        />
+      ) : null}
       {ruling.map((n) => (
         <div
           key={n}
@@ -116,13 +148,15 @@ function Ruler({
         className="absolute top-1/2 h-2.5 w-0.5 -translate-x-1/2 rounded-full bg-pencil"
         style={{ left: fmt(m) }}
       />
-      <div
-        data-tick="next"
-        className="absolute top-1/2 -mt-3.5 h-3.5 w-0.5 -translate-x-1/2 bg-good"
-        style={{ left: fmt(at(band.next, domain)) }}
-      >
-        <span className="absolute top-0 left-0.5 h-1.5 w-1.5 bg-good [clip-path:polygon(0_0,100%_50%,0_100%)]" />
-      </div>
+      {band.next !== undefined ? (
+        <div
+          data-tick="next"
+          className="absolute top-1/2 -mt-3.5 h-3.5 w-0.5 -translate-x-1/2 bg-good"
+          style={{ left: fmt(at(band.next, domain)) }}
+        >
+          <span className="absolute top-0 left-0.5 h-1.5 w-1.5 bg-good [clip-path:polygon(0_0,100%_50%,0_100%)]" />
+        </div>
+      ) : null}
       {/*
         The needle rides a full-width carrier that starts one ruler-width to the left, so the sweep
         is a transform of `--sweep × position` of the ruler (M9), never an animated `left`.
@@ -142,8 +176,8 @@ function Ruler({
   );
 }
 
-function ScoreRow(props: AreaScoreProps & { domain: RulerDomain }) {
-  const { area, score, band, delta, basis, domain } = props;
+function ScoreRow(props: AreaScoreItem & { domain: RulerDomain }) {
+  const { area, score, band, delta, basis, interval, domain } = props;
   return (
     <>
       <span className="sr-only">{areaScoreText(props)}</span>
@@ -165,18 +199,27 @@ function ScoreRow(props: AreaScoreProps & { domain: RulerDomain }) {
         </span>
       </div>
       <div className="flex flex-col gap-0.5 @min-[560px]:col-start-3 @min-[560px]:row-start-1">
-        <Ruler score={score} band={band} domain={domain} />
-        {delta !== undefined ? (
-          <span
-            className={cn("text-sm", delta > 0 ? "text-good-text" : "text-ink-soft")}
-            style={NUMERALS}
-          >
-            {deltaText(delta)}
-          </span>
-        ) : (
-          // No earlier report: keep the row's height so the rulers stay evenly spaced.
-          <span aria-hidden="true" className="h-5" />
-        )}
+        <Ruler score={score} band={band} interval={interval} domain={domain} />
+        <RowNumbers domain={domain} />
+        <div className="flex min-h-5 flex-wrap gap-x-4 text-sm">
+          {delta !== undefined ? (
+            <span
+              className={delta > 0 ? "text-good-text" : "text-ink-soft"}
+              style={{ fontVariantNumeric: "lining-nums" }}
+            >
+              {deltaText(delta)}
+            </span>
+          ) : null}
+          {interval !== undefined ? (
+            <span
+              aria-hidden="true"
+              className="text-ink-soft"
+              style={{ fontVariantNumeric: "lining-nums" }}
+            >
+              {intervalText(interval)}
+            </span>
+          ) : null}
+        </div>
       </div>
     </>
   );
@@ -185,11 +228,31 @@ function ScoreRow(props: AreaScoreProps & { domain: RulerDomain }) {
 const ROW =
   "flex flex-col gap-1 py-3.5 @min-[560px]:grid @min-[560px]:grid-cols-[minmax(8rem,11rem)_4rem_1fr] @min-[560px]:items-center @min-[560px]:gap-x-5"; // ban-lint-allow TOK2: grid track template, no spacing token
 
-/** The ruler's numbering: both ends and the middle, aligned to the ruler column. */
+/**
+ * Below 560px the rows stack, so a numbering above the list would float over the labels: each
+ * ruler carries its own numbering underneath instead, and the shared one shows from 560px.
+ */
+function RowNumbers({ domain }: { domain: RulerDomain }) {
+  const [lo, hi] = domain;
+  return (
+    <div
+      aria-hidden="true"
+      data-row-scale
+      className="relative h-4 text-xs text-ink-faint @min-[560px]:hidden"
+      style={NUMERALS}
+    >
+      <span className="absolute left-0">{lo}</span>
+      <span className="absolute left-1/2 -translate-x-1/2">{(lo + hi) / 2}</span>
+      <span className="absolute right-0">{hi}</span>
+    </div>
+  );
+}
+
+/** The ruler's numbering: both ends and the middle, aligned to the ruler column (from 560px). */
 function Scale({ domain }: { domain: RulerDomain }) {
   const [lo, hi] = domain;
   return (
-    <div aria-hidden="true" data-scale className={cn(ROW, "py-0")}>
+    <div aria-hidden="true" data-scale className={cn(ROW, "hidden py-0")}>
       <div
         className="relative h-4 text-xs text-ink-faint @min-[560px]:col-start-3"
         style={NUMERALS}
@@ -211,7 +274,7 @@ export function AreaScore({
   domain,
   className,
   ...props
-}: AreaScoreProps & { drawIn?: boolean; domain?: RulerDomain; className?: string }) {
+}: AreaScoreItem & { drawIn?: boolean; domain?: RulerDomain; className?: string }) {
   const sweep = useSweep(drawIn);
   const d = domain ?? rulerDomain([props]);
   return (
@@ -234,7 +297,7 @@ export function AreaScoreList({
   drawIn = false,
   className,
 }: {
-  items: AreaScoreProps[];
+  items: AreaScoreItem[];
   drawIn?: boolean;
   className?: string;
 }) {
@@ -254,8 +317,20 @@ export function AreaScoreList({
   );
 }
 
-/** The key for the ruler's three marks, drawn with the same shapes. */
-export function AreaScoreKey({ className }: { className?: string }) {
+/**
+ * The key for the ruler's marks, drawn with the same shapes. Pass `next={false}` when no row has
+ * a measured next band, so the key never names a mark the rulers don't draw.
+ */
+export function AreaScoreKey({
+  className,
+  next = true,
+  interval = false,
+}: {
+  className?: string;
+  next?: boolean;
+  /** Name the interval band too, when the rows carry one. */
+  interval?: boolean;
+}) {
   return (
     <ul
       aria-label="Key"
@@ -273,11 +348,26 @@ export function AreaScoreKey({ className }: { className?: string }) {
         Band median
       </li>
       <li className="flex items-center gap-2">
-        <span aria-hidden="true" className="relative -mt-1 h-3.5 w-0.5 bg-good">
-          <span className="absolute top-0 left-0.5 h-1.5 w-1.5 bg-good [clip-path:polygon(0_0,100%_50%,0_100%)]" />
+        <span aria-hidden="true" className="relative mt-3 h-2.5 w-5">
+          <span className="absolute top-0 left-0 h-2.5 w-0.5 rounded-full bg-pencil" />
+          <span className="absolute bottom-0 left-0 h-px w-5 bg-pencil" />
         </span>
-        Next band
+        Distance to the band median
       </li>
+      {interval ? (
+        <li className="flex items-center gap-2">
+          <span aria-hidden="true" className="h-2 w-5 rounded-(--radius-board) bg-pencil/35" />
+          Likely range
+        </li>
+      ) : null}
+      {next ? (
+        <li className="flex items-center gap-2">
+          <span aria-hidden="true" className="relative -mt-1 h-3.5 w-0.5 bg-good">
+            <span className="absolute top-0 left-0.5 h-1.5 w-1.5 bg-good [clip-path:polygon(0_0,100%_50%,0_100%)]" />
+          </span>
+          Next band
+        </li>
+      ) : null}
     </ul>
   );
 }
