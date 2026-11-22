@@ -535,9 +535,10 @@ function ExplorerDialog({
             options={MODES}
             onValueChange={(v) => dispatch({ type: "mode", mode: v as ExplorerMode })}
           />
-          <div className="flex min-h-16 flex-col gap-1 font-sans text-sm">
+          {/* Tall enough for the longest note at 390px, so a mode switch moves nothing below. */}
+          <div aria-live="polite" className="flex min-h-28 flex-col gap-1 font-sans text-sm">
             <p className="m-0 text-ink">{note}</p>
-            {state.mode === "try" && state.tried.length > 0 ? (
+            {state.mode === "try" ? (
               <p className="m-0 text-ink-soft">
                 Moves you try are not checked by the engine. The game review shows the engine's move
                 at every point of the game.
