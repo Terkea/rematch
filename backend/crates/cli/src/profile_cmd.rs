@@ -146,7 +146,7 @@ async fn stored_benchmark(
     Ok(sqlx::query_as(
         "SELECT b.source, b.rating_low, b.rating_high, b.n_players, \
            EXISTS (SELECT 1 FROM account_benchmark_stat s WHERE s.account_id = b.account_id \
-             AND s.time_class = b.time_class AND NOT s.low_sample) \
+             AND s.time_class = b.time_class AND s.side = 'both' AND NOT s.low_sample) \
          FROM account_benchmark b WHERE b.account_id = $1 AND b.time_class = $2::time_class",
     )
     .bind(account)

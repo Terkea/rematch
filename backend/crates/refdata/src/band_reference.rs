@@ -6,14 +6,18 @@
 //! `low_sample`, at most [`MAX_FALLBACK_BANDS`] bands away; otherwise that metric is absent. A
 //! low-sample row is never served. Equally near bands resolve to the lower one (unknown players
 //! are more likely beginners). The result records the band each metric came from, so callers can
-//! say "B2 benchmark" honestly. Rows with a metric this version does not know are ignored, so a
+//! say "B2 benchmark" honestly.
+//!
+//! Rows carry a [`Side`] (the colour split): `Both` pools every observed side, `White` and
+//! `Black` only the sides that had that colour. A side is read on its own: a `Both` row is never
+//! served for one colour, so a side without rows has no benchmark. Rows with a metric this version does not know are ignored, so a
 //! cell holding only unknown metrics falls back like an empty one. Statistics are stored as
 //! `real`, so values read back are `f32` precision.
 
 use std::collections::BTreeMap;
 
 use chess_core::TimeClass;
-use profile_core::types::{Band, BandReference, BandReferenceStat, MetricId};
+use profile_core::types::{Band, BandReference, BandReferenceStat, MetricId, Side};
 use sqlx::{FromRow, PgConnection, PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
@@ -23,7 +27,7 @@ use crate::builds::{RefdataError, Result, ensure_building};
 pub const MAX_FALLBACK_BANDS: usize = 2;
 
 /// The active build's usable (not low-sample) rows of a time class in a set of bands.
-/// Parameters: `$1` bands (`band[]` as text), `$2` time class.
+/// Parameters: `$1` bands (`band[]` as text), `$2` time class, `$3` side (`side_scope` text).
 pub const BAND_REFERENCE_SQL: &str = "SELECT build_id, band::text AS band, metric, \
        median::float8 AS median, p25::float8 AS p25, p40::float8 AS p40, p75::float8 AS p75, \
        pooled_rate::float8 AS pooled_rate, epl_per_event::float8 AS epl_per_event, \
@@ -32,13 +36,15 @@ pub const BAND_REFERENCE_SQL: &str = "SELECT build_id, band::text AS band, metri
      FROM band_reference \
      WHERE build_id = (SELECT id FROM reference_builds \
                        WHERE kind = 'band_reference' AND status = 'active') \
-       AND band = ANY($1::band[]) AND time_class = $2::time_class AND NOT low_sample";
+       AND band = ANY($1::band[]) AND time_class = $2::time_class \
+       AND side = $3::side_scope AND NOT low_sample";
 
 /// One metric of one band × time class cell.
 #[derive(Clone, Debug, PartialEq)]
 pub struct BandReferenceRow {
     pub band: Band,
     pub time_class: TimeClass,
+    pub side: Side,
     pub stat: BandReferenceStat,
 }
 
@@ -70,14 +76,14 @@ pub async fn write_band_reference(
     sqlx::query(
         "INSERT INTO band_reference (build_id, band, time_class, metric, median, p25, p40, p75, \
            pooled_rate, epl_per_event, opps_per_game, opp_slope_per_100, n_players, n_games, \
-           low_sample) \
+           low_sample, side) \
          SELECT $1, b::band, tc::time_class, m, med, q25, q40, q75, pr, epl, opg, slope, np, ng, \
-           low \
+           low, sd::side_scope \
          FROM UNNEST($2::text[], $3::text[], $4::text[], $5::float8[], $6::float8[], \
                      $7::float8[], $8::float8[], $9::float8[], $10::float8[], $11::float8[], \
-                     $12::float8[], $13::int4[], $14::int4[], $15::bool[]) \
-           AS x(b, tc, m, med, q25, q40, q75, pr, epl, opg, slope, np, ng, low) \
-         ON CONFLICT (build_id, band, time_class, metric) DO UPDATE SET \
+                     $12::float8[], $13::int4[], $14::int4[], $15::bool[], $16::text[]) \
+           AS x(b, tc, m, med, q25, q40, q75, pr, epl, opg, slope, np, ng, low, sd) \
+         ON CONFLICT (build_id, band, time_class, side, metric) DO UPDATE SET \
            median = excluded.median, p25 = excluded.p25, p40 = excluded.p40, \
            p75 = excluded.p75, pooled_rate = excluded.pooled_rate, \
            epl_per_event = excluded.epl_per_event, opps_per_game = excluded.opps_per_game, \
@@ -108,6 +114,7 @@ pub async fn write_band_reference(
     .bind(n_players)
     .bind(n_games)
     .bind(rows.iter().map(|r| r.stat.low_sample).collect::<Vec<_>>())
+    .bind(rows.iter().map(|r| r.side.as_str()).collect::<Vec<_>>())
     .execute(&mut *conn)
     .await?;
     Ok(())
@@ -144,6 +151,7 @@ pub struct LoadedBandReference {
     pub build_id: Uuid,
     pub requested: Band,
     pub time_class: TimeClass,
+    pub side: Side,
     /// Only metrics with a usable row within [`MAX_FALLBACK_BANDS`].
     pub stats: BTreeMap<MetricId, ServedStat>,
 }
@@ -173,13 +181,24 @@ fn band_pos(b: Band) -> usize {
     Band::ALL.iter().position(|x| *x == b).unwrap_or(0)
 }
 
-/// The active band reference of `band` × `tc` with the per-metric fallback of the module doc.
-/// `None` without an active build or when no metric has a usable row within reach. One
+/// The active `Both` band reference of `band` × `tc` with the per-metric fallback of the module
+/// doc. `None` without an active build or when no metric has a usable row within reach. One
 /// statement, so one snapshot.
 pub async fn load_band_reference(
     pool: &PgPool,
     band: Band,
     tc: TimeClass,
+) -> Result<Option<LoadedBandReference>> {
+    load_band_reference_for(pool, band, tc, Side::Both).await
+}
+
+/// [`load_band_reference`] for one side: only that side's rows are read (the fallback moves
+/// across bands, never across sides).
+pub async fn load_band_reference_for(
+    pool: &PgPool,
+    band: Band,
+    tc: TimeClass,
+    side: Side,
 ) -> Result<Option<LoadedBandReference>> {
     let at = band_pos(band);
     let bands: Vec<&str> = Band::ALL
@@ -190,6 +209,7 @@ pub async fn load_band_reference(
     let rows: Vec<RefRow> = sqlx::query_as(BAND_REFERENCE_SQL)
         .bind(&bands)
         .bind(tc.as_str())
+        .bind(side.as_str())
         .fetch_all(pool)
         .await?;
     let Some(build_id) = rows.first().map(|r| r.build_id) else {
@@ -245,6 +265,7 @@ pub async fn load_band_reference(
         build_id,
         requested: band,
         time_class: tc,
+        side,
         stats: best.into_iter().map(|(m, (_, s))| (m, s)).collect(),
     }))
 }

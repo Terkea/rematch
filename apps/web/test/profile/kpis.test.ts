@@ -136,6 +136,28 @@ describe("kpiTrends", () => {
     expect(trend?.points).toEqual([]);
   });
 
+  it("reads the both side only (colour rows are newer and differ)", async () => {
+    await seedProfile(db, accountId, {
+      timeClass: "rapid",
+      games: 1,
+      kpis: [
+        { metric: "accuracy", value: 70, n: 50, computedAt: t("2026-11-01T00:00:00Z") },
+        { metric: "accuracy", windowKey: "2026-W45", value: 71, n: 12 },
+        {
+          metric: "accuracy",
+          side: "white",
+          value: 90,
+          n: 30,
+          computedAt: t("2026-11-20T00:00:00Z"),
+        },
+        { metric: "accuracy", side: "black", windowKey: "2026-W45", value: 40, n: 6 },
+      ],
+    });
+    const [trend] = await kpiTrends(db, userId, await scopeOf(userId), ["accuracy"]);
+    expect(trend?.current).toMatchObject({ value: 70, n: 50 });
+    expect(trend?.points).toEqual([{ week: "2026-W45", value: 71, low: null, high: null, n: 12 }]);
+  });
+
   it("defaults to every catalogue metric with a row, and skips unknown ones", async () => {
     await seedProfile(db, accountId, {
       timeClass: "rapid",

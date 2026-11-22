@@ -45,7 +45,7 @@ export async function getBenchmark(
       where b.account_id = ${scope.accountId} and b.time_class = ${scope.timeClass}
         and exists (select 1 from account_benchmark_stat s
           where s.account_id = b.account_id and s.time_class = b.time_class
-            and not s.low_sample)`);
+            and s.side = 'both' and not s.low_sample)`);
     if (!row) return null;
     const stats = await tx.execute<{ key: string; chances: number }>(sql`
       select substr(metric, length('weakness:') + 1) as key, n_chances as chances

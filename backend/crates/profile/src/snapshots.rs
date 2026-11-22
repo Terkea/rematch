@@ -10,8 +10,11 @@
 //!   stored row, the stored result is what the TS rule gives, plus the weeks it would miss.
 //! - **Area scores** are computed per window from that window's rows and stored as
 //!   `area:<area>` rows (`value` = score, `n`, no interval).
+//! - **Sides** (the colour split): every window is computed for `Both` and, from the games the
+//!   player had that colour in, for `White` and `Black` (each with its own side's benchmark, or
+//!   none). `n` is the side's own count, so readers apply the minimum evidence per side.
 //! - **Change detection** compares `value` and `n` exactly with the latest row (highest id) of
-//!   the same metric and window (`double precision`, so f64 round-trips). TS compares only
+//!   the same side, metric and window (`double precision`, so f64 round-trips). TS compares only
 //!   `value` and `n`; `value_adjusted`, `ci_low` and `ci_high` are compared too (T33 review
 //!   M4), so a new reference that moves only the opponent adjustment never leaves the latest
 //!   row stale.
@@ -27,7 +30,7 @@ use profile_core::kpi::area_scores::compute_area_scores;
 use profile_core::kpi::catalogue::{KpiGame, kpi_definition};
 use profile_core::kpi::iso_week::iso_week_key;
 use profile_core::kpi::snapshots::{KpiValue, Window, compute_kpis};
-use profile_core::types::{Area, BandReference, MetricId};
+use profile_core::types::{Area, BandReference, MetricId, Side};
 use serde_json::{Value, json};
 use sqlx::PgConnection;
 use uuid::Uuid;
@@ -81,16 +84,17 @@ pub fn compute_snapshots(
 
 /// What change detection compares: `(value, n, value_adjusted, ci_low, ci_high)`.
 pub type Compared = (Option<f64>, i32, Option<f64>, Option<f64>, Option<f64>);
-/// `(metric, window_key)` -> [`Compared`] of the latest stored row.
-pub type Latest = HashMap<(String, String), Compared>;
+/// `(side, metric, window_key)` -> [`Compared`] of the latest stored row.
+pub type Latest = HashMap<(Side, String, String), Compared>;
 
-/// The latest stored row per metric and window of the account × time class.
+/// The latest stored row per side, metric and window of the account × time class.
 pub async fn latest_snapshots(
     conn: &mut PgConnection,
     account_id: Uuid,
     tc: TimeClass,
 ) -> Result<Latest, sqlx::Error> {
     type Raw = (
+        String,
         String,
         String,
         Option<f64>,
@@ -100,18 +104,21 @@ pub async fn latest_snapshots(
         Option<f64>,
     );
     let rows: Vec<Raw> = sqlx::query_as(
-        "SELECT DISTINCT ON (metric, window_key) metric, window_key, value, n, value_adjusted, \
-           ci_low, ci_high \
+        "SELECT DISTINCT ON (side, metric, window_key) side::text, metric, window_key, value, n, \
+           value_adjusted, ci_low, ci_high \
          FROM kpi_snapshot WHERE account_id = $1 AND time_class = $2::time_class \
-         ORDER BY metric, window_key, id DESC",
+         ORDER BY side, metric, window_key, id DESC",
     )
     .bind(account_id)
     .bind(tc.as_str())
     .fetch_all(conn)
     .await?;
+    // A side this code does not know cannot be compared with: its rows are left alone.
     Ok(rows
         .into_iter()
-        .map(|(m, w, v, n, adj, lo, hi)| ((m, w), (v, n, adj, lo, hi)))
+        .filter_map(|(s, m, w, v, n, adj, lo, hi)| {
+            Some(((s.parse().ok()?, m, w), (v, n, adj, lo, hi)))
+        })
         .collect())
 }
 
@@ -124,12 +131,13 @@ pub fn compared(v: &KpiValue) -> Compared {
     (v.value, n_of(v), v.value_adjusted, v.ci_low, v.ci_high)
 }
 
-/// The rows whose [`Compared`] fields differ from the latest stored row (or that have none).
-pub fn rows_to_append<'a>(rows: &'a [KpiValue], latest: &Latest) -> Vec<&'a KpiValue> {
+/// The rows of `side` whose [`Compared`] fields differ from the latest stored row of that side
+/// (or that have none).
+pub fn rows_to_append<'a>(side: Side, rows: &'a [KpiValue], latest: &Latest) -> Vec<&'a KpiValue> {
     rows.iter()
         .filter(|r| {
             latest
-                .get(&(r.metric.to_string(), r.window_key.clone()))
+                .get(&(side, r.metric.to_string(), r.window_key.clone()))
                 .is_none_or(|stored| *stored != compared(r))
         })
         .collect()
@@ -140,6 +148,7 @@ pub fn snapshot_row(
     user_id: Option<Uuid>,
     account_id: Uuid,
     tc: TimeClass,
+    side: Side,
     v: &KpiValue,
     protocol: &str,
 ) -> KpiSnapshotRow {
@@ -147,6 +156,7 @@ pub fn snapshot_row(
         user_id,
         account_id,
         time_class: tc.as_str().to_owned(),
+        side: side.as_str().to_owned(),
         metric: v.metric.to_string(),
         window_kind: v.window_kind.as_str().to_owned(),
         window_key: v.window_key.clone(),

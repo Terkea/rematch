@@ -470,7 +470,7 @@ async fn build_profile_compares_with_the_opponents_faced(pool: PgPool) {
     type Row = (String, Option<f64>, Option<f64>);
     let rows: Vec<Row> = sqlx::query_as(
         "SELECT series_key, band_median, excess FROM weakness_estimates \
-         WHERE account_id = $1 AND time_class = 'rapid' ORDER BY series_key",
+         WHERE account_id = $1 AND time_class = 'rapid' AND side = 'both' ORDER BY series_key",
     )
     .bind(account)
     .fetch_all(&pool)
@@ -512,6 +512,71 @@ async fn build_profile_compares_with_the_opponents_faced(pool: PgPool) {
     );
 }
 
+/// The colour split (ADR 0082): a colour's peers are the opponents who had that colour. The
+/// player had White in every seeded game, so every opponent had Black: Black has peer rows,
+/// White has none, and the both rows are never used for White.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn colour_peers_are_the_opponents_who_had_that_colour(pool: PgPool) {
+    let account = peer_seed(&pool, 12).await;
+    build_rapid(&pool, account).await;
+    let sides: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT side::text AS s, count(*) FROM account_benchmark_stat \
+         WHERE account_id = $1 AND time_class = 'rapid' GROUP BY side ORDER BY side",
+    )
+    .bind(account)
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    let names: Vec<&str> = sides.iter().map(|(s, _)| s.as_str()).collect();
+    assert_eq!(names, ["both", "black"], "{sides:?}");
+    assert_eq!(sides[0].1, sides[1].1, "the same opponents, the same rows");
+    // A colour's rows carry the same pooled rate and chance count (the same opponents here).
+    let traps: Vec<(String, Option<i32>, Option<f64>)> = sqlx::query_as(
+        "SELECT side::text AS s, n_chances, pooled_rate FROM account_benchmark_stat \
+         WHERE account_id = $1 AND time_class = 'rapid' AND metric = $2 ORDER BY side",
+    )
+    .bind(account)
+    .bind(TRAPS.to_string())
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(traps.len(), 2, "{traps:?}");
+    assert_eq!(traps[0].1, Some(12));
+    assert_eq!((traps[0].1, traps[0].2), (traps[1].1, traps[1].2));
+
+    let traps_median = |side: &'static str| {
+        let pool = pool.clone();
+        async move {
+            sqlx::query_scalar::<_, Option<f64>>(
+                "SELECT band_median FROM weakness_estimates WHERE account_id = $1 \
+                 AND time_class = 'rapid' AND series_key = 'W7.traps' \
+                 AND side = $2::side_scope",
+            )
+            .bind(account)
+            .bind(side)
+            .fetch_one(&pool)
+            .await
+            .unwrap()
+        }
+    };
+    assert!(traps_median("both").await.is_some());
+    assert!(
+        traps_median("black").await.is_some(),
+        "black is compared with black peers"
+    );
+    assert_eq!(
+        traps_median("white").await,
+        None,
+        "no white peers: no white benchmark"
+    );
+    // The served (coaching) benchmark is the both one.
+    let served = load_account_benchmark(&pool, account, TimeClass::Rapid)
+        .await
+        .unwrap()
+        .expect("served rows");
+    assert!(served.contains_key(&TRAPS));
+}
+
 #[sqlx::test(migrator = "db::MIGRATOR")]
 async fn too_few_opponents_store_the_band_but_serve_nothing(pool: PgPool) {
     let account = peer_seed(&pool, 9).await;
@@ -531,7 +596,8 @@ async fn too_few_opponents_store_the_band_but_serve_nothing(pool: PgPool) {
             .is_none()
     );
     let compared: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM weakness_estimates WHERE account_id = $1 AND excess IS NOT NULL",
+        "SELECT count(*) FROM weakness_estimates WHERE account_id = $1 \
+         AND excess IS NOT NULL",
     )
     .bind(account)
     .fetch_one(&pool)

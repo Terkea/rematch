@@ -7,11 +7,11 @@ use chess_core::{Color, TimeClass};
 use db::games::AnalysisStatus;
 use profile_core::types::{
     Band, BandReferenceStat, BaseMetric, MetricId, PLAYER_GAME_METRICS_VERSION, PlayerGameMetrics,
-    WeaknessKey,
+    Side, WeaknessKey,
 };
 use refdata::band_reference::{
     BAND_REFERENCE_SQL, BandReferenceRow, LoadedBandReference, MAX_FALLBACK_BANDS,
-    load_band_reference, write_band_reference,
+    load_band_reference, load_band_reference_for, write_band_reference,
 };
 use refdata::builds::{
     BuildKind, BuildStatus, NewBuild, RefdataError, activate_build, create_build, fail_build,
@@ -74,6 +74,7 @@ fn row(band: Band, metric: MetricId, median: f64, n_players: u32) -> BandReferen
     BandReferenceRow {
         band,
         time_class: TimeClass::Blitz,
+        side: Side::Both,
         stat: stat(metric, median, n_players),
     }
 }
@@ -100,6 +101,44 @@ async fn load(pool: &PgPool, band: Band) -> Option<LoadedBandReference> {
     load_band_reference(pool, band, TimeClass::Blitz)
         .await
         .unwrap()
+}
+
+/// The colour split: each side is read on its own, and a `Both` row is never served for a
+/// colour (no white rows means no white benchmark, even with a full `Both` cell).
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn sides_are_read_on_their_own(pool: PgPool) {
+    let id = band_build(&pool, "2026-10").await;
+    let mut rows = cell(Band::B2, 0.03, 20);
+    rows.push(BandReferenceRow {
+        side: Side::Black,
+        ..row(Band::B2, W1, 0.05, 15)
+    });
+    // A low-sample white row is stored but never served, and never replaced by the both row.
+    rows.push(BandReferenceRow {
+        side: Side::White,
+        ..row(Band::B2, W1, 0.01, 9)
+    });
+    write(&pool, id, &rows).await;
+    activate(&pool, id).await;
+
+    let both = load(&pool, Band::B2).await.unwrap();
+    assert_eq!(both.side, Side::Both);
+    assert_eq!(both.stats[&W1].stat.median, as_real(0.03));
+    let black = load_band_reference_for(&pool, Band::B2, TimeClass::Blitz, Side::Black)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(black.side, Side::Black);
+    assert_eq!(black.stats.len(), 1, "only the black row, no both fallback");
+    assert_eq!(black.stats[&W1].stat.median, as_real(0.05));
+    assert_eq!(black.stats[&W1].stat.n_players, 15);
+    assert!(
+        load_band_reference_for(&pool, Band::B2, TimeClass::Blitz, Side::White)
+            .await
+            .unwrap()
+            .is_none(),
+        "a both benchmark is never applied to one colour"
+    );
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
@@ -228,6 +267,7 @@ async fn every_cell_low_sample_gives_none(pool: PgPool) {
     rows.push(BandReferenceRow {
         band: Band::B2,
         time_class: TimeClass::Rapid,
+        side: Side::Both,
         stat: stat(W1, 0.1, 50),
     });
     write(&pool, id, &rows).await;
@@ -614,7 +654,7 @@ async fn band_reference_reads_use_their_indexes(pool: PgPool) {
         (
             "q_reference",
             BAND_REFERENCE_SQL,
-            "'{B1,B2,B3,B4,B5}', 'blitz'".to_string(),
+            "'{B1,B2,B3,B4,B5}', 'blitz', 'both'".to_string(),
             "band_reference_pkey",
             "Seq Scan on band_reference",
         ),

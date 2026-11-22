@@ -82,6 +82,7 @@ fn kpi_row(account_id: Uuid) -> KpiSnapshotRow {
         user_id: None,
         account_id,
         time_class: "blitz".into(),
+        side: "both".into(),
         metric: "blunder_rate".into(),
         window_kind: "last_n".into(),
         window_key: "last50".into(),
@@ -192,6 +193,7 @@ async fn seed_every_table(pool: &PgPool) -> (Uuid, Uuid) {
         &WeaknessEstimateRow {
             account_id: acc,
             time_class: "blitz".into(),
+            side: "both".into(),
             series_key: "W1".into(),
             k: 1.0,
             n: 3.0,
@@ -569,6 +571,7 @@ async fn estimate_and_kpi_floats_round_trip_exactly(pool: PgPool) {
     let e = WeaknessEstimateRow {
         account_id: acc,
         time_class: "blitz".into(),
+        side: "both".into(),
         series_key: "W1".into(),
         k: x,
         n: 3.0 * x,
@@ -999,7 +1002,8 @@ const HOT_READS: &[HotRead] = &[
         name: "latest_kpi",
         types: "uuid, time_class, text, text",
         sql: "SELECT value, n FROM kpi_snapshot WHERE account_id = $1 AND time_class = $2 \
-              AND metric = $3 AND window_key = $4 ORDER BY computed_at DESC LIMIT 1",
+              AND side = 'both' AND metric = $3 AND window_key = $4 \
+              ORDER BY computed_at DESC LIMIT 1",
         args: "'{acc}', 'blitz', 'm2', 'week-3'",
         uses: "kpi_snapshot_lookup_idx",
         ordered: true,

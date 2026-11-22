@@ -131,7 +131,7 @@ FROM games WHERE account_id = $1";
 
 const ESTIMATES_SQL: &str = "\
 SELECT time_class::text AS time_class, series_key, ci_low, ci_high, band_median, n_unweighted
-FROM weakness_estimates WHERE account_id = $1";
+FROM weakness_estimates WHERE account_id = $1 AND side = 'both'";
 
 /// Sets the selected games pending, fenced on `imported`, and returns what it promoted.
 const PROMOTE_SQL: &str = "\

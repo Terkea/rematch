@@ -116,6 +116,8 @@ pub async fn replace_series_points(
 pub struct WeaknessEstimateRow {
     pub account_id: Uuid,
     pub time_class: String,
+    /// `side_scope` text: `both`, `white` or `black` (the colour split).
+    pub side: String,
     pub series_key: String,
     pub k: f64,
     pub n: f64,
@@ -136,7 +138,7 @@ pub struct WeaknessEstimateRow {
     pub p_imp: Option<f64>,
 }
 
-/// Inserts or overwrites the estimate for `(account_id, time_class, series_key)`.
+/// Inserts or overwrites the estimate for `(account_id, time_class, side, series_key)`.
 pub async fn upsert_weakness_estimate(
     conn: &mut PgConnection,
     row: &WeaknessEstimateRow,
@@ -144,10 +146,10 @@ pub async fn upsert_weakness_estimate(
     sqlx::query(
         "INSERT INTO weakness_estimates (account_id, time_class, series_key, k, n, n_unweighted, \
          k_unweighted, alpha, beta, mean, ci_low, ci_high, band_median, band_p40, confidence, \
-         excess, priority, percentile, state, p_imp, updated_at) \
+         excess, priority, percentile, state, p_imp, side, updated_at) \
          VALUES ($1, $2::time_class, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, \
-         $16, $17, $18, $19::weakness_state, $20, now()) \
-         ON CONFLICT (account_id, time_class, series_key) DO UPDATE SET k = EXCLUDED.k, \
+         $16, $17, $18, $19::weakness_state, $20, $21::side_scope, now()) \
+         ON CONFLICT (account_id, time_class, side, series_key) DO UPDATE SET k = EXCLUDED.k, \
          n = EXCLUDED.n, n_unweighted = EXCLUDED.n_unweighted, \
          k_unweighted = EXCLUDED.k_unweighted, alpha = EXCLUDED.alpha, beta = EXCLUDED.beta, \
          mean = EXCLUDED.mean, ci_low = EXCLUDED.ci_low, ci_high = EXCLUDED.ci_high, \
@@ -176,6 +178,7 @@ pub async fn upsert_weakness_estimate(
     .bind(row.percentile)
     .bind(&row.state)
     .bind(row.p_imp)
+    .bind(&row.side)
     .execute(conn)
     .await?;
     Ok(())
@@ -250,6 +253,8 @@ pub struct KpiSnapshotRow {
     pub user_id: Option<Uuid>,
     pub account_id: Uuid,
     pub time_class: String,
+    /// `side_scope` text: `both`, `white` or `black` (the colour split).
+    pub side: String,
     pub metric: String,
     pub window_kind: String,
     pub window_key: String,
@@ -269,8 +274,9 @@ pub async fn append_kpi_snapshot(
 ) -> Result<i64, sqlx::Error> {
     sqlx::query_scalar(
         "INSERT INTO kpi_snapshot (user_id, account_id, time_class, metric, window_kind, \
-         window_key, value, value_adjusted, n, ci_low, ci_high, protocol) \
-         VALUES ($1, $2, $3::time_class, $4, $5::kpi_window, $6, $7, $8, $9, $10, $11, $12) \
+         window_key, value, value_adjusted, n, ci_low, ci_high, protocol, side) \
+         VALUES ($1, $2, $3::time_class, $4, $5::kpi_window, $6, $7, $8, $9, $10, $11, $12, \
+         $13::side_scope) \
          RETURNING id",
     )
     .bind(row.user_id)
@@ -285,6 +291,7 @@ pub async fn append_kpi_snapshot(
     .bind(row.ci_low)
     .bind(row.ci_high)
     .bind(&row.protocol)
+    .bind(&row.side)
     .fetch_one(conn)
     .await
 }

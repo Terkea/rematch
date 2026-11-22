@@ -6,7 +6,9 @@
 //! active band-reference build holds `weakness:W1` for B2 blitz at a median of 0.02.
 //!
 //! Every game is `done`, enriched (`enr-v1`) and analysed one hour after it was played, all
-//! before [`SEED_NOW`], the fake clock of the build.
+//! before [`SEED_NOW`], the fake clock of the build. By default the player has White in every
+//! game; [`SeedOptions::shape`] picks each game's colour and W1 events and blunders (the colour
+//! split's fixtures).
 #![allow(dead_code)]
 
 use std::collections::BTreeMap;
@@ -17,7 +19,7 @@ use db::profile_rows::{
 };
 use profile_core::types::{
     Band, BandReferenceStat, BinomialObs, MetricId, PLAYER_GAME_METRICS_VERSION, PhaseValues,
-    PlayerGameMetrics, WeaknessKey,
+    PlayerGameMetrics, Side, WeaknessKey,
 };
 use refdata::band_reference::{BandReferenceRow, write_band_reference};
 use refdata::builds::{BuildKind, NewBuild, activate_build, create_build, set_source_sha};
@@ -48,10 +50,33 @@ pub fn seed_now() -> OffsetDateTime {
     SEED_NOW
 }
 
+/// What one seeded game looks like from the player's side.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct GameShape {
+    /// `"white"` or `"black"`.
+    pub color: &'static str,
+    /// W1 events in [`W1_OPPORTUNITIES`].
+    pub w1_events: i32,
+    pub blunders: u32,
+}
+
+/// The default shape: White, W1 2/50, one blunder.
+pub const WHITE_GAME: GameShape = GameShape {
+    color: "white",
+    w1_events: W1_EVENTS,
+    blunders: 1,
+};
+
+pub fn default_shape(_i: usize) -> GameShape {
+    WHITE_GAME
+}
+
 #[derive(Clone, Debug)]
 pub struct SeedOptions {
     pub games: usize,
     pub reference: bool,
+    /// Game `i`'s shape (colour, W1 events, blunders).
+    pub shape: fn(usize) -> GameShape,
 }
 
 impl Default for SeedOptions {
@@ -59,6 +84,7 @@ impl Default for SeedOptions {
         Self {
             games: 40,
             reference: true,
+            shape: default_shape,
         }
     }
 }
@@ -80,11 +106,16 @@ pub fn played_at(i: usize, total: usize) -> OffsetDateTime {
 
 /// The metrics of every seeded game (version-current, W1 2/50).
 pub fn seed_metrics() -> PlayerGameMetrics {
+    shaped_metrics(WHITE_GAME)
+}
+
+/// The metrics of a game of `shape`.
+pub fn shaped_metrics(shape: GameShape) -> PlayerGameMetrics {
     let mut weakness = BTreeMap::new();
     weakness.insert(
         WeaknessKey::W1,
         BinomialObs {
-            events: W1_EVENTS as u32,
+            events: shape.w1_events as u32,
             opportunities: W1_OPPORTUNITIES as u32,
             epl: 0.1,
             exemplar_plies: Vec::new(),
@@ -103,7 +134,7 @@ pub fn seed_metrics() -> PlayerGameMetrics {
             endgame: None,
         },
         moves: 30,
-        blunders: 1,
+        blunders: shape.blunders,
         mistakes: 1,
         inaccuracies: 2,
         weakness,
@@ -119,17 +150,39 @@ pub async fn insert_analysed_game(
     at: OffsetDateTime,
     analysed_at: OffsetDateTime,
 ) -> Uuid {
-    let game_id = insert_unanalysed_game(pool, account_id, at).await;
-    write_game_rows(pool, account_id, game_id, at, analysed_at).await;
+    insert_shaped_game(pool, account_id, at, analysed_at, WHITE_GAME).await
+}
+
+/// [`insert_analysed_game`] of a given shape.
+pub async fn insert_shaped_game(
+    pool: &PgPool,
+    account_id: Uuid,
+    at: OffsetDateTime,
+    analysed_at: OffsetDateTime,
+    shape: GameShape,
+) -> Uuid {
+    let game_id = insert_unanalysed_game_as(pool, account_id, at, shape.color).await;
+    write_shaped_rows(pool, account_id, game_id, at, analysed_at, shape).await;
     game_id
 }
 
 /// A blitz game played at `at`, still without metrics or series (`pending`).
 pub async fn insert_unanalysed_game(pool: &PgPool, account_id: Uuid, at: OffsetDateTime) -> Uuid {
+    insert_unanalysed_game_as(pool, account_id, at, "white").await
+}
+
+/// [`insert_unanalysed_game`] with the player on `color`.
+pub async fn insert_unanalysed_game_as(
+    pool: &PgPool,
+    account_id: Uuid,
+    at: OffsetDateTime,
+    color: &'static str,
+) -> Uuid {
     let game_id = insert_game(
         pool,
         account_id,
         GameSeed {
+            player_color: color,
             base_seconds: Some(180),
             increment_seconds: Some(0),
             ..GameSeed::default()
@@ -153,6 +206,18 @@ pub async fn write_game_rows(
     at: OffsetDateTime,
     analysed_at: OffsetDateTime,
 ) {
+    write_shaped_rows(pool, account_id, game_id, at, analysed_at, WHITE_GAME).await;
+}
+
+/// [`write_game_rows`] of a given shape.
+pub async fn write_shaped_rows(
+    pool: &PgPool,
+    account_id: Uuid,
+    game_id: Uuid,
+    at: OffsetDateTime,
+    analysed_at: OffsetDateTime,
+    shape: GameShape,
+) {
     let mut tx = pool.begin().await.unwrap();
     sqlx::query(
         "UPDATE games SET analysis_status = 'done', analysed_at = $2, \
@@ -173,7 +238,7 @@ pub async fn write_game_rows(
             protocol: PROTOCOL.to_owned(),
             enrichment_protocol: Some("enr-v1".to_owned()),
             difficulty_model: None,
-            metrics: serde_json::to_value(seed_metrics()).unwrap(),
+            metrics: serde_json::to_value(shaped_metrics(shape)).unwrap(),
         },
     )
     .await
@@ -186,7 +251,7 @@ pub async fn write_game_rows(
             time_class: TimeClass::Blitz.as_str().to_owned(),
             series_key: "W1".to_owned(),
             played_at: at,
-            events: W1_EVENTS,
+            events: shape.w1_events,
             opportunities: W1_OPPORTUNITIES,
             epl: 0.1,
             protocol: PROTOCOL.to_owned(),
@@ -215,8 +280,15 @@ pub fn w1_stat() -> BandReferenceStat {
     }
 }
 
-/// Creates and activates a band-reference build holding `stats` for B2 blitz.
+/// Creates and activates a band-reference build holding `stats` for B2 blitz (`Both` side).
 pub async fn insert_reference(pool: &PgPool, stats: &[BandReferenceStat]) -> Uuid {
+    let rows: Vec<(Side, BandReferenceStat)> =
+        stats.iter().map(|s| (Side::Both, s.clone())).collect();
+    insert_side_reference(pool, &rows).await
+}
+
+/// [`insert_reference`] with each row's side.
+pub async fn insert_side_reference(pool: &PgPool, stats: &[(Side, BandReferenceStat)]) -> Uuid {
     let id = create_build(
         pool,
         &NewBuild {
@@ -233,9 +305,10 @@ pub async fn insert_reference(pool: &PgPool, stats: &[BandReferenceStat]) -> Uui
     .expect("create build");
     let rows: Vec<BandReferenceRow> = stats
         .iter()
-        .map(|s| BandReferenceRow {
+        .map(|(side, s)| BandReferenceRow {
             band: Band::B2,
             time_class: TimeClass::Blitz,
+            side: *side,
             stat: s.clone(),
         })
         .collect();
@@ -257,7 +330,8 @@ pub async fn seed(pool: &PgPool, opts: SeedOptions) -> Seed {
     let mut games = Vec::with_capacity(opts.games);
     for i in 0..opts.games {
         let at = played_at(i, opts.games);
-        games.push(insert_analysed_game(pool, account_id, at, at + Duration::hours(1)).await);
+        let shape = (opts.shape)(i);
+        games.push(insert_shaped_game(pool, account_id, at, at + Duration::hours(1), shape).await);
     }
     let build_id = if opts.reference {
         Some(insert_reference(pool, &[w1_stat()]).await)

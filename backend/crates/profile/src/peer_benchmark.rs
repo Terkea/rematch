@@ -23,6 +23,10 @@
 //! - **Rate rows compare with the pooled rate** (ADR 0081): `median` is the opponent-weighted,
 //!   recency-weighted `Σk / Σn`, and `p25/p40/p75` its bootstrap quantiles by opponent.
 //! - **Bias.** These are only games against this player. The web label says so.
+//! - **Sides** (the colour split, ADR 0082). A colour's benchmark is aggregated from the
+//!   opponents who had that colour ([`peer_sides_of`]: the player's Black games give the White
+//!   peers), by the same rules, and stored as that side's `account_benchmark_stat` rows
+//!   ([`write_side_stats`]). A `Both` benchmark is never served for a colour.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -41,7 +45,7 @@ use profile_core::stats::priority::WINDOW_DAYS;
 use profile_core::stats::weights::{HALF_LIFE_DAYS, recency_weight};
 use profile_core::types::{
     BandReference, BandReferenceStat, BaseMetric, GameContext, MetricId,
-    PLAYER_GAME_METRICS_VERSION, PlayerGameMetrics, WeaknessKey,
+    PLAYER_GAME_METRICS_VERSION, PlayerGameMetrics, Side, WeaknessKey,
 };
 use serde_json::Value;
 use sqlx::{FromRow, PgConnection, PgPool};
@@ -197,6 +201,15 @@ impl PeerBenchmark {
 
 fn count(n: usize) -> u32 {
     u32::try_from(n).unwrap_or(u32::MAX)
+}
+
+/// The opponent sides that had `side`'s colour (all of them for `Both`): a colour's peers.
+pub fn peer_sides_of(sides: &[PeerSide], side: Side) -> Vec<PeerSide> {
+    sides
+        .iter()
+        .filter(|s| side.covers(s.ctx.player_color))
+        .cloned()
+        .collect()
 }
 
 /// See the module docs. `center_rating` is the player's latest pre-game rating; `now` is the
@@ -565,12 +578,26 @@ pub async fn write_account_benchmark(
     .bind(b.peers.map(|p| n(p.n_games)))
     .execute(&mut *conn)
     .await?;
-    if b.stats.is_empty() {
+    write_side_stats(conn, account_id, tc, Side::Both, &b.stats, b.peers).await
+}
+
+/// Writes one side's rows of the stored benchmark (after [`write_account_benchmark`], in the
+/// same transaction: the rows hang off its `account_benchmark` row and go with it).
+pub async fn write_side_stats(
+    conn: &mut PgConnection,
+    account_id: Uuid,
+    tc: TimeClass,
+    side: Side,
+    stats: &[BandReferenceStat],
+    peers: Option<&PeerBenchmark>,
+) -> Result<(), sqlx::Error> {
+    if stats.is_empty() {
         return Ok(());
     }
-    let f = |g: fn(&BandReferenceStat) -> f64| b.stats.iter().map(g).collect::<Vec<_>>();
+    let n = |v: u32| i32::try_from(v).unwrap_or(i32::MAX);
+    let f = |g: fn(&BandReferenceStat) -> f64| stats.iter().map(g).collect::<Vec<_>>();
     let o = |g: fn(&BandReferenceStat) -> Option<f64>| {
-        b.stats
+        stats
             .iter()
             .map(|s| g(s).filter(|x| x.is_finite()))
             .collect::<Vec<_>>()
@@ -578,8 +605,9 @@ pub async fn write_account_benchmark(
     sqlx::query(
         "INSERT INTO account_benchmark_stat (account_id, time_class, metric, median, p25, p40, \
            p75, pooled_rate, epl_per_event, opps_per_game, opp_slope_per_100, n_players, \
-           n_games, low_sample, n_chances) \
-         SELECT $1, $2::time_class, m, med, q25, q40, q75, pr, epl, opg, slope, np, ng, low, nc \
+           n_games, low_sample, n_chances, side) \
+         SELECT $1, $2::time_class, m, med, q25, q40, q75, pr, epl, opg, slope, np, ng, low, nc, \
+           $16::side_scope \
          FROM UNNEST($3::text[], $4::float8[], $5::float8[], $6::float8[], $7::float8[], \
                      $8::float8[], $9::float8[], $10::float8[], $11::float8[], $12::int4[], \
                      $13::int4[], $14::bool[], $15::int4[]) \
@@ -588,7 +616,7 @@ pub async fn write_account_benchmark(
     .bind(account_id)
     .bind(tc.as_str())
     .bind(
-        b.stats
+        stats
             .iter()
             .map(|s| s.metric.to_string())
             .collect::<Vec<_>>(),
@@ -601,19 +629,16 @@ pub async fn write_account_benchmark(
     .bind(o(|s| s.epl_per_event))
     .bind(o(|s| s.opps_per_game))
     .bind(o(|s| s.opp_slope_per_100))
-    .bind(b.stats.iter().map(|s| n(s.n_players)).collect::<Vec<_>>())
-    .bind(b.stats.iter().map(|s| n(s.n_games)).collect::<Vec<_>>())
-    .bind(b.stats.iter().map(|s| s.low_sample).collect::<Vec<_>>())
+    .bind(stats.iter().map(|s| n(s.n_players)).collect::<Vec<_>>())
+    .bind(stats.iter().map(|s| n(s.n_games)).collect::<Vec<_>>())
+    .bind(stats.iter().map(|s| s.low_sample).collect::<Vec<_>>())
     .bind(
-        b.stats
+        stats
             .iter()
-            .map(|s| {
-                b.peers
-                    .and_then(|p| p.chances.get(&s.metric))
-                    .map(|&c| n(c))
-            })
+            .map(|s| peers.and_then(|p| p.chances.get(&s.metric)).map(|&c| n(c)))
             .collect::<Vec<_>>(),
     )
+    .bind(side.as_str())
     .execute(&mut *conn)
     .await?;
     Ok(())
@@ -647,7 +672,8 @@ pub async fn load_account_benchmark(
         "SELECT metric, median, p25, p40, p75, pooled_rate, epl_per_event, opps_per_game, \
            opp_slope_per_100, n_players, n_games, low_sample \
          FROM account_benchmark_stat \
-         WHERE account_id = $1 AND time_class = $2::time_class AND NOT low_sample",
+         WHERE account_id = $1 AND time_class = $2::time_class AND side = 'both' \
+           AND NOT low_sample",
     )
     .bind(account_id)
     .bind(tc.as_str())
