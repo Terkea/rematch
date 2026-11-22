@@ -13,10 +13,12 @@ export type LichessAccountEvent = {
 /**
  * Records a Lichess account proven by OAuth (ADR-WEB-4). Called from the Better Auth account
  * hooks whenever a `lichess` account row is created or refreshed for a user. It upserts the shared
- * `linked_accounts` row and the user's `account_links` row as verified (`lichess_oauth`). OAuth is
- * proof of ownership, so the newest owner wins: any other user's verified link to the same
- * account loses its `verified_at`, in the same transaction, under the per-account owner lock
- * shared with chess.com verification.
+ * `linked_accounts` row and the user's `account_links` row as verified (`lichess_oauth`).
+ *
+ * The first holder keeps it (review I3): Better Auth already refuses a second user's OAuth link
+ * (`account_already_linked_to_different_user`, shown as `lichess_taken`). If another user still
+ * holds a verified link anyway, this one is recorded unverified and the other is left alone. The
+ * check runs under the per-account owner lock shared with chess.com verification.
  */
 export async function onLichessAccount(db: Db, event: LichessAccountEvent): Promise<void> {
   const username = event.lichessId.toLowerCase();
@@ -40,9 +42,9 @@ export async function onLichessAccount(db: Db, event: LichessAccountEvent): Prom
     await tx.execute(
       sql`select pg_advisory_xact_lock(${OWNER_LOCK_SPACE}, hashtext(${shared.id}))`,
     );
-    await tx
-      .update(accountLinks)
-      .set({ verifiedAt: null })
+    const heldElsewhere = await tx
+      .select({ id: accountLinks.id })
+      .from(accountLinks)
       .where(
         and(
           eq(accountLinks.linkedAccountId, shared.id),
@@ -50,17 +52,18 @@ export async function onLichessAccount(db: Db, event: LichessAccountEvent): Prom
           isNotNull(accountLinks.verifiedAt),
         ),
       );
+    const verifiedAt = heldElsewhere.length > 0 ? null : now;
     await tx
       .insert(accountLinks)
       .values({
         userId: event.userId,
         linkedAccountId: shared.id,
         method: "lichess_oauth",
-        verifiedAt: now,
+        verifiedAt,
       })
       .onConflictDoUpdate({
         target: [accountLinks.userId, accountLinks.linkedAccountId],
-        set: { method: "lichess_oauth", verifiedAt: now },
+        set: { method: "lichess_oauth", verifiedAt },
       });
   });
 }

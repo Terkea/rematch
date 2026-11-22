@@ -62,6 +62,9 @@ export function createAuth(env: WebEnv, db: Db) {
       provider: "pg",
       schema: { user, session, account, verification },
     }),
+    // Never mounted (ADR-WEB-4, review I1): they hand stored OAuth tokens (decrypted) or provider
+    // profiles to the browser. Unlinking goes through DELETE /api/accounts/:linkId instead.
+    disabledPaths: ["/get-access-token", "/refresh-token", "/account-info", "/unlink-account"],
     advanced: {
       database: { generateId: "uuid" },
       cookiePrefix: "ci",
@@ -161,14 +164,29 @@ function redirectTo(res: Response, location: string): Response {
 /** Better Auth's own error page, where an OAuth error lands without an `errorCallbackURL`. */
 const DEFAULT_ERROR_PATH = "/api/auth/error";
 
+/** Error codes the general mapping below turns into the sign-in page's own messages. */
+const GENERAL_ERRORS = new Set([NOT_INVITED, EMAIL_NOT_VERIFIED]);
+
 /**
- * Lichess callback errors (ADR-WEB-4): refused consent becomes `lichess_denied` wherever the flow
- * returns (the sign-in page, or Accounts for a link), and an email collision goes to the sign-in
- * page's `account_not_linked` message. Other errors are left to the general mapping.
+ * Lichess callback errors (ADR-WEB-4). Each failure gets its own code on the page the flow returns
+ * to (the sign-in page, or Accounts for a link), never a preset one:
+ * - refused consent (`access_denied`) becomes `lichess_denied`;
+ * - a Lichess account already connected to another user becomes `lichess_taken`;
+ * - an implicit by-email link goes to the sign-in page's `account_not_linked`;
+ * - anything else (a missing, stale or replayed state, a failed exchange) becomes
+ *   `lichess_failed`; Better Auth's raw error page is replaced by the sign-in page.
+ * `not_invited` and `email_not_verified` are left to the general mapping.
  */
 function mapLichessError(target: URL, error: string, baseURL: string): string | null {
-  const code = error === "access_denied" ? "lichess_denied" : error;
-  if (code !== "lichess_denied" && code !== ACCOUNT_NOT_LINKED) return null;
+  if (GENERAL_ERRORS.has(error)) return null;
+  const code =
+    error === "access_denied"
+      ? "lichess_denied"
+      : error === "account_already_linked_to_different_user"
+        ? "lichess_taken"
+        : error === ACCOUNT_NOT_LINKED
+          ? ACCOUNT_NOT_LINKED
+          : "lichess_failed";
   if (target.pathname === DEFAULT_ERROR_PATH || code === ACCOUNT_NOT_LINKED) {
     return new URL(`/sign-in?error=${code}`, baseURL).toString();
   }
@@ -195,7 +213,8 @@ export async function mapAuthResponse(
   const location = res.headers.get("location");
   if (res.status >= 300 && res.status < 400 && location) {
     const target = new URL(location, baseURL);
-    const error = target.searchParams.get("error")?.toLowerCase();
+    // Better Auth appends its `error`, so the last one is the real one.
+    const error = target.searchParams.getAll("error").at(-1)?.toLowerCase();
     if (path.endsWith("/callback/lichess") && error) {
       const lichess = mapLichessError(target, error, baseURL);
       if (lichess) return redirectTo(res, lichess);

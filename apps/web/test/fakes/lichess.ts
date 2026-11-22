@@ -14,10 +14,17 @@ type Grant = { challenge: string; clientId: string; redirectUri: string };
 
 const grants = new Map<string, Grant>();
 let lastToken: URLSearchParams | null = null;
+let revoked: string[] = [];
 
 export function resetLichessFake(): void {
   grants.clear();
   lastToken = null;
+  revoked = [];
+}
+
+/** Tokens revoked with `DELETE /api/token`, oldest first. */
+export function revokedTokens(): string[] {
+  return [...revoked];
 }
 
 /** The form body of the last `POST /api/token`, or null. */
@@ -70,6 +77,14 @@ export async function handleLichess(req: IncomingMessage, res: ServerResponse): 
       back.searchParams.set("code", code);
     }
     res.writeHead(302, { location: back.toString() });
+    res.end();
+    return true;
+  }
+
+  if (req.method === "DELETE" && url.pathname === "/api/token") {
+    const bearer = /^Bearer (.+)$/.exec(req.headers.authorization ?? "")?.[1];
+    if (bearer) revoked.push(bearer);
+    res.writeHead(204);
     res.end();
     return true;
   }

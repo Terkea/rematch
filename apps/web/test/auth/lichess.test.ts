@@ -1,9 +1,20 @@
-import { account, accountLinks, linkedAccounts, user } from "@ci/db";
+import { account, accountLinks, linkedAccounts, session, user } from "@ci/db";
 import { and, eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { DENY_HINT, FAKE_LICHESS_EMAIL, resetLichessFake } from "../fakes/lichess";
+import {
+  DENY_HINT,
+  FAKE_LICHESS_EMAIL,
+  FAKE_LICHESS_TOKEN,
+  resetLichessFake,
+  revokedTokens,
+} from "../fakes/lichess";
 import { type Fakes, startFakes } from "../fakes/main";
 import { createTestSession, inviteEmail, resetAuthTables, webTestDb } from "../helpers/session";
+
+vi.mock("../../src/server/mail", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../src/server/mail")>()),
+  sendMail: vi.fn(async () => {}),
+}));
 
 /**
  * Lichess OAuth (PKCE, no client secret) and Lichess linking (ADR-WEB-4), driven in-process
@@ -16,9 +27,12 @@ const db = webTestDb();
 const { GET, POST } = await import("../../src/app/api/auth/[...all]/route");
 const { resetAuth } = await import("../../src/server/auth");
 const { resetEnvCache, getEnv } = await import("../../src/env");
-const { lichessProvider, lichessLinkStatus, LICHESS_USER_AGENT } = await import(
-  "../../src/server/auth/lichess"
-);
+const { lichessProvider, lichessLinkStatus, LICHESS_USER_AGENT, lichessPlaceholderEmail } =
+  await import("../../src/server/auth/lichess");
+const { sendMail } = await import("../../src/server/mail");
+const { flushBackgroundTasks } = await import("../../src/server/auth/background");
+const linkRoute = await import("../../src/app/api/accounts/[linkId]/route");
+const mailed = vi.mocked(sendMail);
 const { onLichessAccount } = await import("../../src/server/accounts/lichess-link");
 const { listAccounts } = await import("../../src/server/accounts/list");
 
@@ -73,7 +87,7 @@ async function start(opts: { sessionCookie?: string; loginHint?: string } = {}) 
         ...(linking
           ? {
               callbackURL: "/app/accounts?connected=lichess",
-              errorCallbackURL: "/app/accounts?error=lichess_denied",
+              errorCallbackURL: "/app/accounts",
             }
           : { callbackURL: "/", newUserCallbackURL: "/welcome/age", errorCallbackURL: "/sign-in" }),
         ...(opts.loginHint ? { loginHint: opts.loginHint } : {}),
@@ -85,19 +99,62 @@ async function start(opts: { sessionCookie?: string; loginHint?: string } = {}) 
   return { url: new URL(url), jar: cookiesFrom(res, jar) };
 }
 
+/** The fake Lichess consent screen: returns the callback URL it sends the browser back to. */
+async function consent(url: URL): Promise<URL> {
+  const res = await realFetch(url, { redirect: "manual" });
+  expect(res.status).toBe(302);
+  const back = new URL(res.headers.get("location") ?? "");
+  expect(back.origin + back.pathname).toBe(`${BASE}/api/auth/callback/lichess`);
+  return back;
+}
+
+/** Our callback, opened with the given cookies. */
+async function callback(back: URL, jar: Map<string, string>) {
+  const res = await GET(
+    new Request(back.toString(), { headers: { cookie: header(jar), "x-forwarded-for": client } }),
+  );
+  expect(res.status).toBe(302);
+  const location = new URL(res.headers.get("location") ?? "", BASE);
+  return { location, jar: cookiesFrom(res, jar) };
+}
+
 /** Plays the browser: authorisation URL → fake Lichess → back to our callback. */
 async function roundTrip(opts: { sessionCookie?: string; loginHint?: string } = {}) {
   const { url, jar } = await start(opts);
-  const consent = await realFetch(url, { redirect: "manual" });
-  expect(consent.status).toBe(302);
-  const back = new URL(consent.headers.get("location") ?? "");
-  expect(back.origin + back.pathname).toBe(`${BASE}/api/auth/callback/lichess`);
-  const callback = await GET(
-    new Request(back.toString(), { headers: { cookie: header(jar), "x-forwarded-for": client } }),
+  return callback(await consent(url), jar);
+}
+
+const sessionCookieOf = (jar: Map<string, string>) =>
+  `ci.session_token=${jar.get("ci.session_token") ?? ""}`;
+
+/** DELETE /api/accounts/:linkId as the browser would send it. */
+function removeVia(cookie: string, linkId: string): Promise<Response> {
+  return linkRoute.DELETE(
+    new Request(`${BASE}/api/accounts/${linkId}`, {
+      method: "DELETE",
+      headers: { cookie, origin: BASE, "content-type": "application/json" },
+      body: "{}",
+    }),
+    { params: Promise.resolve({ linkId }) },
   );
-  expect(callback.status).toBe(302);
-  const location = new URL(callback.headers.get("location") ?? "", BASE);
-  return { location, jar: cookiesFrom(callback, jar) };
+}
+
+/** Requests a magic link for `email` and opens it; returns the verify response. */
+async function magicLinkSignIn(email: string): Promise<Response> {
+  mailed.mockClear();
+  const res = await POST(
+    new Request(`${BASE}/api/auth/sign-in/magic-link`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: BASE, "x-forwarded-for": client },
+      body: JSON.stringify({ email, callbackURL: "/", newUserCallbackURL: "/welcome/age" }),
+    }),
+  );
+  expect(res.status).toBe(200);
+  await flushBackgroundTasks();
+  const text = mailed.mock.calls.at(-1)?.[0].text ?? "";
+  const link = text.match(/https?:\/\/\S+/)?.[0];
+  if (!link) throw new Error(`no magic link mailed to ${email}`);
+  return GET(new Request(link, { headers: { "x-forwarded-for": client } }));
 }
 
 async function lichessAccounts() {
@@ -124,6 +181,7 @@ beforeEach(async () => {
   await resetAuthTables(db);
   await db.delete(linkedAccounts).where(eq(linkedAccounts.platform, "lichess"));
   resetLichessFake();
+  mailed.mockClear();
   agents = [];
   clientCounter += 1;
   client = `203.0.${Math.floor(clientCounter / 250)}.${(clientCounter % 250) + 1}`;
@@ -146,7 +204,8 @@ beforeEach(async () => {
   });
 });
 
-afterEach(() => {
+afterEach(async () => {
+  await flushBackgroundTasks();
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
 });
@@ -160,7 +219,8 @@ describe("lichessProvider", () => {
         clientId: "chess-improver",
         authorizationUrl: `${fakes.url}/oauth`,
         tokenUrl: `${fakes.url}/api/token`,
-        scopes: ["email:read"],
+        // No scope: a Lichess email is never used (ADR-WEB-4, review I5), so none is requested.
+        scopes: [],
         pkce: true,
       }),
     );
@@ -176,12 +236,12 @@ describe("lichessProvider", () => {
 });
 
 describe("Lichess sign-in through the fake", () => {
-  it("redirects with S256 PKCE, the client id, email:read and a state", async () => {
+  it("redirects with S256 PKCE, the client id and a state, asking for no email", async () => {
     const { url } = await start();
     expect(url.origin + url.pathname).toBe(`${fakes.url}/oauth`);
     expect(url.searchParams.get("code_challenge_method")).toBe("S256");
     expect(url.searchParams.get("client_id")).toBe("chess-improver");
-    expect(url.searchParams.get("scope")).toBe("email:read");
+    expect(url.searchParams.get("scope") ?? "").not.toContain("email");
     expect(url.searchParams.get("state")).toBeTruthy();
     expect(url.searchParams.get("code_challenge")).toHaveLength(43);
   });
@@ -199,10 +259,14 @@ describe("Lichess sign-in through the fake", () => {
     const { location } = await roundTrip();
     expect(location.pathname).toBe("/welcome/age");
 
-    const users = await db.select().from(user).where(eq(user.email, FAKE_LICHESS_EMAIL));
+    // No email from Lichess is stored: the user gets a non-routable placeholder (review I5).
+    const users = await db.select().from(user);
     expect(users).toHaveLength(1);
     const me = users[0];
     if (!me) throw new Error("no user");
+    expect(me.email).toBe(lichessPlaceholderEmail("fakeuser"));
+    expect(me.email).toMatch(/\.invalid$/);
+    expect(me.email).not.toBe(FAKE_LICHESS_EMAIL);
     expect(me.emailVerified).toBe(false);
 
     const [row] = await lichessAccounts();
@@ -225,8 +289,8 @@ describe("Lichess sign-in through the fake", () => {
 
   it("calls the account endpoints with the project User-Agent", async () => {
     await roundTrip();
-    // The token request plus /api/account and /api/account/email.
-    expect(agents.length).toBeGreaterThanOrEqual(3);
+    // The token request plus /api/account.
+    expect(agents.length).toBeGreaterThanOrEqual(2);
     for (const agent of agents) expect(agent).toBe(LICHESS_USER_AGENT);
   });
 
@@ -246,12 +310,51 @@ describe("Lichess sign-in through the fake", () => {
   });
 
   it("email collision is not auto-linked", async () => {
+    // Ana's address is the one her Lichess account would report; it is never looked at.
     const { user: ana } = await createTestSession(db, { email: FAKE_LICHESS_EMAIL });
     const { location } = await roundTrip();
-    expect(`${location.pathname}${location.search}`).toBe("/sign-in?error=account_not_linked");
-    expect(await lichessAccounts()).toHaveLength(0);
+    expect(location.pathname).toBe("/welcome/age");
     expect(await linksOf(ana.id)).toHaveLength(0);
-    expect(await db.select().from(user)).toHaveLength(1);
+    const rows = await lichessAccounts();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.userId).not.toBe(ana.id);
+  });
+
+  it("a Lichess sign-up cannot pre-claim an address: the magic link lands in its own account", async () => {
+    // INVITE_ONLY=0 (the beforeEach): Lichess may create an account.
+    await roundTrip();
+    const [lichessUser] = await db.select().from(user);
+    if (!lichessUser) throw new Error("no Lichess user");
+
+    const verify = await magicLinkSignIn(FAKE_LICHESS_EMAIL);
+    expect(verify.status).toBe(302);
+    const [owner] = await db.select().from(user).where(eq(user.email, FAKE_LICHESS_EMAIL));
+    expect(owner).toBeDefined();
+    expect(owner?.id).not.toBe(lichessUser.id);
+    const ownerSessions = await db
+      .select()
+      .from(session)
+      .where(eq(session.userId, owner?.id ?? lichessUser.id));
+    expect(ownerSessions).toHaveLength(1);
+    const lichessSessions = await db
+      .select()
+      .from(session)
+      .where(eq(session.userId, lichessUser.id));
+    expect(lichessSessions).toHaveLength(1);
+  });
+
+  it("never mails a magic link to a Lichess placeholder address", async () => {
+    await roundTrip();
+    mailed.mockClear();
+    await POST(
+      new Request(`${BASE}/api/auth/sign-in/magic-link`, {
+        method: "POST",
+        headers: { "content-type": "application/json", origin: BASE, "x-forwarded-for": client },
+        body: JSON.stringify({ email: lichessPlaceholderEmail("fakeuser") }),
+      }),
+    );
+    await flushBackgroundTasks();
+    expect(mailed).not.toHaveBeenCalled();
   });
 
   it("consent denied returns to sign-in with message", async () => {
@@ -293,13 +396,28 @@ describe("Connect Lichess from a live session (linkSocial)", () => {
     expect(location.searchParams.getAll("error")).toEqual(["lichess_denied"]);
   });
 
-  it("reconnecting after the link was removed restores it", async () => {
+  it("connecting again while linked refreshes the same account", async () => {
     const { user: me, cookie } = await createTestSession(db, { email: "ana@example.com" });
     await roundTrip({ sessionCookie: cookie });
-    await db.delete(accountLinks).where(eq(accountLinks.userId, me.id));
-    await roundTrip({ sessionCookie: cookie });
+    const { location } = await roundTrip({ sessionCookie: cookie });
+    expect(location.searchParams.get("connected")).toBe("lichess");
     expect(await linksOf(me.id)).toHaveLength(1);
     expect(await lichessAccounts()).toHaveLength(1);
+  });
+
+  it("a Lichess account connected to another user is refused, with its own message", async () => {
+    const first = await createTestSession(db, { email: "first@example.com" });
+    const second = await createTestSession(db, { email: "second@example.com" });
+    await roundTrip({ sessionCookie: first.cookie });
+    const { location } = await roundTrip({ sessionCookie: second.cookie });
+    expect(location.pathname).toBe("/app/accounts");
+    expect(location.searchParams.getAll("error")).toEqual(["lichess_taken"]);
+    // The first holder keeps it; the second gains nothing.
+    const rows = await lichessAccounts();
+    expect(rows.map((r) => r.userId)).toEqual([first.user.id]);
+    const [kept] = await linksOf(first.user.id);
+    expect(kept?.link.verifiedAt).toBeInstanceOf(Date);
+    expect(await linksOf(second.user.id)).toHaveLength(0);
   });
 
   it("shows the Lichess link in the account list with its token status", async () => {
@@ -318,7 +436,7 @@ describe("Connect Lichess from a live session (linkSocial)", () => {
 });
 
 describe("onLichessAccount", () => {
-  it("moves the verified link to the newest OAuth owner", async () => {
+  it("never takes a verified link away from another user", async () => {
     const first = await createTestSession(db, { email: "first@example.com" });
     const second = await createTestSession(db, { email: "second@example.com" });
     await onLichessAccount(db, {
@@ -331,11 +449,10 @@ describe("onLichessAccount", () => {
       lichessId: "fakeuser",
       username: "FakeUser",
     });
-    const [old] = await linksOf(first.user.id);
-    const [current] = await linksOf(second.user.id);
-    expect(old?.link.verifiedAt).toBeNull();
-    expect(current?.link.verifiedAt).toBeInstanceOf(Date);
-    expect(current?.link.method).toBe("lichess_oauth");
+    const [kept] = await linksOf(first.user.id);
+    const [other] = await linksOf(second.user.id);
+    expect(kept?.link.verifiedAt).toBeInstanceOf(Date);
+    expect(other?.link.verifiedAt ?? null).toBeNull();
     const accounts = await db
       .select()
       .from(linkedAccounts)
@@ -351,6 +468,137 @@ describe("onLichessAccount", () => {
     const links = await linksOf(me.user.id);
     expect(links).toHaveLength(1);
     expect(links[0]?.link.verifiedAt).toBeInstanceOf(Date);
+  });
+});
+
+describe("tokens never reach the browser (review I1)", () => {
+  it("the token-returning and unlink endpoints are not mounted", async () => {
+    const { cookie } = await createTestSession(db, { email: "ana@example.com" });
+    await roundTrip({ sessionCookie: cookie });
+    const [row] = await lichessAccounts();
+    const headers = {
+      cookie,
+      origin: BASE,
+      "content-type": "application/json",
+      "x-forwarded-for": client,
+    };
+    const calls = [
+      new Request(`${BASE}/api/auth/get-access-token`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ providerId: "lichess", accountId: row?.id }),
+      }),
+      new Request(`${BASE}/api/auth/refresh-token`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ providerId: "lichess", accountId: row?.id }),
+      }),
+      new Request(`${BASE}/api/auth/account-info?accountId=${row?.id}`, { headers }),
+      new Request(`${BASE}/api/auth/unlink-account`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ providerId: "lichess" }),
+      }),
+    ];
+    for (const req of calls) {
+      const res = await (req.method === "GET" ? GET(req) : POST(req));
+      expect(res.status, req.url).toBe(404);
+      expect(await res.text()).not.toContain(FAKE_LICHESS_TOKEN);
+    }
+    expect(await lichessAccounts()).toHaveLength(1);
+    const list = await GET(new Request(`${BASE}/api/auth/list-accounts`, { headers }));
+    expect(await list.text()).not.toContain(FAKE_LICHESS_TOKEN);
+  });
+});
+
+describe("removing a Lichess link (review I2)", () => {
+  async function connected() {
+    const me = await createTestSession(db, { email: "ana@example.com" });
+    await roundTrip({ sessionCookie: me.cookie });
+    const [view] = await listAccounts(db, me.user.id);
+    if (!view) throw new Error("no link");
+    return { ...me, linkId: view.linkId };
+  }
+
+  it("deletes the OAuth account and its token, and revokes the token at Lichess", async () => {
+    const me = await connected();
+    const res = await removeVia(me.cookie, me.linkId);
+    expect(res.status).toBe(204);
+    expect(await lichessAccounts()).toHaveLength(0);
+    expect(await linksOf(me.user.id)).toHaveLength(0);
+    await flushBackgroundTasks();
+    expect(revokedTokens()).toEqual([FAKE_LICHESS_TOKEN]);
+  });
+
+  it("a later Continue with Lichess does not restore the link (INVITE_ONLY)", async () => {
+    const me = await connected();
+    await inviteEmail(db, "ana@example.com");
+    await removeVia(me.cookie, me.linkId);
+    setEnv({ INVITE_ONLY: "1" });
+    const { location } = await roundTrip();
+    expect(`${location.pathname}${location.search}`).toBe("/sign-in?error=not_invited");
+    expect(await linksOf(me.user.id)).toHaveLength(0);
+    expect(await lichessAccounts()).toHaveLength(0);
+  });
+
+  it("a later Continue with Lichess does not restore the link (open sign-up)", async () => {
+    const me = await connected();
+    await removeVia(me.cookie, me.linkId);
+    await roundTrip();
+    expect(await linksOf(me.user.id)).toHaveLength(0);
+    const rows = await lichessAccounts();
+    expect(rows.map((r) => r.userId)).not.toContain(me.user.id);
+  });
+
+  it("refuses to remove Lichess when it is the account's only way to sign in", async () => {
+    const { jar } = await roundTrip();
+    const [lichessUser] = await db.select().from(user);
+    if (!lichessUser) throw new Error("no Lichess user");
+    // Past the age screen, so the route answers for this user.
+    await db.update(user).set({ birthMonth: "1990-01" }).where(eq(user.id, lichessUser.id));
+    const [view] = await listAccounts(db, lichessUser.id);
+    const res = await removeVia(sessionCookieOf(jar), view?.linkId ?? "");
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "last_sign_in_method" });
+    expect(await lichessAccounts()).toHaveLength(1);
+    expect(revokedTokens()).toEqual([]);
+  });
+});
+
+describe("state binds the callback to the browser that started it (review I4)", () => {
+  it("a callback without the state cookie is refused and creates no user", async () => {
+    const { url, jar } = await start();
+    const back = await consent(url);
+    const withoutState = new Map([...jar].filter(([name]) => !name.includes("state")));
+    expect(withoutState.size).toBeLessThan(jar.size);
+    const { location } = await callback(back, withoutState);
+    expect(`${location.pathname}${location.search}`).toBe("/sign-in?error=lichess_failed");
+    expect(await db.select().from(user)).toHaveLength(0);
+    expect(await lichessAccounts()).toHaveLength(0);
+  });
+
+  it("a replayed callback is refused", async () => {
+    const { url, jar } = await start();
+    const back = await consent(url);
+    const first = await callback(back, jar);
+    expect(first.location.pathname).toBe("/welcome/age");
+    const replay = await callback(back, jar);
+    expect(`${replay.location.pathname}${replay.location.search}`).toBe(
+      "/sign-in?error=lichess_failed",
+    );
+    expect(await db.select().from(user)).toHaveLength(1);
+  });
+
+  it("a link started by an attacker attaches nothing when the victim's browser completes it", async () => {
+    const attacker = await createTestSession(db, { email: "mallory@example.com" });
+    const victim = await createTestSession(db, { email: "victim@example.com" });
+    const { url } = await start({ sessionCookie: attacker.cookie });
+    const back = await consent(url);
+    const { location } = await callback(back, jarOf(victim.cookie));
+    expect(location.searchParams.get("error")).toBe("lichess_failed");
+    expect(await lichessAccounts()).toHaveLength(0);
+    expect(await linksOf(victim.user.id)).toHaveLength(0);
+    expect(await linksOf(attacker.user.id)).toHaveLength(0);
   });
 });
 

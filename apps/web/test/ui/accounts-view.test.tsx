@@ -184,6 +184,17 @@ describe("AccountsView", () => {
     expect(window.location.search).toBe("");
   });
 
+  it.each([
+    ["lichess_taken", "This Lichess account is connected to another user."],
+    ["lichess_failed", "Connecting Lichess didn't finish. Try again."],
+  ])("says why Lichess wasn't connected (%s)", async (code, message) => {
+    window.history.replaceState(null, "", `/app/accounts?error=${code}`);
+    stubFetch([{ method: "GET", path: "/api/accounts", body: [] }]);
+    renderWithProviders(<AccountsView initialAccounts={[]} chesscom lichess />);
+    expect(await screen.findByText(message)).toBeInTheDocument();
+    expect(window.location.search).toBe("");
+  });
+
   it("offers Reconnect Lichess for an expiring Lichess link", () => {
     const lichess: LinkedAccountView = {
       linkId,

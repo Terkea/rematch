@@ -5,6 +5,8 @@ import { brand } from "../../../brand";
 const messages: Record<string, string> = {
   link_expired: "This link has expired. Request a new one.",
   lichess_denied: "Lichess sign-in was cancelled. You can try again or use your email.",
+  lichess_taken: "This Lichess account is connected to another user.",
+  lichess_failed: "Lichess sign-in didn't finish. Try again or use your email.",
   account_not_linked:
     "That email already has an account. Sign in with your email link, then connect Lichess from Accounts.",
   not_invited: `This email can't sign in yet. ${brand.name} is invite-only for now.`,

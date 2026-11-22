@@ -21,7 +21,9 @@ export type LinkErrorCode =
   | "not_found"
   | "limit_reached"
   | "link_not_found"
-  | "rate_limited";
+  | "rate_limited"
+  /** Removing the link would leave the account with no way to sign in (Lichess-only accounts). */
+  | "last_sign_in_method";
 
 export class LinkError extends Error {
   constructor(

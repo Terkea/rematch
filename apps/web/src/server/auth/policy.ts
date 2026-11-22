@@ -5,6 +5,7 @@ import { sql } from "drizzle-orm";
 import type { WebEnv } from "../../env";
 import { magicLinkEmail, sendMail } from "../mail";
 import { isInvited, NOT_INVITED, normaliseEmail } from "./invite";
+import { isLichessPlaceholderEmail } from "./lichess";
 
 /** Magic links sent to one address per window (on top of the per-IP limit). */
 export const MAGIC_LINKS_PER_EMAIL = 3;
@@ -127,7 +128,8 @@ export async function deliverMagicLink(
   url: string,
 ): Promise<void> {
   const to = normaliseEmail(email);
-  if (!to) return;
+  // A Lichess-created account's placeholder can never receive a link (ADR-WEB-4, review I5).
+  if (!to || isLichessPlaceholderEmail(to)) return;
   if (!(await isInvited(db, env, to))) return;
   if (!(await claimMagicLinkSend(db, to))) return;
   await sendMail(magicLinkEmail(to, url));
