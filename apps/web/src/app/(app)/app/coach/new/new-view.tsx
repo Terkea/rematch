@@ -2,8 +2,9 @@
 
 import { AiLabel, ChatComposer, ChatMessage } from "@ci/ui/coach";
 import { Icon, WarningIcon } from "@ci/ui/icons";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import type { ChatAnchor } from "../../../../../server/coach/anchor";
 import { CHAT_COPY } from "../../../../../server/coach/copy";
 import type { TimeClass } from "../../../../../server/games/types";
@@ -21,6 +22,13 @@ import {
 // A new conversation (Task 9): the anchor it is opened from, then the composer. Sending creates
 // the thread with its first question in one request (T5 `startConversation`) and opens it; until
 // the server answers, the question is shown as sending and the composer waits.
+
+/**
+ * How long the client navigation to a created thread may take before the page loads the thread
+ * itself. The thread and its answer are saved either way; a stalled transition must never leave
+ * the question on "Sending" (bug hunt B4).
+ */
+export const OPEN_FALLBACK_MS = 4000;
 
 export function NewConversation({
   scope,
@@ -40,6 +48,15 @@ export function NewConversation({
   const router = useRouter();
   const [sending, setSending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** The created thread's page, once the server answered: the question is no longer sending. */
+  const [opening, setOpening] = useState<string | null>(null);
+
+  // Still here after the client navigation should have left: open the thread with a full load.
+  useEffect(() => {
+    if (opening === null) return;
+    const timer = setTimeout(() => window.location.assign(opening), OPEN_FALLBACK_MS);
+    return () => clearTimeout(timer);
+  }, [opening]);
 
   async function start(question: string): Promise<boolean> {
     setError(null);
@@ -61,8 +78,10 @@ export function NewConversation({
         setSending(null);
         return false;
       }
-      // The question stays shown as sending while the thread opens.
-      router.push(`/app/coach/${data.id}`);
+      // The question stays shown, with a way to the thread, while it opens.
+      const href = `/app/coach/${encodeURIComponent(data.id)}`;
+      setOpening(href);
+      router.push(href);
       return true;
     } catch {
       setError(postErrorCopy("network"));
@@ -102,7 +121,19 @@ export function NewConversation({
             disclosure={null}
             className="[&_p]:whitespace-pre-line"
           />
-          <p className="m-0 font-sans text-sm text-ink-faint">Sending</p>
+          {opening === null ? (
+            <p className="m-0 font-sans text-sm text-ink-faint">Sending</p>
+          ) : (
+            <p className="m-0 font-sans text-sm text-ink-soft">
+              Sent.{" "}
+              <Link
+                href={opening}
+                className="rounded-field text-ink underline decoration-rule-strong underline-offset-4 hover:decoration-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+              >
+                Open your conversation
+              </Link>
+            </p>
+          )}
         </div>
       ) : null}
       <div className="flex flex-col gap-2">

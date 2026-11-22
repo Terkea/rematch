@@ -497,6 +497,46 @@ describe("coach pages, review fixes", () => {
     );
   });
 
+  // Bug hunt B4: after the post the new-conversation page sat on "Sending" forever while the
+  // thread and its answer were saved. Once the thread exists the page links to it at once, and
+  // if the client navigation has not left the page shortly after, it loads the thread itself.
+  it("B4: a created thread is opened, by a full load if the client navigation stalls", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const assign = vi.fn();
+    vi.stubGlobal("location", { ...window.location, assign });
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ id: THREAD, assistantMessageId: A2 }), { status: 201 }),
+    );
+    try {
+      const { NewConversation } = await import("../../src/app/(app)/app/coach/new/new-view.js");
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      render(
+        <NewConversation
+          scope={{ accountId: ACCOUNT, timeClass: "rapid" }}
+          anchor={null}
+          allowance={view(1)}
+          listHref="/app/coach"
+        />,
+      );
+      await user.click(screen.getByRole("textbox", { name: "Your question" }));
+      await user.keyboard("What should I study first?{Enter}");
+      await waitFor(() => expect(push).toHaveBeenCalledWith(`/app/coach/${THREAD}`));
+      // Never "Sending" once the thread exists: a way to it instead.
+      expect(screen.queryByText("Sending", { exact: true })).toBeNull();
+      expect(screen.getByRole("link", { name: "Open your conversation" })).toHaveAttribute(
+        "href",
+        `/app/coach/${THREAD}`,
+      );
+      expect(assign).not.toHaveBeenCalled();
+      await act(async () => {
+        vi.advanceTimersByTime(5000);
+      });
+      expect(assign).toHaveBeenCalledWith(`/app/coach/${THREAD}`);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("V1: a pending answer is one calm line", () => {
     const pending = {
       ...thread,
