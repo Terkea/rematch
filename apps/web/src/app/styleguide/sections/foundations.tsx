@@ -33,7 +33,7 @@ export function FoundationsSection() {
       <Panel title="Type">
         <TypeScale />
       </Panel>
-      <Panel title="Space and shape">
+      <Panel title="Space, shape and elevation">
         <SpaceAndShape />
       </Panel>
       <Panel title="Motion">
@@ -249,17 +249,22 @@ function Notation({
   move,
   glyph,
   evaluation,
+  opponent = false,
 }: {
   move: string;
   glyph?: string;
   evaluation?: string;
+  /** The opponent's glyph is graphite pencil: red is only ever the player's mistake. */
+  opponent?: boolean;
 }) {
   const mistake = glyph?.startsWith("?") || glyph === "!?";
   return (
     <span className="font-serif font-semibold tabular-nums lining-nums">
       {move}
       {glyph && (
-        <span className={`tracking-glyph ${mistake ? "text-pen-text" : "text-good-text"}`}>
+        <span
+          className={`tracking-glyph ${opponent ? "text-pencil" : mistake ? "text-pen-text" : "text-good-text"}`}
+        >
           {glyph}
         </span>
       )}
@@ -268,10 +273,10 @@ function Notation({
   );
 }
 
-const typeSteps: { step: string; size: string; use: string; sample: ReactNode }[] = [
+const typeSteps: { step: string; token: string; use: string; sample: ReactNode }[] = [
   {
     step: "2xs",
-    size: "11/14",
+    token: "2xs",
     use: "glyph-badge text and the eval bar label only",
     sample: (
       <span className="flex items-center gap-3">
@@ -287,95 +292,90 @@ const typeSteps: { step: string; size: string; use: string; sample: ReactNode }[
   },
   {
     step: "xs",
-    size: "12/16",
+    token: "xs",
     use: "board coordinates, chart ticks",
     sample: <span className="text-xs">a b c d e f g h</span>,
   },
   {
     step: "sm",
-    size: "14/20",
+    token: "sm",
     use: "secondary UI text, captions, graph labels",
     sample: (
       <span className="text-sm">
-        <Notation move="9…b5" glyph="?" /> <Notation move="10…cxb5" glyph="?!" />
+        <Notation move="27. Rbb1" glyph="?!" /> <Notation move="28. Nd2" glyph="??" />
       </span>
     ),
   },
   {
     step: "base",
-    size: "16/24",
+    token: "base",
     use: "UI body, buttons, inputs, the move list",
     sample: (
       <span className="text-base">
-        <Notation move="9. Bg5" /> <Notation move="b5" glyph="?" evaluation="+5.7" />
+        <Notation move="27…Rf8" /> <Notation move="28. Nd2" glyph="??" evaluation="−1.1" />
       </span>
     ),
   },
   {
     step: "prose",
-    size: "18/30",
+    token: "prose",
     use: "serif body: annotations and explanations",
     sample: (
       <span className="font-serif text-prose">
-        9…b5? opens the diagonal to the king on e8. After 10. Nxb5 cxb5 11. Bxb5+, White's pieces
-        arrive with check.
+        28. Nd2?? lets go of e4. After 28…e4 29. Nxe4 Bxf3+, Black's bishop takes the pawn in front
+        of the king, with check.
       </span>
     ),
   },
   {
     step: "prose, italic",
-    size: "18/30",
+    token: "prose",
     use: "an annotation comment: Literata italic, the whole comment, never one word",
     sample: (
       <span className="font-serif-italic text-prose italic">
-        Black has lost the thread: two tempi spent on the bishop pair, and the king is still in the
-        centre.
+        Your knight on e4 was holding back Black's e-pawn; one quiet retreat, and +2.7 became −1.1.
       </span>
     ),
   },
   {
     step: "lg",
-    size: "18/26",
+    token: "lg",
     use: "sans lead text",
     sample: <span className="text-lg">Three moments decided this game.</span>,
   },
   {
     step: "xl",
-    size: "21/28",
+    token: "xl",
     use: "panel headings, Literata 600",
     sample: <span className="font-serif text-xl font-semibold">Critical moments</span>,
   },
   {
     step: "2xl",
-    size: "24/30",
+    token: "2xl",
     use: "page section headings",
     sample: <span className="font-serif text-2xl font-semibold">Opening development</span>,
   },
   {
     step: "3xl",
-    size: "36/42",
+    token: "3xl",
     use: "page titles",
-    sample: (
-      <span className="font-serif text-3xl font-semibold">
-        Morphy v Duke Karl of Brunswick and Count Isouard, Paris 1858
-      </span>
-    ),
+    sample: <span className="font-serif text-3xl font-semibold">DrNykterstein v Night-King96</span>,
   },
   {
     step: "4xl",
-    size: "48/54",
+    token: "4xl",
     use: "rare: the result line of a reviewed game",
     sample: (
       <span className="font-serif text-4xl font-semibold tabular-nums lining-nums">
-        1–0, 17. Rd8#
+        1–0, 46. Qxd6
       </span>
     ),
   },
   {
     step: "5xl",
-    size: "60/64",
+    token: "5xl",
     use: "landing only (M5)",
-    sample: <span className="font-serif text-5xl font-semibold">Paris 1858</span>,
+    sample: <span className="font-serif text-5xl font-semibold">Queen’s Indian</span>,
   },
 ];
 
@@ -390,22 +390,37 @@ function GlyphBadge({ glyph, tone }: { glyph: string; tone: "pen" | "good" }) {
   );
 }
 
+/** A length token in px, from its computed value (rem at the root's 16px). */
+function px(value: string | undefined): string {
+  if (!value) return " ";
+  const n = Number.parseFloat(value);
+  if (Number.isNaN(n)) return value;
+  return `${Math.round(value.endsWith("rem") ? n * 16 : n)}`;
+}
+
 function TypeScale() {
+  const tokens = [...new Set(typeSteps.map((t) => t.token))];
+  const [ref, values] = useCustomProperties(
+    tokens.flatMap((t) => [`--text-${t}`, `--text-${t}--line-height`]),
+  );
   return (
-    <div className="flex flex-col">
+    <div ref={ref} className="flex flex-col">
       <p className="max-w-prose text-sm text-ink-soft">
         Literata sets anything a coach would write, with its optical size following the rendered
         size. Schibsted Grotesk sets anything the app says.
       </p>
       <ul className="mt-4 flex flex-col gap-1">
-        {typeSteps.map(({ step, size, use, sample }) => (
+        {typeSteps.map(({ step, token, use, sample }) => (
           <li
             key={step}
             className="flex flex-col gap-2 rounded-field px-3 py-4 odd:bg-paper md:flex-row md:items-baseline md:gap-6"
           >
             <span className="shrink-0 md:w-56">
               <span className="block text-sm font-medium">
-                {step} <span className="font-normal text-ink-faint">{size}</span>
+                {step}{" "}
+                <span className="font-normal text-ink-faint">
+                  {px(values[`--text-${token}`])}/{px(values[`--text-${token}--line-height`])}
+                </span>
               </span>
               <span className="block text-xs text-ink-faint">{use}</span>
             </span>
@@ -419,10 +434,11 @@ function TypeScale() {
 
 /* Space and shape ---------------------------------------------------------------------------- */
 
-const moves: { n: string; white: string; black: string; glyph?: string }[] = [
-  { n: "8.", white: "Nc3", black: "c6" },
-  { n: "9.", white: "Bg5", black: "b5", glyph: "?" },
-  { n: "10.", white: "Nxb5", black: "cxb5", glyph: "?!" },
+// Rows 28 to 30 of the middlegame blunder fixture: the player had White.
+const moves: { n: string; white: string; whiteGlyph?: string; black: string; glyph?: string }[] = [
+  { n: "28.", white: "Nd2", whiteGlyph: "??", black: "e4", glyph: "?!" },
+  { n: "29.", white: "Nxe4", black: "Bxf3+" },
+  { n: "30.", white: "Kd2", black: "Ra8", glyph: "?!" },
 ];
 
 function MoveRows({ rowClass }: { rowClass: string }) {
@@ -435,9 +451,9 @@ function MoveRows({ rowClass }: { rowClass: string }) {
         >
           <span className="w-7 font-serif text-ink-faint tabular-nums lining-nums">{move.n}</span>
           <span className="w-16">
-            <Notation move={move.white} />
+            <Notation move={move.white} glyph={move.whiteGlyph} />
           </span>
-          <Notation move={move.black} glyph={move.glyph} />
+          <Notation move={move.black} glyph={move.glyph} opponent />
         </li>
       ))}
     </ol>
@@ -445,20 +461,34 @@ function MoveRows({ rowClass }: { rowClass: string }) {
 }
 
 function SpaceAndShape() {
-  const [ref, values] = useCustomProperties(["--space-panel-pad", "--space-gutter"]);
+  const [ref, values] = useCustomProperties([
+    "--space-panel-pad",
+    "--space-gutter",
+    "--space-move-row",
+    "--space-scoresheet-row",
+    "--radius-board",
+    "--radius-field",
+    "--radius-sheet",
+    "--radius-pill",
+    "--shadow-lift",
+  ]);
   return (
     <div ref={ref} className="grid grid-cols-1 gap-8 md:grid-cols-2">
       <div className="flex flex-col gap-5">
         <div>
           <p className="text-sm font-medium">
-            --space-move-row <span className="font-normal text-ink-faint">26px</span>
+            --space-move-row{" "}
+            <span className="font-normal text-ink-faint">{values["--space-move-row"] || " "}</span>
           </p>
           <p className="mb-2 text-xs text-ink-faint">the move list beside the board</p>
           <MoveRows rowClass="h-(--space-move-row) text-sm" />
         </div>
         <div>
           <p className="text-sm font-medium">
-            --space-scoresheet-row <span className="font-normal text-ink-faint">34px</span>
+            --space-scoresheet-row{" "}
+            <span className="font-normal text-ink-faint">
+              {values["--space-scoresheet-row"] || " "}
+            </span>
           </p>
           <p className="mb-2 text-xs text-ink-faint">the full scoresheet, room for its ring</p>
           <MoveRows rowClass="h-(--space-scoresheet-row) text-base" />
@@ -478,16 +508,19 @@ function SpaceAndShape() {
         <ul className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {(
             [
-              ["board", "rounded-board", "2px"],
-              ["field", "rounded-field", "6px"],
-              ["sheet", "rounded-sheet", "10px"],
-              ["pill", "rounded-pill", "9999px"],
+              ["board", "rounded-board"],
+              ["field", "rounded-field"],
+              ["sheet", "rounded-sheet"],
+              ["pill", "rounded-pill"],
             ] as const
-          ).map(([name, cls, value]) => (
+          ).map(([name, cls]) => (
             <li key={name} className="flex flex-col gap-2">
               <span aria-hidden className={`h-14 border-2 border-ink-soft bg-well ${cls}`} />
               <span className="text-sm font-medium">
-                --radius-{name} <span className="block font-normal text-ink-faint">{value}</span>
+                --radius-{name}{" "}
+                <span className="block font-normal text-ink-faint">
+                  {values[`--radius-${name}`] || " "}
+                </span>
               </span>
             </li>
           ))}
@@ -495,6 +528,7 @@ function SpaceAndShape() {
         <div className="rounded-field bg-well p-6">
           <div className="rounded-field bg-sheet p-4 shadow-lift">
             <p className="text-sm font-medium">--shadow-lift</p>
+            <p className="text-xs text-ink-faint break-words">{values["--shadow-lift"] || " "}</p>
             <p className="text-xs text-ink-faint">
               The one shadow, for what floats: popovers, the drawer, the command menu and a dragged
               piece. Everything else separates by tone.

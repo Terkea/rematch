@@ -18,6 +18,8 @@ export function Switch({ className, ...props }: SwitchPrimitive.Root.Props) {
         "data-checked:border-ink data-checked:bg-ink",
         "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink",
         "data-disabled:cursor-not-allowed data-disabled:border-rule",
+        // Disabled stays disabled when on: no ink fill (DESIGN.md "Interaction states").
+        "data-disabled:data-checked:border-rule data-disabled:data-checked:bg-well",
         // A 44px hit area around the 40 × 24 control.
         "after:absolute after:-inset-x-1 after:-inset-y-2.5",
         typeof className === "string" ? className : undefined,
@@ -30,7 +32,7 @@ export function Switch({ className, ...props }: SwitchPrimitive.Root.Props) {
           "pointer-events-none block size-4 rounded-pill bg-ink-soft",
           "transition-[translate,background-color] duration-(--dur-quick) ease-out motion-reduce:transition-none",
           "data-checked:translate-x-4 data-checked:bg-on-ink",
-          "group-data-disabled/switch:bg-rule",
+          "group-data-disabled/switch:bg-rule-strong",
         )}
       />
     </SwitchPrimitive.Root>

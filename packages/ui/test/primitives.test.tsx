@@ -122,6 +122,16 @@ describe("Switch", () => {
     await user.keyboard(" ");
     expect(toggle).toHaveAttribute("aria-checked", "false");
   });
+
+  it("drops the ink fill when disabled, even while on (DESIGN.md, Interaction states)", () => {
+    render(<Switch aria-label="Move sounds" defaultChecked disabled />);
+    const toggle = screen.getByRole("switch", { name: "Move sounds" });
+    const root = toggle.className.split(/\s+/);
+    expect(root).toContain("data-disabled:data-checked:bg-well");
+    expect(root).toContain("data-disabled:data-checked:border-rule");
+    const thumb = toggle.querySelector("[data-slot='switch-thumb']");
+    expect(thumb?.className.split(/\s+/)).toContain("group-data-disabled/switch:bg-rule-strong");
+  });
 });
 
 describe("Icon dependency owner", () => {
