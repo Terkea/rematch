@@ -67,6 +67,9 @@ async fn refuses_to_start_unless_the_engine_is_stockfish_19(
         lichess_lookback_days: None,
         pool_size: Some(1),
         syzygy_path: None,
+        data_dir: None,
+        maia_url: None,
+        plan_default: scheduler::select::Plan::Beta,
     };
     let err = match start_workers(&env, StartOptions::default()).await {
         Ok(_) => panic!("started with Stockfish 18"),
@@ -99,8 +102,9 @@ async fn starts_with_stockfish_19_and_shuts_down_cleanly(
     .expect("start_workers");
     assert!(running.stockfish_version.starts_with("Stockfish 19"));
     assert_eq!(running.engines.pids().len(), 1);
-    // Import, analyse, schedule-analysis, preview and reconcile.
-    assert_eq!(running.runners.len(), 5);
+    // Import, analyse, schedule-analysis, preview, build-profile, analyse-reference-game,
+    // difficulty-sweep, reference-difficulty-sweep (R2 Task 35) and reconcile.
+    assert_eq!(running.runners.len(), 9);
     let reconcile: i64 = sqlx::query_scalar(
         "SELECT count(*) FROM jobs WHERE kind = 'reconcile' AND state <> 'done'",
     )

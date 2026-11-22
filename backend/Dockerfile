@@ -94,10 +94,11 @@ COPY --from=planner /work/backend/recipe.json recipe.json
 RUN cargo chef cook --release --locked --recipe-path recipe.json
 COPY backend /work/backend
 COPY db /work/db
-RUN cargo build --release --locked -p worker -p cli
+RUN cargo build --release --locked -p worker -p cli -p lichess-db
 
 # The worker: a digest-pinned Debian base (bookworm-slim of 2026-11-04), CA roots for the platform
-# clients' TLS, the checksum-pinned Stockfish 19 from the `stockfish` stage, and both binaries.
+# clients' TLS, the checksum-pinned Stockfish 19 from the `stockfish` stage, and the three binaries
+# (`worker`, `cli`, and the operator's `lichess-db`, R2 Task 35).
 # It runs as an unprivileged user, publishes no ports, and carries no CONTACT_EMAIL (ADR 0043).
 FROM debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc AS worker
 RUN apt-get update \
@@ -106,6 +107,7 @@ RUN apt-get update \
 COPY --from=stockfish /usr/local/bin/stockfish /usr/local/bin/stockfish
 COPY --from=builder /work/backend/target/release/worker /usr/local/bin/worker
 COPY --from=builder /work/backend/target/release/cli /usr/local/bin/cli
+COPY --from=builder /work/backend/target/release/lichess-db /usr/local/bin/lichess-db
 ENV STOCKFISH_PATH=/usr/local/bin/stockfish
 USER 10001:10001
 ENTRYPOINT ["worker"]

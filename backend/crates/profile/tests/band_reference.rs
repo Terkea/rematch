@@ -1534,3 +1534,42 @@ async fn one_finaliser_error_never_stops_the_sweep(pool: PgPool) {
         "retried by the next run"
     );
 }
+
+/// R2 Task 35 (T21 hand-off): `lichess-db` creates band-reference builds with NULL protocols (it
+/// has no engine or enrich dependency). The finaliser, which does, records the analysis and
+/// enrichment protocols the games were analysed under when it activates the build.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn activation_records_the_analysis_and_enrichment_protocols(pool: PgPool) {
+    let (build, ids) = build_with(&pool, "2026-08", &ten_games("p")).await;
+    // As lichess-db creates it.
+    sqlx::query(
+        "UPDATE reference_builds SET protocol = NULL, enrichment_protocol = NULL WHERE id = $1",
+    )
+    .bind(build)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let before: (Option<String>, Option<String>) =
+        sqlx::query_as("SELECT protocol, enrichment_protocol FROM reference_builds WHERE id = $1")
+            .bind(build)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(before, (None, None), "lichess-db leaves them NULL");
+    let d = deps(&pool, None);
+    let last = analyse_all(&d, &ids).await.expect("games ran");
+    assert!(
+        matches!(finalize_of(&last), Some(FinalizeOutcome::Activated { .. })),
+        "{last:?}"
+    );
+    let after: (Option<String>, Option<String>) =
+        sqlx::query_as("SELECT protocol, enrichment_protocol FROM reference_builds WHERE id = $1")
+            .bind(build)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        after,
+        (Some("sf19-n300k-v1".to_owned()), Some("enr-v1".to_owned()))
+    );
+}

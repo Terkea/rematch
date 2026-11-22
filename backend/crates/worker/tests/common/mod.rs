@@ -43,6 +43,9 @@ pub fn env_for(opts: &PgConnectOptions) -> Option<WorkerEnv> {
         lichess_lookback_days: None,
         pool_size: Some(1),
         syzygy_path: None,
+        data_dir: None,
+        maia_url: None,
+        plan_default: scheduler::select::Plan::Beta,
     })
 }
 

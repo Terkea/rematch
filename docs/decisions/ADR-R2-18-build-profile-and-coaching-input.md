@@ -32,8 +32,7 @@ lines (build-profile, Task 33). It then turns that profile into the M3 `Coaching
    It then re-enqueues itself when the fingerprint changed or a game has
    `analysed_at > started_at`. Both checks are needed: `analysed_at` is the analysis
    transaction's start, so it can precede `started_at` for a game that committed after the load.
-   - The key release writes `jobs` from the profile crate. A `Queue::release_dedupe_key` is the
-     cleaner home (T35 / lane S).
+   - The key release goes through `Queue::release_dedupe_key` (Task 35, ADR-R2-25).
 8. Enqueue `schedule-analysis` and record the `job_metrics` row (`build-profile`, 6 stages).
 
 Mapping choices recorded from T33 (§Concerns 4):

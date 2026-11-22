@@ -575,6 +575,7 @@ async fn waits_for_the_schedule_job_before_counting(pool: PgPool) {
                 pool: sched_pool,
                 queue: sched_queue,
                 now: OffsetDateTime::now_utc,
+                default_plan: scheduler::select::Plan::Beta,
             }))),
             sched_cfg,
         )
