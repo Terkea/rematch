@@ -187,7 +187,9 @@ function ScoreRow(props: AreaScoreItem & { domain: RulerDomain }) {
             {areaLabels[area]}
           </span>
           <span className="text-sm text-ink-faint">
-            {basis.games} {basis.timeClass} games
+            {basis.unit
+              ? `${basis.games} ${basis.games === 1 ? basis.unit.one : basis.unit.many}`
+              : `${basis.games} ${basis.timeClass} games`}
           </span>
         </div>
         <span

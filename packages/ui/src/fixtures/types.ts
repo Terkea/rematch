@@ -78,7 +78,11 @@ export interface AreaScoreProps {
   /** `next` is optional: absent, the next band is not measured yet and no tick is drawn (R8). */
   band: { median: number; next?: number };
   delta?: number;
-  basis: { games: number; timeClass: string };
+  /**
+   * The sample behind the score. Without `unit` it reads "22 rapid games"; with one, "148 chances"
+   * (an area's n can count opportunities rather than games).
+   */
+  basis: { games: number; timeClass: string; unit?: { one: string; many: string } };
 }
 
 export type WeaknessState =
