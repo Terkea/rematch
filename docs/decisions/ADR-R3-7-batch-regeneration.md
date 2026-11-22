@@ -57,8 +57,18 @@ billed call must be metered exactly once.
 ## Consequences
 
 - Monthly and weekly AI costs halve; a regenerated report can take up to a day.
-- A submit whose response is lost may leave a batch the database does not know about while the
-  reconciler regenerates its rows synchronously: paid twice, but never applied twice (its items
-  were never recorded, so its results match no item). This is logged.
-- `persist_section_outcome` (store a section, refresh the status and disclosure, return the
-  event labels) is shared with Task 18's `on_section` at merge.
+- **Accepted (controller ruling): a lost submit can be paid twice.** If the API created a batch
+  but its response is lost (or the commit that records it fails), the database does not know the
+  batch, and after `BATCH_SUBMIT_GRACE` the reconciler regenerates its rows synchronously. That
+  work is paid twice (batch plus sync) but never applied twice: the batch's items were never
+  recorded, so its results match no item. It is rare (a 2xx that cannot be read or recorded) and
+  logged with the batch id. Avoiding it would need an idempotency key the Batches API does not
+  offer.
+- **Accepted (controller ruling): the weekly schedule checks budget, not plan.** Weekly reviews
+  go to whatever the `WeeklyInputProvider` reports due; the beta plan is unlimited, and the
+  per-scope monthly budget still bounds the spend.
+- Dates are `time::Date` throughout (`WeeklyInputProvider::due(week_start: Date)`); chrono is not
+  used (ADR 0031).
+- Sections are stored by Task 18's `report_job::persist_section_outcome` (store, refresh the
+  status and disclosure, return the event labels), shared by the sync `on_section` and the
+  poller; only the metering key differs.

@@ -195,7 +195,7 @@ fn section_labels(o: &SectionOutcome) -> Vec<String> {
 
 /// Sets the report's status from its ready sections, with the disclosure whenever AI text is
 /// shown. Returns the status.
-async fn refresh_status(
+pub(crate) async fn refresh_status(
     conn: &mut PgConnection,
     report_id: Uuid,
     now: OffsetDateTime,
@@ -218,6 +218,43 @@ async fn refresh_status(
     });
     reports::set_status(conn, report_id, status, disclosure.as_ref()).await?;
     Ok(status)
+}
+
+/// Stores one section outcome and refreshes the report's status and disclosure, on the
+/// caller's transaction. Returns the `report.section.ready` labels to emit, none when the
+/// section did not change; the caller emits them last. Metering is the caller's: its key
+/// depends on the path (a claim here, a batch item in `batch_jobs`).
+pub(crate) async fn persist_section_outcome(
+    conn: &mut PgConnection,
+    report_id: Uuid,
+    o: &SectionOutcome,
+    now: OffsetDateTime,
+) -> anyhow::Result<Vec<String>> {
+    let write = SectionWrite {
+        section: o.section,
+        status: match o.status {
+            SectionStatus::Ready => SectionWriteStatus::Ready,
+            SectionStatus::Dropped => SectionWriteStatus::Dropped,
+        },
+        content: o.content.as_ref().map(serde_json::to_value).transpose()?,
+        // The full items (with details) are the server-side audit copy; the web payload
+        // projects them without model text.
+        dropped: serde_json::to_value(&o.dropped)?,
+        attempts: i16::from(o.attempts),
+        model: Models::REPORT.as_str().to_owned(),
+    };
+    let changed = reports::upsert_section(conn, report_id, &write).await?;
+    refresh_status(conn, report_id, now).await?;
+    Ok(if changed.0 {
+        section_labels(o)
+    } else {
+        Vec::new()
+    })
+}
+
+/// Whether a stored outcome shows narrative text (`SectionReady.narrative`).
+pub(crate) fn is_narrative(o: &SectionOutcome) -> bool {
+    o.status == SectionStatus::Ready && o.content.is_some()
 }
 
 /// The metering key prefix of `what` (a section key, or `unmetered`) within one claim: the
@@ -427,20 +464,7 @@ impl SectionSink {
             // The calls come back as `unmetered` and are metered by the caller.
             return Err(ClaimLost.into());
         }
-        let write = SectionWrite {
-            section: o.section,
-            status: match o.status {
-                SectionStatus::Ready => SectionWriteStatus::Ready,
-                SectionStatus::Dropped => SectionWriteStatus::Dropped,
-            },
-            content: o.content.as_ref().map(serde_json::to_value).transpose()?,
-            // The full items (with details) are the server-side audit copy; the web payload
-            // projects them without model text.
-            dropped: serde_json::to_value(&o.dropped)?,
-            attempts: i16::from(o.attempts),
-            model: Models::REPORT.as_str().to_owned(),
-        };
-        let changed = reports::upsert_section(&mut tx, self.report_id, &write).await?;
+        let labels = persist_section_outcome(&mut tx, self.report_id, &o, self.now).await?;
         meter_keyed(
             &mut tx,
             &self.pricing,
@@ -452,23 +476,20 @@ impl SectionSink {
             &usage_key(&self.claim, o.section.as_str()),
         )
         .await?;
-        refresh_status(&mut tx, self.report_id, self.now).await?;
-        if changed.0 {
-            let narrative = o.status == SectionStatus::Ready && o.content.is_some();
-            for section in section_labels(&o) {
-                events::emit(
-                    &mut tx,
-                    self.account_id,
-                    REPORT_SECTION_READY,
-                    &SectionReady {
-                        report_id: self.report_id,
-                        report_run_id: self.claim.id,
-                        section,
-                        narrative,
-                    },
-                )
-                .await?;
-            }
+        let narrative = is_narrative(&o);
+        for section in labels {
+            events::emit(
+                &mut tx,
+                self.account_id,
+                REPORT_SECTION_READY,
+                &SectionReady {
+                    report_id: self.report_id,
+                    report_run_id: self.claim.id,
+                    section,
+                    narrative,
+                },
+            )
+            .await?;
         }
         tx.commit().await?;
         Ok(())

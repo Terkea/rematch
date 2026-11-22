@@ -41,7 +41,8 @@
 //!   the sync job.
 //! - a run whose items are all processed is finished: with all five sections stored it is done
 //!   (`report.ready`); otherwise it goes back to `queued` and `generate-report` is enqueued after
-//!   the commit, and that job generates only the missing sections. A weekly review that needs
+//!   the commit, and that job generates only the missing sections. Sections are stored with
+//!   Task 18's `report_job::persist_section_outcome`, the same write as the sync path. A weekly review that needs
 //!   the sync path gets `weekly-review` enqueued.
 //! - a stream error (or [`BATCH_RESULTS_TIMEOUT`]) leaves the batch `submitted`; the next poll
 //!   skips the processed items. When a complete stream left an item without a result, that item
@@ -69,12 +70,13 @@ use super::kinds::{
 };
 use super::providers::CoachingInputProvider;
 use super::reconcile::BATCH_SUBMIT_GRACE;
+use super::report_job::{is_narrative, persist_section_outcome, refresh_status};
 use crate::client::cost::PricingTable;
 use crate::client::model::Models;
 use crate::client::port::{AiClient, BatchItem, BatchOutcome, BatchResultItem, BatchStatus};
 use crate::db::ItemStatus;
 use crate::db::batches::{self, BatchItemRow, BatchKind, BatchRow, NewBatchItem};
-use crate::db::reports::{self, NewReport, ReportStatus, SectionWrite, SectionWriteStatus};
+use crate::db::reports::{self, NewReport, ReportStatus};
 use crate::db::runs::{self, NewRun, ReportMode, ReportTrigger, RunStatus};
 use crate::db::usage::AiFeature;
 use crate::db::weekly::{self, NewWeekly, WeeklyContent};
@@ -91,11 +93,11 @@ use crate::generate::batch::{
 use crate::generate::computed::build_computed_report;
 use crate::generate::context::input_hash;
 use crate::generate::payload::REPORT_PAYLOAD_SCHEMA_VERSION;
-use crate::generate::section::{CallRecord, SectionError, SectionOutcome, SectionStatus};
+use crate::generate::section::{CallRecord, SectionError};
 use crate::generate::weekly::WeeklyOutcome;
 use crate::input::parse::parse_coaching_input;
 use crate::input::types::{CoachingInput, TimeClass};
-use crate::output::codes::{SECTION_KEYS, SectionKey};
+use crate::output::codes::SECTION_KEYS;
 use crate::output::disclosure::make_disclosure;
 use crate::output::weekly::WeeklyReviewInput;
 use crate::prompts::{
@@ -804,9 +806,7 @@ async fn apply_report(
                 report_id: run.report_id,
                 report_run_id: run_id,
                 section,
-                narrative: outcome
-                    .as_ref()
-                    .is_some_and(|o| o.status == SectionStatus::Ready),
+                narrative: outcome.as_ref().is_some_and(is_narrative),
             },
         )
         .await?;
@@ -828,80 +828,6 @@ async fn lock_run(conn: &mut PgConnection, run_id: Uuid) -> sqlx::Result<()> {
         .execute(conn)
         .await?;
     Ok(())
-}
-
-/// The `report.section.ready` labels of an outcome: one per area item for `areas`.
-fn section_labels(o: &SectionOutcome) -> Vec<String> {
-    match (o.section, o.content.as_ref().and_then(|c| c.areas())) {
-        (SectionKey::Areas, Some(a)) if !a.items.is_empty() => {
-            let mut out: Vec<String> = Vec::new();
-            for i in &a.items {
-                let l = format!("area:{}", i.area.as_str());
-                if !out.contains(&l) {
-                    out.push(l);
-                }
-            }
-            out
-        }
-        (k, _) => vec![k.as_str().to_owned()],
-    }
-}
-
-/// Sets the report's status from its ready sections, with the disclosure whenever AI text is
-/// shown (Task 18's rule).
-async fn refresh_status(
-    conn: &mut PgConnection,
-    report_id: Uuid,
-    now: OffsetDateTime,
-) -> sqlx::Result<ReportStatus> {
-    let ready = reports::ready_sections(conn, report_id).await?.len();
-    let status = if ready == SECTION_KEYS.len() {
-        ReportStatus::Complete
-    } else if ready == 0 {
-        ReportStatus::ComputedOnly
-    } else {
-        ReportStatus::Partial
-    };
-    let disclosure = (status != ReportStatus::ComputedOnly).then(|| {
-        serde_json::to_value(make_disclosure(
-            Models::REPORT.as_str(),
-            REPORT_PROMPT_VERSION,
-            now,
-        ))
-        .expect("the disclosure serialises")
-    });
-    reports::set_status(conn, report_id, status, disclosure.as_ref()).await?;
-    Ok(status)
-}
-
-/// Stores one validated section outcome and refreshes the report's status, on the caller's
-/// transaction. Returns the event labels to emit (none when the section did not change); the
-/// caller emits them last. Metering is the caller's (its key depends on the path).
-pub(crate) async fn persist_section_outcome(
-    conn: &mut PgConnection,
-    report_id: Uuid,
-    o: &SectionOutcome,
-    now: OffsetDateTime,
-) -> anyhow::Result<Vec<String>> {
-    let write = SectionWrite {
-        section: o.section,
-        status: match o.status {
-            SectionStatus::Ready => SectionWriteStatus::Ready,
-            SectionStatus::Dropped => SectionWriteStatus::Dropped,
-        },
-        content: o.content.as_ref().map(serde_json::to_value).transpose()?,
-        // The full items are the server-side audit copy; the web payload drops the details.
-        dropped: serde_json::to_value(&o.dropped)?,
-        attempts: i16::from(o.attempts),
-        model: Models::REPORT.as_str().to_owned(),
-    };
-    let changed = reports::upsert_section(conn, report_id, &write).await?;
-    refresh_status(conn, report_id, now).await?;
-    Ok(if changed.0 {
-        section_labels(o)
-    } else {
-        Vec::new()
-    })
 }
 
 #[derive(Clone, Copy)]
