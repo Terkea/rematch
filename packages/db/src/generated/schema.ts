@@ -318,6 +318,7 @@ export const coachConversations = pgTable(
     lastMessageAt: timestamp("last_message_at", { withTimezone: true, mode: "date" })
       .defaultNow()
       .notNull(),
+    nextCallIndex: integer("next_call_index").default(0).notNull(),
   },
   (table) => [
     index("coach_conversations_owner_idx").using(
@@ -356,6 +357,8 @@ export const coachMessages = pgTable(
     sessionModelUsage: jsonb("session_model_usage"),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
     streamingAt: timestamp("streaming_at", { withTimezone: true, mode: "date" }),
+    sessionInSync: boolean("session_in_sync"),
+    turnAttempts: smallint("turn_attempts").default(0).notNull(),
   },
   (table) => [
     index("coach_messages_pending_idx")
@@ -730,6 +733,7 @@ export const jobs = pgTable(
         table.userKey.asc().nullsLast(),
         table.priority.asc().nullsLast(),
         table.runAt.asc().nullsLast(),
+        table.id.asc().nullsLast(),
       )
       .where(sql`(state = 'queued'::job_state)`),
   ],

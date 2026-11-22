@@ -128,3 +128,58 @@ from the plan's signature:
   quota atomically (two concurrent questions can both pass the pure pre-check).
 - **Task 24.** If a turn is cancelled while a tool call waits on the engine, the check may never
   be abandoned; the reconciler must expire stale pending checks and refund them.
+
+## The coach-chat job (Task 25)
+
+Decisions made when the job, the DB data source and the threads were built:
+
+1. **One turn per conversation.** The job holds a session advisory lock (class 30003, the
+   conversation id) on a dedicated connection that is closed, never pooled, when the handler
+   ends; a dropped handler or a crashed worker frees it with the connection. A second handler
+   (a redelivered job, or another answer of the thread) is released and retried. Under the lock,
+   an answer waits while an earlier answer of the thread is unfinished, so turns run in `seq`
+   order. `post_user_message` also refuses a question while an answer is pending or streaming
+   (`Busy`, under a row lock on the conversation). The finish transaction runs on the lock
+   connection, so a lost lock fails the write rather than interleaving it.
+2. **The chat allowance is reserved atomically** (hand-off above). Under a transaction lock per
+   account of the budget scope (class 30004), the job counts the scope's assistant answers per
+   window and moves the message to `streaming` in the same transaction. Counted: `streaming`
+   answers, and `done` answers that carry an AI disclosure. The fixed no-data copy has none, so
+   it does not use the allowance. The reservation happens before the no-data and no-AI checks
+   (the brief's order of the checks is kept).
+3. **State that survives restarts** lives in Postgres (migration `20261121030200`):
+   `coach_conversations.next_call_index` (the next turn's first tool-call index; raised with
+   `greatest` in the finish transaction), `coach_messages.session_in_sync` and
+   `coach_messages.turn_attempts`. The next turn resumes only when the previous assistant row is
+   `done` with `session_in_sync = true` and the history did not roll over. A failed or lost turn
+   is never in sync, so the turn after it sends the full Postgres history with `resume: false`
+   and the sidecar replaces the partial session.
+4. **Unavailable retries.** A `Release` gives its queue attempt back, so the job cannot count
+   attempts from the queue. `turn_attempts` counts the turn's AI attempts: the first unavailable
+   attempt puts the message back to `pending` (the retry reserves again) and releases for 60 s;
+   the second fails with `unavailable`. The whole turn runs under `CHAT_TURN_TIMEOUT` (600 s); a
+   timeout counts as unavailable.
+5. **Timeouts.** `CHAT_CALL_TIMEOUT` = 200 s = `CHAT_TURN_TIMEOUT / 3` is the most one sidecar
+   call may take; `SidecarConfig::chat_timeout` (180 s) is under it, which a test pins. This
+   supersedes the earlier note to pass `CHAT_TURN_TIMEOUT` itself as `timeoutMs`: a turn makes up
+   to three sequential calls.
+6. **History after a rollover.** Once a summary exists, later turns (until the next rollover) use
+   `Rollover { stored summary, the last replay_turns turns }` without a new summary call. Only a
+   turn that writes a new summary counts as a rollover for `resume_next_turn`, so the session
+   started by the rollover turn is resumed afterwards.
+7. **Deleted mid-turn.** The finish transaction re-checks the conversation with `FOR SHARE`
+   (waiting for a delete in progress). If it is gone, the paid calls are still metered (usage rows
+   have no content) and the conversation's orphaned session entries are deleted.
+8. **Titles.** After the first answered turn, `summarise_thread` (metered as chat) gives the
+   title, or the anchor's fallback title when the call fails or the title does not pass.
+   Refusal, off-topic and fallback turns get the fallback title without a call.
+9. **The data source** reads weaknesses, openings and exemplars from the conversation's coaching
+   input (the newest report-run snapshot of the account and time class), and positions, games,
+   cached evals and report sections from Postgres, always filtered on the account. `get_games` is
+   limited to the conversation's time class. `openingContains` matches literally (`\`, `%` and `_`
+   escaped). Position tags come from the matching exemplars until R2's per-move tags exist.
+10. **Threads take the account.** `post_user_message` takes the account id the caller acts for
+    (it is not in the plan's signature): every thread call is scoped by it.
+11. **Task 18 stand-ins.** T18 is not on this base. `jobs/budget.rs` holds minimal versions of
+    `BudgetConfig`, `budget_guard` and `meter`, and `ChatDeps` carries a `PricingTable`. At merge,
+    T18's file replaces them and the call sites in `chat/job.rs` are adapted.
