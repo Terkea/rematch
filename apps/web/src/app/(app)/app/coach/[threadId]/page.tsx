@@ -4,6 +4,7 @@ import { cache } from "react";
 import { segmentGameIds } from "../../../../../lib/segment-href";
 import { requireUser } from "../../../../../server/auth/session";
 import { chatAllowance } from "../../../../../server/coach/allowance";
+import { coachStatus } from "../../../../../server/coach/status";
 import { getThread, listConversations, type Thread } from "../../../../../server/coach/threads";
 import { getDb } from "../../../../../server/db";
 import { requestEventCursor } from "../../../../../server/events/request-cursor";
@@ -48,13 +49,14 @@ export default async function ThreadPage({ params }: Props) {
     ...segmentGameIds(m.segments),
     ...m.streamed.flatMap((c) => segmentGameIds(c.segments)),
   ]);
-  const [allowance, threads, anchor, ids] = await Promise.all([
+  const [allowance, threads, anchor, ids, status] = await Promise.all([
     chatAllowance(db, thread.accountId),
     listConversations(db, userId, thread.accountId),
     thread.anchor
       ? loadAnchorView(db, userId, thread.accountId, thread.anchor)
       : Promise.resolve(null),
     reviewGameIds(db, userId, { accountId: thread.accountId }, [...new Set(named)]),
+    coachStatus(db),
   ]);
   const q = new URLSearchParams({ account: thread.accountId, tc: thread.timeClass });
   return (
@@ -63,6 +65,7 @@ export default async function ThreadPage({ params }: Props) {
       thread={thread}
       allowance={allowanceView(allowance)}
       listHref={`/app/coach?${q.toString()}`}
+      available={status === "available"}
       gameIds={Object.fromEntries(ids)}
       anchorCard={anchor ? <AnchorCard view={anchor} /> : null}
       aside={

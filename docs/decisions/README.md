@@ -80,6 +80,7 @@ One file per decision: context, decision, alternatives, consequences. New decisi
 - [0075. Coach data for the beta: the beta AI plan, weekly-review inputs, the first report](0075-beta-ai-plan-weekly-inputs-first-report.md)
 - [0076. Recurring incremental sync of linked accounts](0076-recurring-account-sync.md)
 - [0077. "Sync now" and the analysis-progress panel](0077-sync-now-and-analysis-progress.md)
+- [0078. Honest coach availability, uncompared weaknesses and R2-backed examples](0078-honest-coach-availability-and-benchmarks.md)
 
 ## Records with placeholder numbers
 

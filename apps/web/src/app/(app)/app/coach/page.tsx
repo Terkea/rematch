@@ -1,10 +1,12 @@
-import { Icon, InfoIcon, PlusIcon } from "@ci/ui/icons";
+import { CoachState } from "@ci/ui/coach";
+import { Icon, PlusIcon } from "@ci/ui/icons";
 import { Button } from "@ci/ui/primitives";
 import Link from "next/link";
 import { CoachScopeSwitch } from "../../../../components/coach-scope-switch";
 import { requireUser } from "../../../../server/auth/session";
 import { chatAllowance } from "../../../../server/coach/allowance";
 import { coachHref } from "../../../../server/coach/anchor";
+import { COACH_UNAVAILABLE_TITLE, coachStatus } from "../../../../server/coach/status";
 import { listConversations } from "../../../../server/coach/threads";
 import { getDb } from "../../../../server/db";
 import { requestEventCursor } from "../../../../server/events/request-cursor";
@@ -12,7 +14,7 @@ import { resolveCoachScope } from "../../../../server/profile/scope";
 import { EmptySheet, PageHeading } from "../../_shell/page-heading";
 import { allowanceView } from "./allowance";
 import { AllowanceLine } from "./allowance-line";
-import { AI_DISCLOSURE_NOTE, EMPTY_THREADS } from "./copy";
+import { COACH_UNAVAILABLE_BODY, EMPTY_THREADS } from "./copy";
 import { NoScope } from "./no-scope";
 import { ScopeRow } from "./scope-row";
 import { ThreadList } from "./thread-list";
@@ -43,11 +45,14 @@ export default async function CoachPage({ searchParams }: { searchParams: Promis
       </>
     );
   }
-  const [threads, allowance] = await Promise.all([
+  const [threads, allowance, status] = await Promise.all([
     listConversations(db, user.id, scope.accountId),
     chatAllowance(db, scope.accountId),
+    coachStatus(db),
   ]);
   const newHref = coachHref(null, scope);
+  // Bug hunt I5: nothing invites a question, or counts an allowance, that no coach would answer.
+  const available = status === "available";
   return (
     <>
       <PageHeading title="Ask your coach" lede={LEDE} />
@@ -55,13 +60,23 @@ export default async function CoachPage({ searchParams }: { searchParams: Promis
         <ScopeRow>
           <CoachScopeSwitch scope={scope} basePath="/app/coach" />
         </ScopeRow>
-        <Button asChild>
-          <Link href={newHref}>
-            <Icon icon={PlusIcon} size={20} />
-            New conversation
-          </Link>
-        </Button>
+        {available ? (
+          <Button asChild>
+            <Link href={newHref}>
+              <Icon icon={PlusIcon} size={20} />
+              New conversation
+            </Link>
+          </Button>
+        ) : null}
       </div>
+      {available ? null : (
+        <CoachState
+          kind="unavailable"
+          titleAs="h2"
+          title={COACH_UNAVAILABLE_TITLE}
+          body={COACH_UNAVAILABLE_BODY}
+        />
+      )}
       <section aria-labelledby="coach-threads" className="flex flex-col gap-3">
         <h2 id="coach-threads" className="sr-only">
           Your conversations
@@ -70,7 +85,7 @@ export default async function CoachPage({ searchParams }: { searchParams: Promis
           <div data-surface="sheet" className="rounded-sheet bg-sheet py-1">
             <ThreadList threads={threads} />
           </div>
-        ) : (
+        ) : available ? (
           <EmptySheet
             action={
               <Button asChild variant="outline">
@@ -80,15 +95,14 @@ export default async function CoachPage({ searchParams }: { searchParams: Promis
           >
             {EMPTY_THREADS}
           </EmptySheet>
-        )}
+        ) : null}
       </section>
-      <footer className="flex max-w-prose flex-col gap-2">
-        <AllowanceLine allowance={allowanceView(allowance)} />
-        <p className="m-0 flex items-start gap-2 font-sans text-sm text-ink-faint">
-          <Icon icon={InfoIcon} size={16} className="mt-0.5 shrink-0" />
-          <span>{AI_DISCLOSURE_NOTE}</span>
-        </p>
-      </footer>
+      {/* M3: no AI disclosure here: the list holds no AI text, and each answer carries its own. */}
+      {available ? (
+        <footer className="flex max-w-prose flex-col gap-2">
+          <AllowanceLine allowance={allowanceView(allowance)} />
+        </footer>
+      ) : null}
     </>
   );
 }

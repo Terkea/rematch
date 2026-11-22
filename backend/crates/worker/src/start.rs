@@ -85,6 +85,7 @@ use scheduler::select::Plan;
 use sqlx::PgPool;
 use tokio::task::AbortHandle;
 use tokio_util::sync::CancellationToken;
+use uuid::Uuid;
 
 use crate::ai_jobs::{
     AI_POOL_HEADROOM, AiRunnerDeps, AiSetup, ProfileInputProvider, ai_client_from_env, ai_runners,
@@ -608,6 +609,8 @@ pub struct RunningWorkers {
     /// Whether the AI runners have a client (see [`crate::ai_jobs`]).
     pub ai_enabled: bool,
     monitor: AbortHandle,
+    /// Keeps this worker's `ai_status` row fresh while it has AI runners ([`crate::ai_status`]).
+    ai_heartbeat: Option<AbortHandle>,
 }
 
 impl RunningWorkers {
@@ -630,6 +633,7 @@ impl RunningWorkers {
             db: Box::new(DbClose {
                 pool: self.pool,
                 monitor: self.monitor,
+                ai_heartbeat: self.ai_heartbeat,
             }),
         }
     }
@@ -654,15 +658,19 @@ impl Closable for Engines {
     }
 }
 
-/// Closes the pool, after stopping the stats monitor.
+/// Closes the pool, after stopping the stats monitor and the AI status heartbeat.
 struct DbClose {
     pool: PgPool,
     monitor: AbortHandle,
+    ai_heartbeat: Option<AbortHandle>,
 }
 
 impl Closable for DbClose {
     fn close(&self) -> BoxFuture<'_, anyhow::Result<()>> {
         self.monitor.abort();
+        if let Some(h) = &self.ai_heartbeat {
+            h.abort();
+        }
         async move {
             self.pool.close().await;
             Ok(())
@@ -752,10 +760,13 @@ pub async fn start_workers(env: &WorkerEnv, opts: StartOptions) -> anyhow::Resul
         })),
         AiSetup::FromEnv => Some(ai_client_from_env(env).await),
     };
+    // The startup line, recorded in `ai_status` for the web (bug hunt I5); never a credential.
+    let mut ai_line: Option<String> = None;
     let ai_client = match ai_choice {
         None => None,
         Some(Ok(choice)) => {
             tracing::info!("{}", choice.line);
+            ai_line = Some(choice.line.clone());
             // Which path the monthly and weekly schedules take (ADR 0075); no credential here.
             if let Some(client) = &choice.client {
                 tracing::info!(
@@ -956,6 +967,18 @@ pub async fn start_workers(env: &WorkerEnv, opts: StartOptions) -> anyhow::Resul
         }
         Err(e) => tracing::warn!(error = %e, "resuming reference-game jobs failed"),
     }
+    // Whether the coach can write, for the web (bug hunt I5, ADR 0078). Not fatal: without the
+    // row the web says the coach is not available, which is the safe side.
+    let ai_heartbeat = match &ai_line {
+        Some(line) => {
+            let worker_id = Uuid::new_v4();
+            if let Err(e) = crate::ai_status::record(&pool, worker_id, ai_enabled, line).await {
+                tracing::warn!(error = %e, "recording the ai status failed");
+            }
+            Some(tokio::spawn(crate::ai_status::heartbeat(pool.clone(), worker_id)).abort_handle())
+        }
+        None => None,
+    };
     let Spawned { runners, claims } = s;
     let monitor = tokio::spawn(log_busy_releases(busy_releases.clone())).abort_handle();
     tracing::info!(
@@ -981,6 +1004,7 @@ pub async fn start_workers(env: &WorkerEnv, opts: StartOptions) -> anyhow::Resul
         busy_releases,
         ai_enabled,
         monitor,
+        ai_heartbeat,
     })
 }
 

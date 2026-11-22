@@ -1,6 +1,8 @@
 "use client";
 
 import { CoachState } from "@ci/ui/coach";
+import type { CoachStatus } from "../../../../../server/coach/status";
+import { COACH_UNAVAILABLE_TITLE } from "../../../../../server/coach/status-copy";
 import type { ReportState } from "../../../../../server/coaching/state";
 import { SECTION_KEYS, type SectionKey } from "../../../../../server/coaching/types";
 import { type ReportScope, useRequestReport, utcTime, whenText } from "../rebuild-button";
@@ -29,6 +31,7 @@ export function StateBanner({
   nextManualAt,
   now,
   notesCount,
+  coach = "available",
 }: {
   state: ReportState;
   scope: ReportScope;
@@ -38,6 +41,8 @@ export function StateBanner({
   now: Date;
   /** How many sections of the shown report have coach notes. */
   notesCount?: number;
+  /** Whether a coach could write the report now (bug hunt I5, ADR 0078). */
+  coach?: CoachStatus;
 }) {
   const { request, pending } = useRequestReport(scope, first);
   const retry = {
@@ -47,6 +52,30 @@ export function StateBanner({
 
   switch (state.kind) {
     case "none":
+      // Bug hunt I5: never offer a report nothing would write. With workers but no AI it is
+      // built from the numbers alone; with no worker running nothing could build it.
+      if (coach !== "available") {
+        return (
+          <CoachState
+            kind="unavailable"
+            titleAs="h2"
+            title={COACH_UNAVAILABLE_TITLE}
+            body={
+              coach === "no_ai"
+                ? "Your report can still be built from your analysed games: it shows your numbers, without your coach's notes."
+                : "Nothing can build your report at the moment. Come back a little later."
+            }
+            action={
+              coach === "no_ai"
+                ? {
+                    label: pending ? "Requesting your report" : "Build it from your numbers",
+                    onClick: () => void request(),
+                  }
+                : null
+            }
+          />
+        );
+      }
       return (
         <CoachState
           kind="empty"

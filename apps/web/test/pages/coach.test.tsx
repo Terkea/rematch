@@ -43,6 +43,11 @@ vi.mock("../../src/server/coach/allowance", async (orig) => ({
   ...(await orig<object>()),
   chatAllowance,
 }));
+const coachStatus = vi.fn();
+vi.mock("../../src/server/coach/status", async (orig) => ({
+  ...(await orig<object>()),
+  coachStatus,
+}));
 const getThread = vi.fn();
 const listConversations = vi.fn();
 vi.mock("../../src/server/coach/threads", async (orig) => ({
@@ -156,6 +161,8 @@ const fetchMock = vi.fn();
 beforeEach(() => {
   for (const m of [push, refresh, toast, resolveCoachScope, chatAllowance, getThread])
     m.mockReset();
+  coachStatus.mockReset();
+  coachStatus.mockResolvedValue("available");
   listConversations.mockReset();
   getGameReview.mockReset();
   reviewGameIds.mockReset();
@@ -381,7 +388,8 @@ describe("coach pages", () => {
       "2026-11-12",
     );
     expect(screen.getByText(/2 of 3 coach messages left this week, resets Monday/)).toBeVisible();
-    expect(screen.getByText(AI_DISCLOSURE_NOTE)).toBeInTheDocument();
+    // M3: the list holds no AI text, so it carries no AI disclosure (each answer has its own).
+    expect(screen.queryByText(AI_DISCLOSURE_NOTE)).toBeNull();
     expect(screen.getByRole("link", { name: "New conversation" })).toHaveAttribute(
       "href",
       `/app/coach/new?account=${ACCOUNT}&tc=rapid`,
@@ -396,6 +404,42 @@ describe("coach pages", () => {
     expect(
       screen.getByText("Ask about any of your games, moves, openings or weaknesses."),
     ).toBeInTheDocument();
+  });
+
+  // Bug hunt I5: "Ask your first question" and "100 of 100 left" while no AI could answer.
+  it("I5: with the coach unavailable the list says so and invites nothing", async () => {
+    for (const status of ["no_ai", "offline"] as const) {
+      coachStatus.mockResolvedValue(status);
+      const tree = await ListPage({ searchParams: Promise.resolve({}) });
+      const { container, unmount } = render(tree as ReactElement);
+      expect(container).toHaveTextContent("Coach not available right now");
+      expect(screen.queryByRole("link", { name: "Ask your first question" })).toBeNull();
+      expect(screen.queryByRole("link", { name: "New conversation" })).toBeNull();
+      expect(container.textContent).not.toMatch(/coach messages left/);
+      expect(screen.queryByText(AI_DISCLOSURE_NOTE)).toBeNull();
+      unmount();
+    }
+  });
+
+  it("I5: a new conversation with the coach unavailable cannot be sent", async () => {
+    coachStatus.mockResolvedValue("no_ai");
+    const tree = await NewPage({ searchParams: Promise.resolve({}) });
+    const { container } = render(tree as ReactElement);
+    expect(container).toHaveTextContent("Coach not available right now");
+    expect(screen.getByRole("textbox", { name: "Your question" })).toBeDisabled();
+    expect(container.textContent).not.toMatch(/coach messages left/);
+    // M3: no AI text on this page yet, so no disclosure.
+    expect(screen.queryByText(AI_DISCLOSURE_NOTE)).toBeNull();
+  });
+
+  it("I5: a thread with the coach unavailable keeps its answers but cannot be asked", () => {
+    const { container } = render(
+      <ThreadView thread={thread} allowance={view(1)} listHref="/app/coach" available={false} />,
+    );
+    expect(screen.getByText("Your rook left the seventh rank too early.")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Your question" })).toBeDisabled();
+    expect(container).toHaveTextContent("Coach not available right now");
+    expect(container.textContent).not.toMatch(/coach messages left/);
   });
 
   it("a user with no analysed games is told why there is no coach yet", async () => {

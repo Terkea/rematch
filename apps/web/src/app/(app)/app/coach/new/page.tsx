@@ -2,6 +2,7 @@ import { CoachScopeSwitch } from "../../../../../components/coach-scope-switch";
 import { requireUser } from "../../../../../server/auth/session";
 import { chatAllowance } from "../../../../../server/coach/allowance";
 import { type ChatAnchor, decodeAnchor } from "../../../../../server/coach/anchor";
+import { coachStatus } from "../../../../../server/coach/status";
 import { getDb } from "../../../../../server/db";
 import { requestEventCursor } from "../../../../../server/events/request-cursor";
 import { resolveCoachScope } from "../../../../../server/profile/scope";
@@ -41,9 +42,10 @@ export default async function NewCoachPage({ searchParams }: { searchParams: Pro
   }
   const raw = first(params.anchor);
   const decoded = raw ? decodeAnchor(raw) : null;
-  const [view, allowance] = await Promise.all([
+  const [view, allowance, status] = await Promise.all([
     decoded ? loadAnchorView(db, user.id, scope.accountId, decoded) : Promise.resolve(null),
     chatAllowance(db, scope.accountId),
+    coachStatus(db),
   ]);
   const anchor: ChatAnchor | null = view ? decoded : null;
   const q = new URLSearchParams({ account: scope.accountId, tc: scope.timeClass });
@@ -53,6 +55,7 @@ export default async function NewCoachPage({ searchParams }: { searchParams: Pro
       anchor={anchor}
       allowance={allowanceView(allowance)}
       listHref={`/app/coach?${q.toString()}`}
+      available={status === "available"}
       // An anchor belongs to one account's games: switching scope would drop it, so no switch.
       scopeSwitch={
         view ? null : (

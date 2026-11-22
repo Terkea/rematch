@@ -10,6 +10,10 @@ export const AI_DISCLOSURE_NOTE =
 
 export const EMPTY_THREADS = "Ask about any of your games, moves, openings or weaknesses.";
 
+/** Under "Coach not available right now" (bug hunt I5): what still works, and what to expect. */
+export const COACH_UNAVAILABLE_BODY =
+  "Questions can't be answered at the moment. Your past conversations stay readable, and you can ask again once your coach is back.";
+
 /** One line even on a phone, so the empty box stays one line high (review V3). */
 export const COMPOSER_PLACEHOLDER = "Ask about your games";
 

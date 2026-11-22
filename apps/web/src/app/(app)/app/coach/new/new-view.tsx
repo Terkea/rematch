@@ -1,18 +1,19 @@
 "use client";
 
-import { AiLabel, ChatComposer, ChatMessage } from "@ci/ui/coach";
+import { ChatComposer, ChatMessage, CoachState } from "@ci/ui/coach";
 import { Icon, WarningIcon } from "@ci/ui/icons";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type ReactNode, useEffect, useState } from "react";
 import type { ChatAnchor } from "../../../../../server/coach/anchor";
 import { CHAT_COPY } from "../../../../../server/coach/copy";
+import { COACH_UNAVAILABLE_TITLE } from "../../../../../server/coach/status-copy";
 import type { TimeClass } from "../../../../../server/games/types";
 import { BackLink } from "../[threadId]/thread-view";
 import type { AllowanceView } from "../allowance";
 import { AllowanceLine } from "../allowance-line";
 import {
-  AI_DISCLOSURE_NOTE,
+  COACH_UNAVAILABLE_BODY,
   COMPACT_COMPOSER,
   COMPOSER_PLACEHOLDER,
   postErrorCopy,
@@ -35,6 +36,7 @@ export function NewConversation({
   anchor,
   allowance,
   listHref,
+  available = true,
   scopeSwitch,
   children,
 }: {
@@ -42,6 +44,8 @@ export function NewConversation({
   anchor: ChatAnchor | null;
   allowance: AllowanceView | null;
   listHref: string;
+  /** False while no coach could answer (bug hunt I5): the composer is off and says why. */
+  available?: boolean;
   scopeSwitch?: ReactNode;
   children?: ReactNode;
 }) {
@@ -91,7 +95,13 @@ export function NewConversation({
   }
 
   const exhausted = allowance?.exhausted ?? null;
-  const reason = exhausted ? CHAT_COPY.capText(exhausted) : sending !== null ? SENDING : null;
+  const reason = !available
+    ? COACH_UNAVAILABLE_TITLE
+    : exhausted
+      ? CHAT_COPY.capText(exhausted)
+      : sending !== null
+        ? SENDING
+        : null;
   // `role` through a variable: Biome reads a literal role="user" as an ARIA role (T3).
   const role = "user" as const;
 
@@ -107,6 +117,14 @@ export function NewConversation({
         </p>
       </header>
       {scopeSwitch}
+      {available ? null : (
+        <CoachState
+          kind="unavailable"
+          titleAs="h2"
+          title={COACH_UNAVAILABLE_TITLE}
+          body={COACH_UNAVAILABLE_BODY}
+        />
+      )}
       {children}
       {sending !== null ? (
         <div className="flex flex-col gap-1.5" aria-busy="true">
@@ -150,16 +168,11 @@ export function NewConversation({
           onSubmit={start}
           placeholder={COMPOSER_PLACEHOLDER}
           disabled={reason !== null}
-          disabledReason={exhausted ? reason : null}
+          disabledReason={exhausted || !available ? reason : null}
           className={COMPACT_COMPOSER}
         />
-        <AllowanceLine allowance={allowance} />
-      </div>
-      <div className="flex max-w-prose items-start gap-3">
-        <span className="shrink-0 whitespace-nowrap">
-          <AiLabel />
-        </span>
-        <p className="m-0 font-sans text-sm text-ink-faint">{AI_DISCLOSURE_NOTE}</p>
+        {/* No allowance while nothing could answer; no AI disclosure before any AI text (M3). */}
+        {available ? <AllowanceLine allowance={allowance} /> : null}
       </div>
     </div>
   );
