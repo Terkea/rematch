@@ -212,6 +212,7 @@ const getWeakness = vi.fn();
 const getReport = vi.fn();
 const requireUser = vi.fn(async () => ({ id: "u1", email: "x@example.invalid" }));
 
+vi.mock("../../src/server/events/request-cursor", () => ({ requestEventCursor: async () => 0 }));
 vi.mock("../../src/server/auth/session", () => ({ requireUser }));
 vi.mock("../../src/server/db", () => ({ getDb: () => ({}) }));
 vi.mock("../../src/server/profile", async (orig) => ({

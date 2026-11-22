@@ -19,6 +19,7 @@ import { createTestSession, resetAuthTables, webTestDb } from "../helpers/sessio
 const db = webTestDb();
 let user = { id: "", email: "x@example.invalid" };
 const requireUser = vi.fn(async () => user);
+vi.mock("../../src/server/events/request-cursor", () => ({ requestEventCursor: async () => 0 }));
 vi.mock("../../src/server/auth/session", () => ({ requireUser }));
 vi.mock("../../src/server/db", () => ({ getDb: () => db }));
 vi.mock("next/navigation", async (orig) => ({

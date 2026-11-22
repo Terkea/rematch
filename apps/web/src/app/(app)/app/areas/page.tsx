@@ -1,4 +1,6 @@
 import { redirect } from "next/navigation";
+import { requireUser } from "../../../../server/auth/session";
+import { requestEventCursor } from "../../../../server/events/request-cursor";
 
 export const dynamic = "force-dynamic";
 
@@ -8,6 +10,9 @@ export default async function AreasIndex({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  // It renders nothing, but reads the cursor like every signed-in page (T27): the layout shares it.
+  const user = await requireUser();
+  await requestEventCursor(user.id);
   const params = await searchParams;
   const q = new URLSearchParams();
   for (const key of ["account", "tc"] as const) {

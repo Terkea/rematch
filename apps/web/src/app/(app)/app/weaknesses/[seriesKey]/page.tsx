@@ -7,6 +7,7 @@ import { requireUser } from "../../../../../server/auth/session";
 import { coachHref } from "../../../../../server/coach/anchor";
 import { changeNotes } from "../../../../../server/coaching";
 import { getDb } from "../../../../../server/db";
+import { requestEventCursor } from "../../../../../server/events/request-cursor";
 import { getWeakness, resolveCoachScope } from "../../../../../server/profile";
 import { noteKeysInScope, reviewGameIds } from "../queries";
 import { MAX_EXEMPLARS } from "./exemplars";
@@ -39,6 +40,8 @@ function decodeKey(raw: string): string | null {
  */
 const load = cache(async (raw: string, query: string) => {
   const user = await requireUser();
+  // Before any page data, so the event stream replays whatever lands after this read (T27).
+  await requestEventCursor(user.id);
   const db = getDb();
   const key = decodeKey(raw);
   if (key === null) notFound();

@@ -78,11 +78,15 @@ describe("isPlaceholderEmail", () => {
 });
 
 describe("shell header", () => {
-  it("lists Overview, Games and Accounts, matching the pages' titles", () => {
-    expect(navItems.map((i) => [i.label, i.href])).toEqual([
-      ["Overview", "/app"],
-      ["Games", "/app/games"],
-      ["Accounts", "/app/accounts"],
+  it("lists the sections, matching the pages' titles (order pinned in test/nav.test.ts)", () => {
+    expect(navItems.map((i) => i.label)).toEqual([
+      "Overview",
+      "Games",
+      "Report",
+      "Weaknesses",
+      "Progress",
+      "Coach",
+      "Accounts",
     ]);
     // "dashboard" stays a command-palette keyword for the old name.
     expect(navItems[0].keywords).toContain("dashboard");
@@ -99,6 +103,29 @@ describe("shell header", () => {
     );
     expect(within(nav).getByRole("link", { name: "Games" })).not.toHaveAttribute("aria-current");
     expect(banner.querySelectorAll('[data-slot="activity"]')).toHaveLength(1);
+  });
+
+  it("overflows the sections that don't fit a phone row into the account menu", async () => {
+    pathname = "/app/progress";
+    renderHeader();
+    const nav = screen.getByRole("navigation", { name: "Main" });
+    // Every section stays in the header nav (shown from sm up); only these four show on a phone.
+    const phone = within(nav)
+      .getAllByRole("link")
+      .filter((a) => !a.closest("li")?.className.includes("max-sm:hidden"))
+      .map((a) => a.textContent);
+    expect(phone).toEqual(["Overview", "Games", "Report", "Coach"]);
+    await userEvent.click(screen.getByRole("button", { name: "Account menu" }));
+    const more = await screen.findByRole("navigation", { name: "More pages" });
+    expect(
+      within(more)
+        .getAllByRole("link")
+        .map((a) => a.textContent),
+    ).toEqual(["Weaknesses", "Progress", "Accounts"]);
+    expect(within(more).getByRole("link", { name: "Progress" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
   });
 
   it("marks a nested games route as Games", () => {
@@ -134,6 +161,28 @@ describe("shell header", () => {
     await userEvent.click(screen.getByRole("button", { name: /Search/ }));
     await userEvent.click(within(await screen.findByRole("dialog")).getByText("Go to games"));
     expect(push).toHaveBeenLastCalledWith("/app/games");
+  });
+
+  it("groups the seven skill areas in the command menu, Endgame by its name", async () => {
+    renderHeader();
+    await userEvent.click(screen.getByRole("button", { name: /Search/ }));
+    const menu = await screen.findByRole("dialog");
+    const group = within(menu).getByRole("group", { name: "Skill areas" });
+    expect(
+      within(group)
+        .getAllByRole("option")
+        .map((o) => o.textContent),
+    ).toEqual(["Openings", "Middlegame", "Endgame", "Tactics", "Calculation", "Time", "Mindset"]);
+    await userEvent.click(within(group).getByRole("option", { name: "Endgame" }));
+    expect(push).toHaveBeenLastCalledWith("/app/areas/endgame");
+  });
+
+  it("offers Ask your coach, which opens a new thread", async () => {
+    renderHeader();
+    await userEvent.click(screen.getByRole("button", { name: /Search/ }));
+    const menu = await screen.findByRole("dialog");
+    await userEvent.click(within(menu).getByRole("option", { name: "Ask your coach" }));
+    expect(push).toHaveBeenLastCalledWith("/app/coach/new");
   });
 
   it("reaches the licences from the command menu (review-t27 M2)", async () => {

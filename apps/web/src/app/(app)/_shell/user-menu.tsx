@@ -3,10 +3,12 @@
 import { Icon, SignOutIcon } from "@ci/ui/icons";
 import { toast } from "@ci/ui/overlays";
 import { Popover, PopoverContent, PopoverTrigger } from "@ci/ui/primitives";
+import Link from "next/link";
 import { useState } from "react";
 import { signOut } from "../../../lib/auth-client";
 import { isPlaceholderEmail } from "../../../lib/placeholder-email";
 import { PendingButton } from "../../ui/pending-button";
+import { isCurrent } from "./nav";
 
 export interface UserMenuProps {
   email: string;
@@ -14,6 +16,9 @@ export interface UserMenuProps {
   name?: string;
   /** Where to go after signing out (a full navigation, so no signed-in page stays cached). */
   signOutTo: (href: string) => void;
+  /** Sections the phone nav row has no room for; listed here below `sm` only. */
+  morePages?: readonly { label: string; href: string }[];
+  pathname?: string;
 }
 
 const SIGN_OUT_FAILED = "Couldn't sign out. Try again.";
@@ -50,7 +55,13 @@ export function useSignOut(signOutTo: (href: string) => void) {
  * The signed-in identity and "Sign out", behind the reader's initial. A Lichess-created account
  * has a placeholder address, which is never shown: it names the Lichess account instead.
  */
-export function UserMenu({ email, name = "", signOutTo }: UserMenuProps) {
+export function UserMenu({
+  email,
+  name = "",
+  signOutTo,
+  morePages = [],
+  pathname = "",
+}: UserMenuProps) {
   const { pending, run } = useSignOut(signOutTo);
   const lichess = isPlaceholderEmail(email);
   const shown = lichess ? name.trim() || "Lichess" : email;
@@ -70,6 +81,23 @@ export function UserMenu({ email, name = "", signOutTo }: UserMenuProps) {
           </span>
           <span className="truncate text-sm font-medium text-ink">{shown}</span>
         </div>
+        {morePages.length > 0 ? (
+          <nav aria-label="More pages" className="-mx-2 flex flex-col sm:hidden">
+            {morePages.map((page) => {
+              const current = isCurrent(pathname, page.href);
+              return (
+                <Link
+                  key={page.href}
+                  href={page.href}
+                  aria-current={current ? "page" : undefined}
+                  className={`flex h-10 items-center rounded-field px-2 text-sm transition-colors duration-(--dur-quick) ease-out hover:bg-sheet focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink ${current ? "font-semibold text-ink" : "text-ink-soft hover:text-ink"}`}
+                >
+                  {page.label}
+                </Link>
+              );
+            })}
+          </nav>
+        ) : null}
         <PendingButton
           variant="quiet"
           size="sm"

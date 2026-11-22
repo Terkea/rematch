@@ -1,5 +1,6 @@
 "use client";
 
+import { type Area, areaLabels } from "@ci/ui/area-score";
 import { CommandMenu, type CommandMenuItem } from "@ci/ui/overlays";
 import { useRouter } from "next/navigation";
 import { useMemo } from "react";
@@ -12,7 +13,10 @@ export interface NavCommandMenuProps {
   onSignOut: () => void;
 }
 
-/** Ctrl K: every section, the theme and signing out. Task 27 adds more as pages land. */
+/** The seven skill areas, in `areaLabels` order (the same order the area tabs use). */
+const areas = Object.entries(areaLabels) as [Area, string][];
+
+/** Ctrl K: every section, the skill areas, asking the coach, the theme and signing out. */
 export function NavCommandMenu({ open, onOpenChange, onSignOut }: NavCommandMenuProps) {
   const router = useRouter();
   const theme = useThemeFlip();
@@ -36,6 +40,20 @@ export function NavCommandMenu({ open, onOpenChange, onSignOut }: NavCommandMenu
             },
           ]
         : []),
+      ...areas.map(([area, label]) => ({
+        id: `go:/app/areas/${area}`,
+        label,
+        group: "Skill areas",
+        keywords: ["area", "skill"],
+        onSelect: () => router.push(`/app/areas/${area}`),
+      })),
+      {
+        id: "coach:new",
+        label: "Ask your coach",
+        group: "Coach",
+        keywords: ["question", "chat", "ask"],
+        onSelect: () => router.push("/app/coach/new"),
+      },
       {
         id: "go:/licenses",
         label: "Go to licences",

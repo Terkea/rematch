@@ -5,6 +5,7 @@ import { LiveRefreshOn } from "../../../../components/live-refresh-on";
 import { queryKeys } from "../../../../lib/query-keys";
 import { requireUser } from "../../../../server/auth/session";
 import { getDb } from "../../../../server/db";
+import { requestEventCursor } from "../../../../server/events/request-cursor";
 import { resolveCoachScope } from "../../../../server/profile";
 import { EmptySheet, PageHeading } from "../../_shell/page-heading";
 import { loadProgress } from "./load";
@@ -25,6 +26,8 @@ export default async function ProgressPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const user = await requireUser();
+  // Before any page data, so the event stream replays whatever lands after this read (T27).
+  await requestEventCursor(user.id);
   const db = getDb();
   const scope = await resolveCoachScope(db, user.id, await searchParams);
   if (!scope) {

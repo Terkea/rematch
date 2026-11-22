@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { requireUser } from "../../../../../server/auth/session";
 import { getReport } from "../../../../../server/coaching";
 import { getDb } from "../../../../../server/db";
+import { requestEventCursor } from "../../../../../server/events/request-cursor";
 import {
   AREAS,
   type Area,
@@ -52,6 +53,8 @@ export default async function AreaPage({
   const { area } = await params;
   if (!isArea(area)) notFound();
   const user = await requireUser();
+  // Before any page data, so the event stream replays whatever lands after this read (T27).
+  await requestEventCursor(user.id);
   const db = getDb();
   const scope = await resolveCoachScope(db, user.id, await searchParams);
   if (!scope) return <AreaEmpty area={area} />;

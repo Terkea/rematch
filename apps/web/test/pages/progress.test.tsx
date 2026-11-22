@@ -15,6 +15,7 @@ import { DISCLOSURE, WEEKLY_CONTENT } from "../helpers/coaching.js";
 // The progress page (M5b Task 10) from synthetic read-model objects (B15: no owner data). The
 // loader's read-model test is progress-load.test.ts (node, so migrations run outside jsdom).
 
+vi.mock("../../src/server/events/request-cursor", () => ({ requestEventCursor: async () => 0 }));
 vi.mock("next/link", () => ({
   default: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) => (
     <a href={href} {...rest}>

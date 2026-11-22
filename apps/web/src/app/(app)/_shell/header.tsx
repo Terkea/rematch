@@ -7,7 +7,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { type ReactNode, useState } from "react";
 import { brand } from "../../../brand";
-import { isCurrent, navItems } from "./nav";
+import { isCurrent, navItems, onPhoneRow } from "./nav";
 import { NavCommandMenu } from "./nav-command-menu";
 import { ThemeToggle } from "./theme-toggle";
 import { UserMenu, useSignOut } from "./user-menu";
@@ -62,7 +62,7 @@ export function Header({
             {navItems.map((item) => {
               const current = isCurrent(pathname, item.href);
               return (
-                <li key={item.href}>
+                <li key={item.href} className={onPhoneRow(item.href) ? undefined : "max-sm:hidden"}>
                   <Link
                     href={item.href}
                     aria-current={current ? "page" : undefined}
@@ -99,7 +99,13 @@ export function Header({
             <Kbd className="max-sm:hidden">Ctrl K</Kbd>
           </Button>
           <ThemeToggle />
-          <UserMenu email={email} name={name} signOutTo={signOutTo} />
+          <UserMenu
+            email={email}
+            name={name}
+            signOutTo={signOutTo}
+            morePages={navItems.filter((item) => !onPhoneRow(item.href))}
+            pathname={pathname}
+          />
         </div>
       </div>
       <NavCommandMenu open={menuOpen} onOpenChange={setMenuOpen} onSignOut={signOut.run} />
