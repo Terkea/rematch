@@ -143,6 +143,8 @@ describe("ActivityIndicator", () => {
       await withSync(acct({ profileUpdating: true, analysis: { ...counts, done: 4 } }));
       show();
       expect(screen.getByText("Updating your profile")).toBeInTheDocument();
+      // A phone reads a short form, never "Profile" alone (P2 Polish).
+      expect(screen.getByText("Updating profile")).toBeInTheDocument();
     });
 
     it("an import from the stream comes first", async () => {

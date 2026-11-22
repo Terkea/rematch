@@ -53,7 +53,7 @@ export function syncSummary(
     };
   }
   if (accounts.some((a) => a.profileUpdating)) {
-    return { text: "Updating your profile", short: "Profile", fraction: null };
+    return { text: "Updating your profile", short: "Updating profile", fraction: null };
   }
   return null;
 }

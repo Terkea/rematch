@@ -215,6 +215,20 @@ describe("SyncPanel", () => {
     expect(container.querySelectorAll("p")).toHaveLength(2);
   });
 
+  it("the compact variant keeps Verify on a phone, each item its own spaced piece", () => {
+    show(status(account({ verified: false })), "compact");
+    const verify = screen.getByRole("link", { name: "Verify alice" });
+    // Never hidden below sm (P2 Polish: it was missing at 390).
+    expect(verify.className).not.toMatch(/max-sm:hidden/);
+    expect(verify.closest("[class*='max-sm:hidden']")).toBeNull();
+    // The state, Details and Verify are separate items of a wrapping, gapped row, not one run
+    // of text ("Details" and "Verify …" ran together).
+    const row = verify.parentElement;
+    expect(row?.className).toMatch(/(^| )flex-wrap( |$)/);
+    expect(row?.className).toMatch(/(^| )gap-x-/);
+    expect(screen.getByRole("link", { name: "Details" }).parentElement).toBe(row);
+  });
+
   it("the compact variant with one account syncs that account", () => {
     show(status(account()), "compact");
     expect(screen.getByRole("button", { name: "Sync now chess.com alice" })).toBeInTheDocument();

@@ -374,10 +374,11 @@ function CompactPanel({
           <span className="max-sm:hidden">{summaryLine(accounts)}</span>
           <span className="sm:hidden">{summaryShort(accounts)}</span>
         </p>
-        <p aria-live="polite" className="text-ink-soft">
-          {checking ? <WorkingStroke /> : null}
-          {checking ? " " : null}
-          <span>{state}</span>{" "}
+        <p aria-live="polite" className="flex flex-wrap items-center gap-x-3 gap-y-1 text-ink-soft">
+          <span className="inline-flex min-w-0 items-center gap-2">
+            {checking ? <WorkingStroke /> : null}
+            <span>{state}</span>
+          </span>
           <Link
             href="/app/games"
             className="rounded-field text-ink underline decoration-rule-strong underline-offset-4 hover:decoration-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
@@ -385,15 +386,12 @@ function CompactPanel({
             Details
           </Link>
           {unverified.length > 0 ? (
-            <>
-              <span className="max-sm:hidden"> </span>
-              <Link
-                href="/app/accounts"
-                className="rounded-field underline max-sm:hidden decoration-rule-strong underline-offset-4 hover:decoration-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
-              >
-                {`Verify ${unverified.map((a) => a.name).join(" and ")}`}
-              </Link>
-            </>
+            <Link
+              href="/app/accounts"
+              className="rounded-field underline decoration-rule-strong underline-offset-4 hover:decoration-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+            >
+              {`Verify ${unverified.map((a) => a.name).join(" and ")}`}
+            </Link>
           ) : null}
         </p>
       </div>
