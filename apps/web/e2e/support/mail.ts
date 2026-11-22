@@ -90,7 +90,8 @@ export async function magicLinkFor(
         link = message.Text.match(/https?:\/\/\S+\/api\/auth\/magic-link\/verify\S+/)?.[0];
         return link;
       },
-      { timeout: 15_000 },
+      // 15 s was tight on a loaded host (M5b T11 saw links land later); a missing mail still fails.
+      { timeout: 60_000 },
     )
     .toBeTruthy();
   return link as string;

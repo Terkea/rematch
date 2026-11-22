@@ -63,12 +63,37 @@ test("the game pages: no sideways scroll at 360px, visible focus, no broken numb
       expect(over, `${where}: sideways overflow`).toBeLessThanOrEqual(0);
 
       if ("axe" in r && width === 360) {
-        const axe = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
-        const bad = axe.violations
-          .filter((v) => v.impact === "serious" || v.impact === "critical")
-          .map(
-            (v) => `${v.id} (${v.impact}): ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`,
-          );
+        // Entrance fades (the header's activity indicator starts at opacity 0) read as low
+        // contrast mid-flight: let every finite animation finish before axe measures.
+        await page.evaluate(async () => {
+          const finite = document
+            .getAnimations()
+            .filter((a) => a.effect?.getComputedTiming().endTime !== Number.POSITIVE_INFINITY);
+          await Promise.all(finite.map((a) => a.finished.catch(() => undefined)));
+        });
+        await expect
+          .poll(() =>
+            page.evaluate(() =>
+              [...document.querySelectorAll("[data-slot='activity'] > *")].every(
+                (el) => Number(getComputedStyle(el).opacity) === 1,
+              ),
+            ),
+          )
+          .toBe(true);
+        // A finding that is gone a second later was a frame mid-transition (a stream update
+        // re-rendering the header); one that stays across three reads fails.
+        let bad: string[] = [];
+        for (let attempt = 0; attempt < 3; attempt++) {
+          if (attempt > 0) await page.waitForTimeout(1000);
+          const axe = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
+          bad = axe.violations
+            .filter((v) => v.impact === "serious" || v.impact === "critical")
+            .map(
+              (v) =>
+                `${v.id} (${v.impact}): ${v.nodes.map((n) => `${n.target.join(" ")} ${n.html.slice(0, 120)}`).join(", ")}`,
+            );
+          if (bad.length === 0) break;
+        }
         expect(bad, `${where}: axe serious or critical violations`).toEqual([]);
       }
 
@@ -90,7 +115,12 @@ test("the game pages: no sideways scroll at 360px, visible focus, no broken numb
           if (!el || el === document.body) return null;
           const s = getComputedStyle(el);
           const focusedShadow = s.boxShadow;
-          const outline = s.outlineStyle !== "none" && Number.parseFloat(s.outlineWidth) > 0;
+          // A stretched link (the weakness rows, @ci/ui WeaknessRow) draws its ring on ::before,
+          // which covers the whole row: that pseudo-element's outline counts too.
+          const before = getComputedStyle(el, "::before");
+          const outline =
+            (s.outlineStyle !== "none" && Number.parseFloat(s.outlineWidth) > 0) ||
+            (before.outlineStyle !== "none" && Number.parseFloat(before.outlineWidth) > 0);
           // A board square draws its focus ring as an SVG child shown on :focus-visible
           // (DESIGN.md, "Focus"): a descendant that only displays while focused counts too.
           const drawn = [...el.querySelectorAll("[class*='group-focus-visible:']")].some(
