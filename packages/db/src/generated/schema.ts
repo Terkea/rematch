@@ -242,6 +242,7 @@ export const accountBenchmarkStat = pgTable(
     nPlayers: integer("n_players").notNull(),
     nGames: integer("n_games").notNull(),
     lowSample: boolean("low_sample").notNull(),
+    side: sideScope().default("both").notNull(),
   },
   (table) => [
     foreignKey({
@@ -250,7 +251,7 @@ export const accountBenchmarkStat = pgTable(
       name: "account_benchmark_stat_account_id_time_class_fkey",
     }).onDelete("cascade"),
     primaryKey({
-      columns: [table.accountId, table.timeClass, table.metric],
+      columns: [table.accountId, table.timeClass, table.metric, table.side],
       name: "account_benchmark_stat_pkey",
     }),
     check("account_benchmark_stat_n_players_check", sql`n_players >= 0`),
