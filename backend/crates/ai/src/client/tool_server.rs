@@ -15,7 +15,7 @@
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex, Weak};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use axum::Router;
 use axum::body::Bytes;
@@ -43,8 +43,9 @@ type Key = [u8; 32];
 struct Entry {
     token: String,
     handler: Arc<dyn ToolHandler>,
-    /// After this the token is expired (404) even if the registration was never dropped.
-    expires_at: Instant,
+    /// After this the token is expired (404) even if the registration was never dropped. It is
+    /// tokio's clock (the same as `std` in production), so tests drive expiry with paused time.
+    expires_at: tokio::time::Instant,
 }
 
 struct Inner {
@@ -57,7 +58,7 @@ fn key_of(token: &str) -> Key {
 }
 
 fn purge_expired(reg: &mut HashMap<Key, Entry>) {
-    let now = Instant::now();
+    let now = tokio::time::Instant::now();
     reg.retain(|_, e| e.expires_at > now);
 }
 
@@ -261,7 +262,7 @@ impl ToolServer {
             Entry {
                 token: token.clone(),
                 handler: h,
-                expires_at: Instant::now() + ttl,
+                expires_at: tokio::time::Instant::now() + ttl,
             },
         );
         drop(reg);
