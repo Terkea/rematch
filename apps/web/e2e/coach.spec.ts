@@ -113,7 +113,7 @@ test.describe
       await expect(page.getByText(/58 of 2,400/).first()).toBeVisible();
       await expect(page.getByRole("heading", { name: "Example positions" })).toBeVisible();
       const examples = page.locator("section:has(#examples-heading)");
-      await expect(examples.locator("svg[role='img']").first()).toBeVisible();
+      await expect(examples.getByRole("figure").first()).toBeVisible();
 
       await page.getByRole("link", { name: "Ask your coach about this" }).click();
       await page.waitForURL(/\/app\/coach\/new\?/);
