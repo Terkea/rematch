@@ -251,6 +251,10 @@ const RENEW_SQL: &str = concat!(
 );
 
 /// `done`, or for a recurring job back to `queued` at `now() + recur_every` with a fresh budget.
+/// Fenced by the lease: only the running job that holds the key gives it up.
+const RELEASE_KEY_SQL: &str = "UPDATE jobs SET dedupe_key = NULL WHERE id = $1 \
+AND lease_token = $2 AND state = 'running' AND dedupe_key IS NOT NULL";
+
 const COMPLETE_SQL: &str = concat!(
     "UPDATE jobs SET
   state = (CASE WHEN recur_every IS NULL THEN 'done' ELSE 'queued' END)::job_state,
@@ -542,6 +546,16 @@ impl Queue {
             .bind(job.lease_token)
             .bind(millis(lease));
         self.write("renew", fut).await
+    }
+
+    /// Gives up a running job's dedupe key, so the next enqueue of that key goes through while
+    /// this job still runs (a build that re-enqueues itself as a follow-up, ADR-R2-18). `false`
+    /// when the job no longer holds its lease, is not running, or has no key: nothing changed.
+    pub async fn release_dedupe_key(&self, job: &Job) -> Result<bool> {
+        let fut = sqlx::query(RELEASE_KEY_SQL)
+            .bind(job.id)
+            .bind(job.lease_token);
+        self.write("release_dedupe_key", fut).await
     }
 
     /// Marks the job done (a recurring job is rescheduled). `false` means the lease was lost and

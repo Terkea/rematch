@@ -69,6 +69,7 @@ fn opts(ai: AiSetup) -> StartOptions {
         with_reconciler: false,
         ai,
         inputs: Some(Arc::new(FixtureInputs)),
+        ..StartOptions::default()
     }
 }
 

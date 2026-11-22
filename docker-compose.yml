@@ -41,6 +41,9 @@ services:
     # and its exit code 2 reads as a crashed backend: every connection is killed and crash recovery
     # runs (tests see EOF, "connection reset", "in recovery mode").
     init: true
+    # ADR 0065: one worker may hold pool_size + preview + 54 connections (R2 + R3 runners), so
+    # the default 100 cannot fit a worker beside the web app, and parallel worker tests exhaust it.
+    command: ["postgres", "-c", "max_connections=300"]
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -280,9 +283,20 @@ services:
       # Engines (and analyses at once). Empty: min(cores - 2, 8). See .env.example.
       WORKER_POOL_SIZE: ${WORKER_POOL_SIZE:-}
       RUST_LOG: ${RUST_LOG:-info}
-      # R2 T23 (ADR-R2-12): the 3-4-5 Syzygy tables, read-only. Without them the tablebase probe
-      # is unavailable and analysis goes on.
-      SYZYGY_PATH: /work/data/syzygy
+      # R2 (ADR-R2-1, ADR-R2-25): the git-ignored data dir, read-only. The 3-4-5 Syzygy tables
+      # (ADR-R2-12) sit in it; without them the tablebase probe is unavailable and analysis goes
+      # on.
+      DATA_DIR: /data
+      SYZYGY_PATH: /data/syzygy
+      # A verified copy of the tables (about 940 MB) is kept in this volume. It is checked at
+      # every start and copied only when changed. Every probe re-opens the table set, which is
+      # slow through a Windows bind mount (ADR-R2-25).
+      SYZYGY_STAGE_DIR: /var/lib/chess-improver/syzygy
+      # Maia-2 (ADR-R2-13). Empty: difficulty stays pending_maia (never estimated). The Maia overlay
+      # (docker-compose.maia.yml) sets http://maia:8080 and joins its network.
+      MAIA_URL: ${MAIA_URL:-}
+      # Plan of schedule-analysis jobs that name none: beta (default, ADR 0041), free or pro.
+      WORKER_DEFAULT_PLAN: ${WORKER_DEFAULT_PLAN:-}
       # R3 AI coaching (ADR 0062). Interactive calls go to the sidecar; the token defaults to the
       # sidecar's own dev default. Without a sidecar credential, reports are computed-only.
       AI_SIDECAR_URL: http://ai-sidecar:7310
@@ -298,7 +312,10 @@ services:
       AI_BUDGET_PRO_MICRO_USD: ${AI_BUDGET_PRO_MICRO_USD:-}
       AI_GLOBAL_MONTHLY_BUDGET_MICRO_USD: ${AI_GLOBAL_MONTHLY_BUDGET_MICRO_USD:-}
     volumes:
-      - ${SYZYGY_HOST_DIR:-./data/syzygy}:/work/data/syzygy:ro
+      - ./data:/data:ro
+      # From a worktree, SYZYGY_HOST_DIR points at the main checkout's tables.
+      - ${SYZYGY_HOST_DIR:-./data/syzygy}:/data/syzygy:ro
+      - syzygy_stage:/var/lib/chess-improver/syzygy
     depends_on:
       postgres:
         condition: service_healthy
@@ -309,6 +326,7 @@ services:
 
 volumes:
   pgdata:
+  syzygy_stage:
   node_modules:
   worker_node_modules:
   web_node_modules:

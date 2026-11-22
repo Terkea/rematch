@@ -1060,6 +1060,8 @@ export const referenceGames = pgTable(
     status: analysisStatus().default("pending").notNull(),
     error: text(),
     difficultyPendingAt: timestamp("difficulty_pending_at", { withTimezone: true, mode: "date" }),
+    whiteSelected: boolean("white_selected").notNull(),
+    blackSelected: boolean("black_selected").notNull(),
   },
   (table) => [
     index("reference_games_build_status_idx").using(
@@ -1076,6 +1078,7 @@ export const referenceGames = pgTable(
       name: "reference_games_build_id_fkey",
     }).onDelete("cascade"),
     unique("reference_games_build_game_uq").on(table.buildId, table.lichessGameId),
+    check("reference_games_a_side_is_selected", sql`white_selected OR black_selected`),
   ],
 );
 

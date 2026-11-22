@@ -1,21 +1,37 @@
-//! Starting the worker (port of `apps/worker/src/start-workers.ts`).
+//! Starting the worker (port of `apps/worker/src/start-workers.ts`, plus the R2 profile engine).
 //!
 //! Order: check the engine is Stockfish 19, adopt a Drizzle-migrated database and migrate it
 //! (on a separate pool without a statement timeout), connect the worker pool, start the engine
-//! pool, then one runner per job kind, and schedule the recurring reconcile. Whatever was created
-//! is closed again if a later step fails. With AI (R3, [`crate::ai_jobs`]) it also loads the price
-//! table before anything else (a bad table fails fast), picks the AI client, spawns one runner
-//! per AI kind and schedules the recurring AI jobs with the reconciler.
+//! pool, the optional tablebase probe (`SYZYGY_PATH`) and the Maia client (`MAIA_URL`, lazy),
+//! warm the opening dataset, then one runner per job kind, schedule the recurring jobs, requeue
+//! the games without the current enrichment once and resume lost reference-game jobs
+//! (ADR-R2-25). With AI (R3, [`crate::ai_jobs`]) it also loads the price table before anything
+//! else (a bad table fails fast), picks the AI client, spawns one runner per AI kind and schedules
+//! the recurring AI jobs with the reconciler. Whatever was created is closed again if a later step
+//! fails. Every runner is registered through one `Spawned::spawn`, so
+//! [`RunningWorkers::claims`] lists them all and shutdown drains them all.
 //!
-//! Connection budget: `max_connections = pool_size + POOL_HEADROOM` (plus
-//! [`AI_POOL_HEADROOM`](crate::ai_jobs::AI_POOL_HEADROOM) with the AI runners, R3). The analyse runner holds at
-//! most one connection per in-flight game (`pool_size` of them), each in-flight import holds its
-//! dedicated account-lock connection plus at most one pooled connection at a time
-//! (`2 * IMPORT_CONCURRENCY = 4`), the reconciler one, each schedule-analysis job one (its
-//! transaction, [`SCHEDULE_CONCURRENCY`] = 2), each preview one ([`PREVIEW_CONCURRENCY`] = 1),
-//! and each runner's NOTIFY listener one (5). That leaves no slack below `pool_size + 13`, but every statement is short and the import's
-//! busy checks open short-lived connections, so the pool's acquire timeout (10 s) is the bound.
-//! Import concurrency must stay well below `max_connections`.
+//! Runners (kind: concurrency; every kind but `analyse-game` keeps R1's [`PriorityFifo`] claim):
+//! - `import-account`: 2;
+//! - `analyse-game`: `pool_size`, the fair round robin (ADR-R2-15), with the profile hook
+//!   (ADR-R2-24);
+//! - `schedule-analysis`: 2; `preview-game`: `max(1, pool_size / 2)`; `build-profile`: 2;
+//! - `analyse-reference-game`: 1. It shares the engine pool with the analyses and runs at
+//!   priority 200, below every user job;
+//! - `difficulty-sweep` and `reference-difficulty-sweep`: 1 each;
+//! - the 9 AI kinds ([`AI_RUNNER_KINDS`](crate::ai_jobs::AI_RUNNER_KINDS)), unless
+//!   [`AiSetup::None`];
+//! - `reconcile`: 1 (optional).
+//!
+//! Connection budget: `max_connections = pool_size + preview + POOL_HEADROOM` (plus
+//! [`AI_POOL_HEADROOM`](crate::ai_jobs::AI_POOL_HEADROOM) with the AI runners, R3). The analyse
+//! runner holds at most one connection per in-flight game, each preview one. The headroom covers
+//! each in-flight import's account-lock connection plus one pooled connection (4), the reconciler
+//! (1), the schedule-analysis transactions (2), the build-profile jobs (2 each: the transaction and
+//! the repertoire's explorer read, 4), the reference game and its finaliser (2), the two sweeps (2)
+//! and each R1/R2 runner's NOTIFY listener (9). The AI headroom covers the AI runners' listeners
+//! and jobs. Every statement is short and the import's busy checks open short-lived connections,
+//! so the pool's acquire timeout (10 s) is the bound.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -31,9 +47,14 @@ use db::pool::DbOptions;
 use engine::pool::{EnginePool, PoolOptions};
 use engine::version::stockfish_version;
 use engine::{ANALYSIS_PROTOCOL, Analyser};
+use enrich::difficulty::DifficultySource;
+use enrich::difficulty::select::{DifficultyEstimator, select_difficulty_provider};
+use enrich::enrich_game::EnrichDeps;
+use enrich::store::DbEnrichmentStore;
 use enrich::tablebase::cached::CachedTbProbe;
 use enrich::tablebase::pool::{SyzygyPool, TablebaseStatus};
 use enrich::types::TablebaseProbe;
+
 use futures::FutureExt;
 use futures::future::BoxFuture;
 use platforms::breaker::{BreakerOptions, CircuitBreaker};
@@ -41,18 +62,30 @@ use platforms::chesscom::ChesscomSource;
 use platforms::client::{ClientOptions, HttpPlatformClient};
 use platforms::lichess::LichessSource;
 use platforms::{GameSource, Platform, PlatformClient};
+use profile::build_profile::{BuildProfileDeps, BuildProfileHandler};
+use profile::hook_impl::{ProfileHook, into_hook, warm_openings};
+use profile::reference_jobs::{
+    ReferenceDifficultySweepHandler, ReferenceGameDeps, ReferenceGameHandler,
+    ensure_reference_difficulty_sweep_scheduled,
+};
+use profile::requeue::{
+    DifficultySweepDeps, DifficultySweepHandler, ensure_difficulty_sweep_scheduled,
+    requeue_unenriched,
+};
 use queue::queue::Queue;
-use queue::runner::{Runner, RunnerConfig, RunnerHandle};
-use queue::strategy::PriorityFifo;
+use queue::runner::{Handler, Runner, RunnerConfig, RunnerHandle};
+use queue::strategy::{PriorityFifo, SelectStrategy};
 use scheduler::fair::FairRoundRobin;
 use scheduler::preview::{PreviewDeps, PreviewHandler};
 use scheduler::schedule_job::{ScheduleDeps, ScheduleHandler};
+use scheduler::select::Plan;
 use sqlx::PgPool;
 use tokio::task::AbortHandle;
+use tokio_util::sync::CancellationToken;
 
 use crate::ai_jobs::{
-    AI_POOL_HEADROOM, AiRunnerDeps, AiSetup, ProfileInputProvider, ai_client_from_env,
-    pricing_from_env, spawn_ai_runners,
+    AI_POOL_HEADROOM, AiRunnerDeps, AiSetup, ProfileInputProvider, ai_client_from_env, ai_runners,
+    pricing_from_env,
 };
 use crate::config::WorkerEnv;
 use crate::shutdown::{Closable, Drainable, ShutdownHandles};
@@ -60,15 +93,27 @@ use ai::jobs::providers::CoachingInputProvider;
 
 /// Imports at once (each holds an account-lock connection).
 pub const IMPORT_CONCURRENCY: usize = 2;
-/// Connections beyond one per engine (see the module docs).
-pub const POOL_HEADROOM: usize = 13;
+/// Connections beyond one per engine and one per preview (see the module docs).
+pub const POOL_HEADROOM: usize = 24;
 /// Schedule-analysis jobs at once (each holds one connection for its transaction).
 pub const SCHEDULE_CONCURRENCY: usize = 2;
 /// The runner's hard deadline on a schedule-analysis job (an account of 10k games takes well
 /// under a second).
 pub const SCHEDULE_HARD_TIMEOUT: Duration = Duration::from_secs(120);
-/// Preview passes at once (each evaluates two positions at a time, ADR-R2-15).
-pub const PREVIEW_CONCURRENCY: usize = 1;
+/// Preview passes at once for `pool_size` engines: `max(1, pool_size / 2)` (each evaluates two
+/// positions at a time, ADR-R2-15).
+pub fn preview_concurrency(pool_size: usize) -> usize {
+    (pool_size / 2).max(1)
+}
+/// Profile builds at once (each holds two connections, Task 18's repertoire read).
+pub const BUILD_PROFILE_CONCURRENCY: usize = 2;
+/// The runner's hard deadline on a profile build.
+pub const BUILD_PROFILE_HARD_TIMEOUT: Duration = Duration::from_secs(10 * 60);
+/// Reference games at once. They share the engine pool with the user's analyses, so one at a
+/// time (four engine requests each) keeps user latency first (ADR-R2-25).
+pub const REFERENCE_CONCURRENCY: usize = 1;
+/// The runner's hard deadline on a sweep run (`difficulty-sweep`, `reference-difficulty-sweep`).
+pub const SWEEP_HARD_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 /// The runner's hard deadline on a preview pass.
 pub const PREVIEW_HARD_TIMEOUT: Duration = Duration::from_secs(300);
 /// The runner's hard deadline on an analysis: past the handler's own 10-minute deadline, so the
@@ -94,6 +139,10 @@ pub struct StartOptions {
     pub ai: AiSetup,
     /// Overrides the coaching-input provider (default: R2's builder).
     pub inputs: Option<Arc<dyn CoachingInputProvider>>,
+    /// Set the profile hook on the analyse runner (default). `false` runs R1's analysis alone:
+    /// only for measuring analysis throughput (`cli analyse` with `CLI_ANALYSIS_ONLY=1`); the
+    /// games it writes are unenriched, so the next normal start requeues them.
+    pub profile_hook: bool,
 }
 
 impl std::fmt::Debug for StartOptions {
@@ -104,6 +153,7 @@ impl std::fmt::Debug for StartOptions {
             .field("with_reconciler", &self.with_reconciler)
             .field("ai", &self.ai)
             .field("inputs", &self.inputs.as_ref().map(|_| "custom"))
+            .field("profile_hook", &self.profile_hook)
             .finish()
     }
 }
@@ -116,6 +166,7 @@ impl Default for StartOptions {
             with_reconciler: true,
             ai: AiSetup::FromEnv,
             inputs: None,
+            profile_hook: true,
         }
     }
 }
@@ -235,33 +286,109 @@ pub fn schedule_runner_config(base: &RunnerConfig) -> RunnerConfig {
     }
 }
 
-pub fn preview_runner_config(base: &RunnerConfig) -> RunnerConfig {
+pub fn preview_runner_config(base: &RunnerConfig, pool_size: usize) -> RunnerConfig {
     RunnerConfig {
-        concurrency: PREVIEW_CONCURRENCY,
+        concurrency: preview_concurrency(pool_size),
         hard_timeout: Some(PREVIEW_HARD_TIMEOUT),
         strategy: Arc::new(PriorityFifo),
         ..base.clone()
     }
 }
 
-pub fn spawn_schedule_runner(queue: Queue, pool: PgPool, base: &RunnerConfig) -> RunnerHandle {
-    Runner::spawn(
-        queue.clone(),
-        Arc::new(ScheduleHandler(Arc::new(ScheduleDeps {
-            pool,
-            queue,
-            now: time::OffsetDateTime::now_utc,
-        }))),
-        schedule_runner_config(base),
-    )
+pub fn build_profile_runner_config(base: &RunnerConfig) -> RunnerConfig {
+    RunnerConfig {
+        concurrency: BUILD_PROFILE_CONCURRENCY,
+        hard_timeout: Some(BUILD_PROFILE_HARD_TIMEOUT),
+        strategy: Arc::new(PriorityFifo),
+        ..base.clone()
+    }
 }
 
-pub fn spawn_preview_runner(queue: Queue, deps: PreviewDeps, base: &RunnerConfig) -> RunnerHandle {
-    Runner::spawn(
+/// The reference runner keeps [`PriorityFifo`]: the fair round robin only serves kinds that set
+/// `games.analysis_started_at` (ADR-R2-15), and reference games are not user games.
+pub fn reference_runner_config(base: &RunnerConfig) -> RunnerConfig {
+    RunnerConfig {
+        concurrency: REFERENCE_CONCURRENCY,
+        hard_timeout: Some(ANALYSE_HARD_TIMEOUT),
+        strategy: Arc::new(PriorityFifo),
+        ..base.clone()
+    }
+}
+
+pub fn sweep_runner_config(base: &RunnerConfig) -> RunnerConfig {
+    RunnerConfig {
+        concurrency: 1,
+        hard_timeout: Some(SWEEP_HARD_TIMEOUT),
+        strategy: Arc::new(PriorityFifo),
+        ..base.clone()
+    }
+}
+
+/// One runner as started: its kind, how many jobs it runs at once and how it claims them.
+#[derive(Clone)]
+pub struct RunnerClaim {
+    pub kind: &'static str,
+    pub concurrency: usize,
+    pub strategy: Arc<dyn SelectStrategy>,
+}
+
+impl std::fmt::Debug for RunnerClaim {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RunnerClaim")
+            .field("kind", &self.kind)
+            .field("concurrency", &self.concurrency)
+            .field("strategy", &self.strategy.order_by())
+            .finish()
+    }
+}
+
+/// The runners started so far, with their claims.
+#[derive(Default)]
+struct Spawned {
+    runners: Vec<RunnerHandle>,
+    claims: Vec<RunnerClaim>,
+}
+
+impl Spawned {
+    fn spawn(&mut self, queue: &Queue, handler: Arc<dyn Handler>, cfg: RunnerConfig) {
+        self.claims.push(RunnerClaim {
+            kind: handler.kind(),
+            concurrency: cfg.concurrency,
+            strategy: cfg.strategy.clone(),
+        });
+        self.runners
+            .push(Runner::spawn(queue.clone(), handler, cfg));
+    }
+}
+
+pub fn schedule_deps(pool: PgPool, queue: Queue, default_plan: Plan) -> ScheduleDeps {
+    ScheduleDeps {
+        pool,
         queue,
-        Arc::new(PreviewHandler(Arc::new(deps))),
-        preview_runner_config(base),
-    )
+        now: time::OffsetDateTime::now_utc,
+        default_plan,
+    }
+}
+
+/// The enrichment's dependencies (R2 Tasks 23-25): the main engines, the Postgres caches, the
+/// tablebase probe when `SYZYGY_PATH` gave one, and Maia only when `MAIA_URL` is set (without
+/// it, difficulty is `pending_maia`, never estimated). Each hook and job replaces `cancel` with
+/// its own run token.
+pub fn enrich_deps(
+    analyser: Arc<dyn Analyser>,
+    pool: &PgPool,
+    tablebase: Option<&WorkerTablebase>,
+    difficulty: &Arc<DifficultyEstimator>,
+) -> EnrichDeps {
+    EnrichDeps {
+        analyser,
+        store: Arc::new(DbEnrichmentStore::new(pool.clone())),
+        tb: tablebase.map(|tb| tb.probe.clone()),
+        difficulty: difficulty
+            .is_configured()
+            .then(|| difficulty.clone() as Arc<dyn DifficultySource>),
+        cancel: CancellationToken::new(),
+    }
 }
 
 pub fn spawn_analyse_runner(
@@ -337,6 +464,9 @@ pub const TABLEBASE_NODES: u64 = 1000;
 /// 35) takes `probe`.
 pub struct WorkerTablebase {
     pub pool: Arc<SyzygyPool>,
+    /// The directory the engines read: the staged copy when `SYZYGY_STAGE_DIR` is set and the
+    /// copy succeeded, else `SYZYGY_PATH`.
+    pub path: std::path::PathBuf,
     /// [`CachedTbProbe`] over `pool`.
     pub probe: Arc<dyn TablebaseProbe>,
 }
@@ -351,10 +481,82 @@ impl WorkerTablebase {
 /// start. A path without tables gives an unavailable probe. Never an error: analysis does not
 /// depend on the tables.
 pub async fn start_tablebase(env: &WorkerEnv, pool: &PgPool) -> Option<WorkerTablebase> {
-    let Some(path) = env.syzygy_path.as_deref() else {
+    let Some(source) = env.syzygy_path.clone() else {
         tracing::info!("SYZYGY_PATH is not set; no tablebase probe");
         return None;
     };
+    let path = match env.syzygy_stage_dir.clone() {
+        None => source.clone(),
+        Some(stage) => {
+            let (src, dst) = (source.clone(), stage.clone());
+            let staged =
+                tokio::task::spawn_blocking(move || crate::syzygy_stage::stage_tables(&src, &dst))
+                    .await;
+            match staged {
+                Ok(Ok(r)) => {
+                    tracing::info!(
+                        from = %source.display(),
+                        to = %stage.display(),
+                        copied = r.copied,
+                        current = r.current,
+                        bytes = r.bytes,
+                        "syzygy tables staged"
+                    );
+                    stage
+                }
+                Ok(Err(e)) => {
+                    tracing::warn!(error = %e, "staging the syzygy tables failed; reading SYZYGY_PATH");
+                    source.clone()
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "staging the syzygy tables failed; reading SYZYGY_PATH");
+                    source.clone()
+                }
+            }
+        }
+    };
+    let staged = path != source;
+    match start_syzygy(env, &path, pool).await {
+        Some(tb) if staged && !canary_ok(&tb).await => {
+            // Belt and braces: a staged table that passed the stage's checks but answers wrongly
+            // is never used, and its answer was never cached (the canary bypasses the cache).
+            tracing::error!(
+                stage = %path.display(),
+                "a staged syzygy table failed the canary probe; reading SYZYGY_PATH"
+            );
+            tb.pool.close().await;
+            start_syzygy(env, &source, pool).await
+        }
+        other => other,
+    }
+}
+
+/// Known tablebase facts, checked on the raw pool (never through the `position_tb` cache) when
+/// the engines read a staged copy: KQvK and KRvK are wins for the side with the piece.
+const CANARIES: [(&str, &str, i8); 2] = [
+    ("KQvK", "8/8/8/8/8/4k3/8/KQ6 w - - 0 1", 1),
+    ("KRvK", "8/8/8/8/8/4k3/8/KR6 w - - 0 1", 1),
+];
+
+async fn canary_ok(tb: &WorkerTablebase) -> bool {
+    for (table, fen, want) in CANARIES {
+        if !tb.path.join(format!("{table}.rtbw")).is_file() {
+            continue;
+        }
+        let got = tb.pool.probe(fen).await;
+        if got != Some(want) {
+            tracing::error!(table, ?got, want, "syzygy canary probe failed");
+            return false;
+        }
+    }
+    true
+}
+
+async fn start_syzygy(
+    env: &WorkerEnv,
+    path: &std::path::Path,
+    pool: &PgPool,
+) -> Option<WorkerTablebase> {
     match SyzygyPool::start(
         &env.stockfish_path,
         path,
@@ -374,6 +576,7 @@ pub async fn start_tablebase(env: &WorkerEnv, pool: &PgPool) -> Option<WorkerTab
             Some(WorkerTablebase {
                 probe: Arc::new(CachedTbProbe::new(tb.clone(), pool.clone())),
                 pool: tb,
+                path: path.to_path_buf(),
             })
         }
         Err(err) => {
@@ -389,8 +592,11 @@ pub struct RunningWorkers {
     pub pool: PgPool,
     pub queue: Queue,
     pub engines: Arc<EnginePool>,
-    /// Import, analyse, schedule-analysis, preview and (with the reconciler) reconcile.
+    /// One per kind (see the module docs); `claims[i]` describes `runners[i]`.
     pub runners: Vec<RunnerHandle>,
+    pub claims: Vec<RunnerClaim>,
+    /// `MAIA_URL` is set (the client connects lazily; see [`select_difficulty_provider`]).
+    pub maia_configured: bool,
     pub stockfish_version: String,
     /// `None` when `SYZYGY_PATH` is unset (see [`start_tablebase`]).
     pub tablebase: Option<WorkerTablebase>,
@@ -476,7 +682,10 @@ pub async fn start_workers(env: &WorkerEnv, opts: StartOptions) -> anyhow::Resul
     } else {
         None
     };
-    let headroom = POOL_HEADROOM + if with_ai { AI_POOL_HEADROOM } else { 0 };
+    let max_connections = pool_size
+        + preview_concurrency(pool_size)
+        + POOL_HEADROOM
+        + if with_ai { AI_POOL_HEADROOM } else { 0 };
 
     // Migrations run without the worker's statement timeout (ADR 0033).
     let migrations = db::pool::connect_for_migrations(&env.database_url)
@@ -498,7 +707,7 @@ pub async fn start_workers(env: &WorkerEnv, opts: StartOptions) -> anyhow::Resul
     let pool = db::pool::connect(
         &env.database_url,
         DbOptions {
-            max_connections: u32::try_from(pool_size + headroom).unwrap_or(u32::MAX),
+            max_connections: u32::try_from(max_connections).unwrap_or(u32::MAX),
             ..DbOptions::default()
         },
     )
@@ -520,6 +729,11 @@ pub async fn start_workers(env: &WorkerEnv, opts: StartOptions) -> anyhow::Resul
 
     let queue = Queue::new(pool.clone());
     let base = opts.runner.clone().unwrap_or_default();
+    let tablebase = start_tablebase(env, &pool).await;
+    let difficulty = Arc::new(select_difficulty_provider(env.maia_url.as_deref()));
+    let maia_configured = difficulty.is_configured();
+    warm_openings().await;
+
     let import = import_deps(env, &pool, &queue);
     let busy_releases = import.busy_releases.clone();
     let analyser: Arc<dyn Analyser> = engines.clone();
@@ -542,48 +756,122 @@ pub async fn start_workers(env: &WorkerEnv, opts: StartOptions) -> anyhow::Resul
             Some(choice.client)
         }
         Some(Err(e)) => {
+            if let Some(tb) = &tablebase {
+                tb.pool.close().await;
+            }
             EnginePool::close(&engines).await;
             pool.close().await;
             return Err(e.context("starting the AI client"));
         }
     };
     let ai_enabled = matches!(ai_client, Some(Some(_)));
+    let cache = Arc::new(DbEvalCache::new(pool.clone()));
     let preview = PreviewDeps {
         pool: pool.clone(),
         analyser: analyser.clone(),
         concurrency: 2,
     };
-    let analyse = AnalyseGameDeps::new(
-        pool.clone(),
-        analyser.clone(),
-        Arc::new(DbEvalCache::new(pool.clone())),
+    let mut analyse = AnalyseGameDeps::new(pool.clone(), analyser.clone(), cache.clone());
+    if opts.profile_hook {
+        analyse.hook = Some(into_hook(ProfileHook {
+            pool: pool.clone(),
+            enrich: enrich_deps(analyser.clone(), &pool, tablebase.as_ref(), &difficulty),
+            queue: queue.clone(),
+        }));
+    }
+    let reference = Arc::new(ReferenceGameDeps {
+        pool: pool.clone(),
+        analyser: analyser.clone(),
+        cache: cache.clone(),
+        enrich: enrich_deps(analyser.clone(), &pool, tablebase.as_ref(), &difficulty),
+    });
+    let sweep = DifficultySweepDeps {
+        pool: pool.clone(),
+        queue: queue.clone(),
+        analyser: analyser.clone(),
+        cache,
+        source: difficulty.clone(),
+        options: enrich::reenrich::SweepOptions::default(),
+    };
+
+    let mut s = Spawned::default();
+    s.spawn(
+        &queue,
+        Arc::new(ImportAccountHandler::new(Arc::new(import))),
+        import_runner_config(&base),
     );
-    let mut runners = vec![
-        spawn_import_runner(queue.clone(), import, &base),
-        spawn_analyse_runner(queue.clone(), analyse, &base, pool_size),
-        spawn_schedule_runner(queue.clone(), pool.clone(), &base),
-        spawn_preview_runner(queue.clone(), preview, &base),
-    ];
+    s.spawn(
+        &queue,
+        Arc::new(AnalyseGameHandler(Arc::new(analyse))),
+        analyse_runner_config(&base, pool_size),
+    );
+    s.spawn(
+        &queue,
+        Arc::new(ScheduleHandler(Arc::new(schedule_deps(
+            pool.clone(),
+            queue.clone(),
+            env.plan_default,
+        )))),
+        schedule_runner_config(&base),
+    );
+    s.spawn(
+        &queue,
+        Arc::new(PreviewHandler(Arc::new(preview))),
+        preview_runner_config(&base, pool_size),
+    );
+    s.spawn(
+        &queue,
+        Arc::new(BuildProfileHandler(Arc::new(BuildProfileDeps {
+            pool: pool.clone(),
+            queue: queue.clone(),
+            now: time::OffsetDateTime::now_utc,
+        }))),
+        build_profile_runner_config(&base),
+    );
+    s.spawn(
+        &queue,
+        Arc::new(ReferenceGameHandler(reference.clone())),
+        reference_runner_config(&base),
+    );
+    s.spawn(
+        &queue,
+        Arc::new(DifficultySweepHandler(Arc::new(sweep))),
+        sweep_runner_config(&base),
+    );
+    s.spawn(
+        &queue,
+        Arc::new(ReferenceDifficultySweepHandler(reference)),
+        sweep_runner_config(&base),
+    );
     if let (Some(client), Some(pricing)) = (ai_client, pricing) {
         let inputs = opts.inputs.clone().unwrap_or_else(|| {
             Arc::new(ProfileInputProvider { pool: pool.clone() }) as Arc<dyn CoachingInputProvider>
         });
-        runners.extend(spawn_ai_runners(
-            &AiRunnerDeps {
-                pool: pool.clone(),
-                queue: queue.clone(),
-                ai: client,
-                analyser,
-                inputs,
-                budgets: env.ai_budgets,
-                pricing,
-            },
-            &base,
-        ));
+        let deps = AiRunnerDeps {
+            pool: pool.clone(),
+            queue: queue.clone(),
+            ai: client,
+            analyser: analyser.clone(),
+            inputs,
+            budgets: env.ai_budgets,
+            pricing,
+        };
+        for (handler, cfg) in ai_runners(&deps, &base) {
+            s.spawn(&queue, handler, cfg);
+        }
     }
     if opts.with_reconciler {
-        runners.push(spawn_reconcile_runner(queue.clone(), pool.clone(), &base));
-        let scheduled = async {
+        s.spawn(
+            &queue,
+            Arc::new(ReconcileHandler {
+                pool: pool.clone(),
+                queue: queue.clone(),
+            }),
+            reconcile_runner_config(&base),
+        );
+    }
+    let scheduled = async {
+        if opts.with_reconciler {
             ensure_reconcile_scheduled(&queue)
                 .await
                 .context("scheduling the reconciler")?;
@@ -592,25 +880,53 @@ pub async fn start_workers(env: &WorkerEnv, opts: StartOptions) -> anyhow::Resul
                     .await
                     .context("scheduling the recurring AI jobs")?;
             }
-            anyhow::Ok(())
         }
-        .await;
-        if let Err(e) = scheduled {
-            for runner in &runners {
-                runner.force().await;
-            }
-            EnginePool::close(&engines).await;
-            pool.close().await;
-            return Err(e);
-        }
+        ensure_difficulty_sweep_scheduled(&queue)
+            .await
+            .context("scheduling the difficulty sweep")?;
+        ensure_reference_difficulty_sweep_scheduled(&queue)
+            .await
+            .context("scheduling the reference difficulty sweep")?;
+        anyhow::Ok(())
     }
-    let tablebase = start_tablebase(env, &pool).await;
+    .await;
+    if let Err(e) = scheduled {
+        for runner in &s.runners {
+            runner.force().await;
+        }
+        if let Some(tb) = &tablebase {
+            tb.pool.close().await;
+        }
+        EnginePool::close(&engines).await;
+        pool.close().await;
+        return Err(e);
+    }
+    // Games analysed before the hook existed, or whose hook failed (ADR-R2-24). Not fatal: the
+    // next start tries again.
+    match requeue_unenriched(&pool, &queue).await {
+        Ok(n) => tracing::info!(requeued = n, "unenriched games requeued"),
+        Err(e) => tracing::warn!(error = %e, "requeueing unenriched games failed"),
+    }
+    // Reference-game jobs lost by a crash of `lichess-db build` between its row insert and its
+    // last job batch (T21 review I4; idempotent through the `refgame:<id>` dedupe). Not fatal.
+    match lichess_db::reference_select::resume_all_reference_enqueues(&pool, &queue).await {
+        Ok(resumed) => {
+            for (build, added) in resumed.into_iter().filter(|(_, n)| *n > 0) {
+                tracing::info!(%build, added, "reference-game jobs resumed");
+            }
+        }
+        Err(e) => tracing::warn!(error = %e, "resuming reference-game jobs failed"),
+    }
+    let Spawned { runners, claims } = s;
     let monitor = tokio::spawn(log_busy_releases(busy_releases.clone())).abort_handle();
     tracing::info!(
         stockfish_version = %stockfish_version,
         pool_size,
-        max_connections = pool_size + headroom,
+        max_connections,
         runners = runners.len(),
+        tablebase = tablebase.as_ref().map(|tb| tb.status().as_str()),
+        maia_configured,
+        default_plan = ?env.plan_default,
         ai_enabled,
         "worker ready"
     );
@@ -619,6 +935,8 @@ pub async fn start_workers(env: &WorkerEnv, opts: StartOptions) -> anyhow::Resul
         queue,
         engines,
         runners,
+        claims,
+        maia_configured,
         stockfish_version,
         tablebase,
         busy_releases,
@@ -693,12 +1011,30 @@ mod tests {
             (s.concurrency, s.hard_timeout),
             (SCHEDULE_CONCURRENCY, Some(SCHEDULE_HARD_TIMEOUT))
         );
-        let p = preview_runner_config(&base);
+        let p = preview_runner_config(&base, 4);
         assert_eq!(
             (p.concurrency, p.hard_timeout),
-            (PREVIEW_CONCURRENCY, Some(PREVIEW_HARD_TIMEOUT))
+            (2, Some(PREVIEW_HARD_TIMEOUT))
         );
-        for c in [&i, &r, &s, &p] {
+        for (pool, want) in [(1, 1), (2, 1), (3, 1), (8, 4)] {
+            assert_eq!(preview_concurrency(pool), want, "{pool} engines");
+        }
+        let b = build_profile_runner_config(&base);
+        assert_eq!(
+            (b.concurrency, b.hard_timeout),
+            (2, Some(BUILD_PROFILE_HARD_TIMEOUT))
+        );
+        let g = reference_runner_config(&base);
+        assert_eq!(
+            (g.concurrency, g.hard_timeout),
+            (1, Some(ANALYSE_HARD_TIMEOUT))
+        );
+        let w = sweep_runner_config(&base);
+        assert_eq!(
+            (w.concurrency, w.hard_timeout),
+            (1, Some(SWEEP_HARD_TIMEOUT))
+        );
+        for c in [&i, &r, &s, &p, &b, &g, &w] {
             assert_eq!(c.strategy.order_by(), fifo);
         }
         assert_eq!(ANALYSE_HARD_TIMEOUT, Duration::from_secs(660));

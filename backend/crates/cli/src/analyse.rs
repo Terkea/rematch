@@ -1,4 +1,6 @@
 //! `cli analyse`: import a player's games, wait for the workers to analyse them, print a summary.
+//! The in-process worker also runs its start-up maintenance (requeueing every unenriched game in
+//! the database, resuming reference jobs, ADR-R2-25), and the wait covers those of the account.
 //! A port of `apps/worker/src/cli.ts`.
 
 use std::collections::{HashMap, HashSet};

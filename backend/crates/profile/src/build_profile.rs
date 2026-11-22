@@ -190,21 +190,6 @@ async fn lock_build(conn: &mut PgConnection, account_id: Uuid, tc: TimeClass) ->
     Ok(())
 }
 
-/// Gives up the running job's dedupe key (step 8). `false` when the job no longer holds its
-/// lease or the key (nothing changed). The queue's live-only unique index then lets the next
-/// enqueue for the key through while this job is still `running`.
-async fn release_dedupe_key(pool: &PgPool, job: &Job) -> sqlx::Result<bool> {
-    let done = sqlx::query(
-        "UPDATE jobs SET dedupe_key = NULL WHERE id = $1 AND lease_token = $2 \
-         AND state = 'running' AND dedupe_key IS NOT NULL",
-    )
-    .bind(job.id)
-    .bind(job.lease_token)
-    .execute(pool)
-    .await?;
-    Ok(done.rows_affected() > 0)
-}
-
 /// Sessions of the loaded games. Daily games have no sessions (no game duration is known, and a
 /// duration of 0 would claim one).
 fn sessions(
@@ -537,7 +522,8 @@ async fn run_build(
 
     // 8. Follow-up build: release the key first, then check, then enqueue.
     if let Some(job) = job {
-        release_dedupe_key(pool, job)
+        deps.queue
+            .release_dedupe_key(job)
             .await
             .map_err(|e| retryable("release dedupe key", e))?;
     }

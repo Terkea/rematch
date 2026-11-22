@@ -420,6 +420,8 @@ fn reference_game(tag: &str, moves: &str) -> NewReferenceGame {
         black_rating: Some(1550),
         white_hash: hash(&format!("white-{tag}")),
         black_hash: hash(&format!("black-{tag}")),
+        white_selected: true,
+        black_selected: true,
         result: "1/2-1/2".to_owned(),
         termination: Some("Normal".to_owned()),
         played_at: OffsetDateTime::UNIX_EPOCH,
@@ -540,6 +542,62 @@ fn finalize_of(o: &ReferenceOutcome) -> Option<&FinalizeOutcome> {
         | ReferenceOutcome::Failed { finalize, .. } => finalize.as_ref(),
         ReferenceOutcome::Missing | ReferenceOutcome::NotBuilding { .. } => None,
     }
+}
+
+/// T21 review I1: only the sampled side of a reference game is a reference player. The
+/// one-game opponent of a sampled player is analysed (enrichment needs both colours) but gives
+/// no observation, so it never enters a cell.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn an_unsampled_opponent_contributes_nothing_to_a_cell(pool: PgPool) {
+    let games: Vec<NewReferenceGame> = ten_games("u")
+        .into_iter()
+        .map(|g| NewReferenceGame {
+            black_selected: false,
+            ..g
+        })
+        .collect();
+    let blacks: Vec<String> = games.iter().map(|g| g.black_hash.clone()).collect();
+    let (build, ids) = build_with(&pool, "2026-09", &games).await;
+    let d = deps(&pool, None);
+    for id in &ids {
+        let out = run(&d, *id).await;
+        assert!(
+            matches!(
+                out,
+                ReferenceOutcome::Done {
+                    observations: 1,
+                    ..
+                }
+            ),
+            "{out:?}"
+        );
+    }
+    let colours: Vec<String> =
+        sqlx::query_scalar("SELECT color::text FROM reference_observations WHERE build_id = $1")
+            .bind(build)
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    assert_eq!(colours, vec!["white".to_owned(); 10]);
+    let leaked: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM reference_observations WHERE build_id = $1 \
+         AND player_hash = ANY($2)",
+    )
+    .bind(build)
+    .bind(&blacks)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(leaked, 0);
+    let w1: (i32, i32) = sqlx::query_as(
+        "SELECT n_players, n_games FROM band_reference \
+         WHERE build_id = $1 AND band = 'B2' AND time_class = 'blitz' AND metric = 'weakness:W1'",
+    )
+    .bind(build)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(w1, (10, 10), "only the ten sampled white players");
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
@@ -1474,5 +1532,44 @@ async fn one_finaliser_error_never_stops_the_sweep(pool: PgPool) {
         status(&pool, bad).await,
         BuildStatus::Building,
         "retried by the next run"
+    );
+}
+
+/// R2 Task 35 (T21 hand-off): `lichess-db` creates band-reference builds with NULL protocols (it
+/// has no engine or enrich dependency). The finaliser, which does, records the analysis and
+/// enrichment protocols the games were analysed under when it activates the build.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn activation_records_the_analysis_and_enrichment_protocols(pool: PgPool) {
+    let (build, ids) = build_with(&pool, "2026-08", &ten_games("p")).await;
+    // As lichess-db creates it.
+    sqlx::query(
+        "UPDATE reference_builds SET protocol = NULL, enrichment_protocol = NULL WHERE id = $1",
+    )
+    .bind(build)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let before: (Option<String>, Option<String>) =
+        sqlx::query_as("SELECT protocol, enrichment_protocol FROM reference_builds WHERE id = $1")
+            .bind(build)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(before, (None, None), "lichess-db leaves them NULL");
+    let d = deps(&pool, None);
+    let last = analyse_all(&d, &ids).await.expect("games ran");
+    assert!(
+        matches!(finalize_of(&last), Some(FinalizeOutcome::Activated { .. })),
+        "{last:?}"
+    );
+    let after: (Option<String>, Option<String>) =
+        sqlx::query_as("SELECT protocol, enrichment_protocol FROM reference_builds WHERE id = $1")
+            .bind(build)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        after,
+        (Some("sf19-n300k-v1".to_owned()), Some("enr-v1".to_owned()))
     );
 }

@@ -50,7 +50,7 @@ use anyhow::Context;
 use engine::Analyser;
 use futures::future::BoxFuture;
 use queue::queue::Queue;
-use queue::runner::{Handler, Runner, RunnerConfig, RunnerHandle};
+use queue::runner::{Handler, RunnerConfig};
 use queue::strategy::PriorityFifo;
 use serde_json::Value;
 use sqlx::PgPool;
@@ -285,8 +285,10 @@ pub struct AiRunnerDeps {
     pub pricing: Arc<PricingTable>,
 }
 
-/// One runner per [`AI_RUNNER_KINDS`] entry, in that order.
-pub fn spawn_ai_runners(d: &AiRunnerDeps, base: &RunnerConfig) -> Vec<RunnerHandle> {
+/// One handler and runner config per [`AI_RUNNER_KINDS`] entry, in that order. `start_workers`
+/// spawns them through the same `Spawned::spawn` as every other runner, so its claims and its
+/// shutdown cover them.
+pub fn ai_runners(d: &AiRunnerDeps, base: &RunnerConfig) -> Vec<(Arc<dyn Handler>, RunnerConfig)> {
     let entitlements: Arc<dyn Entitlements> = Arc::new(DefaultEntitlements);
     let now: Arc<dyn Fn() -> OffsetDateTime + Send + Sync> = Arc::new(OffsetDateTime::now_utc);
     let item = || AiItemDeps {
@@ -350,7 +352,7 @@ pub fn spawn_ai_runners(d: &AiRunnerDeps, base: &RunnerConfig) -> Vec<RunnerHand
         .into_iter()
         .map(|h| {
             let cfg = ai_runner_config(base, h.kind());
-            Runner::spawn(d.queue.clone(), h, cfg)
+            (h, cfg)
         })
         .collect()
 }

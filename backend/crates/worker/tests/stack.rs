@@ -99,11 +99,22 @@ async fn starts_with_stockfish_19_and_shuts_down_cleanly(
     .expect("start_workers");
     assert!(running.stockfish_version.starts_with("Stockfish 19"));
     assert_eq!(running.engines.pids().len(), 1);
-    // Import, analyse, schedule-analysis, preview and reconcile, plus the nine AI kinds (R3).
+    // 18 runners, every one registered through `Spawned::spawn` (`claims` lists them in order):
+    // - R1: import-account, analyse-game, schedule-analysis, preview-game (4);
+    // - R2 Task 35: build-profile, analyse-reference-game, difficulty-sweep,
+    //   reference-difficulty-sweep (4);
+    // - R3 Task 26: generate-report, weekly-review, explain-weakness-change, coach-chat,
+    //   interactive-analyse, report-batch-schedule, weekly-batch-schedule, ai-batch-poll,
+    //   ai-reconcile (9);
+    // - reconcile (with_reconciler: 1).
     assert_eq!(
         running.runners.len(),
-        5 + worker::ai_jobs::AI_RUNNER_KINDS.len()
+        4 + 4 + worker::ai_jobs::AI_RUNNER_KINDS.len() + 1
     );
+    assert_eq!(running.runners.len(), 18);
+    assert_eq!(running.claims.len(), running.runners.len());
+    let claimed: Vec<&str> = running.claims.iter().map(|c| c.kind).collect();
+    assert_eq!(claimed, running.runner_kinds());
     let recurring: Vec<String> = sqlx::query_scalar(
         "SELECT kind FROM jobs WHERE recur_every IS NOT NULL AND state <> 'done' ORDER BY kind",
     )
@@ -115,7 +126,9 @@ async fn starts_with_stockfish_19_and_shuts_down_cleanly(
         [
             "ai-batch-poll",
             "ai-reconcile",
+            "difficulty-sweep",
             "reconcile",
+            "reference-difficulty-sweep",
             "report-batch-schedule",
             "weekly-batch-schedule"
         ]

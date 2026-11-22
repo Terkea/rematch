@@ -614,9 +614,10 @@ async fn without_a_rate_the_sample_is_proportional_to_the_previous_month(pool: P
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
-async fn band_reference_is_refused_until_task_21(pool: PgPool) {
+async fn nothing_to_build_is_refused(pool: PgPool) {
     let o = BuildOptions {
-        band_reference: true,
+        explorer: false,
+        band_reference: false,
         ..opts("2026-10")
     };
     let err = build(
