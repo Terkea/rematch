@@ -6,6 +6,9 @@
 //!   estimate.
 //! - A key without series points still gets an estimate (no events, no opportunities): every
 //!   binomial key has exactly one row per account × time class.
+//! - **Sides** (the colour split): the build computes the estimates for `Both` and for each
+//!   colour, from that side's series points and games (so [`MIN_GAMES`](profile_core::stats::priority::MIN_GAMES)
+//!   is counted per side) against that side's benchmark only.
 //! - Without a usable benchmark the estimate is `NoBenchmark` (Task 12): `band_*`, `percentile`
 //!   and `excess` are `NULL`, confidence and priority 0. Fatigue is 0 until plans exist.
 
@@ -17,7 +20,9 @@ use profile_core::stats::priority::{
     EstimateInput, EstimateReason, WINDOW_DAYS, WeaknessEstimate, estimate_weakness,
 };
 use profile_core::timeline::series::SeriesPoint;
-use profile_core::types::{Band, BandReference, MetricId, SeriesKey, WeaknessKey, WeaknessState};
+use profile_core::types::{
+    Band, BandReference, MetricId, SeriesKey, Side, WeaknessKey, WeaknessState,
+};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -80,12 +85,14 @@ pub fn compute_estimates(
         .collect()
 }
 
-/// The `weakness_estimates` row of an estimate, with the timeline's state and `P_imp`.
+/// The `weakness_estimates` row of an estimate of `side`, with the timeline's state and `P_imp`
+/// (the timeline is `Both` only, so a colour's row carries the account's state).
 /// `excess` is stored only with a benchmark (it is 0 by construction otherwise, which would
 /// read as "measured, no excess").
 pub fn estimate_row(
     account_id: Uuid,
     tc: TimeClass,
+    side: Side,
     e: &WeaknessEstimate,
     state: WeaknessState,
     p_imp: Option<f64>,
@@ -94,6 +101,7 @@ pub fn estimate_row(
     WeaknessEstimateRow {
         account_id,
         time_class: tc.as_str().to_owned(),
+        side: side.as_str().to_owned(),
         series_key: e.key.as_str().to_owned(),
         k: e.k,
         n: e.n,

@@ -814,15 +814,17 @@ async fn load_sides(conn: &mut PgConnection, build: Uuid) -> Result<LoadedSides,
 pub const ACTIVATE_LOCK_SQL: &str =
     "SELECT pg_advisory_xact_lock(hashtext('band-reference-activate'))";
 
-/// The active band-reference build other than `$1` and its usable (not low-sample) rows.
+/// The active band-reference build other than `$1` and its usable (not low-sample) `Both` rows.
 pub const ACTIVE_USABLE_SQL: &str = "SELECT b.id, (SELECT count(*) FROM band_reference r \
-       WHERE r.build_id = b.id AND NOT r.low_sample) \
+       WHERE r.build_id = b.id AND r.side = 'both' AND NOT r.low_sample) \
      FROM reference_builds b \
      WHERE b.kind = 'band_reference' AND b.status = 'active' AND b.id <> $1";
 
-/// Usable (not low-sample) band x time class x metric cells.
+/// Usable (not low-sample) band x time class x metric cells of the `Both` side.
 fn usable_cells(rows: &[refdata::band_reference::BandReferenceRow]) -> usize {
-    rows.iter().filter(|r| !r.stat.low_sample).count()
+    rows.iter()
+        .filter(|r| r.side == profile_core::types::Side::Both && !r.stat.low_sample)
+        .count()
 }
 
 /// Fails a build that must not be activated, after the finaliser's transaction was rolled back

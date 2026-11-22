@@ -191,7 +191,7 @@ async fn backfill_complete(
     .await?;
     let estimates: Vec<(String, String, f64, f64, Option<f64>, i32)> = sqlx::query_as(
         "SELECT time_class::text, series_key, ci_low, ci_high, band_median, n_unweighted \
-         FROM weakness_estimates WHERE account_id = $1",
+         FROM weakness_estimates WHERE account_id = $1 AND side = 'both'",
     )
     .bind(account_id)
     .fetch_all(pool)
@@ -285,7 +285,7 @@ async fn latest_last50(
     );
     let key = Window::LastN(LAST_N).key();
     let rows: Vec<Raw> = sqlx::query_as(
-        "SELECT DISTINCT ON (metric) metric, value, value_adjusted, n, ci_low, ci_high,            computed_at          FROM kpi_snapshot WHERE account_id = $1 AND time_class = $2::time_class          AND window_key = $3 ORDER BY metric, id DESC",
+        "SELECT DISTINCT ON (metric) metric, value, value_adjusted, n, ci_low, ci_high,            computed_at          FROM kpi_snapshot WHERE account_id = $1 AND time_class = $2::time_class          AND side = 'both' AND window_key = $3 ORDER BY metric, id DESC",
     )
     .bind(account_id)
     .bind(tc.as_str())

@@ -73,7 +73,7 @@ use profile::reference_jobs::{
 };
 use profile::requeue::{
     DifficultySweepDeps, DifficultySweepHandler, ensure_difficulty_sweep_scheduled,
-    mark_stale_metrics, requeue_unenriched,
+    mark_stale_metrics, requeue_colour_split, requeue_unenriched,
 };
 use queue::queue::Queue;
 use queue::runner::{Handler, Runner, RunnerConfig, RunnerHandle};
@@ -962,6 +962,12 @@ pub async fn start_workers(env: &WorkerEnv, opts: StartOptions) -> anyhow::Resul
     match mark_stale_metrics(&pool).await {
         Ok(n) => tracing::info!(marked = n, "games with stale metrics marked"),
         Err(e) => tracing::warn!(error = %e, "marking games with stale metrics failed"),
+    }
+    // Profiles built before the colour split get their White/Black rows from one rebuild over
+    // the stored metrics (no engine). Not fatal: the next start tries again.
+    match requeue_colour_split(&pool, &queue).await {
+        Ok(n) => tracing::info!(due = n, "profiles without colour rows queued"),
+        Err(e) => tracing::warn!(error = %e, "queueing colour-split rebuilds failed"),
     }
     // Reference-game jobs lost by a crash of `lichess-db build` between its row insert and its
     // last job batch (T21 review I4; idempotent through the `refgame:<id>` dedupe). Not fatal.

@@ -1,7 +1,12 @@
 //! Band reference aggregation (R2 Task 32, TS M2 Task 14 `aggregateBandReference`, ADR-R2-11).
 //!
 //! [`aggregate_band_reference`] turns the observed sides of a build's reference games into one
-//! [`BandReferenceRow`] per band × time class × KPI catalogue row that has evidence:
+//! [`BandReferenceRow`] per band × time class × side × KPI catalogue row that has evidence:
+//!
+//! - **Sides** (the colour split): `Both` pools every observed side of the cell; `White` and
+//!   `Black` only the sides that had that colour, aggregated by the same rules on their own
+//!   (their own player counts, so their own `low_sample`). The build's evidence gate and
+//!   supersede rule look at `Both` rows only.
 //!
 //! - **Rate rows** (weakness, motif and base rates): per-player `(k_i, n_i)` summed over the
 //!   player's games in the cell. `pooled_rate = Σk / Σn`; a Beta-binomial fit
@@ -30,6 +35,7 @@ use profile_core::stats::beta_binomial::fit_beta_binomial;
 use profile_core::stats::quantiles::quantile;
 use profile_core::types::{
     Band, BandReferenceStat, GameContext, MetricId, PLAYER_GAME_METRICS_VERSION, PlayerGameMetrics,
+    Side,
 };
 use refdata::band_reference::BandReferenceRow;
 
@@ -68,32 +74,37 @@ pub fn aggregate_band_reference(sides: &[ReferenceSide]) -> Vec<BandReferenceRow
     aggregate_band_reference_report(sides).rows
 }
 
-/// True when at least one weakness row is usable (not low-sample). A build without one would
-/// only remove benchmarks, so it is never activated.
+/// True when at least one `Both` weakness row is usable (not low-sample). A build without one
+/// would only remove benchmarks, so it is never activated.
 pub fn has_minimum_evidence(rows: &[BandReferenceRow]) -> bool {
-    rows.iter()
-        .any(|r| matches!(r.stat.metric, MetricId::Weakness(_)) && !r.stat.low_sample)
+    rows.iter().any(|r| {
+        r.side == Side::Both
+            && matches!(r.stat.metric, MetricId::Weakness(_))
+            && !r.stat.low_sample
+    })
 }
 
-/// [`aggregate_band_reference`] with its skip counts. Rows are ordered by band, time class and
-/// catalogue order.
+/// [`aggregate_band_reference`] with its skip counts. Rows are ordered by band, time class, side
+/// (`Both`, `White`, `Black`) and catalogue order.
 pub fn aggregate_band_reference_report(sides: &[ReferenceSide]) -> AggregateReport {
     let mut report = AggregateReport::default();
-    let mut cells: BTreeMap<(usize, &'static str), (Band, TimeClass, Vec<&ReferenceSide>)> =
-        BTreeMap::new();
+    type Cell<'a> = (Band, TimeClass, Side, Vec<&'a ReferenceSide>);
+    let mut cells: BTreeMap<(usize, &'static str, Side), Cell<'_>> = BTreeMap::new();
     for s in sides {
         if s.metrics.version != PLAYER_GAME_METRICS_VERSION {
             report.stale_sides += 1;
             continue;
         }
         let pos = Band::ALL.iter().position(|b| *b == s.band).unwrap_or(0);
-        cells
-            .entry((pos, s.tc.as_str()))
-            .or_insert_with(|| (s.band, s.tc, Vec::new()))
-            .2
-            .push(s);
+        for side in [Side::Both, Side::of(s.ctx.player_color)] {
+            cells
+                .entry((pos, s.tc.as_str(), side))
+                .or_insert_with(|| (s.band, s.tc, side, Vec::new()))
+                .3
+                .push(s);
+        }
     }
-    for (band, tc, cell) in cells.into_values() {
+    for (band, tc, side, cell) in cells.into_values() {
         for def in kpi_catalogue() {
             if def.kind == KpiKind::Last {
                 continue;
@@ -102,6 +113,7 @@ pub fn aggregate_band_reference_report(sides: &[ReferenceSide]) -> AggregateRepo
                 report.rows.push(BandReferenceRow {
                     band,
                     time_class: tc,
+                    side,
                     stat,
                 });
             }

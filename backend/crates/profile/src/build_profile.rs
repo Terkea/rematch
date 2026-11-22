@@ -4,7 +4,8 @@
 //! Steps ([`handle_build_profile`]):
 //! 1. Record `started_at` from the deps' clock.
 //! 2. Read the band reference of the player's band (R-4 with ruling Q2, per-metric fallback of
-//!    Task 17). It is reference data, not account state, so it is read before the lock. Then
+//!    Task 17), once per side (`Both`, `White`, `Black`; a `Both` reference is never used for a
+//!    colour). It is reference data, not account state, so it is read before the lock. Then
 //!    open the write transaction and take the build's advisory lock
 //!    (`build-profile:<account>:<tc>`). On the transaction's own connection, fingerprint the
 //!    stored `game_metrics` rows and load:
@@ -16,7 +17,11 @@
 //!
 //!    Builds of one account × time class therefore run one at a time, each from one consistent
 //!    view, on one connection (T33 review M1; the earlier optimistic re-load is gone).
-//! 3. to 6. The CPU-heavy part runs in `spawn_blocking` (review M2):
+//! 3. to 6. The CPU-heavy part runs in `spawn_blocking` (review M2). Estimates and KPI
+//!    snapshots are computed three times (the colour split): for every game (`Both`) and for the
+//!    games the player had White or Black in, each side with its own reference and its own
+//!    evidence counts. The timeline stays `Both` only (per-colour states would halve the
+//!    evidence), so a colour's estimate rows carry the account's state and no `P_imp`:
 //!    - [`estimate_weakness`](profile_core::stats::priority::estimate_weakness) per binomial
 //!      key ([`crate::estimates`]), upserted with the timeline's state and `P_imp`;
 //!    - [`evaluate_series`](profile_core::timeline::series::evaluate_series) per series. The
@@ -26,7 +31,7 @@
 //!      appended when a compared field changed ([`crate::snapshots`]).
 //!
 //!    Then write and commit.
-//! 7. After the commit, publish:
+//! 7. After the commit, publish (from the `Both` side only):
 //!    - one `profile.updated` per changed benchmarked area;
 //!    - one `weakness.changed` per series whose current state differs from the stored one.
 //!
@@ -65,7 +70,7 @@ use profile_core::kpi::snapshots::KpiValue;
 use profile_core::stats::priority::WeaknessEstimate;
 use profile_core::timeline::series::{SeriesOutcome, SeriesPoint};
 use profile_core::types::{
-    BandReference, GameContext, PlayerGameMetrics, SeriesKey, SessionInfo, WeaknessState,
+    BandReference, GameContext, PlayerGameMetrics, SeriesKey, SessionInfo, Side, WeaknessState,
 };
 use profile_core::weakness::sessions::{
     SESSION_GAP_MINUTES, SessionGame, build_sessions, est_duration_seconds,
@@ -73,7 +78,7 @@ use profile_core::weakness::sessions::{
 use queue::queue::Queue;
 use queue::runner::{Handler, JobContext};
 use queue::{BuildProfilePayload, Job, JobError, KIND_BUILD_PROFILE};
-use refdata::band_reference::load_band_reference;
+use refdata::band_reference::load_band_reference_for;
 use refdata::builds::RefdataError;
 use refdata::repertoire::{player_band, player_band_in, rebuild_repertoire};
 use serde::Serialize;
@@ -119,9 +124,9 @@ pub struct BuildProfileDeps {
 /// What a build wrote.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
 pub struct BuildProfileSummary {
-    /// `weakness_estimates` rows upserted (one per binomial key).
+    /// `weakness_estimates` rows upserted (one per binomial key and side).
     pub estimates: usize,
-    /// `kpi_snapshot` rows appended.
+    /// `kpi_snapshot` rows appended (every side).
     pub snapshots: usize,
     /// `weakness_state_history` rows inserted (transitions and onsets). Stale rows deleted to
     /// match the replay are not counted.
@@ -220,6 +225,29 @@ fn sessions(
         .collect()
 }
 
+/// The band reference of each side, in [`Side::ALL`] order.
+type SideReferences = [Option<BandReference>; 3];
+
+fn side_index(side: Side) -> usize {
+    Side::ALL.iter().position(|s| *s == side).unwrap_or(0)
+}
+
+/// Every side's reference of `band` × `tc` (each side read on its own).
+async fn load_side_references(
+    pool: &PgPool,
+    band: profile_core::types::Band,
+    tc: TimeClass,
+) -> Result<SideReferences, JobError> {
+    let mut out = SideReferences::default();
+    for side in Side::ALL {
+        out[side_index(side)] = load_band_reference_for(pool, band, tc, side)
+            .await
+            .map_err(refdata_error)?
+            .map(|r| r.reference());
+    }
+    Ok(out)
+}
+
 /// What the build read under its lock.
 struct Loaded {
     fingerprint: (i64, String),
@@ -227,7 +255,7 @@ struct Loaded {
     games: Vec<(GameContext, PlayerGameMetrics)>,
     series: BTreeMap<SeriesKey, Vec<SeriesPoint>>,
     band: profile_core::types::Band,
-    reference: Option<BandReference>,
+    references: SideReferences,
     line_keys: HashMap<Uuid, String>,
     stored: StoredHistory,
     stored_states: HashMap<String, WeaknessState>,
@@ -242,7 +270,7 @@ async fn load_locked(
     pool: &PgPool,
     account_id: Uuid,
     tc: TimeClass,
-    prefetched: (profile_core::types::Band, Option<BandReference>),
+    prefetched: (profile_core::types::Band, SideReferences),
 ) -> Result<Loaded, JobError> {
     let fingerprint = games_fingerprint(conn, account_id, tc)
         .await
@@ -269,13 +297,10 @@ async fn load_locked(
     let (band, _source) = player_band_in(conn, account_id, tc)
         .await
         .map_err(refdata_error)?;
-    let reference = if band == prefetched.0 {
+    let references = if band == prefetched.0 {
         prefetched.1
     } else {
-        load_band_reference(pool, band, tc)
-            .await
-            .map_err(refdata_error)?
-            .map(|r| r.reference())
+        load_side_references(pool, band, tc).await?
     };
     let line_keys: HashMap<Uuid, String> = sqlx::query_as::<_, (Uuid, String)>(
         "SELECT game_id, line_key FROM game_openings WHERE account_id = $1 \
@@ -303,7 +328,7 @@ async fn load_locked(
         games,
         series,
         band,
-        reference,
+        references,
         line_keys,
         stored,
         stored_states,
@@ -311,35 +336,71 @@ async fn load_locked(
     })
 }
 
+/// One side's estimates and KPI rows.
+struct SideComputed {
+    side: Side,
+    estimates: Vec<WeaknessEstimate>,
+    snapshot_values: Vec<KpiValue>,
+    appended: Vec<KpiValue>,
+}
+
 /// The pure result of steps 3 to 6.
 struct Computed {
-    estimates: Vec<WeaknessEstimate>,
+    /// In [`Side::ALL`] order (`Both` first).
+    sides: Vec<SideComputed>,
     outcomes: BTreeMap<SeriesKey, SeriesOutcome>,
     fresh: Vec<NewRow>,
     stale_ids: Vec<i64>,
     changes: Vec<StateChange>,
-    snapshot_values: Vec<KpiValue>,
-    appended: Vec<KpiValue>,
     protocols: HashMap<Uuid, String>,
     estimates_ms: f64,
     timeline_ms: f64,
     kpi_ms: f64,
 }
 
+/// The series points of the games in `ids` (a side's games).
+fn side_series(
+    series: &BTreeMap<SeriesKey, Vec<SeriesPoint>>,
+    ids: &HashSet<Uuid>,
+) -> BTreeMap<SeriesKey, Vec<SeriesPoint>> {
+    series
+        .iter()
+        .map(|(k, pts)| {
+            let kept: Vec<SeriesPoint> = pts
+                .iter()
+                .filter(|p| ids.contains(&p.game_id))
+                .cloned()
+                .collect();
+            (*k, kept)
+        })
+        .filter(|(_, pts)| !pts.is_empty())
+        .collect()
+}
+
+/// The estimates of one side, from its games' series points against its own reference.
+fn side_estimates(side: Side, l: &Loaded, started_at: OffsetDateTime) -> Vec<WeaknessEstimate> {
+    let games = l.games.iter().filter(|(c, _)| side.covers(c.player_color));
+    let in_window = games_in_window(games.clone().map(|(c, _)| c.played_at), started_at);
+    let reference = l.references[side_index(side)].as_ref();
+    if side == Side::Both {
+        return compute_estimates(&l.series, in_window, l.band, reference, started_at);
+    }
+    let ids: HashSet<Uuid> = games.map(|(c, _)| c.game_id).collect();
+    let series = side_series(&l.series, &ids);
+    compute_estimates(&series, in_window, l.band, reference, started_at)
+}
+
 fn compute(tc: TimeClass, l: &Loaded, started_at: OffsetDateTime) -> Computed {
     let t = Instant::now();
-    let in_window = games_in_window(l.games.iter().map(|(c, _)| c.played_at), started_at);
-    let estimates = compute_estimates(
-        &l.series,
-        in_window,
-        l.band,
-        l.reference.as_ref(),
-        started_at,
-    );
+    let estimates: Vec<Vec<WeaknessEstimate>> = Side::ALL
+        .iter()
+        .map(|side| side_estimates(*side, l, started_at))
+        .collect();
     let estimates_ms = ms(t);
 
     let t = Instant::now();
-    let outcomes = evaluate_all(&l.series, l.reference.as_ref());
+    let both_reference = l.references[side_index(Side::Both)].as_ref();
+    let outcomes = evaluate_all(&l.series, both_reference);
     let contexts: HashMap<Uuid, &GameContext> =
         l.games.iter().map(|(c, _)| (c.game_id, c)).collect();
     let facts = CauseFacts {
@@ -351,21 +412,36 @@ fn compute(tc: TimeClass, l: &Loaded, started_at: OffsetDateTime) -> Computed {
     let changes = state_changes(&outcomes, &l.stored_states, &l.stored);
     let timeline_ms = ms(t);
 
+    // Sessions span both colours: a game's session is the same on every side.
     let t = Instant::now();
     let session_map = sessions(tc, &l.games);
-    let kpi_games: Vec<KpiGame<'_>> = l
-        .games
-        .iter()
-        .map(|(ctx, metrics)| KpiGame {
-            ctx,
-            metrics,
-            session: session_map.get(&ctx.game_id),
-        })
-        .collect();
-    let snapshot_values = compute_snapshots(&kpi_games, l.reference.as_ref());
-    let appended: Vec<KpiValue> = rows_to_append(&snapshot_values, &l.latest)
+    let sides: Vec<SideComputed> = Side::ALL
         .into_iter()
-        .cloned()
+        .zip(estimates)
+        .map(|(side, estimates)| {
+            let kpi_games: Vec<KpiGame<'_>> = l
+                .games
+                .iter()
+                .filter(|(ctx, _)| side.covers(ctx.player_color))
+                .map(|(ctx, metrics)| KpiGame {
+                    ctx,
+                    metrics,
+                    session: session_map.get(&ctx.game_id),
+                })
+                .collect();
+            let snapshot_values =
+                compute_snapshots(&kpi_games, l.references[side_index(side)].as_ref());
+            let appended: Vec<KpiValue> = rows_to_append(side, &snapshot_values, &l.latest)
+                .into_iter()
+                .cloned()
+                .collect();
+            SideComputed {
+                side,
+                estimates,
+                snapshot_values,
+                appended,
+            }
+        })
         .collect();
     let kpi_ms = ms(t);
 
@@ -376,13 +452,11 @@ fn compute(tc: TimeClass, l: &Loaded, started_at: OffsetDateTime) -> Computed {
         .map(|p| (p.game_id, p.protocol.clone()))
         .collect();
     Computed {
-        estimates,
+        sides,
         outcomes,
         fresh,
         stale_ids,
         changes,
-        snapshot_values,
-        appended,
         protocols,
         estimates_ms,
         timeline_ms,
@@ -424,10 +498,7 @@ async fn run_build(
     let (band0, _) = player_band(pool, account_id, tc)
         .await
         .map_err(refdata_error)?;
-    let reference0 = load_band_reference(pool, band0, tc)
-        .await
-        .map_err(refdata_error)?
-        .map(|r| r.reference());
+    let reference0 = load_side_references(pool, band0, tc).await?;
     let mut tx = pool.begin().await.map_err(|e| retryable("begin", e))?;
     lock_build(&mut tx, account_id, tc)
         .await
@@ -456,14 +527,21 @@ async fn run_build(
 
     // Persist, then commit (which releases the lock).
     let t = Instant::now();
-    for e in &c.estimates {
-        let (state, p_imp) = c
-            .outcomes
-            .get(&SeriesKey::Weakness(e.key))
-            .map_or((WeaknessState::NotAnIssue, None), |o| (o.state, o.p_imp));
-        upsert_weakness_estimate(&mut tx, &estimate_row(account_id, tc, e, state, p_imp))
+    for s in &c.sides {
+        for e in &s.estimates {
+            let (state, p_imp) = c
+                .outcomes
+                .get(&SeriesKey::Weakness(e.key))
+                .map_or((WeaknessState::NotAnIssue, None), |o| (o.state, o.p_imp));
+            // `P_imp` is the timeline's, which is `Both` only.
+            let p_imp = p_imp.filter(|_| s.side == Side::Both);
+            upsert_weakness_estimate(
+                &mut tx,
+                &estimate_row(account_id, tc, s.side, e, state, p_imp),
+            )
             .await
             .map_err(|e| retryable("estimates", e))?;
+        }
     }
     let deleted = delete_history_rows(&mut tx, account_id, tc, &c.stale_ids)
         .await
@@ -477,13 +555,15 @@ async fn run_build(
             .await
             .map_err(|e| retryable("history", e))?;
     }
-    for v in &c.appended {
-        append_kpi_snapshot(
-            &mut tx,
-            &snapshot_row(l.user_id, account_id, tc, v, ANALYSIS_PROTOCOL),
-        )
-        .await
-        .map_err(|e| retryable("snapshots", e))?;
+    for s in &c.sides {
+        for v in &s.appended {
+            append_kpi_snapshot(
+                &mut tx,
+                &snapshot_row(l.user_id, account_id, tc, s.side, v, ANALYSIS_PROTOCOL),
+            )
+            .await
+            .map_err(|e| retryable("snapshots", e))?;
+        }
     }
     tx.commit().await.map_err(|e| retryable("commit", e))?;
     stages.insert("persist_ms".into(), ms(t));
@@ -492,16 +572,17 @@ async fn run_build(
     }
 
     let summary = BuildProfileSummary {
-        estimates: c.estimates.len(),
-        snapshots: c.appended.len(),
+        estimates: c.sides.iter().map(|s| s.estimates.len()).sum(),
+        snapshots: c.sides.iter().map(|s| s.appended.len()).sum(),
         transitions: c.fresh.len(),
     };
 
     // 7. Events, right after the commit. They notify; the state is in Postgres, so a failed
     // publish is logged, not retried (a retry would find nothing new to announce).
-    let appended: Vec<&KpiValue> = c.appended.iter().collect();
+    let both = &c.sides[side_index(Side::Both)];
+    let appended: Vec<&KpiValue> = both.appended.iter().collect();
     for area in changed_areas(&appended) {
-        let p = profile_updated_payload(tc, area, &c.snapshot_values);
+        let p = profile_updated_payload(tc, area, &both.snapshot_values);
         if let Err(e) = publish(pool, account_id, UserEventType::ProfileUpdated, p).await {
             tracing::warn!(%account_id, area = area.as_str(), error = %e, "publish profile.updated failed");
         }

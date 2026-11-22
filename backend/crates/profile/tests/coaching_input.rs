@@ -570,6 +570,7 @@ async fn seed_with_strength(pool: &PgPool) -> Fixture {
         SeedOptions {
             games: 40,
             reference: false,
+            ..SeedOptions::default()
         },
     )
     .await;
@@ -1074,6 +1075,7 @@ async fn seed_below_median(pool: &PgPool) -> Fixture {
         SeedOptions {
             games: 40,
             reference: false,
+            ..SeedOptions::default()
         },
     )
     .await;

@@ -821,3 +821,61 @@ mod tests {
         assert_eq!(m.opening.eval_at_opening_end_white_cp, None);
     }
 }
+
+/// Which of the player's games a profile row covers (the colour split, `side_scope` in SQL):
+/// every game, or only those the player had White or Black in. Per-side rows obey the same
+/// minimum-evidence rules as `Both`, counted over that side's games. A `Both` benchmark is never
+/// applied to one colour.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Side {
+    Both,
+    White,
+    Black,
+}
+
+impl Side {
+    /// In storage order: `Both` first.
+    pub const ALL: [Side; 3] = [Side::Both, Side::White, Side::Black];
+
+    /// The `side_scope` enum text.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Side::Both => "both",
+            Side::White => "white",
+            Side::Black => "black",
+        }
+    }
+
+    /// The side of one colour.
+    pub fn of(color: Color) -> Side {
+        match color {
+            Color::White => Side::White,
+            Color::Black => Side::Black,
+        }
+    }
+
+    /// True when a game the player had `color` in belongs to this side.
+    pub fn covers(self, color: Color) -> bool {
+        self == Side::Both || self == Side::of(color)
+    }
+}
+
+impl fmt::Display for Side {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl FromStr for Side {
+    type Err = UnknownVariant;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Side::ALL
+            .into_iter()
+            .find(|x| x.as_str() == s)
+            .ok_or_else(|| UnknownVariant {
+                kind: "side",
+                value: s.to_owned(),
+            })
+    }
+}
