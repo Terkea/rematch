@@ -1,12 +1,13 @@
 //! The computed report (Task 14, TS plan B3 `buildComputedReport`): the engine-derived part of a
-//! report, shown with or without the AI narrative. Everything here is copied or derived from the
+//! report, shown with or without the AI narrative: player, basis, area scores, metrics,
+//! weaknesses, openings and strengths (with their exemplar positions), focuses and changes. Everything here is copied or derived from the
 //! `CoachingInput`; nothing comes from the model.
 
 use serde::{Deserialize, Serialize};
 
 use crate::input::types::{
     AreaScore, BandId, Basis, CoachingInput, Metric, OpeningVerdict, Platform, RankedWeakness,
-    TimeClass, TimelineChange, WeaknessState,
+    Strength, TimeClass, TimelineChange, WeaknessState,
 };
 use crate::validator::focus::select_focuses;
 use crate::validator::language::format_evidence_window;
@@ -35,6 +36,9 @@ pub struct ComputedReport {
     pub metrics: Vec<Metric>,
     pub weaknesses: Vec<RankedWeakness>,
     pub openings: Vec<OpeningVerdict>,
+    /// The computed strengths ("What you do well", spec §10.3), each with its exemplar
+    /// positions, so the web can show them on a board, also when no AI section is ready.
+    pub strengths: Vec<Strength>,
     /// The computed focuses (`select_focuses`); empty when none qualifies (the narrative then
     /// uses the general focus).
     pub focuses: Vec<String>,
@@ -67,6 +71,7 @@ pub fn build_computed_report(input: &CoachingInput, is_first_report: bool) -> Co
         metrics: input.metrics.clone(),
         weaknesses: input.weaknesses.clone(),
         openings: input.openings.clone(),
+        strengths: input.strengths.clone(),
         focuses: select_focuses(input, is_first_report),
         new_this_period: changes(|s| matches!(s, WeaknessState::Emerging | WeaknessState::Active)),
         fixed_this_period: changes(|s| s == WeaknessState::Resolved),

@@ -9,12 +9,13 @@
 //! On the first error (a client error such as `Unavailable` or `Budget`, or an `on_section`
 //! failure) no further section is started; the sections already in flight are awaited (their
 //! outcomes still reach `on_section`) and the first error is returned. The job keeps what was
-//! saved and retries the rest with `skip`.
+//! saved and retries the rest with `skip`. The error carries every paid call that no successful
+//! `on_section` received ([`ReportError::unmetered`]), so the job meters it.
 
 use futures::future::BoxFuture;
 use futures::stream::{FuturesUnordered, StreamExt};
 
-use super::section::{BeforeCall, SectionArgs, SectionOutcome, generate_section};
+use super::section::{BeforeCall, CallRecord, SectionArgs, SectionOutcome, generate_section};
 use crate::client::port::{AiClient, AiError};
 use crate::input::types::CoachingInput;
 use crate::output::codes::{SECTION_KEYS, SectionKey};
@@ -28,9 +29,9 @@ pub const REPORT_CONCURRENCY: usize = 2;
 pub type OnSection<'a> =
     &'a (dyn Fn(SectionOutcome) -> BoxFuture<'static, anyhow::Result<()>> + Send + Sync);
 
-/// Why [`generate_report`] stopped.
+/// What stopped [`generate_report`].
 #[derive(Debug, thiserror::Error)]
-pub enum ReportError {
+pub enum ReportCause {
     /// A model call failed or the budget hook refused it.
     #[error(transparent)]
     Ai(AiError),
@@ -39,12 +40,23 @@ pub enum ReportError {
     OnSection(anyhow::Error),
 }
 
+/// Why [`generate_report`] stopped: the first error, plus every call that was paid for but
+/// never reached a successful `on_section`, from every failed section (attempt 1 of a section
+/// whose repair failed, and all calls of a section whose `on_section` failed, since
+/// `on_section` is expected to store and meter atomically). The job must meter `unmetered`.
+#[derive(Debug, thiserror::Error)]
+#[error("{cause}")]
+pub struct ReportError {
+    pub cause: ReportCause,
+    pub unmetered: Vec<CallRecord>,
+}
+
 impl ReportError {
     /// The client error, when that is what stopped the run.
     pub fn as_ai(&self) -> Option<&AiError> {
-        match self {
-            ReportError::Ai(e) => Some(e),
-            ReportError::OnSection(_) => None,
+        match &self.cause {
+            ReportCause::Ai(e) => Some(e),
+            ReportCause::OnSection(_) => None,
         }
     }
 }
@@ -57,10 +69,16 @@ async fn run_one(
 ) -> Result<SectionOutcome, ReportError> {
     let o = generate_section(ai, before_call, args)
         .await
-        .map_err(ReportError::Ai)?;
-    on_section(o.clone())
-        .await
-        .map_err(ReportError::OnSection)?;
+        .map_err(|e| ReportError {
+            cause: ReportCause::Ai(e.error),
+            unmetered: e.calls,
+        })?;
+    if let Err(e) = on_section(o.clone()).await {
+        return Err(ReportError {
+            cause: ReportCause::OnSection(e),
+            unmetered: o.calls,
+        });
+    }
     Ok(o)
 }
 
@@ -102,9 +120,11 @@ pub async fn generate_report(
         match running.next().await {
             None => break,
             Some(Ok(o)) => outcomes.push(o),
-            Some(Err(e)) => {
-                first_error.get_or_insert(e);
-            }
+            Some(Err(e)) => match &mut first_error {
+                None => first_error = Some(e),
+                // Only the first cause is returned, but no paid call is lost.
+                Some(first) => first.unmetered.extend(e.unmetered),
+            },
         }
     }
     if let Some(e) = first_error {

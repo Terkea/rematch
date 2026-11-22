@@ -4,7 +4,15 @@
 #[path = "support/generate.rs"]
 mod support;
 
-use ai::client::port::{AiError, UnavailableReason};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+use ai::client::fake::{FakeAiClient, FakeStructured};
+use ai::client::port::{
+    AiClient, AiError, AiUsage, BatchItem, BatchResultItem, BatchStatus, ChatTurnRequest,
+    ParseError, SchemaResolver, StructuredRequest, StructuredResult, ToolHandler, TurnEvent,
+    UnavailableReason,
+};
 use ai::generate::computed::build_computed_report;
 use ai::generate::section::{SectionArgs, SectionStatus, generate_section};
 use ai::input::types::CoachingInput;
@@ -12,6 +20,8 @@ use ai::output::codes::{SectionKey, ValidationCode};
 use ai::testing::input;
 use ai::validator::evidence::{Evidence, build_evidence};
 use ai::validator::focus::select_focuses;
+use futures::future::BoxFuture;
+use futures::stream::BoxStream;
 use serde_json::{Value, json};
 use support::*;
 
@@ -290,7 +300,10 @@ async fn unavailable_and_budget_propagate() {
     let ai = per_section(&w.input, move |_, _| Err(e.clone()));
     let budget = no_budget();
     let r = generate_section(&ai, &budget, w.args(SectionKey::Overview)).await;
-    assert_eq!(r.unwrap_err(), unavailable);
+    let err = r.unwrap_err();
+    assert_eq!(err.error, unavailable);
+    // The failed call was not billed: nothing to meter.
+    assert!(err.calls.is_empty());
 
     // Unavailable on the repair call propagates too (nothing is dropped on an outage).
     let e = unavailable.clone();
@@ -302,12 +315,162 @@ async fn unavailable_and_budget_propagate() {
         }
     });
     let r = generate_section(&ai, &budget, w.args(SectionKey::Weaknesses)).await;
-    assert_eq!(r.unwrap_err(), unavailable);
+    assert_eq!(r.unwrap_err().error, unavailable);
 
     // The budget hook runs before the call: no call is made.
     let ai = per_section(&w.input, |k, _| Ok(out(valid(k))));
     let over: BudgetFn = Box::new(|| Box::pin(async { Err(AiError::Budget) }));
     let r = generate_section(&ai, &over, w.args(SectionKey::Overview)).await;
-    assert_eq!(r.unwrap_err(), AiError::Budget);
+    let err = r.unwrap_err();
+    assert_eq!(err.error, AiError::Budget);
+    assert!(err.calls.is_empty());
     assert!(structured_requests(&ai).is_empty());
+}
+
+const PAID: AiUsage = AiUsage {
+    input_tokens: 12_000,
+    output_tokens: 900,
+    cache_creation_tokens: 3_000,
+    cache_read_tokens: 0,
+};
+
+fn paid(v: Value) -> FakeStructured {
+    FakeStructured {
+        usage: PAID,
+        ..out(v)
+    }
+}
+
+#[tokio::test]
+async fn a_paid_first_attempt_is_returned_for_metering_when_the_repair_hook_says_budget() {
+    let w = world("b2-rapid");
+    let ai = per_section(&w.input, |_, _| Ok(paid(mixed_weaknesses())));
+    let n = Arc::new(AtomicUsize::new(0));
+    let c = n.clone();
+    let hook: BudgetFn = Box::new(move || {
+        let k = c.fetch_add(1, Ordering::SeqCst);
+        Box::pin(async move { if k == 0 { Ok(()) } else { Err(AiError::Budget) } })
+    });
+    let err = generate_section(&ai, &hook, w.args(SectionKey::Weaknesses))
+        .await
+        .unwrap_err();
+    assert_eq!(err.error, AiError::Budget);
+    assert_eq!(structured_requests(&ai).len(), 1);
+    assert_eq!(err.calls.len(), 1);
+    assert_eq!(err.calls[0].model, "claude-sonnet-5-5");
+    assert_eq!(err.calls[0].usage, PAID);
+    assert!(!err.calls[0].batch);
+}
+
+#[tokio::test]
+async fn a_paid_first_attempt_is_returned_for_metering_when_the_repair_is_unavailable() {
+    let w = world("b2-rapid");
+    let unavailable = AiError::Unavailable {
+        reason: UnavailableReason::Server,
+        retry_after: None,
+    };
+    let e = unavailable.clone();
+    let ai = per_section(&w.input, move |_, n| {
+        if n == 1 {
+            Ok(paid(mixed_weaknesses()))
+        } else {
+            Err(e.clone())
+        }
+    });
+    let budget = no_budget();
+    let err = generate_section(&ai, &budget, w.args(SectionKey::Weaknesses))
+        .await
+        .unwrap_err();
+    assert_eq!(err.error, unavailable);
+    assert_eq!(structured_requests(&ai).len(), 2);
+    assert_eq!(err.calls.len(), 1);
+    assert_eq!(err.calls[0].usage, PAID);
+}
+
+#[tokio::test]
+async fn a_fatal_repair_falls_back_to_the_validated_items_of_attempt_1() {
+    let w = world("b2-rapid");
+    let ai = per_section(&w.input, |_, n| {
+        Ok(if n == 1 {
+            out(mixed_weaknesses())
+        } else {
+            out(valid(SectionKey::Overview))
+        })
+    });
+    let budget = no_budget();
+    let o = generate_section(&ai, &budget, w.args(SectionKey::Weaknesses))
+        .await
+        .unwrap();
+    assert_eq!(o.status, SectionStatus::Ready);
+    assert_eq!(o.attempts, 2);
+    let items = &o.content.as_ref().unwrap().weaknesses().unwrap().items;
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].weakness_id, "W1");
+    // Attempt 1's failing item stays dropped.
+    let paths: Vec<&str> = o.dropped.iter().map(|d| d.path.as_str()).collect();
+    assert_eq!(paths, ["weaknesses.items[1]"]);
+
+    // A fatal attempt 1 has nothing to fall back to.
+    let ai = per_section(&w.input, |_, _| Ok(out(valid(SectionKey::Overview))));
+    let o = generate_section(&ai, &budget, w.args(SectionKey::Weaknesses))
+        .await
+        .unwrap();
+    assert_eq!(o.status, SectionStatus::Dropped);
+    assert_eq!(o.content, None);
+}
+
+/// A client that returns the fake's result with `parsed` kept but a `truncated` parse error.
+struct Truncating(FakeAiClient);
+
+impl AiClient for Truncating {
+    fn structured<'a>(
+        &'a self,
+        req: &'a StructuredRequest,
+    ) -> BoxFuture<'a, Result<StructuredResult, AiError>> {
+        Box::pin(async move {
+            let mut r = self.0.structured(req).await?;
+            r.parse_error = Some(ParseError::Truncated);
+            Ok(r)
+        })
+    }
+
+    fn stream_turn<'a>(
+        &'a self,
+        req: &'a ChatTurnRequest,
+        tools: Option<Arc<dyn ToolHandler>>,
+    ) -> BoxStream<'a, Result<TurnEvent, AiError>> {
+        self.0.stream_turn(req, tools)
+    }
+
+    fn batch_submit<'a>(
+        &'a self,
+        items: &'a [BatchItem],
+    ) -> BoxFuture<'a, Result<String, AiError>> {
+        self.0.batch_submit(items)
+    }
+
+    fn batch_status<'a>(&'a self, id: &'a str) -> BoxFuture<'a, Result<BatchStatus, AiError>> {
+        self.0.batch_status(id)
+    }
+
+    fn batch_results<'a>(
+        &'a self,
+        id: &'a str,
+        resolver: &'a dyn SchemaResolver,
+    ) -> BoxStream<'a, Result<BatchResultItem, AiError>> {
+        self.0.batch_results(id, resolver)
+    }
+}
+
+#[tokio::test]
+async fn parsed_output_with_a_parse_error_is_never_accepted() {
+    let w = world("b2-rapid");
+    let ai = Truncating(per_section(&w.input, |k, _| Ok(out(valid(k)))));
+    let budget = no_budget();
+    let o = generate_section(&ai, &budget, w.args(SectionKey::Overview))
+        .await
+        .unwrap();
+    assert_eq!(o.status, SectionStatus::Dropped);
+    assert_eq!(o.content, None);
+    assert_eq!(o.dropped[0].errors[0].code, ValidationCode::Truncated);
 }

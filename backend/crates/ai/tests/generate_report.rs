@@ -8,9 +8,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use ai::client::fake::{FakeAiClient, FakeScript};
-use ai::client::port::{AiError, UnavailableReason};
-use ai::generate::report::{ReportError, generate_report};
+use ai::client::fake::{FakeAiClient, FakeScript, FakeStructured};
+use ai::client::port::{AiError, AiUsage, UnavailableReason};
+use ai::generate::report::{ReportCause, generate_report};
 use ai::generate::section::SectionOutcome;
 use ai::output::codes::{SECTION_KEYS, SectionKey};
 use ai::testing::input;
@@ -138,8 +138,12 @@ async fn unavailable_mid_run_stops_scheduling() {
     };
     let r = generate_report(&ai, &budget, &i, true, &[], 2, &on).await;
     match r {
-        Err(ReportError::Ai(e)) => assert_eq!(e, unavailable),
-        other => panic!("expected the unavailable error, got {other:?}"),
+        Err(e) => {
+            assert_eq!(e.as_ai(), Some(&unavailable));
+            // Openings' call failed unbilled; the delivered sections were metered by on_section.
+            assert!(e.unmetered.is_empty());
+        }
+        Ok(o) => panic!("expected the unavailable error, got {o:?}"),
     }
     // Overview, then weaknesses and openings together; weaknesses (in flight) was delivered.
     assert_eq!(
@@ -198,13 +202,18 @@ async fn budget_hook_stops_before_the_call() {
     });
     let (seen, on) = recorder();
     let r = generate_report(&ai, &budget, &i, true, &[], 2, &on).await;
-    assert!(matches!(r, Err(ReportError::Ai(AiError::Budget))), "{r:?}");
-    // Overview (hook 1) and weaknesses (hook 2) were called; openings' hook refused the third.
+    let err = r.expect_err("the budget stops the run");
+    assert_eq!(err.as_ai(), Some(&AiError::Budget));
+    // Overview (hook 1) and one of the two sections started after it (hook 2) were called; the
+    // other one's hook refused the third call. Which one gets hook 3 is the poll order's choice.
     assert_eq!(structured_requests(&ai).len(), 2);
     assert_eq!(count.load(Ordering::SeqCst), 3);
-    assert_eq!(
-        *seen.lock().unwrap(),
-        [SectionKey::Overview, SectionKey::Weaknesses]
+    let seen = seen.lock().unwrap().clone();
+    assert_eq!(seen.len(), 2);
+    assert_eq!(seen[0], SectionKey::Overview);
+    assert!(
+        [SectionKey::Weaknesses, SectionKey::Openings].contains(&seen[1]),
+        "{seen:?}"
     );
 }
 
@@ -226,8 +235,15 @@ async fn an_on_section_error_stops_scheduling_and_is_returned() {
     };
     let r = generate_report(&ai, &budget, &i, true, &[], 2, &on).await;
     match r {
-        Err(ReportError::OnSection(e)) => assert_eq!(e.to_string(), "db down"),
-        other => panic!("expected the on_section error, got {other:?}"),
+        Err(e) => {
+            match &e.cause {
+                ReportCause::OnSection(c) => assert_eq!(c.to_string(), "db down"),
+                other => panic!("expected the on_section error, got {other:?}"),
+            }
+            // The section whose storing failed was not metered: its call comes back.
+            assert_eq!(e.unmetered.len(), 1);
+        }
+        Ok(o) => panic!("expected the on_section error, got {o:?}"),
     }
     // Overview, weaknesses and openings started; nothing after the failure.
     assert_eq!(sections_called(&ai).len(), 3);
@@ -245,7 +261,39 @@ async fn an_overview_error_starts_nothing_else() {
     let budget = no_budget();
     let (seen, on) = recorder();
     let r = generate_report(&ai, &budget, &i, true, &[], 2, &on).await;
-    assert!(matches!(r, Err(ReportError::Ai(e)) if e.is_unavailable()));
+    assert!(r.unwrap_err().as_ai().is_some_and(AiError::is_unavailable));
     assert_eq!(structured_requests(&ai).len(), 1);
     assert!(seen.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn a_failed_repair_hands_the_paid_first_call_back_as_unmetered() {
+    let i = input("b2-rapid");
+    let ai = per_section(&i, |k, n| match (k, n) {
+        (SectionKey::Weaknesses, 1) => Ok(FakeStructured {
+            usage: AiUsage {
+                input_tokens: 5_000,
+                output_tokens: 700,
+                ..AiUsage::default()
+            },
+            ..out(envelope(
+                SectionKey::Weaknesses,
+                serde_json::json!({"items": [w1_item(LEAKING_TEXT)]}),
+            ))
+        }),
+        (SectionKey::Weaknesses, _) => Err(AiError::Unavailable {
+            reason: UnavailableReason::Overloaded,
+            retry_after: None,
+        }),
+        _ => Ok(out(valid(k))),
+    });
+    let budget = no_budget();
+    let (_, on) = recorder();
+    let err = generate_report(&ai, &budget, &i, true, &[], 2, &on)
+        .await
+        .unwrap_err();
+    assert!(err.as_ai().is_some_and(AiError::is_unavailable));
+    assert_eq!(err.unmetered.len(), 1);
+    assert_eq!(err.unmetered[0].usage.input_tokens, 5_000);
+    assert_eq!(err.unmetered[0].usage.output_tokens, 700);
 }

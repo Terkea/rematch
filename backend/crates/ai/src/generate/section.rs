@@ -17,7 +17,12 @@
 //!    never returned.
 //!
 //! Every client error (`Unavailable`, `Budget` from the hook, request errors) propagates: an
-//! outage is retried by the job, never turned into a dropped section.
+//! outage is retried by the job, never turned into a dropped section. The error is a
+//! [`SectionError`] carrying the records of the calls already paid for (attempt 1 when the repair
+//! fails), so they are always metered.
+//!
+//! A fatal or unparsable repair falls back to attempt 1's validated items when attempt 1 was only
+//! partly invalid (review m1; the spec drops the bad item, not the section).
 
 use futures::future::BoxFuture;
 use serde::{Deserialize, Serialize};
@@ -183,12 +188,30 @@ async fn call(
     ai.structured(req).await
 }
 
+/// A section that stopped on a client error. `calls` holds the calls that were made and paid
+/// for before the error (attempt 1 when the repair failed): the caller must meter them.
+#[derive(Clone, Debug, PartialEq, thiserror::Error)]
+#[error("{error}")]
+pub struct SectionError {
+    pub error: AiError,
+    pub calls: Vec<CallRecord>,
+}
+
+impl From<AiError> for SectionError {
+    fn from(error: AiError) -> Self {
+        SectionError {
+            error,
+            calls: Vec::new(),
+        }
+    }
+}
+
 /// Runs one section (see the module docs).
 pub async fn generate_section(
     ai: &dyn AiClient,
     before_call: BeforeCall<'_>,
     args: SectionArgs<'_>,
-) -> Result<SectionOutcome, AiError> {
+) -> Result<SectionOutcome, SectionError> {
     let req = build_section_request(args.input, args.section, args.is_first_report);
     let first = call(ai, before_call, &req).await?;
     let calls = CallRecord::from_result(&first, false);
@@ -206,9 +229,14 @@ pub async fn generate_section(
         Checked::Partial(_, items) => items.into_iter().flat_map(|d| d.errors).collect(),
         Checked::Unusable(errors) => errors,
     };
-    let mut out = repair_section(ai, before_call, args, first, errors).await?;
-    out.calls.splice(0..0, calls);
-    Ok(out)
+    match repair_section(ai, before_call, args, first, errors).await {
+        Ok(mut out) => {
+            out.calls.splice(0..0, calls);
+            Ok(out)
+        }
+        // Attempt 1 was sent and billed: hand its records back with the error.
+        Err(error) => Err(SectionError { error, calls }),
+    }
 }
 
 /// The one repair call for a section whose first result (`first`, synchronous or from a batch)
@@ -217,6 +245,10 @@ pub async fn generate_section(
 ///
 /// When `first` has no content to replay (a refusal or an empty response), the repair resends
 /// the section request alone: an empty assistant turn is not a valid message.
+///
+/// When the repair is unusable (fatal, unparsable or a refusal) but `first` validated with only
+/// some items failing, the section keeps `first`'s validated items (they passed the validator;
+/// its failing items stay dropped) instead of being dropped whole.
 pub async fn repair_section(
     ai: &dyn AiClient,
     before_call: BeforeCall<'_>,
@@ -233,15 +265,18 @@ pub async fn repair_section(
     let (status, content, dropped) = match check(&second, &args) {
         Checked::Clean(content) => (SectionStatus::Ready, Some(content), Vec::new()),
         Checked::Partial(content, items) => (SectionStatus::Ready, Some(content), items),
-        Checked::Unusable(errors) => (
-            SectionStatus::Dropped,
-            None,
-            vec![DroppedItem {
-                section: args.section.as_str().to_owned(),
-                path: String::new(),
-                errors,
-            }],
-        ),
+        Checked::Unusable(errors) => match check(&first, &args) {
+            Checked::Partial(content, items) => (SectionStatus::Ready, Some(content), items),
+            _ => (
+                SectionStatus::Dropped,
+                None,
+                vec![DroppedItem {
+                    section: args.section.as_str().to_owned(),
+                    path: String::new(),
+                    errors,
+                }],
+            ),
+        },
     };
     Ok(SectionOutcome {
         section: args.section,

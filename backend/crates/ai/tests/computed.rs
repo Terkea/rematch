@@ -52,6 +52,8 @@ fn computed_report_copies_the_input_and_splits_changes() {
     assert_eq!(c.metrics, i.metrics);
     assert_eq!(c.weaknesses, i.weaknesses);
     assert_eq!(c.openings, i.openings);
+    assert_eq!(c.strengths, i.strengths);
+    assert!(!c.strengths.is_empty());
     assert_eq!(c.focuses, ["W1", "W3"]);
     assert_eq!(build_computed_report(&i, false).focuses, ["W1", "W3", "W5"]);
     // b2-rapid: one change to active (new), one to improving (neither).
@@ -92,6 +94,7 @@ fn computed_report_json_round_trips_in_camel_case() {
         "metrics",
         "weaknesses",
         "openings",
+        "strengths",
         "focuses",
         "newThisPeriod",
         "fixedThisPeriod",
@@ -218,8 +221,34 @@ async fn complete_outcomes(i: &CoachingInput) -> Vec<SectionOutcome> {
         .unwrap()
 }
 
-fn snapshot_path() -> std::path::PathBuf {
-    fixtures_dir().join("payload/report-payload.example.json")
+/// Compares `v` with the snapshot `payload/<name>`; `UPDATE_SNAPSHOTS=1` rewrites it.
+fn snapshot(name: &str, v: &serde_json::Value) {
+    let text = format!(
+        "{}
+",
+        serde_json::to_string_pretty(v).unwrap()
+    );
+    let path = fixtures_dir().join("payload").join(name);
+    if std::env::var_os("UPDATE_SNAPSHOTS").is_some() {
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, &text).unwrap();
+    }
+    let stored = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+        panic!(
+            "{}: {e} (run with UPDATE_SNAPSHOTS=1 to write it)",
+            path.display()
+        )
+    });
+    assert_eq!(
+        stored.replace(
+            "
+
+", "
+"
+        ),
+        text,
+        "the payload contract changed; review it and rerun with UPDATE_SNAPSHOTS=1"
+    );
 }
 
 #[tokio::test]
@@ -238,6 +267,10 @@ async fn payload_json_shape_is_camel_case() {
     assert_eq!(v["aiDisclosure"]["label"], AI_DISCLOSURE_LABEL);
     assert_eq!(v["generatedAt"], "2026-11-20T08:30:00.000Z");
     assert!(v["computed"]["evidenceWindow"].is_string());
+    // Computed strengths ship with their exemplar positions (board data).
+    let s0 = &v["computed"]["strengths"][0];
+    assert_eq!(s0["area"], "openings");
+    assert!(s0["exemplars"][0]["fen"].is_string());
     let cp = &v["sections"]["climb_plan"]["climbPlan"];
     assert!(cp["intro"]["segments"].is_array());
     assert!(cp["focuses"][0]["why"]["segments"].is_array());
@@ -250,24 +283,111 @@ async fn payload_json_shape_is_camel_case() {
     let back: ai::generate::payload::ReportPayload = serde_json::from_value(v.clone()).unwrap();
     assert_eq!(back, p);
 
-    // The hand-off contract for the web. `UPDATE_SNAPSHOTS=1` rewrites it.
-    let text = format!("{}\n", serde_json::to_string_pretty(&v).unwrap());
-    let path = snapshot_path();
-    if std::env::var_os("UPDATE_SNAPSHOTS").is_some() {
-        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        std::fs::write(&path, &text).unwrap();
-    }
-    let stored = std::fs::read_to_string(&path).unwrap_or_else(|e| {
-        panic!(
-            "{}: {e} (run with UPDATE_SNAPSHOTS=1 to write it)",
-            path.display()
-        )
+    // The hand-off contract for the web.
+    snapshot("report-payload.example.json", &v);
+}
+
+/// Model text that fails validation (a free-text move and a hallucinated weakness id).
+const LEAKED_MOVE: &str = "Qxh7";
+const HALLUCINATED_ID: &str = "W99zzhallucinated";
+
+async fn partial_outcomes(i: &CoachingInput) -> Vec<SectionOutcome> {
+    let ai = per_section(i, |k, _| {
+        Ok(match k {
+            SectionKey::Weaknesses => out(envelope(
+                k,
+                json!({"items": [
+                    w1_item(&good_w1_text()),
+                    {"text": format!("You missed {LEAKED_MOVE} here."), "citations": [{"gameId": "li-w3-1", "ply": 18}], "weaknessId": "W3", "title": "Forks"},
+                    {"text": good_w1_text(), "citations": [{"gameId": "li-w1-0", "ply": 5}], "weaknessId": HALLUCINATED_ID, "title": "Made up"},
+                ]}),
+            )),
+            SectionKey::Openings => stop("refusal"),
+            _ => out(valid(k)),
+        })
     });
+    let budget = no_budget();
+    let on = |_: SectionOutcome| -> BoxFuture<'static, anyhow::Result<()>> {
+        Box::pin(async { Ok(()) })
+    };
+    // Climb plan and areas not generated (yet).
+    generate_report(
+        &ai,
+        &budget,
+        i,
+        true,
+        &[SectionKey::ClimbPlan, SectionKey::Areas],
+        2,
+        &on,
+    )
+    .await
+    .unwrap()
+}
+
+#[tokio::test]
+async fn the_payload_never_carries_rejected_model_text() {
+    let i = input("b2-rapid");
+    let outcomes = partial_outcomes(&i).await;
+    // Server side, the dropped details keep the offending fragments (audit and repair).
+    let internal = serde_json::to_string(
+        &outcomes
+            .iter()
+            .flat_map(|o| o.dropped.clone())
+            .collect::<Vec<_>>(),
+    )
+    .unwrap();
+    // The free-text move is quoted as its square.
+    assert!(internal.contains(r#"square:\"h7\""#), "{internal}");
+    assert!(internal.contains(HALLUCINATED_ID), "{internal}");
+
+    let p = assemble_report_payload(PayloadParts {
+        sections: outcomes.iter().map(PayloadSection::from).collect(),
+        ..parts(Vec::new())
+    });
+    assert_eq!(p.status, ReportStatus::Partial);
+    let text = serde_json::to_string(&p).unwrap();
+    assert!(!text.contains(LEAKED_MOVE));
+    assert!(!text.contains("square:"));
+    assert!(!text.contains(HALLUCINATED_ID));
+    assert!(!text.contains("detail"));
+    // The web gets the section, the path and the stable codes.
+    let v = serde_json::to_value(&p).unwrap();
+    let dropped = v["dropped"].as_array().unwrap();
+    let paths: Vec<&str> = dropped
+        .iter()
+        .map(|d| d["path"].as_str().unwrap())
+        .collect();
     assert_eq!(
-        stored.replace("\r\n", "\n"),
-        text,
-        "the payload contract changed; review it and rerun with UPDATE_SNAPSHOTS=1"
+        paths,
+        ["weaknesses.items[1]", "weaknesses.items[2]", ""],
+        "{dropped:?}"
     );
+    for d in dropped {
+        let keys: Vec<&String> = d.as_object().unwrap().keys().collect();
+        assert_eq!(keys, ["errors", "path", "section"]);
+        for e in d["errors"].as_array().unwrap() {
+            let keys: Vec<&String> = e.as_object().unwrap().keys().collect();
+            assert_eq!(keys, ["code", "path"]);
+        }
+    }
+    assert_eq!(dropped[2]["section"], "openings");
+    assert_eq!(dropped[2]["errors"][0]["code"], "refusal");
+}
+
+#[tokio::test]
+async fn partial_payload_snapshot() {
+    let i = input("b2-rapid");
+    let outcomes = partial_outcomes(&i).await;
+    let p = assemble_report_payload(PayloadParts {
+        sections: outcomes.iter().map(PayloadSection::from).collect(),
+        ..parts(Vec::new())
+    });
+    let v = serde_json::to_value(&p).unwrap();
+    assert_eq!(v["status"], "partial");
+    assert!(v["sections"]["openings"].is_null());
+    assert!(v["sections"].get("climb_plan").is_none());
+    assert!(v["sections"].get("areas").is_none());
+    snapshot("report-payload.partial.example.json", &v);
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
@@ -367,6 +487,15 @@ async fn load_report_payload_assembles_the_stored_rows(pool: PgPool) {
         load_report_payload(&mut conn, Uuid::nil()).await.unwrap(),
         None
     );
+
+    // A row of another payload version is not read as v1.
+    sqlx::query("UPDATE reports SET schema_version = 'report-payload-v2' WHERE id = $1")
+        .bind(report.id)
+        .execute(&mut *conn)
+        .await
+        .unwrap();
+    let e = load_report_payload(&mut conn, report.id).await.unwrap_err();
+    assert!(e.to_string().contains("report-payload-v2"), "{e:#}");
 }
 
 async fn write(conn: &mut sqlx::PgConnection, report_id: Uuid, o: &SectionOutcome) {

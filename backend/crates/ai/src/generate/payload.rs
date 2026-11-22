@@ -4,7 +4,19 @@
 //! file for the web.
 //!
 //! Status: `complete` when all five sections are ready, `computed_only` when none is, `partial`
-//! otherwise. `aiDisclosure` is present exactly when some section is ready.
+//! otherwise. `aiDisclosure` is present exactly when some section is ready. A second snapshot,
+//! `report-payload.partial.example.json`, shows a partial payload: a null (dropped) section,
+//! absent sections and a non-empty `dropped`.
+//!
+//! Contract notes for the web:
+//! - `dropped` never carries model text. Each entry is the section, the JSON path of the dropped
+//!   part and, per error, the stable [`ValidationCode`] and its path (review I2). The `detail`
+//!   strings, which quote the rejected fragment, stay server-side in `report_sections.dropped`.
+//! - A `dropped` path indexes the model's output (`weaknesses.items[1]` is the model's second
+//!   item), not the kept array, which is renumbered (review m2). Path `""` is the whole section.
+//! - Kept items are in the model's order. Show weaknesses ranked by sorting on `weaknessId`
+//!   against `computed.weaknesses[].rank`, and openings by `lineKey` against
+//!   `computed.openings` (review m3).
 
 use std::collections::BTreeMap;
 
@@ -18,7 +30,7 @@ use super::computed::ComputedReport;
 use super::section::{SectionOutcome, SectionStatus};
 pub use crate::db::reports::ReportStatus;
 use crate::db::reports::{SectionWriteStatus, load_report_rows};
-use crate::output::codes::{DroppedItem, SECTION_KEYS, SectionKey};
+use crate::output::codes::{DroppedItem, SECTION_KEYS, SectionKey, ValidationCode};
 use crate::output::disclosure::AiDisclosure;
 use crate::output::report::ValidatedSection;
 
@@ -37,14 +49,49 @@ pub struct ReportPayload {
     /// Keyed by the snake_case section key. A dropped section is `null`; a section not
     /// generated (yet) is absent.
     pub sections: BTreeMap<SectionKey, Option<ValidatedSection>>,
-    /// Every dropped item and dropped section, in section order.
-    pub dropped: Vec<DroppedItem>,
+    /// Every dropped item and dropped section, in section order, without model text.
+    pub dropped: Vec<PayloadDroppedItem>,
     pub ai_disclosure: Option<AiDisclosure>,
     /// `Date.toISOString()` form.
     pub generated_at: String,
 }
 
-/// One section as the payload sees it.
+/// A [`DroppedItem`] as the web sees it: no `detail`, so no rejected model text.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PayloadDroppedItem {
+    pub section: String,
+    pub path: String,
+    pub errors: Vec<PayloadDroppedError>,
+}
+
+/// One validation error of a dropped part: the stable code and our own JSON path.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PayloadDroppedError {
+    pub code: ValidationCode,
+    pub path: String,
+}
+
+impl From<&DroppedItem> for PayloadDroppedItem {
+    fn from(d: &DroppedItem) -> Self {
+        PayloadDroppedItem {
+            section: d.section.clone(),
+            path: d.path.clone(),
+            errors: d
+                .errors
+                .iter()
+                .map(|e| PayloadDroppedError {
+                    code: e.code,
+                    path: e.path.clone(),
+                })
+                .collect(),
+        }
+    }
+}
+
+/// One section as the payload sees it. `dropped` keeps the full server-side items; the
+/// payload projects them to [`PayloadDroppedItem`].
 #[derive(Clone, Debug, PartialEq)]
 pub struct PayloadSection {
     pub section: SectionKey,
@@ -112,7 +159,10 @@ pub fn assemble_report_payload(parts: PayloadParts) -> ReportPayload {
             (*k, content)
         })
         .collect();
-    let dropped = by_key.values().flat_map(|s| s.dropped.clone()).collect();
+    let dropped = by_key
+        .values()
+        .flat_map(|s| s.dropped.iter().map(PayloadDroppedItem::from))
+        .collect();
     ReportPayload {
         schema_version: REPORT_PAYLOAD_SCHEMA_VERSION.to_owned(),
         report_id: parts.report_id,
@@ -131,7 +181,8 @@ pub fn assemble_report_payload(parts: PayloadParts) -> ReportPayload {
 
 /// The stored report as a payload (`None` when there is no such report), assembled from
 /// `reports::load_report_rows` with the same rules; `generatedAt` is the report's
-/// `updated_at`. Stored JSON that does not read back is an error naming the column.
+/// `updated_at`. Stored JSON that does not read back, or a row of another payload schema
+/// version, is an error naming the column.
 pub async fn load_report_payload(
     conn: &mut PgConnection,
     report_id: Uuid,
@@ -140,6 +191,12 @@ pub async fn load_report_payload(
         return Ok(None);
     };
     let r = stored.report;
+    if r.schema_version != REPORT_PAYLOAD_SCHEMA_VERSION {
+        anyhow::bail!(
+            "reports.schema_version is {:?}, expected {REPORT_PAYLOAD_SCHEMA_VERSION:?}",
+            r.schema_version
+        );
+    }
     let computed: ComputedReport =
         serde_json::from_value(r.computed).context("reports.computed")?;
     let ai_disclosure = r
