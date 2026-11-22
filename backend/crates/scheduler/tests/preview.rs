@@ -195,3 +195,63 @@ async fn enqueue_previews_dedupes(pool: PgPool) {
     assert_eq!(q.live_count(&[KIND_PREVIEW], Some(acc)).await.unwrap(), 20);
     let _ = PreviewHandler(Arc::new(deps(&pool, &Arc::new(FakeAnalyser::new()))));
 }
+
+/// Flips the game to `done` on its first engine call (the full pass finishing mid-preview).
+struct FlipsDone {
+    pool: PgPool,
+    game: Uuid,
+    inner: FakeAnalyser,
+}
+
+impl engine::Analyser for FlipsDone {
+    fn analyse<'a>(
+        &'a self,
+        fen: &'a str,
+        opts: engine::AnalyseOptions,
+    ) -> futures::future::BoxFuture<'a, Result<engine::AnalysisResult, engine::EngineError>> {
+        Box::pin(async move {
+            sqlx::query("UPDATE games SET analysis_status = 'done' WHERE id = $1")
+                .bind(self.game)
+                .execute(&self.pool)
+                .await
+                .unwrap();
+            self.inner.analyse(fen, opts).await
+        })
+    }
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn game_done_mid_run_writes_nothing_and_publishes_nothing(pool: PgPool) {
+    let (acc, g) = setup(&pool, "pending").await;
+    let d = PreviewDeps {
+        pool: pool.clone(),
+        analyser: Arc::new(FlipsDone {
+            pool: pool.clone(),
+            game: g,
+            inner: FakeAnalyser::new(),
+        }),
+        concurrency: 2,
+    };
+    assert_eq!(run(&d, g).await.unwrap(), PreviewOutcome::Superseded);
+    assert_eq!(count(&pool, "game_previews").await, 0);
+    let ev: i64 = sqlx::query_scalar("SELECT count(*) FROM user_events WHERE account_id = $1")
+        .bind(acc)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(ev, 0);
+    assert_eq!(count(&pool, "job_metrics").await, 0);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn first_engine_failure_stops_the_remaining_positions(pool: PgPool) {
+    let (_, g) = setup(&pool, "pending").await;
+    let mut fake = FakeAnalyser::new();
+    fake.fail_after = Some(1);
+    let fake = Arc::new(fake);
+    let r = run(&deps(&pool, &fake), g).await;
+    assert!(matches!(r, Err(JobError::Retryable { .. })));
+    // One success, the failing call, and at most the one other in flight (concurrency 2).
+    assert!(fake.call_count() <= 3, "calls: {}", fake.call_count());
+    assert_eq!(count(&pool, "game_previews").await, 0);
+}

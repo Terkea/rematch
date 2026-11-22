@@ -7,6 +7,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use chess_core::fen::fen_key;
@@ -52,6 +53,8 @@ pub enum PreviewOutcome {
     SkippedDone,
     /// Unsupported variant or fewer than 2 plies.
     SkippedUnsupported,
+    /// The full analysis finished while the preview ran: no row, no event, no metrics.
+    Superseded,
 }
 
 fn ms(d: Duration) -> f64 {
@@ -102,6 +105,8 @@ async fn evaluate(
         .map(|(i, f)| (keys[i].clone(), (*f).to_owned()))
         .collect();
 
+    let failed_flag = AtomicBool::new(false);
+    let failed = &failed_flag;
     let release = || JobError::Release {
         delay: Duration::ZERO,
         reason: "shutdown".to_owned(),
@@ -112,6 +117,12 @@ async fn evaluate(
             if cancel.is_cancelled() {
                 return Err(release());
             }
+            // Stop at the first failure, as `evaluate_game` does.
+            if failed.load(Ordering::SeqCst) {
+                return Err(retryable(
+                    "skipped after an earlier engine failure".to_owned(),
+                ));
+            }
             let opts = AnalyseOptions {
                 nodes: PREVIEW_NODES,
                 multipv: 1,
@@ -120,7 +131,13 @@ async fn evaluate(
             let res = tokio::select! {
                 biased;
                 _ = cancel.cancelled() => return Err(release()),
-                r = deps.analyser.analyse(fen, opts) => r.map_err(|e| retryable(e.to_string()))?,
+                r = deps.analyser.analyse(fen, opts) => match r {
+                    Ok(r) => r,
+                    Err(e) => {
+                        failed.store(true, Ordering::SeqCst);
+                        return Err(retryable(e.to_string()));
+                    }
+                },
             };
             let wall = ms(res.wall);
             let line = res
@@ -146,6 +163,19 @@ async fn evaluate(
 
     let mut by_key: HashMap<String, PositionEval> = HashMap::new();
     let mut wall = 0.0;
+    // Report the first real failure, not a follow-on skip.
+    let mut results = results;
+    if let Some(i) = results
+        .iter()
+        .position(|r| matches!(r, Err(JobError::Release { .. })))
+    {
+        return Err(results.swap_remove(i).err().unwrap_or_else(release));
+    }
+    if let Some(i) = results.iter().position(|r| {
+        matches!(r, Err(JobError::Retryable { message, .. }) if !message.starts_with("skipped after"))
+    }) {
+        return Err(results.swap_remove(i).err().unwrap_or_else(release));
+    }
     for r in results {
         let (k, ev, w) = r?;
         by_key.insert(k, ev);
@@ -227,7 +257,7 @@ pub async fn handle_preview(
     // The full pass may have finished while this one ran; it deletes the row on completion
     // (Task 31), so never write a preview for a game that is already done.
     let t = Instant::now();
-    sqlx::query(
+    let inserted = sqlx::query(
         "INSERT INTO game_previews (game_id, protocol, white_accuracy, black_accuracy, moves) \
          SELECT $1, $2, $3, $4, $5 WHERE NOT EXISTS \
            (SELECT 1 FROM games WHERE id = $1 AND analysis_status = 'done') \
@@ -243,6 +273,9 @@ pub async fn handle_preview(
     .execute(&deps.pool)
     .await
     .map_err(db_err)?;
+    if inserted.rows_affected() == 0 {
+        return Ok(PreviewOutcome::Superseded);
+    }
     let persist_ms = ms(t.elapsed());
 
     // After the commit: tell the user, marked as a preview.
@@ -293,15 +326,18 @@ impl Handler for PreviewHandler {
     fn handle(&self, job: Job, ctx: JobContext) -> BoxFuture<'_, Result<Value, JobError>> {
         async move {
             let payload: PreviewPayload =
-                serde_json::from_value(job.payload.clone()).map_err(|e| JobError::Retryable {
-                    message: format!("invalid preview-game payload: {e}"),
-                    code: Some("invalid_payload".to_owned()),
+                serde_json::from_value(job.payload.clone()).map_err(|e| {
+                    JobError::Unrecoverable {
+                        message: format!("invalid preview-game payload: {e}"),
+                        code: Some("invalid_payload".to_owned()),
+                    }
                 })?;
             let outcome = handle_preview(&self.0, &job, payload, ctx.cancel).await?;
             let status = match outcome {
                 PreviewOutcome::Written => "written",
                 PreviewOutcome::SkippedDone => "skipped_done",
                 PreviewOutcome::SkippedUnsupported => "skipped_unsupported",
+                PreviewOutcome::Superseded => "superseded",
             };
             Ok(json!({ "status": status }))
         }
