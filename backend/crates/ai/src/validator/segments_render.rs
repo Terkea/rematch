@@ -3,7 +3,7 @@
 
 use super::bounded::count_scanned;
 use super::evidence::Evidence;
-use super::format::{format_number, resolve_token};
+use super::format::{format_num_at, resolve_token};
 use super::tokens::{Token, TokenBody};
 use crate::segments::Segment;
 
@@ -42,7 +42,7 @@ fn segment(ev: &Evidence, t: &TokenBody) -> Option<Segment> {
             Segment::Num {
                 path: path.clone(),
                 value,
-                display: format_number(value, *fmt)?,
+                display: format_num_at(ev, path, *fmt)?,
             }
         }
         TokenBody::Date { path } => Segment::Date {

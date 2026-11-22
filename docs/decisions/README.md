@@ -138,3 +138,7 @@ Every R2 record has a file (titles final at R2 Task 35); numbers 19 to 21 were n
 ### Analysis audit fixes (fix/c): ADR-FIX-C
 
 - [ADR-FIX-C-1. Lila game accuracy, phase accuracy by the game formula, pre-game ratings](ADR-FIX-C-1-lila-accuracy-and-pre-game-ratings.md)
+
+### Browser check fixes (fix/d): ADR-FIX-D
+
+- [ADR-FIX-D-1. Numbers keep their units, answers show their positions, numbers-only reports say why](ADR-FIX-D-1-units-boards-and-numbers-only-reports.md)

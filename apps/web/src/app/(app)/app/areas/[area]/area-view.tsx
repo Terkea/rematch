@@ -19,6 +19,7 @@ import { coachChatLive } from "../../../../../lib/coach-chat";
 import { weeklyPoints } from "../../../../../lib/iso-week";
 import { segmentHref } from "../../../../../lib/segment-href";
 import { coachHref } from "../../../../../server/coach/anchor";
+import type { CoachStatus } from "../../../../../server/coach/status";
 import type { ReportView } from "../../../../../server/coaching";
 import type { NarrativeItem } from "../../../../../server/coaching/types";
 import type {
@@ -32,6 +33,7 @@ import type {
 } from "../../../../../server/profile/types";
 import { EmptySheet } from "../../../_shell/page-heading";
 import { SectionHead } from "../../_overview/section-head";
+import { numbersOnlyCopy } from "../../report/notes-off";
 import { type ScoreBasis, shortfallUnit } from "./basis";
 import { ScrollCue } from "./scroll-cue";
 
@@ -53,6 +55,10 @@ export type AreaPageModel = {
   report: ReportView;
   /** Today in UTC ("2026-11-22"), the right end of the timeline. */
   today: string;
+  /** Whether a coach could write now (`ai_status`, ADR 0078). */
+  coach: CoachStatus;
+  /** The render's clock, for when the next rebuild is available. */
+  now: Date;
 };
 
 const ORDER: readonly Area[] = [
@@ -358,13 +364,25 @@ function NotePart({ model }: { model: AreaPageModel }) {
   ) : null;
   return (
     <div className="flex flex-col gap-5">
-      <Note area={area} report={report} scope={scope} />
+      <Note area={area} report={report} scope={scope} coach={model.coach} now={model.now} />
       {ask}
     </div>
   );
 }
 
-function Note({ area, report, scope }: { area: Area; report: ReportView; scope: CoachScope }) {
+function Note({
+  area,
+  report,
+  scope,
+  coach,
+  now,
+}: {
+  area: Area;
+  report: ReportView;
+  scope: CoachScope;
+  coach: CoachStatus;
+  now: Date;
+}) {
   const { payload, state } = report;
   const building = state.kind === "building";
   const writing = (
@@ -407,14 +425,10 @@ function Note({ area, report, scope }: { area: Area; report: ReportView; scope: 
         />
       );
     }
+    // Fix D (N2): the report banner's reading, so both pages say the same thing.
     if (aiOff === "no_api_key" || ready?.status === "computed_only") {
-      return (
-        <CoachState
-          kind="computed_only"
-          title="Your coach's notes are off for now"
-          body="The numbers on this page are computed from your games."
-        />
-      );
+      const copy = numbersOnlyCopy({ coach, nextManualAt: report.nextManualAt, now });
+      return <CoachState kind={copy.kind} title={copy.title} body={copy.body} />;
     }
   }
   const item: NarrativeItem | undefined = section?.areas?.items.find((i) => i.area === area);

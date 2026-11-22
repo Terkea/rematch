@@ -176,7 +176,11 @@ const STATES: { name: string; seed: () => Promise<void>; copy: string[] }[] = [
   {
     name: "computed only without an API key",
     seed: () => computedOnly("no_api_key"),
-    copy: ["Your coach's notes are off for now. The numbers below are computed from your games."],
+    // Fix D (N2): the coach is on now; this report was only built before it was.
+    copy: [
+      "This report was built from your numbers only",
+      "Your coach's notes come with the next rebuild, available on 22 Dec 2026.",
+    ],
   },
   {
     name: "computed only on the budget",
@@ -231,6 +235,26 @@ describe("report page", () => {
     expect(screen.getByText("Coach not available right now")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Build my report" })).toBeNull();
     expect(screen.getByRole("button", { name: "Build it from your numbers" })).toBeTruthy();
+  });
+
+  // Fix D (N2): "notes are off" was shown while the coach was on; the report was only built
+  // before it was. Each case now says which it is.
+  it("a numbers-only report says the coach is not available only when it is not", async () => {
+    await computedOnly("no_api_key");
+    await coachIs(false);
+    const { container } = render(<ReportView data={await data()} />);
+    expect(container.textContent).toContain("Coach not available right now");
+    expect(container.textContent).not.toMatch(/next rebuild|notes are off/);
+  });
+
+  it("a numbers-only report with the coach on says the notes come with the next rebuild", async () => {
+    await computedOnly("no_api_key");
+    const { container } = render(<ReportView data={await data()} />);
+    expect(container.textContent).toContain("This report was built from your numbers only");
+    expect(container.textContent).toContain(
+      "Your coach's notes come with the next rebuild, available on 22 Dec 2026.",
+    );
+    expect(container.textContent).not.toMatch(/notes are off|not available/);
   });
 
   it("with no worker running the empty report offers nothing to build", async () => {
@@ -493,7 +517,10 @@ describe("review fix round 1", () => {
     const screen = within(render(<ReportView data={await data()} />).container);
     const plan = screen.getByRole("region", { name: "Your climb plan" });
     expect(plan).toHaveTextContent("Estimated 17.0% of chances");
-    expect(plan).toHaveTextContent("Your coach's notes are off for this report");
+    expect(plan).toHaveTextContent(
+      "This report was built from your numbers only, so this section shows the computed numbers.",
+    );
+    expect(plan).not.toHaveTextContent(/notes are off/);
     const areas = screen.getByRole("region", { name: "Area notes" });
     expect(areas).toHaveTextContent("Score 48");
   });

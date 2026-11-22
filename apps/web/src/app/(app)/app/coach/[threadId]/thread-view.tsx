@@ -1,6 +1,12 @@
 "use client";
 
-import { ChatComposer, ChatMessage, CoachState, type Segment } from "@ci/ui/coach";
+import {
+  ChatComposer,
+  ChatMessage,
+  type CitedPosition,
+  CoachState,
+  type Segment,
+} from "@ci/ui/coach";
 import { CaretLeftIcon, Icon, TrashIcon, WarningIcon } from "@ci/ui/icons";
 import { motion, spring, useReducedMotion } from "@ci/ui/motion";
 import { toast } from "@ci/ui/overlays";
@@ -143,11 +149,14 @@ function Message({
   onRetry,
   retryDisabled,
   hrefFor,
+  positions,
 }: {
   m: MessageView;
   onRetry: (q: string) => void;
   retryDisabled: boolean;
   hrefFor: (s: Segment) => string | null;
+  /** The thread's cited positions (Fix D, N5): a done answer shows its boards. */
+  positions: Readonly<Record<string, CitedPosition>>;
 }) {
   const reduced = useReducedMotion();
   if (m.role === "assistant" && m.status === "failed") {
@@ -169,6 +178,7 @@ function Message({
       failure={m.failure}
       disclosure={m.disclosure}
       hrefFor={hrefFor}
+      positions={m.role === "assistant" && m.status === "done" ? positions : undefined}
       // Stored answers keep their paragraph breaks ("\n\n" text segments), and stored prose is
       // set at the streamed size, so a finished answer never reflows (review V2).
       className="[&_p]:whitespace-pre-line [&_p.font-serif]:text-prose"
@@ -342,6 +352,7 @@ export function ThreadView({
               onRetry={(q) => void post(q)}
               retryDisabled={composer.disabled}
               hrefFor={hrefFor}
+              positions={thread.positions ?? {}}
             />
           </li>
         ))}

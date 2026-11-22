@@ -306,6 +306,44 @@ describe("coach pages", () => {
     expect(screen.queryByRole("link", { name: "Nf3" })).toBeNull();
   });
 
+  // Fix D (N5): the thread carries its cited positions, so each board needs no request.
+  it("a done answer shows the position it cites, linked to the game at that ply", async () => {
+    const cited = {
+      ...thread,
+      messages: [
+        msg({
+          segments: [
+            { kind: "text", text: "After " },
+            { kind: "move", gameId: PLATFORM_GAME, ply: 2, san: "e5" },
+            { kind: "text", text: " the engine preferred " },
+            { kind: "best", gameId: PLATFORM_GAME, ply: 2, san: "c5" },
+          ],
+        }),
+      ],
+      positions: {
+        [`${PLATFORM_GAME}#2`]: {
+          gameId: PLATFORM_GAME,
+          ply: 2,
+          href: `/app/games/${GAME}?ply=2`,
+          fen: "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1",
+          orientation: "black",
+          moveText: "1… e5",
+          played: { san: "e5", uci: "e7e5" },
+          best: { san: "c5", uci: "c7c5" },
+          mistake: false,
+        },
+      },
+    };
+    render(<ThreadView thread={cited} allowance={view(1)} listHref="/app/coach" />);
+    expect(
+      await screen.findByRole("group", { name: "Position before 1… e5; engine preferred c5" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open the game at 1… e5" })).toHaveAttribute(
+      "href",
+      `/app/games/${GAME}?ply=2`,
+    );
+  });
+
   it("the thread page maps the answers' games for the thread's account", async () => {
     getThread.mockResolvedValue({
       ...thread,

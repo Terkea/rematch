@@ -544,3 +544,78 @@ mod render_segments {
         );
     }
 }
+
+/// Fix D (N1): a number keeps its unit, as the computed pages print it ("86.5%", "40.7 s").
+mod number_units {
+    use super::*;
+
+    fn r(ev: &Evidence, token: &str) -> Option<String> {
+        resolve_token(ev, &mk(token))
+    }
+
+    #[test]
+    fn win_chances_and_metric_percentages_carry_a_percent_sign() {
+        let (_, ev) = setup();
+        assert_eq!(
+            r(&ev, "{{num:weaknesses.W1.exemplars.0.winBefore|dec1}}").as_deref(),
+            Some("51.8%")
+        );
+        assert_eq!(
+            r(&ev, "{{num:metrics.endgame_conversion.value|int}}").as_deref(),
+            Some("62%")
+        );
+    }
+
+    #[test]
+    fn times_carry_seconds_and_rates_keep_their_own_format() {
+        let (_, ev) = setup();
+        assert_eq!(
+            r(&ev, "{{num:metrics.time_per_move.value|dec1}}").as_deref(),
+            Some("11.4\u{a0}s")
+        );
+        assert_eq!(
+            r(&ev, "{{num:metrics.hung_piece_rate.value|pct0}}").as_deref(),
+            Some("6%"),
+            "a pct format already has its sign"
+        );
+        assert_eq!(
+            r(&ev, "{{num:metrics.blunders_per_game.value|dec1}}").as_deref(),
+            Some("0.9"),
+            "a count per game has no unit sign"
+        );
+        assert_eq!(
+            r(&ev, "{{num:basis.analysedGames|int}}")
+                .as_deref()
+                .map(|s| s.chars().all(|c| c.is_ascii_digit() || c == ',')),
+            Some(true),
+            "counts stay bare: the text names them (games)"
+        );
+    }
+
+    #[test]
+    fn a_segment_display_carries_the_unit() {
+        let (_, ev) = setup();
+        let text = "about {{num:weaknesses.W1.exemplars.0.winAfter|dec1}} after";
+        let canonical = canonical_for_tokens(text);
+        let parsed = parse_tokens(text);
+        let segs = render_segments(&canonical, &parsed.tokens, &ev).unwrap();
+        assert_eq!(
+            segs[1],
+            Segment::Num {
+                path: "weaknesses.W1.exemplars.0.winAfter".into(),
+                value: 35.7,
+                display: "35.7%".into(),
+            }
+        );
+    }
+
+    #[test]
+    fn centipawns_carry_cp() {
+        let mut ev = create_evidence();
+        ev.put_number_path("tools.0.eval.cp", -120.0);
+        assert_eq!(
+            r(&ev, "{{num:tools.0.eval.cp}}").as_deref(),
+            Some("-120\u{a0}cp")
+        );
+    }
+}
