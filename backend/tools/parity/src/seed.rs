@@ -5,7 +5,7 @@ use std::path::Path;
 
 use analysis::jobs::analyse::enqueue_analyse;
 use anyhow::Context;
-use db::games::{NewGame, upsert_game};
+use db::games::{AnalysisStatus, NewGame, upsert_game};
 use platforms::{NormalizedGame, chesscom::normalize_chesscom, lichess::normalize_lichess};
 use queue::queue::Queue;
 use serde_json::Value;
@@ -93,6 +93,8 @@ fn new_game(account_id: Uuid, username: &str, g: &NormalizedGame) -> NewGame {
             .lichess_evals
             .as_ref()
             .and_then(|e| serde_json::to_value(e).ok()),
+        status: AnalysisStatus::Pending,
+        ply_count: None,
     }
 }
 
@@ -128,6 +130,8 @@ fn pgn_row(account_id: Uuid, id: &str, pgn: String, played_at: OffsetDateTime) -
         eco: None,
         opening_name: None,
         lichess_evals: None,
+        status: AnalysisStatus::Pending,
+        ply_count: None,
     }
 }
 
