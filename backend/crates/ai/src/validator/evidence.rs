@@ -187,6 +187,13 @@ fn array_id_field(key: &str) -> Option<&'static str> {
     }
 }
 
+/// v2 (ADR 0084): a colour's weakness rows are keyed by their series key, like the top-level
+/// arrays (`byColor.white.weaknesses.W4_missed.rate`).
+const COLOR_WEAKNESS_ARRAYS: [&str; 2] = ["byColor.white.weaknesses", "byColor.black.weaknesses"];
+
+/// The colours of the v2 colour split, as their path segments.
+const COLORS: [&str; 2] = ["white", "black"];
+
 /// TS `/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i`.
 fn is_uuid(s: &str) -> bool {
     let b = s.as_bytes();
@@ -478,7 +485,11 @@ impl Evidence {
                     return;
                 }
                 self.put_number_path(&format!("{path}.count"), xs.len() as f64);
-                let id_field = key.filter(|_| !path.contains('.')).and_then(array_id_field);
+                let id_field = if COLOR_WEAKNESS_ARRAYS.contains(&path) {
+                    Some("seriesKey")
+                } else {
+                    key.filter(|_| !path.contains('.')).and_then(array_id_field)
+                };
                 for (i, x) in xs.iter().enumerate() {
                     let id = id_field.and_then(|f| x.get(f)).and_then(Value::as_str);
                     let child = match id {
@@ -583,6 +594,24 @@ impl Evidence {
             let b = format!("metrics.{}", seg(&m.key));
             for f in ["value", "low", "high", "bandMedian"] {
                 add(self, format!("{b}.{f}"));
+            }
+        }
+        // v2 (ADR 0084): the colour split. A score and a weakness rate are shares (`pct0`,
+        // `pct1`); an accuracy prints with `%`; blunders per game and counts take no unit.
+        if let Some(by) = &input.by_color {
+            for (colour, s) in COLORS.into_iter().zip([&by.white, &by.black]) {
+                let b = format!("byColor.{colour}");
+                for f in ["value", "low", "high"] {
+                    add(self, format!("{b}.score.{f}"));
+                    self.unit_paths
+                        .insert(format!("{b}.accuracy.{f}"), NumUnit::Percent);
+                }
+                for w in &s.weaknesses {
+                    let wb = format!("{b}.weaknesses.{}", seg(&w.series_key));
+                    for f in ["rate", "low", "high", "peerRate"] {
+                        add(self, format!("{wb}.{f}"));
+                    }
+                }
             }
         }
     }

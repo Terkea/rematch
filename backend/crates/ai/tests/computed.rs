@@ -31,6 +31,29 @@ use uuid::Uuid;
 const REPORT_ID: Uuid = uuid::uuid!("7d0c3f4e-2a51-4b8e-9c61-0f2b7a9d1e35");
 const AT: OffsetDateTime = datetime!(2026-11-20 08:30:00 UTC);
 
+/// coaching-input-v2 (ADR 0084): the computed report carries the colour split and the
+/// benchmark for the report's White vs Black block; a v1 input's report has neither key.
+#[test]
+fn computed_report_carries_the_colour_split() {
+    let v2 = ai::testing::v2_input("b2-rapid");
+    let c = build_computed_report(&v2, true);
+    assert_eq!(c.by_color, v2.by_color);
+    assert_eq!(c.benchmark, v2.benchmark);
+    let json = serde_json::to_value(&c).unwrap();
+    assert_eq!(json["byColor"]["white"]["games"], json!(42));
+    assert_eq!(json["byColor"]["black"]["score"]["value"], serde_json::Value::Null);
+    assert_eq!(json["benchmark"]["ratingHigh"], json!(975));
+    let back: ComputedReport = serde_json::from_value(json).unwrap();
+    assert_eq!(back, c);
+
+    let v1 = build_computed_report(&input("b2-rapid"), true);
+    let json = serde_json::to_value(&v1).unwrap();
+    assert!(json.get("byColor").is_none() && json.get("benchmark").is_none());
+    // A stored v1 computed report still loads.
+    let back: ComputedReport = serde_json::from_value(json).unwrap();
+    assert_eq!(back.by_color, None);
+}
+
 #[test]
 fn computed_report_copies_the_input_and_splits_changes() {
     let i = input("b2-rapid");

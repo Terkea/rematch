@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { AREAS, KPIS, WEAKNESSES } from "../../src/server/profile/catalogue";
 import {
@@ -8,7 +8,9 @@ import {
   GLOSSARY_TERMS,
   GLOSSARY_VERDICTS,
   type GlossaryEntry,
+  coachGlossaryPrompt,
   glossaryEntry,
+  glossaryForCoach,
   glossaryForPrompt,
   KPI_GLOSSARY,
   STATE_GLOSSARY,
@@ -118,6 +120,49 @@ describe("glossary", () => {
     expect(parsed.weaknesses?.W5).toEqual(WEAKNESS_GLOSSARY.W5);
     expect(parsed.terms?.chances).toEqual(TERM_GLOSSARY.chances);
     expect(parsed.states?.active).toEqual(STATE_GLOSSARY.active);
+  });
+});
+
+// The coach prompts embed the glossary as a generated, versioned prompt file (ADR 0084). A
+// copy edit here fails until the next version is written (`UPDATE_SNAPSHOTS=1`) and registered
+// in `backend/crates/ai/src/prompts.rs`; a prompt file never changes in place.
+const PROMPT_DIR = new URL("../../../../backend/crates/ai/prompts/core/", import.meta.url);
+
+function latestGlossaryVersion(): number {
+  const versions = readdirSync(PROMPT_DIR)
+    .map((f) => /^glossary\.v(\d+)\.md$/.exec(f)?.[1])
+    .filter((v): v is string => v !== undefined)
+    .map(Number);
+  return Math.max(0, ...versions);
+}
+
+describe("the coach glossary prompt", () => {
+  it("is the latest generated prompt file", () => {
+    const latest = latestGlossaryVersion();
+    const file = (v: number) => new URL(`glossary.v${v}.md`, PROMPT_DIR);
+    const text = coachGlossaryPrompt();
+    const current = latest > 0 ? readFileSync(file(latest), "utf8") : null;
+    if (current !== text && process.env.UPDATE_SNAPSHOTS === "1") {
+      writeFileSync(file(latest + 1), text);
+    }
+    expect(
+      current,
+      `core/glossary.v${latest}.md is stale: run with UPDATE_SNAPSHOTS=1, then register v${latest + 1}`,
+    ).toBe(text);
+  });
+
+  it("keeps every entry's plain words and nothing else", () => {
+    const parsed = JSON.parse(glossaryForCoach()) as Record<string, Record<string, object>>;
+    expect(Object.keys(parsed)).toEqual(["areas", "kpis", "states", "terms", "verdicts", "weaknesses"]);
+    expect(Object.keys(parsed.weaknesses ?? {})).toHaveLength(WEAKNESSES.length);
+    expect(Object.keys(parsed.kpis ?? {})).toHaveLength(KPIS.length);
+    expect(parsed.weaknesses?.W5).toEqual({
+      meaning: WEAKNESS_GLOSSARY.W5?.meaning,
+      name: WEAKNESS_GLOSSARY.W5?.name,
+    });
+    expect(Object.keys(parsed.verdicts ?? {}).sort()).toEqual([...GLOSSARY_VERDICTS].sort());
+    expect(glossaryForCoach()).not.toContain("<");
+    expect(coachGlossaryPrompt().endsWith("</glossary>\n")).toBe(true);
   });
 });
 

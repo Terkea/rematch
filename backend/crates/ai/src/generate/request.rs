@@ -4,7 +4,7 @@
 //! 1. `system[0]`: [`rules_block`], `core/rules` + `core/tokens`: the format-neutral rules and
 //!    token grammar, byte-identical for reports and the chat, so it caches for both;
 //! 2. `system[1]`: `report/report` + `report/output` (the JSON output instructions, report only)
-//!    + the band's `tone/b<n>` (shared within a band);
+//!    + the band's `tone/b<n>` (shared within a band) + `core/glossary` (ADR 0084);
 //! 3. user block 1: `<coaching_input>` + the canonical prompt context (shared within a report);
 //!
 //! and then the uncached section task, the only part that differs. The Messages API (batches)
@@ -15,17 +15,23 @@ use crate::client::port::{Message, Role, StructuredRequest, StructuredResult, Te
 use crate::input::types::CoachingInput;
 use crate::output::codes::{SectionKey, ValidationError};
 use crate::output::schema::REPORT_SECTION_SCHEMA;
-use crate::prompts::{load_prompt, render_template};
+use crate::prompts::{REPORT_PROMPT_SET, load_prompt, render_template};
 
 use super::context::{build_prompt_context, canonical_json_escaped};
 
 /// `max_tokens` of a section call.
 pub const SECTION_MAX_TOKENS: u32 = 16000;
 
-/// The text of a registered version-1 prompt. Every id used here is in `REPORT_PROMPT_SET`, which
-/// `tests/prompts.rs` loads, so a miss is a build defect.
-fn text(id: &str) -> &'static str {
-    load_prompt(id, 1).unwrap_or_else(|e| panic!("{e}")).text
+/// The text of a prompt at its version in `REPORT_PROMPT_SET` (version 1 for an id outside it).
+/// Every id used here is in the set, which `tests/prompts.rs` loads, so a miss is a build defect.
+/// (Before ADR 0084 this always read version 1, so `core/tokens` v2 recorded in the set was
+/// never sent.)
+pub(crate) fn text(id: &str) -> &'static str {
+    let v = REPORT_PROMPT_SET
+        .iter()
+        .find(|(i, _)| *i == id)
+        .map_or(1, |(_, v)| *v);
+    load_prompt(id, v).unwrap_or_else(|e| panic!("{e}")).text
 }
 
 fn joined(ids: &[&str]) -> String {
@@ -57,7 +63,12 @@ pub fn build_section_request(
         model: Models::REPORT,
         system: vec![
             rules_block(),
-            TextBlock::cached(joined(&["report/report", "report/output", &tone])),
+            TextBlock::cached(joined(&[
+                "report/report",
+                "report/output",
+                &tone,
+                "core/glossary",
+            ])),
         ],
         messages: vec![Message {
             role: Role::User,

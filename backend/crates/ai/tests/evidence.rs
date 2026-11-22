@@ -489,3 +489,103 @@ mod ts_parity {
         }
     }
 }
+
+/// coaching-input-v2 (ADR 0084): the colour split and the benchmark are citable, with units.
+mod colour_split {
+    use ai::segments::Segment;
+    use ai::testing::v2_input;
+    use ai::validator::evidence::NumUnit;
+    use ai::validator::format::format_num_at;
+    use ai::validator::text::{TextRules, validate_text};
+
+    use super::*;
+
+    fn ev() -> Evidence {
+        build_evidence(&v2_input("b2-rapid"))
+    }
+
+    #[test]
+    fn indexes_every_colour_number_by_path() {
+        let ev = ev();
+        let n = |p: &str| ev.number_paths.get(p).copied();
+        assert_eq!(n("byColor.white.games"), Some(42.0));
+        assert_eq!(n("byColor.white.wins"), Some(20.0));
+        assert_eq!(n("byColor.white.score.value"), Some(0.524));
+        assert_eq!(n("byColor.white.accuracy.high"), Some(79.8));
+        assert_eq!(n("byColor.white.blundersPerGame.value"), Some(0.9));
+        // Weakness rows are keyed by their series key.
+        assert_eq!(n("byColor.white.weaknesses.W4_missed.rate"), Some(0.14));
+        assert_eq!(n("byColor.white.weaknesses.W4_missed.peerRate"), Some(0.096));
+        assert_eq!(n("byColor.white.weaknesses.W1.opportunities"), Some(240.0));
+        assert_eq!(n("benchmark.ratingLow"), Some(675.0));
+        assert_eq!(n("benchmark.players"), Some(25.0));
+        // An insufficient number is null: there is no path to cite.
+        assert_eq!(n("byColor.black.score.value"), None);
+        assert_eq!(n("byColor.black.accuracy.value"), None);
+        assert_eq!(n("byColor.black.games"), Some(7.0));
+        assert_eq!(n("byColor.black.needMore"), Some(3.0));
+    }
+
+    #[test]
+    fn colour_paths_carry_their_units() {
+        let ev = ev();
+        assert_eq!(
+            ev.unit_of("byColor.white.accuracy.value"),
+            Some(NumUnit::Percent)
+        );
+        assert_eq!(ev.unit_of("byColor.white.blundersPerGame.value"), None);
+        assert_eq!(ev.unit_of("byColor.white.score.value"), None);
+        for p in [
+            "byColor.white.score.value",
+            "byColor.white.score.low",
+            "byColor.white.weaknesses.W4_missed.rate",
+            "byColor.white.weaknesses.W4_missed.peerRate",
+        ] {
+            assert!(ev.rate_paths.contains(p), "{p} is a rate");
+        }
+        for p in ["byColor.white.accuracy.value", "byColor.white.games"] {
+            assert!(!ev.rate_paths.contains(p), "{p} is not a rate");
+        }
+        let f = |p: &str, fmt| format_num_at(&ev, p, fmt).unwrap();
+        assert_eq!(f("byColor.white.accuracy.value", Some(NumFormat::Dec1)), "78.4%");
+        assert_eq!(f("byColor.white.score.value", Some(NumFormat::Pct0)), "52%");
+        assert_eq!(f("byColor.white.blundersPerGame.value", Some(NumFormat::Dec1)), "0.9");
+        assert_eq!(f("byColor.white.games", Some(NumFormat::Int)), "42");
+        assert_eq!(f("benchmark.ratingHigh", None), "975");
+    }
+
+    #[test]
+    fn a_paragraph_citing_the_split_validates() {
+        let ev = ev();
+        let text = "As White you scored {{num:byColor.white.score.value|pct0}} over \
+                    {{num:byColor.white.games|int}} games, with an accuracy of \
+                    {{num:byColor.white.accuracy.value|dec1}}. Players you have faced, rated \
+                    about {{num:benchmark.ratingLow}} to {{num:benchmark.ratingHigh}}, miss \
+                    these chances at {{num:byColor.white.weaknesses.W4_missed.peerRate|pct1}}.";
+        let out = validate_text(text, &[], &ev, &TextRules::default(), "x").expect("valid");
+        let nums: Vec<(String, String)> = out
+            .iter()
+            .filter_map(|s| match s {
+                Segment::Num { path, display, .. } => Some((path.clone(), display.clone())),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            nums.iter().map(|(_, d)| d.as_str()).collect::<Vec<_>>(),
+            ["52%", "42", "78.4%", "675", "975", "9.6%"]
+        );
+        // A null (insufficient) number cannot be cited.
+        let bad = "As Black you scored {{num:byColor.black.score.value|pct0}}.";
+        assert!(validate_text(bad, &[], &ev, &TextRules::default(), "x").is_err());
+        // A percentage format on a non-rate path is refused.
+        let bad = "{{num:byColor.white.accuracy.value|pct0}} accuracy.";
+        assert!(validate_text(bad, &[], &ev, &TextRules::default(), "x").is_err());
+    }
+
+    #[test]
+    fn a_v1_input_has_no_colour_paths() {
+        let ev = build_evidence(&input("b2-rapid"));
+        assert!(ev.number_paths.keys().all(|p| !p.starts_with("byColor")));
+        assert!(ev.number_paths.keys().all(|p| !p.starts_with("benchmark")));
+    }
+}

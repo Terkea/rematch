@@ -11,7 +11,7 @@ use ai::generate::context::{build_prompt_context, canonical_json_escaped};
 use ai::generate::request::{build_repair_messages, build_section_request};
 use ai::input::types::{BandId, CoachingInput};
 use ai::output::codes::{SECTION_KEYS, SectionKey, ValidationCode, ValidationError};
-use ai::prompts::{load_prompt, render_template};
+use ai::prompts::{REPORT_PROMPT_SET, load_prompt, render_template};
 use ai::testing::{fixtures_dir, input};
 use ai::validator::language::{confidence_phrase, evidence_window_token, likelihood_phrase};
 use serde_json::{Value, json};
@@ -77,7 +77,15 @@ fn section_requests_share_the_cached_prefix() {
     assert_ne!(b0_req.system[1], first.system[1]);
 
     // The block texts are the brief's layout.
-    let p = |id: &str| load_prompt(id, 1).unwrap().text;
+    // Each prompt at its version in the report's set (ADR 0084: core/tokens v2, report v2,
+    // the overview v2; the glossary ends system[1]).
+    let p = |id: &str| {
+        let v = REPORT_PROMPT_SET
+            .iter()
+            .find(|(i, _)| *i == id)
+            .map_or(1, |(_, v)| *v);
+        load_prompt(id, v).unwrap().text
+    };
     assert_eq!(
         first.system[0].text,
         format!("{}\n\n{}", p("core/rules"), p("core/tokens"))
@@ -86,19 +94,21 @@ fn section_requests_share_the_cached_prefix() {
     assert_eq!(
         first.system[1].text,
         format!(
-            "{}\n\n{}\n\n{}",
+            "{}\n\n{}\n\n{}\n\n{}",
             p("report/report"),
             p("report/output"),
-            p("tone/b2")
+            p("tone/b2"),
+            p("core/glossary")
         )
     );
     assert_eq!(
         b0_req.system[1].text,
         format!(
-            "{}\n\n{}\n\n{}",
+            "{}\n\n{}\n\n{}\n\n{}",
             p("report/report"),
             p("report/output"),
-            p("tone/b0")
+            p("tone/b0"),
+            p("core/glossary")
         )
     );
     let ctx = build_prompt_context(&b2, false);
