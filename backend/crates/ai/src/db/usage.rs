@@ -29,14 +29,17 @@ pub struct UsageRow {
     pub cost_micro_usd: i64,
     /// The run, review, note or message id the call served.
     pub ref_id: Option<String>,
+    /// The SDK's own estimate (comparison only; never summed into budgets).
+    pub sdk_estimate_micro_usd: Option<i64>,
 }
 
 /// Records one call; returns the row id.
 pub async fn record_usage(conn: &mut PgConnection, row: &UsageRow) -> Result<i64, sqlx::Error> {
     sqlx::query_scalar(
         "INSERT INTO ai_usage (account_id, feature, model, batch, input_tokens, output_tokens, \
-         cache_creation_tokens, cache_read_tokens, cost_micro_usd, ref_id) \
-         VALUES ($1, $2::ai_feature, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id",
+         cache_creation_tokens, cache_read_tokens, cost_micro_usd, ref_id, \
+         sdk_estimate_micro_usd) \
+         VALUES ($1, $2::ai_feature, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id",
     )
     .bind(row.account_id)
     .bind(row.feature.as_str())
@@ -48,6 +51,7 @@ pub async fn record_usage(conn: &mut PgConnection, row: &UsageRow) -> Result<i64
     .bind(row.cache_read_tokens)
     .bind(row.cost_micro_usd)
     .bind(&row.ref_id)
+    .bind(row.sdk_estimate_micro_usd)
     .fetch_one(conn)
     .await
 }
@@ -60,7 +64,11 @@ pub async fn record_usage_once(
     key: &str,
 ) -> Result<bool, sqlx::Error> {
     let r = sqlx::query(
-        "INSERT INTO ai_usage (account_id, feature, model, batch, input_tokens, output_tokens,          cache_creation_tokens, cache_read_tokens, cost_micro_usd, ref_id, idempotency_key)          VALUES ($1, $2::ai_feature, $3, $4, $5, $6, $7, $8, $9, $10, $11)          ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING",
+        "INSERT INTO ai_usage (account_id, feature, model, batch, input_tokens, output_tokens, \
+         cache_creation_tokens, cache_read_tokens, cost_micro_usd, ref_id, \
+         sdk_estimate_micro_usd, idempotency_key) \
+         VALUES ($1, $2::ai_feature, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) \
+         ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING",
     )
     .bind(row.account_id)
     .bind(row.feature.as_str())
@@ -72,6 +80,7 @@ pub async fn record_usage_once(
     .bind(row.cache_read_tokens)
     .bind(row.cost_micro_usd)
     .bind(&row.ref_id)
+    .bind(row.sdk_estimate_micro_usd)
     .bind(key)
     .execute(conn)
     .await?;

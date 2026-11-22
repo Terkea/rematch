@@ -65,7 +65,6 @@ use super::interactive::DbInteractiveEngine;
 use super::limits::{CHAT_LIMITS, CHAT_NO_DATA_TEXT, check_chat_allowance};
 use super::summary::{fallback_title, summarise_thread};
 use super::threads::AccountAccess;
-use crate::client::cost::PricingTable;
 use crate::client::model::{AiModel, Models};
 use crate::client::port::{AiClient, AiError, Message, ModelUsage, UnavailableReason};
 use crate::db::chat::{self, ChatRole, ChatStatus, MessageFinish, MessageRow};
@@ -77,7 +76,7 @@ use crate::events::{
 };
 use crate::generate::section::CallRecord;
 use crate::input::types::{CoachingInput, TimeClass};
-use crate::jobs::budget::{BudgetConfig, budget_guard, meter_keyed};
+use crate::jobs::budget::{BudgetConfig, PricingTable, budget_guard, meter_keyed};
 use crate::jobs::kinds::{CHAT_MAX_ATTEMPTS, CoachChatPayload, KIND_COACH_CHAT};
 use crate::output::codes::Citation;
 use crate::output::disclosure::make_disclosure;
@@ -122,8 +121,8 @@ const REASON_UNAVAILABLE: &str = "unavailable";
 const REASON_BUDGET: &str = "budget";
 const REASON_NOT_LINKED: &str = "not_linked";
 
-/// What the `coach-chat` handler needs. `pricing` prices the metered calls (Task 18's `meter`
-/// may take it from elsewhere at merge).
+/// What the `coach-chat` handler needs. `pricing` prices the metered calls: the same
+/// [`PricingTable`] the report job uses (`jobs::budget`, Task 18).
 #[derive(Clone)]
 pub struct ChatDeps {
     pub pool: PgPool,
