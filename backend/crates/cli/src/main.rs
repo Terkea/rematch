@@ -1,9 +1,12 @@
 //! The `cli` entry point: `cli analyse ...` starts the workers in-process (no reconciler);
-//! `cli db migrate` only migrates; `cli profile`, `cli eta` and `cli queue-lag` only read.
+//! `cli db migrate` only migrates; `cli profile`, `cli eta` and `cli queue-lag` only read;
+//! `cli recompute-metrics` rewrites stale metrics from the stored evals (no engine, no worker).
 
 use std::time::Duration;
 
-use cli::{AnalyseDeps, CliDeps, Signal, Started, db_cmd, profile_cmd, queue_cmd, run_cli};
+use cli::{
+    AnalyseDeps, CliDeps, Signal, Started, db_cmd, profile_cmd, queue_cmd, recompute_cmd, run_cli,
+};
 use futures::FutureExt;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
@@ -18,8 +21,10 @@ async fn main() {
         let code = db_cmd::run_db(&argv, &|l| println!("{l}"), &|l| eprintln!("{l}")).await;
         std::process::exit(code);
     }
-    // Read-only views: the database only, no workers (R2 Task 35).
-    if let Some(cmd @ ("profile" | "eta" | "queue-lag")) = argv.first().map(String::as_str) {
+    // Read-only views (R2 Task 35) and the metrics recompute: the database only, no workers.
+    if let Some(cmd @ ("profile" | "eta" | "queue-lag" | "recompute-metrics")) =
+        argv.first().map(String::as_str)
+    {
         let code = read_only(cmd, &argv).await;
         std::process::exit(code);
     }
@@ -121,6 +126,9 @@ async fn read_only(cmd: &str, argv: &[String]) -> i32 {
             .await
         }
         "eta" => profile_cmd::run_eta(argv, &pool, &print, &print_error).await,
+        "recompute-metrics" => {
+            recompute_cmd::run_recompute_metrics(argv, &pool, &print, &print_error).await
+        }
         _ => queue_cmd::run_queue_lag(argv, &pool, &print, &print_error).await,
     };
     pool.close().await;

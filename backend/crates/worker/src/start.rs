@@ -73,7 +73,7 @@ use profile::reference_jobs::{
 };
 use profile::requeue::{
     DifficultySweepDeps, DifficultySweepHandler, ensure_difficulty_sweep_scheduled,
-    requeue_unenriched,
+    mark_stale_metrics, requeue_unenriched,
 };
 use queue::queue::Queue;
 use queue::runner::{Handler, Runner, RunnerConfig, RunnerHandle};
@@ -945,6 +945,12 @@ pub async fn start_workers(env: &WorkerEnv, opts: StartOptions) -> anyhow::Resul
     match requeue_unenriched(&pool, &queue).await {
         Ok(n) => tracing::info!(requeued = n, "unenriched games requeued"),
         Err(e) => tracing::warn!(error = %e, "requeueing unenriched games failed"),
+    }
+    // Games whose metrics an older PLAYER_GAME_METRICS_VERSION wrote: the difficulty sweep
+    // recomputes them from the stored evals (ADR-FIX-C-1). Not fatal: the next start tries again.
+    match mark_stale_metrics(&pool).await {
+        Ok(n) => tracing::info!(marked = n, "games with stale metrics marked"),
+        Err(e) => tracing::warn!(error = %e, "marking games with stale metrics failed"),
     }
     // Reference-game jobs lost by a crash of `lichess-db build` between its row insert and its
     // last job batch (T21 review I4; idempotent through the `refgame:<id>` dedupe). Not fatal.

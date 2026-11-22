@@ -4,6 +4,9 @@
 //! ply, duplicated plies dropped, invalid moves skipped), so every metric sees the same moves as
 //! the weakness observation. Definitions:
 //! - `blunders` / `mistakes` / `inaccuracies`: the player's valid moves by judgement.
+//! - `accuracy_by_phase`: lila's game accuracy over each phase's moves (lila
+//!   `AccuracyPercent.phaseAccuracies`, ADR-FIX-C-1), on the same scale as the game's accuracy;
+//!   `None` without an own move in the phase or with an unusable move in it.
 //! - `one_move_blunders`: decisive (ΔW ≥ 15) with a refutation realised in 1 ply, or a missed mate
 //!   in 1 (best line `mate_in = 1`, the played move is not a mate).
 //! - `missed_punish`: own moves right after a valid opponent mistake or blunder; a miss is ΔW ≥ 10.
@@ -39,6 +42,7 @@
 
 use std::collections::BTreeMap;
 
+use chess_core::game_accuracy::game_accuracy_from;
 use chess_core::score::{flip_score, score_to_cp};
 use chess_core::{Color, Judgement, Phase, TimeClass};
 
@@ -56,6 +60,34 @@ use crate::weakness::episodes::Outcome;
 use crate::weakness::observe_game::T_WIN;
 use crate::weakness::sessions::expected_score;
 use crate::weakness::time_trouble::{detect_time_trouble, is_time_loss, player_resigned};
+
+/// Lila's game accuracy over the moves of `phase` (lila `AccuracyPercent.phaseAccuracies`: the
+/// phase's slice of the W series, with its first mover as the start colour), so it is on the
+/// game accuracy's scale. The series is White's W before the phase's first move, then after each
+/// of its moves. `None` when the player made no move in the phase, or when a move of the phase
+/// is unusable or its plies are not consecutive (a hole in the series).
+fn phase_accuracy(v: &GameView<'_>, phase: Phase) -> Option<f64> {
+    let slice: Vec<&EnrichedMove> = v
+        .all
+        .iter()
+        .copied()
+        .filter(|m| m.rec.phase == phase)
+        .collect();
+    let first = *slice.first()?;
+    if slice.iter().any(|m| !move_is_valid(m))
+        || slice.windows(2).any(|w| w[1].rec.ply != w[0].rec.ply + 1)
+    {
+        return None;
+    }
+    let white = |m: &EnrichedMove, w: f64| match m.rec.color {
+        Color::White => w,
+        Color::Black => 100.0 - w,
+    };
+    let mut series = Vec::with_capacity(slice.len() + 1);
+    series.push(white(first, first.rec.win_before));
+    series.extend(slice.iter().map(|m| white(m, m.rec.win_after)));
+    finite(game_accuracy_from(&series, first.rec.color, v.player)?)
+}
 
 /// Missed punishment: ΔW at or above this after an opponent mistake or blunder.
 pub const MISSED_PUNISH_DW: f64 = 10.0;
@@ -146,7 +178,6 @@ pub fn compute_game_metrics_counted(
 
     // Per-move counts.
     m.moves = v.own.len() as u32;
-    let mut acc = [(0.0_f64, 0_u32); 3];
     for o in &v.own {
         match o.m.rec.judgement {
             Some(Judgement::Blunder) => m.blunders += 1,
@@ -154,12 +185,7 @@ pub fn compute_game_metrics_counted(
             Some(Judgement::Inaccuracy) => m.inaccuracies += 1,
             None => {}
         }
-        let a = o.m.rec.accuracy;
-        if is_pct(a) {
-            let e = &mut acc[phase_index(o.m.rec.phase)];
-            e.0 += a;
-            e.1 += 1;
-        } else {
+        if !is_pct(o.m.rec.accuracy) {
             scan.invalid_move_accuracy += 1;
         }
         match one_move_blunder(o) {
@@ -172,10 +198,7 @@ pub fn compute_game_metrics_counted(
             m.sharp.errors += u32::from(o.m.rec.judgement.is_some());
         }
     }
-    m.accuracy_by_phase = phase_values(|p| {
-        let (s, n) = acc[phase_index(p)];
-        mean(s, n)
-    });
+    m.accuracy_by_phase = phase_values(|p| phase_accuracy(&v, p));
     m.missed_punish = missed_punish(&v);
 
     // Tactics allowed (move level) and the observation-based tactic counts.
@@ -316,14 +339,6 @@ fn mean(sum: f64, n: u32) -> Option<f64> {
         return None;
     }
     finite(sum / f64::from(n))
-}
-
-fn phase_index(p: Phase) -> usize {
-    match p {
-        Phase::Opening => 0,
-        Phase::Middlegame => 1,
-        Phase::Endgame => 2,
-    }
 }
 
 fn phase_values(f: impl Fn(Phase) -> Option<f64>) -> PhaseValues {

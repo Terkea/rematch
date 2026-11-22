@@ -42,7 +42,7 @@ use uuid::Uuid;
 
 use crate::analyse_features::{
     FeatureInput, GameFeatures, compute_game_features, game_context, opening_name, parse_color,
-    parse_time_class,
+    parse_time_class, previous_own_rating,
 };
 
 /// A `build-profile` job runs this long after the game that asked for it, so a batch of games
@@ -282,7 +282,11 @@ impl AnalyseHook for ProfileHook {
             let t = Instant::now();
             let wins: Vec<f64> = i.evals.iter().map(|e| win_percent(e.score)).collect();
             let accuracy = (!i.records.is_empty()).then(|| game_accuracy(&wins, player));
-            let ctx = game_context(game, accuracy, ANALYSIS_PROTOCOL).map_err(HookError::Failed)?;
+            let previous = previous_own_rating(&self.pool, game.id)
+                .await
+                .map_err(|e| HookError::Failed(format!("previous rating: {e}")))?;
+            let ctx = game_context(game, accuracy, ANALYSIS_PROTOCOL, previous)
+                .map_err(HookError::Failed)?;
             let explorer =
                 load_game_explorer(&self.pool, game.account_id, target.time_class, i.parsed).await;
             let explorer_ms = ms(t);

@@ -11,20 +11,28 @@
 //!   the same statement as each difficulty write and cleared in the recompute's transaction, so
 //!   a cancel, a DB error or a crash between the two loses no recompute. [`DifficultySweepHandler`] runs it as the recurring
 //!   [`KIND_DIFFICULTY_SWEEP`] job ([`ensure_difficulty_sweep_scheduled`]).
+//! - [`mark_stale_metrics`] (worker start and `cli recompute-metrics`, ADR-FIX-C-1) marks every
+//!   game whose `game_metrics` row has another `PLAYER_GAME_METRICS_VERSION`, so the same
+//!   recompute rewrites it from the stored evals: its metrics, openings and series rows and its
+//!   `games.white_accuracy` / `black_accuracy`, then its profile build (which rebuilds the KPI
+//!   snapshots). [`recompute_marked`] drains every mark at once; with
+//!   [`RecomputeDeps::cache_only`] it never runs an engine.
 
 use std::sync::Arc;
 use std::time::Duration;
 
-use analysis::eval_cache::EvalCache;
+use analysis::eval_cache::{DbEvalCache, EvalCache};
 use analysis::evaluate::{EvaluateDeps, evaluate_game};
 use analysis::hook::clear_hook_rows;
 use analysis::jobs::analyse::analyse_enqueue_options_with_priority;
+use chess_core::Color;
+use chess_core::game_accuracy::game_accuracy;
 use chess_core::move_record::build_move_records;
 use chess_core::pgn::parse_pgn;
 use chess_core::score::win_percent;
 use chess_core::{ClockInfo, EngineScore, MoveRecord};
 use db::games::{AnalysisStatus, get_game};
-use engine::{ANALYSIS_PROTOCOL, Analyser};
+use engine::{ANALYSIS_PROTOCOL, AnalyseOptions, Analyser, AnalysisResult, EngineError};
 use enrich::difficulty::DifficultySource;
 use enrich::protocol::ENRICHMENT_PROTOCOL;
 use enrich::reenrich::{SweepOptions, SweepReport, reenrich_pending_difficulty};
@@ -43,7 +51,9 @@ use time::OffsetDateTime;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
-use crate::analyse_features::{FeatureInput, GameFeatures, compute_game_features, game_context};
+use crate::analyse_features::{
+    FeatureInput, GameFeatures, compute_game_features, game_context, previous_own_rating,
+};
 use crate::hook_impl::{
     DerivedTarget, derived_target, enqueue_build_profile, load_game_explorer, write_derived_rows,
 };
@@ -153,6 +163,62 @@ pub struct DifficultySweepDeps {
     pub options: SweepOptions,
 }
 
+impl DifficultySweepDeps {
+    fn recompute_deps(&self) -> RecomputeDeps {
+        RecomputeDeps {
+            pool: self.pool.clone(),
+            queue: self.queue.clone(),
+            analyser: self.analyser.clone(),
+            cache: self.cache.clone(),
+            cache_only: false,
+        }
+    }
+}
+
+/// What [`recompute_game_features`] needs.
+#[derive(Clone)]
+pub struct RecomputeDeps {
+    pub pool: PgPool,
+    pub queue: Queue,
+    /// The main evals come from `cache` (every position of a done game is cached); the analyser
+    /// only fills a missing entry.
+    pub analyser: Arc<dyn Analyser>,
+    pub cache: Arc<dyn EvalCache>,
+    /// The analyser is [`NoEngine`]: a game that cannot be evaluated from the cache keeps its
+    /// rows and its mark for the worker's sweep instead of being abandoned.
+    pub cache_only: bool,
+}
+
+impl RecomputeDeps {
+    /// A recompute from the eval cache alone (`cli recompute-metrics`): no engine is started.
+    pub fn cache_only(pool: PgPool, queue: Queue) -> Self {
+        RecomputeDeps {
+            cache: Arc::new(DbEvalCache::new(pool.clone())),
+            analyser: Arc::new(NoEngine),
+            pool,
+            queue,
+            cache_only: true,
+        }
+    }
+}
+
+/// An analyser that refuses every request: a recompute with it reads the eval cache only.
+pub struct NoEngine;
+
+impl Analyser for NoEngine {
+    fn analyse<'a>(
+        &'a self,
+        _fen: &'a str,
+        _opts: AnalyseOptions,
+    ) -> BoxFuture<'a, Result<AnalysisResult, EngineError>> {
+        Box::pin(async {
+            Err(EngineError::Spawn(
+                "cache-only recompute: no engine".to_owned(),
+            ))
+        })
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct DifficultySweepReport {
     pub sweep: SweepReport,
@@ -193,11 +259,12 @@ pub async fn run_difficulty_sweep(
         .bind(RECOMPUTE_BATCH)
         .fetch_all(&deps.pool)
         .await?;
+    let recompute_deps = deps.recompute_deps();
     for (game_id, marked_at) in marked {
         if cancel.is_cancelled() {
             break;
         }
-        match recompute_game_features(deps, game_id, marked_at, cancel).await {
+        match recompute_game_features(&recompute_deps, game_id, marked_at, cancel).await {
             Ok(true) => report.recomputed.push(game_id),
             Ok(false) => {}
             Err(RecomputeError::Cancelled) => break,
@@ -212,6 +279,82 @@ pub async fn run_difficulty_sweep(
 
 /// Marked games per sweep run (the rest wait for the next run).
 pub const RECOMPUTE_BATCH: i64 = 500;
+
+/// Marks the `done` games whose metrics row has another version than this code writes (an
+/// existing mark is kept, so its time still orders the queue).
+pub const MARK_STALE_METRICS_SQL: &str = "\
+UPDATE games g SET profile_stale_at = now() \
+FROM game_metrics gm \
+WHERE gm.game_id = g.id AND gm.metrics_version <> $1 \
+  AND g.analysis_status = 'done' AND g.profile_stale_at IS NULL";
+
+/// See [`MARK_STALE_METRICS_SQL`]. Returns how many games were marked.
+pub async fn mark_stale_metrics(pool: &PgPool) -> Result<u64, sqlx::Error> {
+    let version =
+        i32::try_from(profile_core::types::PLAYER_GAME_METRICS_VERSION).unwrap_or(i32::MAX);
+    let marked = sqlx::query(MARK_STALE_METRICS_SQL)
+        .bind(version)
+        .execute(pool)
+        .await?
+        .rows_affected();
+    if marked > 0 {
+        tracing::info!(
+            marked,
+            version,
+            "games with stale metrics marked for recompute"
+        );
+    }
+    Ok(marked)
+}
+
+/// What [`recompute_marked`] did.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct RecomputeReport {
+    pub recomputed: Vec<Uuid>,
+    /// Marks cleared without a rewrite (the game is not current; a re-analysis owns it).
+    pub skipped: Vec<Uuid>,
+    pub failed: Vec<Uuid>,
+}
+
+/// Recomputes every marked game, batch by batch, until no mark is left that this run has not
+/// tried (a game whose failure keeps its mark is not tried twice).
+pub async fn recompute_marked(
+    deps: &RecomputeDeps,
+    cancel: &CancellationToken,
+) -> Result<RecomputeReport, sqlx::Error> {
+    let mut report = RecomputeReport::default();
+    let mut tried = std::collections::HashSet::new();
+    loop {
+        let limit = RECOMPUTE_BATCH.saturating_add(i64::try_from(tried.len()).unwrap_or(i64::MAX));
+        let marked: Vec<(Uuid, OffsetDateTime)> = sqlx::query_as(STALE_GAMES_SQL)
+            .bind(limit)
+            .fetch_all(&deps.pool)
+            .await?;
+        let fresh: Vec<_> = marked
+            .into_iter()
+            .filter(|(id, _)| !tried.contains(id))
+            .collect();
+        if fresh.is_empty() {
+            return Ok(report);
+        }
+        for (game_id, marked_at) in fresh {
+            if cancel.is_cancelled() {
+                return Ok(report);
+            }
+            tried.insert(game_id);
+            match recompute_game_features(deps, game_id, marked_at, cancel).await {
+                Ok(true) => report.recomputed.push(game_id),
+                Ok(false) => report.skipped.push(game_id),
+                Err(RecomputeError::Cancelled) => return Ok(report),
+                Err(RecomputeError::Db(e)) => return Err(e),
+                Err(e) => {
+                    tracing::warn!(%game_id, error = %e, "metrics recompute failed");
+                    report.failed.push(game_id);
+                }
+            }
+        }
+    }
+}
 
 /// The marked games, oldest mark first (served by `games_profile_stale_idx`).
 pub const STALE_GAMES_SQL: &str = "\
@@ -331,6 +474,8 @@ fn lichess_evals(game: &db::games::GameRow) -> Option<Vec<Option<EngineScore>>> 
 /// The recomputed rows of one game.
 struct Recomputed {
     target: DerivedTarget,
+    /// Both colours' game accuracy (`games.white_accuracy` / `black_accuracy`).
+    accuracy: (f64, f64),
     parsed: chess_core::ParsedGame,
     features: GameFeatures,
     model: Option<String>,
@@ -347,7 +492,7 @@ struct Recomputed {
 ///   [`requeue_unenriched`] ([`abandon`]); a database error keeps the mark for the next sweep;
 ///   so does a cancel.
 pub async fn recompute_game_features(
-    deps: &DifficultySweepDeps,
+    deps: &RecomputeDeps,
     game_id: Uuid,
     marked_at: OffsetDateTime,
     cancel: &CancellationToken,
@@ -367,6 +512,8 @@ pub async fn recompute_game_features(
     let generation = game.analysis_generation;
     let r = match recompute(deps, &game, cancel).await {
         Ok(r) => r,
+        // Without an engine, a missing cache entry is the sweep's to fill: rows and mark stay.
+        Err(e @ RecomputeError::Evaluate(_)) if deps.cache_only => return Err(e),
         Err(e @ (RecomputeError::Evaluate(_) | RecomputeError::Decode(_))) => {
             abandon(pool, game_id, generation, marked_at).await?;
             return Err(e);
@@ -385,6 +532,12 @@ pub async fn recompute_game_features(
     .fetch_optional(&mut *tx)
     .await?;
     if still.is_some() {
+        sqlx::query("UPDATE games SET white_accuracy = $2, black_accuracy = $3 WHERE id = $1")
+            .bind(game_id)
+            .bind(r.accuracy.0)
+            .bind(r.accuracy.1)
+            .execute(&mut *tx)
+            .await?;
         write_derived_rows(
             &mut tx,
             &r.target,
@@ -408,7 +561,7 @@ pub async fn recompute_game_features(
 }
 
 async fn recompute(
-    deps: &DifficultySweepDeps,
+    deps: &RecomputeDeps,
     game: &db::games::GameRow,
     cancel: &CancellationToken,
 ) -> Result<Recomputed, RecomputeError> {
@@ -440,9 +593,14 @@ async fn recompute(
         .map_err(|e| RecomputeError::Evaluate(e.to_string()))?;
     let (raw, model) = load_raw(pool, game.id, &records).await?;
     let wins: Vec<f64> = evals.iter().map(|e| win_percent(e.score)).collect();
-    let accuracy = (!records.is_empty())
-        .then(|| chess_core::game_accuracy::game_accuracy(&wins, target.player_color));
-    let ctx = game_context(game, accuracy, ANALYSIS_PROTOCOL).map_err(RecomputeError::Decode)?;
+    let both = (
+        game_accuracy(&wins, Color::White),
+        game_accuracy(&wins, Color::Black),
+    );
+    let accuracy = (!records.is_empty()).then(|| game_accuracy(&wins, target.player_color));
+    let previous = previous_own_rating(pool, game.id).await?;
+    let ctx = game_context(game, accuracy, ANALYSIS_PROTOCOL, previous)
+        .map_err(RecomputeError::Decode)?;
     let explorer = load_game_explorer(pool, game.account_id, target.time_class, &parsed).await;
     let features = compute_game_features(FeatureInput {
         ctx: &ctx,
@@ -454,6 +612,7 @@ async fn recompute(
     });
     Ok(Recomputed {
         target,
+        accuracy: both,
         parsed,
         features,
         model,

@@ -1,0 +1,19 @@
+{
+  "description": "Game accuracy regressions from an independent audit (2026-11-22). Inputs are engine evals only (white-POV centipawns per position, mates as +-1000, the final position last); no PGN, players or game ids. `lila` is an independent re-implementation of lila AccuracyPercent.gameAccuracy; `before` is what the app computed before the A2/A4 fix.",
+  "cases": [
+    {
+      "name": "harmonic-floor",
+      "note": "142 positions (window 8 either way); one black move has accuracy 0, which zeroed the harmonic mean before the fix",
+      "whiteCp": [30, 32, 46, 34, 41, -126, 41, -43, -46, -147, -67, -170, -87, -313, -323, -849, -129, -300, -128, -118, -110, -115, 400, 417, 387, 394, 538, 535, 552, 536, 569, 575, 603, 554, 583, 487, 641, 530, 526, 555, 621, 623, 682, 644, 642, 650, 684, -1000, 654, 600, 689, 677, 691, 682, 706, 777, 769, 731, 756, 771, 765, 749, 776, 703, 712, 695, 693, 597, 672, 639, 606, 613, 905, 655, 675, 412, 371, 336, 596, 577, 684, 573, 572, 0, 505, 525, 672, 672, 698, 670, 725, 710, 726, 738, 803, 807, 821, 792, 814, 847, 872, 870, 947, 712, 755, 700, 700, 699, 782, 649, 666, 622, 643, 606, 602, 592, 655, 641, 655, 665, 631, 636, 781, 683, 800, 731, 941, 606, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000],
+      "lila": {"white": 60.48993620753815, "black": 57.40697950019122},
+      "before": {"white": 41.15287556398454, "black": 38.913375341151685}
+    },
+    {
+      "name": "window-from-moves",
+      "note": "30 positions, 29 moves: the window is 29 / 10 = 2 (lila), not 30 / 10 = 3",
+      "whiteCp": [30, 32, 46, 39, 41, 52, 54, 60, 61, 23, 35, 34, 43, 37, 40, 21, 165, -120, -114, -151, -150, -167, 96, 90, 1000, 1000, 1000, 1000, 1000, 1000],
+      "lila": {"white": 72.59039949511674, "black": 53.37561096951394},
+      "before": {"white": 83.29353640390973, "black": 61.20960816317458}
+    }
+  ]
+}
