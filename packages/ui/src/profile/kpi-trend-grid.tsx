@@ -1,6 +1,6 @@
 "use client";
 
-import { createElement } from "react";
+import { createElement, useId } from "react";
 import { cn } from "../lib/index.js";
 import {
   dayText,
@@ -59,9 +59,13 @@ const tidy = (v: number) => Number(v.toFixed(10));
  * of the span (or a tenth of the value when flat), widened out to tidy ticks so its labelled ends
  * are round numbers, and clamped to the unit's own limits. Only the axis is rounded: the band is
  * drawn at its stored ends. Exported so tests can check the band lands exactly on `low` and `high`.
+ * Given `minN`, only the weeks on the line (and their bands) set it, so one thin week cannot
+ * stretch the axis (M4); with none on the line, every week does.
  */
-export function kpiDomain(item: KpiTrendItem): [number, number] {
-  const vs = finite(item.points.flatMap((p) => [p.value, p.low, p.high]));
+export function kpiDomain(item: KpiTrendItem, minN?: number): [number, number] {
+  const plotted = minN === undefined ? item.points : item.points.filter((p) => onLine(p, minN));
+  const basis = plotted.length > 0 ? plotted : item.points;
+  const vs = finite(basis.flatMap((p) => [p.value, p.low, p.high]));
   if (vs.length === 0) return [0, 1];
   let lo = Math.min(...vs);
   let hi = Math.max(...vs);
@@ -78,8 +82,8 @@ export function kpiDomain(item: KpiTrendItem): [number, number] {
   return [lo, hi];
 }
 
-export function kpiYScale(item: KpiTrendItem): (v: number) => number {
-  const [lo, hi] = kpiDomain(item);
+export function kpiYScale(item: KpiTrendItem, minN?: number): (v: number) => number {
+  const [lo, hi] = kpiDomain(item, minN);
   const span = hi - lo || 1;
   return (v: number) => INSET + (1 - (v - lo) / span) * (H - 2 * INSET);
 }
@@ -150,9 +154,10 @@ function Multiple({
   minN: number;
   headingLevel: NonNullable<KpiTrendGridProps["headingLevel"]>;
 }) {
+  const clipId = `${useId()}-plot`;
   const x = xScale(range);
-  const y = kpiYScale(item);
-  const [lo, hi] = kpiDomain(item);
+  const y = kpiYScale(item, minN);
+  const [lo, hi] = kpiDomain(item, minN);
   const head = latest(item, minN);
   const unit = item.nUnit;
   const bands = runsOf(
@@ -206,14 +211,21 @@ function Multiple({
               preserveAspectRatio="none"
               className="absolute inset-0 block size-full overflow-visible"
             >
-              {bands.map((run) => (
-                <path
-                  key={`b${run[0]?.week}`}
-                  data-part="band"
-                  d={bandPath(run, x, y)}
-                  className="fill-pencil/35"
-                />
-              ))}
+              {/* The axis follows the weeks on the line, so a thin week's mark or band can fall
+                  outside it: those are clipped to the plot (M4). */}
+              <clipPath id={clipId}>
+                <rect x={0} y={0} width={W} height={H} />
+              </clipPath>
+              <g clipPath={`url(#${clipId})`}>
+                {bands.map((run) => (
+                  <path
+                    key={`b${run[0]?.week}`}
+                    data-part="band"
+                    d={bandPath(run, x, y)}
+                    className="fill-pencil/35"
+                  />
+                ))}
+              </g>
               {events.map((ev) => (
                 <line
                   key={`e${ev.date}`}
@@ -250,24 +262,26 @@ function Multiple({
                   className="stroke-ink"
                 />
               ))}
-              {hollow.map((p) => (
-                <g key={`h${p.week}`} data-part="hollow">
-                  <path
-                    d={dot(x(p.week), y(p.value ?? 0))}
-                    strokeWidth={8}
-                    strokeLinecap="round"
-                    vectorEffect="non-scaling-stroke"
-                    className="stroke-ink-soft"
-                  />
-                  <path
-                    d={dot(x(p.week), y(p.value ?? 0))}
-                    strokeWidth={4.5}
-                    strokeLinecap="round"
-                    vectorEffect="non-scaling-stroke"
-                    className="stroke-well"
-                  />
-                </g>
-              ))}
+              <g clipPath={`url(#${clipId})`}>
+                {hollow.map((p) => (
+                  <g key={`h${p.week}`} data-part="hollow">
+                    <path
+                      d={dot(x(p.week), y(p.value ?? 0))}
+                      strokeWidth={8}
+                      strokeLinecap="round"
+                      vectorEffect="non-scaling-stroke"
+                      className="stroke-ink-soft"
+                    />
+                    <path
+                      d={dot(x(p.week), y(p.value ?? 0))}
+                      strokeWidth={4.5}
+                      strokeLinecap="round"
+                      vectorEffect="non-scaling-stroke"
+                      className="stroke-well"
+                    />
+                  </g>
+                ))}
+              </g>
               {last ? (
                 <g data-part="last">
                   <path
