@@ -44,6 +44,11 @@ describe("ExplainPopover", () => {
     expect(dialog).toHaveTextContent(entry.tip);
   });
 
+  it("takes the host's accessible name when the term is not a noun", () => {
+    render(<ExplainPopover entry={{ ...entry, name: "Fix" }} label="What does Fix mean?" />);
+    expect(screen.getByRole("button", { name: "What does Fix mean?" })).toBeInTheDocument();
+  });
+
   it("does not open on hover alone", async () => {
     const user = userEvent.setup();
     render(<ExplainPopover entry={entry} />);

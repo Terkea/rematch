@@ -1,5 +1,5 @@
 import { NO_BENCHMARK_TEXT } from "@ci/ui/profile";
-import { DETECTOR_CONSTANTS as K } from "../server/profile/glossary";
+import { DETECTOR_CONSTANTS as K, VERDICT_CONSTANTS as V } from "../server/profile/glossary";
 import type { WeaknessState } from "../server/profile/types";
 import type { Estimate } from "../server/stats";
 
@@ -196,4 +196,103 @@ export function rateText(r: { mean: number; low: number; high: number }, early: 
   if (!fin(r.mean) || !fin(r.low) || !fin(r.high)) return "Your rate is not estimated yet.";
   const p = (v: number) => `${(v * 100).toFixed(1)}%`;
   return `Your ${early ? "early estimate" : "estimated rate"} is ${p(r.mean)} of chances, likely between ${p(r.low)} and ${p(r.high)} (80% range).`;
+}
+
+/** A stored opening line's verdict evidence (`opening_lines.summary`, Rust `LineSummary`). */
+export type LineEvidence = {
+  verdict: "keep" | "fix" | "learn" | "replace";
+  color: "white" | "black";
+  kind: "chosen" | "faced";
+  games: number;
+  /** Mean score minus expected score, -1..1 (0.01 is one percentage point). */
+  perfVsExpected: number | null;
+  perfGames: number;
+  perfInterval: { low: number; high: number } | null;
+  /** The most repeated move that lost 10+ win% points. */
+  errorSpot: { san: string; games: number } | null;
+  analysedGames: number;
+  avgWinAtOpeningEnd: number | null;
+  medianDeviationPly: number | null;
+  /** `games` over the player's games with this colour, 0..1. */
+  share: number;
+  struggles: string[];
+};
+
+/** The key a report's `OpeningVerdict` and a stored line share. */
+export const lineEvidenceKey = (lineKey: string, color: string, kind: string) =>
+  `${lineKey}|${color}|${kind}`;
+
+const MINUS = "−";
+/** Percentage points with a sign: "−4", "+7", "0". */
+const ppOf = (v: number) => {
+  const p = Math.round(v * 100);
+  return p === 0 ? "0" : p < 0 ? `${MINUS}${-p}` : `+${p}`;
+};
+/** Whole pp rounded outward, guarding float noise (0.13 × 100 is 13.000000000000002). */
+const outward = (v: number, f: (x: number) => number) => f(Math.round(v * 1e6) / 1e4) / 100;
+const rangeOf = (iv: LineEvidence["perfInterval"]) =>
+  iv && fin(iv.low) && fin(iv.high)
+    ? `likely ${ppOf(outward(iv.low, Math.floor))} to ${ppOf(outward(iv.high, Math.ceil))} pp`
+    : null;
+const rated = (n: number) => `${count(n)} rated ${n === 1 ? "game" : "games"}`;
+const VS = "against what your rating predicts";
+const KEEP = "Keep means no single move keeps costing you";
+
+/**
+ * Why a line has its verdict, in the order `decide_verdict` (profile-core
+ * `openings/verdicts.rs`) applies its rules, from the stored evidence only.
+ */
+export function verdictWhy(e: LineEvidence): string {
+  const perf = fin(e.perfVsExpected) ? e.perfVsExpected : null;
+  const range = rangeOf(e.perfInterval);
+  switch (e.verdict) {
+    case "fix":
+      return e.errorSpot && fin(e.errorSpot.games)
+        ? `Fix means one move keeps costing you: ${e.errorSpot.san}, in ${count(e.errorSpot.games)} of your ${count(e.games)} games in this line, losing ${V.deviationDeltaWinPct} win% points or more each time.`
+        : `Fix means one move keeps costing you in this line, losing ${V.deviationDeltaWinPct} win% points or more each time it is played.`;
+    case "replace": {
+      const head = "Replace means this line keeps scoring well below what your rating predicts";
+      const rule = `Replace needs at least ${V.replaceMinGames} games, ${MINUS}${V.replaceMaxPerfPp} pp or worse, and the whole range below zero.`;
+      if (perf === null) return `${head}. ${rule}`;
+      const r = range ? ` (${range}, all below zero)` : "";
+      return `${head}: ${ppOf(perf)} pp over ${rated(e.perfGames)}${r}. ${rule}`;
+    }
+    case "learn": {
+      const ply = e.medianDeviationPly;
+      if (
+        e.kind === "chosen" &&
+        fin(ply) &&
+        ply <= V.learnMaxDeviationPly &&
+        fin(e.share) &&
+        e.share * 100 >= V.learnMinSharePct - 1e-9
+      ) {
+        const colour = e.color === "white" ? "White" : "Black";
+        return `Learn deeper means you play it often (${Math.round(e.share * 100)}% of your games as ${colour}) but usually leave the known moves by move ${Math.ceil(Math.round(ply) / 2)}.`;
+      }
+      if (e.struggles.includes("worse_after_opening") && fin(e.avgWinAtOpeningEnd)) {
+        return `Learn deeper means you leave the opening worse off: your win chance averages ${Math.round(e.avgWinAtOpeningEnd)}% when it ends, over ${count(e.analysedGames)} analysed games.`;
+      }
+      if (e.struggles.includes("score_below_expected") && perf !== null) {
+        const r = range ? ` (${range} over ${rated(e.perfGames)})` : ` over ${rated(e.perfGames)}`;
+        return `Learn deeper means you score below what your rating predicts here: ${ppOf(perf)} pp${r}, short of the ${V.replaceMinGames} games and ${MINUS}${V.replaceMaxPerfPp} pp that would mean replacing it.`;
+      }
+      return "Learn deeper means this line shows a struggle that more study of it should ease.";
+    }
+    default: {
+      if (perf === null) {
+        return `${KEEP} over your ${count(e.games)} games here, and there is no comparison with your rating yet.`;
+      }
+      const iv = e.perfInterval;
+      if (!range || !iv) {
+        return `${KEEP}, and your ${ppOf(perf)} pp ${VS} has no range yet (${rated(e.perfGames)}).`;
+      }
+      if (iv.low > 0) {
+        return `${KEEP}, and you score above what your rating predicts: ${ppOf(perf)} pp over ${rated(e.perfGames)} (${range}).`;
+      }
+      if (iv.high < 0) {
+        return `${KEEP}, and your ${ppOf(perf)} pp ${VS} (${range} over ${rated(e.perfGames)}) is short of the ${MINUS}${V.perfDropPp} pp that counts as a struggle.`;
+      }
+      return `${KEEP}, and your ${ppOf(perf)} pp ${VS} is within normal variation for ${rated(e.perfGames)} (${range}).`;
+    }
+  }
 }

@@ -45,11 +45,20 @@ const PARTS = [
  * popover). The popup is the `sheet` popover with `--shadow-lift`, and grows from the trigger over
  * `--dur-quick` (M9), fading only under reduced motion (M10).
  */
-export function ExplainPopover({ entry, className }: { entry: ExplainEntry; className?: string }) {
+export function ExplainPopover({
+  entry,
+  label,
+  className,
+}: {
+  entry: ExplainEntry;
+  /** The trigger's accessible name; default "What is <name>?". */
+  label?: string;
+  className?: string;
+}) {
   return (
     <Popover>
       <PopoverTrigger
-        aria-label={`What is ${inSentence(entry.name)}?`}
+        aria-label={label ?? `What is ${inSentence(entry.name)}?`}
         className={cn(
           "relative inline-flex size-6 shrink-0 items-center justify-center rounded-full align-middle text-ink-faint",
           "transition-colors duration-(--dur-quick) ease-out hover:text-ink data-popup-open:text-ink",
