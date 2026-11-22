@@ -126,3 +126,10 @@ A service `model_error` (and any other per-item validation failure) reaches Rust
   - a full `DEFAULT_BATCH_SIZE` batch inside the timeout;
   - that Elo changes the distribution.
   To run it: `COMPOSE_FILE=docker-compose.yml docker compose -p <ci> --profile maia up -d --wait maia`, then `... run --rm -e MAIA_URL=http://maia:8080 rust-dev cargo test --locked -p enrich --test difficulty maia_live_contract`.
+
+## Amendment: Maia lives in opt-in compose overlays
+
+Docker's default address pools fit about 30 networks across every compose project on the host. With `maia_internal` in the base file, each parallel test project created two networks, and about 12 concurrent lanes exhausted the pools ("all predefined address pools have been fully subnetted"). So the base `docker-compose.yml` no longer declares Maia or its network:
+- `docker-compose.maia.yml` adds the `maia` service, the internal-only `maia_internal` network, and rust-dev's attachment to it. Use `COMPOSE_FILE=docker-compose.yml:docker-compose.maia.yml` (with `COMPOSE_PATH_SEPARATOR=:`) for Maia work and the live contract.
+- `docker-compose.maia-ports.yml` is the dev-only host port 127.0.0.1:58080. It also joins the default network, so it has egress.
+- The beta and production stack uses the Maia overlay without the ports overlay, so Maia stays internal-only.

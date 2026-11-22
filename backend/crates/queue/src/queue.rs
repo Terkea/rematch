@@ -214,6 +214,20 @@ SELECT id, pg_notify('",
     "', $1) IS NULL AS not_notified FROM ins"
 );
 
+/// [`ENQUEUE_SQL`] for many rows of one kind: the same columns, defaults and live-only conflict
+/// rule, in one statement. `$1` kind, then one array per column, in batch order.
+const ENQUEUE_MANY_SQL: &str = "WITH ins AS (
+  INSERT INTO jobs (kind, payload, dedupe_key, user_key, priority, run_at, max_attempts, recur_every)
+  SELECT $1, j.payload, j.dedupe_key, j.user_key, j.priority, coalesce(j.run_at, now()),
+    j.max_attempts, j.recur_ms * interval '1 millisecond'
+  FROM unnest($2::jsonb[], $3::text[], $4::uuid[], $5::int2[], $6::timestamptz[], $7::int4[],
+    $8::float8[]) WITH ORDINALITY
+    AS j(payload, dedupe_key, user_key, priority, run_at, max_attempts, recur_ms, n)
+  ORDER BY j.n
+  ON CONFLICT (kind, dedupe_key) WHERE dedupe_key IS NOT NULL AND state IN ('queued','running','paused')
+  DO NOTHING RETURNING id)
+SELECT count(*) FROM ins";
+
 /// The claim: one statement, and the attempt is counted at claim. `$kind` is the kind predicate
 /// on `$1`.
 macro_rules! dequeue_sql {
@@ -443,6 +457,65 @@ impl Queue {
             Ok(id)
         })
         .await
+    }
+
+    /// Inserts many jobs of one kind in one transaction (one statement) and sends one
+    /// notification on [`JOBS_CHANNEL`] when any row was inserted. Each row is what
+    /// [`enqueue`](Self::enqueue) writes with the same options; a row whose dedupe key a live job
+    /// (or an earlier row of the batch) already holds is skipped. Returns how many were inserted.
+    ///
+    /// Per-row `enqueue` commits one NOTIFY each, and NOTIFY serialises commits, so a large batch
+    /// row by row is bound by commit latency; one commit per batch is not.
+    pub async fn enqueue_many(
+        &self,
+        kind: &str,
+        jobs: &[(Value, EnqueueOptions)],
+    ) -> Result<u64, QueueError> {
+        if jobs
+            .iter()
+            .any(|(_, o)| o.recur_every.is_some_and(|every| every <= MIN_RECUR_EVERY))
+        {
+            return Err(QueueError::InvalidOptions(
+                "recur_every must be longer than 1 s",
+            ));
+        }
+        if jobs.is_empty() {
+            return Ok(0);
+        }
+        let payloads: Vec<Value> = jobs.iter().map(|(p, _)| p.clone()).collect();
+        let keys: Vec<Option<String>> = jobs.iter().map(|(_, o)| o.dedupe_key.clone()).collect();
+        let users: Vec<Option<Uuid>> = jobs.iter().map(|(_, o)| o.user_key).collect();
+        let priorities: Vec<i16> = jobs.iter().map(|(_, o)| o.priority).collect();
+        let run_ats: Vec<Option<OffsetDateTime>> = jobs.iter().map(|(_, o)| o.run_at).collect();
+        let max_attempts: Vec<i32> = jobs.iter().map(|(_, o)| o.max_attempts).collect();
+        let recur: Vec<Option<f64>> = jobs
+            .iter()
+            .map(|(_, o)| o.recur_every.map(millis))
+            .collect();
+        let insert = sqlx::query_scalar::<_, i64>(ENQUEUE_MANY_SQL)
+            .bind(kind)
+            .bind(payloads)
+            .bind(keys)
+            .bind(users)
+            .bind(priorities)
+            .bind(run_ats)
+            .bind(max_attempts)
+            .bind(recur);
+        let notify = sqlx::query("SELECT pg_notify($1, $2)")
+            .bind(JOBS_CHANNEL)
+            .bind(kind.to_owned());
+        let inserted = self
+            .guard("enqueue_many", async {
+                let mut tx = self.begin().await?;
+                let inserted = insert.fetch_one(&mut *tx).await?;
+                if inserted > 0 {
+                    notify.execute(&mut *tx).await?;
+                }
+                tx.commit().await?;
+                Ok(inserted)
+            })
+            .await?;
+        Ok(u64::try_from(inserted).unwrap_or(0))
     }
 
     /// Claims up to `limit` ready jobs of `kinds` for `owner`, in [`PriorityFifo`] order, each
