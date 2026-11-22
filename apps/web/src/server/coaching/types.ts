@@ -3,6 +3,7 @@
 // `generate/{computed,payload}.rs` and `backend/crates/coaching-input/src/types.rs`. The
 // contract snapshots are `backend/fixtures/ai/payload/report-payload*.example.json`.
 
+import type { reportRuns, reportSections, reports } from "@ci/db/generated";
 import type { TimeClass } from "../games/types";
 
 /** One coach scope: a linked account and a time class. Task 1's `CoachScope` is a superset. */
@@ -294,3 +295,10 @@ export type WeeklyContent = {
 
 /** The `ai_item_status` enum (weekly reviews, change notes). */
 export type AiItemStatus = "pending" | "ready" | "dropped" | "failed";
+
+// --- Stored rows (the Drizzle schema generated from db/migrations) ---
+
+export type ReportRunRow = typeof reportRuns.$inferSelect;
+export type ReportRow = typeof reports.$inferSelect;
+export type ReportSectionRow = typeof reportSections.$inferSelect;
+export type ReportRunStatus = ReportRunRow["status"];
