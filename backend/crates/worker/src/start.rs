@@ -21,15 +21,17 @@
 //! - `difficulty-sweep` and `reference-difficulty-sweep`: 1 each;
 //! - the 9 AI kinds ([`AI_RUNNER_KINDS`](crate::ai_jobs::AI_RUNNER_KINDS)), unless
 //!   [`AiSetup::None`];
-//! - `reconcile`: 1 (optional).
+//! - `reconcile`: 1 (optional);
+//! - `sync-accounts`: 1, with the reconciler (M5b Task S, ADR 0076): every `SYNC_INTERVAL_MINUTES`
+//!   each linked account gets an incremental import, spread across the interval.
 //!
 //! Connection budget: `max_connections = pool_size + preview + POOL_HEADROOM` (plus
 //! [`AI_POOL_HEADROOM`](crate::ai_jobs::AI_POOL_HEADROOM) with the AI runners, R3). The analyse
 //! runner holds at most one connection per in-flight game, each preview one. The headroom covers
 //! each in-flight import's account-lock connection plus one pooled connection (4), the reconciler
 //! (1), the schedule-analysis transactions (2), the build-profile jobs (2 each: the transaction and
-//! the repertoire's explorer read, 4), the reference game and its finaliser (2), the two sweeps (2)
-//! and each R1/R2 runner's NOTIFY listener (9). The AI headroom covers the AI runners' listeners
+//! the repertoire's explorer read, 4), the reference game and its finaliser (2), the two sweeps (2),
+//! the sync tick and its listener (2, M5b Task S) and each R1/R2 runner's NOTIFY listener (9). The AI headroom covers the AI runners' listeners
 //! and jobs. Every statement is short and the import's busy checks open short-lived connections,
 //! so the pool's acquire timeout (10 s) is the bound.
 
@@ -42,6 +44,7 @@ use analysis::eval_cache::DbEvalCache;
 use analysis::jobs::analyse::{AnalyseGameDeps, AnalyseGameHandler};
 use analysis::jobs::import::{ImportAccountDeps, ImportAccountHandler};
 use analysis::jobs::reconcile::{ReconcileHandler, ensure_reconcile_scheduled};
+use analysis::jobs::sync::{SyncAccountsHandler, ensure_sync_scheduled};
 use anyhow::Context;
 use db::pool::DbOptions;
 use engine::pool::{EnginePool, PoolOptions};
@@ -94,7 +97,7 @@ use ai::jobs::providers::CoachingInputProvider;
 /// Imports at once (each holds an account-lock connection).
 pub const IMPORT_CONCURRENCY: usize = 2;
 /// Connections beyond one per engine and one per preview (see the module docs).
-pub const POOL_HEADROOM: usize = 24;
+pub const POOL_HEADROOM: usize = 26;
 /// Schedule-analysis jobs at once (each holds one connection for its transaction).
 pub const SCHEDULE_CONCURRENCY: usize = 2;
 /// The runner's hard deadline on a schedule-analysis job (an account of 10k games takes well
@@ -753,6 +756,17 @@ pub async fn start_workers(env: &WorkerEnv, opts: StartOptions) -> anyhow::Resul
         None => None,
         Some(Ok(choice)) => {
             tracing::info!("{}", choice.line);
+            // Which path the monthly and weekly schedules take (ADR 0075); no credential here.
+            if let Some(client) = &choice.client {
+                tracing::info!(
+                    "ai: scheduled regenerations via {}",
+                    if client.batches_enabled() {
+                        "batches"
+                    } else {
+                        "sync jobs (sidecar)"
+                    }
+                );
+            }
             Some(choice.client)
         }
         Some(Err(e)) => {
@@ -819,15 +833,26 @@ pub async fn start_workers(env: &WorkerEnv, opts: StartOptions) -> anyhow::Resul
         Arc::new(PreviewHandler(Arc::new(preview))),
         preview_runner_config(&base, pool_size),
     );
-    s.spawn(
-        &queue,
+    let ai_entitlements: Arc<dyn ai::entitlements::Entitlements> =
+        Arc::new(crate::ai_jobs::ai_entitlements(env));
+    let build_profile: Arc<dyn queue::runner::Handler> =
         Arc::new(BuildProfileHandler(Arc::new(BuildProfileDeps {
             pool: pool.clone(),
             queue: queue.clone(),
             now: time::OffsetDateTime::now_utc,
-        }))),
-        build_profile_runner_config(&base),
-    );
+        })));
+    // With the AI runners, a completed build also requests the first report (M5b ruling G3).
+    let build_profile: Arc<dyn queue::runner::Handler> = if with_ai {
+        Arc::new(crate::coach_triggers::FirstReportOnBuild {
+            inner: build_profile,
+            pool: pool.clone(),
+            queue: queue.clone(),
+            entitlements: ai_entitlements.clone(),
+        })
+    } else {
+        build_profile
+    };
+    s.spawn(&queue, build_profile, build_profile_runner_config(&base));
     s.spawn(
         &queue,
         Arc::new(ReferenceGameHandler(reference.clone())),
@@ -855,6 +880,8 @@ pub async fn start_workers(env: &WorkerEnv, opts: StartOptions) -> anyhow::Resul
             inputs,
             budgets: env.ai_budgets,
             pricing,
+            entitlements: ai_entitlements.clone(),
+            weekly: Arc::new(crate::coach_triggers::ProfileWeeklyProvider { pool: pool.clone() }),
         };
         for (handler, cfg) in ai_runners(&deps, &base) {
             s.spawn(&queue, handler, cfg);
@@ -869,12 +896,24 @@ pub async fn start_workers(env: &WorkerEnv, opts: StartOptions) -> anyhow::Resul
             }),
             reconcile_runner_config(&base),
         );
+        s.spawn(
+            &queue,
+            Arc::new(SyncAccountsHandler {
+                pool: pool.clone(),
+                queue: queue.clone(),
+                opts: env.sync_options(),
+            }),
+            reconcile_runner_config(&base),
+        );
     }
     let scheduled = async {
         if opts.with_reconciler {
             ensure_reconcile_scheduled(&queue)
                 .await
                 .context("scheduling the reconciler")?;
+            ensure_sync_scheduled(&queue, &env.sync_options())
+                .await
+                .context("scheduling the account sync")?;
             if with_ai {
                 ai::jobs::kinds::ensure_ai_recurring(&queue)
                     .await

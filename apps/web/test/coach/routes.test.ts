@@ -1,4 +1,4 @@
-import { accountLinks, jobs } from "@ci/db/generated";
+import { accountLinks, coachConversations, jobs } from "@ci/db/generated";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { frameReader } from "../events/helpers";
 import { resetCoachTables, seedChunk, seedThread } from "../helpers/coach";
@@ -132,6 +132,37 @@ describe("coach thread routes", () => {
 
     const list = await threads.GET(req(`/api/coach/threads?account=${accountId}`));
     expect(((await list.json()) as { id: string }[]).map((x) => x.id)).toEqual([body.id]);
+  });
+
+  it("a rate-limited first question leaves no thread (429)", async () => {
+    const { postUserMessage, CHAT_POST_LIMIT } = await import("../../src/server/coach/index.js");
+    for (let i = 0; i < CHAT_POST_LIMIT.max; i++) {
+      const t = await seedThread(db, { userId: a.id, accountId, timeClass: "rapid" });
+      expect((await postUserMessage(db, a.id, t.threadId, `Q${i}`, null)).kind).toBe("posted");
+    }
+    const before = (await db.select().from(coachConversations)).length;
+    const res = await create({ accountId, timeClass: "rapid", question: "Too soon" });
+    expect(res.status).toBe(429);
+    expect(res.headers.get("retry-after")).toMatch(/^\d+$/);
+    expect(await db.select().from(coachConversations)).toHaveLength(before);
+  });
+
+  it("a double-submitted create answers the same thread", async () => {
+    const body = { accountId, timeClass: "rapid", question: "Twice?" };
+    const [x, y] = await Promise.all([create(body), create(body)]);
+    expect([x.status, y.status]).toEqual([201, 201]);
+    const [bx, by] = (await Promise.all([x.json(), y.json()])) as { id: string }[];
+    expect(by?.id).toBe(bx?.id);
+    expect(await db.select().from(jobs)).toHaveLength(1);
+  });
+
+  it("list: 200 [] for a linked account with no threads, 404 for a foreign one", async () => {
+    const empty = await threads.GET(req(`/api/coach/threads?account=${accountId}`));
+    expect(empty.status).toBe(200);
+    expect(await empty.json()).toEqual([]);
+    const foreign = (await seedAccount(db, { username: "stranger" })).accountId;
+    expect((await threads.GET(req(`/api/coach/threads?account=${foreign}`))).status).toBe(404);
+    expect((await threads.GET(req("/api/coach/threads?account=nope"))).status).toBe(404);
   });
 
   it("create without a question, and validation", async () => {

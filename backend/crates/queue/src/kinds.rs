@@ -21,6 +21,11 @@ pub struct ImportAccountPayload {
     pub account_id: Uuid,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max: Option<u32>,
+    /// Fetch only games newer than the last import (the recurring sync, M5b Task S): no
+    /// backfill below an open frontier, and the short Lichess look-back except on the first sync
+    /// of a UTC day. Omitted when false (a full import, as before).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub incremental: bool,
 }
 
 pub fn analyse_key(game_id: Uuid) -> String {
@@ -32,6 +37,11 @@ pub fn import_key(account_id: Uuid) -> String {
 }
 
 pub const RECONCILE_KEY: &str = "reconcile";
+
+/// M5b Task S: the recurring sync of every linked account's newest games.
+pub const KIND_SYNC_ACCOUNTS: &str = "sync-accounts";
+/// The recurring sync job's dedupe key (one live sync job).
+pub const SYNC_ACCOUNTS_KEY: &str = "sync-accounts";
 pub const RECONCILE_EVERY: Duration = Duration::from_secs(300);
 
 // R2 job kinds (R2 Task 1, final; ADR-R2-1). Behaviour lands in the scheduler and profile crates.

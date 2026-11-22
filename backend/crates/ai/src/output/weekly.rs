@@ -149,12 +149,26 @@ pub struct WeeklyReviewInput {
     pub adherence: Option<Adherence>,
     pub metric_deltas: Vec<MetricDelta>,
     pub focus_updates: Vec<FocusUpdate>,
+    #[schemars(length(max = WEEKLY_INPUT_MAX_EXEMPLARS))]
     pub exemplars: Vec<ExemplarPosition>,
     pub changes: Vec<TimelineChange>,
 }
 
 /// TS `exemplars: ExemplarPosition[] (max 2)`.
 pub const WEEKLY_INPUT_MAX_EXEMPLARS: usize = 2;
+
+/// The JSON Schema (draft 2020-12) of [`WeeklyReviewInput`], with the contract's rules
+/// (`coaching_input::schema::contract_transform`: every property required, an `Option` keeps
+/// its `null`). Committed as `fixtures/ai/input/weekly-review-input.schema.json`.
+pub fn weekly_input_json_schema() -> serde_json::Value {
+    schemars::generate::SchemaSettings::draft2020_12()
+        .with_transform(schemars::transform::RecursiveTransform(
+            coaching_input::schema::contract_transform,
+        ))
+        .into_generator()
+        .into_root_schema_for::<WeeklyReviewInput>()
+        .to_value()
+}
 
 impl WeeklyReviewInput {
     /// The bound serde cannot express: at most [`WEEKLY_INPUT_MAX_EXEMPLARS`] exemplars

@@ -2,6 +2,7 @@
 
 import { motion, spring, useReducedMotion } from "@ci/ui/motion";
 import { type ReactNode, useEffect, useState } from "react";
+import { morphPending } from "../../components/shared-morph";
 
 // Set after the first page has mounted, so only client navigations turn the page: the first
 // paint is the server render, never a hidden page waiting for JavaScript.
@@ -17,7 +18,8 @@ const turn = { rotateY: 14, x: 24, opacity: 0 };
 export default function AppTemplate({ children }: { children: ReactNode }) {
   const reduced = useReducedMotion();
   // Decided once per mount (a navigation remounts the template), so a re-render never re-turns.
-  const [animate] = useState(() => navigated && !reduced);
+  // A shared-element morph replaces the turn (choreography 4).
+  const [animate] = useState(() => navigated && !reduced && !morphPending());
   useEffect(() => {
     navigated = true;
   }, []);

@@ -1,12 +1,12 @@
 import { rejectCrossSite } from "../../../../server/accounts/http";
 import { requireApiUser } from "../../../../server/auth/session";
 import {
-  checkQuestion,
   createConversation,
+  isLinked,
   isUuid,
   listConversations,
   parseAnchor,
-  postUserMessage,
+  startConversation,
 } from "../../../../server/coach";
 import {
   jsonError,
@@ -22,15 +22,20 @@ export const dynamic = "force-dynamic";
 
 const TIME_CLASSES: readonly TimeClass[] = ["bullet", "blitz", "rapid", "classical", "daily"];
 
-/** The signed-in user's own conversations on `?account=<id>`, most recently active first. */
+/**
+ * The signed-in user's own conversations on `?account=<id>`, most recently active first: 200
+ * (`[]` when there are none) for an account the user is linked to, 404 for any other id, as
+ * create answers. Single threads stay readable by id after unlinking.
+ */
 export async function GET(req: Request): Promise<Response> {
   const crossSite = rejectCrossSite(req);
   if (crossSite) return crossSite;
   const user = await requireApiUser(req);
   if (user instanceof Response) return user;
   const account = new URL(req.url).searchParams.get("account") ?? "";
-  if (!isUuid(account)) return notFound();
-  return Response.json(await listConversations(getDb(), user.id, account));
+  const db = getDb();
+  if (!isUuid(account) || !(await isLinked(db, user.id, account))) return notFound();
+  return Response.json(await listConversations(db, user.id, account));
 }
 
 /**
@@ -53,25 +58,24 @@ export async function POST(req: Request): Promise<Response> {
   if (question !== undefined && question !== null && typeof question !== "string") {
     return jsonError("invalid_body", 400);
   }
-  if (typeof question === "string") {
-    const invalid = checkQuestion(question);
-    if (invalid) return jsonError(invalid, 400);
-  }
   const anchor = parseAnchor(body.anchor);
   const db = getDb();
-  const made = await createConversation(db, user.id, {
-    accountId,
-    timeClass: timeClass as TimeClass,
-    anchor,
-  });
-  if (made.kind === "not_linked") return notFound();
-  if (made.kind === "rate_limited") return rateLimited(made.retryAt);
-  if (typeof question !== "string") return Response.json({ id: made.id }, { status: 201 });
-  const posted = await postUserMessage(db, user.id, made.id, question, anchor);
-  const failed = postErrorResponse(posted);
-  if (failed || posted.kind !== "posted") return failed ?? notFound();
+  const target = { accountId, timeClass: timeClass as TimeClass, anchor };
+  if (typeof question !== "string") {
+    const made = await createConversation(db, user.id, target);
+    if (made.kind === "not_linked") return notFound();
+    if (made.kind === "rate_limited") return rateLimited(made.retryAt);
+    return Response.json({ id: made.id }, { status: 201 });
+  }
+  // The create, the first post and its job in one transaction; a repeat answers the first.
+  const started = await startConversation(db, user.id, { ...target, question });
+  if (started.kind !== "started") {
+    return started.kind === "not_linked"
+      ? notFound()
+      : (postErrorResponse(started) ?? jsonError("not_found", 404));
+  }
   return Response.json(
-    { id: made.id, assistantMessageId: posted.assistantMessageId },
+    { id: started.id, assistantMessageId: started.assistantMessageId },
     { status: 201 },
   );
 }
