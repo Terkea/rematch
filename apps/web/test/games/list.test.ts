@@ -251,6 +251,47 @@ describe("listGames", () => {
     expect(times).toEqual([...times].sort((a, b) => b - a));
   });
 
+  it("breaks ties on id so pages never repeat or skip", async () => {
+    // A second user's games on one shared timestamp, straddling the 25-row page boundary.
+    const tied = (await createTestSession(db)).user.id;
+    const { accountId } = await seedAccount(db, { userId: tied, username: "Tied" });
+    const ids: string[] = [];
+    for (let i = 0; i < 30; i++) {
+      const at = i < 3 ? "2026-08-01T10:00:00Z" : "2026-08-02T10:00:00Z";
+      ids.push(
+        (
+          await seedSyntheticGame(db, accountId, {
+            playedAt: at,
+            timeClass: "blitz",
+            result: "1-0",
+            accuracy: 60,
+            counts: { blunders: 1 },
+            opponentRating: 1500,
+          })
+        ).gameId,
+      );
+    }
+    const sorts: GameListQuery["sort"][] = [
+      { key: "played", dir: "desc" },
+      { key: "played", dir: "asc" },
+      { key: "accuracy", dir: "desc" },
+      { key: "accuracy", dir: "asc" },
+      { key: "opponent", dir: "desc" },
+      { key: "blunders", dir: "desc" },
+    ];
+    for (const sort of sorts) {
+      const first = await listGames(db, tied, query({ sort }));
+      const second = await listGames(db, tied, query({ sort, page: 2 }));
+      const seen = [...first.rows, ...second.rows].map((r) => r.id);
+      expect(seen.sort()).toEqual([...ids].sort());
+      // Within one timestamp the ids ascend.
+      const block = first.rows
+        .filter((r) => r.playedAt.getTime() === Date.parse("2026-08-02T10:00:00Z"))
+        .map((r) => r.id);
+      expect(block).toEqual([...block].sort());
+    }
+  });
+
   it("pending row has null accuracy and counts", async () => {
     const pending = seeded.filter((s) => s.status === "pending");
     expect(pending.length).toBe(3);

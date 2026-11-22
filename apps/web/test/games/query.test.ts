@@ -33,6 +33,16 @@ describe("parseGameQuery", () => {
     expect(parseGameQuery({ page: "2.5" }).page).toBe(1);
     expect(parseGameQuery({ page: "0" }).page).toBe(1);
     expect(parseGameQuery({ from: "2026-02-30" }).filters.from).toBeNull();
+    expect(parseGameQuery({ from: "0100-01-01" }).filters.from).toBeNull();
+    expect(parseGameQuery({ to: "2101-01-01" }).filters.to).toBeNull();
+  });
+
+  it("ignores prototype keys in every enum param", () => {
+    for (const key of ["constructor", "__proto__", "toString", "hasOwnProperty", "valueOf"]) {
+      const q = parseGameQuery({ sort: key, tc: key, result: key, colour: key });
+      expect(q).toEqual(DEFAULTS);
+      expect(serializeGameQuery(q).toString()).toBe("");
+    }
   });
 
   it("parses every param", () => {
@@ -94,6 +104,39 @@ describe("serializeGameQuery", () => {
     );
     const again = serializeGameQuery(parseGameQuery(Object.fromEntries(once)));
     expect(again.toString()).toBe(once.toString());
+  });
+});
+
+describe("serializeGameQuery validation", () => {
+  it("writes only valid values", () => {
+    const bad = {
+      filters: {
+        timeClass: "hyper",
+        result: "maybe",
+        colour: "red",
+        from: "2026-13-40",
+        to: "soon",
+        accountId: "not-a-uuid",
+      },
+      sort: { key: "constructor", dir: "sideways" },
+      page: 2.5,
+    } as unknown as GameListQuery;
+    expect(serializeGameQuery(bad).toString()).toBe("");
+    expect(serializeGameQuery({ ...DEFAULTS, page: 0 }).toString()).toBe("");
+    expect(serializeGameQuery({ ...DEFAULTS, page: Number.NaN }).toString()).toBe("");
+  });
+
+  it("round-trips every sort", () => {
+    for (const sort of [
+      "played-asc",
+      "accuracy-desc",
+      "accuracy-asc",
+      "opponent-desc",
+      "blunders-desc",
+    ]) {
+      expect(serializeGameQuery(parseGameQuery({ sort })).toString()).toBe(`sort=${sort}`);
+    }
+    expect(serializeGameQuery(parseGameQuery({ sort: "played-desc" })).toString()).toBe("");
   });
 });
 

@@ -14,13 +14,41 @@ import { Chess } from "chess.js";
 import { eq, sql } from "drizzle-orm";
 import type { AnalysisStatus, JudgementCounts, TimeClass } from "../../src/server/games/types";
 
-// Test-only writers for the games read model. They only ever run against the web test database
-// (`webTestDb`, guarded by `assertSafeTestDatabase`) and write synthetic or public fixture data.
+// Test-only writers for the games read model. They write synthetic or public fixture data, and
+// every one of them first runs `assertSeedable`, so they cannot touch a real database.
 
 type MoveRow = typeof moves.$inferInsert;
 
+/**
+ * Refuses unless `db` is a `*_test` database that holds no real or verified accounts: none
+ * imported by the worker (`last_synced_at` or `import_cursor` set) and no link verified by a real
+ * method (anything but the helpers' own `username` links). It runs before every helper writes.
+ */
+export async function assertSeedable(db: Db): Promise<void> {
+  const [current] = (await db.execute(sql`select current_database() as name`)) as unknown as {
+    name: string;
+  }[];
+  const name = current?.name ?? "";
+  if (!name.endsWith("_test")) {
+    throw new Error(`Refusing to seed: database "${name}" does not end in _test`);
+  }
+  const [row] = (await db.execute(sql`
+    select
+      (select count(*) from linked_accounts
+        where last_synced_at is not null or import_cursor is not null)::int
+      + (select count(*) from account_links
+        where verified_at is not null and method <> 'username')::int as real
+  `)) as unknown as { real: number }[];
+  if ((row?.real ?? 0) > 0) {
+    throw new Error(
+      `Refusing to seed: database "${name}" holds real or verified accounts (${row?.real})`,
+    );
+  }
+}
+
 /** Empties the game tables (and, by cascade, account links and import runs). */
 export async function resetGameTables(db: Db): Promise<void> {
+  await assertSeedable(db);
   await db.execute(
     sql`truncate table linked_accounts, games, moves, position_evals, account_links cascade`,
   );
@@ -31,6 +59,7 @@ export async function seedAccount(
   db: Db,
   opts: { userId?: string; platform?: "chesscom"; username: string; verified?: boolean },
 ): Promise<{ accountId: string }> {
+  await assertSeedable(db);
   const [row] = await db
     .insert(linkedAccounts)
     .values({
@@ -99,6 +128,7 @@ export async function seedFixtureGame(
     protocol?: string;
   } = {},
 ): Promise<{ gameId: string }> {
+  await assertSeedable(db);
   const { withEvals, withMoves, protocol: protocolOverride, ...gameOverrides } = overrides;
   const status = gameOverrides.analysisStatus ?? "done";
   const done = status === "done";
@@ -199,14 +229,32 @@ export type SyntheticGame = {
   timeClass: TimeClass;
   result: "1-0" | "0-1" | "1/2-1/2" | "*";
   playerColor?: "white" | "black";
-  /** Player accuracy; null leaves both accuracies null. Default 70. */
+  /** Player accuracy (null leaves it null). Default 70. */
   accuracy?: number | null;
   status?: AnalysisStatus;
   counts?: Partial<JudgementCounts>;
   opponentRating?: number;
+  /** The opponent's judgements and accuracy (must never reach the player's statistics). */
+  opponentCounts?: Partial<JudgementCounts>;
+  /** The opponent's accuracy, written whenever the game's analysis is. Default 90. */
+  opponentAccuracy?: number;
+  /** A game that is not done still carries accuracy and judged moves, as a re-queued game does. */
+  stale?: boolean;
+  /** Player moves written (default 4, or more to fit the judgements). */
+  playerMoves?: number;
   /** Write no moves rows (a game where the player made no analysed move). */
   noMoves?: boolean;
 };
+
+type Mark = "blunder" | "mistake" | "inaccuracy";
+
+function judgements(c: Partial<JudgementCounts> | undefined): Mark[] {
+  return [
+    ...Array<Mark>(c?.blunders ?? 0).fill("blunder"),
+    ...Array<Mark>(c?.mistakes ?? 0).fill("mistake"),
+    ...Array<Mark>(c?.inaccuracies ?? 0).fill("inaccuracy"),
+  ];
+}
 
 /** A Ruy Lopez, then both knights shuffle home and back, so a game of any length stays legal. */
 function syntheticSans(plies: number): string[] {
@@ -220,24 +268,25 @@ function syntheticSans(plies: number): string[] {
 }
 
 /**
- * A short legal game whose player moves carry the given judgement counts. Moves are written only
- * for `done` games (the default) unless `noMoves` is set; accuracy defaults to 70 for the player.
+ * A short legal game whose player moves carry the given judgement counts (and the opponent's
+ * moves `opponentCounts`). Accuracies and moves are written for `done` games (the default) and for
+ * `stale` ones, unless `noMoves` is set. Accuracy defaults to 70 for the player, 90 for the opponent.
  */
 export async function seedSyntheticGame(
   db: Db,
   accountId: string,
   row: SyntheticGame,
 ): Promise<{ gameId: string }> {
+  await assertSeedable(db);
   const colour = row.playerColor ?? "white";
   const status = row.status ?? "done";
   const done = status === "done";
+  const written = done || row.stale === true;
   const accuracy = row.accuracy === undefined ? 70 : row.accuracy;
-  const wanted: ("blunder" | "mistake" | "inaccuracy")[] = [
-    ...Array<"blunder">(row.counts?.blunders ?? 0).fill("blunder"),
-    ...Array<"mistake">(row.counts?.mistakes ?? 0).fill("mistake"),
-    ...Array<"inaccuracy">(row.counts?.inaccuracies ?? 0).fill("inaccuracy"),
-  ];
-  const sans = syntheticSans(Math.max(4, wanted.length) * 2);
+  const opponentAccuracy = row.opponentAccuracy ?? 90;
+  const wanted = judgements(row.counts);
+  const theirs = judgements(row.opponentCounts);
+  const sans = syntheticSans(Math.max(row.playerMoves ?? 4, wanted.length, theirs.length) * 2);
   const chess = new Chess();
   const played = sans.map((san) => {
     const m = chess.move(san);
@@ -273,13 +322,13 @@ export async function seedSyntheticGame(
       result: row.result,
       analysisStatus: status,
       analysisProtocol: done ? "test-1" : null,
-      whiteAccuracy: done && colour === "white" ? accuracy : null,
-      blackAccuracy: done && colour === "black" ? accuracy : null,
+      whiteAccuracy: written ? (colour === "white" ? accuracy : opponentAccuracy) : null,
+      blackAccuracy: written ? (colour === "black" ? accuracy : opponentAccuracy) : null,
     })
     .returning({ id: games.id });
   if (!g) throw new Error("seedSyntheticGame: no row");
 
-  if (done && !row.noMoves) {
+  if (written && !row.noMoves) {
     const rows: MoveRow[] = played.map((m, i) => {
       const mover = i % 2 === 0 ? "white" : "black";
       return {
@@ -294,7 +343,7 @@ export async function seedSyntheticGame(
         winAfter: 50,
         deltaW: 0,
         accuracy: 80,
-        judgement: mover === colour ? (wanted[Math.floor(i / 2)] ?? null) : null,
+        judgement: (mover === colour ? wanted : theirs)[Math.floor(i / 2)] ?? null,
         phase: "middlegame",
         decided: false,
       };

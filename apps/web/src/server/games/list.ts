@@ -53,7 +53,35 @@ export function listGames(db: Db, userId: string, q: GameListQuery): Promise<Gam
     const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
     const page = Math.min(Math.max(1, Math.trunc(q.page) || 1), pageCount);
 
-    // One grouped pass over the filtered games' moves: all plies, and the player's judgements.
+    const done = sql`${games.analysisStatus} = 'done'`;
+    const accuracy = sql<number | null>`case when ${done} then
+      case when ${games.playerColor} = 'white' then ${games.whiteAccuracy} else ${games.blackAccuracy} end
+    end`;
+    const opponentRating = sql<number | null>`case when ${games.playerColor} = 'white'
+      then ${games.blackRating} else ${games.whiteRating} end`;
+    const dir = sql.raw(q.sort.dir === "asc" ? "asc" : "desc");
+    const ordered = (first: SQL): SQL[] =>
+      q.sort.key === "played"
+        ? [q.sort.dir === "asc" ? asc(games.playedAt) : desc(games.playedAt), asc(games.id)]
+        : [sql`${first} ${dir} nulls last`, desc(games.playedAt), asc(games.id)];
+
+    // Except when sorting by blunders, the page is chosen first, so the moves aggregate below
+    // covers only its rows and the cost of a page does not grow with the player's history.
+    let pageIds: string[] | null = null;
+    if (q.sort.key !== "blunders") {
+      const idRows = await tx
+        .select({ id: games.id })
+        .from(games)
+        .where(where)
+        .orderBy(...ordered(q.sort.key === "accuracy" ? accuracy : opponentRating))
+        .limit(PAGE_SIZE)
+        .offset((page - 1) * PAGE_SIZE);
+      pageIds = idRows.map((r) => r.id);
+      if (pageIds.length === 0) return { rows: [], total, page, pageCount };
+    }
+    const scope = pageIds ? and(where, inArray(games.id, pageIds)) : where;
+
+    // One grouped pass over the chosen games' moves: all plies, and the player's judgements.
     const mine = sql`${moves.color} = ${games.playerColor}`;
     const mv = tx
       .select({
@@ -74,26 +102,12 @@ export function listGames(db: Db, userId: string, q: GameListQuery): Promise<Gam
       })
       .from(moves)
       .innerJoin(games, eq(games.id, moves.gameId))
-      .where(where)
+      .where(scope)
       .groupBy(moves.gameId)
       .as("mv");
-
-    const done = sql`${games.analysisStatus} = 'done'`;
-    const accuracy = sql<number | null>`case when ${done} then
-      case when ${games.playerColor} = 'white' then ${games.whiteAccuracy} else ${games.blackAccuracy} end
-    end`;
     const blunders = sql<number | null>`case when ${done} then coalesce(${mv.blunders}, 0) end`;
-    const opponentRating = sql<number | null>`case when ${games.playerColor} = 'white'
-      then ${games.blackRating} else ${games.whiteRating} end`;
-    const dir = sql.raw(q.sort.dir === "asc" ? "asc" : "desc");
-    const order: SQL[] =
-      q.sort.key === "played"
-        ? [q.sort.dir === "asc" ? asc(games.playedAt) : desc(games.playedAt), asc(games.id)]
-        : [
-            sql`${q.sort.key === "accuracy" ? accuracy : q.sort.key === "blunders" ? blunders : opponentRating} ${dir} nulls last`,
-            desc(games.playedAt),
-            asc(games.id),
-          ];
+    const first =
+      q.sort.key === "accuracy" ? accuracy : q.sort.key === "blunders" ? blunders : opponentRating;
 
     const rows = await tx
       .select({
@@ -123,10 +137,10 @@ export function listGames(db: Db, userId: string, q: GameListQuery): Promise<Gam
       })
       .from(games)
       .leftJoin(mv, eq(mv.gameId, games.id))
-      .where(where)
-      .orderBy(...order)
+      .where(scope)
+      .orderBy(...ordered(first))
       .limit(PAGE_SIZE)
-      .offset((page - 1) * PAGE_SIZE);
+      .offset(pageIds ? 0 : (page - 1) * PAGE_SIZE);
 
     const out: GameRow[] = rows.map((r) => {
       const white = r.playerColor === "white";
