@@ -54,7 +54,7 @@ export interface KpiStatProps {
   label: string;
   value: number;
   format: KpiFormat;
-  interval: { low: number; high: number; level: 0.8 | 0.9 };
+  interval: { low: number; high: number; level: 0.8 };
   basis: { games: number; timeClass: string };
   provisional?: boolean;
   trend?: (number | null)[];

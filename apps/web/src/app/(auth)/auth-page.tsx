@@ -19,6 +19,7 @@ export interface AuthPageProps {
 export function AuthPage({ title, lede, aside, children }: AuthPageProps) {
   return (
     <div
+      {...(aside ? { "data-bleed": "" } : {})}
       className={
         aside
           ? "flex flex-1 flex-col lg:grid lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]"

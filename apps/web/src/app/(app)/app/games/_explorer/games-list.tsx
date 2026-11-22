@@ -35,27 +35,25 @@ const LEGEND = "The square is the colour you played; the figure is your score.";
 const PAD_FIRST = "pl-(--space-panel-pad)";
 
 /**
- * The games as a ruled scoresheet on a `sheet`. Sorted by date, the rows sit under day headings,
- * as a tournament sheet groups its rounds; under any other sort each row carries its date. From
- * `md` it is a table whose last two columns form the coach's ruled margin (accuracy, then the
- * red-pen counts); below `md` it is two-line rows. Only one of the two is ever displayed, so
+ * The games as a ruled scoresheet on a `sheet`. Sorted by date, each day is named once, in a date
+ * cell spanning that day's games (a heading row per day put one over nearly every game, web
+ * polish critic I8); under any other sort each row carries its date. Phone rows always carry
+ * their date inline. From `md` it is a table whose last two columns form the coach's ruled
+ * margin (accuracy, then the red-pen counts); below `md` it is two-line rows. Only one of the two is ever displayed, so
  * assistive tech meets one.
  */
 export function GamesList({ rows, grouped }: { rows: RowView[]; grouped: boolean }) {
   const groups = grouped ? byDay(rows) : [{ date: "", rows }];
-  const columns = grouped ? 6 : 7;
   return (
     <div data-surface="sheet" className="rounded-sheet bg-sheet py-1">
       <table className="hidden w-full border-collapse text-left md:table">
         <caption className="sr-only">Your games</caption>
         <thead>
           <tr className="border-b border-rule-strong">
-            {grouped ? null : (
-              <th scope="col" className={`${HEAD} ${PAD_FIRST}`}>
-                Date
-              </th>
-            )}
-            <th scope="col" className={grouped ? `${HEAD} ${PAD_FIRST}` : HEAD}>
+            <th scope="col" className={`${HEAD} ${PAD_FIRST}`}>
+              Date
+            </th>
+            <th scope="col" className={HEAD}>
               Result
               <span className="block text-xs font-normal">Square: your colour</span>
             </th>
@@ -84,21 +82,14 @@ export function GamesList({ rows, grouped }: { rows: RowView[]; grouped: boolean
           </tr>
         </thead>
         {groups.map((g) => (
-          <tbody key={g.date || "all"}>
-            {grouped ? (
-              <tr>
-                <th
-                  scope="rowgroup"
-                  colSpan={columns}
-                  className={`border-b border-rule pt-4 pr-4 pb-1.5 ${PAD_FIRST} font-serif text-base font-semibold text-ink`}
-                >
-                  {g.date}
-                </th>
-              </tr>
-            ) : null}
-            {g.rows.map((r) => (
-              <GameTableRow key={r.id} row={r} withDate={!grouped} />
-            ))}
+          <tbody key={g.date || "all"} className="border-b border-rule last:border-b-0">
+            {g.rows.map((r, i) =>
+              grouped ? (
+                <GameTableRow key={r.id} row={r} withDate daySpan={i === 0 ? g.rows.length : 0} />
+              ) : (
+                <GameTableRow key={r.id} row={r} withDate />
+              ),
+            )}
           </tbody>
         ))}
       </table>
@@ -110,28 +101,12 @@ export function GamesList({ rows, grouped }: { rows: RowView[]; grouped: boolean
             <span className="font-serif text-pen-text">?</span> mistake
           </span>
         </p>
-        {grouped ? (
-          groups.map((g) => (
-            <section key={g.date}>
-              <h2
-                className={`border-b border-rule pt-4 pr-4 pb-1.5 ${PAD_FIRST} font-serif text-base font-semibold text-ink`}
-              >
-                {g.date}
-              </h2>
-              <ul>
-                {g.rows.map((r) => (
-                  <GameRow key={r.id} row={r} withDate={false} />
-                ))}
-              </ul>
-            </section>
-          ))
-        ) : (
-          <ul aria-label="Your games">
-            {rows.map((r) => (
-              <GameRow key={r.id} row={r} />
-            ))}
-          </ul>
-        )}
+        {/* Each phone row carries its date inline: a heading per day doubled the list (I8). */}
+        <ul aria-label="Your games">
+          {rows.map((r) => (
+            <GameRow key={r.id} row={r} />
+          ))}
+        </ul>
       </div>
     </div>
   );

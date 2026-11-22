@@ -76,6 +76,40 @@ describe("AreaScoreList", () => {
   });
 });
 
+// Web polish critic I6: a "next band" flag below the player's score contradicts its own legend.
+describe("AreaScore past the next band", () => {
+  const past = {
+    area: "time" as const,
+    score: 74,
+    band: { median: 62, next: 71 },
+    basis: { games: 38, timeClass: "rapid" },
+  };
+
+  it("draws no next-band flag once the score has reached it, and says so", () => {
+    const { container } = render(<AreaScore {...past} />);
+    expect(container.querySelector('[data-tick="next"]')).toBeNull();
+    expect(screen.getByText("In the next band (71 and up)")).toBeInTheDocument();
+    expect(
+      screen.getByText("Time 74, band median 62, in the next band (71 and up)"),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps the flag ahead of a score below it", () => {
+    const { container } = render(<AreaScore {...past} score={70} />);
+    expect(container.querySelector('[data-tick="next"]')).not.toBeNull();
+    expect(screen.queryByText(/In the next band/u)).toBeNull();
+  });
+
+  it("never draws a flag left of the needle in the fixtures", () => {
+    const { container } = render(<AreaScoreList items={areaScoreFixtures.items} />);
+    const rows = container.querySelectorAll("li");
+    areaScoreFixtures.items.forEach((item, i) => {
+      const flag = rows[i]?.querySelector('[data-tick="next"]');
+      expect(flag === null || item.band.next > item.score).toBe(true);
+    });
+  });
+});
+
 describe("AreaScore delta", () => {
   const base = {
     area: "endgame" as const,

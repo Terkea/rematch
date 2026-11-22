@@ -3,6 +3,7 @@
 import { AccuracyTrend } from "@ci/ui/charts";
 import { Button } from "@ci/ui/primitives";
 import { useState, useSyncExternalStore } from "react";
+import { TREND_WINDOW } from "../../../../server/stats/constants";
 import { type AccuracyView, TREND_GAP_DAYS } from "./view";
 
 /** Phones show the latest 100 games by default, with a way to all of them (T4 review ruling). */
@@ -67,11 +68,11 @@ export function AccuracySection({ accuracy, drawIn }: { accuracy: AccuracyView; 
       )}
       <div className="flex max-w-prose flex-col gap-1 text-sm text-ink-soft">
         <p>
-          Each dot is a game. The line is your average over the last 20 games, with an 80% band.
+          {`Each dot is a game. The line is your average over the last ${TREND_WINDOW} games, with an 80% band.`}
         </p>
         <p>
           {noLine
-            ? "The line starts once you have 10 analysed games."
+            ? `The line starts once you have ${TREND_WINDOW} analysed games.`
             : "The line breaks where four weeks or more passed with no games."}
         </p>
         {accuracy.capped && <p>Showing your latest 500 analysed games.</p>}

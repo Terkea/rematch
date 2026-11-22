@@ -4,7 +4,17 @@ import { Scale } from "@visx/visx";
 import { useEffect, useRef } from "react";
 import { cn } from "../lib/index.js";
 import { animate, dur, ease, motion, useMotionValue, useReducedMotion } from "../motion/index.js";
-import { bandText, basisText, bound, formatAt, type StatFormat, targetText } from "./band.js";
+import {
+  type BandInterval,
+  bandText,
+  basisText,
+  bound,
+  formatAt,
+  KPI_MIN_GAMES,
+  needText,
+  type StatFormat,
+  targetText,
+} from "./band.js";
 import { Sparkline } from "./sparkline.js";
 import { Stat } from "./stat.js";
 
@@ -12,10 +22,14 @@ export interface KpiStatProps {
   label: string;
   value: number;
   format: StatFormat;
-  /** The credible interval from R2's statistics (Wilson for rates, bootstrap for accuracy). */
-  interval: { low: number; high: number; level: 0.8 | 0.9 };
+  /** The 80% interval from R2's statistics (Wilson for rates, bootstrap for accuracy). */
+  interval: BandInterval;
+  /** Below `KPI_MIN_GAMES` games the row shows no number: its basis and "Need N more games". */
   basis: { games: number; timeClass: string };
-  /** Below the minimum evidence: labelled "Early estimate"; its band is as wide as it really is. */
+  /**
+   * At least `KPI_MIN_GAMES` but below the metric's own minimum evidence: labelled "Early
+   * estimate"; its band is as wide as it really is.
+   */
   provisional?: boolean;
   /** One value per snapshot, oldest first; nulls are windows with no games. */
   trend?: (number | null)[];
@@ -46,8 +60,6 @@ export interface KpiStatProps {
   className?: string;
 }
 
-type Interval = KpiStatProps["interval"];
-
 /** The halo reads the host's surface, as `--eval-graph-surface` does, and is never set here. */
 const HALO = "stroke-[var(--stat-surface,var(--color-sheet))]";
 
@@ -64,9 +76,6 @@ function trendLabel(label: string, trend: (number | null)[], format: StatFormat)
   const gapText = gaps ? `, ${gaps} with no games` : "";
   return `${label} over ${trend.length} snapshots${gapText}: from ${bound(first, format)} to ${bound(last, format)}`;
 }
-
-/** z for a two-sided 80% and 90% interval: a 90% interval is 1.6449 / 1.2816 times an 80% one. */
-const TO_80: Record<Interval["level"], number> = { 0.8: 1, 0.9: 1.2816 / 1.6449 };
 
 /** Every percent scale spans exactly this much, so band widths compare across percent KPIs. */
 const PERCENT_SPAN = 0.4;
@@ -252,14 +261,56 @@ export function KpiStat(props: KpiStatProps) {
     className,
   } = props;
   const Heading = `h${headingLevel}` as const;
+  if (basis.games < KPI_MIN_GAMES) {
+    // Below the one minimum (ADR 0047 R3): no number, band or trend, only the basis and shortfall.
+    return (
+      <div
+        data-kpi="insufficient"
+        className={cn("flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1", className)}
+      >
+        <div className="flex flex-col gap-0.5">
+          <Heading className="text-base font-medium text-ink">{label}</Heading>
+          <p className="text-sm text-ink-faint">{basisText(basis)}</p>
+        </div>
+        <p className="font-serif text-xl text-ink-soft">{needText(basis.games)}</p>
+      </div>
+    );
+  }
   // The trend's least span: twice the current 80% interval, so noise looks like noise.
-  const minSpan = 2 * (interval.high - interval.low) * TO_80[interval.level];
+  const minSpan = 2 * (interval.high - interval.low);
+  // Wide rows. With the ruler: label, value, ruler and words, trend. Without it (web polish critic
+  // I3), the label and the value share one baseline, the words sit under the value, and the trend
+  // takes the right edge, so the row reads as one line rather than three floating columns.
+  const wide = scale
+    ? {
+        grid: "@min-[40rem]:grid-cols-[minmax(9rem,1fr)_7rem_minmax(14rem,22rem)_8.5rem]", // ban-lint-allow TOK2: grid track template, no spacing token
+        label: "@min-[40rem]:self-center",
+        value: "",
+        trend: "@min-[40rem]:col-start-4 @min-[40rem]:row-start-1 @min-[40rem]:self-center",
+        band: "@min-[40rem]:col-start-3 @min-[40rem]:row-start-1 @min-[40rem]:self-center",
+      }
+    : {
+        grid: "@min-[40rem]:grid-cols-[minmax(9rem,16rem)_minmax(0,1fr)_8.5rem] @min-[40rem]:items-baseline @min-[40rem]:gap-y-1.5", // ban-lint-allow TOK2: grid track template, no spacing token
+        label: "@min-[40rem]:col-start-1 @min-[40rem]:row-start-1",
+        value: "@min-[40rem]:col-start-2 @min-[40rem]:row-start-1",
+        trend:
+          "@min-[40rem]:col-start-3 @min-[40rem]:row-span-2 @min-[40rem]:row-start-1 @min-[40rem]:self-start",
+        band: "@min-[40rem]:col-start-2 @min-[40rem]:row-start-2",
+      };
   return (
     <div className={cn("@container", className)}>
       <div
-        className="grid grid-cols-[minmax(0,1fr)_minmax(5rem,8.5rem)] items-end gap-x-4 gap-y-2 @min-[40rem]:grid-cols-[minmax(9rem,1fr)_7rem_minmax(14rem,22rem)_8.5rem] @min-[40rem]:gap-x-6" /* ban-lint-allow TOK2: grid track template, no spacing token */
+        className={cn(
+          "grid grid-cols-[minmax(0,1fr)_minmax(5rem,8.5rem)] items-end gap-x-4 gap-y-2 @min-[40rem]:gap-x-6", // ban-lint-allow TOK2: grid track template, no spacing token
+          wide.grid,
+        )}
       >
-        <div className="col-span-2 flex flex-wrap items-baseline gap-x-3 gap-y-1 @min-[40rem]:col-span-1 @min-[40rem]:flex-col @min-[40rem]:gap-0.5 @min-[40rem]:self-center">
+        <div
+          className={cn(
+            "col-span-2 flex flex-wrap items-baseline gap-x-3 gap-y-1 @min-[40rem]:col-span-1 @min-[40rem]:flex-col @min-[40rem]:gap-0.5",
+            wide.label,
+          )}
+        >
           <Heading className="text-base font-medium text-ink">{label}</Heading>
           <p className={basisHidden ? "sr-only" : "text-sm text-ink-faint"}>
             {basisText(basis)}
@@ -278,9 +329,9 @@ export function KpiStat(props: KpiStatProps) {
           format={format}
           {...(rollIn ? { rollIn } : {})}
           {...(rollDelay !== undefined ? { rollDelay } : {})}
-          className="font-serif text-3xl leading-none font-semibold text-ink"
+          className={cn("font-serif text-3xl leading-none font-semibold text-ink", wide.value)}
         />
-        <div className="col-start-2 row-start-2 self-end @min-[40rem]:col-start-4 @min-[40rem]:row-start-1 @min-[40rem]:self-center">
+        <div className={cn("col-start-2 row-start-2 self-end", wide.trend)}>
           {trend && (
             <Sparkline
               values={trend}
@@ -299,7 +350,7 @@ export function KpiStat(props: KpiStatProps) {
             />
           )}
         </div>
-        <div className="col-span-2 flex flex-col gap-1 @min-[40rem]:col-span-1 @min-[40rem]:col-start-3 @min-[40rem]:row-start-1 @min-[40rem]:self-center">
+        <div className={cn("col-span-2 flex flex-col gap-1 @min-[40rem]:col-span-1", wide.band)}>
           {scale && <BandScale {...props} />}
           <p className="flex flex-wrap justify-between gap-x-3 text-sm text-ink-soft">
             <span>{bandText(interval, format)}</span>

@@ -67,9 +67,19 @@ export function deltaText(delta: number): string {
   return `${delta > 0 ? "+" : "−"}${Math.abs(delta)} since last report`;
 }
 
-/** "Endgame 62, band median 55, next band 68". */
+/** The score has reached the next band's threshold: the flag is no longer ahead of the player. */
+export const pastNext = ({ score, band }: Pick<AreaScoreProps, "score" | "band">) =>
+  score >= band.next;
+
+/** "In the next band (71 and up)". */
+export const inNextText = (next: number) => `In the next band (${next} and up)`;
+
+/** "Endgame 62, band median 55, next band 68", or "…, in the next band (71 and up)". */
 export function areaScoreText({ area, score, band }: AreaScoreProps): string {
-  return `${areaLabels[area]} ${score}, band median ${band.median}, next band ${band.next}`;
+  const head = `${areaLabels[area]} ${score}, band median ${band.median}`;
+  return pastNext({ score, band })
+    ? `${head}, in the next band (${band.next} and up)`
+    : `${head}, next band ${band.next}`;
 }
 
 /**
@@ -116,13 +126,16 @@ function Ruler({
         className="absolute top-1/2 h-2.5 w-0.5 -translate-x-1/2 rounded-full bg-pencil"
         style={{ left: fmt(m) }}
       />
-      <div
-        data-tick="next"
-        className="absolute top-1/2 -mt-3.5 h-3.5 w-0.5 -translate-x-1/2 bg-good"
-        style={{ left: fmt(at(band.next, domain)) }}
-      >
-        <span className="absolute top-0 left-0.5 h-1.5 w-1.5 bg-good [clip-path:polygon(0_0,100%_50%,0_100%)]" />
-      </div>
+      {/* The flag is a target ahead of the player; once reached, the row says so in words. */}
+      {pastNext({ score, band }) ? null : (
+        <div
+          data-tick="next"
+          className="absolute top-1/2 -mt-3.5 h-3.5 w-0.5 -translate-x-1/2 bg-good"
+          style={{ left: fmt(at(band.next, domain)) }}
+        >
+          <span className="absolute top-0 left-0.5 h-1.5 w-1.5 bg-good [clip-path:polygon(0_0,100%_50%,0_100%)]" />
+        </div>
+      )}
       {/*
         The needle rides a full-width carrier that starts one ruler-width to the left, so the sweep
         is a transform of `--sweep × position` of the ruler (M9), never an animated `left`.
@@ -166,12 +179,16 @@ function ScoreRow(props: AreaScoreProps & { domain: RulerDomain }) {
       </div>
       <div className="flex flex-col gap-0.5 @min-[560px]:col-start-3 @min-[560px]:row-start-1">
         <Ruler score={score} band={band} domain={domain} />
-        {delta !== undefined ? (
-          <span
-            className={cn("text-sm", delta > 0 ? "text-good-text" : "text-ink-soft")}
-            style={NUMERALS}
-          >
-            {deltaText(delta)}
+        {delta !== undefined || pastNext({ score, band }) ? (
+          <span className="flex flex-wrap gap-x-4 text-sm" style={NUMERALS}>
+            {delta !== undefined ? (
+              <span className={delta > 0 ? "text-good-text" : "text-ink-soft"}>
+                {deltaText(delta)}
+              </span>
+            ) : null}
+            {pastNext({ score, band }) ? (
+              <span className="text-ink-soft">{inNextText(band.next)}</span>
+            ) : null}
           </span>
         ) : (
           // No earlier report: keep the row's height so the rulers stay evenly spaced.

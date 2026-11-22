@@ -1,7 +1,8 @@
 /** Fewer analysed games than this and a page says "Need N more games" instead of a number. */
 export const KPI_MIN_GAMES = 10;
 export const TREND_WINDOW = 20;
-export const TREND_MIN = 10;
+/** The line starts on a full window, so "your average over the last 20 games" is literal (ADR-WEB-19). */
+export const TREND_MIN = TREND_WINDOW;
 export const CONFIDENCE = 0.8;
 export const BOOTSTRAP_RESAMPLES = 2000;
 export const TREND_WEEKS = 12;

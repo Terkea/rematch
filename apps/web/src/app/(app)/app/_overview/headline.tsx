@@ -81,13 +81,14 @@ export function Headline({
  * reaches the web: a "biggest leak" is never guessed from raw judgement counts (T6 ruling).
  */
 export function WorkOn() {
+  // Ink, not pen: red only ever marks the player's own mistakes (web polish critic P5).
   return (
     <section
       aria-labelledby="work-on-heading"
       data-slot="work-on"
-      className="flex max-w-3xl flex-col gap-1 border-l-2 border-pen pl-4"
+      className="flex max-w-3xl flex-col gap-1 border-l-2 border-ink pl-4"
     >
-      <h2 id="work-on-heading" className="text-base font-medium text-pen-text">
+      <h2 id="work-on-heading" className="text-base font-medium text-ink">
         What to work on
       </h2>
       <p className="text-sm text-ink-soft">
