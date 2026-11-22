@@ -91,7 +91,7 @@ The tonal ladder runs `paper`, then `sheet`, then `well`. Hover moves one step d
 
 Night study is the exception inside a sheet: night `well` is near-black, so a step down there barely shows (about 1.1:1). Inside a night sheet, hover steps up instead, to `sheet` mixed 14% toward `ink` (1.48:1 on `sheet`, where 10% gave 1.31:1 and a step down to `well` gave 1.17:1; `ink` on it is 8.99:1) (`color-mix`, no new colour). A day scope inside a night page keeps the day step (Task 9 critic).
 
-Controls that already sit in a `well` (text field, select trigger) show hover on their edge, which steps from `rule-strong` to `ink-faint`. A disabled or invalid field keeps its own edge. The switch's edge does the same when off, and when on its track steps from `ink` to `ink-soft`, as the primary button does. A disabled tab drops to `ink-faint`.
+Controls that already sit in a `well` (text field, select trigger) show hover on their edge, which steps from `rule-strong` to `ink-soft` (2.45:1 against the rest edge in day, 2.30:1 at night; `ink-faint` was too close to read, Task 9 critic re-check). A disabled or invalid field keeps its own edge. The switch's edge does the same when off, and when on its track steps from `ink` to `ink-soft`, as the primary button does. A disabled tab drops to `ink-faint`.
 
 Night floating surfaces (dialog, drawer, command menu, popover, select list) carry a 1px `rule-strong` edge, because the one shadow is lost on navy. Behind a modal, the night scrim is `well` at 90%, not `paper` at 80%, so the page behind stops competing (Task 9 critic).
 
@@ -887,7 +887,7 @@ Rulings taken while building `packages/ui/src/annotations` (ADR-WEB-15):
 ### 2026-11-22, Task 9 critic: states that read, night separation
 
 1. **Night hover inside a sheet** steps up (`sheet` 14% toward `ink`) instead of down to a near-black `well` ("Interaction states").
-2. **Hover on well controls** is an edge step to `ink-faint`. The switch gets hovers for both off and on, and disabled tabs drop to `ink-faint`.
+2. **Hover on well controls** is an edge step to `ink-soft`. The switch gets hovers for both off and on, and disabled tabs drop to `ink-faint`.
 3. **Night overlays:** floating surfaces get a `rule-strong` edge, and the modal scrim is `well` at 90%.
 
 **Token values changed in this round:** none (`--surface-hover` gains a night value derived from existing tokens).

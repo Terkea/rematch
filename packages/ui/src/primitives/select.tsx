@@ -45,7 +45,7 @@ export function Select({ label, value, options, onValueChange, name, className }
           className={cn(
             "flex h-10 w-full min-w-0 items-center justify-between gap-2 rounded-field border border-rule-strong bg-well px-3",
             "text-left font-sans text-base text-ink",
-            "transition-colors duration-(--dur-quick) ease-out hover:border-ink-faint hover:bg-(--surface-hover)",
+            "transition-colors duration-(--dur-quick) ease-out hover:border-ink-soft hover:bg-(--surface-hover)",
             "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink",
             "data-popup-open:bg-sheet",
           )}

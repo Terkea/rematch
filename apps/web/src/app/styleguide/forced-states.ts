@@ -39,7 +39,9 @@ function splitList(selector: string): string[] {
  * use it; null when none does. `:focus` and `:focus-within` never match `focus-visible`.
  */
 export function forceSelector(selector: string, pseudo: ForcedPseudo): string | null {
-  const source = `:${pseudo}(?![\\w-])`;
+  // A colon after a backslash belongs to a class name (Tailwind's stacked variants write
+  // `.a\:hover\:b`), so only an unescaped colon starts the pseudo-class.
+  const source = `(?<!\\\\):${pseudo}(?![\\w-])`;
   const uses = new RegExp(source);
   const forced = splitList(selector)
     .filter((part) => uses.test(part))

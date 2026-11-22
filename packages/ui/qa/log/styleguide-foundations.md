@@ -97,3 +97,11 @@ Polish parked, with reasons:
 - **Motion intro sentence (6):** already conditional on `useReducedMotion`. It shows only when reduced motion is on.
 - **Stray box in the primitives capture (11):** the pinned popover moves during an element screenshot's scroll. In the open-overlay shots it sits in its own card.
 - **Touch targets at 390 (12):** the small button already has a 44px coarse-pointer hit area (`touchTarget`, Task 7 e2e). The motion Play buttons belong to Task 5's file.
+
+## Critic re-check: 6 of 7 fixed; Text field and Switch hover still equal to Rest
+
+- **Cause:** a bug in the forcing, not the components. Tailwind writes a stacked variant as one class with escaped colons (`.enabled\:not-aria-invalid\:hover\:border-…`). `forceSelector` matched the `\:hover` inside the class name and rewrote the class itself, so the copied rule never matched the element. The Select hover is a single `hover:` class, so it worked.
+- **Fix:** only an unescaped colon starts a pseudo-class (`(?<!\):hover`). Unit test: RED, then GREEN.
+- **Too subtle as well:** the edge step to `ink-faint` was close to `rule-strong`. Well controls now step their edge to `ink-soft`: 2.45:1 against the rest edge in day and 2.30:1 at night. When on, the switch track steps from `ink` to `ink-soft`.
+- **New guard, `apps/web/e2e/styleguide-states.spec.ts`:** compares the computed border, background, colour and outline of every Hover and Focus cell with Rest, in day and night. It failed on exactly Text field and Switch hover (both themes) with the old forcing, and passes with the fix. It was run against a dev server with a scratch config, because the e2e project's global setup needs the e2e database.
+- **Shots:** scratchpad `t9/fix2/` holds the Text field, Switch and Select rows at 390 and 1440, day and night, plus `sheet-1440.png`.

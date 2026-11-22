@@ -44,6 +44,19 @@ describe("forceSelector", () => {
     expect(forceSelector(".a:hover", "focus-visible")).toBeNull();
   });
 
+  it("leaves an escaped colon inside a class name alone (stacked variants)", () => {
+    // Tailwind writes `enabled:not-aria-invalid:hover:border-ink-faint` as one class with `\:`.
+    expect(
+      forceSelector(
+        '.enabled\\:not-aria-invalid\\:hover\\:border-ink-faint:enabled:not([aria-invalid="true"]):hover',
+        "hover",
+      ),
+    ).toBe(
+      '.enabled\\:not-aria-invalid\\:hover\\:border-ink-faint:enabled:not([aria-invalid="true"])[data-force~="hover"]',
+    );
+    expect(forceSelector(".x\\:hover\\:y", "hover")).toBeNull();
+  });
+
   it("does not take :hover for a longer name", () => {
     expect(forceSelector(".a:hovered", "hover")).toBeNull();
   });

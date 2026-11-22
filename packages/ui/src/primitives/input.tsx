@@ -11,8 +11,8 @@ export const inputClasses = cn(
   "font-sans text-base text-ink placeholder:text-ink-faint",
   "transition-colors duration-(--dur-quick) ease-out",
   "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink",
-  // Hover steps the edge to ink-faint; a disabled or invalid field keeps its own edge.
-  "enabled:not-aria-invalid:hover:border-ink-faint",
+  // Hover steps the edge to ink-soft; a disabled or invalid field keeps its own edge.
+  "enabled:not-aria-invalid:hover:border-ink-soft",
   "aria-invalid:border-pen",
   "disabled:cursor-not-allowed disabled:border-rule disabled:text-ink-faint",
   "file:mr-3 file:border-0 file:bg-transparent file:font-sans file:text-sm file:font-medium file:text-ink",

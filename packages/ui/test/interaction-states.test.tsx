@@ -26,11 +26,11 @@ const source = (path: string) => readFileSync(resolve(process.cwd(), "src", path
 const classes = (el: Element | null) => (el?.getAttribute("class") ?? "").split(/\s+/);
 
 describe("hover on controls that sit in a well", () => {
-  it("steps a text field's edge to ink-faint, never on a disabled or invalid field", () => {
-    expect(inputClasses.split(/\s+/)).toContain("enabled:not-aria-invalid:hover:border-ink-faint");
+  it("steps a text field's edge to ink-soft, never on a disabled or invalid field", () => {
+    expect(inputClasses.split(/\s+/)).toContain("enabled:not-aria-invalid:hover:border-ink-soft");
   });
 
-  it("steps the select trigger's edge to ink-faint", () => {
+  it("steps the select trigger's edge to ink-soft", () => {
     render(
       <Select
         label="Time control"
@@ -40,13 +40,13 @@ describe("hover on controls that sit in a well", () => {
       />,
     );
     const trigger = document.querySelector("[data-slot='select-trigger']");
-    expect(classes(trigger)).toContain("hover:border-ink-faint");
+    expect(classes(trigger)).toContain("hover:border-ink-soft");
   });
 
   it("gives the switch a hover when off and when on, and none when disabled", () => {
     render(<Switch aria-label="Move sounds" />);
     const root = classes(screen.getByRole("switch", { name: "Move sounds" }));
-    expect(root).toContain("not-data-disabled:hover:border-ink-faint");
+    expect(root).toContain("not-data-disabled:hover:border-ink-soft");
     expect(root).toContain("not-data-disabled:data-checked:hover:bg-ink-soft");
   });
 });
