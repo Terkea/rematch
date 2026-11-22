@@ -1844,6 +1844,24 @@ fn chat_prompts_have_no_json_output_instruction() {
             assert!(!lower.contains(f), "{name} mentions {f:?}");
         }
         assert!(lower.contains("plain paragraphs"), "{name}");
+        // "json" may appear only in the explicit "no JSON" sentence of chat/system: with that
+        // sentence removed (once), no "json" is left anywhere, in any case or wording.
+        const NO_JSON: &str =
+            "this chat has no output format to fill: no json, no field names and no headings.";
+        let rest = if name == "chat/system" {
+            assert_eq!(
+                lower.matches(NO_JSON).count(),
+                1,
+                "{name}: the no-JSON sentence"
+            );
+            lower.replacen(NO_JSON, "", 1)
+        } else {
+            lower.clone()
+        };
+        assert!(
+            !rest.contains("json"),
+            "{name} mentions JSON outside the no-JSON sentence"
+        );
     }
     // The chat's prompt set is registered and hashes.
     for (id, v) in CHAT_PROMPT_SET {
