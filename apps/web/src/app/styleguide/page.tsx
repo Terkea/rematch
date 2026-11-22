@@ -7,6 +7,7 @@ import { AnnotationsSection } from "./sections/annotations";
 import { AreaScoreSection } from "./sections/area-score";
 import { BoardSection } from "./sections/board";
 import { ChartsSection } from "./sections/charts";
+import { CoachSection } from "./sections/coach";
 import { EvalBarSection } from "./sections/eval-bar";
 import { EvalGraphSection } from "./sections/eval-graph";
 import { FoundationsSection } from "./sections/foundations";
@@ -52,6 +53,7 @@ export default function StyleguidePage() {
         <TimelineSection />
         <ProfileSection />
         <ProgressSection />
+        <CoachSection />
         <SoundSection />
       </main>
     </div>
