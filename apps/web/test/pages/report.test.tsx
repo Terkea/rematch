@@ -23,6 +23,7 @@ import { createTestSession, resetAuthTables, webTestDb } from "../helpers/sessio
 // The view is rendered to HTML as the server sends it and read back through a JSDOM document,
 // so the database helpers run in Node (the jsdom environment breaks their Buffer and file URLs).
 
+vi.mock("../../src/server/events/request-cursor", () => ({ requestEventCursor: async () => 0 }));
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
 }));

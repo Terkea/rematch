@@ -54,6 +54,12 @@ vi.mock("../../src/server/games", () => ({
     return [];
   },
 }));
+vi.mock("../../src/server/profile", () => ({
+  leadFinding: async () => {
+    order.push("data");
+    return { kind: "building" };
+  },
+}));
 vi.mock("../../src/server/sync", () => ({
   getSyncStatus: async () => {
     order.push("data");
