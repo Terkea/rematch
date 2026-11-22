@@ -31,7 +31,10 @@ function writeBlock(file, block, n) {
   const rs = readFileSync(file, "utf8");
   const re = /    \/\/ BEGIN GENERATED[\s\S]*?\/\/ END GENERATED/;
   if (!re.test(rs)) throw new Error(`no generated block in ${file}`);
-  writeFileSync(file, rs.replace(re, () => block));
+  writeFileSync(
+    file,
+    rs.replace(re, () => block),
+  );
   console.log(`wrote ${n} rows to ${file}`);
 }
 
@@ -159,9 +162,19 @@ const inputs = [
   "Oct 14th, 2026",
   "Oct\u{b}14th,\u{85}2026",
   // Astral chars split by the 16-unit (bare move), 12-unit (half) and 20-unit (hedge) windows.
-  ...[11, 12, 13, 14, 15].flatMap((k) => [`x${E}1.${sp(k)}e4`, `${E}${E}1.${sp(k)}e4`, `${E}...${sp(k)}d5`]),
-  ...[4, 5, 6, 7, 8].flatMap((k) => [`${E}first${sp(k)}half of games`, `${E}last${sp(k)}half the games`]),
-  ...[13, 14, 15, 16].flatMap((k) => [`${E}about${sp(k)}5 games`, `${E}${E}more than${sp(k - 4)}7 games`]),
+  ...[11, 12, 13, 14, 15].flatMap((k) => [
+    `x${E}1.${sp(k)}e4`,
+    `${E}${E}1.${sp(k)}e4`,
+    `${E}...${sp(k)}d5`,
+  ]),
+  ...[4, 5, 6, 7, 8].flatMap((k) => [
+    `${E}first${sp(k)}half of games`,
+    `${E}last${sp(k)}half the games`,
+  ]),
+  ...[13, 14, 15, 16].flatMap((k) => [
+    `${E}about${sp(k)}5 games`,
+    `${E}${E}more than${sp(k - 4)}7 games`,
+  ]),
   // The gap shape that made the bare-square scan quadratic, at a small size.
   `Nf3${sp(40)}${"x e4 ".repeat(8)}`,
   // Hardening deviations (ADR-R3-2): TS output recorded, Rust deliberately differs.
@@ -193,20 +206,71 @@ const inputs = [
 // Leak corpus (tests/leaks.rs): canonicalForTokens, parseTokens and findLeaks on the raw and the
 // token-stripped text. The 56 TS ESCAPES come first (keep them in sync with leaks.test.ts).
 const ESCAPES = [
-  "12. Nf3 d5", "1. e4 e5 2. Nf3 Nc6", "Instead d5 was best", "...d6", "Nxe5 d6 (e4)", "e2-e4",
-  "Ng1-f3", "e2xd5", "e8Q", "e8(Q)", "O–O", "O‑O‑O", "O—O", "O−O", "O-O",
-  "0-0-0", "N⁦f3", "N͏f3", "♞️f3", "forty percent", "thirty games",
-  "ten per cent", "one game", "three openings", "a third of games", "twenty-one games", "2.5x",
-  "3 times", "nf3", "NF3", "♙e4", "Pe4", "Nf3Nc6", "exd6e.p.", "exd6 e.p.",
-  "the 14th of October", "14 Oct", "14/10", "2026-10-14", ".5%", "1,5", "1 000", "1 000",
-  "１２ games", "١٢ games", "half of your games", "a quarter", "a dozen",
-  "twice as often", "the second game", "ten", "е4", "N​f‌3", "Nㅤf3", "♟",
+  "12. Nf3 d5",
+  "1. e4 e5 2. Nf3 Nc6",
+  "Instead d5 was best",
+  "...d6",
+  "Nxe5 d6 (e4)",
+  "e2-e4",
+  "Ng1-f3",
+  "e2xd5",
+  "e8Q",
+  "e8(Q)",
+  "O–O",
+  "O‑O‑O",
+  "O—O",
+  "O−O",
+  "O-O",
+  "0-0-0",
+  "N⁦f3",
+  "N͏f3",
+  "♞️f3",
+  "forty percent",
+  "thirty games",
+  "ten per cent",
+  "one game",
+  "three openings",
+  "a third of games",
+  "twenty-one games",
+  "2.5x",
+  "3 times",
+  "nf3",
+  "NF3",
+  "♙e4",
+  "Pe4",
+  "Nf3Nc6",
+  "exd6e.p.",
+  "exd6 e.p.",
+  "the 14th of October",
+  "14 Oct",
+  "14/10",
+  "2026-10-14",
+  ".5%",
+  "1,5",
+  "1 000",
+  "1 000",
+  "１２ games",
+  "١٢ games",
+  "half of your games",
+  "a quarter",
+  "a dozen",
+  "twice as often",
+  "the second game",
+  "ten",
+  "е4",
+  "N​f‌3",
+  "Nㅤf3",
+  "♟",
   "♔",
 ];
 const leakInputs = [
   ...ESCAPES,
   // Rust extras of the escape loop.
-  "Ｎｆ３", "é4", "Nf3️", "twentieth move", "O‑O‑O",
+  "Ｎｆ３",
+  "é4",
+  "Nf3️",
+  "twentieth move",
+  "O‑O‑O",
   // Clean prose and token strings from the TS tests.
   "you tend to rush in sharp positions",
   "the {{sq:e4}} square",
@@ -215,12 +279,28 @@ const leakInputs = [
   "Pay attention to king safety and loose pieces. Castling early helps.",
   "a {{move:g1:6}} b {{best:g1:6}} c {{pv:g1:6:best:2}} d {{pv:g1:6:refutation:1}} e {{line:w-italian}} f {{line:w-italian:3}} g {{num:basis.analysedGames}} h {{num:weaknesses.W1.posteriorRate|pct1}} i {{date:basis.windowStart}} j {{sq:f7}}",
   "x {{move:g1:6}} y {{sq:e4}}",
-  ...["{{move:g1}}", "{{move:g1:x}}", "{{move:g1:0}}", "{{pv:g1:6:middle:1}}", "{{pv:g1:6:best:0}}",
-    "{{num:a.b|bogus}}", "{{num:}}", "{{sq:i9}}", "{{sq:e44}}", "{{nope:x}}", "{{move:g1:6",
-    "move:g1:6}}", "{{}}"].map((b) => `see ${b} here`),
+  ...[
+    "{{move:g1}}",
+    "{{move:g1:x}}",
+    "{{move:g1:0}}",
+    "{{pv:g1:6:middle:1}}",
+    "{{pv:g1:6:best:0}}",
+    "{{num:a.b|bogus}}",
+    "{{num:}}",
+    "{{sq:i9}}",
+    "{{sq:e44}}",
+    "{{nope:x}}",
+    "{{move:g1:6",
+    "move:g1:6}}",
+    "{{}}",
+  ].map((b) => `see ${b} here`),
   "{{num:a.b|int}} {{num:a.b|pct0}} {{num:a.b|dec2}} {{num:a.b|signed1}}",
   "{{mo​ve:g1:６}}",
-  "play O-O", "play ♞", "about 40", "about forty", "a 14 Oct date",
+  "play O-O",
+  "play ♞",
+  "about 40",
+  "about forty",
+  "a 14 Oct date",
   // Token edges.
   "a {{move:g1}} {{num:a.b|}} {{nope:x}} } {{sq:e4",
   "{{line:w:italian:2}} {{line:w:italian:x}} {{num:a#1.b|int}}",
@@ -247,21 +327,51 @@ const leakInputs = [
   "o-o-o-o 0-0x o - o ao-o o-o1 o--o 0– 0",
   "O-O-O! and O-O+",
   // Dates.
-  "jan 5 janx 5 jan. the 3rd", "the 3rd of may", "3 of mayo", "end of march", "march the fifth",
-  "14 junes", "1/2 12 . 3 2026 - 10 - 14", "JAN 5", "jan\u00855", "sept 3 sep 3", "x12 of oct",
-  "12 of oct", "5th of june, 2026",
+  "jan 5 janx 5 jan. the 3rd",
+  "the 3rd of may",
+  "3 of mayo",
+  "end of march",
+  "march the fifth",
+  "14 junes",
+  "1/2 12 . 3 2026 - 10 - 14",
+  "JAN 5",
+  "jan\u00855",
+  "sept 3 sep 3",
+  "x12 of oct",
+  "12 of oct",
+  "5th of june, 2026",
   // Confusables, case and other scripts.
-  "Неро", "ΑΝΟ", "πάτησε",
-  "İstanbul", "ΣΟΣ", "Α-Ο", "О-О",
+  "Неро",
+  "ΑΝΟ",
+  "πάτησε",
+  "İstanbul",
+  "ΣΟΣ",
+  "Α-Ο",
+  "О-О",
   // Digits, percent and figurines.
-  "‰ and ٪", "𝟙𝟚", "① ² Ⅻ", "🨀 🩯 🩰",
+  "‰ and ٪",
+  "𝟙𝟚",
+  "① ² Ⅻ",
+  "🨀 🩯 🩰",
   "٣ games",
   // Hardening deviations (ADR-R3-2, Task 6): TS output recorded, Rust deliberately adds leaks.
-  "fιveé games", "Օ-Օé", "t᠏en games", "tẃenty games",
-  "O˗O", "օnce", "база",
+  "fιveé games",
+  "Օ-Օé",
+  "t᠏en games",
+  "tẃenty games",
+  "O˗O",
+  "օnce",
+  "база",
   // The union keeps what TS finds next to a folded neighbour.
-  "tené", "ten᠏x", "Nf3é", "O-Oé", "e.p.é", "éone game", "threeι",
-  "Café talk: often your pieces are loose.", "Été and naïve plans",
+  "tené",
+  "ten᠏x",
+  "Nf3é",
+  "O-Oé",
+  "e.p.é",
+  "éone game",
+  "threeι",
+  "Café talk: often your pieces are loose.",
+  "Été and naïve plans",
 ];
 
 const tmp = mkdtempSync(join(tmpdir(), "validator-corpus-"));
@@ -271,16 +381,38 @@ try {
     join(tmp, "extract.ts"),
     readFileSync(join(src, "extract.ts"), "utf8").replace('"./normalize.js"', '"./normalize.ts"'),
   );
-  const { extractNumbers, extractMoves, extractDates } = await import(pathToFileURL(join(tmp, "extract.ts")).href);
+  const { extractNumbers, extractMoves, extractDates } = await import(
+    pathToFileURL(join(tmp, "extract.ts")).href
+  );
   const { normalizeText } = await import(pathToFileURL(join(tmp, "normalize.ts")).href);
   for (const f of ["tokens.ts", "leaks.ts"]) {
-    writeFileSync(join(tmp, f), readFileSync(join(src, f), "utf8").replace('"./normalize.js"', '"./normalize.ts"'));
+    writeFileSync(
+      join(tmp, f),
+      readFileSync(join(src, f), "utf8").replace('"./normalize.js"', '"./normalize.ts"'),
+    );
   }
-  const { canonicalForTokens, parseTokens } = await import(pathToFileURL(join(tmp, "tokens.ts")).href);
+  const { canonicalForTokens, parseTokens } = await import(
+    pathToFileURL(join(tmp, "tokens.ts")).href
+  );
   const { findLeaks } = await import(pathToFileURL(join(tmp, "leaks.ts")).href);
-  const esc = (s) => Array.from({ length: s.length }, (_, k) => s.charCodeAt(k)).map((c) => (c < 32 || c >= 127 ? String.fromCharCode(92) + "u" + c.toString(16).padStart(4, "0") : String.fromCharCode(c))).join("");
+  const esc = (s) =>
+    Array.from({ length: s.length }, (_, k) => s.charCodeAt(k))
+      .map((c) =>
+        c < 32 || c >= 127
+          ? String.fromCharCode(92) + "u" + c.toString(16).padStart(4, "0")
+          : String.fromCharCode(c),
+      )
+      .join("");
   const rows = inputs.map((s) =>
-    esc(JSON.stringify({ s, t: normalizeText(s), n: extractNumbers(s), m: extractMoves(s), d: extractDates(s) })),
+    esc(
+      JSON.stringify({
+        s,
+        t: normalizeText(s),
+        n: extractNumbers(s),
+        m: extractMoves(s),
+        d: extractDates(s),
+      }),
+    ),
   );
   if (rows.some((r) => r.includes('"#'))) throw new Error("a row would end the raw string");
   let commit = "unknown";
@@ -300,7 +432,17 @@ try {
   if (ESCAPES.length !== 56) throw new Error(`${ESCAPES.length} escapes`);
   const leakRows = leakInputs.map((s) => {
     const p = parseTokens(s);
-    return esc(JSON.stringify({ s, c: canonicalForTokens(s), st: p.stripped, tk: p.tokens, er: p.errors, l: findLeaks(p.stripped), r: findLeaks(s) }));
+    return esc(
+      JSON.stringify({
+        s,
+        c: canonicalForTokens(s),
+        st: p.stripped,
+        tk: p.tokens,
+        er: p.errors,
+        l: findLeaks(p.stripped),
+        r: findLeaks(s),
+      }),
+    );
   });
   if (leakRows.some((r) => r.includes('"#'))) throw new Error("a row would end the raw string");
   const leakBlock = [

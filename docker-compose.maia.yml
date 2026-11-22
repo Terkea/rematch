@@ -37,4 +37,3 @@ networks:
   # joins it when it lands, lane I).
   maia_internal:
     internal: true
-
