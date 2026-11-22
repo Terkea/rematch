@@ -1,0 +1,39 @@
+{
+  "provenance": {
+    "generator": "backend/tools/gen-canonical-golden.mjs",
+    "node": "v22.22.0",
+    "rule": "keys sorted with Array.prototype.sort, primitives via JSON.stringify, no whitespace"
+  },
+  "fixtures": {
+    "b2-rapid": {
+      "canonicalLength": 10671,
+      "inputHash": "84e2b51728d7e54b7ba8010a863d6bfcb3efe470a3a2b5b8011435cd6bf95aa9"
+    },
+    "b0-blitz": {
+      "canonicalLength": 3507,
+      "inputHash": "4474d2234090320eb3bd8076eb51b09ee0cfce692f04c0afc4a9dde198af7bef"
+    },
+    "early-read": {
+      "canonicalLength": 2596,
+      "inputHash": "eb3d9d765fdab9f721274e54e019d8d72338ed16b7e43642c6f3965d6b03360e"
+    }
+  },
+  "cases": [
+    {
+      "source": "{\"b\":1,\"a\":{\"d\":1,\"c\":2}}",
+      "canonical": "{\"a\":{\"c\":2,\"d\":1},\"b\":1}"
+    },
+    {
+      "source": "[48.0,-0.0,0.1,1e-7,1.5e-7,0.000001,1e21,1.2e21,123456789012345680000,0.13999999999999999,-2.5,100]",
+      "canonical": "[48,0,0.1,1e-7,1.5e-7,0.000001,1e+21,1.2e+21,123456789012345680000,0.13999999999999999,-2.5,100]"
+    },
+    {
+      "source": "{\"Z\":1,\"a\":2,\"_\":3,\"é\":4,\"10\":5,\"9\":6}",
+      "canonical": "{\"10\":5,\"9\":6,\"Z\":1,\"_\":3,\"a\":2,\"é\":4}"
+    },
+    {
+      "source": "{\"s\":\"a<b\\u2028\\u0001\\\"\\\\/\",\"n\":null,\"t\":true,\"f\":false,\"e\":[],\"o\":{}}",
+      "canonical": "{\"e\":[],\"f\":false,\"n\":null,\"o\":{},\"s\":\"a<b \\u0001\\\"\\\\/\",\"t\":true}"
+    }
+  ]
+}
