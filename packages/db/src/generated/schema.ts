@@ -260,6 +260,9 @@ export const aiUsage = pgTable(
     costMicroUsd: bigint("cost_micro_usd", { mode: "number" }).notNull(),
     refId: text("ref_id"),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    idempotencyKey: text("idempotency_key"),
+    // You can use { mode: "bigint" } if numbers are exceeding js number limitations
+    sdkEstimateMicroUsd: bigint("sdk_estimate_micro_usd", { mode: "number" }),
   },
   (table) => [
     index("ai_usage_account_idx").using(
@@ -268,6 +271,9 @@ export const aiUsage = pgTable(
       table.createdAt.asc().nullsLast(),
     ),
     index("ai_usage_created_idx").using("btree", table.createdAt.asc().nullsLast()),
+    uniqueIndex("ai_usage_idempotency_uq")
+      .using("btree", table.idempotencyKey.asc().nullsLast())
+      .where(sql`(idempotency_key IS NOT NULL)`),
   ],
 );
 

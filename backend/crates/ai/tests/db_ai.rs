@@ -330,6 +330,7 @@ fn usage_row(account_id: Uuid, cost: i64) -> UsageRow {
         cache_read_tokens: 5,
         cost_micro_usd: cost,
         ref_id: Some("ref".into()),
+        sdk_estimate_micro_usd: None,
     }
 }
 
