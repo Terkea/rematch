@@ -135,6 +135,11 @@ fn disabled(reason: &str) -> AiClientChoice {
     }
 }
 
+/// Health checks before AI is disabled until the next start (review m5: a transient failure).
+pub const HEALTH_ATTEMPTS: u32 = 3;
+/// The pause between two health checks.
+pub const HEALTH_RETRY_AFTER: Duration = Duration::from_secs(2);
+
 /// The production client (module docs), or `None` with the reason.
 pub async fn ai_client_from_env(env: &WorkerEnv) -> anyhow::Result<AiClientChoice> {
     let Some(sc) = &env.ai_sidecar else {
@@ -142,9 +147,17 @@ pub async fn ai_client_from_env(env: &WorkerEnv) -> anyhow::Result<AiClientChoic
     };
     let cfg = SidecarConfig::new(sc.url.clone(), sc.token.clone());
     let probe = SidecarClient::new(cfg.clone(), None).context("building the sidecar client")?;
-    match probe.health().await {
+    let mut health = probe.health().await;
+    for _ in 1..HEALTH_ATTEMPTS {
+        if health.is_ok() {
+            break;
+        }
+        tokio::time::sleep(HEALTH_RETRY_AFTER).await;
+        health = probe.health().await;
+    }
+    match health {
         Err(e) => {
-            tracing::warn!(error = %e, "the AI sidecar health check failed");
+            tracing::warn!(error = %e, attempts = HEALTH_ATTEMPTS, "the AI sidecar health check failed");
             return Ok(disabled("sidecar health check failed"));
         }
         Ok(h) if h.auth == AuthKind::None => return Ok(disabled("sidecar has no credential")),

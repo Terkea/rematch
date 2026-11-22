@@ -182,9 +182,11 @@ The chat's `analyse_position` tool reaches Stockfish only through `ai::chat::int
   (batches only), the three budget variables and `AI_PRICING_FILE`. Its `Debug` redacts the key
   and the token.
 - **Enabled check.** AI is enabled only when the sidecar is configured and its `/health` reports
-  a credential (`auth != "none"`). A failed health check also disables AI until the next start
-  (`ai: disabled (sidecar health check failed)`); compose starts the worker only after the
-  sidecar is healthy. The client is `with_breaker(AiRuntime { sidecar, batches }, Breaker(5, 60 s))`;
+  a credential (`auth != "none"`). The probe is tried 3 times, 2 s apart; if all fail, AI is
+  disabled until the next start (`ai: disabled (sidecar health check failed)`). Compose starts
+  the worker only after the sidecar is healthy, so a sidecar that refuses to start (for example
+  `AI_SIDECAR_ENV=production` without a key) also keeps the analysis worker down: production
+  deployments must run a healthy sidecar, and a deployment without AI removes the dependency. The client is `with_breaker(AiRuntime { sidecar, batches }, Breaker(5, 60 s))`;
   the tool endpoint starts only when AI is enabled and `AI_TOOL_PUBLIC_URL` is set.
 - **The log line** is exactly `ai: enabled (sidecar, batches on|off)` or
   `ai: disabled (AI_SIDECAR_URL not set | sidecar has no credential | sidecar health check failed)`.

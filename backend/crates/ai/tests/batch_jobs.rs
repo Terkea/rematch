@@ -874,7 +874,11 @@ async fn a_paid_repair_is_metered_when_its_item_write_fails(pool: PgPool) {
     let (d, _, _) = two_scheduled(&pool, ai.clone()).await;
     // The repaired section's write fails once (after the paid repair returned).
     sqlx::raw_sql(
-        "CREATE FUNCTION t26_fail_weaknesses() RETURNS trigger LANGUAGE plpgsql AS $$          BEGIN IF NEW.section = 'weaknesses' AND NEW.status = 'ready' THEN            RAISE EXCEPTION 't26 write failure'; END IF; RETURN NEW; END $$;          CREATE TRIGGER t26_fail BEFORE INSERT ON report_sections FOR EACH ROW            EXECUTE FUNCTION t26_fail_weaknesses();",
+        "CREATE FUNCTION t26_fail_weaknesses() RETURNS trigger LANGUAGE plpgsql AS $$ \
+         BEGIN IF NEW.section = 'weaknesses' AND NEW.status = 'ready' THEN \
+         RAISE EXCEPTION 't26 write failure'; END IF; RETURN NEW; END $$; \
+         CREATE TRIGGER t26_fail BEFORE INSERT ON report_sections FOR EACH ROW \
+         EXECUTE FUNCTION t26_fail_weaknesses();",
     )
     .execute(&pool)
     .await

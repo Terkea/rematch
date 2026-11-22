@@ -279,3 +279,25 @@ async fn every_event_kind_carrying_model_text_is_user_owned(pool: PgPool) {
     .unwrap();
     assert_eq!(ownerless, 0);
 }
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn emit_refuses_a_kind_missing_from_the_table(pool: PgPool) {
+    let account = testkit::insert_account(&pool, "lichess", "t26unknown").await;
+    let mut conn = pool.acquire().await.unwrap();
+    match events::emit(
+        &mut conn,
+        account,
+        "chat.secret",
+        &serde_json::json!({"text": "x"}),
+    )
+    .await
+    {
+        Err(EmitError::UnknownKind(k)) => assert_eq!(k, "chat.secret"),
+        other => panic!("an unclassified kind went out: {other:?}"),
+    }
+    let n: i64 = sqlx::query_scalar("SELECT count(*) FROM user_events")
+        .fetch_one(&mut *conn)
+        .await
+        .unwrap();
+    assert_eq!(n, 0);
+}

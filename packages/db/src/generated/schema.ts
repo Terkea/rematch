@@ -244,6 +244,12 @@ export const aiSdkSessionEntries = pgTable(
   ],
 );
 
+export const aiSweepCursors = pgTable("ai_sweep_cursors", {
+  name: text().primaryKey().notNull(),
+  position: timestamp({ withTimezone: true, mode: "date" }).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+});
+
 export const aiUsage = pgTable(
   "ai_usage",
   {

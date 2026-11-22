@@ -237,7 +237,8 @@ Decisions made when the job, the DB data source and the threads were built:
     the `/api/events` poll route deliver an owned event only to its user. In Rust the rule is now
     enforced at the source: `events::EVENT_KINDS` gives every kind its `Audience`, and `emit`
     refuses a `User` kind (`EmitError::NeedsOwner`), so a chat event can only be written with
-    `emit_for_user`. The kinds that are about one user's thread are `chat.chunk` (the only one
+    `emit_for_user`. A kind missing from the table is refused too (`UnknownKind`, deny by
+    default; fix round 1). The kinds that are about one user's thread are `chat.chunk` (the only one
     carrying model text), `chat.message.ready` and `chat.message.failed`. Report, weekly-review
     and change-note events carry ids and codes only: their text lives in the account's own rows,
     which every user linked to the account reads, so they stay account events (`user_id` NULL).

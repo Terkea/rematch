@@ -310,6 +310,19 @@ mod tests {
     }
 
     #[test]
+    fn whitespace_only_secrets_count_as_unset() {
+        let mut vars = BASE.to_vec();
+        vars.push(("ANTHROPIC_API_KEY", "   "));
+        assert_eq!(env(&vars).unwrap().anthropic_api_key, None);
+        vars.extend([
+            ("AI_SIDECAR_URL", "http://ai-sidecar:7310"),
+            ("AI_SIDECAR_TOKEN", " \t "),
+        ]);
+        let err = format!("{:#}", env(&vars).unwrap_err());
+        assert!(err.contains("AI_SIDECAR_TOKEN"), "{err}");
+    }
+
+    #[test]
     fn rejects_bad_ai_variables() {
         for (name, value, needle) in [
             (

@@ -323,15 +323,22 @@ impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for Captured {
 
 /// A sidecar stand-in answering every request with `GET /health`'s `body`.
 async fn health_stub(body: Value) -> SocketAddr {
+    flaky_health_stub(body, 0).await
+}
+
+/// [`health_stub`] that answers its first `fail_first` requests with a 503.
+async fn flaky_health_stub(body: Value, fail_first: usize) -> SocketAddr {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let body = body.to_string();
+    let served = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     tokio::spawn(async move {
         loop {
             let Ok((mut sock, _)) = listener.accept().await else {
                 return;
             };
             let body = body.clone();
+            let n = served.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             tokio::spawn(async move {
                 let mut buf = vec![0u8; 4096];
                 let mut seen = Vec::new();
@@ -341,8 +348,13 @@ async fn health_stub(body: Value) -> SocketAddr {
                         Ok(n) => seen.extend_from_slice(&buf[..n]),
                     }
                 }
+                let status = if n < fail_first {
+                    "503 Service Unavailable"
+                } else {
+                    "200 OK"
+                };
                 let resp = format!(
-                    "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\
+                    "HTTP/1.1 {status}\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\
                      connection: close\r\n\r\n{body}",
                     body.len()
                 );
@@ -411,6 +423,16 @@ async fn startup_logs_never_contain_the_key(_p: PgPoolOptions, opts_: PgConnectO
         !logs.contains(FAKE_TOKEN),
         "the sidecar token was logged:\n{logs}"
     );
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_transient_health_failure_is_retried(_p: PgPoolOptions, opts_: PgConnectOptions) {
+    let Some(env) = env_for(&opts_) else {
+        return;
+    };
+    let stub = flaky_health_stub(json!({"ok": true, "auth": "api_key"}), 1).await;
+    let (enabled, _) = start_logged(&ai_env(env, stub)).await;
+    assert!(enabled, "one failed probe must not disable AI");
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]

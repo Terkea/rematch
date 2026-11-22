@@ -149,7 +149,13 @@ M4 inserts `coach_messages` rows (the user turn `done`, then the assistant turn 
 - **The reconcile sweep is bounded twice over.** An orphan session-entry page reads at most its
   limit of rows in time order, orphan or not, and moves its cursor past them, so live entries are
   never rescanned within a sweep; a tied instant wider than a page is cleared at once and
-  stepped past. The whole sweep starts no step after `SWEEP_DEADLINE` (4 min, below the runner's
-  5 min); skipped steps run next sweep (`skippedSteps`). The unbudgeted
+  stepped past. **Fix round 1 (review I1):** the sweep resumes where the last one stopped
+  (`ai_sweep_cursors`, migration `030600`, clamped to the 24 h window). At the window's end the
+  cursor stays at the newest entry read: an entry's orphan status is fixed once it is past the
+  10 min grace (its conversation committed or never will; a deleted conversation's entries go
+  with it), so nothing behind the cursor is read again, and orphans behind more live entries
+  than one budget covers are reached within a few sweeps. This assumes the worker's and the
+  database's clocks differ by less than the 10 min grace. The whole sweep starts no step after `SWEEP_DEADLINE` (3 min, so the last step's
+  60 s budget and one 35 s page still end below the runner's 5 min); skipped steps run next sweep (`skippedSteps`). The unbudgeted
   `sweep_orphan_session_entries` is gone from the public API.
 - **Events.** See ADR 0064 §18 (the audience table and the `emit` guard).

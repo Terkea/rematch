@@ -310,7 +310,8 @@ pub async fn list_user_conversations(
     limit: i64,
 ) -> Result<Vec<ConversationRow>, sqlx::Error> {
     sqlx::query_as(sqlx::AssertSqlSafe(format!(
-        "SELECT {CONV_COLS} FROM coach_conversations WHERE user_id = $1 AND account_id = $2          ORDER BY last_message_at DESC LIMIT $3"
+        "SELECT {CONV_COLS} FROM coach_conversations WHERE user_id = $1 AND account_id = $2 \
+         ORDER BY last_message_at DESC LIMIT $3"
     )))
     .bind(user_id)
     .bind(account_id)
@@ -397,14 +398,23 @@ pub const ORPHAN_SWEEP_PAGE: i64 = 1000;
 /// `ai_sdk_session_entries_created_idx` in order (plan-guarded, custom and generic plan). The
 /// orphans among its rows are deleted; live ones are passed, so a page reads at most `$4` rows
 /// however many live entries the window holds (T21 re-review).
-pub const ORPHAN_PAGE_SQL: &str = "SELECT e.ctid, e.created_at, e.session_id     FROM ai_sdk_session_entries e     WHERE e.created_at >= greatest($1::timestamptz,     coalesce($2::timestamptz, '-infinity'::timestamptz)) AND e.created_at < $3::timestamptz     ORDER BY e.created_at LIMIT $4";
+pub const ORPHAN_PAGE_SQL: &str = "SELECT e.ctid, e.created_at, e.session_id \
+    FROM ai_sdk_session_entries e \
+    WHERE e.created_at >= greatest($1::timestamptz, \
+    coalesce($2::timestamptz, '-infinity'::timestamptz)) AND e.created_at < $3::timestamptz \
+    ORDER BY e.created_at LIMIT $4";
+
+/// The `ai_sweep_cursors` row of the orphan sweep.
+pub const ORPHAN_CURSOR: &str = "orphan_session_entries";
 
 /// One page of the orphan sweep.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct OrphanPage {
     pub deleted: u64,
-    /// The next cursor; `None` when the page was short (the sweep is done).
+    /// The next cursor; `None` when the page was short (the window is done).
     pub next: Option<OffsetDateTime>,
+    /// The newest `created_at` the page read (`None` for an empty page).
+    pub newest: Option<OffsetDateTime>,
 }
 
 /// Reads one page of entries created between `now - ORPHAN_SESSION_MAX_AGE` and
@@ -429,7 +439,12 @@ pub async fn sweep_orphan_session_entries_page(
         Option<OffsetDateTime>,
         i64,
     ) = sqlx::query_as(sqlx::AssertSqlSafe(format!(
-        "WITH page AS ({ORPHAN_PAGE_SQL}),          gone AS (DELETE FROM ai_sdk_session_entries d USING page p WHERE d.ctid = p.ctid            AND NOT EXISTS (SELECT 1 FROM coach_conversations c WHERE c.id = p.session_id)            RETURNING 1)          SELECT (SELECT count(*) FROM page), (SELECT min(created_at) FROM page),            (SELECT max(created_at) FROM page), (SELECT count(*) FROM gone)"
+        "WITH page AS ({ORPHAN_PAGE_SQL}), \
+         gone AS (DELETE FROM ai_sdk_session_entries d USING page p WHERE d.ctid = p.ctid \
+           AND NOT EXISTS (SELECT 1 FROM coach_conversations c WHERE c.id = p.session_id) \
+           RETURNING 1) \
+         SELECT (SELECT count(*) FROM page), (SELECT min(created_at) FROM page), \
+           (SELECT max(created_at) FROM page), (SELECT count(*) FROM gone)"
     )))
     .bind(now - ORPHAN_SESSION_MAX_AGE)
     .bind(after)
@@ -442,7 +457,8 @@ pub async fn sweep_orphan_session_entries_page(
         (Some(oldest), Some(newest)) if scanned >= limit => {
             if oldest == newest {
                 let tied = sqlx::query(
-                    "DELETE FROM ai_sdk_session_entries e WHERE e.created_at = $1                      AND NOT EXISTS (SELECT 1 FROM coach_conversations c WHERE c.id = e.session_id)",
+                    "DELETE FROM ai_sdk_session_entries e WHERE e.created_at = $1 \
+                     AND NOT EXISTS (SELECT 1 FROM coach_conversations c WHERE c.id = e.session_id)",
                 )
                 .bind(newest)
                 .execute(&mut *conn)
@@ -455,5 +471,33 @@ pub async fn sweep_orphan_session_entries_page(
         }
         _ => None,
     };
-    Ok(OrphanPage { deleted, next })
+    Ok(OrphanPage {
+        deleted,
+        next,
+        newest,
+    })
+}
+
+/// Where the last orphan sweep stopped (`None` before the first one).
+pub async fn orphan_cursor(conn: &mut PgConnection) -> Result<Option<OffsetDateTime>, sqlx::Error> {
+    sqlx::query_scalar("SELECT position FROM ai_sweep_cursors WHERE name = $1")
+        .bind(ORPHAN_CURSOR)
+        .fetch_optional(conn)
+        .await
+}
+
+/// Stores where the orphan sweep stopped.
+pub async fn set_orphan_cursor(
+    conn: &mut PgConnection,
+    position: OffsetDateTime,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "INSERT INTO ai_sweep_cursors (name, position) VALUES ($1, $2) \
+         ON CONFLICT (name) DO UPDATE SET position = EXCLUDED.position, updated_at = now()",
+    )
+    .bind(ORPHAN_CURSOR)
+    .bind(position)
+    .execute(conn)
+    .await?;
+    Ok(())
 }

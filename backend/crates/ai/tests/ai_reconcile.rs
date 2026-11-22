@@ -679,6 +679,12 @@ async fn every_sweep_removes_orphan_session_entries_past_the_grace(pool: PgPool)
         queue: queue.clone(),
     };
     assert_eq!(handler.kind(), kinds::KIND_AI_RECONCILE);
+    // A backdated entry behind the stored cursor is never written in production (entries
+    // are stamped now()); reset the cursor so the handler's sweep reads the window again.
+    sqlx::query("DELETE FROM ai_sweep_cursors")
+        .execute(&pool)
+        .await
+        .unwrap();
     let other = Uuid::new_v4();
     insert_entry(&pool, other, 1, 20 * 60).await;
     let out = handler
@@ -1229,7 +1235,9 @@ async fn an_orphan_page_reads_at_most_its_limit_and_moves_past_live_entries(pool
     let acct = account(&pool, "orphan-live").await;
     let conv = conversation(&pool, acct).await;
     sqlx::query(
-        "INSERT INTO ai_sdk_session_entries (project_key, session_id, subpath, seq, entry,          created_at) SELECT 'p', $1, '', i, '{}', now() - interval '2 hours'          + make_interval(secs => i) FROM generate_series(1, 2500) i",
+        "INSERT INTO ai_sdk_session_entries (project_key, session_id, subpath, seq, entry, \
+         created_at) SELECT 'p', $1, '', i, '{}', now() - interval '2 hours' \
+         + make_interval(secs => i) FROM generate_series(1, 2500) i",
     )
     .bind(conv)
     .execute(&pool)
@@ -1262,7 +1270,9 @@ async fn a_tie_wider_than_a_page_of_live_entries_still_reaches_its_orphans(pool:
     let acct = account(&pool, "orphan-tie").await;
     let conv = conversation(&pool, acct).await;
     sqlx::query(
-        "INSERT INTO ai_sdk_session_entries (project_key, session_id, subpath, seq, entry,          created_at) SELECT 'p', CASE WHEN i <= 1500 THEN $1 ELSE gen_random_uuid() END, '', i,          '{}', date_trunc('second', now()) - interval '1 hour' FROM generate_series(1, 1502) i",
+        "INSERT INTO ai_sdk_session_entries (project_key, session_id, subpath, seq, entry, \
+         created_at) SELECT 'p', CASE WHEN i <= 1500 THEN $1 ELSE gen_random_uuid() END, '', i, \
+         '{}', date_trunc('second', now()) - interval '1 hour' FROM generate_series(1, 1502) i",
     )
     .bind(conv)
     .execute(&pool)
@@ -1292,7 +1302,80 @@ async fn a_sweep_past_its_deadline_skips_the_remaining_steps(pool: PgPool) {
     assert_eq!(counts.skipped_steps, 9, "{counts:?}");
     assert_eq!(job_count(&pool, kinds::KIND_GENERATE_REPORT).await, 0);
     // The regular sweep has a deadline below the runner's hard timeout and runs every step.
-    assert!(reconcile::SWEEP_DEADLINE < Duration::from_secs(5 * 60));
+    assert!(
+        reconcile::SWEEP_DEADLINE + reconcile::ORPHAN_SWEEP_BUDGET + reconcile::STEP_TIMEOUT
+            < Duration::from_secs(5 * 60),
+        "the last step ends before the runner's hard timeout"
+    );
     let counts = sweep(&pool, &queue).await;
     assert_eq!((counts.reports, counts.skipped_steps), (1, 0));
+}
+
+/// Review I1: a sweep whose orphan budget runs out mid-window resumes there next time, so
+/// orphans behind more live entries than one budget covers are still reached.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn the_orphan_sweep_resumes_where_the_last_one_stopped(pool: PgPool) {
+    let queue = Queue::new(pool.clone());
+    let acct = account(&pool, "orphan-resume").await;
+    let conv = conversation(&pool, acct).await;
+    sqlx::query(
+        "INSERT INTO ai_sdk_session_entries (project_key, session_id, subpath, seq, entry, \
+         created_at) SELECT 'p', $1, '', i, '{}', \
+         now() - interval '2 hours' + make_interval(secs => i) FROM generate_series(1, 50) i",
+    )
+    .bind(conv)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let orphans = [Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4()];
+    for (i, o) in orphans.iter().enumerate() {
+        insert_entry(&pool, *o, i as i64, 30 * 60).await;
+    }
+    // One page of 10 per sweep: 6 sweeps cover the 53 entries.
+    let opts = reconcile::SweepOptions {
+        orphan_page: 10,
+        orphan_budget: Duration::ZERO,
+        ..reconcile::SweepOptions::default()
+    };
+    let mut deleted = 0;
+    for _ in 0..7 {
+        let c = reconcile::reconcile_ai_with(&pool, &queue, OffsetDateTime::now_utc(), &opts)
+            .await
+            .unwrap();
+        deleted += c.session_entries;
+    }
+    assert_eq!(deleted, 3);
+    for o in orphans {
+        assert_eq!(entries(&pool, o).await, 0);
+    }
+    assert_eq!(entries(&pool, conv).await, 50);
+    // At the end of the window the cursor stays put: a later orphan is found by the next sweep,
+    // and the live entries are not read again.
+    let late = Uuid::new_v4();
+    insert_entry(&pool, late, 1, 20 * 60).await;
+    let c = reconcile::reconcile_ai_with(&pool, &queue, OffsetDateTime::now_utc(), &opts)
+        .await
+        .unwrap();
+    assert_eq!(c.session_entries, 1);
+    assert_eq!(entries(&pool, late).await, 0);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_stale_orphan_cursor_is_clamped_to_the_window(pool: PgPool) {
+    let queue = Queue::new(pool.clone());
+    let mut conn = pool.acquire().await.unwrap();
+    chat::set_orphan_cursor(
+        &mut conn,
+        OffsetDateTime::now_utc() - time::Duration::hours(48),
+    )
+    .await
+    .unwrap();
+    drop(conn);
+    let gone = Uuid::new_v4();
+    insert_entry(&pool, gone, 1, 30 * 60).await;
+    let ancient = Uuid::new_v4();
+    insert_entry(&pool, ancient, 1, 30 * 3600).await;
+    assert_eq!(sweep(&pool, &queue).await.session_entries, 1);
+    assert_eq!(entries(&pool, gone).await, 0);
+    assert_eq!(entries(&pool, ancient).await, 1, "outside the 24 h window");
 }

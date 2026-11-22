@@ -140,19 +140,24 @@ pub enum EmitError {
     /// A user-owned kind ([`Audience::User`]) emitted without its owner.
     #[error("event {0} belongs to one user; emit it with emit_for_user")]
     NeedsOwner(String),
+    /// A kind missing from [`EVENT_KINDS`]: refused until it is classified (deny by default).
+    #[error("event {0} is not in EVENT_KINDS")]
+    UnknownKind(String),
 }
 
 /// Inserts one account event on `tx` (make it the last statement before the commit; see
 /// `insert_user_event`). Returns the event id. A user-owned kind is refused: every user linked
-/// to the account would receive it.
+/// to the account would receive it, and so is a kind missing from [`EVENT_KINDS`].
 pub async fn emit(
     tx: &mut PgConnection,
     account_id: Uuid,
     ty: &str,
     payload: &impl Serialize,
 ) -> Result<i64, EmitError> {
-    if audience(ty) == Some(Audience::User) {
-        return Err(EmitError::NeedsOwner(ty.to_owned()));
+    match audience(ty) {
+        Some(Audience::Account) => {}
+        Some(Audience::User) => return Err(EmitError::NeedsOwner(ty.to_owned())),
+        None => return Err(EmitError::UnknownKind(ty.to_owned())),
     }
     let payload = serde_json::to_value(payload)?;
     let stored = ::events::store::insert_user_event(tx, account_id, ty, &payload).await?;
