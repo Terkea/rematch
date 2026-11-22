@@ -3,6 +3,7 @@ import { toast } from "@ci/ui/overlays";
 import type { QueryClient } from "@tanstack/react-query";
 import { queryKeys } from "../query-keys";
 import { isImportKind, kindLabel, MAX_FAILURES, updateActivity } from "./activity";
+import { applyCoachEvent } from "./coach-events";
 
 export type { StreamEvent };
 
@@ -62,6 +63,8 @@ export function applyEvent(qc: QueryClient, e: StreamEvent): void {
       void qc.invalidateQueries();
       return;
     default:
+      // Coach events (M5b): reports, weekly reviews, notes and the chat stream.
+      applyCoachEvent(qc, e);
       return;
   }
 }
