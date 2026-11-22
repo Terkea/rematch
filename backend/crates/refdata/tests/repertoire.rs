@@ -273,11 +273,18 @@ async fn unparsable_pgn_gets_an_empty_row_and_no_evidence(pool: PgPool) {
     assert_eq!(root, 1);
 }
 
-/// 8 black Caro-Kann games (all lost, expected 0.5) whose 3...Bf5 lost ΔW 12, with metrics of
+/// 8 black Caro-Kann games (all lost; opponents rated 1400..1680, so the expected scores have
+/// spread) whose 3...Bf5 lost ΔW 12, with metrics of
 /// `version`.
 async fn caro_with_metrics(pool: &PgPool, account: Uuid, version: u32) {
-    for _ in 0..8 {
+    for k in 0..8 {
         let id = seed(pool, account, CARO_PGN, "black", "done").await;
+        sqlx::query("UPDATE games SET white_rating = $2 WHERE id = $1")
+            .bind(id)
+            .bind(1400 + 40 * k)
+            .execute(pool)
+            .await
+            .unwrap();
         let metrics = PlayerGameMetrics {
             version,
             ..PlayerGameMetrics::default()
@@ -509,4 +516,20 @@ fn both_in_theory_copies_agree() {
     }
     assert_eq!(explorer::THEORY_MIN_TOTAL, pure::THEORY_MIN_TOTAL);
     assert_eq!(explorer::THEORY_MIN_SHARE_PCT, pure::THEORY_MIN_SHARE_PCT);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn concurrent_rebuilds_serialise(pool: PgPool) {
+    let account = insert_account(&pool, "lichess", "hero").await;
+    for _ in 0..10 {
+        seed(&pool, account, ITALIAN_PGN, "white", "imported").await;
+    }
+    let (a, b) = tokio::join!(
+        rebuild_repertoire(&pool, account, TimeClass::Blitz),
+        rebuild_repertoire(&pool, account, TimeClass::Blitz)
+    );
+    assert_eq!((a.unwrap(), b.unwrap()), (1, 1));
+    assert_eq!(count(&pool, "game_openings", account).await, 10);
+    assert_eq!(count(&pool, "repertoire_nodes", account).await, 6);
+    assert_eq!(count(&pool, "opening_lines", account).await, 1);
 }

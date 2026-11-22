@@ -7,13 +7,13 @@
 use coaching_input::{LineSide, Verdict};
 use serde::{Deserialize, Serialize};
 
-use super::lines::{AlternativeMove, LineSummary, comparison_label};
+use super::lines::{AlternativeMove, EXPLORER_MAX_FALLBACK_BANDS, LineSummary, comparison_label};
 
 /// Why a line is a struggle.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum StruggleReason {
-    /// perf ≤ −0.10 and the upper end of its 80% interval < 0.
+    /// perf ≤ −0.10 and the upper end of its 80% interval < 0 (no estimable interval: no claim).
     ScoreBelowExpected,
     /// ≥ 5 analysed games and a mean player win% at the opening end ≤ 40.
     WorseAfterOpening,
@@ -147,7 +147,12 @@ pub fn decide_verdict(
         && line.kind == LineSide::Chosen
     {
         let label = comparison_label(&line.comparison);
-        let alts = if alternatives.is_empty() {
+        let alts = if line.comparison.explorer_band.is_none() {
+            format!(
+                "no explorer data within {EXPLORER_MAX_FALLBACK_BANDS} bands of {} to suggest alternatives",
+                line.comparison.player_band
+            )
+        } else if alternatives.is_empty() {
             format!("no alternative with {ALTERNATIVE_MIN_TOTAL}+ games among {label}")
         } else {
             let list: Vec<String> = alternatives

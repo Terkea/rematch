@@ -9,9 +9,10 @@
 //!    [`EXPLORER_MAX_FALLBACK_BANDS`] (recorded in every line's `comparison`).
 //! 3. Analysed data comes from `game_metrics` only when its version is
 //!    [`PLAYER_GAME_METRICS_VERSION`]; a stale row is no evidence, never zero evidence.
-//! 4. In one transaction (serialised per account × time class by an advisory lock), the book
-//!    exits in `game_openings` are refreshed and `repertoire_nodes` and `opening_lines` are
-//!    replaced.
+//! 4. The whole rebuild runs in one transaction that first takes an advisory lock per
+//!    account × time class, so the reads and writes of two rebuilds never interleave. It
+//!    refreshes the book exits in `game_openings` and replaces `repertoire_nodes` and
+//!    `opening_lines`.
 
 use std::collections::HashMap;
 
@@ -22,12 +23,12 @@ use profile_core::openings::lines::{
     resolve_band, summarise_lines,
 };
 use profile_core::openings::repertoire::{
-    AnalysedOpening, ExplorerIndex, ExplorerMove, MAX_REPERTOIRE_PLIES, RepertoireGame,
-    RepertoireLine, RepertoirePly, book_exit, build_repertoire_tree, opening_plies,
+    AnalysedOpening, ExplorerIndex, MAX_REPERTOIRE_PLIES, RepertoireGame, RepertoireLine,
+    RepertoirePly, book_exit, build_repertoire_tree, opening_plies,
 };
 use profile_core::types::{Band, PLAYER_GAME_METRICS_VERSION, PlatformId, PlayerGameMetrics};
 use profile_core::weakness::sessions::expected_score_from_ratings;
-use sqlx::{FromRow, PgPool};
+use sqlx::{FromRow, PgConnection, PgPool};
 use uuid::Uuid;
 
 use crate::builds::{RefdataError, Result};
@@ -56,6 +57,18 @@ fn color_of(s: &str) -> Result<Color> {
 /// Classifies the account × time class games without a `game_openings` row; returns how many
 /// rows it wrote.
 pub async fn fill_game_openings(pool: &PgPool, account_id: Uuid, tc: TimeClass) -> Result<u64> {
+    let mut tx = pool.begin().await?;
+    let written = fill_game_openings_in(&mut tx, account_id, tc).await?;
+    tx.commit().await?;
+    Ok(written)
+}
+
+/// [`fill_game_openings`] on the caller's connection or transaction.
+pub async fn fill_game_openings_in(
+    conn: &mut PgConnection,
+    account_id: Uuid,
+    tc: TimeClass,
+) -> Result<u64> {
     let missing: Vec<MissingGame> = sqlx::query_as(
         "SELECT g.id, g.pgn, g.player_color::text AS player_color FROM games g \
          WHERE g.account_id = $1 AND g.time_class = $2::time_class \
@@ -63,9 +76,8 @@ pub async fn fill_game_openings(pool: &PgPool, account_id: Uuid, tc: TimeClass) 
     )
     .bind(account_id)
     .bind(tc.as_str())
-    .fetch_all(pool)
+    .fetch_all(&mut *conn)
     .await?;
-    let mut tx = pool.begin().await?;
     let mut written = 0;
     for g in missing {
         let player = color_of(&g.player_color)?;
@@ -105,11 +117,10 @@ pub async fn fill_game_openings(pool: &PgPool, account_id: Uuid, tc: TimeClass) 
         .bind(line.as_ref().map(|l| l.eco.as_str()))
         .bind(line.as_ref().map(|l| l.kind.as_str()))
         .bind(line.as_ref().and_then(|l| i32::try_from(l.entry_ply).ok()))
-        .execute(&mut *tx)
+        .execute(&mut *conn)
         .await?;
         written += done.rows_affected();
     }
-    tx.commit().await?;
     Ok(written)
 }
 
@@ -120,10 +131,20 @@ pub async fn player_band(
     account_id: Uuid,
     tc: TimeClass,
 ) -> Result<(Band, BandSource)> {
+    let mut conn = pool.acquire().await?;
+    player_band_in(&mut conn, account_id, tc).await
+}
+
+/// [`player_band`] on the caller's connection or transaction.
+pub async fn player_band_in(
+    conn: &mut PgConnection,
+    account_id: Uuid,
+    tc: TimeClass,
+) -> Result<(Band, BandSource)> {
     let platform: String =
         sqlx::query_scalar("SELECT platform::text FROM linked_accounts WHERE id = $1")
             .bind(account_id)
-            .fetch_optional(pool)
+            .fetch_optional(&mut *conn)
             .await?
             .ok_or(RefdataError::NotFound(account_id))?;
     let platform: PlatformId = platform
@@ -137,7 +158,7 @@ pub async fn player_band(
     )
     .bind(account_id)
     .bind(tc.as_str())
-    .fetch_optional(pool)
+    .fetch_optional(&mut *conn)
     .await?
     .flatten();
     let opponents: Vec<i32> = sqlx::query_scalar(
@@ -149,7 +170,7 @@ pub async fn player_band(
     .bind(account_id)
     .bind(tc.as_str())
     .bind(OPPONENT_BAND_GAMES)
-    .fetch_all(pool)
+    .fetch_all(&mut *conn)
     .await?;
     Ok(resolve_band(platform, tc, own, &opponents))
 }
@@ -182,22 +203,6 @@ pub async fn load_explorer_with_fallback(
     for b in explorer_band_order(band) {
         let index = load_explorer_index(pool, fen_keys, b, tc).await?;
         if !index.is_empty() {
-            let index = index
-                .into_iter()
-                .map(|(k, moves)| {
-                    let moves = moves
-                        .into_iter()
-                        .map(|m| ExplorerMove {
-                            uci: m.uci,
-                            white: m.white,
-                            draws: m.draws,
-                            black: m.black,
-                            total: m.total,
-                        })
-                        .collect();
-                    (k, moves)
-                })
-                .collect();
             let comparison = BandComparison {
                 player_band: band,
                 band_source: source,
@@ -330,7 +335,11 @@ fn game_of(r: &OpeningRow) -> Result<Option<(RepertoireGame, Option<PlayerGameMe
 }
 
 /// Loads the account × time class repertoire games with their engine data.
-async fn load_games(pool: &PgPool, account_id: Uuid, tc: TimeClass) -> Result<Vec<RepertoireGame>> {
+async fn load_games(
+    conn: &mut PgConnection,
+    account_id: Uuid,
+    tc: TimeClass,
+) -> Result<Vec<RepertoireGame>> {
     let rows: Vec<OpeningRow> = sqlx::query_as(
         "SELECT o.game_id, o.color::text AS color, o.fen_keys, o.ucis, o.sans, o.line_key, \
          o.line_name, o.eco, o.line_kind::text AS line_kind, o.line_entry_ply, \
@@ -342,7 +351,7 @@ async fn load_games(pool: &PgPool, account_id: Uuid, tc: TimeClass) -> Result<Ve
     )
     .bind(account_id)
     .bind(tc.as_str())
-    .fetch_all(pool)
+    .fetch_all(&mut *conn)
     .await?;
     let mut games = Vec::with_capacity(rows.len());
     let mut metrics: HashMap<Uuid, PlayerGameMetrics> = HashMap::new();
@@ -372,7 +381,7 @@ async fn load_games(pool: &PgPool, account_id: Uuid, tc: TimeClass) -> Result<Ve
         )
         .bind(&ids)
         .bind(i32::try_from(MAX_REPERTOIRE_PLIES).unwrap_or(i32::MAX))
-        .fetch_all(pool)
+        .fetch_all(&mut *conn)
         .await?
     };
     let mut by_game: HashMap<Uuid, Vec<MoveRow>> = HashMap::new();
@@ -408,10 +417,20 @@ async fn load_games(pool: &PgPool, account_id: Uuid, tc: TimeClass) -> Result<Ve
 
 /// Rebuilds the repertoire of an account × time class (module doc); returns the number of
 /// lines written to `opening_lines`.
+///
+/// The advisory lock is taken first and every account read runs in the same transaction, so a
+/// rebuild that read older data cannot commit over a newer one (T18 review M3). The explorer is
+/// read from the pool: it is reference data with its own one-snapshot read.
 pub async fn rebuild_repertoire(pool: &PgPool, account_id: Uuid, tc: TimeClass) -> Result<usize> {
-    fill_game_openings(pool, account_id, tc).await?;
-    let (band, source) = player_band(pool, account_id, tc).await?;
-    let games = load_games(pool, account_id, tc).await?;
+    let mut tx = pool.begin().await?;
+    sqlx::query("SELECT pg_advisory_xact_lock(hashtext('repertoire:' || $1::text || ':' || $2))")
+        .bind(account_id)
+        .bind(tc.as_str())
+        .execute(&mut *tx)
+        .await?;
+    fill_game_openings_in(&mut tx, account_id, tc).await?;
+    let (band, source) = player_band_in(&mut tx, account_id, tc).await?;
+    let games = load_games(&mut tx, account_id, tc).await?;
     let mut keys: Vec<String> = games
         .iter()
         .flat_map(|g| g.plies.iter().map(|p| p.fen_key_before.clone()))
@@ -443,12 +462,6 @@ pub async fn rebuild_repertoire(pool: &PgPool, account_id: Uuid, tc: TimeClass) 
         }
     }
 
-    let mut tx = pool.begin().await?;
-    sqlx::query("SELECT pg_advisory_xact_lock(hashtext('repertoire:' || $1::text || ':' || $2))")
-        .bind(account_id)
-        .bind(tc.as_str())
-        .execute(&mut *tx)
-        .await?;
     sqlx::query(
         "UPDATE game_openings o SET book_exit_ply = u.exit, player_deviation_ply = u.dev \
          FROM UNNEST($1::uuid[], $2::int4[], $3::int4[]) AS u(id, exit, dev) \

@@ -206,7 +206,8 @@ pub struct LineSummary {
     /// Mean `score - expected` over the `perf_games` games with an expected score.
     pub perf_vs_expected: Option<f64>,
     pub perf_games: u32,
-    /// 80% normal interval of `perf_vs_expected`; never zero-width (`None` if it would be).
+    /// 80% normal interval of `perf_vs_expected` from the sample variance alone; `None` when it
+    /// cannot be estimated (fewer than 2 games, or no spread). Never widened.
     pub perf_interval: Option<Interval>,
     /// Analysed games with a win% at the opening end.
     pub analysed_games: u32,
@@ -257,28 +258,30 @@ fn mode<T: Ord + Clone>(values: impl IntoIterator<Item = T>) -> Option<T> {
     best.map(|(v, _)| v)
 }
 
-/// 80% interval of the mean residual `score - expected`. The variance is the larger of the
-/// sample variance and the mean null variance `E(1 - E)`, so equal residuals still give a real
-/// interval. `None` when it would be degenerate.
-fn perf_interval(pairs: &[(f64, f64)]) -> Option<Interval> {
-    if pairs.is_empty() {
+/// Half-widths at or below this, relative to `max(1, |mean|)`, count as zero spread. Every
+/// threshold is compared with a tolerance of `EPS` = 1e-9 (verdicts), so a narrower interval
+/// cannot be told apart from its centre at that resolution; it is far above the summation noise
+/// of identical residuals (about 1e-17) and far below any real spread of game results.
+pub const ZERO_SPREAD_REL_TOL: f64 = 1e-9;
+
+/// 80% normal interval (`Z80`) of the mean residual `score - expected`, from the sample
+/// variance only (binding ruling: an interval is never widened). `None` when it cannot be
+/// estimated: fewer than 2 pairs, a non-finite value, or zero spread within
+/// [`ZERO_SPREAD_REL_TOL`]. Nothing that depends on the interval is then claimed.
+pub fn perf_interval(pairs: &[(f64, f64)]) -> Option<Interval> {
+    if pairs.len() < 2 {
         return None;
     }
     let n = pairs.len() as f64;
     let resid: Vec<f64> = pairs.iter().map(|(s, e)| s - e).collect();
     let mean = resid.iter().sum::<f64>() / n;
-    let sample = if pairs.len() > 1 {
-        resid.iter().map(|r| (r - mean).powi(2)).sum::<f64>() / (n - 1.0)
-    } else {
-        0.0
-    };
-    let null = pairs.iter().map(|(_, e)| e * (1.0 - e)).sum::<f64>() / n;
-    let se = (sample.max(null) / n).sqrt();
-    let half = Z80 * se;
-    (half.is_finite() && half > 0.0).then_some(Interval {
-        low: mean - half,
-        high: mean + half,
-    })
+    let sample = resid.iter().map(|r| (r - mean).powi(2)).sum::<f64>() / (n - 1.0);
+    let half = Z80 * (sample / n).sqrt();
+    if !mean.is_finite() || !half.is_finite() || half <= ZERO_SPREAD_REL_TOL * mean.abs().max(1.0) {
+        return None;
+    }
+    let (low, high) = (mean - half, mean + half);
+    (low < high).then_some(Interval { low, high })
 }
 
 /// Up to [`MAX_ALTERNATIVES`] explorer moves at `choice` with ≥ [`ALTERNATIVE_MIN_TOTAL`]

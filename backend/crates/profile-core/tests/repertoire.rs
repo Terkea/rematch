@@ -1,6 +1,7 @@
 //! R2 Task 18: repertoire tree, struggle detection and verdicts (TS M2 Task 13 cases), plus the
 //! ownership rule (T16 ruling), the honesty rules (no claims from zero evidence, intervals never
-//! zero-width) and the boundaries of every threshold.
+//! widened: an unestimable or zero-spread interval is `None` and claims nothing) and the
+//! boundaries of every threshold. TS cases 4 and 5 use fixtures with real spread (ADR-R2-8).
 
 use std::collections::HashMap;
 
@@ -9,8 +10,8 @@ use chess_core::fen::fen_key;
 use chess_core::{Color, Ply, TimeClass};
 use coaching_input::{LineSide, Verdict};
 use profile_core::openings::lines::{
-    BandComparison, BandSource, LineSummary, classify_line, line_owner, line_side, resolve_band,
-    summarise_lines,
+    BandComparison, BandSource, LineSummary, classify_line, line_owner, line_side, perf_interval,
+    resolve_band, summarise_lines,
 };
 use profile_core::openings::repertoire::{
     AnalysedOpening, ExplorerIndex, ExplorerMove, MAX_REPERTOIRE_PLIES, RepertoireGame, book_exit,
@@ -238,11 +239,63 @@ fn bishops_index() -> ExplorerIndex {
     index
 }
 
+/// `n` Bishop's Opening games with real spread (TS cases 4 and 5 amended, ADR-R2-8): two draws,
+/// the rest losses, expected scores alternating ±0.05 around a mean chosen so the performance
+/// is `perf`.
+fn spread_games(n: usize, color: Color, perf: f64) -> Vec<RepertoireGame> {
+    let scores: Vec<f64> = (0..n).map(|i| if i < 2 { 0.5 } else { 0.0 }).collect();
+    let mean_score = scores.iter().sum::<f64>() / n as f64;
+    let mean_expected = mean_score - perf;
+    scores
+        .iter()
+        .enumerate()
+        .map(|(i, s)| {
+            let d = if n % 2 == 1 && i == n - 1 {
+                0.0
+            } else if i % 2 == 0 {
+                -0.05
+            } else {
+                0.05
+            };
+            game(color, BISHOPS, *s, Some(mean_expected + d))
+        })
+        .collect()
+}
+
+/// `n` games whose residuals are all `score - expected` = -0.2 (zero spread), with `noise`
+/// added to every other expected score.
+fn flat_games(n: usize, color: Color, noise: f64) -> Vec<RepertoireGame> {
+    (0..n)
+        .map(|i| {
+            let e = if i % 2 == 0 { 0.2 } else { 0.2 + noise };
+            game(color, BISHOPS, 0.0, Some(e))
+        })
+        .collect()
+}
+
+#[test]
+fn zero_spread_gives_no_interval_and_no_replace() {
+    // TS case 4 as written: 15 losses at expected 0.2. The residuals have no spread, so the
+    // interval cannot be estimated and nothing that depends on it is claimed (binding ruling).
+    for noise in [0.0, 1e-15, 1e-12] {
+        let ls = lines(&flat_games(15, Color::White, noise), &bishops_index());
+        let l = line(&ls, "white:bishops-opening", LineSide::Chosen);
+        assert!(close(l.perf_vs_expected.unwrap(), -0.2));
+        assert_eq!(l.perf_interval, None, "noise {noise}");
+        assert!(!l.struggles.contains(&StruggleReason::ScoreBelowExpected));
+        assert_ne!(l.verdict, Some(Verdict::Replace), "{}", l.reason);
+        assert_eq!(l.verdict, Some(Verdict::Keep), "{}", l.reason);
+        // TS case 5 as written (faced): no Learn from an unestimable interval either.
+        let ls = lines(&flat_games(15, Color::Black, noise), &bishops_index());
+        let l = line(&ls, "black:bishops-opening", LineSide::Faced);
+        assert_eq!(l.perf_interval, None);
+        assert_eq!(l.verdict, Some(Verdict::Keep), "{}", l.reason);
+    }
+}
+
 #[test]
 fn fifteen_losing_chosen_games_are_replace_with_alternatives() {
-    let games: Vec<_> = (0..15)
-        .map(|_| game(Color::White, BISHOPS, 0.0, Some(0.2)))
-        .collect();
+    let games = spread_games(15, Color::White, -0.2);
     let ls = lines(&games, &bishops_index());
     let l = line(&ls, "white:bishops-opening", LineSide::Chosen);
     assert!(close(l.perf_vs_expected.unwrap(), -0.2));
@@ -263,16 +316,14 @@ fn fifteen_losing_chosen_games_are_replace_with_alternatives() {
     assert_eq!(a.games, 500);
     assert!(close(a.band_score, 0.7), "white to move: (300 + 50) / 500");
     assert_eq!(a.name.as_deref(), Some("King's Knight Opening"));
-    // The perf interval is never zero-width, even though every residual is -0.2.
+    // The interval comes from the observed spread alone.
     let iv = l.perf_interval.unwrap();
     assert!(iv.low < iv.high && iv.high < 0.0, "{iv:?}");
 }
 
 #[test]
 fn the_same_stats_faced_are_learn_never_replace() {
-    let games: Vec<_> = (0..15)
-        .map(|_| game(Color::Black, BISHOPS, 0.0, Some(0.2)))
-        .collect();
+    let games = spread_games(15, Color::Black, -0.2);
     let ls = lines(&games, &bishops_index());
     let l = line(&ls, "black:bishops-opening", LineSide::Faced);
     assert!(l.struggles.contains(&StruggleReason::ScoreBelowExpected));
@@ -653,23 +704,17 @@ fn opponent_errors_are_not_the_players_fix() {
 #[test]
 fn replace_boundaries() {
     // 14 games: score_below holds, but replace needs 15, so learn.
-    let games: Vec<_> = (0..14)
-        .map(|_| game(Color::White, BISHOPS, 0.0, Some(0.2)))
-        .collect();
+    let games = spread_games(14, Color::White, -0.2);
     let l = &lines(&games, &bishops_index())[0];
     assert!(l.struggles.contains(&StruggleReason::ScoreBelowExpected));
     assert_eq!(l.verdict, Some(Verdict::Learn));
     // 15 games at perf -0.14: score_below, but not -0.15, so learn.
-    let games: Vec<_> = (0..15)
-        .map(|_| game(Color::White, BISHOPS, 0.0, Some(0.14)))
-        .collect();
+    let games = spread_games(15, Color::White, -0.14);
     let l = &lines(&games, &bishops_index())[0];
     assert!(l.struggles.contains(&StruggleReason::ScoreBelowExpected));
     assert_eq!(l.verdict, Some(Verdict::Learn));
     // perf exactly -0.15 is replace.
-    let games: Vec<_> = (0..15)
-        .map(|_| game(Color::White, BISHOPS, 0.0, Some(0.15)))
-        .collect();
+    let games = spread_games(15, Color::White, -0.15);
     assert_eq!(
         lines(&games, &bishops_index())[0].verdict,
         Some(Verdict::Replace)
@@ -696,7 +741,7 @@ fn score_below_needs_eight_games_with_an_expected_score() {
     // 10 games, but only 7 have ratings: no performance-based struggle.
     let games: Vec<_> = (0..10)
         .map(|i| {
-            let exp = (i < 7).then_some(0.8);
+            let exp = (i < 7).then_some(if i % 2 == 0 { 0.75 } else { 0.85 });
             game(Color::White, BISHOPS, 0.0, exp)
         })
         .collect();
@@ -709,9 +754,7 @@ fn score_below_needs_eight_games_with_an_expected_score() {
 
 #[test]
 fn decide_verdict_rule_order() {
-    let games: Vec<_> = (0..15)
-        .map(|_| game(Color::White, BISHOPS, 0.0, Some(0.2)))
-        .collect();
+    let games = spread_games(15, Color::White, -0.2);
     let l = lines(&games, &bishops_index()).remove(0);
     // Fix outranks replace.
     let both = [
@@ -743,9 +786,7 @@ fn decide_verdict_rule_order() {
 
 #[test]
 fn fallback_band_is_reported_in_the_reason() {
-    let games: Vec<_> = (0..15)
-        .map(|_| game(Color::White, BISHOPS, 0.0, Some(0.2)))
-        .collect();
+    let games = spread_games(15, Color::White, -0.2);
     let fallback = BandComparison {
         player_band: Band::B3,
         band_source: BandSource::Rating,
@@ -855,9 +896,7 @@ fn avg_eval_is_the_rounded_white_pov_mean() {
 
 #[test]
 fn summary_round_trips_through_json() {
-    let games: Vec<_> = (0..15)
-        .map(|_| game(Color::White, BISHOPS, 0.0, Some(0.2)))
-        .collect();
+    let games = spread_games(15, Color::White, -0.2);
     let l = lines(&games, &bishops_index()).remove(0);
     let json = serde_json::to_value(&l).unwrap();
     assert_eq!(json["kind"], "chosen");
@@ -865,4 +904,38 @@ fn summary_round_trips_through_json() {
     assert_eq!(json["comparison"]["explorerBand"], "B2");
     let back: LineSummary = serde_json::from_value(json).unwrap();
     assert_eq!(back, l);
+}
+
+#[test]
+fn perf_interval_is_never_widened_and_none_when_unestimable() {
+    // One game, or identical residuals (exact or within float noise): not estimable.
+    assert_eq!(perf_interval(&[(0.0, 0.2)]), None);
+    assert_eq!(perf_interval(&[]), None);
+    assert_eq!(perf_interval(&[(0.0, 0.2); 15]), None);
+    assert_eq!(perf_interval(&[(0.0, 0.2), (0.0, 0.2 + 1e-12)]), None);
+    assert_eq!(perf_interval(&[(f64::NAN, 0.2), (0.0, 0.2)]), None);
+    // Two different residuals: the plain sample interval, mean ± Z80·s/√n.
+    let iv = perf_interval(&[(1.0, 0.5), (0.0, 0.5)]).unwrap();
+    let half = 1.2815515655446004 * (0.5f64 / 2.0).sqrt();
+    assert!(close(iv.low, -half) && close(iv.high, half), "{iv:?}");
+}
+
+#[test]
+fn replace_without_explorer_data_says_so_plainly() {
+    let games = spread_games(15, Color::White, -0.2);
+    let none = BandComparison {
+        player_band: Band::B1,
+        band_source: BandSource::Default,
+        explorer_band: None,
+        explorer_fallback: false,
+    };
+    let l = &summarise_lines(&games, &ExplorerIndex::new(), &none, TimeClass::Blitz)[0];
+    assert_eq!(l.verdict, Some(Verdict::Replace));
+    assert!(
+        l.reason
+            .contains("no explorer data within 2 bands of B1 to suggest alternatives"),
+        "{}",
+        l.reason
+    );
+    assert!(!l.reason.contains("among no explorer"), "{}", l.reason);
 }

@@ -28,7 +28,7 @@ The coach tells a player which of their openings work and which do not ("your Ca
 
 ### Theory and book exit
 
-- **Theory** is our own rating-band explorer (Task 17): a move is theory when its position has ≥ 50 explorer games and the move has ≥ 5% of them (exact integers). `profile-core` mirrors `refdata::explorer::in_theory` because it cannot depend on `refdata`; a refdata test pins that both agree.
+- **Theory** is our own rating-band explorer (Task 17): a move is theory when its position has ≥ 50 explorer games and the move has ≥ 5% of them (exact integers). The one copy of `ExplorerMove`, `in_theory` and its constants lives in `profile-core` (pure); `refdata::explorer` re-exports it.
 - `book_exit(plies, index, player)` returns `(book_exit_ply, player_deviation_ply)`. The book exit is the first ply that is not theory. It is the **player's deviation** only if the player made that move in a theory position (≥ 50 games). When the position is thin, theory ran out and nobody deviated; when the opponent moved, the player did not deviate.
 - **No claim from zero evidence:** if the first position is not a theory position (for example no explorer data for the band), both are `None`.
 - The line's **median deviation ply** treats games where the player never left theory as later than any ply, and is reported only with ≥ 8 games of theory evidence and a finite median. `deviation_ply` is then the lower median (an observed ply) and `deviation_move_san` the most common move played there.
@@ -37,13 +37,13 @@ The coach tells a player which of their openings work and which do not ("your Ca
 
 - The player's band follows R-4 with ruling Q2: the latest rating in the time class (`to_lichess_equivalent`), else the mean opponent rating of the last 20 games, else **B1**. Its source (`rating`, `opponent_mean`, `default`) is recorded.
 - The explorer index is loaded for that band. If the band has no explorer data for any of the player's positions, the nearest band with data is used, at most **2 bands** away (lower band first on a tie), as for the band reference (ADR-R2-23). Beyond that there is no comparison.
-- Every line summary carries `comparison { playerBand, bandSource, explorerBand, explorerFallback }`, and every reason that cites the band (theory, alternatives) names the band used and says "fallback band" when it is not the player's own. Task 34 must carry this into `Alternative.bandScore` wording.
+- Every line summary carries `comparison { playerBand, bandSource, explorerBand, explorerFallback }`, and every reason that cites the band (theory, alternatives) names the band used and says "fallback band" when it is not the player's own. Alternatives are computed for every chosen line, but only a `replace` reason cites them; for other verdicts the band is disclosed only through `comparison`. **Hand-off to Task 34:** map `alternatives` to the contract only for `replace` lines, and carry `comparison` (served band, fallback, band source) into the `Alternative.bandScore` wording, so the fallback band is never lost.
 
 ### Struggles (TS `STRUGGLE_THRESHOLDS`)
 
 `{ minGames 8, perfDrop −0.10, worseWin 40, minAnalysed 5, deviationMinGames 3, deviationShare 0.3, deviationDeltaW 10 }`. A line with fewer than 8 games has no struggles.
 
-- `score_below_expected`: perf ≤ −0.10 over ≥ 8 games with an expected score, and the upper end of the 80% normal interval (`Z80`) < 0. The interval's variance is the larger of the sample variance of the residuals and the mean null variance `E(1 − E)`, so equal residuals (15 losses at expected 0.2) still give a real interval; a degenerate interval is `None` and claims nothing.
+- `score_below_expected`: perf ≤ −0.10 over ≥ 8 games with an expected score, and the upper end of the 80% normal interval (`Z80`) < 0. The interval uses the **sample variance of the residuals only; it is never widened** (project ruling). It is `None` when it cannot be estimated: fewer than 2 games, a non-finite value, or zero spread, meaning a half-width at or below `ZERO_SPREAD_REL_TOL` = 1e-9 × max(1, |mean|). That tolerance equals the threshold tolerance, so a narrower interval cannot be told apart from its centre. It sits far above the summation noise of identical residuals (about 1e-17) and far below any real spread of game results. With no interval, `score_below_expected` is not claimed, and neither is any verdict that depends on it (rule 3 `replace`, or rule 5 `learn` through it).
 - `worse_after_opening`: ≥ 5 analysed games with a win% at the opening end, mean ≤ 40.
 - `repeated_deviation_error`: one `(fen_key, uci)` **of the player** with ΔW ≥ 10 in ≥ 3 games and ≥ 30% of the line's games. The opponent's errors are not the player's fix. That spot is the line's `fix_spot`.
 - Engine data counts only from a `game_metrics` row of the current `PLAYER_GAME_METRICS_VERSION` (plus its `moves` rows); a stale row is no evidence, never zero evidence. Results and ratings come from `games`, so every imported game counts for score and performance.
@@ -70,12 +70,13 @@ Means and shares are compared with a tolerance of 1e-9, because float sums of ex
 `rebuild_repertoire(pool, account, tc)`:
 - fills missing `game_openings` rows for games of **every status** (`imported` included) from their PGN; an unparsable PGN gets a row with empty arrays and no line, so it is not parsed again and adds no evidence;
 - refreshes `book_exit_ply` and `player_deviation_ply` for every game from the current explorer, because a new explorer build changes them;
-- replaces `repertoire_nodes` (stats = the node as camelCase JSON) and `opening_lines` (summary = the `LineSummary`) for the account × time class in one transaction, under a per-account × time-class advisory lock.
+- replaces `repertoire_nodes` (stats = the node as camelCase JSON) and `opening_lines` (summary = the `LineSummary`) for the account × time class in one transaction, under a per-account × time-class advisory lock. The lock is taken first, and every account read (fill, band, games) runs in that transaction, so a rebuild that read older data cannot commit over a newer one. The explorer is read from the pool, because it is reference data with its own one-snapshot read.
 
 ## Consequences
 
 - Classification is stored once per game. A change to the dataset, the slug rules or the ownership rule needs `game_openings` rows of the affected games to be deleted and rebuilt.
-- The two `in_theory` copies must change together (pinned by a test). A later cleanup could move `ExplorerMove` into `profile-core` and re-export it from `refdata`.
+- **Deviation from TS M2 Task 13 cases 4 and 5.** As written, those cases (15 games, each scoring 0 at expected 0.2, giving `replace`, and the same games faced giving `learn`) have residuals with zero spread. Under the interval ruling they claim nothing: no interval, no `score_below_expected`, verdict `keep`, which `zero_spread_gives_no_interval_and_no_replace` pins. The ported cases use 15 games with real spread: 2 draws and 13 losses, with expected scores alternating ±0.05 around a mean that gives perf −0.2. The `replace` boundaries (14 vs 15 games, −0.14 vs −0.15) are re-derived on the same fixture.
+- Ownership by family words includes the variation after the colon. So "Sicilian Defense: Alapin Variation" and "Queen's Gambit Declined: Exchange Variation" are Black-owned, and therefore `faced` for the White player who chose them. "Englund Gambit Declined: Reversed French" is White-owned. This is the ruling as written; anti-Sicilian or Exchange `replace` advice for White would need a ruling change.
 - Struggle cost ranking ("games lost × frequency", spec §8a) is not part of this task.
 
 ## Alternatives rejected
@@ -83,4 +84,4 @@ Means and shares are compared with a tolerance of 1e-9, because float sums of ex
 - **Ownership by entry mover alone.** About 1 000 "Defense" rows are first named on a White ply, so Black's Old Indian would read as faced.
 - **Book exit at ply 1 without explorer data.** It would claim that every player leaves theory immediately when the band has no explorer build.
 - **Median deviation over the deviating games only.** Two early deviations among 20 games that stayed in book would read as "leaves theory at ply 6".
-- **Plain sample-variance interval.** Equal residuals give a zero-width interval, which claims certainty the data does not have.
+- **A variance floor (the larger of the sample variance and `E(1 − E)`).** It was the first implementation. It widened the interval with a model variance the data did not produce, and so turned zero-spread lines into `replace` claims. It was removed under the project ruling that an interval is never widened. Garwood intervals apply to counts; this residual mean is not a count.
