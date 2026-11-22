@@ -14,6 +14,7 @@ import { OverlaysSection } from "./sections/overlays";
 import { PrimitivesSection } from "./sections/primitives";
 import { ProgressSection } from "./sections/progress";
 import { ReviewSection } from "./sections/review";
+import { SoundSection } from "./sections/sound";
 import { StatsSection } from "./sections/stats";
 import { TimelineSection } from "./sections/timeline";
 import { ThemeToggle } from "./theme-toggle";
@@ -47,6 +48,7 @@ export default function StyleguidePage() {
         <AreaScoreSection />
         <TimelineSection />
         <ProgressSection />
+        <SoundSection />
       </main>
     </div>
   );

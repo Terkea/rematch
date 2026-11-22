@@ -579,7 +579,7 @@ Fade-up on every section, hover lift and shadow on cards, parallax and scroll-ja
 
 ## Sound
 
-The owner asked for "sounds for moving pieces". The character is **paper and wood: quiet, close and dry, like a club game in a library**. It is never arcade, never bright synth bleeps, and never louder than a pen on paper. Synthesis parameters are left to Task 12b.
+The owner asked for "sounds for moving pieces". The character is **paper and wood: quiet, close and dry, like a club game in a library**. It is never arcade, never bright synth bleeps, and never louder than a pen on paper. Task 12b synthesises every sound with Web Audio (`packages/ui/src/audio/`), with no sample files.
 
 | Sound | Character | Plays when |
 |---|---|---|
@@ -612,6 +612,22 @@ Rules (spec §11):
 - **Sound never carries information alone.** Every sound has a visual equivalent.
 - **Throttling:** fast replay and scrubbing don't play a sound per move. Only stepping and play do. The onboarding stream plays at most one move sound per 250ms, plus the game-end sound.
 - **One module:** `useBoardSounds()` in `@ci/ui`, with one shared `AudioContext` and preloading, triggered from board events worked out with chess.js. Every board in the app sounds the same.
+
+**Synthesis parameters (Task 12b, original, no assets).** Master volume default 0.6. Voices are summed on one bus per play; throttle 40 ms.
+
+| Sound | Voices |
+|---|---|
+| Move | band-pass noise 1.8 kHz, Q 1.1, 35 ms decay, peak 0.55; sine 180 Hz gliding to 120 Hz, 60 ms, peak 0.7 |
+| Capture | the move voice at gain 1.35, pitch x0.92, plus a second at gain 0.6, pitch x1.1, 28 ms later |
+| Check | the move voice, then a triangle at 1.2 kHz, 70 ms, peak 0.16, 20 ms later |
+| Castle | the move voice, then a second at gain 0.9, pitch x1.08, 70 ms later |
+| Promotion | the move voice, then sines at 660 Hz (+60 ms, 120 ms) and 990 Hz (+120 ms, 200 ms) |
+| Game end | sines at 98, 147 and 196 Hz, peak 0.2 each, 900 ms decay |
+| Drill correct | sines at 523 Hz (280 ms) and 784 Hz (+90 ms, 400 ms) |
+| Drill wrong | sine 110 Hz gliding to 80 Hz, 160 ms, peak 0.5, plus noise 400 Hz, 60 ms |
+| Pen scratch | band-pass noise 3.2 kHz, peak 0.05, 140 ms. Off by default. |
+
+Settings persist in `localStorage` under `ci.sound` (mute, volume, pen), and the context unlocks on the first pointer or key gesture. `soundForMove({ san, flags })` picks the sound; precedence is game end, check, promotion, castle, capture, move. The parameters still need an owner listening pass in the styleguide Sound section.
 
 ## Ban list
 

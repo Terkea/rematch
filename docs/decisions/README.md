@@ -47,6 +47,7 @@ One file per decision: context, decision, alternatives, consequences. New decisi
 - [ADR-WEB-14. Weakness timeline and area score encoding](ADR-WEB-14-weakness-timeline-encoding.md)
 - [ADR-WEB-15. Annotation overlay: geometry, draw-on and placement rules](ADR-WEB-15-annotation-overlay.md)
 - [ADR-WEB-16. App shell, sign-in, age and account-linking screens](ADR-WEB-16-app-shell-and-auth-screens.md)
+- [ADR-WEB-17. Original procedural board sounds](ADR-WEB-17-original-procedural-sounds.md)
 - [0030. Rust for the entire backend](0030-rust-backend.md)
 - [0031. Rust workspace, toolchain and crates](0031-rust-workspace-toolchain-and-crates.md)
 - [0031 addendum. npm enforcement of the 7-day age and exact-pin rule](0031-addendum-npm-enforcement.md)
