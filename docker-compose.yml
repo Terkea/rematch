@@ -244,8 +244,9 @@ services:
       # on.
       DATA_DIR: /data
       SYZYGY_PATH: /data/syzygy
-      # The tables are copied to this volume at start (incremental): every probe re-opens the
-      # table set, which is slow through a Windows bind mount (ADR-R2-25).
+      # A verified copy of the tables (about 940 MB) is kept in this volume. It is checked at
+      # every start and copied only when changed. Every probe re-opens the table set, which is
+      # slow through a Windows bind mount (ADR-R2-25).
       SYZYGY_STAGE_DIR: /var/lib/chess-improver/syzygy
       # Maia-2 (ADR-R2-13). Empty: difficulty stays pending_maia (never estimated). The Maia overlay
       # (docker-compose.maia.yml) sets http://maia:8080 and joins its network.

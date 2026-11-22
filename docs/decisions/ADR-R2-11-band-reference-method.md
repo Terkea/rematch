@@ -100,7 +100,8 @@ streamed. It has no provisional flag and must not leave usernames in our databas
   stored build's `params.salt` reproduces its selection exactly; for a given salt and dump the
   selection is deterministic at any thread count (tested).
 - With `--explorer --band-reference`, the month is downloaded twice (one pass each). A combined
-  sink would save the second download; **parked for Task 35**.
+  sink would save the second download. Task 35 parked it again (ADR-R2-25): it is a lane D
+  change to the pipeline, and no dump build has run yet.
 - `protocol` and `enrichment_protocol` stay NULL when the build is created: `lichess-db` does
   not depend on the engine or enrich crates. The finaliser fills them at activation
   (`sf19-n300k-v1`, `enr-v1`; Task 35, ADR-R2-25); Part 2 records the difficulty model.

@@ -115,10 +115,29 @@ cores. Results were identical in every run: the move, move-feature and metric fi
   `ucinewgame`, and Stockfish then re-opens all 290 table files. Through Docker Desktop's bind
   mount of a Windows folder that took about 0.5 s idle and about 9.5 s under load. The single
   tablebase engine also serialised every game behind it.
-- **The fix:** with `SYZYGY_STAGE_DIR` set, the worker copies the tables once to a local named
-  volume, incrementally and through temporary names. The probe reads the copy, so the files are
-  the same bytes and give the same answers. Afterwards a probe costs about 40 ms, and `tb_ms`
-  fell to 71 ms per game.
+- **The fix:** with `SYZYGY_STAGE_DIR` set, the worker stages a verified copy on a local named
+  volume (`lichess_db::syzygy_stage`), then probes the copy. Afterwards a probe costs about 40 ms,
+  and `tb_ms` fell to 71 ms per game. A wrong table would give wrong answers that `position_tb`
+  keeps for ever, so the staging is strict (T35 review I1/I2):
+  - **One stager at a time.** An exclusive file lock on `<stage>/.lock` covers the whole pass.
+  - **Unique temporary copies.** Each copy is a `create_new` file named with the pid and a random
+    suffix. It is fsynced, read back and hashed, then renamed, and the directory is fsynced.
+    Only whole, verified files ever carry a table's name.
+  - **Content, not size.** The expected SHA-256 is the pinned manifest's (ADR-R2-22) when it
+    names the file, else the source's own hash. A source that fails the pinned hash is refused.
+  - **Fast restarts.** The stage manifest `.staged.json` records each staged file's size and
+    mtime, the source's size and mtime, and the hash. It is written last, atomically. A
+    mismatch, or a missing manifest (for example after a crash), means the staged file is hashed
+    again, and re-copied unless it matches.
+  - **Housekeeping.** Leftover temporary copies are removed, and tables gone from the source are
+    pruned.
+  - **Canary.** When the engines read a staged copy, KQvK and KRvK are probed on the raw pool,
+    bypassing `position_tb`. A wrong answer closes the pool and restarts it on the read-only
+    source, so no answer from a bad stage is ever cached.
+  - **Fallback.** Any staging error falls back to `SYZYGY_PATH`.
+- **Disk:** the stage is a second copy of the 3-4-5 set, about 940 MB, in the `syzygy_stage`
+  volume. The first start copies it in about 10 s; later starts only check sizes and mtimes. The
+  volume goes with `down -v`.
 - **What is left is protocol work.** About 9 MultiPV searches (300k nodes, MultiPV 3) and 17
   threat searches (50k nodes) per game add about 20 % engine nodes over the analysis. Hook
   features, the explorer read and the hook's writes take under 50 ms per game.
@@ -152,6 +171,16 @@ cores. Results were identical in every run: the move, move-feature and metric fi
   ran no dump build.
 - **Double download** with `--explorer --band-reference` (ADR-R2-11). It is still two passes. A
   combined sink is a lane D change.
+- **The snapshot protocol constant** (T33 M9). Snapshots carry no protocol of their own; a
+  change of the KPI definitions is handled by the `PlayerGameMetrics` version gate. A separate
+  constant waits until a snapshot format change needs one.
+- **Large-account timing** (T33/T34). The largest account timed so far has 505 games (356 in one
+  time class): build-profile averaged 464 ms and the CoachingInput builder took about 1 s. "A few
+  thousand games" is not measured yet; that is open for the first large beta account.
+- **Read-only CLI** (review M6). `profile`, `eta` and `queue-lag` were checked by inspection to
+  issue no writes. A `default_transaction_read_only` connection setting is deferred.
+- **Connection headroom** (review M7). 24 was enough for the smoke at 18 engines. R3 Task 26
+  adds its own connections.
 
 ## Consequences
 

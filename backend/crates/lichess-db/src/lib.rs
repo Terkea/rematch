@@ -12,3 +12,4 @@ pub mod reference_select;
 pub mod sample;
 pub mod split;
 pub mod syzygy;
+pub mod syzygy_stage;

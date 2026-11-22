@@ -40,7 +40,8 @@ Mapping choices recorded from T33 (§Concerns 4):
 - **Every ISO week is recomputed**, not only the weeks with a game analysed since the last
   snapshot. The TS rule is unsafe on `analysed_at` timestamps (point 7). Change detection makes
   the stored result equal to the TS rule's, plus the weeks it would miss. The cost is CPU,
-  about 69 rows × weeks; the T35 smoke times it.
+  about 69 rows × weeks. The T35 smoke timed it on the owner's lab copy (356 blitz and 148
+  rapid games): 464 ms on average and 1 018 ms at most per build (ADR-R2-25).
 - **Series references:**
   - weakness keys use `weakness:<k>` with `n0(k)` and `min_evidence(k)`;
   - `motif.missed:<t>` uses `motif_miss_rate:<t>` with the W3.shallow constants;

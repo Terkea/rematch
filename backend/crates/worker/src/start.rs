@@ -46,6 +46,7 @@ use enrich::store::DbEnrichmentStore;
 use enrich::tablebase::cached::CachedTbProbe;
 use enrich::tablebase::pool::{SyzygyPool, TablebaseStatus};
 use enrich::types::TablebaseProbe;
+
 use futures::FutureExt;
 use futures::future::BoxFuture;
 use platforms::breaker::{BreakerOptions, CircuitBreaker};
@@ -337,31 +338,6 @@ pub fn schedule_deps(pool: PgPool, queue: Queue, default_plan: Plan) -> Schedule
     }
 }
 
-pub fn spawn_schedule_runner(queue: Queue, pool: PgPool, base: &RunnerConfig) -> RunnerHandle {
-    Runner::spawn(
-        queue.clone(),
-        Arc::new(ScheduleHandler(Arc::new(schedule_deps(
-            pool,
-            queue,
-            Plan::Beta,
-        )))),
-        schedule_runner_config(base),
-    )
-}
-
-pub fn spawn_preview_runner(
-    queue: Queue,
-    deps: PreviewDeps,
-    base: &RunnerConfig,
-    pool_size: usize,
-) -> RunnerHandle {
-    Runner::spawn(
-        queue,
-        Arc::new(PreviewHandler(Arc::new(deps))),
-        preview_runner_config(base, pool_size),
-    )
-}
-
 /// The enrichment's dependencies (R2 Tasks 23-25): the main engines, the Postgres caches, the
 /// tablebase probe when `SYZYGY_PATH` gave one, and Maia only when `MAIA_URL` is set (without
 /// it, difficulty is `pending_maia`, never estimated). Each hook and job replaces `cancel` with
@@ -478,7 +454,7 @@ pub async fn start_tablebase(env: &WorkerEnv, pool: &PgPool) -> Option<WorkerTab
         return None;
     };
     let path = match env.syzygy_stage_dir.clone() {
-        None => source,
+        None => source.clone(),
         Some(stage) => {
             let (src, dst) = (source.clone(), stage.clone());
             let staged =
@@ -498,16 +474,57 @@ pub async fn start_tablebase(env: &WorkerEnv, pool: &PgPool) -> Option<WorkerTab
                 }
                 Ok(Err(e)) => {
                     tracing::warn!(error = %e, "staging the syzygy tables failed; reading SYZYGY_PATH");
-                    source
+                    source.clone()
                 }
                 Err(e) => {
                     tracing::warn!(error = %e, "staging the syzygy tables failed; reading SYZYGY_PATH");
-                    source
+                    source.clone()
                 }
             }
         }
     };
-    let path = path.as_path();
+    let staged = path != source;
+    match start_syzygy(env, &path, pool).await {
+        Some(tb) if staged && !canary_ok(&tb).await => {
+            // Belt and braces: a staged table that passed the stage's checks but answers wrongly
+            // is never used, and its answer was never cached (the canary bypasses the cache).
+            tracing::error!(
+                stage = %path.display(),
+                "a staged syzygy table failed the canary probe; reading SYZYGY_PATH"
+            );
+            tb.pool.close().await;
+            start_syzygy(env, &source, pool).await
+        }
+        other => other,
+    }
+}
+
+/// Known tablebase facts, checked on the raw pool (never through the `position_tb` cache) when
+/// the engines read a staged copy: KQvK and KRvK are wins for the side with the piece.
+const CANARIES: [(&str, &str, i8); 2] = [
+    ("KQvK", "8/8/8/8/8/4k3/8/KQ6 w - - 0 1", 1),
+    ("KRvK", "8/8/8/8/8/4k3/8/KR6 w - - 0 1", 1),
+];
+
+async fn canary_ok(tb: &WorkerTablebase) -> bool {
+    for (table, fen, want) in CANARIES {
+        if !tb.path.join(format!("{table}.rtbw")).is_file() {
+            continue;
+        }
+        let got = tb.pool.probe(fen).await;
+        if got != Some(want) {
+            tracing::error!(table, ?got, want, "syzygy canary probe failed");
+            return false;
+        }
+    }
+    true
+}
+
+async fn start_syzygy(
+    env: &WorkerEnv,
+    path: &std::path::Path,
+    pool: &PgPool,
+) -> Option<WorkerTablebase> {
     match SyzygyPool::start(
         &env.stockfish_path,
         path,
