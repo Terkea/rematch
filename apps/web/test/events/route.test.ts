@@ -141,6 +141,58 @@ describe("GET /api/events (SSE)", () => {
     expect(await userAccountIds(db, me.userId)).toEqual([me.accountId]);
   });
 
+  it("a user-owned event of a shared account reaches only its user, live and on replay", async () => {
+    // Two users linked to one account (ADR-WEB-3); chat events carry user_id (migration
+    // 20261121030400, ADR-R3-8): they are for that user only.
+    await db.execute(sql`insert into account_links (user_id, linked_account_id, method)
+                         values (${other.userId}, ${me.accountId}, 'location_code')`);
+    const shared = await insertAndPublish(db, me.accountId, "import.progress", { n: 1 });
+    const secret = await insertAndPublish(
+      db,
+      me.accountId,
+      "chat.chunk",
+      { text: "s1" },
+      me.userId,
+    );
+    const theirsOwn = await insertAndPublish(db, me.accountId, "chat.chunk", {}, other.userId);
+
+    // Replay: user 2 gets the account event and their own, never user 1's.
+    const theirReplay = await stream({ cookie: other.cookie, lastEventId: "0" });
+    expect((await theirReplay.frames.nextEvent())?.id).toBe(String(shared));
+    expect((await theirReplay.frames.nextEvent())?.id).toBe(String(theirsOwn));
+    // User 1's replay has theirs, not user 2's.
+    const myReplay = await stream({ lastEventId: "0" });
+    expect((await myReplay.frames.nextEvent())?.id).toBe(String(shared));
+    expect((await myReplay.frames.nextEvent())?.id).toBe(String(secret));
+
+    // Live: a new user-1 event reaches user 1 only; the next account event reaches both.
+    const live = await insertAndPublish(db, me.accountId, "chat.chunk", { text: "s2" }, me.userId);
+    const after = await insertAndPublish(db, me.accountId, "import.progress", { n: 2 });
+    expect((await myReplay.frames.nextEvent())?.id).toBe(String(live));
+    expect((await myReplay.frames.nextEvent())?.id).toBe(String(after));
+    expect((await theirReplay.frames.nextEvent())?.id).toBe(String(after));
+    expect(await theirReplay.frames.nextWithin(300)).toBe("timeout");
+
+    // A truncated NOTIFY (payload fetched by id) is filtered the same way.
+    const big = await insertAndPublish(
+      db,
+      me.accountId,
+      "chat.chunk",
+      { text: "x".repeat(9000) },
+      me.userId,
+    );
+    expect((await myReplay.frames.nextEvent())?.id).toBe(String(big));
+    expect(await theirReplay.frames.nextWithin(300)).toBe("timeout");
+
+    // hello: user 1's event does not move user 2's head.
+    const hello = await stream({ cookie: other.cookie });
+    expect(await hello.frames.nextEvent()).toEqual({
+      id: String(after),
+      event: "hello",
+      data: "{}",
+    });
+  });
+
   it("stale cursor emits reset", async () => {
     const ids: number[] = [];
     for (let i = 1; i <= 5; i++) ids.push(await insertAndPublish(db, me.accountId, "t"));
@@ -321,6 +373,21 @@ describe("GET /api/events?after= (polling)", () => {
       lastId: ids[4],
       reset: true,
     });
+  });
+
+  it("never returns another user's user-owned events of a shared account", async () => {
+    await db.execute(sql`insert into account_links (user_id, linked_account_id, method)
+                         values (${other.userId}, ${me.accountId}, 'location_code')`);
+    const shared = await insertAndPublish(db, me.accountId, "t", { n: 1 });
+    const secret = await insertAndPublish(db, me.accountId, "chat.chunk", { text: "s" }, me.userId);
+    const theirs = (await (await poll("0", other.cookie)).json()) as {
+      events: { id: number }[];
+      lastId: number;
+    };
+    expect(theirs.events.map((e) => e.id)).toEqual([shared]);
+    expect(theirs.lastId).toBe(shared);
+    const mine = (await (await poll("0")).json()) as { events: { id: number }[] };
+    expect(mine.events.map((e) => e.id)).toEqual([shared, secret]);
   });
 
   it("refuses unauthenticated and malformed requests", async () => {

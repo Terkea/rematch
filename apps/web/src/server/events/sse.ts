@@ -1,4 +1,10 @@
-import { type Db, listEventsPage, type StreamEvent, type UserEventRow } from "@ci/db";
+import {
+  type Db,
+  eventVisibleTo,
+  listEventsPage,
+  type OwnedUserEventRow,
+  type StreamEvent,
+} from "@ci/db";
 import type { EventHub } from "./hub";
 
 /** Event types are dotted names; anything else could inject SSE fields and is refused. */
@@ -41,9 +47,10 @@ export function parseCursor(value: string | null): number | null | "invalid" {
   return Number(value);
 }
 
-const toStreamEvent = (row: UserEventRow): StreamEvent => ({
+const toStreamEvent = (row: OwnedUserEventRow): StreamEvent => ({
   id: row.id,
   accountId: row.accountId,
+  ...(row.userId === null ? {} : { userId: row.userId }),
   type: row.type,
   payload: row.payload,
 });
@@ -93,7 +100,7 @@ export async function openEventStream(opts: {
   cursor: number | null;
   signal: AbortSignal;
 }): Promise<Response> {
-  const { db, hub, accountIds, signal } = opts;
+  const { db, hub, accountIds, signal, userId } = opts;
   const limits = { ...eventStreamLimits };
   const release = acquireSlot(opts.userId);
   if (!release) {
@@ -134,7 +141,8 @@ export async function openEventStream(opts: {
   };
 
   const send = (e: StreamEvent) => {
-    if (closed || e.id <= lastId) return;
+    // Defence in depth: the hub and the replay query already drop other users' events.
+    if (closed || e.id <= lastId || !eventVisibleTo(e, userId)) return;
     write(formatSseEvent(e));
     lastId = e.id;
   };
@@ -151,13 +159,13 @@ export async function openEventStream(opts: {
     try {
       if (beforeReplay) await beforeReplay();
       if (hello) {
-        const page = await listEventsPage(db, accountIds, Number.MAX_SAFE_INTEGER, 1);
+        const page = await listEventsPage(db, accountIds, Number.MAX_SAFE_INTEGER, 1, userId);
         lastId = page.headId;
         write(`id: ${lastId}\nevent: hello\ndata: {}\n\n`);
       } else {
         for (;;) {
           if (closed) return;
-          const page = await listEventsPage(db, accountIds, lastId, limits.replayPageSize);
+          const page = await listEventsPage(db, accountIds, lastId, limits.replayPageSize, userId);
           if (page.reset) {
             lastId = Math.max(lastId, page.headId);
             write(`id: ${lastId}\nevent: reset\ndata: {}\n\n`);
@@ -176,11 +184,16 @@ export async function openEventStream(opts: {
   }
 
   let syncing: Promise<void> = Promise.resolve();
-  const unsubscribe = hub.subscribe(accountIds, onLive, () => {
-    // Buffer from now on, so nothing sent live can jump over events lost in the gap.
-    replaying = true;
-    syncing = syncing.then(() => sync(false));
-  });
+  const unsubscribe = hub.subscribe(
+    accountIds,
+    onLive,
+    () => {
+      // Buffer from now on, so nothing sent live can jump over events lost in the gap.
+      replaying = true;
+      syncing = syncing.then(() => sync(false));
+    },
+    userId,
+  );
 
   try {
     await hub.ready();
