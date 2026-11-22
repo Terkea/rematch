@@ -317,11 +317,15 @@ describe("report page", () => {
   });
 
   it("no ask link while the chat pages are not live", async () => {
-    chatLive.mockReturnValueOnce(false);
-    await previous();
-    const screen = within(render(<ReportView data={await data()} />).container);
-    const section = screen.getByRole("region", { name: "What's costing you games" });
-    expect(within(section).queryAllByRole("link", { name: /Ask your coach/ })).toEqual([]);
+    chatLive.mockReturnValue(false);
+    try {
+      await previous();
+      const screen = within(render(<ReportView data={await data()} />).container);
+      const section = screen.getByRole("region", { name: "What's costing you games" });
+      expect(within(section).queryAllByRole("link", { name: /Ask your coach/ })).toEqual([]);
+    } finally {
+      chatLive.mockReturnValue(true);
+    }
   });
 
   it("the climb plan lists drills by name with no train button", async () => {
