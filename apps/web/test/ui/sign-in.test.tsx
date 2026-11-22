@@ -73,7 +73,8 @@ describe("SignInForm", () => {
     expect(magicLink).toHaveBeenCalledWith(
       expect.objectContaining({
         email: "dev@example.invalid",
-        callbackURL: "/app/accounts",
+        // The front door (M5a T12) picks the overview or Accounts.
+        callbackURL: "/",
         errorCallbackURL: "/sign-in",
       }),
     );
@@ -103,7 +104,11 @@ describe("SignInForm", () => {
     render(<SignInForm google lichess={false} />);
     await userEvent.click(screen.getByRole("button", { name: "Continue with Google" }));
     expect(social).toHaveBeenCalledWith(
-      expect.objectContaining({ provider: "google", errorCallbackURL: "/sign-in" }),
+      expect.objectContaining({
+        provider: "google",
+        callbackURL: "/",
+        errorCallbackURL: "/sign-in",
+      }),
     );
   });
 });

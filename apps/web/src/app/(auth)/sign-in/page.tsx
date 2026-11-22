@@ -25,7 +25,7 @@ export default async function SignInPage({
       </AuthPage>
     );
   }
-  if (await getSession(await headers())) redirect("/app/accounts");
+  if (await getSession(await headers())) redirect("/");
 
   const env = getEnv();
   const { error } = await searchParams;

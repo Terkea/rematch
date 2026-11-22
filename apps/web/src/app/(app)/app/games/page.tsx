@@ -1,5 +1,7 @@
+import { LiveRefresh } from "../../../../components/live-refresh";
 import { requireUser } from "../../../../server/auth/session";
 import { getDb } from "../../../../server/db";
+import { scopedAccountIds } from "../../../../server/games";
 import { loadExplorer } from "../../../../server/games/explorer";
 import { PageHeading } from "../../_shell/page-heading";
 import { NoGames, NoLinks, NoMatch } from "./_explorer/empty";
@@ -22,11 +24,14 @@ type Params = Record<string, string | string[] | undefined>;
  */
 export default async function GamesPage({ searchParams }: { searchParams: Promise<Params> }) {
   const user = await requireUser();
-  const explorer = await loadExplorer(getDb(), user.id, await searchParams);
+  const db = getDb();
+  const explorer = await loadExplorer(db, user.id, await searchParams);
+  const live = <LiveRefresh accountIds={await scopedAccountIds(db, user.id)} />;
 
   if (explorer.state !== "games") {
     return (
       <div className="flex flex-col gap-8">
+        {live}
         <PageHeading title="Games" />
         {explorer.state === "no-links" ? (
           <NoLinks />
@@ -47,6 +52,7 @@ export default async function GamesPage({ searchParams }: { searchParams: Promis
   return (
     <ExplorerTransition>
       <div className="flex flex-col gap-6 md:gap-8">
+        {live}
         <PageHeading title="Games" />
         <FilterBar
           query={query}

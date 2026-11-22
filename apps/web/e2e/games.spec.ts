@@ -31,6 +31,16 @@ test("the explorer never scrolls sideways at 390 or 360 px", async ({ page, requ
   );
   expect(seed.status).toBe(0);
 
+  // The front door (M5a Task 12): with a linked account, "/" opens the overview, and the header
+  // leads on to the games.
+  await gotoSettled(page, "/");
+  await expect(page).toHaveURL(/\/app$/);
+  const nav = page.getByRole("navigation", { name: "Main" });
+  await expect(nav.getByRole("link", { name: "Overview" })).toHaveAttribute("aria-current", "page");
+  await nav.getByRole("link", { name: "Games" }).click();
+  await expect(page).toHaveURL(/\/app\/games$/);
+  await expect(page.getByRole("heading", { name: "Games", level: 1 })).toBeVisible();
+
   for (const width of [390, 360]) {
     await page.setViewportSize({ width, height: 844 });
     for (const url of ["/app/games", "/app/games?page=2", "/app/games?sort=accuracy-asc"]) {

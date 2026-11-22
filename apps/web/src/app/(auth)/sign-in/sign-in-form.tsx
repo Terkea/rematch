@@ -45,7 +45,7 @@ export function SignInForm({
     try {
       const result = await signIn.magicLink({
         email: address,
-        callbackURL: "/app/accounts",
+        callbackURL: "/",
         newUserCallbackURL: "/welcome/age",
         errorCallbackURL: "/sign-in",
       });
@@ -71,7 +71,7 @@ export function SignInForm({
     try {
       await signIn.social({
         provider,
-        callbackURL: "/app/accounts",
+        callbackURL: "/",
         newUserCallbackURL: "/welcome/age",
         errorCallbackURL: "/sign-in",
       });
