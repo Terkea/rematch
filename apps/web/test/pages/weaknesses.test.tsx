@@ -1,11 +1,12 @@
 import { games, weaknessChangeNotes } from "@ci/db/generated";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { within } from "@testing-library/react";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { JSDOM } from "jsdom";
 import type { ReactElement } from "react";
 import { renderToString } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { WEAKNESS_GLOSSARY } from "../../src/server/profile/glossary";
 import { resetCoachingTables, seedNote } from "../helpers/coaching";
 import { resetGameTables, seedAccount, seedSyntheticGame } from "../helpers/games";
 import { seedProfile } from "../helpers/profile";
@@ -281,6 +282,86 @@ describe("weakness detail", () => {
     noBadText(container);
   });
 
+  it("detail reads as a story: what it is, how often, the trend, examples, what to do", async () => {
+    await seedProfile(db, accountId, {
+      timeClass: "rapid",
+      games: 1,
+      estimates: [
+        {
+          seriesKey: "W1",
+          mean: 0.0421,
+          ciLow: 0.0313,
+          ciHigh: 0.0566,
+          kUnweighted: 38,
+          nUnweighted: 1902,
+          bandMedian: 0.021,
+          state: "active",
+          pImp: 0.42,
+        },
+      ],
+    });
+    const { container } = await detail("W1");
+    const headings = screen
+      .getAllByRole("heading", { level: 2 })
+      .map((h: HTMLElement) => h.textContent);
+    expect(headings.slice(0, 6)).toEqual([
+      "What this is",
+      "How often it happens to you",
+      "Better or worse",
+      "Examples from your games",
+      "What to do",
+      "Details",
+    ]);
+    const text = container.textContent ?? "";
+    expect(text).toContain(WEAKNESS_GLOSSARY.W1?.meaning);
+    expect(text).toContain(WEAKNESS_GLOSSARY.W1?.measured);
+    expect(text).toContain(WEAKNESS_GLOSSARY.W1?.tip);
+    expect(text).toContain(
+      "In the last 6 months this happened in 38 of your 1,902 chances (about 1 in 50).",
+    );
+    expect(text).toMatch(/likely between 3\.1% and 5\.7% \(80% range\)/);
+    expect(text).toContain("More often than typical players at your level (2.1%)");
+    expect(text).toContain(
+      "No clear change yet. There is a 42% chance your rate is lower than before its last change",
+    );
+    noBadText(container);
+  });
+
+  it("a peer-compared weakness names the pooled rate and its chances (ADR 0081)", async () => {
+    await seedProfile(db, accountId, {
+      timeClass: "rapid",
+      games: 1,
+      estimates: [
+        {
+          seriesKey: "W4.missed",
+          mean: 0.2,
+          ciLow: 0.15,
+          ciHigh: 0.26,
+          kUnweighted: 6,
+          nUnweighted: 30,
+          bandMedian: 0.0957,
+          state: "active",
+        },
+      ],
+    });
+    await db.execute(sql`
+      insert into account_benchmark (account_id, time_class, source, center_rating, rating_low,
+        rating_high, n_players, n_games)
+      values (${accountId}, 'rapid', 'peers', 817, 667, 967, 73, 100)`);
+    await db.execute(sql`
+      insert into account_benchmark_stat (account_id, time_class, metric, median, p25, p40, p75,
+        n_players, n_games, low_sample, n_chances)
+      values (${accountId}, 'rapid', 'weakness:W4.missed', 0.0957, 0.07, 0.08, 0.12, 25, 26,
+        false, 65)`);
+    const { container } = await detail("W4.missed");
+    expect(container.textContent).toContain(
+      "Players you've faced, rated about 667–967: 9.6% (pooled over 65 of their chances)",
+    );
+    expect(container.textContent).not.toMatch(/Band median/);
+    expect(container.textContent).toContain("Only their games against you count");
+    noBadText(container);
+  });
+
   it("an uncompared weakness says so, with its own rate and window", async () => {
     await seedProfile(db, accountId, {
       timeClass: "rapid",
@@ -363,7 +444,10 @@ describe("weakness detail", () => {
       ],
     });
     const second = await detail("W1");
-    expect(screen.getByText("Started around 14 Oct 2026, between 2 Oct and 20 Oct")).toBeTruthy();
+    // Said in the story's trend step and again in the details' chart panel.
+    expect(
+      screen.getAllByText("Started around 14 Oct 2026, between 2 Oct and 20 Oct").length,
+    ).toBeGreaterThan(0);
     noBadText(second.container);
   });
 
@@ -375,7 +459,9 @@ describe("weakness detail", () => {
     });
     const { container } = await detail("W1");
     expect(
-      screen.getByText("Example positions appear once your first report is built."),
+      screen.getByText(
+        "No examples from your games yet: none of your analysed games in the last 6 months has a stored case of it.",
+      ),
     ).toBeTruthy();
     expect(screen.queryByRole("grid")).toBeNull();
     noBadText(container);
@@ -417,14 +503,12 @@ describe("weakness detail", () => {
       },
     });
     const { container } = await detail("W1");
-    const from = screen.getByText(
-      (_: string, el: Element | null) =>
-        el?.tagName === "P" &&
-        /^Examples from your report of \d{1,2} \w{3} \d{4}$/.test(el.textContent ?? ""),
-    );
-    expect(from.querySelector("time")?.getAttribute("dateTime")).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    // One example per game, at most three on the page.
     const links = screen.getAllByRole("link", { name: /Open 4\. Nxe5 in the review/ });
-    expect(links).toHaveLength(5);
+    expect(links).toHaveLength(1);
+    expect(container.textContent).toContain(
+      "Your win chance went from 52% to 36%, a drop of 16 win% points.",
+    );
     expect(links[0]?.getAttribute("href")).toBe(`/app/games/${gameId}?ply=7`);
     noBadText(container);
   });

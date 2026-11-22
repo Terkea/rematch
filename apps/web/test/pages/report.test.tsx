@@ -1,6 +1,12 @@
 import "@testing-library/jest-dom/vitest";
 import { createRequire } from "node:module";
-import { aiStatus, reportSections, reports, weaknessChangeNotes } from "@ci/db/generated";
+import {
+  aiStatus,
+  openingLines,
+  reportSections,
+  reports,
+  weaknessChangeNotes,
+} from "@ci/db/generated";
 import { within } from "@testing-library/react";
 import { eq, sql } from "drizzle-orm";
 import { renderToString } from "react-dom/server";
@@ -14,6 +20,7 @@ import {
   SEEN_KEY,
 } from "../../src/app/(app)/app/report/reveal.js";
 import type { ReportRunRow } from "../../src/server/coaching/types.js";
+import { VERDICT_GLOSSARY } from "../../src/server/profile/glossary.js";
 import { payloadFixture, resetCoachingTables, seedNote, seedReport } from "../helpers/coaching.js";
 import { resetGameTables, seedAccount, seedSyntheticGame } from "../helpers/games.js";
 import { createTestSession, resetAuthTables, webTestDb } from "../helpers/session.js";
@@ -176,7 +183,11 @@ const STATES: { name: string; seed: () => Promise<void>; copy: string[] }[] = [
   {
     name: "computed only without an API key",
     seed: () => computedOnly("no_api_key"),
-    copy: ["Your coach's notes are off for now. The numbers below are computed from your games."],
+    // Fix D (N2): the coach is on now; this report was only built before it was.
+    copy: [
+      "This report was built from your numbers only",
+      "Your coach's notes come with the next rebuild, available on 22 Dec 2026.",
+    ],
   },
   {
     name: "computed only on the budget",
@@ -231,6 +242,26 @@ describe("report page", () => {
     expect(screen.getByText("Coach not available right now")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Build my report" })).toBeNull();
     expect(screen.getByRole("button", { name: "Build it from your numbers" })).toBeTruthy();
+  });
+
+  // Fix D (N2): "notes are off" was shown while the coach was on; the report was only built
+  // before it was. Each case now says which it is.
+  it("a numbers-only report says the coach is not available only when it is not", async () => {
+    await computedOnly("no_api_key");
+    await coachIs(false);
+    const { container } = render(<ReportView data={await data()} />);
+    expect(container.textContent).toContain("Coach not available right now");
+    expect(container.textContent).not.toMatch(/next rebuild|notes are off/);
+  });
+
+  it("a numbers-only report with the coach on says the notes come with the next rebuild", async () => {
+    await computedOnly("no_api_key");
+    const { container } = render(<ReportView data={await data()} />);
+    expect(container.textContent).toContain("This report was built from your numbers only");
+    expect(container.textContent).toContain(
+      "Your coach's notes come with the next rebuild, available on 22 Dec 2026.",
+    );
+    expect(container.textContent).not.toMatch(/notes are off|not available/);
   });
 
   it("with no worker running the empty report offers nothing to build", async () => {
@@ -493,7 +524,10 @@ describe("review fix round 1", () => {
     const screen = within(render(<ReportView data={await data()} />).container);
     const plan = screen.getByRole("region", { name: "Your climb plan" });
     expect(plan).toHaveTextContent("Estimated 17.0% of chances");
-    expect(plan).toHaveTextContent("Your coach's notes are off for this report");
+    expect(plan).toHaveTextContent(
+      "This report was built from your numbers only, so this section shows the computed numbers.",
+    );
+    expect(plan).not.toHaveTextContent(/notes are off/);
     const areas = screen.getByRole("region", { name: "Area notes" });
     expect(areas).toHaveTextContent("Score 48");
   });
@@ -561,3 +595,41 @@ describe("review fix round 1", () => {
 function payloadWeakness(): unknown {
   return payloadFixture("example").computed.weaknesses[0];
 }
+
+describe("opening verdicts explained (I9)", () => {
+  async function line(lineKey: string, color: "white" | "black", verdict: string, summary: object) {
+    await db.insert(openingLines).values({
+      accountId,
+      timeClass: "rapid",
+      color,
+      lineKey,
+      kind: "chosen",
+      games: 23,
+      verdict: verdict as "fix",
+      summary: { games: 23, color, kind: "chosen", verdict, ...summary },
+    });
+  }
+
+  it("says why a line has its verdict from the stored rule evidence", async () => {
+    await seedReport(db, accountId, { timeClass: "rapid", payload: "example", createdAt: CREATED });
+    await line("b-sicilian-najdorf", "black", "fix", {
+      errorSpot: { fenKey: "k", uci: "d8c7", san: "Qc7", games: 7 },
+      struggles: ["repeated_deviation_error"],
+    });
+    const screen = within(render(<ReportView data={await data()} />).container);
+    const openings = screen.getByRole("region", { name: "Openings" });
+    expect(openings).toHaveTextContent(
+      "Fix means one move keeps costing you: Qc7, in 7 of your 23 games in this line, losing 10 win% points or more each time.",
+    );
+    expect(within(openings).getByRole("button", { name: "What does Fix mean?" })).toBeTruthy();
+  });
+
+  it("falls back to the verdict's meaning when the stored line has moved on", async () => {
+    await seedReport(db, accountId, { timeClass: "rapid", payload: "example", createdAt: CREATED });
+    await line("w-italian", "white", "learn", { medianDeviationPly: 6, share: 0.4 });
+    const screen = within(render(<ReportView data={await data()} />).container);
+    const openings = screen.getByRole("region", { name: "Openings" });
+    expect(openings).toHaveTextContent(VERDICT_GLOSSARY.keep.meaning);
+    expect(openings).not.toHaveTextContent("Learn deeper means you play it often");
+  });
+});

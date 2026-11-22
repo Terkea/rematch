@@ -134,12 +134,24 @@ pub fn summary_line(input: &CoachingInput) -> String {
     )
 }
 
-async fn band_reference_active(pool: &PgPool) -> anyhow::Result<bool> {
-    Ok(sqlx::query_scalar(
-        "SELECT EXISTS (SELECT 1 FROM reference_builds \
-         WHERE kind = 'band_reference' AND status = 'active')",
+/// The account × time class's stored benchmark (ADR 0080): its source, the peer band and its
+/// players, and whether any row is served.
+type StoredBenchmark = (String, Option<i32>, Option<i32>, Option<i32>, bool);
+
+async fn stored_benchmark(
+    pool: &PgPool,
+    account: Uuid,
+    tc: chess_core::TimeClass,
+) -> anyhow::Result<Option<StoredBenchmark>> {
+    Ok(sqlx::query_as(
+        "SELECT b.source, b.rating_low, b.rating_high, b.n_players, \
+           EXISTS (SELECT 1 FROM account_benchmark_stat s WHERE s.account_id = b.account_id \
+             AND s.time_class = b.time_class AND NOT s.low_sample) \
+         FROM account_benchmark b WHERE b.account_id = $1 AND b.time_class = $2::time_class",
     )
-    .fetch_one(pool)
+    .bind(account)
+    .bind(tc.as_str())
+    .fetch_optional(pool)
     .await?)
 }
 
@@ -180,12 +192,20 @@ pub async fn run_profile(
             return Ok(Ok(vec![serde_json::to_string_pretty(&report.input)?]));
         }
         let mut lines = vec![summary_line(&report.input)];
-        if !band_reference_active(pool).await? {
-            lines.push(
-                "note: no band-reference build is active, so areas and weaknesses have no \
-                 benchmark yet (run lichess-db build --band-reference)"
+        match stored_benchmark(pool, account, tc).await? {
+            Some((source, Some(low), Some(high), Some(players), true)) if source == "peers" => {
+                lines.push(format!(
+                    "benchmark: players you've faced, rated {low}-{high} ({players} players; \
+                     only their games against you)"
+                ));
+            }
+            Some((source, _, _, _, true)) => lines.push(format!("benchmark: {source}")),
+            _ => lines.push(
+                "note: no benchmark for this account and time class yet (build-profile needs \
+                 10 opponents with evidence in the rating window), so areas and weaknesses \
+                 are not compared"
                     .to_owned(),
-            );
+            ),
         }
         if let Some(at) = report.snapshots_computed_at {
             lines.push(format!("snapshots computed at {at}"));

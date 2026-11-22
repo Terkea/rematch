@@ -73,9 +73,10 @@ macro_rules! prompt {
     };
 }
 
-static TABLE: [Prompt; 26] = [
+static TABLE: [Prompt; 28] = [
     prompt!("core/rules", 1),
     prompt!("core/tokens", 1),
+    prompt!("core/tokens", 2),
     prompt!("report/report", 1),
     prompt!("report/output", 1),
     prompt!("report/section-overview", 1),
@@ -97,6 +98,7 @@ static TABLE: [Prompt; 26] = [
     prompt!("weakness-change/task", 1),
     prompt!("weakness-change/output", 1),
     prompt!("chat/system", 1),
+    prompt!("chat/system", 2),
     prompt!("chat/repair", 1),
     prompt!("chat-summary/system", 1),
     prompt!("chat-summary/task", 1),
@@ -119,7 +121,7 @@ pub fn load_prompt(id: &str, version: u32) -> Result<&'static Prompt, PromptErro
 /// The prompts a report section call can use, in hash order.
 pub const REPORT_PROMPT_SET: &[(&str, u32)] = &[
     ("core/rules", 1),
-    ("core/tokens", 1),
+    ("core/tokens", 2),
     ("report/report", 1),
     ("report/output", 1),
     ("tone/b0", 1),
@@ -143,8 +145,10 @@ pub const REPORT_PROMPT_VERSION: &str = "report@1";
 /// prose-output prompt and its repair prompt.
 pub const CHAT_PROMPT_SET: &[(&str, u32)] = &[
     ("core/rules", 1),
-    ("core/tokens", 1),
-    ("chat/system", 1),
+    ("core/tokens", 2),
+    // Fix E (N8): v2 teaches the move filter, citing concrete moves and saying what a search
+    // that found nothing searched. v1 stays for stored hashes.
+    ("chat/system", 2),
     ("chat/repair", 1),
 ];
 
@@ -217,7 +221,7 @@ pub fn render_template(text: &str, vars: &[(&str, &str)]) -> Result<String, Prom
 /// weekly prompt, its JSON output instructions, its task and the shared repair prompt.
 pub const WEEKLY_PROMPT_SET: &[(&str, u32)] = &[
     ("core/rules", 1),
-    ("core/tokens", 1),
+    ("core/tokens", 2),
     ("weekly-review/system", 1),
     ("weekly-review/output", 1),
     ("weekly-review/task", 1),
@@ -230,7 +234,7 @@ pub const WEEKLY_PROMPT_VERSION: &str = "weekly@1";
 /// The prompts a change-note call uses (Task 15), in hash order.
 pub const CHANGE_PROMPT_SET: &[(&str, u32)] = &[
     ("core/rules", 1),
-    ("core/tokens", 1),
+    ("core/tokens", 2),
     ("weakness-change/system", 1),
     ("weakness-change/output", 1),
     ("weakness-change/task", 1),

@@ -199,6 +199,18 @@ describe("bandComparisonText", () => {
     expect(bandComparisonText(r, 0.03)).toContain("inside your likely range");
     expect(bandComparisonText(r, 0.06)).toContain("inside your likely range");
   });
+  it("says what a pooled peer rate is pooled over", () => {
+    expect(
+      bandComparisonText(
+        r,
+        0.096,
+        "Players you've faced, rated about 650–950",
+        "pooled over 65 of their chances",
+      ),
+    ).toBe(
+      "Players you've faced, rated about 650–950: 9.6% (pooled over 65 of their chances), higher than your whole likely range",
+    );
+  });
   it("says when there is no reference", () => {
     expect(bandComparisonText(r, null)).toBe(NO_BENCHMARK);
     expect(bandComparisonText(r, Number.NaN)).toBe(NO_BENCHMARK);

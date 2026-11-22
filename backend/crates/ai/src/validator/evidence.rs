@@ -110,8 +110,45 @@ pub struct Evidence {
     /// R3 (Task 8 fix 1): the path of every exemplar object in the input, mapped to its
     /// position key `gameId#ply` (`weaknesses.W1.exemplars.0` → `li-w1-0#5`).
     pub path_positions: HashMap<String, String>,
+    /// Fix D (N1): number paths whose unit the input states (a metric's `unit`). Every other
+    /// path takes its unit from its field name ([`NumUnit::of_field`]).
+    pub unit_paths: HashMap<String, NumUnit>,
     num_seen: HashSet<u64>,
     ratio_seen: HashSet<u64>,
+}
+
+/// The unit a number is printed with, as the computed pages print it: `86.5%`, `40.7 s`,
+/// `-120 cp`. Counts carry none: the text names what they count ("games").
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NumUnit {
+    /// On a 0..100 scale (a win chance, an accuracy, a `pct` metric).
+    Percent,
+    Seconds,
+    Centipawns,
+}
+
+impl NumUnit {
+    /// The suffix after the number. A no-break space keeps `40.7 s` on one line.
+    pub fn suffix(self) -> &'static str {
+        match self {
+            NumUnit::Percent => "%",
+            NumUnit::Seconds => "\u{a0}s",
+            NumUnit::Centipawns => "\u{a0}cp",
+        }
+    }
+
+    /// The unit of a field by its name, the last segment of a path.
+    pub fn of_field(field: &str) -> Option<NumUnit> {
+        match field {
+            // Fix E: find_examples' `searched` bounds share the units of what they bound.
+            "winBefore" | "winAfter" | "accuracy" | "minWinBefore" | "maxWinBefore"
+            | "minDeltaW" => Some(NumUnit::Percent),
+            "clockBefore" | "clockAfter" | "timeSpent" | "baseSeconds" | "incrementSeconds"
+            | "clockBelowSeconds" => Some(NumUnit::Seconds),
+            "cp" => Some(NumUnit::Centipawns),
+            _ => None,
+        }
+    }
 }
 
 /// JS SameValueZero key for a finite number.
@@ -531,6 +568,17 @@ impl Evidence {
                 add(self, format!("{b}.alternatives.{i}.bandScore"));
             }
         }
+        for m in &input.metrics {
+            let unit = match m.unit {
+                MetricUnit::Pct => NumUnit::Percent,
+                MetricUnit::Seconds => NumUnit::Seconds,
+                MetricUnit::Rate | MetricUnit::PerGame | MetricUnit::Elo => continue,
+            };
+            let b = format!("metrics.{}", seg(&m.key));
+            for f in ["value", "low", "high", "bandMedian"] {
+                self.unit_paths.insert(format!("{b}.{f}"), unit);
+            }
+        }
         for m in input.metrics.iter().filter(|m| m.unit == MetricUnit::Rate) {
             let b = format!("metrics.{}", seg(&m.key));
             for f in ["value", "low", "high", "bandMedian"] {
@@ -656,6 +704,16 @@ impl Evidence {
 /// `_`): `changes.<path_segment(seriesKey)>`.
 pub fn path_segment(s: &str) -> String {
     seg(s)
+}
+
+impl Evidence {
+    /// The unit `path`'s number is printed with: the input's, else its field name's.
+    pub fn unit_of(&self, path: &str) -> Option<NumUnit> {
+        if let Some(u) = self.unit_paths.get(path) {
+            return Some(*u);
+        }
+        NumUnit::of_field(path.rsplit('.').next()?)
+    }
 }
 
 pub fn resolve_number_path(ev: &Evidence, path: &str) -> Option<f64> {

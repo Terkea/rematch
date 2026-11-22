@@ -58,7 +58,7 @@ fn load_prompt_sha_is_64_hex_and_stable() {
     assert!(std::ptr::eq(a, p.sha256()), "computed once");
     use sha2::Digest;
     assert_eq!(a, hex::encode(sha2::Sha256::digest(p.text.as_bytes())));
-    assert_ne!(a, load_prompt("core/tokens", 1).unwrap().sha256());
+    assert_ne!(a, load_prompt("core/tokens", 2).unwrap().sha256());
     assert_eq!(p.id, "core/rules");
     assert_eq!(p.version, 1);
 }
@@ -165,7 +165,12 @@ fn report_prompt_set_is_the_brief_list() {
             "repair/repair",
         ]
     );
-    assert!(REPORT_PROMPT_SET.iter().all(|(_, v)| *v == 1));
+    // Fix D (N1): core/tokens v2 says the server prints a number's unit.
+    assert!(
+        REPORT_PROMPT_SET
+            .iter()
+            .all(|(id, v)| *v == if *id == "core/tokens" { 2 } else { 1 })
+    );
     assert_eq!(REPORT_PROMPT_VERSION, "report@1");
 }
 
@@ -482,7 +487,7 @@ fn token_rewrites_before_fail_and_after_pass() {
     let i = input("b2-rapid");
     let ev = build_evidence(&i);
     let rules = report_text_rules(&i);
-    let text = load_prompt("core/tokens", 1).unwrap().text;
+    let text = load_prompt("core/tokens", 2).unwrap().text;
     let take = |prefix: &str| -> Vec<String> {
         text.lines()
             .filter_map(|l| l.trim_start().trim_start_matches("- ").strip_prefix(prefix))
@@ -614,7 +619,8 @@ fn model_facing_copy_passes_the_validator_rules() {
         }
         checked += 1;
     }
-    assert_eq!(checked, PROMPTS.len() - 2);
+    // core/rules and core/tokens v1 and v2.
+    assert_eq!(checked, PROMPTS.len() - 3);
 }
 
 /// The ruling of the T23 review: the shared rules block (what the chat includes too) carries no

@@ -1,5 +1,7 @@
 import {
   dayText,
+  type ExplainEntry,
+  ExplainPopover,
   formatKpiValue,
   KpiTrendGrid,
   type KpiTrendItem,
@@ -12,6 +14,7 @@ import { weekMonday } from "../../../../lib/iso-week";
 import type { WeeklyReviewView } from "../../../../server/coaching";
 import type { TimeClass } from "../../../../server/games/types";
 import { type KpiTrend, kpiDef, type WeaknessDetail } from "../../../../server/profile";
+import { KPI_GLOSSARY } from "../../../../server/profile/glossary";
 import { PageHeading } from "../../_shell/page-heading";
 import { SectionHead } from "../_overview/section-head";
 import { BeforeAfter, type BeforeAfterRow, beforeAfterRows, isoDay } from "./before-after";
@@ -110,7 +113,12 @@ export type ProgressInput = {
 };
 
 /** A metric without a trend to draw: its latest week in words, at body weight, never a headline. */
-export type EarlyRead = { metric: string; label: string; text: string };
+export type EarlyRead = {
+  metric: string;
+  label: string;
+  text: string;
+  explain?: ExplainEntry | null;
+};
 
 type Grid = {
   id: string;
@@ -151,7 +159,14 @@ function item(t: KpiTrend): KpiTrendItem {
     return week ? [{ week, value: p.value, low: p.low, high: p.high, n: p.n }] : [];
   });
   const nUnit = ITEM_UNIT[t.metric];
-  return { metric: t.metric, label: t.label, unit: t.unit, points, ...(nUnit ? { nUnit } : {}) };
+  return {
+    metric: t.metric,
+    label: t.label,
+    unit: t.unit,
+    points,
+    explain: KPI_GLOSSARY[t.metric] ?? null,
+    ...(nUnit ? { nUnit } : {}),
+  };
 }
 
 /** The latest measured week in words, with its n and, below the minimum, the threshold. */
@@ -161,7 +176,12 @@ function earlyRead(it: KpiTrendItem, minN: number, groupUnit: NUnit): EarlyRead 
     .reverse()
     .find((p) => p.value !== null && Number.isFinite(p.value) && p.n > 0);
   if (!last || last.value === null) {
-    return { metric: it.metric, label: it.label, text: `No ${unit.many} yet.` };
+    return {
+      metric: it.metric,
+      label: it.label,
+      text: `No ${unit.many} yet.`,
+      explain: it.explain,
+    };
   }
   const value = formatKpiValue(last.value, it.unit);
   const when = `from ${nText(last.n, unit)} in the week of ${dayText(last.week)}.`;
@@ -169,7 +189,7 @@ function earlyRead(it: KpiTrendItem, minN: number, groupUnit: NUnit): EarlyRead 
     last.n < minN
       ? `Early read: ${value} ${when} A week counts from ${count.format(minN)} ${minN === 1 ? unit.one : unit.many}.`
       : `Latest: ${value} ${when}`;
-  return { metric: it.metric, label: it.label, text };
+  return { metric: it.metric, label: it.label, text, explain: it.explain };
 }
 
 function grid(
@@ -305,7 +325,13 @@ function EarlyList({ reads }: { reads: EarlyRead[] }) {
           data-early={r.metric}
           className="flex flex-col gap-0.5 border-b border-rule py-2.5 last:border-b-0 md:flex-row md:gap-6"
         >
-          <span className="text-base text-ink md:w-64 md:shrink-0">{r.label}</span>
+          <span className="flex flex-col gap-0.5 md:w-64 md:shrink-0">
+            <span className="flex items-center gap-1 text-base text-ink">
+              {r.label}
+              {r.explain ? <ExplainPopover entry={r.explain} /> : null}
+            </span>
+            {r.explain ? <span className="text-sm text-ink-soft">{r.explain.meaning}</span> : null}
+          </span>
           <span className="text-sm text-ink-soft md:pt-0.5">{r.text}</span>
         </li>
       ))}

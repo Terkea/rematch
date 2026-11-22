@@ -1,5 +1,14 @@
 export { getArea, listAreaScores } from "./areas";
 export {
+  BENCHMARK_BIAS_TEXT,
+  type Benchmark,
+  benchmarkGroupLabel,
+  benchmarkLabel,
+  getBenchmark,
+  peerPooledBasis,
+  peerRateText,
+} from "./benchmark";
+export {
   AREAS,
   contractId,
   KPIS,

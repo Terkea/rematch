@@ -1,3 +1,8 @@
+import { games, moves } from "@ci/db";
+import { gameMetrics } from "@ci/db/generated";
+import { games as fixtures } from "@ci/ui/fixtures";
+import { Chess } from "chess.js";
+import { and, eq } from "drizzle-orm";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   type CoachScope,
@@ -6,7 +11,7 @@ import {
   resolveCoachScope,
 } from "../../src/server/profile";
 import { wilson } from "../../src/server/stats";
-import { resetGameTables, seedAccount } from "../helpers/games";
+import { resetGameTables, seedAccount, seedFixtureGame } from "../helpers/games";
 import { seedProfile } from "../helpers/profile";
 import { createTestSession, resetAuthTables, webTestDb } from "../helpers/session";
 
@@ -340,5 +345,58 @@ describe("getWeakness", () => {
     ]);
     // A report exists, but it cited no W1 position.
     expect((await getWeakness(db, userId, scope, "W1"))?.exemplars?.items).toEqual([]);
+  });
+
+  it("examples add the player's own stored occurrences after the report's, newest game first", async () => {
+    await seedProfile(db, accountId, { timeClass: "rapid", estimates: [{ seriesKey: "W1" }] });
+    // The fixture is played as White: ply 55 (Nd2) is White's blunder, 62 is Black's.
+    const seed = async (playedAt: string, plies: number[]) => {
+      const { gameId } = await seedFixtureGame(db, accountId, fixtures.middlegameBlunder, {
+        timeClass: "rapid",
+        playedAt: new Date(playedAt),
+      });
+      await db.insert(gameMetrics).values({
+        gameId,
+        accountId,
+        timeClass: "rapid",
+        playedAt: new Date(playedAt),
+        protocol: "test-1",
+        metrics: { version: 1, weakness: { W1: { exemplarPlies: plies } } },
+      });
+      return gameId;
+    };
+    const older = await seed("2026-10-01T12:00:00Z", [55]);
+    const newer = await seed("2026-11-01T12:00:00Z", [62, 55]);
+    const [m] = await db
+      .select()
+      .from(moves)
+      .where(and(eq(moves.gameId, newer), eq(moves.ply, 55)));
+    if (!m) throw new Error("no ply 55");
+    const best = new Chess(m.fenBefore)
+      .moves({ verbose: true })
+      .find((x) => `${x.from}${x.to}` !== m.uci);
+    if (!best) throw new Error("no other move");
+    await db
+      .update(moves)
+      .set({ bestUci: `${best.from}${best.to}` })
+      .where(and(eq(moves.gameId, newer), eq(moves.ply, 55)));
+    const platformId = async (id: string) =>
+      (await db.select({ p: games.platformGameId }).from(games).where(eq(games.id, id)))[0]?.p;
+
+    const w = await getWeakness(db, userId, await scopeOf(userId), "W1");
+    expect(w?.examples.map((e) => [e.gameId, e.ply, e.source])).toEqual([
+      [await platformId(newer), 55, "games"],
+      [await platformId(older), 55, "games"],
+    ]);
+    expect(w?.examples[0]).toMatchObject({
+      fen: m.fenBefore,
+      played: { san: m.san, uci: m.uci },
+      best: { san: best.san, uci: `${best.from}${best.to}` },
+      winBefore: m.winBefore,
+      winAfter: m.winAfter,
+      playedAt: "2026-11-01T12:00:00.000Z",
+    });
+    // Without an engine move there is no second arrow, never an invented one.
+    expect(w?.examples[1]?.best).toBeNull();
   });
 });

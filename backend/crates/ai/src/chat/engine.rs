@@ -64,16 +64,22 @@ pub use crate::generate::section::{BeforeCall, CallRecord};
 use crate::input::types::CoachingInput;
 use crate::output::codes::{Citation, ValidationCode, ValidationError};
 use crate::output::schema::ITEM_TEXT_MAX_CHARS;
-use crate::prompts::{load_prompt, render_template};
+use crate::prompts::{CHAT_PROMPT_SET, CHAT_SUMMARY_PROMPT_SET, load_prompt, render_template};
 use crate::segments::Segment;
 use crate::validator::evidence::Evidence;
 use crate::validator::language::{banned_phrases, engine_claims, no_marketing, no_quantity_words};
 use crate::validator::text::{TextRules, validate_text};
 
-/// A registered version-1 prompt. Every id used here is in `CHAT_PROMPT_SET` or
-/// `CHAT_SUMMARY_PROMPT_SET`, which the tests load, so a miss is a build defect.
+/// The registered prompt `id` at its version in `CHAT_PROMPT_SET` or `CHAT_SUMMARY_PROMPT_SET`
+/// (version 1 for any other id). Every id used here is in one of the sets, which the tests
+/// load, so a miss is a build defect.
 pub(crate) fn prompt_text(id: &str) -> &'static str {
-    load_prompt(id, 1).unwrap_or_else(|e| panic!("{e}")).text
+    let v = CHAT_PROMPT_SET
+        .iter()
+        .chain(CHAT_SUMMARY_PROMPT_SET)
+        .find(|(i, _)| *i == id)
+        .map_or(1, |(_, v)| *v);
+    load_prompt(id, v).unwrap_or_else(|e| panic!("{e}")).text
 }
 
 /// The whole-paragraph off-topic marker (the `offtopic` token of the validator's grammar).

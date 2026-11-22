@@ -3,14 +3,22 @@
 //!
 //! Steps ([`handle_build_profile`]):
 //! 1. Record `started_at` from the deps' clock.
-//! 2. Read the band reference of the player's band (R-4 with ruling Q2, per-metric fallback of
-//!    Task 17). It is reference data, not account state, so it is read before the lock. Then
+//! 2. The benchmark (ADR 0080). With [`BenchmarkSource::Peers`] (the default), compute the
+//!    opponent sides of new or re-analysed games from the eval cache
+//!    ([`refresh_opponent_metrics`], no engine) before the lock, and under it load them
+//!    ([`load_peer_sides`]); `compute` aggregates them around the player's latest pre-game
+//!    rating, and the result is stored in `account_benchmark` with the estimates. With
+//!    [`BenchmarkSource::LichessBands`] (opt-in), read the Lichess band reference of the
+//!    player's band (R-4 with ruling Q2, per-metric fallback of Task 17) as before: reference
+//!    data, not account state, so it is read before the lock. Then
 //!    open the write transaction and take the build's advisory lock
 //!    (`build-profile:<account>:<tc>`). On the transaction's own connection, fingerprint the
 //!    stored `game_metrics` rows and load:
 //!    - the current-version games ([`load_analysed_games_in`]; stale versions are no evidence);
 //!    - their series points (points of games left out are dropped too);
-//!    - the band again (re-read under the lock; if it moved, the reference is read again);
+//!    - the band again (re-read under the lock; if it moved, the Lichess reference is read
+//!      again);
+//!    - the opponent sides (`Peers`);
 //!    - the line keys, the stored history, the stored estimate states and the latest
 //!      snapshots.
 //!
@@ -86,6 +94,11 @@ use crate::analyse_features::parse_time_class;
 use crate::estimates::{compute_estimates, estimate_row, games_in_window};
 use crate::hook_impl::enqueue_build_profile;
 use crate::load::{LoadError, load_analysed_games_in, load_series_points_in};
+use crate::peer_benchmark::{
+    BenchmarkSource, PeerBenchmark, PeerSide, SOURCE_LICHESS_BANDS, SOURCE_PEERS, StoredBenchmark,
+    aggregate_peer_benchmark, center_rating, load_peer_sides, refresh_opponent_metrics,
+    write_account_benchmark,
+};
 use crate::snapshots::{
     Latest, changed_areas, compute_snapshots, latest_snapshots, profile_updated_payload,
     rows_to_append, snapshot_row,
@@ -114,6 +127,8 @@ pub struct BuildProfileDeps {
     /// The build's clock (`started_at`, ages of series points). `OffsetDateTime::now_utc` in
     /// production.
     pub now: fn() -> OffsetDateTime,
+    /// What the build compares with (ADR 0080): the peer benchmark by default.
+    pub benchmark: BenchmarkSource,
 }
 
 /// What a build wrote.
@@ -227,7 +242,10 @@ struct Loaded {
     games: Vec<(GameContext, PlayerGameMetrics)>,
     series: BTreeMap<SeriesKey, Vec<SeriesPoint>>,
     band: profile_core::types::Band,
+    /// The Lichess band reference (`LichessBands` only).
     reference: Option<BandReference>,
+    /// The opponent sides and the band's centre (`Peers` only; no centre without games).
+    peers: Option<(Vec<PeerSide>, Option<i32>)>,
     line_keys: HashMap<Uuid, String>,
     stored: StoredHistory,
     stored_states: HashMap<String, WeaknessState>,
@@ -242,6 +260,7 @@ async fn load_locked(
     pool: &PgPool,
     account_id: Uuid,
     tc: TimeClass,
+    source: BenchmarkSource,
     prefetched: (profile_core::types::Band, Option<BandReference>),
 ) -> Result<Loaded, JobError> {
     let fingerprint = games_fingerprint(conn, account_id, tc)
@@ -269,13 +288,24 @@ async fn load_locked(
     let (band, _source) = player_band_in(conn, account_id, tc)
         .await
         .map_err(refdata_error)?;
-    let reference = if band == prefetched.0 {
+    let reference = if source == BenchmarkSource::Peers {
+        None
+    } else if band == prefetched.0 {
         prefetched.1
     } else {
         load_band_reference(pool, band, tc)
             .await
             .map_err(refdata_error)?
             .map(|r| r.reference())
+    };
+    let peers = match source {
+        BenchmarkSource::Peers => Some((
+            load_peer_sides(conn, account_id, tc)
+                .await
+                .map_err(|e| retryable("peer sides", e))?,
+            center_rating(&games),
+        )),
+        BenchmarkSource::LichessBands => None,
     };
     let line_keys: HashMap<Uuid, String> = sqlx::query_as::<_, (Uuid, String)>(
         "SELECT game_id, line_key FROM game_openings WHERE account_id = $1 \
@@ -304,6 +334,7 @@ async fn load_locked(
         series,
         band,
         reference,
+        peers,
         line_keys,
         stored,
         stored_states,
@@ -313,6 +344,10 @@ async fn load_locked(
 
 /// The pure result of steps 3 to 6.
 struct Computed {
+    /// The peer benchmark (`Peers` with games).
+    peer: Option<PeerBenchmark>,
+    /// The served reference the estimates, states and snapshots compared with.
+    reference: Option<BandReference>,
     estimates: Vec<WeaknessEstimate>,
     outcomes: BTreeMap<SeriesKey, SeriesOutcome>,
     fresh: Vec<NewRow>,
@@ -328,18 +363,21 @@ struct Computed {
 
 fn compute(tc: TimeClass, l: &Loaded, started_at: OffsetDateTime) -> Computed {
     let t = Instant::now();
+    let (peer, reference) = match &l.peers {
+        Some((sides, Some(center))) => {
+            let b = aggregate_peer_benchmark(sides, *center, started_at);
+            let r = b.reference();
+            (Some(b), r)
+        }
+        Some((_, None)) => (None, None),
+        None => (None, l.reference.clone()),
+    };
     let in_window = games_in_window(l.games.iter().map(|(c, _)| c.played_at), started_at);
-    let estimates = compute_estimates(
-        &l.series,
-        in_window,
-        l.band,
-        l.reference.as_ref(),
-        started_at,
-    );
+    let estimates = compute_estimates(&l.series, in_window, l.band, reference.as_ref(), started_at);
     let estimates_ms = ms(t);
 
     let t = Instant::now();
-    let outcomes = evaluate_all(&l.series, l.reference.as_ref());
+    let outcomes = evaluate_all(&l.series, reference.as_ref());
     let contexts: HashMap<Uuid, &GameContext> =
         l.games.iter().map(|(c, _)| (c.game_id, c)).collect();
     let facts = CauseFacts {
@@ -362,7 +400,7 @@ fn compute(tc: TimeClass, l: &Loaded, started_at: OffsetDateTime) -> Computed {
             session: session_map.get(&ctx.game_id),
         })
         .collect();
-    let snapshot_values = compute_snapshots(&kpi_games, l.reference.as_ref());
+    let snapshot_values = compute_snapshots(&kpi_games, reference.as_ref());
     let appended: Vec<KpiValue> = rows_to_append(&snapshot_values, &l.latest)
         .into_iter()
         .cloned()
@@ -376,6 +414,8 @@ fn compute(tc: TimeClass, l: &Loaded, started_at: OffsetDateTime) -> Computed {
         .map(|p| (p.game_id, p.protocol.clone()))
         .collect();
     Computed {
+        peer,
+        reference,
         estimates,
         outcomes,
         fresh,
@@ -424,15 +464,34 @@ async fn run_build(
     let (band0, _) = player_band(pool, account_id, tc)
         .await
         .map_err(refdata_error)?;
-    let reference0 = load_band_reference(pool, band0, tc)
-        .await
-        .map_err(refdata_error)?
-        .map(|r| r.reference());
+    let reference0 = match deps.benchmark {
+        // The opponent sides of new or re-analysed games, from the eval cache (no engine).
+        // They are the account's own derived rows, recomputable at any time, so they are
+        // written before the lock; the locked load reads whichever are current.
+        BenchmarkSource::Peers => {
+            refresh_opponent_metrics(pool, account_id, tc)
+                .await
+                .map_err(|e| retryable("opponent sides", e))?;
+            None
+        }
+        BenchmarkSource::LichessBands => load_band_reference(pool, band0, tc)
+            .await
+            .map_err(refdata_error)?
+            .map(|r| r.reference()),
+    };
     let mut tx = pool.begin().await.map_err(|e| retryable("begin", e))?;
     lock_build(&mut tx, account_id, tc)
         .await
         .map_err(|e| retryable("lock", e))?;
-    let l = load_locked(&mut tx, pool, account_id, tc, (band0, reference0)).await?;
+    let l = load_locked(
+        &mut tx,
+        pool,
+        account_id,
+        tc,
+        deps.benchmark,
+        (band0, reference0),
+    )
+    .await?;
     stages.insert("load_ms".into(), ms(t));
 
     // 3-6. The CPU-heavy part, off the async executor.
@@ -456,6 +515,22 @@ async fn run_build(
 
     // Persist, then commit (which releases the lock).
     let t = Instant::now();
+    let stored = match (&c.peer, deps.benchmark) {
+        (Some(p), _) => Some(StoredBenchmark {
+            source: SOURCE_PEERS,
+            peers: Some(p),
+            stats: p.stats.clone(),
+        }),
+        (None, BenchmarkSource::LichessBands) => c.reference.as_ref().map(|r| StoredBenchmark {
+            source: SOURCE_LICHESS_BANDS,
+            peers: None,
+            stats: r.values().cloned().collect(),
+        }),
+        (None, BenchmarkSource::Peers) => None,
+    };
+    write_account_benchmark(&mut tx, account_id, tc, stored.as_ref())
+        .await
+        .map_err(|e| retryable("benchmark", e))?;
     for e in &c.estimates {
         let (state, p_imp) = c
             .outcomes

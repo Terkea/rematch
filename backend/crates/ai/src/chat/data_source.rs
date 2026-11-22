@@ -96,12 +96,149 @@ pub struct GamesQuery {
     pub limit: u32,
 }
 
+/// A move's judgement, mildest first (Postgres' `judgement` enum has the same order).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Judgement {
+    Inaccuracy,
+    Mistake,
+    Blunder,
+}
+
+impl Judgement {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Inaccuracy => "inaccuracy",
+            Self::Mistake => "mistake",
+            Self::Blunder => "blunder",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "inaccuracy" => Some(Self::Inaccuracy),
+            "mistake" => Some(Self::Mistake),
+            "blunder" => Some(Self::Blunder),
+            _ => None,
+        }
+    }
+}
+
+/// A move's game phase (Postgres' `phase` enum).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Phase {
+    Opening,
+    Middlegame,
+    Endgame,
+}
+
+impl Phase {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Opening => "opening",
+            Self::Middlegame => "middlegame",
+            Self::Endgame => "endgame",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "opening" => Some(Self::Opening),
+            "middlegame" => Some(Self::Middlegame),
+            "endgame" => Some(Self::Endgame),
+            _ => None,
+        }
+    }
+}
+
+/// The player's win chance before the move, in plain words: `winning` is at least
+/// [`WINNING_FROM`], `losing` at most [`LOSING_TO`], `equal` strictly between.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Standing {
+    Winning,
+    Equal,
+    Losing,
+}
+
+impl Standing {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Winning => "winning",
+            Self::Equal => "equal",
+            Self::Losing => "losing",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "winning" => Some(Self::Winning),
+            "equal" => Some(Self::Equal),
+            "losing" => Some(Self::Losing),
+            _ => None,
+        }
+    }
+}
+
+/// `winning` starts at this win chance (the mover's, 0..100).
+pub const WINNING_FROM: f64 = 70.0;
+/// `losing` ends at this win chance.
+pub const LOSING_TO: f64 = 30.0;
+
+/// How move-filter results are ordered: newest game first (`Recent`, the default) or the
+/// biggest win-chance drop first (`Worst`). Either way a game gives one move, its worst match.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum ExampleSort {
+    #[default]
+    Recent,
+    Worst,
+}
+
+/// `find_examples`' move filter (fix E, N8): the player's OWN moves (`moves.color =
+/// games.player_color`) in the scope's account and time class. Every field narrows the search;
+/// the executor has validated each one. Without `judgement`, `min_judgement` or `min_delta_w`
+/// only erring moves (any judgement) match.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct MoveFilter {
+    pub phase: Option<Phase>,
+    /// Exactly this judgement.
+    pub judgement: Option<Judgement>,
+    /// This judgement or a more severe one.
+    pub min_judgement: Option<Judgement>,
+    pub standing: Option<Standing>,
+    /// Inclusive bounds on the mover's win chance before the move, 0..=100.
+    pub min_win_before: Option<u32>,
+    pub max_win_before: Option<u32>,
+    /// The least win-chance drop of the move, 1..=100.
+    pub min_delta_w: Option<u32>,
+    /// Only moves made with less than this many seconds on the player's clock.
+    pub clock_below: Option<u32>,
+    /// The player's colour in the game.
+    pub color: Option<PlayerColor>,
+    /// Games played on or after / on or before these dates (UTC).
+    pub since: Option<Date>,
+    pub until: Option<Date>,
+    /// Only the player's newest analysed games of the scope, at most this many.
+    pub last_games: Option<u32>,
+    pub sort: ExampleSort,
+}
+
+/// What a move filter matched in the scope (the `searched` part of the tool result).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FilterCounts {
+    /// The scope's time class, e.g. `rapid`.
+    pub time_class: String,
+    /// Analysed games the filter looked at (after the colour, date and `last_games` limits).
+    pub games_searched: u64,
+    pub matching_moves: u64,
+    pub matching_games: u64,
+}
+
 /// `find_examples`. Exactly one selector is `Some`; `limit` is 1..=10.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ExamplesQuery {
     pub weakness_id: Option<String>,
     pub motif: Option<String>,
     pub line_key: Option<String>,
+    pub filter: Option<MoveFilter>,
     pub limit: u32,
 }
 
@@ -135,6 +272,14 @@ pub trait CoachDataSource: Send + Sync {
 
     fn find_examples(&self, q: ExamplesQuery)
     -> BoxFuture<'_, anyhow::Result<Vec<PositionRecord>>>;
+
+    /// What a move filter matches in the scope. `None` when the source cannot count.
+    fn count_examples<'a>(
+        &'a self,
+        _filter: &'a MoveFilter,
+    ) -> BoxFuture<'a, anyhow::Result<Option<FilterCounts>>> {
+        Box::pin(async { Ok(None) })
+    }
 
     /// The details of an anchor of this account, or `None` for a foreign or unknown one.
     fn resolve_anchor<'a>(

@@ -6,12 +6,16 @@ import {
   DETECTOR_CONSTANTS,
   GLOSSARY_STATES,
   GLOSSARY_TERMS,
+  GLOSSARY_VERDICTS,
   type GlossaryEntry,
   glossaryEntry,
   glossaryForPrompt,
   KPI_GLOSSARY,
   STATE_GLOSSARY,
+  seriesGlossary,
   TERM_GLOSSARY,
+  VERDICT_CONSTANTS,
+  VERDICT_GLOSSARY,
   WEAKNESS_GLOSSARY,
 } from "../../src/server/profile/glossary";
 
@@ -114,5 +118,67 @@ describe("glossary", () => {
     expect(parsed.weaknesses?.W5).toEqual(WEAKNESS_GLOSSARY.W5);
     expect(parsed.terms?.chances).toEqual(TERM_GLOSSARY.chances);
     expect(parsed.states?.active).toEqual(STATE_GLOSSARY.active);
+  });
+});
+
+describe("seriesGlossary", () => {
+  it.each([
+    ["W1", "W1"],
+    ["W3.shallow", "W3.shallow"],
+    ["motif.missed:fork", "motif_miss_rate:fork"],
+  ])("%s takes the entry of %s", (series, key) => {
+    expect(seriesGlossary(series)).toEqual(glossaryEntry(key));
+  });
+
+  it.each(["motif.allowed:fork", "opening:white:italian", "endgame:rook", "W99"])(
+    "%s has no entry, never an invented one",
+    (series) => {
+      expect(seriesGlossary(series)).toBeNull();
+    },
+  );
+});
+
+describe("verdict glossary", () => {
+  const rust = readFileSync(
+    new URL("../../../../backend/crates/profile-core/src/openings/verdicts.rs", import.meta.url),
+    "utf8",
+  );
+  const num = (re: RegExp) => {
+    const m = re.exec(rust);
+    if (!m?.[1]) throw new Error(`not found in verdicts.rs: ${re}`);
+    return Number(m[1]);
+  };
+
+  it("mirrors the Rust verdict rule's thresholds", () => {
+    expect(VERDICT_CONSTANTS).toEqual({
+      minGames: num(/min_games: (\d+),/),
+      perfDropPp: -Math.round(num(/perf_drop: (-?[\d.]+),/) * 100),
+      worseWinPct: num(/worse_win: ([\d.]+),/),
+      minAnalysed: num(/min_analysed: (\d+),/),
+      deviationMinGames: num(/deviation_min_games: (\d+),/),
+      deviationSharePct: Math.round(num(/deviation_share: ([\d.]+),/) * 100),
+      deviationDeltaWinPct: num(/deviation_delta_w: ([\d.]+),/),
+      replaceMinGames: num(/REPLACE_MIN_GAMES: u32 = (\d+);/),
+      replaceMaxPerfPp: -Math.round(num(/REPLACE_MAX_PERF: f64 = (-?[\d.]+);/) * 100),
+      learnMaxDeviationPly: num(/LEARN_MAX_DEVIATION_PLY: f64 = ([\d.]+);/),
+      learnMinSharePct: Math.round(num(/LEARN_MIN_SHARE: f64 = ([\d.]+);/) * 100),
+    });
+  });
+
+  it("explains every verdict with a complete entry", () => {
+    expect([...GLOSSARY_VERDICTS].sort()).toEqual(["fix", "keep", "learn", "replace"]);
+    for (const v of GLOSSARY_VERDICTS) expectComplete(v, VERDICT_GLOSSARY[v]);
+  });
+
+  it("quotes only the rule's numbers (and the 80% range)", () => {
+    const allowed = new Set([...Object.values(VERDICT_CONSTANTS), 80]);
+    for (const [key, e] of Object.entries(VERDICT_GLOSSARY)) {
+      for (const n of e.measured.match(/\d+(?:\.\d+)?/g) ?? []) {
+        expect(allowed.has(Number(n)), `${key} quotes ${n}`).toBe(true);
+      }
+      for (const text of [e.meaning, e.whyItMatters]) {
+        expect(text, key).toMatch(/[.?]$/);
+      }
+    }
   });
 });

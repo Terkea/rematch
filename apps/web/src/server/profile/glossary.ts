@@ -891,6 +891,67 @@ export const STATE_GLOSSARY: Record<WeaknessState, GlossaryEntry> = {
   },
 };
 
+/**
+ * The opening verdict rule's thresholds (`backend/crates/profile-core/src/openings/verdicts.rs`,
+ * `STRUGGLE_THRESHOLDS` and the `REPLACE_*`/`LEARN_*` constants) in the units the copy uses:
+ * games, percentage points of score (pp), win% points and plies. `test/profile/glossary.test.ts`
+ * reads that file and fails when they drift.
+ */
+export const VERDICT_CONSTANTS = {
+  minGames: 8,
+  perfDropPp: 10,
+  worseWinPct: 40,
+  minAnalysed: 5,
+  deviationMinGames: 3,
+  deviationSharePct: 30,
+  deviationDeltaWinPct: 10,
+  replaceMinGames: 15,
+  replaceMaxPerfPp: 15,
+  learnMaxDeviationPly: 10,
+  learnMinSharePct: 10,
+} as const;
+
+const V = VERDICT_CONSTANTS;
+const PP = "percentage points of score against what your rating predicts (pp)";
+
+export const GLOSSARY_VERDICTS = ["keep", "fix", "learn", "replace"] as const;
+export type GlossaryVerdict = (typeof GLOSSARY_VERDICTS)[number];
+
+/** What each opening verdict means, from the rule that decides it (`decide_verdict`). */
+export const VERDICT_GLOSSARY: Record<GlossaryVerdict, GlossaryEntry> = {
+  fix: {
+    name: "Fix",
+    meaning: "One move in this line keeps costing you, so learning the right one there is enough.",
+    measured: `Your most repeated costly move in the line, one that lost ${V.deviationDeltaWinPct} win% points or more, played in at least ${V.deviationMinGames} games and at least ${V.deviationSharePct}% of your games in the line. Needs at least ${V.minGames} games in the line, and it is checked first, before any other verdict.`,
+    whyItMatters: "Fixing a single move is the cheapest repair in your repertoire.",
+    tip: "Open one of those games at that move, find the engine's choice and play it in your next few games.",
+  },
+  replace: {
+    name: "Replace",
+    meaning:
+      "This line keeps scoring well below what your rating predicts, so another line may serve you better.",
+    measured: `At least ${V.replaceMinGames} games, a score of ${V.replaceMaxPerfPp} ${PP} below or worse, and the whole 80% range of that score below zero. Only a line you choose, never one you face. Checked after Fix.`,
+    whyItMatters:
+      "A line that keeps losing points is a steady leak that study rarely closes quickly.",
+    tip: "Try one of the suggested alternatives for a few weeks and compare the results.",
+  },
+  learn: {
+    name: "Learn deeper",
+    meaning: "The line is worth keeping, but something in it needs more study.",
+    measured: `Either you play it often (at least ${V.learnMinSharePct}% of your games with that colour) and usually leave the known moves by half-move ${V.learnMaxDeviationPly}; or you leave the opening worse off (your win% averages ${V.worseWinPct} or less at its end over at least ${V.minAnalysed} analysed games); or you score ${V.perfDropPp} ${PP} below or worse with the whole 80% range below zero, but short of Replace.`,
+    whyItMatters:
+      "Knowing a line a few moves deeper turns an uncomfortable opening into a familiar one.",
+    tip: "Look up the main line past the move where you usually leave it, and replay it from both sides.",
+  },
+  keep: {
+    name: "Keep",
+    meaning: "Nothing in this line is costing you, so there is no need to change it.",
+    measured: `At least ${V.minGames} games, no repeated costly move, no early exit from theory in a line you play often, and no result clearly below what your rating predicts.`,
+    whyItMatters: "It tells you where you do not need to spend opening study time.",
+    tip: "Keep playing it and put your study time into the lines marked Fix or Learn deeper.",
+  },
+};
+
 const ALL: Record<string, GlossaryEntry> = {
   ...WEAKNESS_GLOSSARY,
   ...KPI_GLOSSARY,
@@ -914,4 +975,16 @@ export function glossaryForPrompt(): string {
     terms: TERM_GLOSSARY,
     states: STATE_GLOSSARY,
   });
+}
+
+/**
+ * The entry of a weakness series: a `W*` key's own, a missed motif's KPI entry. An allowed motif,
+ * an opening line or an endgame type has none, so the page shows no definition rather than a
+ * borrowed one.
+ */
+export function seriesGlossary(seriesKey: string): GlossaryEntry | null {
+  if (Object.hasOwn(WEAKNESS_GLOSSARY, seriesKey)) return WEAKNESS_GLOSSARY[seriesKey] ?? null;
+  const missed = /^motif\.missed:(.+)$/.exec(seriesKey);
+  if (missed) return glossaryEntry(`motif_miss_rate:${missed[1]}`);
+  return null;
 }

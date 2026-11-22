@@ -9,6 +9,9 @@
 //!   a weakness's per-game `exemplarPlies` (`game_metrics`), a motif's erring moves whose best or
 //!   refuting line carries the tag (`move_features`), and an opening line's worst player move in
 //!   its first 30 plies, one per game (`game_openings`). Each is looked up in the account's moves.
+//! - A move filter (fix E, N8) reads the player's own moves of the scope directly
+//!   ([`FILTER_SQL`]): one per game, its worst match, newest game first (or worst first), with
+//!   counts of what it searched and matched (`count_examples`).
 //! - A position's tags are the matching exemplar's plus its stored line tags (`move_features`),
 //!   in the contract's snake_case.
 //! - `get_position` joins `moves` with the account's `games` by `platform_game_id` (the chat's
@@ -30,7 +33,8 @@ use uuid::Uuid;
 
 use super::anchor::ChatAnchor;
 use super::data_source::{
-    CachedEval, CoachDataSource, ExamplesQuery, GameResult, GameSummary, GamesQuery, PositionRecord,
+    CachedEval, CoachDataSource, ExampleSort, ExamplesQuery, FilterCounts, GameResult, GameSummary,
+    GamesQuery, Judgement, LOSING_TO, MoveFilter, Phase, PositionRecord, Standing, WINNING_FROM,
 };
 use super::tools::{MAX_EXAMPLES, MAX_GAMES};
 use crate::input::parse::parse_coaching_input;
@@ -152,6 +156,61 @@ const GAME_SQL: &str = "WITH g AS ( \
       FROM games g WHERE g.account_id = $1) \
     SELECT platform_game_id, played_at, outcome, color, opp, opening_name, acc, plies FROM g \
     WHERE outcome IS NOT NULL";
+
+/// The move filter's matches (fix E, N8): `sg` is the scope's analysed games (account, time
+/// class, colour, dates, newest `last_games`), `hit` the player's own moves in them that pass
+/// every filter. Binds: $1 account, $2 time class, $3 colour, $4 since, $5 until, $6 last games,
+/// $7 phase, $8 judgement, $9 min judgement, $10 standing, $11 min win, $12 max win, $13 min
+/// drop, $14 clock below; callers add their own after these.
+const FILTER_SQL: &str = "WITH sg AS ( \
+      SELECT g.id, g.platform_game_id, g.played_at, g.player_color FROM games g \
+      WHERE g.account_id = $1 AND g.time_class = $2::time_class \
+      AND ($3::text IS NULL OR g.player_color = $3::color) \
+      AND ($4::date IS NULL OR g.played_at >= ($4::date)::timestamp AT TIME ZONE 'UTC') \
+      AND ($5::date IS NULL OR g.played_at < ($5::date + 1)::timestamp AT TIME ZONE 'UTC') \
+      AND EXISTS (SELECT 1 FROM moves am WHERE am.game_id = g.id) \
+      ORDER BY g.played_at DESC, g.platform_game_id LIMIT $6), \
+    hit AS ( \
+      SELECT sg.id AS gid, sg.platform_game_id, sg.played_at, m.ply, m.delta_w FROM sg \
+      JOIN moves m ON m.game_id = sg.id \
+      WHERE m.color = sg.player_color \
+      AND ($7::text IS NULL OR m.phase = $7::phase) \
+      AND ($8::text IS NULL OR m.judgement = $8::judgement) \
+      AND ($9::text IS NULL OR m.judgement >= $9::judgement) \
+      AND ($8::text IS NOT NULL OR $9::text IS NOT NULL OR $13::float8 IS NOT NULL \
+        OR m.judgement IS NOT NULL) \
+      AND ($10::text IS NULL \
+        OR ($10 = 'winning' AND m.win_before >= $15) \
+        OR ($10 = 'losing' AND m.win_before <= $16) \
+        OR ($10 = 'equal' AND m.win_before > $16 AND m.win_before < $15)) \
+      AND ($11::float8 IS NULL OR m.win_before >= $11) \
+      AND ($12::float8 IS NULL OR m.win_before <= $12) \
+      AND ($13::float8 IS NULL OR m.delta_w >= $13) \
+      AND ($14::float8 IS NULL OR m.clock_before < $14))";
+
+/// Binds [`FILTER_SQL`]'s parameters ($1..$16) to a query.
+macro_rules! bind_filter {
+    ($q:expr, $scope:expr, $f:expr) => {{
+        let f: &MoveFilter = $f;
+        let num = |n: Option<u32>| n.map(f64::from);
+        $q.bind($scope.account_id)
+            .bind($scope.time_class.as_str())
+            .bind(f.color.map(PlayerColor::as_str))
+            .bind(f.since)
+            .bind(f.until)
+            .bind(f.last_games.map(i64::from))
+            .bind(f.phase.map(Phase::as_str))
+            .bind(f.judgement.map(Judgement::as_str))
+            .bind(f.min_judgement.map(Judgement::as_str))
+            .bind(f.standing.map(Standing::as_str))
+            .bind(num(f.min_win_before))
+            .bind(num(f.max_win_before))
+            .bind(num(f.min_delta_w))
+            .bind(num(f.clock_below))
+            .bind(WINNING_FROM)
+            .bind(LOSING_TO)
+    }};
+}
 
 fn game_summary(r: GameRow) -> Option<GameSummary> {
     let (game_id, played_at, outcome, color, opp, opening_name, accuracy, plies) = r;
@@ -419,8 +478,60 @@ impl DbCoachDataSource {
         Ok(rows)
     }
 
+    /// The move filter's examples as `(platform game id, ply)`: each matching game's worst
+    /// match (biggest drop, then lowest ply), newest game first or worst first; at most `limit`.
+    async fn filter_refs(&self, f: &MoveFilter, limit: i64) -> anyhow::Result<Vec<(String, i32)>> {
+        let order = match f.sort {
+            ExampleSort::Recent => "played_at DESC, platform_game_id",
+            ExampleSort::Worst => "delta_w DESC, played_at DESC, platform_game_id",
+        };
+        let sql = format!(
+            "{FILTER_SQL} SELECT platform_game_id, ply FROM ( \
+             SELECT DISTINCT ON (gid) gid, platform_game_id, played_at, ply, delta_w FROM hit \
+             ORDER BY gid, delta_w DESC, ply) worst ORDER BY {order} LIMIT $17"
+        );
+        let q = sqlx::query_as::<_, (String, i32)>(sqlx::AssertSqlSafe(sql));
+        Ok(bind_filter!(q, self.scope, f)
+            .bind(limit)
+            .fetch_all(&self.pool)
+            .await?)
+    }
+
+    async fn filter_counts(&self, f: &MoveFilter) -> anyhow::Result<FilterCounts> {
+        let sql = format!(
+            "{FILTER_SQL} SELECT (SELECT count(*) FROM sg), (SELECT count(*) FROM hit), \
+             (SELECT count(DISTINCT gid) FROM hit)"
+        );
+        let q = sqlx::query_as::<_, (i64, i64, i64)>(sqlx::AssertSqlSafe(sql));
+        let (games, moves, hit_games) =
+            bind_filter!(q, self.scope, f).fetch_one(&self.pool).await?;
+        let n = |x: i64| u64::try_from(x).unwrap_or(0);
+        Ok(FilterCounts {
+            time_class: self.scope.time_class.as_str().to_owned(),
+            games_searched: n(games),
+            matching_moves: n(moves),
+            matching_games: n(hit_games),
+        })
+    }
+
     async fn examples(&self, q: ExamplesQuery) -> anyhow::Result<Vec<PositionRecord>> {
         let limit = q.limit.clamp(1, MAX_EXAMPLES) as usize;
+        if let Some(f) = &q.filter {
+            let want = i64::try_from(limit * 2).unwrap_or(i64::MAX);
+            let mut out = Vec::new();
+            for (game_id, ply) in self.filter_refs(f, want).await? {
+                if out.len() >= limit {
+                    break;
+                }
+                let Ok(ply) = u32::try_from(ply) else {
+                    continue;
+                };
+                if let Some(p) = self.position(&game_id, ply).await? {
+                    out.push(p);
+                }
+            }
+            return Ok(out);
+        }
         let input = &self.scope.input;
         let picked: Vec<&ExemplarPosition> = if let Some(w) = &q.weakness_id {
             input
@@ -580,6 +691,13 @@ impl CoachDataSource for DbCoachDataSource {
         q: ExamplesQuery,
     ) -> BoxFuture<'_, anyhow::Result<Vec<PositionRecord>>> {
         Box::pin(self.examples(q))
+    }
+
+    fn count_examples<'a>(
+        &'a self,
+        filter: &'a MoveFilter,
+    ) -> BoxFuture<'a, anyhow::Result<Option<FilterCounts>>> {
+        Box::pin(async move { Ok(Some(self.filter_counts(filter).await?)) })
     }
 
     fn resolve_anchor<'a>(

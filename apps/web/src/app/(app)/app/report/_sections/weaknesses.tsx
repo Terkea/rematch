@@ -17,6 +17,7 @@ import type {
   ExemplarPosition,
   WeaknessesSection,
 } from "../../../../../server/coaching/types";
+import { seriesGlossary } from "../../../../../server/profile/glossary";
 import type { ReportScope } from "../rebuild-button";
 import { weaknessHref, weaknessSeriesKey } from "./links";
 import { CoachText, ReportSection, SectionNote, type SectionStatus } from "./shell";
@@ -122,6 +123,7 @@ export function Weaknesses({
                     trend={trends[seriesKey] ?? []}
                     onset={null}
                     scaleMax={scaleMax}
+                    explain={seriesGlossary(seriesKey)}
                   />
                 </div>
                 <div className="flex flex-col gap-4 pl-9">

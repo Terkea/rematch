@@ -81,6 +81,10 @@ One file per decision: context, decision, alternatives, consequences. New decisi
 - [0076. Recurring incremental sync of linked accounts](0076-recurring-account-sync.md)
 - [0077. "Sync now" and the analysis-progress panel](0077-sync-now-and-analysis-progress.md)
 - [0078. Honest coach availability, uncompared weaknesses and R2-backed examples](0078-honest-coach-availability-and-benchmarks.md)
+- [0079. Explained stats: definition lines, an explanation popover and the weakness story](0079-explained-stats-and-weakness-story.md)
+- [0080. A chess.com peer benchmark from the opponents you have faced](0080-chesscom-peer-benchmark.md)
+- [0083. One filter URL contract, and honest period comparison](0083-filters-and-period-comparison.md)
+- [0081. The peer benchmark compares with the pooled rate, in the player's window, without mirrors](0081-peer-benchmark-pooled-rate.md)
 
 ## Records with placeholder numbers
 
@@ -138,3 +142,11 @@ Every R2 record has a file (titles final at R2 Task 35); numbers 19 to 21 were n
 ### Analysis audit fixes (fix/c): ADR-FIX-C
 
 - [ADR-FIX-C-1. Lila game accuracy, phase accuracy by the game formula, pre-game ratings](ADR-FIX-C-1-lila-accuracy-and-pre-game-ratings.md)
+
+### Browser check fixes (fix/d): ADR-FIX-D
+
+- [ADR-FIX-D-1. Numbers keep their units, answers show their positions, numbers-only reports say why](ADR-FIX-D-1-units-boards-and-numbers-only-reports.md)
+
+### Coach bug fixes (fix/e): ADR-FIX-E
+
+- [ADR-FIX-E-1. The coach finds the player's own moves by a move filter](ADR-FIX-E-1-find-examples-move-filter.md)

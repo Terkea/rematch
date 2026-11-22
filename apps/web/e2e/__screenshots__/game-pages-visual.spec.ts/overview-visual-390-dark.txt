@@ -20,14 +20,18 @@ All
 
 34 analysed games. Accuracy 80% likely between 65.1% and 71.2%. Blunders 80% likely between 1.2 and 1.8.
 
+In a typical game you make about 1.5 blunders (moves that cost 15 win% points or more), likely between 1.3 and 1.8. Not compared with players at your level yet.
+
 What to work on
 Missed own tactic (shallow)
 
-Estimated 18.0% of chances (80% range 15.0–22.0%), from 22 of 120 chances.
+Estimated 18.0% of chances (80% range 15.0–22.0%), from 22 of 120 in the last 6 months.
 
-Based on 15 analysed rapid games.
+Based on 15 analysed rapid games on chess.com.
 
 Accuracy over time
+
+How close your moves were to the engine's best moves, as a score out of 100.
 
 34 games, 1 Sep 2026 to 31 Oct 2026. Rolling average 70.1% on 31 Oct 2026, 80% likely between 65.9% and 74.2%.
 
@@ -53,6 +57,8 @@ Across 34 analysed games.
 Each small line is your latest 12 weeks of play, one point a week. A gap is a week with no games.
 
 Blunders
+
+How many big mistakes you make in a typical game.
 
 Based on 34 analysed games
 

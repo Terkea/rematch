@@ -124,7 +124,9 @@ function renderSegment(
       return linked(
         <span data-segment="best" data-mark="good" className={cn(notationClass, "text-good-text")}>
           <GoodHead />
-          <span className="sr-only">better move </span>
+          {/* A no-break space survives where a hidden label's trailing space collapses, so
+              copied text reads "better move: Qe3", not "better moveQe3". */}
+          <span className="sr-only">{"better move:\u00a0"}</span>
           {san}
         </span>,
         s,

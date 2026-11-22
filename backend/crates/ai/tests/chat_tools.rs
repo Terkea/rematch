@@ -11,8 +11,9 @@ use std::time::Duration;
 use ai::chat::anchor::ChatAnchor;
 use ai::chat::context::{anchor_block, anchor_details, build_chat_context};
 use ai::chat::data_source::{
-    CachedEval, CoachDataSource, EngineCheck, ExamplesQuery, GameResult, GameSummary, GamesQuery,
-    InteractiveEngine, PositionRecord,
+    CachedEval, CoachDataSource, EngineCheck, ExampleSort, ExamplesQuery, FilterCounts, GameResult,
+    GameSummary, GamesQuery, InteractiveEngine, Judgement, MoveFilter, Phase, PositionRecord,
+    Standing,
 };
 use ai::chat::execute::{
     ENGINE_WAIT_INLINE, MAX_ENGINE_CHECKS_PER_TURN, ToolDeps, ToolExec, ToolOutput, ToolSession,
@@ -116,6 +117,8 @@ struct FakeDs {
     /// When set, `get_position` returns this record whatever is asked (a buggy source).
     lie: Option<PositionRecord>,
     calls: Mutex<Vec<String>>,
+    /// Every `find_examples` query, in call order.
+    examples_asked: Mutex<Vec<ExamplesQuery>>,
 }
 
 fn exemplars(i: &CoachingInput) -> Vec<&ExemplarPosition> {
@@ -176,6 +179,7 @@ impl FakeDs {
             evals: HashMap::new(),
             lie: None,
             calls: Mutex::new(Vec::new()),
+            examples_asked: Mutex::new(Vec::new()),
         }
     }
 
@@ -260,8 +264,16 @@ impl CoachDataSource for FakeDs {
         q: ExamplesQuery,
     ) -> BoxFuture<'_, anyhow::Result<Vec<PositionRecord>>> {
         self.log("find_examples");
+        self.examples_asked.lock().unwrap().push(q.clone());
         let i = self.own();
-        let picked: Vec<&ExemplarPosition> = if let Some(w) = &q.weakness_id {
+        let picked: Vec<&ExemplarPosition> = if let Some(f) = &q.filter {
+            // A move filter: every own exemplar, or none for the opening phase.
+            if f.phase == Some(Phase::Opening) {
+                Vec::new()
+            } else {
+                exemplars(i)
+            }
+        } else if let Some(w) = &q.weakness_id {
             i.weaknesses
                 .iter()
                 .filter(|x| &x.id == w)
@@ -284,6 +296,22 @@ impl CoachDataSource for FakeDs {
         // Deliberately ignores `limit`: the executor must cap the results itself.
         let out = picked.into_iter().map(record).collect();
         Box::pin(async move { Ok(out) })
+    }
+
+    fn count_examples<'a>(
+        &'a self,
+        f: &'a MoveFilter,
+    ) -> BoxFuture<'a, anyhow::Result<Option<FilterCounts>>> {
+        self.log("count_examples");
+        let none = f.phase == Some(Phase::Opening);
+        Box::pin(async move {
+            Ok(Some(FilterCounts {
+                time_class: "rapid".into(),
+                games_searched: 37,
+                matching_moves: if none { 0 } else { 45 },
+                matching_games: if none { 0 } else { 24 },
+            }))
+        })
     }
 
     fn resolve_anchor<'a>(
@@ -721,7 +749,13 @@ async fn get_position_hit_adds_evidence_and_refs() {
     );
     assert_eq!(
         render(&s.evidence(), &refs["num"]["position.winBefore"]).as_deref(),
-        Some("51.8")
+        Some("51.8%"),
+        "a win chance carries its unit"
+    );
+    assert_eq!(
+        render(&s.evidence(), &refs["num"]["position.timeSpent"]).as_deref(),
+        Some("4\u{a0}s"),
+        "a clock time carries its unit"
     );
     assert_eq!(
         s.evidence().number_paths["tools.0.position.moveNumber"],
@@ -1111,6 +1145,204 @@ async fn find_examples_adds_positions_with_refs() {
     assert_eq!(v["examples"].as_array().unwrap().len(), 3);
 }
 
+// --- find_examples: the move filter (fix E, N8) ---
+
+#[test]
+fn find_examples_schema_offers_the_move_filter() {
+    let tools = chat_tools();
+    let t = tools.iter().find(|t| t.name == "find_examples").unwrap();
+    let p = &t.input_schema["properties"];
+    assert_eq!(
+        p["phase"]["enum"],
+        json!(["opening", "middlegame", "endgame"])
+    );
+    assert_eq!(
+        p["judgement"]["enum"],
+        json!(["inaccuracy", "mistake", "blunder"])
+    );
+    assert_eq!(p["minJudgement"]["enum"], p["judgement"]["enum"]);
+    assert_eq!(p["standing"]["enum"], json!(["winning", "equal", "losing"]));
+    assert_eq!(p["color"]["enum"], json!(["white", "black"]));
+    assert_eq!(p["sort"]["enum"], json!(["recent", "worst"]));
+    for (k, lo, hi) in [
+        ("minWinBefore", 0, 100),
+        ("maxWinBefore", 0, 100),
+        ("minDeltaW", 1, 100),
+        ("clockBelowSeconds", 1, 3600),
+        ("lastGames", 1, 500),
+    ] {
+        assert_eq!(p[k]["type"], "integer", "{k}");
+        assert_eq!(
+            (p[k]["minimum"].clone(), p[k]["maximum"].clone()),
+            (json!(lo), json!(hi)),
+            "{k}"
+        );
+    }
+    assert_eq!(p["since"]["type"], "string");
+    assert_eq!(p["until"]["type"], "string");
+    // The model is told when to use it and what the weakness ids are.
+    assert!(t.description.contains("phase"), "{}", t.description);
+    let w = p["weaknessId"]["description"].as_str().unwrap();
+    for id in ["W1", "W5", "W8", "W9a", "W10"] {
+        assert!(w.contains(id), "{w}");
+    }
+}
+
+#[tokio::test]
+async fn find_examples_parses_every_move_filter_field() {
+    let (ds, eng) = (FakeDs::new(), FakeEngine::default());
+    let s = ToolSession::new(create_evidence());
+    let input = json!({
+        "phase": "endgame", "minJudgement": "mistake", "standing": "winning",
+        "minWinBefore": 75, "maxWinBefore": 95, "minDeltaW": 10, "clockBelowSeconds": 60,
+        "color": "black", "since": "2026-01-01", "until": "2026-06-30", "lastGames": 50,
+        "sort": "worst", "limit": 2,
+    });
+    let (o, v) = ready(&ds, &eng, &s, "find_examples", input).await;
+    assert!(!o.is_error, "{}", o.content);
+    let q = ds.examples_asked.lock().unwrap()[0].clone();
+    assert_eq!(
+        q,
+        ExamplesQuery {
+            filter: Some(MoveFilter {
+                phase: Some(Phase::Endgame),
+                judgement: None,
+                min_judgement: Some(Judgement::Mistake),
+                standing: Some(Standing::Winning),
+                min_win_before: Some(75),
+                max_win_before: Some(95),
+                min_delta_w: Some(10),
+                clock_below: Some(60),
+                color: Some(PlayerColor::Black),
+                since: Some(time::macros::date!(2026 - 01 - 01)),
+                until: Some(time::macros::date!(2026 - 06 - 30)),
+                last_games: Some(50),
+                sort: ExampleSort::Worst,
+            }),
+            limit: 2,
+            ..ExamplesQuery::default()
+        }
+    );
+    assert_eq!(
+        v["examples"].as_array().unwrap().len(),
+        2,
+        "capped by limit"
+    );
+    // What was searched, echoed with the counts.
+    let searched = &v["searched"];
+    assert_eq!(searched["timeClass"], "rapid");
+    assert_eq!(searched["phase"], "endgame");
+    assert_eq!(searched["minJudgement"], "mistake");
+    assert_eq!(searched["standing"], "winning");
+    assert_eq!(searched["color"], "black");
+    assert_eq!(searched["sort"], "worst");
+    assert_eq!(searched["matchingMoves"], 45);
+    assert_eq!(searched["matchingGames"], 24);
+    assert_eq!(searched["gamesSearched"], 37);
+    // The tighter of the preset (70) and the given bound (75).
+    assert_eq!(searched["minWinBefore"], 75);
+    assert_eq!(searched["maxWinBefore"], 95);
+    let ev = s.evidence();
+    assert_eq!(
+        render(&ev, &v["refs"]["num"]["searched.matchingGames"]).as_deref(),
+        Some("24")
+    );
+    assert_eq!(
+        render(&ev, &v["refs"]["num"]["searched.lastGames"]).as_deref(),
+        Some("50")
+    );
+    assert!(render(&ev, &v["refs"]["date"]["searched.since"]).is_some());
+    for e in v["examples"].as_array().unwrap() {
+        assert!(
+            render(&ev, &e["refs"]["move"]).is_some(),
+            "a citable position"
+        );
+    }
+}
+
+#[tokio::test]
+async fn find_examples_with_no_match_still_says_what_was_searched() {
+    let (ds, eng) = (FakeDs::new(), FakeEngine::default());
+    let s = ToolSession::new(create_evidence());
+    let input = json!({"phase": "opening", "judgement": "blunder", "limit": 1});
+    let (o, v) = ready(&ds, &eng, &s, "find_examples", input).await;
+    assert!(!o.is_error, "{}", o.content);
+    assert_eq!(v["examples"], json!([]));
+    assert_eq!(v["searched"]["phase"], "opening");
+    assert_eq!(v["searched"]["judgement"], "blunder");
+    assert_eq!(v["searched"]["matchingMoves"], 0);
+    assert_eq!(
+        render(&s.evidence(), &v["refs"]["num"]["searched.gamesSearched"]).as_deref(),
+        Some("37")
+    );
+}
+
+#[tokio::test]
+async fn find_examples_rejects_bad_move_filters_without_any_call() {
+    let (ds, eng) = (FakeDs::new(), FakeEngine::default());
+    let s = ToolSession::new(create_evidence());
+    let cases = [
+        (json!({"phase": "late", "limit": 1}), "phase"),
+        (json!({"judgement": "awful", "limit": 1}), "judgement"),
+        (json!({"minJudgement": "bad", "limit": 1}), "minJudgement"),
+        (
+            json!({"judgement": "blunder", "minJudgement": "mistake", "limit": 1}),
+            "judgement",
+        ),
+        (json!({"standing": "great", "limit": 1}), "standing"),
+        (json!({"minWinBefore": 101, "limit": 1}), "minWinBefore"),
+        (json!({"maxWinBefore": -1, "limit": 1}), "maxWinBefore"),
+        (
+            json!({"minWinBefore": 80, "maxWinBefore": 20, "limit": 1}),
+            "minWinBefore",
+        ),
+        (json!({"minDeltaW": 0, "limit": 1}), "minDeltaW"),
+        (
+            json!({"clockBelowSeconds": 0, "limit": 1}),
+            "clockBelowSeconds",
+        ),
+        (
+            json!({"clockBelowSeconds": 3601, "limit": 1}),
+            "clockBelowSeconds",
+        ),
+        (json!({"color": "red", "limit": 1}), "color"),
+        (json!({"since": "yesterday", "limit": 1}), "since"),
+        (json!({"until": "2026-13-01", "limit": 1}), "until"),
+        (
+            json!({"since": "2026-05-01", "until": "2026-04-01", "limit": 1}),
+            "since",
+        ),
+        (json!({"lastGames": 0, "limit": 1}), "lastGames"),
+        (json!({"lastGames": 501, "limit": 1}), "lastGames"),
+        (
+            json!({"phase": "endgame", "sort": "best", "limit": 1}),
+            "sort",
+        ),
+        (json!({"phase": "endgame", "limit": 11}), "limit"),
+        // A move filter is its own selector: never mixed with another.
+        (
+            json!({"weaknessId": "W1", "phase": "endgame", "limit": 1}),
+            "exactly one",
+        ),
+        (
+            json!({"motif": "fork", "judgement": "blunder", "limit": 1}),
+            "exactly one",
+        ),
+        // `sort` alone filters nothing.
+        (json!({"sort": "worst", "limit": 1}), "exactly one"),
+    ];
+    for (input, want) in cases {
+        let (o, _) = ready(&ds, &eng, &s, "find_examples", input.clone()).await;
+        let e = error_text(&o);
+        assert!(e.contains(want), "{input}: {e}");
+        assert!(
+            !e.contains("late") && !e.contains("awful"),
+            "never echoes input"
+        );
+    }
+    assert!(ds.calls().is_empty(), "nothing is read on invalid input");
+}
+
 // --- Ownership: every id is the conversation's own ---
 
 #[tokio::test]
@@ -1382,9 +1614,17 @@ async fn stale_values_never_get_a_token() {
         let shown = render(&s.evidence(), token).unwrap();
         let field = rel.strip_prefix("position.").unwrap();
         if let Some(n) = v["position"][field].as_f64() {
+            let unit = match field {
+                "winBefore" | "winAfter" => "%",
+                "clockBefore" | "timeSpent" => "\u{a0}s",
+                _ => "",
+            };
             assert_eq!(
                 shown,
-                ai::validator::format::format_number(n, None).unwrap(),
+                format!(
+                    "{}{unit}",
+                    ai::validator::format::format_number(n, None).unwrap()
+                ),
                 "{rel}"
             );
         }

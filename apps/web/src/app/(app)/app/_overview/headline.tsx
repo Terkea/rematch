@@ -1,5 +1,6 @@
 import { NO_BENCHMARK_TEXT, weaknessRateText } from "@ci/ui/profile";
 import { bandText, Stat } from "@ci/ui/stats";
+import { headlineMeaning } from "../../../../lib/explain";
 import type { CoachScope, LeadFinding } from "../../../../server/profile/types";
 import { ESTIMATE_WINDOW_TEXT } from "../../../../server/profile/window";
 import type { Estimate } from "../../../../server/stats";
@@ -33,15 +34,23 @@ export function Headline({
   reveal: boolean;
 }) {
   const { accuracy, blunders } = lead;
+  const scope = basisClass === "analysed" ? "analysed games" : `${basisClass} games`;
+  const meaning = (
+    <p data-slot="meaning" className="m-0 max-w-prose text-base text-ink">
+      {headlineMeaning({ accuracy, blunders, games: scope })}
+    </p>
+  );
   if (accuracy.kind === "insufficient") {
     return (
-      <p className="max-w-3xl font-serif text-2xl leading-snug text-ink md:text-3xl">
-        Need {accuracy.needed} more {accuracy.needed === 1 ? "game" : "games"} before an average
-        accuracy means anything.
-      </p>
+      <div className="flex max-w-3xl flex-col gap-2">
+        <p className="font-serif text-2xl leading-snug text-ink md:text-3xl">
+          Need {accuracy.needed} more {accuracy.needed === 1 ? "game" : "games"} before an average
+          accuracy means anything.
+        </p>
+        {meaning}
+      </div>
     );
   }
-  const scope = basisClass === "analysed" ? "analysed games" : `${basisClass} games`;
   const acc = (
     <Stat
       value={accuracy.value / 100}
@@ -75,6 +84,7 @@ export function Headline({
         </span>
         {bands}
       </p>
+      {meaning}
     </div>
   );
 }

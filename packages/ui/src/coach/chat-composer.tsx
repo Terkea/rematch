@@ -150,10 +150,9 @@ export function ChatComposer({
             id={hintId}
             className="m-0 mr-auto flex min-w-0 items-center gap-1.5 font-sans text-sm text-ink-faint max-sm:sr-only pointer-coarse:sr-only"
           >
-            <Kbd>Enter</Kbd> sends, <Kbd>Shift</Kbd>
-            <span aria-hidden="true">+</span>
-            <span className="sr-only">plus</span>
-            <Kbd>Enter</Kbd> adds a line
+            {/* One "+" for eyes, copy and screen readers alike (they say "plus"); the spaces
+                around it collapse in the flex row, so it reads "Shift + Enter" once. */}
+            <Kbd>Enter</Kbd> sends, <Kbd>Shift</Kbd> <span>+</span> <Kbd>Enter</Kbd> adds a line
           </p>
           <div className="flex shrink-0 items-center gap-3">
             <p

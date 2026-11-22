@@ -251,6 +251,9 @@ export type SyntheticGame = {
   playerMoves?: number;
   /** Write no moves rows (a game where the player made no analysed move). */
   noMoves?: boolean;
+  /** The time control (default null, unknown). */
+  baseSeconds?: number | null;
+  incrementSeconds?: number | null;
 };
 
 type Mark = "blunder" | "mistake" | "inaccuracy";
@@ -321,6 +324,8 @@ export async function seedSyntheticGame(
       ),
       playedAt: new Date(row.playedAt),
       timeClass: row.timeClass,
+      baseSeconds: row.baseSeconds ?? null,
+      incrementSeconds: row.incrementSeconds ?? null,
       rated: true,
       playerColor: colour,
       whiteName: colour === "white" ? "me" : "opp",

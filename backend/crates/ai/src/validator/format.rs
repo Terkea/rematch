@@ -126,6 +126,21 @@ pub fn format_number(value: f64, fmt: Option<NumFormat>) -> Option<String> {
     })
 }
 
+/// A `{{num:}}` token's text: [`format_number`] plus the path's unit (Fix D, N1), so a win
+/// chance reads `86.5%` and a clock time `40.7 s`. `pct0`/`pct1` already print `%`, and
+/// `signed1` is an evaluation in pawns, so neither takes a unit.
+pub fn format_num_at(ev: &Evidence, path: &str, fmt: Option<NumFormat>) -> Option<String> {
+    let text = format_number(*ev.number_paths.get(path)?, fmt)?;
+    let unit = match fmt {
+        Some(NumFormat::Pct0 | NumFormat::Pct1 | NumFormat::Signed1) => None,
+        _ => ev.unit_of(path),
+    };
+    Some(match unit {
+        Some(u) => format!("{text}{}", u.suffix()),
+        None => text,
+    })
+}
+
 /// An engine line's evaluation, from White's point of view: centipawns as `signed1` pawns
 /// (`+1.3`), `mate in n` when White mates, `mated in n` when White is mated, and `checkmate`
 /// for a mate score of 0 (the side to move is already mated).
@@ -170,7 +185,7 @@ pub fn resolve_token(ev: &Evidence, t: &TokenBody) -> Option<String> {
                 Some(n) => nth(moves, *n).cloned(),
             }
         }
-        TokenBody::Num { path, fmt } => format_number(*ev.number_paths.get(path)?, *fmt),
+        TokenBody::Num { path, fmt } => format_num_at(ev, path, *fmt),
         TokenBody::Date { path } => ev.date_paths.get(path).cloned(),
         TokenBody::Sq { square } => Some(square.clone()),
         TokenBody::Eng { eval_id, line, n } => {

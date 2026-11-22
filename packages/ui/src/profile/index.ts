@@ -1,4 +1,5 @@
 export { ExemplarBoard, type ExemplarBoardProps } from "./exemplar-board.js";
+export { type ExplainEntry, ExplainPopover, Meaning } from "./explain.js";
 export {
   KpiTrendGrid,
   type KpiTrendGridProps,

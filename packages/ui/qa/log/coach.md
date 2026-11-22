@@ -103,3 +103,18 @@ Fixed from the review's visual pass:
   new pages).
 - **Polish taken:** the month window reads "resets on 1 Dec 2026" (no brackets), and "Ask again"
   is offered on the latest answer only. The others are left for the critic and T11.
+
+## Fix D (2026-11-22): cited boards under answers, units, hint, labels
+
+Self-critique only (the lane ran without subagents). Shots of the styleguide's coach answer at
+360, 390 and 1440, day and night (`.shots-fixd/cited-*.png`, not committed); no horizontal
+scroll at any width.
+
+- The answer that cites 28. Nd2?? shows one board under its paragraph: the position before the
+  move from White's side, a pen arrow for the blunder, the key "Played, Nd2" and the link "Open
+  the game at 28. Nd2". With an engine move it adds a `good` arrow and "Better, <move>".
+- The board sits in a 192px column (208px from 768px): a reference diagram, not a second review
+  board. A one-square knight arrow is short but stays legible on its halo in both themes.
+- Numbers read with their units ("86.5%", "40.7 s"); the composer hint reads "Shift + Enter"
+  once; copied text reads "better move: Qe3". No visual change for the last two.
+- Verdict: pass (self). Open for the critic: whether the board should grow at 1440.
