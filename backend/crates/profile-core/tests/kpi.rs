@@ -101,7 +101,7 @@ fn stat(metric: MetricId, p25: f64, p40: f64, median: f64, p75: f64) -> BandRefe
         pooled_rate: None,
         epl_per_event: None,
         opps_per_game: None,
-        opp_slope_per_100: 0.0,
+        opp_slope_per_100: Some(0.0),
         n_players: 100,
         n_games: 5000,
         low_sample: false,
@@ -299,7 +299,7 @@ fn opponent_adjustment_shifts_value_and_interval() {
         .collect();
     let metric = base(BaseMetric::BlundersPerGame);
     let mut s = stat(metric, 1.0, 1.5, 2.0, 3.0);
-    s.opp_slope_per_100 = 2.0;
+    s.opp_slope_per_100 = Some(2.0);
     let reference: BandReference = [(metric, s)].into_iter().collect();
     let out = compute_kpis(&kpi_games(&games), &LAST50, Some(&reference));
     let r = row(&out, metric);
@@ -319,11 +319,18 @@ fn opponent_adjustment_shifts_value_and_interval() {
         row(&out, base(BaseMetric::OneMoveBlundersPerGame)).value_adjusted,
         None
     );
+    // An unknown slope (R2 T32: NULL, never NaN) means no adjustment, never a guessed one.
+    let mut unknown = reference.clone();
+    unknown.get_mut(&metric).unwrap().opp_slope_per_100 = None;
+    let out_unknown = compute_kpis(&kpi_games(&games), &LAST50, Some(&unknown));
+    let ru = row(&out_unknown, metric);
+    assert_eq!(ru.value, Some(2.5));
+    assert_eq!((ru.value_adjusted, ru.value_adjusted_raw), (None, None));
     // `last` rows are never adjusted.
     let mut rref = reference.clone();
     let rating = base(BaseMetric::Rating);
     let mut rs = stat(rating, 1400.0, 1450.0, 1500.0, 1600.0);
-    rs.opp_slope_per_100 = 2.0;
+    rs.opp_slope_per_100 = Some(2.0);
     rref.insert(rating, rs);
     let out = compute_kpis(&kpi_games(&games), &LAST50, Some(&rref));
     let r = row(&out, rating);
@@ -798,7 +805,7 @@ fn random_reference(rng: &mut Rng) -> BandReference {
         if maybe(rng, 0.3) {
             let a = uniform(rng, 0.0, 50.0);
             let mut s = stat(d.metric, a, a + 1.0, a + 2.0, a + 4.0);
-            s.opp_slope_per_100 = uniform(rng, -3.0, 3.0);
+            s.opp_slope_per_100 = Some(uniform(rng, -3.0, 3.0));
             reference.insert(d.metric, s);
         }
     }
@@ -987,10 +994,10 @@ fn adjusted_value_is_clamped_to_the_unit_domain() {
     let trend = base(BaseMetric::EvalTrend1535);
     let mut reference = BandReference::new();
     let mut s = stat(tt, 0.05, 0.1, 0.15, 0.25);
-    s.opp_slope_per_100 = 0.06;
+    s.opp_slope_per_100 = Some(0.06);
     reference.insert(tt, s);
     let mut s = stat(trend, -5.0, -2.0, 0.0, 3.0);
-    s.opp_slope_per_100 = 2.0;
+    s.opp_slope_per_100 = Some(2.0);
     reference.insert(trend, s);
     let out = compute_kpis(&kpi_games(&games), &LAST50, Some(&reference));
     let r = row(&out, tt);
@@ -1022,7 +1029,7 @@ fn no_rating_pair_means_no_adjustment() {
     }
     let metric = base(BaseMetric::BlundersPerGame);
     let mut s = stat(metric, 1.0, 1.5, 2.0, 3.0);
-    s.opp_slope_per_100 = 2.0;
+    s.opp_slope_per_100 = Some(2.0);
     let reference: BandReference = [(metric, s)].into_iter().collect();
     let out = compute_kpis(&kpi_games(&games), &LAST50, Some(&reference));
     let r = row(&out, metric);
@@ -1043,7 +1050,7 @@ fn rate_rows_weight_the_rating_gap_by_opportunities() {
     games[1].metrics.opponent_rating = Some(1400);
     let metric = base(BaseMetric::SharpErrorRate);
     let mut s = stat(metric, 0.1, 0.2, 0.3, 0.4);
-    s.opp_slope_per_100 = 0.1;
+    s.opp_slope_per_100 = Some(0.1);
     let reference: BandReference = [(metric, s)].into_iter().collect();
     let out = compute_kpis(&kpi_games(&games), &LAST50, Some(&reference));
     let r = row(&out, metric);

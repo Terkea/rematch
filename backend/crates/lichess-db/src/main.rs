@@ -1,11 +1,14 @@
 //! `lichess-db`: operator CLI for the Lichess database pipeline (R-11, ADR-R2-1, ADR-R2-9).
 //!
-//! Subcommands are added by R2 Tasks 19-22 (`scan`, `build`, `bench`, `syzygy`).
+//! Subcommands from R2 Tasks 19-22: `scan`, `build`, `bench`, `syzygy`.
 
 use clap::{Args, Parser, Subcommand};
 use futures::StreamExt;
+use lichess_db::bench::{BenchSource, bench, markdown_table};
 use lichess_db::config::{DEFAULT_BASE_URL, DumpSource, data_dir, http_client, is_valid_month};
 use lichess_db::download::{drain_to_end, fetch_expected_sha, open_dump};
+use lichess_db::explorer_build::{BuildOptions, Verify, build};
+use lichess_db::pipeline::PipelineConfig;
 use lichess_db::sample::{SampleFilter, Sampler};
 use lichess_db::syzygy::{DEFAULT_SYZYGY_BASE_URL, Manifest, fetch_syzygy};
 use tracing_subscriber::EnvFilter;
@@ -28,6 +31,11 @@ enum Command {
     /// Stream one monthly dump without storing it: count and sample games, then verify the
     /// whole-file SHA-256 against sha256sums.txt (the body is always read to the end).
     Scan(ScanArgs),
+    /// Build the opening explorer from one monthly dump (DATABASE_URL): sample across the whole
+    /// month, verify the SHA-256, prune, then activate.
+    Build(BuildArgs),
+    /// Measure pipeline throughput (no database). Prints a Markdown table.
+    Bench(BenchArgs),
     /// Fetch the Syzygy 3-4-5 tablebases (about 1 GB), verified against the pinned manifest.
     Syzygy(SyzygyArgs),
 }
@@ -68,6 +76,148 @@ struct ScanArgs {
     /// Stop parsing after this many kept games (the rest is still hashed).
     #[arg(long)]
     max_games: Option<u64>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+enum VerifyArg {
+    Full,
+    None,
+}
+
+#[derive(Debug, Args)]
+struct BuildArgs {
+    /// Dump month, YYYY-MM.
+    #[arg(long, value_parser = parse_month)]
+    month: String,
+    /// Mirror root.
+    #[arg(long, default_value = DEFAULT_BASE_URL)]
+    base_url: String,
+    /// Target sample size and safety cap (ADR 0035: 2 000 000).
+    #[arg(long, default_value_t = 2_000_000)]
+    max_games: u64,
+    /// Games expected in the month (default: the last full build's count, else 100M).
+    #[arg(long)]
+    expected_games: Option<u64>,
+    /// Fixed sample rate in (0, 1] instead of max_games / expected games.
+    #[arg(long)]
+    sample_rate: Option<f64>,
+    /// Build the opening explorer.
+    #[arg(long)]
+    explorer: bool,
+    /// Build the band reference (R2 Task 21).
+    #[arg(long)]
+    band_reference: bool,
+    #[arg(long, value_enum, default_value_t = VerifyArg::Full)]
+    verify: VerifyArg,
+    /// Parse threads (0 = all cores).
+    #[arg(long, default_value_t = 0)]
+    threads: usize,
+}
+
+async fn run_build(args: BuildArgs) -> anyhow::Result<()> {
+    let url =
+        std::env::var("DATABASE_URL").map_err(|_| anyhow::anyhow!("DATABASE_URL is required"))?;
+    // Prune and activation touch millions of rows: no 30 s statement timeout here.
+    let pool = db::pool::connect(
+        &url,
+        db::pool::DbOptions {
+            max_connections: 4,
+            statement_timeout: std::time::Duration::from_secs(6 * 3600),
+            ..db::pool::DbOptions::default()
+        },
+    )
+    .await?;
+    let client = http_client()?;
+    let src = DumpSource::new(args.base_url, args.month.clone());
+    let opts = BuildOptions {
+        max_games: args.max_games,
+        expected_games: args.expected_games,
+        sample_rate: args.sample_rate,
+        explorer: args.explorer || !args.band_reference,
+        band_reference: args.band_reference,
+        verify: match args.verify {
+            VerifyArg::Full => Verify::Full,
+            VerifyArg::None => Verify::None,
+        },
+        pipeline: PipelineConfig::with_threads(args.threads),
+        ..BuildOptions::new(args.month)
+    };
+    let out = build(&pool, &client, &src, &opts).await?;
+    let s = &out.stats;
+    println!("explorer build: {:?}", out.explorer_build);
+    println!("sample rate: {}", out.sample_rate);
+    println!(
+        "games seen: {}, kept: {}, malformed: {}, capped: {}",
+        s.games_seen, s.games_kept, s.games_malformed, s.capped
+    );
+    println!(
+        "explorer: {} games, {} illegal, {} flushes, {} rows flushed",
+        out.explorer.games, out.explorer.illegal, out.explorer.flushes, out.explorer.rows_flushed
+    );
+    println!(
+        "compressed bytes: {}, elapsed: {:.1?}",
+        s.bytes_compressed, s.elapsed
+    );
+    for (k, v) in &s.stage_ms {
+        println!("  {k}: {v:.0} ms");
+    }
+    Ok(())
+}
+
+#[derive(Debug, Args)]
+struct BenchArgs {
+    /// Synthetic games (no network).
+    #[arg(long, conflicts_with = "month")]
+    synthetic: Option<u64>,
+    /// Real dump month, YYYY-MM (streams the first --max-games games).
+    #[arg(long, value_parser = parse_month)]
+    month: Option<String>,
+    #[arg(long, default_value_t = 1_000_000)]
+    max_games: u64,
+    #[arg(long, default_value = DEFAULT_BASE_URL)]
+    base_url: String,
+    /// Thread counts, comma-separated (0 = all cores).
+    #[arg(long, value_delimiter = ',', default_value = "1,4,0")]
+    threads: Vec<usize>,
+}
+
+/// The host CPU model (Linux `/proc/cpuinfo`), if readable.
+fn cpu_model() -> String {
+    std::fs::read_to_string("/proc/cpuinfo")
+        .ok()
+        .and_then(|t| {
+            t.lines()
+                .find(|l| l.starts_with("model name"))
+                .and_then(|l| l.split_once(':'))
+                .map(|(_, v)| v.trim().to_owned())
+        })
+        .unwrap_or_else(|| "unknown".to_owned())
+}
+
+async fn run_bench(args: BenchArgs) -> anyhow::Result<()> {
+    let source = match (args.synthetic, args.month) {
+        (Some(games), None) => BenchSource::Synthetic { games },
+        (None, Some(month)) => BenchSource::Http {
+            src: DumpSource::new(args.base_url, month),
+            max_games: args.max_games,
+        },
+        _ => anyhow::bail!("pass --synthetic N or --month M"),
+    };
+    let cores = std::thread::available_parallelism().map_or(1, |n| n.get());
+    println!("host: {} ({cores} logical cores visible)", cpu_model());
+    println!("source: {source:?}");
+    println!(
+        "build: {}",
+        if cfg!(debug_assertions) {
+            "debug"
+        } else {
+            "release"
+        }
+    );
+    println!();
+    let rows = bench(&source, &args.threads).await?;
+    print!("{}", markdown_table(&rows));
+    Ok(())
 }
 
 fn parse_month(s: &str) -> Result<String, String> {
@@ -131,6 +281,8 @@ async fn main() -> anyhow::Result<()> {
         Command::Version => println!("lichess-db {}", env!("CARGO_PKG_VERSION")),
         Command::Scan(args) => scan(args).await?,
         Command::Syzygy(args) => syzygy(args).await?,
+        Command::Build(args) => run_build(args).await?,
+        Command::Bench(args) => run_bench(args).await?,
     }
     Ok(())
 }

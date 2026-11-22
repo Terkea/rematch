@@ -82,10 +82,10 @@ All of this is our own code, written from the PGN format and the observed dump l
 
 ### HTTP client and errors
 
-- **User-Agent:** `chess-improver/0.1 (+mailto:<CONTACT_EMAIL>)`, the R1 format, when `CONTACT_EMAIL` is set. Otherwise it is `chess-improver-ci (+https://github.com/chess-improver)`.
+- **User-Agent:** always the fixed `chess-improver/0.1 (+https://github.com/chess-improver)` (ADR 0043). No request carries an email address, and nothing is read from `CONTACT_EMAIL`.
 - **Timeouts:** connect 30 s, and at most 120 s of silence between reads. There is no total timeout.
 - **Errors:** `Http(status)`, `Transport` (connection, TLS, timeout or a body cut short), `Decode` (bad zstd, an oversized game, a malformed header), `ChecksumMismatch`, `SumsMissing`.
-- **No resume:** a failed transfer fails the run, and the operator reruns it.
+- **Resume:** superseded by ADR-R2-10 (Task 20). A mid-body transport error is resumed with HTTP `Range` and `If-Range`, within a bounded budget.
 
 ### Hashed usernames, per-build salt
 

@@ -13,7 +13,7 @@ Endgame analysis needs the 3-4-5 piece Syzygy tables (WDL `.rtbw`, DTZ `.rtbz`).
 - **Checksums:** taken from the mirror's own `sha256` listing (`/tables/standard/sha256`, dated 2024-06-23, `sha256sum` format). The 290 lines for the files in those two directories are pinned in `backend/crates/lichess-db/data/syzygy-345.sha256`. No trust-on-first-use hashing was needed.
 - **Fetch:** each file streams to `<name>.part` while hashed; renamed only on a match; the `.part` is deleted on a mismatch, HTTP error, timeout, size overrun or failed rename. Stale `.part` files are removed at the start. Files already present with a matching hash are skipped (no request). Redirects are followed, which is safe because the SHA-256 is checked before the rename.
 - **Bounds:** 64 MiB per file (the largest table is 32,367,120 bytes, `KBNvKP.rtbz`; the cap is 2x, rounded) and 600 s per file.
-- **Requests** carry only the fixed User-Agent `chess-improver-ci (+https://github.com/chess-improver)`. No request from this crate carries an email address.
+- **Requests** carry only the fixed User-Agent `chess-improver/0.1 (+https://github.com/chess-improver)` (ADR 0043; the same string as `platforms`). No request from this crate carries an email address.
 - **Storage:** `$DATA_DIR/syzygy` (git-ignored `data/`). Tablebase files are never committed; only the manifest is.
 
 ## Licence and redistribution

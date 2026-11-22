@@ -30,6 +30,45 @@ pub struct DumpHeader {
     pub has_eval: bool,
     /// The movetext has a `[%clk` comment.
     pub has_clock: bool,
+    /// `WhiteTitle` / `BlackTitle`, e.g. `"GM"` or `"BOT"`.
+    pub white_title: Option<String>,
+    pub black_title: Option<String>,
+    /// `WhiteRatingDiff` / `BlackRatingDiff`: the rating change from this game.
+    pub white_rating_diff: Option<i32>,
+    pub black_rating_diff: Option<i32>,
+}
+
+/// Rating change at or above which a side looks provisional (see [`looks_provisional`]).
+pub const PROVISIONAL_DIFF: i32 = 25;
+
+/// Heuristic, since the dump has no provisional flag: a rating change of at least
+/// [`PROVISIONAL_DIFF`] points in one game. Under Glicko-2 an even game moves an established
+/// rating (RD about 60) by about 10 points and even a large upset by about 20, while a provisional
+/// one (RD at least 110, the Lichess threshold) moves by about 30 in an even game. `None` (no
+/// `RatingDiff` tag) is never flagged.
+///
+/// An unverified estimate: not checked against Lichess data. It also depends on the result (an
+/// upset moves a rating more), so filtering on it biases win/draw/loss counts; the explorer
+/// keeps it off (ADR-R2-10).
+pub fn looks_provisional(rating_diff: Option<i32>) -> bool {
+    rating_diff.is_some_and(|d| d.saturating_abs() >= PROVISIONAL_DIFF)
+}
+
+impl DumpHeader {
+    /// Either side has the `BOT` title.
+    pub fn has_bot(&self) -> bool {
+        [&self.white_title, &self.black_title]
+            .iter()
+            .any(|t| t.as_deref() == Some("BOT"))
+    }
+
+    pub fn white_provisional(&self) -> bool {
+        looks_provisional(self.white_rating_diff)
+    }
+
+    pub fn black_provisional(&self) -> bool {
+        looks_provisional(self.black_rating_diff)
+    }
 }
 
 #[derive(Default)]
@@ -44,6 +83,10 @@ struct Tags {
     utc_time: Option<String>,
     time_control: Option<String>,
     termination: Option<String>,
+    white_title: Option<String>,
+    black_title: Option<String>,
+    white_rating_diff: Option<String>,
+    black_rating_diff: Option<String>,
 }
 
 fn decode(msg: impl Into<String>) -> DumpError {
@@ -126,6 +169,11 @@ fn game_id(site: &str) -> Option<&str> {
         .then_some(id)
 }
 
+/// `"+6"`, `"-6"` or `"0"`.
+fn rating_diff(v: &str) -> Option<i32> {
+    v.strip_prefix('+').unwrap_or(v).parse().ok()
+}
+
 fn required(tag: Option<String>, name: &str) -> Result<String, DumpError> {
     tag.ok_or_else(|| decode(format!("missing [{name}] header")))
 }
@@ -161,6 +209,10 @@ pub fn parse_dump_headers(pgn: &str) -> Result<DumpHeader, DumpError> {
             "UTCTime" => &mut tags.utc_time,
             "TimeControl" => &mut tags.time_control,
             "Termination" => &mut tags.termination,
+            "WhiteTitle" => &mut tags.white_title,
+            "BlackTitle" => &mut tags.black_title,
+            "WhiteRatingDiff" => &mut tags.white_rating_diff,
+            "BlackRatingDiff" => &mut tags.black_rating_diff,
             _ => continue,
         };
         *slot = Some(value);
@@ -193,5 +245,9 @@ pub fn parse_dump_headers(pgn: &str) -> Result<DumpHeader, DumpError> {
         utc,
         has_eval: movetext.contains("[%eval"),
         has_clock: movetext.contains("[%clk"),
+        white_title: tags.white_title,
+        black_title: tags.black_title,
+        white_rating_diff: tags.white_rating_diff.as_deref().and_then(rating_diff),
+        black_rating_diff: tags.black_rating_diff.as_deref().and_then(rating_diff),
     })
 }
