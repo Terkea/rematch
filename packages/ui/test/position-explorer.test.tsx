@@ -175,7 +175,11 @@ describe("PositionExplorer, expanded", () => {
     // The keyboard plays it: Enter on e4, two left and one down to c3, Enter.
     square("e4").focus();
     await user.keyboard("{Enter}{ArrowLeft}{ArrowLeft}{ArrowDown}{Enter}");
-    expect(within(dialog).getByRole("radio", { name: "Try a move" })).toBeChecked();
+    expect(within(dialog).getByRole("button", { name: "Try a move" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(within(dialog).getByText("You tried 28. Nc3.")).toBeVisible();
     expect(within(dialog).getByRole("button", { name: /Nc3/ })).toHaveAttribute(
       "aria-current",
       "step",

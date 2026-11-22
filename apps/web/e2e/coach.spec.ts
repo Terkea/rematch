@@ -205,7 +205,10 @@ test.describe
       for (const key of ["Enter", "ArrowRight", "ArrowRight", "ArrowUp", "Enter"]) {
         await page.keyboard.press(key);
       }
-      await expect(dialog.getByRole("radio", { name: "Try a move" })).toBeChecked();
+      await expect(dialog.getByRole("button", { name: "Try a move" })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
       await expect(dialog.getByRole("button", { name: /Nc3/ })).toHaveAttribute(
         "aria-current",
         "step",

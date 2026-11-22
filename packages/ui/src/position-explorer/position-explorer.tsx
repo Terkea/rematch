@@ -309,10 +309,9 @@ function checkSquare(fen: string): Square | undefined {
   return undefined;
 }
 
-const MODES: { value: ExplorerMode; label: string }[] = [
+const LINES: { value: Exclude<ExplorerMode, "try">; label: string }[] = [
   { value: "game", label: "What you played" },
   { value: "engine", label: "Engine line" },
-  { value: "try", label: "Try a move" },
 ];
 
 interface StepProps {
@@ -456,7 +455,7 @@ function ExplorerDialog({
             ? "That is the engine's move."
             : match === "game"
               ? "That is the move played in the game."
-              : "Your own line.";
+              : `You tried ${state.tried[0] ? moveText(state.tried[0]) : ""}.`;
 
   return (
     <DialogContent className={cn(DIALOG_SIZE, "gap-5")} onKeyDown={onKeyDown}>
@@ -529,14 +528,30 @@ function ExplorerDialog({
           </div>
         </div>
         <div className="flex min-w-0 flex-col gap-4">
-          <SegmentedControl
-            label="Line"
-            value={state.mode}
-            options={MODES}
-            onValueChange={(v) => dispatch({ type: "mode", mode: v as ExplorerMode })}
-          />
+          <div className="flex flex-wrap items-end justify-between gap-x-3 gap-y-3">
+            {/* In try mode no line is chosen: picking one leaves the tried moves. */}
+            <SegmentedControl
+              label="Line"
+              value={state.mode === "try" ? "" : state.mode}
+              options={LINES}
+              onValueChange={(v) => dispatch({ type: "mode", mode: v as ExplorerMode })}
+            />
+            <Button
+              variant={state.mode === "try" ? "primary" : "outline"}
+              size="md"
+              aria-pressed={state.mode === "try"}
+              onClick={() =>
+                dispatch({ type: "mode", mode: state.mode === "try" ? state.tryBase : "try" })
+              }
+            >
+              Try a move
+            </Button>
+          </div>
           {/* Tall enough for the longest note at 390px, so a mode switch moves nothing below. */}
-          <div aria-live="polite" className="flex min-h-28 flex-col gap-1 font-sans text-sm">
+          <div
+            aria-live="polite"
+            className="flex min-h-28 flex-col gap-1 font-sans text-sm lg:min-h-20"
+          >
             <p className="m-0 text-ink">{note}</p>
             {state.mode === "try" ? (
               <p className="m-0 text-ink-soft">
@@ -554,7 +569,7 @@ function ExplorerDialog({
             moves={sheetMoves}
             currentPly={currentPly}
             onSelectPly={(p) => dispatch({ type: "goto", ply: p })}
-            label={`Moves, ${MODES.find((m) => m.value === state.mode)?.label ?? ""}`}
+            label={`Moves, ${state.mode === "try" ? "your moves" : (LINES.find((m) => m.value === state.mode)?.label ?? "")}`}
             startMoveNumber={startMoveNumber}
             className="h-56 lg:h-72"
           />
