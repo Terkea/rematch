@@ -8,8 +8,15 @@
 //! `oldestReached` is cleared. A pass that stops at `max` keeps `oldestReached` (with `backfill`
 //! when it had no lower bound, and `newestSeenAt` then moved up), so the next run continues below
 //! it; for a backfill, `max` is a total and only the shortfall is fetched (TS fix 004307b). A run
-//! first finishes any interrupted pass, then fetches games newer than everything stored. Upserts make overlaps harmless, and every upserted game that is still
-//! `pending` is (re-)enqueued for analysis; the live-only dedupe key keeps one job per game.
+//! first finishes any interrupted pass, then fetches games newer than everything stored. Upserts
+//! make overlaps harmless.
+//!
+//! R2 (ADR-R2-16): new games are stored as `imported` with their `ply_count`, and no game is
+//! enqueued for analysis here. After the run commits, one `schedule-analysis` job is enqueued for
+//! the account (deduped on `schedule:<account>`); the scheduler picks the games to analyse. A
+//! payload without `max` uses [`ImportAccountDeps::default_max`]: `None`, no limit, for the beta
+//! plan (no plan limits until M7). Games of a run that fails for good stay `imported`; the
+//! reconciler schedules them.
 //!
 //! Changes from the TS reference (ADRs 0032, 0035):
 //! - a run whose account's newest run is `paused` reuses that row instead of inserting one;
@@ -51,7 +58,10 @@ use platforms::{
 };
 use queue::queue::{Queue, QueueError};
 use queue::runner::{Handler, JobContext};
-use queue::{EnqueueOptions, ImportAccountPayload, Job, JobError, KIND_IMPORT, import_key};
+use queue::{
+    EnqueueOptions, ImportAccountPayload, Job, JobError, KIND_IMPORT, KIND_SCHEDULE,
+    SchedulePayload, import_key, schedule_key,
+};
 use serde_json::{Value, json};
 use sqlx::pool::PoolConnection;
 use sqlx::{PgPool, Postgres};
@@ -60,7 +70,6 @@ use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use crate::deadline::{Deadline, IMPORT_IDLE_DEADLINE, JobDeadlineError};
-use crate::jobs::analyse::enqueue_analyse;
 
 /// Checkpoint the cursor and the run after this many games...
 pub const CHECKPOINT_EVERY: usize = 50;
@@ -83,6 +92,8 @@ const IMPORT_LOCK_NAMESPACE: i32 = 7_262_021;
 const UNLOCK_TIMEOUT: Duration = Duration::from_secs(5);
 /// Max attempts of an import job.
 pub const IMPORT_MAX_ATTEMPTS: i32 = 3;
+/// Max attempts of a schedule-analysis job.
+pub const SCHEDULE_MAX_ATTEMPTS: i32 = 3;
 /// `import_runs.last_error` keeps at most this many characters.
 const MAX_ERROR_CHARS: usize = 2000;
 
@@ -103,6 +114,9 @@ pub struct ImportAccountDeps {
     /// Imports released because another handler held the account (`account_busy`). Shared, so
     /// the worker can export it.
     pub busy_releases: Arc<AtomicU64>,
+    /// The budget of a payload without `max`; `None` (the default, the beta plan) for no limit.
+    /// With plans (M7) it becomes `tier_limits(plan).import_max`.
+    pub default_max: Option<u32>,
 }
 
 impl ImportAccountDeps {
@@ -121,6 +135,7 @@ impl ImportAccountDeps {
             breaker_min_delay: BREAKER_MIN_DELAY,
             probe_timeout: PROBE_TIMEOUT,
             busy_releases: Arc::new(AtomicU64::new(0)),
+            default_max: None,
         }
     }
 }
@@ -204,6 +219,29 @@ pub async fn enqueue_import(
                 dedupe_key: Some(import_key(account_id)),
                 user_key: Some(account_id),
                 max_attempts: IMPORT_MAX_ATTEMPTS,
+                ..EnqueueOptions::default()
+            },
+        )
+        .await?;
+    Ok(id.is_some())
+}
+
+/// Enqueues the account's schedule-analysis job (no plan, so the beta plan, until M7). `false`
+/// when a live one already holds `schedule:<account_id>`.
+pub async fn enqueue_schedule(queue: &Queue, account_id: Uuid) -> Result<bool, QueueError> {
+    let payload = serde_json::to_value(SchedulePayload {
+        account_id,
+        plan: None,
+    })
+    .unwrap_or_else(|_| json!({ "accountId": account_id }));
+    let id = queue
+        .enqueue(
+            KIND_SCHEDULE,
+            &payload,
+            EnqueueOptions {
+                dedupe_key: Some(schedule_key(account_id)),
+                user_key: Some(account_id),
+                max_attempts: SCHEDULE_MAX_ATTEMPTS,
                 ..EnqueueOptions::default()
             },
         )
@@ -317,7 +355,7 @@ async fn import_locked(
         account,
         run_id,
         base_imported,
-        max: payload.max,
+        max: payload.max.or(deps.default_max),
         imported: 0,
         skipped: 0,
         since_checkpoint: 0,
@@ -330,6 +368,11 @@ async fn import_locked(
             run.finish()
                 .await
                 .map_err(|e| retryable(&ImportFailure::Db(e)))?;
+            // After the commit, so the scheduler sees every game of the run. A failure retries
+            // the import (which enqueues again); the reconciler is the backstop.
+            enqueue_schedule(&deps.queue, run.account.id)
+                .await
+                .map_err(|e| retryable(&ImportFailure::Queue(e)))?;
             Ok(ImportSummary {
                 imported: run.imported,
                 skipped: run.skipped,
@@ -711,11 +754,6 @@ impl Run<'_> {
                 if res.inserted {
                     self.imported += 1;
                 }
-                // Also re-enqueue existing pending games: a previous run may have died between
-                // the insert and the enqueue. The live dedupe key keeps one job per game.
-                if res.analysis_status == AnalysisStatus::Pending {
-                    enqueue_analyse(&self.deps.queue, res.id, self.account.id).await?;
-                }
             }
         }
         if self.frontier.is_none_or(|f| g.played_at < f) {
@@ -886,7 +924,74 @@ fn new_game(account_id: Uuid, player_color: &str, g: &NormalizedGame) -> NewGame
             .lichess_evals
             .as_ref()
             .and_then(|e| serde_json::to_value(e).ok()),
-        status: AnalysisStatus::Pending,
-        ply_count: None,
+        status: AnalysisStatus::Imported,
+        ply_count: Some(count_plies(&g.pgn)),
     }
+}
+
+/// The number of SAN moves in a PGN's main line: header lines, `{}` and `;` comments, `()`
+/// variations, `$` NAGs, move numbers and the result token are not moves.
+pub fn count_plies(pgn: &str) -> i32 {
+    let mut text = String::with_capacity(pgn.len());
+    for line in pgn.lines() {
+        if !line.trim_start().starts_with('[') {
+            text.push_str(line);
+            text.push('\n');
+        }
+    }
+    let mut plies: i32 = 0;
+    let mut depth = 0usize;
+    let mut chars = text.chars();
+    let mut token = String::new();
+    let flush = |token: &mut String, plies: &mut i32| {
+        if is_move_token(token) {
+            *plies = plies.saturating_add(1);
+        }
+        token.clear();
+    };
+    while let Some(c) = chars.next() {
+        match c {
+            '{' => {
+                flush(&mut token, &mut plies);
+                for c in chars.by_ref() {
+                    if c == '}' {
+                        break;
+                    }
+                }
+            }
+            ';' => {
+                flush(&mut token, &mut plies);
+                for c in chars.by_ref() {
+                    if c == '\n' {
+                        break;
+                    }
+                }
+            }
+            '(' => {
+                flush(&mut token, &mut plies);
+                depth += 1;
+            }
+            ')' => {
+                flush(&mut token, &mut plies);
+                depth = depth.saturating_sub(1);
+            }
+            c if c.is_whitespace() => flush(&mut token, &mut plies),
+            c if depth == 0 => token.push(c),
+            _ => {}
+        }
+    }
+    flush(&mut token, &mut plies);
+    plies
+}
+
+fn is_move_token(token: &str) -> bool {
+    if token.is_empty()
+        || token.starts_with('$')
+        || matches!(token, "1-0" | "0-1" | "1/2-1/2" | "*")
+    {
+        return false;
+    }
+    // A move number: `12.`, `12...`, or glued to its move (`12.e4`).
+    let rest = token.trim_start_matches(|c: char| c.is_ascii_digit());
+    rest.len() == token.len() || !rest.trim_start_matches('.').is_empty()
 }

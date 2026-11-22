@@ -50,7 +50,7 @@ pub const REFERENCE_PRIORITY: i16 = 200;
 #[serde(rename_all = "camelCase")]
 pub struct SchedulePayload {
     pub account_id: Uuid,
-    /// `"free"` or `"pro"`; `None` = free.
+    /// `"beta"`, `"free"` or `"pro"`; `None` = beta (no plan limits until M7, ADR-R2-16).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub plan: Option<String>,
 }

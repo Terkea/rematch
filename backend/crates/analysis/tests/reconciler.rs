@@ -14,8 +14,8 @@ use analysis::jobs::reconcile::{
 };
 use queue::queue::Queue;
 use queue::{
-    EnqueueOptions, JobState, KIND_ANALYSE, KIND_IMPORT, KIND_RECONCILE, RECONCILE_KEY,
-    analyse_key, import_key,
+    EnqueueOptions, JobState, KIND_ANALYSE, KIND_IMPORT, KIND_RECONCILE, KIND_SCHEDULE,
+    RECONCILE_KEY, analyse_key, import_key, schedule_key,
 };
 use serde_json::{Value, json};
 use sqlx::PgPool;
@@ -31,6 +31,7 @@ const ZERO: ReconcileResult = ReconcileResult {
     exhausted: 0,
     pruned_events: 0,
     cleaned_jobs: 0,
+    scheduled_imports: 0,
 };
 
 fn opts() -> ReconcileOptions {
@@ -697,4 +698,131 @@ fn the_reconciler_uses_the_analyse_job_options() {
             ..EnqueueOptions::default()
         }
     );
+}
+
+// ---------------------------------------------------------------------------------------------
+// R2 Task 29: stored priorities and `imported` games.
+
+/// Live analyse job priority of the game, if any.
+async fn live_priority(pool: &PgPool, game: Uuid) -> Option<i16> {
+    sqlx::query_scalar(
+        "SELECT priority FROM jobs WHERE kind = $1 AND dedupe_key = $2          AND state IN ('queued', 'running', 'paused')",
+    )
+    .bind(KIND_ANALYSE)
+    .bind(analyse_key(game))
+    .fetch_optional(pool)
+    .await
+    .unwrap()
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn lost_pending_and_stale_games_keep_their_stored_priority(pool: PgPool) {
+    let acct = insert_account(&pool, "lichess", "prio").await;
+    let tiered = insert_game(
+        &pool,
+        acct,
+        GameSeed {
+            pending_since_ago: Some(Duration::from_secs(180)),
+            ..GameSeed::default()
+        },
+    )
+    .await;
+    let legacy = insert_game(
+        &pool,
+        acct,
+        GameSeed {
+            pending_since_ago: Some(Duration::from_secs(180)),
+            ..GameSeed::default()
+        },
+    )
+    .await;
+    let stale = game(&pool, acct, "1. d4 d5 *").await;
+    analysing(&pool, stale, 11.0, 1).await;
+    sqlx::query(
+        "UPDATE games SET analysis_tier = 0, analysis_priority = 3, selected_at = now()          WHERE id = ANY($1)",
+    )
+    .bind(vec![tiered, stale])
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let res = sweep(&pool).await;
+    assert_eq!((res.requeued_pending, res.reset_stale), (2, 1));
+    assert_eq!(live_priority(&pool, tiered).await, Some(3));
+    assert_eq!(live_priority(&pool, stale).await, Some(3));
+    // A game the scheduler never tiered (R1) keeps R1's priority.
+    assert_eq!(live_priority(&pool, legacy).await, Some(100));
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn imported_games_are_never_swept_for_analysis(pool: PgPool) {
+    let acct = insert_account(&pool, "lichess", "imported").await;
+    let id = insert_game(
+        &pool,
+        acct,
+        GameSeed {
+            status: "imported",
+            pending_since_ago: Some(Duration::from_secs(3600)),
+            ..GameSeed::default()
+        },
+    )
+    .await;
+    // The scheduler has already seen it (no marker): nothing to do at all.
+    sqlx::query("UPDATE games SET pending_since = NULL WHERE id = $1")
+        .bind(id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert_eq!(sweep(&pool).await, ZERO);
+    assert_eq!(status(&pool, id).await.0, "imported");
+    assert!(
+        live_jobs(&pool, KIND_ANALYSE, &analyse_key(id))
+            .await
+            .is_empty()
+    );
+    assert!(
+        live_jobs(&pool, KIND_SCHEDULE, &schedule_key(acct))
+            .await
+            .is_empty()
+    );
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn unscheduled_imported_games_get_a_schedule_job(pool: PgPool) {
+    let queue = Queue::new(pool.clone());
+    let straggler = insert_account(&pool, "lichess", "straggler").await;
+    let fresh = insert_account(&pool, "lichess", "freshimp").await;
+    let importing = insert_account(&pool, "lichess", "importing").await;
+    for (acct, ago) in [(straggler, 600), (fresh, 10), (importing, 600)] {
+        insert_game(
+            &pool,
+            acct,
+            GameSeed {
+                status: "imported",
+                pending_since_ago: Some(Duration::from_secs(ago)),
+                ..GameSeed::default()
+            },
+        )
+        .await;
+    }
+    // An import still running for `importing` will enqueue the schedule itself when it ends.
+    analysis::jobs::import::enqueue_import(&queue, importing, None)
+        .await
+        .unwrap();
+
+    let res = sweep(&pool).await;
+    assert_eq!(res.scheduled_imports, 1);
+    assert_eq!(
+        live_jobs(&pool, KIND_SCHEDULE, &schedule_key(straggler)).await,
+        vec![("queued".to_owned(), json!({ "accountId": straggler }))]
+    );
+    for acct in [fresh, importing] {
+        assert!(
+            live_jobs(&pool, KIND_SCHEDULE, &schedule_key(acct))
+                .await
+                .is_empty()
+        );
+    }
+    // Idempotent: the live schedule job holds the key.
+    assert_eq!(sweep(&pool).await.scheduled_imports, 0);
 }

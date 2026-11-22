@@ -99,8 +99,8 @@ async fn starts_with_stockfish_19_and_shuts_down_cleanly(
     .expect("start_workers");
     assert!(running.stockfish_version.starts_with("Stockfish 19"));
     assert_eq!(running.engines.pids().len(), 1);
-    // Import, analyse and reconcile.
-    assert_eq!(running.runners.len(), 3);
+    // Import, analyse, schedule-analysis, preview and reconcile.
+    assert_eq!(running.runners.len(), 5);
     let reconcile: i64 = sqlx::query_scalar(
         "SELECT count(*) FROM jobs WHERE kind = 'reconcile' AND state <> 'done'",
     )

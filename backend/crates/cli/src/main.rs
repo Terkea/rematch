@@ -6,7 +6,6 @@ use std::time::Duration;
 
 use cli::{AnalyseDeps, CliDeps, Signal, Started, db_cmd, run_cli};
 use futures::FutureExt;
-use queue::kinds::{KIND_ANALYSE, KIND_IMPORT};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use worker::config::WorkerEnv;
@@ -57,16 +56,7 @@ async fn main() {
                 }
                 .boxed()
             }),
-            queues_idle: Box::new(move |account| {
-                let queue = queue.clone();
-                async move {
-                    Ok(queue
-                        .live_count(&[KIND_IMPORT, KIND_ANALYSE], Some(account))
-                        .await?
-                        == 0)
-                }
-                .boxed()
-            }),
+            queues_idle: cli::analyse::queues_idle_on(queue),
             print: Box::new(|l| println!("{l}")),
             print_error: Box::new(|l| eprintln!("{l}")),
             poll: Duration::from_secs(1),
