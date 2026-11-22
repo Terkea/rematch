@@ -43,6 +43,11 @@ One file per decision: context, decision, alternatives, consequences. New decisi
 - [0038. Parity acceptance and removal of the TS backend](0038-parity-and-ts-backend-removal.md)
 - [0039. Piece set: Cburnett by default, Chessnut as an option](0039-piece-set.md)
 - [0040. chess.com first; Lichess accounts deferred](0040-chesscom-first-defer-lichess-accounts.md)
+- [0041. First target: a private beta for the owner and a few friends](0041-private-beta-owner-and-friends.md)
+- [0042. Shared Rust build caches across lanes](0042-shared-rust-build-caches.md)
+- [0043. No email address in outbound requests](0043-no-email-in-outbound-requests.md)
+- [0044. Postgres runs under an init process with an exec-form TCP healthcheck](0044-postgres-init-process-and-tcp-healthcheck.md)
+- [0045. Rust worker runtime image and graceful shutdown](0045-rust-worker-runtime-and-shutdown.md)
 
 R2 (profile engine) records use placeholder numbers until the controller renumbers them after 0038 (ADR-R2-1). Rows without a file yet are written by the R2 task named in the plan.
 
@@ -64,10 +69,15 @@ R2 (profile engine) records use placeholder numbers until the controller renumbe
 - [ADR-R2-16. Tiered analysis scheduler](ADR-R2-16-tiered-analysis-scheduler.md)
 - [ADR-R2-17. ETA and autoscaling hooks](ADR-R2-17-eta-and-autoscaling-hooks.md)
 - [ADR-R2-18. build-profile job and CoachingInput builder](ADR-R2-18-build-profile-and-coaching-input.md)
+- [ADR-R2-22. Syzygy 3-4-5 tablebases: pinned, verified, never committed](ADR-R2-22-syzygy-345-fetch.md)
+- [ADR-R2-23. Reference build storage: lifecycle guards and per-metric band fallback](ADR-R2-23-reference-build-storage.md)
 
 R3 (AI) records use placeholder numbers until R3 Task 26 renumbers them.
 
 - [ADR-R3-1. Rust Anthropic client and the `ai` crate's dependencies](ADR-R3-1-rust-anthropic-client-and-crates.md)
+- [ADR-R3-3. AI tables, jobs and events](ADR-R3-3-ai-tables-jobs-and-events.md)
+- [ADR-R3-5. Models, budgets and degradation](ADR-R3-5-models-budgets-and-degradation.md)
+- [ADR-R3-8. "Ask your coach": the chat engine](ADR-R3-8-ask-your-coach-chat.md)
 
 Web (M4) records use placeholder numbers until the controller renumbers them.
 

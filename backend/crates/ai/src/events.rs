@@ -1,1 +1,140 @@
-//! Filled by a later R3 task.
+//! AI user events (ADR-R3-3). They are emitted inside the transaction that writes the state they
+//! describe, through R1's `insert_user_event`, so a client never sees an event for state that
+//! did not commit, and a rolled-back write leaves no event.
+
+use serde::{Deserialize, Serialize};
+use sqlx::PgConnection;
+use uuid::Uuid;
+
+use crate::db::ItemStatus;
+use crate::db::reports::ReportStatus;
+use crate::output::codes::Citation;
+use crate::segments::Segment;
+
+pub const REPORT_SECTION_READY: &str = "report.section.ready";
+pub const REPORT_READY: &str = "report.ready";
+pub const REPORT_DEGRADED: &str = "report.degraded";
+pub const WEEKLY_REVIEW_READY: &str = "weekly_review.ready";
+pub const WEAKNESS_NOTE_READY: &str = "weakness.note.ready";
+pub const CHAT_CHUNK: &str = "chat.chunk";
+pub const CHAT_MESSAGE_READY: &str = "chat.message.ready";
+pub const CHAT_MESSAGE_FAILED: &str = "chat.message.failed";
+pub const JOB_FAILED: &str = "job.failed";
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SectionReady {
+    pub report_id: Uuid,
+    pub report_run_id: Uuid,
+    /// `"computed"`, a `SectionKey`, or `"area:<id>"`.
+    pub section: String,
+    pub narrative: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReportReady {
+    pub report_id: Uuid,
+    pub status: ReportStatus,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DegradedReason {
+    Unavailable,
+    Budget,
+    AiDisabled,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReportDegraded {
+    pub report_id: Uuid,
+    pub reason: DegradedReason,
+    /// ISO time of the next attempt, or `null`.
+    pub retry_at: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WeeklyReady {
+    pub id: Uuid,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteReady {
+    pub change_key: String,
+    pub status: ItemStatus,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatChunk {
+    pub message_id: Uuid,
+    pub seq: u32,
+    pub text: String,
+    pub segments: Vec<Segment>,
+    pub citations: Vec<Citation>,
+    /// An interim chunk may be replaced by the validated message.
+    pub interim: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatReady {
+    pub message_id: Uuid,
+    /// The validated text differs from what was streamed: the client replaces it.
+    pub replace: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatFailed {
+    pub message_id: Uuid,
+    pub reason: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JobFailed {
+    pub kind: String,
+    pub reason: String,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum EmitError {
+    #[error(transparent)]
+    Events(#[from] ::events::store::Error),
+    #[error("event payload does not serialise: {0}")]
+    Json(#[from] serde_json::Error),
+}
+
+/// Inserts one user event on `tx` (make it the last statement before the commit; see
+/// `insert_user_event`). Returns the event id.
+pub async fn emit(
+    tx: &mut PgConnection,
+    account_id: Uuid,
+    ty: &str,
+    payload: &impl Serialize,
+) -> Result<i64, EmitError> {
+    let payload = serde_json::to_value(payload)?;
+    let stored = ::events::store::insert_user_event(tx, account_id, ty, &payload).await?;
+    Ok(stored.id)
+}
+
+/// [`emit`] for an event owned by one user: it is for that user only (`user_events.user_id`).
+/// Every chat event is emitted this way, with the thread owner's user (review N1): a linked
+/// account is shared between users, and readers deliver an event with a user only to that user.
+pub async fn emit_for_user(
+    tx: &mut PgConnection,
+    account_id: Uuid,
+    user_id: Uuid,
+    ty: &str,
+    payload: &impl Serialize,
+) -> Result<i64, EmitError> {
+    let payload = serde_json::to_value(payload)?;
+    let stored =
+        ::events::store::insert_owned_event(tx, account_id, Some(user_id), ty, &payload).await?;
+    Ok(stored.id)
+}

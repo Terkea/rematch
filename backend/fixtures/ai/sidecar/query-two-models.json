@@ -1,0 +1,23 @@
+{
+  "subtype": "success",
+  "stopReason": "end_turn",
+  "structuredOutput": { "section": "Two models touched this call.", "n": 1 },
+  "text": "",
+  "numTurns": 1,
+  "durationMs": 5120,
+  "modelUsage": {
+    "claude-sonnet-5-5": {
+      "inputTokens": 3000,
+      "outputTokens": 400,
+      "cacheReadInputTokens": 2000,
+      "cacheCreationInputTokens": 100
+    },
+    "claude-haiku-5-5": {
+      "inputTokens": 120,
+      "outputTokens": 12,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0
+    }
+  },
+  "sdkCostUsd": 0.0123
+}

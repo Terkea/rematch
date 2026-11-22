@@ -1,0 +1,743 @@
+//! Port of TS plan B4's `weekly.test.ts` (R3 Task 15): the weekly review on the lighter model,
+//! validated item by item and repaired once. Fake client only.
+
+#[path = "support/generate.rs"]
+mod support;
+
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+use ai::client::fake::{FakeAiClient, FakeScript};
+use ai::client::model::{Effort, Models};
+use ai::client::port::{AiError, AiUsage, UnavailableReason};
+use ai::generate::request::rules_block;
+use ai::generate::weekly::{
+    NOT_ENOUGH_PRACTICE, WEEKLY_MAX_TOKENS, below_practice_gate, build_weekly_context,
+    build_weekly_evidence, build_weekly_request, generate_weekly_review, validate_weekly,
+};
+use ai::output::codes::ValidationCode;
+use ai::output::weekly::{WeeklyReviewInput, WeeklyReviewOutput};
+use ai::prompts::load_prompt;
+use ai::testing::load_fixture;
+use serde_json::{Value, json};
+use support::{no_budget, out, stop, structured_requests};
+
+/// A week for the b2-rapid player: one focus (W1, `pImp` 0.6, so "unclear yet"), one metric
+/// delta, one exemplar and b2-rapid's change.
+fn weekly_json() -> Value {
+    let b2 = load_fixture("b2-rapid");
+    json!({
+        "inputVersion": "weekly-input-v1",
+        "timeClass": b2["timeClass"],
+        "band": b2["band"],
+        "weekStart": "2026-11-16",
+        "weekEnd": "2026-11-22",
+        "gamesThisWeek": 14,
+        "basis": b2["basis"],
+        "adherence": { "minutesDone": 90, "minutesPlanned": 120 },
+        "metricDeltas": [{
+            "key": "blunder_rate", "area": "tactics", "label": "Blunders",
+            "before": { "value": 0.2, "n": 40, "low": 0.15, "high": 0.25 },
+            "after": { "value": 0.1, "n": 14, "low": null, "high": null },
+            "verdict": "no_clear_change"
+        }],
+        "focusUpdates": [{ "weaknessId": "W1", "label": "Hanging pieces", "pImp": 0.6, "state": "active" }],
+        "exemplars": [b2["weaknesses"][0]["exemplars"][0]],
+        "changes": b2["changes"],
+    })
+}
+
+fn weekly() -> WeeklyReviewInput {
+    serde_json::from_value(weekly_json()).unwrap()
+}
+
+fn item(text: &str) -> Value {
+    json!({ "text": text, "citations": [] })
+}
+
+/// An outcome about the focus `id`.
+fn outcome_for(id: &str, text: &str) -> Value {
+    json!({ "text": text, "citations": [], "weaknessId": id })
+}
+
+fn outcome(text: &str) -> Value {
+    outcome_for("W1", text)
+}
+
+const GOOD_OUTCOME: &str =
+    "Whether the work on hanging pieces shows in your results is unclear yet.";
+const WRONG_OUTCOME: &str =
+    "It is very likely that the work on hanging pieces shows in your results.";
+
+/// A weekly review where every item passes, with `outcome` as its only outcome.
+fn review(outcome: &str) -> Value {
+    json!({
+        "headline": item("A steady week of practice."),
+        "process": item("You put in {{num:adherence.minutesDone|int}} minutes of practice this week."),
+        "outcomes": [outcome_for("W1", outcome)],
+        "exemplars": [{
+            "text": "In this game {{move:li-w1-0:5}} left a piece loose.",
+            "citations": [{ "gameId": "li-w1-0", "ply": 5 }],
+        }],
+        "nextWeek": item("Next week, look for loose pieces before you move."),
+    })
+}
+
+#[tokio::test]
+async fn weekly_uses_haiku_with_a_cached_system_block() {
+    let input = weekly();
+    let req = build_weekly_request(&input);
+    assert_eq!(req.model, Models::WEEKLY);
+    assert_eq!(req.model.as_str(), "claude-haiku-5-5");
+    assert_eq!(req.effort, Effort::Low);
+    assert_eq!(req.max_tokens, WEEKLY_MAX_TOKENS);
+    assert_eq!(WEEKLY_MAX_TOKENS, 4000);
+    assert_eq!(req.schema.id, "weekly-review");
+
+    // system[0] is the shared rules block, byte for byte; system[1] the weekly prompt, cached.
+    assert_eq!(req.system.len(), 2);
+    assert_eq!(req.system[0], rules_block());
+    assert!(req.system[1].cache);
+    let weekly_system = load_prompt("weekly-review/system", 1).unwrap().text;
+    assert!(req.system[1].text.starts_with(weekly_system));
+    assert!(
+        !req.system[1]
+            .text
+            .contains(load_prompt("core/tokens", 1).unwrap().text),
+        "the token grammar is never restated"
+    );
+
+    // The user message: the cached weekly input, then the uncached task.
+    assert_eq!(req.messages.len(), 1);
+    let blocks = &req.messages[0].content;
+    assert_eq!(blocks.len(), 2);
+    let data = blocks[0]["text"].as_str().unwrap();
+    assert!(data.starts_with("<weekly_input>") && data.ends_with("</weekly_input>"));
+    assert_eq!(blocks[0]["cache_control"], json!({"type": "ephemeral"}));
+    assert!(blocks[1].get("cache_control").is_none());
+    assert_eq!(
+        blocks[1]["text"].as_str().unwrap(),
+        load_prompt("weekly-review/task", 1).unwrap().text
+    );
+    // The focus carries its likelihood phrase, and the refs list the weekly paths.
+    assert!(
+        data.contains("\"likelihoodPhrase\":\"unclear yet\""),
+        "{data}"
+    );
+    assert!(
+        data.contains("metricDeltas.blunder_rate.after.value"),
+        "{data}"
+    );
+    assert!(data.contains("adherence.minutesDone"), "{data}");
+
+    // The fake sees the haiku request; a valid review is ready on the first call.
+    let ai = FakeAiClient::new(FakeScript {
+        structured: Some(Box::new(|_, _| Ok(out(review(GOOD_OUTCOME))))),
+        ..FakeScript::default()
+    });
+    let budget = no_budget();
+    let o = generate_weekly_review(&ai, &budget, &input).await.unwrap();
+    let reqs = structured_requests(&ai);
+    assert_eq!(reqs.len(), 1);
+    assert_eq!(reqs[0]["model"], "claude-haiku-5-5");
+    assert_eq!(reqs[0]["effort"], "low");
+    assert_eq!(reqs[0]["max_tokens"], 4000);
+    assert_eq!(
+        reqs[0]["system"][0]["cache_control"],
+        json!({"type": "ephemeral"})
+    );
+    assert!(o.dropped.is_empty(), "{:?}", o.dropped);
+    assert!(o.content.headline.is_some());
+    assert!(o.content.process.is_some());
+    assert_eq!(o.content.outcomes.len(), 1);
+    assert_eq!(o.content.exemplars.len(), 1);
+    assert!(o.content.next_week.is_some());
+    assert_eq!(o.calls.len(), 1);
+    assert_eq!(o.calls[0].model, "claude-haiku-5-5");
+}
+
+#[tokio::test]
+async fn outcome_with_wrong_likelihood_is_repaired_once_then_dropped() {
+    let input = weekly();
+    let ai = FakeAiClient::new(FakeScript {
+        structured: Some(Box::new(|_, _| Ok(out(review(WRONG_OUTCOME))))),
+        ..FakeScript::default()
+    });
+    let budget = no_budget();
+    let o = generate_weekly_review(&ai, &budget, &input).await.unwrap();
+    let reqs = structured_requests(&ai);
+    assert_eq!(reqs.len(), 2, "one repair, no more");
+    // The repair replays the answer and lists the error with its path.
+    let msgs = reqs[1]["messages"].as_array().unwrap();
+    assert_eq!(msgs.len(), 3);
+    assert_eq!(msgs[1]["role"], "assistant");
+    let repair = msgs[2]["content"][0]["text"].as_str().unwrap();
+    assert!(
+        repair.contains("- outcomes[0].text: likelihood_mismatch: very likely"),
+        "{repair}"
+    );
+    // The outcome is dropped; everything else stays.
+    assert!(o.content.outcomes.is_empty());
+    assert!(o.content.headline.is_some() && o.content.process.is_some());
+    assert_eq!(o.content.exemplars.len(), 1);
+    assert_eq!(o.dropped.len(), 1);
+    assert_eq!(o.dropped[0].section, "weekly");
+    assert_eq!(o.dropped[0].path, "outcomes[0]");
+    assert!(
+        o.dropped[0]
+            .errors
+            .iter()
+            .any(|e| e.code == ValidationCode::LikelihoodMismatch && e.detail == "very likely"),
+        "{:?}",
+        o.dropped
+    );
+    // Both calls are metered.
+    assert_eq!(o.calls.len(), 2);
+}
+
+#[test]
+fn weekly_process_quoting_an_outcome_number_is_rejected() {
+    let input = weekly();
+    let ev = build_weekly_evidence(&input);
+    let quoted = "{{num:metricDeltas.blunder_rate.after.value|dec1}}";
+    let mut v = review(GOOD_OUTCOME);
+    v["process"] = item(&format!(
+        "You practised well, and the rate is now {quoted}."
+    ));
+    v["outcomes"] = json!([outcome(&format!(
+        "The rate is now {quoted}, and whether it holds is unclear yet."
+    ))]);
+    let out: WeeklyReviewOutput = serde_json::from_value(v).unwrap();
+    let (content, dropped) = validate_weekly(&out, &input, &ev);
+    assert!(content.process.is_none());
+    assert_eq!(dropped.len(), 1, "{dropped:?}");
+    assert_eq!(dropped[0].path, "process");
+    assert_eq!(dropped[0].errors.len(), 1, "{dropped:?}");
+    let e = &dropped[0].errors[0];
+    assert_eq!(e.code, ValidationCode::LikelihoodMismatch);
+    assert_eq!(e.path, "process.text");
+    assert_eq!(e.detail, "process quotes an outcome number");
+    // The same number is fine in an outcome.
+    assert_eq!(content.outcomes.len(), 1);
+    // A process number that is not an outcome (the practice minutes) is fine.
+    let ok: WeeklyReviewOutput = serde_json::from_value(review(GOOD_OUTCOME)).unwrap();
+    let (content, dropped) = validate_weekly(&ok, &input, &ev);
+    assert!(dropped.is_empty(), "{dropped:?}");
+    assert!(content.process.is_some());
+}
+
+#[test]
+fn every_weekly_item_gets_the_banned_phrase_and_marketing_rules() {
+    let input = weekly();
+    let ev = build_weekly_evidence(&input);
+    let mut v = review(GOOD_OUTCOME);
+    v["headline"] = item("This plan is guaranteed to work.");
+    v["nextWeek"] = item("Upgrade for more drills next week.");
+    v["exemplars"][0]["text"] = json!("In this game {{move:li-w1-0:5}} you definitely slipped.");
+    let out: WeeklyReviewOutput = serde_json::from_value(v).unwrap();
+    let (content, dropped) = validate_weekly(&out, &input, &ev);
+    assert!(content.headline.is_none() && content.next_week.is_none());
+    assert!(content.exemplars.is_empty());
+    let codes: Vec<(String, ValidationCode)> = dropped
+        .iter()
+        .flat_map(|d| d.errors.iter().map(|e| (d.path.clone(), e.code)))
+        .collect();
+    assert!(codes.contains(&("headline".into(), ValidationCode::BannedPhrase)));
+    assert!(codes.contains(&("nextWeek".into(), ValidationCode::Marketing)));
+    assert!(codes.contains(&("exemplars[0]".into(), ValidationCode::BannedPhrase)));
+}
+
+#[test]
+fn an_exemplar_item_cites_only_the_weekly_exemplars() {
+    let input = weekly();
+    let ev = build_weekly_evidence(&input);
+    let mut v = review(GOOD_OUTCOME);
+    // li-c1-0#21 is a change example: known, but not a weekly exemplar.
+    v["exemplars"] = json!([{
+        "text": "In this game {{move:li-c1-0:21}} left a piece loose.",
+        "citations": [{ "gameId": "li-c1-0", "ply": 21 }],
+    }, {
+        "text": "This game shows a loose piece.",
+        "citations": [],
+    }]);
+    let out: WeeklyReviewOutput = serde_json::from_value(v).unwrap();
+    let (content, dropped) = validate_weekly(&out, &input, &ev);
+    assert!(content.exemplars.is_empty());
+    let codes: Vec<ValidationCode> = dropped
+        .iter()
+        .flat_map(|d| d.errors.iter().map(|e| e.code))
+        .collect();
+    assert!(
+        codes.contains(&ValidationCode::UnrelatedCitation),
+        "{dropped:?}"
+    );
+    assert!(
+        codes.contains(&ValidationCode::MissingCitation),
+        "{dropped:?}"
+    );
+}
+
+#[test]
+fn weekly_evidence_holds_the_exemplars_changes_and_paths() {
+    let input = weekly();
+    let ev = build_weekly_evidence(&input);
+    assert!(ev.positions.contains_key("li-w1-0#5"));
+    assert!(ev.positions.contains_key("li-c1-0#21"));
+    assert!(
+        !ev.positions.contains_key("li-w3-0#16"),
+        "only the week's positions"
+    );
+    for p in [
+        "gamesThisWeek",
+        "adherence.minutesDone",
+        "metricDeltas.blunder_rate.after.value",
+        "focusUpdates.W1.pImp",
+        "changes.tactics_blunder_rate.ratioAfterBefore",
+        "basis.analysedGames",
+    ] {
+        assert!(ev.number_paths.contains_key(p), "{p}");
+    }
+    assert!(ev.date_paths.contains_key("weekStart"));
+    assert!(
+        ev.date_paths
+            .contains_key("changes.tactics_blunder_rate.onsetDate")
+    );
+    assert!(ev.rate_paths.contains("focusUpdates.W1.pImp"));
+}
+
+#[tokio::test]
+async fn a_refusal_twice_gives_an_empty_review_with_both_calls_metered() {
+    let input = weekly();
+    let ai = FakeAiClient::new(FakeScript {
+        structured: Some(Box::new(|_, _| Ok(stop("refusal")))),
+        ..FakeScript::default()
+    });
+    let budget = no_budget();
+    let o = generate_weekly_review(&ai, &budget, &input).await.unwrap();
+    assert_eq!(structured_requests(&ai).len(), 2);
+    assert!(o.content.headline.is_none() && o.content.process.is_none());
+    assert!(o.content.outcomes.is_empty() && o.content.exemplars.is_empty());
+    assert!(o.content.next_week.is_none());
+    assert_eq!(o.dropped.len(), 1);
+    assert_eq!(o.dropped[0].path, "");
+    assert_eq!(o.dropped[0].errors[0].code, ValidationCode::Refusal);
+    assert_eq!(o.calls.len(), 2);
+}
+
+#[tokio::test]
+async fn a_failed_repair_hands_the_paid_first_call_back() {
+    let input = weekly();
+    let n = Arc::new(AtomicUsize::new(0));
+    let seen = n.clone();
+    let ai = FakeAiClient::new(FakeScript {
+        structured: Some(Box::new(move |_, _| {
+            if seen.fetch_add(1, Ordering::SeqCst) == 0 {
+                let mut o = out(review(WRONG_OUTCOME));
+                o.usage = AiUsage {
+                    input_tokens: 100,
+                    output_tokens: 50,
+                    ..AiUsage::default()
+                };
+                Ok(o)
+            } else {
+                Err(AiError::Unavailable {
+                    reason: UnavailableReason::Overloaded,
+                    retry_after: None,
+                })
+            }
+        })),
+        ..FakeScript::default()
+    });
+    let budget = no_budget();
+    let e = generate_weekly_review(&ai, &budget, &input)
+        .await
+        .unwrap_err();
+    assert!(e.error.is_unavailable());
+    assert_eq!(e.calls.len(), 1, "attempt 1 was paid for");
+    assert_eq!(e.calls[0].usage.input_tokens, 100);
+}
+
+// ---- fix round 1 ----------------------------------------------------------------------------
+
+/// The reviewer's two-focus week: W1 at `pImp` 0.96 ("very likely") and W2 at 0.2 ("no clear
+/// change yet").
+fn two_focus_week() -> WeeklyReviewInput {
+    let mut v = weekly_json();
+    v["focusUpdates"] = json!([
+        { "weaknessId": "W1", "label": "Hanging pieces", "pImp": 0.96, "state": "improving" },
+        { "weaknessId": "W2", "label": "Back-rank threats", "pImp": 0.2, "state": "active" },
+    ]);
+    serde_json::from_value(v).unwrap()
+}
+
+fn codes_of(dropped: &[ai::output::codes::DroppedItem]) -> Vec<(String, ValidationCode)> {
+    dropped
+        .iter()
+        .flat_map(|d| d.errors.iter().map(|e| (d.path.clone(), e.code)))
+        .collect()
+}
+
+fn with_outcomes(outcomes: Value) -> WeeklyReviewOutput {
+    let mut v = review(GOOD_OUTCOME);
+    v["outcomes"] = outcomes;
+    serde_json::from_value(v).unwrap()
+}
+
+/// P1a (C1): the W2 outcome alone, written with W1's phrase. By index it was checked against W1;
+/// by id it is checked against W2 and dropped.
+#[test]
+fn a_skipped_focus_cannot_lend_its_phrase_to_the_next() {
+    let input = two_focus_week();
+    let ev = build_weekly_evidence(&input);
+    let out = with_outcomes(json!([outcome_for(
+        "W2",
+        "Your work on back-rank threats is very likely improving."
+    )]));
+    let (content, dropped) = validate_weekly(&out, &input, &ev);
+    assert!(content.outcomes.is_empty());
+    assert!(
+        codes_of(&dropped).contains(&("outcomes[0]".into(), ValidationCode::LikelihoodMismatch))
+    );
+    // Claiming W1 while talking about W2 is caught by the label check.
+    let out = with_outcomes(json!([outcome_for(
+        "W1",
+        "Your work on back-rank threats is very likely improving."
+    )]));
+    let (content, dropped) = validate_weekly(&out, &input, &ev);
+    assert!(content.outcomes.is_empty());
+    assert!(codes_of(&dropped).contains(&("outcomes[0]".into(), ValidationCode::UnknownWeakness)));
+}
+
+/// P1b (C1): reordered outcomes are each checked against their own focus.
+#[test]
+fn reordered_outcomes_are_checked_against_their_own_focus() {
+    let input = two_focus_week();
+    let ev = build_weekly_evidence(&input);
+    let out = with_outcomes(json!([
+        outcome_for(
+            "W2",
+            "Your work on back-rank threats is very likely improving."
+        ),
+        outcome_for("W1", "For hanging pieces there is no clear change yet."),
+    ]));
+    let (content, dropped) = validate_weekly(&out, &input, &ev);
+    assert!(content.outcomes.is_empty(), "{:?}", content.outcomes);
+    let codes = codes_of(&dropped);
+    assert!(codes.contains(&("outcomes[0]".into(), ValidationCode::LikelihoodMismatch)));
+    assert!(codes.contains(&("outcomes[1]".into(), ValidationCode::LikelihoodMismatch)));
+    // The honest pair, in either order, passes and carries the computed labels.
+    let out = with_outcomes(json!([
+        outcome_for("W2", "For back-rank threats there is no clear change yet."),
+        outcome_for(
+            "W1",
+            "Your work on hanging pieces is very likely improving."
+        ),
+    ]));
+    let (content, dropped) = validate_weekly(&out, &input, &ev);
+    assert!(dropped.is_empty(), "{dropped:?}");
+    let ids: Vec<(&str, &str)> = content
+        .outcomes
+        .iter()
+        .map(|o| (o.weakness_id.as_str(), o.label.as_str()))
+        .collect();
+    assert_eq!(ids, [("W2", "Back-rank threats"), ("W1", "Hanging pieces")]);
+}
+
+#[test]
+fn an_unknown_or_repeated_focus_id_is_dropped_and_an_omitted_focus_is_fine() {
+    let input = two_focus_week();
+    let ev = build_weekly_evidence(&input);
+    let out = with_outcomes(json!([
+        outcome_for("W9", "For this there is no clear change yet."),
+        outcome_for("W2", "For back-rank threats there is no clear change yet."),
+        outcome_for("W2", "For back-rank threats there is no clear change yet."),
+    ]));
+    let (content, dropped) = validate_weekly(&out, &input, &ev);
+    assert_eq!(content.outcomes.len(), 1, "W1 omitted, W2 once");
+    assert_eq!(content.outcomes[0].weakness_id, "W2");
+    let errors: Vec<(String, String, ValidationCode)> = dropped
+        .iter()
+        .flat_map(|d| {
+            d.errors
+                .iter()
+                .map(|e| (d.path.clone(), e.path.clone(), e.code))
+        })
+        .collect();
+    assert_eq!(
+        errors,
+        [
+            (
+                "outcomes[0]".into(),
+                "outcomes[0].weaknessId".into(),
+                ValidationCode::UnknownWeakness
+            ),
+            (
+                "outcomes[2]".into(),
+                "outcomes[2].weaknessId".into(),
+                ValidationCode::UnknownWeakness
+            ),
+        ]
+    );
+}
+
+/// P4a to P4c (I2): outcome numbers and change words outside the outcomes.
+#[test]
+fn outcome_claims_outside_the_outcomes_are_rejected() {
+    let input = weekly();
+    let ev = build_weekly_evidence(&input);
+    let k = "tactics_blunder_rate";
+    let cases = [
+        (
+            "process",
+            format!(
+                "Your blunder rate fell to about {{{{num:changes.{k}.ratioAfterBefore|dec1}}}} times as often."
+            ),
+        ),
+        (
+            "headline",
+            "There is a {{num:focusUpdates.W1.pImp|pct0}} chance your training is paying off."
+                .to_owned(),
+        ),
+        (
+            "headline",
+            "Your blunders dropped sharply this week.".to_owned(),
+        ),
+        ("nextWeek", "Next week, play more slow games.".to_owned()),
+        ("headline", "Your hanging pieces are rarer now.".to_owned()),
+        (
+            "nextWeek",
+            "Next week, aim to keep {{num:metricDeltas.blunder_rate.after.value|dec1}} going."
+                .to_owned(),
+        ),
+    ];
+    for (field, text) in cases {
+        let mut v = review(GOOD_OUTCOME);
+        v[field] = item(&text);
+        let out: WeeklyReviewOutput = serde_json::from_value(v).unwrap();
+        let (content, dropped) = validate_weekly(&out, &input, &ev);
+        let kept = match field {
+            "process" => content.process.is_some(),
+            "headline" => content.headline.is_some(),
+            _ => content.next_week.is_some(),
+        };
+        assert!(!kept, "{field}: {text:?} was kept");
+        assert!(
+            codes_of(&dropped).contains(&(field.into(), ValidationCode::LikelihoodMismatch)),
+            "{field}: {text:?}: {dropped:?}"
+        );
+    }
+    // The number rule names the item.
+    let mut v = review(GOOD_OUTCOME);
+    v["headline"] = item("A week at {{num:focusUpdates.W1.pImp|pct0}}.");
+    let out: WeeklyReviewOutput = serde_json::from_value(v).unwrap();
+    let (_, dropped) = validate_weekly(&out, &input, &ev);
+    assert!(
+        dropped[0]
+            .errors
+            .iter()
+            .any(|e| e.detail == "headline quotes an outcome number"),
+        "{dropped:?}"
+    );
+}
+
+/// m3: below half the planned practice, outcomes give no verdict and say so.
+#[test]
+fn below_half_the_planned_practice_outcomes_say_not_enough_practice() {
+    let mut v = weekly_json();
+    v["adherence"] = json!({ "minutesDone": 50, "minutesPlanned": 120 });
+    let input: WeeklyReviewInput = serde_json::from_value(v).unwrap();
+    assert!(below_practice_gate(&input));
+    assert!(!below_practice_gate(&weekly()));
+    let ctx = build_weekly_context(&input);
+    assert_eq!(ctx["enoughPracticeToJudge"], json!(false));
+    assert_eq!(ctx["focusUpdates"][0]["likelihoodPhrase"], Value::Null);
+    let ev = build_weekly_evidence(&input);
+    // The focus's usual phrase is now a mismatch, and the gate phrase is required.
+    let (content, dropped) =
+        validate_weekly(&with_outcomes(json!([outcome(GOOD_OUTCOME)])), &input, &ev);
+    assert!(content.outcomes.is_empty());
+    let details: Vec<&str> = dropped[0]
+        .errors
+        .iter()
+        .map(|e| e.detail.as_str())
+        .collect();
+    assert!(details.contains(&"unclear yet"), "{details:?}");
+    assert!(
+        details.contains(&format!("missing {NOT_ENOUGH_PRACTICE:?}").as_str()),
+        "{details:?}"
+    );
+    let ok = format!("For hanging pieces there was {NOT_ENOUGH_PRACTICE} this week.");
+    let (content, dropped) = validate_weekly(&with_outcomes(json!([outcome(&ok)])), &input, &ev);
+    assert!(dropped.is_empty(), "{dropped:?}");
+    assert_eq!(content.outcomes.len(), 1);
+    // Nothing planned: no gate.
+    let mut v = weekly_json();
+    v["adherence"] = Value::Null;
+    assert!(!below_practice_gate(&serde_json::from_value(v).unwrap()));
+}
+
+/// m6 (T14 m1 ruling): a refused repair keeps attempt 1's validated items.
+#[tokio::test]
+async fn a_refused_repair_keeps_attempt_ones_validated_items() {
+    let input = weekly();
+    let n = Arc::new(AtomicUsize::new(0));
+    let seen = n.clone();
+    let ai = FakeAiClient::new(FakeScript {
+        structured: Some(Box::new(move |_, _| {
+            if seen.fetch_add(1, Ordering::SeqCst) == 0 {
+                Ok(out(review(WRONG_OUTCOME)))
+            } else {
+                Ok(stop("refusal"))
+            }
+        })),
+        ..FakeScript::default()
+    });
+    let budget = no_budget();
+    let o = generate_weekly_review(&ai, &budget, &input).await.unwrap();
+    assert_eq!(structured_requests(&ai).len(), 2);
+    assert!(o.content.headline.is_some() && o.content.process.is_some());
+    assert!(o.content.next_week.is_some());
+    assert_eq!(o.content.exemplars.len(), 1);
+    assert!(o.content.outcomes.is_empty());
+    assert_eq!(o.dropped.len(), 1);
+    assert_eq!(o.dropped[0].path, "outcomes[0]");
+    assert_eq!(o.calls.len(), 2);
+}
+
+/// m1: the web copy of `dropped` has no detail.
+#[tokio::test]
+async fn the_web_copy_of_dropped_has_no_model_text() {
+    let input = weekly();
+    let ai = FakeAiClient::new(FakeScript {
+        structured: Some(Box::new(|_, _| Ok(out(review(WRONG_OUTCOME))))),
+        ..FakeScript::default()
+    });
+    let budget = no_budget();
+    let o = generate_weekly_review(&ai, &budget, &input).await.unwrap();
+    assert!(
+        o.dropped[0]
+            .errors
+            .iter()
+            .any(|e| e.detail == "very likely")
+    );
+    let web = serde_json::to_string(&o.web_dropped()).unwrap();
+    assert!(
+        !web.contains("very likely") && !web.contains("detail"),
+        "{web}"
+    );
+    assert!(
+        web.contains("likelihood_mismatch") && web.contains("outcomes[0]"),
+        "{web}"
+    );
+}
+
+// ---- fix round 2 ----------------------------------------------------------------------------
+
+/// N1: a direction word in an outcome needs "very likely" or "likely" in the text, and is
+/// forbidden with any other phrase and below the practice gate.
+#[test]
+fn an_outcome_direction_needs_a_supporting_phrase() {
+    let input = two_focus_week();
+    let ev = build_weekly_evidence(&input);
+    for (id, text) in [
+        ("W2", "Your back-rank threats dropped sharply this week."),
+        (
+            "W2",
+            "For back-rank threats there is no clear change yet, but they dropped sharply this week.",
+        ),
+        ("W1", "Your hanging pieces dropped sharply this week."),
+    ] {
+        let (content, dropped) =
+            validate_weekly(&with_outcomes(json!([outcome_for(id, text)])), &input, &ev);
+        assert!(content.outcomes.is_empty(), "{text:?} was kept");
+        assert!(
+            codes_of(&dropped)
+                .contains(&("outcomes[0]".into(), ValidationCode::LikelihoodMismatch)),
+            "{text:?}: {dropped:?}"
+        );
+    }
+    // With its own supporting phrase, a direction is fine.
+    let ok = "Your hanging pieces very likely dropped this week.";
+    let (content, dropped) =
+        validate_weekly(&with_outcomes(json!([outcome_for("W1", ok)])), &input, &ev);
+    assert!(dropped.is_empty(), "{dropped:?}");
+    assert_eq!(content.outcomes.len(), 1);
+    // Below the practice gate, no direction at all.
+    let mut v = weekly_json();
+    v["focusUpdates"] = json!([
+        { "weaknessId": "W1", "label": "Hanging pieces", "pImp": 0.96, "state": "improving" },
+    ]);
+    v["adherence"] = json!({ "minutesDone": 30, "minutesPlanned": 120 });
+    let gated: WeeklyReviewInput = serde_json::from_value(v).unwrap();
+    let ev = build_weekly_evidence(&gated);
+    let text = "There was not enough practice to judge, but your hanging pieces dropped sharply.";
+    let (content, dropped) = validate_weekly(&with_outcomes(json!([outcome(text)])), &gated, &ev);
+    assert!(content.outcomes.is_empty(), "{dropped:?}");
+    assert!(
+        codes_of(&dropped).contains(&("outcomes[0]".into(), ValidationCode::LikelihoodMismatch))
+    );
+}
+
+/// N2: another focus named with other spacing, hyphens or number is still caught.
+#[test]
+fn another_focus_is_caught_in_any_spelling() {
+    let input = two_focus_week();
+    let ev = build_weekly_evidence(&input);
+    for text in [
+        "Your back rank is very likely safer.",
+        "Each back-rank threat is very likely spotted sooner.",
+        "Your back\u{2011}rank play is very likely steadier.",
+    ] {
+        let (content, dropped) = validate_weekly(
+            &with_outcomes(json!([outcome_for("W1", text)])),
+            &input,
+            &ev,
+        );
+        assert!(content.outcomes.is_empty(), "{text:?} was kept");
+        assert!(
+            codes_of(&dropped).contains(&("outcomes[0]".into(), ValidationCode::UnknownWeakness)),
+            "{text:?}: {dropped:?}"
+        );
+    }
+}
+
+/// N3: the comparative idioms are change words outside the outcomes too.
+#[test]
+fn comparative_idioms_are_change_words_in_the_headline() {
+    let input = weekly();
+    let ev = build_weekly_evidence(&input);
+    for text in [
+        "Your slips are not as common as before.",
+        "Your slips are down this week.",
+        "Your slips are up this week.",
+        "Your slips are now under control.",
+        "Your slips are a fraction of what they were.",
+        "Your slips happen all the time.",
+        "Loose pieces are becoming a habit.",
+        "Your slips are commoner than before.",
+    ] {
+        let mut v = review(GOOD_OUTCOME);
+        v["headline"] = item(text);
+        let out: WeeklyReviewOutput = serde_json::from_value(v).unwrap();
+        let (content, dropped) = validate_weekly(&out, &input, &ev);
+        assert!(content.headline.is_none(), "{text:?} was kept");
+        assert!(
+            codes_of(&dropped).contains(&("headline".into(), ValidationCode::LikelihoodMismatch)),
+            "{text:?}: {dropped:?}"
+        );
+    }
+}
+
+/// MF: exactly half the planned practice is enough to judge; less is not.
+#[test]
+fn the_practice_gate_boundary_is_half() {
+    for (done, gated) in [(60, false), (59, true), (0, true), (120, false)] {
+        let mut v = weekly_json();
+        v["adherence"] = json!({ "minutesDone": done, "minutesPlanned": 120 });
+        let input: WeeklyReviewInput = serde_json::from_value(v).unwrap();
+        assert_eq!(below_practice_gate(&input), gated, "{done}/120");
+    }
+    let mut v = weekly_json();
+    v["adherence"] = json!({ "minutesDone": 0, "minutesPlanned": 0 });
+    assert!(!below_practice_gate(&serde_json::from_value(v).unwrap()));
+}

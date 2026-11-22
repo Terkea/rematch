@@ -105,3 +105,31 @@ pub async fn insert_game(pool: &PgPool, account_id: Uuid, seed: GameSeed) -> Uui
     .await
     .expect("insert games (does the account exist?)")
 }
+
+/// A web user for tests. M4's `"user"` table is not on every branch: where it exists a row is
+/// inserted (so a foreign key to it holds), otherwise the id is just a fresh uuid.
+pub async fn insert_user(pool: &PgPool, name: &str) -> Uuid {
+    let id = Uuid::new_v4();
+    insert_user_with_id(pool, id, name).await;
+    id
+}
+
+/// [`insert_user`] with a chosen id; a second call with the same id is a no-op.
+pub async fn insert_user_with_id(pool: &PgPool, id: Uuid, name: &str) {
+    let exists: bool = sqlx::query_scalar("SELECT to_regclass('public.\"user\"') IS NOT NULL")
+        .fetch_one(pool)
+        .await
+        .expect("look up the user table");
+    if !exists {
+        return;
+    }
+    sqlx::query(
+        "INSERT INTO \"user\" (id, name, email) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING",
+    )
+    .bind(id)
+    .bind(name)
+    .bind(format!("{}@test.invalid", id.simple()))
+    .execute(pool)
+    .await
+    .expect("insert user");
+}

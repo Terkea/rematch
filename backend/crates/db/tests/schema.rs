@@ -41,6 +41,8 @@ fn game_row(account_id: Uuid, platform_game_id: &str) -> NewGame {
         eco: None,
         opening_name: None,
         lichess_evals: None,
+        status: AnalysisStatus::Pending,
+        ply_count: None,
     }
 }
 
@@ -328,9 +330,7 @@ async fn connect_for_migrations_disables_the_statement_timeout(
     assert_eq!(shown, "0");
 }
 
-// Task 19 adds the generation columns. Until then `GameRow` carries placeholder constants.
 #[sqlx::test(migrator = "db::MIGRATOR")]
-#[ignore = "enable in Task 19: generation columns"]
 async fn generation_round_trips(pool: PgPool) {
     let acc = make_account(&pool).await;
     let id = upsert_game(&pool, &game_row(acc, "gen1")).await.unwrap().id;
@@ -342,4 +342,24 @@ async fn generation_round_trips(pool: PgPool) {
     let g = get_game(&pool, id).await.unwrap().unwrap();
     assert_eq!(g.analysis_generation, 3);
     assert_eq!(g.analysed_generation, Some(2));
+}
+
+/// Every pooled connection asks the server for TCP keepalives (idle 60 s, interval 10 s,
+/// count 3), so a peer that vanished is noticed in about 90 s (T21 hand-off).
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn connect_sets_tcp_keepalives(_pool_opts: PgPoolOptions, opts: PgConnectOptions) {
+    let pool = connect(&test_db_url(&opts), DbOptions::default())
+        .await
+        .unwrap();
+    for (name, want) in [
+        ("tcp_keepalives_idle", "60"),
+        ("tcp_keepalives_interval", "10"),
+        ("tcp_keepalives_count", "3"),
+    ] {
+        let shown: String = sqlx::query_scalar(sqlx::AssertSqlSafe(format!("SHOW {name}")))
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(shown, want, "{name}");
+    }
 }

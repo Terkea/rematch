@@ -1,0 +1,16 @@
+{
+  "subtype": "error_max_structured_output_retries",
+  "stopReason": null,
+  "text": "",
+  "numTurns": 3,
+  "durationMs": 15800,
+  "modelUsage": {
+    "claude-sonnet-5-5": {
+      "inputTokens": 9360,
+      "outputTokens": 1210,
+      "cacheReadInputTokens": 6144,
+      "cacheCreationInputTokens": 0
+    }
+  },
+  "sdkCostUsd": 0.0214
+}

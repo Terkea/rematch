@@ -51,18 +51,23 @@ jobs:
   rust:
     runs-on: ubuntu-latest
     env:
-      CONTACT_EMAIL: ci@example.invalid
       LANE: "0"
     steps:
       - uses: actions/checkout@v4
       - name: Build the Rust dev image
         run: docker compose build rust-dev
+      # ADR 0042: rust-dev mounts external cache volumes (registry, git, sccache) that compose
+      # does not create. On a fresh runner they start empty; locally they persist across lanes.
+      - name: Create the shared Rust cache volumes
+        run: sh scripts/rust-cache-init.sh
       # Publish dates never change, so the crates.io answers are cached between runs.
       - uses: actions/cache@v4
         with:
           path: backend/target/crate-age-cache
           key: crate-age-${{ hashFiles('backend/Cargo.lock', 'backend/Dockerfile') }}
           restore-keys: crate-age-
+      - name: Crate-age script tests (cache hits make no network call, 429 retries, fail closed)
+        run: docker compose run --rm --no-deps rust-dev sh scripts/test-check-crate-age.sh
       - name: Crate age (every locked crate and pinned tool at least 7 days old)
         run: >-
           docker compose run --rm --no-deps
