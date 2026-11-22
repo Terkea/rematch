@@ -33,8 +33,12 @@ test("the game pages: no sideways scroll at 360px, visible focus, no broken numb
   const { analysedId, pendingId, longId } = seedFixtures();
   const coach = seedCoach();
   const routes = [
-    { url: "/app", ready: "nav[aria-labelledby='tc-label'] a", main: "Overview" },
-    { url: "/app/games", ready: "section[aria-label='Filters'] button", main: "Games" },
+    { url: "/app", ready: "[data-filter-bar] a", main: "Overview" },
+    {
+      url: "/app/games",
+      ready: "section[aria-label='Results and sort'] [role='combobox']",
+      main: "Games",
+    },
     { url: `/app/games/${analysedId}?ply=62`, ready: "[data-review]", main: "review" },
     { url: `/app/games/${pendingId}`, ready: "[data-review]", main: "pending review" },
     { url: `/app/games/${longId}?ply=300`, ready: "[data-review]", main: "300-ply review" },
