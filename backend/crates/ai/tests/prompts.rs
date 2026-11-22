@@ -35,6 +35,8 @@ fn is_hex64(s: &str) -> bool {
 fn vars_for(id: &str) -> Vec<(&'static str, &'static str)> {
     if id == "repair/repair" {
         vec![("errors", "- overview.summary: free_text_fact: text:\"3\"")]
+    } else if id == "chat/repair" {
+        vec![("errors", "- chat.0: free_text_fact: text:\"3\"")]
     } else {
         Vec::new()
     }

@@ -22,9 +22,11 @@
 //! enter the conversation's SDK session; their session-store rows are swept as orphans
 //! (Task 21). The conversation's `session_model_usage` comes only from the main turn's `Done`.
 //!
-//! Stand-ins until lane D lands on this base (replace at merge, see the Task 23 report):
-//! [`CallRecord`] and [`BeforeCall`] are T14's; [`ChatPrompts`] carries T13's `core/system` +
-//! `core/tokens` and `repair/repair` texts, which the caller loads with `load_prompt`.
+//! The prompts are T13's registered files ([`CHAT_PROMPT_SET`]): `system[0]` is the shared
+//! [`rules_block`] (`core/rules` + `core/tokens`), `system[1]` is `chat/system` (the chat's
+//! prose-output rules), and the repair renders `chat/repair`.
+//!
+//! [`CHAT_PROMPT_SET`]: crate::prompts::CHAT_PROMPT_SET
 
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -38,7 +40,7 @@ use serde_json::{Value, json};
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
-use super::context::{anchor_block, context_block, tagged_json};
+use super::context::{anchor_block, context_block};
 use super::data_source::EngineCheck;
 use super::execute::{
     OwnedToolDeps, ToolExec, ToolExecutor, ToolOutput, ToolSession, engine_result_output,
@@ -52,23 +54,27 @@ use super::tools::chat_tools;
 use crate::client::flatten::flatten_for_sidecar;
 use crate::client::model::{Effort, Models};
 use crate::client::port::{
-    AiClient, AiError, AiUsage, ChatTurnRequest, Message, ModelUsage, Role, SessionPath, TextBlock,
+    AiClient, AiError, ChatTurnRequest, Message, ModelUsage, Role, SessionPath, TextBlock,
     ToolChoice, ToolHandler, ToolReply, TurnEvent, TurnResult, metered_turn_usage,
 };
 use crate::entitlements::QuotaWindow;
+use crate::generate::context::canonical_json_escaped;
+use crate::generate::request::rules_block;
+pub use crate::generate::section::{BeforeCall, CallRecord};
 use crate::input::types::CoachingInput;
 use crate::output::codes::{Citation, ValidationCode, ValidationError};
 use crate::output::schema::ITEM_TEXT_MAX_CHARS;
+use crate::prompts::{load_prompt, render_template};
 use crate::segments::Segment;
 use crate::validator::evidence::Evidence;
 use crate::validator::language::{banned_phrases, engine_claims, no_marketing, no_quantity_words};
 use crate::validator::text::{TextRules, validate_text};
 
-/// `prompts/chat/system.v1.md` (registered in T13's prompt table at merge). The file holds no
-/// `{{…}}` at all: T13's `render_template` treats `{{name}}` (`[a-z_]+`) as a placeholder, so a
-/// literal `{{offtopic}}` there would be a missing variable. The marker is added in code
-/// ([`OFFTOPIC_LINE`]), never through a template.
-pub const CHAT_SYSTEM_PROMPT: &str = include_str!("../../prompts/chat/system.v1.md");
+/// A registered version-1 prompt. Every id used here is in `CHAT_PROMPT_SET` or
+/// `CHAT_SUMMARY_PROMPT_SET`, which the tests load, so a miss is a build defect.
+pub(crate) fn prompt_text(id: &str) -> &'static str {
+    load_prompt(id, 1).unwrap_or_else(|e| panic!("{e}")).text
+}
 
 /// The whole-paragraph off-topic marker (the `offtopic` token of the validator's grammar).
 pub const OFFTOPIC_MARKER: &str = "{{offtopic}}";
@@ -82,38 +88,19 @@ pub const ANSWER_NOW_TEXT: &str = "Answer now with what you have.";
 
 const OFFTOPIC: &str = OFFTOPIC_MARKER;
 
-/// The prompts the chat shares with the report (T13). `core` is `core/system` + `"\n\n"` +
-/// `core/tokens`; `repair` is `repair/repair`, with one `{{errors}}` placeholder.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ChatPrompts {
-    pub core: String,
-    pub repair: String,
-}
-
-/// `system[0]` = the core prompt (cached), `system[1]` = `chat/system` + `"\n\n"` +
-/// [`OFFTOPIC_LINE`] (cached).
-pub fn chat_system_blocks(p: &ChatPrompts) -> Vec<TextBlock> {
+/// `system[0]` = the shared [`rules_block`] (cached, byte-identical to the report's), and
+/// `system[1]` = `chat/system` + `"\n\n"` + [`OFFTOPIC_LINE`] (cached). The `chat/system` file
+/// holds no `{{…}}`: T13's `render_template` treats `{{name}}` as a placeholder, so the marker is
+/// added here in code, never through a template.
+pub fn chat_system_blocks() -> Vec<TextBlock> {
     vec![
-        TextBlock::cached(p.core.clone()),
+        rules_block(),
         TextBlock::cached(format!(
             "{}\n\n{OFFTOPIC_LINE}",
-            CHAT_SYSTEM_PROMPT.trim_end()
+            prompt_text("chat/system").trim_end()
         )),
     ]
 }
-
-/// T14's `CallRecord` (stand-in): one metered model entry of one call.
-#[derive(Clone, Debug, PartialEq)]
-pub struct CallRecord {
-    pub model: String,
-    pub usage: AiUsage,
-    pub batch: bool,
-    /// The SDK's estimate, for comparison only (on the call's first record).
-    pub sdk_cost_usd: Option<f64>,
-}
-
-/// T14's `BeforeCall` (stand-in): the budget hook, run before every model call.
-pub type BeforeCall<'a> = &'a (dyn Fn() -> BoxFuture<'static, Result<(), AiError>> + Send + Sync);
 
 /// Publishes one chunk (`chat.chunk`). An error is logged and the turn goes on; the final
 /// message then replaces what was streamed.
@@ -257,7 +244,6 @@ pub struct ChatTurnOutcome {
 
 /// One turn's inputs besides the client, the budget hook, the tools and `on_chunk`.
 pub struct ChatTurnArgs<'a> {
-    pub prompts: &'a ChatPrompts,
     /// `build_evidence(input)` plus the anchors (`anchor_details` with this evidence).
     pub evidence: Evidence,
     /// [`build_chat_request_messages`]; the last message is the question.
@@ -299,6 +285,8 @@ struct TurnTools {
     state: Arc<Mutex<TurnToolState>>,
     interim: mpsc::UnboundedSender<()>,
     interim_sent: AtomicBool,
+    /// Set when the answer is complete (the off-topic marker): later calls are refused.
+    closed: Arc<AtomicBool>,
 }
 
 fn lock(state: &Mutex<TurnToolState>) -> MutexGuard<'_, TurnToolState> {
@@ -365,6 +353,14 @@ impl TurnTools {
 impl ToolHandler for TurnTools {
     fn call<'a>(&'a self, name: &'a str, input: Value) -> BoxFuture<'a, ToolReply> {
         Box::pin(async move {
+            if self.closed.load(Ordering::SeqCst) {
+                // The answer is already the off-topic marker: nothing more is looked up or
+                // charged (review m8).
+                return ToolReply {
+                    content: json!({"error": "the answer is complete"}).to_string(),
+                    is_error: true,
+                };
+            }
             // The data source and engine are scoped to the conversation's account, and the
             // executor validates every field before anything is read.
             let out = match self.deps.execute(&self.session, name, Some(&input)).await {
@@ -421,10 +417,18 @@ struct Streamer<'a> {
     stale: bool,
     /// Any message was retracted (the SDK session then differs from the stored text).
     retracted: bool,
+    /// Shared with the turn's tool handler: set at the off-topic marker.
+    closed: Arc<AtomicBool>,
 }
 
 impl<'a> Streamer<'a> {
-    fn new(session: &'a ToolSession, on_chunk: OnChunk<'a>, publish: bool, seq: u32) -> Self {
+    fn new(
+        session: &'a ToolSession,
+        on_chunk: OnChunk<'a>,
+        publish: bool,
+        seq: u32,
+        closed: Arc<AtomicBool>,
+    ) -> Self {
         Streamer {
             session,
             rules: chat_rules(),
@@ -440,6 +444,7 @@ impl<'a> Streamer<'a> {
             paras: Vec::new(),
             stale: false,
             retracted: false,
+            closed,
         }
     }
 
@@ -483,6 +488,7 @@ impl<'a> Streamer<'a> {
         }
         if text == OFFTOPIC {
             self.offtopic = true;
+            self.closed.store(true, Ordering::SeqCst);
             return;
         }
         let path = format!("chat.{}", self.count);
@@ -633,6 +639,15 @@ impl<'a> Streamer<'a> {
         }
     }
 
+    /// The text of each published paragraph, in order.
+    fn published(&self) -> Vec<String> {
+        self.paras
+            .iter()
+            .filter(|p| p.published)
+            .map(|p| p.text.clone())
+            .collect()
+    }
+
     fn answer_text(&self) -> String {
         self.paras
             .iter()
@@ -704,7 +719,7 @@ fn tool_results_block(transcript: &[(String, Value, String)]) -> Option<Value> {
         .collect();
     Some(text_json(format!(
         "<tool_results>{}</tool_results>",
-        tagged_json(&Value::Array(results))
+        canonical_json_escaped(&Value::Array(results))
     )))
 }
 
@@ -744,7 +759,6 @@ fn repair_messages(
     messages: &[Message],
     tools: Option<Value>,
     answer: &str,
-    repair: &str,
     errors: &[&ValidationError],
 ) -> Vec<Message> {
     let mut out = messages.to_vec();
@@ -760,12 +774,15 @@ fn repair_messages(
     });
     let lines = errors
         .iter()
-        .map(|e| format!("- {}: {}", e.code.as_str(), e.detail))
+        .map(|e| format!("- {}: {}: {}", e.path, e.code.as_str(), e.detail))
         .collect::<Vec<_>>()
         .join("\n");
     out.push(Message {
         role: Role::User,
-        content: vec![text_json(repair.replace("{{errors}}", &lines))],
+        content: vec![text_json(
+            render_template(prompt_text("chat/repair"), &[("errors", &lines)])
+                .unwrap_or_else(|e| panic!("chat/repair: {e}")),
+        )],
     });
     out
 }
@@ -816,7 +833,6 @@ pub async fn run_chat_turn(
     on_chunk: OnChunk<'_>,
 ) -> Result<ChatTurnOutcome, AiError> {
     let ChatTurnArgs {
-        prompts,
         evidence,
         messages,
         conversation_id,
@@ -831,14 +847,16 @@ pub async fn run_chat_turn(
     let session = Arc::new(ToolSession::starting_at(evidence, first_call_index));
     let state = Arc::new(Mutex::new(TurnToolState::default()));
     let (tx, mut rx) = mpsc::unbounded_channel();
+    let closed = Arc::new(AtomicBool::new(false));
     let handler: Arc<dyn ToolHandler> = Arc::new(TurnTools {
         deps: deps.clone(),
         session: session.clone(),
         state: state.clone(),
         interim: tx,
         interim_sent: AtomicBool::new(false),
+        closed: closed.clone(),
     });
-    let system = chat_system_blocks(prompts);
+    let system = chat_system_blocks();
     let (sent, rebuild) = if resume {
         (vec![question.clone()], rebuild_context(&messages)?)
     } else {
@@ -860,7 +878,7 @@ pub async fn run_chat_turn(
 
     let mut calls = Vec::new();
     before_call().await?;
-    let mut s = Streamer::new(&session, on_chunk, true, 0);
+    let mut s = Streamer::new(&session, on_chunk, true, 0, closed.clone());
     let main = s
         .drive(ai.stream_turn(&req, Some(handler)), &mut rx)
         .await?;
@@ -872,24 +890,26 @@ pub async fn run_chat_turn(
     let session_path = main.session;
     let mut refused = main.stop_reason.as_deref() == Some("refusal");
 
+    let mut published = s.published();
     let followed_up = !refused && !s.offtopic && main.stop_reason.as_deref() == Some("max_turns");
     if followed_up {
         let tools = tool_results_block(&lock(&state).transcript);
         let follow = one_shot(system.clone(), answer_now_messages(&messages, tools));
         before_call().await?;
-        let r = s
+        // The follow-up never saw the main turn's text, so its answer stands alone: the main
+        // turn's paragraphs are dropped (and the stream replaced) rather than said twice
+        // (review m3).
+        let mut f = Streamer::new(&session, on_chunk, true, s.seq, closed.clone());
+        let r = f
             .drive(ai.stream_turn(&follow, None), &mut closed_channel())
             .await?;
         calls.extend(records(&r.model_usage, r.sdk_cost_usd));
         refused = r.stop_reason.as_deref() == Some("refusal");
+        f.stale |= s.stale;
+        f.retracted |= s.retracted;
+        published.extend(f.published());
+        s = f;
     }
-
-    let published: Vec<String> = s
-        .paras
-        .iter()
-        .filter(|p| p.published)
-        .map(|p| p.text.clone())
-        .collect();
     let mut stale = s.stale;
     let mut repaired = false;
     let mut dropped = 0u32;
@@ -908,16 +928,10 @@ pub async fn run_chat_turn(
             let tools = tool_results_block(&lock(&state).transcript);
             let fix = one_shot(
                 system.clone(),
-                repair_messages(
-                    &messages,
-                    tools,
-                    &s.answer_text(),
-                    &prompts.repair,
-                    &s.errors(),
-                ),
+                repair_messages(&messages, tools, &s.answer_text(), &s.errors()),
             );
             before_call().await?;
-            let mut r = Streamer::new(&session, on_chunk, false, s.seq);
+            let mut r = Streamer::new(&session, on_chunk, false, s.seq, closed.clone());
             let done = r
                 .drive(ai.stream_turn(&fix, None), &mut closed_channel())
                 .await?;

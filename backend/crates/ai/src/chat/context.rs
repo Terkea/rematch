@@ -9,6 +9,7 @@ use serde_json::{Map, Value, json};
 use super::anchor::ChatAnchor;
 use super::data_source::PositionRecord;
 use super::execute::{PosRef, add_position};
+use crate::generate::context::canonical_json_escaped;
 use crate::input::types::CoachingInput;
 use crate::validator::evidence::{Evidence, build_evidence, list_date_paths, list_number_paths};
 use crate::validator::language::evidence_window_token;
@@ -140,24 +141,16 @@ pub fn anchor_details(ev: &mut Evidence, anchor: &ChatAnchor, resolved: &Value) 
     Value::Object(out)
 }
 
-/// Compact JSON with sorted keys (serde_json maps are sorted; `preserve_order` is banned), with
-/// `<` written as the JSON escape `\u003c`, which is the same JSON, so no text inside can
-/// close a tag. This is the chat's stand-in for T13's `canonical_json` until it lands on this
-/// base; at merge, use `canonical_json(v)` with the same escaping.
-pub(crate) fn tagged_json(v: &Value) -> String {
-    v.to_string().replace('<', "\\u003c")
-}
-
-/// `"<anchor>" + canonical_json(details) + "</anchor>"`, with `<` escaped (see [`tagged_json`]).
+/// `"<anchor>" + canonical_json(details) + "</anchor>"`, with `<` escaped ([`canonical_json_escaped`]).
 pub fn anchor_block(details: &Value) -> String {
-    format!("<anchor>{}</anchor>", tagged_json(details))
+    format!("<anchor>{}</anchor>", canonical_json_escaped(details))
 }
 
 /// `"<coaching_context>" + canonical_json(build_chat_context(input)) + "</coaching_context>"`,
-/// with `<` escaped (see [`tagged_json`]).
+/// with `<` escaped ([`canonical_json_escaped`]).
 pub fn context_block(input: &CoachingInput) -> String {
     format!(
         "<coaching_context>{}</coaching_context>",
-        tagged_json(&build_chat_context(input))
+        canonical_json_escaped(&build_chat_context(input))
     )
 }

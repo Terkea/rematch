@@ -73,7 +73,7 @@ macro_rules! prompt {
     };
 }
 
-static TABLE: [Prompt; 20] = [
+static TABLE: [Prompt; 24] = [
     prompt!("core/rules", 1),
     prompt!("core/tokens", 1),
     prompt!("report/report", 1),
@@ -94,6 +94,10 @@ static TABLE: [Prompt; 20] = [
     prompt!("weekly-review/task", 1),
     prompt!("weakness-change/system", 1),
     prompt!("weakness-change/task", 1),
+    prompt!("chat/system", 1),
+    prompt!("chat/repair", 1),
+    prompt!("chat-summary/system", 1),
+    prompt!("chat-summary/task", 1),
 ];
 
 /// Every prompt file. `tests/prompts.rs` checks this against the files on disk.
@@ -132,6 +136,22 @@ pub const REPORT_PROMPT_SET: &[(&str, u32)] = &[
 
 /// The report's `prompt_version` (the AI disclosure and the report row).
 pub const REPORT_PROMPT_VERSION: &str = "report@1";
+
+/// The prompts a chat turn uses (Task 23), in hash order: the shared rules block, the chat's
+/// prose-output prompt and its repair prompt.
+pub const CHAT_PROMPT_SET: &[(&str, u32)] = &[
+    ("core/rules", 1),
+    ("core/tokens", 1),
+    ("chat/system", 1),
+    ("chat/repair", 1),
+];
+
+/// The chat's prompt version (stored with the chat's AI disclosure).
+pub const CHAT_PROMPT_VERSION: &str = "chat@1";
+
+/// The prompts of a thread title and summary (Task 23).
+pub const CHAT_SUMMARY_PROMPT_SET: &[(&str, u32)] =
+    &[("chat-summary/system", 1), ("chat-summary/task", 1)];
 
 /// The sha256 (lowercase hex) of the set's file hashes, concatenated in order. Panics on an
 /// unregistered prompt: sets are constants, and `tests/prompts.rs` loads each one.

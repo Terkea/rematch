@@ -11,19 +11,16 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use super::anchor::ChatAnchor;
-use super::engine::{BeforeCall, CallRecord, escape_tag_text};
+use super::engine::{escape_tag_text, prompt_text};
 use crate::client::model::{Effort, Models};
 use crate::client::port::{
     AiClient, AiError, Message, OutputSchema, ParseIssue, Role, StructuredRequest, TextBlock,
 };
+use crate::generate::section::{BeforeCall, CallRecord};
 use crate::output::schema::{api_schema, deserialize_checked};
 use crate::validator::evidence::Evidence;
 use crate::validator::language::{banned_phrases, no_marketing};
 use crate::validator::text::{TextRules, validate_text};
-
-pub const CHAT_SUMMARY_SYSTEM_PROMPT: &str =
-    include_str!("../../prompts/chat-summary/system.v1.md");
-pub const CHAT_SUMMARY_TASK_PROMPT: &str = include_str!("../../prompts/chat-summary/task.v1.md");
 
 pub const MAX_TITLE_CHARS: usize = 80;
 pub const MAX_SUMMARY_CHARS: usize = 2000;
@@ -90,7 +87,7 @@ pub fn summarise_thread<'a>(
     Box::pin(async move {
         let req = StructuredRequest {
             model: Models::EXPLAIN,
-            system: vec![TextBlock::cached(CHAT_SUMMARY_SYSTEM_PROMPT)],
+            system: vec![TextBlock::cached(prompt_text("chat-summary/system"))],
             messages: vec![Message {
                 role: Role::User,
                 content: vec![
@@ -99,7 +96,7 @@ pub fn summarise_thread<'a>(
                         escape_tag_text(&transcript_text(transcript))
                     ))
                     .to_json(),
-                    TextBlock::new(CHAT_SUMMARY_TASK_PROMPT).to_json(),
+                    TextBlock::new(prompt_text("chat-summary/task")).to_json(),
                 ],
             }],
             max_tokens: MAX_TOKENS,

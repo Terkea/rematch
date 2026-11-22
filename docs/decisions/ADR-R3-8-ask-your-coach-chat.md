@@ -32,7 +32,9 @@ session that keeps the conversation (ADR-R3-6 Amendment 1).
    When nothing is left, the answer is the fixed fallback sentence. Dropped statements and an
    engine-check limit are noted in fixed server copy.
 4. **Off-topic.** The model answers anything that is not chess or the player's games with
-   exactly `{{offtopic}}`, which the engine turns into a fixed reply. The prompt file never
+   exactly `{{offtopic}}`, which the engine turns into a fixed reply. From that point the
+   turn's tool handler refuses every further call (`{"error":"the answer is complete"}`), so
+   nothing more is looked up or charged. The prompt file never
    contains the marker (T13's template renderer would read `{{offtopic}}` as a placeholder); the
    marker line is appended to `system[1]` in code.
 5. **Tools.** Tools are scoped to the account server-side (the data source and the engine), and
@@ -67,7 +69,15 @@ session that keeps the conversation (ADR-R3-6 Amendment 1).
      outcome's `next_call_index` (`ToolSession::starting_at`), which the caller stores with the
      conversation. A `tools.<k>` token copied from an earlier turn then fails closed instead of
      resolving to another result.
-8. **Follow-ups.** The round-cap follow-up ("Answer now with what you have.") and the repair run
+8. **Prompts.** The chat's prompts are registered T13 files (`CHAT_PROMPT_SET`,
+   `chat@1`): `system[0]` is the shared `rules_block()` (`core/rules` + `core/tokens`,
+   byte-identical to the report's, so one cache entry serves both); `system[1]` is
+   `chat/system`, whose "Output in this chat" section asks for plain paragraphs, with
+   positions cited by their own tokens and no JSON, schema or `citations` field; the repair
+   renders `chat/repair` with T13's `- path: code: detail` lines, the path naming the
+   paragraph (`chat.<n>`). The report's `report/output` and `repair/repair` are never sent in
+   a chat.
+9. **Follow-ups.** The round-cap follow-up ("Answer now with what you have.") and the repair run
    as one-round turns without tools under a fresh session id, with the flattened transcript and
    the tool results as data. They never enter the conversation's session; their session-store
    rows are swept as orphans (Task 21). Only the main turn's `Done` gives the stored
@@ -76,10 +86,12 @@ session that keeps the conversation (ADR-R3-6 Amendment 1).
    repair is not run inside the conversation's session: that session would then hold the
    invalid answer, the repair prompt and the repaired answer.
    A paragraph cut off by `max_tokens` is never shown; it holds the stream and is repaired.
-9. **Quotas.** Free and Pro chat quotas come from `entitlements::chat_quotas` (free: 3 a week;
+   The follow-up never sees the main turn's streamed text, so its answer stands alone: the main
+   turn's paragraphs are dropped (and the stream replaced) instead of being said twice.
+10. **Quotas.** Free and Pro chat quotas come from `entitlements::chat_quotas` (free: 3 a week;
    Pro: 30 a day and 300 a month); a conversation holds at most 40 turns and a question at most
    2000 characters. Denials use fixed copy with no upsell.
-10. **Web hand-off.** `chat.chunk` carries `seq`, the paragraph's token text, its rendered
+11. **Web hand-off.** `chat.chunk` carries `seq`, the paragraph's token text, its rendered
     `segments` and `interim`; `chat.message.ready` carries the final segments and `replace`
     (the streamed chunks must be discarded: a repair, a refusal, an off-topic or fallback reply
     after something was streamed, or a retracted message).
@@ -101,7 +113,7 @@ session that keeps the conversation (ADR-R3-6 Amendment 1).
 from the plan's signature:
 - `OwnedToolDeps` (T22's `Arc` handles) instead of `&ToolDeps`, because `stream_turn` takes an
   `Arc<dyn ToolHandler>`, which must be `'static`;
-- `ChatTurnArgs { prompts, evidence, messages, conversation_id, resume,
+- `ChatTurnArgs { evidence, messages, conversation_id, resume,
   previous_session_usage, first_call_index }` instead of `input` and `messages`: the SDK
   session (id, resume), metering and the conversation-wide call indexes need these. `evidence`
   is `build_evidence(input)` plus the anchors through `anchor_details`; the caller must build it
