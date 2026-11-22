@@ -350,7 +350,8 @@ impl PreparedHook for PreparedProfile {
             )
             .await?;
             sqlx::query(
-                "UPDATE games SET enrichment_protocol = $2, analysed_at = now() WHERE id = $1",
+                "UPDATE games SET enrichment_protocol = $2, analysed_at = now(), \
+                 profile_stale_at = NULL WHERE id = $1",
             )
             .bind(game_id)
             .bind(ENRICHMENT_PROTOCOL)

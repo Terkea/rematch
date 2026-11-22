@@ -5,9 +5,11 @@
 //!   `enr-v1` (the hook failed, or the game was analysed before R2) back to `pending` at tier 2
 //!   and enqueues it. Its main evals come from the cache, so only the enrichment costs engine
 //!   time. It pages by keyset on the primary key (T3 review), like R1's reconciler sweep.
-//! - [`run_difficulty_sweep`] runs Task 25's `reenrich_pending_difficulty` and recomputes the
-//!   metrics, opening and series rows of every game it changed ([`recompute_game_features`]),
-//!   then enqueues their profile builds. [`DifficultySweepHandler`] runs it as the recurring
+//! - [`run_difficulty_sweep`] runs Task 25's `reenrich_pending_difficulty`, then recomputes the
+//!   metrics, opening and series rows of every *marked* game ([`recompute_game_features`]) and
+//!   enqueues their profile builds. The mark (`games.profile_stale_at`) is set by a trigger in
+//!   the same statement as each difficulty write and cleared in the recompute's transaction, so
+//!   a cancel, a DB error or a crash between the two loses no recompute. [`DifficultySweepHandler`] runs it as the recurring
 //!   [`KIND_DIFFICULTY_SWEEP`] job ([`ensure_difficulty_sweep_scheduled`]).
 
 use std::sync::Arc;
@@ -15,6 +17,7 @@ use std::time::Duration;
 
 use analysis::eval_cache::EvalCache;
 use analysis::evaluate::{EvaluateDeps, evaluate_game};
+use analysis::hook::clear_hook_rows;
 use analysis::jobs::analyse::analyse_enqueue_options_with_priority;
 use chess_core::move_record::build_move_records;
 use chess_core::pgn::parse_pgn;
@@ -36,12 +39,13 @@ use scheduler::select::Plan;
 use serde_json::{Value, json};
 use sqlx::types::Json;
 use sqlx::{FromRow, PgPool};
+use time::OffsetDateTime;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
-use crate::analyse_features::{FeatureInput, compute_game_features, game_context};
+use crate::analyse_features::{FeatureInput, GameFeatures, compute_game_features, game_context};
 use crate::hook_impl::{
-    derived_target, enqueue_build_profile, load_game_explorer, write_derived_rows,
+    DerivedTarget, derived_target, enqueue_build_profile, load_game_explorer, write_derived_rows,
 };
 
 /// Games per requeue page.
@@ -154,8 +158,9 @@ pub struct DifficultySweepReport {
     pub sweep: SweepReport,
     /// Games whose metrics, opening and series rows were rewritten.
     pub recomputed: Vec<Uuid>,
-    /// Games whose recompute failed (logged). Their `enrichment_protocol` is cleared, so
-    /// [`requeue_unenriched`] re-runs the hook for them.
+    /// Games whose recompute failed (logged). An evaluation or decode failure deletes their
+    /// derived rows and clears `enrichment_protocol`, so [`requeue_unenriched`] re-runs the hook;
+    /// a database error keeps the mark for the next sweep.
     pub failed: Vec<Uuid>,
 }
 
@@ -181,26 +186,79 @@ pub async fn run_difficulty_sweep(
         sweep,
         ..DifficultySweepReport::default()
     };
-    for &game_id in &report.sweep.games.clone() {
+    // The games to recompute are the marked ones (`games.profile_stale_at`, set by a trigger in
+    // the difficulty write's own statement), not `report.sweep.games`: a sweep cut off before
+    // this loop, or a crash, leaves its marks for the next run.
+    let marked: Vec<(Uuid, OffsetDateTime)> = sqlx::query_as(STALE_GAMES_SQL)
+        .bind(RECOMPUTE_BATCH)
+        .fetch_all(&deps.pool)
+        .await?;
+    for (game_id, marked_at) in marked {
         if cancel.is_cancelled() {
             break;
         }
-        match recompute_game_features(deps, game_id, cancel).await {
+        match recompute_game_features(deps, game_id, marked_at, cancel).await {
             Ok(true) => report.recomputed.push(game_id),
             Ok(false) => {}
             Err(RecomputeError::Cancelled) => break,
             Err(e) => {
                 tracing::warn!(%game_id, error = %e, "recompute after the difficulty sweep failed");
-                // Left for `requeue_unenriched`, which re-runs the whole hook.
-                sqlx::query("UPDATE games SET enrichment_protocol = NULL WHERE id = $1")
-                    .bind(game_id)
-                    .execute(&deps.pool)
-                    .await?;
                 report.failed.push(game_id);
             }
         }
     }
     Ok(report)
+}
+
+/// Marked games per sweep run (the rest wait for the next run).
+pub const RECOMPUTE_BATCH: i64 = 500;
+
+/// The marked games, oldest mark first (served by `games_profile_stale_idx`).
+pub const STALE_GAMES_SQL: &str = "\
+SELECT id, profile_stale_at FROM games WHERE profile_stale_at IS NOT NULL \
+ORDER BY profile_stale_at, id LIMIT $1";
+
+/// Clears the mark unless it was set again after `marked_at`.
+const CLEAR_MARK_SQL: &str =
+    "UPDATE games SET profile_stale_at = NULL WHERE id = $1 AND profile_stale_at <= $2";
+
+async fn clear_mark(
+    conn: &mut sqlx::PgConnection,
+    game_id: Uuid,
+    marked_at: OffsetDateTime,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(CLEAR_MARK_SQL)
+        .bind(game_id)
+        .bind(marked_at)
+        .execute(conn)
+        .await?;
+    Ok(())
+}
+
+/// A recompute that failed: when the game is still at the analysed generation, its derived rows
+/// are deleted and it is left for [`requeue_unenriched`] (no stale rows are served); otherwise a
+/// newer analysis owns it. The mark is cleared either way, so later sweeps do not retry it.
+async fn abandon(
+    pool: &PgPool,
+    game_id: Uuid,
+    generation: i32,
+    marked_at: OffsetDateTime,
+) -> Result<(), sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    let same: Option<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM games WHERE id = $1 AND analysis_status = 'done' \
+         AND analysis_generation = $2 AND analysed_generation = $2 FOR UPDATE",
+    )
+    .bind(game_id)
+    .bind(generation)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if same.is_some() {
+        clear_hook_rows(&mut tx, game_id).await?;
+    } else {
+        clear_mark(&mut tx, game_id, marked_at).await?;
+    }
+    tx.commit().await
 }
 
 #[derive(FromRow)]
@@ -270,14 +328,28 @@ fn lichess_evals(game: &db::games::GameRow) -> Option<Vec<Option<EngineScore>>> 
     serde_json::from_value(game.lichess_evals.clone()?).ok()
 }
 
-/// Recomputes one fully analysed and enriched game from its stored analysis and enrichment and
-/// rewrites its `game_metrics`, `game_openings` and series rows (not `move_features`, which
-/// keep the sweep's difficulty). `false`, with nothing written, when the game is not `done` at
-/// the current protocols and generation, both before the work and under the row lock at write
-/// time (a re-analysis then recomputes it anyway).
+/// The recomputed rows of one game.
+struct Recomputed {
+    target: DerivedTarget,
+    parsed: chess_core::ParsedGame,
+    features: GameFeatures,
+    model: Option<String>,
+}
+
+/// Recomputes one marked game (marked at `marked_at`) from its stored analysis and enrichment
+/// and rewrites its `game_metrics`, `game_openings` and series rows (not `move_features`, which
+/// keep the sweep's difficulty), clearing the mark in the same transaction.
+///
+/// - `false`, with only the mark cleared, when the game is not `done` at the current protocols
+///   and generation, before the work or under the row lock at write time: whatever makes it
+///   current again (a re-analysis, the requeue) runs the whole hook.
+/// - A failure to evaluate or decode the game deletes its derived rows and leaves it for
+///   [`requeue_unenriched`] ([`abandon`]); a database error keeps the mark for the next sweep;
+///   so does a cancel.
 pub async fn recompute_game_features(
     deps: &DifficultySweepDeps,
     game_id: Uuid,
+    marked_at: OffsetDateTime,
     cancel: &CancellationToken,
 ) -> Result<bool, RecomputeError> {
     let pool = &deps.pool;
@@ -289,12 +361,61 @@ pub async fn recompute_game_features(
         && game.analysed_generation == Some(game.analysis_generation)
         && game.enrichment_protocol.as_deref() == Some(ENRICHMENT_PROTOCOL);
     if !current {
+        clear_mark(&mut *pool.acquire().await?, game_id, marked_at).await?;
         return Ok(false);
     }
     let generation = game.analysis_generation;
-    let target = derived_target(&game).map_err(RecomputeError::Decode)?;
+    let r = match recompute(deps, &game, cancel).await {
+        Ok(r) => r,
+        Err(e @ (RecomputeError::Evaluate(_) | RecomputeError::Decode(_))) => {
+            abandon(pool, game_id, generation, marked_at).await?;
+            return Err(e);
+        }
+        Err(e) => return Err(e),
+    };
+
+    let mut tx = pool.begin().await?;
+    let still: Option<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM games WHERE id = $1 AND analysis_status = 'done'          AND analysis_generation = $2 AND analysed_generation = $2          AND analysis_protocol = $3 AND enrichment_protocol = $4 FOR UPDATE",
+    )
+    .bind(game_id)
+    .bind(generation)
+    .bind(ANALYSIS_PROTOCOL)
+    .bind(ENRICHMENT_PROTOCOL)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if still.is_some() {
+        write_derived_rows(
+            &mut tx,
+            &r.target,
+            &r.features,
+            &r.parsed,
+            r.model.as_deref(),
+        )
+        .await?;
+    }
+    clear_mark(&mut tx, game_id, marked_at).await?;
+    tx.commit().await?;
+    if still.is_none() {
+        return Ok(false);
+    }
+    if let Err(e) =
+        enqueue_build_profile(&deps.queue, r.target.account_id, r.target.time_class).await
+    {
+        tracing::warn!(%game_id, error = %e, "enqueue build-profile failed");
+    }
+    Ok(true)
+}
+
+async fn recompute(
+    deps: &DifficultySweepDeps,
+    game: &db::games::GameRow,
+    cancel: &CancellationToken,
+) -> Result<Recomputed, RecomputeError> {
+    let pool = &deps.pool;
+    let target = derived_target(game).map_err(RecomputeError::Decode)?;
     let parsed = parse_pgn(&game.pgn).map_err(|e| RecomputeError::Decode(e.to_string()))?;
-    let lichess = lichess_evals(&game);
+    let lichess = lichess_evals(game);
     let eval_deps = EvaluateDeps {
         analyser: deps.analyser.as_ref(),
         cache: deps.cache.as_ref(),
@@ -317,11 +438,11 @@ pub async fn recompute_game_features(
     };
     let records = build_move_records(&parsed, &evals, clock)
         .map_err(|e| RecomputeError::Evaluate(e.to_string()))?;
-    let (raw, model) = load_raw(pool, game_id, &records).await?;
+    let (raw, model) = load_raw(pool, game.id, &records).await?;
     let wins: Vec<f64> = evals.iter().map(|e| win_percent(e.score)).collect();
     let accuracy = (!records.is_empty())
         .then(|| chess_core::game_accuracy::game_accuracy(&wins, target.player_color));
-    let ctx = game_context(&game, accuracy, ANALYSIS_PROTOCOL).map_err(RecomputeError::Decode)?;
+    let ctx = game_context(game, accuracy, ANALYSIS_PROTOCOL).map_err(RecomputeError::Decode)?;
     let explorer = load_game_explorer(pool, game.account_id, target.time_class, &parsed).await;
     let features = compute_game_features(FeatureInput {
         ctx: &ctx,
@@ -331,28 +452,12 @@ pub async fn recompute_game_features(
         raw: &raw,
         explorer: explorer.as_ref(),
     });
-
-    let mut tx = pool.begin().await?;
-    let still: Option<Uuid> = sqlx::query_scalar(
-        "SELECT id FROM games WHERE id = $1 AND analysis_status = 'done' \
-         AND analysis_generation = $2 AND analysed_generation = $2 \
-         AND analysis_protocol = $3 AND enrichment_protocol = $4 FOR UPDATE",
-    )
-    .bind(game_id)
-    .bind(generation)
-    .bind(ANALYSIS_PROTOCOL)
-    .bind(ENRICHMENT_PROTOCOL)
-    .fetch_optional(&mut *tx)
-    .await?;
-    if still.is_none() {
-        return Ok(false);
-    }
-    write_derived_rows(&mut tx, &target, &features, &parsed, model.as_deref()).await?;
-    tx.commit().await?;
-    if let Err(e) = enqueue_build_profile(&deps.queue, target.account_id, target.time_class).await {
-        tracing::warn!(%game_id, error = %e, "enqueue build-profile failed");
-    }
-    Ok(true)
+    Ok(Recomputed {
+        target,
+        parsed,
+        features,
+        model,
+    })
 }
 
 /// Schedules the recurring sweep (idempotent: deduped on [`DIFFICULTY_SWEEP_KEY`]).

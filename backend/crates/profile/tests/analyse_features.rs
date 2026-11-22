@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Duration;
 
 use analysis::eval_cache::DbEvalCache;
-use analysis::hook::AnalyseHook;
+use analysis::hook::{AnalyseHook, HookError, HookInput, PreparedHook};
 use analysis::jobs::analyse::{
     AnalyseGameDeps, AnalyseOutcome, handle_analyse_game, request_reanalysis,
 };
@@ -17,7 +17,7 @@ use chess_core::{Color, EngineScore};
 use engine::{AnalyseOptions, Analyser, AnalysisLine, AnalysisResult, EngineError};
 use enrich::difficulty::{DifficultyOutcome, DifficultySource, PendingReason};
 use enrich::enrich_game::EnrichDeps;
-use enrich::reenrich::SweepOptions;
+use enrich::reenrich::{SweepOptions, reenrich_pending_difficulty};
 use enrich::store::MemoryEnrichmentStore;
 use enrich::types::DifficultyInput;
 use futures::future::BoxFuture;
@@ -25,7 +25,8 @@ use profile::analyse_features::opening_name;
 use profile::hook_impl::{BUILD_PROFILE_DELAY, ENRICH_GAME_KIND, ProfileHook};
 use profile::load::{load_analysed_games, load_exemplar_moves, load_series_points};
 use profile::requeue::{
-    DifficultySweepDeps, REQUEUE_PAGE_SQL, requeue_unenriched, run_difficulty_sweep,
+    DifficultySweepDeps, REQUEUE_PAGE_SQL, STALE_GAMES_SQL, requeue_unenriched,
+    run_difficulty_sweep,
 };
 use profile_core::openings::lines::classify_line;
 use profile_core::types::{
@@ -59,6 +60,8 @@ const MATE_IN_ONE: &str = "r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1N
 /// `fail_multipv` is set.
 struct ScriptedAnalyser {
     fail_multipv: AtomicBool,
+    /// Every call fails while set.
+    fail_all: AtomicBool,
     multipv_calls: AtomicUsize,
     /// Position (first four FEN fields) to the move the test games play there.
     book: HashMap<String, String>,
@@ -78,6 +81,7 @@ impl Default for ScriptedAnalyser {
         }
         ScriptedAnalyser {
             fail_multipv: AtomicBool::new(false),
+            fail_all: AtomicBool::new(false),
             multipv_calls: AtomicUsize::new(0),
             book,
         }
@@ -91,6 +95,9 @@ impl Analyser for ScriptedAnalyser {
         opts: AnalyseOptions,
     ) -> BoxFuture<'a, Result<AnalysisResult, EngineError>> {
         Box::pin(async move {
+            if self.fail_all.load(Ordering::SeqCst) {
+                return Err(EngineError::Crashed);
+            }
             if opts.multipv > 1 {
                 self.multipv_calls.fetch_add(1, Ordering::SeqCst);
                 if self.fail_multipv.load(Ordering::SeqCst) {
@@ -167,6 +174,11 @@ struct World {
 }
 
 fn world(pool: &PgPool) -> World {
+    world_with(pool, |hook| Arc::new(hook))
+}
+
+/// A world whose `ProfileHook` is wrapped by `wrap` (a fresh enrichment store each time).
+fn world_with(pool: &PgPool, wrap: impl FnOnce(ProfileHook) -> Arc<dyn AnalyseHook>) -> World {
     let analyser = Arc::new(ScriptedAnalyser::default());
     let queue = Queue::new(pool.clone());
     let hook = ProfileHook {
@@ -186,7 +198,7 @@ fn world(pool: &PgPool) -> World {
         analyser.clone(),
         Arc::new(DbEvalCache::new(pool.clone())),
     );
-    deps.hook = Some(Arc::new(hook) as Arc<dyn AnalyseHook>);
+    deps.hook = Some(wrap(hook));
     World {
         queue,
         analyser,
@@ -394,6 +406,7 @@ async fn rerun_replaces_the_derived_rows(pool: PgPool) {
     analyse(&w, id).await;
     let first = row_counts(&pool, id).await;
     assert!(first.iter().all(|&n| n > 0), "{first:?}");
+    let first_created = metrics_created_at(&pool, id).await;
     assert!(
         within("reanalysis", request_reanalysis(&pool, &w.queue, id))
             .await
@@ -401,6 +414,153 @@ async fn rerun_replaces_the_derived_rows(pool: PgPool) {
     );
     analyse(&w, id).await;
     assert_eq!(row_counts(&pool, id).await, first);
+    // Rewritten, not kept: a failed replace rolls the hook back, which must not pass as a re-run.
+    assert_eq!(
+        enrichment_protocol(&pool, id).await.as_deref(),
+        Some("enr-v1")
+    );
+    assert!(metrics_created_at(&pool, id).await > first_created);
+    assert_eq!(
+        count(
+            &pool,
+            "SELECT count(*) FROM job_metrics WHERE kind = 'enrich-game' AND game_id = $1",
+            id
+        )
+        .await,
+        2
+    );
+}
+
+async fn metrics_created_at(pool: &PgPool, id: Uuid) -> OffsetDateTime {
+    sqlx::query_scalar("SELECT created_at FROM game_metrics WHERE game_id = $1")
+        .bind(id)
+        .fetch_one(pool)
+        .await
+        .unwrap()
+}
+
+/// A failed hook on re-analysis must not leave the previous analysis's rows to be served.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn failed_hook_on_reanalysis_serves_no_stale_rows(pool: PgPool) {
+    let w = world(&pool);
+    let acct = account(&pool, "blackhero").await;
+    let id = black_game(&pool, acct, "blackhero", SCHOLARS).await;
+    analyse(&w, id).await;
+    assert!(row_counts(&pool, id).await.iter().all(|&n| n > 0));
+    assert!(request_reanalysis(&pool, &w.queue, id).await.unwrap());
+    // A fresh enrichment store, so the MultiPV probes run (and fail) again.
+    let failing = world(&pool);
+    failing.analyser.fail_multipv.store(true, Ordering::SeqCst);
+    assert!(matches!(
+        analyse(&failing, id).await,
+        AnalyseOutcome::Done { .. }
+    ));
+    assert_eq!(enrichment_protocol(&pool, id).await, None);
+    assert_eq!(row_counts(&pool, id).await, [0, 0, 0, 0]);
+    assert!(
+        load_analysed_games(&pool, acct, chess_core::TimeClass::Blitz)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        load_series_points(&pool, acct, chess_core::TimeClass::Blitz)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
+type Seen = Arc<std::sync::Mutex<Vec<(&'static str, i64)>>>;
+
+/// Wraps `ProfileHook` and records the preview count seen from another connection inside
+/// `persist` (the transaction still open) and at `after_commit`.
+struct PreviewProbe {
+    inner: ProfileHook,
+    seen: Seen,
+}
+
+struct ProbePrepared {
+    inner: Box<dyn PreparedHook>,
+    pool: PgPool,
+    game_id: Uuid,
+    seen: Seen,
+}
+
+async fn preview_count(pool: &PgPool, id: Uuid) -> i64 {
+    count(
+        pool,
+        "SELECT count(*) FROM game_previews WHERE game_id = $1",
+        id,
+    )
+    .await
+}
+
+impl AnalyseHook for PreviewProbe {
+    fn prepare<'a>(
+        &'a self,
+        i: HookInput<'a>,
+    ) -> BoxFuture<'a, Result<Box<dyn PreparedHook>, HookError>> {
+        Box::pin(async move {
+            let game_id = i.game.id;
+            let inner = self.inner.prepare(i).await?;
+            Ok(Box::new(ProbePrepared {
+                inner,
+                pool: self.inner.pool.clone(),
+                game_id,
+                seen: self.seen.clone(),
+            }) as Box<dyn PreparedHook>)
+        })
+    }
+}
+
+impl PreparedHook for ProbePrepared {
+    fn persist<'a>(
+        &'a self,
+        tx: &'a mut sqlx::PgConnection,
+    ) -> BoxFuture<'a, Result<(), sqlx::Error>> {
+        Box::pin(async move {
+            let fut = self.inner.persist(tx);
+            fut.await?;
+            let n = preview_count(&self.pool, self.game_id).await;
+            self.seen.lock().unwrap().push(("persist", n));
+            Ok(())
+        })
+    }
+
+    fn after_commit(self: Box<Self>) -> BoxFuture<'static, ()> {
+        Box::pin(async move {
+            let n = preview_count(&self.pool, self.game_id).await;
+            self.seen.lock().unwrap().push(("after_commit", n));
+            self.inner.after_commit().await;
+        })
+    }
+}
+
+/// The preview delete is part of the done transaction: invisible to other connections before
+/// the commit, and committed by the time `after_commit` runs.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn preview_delete_commits_with_the_done_transition(pool: PgPool) {
+    let seen: Seen = Arc::default();
+    let probe_seen = seen.clone();
+    let w = world_with(&pool, move |inner| {
+        Arc::new(PreviewProbe {
+            inner,
+            seen: probe_seen,
+        })
+    });
+    let acct = account(&pool, "blackhero").await;
+    let id = black_game(&pool, acct, "blackhero", SCHOLARS).await;
+    sqlx::query(
+        "INSERT INTO game_previews (game_id, protocol, moves) \
+         VALUES ($1, 'sf19-n30k-preview-v1', '[]'::jsonb)",
+    )
+    .bind(id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    analyse(&w, id).await;
+    assert_eq!(*seen.lock().unwrap(), [("persist", 1), ("after_commit", 0)]);
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
@@ -874,6 +1034,130 @@ async fn sweep_skips_a_game_that_is_being_reanalysed(pool: PgPool) {
         .await
         .unwrap();
     assert_eq!(after, before);
+}
+
+fn sweep_deps(pool: &PgPool, w: &World, maia: Arc<FakeMaia>) -> DifficultySweepDeps {
+    DifficultySweepDeps {
+        pool: pool.clone(),
+        queue: w.queue.clone(),
+        analyser: w.analyser.clone(),
+        cache: Arc::new(DbEvalCache::new(pool.clone())),
+        source: maia,
+        options: SweepOptions {
+            page_size: 100,
+            max_pages: 10,
+        },
+    }
+}
+
+async fn difficulty_model(pool: &PgPool, id: Uuid) -> Option<String> {
+    sqlx::query_scalar("SELECT difficulty_model FROM game_metrics WHERE game_id = $1")
+        .bind(id)
+        .fetch_one(pool)
+        .await
+        .unwrap()
+}
+
+/// A sweep cut off after its difficulty writes (cancel, DB error or crash) loses no recompute:
+/// the next sweep finds the game and recomputes it.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn cut_off_sweep_is_recomputed_by_the_next_sweep(pool: PgPool) {
+    let w = world(&pool);
+    let acct = account(&pool, "blackhero").await;
+    let id = black_game(&pool, acct, "blackhero", RUY_LOPEZ).await;
+    analyse(&w, id).await;
+    let maia = Arc::new(FakeMaia {
+        up: AtomicBool::new(true),
+    });
+    // Only Task 25's part runs: the difficulty is written, then the sweep is cut off.
+    let written = reenrich_pending_difficulty(
+        &pool,
+        maia.as_ref(),
+        SweepOptions {
+            page_size: 100,
+            max_pages: 10,
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(written.resolved, 3);
+    assert_eq!(
+        difficulty_model(&pool, id).await,
+        None,
+        "not recomputed yet"
+    );
+
+    let report = run_difficulty_sweep(&sweep_deps(&pool, &w, maia), &CancellationToken::new())
+        .await
+        .unwrap();
+    assert_eq!(report.sweep.resolved, 0, "nothing left pending");
+    assert_eq!(report.recomputed, vec![id]);
+    assert_eq!(
+        difficulty_model(&pool, id).await.as_deref(),
+        Some(MAIA_MODEL)
+    );
+}
+
+/// The marked-games read is served by the partial index, never a scan of all games.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn stale_games_read_uses_the_partial_index(pool: PgPool) {
+    sqlx::query(
+        "WITH a AS (INSERT INTO linked_accounts (platform, username, display_name) \
+           VALUES ('lichess', 'stale', 'stale') RETURNING id) \
+         INSERT INTO games (account_id, platform, platform_game_id, pgn, played_at, \
+           time_class, rated, player_color, white_name, black_name, result, \
+           analysis_status, profile_stale_at) \
+         SELECT a.id, 'lichess', 's-' || i, '1. e4 *', now(), 'blitz', true, 'white', 'w', \
+           'b', '*', 'done', CASE WHEN i <= 5 THEN now() END \
+         FROM a, generate_series(1, 100000) i",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query("ANALYZE games").execute(&pool).await.unwrap();
+    let plan: Vec<String> = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
+        "EXPLAIN {}",
+        STALE_GAMES_SQL.replace("$1", "500")
+    )))
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    let plan = plan.join("\n");
+    assert!(plan.contains("games_profile_stale_idx"), "{plan}");
+    assert!(!plan.contains("Seq Scan"), "{plan}");
+}
+
+/// A recompute that fails leaves no stale rows to serve, and leaves the game to the requeue.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn failed_recompute_clears_the_derived_rows(pool: PgPool) {
+    let w = world(&pool);
+    let acct = account(&pool, "blackhero").await;
+    let id = black_game(&pool, acct, "blackhero", RUY_LOPEZ).await;
+    analyse(&w, id).await;
+    // No cached evals and a dead engine: the recompute cannot evaluate the game.
+    sqlx::query("DELETE FROM position_evals")
+        .execute(&pool)
+        .await
+        .unwrap();
+    w.analyser.fail_all.store(true, Ordering::SeqCst);
+    let maia = Arc::new(FakeMaia {
+        up: AtomicBool::new(true),
+    });
+    let report = run_difficulty_sweep(
+        &sweep_deps(&pool, &w, maia.clone()),
+        &CancellationToken::new(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(report.failed, vec![id]);
+    assert_eq!(enrichment_protocol(&pool, id).await, None);
+    assert_eq!(row_counts(&pool, id).await, [0, 0, 0, 0]);
+    // Not retried by every later sweep: the requeue owns it now.
+    let again = run_difficulty_sweep(&sweep_deps(&pool, &w, maia), &CancellationToken::new())
+        .await
+        .unwrap();
+    assert!(again.failed.is_empty() && again.recomputed.is_empty());
+    assert_eq!(requeue_unenriched(&pool, &w.queue).await.unwrap(), 1);
 }
 
 // ---------------------------------------------------------------------------------------------

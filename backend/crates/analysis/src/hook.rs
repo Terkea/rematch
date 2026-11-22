@@ -52,8 +52,9 @@ pub trait AnalyseHook: Send + Sync {
     ) -> BoxFuture<'a, Result<Box<dyn PreparedHook>, HookError>>;
 }
 
-/// A prepared result, written in the analysis transaction.
-pub trait PreparedHook: Send {
+/// A prepared result, written in the analysis transaction. `Sync` because `persist` borrows
+/// `&self` into a `Send` future (a wrapper of another prepared hook needs it).
+pub trait PreparedHook: Send + Sync {
     /// Runs inside the moves transaction (in a savepoint), after the fenced `done` update and the
     /// moves insert. An error rolls back only the hook's writes.
     fn persist<'a>(&'a self, tx: &'a mut PgConnection) -> BoxFuture<'a, Result<(), sqlx::Error>>;
@@ -61,4 +62,38 @@ pub trait PreparedHook: Send {
     /// Runs after the commit and the `game.analysed` publish (best effort; never fails the job).
     /// Not called when `persist` failed or the attempt was superseded.
     fn after_commit(self: Box<Self>) -> BoxFuture<'static, ()>;
+}
+
+/// The tables whose rows for a game are derived from its analysis by the hook.
+pub const HOOK_TABLES: [&str; 5] = [
+    "move_features",
+    "game_metrics",
+    "game_openings",
+    "weakness_series_point",
+    "game_previews",
+];
+
+/// Leaves the game for `requeue_unenriched`: clears `enrichment_protocol` (and the recompute
+/// mark) and deletes every row the hook derived from an earlier analysis, plus the preview, so
+/// nothing stale is served as current. Run it in the transaction that makes the new analysis
+/// `done`.
+pub async fn clear_hook_rows(
+    conn: &mut PgConnection,
+    game_id: uuid::Uuid,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "UPDATE games SET enrichment_protocol = NULL, profile_stale_at = NULL WHERE id = $1",
+    )
+    .bind(game_id)
+    .execute(&mut *conn)
+    .await?;
+    for table in HOOK_TABLES {
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            "DELETE FROM {table} WHERE game_id = $1"
+        )))
+        .bind(game_id)
+        .execute(&mut *conn)
+        .await?;
+    }
+    Ok(())
 }

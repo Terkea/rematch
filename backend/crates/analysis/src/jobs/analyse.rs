@@ -812,18 +812,10 @@ async fn analyse(
 /// Shortest heartbeat period while the hook runs.
 const MIN_HOOK_BEAT: Duration = Duration::from_millis(10);
 
-/// Leaves the game for `requeue_unenriched` and drops its preview (the done transition replaces
-/// it), in the analysis transaction.
+/// Leaves the game for `requeue_unenriched`, with no derived rows of an earlier analysis left
+/// to serve and no preview (the done transition replaces it), in the analysis transaction.
 async fn mark_unenriched(conn: &mut sqlx::PgConnection, game_id: Uuid) -> Result<(), sqlx::Error> {
-    sqlx::query("UPDATE games SET enrichment_protocol = NULL WHERE id = $1")
-        .bind(game_id)
-        .execute(&mut *conn)
-        .await?;
-    sqlx::query("DELETE FROM game_previews WHERE game_id = $1")
-        .bind(game_id)
-        .execute(&mut *conn)
-        .await?;
-    Ok(())
+    crate::hook::clear_hook_rows(conn, game_id).await
 }
 
 /// Claims `done` under the fence (or rolls back with `Superseded`), then replaces the moves, then
