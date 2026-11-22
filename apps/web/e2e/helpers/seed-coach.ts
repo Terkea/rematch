@@ -22,7 +22,7 @@ import { E2E_ACCOUNT, E2E_USER, isE2eUsername, REFUSAL, seedE2eGames } from "./s
 // adds a report version; the next seed takes it away). Dates are fixed, so the pages read the
 // same on every run: the complete report is from 13 Oct 2026, well outside the beta's one-day
 // manual interval, so "Rebuild report" is allowed. Run as a script (tsx with
-// `--conditions development`) it prints `COACH=<json>`; `link <email>` links a second, already
+// `--conditions development`) it prints `COACH=<json>`; `no-report` seeds it without a report; `link <email>` links a second, already
 // signed-in user to the same account (the privacy check).
 
 export type E2eCoach = { accountId: string; threadId: string; streamingMessageId: string };
@@ -76,6 +76,9 @@ async function clear(db: Db, accountId: string): Promise<void> {
   await db.execute(sql`delete from report_runs where account_id = ${accountId}`);
   // No worker runs in the e2e stack: the jobs the web enqueued (rebuilds, questions) are inert.
   await db.execute(sql`delete from jobs where kind in ('generate-report', 'coach-chat')`);
+  // Sync now (Task P2) and its simulated imports: "Not synced yet." again.
+  await db.execute(sql`delete from import_runs where account_id = ${accountId}`);
+  await db.execute(sql`delete from jobs where kind = 'import-account' and user_key = ${accountId}`);
 }
 
 /** ISO week keys from the week of 31 Aug 2026 (2026-W36) to 2026-W47. */
@@ -245,7 +248,9 @@ async function profile(db: Db, accountId: string): Promise<void> {
  * Seeds the coach world for the adult e2e user (see the module comment). Refuses, writing
  * nothing, a database whose linked accounts are not all e2e ones (M5a's guard and message).
  */
-export async function seedE2eCoach(opts: { db?: Db; email?: string } = {}): Promise<E2eCoach> {
+export async function seedE2eCoach(
+  opts: { db?: Db; email?: string; report?: boolean } = {},
+): Promise<E2eCoach> {
   const db = dbOf(opts.db);
   await refuseRealAccounts(db);
   const email = opts.email ?? E2E_USER;
@@ -262,19 +267,22 @@ export async function seedE2eCoach(opts: { db?: Db; email?: string } = {}): Prom
 
   // The first report (onboarding) and the complete one the page shows; its run holds the
   // synthetic coaching input the exemplar boards come from (ruling R2).
+  // `report: false` leaves the scope with no report ("Build my report", report.spec).
   const input = JSON.parse(readFileSync(INPUT, "utf8")) as Record<string, unknown>;
-  await seedReport(db, accountId, {
-    timeClass: TC,
-    payload: "example",
-    createdAt: at("2026-09-14"),
-    run: { input: { ...input, accountId } },
-  });
-  await seedReport(db, accountId, {
-    timeClass: TC,
-    payload: "example",
-    createdAt: at("2026-10-13"),
-    run: { trigger: "manual", isFirstReport: false, input: { ...input, accountId } },
-  });
+  if (opts.report !== false) {
+    await seedReport(db, accountId, {
+      timeClass: TC,
+      payload: "example",
+      createdAt: at("2026-09-14"),
+      run: { input: { ...input, accountId } },
+    });
+    await seedReport(db, accountId, {
+      timeClass: TC,
+      payload: "example",
+      createdAt: at("2026-10-13"),
+      run: { trigger: "manual", isFirstReport: false, input: { ...input, accountId } },
+    });
+  }
   await seedWeekly(db, accountId, { timeClass: TC, weekStart: "2026-11-09" });
   await seedWeekly(db, accountId, { timeClass: TC, weekStart: "2026-11-16", status: "pending" });
   await seedNote(db, accountId, {
@@ -385,6 +393,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   if (command === "link" && arg) {
     await linkPeer(arg);
     console.log("LINKED");
+  } else if (command === "no-report") {
+    console.log(`COACH=${JSON.stringify(await seedE2eCoach({ report: false }))}`);
   } else if (command === "spend" && arg) {
     await spendAllowance(Number(arg));
     console.log("SPENT");

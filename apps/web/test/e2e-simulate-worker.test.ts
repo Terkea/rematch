@@ -1,4 +1,12 @@
-import { coachMessages, reportRuns, reportSections, reports, userEvents } from "@ci/db/generated";
+import {
+  coachMessages,
+  importRuns,
+  jobs,
+  reportRuns,
+  reportSections,
+  reports,
+  userEvents,
+} from "@ci/db/generated";
 import { asc, eq, sql } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 import { simulateWorker, VALIDATED_ANSWER } from "../e2e/helpers/simulate-worker";
@@ -129,5 +137,46 @@ describe("simulateWorker: chat", () => {
       sql`select count(*)::int as n from user_events where type = 'chat.message.failed'`,
     )) as unknown as { n: number }[];
     expect(n).toBe(1);
+  });
+});
+
+describe("simulateWorker: a failed report run", () => {
+  it("fails the run with its reason and emits job.failed for the account", async () => {
+    const { runId } = await seedReport(db, accountId, {
+      timeClass: "rapid",
+      run: { trigger: "manual" },
+    });
+    await simulateWorker(db, { kind: "report-failed", runId, reason: "ai_unavailable" });
+    const [run] = await db.select().from(reportRuns).where(eq(reportRuns.id, runId));
+    expect(run?.status).toBe("failed");
+    expect(run?.lastError).toBe("ai_unavailable");
+    expect(run?.finishedAt).not.toBeNull();
+    const all = await events();
+    expect(all.map((e) => [e.type, e.userId])).toEqual([["job.failed", null]]);
+    expect(all[0]?.payload).toEqual({ kind: "generate-report", reason: "ai_unavailable" });
+  });
+});
+
+describe("simulateWorker: an incremental import", () => {
+  it("finishes the account's import job and run, then announces it done", async () => {
+    await db.insert(jobs).values({
+      kind: "import-account",
+      payload: { accountId, incremental: true },
+      dedupeKey: `import:${accountId}`,
+      userKey: accountId,
+    });
+    await simulateWorker(db, { kind: "import-done", accountId, imported: 0 });
+    const [job] = await db
+      .select()
+      .from(jobs)
+      .where(eq(jobs.dedupeKey, `import:${accountId}`));
+    expect(job?.state).toBe("done");
+    const runs = await db.select().from(importRuns).where(eq(importRuns.accountId, accountId));
+    expect(runs.map((r) => [r.status, r.imported, r.finishedAt !== null])).toEqual([
+      ["done", 0, true],
+    ]);
+    const all = await events();
+    expect(all.map((e) => e.type)).toEqual(["import.progress"]);
+    expect(all[0]?.payload).toMatchObject({ imported: 0, done: true, runId: runs[0]?.id });
   });
 });

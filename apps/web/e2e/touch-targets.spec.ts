@@ -129,3 +129,17 @@ test("scoresheet moves are 44px rows that hit across their whole band", async ({
   const c = await moves.nth(2).boundingBox();
   expect((c?.y ?? 0) - ((a?.y ?? 0) + (a?.height ?? 0))).toBeLessThanOrEqual(1);
 });
+
+test("the coach states' Try again hits across its full 44px band (M5b T3 parked item)", async ({
+  page,
+}) => {
+  test.setTimeout(300_000);
+  await page.goto("/styleguide");
+  const retry = page.locator("[data-section='coach']").getByRole("button", { name: "Try again" });
+  await expect(retry.first()).toBeVisible({ timeout: 180_000 });
+  const count = await retry.count();
+  for (let i = 0; i < count; i++) {
+    await retry.nth(i).scrollIntoViewIfNeeded();
+    expect(await missesInBand(page, retry.nth(i)), `Try again ${i}`).toEqual([]);
+  }
+});

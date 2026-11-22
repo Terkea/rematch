@@ -15,7 +15,9 @@ export type WorkerStep =
   | { kind: "report-section"; runId: string; section: SectionKey }
   | { kind: "chat-chunk"; messageId: string; seq: number; text: string }
   | { kind: "chat-done"; messageId: string; replace?: boolean; text?: string }
-  | { kind: "chat-failed"; messageId: string; reason: string };
+  | { kind: "chat-failed"; messageId: string; reason: string }
+  | { kind: "report-failed"; runId: string; reason: string }
+  | { kind: "import-done"; accountId: string; imported: number };
 
 const DEFAULT_URL = "postgres://postgres:postgres@localhost:55432/chess_e2e_test";
 /** The validated answer `chat-done` stores when the step gives no text and asks to replace. */
@@ -36,6 +38,8 @@ export async function simulateWorker(db: Db, step: WorkerStep): Promise<void> {
   await db.transaction(async (tx) => {
     const t = tx as unknown as Db;
     if (step.kind === "report-section") await reportSection(t, step.runId, step.section);
+    else if (step.kind === "report-failed") await reportFailed(t, step.runId, step.reason);
+    else if (step.kind === "import-done") await importDone(t, step.accountId, step.imported);
     else await chat(t, step);
   });
 }
@@ -122,7 +126,53 @@ async function reportSection(db: Db, runId: string, section: SectionKey): Promis
   }
 }
 
-async function chat(db: Db, step: Exclude<WorkerStep, { kind: "report-section" }>): Promise<void> {
+/** `runs::set_failed` plus `job.failed {kind, reason}` (report_job.rs step 8). */
+async function reportFailed(db: Db, runId: string, reason: string): Promise<void> {
+  const failed = await rows(
+    db,
+    sql`update report_runs set status = 'failed', finished_at = now(), next_attempt_at = null,
+      last_error = ${reason} where id = ${runId} and status not in ('done', 'failed')
+      returning account_id`,
+  );
+  const accountId = failed[0]?.account_id as string | undefined;
+  if (!accountId) return;
+  await db.execute(sql`update jobs set state = 'failed', finished_at = now()
+    where kind = 'generate-report' and payload->>'reportRunId' = ${runId}
+      and state in ('queued', 'running')`);
+  await insertUserEvent(db, {
+    accountId,
+    type: "job.failed",
+    payload: { kind: "generate-report", reason },
+  });
+}
+
+/**
+ * An incremental import that finishes (analysis/jobs/import.rs): the due `import-account` job
+ * runs, its `import_runs` row is closed as done with the count, and `import.progress` with
+ * `done: true` follows. New games are not written: the e2e world keeps its games, so `imported`
+ * is the count the run reports. `linked_accounts.last_synced_at` is left unset (the web never
+ * reads it, and the seeds' guard treats a synced account as a real one).
+ */
+async function importDone(db: Db, accountId: string, imported: number): Promise<void> {
+  await db.execute(sql`update jobs set state = 'done', started_at = coalesce(started_at, now()),
+    finished_at = now() where kind = 'import-account' and dedupe_key = ${`import:${accountId}`}
+      and state in ('queued', 'running')`);
+  const [run] = await rows(
+    db,
+    sql`insert into import_runs (account_id, status, imported, finished_at)
+      values (${accountId}, 'done', ${imported}, now()) returning id`,
+  );
+  await insertUserEvent(db, {
+    accountId,
+    type: "import.progress",
+    payload: { runId: run?.id, imported, done: true },
+  });
+}
+
+async function chat(
+  db: Db,
+  step: Extract<WorkerStep, { kind: "chat-chunk" | "chat-done" | "chat-failed" }>,
+): Promise<void> {
   const [m] = await rows(
     db,
     sql`select m.status, c.user_id, c.account_id from coach_messages m

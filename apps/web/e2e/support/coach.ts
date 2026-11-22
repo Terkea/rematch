@@ -22,9 +22,10 @@ function value(out: string, key: string): string {
   return v as string;
 }
 
-/** Seeds (or restores) the coach world for the adult e2e user. */
-export function seedCoach(): E2eCoach {
-  return JSON.parse(value(tsx("e2e/helpers/seed-coach.ts", []), "COACH")) as E2eCoach;
+/** Seeds (or restores) the coach world for the adult e2e user; `report: false` without a report. */
+export function seedCoach(opts: { report?: boolean } = {}): E2eCoach {
+  const args = opts.report === false ? ["no-report"] : [];
+  return JSON.parse(value(tsx("e2e/helpers/seed-coach.ts", args), "COACH")) as E2eCoach;
 }
 
 /** Links an already signed-in user to the e2e account. */
