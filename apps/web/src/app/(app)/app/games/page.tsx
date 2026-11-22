@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { LiveRefresh } from "../../../../components/live-refresh";
 import { SyncPanel } from "../../../../components/sync/sync-panel";
 import { requireUser } from "../../../../server/auth/session";
@@ -5,14 +6,17 @@ import { getDb } from "../../../../server/db";
 import { requestEventCursor } from "../../../../server/events/request-cursor";
 import { scopedAccountIds } from "../../../../server/games";
 import { loadExplorer } from "../../../../server/games/explorer";
+import { colourRedirect } from "../../../../server/games/query";
 import { getSyncStatus } from "../../../../server/sync";
 import { PageHeading } from "../../_shell/page-heading";
+import { FilterBar } from "../_filters/filter-bar";
 import { NoGames, NoLinks, NoMatch } from "./_explorer/empty";
-import { FilterBar } from "./_explorer/filter-bar";
+import { ExplorerControls } from "./_explorer/filter-bar";
 import { toRowView } from "./_explorer/game-row";
 import { GamesList, showingText } from "./_explorer/games-list";
 import { describeFilters, explorerHref, NO_FILTERS, suggestions } from "./_explorer/href";
 import { Pagination } from "./_explorer/pagination";
+import { gamesBarModel } from "./_explorer/shared-bar";
 import { ExplorerTransition, PendingRegion } from "./_explorer/transition";
 
 export const dynamic = "force-dynamic";
@@ -30,7 +34,11 @@ export default async function GamesPage({ searchParams }: { searchParams: Promis
   // Before any page data, so the event stream replays whatever lands after this read (T27).
   await requestEventCursor(user.id);
   const db = getDb();
-  const explorer = await loadExplorer(db, user.id, await searchParams);
+  const params = await searchParams;
+  // The shared filter contract names it `color` (ADR 0083); an old `colour` link moves over.
+  const moved = colourRedirect("/app/games", params);
+  if (moved) redirect(moved);
+  const explorer = await loadExplorer(db, user.id, params);
   const live = <LiveRefresh accountIds={await scopedAccountIds(db, user.id)} />;
   const status = await getSyncStatus(db, user.id);
   // "Sync now" and the analysis progress per account (Task P2); nothing without a link.
@@ -64,7 +72,8 @@ export default async function GamesPage({ searchParams }: { searchParams: Promis
         {live}
         <PageHeading title="Games" />
         {sync}
-        <FilterBar
+        <FilterBar model={gamesBarModel(query, explorer.classes, new Date())} />
+        <ExplorerControls
           query={query}
           accounts={accounts}
           summary={

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  colourRedirect,
   type GameListQuery,
   parseGameQuery,
   playerResult,
@@ -91,7 +92,7 @@ describe("serializeGameQuery", () => {
     const params = {
       tc: "daily",
       result: "draw",
-      colour: "white",
+      color: "white",
       from: "2026-01-01",
       to: "2026-02-01",
       account: "0b9e6f8c-3c1a-4d8e-9f00-6a2b1c3d4e5f",
@@ -100,10 +101,27 @@ describe("serializeGameQuery", () => {
     };
     const once = serializeGameQuery(parseGameQuery(params));
     expect(once.toString()).toBe(
-      "tc=daily&result=draw&colour=white&from=2026-01-01&to=2026-02-01&account=0b9e6f8c-3c1a-4d8e-9f00-6a2b1c3d4e5f&sort=blunders-desc&page=4",
+      "tc=daily&result=draw&color=white&from=2026-01-01&to=2026-02-01&account=0b9e6f8c-3c1a-4d8e-9f00-6a2b1c3d4e5f&sort=blunders-desc&page=4",
     );
     const again = serializeGameQuery(parseGameQuery(Object.fromEntries(once)));
     expect(again.toString()).toBe(once.toString());
+  });
+});
+
+describe("color, the shared filter contract's name (T3, ADR 0083)", () => {
+  it("reads color, and colour as its alias, and writes color", () => {
+    expect(parseGameQuery({ color: "black" }).filters.colour).toBe("black");
+    expect(parseGameQuery({ colour: "black" }).filters.colour).toBe("black");
+    expect(parseGameQuery({ color: "both" }).filters.colour).toBeNull();
+    expect(serializeGameQuery(parseGameQuery({ colour: "white" })).toString()).toBe("color=white");
+  });
+
+  it("redirects a colour URL to the same URL with color", () => {
+    expect(colourRedirect("/app/games", { colour: "white", page: "2" })).toBe(
+      "/app/games?color=white&page=2",
+    );
+    expect(colourRedirect("/app/games", { colour: "red" })).toBe("/app/games");
+    expect(colourRedirect("/app/games", { color: "white" })).toBeNull();
   });
 });
 

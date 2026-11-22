@@ -55,14 +55,12 @@ function Track({ options, label }: { options: LinkOption[]; label: string }) {
   );
 }
 
-function Group({ id, label, children }: { id: string; label: string; children: ReactNode }) {
+function Group({ label, children }: { id: string; label: string; children: ReactNode }) {
   return (
-    <div role="group" aria-labelledby={id} className="flex min-w-0 flex-col gap-1.5">
-      <span id={id} className={groupLabel}>
-        {label}
-      </span>
-      {children}
-    </div>
+    <fieldset className="m-0 min-w-0 border-0 p-0">
+      <legend className={cn(groupLabel, "mb-1.5 p-0")}>{label}</legend>
+      <div className="flex min-w-0 flex-col gap-1.5">{children}</div>
+    </fieldset>
   );
 }
 
