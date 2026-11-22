@@ -1,0 +1,29 @@
+# The e2e suite on a production build (T27, ADR 0067), layered on docker-compose.e2e.yml:
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.e2e.yml:docker-compose.e2e-prod.yml \
+#     docker compose -p <name> --profile e2e up -d web fakes
+#   ... --profile e2e --profile qa run --rm --no-deps -e E2E_PRODUCTION=1 qa sh -c \
+#     "cd apps/web && node node_modules/@playwright/test/cli.js test --project=e2e --grep-invert @fakes"
+# web runs `next build`, then `next start`, so React's production build is measured (the 4x CPU
+# throttle budget in charts.spec.ts). A production server refuses plain-http provider URLs, so
+# the Lichess and chess.com base URLs are the real https ones (nothing calls them), and the specs
+# tagged @fakes, which need the http fakes, run only in the dev-server suite.
+services:
+  web:
+    command:
+      - sh
+      - -c
+      - >-
+        pnpm turbo run build --filter=@ci/web... &&
+        cd apps/web &&
+        exec node_modules/.bin/next start --port 3100 --hostname 0.0.0.0
+    environment:
+      # A production server refuses the public compose default (env.ts, review-t27 I2), so this
+      # lane needs its own secret, random per run; compose stops here if it is unset.
+      BETTER_AUTH_SECRET: ${E2E_BETTER_AUTH_SECRET:?set E2E_BETTER_AUTH_SECRET to a random secret, e.g. $(openssl rand -hex 32)}
+      LAB_ENABLED: "1"
+      LICHESS_AUTHORIZE_BASE_URL: https://lichess.org
+      LICHESS_API_BASE_URL: https://lichess.org
+      CHESSCOM_API_BASE_URL: https://api.chess.com
+    healthcheck:
+      # The build runs first: allow it 15 minutes before a failed probe counts.
+      start_period: 900s

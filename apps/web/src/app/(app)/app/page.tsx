@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { LiveRefresh } from "../../../components/live-refresh";
 import { requireUser } from "../../../server/auth/session";
 import { getDb } from "../../../server/db";
+import { requestEventCursor } from "../../../server/events/request-cursor";
 import { scopedAccountIds } from "../../../server/games";
 import { getOverview } from "../../../server/overview";
 import { OverviewSheet } from "./_overview/sheet";
@@ -21,6 +22,8 @@ export default async function OverviewPage({
   searchParams: Promise<{ tc?: string | string[] }>;
 }) {
   const user = await requireUser();
+  // Before any page data, so the event stream replays whatever lands after this read (T27).
+  await requestEventCursor(user.id);
   const db = getDb();
   const asked = knownTimeClass((await searchParams).tc);
   let overview = await getOverview(db, user.id, { timeClass: asked });

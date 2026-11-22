@@ -43,4 +43,3 @@ networks:
   # rust-worker).
   maia_internal:
     internal: true
-
