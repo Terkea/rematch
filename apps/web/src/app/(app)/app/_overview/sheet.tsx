@@ -1,3 +1,4 @@
+import type { LeadFinding } from "../../../../server/profile/types";
 import { AccuracySection } from "./accuracy-section";
 import { OverviewEmpty } from "./empty-state";
 import { Headline, WorkOn } from "./headline";
@@ -16,7 +17,16 @@ import type { OverviewView } from "./view";
  * `reveal` (the first view in a session) the first viewport assembles once: rules draw, the
  * trend draws in, numbers roll. Nothing below the fold animates.
  */
-export function OverviewSheet({ view, reveal }: { view: OverviewView; reveal: boolean }) {
+export function OverviewSheet({
+  view,
+  reveal,
+  lead = { kind: "building" },
+}: {
+  view: OverviewView;
+  reveal: boolean;
+  /** The coaching profile's lead finding for "What to work on" (default: still building). */
+  lead?: LeadFinding;
+}) {
   return (
     <div {...(reveal ? { "data-reveal": "first" } : {})} className="flex flex-col gap-10">
       {reveal && <RevealSeen />}
@@ -34,7 +44,7 @@ export function OverviewSheet({ view, reveal }: { view: OverviewView; reveal: bo
             <div data-reveal-fig="" style={{ "--reveal-i": 0 } as React.CSSProperties}>
               <Headline lead={view.lead} basisClass={view.basisClass} reveal={reveal} />
             </div>
-            <WorkOn />
+            <WorkOn lead={lead} />
           </div>
 
           <section aria-labelledby="accuracy-heading" className="flex flex-col gap-5">
