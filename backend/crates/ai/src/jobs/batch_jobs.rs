@@ -21,7 +21,8 @@
 //! its items, and sets the runs `awaiting_batch`. A failed submit leaves the rows as they are:
 //! past the grace the reconciler generates them synchronously.
 //!
-//! **Polling** ([`AiBatchPollHandler`]), each open batch under a session advisory lock:
+//! **Polling** ([`AiBatchPollHandler`]), each open batch under a transaction-scoped advisory
+//! lock, re-reading its status under the lock:
 //!
 //! - not ended: `last_polled_at` only. A batch not ended [`BATCH_GIVE_UP_AFTER`] after its
 //!   submit is given up: every unprocessed item falls back to the sync path, and the batch is
@@ -44,9 +45,13 @@
 //!   the commit, and that job generates only the missing sections. Sections are stored with
 //!   Task 18's `report_job::persist_section_outcome`, the same write as the sync path. A weekly review that needs
 //!   the sync path gets `weekly-review` enqueued.
-//! - a stream error (or [`BATCH_RESULTS_TIMEOUT`]) leaves the batch `submitted`; the next poll
-//!   skips the processed items. When a complete stream left an item without a result, that item
-//!   falls back to the sync path. A batch with every item processed is `processed`.
+//! - a batch the API reports ended is marked `ended` (its `ended_at` starts a bound). A results
+//!   line that cannot be decoded (or is too long) is skipped and the stream goes on; a transport
+//!   error, another client error or [`BATCH_RESULTS_TIMEOUT`] stops the read, and the next poll
+//!   skips the processed items. When a complete stream left an item without a result (none was
+//!   sent, or its line was undecodable), only that item falls back to the sync path. A batch whose
+//!   results could not be read completely for [`BATCH_RESULTS_GIVE_UP_AFTER`] after it ended is
+//!   given up like one that never ends. A batch with every item processed is `processed`.
 //!
 //! Errored, canceled and expired results are not billed by the API, so they meter nothing
 //! (Task 16 ruling).
@@ -73,9 +78,13 @@ use super::reconcile::BATCH_SUBMIT_GRACE;
 use super::report_job::{is_narrative, persist_section_outcome, refresh_status};
 use crate::client::cost::PricingTable;
 use crate::client::model::Models;
-use crate::client::port::{AiClient, BatchItem, BatchOutcome, BatchResultItem, BatchStatus};
+use crate::client::port::{
+    AiClient, AiError, BatchItem, BatchOutcome, BatchResultItem, BatchStatus,
+};
 use crate::db::ItemStatus;
-use crate::db::batches::{self, BatchItemRow, BatchKind, BatchRow, NewBatchItem};
+use crate::db::batches::{
+    self, BatchItemRow, BatchKind, BatchRow, BatchStatus as DbBatchStatus, NewBatchItem,
+};
 use crate::db::reports::{self, NewReport, ReportStatus};
 use crate::db::runs::{self, NewRun, ReportMode, ReportTrigger, RunStatus};
 use crate::db::usage::AiFeature;
@@ -119,6 +128,11 @@ pub const BATCH_RESULTS_TIMEOUT: Duration = Duration::from_secs(20 * 60);
 /// A batch not ended this long after its submit is given up to the sync path. The API ends
 /// (expires) every batch within 24 hours, so this only fires when the API or the key is gone.
 pub const BATCH_GIVE_UP_AFTER: Duration = Duration::from_secs(48 * 3600);
+
+/// An ended batch whose results could not be read completely for this long after it ended is
+/// given up to the sync path (results are retrievable for 29 days; this bounds a results
+/// endpoint that keeps failing).
+pub const BATCH_RESULTS_GIVE_UP_AFTER: Duration = Duration::from_secs(24 * 3600);
 
 /// Advisory-lock class of one batch's poll (two-int key space, like the report version lock).
 const POLL_LOCK_CLASS: i32 = 30_020;
@@ -512,15 +526,18 @@ async fn poll(d: &BatchDeps) -> anyhow::Result<Value> {
     Ok(json!(counts))
 }
 
-/// Polls one batch under its advisory lock (a concurrent poller skips it).
+/// Polls one batch under its advisory lock (a concurrent poller skips it). The lock is
+/// transaction-scoped on a transaction held for the poll and never committed, so it is released
+/// on every path: the end of the poll, an error, or a cancelled (dropped) poll, whose
+/// transaction sqlx rolls back when the connection returns to the pool.
 async fn poll_one(
     d: &BatchDeps,
     ai: &dyn AiClient,
     b: &BatchRow,
     counts: &mut PollCounts,
 ) -> anyhow::Result<()> {
-    let mut lock = d.pool.acquire().await?;
-    let locked: bool = sqlx::query_scalar("SELECT pg_try_advisory_lock($1, hashtext($2))")
+    let mut lock = d.pool.begin().await?;
+    let locked: bool = sqlx::query_scalar("SELECT pg_try_advisory_xact_lock($1, hashtext($2))")
         .bind(POLL_LOCK_CLASS)
         .bind(&b.id)
         .fetch_one(&mut *lock)
@@ -528,13 +545,31 @@ async fn poll_one(
     if !locked {
         return Ok(());
     }
-    let res = poll_locked(d, ai, b, counts).await;
-    sqlx::query("SELECT pg_advisory_unlock($1, hashtext($2))")
-        .bind(POLL_LOCK_CLASS)
-        .bind(&b.id)
-        .execute(&mut *lock)
-        .await?;
+    // Re-read under the lock: another poller may have just finished this batch.
+    let current = {
+        let mut conn = d.pool.acquire().await?;
+        batches::get_batch(&mut conn, &b.id).await?
+    };
+    let res = match current {
+        Some(b) if matches!(b.status, DbBatchStatus::Submitted | DbBatchStatus::Ended) => {
+            poll_locked(d, ai, &b, counts).await
+        }
+        _ => Ok(()),
+    };
+    lock.rollback().await?;
     res
+}
+
+/// Every unprocessed item to the sync path, and the batch `failed`.
+async fn give_up(d: &BatchDeps, b: &BatchRow, counts: &mut PollCounts) -> anyhow::Result<()> {
+    for item in pending(d, &b.id).await? {
+        fall_back(d, &item).await?;
+        counts.retried += 1;
+    }
+    let mut conn = d.pool.acquire().await?;
+    batches::mark_failed(&mut conn, &b.id).await?;
+    counts.given_up += 1;
+    Ok(())
 }
 
 async fn poll_locked(
@@ -544,9 +579,14 @@ async fn poll_locked(
     counts: &mut PollCounts,
 ) -> anyhow::Result<()> {
     let status = tokio::time::timeout(BATCH_STATUS_TIMEOUT, ai.batch_status(&b.id)).await;
+    let now = (d.now)();
     {
         let mut conn = d.pool.acquire().await?;
         batches::mark_polled(&mut conn, &b.id).await?;
+        if matches!(status, Ok(Ok(BatchStatus::Ended))) && b.status == DbBatchStatus::Submitted {
+            // `ended_at` starts the bound on reading the results.
+            batches::mark_ended(&mut conn, &b.id).await?;
+        }
     }
     match status {
         Ok(Ok(BatchStatus::Ended)) => {}
@@ -554,16 +594,9 @@ async fn poll_locked(
             if let Ok(Err(e)) = &other {
                 tracing::warn!(batch = %b.id, error = %e, "batch status failed");
             }
-            let age = (d.now)() - b.submitted_at;
-            if age > BATCH_GIVE_UP_AFTER {
+            if now - b.submitted_at > BATCH_GIVE_UP_AFTER {
                 tracing::warn!(batch = %b.id, "batch never ended; giving it up to the sync path");
-                for item in pending(d, &b.id).await? {
-                    fall_back(d, &item).await?;
-                    counts.retried += 1;
-                }
-                let mut conn = d.pool.acquire().await?;
-                batches::mark_failed(&mut conn, &b.id).await?;
-                counts.given_up += 1;
+                give_up(d, b, counts).await?;
             }
             return Ok(());
         }
@@ -579,6 +612,12 @@ async fn poll_locked(
                 break false;
             }
             Ok(None) => break true,
+            // One line that cannot be decoded (or is too long): the client skips it and goes
+            // on. Its item gets no result, so it falls back to sync once the stream completes.
+            Ok(Some(Err(AiError::Response(e)))) => {
+                tracing::warn!(batch = %b.id, error = %e, "undecodable batch result line skipped");
+                counts.ignored += 1;
+            }
             Ok(Some(Err(e))) => {
                 tracing::warn!(batch = %b.id, error = %e, "batch results stream failed; resuming next poll");
                 break false;
@@ -592,6 +631,12 @@ async fn poll_locked(
     };
     drop(results);
     if !complete {
+        // A results endpoint that keeps failing is bounded too.
+        let ended = b.ended_at.unwrap_or(now);
+        if now - ended > BATCH_RESULTS_GIVE_UP_AFTER {
+            tracing::warn!(batch = %b.id, "batch results unreadable; giving it up to the sync path");
+            give_up(d, b, counts).await?;
+        }
         return Ok(());
     }
     // A complete stream that left an item without a result: that item goes to the sync path.

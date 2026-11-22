@@ -35,11 +35,14 @@ billed call must be metered exactly once.
 4. **Idempotent per item.** One transaction per result marks the item processed (fenced on
    `processed_at IS NULL`, under a row lock of the run or review), meters its calls with
    `meter_keyed` under `batch:<item id>`, stores the section or review, and emits its events
-   last. A batch is polled under a session advisory lock, so two pollers never process it at
-   once. A re-poll skips processed items; a processed batch is not polled again.
+   last. A batch is polled under a transaction-scoped advisory lock (released on every path,
+   including a cancelled poll), with its status re-read under the lock, so two pollers never
+   process it at once; the item fence and the keyed metering each also hold on their own. A
+   re-poll skips processed items; a processed batch is not polled again.
 5. **Fallback to sync.** `RetrySync` (unusable output, a misrouted schema, or an `errored`,
    `canceled` or `expired` result), a failed repair, and an item that got no result from a
-   complete stream store nothing for that item. When a run's last item is processed it is done
+   complete stream (none was sent, or its line could not be decoded: such a line is skipped and
+   the rest of the stream still applies) store nothing for that item. When a run's last item is processed it is done
    (`report.ready`) if all five sections are stored; otherwise it goes back to `queued` and
    `generate-report` is enqueued, which generates only the missing sections. A weekly review gets
    `weekly-review` enqueued. Errored, canceled and expired results are not billed and meter
@@ -50,8 +53,12 @@ billed call must be metered exactly once.
    which the reconciler ignores for that grace, and a failed submit leaves them for the
    reconciler to generate synchronously. The API ends every batch within 24 hours and keeps
    results for 29 days; the poller (every 10 min) bounds each status call (60 s) and each results
-   read (20 min; a cut-off read resumes next poll). A batch not ended 48 hours after its submit
-   is given up: its unprocessed items fall back to sync and the batch is `failed`.
+   read (20 min; a cut-off read resumes next poll). Every batch has an end:
+   - a batch not ended 48 hours after its submit is given up;
+   - a batch whose results cannot be read completely for 24 hours after it ended (`ended_at`,
+     set at the first poll that sees it ended) is given up the same way, so a results endpoint
+     that keeps failing (a revoked key, retention passed) cannot hold runs in `awaiting_batch`;
+   - giving up sends the unprocessed items to sync and marks the batch `failed`.
 7. **No `fallbacks`.** The API's server-side `fallbacks` is not used (ADR-AI-6, ruling Q1).
 
 ## Consequences
@@ -67,6 +74,9 @@ billed call must be metered exactly once.
 - **Accepted (controller ruling): the weekly schedule checks budget, not plan.** Weekly reviews
   go to whatever the `WeeklyInputProvider` reports due; the beta plan is unlimited, and the
   per-scope monthly budget still bounds the spend.
+- **Results of a deleted account are not metered.** When a run or review (and its account) is
+  deleted while its batch is open, the cascade deletes its items, so its billed results match no
+  item and are not metered. The spend of a deleted account is not tracked.
 - Dates are `time::Date` throughout (`WeeklyInputProvider::due(week_start: Date)`); chrono is not
   used (ADR 0031).
 - Sections are stored by Task 18's `report_job::persist_section_outcome` (store, refresh the

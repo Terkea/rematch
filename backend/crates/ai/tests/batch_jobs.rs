@@ -16,6 +16,7 @@ use ai::client::model::Models;
 use ai::client::port::{
     AiClient, AiError, AiUsage, BatchItem, BatchOutcome, BatchResultItem, BatchStatus,
     ChatTurnRequest, SchemaResolver, StructuredRequest, StructuredResult, ToolHandler, TurnEvent,
+    UnavailableReason,
 };
 use ai::db::reports::{self, NewReport, ReportStatus};
 use ai::db::runs::{self, NewRun, ReportMode, ReportTrigger};
@@ -23,8 +24,9 @@ use ai::entitlements::{DefaultEntitlements, Entitlements, Plan};
 use ai::generate::batch::batch_item_id;
 use ai::input::types::{CoachingInput, TimeClass};
 use ai::jobs::batch_jobs::{
-    AiBatchPollHandler, BATCH_GIVE_UP_AFTER, BATCH_SUBMIT_TIMEOUT, BatchDeps, NullWeeklyProvider,
-    ReportBatchScheduleHandler, WeeklyBatchScheduleHandler, WeeklyInputProvider,
+    AiBatchPollHandler, BATCH_GIVE_UP_AFTER, BATCH_RESULTS_GIVE_UP_AFTER, BATCH_SUBMIT_TIMEOUT,
+    BatchDeps, NullWeeklyProvider, ReportBatchScheduleHandler, WeeklyBatchScheduleHandler,
+    WeeklyInputProvider,
 };
 use ai::jobs::budget::BudgetConfig;
 use ai::jobs::kinds::{KIND_GENERATE_REPORT, KIND_WEEKLY_REVIEW};
@@ -68,6 +70,11 @@ struct BatchState {
     results_from: HashMap<String, Vec<String>>,
     /// The next results stream fails after this many items (once).
     fail_after: Option<usize>,
+    /// Every results stream yields an undecodable line (a `Response` error, as the real client
+    /// does for a bad or oversized line) in place of the item at this index, and goes on.
+    poison_at: Option<usize>,
+    /// Every results read fails outright (an endpoint that keeps failing).
+    results_fail: bool,
     results_calls: usize,
 }
 
@@ -185,9 +192,18 @@ impl AiClient for TestAi {
         id: &'a str,
         resolver: &'a dyn SchemaResolver,
     ) -> BoxStream<'a, Result<BatchResultItem, AiError>> {
-        let (lines, fail_after) = {
+        let (lines, fail_after, poison_at) = {
             let mut s = self.state.lock().unwrap();
             s.results_calls += 1;
+            if s.results_fail {
+                return stream::once(async {
+                    Err(AiError::Request {
+                        status: 404,
+                        api_error_type: Some("not_found_error".into()),
+                    })
+                })
+                .boxed();
+            }
             let from = s
                 .results_from
                 .get(id)
@@ -202,7 +218,7 @@ impl AiClient for TestAi {
                         .flat_map(|(_, items)| items.iter().map(|i| (self.answer)(i)))
                 })
                 .collect();
-            (lines, s.fail_after.take())
+            (lines, s.fail_after.take(), s.poison_at)
         };
         // A plain fake serves the scripted lines, so they are parsed exactly as the real
         // client parses them (with the resolver's schema).
@@ -221,15 +237,23 @@ impl AiClient for TestAi {
         })
         .flatten()
         .enumerate()
-        .map(move |(i, r)| match fail_after {
-            Some(n) if i >= n => Err(AiError::Response("stream cut".into())),
+        .map(move |(i, r)| match (fail_after, poison_at) {
+            // A cut connection, as the real client reports one (the stream then ends).
+            (Some(n), _) if i >= n => Err(AiError::Unavailable {
+                reason: UnavailableReason::Connection,
+                retry_after: None,
+            }),
+            (_, Some(p)) if i == p => Err(AiError::Response(
+                "batch result line could not be decoded".into(),
+            )),
             _ => r,
         })
         .take_while({
             let mut failed = false;
             move |r| {
                 let go = !failed;
-                failed |= r.is_err();
+                // Only a transport error ends the stream; a bad line is skipped.
+                failed |= matches!(r, Err(AiError::Unavailable { .. }));
                 futures::future::ready(go)
             }
         })
@@ -912,7 +936,7 @@ async fn stream_error_midway_resumes_next_poll_without_duplicates(pool: PgPool) 
     assert_eq!(
         count(
             &pool,
-            "SELECT count(*) FROM ai_batches WHERE status = 'submitted'"
+            "SELECT count(*) FROM ai_batches WHERE status = 'ended'"
         )
         .await,
         1
@@ -1216,4 +1240,185 @@ async fn a_result_for_a_run_no_longer_waiting_is_metered_but_not_applied(pool: P
         .await,
         1
     );
+}
+
+// ---------------------------------------------------------------------------------------------
+// Fix round 1: bounded result reads, forged ids, concurrent pollers.
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn an_undecodable_results_line_sends_only_its_item_to_sync(pool: PgPool) {
+    let ai = Arc::new(TestAi::new(Box::new(all_valid)));
+    let (d, _, _) = two_scheduled(&pool, ai.clone()).await;
+    ai.state.lock().unwrap().poison_at = Some(3);
+    let poisoned = ai.submissions()[0].1[3].custom_id.clone();
+    poll(&d).await;
+
+    let run: Uuid =
+        sqlx::query_scalar("SELECT report_run_id FROM ai_batch_items WHERE custom_id = $1")
+            .bind(&poisoned)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        count(
+            &pool,
+            "SELECT count(*) FROM report_sections WHERE status = 'ready'"
+        )
+        .await,
+        9,
+        "every other line still applies"
+    );
+    assert_eq!(usage(&pool).await.len(), 9);
+    assert_eq!(
+        jobs_of(&pool, KIND_GENERATE_REPORT).await,
+        vec![format!("report:{run}")]
+    );
+    for r in scheduled_runs(&pool).await {
+        let want = if r.0 == run { "queued" } else { "done" };
+        assert_eq!(r.2, want);
+    }
+    assert_eq!(
+        count(
+            &pool,
+            "SELECT count(*) FROM ai_batches WHERE status = 'processed'"
+        )
+        .await,
+        1
+    );
+    // The poison line is not re-read forever.
+    let calls = ai.results_calls();
+    poll(&d).await;
+    assert_eq!(ai.results_calls(), calls);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn an_ended_batch_whose_results_never_read_is_given_up(pool: PgPool) {
+    let ai = Arc::new(TestAi::new(Box::new(all_valid)));
+    let (d, _, _) = two_scheduled(&pool, ai.clone()).await;
+    ai.state.lock().unwrap().results_fail = true;
+    poll(&d).await;
+    // Within the bound: still open, nothing written.
+    assert_eq!(
+        count(
+            &pool,
+            "SELECT count(*) FROM ai_batches WHERE status = 'ended'"
+        )
+        .await,
+        1
+    );
+    assert!(jobs_of(&pool, KIND_GENERATE_REPORT).await.is_empty());
+
+    let age = BATCH_RESULTS_GIVE_UP_AFTER + std::time::Duration::from_secs(600);
+    sqlx::query("UPDATE ai_batches SET ended_at = now() - make_interval(secs => $1)")
+        .bind(age.as_secs_f64())
+        .execute(&pool)
+        .await
+        .unwrap();
+    poll(&d).await;
+    assert_eq!(
+        count(
+            &pool,
+            "SELECT count(*) FROM ai_batches WHERE status = 'failed'"
+        )
+        .await,
+        1
+    );
+    assert_eq!(
+        count(&pool, "SELECT count(*) FROM report_sections").await,
+        0
+    );
+    assert!(usage(&pool).await.is_empty());
+    assert_eq!(jobs_of(&pool, KIND_GENERATE_REPORT).await.len(), 2);
+    for r in scheduled_runs(&pool).await {
+        assert_eq!(r.2, "queued");
+    }
+    let calls = ai.results_calls();
+    poll(&d).await;
+    assert_eq!(
+        ai.results_calls(),
+        calls,
+        "a failed batch is not polled again"
+    );
+}
+
+async fn item_of(pool: &PgPool, account: Uuid, section: &str) -> (Uuid, String) {
+    sqlx::query_as(
+        "SELECT i.id, i.custom_id FROM ai_batch_items i \
+         JOIN report_runs r ON r.id = i.report_run_id \
+         WHERE r.account_id = $1 AND i.section = $2",
+    )
+    .bind(account)
+    .bind(section)
+    .fetch_one(pool)
+    .await
+    .unwrap()
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_forged_item_id_is_never_applied(pool: PgPool) {
+    let ai = Arc::new(TestAi::new(Box::new(all_valid)));
+    let (d, a, b) = two_scheduled(&pool, ai.clone()).await;
+    // Swap the custom ids of an item of A (overview) and an item of B (areas): each custom id
+    // now finds the other account's row, whose id it does not encode.
+    let (ia, ca) = item_of(&pool, a, "overview").await;
+    let (ib, cb) = item_of(&pool, b, "areas").await;
+    let mut tx = pool.begin().await.unwrap();
+    for (id, cid) in [(ia, "tmp".to_owned()), (ib, ca), (ia, cb)] {
+        sqlx::query("UPDATE ai_batch_items SET custom_id = $2 WHERE id = $1")
+            .bind(id)
+            .bind(cid)
+            .execute(&mut *tx)
+            .await
+            .unwrap();
+    }
+    tx.commit().await.unwrap();
+    poll(&d).await;
+
+    for acc in [a, b] {
+        let n: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM report_sections s JOIN reports r ON r.id = s.report_id \
+             WHERE r.account_id = $1",
+        )
+        .bind(acc)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(n, 4, "the forged result is applied nowhere");
+        let m: i64 = sqlx::query_scalar("SELECT count(*) FROM ai_usage WHERE account_id = $1")
+            .bind(acc)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(m, 4, "and metered nowhere");
+    }
+    assert_eq!(ai.sync_calls(), 0);
+    assert_eq!(jobs_of(&pool, KIND_GENERATE_REPORT).await.len(), 2);
+    for r in scheduled_runs(&pool).await {
+        assert_eq!(r.2, "queued");
+    }
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn concurrent_pollers_apply_and_meter_once(pool: PgPool) {
+    let ai = Arc::new(TestAi::new(Box::new(all_valid)));
+    let (d, _, _) = two_scheduled(&pool, ai.clone()).await;
+    tokio::join!(poll(&d), poll(&d), poll(&d));
+    assert_eq!(usage(&pool).await.len(), 10);
+    assert_eq!(
+        count(
+            &pool,
+            "SELECT count(*) FROM report_sections WHERE status = 'ready'"
+        )
+        .await,
+        10
+    );
+    assert_eq!(events(&pool, "report.ready").await.len(), 2);
+    let section_events = events(&pool, "report.section.ready").await;
+    let mut seen = std::collections::HashSet::new();
+    for (account, p) in &section_events {
+        assert!(
+            seen.insert((*account, p["reportId"].clone(), p["section"].clone())),
+            "duplicate event {p}"
+        );
+    }
 }
