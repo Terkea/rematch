@@ -31,7 +31,8 @@ const navLink = [
 /**
  * The app header. It stays still on route changes (only the sheet turns, choreography 5). The ink
  * rule under the current section slides to the next one on `page`, showing where you went (M1).
- * Below `md` the sections drop to their own row. `data-slot="activity"` holds `activity`, the
+ * Below `md` the sections drop to their own row, and below `lg` only the phone-row ones stay (the
+ * eight do not fit until 1024px); the rest move into the account menu's "More pages". `data-slot="activity"` holds `activity`, the
  * import indicator; it collapses while that renders nothing.
  */
 export function Header({
@@ -64,7 +65,7 @@ export function Header({
             {sections.map((item) => {
               const current = isCurrent(pathname, item.href);
               return (
-                <li key={item.href} className={onPhoneRow(item.href) ? undefined : "max-sm:hidden"}>
+                <li key={item.href} className={onPhoneRow(item.href) ? undefined : "max-lg:hidden"}>
                   <Link
                     href={item.href}
                     aria-current={current ? "page" : undefined}
