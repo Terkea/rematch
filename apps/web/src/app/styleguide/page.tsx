@@ -13,6 +13,7 @@ import { HeroSection } from "./sections/hero";
 import { OverlaysSection } from "./sections/overlays";
 import { PrimitivesSection } from "./sections/primitives";
 import { ProgressSection } from "./sections/progress";
+import { ReviewSection } from "./sections/review";
 import { StatsSection } from "./sections/stats";
 import { TimelineSection } from "./sections/timeline";
 import { ThemeToggle } from "./theme-toggle";
@@ -40,6 +41,7 @@ export default function StyleguidePage() {
         <AnnotationsSection />
         <EvalBarSection />
         <EvalGraphSection />
+        <ReviewSection />
         <StatsSection />
         <ChartsSection />
         <AreaScoreSection />

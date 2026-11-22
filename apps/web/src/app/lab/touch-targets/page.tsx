@@ -1,5 +1,6 @@
 "use client";
 
+import { games } from "@ci/ui/fixtures";
 import { Icon, MagnifyingGlassIcon } from "@ci/ui/icons";
 import {
   Button,
@@ -14,6 +15,34 @@ import {
   TabsList,
   TabsTrigger,
 } from "@ci/ui/primitives";
+import { Scoresheet, type ScoresheetMove } from "@ci/ui/review";
+import { useState } from "react";
+
+const game = games.middlegameBlunder;
+/** The first 16 plies of a real fixture game, enough rows to stack. */
+const moves: ScoresheetMove[] = game.plies.slice(0, 16).map((p) => ({
+  ply: p.ply,
+  color: p.color,
+  san: p.san,
+  judgement: p.judgement,
+  best: p.bestUci !== null && p.uci === p.bestUci,
+  mine: p.color === game.playerColor,
+}));
+
+function ScoresheetFixture() {
+  const [ply, setPly] = useState(8);
+  return (
+    <section data-fixture="scoresheet">
+      <Scoresheet
+        moves={moves}
+        currentPly={ply}
+        onSelectPly={setPly}
+        label="Moves, touch fixture"
+        className="h-96"
+      />
+    </section>
+  );
+}
 
 /**
  * Fixture for apps/web/e2e/touch-targets.spec.ts: each control the primitives give a 44px coarse-
@@ -67,6 +96,8 @@ export default function TouchTargetsFixture() {
           <TabsContent value="plans">Develop, then castle.</TabsContent>
         </Tabs>
       </section>
+
+      <ScoresheetFixture />
 
       <Dialog>
         <DialogTrigger render={<Button variant="outline" />}>Disconnect</DialogTrigger>
