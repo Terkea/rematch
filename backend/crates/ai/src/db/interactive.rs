@@ -152,7 +152,9 @@ pub async fn charged_since(
     Ok(u32::try_from(n).unwrap_or(u32::MAX))
 }
 
-/// The newest `done` eval of this position and protocol created within `within`.
+/// The newest charged `done` eval of this position and protocol created within `within`.
+/// Uncharged `done` rows are free copies of an earlier result, so the window runs from the
+/// charged original and a copy never extends it.
 pub async fn reusable(
     conn: &mut PgConnection,
     account_id: Uuid,
@@ -162,7 +164,7 @@ pub async fn reusable(
 ) -> Result<Option<EvalRow>, sqlx::Error> {
     sqlx::query_as(sqlx::AssertSqlSafe(format!(
         "SELECT {COLS} FROM interactive_evals WHERE account_id = $1 AND fen = $2 \
-         AND protocol = $3 AND status = 'done' \
+         AND protocol = $3 AND status = 'done' AND charged \
          AND created_at >= now() - $4::float8 * interval '1 second' \
          ORDER BY created_at DESC LIMIT 1"
     )))
@@ -197,7 +199,7 @@ pub fn stale_pending_sql() -> String {
 }
 
 /// The advisory-lock class of [`reserve_eval`] (`pg_advisory_xact_lock(class, hashtext(account))`).
-const QUOTA_LOCK_CLASS: i32 = 30_002;
+pub const QUOTA_LOCK_CLASS: i32 = 30_002;
 
 /// One account's eval, or `None` for an unknown id or another account's.
 pub async fn get_account_eval(
@@ -270,18 +272,25 @@ pub async fn insert_reused(
     .await
 }
 
-/// Clears the quota charge of one account's eval; `false` when there was nothing to refund.
-pub async fn refund(
+/// `interactive_evals.error` of a check abandoned or cancelled before its result.
+pub const ABANDONED: &str = "abandoned";
+
+/// Abandons one account's pending eval: `failed` with [`ABANDONED`], and refunded. The job's
+/// late lines are then dropped (`complete_eval` needs `pending`), so a refunded check never
+/// becomes a free reusable result. A row that is already `done` keeps its charge, because the
+/// result exists. `false` when nothing was pending.
+pub async fn abandon_eval(
     conn: &mut PgConnection,
     account_id: Uuid,
     id: Uuid,
 ) -> Result<bool, sqlx::Error> {
     let r = sqlx::query(
-        "UPDATE interactive_evals SET charged = false WHERE id = $1 AND account_id = $2 \
-         AND charged",
+        "UPDATE interactive_evals SET status = 'failed', error = $3, charged = false, \
+         finished_at = now() WHERE id = $1 AND account_id = $2 AND status = 'pending'",
     )
     .bind(id)
     .bind(account_id)
+    .bind(ABANDONED)
     .execute(conn)
     .await?;
     Ok(r.rows_affected() == 1)

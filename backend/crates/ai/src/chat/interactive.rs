@@ -14,8 +14,12 @@
 //! row: never into `position_evals`. A failure the player did not cause is refunded.
 //!
 //! **Cancellation (T23 m6).** A request or wait whose future is dropped while it polls (the turn
-//! was cancelled) refunds its check from a drop guard, so a check nobody saw is never charged.
-//! A check whose job is lost is failed and refunded by `ai-reconcile`.
+//! was cancelled) abandons its check from a drop guard, as `abandon` does. Abandoning cancels
+//! as well as refunds ([`interactive::abandon_eval`]): a pending row becomes `failed`, and the
+//! job's late lines are dropped, so a refunded check never becomes a free reusable result (review
+//! I1). A row already `done` keeps its charge. Only charged originals are reused, so the 24 h
+//! window runs from the original result. A check whose job is lost is failed and refunded by
+//! `ai-reconcile`.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -250,7 +254,7 @@ impl InteractiveEngine for DbInteractiveEngine {
                 return Ok(());
             };
             let mut conn = self.pool.acquire().await?;
-            interactive::refund(&mut conn, self.account_id, id).await?;
+            interactive::abandon_eval(&mut conn, self.account_id, id).await?;
             Ok(())
         })
     }
@@ -293,7 +297,7 @@ impl Drop for RefundOnDrop {
         rt.spawn(async move {
             let res = async {
                 let mut conn = pool.acquire().await?;
-                interactive::refund(&mut conn, account_id, id).await
+                interactive::abandon_eval(&mut conn, account_id, id).await
             }
             .await;
             if let Err(e) = res {

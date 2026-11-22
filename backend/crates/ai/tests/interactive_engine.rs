@@ -12,7 +12,7 @@ use ai::chat::interactive::{
     INTERACTIVE_TIMEOUT, InteractiveAnalyseHandler, REUSE_WINDOW, engine_evidence_from_row,
 };
 use ai::db::chat::{self, ChatRole, ChatStatus, NewConversation, NewMessage};
-use ai::db::interactive::{self, EvalRow, EvalStatus, NewEval};
+use ai::db::interactive::{self, EvalRow, EvalStatus, NewEval, QUOTA_LOCK_CLASS};
 use ai::entitlements::{Entitlements, Plan, QuotaWindow};
 use ai::input::types::Score;
 use ai::jobs::kinds::KIND_INTERACTIVE_ANALYSE;
@@ -431,8 +431,11 @@ async fn pro_quota_is_20_per_day(pool: PgPool) {
 /// N+1 parallel requests against N remaining checks: exactly N are accepted.
 #[sqlx::test(migrator = "db::MIGRATOR")]
 async fn parallel_requests_never_overspend_the_quota(pool: PgPool) {
-    for (plan, seeded, remaining) in [(Plan::Free, 0, 3), (Plan::Pro, 15, 5)] {
-        let acct = account(&pool, &format!("race-{plan:?}")).await;
+    // Several rounds, so a missing lock cannot pass by a lucky interleaving (review m1);
+    // `a_reservation_waits_for_the_account_quota_lock` pins the lock itself.
+    let cases = [(Plan::Free, 0, 3), (Plan::Pro, 15, 5)];
+    for (round, (plan, seeded, remaining)) in (0..5).flat_map(|r| cases.map(|c| (r, c))) {
+        let acct = account(&pool, &format!("race-{plan:?}-{round}")).await;
         seed_charged(&pool, acct.id, seeded).await;
         let eng = Arc::new(engine(&pool, &acct, plan));
         let barrier = Arc::new(tokio::sync::Barrier::new(remaining + 1));
@@ -455,7 +458,11 @@ async fn parallel_requests_never_overspend_the_quota(pool: PgPool) {
                 other => panic!("unexpected {other:?}"),
             }
         }
-        assert_eq!((accepted, limited), (remaining, 1), "{plan:?}");
+        assert_eq!(
+            (accepted, limited),
+            (remaining, 1),
+            "{plan:?} round {round}"
+        );
         assert_eq!(
             charged(&pool, acct.id).await,
             seeded + remaining,
@@ -673,4 +680,218 @@ async fn illegal_moves_are_unavailable_and_uncharged(pool: PgPool) {
         "{check:?}"
     );
     assert!(rows(&pool, acct.id).await.is_empty());
+}
+
+async fn wait_until_not_pending(pool: &PgPool, eval_id: &str) -> EvalRow {
+    let id = eval_id.to_owned();
+    testkit::wait_for(
+        "the eval leaves pending",
+        LONG,
+        Duration::from_millis(50),
+        || {
+            let (pool, id) = (pool.clone(), id.clone());
+            async move {
+                let r = row(&pool, &id).await;
+                (r.status != EvalStatus::Pending).then_some(r)
+            }
+        },
+    )
+    .await
+}
+
+/// Review I1: cancel a turn mid-check, then ask again. The refunded check must not leave a free
+/// reusable result: the second request is a fresh, charged engine call.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_cancelled_check_is_not_reused_free(pool: PgPool) {
+    let fake = FakeAnalyser::new(Duration::from_millis(800), Mode::Ok);
+    let r = runner(&pool, fake.clone());
+    let acct = account(&pool, "cancel-reask").await;
+    let eng = engine(&pool, &acct, Plan::Free);
+    let cut = tokio::time::timeout(
+        Duration::from_millis(200),
+        eng.request(START_FEN, &mv(&AFTER_NF3), LONG),
+    )
+    .await;
+    assert!(cut.is_err(), "the turn was cancelled mid-check");
+    let first_id = rows(&pool, acct.id).await[0].id.simple().to_string();
+    let first = wait_until_not_pending(&pool, &first_id).await;
+    assert_eq!(
+        first.status,
+        EvalStatus::Failed,
+        "a refund cancels the check"
+    );
+    assert!(!first.charged);
+    // Let the cancelled analysis finish: its late lines must be dropped.
+    tokio::time::sleep(Duration::from_millis(900)).await;
+    assert_eq!(row(&pool, &first_id).await.status, EvalStatus::Failed);
+
+    let again = eng.request(START_FEN, &mv(&AFTER_NF3), LONG).await.unwrap();
+    assert!(matches!(again, EngineCheck::Done { .. }), "{again:?}");
+    assert_eq!(
+        fake.call_count(),
+        2,
+        "a fresh engine call, not a free reuse"
+    );
+    assert_eq!(charged(&pool, acct.id).await, 1, "and it is charged");
+    r.shutdown(LONG).await;
+}
+
+/// Review I1: a refund racing the job's completion. Either the result lands first (kept and
+/// charged) or the refund does (cancelled, the late lines dropped): never a free `done` row.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_refund_racing_completion_never_yields_a_free_result(pool: PgPool) {
+    let acct = account(&pool, "race-refund").await;
+    let eng = Arc::new(engine(&pool, &acct, Plan::Pro));
+    let lines = serde_json::json!([{"multipv": 1, "score": {"cp": 5}, "pv": [], "san": []}]);
+    for m in &FIRST_MOVES[..6] {
+        let check = eng
+            .request(START_FEN, &mv(&[m]), Duration::ZERO)
+            .await
+            .unwrap();
+        let id = eval_id(&check);
+        let uuid = Uuid::try_parse(&id).unwrap();
+        let (pool2, lines2, eng2, id2) = (pool.clone(), lines.clone(), eng.clone(), id.clone());
+        let complete = tokio::spawn(async move {
+            let mut conn = pool2.acquire().await.unwrap();
+            interactive::complete_eval(&mut conn, uuid, &lines2)
+                .await
+                .unwrap()
+        });
+        let abandon = tokio::spawn(async move { eng2.abandon(&id2).await.unwrap() });
+        let completed = complete.await.unwrap();
+        abandon.await.unwrap();
+        let r = row(&pool, &id).await;
+        match r.status {
+            EvalStatus::Done => assert!(completed && r.charged, "a done result stays charged"),
+            EvalStatus::Failed => assert!(!completed && !r.charged, "a refund drops the lines"),
+            EvalStatus::Pending => panic!("left pending"),
+        }
+    }
+    // Both orders, deterministically. Refund first: the late lines are dropped.
+    let early = eng
+        .request(START_FEN, &mv(&["a2a3"]), Duration::ZERO)
+        .await
+        .unwrap();
+    eng.abandon(&eval_id(&early)).await.unwrap();
+    let mut conn = pool.acquire().await.unwrap();
+    let late = Uuid::try_parse(&eval_id(&early)).unwrap();
+    assert!(
+        !interactive::complete_eval(&mut conn, late, &lines)
+            .await
+            .unwrap()
+    );
+    let r = row(&pool, &eval_id(&early)).await;
+    assert_eq!((r.status, r.charged), (EvalStatus::Failed, false));
+    let reused = interactive::reusable(
+        &mut conn,
+        acct.id,
+        &r.fen,
+        INTERACTIVE_PROTOCOL,
+        REUSE_WINDOW,
+    )
+    .await
+    .unwrap();
+    assert!(reused.is_none(), "a refunded check is never reusable");
+
+    // Completion first: the result exists, so abandoning it keeps the charge.
+    let done = eng
+        .request(START_FEN, &mv(&["h2h3"]), Duration::ZERO)
+        .await
+        .unwrap();
+    let done_id = Uuid::try_parse(&eval_id(&done)).unwrap();
+    assert!(
+        interactive::complete_eval(&mut conn, done_id, &lines)
+            .await
+            .unwrap()
+    );
+    eng.abandon(&eval_id(&done)).await.unwrap();
+    let r = row(&pool, &eval_id(&done)).await;
+    assert_eq!((r.status, r.charged), (EvalStatus::Done, true));
+}
+
+/// Review m2: a reused copy does not extend the window; it is keyed on the charged original.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn reuse_window_is_keyed_on_the_original_result(pool: PgPool) {
+    let fake = FakeAnalyser::new(Duration::ZERO, Mode::Ok);
+    let r = runner(&pool, fake.clone());
+    let acct = account(&pool, "window").await;
+    let eng = engine(&pool, &acct, Plan::Pro);
+    let first = eng.request(START_FEN, &mv(&AFTER_NF3), LONG).await.unwrap();
+    let copy = eng.request(START_FEN, &mv(&AFTER_NF3), LONG).await.unwrap();
+    assert_ne!(eval_id(&first), eval_id(&copy));
+    assert_eq!(fake.call_count(), 1);
+    sqlx::query(
+        "UPDATE interactive_evals SET created_at = now() - interval '24 hours 1 minute' \
+         WHERE id = $1",
+    )
+    .bind(Uuid::try_parse(&eval_id(&first)).unwrap())
+    .execute(&pool)
+    .await
+    .unwrap();
+    let third = eng.request(START_FEN, &mv(&AFTER_NF3), LONG).await.unwrap();
+    assert!(matches!(third, EngineCheck::Done { .. }), "{third:?}");
+    assert_eq!(
+        fake.call_count(),
+        2,
+        "the fresh copy did not keep the old result alive"
+    );
+
+    // Reuse never crosses accounts.
+    let other = account(&pool, "window-b").await;
+    let b = engine(&pool, &other, Plan::Pro)
+        .request(START_FEN, &mv(&AFTER_NF3), LONG)
+        .await
+        .unwrap();
+    assert!(matches!(b, EngineCheck::Done { .. }), "{b:?}");
+    assert_eq!(fake.call_count(), 3);
+    assert_eq!(charged(&pool, other.id).await, 1);
+    r.shutdown(LONG).await;
+}
+
+/// Review m1: the reservation waits on the account's quota lock (deterministic, unlike a race).
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_reservation_waits_for_the_account_quota_lock(pool: PgPool) {
+    let acct = account(&pool, "locked").await;
+    let mut holder = pool.begin().await.unwrap();
+    sqlx::query("SELECT pg_advisory_xact_lock($1, hashtext($2::text))")
+        .bind(QUOTA_LOCK_CLASS)
+        .bind(acct.id)
+        .execute(&mut *holder)
+        .await
+        .unwrap();
+    let eng = Arc::new(engine(&pool, &acct, Plan::Free));
+    let e2 = eng.clone();
+    let req = tokio::spawn(async move {
+        e2.request(START_FEN, &mv(&["e2e4"]), Duration::ZERO)
+            .await
+            .unwrap()
+    });
+    testkit::wait_for(
+        "the reservation waits on the lock",
+        LONG,
+        Duration::from_millis(20),
+        || {
+            let pool = pool.clone();
+            async move {
+                let waiting: i64 = sqlx::query_scalar(
+                    "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND NOT granted \
+                     AND classid = $1::int::oid",
+                )
+                .bind(QUOTA_LOCK_CLASS)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+                (waiting == 1).then_some(())
+            }
+        },
+    )
+    .await;
+    assert!(
+        !req.is_finished(),
+        "nothing is reserved while the lock is held"
+    );
+    assert!(rows(&pool, acct.id).await.is_empty());
+    holder.rollback().await.unwrap();
+    let check = req.await.unwrap();
+    assert!(matches!(check, EngineCheck::Pending { .. }), "{check:?}");
 }
