@@ -5,10 +5,13 @@ import { toast } from "@ci/ui/overlays";
 import { Popover, PopoverContent, PopoverTrigger } from "@ci/ui/primitives";
 import { useState } from "react";
 import { signOut } from "../../../lib/auth-client";
+import { isPlaceholderEmail } from "../../../lib/placeholder-email";
 import { PendingButton } from "../../ui/pending-button";
 
 export interface UserMenuProps {
   email: string;
+  /** Shown instead of a Lichess placeholder address (ADR-WEB-4). */
+  name?: string;
   /** Where to go after signing out (a full navigation, so no signed-in page stays cached). */
   signOutTo: (href: string) => void;
 }
@@ -43,10 +46,15 @@ export function useSignOut(signOutTo: (href: string) => void) {
   };
 }
 
-/** The signed-in address and "Sign out", behind the reader's initial. */
-export function UserMenu({ email, signOutTo }: UserMenuProps) {
+/**
+ * The signed-in identity and "Sign out", behind the reader's initial. A Lichess-created account
+ * has a placeholder address, which is never shown: it names the Lichess account instead.
+ */
+export function UserMenu({ email, name = "", signOutTo }: UserMenuProps) {
   const { pending, run } = useSignOut(signOutTo);
-  const initial = email.trim().charAt(0).toUpperCase() || "?";
+  const lichess = isPlaceholderEmail(email);
+  const shown = lichess ? name.trim() || "Lichess" : email;
+  const initial = shown.trim().charAt(0).toUpperCase() || "?";
   return (
     <Popover>
       <PopoverTrigger
@@ -57,8 +65,10 @@ export function UserMenu({ email, signOutTo }: UserMenuProps) {
       </PopoverTrigger>
       <PopoverContent align="end" className="w-64 gap-3" data-surface="sheet">
         <div className="flex flex-col gap-0.5">
-          <span className="text-xs text-ink-faint">Signed in as</span>
-          <span className="truncate text-sm font-medium text-ink">{email}</span>
+          <span className="text-xs text-ink-faint">
+            {lichess ? "Signed in with Lichess" : "Signed in as"}
+          </span>
+          <span className="truncate text-sm font-medium text-ink">{shown}</span>
         </div>
         <PendingButton
           variant="quiet"

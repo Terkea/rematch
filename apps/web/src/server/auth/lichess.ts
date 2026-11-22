@@ -1,5 +1,10 @@
 import type { GenericOAuthConfig } from "better-auth/plugins/generic-oauth";
 import type { WebEnv } from "../../env";
+import {
+  isPlaceholderEmail,
+  PLACEHOLDER_EMAIL_DOMAIN,
+  placeholderEmail,
+} from "../../lib/placeholder-email";
 
 /** ADR 0043: the project User-Agent, with no email. Must equal the worker's `USER_AGENT`. */
 export const LICHESS_USER_AGENT = "chess-improver/0.1 (+https://github.com/chess-improver)";
@@ -38,19 +43,13 @@ function rememberUsername(lichessId: string, username: string): void {
 const USERNAME = /^[A-Za-z0-9][A-Za-z0-9_-]{0,29}$/;
 
 /**
- * Users created by a Lichess sign-up get this non-routable address (RFC 2606 `.invalid`) instead of
- * any email from Lichess, which is never verified (ADR-WEB-4, review I5): a Lichess holder cannot
- * pre-claim someone else's address, and no magic link is ever sent here.
+ * Users created by a Lichess sign-up get a non-routable placeholder address instead of any email
+ * from Lichess, which is never verified (ADR-WEB-4, review I5): a Lichess holder cannot pre-claim
+ * someone else's address, no mail is ever sent there, and it is never shown as an email.
  */
-export const LICHESS_PLACEHOLDER_DOMAIN = "lichess.chess-improver.invalid";
-
-export function lichessPlaceholderEmail(lichessId: string): string {
-  return `${lichessId.toLowerCase()}@${LICHESS_PLACEHOLDER_DOMAIN}`;
-}
-
-export function isLichessPlaceholderEmail(email: string): boolean {
-  return email.toLowerCase().endsWith(`@${LICHESS_PLACEHOLDER_DOMAIN}`);
-}
+export const LICHESS_PLACEHOLDER_DOMAIN = PLACEHOLDER_EMAIL_DOMAIN;
+export const lichessPlaceholderEmail = placeholderEmail;
+export const isLichessPlaceholderEmail = isPlaceholderEmail;
 
 /**
  * The Lichess base URLs must be https, except in development and tests (the fakes are plain

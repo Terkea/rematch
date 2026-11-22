@@ -34,6 +34,9 @@ Better Auth needs an email for every user. Lichess shows the account's email onl
 
 - **The risk.** If a Lichess sign-up stored the address Lichess reports, then with `INVITE_ONLY=0` a Lichess holder could pre-create an account under someone else's address. The real owner's later magic link would sign them into that account, which the Lichess holder can still enter.
 - **Placeholder address.** A user created by a Lichess sign-up therefore gets `<lichess id>@lichess.chess-improver.invalid`. That is non-routable (RFC 2606 `.invalid`), and `deliverMagicLink` never sends to it. No email from Lichess is stored or even requested.
+- **One shared helper.** `isPlaceholderEmail` (`apps/web/src/lib/placeholder-email.ts`) is used by the server and the client.
+  - `sendMail`, the single mail path, never sends to a placeholder, whoever the caller is (any future marketing or notice mail included).
+  - The placeholder is never shown as an email: the account menu reads "Signed in with Lichess" with the Lichess username.
 - **Magic links.** A magic link for any real address lands in that address's own account, never in a Lichess-created one (tested with `INVITE_ONLY=0`).
 - **Attaching an email.** An email can join a Lichess-created account only after its owner proves it with a magic link. No such attach flow exists yet; when one is built, it must use Better Auth's verified change-email.
 - **No implicit linking.** The admission policy (`policy.ts`) refuses `link-account` for Lichess and chess.com unless the request's live session belongs to the same user, with `account_not_linked`. This closes the T17 final-review gap. The placeholder email also means a Lichess sign-in can never match an existing account by email.
@@ -76,6 +79,8 @@ Better Auth needs an email for every user. Lichess shows the account's email onl
 - **Revocation.** After commit, the token is revoked at Lichess (`DELETE /api/token`) as a detached, best-effort task. It is decrypted only for that call and never logged.
 - **No silent restore.** Nothing restores the link. A later "Continue with Lichess" is a fresh sign-in: `not_invited` under `INVITE_ONLY`, or a separate new account in open mode. A later "Connect Lichess" is a fresh, explicit connect. Both are tested.
 - **The last way in.** A Lichess-created account, with the placeholder email and no other provider, cannot remove its only way to sign in. The route answers 409 `last_sign_in_method`, with the copy "You sign in with this Lichess account, so it can't be removed."
+  - **Parked (re-review n2):** the check over-refuses. A Lichess-only account that has connected a second Lichess account is refused for both, although one would remain. Counting the user's other Lichess `account` rows as another way in would fix it; it is parked because the beta has no multi-Lichess users.
+- **Revoke failures.** If Lichess answers an error or cannot be reached, the local delete still happens, the route still answers 204, and nothing about the token is logged (tested).
 
 ### Errors
 

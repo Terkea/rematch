@@ -34,6 +34,49 @@ function renderHeader() {
   );
 }
 
+describe("the signed-in identity", () => {
+  it("never shows a Lichess placeholder as an email; it names the Lichess account", async () => {
+    render(
+      <ThemeProvider attribute="data-theme" defaultTheme="light" enableSystem={false}>
+        <Header
+          email="fakeuser@lichess.chess-improver.invalid"
+          name="FakeUser"
+          signOutTo={vi.fn()}
+        />
+      </ThemeProvider>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Account menu" }));
+    expect(await screen.findByText("Signed in with Lichess")).toBeInTheDocument();
+    expect(screen.getByText("FakeUser")).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain("invalid");
+    expect(document.body.textContent).not.toContain("@");
+  });
+
+  it("shows a real address as it is", async () => {
+    render(
+      <ThemeProvider attribute="data-theme" defaultTheme="light" enableSystem={false}>
+        <Header email="adult@example.invalid" name="Ana" signOutTo={vi.fn()} />
+      </ThemeProvider>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Account menu" }));
+    expect(await screen.findByText("Signed in as")).toBeInTheDocument();
+    expect(screen.getByText("adult@example.invalid")).toBeInTheDocument();
+  });
+});
+
+describe("isPlaceholderEmail", () => {
+  it("is true only for the Lichess placeholder domain", async () => {
+    const { isPlaceholderEmail, placeholderEmail } = await import(
+      "../../src/lib/placeholder-email.js"
+    );
+    expect(isPlaceholderEmail(placeholderEmail("FakeUser"))).toBe(true);
+    expect(placeholderEmail("FakeUser")).toBe("fakeuser@lichess.chess-improver.invalid");
+    expect(isPlaceholderEmail("BOB@LICHESS.CHESS-IMPROVER.INVALID")).toBe(true);
+    expect(isPlaceholderEmail("adult@example.invalid")).toBe(false);
+    expect(isPlaceholderEmail("x@notlichess.chess-improver.invalid")).toBe(false);
+  });
+});
+
 describe("shell header", () => {
   it("lists Overview, Games and Accounts, matching the pages' titles", () => {
     expect(navItems.map((i) => [i.label, i.href])).toEqual([

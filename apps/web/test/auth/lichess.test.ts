@@ -5,6 +5,7 @@ import {
   DENY_HINT,
   FAKE_LICHESS_EMAIL,
   FAKE_LICHESS_TOKEN,
+  failRevokes,
   resetLichessFake,
   revokedTokens,
 } from "../fakes/lichess";
@@ -529,6 +530,40 @@ describe("removing a Lichess link (review I2)", () => {
     await flushBackgroundTasks();
     expect(revokedTokens()).toEqual([FAKE_LICHESS_TOKEN]);
   });
+
+  it.each([
+    ["Lichess answers 500", () => failRevokes()],
+    ["Lichess is unreachable", () => setEnv({ LICHESS_API_BASE_URL: "http://127.0.0.1:9" })],
+  ])(
+    "still deletes locally when revoking fails (%s), and logs no token",
+    async (_case, breakIt) => {
+      const me = await connected();
+      const logged: unknown[] = [];
+      const record = (...args: unknown[]) => {
+        logged.push(args);
+      };
+      const spies = [
+        vi.spyOn(console, "error").mockImplementation(record),
+        vi.spyOn(console, "warn").mockImplementation(record),
+        vi.spyOn(console, "log").mockImplementation(record),
+        vi.spyOn(console, "info").mockImplementation(record),
+      ];
+      try {
+        breakIt();
+        const res = await removeVia(me.cookie, me.linkId);
+        expect(res.status).toBe(204);
+        await expect(flushBackgroundTasks()).resolves.toBeUndefined();
+        expect(await lichessAccounts()).toHaveLength(0);
+        expect(await linksOf(me.user.id)).toHaveLength(0);
+        expect(revokedTokens()).toEqual([]);
+        expect(
+          JSON.stringify(logged, (_k, v) => (v instanceof Error ? v.message : v)),
+        ).not.toContain(FAKE_LICHESS_TOKEN);
+      } finally {
+        for (const spy of spies) spy.mockRestore();
+      }
+    },
+  );
 
   it("a later Continue with Lichess does not restore the link (INVITE_ONLY)", async () => {
     const me = await connected();

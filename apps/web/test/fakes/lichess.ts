@@ -15,11 +15,18 @@ type Grant = { challenge: string; clientId: string; redirectUri: string };
 const grants = new Map<string, Grant>();
 let lastToken: URLSearchParams | null = null;
 let revoked: string[] = [];
+let revokeFails = false;
+
+/** Makes `DELETE /api/token` answer 500 (a Lichess outage) until reset. */
+export function failRevokes(on = true): void {
+  revokeFails = on;
+}
 
 export function resetLichessFake(): void {
   grants.clear();
   lastToken = null;
   revoked = [];
+  revokeFails = false;
 }
 
 /** Tokens revoked with `DELETE /api/token`, oldest first. */
@@ -82,6 +89,10 @@ export async function handleLichess(req: IncomingMessage, res: ServerResponse): 
   }
 
   if (req.method === "DELETE" && url.pathname === "/api/token") {
+    if (revokeFails) {
+      json(res, 500, { error: "Internal server error" });
+      return true;
+    }
     const bearer = /^Bearer (.+)$/.exec(req.headers.authorization ?? "")?.[1];
     if (bearer) revoked.push(bearer);
     res.writeHead(204);
