@@ -140,10 +140,11 @@ impl NumUnit {
     /// The unit of a field by its name, the last segment of a path.
     pub fn of_field(field: &str) -> Option<NumUnit> {
         match field {
-            "winBefore" | "winAfter" | "accuracy" => Some(NumUnit::Percent),
-            "clockBefore" | "clockAfter" | "timeSpent" | "baseSeconds" | "incrementSeconds" => {
-                Some(NumUnit::Seconds)
-            }
+            // Fix E: find_examples' `searched` bounds share the units of what they bound.
+            "winBefore" | "winAfter" | "accuracy" | "minWinBefore" | "maxWinBefore"
+            | "minDeltaW" => Some(NumUnit::Percent),
+            "clockBefore" | "clockAfter" | "timeSpent" | "baseSeconds" | "incrementSeconds"
+            | "clockBelowSeconds" => Some(NumUnit::Seconds),
             "cp" => Some(NumUnit::Centipawns),
             _ => None,
         }

@@ -36,12 +36,16 @@ use time::Date;
 use time::macros::format_description;
 
 use super::data_source::{
-    CoachDataSource, EngineCheck, ExamplesQuery, GameResult, GameSummary, GamesQuery,
-    InteractiveEngine, PositionRecord,
+    CoachDataSource, EngineCheck, ExampleSort, ExamplesQuery, FilterCounts, GameResult,
+    GameSummary, GamesQuery, InteractiveEngine, Judgement, LOSING_TO, MoveFilter, Phase,
+    PositionRecord, Standing, WINNING_FROM,
 };
-use super::tools::{MAX_EXAMPLES, MAX_FEN_CHARS, MAX_GAMES, MAX_ID_CHARS, MAX_MOVES, MAX_PLY};
+use super::tools::{
+    MAX_CLOCK_SECONDS, MAX_EXAMPLES, MAX_FEN_CHARS, MAX_GAMES, MAX_ID_CHARS, MAX_LAST_GAMES,
+    MAX_MOVES, MAX_PLY,
+};
 use crate::entitlements::QuotaWindow;
-use crate::input::types::{ExemplarPosition, MoveRef};
+use crate::input::types::{ExemplarPosition, MoveRef, PlayerColor};
 use crate::validator::evidence::{
     EngineEvidence, Evidence, PositionArgs, PvFrom, PvSides, iso_prefix,
 };
@@ -890,16 +894,272 @@ struct ExamplesIn {
     motif: Option<String>,
     #[serde(default)]
     line_key: Option<String>,
+    #[serde(default)]
+    phase: Option<String>,
+    #[serde(default)]
+    judgement: Option<String>,
+    #[serde(default)]
+    min_judgement: Option<String>,
+    #[serde(default)]
+    standing: Option<String>,
+    #[serde(default)]
+    min_win_before: Option<u32>,
+    #[serde(default)]
+    max_win_before: Option<u32>,
+    #[serde(default, rename = "minDeltaW")]
+    min_delta_w: Option<u32>,
+    #[serde(default)]
+    clock_below_seconds: Option<u32>,
+    #[serde(default)]
+    color: Option<String>,
+    #[serde(default)]
+    since: Option<String>,
+    #[serde(default)]
+    until: Option<String>,
+    #[serde(default)]
+    last_games: Option<u32>,
+    #[serde(default)]
+    sort: Option<String>,
     limit: u32,
 }
 
+const EXAMPLES_FIELDS: &[&str] = &[
+    "weaknessId",
+    "motif",
+    "lineKey",
+    "phase",
+    "judgement",
+    "minJudgement",
+    "standing",
+    "minWinBefore",
+    "maxWinBefore",
+    "minDeltaW",
+    "clockBelowSeconds",
+    "color",
+    "since",
+    "until",
+    "lastGames",
+    "sort",
+    "limit",
+];
+
+/// A validated `YYYY-MM-DD` of `field`.
+fn check_date(field: &str, d: Option<&str>) -> Result<Option<Date>, String> {
+    d.map(|d| {
+        (d.len() == 10)
+            .then(|| Date::parse(d, format_description!("[year]-[month]-[day]")).ok())
+            .flatten()
+            .ok_or_else(|| format!("invalid input: {field} must be a date YYYY-MM-DD"))
+    })
+    .transpose()
+}
+
+/// A validated enum value of `field`, one of `allowed` (never echoes the value).
+fn check_enum<T>(
+    field: &str,
+    v: Option<&str>,
+    parse: impl Fn(&str) -> Option<T>,
+    allowed: &str,
+) -> Result<Option<T>, String> {
+    v.map(|s| parse(s).ok_or_else(|| format!("invalid input: {field} must be {allowed}")))
+        .transpose()
+}
+
+fn check_range(field: &str, v: Option<u32>, lo: u32, hi: u32) -> Result<(), String> {
+    match v {
+        Some(n) if !(lo..=hi).contains(&n) => {
+            Err(format!("invalid input: {field} must be {lo} to {hi}"))
+        }
+        _ => Ok(()),
+    }
+}
+
+fn parse_sort(s: &str) -> Option<ExampleSort> {
+    match s {
+        "recent" => Some(ExampleSort::Recent),
+        "worst" => Some(ExampleSort::Worst),
+        _ => None,
+    }
+}
+
+/// The move filter of `i`, or `None` when no filter field is set (`sort` alone filters
+/// nothing). Every field is validated here.
+fn move_filter(i: &ExamplesIn) -> Result<Option<MoveFilter>, String> {
+    const JUDGEMENTS: &str = "inaccuracy, mistake or blunder";
+    let any = i.phase.is_some()
+        || i.judgement.is_some()
+        || i.min_judgement.is_some()
+        || i.standing.is_some()
+        || i.min_win_before.is_some()
+        || i.max_win_before.is_some()
+        || i.min_delta_w.is_some()
+        || i.clock_below_seconds.is_some()
+        || i.color.is_some()
+        || i.since.is_some()
+        || i.until.is_some()
+        || i.last_games.is_some();
+    if !any {
+        return Ok(None);
+    }
+    let phase = check_enum(
+        "phase",
+        i.phase.as_deref(),
+        Phase::parse,
+        "opening, middlegame or endgame",
+    )?;
+    let judgement = check_enum(
+        "judgement",
+        i.judgement.as_deref(),
+        Judgement::parse,
+        JUDGEMENTS,
+    )?;
+    let min_judgement = check_enum(
+        "minJudgement",
+        i.min_judgement.as_deref(),
+        Judgement::parse,
+        JUDGEMENTS,
+    )?;
+    if judgement.is_some() && min_judgement.is_some() {
+        return Err("invalid input: give judgement or minJudgement, not both".to_owned());
+    }
+    let standing = check_enum(
+        "standing",
+        i.standing.as_deref(),
+        Standing::parse,
+        "winning, equal or losing",
+    )?;
+    check_range("minWinBefore", i.min_win_before, 0, 100)?;
+    check_range("maxWinBefore", i.max_win_before, 0, 100)?;
+    if let (Some(lo), Some(hi)) = (i.min_win_before, i.max_win_before)
+        && lo > hi
+    {
+        return Err("invalid input: minWinBefore must not be above maxWinBefore".to_owned());
+    }
+    check_range("minDeltaW", i.min_delta_w, 1, 100)?;
+    check_range(
+        "clockBelowSeconds",
+        i.clock_below_seconds,
+        1,
+        MAX_CLOCK_SECONDS,
+    )?;
+    let color = check_enum(
+        "color",
+        i.color.as_deref(),
+        |c| c.parse::<PlayerColor>().ok(),
+        "white or black",
+    )?;
+    let since = check_date("since", i.since.as_deref())?;
+    let until = check_date("until", i.until.as_deref())?;
+    if let (Some(a), Some(b)) = (since, until)
+        && a > b
+    {
+        return Err("invalid input: since must not be after until".to_owned());
+    }
+    check_range("lastGames", i.last_games, 1, MAX_LAST_GAMES)?;
+    let sort = check_enum("sort", i.sort.as_deref(), parse_sort, "recent or worst")?;
+    Ok(Some(MoveFilter {
+        phase,
+        judgement,
+        min_judgement,
+        standing,
+        min_win_before: i.min_win_before,
+        max_win_before: i.max_win_before,
+        min_delta_w: i.min_delta_w,
+        clock_below: i.clock_below_seconds,
+        color,
+        since,
+        until,
+        last_games: i.last_games,
+        sort: sort.unwrap_or_default(),
+    }))
+}
+
+/// What a move filter searched, so the model can say it when nothing (or little) matched: the
+/// validated filter in the tool's own field names, plus the source's counts when it has them.
+fn searched_json(f: &MoveFilter, counts: Option<&FilterCounts>) -> Value {
+    let mut o = Map::new();
+    let mut put = |k: &str, v: Value| {
+        o.insert(k.to_owned(), v);
+    };
+    if let Some(c) = counts {
+        put("timeClass", json!(c.time_class));
+    }
+    put("playerMovesOnly", json!(true));
+    if let Some(p) = f.phase {
+        put("phase", json!(p.as_str()));
+    }
+    if let Some(j) = f.judgement {
+        put("judgement", json!(j.as_str()));
+    }
+    if let Some(j) = f.min_judgement {
+        put("minJudgement", json!(j.as_str()));
+    } else if f.judgement.is_none() && f.min_delta_w.is_none() {
+        // The default: only erring moves.
+        put("minJudgement", json!(Judgement::Inaccuracy.as_str()));
+    }
+    if let Some(st) = f.standing {
+        put("standing", json!(st.as_str()));
+    }
+    // The win-chance bounds in force (a preset's own bound, or a tighter one given), so the
+    // model can state them with a number token: "winning" is an engine word that needs one.
+    let preset = |x: f64| Some(x as u32);
+    let (pre_lo, pre_hi) = match f.standing {
+        Some(Standing::Winning) => (preset(WINNING_FROM), None),
+        Some(Standing::Losing) => (None, preset(LOSING_TO)),
+        Some(Standing::Equal) => (preset(LOSING_TO), preset(WINNING_FROM)),
+        None => (None, None),
+    };
+    let lo = f.min_win_before.max(pre_lo);
+    let hi = match (f.max_win_before, pre_hi) {
+        (Some(a), Some(b)) => Some(a.min(b)),
+        (a, b) => a.or(b),
+    };
+    for (k, v) in [
+        ("minWinBefore", lo),
+        ("maxWinBefore", hi),
+        ("minDeltaW", f.min_delta_w),
+        ("clockBelowSeconds", f.clock_below),
+        ("lastGames", f.last_games),
+    ] {
+        if let Some(n) = v {
+            put(k, json!(n));
+        }
+    }
+    if let Some(c) = f.color {
+        put("color", json!(c.as_str()));
+    }
+    let ymd = format_description!("[year]-[month]-[day]");
+    for (k, d) in [("since", f.since), ("until", f.until)] {
+        if let Some(s) = d.and_then(|d| d.format(&ymd).ok()) {
+            put(k, json!(s));
+        }
+    }
+    put(
+        "sort",
+        json!(match f.sort {
+            ExampleSort::Recent => "recent",
+            ExampleSort::Worst => "worst",
+        }),
+    );
+    if let Some(c) = counts {
+        put("gamesSearched", json!(c.games_searched));
+        put("matchingMoves", json!(c.matching_moves));
+        put("matchingGames", json!(c.matching_games));
+    }
+    Value::Object(o)
+}
+
 async fn find_examples(deps: &ToolDeps<'_>, s: &ToolSession, input: &Value) -> Out {
-    let i: ExamplesIn = parse(input, &["weaknessId", "motif", "lineKey", "limit"])?;
+    let i: ExamplesIn = parse(input, EXAMPLES_FIELDS)?;
     let selectors = usize::from(i.weakness_id.is_some())
         + usize::from(i.motif.is_some())
         + usize::from(i.line_key.is_some());
-    if selectors != 1 {
-        return Err("invalid input: give exactly one of weaknessId, motif and lineKey".to_owned());
+    let filter = move_filter(&i)?;
+    if selectors + usize::from(filter.is_some()) != 1 {
+        return Err(
+            "invalid input: give exactly one of weaknessId, motif, lineKey and a move filter"
+                .to_owned(),
+        );
     }
     check_limit(i.limit, MAX_EXAMPLES)?;
     if let Some(w) = &i.weakness_id {
@@ -912,12 +1172,22 @@ async fn find_examples(deps: &ToolDeps<'_>, s: &ToolSession, input: &Value) -> O
         check_line_key(l)?;
     }
     let limit = i.limit as usize;
+    let counts = match &filter {
+        Some(f) => deps
+            .ds
+            .count_examples(f)
+            .await
+            .map_err(|e| source_failed("find_examples", &e))?,
+        None => None,
+    };
+    let searched = filter.as_ref().map(|f| searched_json(f, counts.as_ref()));
     let records = deps
         .ds
         .find_examples(ExamplesQuery {
             weakness_id: i.weakness_id,
             motif: i.motif,
             line_key: i.line_key,
+            filter,
             limit: i.limit,
         })
         .await
@@ -942,7 +1212,17 @@ async fn find_examples(deps: &ToolDeps<'_>, s: &ToolSession, input: &Value) -> O
                 out.push(r);
             }
         }
-        json!({ "examples": out })
+        let Some(searched) = searched else {
+            return json!({ "examples": out });
+        };
+        let (nums, dates) =
+            index_paths(ev, &format!("tools.{k}"), &json!({ "searched": &searched }));
+        ev.add_numbers_from(&searched);
+        json!({
+            "examples": out,
+            "searched": searched,
+            "refs": {"num": nums, "date": dates},
+        })
     }))
 }
 

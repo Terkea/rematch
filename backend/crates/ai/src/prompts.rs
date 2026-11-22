@@ -73,7 +73,7 @@ macro_rules! prompt {
     };
 }
 
-static TABLE: [Prompt; 27] = [
+static TABLE: [Prompt; 28] = [
     prompt!("core/rules", 1),
     prompt!("core/tokens", 1),
     prompt!("core/tokens", 2),
@@ -98,6 +98,7 @@ static TABLE: [Prompt; 27] = [
     prompt!("weakness-change/task", 1),
     prompt!("weakness-change/output", 1),
     prompt!("chat/system", 1),
+    prompt!("chat/system", 2),
     prompt!("chat/repair", 1),
     prompt!("chat-summary/system", 1),
     prompt!("chat-summary/task", 1),
@@ -145,7 +146,9 @@ pub const REPORT_PROMPT_VERSION: &str = "report@1";
 pub const CHAT_PROMPT_SET: &[(&str, u32)] = &[
     ("core/rules", 1),
     ("core/tokens", 2),
-    ("chat/system", 1),
+    // Fix E (N8): v2 teaches the move filter, citing concrete moves and saying what a search
+    // that found nothing searched. v1 stays for stored hashes.
+    ("chat/system", 2),
     ("chat/repair", 1),
 ];
 
