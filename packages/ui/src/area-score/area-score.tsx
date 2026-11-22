@@ -86,11 +86,21 @@ export function deltaText(delta: number): string {
   return `${delta > 0 ? "+" : "−"}${Math.abs(delta)} since last report`;
 }
 
-/** "Endgame 62, band median 55, next band 68", or "…, next band not measured yet" without one (R8). */
+/** The score has reached the next band's threshold: the flag is no longer ahead of the player. */
+export const pastNext = ({ score, band }: Pick<AreaScoreItem, "score" | "band">) =>
+  band.next !== undefined && score >= band.next;
+
+/** "In the next band (71 and up)". */
+export const inNextText = (next: number) => `In the next band (${next} and up)`;
+
+/** "Endgame 62, band median 55, next band 68", "…, in the next band (71 and up)", or "…, next band not measured yet" (R8). */
 export function areaScoreText({ area, score, band, interval }: AreaScoreItem): string {
-  const next = band.next === undefined ? "not measured yet" : `${band.next}`;
+  const head = `${areaLabels[area]} ${score}, band median ${band.median}`;
   const range = interval === undefined ? "" : `, ${intervalText(interval).toLowerCase()}`;
-  return `${areaLabels[area]} ${score}, band median ${band.median}, next band ${next}${range}`;
+  if (band.next === undefined) return `${head}, next band not measured yet${range}`;
+  return pastNext({ score, band })
+    ? `${head}, in the next band (${band.next} and up)${range}`
+    : `${head}, next band ${band.next}${range}`;
 }
 
 /**
@@ -148,7 +158,8 @@ function Ruler({
         className="absolute top-1/2 h-2.5 w-0.5 -translate-x-1/2 rounded-full bg-pencil"
         style={{ left: fmt(m) }}
       />
-      {band.next !== undefined ? (
+      {/* The flag is a target ahead of the player; once reached, the row says so in words. */}
+      {band.next !== undefined && !pastNext({ score, band }) ? (
         <div
           data-tick="next"
           className="absolute top-1/2 -mt-3.5 h-3.5 w-0.5 -translate-x-1/2 bg-good"
@@ -210,6 +221,11 @@ function ScoreRow(props: AreaScoreItem & { domain: RulerDomain }) {
               style={{ fontVariantNumeric: "lining-nums" }}
             >
               {deltaText(delta)}
+            </span>
+          ) : null}
+          {pastNext({ score, band }) && band.next !== undefined ? (
+            <span className="text-ink-soft" style={{ fontVariantNumeric: "lining-nums" }}>
+              {inNextText(band.next)}
             </span>
           ) : null}
           {interval !== undefined ? (

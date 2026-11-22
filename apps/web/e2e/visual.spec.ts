@@ -109,6 +109,14 @@ for (const route of ["/sign-in", "/blocked"] as const) {
     await gotoSettled(page, route);
     await hydrated(page, route === "/sign-in" ? "form" : "a[href='/']");
     await tall(page);
+    // From lg the board's sheet bleeds to the viewport's right edge, with no gutter strip of the
+    // form's ground beside it (web polish critic I1).
+    if ((page.viewportSize()?.width ?? 0) >= 1024) {
+      const [right, width] = await page
+        .locator("aside[data-surface='sheet']")
+        .evaluate((el) => [el.getBoundingClientRect().right, window.innerWidth]);
+      expect.soft(right).toBe(width);
+    }
     const name = route.slice(1);
     await expect.soft(page).toHaveScreenshot(`${name}.png`, SHOT);
     expect.soft(await visibleText(page, "body")).toMatchSnapshot(`${name}.txt`);

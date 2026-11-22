@@ -33,10 +33,11 @@ Calculation
 30 rapid games
 49
 +1 since last report
-Time 74, band median 62, next band 71
+Time 74, band median 62, in the next band (71 and up)
 Time
 38 rapid games
 74
+In the next band (71 and up)
 Mindset 55, band median 58, next band 66
 Mindset
 38 rapid games

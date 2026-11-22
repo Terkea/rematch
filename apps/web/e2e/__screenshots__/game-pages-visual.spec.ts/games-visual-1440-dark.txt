@@ -18,13 +18,12 @@ Showing 1–25 of 35 games
 Sort by
 Newest first
 Your games
-Result
+Date	Result
 Square: your colour
 	Opponent	Time control	Opening	Accuracy	Marks
 ?? blunder, ? mistake
 
 31 Oct 2026
-
 0
 Loss
 DrNykterstein
@@ -36,7 +35,6 @@ Queen's Indian Accelerated
 0?
 
 30 Oct 2026
-
 1
 Win
 ChessArtHouse
@@ -48,7 +46,6 @@ Anderssen's Opening
 3?
 
 29 Oct 2026
-
 1
 Win
 oasenegre
@@ -71,7 +68,6 @@ Not recorded
 3?
 
 27 Oct 2026
-
 1
 Win
 opp
@@ -83,7 +79,6 @@ Not recorded
 0?
 
 25 Oct 2026
-
 1
 Win
 opp
@@ -95,7 +90,6 @@ Not recorded
 1?
 
 23 Oct 2026
-
 ½
 Draw
 opp
@@ -107,7 +101,6 @@ Not recorded
 2?
 
 21 Oct 2026
-
 0
 Loss
 opp
@@ -119,7 +112,6 @@ Not recorded
 3?
 
 20 Oct 2026
-
 ½
 Draw
 opp
@@ -131,7 +123,6 @@ Not recorded
 3?
 
 19 Oct 2026
-
 0
 Loss
 opp
@@ -143,7 +134,6 @@ Not recorded
 0?
 
 17 Oct 2026
-
 0
 Loss
 opp
@@ -155,7 +145,6 @@ Not recorded
 1?
 
 15 Oct 2026
-
 ½
 Draw
 opp
@@ -175,7 +164,6 @@ opp
 Not recorded
 	Waiting for analysis
 13 Oct 2026
-
 1
 Win
 opp
@@ -187,7 +175,6 @@ Not recorded
 3?
 
 11 Oct 2026
-
 1
 Win
 opp
@@ -199,7 +186,6 @@ Not recorded
 0?
 
 9 Oct 2026
-
 0
 Loss
 opp
@@ -211,7 +197,6 @@ Not recorded
 1?
 
 7 Oct 2026
-
 ½
 Draw
 opp
@@ -223,7 +208,6 @@ Not recorded
 2?
 
 5 Oct 2026
-
 0
 Loss
 opp
@@ -235,7 +219,6 @@ Not recorded
 3?
 
 3 Oct 2026
-
 1
 Win
 opp
@@ -247,7 +230,6 @@ Not recorded
 0?
 
 1 Oct 2026
-
 1
 Win
 opp
@@ -259,7 +241,6 @@ Not recorded
 1?
 
 29 Sep 2026
-
 ½
 Draw
 opp
@@ -271,7 +252,6 @@ Not recorded
 2?
 
 27 Sep 2026
-
 0
 Loss
 opp
@@ -283,7 +263,6 @@ Not recorded
 3?
 
 25 Sep 2026
-
 0
 Loss
 opp
@@ -295,7 +274,6 @@ Not recorded
 0?
 
 23 Sep 2026
-
 0
 Loss
 opp
@@ -307,7 +285,6 @@ Not recorded
 1?
 
 21 Sep 2026
-
 ½
 Draw
 opp

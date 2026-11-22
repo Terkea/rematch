@@ -512,6 +512,26 @@ describe("JudgementColumns, honesty and access", () => {
     );
   });
 
+  // Web polish critic I2: 34 games ended at about 70% of a 1255px row, so the chart looked cut off.
+  it("spreads the columns over the whole width, each block no wider than 24px", async () => {
+    measured = 900;
+    const games = Array.from({ length: 34 }, (_, i) => game(i, 1, 0, 0));
+    const { container } = render(<JudgementColumns games={games} label="Mistakes" />);
+    await nextFrame();
+    const links = screen.getAllByRole("link");
+    const last = links.at(-1) as Element;
+    const end = Number(last.getAttribute("data-x")) + Number(last.getAttribute("data-w"));
+    expect(end).toBeCloseTo(900, 5);
+    for (const cell of container.querySelectorAll("[data-cell='blunder']")) {
+      expect(Number(cell.getAttribute("width"))).toBeLessThanOrEqual(24);
+    }
+    // Each block sits in the middle of its game's slot.
+    const slot = links[0] as Element;
+    const block = slot.querySelector("[data-cell='blunder']") as Element;
+    const mid = Number(block.getAttribute("x")) + Number(block.getAttribute("width")) / 2;
+    expect(mid).toBeCloseTo(Number(slot.getAttribute("data-w")) / 2, 5);
+  });
+
   it("opens scrolled to the latest games", async () => {
     measured = 320;
     const set = vi.fn();

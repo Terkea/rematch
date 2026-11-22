@@ -336,7 +336,10 @@ describe("games list", () => {
     );
   });
 
-  it("groups by day under date headings when sorted by date", () => {
+  // Web polish critic I8: with about one game a day, a heading row per day put a header over
+  // nearly every game and doubled the list. Sorted by date, each day is now named once, in a Date
+  // cell that spans that day's rows, and no row is a heading.
+  it("names each day once, in a Date cell spanning its games, when sorted by date", () => {
     const rows = [
       toRowView(row()),
       toRowView(row({ id: "00000000-0000-4000-8000-000000000002", result: "loss" })),
@@ -352,19 +355,38 @@ describe("games list", () => {
     const heads = within(table)
       .getAllByRole("columnheader")
       .map((h) => h.textContent ?? "");
-    expect(heads[0]).toMatch(/^Result/);
-    expect(heads.slice(1, 5)).toEqual(["Opponent", "Time control", "Opening", "Accuracy"]);
-    expect(heads[5]).toMatch(/^Marks/);
-    expect(
-      within(table)
-        .getAllByRole("rowheader")
-        .map((h) => h.textContent),
-    ).toEqual(["12 Nov 2026", "10 Nov 2026"]);
-    expect(within(table).getAllByRole("link")).toHaveLength(3);
-    expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual([
-      "12 Nov 2026",
-      "10 Nov 2026",
-    ]);
+    expect(heads[0]).toBe("Date");
+    expect(heads[1]).toMatch(/^Result/);
+    expect(heads.slice(2, 6)).toEqual(["Opponent", "Time control", "Opening", "Accuracy"]);
+    expect(heads[6]).toMatch(/^Marks/);
+    const days = within(table).getAllByRole("rowheader");
+    expect(days.map((h) => h.textContent)).toEqual(["12 Nov 2026", "10 Nov 2026"]);
+    expect(days.map((h) => h.getAttribute("rowspan"))).toEqual(["2", "1"]);
+    // One row per game: no heading rows between them.
+    const bodyRows = table.querySelectorAll("tbody tr");
+    expect(bodyRows).toHaveLength(3);
+    for (const tr of bodyRows)
+      expect(within(tr as HTMLElement).getAllByRole("link")).toHaveLength(1);
+    expect(screen.queryAllByRole("heading", { level: 2 })).toHaveLength(0);
+  });
+
+  it("dates every phone row inline, with no day headings", () => {
+    const rows = [
+      toRowView(row()),
+      toRowView(
+        row({
+          id: "00000000-0000-4000-8000-000000000003",
+          playedAt: new Date("2026-11-10T09:00:00Z"),
+        }),
+      ),
+    ];
+    const { container } = render(<GamesList rows={rows} grouped />);
+    const facts = [...container.querySelectorAll("li [data-part='facts']")].map(
+      (f) => f.textContent,
+    );
+    expect(facts).toHaveLength(2);
+    expect(facts[0]).toContain("12 Nov 2026");
+    expect(facts[1]).toContain("10 Nov 2026");
   });
 
   it("keeps a Date column, and no day headings, under any other sort", () => {
@@ -521,7 +543,8 @@ describe("fix round 2", () => {
     render(<GamesList rows={[toRowView(row())]} grouped />);
     const legend = "The square is the colour you played; the figure is your score.";
     expect(screen.getAllByText(legend).length).toBeGreaterThanOrEqual(1);
-    const head = within(screen.getByRole("table")).getAllByRole("columnheader")[0];
+    // The Date column comes first, sorted by date too (I8).
+    const head = within(screen.getByRole("table")).getAllByRole("columnheader")[1];
     expect(head).toHaveTextContent(/^Result/);
     expect(head).toHaveTextContent("Square: your colour");
   });
