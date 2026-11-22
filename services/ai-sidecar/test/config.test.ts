@@ -3,7 +3,7 @@ import { ConfigError, loadConfig } from "../src/config.js";
 
 const TOKEN = "x".repeat(32);
 const GUARD =
-  "refusing to start: production needs ANTHROPIC_API_KEY or a cloud provider; a subscription token is not allowed (ADR-R3-6)";
+  "refusing to start: production needs ANTHROPIC_API_KEY or a cloud provider; a subscription token is not allowed (ADR 0062)";
 const DEV = { AI_SIDECAR_ENV: "development" };
 const DB = { AI_SESSION_DATABASE_URL: "postgres://ai_sidecar@db/chess" };
 

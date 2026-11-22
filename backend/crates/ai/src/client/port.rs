@@ -1,5 +1,5 @@
 //! The AI client port: request and result types and the [`AiClient`] trait. The runtime adapter
-//! (the Agent SDK sidecar plus the batch client, ADR-R3-1 and ADR-R3-6) and the fake implement it.
+//! (the Agent SDK sidecar plus the batch client, ADR 0057 and ADR 0062) and the fake implement it.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -228,7 +228,7 @@ pub struct ChatTurnRequest {
     pub effort: Effort,
     /// The SDK's `maxTurns` (model rounds within this turn; the sidecar caps it at 10).
     pub max_turns: u32,
-    /// The Postgres conversation id; it is also the SDK session id (ADR-R3-6 Amendment 1).
+    /// The Postgres conversation id; it is also the SDK session id (ADR 0062 Amendment 1).
     pub conversation_id: uuid::Uuid,
     /// False on the first turn of a conversation, true on every later turn (then `messages`
     /// holds only the new user message).
@@ -291,7 +291,7 @@ pub enum TurnEvent {
     Done(TurnResult),
 }
 
-/// What to meter for a finished chat turn (controller ruling, ADR-R3-6):
+/// What to meter for a finished chat turn (controller ruling, ADR 0062):
 /// - a resumed turn with the previous turn's stored `session_model_usage`: per model,
 ///   `session_model_usage(now) - previous`, falling back to `model_usage` when any difference is
 ///   negative (a model missing from `now` counts as negative);

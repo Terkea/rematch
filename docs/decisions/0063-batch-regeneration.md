@@ -1,7 +1,7 @@
-# ADR-R3-7. Monthly and weekly regeneration through the Message Batches API
+# 0063. Monthly and weekly regeneration through the Message Batches API
 
-Date: 2026-11-22. Status: accepted (Task 20). Builds on ADR-R3-3 (AI tables and jobs), ADR-R3-4
-(sectioned generation; Task 16's batch processing), ADR-R3-5 (budgets) and ADR-R3-6 (batches stay
+Date: 2026-11-22. Status: accepted (Task 20). Builds on ADR 0059 (AI tables and jobs), ADR 0060
+(sectioned generation; Task 16's batch processing), ADR 0061 (budgets) and ADR 0062 (batches stay
 on the minimal Rust Messages client and need `ANTHROPIC_API_KEY`).
 
 ## Context
@@ -82,3 +82,11 @@ billed call must be metered exactly once.
 - Sections are stored by Task 18's `report_job::persist_section_outcome` (store, refresh the
   status and disclosure, return the event labels), shared by the sync `on_section` and the
   poller; only the metering key differs.
+
+## Amendment (Task 26): a paid repair is metered when it returns
+
+The parked T20 item. A sync repair of a batch result is now metered right after it returns, in
+its own transaction, under `batch:<item>:repair:<uuid>:<n>`; the item's transaction meters only
+the batch result (`batch:<item>:<n>`, once). If the item's write then fails, the next poll
+repairs again and that repair is metered too: both were paid. Test:
+`a_paid_repair_is_metered_when_its_item_write_fails`.

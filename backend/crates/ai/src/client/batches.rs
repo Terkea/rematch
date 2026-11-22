@@ -1,4 +1,4 @@
-//! The minimal Messages Batches client (ADR-R3-1, ADR-R3-6 decision 3): the SDK has no batch
+//! The minimal Messages Batches client (ADR 0057, ADR 0062 decision 3): the SDK has no batch
 //! support, and there is no official Rust SDK, so this is our own reqwest client at
 //! `anthropic-version: 2026-10-21`. It is used only for the monthly and weekly regenerations.
 //!

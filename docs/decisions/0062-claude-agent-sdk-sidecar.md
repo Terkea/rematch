@@ -1,6 +1,6 @@
-# ADR-R3-6. Claude calls go through a Claude Agent SDK sidecar
+# 0062. Claude calls go through a Claude Agent SDK sidecar
 
-Date: 2026-11-21. Status: accepted (owner direction). Amends ADR-R3-1.
+Date: 2026-11-21. Status: accepted (owner direction). Amends ADR 0057.
 
 ## Context
 
@@ -115,7 +115,7 @@ Separately, each request's `timeoutMs` aborts the whole query.
 
 **Limiter.** At most `maxConcurrency` 4 calls run at once, each in its own subprocess of about 1 GiB. Further requests wait in a FIFO queue of up to 32 for at most 30 s. When the queue is full or the wait runs out, the reply is 529 `overloaded_error` with `retry-after: 5`. A client that disconnects while queued leaves the queue. Compose caps the container with `mem_limit: 5g`, and capacity planning uses measured RSS.
 
-**Production guard.** `AI_SIDECAR_ENV=production` or `NODE_ENV=production` turns the guard on. With `auth` of `oauth` or `none`, the sidecar exits with code 78 and the message "refusing to start: production needs ANTHROPIC_API_KEY or a cloud provider; a subscription token is not allowed (ADR-R3-6)". Production also requires `AI_SESSION_DATABASE_URL`. In development `oauth` is allowed, and `none` starts, reports `auth:"none"` and answers every call with 401 `authentication_error`.
+**Production guard.** `AI_SIDECAR_ENV=production` or `NODE_ENV=production` turns the guard on. With `auth` of `oauth` or `none`, the sidecar exits with code 78 and the message "refusing to start: production needs ANTHROPIC_API_KEY or a cloud provider; a subscription token is not allowed (ADR 0062)". Production also requires `AI_SESSION_DATABASE_URL`. In development `oauth` is allowed, and `none` starts, reports `auth:"none"` and answers every call with 401 `authentication_error`.
 
 **Licence.** `@anthropic-ai/claude-agent-sdk` is "SEE LICENSE IN README.md": Anthropic's commercial terms, not open source. Its peers are permissive: `@modelcontextprotocol/sdk` 1.32.2 (MIT), `@anthropic-ai/sdk` 1.8.0 (Apache-2.0) and `zod` 4.6.7 (MIT). So is `pg` 8.23.1 (MIT). All are pinned exactly and pass the 7-day age check. The platform `claude` binaries come from the SDK's `optionalDependencies`, so installs must keep optional dependencies.
 
@@ -174,3 +174,36 @@ The chat's `analyse_position` tool reaches Stockfish only through `ai::chat::int
 - **Cancellation (T23 m6).** A drop guard closes this gap. If a `request` or `wait` future is dropped while it polls (the turn was cancelled), the guard spawns an `abandon`. A check whose result nobody saw is never charged.
 - **A refund is also a cancellation (review I1, controller ruling).** `db::interactive::abandon_eval` sets a `pending` row to `failed` with error `abandoned` and `charged = false`, in one update guarded by `status = 'pending'`. The handler skips non-pending rows at load. `complete_eval` also needs `pending`, so a running analysis's late lines are dropped. Whichever update wins the race decides the outcome. If the completion wins, the row is `done` and stays charged, because the result exists. If the refund wins, the row is `failed` and uncharged, and never reusable. A refunded check can therefore never become a free result, so a player cannot cancel a turn and then ask again to get unlimited checks. A poll-time DB error arms the same guard, and this rule covers it too. The alternative, re-charging on reuse, was rejected: it needs a second quota reservation inside the reuse path. Tests: `a_cancelled_check_is_not_reused_free` and `a_refund_racing_completion_never_yields_a_free_result`.
 - **Scoping.** Eval ids are 32 lowercase hex (`Uuid::simple`). `wait` and `abandon` only see the engine's own account, so a foreign id is `Unavailable` or a no-op.
+
+## Worker wiring (Task 26)
+
+- `WorkerEnv` reads `AI_SIDECAR_URL`/`AI_SIDECAR_TOKEN` (a URL without a token is a startup
+  error), `AI_TOOL_BIND` (default `0.0.0.0:7311`), `AI_TOOL_PUBLIC_URL`, `ANTHROPIC_API_KEY`
+  (batches only), the three budget variables and `AI_PRICING_FILE`. Its `Debug` redacts the key
+  and the token.
+- **Enabled check.** AI is enabled only when the sidecar is configured and its `/health` reports
+  a credential (`auth != "none"`). A failed health check also disables AI until the next start
+  (`ai: disabled (sidecar health check failed)`); compose starts the worker only after the
+  sidecar is healthy. The client is `with_breaker(AiRuntime { sidecar, batches }, Breaker(5, 60 s))`;
+  the tool endpoint starts only when AI is enabled and `AI_TOOL_PUBLIC_URL` is set.
+- **The log line** is exactly `ai: enabled (sidecar, batches on|off)` or
+  `ai: disabled (AI_SIDECAR_URL not set | sidecar has no credential | sidecar health check failed)`.
+  A test captures every log line of the worker's start and checks that neither the key nor the
+  token appears.
+- **Runners.** One per AI kind, AI or not, all `PriorityFifo`: `generate-report` (2, 20 min),
+  `weekly-review` and `explain-weakness-change` (2 each, 10 min), `coach-chat` (4), `interactive-analyse`
+  (1, 2 min, on the shared `EnginePool`), and the batch schedules, the batch poll (45 min) and
+  `ai-reconcile` (5 min), one each. **Deviation:** the brief's 3 min hard timeout for `coach-chat`
+  predates the 10 min turn budget of Task 25 (`CHAT_TURN_TIMEOUT`), so the runner's deadline is
+  that plus 60 s; a shorter one would cut turns the job still allows and lose their metering.
+  The AI runners add `AI_POOL_HEADROOM` (30) connections to the pool. `ensure_ai_recurring` is
+  scheduled with the reconciler. The analysis CLI starts no AI runner.
+- **Inputs and plans.** `DefaultEntitlements` (M7 replaces it); R2's `build_coaching_input` as the
+  provider (an account with no analysed game in the time class has no input yet). R2's builder
+  future is not `Send`, so the provider drives it on a blocking thread (hand-off to R2: make it
+  `Send`). There is no weekly-input builder yet (`NullWeeklyProvider`).
+- **Compose.** `rust-worker` gets `AI_SIDECAR_URL: http://ai-sidecar:7310`, the shared token
+  default, `AI_TOOL_BIND: 0.0.0.0:7311`, `AI_TOOL_PUBLIC_URL: http://rust-worker:7311`,
+  `ANTHROPIC_API_KEY` and the budgets, no ports, and `depends_on: ai-sidecar (service_healthy)`.
+  The `ai_sidecar` role gets LOGIN and its password from `ai-sidecar-role` (dev) or secret
+  management (production), as before.

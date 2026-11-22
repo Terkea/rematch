@@ -38,9 +38,9 @@ use ai::jobs::batch_jobs::{
 use ai::jobs::budget::BudgetConfig;
 use ai::jobs::change_job::ExplainChangeHandler;
 use ai::jobs::kinds::{
-    CHAT_TURN_TIMEOUT, KIND_AI_BATCH_POLL, KIND_AI_RECONCILE, KIND_COACH_CHAT,
-    KIND_EXPLAIN_CHANGE, KIND_GENERATE_REPORT, KIND_INTERACTIVE_ANALYSE,
-    KIND_REPORT_BATCH_SCHEDULE, KIND_WEEKLY_BATCH_SCHEDULE, KIND_WEEKLY_REVIEW,
+    CHAT_TURN_TIMEOUT, KIND_AI_BATCH_POLL, KIND_AI_RECONCILE, KIND_COACH_CHAT, KIND_EXPLAIN_CHANGE,
+    KIND_GENERATE_REPORT, KIND_INTERACTIVE_ANALYSE, KIND_REPORT_BATCH_SCHEDULE,
+    KIND_WEEKLY_BATCH_SCHEDULE, KIND_WEEKLY_REVIEW,
 };
 use ai::jobs::providers::CoachingInputProvider;
 use ai::jobs::reconcile::AiReconcileHandler;
@@ -254,9 +254,7 @@ pub fn ai_runner_config(base: &RunnerConfig, kind: &str) -> RunnerConfig {
         KIND_WEEKLY_REVIEW => config(base, WEEKLY_CONCURRENCY, ITEM_HARD_TIMEOUT),
         KIND_EXPLAIN_CHANGE => config(base, CHANGE_CONCURRENCY, ITEM_HARD_TIMEOUT),
         KIND_COACH_CHAT => config(base, CHAT_CONCURRENCY, CHAT_HARD_TIMEOUT),
-        KIND_INTERACTIVE_ANALYSE => {
-            config(base, INTERACTIVE_CONCURRENCY, INTERACTIVE_HARD_TIMEOUT)
-        }
+        KIND_INTERACTIVE_ANALYSE => config(base, INTERACTIVE_CONCURRENCY, INTERACTIVE_HARD_TIMEOUT),
         KIND_AI_RECONCILE => config(base, 1, AI_RECONCILE_HARD_TIMEOUT),
         _ => config(base, 1, BATCH_HARD_TIMEOUT),
     }

@@ -1,6 +1,6 @@
-# ADR-R3-3. AI tables, jobs and events
+# 0059. AI tables, jobs and events
 
-Date: 2026-11-21. Status: accepted. Builds on ADR 0032 (Postgres job queue), ADR 0033 (SQL migrations own the schema), ADR 0034 (user events) and ADR-R3-6 (Agent SDK sidecar, amendment 1).
+Date: 2026-11-21. Status: accepted. Builds on ADR 0032 (Postgres job queue), ADR 0033 (SQL migrations own the schema), ADR 0034 (user events) and ADR 0062 (Agent SDK sidecar, amendment 1).
 
 ## Context
 
@@ -22,9 +22,9 @@ There is one migration, `db/migrations/20261121030000_ai_coaching.sql`. R3 owns 
 | `weekly_reviews`, `weakness_change_notes` | `pending` → `ready`, `dropped` (validation failed twice) or `failed` (retries exhausted). A transient failure stays `pending` with `next_attempt_at`. |
 | `coach_conversations`, `coach_messages` | Messages go `pending` → `streaming` → `done` or `failed`. User messages are inserted `done`. `(conversation_id, seq)` is unique. `session` (`new`, `resumed` or `rebuilt`) records how the Agent SDK session served each assistant turn, for metrics. `session_model_usage` stores the SDK's cumulative per-session `modelUsage` after the turn. The next turn meters only the difference from `chat::previous_session_model_usage`. `user_id` is indexed. Its FK to the web's `"user"` (`ON DELETE CASCADE`) is added by Task 26's integration migration, because r3/base has no web auth tables. |
 | `interactive_evals` | `pending` → `done` or `failed`. `source` is checked to be `'interactive'`. No KPI, stats, profile or report code reads it. Each row is one charge against the quota. A failure the player did not cause is refunded with `charged = false`. Deleting a conversation sets `message_id` to NULL but keeps the row, so deleting can never reset the quota. |
-| `ai_usage` | One row per model call, with our own cost (ADR-R3-6 decision 4). It feeds `spend_since` and `global_spend_since`. |
+| `ai_usage` | One row per model call, with our own cost (ADR 0062 decision 4). It feeds `spend_since` and `global_spend_since`. |
 | `ai_batches`, `ai_batch_items` | A batch goes `submitted` → `ended` → `processed`, or to `failed`. Each item is processed at most once (`processed_at`), so a re-poll cannot apply a result twice. |
-| `ai_sdk_session_entries` | The opaque Agent SDK transcript entries (ADR-R3-6 amendment 1). The PK is `(project_key, session_id, subpath, seq)`, with an index on `session_id`. A partial unique index on `(project_key, session_id, subpath, entry->>'uuid') WHERE entry ? 'uuid'` lets the sidecar append with `ON CONFLICT DO NOTHING`. There is no FK to the conversation, because the sidecar may write before Rust commits. The trigger `coach_conversations_delete_session_entries` (an `AFTER DELETE` row trigger on `coach_conversations`) deletes a conversation's entries, and `ai-reconcile` sweeps orphans (see Deletion). |
+| `ai_sdk_session_entries` | The opaque Agent SDK transcript entries (ADR 0062 amendment 1). The PK is `(project_key, session_id, subpath, seq)`, with an index on `session_id`. A partial unique index on `(project_key, session_id, subpath, entry->>'uuid') WHERE entry ? 'uuid'` lets the sidecar append with `ON CONFLICT DO NOTHING`. There is no FK to the conversation, because the sidecar may write before Rust commits. The trigger `coach_conversations_delete_session_entries` (an `AFTER DELETE` row trigger on `coach_conversations`) deletes a conversation's entries, and `ai-reconcile` sweeps orphans (see Deletion). |
 
 ### Report versions
 
@@ -137,3 +137,19 @@ M4 inserts `coach_messages` rows (the user turn `done`, then the assistant turn 
 **Ordering.** A stale run is reset before its enqueue. If the enqueue came first, a job could claim nothing, because the row is still `running`, and then finish. A reset whose enqueue is lost leaves a `queued` run past the grace, and the next sweep's first step finds it.
 
 **Paging.** Pages are keyset windows ordered by `(age column, id)`, with a literal status, read from each table's partial index on that column (an Incremental Sort adds the `id` tie-break). Where the age is the order column, the cutoff bounds the scan. Otherwise a `due` flag carries the age test, as in R1. Migration `20261121030100_ai_reconcile_indexes.sql` adds `coach_messages_pending_idx (created_at) WHERE status = 'pending'`, `coach_messages.streaming_at` (set by `chat::set_streaming`) with `coach_messages_streaming_idx (streaming_at) WHERE status = 'streaming'`, and the `reconcile_count` columns. The orphan page reads `ai_sdk_session_entries_created_idx` from an inclusive cursor. All pages are plan-guarded under the custom and the generic plan.
+
+## Amendment 2 (Task 26): integration
+
+- **Migrations.** R3 owns `20261121030000`, `030100`, `030200`, `030300`, `030400`, `030500` and
+  `031800`. Each version is unique across `main` (web `010000`/`010100`), R1 (`0000xx`) and R2
+  (`0200xx`), and all sort after the R1 and R2 tables they reference (`linked_accounts`,
+  `games`, `time_class`). No renumbering was needed. `030500` adds the user FK of ADR 0064 §20.
+  The comments of the already-applied R3 migrations still name the placeholders (R3-1 … R3-8 =
+  0057 … 0064): sqlx checksums every applied file, so they are never edited.
+- **The reconcile sweep is bounded twice over.** An orphan session-entry page reads at most its
+  limit of rows in time order, orphan or not, and moves its cursor past them, so live entries are
+  never rescanned within a sweep; a tied instant wider than a page is cleared at once and
+  stepped past. The whole sweep starts no step after `SWEEP_DEADLINE` (4 min, below the runner's
+  5 min); skipped steps run next sweep (`skippedSteps`). The unbudgeted
+  `sweep_orphan_session_entries` is gone from the public API.
+- **Events.** See ADR 0064 §18 (the audience table and the `emit` guard).

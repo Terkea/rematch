@@ -1,4 +1,4 @@
-//! Pricing, cost metering and the monthly budgets (ADR-R3-5).
+//! Pricing, cost metering and the monthly budgets (ADR 0061).
 //!
 //! Prices come from a validated [`PricingTable`]. At startup the binary calls
 //! [`PricingTable::from_env`]: with `AI_PRICING_FILE` set it loads that JSON file (format below),
@@ -303,7 +303,7 @@ fn milli(rate: f64) -> u128 {
 
 /// The cost of one response in whole micro-USD: halved for the Batch API, rounded half up.
 /// Callers metering a response whose model is not priced use the requested model's id (and log
-/// a `warn` at the metering site, ADR-R3-5).
+/// a `warn` at the metering site, ADR 0061).
 pub fn cost_micro_usd(
     table: &PricingTable,
     model: &str,

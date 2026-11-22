@@ -1,9 +1,9 @@
 //! Monthly reports and weekly reviews regenerated through the Message Batches API (Task 20,
-//! ADR-R3-7): the same requests as the sync path at half the price, with results applied by a
+//! ADR 0063): the same requests as the sync path at half the price, with results applied by a
 //! poller.
 //!
 //! **Scheduling.** Both schedule handlers do nothing without an AI client, or when
-//! `!ai.batches_enabled()` (no `ANTHROPIC_API_KEY`, ADR-R3-6); that is checked before any row
+//! `!ai.batches_enabled()` (no `ANTHROPIC_API_KEY`, ADR 0062); that is checked before any row
 //! exists.
 //!
 //! - [`ReportBatchScheduleHandler`]: for each (account, time class) whose newest report is at

@@ -3,7 +3,7 @@ import type pg from "pg";
 import type { ChatSessionStore } from "./chat.js";
 
 /**
- * The Agent SDK `SessionStore` on Postgres (ADR-R3-6). It touches one table,
+ * The Agent SDK `SessionStore` on Postgres (ADR 0062). It touches one table,
  * `ai_sdk_session_entries` (its migration is owned by Task 17), as the `ai_sidecar` role, which may only
  * SELECT, INSERT and DELETE there.
  *

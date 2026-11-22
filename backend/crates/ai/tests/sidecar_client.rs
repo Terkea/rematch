@@ -1,5 +1,5 @@
 //! The sidecar client (Task 11) against a wiremock sidecar. The bodies are the hand-written
-//! fixtures in `backend/fixtures/ai/sidecar/`, written from the Task 10 contract (ADR-R3-6). No
+//! fixtures in `backend/fixtures/ai/sidecar/`, written from the Task 10 contract (ADR 0062). No
 //! live call is made and no key exists.
 
 use std::sync::{Arc, Mutex};

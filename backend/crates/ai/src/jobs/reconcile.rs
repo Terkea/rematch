@@ -1,4 +1,4 @@
-//! `ai-reconcile` (every 300 s, ADR-R3-3 amendment 1): an idempotent repair sweep over the AI
+//! `ai-reconcile` (every 300 s, ADR 0059 amendment 1): an idempotent repair sweep over the AI
 //! tables, in the pattern of R1's `analysis::jobs::reconcile`. `Queue::enqueue` commits on its
 //! own, so a row can commit while its job is lost; Postgres holds the state, and the sweep
 //! rebuilds what the queue should contain.

@@ -21,7 +21,7 @@ export type SidecarConfig = {
 };
 
 export const GUARD_MESSAGE =
-  "refusing to start: production needs ANTHROPIC_API_KEY or a cloud provider; a subscription token is not allowed (ADR-R3-6)";
+  "refusing to start: production needs ANTHROPIC_API_KEY or a cloud provider; a subscription token is not allowed (ADR 0062)";
 
 const CLOUD_FLAGS = [
   "CLAUDE_CODE_USE_BEDROCK",

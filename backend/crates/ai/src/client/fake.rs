@@ -1,5 +1,5 @@
 //! A scripted [`AiClient`] for tests (port of `fake.ts`, extended to the sidecar contract of
-//! ADR-R3-6 so the generation and chat tasks test against the real semantics):
+//! ADR 0062 so the generation and chat tasks test against the real semantics):
 //!
 //! - structured and batch outputs go through [`parse_model_output`] with the request's schema,
 //!   so refusal, `max_tokens`, invalid JSON and schema mismatch are scriptable, and

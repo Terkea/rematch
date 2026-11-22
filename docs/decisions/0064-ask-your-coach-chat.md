@@ -1,7 +1,7 @@
-# ADR-R3-8. "Ask your coach": the chat engine
+# 0064. "Ask your coach": the chat engine
 
-Date: 2026-11-22. Status: accepted (Task 23). Builds on ADR-R3-4 (facts by reference) and
-ADR-R3-6 (the Agent SDK sidecar and its chat sessions).
+Date: 2026-11-22. Status: accepted (Task 23). Builds on ADR 0060 (facts by reference) and
+ADR 0062 (the Agent SDK sidecar and its chat sessions).
 
 ## Context
 
@@ -9,7 +9,7 @@ The player can ask their coach questions about their own games. The answer is mo
 shown to a player who may be a minor, so it must meet the same bar as the report: every chess
 fact by reference, checked before it is shown, no promises and no marketing. Unlike a report
 section it streams, it can call tools (including fresh engine checks), and it runs inside an SDK
-session that keeps the conversation (ADR-R3-6 Amendment 1).
+session that keeps the conversation (ADR 0062 Amendment 1).
 
 ## Decision
 
@@ -46,7 +46,7 @@ session that keeps the conversation (ADR-R3-6 Amendment 1).
    once per turn) and waits up to 45 s in all, inside the tool call (under the tool endpoint's
    50 s per-call timeout). A check still pending then is abandoned (its quota refunded) and the
    model gets `engine busy`.
-7. **History.** Our Postgres conversation is the record (ADR-R3-6 Amendment 1); the SDK
+7. **History.** Our Postgres conversation is the record (ADR 0062 Amendment 1); the SDK
    session carries the model's view, and it may only be resumed while the two agree.
    - Every outcome carries `session_in_sync`. It is true only for an `Answered` turn with no
      repair, no max-turns follow-up, no retracted message and nothing replaced, so the stored
@@ -230,3 +230,28 @@ Decisions made when the job, the DB data source and the threads were built:
     the job runs, the message fails with `not_linked` (its event to the owner), before the
     allowance, with no AI call and nothing metered. An unlinked owner can still read, list and
     delete their own threads, but not post (§10).
+
+## Integration (Task 26)
+
+18. **The filter landed on `main`** (commit c00f469, `fix(events)`): the SSE hub, the replay and
+    the `/api/events` poll route deliver an owned event only to its user. In Rust the rule is now
+    enforced at the source: `events::EVENT_KINDS` gives every kind its `Audience`, and `emit`
+    refuses a `User` kind (`EmitError::NeedsOwner`), so a chat event can only be written with
+    `emit_for_user`. The kinds that are about one user's thread are `chat.chunk` (the only one
+    carrying model text), `chat.message.ready` and `chat.message.failed`. Report, weekly-review
+    and change-note events carry ids and codes only: their text lives in the account's own rows,
+    which every user linked to the account reads, so they stay account events (`user_id` NULL).
+    `tests/integration.rs` lists every kind, checks that each declared kind is classified, and
+    that any kind whose payload carries free text is user-owned and stored with its owner.
+19. **Account access is M4's `account_links`.** The worker wires `AccountLinksAccess`: a user may
+    start or post to a thread for an account they hold any link to, verified or not, exactly as
+    the web's `userAccountIds` reads it (ADR-WEB-3, ADR-WEB-8). `LegacyAccountAccess`
+    (`linked_accounts.user_id`) stays for the CLI-era owner and tests. Follow-up for M4: an
+    unverified link reaches the account's reports and chat; if that should need a verified link,
+    both the web and this lookup change together.
+20. **Threads belong to `"user"` rows.** Migration `20261121030500_integration_user_fks.sql` adds
+    `coach_conversations.user_id REFERENCES "user"(id) ON DELETE CASCADE` where M4's table
+    exists (M4's `20261121010000` sorts first on the integrated schema; R3 alone has no such
+    table, and there it adds nothing). Deleting a user deletes their threads, messages and, by
+    T17's trigger, their Agent SDK session entries. `user_events.user_id` gets no FK (an owned
+    event of a deleted user is unreadable anyway).

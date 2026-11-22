@@ -55,8 +55,8 @@ use crate::ai_jobs::{
     pricing_from_env, spawn_ai_runners,
 };
 use crate::config::WorkerEnv;
-use ai::jobs::providers::CoachingInputProvider;
 use crate::shutdown::{Closable, Drainable, ShutdownHandles};
+use ai::jobs::providers::CoachingInputProvider;
 
 /// Imports at once (each holds an account-lock connection).
 pub const IMPORT_CONCURRENCY: usize = 2;

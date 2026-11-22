@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# Claude Agent SDK sidecar (ADR-R3-6). Build context: the repository root.
+# Claude Agent SDK sidecar (ADR 0062). Build context: the repository root.
 # bookworm (glibc), so the SDK's linux-x64 `claude` binary resolves from its optionalDependencies.
 # The base image is pinned by digest (the multi-arch index of node:22-bookworm-slim on 2026-11-21).
 ARG NODE_IMAGE=node:22-bookworm-slim@sha256:e9f565d32859f0cbfb52125eafe8be39390f24dac302dc3cdf566e8ba3ab21ee

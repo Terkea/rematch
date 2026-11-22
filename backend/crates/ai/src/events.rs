@@ -1,4 +1,4 @@
-//! AI user events (ADR-R3-3). They are emitted inside the transaction that writes the state they
+//! AI user events (ADR 0059). They are emitted inside the transaction that writes the state they
 //! describe, through R1's `insert_user_event`, so a client never sees an event for state that
 //! did not commit, and a rolled-back write leaves no event.
 

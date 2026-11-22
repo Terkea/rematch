@@ -30,7 +30,7 @@ pub const CHAT_LIMITS: ChatLimits = ChatLimits {
 };
 
 /// The longest a tool call waits for an engine check in all (inline wait plus `wait`). It sits
-/// under the tool endpoint's 50 s per-call timeout (ADR-R3-6 timeout ordering).
+/// under the tool endpoint's 50 s per-call timeout (ADR 0062 timeout ordering).
 pub const ENGINE_WAIT_MAX: Duration = Duration::from_secs(45);
 
 /// Why a turn is not started.

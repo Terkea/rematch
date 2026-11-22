@@ -1,5 +1,5 @@
 #!/bin/sh
-# Dev only (ADR-R3-6). The migration creates the ai_sidecar role NOLOGIN, with access to
+# Dev only (ADR 0062). The migration creates the ai_sidecar role NOLOGIN, with access to
 # ai_sdk_session_entries only. This grants it LOGIN and the password from AI_SIDECAR_DB_PASSWORD,
 # so the sidecar can connect with
 #   AI_SESSION_DATABASE_URL=postgres://ai_sidecar:<password>@postgres:5432/chess

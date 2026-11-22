@@ -1,4 +1,4 @@
-//! The `generate-report` job (Task 18, port of TS plan C2; ADR-R3-5 "Degradation").
+//! The `generate-report` job (Task 18, port of TS plan C2; ADR 0061 "Degradation").
 //!
 //! One run builds one report version. The procedure:
 //!
@@ -282,7 +282,7 @@ fn usage_key(claim: &RunClaim, what: &str) -> String {
 /// back, a store whose commit was ambiguous (review m1), and calls finished before a cancel.
 ///
 /// A request still in flight when the handler is cancelled reports no usage, so it cannot be
-/// metered (as in the coach chat, ADR-R3-8 §12).
+/// metered (as in the coach chat, ADR 0064 §12).
 struct Ledger {
     /// The task block of each section request (the last block of the first message); a repair
     /// repeats its section's first message, so it maps to the same section.

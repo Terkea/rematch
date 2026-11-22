@@ -890,7 +890,11 @@ async fn a_paid_repair_is_metered_when_its_item_write_fails(pool: PgPool) {
     assert!(first.is_err(), "the failed write surfaces: {first:?}");
     assert_eq!(ai.sync_calls(), 1);
     let repairs = |rows: &[(String, String, bool, i64)]| rows.iter().filter(|r| !r.2).count();
-    assert_eq!(repairs(&usage(&pool).await), 1, "the paid repair is metered");
+    assert_eq!(
+        repairs(&usage(&pool).await),
+        1,
+        "the paid repair is metered"
+    );
     sqlx::raw_sql("DROP TRIGGER t26_fail ON report_sections")
         .execute(&pool)
         .await
@@ -899,7 +903,11 @@ async fn a_paid_repair_is_metered_when_its_item_write_fails(pool: PgPool) {
     assert_eq!(ai.sync_calls(), 2);
     let rows = usage(&pool).await;
     assert_eq!(repairs(&rows), 2, "each paid repair once");
-    assert_eq!(rows.iter().filter(|r| r.2).count(), 10, "each batch result once");
+    assert_eq!(
+        rows.iter().filter(|r| r.2).count(),
+        10,
+        "each batch result once"
+    );
     for r in scheduled_runs(&pool).await {
         assert_eq!(r.2, "done");
     }

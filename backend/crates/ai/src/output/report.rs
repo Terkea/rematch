@@ -2,7 +2,7 @@
 //! for each section call, and the validated shapes the web shows.
 //!
 //! One envelope serves every section call, so the output format and the cached prefix are
-//! identical across the five calls (ADR-R3-4). Every object is strict, and every envelope part is
+//! identical across the five calls (ADR 0060). Every object is strict, and every envelope part is
 //! present-but-nullable: the key must be on the wire, `null` when it is not the section asked for.
 //! The schema goes through `contract_transform` (`schema::api_schema`); bounds the structured
 //! output subset cannot carry (text length, array sizes) are checked by `schema::check_report`.

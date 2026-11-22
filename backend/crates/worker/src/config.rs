@@ -312,8 +312,16 @@ mod tests {
     #[test]
     fn rejects_bad_ai_variables() {
         for (name, value, needle) in [
-            ("AI_SIDECAR_URL", "http://ai-sidecar:7310", "AI_SIDECAR_TOKEN"),
-            ("AI_BUDGET_FREE_MICRO_USD", "lots", "AI_BUDGET_FREE_MICRO_USD"),
+            (
+                "AI_SIDECAR_URL",
+                "http://ai-sidecar:7310",
+                "AI_SIDECAR_TOKEN",
+            ),
+            (
+                "AI_BUDGET_FREE_MICRO_USD",
+                "lots",
+                "AI_BUDGET_FREE_MICRO_USD",
+            ),
             ("AI_TOOL_BIND", "nowhere", "AI_TOOL_BIND"),
         ] {
             let mut vars = BASE.to_vec();

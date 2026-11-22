@@ -1,4 +1,4 @@
-//! Task 21: the `ai-reconcile` sweep (ADR-R3-3). One test per sweep: a seeded row with no job is
+//! Task 21: the `ai-reconcile` sweep (ADR 0059). One test per sweep: a seeded row with no job is
 //! repaired once (the job then exists and the count is 1), plus the negative cases, paging,
 //! the orphan session sweep and the plan guards of every sweep page.
 

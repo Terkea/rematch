@@ -20,7 +20,7 @@ function main(): void {
     }
     throw e;
   }
-  // An empty cwd and a private config dir for every child (ADR-R3-6). Both are scratch (tmpfs in
+  // An empty cwd and a private config dir for every child (ADR 0062). Both are scratch (tmpfs in
   // compose): durable chat transcripts live in Postgres through the session store.
   mkdirSync(cfg.workDir, { recursive: true, mode: 0o700 });
   mkdirSync(cfg.configDir, { recursive: true, mode: 0o700 });

@@ -101,7 +101,10 @@ async fn deleting_a_user_deletes_their_threads_and_session_entries(pool: PgPool)
     let err = conversation(&pool, account, Uuid::new_v4())
         .await
         .unwrap_err();
-    assert!(err.to_string().contains("coach_conversations_user_id_fk"), "{err}");
+    assert!(
+        err.to_string().contains("coach_conversations_user_id_fk"),
+        "{err}"
+    );
 
     sqlx::query("DELETE FROM \"user\" WHERE id = $1")
         .bind(user)

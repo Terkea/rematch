@@ -1,5 +1,5 @@
 //! `coach_conversations` and `coach_messages`, the system of record for the coach chat
-//! (ADR-R3-3, ADR-R3-6 amendment 1). The Agent SDK's transcript lives in
+//! (ADR 0059, ADR 0062 amendment 1). The Agent SDK's transcript lives in
 //! `ai_sdk_session_entries` (session id = conversation id). The trigger
 //! `coach_conversations_delete_session_entries` deletes a conversation's entries on every delete
 //! path; [`sweep_orphan_session_entries_page`] (run by `ai-reconcile`) removes entries the sidecar wrote

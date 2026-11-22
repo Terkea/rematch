@@ -178,7 +178,7 @@ services:
         condition: service_healthy
     volumes: *workspace-volumes
 
-  # R3 (ADR-R3-6): every interactive Claude call goes through this Agent SDK sidecar. No ports:
+  # R3 (ADR 0062): every interactive Claude call goes through this Agent SDK sidecar. No ports:
   # only the Rust backend on the compose network reaches it. Chat transcripts persist in Postgres
   # through the session store (role ai_sidecar); the CLI disk is a tmpfs scratch area.
   ai-sidecar:
@@ -201,7 +201,7 @@ services:
     mem_limit: 5g
 
   # Dev only: grants the NOLOGIN ai_sidecar role LOGIN and AI_SIDECAR_DB_PASSWORD, after the
-  # migrations ran. `docker compose --profile ai run --rm ai-sidecar-role` (ADR-R3-6).
+  # migrations ran. `docker compose --profile ai run --rm ai-sidecar-role` (ADR 0062).
   ai-sidecar-role:
     profiles: [ai]
     image: postgres:17
@@ -283,10 +283,26 @@ services:
       # R2 T23 (ADR-R2-12): the 3-4-5 Syzygy tables, read-only. Without them the tablebase probe
       # is unavailable and analysis goes on.
       SYZYGY_PATH: /work/data/syzygy
+      # R3 AI coaching (ADR 0062). Interactive calls go to the sidecar; the token defaults to the
+      # sidecar's own dev default. Without a sidecar credential, reports are computed-only.
+      AI_SIDECAR_URL: http://ai-sidecar:7310
+      AI_SIDECAR_TOKEN: ${AI_SIDECAR_TOKEN:-dev-only-sidecar-token-change-me-0000000}
+      # The chat tool endpoint the sidecar calls back. Never published (no ports:); only the
+      # compose network reaches it.
+      AI_TOOL_BIND: 0.0.0.0:7311
+      AI_TOOL_PUBLIC_URL: http://rust-worker:7311
+      # Only the Message Batches client uses the key in Rust (empty: batches off).
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # Monthly budgets in micro-USD (ADR 0061). Empty: the defaults; the global cap is off.
+      AI_BUDGET_FREE_MICRO_USD: ${AI_BUDGET_FREE_MICRO_USD:-}
+      AI_BUDGET_PRO_MICRO_USD: ${AI_BUDGET_PRO_MICRO_USD:-}
+      AI_GLOBAL_MONTHLY_BUDGET_MICRO_USD: ${AI_GLOBAL_MONTHLY_BUDGET_MICRO_USD:-}
     volumes:
       - ${SYZYGY_HOST_DIR:-./data/syzygy}:/work/data/syzygy:ro
     depends_on:
       postgres:
+        condition: service_healthy
+      ai-sidecar:
         condition: service_healthy
     stop_grace_period: 30s
     restart: unless-stopped

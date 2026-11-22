@@ -14,11 +14,11 @@ use std::time::Duration;
 use ai::client::batches::ApiKey;
 use ai::client::fake::{FakeAiClient, FakeScript};
 use ai::client::port::{AiClient, AiError};
-use ai::generate::request::build_section_request;
 use ai::client::sidecar::SidecarToken;
 use ai::db::interactive::{self, NewEval};
 use ai::db::runs::ReportTrigger;
 use ai::entitlements::Plan;
+use ai::generate::request::build_section_request;
 use ai::input::types::{CoachingInput, TimeClass};
 use ai::jobs::kinds::enqueue_interactive;
 use ai::jobs::providers::CoachingInputProvider;
@@ -34,9 +34,9 @@ use sqlx::PgPool;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use uuid::Uuid;
+use worker::ai_jobs::{AI_RUNNER_KINDS, AiSetup};
 use worker::config::{SidecarEnv, WorkerEnv};
 use worker::shutdown::{ShutdownOptions, shutdown};
-use worker::ai_jobs::{AI_RUNNER_KINDS, AiSetup};
 use worker::start::{RunningWorkers, StartOptions, start_workers};
 
 const START_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
@@ -104,22 +104,26 @@ async fn request_for(pool: &PgPool, account: Uuid) -> Uuid {
 
 /// `(run status, ai_disabled_reason, report status)` once the run is done.
 async fn finished_run(pool: &PgPool, run: Uuid) -> (String, Option<String>, String) {
-    wait_until("the report run to finish", Duration::from_secs(60), || async {
-        let row: Option<(String, Option<String>, Option<String>)> = sqlx::query_as(
-            "SELECT r.status::text, r.ai_disabled_reason, p.status::text FROM report_runs r \
+    wait_until(
+        "the report run to finish",
+        Duration::from_secs(60),
+        || async {
+            let row: Option<(String, Option<String>, Option<String>)> = sqlx::query_as(
+                "SELECT r.status::text, r.ai_disabled_reason, p.status::text FROM report_runs r \
              LEFT JOIN reports p ON p.id = r.report_id WHERE r.id = $1",
-        )
-        .bind(run)
-        .fetch_optional(pool)
-        .await
-        .unwrap();
-        match row {
-            Some((s, reason, Some(report))) if s == "done" || s == "failed" => {
-                Some((s, reason, report))
+            )
+            .bind(run)
+            .fetch_optional(pool)
+            .await
+            .unwrap();
+            match row {
+                Some((s, reason, Some(report))) if s == "done" || s == "failed" => {
+                    Some((s, reason, report))
+                }
+                _ => None,
             }
-            _ => None,
-        }
-    })
+        },
+    )
     .await
 }
 
@@ -193,20 +197,24 @@ async fn fake_ai_runs_report_to_complete_through_the_queue(
     let usage: i64 = sqlx::query_scalar(
         "SELECT count(*) FROM ai_usage WHERE account_id = $1 AND feature = 'report'",
     )
-        .bind(account)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    .bind(account)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
     assert_eq!(usage, 5);
-    wait_until("the generate-report job to complete", Duration::from_secs(30), || async {
-        let job: String = sqlx::query_scalar(
+    wait_until(
+        "the generate-report job to complete",
+        Duration::from_secs(30),
+        || async {
+            let job: String = sqlx::query_scalar(
             "SELECT state::text FROM jobs WHERE kind = 'generate-report' ORDER BY id DESC LIMIT 1",
         )
         .fetch_one(&pool)
         .await
         .unwrap();
-        (job == "done").then_some(())
-    })
+            (job == "done").then_some(())
+        },
+    )
     .await;
     // The run enqueued its two change notes, and the explain-weakness-change runner ran them.
     let notes: Vec<String> = wait_until("the change notes", Duration::from_secs(60), || async {
@@ -234,7 +242,9 @@ async fn interactive_analyse_runs_on_the_real_engine_pool(
     let Some(env) = env_for(&opts_) else {
         return;
     };
-    let running = start_workers(&env, opts(AiSetup::With(None))).await.unwrap();
+    let running = start_workers(&env, opts(AiSetup::With(None)))
+        .await
+        .unwrap();
     let pool = pool_of(&env).await;
     let account = testkit::insert_account(&pool, "lichess", "t26checker").await;
     let fen = "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1";
@@ -393,8 +403,14 @@ async fn startup_logs_never_contain_the_key(_p: PgPoolOptions, opts_: PgConnectO
     assert!(enabled);
     assert!(logs.contains("ai: enabled (sidecar, batches on)"), "{logs}");
     assert!(!logs.contains(FAKE_KEY), "the API key was logged:\n{logs}");
-    assert!(!logs.contains("T26FAKEKEY"), "part of the API key was logged:\n{logs}");
-    assert!(!logs.contains(FAKE_TOKEN), "the sidecar token was logged:\n{logs}");
+    assert!(
+        !logs.contains("T26FAKEKEY"),
+        "part of the API key was logged:\n{logs}"
+    );
+    assert!(
+        !logs.contains(FAKE_TOKEN),
+        "the sidecar token was logged:\n{logs}"
+    );
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]

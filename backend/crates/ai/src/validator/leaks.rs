@@ -4,7 +4,7 @@
 //!
 //! A port of m3's `validator/leaks.ts` ([`NormMode::TsExact`]: TS's canonical text, `CONFUSABLES`
 //! table, `DASH` class and detectors, operation for operation), united with a hardened path
-//! ([`NormMode::Hardened`]) that reuses the T5 hardening (ADR-R3-2, Task 6):
+//! ([`NormMode::Hardened`]) that reuses the T5 hardening (ADR 0058, Task 6):
 //! - the hardened invisible set (H2), and combining marks dropped (H3);
 //! - every [`HOMOGLYPHS`] entry folded to ASCII (H4, a superset of `CONFUSABLES`);
 //! - the hardened dash set (H5) in the SAN and castling classes.
@@ -16,7 +16,7 @@
 //! letter. [`find_leaks`] returns the TS path's leaks unchanged, then each hardened leak (its text
 //! lowercased) not already reported, deduplicated by `(kind, text)`. It can never lose a TS leak.
 //!
-//! Every lookaround uses a form of the ADR-R3-2 table, named at the pattern.
+//! Every lookaround uses a form of the ADR 0058 table, named at the pattern.
 
 use std::collections::HashSet;
 use std::sync::LazyLock;
@@ -247,7 +247,7 @@ fn detectors(mode: NormMode) -> Vec<Detector> {
     } else {
         ""
     };
-    // Folded lookahead (ADR-R3-2, third row): `(?P<m>X)(?:[^C]|$)`.
+    // Folded lookahead (ADR 0058, third row): `(?P<m>X)(?:[^C]|$)`.
     let not_az = "(?:(?-i:[^a-z])|$)";
     let not_az09 = "(?:(?-i:[^a-z0-9])|$)";
     let words = number_words();
