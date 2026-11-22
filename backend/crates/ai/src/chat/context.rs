@@ -9,21 +9,13 @@ use serde_json::{Map, Value, json};
 use super::anchor::ChatAnchor;
 use super::data_source::PositionRecord;
 use super::execute::{PosRef, add_position};
-use crate::input::types::{CoachingInput, TimeClass};
+use crate::generate::context::canonical_json_escaped;
+use crate::input::types::CoachingInput;
 use crate::validator::evidence::{Evidence, build_evidence, list_date_paths, list_number_paths};
+use crate::validator::language::evidence_window_token;
 
 /// Top-level sections of the input the context shows; their paths are listed in `refs`.
 const CONTEXT_SECTIONS: &[&str] = &["basis", "areaScores", "weaknesses", "openings", "changes"];
-
-/// T8's `evidence_window_token` (`language.rs`, not yet on this base): the evidence window as
-/// tokens. Replace with T8's function when both land.
-fn evidence_window_token(tc: TimeClass) -> String {
-    format!(
-        "over your last {{{{num:basis.analysedGames|int}}}} analysed {} games \
-         ({{{{num:basis.importedGames|int}}}} imported)",
-        tc.as_str()
-    )
-}
 
 fn in_context(path: &str) -> bool {
     let section = path.split('.').next().unwrap_or("");
@@ -149,10 +141,16 @@ pub fn anchor_details(ev: &mut Evidence, anchor: &ChatAnchor, resolved: &Value) 
     Value::Object(out)
 }
 
-/// `"<anchor>" + canonical_json(details) + "</anchor>"`. Canonical JSON is compact with sorted
-/// keys (serde_json maps are sorted; `preserve_order` is banned). `<` is written as `<`,
-/// which is the same JSON, so no text inside the details can close the block.
+/// `"<anchor>" + canonical_json(details) + "</anchor>"`, with `<` escaped ([`canonical_json_escaped`]).
 pub fn anchor_block(details: &Value) -> String {
-    let json = details.to_string().replace('<', "\\u003c");
-    format!("<anchor>{json}</anchor>")
+    format!("<anchor>{}</anchor>", canonical_json_escaped(details))
+}
+
+/// `"<coaching_context>" + canonical_json(build_chat_context(input)) + "</coaching_context>"`,
+/// with `<` escaped ([`canonical_json_escaped`]).
+pub fn context_block(input: &CoachingInput) -> String {
+    format!(
+        "<coaching_context>{}</coaching_context>",
+        canonical_json_escaped(&build_chat_context(input))
+    )
 }
