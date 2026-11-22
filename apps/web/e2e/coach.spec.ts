@@ -125,7 +125,7 @@ test.describe
       await page.getByRole("textbox").fill("Why do I miss tactics after captures?");
       await page.getByRole("button", { name: "Send" }).click();
       await page.waitForURL(/\/app\/coach\/[0-9a-f-]{36}$/);
-      await expect(page.getByText("Your coach is reading your games").first()).toBeVisible();
+      await expect(page.getByText(/Reading your games/).first()).toBeVisible();
       const messageId = latestAnswer();
 
       simulate({ kind: "chat-chunk", messageId, seq: 0, text: DRAFT_1 });
