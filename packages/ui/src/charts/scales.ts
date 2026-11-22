@@ -63,8 +63,17 @@ export function dateTicks(scale: ReturnType<typeof timeScale>, width: number) {
   const count = Math.max(2, Math.floor((width - TREND_LEFT) / 96));
   const byMonth = span > 92 * DAY;
   const raw = scale.ticks(count);
-  // Month labels only on month starts, so two labels never read the same.
-  const ticks = byMonth ? raw.filter((d) => d.getUTCDate() === 1) : raw;
+  // Month labels only on month starts, and one label per day: a span of a day or two (one game)
+  // ticks by the hour, and two labels must never read the same.
+  const seen = new Set<string>();
+  const midnights = raw.filter((d) => d.getTime() % DAY === 0);
+  const daily = midnights.length > 0 ? midnights : raw;
+  const ticks = (byMonth ? raw.filter((d) => d.getUTCDate() === 1) : daily).filter((d) => {
+    const day = d.toISOString().slice(0, 10);
+    if (seen.has(day)) return false;
+    seen.add(day);
+    return true;
+  });
   return ticks.map((d) => ({
     x: scale(d),
     iso: d.toISOString().slice(0, 10),
@@ -75,10 +84,20 @@ export function dateTicks(scale: ReturnType<typeof timeScale>, width: number) {
 }
 
 /** Contiguous runs of `items` where `has` holds, so a gap breaks a line instead of bridging it. */
-export function runs<T>(items: T[], has: (item: T) => boolean): T[][] {
+export function runs<T>(
+  items: T[],
+  has: (item: T) => boolean,
+  /** False between two neighbours that must not be joined (a span with no games). */
+  joins: (prev: T, next: T) => boolean = () => true,
+): T[][] {
   const out: T[][] = [];
   let current: T[] = [];
   for (const item of items) {
+    const prev = current[current.length - 1];
+    if (prev !== undefined && has(item) && !joins(prev, item)) {
+      out.push(current);
+      current = [];
+    }
     if (has(item)) current.push(item);
     else if (current.length) {
       out.push(current);

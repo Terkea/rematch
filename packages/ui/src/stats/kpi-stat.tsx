@@ -4,8 +4,9 @@ import { Scale } from "@visx/visx";
 import { useEffect, useRef } from "react";
 import { cn } from "../lib/index.js";
 import { animate, dur, ease, motion, useMotionValue, useReducedMotion } from "../motion/index.js";
+import { bandText, basisText, bound, formatAt, type StatFormat, targetText } from "./band.js";
 import { Sparkline } from "./sparkline.js";
-import { DEFAULT_LOCALE, Stat, type StatFormat } from "./stat.js";
+import { Stat } from "./stat.js";
 
 export interface KpiStatProps {
   label: string;
@@ -23,6 +24,20 @@ export interface KpiStatProps {
   headingLevel?: 2 | 3 | 4 | 5 | 6;
   /** Draw the trend in on mount (skipped under reduced motion). */
   drawIn?: boolean;
+  /**
+   * Draw the interval scale (default true). Off, the band is stated in words only: a host whose
+   * KPIs have no meaningful reference range drops the ruler rather than imply one (Task 8).
+   */
+  scale?: boolean;
+  /** The host states the basis once for the section: keep it for screen readers only. */
+  basisHidden?: boolean;
+  /** Write the trend's first and last values under the sparkline. */
+  trendEnds?: boolean;
+  /** Which way is better for this KPI, written under the sparkline (never a verdict). */
+  better?: "higher" | "lower";
+  /** Roll the value up from zero on a first view (see `Stat`). */
+  rollIn?: boolean;
+  rollDelay?: number;
   className?: string;
 }
 
@@ -31,55 +46,9 @@ type Interval = KpiStatProps["interval"];
 /** The halo reads the host's surface, as `--eval-graph-surface` does, and is never set here. */
 const HALO = "stroke-[var(--stat-surface,var(--color-sheet))]";
 
-/**
- * Interval ends: one step coarser than the value for decimals (0.1 against 0.01), and the value's
- * own step for percent (0.1%) and integer (1). `digits` is the fraction digits shown.
- */
-const STEP: Record<StatFormat, { factor: number; digits: number }> = {
-  percent: { factor: 1000, digits: 1 },
-  decimal: { factor: 10, digits: 1 },
-  integer: { factor: 1, digits: 0 },
-};
-
-const formatAt = (v: number, format: StatFormat, digits: number) =>
-  new Intl.NumberFormat(DEFAULT_LOCALE, {
-    ...(format === "percent" ? { style: "percent" } : {}),
-    minimumFractionDigits: digits,
-    maximumFractionDigits: digits,
-  }).format(v);
-
-const bound = (v: number, format: StatFormat) => formatAt(v, format, STEP[format].digits);
-
-/**
- * The interval's ends rounded outward at the shown precision: low floored, high ceiled, so the
- * stated range is never narrower than the computed one. The epsilon absorbs float noise
- * (0.766 × 1000 is 766.0000000000001, which must not ceil to 767).
- */
-export function bandEnds(interval: Interval, format: StatFormat): [number, number] {
-  const f = STEP[format].factor;
-  return [Math.floor(interval.low * f + 1e-9) / f, Math.ceil(interval.high * f - 1e-9) / f];
-}
-
 /** Scale ends: whole percents ("50%"), decimals to one place. */
 const end = (v: number, format: StatFormat) =>
   format === "percent" ? formatAt(v, format, 0) : bound(v, format);
-
-/** "Based on 38 rapid games" (one game is singular). */
-export const basisText = ({ games, timeClass }: KpiStatProps["basis"]) =>
-  `Based on ${games} ${timeClass} game${games === 1 ? "" : "s"}`;
-
-/** "80% likely between 61.0 and 67.5", with the ends rounded outward. */
-export const bandText = (interval: Interval, format: StatFormat) => {
-  const [low, high] = bandEnds(interval, format);
-  return `${Math.round(interval.level * 100)}% likely between ${bound(low, format)} and ${bound(high, format)}`;
-};
-
-/** The target at the ends' precision, or one place finer when it would read the same as an end. */
-export function targetText(target: number, interval: Interval, format: StatFormat): string {
-  const ends = bandEnds(interval, format).map((v) => bound(v, format));
-  const text = bound(target, format);
-  return ends.includes(text) ? formatAt(target, format, STEP[format].digits + 1) : text;
-}
 
 function trendLabel(label: string, trend: (number | null)[], format: StatFormat): string {
   const numbers = trend.filter((v): v is number => v !== null);
@@ -268,6 +237,12 @@ export function KpiStat(props: KpiStatProps) {
     target,
     headingLevel = 3,
     drawIn,
+    scale = true,
+    basisHidden = false,
+    trendEnds = false,
+    better,
+    rollIn,
+    rollDelay,
     className,
   } = props;
   const Heading = `h${headingLevel}` as const;
@@ -280,7 +255,7 @@ export function KpiStat(props: KpiStatProps) {
       >
         <div className="col-span-2 flex flex-wrap items-baseline gap-x-3 gap-y-1 @min-[40rem]:col-span-1 @min-[40rem]:flex-col @min-[40rem]:gap-0.5 @min-[40rem]:self-center">
           <Heading className="text-base font-medium text-ink">{label}</Heading>
-          <p className="text-sm text-ink-faint">
+          <p className={basisHidden ? "sr-only" : "text-sm text-ink-faint"}>
             {basisText(basis)}
             {provisional && (
               <>
@@ -295,6 +270,8 @@ export function KpiStat(props: KpiStatProps) {
         <Stat
           value={value}
           format={format}
+          {...(rollIn ? { rollIn } : {})}
+          {...(rollDelay !== undefined ? { rollDelay } : {})}
           className="font-serif text-3xl leading-none font-semibold text-ink"
         />
         <div className="col-start-2 row-start-2 self-end @min-[40rem]:col-start-4 @min-[40rem]:row-start-1 @min-[40rem]:self-center">
@@ -306,9 +283,12 @@ export function KpiStat(props: KpiStatProps) {
               {...(drawIn ? { drawIn } : {})}
             />
           )}
+          {trend && (trendEnds || better) && (
+            <TrendEnds trend={trend} format={format} ends={trendEnds} better={better} />
+          )}
         </div>
         <div className="col-span-2 flex flex-col gap-1 @min-[40rem]:col-span-1 @min-[40rem]:col-start-3 @min-[40rem]:row-start-1 @min-[40rem]:self-center">
-          <BandScale {...props} />
+          {scale && <BandScale {...props} />}
           <p className="flex flex-wrap justify-between gap-x-3 text-sm text-ink-soft">
             <span>{bandText(interval, format)}</span>
             {target && (
@@ -336,6 +316,35 @@ export function KpiStat(props: KpiStatProps) {
           </p>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** The sparkline's first and last values, and which way is better: a convention, not a verdict. */
+function TrendEnds({
+  trend,
+  format,
+  ends,
+  better,
+}: {
+  trend: (number | null)[];
+  format: StatFormat;
+  ends: boolean;
+  better: "higher" | "lower" | undefined;
+}) {
+  const numbers = trend.filter((v): v is number => v !== null);
+  const first = numbers[0];
+  const last = numbers[numbers.length - 1];
+  const shown = ends && numbers.length >= 2 && first !== undefined && last !== undefined;
+  return (
+    <div data-part="trend-ends" className="mt-1 text-xs text-ink-soft">
+      {shown && (
+        <p aria-hidden="true" className="flex justify-between gap-2">
+          <span>{bound(first, format)}</span>
+          <span className="font-medium text-ink">{bound(last, format)}</span>
+        </p>
+      )}
+      {better && <p>{better === "lower" ? "Lower is better" : "Higher is better"}</p>}
     </div>
   );
 }

@@ -35,12 +35,14 @@ function renderHeader() {
 }
 
 describe("shell header", () => {
-  it("lists Dashboard, Games and Accounts, ready for the next pages", () => {
+  it("lists Overview, Games and Accounts, matching the pages' titles", () => {
     expect(navItems.map((i) => [i.label, i.href])).toEqual([
-      ["Dashboard", "/app"],
+      ["Overview", "/app"],
       ["Games", "/app/games"],
       ["Accounts", "/app/accounts"],
     ]);
+    // "dashboard" stays a command-palette keyword for the old name.
+    expect(navItems[0].keywords).toContain("dashboard");
   });
 
   it("has the wordmark, the nav with the current page, and the activity slot", () => {
@@ -60,7 +62,7 @@ describe("shell header", () => {
     pathname = "/app/games/123";
     renderHeader();
     expect(screen.getByRole("link", { name: "Games" })).toHaveAttribute("aria-current", "page");
-    expect(screen.getByRole("link", { name: "Dashboard" })).not.toHaveAttribute("aria-current");
+    expect(screen.getByRole("link", { name: "Overview" })).not.toHaveAttribute("aria-current");
   });
 
   it("toggles the theme with an explicit label", async () => {

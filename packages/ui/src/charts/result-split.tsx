@@ -82,7 +82,9 @@ export function ResultSplit({ rows, className }: ResultSplitProps) {
                           data-fill
                           className={cn(
                             "size-full rounded-board",
-                            segment === "wins" ? "bg-ink" : "border border-rule-strong bg-sheet",
+                            segment === "wins"
+                              ? "bg-ink dark:bg-ink-soft"
+                              : "border border-rule-strong bg-sheet",
                           )}
                         />
                       )}
