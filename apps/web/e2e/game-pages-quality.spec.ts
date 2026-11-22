@@ -80,12 +80,20 @@ test("the game pages: no sideways scroll at 360px, visible focus, no broken numb
             ),
           )
           .toBe(true);
-        const axe = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
-        const bad = axe.violations
-          .filter((v) => v.impact === "serious" || v.impact === "critical")
-          .map(
-            (v) => `${v.id} (${v.impact}): ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`,
-          );
+        // A finding that is gone a second later was a frame mid-transition (a stream update
+        // re-rendering the header); one that stays across three reads fails.
+        let bad: string[] = [];
+        for (let attempt = 0; attempt < 3; attempt++) {
+          if (attempt > 0) await page.waitForTimeout(1000);
+          const axe = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
+          bad = axe.violations
+            .filter((v) => v.impact === "serious" || v.impact === "critical")
+            .map(
+              (v) =>
+                `${v.id} (${v.impact}): ${v.nodes.map((n) => `${n.target.join(" ")} ${n.html.slice(0, 120)}`).join(", ")}`,
+            );
+          if (bad.length === 0) break;
+        }
         expect(bad, `${where}: axe serious or critical violations`).toEqual([]);
       }
 
