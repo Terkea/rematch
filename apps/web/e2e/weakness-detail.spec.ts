@@ -93,3 +93,44 @@ test("a weakness row's explanation opens on click and closes on Escape", async (
   await expect(trigger).toBeFocused();
   await page.context().close();
 });
+
+test("each opening verdict on the report says why, with its rule a click away", async ({
+  browser,
+  request,
+}, info) => {
+  test.skip(info.project.name !== "e2e", "runs once, in the e2e project");
+  test.setTimeout(300_000);
+  const page = await adultPage(browser, request);
+  seedFixtures();
+  await gotoSettled(page, "/app/report");
+  await page.locator("[data-report-version]").waitFor({ timeout: 180_000 });
+
+  const openings = page.getByRole("region", { name: "Openings" });
+  await expect(openings).toContainText(
+    "Fix means one move keeps costing you: Qc7, in 7 of your 23 games in this line, losing 10 win% points or more each time.",
+  );
+  await expect(openings).toContainText(
+    "Keep means no single move keeps costing you, and your +4 pp against what your rating predicts is within normal variation for 41 rated games (likely −3 to +11 pp).",
+  );
+  await expect(openings).toContainText(
+    "Learn deeper means you leave the opening worse off: your win chance averages 38% when it ends, over 9 analysed games.",
+  );
+  const trigger = openings.getByRole("button", { name: "What does Replace mean?" });
+  await expect(trigger).toHaveCount(0);
+  const fix = openings.getByRole("button", { name: "What does Fix mean?" });
+  // Hydrated before the click, or the popover has no handler yet.
+  await page.waitForFunction(
+    () => {
+      const el = document.querySelector('[aria-label="What does Fix mean?"]');
+      return el !== null && Object.keys(el).some((key) => key.startsWith("__reactProps"));
+    },
+    undefined,
+    { timeout: 180_000 },
+  );
+  await fix.click();
+  await expect(page.getByRole("dialog")).toContainText("How it's measured");
+  await page.keyboard.press("Escape");
+  await expect(fix).toBeFocused();
+  expect(await openings.textContent()).not.toMatch(/NaN|undefined|Infinity/);
+  await page.context().close();
+});

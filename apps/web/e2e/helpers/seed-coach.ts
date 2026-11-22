@@ -9,7 +9,7 @@ import {
   moves,
   user,
 } from "@ci/db";
-import { gameMetrics } from "@ci/db/generated";
+import { gameMetrics, openingLines } from "@ci/db/generated";
 import { Chess } from "chess.js";
 import { and, eq, sql } from "drizzle-orm";
 import { seedThread } from "../../test/helpers/coach";
@@ -68,6 +68,7 @@ async function clear(db: Db, accountId: string): Promise<void> {
     "weekly_reviews",
     "weakness_change_notes",
     "user_events",
+    "opening_lines",
   ]) {
     await db.execute(sql`delete from ${sql.identifier(table)} where account_id = ${accountId}`);
   }
@@ -299,6 +300,50 @@ async function profile(db: Db, accountId: string): Promise<void> {
 }
 
 /**
+ * The example report's three opening lines as stored verdict evidence (Rust `LineSummary`,
+ * synthetic numbers), so each verdict on the report says why it was given (I9).
+ */
+async function openings(db: Db, accountId: string): Promise<void> {
+  const line = (
+    lineKey: string,
+    color: "white" | "black",
+    kind: "chosen" | "faced",
+    verdict: "keep" | "fix" | "learn",
+    games: number,
+    summary: Record<string, unknown>,
+  ) => ({
+    accountId,
+    timeClass: TC,
+    color,
+    lineKey,
+    kind,
+    games,
+    verdict,
+    summary: { lineKey, color, kind, verdict, games, struggles: [], share: 0.2, ...summary },
+  });
+  await db.insert(openingLines).values([
+    line("w-italian", "white", "chosen", "keep", 41, {
+      perfVsExpected: 0.04,
+      perfGames: 41,
+      perfInterval: { low: -0.03, high: 0.11 },
+    }),
+    line("b-sicilian-najdorf", "black", "chosen", "fix", 23, {
+      perfVsExpected: -0.09,
+      perfGames: 23,
+      errorSpot: { fenKey: "e2e", uci: "d8c7", san: "Qc7", games: 7 },
+      struggles: ["repeated_deviation_error"],
+    }),
+    line("w-scandi-faced", "white", "faced", "learn", 9, {
+      perfVsExpected: null,
+      perfGames: 0,
+      analysedGames: 9,
+      avgWinAtOpeningEnd: 37.6,
+      struggles: ["worse_after_opening"],
+    }),
+  ]);
+}
+
+/**
  * Seeds the coach world for the adult e2e user (see the module comment). Refuses, writing
  * nothing, a database whose linked accounts are not all e2e ones (M5a's guard and message).
  */
@@ -318,6 +363,7 @@ export async function seedE2eCoach(
   const accountId = account.id;
   await clear(db, accountId);
   await profile(db, accountId);
+  await openings(db, accountId);
   // The simulated worker stands in for one with an AI client (ADR 0078), so the coach pages
   // offer questions and reports. Its heartbeat is a day ahead: the specs outlast the 2 min window.
   await db.execute(

@@ -72,3 +72,27 @@ the session scratchpad `m5b-t7\fix1\`.
    detail scale ends read "0%" and "7%"; a series with no evidence threshold says so; the review
    link is at least 24px tall. Left to T4 (its components): the list strip's "25.0%" label, the
    doubled "Early read" in a row, the dark "Not an issue" swatch, crossing arrow heads.
+
+## feat/explain (ADR 0079): definition lines, ExplainPopover, the weakness story, verdict reasons
+
+Self-critique only (the lane ran without subagents). Shots by `scripts/shots.ts` in the
+`ci-t5b` e2e stack (synthetic e2e-fixtures seed), 390 and 1440, light and dark, reduced motion:
+`/app/weaknesses/W3.shallow`, `/app/weaknesses`, `/app/report`, `/app`, `/app/areas/endgame`,
+`/app/progress`, `/styleguide`.
+
+```json
+{
+  "issues": [
+    { "rank": 1, "severity": "minor", "screenshot": "app-weaknesses-W3.shallow/390-dark.png", "observation": "The e2e seed's example positions are 1. e4 from the start position, so the three boards look alike.", "fix": "Seed data only (synthetic); the page renders whatever occurrences are stored. Left." },
+    { "rank": 2, "severity": "minor", "screenshot": "app-weaknesses/1440-light.png", "observation": "The definition line adds a line or two to each row; rows stay scannable because it is ink-soft at text-sm.", "fix": "None." }
+  ],
+  "verdict": "pass"
+}
+```
+
+Checked: the story reads top down (what this is, how often with n and the 80% range, vs level or
+"Not compared yet", better or worse, examples with pen and good arrows and the win% change in
+win% points, what to do, then Details with the old charts). Each report verdict carries a reason
+from the stored rule evidence (Fix: the move and its count; Keep: pp with its range; Learn deeper:
+the worse opening end) and an "i" that opens the rule. No NaN, undefined or Infinity in the
+visible text; no sideways scroll at 390.
