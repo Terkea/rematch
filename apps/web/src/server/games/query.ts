@@ -1,3 +1,4 @@
+import { TIME_CLASS_ORDER as TIME_CLASSES } from "../../lib/time-class";
 import type { GameFilters, GameListQuery, GameSortKey, TimeClass } from "./types";
 
 type Params = Record<string, string | string[] | undefined>;
@@ -13,7 +14,6 @@ export const NO_FILTERS: GameFilters = {
 };
 type Sort = GameListQuery["sort"];
 
-const TIME_CLASSES: readonly TimeClass[] = ["bullet", "blitz", "rapid", "classical", "daily"];
 const RESULTS = ["win", "draw", "loss"] as const;
 const COLOURS = ["white", "black"] as const;
 const DEFAULT_SORT = "played-desc";
@@ -62,16 +62,23 @@ function uuid(value: unknown): string | null {
   return typeof value === "string" && UUID_RE.test(value) ? value.toLowerCase() : null;
 }
 
+/** `tc=all`: every time control, when a default time control would otherwise apply (I8). */
+const ALL_TIME_CLASSES = "all";
+
 /**
  * The explorer's URL state (ADR 0048). Every invalid param falls back to its default; a `from`
  * later than `to` is swapped. The page is not clamped here: `listGames` clamps it to the last page.
+ * `defaultTimeClass` is the time control a URL without `tc` shows (I8); `tc=all` then asks for
+ * every time control.
  */
-export function parseGameQuery(params: Params): GameListQuery {
+export function parseGameQuery(params: Params, defaultTimeClass?: TimeClass | null): GameListQuery {
+  const tc = one(params, "tc");
   let from = day(one(params, "from"));
   let to = day(one(params, "to"));
   if (from !== null && to !== null && from > to) [from, to] = [to, from];
   const filters: GameFilters = {
-    timeClass: pick(one(params, "tc"), TIME_CLASSES),
+    timeClass:
+      tc === ALL_TIME_CLASSES ? null : (pick(tc, TIME_CLASSES) ?? defaultTimeClass ?? null),
     result: pick(one(params, "result"), RESULTS),
     colour: pick(one(params, "colour"), COLOURS),
     from,
@@ -84,6 +91,7 @@ export function parseGameQuery(params: Params): GameListQuery {
     filters,
     sort: { key: sort?.key ?? "played", dir: sort?.dir ?? "desc" },
     page: page !== null && PAGE_RE.test(page) ? Number(page) : 1,
+    ...(defaultTimeClass ? { defaultTimeClass } : {}),
   };
 }
 
@@ -97,7 +105,9 @@ export function serializeGameQuery(q: GameListQuery): URLSearchParams {
   const set = (key: string, value: string | null) => {
     if (value !== null) out.set(key, value);
   };
-  set("tc", pick(f.timeClass, TIME_CLASSES));
+  const tc = pick(f.timeClass, TIME_CLASSES);
+  const fallback = pick(q.defaultTimeClass, TIME_CLASSES);
+  if (tc !== fallback) set("tc", tc ?? ALL_TIME_CLASSES);
   set("result", pick(f.result, RESULTS));
   set("colour", pick(f.colour, COLOURS));
   set("from", day(f.from));

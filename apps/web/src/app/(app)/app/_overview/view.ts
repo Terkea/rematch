@@ -6,6 +6,7 @@ import type {
 } from "@ci/ui/charts";
 import { dayText } from "@ci/ui/charts";
 import { accuracyText, gameCaption } from "../../../../components/game-caption";
+import { defaultTimeClass, TIME_CLASS_ORDER as TIME_CLASSES } from "../../../../lib/time-class";
 import type { TimeClass } from "../../../../server/games/types";
 import type { Overview } from "../../../../server/overview";
 import { CHART_GAMES, type Estimate } from "../../../../server/stats";
@@ -14,7 +15,6 @@ import { CHART_GAMES, type Estimate } from "../../../../server/stats";
 // renders. Whatever reaches a client component (the trend) is plain JSON with no opponents,
 // account ids or raw rows (T6 review). Dates are strings.
 
-const TIME_CLASSES: TimeClass[] = ["bullet", "blitz", "rapid", "classical", "daily"];
 const CLASS_LABEL: Record<TimeClass, string> = {
   bullet: "Bullet",
   blitz: "Blitz",
@@ -43,6 +43,19 @@ export function parseTimeClass(
   const v = Array.isArray(raw) ? raw[0] : raw;
   const tc = TIME_CLASSES.find((t) => t === v);
   return tc && available.includes(tc) ? tc : null;
+}
+
+/**
+ * The class the overview shows (I8): `?tc=all` is every class; a class with analysed games is
+ * itself; anything else (no `tc` too) is the default, rapid when there is rapid.
+ */
+export function chooseTimeClass(
+  raw: string | string[] | undefined,
+  available: readonly TimeClass[],
+): TimeClass | null {
+  const v = Array.isArray(raw) ? raw[0] : raw;
+  if (v === "all") return null;
+  return parseTimeClass(v, available) ?? defaultTimeClass(available);
 }
 
 /** A requested class, before the overview says which classes have analysed games. */
@@ -184,13 +197,15 @@ export function toOverviewView(o: Overview, tc: TimeClass | null): OverviewView 
     o.timeClasses.length === 0
       ? []
       : [
-          { label: "All", count: o.status.analysed, href: "/app", current: tc === null },
+          // Rapid first, then blitz, then the rest, and All last (I8). Rapid is the default, so
+          // All is asked for by name.
           ...o.timeClasses.map((c) => ({
             label: CLASS_LABEL[c.timeClass],
             count: c.analysed,
             href: `/app?tc=${c.timeClass}`,
             current: tc === c.timeClass,
           })),
+          { label: "All", count: o.status.analysed, href: "/app?tc=all", current: tc === null },
         ];
 
   return {

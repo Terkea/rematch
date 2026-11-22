@@ -2,6 +2,7 @@
 
 import { SegmentedControl, Select } from "@ci/ui/primitives";
 import { useRouter } from "next/navigation";
+import { byTimeClass } from "../lib/time-class";
 import type { TimeClass } from "../server/games/types";
 
 type Platform = "lichess" | "chesscom";
@@ -63,7 +64,9 @@ export function CoachScopeSwitch({ scope, basePath }: { scope: CoachScopeLike; b
     set.add(o.accountId);
     perPlatform.set(o.platform, set);
   }
-  const options = scope.options.map((o) => ({
+  // Rapid first, then blitz, then the rest (I8), whatever order the options came in.
+  const ordered = [...scope.options].sort((a, b) => byTimeClass(a.timeClass, b.timeClass));
+  const options = ordered.map((o) => ({
     value: scopeValue(o),
     label: scopeOptionLabel(o, (perPlatform.get(o.platform)?.size ?? 0) > 1),
   }));

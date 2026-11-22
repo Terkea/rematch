@@ -10,6 +10,7 @@ import { StatusLine } from "../../src/app/(app)/app/_overview/status-line.js";
 import { TimeClassSection } from "../../src/app/(app)/app/_overview/time-class-section.js";
 import { TimeClassSwitch } from "../../src/app/(app)/app/_overview/time-class-switch.js";
 import {
+  chooseTimeClass,
   parseTimeClass,
   statusText,
   toOverviewView,
@@ -245,7 +246,7 @@ describe("time control", () => {
     render(<TimeClassSwitch options={view.switch} />);
     const nav = screen.getByRole("navigation", { name: "Time control" });
     const links = within(nav).getAllByRole("link");
-    expect(links.map((l) => l.textContent)).toEqual(["All 5", "Blitz 2", "Rapid 3"]);
+    expect(links.map((l) => l.textContent)).toEqual(["Rapid 3", "Blitz 2", "All 5"]);
     expect(within(nav).getByRole("link", { name: "Rapid 3" })).toHaveAttribute(
       "aria-current",
       "page",
@@ -254,8 +255,19 @@ describe("time control", () => {
       "href",
       "/app?tc=rapid",
     );
-    expect(within(nav).getByRole("link", { name: "All 5" })).toHaveAttribute("href", "/app");
+    // Rapid is the default (I8), so All is asked for by name.
+    expect(within(nav).getByRole("link", { name: "All 5" })).toHaveAttribute("href", "/app?tc=all");
     expect(within(nav).getByRole("link", { name: "All 5" })).not.toHaveAttribute("aria-current");
+  });
+
+  it("defaults to rapid when there is rapid, and tc=all shows every class (I8)", () => {
+    const have: TimeClass[] = ["blitz", "rapid"];
+    expect(chooseTimeClass(undefined, have)).toBe("rapid");
+    expect(chooseTimeClass("bogus", have)).toBe("rapid");
+    expect(chooseTimeClass("blitz", have)).toBe("blitz");
+    expect(chooseTimeClass("all", have)).toBeNull();
+    expect(chooseTimeClass(undefined, ["daily", "blitz"])).toBe("blitz");
+    expect(chooseTimeClass(undefined, [])).toBeNull();
   });
 
   it("falls back to All for an unknown or unanalysed class", () => {

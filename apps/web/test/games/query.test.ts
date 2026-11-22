@@ -107,6 +107,27 @@ describe("serializeGameQuery", () => {
   });
 });
 
+describe("the default time control (I8)", () => {
+  it("no tc gives the default; tc=all asks for every time control", () => {
+    expect(parseGameQuery({}, "rapid").filters.timeClass).toBe("rapid");
+    expect(parseGameQuery({ tc: "bogus" }, "rapid").filters.timeClass).toBe("rapid");
+    expect(parseGameQuery({ tc: "blitz" }, "rapid").filters.timeClass).toBe("blitz");
+    expect(parseGameQuery({ tc: "all" }, "rapid").filters.timeClass).toBeNull();
+    // Without a default, nothing changes: no tc is every time control.
+    expect(parseGameQuery({}).filters.timeClass).toBeNull();
+  });
+
+  it("omits the default from the URL, and writes tc=all for every time control", () => {
+    expect(serializeGameQuery(parseGameQuery({}, "rapid")).toString()).toBe("");
+    const all = parseGameQuery({ tc: "all" }, "rapid");
+    expect(serializeGameQuery(all).toString()).toBe("tc=all");
+    expect(parseGameQuery(Object.fromEntries(serializeGameQuery(all)), "rapid")).toEqual(all);
+    expect(serializeGameQuery(parseGameQuery({ tc: "blitz" }, "rapid")).toString()).toBe(
+      "tc=blitz",
+    );
+  });
+});
+
 describe("serializeGameQuery validation", () => {
   it("writes only valid values", () => {
     const bad = {
