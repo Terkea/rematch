@@ -450,37 +450,47 @@ async fn concurrent_builds_serialise_and_append_no_duplicates(pool: PgPool) {
 /// A game committed while the build runs, whose `analysed_at` (its transaction's start) is
 /// *before* the build's `started_at`, is still picked up by a follow-up build: the check
 /// compares what the build loaded with what is stored, not only timestamps.
-#[sqlx::test(migrator = "db::MIGRATOR")]
-async fn game_committed_mid_build_with_early_analysed_at_gets_a_follow_up(pool: PgPool) {
-    let s = seed(&pool, SeedOptions::default()).await;
-    let late_at = datetime!(2026-11-18 12:00 UTC);
-    let late = insert_unanalysed_game(&pool, s.account_id, late_at).await;
-    // Simulate the race: the late game's metrics land in the build's own write transaction
-    // (after its loads), dated before the build started.
+/// Installs a trigger that commits a late game (played 2026-11-18, `analysed_at` 13:00, before
+/// [`SEED_NOW`]) inside the build's own write transaction, after its loads: the race of a game
+/// committing mid-build whose `analysed_at` predates `started_at`.
+async fn install_late_game_trigger(pool: &PgPool, account_id: Uuid) {
+    let late = insert_unanalysed_game(pool, account_id, datetime!(2026-11-18 12:00 UTC)).await;
     sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
         "CREATE FUNCTION t33_late_game() RETURNS trigger LANGUAGE plpgsql AS $$ \
          BEGIN \
            INSERT INTO game_metrics (game_id, account_id, time_class, played_at, protocol, \
              enrichment_protocol, metrics) \
-           VALUES ('{late}', '{acct}', 'blitz', '2026-11-18T12:00:00Z', '{PROTOCOL}', 'enr-v1', \
-             '{metrics}'::jsonb) ON CONFLICT (game_id) DO NOTHING; \
+           VALUES ('{late}', '{account_id}', 'blitz', '2026-11-18T12:00:00Z', '{PROTOCOL}', \
+             'enr-v1', '{metrics}'::jsonb) ON CONFLICT (game_id) DO NOTHING; \
            UPDATE games SET analysis_status = 'done', analysed_at = '2026-11-18T13:00:00Z' \
              WHERE id = '{late}'; \
            RETURN NULL; \
          END $$; \
          CREATE TRIGGER t33_late_game AFTER INSERT ON weakness_estimates \
            FOR EACH STATEMENT EXECUTE FUNCTION t33_late_game();",
-        acct = s.account_id,
         metrics = serde_json::to_string(&seed_metrics()).unwrap(),
     )))
-    .execute(&pool)
+    .execute(pool)
     .await
     .unwrap();
-    build(&pool, s.account_id).await;
+}
+
+async fn drop_late_game_trigger(pool: &PgPool) {
     sqlx::raw_sql("DROP TRIGGER t33_late_game ON weakness_estimates")
-        .execute(&pool)
+        .execute(pool)
         .await
         .unwrap();
+}
+
+/// A game committed while the build runs, whose `analysed_at` (its transaction's start) is
+/// *before* the build's `started_at`, is still picked up by a follow-up build: the check
+/// compares what the build loaded with what is stored, not only timestamps.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn game_committed_mid_build_with_early_analysed_at_gets_a_follow_up(pool: PgPool) {
+    let s = seed(&pool, SeedOptions::default()).await;
+    install_late_game_trigger(&pool, s.account_id).await;
+    build(&pool, s.account_id).await;
+    drop_late_game_trigger(&pool).await;
     assert_eq!(
         count(
             &pool,
@@ -615,4 +625,214 @@ async fn stale_metrics_rows_are_left_out(pool: PgPool) {
     .await
     .unwrap();
     assert_eq!(opps, 39 * 50);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Fix round 1: the handler path, the replayed history and the adjusted-value change
+
+/// Enqueues and claims a keyed build job, as the runner would.
+async fn claim_build_job(pool: &PgPool, account_id: Uuid) -> queue::Job {
+    let queue = Queue::new(pool.clone());
+    queue
+        .enqueue(
+            KIND_BUILD_PROFILE,
+            &serde_json::to_value(payload(account_id)).unwrap(),
+            EnqueueOptions {
+                dedupe_key: Some(profile_key(account_id, "blitz")),
+                user_key: Some(account_id),
+                ..EnqueueOptions::default()
+            },
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    queue
+        .dequeue(&[KIND_BUILD_PROFILE], "t33", 1, Duration::from_secs(60))
+        .await
+        .unwrap()
+        .pop()
+        .unwrap()
+}
+
+async fn run_handler(pool: &PgPool, job: &queue::Job) -> Value {
+    let handler = BuildProfileHandler(Arc::new(deps(pool)));
+    within(
+        "handler",
+        handler.handle(
+            job.clone(),
+            JobContext {
+                cancel: CancellationToken::new(),
+            },
+        ),
+    )
+    .await
+    .expect("handler")
+}
+
+/// Keyed build jobs still queued (the follow-up), not the running job itself.
+async fn queued_keyed_builds(pool: &PgPool, a: Uuid) -> i64 {
+    sqlx::query_scalar(
+        "SELECT count(*) FROM jobs WHERE kind = $1 AND dedupe_key = $2 AND state = 'queued'",
+    )
+    .bind(KIND_BUILD_PROFILE)
+    .bind(profile_key(a, "blitz"))
+    .fetch_one(pool)
+    .await
+    .unwrap()
+}
+
+/// Through the runner's handler: the job releases its key *before* it enqueues the follow-up,
+/// or the follow-up would dedupe against the job itself and be lost.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn handler_game_analysed_after_start_leaves_one_queued_follow_up(pool: PgPool) {
+    let s = seed(&pool, SeedOptions::default()).await;
+    sqlx::query("UPDATE games SET analysed_at = $2 WHERE id = $1")
+        .bind(s.games[39])
+        .bind(SEED_NOW + time::Duration::minutes(5))
+        .execute(&pool)
+        .await
+        .unwrap();
+    let job = claim_build_job(&pool, s.account_id).await;
+    run_handler(&pool, &job).await;
+    assert_eq!(queued_keyed_builds(&pool, s.account_id).await, 1);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn handler_game_committed_mid_build_leaves_one_queued_follow_up(pool: PgPool) {
+    let s = seed(&pool, SeedOptions::default()).await;
+    install_late_game_trigger(&pool, s.account_id).await;
+    let job = claim_build_job(&pool, s.account_id).await;
+    run_handler(&pool, &job).await;
+    drop_late_game_trigger(&pool).await;
+    assert_eq!(queued_keyed_builds(&pool, s.account_id).await, 1);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn handler_without_changes_leaves_no_follow_up(pool: PgPool) {
+    let s = seed(&pool, SeedOptions::default()).await;
+    let job = claim_build_job(&pool, s.account_id).await;
+    run_handler(&pool, &job).await;
+    assert_eq!(queued_keyed_builds(&pool, s.account_id).await, 0);
+}
+
+type HistoryRow = (String, String, Option<String>, String, Option<Uuid>);
+
+async fn history(pool: &PgPool, a: Uuid) -> Vec<HistoryRow> {
+    sqlx::query_as(
+        "SELECT series_key, kind::text, from_state::text, to_state::text, at_game_id \
+         FROM weakness_state_history WHERE account_id = $1 \
+         ORDER BY series_key, at_played_at, id",
+    )
+    .bind(a)
+    .fetch_all(pool)
+    .await
+    .unwrap()
+}
+
+/// Older games analysed after the profile was built (the scheduler's P2 backfill) move the
+/// replay's rows to other games. History is the current replay: each series keeps exactly one
+/// first (`from NULL`) row, its transitions chain, and an unchanged current state publishes no
+/// event.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn backfilled_older_games_keep_one_consistent_history(pool: PgPool) {
+    let s = seed(&pool, SeedOptions::default()).await;
+    build(&pool, s.account_id).await;
+    let w1_events = |evs: Vec<Value>| evs.into_iter().filter(|p| p["id"] == "W1").count();
+    assert_eq!(
+        w1_events(events(&pool, s.account_id, "weakness.changed").await),
+        1
+    );
+    // 20 older games (2026-W44/45), analysed after the first build but before SEED_NOW.
+    for i in 0..20 {
+        let at = datetime!(2026-10-28 10:00 UTC) + time::Duration::hours(12 * i);
+        insert_analysed_game(&pool, s.account_id, at, datetime!(2026-11-19 10:00 UTC)).await;
+    }
+    build(&pool, s.account_id).await;
+
+    let rows = history(&pool, s.account_id).await;
+    let mut firsts: std::collections::BTreeMap<&str, usize> = Default::default();
+    for (key, _, from, _, _) in &rows {
+        if from.is_none() {
+            *firsts.entry(key.as_str()).or_default() += 1;
+        }
+    }
+    assert!(!firsts.is_empty());
+    assert!(firsts.values().all(|&n| n == 1), "{rows:#?}");
+    // Transitions chain: each row starts where the previous one of its series ended.
+    let mut last: std::collections::BTreeMap<&str, &str> = Default::default();
+    for (key, kind, from, to, _) in &rows {
+        if kind != "transition" {
+            continue;
+        }
+        if let Some(prev) = last.get(key.as_str()) {
+            assert_eq!(from.as_deref(), Some(*prev), "{key}: {rows:#?}");
+        }
+        last.insert(key.as_str(), to.as_str());
+    }
+    let state: String = sqlx::query_scalar(
+        "SELECT state::text FROM weakness_estimates WHERE account_id = $1 AND series_key = 'W1'",
+    )
+    .bind(s.account_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(state, "active");
+    // W1 was active before and after: no second "W1 became active".
+    assert_eq!(
+        w1_events(events(&pool, s.account_id, "weakness.changed").await),
+        1
+    );
+    // A third build changes nothing.
+    let third = build(&pool, s.account_id).await;
+    assert_eq!(third.transitions, 0);
+    assert_eq!(history(&pool, s.account_id).await, rows);
+}
+
+async fn latest_snapshot_id(pool: &PgPool, a: Uuid, metric: &str) -> i64 {
+    sqlx::query_scalar(
+        "SELECT max(id) FROM kpi_snapshot WHERE account_id = $1 AND metric = $2 \
+         AND window_key = 'last50'",
+    )
+    .bind(a)
+    .bind(metric)
+    .fetch_one(pool)
+    .await
+    .unwrap()
+}
+
+/// A change of only `value_adjusted` or of the interval (for example after a new reference)
+/// is a change: the latest stored row would otherwise stay stale.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn adjusted_value_or_interval_change_appends_a_row(pool: PgPool) {
+    let s = seed(&pool, SeedOptions::default()).await;
+    build(&pool, s.account_id).await;
+    let adj = latest_snapshot_id(&pool, s.account_id, "weakness:W1").await;
+    let ci = latest_snapshot_id(&pool, s.account_id, "blunders_per_game").await;
+    let (adjusted, high): (Option<f64>, Option<f64>) = sqlx::query_as(
+        "SELECT (SELECT value_adjusted FROM kpi_snapshot WHERE id = $1), \
+                (SELECT ci_high FROM kpi_snapshot WHERE id = $2)",
+    )
+    .bind(adj)
+    .bind(ci)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(
+        adjusted.is_some() && high.is_some(),
+        "{adjusted:?} {high:?}"
+    );
+    sqlx::query("UPDATE kpi_snapshot SET value_adjusted = value_adjusted + 0.25 WHERE id = $1")
+        .bind(adj)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE kpi_snapshot SET ci_high = ci_high + 0.25 WHERE id = $1")
+        .bind(ci)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let again = build(&pool, s.account_id).await;
+    assert_eq!(again.snapshots, 2);
+    assert!(latest_snapshot_id(&pool, s.account_id, "weakness:W1").await > adj);
+    assert!(latest_snapshot_id(&pool, s.account_id, "blunders_per_game").await > ci);
 }

@@ -11,7 +11,10 @@
 //! - **Area scores** are computed per window from that window's rows and stored as
 //!   `area:<area>` rows (`value` = score, `n`, no interval).
 //! - **Change detection** compares `value` and `n` exactly with the latest row (highest id) of
-//!   the same metric and window (`double precision`, so f64 round-trips).
+//!   the same metric and window (`double precision`, so f64 round-trips). TS compares only
+//!   `value` and `n`; `value_adjusted`, `ci_low` and `ci_high` are compared too (T33 review
+//!   M4), so a new reference that moves only the opponent adjustment never leaves the latest
+//!   row stale.
 //! - **Events.** One `profile.updated` per area with an appended row (component KPI or its area
 //!   score, in any window), except areas without a benchmark (mindset). The payload lists the
 //!   area's current `last50` rows.
@@ -76,8 +79,10 @@ pub fn compute_snapshots(
         .collect()
 }
 
-/// `(metric, window_key)` -> `(value, n)` of the latest stored row.
-pub type Latest = HashMap<(String, String), (Option<f64>, i32)>;
+/// What change detection compares: `(value, n, value_adjusted, ci_low, ci_high)`.
+pub type Compared = (Option<f64>, i32, Option<f64>, Option<f64>, Option<f64>);
+/// `(metric, window_key)` -> [`Compared`] of the latest stored row.
+pub type Latest = HashMap<(String, String), Compared>;
 
 /// The latest stored row per metric and window of the account × time class.
 pub async fn latest_snapshots(
@@ -85,8 +90,18 @@ pub async fn latest_snapshots(
     account_id: Uuid,
     tc: TimeClass,
 ) -> Result<Latest, sqlx::Error> {
-    let rows: Vec<(String, String, Option<f64>, i32)> = sqlx::query_as(
-        "SELECT DISTINCT ON (metric, window_key) metric, window_key, value, n \
+    type Raw = (
+        String,
+        String,
+        Option<f64>,
+        i32,
+        Option<f64>,
+        Option<f64>,
+        Option<f64>,
+    );
+    let rows: Vec<Raw> = sqlx::query_as(
+        "SELECT DISTINCT ON (metric, window_key) metric, window_key, value, n, value_adjusted, \
+           ci_low, ci_high \
          FROM kpi_snapshot WHERE account_id = $1 AND time_class = $2::time_class \
          ORDER BY metric, window_key, id DESC",
     )
@@ -96,7 +111,7 @@ pub async fn latest_snapshots(
     .await?;
     Ok(rows
         .into_iter()
-        .map(|(m, w, v, n)| ((m, w), (v, n)))
+        .map(|(m, w, v, n, adj, lo, hi)| ((m, w), (v, n, adj, lo, hi)))
         .collect())
 }
 
@@ -104,13 +119,18 @@ fn n_of(v: &KpiValue) -> i32 {
     i32::try_from(v.n).unwrap_or(i32::MAX)
 }
 
-/// The rows whose `value` or `n` differ from the latest stored row (or that have none).
+/// The compared fields of a value.
+pub fn compared(v: &KpiValue) -> Compared {
+    (v.value, n_of(v), v.value_adjusted, v.ci_low, v.ci_high)
+}
+
+/// The rows whose [`Compared`] fields differ from the latest stored row (or that have none).
 pub fn rows_to_append<'a>(rows: &'a [KpiValue], latest: &Latest) -> Vec<&'a KpiValue> {
     rows.iter()
         .filter(|r| {
             latest
                 .get(&(r.metric.to_string(), r.window_key.clone()))
-                .is_none_or(|(value, n)| *value != r.value || *n != n_of(r))
+                .is_none_or(|stored| *stored != compared(r))
         })
         .collect()
 }

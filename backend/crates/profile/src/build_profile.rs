@@ -3,36 +3,51 @@
 //!
 //! Steps ([`handle_build_profile`]):
 //! 1. Record `started_at` from the deps' clock.
-//! 2. Fingerprint the stored `game_metrics` rows, then load the current-version games
-//!    ([`load_analysed_games`]; stale versions are no evidence), their series points (points of
-//!    games left out are dropped too) and the band reference of the player's band (R-4 with
-//!    ruling Q2, per-metric fallback of Task 17). Then take the build's advisory lock
-//!    (`build-profile:<account>:<tc>`) in the write transaction and check the fingerprint again:
-//!    if the games changed meanwhile, load again (optimistic, at most [`MAX_LOAD_ATTEMPTS`]).
-//!    Builds of one account × time class therefore write one at a time, each from a view that
-//!    was current when it took the lock, and a build never holds two connections.
-//! 3. [`estimate_weakness`](profile_core::stats::priority::estimate_weakness) per binomial key
-//!    ([`crate::estimates`]), upserted with the timeline's state and `P_imp`.
-//! 4. [`evaluate_series`](profile_core::timeline::series::evaluate_series) per series; history
-//!    rows whose `(kind, to, at_game_id)` are not stored are appended ([`crate::timeline_job`]).
-//!    The stored keys are read under the lock, so concurrent builds never append twice.
-//! 5. KPIs for `last50` and every week with games, appended when `value` or `n` changed, and
-//! 6. area scores as `area:<area>` rows ([`crate::snapshots`]). Commit.
-//! 7. After the commit, publish one `profile.updated` per changed benchmarked area and one
-//!    `weakness.changed` per new transition row. Events are account-scoped (`user_events.
-//!    account_id`); both carry the player's own statistics (see the R3 `user_id` note in the
-//!    task report). Then [`rebuild_repertoire`] (its own lock and transaction).
-//! 8. Follow-up (T31 hand-off): a job first gives up its dedupe key, then checks whether the
-//!    stored games changed since its fingerprint or any game has `analysed_at > started_at`, and
-//!    if so enqueues the next build. A game that commits after the key is released enqueues its
-//!    own build (the hook's enqueue no longer meets a live job); one that committed before is
-//!    seen by the check. So a game finishing mid-build is never left waiting. The fingerprint
-//!    covers what timestamps cannot: `analysed_at` is the analysis transaction's start, which
-//!    can precede `started_at` although the game committed after the load.
+//! 2. Read the band reference of the player's band (R-4 with ruling Q2, per-metric fallback of
+//!    Task 17). It is reference data, not account state, so it is read before the lock. Then
+//!    open the write transaction and take the build's advisory lock
+//!    (`build-profile:<account>:<tc>`). On the transaction's own connection, fingerprint the
+//!    stored `game_metrics` rows and load:
+//!    - the current-version games ([`load_analysed_games_in`]; stale versions are no evidence);
+//!    - their series points (points of games left out are dropped too);
+//!    - the band again (re-read under the lock; if it moved, the reference is read again);
+//!    - the line keys, the stored history, the stored estimate states and the latest
+//!      snapshots.
+//!
+//!    Builds of one account × time class therefore run one at a time, each from one consistent
+//!    view, on one connection (T33 review M1; the earlier optimistic re-load is gone).
+//! 3. to 6. The CPU-heavy part runs in `spawn_blocking` (review M2):
+//!    - [`estimate_weakness`](profile_core::stats::priority::estimate_weakness) per binomial
+//!      key ([`crate::estimates`]), upserted with the timeline's state and `P_imp`;
+//!    - [`evaluate_series`](profile_core::timeline::series::evaluate_series) per series. The
+//!      stored history is made equal to the replay: stale rows deleted, missing rows inserted
+//!      ([`crate::timeline_job`], review I1 ruling a);
+//!    - KPIs for `last50` and every week with games, and area scores as `area:<area>` rows,
+//!      appended when a compared field changed ([`crate::snapshots`]).
+//!
+//!    Then write and commit.
+//! 7. After the commit, publish:
+//!    - one `profile.updated` per changed benchmarked area;
+//!    - one `weakness.changed` per series whose current state differs from the stored one.
+//!
+//!    Events are account-scoped (`user_events.account_id`); both carry the player's own
+//!    statistics (see the R3 `user_id` note in the task report). Then [`rebuild_repertoire`],
+//!    which has its own lock and transaction and holds two connections (Task 18's code).
+//! 8. Follow-up (T31 hand-off). A job first gives up its dedupe key. It then checks whether the
+//!    stored games changed since its fingerprint, or any game has `analysed_at > started_at`;
+//!    if so, it enqueues the next build.
+//!    - A game that commits after the key is released enqueues its own build: the hook's
+//!      enqueue no longer meets a live job.
+//!    - A game that committed before the release is seen by the check.
+//!
+//!    So a game finishing mid-build is never left waiting. The release must come first: before
+//!    it, the job's own enqueue would dedupe against the running job. The fingerprint covers
+//!    what timestamps cannot: `analysed_at` is the analysis transaction's start, which can
+//!    precede `started_at` although the game committed after the load.
 //! 9. Enqueue `schedule-analysis` for the account, and record the `job_metrics` row.
 //!
-//! The job is idempotent: the same games, reference and clock give the same estimates, and a
-//! rerun appends no snapshot or history row and publishes no event.
+//! The job is idempotent. The same games, reference and clock give the same estimates, and a
+//! rerun writes no snapshot or history row and publishes no event.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
@@ -46,9 +61,11 @@ use engine::ANALYSIS_PROTOCOL;
 use events::store::{UserEventType, publish};
 use futures::future::BoxFuture;
 use profile_core::kpi::catalogue::KpiGame;
-use profile_core::timeline::series::SeriesPoint;
+use profile_core::kpi::snapshots::KpiValue;
+use profile_core::stats::priority::WeaknessEstimate;
+use profile_core::timeline::series::{SeriesOutcome, SeriesPoint};
 use profile_core::types::{
-    Band, BandReference, GameContext, PlayerGameMetrics, SeriesKey, SessionInfo, WeaknessState,
+    BandReference, GameContext, PlayerGameMetrics, SeriesKey, SessionInfo, WeaknessState,
 };
 use profile_core::weakness::sessions::{
     SESSION_GAP_MINUTES, SessionGame, build_sessions, est_duration_seconds,
@@ -58,7 +75,7 @@ use queue::runner::{Handler, JobContext};
 use queue::{BuildProfilePayload, Job, JobError, KIND_BUILD_PROFILE};
 use refdata::band_reference::load_band_reference;
 use refdata::builds::RefdataError;
-use refdata::repertoire::{player_band, rebuild_repertoire};
+use refdata::repertoire::{player_band, player_band_in, rebuild_repertoire};
 use serde::Serialize;
 use serde_json::{Value, json};
 use sqlx::{PgConnection, PgPool};
@@ -68,13 +85,15 @@ use uuid::Uuid;
 use crate::analyse_features::parse_time_class;
 use crate::estimates::{compute_estimates, estimate_row, games_in_window};
 use crate::hook_impl::enqueue_build_profile;
-use crate::load::{LoadError, load_analysed_games, load_series_points};
+use crate::load::{LoadError, load_analysed_games_in, load_series_points_in};
 use crate::snapshots::{
-    changed_areas, compute_snapshots, latest_snapshots, profile_updated_payload, rows_to_append,
-    snapshot_row,
+    Latest, changed_areas, compute_snapshots, latest_snapshots, profile_updated_payload,
+    rows_to_append, snapshot_row,
 };
 use crate::timeline_job::{
-    CauseFacts, evaluate_all, history_row, new_rows, stored_row_keys, weakness_changed_payload,
+    CauseFacts, NewRow, StateChange, StoredHistory, delete_history_rows, evaluate_all, history_row,
+    new_rows, stale_row_ids, state_changes, stored_estimate_states, stored_history,
+    weakness_changed_payload,
 };
 
 /// `job_metrics.kind` of the job.
@@ -88,9 +107,6 @@ pub const BUILD_PROFILE_STAGES: [&str; 6] = [
     "repertoire_ms",
     "persist_ms",
 ];
-/// Loads whose view is no longer current under the lock before the build writes anyway (the
-/// follow-up check then sees the change and builds again).
-pub const MAX_LOAD_ATTEMPTS: usize = 3;
 
 pub struct BuildProfileDeps {
     pub pool: PgPool,
@@ -107,7 +123,8 @@ pub struct BuildProfileSummary {
     pub estimates: usize,
     /// `kpi_snapshot` rows appended.
     pub snapshots: usize,
-    /// `weakness_state_history` rows appended (transitions and onsets).
+    /// `weakness_state_history` rows inserted (transitions and onsets). Stale rows deleted to
+    /// match the replay are not counted.
     pub transitions: usize,
 }
 
@@ -143,10 +160,6 @@ fn ms(t: Instant) -> f64 {
     t.elapsed().as_secs_f64() * 1000.0
 }
 
-fn add_stage(stages: &mut BTreeMap<String, f64>, name: &str, t: Instant) {
-    *stages.entry(name.to_owned()).or_default() += ms(t);
-}
-
 /// A digest of the stored `game_metrics` rows of the account × time class: it changes whenever
 /// a row is added, replaced (`created_at` is reset) or deleted.
 pub async fn games_fingerprint(
@@ -163,20 +176,6 @@ pub async fn games_fingerprint(
     .bind(tc.as_str())
     .fetch_one(conn)
     .await
-}
-
-async fn pool_fingerprint(
-    pool: &PgPool,
-    account_id: Uuid,
-    tc: TimeClass,
-) -> Result<(i64, String), JobError> {
-    let mut conn = pool
-        .acquire()
-        .await
-        .map_err(|e| retryable("fingerprint", e))?;
-    games_fingerprint(&mut conn, account_id, tc)
-        .await
-        .map_err(|e| retryable("fingerprint", e))
 }
 
 /// Takes the build's lock for the rest of `conn`'s transaction.
@@ -206,16 +205,28 @@ async fn release_dedupe_key(pool: &PgPool, job: &Job) -> sqlx::Result<bool> {
     Ok(done.rows_affected() > 0)
 }
 
-fn sessions(games: &[(GameContext, PlayerGameMetrics)]) -> HashMap<Uuid, SessionInfo> {
+/// Sessions of the loaded games. Daily games have no sessions (no game duration is known, and a
+/// duration of 0 would claim one).
+fn sessions(
+    tc: TimeClass,
+    games: &[(GameContext, PlayerGameMetrics)],
+) -> HashMap<Uuid, SessionInfo> {
+    if tc == TimeClass::Daily {
+        return HashMap::new();
+    }
     let input: Vec<SessionGame> = games
         .iter()
-        .map(|(ctx, m)| SessionGame {
-            game_id: ctx.game_id,
-            played_at: ctx.played_at,
-            est_duration_seconds: est_duration_seconds(ctx.base_seconds, ctx.increment_seconds)
-                .unwrap_or(0.0),
-            score: ctx.score,
-            expected_score: m.expected_score,
+        .filter_map(|(ctx, m)| {
+            Some(SessionGame {
+                game_id: ctx.game_id,
+                played_at: ctx.played_at,
+                est_duration_seconds: est_duration_seconds(
+                    ctx.base_seconds,
+                    ctx.increment_seconds,
+                )?,
+                score: ctx.score,
+                expected_score: m.expected_score,
+            })
         })
         .collect();
     build_sessions(&input, SESSION_GAP_MINUTES)
@@ -224,32 +235,45 @@ fn sessions(games: &[(GameContext, PlayerGameMetrics)]) -> HashMap<Uuid, Session
         .collect()
 }
 
-/// A build attempt's view of the account: what it loaded and the fingerprint taken first.
+/// What the build read under its lock.
 struct Loaded {
     fingerprint: (i64, String),
     user_id: Option<Uuid>,
     games: Vec<(GameContext, PlayerGameMetrics)>,
     series: BTreeMap<SeriesKey, Vec<SeriesPoint>>,
-    band: Band,
+    band: profile_core::types::Band,
     reference: Option<BandReference>,
     line_keys: HashMap<Uuid, String>,
+    stored: StoredHistory,
+    stored_states: HashMap<String, WeaknessState>,
+    latest: Latest,
 }
 
-/// Step 2's loads: lock-free, one connection at a time.
-async fn load(pool: &PgPool, account_id: Uuid, tc: TimeClass) -> Result<Loaded, JobError> {
-    let fingerprint = pool_fingerprint(pool, account_id, tc).await?;
+/// Step 2 on the locked transaction. `prefetched` is the band and reference read before the
+/// lock; the reference is read again only if the band moved meanwhile (the only moment a second
+/// connection is used, briefly).
+async fn load_locked(
+    conn: &mut PgConnection,
+    pool: &PgPool,
+    account_id: Uuid,
+    tc: TimeClass,
+    prefetched: (profile_core::types::Band, Option<BandReference>),
+) -> Result<Loaded, JobError> {
+    let fingerprint = games_fingerprint(conn, account_id, tc)
+        .await
+        .map_err(|e| retryable("fingerprint", e))?;
     let user_id: Option<Uuid> =
         sqlx::query_scalar::<_, Option<Uuid>>("SELECT user_id FROM linked_accounts WHERE id = $1")
             .bind(account_id)
-            .fetch_optional(pool)
+            .fetch_optional(&mut *conn)
             .await
             .map_err(|e| retryable("account", e))?
             .ok_or_else(|| unrecoverable(format!("no such account {account_id}"), "not_found"))?;
-    let games = load_analysed_games(pool, account_id, tc)
+    let games = load_analysed_games_in(conn, account_id, tc)
         .await
         .map_err(load_error)?;
     let loaded: HashSet<Uuid> = games.iter().map(|(c, _)| c.game_id).collect();
-    let mut series = load_series_points(pool, account_id, tc)
+    let mut series = load_series_points_in(conn, account_id, tc)
         .await
         .map_err(load_error)?;
     // Points of a game whose metrics are stale (or missing) are no evidence either.
@@ -257,24 +281,37 @@ async fn load(pool: &PgPool, account_id: Uuid, tc: TimeClass) -> Result<Loaded, 
         points.retain(|p| loaded.contains(&p.game_id));
     }
     series.retain(|_, pts| !pts.is_empty());
-    let (band, _source) = player_band(pool, account_id, tc)
+    let (band, _source) = player_band_in(conn, account_id, tc)
         .await
         .map_err(refdata_error)?;
-    let reference = load_band_reference(pool, band, tc)
-        .await
-        .map_err(refdata_error)?
-        .map(|r| r.reference());
+    let reference = if band == prefetched.0 {
+        prefetched.1
+    } else {
+        load_band_reference(pool, band, tc)
+            .await
+            .map_err(refdata_error)?
+            .map(|r| r.reference())
+    };
     let line_keys: HashMap<Uuid, String> = sqlx::query_as::<_, (Uuid, String)>(
         "SELECT game_id, line_key FROM game_openings WHERE account_id = $1 \
          AND time_class = $2::time_class AND line_key IS NOT NULL",
     )
     .bind(account_id)
     .bind(tc.as_str())
-    .fetch_all(pool)
+    .fetch_all(&mut *conn)
     .await
     .map_err(|e| retryable("openings", e))?
     .into_iter()
     .collect();
+    let stored = stored_history(conn, account_id, tc)
+        .await
+        .map_err(|e| retryable("history", e))?;
+    let stored_states = stored_estimate_states(conn, account_id, tc)
+        .await
+        .map_err(|e| retryable("estimates", e))?;
+    let latest = latest_snapshots(conn, account_id, tc)
+        .await
+        .map_err(|e| retryable("snapshots", e))?;
     Ok(Loaded {
         fingerprint,
         user_id,
@@ -283,7 +320,89 @@ async fn load(pool: &PgPool, account_id: Uuid, tc: TimeClass) -> Result<Loaded, 
         band,
         reference,
         line_keys,
+        stored,
+        stored_states,
+        latest,
     })
+}
+
+/// The pure result of steps 3 to 6.
+struct Computed {
+    estimates: Vec<WeaknessEstimate>,
+    outcomes: BTreeMap<SeriesKey, SeriesOutcome>,
+    fresh: Vec<NewRow>,
+    stale_ids: Vec<i64>,
+    changes: Vec<StateChange>,
+    snapshot_values: Vec<KpiValue>,
+    appended: Vec<KpiValue>,
+    protocols: HashMap<Uuid, String>,
+    estimates_ms: f64,
+    timeline_ms: f64,
+    kpi_ms: f64,
+}
+
+fn compute(tc: TimeClass, l: &Loaded, started_at: OffsetDateTime) -> Computed {
+    let t = Instant::now();
+    let in_window = games_in_window(l.games.iter().map(|(c, _)| c.played_at), started_at);
+    let estimates = compute_estimates(
+        &l.series,
+        in_window,
+        l.band,
+        l.reference.as_ref(),
+        started_at,
+    );
+    let estimates_ms = ms(t);
+
+    let t = Instant::now();
+    let outcomes = evaluate_all(&l.series, l.reference.as_ref());
+    let contexts: HashMap<Uuid, &GameContext> =
+        l.games.iter().map(|(c, _)| (c.game_id, c)).collect();
+    let facts = CauseFacts {
+        games: &contexts,
+        line_keys: &l.line_keys,
+    };
+    let fresh = new_rows(&l.series, &outcomes, &l.stored, &facts);
+    let stale_ids = stale_row_ids(&outcomes, &l.stored);
+    let changes = state_changes(&outcomes, &l.stored_states, &l.stored);
+    let timeline_ms = ms(t);
+
+    let t = Instant::now();
+    let session_map = sessions(tc, &l.games);
+    let kpi_games: Vec<KpiGame<'_>> = l
+        .games
+        .iter()
+        .map(|(ctx, metrics)| KpiGame {
+            ctx,
+            metrics,
+            session: session_map.get(&ctx.game_id),
+        })
+        .collect();
+    let snapshot_values = compute_snapshots(&kpi_games, l.reference.as_ref());
+    let appended: Vec<KpiValue> = rows_to_append(&snapshot_values, &l.latest)
+        .into_iter()
+        .cloned()
+        .collect();
+    let kpi_ms = ms(t);
+
+    let protocols = l
+        .series
+        .values()
+        .flatten()
+        .map(|p| (p.game_id, p.protocol.clone()))
+        .collect();
+    Computed {
+        estimates,
+        outcomes,
+        fresh,
+        stale_ids,
+        changes,
+        snapshot_values,
+        appended,
+        protocols,
+        estimates_ms,
+        timeline_ms,
+        kpi_ms,
+    }
 }
 
 /// Runs one build (module docs). The runner's [`BuildProfileHandler`] passes its job, so the
@@ -315,100 +434,57 @@ async fn run_build(
         .map(|s| ((*s).to_owned(), 0.0))
         .collect();
 
-    // 2. Load, lock, and check that the view is still current.
-    let mut attempt = 0;
-    let (l, mut tx) = loop {
-        attempt += 1;
-        let t = Instant::now();
-        let l = load(pool, account_id, tc).await?;
-        let mut tx = pool.begin().await.map_err(|e| retryable("begin", e))?;
-        lock_build(&mut tx, account_id, tc)
-            .await
-            .map_err(|e| retryable("lock", e))?;
-        let current = games_fingerprint(&mut tx, account_id, tc)
-            .await
-            .map_err(|e| retryable("fingerprint", e))?;
-        add_stage(&mut stages, "load_ms", t);
-        if current == l.fingerprint || attempt >= MAX_LOAD_ATTEMPTS {
-            break (l, tx);
-        }
-        tx.rollback().await.map_err(|e| retryable("rollback", e))?;
-    };
+    // 2. Reference data first, then the lock and the account's state on one connection.
     let t = Instant::now();
-    let stored_rows = stored_row_keys(&mut tx, account_id, tc)
+    let (band0, _) = player_band(pool, account_id, tc)
         .await
-        .map_err(|e| retryable("history", e))?;
-    let latest = latest_snapshots(&mut tx, account_id, tc)
+        .map_err(refdata_error)?;
+    let reference0 = load_band_reference(pool, band0, tc)
         .await
-        .map_err(|e| retryable("snapshots", e))?;
-    add_stage(&mut stages, "load_ms", t);
+        .map_err(refdata_error)?
+        .map(|r| r.reference());
+    let mut tx = pool.begin().await.map_err(|e| retryable("begin", e))?;
+    lock_build(&mut tx, account_id, tc)
+        .await
+        .map_err(|e| retryable("lock", e))?;
+    let l = load_locked(&mut tx, pool, account_id, tc, (band0, reference0)).await?;
+    stages.insert("load_ms".into(), ms(t));
 
-    // 3. Estimates.
-    let t = Instant::now();
-    let in_window = games_in_window(l.games.iter().map(|(c, _)| c.played_at), started_at);
-    let estimates = compute_estimates(
-        &l.series,
-        in_window,
-        l.band,
-        l.reference.as_ref(),
-        started_at,
-    );
-    add_stage(&mut stages, "estimates_ms", t);
-
-    // 4. Timeline.
-    let t = Instant::now();
-    let outcomes = evaluate_all(&l.series, l.reference.as_ref());
-    let contexts: HashMap<Uuid, &GameContext> =
-        l.games.iter().map(|(c, _)| (c.game_id, c)).collect();
-    let facts = CauseFacts {
-        games: &contexts,
-        line_keys: &l.line_keys,
-    };
-    let fresh = new_rows(&l.series, &outcomes, &stored_rows, &facts);
-    add_stage(&mut stages, "timeline_ms", t);
-
-    // 5-6. KPIs and area scores.
-    let t = Instant::now();
-    let session_map = sessions(&l.games);
-    let kpi_games: Vec<KpiGame<'_>> = l
-        .games
-        .iter()
-        .map(|(ctx, metrics)| KpiGame {
-            ctx,
-            metrics,
-            session: session_map.get(&ctx.game_id),
-        })
-        .collect();
-    let snapshot_values = compute_snapshots(&kpi_games, l.reference.as_ref());
-    let appended = rows_to_append(&snapshot_values, &latest);
-    add_stage(&mut stages, "kpi_ms", t);
+    // 3-6. The CPU-heavy part, off the async executor.
+    let (l, c) = tokio::task::spawn_blocking(move || {
+        let c = compute(tc, &l, started_at);
+        (l, c)
+    })
+    .await
+    .map_err(|e| retryable("compute", e))?;
+    stages.insert("estimates_ms".into(), c.estimates_ms);
+    stages.insert("timeline_ms".into(), c.timeline_ms);
+    stages.insert("kpi_ms".into(), c.kpi_ms);
 
     // Persist, then commit (which releases the lock).
     let t = Instant::now();
-    let protocols: HashMap<Uuid, &str> = l
-        .series
-        .values()
-        .flatten()
-        .map(|p| (p.game_id, p.protocol.as_str()))
-        .collect();
-    for e in &estimates {
-        let (state, p_imp) = outcomes
+    for e in &c.estimates {
+        let (state, p_imp) = c
+            .outcomes
             .get(&SeriesKey::Weakness(e.key))
             .map_or((WeaknessState::NotAnIssue, None), |o| (o.state, o.p_imp));
         upsert_weakness_estimate(&mut tx, &estimate_row(account_id, tc, e, state, p_imp))
             .await
             .map_err(|e| retryable("estimates", e))?;
     }
-    for r in &fresh {
-        let protocol = protocols
+    let deleted = delete_history_rows(&mut tx, &c.stale_ids)
+        .await
+        .map_err(|e| retryable("history", e))?;
+    for r in &c.fresh {
+        let protocol = c
+            .protocols
             .get(&r.row.at_game_id)
-            .copied()
-            .unwrap_or(ANALYSIS_PROTOCOL);
+            .map_or(ANALYSIS_PROTOCOL, String::as_str);
         append_state_history(&mut tx, &history_row(account_id, tc, r, protocol))
             .await
             .map_err(|e| retryable("history", e))?;
     }
-    for v in &appended {
+    for v in &c.appended {
         append_kpi_snapshot(
             &mut tx,
             &snapshot_row(l.user_id, account_id, tc, v, ANALYSIS_PROTOCOL),
@@ -417,27 +493,30 @@ async fn run_build(
         .map_err(|e| retryable("snapshots", e))?;
     }
     tx.commit().await.map_err(|e| retryable("commit", e))?;
-    add_stage(&mut stages, "persist_ms", t);
+    stages.insert("persist_ms".into(), ms(t));
+    if deleted > 0 {
+        tracing::info!(%account_id, tc = tc.as_str(), deleted, "history rows replaced by the replay");
+    }
 
     let summary = BuildProfileSummary {
-        estimates: estimates.len(),
-        snapshots: appended.len(),
-        transitions: fresh.len(),
+        estimates: c.estimates.len(),
+        snapshots: c.appended.len(),
+        transitions: c.fresh.len(),
     };
 
     // 7. Events, right after the commit. They notify; the state is in Postgres, so a failed
     // publish is logged, not retried (a retry would find nothing new to announce).
+    let appended: Vec<&KpiValue> = c.appended.iter().collect();
     for area in changed_areas(&appended) {
-        let p = profile_updated_payload(tc, area, &snapshot_values);
+        let p = profile_updated_payload(tc, area, &c.snapshot_values);
         if let Err(e) = publish(pool, account_id, UserEventType::ProfileUpdated, p).await {
             tracing::warn!(%account_id, area = area.as_str(), error = %e, "publish profile.updated failed");
         }
     }
-    for r in &fresh {
-        if let Some(p) = weakness_changed_payload(tc, r)
-            && let Err(e) = publish(pool, account_id, UserEventType::WeaknessChanged, p).await
-        {
-            tracing::warn!(%account_id, key = %r.key, error = %e, "publish weakness.changed failed");
+    for change in &c.changes {
+        let p = weakness_changed_payload(tc, change);
+        if let Err(e) = publish(pool, account_id, UserEventType::WeaknessChanged, p).await {
+            tracing::warn!(%account_id, key = %change.key, error = %e, "publish weakness.changed failed");
         }
     }
     // The repertoire has its own lock and transaction. A failure retries the job, which finds
@@ -446,15 +525,21 @@ async fn run_build(
     rebuild_repertoire(pool, account_id, tc)
         .await
         .map_err(refdata_error)?;
-    add_stage(&mut stages, "repertoire_ms", t);
+    stages.insert("repertoire_ms".into(), ms(t));
 
-    // 8. Follow-up build.
+    // 8. Follow-up build: release the key first, then check, then enqueue.
     if let Some(job) = job {
         release_dedupe_key(pool, job)
             .await
             .map_err(|e| retryable("release dedupe key", e))?;
     }
-    let now_print = pool_fingerprint(pool, account_id, tc).await?;
+    let mut conn = pool
+        .acquire()
+        .await
+        .map_err(|e| retryable("follow-up check", e))?;
+    let now_print = games_fingerprint(&mut conn, account_id, tc)
+        .await
+        .map_err(|e| retryable("fingerprint", e))?;
     let analysed_later: bool = sqlx::query_scalar(
         "SELECT EXISTS (SELECT 1 FROM games WHERE account_id = $1 \
          AND time_class = $2::time_class AND analysed_at > $3)",
@@ -462,9 +547,10 @@ async fn run_build(
     .bind(account_id)
     .bind(tc.as_str())
     .bind(started_at)
-    .fetch_one(pool)
+    .fetch_one(&mut *conn)
     .await
     .map_err(|e| retryable("follow-up check", e))?;
+    drop(conn);
     if now_print != l.fingerprint || analysed_later {
         enqueue_build_profile(&deps.queue, account_id, tc)
             .await
