@@ -7,6 +7,8 @@ import {
   benchmarkLabel,
   type CoachScope,
   getBenchmark,
+  peerPooledBasis,
+  peerRateText,
   resolveCoachScope,
 } from "../../src/server/profile";
 import { resetGameTables, seedAccount } from "../helpers/games";
@@ -20,6 +22,7 @@ const peers: Benchmark = {
   high: 950,
   players: 12,
   games: 31,
+  chances: { W5: 31 },
 };
 
 describe("benchmark label", () => {
@@ -41,6 +44,19 @@ describe("benchmark label", () => {
 
   it("gives rows a short group name", () => {
     expect(benchmarkGroupLabel(peers)).toBe("Players you've faced, rated about 650–950");
+  });
+
+  it("names a row's pooled rate with the raw chances it is pooled over", () => {
+    const b: Benchmark = { ...peers, chances: { "W4.missed": 65, W9a: 1 } };
+    expect(peerPooledBasis(b, "W4.missed")).toBe("pooled over 65 of their chances");
+    expect(peerPooledBasis(b, "W9a")).toBe("pooled over 1 of their chances");
+    expect(peerPooledBasis(b, "W1")).toBeUndefined();
+    expect(peerRateText(b, "W4.missed", 0.0957)).toBe(
+      "Players you've faced, rated about 650–950: 9.6% (pooled over 65 of their chances)",
+    );
+    expect(peerRateText(b, "W1", 0.1)).toBe("Players you've faced, rated about 650–950: 10.0%");
+    expect(peerRateText({ source: "lichess_bands" }, "W4.missed", 0.1)).toBeNull();
+    expect(peerPooledBasis(null, "W4.missed")).toBeUndefined();
   });
 
   it("says nothing peer-specific for the legacy band reference or none", () => {
@@ -67,8 +83,9 @@ async function storeBenchmark(account: string, served: boolean) {
     values (${account}, 'rapid', 'peers', 800, 650, 950, 12, 31)`);
   await db.execute(sql`
     insert into account_benchmark_stat (account_id, time_class, metric, median, p25, p40, p75,
-      n_players, n_games, low_sample)
-    values (${account}, 'rapid', 'weakness:W5', 0.3, 0.2, 0.25, 0.4, 12, 31, ${!served})`);
+      n_players, n_games, low_sample, n_chances)
+    values (${account}, 'rapid', 'weakness:W5', 0.3, 0.2, 0.25, 0.4, 12, 31, ${!served}, 31),
+      (${account}, 'rapid', 'accuracy', 70, 60, 65, 80, 12, 31, ${!served}, null)`);
 }
 
 describe("getBenchmark", () => {

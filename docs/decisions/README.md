@@ -84,6 +84,7 @@ One file per decision: context, decision, alternatives, consequences. New decisi
 - [0079. Explained stats: definition lines, an explanation popover and the weakness story](0079-explained-stats-and-weakness-story.md)
 - [0080. A chess.com peer benchmark from the opponents you have faced](0080-chesscom-peer-benchmark.md)
 - [0083. One filter URL contract, and honest period comparison](0083-filters-and-period-comparison.md)
+- [0081. The peer benchmark compares with the pooled rate, in the player's window, without mirrors](0081-peer-benchmark-pooled-rate.md)
 
 ## Records with placeholder numbers
 

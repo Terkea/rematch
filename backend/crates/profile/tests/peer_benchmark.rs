@@ -13,9 +13,12 @@ use profile_core::types::{
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-const W5: MetricId = MetricId::Weakness(WeaknessKey::W5);
+const TRAPS: MetricId = MetricId::Weakness(WeaknessKey::W7Traps);
+const MISSED: MetricId = MetricId::Weakness(WeaknessKey::W4Missed);
 const W1: MetricId = MetricId::Weakness(WeaknessKey::W1);
 const ACCURACY: MetricId = MetricId::Base(BaseMetric::Accuracy);
+/// The build's time; the unit tests' games are played at it unless said otherwise.
+const NOW: OffsetDateTime = OffsetDateTime::UNIX_EPOCH;
 
 fn owner_ctx(color: Color, result: &str) -> GameContext {
     GameContext {
@@ -47,16 +50,16 @@ fn metrics() -> PlayerGameMetrics {
     }
 }
 
-/// One game of `opponent` rated `rating`, with W5, W1 and accuracy observed.
-fn side(opponent: &str, rating: i32, w5_events: u32, accuracy: f64) -> PeerSide {
+/// One game of `opponent` rated `rating`, with W7.traps, W1 and accuracy observed.
+fn side(opponent: &str, rating: i32, traps_events: u32, accuracy: f64) -> PeerSide {
     let mut m = metrics();
     m.accuracy = Some(accuracy);
     m.weakness.insert(
-        WeaknessKey::W5,
+        WeaknessKey::W7Traps,
         BinomialObs {
-            events: w5_events,
+            events: traps_events,
             opportunities: 1,
-            epl: 0.5 * f64::from(w5_events),
+            epl: 0.5 * f64::from(traps_events),
             exemplar_plies: vec![],
         },
     );
@@ -103,7 +106,13 @@ fn opponent_context_is_the_other_colour_with_swapped_pre_game_ratings() {
 #[test]
 fn only_metrics_the_unenriched_side_can_measure_are_compared() {
     // Decided from the main evals, the clock and the result alone.
-    for m in [W5, ACCURACY, MetricId::Weakness(WeaknessKey::W9a)] {
+    for m in [
+        TRAPS,
+        MISSED,
+        ACCURACY,
+        MetricId::Weakness(WeaknessKey::W9a),
+        MetricId::Weakness(WeaknessKey::W4Allowed),
+    ] {
         assert!(is_peer_comparable(m), "{m}");
     }
     // Need the enrichment (refutation, threat, best line, tablebase, Maia), which only the
@@ -124,7 +133,7 @@ fn the_window_is_the_player_rating_plus_or_minus_150() {
     let mut sides = players(12, 800);
     sides.push(side("far-above", 800 + PEER_RATING_WINDOW + 1, 1, 60.0));
     sides.push(side("far-below", 800 - PEER_RATING_WINDOW - 1, 1, 60.0));
-    let b = aggregate_peer_benchmark(&sides, 800);
+    let b = aggregate_peer_benchmark(&sides, 800, NOW);
     assert_eq!((b.rating_low, b.rating_high), (650, 950));
     assert_eq!(b.n_players, 12);
     assert_eq!(b.n_games, 12);
@@ -132,8 +141,8 @@ fn the_window_is_the_player_rating_plus_or_minus_150() {
 
 #[test]
 fn enrichment_dependent_rows_are_never_produced() {
-    let b = aggregate_peer_benchmark(&players(12, 800), 800);
-    assert!(b.stats.iter().any(|s| s.metric == W5));
+    let b = aggregate_peer_benchmark(&players(12, 800), 800, NOW);
+    assert!(b.stats.iter().any(|s| s.metric == TRAPS));
     assert!(b.stats.iter().all(|s| s.metric != W1), "{:#?}", b.stats);
 }
 
@@ -146,17 +155,17 @@ fn players_are_distinct_opponents_and_low_sample_follows_them() {
             sides.push(side(&format!("opp{i}"), 800, 1, 60.0));
         }
     }
-    let b = aggregate_peer_benchmark(&sides, 800);
-    let w5 = b.stats.iter().find(|s| s.metric == W5).unwrap();
-    assert_eq!(w5.n_players, 9);
-    assert_eq!(w5.n_games, 27);
-    assert!(w5.low_sample, "9 < {LOW_SAMPLE_PLAYERS}");
+    let b = aggregate_peer_benchmark(&sides, 800, NOW);
+    let traps = b.stats.iter().find(|s| s.metric == TRAPS).unwrap();
+    assert_eq!(traps.n_players, 9);
+    assert_eq!(traps.n_games, 27);
+    assert!(traps.low_sample, "9 < {LOW_SAMPLE_PLAYERS}");
     assert!(b.reference().is_none(), "a low-sample row is never served");
 
     sides.push(side("opp9", 800, 1, 60.0));
-    let b = aggregate_peer_benchmark(&sides, 800);
+    let b = aggregate_peer_benchmark(&sides, 800, NOW);
     let reference = b.reference().expect("ten players");
-    assert!(!reference[&W5].low_sample);
+    assert!(!reference[&TRAPS].low_sample);
 }
 
 #[test]
@@ -169,12 +178,12 @@ fn one_frequent_opponent_weighs_as_much_as_any_other() {
     for _ in 0..40 {
         sides.push(side("regular", 800, 1, 90.0));
     }
-    let b = aggregate_peer_benchmark(&sides, 800);
-    let w5 = b.stats.iter().find(|s| s.metric == W5).unwrap();
-    let pooled = w5.pooled_rate.unwrap();
+    let b = aggregate_peer_benchmark(&sides, 800, NOW);
+    let traps = b.stats.iter().find(|s| s.metric == TRAPS).unwrap();
+    let pooled = traps.pooled_rate.unwrap();
     assert!((pooled - 1.0 / 11.0).abs() < 1e-9, "{pooled}");
-    assert!((w5.opps_per_game.unwrap() - 1.0).abs() < 1e-9);
-    assert!((w5.epl_per_event.unwrap() - 0.5).abs() < 1e-9);
+    assert!((traps.opps_per_game.unwrap() - 1.0).abs() < 1e-9);
+    assert!((traps.epl_per_event.unwrap() - 0.5).abs() < 1e-9);
     // Means are per opponent too: the median of eleven per-player means is 60.
     let acc = b.stats.iter().find(|s| s.metric == ACCURACY).unwrap();
     assert!((acc.median - 60.0).abs() < 1e-9, "{}", acc.median);
@@ -183,10 +192,101 @@ fn one_frequent_opponent_weighs_as_much_as_any_other() {
 
 #[test]
 fn no_sides_give_an_empty_benchmark() {
-    let b = aggregate_peer_benchmark(&[], 800);
+    let b = aggregate_peer_benchmark(&[], 800, NOW);
     assert_eq!(b.n_players, 0);
     assert!(b.stats.is_empty());
     assert!(b.reference().is_none());
+}
+
+/// One game of `opponent`, `age_days` before [`NOW`], with W4.missed `k` of `n`.
+fn missed_side(opponent: &str, k: u32, n: u32, age_days: i64) -> PeerSide {
+    let mut s = side(opponent, 800, 0, 60.0);
+    s.metrics.weakness.insert(
+        WeaknessKey::W4Missed,
+        BinomialObs {
+            events: k,
+            opportunities: n,
+            epl: 0.3 * f64::from(k),
+            exemplar_plies: vec![],
+        },
+    );
+    s.ctx.played_at = NOW - time::Duration::days(age_days);
+    s
+}
+
+#[test]
+fn the_mirrors_of_the_players_own_episodes_are_not_compared() {
+    // In a game against the player the opponent's conversion (W5) is the player's resilience
+    // (W6) mirrored, and the reverse; W7.prep is the opening's eval seen from the other side.
+    // The base rates and means built on the same episodes mirror them too.
+    for m in [
+        MetricId::Weakness(WeaknessKey::W5),
+        MetricId::Weakness(WeaknessKey::W6),
+        MetricId::Weakness(WeaknessKey::W7Prep),
+        MetricId::Base(BaseMetric::ConversionRate),
+        MetricId::Base(BaseMetric::ResilienceRate),
+        MetricId::Base(BaseMetric::OpeningOutWorseRate),
+        MetricId::Base(BaseMetric::EvalAfterOpening),
+        MetricId::Base(BaseMetric::EvalTrend1535),
+    ] {
+        assert!(!is_peer_comparable(m), "{m}");
+    }
+}
+
+#[test]
+fn a_peer_row_compares_with_the_pooled_rate_not_a_skewed_fit_median() {
+    // One game per opponent, chances clustered in a few games: 30 opponents with 2 chances and
+    // no miss, 6 with 8 chances and 5 misses. The pooled rate is 30 / 108 = 27.8%; a
+    // Beta-binomial fit of these pairs is U-shaped and its median far lower.
+    let mut sides: Vec<PeerSide> = (0..30)
+        .map(|i| missed_side(&format!("quiet{i}"), 0, 2, 0))
+        .collect();
+    sides.extend((0..6).map(|i| missed_side(&format!("sharp{i}"), 5, 8, 0)));
+    let b = aggregate_peer_benchmark(&sides, 800, NOW);
+    let r = b.stats.iter().find(|s| s.metric == MISSED).unwrap();
+    let pooled = 30.0 / 108.0;
+    assert!((r.pooled_rate.unwrap() - pooled).abs() < 1e-9, "{r:?}");
+    assert!(
+        (r.median - pooled).abs() < 1e-9,
+        "the compared rate is the pooled one: {r:?}"
+    );
+    // The spread is the pooled rate's own uncertainty (a bootstrap by opponent), around it.
+    assert!(
+        r.p25 <= r.p40 && r.p40 <= r.median && r.median <= r.p75,
+        "{r:?}"
+    );
+    assert!(r.p25 < pooled && r.p75 > pooled, "{r:?}");
+    assert!(r.p25 > 0.1 && r.p75 < 0.5, "{r:?}");
+    assert_eq!(b.chances[&MISSED], 30 * 2 + 6 * 8);
+    // Seeded: the same sides give the same rows.
+    assert_eq!(aggregate_peer_benchmark(&sides, 800, NOW), b);
+}
+
+#[test]
+fn opponent_sides_use_the_players_window_and_decay() {
+    // Ten opponents today never miss; ten 120 days ago (two half-lives, weight 1/4) always do;
+    // ten 200 days ago, outside the 183-day window, always do too.
+    let mut sides: Vec<PeerSide> = (0..10)
+        .map(|i| missed_side(&format!("now{i}"), 0, 1, 0))
+        .collect();
+    sides.extend((0..10).map(|i| missed_side(&format!("then{i}"), 1, 1, 120)));
+    sides.extend((0..10).map(|i| missed_side(&format!("old{i}"), 1, 1, 200)));
+    let b = aggregate_peer_benchmark(&sides, 800, NOW);
+    assert_eq!(
+        (b.n_players, b.n_games),
+        (20, 20),
+        "the old games are outside"
+    );
+    let r = b.stats.iter().find(|s| s.metric == MISSED).unwrap();
+    // 10 × 1/4 misses over 10 + 10 × 1/4 chances.
+    assert!((r.pooled_rate.unwrap() - 0.2).abs() < 1e-9, "{r:?}");
+    assert!((r.median - 0.2).abs() < 1e-9, "{r:?}");
+    assert_eq!(r.n_players, 20);
+    assert_eq!(b.chances[&MISSED], 20, "raw chances in the window");
+    assert!(
+        (r.opps_per_game.unwrap() - 1.0).abs() < 1e-9,
+        "unweighted: {r:?}"
+    );
 }
 
 // =============================================================================================
@@ -209,7 +309,7 @@ use queue::queue::Queue;
 use sqlx::PgPool;
 use testkit::{GameSeed, insert_account, insert_game};
 
-/// Player metrics of one rapid game: rated 800 against 800, a W5 opportunity with `w5_events`.
+/// Player metrics of one rapid game: rated 800 against 800, a W7.traps opportunity with `w5_events`.
 fn owner_metrics(w5_events: u32) -> PlayerGameMetrics {
     let mut m = metrics();
     m.player_rating = Some(800);
@@ -218,7 +318,7 @@ fn owner_metrics(w5_events: u32) -> PlayerGameMetrics {
     m.expected_score = Some(0.5);
     m.accuracy = Some(70.0);
     m.weakness.insert(
-        WeaknessKey::W5,
+        WeaknessKey::W7Traps,
         BinomialObs {
             events: w5_events,
             opportunities: 1,
@@ -229,7 +329,7 @@ fn owner_metrics(w5_events: u32) -> PlayerGameMetrics {
     m
 }
 
-/// A rapid chess.com game against `opponent`, analysed, with the player's metrics and W5 point.
+/// A rapid chess.com game against `opponent`, analysed, with the player's metrics and W7.traps point.
 async fn analysed_game(pool: &PgPool, account: Uuid, opponent: &str, i: i64) -> Uuid {
     let game = insert_game(
         pool,
@@ -274,7 +374,7 @@ async fn analysed_game(pool: &PgPool, account: Uuid, opponent: &str, i: i64) -> 
         &[SeriesPointRow {
             account_id: account,
             time_class: "rapid".to_owned(),
-            series_key: "W5".to_owned(),
+            series_key: "W7.traps".to_owned(),
             played_at: at,
             events: 1,
             opportunities: 1,
@@ -288,7 +388,7 @@ async fn analysed_game(pool: &PgPool, account: Uuid, opponent: &str, i: i64) -> 
     game
 }
 
-/// The opponent side of `game` as a refresh stores it: rated `rating`, W5 with `w5` events.
+/// The opponent side of `game` as a refresh stores it: rated `rating`, W7.traps with `w5` events.
 async fn opponent_row(
     pool: &PgPool,
     account: Uuid,
@@ -376,8 +476,11 @@ async fn build_profile_compares_with_the_opponents_faced(pool: PgPool) {
     .fetch_all(&pool)
     .await
     .unwrap();
-    let w5 = rows.iter().find(|r| r.0 == "W5").unwrap();
-    assert!(w5.1.is_some() && w5.2.is_some(), "W5 is compared: {w5:?}");
+    let w5 = rows.iter().find(|r| r.0 == "W7.traps").unwrap();
+    assert!(
+        w5.1.is_some() && w5.2.is_some(),
+        "W7.traps is compared: {w5:?}"
+    );
     let w1 = rows.iter().find(|r| r.0 == "W1").unwrap();
     assert_eq!(
         (w1.1, w1.2),
@@ -389,8 +492,24 @@ async fn build_profile_compares_with_the_opponents_faced(pool: PgPool) {
         .await
         .unwrap()
         .expect("served rows");
-    assert!(served.contains_key(&W5));
+    assert!(served.contains_key(&TRAPS));
     assert!(!served.contains_key(&W1));
+
+    // The web names the pooled rate with its raw chance count.
+    let (chances, median, pooled): (Option<i32>, f64, Option<f64>) = sqlx::query_as(
+        "SELECT n_chances, median, pooled_rate FROM account_benchmark_stat \
+         WHERE account_id = $1 AND time_class = 'rapid' AND metric = 'weakness:W7.traps'",
+    )
+    .bind(account)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(chances, Some(12));
+    assert_eq!(
+        Some(median),
+        pooled,
+        "a peer row's median is its pooled rate"
+    );
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]

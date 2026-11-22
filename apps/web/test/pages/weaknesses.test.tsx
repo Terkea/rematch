@@ -1,7 +1,7 @@
 import { games, weaknessChangeNotes } from "@ci/db/generated";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { within } from "@testing-library/react";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { JSDOM } from "jsdom";
 import type { ReactElement } from "react";
 import { renderToString } from "react-dom/server";
@@ -324,6 +324,41 @@ describe("weakness detail", () => {
     expect(text).toContain(
       "No clear change yet. There is a 42% chance your rate is lower than before its last change",
     );
+    noBadText(container);
+  });
+
+  it("a peer-compared weakness names the pooled rate and its chances (ADR 0081)", async () => {
+    await seedProfile(db, accountId, {
+      timeClass: "rapid",
+      games: 1,
+      estimates: [
+        {
+          seriesKey: "W4.missed",
+          mean: 0.2,
+          ciLow: 0.15,
+          ciHigh: 0.26,
+          kUnweighted: 6,
+          nUnweighted: 30,
+          bandMedian: 0.0957,
+          state: "active",
+        },
+      ],
+    });
+    await db.execute(sql`
+      insert into account_benchmark (account_id, time_class, source, center_rating, rating_low,
+        rating_high, n_players, n_games)
+      values (${accountId}, 'rapid', 'peers', 817, 667, 967, 73, 100)`);
+    await db.execute(sql`
+      insert into account_benchmark_stat (account_id, time_class, metric, median, p25, p40, p75,
+        n_players, n_games, low_sample, n_chances)
+      values (${accountId}, 'rapid', 'weakness:W4.missed', 0.0957, 0.07, 0.08, 0.12, 25, 26,
+        false, 65)`);
+    const { container } = await detail("W4.missed");
+    expect(container.textContent).toContain(
+      "Players you've faced, rated about 667–967: 9.6% (pooled over 65 of their chances)",
+    );
+    expect(container.textContent).not.toMatch(/Band median/);
+    expect(container.textContent).toContain("Only their games against you count");
     noBadText(container);
   });
 

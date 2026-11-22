@@ -67,15 +67,17 @@ export const DEFAULT_BAND_LABEL = "Players in your rating band";
  * How the stored interval sits against the rating band's median, naming the group: "Players
  * rated 1400–1600: 2.1%, lower than your whole likely range". Only an interval that clears
  * the median says lower or higher; one that contains it (ends included) says "inside", never
- * "about average" (no overclaiming).
+ * "about average" (no overclaiming). `basis` says what the figure is, in brackets after it
+ * ("pooled over 65 of their chances").
  */
 export function bandComparisonText(
   rate: { low: number; high: number },
   median: number | null,
   label: string = DEFAULT_BAND_LABEL,
+  basis?: string,
 ): string {
   if (median === null || !fin(median)) return NO_BENCHMARK_TEXT;
-  const head = `${label}: ${shareText(median)}`;
+  const head = `${label}: ${shareText(median)}${basis ? ` (${basis})` : ""}`;
   if (median < rate.low) return `${head}, lower than your whole likely range`;
   if (median > rate.high) return `${head}, higher than your whole likely range`;
   return `${head}, inside your likely range`;

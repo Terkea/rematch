@@ -9,6 +9,7 @@ import {
   type Benchmark,
   benchmarkGroupLabel,
   benchmarkLabel,
+  peerPooledBasis,
 } from "../../../../server/profile/benchmark-text";
 import { seriesGlossary } from "../../../../server/profile/glossary";
 import { ESTIMATE_WINDOW_TEXT } from "../../../../server/profile/window";
@@ -189,7 +190,11 @@ export function WeaknessesView({
                         evidence={w.evidence}
                         band={
                           group
-                            ? { median: w.band.median, label: group }
+                            ? {
+                                median: w.band.median,
+                                label: group,
+                                basis: peerPooledBasis(benchmark, w.seriesKey),
+                              }
                             : { median: w.band.median }
                         }
                         compared={w.compared}

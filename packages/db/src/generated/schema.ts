@@ -240,6 +240,7 @@ export const accountBenchmarkStat = pgTable(
     nPlayers: integer("n_players").notNull(),
     nGames: integer("n_games").notNull(),
     lowSample: boolean("low_sample").notNull(),
+    nChances: integer("n_chances"),
   },
   (table) => [
     foreignKey({
@@ -253,6 +254,7 @@ export const accountBenchmarkStat = pgTable(
     }),
     check("account_benchmark_stat_n_players_check", sql`n_players >= 0`),
     check("account_benchmark_stat_n_games_check", sql`n_games >= 0`),
+    check("account_benchmark_stat_n_chances_check", sql`n_chances >= 0`),
   ],
 );
 
