@@ -70,7 +70,7 @@ test.describe
       for (const area of ["Openings", "Middlegame", "Endgame", "Tactics", "Calculation", "Time"]) {
         await expect(snapshot.getByText(area, { exact: true }).first()).toBeVisible();
       }
-      await expect(page.getByText("Mindset is coaching advice, not a score")).toBeVisible();
+      await expect(page.getByText("Mindset is coaching advice, not a score").first()).toBeVisible();
       await expect(page.getByRole("heading", { name: "What's costing you games" })).toBeVisible();
       // Boards from the report's positions: at least one drawn board in the weaknesses section.
       const weaknesses = page.locator("section:has(#report-weaknesses)");
@@ -85,9 +85,9 @@ test.describe
       await expect(page.getByText(/Building your report: 0 of 5 sections written/)).toBeVisible();
       const runId = latestRun();
 
-      const navigations: string[] = [];
-      page.on("framenavigated", (f) => {
-        if (f === page.mainFrame()) navigations.push(f.url());
+      // A marker on the window survives client-side refreshes, not a reload.
+      await page.evaluate(() => {
+        (window as unknown as { __noReload: boolean }).__noReload = true;
       });
       simulate({ kind: "report-section", runId, section: "overview" });
       await expect(page.getByText(/Building your report: 1 of 5 sections written/)).toBeVisible();
@@ -121,7 +121,7 @@ test.describe
       await page.getByRole("textbox").fill("Why do I miss tactics after captures?");
       await page.getByRole("button", { name: "Send" }).click();
       await page.waitForURL(/\/app\/coach\/[0-9a-f-]{36}$/);
-      await expect(page.getByText("Your coach is reading your games")).toBeVisible();
+      await expect(page.getByText("Your coach is reading your games").first()).toBeVisible();
       const messageId = latestAnswer();
 
       simulate({ kind: "chat-chunk", messageId, seq: 0, text: DRAFT_1 });
@@ -138,7 +138,7 @@ test.describe
       simulate({ kind: "chat-done", messageId, replace: true });
       await expect(answer).toContainText(VALIDATED);
       await expect(answer).not.toContainText(DRAFT_2);
-      await expect(answer.getByText("Written by AI")).toBeVisible();
+      await expect(answer.getByText("Written by AI").first()).toBeVisible();
     });
 
     test("5. another user of the account gets not-found and none of the owner's chunks", async ({
@@ -169,7 +169,7 @@ test.describe
       linkPeer(PEER);
 
       await live(peer, `/app/coach/${seed.threadId}`, "main");
-      await expect(peer.getByText("We couldn't find that conversation.")).toBeVisible();
+      await expect(peer.getByText("We couldn't find that conversation.").first()).toBeVisible();
 
       // The owner's answer streams while the peer listens; an account event follows, so the
       // peer's stream is shown to be live.
@@ -220,7 +220,7 @@ test.describe
         page.locator("[data-kpi='accuracy']").getByText(/no \w+ in week of 5 Oct 2026/),
       ).toBeAttached();
       await expect(page.getByRole("heading", { name: "Weekly reviews" })).toBeVisible();
-      await expect(page.getByText("A steadier week.")).toBeVisible();
+      await expect(page.getByText("A steadier week.").first()).toBeVisible();
     });
 
     test("9. the command menu finds Endgame and opens its area", async () => {

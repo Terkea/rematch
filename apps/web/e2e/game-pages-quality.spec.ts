@@ -90,7 +90,12 @@ test("the game pages: no sideways scroll at 360px, visible focus, no broken numb
           if (!el || el === document.body) return null;
           const s = getComputedStyle(el);
           const focusedShadow = s.boxShadow;
-          const outline = s.outlineStyle !== "none" && Number.parseFloat(s.outlineWidth) > 0;
+          // A stretched link (the weakness rows, @ci/ui WeaknessRow) draws its ring on ::before,
+          // which covers the whole row: that pseudo-element's outline counts too.
+          const before = getComputedStyle(el, "::before");
+          const outline =
+            (s.outlineStyle !== "none" && Number.parseFloat(s.outlineWidth) > 0) ||
+            (before.outlineStyle !== "none" && Number.parseFloat(before.outlineWidth) > 0);
           // A board square draws its focus ring as an SVG child shown on :focus-visible
           // (DESIGN.md, "Focus"): a descendant that only displays while focused counts too.
           const drawn = [...el.querySelectorAll("[class*='group-focus-visible:']")].some(

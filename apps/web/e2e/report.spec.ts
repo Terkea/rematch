@@ -44,7 +44,9 @@ test.describe
       test.setTimeout(600_000);
       seedCoach({ report: false });
       await live(page, "/app/report");
-      await expect(page.getByText("Your coaching report hasn't been built yet.")).toBeVisible();
+      await expect(
+        page.getByText("Your coaching report hasn't been built yet.").first(),
+      ).toBeVisible();
       await page.getByRole("button", { name: "Build my report" }).click();
       await expect(
         page.getByText("Building your report. Sections appear as they're written."),
@@ -52,9 +54,9 @@ test.describe
       await expect(page.getByText(/Building your report: 0 of 5 sections written/)).toBeVisible();
       const runId = latestRun();
 
-      const navigations: string[] = [];
-      page.on("framenavigated", (f) => {
-        if (f === page.mainFrame()) navigations.push(f.url());
+      // A marker on the window survives client-side refreshes, not a reload.
+      await page.evaluate(() => {
+        (window as unknown as { __noReload: boolean }).__noReload = true;
       });
       for (const [i, section] of SECTIONS.slice(0, 4).entries()) {
         simulate({ kind: "report-section", runId, section });
@@ -80,7 +82,7 @@ test.describe
       await page.getByRole("button", { name: "Build my report" }).click();
       await expect(page.getByText(/Building your report: 0 of 5 sections written/)).toBeVisible();
       simulate({ kind: "report-failed", runId: latestRun(), reason: "ai_unavailable" });
-      await expect(page.getByText("Building your report failed. Try again.")).toBeVisible();
+      await expect(page.getByText("Building your report failed. Try again.").first()).toBeVisible();
       await page.getByRole("button", { name: "Try again" }).click();
       await expect(
         page.getByText(
