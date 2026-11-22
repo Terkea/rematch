@@ -39,4 +39,6 @@ export interface StreamedChunk {
 export interface EngineCheck {
   status: "pending" | "done" | "failed";
   moves: string[];
+  /** The game ply of the first move (1 = White's first move). Without it the moves are not numbered. */
+  startPly?: number | null;
 }

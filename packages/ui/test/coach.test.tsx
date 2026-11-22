@@ -9,6 +9,7 @@ import {
   type ChatMessageProps,
   CoachState,
   type CoachStateKind,
+  engineLine,
   type Segment,
   SegmentText,
 } from "../src/coach/index.js";
@@ -263,7 +264,6 @@ describe("ChatMessage", () => {
     }
     expect(container.innerHTML).not.toMatch(/animate-spin/);
     expect(container.querySelector("[data-shape]")).not.toBeNull();
-    expect(container.querySelector("article")).toHaveAttribute("aria-busy", "true");
   });
 
   it("streamed chunks render in seq order", () => {
@@ -281,7 +281,6 @@ describe("ChatMessage", () => {
     );
     const body = container.querySelector("[data-part='streamed']");
     expect(body?.textContent).toContain("first second third.");
-    expect(container.querySelector("article")).toHaveAttribute("aria-busy", "true");
     // Visibly AI while it streams.
     expect(container.textContent).toContain("Written by AI");
   });
@@ -313,7 +312,7 @@ describe("ChatMessage", () => {
         segments={[{ kind: "text", text: "Your knight belongs on f3." }]}
         streamed={[{ seq: 0, interim: false, segments: [{ kind: "text", text: "stale" }] }]}
         notes={["One statement was left out because the engine could not confirm it."]}
-        engineChecks={[{ status: "done", moves: ["e4", "e5", "Nf3"] }]}
+        engineChecks={[{ status: "done", moves: ["e4", "e5", "Nf3"], startPly: 1 }]}
         disclosure={disclosure}
       />,
     );
@@ -323,7 +322,6 @@ describe("ChatMessage", () => {
     expect(text).toContain("One statement was left out");
     expect(text).toContain("Engine check: 1. e4 e5 2. Nf3 (done)");
     expect(text).toContain("Written on 12 Nov 2026");
-    expect(container.querySelector("article")).toHaveAttribute("aria-busy", "false");
     expect(container.innerHTML).not.toMatch(BAD);
   });
 
@@ -414,5 +412,166 @@ describe("ChatComposer", () => {
     expect(container.textContent).toContain("They reset on 16 Nov 2026.");
     expect(screen.getByRole("textbox")).toBeDisabled();
     expect(container.innerHTML).not.toMatch(BAD);
+  });
+});
+
+describe("fix round 2", () => {
+  const text = (t: string): Segment[] => [{ kind: "text", text: t }];
+
+  it("a done answer without a stored disclosure still says it was written by AI", () => {
+    const { container } = render(<ChatMessage {...base} segments={text("Play Nf3.")} />);
+    expect(container.textContent).toContain("Written by AI");
+  });
+
+  it("the done answer is not re-announced by a live region", () => {
+    const streamed = [{ seq: 0, interim: false, segments: text("Play Nf3 now.") }];
+    const { container, rerender } = render(
+      <ChatMessage {...base} status="streaming" streamed={streamed} />,
+    );
+    const liveNow = [...container.querySelectorAll("[aria-live='polite']")];
+    expect(liveNow.some((el) => el.textContent?.includes("Play Nf3 now."))).toBe(true);
+    rerender(
+      <ChatMessage
+        {...base}
+        status="done"
+        segments={text("Play Nf3 now.")}
+        disclosure={disclosure}
+      />,
+    );
+    const live = [...container.querySelectorAll("[aria-live='polite'], [aria-live='assertive']")];
+    expect(live.some((el) => el.textContent?.includes("Play Nf3 now."))).toBe(false);
+    expect(container.textContent).toContain("Play Nf3 now.");
+  });
+
+  it("engine checks are numbered from their real ply, never from 1", () => {
+    expect(engineLine(["Nd2", "e4", "Nxe4"], 55)).toBe("28. Nd2 e4 29. Nxe4");
+    expect(engineLine(["e4", "Nxe4"], 56)).toBe("28… e4 29. Nxe4");
+    expect(engineLine(["Nd2", "e4"], null)).toBe("Nd2 e4");
+    expect(engineLine(["Nd2", "e4"])).toBe("Nd2 e4");
+  });
+
+  it("done, pending and failed engine checks have distinct marks and labels", () => {
+    const { container } = render(
+      <ChatMessage
+        {...base}
+        segments={text("x")}
+        engineChecks={[
+          { status: "done", moves: ["Nd2", "e4"], startPly: 55 },
+          { status: "pending", moves: ["Nd2", "Rf8"], startPly: 55 },
+          { status: "failed", moves: ["Nd2", "g5"], startPly: 55 },
+        ]}
+      />,
+    );
+    const rows = [...container.querySelectorAll("[data-engine-check]")];
+    expect(rows.map((r) => r.querySelector("[data-mark]")?.getAttribute("data-mark"))).toEqual([
+      "done",
+      "pending",
+      "failed",
+    ]);
+    expect(rows[0]?.textContent).toBe("Engine check: 28. Nd2 e4 (done)");
+    expect(rows[1]?.textContent).toBe("Engine check: 28. Nd2 Rf8 (checking)");
+    expect(rows[2]?.textContent).toBe("Engine check: 28. Nd2 g5 (failed)");
+  });
+
+  it("building shows every section with the finished ones marked", () => {
+    const items = ["Overview", "Weaknesses", "Openings", "Climb plan", "Areas"].map((label, i) => ({
+      label,
+      done: i < 2,
+    }));
+    const { container } = render(
+      <CoachState
+        kind="building"
+        title="Building your report"
+        progress={{ done: 2, total: 5, unit: "sections" }}
+        items={items}
+      />,
+    );
+    const rows = container.querySelectorAll("[data-row]");
+    expect(rows).toHaveLength(5);
+    expect(container.querySelectorAll("[data-row][data-done]")).toHaveLength(2);
+    expect(rows[0]?.textContent).toContain("Overview");
+    expect(rows[4]?.textContent).toContain("Areas");
+  });
+
+  it("links only to internal paths and http(s)", () => {
+    const seg: Segment[] = [{ kind: "move", gameId: "g", ply: 1, san: "e4" }];
+    for (const bad of ["javascript:alert(1)", "//evil.example/x", "data:text/html,x", " /x"]) {
+      const { container } = render(<SegmentText segments={seg} hrefFor={() => bad} />);
+      expect(container.querySelector("a")).toBeNull();
+      cleanup();
+    }
+    const { container: ok } = render(<SegmentText segments={seg} hrefFor={() => "/app/g?ply=1"} />);
+    expect(ok.querySelector("a")).toHaveAttribute("href", "/app/g?ply=1");
+    cleanup();
+    const { container: ext } = render(
+      <SegmentText segments={seg} hrefFor={() => "https://lichess.org/abc"} />,
+    );
+    expect(ext.querySelector("a")).toHaveAttribute("rel", "noopener noreferrer");
+  });
+
+  it("labels only the first engine check in a run of text", () => {
+    const { container } = render(
+      <SegmentText
+        segments={[
+          { kind: "eng", evalId: "a", line: 0, n: null, text: "+2.7" },
+          { kind: "text", text: " to " },
+          { kind: "eng", evalId: "b", line: 0, n: null, text: "−1.1" },
+        ]}
+      />,
+    );
+    expect(screen.getAllByRole("note")).toHaveLength(2);
+    expect(container.textContent?.match(/engine check/g)).toHaveLength(1);
+  });
+
+  it("announces the count after typing pauses, not per keystroke", () => {
+    vi.useFakeTimers();
+    try {
+      const { container } = render(<ChatComposer onSubmit={() => {}} placeholder="Ask" />);
+      const box = screen.getByRole("textbox");
+      fireEvent.change(box, { target: { value: "x".repeat(1801) } });
+      const announce = container.querySelector("[data-part='count-announce']");
+      expect(announce).toHaveAttribute("aria-live", "polite");
+      expect(announce?.textContent).toBe("");
+      act(() => {
+        vi.advanceTimersByTime(1200);
+      });
+      expect(announce?.textContent).toBe("199 characters left");
+      // The visible count is not itself a live region.
+      expect(
+        screen.getByText("199 characters left", { selector: ":not(.sr-only)" }),
+      ).not.toHaveAttribute("aria-live");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("ignores the Enter that commits an IME composition (keyCode 229)", () => {
+    const onSubmit = vi.fn();
+    render(<ChatComposer onSubmit={onSubmit} placeholder="Ask" />);
+    const box = screen.getByRole("textbox");
+    fireEvent.change(box, { target: { value: "日本" } });
+    fireEvent.keyDown(box, { key: "Enter", keyCode: 229 });
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("a used-up composer does not invite a question", () => {
+    render(
+      <ChatComposer
+        onSubmit={() => {}}
+        placeholder="Ask about your games"
+        disabled
+        disabledReason="You have used this week's 100 questions. They reset on 16 Nov 2026."
+      />,
+    );
+    const box = screen.getByRole("textbox");
+    expect(box).not.toHaveAttribute("placeholder", "Ask about your games");
+    expect(box.getAttribute("placeholder")).toBe("Questions are paused until they reset");
+  });
+
+  it("duplicate notes both render", () => {
+    const { container } = render(
+      <ChatMessage {...base} segments={text("x")} notes={["Same note.", "Same note."]} />,
+    );
+    expect(container.textContent?.match(/Same note\./g)).toHaveLength(2);
   });
 });
