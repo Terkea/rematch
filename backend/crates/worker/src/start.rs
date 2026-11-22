@@ -3,9 +3,12 @@
 //! Order: check the engine is Stockfish 19, adopt a Drizzle-migrated database and migrate it
 //! (on a separate pool without a statement timeout), connect the worker pool, start the engine
 //! pool, then one runner per job kind, and schedule the recurring reconcile. Whatever was created
-//! is closed again if a later step fails.
+//! is closed again if a later step fails. With AI (R3, [`crate::ai_jobs`]) it also loads the price
+//! table before anything else (a bad table fails fast), picks the AI client, spawns one runner
+//! per AI kind and schedules the recurring AI jobs with the reconciler.
 //!
-//! Connection budget: `max_connections = pool_size + POOL_HEADROOM`. The analyse runner holds at
+//! Connection budget: `max_connections = pool_size + POOL_HEADROOM` (plus
+//! [`AI_POOL_HEADROOM`](crate::ai_jobs::AI_POOL_HEADROOM) with the AI runners, R3). The analyse runner holds at
 //! most one connection per in-flight game (`pool_size` of them), each in-flight import holds its
 //! dedicated account-lock connection plus at most one pooled connection at a time
 //! (`2 * IMPORT_CONCURRENCY = 4`), the reconciler one, each schedule-analysis job one (its
@@ -47,7 +50,12 @@ use scheduler::schedule_job::{ScheduleDeps, ScheduleHandler};
 use sqlx::PgPool;
 use tokio::task::AbortHandle;
 
+use crate::ai_jobs::{
+    AI_POOL_HEADROOM, AiRunnerDeps, AiSetup, ProfileInputProvider, ai_client_from_env,
+    pricing_from_env, spawn_ai_runners,
+};
 use crate::config::WorkerEnv;
+use ai::jobs::providers::CoachingInputProvider;
 use crate::shutdown::{Closable, Drainable, ShutdownHandles};
 
 /// Imports at once (each holds an account-lock connection).
@@ -73,15 +81,31 @@ pub const VERSION_TIMEOUT: Duration = Duration::from_secs(10);
 /// How often the account-busy counter is checked and logged.
 const BUSY_LOG_EVERY: Duration = Duration::from_secs(300);
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct StartOptions {
     /// Overrides `WORKER_POOL_SIZE`.
     pub pool_size: Option<usize>,
     /// Runner timings and `worker_id` shared by every runner (concurrency and hard timeout are
     /// set per kind). Default: [`RunnerConfig::default`].
     pub runner: Option<RunnerConfig>,
-    /// Run the reconcile runner and schedule the recurring sweep.
+    /// Run the reconcile runner and schedule the recurring sweep (and the recurring AI jobs).
     pub with_reconciler: bool,
+    /// The AI client ([`AiSetup::FromEnv`] by default; [`AiSetup::None`] spawns no AI runner).
+    pub ai: AiSetup,
+    /// Overrides the coaching-input provider (default: R2's builder).
+    pub inputs: Option<Arc<dyn CoachingInputProvider>>,
+}
+
+impl std::fmt::Debug for StartOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("StartOptions")
+            .field("pool_size", &self.pool_size)
+            .field("runner", &self.runner)
+            .field("with_reconciler", &self.with_reconciler)
+            .field("ai", &self.ai)
+            .field("inputs", &self.inputs.as_ref().map(|_| "custom"))
+            .finish()
+    }
 }
 
 impl Default for StartOptions {
@@ -90,6 +114,8 @@ impl Default for StartOptions {
             pool_size: None,
             runner: None,
             with_reconciler: true,
+            ai: AiSetup::FromEnv,
+            inputs: None,
         }
     }
 }
@@ -370,10 +396,17 @@ pub struct RunningWorkers {
     pub tablebase: Option<WorkerTablebase>,
     /// Imports released because another handler held the account (`account_busy`).
     pub busy_releases: Arc<AtomicU64>,
+    /// Whether the AI runners have a client (see [`crate::ai_jobs`]).
+    pub ai_enabled: bool,
     monitor: AbortHandle,
 }
 
 impl RunningWorkers {
+    /// The job kind of each runner, in spawn order.
+    pub fn runner_kinds(&self) -> Vec<&'static str> {
+        self.runners.iter().map(RunnerHandle::kind).collect()
+    }
+
     pub fn into_shutdown_handles(self) -> ShutdownHandles {
         ShutdownHandles {
             runners: self
@@ -437,6 +470,13 @@ pub async fn start_workers(env: &WorkerEnv, opts: StartOptions) -> anyhow::Resul
         .unwrap_or_else(default_pool_size)
         .max(1);
     let stockfish_version = check_stockfish(&env.stockfish_path).await?;
+    let with_ai = !matches!(opts.ai, AiSetup::None);
+    let pricing = if with_ai {
+        Some(Arc::new(pricing_from_env(env)?))
+    } else {
+        None
+    };
+    let headroom = POOL_HEADROOM + if with_ai { AI_POOL_HEADROOM } else { 0 };
 
     // Migrations run without the worker's statement timeout (ADR 0033).
     let migrations = db::pool::connect_for_migrations(&env.database_url)
@@ -458,7 +498,7 @@ pub async fn start_workers(env: &WorkerEnv, opts: StartOptions) -> anyhow::Resul
     let pool = db::pool::connect(
         &env.database_url,
         DbOptions {
-            max_connections: u32::try_from(pool_size + POOL_HEADROOM).unwrap_or(u32::MAX),
+            max_connections: u32::try_from(pool_size + headroom).unwrap_or(u32::MAX),
             ..DbOptions::default()
         },
     )
@@ -483,6 +523,31 @@ pub async fn start_workers(env: &WorkerEnv, opts: StartOptions) -> anyhow::Resul
     let import = import_deps(env, &pool, &queue);
     let busy_releases = import.busy_releases.clone();
     let analyser: Arc<dyn Analyser> = engines.clone();
+    let ai_choice = match &opts.ai {
+        AiSetup::None => None,
+        AiSetup::With(client) => Some(Ok(crate::ai_jobs::AiClientChoice {
+            client: client.clone(),
+            line: if client.is_some() {
+                "ai: enabled (injected client)".to_owned()
+            } else {
+                "ai: disabled (no client)".to_owned()
+            },
+        })),
+        AiSetup::FromEnv => Some(ai_client_from_env(env).await),
+    };
+    let ai_client = match ai_choice {
+        None => None,
+        Some(Ok(choice)) => {
+            tracing::info!("{}", choice.line);
+            Some(choice.client)
+        }
+        Some(Err(e)) => {
+            EnginePool::close(&engines).await;
+            pool.close().await;
+            return Err(e.context("starting the AI client"));
+        }
+    };
+    let ai_enabled = matches!(ai_client, Some(Some(_)));
     let preview = PreviewDeps {
         pool: pool.clone(),
         analyser: analyser.clone(),
@@ -490,7 +555,7 @@ pub async fn start_workers(env: &WorkerEnv, opts: StartOptions) -> anyhow::Resul
     };
     let analyse = AnalyseGameDeps::new(
         pool.clone(),
-        analyser,
+        analyser.clone(),
         Arc::new(DbEvalCache::new(pool.clone())),
     );
     let mut runners = vec![
@@ -499,15 +564,44 @@ pub async fn start_workers(env: &WorkerEnv, opts: StartOptions) -> anyhow::Resul
         spawn_schedule_runner(queue.clone(), pool.clone(), &base),
         spawn_preview_runner(queue.clone(), preview, &base),
     ];
+    if let (Some(client), Some(pricing)) = (ai_client, pricing) {
+        let inputs = opts.inputs.clone().unwrap_or_else(|| {
+            Arc::new(ProfileInputProvider { pool: pool.clone() }) as Arc<dyn CoachingInputProvider>
+        });
+        runners.extend(spawn_ai_runners(
+            &AiRunnerDeps {
+                pool: pool.clone(),
+                queue: queue.clone(),
+                ai: client,
+                analyser,
+                inputs,
+                budgets: env.ai_budgets,
+                pricing,
+            },
+            &base,
+        ));
+    }
     if opts.with_reconciler {
         runners.push(spawn_reconcile_runner(queue.clone(), pool.clone(), &base));
-        if let Err(e) = ensure_reconcile_scheduled(&queue).await {
+        let scheduled = async {
+            ensure_reconcile_scheduled(&queue)
+                .await
+                .context("scheduling the reconciler")?;
+            if with_ai {
+                ai::jobs::kinds::ensure_ai_recurring(&queue)
+                    .await
+                    .context("scheduling the recurring AI jobs")?;
+            }
+            anyhow::Ok(())
+        }
+        .await;
+        if let Err(e) = scheduled {
             for runner in &runners {
                 runner.force().await;
             }
             EnginePool::close(&engines).await;
             pool.close().await;
-            return Err(anyhow::Error::new(e).context("scheduling the reconciler"));
+            return Err(e);
         }
     }
     let tablebase = start_tablebase(env, &pool).await;
@@ -515,8 +609,9 @@ pub async fn start_workers(env: &WorkerEnv, opts: StartOptions) -> anyhow::Resul
     tracing::info!(
         stockfish_version = %stockfish_version,
         pool_size,
-        max_connections = pool_size + POOL_HEADROOM,
+        max_connections = pool_size + headroom,
         runners = runners.len(),
+        ai_enabled,
         "worker ready"
     );
     Ok(RunningWorkers {
@@ -527,6 +622,7 @@ pub async fn start_workers(env: &WorkerEnv, opts: StartOptions) -> anyhow::Resul
         stockfish_version,
         tablebase,
         busy_releases,
+        ai_enabled,
         monitor,
     })
 }

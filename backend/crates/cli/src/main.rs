@@ -39,6 +39,7 @@ async fn main() {
             &env,
             StartOptions {
                 with_reconciler: false,
+                ai: worker::ai_jobs::AiSetup::None,
                 ..StartOptions::default()
             },
         )

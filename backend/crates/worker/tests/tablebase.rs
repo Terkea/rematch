@@ -26,6 +26,7 @@ fn opts() -> StartOptions {
         pool_size: Some(1),
         runner: Some(RunnerConfig::fast_for_tests()),
         with_reconciler: false,
+        ..StartOptions::default()
     }
 }
 

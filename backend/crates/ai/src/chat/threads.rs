@@ -35,8 +35,9 @@ use crate::jobs::kinds::enqueue_chat;
 /// The most conversations one list call returns.
 pub const MAX_LIST: i64 = 100;
 
-/// Whether a user may act for a platform account. The web wires the M4 `account_links` lookup
-/// (Task 26); [`LegacyAccountAccess`] reads the M1 `linked_accounts.user_id` column.
+/// Whether a user may act for a platform account. Production uses [`AccountLinksAccess`] (M4's
+/// `account_links`, Task 26); [`LegacyAccountAccess`] reads the M1 `linked_accounts.user_id`
+/// column, for the CLI-era single owner and tests.
 pub trait AccountAccess: Send + Sync {
     fn is_linked<'a>(
         &'a self,
@@ -45,8 +46,8 @@ pub trait AccountAccess: Send + Sync {
     ) -> BoxFuture<'a, anyhow::Result<bool>>;
 }
 
-/// `linked_accounts.user_id = user` (the M1 CLI's single owner). Task 26 replaces it with the
-/// `account_links` lookup, where any number of users may link one account.
+/// `linked_accounts.user_id = user` (the M1 CLI's single owner). Not used by the worker, which
+/// wires [`AccountLinksAccess`], where any number of users may link one account.
 pub struct LegacyAccountAccess(pub PgPool);
 
 impl AccountAccess for LegacyAccountAccess {
@@ -61,6 +62,30 @@ impl AccountAccess for LegacyAccountAccess {
             )
             .bind(account_id)
             .bind(user_id)
+            .fetch_one(&self.0)
+            .await?;
+            Ok(ok)
+        })
+    }
+}
+
+/// M4's `account_links` (ADR-WEB-3): any link of the user to the account, verified or not, as the
+/// web's `userAccountIds` reads it. The worker wires this one.
+pub struct AccountLinksAccess(pub PgPool);
+
+impl AccountAccess for AccountLinksAccess {
+    fn is_linked<'a>(
+        &'a self,
+        user_id: Uuid,
+        account_id: Uuid,
+    ) -> BoxFuture<'a, anyhow::Result<bool>> {
+        Box::pin(async move {
+            let ok: bool = sqlx::query_scalar(
+                "SELECT EXISTS (SELECT 1 FROM account_links \
+                 WHERE user_id = $1 AND linked_account_id = $2)",
+            )
+            .bind(user_id)
+            .bind(account_id)
             .fetch_one(&self.0)
             .await?;
             Ok(ok)

@@ -244,6 +244,7 @@ async fn sigterm_loses_nothing(pool_opts: PgPoolOptions, opts_: PgConnectOptions
             pool_size: Some(1),
             runner: Some(RunnerConfig::fast_for_tests()),
             with_reconciler: false,
+            ..StartOptions::default()
         },
     )
     .await
@@ -414,6 +415,7 @@ async fn sigterm_on_final_attempt_then_fresh_worker_completes(
             pool_size: Some(1),
             runner: Some(RunnerConfig::fast_for_tests()),
             with_reconciler: false,
+            ..StartOptions::default()
         },
     )
     .await

@@ -29,7 +29,7 @@ use ai::jobs::batch_jobs::{
     WeeklyInputProvider,
 };
 use ai::jobs::budget::BudgetConfig;
-use ai::jobs::kinds::{KIND_GENERATE_REPORT, KIND_WEEKLY_REVIEW};
+use ai::jobs::kinds::{KIND_AI_BATCH_POLL, KIND_GENERATE_REPORT, KIND_WEEKLY_REVIEW};
 use ai::jobs::providers::{CoachingInputProvider, NullInputProvider};
 use ai::jobs::reconcile::BATCH_SUBMIT_GRACE;
 use ai::output::codes::{SECTION_KEYS, SectionKey};
@@ -844,6 +844,62 @@ async fn one_invalid_result_makes_exactly_one_sync_call(pool: PgPool) {
     assert_eq!(rows.len(), 11);
     assert_eq!(rows.iter().filter(|r| r.2).count(), 10, "ten batch rows");
     assert_eq!(rows.iter().filter(|r| !r.2).count(), 1, "one sync repair");
+    for r in scheduled_runs(&pool).await {
+        assert_eq!(r.2, "done");
+    }
+}
+
+/// T20 parked item (T26 hardening): a sync repair is paid as soon as it returns. When the item's
+/// write then fails, the next poll repairs again, so both repairs are metered (each once).
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_paid_repair_is_metered_when_its_item_write_fails(pool: PgPool) {
+    let bad: Arc<Mutex<Option<String>>> = Arc::default();
+    let pick = bad.clone();
+    let ai = Arc::new(TestAi::new(Box::new(move |item| {
+        let section = section_of(&b2(), &item.req);
+        let mut first = pick.lock().unwrap();
+        if section == SectionKey::Weaknesses && first.as_ref().is_none_or(|c| *c == item.custom_id)
+        {
+            *first = Some(item.custom_id.clone());
+            return batch_line(
+                item,
+                envelope(
+                    SectionKey::Weaknesses,
+                    json!({"items": [w1_item(LEAKING_TEXT)]}),
+                ),
+            );
+        }
+        all_valid(item)
+    })));
+    let (d, _, _) = two_scheduled(&pool, ai.clone()).await;
+    // The repaired section's write fails once (after the paid repair returned).
+    sqlx::raw_sql(
+        "CREATE FUNCTION t26_fail_weaknesses() RETURNS trigger LANGUAGE plpgsql AS $$          BEGIN IF NEW.section = 'weaknesses' AND NEW.status = 'ready' THEN            RAISE EXCEPTION 't26 write failure'; END IF; RETURN NEW; END $$;          CREATE TRIGGER t26_fail BEFORE INSERT ON report_sections FOR EACH ROW            EXECUTE FUNCTION t26_fail_weaknesses();",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let first = AiBatchPollHandler(d.clone())
+        .handle(
+            job(KIND_AI_BATCH_POLL),
+            JobContext {
+                cancel: CancellationToken::new(),
+            },
+        )
+        .await;
+    assert!(first.is_err(), "the failed write surfaces: {first:?}");
+    assert_eq!(ai.sync_calls(), 1);
+    let repairs = |rows: &[(String, String, bool, i64)]| rows.iter().filter(|r| !r.2).count();
+    assert_eq!(repairs(&usage(&pool).await), 1, "the paid repair is metered");
+    sqlx::raw_sql("DROP TRIGGER t26_fail ON report_sections")
+        .execute(&pool)
+        .await
+        .unwrap();
+    poll(&d).await;
+    assert_eq!(ai.sync_calls(), 2);
+    let rows = usage(&pool).await;
+    assert_eq!(repairs(&rows), 2, "each paid repair once");
+    assert_eq!(rows.iter().filter(|r| r.2).count(), 10, "each batch result once");
     for r in scheduled_runs(&pool).await {
         assert_eq!(r.2, "done");
     }

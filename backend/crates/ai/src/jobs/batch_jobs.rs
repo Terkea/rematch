@@ -36,9 +36,10 @@
 //!   written.
 //! - every applied result is processed by Task 16's `process_*_result` (validation, at most one
 //!   sync repair), then one transaction marks the item processed (the fence against applying a
-//!   result twice), meters its calls keyed by the item (`meter_keyed`, so a billed call is
+//!   result twice), meters the batch result keyed by the item (`meter_keyed`, so a billed call is
 //!   metered once at batch rates even if the write is retried), stores the section or review and
-//!   emits its events last. `RetrySync` (or a failed repair) stores nothing and hands the work to
+//!   emits its events last. A sync repair is metered before that, in its own transaction under a
+//!   key of its own: it is paid when it returns, even if the item's write then fails (T26). `RetrySync` (or a failed repair) stores nothing and hands the work to
 //!   the sync job.
 //! - a run whose items are all processed is finished: with all five sections stored it is done
 //!   (`report.ready`); otherwise it goes back to `queued` and `generate-report` is enqueued after
@@ -77,7 +78,7 @@ use super::providers::CoachingInputProvider;
 use super::reconcile::BATCH_SUBMIT_GRACE;
 use super::report_job::{is_narrative, persist_section_outcome, refresh_status};
 use crate::client::cost::PricingTable;
-use crate::client::model::Models;
+use crate::client::model::{AiModel, Models};
 use crate::client::port::{
     AiClient, AiError, BatchItem, BatchOutcome, BatchResultItem, BatchStatus,
 };
@@ -679,6 +680,41 @@ fn usage_key(item: &BatchItemRow) -> String {
     format!("batch:{}", item.id)
 }
 
+/// Meters the sync repairs among `calls` (every record after the first `n_billed`, which are the
+/// batch result's) right away, in their own transaction, under a key unique to this attempt, and
+/// returns the batch records for the item's transaction. A repair is paid when it returns: if
+/// the item's write then fails, the next poll repairs again, and both repairs are really paid
+/// (T20 parked item). The batch records stay keyed by the item, so they are metered once.
+#[allow(clippy::too_many_arguments)]
+async fn meter_repairs_now(
+    d: &BatchDeps,
+    item: &BatchItemRow,
+    account_id: Uuid,
+    feature: AiFeature,
+    model: AiModel,
+    ref_id: Uuid,
+    mut calls: Vec<CallRecord>,
+    n_billed: usize,
+) -> anyhow::Result<Vec<CallRecord>> {
+    let repairs = calls.split_off(n_billed.min(calls.len()));
+    if !repairs.is_empty() {
+        let mut tx = d.pool.begin().await?;
+        meter_keyed(
+            &mut tx,
+            &d.pricing,
+            account_id,
+            feature,
+            &repairs,
+            &ref_id.to_string(),
+            model,
+            &format!("{}:repair:{}", usage_key(item), Uuid::new_v4()),
+        )
+        .await?;
+        tx.commit().await?;
+    }
+    Ok(calls)
+}
+
 /// Resolves `r` to its item of batch `b` and applies it there.
 async fn apply_result(
     d: &BatchDeps,
@@ -796,6 +832,7 @@ async fn apply_report(
     let Some(run) = run else {
         return meter_only(d, item, account_id, AiFeature::Report, &billed(&r), run_id).await;
     };
+    let n_billed = billed(&r).len();
     let (outcome, calls) = match &run.input {
         None => {
             tracing::error!(run = %run_id, "the run's input snapshot is unusable");
@@ -819,6 +856,17 @@ async fn apply_report(
             }
         }
     };
+    let calls = meter_repairs_now(
+        d,
+        item,
+        account_id,
+        AiFeature::Report,
+        Models::REPORT,
+        run_id,
+        calls,
+        n_billed,
+    )
+    .await?;
     let applied = outcome.is_some();
     let now = (d.now)();
     let mut tx = d.pool.begin().await?;
@@ -997,6 +1045,7 @@ async fn apply_weekly(
     let input = serde_json::from_value::<WeeklyReviewInput>(row.input.clone())
         .ok()
         .filter(|i| i.check_bounds().is_ok() && i.week_start == row.week_start);
+    let n_billed = billed(&r).len();
     let (outcome, calls) = match &input {
         None => {
             tracing::error!(weekly = %weekly_id, "the review's input is unusable");
@@ -1020,6 +1069,17 @@ async fn apply_weekly(
             }
         }
     };
+    let calls = meter_repairs_now(
+        d,
+        item,
+        account_id,
+        AiFeature::WeeklyReview,
+        Models::WEEKLY,
+        weekly_id,
+        calls,
+        n_billed,
+    )
+    .await?;
     let now = (d.now)();
     let mut tx = d.pool.begin().await?;
     sqlx::query("SELECT 1 FROM weekly_reviews WHERE id = $1 FOR UPDATE")
