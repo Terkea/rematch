@@ -183,11 +183,13 @@ fn terminal_score(p: &Position) -> Option<EngineScore> {
 }
 
 /// The moves `refs` names, keyed by `(game id, ply)`, with the evals of their game's analysis
-/// protocol (`protocols`, by game). Missing moves are absent.
+/// protocol (`protocols`, by game). Missing moves are absent; an undecodable row is skipped and
+/// counted in `skipped`.
 pub async fn load_exemplar_rows(
     pool: &PgPool,
     refs: &[(Uuid, u32)],
     protocols: &HashMap<Uuid, String>,
+    skipped: &Skipped,
 ) -> Result<HashMap<(Uuid, u32), ExemplarRow>, sqlx::Error> {
     if refs.is_empty() {
         return Ok(HashMap::new());
@@ -255,6 +257,7 @@ pub async fn load_exemplar_rows(
             parse_color(&r.player_color),
             parse_color(&r.color),
         ) else {
+            skipped.add(1);
             continue;
         };
         let protocol = protocols.get(&r.game_id);
@@ -290,11 +293,27 @@ pub async fn load_exemplar_rows(
     Ok(out)
 }
 
-/// Picks at most `n` positions from `rows` in `order`, one per game.
+/// Counts stored rows that could not become a position (skipped, never fabricated).
+#[derive(Debug, Default)]
+pub struct Skipped(std::cell::Cell<u32>);
+
+impl Skipped {
+    pub fn add(&self, n: u32) {
+        self.0.set(self.0.get().saturating_add(n));
+    }
+
+    pub fn get(&self) -> u32 {
+        self.0.get()
+    }
+}
+
+/// Picks at most `n` positions from `rows` in `order`, one per game. A row that gives no
+/// position ([`to_exemplar_position`] is `None`) is skipped and counted in `skipped`.
 pub fn pick_distinct<'a>(
     mut rows: Vec<&'a ExemplarRow>,
     n: usize,
     order: impl FnMut(&&'a ExemplarRow, &&'a ExemplarRow) -> std::cmp::Ordering,
+    skipped: &Skipped,
 ) -> Vec<ExemplarPosition> {
     rows.sort_by(order);
     let mut games = HashSet::new();
@@ -306,9 +325,12 @@ pub fn pick_distinct<'a>(
         if games.contains(&r.game_id) {
             continue;
         }
-        if let Some(p) = to_exemplar_position(r) {
-            games.insert(r.game_id);
-            out.push(p);
+        match to_exemplar_position(r) {
+            Some(p) => {
+                games.insert(r.game_id);
+                out.push(p);
+            }
+            None => skipped.add(1),
         }
     }
     out

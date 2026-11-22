@@ -275,6 +275,9 @@ pub fn opening_verdict(s: &LineSummary, examples: Vec<ExemplarPosition>) -> Opti
             .iter()
             .filter(|a| valid_san(&a.san))
             .filter_map(|a| {
+                // Coordinator ruling: the single alternative move. A stored PV line for an
+                // alternative would be used instead, cut to 16 plies, but `AlternativeMove`
+                // (Task 18) stores none, so there is nothing to cut.
                 Some(Alternative {
                     name: truncate_chars(a.name.as_deref().unwrap_or(&a.san), LIMITS.label_chars),
                     moves_san: vec![a.san.clone()],

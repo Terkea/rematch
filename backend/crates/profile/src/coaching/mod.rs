@@ -6,4 +6,4 @@ pub mod exemplars;
 pub mod mapping;
 pub mod strengths;
 
-pub use builder::{BuildError, build_coaching_input};
+pub use builder::{BuildError, BuildReport, build_coaching_input, build_coaching_input_report};

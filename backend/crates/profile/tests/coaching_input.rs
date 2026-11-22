@@ -17,7 +17,7 @@ use coaching_input::{
 };
 use common::seed::{PROTOCOL, SEED_NOW, SeedOptions, seed, seed_now, w1_stat};
 use profile::build_profile::{BuildProfileDeps, handle_build_profile};
-use profile::coaching::builder::{BuildError, build_coaching_input};
+use profile::coaching::builder::{BuildError, build_coaching_input, build_coaching_input_report};
 use profile::coaching::exemplars::{ExemplarRow, to_exemplar_position};
 use profile::coaching::mapping::{contract_line_key, contract_platform, weakness_id_of_series};
 use profile::coaching::strengths::{StrengthCandidate, StrengthSource, select_strengths};
@@ -396,26 +396,39 @@ fn assert_json_close(a: &Value, b: &Value, path: &str) {
 async fn builder_output_validates_against_ts_schema(pool: PgPool) {
     let (_, input) = built_fixture(&pool).await;
     assert_eq!(input.validate(), Ok(()));
-    // The strict serde types (deny_unknown_fields, every nullable key required) are the Rust
-    // side of the zod schema; `coaching-input/tests/parity.rs` proves their JSON Schema has the
-    // TS schema's shape. (A direct `jsonschema` check needs the dev-dependency, see the report.)
-    let schema: Value = serde_json::from_str(
-        &std::fs::read_to_string(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../fixtures/coaching-input/ts-schema.json"
-        ))
-        .expect("ts-schema.json"),
-    )
-    .unwrap();
-    let required: BTreeSet<&str> = schema["required"]
-        .as_array()
-        .expect("root required")
-        .iter()
-        .filter_map(Value::as_str)
-        .collect();
-    let v = input.to_json();
-    let keys: BTreeSet<&str> = v.as_object().unwrap().keys().map(String::as_str).collect();
-    assert_eq!(keys, required, "exactly the TS root keys");
+    let v = ts_validator();
+    let doc = input.to_json();
+    assert_eq!(schema_errors(&v, &doc), Vec::<String>::new());
+
+    // The validator is live: documents the contract forbids are rejected.
+    let mut extra = doc.clone();
+    extra["focus"] = json!([]);
+    assert!(!schema_errors(&v, &extra).is_empty(), "unknown root key");
+    let mut long_pv = doc.clone();
+    long_pv["weaknesses"][0]["exemplars"][0]["bestPv"] = json!(vec!["g1f3"; 17]);
+    assert!(!schema_errors(&v, &long_pv).is_empty(), "17-ply PV");
+    let mut no_band = doc.clone();
+    no_band["weaknesses"][0]["bandMedian"] = Value::Null;
+    assert!(!schema_errors(&v, &no_band).is_empty(), "null bandMedian");
+}
+
+fn ts_validator() -> jsonschema::Validator {
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../fixtures/coaching-input/ts-schema.json"
+    );
+    let schema: Value =
+        serde_json::from_str(&std::fs::read_to_string(path).expect("ts-schema.json")).unwrap();
+    jsonschema::options()
+        .should_validate_formats(true)
+        .build(&schema)
+        .expect("the TS schema compiles")
+}
+
+fn schema_errors(v: &jsonschema::Validator, doc: &Value) -> Vec<String> {
+    v.iter_errors(doc)
+        .map(|e| format!("{e} at {}", e.instance_path()))
+        .collect()
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
@@ -437,6 +450,11 @@ async fn coaching_input_for_account_with_0_analysed_games_validates(pool: PgPool
         (0, 0)
     );
     assert_eq!(input.validate(), Ok(()));
+    assert_eq!(
+        schema_errors(&ts_validator(), &input.to_json()),
+        Vec::<String>::new(),
+        "valid against the TS schema"
+    );
     let back: CoachingInput = serde_json::from_value(input.to_json()).unwrap();
     assert_eq!(back, input);
 }
@@ -646,6 +664,10 @@ async fn builder_respects_limits_and_unit_ranges(pool: PgPool) {
     assert_eq!(tt.high, Some(1.0));
     assert_eq!(tt.low, Some(0.8));
     assert_eq!(input.validate(), Ok(()));
+    assert_eq!(
+        schema_errors(&ts_validator(), &input.to_json()),
+        Vec::<String>::new()
+    );
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
@@ -1123,4 +1145,51 @@ fn onset_at_names_only_the_current_episode() {
         Some(datetime!(2026-11-04 12:00 UTC)),
         "onset of the current episode"
     );
+}
+
+// ------------------------------------------------------------------ coordinator rulings
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn report_carries_the_snapshot_time_and_now(pool: PgPool) {
+    let f = seed_with_moves(&pool, SeedOptions::default()).await;
+    run_build(&pool, f.account_id).await;
+    let latest: OffsetDateTime = sqlx::query_scalar(
+        "SELECT max(computed_at) FROM kpi_snapshot WHERE account_id = $1 AND window_key = 'last50'",
+    )
+    .bind(f.account_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    let r = build_coaching_input_report(&pool, f.account_id, TimeClass::Blitz, SEED_NOW)
+        .await
+        .unwrap();
+    assert_eq!(r.input.generated_at, SEED_NOW);
+    assert_eq!(r.snapshots_computed_at, Some(latest));
+    assert_eq!(r.skipped_exemplars, 0);
+
+    let fresh = testkit::insert_account(&pool, "lichess", "nosnapshots").await;
+    let r = build_coaching_input_report(&pool, fresh, TimeClass::Blitz, SEED_NOW)
+        .await
+        .unwrap();
+    assert_eq!(r.snapshots_computed_at, None, "no snapshot used");
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn undecodable_exemplar_is_skipped_and_counted(pool: PgPool) {
+    let f = seed_with_moves(&pool, SeedOptions::default()).await;
+    // The best exemplar's stored move is not legal in its position: no position can be stated.
+    sqlx::query("UPDATE moves SET uci = 'a1a8' WHERE game_id = $1 AND ply = $2")
+        .bind(f.games[EXEMPLAR_GAMES[0]])
+        .bind(i32::try_from(EXEMPLAR_PLY).unwrap())
+        .execute(&pool)
+        .await
+        .unwrap();
+    run_build(&pool, f.account_id).await;
+    let r = build_coaching_input_report(&pool, f.account_id, TimeClass::Blitz, SEED_NOW)
+        .await
+        .unwrap();
+    let w1 = r.input.weaknesses.iter().find(|w| w.id == "W1").unwrap();
+    assert_eq!(w1.exemplars.len(), 2, "the other two, nothing invented");
+    assert!(w1.exemplars.iter().all(|e| e.played.san == "Bc4"));
+    assert!(r.skipped_exemplars >= 1, "counted: {}", r.skipped_exemplars);
 }

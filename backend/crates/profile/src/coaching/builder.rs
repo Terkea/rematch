@@ -62,7 +62,7 @@ use time::{Date, Duration, OffsetDateTime, UtcOffset};
 use uuid::Uuid;
 
 use super::exemplars::{
-    ExemplarRow, by_delta_then_recency, by_recency, load_exemplar_rows, pick_distinct,
+    ExemplarRow, Skipped, by_delta_then_recency, by_recency, load_exemplar_rows, pick_distinct,
 };
 use super::mapping::{
     candidate_causes, claimable_weakness, contract_platform, has_time_control, metric,
@@ -267,12 +267,13 @@ async fn backfill_complete(
     Ok(!selected.iter().any(|s| in_tc.contains(&s.game_id)))
 }
 
-/// The latest `last50` row per metric (Task 33's snapshots).
+/// The latest `last50` row per metric (Task 33's snapshots), and the newest `computed_at` among
+/// them.
 async fn latest_last50(
     pool: &PgPool,
     account_id: Uuid,
     tc: TimeClass,
-) -> sqlx::Result<Vec<KpiValue>> {
+) -> sqlx::Result<(Vec<KpiValue>, Option<OffsetDateTime>)> {
     type Raw = (
         String,
         Option<f64>,
@@ -280,21 +281,21 @@ async fn latest_last50(
         i32,
         Option<f64>,
         Option<f64>,
+        OffsetDateTime,
     );
     let key = Window::LastN(LAST_N).key();
     let rows: Vec<Raw> = sqlx::query_as(
-        "SELECT DISTINCT ON (metric) metric, value, value_adjusted, n, ci_low, ci_high \
-         FROM kpi_snapshot WHERE account_id = $1 AND time_class = $2::time_class \
-         AND window_key = $3 ORDER BY metric, id DESC",
+        "SELECT DISTINCT ON (metric) metric, value, value_adjusted, n, ci_low, ci_high,            computed_at          FROM kpi_snapshot WHERE account_id = $1 AND time_class = $2::time_class          AND window_key = $3 ORDER BY metric, id DESC",
     )
     .bind(account_id)
     .bind(tc.as_str())
     .bind(&key)
     .fetch_all(pool)
     .await?;
-    Ok(rows
+    let computed_at = rows.iter().map(|r| r.6).max();
+    let values = rows
         .into_iter()
-        .filter_map(|(m, value, value_adjusted, n, ci_low, ci_high)| {
+        .filter_map(|(m, value, value_adjusted, n, ci_low, ci_high, _)| {
             Some(KpiValue {
                 metric: m.parse::<MetricId>().ok()?,
                 window_kind: WindowKind::LastN,
@@ -307,7 +308,8 @@ async fn latest_last50(
                 ci_high,
             })
         })
-        .collect())
+        .collect();
+    Ok((values, computed_at))
 }
 
 /// Where each game's exemplar plies are.
@@ -350,6 +352,7 @@ fn weaknesses(
     plies: &Plies,
     rows: &HashMap<(Uuid, u32), ExemplarRow>,
     now: OffsetDateTime,
+    skipped: &Skipped,
 ) -> Vec<RankedWeakness> {
     let mut out = Vec::new();
     for e in rank_weaknesses(estimates.to_vec()) {
@@ -370,7 +373,7 @@ fn weaknesses(
         } else {
             LATER_RANK_EXEMPLARS
         };
-        let exemplars = pick_distinct(candidates, n, by_delta_then_recency);
+        let exemplars = pick_distinct(candidates, n, by_delta_then_recency, skipped);
         if exemplars.is_empty() {
             continue; // R3 T8: an item without an exemplar cannot be cited.
         }
@@ -389,6 +392,7 @@ fn strength_exemplars(
     plies: &Plies,
     rows: &HashMap<(Uuid, u32), ExemplarRow>,
     now: OffsetDateTime,
+    skipped: &Skipped,
 ) -> Vec<coaching_input::ExemplarPosition> {
     let (kinds, endgame_only) = area_kinds(area);
     let candidates: Vec<&ExemplarRow> = plies
@@ -398,9 +402,10 @@ fn strength_exemplars(
         .filter_map(|(_, g, p)| rows.get(&(*g, *p)))
         .filter(|r| in_window(now, r) && (!endgame_only || r.phase == "endgame"))
         .collect();
-    pick_distinct(candidates, MAX_STRENGTH_EXEMPLARS, by_recency)
+    pick_distinct(candidates, MAX_STRENGTH_EXEMPLARS, by_recency, skipped)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn strengths(
     area_scores: &[AreaScore],
     estimates: &[WeaknessEstimate],
@@ -409,6 +414,7 @@ fn strengths(
     plies: &Plies,
     rows: &HashMap<(Uuid, u32), ExemplarRow>,
     now: OffsetDateTime,
+    skipped: &Skipped,
 ) -> Vec<Strength> {
     let mut candidates = Vec::new();
     for a in area_scores {
@@ -425,7 +431,7 @@ fn strengths(
             metric_key: None,
             band_percentile: Some(score),
             n: a.n,
-            exemplars: strength_exemplars(a.area, plies, rows, now),
+            exemplars: strength_exemplars(a.area, plies, rows, now, skipped),
         });
     }
     let ranked_ids: HashSet<(String, Option<String>)> = ranked
@@ -455,7 +461,7 @@ fn strengths(
                 .then_some(metric_id),
             band_percentile: Some(percentile),
             n: e.n_unweighted.round().clamp(0.0, f64::from(u32::MAX)) as u32,
-            exemplars: strength_exemplars(area, plies, rows, now),
+            exemplars: strength_exemplars(area, plies, rows, now, skipped),
         });
     }
     select_strengths(candidates)
@@ -651,6 +657,7 @@ fn unit(x: Option<f32>) -> Option<f64> {
         .filter(|v| v.is_finite() && (0.0..=1.0).contains(v))
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn changes(
     pool: &PgPool,
     account_id: Uuid,
@@ -659,6 +666,7 @@ async fn changes(
     plies: &Plies,
     rows: &HashMap<(Uuid, u32), ExemplarRow>,
     opening_names: &HashMap<String, String>,
+    skipped: &Skipped,
 ) -> sqlx::Result<Vec<TimelineChange>> {
     let onsets: Vec<OnsetRow> = sqlx::query_as(
         "SELECT h.series_key, h.from_state::text AS from_state, h.to_state::text AS to_state, \
@@ -720,7 +728,7 @@ async fn changes(
             [(ExampleSide::Before, before), (ExampleSide::After, after)]
                 .into_iter()
                 .flat_map(|(side, rs)| {
-                    pick_distinct(rs, CHANGE_EXAMPLES_PER_SIDE, by_delta_then_recency)
+                    pick_distinct(rs, CHANGE_EXAMPLES_PER_SIDE, by_delta_then_recency, skipped)
                         .into_iter()
                         .map(move |position| ChangeExample { position, side })
                 })
@@ -749,6 +757,19 @@ async fn changes(
     Ok(out)
 }
 
+/// A built input with what the contract does not carry.
+#[derive(Clone, Debug, PartialEq)]
+pub struct BuildReport {
+    /// `generated_at` is the builder's `now`.
+    pub input: CoachingInput,
+    /// Newest `computed_at` of the `last50` snapshots behind `metrics` and `areaScores`; `None`
+    /// when none was used. The strict M3 contract has no field for it (adding one breaks zod
+    /// parity), so it travels beside the input for callers that show or log it.
+    pub snapshots_computed_at: Option<OffsetDateTime>,
+    /// Stored exemplar rows skipped because no valid position could be stated from them.
+    pub skipped_exemplars: u32,
+}
+
 /// Builds and validates the account × time class `CoachingInput` (module docs).
 pub async fn build_coaching_input(
     pool: &PgPool,
@@ -756,6 +777,18 @@ pub async fn build_coaching_input(
     tc: TimeClass,
     now: OffsetDateTime,
 ) -> Result<CoachingInput, BuildError> {
+    Ok(build_coaching_input_report(pool, account_id, tc, now)
+        .await?
+        .input)
+}
+
+/// [`build_coaching_input`] with the [`BuildReport`] extras.
+pub async fn build_coaching_input_report(
+    pool: &PgPool,
+    account_id: Uuid,
+    tc: TimeClass,
+    now: OffsetDateTime,
+) -> Result<BuildReport, BuildError> {
     let platform: String =
         sqlx::query_scalar("SELECT platform::text FROM linked_accounts WHERE id = $1")
             .bind(account_id)
@@ -814,8 +847,8 @@ pub async fn build_coaching_input(
     let outcomes = evaluate_all(&series, reference.as_ref());
 
     // Metrics and area scores from the latest snapshots (none without evidence games).
-    let kpis: Vec<KpiValue> = if games.is_empty() {
-        Vec::new()
+    let (kpis, snapshots_computed_at) = if games.is_empty() {
+        (Vec::new(), None)
     } else {
         latest_last50(pool, account_id, tc).await?
     };
@@ -847,9 +880,10 @@ pub async fn build_coaching_input(
     refs.extend(line_refs.iter().flatten().copied());
     refs.sort_unstable();
     refs.dedup();
-    let rows = load_exemplar_rows(pool, &refs, &protocols).await?;
+    let skipped = Skipped::default();
+    let rows = load_exemplar_rows(pool, &refs, &protocols, &skipped).await?;
 
-    let weaknesses = weaknesses(&estimates, &outcomes, &plies, &rows, now);
+    let weaknesses = weaknesses(&estimates, &outcomes, &plies, &rows, now, &skipped);
     let strengths = strengths(
         &area_scores,
         &estimates,
@@ -858,6 +892,7 @@ pub async fn build_coaching_input(
         &plies,
         &rows,
         now,
+        &skipped,
     );
     let mut openings: Vec<coaching_input::OpeningVerdict> = lines
         .iter()
@@ -867,6 +902,7 @@ pub async fn build_coaching_input(
                 rows_of(&rows, refs),
                 LIMITS.examples_per_opening,
                 by_delta_then_recency,
+                &skipped,
             );
             opening_verdict(line, examples)
         })
@@ -877,7 +913,17 @@ pub async fn build_coaching_input(
         .iter()
         .map(|l| (l.line_key.clone(), l.name.clone()))
         .collect();
-    let changes = changes(pool, account_id, tc, now, &plies, &rows, &opening_names).await?;
+    let changes = changes(
+        pool,
+        account_id,
+        tc,
+        now,
+        &plies,
+        &rows,
+        &opening_names,
+        &skipped,
+    )
+    .await?;
 
     let input = CoachingInput {
         input_version: InputVersion::V1,
@@ -899,5 +945,12 @@ pub async fn build_coaching_input(
         changes,
     };
     input.validate().map_err(BuildError::Contract)?;
-    Ok(input)
+    if skipped.get() > 0 {
+        tracing::info!(%account_id, tc = tc.as_str(), skipped = skipped.get(), "exemplar rows skipped");
+    }
+    Ok(BuildReport {
+        input,
+        snapshots_computed_at,
+        skipped_exemplars: skipped.get(),
+    })
 }

@@ -143,6 +143,41 @@ statistics, so with R3's user scoping they go only to the linked account's owner
 - Intervals are never widened. Clamping to the unit range only narrows, and an item whose
   posterior lies outside its interval is dropped, not repaired.
 
+### Coordinator rulings (Task 34 review)
+
+1. **A weakness needs `priority > 0`.** An estimate whose mean is not above the band median
+   has no excess. Ranking it would claim a weakness that the evidence does not show.
+2. **A strength needs a claimable estimate.** That means `reason = ok`, the minimum evidence,
+   and at least one event. There are no zero-event claims: a `NoEvents` estimate has its
+   confidence forced to 0, so `1 − confidence` would otherwise "prove" a strength from nothing.
+   A key that is a ranked weakness is never also a strength.
+3. **`to_exemplar_position` returns `Option`.** A stored row that cannot give a valid position
+   is skipped, never fabricated. Causes include an unknown eval, an illegal move, a FEN whose
+   side to move disagrees with its ply, an over-long id, or an undecodable colour or ply.
+   Skipped rows are counted in `BuildReport.skipped_exemplars` and logged. The next candidate
+   (same order, another game) takes the slot.
+4. **An alternative's `movesSan` is its single move.** If a stored PV line existed for an
+   alternative, it would be used, cut to 16 plies. Task 18's `AlternativeMove` stores none, so
+   today it is always the single move.
+
+### Snapshot time and `now`
+
+`metrics` and `areaScores` come from the latest `last50` snapshots (the brief). Weaknesses,
+strengths and changes are computed at `now`. The input therefore describes two moments:
+
+- **`now`** is carried in the contract as `generatedAt`.
+- **The snapshot time** cannot go in the contract. The M3 schema is strict
+  (`additionalProperties: false`, zod parity), so a new field would break R3's parser.
+  `build_coaching_input_report` instead returns a `BuildReport` with:
+  - the input;
+  - `snapshots_computed_at`: the newest `computed_at` of the snapshots used, or `None` when none
+    was used;
+  - `skipped_exemplars`.
+
+  `build_coaching_input` returns only the input. Callers that show freshness (the CLI, the web,
+  T35) use the report. The two moments differ only between a game's analysis and its follow-up
+  build (the follow-up rule above), so the gap is short and visible.
+
 ## R3 hand-off
 
 R3 depends only on the `coaching-input` crate (the types, `LIMITS`, `validate`, the schema). It
@@ -153,8 +188,8 @@ or CLI (T35 wires `cli profile --json`).
 
 - The builder re-estimates at `now`, so ages differ slightly from the last build's `started_at`.
   The states and rows are those of a replay of the same evidence.
-- `metrics` and `areaScores` reflect the latest build-profile run. A game analysed after it
-  shows up after the follow-up build.
+- `metrics` and `areaScores` reflect the latest build-profile run (`snapshots_computed_at`). A
+  game analysed after it shows up after the follow-up build.
 - `serde_json`'s default number parser can be 1 ulp off when reading the builder's JSON back
   (the `float_roundtrip` feature is off). The text itself is shortest-round-trip, so
   `JSON.parse` reads it exactly. The round-trip test compares with a 1e-15 relative tolerance.
