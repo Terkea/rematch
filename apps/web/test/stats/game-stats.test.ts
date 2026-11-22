@@ -71,12 +71,13 @@ beforeAll(async () => {
         endgame: i === 1 ? null : 50,
       });
   }
-  // 4 black rapid 15+10 games in February, one of them with no stored accuracy.
+  // 4 black rapid 15+10 games in February (results are White-POV: "1-0" is a Black loss, "0-1"
+  // a Black win): 3 losses and 1 win, one of them with no stored accuracy.
   for (let i = 0; i < 4; i++) {
     await seedSyntheticGame(db, aliceAccount, {
       playedAt: `2026-02-0${i + 1}T12:00:00Z`,
       timeClass: "rapid",
-      result: "0-1",
+      result: i === 3 ? "0-1" : "1-0",
       playerColor: "black",
       accuracy: i === 0 ? null : 80,
       baseSeconds: 900,
@@ -120,12 +121,12 @@ describe("gameStats", () => {
     const s = await gameStats(db, alice, ALL);
     expect(s.n).toBe(18);
     expect(s.analysed).toBe(16);
-    // White: 7 W, 2 D, 3 L; black: 4 L; pending game: a win; unfinished: no result.
-    expect(s.score).toMatchObject({ n: 17, wins: 8, draws: 2, losses: 7 });
+    // White: 7 W, 2 D, 3 L; black: 1 W, 3 L; pending game: a win; unfinished: no result.
+    expect(s.score).toMatchObject({ n: 17, wins: 9, draws: 2, losses: 6 });
     expect(s.score.score).toEqual({
       kind: "estimate",
-      value: 9 / 17,
-      interval: wilson(9, 17),
+      value: 10 / 17,
+      interval: wilson(10, 17),
       n: 17,
     });
   });
@@ -164,7 +165,7 @@ describe("gameStats", () => {
     expect(s.byColor.white.n).toBe(14);
     expect(s.byColor.black.n).toBe(4);
     expect(s.byColor.black.accuracy).toEqual({ kind: "insufficient", n: 3, needed: 7 });
-    expect(s.byColor.black.score).toMatchObject({ n: 4, wins: 0, losses: 4 });
+    expect(s.byColor.black.score).toMatchObject({ n: 4, wins: 1, draws: 0, losses: 3 });
     expect(s.byColor.black.score.score).toEqual({ kind: "insufficient", n: 4, needed: 6 });
   });
 
