@@ -78,6 +78,50 @@ function useActivity(): Activity {
 }
 
 /**
+ * One line of background work: a pencil stroke for a known fraction, then the words. The full
+ * words show from 640px until 768px, where the nav joins the wordmark's row; from there only the
+ * short form is drawn (I7: the long form once wrapped the wordmark), with the full words kept for
+ * assistive tech and as the tooltip. It truncates rather than push the row wider.
+ */
+function WorkLine({
+  text,
+  short,
+  fraction,
+  reduced,
+}: {
+  text: string;
+  short: string;
+  fraction: number | null;
+  reduced: boolean | null;
+}) {
+  return (
+    <span
+      title={text}
+      className="flex h-10 min-w-0 items-center gap-2 px-1 text-sm whitespace-nowrap text-ink-soft tabular-nums"
+    >
+      {fraction !== null ? (
+        <span
+          aria-hidden="true"
+          className="relative block h-0.75 w-8 shrink-0 overflow-hidden rounded-pill bg-rule sm:w-12"
+        >
+          <motion.span
+            data-part="stroke"
+            className="absolute inset-0 origin-left rounded-pill bg-pencil"
+            initial={false}
+            animate={{ scaleX: fraction }}
+            transition={reduced ? { duration: 0 } : { duration: dur.soak, ease: ease.soak }}
+          />
+        </span>
+      ) : null}
+      <span className="sr-only sm:not-sr-only md:sr-only">{text}</span>
+      <span aria-hidden="true" className="truncate sm:hidden md:inline">
+        {short}
+      </span>
+    </span>
+  );
+}
+
+/**
  * Background work, quietly, in the header (M4 T23, Task P2): unfinished imports as a count and a pencil
  * stroke that soaks forward with each update, and failed jobs as a button that lists them.
  * Nothing when idle. It reports counts, never a connection state, so it can't claim "live"
@@ -103,57 +147,25 @@ export function ActivityIndicator() {
   return (
     <motion.div
       data-slot="activity-indicator"
-      className="flex items-center gap-2"
+      className="flex min-w-0 items-center gap-2"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: dur.quick, ease: ease.out }}
     >
       {imports ? (
-        <span className="flex h-10 items-center gap-2 px-1 text-sm whitespace-nowrap text-ink-soft tabular-nums">
-          {fraction !== null ? (
-            <span
-              aria-hidden="true"
-              className="relative block h-0.75 w-8 overflow-hidden rounded-pill bg-rule sm:w-12"
-            >
-              <motion.span
-                data-part="stroke"
-                className="absolute inset-0 origin-left rounded-pill bg-pencil"
-                initial={false}
-                animate={{ scaleX: fraction }}
-                transition={reduced ? { duration: 0 } : { duration: dur.soak, ease: ease.soak }}
-              />
-            </span>
-          ) : null}
-          {/* The words in full from 640px; below, the short count, with the words for assistive tech. */}
-          <span className="sr-only sm:not-sr-only">{importText(imports)}</span>
-          <span aria-hidden="true" className="sm:hidden">
-            {imports.total === undefined
+        <WorkLine
+          text={importText(imports)}
+          short={
+            imports.total === undefined
               ? `${imports.done} games`
-              : `${imports.done} / ${imports.total}`}
-          </span>
-        </span>
+              : `${imports.done} / ${imports.total}`
+          }
+          fraction={fraction}
+          reduced={reduced}
+        />
       ) : null}
       {work ? (
-        <span className="flex h-10 items-center gap-2 px-1 text-sm whitespace-nowrap text-ink-soft tabular-nums">
-          {work.fraction !== null ? (
-            <span
-              aria-hidden="true"
-              className="relative block h-0.75 w-8 overflow-hidden rounded-pill bg-rule sm:w-12"
-            >
-              <motion.span
-                data-part="stroke"
-                className="absolute inset-0 origin-left rounded-pill bg-pencil"
-                initial={false}
-                animate={{ scaleX: work.fraction }}
-                transition={reduced ? { duration: 0 } : { duration: dur.soak, ease: ease.soak }}
-              />
-            </span>
-          ) : null}
-          <span className="sr-only sm:not-sr-only">{work.text}</span>
-          <span aria-hidden="true" className="sm:hidden">
-            {work.short}
-          </span>
-        </span>
+        <WorkLine text={work.text} short={work.short} fraction={work.fraction} reduced={reduced} />
       ) : null}
       {failures.length > 0 ? (
         <Popover>

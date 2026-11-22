@@ -107,6 +107,17 @@ describe("shell header", () => {
     expect(banner.querySelectorAll('[data-slot="activity"]')).toHaveLength(1);
   });
 
+  it("never wraps the wordmark; the activity slot gives way instead (I7)", () => {
+    renderHeader();
+    const banner = screen.getByRole("banner");
+    const mark = within(banner).getByRole("link", { name: "chess-improver" });
+    expect(mark.className).toMatch(/(^| )whitespace-nowrap( |$)/);
+    expect(mark.className).toMatch(/(^| )shrink-0( |$)/);
+    const slot = banner.querySelector('[data-slot="activity"]');
+    expect(slot?.className).toMatch(/(^| )min-w-0( |$)/);
+    expect(slot?.parentElement?.className).toMatch(/(^| )min-w-0( |$)/);
+  });
+
   it("overflows the sections that don't fit a phone row into the account menu", async () => {
     pathname = "/app/progress";
     renderHeader();

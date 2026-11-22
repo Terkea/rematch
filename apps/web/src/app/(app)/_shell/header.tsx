@@ -51,14 +51,14 @@ export function Header({
       <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 px-(--space-gutter) pt-3 md:h-16 md:flex-nowrap md:pt-0">
         <Link
           href="/"
-          className="flex h-10 items-center rounded-field font-serif text-xl font-semibold text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+          className="flex h-10 shrink-0 items-center rounded-field font-serif text-xl font-semibold whitespace-nowrap text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
         >
           {brand.wordmark}
         </Link>
 
         <nav
           aria-label="Main"
-          className="order-last -mx-3 basis-full md:order-none md:mx-0 md:basis-auto"
+          className="order-last shrink-0 -mx-3 basis-full md:order-none md:mx-0 md:basis-auto"
         >
           <ul className="flex items-center gap-1">
             {sections.map((item) => {
@@ -86,8 +86,8 @@ export function Header({
           </ul>
         </nav>
 
-        <div className="ml-auto flex items-center gap-2">
-          <div data-slot="activity" className="flex items-center empty:hidden">
+        <div className="ml-auto flex min-w-0 items-center gap-2">
+          <div data-slot="activity" className="flex min-w-0 items-center empty:hidden">
             {activity}
           </div>
           <Button

@@ -147,6 +147,22 @@ describe("ActivityIndicator", () => {
       expect(screen.getByText("Updating profile")).toBeInTheDocument();
     });
 
+    it("condenses beside the one-row nav, keeping the words for assistive tech (I7)", async () => {
+      await withSync(acct({ analysis: { ...counts, done: 506, waiting: 10 } }));
+      show();
+      const full = screen.getByText("Analysing 506 / 516 games");
+      const short = screen.getByText("506 / 516");
+      // From 768px the nav shares the row with the wordmark: only the short form is drawn there,
+      // and the full words stay for screen readers and as the tooltip.
+      expect(full.className).toMatch(/(^| )md:sr-only( |$)/);
+      expect(short.className).toMatch(/(^| )md:inline( |$)/);
+      const line = full.parentElement;
+      expect(line?.getAttribute("title")).toBe("Analysing 506 / 516 games");
+      // Never wider than the room it is given: it truncates instead of pushing the wordmark.
+      expect(line?.className).toMatch(/(^| )min-w-0( |$)/);
+      expect(short.className).toMatch(/(^| )truncate( |$)/);
+    });
+
     it("an import from the stream comes first", async () => {
       await withSync(acct({ phase: "checking" }));
       show({ imports: { a1: { imported: 12 } }, failures: [] });
