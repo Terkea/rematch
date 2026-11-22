@@ -13,6 +13,7 @@ import { FoundationsSection } from "./sections/foundations";
 import { HeroSection } from "./sections/hero";
 import { OverlaysSection } from "./sections/overlays";
 import { PrimitivesSection } from "./sections/primitives";
+import { ProfileSection } from "./sections/profile";
 import { ProgressSection } from "./sections/progress";
 import { ReviewSection } from "./sections/review";
 import { SoundSection } from "./sections/sound";
@@ -49,6 +50,7 @@ export default function StyleguidePage() {
         <ChartsSection />
         <AreaScoreSection />
         <TimelineSection />
+        <ProfileSection />
         <ProgressSection />
         <SoundSection />
       </main>

@@ -43,7 +43,9 @@ const MIN_SPAN = 40;
 export function rulerDomain(items: Pick<AreaScoreProps, "score" | "band">[]): RulerDomain {
   if (items.length === 0) return [0, 100];
   const low = Math.min(...items.flatMap((i) => [i.score, i.band.median]));
-  const high = Math.max(...items.flatMap((i) => [i.score, i.band.next]));
+  const high = Math.max(
+    ...items.flatMap((i) => (i.band.next === undefined ? [i.score] : [i.score, i.band.next])),
+  );
   let lo = Math.max(0, Math.floor((low - MARGIN) / 10) * 10);
   let hi = Math.min(100, Math.ceil((high + MARGIN) / 10) * 10);
   // Widen to the minimum span, a step of 10 at a time, alternating ends (low end first).
@@ -67,9 +69,10 @@ export function deltaText(delta: number): string {
   return `${delta > 0 ? "+" : "−"}${Math.abs(delta)} since last report`;
 }
 
-/** "Endgame 62, band median 55, next band 68". */
+/** "Endgame 62, band median 55, next band 68", or "…, next band not measured yet" without one (R8). */
 export function areaScoreText({ area, score, band }: AreaScoreProps): string {
-  return `${areaLabels[area]} ${score}, band median ${band.median}, next band ${band.next}`;
+  const next = band.next === undefined ? "not measured yet" : `${band.next}`;
+  return `${areaLabels[area]} ${score}, band median ${band.median}, next band ${next}`;
 }
 
 /**
@@ -116,13 +119,15 @@ function Ruler({
         className="absolute top-1/2 h-2.5 w-0.5 -translate-x-1/2 rounded-full bg-pencil"
         style={{ left: fmt(m) }}
       />
-      <div
-        data-tick="next"
-        className="absolute top-1/2 -mt-3.5 h-3.5 w-0.5 -translate-x-1/2 bg-good"
-        style={{ left: fmt(at(band.next, domain)) }}
-      >
-        <span className="absolute top-0 left-0.5 h-1.5 w-1.5 bg-good [clip-path:polygon(0_0,100%_50%,0_100%)]" />
-      </div>
+      {band.next !== undefined ? (
+        <div
+          data-tick="next"
+          className="absolute top-1/2 -mt-3.5 h-3.5 w-0.5 -translate-x-1/2 bg-good"
+          style={{ left: fmt(at(band.next, domain)) }}
+        >
+          <span className="absolute top-0 left-0.5 h-1.5 w-1.5 bg-good [clip-path:polygon(0_0,100%_50%,0_100%)]" />
+        </div>
+      ) : null}
       {/*
         The needle rides a full-width carrier that starts one ruler-width to the left, so the sweep
         is a transform of `--sweep × position` of the ruler (M9), never an animated `left`.
@@ -254,8 +259,11 @@ export function AreaScoreList({
   );
 }
 
-/** The key for the ruler's three marks, drawn with the same shapes. */
-export function AreaScoreKey({ className }: { className?: string }) {
+/**
+ * The key for the ruler's marks, drawn with the same shapes. Pass `next={false}` when no row has
+ * a measured next band, so the key never names a mark the rulers don't draw.
+ */
+export function AreaScoreKey({ className, next = true }: { className?: string; next?: boolean }) {
   return (
     <ul
       aria-label="Key"
@@ -272,12 +280,14 @@ export function AreaScoreKey({ className }: { className?: string }) {
         <span aria-hidden="true" className="mt-3 h-2.5 w-0.5 rounded-full bg-pencil" />
         Band median
       </li>
-      <li className="flex items-center gap-2">
-        <span aria-hidden="true" className="relative -mt-1 h-3.5 w-0.5 bg-good">
-          <span className="absolute top-0 left-0.5 h-1.5 w-1.5 bg-good [clip-path:polygon(0_0,100%_50%,0_100%)]" />
-        </span>
-        Next band
-      </li>
+      {next ? (
+        <li className="flex items-center gap-2">
+          <span aria-hidden="true" className="relative -mt-1 h-3.5 w-0.5 bg-good">
+            <span className="absolute top-0 left-0.5 h-1.5 w-1.5 bg-good [clip-path:polygon(0_0,100%_50%,0_100%)]" />
+          </span>
+          Next band
+        </li>
+      ) : null}
     </ul>
   );
 }
