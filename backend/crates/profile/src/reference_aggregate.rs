@@ -14,7 +14,7 @@
 //! - `Last` rows (the rating) get no reference: a band's rating quartiles say nothing new.
 //! - **`opp_slope_per_100`:** the OLS slope of the per-game value (a rate's per-game `k/n`) on
 //!   `(opponent − own) / 100`. When it cannot be estimated (fewer than 2 games or no spread in
-//!   the gap) it is NaN, which consumers skip (`is_finite`); it is never a made-up 0.
+//!   the gap) it is `None` (stored NULL: no adjustment); never NaN and never a made-up 0.
 //! - `n_players` counts players with evidence for the row (a rate needs `n_i > 0`);
 //!   `low_sample = n_players < LOW_SAMPLE_PLAYERS`. Low-sample rows are stored but never served
 //!   (Task 17).
@@ -35,8 +35,6 @@ use refdata::band_reference::BandReferenceRow;
 
 /// A row with fewer players is `low_sample` (never served).
 pub const LOW_SAMPLE_PLAYERS: u32 = 10;
-/// `opp_slope_per_100` when it cannot be estimated.
-pub const SLOPE_UNKNOWN: f64 = f64::NAN;
 /// Below this sum of squared gap deviations (gaps in hundreds of points, ratings are integers,
 /// so any real spread is at least 5e-5) the slope is not estimable.
 pub const MIN_GAP_SPREAD: f64 = 1e-6;
@@ -172,7 +170,7 @@ fn aggregate_row(
         }
         games += 1;
     }
-    let slope = ols_slope(&slope_points).unwrap_or(SLOPE_UNKNOWN);
+    let slope = ols_slope(&slope_points);
     let stat = match def.kind {
         KpiKind::Rate => rate_stat(def.metric, &players, games, slope),
         KpiKind::Mean => mean_stat(def.metric, &players, games, slope),
@@ -197,7 +195,7 @@ fn rate_stat(
     metric: MetricId,
     players: &BTreeMap<&str, PlayerAcc>,
     games: u32,
-    slope: f64,
+    slope: Option<f64>,
 ) -> Option<BandReferenceStat> {
     let with: Vec<&PlayerAcc> = players.values().filter(|p| p.n > 0.0).collect();
     if with.is_empty() || games == 0 {
@@ -234,7 +232,7 @@ fn mean_stat(
     metric: MetricId,
     players: &BTreeMap<&str, PlayerAcc>,
     games: u32,
-    slope: f64,
+    slope: Option<f64>,
 ) -> Option<BandReferenceStat> {
     let mut means: Vec<f64> = players
         .values()

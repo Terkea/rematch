@@ -31,8 +31,9 @@ come from the reference games that Task 21 samples per band × time class.
 - **Opponent slope:** `opp_slope_per_100` is the OLS slope of the per-game value (a rate's
   per-game `k/n`) on `(opponent − own) / 100`, pooled over the cell's games. Task 15 subtracts
   `slope × mean gap` for its adjusted value. When the slope cannot be estimated (fewer than 2
-  games, or no spread in the gap) it is stored as NaN. The column is `NOT NULL` and the type is
-  `f64`, and NaN is the honest "unknown": consumers skip a non-finite slope. It is never 0.
+  games, or no spread in the gap) it is unknown: `None`, stored NULL. Every reader treats that as
+  "no adjustment". Migration `20261121020500` made the column nullable, and it refuses NaN and
+  infinities with a CHECK. The value is never NaN and never 0 (coordinator ruling).
 - `n_players` counts players with evidence for the row; `low_sample = n_players < 10`, and
   low-sample rows are never served (Task 17's per-metric fallback).
 - **Version gate:** an observation whose metrics version is not `PLAYER_GAME_METRICS_VERSION` is
@@ -42,8 +43,19 @@ come from the reference games that Task 21 samples per band × time class.
   (owner override): the Maia model that produced a game's values is recorded on the build in that
   game's transaction. A game whose model differs from the build's fails alone. Without Maia the
   column stays NULL, and difficulty-based detectors treat those plies as unknown (`pending_maia`;
-  plies ≤ 10 are `not_applicable`). Reference games are not re-enriched later by the pending-Maia
-  sweep.
+  plies ≤ 10 are `not_applicable`).
+- **Pending Maia is re-enriched, never frozen in silently** (coordinator ruling):
+  - A game left with plies pending because Maia was *unavailable* is flagged in
+    `reference_games.difficulty_pending_at`, which keeps the first such time. With Maia *not
+    configured* nothing could answer later, so the game is not flagged.
+  - Finalisation waits while a flagged game is younger than `MAIA_GRACE` (24 h).
+  - The recurring `reference-difficulty-sweep` job (`reenrich_reference_games`) runs once Maia
+    is healthy. It re-runs flagged games of building builds (evals and probes come from the
+    caches) and rewrites their observations and flags. It then finalises every finished build,
+    including one whose grace ran out while Maia stayed down.
+  - A build finalised with flagged games keeps those plies out of the difficulty metrics'
+    denominators: a pending ply is never a W11 opportunity and never an estimate. The count is
+    reported as `maia_pending_games`.
 - **Provisional chess.com offsets.** The reference is on the Lichess scale. chess.com players
   are banded through `CHESSCOM_TO_LICHESS_OFFSET`, which is provisional and is to be replaced by
   pooled user data later.
@@ -64,8 +76,10 @@ come from the reference games that Task 21 samples per band × time class.
 - A band where nobody had an event has `median = 0`, `pooled_rate = 0` and
   `epl_per_event = None`. Task 12 then has no benchmark for it (it needs an EPL), so a zero-event
   player there never surfaces a weakness (T12 ruling, tested).
-- A Maia outage during a build leaves that build's difficulty-based rows with fewer opportunities.
-  The denominators are still honest.
+- A Maia outage delays a build by up to 24 h. Only a longer outage leaves the build's
+  difficulty-based rows with fewer opportunities, and the denominators are still honest.
+- The finaliser's advisory lock only avoids duplicate work. Correctness comes from the
+  idempotent upserts, the activation's own kind lock and the `NotBuilding` handling.
 - A build that would be activated without a SHA-256 fails in `activate_build_in`
   (`MissingSourceSha`). Its last job is then retried and dead-lettered. Task 21 must set the SHA
   before enqueueing games.

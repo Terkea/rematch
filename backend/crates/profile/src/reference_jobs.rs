@@ -28,7 +28,18 @@
 //! stale metrics versions left out). A build without one usable weakness row
 //! ([`has_minimum_evidence`]) is failed, so the previous active build keeps serving. Otherwise
 //! the rows are written and the build activated (`activate_build_in`) in the same
-//! transaction.
+//! transaction. The advisory lock only avoids duplicate work: correctness comes from the
+//! idempotent upserts, `activate_build`'s own kind lock and the `NotBuilding` handling.
+//!
+//! **Pending Maia.** A game whose enrichment left plies `pending_maia` because Maia was
+//! unavailable (not merely unconfigured: then nothing could ever answer) is flagged
+//! (`reference_games.difficulty_pending_at`). While a flagged game is younger than
+//! [`MAIA_GRACE`], finalisation waits ([`FinalizeOutcome::WaitingForMaia`]).
+//! [`reenrich_reference_games`] (the recurring [`KIND_REFERENCE_DIFFICULTY_SWEEP`] job) re-runs
+//! flagged games once Maia is healthy, then finalises every finished build, including one whose
+//! grace has run out. A build finalised with flagged games keeps those moves out of the
+//! difficulty metrics' denominators: a pending ply is never an opportunity and never an
+//! estimate (Maia only). The count is reported.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -44,6 +55,7 @@ use chess_core::{ClockInfo, Color, ParsedGame, TimeClass};
 use db::games::AnalysisStatus;
 use db::stage_metrics::{StageMetrics, record_stage_metrics};
 use engine::{ANALYSIS_PROTOCOL, Analyser, EngineError};
+use enrich::difficulty::{DifficultyOutcome, PendingReason};
 use enrich::enrich_game::{EnrichDeps, EnrichError, EnrichInput, enrich_game};
 use futures::FutureExt;
 use futures::future::BoxFuture;
@@ -78,6 +90,32 @@ pub const REFERENCE_CONCURRENCY: usize = 4;
 /// The deadline reported if the job's token fires mid-evaluation.
 pub const REFERENCE_DEADLINE: Duration = Duration::from_secs(600);
 const MAX_ERROR_CHARS: usize = 500;
+/// A build waits this long for Maia to answer its flagged games before it is finalised without
+/// their difficulty.
+pub const MAIA_GRACE: Duration = Duration::from_secs(24 * 3600);
+/// The recurring re-enrichment of reference games with pending Maia moves.
+pub const KIND_REFERENCE_DIFFICULTY_SWEEP: &str = "reference-difficulty-sweep";
+/// Its dedupe key (one live sweep).
+pub const REFERENCE_DIFFICULTY_SWEEP_KEY: &str = "reference-difficulty-sweep";
+/// How often it runs. With Maia down a run costs one `/healthz` probe plus the finaliser check.
+pub const REFERENCE_DIFFICULTY_SWEEP_EVERY: Duration = Duration::from_secs(600);
+/// Games re-enriched per sweep run.
+pub const REFERENCE_SWEEP_LIMIT: usize = 200;
+
+/// Options of [`finalize_band_reference_with`].
+#[derive(Clone, Debug, PartialEq)]
+pub struct FinalizeOptions {
+    /// How long flagged pending-Maia games hold finalisation back.
+    pub maia_grace: Duration,
+}
+
+impl Default for FinalizeOptions {
+    fn default() -> Self {
+        Self {
+            maia_grace: MAIA_GRACE,
+        }
+    }
+}
 
 /// What a reference-game job needs.
 pub struct ReferenceGameDeps {
@@ -108,6 +146,8 @@ pub enum FinalizeOutcome {
         observations: usize,
         stale_observations: u32,
         undecodable_observations: u32,
+        /// Games finalised with moves still pending Maia (kept out of the difficulty n).
+        maia_pending_games: i64,
     },
     /// Another finaliser already activated it.
     AlreadyActive,
@@ -115,6 +155,8 @@ pub enum FinalizeOutcome {
     NotBuilding { status: String },
     /// Games are still `pending` or `analysing`.
     Pending { outstanding: i64 },
+    /// Every game is analysed, but `games` flagged ones still wait for Maia (within the grace).
+    WaitingForMaia { games: i64 },
     /// No usable weakness row: the build was failed and the previous active build kept.
     InsufficientEvidence { rows: usize, observations: usize },
 }
@@ -203,6 +245,8 @@ enum Stop {
 struct Prepared {
     rows: Vec<ObservationRow>,
     difficulty_model: Option<String>,
+    /// Some plies wait for an unavailable Maia (flag the game for the re-enrichment sweep).
+    maia_pending: bool,
     stages: BTreeMap<String, f64>,
 }
 
@@ -402,6 +446,17 @@ async fn persist(pool: &PgPool, build: Uuid, id: Uuid, p: &Prepared) -> Result<(
     set_reference_game_status(conn, id, AnalysisStatus::Done, None)
         .await
         .map_err(refdata)?;
+    // The first pending time is kept, so a re-enrichment that is still pending cannot extend
+    // the grace.
+    sqlx::query(
+        "UPDATE reference_games SET difficulty_pending_at = \
+         CASE WHEN $2 THEN COALESCE(difficulty_pending_at, now()) ELSE NULL END WHERE id = $1",
+    )
+    .bind(id)
+    .bind(p.maia_pending)
+    .execute(&mut *tx)
+    .await
+    .map_err(db)?;
     tx.commit().await.map_err(db)
 }
 
@@ -522,6 +577,10 @@ async fn run_pipeline(
         .flatten()
         .filter(|d| d.status() == "pending_maia")
         .count();
+    // Unconfigured Maia can never answer later, so only an unavailable one flags the game.
+    let maia_pending = enriched.difficulty.iter().flatten().any(|d| {
+        matches!(d, DifficultyOutcome::PendingMaia { reason } if *reason != PendingReason::MaiaNotConfigured)
+    });
     stages.insert(
         "difficulty_pending_plies".to_owned(),
         pending_difficulty as f64,
@@ -573,6 +632,7 @@ async fn run_pipeline(
     Ok(Prepared {
         rows,
         difficulty_model: enriched.difficulty_model,
+        maia_pending,
         stages,
     })
 }
@@ -719,7 +779,18 @@ pub async fn finalize_band_reference(
     pool: &PgPool,
     build_id: Uuid,
 ) -> Result<FinalizeOutcome, ReferenceError> {
+    finalize_band_reference_with(pool, build_id, &FinalizeOptions::default()).await
+}
+
+/// [`finalize_band_reference`] with an explicit Maia grace.
+pub async fn finalize_band_reference_with(
+    pool: &PgPool,
+    build_id: Uuid,
+    opts: &FinalizeOptions,
+) -> Result<FinalizeOutcome, ReferenceError> {
     let mut tx = pool.begin().await?;
+    // Only a work-avoider: two finalisers would still end with one active build (see the
+    // module docs).
     sqlx::query("SELECT pg_advisory_xact_lock(hashtext($1))")
         .bind(build_id.to_string())
         .execute(&mut *tx)
@@ -749,6 +820,18 @@ pub async fn finalize_band_reference(
         .await?;
     if outstanding > 0 {
         return Ok(FinalizeOutcome::Pending { outstanding });
+    }
+    let (waiting, maia_pending_games): (i64, i64) = sqlx::query_as(
+        "SELECT count(*) FILTER (WHERE difficulty_pending_at > now() - $2 * interval '1 second'), \
+           count(*) FILTER (WHERE difficulty_pending_at IS NOT NULL) \
+         FROM reference_games WHERE build_id = $1 AND status = 'done'",
+    )
+    .bind(build_id)
+    .bind(opts.maia_grace.as_secs_f64())
+    .fetch_one(&mut *tx)
+    .await?;
+    if waiting > 0 {
+        return Ok(FinalizeOutcome::WaitingForMaia { games: waiting });
     }
     let loaded = load_sides(&mut tx, build_id).await?;
     let observations = loaded.sides.len();
@@ -805,6 +888,7 @@ pub async fn finalize_band_reference(
         observations,
         stale_observations: loaded.stale + report.stale_sides,
         undecodable_observations: loaded.undecodable,
+        maia_pending_games,
     })
 }
 
@@ -864,6 +948,145 @@ impl Handler for ReferenceGameHandler {
                 }
                 Ok(false) => {}
                 Err(e) => tracing::warn!(error = %e, "marking a dead reference game failed"),
+            }
+        }
+        .boxed()
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Pending-Maia re-enrichment of reference games
+
+/// Result of one [`reenrich_reference_games`] run.
+#[derive(Clone, Debug, Default, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReferenceSweepReport {
+    /// A fresh `/healthz` answered; without it no game is touched.
+    pub maia_healthy: bool,
+    /// Flagged games re-enriched with every difficulty answered (flag cleared).
+    pub resolved: usize,
+    /// Re-enriched, but some plies still wait for Maia (flag and its first time kept).
+    pub still_pending: usize,
+    /// Re-enrichment failed (logged); the game keeps its observations and its flag.
+    pub failed: usize,
+    /// The finaliser's verdict for every finished `building` band-reference build.
+    pub finalized: Vec<(Uuid, FinalizeOutcome)>,
+}
+
+const FLAGGED_GAMES_SQL: &str = "SELECT g.id FROM reference_games g \
+     JOIN reference_builds b ON b.id = g.build_id \
+     WHERE g.difficulty_pending_at IS NOT NULL AND g.status = 'done' AND b.status = 'building' \
+     ORDER BY g.difficulty_pending_at, g.id LIMIT $1";
+
+const FINISHED_BUILDS_SQL: &str = "SELECT b.id FROM reference_builds b \
+     WHERE b.kind = 'band_reference' AND b.status = 'building' AND b.source_sha256 <> '' \
+       AND EXISTS (SELECT 1 FROM reference_games g WHERE g.build_id = b.id) \
+       AND NOT EXISTS (SELECT 1 FROM reference_games g WHERE g.build_id = b.id \
+                       AND g.status IN ('pending', 'analysing')) \
+     ORDER BY b.started_at, b.id";
+
+/// Re-runs up to `limit` flagged reference games of `building` builds once Maia is healthy (the
+/// evals and the MultiPV and threat probes come back from the caches, so only Maia is asked
+/// again), rewriting their observations and flags. Then it finalises every finished `building`
+/// band-reference build, which also ends the wait of a build whose [`MAIA_GRACE`] ran out while
+/// Maia stayed down.
+pub async fn reenrich_reference_games(
+    deps: &ReferenceGameDeps,
+    limit: usize,
+    cancel: &CancellationToken,
+) -> Result<ReferenceSweepReport, ReferenceError> {
+    let maia_healthy = match &deps.enrich.difficulty {
+        Some(source) => source.healthy().await,
+        None => false,
+    };
+    let mut report = ReferenceSweepReport {
+        maia_healthy,
+        ..ReferenceSweepReport::default()
+    };
+    if report.maia_healthy {
+        let ids: Vec<Uuid> = sqlx::query_scalar(FLAGGED_GAMES_SQL)
+            .bind(i64::try_from(limit).unwrap_or(i64::MAX))
+            .fetch_all(&deps.pool)
+            .await?;
+        for id in ids {
+            if cancel.is_cancelled() {
+                break;
+            }
+            let game: Option<RefGame> = sqlx::query_as(GAME_SQL)
+                .bind(id)
+                .fetch_optional(&deps.pool)
+                .await?;
+            let Some(game) = game
+                .filter(|g| g.status == "done" && g.build_status == BuildStatus::Building.as_str())
+            else {
+                continue;
+            };
+            let prepared = match run_pipeline(deps, &game, cancel).await {
+                Ok(p) => p,
+                Err(Stop::Cancelled) => break,
+                Err(Stop::Skip(r) | Stop::Poison(r) | Stop::Retry(r)) => {
+                    tracing::warn!(reference_game_id = %id, reason = %r, "re-enrichment failed");
+                    report.failed += 1;
+                    continue;
+                }
+            };
+            match persist(&deps.pool, game.build_id, id, &prepared).await {
+                Ok(()) if prepared.maia_pending => report.still_pending += 1,
+                Ok(()) => report.resolved += 1,
+                Err(PersistError::NotBuilding) => {}
+                Err(PersistError::ModelMismatch(r) | PersistError::Db(r)) => {
+                    tracing::warn!(reference_game_id = %id, reason = %r, "re-enrichment not stored");
+                    report.failed += 1;
+                }
+            }
+        }
+    }
+    let builds: Vec<Uuid> = sqlx::query_scalar(FINISHED_BUILDS_SQL)
+        .fetch_all(&deps.pool)
+        .await?;
+    for build in builds {
+        let outcome = finalize_band_reference(&deps.pool, build).await?;
+        report.finalized.push((build, outcome));
+    }
+    Ok(report)
+}
+
+/// Schedules the recurring reference re-enrichment (idempotent: deduped on
+/// [`REFERENCE_DIFFICULTY_SWEEP_KEY`]). Worker registration is Task 35's.
+pub async fn ensure_reference_difficulty_sweep_scheduled(
+    queue: &queue::queue::Queue,
+) -> Result<(), queue::queue::QueueError> {
+    queue
+        .enqueue(
+            KIND_REFERENCE_DIFFICULTY_SWEEP,
+            &serde_json::json!({}),
+            queue::EnqueueOptions {
+                dedupe_key: Some(REFERENCE_DIFFICULTY_SWEEP_KEY.to_owned()),
+                // Below user work, like the reference games themselves.
+                priority: queue::REFERENCE_PRIORITY,
+                max_attempts: 1,
+                recur_every: Some(REFERENCE_DIFFICULTY_SWEEP_EVERY),
+                ..queue::EnqueueOptions::default()
+            },
+        )
+        .await?;
+    Ok(())
+}
+
+/// The queue handler for [`KIND_REFERENCE_DIFFICULTY_SWEEP`].
+pub struct ReferenceDifficultySweepHandler(pub Arc<ReferenceGameDeps>);
+
+impl Handler for ReferenceDifficultySweepHandler {
+    fn kind(&self) -> &'static str {
+        KIND_REFERENCE_DIFFICULTY_SWEEP
+    }
+
+    fn handle(&self, _job: Job, ctx: JobContext) -> BoxFuture<'_, Result<Value, JobError>> {
+        async move {
+            // Every write is idempotent; a cut-off run resumes next time.
+            match reenrich_reference_games(&self.0, REFERENCE_SWEEP_LIMIT, &ctx.cancel).await {
+                Ok(r) => Ok(serde_json::to_value(&r).unwrap_or(Value::Null)),
+                Err(e) => Err(retryable(e.to_string())),
             }
         }
         .boxed()

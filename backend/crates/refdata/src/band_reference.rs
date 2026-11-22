@@ -103,7 +103,8 @@ pub async fn write_band_reference(
     .bind(o(|s| s.pooled_rate))
     .bind(o(|s| s.epl_per_event))
     .bind(o(|s| s.opps_per_game))
-    .bind(f(|s| s.opp_slope_per_100))
+    // A non-finite slope is unknown: stored NULL (the column refuses NaN and infinities).
+    .bind(o(|s| s.opp_slope_per_100.filter(|x| x.is_finite())))
     .bind(n_players)
     .bind(n_games)
     .bind(rows.iter().map(|r| r.stat.low_sample).collect::<Vec<_>>())
@@ -124,7 +125,7 @@ struct RefRow {
     pooled_rate: Option<f64>,
     epl_per_event: Option<f64>,
     opps_per_game: Option<f64>,
-    opp_slope_per_100: f64,
+    opp_slope_per_100: Option<f64>,
     n_players: i32,
     n_games: i32,
     low_sample: bool,

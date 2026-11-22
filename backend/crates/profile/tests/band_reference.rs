@@ -18,8 +18,9 @@ use profile::reference_aggregate::{
     has_minimum_evidence,
 };
 use profile::reference_jobs::{
-    FinalizeOutcome, REFERENCE_JOB_KIND, ReferenceGameDeps, ReferenceOutcome,
-    finalize_band_reference, handle_reference_game,
+    FinalizeOptions, FinalizeOutcome, MAIA_GRACE, REFERENCE_JOB_KIND, ReferenceGameDeps,
+    ReferenceOutcome, finalize_band_reference, finalize_band_reference_with, handle_reference_game,
+    reenrich_reference_games,
 };
 use profile_core::stats::beta_binomial::fit_beta_binomial;
 use profile_core::stats::priority::{EstimateInput, EstimateReason, estimate_weakness};
@@ -191,7 +192,10 @@ fn opponent_slope_is_the_ols_slope_per_100_points() {
         })
         .collect();
     let rows = aggregate_band_reference(&sides);
-    let slope = row(&rows, Band::B2, ACCURACY).stat.opp_slope_per_100;
+    let slope = row(&rows, Band::B2, ACCURACY)
+        .stat
+        .opp_slope_per_100
+        .unwrap();
     assert!((slope - 0.5).abs() < 1e-6, "slope {slope}");
 }
 
@@ -202,8 +206,8 @@ fn opponent_slope_is_unknown_when_the_gap_never_varies() {
         .collect();
     let rows = aggregate_band_reference(&sides);
     let slope = row(&rows, Band::B2, ACCURACY).stat.opp_slope_per_100;
-    // Not estimable: never a made-up 0 (consumers skip a non-finite slope).
-    assert!(!slope.is_finite(), "slope {slope}");
+    // Not estimable: unknown (None, stored NULL), never NaN and never a made-up 0.
+    assert_eq!(slope, None);
 }
 
 #[test]
@@ -343,7 +347,7 @@ impl DifficultySource for FakeMaia {
                         DifficultyOutcome::Ok {
                             difficulty: Difficulty {
                                 p_best: 0.25,
-                                p_ok: 0.75,
+                                p_ok: 0.85,
                                 model: MAIA_MODEL.to_owned(),
                             },
                         }
@@ -630,20 +634,197 @@ async fn reference_rows_keep_the_difficulty_model(pool: PgPool) {
     assert_eq!(row.difficulty_model.as_deref(), Some(MAIA_MODEL));
 }
 
+const W11: MetricId = MetricId::Weakness(WeaknessKey::W11);
+const FLAGGED: &str = "SELECT count(*) FROM reference_games WHERE build_id = $1 AND difficulty_pending_at IS NOT NULL";
+
+/// Total W11 (easy-move errors, Maia `p_ok` based) opportunities over the build's observations.
+async fn w11_opportunities(pool: &PgPool, build: Uuid) -> i64 {
+    sqlx::query_scalar(
+        "SELECT COALESCE(sum((metrics->'weakness'->'W11'->>'opportunities')::bigint), 0)::bigint \
+         FROM reference_observations WHERE build_id = $1",
+    )
+    .bind(build)
+    .fetch_one(pool)
+    .await
+    .unwrap()
+}
+
+async fn w11_row(pool: &PgPool, build: Uuid) -> Option<i32> {
+    sqlx::query_scalar(
+        "SELECT n_players FROM band_reference WHERE build_id = $1 AND band = 'B2' \
+         AND time_class = 'blitz' AND metric = $2",
+    )
+    .bind(build)
+    .bind(W11.to_string())
+    .fetch_optional(pool)
+    .await
+    .unwrap()
+}
+
 #[sqlx::test(migrator = "db::MIGRATOR")]
-async fn without_maia_the_difficulty_model_stays_null(pool: PgPool) {
+async fn a_build_waits_for_maia_and_finalising_before_it_returns_excludes_pending_moves(
+    pool: PgPool,
+) {
     // Maia configured but down: difficulty is pending, never estimated, and nothing is recorded.
     let maia = Arc::new(FakeMaia {
         up: AtomicBool::new(false),
     });
     let d = deps(&pool, Some(maia));
     let (build, ids) = build_with(&pool, "2026-09", &ten_games("n")).await;
+    let mut last = None;
     for id in &ids {
-        run(&d, *id).await;
+        last = Some(run(&d, *id).await);
     }
+    // Within the grace the build waits for Maia instead of freezing pending moves into it.
+    let fin = finalize_of(last.as_ref().unwrap()).cloned();
+    assert_eq!(fin, Some(FinalizeOutcome::WaitingForMaia { games: 10 }));
+    assert_eq!(status(&pool, build).await, BuildStatus::Building);
+    assert_eq!(count(&pool, FLAGGED, build).await, 10);
+    assert!(MAIA_GRACE >= Duration::from_secs(3600));
+
+    // Finalised before Maia returns (grace over): pending moves are out of W11's n.
+    let out = finalize_band_reference_with(
+        &pool,
+        build,
+        &FinalizeOptions {
+            maia_grace: Duration::ZERO,
+        },
+    )
+    .await
+    .unwrap();
+    assert!(
+        matches!(
+            out,
+            FinalizeOutcome::Activated {
+                maia_pending_games: 10,
+                ..
+            }
+        ),
+        "{out:?}"
+    );
+    assert_eq!(w11_opportunities(&pool, build).await, 0);
+    assert_eq!(
+        w11_row(&pool, build).await,
+        None,
+        "no W11 evidence, so no W11 row"
+    );
     let row = get_build(&pool, build).await.unwrap().unwrap();
     assert_eq!(row.status, BuildStatus::Active);
     assert_eq!(row.difficulty_model, None);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn reference_games_are_re_enriched_once_maia_returns(pool: PgPool) {
+    let maia = Arc::new(FakeMaia {
+        up: AtomicBool::new(false),
+    });
+    let d = deps(&pool, Some(maia.clone()));
+    let (build, ids) = build_with(&pool, "2026-09", &ten_games("r")).await;
+    for id in &ids {
+        run(&d, *id).await;
+    }
+    assert_eq!(w11_opportunities(&pool, build).await, 0);
+
+    // Still down: the sweep changes nothing.
+    let report = within(
+        "sweep",
+        reenrich_reference_games(&d, 100, &CancellationToken::new()),
+    )
+    .await
+    .unwrap();
+    assert!(!report.maia_healthy);
+    assert_eq!(report.resolved, 0);
+    assert_eq!(count(&pool, FLAGGED, build).await, 10);
+    assert_eq!(status(&pool, build).await, BuildStatus::Building);
+
+    // Maia is back: every game is re-enriched, then the build is finalised with W11 evidence.
+    maia.up.store(true, Ordering::SeqCst);
+    let report = within(
+        "sweep",
+        reenrich_reference_games(&d, 100, &CancellationToken::new()),
+    )
+    .await
+    .unwrap();
+    assert!(report.maia_healthy);
+    assert_eq!((report.resolved, report.still_pending), (10, 0));
+    assert_eq!(count(&pool, FLAGGED, build).await, 0);
+    assert_eq!(count(&pool, OBSERVATIONS, build).await, 20);
+    // 3 eligible plies past ply 10 per side.
+    assert_eq!(w11_opportunities(&pool, build).await, 60);
+    assert!(
+        report
+            .finalized
+            .iter()
+            .any(|(b, f)| *b == build && matches!(f, FinalizeOutcome::Activated { .. })),
+        "{report:?}"
+    );
+    let row = get_build(&pool, build).await.unwrap().unwrap();
+    assert_eq!(row.status, BuildStatus::Active);
+    assert_eq!(row.difficulty_model.as_deref(), Some(MAIA_MODEL));
+    assert_eq!(w11_row(&pool, build).await, Some(20));
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn the_wait_for_maia_ends_after_the_grace(pool: PgPool) {
+    let maia = Arc::new(FakeMaia {
+        up: AtomicBool::new(false),
+    });
+    let d = deps(&pool, Some(maia));
+    let (build, ids) = build_with(&pool, "2026-09", &ten_games("e")).await;
+    for id in &ids {
+        run(&d, *id).await;
+    }
+    assert_eq!(status(&pool, build).await, BuildStatus::Building);
+    sqlx::query(
+        "UPDATE reference_games SET difficulty_pending_at = now() - interval '25 hours' \
+         WHERE build_id = $1",
+    )
+    .bind(build)
+    .execute(&pool)
+    .await
+    .unwrap();
+    // Maia stays down; the recurring sweep still finalises the expired build.
+    let report = within(
+        "sweep",
+        reenrich_reference_games(&d, 100, &CancellationToken::new()),
+    )
+    .await
+    .unwrap();
+    assert!(!report.maia_healthy);
+    assert_eq!(status(&pool, build).await, BuildStatus::Active);
+    assert_eq!(w11_opportunities(&pool, build).await, 0);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn an_unknown_slope_is_stored_null_and_nan_is_refused(pool: PgPool) {
+    let (build, _) = build_with(&pool, "2026-09", &[]).await;
+    let sides: Vec<_> = (0..12)
+        .map(|i| accuracy_side(&format!("p{i}"), 1500, 1600, 60.0 + f64::from(i)))
+        .collect();
+    let rows = aggregate_band_reference(&sides);
+    let mut tx = pool.begin().await.unwrap();
+    refdata::band_reference::write_band_reference(&mut tx, build, &rows)
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    let null: bool = sqlx::query_scalar(
+        "SELECT opp_slope_per_100 IS NULL FROM band_reference WHERE build_id = $1 AND metric = $2",
+    )
+    .bind(build)
+    .bind(ACCURACY.to_string())
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(null, "an unknown slope is NULL");
+    for bad in ["NaN", "Infinity", "-Infinity"] {
+        let res = sqlx::query(sqlx::AssertSqlSafe(format!(
+            "UPDATE band_reference SET opp_slope_per_100 = '{bad}'::real WHERE build_id = $1"
+        )))
+        .bind(build)
+        .execute(&pool)
+        .await;
+        assert!(res.is_err(), "{bad} must be refused");
+    }
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
