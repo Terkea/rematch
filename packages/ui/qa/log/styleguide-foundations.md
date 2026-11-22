@@ -62,3 +62,38 @@ Also fixed in this pass:
 ```
 
 No blocker or major issue is left. Every remaining item needs a change outside this task's files, and each is handed off in the Task 9 report. The independent critic (a fresh agent with only the PNGs) is still owed. The controller should run it on the `r6/` and `r4open/` shots and append its verdict here.
+
+## Independent critic (controller-run, `critic-t9.md`): needs-changes, 0 Blocker, 7 Important
+
+Fix round 1 answered every Important item. The shots are in scratchpad `t9/fix1/` (sections) and `t9/fix1/open/` (dialog, drawer, menu and toast open), at 390 and 1440, in day and night. `scrollWidth` equals the viewport at 390.
+
+1. **Hover equal to Rest (text field, select, switch).** The components now have a hover:
+   - The text field and the select trigger step their edge from `rule-strong` to `ink-faint` (day 4.75:1 on well, night 6.5:1). A disabled or invalid field keeps its own edge.
+   - The switch steps its edge when off, and its track from `ink` to `ink-soft` when on. A disabled switch gets no hover.
+2. **Disabled tabs equal to Rest.** `disabled:` never matched, because Base UI marks the tab with `data-disabled`. It is now `data-disabled:text-ink-faint`.
+3. **Faint night hover.** Inside a night sheet, `--surface-hover` steps up to `sheet` mixed 14% toward `ink`: 1.48:1 against `sheet`, where the old `well` step was 1.17:1. `ink` on it is 8.99:1. Day is unchanged.
+4. **"Disabled … no fill" against the primary's well fill.** The intro copy now matches DESIGN.md: only the primary button keeps a quiet well fill.
+5. **"Switch to night study" in night.** The item now reads the theme in force ("Switch to day study" at night) and really flips it. Test: `styleguide-overlays.test.tsx`.
+6. **Weak night scrim and dialog edge.**
+   - The night scrim is `well` at 90%. Ink text behind it drops from 1.74:1 to 1.26:1.
+   - Night dialog, drawer, command menu, popover and select list get a 1px `rule-strong` edge: 4.28:1 on the scrim, 3.71:1 against `sheet`.
+7. **rgb values wrapping at 390.** Values are `nowrap`, and below 640px the ratio takes its own line under the name.
+
+Polish done:
+
+- Field cells are top-aligned, so the error field lines up.
+- Board tints are shown over a light and a dark square.
+- No-break space in "46. Qxd6".
+- Sections are spaced 64px apart, so the h2 to h3 step reads.
+- The overlays layout is balanced: tooltip and popover on the left, "Over the page" on the right.
+- The night popover now has an edge (polish 9).
+- The scrim copy no longer says "paper".
+- `Forced` warns in development when its target is missing (review minor 4).
+
+Polish parked, with reasons:
+
+- **Focus ring on an unselected tab (2):** this is the ruled 2px ink ring at a 2px offset (DESIGN.md "Interaction states"). Changing it is a design-law decision, not a showcase fix.
+- **`--dur-draw-small` demo and motion lane widths (4, 5):** both are in `foundations-motion.tsx` (Task 5's 800-line demo), and neither changes a token.
+- **Motion intro sentence (6):** already conditional on `useReducedMotion`. It shows only when reduced motion is on.
+- **Stray box in the primitives capture (11):** the pinned popover moves during an element screenshot's scroll. In the open-overlay shots it sits in its own card.
+- **Touch targets at 390 (12):** the small button already has a 44px coarse-pointer hit area (`touchTarget`, Task 7 e2e). The motion Play buttons belong to Task 5's file.

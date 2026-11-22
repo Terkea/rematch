@@ -34,7 +34,7 @@ export default function StyleguidePage() {
         <p className="font-serif text-lg font-semibold whitespace-nowrap">{brand.wordmark}</p>
         <ThemeToggle />
       </header>
-      <main className="flex flex-col gap-10 pb-16">
+      <main className="flex flex-col gap-16 pb-16">
         <HeroSection />
         <FoundationsSection />
         <PrimitivesSection />

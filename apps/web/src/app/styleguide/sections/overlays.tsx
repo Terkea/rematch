@@ -31,6 +31,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@ci/ui/primitives";
+import { useTheme } from "next-themes";
 import { type ReactNode, useMemo, useState } from "react";
 
 // What floats. The tooltip and the popover are pinned open in place, so their tone, radius and the
@@ -184,22 +185,40 @@ function FiltersDrawer() {
 function Menu() {
   const [open, setOpen] = useState(false);
   const [last, setLast] = useState<string | null>(null);
+  // The theme item names the action, so it reads from the theme in force and really flips it.
+  const { resolvedTheme, forcedTheme, setTheme } = useTheme();
+  const night = (forcedTheme ?? resolvedTheme) === "dark";
   const items = useMemo<CommandMenuItem[]>(
-    () =>
-      [
-        ["Go to overview", "Pages", ["home", "report"]],
-        ["Go to games", "Pages", ["review", "list"]],
-        ["Go to accounts", "Pages", ["chess.com", "lichess", "link"]],
-        ["Switch to night study", "Preferences", ["dark", "theme"]],
-        ["Sign out", "Account", ["log out"]],
-      ].map(([label, group, keywords]) => ({
-        id: label as string,
-        label: label as string,
-        group: group as string,
-        keywords: keywords as string[],
-        onSelect: () => setLast(label as string),
+    () => [
+      ...(
+        [
+          ["Go to overview", ["home", "report"]],
+          ["Go to games", ["review", "list"]],
+          ["Go to accounts", ["chess.com", "lichess", "link"]],
+        ] as const
+      ).map(([label, keywords]) => ({
+        id: label,
+        label,
+        group: "Pages",
+        keywords: [...keywords],
+        onSelect: () => setLast(label),
       })),
-    [],
+      {
+        id: "theme",
+        label: night ? "Switch to day study" : "Switch to night study",
+        group: "Preferences",
+        keywords: ["dark", "light", "night", "day", "theme"],
+        onSelect: () => setTheme(night ? "light" : "dark"),
+      },
+      {
+        id: "sign-out",
+        label: "Sign out",
+        group: "Account",
+        keywords: ["log out"],
+        onSelect: () => setLast("Sign out"),
+      },
+    ],
+    [night, setTheme],
   );
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -253,27 +272,28 @@ export function OverlaysSection() {
           the page behind it.
         </p>
       </div>
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Specimen
-          title="Tooltip"
-          note="An ink label, no arrow, after the pointer rests. A shortcut sits in it as a key cap."
-        >
-          <div className="min-h-10">
-            <PinnedTooltip />
-          </div>
-        </Specimen>
-        <Specimen
-          title="Popover"
-          note="A sheet with the field radius, for a short explanation beside its trigger."
-          className="lg:row-span-2"
-        >
-          <div className="min-h-72">
-            <PinnedPopover />
-          </div>
-        </Specimen>
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+        <div className="flex min-w-0 flex-col gap-4">
+          <Specimen
+            title="Tooltip"
+            note="An ink label, no arrow, after the pointer rests. A shortcut sits in it as a key cap."
+          >
+            <div className="min-h-10">
+              <PinnedTooltip />
+            </div>
+          </Specimen>
+          <Specimen
+            title="Popover"
+            note="A sheet with the field radius, for a short explanation beside its trigger."
+          >
+            <div className="min-h-72">
+              <PinnedPopover />
+            </div>
+          </Specimen>
+        </div>
         <Specimen
           title="Over the page"
-          note="These take the screen, so each opens from its own control. The page dims to paper behind them; nothing blurs."
+          note="These take the screen, so each opens from its own control. The page dims behind them; nothing blurs."
         >
           <dl className="flex flex-col gap-4">
             <Opener term="Dialog" detail="A decision that can't be undone, named by its verb.">

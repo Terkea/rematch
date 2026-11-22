@@ -13,7 +13,7 @@ function Overlay({ className, ...props }: ComponentProps<typeof VaulDrawer.Overl
   return (
     <VaulDrawer.Overlay
       data-slot="drawer-overlay"
-      className={cn("fixed inset-0 z-50 bg-paper/80", className)}
+      className={cn("fixed inset-0 z-50 bg-paper/80 dark:bg-well/90", className)}
       {...props}
     />
   );
@@ -27,7 +27,7 @@ function Content({ className, children, ...props }: ComponentProps<typeof VaulDr
         data-slot="drawer-content"
         className={cn(
           "fixed inset-x-0 bottom-0 z-50 mx-auto flex max-h-[85dvh] w-full max-w-lg flex-col gap-2",
-          "rounded-t-sheet bg-sheet p-(--space-panel-pad) pt-3 text-ink shadow-lift outline-none",
+          "rounded-t-sheet border-t border-transparent bg-sheet p-(--space-panel-pad) pt-3 text-ink shadow-lift outline-none dark:border-rule-strong",
           "!duration-(--dur-base) motion-reduce:!duration-(--dur-instant)",
           className,
         )}

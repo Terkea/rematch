@@ -218,9 +218,11 @@ export function PrimitivesSection() {
           Primitives
         </h2>
         <p className="mt-2 text-ink-soft">
-          Hover moves one step down the tonal ladder and never lifts. Focus is a 2px ink ring on
-          every surface. Disabled drops to faint ink with no fill. The hover and focus cells are the
-          components' own styles, forced on, not drawings of them.
+          Hover changes tone, never position: a surface steps along the tonal ladder, and a control
+          that is already a well steps its edge. Focus is a 2px ink ring on every surface. Disabled
+          drops to faint ink; only the primary button keeps a quiet well fill, so the main action
+          keeps its place. The hover and focus cells are the components' own styles, forced on, not
+          drawings of them.
         </p>
       </div>
       <Family

@@ -32,6 +32,9 @@ export function Forced({
   const ref = useRef<HTMLSpanElement>(null);
   useLayoutEffect(() => {
     const el = ref.current?.querySelector(target);
+    // A silent no-op would show Rest under a Hover label; say so while developing.
+    if (!el && process.env.NODE_ENV !== "production")
+      console.warn(`Forced ${state}: nothing matches ${target}`);
     el?.setAttribute("data-force", state);
     return () => el?.removeAttribute("data-force");
   }, [state, target]);
@@ -85,7 +88,7 @@ export function StateGrid({ rows }: { rows: StateRow[] }) {
         <div
           key={row.name}
           data-state-row={row.name}
-          className="grid grid-cols-1 gap-x-4 gap-y-3 rounded-field px-3 py-4 odd:bg-paper sm:grid-cols-2 sm:gap-y-4 lg:grid-cols-[--spacing(32)_repeat(5,minmax(0,1fr))] lg:items-center lg:gap-y-0"
+          className="grid grid-cols-1 gap-x-4 gap-y-3 rounded-field px-3 py-4 odd:bg-paper sm:grid-cols-2 sm:gap-y-4 lg:grid-cols-[--spacing(32)_repeat(5,minmax(0,1fr))] lg:items-start lg:gap-y-0"
         >
           <h4 className="col-span-full font-medium lg:col-span-1">{row.name}</h4>
           {STATES.map((s) => (

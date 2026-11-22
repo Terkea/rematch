@@ -176,20 +176,17 @@ function ColourPanel({ theme, label }: { theme: Theme; label: string }) {
                 return (
                   <li
                     key={token}
-                    className="flex items-center gap-3 rounded-field px-2 py-2 odd:bg-sheet"
+                    className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-field px-2 py-2 odd:bg-sheet"
                   >
-                    <span
-                      aria-hidden
-                      className="size-8 shrink-0 rounded-field border border-rule"
-                      style={{ backgroundColor: `var(--color-${token})` }}
-                    />
+                    <Swatch token={token} />
                     <span className="min-w-0 flex-1">
                       <span className="block text-sm font-medium">{token}</span>
-                      <span className="block text-xs text-ink-faint">
+                      <span className="block text-xs whitespace-nowrap text-ink-faint">
                         {values[`--color-${token}`] || " "}
                       </span>
                     </span>
-                    <span className="text-right text-xs">
+                    {/* Below 640px the ratio takes its own line, so values never wrap. */}
+                    <span className="basis-full pl-11 text-left text-xs sm:basis-auto sm:pl-0 sm:text-right">
                       {typeof check === "string" ? (
                         <span className="text-ink-faint">{check}</span>
                       ) : result && typeof check !== "string" ? (
@@ -206,6 +203,29 @@ function ColourPanel({ theme, label }: { theme: Theme; label: string }) {
         ))}
       </div>
     </div>
+  );
+}
+
+/** Tints that only exist on the board are shown over a light and a dark square, where they live. */
+const TINTS = new Set(["board-lastmove", "board-select", "board-premove"]);
+
+function Swatch({ token }: { token: string }) {
+  if (!TINTS.has(token))
+    return (
+      <span
+        aria-hidden
+        className="size-8 shrink-0 rounded-field border border-rule"
+        style={{ backgroundColor: `var(--color-${token})` }}
+      />
+    );
+  return (
+    <span aria-hidden className="grid size-8 shrink-0 grid-cols-2 overflow-hidden rounded-field">
+      {(["board-light", "board-dark"] as const).map((square) => (
+        <span key={square} style={{ backgroundColor: `var(--color-${square})` }}>
+          <span className="block size-full" style={{ backgroundColor: `var(--color-${token})` }} />
+        </span>
+      ))}
+    </span>
   );
 }
 
@@ -367,7 +387,7 @@ const typeSteps: { step: string; token: string; use: string; sample: ReactNode }
     use: "rare: the result line of a reviewed game",
     sample: (
       <span className="font-serif text-4xl font-semibold tabular-nums lining-nums">
-        1–0, 46. Qxd6
+        {"1–0, 46. Qxd6"}
       </span>
     ),
   },
