@@ -372,3 +372,39 @@ async fn the_web_copy_of_a_dropped_note_has_no_model_text() {
     assert!(!web.contains("caused") && !web.contains("detail"), "{web}");
     assert!(web.contains("causal_claim"), "{web}");
 }
+
+// ---- fix round 2 (N3) -----------------------------------------------------------------------
+
+#[tokio::test]
+async fn comparative_idioms_cannot_state_the_other_direction() {
+    let since = format!("Since about {{{{date:changes.{K}.onsetDate}}}}");
+    // A down-change written as an increase.
+    let down = change_input();
+    for w in [
+        "these slips may be up",
+        "these slips may happen all the time",
+        "this may be becoming a habit",
+        "these slips may be commoner than before",
+    ] {
+        let codes = rejected(&down, &format!("{since} {w}.")).await;
+        assert!(
+            codes.contains(&ValidationCode::FreeTextFact),
+            "{w}: {codes:?}"
+        );
+    }
+    // An up-change written as a decrease.
+    let up = up_change_input();
+    for w in [
+        "these slips may not be as common as before",
+        "these slips may be down",
+        "these slips may be under control",
+        "these slips may be a fraction of what they were",
+        "you may have kicked the habit",
+    ] {
+        let codes = rejected(&up, &format!("{since} {w}.")).await;
+        assert!(
+            codes.contains(&ValidationCode::FreeTextFact),
+            "{w}: {codes:?}"
+        );
+    }
+}

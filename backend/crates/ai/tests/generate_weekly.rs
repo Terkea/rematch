@@ -630,3 +630,114 @@ async fn the_web_copy_of_dropped_has_no_model_text() {
         "{web}"
     );
 }
+
+// ---- fix round 2 ----------------------------------------------------------------------------
+
+/// N1: a direction word in an outcome needs "very likely" or "likely" in the text, and is
+/// forbidden with any other phrase and below the practice gate.
+#[test]
+fn an_outcome_direction_needs_a_supporting_phrase() {
+    let input = two_focus_week();
+    let ev = build_weekly_evidence(&input);
+    for (id, text) in [
+        ("W2", "Your back-rank threats dropped sharply this week."),
+        (
+            "W2",
+            "For back-rank threats there is no clear change yet, but they dropped sharply this week.",
+        ),
+        ("W1", "Your hanging pieces dropped sharply this week."),
+    ] {
+        let (content, dropped) =
+            validate_weekly(&with_outcomes(json!([outcome_for(id, text)])), &input, &ev);
+        assert!(content.outcomes.is_empty(), "{text:?} was kept");
+        assert!(
+            codes_of(&dropped)
+                .contains(&("outcomes[0]".into(), ValidationCode::LikelihoodMismatch)),
+            "{text:?}: {dropped:?}"
+        );
+    }
+    // With its own supporting phrase, a direction is fine.
+    let ok = "Your hanging pieces very likely dropped this week.";
+    let (content, dropped) =
+        validate_weekly(&with_outcomes(json!([outcome_for("W1", ok)])), &input, &ev);
+    assert!(dropped.is_empty(), "{dropped:?}");
+    assert_eq!(content.outcomes.len(), 1);
+    // Below the practice gate, no direction at all.
+    let mut v = weekly_json();
+    v["focusUpdates"] = json!([
+        { "weaknessId": "W1", "label": "Hanging pieces", "pImp": 0.96, "state": "improving" },
+    ]);
+    v["adherence"] = json!({ "minutesDone": 30, "minutesPlanned": 120 });
+    let gated: WeeklyReviewInput = serde_json::from_value(v).unwrap();
+    let ev = build_weekly_evidence(&gated);
+    let text = "There was not enough practice to judge, but your hanging pieces dropped sharply.";
+    let (content, dropped) = validate_weekly(&with_outcomes(json!([outcome(text)])), &gated, &ev);
+    assert!(content.outcomes.is_empty(), "{dropped:?}");
+    assert!(
+        codes_of(&dropped).contains(&("outcomes[0]".into(), ValidationCode::LikelihoodMismatch))
+    );
+}
+
+/// N2: another focus named with other spacing, hyphens or number is still caught.
+#[test]
+fn another_focus_is_caught_in_any_spelling() {
+    let input = two_focus_week();
+    let ev = build_weekly_evidence(&input);
+    for text in [
+        "Your back rank is very likely safer.",
+        "Each back-rank threat is very likely spotted sooner.",
+        "Your back\u{2011}rank play is very likely steadier.",
+    ] {
+        let (content, dropped) = validate_weekly(
+            &with_outcomes(json!([outcome_for("W1", text)])),
+            &input,
+            &ev,
+        );
+        assert!(content.outcomes.is_empty(), "{text:?} was kept");
+        assert!(
+            codes_of(&dropped).contains(&("outcomes[0]".into(), ValidationCode::UnknownWeakness)),
+            "{text:?}: {dropped:?}"
+        );
+    }
+}
+
+/// N3: the comparative idioms are change words outside the outcomes too.
+#[test]
+fn comparative_idioms_are_change_words_in_the_headline() {
+    let input = weekly();
+    let ev = build_weekly_evidence(&input);
+    for text in [
+        "Your slips are not as common as before.",
+        "Your slips are down this week.",
+        "Your slips are up this week.",
+        "Your slips are now under control.",
+        "Your slips are a fraction of what they were.",
+        "Your slips happen all the time.",
+        "Loose pieces are becoming a habit.",
+        "Your slips are commoner than before.",
+    ] {
+        let mut v = review(GOOD_OUTCOME);
+        v["headline"] = item(text);
+        let out: WeeklyReviewOutput = serde_json::from_value(v).unwrap();
+        let (content, dropped) = validate_weekly(&out, &input, &ev);
+        assert!(content.headline.is_none(), "{text:?} was kept");
+        assert!(
+            codes_of(&dropped).contains(&("headline".into(), ValidationCode::LikelihoodMismatch)),
+            "{text:?}: {dropped:?}"
+        );
+    }
+}
+
+/// MF: exactly half the planned practice is enough to judge; less is not.
+#[test]
+fn the_practice_gate_boundary_is_half() {
+    for (done, gated) in [(60, false), (59, true), (0, true), (120, false)] {
+        let mut v = weekly_json();
+        v["adherence"] = json!({ "minutesDone": done, "minutesPlanned": 120 });
+        let input: WeeklyReviewInput = serde_json::from_value(v).unwrap();
+        assert_eq!(below_practice_gate(&input), gated, "{done}/120");
+    }
+    let mut v = weekly_json();
+    v["adherence"] = json!({ "minutesDone": 0, "minutesPlanned": 0 });
+    assert!(!below_practice_gate(&serde_json::from_value(v).unwrap()));
+}

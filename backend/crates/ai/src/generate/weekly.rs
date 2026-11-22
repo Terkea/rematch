@@ -34,8 +34,8 @@ use crate::validator::evidence::{
     Evidence, build_evidence_from, list_date_paths, list_number_paths, path_segment,
 };
 use crate::validator::language::{
-    banned_phrases, engine_claims, likelihood, likelihood_phrase, no_causal_phrases,
-    no_change_words, no_marketing, no_quantity_words,
+    banned_phrases, engine_claims, folded_words, likelihood, likelihood_phrase, no_causal_phrases,
+    no_change_words, no_marketing, no_quantity_words, outcome_direction,
 };
 use crate::validator::text::{TextCtx, TextRule, TextRules, validate_text};
 use crate::validator::tokens::TokenBody;
@@ -211,8 +211,10 @@ fn states_not_enough_practice() -> TextRule {
 /// The rules of one weekly item (ADR-R3-4 "Weekly review and change notes"):
 /// - every item: `banned_phrases` and `no_marketing` (TS B4), plus the report's `Item` rules
 ///   (`engine_claims`, `no_quantity_words`, `no_causal_phrases`);
-/// - an outcome: `likelihood` with the phrase of its own focus (named by `weaknessId`); below the
-///   practice gate, no phrase at all and [`NOT_ENOUGH_PRACTICE`] instead;
+/// - an outcome: `likelihood` and `outcome_direction` with the phrase of its own focus (named by
+///   `weaknessId`): a direction word needs "very likely" or "likely" in the text, and is
+///   forbidden with any other phrase; below the practice gate, no phrase at all, no direction
+///   word and [`NOT_ENOUGH_PRACTICE`] instead;
 /// - every other item: `likelihood(None)`, `no_change_words` and no number under
 ///   `metricDeltas`, `changes` or `focusUpdates`, since outcome claims belong in the outcomes;
 /// - an exemplar item: a citation (tied to the week's exemplars by [`validate_weekly`]).
@@ -229,6 +231,7 @@ pub fn weekly_text_rules(input: &WeeklyReviewInput, kind: WeeklyItemKind<'_>) ->
     };
     if let WeeklyItemKind::Outcome(f) = kind {
         rules.extra.push(likelihood(focus_phrase(input, f)));
+        rules.extra.push(outcome_direction(focus_phrase(input, f)));
         if below_practice_gate(input) {
             rules.extra.push(states_not_enough_practice());
         }
@@ -239,6 +242,22 @@ pub fn weekly_text_rules(input: &WeeklyReviewInput, kind: WeeklyItemKind<'_>) ->
     rules.extra.push(no_change_words());
     rules.extra.push(no_outcome_numbers(kind.name()));
     rules
+}
+
+/// Words too common in chess coaching to name a focus on their own.
+const GENERIC_WORDS: [&str; 14] = [
+    "piece", "game", "move", "time", "play", "your", "with", "from", "after", "before", "loss",
+    "when", "over", "into",
+];
+
+/// The words of a focus label that name it: folded ([`folded_words`]), at least 4 letters, and
+/// not generic. "Back-rank threats" gives `back`, `rank` and `threat`, so "back rank" or
+/// "back‑rank threat" in another focus's outcome is caught (T15 fix round 2, N2).
+fn distinctive_words(label: &str) -> Vec<String> {
+    folded_words(label)
+        .into_iter()
+        .filter(|w| w.chars().count() >= 4 && !GENERIC_WORDS.contains(&w.as_str()))
+        .collect()
 }
 
 fn verr(code: ValidationCode, path: String, detail: String) -> ValidationError {
@@ -310,8 +329,8 @@ impl V<'_> {
     }
 
     /// An outcome: its `weaknessId` must name a focus of the week not already covered by an
-    /// accepted outcome (`unknown_weakness`), its text may not name another focus by its label
-    /// (`unknown_weakness`), and it is checked with that focus's likelihood phrase.
+    /// accepted outcome (`unknown_weakness`), its text may not use a distinctive word of another
+    /// focus's label (`unknown_weakness`), and it is checked with that focus's likelihood phrase.
     fn outcome(
         &mut self,
         it: &WeeklyOutcomeItem,
@@ -342,15 +361,16 @@ impl V<'_> {
             self.drop_item(path, vec![e]);
             return None;
         }
-        let lower = it.text.to_lowercase();
-        let own = focus.label.to_lowercase();
+        let words: HashSet<String> = folded_words(&it.text).into_iter().collect();
+        let own: HashSet<String> = folded_words(&focus.label).into_iter().collect();
         let mut errors: Vec<ValidationError> = input
             .focus_updates
             .iter()
             .filter(|f| f.weakness_id != focus.weakness_id)
             .filter(|f| {
-                let l = f.label.to_lowercase();
-                !l.is_empty() && !own.contains(&l) && lower.contains(&l)
+                distinctive_words(&f.label)
+                    .iter()
+                    .any(|w| !own.contains(w) && words.contains(w))
             })
             .map(|f| {
                 verr(
