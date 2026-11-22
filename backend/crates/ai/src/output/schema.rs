@@ -24,6 +24,11 @@ use crate::input::types::contract_transform;
 
 /// Client-side cap on every narrative text (ADR-R3-2 deviation 6), in Unicode code points.
 pub const ITEM_TEXT_MAX_CHARS: usize = 2000;
+/// Client-side cap on a drill `rationale` (model text that is shown), in code points.
+pub const DRILL_RATIONALE_MAX_CHARS: usize = 500;
+/// Client-side cap on a weakness item's `title` (never shown: the computed label replaces it,
+/// but the model's output is still bounded), in code points.
+pub const WEAKNESS_TITLE_MAX_CHARS: usize = 120;
 /// `overview.strengths`.
 pub const MAX_STRENGTHS: usize = 4;
 /// `climbPlan.focuses`.
@@ -344,6 +349,16 @@ impl Bounds {
         }
     }
 
+    /// `path` itself is the text field (no `.text` suffix).
+    fn chars(&mut self, path: &str, s: &str, max: usize) {
+        let n = s.chars().count();
+        if n == 0 {
+            self.push(path.to_owned(), "too_small");
+        } else if n > max {
+            self.push(path.to_owned(), "too_big");
+        }
+    }
+
     fn item(&mut self, path: &str, item: &Item) {
         self.text(path, &item.text);
     }
@@ -379,6 +394,11 @@ pub fn report_bounds(e: &ReportSectionEnvelope) -> Result<(), Vec<ParseIssue>> {
     if let Some(w) = &e.weaknesses {
         for (i, it) in w.items.iter().enumerate() {
             b.text(&format!("weaknesses.items.{i}"), &it.text);
+            b.chars(
+                &format!("weaknesses.items.{i}.title"),
+                &it.title,
+                WEAKNESS_TITLE_MAX_CHARS,
+            );
         }
     }
     if let Some(o) = &e.openings {
@@ -393,6 +413,13 @@ pub fn report_bounds(e: &ReportSectionEnvelope) -> Result<(), Vec<ParseIssue>> {
             let p = format!("climbPlan.focuses.{i}");
             b.item(&join(&p, "why"), &f.why);
             b.len(&join(&p, "drills"), f.drills.len(), MIN_DRILLS, MAX_DRILLS);
+            for (j, d) in f.drills.iter().enumerate() {
+                b.chars(
+                    &format!("{p}.drills.{j}.rationale"),
+                    &d.rationale,
+                    DRILL_RATIONALE_MAX_CHARS,
+                );
+            }
             b.item(&join(&p, "habit"), &f.habit);
         }
         b.item("climbPlan.weeklyRhythm", &cp.weekly_rhythm);

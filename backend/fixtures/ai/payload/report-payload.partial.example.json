@@ -1,0 +1,837 @@
+{
+  "aiDisclosure": {
+    "generatedAt": "2026-11-20T08:30:00.000Z",
+    "label": "Written by AI",
+    "model": "claude-sonnet-5-5",
+    "note": "This coaching was written by an AI model (Claude) from your analysed games. It can contain mistakes. The engine data shown alongside it is the source of truth.",
+    "promptVersion": "report@1"
+  },
+  "computed": {
+    "areaScores": [
+      {
+        "area": "openings",
+        "n": 120,
+        "needMore": null,
+        "score": 48.0,
+        "sufficient": true
+      },
+      {
+        "area": "middlegame",
+        "n": 115,
+        "needMore": null,
+        "score": 55.0,
+        "sufficient": true
+      },
+      {
+        "area": "endgame",
+        "n": 110,
+        "needMore": null,
+        "score": 41.0,
+        "sufficient": true
+      },
+      {
+        "area": "tactics",
+        "n": 105,
+        "needMore": null,
+        "score": 37.0,
+        "sufficient": true
+      },
+      {
+        "area": "calculation",
+        "n": 100,
+        "needMore": null,
+        "score": 52.0,
+        "sufficient": true
+      },
+      {
+        "area": "time",
+        "n": 95,
+        "needMore": null,
+        "score": 60.0,
+        "sufficient": true
+      },
+      {
+        "area": "mindset",
+        "n": 90,
+        "needMore": null,
+        "score": 66.0,
+        "sufficient": true
+      }
+    ],
+    "basis": {
+      "analysedGames": 214,
+      "backfillComplete": true,
+      "importedGames": 3912,
+      "windowEnd": "2026-11-19",
+      "windowStart": "2025-12-01"
+    },
+    "evidenceWindow": "over your last 214 analysed rapid games (3,912 imported)",
+    "fixedThisPeriod": [],
+    "focuses": [
+      "W1",
+      "W3"
+    ],
+    "metrics": [
+      {
+        "area": "tactics",
+        "bandMedian": 0.6,
+        "bandPercentile": 78.0,
+        "high": 1.1,
+        "key": "blunders_per_game",
+        "label": "Blunders per game",
+        "low": 0.7,
+        "n": 214,
+        "needMore": null,
+        "sufficient": true,
+        "unit": "per_game",
+        "value": 0.9
+      },
+      {
+        "area": "tactics",
+        "bandMedian": 0.04,
+        "bandPercentile": 74.0,
+        "high": 0.07,
+        "key": "hung_piece_rate",
+        "label": "Hung-piece rate per opportunity",
+        "low": 0.05,
+        "n": 3400,
+        "needMore": null,
+        "sufficient": true,
+        "unit": "rate",
+        "value": 0.06
+      },
+      {
+        "area": "time",
+        "bandMedian": 9.8,
+        "bandPercentile": null,
+        "high": null,
+        "key": "time_per_move",
+        "label": "Average time per move",
+        "low": null,
+        "n": 4200,
+        "needMore": null,
+        "sufficient": true,
+        "unit": "seconds",
+        "value": 11.4
+      },
+      {
+        "area": "endgame",
+        "bandMedian": 70.0,
+        "bandPercentile": 35.0,
+        "high": 75.0,
+        "key": "endgame_conversion",
+        "label": "Won endgames converted",
+        "low": 48.0,
+        "n": 41,
+        "needMore": null,
+        "sufficient": true,
+        "unit": "pct",
+        "value": 62.0
+      }
+    ],
+    "newThisPeriod": [
+      {
+        "candidateCauses": [],
+        "examples": [],
+        "fromState": "emerging",
+        "label": "Games lost on time",
+        "onsetDate": "2026-10-02",
+        "onsetFrom": "2026-09-28",
+        "onsetGameId": "li-c2a",
+        "onsetTo": "2026-10-06",
+        "posteriorProb": 0.81,
+        "rateAfter": 0.12,
+        "rateBefore": 0.05,
+        "seriesKey": "time.flag_rate",
+        "toState": "active",
+        "weaknessId": null
+      }
+    ],
+    "openings": [
+      {
+        "alternatives": [],
+        "avgEvalAtOpeningEnd": {
+          "cp": 25
+        },
+        "color": "white",
+        "deviationMoveSan": null,
+        "deviationPly": null,
+        "eco": "C50",
+        "examples": [],
+        "games": 41,
+        "lineKey": "w-italian",
+        "movesSan": [
+          "e4",
+          "e5",
+          "Nf3",
+          "Nc6",
+          "Bc4"
+        ],
+        "name": "Italian Game",
+        "performanceVsExpected": 0.04,
+        "score": 0.58,
+        "side": "chosen",
+        "verdict": "keep"
+      },
+      {
+        "alternatives": [
+          {
+            "bandScore": 0.5,
+            "games": 3000,
+            "movesSan": [
+              "e4",
+              "c5",
+              "Nf3",
+              "e6",
+              "d4",
+              "cxd4",
+              "Nxd4",
+              "Nc6"
+            ],
+            "name": "Sicilian Defense: Taimanov"
+          }
+        ],
+        "avgEvalAtOpeningEnd": {
+          "cp": 70
+        },
+        "color": "black",
+        "deviationMoveSan": "Nc3",
+        "deviationPly": 9,
+        "eco": "B90",
+        "examples": [
+          {
+            "best": {
+              "san": "Qd2+",
+              "uci": "d8d2"
+            },
+            "bestPv": [
+              "d8d2",
+              "b1d2",
+              "b8d7",
+              "c4f7"
+            ],
+            "evalAfter": {
+              "cp": 140
+            },
+            "evalBefore": {
+              "cp": 30
+            },
+            "fen": "rn1qkbnr/ppp2ppp/8/4p3/2B1P3/5Q2/PPP2PPP/RNB1K2R b KQkq - 1 6",
+            "gameId": "li-op1",
+            "played": {
+              "san": "Nf6",
+              "uci": "g8f6"
+            },
+            "playedAt": "2026-11-04T18:30:00.000Z",
+            "ply": 12,
+            "refutationPv": [
+              "c4b5",
+              "b8d7",
+              "b5d7"
+            ],
+            "tags": [
+              "opening"
+            ],
+            "winAfter": 37.4,
+            "winBefore": 47.2
+          }
+        ],
+        "games": 23,
+        "lineKey": "b-sicilian-najdorf",
+        "movesSan": [
+          "e4",
+          "c5",
+          "Nf3",
+          "d6",
+          "d4",
+          "cxd4",
+          "Nxd4",
+          "Nf6",
+          "Nc3",
+          "a6"
+        ],
+        "name": "Sicilian Defense: Najdorf",
+        "performanceVsExpected": -0.09,
+        "score": 0.39,
+        "side": "chosen",
+        "verdict": "fix"
+      },
+      {
+        "alternatives": [],
+        "avgEvalAtOpeningEnd": null,
+        "color": "white",
+        "deviationMoveSan": null,
+        "deviationPly": null,
+        "eco": "B01",
+        "examples": [],
+        "games": 9,
+        "lineKey": "w-scandi-faced",
+        "movesSan": [
+          "e4",
+          "d5",
+          "exd5",
+          "Qxd5"
+        ],
+        "name": "Scandinavian Defense",
+        "performanceVsExpected": null,
+        "score": 0.44,
+        "side": "faced",
+        "verdict": "learn"
+      }
+    ],
+    "player": {
+      "band": "B2",
+      "platform": "lichess",
+      "rating": 1450,
+      "timeClass": "rapid"
+    },
+    "strengths": [
+      {
+        "area": "openings",
+        "exemplars": [
+          {
+            "best": {
+              "san": "Qxf7+",
+              "uci": "f3f7"
+            },
+            "bestPv": [
+              "f3f7",
+              "e8f7",
+              "f1c4",
+              "d8d5"
+            ],
+            "evalAfter": {
+              "cp": 40
+            },
+            "evalBefore": {
+              "cp": 30
+            },
+            "fen": "rn1qkbnr/ppp2ppp/8/4p3/4P3/5Q2/PPP2PPP/RNB1KB1R w KQkq - 0 6",
+            "gameId": "li-s1",
+            "played": {
+              "san": "Bc4",
+              "uci": "f1c4"
+            },
+            "playedAt": "2026-11-08T18:30:00.000Z",
+            "ply": 11,
+            "refutationPv": [
+              "d8d2",
+              "b1d2",
+              "b8d7"
+            ],
+            "tags": [
+              "opening"
+            ],
+            "winAfter": 53.7,
+            "winBefore": 52.8
+          },
+          {
+            "best": null,
+            "bestPv": [
+              "b3b8",
+              "d7b8",
+              "d1d8"
+            ],
+            "evalAfter": {
+              "mate": 1
+            },
+            "evalBefore": {
+              "mate": 2
+            },
+            "fen": "4kb1r/p2n1ppp/4q3/4p1B1/4P3/1Q6/PPP2PPP/2KR4 w k - 0 16",
+            "gameId": "li-s2",
+            "played": {
+              "san": "Qb8+",
+              "uci": "b3b8"
+            },
+            "playedAt": "2026-11-09T18:30:00.000Z",
+            "ply": 31,
+            "refutationPv": [
+              "d7b8",
+              "g5f6",
+              "g7f6"
+            ],
+            "tags": [
+              "tactics",
+              "finisher"
+            ],
+            "winAfter": 100.0,
+            "winBefore": 100.0
+          }
+        ],
+        "label": "Solid Italian repertoire",
+        "metricKey": null
+      }
+    ],
+    "weaknesses": [
+      {
+        "area": "tactics",
+        "bandMedian": 0.09,
+        "bandPercentile": 75.0,
+        "confidence": 0.82,
+        "events": 29,
+        "excessEplPerGame": 0.8,
+        "exemplars": [
+          {
+            "best": {
+              "san": "Nxe5",
+              "uci": "f3e5"
+            },
+            "bestPv": [
+              "f3e5",
+              "d6e5",
+              "f1b5",
+              "b8d7"
+            ],
+            "evalAfter": {
+              "cp": -160
+            },
+            "evalBefore": {
+              "cp": 20
+            },
+            "fen": "rnbqkbnr/ppp2ppp/3p4/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 0 3",
+            "gameId": "li-w1-0",
+            "played": {
+              "san": "d4",
+              "uci": "d2d4"
+            },
+            "playedAt": "2026-11-01T18:30:00.000Z",
+            "ply": 5,
+            "refutationPv": [
+              "e5d4",
+              "f3d4",
+              "b8d7"
+            ],
+            "tags": [
+              "hung_piece"
+            ],
+            "winAfter": 35.7,
+            "winBefore": 51.8
+          },
+          {
+            "best": {
+              "san": "exd6",
+              "uci": "e5d6"
+            },
+            "bestPv": [
+              "e5d6",
+              "d8d6",
+              "g2f3",
+              "d6h2"
+            ],
+            "evalAfter": {
+              "cp": -200
+            },
+            "evalBefore": {
+              "cp": 40
+            },
+            "fen": "rn1qkbnr/ppp2ppp/3p4/4P3/4P3/5b2/PPP2PPP/RNBQKB1R w KQkq - 0 5",
+            "gameId": "li-w1-1",
+            "played": {
+              "san": "Qxf3",
+              "uci": "d1f3"
+            },
+            "playedAt": "2026-11-02T18:30:00.000Z",
+            "ply": 9,
+            "refutationPv": [
+              "d6e5",
+              "f3f7",
+              "e8f7"
+            ],
+            "tags": [
+              "hung_piece"
+            ],
+            "winAfter": 32.4,
+            "winBefore": 53.7
+          },
+          {
+            "best": {
+              "san": "Bb5+",
+              "uci": "c4b5"
+            },
+            "bestPv": [
+              "c4b5",
+              "b8d7",
+              "b5d7",
+              "d8d7"
+            ],
+            "evalAfter": {
+              "cp": -240
+            },
+            "evalBefore": {
+              "cp": 60
+            },
+            "fen": "rn1qkb1r/ppp2ppp/5n2/4p3/2B1P3/5Q2/PPP2PPP/RNB1K2R w KQkq - 2 7",
+            "gameId": "li-w1-2",
+            "played": {
+              "san": "Qb3",
+              "uci": "f3b3"
+            },
+            "playedAt": "2026-11-03T18:30:00.000Z",
+            "ply": 13,
+            "refutationPv": [
+              "d8d2",
+              "b1d2",
+              "f6e4"
+            ],
+            "tags": [
+              "hung_piece"
+            ],
+            "winAfter": 29.2,
+            "winBefore": 55.5
+          }
+        ],
+        "id": "W1",
+        "intervalHigh": 0.28,
+        "intervalLow": 0.1,
+        "label": "Hanging pieces",
+        "opportunities": 190,
+        "pImp": null,
+        "posteriorRate": 0.16999999999999998,
+        "priority": 9.0,
+        "rank": 1,
+        "state": "active",
+        "variant": null
+      },
+      {
+        "area": "tactics",
+        "bandMedian": 0.09,
+        "bandPercentile": 70.0,
+        "confidence": 0.79,
+        "events": 28,
+        "excessEplPerGame": 0.7,
+        "exemplars": [
+          {
+            "best": {
+              "san": "Nxe4",
+              "uci": "f6e4"
+            },
+            "bestPv": [
+              "f6e4",
+              "c4b5",
+              "b8d7",
+              "b5d7"
+            ],
+            "evalAfter": {
+              "cp": 140
+            },
+            "evalBefore": {
+              "cp": -40
+            },
+            "fen": "rn2kb1r/ppp1qppp/5n2/4p3/2B1P3/1QN5/PPP2PPP/R1B1K2R b KQkq - 5 8",
+            "gameId": "li-w3-0",
+            "played": {
+              "san": "c6",
+              "uci": "c7c6"
+            },
+            "playedAt": "2026-11-05T18:30:00.000Z",
+            "ply": 16,
+            "refutationPv": [
+              "c4f7",
+              "e7f7",
+              "b3b7"
+            ],
+            "tags": [
+              "fork"
+            ],
+            "winAfter": 37.4,
+            "winBefore": 53.7
+          },
+          {
+            "best": {
+              "san": "Nxe4",
+              "uci": "f6e4"
+            },
+            "bestPv": [
+              "f6e4",
+              "g5e7",
+              "e8e7",
+              "c4f7"
+            ],
+            "evalAfter": {
+              "cp": 220
+            },
+            "evalBefore": {
+              "cp": -20
+            },
+            "fen": "rn2kb1r/pp2qppp/2p2n2/4p1B1/2B1P3/1QN5/PPP2PPP/R3K2R b KQkq - 1 9",
+            "gameId": "li-w3-1",
+            "played": {
+              "san": "b5",
+              "uci": "b7b5"
+            },
+            "playedAt": "2026-11-06T18:30:00.000Z",
+            "ply": 18,
+            "refutationPv": [
+              "g5f6",
+              "e7f6",
+              "c4b5"
+            ],
+            "tags": [
+              "fork"
+            ],
+            "winAfter": 30.8,
+            "winBefore": 51.8
+          },
+          {
+            "best": {
+              "san": "Qb4+",
+              "uci": "e7b4"
+            },
+            "bestPv": [
+              "e7b4",
+              "b3b4",
+              "f8b4",
+              "b5c3"
+            ],
+            "evalAfter": {
+              "cp": 300
+            },
+            "evalBefore": {
+              "cp": 0
+            },
+            "fen": "rn2kb1r/p3qppp/2p2n2/1N2p1B1/2B1P3/1Q6/PPP2PPP/R3K2R b KQkq - 0 10",
+            "gameId": "li-w3-2",
+            "played": {
+              "san": "cxb5",
+              "uci": "c6b5"
+            },
+            "playedAt": "2026-11-07T18:30:00.000Z",
+            "ply": 20,
+            "refutationPv": [
+              "g5f6",
+              "e7f6",
+              "c4b5"
+            ],
+            "tags": [
+              "fork"
+            ],
+            "winAfter": 24.9,
+            "winBefore": 50.0
+          }
+        ],
+        "id": "W3",
+        "intervalHigh": 0.28,
+        "intervalLow": 0.1,
+        "label": "Missed forks",
+        "opportunities": 180,
+        "pImp": null,
+        "posteriorRate": 0.16,
+        "priority": 8.0,
+        "rank": 2,
+        "state": "active",
+        "variant": "fork"
+      },
+      {
+        "area": "endgame",
+        "bandMedian": 0.09,
+        "bandPercentile": 65.0,
+        "confidence": 0.76,
+        "events": 27,
+        "excessEplPerGame": 0.6,
+        "exemplars": [],
+        "id": "W5",
+        "intervalHigh": 0.28,
+        "intervalLow": 0.1,
+        "label": "Endgame technique",
+        "opportunities": 170,
+        "pImp": null,
+        "posteriorRate": 0.15,
+        "priority": 7.0,
+        "rank": 3,
+        "state": "active",
+        "variant": null
+      },
+      {
+        "area": "time",
+        "bandMedian": 0.09,
+        "bandPercentile": 60.0,
+        "confidence": 0.73,
+        "events": 26,
+        "excessEplPerGame": 0.5,
+        "exemplars": [],
+        "id": "W7a",
+        "intervalHigh": 0.28,
+        "intervalLow": 0.1,
+        "label": "Time trouble collapses",
+        "opportunities": 160,
+        "pImp": null,
+        "posteriorRate": 0.13999999999999999,
+        "priority": 6.0,
+        "rank": 4,
+        "state": "active",
+        "variant": null
+      },
+      {
+        "area": "middlegame",
+        "bandMedian": 0.09,
+        "bandPercentile": 55.0,
+        "confidence": 0.7,
+        "events": 25,
+        "excessEplPerGame": 0.4,
+        "exemplars": [],
+        "id": "W9b",
+        "intervalHigh": 0.28,
+        "intervalLow": 0.1,
+        "label": "Premature attacks",
+        "opportunities": 150,
+        "pImp": 0.4,
+        "posteriorRate": 0.13,
+        "priority": 5.0,
+        "rank": 5,
+        "state": "emerging",
+        "variant": null
+      },
+      {
+        "area": "mindset",
+        "bandMedian": 0.09,
+        "bandPercentile": 50.0,
+        "confidence": 0.67,
+        "events": 24,
+        "excessEplPerGame": 0.3,
+        "exemplars": [],
+        "id": "W11",
+        "intervalHigh": 0.28,
+        "intervalLow": 0.1,
+        "label": "Tilt after a loss",
+        "opportunities": 140,
+        "pImp": 0.7,
+        "posteriorRate": 0.12,
+        "priority": 4.0,
+        "rank": 6,
+        "state": "improving",
+        "variant": null
+      }
+    ]
+  },
+  "dropped": [
+    {
+      "errors": [
+        {
+          "code": "missing_evidence_window",
+          "path": "weaknesses.items[1].text"
+        },
+        {
+          "code": "free_text_fact",
+          "path": "weaknesses.items[1].text"
+        }
+      ],
+      "path": "weaknesses.items[1]",
+      "section": "weaknesses"
+    },
+    {
+      "errors": [
+        {
+          "code": "unknown_weakness",
+          "path": "weaknesses.items[2].weaknessId"
+        }
+      ],
+      "path": "weaknesses.items[2]",
+      "section": "weaknesses"
+    },
+    {
+      "errors": [
+        {
+          "code": "refusal",
+          "path": ""
+        }
+      ],
+      "path": "",
+      "section": "openings"
+    }
+  ],
+  "generatedAt": "2026-11-20T08:30:00.000Z",
+  "reportId": "7d0c3f4e-2a51-4b8e-9c61-0f2b7a9d1e35",
+  "schemaVersion": "report-payload-v1",
+  "sections": {
+    "openings": null,
+    "overview": {
+      "areas": null,
+      "climbPlan": null,
+      "openings": null,
+      "overview": {
+        "headline": {
+          "citations": [],
+          "segments": [
+            {
+              "kind": "text",
+              "text": "Solid foundations."
+            }
+          ],
+          "text": "Solid foundations."
+        },
+        "strengths": [],
+        "summary": {
+          "citations": [],
+          "segments": [
+            {
+              "kind": "text",
+              "text": "Over your last "
+            },
+            {
+              "display": "214",
+              "kind": "num",
+              "path": "basis.analysedGames",
+              "value": 214.0
+            },
+            {
+              "kind": "text",
+              "text": " analysed rapid games your play was steady."
+            }
+          ],
+          "text": "Over your last {{num:basis.analysedGames|int}} analysed rapid games your play was steady."
+        }
+      },
+      "weaknesses": null
+    },
+    "weaknesses": {
+      "areas": null,
+      "climbPlan": null,
+      "openings": null,
+      "overview": null,
+      "weaknesses": {
+        "items": [
+          {
+            "citations": [
+              {
+                "gameId": "li-w1-0",
+                "ply": 5
+              }
+            ],
+            "segments": [
+              {
+                "kind": "text",
+                "text": "Over your last "
+              },
+              {
+                "display": "214",
+                "kind": "num",
+                "path": "basis.analysedGames",
+                "value": 214.0
+              },
+              {
+                "kind": "text",
+                "text": " analysed rapid games you left pieces loose, as with "
+              },
+              {
+                "gameId": "li-w1-0",
+                "kind": "move",
+                "ply": 5,
+                "san": "d4"
+              },
+              {
+                "kind": "text",
+                "text": "."
+              }
+            ],
+            "text": "Over your last {{num:basis.analysedGames|int}} analysed rapid games you left pieces loose, as with {{move:li-w1-0:5}}.",
+            "title": "Hanging pieces",
+            "weaknessId": "W1"
+          }
+        ]
+      }
+    }
+  },
+  "status": "partial",
+  "version": 3
+}
