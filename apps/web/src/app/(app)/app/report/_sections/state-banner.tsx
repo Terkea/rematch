@@ -5,6 +5,7 @@ import type { CoachStatus } from "../../../../../server/coach/status";
 import { COACH_UNAVAILABLE_TITLE } from "../../../../../server/coach/status-copy";
 import type { ReportState } from "../../../../../server/coaching/state";
 import { SECTION_KEYS, type SectionKey } from "../../../../../server/coaching/types";
+import { numbersOnlyCopy } from "../notes-off";
 import { type ReportScope, useRequestReport, utcTime, whenText } from "../rebuild-button";
 
 /** The five sections by name, in `SECTION_KEYS` order (the progress list matches "N of 5"). */
@@ -113,14 +114,10 @@ export function StateBanner({
       if (state.aiOff === "budget") {
         return <CoachState kind="budget" titleAs="h2" title={BUDGET_COPY} />;
       }
-      if (state.aiOff === "no_api_key") {
-        return (
-          <CoachState
-            kind="computed_only"
-            titleAs="h2"
-            title="Your coach's notes are off for now. The numbers below are computed from your games."
-          />
-        );
+      // Fix D (N2): "no coach now" and "built before the coach was on" read differently.
+      if (state.aiOff === "no_api_key" || state.status === "computed_only") {
+        const copy = numbersOnlyCopy({ coach, nextManualAt, now });
+        return <CoachState kind={copy.kind} titleAs="h2" title={copy.title} body={copy.body} />;
       }
       if (state.status === "partial" && notesCount !== undefined) {
         return (
@@ -128,15 +125,6 @@ export function StateBanner({
             kind="computed_only"
             titleAs="h2"
             title={`${notesCount} of ${SECTION_KEYS.length} sections have your coach's notes. The others show the computed numbers.`}
-          />
-        );
-      }
-      if (state.status === "computed_only") {
-        return (
-          <CoachState
-            kind="computed_only"
-            titleAs="h2"
-            title="This report has no coach's notes. The numbers below are computed from your games."
           />
         );
       }

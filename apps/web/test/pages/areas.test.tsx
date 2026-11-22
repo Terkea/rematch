@@ -215,6 +215,11 @@ const getWeakness = vi.fn();
 const getReport = vi.fn();
 const requireUser = vi.fn(async () => ({ id: "u1", email: "x@example.invalid" }));
 
+const coachStatus = vi.fn(async () => "available");
+vi.mock("../../src/server/coach/status", async (orig) => ({
+  ...(await orig<object>()),
+  coachStatus: () => coachStatus(),
+}));
 const chatLive = vi.fn(() => true);
 vi.mock("../../src/lib/coach-chat", () => ({ coachChatLive: () => chatLive() }));
 vi.mock("../../src/server/events/request-cursor", () => ({ requestEventCursor: async () => 0 }));
@@ -548,6 +553,20 @@ describe("skill-area pages", { timeout: 30_000 }, () => {
     expect(screen.getByText("Not enough games for a score yet")).toBeInTheDocument();
   });
 
+  it("a numbers-only note says the coach is not available only when it is not", async () => {
+    const absent = payload();
+    delete absent.sections.areas;
+    getReport.mockResolvedValue({
+      ...reportView(absent),
+      state: { kind: "ready", status: "computed_only", aiOff: "no_api_key" },
+    });
+    coachStatus.mockResolvedValueOnce("no_ai");
+    await show("endgame");
+    const note = screen.getByRole("region", { name: "Coach's note" });
+    expect(note.textContent).toMatch(/Coach not available right now/);
+    expect(note.textContent).not.toMatch(/notes are off|next rebuild/);
+  });
+
   it("the note's states read honestly", async () => {
     const absent = payload();
     delete absent.sections.areas;
@@ -577,8 +596,10 @@ describe("skill-area pages", { timeout: 30_000 }, () => {
         {
           ...reportView(absent),
           state: { kind: "ready", status: "computed_only", aiOff: "no_api_key" },
+          nextManualAt: new Date("2026-12-20T08:30:00Z"),
         },
-        /notes are off for now/,
+        // Fix D (N2): the coach is on; this report was built before it was.
+        /built from your numbers only.*notes come with the next rebuild, available on 20 Dec 2026/,
       ],
       // A partial report without the section, with AI on, is not "notes off".
       [

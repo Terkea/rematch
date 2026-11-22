@@ -1,13 +1,21 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 import { CheckCircleIcon, Icon, InfoIcon, WarningCircleIcon, WarningIcon } from "../icons/index.js";
 import { cn } from "../lib/index.js";
 import { motion, spring, useReducedMotion } from "../motion/index.js";
 import { AiDisclosure, AiLabel } from "./ai-disclosure.js";
+import { CitedBoard } from "./cited-board.js";
 import { CoachState } from "./coach-state.js";
 import { notationClass, SegmentText } from "./segment-text.js";
-import type { AiDisclosureData, EngineCheck, Segment, StreamedChunk } from "./types.js";
+import {
+  type AiDisclosureData,
+  type CitedPosition,
+  citedKey,
+  type EngineCheck,
+  type Segment,
+  type StreamedChunk,
+} from "./types.js";
 
 // One message in a coach thread (ADR 0071). It reads like a coach's notebook, not a chat app: the
 // question is set in the UI face on a `well`, the answer in Literata prose on the page, left
@@ -24,6 +32,8 @@ export interface ChatMessageProps {
   failure: string | null;
   disclosure: AiDisclosureData | null;
   hrefFor?: ((s: Segment) => string | null) | undefined;
+  /** The positions the answer cites, by `citedKey` (Fix D, N5); each shows under its paragraph. */
+  positions?: Readonly<Record<string, CitedPosition>> | undefined;
   className?: string;
 }
 
@@ -73,6 +83,81 @@ export function streamRuns(streamed: readonly StreamedChunk[]): Run[] {
     else runs.push({ interim: false, chunks: [chunk] });
   }
   return runs;
+}
+
+/**
+ * An answer's paragraphs: stored answers separate them with a blank line inside a text segment
+ * (`\n\n`). Empty text left at a break is dropped; a single line break stays in its paragraph.
+ */
+export function answerParagraphs(segments: readonly Segment[]): Segment[][] {
+  const out: Segment[][] = [[]];
+  for (const s of segments) {
+    if (!s || typeof s !== "object") continue;
+    if (s.kind !== "text" || typeof s.text !== "string") {
+      out.at(-1)?.push(s);
+      continue;
+    }
+    s.text.split(/\n{2,}/).forEach((part, i) => {
+      if (i > 0) out.push([]);
+      if (part !== "") out.at(-1)?.push({ kind: "text", text: part });
+    });
+  }
+  return out.filter((p) => p.length > 0);
+}
+
+/** The cited positions a paragraph shows: each ply's first citation in the answer, once. */
+function paragraphPositions(
+  paragraph: readonly Segment[],
+  positions: Readonly<Record<string, CitedPosition>>,
+  shown: Set<string>,
+): CitedPosition[] {
+  const out: CitedPosition[] = [];
+  for (const s of paragraph) {
+    if (s.kind !== "move" && s.kind !== "best" && s.kind !== "pv") continue;
+    const key = citedKey(s.gameId, s.ply);
+    const p = Object.hasOwn(positions, key) ? positions[key] : undefined;
+    if (!p || shown.has(key)) continue;
+    shown.add(key);
+    out.push(p);
+  }
+  return out;
+}
+
+/** A done answer: its paragraphs, each followed by the boards of the positions it first cites. */
+function AnswerWithPositions({
+  segments,
+  positions,
+  hrefFor,
+}: {
+  segments: readonly Segment[];
+  positions: Readonly<Record<string, CitedPosition>>;
+  hrefFor: ChatMessageProps["hrefFor"];
+}) {
+  const shown = new Set<string>();
+  return (
+    <div className="flex flex-col gap-4">
+      {answerParagraphs(segments).map((paragraph, i) => {
+        const boards = paragraphPositions(paragraph, positions, shown);
+        return (
+          // biome-ignore lint/suspicious/noArrayIndexKey: an answer's paragraphs are fixed and ordered.
+          <Fragment key={i}>
+            <SegmentText
+              segments={paragraph}
+              hrefFor={hrefFor}
+              className="max-w-prose font-serif text-prose text-ink"
+            />
+            {boards.length > 0 ? (
+              <div className="flex flex-wrap gap-6">
+                {boards.map((p) => (
+                  <CitedBoard key={citedKey(p.gameId, p.ply)} position={p} />
+                ))}
+              </div>
+            ) : null}
+          </Fragment>
+        );
+      })}
+    </div>
+  );
 }
 
 /** A small dashed pencil ring: the mark for "the engine was asked", beside interim lines. */
@@ -211,6 +296,7 @@ export function ChatMessage({
   failure,
   disclosure,
   hrefFor,
+  positions,
   className,
 }: ChatMessageProps) {
   if (role === "user") {
@@ -253,6 +339,10 @@ export function ChatMessage({
     );
   } else if (live) {
     body = <CoachState kind="writing" title={READING_COPY} titleAs="p" />;
+  } else if (positions && Object.keys(positions).length > 0) {
+    body = (
+      <AnswerWithPositions segments={segments ?? []} positions={positions} hrefFor={hrefFor} />
+    );
   } else {
     body = (
       <SegmentText

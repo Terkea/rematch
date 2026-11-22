@@ -1,18 +1,23 @@
 import "@testing-library/jest-dom/vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { Chess } from "chess.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { formatNotation } from "../src/board/index.js";
 import {
   AiDisclosure,
+  answerParagraphs,
   ChatComposer,
   ChatMessage,
   type ChatMessageProps,
+  type CitedPosition,
   CoachState,
   type CoachStateKind,
   engineLine,
   type Segment,
   SegmentText,
 } from "../src/coach/index.js";
+import { games as fixtureGames } from "../src/fixtures/index.js";
 
 afterEach(cleanup);
 
@@ -119,6 +124,42 @@ describe("SegmentText", () => {
     const eng = screen.getByRole("note", { name: "Engine check: +0.3" });
     expect(eng).toHaveAttribute("data-mark", "pencil");
     expect(eng.textContent).toContain("engine check");
+  });
+
+  // Fix D (N1): a real answer's numbers, as the validator stores them, keep their units.
+  it("numbers read with their units, as the server formatted them", () => {
+    const answer: Segment[] = [
+      { kind: "text", text: "Your win chance was about " },
+      { kind: "num", path: "tools.0.position.winBefore", value: 86.5, display: "86.5%" },
+      { kind: "text", text: " before it and about " },
+      { kind: "num", path: "tools.0.position.winAfter", value: 54.6, display: "54.6%" },
+      { kind: "text", text: " after. You spent " },
+      { kind: "num", path: "tools.0.position.timeSpent", value: 40.7, display: "40.7\u00a0s" },
+      { kind: "text", text: " on that move, with " },
+      { kind: "num", path: "tools.0.position.clockBefore", value: 101.6, display: "101.6\u00a0s" },
+      { kind: "text", text: " left on your clock." },
+    ];
+    const { container } = render(<SegmentText segments={answer} />);
+    expect(container.textContent?.replace(/\u00a0/g, " ")).toBe(
+      "Your win chance was about 86.5% before it and about 54.6% after. You spent 40.7 s on that move, with 101.6 s left on your clock.",
+    );
+    const nums = [...container.querySelectorAll("[data-segment='num']")].map((n) => n.textContent);
+    expect(nums).toEqual(["86.5%", "54.6%", "40.7\u00a0s", "101.6\u00a0s"]);
+  });
+
+  // Fix D (N6): copied text read "The engine preferred better moveQe3".
+  it("a better move's hidden label is separated from its move", () => {
+    const { container } = render(
+      <SegmentText
+        segments={[
+          { kind: "text", text: "The engine preferred " },
+          { kind: "best", gameId: "g1", ply: 59, san: "Qe3" },
+        ]}
+      />,
+    );
+    expect(container.textContent?.replace(/\u00a0/g, " ")).toBe(
+      "The engine preferred better move: Qe3",
+    );
   });
 
   it("renders as a span when asked", () => {
@@ -365,6 +406,18 @@ describe("ChatComposer", () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
+  // Fix D (N3): the hint's text read "Shift + plus Enter" (a hidden "+" and a hidden "plus").
+  it("the hint says Shift + Enter once", () => {
+    const { container } = render(<ChatComposer onSubmit={() => {}} placeholder="Ask" />);
+    const hint = [...container.querySelectorAll("p")].find((p) =>
+      p.textContent?.includes("adds a line"),
+    );
+    expect(hint?.textContent?.replace(/\s+/g, " ").trim()).toBe(
+      "Enter sends, Shift + Enter adds a line",
+    );
+    expect(hint?.querySelector("[aria-hidden='true']")).toBeNull();
+  });
+
   it("counts down from 200 left", () => {
     render(<ChatComposer onSubmit={() => {}} placeholder="Ask" />);
     const box = screen.getByRole("textbox");
@@ -573,5 +626,123 @@ describe("fix round 2", () => {
       <ChatMessage {...base} segments={text("x")} notes={["Same note.", "Same note."]} />,
     );
     expect(container.textContent?.match(/Same note\./g)).toHaveLength(2);
+  });
+});
+
+// Fix D (N5): an answer shows the positions it cites, under the paragraph that cites them.
+describe("cited positions", () => {
+  const game = fixtureGames.middlegameBlunder;
+  // The fixture's one ply whose engine move differs from the move played: 1. d4, engine e4.
+  const ply = game.plies.find((p) => p.bestUci !== null && p.bestUci !== p.uci);
+  if (!ply) throw new Error("fixture changed");
+  const fen = ply.ply === 1 ? game.startFen : (game.plies[ply.ply - 2]?.fenAfter ?? "");
+  const bestSan = new Chess(fen).move({
+    from: ply.bestUci?.slice(0, 2) ?? "",
+    to: ply.bestUci?.slice(2, 4) ?? "",
+    promotion: ply.bestUci?.[4] ?? "q",
+  }).san;
+  const moveText = formatNotation({
+    moveNumber: Math.ceil(ply.ply / 2),
+    color: ply.color,
+    san: ply.san,
+  });
+  const key = `${game.id}#${ply.ply}`;
+  const position: CitedPosition = {
+    gameId: game.id,
+    ply: ply.ply,
+    href: `/app/games/review-1?ply=${ply.ply}`,
+    fen,
+    orientation: game.playerColor,
+    moveText,
+    played: { san: ply.san, uci: ply.uci },
+    best: { san: bestSan, uci: ply.bestUci ?? "" },
+    mistake: false,
+  };
+  const answer: Segment[] = [
+    { kind: "text", text: "You played " },
+    { kind: "move", gameId: game.id, ply: ply.ply, san: ply.san },
+    { kind: "text", text: " where " },
+    { kind: "best", gameId: game.id, ply: ply.ply, san: bestSan },
+    { kind: "text", text: " held.\n\nNext time, look at " },
+    { kind: "move", gameId: game.id, ply: ply.ply, san: ply.san },
+    { kind: "text", text: " again before you move." },
+  ];
+
+  it("splits an answer into its paragraphs", () => {
+    const paras = answerParagraphs(answer);
+    expect(paras).toHaveLength(2);
+    expect(paras[0]?.at(-1)).toEqual({ kind: "text", text: " held." });
+    expect(paras[1]?.[0]).toEqual({ kind: "text", text: "Next time, look at " });
+  });
+
+  it("one board per cited ply, under the paragraph that first cites it", async () => {
+    const { container } = render(
+      <ChatMessage {...base} segments={answer} positions={{ [key]: position }} />,
+    );
+    const boards = await screen.findAllByRole("group", { name: /^Position before/ });
+    expect(boards).toHaveLength(1);
+    expect(boards[0]).toHaveAccessibleName(
+      `Position before ${moveText}; engine preferred ${bestSan}`,
+    );
+    const figure = container.querySelector("[data-cited-position]");
+    expect(figure?.parentElement?.previousElementSibling?.textContent).toContain("held.");
+    const open = screen.getByRole("link", { name: `Open the game at ${moveText}` });
+    expect(open).toHaveAttribute("href", position.href);
+    expect(container.innerHTML).not.toMatch(BAD);
+  });
+
+  it("draws the played move and the engine's better move as two arrows", async () => {
+    const { container } = render(
+      <ChatMessage {...base} segments={answer} positions={{ [key]: position }} />,
+    );
+    await screen.findAllByRole("group", { name: /^Position before/ });
+    const tones = [...container.querySelectorAll("[data-tone]")].map((n) =>
+      n.getAttribute("data-tone"),
+    );
+    expect(tones).toContain("pencil");
+    expect(tones).toContain("good");
+    expect(tones).not.toContain("pen");
+  });
+
+  it("the player's own mistake is drawn in pen", async () => {
+    const mistake = game.plies.find(
+      (p) => p.color === game.playerColor && p.judgement === "mistake",
+    );
+    if (!mistake) throw new Error("fixture changed");
+    const before = game.plies[mistake.ply - 2]?.fenAfter ?? "";
+    const k = `${game.id}#${mistake.ply}`;
+    const { container } = render(
+      <ChatMessage
+        {...base}
+        segments={[{ kind: "move", gameId: game.id, ply: mistake.ply, san: mistake.san }]}
+        positions={{
+          [k]: {
+            ...position,
+            ply: mistake.ply,
+            fen: before,
+            played: { san: mistake.san, uci: mistake.uci },
+            best: null,
+            mistake: true,
+            moveText: formatNotation({
+              moveNumber: Math.ceil(mistake.ply / 2),
+              color: mistake.color,
+              san: mistake.san,
+            }),
+          },
+        }}
+      />,
+    );
+    const [board] = await screen.findAllByRole("group", { name: /^Position before/ });
+    expect(board?.getAttribute("aria-label")).not.toContain("engine preferred");
+    const tones = [...container.querySelectorAll("[data-tone]")].map((n) =>
+      n.getAttribute("data-tone"),
+    );
+    expect(tones).toEqual(expect.arrayContaining(["pen"]));
+    expect(tones).not.toContain("good");
+  });
+
+  it("without positions an answer renders as before, with no board", () => {
+    render(<ChatMessage {...base} segments={answer} />);
+    expect(screen.queryByRole("group", { name: /^Position before/ })).toBeNull();
   });
 });

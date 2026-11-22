@@ -103,7 +103,7 @@ async fn weekly_uses_haiku_with_a_cached_system_block() {
     assert!(
         !req.system[1]
             .text
-            .contains(load_prompt("core/tokens", 1).unwrap().text),
+            .contains(load_prompt("core/tokens", 2).unwrap().text),
         "the token grammar is never restated"
     );
 

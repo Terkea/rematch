@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { requireUser } from "../../../../../server/auth/session";
+import { coachStatus } from "../../../../../server/coach/status";
 import { getReport } from "../../../../../server/coaching";
 import { getDb } from "../../../../../server/db";
 import { requestEventCursor } from "../../../../../server/events/request-cursor";
@@ -63,10 +64,11 @@ export default async function AreaPage({
   const metrics = KPIS.filter((k) => k.area === area && !k.metric.startsWith("weakness:")).map(
     (k) => k.metric,
   );
-  const [view, kpis, report] = await Promise.all([
+  const [view, kpis, report, coach] = await Promise.all([
     getArea(db, user.id, scope, area),
     kpiTrends(db, user.id, scope, metrics),
     getReport(db, user.id, { accountId: scope.accountId, timeClass: scope.timeClass }),
+    coachStatus(db),
   ]);
   const weaknesses = view.weaknesses.filter((w) => w.area === area);
   const details = await Promise.all(
@@ -76,6 +78,7 @@ export default async function AreaPage({
     details.flatMap((d) => (d ? [[d.seriesKey, d.weekly.map((p) => p.rate?.value ?? null)]] : [])),
   );
 
+  const now = new Date();
   const model: AreaPageModel = {
     area,
     scope,
@@ -86,7 +89,9 @@ export default async function AreaPage({
     weaknesses: weaknesses.map((w) => ({ summary: w, trend: weekly.get(w.seriesKey) ?? [] })),
     timeline: view.timeline,
     report,
-    today: new Date().toISOString().slice(0, 10),
+    today: now.toISOString().slice(0, 10),
+    coach,
+    now,
   };
   return <AreaView model={model} />;
 }

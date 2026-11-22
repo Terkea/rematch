@@ -12,6 +12,7 @@ import type { AiDisclosure, Segment } from "../coaching/types.js";
 import { readOnly } from "../games/read-only.js";
 import type { TimeClass } from "../games/types.js";
 import { type ChatAnchor, fallbackTitle, parseAnchor } from "./anchor.js";
+import { type CitedPosition, citedPlies, citedPositions } from "./positions.js";
 
 // Port of `backend/crates/ai/src/chat/threads.rs` (R3 Task 25) for reads, creates and deletes.
 // A thread belongs to the USER who started it (review I3): every query here is scoped by
@@ -101,6 +102,8 @@ export type Thread = {
   title: string;
   anchor: ChatAnchor | null;
   messages: ThreadMessage[];
+  /** The positions the done answers cite, by `citedKey` (Fix D, N5). */
+  positions: Record<string, CitedPosition>;
 };
 
 export type ConversationSummary = {
@@ -334,6 +337,11 @@ export async function getThread(db: Db, userId: string, id: string): Promise<Thr
       for (const list of streamed.values()) list.sort((x, y) => x.seq - y.seq);
     }
 
+    const answers = rows
+      .filter((m) => m.role === "assistant" && m.status === "done")
+      .map((m) => segmentsOf(m.segments));
+    const positions = await citedPositions(tx, userId, conv.accountId, citedPlies(answers));
+
     const anchor = parseAnchor(conv.anchor);
     return {
       id: conv.id,
@@ -361,6 +369,7 @@ export async function getThread(db: Db, userId: string, id: string): Promise<Thr
         streamedAttempt: attempts.get(m.id) ?? 0,
         engineChecks: checks.get(m.id) ?? [],
       })),
+      positions,
     };
   });
 }

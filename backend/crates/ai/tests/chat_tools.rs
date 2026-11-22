@@ -721,7 +721,13 @@ async fn get_position_hit_adds_evidence_and_refs() {
     );
     assert_eq!(
         render(&s.evidence(), &refs["num"]["position.winBefore"]).as_deref(),
-        Some("51.8")
+        Some("51.8%"),
+        "a win chance carries its unit"
+    );
+    assert_eq!(
+        render(&s.evidence(), &refs["num"]["position.timeSpent"]).as_deref(),
+        Some("4\u{a0}s"),
+        "a clock time carries its unit"
     );
     assert_eq!(
         s.evidence().number_paths["tools.0.position.moveNumber"],
@@ -1382,9 +1388,17 @@ async fn stale_values_never_get_a_token() {
         let shown = render(&s.evidence(), token).unwrap();
         let field = rel.strip_prefix("position.").unwrap();
         if let Some(n) = v["position"][field].as_f64() {
+            let unit = match field {
+                "winBefore" | "winAfter" => "%",
+                "clockBefore" | "timeSpent" => "\u{a0}s",
+                _ => "",
+            };
             assert_eq!(
                 shown,
-                ai::validator::format::format_number(n, None).unwrap(),
+                format!(
+                    "{}{unit}",
+                    ai::validator::format::format_number(n, None).unwrap()
+                ),
                 "{rel}"
             );
         }
