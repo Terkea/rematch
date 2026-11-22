@@ -51,26 +51,70 @@ export const shareText = (share: number) => (fin(share) ? `${pct1(share)}%` : "n
 export const shareRangeText = (low: number, high: number) =>
   fin(low) && fin(high) ? `${pct1(low)}–${pct1(high)}%` : "range not measured";
 
+/** The reference group when the host does not name the band ("Players rated 1400–1600"). */
+export const DEFAULT_BAND_LABEL = "Players in your rating band";
+
 /**
- * How the stored interval sits against the band median. Only an interval that clears the median
- * says above or below; one that contains it says so, never "about average" (no overclaiming).
+ * How the stored interval sits against the rating band's median, naming the group: "Players
+ * rated 1400–1600: 2.1%, lower than your whole likely range". Only an interval that clears
+ * the median says lower or higher; one that contains it (ends included) says "inside", never
+ * "about average" (no overclaiming).
  */
 export function bandComparisonText(
   rate: { low: number; high: number },
   median: number | null,
+  label: string = DEFAULT_BAND_LABEL,
 ): string {
-  if (median === null || !fin(median)) return "No band reference yet";
-  const m = shareText(median);
-  if (rate.low > median) return `Band median ${m}, below your whole range`;
-  if (rate.high < median) return `Band median ${m}, above your whole range`;
-  return `Band median ${m}, inside your range`;
+  if (median === null || !fin(median)) return "No rating-band reference yet";
+  const head = `${label}: ${shareText(median)}`;
+  if (median < rate.low) return `${head}, lower than your whole likely range`;
+  if (median > rate.high) return `${head}, higher than your whole likely range`;
+  return `${head}, inside your likely range`;
 }
 
-/** "180 more chances needed" (one is singular), or a plain line when the shortfall is not known. */
-export const needMoreText = (needMore: number | null) =>
+/** Plural nouns for what a weakness counts: "38 errors in 902 rook-endgame moves". */
+export interface WeaknessCounts {
+  event: string;
+  chance: string;
+}
+export const DEFAULT_COUNTS: WeaknessCounts = { event: "times", chance: "chances" };
+
+/** "38 times in 902 chances". */
+export const countsText = (
+  e: { events: number; chances: number },
+  c: WeaknessCounts = DEFAULT_COUNTS,
+) => `${count(e.events)} ${c.event} in ${count(e.chances)} ${c.chance}`;
+
+/**
+ * One interval scale for a list of rows, from zero to a little past the largest high end or band
+ * median, rounded up to a whole percent (to 5% above 10%), so rows compare down the column.
+ */
+export function weaknessScaleMax(
+  rows: { rate: { high: number }; band: { median: number | null } }[],
+): number {
+  const top = Math.max(
+    0,
+    ...rows.flatMap((r) => [r.rate.high, r.band.median ?? 0]).filter((v) => fin(v)),
+  );
+  if (top <= 0) return 0.01;
+  const step = top * 1.1 > 0.1 ? 0.05 : 0.01;
+  return Math.ceil((top * 1.1) / step - 1e-9) * step;
+}
+
+/** "Weekly trend after 180 more chances", or a plain line when the shortfall is unknown. */
+export const trendPendingText = (needMore: number | null, c: WeaknessCounts = DEFAULT_COUNTS) =>
   needMore === null || !fin(needMore) || needMore <= 0
-    ? "More chances needed"
-    : `${count(needMore)} more chance${needMore === 1 ? "" : "s"} needed`;
+    ? "Weekly trend after more weeks"
+    : `Weekly trend after ${count(needMore)} more ${needMore === 1 ? singular(c.chance) : c.chance}`;
+
+/** "chances" to "chance", "rook-endgame moves" to "rook-endgame move". */
+const singular = (plural: string) => plural.replace(/s$/, "");
+
+/** "180 more chances needed" (one is singular), or a plain line when the shortfall is not known. */
+export const needMoreText = (needMore: number | null, c: WeaknessCounts = DEFAULT_COUNTS) =>
+  needMore === null || !fin(needMore) || needMore <= 0
+    ? `More ${c.chance} needed`
+    : `${count(needMore)} more ${needMore === 1 ? singular(c.chance) : c.chance} needed`;
 
 // ---- KPI trends ----
 
@@ -189,7 +233,8 @@ export function exemplarCaption(p: {
   if (p.best && p.best.san !== p.played.san) parts.push(`Better was ${p.best.san}.`);
   const { winBefore: b, winAfter: a } = p.caption;
   if (b !== null && a !== null && fin(b) && fin(a)) {
-    parts.push(`Win chance ${Math.round(b)}% to ${Math.round(a)}%.`);
+    const pc = (v: number) => Math.round(Math.min(100, Math.max(0, v)));
+    parts.push(`Win chance ${pc(b)}% to ${pc(a)}%.`);
   }
   return parts.join(" ");
 }

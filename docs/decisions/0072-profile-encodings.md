@@ -57,3 +57,19 @@ unknown as 0, show stored intervals exactly, and never let colour carry meaning 
 - The copy helpers live in `profile/text.ts` without "use client", so server components can call
   them.
 - A KPI's `n` counts games by default; a host counting chances passes `nUnit`.
+
+## Amendment (fix round 1, critic and review)
+
+- The row shows "Estimated % of <chances>" and "80% range …" as visible text, and names its counts
+  through `counts` (plural nouns). The comparison names the reference group (`band.label`, default
+  "Players in your rating band") and reads "lower than / higher than / inside your likely range".
+- Rows in a list share one interval scale from 0 (`weaknessScaleMax`, passed as `scaleMax`), with
+  labelled ends, so different ranges look different. `WeaknessRowKey` explains the strip.
+- An early read is visibly provisional (muted, dash-underlined "Early estimate") and shows no strip and
+  no sparkline ("Weekly trend after N more chances"); with no chances there is no figure at all.
+- The KPI axis ends are widened to tidy ticks (only the axis; bands stay at their stored ends). The key
+  names every mark, including the lone dot and the gap, in the grid's `nUnit`. KPI bands are 80%
+  (`INTERVAL_LEVEL`, `Z80` in `profile-core`).
+- `AreaScore` takes an optional `interval` (`{ low, high, level }`): drawn and stated as given, `null`
+  says "No interval yet", absent says nothing.
+- `ExemplarBoard` names the reply's SAN in its key ("Their reply, Qg5"), from the FEN with chess.js.
