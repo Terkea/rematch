@@ -13,6 +13,11 @@ pub struct ImportCursor {
     pub oldest_reached: Option<OffsetDateTime>,
     #[serde(default, with = "common::js_time::iso::option")]
     pub newest_seen_at: Option<OffsetDateTime>,
+    /// An open frontier left by a run that stopped at `max`: everything above `newest_seen_at`
+    /// is imported, and the next run continues below `oldest_reached` with no lower bound.
+    /// Optional in the JSON (TS `backfill?: boolean`); omitted when false.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub backfill: bool,
 }
 
 #[derive(Debug, Clone, sqlx::FromRow)]

@@ -238,6 +238,7 @@ async fn import_resumes_from_cursor(pool: PgPool) {
         Some(ImportCursor {
             oldest_reached: Some(list[1].played_at),
             newest_seen_at: None,
+            backfill: false,
         })
     );
     assert_eq!(game_ids(&pool, acct).await.len(), 2);
@@ -277,6 +278,7 @@ async fn import_resumes_from_cursor(pool: PgPool) {
         Some(ImportCursor {
             oldest_reached: None,
             newest_seen_at: Some(list[0].played_at),
+            backfill: false,
         })
     );
 
@@ -327,6 +329,7 @@ async fn checkpoints_the_cursor_and_the_run_every_batch(pool: PgPool) {
             Some(ImportCursor {
                 oldest_reached: Some(list[1].played_at),
                 newest_seen_at: None,
+                backfill: false,
             }),
             2
         ))
