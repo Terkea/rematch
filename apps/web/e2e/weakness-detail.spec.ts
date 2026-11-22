@@ -56,8 +56,21 @@ test("the weakness detail tells its story, with the player's own examples", asyn
   await expect(first).toContainText(
     "Your win chance went from 62% to 31%, a drop of 31 win% points.",
   );
-  const link = first.getByRole("link", { name: /in the review/ });
+  const link = first.getByRole("link", { name: /^Open the game at / });
   await expect(link).toHaveAttribute("href", /^\/app\/games\/[0-9a-f-]{36}\?ply=\d+$/);
+  const ply = new URL((await link.getAttribute("href")) ?? "", "http://x").searchParams.get("ply");
+
+  // Each example is a position explorer (N14): it expands into the game around the move.
+  await first.getByRole("button", { name: /^Expand the position before / }).click();
+  const dialog = page.getByRole("dialog", { name: /^Position before / });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator(`[data-ply='${ply}']`)).toBeVisible();
+  await expect(dialog.locator(`[data-ply='${Number(ply) - 1}']`)).toHaveAttribute(
+    "aria-current",
+    "step",
+  );
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
 
   // The charts are kept, under Details.
   await expect(page.getByRole("heading", { name: "State over time" })).toBeVisible();

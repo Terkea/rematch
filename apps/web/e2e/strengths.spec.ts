@@ -6,7 +6,7 @@ import { gotoSettled } from "./support/mail";
 // The strengths page (`/app/strengths`) on the synthetic strengths seed
 // (e2e/helpers/seed-strengths.ts: the coach world plus strength plies on two public fixture
 // games). No band reference exists, so the page compares with the player's own earlier games and
-// says so; Maia is not running, so the boards are the labelled critical-position fallback.
+// says so; Maia is not running, so the boards are the labelled critical-moment fallback.
 
 function seed(command?: "clear"): void {
   const run = spawnSync(
@@ -66,26 +66,38 @@ test.describe
       await expect(page.locator("main")).not.toContainText(/NaN|undefined|Infinity/);
     });
 
-    test("blitz shows the critical-position fallback on boards that open the review at that move", async () => {
+    test("blitz shows the critical-moment fallback in explorers that open the game", async () => {
       test.setTimeout(300_000);
       await gotoSettled(page, "/app/strengths?tc=blitz");
       const hard = page.locator('[data-section="hard-spots"]');
+      // No Maia rating: the fallback's title never claims the moves were hard (N11).
+      await expect(hard.getByRole("heading", { level: 2 })).toHaveText(
+        "Critical moments you got right",
+      );
       await expect(hard).toContainText("Difficulty pending: Maia hasn't rated these positions yet");
-      await expect(hard).toContainText("Until it does, these are critical positions");
+      await expect(hard).toContainText("Until it does, these are critical moments you got right");
       const spots = hard.locator("[data-spot]");
       await expect(spots).toHaveCount(3);
-      // One per game first, biggest gap first: the short attack's 10… Qxf4, then 29… Bxf3+.
+      // 10… Qxf4 took a free piece after White's blunder: left out despite the biggest gap.
+      await expect(hard).not.toContainText("Qxf4");
+      // One per game first, biggest gap first: 8… Qb6, then 27… Rf8.
       await expect(spots.nth(0)).toContainText(
         "The engine's next choice was 31 win% points worse.",
       );
       await expect(spots.nth(0)).toContainText("Keep doing this: on every move, look at your own");
-      await expect(spots.nth(1)).toContainText("29… Bxf3+");
-      await expect(spots.nth(0).getByLabel("Position before 10… Qxf4").first()).toBeVisible();
-      await spots
-        .nth(1)
-        .getByRole("link", { name: /in the review/ })
-        .click();
-      await page.waitForURL(/\/app\/games\/[^/]+\?ply=58$/);
+      await expect(spots.nth(1)).toContainText("27… Rf8");
+
+      // Each board is a position explorer (N14): it expands into the game around the move.
+      await spots.nth(0).getByRole("button", { name: "Expand the position before 8… Qb6" }).click();
+      const dialog = page.getByRole("dialog", { name: "Position before 8… Qb6" });
+      await expect(dialog).toBeVisible();
+      await expect(dialog.locator("[data-ply='16']")).toBeVisible();
+      await expect(dialog.locator("[data-ply='15']")).toHaveAttribute("aria-current", "step");
+      await page.keyboard.press("Escape");
+      await expect(dialog).toBeHidden();
+
+      await spots.nth(1).getByRole("link", { name: "Open the game at 27… Rf8" }).click();
+      await page.waitForURL(/\/app\/games\/[^/]+\?ply=54$/);
       await expect(page.locator("main")).not.toContainText(/NaN|undefined|Infinity/);
     });
   });

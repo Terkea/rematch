@@ -15,14 +15,7 @@ import { Chess } from "chess.js";
 import { and, asc, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { readOnly } from "../games";
 import type { TimeClass } from "../games/types";
-import {
-  BOOTSTRAP_RESAMPLES,
-  CONFIDENCE,
-  fnv1a,
-  mulberry32,
-  regIncBeta,
-  wilson,
-} from "../stats";
+import { BOOTSTRAP_RESAMPLES, CONFIDENCE, fnv1a, mulberry32, regIncBeta, wilson } from "../stats";
 import { type Benchmark, getBenchmark } from "./benchmark";
 import { type KpiDef, kpiDef, seriesLabel, weaknessDef } from "./catalogue";
 import { difficultyStatus } from "./difficulty";
@@ -491,7 +484,13 @@ export function promisingOpenings(lines: OpeningInput[]): PromisingOpening[] {
     if (clear.has(`${l.color}:${l.kind}:${l.lineKey}`)) continue;
     const g = l.games.filter((x) => fin(x.score) && fin(x.expected));
     if (g.length < MIN_OPENING_GAMES) continue;
-    const points = Math.min(g.length, Math.max(0, g.reduce((s, x) => s + x.score, 0)));
+    const points = Math.min(
+      g.length,
+      Math.max(
+        0,
+        g.reduce((s, x) => s + x.score, 0),
+      ),
+    );
     const expected = mean(g.map((x) => x.expected));
     if (!(expected > 0 && expected < 1)) continue;
     const pAbove = 1 - regIncBeta(expected, 1 + points, 1 + g.length - points);
@@ -677,10 +676,16 @@ export function reportStrengths(input: unknown): ReportStrength[] {
 export type StrengthsModel = {
   analysedGames: number;
   above:
+    | {
+        mode: "peers";
+        benchmark: Extract<Benchmark, { source: "peers" }>;
+        claims: PeerClaim[];
+        compared: number;
+      }
     | { mode: "band"; band: Band; claims: BandClaim[]; compared: number }
     | { mode: "own"; trends: OwnTrends };
   improving: { weaknesses: ImprovingWeakness[]; kpis: OwnTrends | null };
-  openings: { lines: WorkingOpening[]; judged: number };
+  openings: { lines: WorkingOpening[]; promising: PromisingOpening[]; judged: number };
   hardSpots: HardSpots & { notes: Record<string, string | null> };
   difficulty: DifficultyStatus;
   report: { at: Date; strengths: ReportStrength[] } | null;
@@ -692,6 +697,8 @@ export async function loadStrengths(
   userId: string,
   scope: CoachScope,
 ): Promise<StrengthsModel | null> {
+  // The peer benchmark (ADRs 0080, 0081), when the scope's last build-profile stored one.
+  const benchmark = await getBenchmark(db, userId, scope);
   const model = await readOnly(db, async (tx) => {
     if (!(await ownsScope(tx, userId, scope))) return null;
     const inScope = {
@@ -751,24 +758,48 @@ export async function loadStrengths(
           )
       : [];
     let above: StrengthsModel["above"] = { mode: "own", trends: own };
-    if (band && refRows.length > 0) {
-      const medians = bandMedians(refRows, band);
-      const current = await latestSnapshots(tx, scope, [...STRENGTH_METRICS], CURRENT_WINDOW);
-      above = {
-        mode: "band",
-        band,
-        claims: aboveBand(
-          current.map((r) => ({
+    const peerRows: PeerRow[] =
+      benchmark?.source === "peers"
+        ? (
+            (await tx.execute(sql`
+              select metric, median, pooled_rate, n_chances, n_players
+              from account_benchmark_stat
+              where account_id = ${scope.accountId} and time_class = ${scope.timeClass}::time_class
+                and not low_sample and metric in (${sql.join(
+                  STRENGTH_METRICS.map((m) => sql`${m}`),
+                  sql`, `,
+                )})`)) as unknown as Record<string, unknown>[]
+          ).flatMap((r): PeerRow[] => {
+            const median = Number(r.median);
+            if (!fin(median)) return [];
+            const opt = (v: unknown) => (v == null || !fin(Number(v)) ? null : Number(v));
+            return [
+              {
+                metric: String(r.metric),
+                median,
+                pooledRate: opt(r.pooled_rate),
+                nChances: opt(r.n_chances),
+                nPlayers: Math.max(0, Math.trunc(Number(r.n_players) || 0)),
+              },
+            ];
+          })
+        : [];
+    const current =
+      peerRows.length > 0 || (band && refRows.length > 0)
+        ? (await latestSnapshots(tx, scope, [...STRENGTH_METRICS], CURRENT_WINDOW)).map((r) => ({
             metric: r.metric,
             value: r.value,
             low: r.ciLow,
             high: r.ciHigh,
             n: r.n,
-          })),
-          medians,
-        ),
-        compared: medians.size,
-      };
+          }))
+        : [];
+    const compared = defs().filter((d) => peerRows.some((p) => p.metric === d.metric)).length;
+    if (benchmark?.source === "peers" && compared > 0) {
+      above = { mode: "peers", benchmark, claims: abovePeers(current, peerRows), compared };
+    } else if (band && refRows.length > 0) {
+      const medians = bandMedians(refRows, band);
+      above = { mode: "band", band, claims: aboveBand(current, medians), compared: medians.size };
     }
 
     // Weaknesses improving or resolved, with their newest transition into that state.
@@ -890,7 +921,7 @@ export async function loadStrengths(
     const spotRows = (await tx.execute(sql`
       select s.game_id, s.played_at, s.kind, s.ply, m.fen_before, m.san, m.uci, m.best_uci,
         m.win_before, m.win_after, m.time_spent, f.difficulty_status, f.p_best, f.is_critical,
-        f.multipv_gap
+        f.multipv_gap, pm.san as prev_san, pm.judgement::text as prev_judgement
       from (
         select gm.game_id, gm.played_at, e->>'kind' as kind, (e->>'ply')::int as ply
         from game_metrics gm
@@ -903,6 +934,7 @@ export async function loadStrengths(
       ) s
       join moves m on m.game_id = s.game_id and m.ply = s.ply
       left join move_features f on f.game_id = s.game_id and f.ply = s.ply
+      left join moves pm on pm.game_id = s.game_id and pm.ply = s.ply - 1
       order by s.played_at desc, s.ply
       limit 300`)) as unknown as Record<string, unknown>[];
     const candidates: HardSpotCandidate[] = spotRows.flatMap((r): HardSpotCandidate[] => {
@@ -927,6 +959,8 @@ export async function loadStrengths(
           pBest: fin(num(r.p_best)) ? num(r.p_best) : null,
           isCritical: typeof r.is_critical === "boolean" ? r.is_critical : null,
           multipvGap: fin(num(r.multipv_gap)) ? num(r.multipv_gap) : null,
+          prevSan: r.prev_san == null ? null : String(r.prev_san),
+          prevJudgement: r.prev_judgement == null ? null : String(r.prev_judgement),
         },
       ];
     });
@@ -954,9 +988,13 @@ export async function loadStrengths(
       above,
       improving: {
         weaknesses: improvingWeaknesses(changes),
-        kpis: above.mode === "band" ? own : null,
+        kpis: above.mode === "own" ? null : own,
       },
-      openings: { lines: workingOpenings([...lines.values()]), judged },
+      openings: {
+        lines: workingOpenings([...lines.values()]),
+        promising: promisingOpenings([...lines.values()]),
+        judged,
+      },
       hardSpots: {
         ...spots,
         notes: Object.fromEntries(spots.spots.map((s) => [s.kind, keepDoingNote(s.kind)])),

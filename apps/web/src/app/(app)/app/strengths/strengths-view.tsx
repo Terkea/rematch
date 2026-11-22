@@ -1,12 +1,20 @@
-import { Board } from "@ci/ui/board";
 import { Button } from "@ci/ui/primitives";
 import { dayText, exemplarMoveText, fenMove, formatKpiValue } from "@ci/ui/profile";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { CoachScopeSwitch } from "../../../../components/coach-scope-switch";
+import { GamePosition } from "../../../../components/game-position";
 import type { CoachScope, DifficultyStatus } from "../../../../server/profile";
+import {
+  BENCHMARK_BIAS_TEXT,
+  type Benchmark,
+  benchmarkGroupLabel,
+  benchmarkLabel,
+} from "../../../../server/profile/benchmark-text";
 import { AREA_GLOSSARY } from "../../../../server/profile/glossary";
 import {
+  BALANCED_MAX,
+  BALANCED_MIN,
   type BandClaim,
   CONFIRM_P_CHANGE,
   CONFIRM_REL_CHANGE,
@@ -16,6 +24,9 @@ import {
   MIN_OPENING_GAMES,
   type OwnClaim,
   type OwnTrends,
+  type PeerClaim,
+  PROMISING_P,
+  type PromisingOpening,
   RECENT_GAMES,
   type StrengthsModel,
   type Verdict,
@@ -38,6 +49,10 @@ export const VERDICT_TEXT: Record<Verdict, string> = {
   learn: "Learn deeper",
   replace: "Replace",
 };
+
+/** The section title for the fallback, which never claims the moves were hard (N11). */
+export const HARD_TITLE = "Your best moves in hard spots";
+export const CRITICAL_TITLE = "Critical moments you got right";
 
 export const OWN_BASELINE_TEXT =
   "Compared with your own earlier games, since there's no benchmark for your level yet.";
@@ -111,6 +126,20 @@ export function bandClaimText(c: BandClaim): string {
   return `80% range ${range(c.low, c.high, c.unit)}, over your last ${nOf(c.metric, c.n)}. Players in your rating band: ${value(c.median, c.unit)}.`;
 }
 
+/**
+ * "80% range 74.1% to 78.3%, over your last 50 games. Players you've faced, rated about 650–950:
+ * 71.4% (the middle of 25 players' averages)."
+ */
+export function peerClaimText(c: PeerClaim, b: Benchmark): string {
+  const group = benchmarkGroupLabel(b) ?? "Players you've faced";
+  const basis = c.pooled
+    ? c.chances != null
+      ? `pooled over ${count.format(Math.max(0, Math.trunc(c.chances)))} of their chances`
+      : "pooled over their games"
+    : `the middle of ${plural(c.players, "player's average", "players' averages")}`;
+  return `80% range ${range(c.low, c.high, c.unit)}, over your last ${nOf(c.metric, c.n)}. ${group}: ${value(c.peer, c.unit)} (${basis}).`;
+}
+
 /** "76.1% over your last 50 games, against 65.0% over 40 earlier games. …" */
 export function ownClaimText(c: OwnClaim): string {
   return `${value(c.recent.value, c.unit)} over your last ${nOf(c.metric, c.recent.n)}, against ${value(c.earlier.value, c.unit)} over ${nOf(c.metric, c.earlier.n).replace(/^(\S+) /, "$1 earlier ")}. The change's 80% range is ${diffText(c.diff.low, c.unit)} to ${diffText(c.diff.high, c.unit)}.`;
@@ -128,6 +157,11 @@ export function weaknessChangeText(w: ImprovingWeakness): string {
 /** "Scored 64% in 14 games (80% range 52% to 75%); your rating predicted 51%." */
 export function openingText(o: WorkingOpening): string {
   return `Scored ${pct0(o.score)} in ${plural(o.n, "game", "games")} (80% range ${pct0(o.low)} to ${pct0(o.high)}); your rating predicted ${pct0(o.expected)}.`;
+}
+
+/** "Scored 67% in 12 games; your rating predicted 52%. 86% likely above it, not yet certain." */
+export function promisingText(o: PromisingOpening): string {
+  return `Scored ${pct0(o.score)} in ${plural(o.n, "game", "games")}; your rating predicted ${pct0(o.expected)}. ${pct0(Math.min(o.pAbove, 0.99))} likely above it, not yet certain.`;
 }
 
 /** The note under a board: why it counts, then the win chance and the clock. */
@@ -222,6 +256,7 @@ function ClaimRow({
   detail,
   strip,
   href,
+  tentative = false,
 }: {
   id: string;
   label: string;
@@ -229,6 +264,8 @@ function ClaimRow({
   detail: string;
   strip?: ReactNode;
   href?: string;
+  /** A likely but not certain claim: its figure in ink, not in the `good` ink of a sure one. */
+  tentative?: boolean;
 }) {
   return (
     <li data-claim={id} className="flex flex-col gap-1 py-4 [font-variant-numeric:lining-nums]">
@@ -245,7 +282,9 @@ function ClaimRow({
         )}
         <span className="flex items-center gap-4">
           {strip}
-          <span className="font-serif text-xl font-semibold text-good-text [font-variant-numeric:lining-nums_tabular-nums]">
+          <span
+            className={`font-serif text-xl font-semibold [font-variant-numeric:lining-nums_tabular-nums] ${tentative ? "text-ink" : "text-good-text"}`}
+          >
             {figure}
           </span>
         </span>
@@ -284,6 +323,48 @@ function ownShortfall(t: OwnTrends): string {
 }
 
 function AboveLevel({ above }: { above: StrengthsModel["above"] }) {
+  if (above.mode === "peers") {
+    const b = above.benchmark;
+    return (
+      <Section
+        id="above"
+        title="Where you're above your level"
+        lede={
+          <>
+            Measures where your whole likely range is better than the players you've faced.{" "}
+            {benchmarkLabel(b)}. {BENCHMARK_BIAS_TEXT}
+          </>
+        }
+      >
+        {above.claims.length === 0 ? (
+          <Quiet>
+            None of your {plural(above.compared, "measure", "measures")} compared with them is
+            clearly better than theirs yet.
+          </Quiet>
+        ) : (
+          <ul data-surface="sheet" className={rows}>
+            {above.claims.map((c) => (
+              <ClaimRow
+                key={c.metric}
+                id={c.metric}
+                label={c.label}
+                figure={figureOf(c.value, c.unit)}
+                detail={peerClaimText(c, b)}
+                strip={
+                  <Strip
+                    low={c.low}
+                    high={c.high}
+                    at={c.peer}
+                    label="Your likely range against the players you've faced"
+                  />
+                }
+              />
+            ))}
+          </ul>
+        )}
+      </Section>
+    );
+  }
   if (above.mode === "band") {
     return (
       <Section
@@ -390,7 +471,7 @@ function Openings({ openings }: { openings: StrengthsModel["openings"] }) {
     <Section
       id="openings"
       title="Openings that work for you"
-      lede={`Lines with at least ${MIN_OPENING_GAMES} games where your whole likely score is above what your rating predicts.`}
+      lede={`Lines with at least ${MIN_OPENING_GAMES} games where your whole likely score is above what your rating predicts, then the promising ones: likely above, not yet certain.`}
     >
       {openings.lines.length === 0 ? (
         <Quiet>
@@ -419,6 +500,27 @@ function Openings({ openings }: { openings: StrengthsModel["openings"] }) {
           ))}
         </ul>
       )}
+      {openings.promising.length > 0 ? (
+        <div data-promising="" className="flex flex-col gap-3">
+          <h3 className="m-0 font-serif text-xl font-semibold text-ink">Promising</h3>
+          <p className="m-0 max-w-2xl text-sm text-ink-soft">
+            At least {pct0(PROMISING_P)} likely to score above what your rating predicts, but too
+            few games to be sure. Keep playing them and the picture firms up.
+          </p>
+          <ul data-surface="sheet" className={rows}>
+            {openings.promising.map((o) => (
+              <ClaimRow
+                key={`${o.color}:${o.kind}:${o.lineKey}`}
+                id={o.lineKey}
+                label={o.name}
+                figure={pct0(o.score)}
+                tentative
+                detail={`${o.kind === "chosen" ? "You play it" : "You face it"} as ${o.color === "white" ? "White" : "Black"}. ${promisingText(o)}${o.verdict ? ` Verdict: ${VERDICT_TEXT[o.verdict]}.` : ""}`}
+              />
+            ))}
+          </ul>
+        </div>
+      ) : null}
     </Section>
   );
 }
@@ -437,7 +539,7 @@ function HardSpots({
   difficulty: DifficultyStatus;
 }) {
   const pending = `Difficulty pending: Maia hasn't rated these positions yet${waitingText(difficulty)}.`;
-  const fallback = `${pending} Until it does, these are critical positions: the engine's best move was at least ${CRITICAL_GAP} win% points better than its second choice, and you found it.`;
+  const fallback = `${pending} Until it does, these are critical moments you got right: the engine's best move was at least ${CRITICAL_GAP} win% points better than its second choice, your win chance was between ${BALANCED_MIN}% and ${BALANCED_MAX}%, and you found it. Captures of free material and positions your opponent's mistake handed you are left out.`;
   const lede =
     spots.mode === "maia"
       ? "Positions Maia rates hard for players at your level, where you found the engine's best move."
@@ -447,64 +549,59 @@ function HardSpots({
           ? pending
           : "Positions where you found the engine's best move when it mattered.";
   return (
-    <Section id="hard-spots" title="Your best moves in hard spots" lede={lede}>
+    <Section
+      id="hard-spots"
+      title={spots.mode === "maia" ? HARD_TITLE : CRITICAL_TITLE}
+      lede={lede}
+    >
       {spots.mode === "none" ? (
         <Quiet>
-          No position qualifies yet: none of your analysed games has a critical position where you
-          found the engine's best move.
+          No position qualifies yet: none of your analysed games has a critical moment in a balanced
+          game where you found the engine's best move.
         </Quiet>
       ) : (
         <ol className="m-0 grid list-none grid-cols-1 gap-x-8 gap-y-10 p-0 md:grid-cols-2 xl:grid-cols-3">
           {spots.spots.map((s) => {
             const note = spots.notes[s.kind] ?? null;
             const move = exemplarMoveText(s.fen, s.san);
-            const to = s.uci.slice(2, 4) as never;
+            const found = { san: s.san, uci: s.uci };
             return (
               <li
                 key={`${s.gameId}:${s.ply}`}
                 data-spot={`${s.gameId}:${s.ply}`}
-                className="@container flex min-w-0 flex-col"
+                className="flex min-w-0 flex-col gap-3"
               >
-                <figure
-                  // ban-lint-allow TOK2: the board (in its 8px well from 768px) fills its column in whole-pixel squares
-                  className="m-0 flex w-fit flex-col gap-3 [--board-size:round(down,100cqi,8px)] md:[--board-size:round(down,100cqi_-_16px,8px)]"
-                >
-                  <Board
-                    fen={s.fen}
-                    orientation={fenMove(s.fen).color}
-                    label={`Position before ${move}`}
-                    annotations={[
-                      { kind: "arrow", from: s.uci.slice(0, 2) as never, to, tone: "good" },
-                      { kind: "mark", square: to, glyph: "!", tone: "good" },
-                    ]}
-                  />
-                  <figcaption className="flex max-w-(--board-size) flex-col gap-2">
-                    <p className="m-0 font-serif text-prose text-ink [font-variant-numeric:lining-nums_tabular-nums]">
-                      <span className="font-semibold">
-                        {move}
-                        <span className="tracking-(--tracking-glyph) text-good-text">!</span>
-                      </span>{" "}
-                      {spots.mode === "maia"
-                        ? "You found a hard move."
-                        : "You found the only good move."}
-                    </p>
-                    <p className="m-0 text-sm text-ink-soft [font-variant-numeric:lining-nums]">
-                      {spotText(s, spots.mode === "maia" ? "maia" : "critical")}
-                    </p>
-                    {note ? <p className="m-0 font-serif text-base text-ink">{note}</p> : null}
-                    <p className="m-0 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm text-ink-soft">
-                      <span>
-                        Played <time dateTime={iso(s.playedAt)}>{dayText(iso(s.playedAt))}</time>
-                      </span>
-                      <Link
-                        href={`/app/games/${encodeURIComponent(s.gameId)}?ply=${s.ply}`}
-                        className="inline-flex min-h-6 items-center gap-1 rounded-field py-0.5 text-ink underline decoration-rule-strong underline-offset-4 hover:decoration-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
-                      >
-                        Open <span className="font-serif font-semibold">{move}</span> in the review
-                      </Link>
-                    </p>
-                  </figcaption>
-                </figure>
+                <GamePosition
+                  className="w-full md:w-full"
+                  gameId={s.gameId}
+                  loadable
+                  ply={s.ply}
+                  fenBefore={s.fen}
+                  played={found}
+                  best={found}
+                  found
+                  orientation={fenMove(s.fen).color}
+                  label={move}
+                  href={`/app/games/${encodeURIComponent(s.gameId)}?ply=${s.ply}`}
+                />
+                <div className="flex flex-col gap-2">
+                  <p className="m-0 font-serif text-prose text-ink [font-variant-numeric:lining-nums_tabular-nums]">
+                    <span className="font-semibold">
+                      {move}
+                      <span className="tracking-(--tracking-glyph) text-good-text">!</span>
+                    </span>{" "}
+                    {spots.mode === "maia"
+                      ? "You found a hard move."
+                      : "You found the only good move."}
+                  </p>
+                  <p className="m-0 text-sm text-ink-soft [font-variant-numeric:lining-nums]">
+                    {spotText(s, spots.mode === "maia" ? "maia" : "critical")}
+                  </p>
+                  {note ? <p className="m-0 font-serif text-base text-ink">{note}</p> : null}
+                  <p className="m-0 text-sm text-ink-soft">
+                    Played <time dateTime={iso(s.playedAt)}>{dayText(iso(s.playedAt))}</time>
+                  </p>
+                </div>
               </li>
             );
           })}
