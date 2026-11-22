@@ -116,31 +116,3 @@ export async function noteKeysInScope(
     return new Set(rows.map((r) => r.changeKey));
   });
 }
-
-/**
- * The review page id (`games.id`) of each of the scope's games named by its platform id, the id
- * report inputs carry (ADR-R2-2 R-7). An id that is not one of the scope's games is left out.
- */
-export async function reviewGameIds(
-  db: Db,
-  userId: string,
-  scope: CoachScope,
-  platformIds: string[],
-): Promise<Map<string, string>> {
-  const ids = [...new Set(platformIds.filter((s) => s.length > 0 && s.length <= 200))];
-  if (ids.length === 0) return new Map();
-  return readOnly(db, async (tx) => {
-    if (!(await ownsScope(tx, userId, scope))) return new Map();
-    const rows = await tx
-      .select({ id: games.id, platformGameId: games.platformGameId })
-      .from(games)
-      .where(
-        and(
-          eq(games.accountId, scope.accountId),
-          eq(games.platform, scope.platform),
-          inArray(games.platformGameId, ids),
-        ),
-      );
-    return new Map(rows.map((r) => [r.platformGameId, r.id]));
-  });
-}

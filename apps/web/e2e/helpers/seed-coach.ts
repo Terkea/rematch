@@ -337,6 +337,9 @@ export async function seedE2eCoach(
   });
   const streamingMessageId = messageIds[1];
   if (!streamingMessageId) throw new Error("no streaming message");
+  // It streams on its first attempt, as the job reserves one when it starts.
+  await db.execute(sql`update coach_messages set turn_attempts = 1, streaming_at = now()
+    where id = ${streamingMessageId}`);
   return { accountId, threadId, streamingMessageId };
 }
 

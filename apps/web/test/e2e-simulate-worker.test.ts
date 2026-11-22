@@ -114,7 +114,9 @@ describe("simulateWorker: chat", () => {
     const all = await events();
     expect(all.map((e) => e.type)).toEqual(["chat.chunk", "chat.chunk", "chat.message.ready"]);
     expect(all.every((e) => e.userId === userId)).toBe(true);
-    expect(all[2]?.payload).toEqual({ messageId, replace: false });
+    expect(all[2]?.payload).toEqual({ messageId, replace: false, attempt: 1 });
+    // Both chunks carry the attempt the first one reserved (Rust ChatChunk.attempt).
+    expect(all.slice(0, 2).map((e) => (e.payload as { attempt: number }).attempt)).toEqual([1, 1]);
   });
 
   it("replace stores the validated text", async () => {
@@ -123,7 +125,7 @@ describe("simulateWorker: chat", () => {
     await simulateWorker(db, { kind: "chat-done", messageId, replace: true });
     const [done] = await db.select().from(coachMessages).where(eq(coachMessages.id, messageId));
     expect(done?.text).toBe(VALIDATED_ANSWER);
-    expect((await events()).at(-1)?.payload).toEqual({ messageId, replace: true });
+    expect((await events()).at(-1)?.payload).toEqual({ messageId, replace: true, attempt: 1 });
   });
 
   it("a failure stores its reason and emits it once", async () => {

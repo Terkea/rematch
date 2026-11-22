@@ -175,7 +175,7 @@ async function chat(
 ): Promise<void> {
   const [m] = await rows(
     db,
-    sql`select m.status, c.user_id, c.account_id from coach_messages m
+    sql`select m.status, m.turn_attempts, c.user_id, c.account_id from coach_messages m
       join coach_conversations c on c.id = m.conversation_id
       where m.id = ${step.messageId} and m.role = 'assistant' for update of m`,
   );
@@ -183,8 +183,16 @@ async function chat(
   const owner = { accountId: m.account_id as string, userId: m.user_id as string };
 
   if (step.kind === "chat-chunk") {
-    await db.execute(sql`update coach_messages set status = 'streaming', streaming_at = now()
-      where id = ${step.messageId} and status = 'pending'`);
+    // The job reserves an attempt as it starts streaming (chat/job.rs); chunks carry it.
+    const [turn] = await rows(
+      db,
+      sql`update coach_messages set status = 'streaming',
+        streaming_at = case when status = 'pending' then now() else streaming_at end,
+        turn_attempts = turn_attempts + case when status = 'pending' then 1 else 0 end
+      where id = ${step.messageId} and status in ('pending', 'streaming')
+      returning turn_attempts`,
+    );
+    const attempt = Number(turn?.turn_attempts ?? m.turn_attempts ?? 0);
     await insertUserEvent(db, {
       ...owner,
       type: "chat.chunk",
@@ -195,6 +203,7 @@ async function chat(
         segments: [{ kind: "text", text: step.text }],
         citations: [],
         interim: false,
+        attempt,
       },
     });
     return;
@@ -210,7 +219,11 @@ async function chat(
       await insertUserEvent(db, {
         ...owner,
         type: "chat.message.failed",
-        payload: { messageId: step.messageId, reason: step.reason },
+        payload: {
+          messageId: step.messageId,
+          reason: step.reason,
+          attempt: Number(m.turn_attempts),
+        },
       });
     }
     return;
@@ -240,7 +253,11 @@ async function chat(
     await insertUserEvent(db, {
       ...owner,
       type: "chat.message.ready",
-      payload: { messageId: step.messageId, replace: step.replace === true },
+      payload: {
+        messageId: step.messageId,
+        replace: step.replace === true,
+        attempt: Number(m.turn_attempts),
+      },
     });
   }
 }

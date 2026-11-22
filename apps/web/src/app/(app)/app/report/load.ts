@@ -2,7 +2,8 @@ import type { Db } from "@ci/db";
 import { changeNotes, getReport } from "../../../../server/coaching";
 import type { ReportPayload } from "../../../../server/coaching/types";
 import type { CoachScope } from "../../../../server/profile";
-import { noteKeysInScope, reviewGameIds, weeklyRates } from "../weaknesses/queries";
+import { reviewGameIds } from "../../../../server/profile/game-ids";
+import { noteKeysInScope, weeklyRates } from "../weaknesses/queries";
 import { changeKey, reportGameIds } from "./_sections/links";
 import type { ReportPageData } from "./report-view";
 
