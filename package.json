@@ -12,6 +12,7 @@
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "format": "biome format --write .",
+    "format:check": "biome format .",
     "shots": "tsx scripts/shots.ts",
     "design:check": "tsx scripts/ban-lint.ts",
     "e2e": "pnpm --filter @ci/web e2e"

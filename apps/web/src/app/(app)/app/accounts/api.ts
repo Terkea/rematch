@@ -3,9 +3,6 @@ import type { LinkedAccountView } from "../../../../server/accounts/list";
 // The browser side of the account routes (Task 19). Mutations send JSON, which the routes'
 // CSRF check requires (ADR-WEB-5); the browser adds the same-origin `Origin` itself.
 
-/** Task 23 replaces this with `queryKeys.accounts()`; Task 27 swaps it in. */
-export const accountsKey = ["accounts"] as const;
-
 export type StartedLink = {
   linkId: string;
   username: string;

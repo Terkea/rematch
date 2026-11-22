@@ -1,6 +1,6 @@
 # Decision records
 
-One file per decision: context, decision, alternatives, consequences. New decisions get the next number.
+One file per decision: context, decision, alternatives, consequences. New decisions get the next number. Every record is listed here once.
 
 - [0001. Monorepo in TypeScript with pnpm workspaces and Turborepo](0001-monorepo-typescript-turborepo.md)
 - [0002. Next.js (App Router) for the web app](0002-nextjs-web-app.md)
@@ -33,7 +33,7 @@ One file per decision: context, decision, alternatives, consequences. New decisi
 - [0029. State in Postgres, queue as delivery; reconciler instead of an outbox](0029-state-in-postgres-reconciler-not-outbox.md)
 - [0030. Rust for the entire backend](0030-rust-backend.md)
 - [0031. Rust workspace, toolchain and crates](0031-rust-workspace-toolchain-and-crates.md)
-- [0031 addendum. npm enforcement of the 7-day age and exact-pin rule](0031-addendum-npm-enforcement.md)
+- [0031 addendum. npm enforcement](0031-addendum-npm-enforcement.md)
 - [0032. Postgres job queue](0032-postgres-job-queue.md)
 - [0033. SQL migrations own the schema, Drizzle is generated](0033-sql-migrations-own-the-schema.md)
 - [0034. User events over LISTEN/NOTIFY with a reset marker](0034-user-events-listen-notify.md)
@@ -69,8 +69,15 @@ One file per decision: context, decision, alternatives, consequences. New decisi
 - [0064. "Ask your coach": the chat engine](0064-ask-your-coach-chat.md)
 - [0065. Game pages e2e: a guarded seed, their own quality and visual specs](0065-game-pages-e2e-and-visual-baselines.md)
 - [0066. Postgres connection limit for the integrated worker](0066-postgres-connection-limit.md)
+- [0075. Coach data for the beta: the beta AI plan, weekly-review inputs, the first report](0075-beta-ai-plan-weekly-inputs-first-report.md)
+- [0076. Recurring incremental sync of linked accounts](0076-recurring-account-sync.md)
+- [0067. CI runs the gates in compose, and e2e on a production build](0067-ci-gates-in-compose-and-production-e2e.md)
 
-Web records use placeholder numbers until the controller renumbers them.
+## Records with placeholder numbers
+
+These lanes wrote their records under a lane prefix. The controller gives each its final number when it renumbers; until then the prefix is the name.
+
+### Web (M4): ADR-WEB
 
 - [ADR-WEB-1. Source-only UI packages and the web dependency set](ADR-WEB-1-source-only-ui-packages.md)
 - [ADR-WEB-2. Web development stack in Compose](ADR-WEB-2-web-dev-stack.md)
@@ -80,17 +87,19 @@ Web records use placeholder numbers until the controller renumbers them.
 - [ADR-WEB-6. Age gate, under-13 block and private defaults](ADR-WEB-6-age-gate.md)
 - [ADR-WEB-7. Design tokens, themes and self-hosted fonts](ADR-WEB-7-design-tokens.md)
 - [ADR-WEB-8. Live user events: one LISTEN per process, SSE with replay, polling fallback](ADR-WEB-8-sse-delivery.md)
-- [ADR-WEB-9. Ban lint; Impeccable not adopted, web-design-guidelines vendored](ADR-WEB-9-third-party-design-tooling.md)
+- [ADR-WEB-9. Third-party design tooling review and the ban lint](ADR-WEB-9-third-party-design-tooling.md)
 - [ADR-WEB-10. Visual QA loop: Playwright, shots, lab and critique](ADR-WEB-10-visual-qa-loop.md)
 - [ADR-WEB-11. Overlay libraries: sonner, vaul and cmdk](ADR-WEB-11-overlay-libraries.md)
-- [ADR-WEB-12. KPI stats: fixed percent window, outward-rounded ends, host-set halo, honest trend scale](ADR-WEB-12-kpi-stat-honest-uncertainty.md)
+- [ADR-WEB-12. KPI stats: a fixed percent window, outward-rounded interval ends, a host-set halo and an honest trend scale](ADR-WEB-12-kpi-stat-honest-uncertainty.md)
 - [ADR-WEB-13. Board: shipped Cburnett pieces, coordinates and piece motion](ADR-WEB-13-board-pieces-and-motion.md)
 - [ADR-WEB-14. Weakness timeline and area score encoding](ADR-WEB-14-weakness-timeline-encoding.md)
 - [ADR-WEB-15. Annotation overlay: geometry, draw-on and placement rules](ADR-WEB-15-annotation-overlay.md)
 - [ADR-WEB-16. App shell, sign-in, age and account-linking screens](ADR-WEB-16-app-shell-and-auth-screens.md)
 - [ADR-WEB-17. Original procedural board sounds](ADR-WEB-17-original-procedural-sounds.md)
 
-R2 (profile engine) records use placeholder numbers until the controller renumbers them (ADR-R2-1). Every R2 record now has a file (titles final at R2 Task 35); numbers 19-21 were never used.
+### Profile engine (R2): ADR-R2
+
+Every R2 record has a file (titles final at R2 Task 35); numbers 19 to 21 were never used.
 
 - [ADR-R2-1. Profile engine crates, dependencies and data layout](ADR-R2-1-profile-crates-and-data-layout.md)
 - [ADR-R2-2. The coaching-input contract crate](ADR-R2-2-coaching-input-contract.md)
@@ -102,14 +111,14 @@ R2 (profile engine) records use placeholder numbers until the controller renumbe
 - [ADR-R2-8. Repertoire tree, line keys, struggles and opening verdicts](ADR-R2-8-repertoire-and-verdicts.md)
 - [ADR-R2-9. Lichess database pipeline: streamed, verified, never stored](ADR-R2-9-lichess-db-data-pipeline.md)
 - [ADR-R2-10. Opening explorer build: one parallel pass, verified before activation](ADR-R2-10-opening-explorer-build.md)
-- [ADR-R2-11. Band reference method](ADR-R2-11-band-reference-method.md)
+- [ADR-R2-11: Band reference method](ADR-R2-11-band-reference-method.md)
 - [ADR-R2-12. Local Syzygy probe through a separate Stockfish set](ADR-R2-12-local-syzygy-probe.md)
 - [ADR-R2-13. Maia licence check and difficulty providers](ADR-R2-13-maia-licence-and-difficulty.md)
 - [ADR-R2-14. Enrichment protocol](ADR-R2-14-enrichment-protocol.md)
 - [ADR-R2-15. Fair scheduling and preview](ADR-R2-15-fair-scheduling-and-preview.md)
 - [ADR-R2-16. Tiered analysis scheduler](ADR-R2-16-tiered-analysis-scheduler.md)
 - [ADR-R2-17. ETA and autoscaling hooks](ADR-R2-17-eta-and-autoscaling-hooks.md)
-- [ADR-R2-18. build-profile job and CoachingInput builder](ADR-R2-18-build-profile-and-coaching-input.md)
+- [ADR-R2-18. Build-profile and the CoachingInput builder](ADR-R2-18-build-profile-and-coaching-input.md)
 - [ADR-R2-22. Syzygy 3-4-5 tablebases: pinned, verified, never committed](ADR-R2-22-syzygy-345-fetch.md)
 - [ADR-R2-23. Reference build storage: lifecycle guards and per-metric band fallback](ADR-R2-23-reference-build-storage.md)
 - [ADR-R2-24. The analyse-game hook: per-game features at analysis time](ADR-R2-24-analyse-hook.md)

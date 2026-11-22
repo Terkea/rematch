@@ -10,10 +10,12 @@
 //!   report job still writes the computed report, and chat and the other narratives fail with
 //!   their `ai_disabled` reasons. Every AI runner claims with [`PriorityFifo`] (the fair round
 //!   robin refuses kinds other than `analyse-game`).
-//! - **Entitlements** are [`DefaultEntitlements`] until M7. **Account access** for chat is the
+//! - **Entitlements** are [`ConfiguredEntitlements`] until M7 ([`ai_entitlements`]): every
+//!   account gets the `AI_DEFAULT_PLAN` plan (beta by default, M5b ruling G1) with the
+//!   `AI_BETA_*` limits. **Account access** for chat is the
 //!   M4 `account_links` lookup ([`AccountLinksAccess`]). **The coaching input** is R2's
-//!   builder ([`ProfileInputProvider`]); there is no weekly-input builder yet
-//!   ([`NullWeeklyProvider`]).
+//!   builder ([`ProfileInputProvider`]), the weekly input R2's weekly builder
+//!   (`coach_triggers::ProfileWeeklyProvider`, M5b ruling G2).
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -29,11 +31,11 @@ use ai::client::runtime::AiRuntime;
 use ai::client::sidecar::{SidecarClient, SidecarConfig};
 use ai::client::sidecar_wire::AuthKind;
 use ai::client::tool_server::ToolServer;
-use ai::entitlements::{DefaultEntitlements, Entitlements};
+use ai::entitlements::{ConfiguredEntitlements, Entitlements};
 use ai::input::types::TimeClass;
 use ai::jobs::batch_jobs::{
-    AiBatchPollHandler, BatchDeps, NullWeeklyProvider, ReportBatchScheduleHandler,
-    WeeklyBatchScheduleHandler,
+    AiBatchPollHandler, BatchDeps, ReportBatchScheduleHandler, WeeklyBatchScheduleHandler,
+    WeeklyInputProvider,
 };
 use ai::jobs::budget::BudgetConfig;
 use ai::jobs::change_job::ExplainChangeHandler;
@@ -206,6 +208,15 @@ pub fn pricing_from_env(env: &WorkerEnv) -> anyhow::Result<PricingTable> {
     }
 }
 
+/// The AI entitlements of this deployment: `AI_DEFAULT_PLAN` for every account (beta while the
+/// deployment is a beta) with the configured beta limits.
+pub fn ai_entitlements(env: &WorkerEnv) -> ConfiguredEntitlements {
+    ConfiguredEntitlements {
+        plan: env.ai_plan,
+        beta: env.ai_beta,
+    }
+}
+
 /// R2's builder as the report jobs' input. An account with no analysed game in the time class
 /// has no input yet (the job fails `no_input` rather than write a report about nothing).
 pub struct ProfileInputProvider {
@@ -283,13 +294,17 @@ pub struct AiRunnerDeps {
     pub inputs: Arc<dyn CoachingInputProvider>,
     pub budgets: BudgetConfig,
     pub pricing: Arc<PricingTable>,
+    /// [`ai_entitlements`] in production.
+    pub entitlements: Arc<dyn Entitlements>,
+    /// The weekly schedule's inputs: `coach_triggers::ProfileWeeklyProvider` in production.
+    pub weekly: Arc<dyn WeeklyInputProvider>,
 }
 
 /// One handler and runner config per [`AI_RUNNER_KINDS`] entry, in that order. `start_workers`
 /// spawns them through the same `Spawned::spawn` as every other runner, so its claims and its
 /// shutdown cover them.
 pub fn ai_runners(d: &AiRunnerDeps, base: &RunnerConfig) -> Vec<(Arc<dyn Handler>, RunnerConfig)> {
-    let entitlements: Arc<dyn Entitlements> = Arc::new(DefaultEntitlements);
+    let entitlements = d.entitlements.clone();
     let now: Arc<dyn Fn() -> OffsetDateTime + Send + Sync> = Arc::new(OffsetDateTime::now_utc);
     let item = || AiItemDeps {
         pool: d.pool.clone(),
@@ -305,7 +320,7 @@ pub fn ai_runners(d: &AiRunnerDeps, base: &RunnerConfig) -> Vec<(Arc<dyn Handler
         queue: d.queue.clone(),
         ai: d.ai.clone(),
         inputs: d.inputs.clone(),
-        weekly: Arc::new(NullWeeklyProvider),
+        weekly: d.weekly.clone(),
         entitlements: entitlements.clone(),
         budgets: d.budgets,
         pricing: d.pricing.clone(),
@@ -396,6 +411,35 @@ mod tests {
                 > ai::jobs::batch_jobs::BATCH_SUBMIT_TIMEOUT
                     + ai::jobs::batch_jobs::BATCH_RESULTS_TIMEOUT
         );
+    }
+
+    /// M5b Task B (G1): the AI plan is `AI_DEFAULT_PLAN`, beta by default, with the configured
+    /// beta limits.
+    #[test]
+    fn ai_entitlements_follow_the_ai_default_plan() {
+        use ai::entitlements::{BetaLimits, ConfiguredEntitlements, Plan as AiPlan};
+        let limits = BetaLimits {
+            chat_per_week: 9,
+            manual_reports_per_day: 4,
+        };
+        let env = WorkerEnv {
+            ai_beta: limits,
+            ..WorkerEnv::new("postgres://db/x", "/sf")
+        };
+        assert_eq!(
+            ai_entitlements(&env),
+            ConfiguredEntitlements {
+                plan: AiPlan::Beta,
+                beta: limits
+            }
+        );
+        for plan in [AiPlan::Free, AiPlan::Pro, AiPlan::Beta] {
+            let env = WorkerEnv {
+                ai_plan: plan,
+                ..WorkerEnv::new("postgres://db/x", "/sf")
+            };
+            assert_eq!(ai_entitlements(&env).plan, plan);
+        }
     }
 
     #[test]

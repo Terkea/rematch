@@ -37,6 +37,13 @@ export function NavCommandMenu({ open, onOpenChange, onSignOut }: NavCommandMenu
           ]
         : []),
       {
+        id: "go:/licenses",
+        label: "Go to licences",
+        group: "Pages",
+        keywords: ["credits", "attribution", "open source"],
+        onSelect: () => router.push("/licenses"),
+      },
+      {
         id: "theme",
         label: theme.label,
         group: "Preferences",

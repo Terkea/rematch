@@ -20,6 +20,7 @@ import {
   ipAddressOptions,
   secureCookies,
 } from "./auth/policy";
+import { redactedLog } from "./auth/redacted-log";
 import { getDb } from "./db";
 
 type DbHooks = NonNullable<BetterAuthOptions["databaseHooks"]>;
@@ -54,6 +55,8 @@ function withInviteGuard(hooks: DbHooks, db: Db, env: WebEnv): DbHooks {
 export function createAuth(env: WebEnv, db: Db) {
   return betterAuth({
     appName: "chess-improver",
+    // A failed write logs its row, which for a magic link holds the address (T21 review M7).
+    logger: { log: redactedLog },
     baseURL: env.BETTER_AUTH_URL,
     secret: env.BETTER_AUTH_SECRET,
     trustedOrigins: env.BETTER_AUTH_TRUSTED_ORIGINS.split(",")

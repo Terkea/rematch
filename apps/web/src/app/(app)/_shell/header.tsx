@@ -5,7 +5,7 @@ import { motion, spring, useReducedMotion } from "@ci/ui/motion";
 import { Button, Kbd } from "@ci/ui/primitives";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { brand } from "../../../brand";
 import { isCurrent, navItems } from "./nav";
 import { NavCommandMenu } from "./nav-command-menu";
@@ -17,6 +17,8 @@ export interface HeaderProps {
   /** The user's name; for a Lichess-created account, the Lichess username. */
   name?: string;
   signOutTo?: (href: string) => void;
+  /** Background work, shown in `data-slot="activity"` (the layout passes `ActivityIndicator`). */
+  activity?: ReactNode;
 }
 
 const navLink = [
@@ -28,13 +30,14 @@ const navLink = [
 /**
  * The app header. It stays still on route changes (only the sheet turns, choreography 5). The ink
  * rule under the current section slides to the next one on `page`, showing where you went (M1).
- * Below `md` the sections drop to their own row. `data-slot="activity"` is Task 27's import
- * indicator.
+ * Below `md` the sections drop to their own row. `data-slot="activity"` holds `activity`, the
+ * import indicator; it collapses while that renders nothing.
  */
 export function Header({
   email,
   name = "",
   signOutTo = (href) => window.location.assign(href),
+  activity,
 }: HeaderProps) {
   const pathname = usePathname();
   const reduced = useReducedMotion();
@@ -42,7 +45,7 @@ export function Header({
   const signOut = useSignOut(signOutTo);
 
   return (
-    <header className="sticky top-0 z-40 bg-paper">
+    <header data-app-chrome="" className="sticky top-0 z-40 bg-paper">
       <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 px-(--space-gutter) pt-3 md:h-16 md:flex-nowrap md:pt-0">
         <Link
           href="/"
@@ -82,7 +85,9 @@ export function Header({
         </nav>
 
         <div className="ml-auto flex items-center gap-2">
-          <div data-slot="activity" className="flex items-center empty:hidden" />
+          <div data-slot="activity" className="flex items-center empty:hidden">
+            {activity}
+          </div>
           <Button
             variant="quiet"
             size="sm"

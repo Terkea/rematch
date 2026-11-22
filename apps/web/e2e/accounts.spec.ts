@@ -7,11 +7,10 @@ import { enterAge, FAKES, gotoSettled, hydrated, signInByMagicLink } from "./sup
 // The adult flow saves its signed-in storage state for `pnpm shots --storage`.
 const ADULT_STATE = "e2e/.auth/adult.json";
 
-test("an adult links chess.com, verifies it by location code, then removes it", async ({
-  page,
-  request,
-  context,
-}) => {
+// @fakes: needs the http fakes, which a production server refuses (docker-compose.e2e-prod.yml).
+test("an adult links chess.com, verifies it by location code, then removes it", {
+  tag: "@fakes",
+}, async ({ page, request, context }) => {
   // The first verify waits out chess.com's 60 s per-username interval (ADR-WEB-5).
   test.setTimeout(420_000);
 
@@ -77,7 +76,11 @@ test("an adult links chess.com, verifies it by location code, then removes it", 
 // http://fakes:3199 (LICHESS_AUTHORIZE_BASE_URL), and the fake sends it straight back. Under
 // INVITE_ONLY a Lichess identity cannot create an account, so the player signs in by email,
 // connects Lichess from Accounts, and can then sign in with Lichess.
-test("a player connects Lichess, then signs in with it", async ({ page, request, browser }) => {
+test("a player connects Lichess, then signs in with it", { tag: "@fakes" }, async ({
+  page,
+  request,
+  browser,
+}) => {
   await signInByMagicLink(page, request, "lichess@example.invalid");
   await expect(page).toHaveURL(/\/welcome\/age$/);
   await enterAge(page, 1992, 3);

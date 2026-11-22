@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { cache } from "react";
 import { requireUser } from "../../../../../server/auth/session";
 import { getDb } from "../../../../../server/db";
+import { requestEventCursor } from "../../../../../server/events/request-cursor";
 import { getGameReview, type ReviewGame } from "../../../../../server/games/review";
 import { accuracyLine, metaLine, pageTitle, resultLine } from "./header";
 import { GameReviewView } from "./review-view";
@@ -22,6 +23,8 @@ type Props = {
 /** One read per request, shared by the metadata and the page. */
 const load = cache(async (gameId: string): Promise<ReviewGame> => {
   const user = await requireUser();
+  // Before any page data, so the event stream replays whatever lands after this read (T27).
+  await requestEventCursor(user.id);
   const game = await getGameReview(getDb(), user.id, gameId);
   if (!game) notFound();
   return game;

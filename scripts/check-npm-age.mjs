@@ -37,7 +37,8 @@ for (const file of packageJsonFiles()) {
   for (const field of DEP_FIELDS) {
     for (const [name, spec] of Object.entries(pkg[field] ?? {})) {
       if (isAllowedSpec(spec)) continue;
-      if (RANGE.test(spec)) rangeViolations.push(`${file.slice(ROOT.length + 1)}: ${field}.${name} = "${spec}"`);
+      if (RANGE.test(spec))
+        rangeViolations.push(`${file.slice(ROOT.length + 1)}: ${field}.${name} = "${spec}"`);
     }
   }
 }
@@ -111,7 +112,8 @@ await Promise.all(
             continue;
           }
           const ageDays = (now - Date.parse(time[v])) / 86_400_000;
-          if (ageDays < MIN_AGE_DAYS) young.push(`${name}@${v} published ${time[v]} (${ageDays.toFixed(1)} days old)`);
+          if (ageDays < MIN_AGE_DAYS)
+            young.push(`${name}@${v} published ${time[v]} (${ageDays.toFixed(1)} days old)`);
         }
       } catch (e) {
         errors.push(e.message);
@@ -121,8 +123,12 @@ await Promise.all(
 );
 
 console.log(`checked ${checked} locked versions of ${entries.length} packages`);
-if (young.length) console.log(`\nYounger than ${MIN_AGE_DAYS} days:\n  ${young.sort().join("\n  ")}`);
+if (young.length)
+  console.log(`\nYounger than ${MIN_AGE_DAYS} days:\n  ${young.sort().join("\n  ")}`);
 if (errors.length) console.log(`\nLookup errors:\n  ${errors.sort().join("\n  ")}`);
-if (rangeViolations.length) console.log(`\nDirect dependencies not pinned exactly:\n  ${rangeViolations.join("\n  ")}`);
+if (rangeViolations.length)
+  console.log(`\nDirect dependencies not pinned exactly:\n  ${rangeViolations.join("\n  ")}`);
 if (young.length || errors.length || rangeViolations.length) process.exit(1);
-console.log("OK: all locked versions are old enough and all direct dependencies are pinned exactly.");
+console.log(
+  "OK: all locked versions are old enough and all direct dependencies are pinned exactly.",
+);

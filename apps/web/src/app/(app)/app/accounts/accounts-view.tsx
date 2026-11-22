@@ -16,11 +16,11 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { authClient } from "../../../../lib/auth-client";
+import { queryKeys } from "../../../../lib/query-keys";
 import type { LinkedAccountView } from "../../../../server/accounts/list";
 import { PendingButton } from "../../../ui/pending-button";
 import { PageHeading } from "../../_shell/page-heading";
 import {
-  accountsKey,
   fetchAccounts,
   linkErrorMessage,
   removeAccountLink,
@@ -237,7 +237,7 @@ function connectLichess() {
 export function AccountsView({ initialAccounts, chesscom, lichess }: AccountsViewProps) {
   const queryClient = useQueryClient();
   const accounts = useQuery({
-    queryKey: accountsKey,
+    queryKey: queryKeys.accounts(),
     queryFn: fetchAccounts,
     initialData: initialAccounts,
     staleTime: 30_000,
@@ -249,7 +249,7 @@ export function AccountsView({ initialAccounts, chesscom, lichess }: AccountsVie
   const [removing, setRemoving] = useState<LinkedAccountView | null>(null);
   const now = useNow(Object.values(nextCheck).some((at) => at > Date.now()));
 
-  const refresh = () => queryClient.invalidateQueries({ queryKey: accountsKey });
+  const refresh = () => queryClient.invalidateQueries({ queryKey: queryKeys.accounts() });
 
   // Back from the Lichess consent screen (Task 18).
   useEffect(() => {
@@ -298,7 +298,7 @@ export function AccountsView({ initialAccounts, chesscom, lichess }: AccountsVie
   const remove = useMutation({
     mutationFn: (account: LinkedAccountView) => removeAccountLink(account.linkId),
     onSuccess: (_, account) => {
-      queryClient.setQueryData<LinkedAccountView[]>(accountsKey, (list) =>
+      queryClient.setQueryData<LinkedAccountView[]>(queryKeys.accounts(), (list) =>
         list?.filter((a) => a.linkId !== account.linkId),
       );
       toast.success(`${account.displayName} removed`);

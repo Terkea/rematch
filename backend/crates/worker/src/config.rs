@@ -9,7 +9,9 @@ use std::path::PathBuf;
 use ai::client::batches::ApiKey;
 use ai::client::sidecar::SidecarToken;
 use ai::client::tool_server::DEFAULT_TOOL_BIND;
+use ai::entitlements::{BetaLimits, Plan as AiPlan};
 use ai::jobs::budget::BudgetConfig;
+use analysis::jobs::sync::SyncOptions;
 use anyhow::{Context, bail};
 use scheduler::select::Plan;
 
@@ -32,6 +34,9 @@ pub struct WorkerEnv {
     pub lichess_token: Option<String>,
     /// `LICHESS_SINCE_LOOKBACK_DAYS`: overrides the incremental Lichess look-back (30 days).
     pub lichess_lookback_days: Option<u32>,
+    /// `SYNC_INTERVAL_MINUTES`: how often each linked account's newest games are fetched (the
+    /// recurring `sync-accounts` job, M5b Task S); default 30, at least 1.
+    pub sync_interval_minutes: Option<u32>,
     /// `WORKER_POOL_SIZE`: Stockfish processes (and analyses at once); default
     /// `min(available_parallelism - 2, 8)`, at least 1.
     pub pool_size: Option<usize>,
@@ -56,6 +61,13 @@ pub struct WorkerEnv {
     /// `AI_BUDGET_FREE_MICRO_USD`, `AI_BUDGET_PRO_MICRO_USD` and
     /// `AI_GLOBAL_MONTHLY_BUDGET_MICRO_USD` (ADR 0061).
     pub ai_budgets: BudgetConfig,
+    /// `AI_DEFAULT_PLAN` (`beta`, `free` or `pro`): every account's AI plan until M7 (M5b
+    /// ruling G1, ADR 0075; default `beta`). Separate from `WORKER_DEFAULT_PLAN`, the analysis
+    /// plan; the web reads the same variable.
+    pub ai_plan: AiPlan,
+    /// `AI_BETA_CHAT_WEEKLY` and `AI_BETA_MANUAL_REPORTS_PER_DAY` (1 to 24): the beta AI plan's
+    /// limits (defaults 100 and 1).
+    pub ai_beta: BetaLimits,
     /// The sidecar. `None` (no `AI_SIDECAR_URL`): AI is off and reports are computed-only.
     pub ai_sidecar: Option<SidecarEnv>,
     /// `AI_TOOL_BIND`: where the chat tool endpoint listens (default `0.0.0.0:7311`).
@@ -75,6 +87,7 @@ impl WorkerEnv {
             stockfish_path: stockfish_path.into(),
             lichess_token: None,
             lichess_lookback_days: None,
+            sync_interval_minutes: None,
             pool_size: None,
             syzygy_path: None,
             syzygy_stage_dir: None,
@@ -83,10 +96,20 @@ impl WorkerEnv {
             plan_default: Plan::Beta,
             anthropic_api_key: None,
             ai_budgets: BudgetConfig::default(),
+            ai_plan: AiPlan::Beta,
+            ai_beta: BetaLimits::default(),
             ai_sidecar: None,
             ai_tool_bind: default_tool_bind(),
             ai_tool_public_url: None,
             ai_pricing_file: None,
+        }
+    }
+
+    /// The recurring sync's interval and tick (`SYNC_INTERVAL_MINUTES`, default 30).
+    pub fn sync_options(&self) -> SyncOptions {
+        match self.sync_interval_minutes {
+            None => SyncOptions::default(),
+            Some(m) => SyncOptions::every(std::time::Duration::from_secs(u64::from(m) * 60)),
         }
     }
 
@@ -103,6 +126,7 @@ impl WorkerEnv {
             stockfish_path: PathBuf::from(required("STOCKFISH_PATH")?),
             lichess_token: get("LICHESS_TOKEN"),
             lichess_lookback_days: parse(&get, "LICHESS_SINCE_LOOKBACK_DAYS", 0)?,
+            sync_interval_minutes: parse(&get, "SYNC_INTERVAL_MINUTES", 1)?,
             pool_size: parse(&get, "WORKER_POOL_SIZE", 1)?,
             syzygy_path: get("SYZYGY_PATH").map(PathBuf::from),
             syzygy_stage_dir: get("SYZYGY_STAGE_DIR").map(PathBuf::from),
@@ -119,6 +143,16 @@ impl WorkerEnv {
             },
             anthropic_api_key: get("ANTHROPIC_API_KEY").map(|k| ApiKey::new(k.trim())),
             ai_budgets: BudgetConfig::from_vars(get)?,
+            ai_plan: match get("AI_DEFAULT_PLAN") {
+                None => AiPlan::Beta,
+                Some(raw) => match raw.trim().to_ascii_lowercase().as_str() {
+                    "beta" => AiPlan::Beta,
+                    "free" => AiPlan::Free,
+                    "pro" => AiPlan::Pro,
+                    _ => bail!("AI_DEFAULT_PLAN must be beta, free or pro, got {raw:?}"),
+                },
+            },
+            ai_beta: BetaLimits::from_vars(get)?,
             ai_sidecar: match (get("AI_SIDECAR_URL"), get("AI_SIDECAR_TOKEN")) {
                 (None, _) => None,
                 (Some(_), None) => bail!("AI_SIDECAR_URL is set but AI_SIDECAR_TOKEN is not"),
@@ -156,6 +190,7 @@ impl std::fmt::Debug for WorkerEnv {
                 &self.lichess_token.as_ref().map(|_| REDACTED),
             )
             .field("lichess_lookback_days", &self.lichess_lookback_days)
+            .field("sync_interval_minutes", &self.sync_interval_minutes)
             .field("pool_size", &self.pool_size)
             .field("syzygy_path", &self.syzygy_path)
             .field("syzygy_stage_dir", &self.syzygy_stage_dir)
@@ -164,6 +199,8 @@ impl std::fmt::Debug for WorkerEnv {
             .field("plan_default", &self.plan_default)
             .field("anthropic_api_key", &self.anthropic_api_key)
             .field("ai_budgets", &self.ai_budgets)
+            .field("ai_plan", &self.ai_plan)
+            .field("ai_beta", &self.ai_beta)
             .field("ai_sidecar", &self.ai_sidecar)
             .field("ai_tool_bind", &self.ai_tool_bind)
             .field("ai_tool_public_url", &self.ai_tool_public_url)
@@ -250,6 +287,32 @@ mod tests {
     }
 
     #[test]
+    fn reads_the_sync_interval() {
+        assert_eq!(env(&BASE).unwrap().sync_interval_minutes, None);
+        let mut vars = BASE.to_vec();
+        vars.push(("SYNC_INTERVAL_MINUTES", "45"));
+        assert_eq!(env(&vars).unwrap().sync_interval_minutes, Some(45));
+        let mut zero = BASE.to_vec();
+        zero.push(("SYNC_INTERVAL_MINUTES", "0"));
+        let err = env(&zero).unwrap_err().to_string();
+        assert!(err.contains("SYNC_INTERVAL_MINUTES"), "{err}");
+    }
+
+    #[test]
+    fn the_sync_options_follow_the_interval() {
+        let plain = env(&BASE).unwrap();
+        assert_eq!(
+            plain.sync_options().interval,
+            std::time::Duration::from_secs(30 * 60)
+        );
+        let mut vars = BASE.to_vec();
+        vars.push(("SYNC_INTERVAL_MINUTES", "60"));
+        let hourly = env(&vars).unwrap().sync_options();
+        assert_eq!(hourly.interval, std::time::Duration::from_secs(3600));
+        assert_eq!(hourly.tick, std::time::Duration::from_secs(600));
+    }
+
+    #[test]
     fn reads_the_profile_engine_variables() {
         let mut vars = BASE.to_vec();
         vars.extend([
@@ -287,6 +350,58 @@ mod tests {
             "{shown}"
         );
         assert!(shown.contains("plan_default: Free"), "{shown}");
+    }
+
+    /// M5b Task B (G1): the beta plan's limits come from `AI_BETA_*`.
+    #[test]
+    fn reads_the_beta_ai_limits() {
+        use ai::entitlements::BetaLimits;
+        let mut vars = BASE.to_vec();
+        vars.extend([
+            ("AI_BETA_CHAT_WEEKLY", "40"),
+            ("AI_BETA_MANUAL_REPORTS_PER_DAY", "2"),
+        ]);
+        assert_eq!(
+            env(&vars).unwrap().ai_beta,
+            BetaLimits {
+                chat_per_week: 40,
+                manual_reports_per_day: 2
+            }
+        );
+        assert_eq!(env(&BASE).unwrap().ai_beta, BetaLimits::default());
+        let mut bad = BASE.to_vec();
+        bad.push(("AI_BETA_CHAT_WEEKLY", "many"));
+        let err = env(&bad).unwrap_err().to_string();
+        assert!(err.starts_with("AI_BETA_CHAT_WEEKLY"), "{err}");
+        let mut zero = BASE.to_vec();
+        zero.push(("AI_BETA_MANUAL_REPORTS_PER_DAY", "0"));
+        assert!(env(&zero).is_err());
+    }
+
+    /// `AI_DEFAULT_PLAN` (`beta`, `free` or `pro`; default `beta`): every account's AI plan.
+    #[test]
+    fn reads_the_ai_default_plan() {
+        use ai::entitlements::Plan as AiPlan;
+        assert_eq!(env(&BASE).unwrap().ai_plan, AiPlan::Beta);
+        for (raw, plan) in [
+            ("beta", AiPlan::Beta),
+            ("free", AiPlan::Free),
+            (" Pro ", AiPlan::Pro),
+        ] {
+            let mut vars = BASE.to_vec();
+            vars.push(("AI_DEFAULT_PLAN", raw));
+            assert_eq!(env(&vars).unwrap().ai_plan, plan, "{raw}");
+        }
+        // Independent of the analysis plan.
+        let mut vars = BASE.to_vec();
+        vars.push(("WORKER_DEFAULT_PLAN", "free"));
+        assert_eq!(env(&vars).unwrap().ai_plan, AiPlan::Beta);
+        let mut bad = BASE.to_vec();
+        bad.push(("AI_DEFAULT_PLAN", "gold"));
+        assert_eq!(
+            env(&bad).unwrap_err().to_string(),
+            "AI_DEFAULT_PLAN must be beta, free or pro, got \"gold\""
+        );
     }
 
     #[test]

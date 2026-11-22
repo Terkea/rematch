@@ -8,7 +8,7 @@ use std::time::Duration;
 use time::OffsetDateTime;
 
 pub use super::execute::ENGINE_WAIT_INLINE;
-use crate::entitlements::{Plan, QuotaWindow, chat_quotas, exhausted};
+use crate::entitlements::{Plan, Quota, QuotaWindow, chat_quotas, exhausted};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ChatLimits {
@@ -54,13 +54,31 @@ pub fn check_chat_allowance(
     question_chars: usize,
     now: OffsetDateTime,
 ) -> Result<(), (DenyReason, Option<OffsetDateTime>)> {
+    check_chat_allowance_with(
+        chat_quotas(plan),
+        used,
+        turns_in_conversation,
+        question_chars,
+        now,
+    )
+}
+
+/// [`check_chat_allowance`] with the quotas given (the job passes
+/// `Entitlements::chat_quotas`, so the beta limits come from the environment).
+pub fn check_chat_allowance_with(
+    quotas: &[Quota],
+    used: impl Fn(QuotaWindow) -> u32,
+    turns_in_conversation: u32,
+    question_chars: usize,
+    now: OffsetDateTime,
+) -> Result<(), (DenyReason, Option<OffsetDateTime>)> {
     if question_chars > CHAT_LIMITS.max_question_chars {
         return Err((DenyReason::TooLong, None));
     }
     if turns_in_conversation >= CHAT_LIMITS.max_turns_per_conversation {
         return Err((DenyReason::ConversationFull, None));
     }
-    match exhausted(chat_quotas(plan), used, now) {
+    match exhausted(quotas, used, now) {
         None => Ok(()),
         Some((q, resets_at)) => {
             let reason = match q.window {

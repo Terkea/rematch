@@ -2,60 +2,138 @@ name: CI
 on:
   push:
   pull_request:
+
+# Every job runs its gate the way it runs locally (CLAUDE.md, ADR 0067): in the compose services,
+# in its own project, with no host ports, then `down -v`. No secret is used anywhere: the web
+# services fall back to compose's dev-only BETTER_AUTH_SECRET default, which is no secret.
+env:
+  COMPOSE_FILE: docker-compose.yml
+
+# Least privilege (review-t27 I3): every job only reads the repository. upload-artifact and cache
+# use the runner's own token, not GITHUB_TOKEN scopes. Widen per job only where one needs more.
+permissions:
+  contents: read
+
+# A newer push to the same branch or PR cancels the run it supersedes.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  check:
+  ts:
+    # The TS gate: Biome format drift, the npm age rule, the design ban lint, then turbo
+    # build/lint/typecheck/test. Every package but web runs in the worker container (Stockfish,
+    # DATABASE_URL_TEST, WORKER_DATABASE_URL_TEST, IN_DOCKER=1, so a missing database or engine
+    # fails instead of skipping); web runs in the web container (BETTER_AUTH_SECRET default,
+    # WEB_DATABASE_URL_TEST). Postgres creates every test database on init
+    # (docker/postgres/init.sql: chess_test, chess_worker_test, chess_web_test, chess_e2e_test).
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:17
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: chess_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-      redis:
-        image: redis:7
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
     env:
-      DATABASE_URL_TEST: postgres://postgres:postgres@localhost:5432/chess_test
-      WORKER_DATABASE_URL_TEST: postgres://postgres:postgres@localhost:5432/chess_worker_test
-      REDIS_URL: redis://localhost:6379
+      COMPOSE: docker compose -p ci-ts
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
-          cache: pnpm
-      - name: Create the worker test database
-        run: psql "postgres://postgres:postgres@localhost:5432/chess_test" -c "CREATE DATABASE chess_worker_test"
       - name: Check npm release age (7 days) and exact pins
         run: node scripts/check-npm-age.mjs
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm lint
-      - run: pnpm typecheck
-      - run: pnpm build
-      - run: pnpm test
+      - name: Build the images
+        run: $COMPOSE build deps worker web
+      - name: Install dependencies (frozen lockfile)
+        run: $COMPOSE run --rm deps
+      - name: Format drift (run `pnpm format` and commit the result)
+        run: $COMPOSE run --rm --no-deps web pnpm format:check
+      - name: Design ban lint
+        run: $COMPOSE run --rm --no-deps web pnpm design:check
+      - name: Build, lint, typecheck and test every package but web (worker container)
+        run: >-
+          $COMPOSE run --rm worker
+          pnpm turbo run build lint typecheck test --concurrency=1 --filter=!@ci/web
+      - name: Build, lint, typecheck and test web (web container)
+        run: >-
+          $COMPOSE run --rm web
+          pnpm turbo run build lint typecheck test --concurrency=1 --filter=@ci/web
+      - name: Stop the stack
+        if: always()
+        run: $COMPOSE down -v
+
+  e2e:
+    # The Playwright suite on a production build (ADR 0067): `next build`, then `next start`, so
+    # the 4x CPU throttle budget in charts.spec.ts is enforced on every change (ADR 0065,
+    # E2E_PRODUCTION=1). A production server refuses the plain-http fakes, so the @fakes specs run
+    # in e2e-fakes on the dev server. Visual baselines stay a local check (made in the qa image).
+    runs-on: ubuntu-latest
+    env:
+      COMPOSE_FILE: docker-compose.yml:docker-compose.e2e.yml:docker-compose.e2e-prod.yml
+      COMPOSE: docker compose -p ci-e2e --profile e2e
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the images
+        run: $COMPOSE build deps web fakes
+      # A production server refuses the public dev secret, so this run makes its own. It is
+      # masked, and it signs only this run's throwaway sessions.
+      - name: A random auth secret for this run
+        run: |
+          secret=$(openssl rand -hex 32)
+          echo "::add-mask::$secret"
+          echo "E2E_BETTER_AUTH_SECRET=$secret" >> "$GITHUB_ENV"
+      - name: Start web (production build) and the fakes
+        run: $COMPOSE up -d --wait web fakes
+      - name: e2e on the production build
+        run: >-
+          $COMPOSE --profile qa run --rm --no-deps -e E2E_PRODUCTION=1 qa sh -c
+          "cd apps/web && node node_modules/@playwright/test/cli.js test --project=e2e --grep-invert @fakes"
+      - name: Web logs
+        if: failure()
+        run: $COMPOSE logs --no-color web fakes
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report-production
+          path: apps/web/playwright-report/
+          retention-days: 7
+      - name: Stop the stack
+        if: always()
+        run: $COMPOSE down -v
+
+  e2e-fakes:
+    # The specs that need the http Lichess and chess.com fakes (tag @fakes), on the dev server.
+    runs-on: ubuntu-latest
+    env:
+      COMPOSE_FILE: docker-compose.yml:docker-compose.e2e.yml
+      COMPOSE: docker compose -p ci-e2e-fakes --profile e2e
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the images
+        run: $COMPOSE build deps web fakes
+      - name: Start web (next dev) and the fakes
+        run: $COMPOSE up -d --wait web fakes
+      - name: e2e @fakes
+        run: >-
+          $COMPOSE --profile qa run --rm --no-deps qa sh -c
+          "cd apps/web && node node_modules/@playwright/test/cli.js test --project=e2e --grep @fakes"
+      - name: Web logs
+        if: failure()
+        run: $COMPOSE logs --no-color web fakes
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report-fakes
+          path: apps/web/playwright-report/
+          retention-days: 7
+      - name: Stop the stack
+        if: always()
+        run: $COMPOSE down -v
+
   rust:
     runs-on: ubuntu-latest
     env:
       LANE: "0"
+      COMPOSE: docker compose -p ci-rust
     steps:
       - uses: actions/checkout@v4
       - name: Build the Rust dev image
-        run: docker compose build rust-dev
+        run: $COMPOSE build rust-dev
       # ADR 0042: rust-dev mounts external cache volumes (registry, git, sccache) that compose
       # does not create. On a fresh runner they start empty; locally they persist across lanes.
       - name: Create the shared Rust cache volumes
@@ -66,33 +144,49 @@ jobs:
           path: backend/target/crate-age-cache
           key: crate-age-${{ hashFiles('backend/Cargo.lock', 'backend/Dockerfile') }}
           restore-keys: crate-age-
+      # ADR-R2-12/22: under IN_DOCKER=1 the real-table tests fail without the 3-4-5 Syzygy
+      # tables, as locally. They are fixed data, so they are cached by their pinned manifest and
+      # fetched (SHA-256 verified per file) only on a miss.
+      - uses: actions/cache@v4
+        id: syzygy
+        with:
+          path: data/syzygy
+          key: syzygy-345-${{ hashFiles('backend/crates/lichess-db/data/syzygy-345.sha256') }}
+      - name: Fetch the Syzygy 3-4-5 tables (cache miss only)
+        if: steps.syzygy.outputs.cache-hit != 'true'
+        run: >-
+          mkdir -p data/syzygy &&
+          $COMPOSE run --rm --no-deps -v "$PWD/data/syzygy:/syzygy-out" rust-dev
+          cargo run --locked -p lichess-db -- syzygy --dest /syzygy-out
       - name: Crate-age script tests (cache hits make no network call, 429 retries, fail closed)
-        run: docker compose run --rm --no-deps rust-dev sh scripts/test-check-crate-age.sh
+        run: $COMPOSE run --rm --no-deps rust-dev sh scripts/test-check-crate-age.sh
       - name: Crate age (every locked crate and pinned tool at least 7 days old)
         run: >-
-          docker compose run --rm --no-deps
+          $COMPOSE run --rm --no-deps
           -e CRATE_AGE_CACHE=/work/backend/target/crate-age-cache
           rust-dev sh scripts/check-crate-age.sh
       # R3: canonical_json and the path index rely on sorted keys, so no crate may enable
       # serde_json/preserve_order (ADR 0057).
       - name: No serde_json preserve_order
         # Fails closed: a failing `cargo tree` fails the step instead of counting 0.
-        run: >-
-          docker compose run --rm --no-deps rust-dev sh -c
-          'out=$(cargo tree --locked -e features -i serde_json) || exit 1;
-          n=$(echo "$out" | grep -c preserve_order || true);
-          echo "preserve_order: $n"; test "$n" -eq 0'
+        run: |
+          # The inner script runs in the container, so its $(...) must not expand here.
+          # shellcheck disable=SC2016
+          $COMPOSE run --rm --no-deps rust-dev sh -c             'out=$(cargo tree --locked -e features -i serde_json) || exit 1;
+            n=$(echo "$out" | grep -c preserve_order || true);
+            echo "preserve_order: $n"; test "$n" -eq 0'
       # --locked everywhere: a Cargo.lock that does not match the manifests fails the build.
       - name: fmt, clippy, cargo-deny and tests
         run: >-
-          docker compose run --rm rust-dev sh -c
+          $COMPOSE run --rm rust-dev sh -c
           "cargo fmt --check
           && cargo clippy --locked --workspace --all-targets -- -D warnings
           && cargo deny --locked check
           && cargo test --locked --workspace"
       - name: Stop the stack
         if: always()
-        run: docker compose down -v
+        run: $COMPOSE down -v
+
   baseline-schema:
     # ADR 0033: the sqlx baseline must produce exactly the schema the Drizzle migrations do.
     # Runs always (cheap), so a change to either side cannot slip past a path filter.
@@ -106,6 +200,7 @@ jobs:
       - name: Stop the stack
         if: always()
         run: docker compose -p ci-baseline-schema down -v
+
   schema-drift:
     # ADR 0033: packages/db/src/generated is generated from db/migrations. If a migration changed
     # without regenerating, run `sh scripts/db/generate-drizzle-schema.sh` and commit the result.
