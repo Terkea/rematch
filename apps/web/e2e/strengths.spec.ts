@@ -80,7 +80,7 @@ test.describe
       );
       await expect(spots.nth(0)).toContainText("Keep doing this: on every move, look at your own");
       await expect(spots.nth(1)).toContainText("29… Bxf3+");
-      await expect(spots.nth(0).getByRole("img").first()).toBeVisible();
+      await expect(spots.nth(0).getByLabel("Position before 10… Qxf4").first()).toBeVisible();
       await spots
         .nth(1)
         .getByRole("link", { name: /in the review/ })
