@@ -107,6 +107,30 @@ describe("shell header", () => {
     expect(banner.querySelectorAll('[data-slot="activity"]')).toHaveLength(1);
   });
 
+  it("never wraps the wordmark; the activity slot gives way instead (I7)", () => {
+    renderHeader();
+    const banner = screen.getByRole("banner");
+    const mark = within(banner).getByRole("link", { name: "chess-improver" });
+    expect(mark.className).toMatch(/(^| )whitespace-nowrap( |$)/);
+    expect(mark.className).toMatch(/(^| )shrink-0( |$)/);
+    const slot = banner.querySelector('[data-slot="activity"]');
+    expect(slot?.className).toMatch(/(^| )min-w-0( |$)/);
+    const group = slot?.parentElement;
+    expect(group?.className).toMatch(/(^| )min-w-0( |$)/);
+    // A zero basis: the group never wraps under the wordmark on a phone; it takes what is left.
+    expect(group?.className).toMatch(/(^| )flex-1( |$)/);
+    expect(group?.className).toMatch(/(^| )basis-0( |$)/);
+    // The controls keep their size; only the activity line gives way.
+    const search = within(banner).getByRole("button", { name: /Search/ });
+    expect(search.closest(".shrink-0")).not.toBeNull();
+    // Beside the one-row nav the search button is its icon and Ctrl K; the word stays for AT.
+    expect(within(search).getByText("Search").className).toMatch(/(^| )md:sr-only( |$)/);
+    // While background work shows there, Ctrl K steps aside too, so its count has room.
+    expect(within(search).getByText("Ctrl K").className).toContain(
+      "md:group-has-[[data-slot=activity-indicator]]/right:hidden",
+    );
+  });
+
   it("overflows the sections that don't fit a phone row into the account menu", async () => {
     pathname = "/app/progress";
     renderHeader();

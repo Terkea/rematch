@@ -93,7 +93,8 @@ describe("getOverview", () => {
       });
     }
     const o = await getOverview(db, userId, { timeClass: null });
-    expect(o.byTimeClass.map((t) => t.timeClass)).toEqual(["blitz", "rapid"]);
+    // Rapid first, then blitz, then the rest (I8, the owner's order).
+    expect(o.byTimeClass.map((t) => t.timeClass)).toEqual(["rapid", "blitz"]);
     const rapid = o.byTimeClass.find((t) => t.timeClass === "rapid");
     const blitz = o.byTimeClass.find((t) => t.timeClass === "blitz");
     expect(rapid).toMatchObject({ games: 14, wins: 8, draws: 2, losses: 4 });
@@ -101,8 +102,8 @@ describe("getOverview", () => {
     expect(blitz?.games).toBe(3);
     expect(blitz?.score).toEqual({ kind: "insufficient", n: 3, needed: 7 });
     expect(o.timeClasses).toEqual([
-      { timeClass: "blitz", analysed: 3 },
       { timeClass: "rapid", analysed: 14 },
+      { timeClass: "blitz", analysed: 3 },
     ]);
   });
 

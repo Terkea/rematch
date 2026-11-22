@@ -170,6 +170,14 @@ describe("filter bar", () => {
     expect(screen.getByRole("combobox", { name: "Account" })).toBeInTheDocument();
   });
 
+  it("offers time controls rapid first, then blitz, then the rest, All last (I8)", async () => {
+    const user = userEvent.setup();
+    render(<FilterBar query={q({})} accounts={[]} />);
+    await user.click(screen.getByRole("combobox", { name: "Time control" }));
+    const names = (await screen.findAllByRole("option")).map((o) => o.textContent);
+    expect(names).toEqual(["Rapid", "Blitz", "Bullet", "Classical", "Daily", "All time controls"]);
+  });
+
   it("labels every control with the brief's copy", () => {
     render(<FilterBar query={q({})} accounts={[]} />);
     expect(screen.getByRole("combobox", { name: "Time control" })).toHaveTextContent(

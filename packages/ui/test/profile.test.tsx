@@ -8,6 +8,7 @@ import {
   formatKpiValue,
   KpiTrendGrid,
   type KpiTrendItem,
+  kpiDomain,
   kpiSummary,
   kpiYScale,
   needMoreText,
@@ -224,6 +225,38 @@ describe("KpiTrendGrid", () => {
     expect(kpiSummary(it0, 5)).toContain(
       "1.10 in week of 9 Nov 2026, 3 games, below the 5-game minimum",
     );
+  });
+
+  it("scales to the weeks on the line, not a thin week, and clips the thin week's marks (M4)", () => {
+    // Weekly weakness rates: two weeks at the minimum near 10%, and one 10-chance week at 30%
+    // whose wide interval once stretched the axis to 75%.
+    const rates: KpiTrendItem = {
+      metric: "weakness:W1",
+      label: "Weekly rate",
+      unit: "rate",
+      nUnit: { one: "chance", many: "chances" },
+      points: [
+        { week: "2026-11-02", value: 0.1, low: 0.06, high: 0.15, n: 40 },
+        { week: "2026-11-09", value: 0.3, low: 0.1, high: 0.62, n: 10 },
+        { week: "2026-11-16", value: 0.12, low: 0.08, high: 0.17, n: 45 },
+      ],
+    };
+    const [lo, hi] = kpiDomain(rates, 25);
+    expect(hi).toBeLessThan(0.3);
+    expect(hi).toBeGreaterThanOrEqual(0.17);
+    expect(lo).toBeLessThanOrEqual(0.06);
+    // Without a minimum, every week counts, as before.
+    expect(kpiDomain(rates)[1]).toBeGreaterThanOrEqual(0.62);
+    const { container } = render(<KpiTrendGrid items={[rates]} range={range} minN={25} />);
+    expect(container.textContent).not.toContain("75");
+    const hollow = container.querySelector("[data-part='hollow']");
+    const clip = hollow?.closest("[clip-path]");
+    expect(clip).not.toBeNull();
+    const id = clip?.getAttribute("clip-path")?.match(/^url\(#(.+)\)$/)?.[1];
+    expect(id && container.querySelector(`clipPath[id="${id}"]`)).toBeTruthy();
+    // The band of the thin week is clipped to the plot too.
+    const bandClip = container.querySelector("[data-part='band']")?.closest("[clip-path]");
+    expect(bandClip?.getAttribute("clip-path")).toBe(clip?.getAttribute("clip-path"));
   });
 
   it("stored band is drawn as given", () => {

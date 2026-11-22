@@ -138,8 +138,9 @@ const KPIS: KpiTrend[] = [
       computedAt: AT,
     },
     points: [
-      { week: "2026-11-02", value: 70.2, low: null, high: null, n: 9 },
-      { week: "2026-11-09", value: 72.8, low: null, high: null, n: 12 },
+      // The read model's keys are ISO weeks (kpiTrends keeps only `YYYY-Www` rows).
+      { week: "2026-W45", value: 70.2, low: null, high: null, n: 9 },
+      { week: "2026-W46", value: 72.8, low: null, high: null, n: 12 },
     ],
   }),
   trend({
@@ -160,7 +161,7 @@ const KPIS: KpiTrend[] = [
       needMore: 8,
       computedAt: AT,
     },
-    points: [{ week: "2026-11-09", value: 0.5, low: null, high: null, n: 2 }],
+    points: [{ week: "2026-W46", value: 0.5, low: null, high: null, n: 2 }],
   }),
   trend({
     metric: "tb_errors_per_endgame",
@@ -391,6 +392,17 @@ describe("skill-area pages", { timeout: 30_000 }, () => {
     expect(asked).toContain("accuracy.endgame");
     expect(asked.every((m) => !m.startsWith("weakness:"))).toBe(true);
     expect(asked).not.toContain("accuracy.opening");
+  });
+
+  it("dates each measure's weeks from the ISO week key (B2)", async () => {
+    await show("endgame");
+    const region = screen.getByRole("region", { name: "Measures" });
+    expect(region.textContent).not.toMatch(/unknown date/);
+    // 2026-W46 starts on Monday 9 Nov 2026.
+    expect(region.textContent).toMatch(/Week of 9 Nov 2026/);
+    const times = [...region.querySelectorAll("time")].map((t) => t.getAttribute("dateTime"));
+    expect(times).toContain("2026-11-09");
+    expect(times.every((t) => t == null || /^\d{4}-\d{2}-\d{2}$/.test(t))).toBe(true);
   });
 
   it("area weaknesses only", async () => {

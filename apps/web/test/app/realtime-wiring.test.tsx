@@ -43,6 +43,7 @@ vi.mock("../../src/server/overview", () => ({
   },
 }));
 vi.mock("../../src/app/(app)/app/_overview/view", () => ({
+  chooseTimeClass: () => null,
   knownTimeClass: () => null,
   parseTimeClass: () => null,
   REVEAL_COOKIE: "reveal",

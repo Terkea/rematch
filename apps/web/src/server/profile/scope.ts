@@ -1,11 +1,11 @@
 import type { Db } from "@ci/db";
 import { gameMetrics, linkedAccounts } from "@ci/db/generated";
 import { eq, inArray, sql } from "drizzle-orm";
+import { byTimeClass, TIME_CLASS_ORDER as TIME_CLASSES } from "../../lib/time-class";
 import { readOnly, scopedAccountIds } from "../games";
 import type { TimeClass } from "../games/types";
 import type { CoachScope } from "./types";
 
-const TIME_CLASSES: TimeClass[] = ["bullet", "blitz", "rapid", "classical", "daily"];
 const PLATFORMS = ["lichess", "chesscom"] as const;
 
 type Params = Record<string, string | string[] | undefined>;
@@ -23,7 +23,10 @@ export async function ownsScope(tx: Db, userId: string, scope: CoachScope): Prom
   return (await scopedAccountIds(tx, userId, scope.accountId)).length > 0;
 }
 
-/** Every (account, time class) of the user with analysed games, best first (ruling R1). */
+/**
+ * Every (account, time class) of the user with analysed games: rapid first, then blitz, then the
+ * rest (I8), and within a time class the most analysed games first (ruling R1).
+ */
 async function scopeOptions(tx: Db, userId: string): Promise<CoachScope["options"]> {
   const ids = await scopedAccountIds(tx, userId);
   if (ids.length === 0) return [];
@@ -46,9 +49,9 @@ async function scopeOptions(tx: Db, userId: string): Promise<CoachScope["options
     );
   return rows.sort(
     (a, b) =>
+      byTimeClass(a.timeClass, b.timeClass) ||
       b.analysedGames - a.analysedGames ||
       PLATFORMS.indexOf(a.platform) - PLATFORMS.indexOf(b.platform) ||
-      TIME_CLASSES.indexOf(a.timeClass) - TIME_CLASSES.indexOf(b.timeClass) ||
       a.username.localeCompare(b.username) ||
       (a.accountId < b.accountId ? -1 : a.accountId > b.accountId ? 1 : 0),
   );
@@ -57,7 +60,8 @@ async function scopeOptions(tx: Db, userId: string): Promise<CoachScope["options
 /**
  * The coach scope (ruling R1, ADR 0068): the `account` and `tc` params narrow the user's options
  * when they name one; a foreign, malformed or empty param is ignored, and a choice that matches
- * no option falls back to the default, the option with the most `game_metrics` rows. Null when
+ * no option falls back to the default, the first option: rapid when there is rapid (I8), with
+ * the most `game_metrics` rows. Null when
  * the user has no analysed game.
  */
 export async function resolveCoachScope(

@@ -9,6 +9,18 @@ import type { NextConfig } from "next";
 const dev = process.env.NODE_ENV !== "production";
 const source = (path: string) => fileURLToPath(new URL(path, import.meta.url));
 
+/** Tool output in the checkout that the dev watcher must not follow (M7: Fast Refresh churn). */
+const UNWATCHED = "**/.playwright-mcp/**";
+
+/** webpack's `watchOptions.ignored` plus `UNWATCHED`, whichever form Next gave it. */
+function ignoring(ignored: unknown): string[] | RegExp {
+  if (ignored instanceof RegExp) {
+    return new RegExp(String.raw`${ignored.source}|[\\/]\.playwright-mcp([\\/]|$)`, ignored.flags);
+  }
+  const list = Array.isArray(ignored) ? ignored : typeof ignored === "string" ? [ignored] : [];
+  return [...list.filter((g): g is string => typeof g === "string" && g.length > 0), UNWATCHED];
+}
+
 const nextConfig: NextConfig = {
   output: "standalone",
   // Keeps the dev indicator out of styleguide screenshots.
@@ -22,6 +34,10 @@ const nextConfig: NextConfig = {
   outputFileTracingRoot: source("../.."),
   transpilePackages: ["@ci/ui", "@ci/db", "@ci/chess-core"],
   webpack(config) {
+    config.watchOptions = {
+      ...config.watchOptions,
+      ignored: ignoring(config.watchOptions?.ignored),
+    };
     config.resolve.extensionAlias = {
       ...config.resolve.extensionAlias,
       ".js": [".ts", ".tsx", ".js"],

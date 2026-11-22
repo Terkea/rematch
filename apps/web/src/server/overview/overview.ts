@@ -1,5 +1,6 @@
 import { accountLinks, type Db, games, importRuns, linkedAccounts, moves } from "@ci/db";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { TIME_CLASS_ORDER } from "../../lib/time-class";
 import { listGames, playerResult, readOnly, scopedAccountIds } from "../games";
 import type { GameRow, PlayerResult, TimeClass } from "../games/types";
 import {
@@ -13,7 +14,6 @@ import {
 } from "../stats";
 import type { Overview } from "./types";
 
-const TIME_CLASS_ORDER: TimeClass[] = ["bullet", "blitz", "rapid", "classical", "daily"];
 const DAY = 86_400_000;
 const PERCENT = { min: 0, max: 100 };
 

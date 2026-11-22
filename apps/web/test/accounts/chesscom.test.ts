@@ -525,6 +525,30 @@ describe("listAccounts and removeLink", () => {
     expect((await listAccounts(db, a.id, late))[0]).not.toHaveProperty("code");
   });
 
+  it("a link that never had a code is unverified, not expired (I3)", async () => {
+    // As `dev:link` or any username link made without the code flow leaves it.
+    const a = await newUser();
+    const [shared] = await db
+      .insert(linkedAccounts)
+      .values({ platform: "chesscom", username: "no_code", displayName: "no_code" })
+      .returning();
+    if (!shared) throw new Error("no linked account");
+    await db
+      .insert(accountLinks)
+      .values({ userId: a.id, linkedAccountId: shared.id, method: "username" });
+    const [view] = await listAccounts(db, a.id, clock);
+    expect(view).toMatchObject({ status: "unverified", verified: false });
+    expect(view).not.toHaveProperty("code");
+    // "Verify this account" is the usual start: it issues the first code for the same link.
+    nextCode = "CI-DDDDDD";
+    const started = await startChesscomLink(deps(), a.id, "no_code");
+    expect(started).toMatchObject({ linkId: view?.linkId, code: "CI-DDDDDD", verified: false });
+    expect((await listAccounts(db, a.id, clock))[0]).toMatchObject({
+      status: "pending_verification",
+      code: "CI-DDDDDD",
+    });
+  });
+
   it("removeLink leaves the linked_accounts row (and its games) in place", async () => {
     const [a, b] = [await newUser(), await newUser()];
     const link = await startChesscomLink(deps(), a.id, "hikaru");

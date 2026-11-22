@@ -8,6 +8,7 @@ import {
 } from "@ci/ui/profile";
 import { type TimelineSeries, WeaknessTimeline } from "@ci/ui/timeline";
 import type { ReactNode } from "react";
+import { weekMonday } from "../../../../lib/iso-week";
 import type { WeeklyReviewView } from "../../../../server/coaching";
 import type { TimeClass } from "../../../../server/games/types";
 import { type KpiTrend, kpiDef, type WeaknessDetail } from "../../../../server/profile";
@@ -15,6 +16,8 @@ import { PageHeading } from "../../_shell/page-heading";
 import { SectionHead } from "../_overview/section-head";
 import { BeforeAfter, type BeforeAfterRow, beforeAfterRows, isoDay } from "./before-after";
 import { type FirstReview, WeeklyReviews } from "./weekly-reviews";
+
+export { weekMonday } from "../../../../lib/iso-week";
 
 // The progress page (M5b Task 10, spec §10a.4): before and after first, then the rating and the
 // KPIs on one shared time axis, the weakness timeline and the weekly reviews. Everything is built
@@ -138,21 +141,6 @@ export type ProgressViewModel = {
   timeline: { series: TimelineSeries[]; range: { from: string; to: string } } | null;
   weekly: { reviews: WeeklyReviewView[]; first: FirstReview };
 };
-
-/** "2026-W46" to that ISO week's Monday, "2026-11-09"; null when it is not a real ISO week. */
-export function weekMonday(week: string): string | null {
-  const m = /^(\d{4})-W(\d{2})$/.exec(week);
-  if (!m) return null;
-  const year = Number(m[1]);
-  const w = Number(m[2]);
-  if (w < 1 || w > 53) return null;
-  const jan4 = Date.UTC(year, 0, 4);
-  const dow = (new Date(jan4).getUTCDay() + 6) % 7;
-  const monday = jan4 - dow * DAY + (w - 1) * 7 * DAY;
-  // The week's Thursday decides its ISO year (week 53 exists only in some years).
-  if (new Date(monday + 3 * DAY).getUTCFullYear() !== year) return null;
-  return isoDay(new Date(monday));
-}
 
 const addDays = (iso: string, days: number) =>
   isoDay(new Date(Date.parse(`${iso}T00:00:00Z`) + days * DAY));

@@ -120,7 +120,9 @@ export async function loadExplorer(db: Db, userId: string, params: Params): Prom
   const linked = await explorerAccounts(db, userId);
   if (linked.length === 0) return { state: "no-links" };
   const accounts = linked.map(({ id, label }) => ({ id, label }));
-  const query = parseGameQuery(params);
+  // Rapid by default when the player has rapid games (I8); `tc=all` shows every game.
+  const rapid = await countGames(db, userId, { ...NO_FILTERS, timeClass: "rapid" });
+  const query = parseGameQuery(params, rapid > 0 ? "rapid" : null);
   const page = await listGames(db, userId, query);
   if (page.total > 0) return { state: "games", accounts, query, page };
   const filtered = Object.values(query.filters).some((v) => v !== null);

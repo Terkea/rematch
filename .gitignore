@@ -26,3 +26,6 @@ apps/web/e2e/.auth/
 
 # Written by `next dev` for coding agents (agentRules is off; T24)
 apps/web/AGENTS.md
+
+# Browser-automation output (Playwright MCP); never commit it (M7).
+.playwright-mcp/

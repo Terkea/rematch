@@ -13,6 +13,11 @@ export type GameFilters = {
 export type GameSortKey = "played" | "accuracy" | "opponent" | "blunders";
 export type GameListQuery = {
   filters: GameFilters;
+  /**
+   * The time control the URL means when it names none: rapid when the player has rapid games
+   * (I8). Then `tc=all` asks for every time control. Absent, no `tc` is every time control.
+   */
+  defaultTimeClass?: TimeClass;
   sort: { key: GameSortKey; dir: "asc" | "desc" };
   page: number;
 };

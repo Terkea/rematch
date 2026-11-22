@@ -88,11 +88,13 @@ function StatusLine({ account, fresh }: { account: LinkedAccountView; fresh: boo
   const text =
     account.status === "pending_verification"
       ? "Waiting for the code"
-      : account.status === "expiring"
-        ? "Access ends soon"
-        : account.platform === "lichess"
-          ? "Access ended"
-          : "Code expired";
+      : account.status === "unverified"
+        ? "Unverified"
+        : account.status === "expiring"
+          ? "Access ends soon"
+          : account.platform === "lichess"
+            ? "Access ended"
+            : "Code expired";
   return (
     <span className="inline-flex items-center gap-1.5 text-sm text-ink-soft">
       <Icon icon={account.status === "pending_verification" ? ClockIcon : WarningIcon} size={16} />
@@ -205,6 +207,23 @@ function AccountRow(props: RowProps) {
             onClick={props.onRestart}
           >
             Get a new code
+          </PendingButton>
+        </div>
+      ) : null}
+
+      {account.platform === "chesscom" && account.status === "unverified" ? (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-field bg-well p-4">
+          <p className="text-sm text-ink-soft">
+            This account isn't verified yet. Get a code to show it's yours.
+          </p>
+          <PendingButton
+            size="sm"
+            variant="outline"
+            pending={props.restarting}
+            pendingLabel="Getting a code"
+            onClick={props.onRestart}
+          >
+            Verify this account
           </PendingButton>
         </div>
       ) : null}

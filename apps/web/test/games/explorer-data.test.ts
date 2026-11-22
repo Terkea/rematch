@@ -1,5 +1,5 @@
 import { importRuns } from "@ci/db";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 import { loadExplorer } from "../../src/server/games/explorer";
 import { resetGameTables, seedAccount, seedSyntheticGame } from "../helpers/games";
@@ -67,6 +67,27 @@ describe("loadExplorer", () => {
       "chess.com MainHandle",
     ]);
     expect(e.accounts.map((a) => a.id).sort()).toEqual([mainId, altId].sort());
+  });
+
+  it("defaults to rapid when the player has rapid games, and tc=all shows every game (I8)", async () => {
+    await seedSyntheticGame(db, altId, {
+      playedAt: "2026-10-09T12:00:00Z",
+      timeClass: "blitz",
+      result: "0-1",
+    });
+    try {
+      const e = await loadExplorer(db, player, {});
+      expect(e.state).toBe("games");
+      if (e.state !== "games") return;
+      expect(e.query.filters.timeClass).toBe("rapid");
+      expect(e.page.total).toBe(3);
+      const all = await loadExplorer(db, player, { tc: "all" });
+      if (all.state !== "games") throw new Error(all.state);
+      expect(all.query.filters.timeClass).toBeNull();
+      expect(all.page.total).toBe(4);
+    } finally {
+      await db.execute(sql`delete from games where time_class = 'blitz'`);
+    }
   });
 
   it("keeps games (not the empty state) when only the filters match nothing", async () => {
