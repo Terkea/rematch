@@ -5,8 +5,10 @@
 //! until: oldestReached)` and checkpoints `oldestReached` (the oldest game committed so far, the
 //! *frontier*) every [`CHECKPOINT_EVERY`] games or [`CHECKPOINT_INTERVAL`], whichever comes
 //! first. When a pass finishes, `newestSeenAt` becomes the newest game stored and
-//! `oldestReached` is cleared. A run first finishes any interrupted pass, then fetches games newer
-//! than everything stored. Upserts make overlaps harmless, and every upserted game that is still
+//! `oldestReached` is cleared. A pass that stops at `max` keeps `oldestReached` (with `backfill`
+//! when it had no lower bound, and `newestSeenAt` then moved up), so the next run continues below
+//! it; for a backfill, `max` is a total and only the shortfall is fetched (TS fix 004307b). A run
+//! first finishes any interrupted pass, then fetches games newer than everything stored. Upserts make overlaps harmless, and every upserted game that is still
 //! `pending` is (re-)enqueued for analysis; the live-only dedupe key keeps one job per game.
 //!
 //! Changes from the TS reference (ADRs 0032, 0035):
@@ -514,35 +516,105 @@ impl Run<'_> {
             .unwrap_or(newest_seen_at)
     }
 
+    /// One budget (`max`) is shared by the passes of a run:
+    /// - an open backfill first fetches games newer than the watermark (a pending backfill never
+    ///   starves newly played games), then spends what is left below the frontier. For a
+    ///   backfill `max` is a total, the account's newest `max` games, so its pass fetches only
+    ///   the shortfall (plus the inclusive boundary game);
+    /// - an interrupted pass (a gap above an old watermark) is finished first, then the new games
+    ///   get what that pass left of `max`;
+    /// - otherwise one pass fetches the games newer than the watermark.
     async fn run_passes(
         &mut self,
         deadline: &Deadline,
         cancel: &CancellationToken,
     ) -> Result<(), ImportFailure> {
         let platform = self.platform()?;
-        if let Some(oldest) = self.cursor.oldest_reached {
-            let since = self
-                .cursor
-                .newest_seen_at
-                .map(|n| self.since_of(platform, n));
-            self.pass(platform, since, Some(oldest), deadline, cancel)
+        let since = |run: &Self| run.cursor.newest_seen_at.map(|n| run.since_of(platform, n));
+        match self.cursor.oldest_reached {
+            Some(oldest) if self.cursor.backfill => {
+                let newer = since(self);
+                let (stopped, _) = self
+                    .pass(platform, newer, None, self.max, true, deadline, cancel)
+                    .await?;
+                if stopped {
+                    return Ok(());
+                }
+                let mut budget = self.max;
+                if let Some(max) = self.max {
+                    let stored: i64 =
+                        sqlx::query_scalar("SELECT count(*) FROM games WHERE account_id = $1")
+                            .bind(self.account.id)
+                            .fetch_one(&self.deps.pool)
+                            .await?;
+                    let shortfall = i64::from(max) - stored + 1;
+                    if shortfall <= 1 {
+                        return Ok(());
+                    }
+                    budget = Some(u32::try_from(shortfall).unwrap_or(u32::MAX));
+                }
+                // Everything above the frontier is imported: no lower bound.
+                self.pass(
+                    platform,
+                    None,
+                    Some(oldest),
+                    budget,
+                    false,
+                    deadline,
+                    cancel,
+                )
                 .await?;
+            }
+            Some(oldest) => {
+                let (stopped, streamed) = self
+                    .pass(
+                        platform,
+                        since(self),
+                        Some(oldest),
+                        self.max,
+                        false,
+                        deadline,
+                        cancel,
+                    )
+                    .await?;
+                if stopped {
+                    return Ok(());
+                }
+                let left = self.max.map(|m| m.saturating_sub(streamed));
+                self.pass(platform, since(self), None, left, false, deadline, cancel)
+                    .await?;
+            }
+            None => {
+                self.pass(
+                    platform,
+                    since(self),
+                    None,
+                    self.max,
+                    false,
+                    deadline,
+                    cancel,
+                )
+                .await?;
+            }
         }
-        let since = self
-            .cursor
-            .newest_seen_at
-            .map(|n| self.since_of(platform, n));
-        self.pass(platform, since, None, deadline, cancel).await
+        Ok(())
     }
 
+    /// Streams one pass and returns `(stopped, streamed)`: `stopped` when it hit `max` (the
+    /// history may go on), and the frontier is then kept for the next run; otherwise the stream
+    /// ended. With `keep_frontier` (the new-games pass of a backfill) a finished pass moves the
+    /// watermark up and leaves the backfill frontier open.
+    #[allow(clippy::too_many_arguments)]
     async fn pass(
         &mut self,
         platform: Platform,
         since: Option<OffsetDateTime>,
         until: Option<OffsetDateTime>,
+        max: Option<u32>,
+        keep_frontier: bool,
         deadline: &Deadline,
         cancel: &CancellationToken,
-    ) -> Result<(), ImportFailure> {
+    ) -> Result<(bool, u32), ImportFailure> {
         let deps = self.deps;
         let source = deps.sources.get(&platform).cloned().ok_or_else(|| {
             ImportFailure::Config(format!("no game source for {}", platform.as_str()))
@@ -555,11 +627,8 @@ impl Run<'_> {
             client = with_circuit_breaker(client, breaker.clone());
         }
         let username = self.account.username.clone();
-        let opts = FetchOptions {
-            since,
-            until,
-            max: self.max,
-        };
+        let opts = FetchOptions { since, until, max };
+        let mut streamed: u32 = 0;
         let expired = deadline.token();
         {
             let mut stream = source.fetch(client, &username, opts);
@@ -579,11 +648,11 @@ impl Run<'_> {
                 };
                 let Some(item) = next else { break };
                 deadline.reset();
+                streamed = streamed.saturating_add(1);
                 self.store(item?).await?;
                 deadline.reset();
             }
         }
-        // The pass reached its lower bound: everything up to the newest stored game is imported.
         let newest: Option<OffsetDateTime> =
             sqlx::query_scalar("SELECT max(played_at) FROM games WHERE account_id = $1")
                 .bind(self.account.id)
@@ -593,12 +662,36 @@ impl Run<'_> {
             (Some(a), Some(b)) => Some(a.max(b)),
             (a, b) => a.or(b),
         };
-        self.frontier = None;
-        self.cursor = ImportCursor {
-            oldest_reached: None,
-            newest_seen_at: newest,
-        };
-        self.checkpoint().await
+        // The frontier only moves down, so during a backfill's new-games pass it stays at (or,
+        // with a look-back reaching below it, contiguously under) the backfill frontier.
+        self.frontier = self.frontier.or(self.cursor.oldest_reached);
+        // A pass cut off by max has not reached its lower bound: keep the frontier.
+        if max.is_some_and(|m| streamed >= m) {
+            // A pass without a lower bound (a first run, or a backfill) has imported everything
+            // above its frontier, so the watermark moves up. A pass bounded by an old watermark
+            // leaves it: the gap between the two is what the next run resumes.
+            if since.is_none() && self.frontier.is_some() {
+                self.cursor.newest_seen_at = newest;
+                self.cursor.backfill = true;
+            }
+            self.checkpoint().await?;
+            return Ok((true, streamed));
+        }
+        if keep_frontier && self.frontier.is_some() {
+            // Everything above the backfill frontier is imported now.
+            self.cursor.newest_seen_at = newest;
+        } else {
+            // The pass reached its lower bound: everything up to the newest stored game is
+            // imported.
+            self.frontier = None;
+            self.cursor = ImportCursor {
+                oldest_reached: None,
+                newest_seen_at: newest,
+                backfill: false,
+            };
+        }
+        self.checkpoint().await?;
+        Ok((false, streamed))
     }
 
     async fn store(&mut self, g: NormalizedGame) -> Result<(), ImportFailure> {
