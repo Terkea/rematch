@@ -43,8 +43,8 @@ pub const MAX_DIFFICULTY_ATTEMPTS: i16 = 3;
 /// Failed calls (transport, timeout, an unusable whole answer) charged to a row while Maia
 /// stayed healthy. Such rows move to the back of each sweep, so they never block the others; at
 /// this cap the row is parked: it stays `pending_maia` (never final, never estimated) and the
-/// sweep skips it. [`unpark_call_failures`] makes parked rows eligible again (for example after
-/// a Maia redeploy).
+/// sweep skips it. [`SweepReport::parked`] and [`count_parked`] show them, and
+/// [`unpark_call_failures`] makes them eligible again (for example after a Maia redeploy).
 pub const MAX_CALL_FAILURES: i16 = 5;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -80,6 +80,8 @@ pub struct SweepReport {
     pub stopped_early: bool,
     /// Games whose rows changed, ascending (their metrics need recomputing).
     pub games: Vec<Uuid>,
+    /// Pending rows parked at [`MAX_CALL_FAILURES`], skipped by every sweep until unparked.
+    pub parked: u64,
 }
 
 #[derive(sqlx::FromRow)]
@@ -111,6 +113,7 @@ pub async fn reenrich_pending_difficulty(
     };
     if !report.maia_healthy {
         tracing::info!("maia not healthy; pending difficulty left for a later sweep");
+        report_parked(pool, &mut report).await?;
         return Ok(report);
     }
     let mut games = BTreeSet::new();
@@ -291,6 +294,7 @@ pub async fn reenrich_pending_difficulty(
         }
     }
     report.games = games.into_iter().collect();
+    report_parked(pool, &mut report).await?;
     Ok(report)
 }
 
@@ -328,13 +332,41 @@ async fn set_status(
     Ok(n > 0)
 }
 
-/// Makes parked rows (at [`MAX_CALL_FAILURES`]) eligible for the sweep again. Returns the rows
-/// reset.
+/// Makes parked rows (`difficulty_call_failures >= MAX_CALL_FAILURES`, still `pending_maia`)
+/// eligible for the sweep again by resetting their count to 0. Rows below the cap keep their
+/// count, and so their place at the back of the sweep. Returns the rows reset.
 pub async fn unpark_call_failures(pool: &PgPool) -> Result<u64, sqlx::Error> {
     Ok(sqlx::query(
-        "UPDATE move_features SET difficulty_call_failures = 0          WHERE difficulty_status = 'pending_maia' AND difficulty_call_failures > 0",
+        "UPDATE move_features SET difficulty_call_failures = 0 \
+         WHERE difficulty_status = 'pending_maia' AND difficulty_call_failures >= $1",
     )
+    .bind(MAX_CALL_FAILURES)
     .execute(pool)
     .await?
     .rows_affected())
+}
+
+/// Pending rows parked at [`MAX_CALL_FAILURES`] (skipped by the sweep until unparked).
+pub async fn count_parked(pool: &PgPool) -> Result<u64, sqlx::Error> {
+    let n: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM move_features \
+         WHERE difficulty_status = 'pending_maia' AND difficulty_call_failures >= $1",
+    )
+    .bind(MAX_CALL_FAILURES)
+    .fetch_one(pool)
+    .await?;
+    Ok(n.max(0) as u64)
+}
+
+/// Sets `report.parked` and warns when any row is parked.
+async fn report_parked(pool: &PgPool, report: &mut SweepReport) -> Result<(), sqlx::Error> {
+    report.parked = count_parked(pool).await?;
+    if report.parked > 0 {
+        tracing::warn!(
+            parked = report.parked,
+            "pending difficulty rows parked after repeated failed maia calls; \
+             run unpark_call_failures once maia is fixed"
+        );
+    }
+    Ok(())
 }

@@ -16,7 +16,8 @@ use enrich::difficulty::{DifficultyOutcome, DifficultySource};
 use enrich::enrich_game::enrich_game;
 use enrich::persist::persist_move_features;
 use enrich::reenrich::{
-    MAX_CALL_FAILURES, MAX_DIFFICULTY_ATTEMPTS, SweepOptions, reenrich_pending_difficulty,
+    MAX_CALL_FAILURES, MAX_DIFFICULTY_ATTEMPTS, SweepOptions, count_parked,
+    reenrich_pending_difficulty, unpark_call_failures,
 };
 use enrich::types::DifficultyInput;
 use futures::future::BoxFuture;
@@ -478,4 +479,79 @@ async fn sweep_never_overwrites_a_row_changed_meanwhile(pool: PgPool) {
             .await
             .unwrap();
     assert_eq!((status.as_deref(), p_best), (Some("not_applicable"), None));
+}
+
+async fn set_call_failures(pool: &PgPool, ply: i32, n: i16) {
+    sqlx::query("UPDATE move_features SET difficulty_call_failures = $2 WHERE ply = $1")
+        .bind(ply)
+        .bind(n)
+        .execute(pool)
+        .await
+        .unwrap();
+}
+
+async fn call_failures(pool: &PgPool, ply: i32) -> i16 {
+    sqlx::query_scalar("SELECT difficulty_call_failures FROM move_features WHERE ply = $1")
+        .bind(ply)
+        .fetch_one(pool)
+        .await
+        .unwrap()
+}
+
+/// Fix round 2 (N1): parked rows are reported, and unparking makes a sweep resolve them.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn parked_rows_are_reported_and_unpark_lets_a_sweep_resolve_them(pool: PgPool) {
+    seed_pending(&pool).await;
+    set_call_failures(&pool, 11, MAX_CALL_FAILURES).await;
+    assert_eq!(count_parked(&pool).await.unwrap(), 1);
+    let maia = FakeMaia::new(true, MaiaMode::Ok);
+    let r = reenrich_pending_difficulty(&pool, maia.as_ref(), opts())
+        .await
+        .unwrap();
+    assert_eq!(
+        (r.resolved, r.parked),
+        (6, 1),
+        "the parked row is skipped but reported"
+    );
+    // Reported even when Maia is down.
+    let down = FakeMaia::new(false, MaiaMode::Ok);
+    let r = reenrich_pending_difficulty(&pool, down.as_ref(), opts())
+        .await
+        .unwrap();
+    assert_eq!(r.parked, 1);
+
+    assert_eq!(unpark_call_failures(&pool).await.unwrap(), 1);
+    assert_eq!(count_parked(&pool).await.unwrap(), 0);
+    let r = reenrich_pending_difficulty(&pool, maia.as_ref(), opts())
+        .await
+        .unwrap();
+    assert_eq!((r.resolved, r.parked), (1, 0));
+    assert_eq!(status_counts(&pool).await, (0, 7, 5));
+}
+
+/// Fix round 2 (N2): unparking resets only parked rows; rows below the cap keep their count
+/// (and so their place at the back of the sweep).
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn unpark_resets_only_parked_rows(pool: PgPool) {
+    seed_pending(&pool).await;
+    set_call_failures(&pool, 11, MAX_CALL_FAILURES).await;
+    set_call_failures(&pool, 13, MAX_CALL_FAILURES - 1).await;
+    set_call_failures(&pool, 15, MAX_CALL_FAILURES + 1).await;
+    assert_eq!(count_parked(&pool).await.unwrap(), 2);
+    assert_eq!(unpark_call_failures(&pool).await.unwrap(), 2);
+    assert_eq!(call_failures(&pool, 11).await, 0);
+    assert_eq!(call_failures(&pool, 13).await, MAX_CALL_FAILURES - 1);
+    assert_eq!(call_failures(&pool, 15).await, 0);
+    // Only pending rows are touched.
+    sqlx::query(
+        "UPDATE move_features SET difficulty_status = 'not_applicable', \
+           difficulty_reason = 'model_error', difficulty_call_failures = $1 WHERE ply = 17",
+    )
+    .bind(MAX_CALL_FAILURES)
+    .execute(&pool)
+    .await
+    .unwrap();
+    assert_eq!(count_parked(&pool).await.unwrap(), 0);
+    assert_eq!(unpark_call_failures(&pool).await.unwrap(), 0);
+    assert_eq!(call_failures(&pool, 17).await, MAX_CALL_FAILURES);
 }
