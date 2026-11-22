@@ -11,6 +11,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { CoachScopeSwitch } from "../../../../components/coach-scope-switch";
 import { MorphLink } from "../../../../components/shared-morph";
+import { comparisonBacksState } from "../../../../lib/explain";
 import type { CoachScope, DifficultyStatus, WeaknessSummary } from "../../../../server/profile";
 import {
   BENCHMARK_BIAS_TEXT,
@@ -97,16 +98,32 @@ export function groupColourWeaknesses(list: WeaknessSummary[], colour: "White" |
   ];
 }
 
+/**
+ * Costing states the peer comparison does not back (ADR 0084): the timeline marked them from
+ * every game since its last detected change, but over the estimate's 6 months the stored
+ * `P(rate > benchmark)` is below 0.7. They never sit under "Costing you games", whose rows the
+ * comparison on the same row has to agree with.
+ */
+export const WATCH_GROUP = {
+  id: "watching",
+  title: "Worth watching",
+  lede: "Your game-by-game record marks these active, emerging or back again, but over the last 6 months they are not clearly more often than the players you are compared with.",
+} as const;
+
 export function groupWeaknesses(list: WeaknessSummary[]) {
   const settled = list.filter((w) => w.evidence.sufficient);
   const compared = settled.filter((w) => w.compared);
+  const backed = compared.filter((w) => comparisonBacksState(w.state, w.confidence));
+  const [costing, ...rest] = GROUPS.map((g) => ({
+    id: g.id as string,
+    title: g.title as string,
+    lede: g.lede as string,
+    rows: backed.filter((w) => (g.states as readonly string[]).includes(w.state)),
+  }));
   return [
-    ...GROUPS.map((g) => ({
-      id: g.id as string,
-      title: g.title as string,
-      lede: g.lede as string,
-      rows: compared.filter((w) => (g.states as readonly string[]).includes(w.state)),
-    })),
+    ...(costing ? [costing] : []),
+    { ...WATCH_GROUP, rows: compared.filter((w) => !comparisonBacksState(w.state, w.confidence)) },
+    ...rest,
     { ...UNCOMPARED_GROUP, rows: settled.filter((w) => !w.compared) },
     { ...EARLY_GROUP, rows: list.filter((w) => !w.evidence.sufficient) },
   ];
@@ -251,6 +268,7 @@ export function WeaknessesView({
                             : { median: w.band.median }
                         }
                         compared={w.compared}
+                        confidence={w.confidence}
                         window={ESTIMATE_WINDOW_TEXT}
                         href={weaknessHref(w.seriesKey, scope)}
                         trend={trends.get(w.seriesKey) ?? []}
