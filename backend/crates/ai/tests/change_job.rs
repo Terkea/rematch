@@ -325,3 +325,81 @@ async fn a_cancelled_note_is_released_pending_and_meters_the_paid_call(pool: PgP
     assert_eq!(usage_rows(&pool, a).await.len(), 1, "the paid first call");
     assert!(events(&pool, a).await.is_empty());
 }
+
+/// Odd calls are paid but unusable; even calls (the repairs) are unavailable.
+fn paid_then_unavailable() -> std::sync::Arc<ai::client::fake::FakeAiClient> {
+    fake(|n| {
+        if n % 2 == 1 {
+            Ok(json!({ "nope": true }))
+        } else {
+            Err(AiError::Unavailable {
+                reason: UnavailableReason::Overloaded,
+                retry_after: None,
+            })
+        }
+    })
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_paid_first_call_is_metered_when_the_repair_is_unavailable(pool: PgPool) {
+    let a = account(&pool, "ch10").await;
+    enqueue(&pool, a).await;
+    let id = row(&pool, a, TACTICS).await.id;
+    let ai = paid_then_unavailable();
+    let h = ExplainChangeHandler(deps(&pool, Some(ai.clone())));
+    let e = h.handle(note_job(id), ctx()).await.unwrap_err();
+    assert!(matches!(e, JobError::Release { .. }), "{e:?}");
+    assert_eq!(structured_calls(&ai), 2);
+    assert_eq!(usage_rows(&pool, a).await.len(), 1, "the paid first call");
+    let r = row(&pool, a, TACTICS).await;
+    assert_eq!((r.status.as_str(), r.retry_count), ("pending", 1));
+    assert_eq!(r.text, None);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_paid_call_is_metered_when_retries_are_exhausted(pool: PgPool) {
+    let a = account(&pool, "ch11").await;
+    enqueue(&pool, a).await;
+    let id = row(&pool, a, TACTICS).await.id;
+    sqlx::query("UPDATE weakness_change_notes SET retry_count = 5 WHERE id = $1")
+        .bind(id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let h = ExplainChangeHandler(deps(&pool, Some(paid_then_unavailable())));
+    h.handle(note_job(id), ctx()).await.unwrap();
+    assert_eq!(row(&pool, a, TACTICS).await.status, "failed");
+    assert_eq!(usage_rows(&pool, a).await.len(), 1, "the paid first call");
+    assert_eq!(
+        events(&pool, a).await,
+        vec![(
+            "job.failed".to_owned(),
+            json!({ "kind": "explain-weakness-change", "reason": "ai_unavailable" })
+        )]
+    );
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn each_delivery_meters_its_own_paid_call(pool: PgPool) {
+    let a = account(&pool, "ch12").await;
+    enqueue(&pool, a).await;
+    let id = row(&pool, a, TACTICS).await.id;
+    let h = ExplainChangeHandler(deps(&pool, Some(paid_then_unavailable())));
+    for _ in 0..2 {
+        h.handle(note_job(id), ctx()).await.unwrap_err();
+    }
+    assert_eq!(usage_rows(&pool, a).await.len(), 2, "one row per paid call");
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_delivery_metered_twice_is_counted_once(pool: PgPool) {
+    let a = account(&pool, "ch13").await;
+    enqueue(&pool, a).await;
+    let id = row(&pool, a, TACTICS).await.id;
+    let h = ExplainChangeHandler(deps(&pool, Some(paid_then_unavailable())));
+    let j = note_job(id);
+    for _ in 0..2 {
+        h.handle(j.clone(), ctx()).await.unwrap_err();
+    }
+    assert_eq!(usage_rows(&pool, a).await.len(), 1);
+}

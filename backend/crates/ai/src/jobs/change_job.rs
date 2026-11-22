@@ -55,17 +55,20 @@ pub async fn enqueue_missing_change_notes(
         input.account_id == account_id,
         "the coaching input belongs to another account"
     );
-    let mut created = 0u32;
-    for change in &input.changes {
-        let note_input = WeaknessChangeInput {
-            change: change.clone(),
-            band: input.band,
-            time_class: input.time_class,
-            basis: input.basis.clone(),
-        };
-        let row = {
-            let mut conn = pool.acquire().await?;
-            notes::insert_note_if_absent(
+    // `input.changes` is bounded by the CoachingInput contract (`LIMITS.changes`, 20), and the
+    // budget guard bounds the spend of the jobs. The inserts share one connection, which is
+    // released before the enqueues (the queue takes its own).
+    let mut new_ids = Vec::new();
+    {
+        let mut conn = pool.acquire().await?;
+        for change in &input.changes {
+            let note_input = WeaknessChangeInput {
+                change: change.clone(),
+                band: input.band,
+                time_class: input.time_class,
+                basis: input.basis.clone(),
+            };
+            let row = notes::insert_note_if_absent(
                 &mut conn,
                 &NewNote {
                     account_id,
@@ -75,16 +78,20 @@ pub async fn enqueue_missing_change_notes(
                     input: serde_json::to_value(&note_input)?,
                 },
             )
-            .await?
-        };
-        if let Some(row) = row {
-            enqueue_change(queue, row.id, account_id)
-                .await
-                .map_err(|e| anyhow::anyhow!("enqueue change note: {e}"))?;
-            created += 1;
+            .await?;
+            if let Some(row) = row {
+                new_ids.push(row.id);
+            }
         }
     }
-    Ok(created)
+    // An enqueue that fails leaves its note (and any later new note) pending with no job: the
+    // `ai-reconcile` sweep (T21) enqueues pending notes that have no live job.
+    for id in &new_ids {
+        enqueue_change(queue, *id, account_id)
+            .await
+            .map_err(|e| anyhow::anyhow!("enqueue change note: {e}"))?;
+    }
+    Ok(u32::try_from(new_ids.len()).unwrap_or(u32::MAX))
 }
 
 /// R1 `Handler` for `explain-weakness-change`.

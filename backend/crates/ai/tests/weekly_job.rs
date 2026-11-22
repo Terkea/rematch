@@ -444,3 +444,46 @@ async fn an_already_cancelled_review_makes_no_call(pool: PgPool) {
     assert_eq!(structured_calls(&ai), 0);
     assert_eq!(row(&pool, id).await.status, "pending");
 }
+
+/// Odd calls are paid but unusable; even calls (the repairs) are unavailable: every delivery
+/// pays exactly one call and then releases.
+fn paid_then_unavailable() -> std::sync::Arc<ai::client::fake::FakeAiClient> {
+    fake(|n| {
+        if n % 2 == 1 {
+            Ok(json!({ "nope": true }))
+        } else {
+            Err(AiError::Unavailable {
+                reason: UnavailableReason::Overloaded,
+                retry_after: None,
+            })
+        }
+    })
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn each_delivery_meters_its_own_paid_call(pool: PgPool) {
+    let a = account(&pool, "wk14").await;
+    let id = request(&pool, a).await.unwrap();
+    let h = WeeklyReviewHandler(deps(&pool, Some(paid_then_unavailable())));
+    // Two deliveries (each with its own lease token), each paying one call.
+    for _ in 0..2 {
+        let e = h.handle(weekly_job(id), ctx()).await.unwrap_err();
+        assert!(matches!(e, JobError::Release { .. }), "{e:?}");
+    }
+    assert_eq!(usage_rows(&pool, a).await.len(), 2, "one row per paid call");
+    assert_eq!(row(&pool, id).await.retry_count, 2);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_delivery_metered_twice_is_counted_once(pool: PgPool) {
+    let a = account(&pool, "wk15").await;
+    let id = request(&pool, a).await.unwrap();
+    let h = WeeklyReviewHandler(deps(&pool, Some(paid_then_unavailable())));
+    // The same delivery (one lease token) run twice: its metering key repeats, so the second
+    // write of call 0 adds nothing.
+    let j = weekly_job(id);
+    for _ in 0..2 {
+        h.handle(j.clone(), ctx()).await.unwrap_err();
+    }
+    assert_eq!(usage_rows(&pool, a).await.len(), 1);
+}

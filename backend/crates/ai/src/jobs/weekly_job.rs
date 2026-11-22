@@ -25,6 +25,12 @@
 //!   7. A cancel (`ctx.cancel`: hard timeout, lost lease, shutdown) stops the generation, meters
 //!      the calls already returned (within `CANCEL_GRACE`), leaves the row `pending` with its
 //!      retry count unchanged and returns `Release { delay: 0 }`.
+//!
+//! Events go through account-level `emit`, not `emit_for_user`, on purpose: weekly reviews and
+//! change notes belong to the linked account (every user linked to it sees them), and the events
+//! carry only ids, keys, statuses and reasons, never review or note text. The T25 user-owned rule
+//! is for chat, whose threads and text belong to one user. A failure reason (`ai_disabled`,
+//! `budget`, ...) is only in `job.failed`: the tables have no error column.
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
