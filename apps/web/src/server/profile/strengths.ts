@@ -11,10 +11,19 @@ import {
   weaknessEstimates,
   weaknessStateHistory,
 } from "@ci/db/generated";
+import { Chess } from "chess.js";
 import { and, asc, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { readOnly } from "../games";
 import type { TimeClass } from "../games/types";
-import { BOOTSTRAP_RESAMPLES, CONFIDENCE, fnv1a, mulberry32, wilson } from "../stats";
+import {
+  BOOTSTRAP_RESAMPLES,
+  CONFIDENCE,
+  fnv1a,
+  mulberry32,
+  regIncBeta,
+  wilson,
+} from "../stats";
+import { type Benchmark, getBenchmark } from "./benchmark";
 import { type KpiDef, kpiDef, seriesLabel, weaknessDef } from "./catalogue";
 import { difficultyStatus } from "./difficulty";
 import { KPI_GLOSSARY } from "./glossary";
@@ -44,6 +53,14 @@ export const MIN_OPENING_GAMES = 10;
 export const HARD_P_BEST = 0.3;
 /** profile-core `features/derive.rs` `CRITICAL_GAP`: best line ahead of the second by this W%. */
 export const CRITICAL_GAP = 15;
+/**
+ * The fallback's balanced band (N11): the mover's win% before the move. Outside it the game was
+ * already decided, and the "only move" was usually just taking what was there.
+ */
+export const BALANCED_MIN = 25;
+export const BALANCED_MAX = 75;
+/** A "promising" opening is at least this likely to score above its expected score (N13). */
+export const PROMISING_P = 0.8;
 /** Boards in "Your best moves in hard spots". */
 export const MAX_SPOTS = 3;
 /** refdata `band_reference.rs` `MAX_FALLBACK_BANDS`. */
@@ -168,6 +185,68 @@ export function aboveBand(
       n: row.n,
       median: ref.median,
       band: ref.band,
+    });
+  }
+  return out;
+}
+
+/** One served `account_benchmark_stat` row of the peer benchmark (ADRs 0080, 0081). */
+export type PeerRow = {
+  metric: string;
+  median: number;
+  /** The pooled rate of a rate row; null for a mean row (the median of the opponents' means). */
+  pooledRate: number | null;
+  /** A rate row's raw chances in the window; null for a mean row. */
+  nChances: number | null;
+  nPlayers: number;
+};
+
+export type PeerClaim = Omit<BandClaim, "median" | "band"> & {
+  /** What the player is compared with: the pooled rate, or the median of the opponents' means. */
+  peer: number;
+  pooled: boolean;
+  chances: number | null;
+  players: number;
+};
+
+/**
+ * The KPIs whose stored last-50 interval lies wholly on the better side of the peers' compared
+ * value (the pooled rate where the row has one, else its median), with the catalogue's minimum
+ * games. A measure the peer benchmark does not compare (ADR 0081 mirrors) has no row: no claim.
+ */
+export function abovePeers(
+  current: {
+    metric: string;
+    value: number | null;
+    low: number | null;
+    high: number | null;
+    n: number;
+  }[],
+  peers: PeerRow[],
+): PeerClaim[] {
+  const out: PeerClaim[] = [];
+  for (const def of defs()) {
+    const row = current.find((r) => r.metric === def.metric);
+    const ref = peers.find((p) => p.metric === def.metric);
+    if (!row || !ref || row.n < def.minN) continue;
+    const pooled = fin(ref.pooledRate);
+    const peer = pooled ? (ref.pooledRate as number) : ref.median;
+    const { value, low, high } = row;
+    if (!fin(peer) || !fin(value) || !fin(low) || !fin(high) || low > high) continue;
+    if (!(def.higherIsBetter ? low > peer : high < peer)) continue;
+    out.push({
+      metric: def.metric,
+      label: def.label,
+      unit: def.unit,
+      higherIsBetter: def.higherIsBetter === true,
+      value,
+      low,
+      high,
+      n: row.n,
+      peer,
+      pooled,
+      chances: fin(ref.nChances) ? ref.nChances : null,
+      players: ref.nPlayers,
     });
   }
   return out;
@@ -394,6 +473,35 @@ export function workingOpenings(lines: OpeningInput[]): WorkingOpening[] {
   return out.sort((a, b) => b.low - b.expected - (a.low - a.expected) || b.n - a.n);
 }
 
+export type PromisingOpening = Omit<WorkingOpening, "low" | "high"> & {
+  /** Posterior probability that the line's true score is above the expected score. */
+  pAbove: number;
+};
+
+/**
+ * The "promising" tier (N13): lines with at least `MIN_OPENING_GAMES` games, not clearly above
+ * (`workingOpenings`), whose score is at least `PROMISING_P` likely above the mean expected
+ * score under a Beta(1 + points, 1 + n - points) posterior (a uniform prior; a draw counts
+ * half). Likeliest first.
+ */
+export function promisingOpenings(lines: OpeningInput[]): PromisingOpening[] {
+  const clear = new Set(workingOpenings(lines).map((o) => `${o.color}:${o.kind}:${o.lineKey}`));
+  const out: PromisingOpening[] = [];
+  for (const l of lines) {
+    if (clear.has(`${l.color}:${l.kind}:${l.lineKey}`)) continue;
+    const g = l.games.filter((x) => fin(x.score) && fin(x.expected));
+    if (g.length < MIN_OPENING_GAMES) continue;
+    const points = Math.min(g.length, Math.max(0, g.reduce((s, x) => s + x.score, 0)));
+    const expected = mean(g.map((x) => x.expected));
+    if (!(expected > 0 && expected < 1)) continue;
+    const pAbove = 1 - regIncBeta(expected, 1 + points, 1 + g.length - points);
+    if (!fin(pAbove) || pAbove < PROMISING_P) continue;
+    const { games: _games, ...rest } = l;
+    out.push({ ...rest, n: g.length, score: points / g.length, expected, pAbove });
+  }
+  return out.sort((a, b) => b.pAbove - a.pAbove || b.n - a.n);
+}
+
 // ---- 4. Your best moves in hard spots ----
 
 export type StrengthKind = "only_move_found" | "tactic_found";
@@ -416,6 +524,9 @@ export type HardSpotCandidate = {
   pBest: number | null;
   isCritical: boolean | null;
   multipvGap: number | null;
+  /** The opponent's move just before (its SAN and stored judgement), when there is one. */
+  prevSan: string | null;
+  prevJudgement: string | null;
 };
 
 export type HardSpots = {
@@ -426,6 +537,41 @@ export type HardSpots = {
 
 /** The engine's move, when the row records one (the strength ply already says it was played). */
 const playedBest = (c: HardSpotCandidate) => c.bestUci == null || c.bestUci === c.uci;
+
+const VALUE: Record<string, number> = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 100 };
+
+/**
+ * True for a capture anyone would find (N11): a recapture on the square the opponent just
+ * captured on, a capture of more than the capturing piece is worth, or one nothing can legally
+ * take back. False for a quiet move or a move that is not legal in `fen`.
+ */
+export function obviousCapture(fen: string, uci: string, prevSan: string | null): boolean {
+  let chess: Chess;
+  let move: ReturnType<Chess["move"]>;
+  try {
+    chess = new Chess(fen);
+    move = chess.move({
+      from: uci.slice(0, 2),
+      to: uci.slice(2, 4),
+      ...(uci.length > 4 ? { promotion: uci.slice(4, 5) } : {}),
+    });
+  } catch {
+    return false;
+  }
+  if (!move.captured) return false;
+  if (prevSan?.includes("x") && prevSan.replace(/[+#?!]/g, "").endsWith(move.to)) return true;
+  if ((VALUE[move.captured] ?? 0) > (VALUE[move.piece] ?? 0)) return true;
+  return !chess.moves({ verbose: true }).some((m) => m.to === move.to && m.captured);
+}
+
+/** Hard only on paper: the opponent's mistake or blunder handed it over, or free material. */
+const handedOver = (c: HardSpotCandidate) =>
+  c.prevJudgement === "mistake" ||
+  c.prevJudgement === "blunder" ||
+  obviousCapture(c.fen, c.uci, c.prevSan);
+
+const balanced = (c: HardSpotCandidate) =>
+  c.winBefore >= BALANCED_MIN && c.winBefore <= BALANCED_MAX;
 
 /** One per game first, then the rest, keeping `sorted`'s order. */
 function spread(sorted: HardSpotCandidate[]): HardSpotCandidate[] {
@@ -440,13 +586,15 @@ function spread(sorted: HardSpotCandidate[]): HardSpotCandidate[] {
 }
 
 /**
- * Up to `MAX_SPOTS` positions where the player found the engine's best move. Maia-hard ones
- * (difficulty `ok`, `p_best ≤ HARD_P_BEST`) first, hardest first; with none, the fallback is
- * critical positions (`is_critical`, the best line at least `CRITICAL_GAP` win% ahead of the
- * second), biggest gap first, newest on a tie.
+ * Up to `MAX_SPOTS` positions where the player found the engine's best move, never one the
+ * opponent's mistake or blunder handed over nor an obvious capture (`obviousCapture`). Maia-hard
+ * ones (difficulty `ok`, `p_best ≤ HARD_P_BEST`) first, hardest first; with none, the fallback is
+ * critical moments in a roughly balanced game (`is_critical`, the best line at least
+ * `CRITICAL_GAP` win% ahead of the second, the win% before between `BALANCED_MIN` and
+ * `BALANCED_MAX`), biggest gap first, newest on a tie.
  */
 export function pickHardSpots(candidates: HardSpotCandidate[]): HardSpots {
-  const ok = candidates.filter(playedBest);
+  const ok = candidates.filter((c) => playedBest(c) && !handedOver(c));
   const maia = ok.filter(
     (c) => c.difficultyStatus === "ok" && fin(c.pBest) && c.pBest <= HARD_P_BEST,
   );
@@ -458,7 +606,8 @@ export function pickHardSpots(candidates: HardSpotCandidate[]): HardSpots {
     return { mode: "maia", spots: spread(sorted) };
   }
   const critical = ok.filter(
-    (c) => c.isCritical === true && fin(c.multipvGap) && c.multipvGap >= CRITICAL_GAP,
+    (c) =>
+      c.isCritical === true && fin(c.multipvGap) && c.multipvGap >= CRITICAL_GAP && balanced(c),
   );
   if (critical.length === 0) return { mode: "none", spots: [] };
   const sorted = [...critical].sort(
