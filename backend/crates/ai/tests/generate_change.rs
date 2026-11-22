@@ -111,7 +111,17 @@ fn change_evidence_is_the_change_only() {
             .contains_key(&format!("changes.{K}.onsetDate"))
     );
     assert!(!ev.number_paths.keys().any(|p| p.starts_with("basis.")));
-    assert!(ev.rate_paths.contains(&format!("changes.{K}.rateAfter")));
+    assert!(
+        ev.rate_paths
+            .contains(&format!("changes.{K}.posteriorProb"))
+    );
+    // Fix round 1 (I1): only the direction-reading ratio; no raw rates, no inverse ratio.
+    for p in ["rateBefore", "rateAfter", "ratioBeforeAfter"] {
+        assert!(
+            !ev.number_paths.contains_key(&format!("changes.{K}.{p}")),
+            "{p}"
+        );
+    }
 }
 
 #[tokio::test]
@@ -253,4 +263,112 @@ async fn a_number_outside_the_change_is_rejected() {
         codes.contains(&ValidationCode::UnresolvedToken),
         "{codes:?}"
     );
+}
+
+// ---- fix round 1 (review I1) ----------------------------------------------------------------
+
+/// b2-rapid's change with its rates swapped: 0.14 → 0.22, an increase.
+fn up_change_input() -> WeaknessChangeInput {
+    let mut c = change_input();
+    c.change.rate_before = 0.14;
+    c.change.rate_after = 0.22;
+    c
+}
+
+/// Each text, with two citations, is rejected by the validator alone.
+async fn rejected(input: &WeaknessChangeInput, text: &str) -> Vec<ValidationCode> {
+    let t = text.to_owned();
+    let ai = fake(move |_| note(&t, &two_cites()));
+    let budget = no_budget();
+    let o = explain_weakness_change(&ai, &budget, input).await.unwrap();
+    assert_eq!(o.status, SectionStatus::Dropped, "{text:?} was accepted");
+    o.dropped
+        .iter()
+        .flat_map(|d| d.errors.iter().map(|e| e.code))
+        .collect()
+}
+
+#[tokio::test]
+async fn a_down_change_cannot_be_written_as_an_increase() {
+    let input = change_input();
+    let since = format!("Since about {{{{date:changes.{K}.onsetDate}}}}");
+    let token_cases = [
+        format!(
+            "{since} you may be missing back-rank threats about {{{{num:changes.{K}.ratioBeforeAfter|dec1}}}} times as often."
+        ),
+        format!(
+            "{since} your rate may have gone from {{{{num:changes.{K}.rateAfter|pct0}}}} to {{{{num:changes.{K}.rateBefore|pct0}}}}."
+        ),
+    ];
+    for t in &token_cases {
+        let codes = rejected(&input, t).await;
+        assert!(
+            codes.contains(&ValidationCode::UnresolvedToken),
+            "{t}: {codes:?}"
+        );
+    }
+    for w in [
+        "you may be missing back-rank threats more",
+        "these slips may have spiked",
+        "these slips may have climbed",
+        "these slips may have grown",
+        "this may keep happening again",
+        "this may be a bigger problem",
+    ] {
+        let codes = rejected(&input, &format!("{since} {w}.")).await;
+        assert!(
+            codes.contains(&ValidationCode::FreeTextFact),
+            "{w}: {codes:?}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn an_up_change_cannot_be_written_as_a_decrease() {
+    let input = up_change_input();
+    let since = format!("Since about {{{{date:changes.{K}.onsetDate}}}}");
+    let codes = rejected(
+        &input,
+        &format!("{since} you may be missing back-rank threats about {{{{num:changes.{K}.ratioBeforeAfter|dec1}}}} times as often."),
+    )
+    .await;
+    assert!(
+        codes.contains(&ValidationCode::UnresolvedToken),
+        "{codes:?}"
+    );
+    for w in [
+        "you may miss back-rank threats less",
+        "you may rarely miss back-rank threats",
+        "these slips may no longer happen",
+        "these slips may have gone away",
+        "these slips may have eased",
+        "these slips may have dipped",
+    ] {
+        let codes = rejected(&input, &format!("{since} {w}.")).await;
+        assert!(
+            codes.contains(&ValidationCode::FreeTextFact),
+            "{w}: {codes:?}"
+        );
+    }
+    // The honest up-change note passes: the ratio reads correctly as "times as often".
+    let ok = format!(
+        "{since} you may be missing back-rank threats about {{{{num:changes.{K}.ratioAfterBefore|dec1}}}} times as often, around the time you switched to blitz."
+    );
+    let t = ok.clone();
+    let ai = fake(move |_| note(&t, &two_cites()));
+    let budget = no_budget();
+    let o = explain_weakness_change(&ai, &budget, &input).await.unwrap();
+    assert_eq!(o.status, SectionStatus::Ready, "{:?}", o.dropped);
+}
+
+#[tokio::test]
+async fn the_web_copy_of_a_dropped_note_has_no_model_text() {
+    let input = change_input();
+    let ai = fake(|_| note("This was caused by blitz, you may see.", &two_cites()));
+    let budget = no_budget();
+    let o = explain_weakness_change(&ai, &budget, &input).await.unwrap();
+    assert_eq!(o.status, SectionStatus::Dropped);
+    let web = serde_json::to_string(&o.web_dropped()).unwrap();
+    assert!(!web.contains("caused") && !web.contains("detail"), "{web}");
+    assert!(web.contains("causal_claim"), "{web}");
 }

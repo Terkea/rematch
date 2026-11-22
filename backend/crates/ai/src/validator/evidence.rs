@@ -597,8 +597,11 @@ pub fn build_evidence(input: &CoachingInput) -> Evidence {
 /// - numbers and dates mined from `json`, and its `{{num:}}`/`{{date:}}` path index (top-level
 ///   `changes`, `metricDeltas` and `focusUpdates` are keyed by their id fields);
 /// - `exemplars` as positions;
-/// - for each of `changes` (which must sit in `json`'s top-level `changes` array): its ratio
-///   paths and ratios, its rate paths, its onset game and its examples;
+/// - for each of `changes` (which must sit in `json`'s top-level `changes` array): its onset
+///   game and examples, `ratioAfterBefore` (the factor that reads correctly with "times as
+///   often") and `posteriorProb` as a rate. The raw `rateBefore`/`rateAfter` paths and
+///   `ratioBeforeAfter` are left out (T15 fix round 1, review I1): swapped, or quoted as "times
+///   as often", they state the opposite of the detected direction through a valid token;
 /// - `rate_paths`: further rate or share paths (marked only when their value is in [0, 1]).
 pub fn build_evidence_from(
     json: &Value,
@@ -611,6 +614,9 @@ pub fn build_evidence_from(
     ev.walk_paths(json, "", None);
     for c in changes {
         let base = format!("changes.{}", seg(&c.series_key));
+        for f in ["rateBefore", "rateAfter"] {
+            ev.number_paths.remove(&format!("{base}.{f}"));
+        }
         if c.rate_before != 0.0 {
             ev.put_number_path(
                 &format!("{base}.ratioAfterBefore"),
@@ -618,15 +624,7 @@ pub fn build_evidence_from(
             );
             ev.add_ratio(c.rate_after / c.rate_before);
         }
-        if c.rate_after != 0.0 {
-            ev.put_number_path(
-                &format!("{base}.ratioBeforeAfter"),
-                c.rate_before / c.rate_after,
-            );
-            ev.add_ratio(c.rate_before / c.rate_after);
-        }
-        let rates = ["rateBefore", "rateAfter", "posteriorProb"].map(|f| format!("{base}.{f}"));
-        ev.mark_rate_paths(&rates);
+        ev.mark_rate_paths(&[format!("{base}.posteriorProb")]);
         ev.add_game(&c.onset_game_id);
         for e in &c.examples {
             ev.add_exemplar(&e.position);

@@ -11,6 +11,7 @@ use serde_json::{Value, json};
 
 use super::attempt::{Attempted, Checked, attempt_and_repair, parsed};
 use super::context::canonical_json_escaped;
+use super::payload::PayloadDroppedItem;
 use super::request::rules_block;
 use super::section::{BeforeCall, CallRecord, SectionError, SectionStatus};
 use crate::client::model::{Effort, Models};
@@ -47,8 +48,9 @@ fn change_json(input: &WeaknessChangeInput) -> Value {
     json!({ "changes": [serde_json::to_value(&input.change).expect("TimelineChange serialises")] })
 }
 
-/// The index of a change note: the change's examples, numbers and dates only (with its ratio
-/// and rate paths). The basis and the rest of the input cannot be cited.
+/// The index of a change note: the change's examples, numbers and dates only, with
+/// `ratioAfterBefore` as its only rate figure (no raw rates, no inverse ratio: fix round 1,
+/// review I1). The basis and the rest of the input cannot be cited.
 pub fn build_change_evidence(input: &WeaknessChangeInput) -> Evidence {
     build_evidence_from(&change_json(input), &[], &[&input.change], &[])
 }
@@ -125,9 +127,18 @@ pub struct ChangeOutcome {
     pub text: Option<String>,
     pub segments: Option<Vec<Segment>>,
     pub citations: Vec<Citation>,
+    /// The audit copy, for storage only: its `detail` strings quote rejected model text. Never
+    /// send it to the web; send [`ChangeOutcome::web_dropped`] (T14 I2 ruling).
     pub dropped: Vec<DroppedItem>,
     /// Every model call made: 1 or 2. All of them are metered.
     pub calls: Vec<CallRecord>,
+}
+
+impl ChangeOutcome {
+    /// `dropped` as the web may see it: codes and paths, no `detail`.
+    pub fn web_dropped(&self) -> Vec<PayloadDroppedItem> {
+        self.dropped.iter().map(PayloadDroppedItem::from).collect()
+    }
 }
 
 struct Note {

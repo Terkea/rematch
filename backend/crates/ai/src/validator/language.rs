@@ -136,14 +136,17 @@ lazy_re!(
     ENGINE,
     r"\b(engine|stockfish|winning|losing|(check)?mate[sd]?|advantage|equal|top\s+choice|best\s+move|threw\s+away)\b"
 );
-// R3 Task 15: the direction words of a change in an event rate, for change notes.
+// R3 Task 15: the direction words of a change in an event rate, for change notes and the
+// non-outcome weekly items. Fix round 1 (review I1) adds the bare comparatives and the
+// everyday verbs ("more", "spiked", "again"; "less", "rarely", "eased"): a bare `more` or
+// `less` fails some honest texts, the accepted side to fail on.
 lazy_re!(
     RATE_UP,
-    r"\b(more\s+(often|frequently)|increas\w*|ris(e|es|en|ing)|rose|went\s+up|higher|worse\w*|worsen\w*|regress\w*|(came|comes|coming)\s+back|return(s|ed|ing)?)\b"
+    r"\b(more|increas\w*|ris(e|es|en|ing)|rose|(went|gone|go|goes|going)\s+up|higher|worse\w*|worsen\w*|regress\w*|(came|come|comes|coming)\s+back|return\w*|spik\w*|climb\w*|grow\w*|grew|jump\w*|bigger|larger|again|doubl\w*|tripl\w*|surg\w*|soar\w*|(crept|creep\w*)\s+up|pick(ed|ing)?\s+up)\b"
 );
 lazy_re!(
     RATE_DOWN,
-    r"\b(less\s+(often|frequently)|fewer|decreas\w*|dropp(ed|ing)|fell|falling|went\s+down|lower\w*|reduc\w*|improv\w*|better|resolved|fixed|stopped|declin\w*)\b"
+    r"\b(less|fewer|decreas\w*|drop\w*|fell|fall\w*|(went|gone|go|goes|going)\s+down|lower\w*|reduc\w*|improv\w*|better|resolved|fixed|stopped|declin\w*|rare\w*|no\s+longer|gone\s+away|(went|go|goes|going)\s+away|eas(e|ed|es|ing)|dip\w*|shr[iu]nk\w*|shrank|halv\w*|smaller|fad(e|ed|es|ing)|vanish\w*|disappear\w*|cut\s+down|settl\w*\s+down)\b"
 );
 lazy_re!(BLUNDER, r"\b(blunder|mistake)\w*");
 // Fix round 1 (C6): quantities and absolutes in words.
@@ -430,6 +433,24 @@ pub fn change_direction(rate_before: f64, rate_after: f64) -> TextRule {
                 (
                     ValidationCode::FreeTextFact,
                     format!("{m:?} is not the direction of the detected change"),
+                )
+            })
+            .collect()
+    })
+}
+
+/// No word of change in either direction (T15 fix round 1, review I2): for weekly texts that
+/// are not outcomes, where a change is an outcome claim without its likelihood phrase
+/// (`likelihood_mismatch`). A forbidding rule.
+pub fn no_change_words() -> TextRule {
+    Box::new(|stripped: &str, ctx: &TextCtx| {
+        [&RATE_UP, &RATE_DOWN]
+            .into_iter()
+            .flat_map(|p| find_all(p, stripped, ctx))
+            .map(|m| {
+                (
+                    ValidationCode::LikelihoodMismatch,
+                    format!("{m:?} claims a change outside an outcome"),
                 )
             })
             .collect()
