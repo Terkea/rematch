@@ -206,6 +206,7 @@ export function Board({
   const reduced = useReducedMotion();
   const chess = useMemo(() => load(fen), [fen]);
   const position = useMemo(() => placement(fen), [fen]);
+  const occupied = useMemo(() => new Set<string>(position.keys()), [position]);
   const [selected, setSelected] = useState<Square | null>(null);
   const [focus, setFocus] = useState<Square | null>(null);
   const played = useRef(new Set<number>()).current;
@@ -408,6 +409,7 @@ export function Board({
             annotations={annotations}
             orientation={orientation}
             animate={animateAnnotations}
+            occupied={occupied}
           />
         ) : null}
         <SquareGrid

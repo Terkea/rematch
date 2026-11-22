@@ -56,7 +56,7 @@ export function sanOf(fen: string, uci: string): string | null {
 }
 
 /**
- * "31. Rxe6?? is a blunder. Win chance 64% to 22%. The engine preferred Bxe6." For the opponent's
+ * "31. Rxe6?? is a blunder. Your win chance 64% to 22%. The engine preferred Bxe6." For the opponent's
  * judged moves it names them and gives the player's win chance. A best move "matches the engine's
  * choice". Anything else, and the start, is null.
  */
@@ -71,7 +71,7 @@ export function moveCommentary(v: ReviewView, ply: number): string | null {
   const verdict = `${text} is ${ARTICLE[a.judgement]}`;
   const { before, after, basis } = a.drop;
   if (p.color === v.playerColor)
-    return `${verdict}${BASIS_CLAUSE[basis]}. Win chance ${pct(before)} to ${pct(after)}.${preferred}`;
+    return `${verdict}${BASIS_CLAUSE[basis]}. Your win chance ${pct(before)} to ${pct(after)}.${preferred}`;
   const by = ` by ${v[p.color].name}`;
   return `${verdict}${by}${BASIS_CLAUSE[basis]}. Your win chance ${pct(100 - before)} to ${pct(100 - after)}.${preferred}`;
 }

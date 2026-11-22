@@ -22,7 +22,9 @@ import {
   HALO_SCALE,
   HEAD_SCALE,
   isKnightMove,
+  type KnightRoute,
   knightCorner,
+  knightPath,
   maxWidth,
   outlinePoints,
   polyline,
@@ -37,6 +39,8 @@ import type { Annotation, AnnotationLayerProps, Orientation, Point, Tone } from 
 // The red-pen overlay (DESIGN.md, "Severity and marks", "Pen stroke geometry", M2, M3, M10).
 // Every stroke is a filled, tapered outline, painted twice (the `sheet` halo, then the fill) and
 // revealed through a mask whose centreline draws on by `pathLength`.
+
+const EMPTY: ReadonlySet<string> = new Set();
 
 const TONE_COLOUR: Readonly<Record<Tone, string>> = {
   pen: "var(--color-pen)",
@@ -79,6 +83,8 @@ interface Segment {
 
 interface StrokeMark {
   kind: "arrow" | "circle";
+  /** an arrow's knight route (`long` for any other arrow) */
+  route?: KnightRoute;
   key: string;
   tone: Tone;
   /** the halo's full stroke width (both sides) */
@@ -127,6 +133,7 @@ function planMarks(
   annotations: readonly Annotation[],
   orientation: Orientation,
   squarePx: number,
+  occupied: ReadonlySet<string> = EMPTY,
 ): Plan[] {
   const px = 1 / squarePx;
   const minWidth = 1.1 * px;
@@ -146,12 +153,17 @@ function planMarks(
     const pad = haloOf(a.tone) + px;
     if (a.kind === "arrow") {
       const delay = strokeIndex++ * stagger.pen;
-      // A knight's L runs its long leg first, unless that corner sits on another arrow's end.
-      let knight: "long" | "short" = "long";
+      // A knight's L runs its long leg first, unless that corner sits on another arrow's end or
+      // the L would cross a piece (T13 critic); then the short leg first, and when both cross a
+      // piece, a straight shaft between them.
+      let knight: KnightRoute = "long";
       if (isKnightMove(a.from, a.to)) {
         const c = knightCorner(a.from, a.to, orientation, "long");
         const sq = cellToSquare(Math.floor(c.x), Math.floor(c.y), orientation);
-        if (arrows.some((o) => o !== a && (o.from === sq || o.to === sq))) knight = "short";
+        const onArrowEnd = arrows.some((o) => o !== a && (o.from === sq || o.to === sq));
+        const crosses = (first: "long" | "short") =>
+          knightPath(a.from, a.to, first).some((s) => occupied.has(s));
+        if (onArrowEnd || crosses("long")) knight = crosses("short") ? "straight" : "short";
       }
       const { shaft, head } = arrowGeometry(a.from, a.to, orientation, {
         ringed: ringed.has(a.to) || a.toEdge === true,
@@ -211,6 +223,7 @@ function planMarks(
       lastEnd = Math.max(lastEnd, ...tracks.map((t) => t.delay + t.duration));
       plans.push({
         kind: "arrow",
+        route: knight,
         key: `arrow:${a.from}${a.to}:${a.tone}`,
         tone: a.tone,
         halo: haloOf(a.tone),
@@ -267,15 +280,18 @@ function planMarks(
     const right = col + 1 - inset - r;
     const top = row + inset + r;
     const bottom = row + 1 - inset - r;
-    // `edge`: on the square's top corners themselves, kept on the board (a1-style coordinates sit
-    // bottom left and bottom right, so the top corners never cover them).
+    // `edge`: on the square's top corners themselves, kept on the board. On the left column the
+    // top-left corner holds the rank number (M5a T13, T10 m1), so the fallback there is the
+    // square's own bottom-right corner, unless that holds a file letter (the bottom row).
     const onBoard = (v: number) => Math.min(8 - inset - r, Math.max(inset + r, v));
     const corners =
       a.place === "edge"
         ? [
             { x: onBoard(col + 1), y: onBoard(row), ok: true },
-            { x: onBoard(col), y: onBoard(row), ok: true },
-          ]
+            col !== 0
+              ? { x: onBoard(col), y: onBoard(row), ok: true }
+              : { x: right, y: bottom, ok: row !== 7 },
+          ].filter((c) => c.ok)
         : [
             { x: right, y: top, ok: true },
             { x: left, y: top, ok: col !== 0 },
@@ -372,7 +388,7 @@ function MarkPaint({
   const masked = (i: number) => (maskId ? { mask: `url(#${maskId(i)})` } : {});
   let index = 0;
   return (
-    <g data-mark={mark.kind} data-tone={mark.tone}>
+    <g data-mark={mark.kind} data-tone={mark.tone} data-route={mark.route}>
       {mark.groups.map((group, g) => {
         const first = index;
         index += group.length;
@@ -488,6 +504,7 @@ export function AnnotationLayer({
   annotations: given,
   orientation,
   animate: animated = true,
+  occupied,
 }: AnnotationLayerProps) {
   const reduced = useReducedMotion();
   const still = !animated || reduced;
@@ -496,8 +513,8 @@ export function AnnotationLayer({
   const id = `ann-${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
   const annotations = useMemo(() => unique(given), [given]);
   const plans = useMemo(
-    () => planMarks(annotations, orientation, squarePx),
-    [annotations, orientation, squarePx],
+    () => planMarks(annotations, orientation, squarePx, occupied),
+    [annotations, orientation, squarePx, occupied],
   );
   const strokes = plans.filter((p): p is StrokeMark => p.kind !== "mark");
   const badges = plans.filter((p): p is BadgeMark => p.kind === "mark");

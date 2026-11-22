@@ -7,6 +7,7 @@ import { Kbd } from "@ci/ui/primitives";
 import {
   ClockPair,
   type ClockSide,
+  moverRow,
   ReviewControls,
   type ReviewKeyAction,
   reviewKeyAction,
@@ -218,7 +219,17 @@ function ReviewDemo() {
       </div>
       <div className="flex min-w-0 flex-col gap-4 max-md:px-(--space-panel-pad)">
         {/* The fixture's %clk is whole seconds: no tenths it doesn't have. */}
-        <ClockPair top={top} bottom={bottom} spent={spentAt(ply)} tenths={false} />
+        <ClockPair
+          top={top}
+          bottom={bottom}
+          spent={(() => {
+            const s = spentAt(ply);
+            return s
+              ? { ...s, by: moverRow(ply, orientation === "white" ? "black" : "white") }
+              : null;
+          })()}
+          tenths={false}
+        />
         <Scoresheet
           moves={moves}
           currentPly={ply}
@@ -303,7 +314,7 @@ export function ReviewSection() {
           <ClockPair
             top={{ name: "Correspondent", rating: 1840, seconds: 183_600, toMove: false }}
             bottom={{ name: "You", rating: 1712, seconds: 40_210, toMove: true }}
-            spent={{ seconds: 3_723 }}
+            spent={{ seconds: 3_723, by: "bottom" }}
           />
         </figure>
         <figure className="flex flex-col gap-3 md:col-span-2">

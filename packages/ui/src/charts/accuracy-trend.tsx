@@ -296,7 +296,15 @@ export function AccuracyTrend({
         .sort((a, b) => a.time.getTime() - b.time.getTime()),
     [points],
   );
-  const omitted = points.length - sorted.length;
+  // What was left out, and why: a game with no valid date, and one with no accuracy, are told
+  // apart (T4 parked minor, settled in T13).
+  const omitted = useMemo(() => {
+    const badDate = points.filter((p) => !Number.isFinite(new Date(p.date).getTime())).length;
+    const noAccuracy = points.filter(
+      (p) => Number.isFinite(new Date(p.date).getTime()) && !Number.isFinite(p.accuracy),
+    ).length;
+    return { badDate, noAccuracy, any: badDate + noAccuracy > 0 };
+  }, [points]);
   const enough = sorted.length >= Math.max(1, minPoints);
 
   // One clock: a single clip sweeps left to right over the band and line, and each dot fades in
@@ -425,7 +433,7 @@ export function AccuracyTrend({
         <div className="flex h-24 items-center justify-center rounded-field bg-well px-4 text-center">
           <p className="m-0 text-sm text-ink-soft">Not enough games yet</p>
         </div>
-        {omitted > 0 && <OmittedNote count={omitted} />}
+        {omitted.any && <OmittedNote {...omitted} />}
       </div>
     );
   }
@@ -521,9 +529,13 @@ export function AccuracyTrend({
               {geo.ticks.map((t) => (
                 <text
                   key={t.iso}
-                  x={Math.min(Math.max(t.x, TREND_LEFT + 18), width - 24)}
+                  x={
+                    t.anchor === "middle"
+                      ? Math.min(Math.max(t.x, TREND_LEFT + 18), width - 24)
+                      : t.x
+                  }
                   y={plotBottom + 18}
-                  textAnchor="middle"
+                  textAnchor={t.anchor}
                   className="fill-ink-faint font-sans text-xs tabular-nums"
                 >
                   {t.text}
@@ -666,33 +678,41 @@ export function AccuracyTrend({
           </span>
         ))}
         {geo && geo.means.length > 0 && (
+          // The band is keyed only when one is drawn (T4 parked minor, settled in T13).
           <span className="flex items-center gap-2">
             <svg aria-hidden="true" width={18} height={12} className="shrink-0">
-              <rect
-                x={0}
-                y={2}
-                width={18}
-                height={8}
-                rx={1}
-                className="fill-pencil/45 dark:fill-pencil/60"
-              />
+              {geo.bands.length > 0 && (
+                <rect
+                  x={0}
+                  y={2}
+                  width={18}
+                  height={8}
+                  rx={1}
+                  className="fill-pencil/45 dark:fill-pencil/60"
+                />
+              )}
               <line x1={0} x2={18} y1={6} y2={6} strokeWidth={2} className="stroke-ink" />
             </svg>
-            <span>Rolling average, 80% band</span>
+            <span>{geo.bands.length > 0 ? "Rolling average, 80% band" : "Rolling average"}</span>
           </span>
         )}
-        {omitted > 0 && <OmittedNote count={omitted} />}
+        {omitted.any && <OmittedNote {...omitted} />}
       </div>
     </div>
   );
 }
 
-function OmittedNote({ count }: { count: number }) {
+function OmittedNote({ badDate, noAccuracy }: { badDate: number; noAccuracy: number }) {
+  const line = (n: number, why: string) =>
+    n === 1 ? `1 game has ${why} and isn't shown.` : `${n} games have ${why} and aren't shown.`;
   return (
-    <span className="text-sm text-ink-faint">
-      {count === 1
-        ? "1 game has no accuracy and isn't shown."
-        : `${count} games have no accuracy and aren't shown.`}
-    </span>
+    <>
+      {badDate > 0 && (
+        <span className="text-sm text-ink-faint">{line(badDate, "no valid date")}</span>
+      )}
+      {noAccuracy > 0 && (
+        <span className="text-sm text-ink-faint">{line(noAccuracy, "no accuracy")}</span>
+      )}
+    </>
   );
 }

@@ -46,6 +46,11 @@ export interface AnnotationLayerProps {
   orientation: Orientation;
   /** Draw the marks on (default). False, or reduced motion, renders them fully drawn. */
   animate?: boolean;
+  /**
+   * The squares holding a piece. With them, a knight's arrow takes the L that crosses no piece,
+   * or a straight shaft when both would (M5a T13).
+   */
+  occupied?: ReadonlySet<string>;
 }
 
 /** A point in board units: one square is 1, (0, 0) is the top-left corner as drawn. */

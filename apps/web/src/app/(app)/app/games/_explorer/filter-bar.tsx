@@ -5,7 +5,15 @@ import { Button, Field, Input, SegmentedControl, Select, touchTarget } from "@ci
 import { type ReactNode, useEffect, useId, useOptimistic, useRef, useState } from "react";
 import { parseGameQuery } from "../../../../../server/games/query";
 import type { GameFilters, GameListQuery } from "../../../../../server/games/types";
-import { type AccountOption, activeFilters, explorerHref, filterCount, NO_FILTERS } from "./href";
+import {
+  type AccountOption,
+  activeFilters,
+  dayWords,
+  explorerHref,
+  filterCount,
+  NO_FILTERS,
+  parseDayText,
+} from "./href";
 import { useExplorerNavigation } from "./transition";
 
 export type { AccountOption };
@@ -40,9 +48,11 @@ const SORTS = [
 ];
 
 /**
- * A date filter. The field keeps its own value while it is typed in, and navigates only once the
- * value is a day the URL accepts (so a year typed digit by digit, `0002`, never navigates). It is
- * never remounted, so focus stays put when the new page arrives.
+ * A date filter, read and typed in the app's own words ("1 Oct 2026"; also "2026-10-01" or
+ * "1/10/2026"), never the browser's locale-shaped date chrome (T13 critic). It navigates as soon
+ * as the text is a whole day the URL accepts, so a year typed digit by digit never navigates; on
+ * blur it shows the day in words, or says how to write one. It is never remounted, so focus stays
+ * put when the new page arrives.
  */
 function DateFilter({
   label,
@@ -57,20 +67,53 @@ function DateFilter({
   max?: string | null;
   onCommit: (day: string | null) => void;
 }) {
-  const [text, setText] = useState(value ?? "");
-  useEffect(() => setText(value ?? ""), [value]);
+  const words = (day: string | null) => (day ? dayWords(day) : "");
+  const [text, setText] = useState(words(value));
+  const [invalid, setInvalid] = useState(false);
+  const input = useRef<HTMLInputElement>(null);
+  const textRef = useRef(text);
+  textRef.current = text;
+  // A new value from the URL shows in words, unless the field is being typed in and already
+  // reads that day (the typed form stays while the player types).
+  useEffect(() => {
+    const typing = input.current !== null && document.activeElement === input.current;
+    if (typing && parseDayText(textRef.current) === value) return;
+    setText(value ? dayWords(value) : "");
+    setInvalid(false);
+  }, [value]);
+  const accepts = (day: string) =>
+    (!min || day >= min) &&
+    (!max || day <= max) &&
+    parseGameQuery({ from: day }).filters.from === day;
   return (
-    <Field label={label} className="md:w-40">
+    <Field
+      label={label}
+      className="md:w-40"
+      {...(invalid ? { error: "Write a date like 1 Oct 2026." } : {})}
+    >
       <Input
-        type="date"
+        type="text"
+        inputMode="text"
+        autoComplete="off"
+        spellCheck={false}
+        placeholder="e.g. 1 Oct 2026"
         value={text}
-        min={min ?? undefined}
-        max={max ?? undefined}
+        ref={input}
         onChange={(e) => {
           const v = e.currentTarget.value;
           setText(v);
-          if (v === "") onCommit(null);
-          else if (parseGameQuery({ from: v }).filters.from === v) onCommit(v);
+          setInvalid(false);
+          if (v.trim() === "") onCommit(null);
+          else {
+            const day = parseDayText(v);
+            if (day && accepts(day) && day !== value) onCommit(day);
+          }
+        }}
+        onBlur={() => {
+          if (text.trim() === "") return;
+          const day = parseDayText(text);
+          if (day && accepts(day)) setText(words(day));
+          else setInvalid(true);
         }}
       />
     </Field>

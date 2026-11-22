@@ -90,3 +90,18 @@ Web (M4) records use placeholder numbers until the controller renumbers them.
 - [0042. Shared Rust build caches across lanes](0042-shared-rust-build-caches.md)
 - [0043. No email address in outbound requests](0043-no-email-in-outbound-requests.md)
 - [0044. Postgres runs under an init process with an exec-form TCP healthcheck](0044-postgres-init-process-and-tcp-healthcheck.md)
+
+Web game pages (M5a):
+
+- [0046. The games read model: scoped, read-only, no API routes](0046-game-read-model-and-access.md)
+- [0047. Honest overview statistics](0047-honest-overview-statistics.md)
+- [0048. Games explorer: URL state, offset paging and UTC day filters](0048-explorer-url-state-and-paging.md)
+- [0049. Game review data: PGN-first plies, stored engine scores, honest gaps](0049-game-review-data.md)
+- [0050. Overview chart encodings](0050-overview-chart-encodings.md)
+- [0051. Game review interaction, board marks and honest judgements](0051-review-interaction.md)
+- [0052. The analysis reveal on the review page](0052-review-reveal.md)
+- [0053. Overview layout](0053-overview-layout.md)
+- [0054. Game review layout: the graph as the spine, with the mistakes ledger](0054-review-layout.md)
+- [0055. The overview page: honest rows, a broken trend line, a server-safe band, a session reveal](0055-overview-page.md)
+- [0056. Live refresh of the game pages, and a dev-only account link](0056-live-refresh-and-dev-account-link.md)
+- [0065. Game pages e2e: a guarded seed, their own quality and visual specs](0065-game-pages-e2e-and-visual-baselines.md)

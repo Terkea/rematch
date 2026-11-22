@@ -74,14 +74,40 @@ export interface ArrowOptions {
   tone?: Tone;
   /** a seed bows the shaft (as `roughen` does) and picks which side gets which head stroke */
   seed?: string;
-  /** which leg of a knight's L comes first: the two-square leg (default) or the one-square leg */
-  knight?: "long" | "short";
+  /**
+   * which leg of a knight's L comes first: the two-square leg (default) or the one-square leg; or
+   * `straight`, one segment, when both L's would cross a piece
+   */
+  knight?: KnightRoute;
 }
 
 const unit = (a: Point, b: Point): Point => {
   const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
   return { x: (b.x - a.x) / len, y: (b.y - a.y) / len };
 };
+
+export type KnightRoute = "long" | "short" | "straight";
+
+/**
+ * The squares a knight's L passes over (its corner and the square between), not its ends, for
+ * the leg order given. Orientation-free: board files and ranks.
+ */
+export function knightPath(from: Square, to: Square, first: "long" | "short"): Square[] {
+  const f1 = from.charCodeAt(0);
+  const r1 = Number(from[1]);
+  const f2 = to.charCodeAt(0);
+  const r2 = Number(to[1]);
+  const sq = (f: number, r: number) => `${String.fromCharCode(f)}${r}` as Square;
+  const fileLong = Math.abs(f2 - f1) === 2;
+  const sf = Math.sign(f2 - f1);
+  const sr = Math.sign(r2 - r1);
+  // Long leg first: two squares along the long axis, then one. Short first: the reverse.
+  if (fileLong === (first === "long")) {
+    // Along the file axis (horizontal) first.
+    return fileLong ? [sq(f1 + sf, r1), sq(f2, r1)] : [sq(f2, r1), sq(f2, r1 + sr)];
+  }
+  return fileLong ? [sq(f1, r2), sq(f1 + sf, r2)] : [sq(f1, r1 + sr), sq(f1, r2)];
+}
 
 /** True when the move is a knight's jump (one square one way, two the other). */
 export function isKnightMove(from: Square, to: Square): boolean {
@@ -119,7 +145,10 @@ export function arrowGeometry(
   const { ringed = false, tone = "pen", seed, knight = "long" } = options;
   const a = squareCenter(from, orientation);
   const b = squareCenter(to, orientation);
-  const corner = isKnightMove(from, to) ? knightCorner(from, to, orientation, knight) : null;
+  const corner =
+    isKnightMove(from, to) && knight !== "straight"
+      ? knightCorner(from, to, orientation, knight)
+      : null;
   const first = unit(a, corner ?? b);
   const last = unit(corner ?? a, b);
   let clear: number = ringed ? ARROW.endRinged : ARROW.end;

@@ -33,13 +33,13 @@ describe("moveCommentary", () => {
 
   it("says what the player's blunder cost and what the engine wanted", () => {
     expect(moveCommentary(white, 5)).toBe(
-      "3. Bc4?? is a blunder. Win chance 64% to 22%. The engine preferred d4.",
+      "3. Bc4?? is a blunder. Your win chance 64% to 22%. The engine preferred d4.",
     );
   });
 
   it("says when a judgement rests on a lost forced mate, not the drop", () => {
     expect(moveCommentary(white, 7)).toBe(
-      "4. Ng5?? is a blunder: it let a forced mate go. Win chance 98% to 90%. The engine preferred Bxf7+.",
+      "4. Ng5?? is a blunder: it let a forced mate go. Your win chance 98% to 90%. The engine preferred Bxf7+.",
     );
   });
 
@@ -67,7 +67,7 @@ describe("moveCommentary", () => {
       playerColor: "black",
     });
     expect(moveCommentary(v, 2)).toBe(
-      "1… e5?? is a blunder: it allows a forced mate. Win chance 8% to 2%.",
+      "1… e5?? is a blunder: it allows a forced mate. Your win chance 8% to 2%.",
     );
   });
 });

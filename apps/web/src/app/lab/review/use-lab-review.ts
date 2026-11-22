@@ -1,7 +1,7 @@
 "use client";
 
 import type { Square } from "@ci/ui/board";
-import { type ClockSide, useReviewKeys } from "@ci/ui/review";
+import { type ClockSide, moverRow, useReviewKeys } from "@ci/ui/review";
 import { Chess } from "chess.js";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -123,7 +123,10 @@ export function useLabReview(game: ReviewView) {
     clocks: {
       top: side(flipped ? "white" : "black"),
       bottom: side(flipped ? "black" : "white"),
-      spent: game.hasClocks ? spentAt(game, ply) : null,
+      spent: (() => {
+        const s = game.hasClocks ? spentAt(game, ply) : null;
+        return s ? { ...s, by: moverRow(ply, flipped ? "white" : "black") } : null;
+      })(),
     },
     boardLabel: `${title}, after ${move ? move.san : "the start"}, seen from ${flipped ? "Black" : "White"}`,
     go,

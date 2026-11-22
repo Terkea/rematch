@@ -10,6 +10,8 @@ export interface EstimateKpiProps {
   basisClass: string;
   /** One value per week, oldest first, in the estimate's units; null is a week with no games. */
   trend?: (number | null)[];
+  /** The games behind each trend point: the sparkline's ends then name their week and count. */
+  trendGames?: number[];
   headingLevel?: 2 | 3;
   /** The games the section already states: a row on the same basis keeps it for screen readers. */
   sectionGames?: number;
@@ -31,6 +33,7 @@ export function EstimateKpi({
   format,
   basisClass,
   trend,
+  trendGames,
   headingLevel = 3,
   sectionGames,
   better,
@@ -106,6 +109,7 @@ export function EstimateKpi({
       scale={false}
       {...(basisHidden ? { basisHidden } : {})}
       {...(scaled ? { trend: scaled, trendEnds: true } : {})}
+      {...(scaled && trendGames ? { trendGames } : {})}
       {...(better ? { better } : {})}
       {...(rollIn ? { rollIn, rollDelay: 200 } : {})}
     />

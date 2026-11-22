@@ -11,6 +11,7 @@ import { ProgressPlaceholder } from "@ci/ui/progress";
 import {
   ClockPair,
   type ClockSide,
+  moverRow,
   ReviewControls,
   Scoresheet,
   useReviewKeys,
@@ -204,6 +205,11 @@ function useReview(
   };
   useReviewKeys(controls);
   return { state, controls };
+}
+
+/** The spent line, placed under the row of the player who made the shown move (T13). */
+function spentFor(spent: { seconds: number } | null, ply: number, flipped: boolean) {
+  return spent ? { ...spent, by: moverRow(ply, flipped ? "white" : "black") } : null;
 }
 
 export function GameReviewView({ view, gameId, initialPly, onStep }: GameReviewViewProps) {
@@ -495,7 +501,7 @@ export function GameReviewView({ view, gameId, initialPly, onStep }: GameReviewV
           <ClockPair
             top={side(flipped ? "white" : "black")}
             bottom={side(flipped ? "black" : "white")}
-            spent={view.hasClocks ? spentAt(view, ply) : null}
+            spent={spentFor(view.hasClocks ? spentAt(view, ply) : null, ply, flipped)}
             tenths={tenths}
           />
 
@@ -612,7 +618,8 @@ function Ledger({
           onClick={() => setAll(true)}
           className="min-h-11 self-start text-sm font-medium text-ink underline decoration-rule-strong underline-offset-4 hover:decoration-ink"
         >
-          Show all {rows.length}
+          {/* Says what it lists (T13 critic): every move the ledger marked, not only the worst. */}
+          Show all {rows.length} marked moves
         </button>
       ) : null}
     </section>
