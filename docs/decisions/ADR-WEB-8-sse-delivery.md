@@ -10,7 +10,7 @@ The web app shows import, analysis and report progress live. ADR 0034 fixes the 
 
 ### Publishing from TypeScript matches Rust
 
-`@ci/db` `insertUserEvent` (the TS worker's writer) now also calls `pg_notify('user_events', body)` inside its transaction, with the same body as Rust, byte for byte: same key order, `createdAt` with six fractional digits from the row's own `created_at`, the same 7900-byte truncation. Both publishers therefore reach the same consumer, and a rolled-back insert notifies nobody. The TS worker's Redis `PUBLISH` stays untouched until it is retired; nothing in the web reads it. `userEventsChannel` (`user-events:<id>`) moved into `@ci/db` with Task 2's value and is still used only by that worker.
+`@ci/db` `insertUserEvent` (the TS worker's writer) now also calls `pg_notify('user_events', body)` inside its transaction, with the same fields as Rust (same names, `createdAt` with six fractional digits from the row's own `created_at`, the same 7900-byte truncation rule; key order may differ because Rust's serde_json sorts keys, and consumers parse the JSON). Both publishers therefore reach the same consumer, and a rolled-back insert notifies nobody. The TS worker's Redis `PUBLISH` stays untouched until it is retired; nothing in the web reads it. `userEventsChannel` (`user-events:<id>`) moved into `@ci/db` with Task 2's value and is still used only by that worker.
 
 ### One hub per process (`server/events/hub.ts`)
 
@@ -59,5 +59,15 @@ An account linked while a stream is open is picked up on the client's next recon
 ## Consequences
 
 - The stream cap and the hub are per process, which fits the single-process beta (ADR 0041). Several processes would need a shared cap.
-- A session revoked while a stream is open keeps it until the stream's maximum age.
+- A session revoked, or an account unlinked, while a stream is open keeps streaming until the stream's maximum age (the account set is read once per stream).
+- The hub's dispatch queue and the total number of streams across users are not capped; the per-user cap and invite-only access bound them for the beta.
+- A truncated NOTIFY whose payload fetch keeps failing (after backoff retries) makes each affected stream buffer and replay from its last delivered id, so a live event is never skipped.
+- Poll mode has no `hasMore` flag (the brief fixes the shape): a page of 500 events means poll again at once.
+- With no linked accounts `listEventsPage` reports `reset = afterId < watermark`, whereas Rust's `list_events_after` returns false; harmless and consistent with the watermark rule.
+- A replay failure closes the stream and EventSource reconnects after `retry: 3000`; there is no `error` event or extra throttle.
+- Streams also refuse `Sec-Fetch-Site: cross-site` navigations, which carry the Lax cookie but no `Origin`.
+
+## Rulings
+
+Controller ruling (M4 T22 review): the Postgres LISTEN hub in place of the brief's Redis hub, and the watermark `reset` rule, are accepted per ADR 0034.
 - Every payload sent to a browser is the stored or notified JSON. Event payloads must never carry data the account's users may not see.

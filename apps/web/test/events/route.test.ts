@@ -31,7 +31,7 @@ async function signedIn(birthMonth: string | null = "1990-01") {
 
 function request(
   query = "",
-  opts: { cookie?: string | null; lastEventId?: string; origin?: string } = {},
+  opts: { cookie?: string | null; lastEventId?: string; origin?: string; fetchSite?: string } = {},
 ) {
   const controller = new AbortController();
   open.push(controller);
@@ -40,6 +40,7 @@ function request(
   if (cookie) headers.set("cookie", cookie);
   if (opts.lastEventId !== undefined) headers.set("last-event-id", opts.lastEventId);
   if (opts.origin) headers.set("origin", opts.origin);
+  if (opts.fetchSite) headers.set("sec-fetch-site", opts.fetchSite);
   const req = new Request(`${ORIGIN}/api/events${query}`, { headers, signal: controller.signal });
   return { req, controller };
 }
@@ -262,6 +263,11 @@ describe("GET /api/events (SSE)", () => {
     const { res } = await stream({ cookie: pending.cookie });
     expect(res.status).toBe(403);
     expect(await res.json()).toEqual({ error: "age_required" });
+  });
+
+  it("403 for a cross-site navigation without an Origin header", async () => {
+    expect((await stream({ fetchSite: "cross-site" })).res.status).toBe(403);
+    expect((await stream({ fetchSite: "same-origin" })).res.status).toBe(200);
   });
 
   it("403 for a foreign origin, 400 for a malformed cursor", async () => {

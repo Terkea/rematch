@@ -18,6 +18,8 @@ export type EventHubDeps = {
   listen: ListenFn;
   /** The stored event, for a NOTIFY that came without its payload (`truncated`, ADR 0034). */
   fetchEvent(id: number): Promise<StreamEvent | null>;
+  /** Waits between attempts to fetch a truncated event; the length is the retry count. */
+  fetchRetryDelaysMs?: number[];
   log?: (message: string, error?: unknown) => void;
 };
 
@@ -90,6 +92,19 @@ export function createEventHub(deps: EventHubDeps): EventHub {
     queue = queue.then(work).catch((error) => log("dispatch failed", error));
   };
 
+  async function fetchWithRetry(id: number): Promise<StreamEvent | null> {
+    const delays = deps.fetchRetryDelaysMs ?? [200, 800, 2000];
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await deps.fetchEvent(id);
+      } catch (error) {
+        const delay = delays[attempt];
+        if (delay === undefined) throw error;
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
+  }
+
   async function handle(raw: string): Promise<void> {
     const note = parseNotification(raw);
     if (!note) {
@@ -106,7 +121,15 @@ export function createEventHub(deps: EventHubDeps): EventHub {
     };
     if (note.truncated) {
       // Pruned meanwhile: nothing to send (a replay would not find it either).
-      event = await deps.fetchEvent(note.id);
+      try {
+        event = await fetchWithRetry(note.id);
+      } catch (error) {
+        // Still failing: the event must not be skipped. Each stream of the account buffers and
+        // replays from its last delivered id, so nothing is lost and nothing repeats.
+        log("truncated event fetch failed; asking streams to replay", error);
+        for (const sub of [...(byAccount.get(note.accountId) ?? [])]) sub.onReconnect?.();
+        return;
+      }
       if (!event || event.accountId.toLowerCase() !== note.accountId) return;
     }
     for (const sub of [...(byAccount.get(note.accountId) ?? [])]) {
@@ -185,6 +208,8 @@ let cached: { url: string; hub: EventHub } | undefined;
 export function getEventHub(): EventHub {
   const url = getEnv().DATABASE_URL;
   if (cached?.url !== url) {
+    // Tests only: a rebuilt hub must not leave the old LISTEN behind.
+    void cached?.hub.close();
     const db = getDb();
     cached = {
       url,

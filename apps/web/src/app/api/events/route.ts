@@ -21,6 +21,10 @@ const invalidCursor = () => Response.json({ error: "invalid_cursor" }, { status:
 export async function GET(req: Request): Promise<Response> {
   const crossSite = rejectCrossSite(req);
   if (crossSite) return crossSite;
+  // A top-level cross-site navigation carries the Lax cookie but no Origin (defence in depth).
+  if (req.headers.get("sec-fetch-site") === "cross-site") {
+    return Response.json({ error: "invalid_origin" }, { status: 403 });
+  }
   const user = await requireApiUser(req);
   if (user instanceof Response) return user;
   const url = new URL(req.url);

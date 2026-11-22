@@ -26,7 +26,8 @@ export type UserEventRow = typeof userEvents.$inferSelect;
 const ISO_MICROS = sql<string>`to_char(${userEvents.createdAt} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
 
 /**
- * The NOTIFY body, byte for byte what the Rust `events` crate sends: camelCase
+ * The NOTIFY body, with the same fields and truncation rule as the Rust `events` crate (key order
+ * may differ: serde_json sorts keys, consumers parse the JSON): camelCase
  * `{id, accountId, type, createdAt, payload}`, or `truncated: true` without `payload` when it
  * would not fit in `MAX_NOTIFY_BYTES`.
  */
