@@ -668,15 +668,27 @@ pub async fn load_account_benchmark(
     account_id: Uuid,
     tc: TimeClass,
 ) -> Result<Option<BandReference>, sqlx::Error> {
+    load_account_benchmark_side(pool, account_id, tc, Side::Both).await
+}
+
+/// [`load_account_benchmark`] for one side's own rows (ADR 0082): a colour is compared only with
+/// the peers who had that colour, never with the both rows.
+pub async fn load_account_benchmark_side(
+    pool: &PgPool,
+    account_id: Uuid,
+    tc: TimeClass,
+    side: Side,
+) -> Result<Option<BandReference>, sqlx::Error> {
     let rows: Vec<StatRow> = sqlx::query_as(
         "SELECT metric, median, p25, p40, p75, pooled_rate, epl_per_event, opps_per_game, \
            opp_slope_per_100, n_players, n_games, low_sample \
          FROM account_benchmark_stat \
-         WHERE account_id = $1 AND time_class = $2::time_class AND side = 'both' \
+         WHERE account_id = $1 AND time_class = $2::time_class AND side = $3::side_scope \
            AND NOT low_sample",
     )
     .bind(account_id)
     .bind(tc.as_str())
+    .bind(side.as_str())
     .fetch_all(pool)
     .await?;
     let u = |v: i32| u32::try_from(v).unwrap_or(0);
