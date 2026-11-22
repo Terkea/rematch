@@ -444,11 +444,7 @@ fn side_benchmarks(
             let peers: PerSide<PeerBenchmark> = Side::ALL.map(|side| {
                 Some(match side {
                     Side::Both => aggregate_peer_benchmark(sides, *center, started_at),
-                    _ => aggregate_peer_benchmark(
-                        &peer_sides_of(sides, side),
-                        *center,
-                        started_at,
-                    ),
+                    _ => aggregate_peer_benchmark(&peer_sides_of(sides, side), *center, started_at),
                 })
             });
             let references = peers

@@ -635,11 +635,7 @@ pub async fn write_side_stats(
     .bind(
         stats
             .iter()
-            .map(|s| {
-                peers
-                    .and_then(|p| p.chances.get(&s.metric))
-                    .map(|&c| n(c))
-            })
+            .map(|s| peers.and_then(|p| p.chances.get(&s.metric)).map(|&c| n(c)))
             .collect::<Vec<_>>(),
     )
     .bind(side.as_str())
