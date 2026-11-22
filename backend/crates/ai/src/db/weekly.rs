@@ -1,4 +1,4 @@
-//! `weekly_reviews`: one AI review per (account, time class, week starting Monday) (ADR-R3-3).
+//! `weekly_reviews`: one AI review per (account, time class, week starting Monday) (ADR 0059).
 //!
 //! States as for change notes: `pending` → `ready` | `dropped` | `failed`; a transient failure
 //! stays `pending` with `next_attempt_at`. `mode = batch` reviews are finished by the batch poller.

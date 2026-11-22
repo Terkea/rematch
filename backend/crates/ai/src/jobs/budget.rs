@@ -1,4 +1,4 @@
-//! Budgets and metering for every AI job (Task 18, ADR-R3-5 "Budgets" and "Degradation").
+//! Budgets and metering for every AI job (Task 18, ADR 0061 "Budgets" and "Degradation").
 //!
 //! - [`BudgetConfig`]: the monthly budget per plan and an optional global monthly cap, in
 //!   micro-USD, from the environment ([`BudgetConfig::from_env`]).
@@ -99,7 +99,7 @@ fn db_unavailable() -> AiError {
 }
 
 /// The budget check run before every model call (not a strict cap: calls in flight can pass
-/// the budget by a few calls; ADR-R3-5 "Degradation"): the spend of `scope` (the accounts
+/// the budget by a few calls; ADR 0061 "Degradation"): the spend of `scope` (the accounts
 /// sharing one budget) and, with a global cap, of everyone, since the start of `now`'s UTC
 /// month. Spend at or above the budget is `Err(AiError::Budget)`. A database error fails closed as
 /// `Unavailable` (the job retries later; no call is made).

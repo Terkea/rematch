@@ -1,4 +1,4 @@
-//! The JSON of the Agent SDK sidecar contract (Task 10, ADR-R3-6 "Contract and isolation"). Keys
+//! The JSON of the Agent SDK sidecar contract (Task 10, ADR 0062 "Contract and isolation"). Keys
 //! are camelCase. Responses ignore unknown fields, so the sidecar can add fields first.
 
 use std::collections::BTreeMap;

@@ -53,7 +53,7 @@ for (const b of schema.blocks) {
       "position_evals.pv",
     );
   }
-  // the same for interactive_evals.moves (R3, ADR-R3-3)
+  // the same for interactive_evals.moves (R3, ADR 0059)
   if (b.name === "interactiveEvals") {
     b.text = replaceExact(
       b.text,

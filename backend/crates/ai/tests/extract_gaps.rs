@@ -1,5 +1,5 @@
 //! Port of `.worktrees/m3/packages/ai/test/validator/extract-gaps.test.ts`, plus the Rust-only
-//! checks for `bounded_matches` (deviation 2, ADR-R3-2), linear time on hostile input, the
+//! checks for `bounded_matches` (deviation 2, ADR 0058), linear time on hostile input, the
 //! hardening deviations H1-H6 and the differential TS corpus.
 
 use std::cell::Cell;
@@ -187,7 +187,7 @@ mod rust_only {
     /// `after_ok` is a post-check on the char after the match, which is only valid for patterns
     /// whose match end is fixed. `[a-c]+` has a variable end, so this result is NOT what JS
     /// `[a-c]+(?!\d)` gives: JS backtracks to "ab" in "abc1". A variable-length pattern must fold
-    /// its lookahead into the regex instead (`(?P<m>…)(?:[^…]|$)`, ADR-R3-2).
+    /// its lookahead into the regex instead (`(?P<m>…)(?:[^…]|$)`, ADR 0058).
     #[test]
     fn bounded_matches_checks_the_char_after_and_retries_from_start_plus_one() {
         let re = Regex::new("[a-c]+").unwrap();
@@ -202,7 +202,7 @@ mod rust_only {
 
     /// The TS output for this input, recorded by `backend/tools/gen-validator-corpus.mjs`, is
     /// `extractNumbers("\u{663} games") == []`: JS `\d` is ASCII-only, and NFKC keeps U+0663. The
-    /// Rust digit class is ASCII too (first assert). But hardening H1 (ADR-R3-2) folds every
+    /// Rust digit class is ASCII too (first assert). But hardening H1 (ADR 0058) folds every
     /// `\p{Nd}` digit to ASCII before extraction, so Rust deliberately reads 3.
     #[test]
     fn rust_digit_class_is_ascii_like_js() {
@@ -314,7 +314,7 @@ mod rust_only {
     }
 }
 
-/// Hardening beyond TS, ruled in fix round 1 and recorded as deviations H1-H6 in ADR-R3-2.
+/// Hardening beyond TS, ruled in fix round 1 and recorded as deviations H1-H6 in ADR 0058.
 mod hardening {
     use super::*;
 

@@ -1,4 +1,4 @@
-//! AI job kinds on R1's Postgres queue (ADR 0032, ADR-R3-3). They replace the TS BullMQ queues.
+//! AI job kinds on R1's Postgres queue (ADR 0032, ADR 0059). They replace the TS BullMQ queues.
 //!
 //! `user_key` is the account id (fair scheduling). Payloads are camelCase JSON; the web (M4)
 //! enqueues `coach-chat` jobs through the same `jobs` table with [`CoachChatPayload`].

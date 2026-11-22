@@ -1,5 +1,5 @@
 //! `ai_batches` and `ai_batch_items`: Message Batches submissions for scheduled reports and weekly
-//! reviews (ADR-R3-6 decision 3).
+//! reviews (ADR 0062 decision 3).
 //!
 //! Batch states: `submitted` → `ended` (results available) → `processed`, or `failed`. An item is
 //! processed once (`processed_at`), so a re-poll never applies a result twice.

@@ -2,7 +2,7 @@
 //! rating-aware coaching narrative and answers the player's questions ("Ask your coach").
 //!
 //! Task 1 fixes the module tree and the shared types; later R3 tasks fill the modules but do not
-//! change those definitions. The Anthropic client is our own reqwest client (ADR-R3-1).
+//! change those definitions. The Anthropic client is our own reqwest client (ADR 0057).
 
 pub mod chat;
 pub mod client;

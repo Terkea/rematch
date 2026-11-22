@@ -5,7 +5,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 // A report section (TS `SECTION_KEYS`, in this order). A `//` comment, not a doc comment:
-// doc comments become model-facing schema descriptions (ADR-R3-4).
+// doc comments become model-facing schema descriptions (ADR 0060).
 #[derive(
     Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
 )]

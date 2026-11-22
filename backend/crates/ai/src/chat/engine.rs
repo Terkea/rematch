@@ -1,7 +1,7 @@
 //! The "Ask your coach" chat engine: one player question in, one validated answer out
-//! (ADR-R3-8).
+//! (ADR 0064).
 //!
-//! A turn is one SDK `stream_turn` with the chat tools (ADR-R3-6): the sidecar runs the tool
+//! A turn is one SDK `stream_turn` with the chat tools (ADR 0062): the sidecar runs the tool
 //! rounds and calls each tool back through this turn's [`ToolHandler`], which wraps
 //! `execute_tool` over ONE [`ToolSession`] (the report evidence, the anchors, and what the tools
 //! add). The streamed text is split into paragraphs; every paragraph is validated against that

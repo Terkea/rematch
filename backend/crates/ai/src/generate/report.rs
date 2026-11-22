@@ -1,4 +1,4 @@
-//! Report orchestration (Task 14, TS plan B3 `generateReport`, ADR-R3-4 "Generation").
+//! Report orchestration (Task 14, TS plan B3 `generateReport`, ADR 0060 "Generation").
 //!
 //! The five sections are five calls sharing one cached prefix. `overview` runs first, alone,
 //! and is awaited: it writes the cache entry the other four read. The remaining non-skipped

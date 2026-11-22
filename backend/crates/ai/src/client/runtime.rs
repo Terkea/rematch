@@ -1,4 +1,4 @@
-//! The production [`AiClient`]: interactive calls go to the Agent SDK sidecar (ADR-R3-6), batch
+//! The production [`AiClient`]: interactive calls go to the Agent SDK sidecar (ADR 0062), batch
 //! calls to the Messages Batches client. A dev OAuth token never reaches Rust, so batches need
 //! `ANTHROPIC_API_KEY`; without it they give `Unavailable(NoApiKey)` and `batches_enabled()` is
 //! false (callers fall back to interactive calls).

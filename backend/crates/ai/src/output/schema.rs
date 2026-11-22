@@ -1,4 +1,4 @@
-//! Output schemas inside the structured-output JSON Schema subset (ADR-R3-4).
+//! Output schemas inside the structured-output JSON Schema subset (ADR 0060).
 //!
 //! `api_schema` generates draft 2020-12 with every subschema inlined (the output format must be
 //! ref-free), applies R2's `contract_transform` (every property required, an `Option` stays
@@ -22,7 +22,7 @@ use super::weekly::WeeklyReviewOutput;
 use crate::client::port::{OutputSchema, ParseIssue};
 use crate::input::types::contract_transform;
 
-/// Client-side cap on every narrative text (ADR-R3-2 deviation 6), in Unicode code points.
+/// Client-side cap on every narrative text (ADR 0058 deviation 6), in Unicode code points.
 pub const ITEM_TEXT_MAX_CHARS: usize = 2000;
 /// Client-side cap on a drill `rationale` (model text that is shown), in code points.
 pub const DRILL_RATIONALE_MAX_CHARS: usize = 500;

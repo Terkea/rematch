@@ -244,6 +244,12 @@ export const aiSdkSessionEntries = pgTable(
   ],
 );
 
+export const aiSweepCursors = pgTable("ai_sweep_cursors", {
+  name: text().primaryKey().notNull(),
+  position: timestamp({ withTimezone: true, mode: "date" }).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+});
+
 export const aiUsage = pgTable(
   "ai_usage",
   {
@@ -291,7 +297,7 @@ export const bandReference = pgTable(
     pooledRate: real("pooled_rate"),
     eplPerEvent: real("epl_per_event"),
     oppsPerGame: real("opps_per_game"),
-    oppSlopePer100: real("opp_slope_per_100").notNull(),
+    oppSlopePer100: real("opp_slope_per_100"),
     nPlayers: integer("n_players").notNull(),
     nGames: integer("n_games").notNull(),
     lowSample: boolean("low_sample").notNull(),
@@ -306,6 +312,10 @@ export const bandReference = pgTable(
       columns: [table.buildId, table.band, table.timeClass, table.metric],
       name: "band_reference_pkey",
     }),
+    check(
+      "band_reference_slope_finite",
+      sql`(opp_slope_per_100 IS NULL) OR (opp_slope_per_100 <> ALL (ARRAY['NaN'::real, 'Infinity'::real, '-Infinity'::real]))`,
+    ),
   ],
 );
 
@@ -537,6 +547,7 @@ export const games = pgTable(
     selectedAt: timestamp("selected_at", { withTimezone: true, mode: "date" }),
     analysedAt: timestamp("analysed_at", { withTimezone: true, mode: "date" }),
     enrichmentProtocol: text("enrichment_protocol"),
+    profileStaleAt: timestamp("profile_stale_at", { withTimezone: true, mode: "date" }),
   },
   (table) => [
     index("games_account_played_idx").using(
@@ -554,11 +565,19 @@ export const games = pgTable(
     index("games_attempt_cap_idx")
       .using("btree", table.analysisStatus.asc().nullsLast())
       .where(sql`(analysis_attempts >= 6)`),
+    index("games_imported_waiting_idx")
+      .using("btree", table.accountId.asc().nullsLast())
+      .where(
+        sql`((analysis_status = 'imported'::analysis_status) AND (pending_since IS NOT NULL))`,
+      ),
     index("games_pending_id_idx")
       .using("btree", table.analysisStatus.asc().nullsLast(), table.id.asc().nullsLast())
       .where(
         sql`(analysis_status = ANY (ARRAY['pending'::analysis_status, 'analysing'::analysis_status]))`,
       ),
+    index("games_profile_stale_idx")
+      .using("btree", table.profileStaleAt.asc().nullsLast(), table.id.asc().nullsLast())
+      .where(sql`(profile_stale_at IS NOT NULL)`),
     index("games_started_account_idx")
       .using("btree", table.analysisStartedAt.asc().nullsLast(), table.accountId.asc().nullsLast())
       .where(sql`(analysis_started_at IS NOT NULL)`),
@@ -827,14 +846,34 @@ export const moveFeatures = pgTable(
     threatExisted: boolean("threat_existed"),
     threatAddressed: boolean("threat_addressed"),
     enrichmentProtocol: text("enrichment_protocol").notNull(),
+    difficultyStatus: text("difficulty_status"),
+    difficultyReason: text("difficulty_reason"),
+    difficultyAttempts: smallint("difficulty_attempts").default(0).notNull(),
+    difficultyCallFailures: smallint("difficulty_call_failures").default(0).notNull(),
   },
   (table) => [
+    index("move_features_pending_maia_idx")
+      .using(
+        "btree",
+        table.difficultyCallFailures.asc().nullsLast(),
+        table.gameId.asc().nullsLast(),
+        table.ply.asc().nullsLast(),
+      )
+      .where(sql`(difficulty_status = 'pending_maia'::text)`),
     foreignKey({
       columns: [table.gameId],
       foreignColumns: [games.id],
       name: "move_features_game_id_fkey",
     }).onDelete("cascade"),
     primaryKey({ columns: [table.gameId, table.ply], name: "move_features_pkey" }),
+    check(
+      "move_features_difficulty_status_check",
+      sql`(difficulty_status IS NULL) OR (difficulty_status = ANY (ARRAY['ok'::text, 'pending_maia'::text, 'not_applicable'::text]))`,
+    ),
+    check(
+      "move_features_difficulty_ok_check",
+      sql`(difficulty_status IS NULL) OR ((difficulty_status = 'ok'::text) = ((p_best IS NOT NULL) AND (p_ok IS NOT NULL) AND (difficulty_model IS NOT NULL)))`,
+    ),
   ],
 );
 
@@ -1020,6 +1059,7 @@ export const referenceGames = pgTable(
     playedAt: timestamp("played_at", { withTimezone: true, mode: "date" }).notNull(),
     status: analysisStatus().default("pending").notNull(),
     error: text(),
+    difficultyPendingAt: timestamp("difficulty_pending_at", { withTimezone: true, mode: "date" }),
   },
   (table) => [
     index("reference_games_build_status_idx").using(
@@ -1027,6 +1067,9 @@ export const referenceGames = pgTable(
       table.buildId.asc().nullsLast(),
       table.status.asc().nullsLast(),
     ),
+    index("reference_games_difficulty_pending_idx")
+      .using("btree", table.difficultyPendingAt.asc().nullsLast(), table.id.asc().nullsLast())
+      .where(sql`(difficulty_pending_at IS NOT NULL)`),
     foreignKey({
       columns: [table.buildId],
       foreignColumns: [referenceBuilds.id],

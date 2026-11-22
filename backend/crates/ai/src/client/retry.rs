@@ -1,4 +1,4 @@
-//! Retry policy shared by the sidecar and batch clients (ADR-R3-1).
+//! Retry policy shared by the sidecar and batch clients (ADR 0057).
 //!
 //! Retryable: a connection failure (no status), 408, 409, 429, every 5xx and 529. An
 //! `x-should-retry: true|false` header from the API overrides the status. The delay is the

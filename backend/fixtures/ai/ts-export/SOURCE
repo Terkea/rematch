@@ -1,4 +1,4 @@
-Fixtures for the ai crate (R3 Task 1, ADR-R3-1). All files come from the M3 worktree (branch m3,
+Fixtures for the ai crate (R3 Task 1, ADR 0057). All files come from the M3 worktree (branch m3,
 packages/ai), our own code, at commit 4ff8220aed41afb2dd23e04314511f6ebcb1f8e7 ("Merge M3 A3
 (reference): reference tokens, leak detector, evidence index"). Exported on 2026-11-21 with
 zod 4.6 and @anthropic-ai/sdk 1.11.0 (m3 lockfile), Node v22.23.5 (node:22.23.5-slim), pnpm 12.21.0.

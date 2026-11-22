@@ -1,4 +1,4 @@
-//! Batch request building and result processing (Task 16, ADR-R3-6: batches go through the
+//! Batch request building and result processing (Task 16, ADR 0062: batches go through the
 //! Messages Batches client with the same `MessagesRequest::structured` wire as a sync call).
 //!
 //! **Building.** Each batch item is the synchronous request of its generator

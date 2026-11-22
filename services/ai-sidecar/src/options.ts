@@ -7,7 +7,7 @@ import type {
 import type { SidecarConfig } from "./config.js";
 import { SidecarError } from "./errors.js";
 
-/** Full model ids only: an alias would let the CLI pick a model we did not price (ADR-R3-6). */
+/** Full model ids only: an alias would let the CLI pick a model we did not price (ADR 0062). */
 export const MODEL_ALLOWLIST = ["claude-sonnet-5-5", "claude-haiku-5-5"] as const;
 export type ModelId = (typeof MODEL_ALLOWLIST)[number];
 const EFFORTS: readonly EffortLevel[] = ["low", "medium", "high", "xhigh", "max"];
@@ -168,7 +168,7 @@ export function childEnv(req: BaseRequest, cfg: SidecarConfig): Record<string, s
   };
 }
 
-/** The single place where the isolation options of ADR-R3-6 are set. */
+/** The single place where the isolation options of ADR 0062 are set. */
 export function buildOptions(
   req: QueryRequest | ChatRequest,
   cfg: SidecarConfig,

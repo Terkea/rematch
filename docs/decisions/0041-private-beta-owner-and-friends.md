@@ -22,7 +22,7 @@ The owner: "dw about deployments and launch for now, i want to test it for mysel
   - drills (planned next).
 - **Hosting:** the stack runs on the owner's machine through Docker Compose. Friends reach it later through a private tunnel or a small host, chosen when the owner wants it. Any exposure still needs the owner's go-ahead.
 - **Access:** invite-only accounts with no public sign-up. Usage caps stay as safety limits.
-- **AI auth (ADR-R3-6):**
+- **AI auth (ADR 0062):**
   - Owner-only use may run on the owner's Claude Code token.
   - Once friends use it, Claude calls go through an `ANTHROPIC_API_KEY`, because Anthropic does not allow offering subscription access to other users.
 

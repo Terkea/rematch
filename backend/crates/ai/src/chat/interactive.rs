@@ -1,4 +1,4 @@
-//! Interactive engine checks for the coach chat (Task 24, ADR-R3-6 "Interactive engine checks").
+//! Interactive engine checks for the coach chat (Task 24, ADR 0062 "Interactive engine checks").
 //!
 //! [`DbInteractiveEngine`] is the chat's [`InteractiveEngine`] for one account and one assistant
 //! message. A request is served in this order:

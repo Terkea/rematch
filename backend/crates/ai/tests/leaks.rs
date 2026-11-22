@@ -151,7 +151,7 @@ mod find_leaks_reports_kinds {
     }
 }
 
-/// The TS ∪ hardened union (ADR-R3-2, Task 6): the hardened path reuses `HOMOGLYPHS`, the H2
+/// The TS ∪ hardened union (ADR 0058, Task 6): the hardened path reuses `HOMOGLYPHS`, the H2
 /// invisibles, the H3 mark drop and the H5 dashes, so it must never hide a TS leak, and its
 /// boundaries treat a folded char as a non-letter (origin-aware), so an accented neighbour cannot
 /// glue onto a word that needed folding.
