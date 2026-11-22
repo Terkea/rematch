@@ -371,7 +371,7 @@ fn side_series(
                 .filter(|p| ids.contains(&p.game_id))
                 .cloned()
                 .collect();
-            (*k, kept)
+            (k.clone(), kept)
         })
         .filter(|(_, pts)| !pts.is_empty())
         .collect()

@@ -23,7 +23,7 @@ const TEST_TIMEOUT: Duration = Duration::from_secs(120);
 /// 60 games: every third one with Black (20 games, W1 3/50, no blunders), the rest with White
 /// (40 games, W1 2/50, two blunders each).
 fn white_heavy_blunders(i: usize) -> GameShape {
-    if i % 3 == 0 {
+    if i.is_multiple_of(3) {
         GameShape {
             color: "black",
             w1_events: 3,
