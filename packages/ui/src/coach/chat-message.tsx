@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Icon, InfoIcon, WarningIcon } from "../icons/index.js";
+import { CheckCircleIcon, Icon, InfoIcon, WarningCircleIcon, WarningIcon } from "../icons/index.js";
 import { cn } from "../lib/index.js";
 import { motion, spring, useReducedMotion } from "../motion/index.js";
 import { AiDisclosure, AiLabel } from "./ai-disclosure.js";
@@ -32,18 +32,28 @@ export const READING_COPY = "Your coach is reading your games";
 
 const FAILED_FALLBACK = "This answer could not be written. Ask again in a minute.";
 
-/** `["e4", "e5", "Nf3"]` to `1. e4 e5 2. Nf3`, counted from move 1 with White first. */
-export function engineLine(moves: readonly string[]): string {
+/**
+ * The tried moves in notation, numbered from the game ply of the first one: `startPly` 55 gives
+ * `28. Nd2 e4 29. Nxe4`, 56 gives `28… e4 29. Nxe4`. Without a valid ply the moves are left
+ * unnumbered rather than guessed from move 1.
+ */
+export function engineLine(moves: readonly string[], startPly?: number | null): string {
+  const list = moves.filter((m) => typeof m === "string" && m !== "");
+  if (typeof startPly !== "number" || !Number.isInteger(startPly) || startPly < 1)
+    return list.join(" ");
   const out: string[] = [];
-  moves.forEach((san, i) => {
-    if (i % 2 === 0) out.push(`${i / 2 + 1}.`);
+  list.forEach((san, i) => {
+    const ply = startPly + i;
+    const move = Math.ceil(ply / 2);
+    if (ply % 2 === 1) out.push(`${move}.`);
+    else if (i === 0) out.push(`${move}…`);
     out.push(san);
   });
   return out.join(" ");
 }
 
 const STATUS_WORD: Record<EngineCheck["status"], string> = {
-  pending: "pending",
+  pending: "checking",
   done: "done",
   failed: "failed",
 };
@@ -131,6 +141,27 @@ function Streamed({
   );
 }
 
+/** Done is a settled check, pending the dashed pencil ring, failed a warning: shape, not colour. */
+function CheckMark({ status }: { status: EngineCheck["status"] }) {
+  if (status === "done")
+    return (
+      <span data-mark="done" className="mt-0.5 inline-flex shrink-0 text-ink-soft">
+        <Icon icon={CheckCircleIcon} size={16} />
+      </span>
+    );
+  if (status === "failed")
+    return (
+      <span data-mark="failed" className="mt-0.5 inline-flex shrink-0 text-ink-soft">
+        <Icon icon={WarningCircleIcon} size={16} />
+      </span>
+    );
+  return (
+    <span data-mark="pending" className="inline-flex shrink-0">
+      <PencilRing />
+    </span>
+  );
+}
+
 function EngineChecks({ checks }: { checks: EngineCheck[] }) {
   const valid = checks.filter((c) => c && Array.isArray(c.moves) && c.moves.length > 0);
   if (valid.length === 0) return null;
@@ -143,10 +174,10 @@ function EngineChecks({ checks }: { checks: EngineCheck[] }) {
           data-engine-check={c.status}
           className="flex items-start gap-2 font-sans text-sm text-ink-soft"
         >
-          <PencilRing />
+          <CheckMark status={c.status} />
           <span>
-            Engine check: <span className={notationClass}>{engineLine(c.moves)}</span> (
-            {STATUS_WORD[c.status] ?? "pending"})
+            Engine check: <span className={notationClass}>{engineLine(c.moves, c.startPly)}</span> (
+            {STATUS_WORD[c.status] ?? "checking"})
           </span>
         </li>
       ))}
@@ -159,8 +190,9 @@ function Notes({ notes }: { notes: string[] }) {
   if (list.length === 0) return null;
   return (
     <ul aria-label="Notes" className="m-0 flex list-none flex-col gap-1 p-0">
-      {list.map((n) => (
-        <li key={n} className="flex items-start gap-2 font-sans text-sm text-ink-soft">
+      {list.map((n, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: notes are fixed server copy and may repeat.
+        <li key={`${i}-${n}`} className="flex items-start gap-2 font-sans text-sm text-ink-soft">
           <Icon icon={InfoIcon} size={16} className="mt-0.5 shrink-0" />
           <span className="max-w-prose">{n}</span>
         </li>
@@ -234,7 +266,7 @@ export function ChatMessage({
   const header =
     status === "done" && disclosure ? (
       <AiDisclosure disclosure={disclosure} compact />
-    ) : hasStream ? (
+    ) : hasStream || (status === "done" && (segments?.length ?? 0) > 0) ? (
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <AiLabel />
       </div>
@@ -245,11 +277,12 @@ export function ChatMessage({
       data-role="assistant"
       data-status={status}
       aria-label="Coach's answer"
-      aria-busy={live}
       className={cn("flex flex-col gap-3", className)}
     >
       {header}
-      <div aria-live="polite" className="flex flex-col gap-3">
+      {/* Polite only while the answer is arriving: chunks are read as they land, and the final
+          text that replaces them at done is not read a second time. */}
+      <div aria-live={live ? "polite" : "off"} className="flex flex-col gap-3">
         {body}
       </div>
       {status !== "failed" ? (

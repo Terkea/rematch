@@ -38,6 +38,8 @@ export interface CoachStateProps {
   action?: CoachStateAction | null;
   /** For `building` and `writing`: the count so far, e.g. `{ done: 2, total: 5, unit: "sections" }`. */
   progress?: ProgressPlaceholderProps["progress"];
+  /** For `building`: every section by name, finished or not, so the list matches the count. */
+  items?: ProgressPlaceholderProps["items"];
   /** The heading element for the title; the host knows the outline. Default `h3`. */
   titleAs?: "h2" | "h3" | "h4" | "p";
   className?: string;
@@ -57,13 +59,13 @@ const NOTE: Record<
 function Action({ action }: { action: CoachStateAction }) {
   if (action.href !== undefined) {
     return (
-      <Button asChild variant="outline" size="sm">
+      <Button asChild variant="outline" size="md">
         <a href={action.href}>{action.label}</a>
       </Button>
     );
   }
   return (
-    <Button variant="outline" size="sm" onClick={action.onClick}>
+    <Button variant="outline" size="md" onClick={action.onClick}>
       {action.label}
     </Button>
   );
@@ -75,6 +77,7 @@ export function CoachState({
   body,
   action,
   progress,
+  items,
   titleAs: Title = "h3",
   className,
 }: CoachStateProps) {
@@ -89,6 +92,7 @@ export function CoachState({
           shape="list"
           verb={kind === "building" ? "Building" : "Writing"}
           {...(progress ? { progress } : {})}
+          {...(items ? { items } : {})}
         />
       </div>
     );

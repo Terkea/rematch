@@ -11,7 +11,7 @@ import {
   SegmentText,
   type StreamedChunk,
 } from "@ci/ui/coach";
-import { TooltipProvider } from "@ci/ui/primitives";
+import { Button, TooltipProvider } from "@ci/ui/primitives";
 import { useEffect, useState } from "react";
 
 // The coach's text, its disclosure, its states and the chat pieces (M5b Task 3, ADR 0071). The
@@ -69,6 +69,10 @@ const states: { caption: string; props: CoachStateProps }[] = [
       title: "Building your report",
       body: "Sections appear here as they are written.",
       progress: { done: 2, total: 5, unit: "sections" },
+      items: ["Overview", "Weaknesses", "Openings", "Climb plan", "Areas"].map((label, i) => ({
+        label,
+        done: i < 2,
+      })),
     },
   },
   {
@@ -93,7 +97,7 @@ const states: { caption: string; props: CoachStateProps }[] = [
     props: {
       kind: "budget",
       title: "This week's questions are used",
-      body: "You have asked 3 of 3 questions this week. They reset on 16 Nov 2026.",
+      body: "You have used this week's 100 questions. They reset on 16 Nov 2026.",
     },
   },
   {
@@ -154,7 +158,11 @@ const STREAM: StreamedChunk[] = [
   {
     seq: 3,
     interim: false,
-    segments: [{ kind: "text", text: "Once it left, Black pushed e4 and" }],
+    segments: [
+      { kind: "text", text: "Once it left, Black pushed " },
+      { kind: "square", square: "e4" },
+      { kind: "text", text: " and" },
+    ],
   },
 ];
 
@@ -171,23 +179,23 @@ function StreamingDemo() {
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-4">
         <h4 className="m-0 font-sans text-sm font-medium text-ink-faint">Streaming</h4>
-        <button
-          type="button"
+        <Button
+          variant="outline"
+          size="md"
           onClick={() => {
             setShown(0);
             setRun((n) => n + 1);
           }}
-          className="relative rounded-field px-3 py-1.5 text-sm font-medium text-ink-soft hover:bg-well focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
         >
           Play stream
-        </button>
+        </Button>
       </div>
       <ChatMessage
         key={run}
         {...base}
         status={shown === 0 ? "pending" : "streaming"}
         streamed={STREAM.slice(0, shown)}
-        engineChecks={[{ status: "pending", moves: ["Nd2", "e4", "Nxe4"] }]}
+        engineChecks={[{ status: "pending", moves: ["Nd2", "e4", "Nxe4"], startPly: 55 }]}
         hrefFor={hrefFor}
       />
     </div>
@@ -264,7 +272,7 @@ export function CoachSection() {
               {...base}
               segments={nd2}
               hrefFor={hrefFor}
-              engineChecks={[{ status: "done", moves: ["Nd2", "e4", "Nxe4"] }]}
+              engineChecks={[{ status: "done", moves: ["Nd2", "e4", "Nxe4"], startPly: 55 }]}
               notes={["One statement was left out because the engine could not confirm it."]}
               disclosure={disclosure}
             />
@@ -297,7 +305,7 @@ export function CoachSection() {
                 placeholder="Ask about your games"
                 onSubmit={() => {}}
                 disabled
-                disabledReason="You have asked 3 of 3 questions this week. They reset on 16 Nov 2026."
+                disabledReason="You have used this week's 100 questions. They reset on 16 Nov 2026."
               />
             </div>
           </div>

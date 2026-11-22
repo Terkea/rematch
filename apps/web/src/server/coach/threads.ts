@@ -6,6 +6,7 @@ import {
   interactiveEvals,
   userEvents,
 } from "@ci/db/generated";
+import { Chess } from "chess.js";
 import { and, asc, count, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import type { AiDisclosure, Segment } from "../coaching/types.js";
 import { readOnly } from "../games/read-only.js";
@@ -29,7 +30,47 @@ export const CHAT_CREATE_LIMIT = { max: 30, windowMs: 60 * 60 * 1000 } as const;
 export type MessageStatus = "pending" | "streaming" | "done" | "failed";
 
 export type StreamedChunk = { seq: number; segments: Segment[]; interim: boolean };
-export type EngineCheck = { status: "pending" | "done" | "failed"; moves: string[] };
+/**
+ * One interactive engine check of a message: the tried moves in SAN from the checked position,
+ * and `startPly`, the game ply of the first of them (null when the stored FEN cannot be read).
+ */
+export type EngineCheck = {
+  status: "pending" | "done" | "failed";
+  moves: string[];
+  startPly: number | null;
+};
+
+/**
+ * The stored UCI line in SAN from `baseFen`, stopping at the first illegal move (Rust
+ * `validator::pv::pv_to_san`), and the ply of its first move: a FEN's full-move number and side
+ * to move give the plies already played.
+ */
+export function engineLine(baseFen: string, uci: readonly string[]): Omit<EngineCheck, "status"> {
+  let board: Chess;
+  try {
+    board = new Chess(baseFen);
+  } catch {
+    return { moves: [], startPly: null };
+  }
+  const fields = baseFen.trim().split(/\s+/);
+  const fullMove = Number(fields[5]);
+  const startPly =
+    Number.isInteger(fullMove) && fullMove >= 1
+      ? 2 * (fullMove - 1) + (fields[1] === "b" ? 1 : 0) + 1
+      : null;
+  const moves: string[] = [];
+  for (const u of uci) {
+    const m = /^([a-h][1-8])([a-h][1-8])([qrbn])?$/.exec(u);
+    if (!m) break;
+    try {
+      const played = board.move({ from: m[1] as string, to: m[2] as string, promotion: m[3] });
+      moves.push(played.san);
+    } catch {
+      break;
+    }
+  }
+  return { moves, startPly };
+}
 
 export type ThreadMessage = {
   id: string;
@@ -75,40 +116,88 @@ export async function isLinked(db: Db, userId: string, accountId: string): Promi
   return rows.length > 0;
 }
 
-/** Starts an untitled conversation of `userId` (the first answer sets the title). */
+/** A repeat of the same start inside this window answers the first one (double submit, retry). */
+export const START_DEDUPE_SECONDS = 60;
+
+/** Advisory lock class for one user's creates (posts use 30031, R4 30030). */
+const CREATE_LOCK_CLASS = 30032;
+
+export type CreateResult =
+  | { kind: "created"; id: string }
+  | { kind: "not_linked" }
+  | { kind: "rate_limited"; retryAt: Date };
+
+export type NewConversation = {
+  accountId: string;
+  timeClass: TimeClass;
+  anchor: ChatAnchor | null;
+};
+
+/** Takes the user's create lock: creates, and their dedupe lookups, are serialised per user. */
+export async function lockCreates(tx: Db, userId: string): Promise<void> {
+  await tx.execute(sql`select pg_advisory_xact_lock(${CREATE_LOCK_CLASS}, hashtext(${userId}))`);
+}
+
+/** The same conversation key (`account`, `tc`, anchor) as SQL; jsonb equality is semantic. */
+export function sameStart(opts: NewConversation) {
+  return sql`c.account_id = ${opts.accountId}::uuid
+    and c.time_class = ${opts.timeClass}::time_class
+    and ${opts.anchor === null ? sql`c.anchor is null` : sql`c.anchor = ${JSON.stringify(opts.anchor)}::jsonb`}
+    and c.created_at > now() - make_interval(secs => ${START_DEDUPE_SECONDS})`;
+}
+
+/**
+ * Starts an untitled conversation (the first answer sets the title). A repeat of an empty start
+ * with the same account, time class and anchor within `START_DEDUPE_SECONDS` answers the first.
+ */
 export async function createConversation(
   db: Db,
   userId: string,
-  opts: { accountId: string; timeClass: TimeClass; anchor: ChatAnchor | null },
-): Promise<
-  { kind: "created"; id: string } | { kind: "not_linked" } | { kind: "rate_limited"; retryAt: Date }
-> {
-  if (!(await isLinked(db, userId, opts.accountId))) return { kind: "not_linked" };
-  return db.transaction(async (tx) => {
-    // Serialises one user's creates, so the window count below is exact.
-    await tx.execute(sql`select pg_advisory_xact_lock(30032, hashtext(${userId}))`);
-    const since = new Date(Date.now() - CHAT_CREATE_LIMIT.windowMs);
-    const [recent] = await tx
-      .select({ n: count(), oldest: sql<string | null>`min(${coachConversations.createdAt})` })
-      .from(coachConversations)
-      .where(and(eq(coachConversations.userId, userId), gte(coachConversations.createdAt, since)));
-    if ((recent?.n ?? 0) >= CHAT_CREATE_LIMIT.max && recent?.oldest) {
-      const retryAt = new Date(new Date(recent.oldest).getTime() + CHAT_CREATE_LIMIT.windowMs);
-      return { kind: "rate_limited" as const, retryAt };
-    }
-    const [row] = await tx
-      .insert(coachConversations)
-      .values({
-        accountId: opts.accountId,
-        userId,
-        timeClass: opts.timeClass,
-        title: null,
-        anchor: opts.anchor,
-      })
-      .returning({ id: coachConversations.id });
-    if (!row) throw new Error("createConversation: no row");
-    return { kind: "created" as const, id: row.id };
+  opts: NewConversation,
+): Promise<CreateResult> {
+  if (!isUuid(opts.accountId)) return { kind: "not_linked" };
+  return db.transaction(async (raw) => {
+    const tx = raw as unknown as Db;
+    await lockCreates(tx, userId);
+    if (!(await isLinked(tx, userId, opts.accountId))) return { kind: "not_linked" };
+    const [again] = (await tx.execute(sql`
+      select c.id from coach_conversations c
+      where c.user_id = ${userId} and ${sameStart(opts)}
+        and not exists (select 1 from coach_messages m where m.conversation_id = c.id)
+      order by c.created_at desc limit 1`)) as unknown as { id: string }[];
+    if (again) return { kind: "created", id: again.id };
+    return createInTx(tx, userId, opts);
   });
+}
+
+/** The create, on the caller's transaction (which holds `lockCreates`): link, bound, insert. */
+export async function createInTx(
+  tx: Db,
+  userId: string,
+  opts: NewConversation,
+): Promise<CreateResult> {
+  if (!(await isLinked(tx, userId, opts.accountId))) return { kind: "not_linked" };
+  const since = new Date(Date.now() - CHAT_CREATE_LIMIT.windowMs);
+  const [recent] = await tx
+    .select({ n: count(), oldest: sql<string | null>`min(${coachConversations.createdAt})` })
+    .from(coachConversations)
+    .where(and(eq(coachConversations.userId, userId), gte(coachConversations.createdAt, since)));
+  if ((recent?.n ?? 0) >= CHAT_CREATE_LIMIT.max && recent?.oldest) {
+    const retryAt = new Date(new Date(recent.oldest).getTime() + CHAT_CREATE_LIMIT.windowMs);
+    return { kind: "rate_limited" as const, retryAt };
+  }
+  const [row] = await tx
+    .insert(coachConversations)
+    .values({
+      accountId: opts.accountId,
+      userId,
+      timeClass: opts.timeClass,
+      title: null,
+      anchor: opts.anchor,
+    })
+    .returning({ id: coachConversations.id });
+  if (!row) throw new Error("createConversation: no row");
+  return { kind: "created" as const, id: row.id };
 }
 
 /** The user's conversations on `accountId`, most recently active first (limit 1..=100). */
@@ -187,6 +276,7 @@ export async function getThread(db: Db, userId: string, id: string): Promise<Thr
         .select({
           messageId: interactiveEvals.messageId,
           status: interactiveEvals.status,
+          baseFen: interactiveEvals.baseFen,
           moves: interactiveEvals.moves,
         })
         .from(interactiveEvals)
@@ -195,7 +285,7 @@ export async function getThread(db: Db, userId: string, id: string): Promise<Thr
       for (const e of evals) {
         if (!e.messageId) continue;
         const list = checks.get(e.messageId) ?? [];
-        list.push({ status: e.status, moves: e.moves });
+        list.push({ status: e.status, ...engineLine(e.baseFen, e.moves) });
         checks.set(e.messageId, list);
       }
     }

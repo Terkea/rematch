@@ -1,6 +1,6 @@
 "use client";
 
-import { type FormEvent, type KeyboardEvent, useId, useRef, useState } from "react";
+import { type FormEvent, type KeyboardEvent, useEffect, useId, useRef, useState } from "react";
 import { ClockIcon, Icon } from "../icons/index.js";
 import { cn } from "../lib/index.js";
 import { Button } from "../primitives/button.js";
@@ -26,6 +26,12 @@ export interface ChatComposerProps {
 
 /** The count shows from this many characters left. */
 export const COUNT_FROM = 200;
+
+/** The count reaches a screen reader once typing pauses this long (ms), never per keystroke. */
+export const ANNOUNCE_AFTER_MS = 1000;
+
+/** The placeholder while the allowance is used up, so the box never invites a question. */
+export const PAUSED_PLACEHOLDER = "Questions are paused until they reset";
 
 const nf = new Intl.NumberFormat("en-GB");
 
@@ -59,6 +65,13 @@ export function ChatComposer({
   const canSend = !disabled && !sending && !blank && !over;
   const showCount = left <= COUNT_FROM;
   const reason = disabled && disabledReason?.trim() ? disabledReason : null;
+  const spoken = showCount && !disabled ? countText(left) : "";
+  const [announced, setAnnounced] = useState("");
+
+  useEffect(() => {
+    const t = setTimeout(() => setAnnounced(spoken), ANNOUNCE_AFTER_MS);
+    return () => clearTimeout(t);
+  }, [spoken]);
 
   async function send() {
     if (!canSend || busy.current) return;
@@ -75,7 +88,8 @@ export function ChatComposer({
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key !== "Enter" || e.shiftKey || e.nativeEvent.isComposing) return;
+    // Safari commits an IME composition with an Enter whose isComposing is false but keyCode 229.
+    if (e.key !== "Enter" || e.shiftKey || e.nativeEvent.isComposing || e.keyCode === 229) return;
     e.preventDefault();
     void send();
   }
@@ -103,7 +117,7 @@ export function ChatComposer({
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={onKeyDown}
-        placeholder={placeholder}
+        placeholder={reason ? PAUSED_PLACEHOLDER : placeholder}
         disabled={disabled}
         rows={2}
         aria-invalid={over || undefined}
@@ -112,12 +126,13 @@ export function ChatComposer({
           .join(" ")}
         className={cn(
           "field-sizing-content min-h-20 max-h-60 w-full resize-none overflow-y-auto",
-          "rounded-field border border-rule-strong bg-well px-3 py-2.5",
+          // Ready is an open sheet with a firm edge; disabled recedes into a `well`.
+          "rounded-field border border-rule-strong bg-sheet px-3 py-2.5",
           "font-sans text-base text-ink placeholder:text-ink-faint",
           "transition-colors duration-(--dur-quick) ease-out",
           "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink",
           "enabled:not-aria-invalid:hover:border-ink-soft aria-invalid:border-pen",
-          "disabled:cursor-not-allowed disabled:border-rule disabled:text-ink-faint",
+          "disabled:cursor-not-allowed disabled:border-rule disabled:bg-well disabled:text-ink-faint",
         )}
       />
       {reason ? (
@@ -129,22 +144,22 @@ export function ChatComposer({
           <span>{reason}</span>
         </p>
       ) : (
-        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <div className="flex items-center justify-end gap-4">
+          {/* Phones have no Enter-to-send habit and no room: the hint stays for screen readers. */}
           <p
             id={hintId}
-            className="m-0 flex items-center gap-1.5 font-sans text-sm text-ink-faint pointer-coarse:sr-only"
+            className="m-0 mr-auto flex min-w-0 items-center gap-1.5 font-sans text-sm text-ink-faint max-sm:sr-only pointer-coarse:sr-only"
           >
             <Kbd>Enter</Kbd> sends, <Kbd>Shift</Kbd>
             <span aria-hidden="true">+</span>
             <span className="sr-only">plus</span>
             <Kbd>Enter</Kbd> adds a line
           </p>
-          <div className="ml-auto flex items-center gap-3">
+          <div className="flex shrink-0 items-center gap-3">
             <p
               id={countId}
-              aria-live="polite"
               className={cn(
-                "m-0 font-sans text-sm [font-variant-numeric:tabular-nums]",
+                "m-0 font-sans text-sm whitespace-nowrap [font-variant-numeric:tabular-nums]",
                 over ? "text-pen-text" : "text-ink-faint",
               )}
             >
@@ -156,6 +171,9 @@ export function ChatComposer({
           </div>
         </div>
       )}
+      <p data-part="count-announce" aria-live="polite" className="sr-only">
+        {announced}
+      </p>
     </form>
   );
 }

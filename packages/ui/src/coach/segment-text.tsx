@@ -65,23 +65,44 @@ export interface SegmentTextProps {
   className?: string | undefined;
 }
 
+/**
+ * The href if it is safe to emit: an internal path (`/x`, not `//host`), a fragment, or http(s).
+ * Anything else (`javascript:`, `data:`, protocol-relative, leading spaces) is no link.
+ */
+export function safeHref(href: unknown): { href: string; external: boolean } | null {
+  if (typeof href !== "string" || href === "") return null;
+  if (href.startsWith("#")) return { href, external: false };
+  if (href.startsWith("/") && !href.startsWith("//") && !href.startsWith("/\\"))
+    return { href, external: false };
+  if (/^https?:\/\/[^\s]+$/i.test(href)) return { href, external: true };
+  return null;
+}
+
 function linked(node: ReactNode, s: Segment, hrefFor: SegmentTextProps["hrefFor"]): ReactNode {
-  let href: string | null = null;
+  let raw: unknown = null;
   try {
-    href = hrefFor ? hrefFor(s) : null;
+    raw = hrefFor ? hrefFor(s) : null;
   } catch {
-    href = null;
+    raw = null;
   }
-  return href ? (
-    <a href={href} className={linkClass}>
+  const link = safeHref(raw);
+  if (!link) return node;
+  return (
+    <a
+      href={link.href}
+      className={linkClass}
+      {...(link.external ? { rel: "noopener noreferrer" } : {})}
+    >
       {node}
     </a>
-  ) : (
-    node
   );
 }
 
-function renderSegment(s: Segment, hrefFor: SegmentTextProps["hrefFor"]): ReactNode {
+function renderSegment(
+  s: Segment,
+  hrefFor: SegmentTextProps["hrefFor"],
+  firstEng: boolean,
+): ReactNode {
   switch (s.kind) {
     case "text":
       return str(s.text);
@@ -164,7 +185,9 @@ function renderSegment(s: Segment, hrefFor: SegmentTextProps["hrefFor"]): ReactN
           >
             {text}
           </span>
-          <span className="ml-1 font-sans text-sm font-medium text-ink-faint">engine check</span>
+          {firstEng ? (
+            <span className="ml-1 font-sans text-sm font-medium text-ink-faint">engine check</span>
+          ) : null}
         </span>
       );
     }
@@ -177,12 +200,16 @@ function renderSegment(s: Segment, hrefFor: SegmentTextProps["hrefFor"]): ReactN
 export function SegmentText({ segments, hrefFor, as = "p", className }: SegmentTextProps) {
   const Tag = as;
   const list = Array.isArray(segments) ? segments : [];
+  // "engine check" is spelled out once per run of text; later ones keep the dashed pencil line
+  // and their accessible name.
+  const firstEngIndex = list.findIndex((s) => s && typeof s === "object" && s.kind === "eng");
   return (
     <Tag data-segment-text className={cn(as === "p" && "m-0 whitespace-pre-line", className)}>
       {list.map((s, i) => {
         if (!s || typeof s !== "object") return null;
+        const firstEng = s.kind === "eng" && i === firstEngIndex;
         // biome-ignore lint/suspicious/noArrayIndexKey: segments are a fixed, ordered run of text.
-        return <Fragment key={i}>{renderSegment(s, hrefFor)}</Fragment>;
+        return <Fragment key={i}>{renderSegment(s, hrefFor, firstEng)}</Fragment>;
       })}
     </Tag>
   );
