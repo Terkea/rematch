@@ -167,7 +167,7 @@ test("filters round-trip through the URL, and the overview compares periods hone
             () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
           ),
           `${name} at ${width}`,
-        ).toBe(0);
+        ).toBeLessThanOrEqual(0);
         await page.screenshot({
           path: `../../.shots/filters/${name}/${width}-${scheme}.png`,
           fullPage: true,

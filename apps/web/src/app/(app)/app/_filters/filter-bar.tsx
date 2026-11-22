@@ -1,8 +1,9 @@
 import { CaretDownIcon, FunnelSimpleIcon, Icon } from "@ci/ui/icons";
 import { cn } from "@ci/ui/lib";
-import { Button, Field, Input, touchTarget } from "@ci/ui/primitives";
+import { Button, touchTarget } from "@ci/ui/primitives";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { DateField } from "./date-field";
 import type { CustomCompare, CustomRange, FilterBarModel, LinkOption } from "./model";
 
 // The shared filter bar (T3, ADR 0083): time control, format, colour, period and the period
@@ -67,14 +68,6 @@ function Group({ label, children }: { id: string; label: string; children: React
 const Hidden = ({ pairs }: { pairs: [string, string][] }) =>
   pairs.map(([k, v]) => <input key={`${k}=${v}`} type="hidden" name={k} value={v} />);
 
-function DateInput({ label, name, value }: { label: string; name: string; value: string | null }) {
-  return (
-    <Field label={label} className="w-40">
-      <Input type="date" name={name} defaultValue={value ?? ""} min="2000-01-01" max="2100-12-31" />
-    </Field>
-  );
-}
-
 function CustomRangeForm({ custom }: { custom: CustomRange }) {
   return (
     <details className="group/custom" {...(custom.open ? { open: true } : {})}>
@@ -84,8 +77,8 @@ function CustomRangeForm({ custom }: { custom: CustomRange }) {
       </summary>
       <form method="get" action={custom.action} className="flex flex-wrap items-end gap-3 pt-3">
         <Hidden pairs={custom.hidden} />
-        <DateInput label="From" name="from" value={custom.from} />
-        <DateInput label="To" name="to" value={custom.to} />
+        <DateField label="From" name="from" value={custom.from} />
+        <DateField label="To" name="to" value={custom.to} />
         <Button type="submit" variant="outline">
           Show these dates
         </Button>
@@ -105,13 +98,13 @@ function CustomCompareForm({ custom }: { custom: CustomCompare }) {
         <Hidden pairs={custom.hidden} />
         <fieldset className="m-0 flex flex-wrap items-end gap-3 border-0 p-0">
           <legend className="mb-1.5 text-sm text-ink-soft">Period A, the earlier one</legend>
-          <DateInput label="A from" name="a_from" value={custom.a.from} />
-          <DateInput label="A to" name="a_to" value={custom.a.to} />
+          <DateField label="A from" name="a_from" value={custom.a.from} />
+          <DateField label="A to" name="a_to" value={custom.a.to} />
         </fieldset>
         <fieldset className="m-0 flex flex-wrap items-end gap-3 border-0 p-0">
           <legend className="mb-1.5 text-sm text-ink-soft">Period B, the later one</legend>
-          <DateInput label="B from" name="b_from" value={custom.b.from} />
-          <DateInput label="B to" name="b_to" value={custom.b.to} />
+          <DateField label="B from" name="b_from" value={custom.b.from} />
+          <DateField label="B to" name="b_to" value={custom.b.to} />
         </fieldset>
         <Button type="submit" variant="outline">
           Compare these periods
