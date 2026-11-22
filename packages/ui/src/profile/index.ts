@@ -7,6 +7,9 @@ export {
 } from "./kpi-trend-grid.js";
 export {
   bandComparisonText,
+  countsText,
+  DEFAULT_BAND_LABEL,
+  DEFAULT_COUNTS,
   dayText,
   type ExemplarCaption,
   exemplarCaption,
@@ -23,7 +26,10 @@ export {
   onLine,
   shareRangeText,
   shareText,
+  trendPendingText,
+  type WeaknessCounts,
   weaknessRateText,
+  weaknessScaleMax,
   weekText,
 } from "./text.js";
-export { WeaknessRow, type WeaknessRowProps } from "./weakness-row.js";
+export { WeaknessRow, WeaknessRowKey, type WeaknessRowProps } from "./weakness-row.js";

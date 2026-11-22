@@ -1,5 +1,6 @@
 "use client";
 
+import { Chess } from "chess.js";
 import { useMemo } from "react";
 import type { Annotation } from "../annotations/index.js";
 import { Board, judgementGlyph } from "../board/index.js";
@@ -61,6 +62,22 @@ function ArrowSwatch({ tone }: { tone: "pen" | "good" | "pencil" }) {
   );
 }
 
+/** The SAN of the reply after the played move, or null when either move is not legal here. */
+function replySan(fen: string, played: string, reply: string | null): string | null {
+  if (!reply) return null;
+  try {
+    const chess = new Chess(fen);
+    chess.move({ from: played.slice(0, 2), to: played.slice(2, 4), promotion: played[4] ?? "q" });
+    return chess.move({
+      from: reply.slice(0, 2),
+      to: reply.slice(2, 4),
+      promotion: reply[4] ?? "q",
+    }).san;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * One example position from a weakness (ADR 0072): the position before the move, the played move
  * as a `pen` arrow (with its stored glyph as a badge), the better move as a `good` arrow and the
@@ -96,7 +113,6 @@ export function ExemplarBoard({
           square: playedSq.to,
           glyph: judgementGlyph[judgement],
           tone: "pen",
-          place: "edge",
         });
       }
     }
@@ -104,6 +120,12 @@ export function ExemplarBoard({
   }, [bestUci, refutation, played.uci, judgement]);
   const tones = new Set(annotations.map((a) => a.tone));
   const move = exemplarMoveText(fen, played.san);
+  const reply = useMemo(() => replySan(fen, played.uci, refutation), [fen, played.uci, refutation]);
+  // Keep the win-chance pair on one line, with no-break spaces around "to".
+  const text = exemplarCaption({ fen, played, best, caption }).replace(
+    /(\d+%) to (\d+%)/,
+    "$1 to $2",
+  );
 
   return (
     <figure data-exemplar className={cn("m-0 flex w-fit flex-col gap-3", className)}>
@@ -115,7 +137,7 @@ export function ExemplarBoard({
       />
       <figcaption className="flex max-w-(--board-size) flex-col gap-2">
         <p className="m-0 font-serif text-prose text-ink [font-variant-numeric:lining-nums_tabular-nums]">
-          {exemplarCaption({ fen, played, best, caption })}
+          {text}
         </p>
         <ul
           aria-label="Arrows"
@@ -124,19 +146,19 @@ export function ExemplarBoard({
           {tones.has("pen") ? (
             <li className="flex items-center gap-1.5">
               <ArrowSwatch tone="pen" />
-              Played
+              Played, {played.san}
             </li>
           ) : null}
           {tones.has("good") ? (
             <li className="flex items-center gap-1.5">
               <ArrowSwatch tone="good" />
-              Better
+              Better, {best?.san}
             </li>
           ) : null}
           {tones.has("pencil") ? (
             <li className="flex items-center gap-1.5">
               <ArrowSwatch tone="pencil" />
-              The reply that punishes it
+              {reply ? `Their reply, ${reply}` : "Their reply"}
             </li>
           ) : null}
         </ul>

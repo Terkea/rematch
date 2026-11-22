@@ -1,7 +1,15 @@
 "use client";
 
-import { AreaScore, AreaScoreKey } from "@ci/ui/area-score";
-import { ExemplarBoard, KpiTrendGrid, type KpiTrendItem, WeaknessRow } from "@ci/ui/profile";
+import { AreaScoreKey, AreaScoreList } from "@ci/ui/area-score";
+import {
+  ExemplarBoard,
+  KpiTrendGrid,
+  type KpiTrendItem,
+  WeaknessRow,
+  WeaknessRowKey,
+  type WeaknessRowProps,
+  weaknessScaleMax,
+} from "@ci/ui/profile";
 
 // The profile kit (ADR 0072) with synthetic numbers: shaped like the R2 read model, never a
 // player's data. The two positions are real opening traps; their win chances are made up.
@@ -72,7 +80,57 @@ const EMPTY_KPI: KpiTrendItem = {
   points: WEEKS.slice(-4).map((week) => ({ week, value: null, low: null, high: null, n: 0 })),
 };
 
+const BAND = "Players rated 1400–1600";
+
+const ROWS: WeaknessRowProps[] = [
+  {
+    label: "Leaving pieces undefended",
+    state: "active",
+    rate: { mean: 0.0421, low: 0.031, high: 0.056 },
+    evidence: { events: 38, chances: 902, sufficient: true, needMore: null },
+    counts: { event: "pieces left hanging", chance: "moves with a loose piece" },
+    band: { median: 0.021, label: BAND },
+    href: "#profile",
+    trend: [0.052, 0.049, 0.05, null, 0.046, 0.047, 0.044, 0.043, 0.045, 0.042],
+    onset: "2026-09-14",
+  },
+  {
+    label: "Rook endgames",
+    state: "improving",
+    rate: { mean: 0.118, low: 0.084, high: 0.152 },
+    evidence: { events: 31, chances: 263, sufficient: true, needMore: null },
+    counts: { event: "errors", chance: "rook-endgame moves" },
+    band: { median: 0.11, label: BAND },
+    href: "#profile",
+    trend: [0.17, 0.16, 0.15, 0.14, null, null, 0.13, 0.12, 0.12],
+    onset: "2026-08-20",
+  },
+  {
+    label: "Missed forks",
+    state: "emerging",
+    rate: { mean: 0.09, low: 0.04, high: 0.17 },
+    evidence: { events: 4, chances: 40, sufficient: false, needMore: 180 },
+    counts: { event: "missed", chance: "fork chances" },
+    band: { median: 0.06, label: BAND },
+    href: "#profile",
+    trend: [null, 0.1, null, 0.08],
+    onset: null,
+  },
+  {
+    label: "Blunders under one minute",
+    state: "resolved",
+    rate: { mean: 0.018, low: 0.011, high: 0.027 },
+    evidence: { events: 14, chances: 780, sufficient: true, needMore: null },
+    counts: { event: "blunders", chance: "moves under one minute" },
+    band: { median: null },
+    href: "#profile",
+    trend: [0.04, 0.035, 0.03, 0.026, 0.022, 0.02, 0.019, 0.018],
+    onset: "2026-07-02",
+  },
+];
+
 export function ProfileSection() {
+  const scaleMax = weaknessScaleMax(ROWS);
   return (
     <section
       id="profile"
@@ -92,55 +150,13 @@ export function ProfileSection() {
 
       <div className="flex flex-col gap-3">
         <h3 className="font-serif text-xl font-semibold">Weakness rows</h3>
+        <WeaknessRowKey bandLabel={BAND} />
         <ul className="m-0 flex list-none flex-col p-0">
-          <li>
-            <WeaknessRow
-              label="Leaving pieces undefended"
-              state="active"
-              rate={{ mean: 0.0421, low: 0.031, high: 0.056 }}
-              evidence={{ events: 38, chances: 902, sufficient: true, needMore: null }}
-              band={{ median: 0.021 }}
-              href="#profile"
-              trend={[0.052, 0.049, 0.05, null, 0.046, 0.047, 0.044, 0.043, 0.045, 0.042]}
-              onset="2026-09-14"
-            />
-          </li>
-          <li>
-            <WeaknessRow
-              label="Rook endgames"
-              state="improving"
-              rate={{ mean: 0.118, low: 0.084, high: 0.152 }}
-              evidence={{ events: 31, chances: 263, sufficient: true, needMore: null }}
-              band={{ median: 0.11 }}
-              href="#profile"
-              trend={[0.17, 0.16, 0.15, 0.14, null, null, 0.13, 0.12, 0.12]}
-              onset="2026-08-20"
-            />
-          </li>
-          <li>
-            <WeaknessRow
-              label="Missed forks"
-              state="emerging"
-              rate={{ mean: 0.09, low: 0.04, high: 0.17 }}
-              evidence={{ events: 4, chances: 40, sufficient: false, needMore: 180 }}
-              band={{ median: 0.06 }}
-              href="#profile"
-              trend={[null, 0.1, null, 0.08]}
-              onset={null}
-            />
-          </li>
-          <li>
-            <WeaknessRow
-              label="Time trouble blunders"
-              state="resolved"
-              rate={{ mean: 0.018, low: 0.011, high: 0.027 }}
-              evidence={{ events: 14, chances: 780, sufficient: true, needMore: null }}
-              band={{ median: null }}
-              href="#profile"
-              trend={[0.04, 0.035, 0.03, 0.026, 0.022, 0.02, 0.019, 0.018]}
-              onset="2026-07-02"
-            />
-          </li>
+          {ROWS.map((row) => (
+            <li key={row.label}>
+              <WeaknessRow {...row} scaleMax={scaleMax} />
+            </li>
+          ))}
         </ul>
       </div>
 
@@ -154,6 +170,7 @@ export function ProfileSection() {
             { date: "2026-10-26", label: "Coaching report" },
           ]}
           minN={5}
+          headingLevel={4}
         />
       </div>
 
@@ -180,13 +197,27 @@ export function ProfileSection() {
       </div>
 
       <div className="flex flex-col gap-3">
-        <h3 className="font-serif text-xl font-semibold">Area score, next band not measured</h3>
-        <AreaScoreKey next={false} />
-        <AreaScore
-          area="endgame"
-          score={62}
-          band={{ median: 50 }}
-          basis={{ games: 22, timeClass: "rapid" }}
+        <h3 className="font-serif text-xl font-semibold">
+          Area scores without a measured next band
+        </h3>
+        <AreaScoreKey next={false} interval />
+        <AreaScoreList
+          items={[
+            {
+              area: "endgame",
+              score: 62,
+              band: { median: 50 },
+              interval: { low: 55, high: 68, level: 0.8 },
+              basis: { games: 22, timeClass: "rapid" },
+            },
+            {
+              area: "tactics",
+              score: 44,
+              band: { median: 50 },
+              interval: null,
+              basis: { games: 9, timeClass: "rapid" },
+            },
+          ]}
         />
       </div>
     </section>
