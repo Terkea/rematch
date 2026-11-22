@@ -18,25 +18,28 @@ Analyse jobs share one Postgres queue (ADR 0032). With R1's claim (`priority, ru
 
 **served comes from games, not jobs.** Finished jobs are pruned (R1 retention), so `served` is read from `games.analysis_started_at`. The analyse handler sets that column when it starts. Task 3 added `games_started_account_idx (analysis_started_at, account_id)`, so this read is an index range over the last hour.
 
-**The reference pseudo-user.** Jobs with `user_key NULL` (reference games, priority 200) count as one pseudo-user with `joined_at = infinity`. So do jobs whose account no longer exists.
+**Analyse kinds only (fix round 1).** For a kind whose handler never sets `analysis_started_at`, `served` stays 0 and the slices never advance, so the order is not fair. The typed allow-list `ServedKind` (today only `analyse-game`) names the kinds that may be claimed fairly. `FairRoundRobin::for_kinds` refuses any other kind with `NotAServedKind`, and `dequeue` asked for a kind outside `FairRoundRobin::kinds()` returns `QueueError::InvalidOptions` and claims nothing. Add a variant only for a kind whose handler sets the column at start.
+
+**The reference pseudo-user.** Jobs with `user_key NULL` (reference games, priority 200) count as one pseudo-user with `joined_at = infinity`. A job whose `user_key` has no `linked_accounts` row (a ghost account) is not folded into that pseudo-user: it keeps its own round robin, also with `joined_at = infinity`.
 
 **Lock after ordering.** `FOR UPDATE` cannot share a query level with window functions. The statement therefore ranks first and locks the result. It is one statement:
 1. It ranks the candidates and keeps the best `4 × limit`.
 2. It locks them with `ORDER BY … LIMIT limit FOR UPDATE OF j SKIP LOCKED`, so it locks at most `limit` rows. The 4× headroom lets about four concurrent claimers fill their batches.
+   - **One retry (fix round 1).** With more than four claimers, the others can hold every candidate, and a claim would come back empty while due work remains. The statement also returns how many candidates it considered. When a claim gets fewer than `limit` jobs although it had more candidates than it got, it is re-run once, in a new transaction (fresh snapshot), for the missing jobs over a wider window of `2 × 4 × limit + 32` candidates. One retry, not a loop: an empty result after it means the work really is held or gone.
 3. Postgres re-checks `state = 'queued'` on any row a concurrent claimer has already taken, and skips it.
 4. R1's claim update follows: the attempt is counted at claim, and the lease token is fresh.
 
 ### Staying index-backed (R1 queue rulings preserved)
 
-R1 found that `kind = ANY($1)` sorts every ready row on each claim. The brief's literal statement had the same problem: a window over every ready row. The implemented statement instead runs in two phases on `jobs_user_ready_idx (kind, user_key, priority, run_at)`:
+R1 found that `kind = ANY($1)` sorts every ready row on each claim. The brief's literal statement had the same problem: a window over every ready row. The implemented statement instead runs in two phases on `jobs_user_ready_idx (kind, user_key, priority, run_at, id)` (migration `20261121020100_jobs_user_ready_id`, fix round 1, adds `id`):
 
 1. **Heads.** A recursive skip scan finds each account with queued jobs. One `LIMIT 1` probe per account then reads its head, which is its first due job. A head has rank 1, so its key is exact. With several kinds, an account's head is its best head across kinds. Only the best `4 × limit` accounts by head key go on. This is safe because an account's own jobs never come before its head, so an account whose head misses the cut has no job in the global top `4 × limit` either.
 2. **Expand.** For those accounts, the statement reads the first `4 × limit` due jobs per kind, as index ranges in order. It then ranks each account's jobs (`row_number`) and orders the result.
 
 Two details of the index reads:
-- They order by exactly the index columns `(user_key, priority, run_at)`.
+- They order by exactly the index columns `(user_key, priority, run_at, id)`.
   - With `user_key` leading, the planner walks the user index rather than filtering `jobs_ready_idx`. For the reference pseudo-user, filtering would walk every ready job of the kind.
-  - Leaving out `id` avoids an incremental sort that would read a whole tie group (for example 2 000 reference games enqueued in one transaction). Within an exact tie, candidates come in index order; the ranking and the claim still order by `id`.
+  - `id` is the tie-break. Jobs enqueued in one transaction share `(priority, run_at)`. Before fix round 1 the index had no `id`, so a tie came back in index (heap) order and a `LIMIT` could skip the smallest id. Ordering by `id` without it in the index would need an incremental sort over the whole tie group (for example 2 000 reference games). With `id` as the last index column, the index order is the full claim order and no sort is needed. The regression test is `equal_priority_and_run_at_claims_the_smallest_id`.
 - The cost is about `2 × accounts + kinds × (4 × limit)²` rows read from `jobs`, whatever the backlog.
 
 Measured with 50 000 queued jobs over 500 accounts and `limit 16`: 5 145 rows read, about 25 ms, in both the custom and the generic plan. The plan guard `fair_claim_plan_is_index_backed` asserts the named indexes, no Seq Scan, and the row bound.
@@ -51,10 +54,11 @@ The other R1 rulings are unchanged:
 
 `queue::strategy::SelectStrategy` has two methods: `dequeue(queue, kinds, owner, limit, lease)` and `order_by()`. The second is used for `Debug` and logs.
 
-`Queue::claim_with` runs any custom claim statement under the queue's statement timeout and backstop. `scheduler::fair::fair_order_sql()` is the ranking without the lock (a CTE named `fair`). Task 30 (ETA) shares it.
+`Queue::claim_with` runs any custom claim statement under the queue's statement timeout and backstop, and returns `Claimed { jobs, candidates }` (the statement returns one row per claimed job, or one row of NULL job columns, each with the candidate count). `scheduler::fair::fair_order_sql()` is the ranking without the lock (a CTE named `fair`). Its parameters are `$1` kinds, `$2` the candidate count (the first `$2` rows of `fair` are exact), `$3` the served window in ms and `$4` the slice length. Task 30 (ETA) shares it, and passes a `$2` as deep as the ETA it needs.
 
 ## Consequences
 
 - **Lag in `served`.** A job that is claimed but not yet started is no longer queued, and is not yet in `served`. Until the handler sets `analysis_started_at`, the account's next job ranks one place too early. With W jobs in flight, an account can be ahead by at most W. The runner test bounds the spread at 5 plus the in-flight count.
-- **Cost grows with accounts.** The claim's cost grows with the number of accounts that have queued work: about 2 index probes per account. A very large population (10⁵ accounts with work) would need a maintained per-account head table.
-- **Ties.** Exact ties in `(user_key, priority, run_at)` beyond `4 × limit` are taken in index order rather than strictly by `id`.
+- **Cost grows with accounts (scale accepted to about 10 000).** The claim is linear in the number of accounts that have queued work: about 2 index probes, roughly 12 µs, per account. That is about 25 ms at 500 accounts and about 120 ms at 10 000. The trigger for a maintained per-account head table is **5 000 accounts with queued work**. The release-only guard `fair_claim_at_2000_accounts_stays_linear` (ignored in debug builds, since it is a wall-clock bound) asserts a claim at 2 000 accounts stays under 72 ms (3 × 2 000 × 12 µs).
+- **Ties.** Exact ties in `(priority, run_at)` are claimed by `id` (see above).
+- **Contention.** Beyond four concurrent claimers, the one retry covers the window. `contended_claimers_never_come_back_empty_while_work_remains` (8 claimers, limit 1) and `short_claim_retries_past_rows_locked_by_others` guard it.

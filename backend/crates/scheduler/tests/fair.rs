@@ -189,7 +189,8 @@ async fn reference_jobs_come_last(pool: PgPool) {
     let a = account(&pool, "a", 2).await;
     let ga = games(&pool, a, 6, None).await;
     enqueue(&q, Some(a), &ga, p2()).await;
-    // A job whose account is gone (no linked_accounts row) still runs, after every account.
+    // A job whose account is gone (no linked_accounts row) still runs: it keeps its own round
+    // robin (it is not folded into the reference pseudo-user), with joined_at = infinity.
     let ghost = Uuid::new_v4();
     enqueue(&q, Some(ghost), &[Uuid::new_v4()], p2()).await;
 
@@ -582,8 +583,7 @@ async fn fair_claim_plan_is_index_backed(pool: PgPool) {
         .iter()
         .flat_map(|c| ["force_custom_plan", "force_generic_plan"].map(|m| (*c, m)))
     {
-        let execute =
-            format!("EXECUTE fair_claim('{kinds}', 64, 3600000, 5, 16, 'w', 60000)");
+        let execute = format!("EXECUTE fair_claim('{kinds}', 64, 3600000, 5, 16, 'w', 60000)");
         sqlx::query("SELECT set_config('plan_cache_mode', $1, false)")
             .bind(mode)
             .execute(&mut *conn)
@@ -677,7 +677,10 @@ async fn equal_priority_and_run_at_claims_the_smallest_id(pool: PgPool) {
 fn only_served_kinds_build_a_fair_strategy() {
     assert_eq!(ServedKind::ALL, &[ServedKind::AnalyseGame]);
     assert_eq!(ServedKind::AnalyseGame.as_str(), KIND);
-    assert_eq!(FairRoundRobin::default().kinds(), &[ServedKind::AnalyseGame]);
+    assert_eq!(
+        FairRoundRobin::default().kinds(),
+        &[ServedKind::AnalyseGame]
+    );
     assert!(FairRoundRobin::for_kinds(&[KIND]).is_ok());
     for bad in [
         queue::KIND_PREVIEW,
@@ -756,15 +759,17 @@ async fn contended_claimers_never_come_back_empty_while_work_remains(pool: PgPoo
             let fair = FairRoundRobin::default();
             let owner = format!("w{w}");
             loop {
-                let jobs = fair.dequeue(&q, &[KIND], &owner, LIMIT, LEASE).await.unwrap();
-                if jobs.is_empty() {
-                    // Counted after the claim, so it can only be lower than at claim time.
-                    let queued: i64 = sqlx::query_scalar(
-                        "SELECT count(*) FROM jobs WHERE state = 'queued'",
-                    )
-                    .fetch_one(q.pool())
+                let jobs = fair
+                    .dequeue(&q, &[KIND], &owner, LIMIT, LEASE)
                     .await
                     .unwrap();
+                if jobs.is_empty() {
+                    // Counted after the claim, so it can only be lower than at claim time.
+                    let queued: i64 =
+                        sqlx::query_scalar("SELECT count(*) FROM jobs WHERE state = 'queued'")
+                            .fetch_one(q.pool())
+                            .await
+                            .unwrap();
                     if queued == 0 {
                         break;
                     }
