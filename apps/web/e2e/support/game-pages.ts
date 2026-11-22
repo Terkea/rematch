@@ -37,6 +37,11 @@ export async function adultPage(browser: Browser, request: APIRequestContext): P
   return page;
 }
 
+/**
+ * The e2e-fixtures world: the games seed, then the coach seed (M5b Task 11), which restores the
+ * account's coaching rows every time. So the overview, the coach pages and their baselines read
+ * the same whichever spec ran before (coach.spec rebuilds a report and asks questions).
+ */
 export function seedFixtures(): E2eGames {
   const run = spawnSync(
     "node_modules/.bin/tsx",
@@ -46,5 +51,11 @@ export function seedFixtures(): E2eGames {
   expect(run.status, run.stderr).toBe(0);
   const line = /SEED=(\{.*\})/.exec(run.stdout)?.[1];
   expect(line, run.stdout).toBeTruthy();
+  const coach = spawnSync(
+    "node_modules/.bin/tsx",
+    ["--conditions", "development", "e2e/helpers/seed-coach.ts", E2E_USER],
+    { env: process.env, encoding: "utf8" },
+  );
+  expect(coach.status, coach.stderr).toBe(0);
   return JSON.parse(line as string) as E2eGames;
 }

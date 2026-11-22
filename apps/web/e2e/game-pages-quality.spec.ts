@@ -1,12 +1,15 @@
+import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
+import { seedCoach } from "./support/coach";
 import { adultPage, seedFixtures } from "./support/game-pages";
 import { gotoSettled } from "./support/mail";
 
-// The quality loop (M4 Task 28's checks) over the game pages: /app, /app/games and a review, on
-// the e2e-fixtures games (synthetic and public fixture data). At 360px nothing scrolls sideways;
-// tabbing from the top reaches the page's main content with a visible focus outline on every
-// stop; and no honesty-breaking text (NaN, Infinity, undefined, null) is on the page. The axe
-// check of Task 28 waits for its dependency (@axe-core/playwright), which Task 28 adds.
+// The quality loop (M4 Task 28's checks) over the game pages (/app, /app/games, reviews) and the
+// coach pages (M5b Task 11), on the e2e-fixtures games and coach seed (synthetic and public
+// fixture data). At 360px nothing scrolls sideways; tabbing from the top reaches the page's main
+// content with a visible focus outline on every stop; no honesty-breaking text (NaN, Infinity,
+// undefined, null) is on the page; and on the coach pages axe (WCAG 2 A and AA, as quality.spec)
+// finds no serious or critical violation.
 
 async function settle(page: Page, url: string, ready: string): Promise<void> {
   await gotoSettled(page, url);
@@ -28,12 +31,23 @@ test("the game pages: no sideways scroll at 360px, visible focus, no broken numb
   test.setTimeout(600_000);
   const page = await adultPage(browser, request);
   const { analysedId, pendingId, longId } = seedFixtures();
+  const coach = seedCoach();
   const routes = [
     { url: "/app", ready: "nav[aria-labelledby='tc-label'] a", main: "Overview" },
     { url: "/app/games", ready: "section[aria-label='Filters'] button", main: "Games" },
     { url: `/app/games/${analysedId}?ply=62`, ready: "[data-review]", main: "review" },
     { url: `/app/games/${pendingId}`, ready: "[data-review]", main: "pending review" },
     { url: `/app/games/${longId}?ply=300`, ready: "[data-review]", main: "300-ply review" },
+    // The coach surfaces (M5b Task 11), on the coach seed seedFixtures also writes.
+    { axe: true, url: "/app/report", ready: "main h1", main: "report" },
+    { axe: true, url: "/app/weaknesses", ready: "main h1", main: "weaknesses" },
+    { axe: true, url: "/app/weaknesses/W3.shallow", ready: "main h1", main: "weakness" },
+    { axe: true, url: "/app/areas/endgame", ready: "main h1", main: "endgame area" },
+    { axe: true, url: "/app/areas/mindset", ready: "main h1", main: "mindset area" },
+    { axe: true, url: "/app/progress", ready: "main h1", main: "progress" },
+    { axe: true, url: "/app/coach", ready: "main h1", main: "coach" },
+    { axe: true, url: `/app/coach/${coach.threadId}`, ready: "textarea", main: "coach thread" },
+    { axe: true, url: "/app/coach/new", ready: "textarea", main: "new question" },
   ];
 
   for (const width of [360, 1440]) {
@@ -47,6 +61,16 @@ test("the game pages: no sideways scroll at 360px, visible focus, no broken numb
         () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
       );
       expect(over, `${where}: sideways overflow`).toBeLessThanOrEqual(0);
+
+      if ("axe" in r && width === 360) {
+        const axe = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
+        const bad = axe.violations
+          .filter((v) => v.impact === "serious" || v.impact === "critical")
+          .map(
+            (v) => `${v.id} (${v.impact}): ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`,
+          );
+        expect(bad, `${where}: axe serious or critical violations`).toEqual([]);
+      }
 
       // innerText, not textContent: what is rendered visible, not sr-only or hidden templates.
       // biome-ignore lint/performance/useDomNodeTextContent: the visible text is the point

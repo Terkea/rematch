@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { expect, type Page, test } from "@playwright/test";
+import { seedCoach } from "./support/coach";
 import { adultPage, seedFixtures } from "./support/game-pages";
 import { gotoSettled } from "./support/mail";
 
@@ -86,5 +87,32 @@ test("the game pages look as they did", async ({ browser, request }, info) => {
   await expect(page.locator("[data-review]")).toHaveAttribute("data-reveal", "done");
   await wholePage(page, "review.png");
 
+  await page.context().close();
+});
+
+test("the coach pages look as they did", async ({ browser, request }, info) => {
+  test.skip(!info.project.name.startsWith("visual-"), "runs in the visual projects");
+  test.setTimeout(600_000);
+  const page = await adultPage(browser, request);
+  seedFixtures();
+  // seedFixtures wrote the coach world; seeding again gives its ids (the same rows, rewritten).
+  const { threadId } = seedCoach();
+  const { viewport, colorScheme } = info.project.use;
+  const base = viewport ?? { width: 1440, height: 900 };
+  await page.emulateMedia({ colorScheme: colorScheme ?? "light", reducedMotion: "reduce" });
+
+  // Fixed dates only (the seed's module comment), so the text snapshots hold on every run.
+  const routes = [
+    { url: "/app/report", name: "report.png", ready: "main h1" },
+    { url: "/app/weaknesses/W1", name: "weakness.png", ready: "main h1" },
+    { url: "/app/areas/endgame", name: "area-endgame.png", ready: "main h1" },
+    { url: "/app/progress", name: "progress.png", ready: "main h1" },
+    { url: `/app/coach/${threadId}`, name: "coach-thread.png", ready: "textarea" },
+  ];
+  for (const r of routes) {
+    await page.setViewportSize(base);
+    await ready(page, r.url, r.ready);
+    await wholePage(page, r.name);
+  }
   await page.context().close();
 });

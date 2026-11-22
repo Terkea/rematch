@@ -197,9 +197,23 @@ async function chat(db: Db, step: Exclude<WorkerStep, { kind: "report-section" }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const raw = process.argv[2];
-  if (!raw) throw new Error("usage: simulate-worker.ts '<step json>'");
+  if (!raw) throw new Error("usage: simulate-worker.ts '<step json>' | latest-run | latest-answer");
   const db = createDb(assertSafeTestDatabase(process.env.E2E_DATABASE_URL ?? DEFAULT_URL));
-  await simulateWorker(db, JSON.parse(raw) as WorkerStep);
-  console.log("SIMULATED");
+  if (raw === "latest-run") {
+    // The run "Rebuild report" just inserted (the spec needs its id, as the worker gets it).
+    const [run] = await rows(db, sql`select id from report_runs order by created_at desc limit 1`);
+    console.log(`RUN=${run?.id ?? ""}`);
+  } else if (raw === "latest-answer") {
+    // The answer the web created for the question just sent (status pending).
+    const [m] = await rows(
+      db,
+      sql`select id from coach_messages where role = 'assistant'
+        and status in ('pending', 'streaming') order by created_at desc limit 1`,
+    );
+    console.log(`MESSAGE=${m?.id ?? ""}`);
+  } else {
+    await simulateWorker(db, JSON.parse(raw) as WorkerStep);
+    console.log("SIMULATED");
+  }
   process.exit(0);
 }

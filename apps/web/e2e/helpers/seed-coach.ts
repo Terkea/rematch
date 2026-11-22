@@ -284,20 +284,20 @@ export async function seedE2eCoach(opts: { db?: Db; email?: string } = {}): Prom
   });
 
   const text = (t: string) => [{ kind: "text" as const, text: t }];
-  const chat = { promptVersion: "chat@1", generatedAt: "2026-11-18T09:00:00.000Z" };
+  const chat = { promptVersion: "chat@1", generatedAt: "2026-11-04T09:00:00.000Z" };
   const { threadId } = await seedThread(db, {
     userId: u.id,
     accountId,
     timeClass: TC,
     title: "Why do I miss short tactics?",
-    lastMessageAt: at("2026-11-18"),
+    lastMessageAt: at("2026-11-04"),
     messages: [
       {
         role: "user",
         status: "done",
         text: "Why do I miss short tactics?",
         segments: text("Why do I miss short tactics?"),
-        createdAt: at("2026-11-18"),
+        createdAt: at("2026-11-04"),
       },
       {
         role: "assistant",
@@ -305,7 +305,7 @@ export async function seedE2eCoach(opts: { db?: Db; email?: string } = {}): Prom
         text: "Most of the misses come after a capture, when you recapture at once.",
         segments: text("Most of the misses come after a capture, when you recapture at once."),
         aiDisclosure: { ...DISCLOSURE, ...chat },
-        createdAt: at("2026-11-18"),
+        createdAt: at("2026-11-04"),
       },
     ],
   });
@@ -315,16 +315,16 @@ export async function seedE2eCoach(opts: { db?: Db; email?: string } = {}): Prom
     accountId,
     timeClass: TC,
     title: "How should I spend my clock?",
-    lastMessageAt: at("2026-11-19"),
+    lastMessageAt: at("2026-11-05"),
     messages: [
       {
         role: "user",
         status: "done",
         text: "How should I spend my clock?",
         segments: text("How should I spend my clock?"),
-        createdAt: at("2026-11-19"),
+        createdAt: at("2026-11-05"),
       },
-      { role: "assistant", status: "streaming", createdAt: at("2026-11-19") },
+      { role: "assistant", status: "streaming", createdAt: at("2026-11-05") },
     ],
   });
   const streamingMessageId = messageIds[1];
@@ -353,11 +353,41 @@ export async function linkPeer(email: string, opts: { db?: Db } = {}): Promise<v
   }
 }
 
+/**
+ * Uses `n` of this week's coach answers for the adult user, as another device would: one thread
+ * of `n` done answers created now, each with its disclosure (they count, R6). For the cap check.
+ */
+export async function spendAllowance(n: number, opts: { db?: Db } = {}): Promise<void> {
+  const db = dbOf(opts.db);
+  await refuseRealAccounts(db);
+  const [u] = await db.select({ id: user.id }).from(user).where(eq(user.email, E2E_USER));
+  const [account] = await db
+    .select({ id: linkedAccounts.id })
+    .from(linkedAccounts)
+    .where(eq(linkedAccounts.username, E2E_ACCOUNT));
+  if (!u || !account) throw new Error("seed the coach first");
+  const { threadId } = await seedThread(db, {
+    userId: u.id,
+    accountId: account.id,
+    timeClass: TC,
+    title: "Earlier questions",
+  });
+  await db.execute(sql`
+    insert into coach_messages (conversation_id, seq, role, status, text, segments, ai_disclosure)
+    select ${threadId}, g, 'assistant', 'done', 'An earlier answer.',
+      '[{"kind":"text","text":"An earlier answer."}]'::jsonb,
+      ${JSON.stringify({ ...DISCLOSURE, promptVersion: "chat@1" })}::jsonb
+    from generate_series(1, ${n}) as g`);
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const [command, arg] = process.argv.slice(2);
   if (command === "link" && arg) {
     await linkPeer(arg);
     console.log("LINKED");
+  } else if (command === "spend" && arg) {
+    await spendAllowance(Number(arg));
+    console.log("SPENT");
   } else {
     console.log(`COACH=${JSON.stringify(await seedE2eCoach(command ? { email: command } : {}))}`);
   }
