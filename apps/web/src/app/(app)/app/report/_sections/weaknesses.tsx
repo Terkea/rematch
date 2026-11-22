@@ -2,7 +2,13 @@
 
 import type { AiDisclosureData } from "@ci/ui/coach";
 import { Button } from "@ci/ui/primitives";
-import { dayText, ExemplarBoard, WeaknessRow, weaknessScaleMax } from "@ci/ui/profile";
+import {
+  dayText,
+  ExemplarBoard,
+  NO_BENCHMARK_TEXT,
+  WeaknessRow,
+  weaknessScaleMax,
+} from "@ci/ui/profile";
 import { type CSSProperties, useState } from "react";
 import { coachChatLive } from "../../../../../lib/coach-chat";
 import { coachHref } from "../../../../../server/coach/anchor";
@@ -52,6 +58,9 @@ export function Weaknesses({
     })),
   );
   const band = capital(BAND_TEXT[computed.player.band] ?? "players at your level");
+  // A ranked weakness always has a benchmark; with none ranked, the metrics say whether the build
+  // had any band reference at all. Without one nothing was compared (bug hunt I1).
+  const benchmarked = ranked.length > 0 || computed.metrics.some((m) => m.bandMedian !== null);
   return (
     <ReportSection
       id="report-weaknesses"
@@ -60,14 +69,18 @@ export function Weaknesses({
       disclosure={ready ? disclosure : null}
       intro={
         <p className="m-0 text-sm text-ink-soft">
-          Ranked by how much each one costs you, compared with {band.toLowerCase()}.
+          {benchmarked
+            ? `Ranked by how much each one costs you, compared with ${band.toLowerCase()}.`
+            : `${NO_BENCHMARK_TEXT}.`}
         </p>
       }
     >
       {ready ? null : <SectionNote status={status} />}
       {ranked.length === 0 ? (
         <p className="m-0 text-sm text-ink-soft">
-          Nothing stands out above {band.toLowerCase()} in this report.
+          {benchmarked
+            ? `Nothing stands out above ${band.toLowerCase()} in this report.`
+            : "Nothing is ranked until there is one. Your weaknesses page shows each one's own rate."}
         </p>
       ) : (
         <ol className="m-0 flex list-none flex-col gap-10 p-0">

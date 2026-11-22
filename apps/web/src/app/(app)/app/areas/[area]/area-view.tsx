@@ -16,6 +16,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { CoachScopeSwitch } from "../../../../../components/coach-scope-switch";
 import { coachChatLive } from "../../../../../lib/coach-chat";
+import { weeklyPoints } from "../../../../../lib/iso-week";
 import { segmentHref } from "../../../../../lib/segment-href";
 import { coachHref } from "../../../../../server/coach/anchor";
 import type { ReportView } from "../../../../../server/coaching";
@@ -454,9 +455,10 @@ function MeasuresPart({ model }: { model: AreaPageModel }) {
     metric: k.metric,
     label: k.label,
     unit: k.unit,
-    points: k.points,
+    // The read model keys weeks as "2026-W46"; the chart plots days (B2).
+    points: weeklyPoints(k.points),
   }));
-  const weeks = charted.flatMap((k) => k.points.map((p) => p.week)).sort();
+  const weeks = items.flatMap((k) => k.points.map((p) => p.week)).sort();
   const range = { from: weeks[0] ?? model.today, to: weeks.at(-1) ?? model.today };
   const reportDay = report.createdAt?.toISOString().slice(0, 10) ?? null;
   const events =

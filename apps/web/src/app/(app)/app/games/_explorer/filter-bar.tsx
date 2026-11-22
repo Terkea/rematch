@@ -3,6 +3,7 @@
 import { FunnelSimpleIcon, Icon, XIcon } from "@ci/ui/icons";
 import { Button, Field, Input, SegmentedControl, Select, touchTarget } from "@ci/ui/primitives";
 import { type ReactNode, useEffect, useId, useOptimistic, useRef, useState } from "react";
+import { TIME_CLASS_LABEL, TIME_CLASS_ORDER } from "../../../../../lib/time-class";
 import { parseGameQuery } from "../../../../../server/games/query";
 import type { GameFilters, GameListQuery } from "../../../../../server/games/types";
 import {
@@ -19,13 +20,10 @@ import { useExplorerNavigation } from "./transition";
 export type { AccountOption };
 
 const ALL = "all";
+/** Rapid first, then blitz, then the rest, and All last (I8). */
 const TIME_CONTROLS = [
+  ...TIME_CLASS_ORDER.map((tc) => ({ value: tc, label: TIME_CLASS_LABEL[tc] })),
   { value: ALL, label: "All time controls" },
-  { value: "bullet", label: "Bullet" },
-  { value: "blitz", label: "Blitz" },
-  { value: "rapid", label: "Rapid" },
-  { value: "classical", label: "Classical" },
-  { value: "daily", label: "Daily" },
 ];
 const RESULTS = [
   { value: ALL, label: "All" },

@@ -6,7 +6,7 @@ import {
   weaknessSeriesPoint,
   weaknessStateHistory,
 } from "@ci/db/generated";
-import { and, asc, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, sql } from "drizzle-orm";
 import { readOnly } from "../games";
 import { wilson } from "../stats";
 import { contractId, seriesArea, seriesLabel, weaknessDef } from "./catalogue";
@@ -19,9 +19,17 @@ import type {
   WeaknessState,
   WeaknessSummary,
 } from "./types";
+import { ESTIMATE_WINDOW_DAYS, ESTIMATE_WINDOW_TEXT } from "./window";
 
-/** Weeks of `weakness_series_point` a detail page shows (the newest ones with a point). */
-export const WEEKLY_WEEKS = 26;
+export { ESTIMATE_WINDOW_DAYS, ESTIMATE_WINDOW_TEXT };
+
+/**
+ * Weeks of `weakness_series_point` a detail page shows at most: every ISO week the estimate's
+ * window touches (183 days span up to 28), so the weekly list adds up to the estimate's counts.
+ */
+export const WEEKLY_WEEKS = 28;
+
+const DAY_MS = 86_400_000;
 
 type EstimateRow = typeof weaknessEstimates.$inferSelect;
 type HistoryRow = typeof weaknessStateHistory.$inferSelect;
@@ -95,6 +103,9 @@ function summary(
     rate: { mean: row.mean, low: row.ciLow, high: row.ciHigh, level: 0.8 },
     evidence: evidence(row),
     band: { median: row.bandMedian, p40: row.bandP40 },
+    // Rust stores `excess` (and the band) only with a benchmark; without one the state is
+    // `not_an_issue` by construction, which is no claim (bug hunt I1).
+    compared: row.bandMedian != null && row.excess != null,
     priority: row.priority,
     confidence: row.confidence,
     pImp: row.pImp,
@@ -273,6 +284,7 @@ async function weeklyOf(
   tx: Db,
   scope: CoachScope,
   seriesKey: string,
+  from: Date,
 ): Promise<WeaknessDetail["weekly"]> {
   const week = sql<string>`to_char(${weaknessSeriesPoint.playedAt} at time zone 'UTC', 'IYYY-"W"IW')`;
   const rows = await tx
@@ -287,6 +299,7 @@ async function weeklyOf(
         eq(weaknessSeriesPoint.accountId, scope.accountId),
         eq(weaknessSeriesPoint.timeClass, scope.timeClass),
         eq(weaknessSeriesPoint.seriesKey, seriesKey),
+        gte(weaknessSeriesPoint.playedAt, from),
       ),
     )
     .groupBy(week)
@@ -328,8 +341,14 @@ export async function getWeakness(
       .from(weaknessStateHistory)
       .where(and(inScope(scope).history, eq(weaknessStateHistory.seriesKey, seriesKey)))
       .orderBy(asc(weaknessStateHistory.id));
+    const window = {
+      days: ESTIMATE_WINDOW_DAYS,
+      from: new Date(base.updatedAt.getTime() - ESTIMATE_WINDOW_DAYS * DAY_MS),
+      to: base.updatedAt,
+    };
     return {
       ...base,
+      window,
       history: rows.map((r) => ({
         kind: r.kind,
         fromState: r.fromState as WeaknessState | null,
@@ -344,8 +363,8 @@ export async function getWeakness(
         causeHints: Array.isArray(r.causeHints) ? r.causeHints : [],
         counts: countsOf(r.evidence),
       })),
-      timeline: timelineOf(seriesKey, base.label, rows),
-      weekly: await weeklyOf(tx, scope, seriesKey),
+      timeline: { ...timelineOf(seriesKey, base.label, rows), compared: base.compared },
+      weekly: await weeklyOf(tx, scope, seriesKey, window.from),
       exemplars: await exemplarsOf(tx, scope, seriesKey),
     };
   });

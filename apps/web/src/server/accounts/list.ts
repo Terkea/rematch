@@ -8,7 +8,7 @@ import {
 import { and, asc, eq } from "drizzle-orm";
 import { lichessLinkStatus } from "../auth/lichess";
 
-export type AccountStatus = "ok" | "expiring" | "expired" | "pending_verification";
+export type AccountStatus = "ok" | "expiring" | "expired" | "pending_verification" | "unverified";
 
 export type LinkedAccountView = {
   linkId: string;
@@ -18,8 +18,10 @@ export type LinkedAccountView = {
   verified: boolean;
   /**
    * `ok`: verified. `pending_verification`: a chess.com code is waiting in `code`. `expired`: the
-   * code ran out (start the link again for a fresh one). For Lichess, `expiring` and `expired`
-   * follow the OAuth token's expiry (`lichessLinkStatus`), and both offer "Reconnect Lichess".
+   * code ran out (start the link again for a fresh one). `unverified`: a chess.com link that never
+   * had a code, such as one made by `dev:link` (start the link to get its first code, I3). For
+   * Lichess, `expiring` and `expired` follow the OAuth token's expiry (`lichessLinkStatus`), and
+   * both offer "Reconnect Lichess".
    */
   status: AccountStatus;
   code?: string;
@@ -72,6 +74,7 @@ export async function listAccounts(
     if (verification && verification.expiresAt > now) {
       return { ...base, status: "pending_verification" as const, code: verification.code };
     }
-    return { ...base, status: "expired" as const };
+    // Only a code that existed can have expired (I3).
+    return { ...base, status: verification ? ("expired" as const) : ("unverified" as const) };
   });
 }

@@ -1,26 +1,31 @@
 Overview
 
-chess.com e2e-fixtures
+34 of 35 games analysed, all time controls.
 
-34 of 35 games analysed. 1 waiting for analysis.
+Not synced yet.
+Details
 
+Sync now
 Time control
-All
-34
-Bullet
-1
-Blitz
-17
 Rapid
 16
+Blitz
+17
+Bullet
+1
+All
+34
 
  accuracy,  blunders a game.
 
 34 analysed games. Accuracy 80% likely between 65.1% and 71.2%. Blunders 80% likely between 1.2 and 1.8.
 
 What to work on
+Missed own tactic (shallow)
 
-Your coaching profile is still being built. When it is ready, its first finding goes here, with the games behind it.
+Estimated 18.0% of chances (80% range 15.0–22.0%), from 22 of 120 chances.
+
+Based on 15 analysed rapid games.
 
 Accuracy over time
 
@@ -140,12 +145,40 @@ Mistake
 Inaccuracy
 Each block is one move.
 By time control
-Bullet
-1 win, 0 draws, 0 losses
-Blitz
-6 wins, 0 draws, 11 losses
 Rapid
 5 wins, 8 draws, 3 losses
+Blitz
+6 wins, 0 draws, 11 losses
+Bullet
+1 win, 0 draws, 0 losses
+
+Based on 16 games in rapid.
+
+Rapid score
+
+Based on 16 rapid games
+
+80% likely between 40.5% and 70.9%
+
+Rapid accuracy
+
+Based on 16 rapid games
+
+80% likely between 60.1% and 68.6%
+
+Based on 17 games in blitz.
+
+Blitz score
+
+Based on 17 blitz games
+
+80% likely between 22.3% and 50.9%
+
+Blitz accuracy
+
+Based on 17 blitz games
+
+80% likely between 66.7% and 75.5%
 
 Based on 1 game in bullet. Need 9 more games before a score means anything.
 
@@ -162,34 +195,6 @@ Based on 1 bullet game
 
 –
 Need 9 more games
-
-Based on 17 games in blitz.
-
-Blitz score
-
-Based on 17 blitz games
-
-80% likely between 22.3% and 50.9%
-
-Blitz accuracy
-
-Based on 17 blitz games
-
-80% likely between 66.7% and 75.5%
-
-Based on 16 games in rapid.
-
-Rapid score
-
-Based on 16 rapid games
-
-80% likely between 40.5% and 70.9%
-
-Rapid accuracy
-
-Based on 16 rapid games
-
-80% likely between 60.1% and 68.6%
 
 Score counts a draw as half a win.
 

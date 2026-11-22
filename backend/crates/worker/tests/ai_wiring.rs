@@ -526,3 +526,77 @@ async fn no_sidecar_logs_ai_disabled(_p: PgPoolOptions, opts_: PgConnectOptions)
     );
     assert!(!logs.contains(FAKE_KEY), "{logs}");
 }
+
+/// The `ai_status` rows the worker wrote: `(enabled, detail, fresh)`.
+async fn ai_status(pool: &PgPool) -> Vec<(bool, String, bool)> {
+    sqlx::query_as(
+        "SELECT enabled, detail, heartbeat_at > now() - interval '1 minute' FROM ai_status \
+         ORDER BY started_at",
+    )
+    .fetch_all(pool)
+    .await
+    .unwrap()
+}
+
+// Bug hunt I5: the web offered "Build my report" and "Ask your first question" while no AI could
+// write a word. The worker records, and keeps fresh, whether its AI runners have a client.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn the_worker_records_whether_its_ai_can_write(_p: PgPoolOptions, opts_: PgConnectOptions) {
+    let Some(env) = env_for(&opts_) else {
+        return;
+    };
+    let pool = pool_of(&env).await;
+    let client: Arc<dyn AiClient> = Arc::new(FakeAiClient::new(FakeScript::default()));
+    let running = start_workers(&env, opts(AiSetup::With(Some(client))))
+        .await
+        .unwrap();
+    assert_eq!(
+        ai_status(&pool).await,
+        vec![(true, "ai: enabled (injected client)".to_owned(), true)]
+    );
+    stop(running).await;
+
+    sqlx::query("DELETE FROM ai_status")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let running = start_workers(&env, opts(AiSetup::With(None)))
+        .await
+        .unwrap();
+    assert_eq!(
+        ai_status(&pool).await,
+        vec![(false, "ai: disabled (no client)".to_owned(), true)]
+    );
+    stop(running).await;
+
+    // A worker without AI runners (the CLI) claims nothing either way.
+    sqlx::query("DELETE FROM ai_status")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let running = start_workers(&env, opts(AiSetup::None)).await.unwrap();
+    assert!(ai_status(&pool).await.is_empty());
+    stop(running).await;
+    pool.close().await;
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn the_ai_status_heartbeat_keeps_the_row_fresh(pool: PgPool) {
+    let id = Uuid::new_v4();
+    worker::ai_status::record(&pool, id, true, "ai: enabled (sidecar, batches off)")
+        .await
+        .unwrap();
+    sqlx::query("UPDATE ai_status SET heartbeat_at = now() - interval '1 hour'")
+        .execute(&pool)
+        .await
+        .unwrap();
+    worker::ai_status::beat(&pool, id).await.unwrap();
+    let fresh: bool = sqlx::query_scalar(
+        "SELECT heartbeat_at > now() - interval '1 minute' FROM ai_status WHERE worker_id = $1",
+    )
+    .bind(id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(fresh);
+}

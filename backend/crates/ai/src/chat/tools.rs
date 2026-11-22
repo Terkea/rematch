@@ -72,7 +72,7 @@ pub fn chat_tools() -> Vec<ToolDef> {
             input_schema: object(
                 json!({
                     "weaknessId": string("A weakness id from the coaching context."),
-                    "motif": string("A motif tag such as fork or hung_piece."),
+                    "motif": string("A motif tag such as fork, pin or hanging_piece."),
                     "lineKey": string("An opening line key from the coaching context."),
                     "limit": limit(MAX_EXAMPLES),
                 }),

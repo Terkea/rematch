@@ -95,10 +95,12 @@ function weakness(over: Partial<WeaknessDetail> = {}): WeaknessDetail {
     rate: { mean: 0.03, low: 0.025, high: 0.036, level: 0.8 },
     evidence: { events: 38, chances: 1200, minEvidence: 1000, sufficient: true, needMore: null },
     band: { median: 0.02, p40: 0.018 },
+    compared: true,
     priority: 1,
     confidence: 0.9,
     pImp: 0.8,
     updatedAt: NOW,
+    window: { days: 183, from: new Date(NOW.getTime() - 183 * 86_400_000), to: NOW },
     onset: null,
     // Shaped like Rust's rows: the confirming game writes a transition (no onset fields) and an
     // onset row with the same game, rates and counts, whose onset is the change point.
@@ -318,6 +320,27 @@ describe("progress page", () => {
     const block = section(container, "timeline-heading");
     expect(block.textContent).toContain("Hung material");
     expect(block.textContent).toContain("Missed opponent threat");
+  });
+
+  // Bug hunt I1: with no benchmark the lane said "Now not an issue".
+  it("an uncompared weakness's lane says not compared yet", () => {
+    const none = weakness({
+      seriesKey: "W5",
+      label: "Conversion failure",
+      state: "not_an_issue",
+      compared: false,
+      history: [],
+      timeline: {
+        id: "W5",
+        label: "Conversion failure",
+        compared: false,
+        segments: [{ state: "not_an_issue", from: "2026-09-01", to: null }],
+      },
+    });
+    const { container } = show(input({ weaknesses: [none] }));
+    const block = section(container, "timeline-heading");
+    expect(block.textContent).toContain("Now not compared yet");
+    expect(block.textContent).not.toMatch(/not an issue/i);
   });
 
   it("a ready weekly review shows its parts with the disclosure", () => {

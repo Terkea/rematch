@@ -9,15 +9,16 @@ import { getOverview } from "../../../server/overview";
 import { leadFinding } from "../../../server/profile";
 import { getSyncStatus } from "../../../server/sync";
 import { OverviewSheet } from "./_overview/sheet";
-import { knownTimeClass, parseTimeClass, REVEAL_COOKIE, toOverviewView } from "./_overview/view";
+import { chooseTimeClass, knownTimeClass, REVEAL_COOKIE, toOverviewView } from "./_overview/view";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Overview" };
 
 /**
  * The overview (`/app?tc=<timeClass>`): the signed-in player's analysed games. A server component;
- * only the trend is a client island, and it gets a narrow view model. An unknown or unanalysed
- * `tc` falls back to All. `LiveRefresh` re-renders it as the worker analyses more games.
+ * only the trend is a client island, and it gets a narrow view model. No `tc`, or an unknown or
+ * unanalysed one, shows the default class, rapid when there is rapid (I8); `?tc=all` is every
+ * class. `LiveRefresh` re-renders it as the worker analyses more games.
  */
 export default async function OverviewPage({
   searchParams,
@@ -28,13 +29,14 @@ export default async function OverviewPage({
   // Before any page data, so the event stream replays whatever lands after this read (T27).
   await requestEventCursor(user.id);
   const db = getDb();
-  const asked = knownTimeClass((await searchParams).tc);
+  const raw = (await searchParams).tc;
+  const asked = knownTimeClass(raw);
   let overview = await getOverview(db, user.id, { timeClass: asked });
-  const tc = parseTimeClass(
-    asked ?? undefined,
+  const tc = chooseTimeClass(
+    raw,
     overview.timeClasses.map((c) => c.timeClass),
   );
-  if (asked !== null && tc === null) overview = await getOverview(db, user.id, { timeClass: null });
+  if (tc !== asked) overview = await getOverview(db, user.id, { timeClass: tc });
   // The report reveal runs on the first view in a browser session only (DESIGN.md choreography 2).
   const reveal = !(await cookies()).has(REVEAL_COOKIE);
   const [accountIds, lead, sync] = await Promise.all([

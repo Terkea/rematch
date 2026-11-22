@@ -1,44 +1,28 @@
 Games
-Filters
+Sync and analysis
 
-Showing 1–25 of 35 games
+New games are fetched from each account, then analysed move by move.
 
+e2e-fixtures
+chess.com
+
+Sync now
+
+Not synced yet.
+
+34 of 35 games analysed. 1 waiting.
+
+Filters (1)
+Rapid
+
+Showing 17 games
+
+Clear filters
 Sort by
 Newest first
 
 The square is the colour you played; the figure is your score. ?? blunder, ? mistake
 
-0
-DrNykterstein
-3177
-79.1%
-Loss, Blitz, 31 Oct 2026
-, Queen's Indian Accelerated
-3??
-0?
-1
-ChessArtHouse
-3029
-79.0%
-Win, Bullet, 30 Oct 2026
-, Anderssen's Opening
-4??
-3?
-1
-oasenegre
-2230
-95.2%
-Win, Blitz, 29 Oct 2026
-, Rapport-Jobava System
-0??
-0?
-0
-opp
-1789
-88.0%
-Loss, Blitz, 29 Oct 2026
-1??
-3?
 1
 opp
 1748
@@ -46,13 +30,6 @@ opp
 Win, Rapid, 27 Oct 2026
 0??
 0?
-1
-opp
-1707
-54.0%
-Win, Blitz, 25 Oct 2026
-3??
-1?
 ½
 opp
 1666
@@ -60,13 +37,6 @@ opp
 Draw, Rapid, 23 Oct 2026
 2??
 2?
-0
-opp
-1625
-65.0%
-Loss, Blitz, 21 Oct 2026
-1??
-3?
 ½
 opp
 1500
@@ -81,13 +51,6 @@ opp
 Loss, Rapid, 19 Oct 2026
 0??
 0?
-0
-opp
-1543
-76.0%
-Loss, Blitz, 17 Oct 2026
-3??
-1?
 ½
 opp
 1502
@@ -102,25 +65,11 @@ Waiting for analysis
 Win, Rapid, 15 Oct 2026
 1
 opp
-1461
-87.0%
-Win, Blitz, 13 Oct 2026
-1??
-3?
-1
-opp
 1420
 70.0%
 Win, Rapid, 11 Oct 2026
 0??
 0?
-0
-opp
-1379
-53.0%
-Loss, Blitz, 9 Oct 2026
-3??
-1?
 ½
 opp
 1338
@@ -128,13 +77,6 @@ opp
 Draw, Rapid, 7 Oct 2026
 2??
 2?
-0
-opp
-1297
-64.0%
-Loss, Blitz, 5 Oct 2026
-1??
-3?
 1
 opp
 1256
@@ -142,13 +84,6 @@ opp
 Win, Rapid, 3 Oct 2026
 0??
 0?
-1
-opp
-1215
-75.0%
-Win, Blitz, 1 Oct 2026
-3??
-1?
 ½
 opp
 1774
@@ -158,25 +93,11 @@ Draw, Rapid, 29 Sep 2026
 2?
 0
 opp
-1733
-86.0%
-Loss, Blitz, 27 Sep 2026
-1??
-3?
-0
-opp
 1692
 69.0%
 Loss, Rapid, 25 Sep 2026
 0??
 0?
-0
-opp
-1651
-52.0%
-Loss, Blitz, 23 Sep 2026
-3??
-1?
 ½
 opp
 1610
@@ -184,5 +105,38 @@ opp
 Draw, Rapid, 21 Sep 2026
 2??
 2?
-Page 1 of 2
-Next page
+1
+opp
+1528
+46.0%
+Win, Rapid, 17 Sep 2026
+0??
+0?
+½
+opp
+1446
+57.0%
+Draw, Rapid, 13 Sep 2026
+2??
+2?
+1
+opp
+1364
+68.0%
+Win, Rapid, 9 Sep 2026
+0??
+0?
+½
+opp
+1282
+79.0%
+Draw, Rapid, 5 Sep 2026
+2??
+2?
+0
+opp
+1200
+45.0%
+Loss, Rapid, 1 Sep 2026
+0??
+0?

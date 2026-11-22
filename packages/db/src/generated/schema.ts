@@ -313,6 +313,20 @@ export const aiSdkSessionEntries = pgTable(
   ],
 );
 
+export const aiStatus = pgTable(
+  "ai_status",
+  {
+    workerId: uuid("worker_id").primaryKey().notNull(),
+    enabled: boolean().notNull(),
+    detail: text().notNull(),
+    startedAt: timestamp("started_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    heartbeatAt: timestamp("heartbeat_at", { withTimezone: true, mode: "date" })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [index("ai_status_heartbeat_idx").using("btree", table.heartbeatAt.asc().nullsLast())],
+);
+
 export const aiSweepCursors = pgTable("ai_sweep_cursors", {
   name: text().primaryKey().notNull(),
   position: timestamp({ withTimezone: true, mode: "date" }).notNull(),

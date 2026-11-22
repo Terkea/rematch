@@ -1,5 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { renderToString } from "react-dom/server";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   AccuracyTrend,
@@ -109,6 +110,20 @@ describe("AccuracyTrend", () => {
       t.getAttribute("data-tick-y"),
     );
     expect(ticks).toEqual(["25", "50", "75"]);
+  });
+
+  it("paints a calm placeholder, the gridlines without data, until it has measured (M5)", async () => {
+    // The server, and the first client frame, know no width: the box is never left blank.
+    const html = renderToString(
+      <AccuracyTrend rolling={[]} label="Accuracy over time" points={points(["win", "loss"])} />,
+    );
+    expect(html).toContain('data-part="trend-placeholder"');
+    for (const t of ["25%", "50%", "75%"]) expect(html).toContain(t);
+    expect(html).not.toContain('role="img"');
+    // Once measured, the chart replaces it.
+    const { container } = await renderTrend({ points: points(["win", "loss"]) });
+    expect(container.querySelector('[data-part="trend-placeholder"]')).toBeNull();
+    expect(screen.getByRole("img", { name: "Accuracy over time" })).toBeInTheDocument();
   });
 
   it("shows text instead of a chart with fewer than two games", async () => {

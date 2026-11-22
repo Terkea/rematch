@@ -1,6 +1,7 @@
-import { weaknessRateText } from "@ci/ui/profile";
+import { NO_BENCHMARK_TEXT, weaknessRateText } from "@ci/ui/profile";
 import { bandText, Stat } from "@ci/ui/stats";
 import type { CoachScope, LeadFinding } from "../../../../server/profile/types";
+import { ESTIMATE_WINDOW_TEXT } from "../../../../server/profile/window";
 import type { Estimate } from "../../../../server/stats";
 import type { OverviewView } from "./view";
 
@@ -90,6 +91,18 @@ function analysedIn(scope: CoachScope): number {
   );
 }
 
+const PLATFORM = { lichess: "lichess", chesscom: "chess.com" } as const;
+
+/**
+ * "214 analysed rapid games on lichess": the lead's own scope, which is the default coaching
+ * scope and not the overview's (an "All" overview must not borrow blitz's count, bug hunt M6).
+ */
+const scopeGames = (n: number, scope: CoachScope) =>
+  `${games(n, `analysed ${scope.timeClass}`)} on ${PLATFORM[scope.platform]}`;
+
+const scopeQuery = (scope: CoachScope) =>
+  new URLSearchParams({ account: scope.accountId, tc: scope.timeClass }).toString();
+
 /**
  * The red-pen slot: the coaching profile's lead finding (ADR 0068), never a "biggest leak"
  * guessed from raw judgement counts. A weakness shows its label, its stored estimate with the
@@ -120,29 +133,40 @@ function WorkOnBody({ lead }: { lead: LeadFinding }) {
   switch (lead.kind) {
     case "weakness": {
       const { weakness: w, scope } = lead;
-      const q = new URLSearchParams({ account: scope.accountId, tc: scope.timeClass });
       return (
         <>
           <a
-            href={`/app/weaknesses/${encodeURIComponent(w.seriesKey)}?${q.toString()}`}
+            href={`/app/weaknesses/${encodeURIComponent(w.seriesKey)}?${scopeQuery(scope)}`}
             className="self-start rounded-field font-serif text-xl font-semibold text-ink underline decoration-rule-strong underline-offset-4 hover:decoration-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
           >
             {w.label}
           </a>
           <p className="m-0 text-sm text-ink-soft">
-            {weaknessRateText(w.rate, w.evidence)} chances.
+            {weaknessRateText(w.rate, w.evidence, ESTIMATE_WINDOW_TEXT)}.
           </p>
           <p className="m-0 text-sm text-ink-faint">
-            Based on {games(analysedIn(scope), `analysed ${scope.timeClass}`)}.
+            Based on {scopeGames(analysedIn(scope), scope)}.
           </p>
         </>
       );
     }
     case "none":
-      return (
+      return lead.compared ? (
         <p className="m-0 text-sm text-ink-soft">
           Nothing stands out above players at your level across{" "}
-          {games(lead.analysedGames, "analysed")} yet.
+          {scopeGames(lead.analysedGames, lead.scope)} yet.
+        </p>
+      ) : (
+        // No benchmark: nothing was compared, so "nothing stands out" would overclaim (I1).
+        <p className="m-0 text-sm text-ink-soft">
+          {NO_BENCHMARK_TEXT}. Based on {scopeGames(lead.analysedGames, lead.scope)},{" "}
+          <a
+            href={`/app/weaknesses?${scopeQuery(lead.scope)}`}
+            className="rounded-field text-ink underline decoration-rule-strong underline-offset-4 hover:decoration-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+          >
+            your weaknesses
+          </a>{" "}
+          show their own rates until then.
         </p>
       );
     default:

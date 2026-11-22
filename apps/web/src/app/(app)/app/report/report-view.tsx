@@ -4,6 +4,7 @@ import { AiDisclosure } from "@ci/ui/coach";
 import { dayText } from "@ci/ui/profile";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { CoachScopeSwitch } from "../../../../components/coach-scope-switch";
+import type { CoachStatus } from "../../../../server/coach/status";
 import type { ChangeNoteView } from "../../../../server/coaching/notes";
 import type { ReportView as ReportViewModel } from "../../../../server/coaching/report";
 import { SECTION_KEYS, type SectionKey } from "../../../../server/coaching/types";
@@ -29,6 +30,8 @@ export type ReportPageData = {
   trends: Record<string, (number | null)[]>;
   /** Platform game id to `games.id`, for the scope's games the report cites (`reviewGameIds`). */
   gameIds: Record<string, string>;
+  /** Whether a coach could write a report now (`ai_status`, ADR 0078). Default available. */
+  coach?: CoachStatus;
   now: Date;
 };
 
@@ -199,6 +202,7 @@ export function ReportView({ data }: { data: ReportPageData }) {
       nextManualAt={view.nextManualAt}
       now={data.now}
       notesCount={readyKeys.length}
+      coach={data.coach ?? "available"}
     />
   );
 

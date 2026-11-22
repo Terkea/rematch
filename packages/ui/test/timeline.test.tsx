@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { timelineFixtures } from "../src/fixtures/index.js";
 import {
   eventRows,
+  seriesText,
   shortSpan,
   stateAtEnd,
   stateStyle,
@@ -367,5 +368,38 @@ describe("WeaknessTimeline readout", () => {
     expect(short.className).toContain("@min-[640px]:hidden");
     expect(long.textContent).toBe("Resolved, 20\u00a0Aug\u00a02026 to 5\u00a0Oct\u00a02026");
     expect(long.className).toContain("@max-[640px]:hidden");
+  });
+});
+
+// Bug hunt I1: with no rating-band benchmark the stored `not_an_issue` is no claim. A lane marked
+// `compared: false` reads "not compared yet" everywhere, never "not an issue".
+describe("an uncompared lane", () => {
+  const props: WeaknessTimelineProps = {
+    range,
+    series: [
+      {
+        id: "s",
+        label: "Conversion failure",
+        compared: false,
+        segments: [{ state: "not_an_issue", from: "2026-09-01", to: null }],
+      },
+    ],
+  };
+
+  it("says not compared yet in the header, the key, the cells and the summary", () => {
+    const { container } = render(<WeaknessTimeline {...props} />);
+    expect(screen.getByText("Now not compared yet")).toBeVisible();
+    expect(container.textContent).not.toMatch(/not an issue/i);
+    const cell = container.querySelector("[data-cell]");
+    expect(cell?.getAttribute("aria-label")).toMatch(/^Not compared yet, 1 Sep 2026 to now/);
+    expect(seriesText(props.series[0] as Series)).toBe(
+      "Conversion failure: not compared yet from 1 Sep 2026 to now.",
+    );
+  });
+
+  it("keeps 'not an issue' for a compared lane", () => {
+    const compared = { ...props, series: [{ ...(props.series[0] as Series), compared: true }] };
+    render(<WeaknessTimeline {...compared} />);
+    expect(screen.getByText("Now not an issue")).toBeVisible();
   });
 });

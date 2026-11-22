@@ -6,6 +6,8 @@ import {
   dayText,
   KpiTrendGrid,
   type KpiTrendItem,
+  NO_BENCHMARK_TEXT,
+  NOT_COMPARED_LABEL,
   needMoreText,
   shareRangeText,
   shareText,
@@ -19,6 +21,7 @@ import { MorphArrival } from "../../../../../components/shared-morph";
 import { coachChatLive } from "../../../../../lib/coach-chat";
 import type { ChangeNoteView } from "../../../../../server/coaching";
 import type { CoachScope, WeaknessDetail } from "../../../../../server/profile";
+import { ESTIMATE_WINDOW_TEXT } from "../../../../../server/profile/window";
 import { SectionHead } from "../../_overview/section-head";
 import { scopeQuery, WEEKLY_MIN_CHANCES } from "../queries";
 import { morphName } from "../weaknesses-view";
@@ -176,7 +179,13 @@ function EarlyKey() {
 
 function Header({ detail, scope, askHref }: Props & { askHref: string }) {
   const early = !detail.evidence.sufficient;
-  const state = early ? "Early read" : stateStyle[detail.state].label;
+  // Without a benchmark the stored state is no claim (bug hunt I1).
+  const state = early
+    ? "Early read"
+    : detail.compared
+      ? stateStyle[detail.state].label
+      : NOT_COMPARED_LABEL;
+  const provisional = early || !detail.compared;
   return (
     <header className="flex flex-col gap-4">
       <Link
@@ -193,9 +202,9 @@ function Header({ detail, scope, askHref }: Props & { askHref: string }) {
           </h1>
           <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-ink-soft">
             <span
-              data-state={early ? "early" : detail.state}
+              data-state={early ? "early" : detail.compared ? detail.state : "uncompared"}
               className={
-                early
+                provisional
                   ? "rounded-pill border border-dashed border-ink-faint px-2.5 py-0.5 font-medium"
                   : "rounded-pill bg-well px-2.5 py-0.5 font-medium text-ink"
               }
@@ -218,7 +227,8 @@ function Header({ detail, scope, askHref }: Props & { askHref: string }) {
 function Standing({ detail }: { detail: WeaknessDetail }) {
   const early = !detail.evidence.sufficient;
   const none = detail.evidence.chances <= 0;
-  const median = detail.band.median;
+  const median = detail.compared ? detail.band.median : null;
+  const counts = `${countsText(detail.evidence)} ${ESTIMATE_WINDOW_TEXT}`;
   return (
     <section
       aria-label="Where it stands"
@@ -228,8 +238,8 @@ function Standing({ detail }: { detail: WeaknessDetail }) {
       <div className="flex flex-col gap-1">
         <span className="sr-only">
           {none
-            ? `No estimate yet: ${countsText(detail.evidence)}.`
-            : `${early ? "Early read. " : ""}${weaknessRateText(detail.rate, detail.evidence)}.`}
+            ? `No estimate yet: ${counts}.`
+            : `${early ? "Early read. " : ""}${weaknessRateText(detail.rate, detail.evidence, ESTIMATE_WINDOW_TEXT)}.`}
         </span>
         <span aria-hidden="true" className="text-sm text-ink-soft">
           {early ? "Early estimate" : "Estimated rate"}, % of chances
@@ -257,7 +267,7 @@ function Standing({ detail }: { detail: WeaknessDetail }) {
           </span>
         )}
         <span aria-hidden="true" className="text-sm text-ink-faint" style={LINING}>
-          {countsText(detail.evidence)}
+          {counts}
         </span>
         {early ? (
           <p className="mt-3 text-sm font-medium text-ink" style={LINING}>
@@ -277,7 +287,7 @@ function Standing({ detail }: { detail: WeaknessDetail }) {
         )}
         <div className="flex flex-col gap-1 text-sm" style={LINING}>
           {median === null || !Number.isFinite(median) ? (
-            <p className="text-ink-soft">No band reference yet</p>
+            <p className="text-ink-soft">{NO_BENCHMARK_TEXT}</p>
           ) : (
             <>
               <p className="font-medium text-ink">Band median {shareText(median)}</p>

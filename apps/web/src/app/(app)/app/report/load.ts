@@ -1,4 +1,5 @@
 import type { Db } from "@ci/db";
+import { coachStatus } from "../../../../server/coach/status";
 import { changeNotes, getReport } from "../../../../server/coaching";
 import type { ReportPayload } from "../../../../server/coaching/types";
 import type { CoachScope } from "../../../../server/profile";
@@ -45,10 +46,11 @@ export async function loadReport(
   const shown = new Set(changes.map(changeKey));
   const series = [...new Set(changes.map((c) => c.seriesKey))];
 
-  const [notes, keysPerSeries, weekly] = await Promise.all([
+  const [notes, keysPerSeries, weekly, coach] = await Promise.all([
     series.length > 0 ? changeNotes(db, userId, scope.accountId, series) : [],
     Promise.all(series.map((s) => noteKeysInScope(db, userId, scope, s))),
     computed && computed.weaknesses.length > 0 ? weeklyRates(db, userId, scope) : new Map(),
+    coachStatus(db),
   ]);
   const inScope = new Set(keysPerSeries.flatMap((k) => [...k]));
   const scopedNotes = notes.filter((n) => inScope.has(n.changeKey) && shown.has(n.changeKey));
@@ -71,6 +73,7 @@ export async function loadReport(
     notes: withoutRawText(scopedNotes),
     trends: Object.fromEntries(weekly),
     gameIds: Object.fromEntries(gameIds),
+    coach,
     now,
   };
 }

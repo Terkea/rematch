@@ -3,7 +3,8 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { createRef } from "react";
+import { createRef, type ReactElement } from "react";
+import { renderToString } from "react-dom/server";
 import { afterEach, describe, expect, it } from "vitest";
 import { GearSixIcon, Icon, TrashIcon } from "../src/icons/index.js";
 import { overlay } from "../src/motion/index.js";
@@ -59,6 +60,27 @@ describe("Button", () => {
     const link = screen.getByRole("link", { name: "Open games" });
     expect(link.tagName).toBe("A");
     expect(link).toHaveClass("border-rule-strong");
+  });
+
+  // A server component's `<Button asChild><Link/></Button>` reaches SSR with the child as a lazy
+  // reference (React Flight), not an element. Rendering a <button> there and an <a> on the
+  // client was the hydration mismatch that left "Ask your first question" dead (bug hunt B3/I4).
+  it("renders a lazy child (a server-sent element) as that element, never a button", () => {
+    const link = <a href="/app/coach/new">Ask your first question</a>;
+    const payload = Object.assign(Promise.resolve(link), { status: "fulfilled", value: link });
+    const lazy = {
+      $$typeof: Symbol.for("react.lazy"),
+      _payload: payload,
+      _init: (p: typeof payload) => p.value,
+    } as unknown as ReactElement;
+    const html = renderToString(
+      <Button asChild variant="outline">
+        {lazy}
+      </Button>,
+    );
+    expect(html).toMatch(/^<a [^>]*href="\/app\/coach\/new"/);
+    expect(html).toContain("border-rule-strong");
+    expect(html).not.toContain("<button");
   });
 });
 

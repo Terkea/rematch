@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 import { createRequire } from "node:module";
-import { reportSections, reports, weaknessChangeNotes } from "@ci/db/generated";
+import { aiStatus, reportSections, reports, weaknessChangeNotes } from "@ci/db/generated";
 import { within } from "@testing-library/react";
 import { eq, sql } from "drizzle-orm";
 import { renderToString } from "react-dom/server";
@@ -46,7 +46,19 @@ beforeEach(async () => {
   await resetCoachingTables(db);
   userId = (await createTestSession(db)).user.id;
   ({ accountId } = await seedAccount(db, { userId, username: "synthetic-report" }));
+  await coachIs(true);
 });
+
+/** One fresh worker row (ADR 0078): enabled, disabled, or none at all (`null`). */
+async function coachIs(enabled: boolean | null) {
+  await db.execute(sql`truncate table ai_status`);
+  if (enabled === null) return;
+  await db.insert(aiStatus).values({
+    workerId: crypto.randomUUID(),
+    enabled,
+    detail: enabled ? "ai: enabled (injected client)" : "ai: disabled (no client)",
+  });
+}
 
 type Dom = { window: { document: Document; close(): void } };
 // jsdom ships no types; only its constructor is used.
@@ -212,6 +224,24 @@ const STATES: { name: string; seed: () => Promise<void>; copy: string[] }[] = [
 ];
 
 describe("report page", () => {
+  // Bug hunt I5: "Build my report" was offered while no coach could write it.
+  it("with no AI the empty report says the coach is not available, and builds numbers only", async () => {
+    await coachIs(false);
+    const screen = within(render(<ReportView data={await data()} />).container);
+    expect(screen.getByText("Coach not available right now")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Build my report" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Build it from your numbers" })).toBeTruthy();
+  });
+
+  it("with no worker running the empty report offers nothing to build", async () => {
+    await coachIs(null);
+    const { container } = render(<ReportView data={await data()} />);
+    const screen = within(container);
+    expect(screen.getByText("Coach not available right now")).toBeTruthy();
+    expect(screen.queryAllByRole("button")).toHaveLength(0);
+    expect(container.textContent).not.toMatch(/Written by AI/);
+  });
+
   it.each(STATES)("renders every report state without NaN: $name", async ({ seed, copy }) => {
     await seed();
     const { container } = render(<ReportView data={await data()} />);
@@ -314,6 +344,25 @@ describe("report page", () => {
     expect(text.indexOf("Hanging pieces")).toBeLessThan(text.indexOf("Missed forks"));
     const ask = within(section).getAllByRole("link", { name: /Ask your coach/ });
     expect(ask[0]?.getAttribute("href")).toMatch(/^\/app\/coach\/new\?account=.*&anchor=/);
+  });
+
+  // Bug hunt I1: with no rating-band benchmark nothing is ranked, and "Nothing stands out above
+  // players at your level" claimed a comparison that never ran.
+  it("with no benchmark the weaknesses say not compared yet", async () => {
+    await previous();
+    const d = await data();
+    const computed = d.view.payload?.computed;
+    if (!computed) throw new Error("no payload");
+    computed.weaknesses = [];
+    computed.metrics = computed.metrics.map((m) => ({
+      ...m,
+      bandMedian: null,
+      bandPercentile: null,
+    }));
+    const screen = within(render(<ReportView data={d} />).container);
+    const text = screen.getByRole("region", { name: "What's costing you games" }).textContent ?? "";
+    expect(text).toContain("Not compared yet: no benchmark for players at your level yet.");
+    expect(text).not.toMatch(/Nothing stands out|compared with players/);
   });
 
   it("no ask link while the chat pages are not live", async () => {

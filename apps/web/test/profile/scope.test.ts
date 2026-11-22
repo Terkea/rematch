@@ -37,6 +37,23 @@ describe("resolveCoachScope", () => {
     ]);
   });
 
+  it("orders rapid first, then blitz, then the rest, and defaults to rapid (I8)", async () => {
+    // Blitz has more games, but the owner coaches rapid first whenever there is rapid.
+    await seedProfile(db, accountId, { timeClass: "bullet", games: 40 });
+    await seedProfile(db, accountId, { timeClass: "blitz", games: 30 });
+    await seedProfile(db, accountId, { timeClass: "rapid", games: 5 });
+    await seedProfile(db, accountId, { timeClass: "daily", games: 8 });
+    const scope = await resolveCoachScope(db, userId, {});
+    expect(scope?.timeClass).toBe("rapid");
+    expect(scope?.options.map((o) => o.timeClass)).toEqual(["rapid", "blitz", "bullet", "daily"]);
+  });
+
+  it("without rapid, defaults to blitz (I8)", async () => {
+    await seedProfile(db, accountId, { timeClass: "bullet", games: 40 });
+    await seedProfile(db, accountId, { timeClass: "blitz", games: 3 });
+    expect((await resolveCoachScope(db, userId, {}))?.timeClass).toBe("blitz");
+  });
+
   it("resolveCoachScope falls back", async () => {
     await seedProfile(db, accountId, { timeClass: "rapid", games: 3 });
     await seedProfile(db, accountId, { timeClass: "blitz", games: 2 });
