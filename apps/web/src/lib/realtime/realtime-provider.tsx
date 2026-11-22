@@ -1,6 +1,7 @@
 "use client";
 
-import { createContext, type ReactNode, useContext } from "react";
+import { toast } from "@ci/ui/overlays";
+import { createContext, type ReactNode, useContext, useEffect } from "react";
 import { type StreamMode, useEventStream } from "./use-event-stream";
 
 const RealtimeContext = createContext<{ mode: StreamMode; lastEventId: number }>({
@@ -12,8 +13,8 @@ const RealtimeContext = createContext<{ mode: StreamMode; lastEventId: number }>
  * Mounts the one event stream for a signed-in user (M4 T23); render it only inside the signed-in
  * shell. `accountIds` are the user's linked accounts as the server read them: their joined ids
  * are the `reconnectKey`, so linking or removing an account reopens the stream (the server
- * re-reads which accounts the session may see). `initialEventId` is the head event id read on
- * the server before the page data, so nothing stored in between is lost.
+ * re-reads which accounts the session may see). `initialEventId` is `eventCursor(db, userId)`,
+ * read on the server before the page data, so nothing stored in between is lost.
  */
 export function RealtimeProvider({
   accountIds,
@@ -21,17 +22,28 @@ export function RealtimeProvider({
   children,
 }: {
   accountIds: string[];
-  initialEventId: number | null;
+  initialEventId: number;
   children: ReactNode;
 }) {
   const stream = useEventStream({
     reconnectKey: [...accountIds].sort().join(","),
     since: initialEventId,
   });
+
+  useEffect(() => {
+    if (stream.mode !== "signed-out") return;
+    toast("You're signed out, so updates have stopped.", {
+      action: { label: "Sign in", onClick: () => window.location.assign("/sign-in") },
+    });
+  }, [stream.mode]);
+
   return <RealtimeContext.Provider value={stream}>{children}</RealtimeContext.Provider>;
 }
 
-/** How updates arrive right now. Never call it "live" unless `mode` is "sse". */
+/**
+ * How updates arrive right now. Only `mode === "sse"` is an open stream: never call anything
+ * "live" otherwise (`"connecting"` is not live yet, `"polling"` is every 5 s).
+ */
 export function useRealtime(): { mode: StreamMode; lastEventId: number } {
   return useContext(RealtimeContext);
 }

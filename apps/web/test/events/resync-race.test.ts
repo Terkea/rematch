@@ -89,6 +89,50 @@ describe("LISTEN reconnect during a running sync", () => {
     expect(await frames.nextWithin(200)).toBe("timeout");
   });
 
+  it("a LISTEN rebuild landing as a sync finishes still runs the resync (no stall)", async () => {
+    // Review Minor 1: `syncing` used to clear one microtask after the sync set replaying=false.
+    // A rebuild in that gap left the stream buffering with no sync to flush it. Fire the rebuild
+    // at every microtask offset around the sync's end; each stream must still deliver live.
+    const deferred = (k: number, fn: () => void) => {
+      if (k === 0) fn();
+      else queueMicrotask(() => deferred(k - 1, fn));
+    };
+    for (let k = 0; k < 16; k++) {
+      let notify: ((p: string) => void) | undefined;
+      let relisten: (() => void) | undefined;
+      const listen = vi.fn(async (_c: string, n: (p: string) => void, listened: () => void) => {
+        notify = n;
+        relisten = listened;
+        listened();
+        return { unlisten: async () => {} };
+      });
+      const hub = createEventHub({ listen, fetchEvent: async () => null });
+      const e1 = await insertAndPublish(db, accountId, "t");
+      afterPage = async () => {
+        deferred(k, () => relisten?.());
+      };
+      const controller = new AbortController();
+      aborts.push(controller);
+      const res = await openEventStream({
+        db,
+        hub,
+        userId,
+        accountIds: [accountId],
+        cursor: e1 - 1,
+        signal: controller.signal,
+      });
+      const frames = frameReader(res);
+      expect((await frames.nextEvent())?.id).toBe(String(e1));
+      await new Promise((r) => setTimeout(r, 30));
+      const live = await insertAndPublish(db, accountId, "t");
+      notify?.(JSON.stringify({ id: live, accountId, type: "t", createdAt: "", payload: {} }));
+      const next = await frames.nextWithin(1500);
+      expect(next === "timeout" ? `stalled at offset ${k}` : next?.id).toBe(String(live));
+      controller.abort();
+      await hub.close();
+    }
+  });
+
   it("user 2 opening with since= never replays user 1's own events, in either replay", async () => {
     // Two users on one account; a user-owned event (user_events.user_id) is for that user only.
     const { user: other } = await createTestSession(db, { birthMonth: "1990-01" });

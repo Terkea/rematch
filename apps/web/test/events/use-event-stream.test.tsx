@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@ci/ui/overlays", () => ({ toast: vi.fn() }));
 
-const { useEventStream, POLL_INTERVAL_MS } = await import(
+const { useEventStream, POLL_INTERVAL_MS, SSE_RETRY_MS } = await import(
   "../../src/lib/realtime/use-event-stream.js"
 );
 const { readActivity } = await import("../../src/lib/realtime/activity.js");
@@ -93,7 +93,7 @@ describe("useEventStream", () => {
     expect(FakeEventSource.instances).toHaveLength(1);
     expect(FakeEventSource.last.url).toBe("/api/events?since=41");
     expect(FakeEventSource.last.init?.withCredentials ?? false).toBe(false);
-    expect(result.current).toEqual({ mode: "sse", lastEventId: 41 });
+    expect(result.current).toEqual({ mode: "connecting", lastEventId: 41 });
   });
 
   it("opens without a cursor when there is no snapshot, and takes hello's id", () => {
@@ -120,7 +120,7 @@ describe("useEventStream", () => {
     const es = FakeEventSource.last;
     es.fail();
     es.fail();
-    expect(result.current.mode).toBe("sse");
+    expect(result.current.mode).toBe("connecting");
     es.fail();
     expect(result.current.mode).toBe("polling");
     expect(es.readyState).toBe(FakeEventSource.CLOSED);
@@ -135,8 +135,77 @@ describe("useEventStream", () => {
     const es = FakeEventSource.last;
     es.open();
     for (let i = 0; i < 5; i++) es.fail();
-    expect(result.current.mode).toBe("sse");
     expect(FakeEventSource.instances).toHaveLength(1);
+    expect(result.current.mode).toBe("connecting");
+    es.open();
+    expect(result.current.mode).toBe("sse");
+  });
+
+  it("is connecting, not sse, until the stream opens", () => {
+    const { result } = renderHook(() => useEventStream({ since: 1 }), { wrapper });
+    expect(result.current.mode).toBe("connecting");
+    FakeEventSource.last.open();
+    expect(result.current.mode).toBe("sse");
+    // The browser retrying a dropped stream is connecting again, not live.
+    FakeEventSource.last.fail();
+    expect(result.current.mode).toBe("connecting");
+  });
+
+  it("without a cursor, polling starts from now: the backlog is skipped, not replayed", async () => {
+    vi.stubGlobal("EventSource", undefined);
+    const { result } = renderHook(() => useEventStream(), { wrapper });
+    pollReply({
+      events: [{ id: 4, accountId: "a1", type: "job.failed", payload: failure("last week") }],
+      lastId: 4,
+      reset: false,
+    });
+    await act(() => vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS));
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/events?after=0");
+    expect(readActivity(qc).failures).toEqual([]);
+    expect(result.current.lastEventId).toBe(4);
+    pollReply({
+      events: [{ id: 5, accountId: "a1", type: "job.failed", payload: failure("now") }],
+      lastId: 5,
+      reset: false,
+    });
+    await act(() => vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS));
+    expect(fetchMock.mock.calls[1]?.[0]).toBe("/api/events?after=4");
+    expect(readActivity(qc).failures.map((f) => f.reason)).toEqual(["now"]);
+  });
+
+  it("stops polling and reports signed-out on a 401", async () => {
+    vi.stubGlobal("EventSource", undefined);
+    const { result } = renderHook(() => useEventStream({ since: 3 }), { wrapper });
+    fetchMock.mockResolvedValueOnce(Response.json({ error: "unauthorized" }, { status: 401 }));
+    await act(() => vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS));
+    expect(result.current.mode).toBe("signed-out");
+    await act(() => vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 5));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("while polling, retries SSE with backoff and switches back once it opens", async () => {
+    const { result } = renderHook(() => useEventStream({ since: 3 }), { wrapper });
+    const first = FakeEventSource.last;
+    first.fail(true);
+    expect(result.current.mode).toBe("polling");
+    expect(SSE_RETRY_MS[0]).toBe(30_000);
+    // First retry: it fails before opening, so polling goes on and the next try waits longer.
+    await act(() => vi.advanceTimersByTimeAsync(SSE_RETRY_MS[0] ?? 0));
+    expect(FakeEventSource.instances).toHaveLength(2);
+    expect(result.current.mode).toBe("polling");
+    FakeEventSource.last.fail();
+    expect(FakeEventSource.last.readyState).toBe(FakeEventSource.CLOSED);
+    await act(() => vi.advanceTimersByTimeAsync((SSE_RETRY_MS[1] ?? 0) - 1));
+    expect(FakeEventSource.instances).toHaveLength(2);
+    await act(() => vi.advanceTimersByTimeAsync(1));
+    expect(FakeEventSource.instances).toHaveLength(3);
+    expect(FakeEventSource.last.url).toBe("/api/events?since=3");
+    // Second retry opens: back to SSE, and polling stops.
+    FakeEventSource.last.open();
+    expect(result.current.mode).toBe("sse");
+    const polls = fetchMock.mock.calls.length;
+    await act(() => vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 4));
+    expect(fetchMock.mock.calls.length).toBe(polls);
   });
 
   it("falls back to polling when the browser gives up on the stream (a 429, say)", () => {

@@ -204,6 +204,12 @@ export async function openEventStream(opts: {
     syncing = true;
     void sync(hello).finally(() => {
       syncing = false;
+      // A rebuild that landed after the sync's last check but before this line found
+      // `syncing` still true and only set the flag: run it now, or the stream would stall.
+      if (resyncPending && !closed) {
+        resyncPending = false;
+        runSync(false);
+      }
     });
   };
   const unsubscribe = hub.subscribe(
