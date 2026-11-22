@@ -35,3 +35,18 @@ Checked and kept:
 
 Verdict: self-critique pass. **The fresh critic passes (at least 2) are owed by the controller**,
 because this task was told not to dispatch subagents.
+
+## Fix round 1 (review-p2.md, visual Important 1 to 3 and Polish; self-critique only)
+
+Shots (synthetic, temporary lab route) are in `scratchpad/m5b-tp2/fix1/{a,b,c}-{390,1440}-{light,dark}.png`:
+- a: compact overview (checking, held back, failed games) and full panel (waiting to retry), with the header "Checking for new games" ("Syncing" at 390);
+- b: full panel with analysis waiting and no ETA, paused, last sync failed with retrying and failed games, and not synced yet, with the header "Analysing 60 / 108 games";
+- c: compact and full for one account with everything analysed, profile updating and a cooldown, with the header "Updating your profile".
+
+Changes:
+1. The compact panel is now two lines at 1440 (about 45 px) and about 80 px at 390: the totals ("All time controls"), the state, "Details", and one button. The coaching headline stays on the first screen.
+2. An unavailable "Sync now" shows a dashed edge and faint text, uses `aria-disabled`, and gives its reason as a tooltip and accessible description.
+3. The working stroke now leads its line, so it never wraps alone. Failed ticks are a broken full-height stroke. The tally caps at 36 ticks on a phone, and there is no tally once all games are done.
+4. Asides are now `text-sm ink-soft`. "Unverified" has a touch target. "Fewer than two moves played" replaces the old wording, and the header at 390 says "Syncing".
+
+Verdict: self-critique pass. **The fresh critic passes are still owed by the controller.**

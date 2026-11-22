@@ -75,7 +75,7 @@ describe("requestSync", () => {
       createdAt: started,
       runAt: started,
     });
-    const res = await requestSync(db, alice, accountId, now);
+    const res = await requestSync(db, alice, accountId);
     expect(res).toEqual({
       kind: "ok",
       accounts: [
@@ -98,7 +98,7 @@ describe("requestSync", () => {
       startedAt: new Date(now.getTime() - 30_000),
       finishedAt: new Date(now.getTime() - 10_000),
     });
-    const res = await requestSync(db, alice, accountId, now);
+    const res = await requestSync(db, alice, accountId);
     expect(res.kind === "ok" && res.accounts[0]?.outcome).toBe("throttled");
   });
 
@@ -113,26 +113,27 @@ describe("requestSync", () => {
       createdAt: started,
       runAt: started,
     });
-    const res = await requestSync(db, alice, accountId, now);
+    const res = await requestSync(db, alice, accountId);
     expect(res.kind === "ok" && res.accounts[0]?.outcome).toBe("queued");
     expect(await importJobs()).toHaveLength(2);
   });
 
-  it("pulls a scheduled import forward instead of adding one", async () => {
+  it("never pulls a held-back import forward (backoff, breaker, busy)", async () => {
+    const runAt = new Date(Date.now() + 10 * MIN);
     const id = await seedJob(db, {
       kind: "import-account",
       dedupeKey: `import:${accountId}`,
       userKey: accountId,
       state: "queued",
       createdAt: new Date(Date.now() - 20 * MIN),
-      runAt: new Date(Date.now() + 10 * MIN),
+      runAt,
     });
     const res = await requestSync(db, alice, accountId);
-    expect(res.kind === "ok" && res.accounts[0]?.outcome).toBe("queued");
+    expect(res).toEqual({ kind: "ok", accounts: [{ accountId, outcome: "already" }] });
     const rows = await importJobs();
     expect(rows).toHaveLength(1);
     expect(Number(rows[0]?.id)).toBe(id);
-    expect(rows[0]?.runAt.getTime()).toBeLessThanOrEqual(Date.now());
+    expect(rows[0]?.runAt.getTime()).toBe(runAt.getTime());
   });
 
   it("syncs every linked account when no account is named", async () => {

@@ -107,6 +107,7 @@ describe("ActivityIndicator", () => {
       platform: "chesscom",
       name: "alice",
       phase: "idle",
+      retryAt: null,
       lastCheck: null,
       lastRunFailed: false,
       nextManualAt: null,
@@ -124,6 +125,7 @@ describe("ActivityIndicator", () => {
       await withSync(acct({ phase: "checking" }));
       show();
       expect(screen.getByText("Checking for new games")).toBeInTheDocument();
+      expect(screen.getByText("Syncing")).toBeInTheDocument();
       expect(screen.queryByText(/live/i)).toBeNull();
     });
 

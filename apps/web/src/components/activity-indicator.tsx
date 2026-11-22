@@ -38,7 +38,7 @@ export function syncSummary(
 ): { text: string; short: string; fraction: number | null } | null {
   const accounts = status?.accounts ?? [];
   if (accounts.some((a) => a.phase === "checking")) {
-    return { text: "Checking for new games", short: "Checking", fraction: null };
+    return { text: "Checking for new games", short: "Syncing", fraction: null };
   }
   const outstanding = accounts.filter(
     (a) => a.analysis.waiting + a.analysis.analysing + a.analysis.retrying > 0,

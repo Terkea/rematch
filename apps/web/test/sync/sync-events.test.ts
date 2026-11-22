@@ -1,10 +1,11 @@
-import { QueryClient } from "@tanstack/react-query";
+import { QueryClient, QueryObserver } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { queryKeys } from "../../src/lib/query-keys";
 import { applyEvent } from "../../src/lib/realtime/reducers";
 import {
   applySyncEvent,
   SYNC_INVALIDATE_MS,
+  syncPanelKey,
   syncStatusKey,
 } from "../../src/lib/realtime/sync-events";
 
@@ -43,7 +44,40 @@ describe("applySyncEvent", () => {
     expect(invalidated).toContainEqual([...queryKeys.games("a1")]);
   });
 
-  it("progress inside a run does not refetch", () => {
+  it("a finished import with no new games leaves the page alone", () => {
+    applySyncEvent(qc, ev("import.progress", { runId: "r", imported: 0, done: true }) as never);
+    expect(statusCalls()).toBe(1);
+    expect(invalidated).not.toContainEqual([...queryKeys.games("a1")]);
+  });
+
+  it("the first progress of a run the status doesn't show yet refreshes it once", () => {
+    qc.setQueryData(syncStatusKey(), {
+      generatedAt: "2026-11-22T12:00:00.000Z",
+      accounts: [{ accountId: "a1", phase: "idle" }],
+    });
+    applySyncEvent(qc, ev("import.progress", { runId: "r", imported: 3 }) as never);
+    expect(statusCalls()).toBe(1);
+    qc.setQueryData(syncStatusKey(), {
+      generatedAt: "2026-11-22T12:00:01.000Z",
+      accounts: [{ accountId: "a1", phase: "checking" }],
+    });
+    vi.advanceTimersByTime(SYNC_INVALIDATE_MS);
+    applySyncEvent(qc, ev("import.progress", { runId: "r", imported: 9 }) as never);
+    expect(statusCalls()).toBe(1);
+  });
+
+  it("with the panel on a live page, an analysed game is left to the page refresh", () => {
+    const unsubs = [queryKeys.games("a1"), syncPanelKey()].map((queryKey) =>
+      new QueryObserver(qc, { queryKey, queryFn: () => 0, enabled: false }).subscribe(() => {}),
+    );
+    applySyncEvent(qc, ev("game.analysed", { gameId: "g" }) as never);
+    expect(statusCalls()).toBe(0);
+    applySyncEvent(qc, ev("job.failed", { kind: "k", reason: "r" }) as never);
+    expect(statusCalls()).toBe(1);
+    for (const u of unsubs) u();
+  });
+
+  it("progress inside a run the status already shows does not refetch", () => {
     applySyncEvent(qc, ev("import.progress", { runId: "r", imported: 4 }) as never);
     expect(statusCalls()).toBe(0);
   });

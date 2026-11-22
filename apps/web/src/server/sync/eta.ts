@@ -23,6 +23,14 @@ export const ETA = {
 export const POSITION_TAIL =
   ", ordered AS (SELECT user_key, row_number() OVER (ORDER BY tier, slice, joined_at, priority, run_at, id) AS pos FROM (SELECT * FROM fair ORDER BY tier, slice, joined_at, priority, run_at, id LIMIT $2) f) SELECT coalesce(max(pos), 0)::int8, count(*)::int8 FROM ordered WHERE user_key = $5";
 
+/** `eta::ETA_RATE_SQL`: finished analyses in the last 10 minutes. `$1` is the kind. */
+export const ETA_RATE_SQL =
+  "SELECT count(*)::int8 FROM job_metrics WHERE kind = $1 AND created_at > now() - interval '10 minutes'";
+
+/** `eta::QUEUED_SQL`: the account's queued jobs of a kind. `$1` kind, `$2` account. */
+export const QUEUED_SQL =
+  "SELECT count(*)::int8 FROM jobs WHERE state = 'queued' AND kind = $1 AND user_key = $2";
+
 export type Eta = {
   /** Seconds until the account's last queued analysis should finish. */
   seconds: number;
@@ -49,19 +57,17 @@ const int = (v: unknown) => Number(v ?? 0);
 
 /** The account's ETA (see the module comment), read on `tx`. */
 export async function accountEta(tx: Db, accountId: string): Promise<Eta | null> {
-  const [rate] = (await tx.execute(sql`
-    SELECT count(*)::int8 AS n FROM job_metrics
-    WHERE kind = ${ANALYSE_JOB.kind} AND created_at > now() - interval '10 minutes'
-  `)) as unknown as { n: string }[];
-  const rows = int(rate?.n);
+  const [rate] = (await tx.execute(
+    positional(ETA_RATE_SQL, { 1: ANALYSE_JOB.kind }),
+  )) as unknown as { count: string }[];
+  const rows = int(rate?.count);
   if (rows < ETA.minRateRows) return null;
   const perSec = rows / ETA.rateWindowSecs;
 
-  const [queued] = (await tx.execute(sql`
-    SELECT count(*)::int8 AS n FROM jobs
-    WHERE state = 'queued' AND kind = ${ANALYSE_JOB.kind} AND user_key = ${accountId}::uuid
-  `)) as unknown as { n: string }[];
-  const waiting = int(queued?.n);
+  const [queued] = (await tx.execute(
+    positional(QUEUED_SQL, { 1: ANALYSE_JOB.kind, 2: sql`${accountId}::uuid` }),
+  )) as unknown as { count: string }[];
+  const waiting = int(queued?.count);
   // Nothing queued: no finish time to state (Rust gives Some(0) only when all is done).
   if (waiting === 0) return null;
 

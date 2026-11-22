@@ -51,6 +51,7 @@ describe("getSyncStatus", () => {
       name: "Alice-Status",
       verified: false,
       phase: "idle",
+      retryAt: null,
       lastCheck: null,
       lastRunFailed: false,
       nextManualAt: null,
@@ -87,17 +88,31 @@ describe("getSyncStatus", () => {
     expect(a.analysis.retrying).toBe(1);
   });
 
-  it("a due or running import is checking; a scheduled one is idle; paused is paused", async () => {
+  it("a due or running import is checking; a held-back one is waiting; paused is paused", async () => {
     const id = await importJob({ state: "queued" });
     expect((await only()).phase).toBe("checking");
     await db.execute(sql`update jobs set state = 'running' where id = ${id}`);
     expect((await only()).phase).toBe("checking");
     await db.execute(sql`update jobs set state = 'paused' where id = ${id}`);
     expect((await only()).phase).toBe("paused");
+    const runAt = new Date(Date.now() + 20 * MIN);
     await db.execute(
-      sql`update jobs set state = 'queued', run_at = now() + interval '20 minutes' where id = ${id}`,
+      sql`update jobs set state = 'queued', run_at = ${runAt.toISOString()}::timestamptz where id = ${id}`,
     );
-    expect((await only()).phase).toBe("idle");
+    const a = await only();
+    expect(a.phase).toBe("waiting");
+    expect(a.retryAt).toBe(runAt.toISOString());
+  });
+
+  it("due mirrors Rust: run_at at or before created_at is due", async () => {
+    await importJob({
+      state: "queued",
+      createdAt: new Date(Date.now() + 30 * MIN),
+      runAt: new Date(Date.now() + 20 * MIN),
+    });
+    const a = await only();
+    expect(a.phase).toBe("checking");
+    expect(a.retryAt).toBeNull();
   });
 
   it("reports the last finished check and what it found", async () => {

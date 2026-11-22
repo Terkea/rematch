@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AccountSync, AnalysisCounts, SyncStatus } from "../../src/server/sync";
 import { stubMatchMedia } from "../ui/helpers";
+
+vi.mock("@ci/ui/overlays", () => ({ toast: vi.fn() }));
 
 const { SyncPanel } = await import("../../src/components/sync/sync-panel.js");
 
@@ -26,6 +28,7 @@ const account = (over: Partial<AccountSync> = {}): AccountSync => ({
   name: "alice",
   verified: true,
   phase: "idle",
+  retryAt: null,
   lastCheck: { at: "2026-11-22T11:57:00.000Z", found: 12 },
   lastRunFailed: false,
   nextManualAt: null,
@@ -70,7 +73,9 @@ describe("SyncPanel", () => {
     expect(
       screen.getByText("86 of 214 games analysed. 2 analysing now, 126 waiting."),
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Sync now chess.com alice" })).toBeEnabled();
+    const button = screen.getByRole("button", { name: "Sync now chess.com alice" });
+    expect(button).toBeEnabled();
+    expect(button).not.toHaveAttribute("aria-disabled");
     expect(screen.getByRole("heading", { name: "Sync and analysis" })).toBeInTheDocument();
     expect(screen.queryByText(/to go/)).toBeNull();
   });
@@ -88,13 +93,33 @@ describe("SyncPanel", () => {
     const post = fetchMock.mock.calls.find((c) => c[1]?.method === "POST");
     expect(post?.[0]).toBe(`/api/accounts/${A1}/sync`);
     expect(await screen.findByText("Checking for new games…")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Sync now chess.com alice" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Sync now chess.com alice" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
   });
 
-  it("is disabled during the cooldown and says when it is allowed", () => {
+  it("is aria-disabled during the cooldown, says why, and ignores a click", async () => {
+    const user = userEvent.setup({ advanceTimers: () => {} });
     show(status(account({ nextManualAt: "2026-11-22T12:01:30.000Z" })));
-    expect(screen.getByRole("button", { name: "Sync now chess.com alice" })).toBeDisabled();
+    const button = screen.getByRole("button", { name: "Sync now chess.com alice" });
+    expect(button).toHaveAttribute("aria-disabled", "true");
+    expect(button).toHaveAccessibleDescription("You can sync again in 2 min.");
     expect(screen.getByText("You can sync again in 2 min.")).toBeInTheDocument();
+    await user.click(button);
+    expect(fetchMock.mock.calls.filter((c) => c[1]?.method === "POST")).toHaveLength(0);
+  });
+
+  it("a held-back import is waiting to retry, with Sync now unavailable", () => {
+    show(status(account({ phase: "waiting", retryAt: "2026-11-22T14:05:00.000Z" })));
+    expect(
+      screen.getByText("Waiting to retry. Next attempt at about 14:05 UTC."),
+    ).toBeInTheDocument();
+    const button = screen.getByRole("button", { name: "Sync now chess.com alice" });
+    expect(button).toHaveAttribute("aria-disabled", "true");
+    expect(button).toHaveAccessibleDescription(
+      "Waiting to retry. Next attempt at about 14:05 UTC.",
+    );
   });
 
   it("a throttled answer shows the cooldown", async () => {
@@ -134,7 +159,7 @@ describe("SyncPanel", () => {
     show(status(account({ eta: { seconds: 14 * 60, basis: 31 } })));
     expect(
       screen.getByText(
-        "About 14 min to go at the pace of the last 10 minutes (31 games analysed).",
+        "About 14 min to go at the pace of the last 10 minutes (31 games analysed on the server).",
       ),
     ).toBeInTheDocument();
   });
@@ -167,17 +192,58 @@ describe("SyncPanel", () => {
     expect(screen.getByText(/^Profile updating…/)).toBeInTheDocument();
   });
 
-  it("the compact variant is one block per account without the heading", () => {
-    show(status(account(), account({ accountId: A2, name: "bob" })), "compact");
+  it("the compact variant is two lines of totals and one button, no tally", () => {
+    const { container } = show(
+      status(
+        account(),
+        account({ accountId: A2, name: "bob", analysis: { ...ZERO, done: 4, failed: 1 } }),
+      ),
+      "compact",
+    );
     expect(screen.queryByRole("heading", { name: "Sync and analysis" })).toBeNull();
-    const list = screen.getByRole("list", { name: "Sync and analysis" });
-    expect(within(list).getAllByRole("listitem")).toHaveLength(2);
+    expect(screen.queryByRole("list")).toBeNull();
+    expect(screen.queryByRole("img")).toBeNull();
+    expect(
+      screen.getByText(
+        "All time controls: 90 of 219 games analysed. 2 analysing now, 126 waiting. 1 couldn't be analysed.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Synced 3 min ago.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Details" })).toHaveAttribute("href", "/app/games");
+    expect(screen.getAllByRole("button")).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "Sync all" })).toBeInTheDocument();
+    expect(container.querySelectorAll("p")).toHaveLength(2);
+  });
+
+  it("the compact variant with one account syncs that account", () => {
+    show(status(account()), "compact");
+    expect(screen.getByRole("button", { name: "Sync now chess.com alice" })).toBeInTheDocument();
+  });
+
+  it("no tally once every game is analysed", () => {
+    show(status(account({ analysis: { ...ZERO, done: 40 } })));
+    expect(screen.queryByRole("img")).toBeNull();
+    expect(screen.getByText("All 40 games analysed.")).toBeInTheDocument();
+  });
+
+  it("a 404 or 401 says what happened, not a connection problem", async () => {
+    const user = userEvent.setup({ advanceTimers: () => {} });
+    const { toast } = await import("@ci/ui/overlays");
+    fetchMock.mockImplementation((_u: string, init?: RequestInit) =>
+      init?.method === "POST" ? json({ error: "not_found" }, 404) : json(status(account())),
+    );
+    show(status(account()));
+    await user.click(screen.getByRole("button", { name: "Sync now chess.com alice" }));
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(
+        "This account isn't linked any more. Reload the page to see your accounts.",
+      ),
+    );
   });
 
   it("the progress bar states its numbers for assistive tech", () => {
     show(status(account()));
-    const bar = screen.getByRole("img", { name: /86 of 214 analysed/ });
-    expect(bar).toBeInTheDocument();
+    expect(screen.getAllByRole("img", { name: /86 of 214 analysed/ }).length).toBeGreaterThan(0);
   });
 
   it("renders no bad text for empty, failed and odd accounts", () => {

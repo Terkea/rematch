@@ -2,19 +2,12 @@ import type { Db } from "@ci/db";
 import { sql } from "drizzle-orm";
 import { userAccountIds } from "../events/user-accounts";
 import { enqueueJob } from "../jobs";
-import {
-  ANALYSE_JOB,
-  IMPORT_JOB,
-  RETRY_COOLDOWN_MS,
-  RETRY_LIMIT,
-  SYNC_COOLDOWN_MS,
-  SYNC_LOCK_CLASS,
-} from "./jobs";
-import { lastStartSql } from "./status";
+import { ANALYSE_JOB, IMPORT_JOB, RETRY_COOLDOWN_MS, RETRY_LIMIT, SYNC_LOCK_CLASS } from "./jobs";
+import { availableAtSql } from "./status";
 
 /**
- * `queued`: an import was enqueued, or a scheduled one was moved to now. `already`: one is due,
- * running or paused (one live import per account, `import:<account>`). `throttled`: an import
+ * `queued`: an import was enqueued. `already`: a live import exists (due, running, paused, or
+ * held back by the worker; one live import per account, `import:<account>`). `throttled`: an import
  * started less than `SYNC_COOLDOWN_MS` ago; `availableAt` says when the next is allowed.
  */
 export type SyncOutcome =
@@ -23,36 +16,28 @@ export type SyncOutcome =
 
 export type SyncRequest = { kind: "ok"; accounts: SyncOutcome[] } | { kind: "not_found" };
 
-async function syncOne(tx: Db, accountId: string, now: Date): Promise<SyncOutcome> {
+async function syncOne(tx: Db, accountId: string): Promise<SyncOutcome> {
   await tx.execute(
     sql`select pg_advisory_xact_lock(${SYNC_LOCK_CLASS}::int4, hashtext(${accountId}::text))`,
   );
+  // Any live import answers `already`, including one the worker held back (a retry backoff, an
+  // open breaker, a busy account): its `run_at` is deliberate and is never moved from here.
   const [live] = (await tx.execute(sql`
-    SELECT id::text AS id, state::text AS state, run_at <= now() AS due FROM jobs
-    WHERE kind = ${IMPORT_JOB.kind} AND dedupe_key = ${IMPORT_JOB.key(accountId)}
-      AND state IN ('queued', 'running', 'paused')
+    SELECT j.id FROM jobs j
+    WHERE j.kind = ${IMPORT_JOB.kind} AND j.dedupe_key = ${IMPORT_JOB.key(accountId)}
+      AND j.state IN ('queued', 'running', 'paused')
     LIMIT 1
-  `)) as unknown as { id: string; state: string; due: boolean }[];
-  if (live && (live.state !== "queued" || live.due)) return { accountId, outcome: "already" };
+  `)) as unknown as { id: string }[];
+  if (live) return { accountId, outcome: "already" };
 
-  const [last] = (await tx.execute(
-    sql`SELECT ${lastStartSql(sql`${accountId}::uuid`)} AS at`,
-  )) as unknown as { at: Date | string | null }[];
-  if (last?.at) {
-    const availableAt = new Date(new Date(last.at).getTime() + SYNC_COOLDOWN_MS);
-    if (availableAt.getTime() > now.getTime()) {
-      return { accountId, outcome: "throttled", availableAt };
-    }
+  // The 2-minute limit, entirely in database time.
+  const [limit] = (await tx.execute(
+    sql`SELECT a.at, a.at > now() AS blocked FROM (SELECT ${availableAtSql(sql`${accountId}::uuid`)} AS at) a`,
+  )) as unknown as { at: Date | string | null; blocked: boolean | null }[];
+  if (limit?.at && limit.blocked) {
+    return { accountId, outcome: "throttled", availableAt: new Date(limit.at) };
   }
 
-  if (live) {
-    // A sync scheduled for later (the recurring sync, Task S): run that one now, never a second.
-    await tx.execute(sql`
-      UPDATE jobs SET run_at = now() WHERE id = ${live.id}::int8 AND state = 'queued';
-    `);
-    await tx.execute(sql`SELECT pg_notify('jobs', ${IMPORT_JOB.kind})`);
-    return { accountId, outcome: "queued" };
-  }
   const id = await enqueueJob(tx, {
     kind: IMPORT_JOB.kind,
     payload: IMPORT_JOB.payload(accountId),
@@ -74,14 +59,13 @@ export async function requestSync(
   db: Db,
   userId: string,
   accountId: string | null,
-  now: Date = new Date(),
 ): Promise<SyncRequest> {
   const ids = await userAccountIds(db, userId);
   const targets = accountId === null ? ids : ids.filter((id) => id === accountId);
   if (targets.length === 0) return { kind: "not_found" };
   const accounts: SyncOutcome[] = [];
   for (const id of targets) {
-    accounts.push(await db.transaction((tx) => syncOne(tx as unknown as Db, id, now)));
+    accounts.push(await db.transaction((tx) => syncOne(tx as unknown as Db, id)));
   }
   return { kind: "ok", accounts };
 }

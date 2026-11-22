@@ -60,10 +60,11 @@ function TickMark({ tick, animate }: { tick: Tick; animate: boolean }) {
   const reduced = useReducedMotion();
   if (tick === "waiting") return <span className={cn(TICK, "h-1 self-end bg-rule-strong")} />;
   if (tick === "failed") {
+    // A full-height stroke broken in the middle: started, then stopped.
     return (
       <span className="flex h-full w-0.5 shrink-0 flex-col justify-between">
-        <span className={cn(TICK, "h-1 bg-ink-soft")} />
-        <span className={cn(TICK, "h-1 bg-ink-soft")} />
+        <span className={cn(TICK, "h-1.25 bg-ink-soft")} />
+        <span className={cn(TICK, "h-1.25 bg-ink-soft")} />
       </span>
     );
   }
@@ -83,12 +84,8 @@ function TickMark({ tick, animate }: { tick: Tick; animate: boolean }) {
   );
 }
 
-/**
- * Where an account's analysis stands, as a tally of ticks (one per game, or per group of games
- * past `max`). The sentence beside it carries the exact counts; this is its picture, named for
- * assistive tech. Nothing animates on the first render; a tick that turns done draws in.
- */
-export function AnalysisStrip({
+/** One tally of at most `max` ticks at a fixed pitch (2 spacing units per tick). */
+function Strip({
   counts,
   max,
   className,
@@ -109,7 +106,7 @@ export function AnalysisStrip({
       aria-label={stripLabel(counts)}
       data-part="analysis-strip"
       className={cn("flex h-3 w-full items-stretch justify-between gap-px", className)}
-      // A fixed pitch per tick (2 spacing units), so a small sample draws a short tally.
+      // A fixed pitch per tick, so a small sample draws a short tally and a phone never crams.
       style={{ maxWidth: `calc(${ticks.length} * var(--spacing) * 2)` }}
     >
       {ticks.map((tick, i) => (
@@ -117,5 +114,24 @@ export function AnalysisStrip({
         <TickMark key={`${i}-${tick}`} tick={tick} animate={mounted.current} />
       ))}
     </div>
+  );
+}
+
+/** Ticks on a phone (fits 328px at the fixed pitch) and from 640px. */
+export const PHONE_TICKS = 36;
+export const WIDE_TICKS = 72;
+
+/**
+ * Where an account's analysis stands, as a tally of ticks (one per game, or per group of games
+ * past the cap: 36 on a phone, 72 from 640px). The sentence beside it carries the exact counts;
+ * this is its picture, named for assistive tech. Nothing animates on the first render; a tick
+ * that turns done draws in.
+ */
+export function AnalysisStrip({ counts }: { counts: AnalysisCounts }) {
+  return (
+    <>
+      <Strip counts={counts} max={PHONE_TICKS} className="sm:hidden" />
+      <Strip counts={counts} max={WIDE_TICKS} className="hidden sm:flex" />
+    </>
   );
 }

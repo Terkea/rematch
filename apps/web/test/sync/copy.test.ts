@@ -3,10 +3,15 @@ import {
   agoText,
   analysisLine,
   analysisTotal,
+  asideText,
   cooldownText,
   etaText,
   failedText,
+  stateLine,
+  summaryLine,
+  summaryShort,
   syncLine,
+  syncReason,
 } from "../../src/components/sync/copy";
 import type { AccountSync, AnalysisCounts } from "../../src/server/sync";
 
@@ -26,6 +31,7 @@ const account = (over: Partial<AccountSync> = {}): AccountSync => ({
   name: "alice",
   verified: true,
   phase: "idle",
+  retryAt: null,
   lastCheck: null,
   lastRunFailed: false,
   nextManualAt: null,
@@ -105,7 +111,7 @@ describe("analysisLine", () => {
     expect(analysisLine({ ...ZERO, done: 1 })).toBe("All 1 game analysed.");
     expect(analysisLine(ZERO)).toBe("No games to analyse yet.");
     expect(analysisLine({ ...ZERO, notSelected: 5 })).toBe(
-      "5 imported games are waiting to be picked for analysis.",
+      "5 imported games, none selected for analysis.",
     );
   });
 
@@ -117,13 +123,82 @@ describe("analysisLine", () => {
 describe("etaText", () => {
   it("minutes, under a minute and hours, with the basis", () => {
     expect(etaText({ seconds: 14 * 60 - 5, basis: 31 })).toBe(
-      "About 14 min to go at the pace of the last 10 minutes (31 games analysed).",
+      "About 14 min to go at the pace of the last 10 minutes (31 games analysed on the server).",
     );
     expect(etaText({ seconds: 20, basis: 6 })).toBe(
-      "Under a minute to go at the pace of the last 10 minutes (6 games analysed).",
+      "Under a minute to go at the pace of the last 10 minutes (6 games analysed on the server).",
     );
     expect(etaText({ seconds: 3 * 3600 + 10, basis: 9 })).toMatch(/^About 4 h to go/);
     expect(etaText(null)).toBeNull();
+  });
+});
+
+describe("held back and reasons", () => {
+  it("a held-back import says when it retries, in UTC", () => {
+    const a = account({ phase: "waiting", retryAt: "2026-11-22T14:05:00.000Z" });
+    expect(syncLine(a, NOW)).toBe("Waiting to retry. Next attempt at about 14:05 UTC.");
+    expect(syncReason(a, NOW)).toBe("Waiting to retry. Next attempt at about 14:05 UTC.");
+  });
+
+  it("names why Sync now is unavailable, and null when it is", () => {
+    expect(syncReason(account({ phase: "checking" }), NOW)).toBe("Already checking for new games.");
+    expect(syncReason(account({ phase: "paused" }), NOW)).toBe(
+      "Paused while the site is busy. It carries on by itself.",
+    );
+    expect(
+      syncReason(account({ nextManualAt: new Date(NOW.getTime() + 61_000).toISOString() }), NOW),
+    ).toBe("You can sync again in 2 min.");
+    expect(syncReason(account(), NOW)).toBeNull();
+  });
+});
+
+describe("asideText", () => {
+  it("states games left out without promising a pick", () => {
+    expect(asideText({ ...ZERO, done: 3, notSelected: 5, skipped: 1 })).toBe(
+      "5 more imported games aren't selected for analysis. 1 game can't be analysed (a chess variant, or fewer than two moves played).",
+    );
+  });
+});
+
+describe("compact summary", () => {
+  const two = [
+    account({ analysis: { ...ZERO, done: 80, waiting: 20, failed: 2 } }),
+    account({ accountId: "a2", name: "bob", analysis: { ...ZERO, done: 6, analysing: 1 } }),
+  ];
+
+  it("sums the counts across accounts and time controls", () => {
+    expect(summaryLine(two)).toBe(
+      "All time controls: 86 of 109 games analysed. 1 analysing now, 20 waiting. 2 couldn't be analysed.",
+    );
+  });
+
+  it("a phone-length summary keeps the counts and the failed games", () => {
+    expect(summaryShort(two)).toBe("86 of 109 games analysed, all time controls. 2 failed.");
+    expect(summaryShort([account()])).toBe("No games to analyse yet.");
+  });
+
+  it("states the most pressing sync state first", () => {
+    expect(stateLine(two, NOW)).toBe("Not synced yet.");
+    const lastCheck = { at: ago(3 * 60_000), found: 2 };
+    const alice = account({ ...two[0], lastCheck });
+    const bob = account({ ...two[1], lastCheck });
+    const synced = [alice, bob];
+    expect(stateLine(synced, NOW)).toBe("Synced 3 min ago.");
+    expect(stateLine([{ ...alice, phase: "checking" as const }, bob], NOW)).toBe(
+      "Checking alice for new games…",
+    );
+    expect(
+      stateLine(
+        [alice, { ...bob, phase: "waiting" as const, retryAt: "2026-11-22T14:05:00.000Z" }],
+        NOW,
+      ),
+    ).toBe("bob: waiting to retry. Next attempt at about 14:05 UTC.");
+    expect(stateLine([alice, { ...bob, lastRunFailed: true }], NOW)).toBe(
+      "The last sync of bob didn't finish.",
+    );
+    expect(stateLine([{ ...alice, profileUpdating: true }], NOW)).toBe(
+      "Synced 3 min ago. Profile updating…",
+    );
   });
 });
 

@@ -1,6 +1,12 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { ETA, FAIR_ORDER_SQL, POSITION_TAIL } from "../../src/server/sync/eta";
+import {
+  ETA,
+  ETA_RATE_SQL,
+  FAIR_ORDER_SQL,
+  POSITION_TAIL,
+  QUEUED_SQL,
+} from "../../src/server/sync/eta";
 import { ANALYSE_JOB, IMPORT_JOB, PROFILE_KIND } from "../../src/server/sync/jobs";
 
 // The web enqueues the same `import-account` and `analyse-game` jobs the Rust worker does, and
@@ -47,6 +53,7 @@ describe("import job contract with queue::kinds and analysis::jobs::import", () 
     expect(options).toContain("KIND_IMPORT");
     expect(options).toContain("dedupe_key: Some(import_key(account_id))");
     expect(options).toContain("user_key: Some(account_id)");
+    expect(options).toContain("max_attempts: IMPORT_MAX_ATTEMPTS");
     expect(options).not.toContain("priority:");
     expect(types).toMatch(/priority: 100,/);
     expect(IMPORT_JOB.priority).toBe(100);
@@ -63,6 +70,13 @@ describe("import job contract with queue::kinds and analysis::jobs::import", () 
       String(ANALYSE_JOB.defaultPriority),
     );
     expect(rust("analysis/src/jobs/reconcile.rs")).toContain("coalesce(analysis_priority, 100)");
+    const opts = analyseJob.slice(
+      analyseJob.indexOf("pub fn analyse_enqueue_options_with_priority"),
+    );
+    const body = opts.slice(0, opts.indexOf("..EnqueueOptions::default()"));
+    expect(body).toContain("dedupe_key: Some(analyse_key(game_id))");
+    expect(body).toContain("user_key: Some(account_id)");
+    expect(body).toContain("max_attempts: ANALYSE_MAX_ATTEMPTS");
   });
 
   it("the profile kind matches KIND_BUILD_PROFILE", () => {
@@ -81,6 +95,15 @@ describe("ETA contract with scheduler::eta and scheduler::fair", () => {
     const m = eta.match(/format!\(\s*"\{fair\}((?:[^"\\]|\\.|\\\r?\n)*)",/);
     expect(m?.[1]).toBeDefined();
     expect(rustString(m?.[1] ?? "")).toBe(POSITION_TAIL);
+  });
+
+  it("the rate and queued counts are ETA_RATE_SQL and QUEUED_SQL byte for byte", () => {
+    const lit = (name: string) => {
+      const m = eta.match(new RegExp(`const ${name}: &str = "((?:[^"\\\\]|\\\\.|\\\\\\r?\\n)*)";`));
+      return m?.[1] === undefined ? undefined : rustString(m[1]);
+    };
+    expect(lit("ETA_RATE_SQL")).toBe(ETA_RATE_SQL);
+    expect(lit("QUEUED_SQL")).toBe(QUEUED_SQL);
   });
 
   it("thresholds, window and fair parameters match", () => {

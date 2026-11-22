@@ -23,9 +23,14 @@ where import and analysis stand without guessing.
    - At most one sync per 2 minutes per account. The clock starts at the newest
      `import_runs.started_at` or the newest due `import-account` job's `created_at`, whichever is
      later, so a sync the worker started counts too. Inside it the answer is 429 with
-     `availableAt`, and the panel says "You can sync again in 2 min."
-   - A due, running or paused import answers `already`. A queued import scheduled for later is
-     moved to now instead of adding a second one. Requests for one account are serialised with
+     `availableAt`, and the panel says "You can sync again in 2 min." The comparison and
+     `availableAt` use the database's `now()`, never the web host's clock. "Due" is R1's
+     `due!()`: `run_at <= now() OR run_at <= created_at`.
+   - Any live import answers `already`. That includes a queued import the worker held back on
+     purpose (a retry backoff, an open breaker, `account_busy`). Its `run_at` is never moved
+     (fix round 1: pulling it forward overrode the platform throttles and used up attempts).
+     The panel shows it as "Waiting to retry. Next attempt at about 14:05 UTC." with "Sync now"
+     unavailable. Requests for one account are serialised with
      `pg_advisory_xact_lock(30040, hashtext(account_id))`.
 2. **Retry** is `POST /api/sync/retry { accountId }`. It enqueues `analyse-game` (the reconciler's
    priority, `coalesce(analysis_priority, 100)`) for the account's `failed` games. It skips games
@@ -48,11 +53,21 @@ where import and analysis stand without guessing.
    the last 10 minutes (31 games analysed)."
 5. **Live updates.** `applySyncEvent` (called first in `applyEvent`) invalidates the status on
    `import.progress` with `done: true`, `game.analysed`, `job.failed`, `profile.updated` and
-   `weakness.changed`. It refetches at most once per 3 s, with a trailing refetch. A finished
-   import also invalidates the account's `games` key, so `LiveRefresh` re-renders the list with
-   the new games. While an import runs, the panel shows the stream's own count ("7 new so far").
+   `weakness.changed`. It refetches at most once per 3 s, with a trailing refetch.
+   - A finished import with new games also invalidates the account's `games` key, so
+     `LiveRefresh` re-renders the list. A run with no new games leaves the page alone.
+   - With the panel mounted on a page that refreshes itself, an analysed game is left to that
+     refresh, so the status is read once.
+   - The first progress event of a run the status doesn't show yet (a sync the worker started)
+     refetches the status once. After that, the panel shows the stream's own count
+     ("7 new so far").
 6. **Where it shows.**
-   - The overview: a compact panel in place of the status line.
+   - The overview: two lines in place of the status line. The first has the totals over every
+     account, labelled "All time controls". The second has the most pressing sync state and a
+     "Details" link to the games page. There is one "Sync now" or "Sync all" and no tally, so
+     the coaching headline stays on the first screen.
+   - An unavailable "Sync now" stays focusable with `aria-disabled`. It has a dashed, faint
+     edge, and its reason shows in a tooltip and in its accessible description.
    - The games page: the full panel above the filters, with the key notes on games not picked
      or skipped.
    - The header `ActivityIndicator`: the streamed import first, then "Checking for new games",
