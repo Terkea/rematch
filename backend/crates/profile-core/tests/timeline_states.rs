@@ -952,6 +952,165 @@ fn a_stable_low_rate_after_resolution_never_relapses() {
     assert_eq!(relapsed, 0, "false relapses in {relapsed}/{trials} players");
 }
 
+/// 100 seeded players: 60 games at the median, 60 at 0.06, then `stable` games at `low`, then
+/// `tail` games at `high`. Returns (resolved before the tail, false relapses in the stable
+/// phase, detected relapses in the tail, detection delays in games).
+fn relapse_trials(
+    seed: u32,
+    low: f64,
+    stable: usize,
+    high: f64,
+    tail: usize,
+) -> (usize, usize, usize, Vec<usize>) {
+    let mut rng = Rng::new(seed);
+    let (mut resolved, mut false_rel, mut detected, mut delays) = (0, 0, 0, Vec::new());
+    let tail_start = 120 + stable;
+    for _ in 0..100 {
+        let mut obs: Vec<(u32, u32)> = (0..60).map(|_| (binom(&mut rng, 50, 0.02), 50)).collect();
+        obs.extend((0..60).map(|_| (binom(&mut rng, 50, 0.06), 50)));
+        obs.extend((0..stable).map(|_| (binom(&mut rng, 50, low), 50)));
+        obs.extend((0..tail).map(|_| (binom(&mut rng, 50, high), 50)));
+        let o = eval(&obs);
+        let t: Vec<(usize, WeaknessState)> = o
+            .rows
+            .iter()
+            .filter(|r| r.kind == RowKind::Transition)
+            .map(|r| (game_index(r.at_game_id), r.to))
+            .collect();
+        if !t.iter().any(|&(g, s)| s == Resolved && g < tail_start) {
+            continue;
+        }
+        resolved += 1;
+        if t.iter()
+            .any(|&(g, s)| s == Relapsed && (120..tail_start).contains(&g))
+        {
+            false_rel += 1;
+        }
+        if let Some(&(g, _)) = t.iter().find(|&&(g, s)| s == Relapsed && g >= tail_start) {
+            detected += 1;
+            delays.push(g - tail_start);
+        }
+    }
+    delays.sort_unstable();
+    (resolved, false_rel, detected, delays)
+}
+
+/// N1 (fix round 2): a stable rate just below the median after resolution (0.014, 0.017) is
+/// no relapse in at least 95 of 100 players; repeated tests on recent slices used to pick up
+/// noise peaks (43/100 and 70/100).
+#[test]
+fn a_stable_rate_just_below_the_median_rarely_relapses() {
+    for low in [0.014, 0.017] {
+        let (resolved, false_rel, _, _) = relapse_trials(11, low, 380, 0.0, 0);
+        assert!(
+            resolved >= 50,
+            "{low}: only {resolved}/100 resolved: vacuous"
+        );
+        assert!(
+            false_rel <= 5,
+            "{low}: false relapses in {false_rel}/{resolved} players"
+        );
+    }
+}
+
+/// N1: true relapses to 0.03 and 0.04 after 120 resolved games at 0.01 are still detected in
+/// at least 95% of resolved players.
+#[test]
+fn true_relapses_are_still_detected() {
+    for high in [0.03, 0.04] {
+        let (resolved, false_rel, detected, delays) = relapse_trials(13, 0.01, 120, high, 100);
+        assert!(resolved >= 50, "{high}: only {resolved} resolved");
+        assert_eq!(false_rel, 0, "{high}: false relapses before the rise");
+        assert!(
+            detected * 100 >= 95 * resolved,
+            "{high}: detected {detected}/{resolved}, delays {delays:?}"
+        );
+    }
+}
+
+/// C2/N1: a relapse that BOCPD cannot confirm (20 opportunities per game: 49 games hold less
+/// than min evidence, ADR §8) is found by the cumulative CUSUM alone. Its segment starts at
+/// the CUSUM change point, so the relapse level (0.033, below the 0.06 peak) is neither
+/// "improving" against the old peak nor diluted to `not_an_issue` by the resolved games.
+#[test]
+fn a_relapse_only_the_cusum_sees_is_rebaselined() {
+    let mut obs = improve_obs();
+    assert_eq!(eval(&obs).state, Resolved);
+    for i in 0..150 {
+        obs.push(if i % 3 == 2 { (0, 20) } else { (1, 20) });
+    }
+    let o = eval(&obs);
+    assert!(
+        o.rows
+            .iter()
+            .filter(|r| r.kind == RowKind::Onset)
+            .all(|r| game_index(r.at_game_id) < 200),
+        "BOCPD confirmed the rise, so the test would not isolate the CUSUM: {:?}",
+        o.rows
+    );
+    let path = state_path(&o);
+    let rel = index_of(&path, Relapsed).expect("relapsed appears");
+    assert!(
+        path[rel..].iter().all(|s| matches!(s, Relapsed | Active)),
+        "{path:?}"
+    );
+    assert!(o.p_imp.is_none_or(|p| p < 0.85), "p_imp {:?}", o.p_imp);
+    // Ruling 3: the relapse segment starts at the CUSUM change point, so the relapse row
+    // reports that window's evidence (>= min evidence, near the relapse rate), not one game.
+    let row = o.rows.iter().find(|r| r.to == Relapsed).unwrap();
+    let rate = row.evidence.k as f64 / row.evidence.n as f64;
+    assert!(
+        row.evidence.n as f64 >= MIN_EVIDENCE && (0.025..0.045).contains(&rate),
+        "{row:?}"
+    );
+}
+
+/// N1 ruling 2: a relapse needs P(θ > median) >= 0.7, the standard of `emerging`. Two games
+/// of 10 000 opportunities at 0.0204 after resolution alarm the CUSUM and pass the absolute
+/// and relative rise, but P(above the median) is only about 0.61-0.65: no relapse yet.
+#[test]
+fn a_rate_barely_above_the_median_is_not_yet_a_relapse() {
+    let mut obs = improve_obs();
+    assert_eq!(eval(&obs).state, Resolved);
+    obs.extend(repeat(2, (204, 10_000)));
+    let o = eval(&obs);
+    assert!(!ever(&state_path(&o), Relapsed), "{:?}", state_path(&o));
+    // Control: far above the median the same two games relapse.
+    let mut obs = improve_obs();
+    obs.extend(repeat(2, (300, 10_000)));
+    assert!(ever(&state_path(&eval(&obs)), Relapsed));
+}
+
+/// C1 (`streak = 0` mutant): with no evidence gate, a weakness is resolved no sooner than 10
+/// games after the state it resolves from was entered; a streak never carries across a
+/// transition.
+#[test]
+fn a_streak_never_carries_across_a_transition() {
+    let mut rng = Rng::new(31);
+    let mut resolutions = 0;
+    for case in 0..300 {
+        let obs = random_points(&mut rng);
+        let o = evaluate_series(&obs, Some(&ts_ref()), N0, 0.0);
+        let t: Vec<&TimelineRow> = o
+            .rows
+            .iter()
+            .filter(|r| r.kind == RowKind::Transition)
+            .collect();
+        for w in t.windows(2) {
+            if w[1].to == Resolved {
+                resolutions += 1;
+                let gap = game_index(w[1].at_game_id) - game_index(w[0].at_game_id);
+                assert!(
+                    gap >= 10,
+                    "case {case}: resolved {gap} games after entering {:?}",
+                    w[0].to
+                );
+            }
+        }
+    }
+    assert!(resolutions >= 10, "only {resolutions} resolutions: vacuous");
+}
+
 /// I2 (M5): a change BOCPD is certain of, but under 15% relative, is never confirmed.
 #[test]
 fn a_certain_change_under_15_percent_is_not_confirmed() {

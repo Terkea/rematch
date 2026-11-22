@@ -90,7 +90,7 @@ The weakness timeline has to say when a weakness started improving or relapsing.
 11. **Signals per game.** They are computed on the current segment, with the posterior `posterior(k, n, pooled, n0)` (ADR-R2-5):
     - `confidence_above = P(θ > band median)`, gated as above;
     - `at_or_below_median`: the posterior mean is ≤ the median (true when there are no opportunities);
-    - `below_p40_streak` (ruling C1): consecutive games at which the games **since the current state was entered** hold at least `minEvidence` opportunities and their posterior mean is < P40. It resets to 0 on every state transition and on any game that breaks the condition. So after a relapse, or a brief `emerging`, the old low games no longer count toward resolving. The explicit reset on a transition is belt and braces: the state window restarts at the transition, so the streak is rebuilt from a fresh window anyway. A mutant that removes the reset survives as equivalent in every test, and this is recorded rather than tested;
+    - `below_p40_streak` (ruling C1): consecutive games at which the games **since the current state was entered** hold at least `minEvidence` opportunities and their posterior mean is < P40. It resets to 0 on every state transition and on any game that breaks the condition. So after a relapse, or a brief `emerging`, the old low games no longer count toward resolving. Without the explicit reset, the streak value of the transition game would carry into the new state, so a weakness could resolve fewer than 10 games after entering `active` or `improving`. Test `a_streak_never_carries_across_a_transition` pins this with minEvidence 0 over 300 random series;
     - `cusum_up` (ruling C3): Page's CUSUM (h = 4) over the segment's games with `p0` = the segment's posterior mean and `p1 = 1.5·p0`, run without stopping, so the statistic is the one **at the current game**. It is true only when all of these hold:
       - the statistic is above h now (an alarm somewhere in the past does not count);
       - the segment has at least 10 games;
@@ -100,12 +100,20 @@ The weakness timeline has to say when a weakness started improving or relapsing.
       It is an early warning only: it can raise `emerging`, never `active`. It resets with each confirmation and each relapse because it runs on the segment;
     - `confirmed_up` / `confirmed_down`: a confirmation at this game;
     - `p_imp = P_imp(current segment, segment before the last confirmed change)`. It is computed only when it can matter (rule 3) and for the final outcome;
-    - `drift` (ruling I1): EWMA (λ 0.1, k 2) over the per-game rates of the games after entering `resolved`. The level L is the segment's posterior mean at entry. σ = √(L(1 − L)/n̄) is the per-game binomial SD at the segment's mean opportunities n̄. Games without opportunities are skipped. Drift is true only when all of these hold:
-      - the EWMA is above its limit **at the current game** (not sticky);
-      - the most recent games since resolution reach `minEvidence` opportunities (the *relapse window*; none before resolution count);
-      - the window's raw rate exceeds L by at least `RELAPSE_MIN_ABS_CHANGE = 0.005` **and** by at least the relative threshold 0.15;
-      - P(θ > band median) on the window's posterior is at least 0.7, the same bar as `active`. A relapse means the weakness is back, not just that the rate moved.
-    - **Relapse rebaseline** (ruling C2): entering `relapsed` starts a new segment at the start of the EWMA excursion (the first game after the EWMA was last at or below L) and clears the last confirmed change. P_imp is therefore `None` until a confirmed fall inside the relapse segment, and then compares against the relapse level. CUSUM and BOCPD also restart on the relapse segment. A relapsing player is never called `improving` against the old peak.
+    - `drift` (ruling I1, replaced in fix round 2 by ruling N1): Page's **one-sided binomial CUSUM against the resolved level**, cumulative since resolution.
+      - p0 = L, the segment's posterior mean when `resolved` is entered.
+      - p1 = max(band median, 1.15·L, L + 0.005): the smallest relapse worth reporting, which is the median whenever L is below it.
+      - S_t = max(0, S_{t−1} + k·ln(p1/p0) + (n − k)·ln((1 − p1)/(1 − p0))). Games without opportunities add nothing. The change-point estimate τ is the game after S was last 0.
+      - Threshold `RELAPSE_CUSUM_H = 10`, chosen by a sweep over h = 6, 8, 10, 12. Its in-control ARL (simulated: 400 runs, 50 opportunities per game, capped at 200 000 games) is about **140 000 games at L = 0.01, 158 000 at 0.012 and 168 000 at 0.014**, against 4 800–11 800 at h = 6.
+
+      Drift is true only when all of these hold:
+      - S is above h **at the current game**;
+      - the games since τ hold at least `minEvidence` opportunities;
+      - their raw rate exceeds L by at least `RELAPSE_MIN_ABS_CHANGE = 0.005` **and** by at least 15 % relative;
+      - **P(θ > band median) ≥ 0.7** on their posterior: the same standard as `active` and `emerging`, so a rate below the median is never `relapsed`.
+
+      The evidence window [τ, t] only grows during an excursion and moves only when S returns to 0. So the test is not re-drawn on a fresh slice every game. The fix-1 detector re-tested the latest minEvidence slice every game, and that multiple testing gave 43/100 false relapses at a stable 0.014 and 70/100 at 0.017.
+    - **Relapse rebaseline** (rulings C2 and N1): entering `relapsed` starts a new segment at **τ, the CUSUM's change-point estimate**, not at a noise peak, and clears the last confirmed change. P_imp is therefore `None` until a confirmed fall inside the relapse segment, and then compares against the relapse level. CUSUM and BOCPD also restart on the relapse segment. A relapsing player is never called `improving` against the old peak.
 
 12. **State rules** (`next_state`, TS M2 Task 18, first match wins, with two R2 deviations marked):
     ```
@@ -166,12 +174,18 @@ The weakness timeline has to say when a weakness started improving or relapsing.
     | 60 × 0.02, 60 × 0.06, 380 × 0.01, 100 players: false relapse in the stable phase | 68/100 | **0/100** (test: exactly 0) |
     | same with a true return to 0.06 for 60 games: relapse detected | — | 100/100 |
     | brief's relapse series: `resolved` after the first `relapsed` | 5 flaps | 0 |
+    | fix round 2 (N1), resolved players, seed 11: false relapse at a stable 0.014 | 43/100 (fix 1) | **0/99**; test bound ≤ 5 |
+    | same at a stable 0.017 | 70/100 (fix 1) | **2/84**; test bound ≤ 5 |
+    | same at a stable 0.01, seed 9 | 0/100 | 0/100 |
+    | true relapse to 0.03 after 120 games at 0.01, seed 13 | — | **99/99**, median delay 23 games (p90 42, max 57) |
+    | true relapse to 0.04 | — | **99/99**, median delay 19 games (p90 24, max 31) |
+    | true relapse to 0.025 (not tested, for reference) | — | 98/99, median delay 34 games |
 
     Both seeded tests (`stationary_half_median_has_under_2_percent_false_emerging`, `a_stable_low_rate_after_resolution_never_relapses`) pin these numbers. The two `emerging` labels left at half the median are BOCPD-confirmed rises to a segment rate just above the median (0.0214 and 0.022). They pass every gate and are within the stated 2 % allowance.
 
 17. **Data exactly at the median** (review M-c, not changed). Stationary data at the true median rate reaches `active` at some point in 147 of 200 series of 300 games, and ends non-neutral in 93/200. This is because `confidence ≥ 0.7` is re-tested every game, and a posterior at the boundary crosses 0.7 by chance. It is inherent to the TS rule at the boundary. A player at the median is, by definition, borderline, so the label is not a false claim of strength or weakness. Hysteresis would cut the churn and is left to a later detector version (it would bump `tl-v1`).
 
-18. **Cost** (review M-g). The CUSUM statistic is recomputed over the segment each game, so a series costs O(n²); the EWMA is now incremental. P_imp runs 10 000 draws per game only in tracked states. A 500-game series takes well under 1 s in debug. This is fine for the beta, and incremental CUSUM is a later optimisation.
+18. **Cost** (review M-g). The CUSUM statistic is recomputed over the segment each game, so a series costs O(n²); the relapse CUSUM is incremental. P_imp runs 10 000 draws per game only in tracked states. A 500-game series takes well under 1 s in debug. This is fine for the beta, and incremental CUSUM is a later optimisation.
 
 ## Consequences (Task 14)
 

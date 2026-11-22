@@ -25,12 +25,13 @@
 //! - The P40 streak counts only games since the current state was entered, only while those
 //!   games hold `min_evidence` opportunities with a posterior mean below P40, and it resets on
 //!   every transition and on any game that breaks it.
-//! - Drift (`resolved -> relapsed`) needs a current EWMA alarm and a recent window (since
-//!   resolution, at least `min_evidence` opportunities) whose rate is meaningfully worse than
-//!   the resolved level (both [`RELAPSE_MIN_ABS_CHANGE`] and [`CONFIRM_REL_CHANGE`]) and above
-//!   the band median with [`super::states::ACTIVE_CONFIDENCE`]. A relapse starts a new segment
-//!   at the start of the EWMA excursion, so CUSUM, P_imp and later changes compare against
-//!   the relapse level, never the old peak.
+//! - Drift (`resolved -> relapsed`) needs a current alarm of a binomial CUSUM against the
+//!   resolved level, cumulative since resolution ([`RELAPSE_CUSUM_H`]). The games since its
+//!   change-point estimate must hold `min_evidence` opportunities, be meaningfully worse than
+//!   the resolved level (both [`RELAPSE_MIN_ABS_CHANGE`] and [`CONFIRM_REL_CHANGE`]) and be
+//!   above the band median with [`super::states::ACTIVE_CONFIDENCE`]. A relapse starts a new
+//!   segment at that change point, so CUSUM, P_imp and later changes compare against the
+//!   relapse level, never the old peak.
 //! - Points with `events > opportunities` are skipped and counted in `invalid_points`.
 //! - No reference (or an invalid one: a value outside `[0, 1]` or non-finite) means
 //!   `not_an_issue` only. A non-finite or negative `n0` is 0; a NaN `min_evidence` can never be
@@ -44,7 +45,6 @@ use super::bocpd::{
     Bocpd, BocpdOpts, DEFAULT_HAZARD, DEFAULT_LEVEL, DEFAULT_MAX_RUN, change_summary,
 };
 use super::cusum::CUSUM_DEFAULT_H;
-use super::ewma::{EWMA_DEFAULT_K, EWMA_DEFAULT_LAMBDA};
 use super::states::{ACTIVE_CONFIDENCE, Signals, next_state};
 use crate::stats::posterior::{
     BetaPosterior, P_IMP_DELTA_REL, P_IMP_DRAWS, P_IMP_SEED, SHAPE_FLOOR, p_improvement, posterior,
@@ -72,6 +72,8 @@ pub const CUSUM_MIN_GAMES: usize = 10;
 pub const MIN_ONSET_WINDOW_GAMES: usize = 2;
 /// Smallest absolute rise of the recent rate over the resolved level that can be a relapse.
 pub const RELAPSE_MIN_ABS_CHANGE: f64 = 0.005;
+/// Relapse CUSUM threshold (log-likelihood ratio); in-control ARL in ADR-R2-6 §11.
+pub const RELAPSE_CUSUM_H: f64 = 10.0;
 
 /// One game of a weakness series.
 #[derive(Clone, Debug, PartialEq)]
@@ -235,61 +237,48 @@ fn cusum_now(obs: &[(u32, u32)], p0: f64) -> f64 {
         })
 }
 
-/// The most recent games whose opportunities reach `min_evidence` (at least one game), as
-/// `(events, opportunities)`; `None` when the games do not reach it or hold no opportunity.
-fn relapse_window(obs: &[(u32, u32)], min_evidence: f64) -> Option<(u64, u64)> {
-    let (mut k, mut n) = (0u64, 0u64);
-    for &(ki, ni) in obs.iter().rev() {
-        k += u64::from(ki);
-        n += u64::from(ni);
-        if n > 0 && n as f64 >= min_evidence {
-            return Some((k, n));
-        }
-    }
-    None
-}
-
-/// EWMA drift monitor from entering `resolved` (ADR-R2-6 §11).
+/// Relapse monitor from entering `resolved` (ADR-R2-6 §11, fix round 2): Page's one-sided
+/// binomial CUSUM of `p1` against the resolved level `p0`, cumulative since resolution.
+/// `p1 = max(band median, 1.15 p0, p0 + 0.005)` is the smallest relapse worth reporting. The
+/// change point is the game after the statistic was last 0.
 struct ResolvedWatch {
-    /// Index of the first game after entering `resolved`.
-    from: usize,
-    /// Segment posterior mean when `resolved` was entered.
     level: f64,
-    /// Control limit `level + k sigma sqrt(lambda / (2 - lambda))`.
-    limit: f64,
-    z: f64,
-    /// Index of the first game of the current excursion above `level`.
-    excursion: usize,
+    /// `(ln(p1/p0), ln((1-p1)/(1-p0)))`, or `None` when the rates are not usable (no alarm).
+    weights: Option<(f64, f64)>,
+    s: f64,
+    /// Index of the estimated change point (first game of the current excursion).
+    tau: usize,
 }
 
 impl ResolvedWatch {
-    fn new(from: usize, level: f64, n_bar: f64) -> Self {
-        let sigma = (level * (1.0 - level) / n_bar).sqrt();
-        let sigma = if sigma.is_finite() { sigma } else { 0.0 };
-        let lambda = EWMA_DEFAULT_LAMBDA;
+    fn new(from: usize, level: f64, median: f64) -> Self {
+        let p1 = median
+            .max(level * (1.0 + CONFIRM_REL_CHANGE))
+            .max(level + RELAPSE_MIN_ABS_CHANGE);
+        let usable = level > 0.0 && p1 > level && p1 < 1.0;
         Self {
-            from,
             level,
-            limit: level + EWMA_DEFAULT_K * sigma * (lambda / (2.0 - lambda)).sqrt(),
-            z: level,
-            excursion: from,
+            weights: usable.then(|| ((p1 / level).ln(), ((1.0 - p1) / (1.0 - level)).ln())),
+            s: 0.0,
+            tau: from,
         }
     }
 
-    /// Adds game `i`; games without opportunities (or invalid) leave `z` unchanged.
+    /// Adds game `i`; invalid games add nothing.
     fn step(&mut self, i: usize, k: u32, n: u32) {
-        if n > 0 && k <= n {
-            let x = f64::from(k) / f64::from(n);
-            self.z = EWMA_DEFAULT_LAMBDA * x + (1.0 - EWMA_DEFAULT_LAMBDA) * self.z;
+        if let Some((we, wm)) = self.weights
+            && k <= n
+        {
+            self.s = (self.s + f64::from(k) * we + f64::from(n - k) * wm).max(0.0);
         }
-        if self.z <= self.level {
-            self.excursion = i + 1;
+        if self.s <= 0.0 {
+            self.tau = i + 1;
         }
     }
 
-    /// The EWMA is above its control limit at the current game.
+    /// The statistic is above [`RELAPSE_CUSUM_H`] at the current game.
     fn alarm_now(&self) -> bool {
-        self.z > self.limit
+        self.s > RELAPSE_CUSUM_H
     }
 }
 
@@ -469,19 +458,21 @@ pub fn evaluate_series(
         let drift = match (prev, watch.as_mut()) {
             (Some(WeaknessState::Resolved), Some(w)) => {
                 w.step(i, k, n);
+                // The evidence is the games since the estimated change point; that window only
+                // grows while the excursion lasts, so it is not re-drawn every game.
+                let (kr, nr) = counts(w.tau.min(t), t);
+                let rise = rate(kr, nr).map_or(f64::NEG_INFINITY, |x| x - w.level);
+                let rel = if w.level > 0.0 {
+                    rise / w.level
+                } else {
+                    f64::INFINITY
+                };
                 w.alarm_now()
-                    && relapse_window(&obs[w.from..t], min_evidence).is_some_and(|(kr, nr)| {
-                        let rate = kr as f64 / nr as f64;
-                        let rise = rate - w.level;
-                        let rel = if w.level > 0.0 {
-                            rise / w.level
-                        } else {
-                            f64::INFINITY
-                        };
-                        rise >= RELAPSE_MIN_ABS_CHANGE
-                            && rel >= CONFIRM_REL_CHANGE
-                            && prob_above(&post_of(kr, nr), r.median) >= ACTIVE_CONFIDENCE
-                    })
+                    && nr > 0
+                    && nr as f64 >= min_evidence
+                    && rise >= RELAPSE_MIN_ABS_CHANGE
+                    && rel >= CONFIRM_REL_CHANGE
+                    && prob_above(&post_of(kr, nr), r.median) >= ACTIVE_CONFIDENCE
             }
             _ => false,
         };
@@ -498,17 +489,15 @@ pub fn evaluate_series(
         let next = next_state(prev, &signals);
 
         if next == WeaknessState::Resolved && prev != Some(WeaknessState::Resolved) {
-            // EWMA from entering `resolved`: level = segment rate, sigma = per-game binomial SD.
-            let games = (t - seg).max(1) as f64;
-            let n_bar = (ns as f64 / games).max(1.0);
-            watch = Some(ResolvedWatch::new(t, sp.mean, n_bar));
+            // The relapse CUSUM starts at the segment level when `resolved` is entered.
+            watch = Some(ResolvedWatch::new(t, sp.mean, r.median));
         }
         let (mut ks, mut ns, mut sp, mut confidence) = (ks, ns, sp, confidence);
         if next == WeaknessState::Relapsed && prev == Some(WeaknessState::Resolved) {
-            // Rebaseline on the relapse: a new segment from the start of the EWMA excursion,
+            // Rebaseline on the relapse: a new segment from the CUSUM change point estimate,
             // so P_imp, CUSUM and later changes compare against the relapse level.
             if let Some(w) = watch.take() {
-                seg = w.excursion.min(i);
+                seg = w.tau.min(i);
             }
             last_change = None;
             (ks, ns) = counts(seg, t);
