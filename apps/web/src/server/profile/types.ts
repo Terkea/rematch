@@ -77,6 +77,12 @@ export type WeaknessDetail = WeaknessSummary & {
     rateBefore: number | null;
     rateAfter: number | null;
     causeHints: unknown[];
+    /**
+     * The row's stored `evidence` counts (Rust `Evidence { k, n }`): the current segment, which on
+     * a confirmed change (rates present) starts at the onset, so they are the after side's counts.
+     * Null when the stored JSON lacks them.
+     */
+    counts: { events: number; chances: number } | null;
   }[];
   timeline: TimelineSeries;
   weekly: {
