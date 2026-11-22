@@ -31,6 +31,11 @@ fn item() -> Value {
     json!({ "text": "x", "citations": [{ "gameId": "g1", "ply": 3 }] })
 }
 
+/// A weekly outcome: an item plus its focus id.
+fn outcome() -> Value {
+    json!({ "text": "x", "citations": [], "weaknessId": "W1" })
+}
+
 /// `{ ...empty, section, <key>: part }`.
 fn envelope(section: &str, key: &str, part: Value) -> Value {
     let mut v = json!({
@@ -448,7 +453,7 @@ fn item_text_over_2000_chars_is_too_big() {
     );
     // The same cap on weekly and change outputs.
     let weekly = json!({
-        "headline": item(), "process": item(), "outcomes": [item(), item(), item(), item()],
+        "headline": item(), "process": item(), "outcomes": vec![outcome(); 4],
         "exemplars": [], "nextWeek": { "text": "x".repeat(2001), "citations": [] }
     });
     assert_eq!(
@@ -542,6 +547,7 @@ fn schema_descriptions_are_pinned() {
                 text.clone(),
                 desc::CITATIONS.into(),
                 desc::WEEKLY_PROCESS.into(),
+                desc::WEEKLY_OUTCOME_WEAKNESS_ID.into(),
                 "{maxItems: 3}".into(),
                 "{maxItems: 2}".into(),
             ]),

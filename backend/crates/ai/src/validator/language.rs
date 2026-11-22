@@ -136,6 +136,20 @@ lazy_re!(
     ENGINE,
     r"\b(engine|stockfish|winning|losing|(check)?mate[sd]?|advantage|equal|top\s+choice|best\s+move|threw\s+away)\b"
 );
+// R3 Task 15: the direction words of a change in an event rate, for change notes and the
+// non-outcome weekly items (and, fix round 2, the direction words of outcomes). Fix round 2
+// (N3) adds "is up/down", "not as ... as", "under control", "all the time", "a fraction" and
+// the comparative frames of common, frequent and rare. Fix round 1 (review I1) adds the bare comparatives and the
+// everyday verbs ("more", "spiked", "again"; "less", "rarely", "eased"): a bare `more` or
+// `less` fails some honest texts, the accepted side to fail on.
+lazy_re!(
+    RATE_UP,
+    r"\b(more|increas\w*|ris(e|es|en|ing)|rose|(went|gone|go|goes|going)\s+up|higher|worse\w*|worsen\w*|regress\w*|(came|come|comes|coming)\s+back|return\w*|spik\w*|climb\w*|grow\w*|grew|jump\w*|bigger|larger|again|doubl\w*|tripl\w*|surg\w*|soar\w*|(crept|creep\w*)\s+up|pick(ed|ing)?\s+up|(is|are|was|were|been|be)\s+((well|way)\s+)?up|up\s+(from|to)|all\s+the\s+time|becom\w*\s+a\s+habit|(more\s+)?(common|frequent)(er)?\s+than|commoner|frequenter)\b"
+);
+lazy_re!(
+    RATE_DOWN,
+    r"\b(less|fewer|decreas\w*|drop\w*|fell|fall\w*|(went|gone|go|goes|going)\s+down|lower\w*|reduc\w*|improv\w*|better|resolved|fixed|stopped|declin\w*|rare\w*|no\s+longer|gone\s+away|(went|go|goes|going)\s+away|eas(e|ed|es|ing)|dip\w*|shr[iu]nk\w*|shrank|halv\w*|smaller|fad(e|ed|es|ing)|vanish\w*|disappear\w*|cut\s+down|settl\w*\s+down|(is|are|was|were|been|be)\s+((well|way)\s+)?down|down\s+(from|to)|not\s+(be\s+|been\s+)?(as|so)\s+([A-Za-z]+\s+){1,2}as|under\s+control|a\s+fraction|(kick\w*|br(oke|eak\w*))\s+the\s+habit|uncommon|infrequent\w*)\b"
+);
 lazy_re!(BLUNDER, r"\b(blunder|mistake)\w*");
 // Fix round 1 (C6): quantities and absolutes in words.
 lazy_re!(
@@ -397,6 +411,108 @@ pub fn engine_claims() -> TextRule {
             }
         }
         out
+    })
+}
+
+/// A change note describes the change R2 detected, in its own direction (R3 Task 15): when the
+/// event rate went down, a word of increase or worsening ("more often", "worse", "came back") is
+/// a claim the timeline does not support; when it went up, a word of decrease or improvement
+/// ("fewer", "improved", "resolved"); with equal rates, both (`free_text_fact`). A forbidding
+/// rule, so it runs on the stripped and the hardened text.
+pub fn change_direction(rate_before: f64, rate_after: f64) -> TextRule {
+    let mut forbidden: Vec<&'static LazyLock<Regex>> = Vec::new();
+    if rate_after <= rate_before {
+        forbidden.push(&RATE_UP);
+    }
+    if rate_after >= rate_before {
+        forbidden.push(&RATE_DOWN);
+    }
+    Box::new(move |stripped: &str, ctx: &TextCtx| {
+        forbidden
+            .iter()
+            .flat_map(|p| find_all(p, stripped, ctx))
+            .map(|m| {
+                (
+                    ValidationCode::FreeTextFact,
+                    format!("{m:?} is not the direction of the detected change"),
+                )
+            })
+            .collect()
+    })
+}
+
+/// The direction words of a weekly outcome (T15 fix round 2, N1): the change words of both
+/// directions and [`DIRECTION`]. With `required` "very likely" or "likely", any of them needs
+/// that phrase in the same text; with any other phrase ("unclear yet", "no clear change yet"),
+/// none, or below the practice gate (the caller passes `None`), they are forbidden outright
+/// (`likelihood_mismatch`). A forbidding rule for the words; the phrase is read from the
+/// stripped text only.
+pub fn outcome_direction(required: Option<&'static str>) -> TextRule {
+    Box::new(move |stripped: &str, ctx: &TextCtx| {
+        let words: Vec<String> = [&RATE_UP, &RATE_DOWN, &DIRECTION]
+            .into_iter()
+            .flat_map(|p| find_all(p, stripped, ctx))
+            .collect();
+        if words.is_empty() {
+            return Vec::new();
+        }
+        let supports = required.filter(|r| matches!(*r, "very likely" | "likely"));
+        let stated = supports.is_some_and(|r| {
+            count_scanned(stripped.len());
+            LIKELIHOOD
+                .find_iter(stripped)
+                .any(|m| canon(m.as_str()) == r)
+        });
+        if stated {
+            return Vec::new();
+        }
+        let why = match supports {
+            Some(r) => format!("without {r:?}"),
+            None => format!(
+                "with {:?}, which supports no direction",
+                required.unwrap_or("no likelihood")
+            ),
+        };
+        words
+            .into_iter()
+            .map(|w| (ValidationCode::LikelihoodMismatch, format!("{w:?} {why}")))
+            .collect()
+    })
+}
+
+/// Lowercased words of `s`, with every run of non-alphanumeric characters (hyphens of any kind,
+/// spaces, punctuation) a separator and a plural `s` dropped from words of more than four
+/// letters (T15 fix round 2, N2: "back-rank threats", "back rank threat", U+2011 all fold alike).
+pub fn folded_words(s: &str) -> Vec<String> {
+    count_scanned(s.len());
+    s.split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .map(|w| {
+            let w = w.to_lowercase();
+            if w.chars().count() > 4 && w.ends_with('s') && !w.ends_with("ss") {
+                w[..w.len() - 1].to_owned()
+            } else {
+                w
+            }
+        })
+        .collect()
+}
+
+/// No word of change in either direction (T15 fix round 1, review I2): for weekly texts that
+/// are not outcomes, where a change is an outcome claim without its likelihood phrase
+/// (`likelihood_mismatch`). A forbidding rule.
+pub fn no_change_words() -> TextRule {
+    Box::new(|stripped: &str, ctx: &TextCtx| {
+        [&RATE_UP, &RATE_DOWN]
+            .into_iter()
+            .flat_map(|p| find_all(p, stripped, ctx))
+            .map(|m| {
+                (
+                    ValidationCode::LikelihoodMismatch,
+                    format!("{m:?} claims a change outside an outcome"),
+                )
+            })
+            .collect()
     })
 }
 

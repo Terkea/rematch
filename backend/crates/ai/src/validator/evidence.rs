@@ -17,7 +17,7 @@ use serde_json::Value;
 use super::bounded::is_js_space;
 use super::extract::{extract_dates, extract_numbers};
 use super::pv::{fen_after, pv_to_san, strip_san};
-use crate::input::types::{CoachingInput, ExemplarPosition, MoveRef, Score};
+use crate::input::types::{CoachingInput, ExemplarPosition, MoveRef, Score, TimelineChange};
 
 /// What the narrative may say about one position (`"{gameId}#{ply}"`).
 #[derive(Clone, Debug, PartialEq)]
@@ -143,6 +143,9 @@ fn array_id_field(key: &str) -> Option<&'static str> {
         "weaknesses" => Some("id"),
         "openings" => Some("lineKey"),
         "changes" => Some("seriesKey"),
+        // R3 Task 15: the weekly review input's arrays.
+        "metricDeltas" => Some("key"),
+        "focusUpdates" => Some("weaknessId"),
         _ => None,
     }
 }
@@ -587,6 +590,72 @@ pub fn build_evidence(input: &CoachingInput) -> Evidence {
         }
     }
     ev
+}
+
+/// R3 Task 15: the index of a document other than a `CoachingInput` (a weekly review input, or
+/// one change for a change note), built the way [`build_evidence`] builds a report's:
+/// - numbers and dates mined from `json`, and its `{{num:}}`/`{{date:}}` path index (top-level
+///   `changes`, `metricDeltas` and `focusUpdates` are keyed by their id fields);
+/// - `exemplars` as positions;
+/// - for each of `changes` (which must sit in `json`'s top-level `changes` array): its onset
+///   game and examples, `ratioAfterBefore` (the factor that reads correctly with "times as
+///   often") and `posteriorProb` as a rate. The raw `rateBefore`/`rateAfter` paths and
+///   `ratioBeforeAfter` are left out (T15 fix round 1, review I1): swapped, or quoted as "times
+///   as often", they state the opposite of the detected direction through a valid token;
+/// - `rate_paths`: further rate or share paths (marked only when their value is in [0, 1]).
+pub fn build_evidence_from(
+    json: &Value,
+    exemplars: &[&ExemplarPosition],
+    changes: &[&TimelineChange],
+    rate_paths: &[String],
+) -> Evidence {
+    let mut ev = create_evidence();
+    ev.add_numbers_from(json);
+    ev.walk_paths(json, "", None);
+    for c in changes {
+        let base = format!("changes.{}", seg(&c.series_key));
+        for f in ["rateBefore", "rateAfter"] {
+            ev.number_paths.remove(&format!("{base}.{f}"));
+        }
+        if c.rate_before != 0.0 {
+            ev.put_number_path(
+                &format!("{base}.ratioAfterBefore"),
+                c.rate_after / c.rate_before,
+            );
+            ev.add_ratio(c.rate_after / c.rate_before);
+        }
+        ev.mark_rate_paths(&[format!("{base}.posteriorProb")]);
+        ev.add_game(&c.onset_game_id);
+        for e in &c.examples {
+            ev.add_exemplar(&e.position);
+        }
+    }
+    ev.mark_rate_paths(rate_paths);
+    for e in exemplars {
+        ev.add_exemplar(e);
+    }
+    ev
+}
+
+impl Evidence {
+    /// Marks each path as a rate when it holds a number in [0, 1].
+    fn mark_rate_paths(&mut self, paths: &[String]) {
+        for p in paths {
+            if self
+                .number_paths
+                .get(p)
+                .is_some_and(|v| (0.0..=1.0).contains(v))
+            {
+                self.rate_paths.insert(p.clone());
+            }
+        }
+    }
+}
+
+/// The path segment of an id, as the path index writes it (`.`, `|`, `:` and spaces become
+/// `_`): `changes.<path_segment(seriesKey)>`.
+pub fn path_segment(s: &str) -> String {
+    seg(s)
 }
 
 pub fn resolve_number_path(ev: &Evidence, path: &str) -> Option<f64> {

@@ -116,7 +116,7 @@ fn verr(code: ValidationCode, path: &str, detail: impl Into<String>) -> Validati
 }
 
 /// The validation errors of a result without parsed output.
-fn parse_errors(r: &StructuredResult) -> Vec<ValidationError> {
+pub(crate) fn parse_errors(r: &StructuredResult) -> Vec<ValidationError> {
     match r.parse_error {
         Some(ParseError::Refusal) => vec![verr(
             ValidationCode::Refusal,
@@ -179,7 +179,7 @@ fn check(r: &StructuredResult, args: &SectionArgs<'_>) -> Checked {
     }
 }
 
-async fn call(
+pub(crate) async fn call(
     ai: &dyn AiClient,
     before_call: BeforeCall<'_>,
     req: &crate::client::port::StructuredRequest,

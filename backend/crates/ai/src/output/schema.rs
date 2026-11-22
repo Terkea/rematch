@@ -82,6 +82,8 @@ pub mod desc {
     pub const VERDICT: &str = "The computed verdict for this line, copied from the input.";
     pub const DRILL_TYPE: &str = "One of the drill types allowed for this focus in the input.";
     pub const WEEKLY_PROCESS: &str = "Celebrates the practice done this week. No outcome numbers.";
+    pub const WEEKLY_OUTCOME_WEAKNESS_ID: &str =
+        "The weaknessId of the focus in focusUpdates this outcome is about.";
 }
 
 /// The only keywords `assert_api_subset` accepts.
@@ -439,7 +441,7 @@ pub fn weekly_bounds(w: &WeeklyReviewOutput) -> Result<(), Vec<ParseIssue>> {
     b.item("process", &w.process);
     b.len("outcomes", w.outcomes.len(), 0, MAX_WEEKLY_OUTCOMES);
     for (i, it) in w.outcomes.iter().enumerate() {
-        b.item(&format!("outcomes.{i}"), it);
+        b.text(&format!("outcomes.{i}"), &it.text);
     }
     b.len("exemplars", w.exemplars.len(), 0, MAX_WEEKLY_EXEMPLARS);
     for (i, it) in w.exemplars.iter().enumerate() {

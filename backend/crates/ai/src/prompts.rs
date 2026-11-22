@@ -73,7 +73,7 @@ macro_rules! prompt {
     };
 }
 
-static TABLE: [Prompt; 24] = [
+static TABLE: [Prompt; 26] = [
     prompt!("core/rules", 1),
     prompt!("core/tokens", 1),
     prompt!("report/report", 1),
@@ -92,8 +92,10 @@ static TABLE: [Prompt; 24] = [
     prompt!("repair/repair", 1),
     prompt!("weekly-review/system", 1),
     prompt!("weekly-review/task", 1),
+    prompt!("weekly-review/output", 1),
     prompt!("weakness-change/system", 1),
     prompt!("weakness-change/task", 1),
+    prompt!("weakness-change/output", 1),
     prompt!("chat/system", 1),
     prompt!("chat/repair", 1),
     prompt!("chat-summary/system", 1),
@@ -210,3 +212,30 @@ pub fn render_template(text: &str, vars: &[(&str, &str)]) -> Result<String, Prom
     }
     Ok(out)
 }
+
+/// The prompts a weekly review call uses (Task 15), in hash order: the shared rules block, the
+/// weekly prompt, its JSON output instructions, its task and the shared repair prompt.
+pub const WEEKLY_PROMPT_SET: &[(&str, u32)] = &[
+    ("core/rules", 1),
+    ("core/tokens", 1),
+    ("weekly-review/system", 1),
+    ("weekly-review/output", 1),
+    ("weekly-review/task", 1),
+    ("repair/repair", 1),
+];
+
+/// The weekly review's prompt version (stored with the review).
+pub const WEEKLY_PROMPT_VERSION: &str = "weekly@1";
+
+/// The prompts a change-note call uses (Task 15), in hash order.
+pub const CHANGE_PROMPT_SET: &[(&str, u32)] = &[
+    ("core/rules", 1),
+    ("core/tokens", 1),
+    ("weakness-change/system", 1),
+    ("weakness-change/output", 1),
+    ("weakness-change/task", 1),
+    ("repair/repair", 1),
+];
+
+/// The change note's prompt version (stored with the note).
+pub const CHANGE_PROMPT_VERSION: &str = "change@1";

@@ -6,13 +6,15 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use time::Date;
 
+use super::codes::Citation;
 use super::report::{Item, ValidatedItem};
-use super::schema::{MAX_WEEKLY_EXEMPLARS, MAX_WEEKLY_OUTCOMES, desc};
+use super::schema::{ITEM_TEXT_MAX_CHARS, MAX_WEEKLY_EXEMPLARS, MAX_WEEKLY_OUTCOMES, desc};
 use crate::client::port::ParseIssue;
 use crate::input::types::{
     AreaId, BandId, Basis, ExemplarPosition, TimeClass, TimelineChange, WeaknessState, iso_date,
     nullable,
 };
+use crate::segments::Segment;
 
 // The weekly output: at most 3 outcomes and 2 exemplars. `//` comments only: doc comments
 // would become model-facing schema descriptions (see `report.rs`).
@@ -24,10 +26,34 @@ pub struct WeeklyReviewOutput {
     #[schemars(description = desc::WEEKLY_PROCESS)]
     pub process: Item,
     #[schemars(length(max = MAX_WEEKLY_OUTCOMES))]
-    pub outcomes: Vec<Item>,
+    pub outcomes: Vec<WeeklyOutcomeItem>,
     #[schemars(length(max = MAX_WEEKLY_EXEMPLARS))]
     pub exemplars: Vec<Item>,
     pub next_week: Item,
+}
+
+// An outcome: an `Item` about one focus of the week, named by its weakness id (T15 review C1:
+// the likelihood phrase comes from that focus, never from the outcome's position).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WeeklyOutcomeItem {
+    #[schemars(description = desc::TEXT, length(min = 1, max = ITEM_TEXT_MAX_CHARS))]
+    pub text: String,
+    #[schemars(description = desc::CITATIONS)]
+    pub citations: Vec<Citation>,
+    #[schemars(description = desc::WEEKLY_OUTCOME_WEAKNESS_ID)]
+    pub weakness_id: String,
+}
+
+/// A validated outcome. `label` is the focus's computed label from the input, never model text.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ValidatedWeeklyOutcome {
+    pub text: String,
+    pub citations: Vec<Citation>,
+    pub segments: Vec<Segment>,
+    pub weakness_id: String,
+    pub label: String,
 }
 
 /// The validated weekly review: a dropped singleton becomes `None`, dropped entries are removed.
@@ -38,7 +64,7 @@ pub struct ValidatedWeeklyReview {
     pub headline: Option<ValidatedItem>,
     #[serde(deserialize_with = "nullable")]
     pub process: Option<ValidatedItem>,
-    pub outcomes: Vec<ValidatedItem>,
+    pub outcomes: Vec<ValidatedWeeklyOutcome>,
     pub exemplars: Vec<ValidatedItem>,
     #[serde(deserialize_with = "nullable")]
     pub next_week: Option<ValidatedItem>,
