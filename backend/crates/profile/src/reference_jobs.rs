@@ -57,6 +57,7 @@ use db::stage_metrics::{StageMetrics, record_stage_metrics};
 use engine::{ANALYSIS_PROTOCOL, Analyser, EngineError};
 use enrich::difficulty::{DifficultyOutcome, PendingReason};
 use enrich::enrich_game::{EnrichDeps, EnrichError, EnrichInput, enrich_game};
+use enrich::protocol::ENRICHMENT_PROTOCOL;
 use futures::FutureExt;
 use futures::future::BoxFuture;
 use profile_core::bands::band_of;
@@ -965,6 +966,17 @@ pub async fn finalize_band_reference_with(
             active_usable_cells: active_usable,
         });
     }
+    // lichess-db creates the build without protocols (it depends on neither engine nor enrich,
+    // ADR-R2-11); the games were analysed and enriched under these (Task 35).
+    sqlx::query(
+        "UPDATE reference_builds SET protocol = coalesce(protocol, $2), \
+         enrichment_protocol = coalesce(enrichment_protocol, $3) WHERE id = $1",
+    )
+    .bind(build_id)
+    .bind(ANALYSIS_PROTOCOL)
+    .bind(ENRICHMENT_PROTOCOL)
+    .execute(&mut *tx)
+    .await?;
     match write_band_reference(&mut tx, build_id, &report.rows).await {
         Ok(()) => {}
         Err(RefdataError::NotBuilding { status, .. }) => {

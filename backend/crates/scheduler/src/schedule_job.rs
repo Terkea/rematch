@@ -61,6 +61,9 @@ pub struct ScheduleDeps {
     pub queue: Queue,
     /// The clock of the selection (`OffsetDateTime::now_utc` in production).
     pub now: fn() -> OffsetDateTime,
+    /// The plan of a payload without one (`WORKER_DEFAULT_PLAN`; [`Plan::Beta`] during the
+    /// private beta, ADR 0041).
+    pub default_plan: Plan,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
@@ -165,7 +168,11 @@ pub async fn handle_schedule(
     deps: &ScheduleDeps,
     payload: SchedulePayload,
 ) -> Result<ScheduleSummary, JobError> {
-    let plan = parse_plan(payload.plan.as_deref()).ok_or_else(|| JobError::Unrecoverable {
+    let plan = match payload.plan.as_deref() {
+        None => Some(deps.default_plan),
+        named => parse_plan(named),
+    };
+    let plan = plan.ok_or_else(|| JobError::Unrecoverable {
         message: format!("invalid schedule-analysis plan {:?}", payload.plan),
         code: None,
     })?;

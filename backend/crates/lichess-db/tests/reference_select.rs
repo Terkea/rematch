@@ -17,7 +17,7 @@ use lichess_db::pipeline::{PipelineConfig, run_pipeline};
 use lichess_db::reference_select::{
     ReferenceSink, SelectOptions, SelectedGame, admission_cap, enqueue_reference_games,
     hash_fraction, memory_bound_bytes, parse_salt, player_hash, player_rate, redact_pgn,
-    reference_filter, resume_reference_enqueue,
+    reference_filter, resume_all_reference_enqueues, resume_reference_enqueue,
 };
 use profile_core::types::Band;
 use queue::queue::Queue;
@@ -1051,4 +1051,52 @@ async fn the_build_records_cell_fill(pool: PgPool) {
     assert_eq!(b2["target"], 2);
     assert_eq!(b2["chosen"], 2);
     assert_eq!(p["under_filled_cells"], 23);
+}
+
+/// R2 Task 35 (T21 hand-off I4): the operator resume (`lichess-db resume`) covers every verified
+/// `building` band-reference build and skips the others.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn resume_all_covers_every_verified_building_build(pool: PgPool) {
+    let sel = select(&three_players(), SALT_A, opts(2, 5), 2).await;
+    let build = verified_build(&pool).await;
+    let q = Queue::new(pool.clone());
+    enqueue_reference_games(&pool, &q, build, &sel)
+        .await
+        .unwrap();
+    sqlx::query("DELETE FROM jobs WHERE id NOT IN (SELECT id FROM jobs ORDER BY id LIMIT 3)")
+        .execute(&pool)
+        .await
+        .unwrap();
+    // A failed build and an unverified one take no jobs and do not stop the others.
+    let failed = verified_build(&pool).await;
+    refdata::builds::fail_build(&pool, failed, "test")
+        .await
+        .unwrap();
+    let unverified = create_build(
+        &pool,
+        &NewBuild {
+            kind: BuildKind::BandReference,
+            source_month: "2026-10".to_owned(),
+            source_url: None,
+            params: json!({}),
+            protocol: None,
+            enrichment_protocol: None,
+            difficulty_model: None,
+        },
+    )
+    .await
+    .unwrap();
+    let resumed = resume_all_reference_enqueues(&pool, &q).await.unwrap();
+    assert_eq!(resumed, vec![(build, 7)]);
+    assert!(
+        !resumed
+            .iter()
+            .any(|(b, _)| *b == failed || *b == unverified)
+    );
+    assert_eq!(jobs(&pool).await.len(), 10);
+    assert_eq!(
+        resume_all_reference_enqueues(&pool, &q).await.unwrap(),
+        vec![(build, 0)],
+        "idempotent"
+    );
 }

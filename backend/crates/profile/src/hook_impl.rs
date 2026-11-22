@@ -285,6 +285,7 @@ impl AnalyseHook for ProfileHook {
             let ctx = game_context(game, accuracy, ANALYSIS_PROTOCOL).map_err(HookError::Failed)?;
             let explorer =
                 load_game_explorer(&self.pool, game.account_id, target.time_class, i.parsed).await;
+            let explorer_ms = ms(t);
             let features = compute_game_features(FeatureInput {
                 ctx: &ctx,
                 parsed: i.parsed,
@@ -295,6 +296,8 @@ impl AnalyseHook for ProfileHook {
             });
             let mut stages = enriched.stages.clone();
             stages.insert("features_ms".to_owned(), ms(t));
+            stages.insert("explorer_ms".to_owned(), explorer_ms);
+            stages.insert("enrich_ms".to_owned(), ms(started) - ms(t));
             stages.extend(features.counts.clone());
             Ok(Box::new(PreparedProfile {
                 pool: self.pool.clone(),

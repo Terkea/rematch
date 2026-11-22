@@ -12,3 +12,6 @@ pub mod reference_jobs;
 pub mod requeue;
 pub mod snapshots;
 pub mod timeline_job;
+
+/// The contract crate, for callers that read the builder's output (the CLI and its tests).
+pub use coaching_input;

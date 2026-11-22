@@ -91,7 +91,8 @@ streamed. It has no provisional flag and must not leave usernames in our databas
 - **Resumable enqueue** (T21 review I4). The rows commit in one transaction and the jobs follow
   in batches, so a crash in between leaves pending rows without jobs. The jobs are built from
   the database (`resume_reference_enqueue`: every `pending` game of a verified `building`
-  build), and the `refgame:<id>` dedupe makes a re-run safe. Task 35 schedules it.
+  build), and the `refgame:<id>` dedupe makes a re-run safe. Task 35 exposes it as `lichess-db resume`
+  (ADR-R2-25).
 
 ### Consequences
 
@@ -99,10 +100,11 @@ streamed. It has no provisional flag and must not leave usernames in our databas
   stored build's `params.salt` reproduces its selection exactly; for a given salt and dump the
   selection is deterministic at any thread count (tested).
 - With `--explorer --band-reference`, the month is downloaded twice (one pass each). A combined
-  sink would save the second download; **parked for Task 35**.
+  sink would save the second download. Task 35 parked it again (ADR-R2-25): it is a lane D
+  change to the pipeline, and no dump build has run yet.
 - `protocol` and `enrichment_protocol` stay NULL when the build is created: `lichess-db` does
-  not depend on the engine or enrich crates. Task 35's worker, which has both, fills them at
-  finalisation; Part 2 records the difficulty model.
+  not depend on the engine or enrich crates. The finaliser fills them at activation
+  (`sf19-n300k-v1`, `enr-v1`; Task 35, ADR-R2-25); Part 2 records the difficulty model.
 - A rare cell (for example B5 classical) can be under-filled, visibly in `params.cells`; Part
   2's low-sample flag, its evidence gate and the band fallback (Task 17) handle it.
 - One migration (`20261121020600_reference_games_selected_sides`) adds the two selection flags,

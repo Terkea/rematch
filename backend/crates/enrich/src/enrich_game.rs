@@ -245,6 +245,8 @@ pub async fn enrich_game(
     }
     deps.store.put_multipv(&fresh).await?;
     stages.insert("multipv_ms".to_owned(), ms(t));
+    stages.insert("multipv_positions".to_owned(), wanted.len() as f64);
+    stages.insert("multipv_engine_calls".to_owned(), fresh.len() as f64);
     let lines_of = |fen: &str| -> Option<&Vec<MultipvLine>> {
         valid(fen).then(|| multipv.get(&fen_key(fen))).flatten()
     };
@@ -283,11 +285,14 @@ pub async fn enrich_game(
     }
     deps.store.put_threat(&fresh).await?;
     stages.insert("threat_ms".to_owned(), ms(t));
+    stages.insert("threat_positions".to_owned(), threat_wanted.len() as f64);
+    stages.insert("threat_engine_calls".to_owned(), fresh.len() as f64);
 
     // Tablebase.
     let t = Instant::now();
     let mut tb_before: Vec<Option<Wdl>> = vec![None; n];
     let mut tb_after: Vec<Option<Wdl>> = vec![None; n];
+    let mut tb_probes = 0usize;
     if let Some(tb) = &deps.tb {
         let max = tb.max_pieces();
         let mut cache: HashMap<String, Option<Wdl>> = HashMap::new();
@@ -306,6 +311,7 @@ pub async fn enrich_game(
                 let wdl = match cache.get(&key) {
                     Some(w) => *w,
                     None => {
+                        tb_probes += 1;
                         let w = cancellable(&deps.cancel, tb.probe(fen)).await?;
                         cache.insert(key, w);
                         w
@@ -316,6 +322,7 @@ pub async fn enrich_game(
         }
     }
     stages.insert("tb_ms".to_owned(), ms(t));
+    stages.insert("tb_probes".to_owned(), tb_probes as f64);
 
     // Difficulty: Maia only.
     let t = Instant::now();

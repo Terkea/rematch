@@ -614,3 +614,25 @@ pub async fn resume_reference_enqueue(
     }
     Ok(usize::try_from(added).unwrap_or(usize::MAX))
 }
+
+/// [`resume_reference_enqueue`] for every verified `building` band-reference build, oldest first
+/// (`lichess-db resume`, Task 35). Returns `(build, jobs added)` per build; unverified, failed or
+/// finished builds are not touched.
+pub async fn resume_all_reference_enqueues(
+    pool: &PgPool,
+    queue: &Queue,
+) -> Result<Vec<(Uuid, usize)>, DumpError> {
+    let builds: Vec<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM reference_builds \
+         WHERE kind = 'band_reference' AND status = 'building' AND source_sha256 <> '' \
+         ORDER BY started_at, id",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(store)?;
+    let mut out = Vec::with_capacity(builds.len());
+    for build in builds {
+        out.push((build, resume_reference_enqueue(pool, queue, build).await?));
+    }
+    Ok(out)
+}

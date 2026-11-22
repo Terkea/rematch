@@ -35,6 +35,7 @@ fn deps(pool: &PgPool) -> ScheduleDeps {
         pool: pool.clone(),
         queue: Queue::new(pool.clone()),
         now: OffsetDateTime::now_utc,
+        default_plan: Plan::Beta,
     }
 }
 
@@ -844,4 +845,37 @@ async fn no_primary_time_class_keeps_the_markers(pool: PgPool) {
             .await
             .unwrap();
     assert!(marker.is_some());
+}
+
+/// R2 Task 35: a payload without a plan gets the worker's `WORKER_DEFAULT_PLAN`.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_payload_without_a_plan_uses_the_default_plan(pool: PgPool) {
+    let acct = insert_account(&pool, "lichess", "defaultplan").await;
+    let game = seed(&pool, acct, Seed::default()).await;
+    let deps = ScheduleDeps {
+        default_plan: Plan::Free,
+        ..deps(&pool)
+    };
+    let s = handle_schedule(&deps, payload(acct, None))
+        .await
+        .expect("schedule");
+    assert_eq!(s.selected, 1);
+    let r = row(&pool, game).await;
+    assert_eq!(
+        r.priority,
+        Some(job_priority(0, Plan::Free, false)),
+        "{r:?}"
+    );
+    // An explicit plan still wins over the default.
+    let acct2 = insert_account(&pool, "lichess", "explicitplan").await;
+    let game2 = seed(&pool, acct2, Seed::default()).await;
+    handle_schedule(&deps, payload(acct2, Some("beta")))
+        .await
+        .expect("schedule");
+    let r = row(&pool, game2).await;
+    assert_eq!(
+        r.priority,
+        Some(job_priority(0, Plan::Beta, false)),
+        "{r:?}"
+    );
 }

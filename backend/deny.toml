@@ -27,6 +27,14 @@ ignore = true
 [advisories]
 version = 2
 yanked = "deny"
+# Temporary, dated exception. Remove it by bumping `url` to >=2.5.9 on or after
+# 2026-11-27, when 2.5.9 (released 2026-11-20) passes the 7-day crate-age rule.
+# RUSTSEC-2026-0592 is a stack overflow in `Url::origin()` on nested `blob:`
+# URLs. No crate here calls `Url::origin()` or `url::quirks::origin()` (checked
+# with grep); `url` arrives only through reqwest for fixed outbound hosts.
+ignore = [
+  { id = "RUSTSEC-2026-0592", reason = "Url::origin() unused; bump url to 2.5.9 on or after 2026-11-27 (crate-age rule)" },
+]
 
 [bans]
 multiple-versions = "warn"

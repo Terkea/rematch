@@ -1,6 +1,6 @@
 //! `lichess-db`: operator CLI for the Lichess database pipeline (R-11, ADR-R2-1, ADR-R2-9).
 //!
-//! Subcommands from R2 Tasks 19-22: `scan`, `build`, `bench`, `syzygy`.
+//! Subcommands from R2 Tasks 19-22: `scan`, `build`, `bench`, `syzygy`; Task 35: `resume`.
 
 use clap::{Args, Parser, Subcommand};
 use futures::StreamExt;
@@ -38,6 +38,38 @@ enum Command {
     Bench(BenchArgs),
     /// Fetch the Syzygy 3-4-5 tablebases (about 1 GB), verified against the pinned manifest.
     Syzygy(SyzygyArgs),
+    /// Re-enqueue the reference-game jobs of verified `building` band-reference builds after a
+    /// crash between the row insert and the last job batch (idempotent; DATABASE_URL).
+    Resume(ResumeArgs),
+}
+
+#[derive(Debug, Args)]
+struct ResumeArgs {
+    /// One build (default: every verified building band-reference build).
+    #[arg(long)]
+    build: Option<uuid::Uuid>,
+}
+
+async fn run_resume(args: ResumeArgs) -> anyhow::Result<()> {
+    let url =
+        std::env::var("DATABASE_URL").map_err(|_| anyhow::anyhow!("DATABASE_URL is required"))?;
+    let pool = db::pool::connect(&url, db::pool::DbOptions::default()).await?;
+    let queue = queue::queue::Queue::new(pool.clone());
+    let resumed = match args.build {
+        Some(id) => vec![(
+            id,
+            lichess_db::reference_select::resume_reference_enqueue(&pool, &queue, id).await?,
+        )],
+        None => lichess_db::reference_select::resume_all_reference_enqueues(&pool, &queue).await?,
+    };
+    if resumed.is_empty() {
+        println!("no verified building band-reference build");
+    }
+    for (id, added) in resumed {
+        println!("build {id}: {added} reference-game jobs added");
+    }
+    pool.close().await;
+    Ok(())
 }
 
 #[derive(Debug, Args)]
@@ -293,6 +325,7 @@ async fn main() -> anyhow::Result<()> {
         Command::Syzygy(args) => syzygy(args).await?,
         Command::Build(args) => run_build(args).await?,
         Command::Bench(args) => run_bench(args).await?,
+        Command::Resume(args) => run_resume(args).await?,
     }
     Ok(())
 }

@@ -32,8 +32,7 @@ lines (build-profile, Task 33). It then turns that profile into the M3 `Coaching
    It then re-enqueues itself when the fingerprint changed or a game has
    `analysed_at > started_at`. Both checks are needed: `analysed_at` is the analysis
    transaction's start, so it can precede `started_at` for a game that committed after the load.
-   - The key release writes `jobs` from the profile crate. A `Queue::release_dedupe_key` is the
-     cleaner home (T35 / lane S).
+   - The key release goes through `Queue::release_dedupe_key` (Task 35, ADR-R2-25).
 8. Enqueue `schedule-analysis` and record the `job_metrics` row (`build-profile`, 6 stages).
 
 Mapping choices recorded from T33 (§Concerns 4):
@@ -41,7 +40,8 @@ Mapping choices recorded from T33 (§Concerns 4):
 - **Every ISO week is recomputed**, not only the weeks with a game analysed since the last
   snapshot. The TS rule is unsafe on `analysed_at` timestamps (point 7). Change detection makes
   the stored result equal to the TS rule's, plus the weeks it would miss. The cost is CPU,
-  about 69 rows × weeks; the T35 smoke times it.
+  about 69 rows × weeks. The T35 smoke timed it on the owner's lab copy (356 blitz and 148
+  rapid games): 464 ms on average and 1 018 ms at most per build (ADR-R2-25).
 - **Series references:**
   - weakness keys use `weakness:<k>` with `n0(k)` and `min_evidence(k)`;
   - `motif.missed:<t>` uses `motif_miss_rate:<t>` with the W3.shallow constants;
