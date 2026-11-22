@@ -14,7 +14,7 @@ use ai::chat::data_source::{
 use ai::chat::engine::{
     ANSWER_NOW_TEXT, BeforeCall, ChatChunkOut, ChatHistory, ChatOutcomeKind, ChatPrompts,
     ChatTurnArgs, ChatTurnOutcome, OFFTOPIC_LINE, OFFTOPIC_MARKER, OnChunk,
-    build_chat_request_messages, chat_system_blocks, run_chat_turn,
+    build_chat_request_messages, chat_system_blocks, resume_next_turn, run_chat_turn,
 };
 use ai::chat::execute::{ENGINE_WAIT_INLINE as EXEC_WAIT_INLINE, OwnedToolDeps};
 use ai::chat::limits::{
@@ -24,13 +24,15 @@ use ai::chat::limits::{
     check_chat_allowance, dropped_note, engine_limit_note,
 };
 use ai::chat::paragraphs::split_paragraphs;
-use ai::client::fake::{FakeAiClient, FakeCallKind, FakeScript, FakeTurn, TurnScript};
+use ai::client::fake::{
+    FakeAiClient, FakeCallKind, FakeRetracted, FakeScript, FakeTurn, TurnScript,
+};
 use ai::client::flatten::flatten_for_sidecar;
 use ai::client::model::{Effort, Models};
 use ai::client::port::{
     AiClient, AiError, AiUsage, BatchItem, BatchResultItem, BatchStatus, ChatTurnRequest, Message,
-    ModelUsage, Role, SchemaResolver, StructuredRequest, StructuredResult, ToolChoice, ToolHandler,
-    TurnEvent,
+    ModelUsage, Role, SchemaResolver, SessionPath, StructuredRequest, StructuredResult, ToolChoice,
+    ToolHandler, TurnEvent, TurnResult,
 };
 use ai::entitlements::{Plan, QuotaWindow};
 use ai::input::types::{
@@ -349,6 +351,7 @@ fn args(prompts: &ChatPrompts, messages: Vec<Message>) -> ChatTurnArgs<'_> {
         conversation_id: CONVERSATION,
         resume: false,
         previous_session_usage: None,
+        first_call_index: 0,
     }
 }
 
@@ -1216,6 +1219,7 @@ fn move_anchor_args<'a>(p: &'a ChatPrompts, world: &World, question: &str) -> Ch
         conversation_id: CONVERSATION,
         resume: false,
         previous_session_usage: None,
+        first_call_index: 0,
     }
 }
 
@@ -1474,4 +1478,384 @@ async fn an_offtopic_marker_inside_a_paragraph_is_repaired_with_the_literal_deta
         "{repair}"
     );
     assert!(repair.contains("Never write {{offtopic}} inside a paragraph."));
+}
+
+// --- Fix round 1A ---
+
+fn nums(segments: &[Segment]) -> Vec<String> {
+    segments
+        .iter()
+        .filter_map(|s| match s {
+            Segment::Num { display, .. } => Some(display.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// I2 (review): a `tools.<k>` token of an earlier turn must never resolve to another turn's
+/// result. Turn 1's call 0 is W1 (29 events), turn 2's first call is W3 (28 events).
+#[tokio::test]
+async fn tool_tokens_of_an_earlier_turn_never_change_meaning() {
+    let world = World::new(FakeEngine::default());
+    let token = "That pattern showed up {{num:tools.0.weakness.events|int}} times.";
+    let turn = |w: &str| FakeTurn {
+        tool_calls: vec![("get_weakness".into(), json!({ "weaknessId": w }))],
+        deltas: deltas(&[token]),
+        ..FakeTurn::default()
+    };
+    let f = fake(vec![turn("W1"), turn("W3"), answer(&[OK2])]);
+    let p = prompts();
+    let (out1, chunks1) = run(&f, &world, args(&p, messages("How often?"))).await;
+    assert_eq!(chunks1.len(), 1);
+    assert_eq!(nums(&chunks1[0].segments), ["29"]);
+
+    let mut a2 = args(&p, messages("And this one?"));
+    a2.first_call_index = out1.next_call_index;
+    let (out2, chunks2) = run(&f, &world, a2).await;
+    assert!(
+        chunks2.is_empty(),
+        "the old token was published with a new value: {chunks2:?}"
+    );
+    assert!(!out2.text.contains("tools.0"));
+    assert_eq!(out1.next_call_index, 1);
+    assert_eq!(out2.next_call_index, 2);
+    // Turn 2's own result is cited under its own index.
+    let replies = tool_replies(&f);
+    assert!(replies[1].2.to_string().contains("tools.1.weakness"));
+}
+
+async fn sync_flag(
+    world: &World,
+    p: &ChatPrompts,
+    turns: Vec<FakeTurn>,
+) -> (bool, ChatOutcomeKind) {
+    let f = fake(turns);
+    let (out, _) = run(&f, world, args(p, messages("?"))).await;
+    (out.session_in_sync, out.outcome)
+}
+
+/// I1 (review): the outcome says whether the conversation's SDK session holds the stored answer.
+#[tokio::test]
+async fn session_in_sync_only_for_a_clean_answer() {
+    use ChatOutcomeKind as K;
+    let p = prompts();
+    let w = World::new(FakeEngine::default());
+    assert_eq!(
+        sync_flag(&w, &p, vec![answer(&[OK1, OK2])]).await,
+        (true, K::Answered)
+    );
+    // A repair.
+    assert_eq!(
+        sync_flag(&w, &p, vec![answer(&[BAD]), answer(&[OK2])]).await,
+        (false, K::Answered)
+    );
+    // A max-turns follow-up.
+    let capped = FakeTurn {
+        deltas: deltas(&[OK1]),
+        stop_reason: Some("max_turns".into()),
+        ..FakeTurn::default()
+    };
+    assert_eq!(
+        sync_flag(&w, &p, vec![capped, answer(&[OK2])]).await,
+        (false, K::Answered)
+    );
+    // A fallback, a refusal, an off-topic reply.
+    assert_eq!(
+        sync_flag(&w, &p, vec![answer(&[BAD]), answer(&[BAD])]).await,
+        (false, K::Fallback)
+    );
+    let refusal = FakeTurn {
+        deltas: deltas(&[OK1]),
+        stop_reason: Some("refusal".into()),
+        ..FakeTurn::default()
+    };
+    assert_eq!(sync_flag(&w, &p, vec![refusal]).await, (false, K::Refused));
+    assert_eq!(
+        sync_flag(&w, &p, vec![answer(&["{{offtopic}}"])]).await,
+        (false, K::OffTopic)
+    );
+    // A retracted message.
+    let superseded = FakeTurn {
+        retracted: Some(FakeRetracted {
+            deltas: deltas(&[OK3]),
+            reason: "superseded".into(),
+        }),
+        deltas: deltas(&[OK1]),
+        ..FakeTurn::default()
+    };
+    assert_eq!(
+        sync_flag(&w, &p, vec![superseded]).await,
+        (false, K::Answered)
+    );
+    // Server notes are not in the session, and do not count.
+    let limited = World::new(FakeEngine::scripted(
+        vec![EngineCheck::Limit {
+            window: QuotaWindow::Week,
+            resets_at: datetime!(2026-11-23 0:00 UTC),
+        }],
+        vec![],
+    ));
+    let f = fake(vec![FakeTurn {
+        tool_calls: what_if_turn().tool_calls,
+        deltas: deltas(&[OK2]),
+        ..FakeTurn::default()
+    }]);
+    let (out, _) = run(&f, &limited, move_anchor_args(&p, &limited, "what if?")).await;
+    assert!(out.text.ends_with("They reset on Monday."));
+    assert!(out.session_in_sync);
+}
+
+#[test]
+fn the_next_turn_resumes_only_an_in_sync_session_without_rollover() {
+    assert!(!resume_next_turn(None, false));
+    assert!(resume_next_turn(Some(true), false));
+    assert!(!resume_next_turn(Some(false), false));
+    assert!(!resume_next_turn(Some(true), true));
+}
+
+#[tokio::test]
+async fn a_turn_after_an_out_of_sync_answer_sends_the_full_history_as_a_new_session() {
+    let world = World::new(FakeEngine::default());
+    let f = fake(vec![answer(&[BAD]), answer(&[OK2]), answer(&[OK3])]);
+    let p = prompts();
+    let i = input("b2-rapid");
+    let m1 = build_chat_request_messages(&i, None, &ChatHistory::Verbatim(vec![]), "First?", None);
+    let (out1, _) = run(&f, &world, args(&p, m1)).await;
+    assert!(!out1.session_in_sync);
+    let m2 = build_chat_request_messages(
+        &i,
+        None,
+        &ChatHistory::Verbatim(out1.new_messages.clone()),
+        "Second?",
+        None,
+    );
+    let mut a2 = args(&p, m2.clone());
+    a2.resume = resume_next_turn(Some(out1.session_in_sync), false);
+    run(&f, &world, a2).await;
+    let req = &turn_requests(&f)[2];
+    assert_eq!(req["conversation_id"], json!(CONVERSATION));
+    assert_eq!(req["resume"], json!(false));
+    assert_eq!(req["messages"], json!(m2));
+    // The history carries the repaired answer, never the rejected one.
+    assert!(req.to_string().contains(OK2));
+    assert!(!req.to_string().contains("Qh5"));
+}
+
+// --- Mutation gaps (review m1) and truncation (m2) ---
+
+/// Replays fixed event lists, one per `stream_turn` call, and records the requests.
+struct Scripted {
+    turns: Mutex<VecDeque<Vec<TurnEvent>>>,
+    requests: Mutex<Vec<ChatTurnRequest>>,
+}
+
+impl Scripted {
+    fn new(turns: Vec<Vec<TurnEvent>>) -> Self {
+        Scripted {
+            turns: Mutex::new(turns.into()),
+            requests: Mutex::new(Vec::new()),
+        }
+    }
+}
+
+fn done_event() -> TurnEvent {
+    TurnEvent::Done(TurnResult {
+        content: vec![],
+        stop_reason: Some("end_turn".into()),
+        tool_uses: vec![],
+        usage: AiUsage::default(),
+        model: Models::CHAT.as_str().into(),
+        model_usage: vec![],
+        sdk_cost_usd: None,
+        session_model_usage: vec![],
+        session: Some(SessionPath::New),
+    })
+}
+
+impl AiClient for Scripted {
+    fn structured<'a>(
+        &'a self,
+        _req: &'a StructuredRequest,
+    ) -> BoxFuture<'a, Result<StructuredResult, AiError>> {
+        Box::pin(async { Err(AiError::Response("scripted: no structured".into())) })
+    }
+
+    fn stream_turn<'a>(
+        &'a self,
+        req: &'a ChatTurnRequest,
+        _tools: Option<Arc<dyn ToolHandler>>,
+    ) -> BoxStream<'a, Result<TurnEvent, AiError>> {
+        self.requests.lock().unwrap().push(req.clone());
+        let events = self.turns.lock().unwrap().pop_front().unwrap_or_default();
+        futures::stream::iter(events.into_iter().map(Ok)).boxed()
+    }
+
+    fn batch_submit<'a>(&'a self, _: &'a [BatchItem]) -> BoxFuture<'a, Result<String, AiError>> {
+        Box::pin(async { Err(AiError::Response("scripted".into())) })
+    }
+
+    fn batch_status<'a>(&'a self, _: &'a str) -> BoxFuture<'a, Result<BatchStatus, AiError>> {
+        Box::pin(async { Err(AiError::Response("scripted".into())) })
+    }
+
+    fn batch_results<'a>(
+        &'a self,
+        _: &'a str,
+        _: &'a dyn SchemaResolver,
+    ) -> BoxStream<'a, Result<BatchResultItem, AiError>> {
+        futures::stream::empty().boxed()
+    }
+}
+
+fn msg(id: &str, text: &str) -> Vec<TurnEvent> {
+    vec![
+        TurnEvent::Message(id.into()),
+        TurnEvent::TextDelta(format!("{text}\n\n")),
+    ]
+}
+
+fn retract(id: &str) -> TurnEvent {
+    TurnEvent::Retract {
+        message_ids: vec![id.into()],
+        reason: "superseded".into(),
+    }
+}
+
+#[tokio::test]
+async fn retracting_the_failing_message_unholds_the_stream() {
+    let world = World::new(FakeEngine::default());
+    let mut main = msg("m1", BAD);
+    main.push(retract("m1"));
+    main.extend(msg("m2", OK1));
+    main.push(done_event());
+    let ai = Scripted::new(vec![main]);
+    let p = prompts();
+    let (out, chunks) = run(&ai, &world, args(&p, messages("?"))).await;
+    assert_eq!(
+        chunks.iter().map(|c| c.text.as_str()).collect::<Vec<_>>(),
+        [OK1]
+    );
+    assert_eq!(ai.requests.lock().unwrap().len(), 1, "no repair");
+    assert_eq!(out.text, OK1);
+}
+
+#[tokio::test]
+async fn retracting_a_clean_message_keeps_the_stream_held() {
+    let world = World::new(FakeEngine::default());
+    let mut main = msg("m1", BAD);
+    main.extend(msg("m2", OK3));
+    main.push(retract("m2"));
+    main.extend(msg("m3", OK1));
+    main.push(done_event());
+    let mut repair = msg("r1", OK2);
+    repair.push(done_event());
+    let ai = Scripted::new(vec![main, repair]);
+    let p = prompts();
+    let (out, chunks) = run(&ai, &world, args(&p, messages("?"))).await;
+    assert!(chunks.is_empty(), "published while held: {chunks:?}");
+    assert_eq!(ai.requests.lock().unwrap().len(), 2);
+    assert_eq!(out.text, OK2);
+}
+
+#[tokio::test]
+async fn two_pending_checks_give_one_interim_line() {
+    const ID2: &str = "fedcba9876543210fedcba9876543210";
+    let pending = |id: &str| EngineCheck::Pending { eval_id: id.into() };
+    let done2 = match done() {
+        EngineCheck::Done { evidence, .. } => EngineCheck::Done {
+            eval_id: ID2.into(),
+            evidence,
+        },
+        other => other,
+    };
+    let world = World::new(FakeEngine::scripted(
+        vec![pending(EVAL_ID), pending(ID2)],
+        vec![done(), done2],
+    ));
+    let call = (
+        "analyse_position".to_owned(),
+        json!({"fen": START_FEN, "moves": ["g1f3"]}),
+    );
+    let f = fake(vec![FakeTurn {
+        tool_calls: vec![call.clone(), call],
+        deltas: deltas(&[OK2]),
+        ..FakeTurn::default()
+    }]);
+    let p = prompts();
+    let (out, chunks) = run(&f, &world, move_anchor_args(&p, &world, "what if?")).await;
+    assert_eq!(world.engine.wait_calls.lock().unwrap().len(), 2);
+    assert_eq!(chunks.iter().filter(|c| c.interim).count(), 1);
+    assert_eq!(out.engine_evals, [EVAL_ID.to_owned(), ID2.to_owned()]);
+}
+
+#[tokio::test]
+async fn off_topic_after_a_published_paragraph_replaces_it() {
+    let world = World::new(FakeEngine::default());
+    let f = fake(vec![answer(&[OK1, "{{offtopic}}"])]);
+    let p = prompts();
+    let (out, chunks) = run(&f, &world, args(&p, messages("?"))).await;
+    assert_eq!(chunks.len(), 1);
+    assert_eq!(out.outcome, ChatOutcomeKind::OffTopic);
+    assert!(out.replaced);
+}
+
+#[tokio::test]
+async fn a_fallback_after_a_published_paragraph_replaces_it() {
+    let world = World::new(FakeEngine::default());
+    let f = fake(vec![answer(&[OK1, BAD]), answer(&[BAD])]);
+    let p = prompts();
+    let (out, chunks) = run(&f, &world, args(&p, messages("?"))).await;
+    assert_eq!(chunks.len(), 1);
+    assert_eq!(out.outcome, ChatOutcomeKind::Fallback);
+    assert!(out.replaced);
+}
+
+#[tokio::test]
+async fn an_overlong_paragraph_is_schema_invalid_and_never_published() {
+    let world = World::new(FakeEngine::default());
+    let long = "Keep calm and look again. ".repeat(80);
+    assert!(long.trim().chars().count() > 2000);
+    let f = fake(vec![answer(&[long.trim()]), answer(&[OK2])]);
+    let p = prompts();
+    let (out, chunks) = run(&f, &world, args(&p, messages("?"))).await;
+    assert!(chunks.is_empty());
+    assert!(request_text(&turn_requests(&f)[1]).contains("- schema_invalid:"));
+    assert_eq!(out.text, OK2);
+}
+
+#[tokio::test]
+async fn quantity_words_are_rejected_in_chat() {
+    let world = World::new(FakeEngine::default());
+    let f = fake(vec![
+        answer(&["Most of your games end in time trouble."]),
+        answer(&[OK2]),
+    ]);
+    let p = prompts();
+    let (_, chunks) = run(&f, &world, args(&p, messages("?"))).await;
+    assert!(chunks.is_empty());
+    assert!(request_text(&turn_requests(&f)[1]).contains("quantity word"));
+}
+
+#[tokio::test]
+async fn a_paragraph_cut_off_by_max_tokens_is_never_published() {
+    let world = World::new(FakeEngine::default());
+    let f = fake(vec![
+        FakeTurn {
+            deltas: deltas(&[
+                &format!("{OK1}\n\n"),
+                "In that game you played {{move:li-w1-0:5}} and",
+            ]),
+            stop_reason: Some("max_tokens".into()),
+            ..FakeTurn::default()
+        },
+        answer(&[OK1, OK2]),
+    ]);
+    let p = prompts();
+    let (out, chunks) = run(&f, &world, args(&p, messages("?"))).await;
+    assert_eq!(
+        chunks.iter().map(|c| c.text.as_str()).collect::<Vec<_>>(),
+        [OK1]
+    );
+    assert!(request_text(&turn_requests(&f)[1]).contains("- truncated:"));
+    assert_eq!(out.text, format!("{OK1}\n\n{OK2}"));
 }

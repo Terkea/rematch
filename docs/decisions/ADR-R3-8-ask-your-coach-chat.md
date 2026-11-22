@@ -44,17 +44,38 @@ session that keeps the conversation (ADR-R3-6 Amendment 1).
    once per turn) and waits up to 45 s in all, inside the tool call (under the tool endpoint's
    50 s per-call timeout). A check still pending then is abandoned (its quota refunded) and the
    model gets `engine busy`.
-7. **History.** Our Postgres conversation is the record; the SDK session carries the model's
-   view. History is append-only: a new SDK session (turn 1, or after a rollover) gets the full
-   messages; later turns resume and send only the question, with the earlier messages,
-   flattened, as the rebuild context. Every `replay_turns` (6) turns the history rolls over into
-   a summary plus a plain transcript of the recent turns, in a fresh session, so no earlier
-   assistant (or thinking) block is ever edited or replayed.
+7. **History.** Our Postgres conversation is the record (ADR-R3-6 Amendment 1); the SDK
+   session carries the model's view, and it may only be resumed while the two agree.
+   - Every outcome carries `session_in_sync`. It is true only for an `Answered` turn with no
+     repair, no max-turns follow-up, no retracted message and nothing replaced, so the stored
+     paragraphs are exactly what the session recorded (the server's drop and limit notes aside,
+     which are never in the session). Off-topic, refusal and fallback replies are not in sync:
+     the session holds the model's text, the record the fixed copy.
+   - The next turn resumes only when the previous answer was in sync and the history does not
+     roll over (`resume_next_turn`). It then sends only the question, with the earlier
+     messages, flattened, as the rebuild context.
+   - Otherwise it sends the full Postgres history (`Verbatim` or `Rollover`) with
+     `resume: false` and no previous session usage. The sidecar deletes the stale session rows
+     and starts a clean session under the same id, and metering uses the turn's own
+     `model_usage` (path `new`).
+   - Every `replay_turns` (6) turns the history rolls over into a summary plus a plain
+     transcript of the recent turns. **A rollover turn always starts a new session**, since a
+     resumed session would still hold the full verbatim history.
+   - Session entries are never edited, and no earlier assistant (or thinking) block is ever
+     edited or replayed.
+   - Tool-call indexes are unique across the conversation: a turn starts at the previous
+     outcome's `next_call_index` (`ToolSession::starting_at`), which the caller stores with the
+     conversation. A `tools.<k>` token copied from an earlier turn then fails closed instead of
+     resolving to another result.
 8. **Follow-ups.** The round-cap follow-up ("Answer now with what you have.") and the repair run
    as one-round turns without tools under a fresh session id, with the flattened transcript and
    the tool results as data. They never enter the conversation's session; their session-store
    rows are swept as orphans (Task 21). Only the main turn's `Done` gives the stored
-   `sessionModelUsage`.
+   `sessionModelUsage`. A turn with a follow-up or a repair is never in sync (§7), so the next
+   turn rebuilds the session from our record rather than resuming the unrepaired one. The
+   repair is not run inside the conversation's session: that session would then hold the
+   invalid answer, the repair prompt and the repaired answer.
+   A paragraph cut off by `max_tokens` is never shown; it holds the stream and is repaired.
 9. **Quotas.** Free and Pro chat quotas come from `entitlements::chat_quotas` (free: 3 a week;
    Pro: 30 a day and 300 a month); a conversation holds at most 40 turns and a question at most
    2000 characters. Denials use fixed copy with no upsell.
@@ -67,8 +88,31 @@ session that keeps the conversation (ADR-R3-6 Amendment 1).
 
 - The player only ever sees validated paragraphs, at the cost of a held stream when a paragraph
   fails, and one extra call for the repair.
-- The SDK session keeps the model's original (unrepaired) answer; the next turn's model view
-  can differ from what the player saw. The rebuild path and rollovers use our record.
+- The turn after a repair, follow-up, refusal, off-topic or fallback reply pays a full uncached
+  prefix, because it starts a new session from our record. That is rare, and in exchange the
+  model never sees a rejected answer as accepted history.
 - Stricter rules than the brief's two (`engine_claims`, `no_quantity_words`) follow Task 8's fix
   rounds, which made them universal for the report: more chat paragraphs may be repaired or
   dropped, never fewer checked.
+
+## Interface (Task 23)
+
+`run_chat_turn(ai, before_call, deps: &OwnedToolDeps, args: ChatTurnArgs, on_chunk)` departs
+from the plan's signature:
+- `OwnedToolDeps` (T22's `Arc` handles) instead of `&ToolDeps`, because `stream_turn` takes an
+  `Arc<dyn ToolHandler>`, which must be `'static`;
+- `ChatTurnArgs { prompts, evidence, messages, conversation_id, resume,
+  previous_session_usage, first_call_index }` instead of `input` and `messages`: the SDK
+  session (id, resume), metering and the conversation-wide call indexes need these. `evidence`
+  is `build_evidence(input)` plus the anchors through `anchor_details`; the caller must build it
+  from the same input and anchors as `messages`.
+
+## Hand-offs
+
+- **Task 25** stores `session_in_sync` on the assistant row and `next_call_index` on the
+  conversation, and uses `resume_next_turn`. A chat turn makes up to three sequential
+  `stream_turn` calls (main, follow-up, repair), so the per-call `timeoutMs` must be at most
+  `CHAT_TURN_TIMEOUT / 3`, or the reconcile sweep fails a live turn. Count and reserve the chat
+  quota atomically (two concurrent questions can both pass the pure pre-check).
+- **Task 24.** If a turn is cancelled while a tool call waits on the engine, the check may never
+  be abandoned; the reconciler must expire stale pending checks and refund them.

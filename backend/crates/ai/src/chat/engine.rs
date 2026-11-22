@@ -248,6 +248,11 @@ pub struct ChatTurnOutcome {
     /// The main turn's `Done.session_model_usage`: store it for the next turn's metering.
     pub session_model_usage: Vec<ModelUsage>,
     pub session: Option<SessionPath>,
+    /// The stored answer is exactly what the conversation's SDK session recorded. When false,
+    /// the next turn must not resume: see [`resume_next_turn`].
+    pub session_in_sync: bool,
+    /// The first tool-call index of the next turn (store it with the conversation).
+    pub next_call_index: u32,
 }
 
 /// One turn's inputs besides the client, the budget hook, the tools and `on_chunk`.
@@ -264,6 +269,18 @@ pub struct ChatTurnArgs<'a> {
     pub resume: bool,
     /// The previous turn's stored `session_model_usage` (metering of a resumed turn).
     pub previous_session_usage: Option<&'a [ModelUsage]>,
+    /// The first tool-call index of this turn: the previous outcome's `next_call_index`, 0 for
+    /// a new conversation. Call indexes are unique across the conversation, so a `tools.<k>`
+    /// token of an earlier turn never resolves to a different result.
+    pub first_call_index: u32,
+}
+
+/// Whether the next turn resumes the SDK session: only when the previous answer is in sync
+/// with it and the history does not roll over. Otherwise the next turn sends the full Postgres
+/// history with `resume: false` (the sidecar then replaces the stale session under the same id)
+/// and no previous session usage. `None`: no previous turn.
+pub fn resume_next_turn(previous_in_sync: Option<bool>, rollover: bool) -> bool {
+    previous_in_sync == Some(true) && !rollover
 }
 
 // --- The turn's tool handler ---
@@ -402,6 +419,8 @@ struct Streamer<'a> {
     paras: Vec<Para>,
     /// A published paragraph was retracted, or a publish failed.
     stale: bool,
+    /// Any message was retracted (the SDK session then differs from the stored text).
+    retracted: bool,
 }
 
 impl<'a> Streamer<'a> {
@@ -420,6 +439,7 @@ impl<'a> Streamer<'a> {
             saw_text: false,
             paras: Vec::new(),
             stale: false,
+            retracted: false,
         }
     }
 
@@ -498,6 +518,29 @@ impl<'a> Streamer<'a> {
         }
     }
 
+    /// The unfinished last paragraph of a turn cut off by `max_tokens`: it is never shown, and
+    /// it holds the stream, so the answer is repaired (review m2).
+    fn truncate(&mut self) {
+        let rest = std::mem::take(&mut self.buf);
+        let rest = rest.trim();
+        if rest.is_empty() || self.offtopic {
+            return;
+        }
+        let path = format!("chat.{}", self.count);
+        self.count += 1;
+        self.held = true;
+        self.paras.push(Para {
+            text: rest.to_owned(),
+            msg: self.msg.clone(),
+            result: Err(vec![ValidationError {
+                code: ValidationCode::Truncated,
+                path,
+                detail: "the answer was cut off in this paragraph".to_owned(),
+            }]),
+            published: false,
+        });
+    }
+
     async fn flush(&mut self) {
         let rest = std::mem::take(&mut self.buf);
         let rest = rest.trim();
@@ -515,6 +558,7 @@ impl<'a> Streamer<'a> {
             }
             TurnEvent::TextDelta(d) => self.delta(&d).await,
             TurnEvent::Retract { message_ids, .. } => {
+                self.retracted = true;
                 if self.msg.as_ref().is_some_and(|m| message_ids.contains(m)) {
                     self.buf.clear();
                 }
@@ -544,7 +588,11 @@ impl<'a> Streamer<'a> {
                         self.delta(&t).await;
                     }
                 }
-                self.flush().await;
+                if r.stop_reason.as_deref() == Some("max_tokens") {
+                    self.truncate();
+                } else {
+                    self.flush().await;
+                }
                 self.msg = None;
                 return Some(r);
             }
@@ -774,12 +822,13 @@ pub async fn run_chat_turn(
         conversation_id,
         resume,
         previous_session_usage,
+        first_call_index,
     } = args;
     let question = match messages.last() {
         Some(m) if m.role == Role::User => m.clone(),
         _ => return Err(invalid_request()),
     };
-    let session = Arc::new(ToolSession::new(evidence));
+    let session = Arc::new(ToolSession::starting_at(evidence, first_call_index));
     let state = Arc::new(Mutex::new(TurnToolState::default()));
     let (tx, mut rx) = mpsc::unbounded_channel();
     let handler: Arc<dyn ToolHandler> = Arc::new(TurnTools {
@@ -823,7 +872,8 @@ pub async fn run_chat_turn(
     let session_path = main.session;
     let mut refused = main.stop_reason.as_deref() == Some("refusal");
 
-    if !refused && !s.offtopic && main.stop_reason.as_deref() == Some("max_turns") {
+    let followed_up = !refused && !s.offtopic && main.stop_reason.as_deref() == Some("max_turns");
+    if followed_up {
         let tools = tool_results_block(&lock(&state).transcript);
         let follow = one_shot(system.clone(), answer_now_messages(&messages, tools));
         before_call().await?;
@@ -923,6 +973,11 @@ pub async fn run_chat_turn(
         paragraphs.push(fixed(&engine_limit_note(w)));
     }
     stale |= repaired || !answered.starts_with(&published);
+    // In sync: the stored paragraphs are exactly what the main turn left in the conversation's
+    // SDK session (server notes aside). An off-topic reply is not counted as in sync: the
+    // session holds the marker, the record the fixed copy.
+    let session_in_sync =
+        outcome == ChatOutcomeKind::Answered && !repaired && !followed_up && !s.retracted && !stale;
 
     let text = paragraphs
         .iter()
@@ -960,6 +1015,8 @@ pub async fn run_chat_turn(
         engine_evals,
         session_model_usage,
         session: session_path,
+        session_in_sync,
+        next_call_index: session.next_call_index(),
     })
 }
 

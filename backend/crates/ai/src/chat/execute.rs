@@ -100,10 +100,25 @@ pub struct ToolSession {
 impl ToolSession {
     /// Starts a turn over `ev` (the report evidence plus anchors). Call indexes start at 0.
     pub fn new(ev: Evidence) -> Self {
+        Self::starting_at(ev, 0)
+    }
+
+    /// Starts a turn whose call indexes begin at `first_call` (Task 23 fix round 1A): a chat
+    /// continues the conversation's counter, so a `tools.<k>` path of an earlier turn is never
+    /// reused for a different result and an old token fails closed.
+    pub fn starting_at(ev: Evidence, first_call: u32) -> Self {
         ToolSession {
-            state: Mutex::new(SessionState { ev, next_call: 0 }),
+            state: Mutex::new(SessionState {
+                ev,
+                next_call: first_call,
+            }),
             engine_checks: AtomicU32::new(0),
         }
+    }
+
+    /// The index the next call would get (store it for the conversation's next turn).
+    pub fn next_call_index(&self) -> u32 {
+        self.lock().next_call
     }
 
     fn lock(&self) -> MutexGuard<'_, SessionState> {
