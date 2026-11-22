@@ -79,8 +79,13 @@ export interface PositionExplorerProps {
   label: string;
   /** The player's own mistake or blunder: the move played is drawn in pen, else in pencil. */
   mistake?: boolean;
-  /** The full game at that ply (the review). */
-  href: string;
+  /**
+   * The move played was the engine's own (a strength): it is drawn as a `good` arrow with a `!`
+   * badge, and the key says so. Wins over `mistake`.
+   */
+  found?: boolean;
+  /** The full game at that ply (the review); without one there is no link to it. */
+  href?: string | undefined;
   /** Fetches the expanded data on first expand; null or a throw keeps the cited moves only. */
   loadLine?: (gameId: string, ply: number) => Promise<PositionLine | null>;
   /** The expanded data, when the host already has it (no fetch). */
@@ -98,7 +103,7 @@ function squares(uci: string | null | undefined): { from: Square; to: Square } |
   return { from: from as Square, to: to as Square };
 }
 
-type Cited = Pick<PositionExplorerProps, "played" | "best" | "mistake">;
+type Cited = Pick<PositionExplorerProps, "played" | "best" | "mistake" | "found">;
 
 const betterMove = (p: Cited) => (p.best && p.best.uci !== p.played.uci ? p.best : null);
 
@@ -108,7 +113,12 @@ export function explorerAnnotations(p: Cited, show: "both" | "best" = "both"): A
   const best = squares(betterMove(p)?.uci);
   const played = show === "both" ? squares(p.played.uci) : null;
   if (best) out.push({ kind: "arrow", ...best, tone: "good" });
-  if (played)
+  if (played && p.found)
+    out.push(
+      { kind: "arrow", ...played, tone: "good" },
+      { kind: "mark", square: played.to, glyph: "!", tone: "good" },
+    );
+  else if (played)
     out.push(
       p.mistake
         ? { kind: "arrow", ...played, tone: "pen", toEdge: true }
@@ -247,8 +257,9 @@ export function PositionExplorer(props: PositionExplorerProps) {
           className="m-0 flex list-none flex-wrap gap-x-4 gap-y-1 p-0 font-sans text-sm text-ink-soft"
         >
           <li className="flex items-center gap-1.5">
-            <ArrowSwatch tone={props.mistake ? "pen" : "pencil"} />
+            <ArrowSwatch tone={props.found ? "good" : props.mistake ? "pen" : "pencil"} />
             Played, {played.san}
+            {props.found ? ", the engine's move" : null}
           </li>
           {best ? (
             <li className="flex items-center gap-1.5">
@@ -269,9 +280,11 @@ export function PositionExplorer(props: PositionExplorerProps) {
             <Icon icon={ArrowsOutSimpleIcon} size={16} />
             Expand
           </Button>
-          <a href={href} className={linkClass}>
-            Open the game at {label}
-          </a>
+          {href ? (
+            <a href={href} className={linkClass}>
+              Open the game at {label}
+            </a>
+          ) : null}
         </div>
       </figcaption>
       <Dialog open={open} onOpenChange={setOpen}>
@@ -355,6 +368,7 @@ function ExplorerDialog({
   orientation,
   label,
   mistake,
+  found,
   href,
   line,
   load,
@@ -377,9 +391,9 @@ function ExplorerDialog({
   const atCited = moves[state.cursor]?.ply === ply && moves[state.cursor]?.fenBefore === fenBefore;
   const annotations =
     atCited && state.mode === "game"
-      ? explorerAnnotations({ played, best, mistake })
+      ? explorerAnnotations({ played, best, mistake, found })
       : atCited && state.mode === "engine"
-        ? explorerAnnotations({ played, best, mistake }, "best")
+        ? explorerAnnotations({ played, best, mistake, found }, "best")
         : [];
 
   const sheetMoves = useMemo<ScoresheetMove[]>(
@@ -574,9 +588,13 @@ function ExplorerDialog({
             className="h-56 lg:h-72"
           />
           <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
-            <a href={href} className={linkClass}>
-              Open full game
-            </a>
+            {href ? (
+              <a href={href} className={linkClass}>
+                Open full game
+              </a>
+            ) : (
+              <span />
+            )}
             {state.mode === "try" ? (
               <Button
                 variant="outline"

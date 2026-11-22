@@ -564,7 +564,11 @@ describe("weakness detail", () => {
     });
     const { container } = await detail("W1");
     // One example per game, at most three on the page.
-    const links = screen.getAllByRole("link", { name: /Open 4\. Nxe5 in the review/ });
+    // Each example is a position explorer: it expands, and links to the review at that ply.
+    const links = screen.getAllByRole("link", { name: "Open the game at 4. Nxe5" });
+    expect(
+      screen.getAllByRole("button", { name: "Expand the position before 4. Nxe5" }),
+    ).toHaveLength(1);
     expect(links).toHaveLength(1);
     expect(container.textContent).toContain(
       "Your win chance went from 52% to 36%, a drop of 16 win% points.",
@@ -673,7 +677,7 @@ describe("weakness detail", () => {
       },
     });
     const { container } = await detail("W1");
-    expect(screen.queryByRole("link", { name: /in the review/ })).toBeNull();
+    expect(screen.queryByRole("link", { name: /Open the game at/ })).toBeNull();
     expect(screen.getByText("This game is not among your imported games.")).toBeTruthy();
     expect(container.innerHTML).not.toContain(gameId);
   });

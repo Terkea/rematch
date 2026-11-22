@@ -50,7 +50,14 @@ const API: [string, string][] = [
   ["orientation", "The player's side; the expanded board can be flipped."],
   ["label", "The cited move as notation, 28. Nd2 or 28… Nd2."],
   ["mistake", "The player's own mistake or blunder."],
-  ["href", "The review at that ply: Open the game, and Open full game."],
+  [
+    "found",
+    "The move played was the engine's own (a strength): a good arrow with a ! badge, named in the key.",
+  ],
+  [
+    "href",
+    "The review at that ply: Open the game, and Open full game. Without one there is no link.",
+  ],
   [
     "loadLine",
     "(gameId, ply) => Promise<PositionLine | null>, called once on first expand. The web app passes fetchPositionLine (lib/position-line.ts, GET /api/games/<id>/line?ply=N).",
@@ -112,8 +119,8 @@ export function PositionExplorerSection() {
           <h3 className="m-0 font-serif text-xl font-semibold">Props</h3>
           <p className="m-0 max-w-prose text-sm text-ink-soft">
             From <code className="font-sans font-medium text-ink">@ci/ui/position-explorer</code>.
-            The coach&apos;s answers use it through CitedBoard; weakness examples and strengths can
-            adopt it with the same props.
+            The coach&apos;s answers use it through CitedBoard; weakness examples and the strengths
+            page use it through GamePosition (components/game-position.tsx).
           </p>
           <dl className="m-0 grid max-w-prose grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-[auto_1fr]">
             {API.map(([name, text]) => (
