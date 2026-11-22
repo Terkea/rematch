@@ -66,8 +66,6 @@ use crate::types::{Job, JobError};
 pub const CANCEL_GRACE: Duration = Duration::from_secs(1);
 /// How long `force` waits for cancelled handlers before releasing their jobs.
 pub const FORCE_GRACE: Duration = Duration::from_secs(1);
-/// The least time `force_within` gives `release_owned`, even when its budget is used up.
-pub const MIN_RELEASE: Duration = Duration::from_millis(50);
 /// Delay between attempts to (re)connect the NOTIFY listener.
 const LISTEN_RETRY: Duration = Duration::from_secs(1);
 
@@ -332,10 +330,15 @@ impl RunnerHandle {
         self.force_within(FORCE_GRACE * 3).await;
     }
 
-    /// [`force`](Self::force) bounded by `budget`: cancelled handlers get at most half of it
-    /// (and at most [`FORCE_GRACE`]), the abort a quarter of the rest, and `release_owned` always
-    /// runs, bounded by what is left (at least [`MIN_RELEASE`]), so a handler that ignores its
-    /// cancellation cannot keep its job leased past the budget. Re-entrant.
+    /// [`force`](Self::force) with the wait for the handlers bounded by `budget`: cancelled
+    /// handlers get at most half of it (and at most [`FORCE_GRACE`]), the abort a quarter of the
+    /// rest. `release_owned` then always runs to completion, bounded only by the queue's own
+    /// query timeout, not by what is left of `budget`: it is the write that makes the force
+    /// lossless, and a release cut off on a loaded host or behind a row lock would leave the
+    /// job leased for a whole lease and cost it a stall. So a handler that ignores its
+    /// cancellation cannot keep its job leased, and this returns within `budget` plus one
+    /// release; a caller that needs a hard bound (the worker's shutdown deadline) applies it
+    /// around the call. Re-entrant.
     pub async fn force_within(&self, budget: Duration) {
         let s = &self.shared;
         let deadline = Instant::now() + budget;
@@ -349,26 +352,19 @@ impl RunnerHandle {
         let abort = FORCE_GRACE.min(left() / 4);
         let _ = tokio::time::timeout(abort, s.finished.cancelled()).await;
         let _ = tokio::time::timeout(abort, rx.wait_for(|n| *n == 0)).await;
-        let release =
-            tokio::time::timeout(left().max(MIN_RELEASE), s.queue.release_owned(&s.owner));
-        match release.await {
-            Ok(Ok(0)) => {}
-            Ok(Ok(n)) => tracing::warn!(
+        match s.queue.release_owned(&s.owner).await {
+            Ok(0) => {}
+            Ok(n) => tracing::warn!(
                 lease_owner = %s.owner,
                 kind = s.handler.kind(),
                 released = n,
                 "force-released in-flight jobs without using an attempt"
             ),
-            Ok(Err(e)) => tracing::error!(
+            Err(e) => tracing::error!(
                 lease_owner = %s.owner,
                 kind = s.handler.kind(),
                 error = %e,
                 "releasing in-flight jobs failed; their leases will expire"
-            ),
-            Err(_) => tracing::error!(
-                lease_owner = %s.owner,
-                kind = s.handler.kind(),
-                "releasing in-flight jobs timed out; their leases will expire"
             ),
         }
     }
