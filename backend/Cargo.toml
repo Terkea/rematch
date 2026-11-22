@@ -29,6 +29,7 @@ refdata = { path = "crates/refdata" }
 enrich = { path = "crates/enrich" }
 scheduler = { path = "crates/scheduler" }
 profile = { path = "crates/profile" }
+worker = { path = "crates/worker" }
 
 # Third-party crates
 tokio = { version = "=1.54.1", features = [

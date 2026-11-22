@@ -116,24 +116,35 @@ impl serde::Serialize for AnalyseOutcome {
     }
 }
 
+/// The options of every analyse job: deduped on `analyse:<game_id>`, owned by the account,
+/// [`ANALYSE_MAX_ATTEMPTS`] attempts. [`enqueue_analyse`] and the reconciler's batched enqueue
+/// both use them.
+pub fn analyse_enqueue_options(game_id: Uuid, account_id: Uuid) -> EnqueueOptions {
+    EnqueueOptions {
+        dedupe_key: Some(analyse_key(game_id)),
+        user_key: Some(account_id),
+        max_attempts: ANALYSE_MAX_ATTEMPTS,
+        ..EnqueueOptions::default()
+    }
+}
+
+/// The payload of the game's analyse job.
+pub fn analyse_payload(game_id: Uuid) -> Value {
+    serde_json::to_value(AnalyseGamePayload { game_id })
+        .unwrap_or_else(|_| json!({ "gameId": game_id }))
+}
+
 /// Enqueues an analysis of the game. `false` when a live job already holds `analyse:<game_id>`.
 pub async fn enqueue_analyse(
     queue: &Queue,
     game_id: Uuid,
     account_id: Uuid,
 ) -> Result<bool, QueueError> {
-    let payload = serde_json::to_value(AnalyseGamePayload { game_id })
-        .unwrap_or_else(|_| json!({ "gameId": game_id }));
     let id = queue
         .enqueue(
             KIND_ANALYSE,
-            &payload,
-            EnqueueOptions {
-                dedupe_key: Some(analyse_key(game_id)),
-                user_key: Some(account_id),
-                max_attempts: ANALYSE_MAX_ATTEMPTS,
-                ..EnqueueOptions::default()
-            },
+            &analyse_payload(game_id),
+            analyse_enqueue_options(game_id, account_id),
         )
         .await?;
     Ok(id.is_some())
@@ -193,8 +204,17 @@ impl Handler for AnalyseGameHandler {
     }
 
     /// Marks the game failed when the job is dead-lettered, unless it already reached a final
-    /// status (the handler's own final-attempt write, which also published `job.failed`) or a
-    /// re-analysis reset it (`analysis_attempts = 0`: no attempt of the new generation ran yet).
+    /// status (the handler's own final-attempt write, which also published `job.failed`), a
+    /// re-analysis reset it (`analysis_attempts = 0`: no attempt of the new generation ran yet),
+    /// or a live run owns it: `analysing` with a heartbeat younger than three heartbeat periods.
+    ///
+    /// The last guard fences the window between the dead commit and this call (T19 re-review
+    /// M4), in which a re-analysis can start a new generation whose first attempt is already
+    /// running. The dead job's own run is never that fresh when it stalled: a stall is confirmed
+    /// a lease plus the stall grace after the last renew (85 s by default, against a 30 s
+    /// window), and a final attempt that ended normally wrote its own final status. A game left
+    /// `analysing` by a hard-timed-out handler that never wound down goes stale, and the
+    /// reconciler resets or fails it.
     fn on_dead<'a>(&'a self, job: &'a Job, reason: &'a str) -> BoxFuture<'a, ()> {
         async move {
             let deps = &self.0;
@@ -207,10 +227,14 @@ impl Handler for AnalyseGameHandler {
             let account: Result<Option<Uuid>, sqlx::Error> = sqlx::query_scalar(
                 "UPDATE games SET analysis_status = 'failed', analysis_error = $2 \
                  WHERE id = $1 AND analysis_status NOT IN ('done', 'failed', 'skipped') \
-                 AND analysis_attempts > 0 RETURNING account_id",
+                 AND analysis_attempts > 0 \
+                 AND NOT (analysis_status = 'analysing' AND heartbeat_at IS NOT NULL \
+                   AND heartbeat_at > now() - $3::float8 * interval '1 millisecond') \
+                 RETURNING account_id",
             )
             .bind(payload.game_id)
             .bind(&reason)
+            .bind(ms(deps.heartbeat_every * 3))
             .fetch_optional(&deps.pool)
             .await;
             match account {

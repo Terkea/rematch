@@ -611,7 +611,7 @@ str_enum!(
         EndgameHoldRate => "endgame_hold_rate",
         TbErrorsPerEndgame => "tb_errors_per_endgame",
         ScoreAfterLoss => "score_after_loss",
-        ScoreAfterWin => "score_after_win",
+        ScoreAfterNonLoss => "score_after_non_loss",
         SessionAccuracyDecline => "session_accuracy_decline",
         FirstGameAccuracy => "first_game_accuracy",
         LaterGamesAccuracy => "later_games_accuracy",
