@@ -23,7 +23,7 @@ import { seedAccount, seedFixtureGame, seedSyntheticGame } from "../../test/help
 export const E2E_USER = "adult@example.invalid";
 export const E2E_ACCOUNT = "e2e-fixtures";
 const DEFAULT_URL = "postgres://postgres:postgres@localhost:55432/chess_e2e_test";
-const REFUSAL = "Refusing to seed: this database holds real accounts";
+export const REFUSAL = "Refusing to seed: this database holds real accounts";
 
 export type E2eGames = { analysedId: string; pendingId: string; longId: string };
 
