@@ -99,6 +99,8 @@ const sameFormat = (f: { base: number; increment: number }): SQL =>
 export function formatCondition(fmt: string | null, options: readonly FormatOption[]): SQL | null {
   if (fmt === null) return null;
   if (fmt === OTHER_FORMAT) {
+    // No "Other" option: every game has a named format, so Other is empty.
+    if (!options.some((o) => o.key === OTHER_FORMAT)) return sql`false`;
     const named = options
       .map((o) => parseFormatKey(o.key))
       .filter((f): f is { base: number; increment: number } => f !== null);
