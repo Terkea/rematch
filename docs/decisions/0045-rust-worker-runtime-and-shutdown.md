@@ -24,9 +24,12 @@ small, locked-down image.
 - **Shutdown** (25 s grace; compose `stop_grace_period: 30s`): stop claiming, drain for 60 % of the
   grace, then close the engine pool (in-flight analyses put their game back to `pending` and
   release their job without using an attempt, even on the final attempt), drain until 90 %, then
-  force the runners within the 90 %-100 % window (cancel, abort, and always `release_owned`
-  before the window ends, even for a handler that ignores cancellation), then close the engines
-  and the database pool.
+  force the runners: the 90 %-100 % window bounds the wait for their handlers (cancel, then
+  abort, even a handler that ignores cancellation), and then `release_owned` always runs to
+  completion, bounded only by the queue's query timeout and the hard deadline below, not by the
+  window. (Amended 2026-11-22: the release used to get only what was left of the window, at
+  least 50 ms. On a loaded host that write took longer, was dropped, and left the job leased
+  for a whole lease and charged a stall.) Then close the engines and the database pool.
   Every step is bounded by the remaining budget (at least 100 ms); exit code 1 only if a close
   failed or timed out. That 100 ms floor lets the steps overrun the grace slightly, so the whole
   shutdown also has a **hard deadline** at `grace + hard_after` (25 s + 3 s = 28 s, before the
