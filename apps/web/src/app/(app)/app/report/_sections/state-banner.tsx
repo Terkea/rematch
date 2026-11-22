@@ -75,6 +75,7 @@ export function StateBanner({
           titleAs="h2"
           title={`Building your report: ${done} of ${SECTION_KEYS.length} sections written`}
           body={lines.length > 0 ? lines.join(" ") : null}
+          progress={{ done, total: SECTION_KEYS.length, unit: "sections" }}
           items={SECTION_KEYS.map((k) => ({ label: SECTION_NAMES[k], done: ready.has(k) }))}
         />
       );

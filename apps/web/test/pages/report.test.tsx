@@ -447,6 +447,18 @@ describe("review fix round 1", () => {
     expect(plan.querySelector("[data-coach-state]")).toBeNull();
   });
 
+  it("the building bar shows the sections written, never an empty bar beside the count", async () => {
+    await seedReport(db, accountId, {
+      timeClass: "rapid",
+      payload: "partial",
+      createdAt: CREATED,
+      ...run({ status: "running" }),
+    });
+    const { container } = render(<ReportView data={await data()} />);
+    const stroke = container.querySelector('[data-part="stroke"]');
+    expect(stroke?.getAttribute("data-fraction")).toBe("0.4");
+  });
+
   it("a phone shows one example position per weakness with a way to see the rest", async () => {
     await previous();
     const screen = within(render(<ReportView data={await data()} />).container);

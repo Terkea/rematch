@@ -2,7 +2,7 @@
 
 import { AiDisclosure } from "@ci/ui/coach";
 import { dayText } from "@ci/ui/profile";
-import { type ReactNode, useEffect, useRef } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { CoachScopeSwitch } from "../../../../components/coach-scope-switch";
 import type { ChangeNoteView } from "../../../../server/coaching/notes";
 import type { ReportView as ReportViewModel } from "../../../../server/coaching/report";
@@ -80,6 +80,63 @@ function useFreshSections(ready: SectionKey[]): Set<SectionKey> {
   return new Set(ready.filter((k) => !known.has(k)));
 }
 
+/**
+ * The fade over the scrolling options themselves, only on an edge with more past it, so a cut
+ * label always reads as "more this way". A mask is alpha only, not a colour.
+ */
+const FADE = {
+  none: "",
+  end: "linear-gradient(to right, black calc(100% - 3rem), transparent)",
+  start: "linear-gradient(to left, black calc(100% - 3rem), transparent)",
+  both: "linear-gradient(to right, transparent, black 3rem, black calc(100% - 3rem), transparent)",
+} as const;
+
+/**
+ * The scope switch's row. Its options can be wider than a phone and scroll inside the switch's
+ * own scroller: the selected option is scrolled into view, and each edge of that scroller with
+ * more options past it fades.
+ */
+function ScopeRow({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [fade, setFade] = useState<keyof typeof FADE>("none");
+  useEffect(() => {
+    const root = ref.current;
+    const scroller = root
+      ? [...root.querySelectorAll<HTMLElement>("*")].find((n) =>
+          ["auto", "scroll"].includes(getComputedStyle(n).overflowX),
+        )
+      : undefined;
+    if (!scroller) return;
+    const selected = scroller.querySelector<HTMLElement>("[data-checked]");
+    if (selected) {
+      const s = selected.getBoundingClientRect();
+      const c = scroller.getBoundingClientRect();
+      if (s.right > c.right) scroller.scrollLeft += s.right - c.right + 48;
+      else if (s.left < c.left) scroller.scrollLeft -= c.left - s.left + 48;
+    }
+    const update = () => {
+      const start = scroller.scrollLeft > 1;
+      const end = scroller.scrollLeft + scroller.clientWidth < scroller.scrollWidth - 1;
+      const next = start && end ? "both" : end ? "end" : start ? "start" : "none";
+      scroller.style.maskImage = FADE[next];
+      scroller.style.webkitMaskImage = FADE[next];
+      setFade(next);
+    };
+    update();
+    scroller.addEventListener("scroll", update, { passive: true });
+    window.addEventListener("resize", update);
+    return () => {
+      scroller.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
+    };
+  }, []);
+  return (
+    <div ref={ref} data-fade={fade} className="min-w-0">
+      {children}
+    </div>
+  );
+}
+
 function Fresh({ on, children }: { on: boolean; children: ReactNode }) {
   return on ? <div data-reveal="first">{children}</div> : <>{children}</>;
 }
@@ -128,12 +185,9 @@ export function ReportView({ data }: { data: ReportPageData }) {
           />
         ) : null}
       </div>
-      {/* The switch's labels can be wider than a phone: it scrolls inside its own row, and below
-          640px the row fades out at its right edge so a cut label reads as "more this way". */}
-      {/* ban-lint-allow TOK2: a mask gradient is alpha only, not a colour */}
-      <div className="-mx-1 max-w-full overflow-x-auto px-1 py-1 max-sm:pr-8 max-sm:[mask-image:linear-gradient(to_right,black_calc(100%_-_2.5rem),transparent)]">
+      <ScopeRow>
         <CoachScopeSwitch scope={scope} basePath="/app/report" />
-      </div>
+      </ScopeRow>
     </header>
   );
 

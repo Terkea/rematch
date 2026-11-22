@@ -59,3 +59,11 @@ No page-level overflow at 360, 390 or 1440; no `NaN|undefined|Infinity|null|{{` 
   sections have your coach's notes" at the top. P9: `WorkOn` uses the pen rule only for a real
   finding. P10: "from 38 of 902 chances". P13: report text links get a 24px hit area.
 - Rebuild label within two days names the hour ("Rebuild available on 23 Nov at 08:00 UTC").
+
+## Fix round 2 (re-check V1, V6)
+
+Shots: `scratchpad/m5b-t6/fix2/` (the switch at 390 with rapid and with blitz selected, the
+building banner at 390 and 1440, light and dark).
+- V1: the fade now sits on the switch's own scroller (the options' edge, no padding under it),
+  only on an edge with more options past it, and the selected option is scrolled into view.
+- V6: the building banner passes `progress`, so 2 of 5 fills 40% of the stroke.
