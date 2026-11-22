@@ -261,6 +261,9 @@ services:
       - cargo_git:/usr/local/cargo/git
       - sccache:/sccache
       - crate_age:/crate-age
+      # Syzygy tables live only in the main checkout (git-ignored). Gates run from a worktree set
+      # SYZYGY_HOST_DIR to that folder, e.g. E:/code/chess-improver/data/syzygy (ADR-R2-12).
+      - ${SYZYGY_HOST_DIR:-./data/syzygy}:/work/data/syzygy:ro
 
   # The Rust worker (Task 22): the runtime image of backend/Dockerfile. It reaches chess.com and
   # Lichess with the fixed project User-Agent and never sends an email (ADR 0043), so it gets no
@@ -277,6 +280,11 @@ services:
       # Engines (and analyses at once). Empty: min(cores - 2, 8). See .env.example.
       WORKER_POOL_SIZE: ${WORKER_POOL_SIZE:-}
       RUST_LOG: ${RUST_LOG:-info}
+      # R2 T23 (ADR-R2-12): the 3-4-5 Syzygy tables, read-only. Without them the tablebase probe
+      # is unavailable and analysis goes on.
+      SYZYGY_PATH: /work/data/syzygy
+    volumes:
+      - ${SYZYGY_HOST_DIR:-./data/syzygy}:/work/data/syzygy:ro
     depends_on:
       postgres:
         condition: service_healthy
