@@ -23,6 +23,7 @@ profile.workspace = true
 scheduler.workspace = true
 enrich.workspace = true
 refdata.workspace = true
+worker.workspace = true
 anyhow.workspace = true
 clap.workspace = true
 tracing.workspace = true
