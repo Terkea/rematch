@@ -2,6 +2,7 @@ import type { Db } from "@ci/db";
 import type { BetterAuthOptions } from "better-auth";
 import { onLichessAccount } from "../accounts/lichess-link";
 import { lichessUsername } from "./lichess";
+import { redactedLog } from "./redacted-log";
 
 type DbHooks = NonNullable<BetterAuthOptions["databaseHooks"]>;
 type AccountRow = { providerId?: unknown; accountId?: unknown; userId?: unknown } | null;
@@ -21,7 +22,7 @@ async function lichessAccountChanged(db: Db, row: AccountRow): Promise<void> {
   } catch (error) {
     // The OAuth account row is already committed; the link is recorded again on the next sign-in
     // or connect. Logged without the row (it carries the encrypted token).
-    console.error("[auth] recording the Lichess link failed", {
+    redactedLog("error", "recording the Lichess link failed", {
       userId,
       lichessId,
       reason: error instanceof Error ? error.message : String(error),

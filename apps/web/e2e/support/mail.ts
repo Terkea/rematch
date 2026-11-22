@@ -16,10 +16,38 @@ export async function gotoSettled(page: Page, url: string): Promise<void> {
   for (let attempt = 1; ; attempt++) {
     try {
       const res = await page.goto(url, { waitUntil: "commit" });
-      if (!res || res.status() < 500 || attempt >= 3) return;
+      if (!res || res.status() < 500 || attempt >= 3) return streamed(page);
     } catch (error) {
       if (attempt >= 3 || !String(error).includes("ERR_ABORTED")) throw error;
     }
+  }
+}
+
+/**
+ * Waits until the streamed document is complete and React has swapped in its Suspense
+ * boundaries. A production build streams a page (`loading.tsx`): each boundary's content first
+ * arrives in a hidden `<div id="S:n">` at the end of the body, and React moves it into place a
+ * moment later (it batches reveals). Until then the page holds two copies of that content, and
+ * a strict locator sees both (T27, the production e2e lane). A boundary that never reveals (a
+ * page that called `notFound()`) keeps its hidden node, so that last wait is bounded.
+ */
+async function streamed(page: Page, attempt = 1): Promise<void> {
+  try {
+    await page.waitForFunction(() => document.readyState !== "loading", undefined, {
+      timeout: 120_000,
+    });
+    await page
+      .waitForFunction(() => !document.querySelector('[hidden][id^="S:"]'), undefined, {
+        timeout: 5_000,
+      })
+      .catch((error: unknown) => {
+        if (!String(error).includes("Timeout")) throw error;
+      });
+  } catch (error) {
+    // A navigation that replaced the document (a redirect) restarts the wait on the new one, at
+    // most three times, so a redirect loop fails here instead of at the test timeout.
+    if (!String(error).includes("Execution context was destroyed") || attempt >= 3) throw error;
+    await streamed(page, attempt + 1);
   }
 }
 
@@ -68,6 +96,13 @@ export async function magicLinkFor(
   return link as string;
 }
 
+/** A stable documentation-range (TEST-NET-3) address per email, for the rate limiter's key. */
+export function clientAddress(email: string): string {
+  let h = 0;
+  for (const c of email) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return `203.0.113.${(h % 254) + 1}`;
+}
+
 /** Signs in through the real form and opens the mailed link. */
 export async function signInByMagicLink(
   page: Page,
@@ -75,6 +110,10 @@ export async function signInByMagicLink(
   email: string,
 ): Promise<void> {
   const since = Date.now();
+  // Each e2e user signs in from its own client address: docker-compose.e2e.yml trusts localhost,
+  // where the qa browser runs, as the proxy, so Better Auth reads this header. Without it, every
+  // user shares one sign-in bucket (3 links per 10 minutes) and the suite runs out.
+  await page.setExtraHTTPHeaders({ "x-forwarded-for": clientAddress(email) });
   // The address must never travel in a URL (review I1): watch every request the page makes.
   const urls: string[] = [];
   const record = (req: { url(): string }) => urls.push(req.url());

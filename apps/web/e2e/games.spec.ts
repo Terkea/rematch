@@ -141,8 +141,10 @@ test("overview, explorer and review, end to end", async ({ browser, request }, i
 
   await test.step("6. a pending game says so, and its moves replay", async () => {
     await gotoSettled(page, `/app/games/${ids.pendingId}`);
+    // Inside main: a production build streams the page, and React's hidden staging copy of the
+    // same text sits at the end of the body until it is swapped in.
     await expect(
-      page.getByText("This game is waiting for analysis.", { exact: false }),
+      page.getByRole("main").getByText("This game is waiting for analysis.", { exact: false }),
     ).toBeVisible();
     await hydrated(page, "[data-review]");
     // It opens on the final position; Home, then two steps.

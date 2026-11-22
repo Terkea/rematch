@@ -1,6 +1,7 @@
 import { LiveRefresh } from "../../../../components/live-refresh";
 import { requireUser } from "../../../../server/auth/session";
 import { getDb } from "../../../../server/db";
+import { requestEventCursor } from "../../../../server/events/request-cursor";
 import { scopedAccountIds } from "../../../../server/games";
 import { loadExplorer } from "../../../../server/games/explorer";
 import { PageHeading } from "../../_shell/page-heading";
@@ -24,6 +25,8 @@ type Params = Record<string, string | string[] | undefined>;
  */
 export default async function GamesPage({ searchParams }: { searchParams: Promise<Params> }) {
   const user = await requireUser();
+  // Before any page data, so the event stream replays whatever lands after this read (T27).
+  await requestEventCursor(user.id);
   const db = getDb();
   const explorer = await loadExplorer(db, user.id, await searchParams);
   const live = <LiveRefresh accountIds={await scopedAccountIds(db, user.id)} />;

@@ -14,7 +14,13 @@ services:
       LICHESS_API_BASE_URL: http://fakes:3199
       CHESSCOM_API_BASE_URL: http://fakes:3199/chesscom
       CHESSCOM_ENABLED: "1"
-      INVITE_ALLOWLIST: dev@example.invalid,adult@example.invalid,kid@example.invalid,games@example.invalid,reveal@example.invalid,rival@example.invalid,lichess@example.invalid
+      # Sign-in is rate-limited per client address, which only a trusted proxy supplies
+      # (ADR-WEB-3); without one every e2e user shares one bucket (3 links per 10 minutes). The qa
+      # browser shares web's network namespace, so localhost is the "proxy", and
+      # e2e/support/mail.ts sends each user's own x-forwarded-for.
+      TRUSTED_PROXIES: 127.0.0.1/32,::1/128
+      IP_ADDRESS_HEADERS: x-forwarded-for
+      INVITE_ALLOWLIST: dev@example.invalid,adult@example.invalid,kid@example.invalid,games@example.invalid,reveal@example.invalid,rival@example.invalid,lichess@example.invalid,realtime@example.invalid
     depends_on:
       fakes:
         condition: service_started

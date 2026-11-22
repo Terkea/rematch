@@ -41,7 +41,10 @@ const casesSource = [
   '{"Z":1,"a":2,"_":3,"é":4,"10":5,"9":6}',
   '{"s":"a<b\\u2028\\u0001\\"\\\\/","n":null,"t":true,"f":false,"e":[],"o":{}}',
 ];
-const cases = casesSource.map((source) => ({ source, canonical: canonicalJson(JSON.parse(source)) }));
+const cases = casesSource.map((source) => ({
+  source,
+  canonical: canonicalJson(JSON.parse(source)),
+}));
 
 const out = {
   provenance: {
@@ -53,4 +56,7 @@ const out = {
   cases,
 };
 mkdirSync(join(backend, "fixtures/ai/prompts"), { recursive: true });
-writeFileSync(join(backend, "fixtures/ai/prompts/ts-canonical.json"), `${JSON.stringify(out, null, 2)}\n`);
+writeFileSync(
+  join(backend, "fixtures/ai/prompts/ts-canonical.json"),
+  `${JSON.stringify(out, null, 2)}\n`,
+);

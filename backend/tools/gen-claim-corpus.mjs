@@ -70,16 +70,31 @@ const HEDGE = /\b(may|might|possibly|could|coincid\w*|around the time|at about t
 const LIKELIHOOD = /\b(no clear change yet|very likely|unclear yet|likely)\b/gi;
 
 const likelihoodPhrase = (p) =>
-  p === null || p === undefined ? null : p >= 0.95 ? "very likely" : p >= 0.85 ? "likely" : p >= 0.5 ? "unclear yet" : "no clear change yet";
+  p === null || p === undefined
+    ? null
+    : p >= 0.95
+      ? "very likely"
+      : p >= 0.85
+        ? "likely"
+        : p >= 0.5
+          ? "unclear yet"
+          : "no clear change yet";
 const hasNum = (tokens, path) => tokens.some((t) => t.kind === "num" && t.path === path);
 
 const banned = () => (s) => (BANNED.some((r) => r.test(s)) ? ["banned_phrase"] : []);
 const marketing = () => (s) => (MARKETING.test(s) ? ["marketing"] : []);
 const likelihood = (req) => (s) =>
-  [...s.matchAll(LIKELIHOOD)].some((m) => m[0].toLowerCase() !== req) ? ["likelihood_mismatch"] : [];
+  [...s.matchAll(LIKELIHOOD)].some((m) => m[0].toLowerCase() !== req)
+    ? ["likelihood_mismatch"]
+    : [];
 const evidenceWindow = (tc) => (s, tokens) =>
-  hasNum(tokens, "basis.analysedGames") && new RegExp(`\\b${tc}\\b`, "i").test(s) ? [] : ["missing_evidence_window"];
-const causal = () => (s) => [...(CAUSAL.test(s) ? ["causal_claim"] : []), ...(HEDGE.test(s) ? [] : ["missing_hedge"])];
+  hasNum(tokens, "basis.analysedGames") && new RegExp(`\\b${tc}\\b`, "i").test(s)
+    ? []
+    : ["missing_evidence_window"];
+const causal = () => (s) => [
+  ...(CAUSAL.test(s) ? ["causal_claim"] : []),
+  ...(HEDGE.test(s) ? [] : ["missing_hedge"]),
+];
 const insufficient = (area) => (_s, tokens) =>
   hasNum(tokens, `areaScores.${area}.needMore`) ? [] : ["insufficient_data_not_stated"];
 
@@ -91,14 +106,18 @@ function rulesFor(input, row) {
     case "focus": {
       r.req = true;
       const w = input.weaknesses.find((x) => x.id === row.w);
-      r.extra.push(likelihood(likelihoodPhrase(w ? w.pImp : null)), evidenceWindow(input.timeClass));
+      r.extra.push(
+        likelihood(likelihoodPhrase(w ? w.pImp : null)),
+        evidenceWindow(input.timeClass),
+      );
       break;
     }
     case "summary":
       r.extra.push(evidenceWindow(input.timeClass));
       break;
     case "area":
-      if (input.areaScores.some((a) => a.area === row.a && !a.sufficient)) r.extra.push(insufficient(row.a));
+      if (input.areaScores.some((a) => a.area === row.a && !a.sufficient))
+        r.extra.push(insufficient(row.a));
       break;
     case "opening":
       r.req = true;
@@ -143,9 +162,13 @@ function tsValidateText(ev, input, row) {
   if (parsed.tokens.some((k) => resolveToken(ev, k) === undefined)) return ["unresolved_token"];
   if (!rules.implicit) {
     const cited = new Set(row.c.map(([g, p]) => `${g}#${p}`));
-    if (parsed.tokens.some((k) => POS.has(k.kind) && !cited.has(`${k.gameId}#${k.ply}`))) return ["uncited_reference"];
+    if (parsed.tokens.some((k) => POS.has(k.kind) && !cited.has(`${k.gameId}#${k.ply}`)))
+      return ["uncited_reference"];
   }
-  if (rules.lineKeys && parsed.tokens.some((k) => k.kind === "line" && !rules.lineKeys.includes(k.lineKey)))
+  if (
+    rules.lineKeys &&
+    parsed.tokens.some((k) => k.kind === "line" && !rules.lineKeys.includes(k.lineKey))
+  )
     return ["unknown_line"];
   return out(rules.extra.flatMap((rule) => rule(s, parsed.tokens)));
 }
@@ -183,8 +206,12 @@ const rows = [
   wk(`${WIN} you left pieces loose.`, []),
   row("N​xf7 lost"),
   row("４.７ blunders"),
-  row("{{line:b-sicilian-najdorf:2}} starts it, as in {{move:li-op1:12}}", [OP], "opening", { l: "b-sicilian-najdorf" }),
-  row("{{line:b-sicilian-najdorf:2}} starts it, as in {{move:li-op1:12}}", [OP], "opening", { l: "w-italian" }),
+  row("{{line:b-sicilian-najdorf:2}} starts it, as in {{move:li-op1:12}}", [OP], "opening", {
+    l: "b-sicilian-najdorf",
+  }),
+  row("{{line:b-sicilian-najdorf:2}} starts it, as in {{move:li-op1:12}}", [OP], "opening", {
+    l: "w-italian",
+  }),
   row("see {{move:li-w1-0:5"),
   // Tokens: every kind, scoping, resolution and syntax.
   row("{{best:li-w1-0:5}} then {{pv:li-w1-0:5:refutation:1}} on {{sq:e4}}"),
@@ -216,7 +243,10 @@ const rows = [
   // Citations.
   row("steady play", []),
   row("steady play", [W1, W1]),
-  row("steady play", [["li-w1-0", 6], ["nope", 1]]),
+  row("steady play", [
+    ["li-w1-0", 6],
+    ["nope", 1],
+  ]),
   wk(`${WIN} you left pieces loose, as with {{move:li-w1-0:5}}.`),
   wk(`${WIN} forks slipped past you, as with {{move:li-w3-0:16}}.`, [W3], "W3"),
   wk("In rapid games you leave pieces loose, as in {{move:li-w1-0:5}}."),
@@ -263,8 +293,14 @@ const rows = [
   row("Mayhem at the board.", [W1], "causal"),
   // Areas (early read: endgame, calculation and mindset are below their sample).
   row("Your endgame sample is still small.", [], "area", { a: "endgame", f: "early-read" }),
-  row("We need {{num:areaScores.endgame.needMore|int}} more endgame games.", [], "area", { a: "endgame", f: "early-read" }),
-  row("We need {{num:areaScores.calculation.needMore|int}} more games.", [], "area", { a: "endgame", f: "early-read" }),
+  row("We need {{num:areaScores.endgame.needMore|int}} more endgame games.", [], "area", {
+    a: "endgame",
+    f: "early-read",
+  }),
+  row("We need {{num:areaScores.calculation.needMore|int}} more games.", [], "area", {
+    a: "endgame",
+    f: "early-read",
+  }),
   row("Your openings look steady.", [], "area", { a: "openings", f: "early-read" }),
   row("You found {{move:li-s1:11}}.", [], "area", { a: "openings" }),
   // Deliberate hardening: TS accepts, Rust rejects (union of the hardened forms).
@@ -279,15 +315,23 @@ const rows = [
 
 const inputs = {};
 for (const f of new Set(rows.map((r) => r.f))) {
-  inputs[f] = JSON.parse(readFileSync(join(backend, `fixtures/ai/input/coaching-input.${f}.json`), "utf8"));
+  inputs[f] = JSON.parse(
+    readFileSync(join(backend, `fixtures/ai/input/coaching-input.${f}.json`), "utf8"),
+  );
 }
 const evs = Object.fromEntries(Object.entries(inputs).map(([f, i]) => [f, buildEvidence(i)]));
 
 const esc = (s) =>
   Array.from({ length: s.length }, (_, k) => s.charCodeAt(k))
-    .map((c) => (c < 32 || c >= 127 ? String.fromCharCode(92) + "u" + c.toString(16).padStart(4, "0") : String.fromCharCode(c)))
+    .map((c) =>
+      c < 32 || c >= 127
+        ? String.fromCharCode(92) + "u" + c.toString(16).padStart(4, "0")
+        : String.fromCharCode(c),
+    )
     .join("");
-const out = rows.map((r) => esc(JSON.stringify({ ...r, ts: tsValidateText(evs[r.f], inputs[r.f], r) })));
+const out = rows.map((r) =>
+  esc(JSON.stringify({ ...r, ts: tsValidateText(evs[r.f], inputs[r.f], r) })),
+);
 if (out.some((r) => r.includes('"#'))) throw new Error("a row would end the raw string");
 
 let commit = "unknown";
@@ -306,5 +350,8 @@ const block = [
 const rs = readFileSync(target, "utf8");
 const re = /    \/\/ BEGIN GENERATED[\s\S]*?\/\/ END GENERATED/;
 if (!re.test(rs)) throw new Error(`no generated block in ${target}`);
-writeFileSync(target, rs.replace(re, () => block));
+writeFileSync(
+  target,
+  rs.replace(re, () => block),
+);
 console.log(`wrote ${out.length} rows to ${target}`);

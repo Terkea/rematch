@@ -50,7 +50,9 @@ const { buildEvidence, formatNumber } = mod;
 const sorted = (xs) => [...xs].sort();
 const num = (a, b) => a - b;
 const obj = (m, f = (x) => x) =>
-  Object.fromEntries([...m.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([k, v]) => [k, f(v)]));
+  Object.fromEntries(
+    [...m.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([k, v]) => [k, f(v)]),
+  );
 
 const formats = [null, "int", "pct0", "pct1", "dec1", "dec2", "signed1"];
 const fixtures = {};
@@ -85,9 +87,47 @@ for (const name of ["b2-rapid", "b0-blitz", "early-read"]) {
 }
 
 const values = [
-  0, -0.04, 0.04, 0.05, -0.05, 0.3149, 0.005, 0.015, 0.125, 1, 1.005, 1.234, 1.235, 1.25, -1.25,
-  1.5, -1.5, 2.5, -2.5, 3.5, 0.5, -0.5, 12.345, 99.995, 214.4, 3912, -3912, 1234567, 1234567.891,
-  -0.001, 0.1 + 0.2, 1 / 3, 2 / 3, -2 / 3, 1e6, 123456.789, 0.999, -0.999, 4.2, -4.2, 0.3333333333333,
+  0,
+  -0.04,
+  0.04,
+  0.05,
+  -0.05,
+  0.3149,
+  0.005,
+  0.015,
+  0.125,
+  1,
+  1.005,
+  1.234,
+  1.235,
+  1.25,
+  -1.25,
+  1.5,
+  -1.5,
+  2.5,
+  -2.5,
+  3.5,
+  0.5,
+  -0.5,
+  12.345,
+  99.995,
+  214.4,
+  3912,
+  -3912,
+  1234567,
+  1234567.891,
+  -0.001,
+  0.1 + 0.2,
+  1 / 3,
+  2 / 3,
+  -2 / 3,
+  1e6,
+  123456.789,
+  0.999,
+  -0.999,
+  4.2,
+  -4.2,
+  0.3333333333333,
 ];
 const format = [];
 for (const v of values) for (const f of formats) format.push([String(v), f, formatNumber(v, f)]);
