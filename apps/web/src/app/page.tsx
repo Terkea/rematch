@@ -1,10 +1,11 @@
-import { brand } from "../brand";
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
+import { getSession } from "../server/auth/session";
 
-export default function HomePage() {
-  return (
-    <main>
-      <h1>{brand.wordmark}</h1>
-      <p>The web app is running.</p>
-    </main>
-  );
+export const dynamic = "force-dynamic";
+
+/** The front door: Accounts when signed in, otherwise sign-in. */
+export default async function HomePage() {
+  const current = await getSession(await headers());
+  redirect(current ? "/app/accounts" : "/sign-in");
 }
