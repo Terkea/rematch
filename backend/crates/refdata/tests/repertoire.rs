@@ -533,3 +533,37 @@ async fn concurrent_rebuilds_serialise(pool: PgPool) {
     assert_eq!(count(&pool, "repertoire_nodes", account).await, 6);
     assert_eq!(count(&pool, "opening_lines", account).await, 1);
 }
+
+/// Chess.com stores post-game ratings; the expected score of an opening's games uses the
+/// pre-game ones (ADR-FIX-C-1).
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn chesscom_perf_vs_expected_uses_pre_game_ratings(pool: PgPool) {
+    let account = insert_account(&pool, "chesscom", "hero").await;
+    // Both lost as Black. Before the second game both players were 1500: it moved Black to 1490
+    // and White to 1510, so its post-game ratings would predict 0.47 instead of 0.5.
+    for (at, white, black) in [
+        ("2026-01-01T00:00:00Z", 1500, 1500),
+        ("2026-01-01T01:00:00Z", 1510, 1490),
+    ] {
+        let id = seed(&pool, account, CARO_PGN, "black", "done").await;
+        sqlx::query(
+            "UPDATE games SET played_at = $2::timestamptz, white_rating = $3, black_rating = $4 \
+             WHERE id = $1",
+        )
+        .bind(id)
+        .bind(at)
+        .bind(white)
+        .bind(black)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+    rebuild_repertoire(&pool, account, TimeClass::Blitz)
+        .await
+        .unwrap();
+    let ls = lines(&pool, account).await;
+    let (_, _, games, _, summary) = &ls[0];
+    assert_eq!(*games, 2);
+    let perf = summary["perfVsExpected"].as_f64().unwrap();
+    assert!((perf - -0.5).abs() < 1e-9, "{perf}");
+}

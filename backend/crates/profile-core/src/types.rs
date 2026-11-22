@@ -445,7 +445,12 @@ pub struct SessionInfo {
 ///
 /// Version 2 (R2 Task 9 fix round): `tactics.missed` became `Option` (`None` = W3 unknown for
 /// the game). Version-1 rows read it as `Some(n)` even when W3 was dropped, so they are stale.
-pub const PLAYER_GAME_METRICS_VERSION: u32 = 2;
+///
+/// Version 3 (analysis audit, ADR-FIX-C-1): `accuracy_by_phase` is lila's game accuracy over the
+/// phase's moves (was a plain mean of move accuracies), `accuracy` follows lila's harmonic floor
+/// and move-count window, and `player_rating` / `opponent_rating` / `expected_score` are
+/// pre-game. Version-2 rows are stale; `mark_stale_metrics` queues their recompute.
+pub const PLAYER_GAME_METRICS_VERSION: u32 = 3;
 
 /// A value per game phase (TS `Record<Phase, number | null>`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -765,7 +770,7 @@ mod tests {
             ply: 12,
         });
         let v = serde_json::to_value(&m).unwrap();
-        assert_eq!(v["version"], 2);
+        assert_eq!(v["version"], 3);
         assert!(v.get("accuracyByPhase").is_some());
         assert!(v.get("evalTrend15to35").is_some());
         assert!(v["opening"].get("evalAtOpeningEndWhiteCp").is_some());

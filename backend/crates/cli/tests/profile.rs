@@ -9,6 +9,7 @@ use analysis::eval_cache::DbEvalCache;
 use analysis::jobs::analyse::{AnalyseGameDeps, handle_analyse_game};
 use cli::profile_cmd::{run_eta, run_profile};
 use cli::queue_cmd::run_queue_lag;
+use cli::recompute_cmd::run_recompute_metrics;
 use enrich::enrich_game::EnrichDeps;
 use enrich::store::MemoryEnrichmentStore;
 use profile::build_profile::{BuildProfileDeps, handle_build_profile};
@@ -370,4 +371,55 @@ async fn eta_prints_the_sentence_for_the_account(pool: PgPool) {
     .await;
     assert_eq!(code, 1);
     assert_eq!(o.err(), "no account \"nobody\" on lichess");
+}
+
+// ---------------------------------------------------------------------------------------------
+// `cli recompute-metrics` (ADR-FIX-C-1)
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn recompute_metrics_rewrites_stale_rows_from_the_cache(pool: PgPool) {
+    seed_profile(&pool, 2).await;
+    sqlx::query("UPDATE game_metrics SET metrics = jsonb_set(metrics, '{version}', '2')")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let o = Out::default();
+    let code = run_recompute_metrics(
+        &argv(&["recompute-metrics"]),
+        &pool,
+        &o.print(),
+        &o.print_error(),
+    )
+    .await;
+    assert_eq!(code, 0, "{}", o.err());
+    assert_eq!(
+        o.out(),
+        "marked 2 games with stale metrics
+recomputed 2, skipped 0, failed 0"
+    );
+    let stale: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM game_metrics WHERE metrics_version <> $1")
+            .bind(profile_core::types::PLAYER_GAME_METRICS_VERSION as i32)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(stale, 0);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn recompute_metrics_refuses_arguments(pool: PgPool) {
+    let o = Out::default();
+    let code = run_recompute_metrics(
+        &argv(&["recompute-metrics", "--now"]),
+        &pool,
+        &o.print(),
+        &o.print_error(),
+    )
+    .await;
+    assert_eq!(code, 1);
+    assert!(
+        o.err().contains("usage: cli recompute-metrics"),
+        "{}",
+        o.err()
+    );
 }

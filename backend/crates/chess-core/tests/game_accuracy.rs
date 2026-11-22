@@ -93,19 +93,31 @@ mod lila_examples {
         assert_eq!(white, 100.0);
         assert!(black < 50.0, "{black}");
         // From a white start the jump is a white gain.
-        assert_eq!(game_accuracy_from(&wins, Color::White, Color::White), Some(100.0));
+        assert_eq!(
+            game_accuracy_from(&wins, Color::White, Color::White),
+            Some(100.0)
+        );
     }
 
     #[test]
     fn from_is_none_for_a_colour_without_moves() {
-        assert_eq!(game_accuracy_from(&[50.0, 50.0], Color::White, Color::Black), None);
-        assert_eq!(game_accuracy_from(&[50.0], Color::White, Color::White), None);
+        assert_eq!(
+            game_accuracy_from(&[50.0, 50.0], Color::White, Color::Black),
+            None
+        );
+        assert_eq!(
+            game_accuracy_from(&[50.0], Color::White, Color::White),
+            None
+        );
         assert_eq!(game_accuracy_from(&[], Color::White, Color::White), None);
     }
 
     #[test]
     fn from_a_white_start_matches_game_accuracy() {
         let (wins, _, black) = case("window-from-moves");
-        close(game_accuracy_from(&wins, Color::White, Color::Black).unwrap(), black);
+        close(
+            game_accuracy_from(&wins, Color::White, Color::Black).unwrap(),
+            black,
+        );
     }
 }

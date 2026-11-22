@@ -17,7 +17,7 @@ pub fn game_accuracy(win_percents_white_pov: &[f64], color: Color) -> f64 {
     game_accuracy_from(win_percents_white_pov, Color::White, color).unwrap_or(100.0)
 }
 
-/// [`game_accuracy`] of a series whose first move is `start`'s (a phase slice, ADR 0086), or
+/// [`game_accuracy`] of a series whose first move is `start`'s (a phase slice, ADR-FIX-C-1), or
 /// `None` when `color` made no move in it.
 ///
 /// A port of lila `AccuracyPercent.gameAccuracy`
@@ -66,8 +66,8 @@ pub fn game_accuracy_from(
             move_accuracy(100.0 - before, 100.0 - after)
         });
         // Like lichess, the first window - 2 moves share the first window.
-        let start = (i as i64 - (window as i64 - 2)).clamp(0, n.saturating_sub(window) as i64)
-            as usize;
+        let start =
+            (i as i64 - (window as i64 - 2)).clamp(0, n.saturating_sub(window) as i64) as usize;
         let end = (start + window).min(n);
         weights.push(stdev(&w[start..end]).clamp(0.5, 12.0));
     }

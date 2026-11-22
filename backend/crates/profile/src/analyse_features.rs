@@ -27,6 +27,7 @@ use profile_core::types::{
 };
 use profile_core::weakness::game_metrics::compute_game_metrics_counted;
 use profile_core::weakness::observe_game::{T_WIN, observe_game_counted};
+use profile_core::weakness::sessions::{PreGameInput, pre_game_ratings};
 use profile_core::weakness::strengths::extract_strength_plies_counted;
 
 /// The opening phase lasts at least this many plies when there is no book exit (TS default).
@@ -279,10 +280,31 @@ pub fn player_score(result: &str, player: Color) -> Option<f64> {
 
 /// The game's context from the player's point of view, with `accuracy` the player's game
 /// accuracy. `Err` names a column that does not parse.
+/// The player's stored rating in their previous rated game of the same time class (`$1` the
+/// game id): the input of [`pre_game_ratings`] (ADR-FIX-C-1). Served by
+/// `games_account_played_idx`; a NULL rating there reads as `None`.
+pub const PREVIOUS_OWN_RATING_SQL: &str = "SELECT CASE p.player_color WHEN 'white' THEN p.white_rating ELSE p.black_rating END FROM games g JOIN games p ON p.account_id = g.account_id AND p.time_class = g.time_class WHERE g.id = $1 AND p.rated AND (p.played_at, p.id) < (g.played_at, g.id) ORDER BY p.played_at DESC, p.id DESC LIMIT 1";
+
+/// See [`PREVIOUS_OWN_RATING_SQL`].
+pub async fn previous_own_rating(
+    pool: &sqlx::PgPool,
+    game_id: uuid::Uuid,
+) -> Result<Option<i32>, sqlx::Error> {
+    let r: Option<Option<i32>> = sqlx::query_scalar(PREVIOUS_OWN_RATING_SQL)
+        .bind(game_id)
+        .fetch_optional(pool)
+        .await?;
+    Ok(r.flatten())
+}
+
+/// The game's context from the player's point of view. Its ratings are the pre-game ones
+/// ([`pre_game_ratings`], from `previous_own_rating`), so the expected score is the one predicted
+/// before the game.
 pub fn game_context(
     game: &GameRow,
     accuracy: Option<f64>,
     protocol: &str,
+    previous_own_rating: Option<i32>,
 ) -> Result<GameContext, String> {
     let player = parse_color(&game.player_color)
         .ok_or_else(|| format!("player_color {:?}", game.player_color))?;
@@ -296,6 +318,15 @@ pub fn game_context(
         Color::White => (game.white_rating, game.black_rating),
         Color::Black => (game.black_rating, game.white_rating),
     };
+    let (own, opp) = pre_game_ratings(
+        platform,
+        PreGameInput {
+            rated: game.rated,
+            own_rating: own,
+            opponent_rating: opp,
+            previous_own_rating,
+        },
+    );
     let secs = |v: Option<i32>| v.and_then(|s| u32::try_from(s).ok());
     Ok(GameContext {
         game_id: game.id,

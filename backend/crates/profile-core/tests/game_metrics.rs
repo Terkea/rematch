@@ -126,36 +126,64 @@ fn result_does_not_depend_on_move_order() {
 
 // ------------------------------------------------------------------ accuracy
 
+/// Phase accuracy is lila's game accuracy over the phase's moves (ADR-FIX-C-1), so it is on the
+/// same scale as the game's. Expected values: an independent port of lila
+/// `AccuracyPercent.gameAccuracy` on the phase's white-POV W series.
 #[test]
-fn accuracy_by_phase() {
-    let mut g = make_game();
-    g.moves.truncate(6); // own plies 1, 3, 5
-    g.moves[own(0)].rec.accuracy = 100.0;
-    g.moves[own(1)].rec.accuracy = 80.0;
-    g.moves[own(2)].rec.accuracy = 60.0;
-    g.moves[own(2)].rec.phase = Phase::Middlegame;
-    // Opponent accuracy is not the player's.
-    g.moves[at_ply(2)].rec.accuracy = 0.0;
+fn accuracy_by_phase_is_the_game_formula_over_the_phase() {
+    // Middlegame (plies 21-60, White first): White's ply 31 drops W 50 -> 30, Black's ply 32
+    // gives it back. The plain mean of the stored per-move accuracies would say 100.
+    let g = with_move(make_game(), at_ply(31), |m| set_w(m, 50.0, 30.0));
+    let g = with_move(g, at_ply(32), |m| set_w(m, 70.0, 50.0));
     let m = metrics(&g);
-    assert_eq!(m.accuracy_by_phase.opening, Some(90.0));
-    assert_eq!(m.accuracy_by_phase.middlegame, Some(60.0));
+    assert_eq!(m.accuracy_by_phase.opening, Some(100.0));
+    let mid = m.accuracy_by_phase.middlegame.unwrap();
+    assert!((mid - 86.94245212245818).abs() < 1e-9, "{mid}");
     assert_eq!(m.accuracy_by_phase.endgame, None);
 }
 
 #[test]
-fn invalid_move_accuracy_is_skipped_and_counted() {
-    let mut g = make_game();
-    g.moves.truncate(4);
-    g.moves[own(0)].rec.accuracy = f64::NAN;
-    g.moves[own(1)].rec.accuracy = 70.0;
-    let s = compute_game_metrics_counted(&g, &observe_game(&g, T_WIN), vec![]);
-    assert_eq!(s.metrics.accuracy_by_phase.opening, Some(70.0));
-    assert_eq!(s.invalid_move_accuracy, 1);
+fn accuracy_by_phase_starts_with_the_phase_first_mover() {
+    // The middlegame starts at Black's ply 22; White's ply 23 drops W 50 -> 20.
+    let mut g = with_move(make_game(), at_ply(21), |m| m.rec.phase = Phase::Opening);
+    g = with_move(g, at_ply(23), |m| set_w(m, 50.0, 20.0));
+    g = with_move(g, at_ply(24), |m| set_w(m, 80.0, 50.0));
+    let m = metrics(&g);
+    let mid = m.accuracy_by_phase.middlegame.unwrap();
+    assert!((mid - 79.71468220793957).abs() < 1e-9, "{mid}");
+    // Black, as the player, is scored on its own moves of the same slice.
+    g.ctx.player_color = Color::Black;
+    let mid = metrics(&g).accuracy_by_phase.middlegame.unwrap();
+    assert!((mid - 80.20997220179575).abs() < 1e-9, "{mid}");
+}
 
+#[test]
+fn accuracy_by_phase_is_unknown_without_an_own_move_in_the_phase() {
+    // Only Black's last ply is in the endgame.
+    let g = with_move(make_game(), at_ply(60), |m| m.rec.phase = Phase::Endgame);
+    let m = metrics(&g);
+    assert_eq!(m.accuracy_by_phase.endgame, None);
+    assert!(m.accuracy_by_phase.middlegame.is_some());
+}
+
+#[test]
+fn accuracy_by_phase_is_unknown_when_a_move_of_the_phase_is_invalid() {
+    // An unusable W (either colour) leaves a hole in the phase's series: no value, never a guess.
+    let mut g = make_game();
+    invalidate(&mut g, at_ply(30));
+    let m = metrics(&g);
+    assert_eq!(m.accuracy_by_phase.middlegame, None);
+    assert_eq!(m.accuracy_by_phase.opening, Some(100.0));
+}
+
+#[test]
+fn invalid_move_accuracy_is_counted_and_does_not_feed_phase_accuracy() {
+    let mut g = make_game();
+    g.moves[own(0)].rec.accuracy = f64::NAN;
     g.moves[own(1)].rec.accuracy = 101.0;
     let s = compute_game_metrics_counted(&g, &observe_game(&g, T_WIN), vec![]);
-    assert_eq!(s.metrics.accuracy_by_phase.opening, None);
     assert_eq!(s.invalid_move_accuracy, 2);
+    assert_eq!(s.metrics.accuracy_by_phase.opening, Some(100.0));
 }
 
 #[test]
@@ -480,8 +508,8 @@ fn strengths_are_passed_through() {
 fn json_shape_is_camel_case_current_version() {
     let m = metrics(&make_game());
     let v = serde_json::to_value(&m).unwrap();
-    assert_eq!(v["version"], 2);
-    assert_eq!(PLAYER_GAME_METRICS_VERSION, 2);
+    assert_eq!(v["version"], 3);
+    assert_eq!(PLAYER_GAME_METRICS_VERSION, 3);
     assert!(v.get("accuracyByPhase").is_some());
     assert!(v.get("oneMoveBlunders").is_some());
     assert!(v.get("missedPunish").is_some());
