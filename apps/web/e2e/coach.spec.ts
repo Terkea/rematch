@@ -103,10 +103,14 @@ test.describe
 
     test("3. a weakness opens its detail; asking about it carries the anchor", async () => {
       await ready(page, "/app/weaknesses", "main h1");
-      await page.locator("a[href*='/app/weaknesses/W3.shallow']").first().click();
-      await page.waitForURL(/\/app\/weaknesses\/W3\.shallow/);
+      // W1 is the weakness the synthetic report input has example positions for.
+      await page
+        .locator("a[href^='/app/weaknesses/W1?'], a[href='/app/weaknesses/W1']")
+        .first()
+        .click();
+      await page.waitForURL(/\/app\/weaknesses\/W1\?/);
       await expect(page.getByRole("heading", { name: "State over time" })).toBeVisible();
-      await expect(page.getByText(/22 of 120/).first()).toBeVisible();
+      await expect(page.getByText(/58 of 2,400/).first()).toBeVisible();
       await expect(page.getByRole("heading", { name: "Example positions" })).toBeVisible();
       const examples = page.locator("section:has(#examples-heading)");
       await expect(examples.locator("svg[role='img']").first()).toBeVisible();
