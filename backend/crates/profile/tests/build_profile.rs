@@ -44,6 +44,7 @@ fn deps(pool: &PgPool) -> BuildProfileDeps {
         pool: pool.clone(),
         queue: Queue::new(pool.clone()),
         now: seed_now,
+        benchmark: profile::peer_benchmark::BenchmarkSource::LichessBands,
     }
 }
 

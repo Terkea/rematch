@@ -81,7 +81,8 @@ One file per decision: context, decision, alternatives, consequences. New decisi
 - [0076. Recurring incremental sync of linked accounts](0076-recurring-account-sync.md)
 - [0077. "Sync now" and the analysis-progress panel](0077-sync-now-and-analysis-progress.md)
 - [0078. Honest coach availability, uncompared weaknesses and R2-backed examples](0078-honest-coach-availability-and-benchmarks.md)
-- [0081. The colour split: profile rows per side the player had](0081-colour-split-profile-rows.md)
+- [0080. A chess.com peer benchmark from the opponents you have faced](0080-chesscom-peer-benchmark.md)
+- [0082. The colour split: profile rows per side the player had](0082-colour-split-profile-rows.md)
 
 ## Records with placeholder numbers
 
@@ -143,3 +144,7 @@ Every R2 record has a file (titles final at R2 Task 35); numbers 19 to 21 were n
 ### Browser check fixes (fix/d): ADR-FIX-D
 
 - [ADR-FIX-D-1. Numbers keep their units, answers show their positions, numbers-only reports say why](ADR-FIX-D-1-units-boards-and-numbers-only-reports.md)
+
+### Coach bug fixes (fix/e): ADR-FIX-E
+
+- [ADR-FIX-E-1. The coach finds the player's own moves by a move filter](ADR-FIX-E-1-find-examples-move-filter.md)

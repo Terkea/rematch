@@ -12,8 +12,8 @@
 //!   left for `select_for_analysis` (the schedule job's mapping, the default beta plan);
 //! - `areaScores` and `metrics` come from the latest `last50` snapshots (Task 33), the area
 //!   scores recomputed from those rows so `sufficient`/`needMore` are known (R-2 for metrics);
-//! - `weaknesses` re-estimate every binomial key at `now` with the band reference (the same code
-//!   as build-profile) and replay the series for the state and `P_imp`; only claimable
+//! - `weaknesses` re-estimate every binomial key at `now` with the benchmark the last
+//!   build-profile stored (`account_benchmark`, ADR 0080; the same code as build-profile) and replay the series for the state and `P_imp`; only claimable
 //!   estimates (R-3, T12 ruling, `priority > 0`) with at least one exemplar (R3 T8) are ranked,
 //!   up to 5 exemplars for ranks 1-3 and 2 after, from `exemplar_plies` within 6 months, by ΔW
 //!   then recency, distinct games;
@@ -51,7 +51,6 @@ use profile_core::timeline::states::DETECTOR_VERSION;
 use profile_core::types::{
     BandReference, GameContext, MetricId, PlayerGameMetrics, SeriesKey, StrengthKind, WeaknessKey,
 };
-use refdata::band_reference::load_band_reference;
 use refdata::builds::RefdataError;
 use refdata::repertoire::player_band;
 use scheduler::precision::{PrecisionInput, is_precise};
@@ -75,6 +74,7 @@ use super::strengths::{
 use crate::analyse_features::parse_time_class;
 use crate::estimates::{age_days, compute_estimates, games_in_window};
 use crate::load::{LoadError, load_analysed_games, load_series_points};
+use crate::peer_benchmark::load_account_benchmark;
 use crate::snapshots::LAST_N;
 use crate::timeline_job::evaluate_all;
 
@@ -814,9 +814,9 @@ pub async fn build_coaching_input_report(
     series.retain(|_, p| !p.is_empty());
 
     let (band, _source) = player_band(pool, account_id, tc).await?;
-    let reference: Option<BandReference> = load_band_reference(pool, band, tc)
-        .await?
-        .map(|r| r.reference());
+    // What the account's last build-profile compared with (ADR 0080), so the input and the
+    // stored estimates agree.
+    let reference: Option<BandReference> = load_account_benchmark(pool, account_id, tc).await?;
     let rating: Option<i32> = sqlx::query_scalar(
         "SELECT CASE WHEN player_color = 'white' THEN white_rating ELSE black_rating END \
          FROM games WHERE account_id = $1 AND time_class = $2::time_class \

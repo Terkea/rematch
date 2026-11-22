@@ -19,3 +19,9 @@ ALTER TABLE weakness_estimates ADD PRIMARY KEY (account_id, time_class, side, se
 ALTER TABLE band_reference ADD COLUMN side side_scope NOT NULL DEFAULT 'both';
 ALTER TABLE band_reference DROP CONSTRAINT band_reference_pkey;
 ALTER TABLE band_reference ADD PRIMARY KEY (build_id, band, time_class, side, metric);
+
+-- The peer benchmark's rows (ADR 0080): a colour's rows come from the opponents who had that
+-- colour. The band header (`account_benchmark`) stays one per account x time class.
+ALTER TABLE account_benchmark_stat ADD COLUMN side side_scope NOT NULL DEFAULT 'both';
+ALTER TABLE account_benchmark_stat DROP CONSTRAINT account_benchmark_stat_pkey;
+ALTER TABLE account_benchmark_stat ADD PRIMARY KEY (account_id, time_class, side, metric);

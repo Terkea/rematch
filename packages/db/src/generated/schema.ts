@@ -190,6 +190,74 @@ export const account = pgTable(
   ],
 );
 
+export const accountBenchmark = pgTable(
+  "account_benchmark",
+  {
+    accountId: uuid("account_id").notNull(),
+    timeClass: timeClass("time_class").notNull(),
+    source: text().notNull(),
+    centerRating: integer("center_rating"),
+    ratingLow: integer("rating_low"),
+    ratingHigh: integer("rating_high"),
+    nPlayers: integer("n_players"),
+    nGames: integer("n_games"),
+    computedAt: timestamp("computed_at", { withTimezone: true, mode: "date" })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.accountId],
+      foreignColumns: [linkedAccounts.id],
+      name: "account_benchmark_account_id_fkey",
+    }).onDelete("cascade"),
+    primaryKey({ columns: [table.accountId, table.timeClass], name: "account_benchmark_pkey" }),
+    check(
+      "account_benchmark_source_check",
+      sql`source = ANY (ARRAY['peers'::text, 'lichess_bands'::text])`,
+    ),
+    check("account_benchmark_n_players_check", sql`n_players >= 0`),
+    check("account_benchmark_n_games_check", sql`n_games >= 0`),
+    check(
+      "account_benchmark_check",
+      sql`(source <> 'peers'::text) OR ((center_rating IS NOT NULL) AND (rating_low IS NOT NULL) AND (rating_high IS NOT NULL) AND (n_players IS NOT NULL) AND (n_games IS NOT NULL))`,
+    ),
+  ],
+);
+
+export const accountBenchmarkStat = pgTable(
+  "account_benchmark_stat",
+  {
+    accountId: uuid("account_id").notNull(),
+    timeClass: timeClass("time_class").notNull(),
+    metric: text().notNull(),
+    median: doublePrecision().notNull(),
+    p25: doublePrecision().notNull(),
+    p40: doublePrecision().notNull(),
+    p75: doublePrecision().notNull(),
+    pooledRate: doublePrecision("pooled_rate"),
+    eplPerEvent: doublePrecision("epl_per_event"),
+    oppsPerGame: doublePrecision("opps_per_game"),
+    oppSlopePer100: doublePrecision("opp_slope_per_100"),
+    nPlayers: integer("n_players").notNull(),
+    nGames: integer("n_games").notNull(),
+    lowSample: boolean("low_sample").notNull(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.accountId, table.timeClass],
+      foreignColumns: [accountBenchmark.accountId, accountBenchmark.timeClass],
+      name: "account_benchmark_stat_account_id_time_class_fkey",
+    }).onDelete("cascade"),
+    primaryKey({
+      columns: [table.accountId, table.timeClass, table.metric],
+      name: "account_benchmark_stat_pkey",
+    }),
+    check("account_benchmark_stat_n_players_check", sql`n_players >= 0`),
+    check("account_benchmark_stat_n_games_check", sql`n_games >= 0`),
+  ],
+);
+
 export const accountLinks = pgTable(
   "account_links",
   {
@@ -1124,6 +1192,41 @@ export const openingLines = pgTable(
       columns: [table.accountId, table.timeClass, table.color, table.lineKey, table.kind],
       name: "opening_lines_pkey",
     }),
+  ],
+);
+
+export const opponentGameMetrics = pgTable(
+  "opponent_game_metrics",
+  {
+    gameId: uuid("game_id").primaryKey().notNull(),
+    accountId: uuid("account_id").notNull(),
+    timeClass: timeClass("time_class").notNull(),
+    opponent: text().notNull(),
+    opponentRating: integer("opponent_rating").notNull(),
+    playerRating: integer("player_rating").notNull(),
+    metrics: jsonb().notNull(),
+    metricsVersion: integer("metrics_version").generatedAlwaysAs(
+      sql`COALESCE(((metrics ->> 'version'::text))::integer, 0)`,
+    ),
+    sourceCreatedAt: timestamp("source_created_at", { withTimezone: true, mode: "date" }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("opponent_game_metrics_account_tc_idx").using(
+      "btree",
+      table.accountId.asc().nullsLast(),
+      table.timeClass.asc().nullsLast(),
+    ),
+    foreignKey({
+      columns: [table.gameId],
+      foreignColumns: [games.id],
+      name: "opponent_game_metrics_game_id_fkey",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [table.accountId],
+      foreignColumns: [linkedAccounts.id],
+      name: "opponent_game_metrics_account_id_fkey",
+    }).onDelete("cascade"),
   ],
 );
 

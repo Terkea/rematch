@@ -8,7 +8,7 @@ import { coachHref } from "../../../../../server/coach/anchor";
 import { changeNotes } from "../../../../../server/coaching";
 import { getDb } from "../../../../../server/db";
 import { requestEventCursor } from "../../../../../server/events/request-cursor";
-import { getWeakness, resolveCoachScope } from "../../../../../server/profile";
+import { getBenchmark, getWeakness, resolveCoachScope } from "../../../../../server/profile";
 import { reviewGameIds } from "../../../../../server/profile/game-ids";
 import { noteKeysInScope } from "../queries";
 import { MAX_EXEMPLARS } from "./exemplars";
@@ -51,7 +51,8 @@ const load = cache(async (raw: string, query: string) => {
   if (!scope) notFound();
   const detail = await getWeakness(db, user.id, scope, key);
   if (!detail) notFound();
-  return { user, db, scope, detail };
+  const benchmark = await getBenchmark(db, user.id, scope);
+  return { user, db, scope, detail, benchmark };
 });
 
 /** The search params as a stable string, so `cache` sees one key per request. */
@@ -71,7 +72,7 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
 }
 
 export default async function WeaknessPage({ params, searchParams }: Props) {
-  const { user, db, scope, detail } = await load(
+  const { user, db, scope, detail, benchmark } = await load(
     (await params).seriesKey,
     queryOf(await searchParams),
   );
@@ -104,6 +105,7 @@ export default async function WeaknessPage({ params, searchParams }: Props) {
         notes={notes}
         reviewIds={reviewIds}
         askHref={askHref}
+        benchmark={benchmark}
       />
     </>
   );

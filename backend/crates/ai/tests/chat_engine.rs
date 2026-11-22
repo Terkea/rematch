@@ -1478,6 +1478,7 @@ fn chat_prompt_files_have_no_template_placeholders() {
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("prompts");
     for (f, want) in [
         ("chat/system.v1.md", vec![]),
+        ("chat/system.v2.md", vec![]),
         ("chat/repair.v1.md", vec!["errors".to_owned()]),
         ("chat-summary/system.v1.md", vec![]),
         ("chat-summary/task.v1.md", vec![]),
@@ -1887,7 +1888,7 @@ async fn a_paragraph_cut_off_by_max_tokens_is_never_published() {
 fn chat_prompts_have_no_json_output_instruction() {
     let system = chat_system_blocks();
     assert_eq!(system[0], rules_block());
-    let chat = load_prompt("chat/system", 1).unwrap();
+    let chat = load_prompt("chat/system", 2).unwrap();
     assert!(system[1].text.starts_with(chat.text.trim_end()));
     let repair = render_template(
         load_prompt("chat/repair", 1).unwrap().text,
@@ -2049,4 +2050,38 @@ async fn tools_after_the_off_topic_marker_are_refused() {
     }
     assert_eq!(world.ds.calls(), ["get_position"]);
     assert!(world.engine.request_calls.lock().unwrap().is_empty());
+}
+
+/// Fix E (N8): the chat uses chat/system v2, which teaches the move filter, prefers cited moves
+/// (so boards render) and says what an empty search searched instead of a blanket "none found".
+#[test]
+fn chat_system_v2_teaches_the_move_filter_and_honest_empty_searches() {
+    assert!(CHAT_PROMPT_SET.contains(&("chat/system", 2)));
+    let v2 = load_prompt("chat/system", 2).unwrap().text;
+    assert!(chat_system_blocks()[1].text.starts_with(v2.trim_end()));
+    for f in [
+        "`phase`",
+        "`judgement`",
+        "`minJudgement`",
+        "`standing`",
+        "`minWinBefore`",
+        "`minDeltaW`",
+        "`clockBelowSeconds`",
+        "`color`",
+        "`lastGames`",
+        "`searched`",
+        "`gamesSearched`",
+        "`move` token",
+    ] {
+        assert!(v2.contains(f), "chat/system v2 names {f}");
+    }
+    assert!(v2.contains("say exactly what you searched"));
+    assert!(v2.contains("Do not write a blanket"));
+    // v1 is kept, unchanged, for stored hashes.
+    assert!(
+        !load_prompt("chat/system", 1)
+            .unwrap()
+            .text
+            .contains("searched")
+    );
 }

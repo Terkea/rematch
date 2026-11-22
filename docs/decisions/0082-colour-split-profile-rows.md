@@ -1,4 +1,4 @@
-# 0081. The colour split: profile rows per side the player had
+# 0082. The colour split: profile rows per side the player had
 
 Date: 2026-11-22. Status: accepted (next round, task T1). Builds on ADR-R2-5 (priority and
 `MIN_GAMES`), ADR-R2-6 (timeline states), ADR-R2-11 (band reference aggregation), ADR-R2-23
@@ -15,11 +15,12 @@ filtered by colour.
 ## Decision
 
 1. **One dimension, `side_scope ('both', 'white', 'black')`** (migration
-   `20261123000000_colour_split.sql`). `kpi_snapshot`, `weakness_estimates` and `band_reference`
-   get `side NOT NULL DEFAULT 'both'`, so every existing row is `both`. The side joins
-   `kpi_snapshot_lookup_idx` and the primary keys of `weakness_estimates`
-   `(account_id, time_class, side, series_key)` and `band_reference`
-   `(build_id, band, time_class, side, metric)`. Rust's `profile_core::types::Side` mirrors it.
+   `20261123000000_colour_split.sql`). `kpi_snapshot`, `weakness_estimates`, `band_reference`
+   and `account_benchmark_stat` get `side NOT NULL DEFAULT 'both'`, so every existing row is
+   `both`. The side joins `kpi_snapshot_lookup_idx` and the primary keys of
+   `weakness_estimates` `(account_id, time_class, side, series_key)`, `band_reference`
+   `(build_id, band, time_class, side, metric)` and `account_benchmark_stat`
+   `(account_id, time_class, side, metric)`. Rust's `profile_core::types::Side` mirrors it.
 2. **build-profile computes three times.** Estimates and KPI snapshots (with their `area:*`
    rows) are computed for `both` (unchanged), and for the games the player had White, then
    Black, in: that side's series points, games-in-window count and weekly windows. Sessions are
@@ -38,17 +39,24 @@ filtered by colour.
    (`NoBenchmark`, null band fields). The Lichess aggregation now also writes `white` and
    `black` rows from the sides that had that colour, with their own player counts and
    `low_sample`. The build's evidence gate and supersede rule count `both` rows only, so a
-   build's activation is decided as before. The peer benchmark (ADR 0080) should write its
-   per-colour rows from the opponents' sides with the same rule.
-6. **Existing profiles rebuild once, without the engine.** There is no profile version to bump:
+   build's activation is decided as before.
+6. **The peer benchmark (ADR 0080) splits the same way.** A colour's peers are the opponents
+   who had that colour (`peer_sides_of`): the player's Black games give the White peers, so
+   White play is compared with White play. They are aggregated by the same rules (same rating
+   window around the player's latest rating, one weight per opponent, their own `low_sample`)
+   and stored as that side's `account_benchmark_stat` rows (`side` joins its primary key).
+   `account_benchmark` (the band and its counts) stays one row per account × time class and
+   describes the both benchmark; colour rows are written only when it exists. The coaching
+   input's `load_account_benchmark` reads the both rows.
+7. **Existing profiles rebuild once, without the engine.** There is no profile version to bump:
    `PLAYER_GAME_METRICS_VERSION` describes the per-game metrics, which did not change, and
    bumping it would also make every reference observation stale. Instead the worker start runs
    `requeue_colour_split`: every account × time class with `both` estimates but no `black` one
    gets a build-profile job (deduped). The build reads the stored rows, so it is idempotent and
    the pair is never due again.
-7. **Readers keep reading `both`.** The coaching input, the weekly input, the scheduler's
+8. **Readers keep reading `both`.** The coaching input, the weekly input, the scheduler's
    precision check, the timeline's stored states and the web read models (`latestSnapshots`,
-   the weakness summaries) filter `side = 'both'`, so every page is unchanged. Per-side UI and
+   the weakness summaries, the benchmark label and `cli profile`) filter `side = 'both'`, so every page is unchanged. Per-side UI and
    the CoachingInput `by_color` come later (T2b, T3, T4).
 
 ## Consequences
@@ -57,5 +65,6 @@ filtered by colour.
   build's CPU part grows accordingly (still one load, one transaction).
 - A colour's ranking can differ from the account's: Black may be unranked (fewer than 30
   games) while both is ranked. That is the honest reading of the evidence.
-- Until a band reference build or the peer benchmark writes colour rows, colour estimates and
-  area scores are unbenchmarked.
+- A colour without peers (or Lichess rows) of its own has unbenchmarked estimates and area
+  scores: "not compared", never the both benchmark. A player who always has White has no
+  White peers at all.

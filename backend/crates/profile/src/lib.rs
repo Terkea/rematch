@@ -7,6 +7,7 @@ pub mod coaching;
 pub mod estimates;
 pub mod hook_impl;
 pub mod load;
+pub mod peer_benchmark;
 pub mod reference_aggregate;
 pub mod reference_jobs;
 pub mod requeue;
