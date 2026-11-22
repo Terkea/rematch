@@ -23,7 +23,9 @@
 //!   by games descending;
 //! - `changes`: onset rows of the stored history (which equals the current replay, T33 ruling)
 //!   with their onset in the last 90 days, newest first, with their stored causes and up to 3
-//!   examples on each side of the onset.
+//!   examples on each side of the onset;
+//! - v2 (ADR 0084): `byColor` ([`super::colors`]), each colour from its own games, snapshot
+//!   rows, series points and benchmark rows, and `benchmark`, the stored benchmark band.
 //!
 //! Every list is cut to `LIMITS` by its own order (R-6), and [`CoachingInput::validate`] runs
 //! last: a failure is a bug and returns [`BuildError::Contract`].

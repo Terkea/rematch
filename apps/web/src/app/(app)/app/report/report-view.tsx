@@ -13,6 +13,7 @@ import type { CoachScope } from "../../../../server/profile/types";
 import { Areas } from "./_sections/areas";
 import { Changes } from "./_sections/changes";
 import { ClimbPlan } from "./_sections/climb-plan";
+import { Colours } from "./_sections/colours";
 import { Openings } from "./_sections/openings";
 import { Overview } from "./_sections/overview";
 import { GameIdsContext, type SectionStatus, sectionStatus } from "./_sections/shell";
@@ -149,7 +150,7 @@ function Fresh({ on, children }: { on: boolean; children: ReactNode }) {
 
 /**
  * The coaching report (ADR 0073), top to bottom: the state banner, where you stand (with the AI
- * disclosure), the coach's overview, what's costing you games, openings, the climb plan, the
+ * disclosure), the coach's overview, White and Black (ADR 0084), what's costing you games, openings, the climb plan, the
  * area notes, this month's changes and the count of removed statements. Every section keeps its
  * computed part; the coach's part shows only when its row is `ready`.
  */
@@ -255,9 +256,11 @@ export function ReportView({ data }: { data: ReportPageData }) {
             content={content("overview", "overview")}
             status={status("overview")}
             disclosure={disclosure}
+            scope={target}
             order={1}
           />
         </Fresh>
+        <Colours byColor={computed.byColor} benchmark={computed.benchmark} order={2} />
         <Fresh on={fresh.has("weaknesses")}>
           <Weaknesses
             computed={computed}
@@ -267,7 +270,7 @@ export function ReportView({ data }: { data: ReportPageData }) {
             scope={target}
             trends={trends}
             reportDate={(view.createdAt ?? new Date(payload.generatedAt)).toISOString()}
-            order={2}
+            order={3}
           />
         </Fresh>
         <Fresh on={fresh.has("openings")}>
@@ -277,7 +280,7 @@ export function ReportView({ data }: { data: ReportPageData }) {
             status={status("openings")}
             disclosure={disclosure}
             lines={lines ?? {}}
-            order={3}
+            order={4}
           />
         </Fresh>
         <Fresh on={fresh.has("climb_plan")}>
@@ -286,7 +289,7 @@ export function ReportView({ data }: { data: ReportPageData }) {
             content={content("climb_plan", "climbPlan")}
             status={status("climb_plan")}
             disclosure={disclosure}
-            order={4}
+            order={5}
           />
         </Fresh>
         <Fresh on={fresh.has("areas")}>
@@ -296,10 +299,10 @@ export function ReportView({ data }: { data: ReportPageData }) {
             status={status("areas")}
             disclosure={disclosure}
             scope={target}
-            order={5}
+            order={6}
           />
         </Fresh>
-        <Changes computed={computed} notes={notes} order={6} />
+        <Changes computed={computed} notes={notes} order={7} />
       </div>
     </GameIdsContext.Provider>
   );

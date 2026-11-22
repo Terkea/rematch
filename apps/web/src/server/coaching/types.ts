@@ -207,6 +207,59 @@ export type TimelineChange = {
   examples: (ExemplarPosition & { side: "before" | "after" })[];
 };
 
+/** Rust `ColorMetric` (coaching-input-v2, ADR 0084): null numbers when not sufficient. */
+export type ColorMetric = {
+  value: number | null;
+  unit: "rate" | "pct" | "per_game";
+  n: number;
+  low: number | null;
+  high: number | null;
+  sufficient: boolean;
+  needMore: number | null;
+};
+
+/** Rust `ColorWeakness`: a rate over one colour's games, with that colour's own peers. */
+export type ColorWeakness = {
+  seriesKey: string;
+  id: string;
+  variant: string | null;
+  label: string;
+  area: AreaId;
+  rate: number;
+  low: number;
+  high: number;
+  events: number;
+  opportunities: number;
+  peerRate: number | null;
+  peerPercentile: number | null;
+  peerPlayers: number | null;
+};
+
+/** Rust `ColorSummary`: the player's games with one colour (the last 50 at most). */
+export type ColorSummary = {
+  games: number;
+  sufficient: boolean;
+  needMore: number | null;
+  wins: number;
+  draws: number;
+  losses: number;
+  score: ColorMetric;
+  accuracy: ColorMetric;
+  blundersPerGame: ColorMetric;
+  weaknesses: ColorWeakness[];
+};
+
+export type ByColor = { white: ColorSummary; black: ColorSummary };
+
+/** Rust `Benchmark`: who the comparisons are with (ADR 0080). */
+export type InputBenchmark = {
+  source: "peers" | "lichess_bands";
+  ratingLow: number | null;
+  ratingHigh: number | null;
+  players: number | null;
+  games: number | null;
+};
+
 /** Rust `ComputedReport`: the engine-derived part, shown with or without the AI narrative. */
 export type ComputedReport = {
   player: {
@@ -225,6 +278,10 @@ export type ComputedReport = {
   focuses: string[];
   newThisPeriod: TimelineChange[];
   fixedThisPeriod: TimelineChange[];
+  /** coaching-input-v2's colour split; absent in reports from a v1 input. */
+  byColor?: ByColor;
+  /** v2: the benchmark band; absent without one (and in v1 reports). */
+  benchmark?: InputBenchmark;
 };
 
 // --- Validated sections (`report_sections.content`) ---
