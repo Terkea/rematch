@@ -40,6 +40,11 @@ x-web-environment: &web-environment
   IP_ADDRESS_HEADERS: ${IP_ADDRESS_HEADERS:-x-forwarded-for}
   IN_DOCKER: "1"
   SKIP_INSTALL: "1"
+  # The AI plan (ADR 0075), the same variables as the Rust worker's: plan beta|free|pro, the
+  # beta plan's coach messages per week, and its manual reports per UTC day (1 to 24).
+  AI_DEFAULT_PLAN: ${AI_DEFAULT_PLAN:-beta}
+  AI_BETA_CHAT_WEEKLY: ${AI_BETA_CHAT_WEEKLY:-100}
+  AI_BETA_MANUAL_REPORTS_PER_DAY: ${AI_BETA_MANUAL_REPORTS_PER_DAY:-1}
 
 services:
   postgres:
@@ -313,6 +318,11 @@ services:
       AI_BUDGET_FREE_MICRO_USD: ${AI_BUDGET_FREE_MICRO_USD:-}
       AI_BUDGET_PRO_MICRO_USD: ${AI_BUDGET_PRO_MICRO_USD:-}
       AI_GLOBAL_MONTHLY_BUDGET_MICRO_USD: ${AI_GLOBAL_MONTHLY_BUDGET_MICRO_USD:-}
+      # The AI plan (ADR 0075), the same variables as the web's. Empty: beta, 100 coach messages
+      # a week, 1 manual report a UTC day (1 to 24).
+      AI_DEFAULT_PLAN: ${AI_DEFAULT_PLAN:-beta}
+      AI_BETA_CHAT_WEEKLY: ${AI_BETA_CHAT_WEEKLY:-100}
+      AI_BETA_MANUAL_REPORTS_PER_DAY: ${AI_BETA_MANUAL_REPORTS_PER_DAY:-1}
     volumes:
       - ./data:/data:ro
       # From a worktree, SYZYGY_HOST_DIR points at the main checkout's tables.

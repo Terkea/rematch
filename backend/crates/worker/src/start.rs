@@ -756,6 +756,17 @@ pub async fn start_workers(env: &WorkerEnv, opts: StartOptions) -> anyhow::Resul
         None => None,
         Some(Ok(choice)) => {
             tracing::info!("{}", choice.line);
+            // Which path the monthly and weekly schedules take (ADR 0075); no credential here.
+            if let Some(client) = &choice.client {
+                tracing::info!(
+                    "ai: scheduled regenerations via {}",
+                    if client.batches_enabled() {
+                        "batches"
+                    } else {
+                        "sync jobs (sidecar)"
+                    }
+                );
+            }
             Some(choice.client)
         }
         Some(Err(e)) => {
@@ -822,15 +833,26 @@ pub async fn start_workers(env: &WorkerEnv, opts: StartOptions) -> anyhow::Resul
         Arc::new(PreviewHandler(Arc::new(preview))),
         preview_runner_config(&base, pool_size),
     );
-    s.spawn(
-        &queue,
+    let ai_entitlements: Arc<dyn ai::entitlements::Entitlements> =
+        Arc::new(crate::ai_jobs::ai_entitlements(env));
+    let build_profile: Arc<dyn queue::runner::Handler> =
         Arc::new(BuildProfileHandler(Arc::new(BuildProfileDeps {
             pool: pool.clone(),
             queue: queue.clone(),
             now: time::OffsetDateTime::now_utc,
-        }))),
-        build_profile_runner_config(&base),
-    );
+        })));
+    // With the AI runners, a completed build also requests the first report (M5b ruling G3).
+    let build_profile: Arc<dyn queue::runner::Handler> = if with_ai {
+        Arc::new(crate::coach_triggers::FirstReportOnBuild {
+            inner: build_profile,
+            pool: pool.clone(),
+            queue: queue.clone(),
+            entitlements: ai_entitlements.clone(),
+        })
+    } else {
+        build_profile
+    };
+    s.spawn(&queue, build_profile, build_profile_runner_config(&base));
     s.spawn(
         &queue,
         Arc::new(ReferenceGameHandler(reference.clone())),
@@ -858,6 +880,8 @@ pub async fn start_workers(env: &WorkerEnv, opts: StartOptions) -> anyhow::Resul
             inputs,
             budgets: env.ai_budgets,
             pricing,
+            entitlements: ai_entitlements.clone(),
+            weekly: Arc::new(crate::coach_triggers::ProfileWeeklyProvider { pool: pool.clone() }),
         };
         for (handler, cfg) in ai_runners(&deps, &base) {
             s.spawn(&queue, handler, cfg);
