@@ -1,8 +1,8 @@
 import type { Db } from "@ci/db";
 import { sql } from "drizzle-orm";
 import { readOnly } from "../games";
-import { ownsScope } from "./scope";
 import type { Benchmark } from "./benchmark-text";
+import { ownsScope } from "./scope";
 import type { CoachScope } from "./types";
 
 export {

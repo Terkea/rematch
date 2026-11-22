@@ -186,7 +186,11 @@ export function WeaknessesView({
                         state={w.state}
                         rate={w.rate}
                         evidence={w.evidence}
-                        band={group ? { median: w.band.median, label: group } : { median: w.band.median }}
+                        band={
+                          group
+                            ? { median: w.band.median, label: group }
+                            : { median: w.band.median }
+                        }
                         compared={w.compared}
                         window={ESTIMATE_WINDOW_TEXT}
                         href={weaknessHref(w.seriesKey, scope)}
