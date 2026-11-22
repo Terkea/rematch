@@ -195,6 +195,34 @@ describe("AccountsView", () => {
     expect(window.location.search).toBe("");
   });
 
+  it("an unverified link that never had a code says Unverified and starts verifying (I3)", async () => {
+    const unverified: LinkedAccountView = { ...pending, status: "unverified", code: undefined };
+    const calls = stubFetch([
+      {
+        method: "POST",
+        path: "/api/accounts/chesscom",
+        status: 201,
+        body: { linkId, username: "fakeplayer", code: "CI-ABC234", verified: false },
+      },
+      { method: "GET", path: "/api/accounts", body: [pending] },
+    ]);
+    renderWithProviders(<AccountsView initialAccounts={[unverified]} chesscom lichess={false} />);
+    expect(screen.getByText("Unverified")).toBeInTheDocument();
+    expect(screen.queryByText(/expired/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Get a new code" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Verify this account" }));
+    expect(await screen.findByText(INSTRUCTIONS)).toBeInTheDocument();
+    expect(calls.find((c) => c.method === "POST")?.body).toEqual({ username: "fakeplayer" });
+  });
+
+  it("a code that really expired still says so (I3)", () => {
+    const expired: LinkedAccountView = { ...pending, status: "expired", code: undefined };
+    stubFetch([{ method: "GET", path: "/api/accounts", body: [expired] }]);
+    renderWithProviders(<AccountsView initialAccounts={[expired]} chesscom lichess={false} />);
+    expect(screen.getByText("Code expired")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Get a new code" })).toBeInTheDocument();
+  });
+
   it("offers Reconnect Lichess for an expiring Lichess link", () => {
     const lichess: LinkedAccountView = {
       linkId,
