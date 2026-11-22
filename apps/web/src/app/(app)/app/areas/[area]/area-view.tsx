@@ -1,0 +1,603 @@
+import { AreaScore, AreaScoreKey } from "@ci/ui/area-score";
+import { AiDisclosure, AiLabel, CoachState, SegmentText } from "@ci/ui/coach";
+import { cn } from "@ci/ui/lib";
+import { Button, touchTarget } from "@ci/ui/primitives";
+import {
+  dayText,
+  ExemplarBoard,
+  KpiTrendGrid,
+  type KpiTrendItem,
+  WeaknessRow,
+  WeaknessRowKey,
+  weaknessScaleMax,
+} from "@ci/ui/profile";
+import { WeaknessTimeline } from "@ci/ui/timeline";
+import Link from "next/link";
+import type { ReactNode } from "react";
+import { CoachScopeSwitch } from "../../../../../components/coach-scope-switch";
+import { segmentHref } from "../../../../../lib/segment-href";
+import { coachHref } from "../../../../../server/coach/anchor";
+import type { ReportView } from "../../../../../server/coaching";
+import type { NarrativeItem } from "../../../../../server/coaching/types";
+import type {
+  Area,
+  AreaView as AreaReadModel,
+  CoachScope,
+  KpiTrend,
+  TimelineSeries,
+  WeaknessSummary,
+} from "../../../../../server/profile/types";
+import { EmptySheet } from "../../../_shell/page-heading";
+import { SectionHead } from "../../_overview/section-head";
+
+// The skill-area page's layout, shared by all seven areas (one layout, no card grid, B4): a
+// heading with the area tabs, then ruled sections down one column. Score and the coach's note
+// sit side by side from 1024px; measures, weaknesses and positions take the full width.
+
+export type AreaPageModel = {
+  area: Area;
+  scope: CoachScope;
+  score: AreaReadModel["score"];
+  kpis: KpiTrend[];
+  weaknesses: { summary: WeaknessSummary; trend: (number | null)[] }[];
+  timeline: TimelineSeries[];
+  report: ReportView;
+  /** Today in UTC ("2026-11-22"), the right end of the timeline. */
+  today: string;
+};
+
+const ORDER: readonly Area[] = [
+  "openings",
+  "middlegame",
+  "endgame",
+  "tactics",
+  "calculation",
+  "time",
+  "mindset",
+];
+
+const TITLE: Record<Area, string> = {
+  openings: "Openings",
+  middlegame: "Middlegame",
+  endgame: "Endgame",
+  tactics: "Tactics",
+  calculation: "Calculation",
+  time: "Time",
+  mindset: "Mindset",
+};
+
+/** The area in running text: "your endgame", "your time management". */
+const NOUN: Record<Area, string> = {
+  openings: "openings",
+  middlegame: "middlegame",
+  endgame: "endgame",
+  tactics: "tactics",
+  calculation: "calculation",
+  time: "time management",
+  mindset: "mindset",
+};
+
+/** "an endgame score". Mindset has none by design (R8). */
+const SCORE_NAME: Record<Exclude<Area, "mindset">, string> = {
+  openings: "an openings score",
+  middlegame: "a middlegame score",
+  endgame: "an endgame score",
+  tactics: "a tactics score",
+  calculation: "a calculation score",
+  time: "a time-management score",
+};
+
+const LEDE: Record<Area, string> = {
+  openings:
+    "How your games start: the lines you choose, your preparation and the position you leave the opening with.",
+  middlegame:
+    "Turning positions into results: converting an advantage, defending a worse game and steady play in quiet positions.",
+  endgame:
+    "Technique once the board thins out: converting wins, holding draws and precision against the tablebase.",
+  tactics:
+    "Spotting your own tactics, punishing your opponent's mistakes and seeing theirs coming.",
+  calculation: "Seeing the board: material left hanging, threats you missed and one-move blunders.",
+  time: "How you spend your clock, and what happens to your play when it runs low.",
+  mindset:
+    "How you play across a session: your first game, the later ones and the game after a loss.",
+};
+
+const TIME_CLASS: Record<CoachScope["timeClass"], string> = {
+  bullet: "bullet",
+  blitz: "blitz",
+  rapid: "rapid",
+  classical: "classical",
+  daily: "daily",
+};
+const PLATFORM: Record<CoachScope["platform"], string> = {
+  lichess: "lichess",
+  chesscom: "chess.com",
+};
+
+/** Weeks with fewer games than this are drawn hollow, off the line. */
+const WEEK_MIN_GAMES = 5;
+const MAX_EXAMPLES = 3;
+const LINING = { fontVariantNumeric: "lining-nums" } as const;
+
+const count = (n: number) => new Intl.NumberFormat("en-GB").format(n);
+const games = (n: number) => `${count(n)} ${n === 1 ? "game" : "games"}`;
+const finite = (v: number | null | undefined): v is number =>
+  typeof v === "number" && Number.isFinite(v);
+
+function scopeQuery(scope: CoachScope): string {
+  return new URLSearchParams({ account: scope.accountId, tc: scope.timeClass }).toString();
+}
+
+const areaHref = (area: Area, scope: CoachScope) => `/app/areas/${area}?${scopeQuery(scope)}`;
+
+export function AreaView({ model }: { model: AreaPageModel }) {
+  const { area, scope } = model;
+  const option = scope.options.find(
+    (o) => o.accountId === scope.accountId && o.timeClass === scope.timeClass,
+  );
+  return (
+    <div className="flex flex-col gap-10">
+      <header className="flex flex-col gap-5">
+        <AreaTabs current={area} scope={scope} />
+        <div className="flex max-w-3xl flex-col gap-2">
+          <h1 className="font-serif text-3xl font-semibold text-ink md:text-4xl">{TITLE[area]}</h1>
+          <p className="text-lg text-ink-soft">{LEDE[area]}</p>
+          {option ? (
+            <p className="text-sm text-ink-faint" style={LINING}>
+              From {count(option.analysedGames)} analysed {TIME_CLASS[scope.timeClass]}{" "}
+              {option.analysedGames === 1 ? "game" : "games"} on {PLATFORM[scope.platform]}
+            </p>
+          ) : null}
+        </div>
+        <CoachScopeSwitch scope={scope} basePath={`/app/areas/${area}`} />
+      </header>
+
+      <div className="grid grid-cols-1 gap-x-12 gap-y-10 lg:grid-cols-12">
+        <Section id="area-score" title="Score" className="lg:col-span-7">
+          <ScorePart model={model} />
+        </Section>
+        <Section id="area-note" title="Coach's note" className="lg:col-span-5">
+          <NotePart model={model} />
+        </Section>
+      </div>
+
+      <Section id="area-measures" title="Measures">
+        <MeasuresPart model={model} />
+      </Section>
+
+      <Section id="area-weaknesses" title="Weaknesses">
+        <WeaknessesPart model={model} />
+      </Section>
+
+      <Section id="area-examples" title="Example positions">
+        <ExamplesPart model={model} />
+      </Section>
+    </div>
+  );
+}
+
+function Section({
+  id,
+  title,
+  className,
+  children,
+}: {
+  id: string;
+  title: string;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <section aria-labelledby={id} className={cn("flex min-w-0 flex-col gap-5", className)}>
+      <SectionHead id={id} title={title} />
+      {children}
+    </section>
+  );
+}
+
+/** The seven areas as links, in a pill track like the app's tabs; the current one is a chip. */
+function AreaTabs({ current, scope }: { current: Area; scope: CoachScope }) {
+  return (
+    <nav
+      aria-label="Skill areas"
+      className="max-w-full overflow-x-auto pointer-coarse:-my-1.5 pointer-coarse:py-1.5"
+    >
+      <ul className="m-0 inline-flex w-fit list-none items-center gap-0.5 rounded-pill bg-well p-1">
+        {ORDER.map((a) => (
+          <li key={a}>
+            <Link
+              href={areaHref(a, scope)}
+              aria-current={a === current ? "page" : undefined}
+              className={cn(
+                "relative inline-flex h-8 shrink-0 items-center rounded-pill px-4 font-sans text-sm font-medium whitespace-nowrap",
+                "transition-colors duration-(--dur-quick) ease-out",
+                "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink",
+                a === current
+                  ? "bg-sheet font-semibold text-ink inset-ring-1 inset-ring-rule"
+                  : "text-ink-soft hover:text-ink",
+                touchTarget,
+              )}
+            >
+              {TITLE[a]}
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  );
+}
+
+// ---- Score ----
+
+function ScorePart({ model }: { model: AreaPageModel }) {
+  const { area, scope, score, report } = model;
+  if (area === "mindset") {
+    return (
+      <Quiet title="Mindset is coaching advice, not a score">
+        Session habits don't compare cleanly against other players, so there is no percentile here.
+        Your coach's note and the measures below describe it instead.
+      </Quiet>
+    );
+  }
+  const tc = TIME_CLASS[scope.timeClass];
+  if (score && finite(score.value)) {
+    return (
+      <div className="flex flex-col gap-4">
+        <AreaScoreKey next={false} interval />
+        <AreaScore
+          area={area}
+          score={Math.round(score.value)}
+          band={{ median: 50 }}
+          basis={{ games: score.n, timeClass: tc }}
+          interval={null}
+        />
+        <p className="m-0 max-w-prose text-sm text-ink-soft">
+          A percentile against players in your rating band, over your last 50 {tc} games: the band
+          median is 50 by definition.
+        </p>
+      </div>
+    );
+  }
+  const row = report.payload?.computed.areaScores.find((a) => a.area === area) ?? null;
+  const needMore = row && finite(row.needMore) && row.needMore > 0 ? row.needMore : null;
+  const n = finite(score?.n) ? (score?.n ?? 0) : finite(row?.n) ? (row?.n ?? 0) : 0;
+  return (
+    <Quiet
+      title={
+        needMore !== null
+          ? `Need ${count(needMore)} more ${needMore === 1 ? "game" : "games"} for ${SCORE_NAME[area]}`
+          : "Not enough games for a score yet"
+      }
+    >
+      {n > 0
+        ? `${count(n)} analysed ${tc} ${n === 1 ? "game" : "games"} so far count towards it.`
+        : `None of your analysed ${tc} games count towards it yet.`}
+    </Quiet>
+  );
+}
+
+/** A stated gap: a serif line and a quiet explanation, never a number standing in for one. */
+function Quiet({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="flex max-w-prose flex-col gap-1.5" style={LINING}>
+      <p className="m-0 font-serif text-xl font-semibold text-ink">{title}</p>
+      <p className="m-0 text-sm text-ink-soft">{children}</p>
+    </div>
+  );
+}
+
+// ---- Coach's note ----
+
+function NotePart({ model }: { model: AreaPageModel }) {
+  const { area, scope, report } = model;
+  const payload = report.payload;
+  const anchor = payload
+    ? ({ kind: "report_section", reportId: payload.reportId, section: "areas" } as const)
+    : null;
+  const ask = (
+    <div>
+      <Button
+        asChild
+        variant="outline"
+        className="h-auto min-h-10 py-2 text-left whitespace-normal"
+      >
+        <Link href={coachHref(anchor, scope)}>Ask your coach about your {NOUN[area]}</Link>
+      </Button>
+    </div>
+  );
+  return (
+    <div className="flex flex-col gap-5">
+      <Note area={area} report={report} scope={scope} />
+      {ask}
+    </div>
+  );
+}
+
+function Note({ area, report, scope }: { area: Area; report: ReportView; scope: CoachScope }) {
+  const { payload, state } = report;
+  const building = state.kind === "building";
+  const writing = (
+    <CoachState
+      kind="writing"
+      title="Your coach is writing this section"
+      body="It appears here as soon as it's written."
+    />
+  );
+  if (!payload) {
+    if (building) return writing;
+    return (
+      <CoachState
+        kind="empty"
+        title={`Your coach's note on your ${NOUN[area]} comes with your first report`}
+        action={{ label: "Open your report", href: `/app/report?${scopeQuery(scope)}` }}
+      />
+    );
+  }
+  const section = payload.sections.areas;
+  if (section === null) {
+    return (
+      <CoachState
+        kind="unavailable"
+        title="This note isn't shown"
+        body={`Your coach's note on your ${NOUN[area]} couldn't be checked against your games, so it isn't shown.`}
+      />
+    );
+  }
+  if (section === undefined || section.areas == null) {
+    if (building) return writing;
+    const aiOff = state.kind === "ready" ? state.aiOff : null;
+    if (aiOff === "budget") {
+      return (
+        <CoachState
+          kind="budget"
+          title="Your coach's notes are paused"
+          body="Your coach has reached this month's spending limit, so this report shows the computed numbers only."
+        />
+      );
+    }
+    return (
+      <CoachState
+        kind="computed_only"
+        title="Your coach's notes are off for now"
+        body="The numbers on this page are computed from your games."
+      />
+    );
+  }
+  const item: NarrativeItem | undefined = section.areas.items.find((i) => i.area === area);
+  if (!item) {
+    return (
+      <CoachState
+        kind="empty"
+        title={`Your coach didn't write a note on your ${NOUN[area]} in this report`}
+      />
+    );
+  }
+  return (
+    <div className="flex flex-col gap-4">
+      <SegmentText
+        segments={item.segments}
+        hrefFor={segmentHref}
+        className="max-w-prose font-serif text-prose text-ink"
+      />
+      {payload.aiDisclosure ? (
+        <AiDisclosure disclosure={payload.aiDisclosure} compact />
+      ) : (
+        <AiLabel />
+      )}
+    </div>
+  );
+}
+
+// ---- Measures ----
+
+function MeasuresPart({ model }: { model: AreaPageModel }) {
+  const { kpis, report } = model;
+  const charted = kpis.filter((k) => k.current?.sufficient === true);
+  const thin = kpis.filter((k) => k.current?.sufficient !== true);
+  if (kpis.length === 0) {
+    return <p className="m-0 text-sm text-ink-soft">No measures are defined for this area yet.</p>;
+  }
+  const items: KpiTrendItem[] = charted.map((k) => ({
+    metric: k.metric,
+    label: k.label,
+    unit: k.unit,
+    points: k.points,
+  }));
+  const weeks = charted.flatMap((k) => k.points.map((p) => p.week)).sort();
+  const range = { from: weeks[0] ?? model.today, to: weeks.at(-1) ?? model.today };
+  const reportDay = report.createdAt?.toISOString().slice(0, 10) ?? null;
+  const events =
+    reportDay && reportDay >= range.from && reportDay <= range.to
+      ? [{ date: reportDay, label: "Coaching report" }]
+      : [];
+  return (
+    <div className="flex flex-col gap-8">
+      {items.length > 0 ? (
+        <KpiTrendGrid
+          items={items}
+          range={range}
+          events={events}
+          minN={WEEK_MIN_GAMES}
+          headingLevel={3}
+        />
+      ) : null}
+      {thin.length > 0 ? (
+        <div className="flex max-w-3xl flex-col gap-2">
+          <h3 className="m-0 text-base font-medium text-ink">
+            {items.length > 0 ? "Still gathering games" : "Not enough games for these yet"}
+          </h3>
+          <ul className="m-0 flex list-none flex-col p-0">
+            {thin.map((k) => (
+              <ThinMeasure key={k.metric} kpi={k} />
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** A measure below its minimum: its n and the shortfall, never its value. */
+function ThinMeasure({ kpi }: { kpi: KpiTrend }) {
+  const c = kpi.current;
+  let status: string;
+  if (!c) status = "Not measured yet";
+  else {
+    const so = c.n > 0 ? `${games(c.n)} so far. ` : "No games counted yet. ";
+    const need = finite(c.needMore) && c.needMore > 0 ? c.needMore : null;
+    status =
+      need !== null
+        ? `${so}Need ${count(need)} more ${need === 1 ? "game" : "games"}`
+        : `${so}Not measured yet`;
+  }
+  return (
+    <li
+      className="flex flex-col gap-0.5 border-b border-rule py-2.5 last:border-b-0 sm:flex-row sm:items-baseline sm:justify-between sm:gap-6"
+      style={LINING}
+    >
+      <span className="text-ink">{kpi.label}</span>
+      <span className="text-sm text-ink-soft">{status}</span>
+    </li>
+  );
+}
+
+// ---- Weaknesses ----
+
+function WeaknessesPart({ model }: { model: AreaPageModel }) {
+  const { area, scope, weaknesses, timeline } = model;
+  if (weaknesses.length === 0) {
+    return (
+      <p className="m-0 max-w-prose text-sm text-ink-soft">
+        No weakness in your {NOUN[area]} has been measured yet. They appear here as your analysed
+        games give the profile enough chances to judge.
+      </p>
+    );
+  }
+  const scaleMax = weaknessScaleMax(weaknesses.map((w) => w.summary));
+  const from = timeline.flatMap((t) => t.segments.map((s) => s.from.slice(0, 10))).sort()[0];
+  return (
+    <div className="flex flex-col gap-8">
+      <div className="flex flex-col gap-3">
+        <WeaknessRowKey />
+        <ul className="m-0 flex list-none flex-col p-0">
+          {weaknesses.map(({ summary: w, trend }) => (
+            <li key={w.seriesKey} className="border-b border-rule last:border-b-0">
+              <WeaknessRow
+                label={w.label}
+                state={w.state}
+                rate={{ mean: w.rate.mean, low: w.rate.low, high: w.rate.high }}
+                evidence={{
+                  events: w.evidence.events,
+                  chances: w.evidence.chances,
+                  sufficient: w.evidence.sufficient,
+                  needMore: w.evidence.needMore,
+                }}
+                band={{ median: w.band.median }}
+                href={`/app/weaknesses/${encodeURIComponent(w.seriesKey)}?${scopeQuery(scope)}`}
+                trend={trend}
+                onset={w.onset ? w.onset.at.toISOString().slice(0, 10) : null}
+                scaleMax={scaleMax}
+              />
+            </li>
+          ))}
+        </ul>
+      </div>
+      {timeline.length > 0 && from ? (
+        <div className="flex flex-col gap-3">
+          <h3 className="m-0 text-base font-medium text-ink">How they changed</h3>
+          <WeaknessTimeline
+            series={timeline}
+            range={{ from, to: model.today }}
+            label={`${TITLE[area]} weaknesses over time`}
+          />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+// ---- Example positions ----
+
+function ExamplesPart({ model }: { model: AreaPageModel }) {
+  const { area, report } = model;
+  const payload = report.payload;
+  if (!payload) {
+    return (
+      <p className="m-0 text-sm text-ink-soft">
+        Example positions appear once your first report is built.
+      </p>
+    );
+  }
+  const examples = payload.computed.weaknesses
+    .filter((w) => w.area === area)
+    .sort((a, b) => a.rank - b.rank)
+    .flatMap((w) => w.exemplars.map((e) => ({ label: w.label, e })))
+    .slice(0, MAX_EXAMPLES);
+  const day = report.createdAt ? report.createdAt.toISOString() : payload.generatedAt;
+  const from = (
+    <p className="m-0 text-sm text-ink-soft">
+      Examples from your report of <time dateTime={day.slice(0, 10)}>{dayText(day)}</time>
+    </p>
+  );
+  if (examples.length === 0) {
+    return (
+      <div className="flex flex-col gap-1">
+        {from}
+        <p className="m-0 text-sm text-ink-soft">
+          That report picked no positions for your {NOUN[area]}.
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-6">
+      {from}
+      <ol className="m-0 flex list-none flex-wrap gap-x-8 gap-y-10 p-0">
+        {examples.map(({ label, e }) => (
+          <li key={`${e.gameId}:${e.ply}`} className="flex flex-col gap-3">
+            <div className="flex flex-col">
+              <span className="font-medium text-ink">{label}</span>
+              <span className="text-sm text-ink-faint" style={LINING}>
+                Played <time dateTime={e.playedAt.slice(0, 10)}>{dayText(e.playedAt)}</time>
+              </span>
+            </div>
+            <ExemplarBoard
+              // ban-lint-allow TOK2: three boards share one row of the 1088px column; a phone keeps the page token
+              className="lg:[--board-size:20rem]"
+              fen={e.fen}
+              played={e.played}
+              best={e.best}
+              refutation={e.refutationPv[0] ?? null}
+              caption={{ winBefore: e.winBefore, winAfter: e.winAfter }}
+            />
+            <Link
+              href={`/app/games/${encodeURIComponent(e.gameId)}?ply=${e.ply}`}
+              className="text-sm font-medium text-ink underline decoration-rule-strong underline-offset-4 hover:decoration-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+            >
+              Open this game at the move
+            </Link>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
+// ---- No scope ----
+
+export function AreaEmpty({ area }: { area: Area }) {
+  return (
+    <div className="flex flex-col gap-8">
+      <h1 className="font-serif text-3xl font-semibold text-ink">{TITLE[area]}</h1>
+      <EmptySheet
+        action={
+          <Button asChild variant="outline">
+            <Link href="/app/games">Games</Link>
+          </Button>
+        }
+      >
+        Your skill areas appear once some of your games are analysed.
+      </EmptySheet>
+    </div>
+  );
+}
