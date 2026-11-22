@@ -141,6 +141,8 @@ export const reportTrigger = pgEnum("report_trigger", [
 
 export const result = pgEnum("result", ["1-0", "0-1", "1/2-1/2", "*"]);
 
+export const sideScope = pgEnum("side_scope", ["both", "white", "black"]);
+
 export const stateRowKind = pgEnum("state_row_kind", ["transition", "onset"]);
 
 export const timeClass = pgEnum("time_class", ["bullet", "blitz", "rapid", "classical", "daily"]);
@@ -241,6 +243,7 @@ export const accountBenchmarkStat = pgTable(
     nGames: integer("n_games").notNull(),
     lowSample: boolean("low_sample").notNull(),
     nChances: integer("n_chances"),
+    side: sideScope().default("both").notNull(),
   },
   (table) => [
     foreignKey({
@@ -249,7 +252,7 @@ export const accountBenchmarkStat = pgTable(
       name: "account_benchmark_stat_account_id_time_class_fkey",
     }).onDelete("cascade"),
     primaryKey({
-      columns: [table.accountId, table.timeClass, table.metric],
+      columns: [table.accountId, table.timeClass, table.metric, table.side],
       name: "account_benchmark_stat_pkey",
     }),
     check("account_benchmark_stat_n_players_check", sql`n_players >= 0`),
@@ -454,6 +457,7 @@ export const bandReference = pgTable(
     nPlayers: integer("n_players").notNull(),
     nGames: integer("n_games").notNull(),
     lowSample: boolean("low_sample").notNull(),
+    side: sideScope().default("both").notNull(),
   },
   (table) => [
     foreignKey({
@@ -462,7 +466,7 @@ export const bandReference = pgTable(
       name: "band_reference_build_id_fkey",
     }).onDelete("cascade"),
     primaryKey({
-      columns: [table.buildId, table.band, table.timeClass, table.metric],
+      columns: [table.buildId, table.band, table.timeClass, table.metric, table.side],
       name: "band_reference_pkey",
     }),
     check(
@@ -1006,12 +1010,14 @@ export const kpiSnapshot = pgTable(
     computedAt: timestamp("computed_at", { withTimezone: true, mode: "date" })
       .defaultNow()
       .notNull(),
+    side: sideScope().default("both").notNull(),
   },
   (table) => [
     index("kpi_snapshot_lookup_idx").using(
       "btree",
       table.accountId.asc().nullsLast(),
       table.timeClass.asc().nullsLast(),
+      table.side.asc().nullsLast(),
       table.metric.asc().nullsLast(),
       table.windowKey.asc().nullsLast(),
       table.computedAt.desc().nullsFirst(),
@@ -1683,6 +1689,7 @@ export const weaknessEstimates = pgTable(
     state: weaknessState().notNull(),
     pImp: doublePrecision("p_imp"),
     updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    side: sideScope().default("both").notNull(),
   },
   (table) => [
     foreignKey({
@@ -1691,7 +1698,7 @@ export const weaknessEstimates = pgTable(
       name: "weakness_estimates_account_id_fkey",
     }).onDelete("cascade"),
     primaryKey({
-      columns: [table.accountId, table.timeClass, table.seriesKey],
+      columns: [table.accountId, table.timeClass, table.seriesKey, table.side],
       name: "weakness_estimates_pkey",
     }),
   ],
