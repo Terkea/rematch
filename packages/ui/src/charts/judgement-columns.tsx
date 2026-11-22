@@ -151,11 +151,13 @@ export function JudgementColumns({ games, label, className }: JudgementColumnsPr
   const plotH = Math.ceil(Math.max(tallest, COLUMNS_MIN_ROWS) * (cellH + CELL_GAP));
   const baseline = plotH;
   const height = plotH + 1;
-  const colW = Math.min(COLUMN_MAX_W, svgW / games.length);
-  // Left-aligned under the heading, oldest first (T13 critic); a row wider than the container
-  // scrolls, and opens at its right end on the latest games.
+  // Each game's slot divides the whole width, oldest at the left edge (T13 critic) and the latest
+  // at the right (web polish critic I2: a row that stopped at 70% looked cut off). The block in a
+  // slot is at most COLUMN_MAX_W wide and centred, so a few games stay unit columns, not slabs. A
+  // row wider than the container scrolls, and opens at its right end on the latest games.
+  const colW = svgW / games.length;
   const offset = 0;
-  const cellW = Math.max(2, colW - CELL_GAP);
+  const cellW = Math.max(2, Math.min(COLUMN_MAX_W, colW) - CELL_GAP);
   const total = counts.reduce(
     (t, c) => ({
       blunders: t.blunders + c.blunders,
@@ -219,7 +221,7 @@ export function JudgementColumns({ games, label, className }: JudgementColumnsPr
           <title>{label}</title>
           {counts.map((c, i) => {
             const x = offset + i * colW;
-            const cx = x + CELL_GAP / 2;
+            const cx = x + (colW - cellW) / 2;
             // Each cell's slot is its height above the baseline, and its stable key.
             const kinds = [
               ...Array<Kind>(c.blunders).fill("blunder"),

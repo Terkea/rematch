@@ -26,7 +26,7 @@ export const kpiFixtures: Synthetic & { items: KpiStatProps[] } = {
       label: "Endgame conversion",
       value: 0.612,
       format: "percent",
-      interval: { low: 0.48, high: 0.73, level: 0.9 },
+      interval: { low: 0.51, high: 0.71, level: 0.8 },
       basis: { games: 11, timeClass: "rapid" },
       provisional: true,
       trend: [0.5, 0.55, 0.6, 0.612],

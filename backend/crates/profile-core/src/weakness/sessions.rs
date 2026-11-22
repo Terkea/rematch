@@ -10,7 +10,7 @@ use std::collections::HashSet;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-use crate::types::SessionInfo;
+use crate::types::{PlatformId, SessionInfo};
 
 /// Default gap between sessions, in minutes.
 pub const SESSION_GAP_MINUTES: i64 = 15;
@@ -58,6 +58,42 @@ pub fn expected_score(own: f64, opp: f64) -> f64 {
 /// [`expected_score`] when both ratings are known.
 pub fn expected_score_from_ratings(own: Option<i32>, opp: Option<i32>) -> Option<f64> {
     Some(expected_score(f64::from(own?), f64::from(opp?)))
+}
+
+/// What [`pre_game_ratings`] needs: the stored ratings of one game and the player's stored
+/// rating in their previous rated game of the same time class.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PreGameInput {
+    pub rated: bool,
+    pub own_rating: Option<i32>,
+    pub opponent_rating: Option<i32>,
+    pub previous_own_rating: Option<i32>,
+}
+
+/// The (own, opponent) ratings at the start of the game, for the rating-predicted score
+/// (ADR-FIX-C-1).
+///
+/// - Lichess ratings are already pre-game (the API's `players.*.rating`; `ratingDiff` is the
+///   change), so they are returned as stored.
+/// - Chess.com stores post-game ratings. The player's pre-game rating is their rating after the
+///   previous rated game of the time class; the opponent's previous game is not imported, so
+///   theirs is the post-game rating minus the mirror of the player's change
+///   (`opp_post + (own_post - own_pre)`, exact for a zero-sum update).
+/// - An unrated game, or a Chess.com game without a previous rated game, keeps the stored
+///   ratings.
+pub fn pre_game_ratings(platform: PlatformId, i: PreGameInput) -> (Option<i32>, Option<i32>) {
+    let stored = (i.own_rating, i.opponent_rating);
+    if platform != PlatformId::Chesscom || !i.rated {
+        return stored;
+    }
+    let Some(own_pre) = i.previous_own_rating else {
+        return stored;
+    };
+    let opponent = match (i.own_rating, i.opponent_rating) {
+        (Some(own_post), Some(opp_post)) => opp_post.checked_add(own_post - own_pre),
+        _ => i.opponent_rating,
+    };
+    (Some(own_pre), opponent)
 }
 
 pub fn build_sessions(games: &[SessionGame], gap_minutes: i64) -> Vec<SessionInfo> {

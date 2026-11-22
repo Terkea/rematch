@@ -1,0 +1,28 @@
+# Dev only (ADR 0062 Amendment 2): the coach uses the Claude Code login already signed in on this
+# machine, with no API key or OAuth token anywhere. Opt-in, like the ports and Maia overlays: add it
+# to COMPOSE_FILE in .env (see .env.example), then run the sidecar on the host first:
+#   pnpm --filter @ci/ai-sidecar start:local      (listens on 127.0.0.1:7310)
+# For the owner's own use only: a personal login must not serve other users, so friends in the beta
+# need ANTHROPIC_API_KEY and the Docker sidecar instead.
+services:
+  # The Docker sidecar does not start: the host one replaces it. A profile no command enables.
+  ai-sidecar:
+    profiles: [docker-ai-sidecar]
+
+  rust-worker:
+    environment:
+      # The host sidecar. Docker Desktop delivers host.docker.internal to the host's loopback.
+      AI_SIDECAR_URL: http://host.docker.internal:7310
+      # The host sidecar calls the chat tools back through this published loopback port.
+      AI_TOOL_BIND: 0.0.0.0:7311
+      AI_TOOL_PUBLIC_URL: http://127.0.0.1:7311
+    ports:
+      - "127.0.0.1:7311:7311"
+    # Docker Desktop resolves host.docker.internal itself; Linux engines need the gateway entry.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # The base file waits for the Docker sidecar, which is not started here. The worker retries its
+    # health check (3 tries, then AI stays off until restart): start the host sidecar first.
+    depends_on: !override
+      postgres:
+        condition: service_healthy

@@ -27,7 +27,9 @@ use profile_core::openings::repertoire::{
     RepertoirePly, book_exit, build_repertoire_tree, opening_plies,
 };
 use profile_core::types::{Band, PLAYER_GAME_METRICS_VERSION, PlatformId, PlayerGameMetrics};
-use profile_core::weakness::sessions::expected_score_from_ratings;
+use profile_core::weakness::sessions::{
+    PreGameInput, expected_score_from_ratings, pre_game_ratings,
+};
 use sqlx::{FromRow, PgConnection, PgPool};
 use uuid::Uuid;
 
@@ -238,6 +240,10 @@ struct OpeningRow {
     result: String,
     white_rating: Option<i32>,
     black_rating: Option<i32>,
+    platform: String,
+    rated: bool,
+    /// The player's rating in their previous rated game of the time class.
+    previous_own_rating: Option<i32>,
     metrics: Option<serde_json::Value>,
 }
 
@@ -316,6 +322,20 @@ fn game_of(r: &OpeningRow) -> Result<Option<(RepertoireGame, Option<PlayerGameMe
         Color::White => (r.white_rating, r.black_rating),
         Color::Black => (r.black_rating, r.white_rating),
     };
+    // The rating-predicted score uses the pre-game ratings (ADR-FIX-C-1).
+    let platform: PlatformId = r
+        .platform
+        .parse()
+        .map_err(|_| RefdataError::Decode(format!("platform {:?}", r.platform)))?;
+    let (own, opp) = pre_game_ratings(
+        platform,
+        PreGameInput {
+            rated: r.rated,
+            own_rating: own,
+            opponent_rating: opp,
+            previous_own_rating: r.previous_own_rating,
+        },
+    );
     // Version gate: only a current-version metrics row is engine evidence.
     let metrics = r
         .metrics
@@ -343,7 +363,13 @@ async fn load_games(
     let rows: Vec<OpeningRow> = sqlx::query_as(
         "SELECT o.game_id, o.color::text AS color, o.fen_keys, o.ucis, o.sans, o.line_key, \
          o.line_name, o.eco, o.line_kind::text AS line_kind, o.line_entry_ply, \
-         g.result::text AS result, g.white_rating, g.black_rating, gm.metrics \
+         g.result::text AS result, g.white_rating, g.black_rating, \
+         g.platform::text AS platform, g.rated, \
+         (SELECT CASE p.player_color WHEN 'white' THEN p.white_rating ELSE p.black_rating END \
+          FROM games p WHERE p.account_id = g.account_id AND p.time_class = g.time_class \
+            AND p.rated AND (p.played_at, p.id) < (g.played_at, g.id) \
+          ORDER BY p.played_at DESC, p.id DESC LIMIT 1) AS previous_own_rating, \
+         gm.metrics \
          FROM game_openings o JOIN games g ON g.id = o.game_id \
          LEFT JOIN game_metrics gm ON gm.game_id = o.game_id \
          WHERE o.account_id = $1 AND o.time_class = $2::time_class \

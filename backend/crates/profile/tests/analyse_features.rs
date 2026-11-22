@@ -25,8 +25,8 @@ use profile::analyse_features::opening_name;
 use profile::hook_impl::{BUILD_PROFILE_DELAY, ENRICH_GAME_KIND, ProfileHook};
 use profile::load::{load_analysed_games, load_exemplar_moves, load_series_points};
 use profile::requeue::{
-    DifficultySweepDeps, REQUEUE_PAGE_SQL, STALE_GAMES_SQL, requeue_unenriched,
-    run_difficulty_sweep,
+    DifficultySweepDeps, REQUEUE_PAGE_SQL, RecomputeDeps, STALE_GAMES_SQL, mark_stale_metrics,
+    recompute_marked, requeue_unenriched, run_difficulty_sweep,
 };
 use profile_core::openings::lines::classify_line;
 use profile_core::types::{
@@ -1254,4 +1254,149 @@ async fn load_exemplar_moves_returns_the_move_its_features_and_game(pool: PgPool
     let refutation = r.refutation.as_ref().expect("a refutation line");
     assert_eq!(refutation.swing.mate_in, Some(1));
     let _: HashMap<(Uuid, u32), profile::load::ExemplarRow> = rows;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Analysis audit (ADR-FIX-C-1): pre-game ratings and the metrics-version recompute
+
+async fn set_game(pool: &PgPool, id: Uuid, played_at: &str, white: i32, black: i32) {
+    sqlx::query(
+        "UPDATE games SET played_at = $2::timestamptz, white_rating = $3, black_rating = $4 \
+         WHERE id = $1",
+    )
+    .bind(id)
+    .bind(played_at)
+    .bind(white)
+    .bind(black)
+    .execute(pool)
+    .await
+    .unwrap();
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn chesscom_expected_score_uses_pre_game_ratings(pool: PgPool) {
+    let w = world(&pool);
+    let acct = account(&pool, "blackhero").await;
+    let earlier = black_game(&pool, acct, "blackhero", SCHOLARS).await;
+    let id = black_game(&pool, acct, "blackhero", RUY_LOPEZ).await;
+    // Chess.com stores post-game ratings: Black was 1500 after the earlier game and 1510 after
+    // this one, against an opponent at 1590 after it.
+    set_game(&pool, earlier, "2026-01-01T00:00:00Z", 1450, 1500).await;
+    set_game(&pool, id, "2026-01-01T01:00:00Z", 1590, 1510).await;
+    analyse(&w, id).await;
+    let m = metrics_of(&pool, id).await;
+    assert_eq!(
+        (m.player_rating, m.opponent_rating),
+        (Some(1500), Some(1600))
+    );
+    let want = profile_core::weakness::sessions::expected_score(1500.0, 1600.0);
+    assert!((m.expected_score.unwrap() - want).abs() < 1e-12);
+
+    // The first game of the time class has no previous game: the stored ratings stand.
+    analyse(&w, earlier).await;
+    let m = metrics_of(&pool, earlier).await;
+    assert_eq!(
+        (m.player_rating, m.opponent_rating),
+        (Some(1500), Some(1450))
+    );
+}
+
+async fn accuracies(pool: &PgPool, id: Uuid) -> (Option<f32>, Option<f32>) {
+    sqlx::query_as("SELECT white_accuracy, black_accuracy FROM games WHERE id = $1")
+        .bind(id)
+        .fetch_one(pool)
+        .await
+        .unwrap()
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn stale_metrics_are_recomputed_from_the_cache_without_the_engine(pool: PgPool) {
+    let w = world(&pool);
+    let acct = account(&pool, "blackhero").await;
+    let id = black_game(&pool, acct, "blackhero", RUY_LOPEZ).await;
+    let current = black_game(&pool, acct, "blackhero", SCHOLARS).await;
+    analyse(&w, id).await;
+    analyse(&w, current).await;
+    let want = accuracies(&pool, id).await;
+    // A row written by an older metrics version, next to game accuracies of the old formula.
+    sqlx::query(
+        "UPDATE game_metrics SET metrics = jsonb_set(metrics, '{version}', '2') WHERE game_id = $1",
+    )
+    .bind(id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query("UPDATE games SET white_accuracy = 1, black_accuracy = 1 WHERE id = $1")
+        .bind(id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("DELETE FROM jobs WHERE kind = $1")
+        .bind(KIND_BUILD_PROFILE)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    assert_eq!(mark_stale_metrics(&pool).await.unwrap(), 1);
+    let deps = RecomputeDeps::cache_only(pool.clone(), w.queue.clone());
+    let report = within(
+        "recompute",
+        recompute_marked(&deps, &CancellationToken::new()),
+    )
+    .await
+    .unwrap();
+    assert_eq!(report.recomputed, vec![id]);
+    assert!(report.failed.is_empty());
+    let version: i32 =
+        sqlx::query_scalar("SELECT metrics_version FROM game_metrics WHERE game_id = $1")
+            .bind(id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(version, PLAYER_GAME_METRICS_VERSION as i32);
+    assert_eq!(
+        accuracies(&pool, id).await,
+        want,
+        "game accuracies rewritten"
+    );
+    assert_eq!(live_profile_jobs(&pool, acct, "blitz").await.0, 1);
+    // Nothing left to mark.
+    assert_eq!(mark_stale_metrics(&pool).await.unwrap(), 0);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn cache_only_recompute_keeps_a_game_it_cannot_evaluate(pool: PgPool) {
+    let w = world(&pool);
+    let acct = account(&pool, "blackhero").await;
+    let id = black_game(&pool, acct, "blackhero", RUY_LOPEZ).await;
+    analyse(&w, id).await;
+    sqlx::query(
+        "UPDATE game_metrics SET metrics = jsonb_set(metrics, '{version}', '2') WHERE game_id = $1",
+    )
+    .bind(id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query("DELETE FROM position_evals")
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert_eq!(mark_stale_metrics(&pool).await.unwrap(), 1);
+    let deps = RecomputeDeps::cache_only(pool.clone(), w.queue.clone());
+    let report = recompute_marked(&deps, &CancellationToken::new())
+        .await
+        .unwrap();
+    assert_eq!(report.failed, vec![id]);
+    // The rows and the mark stay for the worker's sweep, which may use the engine.
+    assert_eq!(
+        enrichment_protocol(&pool, id).await.as_deref(),
+        Some("enr-v1")
+    );
+    let marked: i64 = count(
+        &pool,
+        "SELECT count(*) FROM games WHERE id = $1 AND profile_stale_at IS NOT NULL",
+        id,
+    )
+    .await;
+    assert_eq!(marked, 1);
 }

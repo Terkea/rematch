@@ -1,5 +1,7 @@
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { ConfigError, loadConfig } from "../src/config.js";
+import { ConfigError, LOCAL_GUARD_MESSAGE, loadConfig } from "../src/config.js";
 
 const TOKEN = "x".repeat(32);
 const GUARD =
@@ -122,5 +124,56 @@ describe("loadConfig", () => {
     expect(() => loadConfig({ ...DEV, AI_SIDECAR_TOKEN: TOKEN, AI_SIDECAR_PORT: "abc" })).toThrow(
       ConfigError,
     );
+  });
+
+  it("listens_on_all_interfaces_unless_told_otherwise", () => {
+    expect(loadConfig({ ...DEV, AI_SIDECAR_TOKEN: TOKEN }).host).toBe("0.0.0.0");
+    expect(loadConfig({ ...DEV, AI_SIDECAR_TOKEN: TOKEN, AI_SIDECAR_HOST: "127.0.0.1" }).host).toBe(
+      "127.0.0.1",
+    );
+  });
+});
+
+describe("local mode (the host's Claude Code login)", () => {
+  const LOCAL = { ...DEV, AI_SIDECAR_TOKEN: TOKEN, AI_SIDECAR_LOCAL_CLAUDE: "1" };
+
+  it("needs_the_flag_set_to_exactly_1", () => {
+    expect(loadConfig(LOCAL).auth).toBe("local");
+    for (const v of ["", "0", "true", "yes"]) {
+      expect(loadConfig({ ...LOCAL, AI_SIDECAR_LOCAL_CLAUDE: v }).auth).toBe("none");
+    }
+  });
+
+  it("refuses_another_credential_beside_it", () => {
+    for (const extra of [
+      { ANTHROPIC_API_KEY: "k" },
+      { CLAUDE_CODE_OAUTH_TOKEN: "oat-1" },
+      { CLAUDE_CODE_USE_BEDROCK: "1" },
+    ]) {
+      expect(() => loadConfig({ ...LOCAL, ...extra })).toThrow(ConfigError);
+    }
+    // Empty values are not credentials.
+    expect(loadConfig({ ...LOCAL, ANTHROPIC_API_KEY: "", CLAUDE_CODE_OAUTH_TOKEN: "" }).auth).toBe(
+      "local",
+    );
+  });
+
+  it("refuses_to_start_in_production", () => {
+    for (const env of [
+      { NODE_ENV: "production" },
+      { AI_SIDECAR_ENV: "production" },
+      { AI_SIDECAR_ENV: "development", NODE_ENV: "production" },
+    ]) {
+      expect(() => loadConfig({ ...LOCAL, ...DB, ...env })).toThrow(
+        new ConfigError(LOCAL_GUARD_MESSAGE),
+      );
+    }
+  });
+
+  it("uses_the_host_claude_config_dir_not_a_private_one", () => {
+    // AI_SIDECAR_CONFIG_DIR is the container's private dir; it does not apply here.
+    const c = loadConfig({ ...LOCAL, AI_SIDECAR_CONFIG_DIR: "/c" });
+    expect(c.configDir).toBe(join(homedir(), ".claude"));
+    expect(loadConfig({ ...LOCAL, CLAUDE_CONFIG_DIR: "/my/claude" }).configDir).toBe("/my/claude");
   });
 });

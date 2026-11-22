@@ -6,7 +6,20 @@ export type StatFormat = "percent" | "decimal" | "integer";
 /** Stats render in one locale on server and client, so hydration never disagrees. */
 export const DEFAULT_LOCALE = "en-US";
 
-export type BandInterval = { low: number; high: number; level: 0.8 | 0.9 };
+/**
+ * The one statistics convention (ADR 0047 R3, ADR-R2-5, ADR-WEB-19): below `KPI_MIN_GAMES` a KPI
+ * shows no number, only its basis and the shortfall; every interval is an 80% one.
+ */
+export const KPI_MIN_GAMES = 10;
+export const INTERVAL_LEVEL = 0.8;
+
+export type BandInterval = { low: number; high: number; level: typeof INTERVAL_LEVEL };
+
+/** "Need 4 more games" (one game is singular). */
+export const needText = (games: number) => {
+  const needed = Math.max(0, KPI_MIN_GAMES - games);
+  return `Need ${needed} more ${needed === 1 ? "game" : "games"}`;
+};
 export type Basis = { games: number; timeClass: string };
 
 /**

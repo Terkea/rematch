@@ -209,3 +209,31 @@ The chat's `analyse_position` tool reaches Stockfish only through `ai::chat::int
   `ANTHROPIC_API_KEY` and the budgets, no ports, and `depends_on: ai-sidecar (service_healthy)`.
   The `ai_sidecar` role gets LOGIN and its password from `ai-sidecar-role` (dev) or secret
   management (production), as before.
+
+## Amendment 2 (2026-11-22): local mode, the host's own Claude Code login (dev only)
+
+Owner direction: in development the coach uses the Claude Code already signed in on the owner's machine, with no API key and no OAuth token anywhere, like the owner's reference project. That project runs its Node server on the host, and the Agent SDK spawns the local `claude` with the login in `~/.claude`.
+
+- **Enabling it.** `AI_SIDECAR_LOCAL_CLAUDE=1` with no other credential. `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN` or a cloud flag beside it is a startup error, because it would be unclear which one runs. `/health` reports `auth: "local"`.
+- **Never in production.** The sidecar refuses to start in local mode when it is in production mode, `NODE_ENV=production` included (`LOCAL_GUARD_MESSAGE`, exit 78).
+- **Policy.** A personal Claude login is for its owner's own use. Anthropic's terms do not allow serving other people from it, so local mode is the owner's development loop only. Friends in the private beta are served with `ANTHROPIC_API_KEY` (or a cloud provider) and the Docker sidecar.
+- **The child.**
+  - The child's `HOME`, `USERPROFILE`, `APPDATA` and `CLAUDE_CONFIG_DIR` are not overridden, so the CLI reads the login where it lives (`~/.claude/.credentials.json` on Windows and Linux, the Keychain on macOS).
+  - The env allowlist gains only what is needed to locate that login and run: `HOME`, `USER`, `LOGNAME`, `USERPROFILE`, `APPDATA`, `LOCALAPPDATA`, `HOMEDRIVE`, `HOMEPATH`, `USERNAME`, `SystemRoot`, `TEMP`, `TMP` and `TMPDIR`, plus `CLAUDE_CONFIG_DIR` if the host sets it. No key or token is passed.
+  - Every other isolation option is unchanged: `settingSources: []`, so none of the user's settings, CLAUDE.md files or skills load; `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`; `tools: []`; `strictMcpConfig`; `permissionMode: "dontAsk"`; `verbatimPrompts`; and an empty cwd of its own (`<tmp>/chess-improver-ai-sidecar/work`).
+- **Host run.** `pnpm --filter @ci/ai-sidecar start:local` (`tsx --env-file-if-exists=../../.env src/local.ts`) does the following:
+  - It checks that the SDK's native `claude` for the platform is installed. On Windows that is `@anthropic-ai/claude-agent-sdk-win32-x64`, an optional dependency, so the install must keep optional dependencies.
+  - It turns local mode on and listens on `127.0.0.1:7310`.
+  - It defaults the token to the compose dev default.
+  - It maps the compose session-store URL (`@postgres:5432`) to the host-published `localhost:55432`. `AI_SIDECAR_LOCAL_DATABASE_URL` overrides that mapping. Without either URL it runs with no store.
+- **Compose.** `docker-compose.local-claude.yml` is opt-in through `COMPOSE_FILE`.
+  - The Docker `ai-sidecar` is moved to a profile that no command enables.
+  - `rust-worker` uses `AI_SIDECAR_URL=http://host.docker.internal:7310` (with `extra_hosts: host-gateway`). Its `depends_on` is reset to Postgres only.
+  - The worker publishes its tool endpoint on `127.0.0.1:7311` with `AI_TOOL_PUBLIC_URL=http://127.0.0.1:7311`, so the host sidecar can call it back.
+  - The host sidecar must be up before the worker starts: the worker's health check is tried 3 times, and after that AI stays off until a restart.
+- **Rust.** `AuthKind::Local` counts as a credential, so AI is on. Without `ANTHROPIC_API_KEY`, scheduled regenerations run as sync sidecar jobs (M5b Task B). The start logs `ai: sidecar auth local (the host's Claude Code login, dev only)`. The line names the credential path, never a secret.
+- **What lands in `~/.claude`.**
+  - **Verified in the host smoke (one haiku `/v1/query`).** Nothing is written under `projects/`, because one-shot calls use `persistSession: false`. `~/.claude.json` is not touched. The CLI does update its own housekeeping: it registers and removes a `sessions/<pid>.json` entry, writes a builtin plugin state file under `plugins/store/`, and refreshes `.credentials.json` when the login's token renews.
+  - **Chat turns.** These cannot run without local persistence: the SDK requires local writes for its `sessionStore` mirror, and `persistSession: false` throws there. The transcript is written to `~/.claude/projects/chess-improver-coach/<conversation id>.jsonl` (the fixed `CLAUDE_CODE_PROJECT_DIR_NAME`). That project directory matches no real cwd, so the transcripts never appear in the owner's `claude --resume` lists.
+  - **With a session store** (the host Postgres), the sidecar deletes that file and its `<id>/` directory after every turn, as before.
+  - **Without a store**, the transcripts stay there, because resume reads them. Delete that directory at any time; a lost transcript makes the next turn rebuild from Rust's context.

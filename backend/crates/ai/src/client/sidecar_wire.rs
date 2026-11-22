@@ -187,7 +187,22 @@ pub enum AuthKind {
     ApiKey,
     Cloud,
     Oauth,
+    /// The host's own Claude Code login (`pnpm start:local`, dev only; ADR 0062 Amendment 2).
+    Local,
     None,
+}
+
+impl AuthKind {
+    /// The credential path for the startup log. Names the path only, never a secret.
+    pub fn describe(self) -> &'static str {
+        match self {
+            AuthKind::ApiKey => "api_key",
+            AuthKind::Cloud => "cloud",
+            AuthKind::Oauth => "oauth (dev token)",
+            AuthKind::Local => "local (the host's Claude Code login, dev only)",
+            AuthKind::None => "none",
+        }
+    }
 }
 
 /// `GET /health` (no token, no model call, no secret).

@@ -72,4 +72,10 @@
   html {
     scrollbar-gutter: stable;
   }
+
+  /* A signed-out page has no header to hold still, and its board sheet bleeds to the right edge:
+     a reserved gutter left a strip of the form's ground beside it (web polish critic I1). */
+  html:has([data-bleed]) {
+    scrollbar-gutter: auto;
+  }
 }

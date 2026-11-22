@@ -105,6 +105,7 @@ These lanes wrote their records under a lane prefix. The controller gives each i
 - [ADR-WEB-16. App shell, sign-in, age and account-linking screens](ADR-WEB-16-app-shell-and-auth-screens.md)
 - [ADR-WEB-17. Original procedural board sounds](ADR-WEB-17-original-procedural-sounds.md)
 - [ADR-WEB-18. Quality sweep, visual baselines and the throttle fix](ADR-WEB-18-quality-sweep-and-visual-baselines.md)
+- [ADR-WEB-19. One statistics convention, and the critic's layout fixes](ADR-WEB-19-one-statistics-convention-and-layout-polish.md)
 
 ### Profile engine (R2): ADR-R2
 
@@ -132,3 +133,7 @@ Every R2 record has a file (titles final at R2 Task 35); numbers 19 to 21 were n
 - [ADR-R2-23. Reference build storage: lifecycle guards and per-metric band fallback](ADR-R2-23-reference-build-storage.md)
 - [ADR-R2-24. The analyse-game hook: per-game features at analysis time](ADR-R2-24-analyse-hook.md)
 - [ADR-R2-25. Worker wiring of the profile engine, and the read-only CLI](ADR-R2-25-worker-wiring-and-cli.md)
+
+### Analysis audit fixes (fix/c): ADR-FIX-C
+
+- [ADR-FIX-C-1. Lila game accuracy, phase accuracy by the game formula, pre-game ratings](ADR-FIX-C-1-lila-accuracy-and-pre-game-ratings.md)

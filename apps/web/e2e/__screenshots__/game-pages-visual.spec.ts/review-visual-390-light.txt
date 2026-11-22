@@ -41,10 +41,10 @@ Red arrow from h5 to f4
 Red ?? on f4
 31… Nf4??
 +4.0
+Show the engine's next move
 
 31… Nf4?? is a blunder. Your win chance 49% to 19%.
 
-Show the engine's next move
 DrNykterstein
 3177
 , to move
