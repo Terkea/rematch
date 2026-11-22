@@ -75,6 +75,51 @@ function noBadText(container: HTMLElement) {
   expect(container.textContent ?? "").not.toMatch(/NaN|undefined|Infinity|null/);
 }
 
+describe("weaknesses by colour (T3, ADR 0082)", () => {
+  const none = { bandMedian: null, bandP40: null, excess: null };
+
+  it("Both lists each colour's rate with its n under the row", async () => {
+    await seedProfile(db, accountId, {
+      timeClass: "rapid",
+      games: 3,
+      estimates: [
+        { seriesKey: "W1", state: "active", priority: 3, mean: 0.05 },
+        { seriesKey: "W1", side: "white", priority: 3, mean: 0.061 },
+        { seriesKey: "W1", side: "black", priority: 1, mean: 0.032 },
+      ],
+    });
+    const { container } = await list();
+    const sides = container.querySelector("[data-part='sides']");
+    expect(sides?.textContent).toMatch(/White 6\.1% of [\d,]+ chances/);
+    expect(sides?.textContent).toMatch(/Black 3\.2% of [\d,]+ chances/);
+    noBadText(container);
+  });
+
+  it("one colour reads its own rows, shows no state, and never borrows Both's benchmark", async () => {
+    await seedProfile(db, accountId, {
+      timeClass: "rapid",
+      games: 3,
+      estimates: [
+        { seriesKey: "W1", state: "active", priority: 3, mean: 0.05 },
+        { seriesKey: "W1", side: "white", state: "active", priority: 3, mean: 0.061 },
+        { seriesKey: "W5", side: "white", state: "active", priority: 1, ...none },
+      ],
+    });
+    const { container } = await list({ color: "white" });
+    const text = container.textContent ?? "";
+    expect(screen.queryByRole("region", { name: "Costing you games" })).toBeNull();
+    expect(screen.getByRole("region", { name: "In your White games" }).textContent).toMatch(
+      /6\.1%/,
+    );
+    const uncompared = screen.getByRole("region", { name: "No colour benchmark" });
+    expect(uncompared.textContent).toMatch(/No colour benchmark/);
+    expect(text).not.toMatch(/Not compared yet/);
+    const link = screen.getAllByRole("link", { name: /Hung material/ })[0];
+    expect(link?.getAttribute("href")).toMatch(/color=white/);
+    noBadText(container);
+  });
+});
+
 describe("weaknesses list", () => {
   it("groups by state", async () => {
     await seedProfile(db, accountId, {
@@ -104,6 +149,66 @@ describe("weaknesses list", () => {
     expect(w1.getAttribute("href")).toMatch(/^\/app\/weaknesses\/W1\?/);
     expect(screen.getByText(/Based on 3 analysed rapid games/)).toBeTruthy();
     noBadText(container);
+  });
+
+  // ADR 0084 (bug hunt N10): the owner's rapid rows. "Allowed mate" is active at confidence 0.81
+  // with the peers' rate inside its range; "Opening traps" stays active (the timeline's longer
+  // segment) at 0.547. Only a row the comparison backs (>= 0.7) is "Costing you games".
+  it("files a costing state the comparison does not back under worth watching", async () => {
+    await seedProfile(db, accountId, {
+      timeClass: "rapid",
+      games: 3,
+      estimates: [
+        {
+          seriesKey: "W4.allowed",
+          state: "active",
+          mean: 0.00522,
+          ciLow: 0.00293,
+          ciHigh: 0.00782,
+          bandMedian: 0.003498,
+          bandP40: 0.00296,
+          confidence: 0.81,
+          nUnweighted: 1599,
+          kUnweighted: 8,
+          priority: 0.0092,
+        },
+        {
+          seriesKey: "W7.traps",
+          state: "active",
+          mean: 0.4443,
+          ciLow: 0.3819,
+          ciHigh: 0.5071,
+          bandMedian: 0.4381,
+          bandP40: 0.4,
+          confidence: 0.547,
+          nUnweighted: 79,
+          kUnweighted: 37,
+          priority: 0.001,
+        },
+      ],
+    });
+    const { container } = await list();
+    const names = (name: string) =>
+      within(screen.getByRole("region", { name }))
+        .getAllByRole("link")
+        .map((a) => a.textContent);
+    expect(names("Costing you games")).toEqual(["Allowed mate"]);
+    expect(screen.getByRole("region", { name: "Costing you games" }).textContent).toMatch(
+      /inside your likely range, though yours is probably higher \(81% likely\)/,
+    );
+    const watching = screen.getByRole("region", { name: "Worth watching" });
+    expect(within(watching).getAllByRole("link")).toHaveLength(1);
+    expect(watching.textContent).toMatch(/not clearly more often/);
+    noBadText(container);
+
+    const allowed = (await detail("W4.allowed")).container.textContent ?? "";
+    expect(allowed).toMatch(
+      /inside your likely range, though yours is probably higher \(81% likely\)/,
+    );
+    expect(allowed).toMatch(/Probably more often than/);
+    expect(allowed).not.toMatch(/Not clearly different/);
+    const traps = (await detail("W7.traps")).container.textContent ?? "";
+    expect(traps).toMatch(/Active comes from your game-by-game record/);
   });
 
   // Bug hunt I1: with no rating-band benchmark every estimate is stored `not_an_issue` with a
@@ -504,7 +609,11 @@ describe("weakness detail", () => {
     });
     const { container } = await detail("W1");
     // One example per game, at most three on the page.
-    const links = screen.getAllByRole("link", { name: /Open 4\. Nxe5 in the review/ });
+    // Each example is a position explorer: it expands, and links to the review at that ply.
+    const links = screen.getAllByRole("link", { name: "Open the game at 4. Nxe5" });
+    expect(
+      screen.getAllByRole("button", { name: "Expand the position before 4. Nxe5" }),
+    ).toHaveLength(1);
     expect(links).toHaveLength(1);
     expect(container.textContent).toContain(
       "Your win chance went from 52% to 36%, a drop of 16 win% points.",
@@ -613,7 +722,7 @@ describe("weakness detail", () => {
       },
     });
     const { container } = await detail("W1");
-    expect(screen.queryByRole("link", { name: /in the review/ })).toBeNull();
+    expect(screen.queryByRole("link", { name: /Open the game at/ })).toBeNull();
     expect(screen.getByText("This game is not among your imported games.")).toBeTruthy();
     expect(container.innerHTML).not.toContain(gameId);
   });

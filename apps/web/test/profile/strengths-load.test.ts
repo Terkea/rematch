@@ -124,6 +124,38 @@ describe("loadStrengths", () => {
     expect(m.improving.kpis).not.toBeNull();
   });
 
+  it("compares with the stored peer benchmark's pooled rate before any band reference", async () => {
+    await analysed(0, { accuracy: 74 });
+    await db.execute(sql`
+      insert into account_benchmark (account_id, time_class, source, center_rating, rating_low,
+        rating_high, n_players, n_games)
+      values (${accountId}, 'rapid', 'peers', 800, 650, 950, 25, 61)`);
+    await db.execute(sql`
+      insert into account_benchmark_stat (account_id, time_class, metric, median, p25, p40, p75,
+        pooled_rate, n_players, n_games, low_sample, n_chances)
+      values (${accountId}, 'rapid', 'accuracy', 71.4, 69, 70.5, 73, null, 25, 61, false, null),
+        (${accountId}, 'rapid', 'blunders_per_game', 1.4, 1.1, 1.3, 1.7, null, 25, 61, false, null),
+        (${accountId}, 'rapid', 'accuracy.endgame', 60, 55, 58, 64, null, 3, 4, true, null)`);
+    await seedProfile(db, accountId, {
+      timeClass: "rapid",
+      kpis: [
+        { metric: "accuracy", value: 76.2, ciLow: 74.1, ciHigh: 78.3, n: 50 },
+        { metric: "blunders_per_game", value: 1.2, ciLow: 0.9, ciHigh: 1.5, n: 50 },
+        { metric: "accuracy.endgame", value: 70, ciLow: 66, ciHigh: 74, n: 30 },
+      ],
+    });
+    const m = await loadStrengths(db, userId, await scopeOf(userId));
+    expect(m?.above).toMatchObject({
+      mode: "peers",
+      compared: 2,
+      benchmark: { source: "peers", low: 650, high: 950, players: 25 },
+    });
+    if (m?.above.mode !== "peers") return;
+    // Blunders touch the peers' 1.4; the low-sample endgame row is never served.
+    expect(m.above.claims.map((c) => [c.metric, c.peer, c.n])).toEqual([["accuracy", 71.4, 50]]);
+    expect(m.improving.kpis).not.toBeNull();
+  });
+
   it("lists a confirmed improving weakness with its transition's evidence", async () => {
     await analysed(0, {});
     await seedProfile(db, accountId, {
@@ -189,6 +221,29 @@ describe("loadStrengths", () => {
     expect(m?.openings.lines).toMatchObject([
       { name: "Italian Game", n: 12, expected: 0.5, verdict: "keep", kind: "chosen" },
     ]);
+    expect(m?.openings.promising).toEqual([]);
+  });
+
+  it("names a promising line: likely above its expected score, not yet clearly", async () => {
+    for (let i = 0; i < 12; i++) {
+      const gameId = await analysed(i, { score: i < 8 ? 1 : 0, expectedScore: 0.52 });
+      await db.insert(gameOpenings).values({
+        gameId,
+        accountId,
+        timeClass: "rapid",
+        color: "black",
+        fenKeys: [],
+        ucis: [],
+        sans: [],
+        lineKey: "caro-kann",
+        lineName: "Caro-Kann Defence",
+        lineKind: "chosen",
+      });
+    }
+    const m = await loadStrengths(db, userId, await scopeOf(userId));
+    expect(m?.openings.lines).toEqual([]);
+    expect(m?.openings.promising).toMatchObject([{ name: "Caro-Kann Defence", n: 12 }]);
+    expect(m?.openings.promising[0]?.pAbove).toBeGreaterThanOrEqual(0.8);
   });
 
   it("picks a critical strength ply while Maia is pending, from its move row", async () => {
@@ -217,6 +272,24 @@ describe("loadStrengths", () => {
     ]);
     expect(m?.hardSpots.notes.only_move_found).toMatch(/^Keep doing this: /);
     expect(m?.difficulty).toMatchObject({ positions: 1, pendingMaia: 1 });
+  });
+
+  it("skips a strength ply the opponent's blunder just before handed over", async () => {
+    const gameId = await analysed(0, { strengths: [{ kind: "only_move_found", ply: 3 }] });
+    await db.insert(moveFeatures).values({
+      gameId,
+      ply: 3,
+      enrichmentProtocol: "test-1",
+      difficultyStatus: "pending_maia",
+      isCritical: true,
+      multipvGap: 20,
+    });
+    await db
+      .update(moves)
+      .set({ judgement: "blunder" })
+      .where(and(eq(moves.gameId, gameId), eq(moves.ply, 2)));
+    const m = await loadStrengths(db, userId, await scopeOf(userId));
+    expect(m?.hardSpots).toMatchObject({ mode: "none", spots: [] });
   });
 
   it("reads the newest report input's strengths", async () => {

@@ -13,9 +13,8 @@ vi.mock("next/navigation", async (orig) => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn(), prefetch: vi.fn() }),
 }));
 
-const { StrengthsView, VERDICT_TEXT, OWN_BASELINE_TEXT, diffText } = await import(
-  "../../src/app/(app)/app/strengths/strengths-view.js"
-);
+const { StrengthsView, VERDICT_TEXT, OWN_BASELINE_TEXT, CRITICAL_TITLE, HARD_TITLE, diffText } =
+  await import("../../src/app/(app)/app/strengths/strengths-view.js");
 const report = await import("../../src/app/(app)/app/report/_sections/openings.js");
 
 const ACCOUNT = "00000000-0000-4000-8000-0000000000a1";
@@ -52,7 +51,7 @@ function base(): StrengthsModel {
       trends: { claims: [], enough: true, measured: 214, needGames: 0 },
     },
     improving: { weaknesses: [], kpis: null },
-    openings: { lines: [], judged: 0 },
+    openings: { lines: [], promising: [], judged: 0 },
     hardSpots: { mode: "none", spots: [], notes: {} },
     difficulty: { positions: 40, pendingMaia: 40, ok: 0, notApplicable: 0 },
     report: null,
@@ -77,7 +76,8 @@ describe("StrengthsView", () => {
       "Where you're above your level",
       "What's improving",
       "Openings that work for you",
-      "Your best moves in hard spots",
+      // No Maia rating yet: the fallback's title never says "hard" (N11).
+      CRITICAL_TITLE,
     ]) {
       expect(screen.getByRole("heading", { level: 2, name: h })).toBeTruthy();
     }
@@ -92,7 +92,92 @@ describe("StrengthsView", () => {
     expect(section(body, "hard-spots").textContent).toContain(
       "Difficulty pending: Maia hasn't rated these positions yet (40 of 40 positions waiting).",
     );
+    expect(body.textContent).not.toContain(HARD_TITLE);
     expect(body.textContent).not.toMatch(/NaN|undefined|Infinity|null/);
+  });
+
+  it("compares with the players faced when a peer benchmark exists, with its bias", () => {
+    const m = base();
+    m.above = {
+      mode: "peers",
+      compared: 4,
+      benchmark: {
+        source: "peers",
+        platform: "chesscom",
+        low: 650,
+        high: 950,
+        players: 25,
+        games: 61,
+        chances: {},
+      },
+      claims: [
+        {
+          metric: "accuracy",
+          label: "Accuracy",
+          unit: "pct",
+          higherIsBetter: true,
+          value: 76.2,
+          low: 74.1,
+          high: 78.3,
+          n: 50,
+          peer: 71.4,
+          pooled: false,
+          chances: null,
+          players: 25,
+        },
+        {
+          metric: "blunders_per_game",
+          label: "Blunders per game",
+          unit: "per_game",
+          higherIsBetter: false,
+          value: 0.9,
+          low: 0.7,
+          high: 1.1,
+          n: 50,
+          peer: 1.4,
+          pooled: true,
+          chances: 61,
+          players: 25,
+        },
+      ],
+    };
+    const { body } = show(m);
+    const above = section(body, "above");
+    expect(above.textContent).toContain(
+      "Compared with players you've faced on chess.com, rated about 650–950 (25 players).",
+    );
+    expect(above.textContent).toContain(
+      "Only their games against you count, so it is a rough guide, not a rating-band average.",
+    );
+    expect(above.textContent).not.toContain(OWN_BASELINE_TEXT);
+    expect(body.querySelector('[data-claim="accuracy"]')?.textContent).toContain(
+      "80% range 74.1% to 78.3%, over your last 50 games. Players you've faced, rated about 650–950: 71.4% (the middle of 25 players' averages).",
+    );
+    expect(body.querySelector('[data-claim="blunders_per_game"]')?.textContent).toContain(
+      "Players you've faced, rated about 650–950: 1.40 (pooled over 61 of their chances).",
+    );
+  });
+
+  it("is calm when no measure beats the players faced", () => {
+    const m = base();
+    m.above = {
+      mode: "peers",
+      compared: 3,
+      benchmark: {
+        source: "peers",
+        platform: "chesscom",
+        low: 650,
+        high: 950,
+        players: 25,
+        games: 61,
+        chances: {},
+      },
+      claims: [],
+    };
+    const { body } = show(m);
+    expect(section(body, "above").textContent).toContain(
+      "None of your 3 measures compared with them is clearly better than theirs yet.",
+    );
   });
 
   it("says how many earlier games the own baseline still needs", () => {
@@ -198,6 +283,7 @@ describe("StrengthsView", () => {
     const m = base();
     m.openings = {
       judged: 3,
+      promising: [],
       lines: [
         {
           lineKey: "italian",
@@ -219,11 +305,42 @@ describe("StrengthsView", () => {
     );
   });
 
+  it("names a promising line as likely above, not yet certain, with n and the expectation", () => {
+    const m = base();
+    m.openings = {
+      judged: 3,
+      lines: [],
+      promising: [
+        {
+          lineKey: "caro-kann",
+          name: "Caro-Kann Defence",
+          color: "black",
+          kind: "chosen",
+          verdict: null,
+          n: 12,
+          score: 0.667,
+          expected: 0.52,
+          pAbove: 0.861,
+        },
+      ],
+    };
+    const { body, screen } = show(m);
+    const openings = section(body, "openings");
+    expect(openings.textContent).toContain(
+      "None of your 3 lines with 10 or more games scores clearly above what your rating predicts yet.",
+    );
+    expect(within(openings).getByRole("heading", { level: 3, name: "Promising" })).toBeTruthy();
+    expect(body.querySelector('[data-claim="caro-kann"]')?.textContent).toContain(
+      "You play it as Black. Scored 67% in 12 games; your rating predicted 52%. 86% likely above it, not yet certain.",
+    );
+    expect(screen.getByText(/At least 80% likely to score above/)).toBeTruthy();
+  });
+
   it("uses the report's verdict words", () => {
     expect(VERDICT_TEXT).toEqual(report.VERDICT_TEXT);
   });
 
-  it("draws a found move on a board, labels the fallback and links to that ply", () => {
+  it("shows a found move in a position explorer, labels the fallback and links to that ply", () => {
     const m = base();
     m.hardSpots = {
       mode: "critical",
@@ -244,22 +361,31 @@ describe("StrengthsView", () => {
           pBest: null,
           isCritical: true,
           multipvGap: 22.4,
+          prevSan: "Nc6",
+          prevJudgement: null,
         },
       ],
       notes: { only_move_found: "Keep doing this: when the position is sharp, take your time." },
     };
     const { body } = show(m);
     const hard = section(body, "hard-spots");
+    expect(within(hard).getByRole("heading", { level: 2 }).textContent).toBe(CRITICAL_TITLE);
     expect(hard.textContent).toContain(
-      "Until it does, these are critical positions: the engine's best move was at least 15 win% points better than its second choice, and you found it.",
+      "Until it does, these are moments where the engine's best move was at least 15 win% points better than its second choice, your win chance was between 25% and 75%, and you found it.",
     );
-    const spot = body.querySelector('[data-spot="g-1:5"]');
-    expect(spot?.querySelector("[aria-label='Position before 3. Bb5']")).toBeTruthy();
+    const spot = body.querySelector('[data-spot="g-1:5"]') as HTMLElement;
+    expect(spot.querySelector("[data-position-explorer]")).toBeTruthy();
+    expect(
+      within(spot).getByRole("button", { name: "Expand the position before 3. Bb5" }),
+    ).toBeTruthy();
+    expect(spot.textContent).toContain("Played, Bb5, the engine's move");
     expect(spot?.textContent).toContain(
       "The engine's next choice was 22 win% points worse. Win chance 54% to 55%. You took 12 s.",
     );
     expect(spot?.textContent).toContain("Keep doing this: when the position is sharp");
-    expect(spot?.querySelector("a")?.getAttribute("href")).toBe("/app/games/g-1?ply=5");
+    expect(
+      within(spot).getByRole("link", { name: "Open the game at 3. Bb5" }).getAttribute("href"),
+    ).toBe("/app/games/g-1?ply=5");
     expect(body.textContent).not.toMatch(/NaN|undefined|Infinity/);
   });
 

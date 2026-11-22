@@ -11,10 +11,12 @@ import {
   weaknessEstimates,
   weaknessStateHistory,
 } from "@ci/db/generated";
+import { Chess } from "chess.js";
 import { and, asc, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { readOnly } from "../games";
 import type { TimeClass } from "../games/types";
-import { BOOTSTRAP_RESAMPLES, CONFIDENCE, fnv1a, mulberry32, wilson } from "../stats";
+import { BOOTSTRAP_RESAMPLES, CONFIDENCE, fnv1a, mulberry32, regIncBeta, wilson } from "../stats";
+import { type Benchmark, getBenchmark } from "./benchmark";
 import { type KpiDef, kpiDef, seriesLabel, weaknessDef } from "./catalogue";
 import { difficultyStatus } from "./difficulty";
 import { KPI_GLOSSARY } from "./glossary";
@@ -44,6 +46,14 @@ export const MIN_OPENING_GAMES = 10;
 export const HARD_P_BEST = 0.3;
 /** profile-core `features/derive.rs` `CRITICAL_GAP`: best line ahead of the second by this W%. */
 export const CRITICAL_GAP = 15;
+/**
+ * The fallback's balanced band (N11): the mover's win% before the move. Outside it the game was
+ * already decided, and the "only move" was usually just taking what was there.
+ */
+export const BALANCED_MIN = 25;
+export const BALANCED_MAX = 75;
+/** A "promising" opening is at least this likely to score above its expected score (N13). */
+export const PROMISING_P = 0.8;
 /** Boards in "Your best moves in hard spots". */
 export const MAX_SPOTS = 3;
 /** refdata `band_reference.rs` `MAX_FALLBACK_BANDS`. */
@@ -168,6 +178,68 @@ export function aboveBand(
       n: row.n,
       median: ref.median,
       band: ref.band,
+    });
+  }
+  return out;
+}
+
+/** One served `account_benchmark_stat` row of the peer benchmark (ADRs 0080, 0081). */
+export type PeerRow = {
+  metric: string;
+  median: number;
+  /** The pooled rate of a rate row; null for a mean row (the median of the opponents' means). */
+  pooledRate: number | null;
+  /** A rate row's raw chances in the window; null for a mean row. */
+  nChances: number | null;
+  nPlayers: number;
+};
+
+export type PeerClaim = Omit<BandClaim, "median" | "band"> & {
+  /** What the player is compared with: the pooled rate, or the median of the opponents' means. */
+  peer: number;
+  pooled: boolean;
+  chances: number | null;
+  players: number;
+};
+
+/**
+ * The KPIs whose stored last-50 interval lies wholly on the better side of the peers' compared
+ * value (the pooled rate where the row has one, else its median), with the catalogue's minimum
+ * games. A measure the peer benchmark does not compare (ADR 0081 mirrors) has no row: no claim.
+ */
+export function abovePeers(
+  current: {
+    metric: string;
+    value: number | null;
+    low: number | null;
+    high: number | null;
+    n: number;
+  }[],
+  peers: PeerRow[],
+): PeerClaim[] {
+  const out: PeerClaim[] = [];
+  for (const def of defs()) {
+    const row = current.find((r) => r.metric === def.metric);
+    const ref = peers.find((p) => p.metric === def.metric);
+    if (!row || !ref || row.n < def.minN) continue;
+    const pooled = fin(ref.pooledRate);
+    const peer = pooled ? (ref.pooledRate as number) : ref.median;
+    const { value, low, high } = row;
+    if (!fin(peer) || !fin(value) || !fin(low) || !fin(high) || low > high) continue;
+    if (!(def.higherIsBetter ? low > peer : high < peer)) continue;
+    out.push({
+      metric: def.metric,
+      label: def.label,
+      unit: def.unit,
+      higherIsBetter: def.higherIsBetter === true,
+      value,
+      low,
+      high,
+      n: row.n,
+      peer,
+      pooled,
+      chances: fin(ref.nChances) ? ref.nChances : null,
+      players: ref.nPlayers,
     });
   }
   return out;
@@ -394,6 +466,41 @@ export function workingOpenings(lines: OpeningInput[]): WorkingOpening[] {
   return out.sort((a, b) => b.low - b.expected - (a.low - a.expected) || b.n - a.n);
 }
 
+export type PromisingOpening = Omit<WorkingOpening, "low" | "high"> & {
+  /** Posterior probability that the line's true score is above the expected score. */
+  pAbove: number;
+};
+
+/**
+ * The "promising" tier (N13): lines with at least `MIN_OPENING_GAMES` games, not clearly above
+ * (`workingOpenings`), whose score is at least `PROMISING_P` likely above the mean expected
+ * score under a Beta(1 + points, 1 + n - points) posterior (a uniform prior; a draw counts
+ * half). Likeliest first.
+ */
+export function promisingOpenings(lines: OpeningInput[]): PromisingOpening[] {
+  const clear = new Set(workingOpenings(lines).map((o) => `${o.color}:${o.kind}:${o.lineKey}`));
+  const out: PromisingOpening[] = [];
+  for (const l of lines) {
+    if (clear.has(`${l.color}:${l.kind}:${l.lineKey}`)) continue;
+    const g = l.games.filter((x) => fin(x.score) && fin(x.expected));
+    if (g.length < MIN_OPENING_GAMES) continue;
+    const points = Math.min(
+      g.length,
+      Math.max(
+        0,
+        g.reduce((s, x) => s + x.score, 0),
+      ),
+    );
+    const expected = mean(g.map((x) => x.expected));
+    if (!(expected > 0 && expected < 1)) continue;
+    const pAbove = 1 - regIncBeta(expected, 1 + points, 1 + g.length - points);
+    if (!fin(pAbove) || pAbove < PROMISING_P) continue;
+    const { games: _games, ...rest } = l;
+    out.push({ ...rest, n: g.length, score: points / g.length, expected, pAbove });
+  }
+  return out.sort((a, b) => b.pAbove - a.pAbove || b.n - a.n);
+}
+
 // ---- 4. Your best moves in hard spots ----
 
 export type StrengthKind = "only_move_found" | "tactic_found";
@@ -416,6 +523,9 @@ export type HardSpotCandidate = {
   pBest: number | null;
   isCritical: boolean | null;
   multipvGap: number | null;
+  /** The opponent's move just before (its SAN and stored judgement), when there is one. */
+  prevSan: string | null;
+  prevJudgement: string | null;
 };
 
 export type HardSpots = {
@@ -426,6 +536,43 @@ export type HardSpots = {
 
 /** The engine's move, when the row records one (the strength ply already says it was played). */
 const playedBest = (c: HardSpotCandidate) => c.bestUci == null || c.bestUci === c.uci;
+
+const VALUE: Record<string, number> = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 100 };
+
+/**
+ * True for a capture anyone would find (N11): a recapture on the square the opponent just
+ * captured on, a capture of more than the capturing piece is worth, or one nothing can legally
+ * take back. False for a quiet move or a move that is not legal in `fen`.
+ */
+export function obviousCapture(fen: string, uci: string, prevSan: string | null): boolean {
+  let chess: Chess;
+  let move: ReturnType<Chess["move"]>;
+  try {
+    chess = new Chess(fen);
+    move = chess.move({
+      from: uci.slice(0, 2),
+      to: uci.slice(2, 4),
+      ...(uci.length > 4 ? { promotion: uci.slice(4, 5) } : {}),
+    });
+  } catch {
+    return false;
+  }
+  if (!move.captured) return false;
+  if (prevSan?.includes("x") && prevSan.replace(/[+#?!]/g, "").endsWith(move.to)) return true;
+  if ((VALUE[move.captured] ?? 0) > (VALUE[move.piece] ?? 0)) return true;
+  return !chess.moves({ verbose: true }).some((m) => m.to === move.to && m.captured);
+}
+
+/**
+ * A move anyone would find: an obvious capture (`obviousCapture`). Finding the refutation of
+ * the opponent's mistake is kept: punishing errors is a strength, and on the owner's real games
+ * excluding every post-mistake moment left 2 of 69 balanced critical moments, both free
+ * captures. The balanced-position gate still drops moments their error already decided.
+ */
+const handedOver = (c: HardSpotCandidate) => obviousCapture(c.fen, c.uci, c.prevSan);
+
+const balanced = (c: HardSpotCandidate) =>
+  c.winBefore >= BALANCED_MIN && c.winBefore <= BALANCED_MAX;
 
 /** One per game first, then the rest, keeping `sorted`'s order. */
 function spread(sorted: HardSpotCandidate[]): HardSpotCandidate[] {
@@ -440,13 +587,15 @@ function spread(sorted: HardSpotCandidate[]): HardSpotCandidate[] {
 }
 
 /**
- * Up to `MAX_SPOTS` positions where the player found the engine's best move. Maia-hard ones
- * (difficulty `ok`, `p_best ≤ HARD_P_BEST`) first, hardest first; with none, the fallback is
- * critical positions (`is_critical`, the best line at least `CRITICAL_GAP` win% ahead of the
- * second), biggest gap first, newest on a tie.
+ * Up to `MAX_SPOTS` positions where the player found the engine's best move, never an obvious
+ * capture (`obviousCapture`; refuting the opponent's mistake with a real move counts). Maia-hard
+ * ones (difficulty `ok`, `p_best ≤ HARD_P_BEST`) first, hardest first; with none, the fallback is
+ * critical moments in a roughly balanced game (`is_critical`, the best line at least
+ * `CRITICAL_GAP` win% ahead of the second, the win% before between `BALANCED_MIN` and
+ * `BALANCED_MAX`), biggest gap first, newest on a tie.
  */
 export function pickHardSpots(candidates: HardSpotCandidate[]): HardSpots {
-  const ok = candidates.filter(playedBest);
+  const ok = candidates.filter((c) => playedBest(c) && !handedOver(c));
   const maia = ok.filter(
     (c) => c.difficultyStatus === "ok" && fin(c.pBest) && c.pBest <= HARD_P_BEST,
   );
@@ -458,7 +607,8 @@ export function pickHardSpots(candidates: HardSpotCandidate[]): HardSpots {
     return { mode: "maia", spots: spread(sorted) };
   }
   const critical = ok.filter(
-    (c) => c.isCritical === true && fin(c.multipvGap) && c.multipvGap >= CRITICAL_GAP,
+    (c) =>
+      c.isCritical === true && fin(c.multipvGap) && c.multipvGap >= CRITICAL_GAP && balanced(c),
   );
   if (critical.length === 0) return { mode: "none", spots: [] };
   const sorted = [...critical].sort(
@@ -528,10 +678,16 @@ export function reportStrengths(input: unknown): ReportStrength[] {
 export type StrengthsModel = {
   analysedGames: number;
   above:
+    | {
+        mode: "peers";
+        benchmark: Extract<Benchmark, { source: "peers" }>;
+        claims: PeerClaim[];
+        compared: number;
+      }
     | { mode: "band"; band: Band; claims: BandClaim[]; compared: number }
     | { mode: "own"; trends: OwnTrends };
   improving: { weaknesses: ImprovingWeakness[]; kpis: OwnTrends | null };
-  openings: { lines: WorkingOpening[]; judged: number };
+  openings: { lines: WorkingOpening[]; promising: PromisingOpening[]; judged: number };
   hardSpots: HardSpots & { notes: Record<string, string | null> };
   difficulty: DifficultyStatus;
   report: { at: Date; strengths: ReportStrength[] } | null;
@@ -543,6 +699,8 @@ export async function loadStrengths(
   userId: string,
   scope: CoachScope,
 ): Promise<StrengthsModel | null> {
+  // The peer benchmark (ADRs 0080, 0081), when the scope's last build-profile stored one.
+  const benchmark = await getBenchmark(db, userId, scope);
   const model = await readOnly(db, async (tx) => {
     if (!(await ownsScope(tx, userId, scope))) return null;
     const inScope = {
@@ -602,24 +760,48 @@ export async function loadStrengths(
           )
       : [];
     let above: StrengthsModel["above"] = { mode: "own", trends: own };
-    if (band && refRows.length > 0) {
-      const medians = bandMedians(refRows, band);
-      const current = await latestSnapshots(tx, scope, [...STRENGTH_METRICS], CURRENT_WINDOW);
-      above = {
-        mode: "band",
-        band,
-        claims: aboveBand(
-          current.map((r) => ({
+    const peerRows: PeerRow[] =
+      benchmark?.source === "peers"
+        ? (
+            (await tx.execute(sql`
+              select metric, median, pooled_rate, n_chances, n_players
+              from account_benchmark_stat
+              where account_id = ${scope.accountId} and time_class = ${scope.timeClass}::time_class
+                and not low_sample and metric in (${sql.join(
+                  STRENGTH_METRICS.map((m) => sql`${m}`),
+                  sql`, `,
+                )})`)) as unknown as Record<string, unknown>[]
+          ).flatMap((r): PeerRow[] => {
+            const median = Number(r.median);
+            if (!fin(median)) return [];
+            const opt = (v: unknown) => (v == null || !fin(Number(v)) ? null : Number(v));
+            return [
+              {
+                metric: String(r.metric),
+                median,
+                pooledRate: opt(r.pooled_rate),
+                nChances: opt(r.n_chances),
+                nPlayers: Math.max(0, Math.trunc(Number(r.n_players) || 0)),
+              },
+            ];
+          })
+        : [];
+    const current =
+      peerRows.length > 0 || (band && refRows.length > 0)
+        ? (await latestSnapshots(tx, scope, [...STRENGTH_METRICS], CURRENT_WINDOW)).map((r) => ({
             metric: r.metric,
             value: r.value,
             low: r.ciLow,
             high: r.ciHigh,
             n: r.n,
-          })),
-          medians,
-        ),
-        compared: medians.size,
-      };
+          }))
+        : [];
+    const compared = defs().filter((d) => peerRows.some((p) => p.metric === d.metric)).length;
+    if (benchmark?.source === "peers" && compared > 0) {
+      above = { mode: "peers", benchmark, claims: abovePeers(current, peerRows), compared };
+    } else if (band && refRows.length > 0) {
+      const medians = bandMedians(refRows, band);
+      above = { mode: "band", band, claims: aboveBand(current, medians), compared: medians.size };
     }
 
     // Weaknesses improving or resolved, with their newest transition into that state.
@@ -741,7 +923,7 @@ export async function loadStrengths(
     const spotRows = (await tx.execute(sql`
       select s.game_id, s.played_at, s.kind, s.ply, m.fen_before, m.san, m.uci, m.best_uci,
         m.win_before, m.win_after, m.time_spent, f.difficulty_status, f.p_best, f.is_critical,
-        f.multipv_gap
+        f.multipv_gap, pm.san as prev_san, pm.judgement::text as prev_judgement
       from (
         select gm.game_id, gm.played_at, e->>'kind' as kind, (e->>'ply')::int as ply
         from game_metrics gm
@@ -754,6 +936,7 @@ export async function loadStrengths(
       ) s
       join moves m on m.game_id = s.game_id and m.ply = s.ply
       left join move_features f on f.game_id = s.game_id and f.ply = s.ply
+      left join moves pm on pm.game_id = s.game_id and pm.ply = s.ply - 1
       order by s.played_at desc, s.ply
       limit 300`)) as unknown as Record<string, unknown>[];
     const candidates: HardSpotCandidate[] = spotRows.flatMap((r): HardSpotCandidate[] => {
@@ -778,6 +961,8 @@ export async function loadStrengths(
           pBest: fin(num(r.p_best)) ? num(r.p_best) : null,
           isCritical: typeof r.is_critical === "boolean" ? r.is_critical : null,
           multipvGap: fin(num(r.multipv_gap)) ? num(r.multipv_gap) : null,
+          prevSan: r.prev_san == null ? null : String(r.prev_san),
+          prevJudgement: r.prev_judgement == null ? null : String(r.prev_judgement),
         },
       ];
     });
@@ -805,9 +990,13 @@ export async function loadStrengths(
       above,
       improving: {
         weaknesses: improvingWeaknesses(changes),
-        kpis: above.mode === "band" ? own : null,
+        kpis: above.mode === "own" ? null : own,
       },
-      openings: { lines: workingOpenings([...lines.values()]), judged },
+      openings: {
+        lines: workingOpenings([...lines.values()]),
+        promising: promisingOpenings([...lines.values()]),
+        judged,
+      },
       hardSpots: {
         ...spots,
         notes: Object.fromEntries(spots.spots.map((s) => [s.kind, keepDoingNote(s.kind)])),

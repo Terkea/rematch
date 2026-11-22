@@ -2,6 +2,22 @@ Progress
 
 What has changed in your games, week by week. Based on 15 analysed rapid games.
 
+Time control
+Rapid
+15
+Colour
+Both
+White
+Black
+Period
+30 days
+3 months
+6 months
+12 months
+All time
+Custom
+Compare periods
+Compare periods
 Before and after
 
 Your rate either side of each change the detector has called.

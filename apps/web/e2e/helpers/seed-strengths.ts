@@ -17,11 +17,17 @@ const DEFAULT_URL = "postgres://postgres:postgres@localhost:55432/chess_e2e_test
 const PROTOCOL = "e2e-strengths";
 const idOf = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 
-/** Black's moves in the fixtures (plies 58 Bxf3+, 64 Qxf4 and 20 Qxf4), with their gaps. */
+/**
+ * Black's moves in the fixtures, with their gaps: three quiet moves in a balanced game (the
+ * short attack's 8… Qb6, and 27… Rf8 and 14… Na6 in `e2e-analysed`), and the short attack's
+ * 10… Qxf4, a free capture right after White's blunder, which the page must leave out (N11)
+ * although its gap is the biggest.
+ */
 const SPOTS = [
-  { gameId: idOf(1), ply: 58, gap: 24, kind: "only_move_found" },
-  { gameId: idOf(1), ply: 64, gap: 18, kind: "tactic_found" },
-  { gameId: idOf(3), ply: 20, gap: 31, kind: "tactic_found" },
+  { gameId: idOf(3), ply: 16, gap: 31, kind: "tactic_found" },
+  { gameId: idOf(1), ply: 54, gap: 24, kind: "only_move_found" },
+  { gameId: idOf(1), ply: 28, gap: 18, kind: "tactic_found" },
+  { gameId: idOf(3), ply: 20, gap: 40, kind: "tactic_found" },
 ] as const;
 
 function dbOf(db?: Db): Db {

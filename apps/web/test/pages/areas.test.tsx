@@ -288,11 +288,13 @@ describe("skill-area pages", { timeout: 30_000 }, () => {
   it("reads through the read models as the signed-in user, in the resolved scope", async () => {
     await show("endgame", { account: ACCOUNT, tc: "rapid" });
     expect(resolveCoachScope).toHaveBeenCalledWith({}, "u1", { account: ACCOUNT, tc: "rapid" });
-    expect(getArea).toHaveBeenCalledWith({}, "u1", SCOPE, "endgame");
+    // The scope carries the colour filter's stored side (Both until ADR 0082, T3).
+    const scoped = { ...SCOPE, side: "both" };
+    expect(getArea).toHaveBeenCalledWith({}, "u1", scoped, "endgame");
     expect(getReport).toHaveBeenCalledWith({}, "u1", { accountId: ACCOUNT, timeClass: "rapid" });
     for (const call of [...kpiTrends.mock.calls, ...getWeakness.mock.calls]) {
       expect(call[1]).toBe("u1");
-      expect(call[2]).toBe(SCOPE);
+      expect(call[2]).toEqual(scoped);
     }
   });
 

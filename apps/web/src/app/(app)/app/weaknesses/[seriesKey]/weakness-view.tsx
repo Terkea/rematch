@@ -6,9 +6,13 @@ import {
   dayText,
   KpiTrendGrid,
   type KpiTrendItem,
+  likelyText,
   NO_BENCHMARK_TEXT,
+  NO_COLOUR_BENCHMARK,
+  NO_COLOUR_BENCHMARK_TEXT,
   NOT_COMPARED_LABEL,
   needMoreText,
+  probablyAbove,
   shareRangeText,
   shareText,
   WeaknessRowKey,
@@ -152,10 +156,20 @@ function IntervalScale({
   );
 }
 
-/** Where the band median sits against the stored range; only a clear miss says lower or higher. */
-export function bandRelation(rate: { low: number; high: number }, median: number): string {
+/**
+ * Where the band median sits against the stored range; only a clear miss says lower or higher.
+ * Inside it, a stored confidence of 0.7 or more adds "though yours is probably higher" (ADR 0084).
+ */
+export function bandRelation(
+  rate: { low: number; high: number },
+  median: number,
+  confidence?: number,
+): string {
   if (median < rate.low) return "lower than your whole likely range";
   if (median > rate.high) return "higher than your whole likely range";
+  if (probablyAbove(confidence)) {
+    return `inside your likely range, though yours is probably higher (${likelyText(confidence)})`;
+  }
   return "inside your likely range";
 }
 
@@ -191,12 +205,18 @@ function EarlyKey({ group }: { group: string }) {
 
 function Header({ detail, scope, askHref }: Props & { askHref: string }) {
   const early = !detail.evidence.sufficient;
-  // Without a benchmark the stored state is no claim (bug hunt I1).
+  const colour = colourOf(scope);
+  // Without a benchmark the stored state is no claim (bug hunt I1). A colour has no state of its
+  // own: states are called on every game (ADR 0082), so it names the colour instead.
   const state = early
     ? "Early read"
-    : detail.compared
-      ? stateStyle[detail.state].label
-      : NOT_COMPARED_LABEL;
+    : colour
+      ? detail.compared
+        ? `Your ${colour} games`
+        : `Your ${colour} games, ${NO_COLOUR_BENCHMARK.toLowerCase()}`
+      : detail.compared
+        ? stateStyle[detail.state].label
+        : NOT_COMPARED_LABEL;
   const provisional = early || !detail.compared;
   return (
     <header className="flex flex-col gap-4">
@@ -214,7 +234,9 @@ function Header({ detail, scope, askHref }: Props & { askHref: string }) {
           </h1>
           <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-ink-soft">
             <span
-              data-state={early ? "early" : detail.compared ? detail.state : "uncompared"}
+              data-state={
+                early ? "early" : colour ? "colour" : detail.compared ? detail.state : "uncompared"
+              }
               className={
                 provisional
                   ? "rounded-pill border border-dashed border-ink-faint px-2.5 py-0.5 font-medium"
@@ -235,6 +257,10 @@ function Header({ detail, scope, askHref }: Props & { askHref: string }) {
     </header>
   );
 }
+
+/** "White" or "Black" when the page reads one colour's rows, else null. */
+const colourOf = (scope: { side?: string }) =>
+  scope.side === "white" ? "White" : scope.side === "black" ? "Black" : null;
 
 /** The reference group's name when nothing more specific is known. */
 const DEFAULT_GROUP = "Players in your rating band";
@@ -314,7 +340,7 @@ function Standing({ detail, benchmark }: { detail: WeaknessDetail; benchmark: Be
                   <p className="text-ink-soft">
                     {early || none
                       ? `${group}. A comparison waits for more chances.`
-                      : `${group}, ${bandRelation(detail.rate, median)}.`}
+                      : `${group}, ${bandRelation(detail.rate, median, detail.confidence)}.`}
                   </p>
                 </>
               ) : (
@@ -323,7 +349,7 @@ function Standing({ detail, benchmark }: { detail: WeaknessDetail; benchmark: Be
                   <p className="text-ink-soft">
                     {early || none
                       ? "A comparison waits for more chances."
-                      : `That is ${bandRelation(detail.rate, median)}.`}
+                      : `That is ${bandRelation(detail.rate, median, detail.confidence)}.`}
                   </p>
                 </>
               )}
@@ -456,7 +482,15 @@ function WhatItIs({ entry }: { entry: GlossaryEntry | null }) {
   );
 }
 
-function HowOften({ detail, benchmark }: { detail: WeaknessDetail; benchmark: Benchmark | null }) {
+function HowOften({
+  detail,
+  benchmark,
+  colour = null,
+}: {
+  detail: WeaknessDetail;
+  benchmark: Benchmark | null;
+  colour?: string | null;
+}) {
   const early = !detail.evidence.sufficient;
   const none = detail.evidence.chances <= 0;
   const label = detail.compared ? benchmarkLabel(benchmark) : null;
@@ -465,13 +499,18 @@ function HowOften({ detail, benchmark }: { detail: WeaknessDetail; benchmark: Be
       <p className={PROSE}>{howOftenText(detail.evidence, ESTIMATE_WINDOW_TEXT)}</p>
       {none ? null : <p className={SOFT}>{rateText(detail.rate, early)}</p>}
       <p className={SOFT}>
-        {levelText({
-          rate: detail.rate,
-          median: detail.band.median,
-          compared: detail.compared,
-          sufficient: detail.evidence.sufficient && !none,
-          benchmark,
-        })}
+        {colour && !detail.compared
+          ? `${NO_COLOUR_BENCHMARK_TEXT}.`
+          : levelText({
+              rate: detail.rate,
+              median: detail.band.median,
+              compared: detail.compared,
+              sufficient: detail.evidence.sufficient && !none,
+              benchmark,
+              confidence: detail.confidence,
+              // A colour has no state of its own (ADR 0082): only its comparison speaks.
+              ...(colour ? {} : { state: detail.state }),
+            })}
       </p>
       {label === null ? null : (
         <p data-benchmark="peers" className="m-0 max-w-prose text-sm text-ink-soft">
@@ -482,7 +521,16 @@ function HowOften({ detail, benchmark }: { detail: WeaknessDetail; benchmark: Be
   );
 }
 
-function Trend({ detail }: { detail: WeaknessDetail }) {
+function Trend({ detail, colour = null }: { detail: WeaknessDetail; colour?: string | null }) {
+  if (colour) {
+    // States and P_imp are called on every game (ADR 0082): a colour has no call of its own.
+    return (
+      <p className={PROSE}>
+        Better or worse is called on all your games together, so your {colour} games have no call of
+        their own. Set Colour to Both to see it.
+      </p>
+    );
+  }
   return (
     <div className="flex flex-col gap-2" style={LINING}>
       <p className={PROSE}>
@@ -534,10 +582,10 @@ export function WeaknessView({
         <WhatItIs entry={entry} />
       </Step>
       <Step id="often-heading" title="How often it happens to you">
-        <HowOften detail={detail} benchmark={benchmark} />
+        <HowOften detail={detail} benchmark={benchmark} colour={colourOf(scope)} />
       </Step>
       <Step id="trend-heading" title="Better or worse">
-        <Trend detail={detail} />
+        <Trend detail={detail} colour={colourOf(scope)} />
       </Step>
       <Step id="examples-heading" title="Examples from your games">
         <Examples examples={detail.examples} reviewIds={reviewIds} />
@@ -555,6 +603,9 @@ export function WeaknessView({
           <p className="m-0 text-sm text-ink-soft">
             The numbers behind the story: the estimate's range, its state over time and the
             week-by-week rate.
+            {colourOf(scope)
+              ? ` The range and the weekly rate are your ${colourOf(scope)} games'; the states over time are all your games'.`
+              : ""}
           </p>
         </SectionHead>
         <Standing detail={detail} benchmark={benchmark} />

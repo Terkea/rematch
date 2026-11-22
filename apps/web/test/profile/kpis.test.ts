@@ -158,6 +158,29 @@ describe("kpiTrends", () => {
     expect(trend?.points).toEqual([{ week: "2026-W45", value: 71, low: null, high: null, n: 12 }]);
   });
 
+  it("reads one colour's snapshots when the scope names a side (T3, ADR 0082)", async () => {
+    await seedProfile(db, accountId, {
+      timeClass: "rapid",
+      games: 1,
+      kpis: [
+        { metric: "accuracy", value: 70, n: 50, computedAt: t("2026-11-01T00:00:00Z") },
+        {
+          metric: "accuracy",
+          side: "white",
+          value: 90,
+          n: 30,
+          computedAt: t("2026-11-20T00:00:00Z"),
+        },
+        { metric: "accuracy", side: "black", windowKey: "2026-W45", value: 40, n: 6 },
+      ],
+    });
+    const scope = await scopeOf(userId);
+    const [white] = await kpiTrends(db, userId, { ...scope, side: "white" }, ["accuracy"]);
+    expect(white?.current).toMatchObject({ value: 90, n: 30 });
+    const [black] = await kpiTrends(db, userId, { ...scope, side: "black" }, ["accuracy"]);
+    expect(black?.points).toEqual([{ week: "2026-W45", value: 40, low: null, high: null, n: 6 }]);
+  });
+
   it("defaults to every catalogue metric with a row, and skips unknown ones", async () => {
     await seedProfile(db, accountId, {
       timeClass: "rapid",

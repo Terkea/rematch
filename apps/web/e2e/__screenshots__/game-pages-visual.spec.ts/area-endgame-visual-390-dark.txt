@@ -13,6 +13,8 @@ How well you play once most pieces have been traded.
 
 From 15 analysed rapid games on chess.com
 
+Filters
+Rapid
 Score
 Your score
 Band median

@@ -7,7 +7,13 @@ import { requireUser } from "../../../../server/auth/session";
 import { getDb } from "../../../../server/db";
 import { requestEventCursor } from "../../../../server/events/request-cursor";
 import { resolveCoachScope } from "../../../../server/profile";
+import { loadPeriodComparison } from "../../../../server/stats/period-compare";
 import { EmptySheet, PageHeading } from "../../_shell/page-heading";
+import { CompareBlock } from "../_filters/compare-block";
+import { compareView } from "../_filters/compare-view";
+import { FilterBar } from "../_filters/filter-bar";
+import { loadCoachBar, manyAccounts } from "../_filters/load";
+import { storedSide } from "../_filters/side";
 import { loadProgress } from "./load";
 import { ProgressView, toProgressView } from "./progress-view";
 
@@ -29,7 +35,8 @@ export default async function ProgressPage({
   // Before any page data, so the event stream replays whatever lands after this read (T27).
   await requestEventCursor(user.id);
   const db = getDb();
-  const scope = await resolveCoachScope(db, user.id, await searchParams);
+  const params = await searchParams;
+  const scope = await resolveCoachScope(db, user.id, params);
   if (!scope) {
     return (
       <div className="flex flex-col gap-8">
@@ -46,7 +53,21 @@ export default async function ProgressPage({
       </div>
     );
   }
-  const view = toProgressView(await loadProgress(db, user.id, scope));
+  const now = new Date();
+  const bar = await loadCoachBar(db, params, scope, {
+    basePath: "/app/progress",
+    formatSupported: false,
+    color: "on",
+    dates: true,
+    compare: true,
+    now,
+  });
+  const f = bar.filters;
+  const [input, compared] = await Promise.all([
+    loadProgress(db, user.id, scope, now, { from: f.from, to: f.to }, storedSide(f)),
+    loadPeriodComparison(db, user.id, f, now, { accountId: scope.accountId }),
+  ]);
+  const view = toProgressView(input);
   return (
     <>
       <LiveRefreshOn
@@ -58,7 +79,21 @@ export default async function ProgressPage({
       />
       <ProgressView
         view={view}
-        scopeSwitch={<CoachScopeSwitch scope={scope} basePath="/app/progress" />}
+        scopeSwitch={
+          <>
+            {manyAccounts(scope) ? (
+              <CoachScopeSwitch scope={scope} basePath="/app/progress" />
+            ) : null}
+            <FilterBar model={bar.model} />
+            {f.color !== "both" ? (
+              <p className="m-0 max-w-prose text-sm text-ink-soft">
+                Colour applies to the comparison and the weekly trends. Before and after and the
+                weakness timeline cover both colours: states are called on all your games.
+              </p>
+            ) : null}
+          </>
+        }
+        compare={compared ? <CompareBlock view={compareView(compared)} /> : null}
       />
     </>
   );

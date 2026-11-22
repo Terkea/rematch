@@ -47,3 +47,31 @@ Issues found and fixed:
 
 Open, for the fresh critic: the green value on an improving weakness ("9.0%") is the rate now,
 not the drop; check whether it reads as the improvement.
+
+## Pass 2: fix/strengths-polish (N11 to N14; self-critique only)
+
+The implementer was told not to dispatch subagents, so this is **self-critique only**; the fresh
+critic pass is still owed. Shots: `/app/strengths`, `/app/strengths?tc=blitz` and
+`/app/weaknesses/W3.shallow` at 390 and 1440, light and dark, through the `qa` container of
+`ci-fixh` (base URL `http://localhost:3100`, the e2e adult's stored session), on the strengths
+seed (whose spots are now three quiet moves in balanced games and one free capture after a
+blunder, which must not show).
+
+Changed and checked:
+
+1. **Fallback title.** Without a Maia rating the section reads "Critical moments you got right",
+   never "hard"; the lede keeps "Difficulty pending: Maia …" and names the new rules (win chance
+   25% to 75%, free captures and gifts after the opponent's mistake left out). Round 1 repeated the
+   title inside the lede ("these are critical moments you got right: …"); now "these are moments
+   where the engine's best move …".
+2. **Boards are position explorers** (Strengths and the weakness examples): the key reads
+   "Played, Qb6, the engine's move" with a `good` arrow and `!` badge, then Expand and "Open the
+   game at 8… Qb6". The host's own "Open … in the review" link was dropped so there is one link
+   per board. Each board fills its grid column (`w-full`), as before.
+3. **Peer claims and the promising opening tier** are covered by unit and page tests; the e2e seed
+   has no peer benchmark and no line with 10 games, so their calm lines show.
+
+Open, for the fresh critic: at 390 a full-page capture shows the second and third boards as the
+explorer's lazy `well` placeholder (they load within a screen of the viewport; the coach shows
+the same); the caption under each board ("8… Qb6! You found the only good move.") partly repeats
+the key above it; the scope switch is clipped at 390 (pre-existing).

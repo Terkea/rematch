@@ -22,11 +22,14 @@ export {
   type KpiUnit,
   kpiPointText,
   kpiSummary,
+  likelyText,
   NO_BENCHMARK_TEXT,
   NOT_COMPARED_LABEL,
   needMoreText,
   nText,
   onLine,
+  PROBABLY_ABOVE,
+  probablyAbove,
   shareRangeText,
   shareText,
   trendPendingText,
@@ -35,4 +38,12 @@ export {
   weaknessScaleMax,
   weekText,
 } from "./text.js";
-export { WeaknessRow, WeaknessRowKey, type WeaknessRowProps } from "./weakness-row.js";
+export {
+  NO_COLOUR_BENCHMARK,
+  NO_COLOUR_BENCHMARK_TEXT,
+  type SideRate,
+  sideRateText,
+  WeaknessRow,
+  WeaknessRowKey,
+  type WeaknessRowProps,
+} from "./weakness-row.js";

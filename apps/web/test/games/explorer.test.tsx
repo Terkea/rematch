@@ -11,7 +11,10 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace, refresh: vi.fn(), prefetch: vi.fn() }),
 }));
 
-const { FilterBar } = await import("../../src/app/(app)/app/games/_explorer/filter-bar.js");
+const { ExplorerControls: FilterBar } = await import(
+  "../../src/app/(app)/app/games/_explorer/filter-bar.js"
+);
+const { gamesBarModel } = await import("../../src/app/(app)/app/games/_explorer/shared-bar.js");
 const { GameRow, toRowView } = await import("../../src/app/(app)/app/games/_explorer/game-row.js");
 const { Pagination } = await import("../../src/app/(app)/app/games/_explorer/pagination.js");
 const { GamesList, showingText } = await import(
@@ -82,66 +85,6 @@ describe("filter bar", () => {
     expect(replace).toHaveBeenCalledWith("/app/games?sort=blunders-desc", { scroll: false });
   });
 
-  it("changing a date filters from that day", async () => {
-    render(<FilterBar query={q({})} accounts={[]} />);
-    const from = screen.getByLabelText("From");
-    const { fireEvent } = await import("@testing-library/react");
-    fireEvent.change(from, { target: { value: "2026-10-01" } });
-    expect(replace).toHaveBeenCalledWith("/app/games?from=2026-10-01", { scroll: false });
-  });
-
-  it("waits for a whole year while a date is typed (no navigation on 0002-10-01)", async () => {
-    render(<FilterBar query={q({})} accounts={[]} />);
-    const { fireEvent } = await import("@testing-library/react");
-    const from = screen.getByLabelText("From");
-    fireEvent.change(from, { target: { value: "0002-10-01" } });
-    expect(replace).not.toHaveBeenCalled();
-    expect(from).toHaveValue("0002-10-01");
-    fireEvent.change(from, { target: { value: "2026-10-01" } });
-    expect(replace).toHaveBeenCalledWith("/app/games?from=2026-10-01", { scroll: false });
-  });
-
-  it("keeps the same date input (and its focus) after a date navigates", async () => {
-    const { rerender } = render(<FilterBar query={q({})} accounts={[]} />);
-    const { fireEvent } = await import("@testing-library/react");
-    const from = screen.getByLabelText("From");
-    from.focus();
-    fireEvent.change(from, { target: { value: "2026-10-01" } });
-    rerender(<FilterBar query={q({ from: "2026-10-01" })} accounts={[]} />);
-    expect(screen.getByLabelText("From")).toBe(from);
-    expect(from).toHaveFocus();
-    // Once the day is in the URL, the field reads it in the app's words (T13).
-    expect(from).toHaveValue("1 Oct 2026");
-  });
-
-  // M5a T13 critic I5: the native date input showed a US "mm/dd/yyyy"; the app writes
-  // "1 Oct 2026" everywhere, so the field reads and accepts that, without the browser's chrome.
-  it("reads a date filter in the app's words, and takes them typed", async () => {
-    const { fireEvent } = await import("@testing-library/react");
-    render(<FilterBar query={q({ to: "2026-10-31" })} accounts={[]} />);
-    const from = screen.getByLabelText("From");
-    const to = screen.getByLabelText("To");
-    expect(from).toHaveAttribute("type", "text");
-    expect(from).toHaveAttribute("placeholder", "e.g. 1 Oct 2026");
-    expect(to).toHaveValue("31 Oct 2026");
-    fireEvent.change(from, { target: { value: "1 Oct 2026" } });
-    expect(replace).toHaveBeenCalledWith("/app/games?from=2026-10-01&to=2026-10-31", {
-      scroll: false,
-    });
-  });
-
-  it("says how to write a date it can't read, and navigates nowhere", async () => {
-    const { fireEvent } = await import("@testing-library/react");
-    render(<FilterBar query={q({})} accounts={[]} />);
-    const from = screen.getByLabelText("From");
-    from.focus();
-    fireEvent.change(from, { target: { value: "31 Feb 2026" } });
-    fireEvent.blur(from);
-    expect(replace).not.toHaveBeenCalled();
-    expect(from).toHaveAttribute("aria-invalid", "true");
-    expect(screen.getByText("Write a date like 1 Oct 2026.")).toBeInTheDocument();
-  });
-
   it("parses the day forms people type", () => {
     expect(parseDayText("2026-10-01")).toBe("2026-10-01");
     expect(parseDayText("1 Oct 2026")).toBe("2026-10-01");
@@ -170,27 +113,40 @@ describe("filter bar", () => {
     expect(screen.getByRole("combobox", { name: "Account" })).toBeInTheDocument();
   });
 
-  it("offers time controls rapid first, then blitz, then the rest, All last (I8)", async () => {
-    const user = userEvent.setup();
-    render(<FilterBar query={q({})} accounts={[]} />);
-    await user.click(screen.getByRole("combobox", { name: "Time control" }));
-    const names = (await screen.findAllByRole("option")).map((o) => o.textContent);
-    expect(names).toEqual(["Rapid", "Blitz", "Bullet", "Classical", "Daily", "All time controls"]);
-  });
-
   it("labels every control with the brief's copy", () => {
     render(<FilterBar query={q({})} accounts={[]} />);
-    expect(screen.getByRole("combobox", { name: "Time control" })).toHaveTextContent(
-      "All time controls",
-    );
     expect(screen.getByRole("radiogroup", { name: "Result" })).toBeInTheDocument();
-    const colour = screen.getByRole("radiogroup", { name: "Colour" });
-    expect(within(colour).getAllByRole("radio")).toHaveLength(3);
-    for (const name of ["Both", "White", "Black"]) {
-      expect(within(colour).getByRole("radio", { name })).toBeInTheDocument();
-    }
     expect(screen.getByRole("combobox", { name: "Sort by" })).toHaveTextContent("Newest first");
-    expect(screen.getByLabelText("To")).toBeInTheDocument();
+    // Time control, colour and dates live in the shared filter bar (T3).
+    expect(screen.queryByRole("combobox", { name: "Time control" })).toBeNull();
+    expect(screen.queryByRole("radiogroup", { name: "Colour" })).toBeNull();
+  });
+});
+
+describe("the shared filter bar on the games page (T3)", () => {
+  const classes = [
+    { tc: "rapid" as const, games: 30 },
+    { tc: "blitz" as const, games: 12 },
+  ];
+  const now = new Date("2026-11-22T12:00:00Z");
+
+  it("writes color, keeps result, account and sort, and drops the page", () => {
+    const m = gamesBarModel(
+      parseGameQuery({ result: "loss", sort: "blunders-desc", page: "3" }, "rapid"),
+      classes,
+      now,
+    );
+    const colour = m.color?.find((o) => o.label === "White");
+    expect(colour?.href).toBe("/app/games?color=white&result=loss&sort=blunders-desc");
+    expect(m.timeClass.map((o) => o.label)).toEqual(["Rapid", "Blitz", "All"]);
+  });
+
+  it("reads the explorer's own query, All included", () => {
+    const m = gamesBarModel(parseGameQuery({ tc: "all", colour: "black" }, "rapid"), classes, now);
+    expect(m.timeClass.find((o) => o.current)?.label).toBe("All");
+    expect(m.color?.find((o) => o.current)?.label).toBe("Black");
+    expect(m.format).toBeNull();
+    expect(m.compare).toBeNull();
   });
 });
 
@@ -524,28 +480,6 @@ describe("empty states", () => {
   });
 });
 
-describe("active filter chips (phones)", () => {
-  it("lists each active filter as a removable chip", async () => {
-    const user = userEvent.setup();
-    render(
-      <FilterBar query={q({ tc: "rapid", result: "loss", from: "2026-10-01" })} accounts={[]} />,
-    );
-    const chips = screen.getByRole("list", { name: "Active filters" });
-    expect(
-      within(chips)
-        .getAllByRole("button")
-        .map((b) => b.getAttribute("aria-label")),
-    ).toEqual(["Remove filter: Rapid", "Remove filter: Losses", "Remove filter: From 1 Oct 2026"]);
-    await user.click(screen.getByRole("button", { name: "Remove filter: Losses" }));
-    expect(replace).toHaveBeenCalledWith("/app/games?tc=rapid&from=2026-10-01", { scroll: false });
-  });
-
-  it("shows no chip list without filters", () => {
-    render(<FilterBar query={q({})} accounts={[]} />);
-    expect(screen.queryByRole("list", { name: "Active filters" })).toBeNull();
-  });
-});
-
 describe("fix round 2", () => {
   it("explains the result square on phones and in the table head", () => {
     render(<GamesList rows={[toRowView(row())]} grouped />);
@@ -576,21 +510,5 @@ describe("fix round 2", () => {
     expect(whole).toHaveClass("whitespace-nowrap", "shrink-0");
     const opening = screen.getByText((_, el) => el?.getAttribute("data-part") === "opening");
     expect(opening).toHaveClass("min-w-0", "truncate");
-  });
-
-  it("moves focus to the next chip after one is removed, then to Filters", async () => {
-    const user = userEvent.setup();
-    const { rerender } = render(
-      <FilterBar query={q({ tc: "rapid", result: "loss", from: "2026-10-01" })} accounts={[]} />,
-    );
-    await user.click(screen.getByRole("button", { name: "Remove filter: Losses" }));
-    rerender(<FilterBar query={q({ tc: "rapid", from: "2026-10-01" })} accounts={[]} />);
-    expect(screen.getByRole("button", { name: "Remove filter: From 1 Oct 2026" })).toHaveFocus();
-    await user.click(screen.getByRole("button", { name: "Remove filter: From 1 Oct 2026" }));
-    rerender(<FilterBar query={q({ tc: "rapid" })} accounts={[]} />);
-    expect(screen.getByRole("button", { name: "Remove filter: Rapid" })).toHaveFocus();
-    await user.click(screen.getByRole("button", { name: "Remove filter: Rapid" }));
-    rerender(<FilterBar query={q({})} accounts={[]} />);
-    expect(screen.getByRole("button", { name: /^Filters/ })).toHaveFocus();
   });
 });

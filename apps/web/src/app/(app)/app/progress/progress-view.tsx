@@ -110,6 +110,8 @@ export type ProgressInput = {
   /** The newest report's date, drawn as an event on the KPI axis. */
   reportAt: Date | null;
   weekly: WeeklyReviewView[];
+  /** The filter bar clipped the trends to a date range (T3). */
+  clipped?: boolean;
 };
 
 /** A metric without a trend to draw: its latest week in words, at body weight, never a headline. */
@@ -134,6 +136,7 @@ type Grid = {
 
 export type ProgressViewModel = {
   basis: ProgressInput["basis"];
+  clipped: boolean;
   beforeAfter: BeforeAfterRow[];
   kpis: {
     range: { from: string; to: string };
@@ -269,6 +272,7 @@ export function toProgressView(input: ProgressInput): ProgressViewModel {
 
   return {
     basis: input.basis,
+    clipped: input.clipped === true,
     beforeAfter: beforeAfterRows(input.weaknesses),
     kpis,
     timeline,
@@ -463,9 +467,12 @@ function Trends({ kpis }: { kpis: Kpis }) {
 export function ProgressView({
   view,
   scopeSwitch,
+  compare,
 }: {
   view: ProgressViewModel;
   scopeSwitch?: ReactNode;
+  /** Period A against period B for the game-level stats, when the URL asks for it (T3). */
+  compare?: ReactNode;
 }) {
   const basis = view.basis
     ? `Based on ${count.format(view.basis.analysedGames)} analysed ${TIME_CLASS[view.basis.timeClass]} ${
@@ -482,6 +489,8 @@ export function ProgressView({
         {scopeSwitch}
       </div>
 
+      {compare}
+
       <Section
         id="before-after-heading"
         title="Before and after"
@@ -495,7 +504,9 @@ export function ProgressView({
       {view.kpis === null ? (
         <Section id="rating-heading" title="Rating and trends">
           <p className="max-w-2xl text-base text-ink-soft">
-            Weekly trends appear once a week of your games is analysed.
+            {view.clipped
+              ? "No analysed week falls in these dates. Widen the period to see the trends."
+              : "Weekly trends appear once a week of your games is analysed."}
           </p>
         </Section>
       ) : view.kpis.collapsed ? (

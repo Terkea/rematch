@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { games } from "../src/fixtures/index.js";
 import {
   type ExplorerMove,
+  explorerAnnotations,
   PositionExplorer,
   type PositionExplorerProps,
   type PositionLine,
@@ -88,6 +89,36 @@ describe("PositionExplorer, compact", () => {
       await screen.findByRole("group", { name: "Position before 1. d4; engine preferred e4" }),
     ).toBeVisible();
     expect(screen.getByText("Better, e4")).toBeVisible();
+  });
+
+  it("draws a found move (the engine's own) as a good move with its ! badge", () => {
+    const p = { played: { san: "e4", uci: "e2e4" }, best: { san: "e4", uci: "e2e4" } };
+    expect(explorerAnnotations({ ...p, found: true })).toEqual([
+      { kind: "arrow", from: "e2", to: "e4", tone: "good" },
+      { kind: "mark", square: "e4", glyph: "!", tone: "good" },
+    ]);
+    render(
+      <PositionExplorer
+        {...props}
+        ply={1}
+        fenBefore={game.startFen}
+        {...p}
+        label="1. e4"
+        mistake={false}
+        found
+      />,
+    );
+    expect(screen.getByText("Played, e4, the engine's move")).toBeVisible();
+    expect(screen.queryByText(/^Better/)).toBeNull();
+  });
+
+  it("has no game link without an href", async () => {
+    const { href: _href, ...rest } = props;
+    render(<PositionExplorer {...rest} />);
+    expect(screen.queryByRole("link")).toBeNull();
+    await userEvent.setup().click(screen.getByRole("button", { name: /^Expand/ }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).queryByRole("link")).toBeNull();
   });
 });
 

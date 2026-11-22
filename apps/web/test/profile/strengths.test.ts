@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   aboveBand,
+  abovePeers,
+  BALANCED_MAX,
+  BALANCED_MIN,
   bandMedians,
   bandOf,
   CRITICAL_GAP,
@@ -9,13 +12,16 @@ import {
   type HardSpotCandidate,
   improvingWeaknesses,
   keepDoingNote,
+  obviousCapture,
   ownTrends,
+  PROMISING_P,
   pickHardSpots,
+  promisingOpenings,
   RECENT_GAMES,
   reportStrengths,
   workingOpenings,
 } from "../../src/server/profile/strengths";
-import { wilson } from "../../src/server/stats";
+import { regIncBeta, wilson } from "../../src/server/stats";
 
 // The strengths read model's gates (pure): every claim on /app/strengths passes one of these,
 // and each one refuses to claim without its minimum evidence.
@@ -95,6 +101,54 @@ describe("aboveBand", () => {
 
   it("skips non-finite stored values", () => {
     expect(aboveBand([row("accuracy", Number.NaN, 71, 76, 40)], medians)).toEqual([]);
+  });
+});
+
+describe("abovePeers", () => {
+  // Shaped like the owner's rapid benchmark rows (ADR 0081): rate rows carry `pooled_rate` and
+  // their raw chances; mean rows (accuracy) only the median of the opponents' means.
+  const peers = [
+    { metric: "accuracy", median: 71.4, pooledRate: null, nChances: null, nPlayers: 25 },
+    { metric: "blunders_per_game", median: 1.4, pooledRate: null, nChances: null, nPlayers: 25 },
+    { metric: "accuracy.endgame", median: 60, pooledRate: 62, nChances: null, nPlayers: 18 },
+  ];
+  const row = (metric: string, value: number, low: number, high: number, n: number) => ({
+    metric,
+    value,
+    low,
+    high,
+    n,
+  });
+
+  it("claims a measure whose whole interval is better than the peers' pooled rate", () => {
+    const claims = abovePeers(
+      [
+        row("accuracy", 76.2, 74.1, 78.3, 50),
+        row("blunders_per_game", 0.9, 0.7, 1.1, 50),
+        row("accuracy.endgame", 63, 61, 65, 30), // 61 is below the pooled 62
+      ],
+      peers,
+    );
+    expect(claims.map((c) => c.metric)).toEqual(["accuracy", "blunders_per_game"]);
+    expect(claims[0]).toMatchObject({ peer: 71.4, pooled: false, players: 25, n: 50 });
+  });
+
+  it("compares with the pooled rate, not the median, when the row has one", () => {
+    const [c] = abovePeers([row("accuracy.endgame", 66, 63, 69, 30)], peers);
+    expect(c).toMatchObject({ metric: "accuracy.endgame", peer: 62, pooled: true });
+  });
+
+  it("refuses too few games, a touching interval or a measure the peers lack", () => {
+    expect(
+      abovePeers(
+        [
+          row("accuracy", 76, 73, 79, 12), // minN 20
+          row("blunders_per_game", 1.0, 0.8, 1.4, 50), // touches 1.4
+          row("conversion_rate", 0.9, 0.8, 0.95, 40), // not peer-comparable (no row)
+        ],
+        peers,
+      ),
+    ).toEqual([]);
   });
 });
 
@@ -276,6 +330,37 @@ describe("workingOpenings", () => {
   });
 });
 
+describe("promisingOpenings", () => {
+  const line = (n: number, points: number, expected: number) => ({
+    lineKey: "caro-kann",
+    name: "Caro-Kann Defence",
+    color: "black" as const,
+    kind: "chosen" as const,
+    verdict: null,
+    games: Array.from({ length: n }, (_, i) => ({
+      score: i < Math.floor(points) ? 1 : i === Math.floor(points) && points % 1 ? 0.5 : 0,
+      expected,
+    })),
+  });
+
+  it("keeps a line at least 80% likely above its expected score, but not clearly so", () => {
+    // 8 of 12 against 52% expected: Wilson's 80% range reaches below, the posterior is 86% above.
+    const l = line(12, 8, 0.52);
+    expect(workingOpenings([l])).toEqual([]);
+    const [o] = promisingOpenings([l]);
+    expect(o).toMatchObject({ name: "Caro-Kann Defence", n: 12 });
+    expect(o?.expected).toBeCloseTo(0.52, 9);
+    expect(o?.pAbove).toBeCloseTo(1 - regIncBeta(0.52, 9, 5), 9);
+    expect(o?.pAbove).toBeGreaterThanOrEqual(PROMISING_P);
+  });
+
+  it("refuses fewer than 10 games, a likelihood under 80%, or a line already clearly above", () => {
+    expect(promisingOpenings([line(9, 8, 0.4)])).toEqual([]);
+    expect(promisingOpenings([line(12, 7, 0.52)])).toEqual([]);
+    expect(promisingOpenings([line(20, 16, 0.5)])).toEqual([]);
+  });
+});
+
 describe("pickHardSpots", () => {
   const spot = (over: Partial<HardSpotCandidate>): HardSpotCandidate => ({
     gameId: "g1",
@@ -293,7 +378,60 @@ describe("pickHardSpots", () => {
     pBest: null,
     isCritical: true,
     multipvGap: 22,
+    prevSan: "Nc6",
+    prevJudgement: null,
     ...over,
+  });
+
+  // N11, from the owner's real games: 10… Bxh3 took a queen White had just hung, and 24… Rxe1#
+  // a rook nothing defended. Both were "only moves" by the engine's gap, and neither was hard.
+  const hungQueen = {
+    fen: "r2qkb1r/ppp2ppp/2np1n2/4p3/2B1P1b1/2NP1N1Q/PPP2PPP/R1B1K2R b KQkq - 3 7",
+    san: "Bxh3",
+    uci: "g4h3",
+    bestUci: "g4h3",
+    prevSan: "Qh3",
+    prevJudgement: "blunder",
+    winBefore: 89.6,
+    winAfter: 90.1,
+  };
+  const freeRook = {
+    fen: "4r1k1/ppp2ppp/8/8/8/5Q2/PPP2PPP/4R1K1 b - - 0 24",
+    san: "Rxe1#",
+    uci: "e8e1",
+    bestUci: "e8e1",
+    prevSan: "Qf3",
+    prevJudgement: null,
+    winBefore: 52,
+    winAfter: 100,
+  };
+
+  it("skips captures of free material but keeps punishing a mistake with a real move", () => {
+    const r = pickHardSpots([
+      spot({ gameId: "q", ...hungQueen, multipvGap: 60 }),
+      spot({ gameId: "r", ...freeRook, multipvGap: 50 }),
+      spot({ gameId: "m", prevJudgement: "mistake", multipvGap: 40 }),
+      spot({ gameId: "i", prevJudgement: "inaccuracy", multipvGap: 20 }),
+    ]);
+    expect(r.spots.map((s) => s.gameId)).toEqual(["m", "i"]);
+  });
+
+  it("skips them in Maia mode too", () => {
+    const r = pickHardSpots([
+      spot({ gameId: "q", ...hungQueen, difficultyStatus: "ok", pBest: 0.2 }),
+      spot({ gameId: "b", difficultyStatus: "ok", pBest: 0.25 }),
+    ]);
+    expect(r).toMatchObject({ mode: "maia" });
+    expect(r.spots.map((s) => s.gameId)).toEqual(["b"]);
+  });
+
+  it("falls back only to roughly balanced positions", () => {
+    const r = pickHardSpots([
+      spot({ gameId: "won", winBefore: BALANCED_MAX + 1, multipvGap: 40 }),
+      spot({ gameId: "lost", winBefore: BALANCED_MIN - 1, multipvGap: 40 }),
+      spot({ gameId: "edge", winBefore: BALANCED_MIN, multipvGap: 20 }),
+    ]);
+    expect(r.spots.map((s) => s.gameId)).toEqual(["edge"]);
   });
 
   it("prefers Maia-hard positions (difficulty ok, p_best at most HARD_P_BEST)", () => {
@@ -336,6 +474,42 @@ describe("pickHardSpots", () => {
     expect(pickHardSpots([spot({ multipvGap: Number.NaN })]).mode).toBe("none");
   });
 });
+
+describe("obviousCapture", () => {
+  it("is a capture of more than the capturing piece is worth", () => {
+    expect(obviousCapture(hq.fen, hq.uci, "Qh3")).toBe(true);
+  });
+
+  it("is a capture nothing can take back", () => {
+    expect(obviousCapture("4r1k1/ppp2ppp/8/8/8/5Q2/PPP2PPP/4R1K1 b - - 0 24", "e8e1", "Qf3")).toBe(
+      true,
+    );
+  });
+
+  it("is a recapture on the square the opponent just captured on", () => {
+    // 4. Nxe5 Nxe5: Black takes back.
+    expect(
+      obviousCapture(
+        "r1bqkb1r/pppp1ppp/2n2n2/4N3/2B1P3/8/PPPP1PPP/RNBQK2R b KQkq - 0 4",
+        "c6e5",
+        "Nxe5",
+      ),
+    ).toBe(true);
+  });
+
+  it("is not a defended, even capture, nor a quiet move, nor a bad uci", () => {
+    // 4. Nxe5 in the Two Knights: the knight takes a pawn that Nc6 defends.
+    const twoKnights = "r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4";
+    expect(obviousCapture(twoKnights, "f3e5", "Nf6")).toBe(false);
+    expect(obviousCapture(twoKnights, "e1g1", "Nf6")).toBe(false);
+    expect(obviousCapture(twoKnights, "a1a8", null)).toBe(false);
+  });
+});
+
+const hq = {
+  fen: "r2qkb1r/ppp2ppp/2np1n2/4p3/2B1P1b1/2NP1N1Q/PPP2PPP/R1B1K2R b KQkq - 3 7",
+  uci: "g4h3",
+};
 
 describe("keepDoingNote", () => {
   it("quotes the glossary tip for the strength's kind", () => {

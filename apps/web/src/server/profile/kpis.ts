@@ -37,8 +37,8 @@ export async function latestSnapshots(
       and(
         eq(kpiSnapshot.accountId, scope.accountId),
         eq(kpiSnapshot.timeClass, scope.timeClass),
-        // The colour split's per-side rows are not shown yet: these pages read every game.
-        eq(kpiSnapshot.side, "both"),
+        // The colour filter's side (ADR 0082); every game unless the scope names a colour.
+        eq(kpiSnapshot.side, scope.side ?? "both"),
         metrics == null ? undefined : inArray(kpiSnapshot.metric, metrics),
         windowKey == null ? undefined : eq(kpiSnapshot.windowKey, windowKey),
       ),
