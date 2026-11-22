@@ -2,8 +2,9 @@
 
 import { Board, EvalBar } from "@ci/ui/board";
 import { EvalGraph } from "@ci/ui/eval-graph";
-import { Icon, ListIcon } from "@ci/ui/icons";
+import { ArrowCounterClockwiseIcon, Icon, ListIcon } from "@ci/ui/icons";
 import { cn } from "@ci/ui/lib";
+import { useReducedMotion } from "@ci/ui/motion";
 import { Drawer } from "@ci/ui/overlays";
 import { buttonVariants, Kbd, Switch } from "@ci/ui/primitives";
 import { ProgressPlaceholder } from "@ci/ui/progress";
@@ -45,6 +46,7 @@ import {
   moveCommentary,
   moveText,
 } from "./move-commentary";
+import { endPly, useReveal } from "./reveal/use-reveal";
 import {
   initialState,
   PLAY_INTERVAL_MS,
@@ -64,6 +66,8 @@ export type StepKind = "step" | "play" | "jump";
 
 export interface GameReviewViewProps {
   view: ReviewView;
+  /** Keys the reveal's "seen on this device" record (R10). Without it no reveal runs. */
+  gameId?: string;
   /** The `?ply=` search param, as given. */
   initialPly?: string;
   onStep?: (kind: StepKind, ply: number) => void;
@@ -78,6 +82,8 @@ const LEDGER_MAX = 8;
 const LEDGER_COLLAPSED = 3;
 /** The step announcement waits this long after the last step (T5's Scoresheet rule). */
 const ANNOUNCE_MS = 300;
+/** Said once when the first reveal on the page ends (M8). */
+const READY = "Analysis ready";
 const SEVERITY_RANK = { blunder: 3, mistake: 2, inaccuracy: 1 } as const;
 /** The phone's graph strip, in px (critic: about 70px so the verdict clears the fold). */
 const STRIP_HEIGHT = 70;
@@ -192,15 +198,26 @@ function useReview(
     flip: () => act({ type: "flip" }, null),
     engine: () => act({ type: "toggleEngine" }, null),
     go: (ply: number) => act({ type: "go", ply }, "jump"),
+    /** Not a step by the user: nothing is reported (a replay setting the end state). */
+    goQuiet: (ply: number) => act({ type: "go", ply }, null),
     fromGraph,
   };
   useReviewKeys(controls);
   return { state, controls };
 }
 
-export function GameReviewView({ view, initialPly, onStep }: GameReviewViewProps) {
+export function GameReviewView({ view, gameId, initialPly, onStep }: GameReviewViewProps) {
   const { state, controls: c } = useReview(view, initialPly, onStep);
-  const { ply, playing, orientation, showEngine } = state;
+  const reducedMotion = useReducedMotion();
+  // The analysis reveal (T11): while it runs it decides the shown ply and marks; the review's own
+  // state already sits on the end state (the worst moment), so when it ends nothing jumps.
+  const reveal = useReveal(view, gameId, {
+    reducedMotion,
+    explicitPly: initialPly !== undefined,
+  });
+  const revealing = reveal.phase === "running";
+  const { playing, orientation, showEngine } = state;
+  const ply = reveal.state.ply ?? state.ply;
   const wide = useWide();
   const engineId = useId();
   const lastPly = view.plies.length;
@@ -212,7 +229,11 @@ export function GameReviewView({ view, initialPly, onStep }: GameReviewViewProps
   const tenths = useMemo(() => hasTenths(view), [view]);
   const fen = fenAt(view, ply);
   const check = useMemo(() => checkSquare(fen), [fen]);
-  const annotations = useMemo(() => annotationsFor(view, ply, showEngine), [view, ply, showEngine]);
+  const ownAnnotations = useMemo(
+    () => annotationsFor(view, ply, showEngine),
+    [view, ply, showEngine],
+  );
+  const annotations = reveal.state.annotations ?? ownAnnotations;
   const lastMove = lastMoveAt(view, ply);
   const score = scoreAt(view, ply);
   const ev = evalText(score);
@@ -220,22 +241,91 @@ export function GameReviewView({ view, initialPly, onStep }: GameReviewViewProps
   const text = moveText(view, ply);
   const verdict = moveCommentary(view, ply);
   const alternative = engineAlternative(view, ply);
-  const spoken = verdict ?? text ?? "Start position";
+  // The announcer follows the review's ply, not the reveal's frames: nothing is read mid-reveal.
+  const ownPly = state.ply;
+  const spokenOwn = moveCommentary(view, ownPly) ?? moveText(view, ownPly) ?? "Start position";
 
   // One page-level announcer at every width (fix round 1): the scoresheet's own is in a drawer on
   // phones. Polite, 300ms after the last step, silent while autoplaying and on first paint; the
   // move play stops on is read when it stops.
   const [announcement, setAnnouncement] = useState("");
-  const announced = useRef(false);
+  // It reads a text only when it differs from the last one read (or from the first paint's), so
+  // an effect re-run (StrictMode, the end of a reveal) never re-reads the shown move.
+  const lastSpoken = useRef(spokenOwn);
   useEffect(() => {
-    if (!announced.current) {
-      announced.current = true;
-      return;
-    }
-    if (playing) return;
-    const t = setTimeout(() => setAnnouncement(spoken), ANNOUNCE_MS);
+    if (playing || revealing || spokenOwn === lastSpoken.current) return;
+    const t = setTimeout(() => {
+      lastSpoken.current = spokenOwn;
+      setAnnouncement(spokenOwn);
+    }, ANNOUNCE_MS);
     return () => clearTimeout(t);
-  }, [spoken, playing]);
+  }, [spokenOwn, playing, revealing]);
+
+  // M8: when the first reveal on this page ends, say so once (polite, in the same announcer).
+  const readyAnnounced = useRef(false);
+  const ranRevealRef = useRef(false);
+  if (revealing && reveal.mode !== null) ranRevealRef.current = true;
+  useEffect(() => {
+    if (revealing || !ranRevealRef.current || readyAnnounced.current) return;
+    readyAnnounced.current = true;
+    setAnnouncement(READY);
+  }, [revealing]);
+
+  // Skip and Replay swap in one place; when the one with focus goes, focus moves to the other.
+  const revealControlFocused = useRef(false);
+  const revealControl = useRef<HTMLButtonElement | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: refocus on each swap
+  useEffect(() => {
+    if (revealControlFocused.current) revealControl.current?.focus();
+  }, [revealing]);
+  const replay = () => {
+    // The replay ends where every reveal ends: the worst moment, with the review state on it.
+    c.goQuiet(endPly(view));
+    reveal.replay();
+  };
+  const showSkip = revealing && reveal.mode === "full";
+  const showReplay = !revealing && analysed && gameId !== undefined && !reducedMotion;
+  // The control's slots are in the server HTML whenever a reveal could ever run here, so the
+  // button arriving or swapping never moves the board (review I1). From 768px the slot is a
+  // header row above the board (M8); on a phone it sits at the end of the move line, which is
+  // already there, so the board and the verdict keep their first-screen places.
+  const slots = analysed && gameId !== undefined;
+  const control = showSkip ? (
+    <button
+      key="skip"
+      ref={revealControl}
+      type="button"
+      onClick={reveal.skip}
+      onFocus={() => {
+        revealControlFocused.current = true;
+      }}
+      onBlur={() => {
+        revealControlFocused.current = false;
+      }}
+      className={buttonVariants({ variant: "quiet", size: "sm" })}
+    >
+      Skip
+    </button>
+  ) : showReplay ? (
+    <button
+      key="replay"
+      ref={revealControl}
+      type="button"
+      onClick={replay}
+      onFocus={() => {
+        revealControlFocused.current = true;
+      }}
+      onBlur={() => {
+        revealControlFocused.current = false;
+      }}
+      className={buttonVariants({ variant: "quiet", size: "sm" })}
+    >
+      <Icon icon={ArrowCounterClockwiseIcon} size={16} />
+      Replay analysis
+    </button>
+  ) : null;
+  // During a beat the green arrow is named only once the beat's marks are on the board (I2).
+  const marksDrawn = !revealing || (reveal.state.annotations?.length ?? 0) > 0;
   const flipped = orientation === "black";
   const whiteToMove = fen.split(" ")[1] === "w";
 
@@ -274,7 +364,15 @@ export function GameReviewView({ view, initialPly, onStep }: GameReviewViewProps
   );
 
   return (
-    <div data-review data-ply={ply} className="flex flex-col gap-5 md:gap-6">
+    <div
+      data-review
+      data-ply={ply}
+      data-fen={fen}
+      data-reveal={reveal.phase}
+      data-reveal-mode={reveal.mode ?? undefined}
+      data-animate-annotations={String(reveal.state.animateAnnotations)}
+      className="flex flex-col gap-5 md:gap-6"
+    >
       <p
         data-testid="step-status"
         role="status"
@@ -288,7 +386,7 @@ export function GameReviewView({ view, initialPly, onStep }: GameReviewViewProps
       {view.status === "failed" || view.status === "skipped" ? null : (
         <section
           aria-label="Win chance"
-          className="flex flex-col gap-2 rounded-sheet bg-sheet px-(--space-panel-pad) py-3 max-md:-mx-(--space-gutter) max-md:rounded-none max-md:px-(--space-gutter) max-md:py-2 md:min-h-40 md:py-4"
+          className="flex flex-col gap-2 rounded-sheet bg-sheet px-(--space-panel-pad) py-3 max-md:-mx-(--space-gutter) max-md:rounded-none max-md:px-(--space-gutter) max-md:py-2 md:min-h-54 md:py-4"
         >
           {analysed ? (
             <>
@@ -297,6 +395,8 @@ export function GameReviewView({ view, initialPly, onStep }: GameReviewViewProps
                 <span>Drag or use the arrow keys to step</span>
               </p>
               <EvalGraph
+                key={reveal.run}
+                drawIn={reveal.state.drawGraph}
                 points={points}
                 label={`Win chance, ${view.title}`}
                 currentPly={ply}
@@ -320,6 +420,13 @@ export function GameReviewView({ view, initialPly, onStep }: GameReviewViewProps
 
       <div className="grid gap-x-(--space-gutter) gap-y-5 lg:grid-cols-[auto_minmax(0,1fr)]">
         <div className="flex min-w-0 flex-col gap-3">
+          {slots ? (
+            // M8: the board column's header row, right-aligned, never over the board. A distinct
+            // key per button, so a press that skips can never land as a click on Replay.
+            <div data-reveal-controls="board" className="-mb-1 flex h-8 justify-end max-md:hidden">
+              {wide ? control : null}
+            </div>
+          ) : null}
           <div className="flex w-fit flex-col gap-2 md:flex-row md:gap-3">
             {score ? (
               <EvalBar
@@ -338,6 +445,7 @@ export function GameReviewView({ view, initialPly, onStep }: GameReviewViewProps
               {...(lastMove ? { lastMove } : {})}
               {...(check ? { check } : {})}
               annotations={annotations}
+              animateAnnotations={reveal.state.animateAnnotations}
             />
           </div>
           <ReviewControls {...transport} className={cn("max-md:hidden", score && "md:pl-7")} />
@@ -346,23 +454,35 @@ export function GameReviewView({ view, initialPly, onStep }: GameReviewViewProps
         <div className="flex min-w-0 flex-col gap-5">
           {/* The verdict on the shown move: the loudest line on the page. */}
           <section aria-label="This move" className="flex flex-col gap-2">
-            <p
+            <div
               className={cn("flex items-baseline gap-3 font-sans text-sm text-ink-soft", NUMERALS)}
             >
               <span className="font-medium text-ink">{text ?? "Start position"}</span>
               {ev ? <span data-testid="eval-readout">{ev}</span> : null}
-            </p>
+              {slots ? (
+                // The phone's slot: 32px tall but pulled into the line's own height.
+                <span
+                  data-reveal-controls="phone"
+                  className="-my-1.5 ml-auto flex h-8 self-center md:hidden"
+                >
+                  {wide ? null : control}
+                </span>
+              ) : null}
+            </div>
             <p
               data-testid="verdict"
-              className="min-h-15 max-w-prose font-serif-italic text-xl text-ink italic md:min-h-21 md:text-2xl"
+              className="min-h-21 max-w-prose font-serif-italic text-xl text-ink italic md:min-h-22.5 md:text-2xl"
             >
               {verdict ?? (move ? "" : "Step through the game, or jump to a mistake.")}
             </p>
-            {alternative ? (
-              <p data-testid="arrow-key" className="text-sm text-ink-soft">
-                {`Green arrow: ${alternative}, the engine's choice instead.`}
-              </p>
-            ) : null}
+            {/* One line reserved, so the column under it doesn't jump as moves change (I2). */}
+            <div data-testid="arrow-key-slot" className="min-h-5 text-sm">
+              {alternative && marksDrawn ? (
+                <p data-testid="arrow-key" className="text-ink-soft">
+                  {`Green arrow: ${alternative}, the engine's choice instead.`}
+                </p>
+              ) : null}
+            </div>
           </section>
           {analysed ? (
             <div className="flex items-center gap-3 text-sm text-ink-soft">
