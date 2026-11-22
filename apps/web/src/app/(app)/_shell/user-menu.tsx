@@ -82,7 +82,7 @@ export function UserMenu({
           <span className="truncate text-sm font-medium text-ink">{shown}</span>
         </div>
         {morePages.length > 0 ? (
-          <nav aria-label="More pages" className="-mx-2 flex flex-col sm:hidden">
+          <nav aria-label="More pages" className="-mx-2 flex flex-col lg:hidden">
             {morePages.map((page) => {
               const current = isCurrent(pathname, page.href);
               return (

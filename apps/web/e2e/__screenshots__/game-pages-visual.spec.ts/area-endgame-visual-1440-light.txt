@@ -1,0 +1,82 @@
+Openings
+Middlegame
+Endgame
+Tactics
+Calculation
+Time
+Mindset
+Endgame
+
+Technique once the board thins out: converting wins, holding draws and precision against the tablebase.
+
+From 15 analysed rapid games on chess.com
+
+Score
+Your score
+Band median
+Distance to the band median
+20
+40
+60
+Endgame 41, band median 50, next band not measured yet, no interval yet
+Endgame
+15 in its thinnest measure
+41
+No interval yet
+
+A percentile against players in your rating band, so the band median is 50 by definition. The count is its thinnest measure.
+
+Coach's note
+
+Your endgame play looks sound.
+
+Written by AI
+Written on 20 Nov 2026
+This coaching was written by an AI model (Claude) from your analysed games. It can contain mistakes. The engine data shown alongside it is the source of truth.
+Ask your coach about your endgame
+Measures
+Not enough games for these yet
+Endgame accuracy
+Not measured yet
+Winning endgames converted
+Not measured yet
+Drawn endgames held
+Not measured yet
+Tablebase errors per endgame
+Not measured yet
+Weaknesses
+Estimated rate
+80% range
+Players in your rating band, median
+Endgame technique (basics)
+Improving
+Estimated 9.0% of chances (80% range 5.0–14.0%), from 6 of 70.
+Estimated % of chances
+9.0%
+80% range 5.0–14.0%
+6 times in 70 chances
+0%
+20.0%
+Players in your rating band: 6.3%, inside your likely range
+Weekly trend after more weeks
+How they changed
+Not an issue
+Emerging
+Active
+Improving
+Resolved
+Relapsed
+Onset, with its likely range
+
+Hover, tap or use the arrow keys to read a state's dates.
+
+Endgame technique (basics)
+Now improving
+Oct 2026
+Nov
+22 Nov
+Example positions
+
+Examples from your report of 13 Oct 2026
+
+That report picked no positions for your endgame.

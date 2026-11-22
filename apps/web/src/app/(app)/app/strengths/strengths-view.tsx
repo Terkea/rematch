@@ -1,4 +1,3 @@
-import { areaLabels } from "@ci/ui/area-score";
 import { Board } from "@ci/ui/board";
 import { Button } from "@ci/ui/primitives";
 import { dayText, exemplarMoveText, fenMove, formatKpiValue } from "@ci/ui/profile";
@@ -6,6 +5,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { CoachScopeSwitch } from "../../../../components/coach-scope-switch";
 import type { CoachScope, DifficultyStatus } from "../../../../server/profile";
+import { AREA_GLOSSARY } from "../../../../server/profile/glossary";
 import {
   type BandClaim,
   CONFIRM_P_CHANGE,
@@ -280,7 +280,7 @@ function OwnClaims({ claims }: { claims: OwnClaim[] }) {
 }
 
 function ownShortfall(t: OwnTrends): string {
-  return `Not enough games yet. This compares your last ${RECENT_GAMES} games with the games before them, so it needs ${plural(t.needGames, "more analysed game", "more analysed games")} (you have ${plural(t.measured, "game", "games")} with these measures).`;
+  return `Not enough games yet. This compares your last ${RECENT_GAMES} games with the games before them, so it needs ${plural(t.needGames, "more analysed game", "more analysed games")}${t.measured > 0 ? ` (you have ${plural(t.measured, "game", "games")} with these measures)` : ""}.`;
 }
 
 function AboveLevel({ above }: { above: StrengthsModel["above"] }) {
@@ -363,14 +363,6 @@ function Improving({
               figure={pct1(w.after)}
               detail={weaknessChangeText(w)}
               href={`/app/weaknesses/${encodeURIComponent(w.seriesKey)}?${scopeQuery(scope)}`}
-              strip={
-                <Strip
-                  low={w.after}
-                  high={w.after}
-                  at={w.before}
-                  label="The rate after against before"
-                />
-              }
             />
           ))}
         </ul>
@@ -492,7 +484,9 @@ function HardSpots({
                         {move}
                         <span className="tracking-(--tracking-glyph) text-good-text">!</span>
                       </span>{" "}
-                      {spots.mode === "maia" ? "A hard move, found." : "The only good move, found."}
+                      {spots.mode === "maia"
+                        ? "You found a hard move."
+                        : "You found the only good move."}
                     </p>
                     <p className="m-0 text-sm text-ink-soft [font-variant-numeric:lining-nums]">
                       {spotText(s, spots.mode === "maia" ? "maia" : "critical")}
@@ -533,7 +527,7 @@ function ReportStrengths({ report }: { report: StrengthsModel["report"] }) {
         {report.strengths.map((s) => (
           <li key={`${s.area}:${s.label}`} className="text-base text-ink">
             <span className="font-medium">{s.label}</span>{" "}
-            <span className="text-sm text-ink-soft">({areaLabels[s.area] ?? s.area})</span>
+            <span className="text-sm text-ink-soft">({AREA_GLOSSARY[s.area]?.name ?? s.area})</span>
           </li>
         ))}
       </ul>
