@@ -1,4 +1,5 @@
 import { accountLinks, coachMessages } from "@ci/db/generated";
+import { games } from "@ci/ui/fixtures";
 import { eq, inArray, sql } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
@@ -71,7 +72,8 @@ describe("threads", () => {
     for (let i = 0; i < CHAT_CREATE_LIMIT.max; i++) {
       await seedThread(db, { userId: a, accountId, timeClass: "rapid" });
     }
-    const r = await createConversation(db, a, { accountId, timeClass: "rapid", anchor: null });
+    // A new start (blitz, not a repeat of the seeded rapid ones) is refused.
+    const r = await createConversation(db, a, { accountId, timeClass: "blitz", anchor: null });
     expect(r.kind).toBe("rate_limited");
     expect(
       (await createConversation(db, b, { accountId, timeClass: "rapid", anchor: null })).kind,
@@ -202,7 +204,7 @@ describe("threads", () => {
     expect(failed).toMatchObject({ status: "failed", failureReason: "budget", segments: null });
   });
 
-  it("engine checks are listed per message", async () => {
+  it("engine checks are listed per message, in SAN from their real ply", async () => {
     const { threadId, messageIds } = await seedThread(db, {
       userId: a,
       accountId,
@@ -213,16 +215,27 @@ describe("threads", () => {
       ],
     });
     const mid = messageIds[1] as string;
-    const fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+    const start = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+    // A real position from the public fixture: after White's 28th move, Black to move.
+    const plies = games.middlegameBlunder.plies;
+    const after55 = plies[54]?.fenAfter as string;
+    const [b56, w57] = [plies[55], plies[56]];
+    expect(after55.split(" ")[1]).toBe("b");
+    expect(after55.split(" ")[5]).toBe("28");
     await db.execute(sql`
       insert into interactive_evals (account_id, message_id, protocol, base_fen, moves, fen, status, created_at)
-      values (${accountId}, ${mid}, 'p1', ${fen}, array['e2e4','e7e5'], ${fen}, 'done', now() - interval '1 minute'),
-             (${accountId}, ${mid}, 'p1', ${fen}, array['d2d4'], ${fen}, 'pending', now()),
-             (${accountId}, null, 'p1', ${fen}, array['c2c4'], ${fen}, 'done', now())`);
+      values (${accountId}, ${mid}, 'p1', ${start}, array['e2e4','e7e5'], ${start}, 'done', now() - interval '3 minute'),
+             (${accountId}, ${mid}, 'p1', ${after55}, array[${b56?.uci}, ${w57?.uci}], ${after55}, 'pending', now() - interval '2 minute'),
+             (${accountId}, ${mid}, 'p1', ${start}, array['e2e4','e2e4'], ${start}, 'failed', now() - interval '1 minute'),
+             (${accountId}, ${mid}, 'p1', 'not a fen', array['e2e4'], 'not a fen', 'failed', now()),
+             (${accountId}, null, 'p1', ${start}, array['c2c4'], ${start}, 'done', now())`);
     const thread = await getThread(db, a, threadId);
     expect(thread?.messages[1]?.engineChecks).toEqual([
-      { status: "done", moves: ["e2e4", "e7e5"] },
-      { status: "pending", moves: ["d2d4"] },
+      { status: "done", moves: ["e4", "e5"], startPly: 1 },
+      { status: "pending", moves: [b56?.san, w57?.san], startPly: 56 },
+      // Like Rust pv_to_san: the line stops at the first illegal move.
+      { status: "failed", moves: ["e4"], startPly: 1 },
+      { status: "failed", moves: [], startPly: null },
     ]);
     expect(thread?.messages[0]?.engineChecks).toEqual([]);
   });
