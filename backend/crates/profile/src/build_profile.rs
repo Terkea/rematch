@@ -435,13 +435,20 @@ fn side_estimates(
 }
 
 /// Each side's peer benchmark and served reference (peers), or the loaded Lichess ones.
-fn side_benchmarks(l: &Loaded) -> (PerSide<PeerBenchmark>, SideReferences) {
+fn side_benchmarks(
+    l: &Loaded,
+    started_at: OffsetDateTime,
+) -> (PerSide<PeerBenchmark>, SideReferences) {
     match &l.peers {
         Some((sides, Some(center))) => {
             let peers: PerSide<PeerBenchmark> = Side::ALL.map(|side| {
                 Some(match side {
-                    Side::Both => aggregate_peer_benchmark(sides, *center),
-                    _ => aggregate_peer_benchmark(&peer_sides_of(sides, side), *center),
+                    Side::Both => aggregate_peer_benchmark(sides, *center, started_at),
+                    _ => aggregate_peer_benchmark(
+                        &peer_sides_of(sides, side),
+                        *center,
+                        started_at,
+                    ),
                 })
             });
             let references = peers
@@ -456,7 +463,7 @@ fn side_benchmarks(l: &Loaded) -> (PerSide<PeerBenchmark>, SideReferences) {
 
 fn compute(tc: TimeClass, l: &Loaded, started_at: OffsetDateTime) -> Computed {
     let t = Instant::now();
-    let (peers, references) = side_benchmarks(l);
+    let (peers, references) = side_benchmarks(l, started_at);
     let estimates: Vec<Vec<WeaknessEstimate>> = Side::ALL
         .iter()
         .map(|side| side_estimates(*side, l, references[side_index(*side)].as_ref(), started_at))
@@ -645,7 +652,8 @@ async fn run_build(
     // A colour's rows hang off the stored benchmark (its band and source): without one, none.
     if stored.is_some() {
         for side in [Side::White, Side::Black] {
-            write_side_stats(&mut tx, account_id, tc, side, &side_stats(side))
+            let peers = c.peers[side_index(side)].as_ref();
+            write_side_stats(&mut tx, account_id, tc, side, &side_stats(side), peers)
                 .await
                 .map_err(|e| retryable("benchmark", e))?;
         }

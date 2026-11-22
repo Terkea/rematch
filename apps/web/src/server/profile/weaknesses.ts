@@ -1,11 +1,15 @@
 import type { Db } from "@ci/db";
 import {
+  gameMetrics,
   gameOpenings,
+  games,
+  moves,
   reportRuns,
   weaknessEstimates,
   weaknessSeriesPoint,
   weaknessStateHistory,
 } from "@ci/db/generated";
+import { Chess } from "chess.js";
 import { and, asc, desc, eq, gte, inArray, isNotNull, sql } from "drizzle-orm";
 import { readOnly } from "../games";
 import { wilson } from "../stats";
@@ -13,6 +17,7 @@ import { contractId, seriesArea, seriesLabel, weaknessDef } from "./catalogue";
 import { ownsScope } from "./scope";
 import type {
   CoachScope,
+  Example,
   Exemplar,
   TimelineSeries,
   WeaknessDetail,
@@ -318,6 +323,105 @@ async function weeklyOf(
   });
 }
 
+/** Example positions a weakness page shows at most. */
+export const MAX_EXAMPLES = 3;
+
+/** The SAN of `uci` in `fen`, or null when it is not a legal move there. */
+function sanOf(fen: string, uci: string | null): string | null {
+  if (!uci || uci.length < 4) return null;
+  try {
+    return new Chess(fen).move({
+      from: uci.slice(0, 2),
+      to: uci.slice(2, 4),
+      promotion: uci[4] ?? "q",
+    }).san;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The page's examples (see `WeaknessDetail.examples`). A stored occurrence is a ply from the
+ * series' `exemplarPlies` (Rust orders them by win% lost), kept only when it is the player's own
+ * move in a game of the scope inside the estimate's window; each game gives its first such ply.
+ */
+async function examplesOf(
+  tx: Db,
+  scope: CoachScope,
+  seriesKey: string,
+  report: Exemplar[],
+  from: Date,
+): Promise<Example[]> {
+  const out: Example[] = [];
+  const seen = new Set<string>();
+  for (const e of report) {
+    if (out.length >= MAX_EXAMPLES) break;
+    if (seen.has(e.gameId)) continue;
+    seen.add(e.gameId);
+    out.push({ ...e, source: "report", judgement: null });
+  }
+  if (out.length >= MAX_EXAMPLES) return out;
+  const plies = sql`(case when jsonb_typeof(${gameMetrics.metrics} -> 'weakness' -> ${seriesKey}::text -> 'exemplarPlies') = 'array'
+      then ${gameMetrics.metrics} -> 'weakness' -> ${seriesKey}::text -> 'exemplarPlies' else '[]'::jsonb end)`;
+  const rows = await tx
+    .select({
+      gameId: games.platformGameId,
+      playedAt: games.playedAt,
+      ply: moves.ply,
+      san: moves.san,
+      uci: moves.uci,
+      fen: moves.fenBefore,
+      bestUci: moves.bestUci,
+      winBefore: moves.winBefore,
+      winAfter: moves.winAfter,
+      judgement: moves.judgement,
+      rank: sql<number>`p.ord`,
+    })
+    .from(gameMetrics)
+    .innerJoin(games, eq(games.id, gameMetrics.gameId))
+    .innerJoin(sql`jsonb_array_elements_text(${plies}) with ordinality as p(ply, ord)`, sql`true`)
+    .innerJoin(
+      moves,
+      and(eq(moves.gameId, games.id), sql`p.ply ~ '^[0-9]{1,4}$' and ${moves.ply} = p.ply::int`),
+    )
+    .where(
+      and(
+        eq(gameMetrics.accountId, scope.accountId),
+        eq(games.accountId, scope.accountId),
+        eq(gameMetrics.timeClass, scope.timeClass),
+        gte(games.playedAt, from),
+        sql`${moves.color} = ${games.playerColor}`,
+      ),
+    )
+    .orderBy(desc(games.playedAt), games.platformGameId, sql`p.ord`)
+    .limit(MAX_EXAMPLES * 10);
+  for (const r of rows) {
+    if (out.length >= MAX_EXAMPLES) break;
+    if (seen.has(r.gameId)) continue;
+    seen.add(r.gameId);
+    const bestSan = r.bestUci && r.bestUci !== r.uci ? sanOf(r.fen, r.bestUci) : null;
+    out.push({
+      gameId: r.gameId,
+      ply: r.ply,
+      playedAt: r.playedAt.toISOString(),
+      fen: r.fen,
+      played: { san: r.san, uci: r.uci },
+      best: bestSan && r.bestUci ? { san: bestSan, uci: r.bestUci } : null,
+      bestPv: [],
+      refutationPv: [],
+      tags: [],
+      winBefore: r.winBefore,
+      winAfter: r.winAfter,
+      source: "games",
+      judgement:
+        r.judgement === "inaccuracy" || r.judgement === "mistake" || r.judgement === "blunder"
+          ? r.judgement
+          : null,
+    });
+  }
+  return out;
+}
+
 /** A history row's stored `evidence` as counts; null unless both are whole, non-negative numbers. */
 function countsOf(v: unknown): { events: number; chances: number } | null {
   if (!isObj(v)) return null;
@@ -348,6 +452,7 @@ export async function getWeakness(
       from: new Date(base.updatedAt.getTime() - ESTIMATE_WINDOW_DAYS * DAY_MS),
       to: base.updatedAt,
     };
+    const exemplars = await exemplarsOf(tx, scope, seriesKey);
     return {
       ...base,
       window,
@@ -367,7 +472,8 @@ export async function getWeakness(
       })),
       timeline: { ...timelineOf(seriesKey, base.label, rows), compared: base.compared },
       weekly: await weeklyOf(tx, scope, seriesKey, window.from),
-      exemplars: await exemplarsOf(tx, scope, seriesKey),
+      exemplars,
+      examples: await examplesOf(tx, scope, seriesKey, exemplars?.items ?? [], window.from),
     };
   });
 }

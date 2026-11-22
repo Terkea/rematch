@@ -1,5 +1,7 @@
-// The benchmark's words (ADR 0080), with no database import so client components and the
-// report can name it too.
+// The benchmark's words (ADRs 0080, 0081), with no database import so client components and
+// the report can name it too.
+
+import { shareText } from "@ci/ui/profile";
 
 export type Benchmark =
   | {
@@ -11,6 +13,11 @@ export type Benchmark =
       /** Distinct opponents in the window, and their games. */
       players: number;
       games: number;
+      /**
+       * Raw chances in the window each weakness row's pooled rate is pooled over, by series key
+       * ("W4.missed"). A row without a count is absent.
+       */
+      chances: Record<string, number>;
     }
   | { source: "lichess_bands" };
 
@@ -37,4 +44,23 @@ export function benchmarkLabel(b: Benchmark | null): string | null {
 export function benchmarkGroupLabel(b: Benchmark | null): string | undefined {
   if (b?.source !== "peers" || !fin(b.low) || !fin(b.high)) return undefined;
   return `Players you've faced, rated about ${count.format(b.low)}–${count.format(b.high)}`;
+}
+
+/** "pooled over 65 of their chances": what a peer row's rate is (ADR 0081). */
+export function peerPooledBasis(b: Benchmark | null, seriesKey: string): string | undefined {
+  if (b?.source !== "peers") return undefined;
+  const n = b.chances[seriesKey];
+  if (n == null || !fin(n) || n < 0) return undefined;
+  return `pooled over ${count.format(Math.trunc(n))} of their chances`;
+}
+
+/**
+ * "Players you've faced, rated about 650–950: 9.6% (pooled over 65 of their chances)", or null
+ * when the benchmark is not a peer band or the rate is not a number.
+ */
+export function peerRateText(b: Benchmark | null, seriesKey: string, rate: number): string | null {
+  const group = benchmarkGroupLabel(b);
+  if (group === undefined || !fin(rate)) return null;
+  const basis = peerPooledBasis(b, seriesKey);
+  return `${group}: ${shareText(rate)}${basis ? ` (${basis})` : ""}`;
 }

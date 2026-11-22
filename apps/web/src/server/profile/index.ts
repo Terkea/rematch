@@ -5,6 +5,8 @@ export {
   benchmarkGroupLabel,
   benchmarkLabel,
   getBenchmark,
+  peerPooledBasis,
+  peerRateText,
 } from "./benchmark";
 export {
   AREAS,

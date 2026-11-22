@@ -1,6 +1,6 @@
 # 0080. A chess.com peer benchmark from the opponents you have faced
 
-Date: 2026-11-22. Status: accepted (owner: "leave lichess out of this, prioritise only
+Date: 2026-11-22. Status: accepted, amended by ADR 0081 (pooled rate, mirrors, window) (owner: "leave lichess out of this, prioritise only
 chess.com"). Supersedes, for the default flow, the Lichess-dump band reference of ADR-R2-11 and
 ADR-R2-23 as the benchmark of weakness estimates, timeline states and area percentiles. Builds
 on ADR 0078 (uncompared weaknesses).

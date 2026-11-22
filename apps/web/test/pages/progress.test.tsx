@@ -139,6 +139,7 @@ function weakness(over: Partial<WeaknessDetail> = {}): WeaknessDetail {
     },
     weekly: [],
     exemplars: null,
+    examples: [],
     ...over,
   };
 }

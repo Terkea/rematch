@@ -3,13 +3,16 @@
 import { AreaScoreKey, AreaScoreList } from "@ci/ui/area-score";
 import {
   ExemplarBoard,
+  ExplainPopover,
   KpiTrendGrid,
   type KpiTrendItem,
+  Meaning,
   WeaknessRow,
   WeaknessRowKey,
   type WeaknessRowProps,
   weaknessScaleMax,
 } from "@ci/ui/profile";
+import { WEAKNESS_GLOSSARY } from "../../../server/profile/glossary";
 
 // The profile kit (ADR 0072) with synthetic numbers: shaped like the R2 read model, never a
 // player's data. The two positions are real opening traps; their win chances are made up.
@@ -129,6 +132,9 @@ const ROWS: WeaknessRowProps[] = [
   },
 ];
 
+/** The entry the owner asked about ("what is conversion failure?"). */
+const CONVERSION = WEAKNESS_GLOSSARY.W5;
+
 export function ProfileSection() {
   const scaleMax = weaknessScaleMax(ROWS);
   return (
@@ -146,6 +152,25 @@ export function ProfileSection() {
           The pieces of the coach pages: a weakness as a row, KPI trends as small multiples on one
           time axis, and example positions. The numbers here are synthetic.
         </p>
+      </div>
+
+      <div data-specimen="explain" className="flex flex-col gap-3">
+        <h3 className="font-serif text-xl font-semibold">Explanations</h3>
+        <p className="m-0 max-w-prose text-sm text-ink-soft">
+          Every weakness, measure and area name carries its one-sentence meaning in muted text, and
+          an "i" that opens how it is measured, why it matters and what to try. It opens on click or
+          tap, never on hover alone, and Escape or a click outside closes it. The words come from
+          the glossary, never from the component.
+        </p>
+        {CONVERSION ? (
+          <div className="flex flex-col gap-1">
+            <span className="flex items-center gap-1">
+              <span className="font-medium text-ink">{CONVERSION.name}</span>
+              <ExplainPopover entry={CONVERSION} />
+            </span>
+            <Meaning entry={CONVERSION} />
+          </div>
+        ) : null}
       </div>
 
       <div className="flex flex-col gap-3">

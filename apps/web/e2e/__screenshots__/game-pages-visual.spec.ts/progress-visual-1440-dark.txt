@@ -1,0 +1,148 @@
+Progress
+
+What has changed in your games, week by week. Based on 15 analysed rapid games.
+
+Before and after
+
+Your rate either side of each change the detector has called.
+
+Endgame technique (basics): 14.0% before, 9.0% after, detected improving on 15 Oct 2026
+Endgame technique (basics): 14.0% before, 9.0% after, detected improving on 15 Oct 2026
+
+In a basic endgame you made a move that changed a win into a draw, or a draw into a loss.
+After: 6 of 70 chances since the change point
+Before: from the earlier games of that stretch; their count isn't stored yet
+14.0%
+9.0%
+Detected improving
+
+Before
+After
+Each row on its own scale from 0
+
+Rating over time
+
+Your recorded rating; it moves for many reasons.
+
+Rating
+Your rating on the site, for this time control.
+No games yet.
+How you play
+
+Each week's value with its stored 80% range, on the same weeks as your rating.
+
+Accuracy and blunders
+Weekly value, 20 or more games
+A week on its own, between gaps
+Fewer than 20 games, off the line
+Gap: no games that week
+Stored 80% range
+Report, numbered below
+1
+13 Oct 2026: your report was built
+Accuracy
+
+How close your moves were to the engine's best moves, as a score out of 100.
+
+76.5%
+Week of 16 Nov 2026, 22 games
+
+Accuracy: 71.0% in week of 31 Aug 2026, 22 games; 71.5% in week of 7 Sep 2026, 22 games; 72.0% in week of 14 Sep 2026, 22 games; 72.5% in week of 21 Sep 2026, 22 games; 73.0% in week of 28 Sep 2026, 22 games; no games in week of 5 Oct 2026; 74.0% in week of 12 Oct 2026, 22 games; 74.5% in week of 19 Oct 2026, 22 games; 75.0% in week of 26 Oct 2026, 22 games; 75.5% in week of 2 Nov 2026, 22 games; 76.0% in week of 9 Nov 2026, 22 games; 76.5% in week of 16 Nov 2026, 22 games.
+80.0%
+65.0%
+1
+31 Aug
+16 Nov 2026
+Blunders per game
+
+How many big mistakes you make in a typical game.
+
+1.07
+Week of 16 Nov 2026, 22 games
+
+Blunders per game: 1.40 in week of 31 Aug 2026, 22 games; 1.37 in week of 7 Sep 2026, 22 games; 1.34 in week of 14 Sep 2026, 22 games; 1.31 in week of 21 Sep 2026, 22 games; 1.28 in week of 28 Sep 2026, 22 games; no games in week of 5 Oct 2026; 1.22 in week of 12 Oct 2026, 22 games; 1.19 in week of 19 Oct 2026, 22 games; 1.16 in week of 26 Oct 2026, 22 games; 1.13 in week of 2 Nov 2026, 22 games; 1.10 in week of 9 Nov 2026, 22 games; 1.07 in week of 16 Nov 2026, 22 games.
+4.00
+0.00
+1
+31 Aug
+16 Nov 2026
+Not enough games for a trend yet
+Opening accuracy
+How close your moves were to the engine's best in the opening.
+No games yet.
+Middlegame accuracy
+How close your moves were to the engine's best in the middlegame.
+No games yet.
+Endgame accuracy
+How close your moves were to the engine's best in the endgame.
+No games yet.
+Converting and saving
+Winning positions converted
+How often you win the game after reaching a clearly winning position.
+No games with a winning position yet.
+Lost positions saved
+How often you avoid losing after reaching a clearly losing position.
+No games with a lost position yet.
+On a low clock
+Blunder rate on a low clock
+How often your moves go badly wrong when you are nearly out of time.
+No low-clock moves yet.
+Punishing mistakes
+Mistakes left unpunished
+How often you fail to take advantage when your opponent makes a mistake.
+No chances yet.
+Weakness timeline
+
+Each measured weakness and the states the detector has called, with onset markers.
+
+Not an issue
+Emerging
+Active
+Improving
+Resolved
+Relapsed
+Onset, with its likely range
+
+Hover, tap or use the arrow keys to read a state's dates.
+
+Missed own tactic (shallow)
+Now active
+Hung material
+Now active
+Endgame technique (basics)
+Now improving
+Sep 2026
+Oct
+Nov
+22 Nov
+Weekly reviews
+
+Your coach's notes on each week, checked against your games before they are shown.
+
+Week of 16 Nov 2026
+
+Your weekly review is being written
+
+Writing
+
+Writing started
+
+Week of 9 Nov 2026
+Written by AI
+Written on 20 Nov 2026
+This coaching was written by an AI model (Claude) from your analysed games. It can contain mistakes. The engine data shown alongside it is the source of truth.
+
+A steadier week.
+
+How you played
+
+You took more time on critical moves.
+
+Outcomes
+Hung pieces
+
+Fewer hung pieces.
+
+Next week
+
+Keep checking captures before you move.

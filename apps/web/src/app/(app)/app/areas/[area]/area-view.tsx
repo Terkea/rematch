@@ -5,6 +5,7 @@ import { Button, touchTarget } from "@ci/ui/primitives";
 import {
   dayText,
   ExemplarBoard,
+  ExplainPopover,
   KpiTrendGrid,
   type KpiTrendItem,
   WeaknessRow,
@@ -16,12 +17,18 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { CoachScopeSwitch } from "../../../../../components/coach-scope-switch";
 import { coachChatLive } from "../../../../../lib/coach-chat";
+import { areaMeaning } from "../../../../../lib/explain";
 import { weeklyPoints } from "../../../../../lib/iso-week";
 import { segmentHref } from "../../../../../lib/segment-href";
 import { coachHref } from "../../../../../server/coach/anchor";
 import type { CoachStatus } from "../../../../../server/coach/status";
 import type { ReportView } from "../../../../../server/coaching";
 import type { NarrativeItem } from "../../../../../server/coaching/types";
+import {
+  AREA_GLOSSARY,
+  KPI_GLOSSARY,
+  seriesGlossary,
+} from "../../../../../server/profile/glossary";
 import type {
   Area,
   AreaView as AreaReadModel,
@@ -102,21 +109,6 @@ const SCORE_NAME: Record<Exclude<Area, "mindset">, string> = {
   time: "a time-management score",
 };
 
-const LEDE: Record<Area, string> = {
-  openings:
-    "How your games start: the lines you choose, your preparation and the position you leave the opening with.",
-  middlegame:
-    "Turning positions into results: converting an advantage, defending a worse game and steady play in quiet positions.",
-  endgame:
-    "Technique once the board thins out: converting wins, holding draws and precision against the tablebase.",
-  tactics:
-    "Spotting your own tactics, punishing your opponent's mistakes and seeing theirs coming.",
-  calculation: "Seeing the board: material left hanging, threats you missed and one-move blunders.",
-  time: "How you spend your clock, and what happens to your play when it runs low.",
-  mindset:
-    "How you play across a session: your first game, the later ones and the game after a loss.",
-};
-
 const TIME_CLASS: Record<CoachScope["timeClass"], string> = {
   bullet: "bullet",
   blitz: "blitz",
@@ -155,8 +147,21 @@ export function AreaView({ model }: { model: AreaPageModel }) {
       <header className="flex flex-col gap-5">
         <AreaTabs current={area} scope={scope} />
         <div className="flex max-w-3xl flex-col gap-2">
-          <h1 className="font-serif text-3xl font-semibold text-ink md:text-4xl">{TITLE[area]}</h1>
-          <p className="text-lg text-ink-soft">{LEDE[area]}</p>
+          <div className="flex items-center gap-1.5">
+            <h1 className="font-serif text-3xl font-semibold text-ink md:text-4xl">
+              {TITLE[area]}
+            </h1>
+            <ExplainPopover entry={AREA_GLOSSARY[area]} />
+          </div>
+          <p className="text-lg text-ink-soft">{AREA_GLOSSARY[area].meaning}</p>
+          <p data-slot="meaning" className="m-0 text-base text-ink" style={LINING}>
+            {areaMeaning({
+              score: model.score?.value ?? null,
+              interval: null,
+              n: model.score?.n ?? 0,
+              unscored: area === "mindset",
+            })}
+          </p>
           {option ? (
             <p className="text-sm text-ink-faint" style={LINING}>
               From {count(option.analysedGames)} analysed {TIME_CLASS[scope.timeClass]}{" "}
@@ -469,6 +474,7 @@ function MeasuresPart({ model }: { model: AreaPageModel }) {
     metric: k.metric,
     label: k.label,
     unit: k.unit,
+    explain: KPI_GLOSSARY[k.metric] ?? null,
     // The read model keys weeks as "2026-W46"; the chart plots days (B2).
     points: weeklyPoints(k.points),
   }));
@@ -509,6 +515,7 @@ function MeasuresPart({ model }: { model: AreaPageModel }) {
 /** A measure below its minimum: its n and the shortfall, never its value. */
 function ThinMeasure({ kpi }: { kpi: KpiTrend }) {
   const c = kpi.current;
+  const explain = KPI_GLOSSARY[kpi.metric] ?? null;
   let status: string;
   if (!c) status = "Not measured yet";
   else {
@@ -524,7 +531,13 @@ function ThinMeasure({ kpi }: { kpi: KpiTrend }) {
       className="flex flex-col gap-0.5 border-b border-rule py-2.5 last:border-b-0 sm:flex-row sm:items-baseline sm:gap-6"
       style={LINING}
     >
-      <span className="text-ink sm:w-72 sm:shrink-0">{kpi.label}</span>
+      <span className="flex flex-col gap-0.5 sm:w-72 sm:shrink-0">
+        <span className="flex items-center gap-1 text-ink">
+          {kpi.label}
+          {explain ? <ExplainPopover entry={explain} /> : null}
+        </span>
+        {explain ? <span className="text-sm text-ink-soft">{explain.meaning}</span> : null}
+      </span>
       <span className="text-sm text-ink-soft">{status}</span>
     </li>
   );
@@ -566,6 +579,7 @@ function WeaknessesPart({ model }: { model: AreaPageModel }) {
                 trend={trend}
                 onset={w.onset ? w.onset.at.toISOString().slice(0, 10) : null}
                 scaleMax={scaleMax}
+                explain={seriesGlossary(w.seriesKey)}
               />
             </li>
           ))}

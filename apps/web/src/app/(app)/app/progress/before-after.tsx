@@ -1,6 +1,7 @@
-import { dayText } from "@ci/ui/profile";
+import { dayText, type ExplainEntry, ExplainPopover } from "@ci/ui/profile";
 import { stateStyle } from "@ci/ui/timeline";
 import type { WeaknessDetail } from "../../../../server/profile";
+import { seriesGlossary } from "../../../../server/profile/glossary";
 
 // Before and after (spec §10a.4): the rates either side of a detected change, straight from the
 // weakness's own history rows (`weakness_state_history.rate_before` / `rate_after`). Rust writes a
@@ -15,6 +16,8 @@ const count = new Intl.NumberFormat("en-GB");
 export type BeforeAfterRow = {
   seriesKey: string;
   label: string;
+  /** The weakness's glossary entry, or null when the glossary has none. */
+  explain: ExplainEntry | null;
   state: Called;
   before: number;
   after: number;
@@ -58,6 +61,7 @@ export function beforeAfterRows(weaknesses: WeaknessDetail[]): BeforeAfterRow[] 
     rows.push({
       seriesKey: w.seriesKey,
       label: w.label,
+      explain: seriesGlossary(w.seriesKey),
       state: hit.toState as Called,
       before: hit.rateBefore,
       after: hit.rateAfter,
@@ -278,6 +282,12 @@ export function BeforeAfter({ rows }: { rows: BeforeAfterRow[] }) {
                   )}
                 </span>
               </p>
+              {r.explain ? (
+                <span className="flex items-center gap-1">
+                  <span className="text-sm text-ink-soft">{r.explain.meaning}</span>
+                  <ExplainPopover entry={r.explain} />
+                </span>
+              ) : null}
               <Sides r={r} />
             </div>
             <div className="flex flex-wrap items-center gap-x-6 gap-y-2">

@@ -2,7 +2,9 @@
 
 import { areaLabels } from "@ci/ui/area-score";
 import type { AiDisclosureData } from "@ci/ui/coach";
+import { ExplainPopover } from "@ci/ui/profile";
 import type { AreaId, AreaScoreRow, AreasSection } from "../../../../../server/coaching/types";
+import { AREA_GLOSSARY } from "../../../../../server/profile/glossary";
 import type { ReportScope } from "../rebuild-button";
 import { areaHref } from "./links";
 import { CoachText, ReportSection, SectionNote, type SectionStatus } from "./shell";
@@ -59,12 +61,16 @@ export function Areas({
               : noScoreText(area, row?.needMore ?? null);
           return (
             <li key={area} className="flex flex-col gap-1">
-              <a
-                href={areaHref(area, scope)}
-                className="inline-flex min-h-6 items-center self-start rounded-field font-medium text-ink underline decoration-rule-strong underline-offset-4 hover:decoration-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
-              >
-                {areaLabels[area]}
-              </a>
+              <span className="flex items-center gap-1">
+                <a
+                  href={areaHref(area, scope)}
+                  className="inline-flex min-h-6 items-center self-start rounded-field font-medium text-ink underline decoration-rule-strong underline-offset-4 hover:decoration-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+                >
+                  {areaLabels[area]}
+                </a>
+                <ExplainPopover entry={AREA_GLOSSARY[area]} />
+              </span>
+              <span className="text-sm text-ink-soft">{AREA_GLOSSARY[area].meaning}</span>
               <span className="text-sm text-ink-soft" style={{ fontVariantNumeric: "lining-nums" }}>
                 {score}
               </span>

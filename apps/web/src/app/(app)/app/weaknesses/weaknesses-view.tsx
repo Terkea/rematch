@@ -9,7 +9,9 @@ import {
   type Benchmark,
   benchmarkGroupLabel,
   benchmarkLabel,
+  peerPooledBasis,
 } from "../../../../server/profile/benchmark-text";
+import { seriesGlossary } from "../../../../server/profile/glossary";
 import { ESTIMATE_WINDOW_TEXT } from "../../../../server/profile/window";
 import { EmptySheet } from "../../_shell/page-heading";
 import { SectionHead } from "../_overview/section-head";
@@ -188,7 +190,11 @@ export function WeaknessesView({
                         evidence={w.evidence}
                         band={
                           group
-                            ? { median: w.band.median, label: group }
+                            ? {
+                                median: w.band.median,
+                                label: group,
+                                basis: peerPooledBasis(benchmark, w.seriesKey),
+                              }
                             : { median: w.band.median }
                         }
                         compared={w.compared}
@@ -197,6 +203,7 @@ export function WeaknessesView({
                         trend={trends.get(w.seriesKey) ?? []}
                         onset={w.onset ? w.onset.at.toISOString().slice(0, 10) : null}
                         scaleMax={scaleMax}
+                        explain={seriesGlossary(w.seriesKey)}
                       />
                     </MorphLink>
                   </li>

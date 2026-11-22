@@ -1,6 +1,12 @@
 import "@testing-library/jest-dom/vitest";
 import { createRequire } from "node:module";
-import { aiStatus, reportSections, reports, weaknessChangeNotes } from "@ci/db/generated";
+import {
+  aiStatus,
+  openingLines,
+  reportSections,
+  reports,
+  weaknessChangeNotes,
+} from "@ci/db/generated";
 import { within } from "@testing-library/react";
 import { eq, sql } from "drizzle-orm";
 import { renderToString } from "react-dom/server";
@@ -14,6 +20,7 @@ import {
   SEEN_KEY,
 } from "../../src/app/(app)/app/report/reveal.js";
 import type { ReportRunRow } from "../../src/server/coaching/types.js";
+import { VERDICT_GLOSSARY } from "../../src/server/profile/glossary.js";
 import { payloadFixture, resetCoachingTables, seedNote, seedReport } from "../helpers/coaching.js";
 import { resetGameTables, seedAccount, seedSyntheticGame } from "../helpers/games.js";
 import { createTestSession, resetAuthTables, webTestDb } from "../helpers/session.js";
@@ -588,3 +595,41 @@ describe("review fix round 1", () => {
 function payloadWeakness(): unknown {
   return payloadFixture("example").computed.weaknesses[0];
 }
+
+describe("opening verdicts explained (I9)", () => {
+  async function line(lineKey: string, color: "white" | "black", verdict: string, summary: object) {
+    await db.insert(openingLines).values({
+      accountId,
+      timeClass: "rapid",
+      color,
+      lineKey,
+      kind: "chosen",
+      games: 23,
+      verdict: verdict as "fix",
+      summary: { games: 23, color, kind: "chosen", verdict, ...summary },
+    });
+  }
+
+  it("says why a line has its verdict from the stored rule evidence", async () => {
+    await seedReport(db, accountId, { timeClass: "rapid", payload: "example", createdAt: CREATED });
+    await line("b-sicilian-najdorf", "black", "fix", {
+      errorSpot: { fenKey: "k", uci: "d8c7", san: "Qc7", games: 7 },
+      struggles: ["repeated_deviation_error"],
+    });
+    const screen = within(render(<ReportView data={await data()} />).container);
+    const openings = screen.getByRole("region", { name: "Openings" });
+    expect(openings).toHaveTextContent(
+      "Fix means one move keeps costing you: Qc7, in 7 of your 23 games in this line, losing 10 win% points or more each time.",
+    );
+    expect(within(openings).getByRole("button", { name: "What does Fix mean?" })).toBeTruthy();
+  });
+
+  it("falls back to the verdict's meaning when the stored line has moved on", async () => {
+    await seedReport(db, accountId, { timeClass: "rapid", payload: "example", createdAt: CREATED });
+    await line("w-italian", "white", "learn", { medianDeviationPly: 6, share: 0.4 });
+    const screen = within(render(<ReportView data={await data()} />).container);
+    const openings = screen.getByRole("region", { name: "Openings" });
+    expect(openings).toHaveTextContent(VERDICT_GLOSSARY.keep.meaning);
+    expect(openings).not.toHaveTextContent("Learn deeper means you play it often");
+  });
+});

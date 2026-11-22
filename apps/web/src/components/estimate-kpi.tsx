@@ -1,3 +1,4 @@
+import { type ExplainEntry, ExplainPopover } from "@ci/ui/profile";
 import { basisText, KpiStat, Stat } from "@ci/ui/stats";
 import type { Estimate } from "../server/stats";
 
@@ -19,6 +20,8 @@ export interface EstimateKpiProps {
   better?: "higher" | "lower";
   /** Roll the number up on a first view (the report reveal). */
   rollIn?: boolean;
+  /** The glossary entry: its meaning under the label, and an "i" that opens the rest. */
+  explain?: ExplainEntry | null;
 }
 
 /**
@@ -38,6 +41,7 @@ export function EstimateKpi({
   sectionGames,
   better,
   rollIn,
+  explain,
 }: EstimateKpiProps) {
   const Heading = `h${headingLevel}` as const;
   const k = format === "percent" ? 100 : 1;
@@ -52,7 +56,11 @@ export function EstimateKpi({
         className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1"
       >
         <div className="flex flex-col gap-0.5">
-          <Heading className="text-base font-medium text-ink">{label}</Heading>
+          <span className="flex items-center gap-1">
+            <Heading className="text-base font-medium text-ink">{label}</Heading>
+            {explain ? <ExplainPopover entry={explain} /> : null}
+          </span>
+          {explain ? <p className="m-0 text-sm text-ink-soft">{explain.meaning}</p> : null}
           <p className={stated ? "sr-only" : "text-sm text-ink-soft"}>
             {basisText({ games: estimate.n, timeClass: basisClass })}
           </p>
@@ -77,7 +85,11 @@ export function EstimateKpi({
         className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1"
       >
         <div className="flex flex-col gap-0.5">
-          <Heading className="text-base font-medium text-ink">{label}</Heading>
+          <span className="flex items-center gap-1">
+            <Heading className="text-base font-medium text-ink">{label}</Heading>
+            {explain ? <ExplainPopover entry={explain} /> : null}
+          </span>
+          {explain ? <p className="m-0 text-sm text-ink-soft">{explain.meaning}</p> : null}
           <p className={basisHidden ? "sr-only" : "text-sm text-ink-soft"}>{basisText(basis)}</p>
         </div>
         <div className="flex flex-col items-end gap-0.5">
@@ -112,6 +124,7 @@ export function EstimateKpi({
       {...(scaled && trendGames ? { trendGames } : {})}
       {...(better ? { better } : {})}
       {...(rollIn ? { rollIn, rollDelay: 200 } : {})}
+      {...(explain ? { explain } : {})}
     />
   );
 }

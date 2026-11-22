@@ -10,6 +10,8 @@ export {
   type Benchmark,
   benchmarkGroupLabel,
   benchmarkLabel,
+  peerPooledBasis,
+  peerRateText,
 } from "./benchmark-text";
 
 // The benchmark a scope's last build-profile compared with (ADR 0080). By default it is the
@@ -45,6 +47,13 @@ export async function getBenchmark(
           where s.account_id = b.account_id and s.time_class = b.time_class
             and s.side = 'both' and not s.low_sample)`);
     if (!row) return null;
+    const stats = await tx.execute<{ key: string; chances: number }>(sql`
+      select substr(metric, length('weakness:') + 1) as key, n_chances as chances
+      from account_benchmark_stat
+      where account_id = ${scope.accountId} and time_class = ${scope.timeClass}
+        and metric like 'weakness:%' and n_chances is not null`);
+    const chances: Record<string, number> = {};
+    for (const s of stats) chances[s.key] = Number(s.chances);
     if (row.source === "lichess_bands") return { source: "lichess_bands" };
     if (
       row.source !== "peers" ||
@@ -62,6 +71,7 @@ export async function getBenchmark(
       high: row.high,
       players: row.players,
       games: row.games,
+      chances,
     };
   });
 }

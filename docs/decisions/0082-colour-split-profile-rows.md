@@ -43,7 +43,8 @@ filtered by colour.
 6. **The peer benchmark (ADR 0080) splits the same way.** A colour's peers are the opponents
    who had that colour (`peer_sides_of`): the player's Black games give the White peers, so
    White play is compared with White play. They are aggregated by the same rules (same rating
-   window around the player's latest rating, one weight per opponent, their own `low_sample`)
+   window around the player's latest rating, the player's 183-day window, the pooled rate and
+   the excluded mirrored rows of ADR 0081, their own `n_chances` and `low_sample`)
    and stored as that side's `account_benchmark_stat` rows (`side` joins its primary key).
    `account_benchmark` (the band and its counts) stays one row per account × time class and
    describes the both benchmark; colour rows are written only when it exists. The coaching

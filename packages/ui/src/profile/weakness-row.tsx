@@ -4,6 +4,7 @@ import { useId } from "react";
 import { cn } from "../lib/index.js";
 import { Sparkline } from "../stats/sparkline.js";
 import { stateStyle, type WeaknessState } from "../timeline/states.js";
+import { type ExplainEntry, ExplainPopover } from "./explain.js";
 import {
   bandComparisonText,
   countsText,
@@ -29,9 +30,10 @@ export interface WeaknessRowProps {
   evidence: { events: number; chances: number; sufficient: boolean; needMore: number | null };
   /**
    * The rating band's median rate, or null when there is no band reference, and the band's name
-   * ("Players rated 1400–1600"; default "Players in your rating band").
+   * ("Players rated 1400–1600"; default "Players in your rating band"), and what the figure is
+   * ("pooled over 65 of their chances"), said in brackets after it.
    */
-  band: { median: number | null; label?: string };
+  band: { median: number | null; label?: string; basis?: string };
   href: string;
   /** Weekly rates, oldest first; null is a week with no chances (a gap, never a zero). */
   trend: (number | null)[];
@@ -48,6 +50,8 @@ export interface WeaknessRowProps {
   compared?: boolean;
   /** The estimate's evidence window, after the counts ("in the last 6 months"). */
   window?: string;
+  /** The glossary entry: its meaning under the label, and an "i" that opens the rest. */
+  explain?: ExplainEntry | null;
   className?: string;
 }
 
@@ -219,6 +223,7 @@ export function WeaknessRow({
   scaleMax,
   compared = band.median !== null && fin(band.median),
   window,
+  explain,
   className,
 }: WeaknessRowProps) {
   const early = !evidence.sufficient;
@@ -240,12 +245,17 @@ export function WeaknessRow({
       {/* ban-lint-allow TOK2: grid track template, no spacing token */}
       <div className="grid grid-cols-1 items-start gap-x-4 gap-y-3 px-3 py-3.5 @min-[720px]:grid-cols-[minmax(11rem,1fr)_13rem_minmax(12rem,1.2fr)_9rem] @min-[720px]:items-center @min-[720px]:gap-x-6">
         <div className="flex min-w-0 flex-col gap-1.5">
-          <a
-            href={href}
-            className="font-medium text-ink outline-none before:absolute before:inset-0 before:rounded-field focus-visible:before:outline-2 focus-visible:before:outline-offset-2 focus-visible:before:outline-ink"
-          >
-            {label}
-          </a>
+          <span className="flex items-center gap-1">
+            <a
+              href={href}
+              className="font-medium text-ink outline-none before:absolute before:inset-0 before:rounded-field focus-visible:before:outline-2 focus-visible:before:outline-offset-2 focus-visible:before:outline-ink"
+            >
+              {label}
+            </a>
+            {/* Above the label's stretched link, so a tap opens the explanation, not the page. */}
+            {explain ? <ExplainPopover entry={explain} className="z-10" /> : null}
+          </span>
+          {explain ? <p className="m-0 text-sm text-ink-soft">{explain.meaning}</p> : null}
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
             <span className="inline-flex items-center gap-1.5 text-ink-soft">
               <StateMark state={early || !compared ? "early" : state} />
@@ -312,7 +322,7 @@ export function WeaknessRow({
               <RateStrip rate={rate} median={compared ? band.median : null} max={max} />
               <span className="text-sm text-ink-soft" style={LINING}>
                 {compared
-                  ? bandComparisonText(rate, band.median, band.label)
+                  ? bandComparisonText(rate, band.median, band.label, band.basis)
                   : bandComparisonText(rate, null)}
               </span>
             </>

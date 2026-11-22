@@ -11,7 +11,6 @@ import { requestEventCursor } from "../../../../../server/events/request-cursor"
 import { getBenchmark, getWeakness, resolveCoachScope } from "../../../../../server/profile";
 import { reviewGameIds } from "../../../../../server/profile/game-ids";
 import { noteKeysInScope } from "../queries";
-import { MAX_EXEMPLARS } from "./exemplars";
 import { WeaknessView } from "./weakness-view";
 
 export const dynamic = "force-dynamic";
@@ -83,7 +82,7 @@ export default async function WeaknessPage({ params, searchParams }: Props) {
   ]);
   const notes = allNotes.filter((n) => inScope.has(n.changeKey));
   const cited = [
-    ...(detail.exemplars?.items.slice(0, MAX_EXEMPLARS).map((e) => e.gameId) ?? []),
+    ...detail.examples.map((e) => e.gameId),
     ...notes.flatMap((n) =>
       (n.item?.segments ?? []).flatMap((s) =>
         s.kind === "move" || s.kind === "best" || s.kind === "pv" ? [s.gameId] : [],
