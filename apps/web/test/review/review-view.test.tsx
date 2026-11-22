@@ -180,7 +180,7 @@ describe("GameReviewView", () => {
   it("gives the shown move its verdict sentence", () => {
     render(<GameReviewView view={analysed()} initialPly="7" />);
     expect(screen.getByTestId("verdict").textContent).toBe(
-      "4. Ng5?? is a blunder: it let a forced mate go. Win chance 98% to 90%. The engine preferred Bxf7+.",
+      "4. Ng5?? is a blunder: it let a forced mate go. Your win chance 98% to 90%. The engine preferred Bxf7+.",
     );
   });
 
@@ -259,7 +259,7 @@ describe("GameReviewView", () => {
         .getAllByRole("button")
         .map((r) => r.getAttribute("data-ply")),
     ).toEqual(["1", "13", "15", "17"]);
-    fireEvent.click(screen.getByRole("button", { name: "Show all 9" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show all 9 marked moves" }));
     expect(within(list()).getAllByRole("button")).toHaveLength(9);
   });
 
@@ -360,6 +360,66 @@ describe("GameReviewView", () => {
     fireEvent.click(within(bar).getByRole("button", { name: "Autoplay" }));
     act(() => vi.advanceTimersByTime(300));
     expect(status.textContent).toMatch(/^3\. Bc4\?\?/);
+  });
+
+  // M5a T13: "N s on this move" is the mover's, for White's and Black's moves, both ways up.
+  it("puts the spent line with the player who moved, not the side to move", () => {
+    const clocks = [598, 595, 590, 580, 575, 570, 560, 550];
+    for (const playerColor of ["white", "black"] as const) {
+      for (const [ply, mover] of [
+        [3, "Whitey"],
+        [4, "Blacky"],
+      ] as const) {
+        const { unmount } = render(
+          <GameReviewView view={analysed({ playerColor, clocks })} initialPly={String(ply)} />,
+        );
+        const line = document.querySelector("[data-spent-for]");
+        expect(line?.textContent, `${playerColor} ply ${ply}`).toMatch(new RegExp(`^${mover}: `));
+        // The mover's row is the one just before it; the board's bottom is the player's colour.
+        const row = line?.previousElementSibling;
+        expect(row?.textContent, `${playerColor} ply ${ply}`).toContain(mover);
+        unmount();
+      }
+    }
+  });
+
+  // M5a T13 (T10 re-review m2): the first paint reads nothing and writes no ?ply=, at either width.
+  it("reads nothing and leaves the URL alone on the first paint", () => {
+    for (const isWide of [true, false]) {
+      vi.useFakeTimers();
+      wide(isWide);
+      const replace = vi.spyOn(window.history, "replaceState");
+      const { unmount } = render(<GameReviewView view={analysed()} initialPly="3" />);
+      act(() => vi.advanceTimersByTime(2000));
+      expect(screen.getByTestId("step-status").textContent, `wide ${isWide}`).toBe("");
+      expect(replace, `wide ${isWide}`).not.toHaveBeenCalled();
+      replace.mockRestore();
+      unmount();
+    }
+  });
+
+  // T10 re-review m3: a move is read again when the player comes back to it after another was
+  // read; a step away and back inside the 300 ms settle reads nothing (nothing changed).
+  it("re-reads a move the player returns to, but not a step away and back", () => {
+    vi.useFakeTimers();
+    wide(false);
+    render(<GameReviewView view={analysed()} initialPly="1" />);
+    const status = screen.getByTestId("step-status");
+    const step = (key: string) => fireEvent.keyDown(window, { key });
+    step("ArrowRight");
+    act(() => vi.advanceTimersByTime(300));
+    const second = status.textContent;
+    expect(second).toMatch(/^1… e5/);
+    step("ArrowRight");
+    step("ArrowLeft");
+    act(() => vi.advanceTimersByTime(1000));
+    expect(status.textContent).toBe(second);
+    step("ArrowRight");
+    act(() => vi.advanceTimersByTime(300));
+    expect(status.textContent).not.toBe(second);
+    step("ArrowLeft");
+    act(() => vi.advanceTimersByTime(300));
+    expect(status.textContent).toBe(second);
   });
 
   it("keeps the scoresheet's own announcer quiet, so a step is read once", () => {

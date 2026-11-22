@@ -17,14 +17,23 @@ export interface ClockPairProps {
   top: ClockSide;
   /** The side at the bottom of the board. */
   bottom: ClockSide;
-  /** Time the mover spent on the shown move, or null when it isn't known. */
-  spent: { seconds: number } | null;
+  /**
+   * Time the player who made the shown move spent on it, and which row is that player (`by`), or
+   * null when it isn't known. The line sits under the mover's row, never the side to move's.
+   */
+  spent: { seconds: number; by: "top" | "bottom" } | null;
   /**
    * Whether the clock source records tenths (default true). With false, clocks and the spent line
    * show whole seconds, so a whole-second `%clk` never reads as "0:08.0".
    */
   tenths?: boolean;
   className?: string;
+}
+
+/** The row of the player who made ply `ply` (White plays the odd plies), given who is on top. */
+export function moverRow(ply: number, top: "white" | "black"): "top" | "bottom" {
+  const mover = ply % 2 === 1 ? "white" : "black";
+  return mover === top ? "top" : "bottom";
 }
 
 const NUMERALS = "[font-variant-numeric:lining-nums_tabular-nums]";
@@ -108,6 +117,23 @@ export function ClockPair({ top, bottom, spent, tenths = true, className }: Cloc
   const reduced = useReducedMotion();
   const spentText = spent ? formatSpent(spent.seconds, { tenths }) : null;
   const shows = (s: ClockSide) => s.seconds !== null && formatClock(s.seconds) !== "";
+  // One slot under each row while a spent line shows, so the rows never move as the mover
+  // alternates; only the mover's slot holds the text.
+  const slot = (at: "top" | "bottom") =>
+    spentText ? (
+      <p
+        data-spent-slot
+        {...(spent?.by === at ? { "data-spent-for": at } : {})}
+        className="min-h-5 pl-4 font-sans text-sm text-ink-soft [font-variant-numeric:lining-nums]"
+      >
+        {spent?.by === at ? (
+          <>
+            <span className="sr-only">{`${at === "top" ? top.name : bottom.name}: `}</span>
+            <span>{spentText}</span>
+          </>
+        ) : null}
+      </p>
+    ) : null;
   return (
     <div className={cn("flex flex-col gap-1.5", className)}>
       <SideRow
@@ -117,11 +143,7 @@ export function ClockPair({ top, bottom, spent, tenths = true, className }: Cloc
         tenths={tenths}
         markMissing={!shows(top) && shows(bottom)}
       />
-      {spentText ? (
-        <p className="pl-4 font-sans text-sm text-ink-soft [font-variant-numeric:lining-nums]">
-          {spentText}
-        </p>
-      ) : null}
+      {slot("top")}
       <SideRow
         side={bottom}
         at="bottom"
@@ -129,6 +151,7 @@ export function ClockPair({ top, bottom, spent, tenths = true, className }: Cloc
         tenths={tenths}
         markMissing={!shows(bottom) && shows(top)}
       />
+      {slot("bottom")}
     </div>
   );
 }

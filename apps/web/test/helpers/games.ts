@@ -225,6 +225,8 @@ export async function seedFixtureGame(
 }
 
 export type SyntheticGame = {
+  /** A fixed game id (default random), so a seed renders the same statistics every run. */
+  id?: string;
   playedAt: string;
   timeClass: TimeClass;
   result: "1-0" | "0-1" | "1/2-1/2" | "*";
@@ -300,6 +302,7 @@ export async function seedSyntheticGame(
     .values({
       accountId,
       platform,
+      ...(row.id ? { id: row.id } : {}),
       platformGameId: randomUUID(),
       pgn: pgnFor(
         {

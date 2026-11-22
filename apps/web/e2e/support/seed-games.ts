@@ -16,7 +16,7 @@ if (!u) throw new Error(`no e2e user ${email}`);
 
 const { accountId } = await seedAccount(db, {
   userId: u.id,
-  username: "SyntheticPlayerWithAVeryLongName",
+  username: "e2e-SyntheticPlayerWithAVeryLongName",
   verified: true,
 });
 const classes = ["rapid", "blitz", "bullet"] as const;

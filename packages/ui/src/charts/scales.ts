@@ -63,25 +63,59 @@ export function dateTicks(scale: ReturnType<typeof timeScale>, width: number) {
   const count = Math.max(2, Math.floor((width - TREND_LEFT) / 96));
   const byMonth = span > 92 * DAY;
   const raw = scale.ticks(count);
+  const label = (d: Date) =>
+    byMonth
+      ? `${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`
+      : `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`;
   // Month labels only on month starts, and one label per day: a span of a day or two (one game)
   // ticks by the hour, and two labels must never read the same.
   const seen = new Set<string>();
   const midnights = raw.filter((d) => d.getTime() % DAY === 0);
   const daily = midnights.length > 0 ? midnights : raw;
-  const ticks = (byMonth ? raw.filter((d) => d.getUTCDate() === 1) : daily).filter((d) => {
-    const day = d.toISOString().slice(0, 10);
-    if (seen.has(day)) return false;
-    seen.add(day);
-    return true;
-  });
-  return ticks.map((d) => ({
+  const inner = (byMonth ? raw.filter((d) => d.getUTCDate() === 1) : daily)
+    .filter((d) => {
+      const day = d.toISOString().slice(0, 10);
+      if (seen.has(day)) return false;
+      seen.add(day);
+      return true;
+    })
+    .map((d) => ({
+      x: scale(d),
+      iso: d.toISOString().slice(0, 10),
+      text: label(d),
+      anchor: "middle" as TickAnchor,
+    }));
+  // A one-game span (widened to a day each way) keeps its day labels.
+  if (span <= 2 * DAY) return inner;
+  // Otherwise the first and last games' dates are always labelled (T13 critic: a phone axis over
+  // two months showed one date), anchored inward, and an inner label too close to either goes.
+  const end = (d: Date, anchor: TickAnchor) => ({
     x: scale(d),
     iso: d.toISOString().slice(0, 10),
-    text: byMonth
-      ? `${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`
-      : `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`,
-  }));
+    text: label(d),
+    anchor,
+  });
+  const first = end(from, "start");
+  const last = end(to, "end");
+  const middle = inner.filter(
+    (t) =>
+      t.text !== first.text &&
+      t.text !== last.text &&
+      t.x - first.x >= TICK_GAP &&
+      last.x - t.x >= TICK_GAP,
+  );
+  const spaced: typeof inner = [];
+  for (const t of middle) {
+    const prev = spaced.at(-1);
+    if (!prev || t.x - prev.x >= TICK_GAP) spaced.push(t);
+  }
+  return first.text === last.text ? [first] : [first, ...spaced, last];
 }
+
+/** How a date label sits on its tick: the axis ends are anchored inward. */
+export type TickAnchor = "start" | "middle" | "end";
+/** The least distance between two date labels' anchors, in px (a "31 Oct" is about 36px). */
+const TICK_GAP = 56;
 
 /** Contiguous runs of `items` where `has` holds, so a gap breaks a line instead of bridging it. */
 export function runs<T>(

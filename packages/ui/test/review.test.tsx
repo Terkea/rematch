@@ -51,6 +51,15 @@ const plyButton = (ply: number) => {
 };
 
 describe("Scoresheet", () => {
+  // T5 fix round 1: every move is a 44px target on a coarse pointer (DESIGN.md "Touch targets").
+  // touch-targets.spec.ts hit-tests it in a browser; this pins the class without one.
+  it("gives every move cell the 44px coarse-pointer height", () => {
+    sheet();
+    const cells = document.querySelectorAll("button[data-ply]");
+    expect(cells).toHaveLength(blunderMoves.length);
+    for (const cell of cells) expect(cell.className.split(/\s+/)).toContain("pointer-coarse:h-11");
+  });
+
   it("renders one button per ply, in game order", () => {
     sheet();
     const region = screen.getByRole("region", { name: "Moves, DrNykterstein v Night-King96" });
@@ -261,14 +270,54 @@ describe("ClockPair", () => {
   });
 
   it("reads the time spent on the move", () => {
-    render(<ClockPair top={side()} bottom={side()} spent={{ seconds: 12.43 }} />);
+    render(<ClockPair top={side()} bottom={side()} spent={{ seconds: 12.43, by: "top" }} />);
     expect(screen.getByText("12.4 s on this move")).toBeInTheDocument();
+  });
+
+  // M5a T13: the spent line belongs to the player who made the move, not the side to move.
+  it("puts the spent line under the mover's row, for either side", () => {
+    for (const by of ["top", "bottom"] as const) {
+      const { container, unmount } = render(
+        <ClockPair
+          top={side({ name: "TopPlayer", toMove: by === "bottom" })}
+          bottom={side({ name: "BottomPlayer", toMove: by === "top" })}
+          spent={{ seconds: 6.9, by }}
+        />,
+      );
+      const line = screen.getByText("6.9 s on this move").closest("[data-spent-for]");
+      expect(line, by).toHaveAttribute("data-spent-for", by);
+      const mover = container.querySelector(`[data-side="${by}"]`) as Element;
+      const other = container.querySelector(`[data-side="${by === "top" ? "bottom" : "top"}"]`);
+      // Directly after the mover's row.
+      expect(mover.nextElementSibling, by).toBe(line);
+      expect(other?.nextElementSibling, by).not.toBe(line);
+      // And named for assistive tech.
+      expect(line?.textContent, by).toBe(
+        `${by === "top" ? "TopPlayer" : "BottomPlayer"}: 6.9 s on this move`,
+      );
+      unmount();
+    }
+  });
+
+  it("keeps the same height whichever side moved", () => {
+    const slots = (by: "top" | "bottom") => {
+      const { container, unmount } = render(
+        <ClockPair top={side()} bottom={side()} spent={{ seconds: 3, by }} />,
+      );
+      const n = container.querySelectorAll("[data-spent-slot]").length;
+      unmount();
+      return n;
+    };
+    expect(slots("top")).toBe(2);
+    expect(slots("bottom")).toBe(2);
   });
 
   it("shows no spent line for null or NaN", () => {
     const { rerender } = render(<ClockPair top={side()} bottom={side()} spent={null} />);
     expect(screen.queryByText(/on this move/)).toBeNull();
-    rerender(<ClockPair top={side()} bottom={side()} spent={{ seconds: Number.NaN }} />);
+    rerender(
+      <ClockPair top={side()} bottom={side()} spent={{ seconds: Number.NaN, by: "bottom" }} />,
+    );
     expect(screen.queryByText(/on this move/)).toBeNull();
   });
 });
@@ -666,7 +715,7 @@ describe("ClockPair details", () => {
       <ClockPair
         top={side({ seconds: 8 })}
         bottom={side()}
-        spent={{ seconds: 12 }}
+        spent={{ seconds: 12, by: "top" }}
         tenths={false}
       />,
     );

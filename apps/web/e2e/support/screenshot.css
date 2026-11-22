@@ -1,0 +1,6 @@
+/* Applied only while a visual baseline is captured (game-pages-visual.spec.ts). `next dev` can
+   show its own "N Issues" badge (a dev-only overlay, absent from production builds); it is not
+   part of the page, so it is hidden from the baselines. */
+nextjs-portal {
+  display: none !important;
+}

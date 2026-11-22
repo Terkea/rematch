@@ -18,7 +18,9 @@ const { GamesList, showingText } = await import(
   "../../src/app/(app)/app/games/_explorer/games-list.js"
 );
 const { NoGames, NoMatch } = await import("../../src/app/(app)/app/games/_explorer/empty.js");
-const { describeFilters } = await import("../../src/app/(app)/app/games/_explorer/href.js");
+const { describeFilters, parseDayText } = await import(
+  "../../src/app/(app)/app/games/_explorer/href.js"
+);
 
 beforeEach(() => replace.mockReset());
 
@@ -108,7 +110,47 @@ describe("filter bar", () => {
     rerender(<FilterBar query={q({ from: "2026-10-01" })} accounts={[]} />);
     expect(screen.getByLabelText("From")).toBe(from);
     expect(from).toHaveFocus();
-    expect(from).toHaveValue("2026-10-01");
+    // Once the day is in the URL, the field reads it in the app's words (T13).
+    expect(from).toHaveValue("1 Oct 2026");
+  });
+
+  // M5a T13 critic I5: the native date input showed a US "mm/dd/yyyy"; the app writes
+  // "1 Oct 2026" everywhere, so the field reads and accepts that, without the browser's chrome.
+  it("reads a date filter in the app's words, and takes them typed", async () => {
+    const { fireEvent } = await import("@testing-library/react");
+    render(<FilterBar query={q({ to: "2026-10-31" })} accounts={[]} />);
+    const from = screen.getByLabelText("From");
+    const to = screen.getByLabelText("To");
+    expect(from).toHaveAttribute("type", "text");
+    expect(from).toHaveAttribute("placeholder", "e.g. 1 Oct 2026");
+    expect(to).toHaveValue("31 Oct 2026");
+    fireEvent.change(from, { target: { value: "1 Oct 2026" } });
+    expect(replace).toHaveBeenCalledWith("/app/games?from=2026-10-01&to=2026-10-31", {
+      scroll: false,
+    });
+  });
+
+  it("says how to write a date it can't read, and navigates nowhere", async () => {
+    const { fireEvent } = await import("@testing-library/react");
+    render(<FilterBar query={q({})} accounts={[]} />);
+    const from = screen.getByLabelText("From");
+    from.focus();
+    fireEvent.change(from, { target: { value: "31 Feb 2026" } });
+    fireEvent.blur(from);
+    expect(replace).not.toHaveBeenCalled();
+    expect(from).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByText("Write a date like 1 Oct 2026.")).toBeInTheDocument();
+  });
+
+  it("parses the day forms people type", () => {
+    expect(parseDayText("2026-10-01")).toBe("2026-10-01");
+    expect(parseDayText("1 Oct 2026")).toBe("2026-10-01");
+    expect(parseDayText(" 01 october 2026 ")).toBe("2026-10-01");
+    expect(parseDayText("1/10/2026")).toBe("2026-10-01");
+    expect(parseDayText("31 Feb 2026")).toBeNull();
+    expect(parseDayText("Oct 2026")).toBeNull();
+    expect(parseDayText("1 Oct 26")).toBeNull();
+    expect(parseDayText("")).toBeNull();
   });
 
   it("offers Account only with more than one link", () => {
@@ -261,6 +303,14 @@ describe("pagination", () => {
       "href",
       "/app/games?tc=blitz&sort=accuracy-asc&page=3",
     );
+  });
+
+  // M5a T13 critic polish 3: the missing step was grey text that read almost as a live link.
+  it("keeps the missing step's place but does not draw it", () => {
+    const { container } = render(<Pagination query={q({})} page={1} pageCount={3} />);
+    const dead = container.querySelector("span[aria-hidden='true']");
+    expect(dead).toHaveTextContent("Previous page");
+    expect(dead).toHaveClass("invisible");
   });
 
   it("has no Next link on the last page", () => {
@@ -474,6 +524,14 @@ describe("fix round 2", () => {
     const head = within(screen.getByRole("table")).getAllByRole("columnheader")[0];
     expect(head).toHaveTextContent(/^Result/);
     expect(head).toHaveTextContent("Square: your colour");
+  });
+
+  // M5a T13 critic I4: on phones "3?? 0?" had no key; the table head's key was desktop-only.
+  it("keys the ?? and ? marks on phones too", () => {
+    const { container } = render(<GamesList rows={[toRowView(row())]} grouped />);
+    const phone = container.querySelector("[class~='md:hidden']");
+    const key = phone?.querySelector("[data-part='marks-key']");
+    expect(key).toHaveTextContent("?? blunder, ? mistake");
   });
 
   it("keeps result, clock and date whole, truncating only the opening", () => {

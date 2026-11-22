@@ -6,7 +6,8 @@ import { explorerHref } from "./href";
 const step =
   "relative inline-flex h-10 items-center gap-1.5 rounded-field px-2 font-sans text-base font-medium whitespace-nowrap sm:px-3";
 const live = `${step} text-ink hover:bg-(--surface-hover) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink pointer-coarse:after:absolute pointer-coarse:after:inset-x-0 pointer-coarse:after:-inset-y-0.5`;
-const dead = `${step} text-ink-faint`;
+// The missing step keeps its place (the row never shifts) but is not drawn (T13 critic).
+const dead = `${step} invisible`;
 
 /**
  * "Previous page", "Page 2 of 17" and "Next page", as links that keep the filters and the sort.

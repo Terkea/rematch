@@ -66,3 +66,11 @@ Left for later:
 - the dark-mode board contrast (black pieces on dark squares);
 - the vertical eval bar's tiny rotated number on desktop (the readout carries the number);
 - the critic's "≈ or round to 5%" on win chances (the verdict prints whole percents, as the plan specifies).
+
+## Amendment (M5a Task 13)
+
+- **Edge badges on the left column.** An `edge` badge prefers the square's top-right corner and falls back to the top-left when an arrowhead lands there. On the left column (the a-file from White, the h-file from Black) the top-left corner holds the rank number, so the fallback there is the square's own bottom-right corner, and on the corner square of the bottom row (which holds a file letter there) there is no fallback: the badge keeps the top-right. A coordinate is never covered by a mark (DESIGN.md, "Marks never swallow a coordinate"). Pinned by `packages/ui/test/review-page-fixes.test.tsx`.
+- **Knight arrows go around pieces** (T13 critic). A knight's L takes its long leg first unless that crosses a piece (or ends on another arrow's end); then its short leg first; and when both L's would cross a piece, a straight shaft that passes between them. The board passes its occupied squares to the annotation layer.
+- **The phone's win-chance strip names its ends and the 50% line** ("White" at the top, the player's side marked "(you)"), as the desktop graph does; it still has no move labels or phase lanes.
+- **The verdict says whose win chance it gives**: "Your win chance 49% to 19%", for the player's moves as for the opponent's, since the graph above is White's.
+- **The spent time sits with the mover** (fix round 1 of T13): "N s on this move" is under the row of the player who made the shown move, never beside the side to move.
