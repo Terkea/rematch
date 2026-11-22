@@ -1,6 +1,7 @@
 "use client";
 
 import { Icon, SignOutIcon } from "@ci/ui/icons";
+import { toast } from "@ci/ui/overlays";
 import { Popover, PopoverContent, PopoverTrigger } from "@ci/ui/primitives";
 import { useState } from "react";
 import { signOut } from "../../../lib/auth-client";
@@ -12,7 +13,13 @@ export interface UserMenuProps {
   signOutTo: (href: string) => void;
 }
 
-/** Signs out through Better Auth, then leaves for /sign-in. */
+const SIGN_OUT_FAILED = "Couldn't sign out. Try again.";
+
+/**
+ * Signs out through Better Auth, then leaves for /sign-in. Better Auth reports a failure as
+ * `{ error }` rather than throwing; then the session is still live, so the user stays and is
+ * told, instead of bouncing through /sign-in back into the app.
+ */
 export function useSignOut(signOutTo: (href: string) => void) {
   const [pending, setPending] = useState(false);
   return {
@@ -20,11 +27,18 @@ export function useSignOut(signOutTo: (href: string) => void) {
     run: async () => {
       if (pending) return;
       setPending(true);
+      let failed: boolean;
       try {
-        await signOut();
-      } finally {
-        signOutTo("/sign-in");
+        failed = Boolean((await signOut())?.error);
+      } catch {
+        failed = true;
       }
+      if (failed) {
+        setPending(false);
+        toast.error(SIGN_OUT_FAILED);
+        return;
+      }
+      signOutTo("/sign-in");
     },
   };
 }

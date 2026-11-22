@@ -56,7 +56,8 @@ export function SignInForm({
         setPending(null);
         return;
       }
-      navigate(`/sign-in/check-email?email=${encodeURIComponent(address)}`);
+      // The address goes to the next page in an HttpOnly cookie, never in the URL (review I1).
+      navigate("/sign-in/check-email");
     } catch {
       setFormError(SEND_FAILED);
       setPending(null);

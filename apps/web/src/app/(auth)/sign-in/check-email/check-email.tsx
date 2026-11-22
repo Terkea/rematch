@@ -7,10 +7,11 @@ import Link from "next/link";
 
 /**
  * After a link is requested. The same words whether or not the address may sign in (ADR-WEB-3),
- * so this page never reveals an account. The envelope lands once on `land` (M1: it says the
+ * so this page never reveals an account. `email` comes only from the proxy (never the URL); without
+ * it the line stays generic. The envelope lands once on `land` (M1: it says the
  * thing was sent).
  */
-export function CheckEmail({ email }: { email: string }) {
+export function CheckEmail({ email }: { email: string | null }) {
   const reduced = useReducedMotion();
   return (
     <div className="flex flex-col gap-8">
@@ -28,7 +29,7 @@ export function CheckEmail({ email }: { email: string }) {
           Check your email
         </h1>
         <p className="text-lg text-ink-soft">
-          {`We sent a sign-in link to ${email}. It expires in 10 minutes.`}
+          {`We sent a sign-in link to ${email ?? "your email"}. It expires in 10 minutes.`}
         </p>
       </div>
       <p className="text-sm text-ink-faint">

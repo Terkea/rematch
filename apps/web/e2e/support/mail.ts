@@ -7,6 +7,38 @@ export const FAKES = process.env.FAKES_URL ?? "http://localhost:53199";
 
 type MailpitSearch = { messages: { ID: string; Created: string }[] };
 
+/**
+ * `page.goto` that survives `next dev` compiling under load: a reload mid-navigation
+ * (net::ERR_ABORTED, "frame was detached") or a 5xx from its manifest race ("Unexpected end of
+ * JSON input"). It tries again, up to three times. A production-build e2e (T24/T28) removes both.
+ */
+export async function gotoSettled(page: Page, url: string): Promise<void> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const res = await page.goto(url, { waitUntil: "commit" });
+      if (!res || res.status() < 500 || attempt >= 3) return;
+    } catch (error) {
+      if (attempt >= 3 || !String(error).includes("ERR_ABORTED")) throw error;
+    }
+  }
+}
+
+/**
+ * Waits until React has hydrated `selector` (its props are attached to the DOM node). Before that,
+ * a press posts the form back natively and does nothing; `next dev` can take minutes to compile
+ * a page's client chunk on a loaded host, so network idle is not enough.
+ */
+export async function hydrated(page: Page, selector = "form"): Promise<void> {
+  await page.waitForFunction(
+    (sel) => {
+      const el = document.querySelector(sel);
+      return el !== null && Object.keys(el).some((key) => key.startsWith("__reactProps"));
+    },
+    selector,
+    { timeout: 180_000 },
+  );
+}
+
 /** The newest magic link mailed to `email` since `since` (ms). */
 export async function magicLinkFor(
   request: APIRequestContext,
@@ -43,10 +75,18 @@ export async function signInByMagicLink(
   email: string,
 ): Promise<void> {
   const since = Date.now();
-  await page.goto("/sign-in", { waitUntil: "networkidle" });
+  // The address must never travel in a URL (review I1): watch every request the page makes.
+  const urls: string[] = [];
+  const record = (req: { url(): string }) => urls.push(req.url());
+  page.on("request", record);
+  await gotoSettled(page, "/sign-in");
+  await hydrated(page);
   await page.getByLabel("Email").fill(email);
   await page.getByRole("button", { name: "Email me a sign-in link" }).click();
-  await expect(page.getByRole("heading", { name: "Check your email" })).toBeVisible();
+  // The send compiles and runs the auth route; under `next dev` that can take a while.
+  await expect(page.getByRole("heading", { name: "Check your email" })).toBeVisible({
+    timeout: 120_000,
+  });
   await expect(
     page.getByText(`We sent a sign-in link to ${email}. It expires in 10 minutes.`),
   ).toBeVisible();
@@ -55,13 +95,14 @@ export async function signInByMagicLink(
   // the redirect chain to land rather than for one load event.
   await page.goto(link, { waitUntil: "commit", timeout: 90_000 });
   await page.waitForURL((url) => !url.pathname.startsWith("/api/"), { timeout: 90_000 });
+  page.off("request", record);
+  expect(urls.filter((u) => /@|%40/i.test(u))).toEqual([]);
 }
 
 /** Answers the age screen with a birth month. */
 export async function enterAge(page: Page, year: number, month: number): Promise<void> {
   await expect(page.getByRole("heading", { name: "When were you born?" })).toBeVisible();
-  // Hydrated first, so the press runs the form's handler (a dev server hydrates slowly).
-  await page.waitForLoadState("networkidle");
+  await hydrated(page);
   await page.getByLabel("Month").selectOption(String(month));
   await page.getByLabel("Year").selectOption(String(year));
   await page.getByRole("button", { name: "Continue" }).click();

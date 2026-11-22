@@ -130,7 +130,8 @@ describe("AccountsView", () => {
       { method: "GET", path: "/api/accounts", body: [] },
     ]);
     renderWithProviders(<AccountsView initialAccounts={[verified]} chesscom lichess={false} />);
-    await userEvent.click(screen.getByRole("button", { name: "Remove" }));
+    // Each row's Remove names its account (several rows can exist).
+    await userEvent.click(screen.getByRole("button", { name: "Remove FakePlayer" }));
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText("Remove FakePlayer?")).toBeInTheDocument();
     expect(
@@ -139,6 +140,32 @@ describe("AccountsView", () => {
     await userEvent.click(within(dialog).getByRole("button", { name: "Remove account" }));
     expect(await screen.findByText(EMPTY)).toBeInTheDocument();
     expect(calls.some((c) => c.method === "DELETE")).toBe(true);
+  });
+
+  it("with nothing linked, leads with the connect form and the three steps", () => {
+    stubFetch([{ method: "GET", path: "/api/accounts", body: [] }]);
+    renderWithProviders(<AccountsView initialAccounts={[]} chesscom lichess={false} />);
+    expect(screen.queryByRole("heading", { name: "Linked accounts" })).toBeNull();
+    const steps = screen.getByRole("list", { name: "How linking works" });
+    expect(
+      within(steps)
+        .getAllByRole("listitem")
+        .map((li) => li.textContent),
+    ).toEqual([
+      "1Your chess.com usernameWe check the account exists.",
+      "2Put the code in LocationOn your chess.com profile. Remove it afterwards.",
+      "3Check againThe account is yours once chess.com shows the code.",
+    ]);
+  });
+
+  it("uses signed-in copy when Lichess wasn't connected", async () => {
+    window.history.replaceState(null, "", "/app/accounts?error=lichess_denied");
+    stubFetch([{ method: "GET", path: "/api/accounts", body: [] }]);
+    renderWithProviders(<AccountsView initialAccounts={[]} chesscom lichess />);
+    expect(
+      await screen.findByText("Lichess wasn't connected. You can try again."),
+    ).toBeInTheDocument();
+    expect(window.location.search).toBe("");
   });
 
   it("offers Reconnect Lichess for an expiring Lichess link", () => {

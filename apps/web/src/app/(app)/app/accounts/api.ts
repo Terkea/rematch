@@ -66,8 +66,8 @@ export function linkErrorMessage(error: unknown, username?: string): string {
       return "You can link up to 3 chess.com accounts. Remove one to add another.";
     case "rate_limited":
       return error.retryAt
-        ? `That's a lot of chess.com checks. Try again at ${clock.format(new Date(error.retryAt))}.`
-        : "That's a lot of chess.com checks. Try again in a few minutes.";
+        ? `chess.com checks are paused for a moment. You can check again at ${clock.format(new Date(error.retryAt))}.`
+        : "chess.com checks are paused for a moment. You can check again in a few minutes.";
     case "chesscom_unavailable":
       return "chess.com isn't answering. Try again in a minute.";
     case "unauthenticated":

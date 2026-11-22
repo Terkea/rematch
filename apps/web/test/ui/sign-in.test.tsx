@@ -63,15 +63,13 @@ describe("SignInForm", () => {
     expect(screen.getByText("This link has expired. Request a new one.")).toBeInTheDocument();
   });
 
-  it("requests a magic link and goes to check-email with the address", async () => {
+  it("requests a magic link and goes to check-email without the address in the URL", async () => {
     magicLink.mockResolvedValue({ data: { status: true }, error: null });
     const navigate = vi.fn();
     render(<SignInForm google={false} lichess={false} navigate={navigate} />);
     await userEvent.type(screen.getByLabelText("Email"), "dev@example.invalid");
     await userEvent.click(screen.getByRole("button", { name: "Email me a sign-in link" }));
-    await waitFor(() =>
-      expect(navigate).toHaveBeenCalledWith("/sign-in/check-email?email=dev%40example.invalid"),
-    );
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith("/sign-in/check-email"));
     expect(magicLink).toHaveBeenCalledWith(
       expect.objectContaining({
         email: "dev@example.invalid",
@@ -111,11 +109,11 @@ describe("SignInForm", () => {
 });
 
 describe("BlockedNotice and CheckEmail", () => {
-  it("shows the exact blocked copy", () => {
+  it("says it once, as the one heading, with the exact copy", () => {
     render(<BlockedNotice />);
-    expect(
-      screen.getByText("You need to be 13 or older to use chess-improver."),
-    ).toBeInTheDocument();
+    const headings = screen.getAllByRole("heading");
+    expect(headings).toHaveLength(1);
+    expect(headings[0]).toHaveTextContent("You need to be 13 or older to use chess-improver.");
     expect(screen.getByText("We've deleted the details you gave us.")).toBeInTheDocument();
   });
 
@@ -124,6 +122,13 @@ describe("BlockedNotice and CheckEmail", () => {
     expect(screen.getByRole("heading", { name: "Check your email" })).toBeInTheDocument();
     expect(
       screen.getByText("We sent a sign-in link to dev@example.invalid. It expires in 10 minutes."),
+    ).toBeInTheDocument();
+  });
+
+  it("falls back to a generic line when the address isn't known", () => {
+    render(<CheckEmail email={null} />);
+    expect(
+      screen.getByText("We sent a sign-in link to your email. It expires in 10 minutes."),
     ).toBeInTheDocument();
   });
 });

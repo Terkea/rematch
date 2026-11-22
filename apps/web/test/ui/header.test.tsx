@@ -11,17 +11,19 @@ vi.mock("next/navigation", () => ({
   usePathname: () => pathname,
   useRouter: () => ({ push, replace: vi.fn(), refresh: vi.fn() }),
 }));
-const signOut = vi.fn().mockResolvedValue({});
+const signOut = vi.fn().mockResolvedValue({ data: { success: true }, error: null });
 vi.mock("../../src/lib/auth-client.js", () => ({ signOut: () => signOut() }));
 
-const { Header } = await import("../../src/app/(app)/shell/header.js");
-const { navItems } = await import("../../src/app/(app)/shell/nav.js");
+const { Header } = await import("../../src/app/(app)/_shell/header.js");
+const { navItems } = await import("../../src/app/(app)/_shell/nav.js");
+const { Toaster } = await import("@ci/ui/overlays");
 
 beforeEach(() => {
   stubMatchMedia();
   pathname = "/app/accounts";
   push.mockReset();
   signOut.mockClear();
+  signOut.mockResolvedValue({ data: { success: true }, error: null });
 });
 
 function renderHeader() {
@@ -90,5 +92,20 @@ describe("shell header", () => {
     await userEvent.click(screen.getByRole("button", { name: "Sign out" }));
     expect(signOut).toHaveBeenCalled();
     expect(signOutTo).toHaveBeenCalledWith("/sign-in");
+  });
+
+  it("stays signed in and says so when signing out fails", async () => {
+    signOut.mockResolvedValue({ data: null, error: { status: 500 } });
+    const signOutTo = vi.fn();
+    render(
+      <ThemeProvider attribute="data-theme" defaultTheme="light" enableSystem={false}>
+        <Header email="adult@example.invalid" signOutTo={signOutTo} />
+        <Toaster />
+      </ThemeProvider>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Account menu" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Sign out" }));
+    expect(await screen.findByText("Couldn't sign out. Try again.")).toBeInTheDocument();
+    expect(signOutTo).not.toHaveBeenCalled();
   });
 });

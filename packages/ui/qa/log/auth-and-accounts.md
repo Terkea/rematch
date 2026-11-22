@@ -55,3 +55,23 @@ Pass after round 1 (self-critique). Open for review:
 
 - an independent critic's pass;
 - the outgoing half of the page turn, which waits for the View Transitions work.
+
+## Round 2: independent review critique (review-t21.md, "Design")
+
+The reviewer flagged the three weakest screens. Changes:
+
+- **/blocked.**
+  - One heading only: "You need to be 13 or older to use chess-improver." in Literata, as the h1.
+  - The lede is "We've deleted the details you gave us.", followed by "You're welcome back once you turn 13." in ink-faint. That last line's copy is pending a ruling.
+  - It uses the same left column as /sign-in, beside a still starting position: no pen, because nothing here is a mistake.
+  - /sign-in shows the same body while the block cookie is set.
+- **Sign-in and age on phones.**
+  - The board now follows the form at every width, in a `sheet` band below `lg` and beside the form from `lg`, so a phone shows the product rather than blank paper.
+  - Sign-in and check-email keep the Opera mistake, with its ring and badge drawing on load.
+  - The age step shows the same game a move earlier (after 9. Bg5), unmarked, so the pen stays reserved for mistakes.
+- **Empty Accounts.**
+  - With nothing linked, the page is one sheet. "Connect an account" leads, with the brief's empty-state line and the chess.com form.
+  - Beside it is a margin note in a `well`, "How linking works": three Literata-numbered steps (username, code in Location, check again). This is a real sequence, so it is not a B9 violation.
+  - The linked list appears only once something exists.
+
+The screenshots were retaken on localhost after hydration, waiting until React attached to the page. Overlay screens capture the viewport only.

@@ -18,7 +18,7 @@ import { useEffect, useState } from "react";
 import { authClient } from "../../../../lib/auth-client";
 import type { LinkedAccountView } from "../../../../server/accounts/list";
 import { PendingButton } from "../../../ui/pending-button";
-import { PageHeading } from "../../shell/page-heading";
+import { PageHeading } from "../../_shell/page-heading";
 import {
   accountsKey,
   fetchAccounts,
@@ -40,6 +40,13 @@ export interface AccountsViewProps {
 
 const EMPTY = "Connect a Lichess or chess.com account to import your games.";
 const NOT_YET = "Not there yet. Try again in a minute.";
+const READ_ONLY = "We read your public games. Nothing is ever posted to your account.";
+/** What chess.com verification asks of the player, as a margin note on the empty page. */
+const STEPS = [
+  { title: "Your chess.com username", detail: "We check the account exists." },
+  { title: "Put the code in Location", detail: "On your chess.com profile. Remove it afterwards." },
+  { title: "Check again", detail: "The account is yours once chess.com shows the code." },
+];
 /** chess.com answers one profile request per username a minute (ADR-WEB-5). */
 const FIRST_CHECK_MS = 60_000;
 
@@ -137,7 +144,12 @@ function AccountRow(props: RowProps) {
         </div>
         <div className="flex items-center gap-3">
           <StatusLine account={account} fresh={props.fresh} />
-          <Button variant="quiet" size="sm" onClick={props.onRemove}>
+          <Button
+            variant="quiet"
+            size="sm"
+            aria-label={`Remove ${account.displayName}`}
+            onClick={props.onRemove}
+          >
             Remove
           </Button>
         </div>
@@ -239,7 +251,7 @@ export function AccountsView({ initialAccounts, chesscom, lichess }: AccountsVie
     const params = new URLSearchParams(window.location.search);
     if (params.get("connected") === "lichess") toast.success("Lichess connected");
     else if (params.get("error") === "lichess_denied")
-      toast.error("Lichess sign-in was cancelled. You can try again or use your email.");
+      toast.error("Lichess wasn't connected. You can try again.");
     else return;
     window.history.replaceState(null, "", window.location.pathname);
   }, []);
@@ -287,23 +299,73 @@ export function AccountsView({ initialAccounts, chesscom, lichess }: AccountsVie
   });
 
   const visible = accounts.filter((a) => chesscom || a.platform !== "chesscom");
+  const connect = (
+    <>
+      {chesscom ? (
+        <ChesscomLinkForm
+          onLinked={linked}
+          primary={!visible.some((a) => a.status === "pending_verification")}
+        />
+      ) : null}
+      {lichess ? (
+        <Button variant="outline" className="w-full" onClick={connectLichess}>
+          Connect Lichess
+        </Button>
+      ) : null}
+    </>
+  );
 
   return (
     <div className="flex flex-col gap-8">
       <PageHeading title="Accounts" lede="The accounts whose games you want reviewed." />
 
-      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+      {visible.length === 0 ? (
+        // Nothing linked yet: one sheet that leads with the way in, and a margin note on what the
+        // verification asks of the player (review of Task 21).
         <section
-          aria-labelledby="linked-title"
+          aria-labelledby="connect-title"
           data-surface="sheet"
-          className="flex flex-col gap-5 rounded-sheet bg-sheet p-(--space-panel-pad)"
+          className="grid gap-8 rounded-sheet bg-sheet p-(--space-panel-pad) lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:gap-12"
         >
-          <h2 id="linked-title" className="font-serif text-xl font-semibold text-ink">
-            Linked accounts
-          </h2>
-          {visible.length === 0 ? (
-            <p className="py-8 text-center text-base text-ink-soft">{EMPTY}</p>
-          ) : (
+          <div className="flex flex-col gap-5">
+            <div className="flex flex-col gap-2">
+              <h2 id="connect-title" className="font-serif text-2xl font-semibold text-ink">
+                Connect an account
+              </h2>
+              <p className="text-base text-ink-soft">{EMPTY}</p>
+              <p className="text-sm text-ink-faint">{READ_ONLY}</p>
+            </div>
+            {connect}
+          </div>
+          {chesscom ? (
+            <ol
+              aria-label="How linking works"
+              className="flex flex-col gap-5 self-start rounded-field bg-well p-(--space-panel-pad)"
+            >
+              {STEPS.map((step, i) => (
+                <li key={step.title} className="flex gap-4">
+                  <span className="w-6 shrink-0 font-serif text-2xl font-semibold tabular-nums lining-nums text-ink-faint">
+                    {i + 1}
+                  </span>
+                  <div className="flex flex-col gap-0.5 pt-1">
+                    <p className="text-base font-medium text-ink">{step.title}</p>
+                    <p className="text-sm text-ink-soft">{step.detail}</p>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          ) : null}
+        </section>
+      ) : (
+        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+          <section
+            aria-labelledby="linked-title"
+            data-surface="sheet"
+            className="flex flex-col gap-5 rounded-sheet bg-sheet p-(--space-panel-pad)"
+          >
+            <h2 id="linked-title" className="font-serif text-xl font-semibold text-ink">
+              Linked accounts
+            </h2>
             <ul className="flex flex-col divide-y divide-rule">
               <AnimatePresence initial={false} mode="popLayout">
                 {visible.map((account) => (
@@ -324,38 +386,25 @@ export function AccountsView({ initialAccounts, chesscom, lichess }: AccountsVie
                 ))}
               </AnimatePresence>
             </ul>
-          )}
-        </section>
-
-        {chesscom || lichess ? (
-          <section
-            aria-labelledby="connect-title"
-            data-surface="sheet"
-            // With nothing linked yet, the way to link comes first on a phone.
-            className={`flex flex-col gap-5 rounded-sheet bg-sheet p-(--space-panel-pad) ${visible.length === 0 ? "max-lg:order-first" : ""}`}
-          >
-            <div className="flex flex-col gap-1">
-              <h2 id="connect-title" className="font-serif text-xl font-semibold text-ink">
-                Connect an account
-              </h2>
-              <p className="text-sm text-ink-soft">
-                We read your public games. Nothing is ever posted to your account.
-              </p>
-            </div>
-            {chesscom ? (
-              <ChesscomLinkForm
-                onLinked={linked}
-                primary={!visible.some((a) => a.status === "pending_verification")}
-              />
-            ) : null}
-            {lichess ? (
-              <Button variant="outline" className="w-full" onClick={connectLichess}>
-                Connect Lichess
-              </Button>
-            ) : null}
           </section>
-        ) : null}
-      </div>
+
+          {chesscom || lichess ? (
+            <section
+              aria-labelledby="connect-title"
+              data-surface="sheet"
+              className="flex flex-col gap-5 rounded-sheet bg-sheet p-(--space-panel-pad)"
+            >
+              <div className="flex flex-col gap-1">
+                <h2 id="connect-title" className="font-serif text-xl font-semibold text-ink">
+                  Connect an account
+                </h2>
+                <p className="text-sm text-ink-soft">{READ_ONLY}</p>
+              </div>
+              {connect}
+            </section>
+          ) : null}
+        </div>
+      )}
 
       <Dialog open={removing !== null} onOpenChange={(open) => (open ? null : setRemoving(null))}>
         <DialogContent>

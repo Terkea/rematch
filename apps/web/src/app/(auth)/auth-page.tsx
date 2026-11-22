@@ -1,28 +1,33 @@
 import type { ReactNode } from "react";
-import { OperaDiagram } from "./opera-diagram";
+import { type DiagramKind, OperaDiagram } from "./opera-diagram";
 
 export interface AuthPageProps {
   /** The page title (h1). Omit it when the children carry their own `#auth-title` heading. */
   title?: string;
   /** One sentence under the title. */
   lede?: ReactNode;
-  /** Show the annotated diagram beside the form from `lg` (sign-in and the age screen). */
-  diagram?: boolean;
+  /** The board beside the form from `lg`, and under it on smaller screens. */
+  aside?: DiagramKind;
   children?: ReactNode;
 }
 
 /**
- * The signed-out page: a quiet form column on `paper`, and from `lg` the board doing its job on a
- * real game in a `sheet` beside it (DESIGN.md: boldness lives on the board, the forms stay quiet).
+ * The signed-out page: a quiet form column on `paper`, and the board doing its job in a `sheet`
+ * (DESIGN.md: boldness lives on the board, the forms stay quiet). From `lg` the sheet sits beside
+ * the form; below it, it follows the form, so a phone shows the product too and not blank paper.
  */
-export function AuthPage({ title, lede, diagram = false, children }: AuthPageProps) {
+export function AuthPage({ title, lede, aside, children }: AuthPageProps) {
   return (
     <div
-      className={diagram ? "grid flex-1 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]" : "flex flex-1"}
+      className={
+        aside
+          ? "flex flex-1 flex-col lg:grid lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]"
+          : "flex flex-1 flex-col"
+      }
     >
       <section
         aria-labelledby="auth-title"
-        className="flex flex-1 flex-col px-(--space-gutter) pt-14 pb-12 sm:pt-24 lg:justify-center lg:py-12"
+        className="flex flex-col px-(--space-gutter) pt-14 pb-12 sm:pt-24 lg:flex-1 lg:justify-center lg:py-12"
       >
         <div className="mx-auto flex w-full max-w-sm flex-col gap-8">
           {title ? (
@@ -36,13 +41,13 @@ export function AuthPage({ title, lede, diagram = false, children }: AuthPagePro
           {children}
         </div>
       </section>
-      {diagram ? (
+      {aside ? (
         <aside
-          aria-label="An annotated position"
-          className="hidden items-center justify-center bg-sheet px-(--space-gutter) py-12 lg:flex"
+          aria-label={aside === "mistake" ? "An annotated position" : "A position"}
+          className="flex flex-1 items-center justify-center bg-sheet px-(--space-gutter) py-10 lg:py-12"
           data-surface="sheet"
         >
-          <OperaDiagram />
+          <OperaDiagram kind={aside} />
         </aside>
       ) : null}
     </div>

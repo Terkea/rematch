@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { requireUser } from "../../server/auth/session";
-import { Header } from "./shell/header";
+import { Header } from "./_shell/header";
 
 export const dynamic = "force-dynamic";
 

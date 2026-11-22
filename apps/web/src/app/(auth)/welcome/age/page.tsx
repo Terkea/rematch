@@ -16,7 +16,7 @@ export default async function AgePage() {
   if (!current) redirect("/sign-in");
   if (current.user.birthMonth !== null) redirect("/app/accounts");
   return (
-    <AuthPage diagram>
+    <AuthPage aside="still">
       <AgeForm />
     </AuthPage>
   );

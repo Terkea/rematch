@@ -1,7 +1,7 @@
 import { Button } from "@ci/ui/primitives";
 import Link from "next/link";
 import { requireUser } from "../../../../server/auth/session";
-import { EmptySheet, PageHeading } from "../../shell/page-heading";
+import { EmptySheet, PageHeading } from "../../_shell/page-heading";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Games" };

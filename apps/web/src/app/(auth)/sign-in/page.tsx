@@ -20,7 +20,7 @@ export default async function SignInPage({
   // A browser blocked by the age gate sees the notice, never the form (ADR-WEB-6).
   if ((await cookies()).has(AGE_BLOCK_COOKIE)) {
     return (
-      <AuthPage title="Sign in">
+      <AuthPage aside="start">
         <BlockedNotice />
       </AuthPage>
     );
@@ -33,7 +33,7 @@ export default async function SignInPage({
     <AuthPage
       title="Sign in"
       lede="Your own games, marked up the way a strong coach would."
-      diagram
+      aside="mistake"
     >
       <SignInForm
         google={Boolean(googleProvider(env).google)}

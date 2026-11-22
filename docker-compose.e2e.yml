@@ -1,8 +1,14 @@
-# Override for the web service when running the Playwright e2e suite against the fake providers:
-#   docker compose -f docker-compose.yml -f docker-compose.e2e.yml --profile e2e up -d web fakes
+# Override for the Playwright e2e suite against the fake providers. Web uses its own database
+# (chess_e2e_test), which the suite's globalSetup creates, migrates and empties on every run, so
+# the dev `chess` database is never touched. The qa container shares web's network namespace, so
+# http://localhost:3100 (BETTER_AUTH_URL, and the links in the mails) is the app from inside it:
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.e2e.yml docker compose -p <name> --profile e2e up -d web fakes
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.e2e.yml docker compose -p <name> --profile e2e --profile qa \
+#     run --rm --no-deps qa sh -c "cd apps/web && node node_modules/@playwright/test/cli.js test --project e2e"
 services:
   web:
     environment:
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/chess_e2e_test
       LICHESS_AUTHORIZE_BASE_URL: http://localhost:53199
       LICHESS_API_BASE_URL: http://fakes:3199
       CHESSCOM_API_BASE_URL: http://fakes:3199/chesscom
@@ -11,3 +17,10 @@ services:
     depends_on:
       fakes:
         condition: service_started
+  qa:
+    network_mode: "service:web"
+    environment:
+      E2E_BASE_URL: http://localhost:3100
+      E2E_DATABASE_URL: postgres://postgres:postgres@postgres:5432/chess_e2e_test
+      MAILPIT_URL: http://mailpit:8025
+      FAKES_URL: http://fakes:3199

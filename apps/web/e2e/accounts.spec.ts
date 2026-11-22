@@ -1,15 +1,11 @@
 import { mkdir } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
-import { enterAge, FAKES, signInByMagicLink } from "./support/mail";
+import { enterAge, FAKES, gotoSettled, hydrated, signInByMagicLink } from "./support/mail";
 
 // Runs against the compose stack with the fakes:
 //   docker compose -f docker-compose.yml -f docker-compose.e2e.yml --profile e2e up -d
 // The adult flow saves its signed-in storage state for `pnpm shots --storage`.
 const ADULT_STATE = "e2e/.auth/adult.json";
-
-test.beforeAll(async ({ request }) => {
-  await request.post(`${FAKES}/chesscom/__reset`);
-});
 
 test("an adult links chess.com, verifies it by location code, then removes it", async ({
   page,
@@ -17,29 +13,15 @@ test("an adult links chess.com, verifies it by location code, then removes it", 
   context,
 }) => {
   // The first verify waits out chess.com's 60 s per-username interval (ADR-WEB-5).
-  test.setTimeout(180_000);
+  test.setTimeout(420_000);
 
   await signInByMagicLink(page, request, "adult@example.invalid");
-  // A fresh stack asks for the age; a rerun on the same database already knows it.
-  await expect(page).toHaveURL(/\/(welcome\/age|app\/accounts)$/);
-  if (page.url().endsWith("/welcome/age")) await enterAge(page, 1990, 6);
+  await expect(page).toHaveURL(/\/welcome\/age$/);
+  await enterAge(page, 1990, 6);
   await expect(page).toHaveURL(/\/app\/accounts$/);
+  await hydrated(page);
   await mkdir("e2e/.auth", { recursive: true });
   await context.storageState({ path: ADULT_STATE });
-
-  // A failed earlier run may have left a link behind: start from none.
-  const origin = new URL(page.url()).origin;
-  const leftovers = (await (await page.request.get("/api/accounts")).json()) as {
-    linkId: string;
-  }[];
-  for (const { linkId } of leftovers) {
-    await page.request.delete(`/api/accounts/${linkId}`, {
-      headers: { origin, "content-type": "application/json" },
-      data: {},
-    });
-  }
-  if (leftovers.length > 0) await page.reload();
-  await page.waitForLoadState("networkidle");
 
   // The shell.
   const header = page.getByRole("banner");
@@ -105,12 +87,15 @@ test("Continue with Lichess signs a new player in through the fake", async ({ br
 test("an under-13 is blocked and the sign-in page stays blocked", async ({ page, request }) => {
   await signInByMagicLink(page, request, "kid@example.invalid");
   await expect(page).toHaveURL(/\/welcome\/age$/);
+  // The page guard: no app page opens before the age is answered (review I2).
+  await gotoSettled(page, "/app/accounts");
+  await expect(page).toHaveURL(/\/welcome\/age$/);
   await enterAge(page, 2015, 1);
   await expect(page).toHaveURL(/\/blocked$/);
   await expect(page.getByText("You need to be 13 or older to use chess-improver.")).toBeVisible();
   await expect(page.getByText("We've deleted the details you gave us.")).toBeVisible();
 
-  await page.goto("/sign-in");
+  await gotoSettled(page, "/sign-in");
   await expect(page.getByText("You need to be 13 or older to use chess-improver.")).toBeVisible();
   await expect(page.getByLabel("Email")).toHaveCount(0);
 });
