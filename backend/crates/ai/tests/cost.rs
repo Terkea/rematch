@@ -257,6 +257,16 @@ fn hard_stops_at_the_plan_budget() {
     );
 }
 
+/// M5b Task B (G1): the beta plan keeps a hard cap, the Pro one (USD 2 per month), and the
+/// global cap still applies on top.
+#[test]
+fn the_beta_plan_stops_at_the_pro_budget() {
+    let b = &AI_MONTHLY_BUDGET_MICRO_USD;
+    assert_eq!(b.for_plan(Plan::Beta), b.pro);
+    assert_eq!(check_budget(2_000_000, Plan::Beta, b), Err(AiError::Budget));
+    assert_eq!(check_budget(1_999_999, Plan::Beta, b), Ok(()));
+}
+
 #[test]
 fn is_thrown_for_an_unpriced_model() {
     let u = usage(1, 1, 0, 0);

@@ -415,6 +415,10 @@ async fn startup_logs_never_contain_the_key(_p: PgPoolOptions, opts_: PgConnectO
     let (enabled, logs) = start_logged(&ai_env(env, stub)).await;
     assert!(enabled);
     assert!(logs.contains("ai: enabled (sidecar, batches on)"), "{logs}");
+    assert!(
+        logs.contains("ai: scheduled regenerations via batches"),
+        "{logs}"
+    );
     assert!(!logs.contains(FAKE_KEY), "the API key was logged:\n{logs}");
     assert!(
         !logs.contains("T26FAKEKEY"),
@@ -424,6 +428,34 @@ async fn startup_logs_never_contain_the_key(_p: PgPoolOptions, opts_: PgConnectO
         !logs.contains(FAKE_TOKEN),
         "the sidecar token was logged:\n{logs}"
     );
+}
+
+/// M5b Task B ruling: no `ANTHROPIC_API_KEY`, but the sidecar has a credential (the owner's dev
+/// OAuth token): AI is on, and the schedules use the sync jobs. The start says so once.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn without_a_key_the_schedules_run_sync_through_the_sidecar(
+    _p: PgPoolOptions,
+    opts_: PgConnectOptions,
+) {
+    let Some(env) = env_for(&opts_) else {
+        return;
+    };
+    let stub = health_stub(json!({"ok": true, "auth": "oauth", "sdkVersion": "0.3.325"})).await;
+    let env = WorkerEnv {
+        anthropic_api_key: None,
+        ..ai_env(env, stub)
+    };
+    let (enabled, logs) = start_logged(&env).await;
+    assert!(enabled);
+    assert!(
+        logs.contains("ai: enabled (sidecar, batches off)"),
+        "{logs}"
+    );
+    assert!(
+        logs.contains("ai: scheduled regenerations via sync jobs (sidecar)"),
+        "{logs}"
+    );
+    assert!(!logs.contains(FAKE_TOKEN), "the sidecar token was logged");
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]

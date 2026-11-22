@@ -26,7 +26,7 @@ use ai::input::types::{CoachingInput, TimeClass};
 use ai::jobs::batch_jobs::{
     AiBatchPollHandler, BATCH_GIVE_UP_AFTER, BATCH_RESULTS_GIVE_UP_AFTER, BATCH_SUBMIT_TIMEOUT,
     BatchDeps, NullWeeklyProvider, ReportBatchScheduleHandler, WeeklyBatchScheduleHandler,
-    WeeklyInputProvider,
+    WeeklyInputProvider, reviewed_week,
 };
 use ai::jobs::budget::BudgetConfig;
 use ai::jobs::kinds::{KIND_AI_BATCH_POLL, KIND_GENERATE_REPORT, KIND_WEEKLY_REVIEW};
@@ -582,8 +582,10 @@ async fn default_entitlements_schedule_nothing(pool: PgPool) {
     assert_eq!(count(&pool, "SELECT count(*) FROM reports").await, 1);
 }
 
+/// M5b Task B ruling: without `ANTHROPIC_API_KEY` (batches off) but with a sidecar credential (an
+/// AI client exists), both schedules enqueue the normal sync jobs instead of a batch.
 #[sqlx::test(migrator = "db::MIGRATOR")]
-async fn batches_disabled_schedules_nothing(pool: PgPool) {
+async fn without_batches_the_schedules_enqueue_sync_jobs(pool: PgPool) {
     let a = account_with_report(&pool, "old", 31).await;
     let ai = Arc::new(TestAi::new(Box::new(all_valid)).disabled());
     let d = deps(
@@ -592,12 +594,94 @@ async fn batches_disabled_schedules_nothing(pool: PgPool) {
         pro(&[a]),
         Arc::new(WeeklyFor(vec![a])),
     );
+    let out = schedule(&d).await;
+    assert_eq!(out["path"], "sync", "{out}");
+    let runs = scheduled_runs(&pool).await;
+    assert_eq!(runs.len(), 1);
+    let (run_id, account, status, mode) = runs[0].clone();
+    assert_eq!(
+        (account, status.as_str(), mode.as_str()),
+        (a, "queued", "sync")
+    );
+    assert_eq!(
+        jobs_of(&pool, KIND_GENERATE_REPORT).await,
+        vec![format!("report:{run_id}")]
+    );
+    let payload: Value = sqlx::query_scalar("SELECT payload FROM jobs WHERE kind = $1")
+        .bind(KIND_GENERATE_REPORT)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(payload, json!({ "reportRunId": run_id }));
+
+    let out = run(&WeeklyBatchScheduleHandler(d.clone())).await;
+    assert_eq!(out["path"], "sync", "{out}");
+    let rows: Vec<(Uuid, String, String)> =
+        sqlx::query_as("SELECT id, status::text, mode::text FROM weekly_reviews")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(
+        (rows[0].1.as_str(), rows[0].2.as_str()),
+        ("pending", "sync")
+    );
+    assert_eq!(
+        jobs_of(&pool, KIND_WEEKLY_REVIEW).await,
+        vec![format!("weekly:{}", rows[0].0)]
+    );
+
+    // No batch, no model call at scheduling time.
+    assert!(ai.submissions().is_empty());
+    assert_eq!(count(&pool, "SELECT count(*) FROM ai_batches").await, 0);
+    assert_eq!(ai.sync_calls(), 0);
+
+    // Running both again adds nothing: the run is unfinished and the week has its review.
     schedule(&d).await;
     run(&WeeklyBatchScheduleHandler(d.clone())).await;
-    assert!(ai.submissions().is_empty());
+    assert_eq!(scheduled_runs(&pool).await.len(), 1);
+    assert_eq!(count(&pool, "SELECT count(*) FROM weekly_reviews").await, 1);
+    assert_eq!(jobs_of(&pool, KIND_GENERATE_REPORT).await.len(), 1);
+    assert_eq!(jobs_of(&pool, KIND_WEEKLY_REVIEW).await.len(), 1);
+}
+
+/// With the key set, the same due items go to one batch each and no sync job is enqueued.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn with_batches_the_schedules_submit_batches(pool: PgPool) {
+    let a = account_with_report(&pool, "old", 31).await;
+    let ai = Arc::new(TestAi::new(Box::new(all_valid)));
+    let d = deps(
+        &pool,
+        Some(ai.clone()),
+        pro(&[a]),
+        Arc::new(WeeklyFor(vec![a])),
+    );
+    assert_eq!(schedule(&d).await["path"], "batch");
+    assert_eq!(
+        run(&WeeklyBatchScheduleHandler(d.clone())).await["path"],
+        "batch"
+    );
+    assert_eq!(ai.submissions().len(), 2);
+    assert_eq!(scheduled_runs(&pool).await[0].3, "batch");
+    let mode: String = sqlx::query_scalar("SELECT mode::text FROM weekly_reviews")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(mode, "batch");
+    assert!(jobs_of(&pool, KIND_GENERATE_REPORT).await.is_empty());
+    assert!(jobs_of(&pool, KIND_WEEKLY_REVIEW).await.is_empty());
+}
+
+/// Without any AI client nothing is scheduled at all.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn no_ai_schedules_nothing(pool: PgPool) {
+    let a = account_with_report(&pool, "old", 31).await;
+    let d = deps(&pool, None, pro(&[a]), Arc::new(WeeklyFor(vec![a])));
+    schedule(&d).await;
+    run(&WeeklyBatchScheduleHandler(d.clone())).await;
     assert!(scheduled_runs(&pool).await.is_empty());
     assert_eq!(count(&pool, "SELECT count(*) FROM weekly_reviews").await, 0);
-    assert_eq!(count(&pool, "SELECT count(*) FROM ai_batches").await, 0);
+    assert!(jobs_of(&pool, KIND_GENERATE_REPORT).await.is_empty());
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
@@ -1181,7 +1265,8 @@ async fn weekly_batch_round_trip(pool: PgPool) {
     assert_eq!(rows.len(), 2);
     for r in &rows {
         assert_eq!((r.1.as_str(), r.2.as_str()), ("pending", "batch"));
-        assert_eq!(r.3, monday(OffsetDateTime::now_utc()));
+        // M5b Task B: the review is of the week that just ended, not the one starting today.
+        assert_eq!(r.3, monday(OffsetDateTime::now_utc()) - TDuration::days(7));
     }
     // Scheduling the same week again adds nothing.
     run(&WeeklyBatchScheduleHandler(d.clone())).await;
@@ -1489,4 +1574,25 @@ async fn concurrent_pollers_apply_and_meter_once(pool: PgPool) {
             "duplicate event {p}"
         );
     }
+}
+
+/// M5b Task B (G2): the Monday schedule reviews the complete week before it.
+#[test]
+fn the_reviewed_week_is_the_last_complete_one() {
+    use time::macros::{date, datetime};
+    // Monday 04:00 UTC, when the schedule runs: the week of Monday 16 Nov.
+    assert_eq!(
+        reviewed_week(datetime!(2026-11-23 04:00 UTC)),
+        date!(2026 - 11 - 16)
+    );
+    // Sunday night is still inside the week of 16 Nov, so the complete week is the one before.
+    assert_eq!(
+        reviewed_week(datetime!(2026-11-22 23:59 UTC)),
+        date!(2026 - 11 - 09)
+    );
+    // Another offset is converted to UTC first.
+    assert_eq!(
+        reviewed_week(datetime!(2026-11-23 01:00 +2)),
+        date!(2026 - 11 - 09)
+    );
 }
