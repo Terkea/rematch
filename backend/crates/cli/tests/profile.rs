@@ -129,6 +129,7 @@ async fn seed_profile(pool: &PgPool, games: usize) -> Uuid {
             pool: pool.clone(),
             queue,
             now: OffsetDateTime::now_utc,
+            benchmark: profile::peer_benchmark::BenchmarkSource::Peers,
         },
         BuildProfilePayload {
             account_id: account,
@@ -234,7 +235,7 @@ async fn profile_text_is_one_summary_line_and_says_when_there_is_no_benchmark(po
         assert!(first.contains(&format!(" {area} ")), "{area} in {first}");
     }
     assert!(
-        out.contains("no band-reference build is active"),
+        out.contains("no benchmark for this account and time class yet"),
         "the missing benchmark is stated: {out}"
     );
 }

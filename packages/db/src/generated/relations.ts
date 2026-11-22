@@ -1,6 +1,8 @@
 import { relations } from "drizzle-orm/relations";
 import {
   account,
+  accountBenchmark,
+  accountBenchmarkStat,
   accountLinks,
   aiBatches,
   aiBatchItems,
@@ -21,6 +23,7 @@ import {
   moves,
   openingExplorer,
   openingLines,
+  opponentGameMetrics,
   referenceBuilds,
   referenceGames,
   referenceObservations,
@@ -36,6 +39,21 @@ import {
   weaknessStateHistory,
   weeklyReviews,
 } from "./schema.js";
+
+export const accountBenchmarkRelations = relations(accountBenchmark, ({ one, many }) => ({
+  accountBenchmarkStats: many(accountBenchmarkStat),
+  linkedAccount: one(linkedAccounts, {
+    fields: [accountBenchmark.accountId],
+    references: [linkedAccounts.id],
+  }),
+}));
+
+export const accountBenchmarkStatRelations = relations(accountBenchmarkStat, ({ one }) => ({
+  accountBenchmark: one(accountBenchmark, {
+    fields: [accountBenchmarkStat.accountId],
+    references: [accountBenchmark.accountId],
+  }),
+}));
 
 export const accountLinksRelations = relations(accountLinks, ({ one, many }) => ({
   chesscomVerifications: many(chesscomVerifications),
@@ -155,6 +173,7 @@ export const gamesRelations = relations(games, ({ one, many }) => ({
   }),
   moveFeatures: many(moveFeatures),
   moves: many(moves),
+  opponentGameMetrics: many(opponentGameMetrics),
   weaknessSeriesPoints: many(weaknessSeriesPoint),
 }));
 
@@ -184,6 +203,7 @@ export const kpiSnapshotRelations = relations(kpiSnapshot, ({ one }) => ({
 }));
 
 export const linkedAccountsRelations = relations(linkedAccounts, ({ many }) => ({
+  accountBenchmarks: many(accountBenchmark),
   accountLinks: many(accountLinks),
   coachConversations: many(coachConversations),
   gameMetrics: many(gameMetrics),
@@ -193,6 +213,7 @@ export const linkedAccountsRelations = relations(linkedAccounts, ({ many }) => (
   interactiveEvals: many(interactiveEvals),
   kpiSnapshots: many(kpiSnapshot),
   openingLines: many(openingLines),
+  opponentGameMetrics: many(opponentGameMetrics),
   repertoireNodes: many(repertoireNodes),
   reportRuns: many(reportRuns),
   reports: many(reports),
@@ -227,6 +248,17 @@ export const openingExplorerRelations = relations(openingExplorer, ({ one }) => 
 export const openingLinesRelations = relations(openingLines, ({ one }) => ({
   linkedAccount: one(linkedAccounts, {
     fields: [openingLines.accountId],
+    references: [linkedAccounts.id],
+  }),
+}));
+
+export const opponentGameMetricsRelations = relations(opponentGameMetrics, ({ one }) => ({
+  game: one(games, {
+    fields: [opponentGameMetrics.gameId],
+    references: [games.id],
+  }),
+  linkedAccount: one(linkedAccounts, {
+    fields: [opponentGameMetrics.accountId],
     references: [linkedAccounts.id],
   }),
 }));

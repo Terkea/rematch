@@ -46,6 +46,7 @@ async fn run_build(pool: &PgPool, account_id: Uuid) {
         pool: pool.clone(),
         queue: Queue::new(pool.clone()),
         now: seed_now,
+        benchmark: profile::peer_benchmark::BenchmarkSource::LichessBands,
     };
     within(
         "build-profile",

@@ -4,6 +4,12 @@ import Link from "next/link";
 import { CoachScopeSwitch } from "../../../../components/coach-scope-switch";
 import { MorphLink } from "../../../../components/shared-morph";
 import type { CoachScope, DifficultyStatus, WeaknessSummary } from "../../../../server/profile";
+import {
+  BENCHMARK_BIAS_TEXT,
+  type Benchmark,
+  benchmarkGroupLabel,
+  benchmarkLabel,
+} from "../../../../server/profile/benchmark-text";
 import { seriesGlossary } from "../../../../server/profile/glossary";
 import { ESTIMATE_WINDOW_TEXT } from "../../../../server/profile/window";
 import { EmptySheet } from "../../_shell/page-heading";
@@ -104,17 +110,31 @@ export function WeaknessesHeader({
   );
 }
 
+/** What the compared rows were compared with, and its bias; null without a peer benchmark. */
+export function BenchmarkNote({ benchmark }: { benchmark: Benchmark | null }) {
+  const label = benchmarkLabel(benchmark);
+  if (label === null) return null;
+  return (
+    <p data-benchmark="peers" className="text-sm text-ink-soft [font-variant-numeric:lining-nums]">
+      {label}. {BENCHMARK_BIAS_TEXT}
+    </p>
+  );
+}
+
 export function WeaknessesView({
   scope,
   weaknesses,
   trends,
   difficulty,
+  benchmark = null,
 }: {
   scope: CoachScope | null;
   weaknesses: WeaknessSummary[];
   trends: Map<string, (number | null)[]>;
   difficulty: DifficultyStatus | null;
+  benchmark?: Benchmark | null;
 }) {
+  const group = benchmarkGroupLabel(benchmark);
   const groups = groupWeaknesses(weaknesses).filter((g) => g.rows.length > 0);
   // One interval scale for the whole page, so a row's range compares with every other row's.
   const scaleMax = weaknessScaleMax(weaknesses);
@@ -139,6 +159,7 @@ export function WeaknessesView({
         <>
           <div className="flex flex-col gap-2">
             <WeaknessRowKey />
+            <BenchmarkNote benchmark={benchmark} />
             <p className="text-sm text-ink-soft">
               Weekly rate lines leave out weeks with fewer than {WEEKLY_MIN_CHANCES} chances, and
               weeks with none, as gaps.
@@ -166,7 +187,11 @@ export function WeaknessesView({
                         state={w.state}
                         rate={w.rate}
                         evidence={w.evidence}
-                        band={{ median: w.band.median }}
+                        band={
+                          group
+                            ? { median: w.band.median, label: group }
+                            : { median: w.band.median }
+                        }
                         compared={w.compared}
                         window={ESTIMATE_WINDOW_TEXT}
                         href={weaknessHref(w.seriesKey, scope)}

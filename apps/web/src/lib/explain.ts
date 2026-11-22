@@ -1,4 +1,5 @@
 import { NO_BENCHMARK_TEXT } from "@ci/ui/profile";
+import type { Benchmark } from "../server/profile/benchmark-text";
 import { DETECTOR_CONSTANTS as K, VERDICT_CONSTANTS as V } from "../server/profile/glossary";
 import type { WeaknessState } from "../server/profile/types";
 import type { Estimate } from "../server/stats";
@@ -171,24 +172,36 @@ export function areaMeaning(a: {
   return `${head}: ${where}. ${NO_RANGE}`;
 }
 
-/** You against the rating band's median: only a median outside the 80% range says more or less. */
+/** The peer group in running text, or null when the benchmark is not a peer band (ADR 0080). */
+function peerGroup(b: Benchmark | null | undefined): string | null {
+  if (b?.source !== "peers" || !fin(b.low) || !fin(b.high)) return null;
+  const site = b.platform === "chesscom" ? "chess.com" : "lichess";
+  return `players you've faced on ${site}, rated about ${count(b.low)}–${count(b.high)}`;
+}
+
+/**
+ * You against the benchmark's median: only a median outside the 80% range says more or less. A
+ * peer benchmark (players the user has faced) is named as such, never as "players at your level".
+ */
 export function levelText(l: {
   rate: { mean: number; low: number; high: number };
   median: number | null;
   compared: boolean;
   sufficient: boolean;
+  benchmark?: Benchmark | null;
 }): string {
   if (!l.compared || !fin(l.median)) return `${NO_BENCHMARK_TEXT}.`;
   const m = `${(l.median * 100).toFixed(1)}%`;
-  if (!l.sufficient)
-    return `Typical players at your level: ${m}. A comparison waits for more chances.`;
+  const group = peerGroup(l.benchmark) ?? "typical players at your level";
+  const Group = group.charAt(0).toUpperCase() + group.slice(1);
+  if (!l.sufficient) return `${Group}: ${m}. A comparison waits for more chances.`;
   if (l.median < l.rate.low) {
-    return `More often than typical players at your level (${m}): their rate is below your whole likely range.`;
+    return `More often than ${group} (${m}): their rate is below your whole likely range.`;
   }
   if (l.median > l.rate.high) {
-    return `Less often than typical players at your level (${m}): their rate is above your whole likely range.`;
+    return `Less often than ${group} (${m}): their rate is above your whole likely range.`;
   }
-  return `Not clearly different from typical players at your level (${m}): their rate is inside your likely range.`;
+  return `Not clearly different from ${group} (${m}): their rate is inside your likely range.`;
 }
 
 /** "Your estimated rate is 4.2% of chances, likely between 3.1% and 5.7% (80% range)." */

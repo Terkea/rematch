@@ -274,3 +274,55 @@ describe("levelText", () => {
     expect(levelText(input)).toBe(want);
   });
 });
+
+describe("levelText with a peer benchmark (ADR 0080)", () => {
+  const rate = { mean: 0.042, low: 0.031, high: 0.057 };
+  const benchmark = {
+    source: "peers" as const,
+    platform: "chesscom" as const,
+    low: 650,
+    high: 950,
+    players: 12,
+    games: 40,
+  };
+  it.each([
+    [
+      0.021,
+      true,
+      "More often than players you've faced on chess.com, rated about 650–950 (2.1%): their rate is below your whole likely range.",
+    ],
+    [
+      0.08,
+      true,
+      "Less often than players you've faced on chess.com, rated about 650–950 (8.0%): their rate is above your whole likely range.",
+    ],
+    [
+      0.04,
+      true,
+      "Not clearly different from players you've faced on chess.com, rated about 650–950 (4.0%): their rate is inside your likely range.",
+    ],
+    [
+      0.021,
+      false,
+      "Players you've faced on chess.com, rated about 650–950: 2.1%. A comparison waits for more chances.",
+    ],
+  ])("median %s, sufficient %s", (median, sufficient, want) => {
+    const text = levelText({ rate, median, compared: true, sufficient, benchmark });
+    expect(text).toBe(want);
+    expect(text).not.toMatch(/players at your level/);
+  });
+
+  it("keeps the band wording for the legacy band reference", () => {
+    expect(
+      levelText({
+        rate,
+        median: 0.04,
+        compared: true,
+        sufficient: true,
+        benchmark: { source: "lichess_bands" },
+      }),
+    ).toBe(
+      "Not clearly different from typical players at your level (4.0%): their rate is inside your likely range.",
+    );
+  });
+});

@@ -851,6 +851,7 @@ pub async fn start_workers(env: &WorkerEnv, opts: StartOptions) -> anyhow::Resul
             pool: pool.clone(),
             queue: queue.clone(),
             now: time::OffsetDateTime::now_utc,
+            benchmark: profile::peer_benchmark::BenchmarkSource::from_env(),
         })));
     // With the AI runners, a completed build also requests the first report (M5b ruling G3).
     let build_profile: Arc<dyn queue::runner::Handler> = if with_ai {
