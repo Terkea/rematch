@@ -82,8 +82,10 @@ test("overview, explorer and review, end to end", async ({ browser, request }, i
     await gotoSettled(page, "/");
     await expect(page).toHaveURL(/\/app$/);
     await expect(page.getByRole("heading", { name: "Overview", level: 1 })).toBeVisible();
-    await expect(page.locator("[data-status]")).toHaveText(
-      "34 of 35 games analysed. 1 waiting for analysis.",
+    // The compact sync panel (M5b Task P2) replaced the status line: its totals line states the
+    // same counts.
+    await expect(page.locator("[data-slot='sync-panel'][data-variant='compact']")).toContainText(
+      "34 of 35 games analysed",
     );
   });
 
@@ -104,6 +106,10 @@ test("overview, explorer and review, end to end", async ({ browser, request }, i
       .click();
     await expect(page).toHaveURL(/\/app\/games$/);
     await hydrated(page, "section[aria-label='Filters'] button");
+    // The list opens on rapid (I8); the analysed fixture is not rapid, so show every time control.
+    await page.getByRole("combobox", { name: "Time control" }).click();
+    await page.getByRole("option", { name: "All time controls" }).click();
+    await expect(page).toHaveURL(/[?&]tc=all\b/);
     await page
       .getByRole("radiogroup", { name: "Result" })
       .getByRole("radio", { name: "Losses" })
@@ -122,7 +128,10 @@ test("overview, explorer and review, end to end", async ({ browser, request }, i
 
   await test.step("4. a row opens its review; End, Home and three steps reach ply 3", async () => {
     const rows = page.locator("a[href^='/app/games/'][aria-label]").filter({ visible: true });
-    await rows.first().click();
+    // The newest loss is the analysed fixture. The sync panel above the list updates live (M5b
+    // P2), so a coordinate click can land on a row that moved; click the row itself instead.
+    await expect(rows.first()).toHaveAttribute("href", new RegExp(`/app/games/${ids.analysedId}$`));
+    await rows.first().dispatchEvent("click");
     await expect(page).toHaveURL(new RegExp(`/app/games/${ids.analysedId}$`));
     await hydrated(page, "[data-review]");
     for (const key of ["End", "Home", "ArrowRight", "ArrowRight", "ArrowRight"])

@@ -56,6 +56,10 @@ The coach pages (report, weaknesses, skill areas, progress, the coach chat) show
 - **The browser dropped every coach event.** `use-event-stream.ts` listened only for the four M4 types, and an `EventSource` delivers only the types it listens for. So in SSE mode no report section, weekly review, note, chat chunk or profile event reached a page; only polling would have brought them. `STREAM_TYPES` now lists every kind, and `test/events/stream-types-parity.test.ts` reads them from the Rust sources (`events::store`, `ai::events`).
 - **Sync now got 415.** The account routes' CSRF guard needs a declared JSON body, and the panel sent none. It now does, and the panel test pins the header.
 
+- **A failed report run left its page saying "Building".** The job emits only `job.failed`, which updated the activity and nothing else. `reducers.ts` now also invalidates that account's `report` key for `kind: "generate-report"`, so the page refreshes to its failed state.
+- **M5a's overview check broke on the P2 merge.** The compact sync panel replaced the status line, so `games.spec` reads the counts from the panel.
+- **The long suite runs on a production build.** `next dev` restarts itself past 80% of its heap. Over a full run that drops connections and reloads pages mid-spec. Switching the restart off let the Docker VM OOM-kill the server instead. So the full suite runs on a production build, as CI does (ADR 0067), and the `@fakes` specs run on the dev server on their own. The quality walk now also counts a ring drawn on a stretched link's `::before` (the weakness rows), and it waits for entrance fades to finish before axe measures contrast.
+
 ### Coach chat switch
 
 `lib/coach-chat.ts` `coachChatLive()` is the one place that takes the chat out of the product: when false, the header hides Coach, the command menu drops "Ask your coach", and the report, weakness and area pages leave out their ask links. It was false while Task 9 was still finishing, and it is true now that Task 9 is merged.

@@ -102,6 +102,19 @@ describe("applyEvent", () => {
     vi.useRealTimers();
   });
 
+  it("a failed report job refreshes that account's report (its page leaves the building state)", () => {
+    qc.setQueryData(queryKeys.report("a1"), 1);
+    qc.setQueryData(queryKeys.report("a2"), 1);
+    applyEvent(qc, {
+      id: 3,
+      accountId: "a1",
+      type: "job.failed",
+      payload: { kind: "generate-report", reason: "ai_unavailable" },
+    });
+    expect(invalidated(queryKeys.report("a1"))).toBe(true);
+    expect(invalidated(queryKeys.report("a2"))).toBe(false);
+  });
+
   it("job.failed names the worker's job kinds in words", () => {
     applyEvent(qc, {
       id: 2,

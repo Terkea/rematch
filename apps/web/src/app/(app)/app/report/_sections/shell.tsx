@@ -5,6 +5,7 @@ import { cn } from "@ci/ui/lib";
 import { type CSSProperties, createContext, type ReactNode, useContext } from "react";
 import type { NarrativeItem, SectionContent } from "../../../../../server/coaching/types";
 import { SectionHead } from "../../_overview/section-head";
+import { NUMBERS_ONLY_SECTION } from "../notes-off";
 import { reviewHref } from "./links";
 
 /** Platform game id to `games.id` for the scope (only the scope's games are in it). */
@@ -67,12 +68,7 @@ export function SectionNote({ status }: { status: SectionStatus }) {
         </QuietLine>
       );
     case "off":
-      return (
-        <QuietLine mark="solid">
-          Your coach's notes are off for this report, so this section shows the computed numbers
-          only.
-        </QuietLine>
-      );
+      return <QuietLine mark="solid">{NUMBERS_ONLY_SECTION}</QuietLine>;
     default:
       return null;
   }

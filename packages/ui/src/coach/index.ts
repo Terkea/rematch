@@ -7,12 +7,14 @@ export {
   countText,
 } from "./chat-composer.js";
 export {
+  answerParagraphs,
   ChatMessage,
   type ChatMessageProps,
   engineLine,
   READING_COPY,
   streamRuns,
 } from "./chat-message.js";
+export { CitedBoard, citedAnnotations, citedLabel } from "./cited-board.js";
 export {
   CoachState,
   type CoachStateAction,
@@ -23,6 +25,8 @@ export { dayOf, numText, SegmentText, type SegmentTextProps } from "./segment-te
 export {
   AI_LABEL,
   type AiDisclosureData,
+  type CitedPosition,
+  citedKey,
   type EngineCheck,
   type Segment,
   type SegmentKind,

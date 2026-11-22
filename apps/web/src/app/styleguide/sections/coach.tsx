@@ -5,12 +5,14 @@ import {
   ChatComposer,
   ChatMessage,
   type ChatMessageProps,
+  type CitedPosition,
   CoachState,
   type CoachStateProps,
   type Segment,
   SegmentText,
   type StreamedChunk,
 } from "@ci/ui/coach";
+import { games } from "@ci/ui/fixtures";
 import { Button, TooltipProvider } from "@ci/ui/primitives";
 import { useEffect, useState } from "react";
 
@@ -57,6 +59,27 @@ const opera: Segment[] = [
   { kind: "line", lineKey: "philidor", n: null, san: "1. e4 e5 2. Nf3 d6" },
   { kind: "text", text: ", the Philidor Defence." },
 ];
+
+// The position before 28. Nd2?? in that game, from White's side (Fix D, N5). The fixture stores
+// no engine move for that ply, so the board shows the played move alone.
+const nd2Ply = games.middlegameBlunder.plies[54];
+const nd2Before = games.middlegameBlunder.plies[53];
+const nd2Positions: Record<string, CitedPosition> =
+  nd2Ply && nd2Before
+    ? {
+        [`${G}#55`]: {
+          gameId: G,
+          ply: 55,
+          href: "#coach-ply-55",
+          fen: nd2Before.fenAfter,
+          orientation: games.middlegameBlunder.playerColor,
+          moveText: "28. Nd2",
+          played: { san: nd2Ply.san, uci: nd2Ply.uci },
+          best: null,
+          mistake: true,
+        },
+      }
+    : {};
 
 const hrefFor = (s: Segment) =>
   s.kind === "move" || s.kind === "best" || s.kind === "pv" ? `#coach-ply-${s.ply}` : null;
@@ -272,6 +295,7 @@ export function CoachSection() {
               {...base}
               segments={nd2}
               hrefFor={hrefFor}
+              positions={nd2Positions}
               engineChecks={[{ status: "done", moves: ["Nd2", "e4", "Nxe4"], startPly: 55 }]}
               notes={["One statement was left out because the engine could not confirm it."]}
               disclosure={disclosure}

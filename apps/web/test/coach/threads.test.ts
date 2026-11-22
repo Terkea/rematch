@@ -1,4 +1,4 @@
-import { accountLinks, coachMessages } from "@ci/db/generated";
+import { accountLinks, coachMessages, games as gameRows, moves } from "@ci/db/generated";
 import { games } from "@ci/ui/fixtures";
 import { eq, inArray, sql } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -10,7 +10,7 @@ import {
   listConversations,
 } from "../../src/server/coach/index.js";
 import { resetCoachTables, seedChunk, seedThread } from "../helpers/coach";
-import { resetGameTables, seedAccount } from "../helpers/games";
+import { resetGameTables, seedAccount, seedSyntheticGame } from "../helpers/games";
 import { createTestSession, resetAuthTables, webTestDb } from "../helpers/session";
 
 const db = webTestDb();
@@ -266,6 +266,61 @@ describe("threads", () => {
       { status: "failed", moves: [], startPly: null },
     ]);
     expect(thread?.messages[0]?.engineChecks).toEqual([]);
+  });
+
+  // Fix D (N5): an answer that cites a move shows that position, read with the thread.
+  it("cited positions come with the thread, once each, from the player's side", async () => {
+    const { gameId } = await seedSyntheticGame(db, accountId, {
+      playedAt: "2026-11-10T12:00:00.000Z",
+      timeClass: "rapid",
+      result: "1-0",
+      playerColor: "black",
+      counts: { mistakes: 1 },
+    });
+    const [g] = await db
+      .select({ pid: gameRows.platformGameId })
+      .from(gameRows)
+      .where(eq(gameRows.id, gameId));
+    const pid = g?.pid ?? "";
+    await db
+      .update(moves)
+      .set({ bestUci: "c7c5" })
+      .where(sql`${moves.gameId} = ${gameId} and ${moves.ply} = 2`);
+    const { threadId } = await seedThread(db, {
+      userId: a,
+      accountId,
+      timeClass: "rapid",
+      messages: [
+        { role: "user", status: "done", text: "Why?" },
+        {
+          role: "assistant",
+          status: "done",
+          segments: [
+            { kind: "text", text: "You played " },
+            { kind: "move", gameId: pid, ply: 2, san: "e5" },
+            { kind: "text", text: " where the engine preferred " },
+            { kind: "best", gameId: pid, ply: 2, san: "c5" },
+            { kind: "text", text: ". Elsewhere " },
+            { kind: "move", gameId: "not-this-account", ply: 2, san: "e5" },
+            { kind: "text", text: "." },
+          ],
+        },
+      ],
+    });
+    const thread = await getThread(db, a, threadId);
+    expect(thread?.positions).toEqual({
+      [`${pid}#2`]: {
+        gameId: pid,
+        ply: 2,
+        href: `/app/games/${gameId}?ply=2`,
+        fen: expect.stringMatching(/^rnbqkbnr\/pppppppp\/8\/8\/4P3\/8\/PPPP1PPP\/RNBQKBNR b /),
+        orientation: "black",
+        moveText: "1… e5",
+        played: { san: "e5", uci: "e7e5" },
+        best: { san: "c5", uci: "c7c5" },
+        mistake: true,
+      },
+    });
   });
 
   it("read and delete still work after unlinking", async () => {
