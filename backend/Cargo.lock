@@ -1811,6 +1811,7 @@ dependencies = [
  "events",
  "futures",
  "hex",
+ "jsonschema",
  "profile-core",
  "queue",
  "refdata",
