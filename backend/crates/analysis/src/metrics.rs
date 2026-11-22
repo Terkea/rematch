@@ -1,7 +1,10 @@
 //! Per-stage timing metrics of one job attempt (ADR 0036): one `job_metrics` row plus one
 //! `tracing` event with target `metrics`.
 
+use std::collections::BTreeMap;
+
 use sqlx::PgPool;
+use sqlx::types::Json;
 use uuid::Uuid;
 
 use queue::KIND_ANALYSE;
@@ -33,22 +36,33 @@ pub struct GameMetrics {
     pub engine_positions: Option<i32>,
     pub cache_hits: Option<i32>,
     pub lichess_used: Option<i32>,
-    /// Real elapsed span of the engine stage (`EvalStats::engine_stage_elapsed_ms`). Logged
-    /// only in R1; R2 persists it in `job_metrics.stages`.
+    /// Real elapsed span of the engine stage (`EvalStats::engine_stage_elapsed_ms`), persisted
+    /// in `job_metrics.stages` (R2 Task 3).
     pub engine_stage_ms: Option<f64>,
-    /// Real elapsed span of `evaluate_game` (`EvalStats::total_elapsed_ms`). Logged only in R1.
+    /// Real elapsed span of `evaluate_game` (`EvalStats::total_elapsed_ms`), in `stages`.
     pub evaluate_ms: Option<f64>,
     /// `done`, `skipped`, `superseded`, `failed`, `retry` or `released`. Logged only.
     pub outcome: &'static str,
 }
 
-/// Writes one `job_metrics` row of kind `analyse-game`.
+/// The spans that have no column, as the `job_metrics.stages` map (a `None` span is left out).
+pub fn stages(m: &GameMetrics) -> BTreeMap<&'static str, f64> {
+    [
+        ("engine_stage_ms", m.engine_stage_ms),
+        ("evaluate_ms", m.evaluate_ms),
+    ]
+    .into_iter()
+    .filter_map(|(k, v)| v.map(|v| (k, v)))
+    .collect()
+}
+
+/// Writes one `job_metrics` row of kind `analyse-game`; `stages` carries [`stages`].
 pub async fn record_metrics(pool: &PgPool, m: &GameMetrics) -> Result<(), sqlx::Error> {
     sqlx::query(
         "INSERT INTO job_metrics (job_id, kind, game_id, account_id, queue_wait_ms, parse_ms, \
          cache_ms, engine_wall_ms, engine_cpu_ms, persist_ms, total_ms, positions, \
-         engine_positions, cache_hits, lichess_used) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)",
+         engine_positions, cache_hits, lichess_used, stages) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)",
     )
     .bind(m.job_id)
     .bind(KIND_ANALYSE)
@@ -65,6 +79,7 @@ pub async fn record_metrics(pool: &PgPool, m: &GameMetrics) -> Result<(), sqlx::
     .bind(m.engine_positions)
     .bind(m.cache_hits)
     .bind(m.lichess_used)
+    .bind(Json(stages(m)))
     .execute(pool)
     .await?;
     Ok(())

@@ -36,6 +36,11 @@ x-web-environment: &web-environment
 services:
   postgres:
     image: postgres:17
+    # ADR 0044: an init process as PID 1, so the postmaster is not the container's reaper. Without
+    # it, an orphan such as a timed-out healthcheck's pg_isready is reparented to the postmaster,
+    # and its exit code 2 reads as a crashed backend: every connection is killed and crash recovery
+    # runs (tests see EOF, "connection reset", "in recovery mode").
+    init: true
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -44,7 +49,10 @@ services:
       - pgdata:/var/lib/postgresql/data
       - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d chess"]
+      # Exec form, so there is no shell whose kill on timeout would orphan pg_isready. TCP
+      # (-h 127.0.0.1), so it fails against the image's unix-socket-only init server and only passes
+      # once the final server is up.
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "postgres", "-d", "chess"]
       interval: 3s
       timeout: 3s
       retries: 20
@@ -231,8 +239,6 @@ services:
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/chess_test
       STOCKFISH_PATH: /usr/local/bin/stockfish
       IN_DOCKER: "1"
-      # rust-dev makes no external API calls (tests use recorded fixtures), so a placeholder is safe.
-      CONTACT_EMAIL: ${CONTACT_EMAIL:-dev@example.invalid}
       RUST_LOG: warn
       # R2 (ADR-R2-1): git-ignored data dir (Syzygy tables, never the Lichess dump) and Maia.
       DATA_DIR: /work/data
@@ -255,6 +261,41 @@ services:
       - cargo_git:/usr/local/cargo/git
       - sccache:/sccache
       - crate_age:/crate-age
+    # maia_internal reaches the Maia service (ADR-R2-13); default keeps Postgres and the internet.
+    networks: [default, maia_internal]
+
+  # Maia-2 difficulty service (R2 Task 24, ADR-R2-13). Opt-in: `docker compose --profile maia up -d
+  # maia`, then set MAIA_URL=http://maia:8080 for the Rust side. Difficulty comes only from Maia:
+  # with MAIA_URL unset or Maia down, positions are recorded as `pending_maia` (never estimated).
+  # The service sits only on the internal network: no egress, and no host port here (the host
+  # port 127.0.0.1:58080 is opt-in through docker-compose.ports.yml, like Postgres and Redis).
+  maia:
+    profiles: [maia]
+    build:
+      context: services/maia
+      target: runtime
+    environment:
+      MAIA_MODEL: ${MAIA_MODEL:-rapid}
+    read_only: true
+    tmpfs:
+      - /tmp
+    networks: [maia_internal]
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=3)"
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+networks:
+  # No route out: services on it reach each other only (Maia and its clients; the rust-worker
+  # joins it when it lands, lane I).
+  maia_internal:
+    internal: true
 
 volumes:
   pgdata:

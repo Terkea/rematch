@@ -104,6 +104,8 @@ A timeout is 504 `api_error`, and a call aborted by shutdown (SIGTERM) is 503 `a
 
 Properties that are not required become `.optional()`. Anything else throws `SchemaUnsupported(path)`, which `/v1/chat` returns as a 400 before anything is queued or spawned.
 
+**Tool schemas have no nullable form (Task 22).** The converter has no `anyOf` and no `null`, so the chat tools (`chat::tools`) do not use the required-and-nullable form of the output schemas. An optional property is left out of `required` and becomes `.optional()`. The Rust executor (`chat::execute`) validates every field again and treats a missing optional field and `null` the same way. An unexpected key is rejected with the fixed message `invalid input: unexpected field`, which never names the key.
+
 **Timeout ordering.** The timeouts nest from shortest to longest:
 1. T23's engine wait is 45 s.
 2. The callback fetch times out at 55 s.

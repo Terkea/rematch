@@ -104,6 +104,12 @@ pub struct Evidence {
     pub dates: HashSet<String>,
     /// R3: interactive engine results by eval id.
     pub engine_evals: HashMap<String, EngineEvidence>,
+    /// R3 (Task 8 fix 1): number paths that hold a rate or share in [0, 1], the only paths a
+    /// `pct0`/`pct1` token may format.
+    pub rate_paths: HashSet<String>,
+    /// R3 (Task 8 fix 1): the path of every exemplar object in the input, mapped to its
+    /// position key `gameId#ply` (`weaknesses.W1.exemplars.0` → `li-w1-0#5`).
+    pub path_positions: HashMap<String, String>,
     num_seen: HashSet<u64>,
     ratio_seen: HashSet<u64>,
 }
@@ -152,7 +158,7 @@ fn is_uuid(s: &str) -> bool {
 }
 
 /// TS `/^(\d{4})-(\d{2})-(\d{2})(?:$|T)/` (ASCII digits): year, month, day.
-fn iso_prefix(s: &str) -> Option<(i32, u32, u32)> {
+pub(crate) fn iso_prefix(s: &str) -> Option<(i32, u32, u32)> {
     let b = s.as_bytes();
     if b.len() < 10 || !(b.len() == 10 || b[10] == b'T') {
         return None;
@@ -443,6 +449,13 @@ impl Evidence {
                 }
             }
             Value::Object(o) => {
+                if let (Some(Value::String(g)), Some(Value::Number(p)), true) =
+                    (o.get("gameId"), o.get("ply"), o.contains_key("fen"))
+                {
+                    self.path_positions
+                        .entry(path.to_owned())
+                        .or_insert_with(|| format!("{g}#{p}"));
+                }
                 for (k, x) in o {
                     if SKIP_KEYS.contains(&k.as_str()) {
                         continue;
@@ -460,12 +473,77 @@ impl Evidence {
     }
 }
 
+impl Evidence {
+    /// Marks a number path as a rate or share in [0, 1] (`pct0`/`pct1` may format it).
+    pub fn add_rate_path(&mut self, path: &str) {
+        self.rate_paths.insert(path.to_owned());
+    }
+
+    /// The position key of the exemplar whose object contains `path`, if any.
+    pub fn position_of_path(&self, path: &str) -> Option<&str> {
+        let mut p = path;
+        loop {
+            if let Some(k) = self.path_positions.get(p) {
+                return Some(k);
+            }
+            p = &p[..p.rfind('.')?];
+        }
+    }
+
+    /// The rates and shares of the input (R3 Task 8 fix 1).
+    fn index_rate_paths(&mut self, input: &CoachingInput) {
+        use crate::input::types::MetricUnit;
+        let add = |ev: &mut Evidence, p: String| {
+            if ev
+                .number_paths
+                .get(&p)
+                .is_some_and(|v| (0.0..=1.0).contains(v))
+            {
+                ev.rate_paths.insert(p);
+            }
+        };
+        for w in &input.weaknesses {
+            let b = format!("weaknesses.{}", seg(&w.id));
+            for f in [
+                "posteriorRate",
+                "intervalLow",
+                "intervalHigh",
+                "bandMedian",
+                "confidence",
+                "pImp",
+            ] {
+                add(self, format!("{b}.{f}"));
+            }
+        }
+        for c in &input.changes {
+            let b = format!("changes.{}", seg(&c.series_key));
+            for f in ["rateBefore", "rateAfter", "posteriorProb"] {
+                add(self, format!("{b}.{f}"));
+            }
+        }
+        for o in &input.openings {
+            let b = format!("openings.{}", seg(&o.line_key));
+            add(self, format!("{b}.score"));
+            for (i, _) in o.alternatives.iter().enumerate() {
+                add(self, format!("{b}.alternatives.{i}.bandScore"));
+            }
+        }
+        for m in input.metrics.iter().filter(|m| m.unit == MetricUnit::Rate) {
+            let b = format!("metrics.{}", seg(&m.key));
+            for f in ["value", "low", "high", "bandMedian"] {
+                add(self, format!("{b}.{f}"));
+            }
+        }
+    }
+}
+
 /// The full index for a report (TS `buildEvidence`).
 pub fn build_evidence(input: &CoachingInput) -> Evidence {
     let mut ev = create_evidence();
     let json = input.to_json();
     ev.add_numbers_from(&json);
     ev.index_paths(input, &json);
+    ev.index_rate_paths(input);
     for w in &input.weaknesses {
         for e in &w.exemplars {
             ev.add_exemplar(e);
