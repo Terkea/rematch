@@ -522,9 +522,20 @@ async fn an_immediate_job_stays_claimable_after_the_clock_steps_back(pool: PgPoo
 #[sqlx::test(migrator = "db::MIGRATOR")]
 async fn dequeue_claims_several_kinds_in_one_call(pool: PgPool) {
     let q = Queue::new(pool.clone());
+    // Explicit, increasing `run_at`s fix the claim order. Default ones are each enqueue's
+    // `now()`, and the VM clock steps back about 2.7 s every 30 s (ADR 0032): two enqueues on
+    // either side of a step get their `run_at`s, and so their claim order, reversed.
+    let now = OffsetDateTime::now_utc();
     let mut want = Vec::new();
-    for kind in [KIND, "import-account", "reconcile"] {
-        let id = q.enqueue(kind, &json!({}), EnqueueOptions::default()).await;
+    for (i, kind) in [KIND, "import-account", "reconcile"]
+        .into_iter()
+        .enumerate()
+    {
+        let opts = EnqueueOptions {
+            run_at: Some(now - time::Duration::minutes(10 - i as i64)),
+            ..EnqueueOptions::default()
+        };
+        let id = q.enqueue(kind, &json!({}), opts).await;
         want.push(id.unwrap().unwrap());
     }
     let got: Vec<i64> = q
