@@ -1,4 +1,11 @@
-import { KpiTrendGrid, type KpiTrendItem } from "@ci/ui/profile";
+import {
+  dayText,
+  formatKpiValue,
+  KpiTrendGrid,
+  type KpiTrendItem,
+  nText,
+  onLine,
+} from "@ci/ui/profile";
 import { type TimelineSeries, WeaknessTimeline } from "@ci/ui/timeline";
 import type { ReactNode } from "react";
 import type { WeeklyReviewView } from "../../../../server/coaching";
@@ -6,13 +13,7 @@ import type { TimeClass } from "../../../../server/games/types";
 import { type KpiTrend, kpiDef, type WeaknessDetail } from "../../../../server/profile";
 import { PageHeading } from "../../_shell/page-heading";
 import { SectionHead } from "../_overview/section-head";
-import {
-  BeforeAfter,
-  type BeforeAfterRow,
-  beforeAfterRows,
-  dayWords,
-  isoDay,
-} from "./before-after";
+import { BeforeAfter, type BeforeAfterRow, beforeAfterRows, isoDay } from "./before-after";
 import { type FirstReview, WeeklyReviews } from "./weekly-reviews";
 
 // The progress page (M5b Task 10, spec §10a.4): before and after first, then the rating and the
@@ -33,14 +34,18 @@ export const PROGRESS_METRICS = [
   "missed_punish_rate",
 ] as const;
 
+/** Fewer weeks than this and no chart is drawn: one note and the early reads instead. */
+export const MIN_TREND_WEEKS = 3;
+
 type NUnit = { one: string; many: string };
 const GAMES: NUnit = { one: "game", many: "games" };
 
 /**
  * The multiples grouped by what their `n` counts and the catalogue minimum, so each group's key
- * states its own threshold truthfully (KpiTrendGrid takes one `minN` per grid).
+ * states its own threshold truthfully (KpiTrendGrid takes one `minN` per grid). `caption` names
+ * what the threshold counts when the items count narrower things than the group's unit.
  */
-const GROUPS: { id: string; title: string; metrics: string[]; nUnit: NUnit }[] = [
+const GROUPS: { id: string; title: string; metrics: string[]; nUnit: NUnit; caption?: string }[] = [
   {
     id: "accuracy",
     title: "Accuracy and blunders",
@@ -58,6 +63,7 @@ const GROUPS: { id: string; title: string; metrics: string[]; nUnit: NUnit }[] =
     title: "Converting and saving",
     metrics: ["conversion_rate", "resilience_rate"],
     nUnit: GAMES,
+    caption: "games with a winning or lost position",
   },
   {
     id: "low-clock",
@@ -100,7 +106,20 @@ export type ProgressInput = {
   weekly: WeeklyReviewView[];
 };
 
-type Grid = { id: string; title: string; minN: number; nUnit: NUnit; items: KpiTrendItem[] };
+/** A metric without a trend to draw: its latest week in words, at body weight, never a headline. */
+export type EarlyRead = { metric: string; label: string; text: string };
+
+type Grid = {
+  id: string;
+  title: string;
+  minN: number;
+  nUnit: NUnit;
+  caption: string;
+  /** Metrics with at least one week at the minimum: drawn as multiples. */
+  items: KpiTrendItem[];
+  /** Metrics with none: early reads. */
+  early: EarlyRead[];
+};
 
 export type ProgressViewModel = {
   basis: ProgressInput["basis"];
@@ -108,8 +127,13 @@ export type ProgressViewModel = {
   kpis: {
     range: { from: string; to: string };
     events: { date: string; label: string }[];
+    /** Distinct weeks in the range; below `MIN_TREND_WEEKS` nothing is charted. */
+    weeks: number;
+    collapsed: boolean;
     rating: Grid;
     groups: Grid[];
+    /** The group that shows the grid's key (the first with a chart); the others hide theirs. */
+    keyGroup: string | null;
   } | null;
   timeline: { series: TimelineSeries[]; range: { from: string; to: string } } | null;
   weekly: { reviews: WeeklyReviewView[]; first: FirstReview };
@@ -142,24 +166,51 @@ function item(t: KpiTrend): KpiTrendItem {
   return { metric: t.metric, label: t.label, unit: t.unit, points, ...(nUnit ? { nUnit } : {}) };
 }
 
+/** The latest measured week in words, with its n and, below the minimum, the threshold. */
+function earlyRead(it: KpiTrendItem, minN: number, groupUnit: NUnit): EarlyRead {
+  const unit = it.nUnit ?? groupUnit;
+  const last = [...it.points]
+    .reverse()
+    .find((p) => p.value !== null && Number.isFinite(p.value) && p.n > 0);
+  if (!last || last.value === null) {
+    return { metric: it.metric, label: it.label, text: `No ${unit.many} yet.` };
+  }
+  const value = formatKpiValue(last.value, it.unit);
+  const when = `from ${nText(last.n, unit)} in the week of ${dayText(last.week)}.`;
+  const text =
+    last.n < minN
+      ? `Early read: ${value} ${when} A week counts from ${count.format(minN)} ${minN === 1 ? unit.one : unit.many}.`
+      : `Latest: ${value} ${when}`;
+  return { metric: it.metric, label: it.label, text };
+}
+
 function grid(
-  id: string,
-  title: string,
-  metrics: string[],
-  nUnit: NUnit,
+  g: { id: string; title: string; metrics: string[]; nUnit: NUnit; caption?: string },
   byMetric: Map<string, KpiTrendItem>,
+  collapsed: boolean,
 ): Grid {
-  const items = metrics.map(
+  const all = g.metrics.map(
     (m) => byMetric.get(m) ?? { metric: m, label: kpiDef(m)?.label ?? m, unit: null, points: [] },
   );
   // The strictest catalogue minimum of the group, so no week is drawn as sufficient too early.
-  const minN = Math.max(1, ...metrics.map((m) => kpiDef(m)?.minN ?? 1));
-  return { id, title, minN, nUnit, items };
+  const minN = Math.max(1, ...g.metrics.map((m) => kpiDef(m)?.minN ?? 1));
+  const charted = (it: KpiTrendItem) => !collapsed && it.points.some((p) => onLine(p, minN));
+  return {
+    id: g.id,
+    title: g.title,
+    minN,
+    nUnit: g.nUnit,
+    caption: g.caption ?? g.nUnit.many,
+    items: all.filter(charted),
+    early: all.filter((it) => !charted(it)).map((it) => earlyRead(it, minN, g.nUnit)),
+  };
 }
 
 export function toProgressView(input: ProgressInput): ProgressViewModel {
   const byMetric = new Map(input.trends.map((t) => [t.metric, item(t)]));
-  const weeks = [...byMetric.values()].flatMap((i) => i.points.map((p) => p.week)).sort();
+  const weeks = [
+    ...new Set([...byMetric.values()].flatMap((i) => i.points.map((p) => p.week))),
+  ].sort();
   const first = weeks[0];
   const last = weeks.at(-1);
 
@@ -170,11 +221,20 @@ export function toProgressView(input: ProgressInput): ProgressViewModel {
       reportDay && reportDay >= first && reportDay <= addDays(last, 6)
         ? [{ date: reportDay, label: "your report was built" }]
         : [];
+    const collapsed = weeks.length < MIN_TREND_WEEKS;
+    const groups = GROUPS.map((g) => grid(g, byMetric, collapsed));
     kpis = {
       range: { from: first, to: last },
       events,
-      rating: grid("rating", "Rating", ["rating"], GAMES, byMetric),
-      groups: GROUPS.map((g) => grid(g.id, g.title, g.metrics, g.nUnit, byMetric)),
+      weeks: weeks.length,
+      collapsed,
+      rating: grid(
+        { id: "rating", title: "Rating", metrics: ["rating"], nUnit: GAMES },
+        byMetric,
+        collapsed,
+      ),
+      groups,
+      keyGroup: groups.find((g) => g.items.length > 0)?.id ?? null,
     };
   }
 
@@ -189,15 +249,15 @@ export function toProgressView(input: ProgressInput): ProgressViewModel {
       ? { series, range: { from: [starts[0], today].sort()[0] ?? today, to: today } }
       : null;
 
-  // The newest week with games; Rust reviews it on the Monday after (G2, `reviewed_week`).
+  // Rust reviews a week with games on the Monday after it (G2, `reviewed_week`). The first review
+  // still to come is the earliest such week whose Monday is today or later.
   const played = input.trends
     .flatMap((t) => t.points.filter((p) => p.n > 0).map((p) => weekMonday(p.week)))
     .filter((w): w is string => w != null)
     .sort()
-    .at(-1);
-  const due = played ? addDays(played, 7) : null;
+    .find((w) => addDays(w, 7) >= today);
   const firstReview: FirstReview =
-    input.weekly.length === 0 && played && due && due >= today ? { week: played, due } : null;
+    input.weekly.length === 0 && played ? { week: played, due: addDays(played, 7) } : null;
 
   return {
     basis: input.basis,
@@ -230,8 +290,9 @@ function Section({
 }
 
 /**
- * One key per page: the first KPI group shows KpiTrendGrid's key and report list; the rating and
- * the other groups hide theirs and say the one thing that differs (their threshold) in a line.
+ * One key per page: the first group with a chart shows KpiTrendGrid's key and report list; the
+ * rating and the other groups hide theirs and say the one thing that differs (their threshold).
+ * Depends on the grid's first child being the key block (hand-off: a `showKey` prop in @ci/ui).
  */
 const NO_KEY = "[&>div:first-child]:hidden";
 
@@ -241,12 +302,149 @@ function ReportNote({ events }: { events: { date: string; label: string }[] }) {
   return (
     <>
       {" "}
-      Dashed rule 1 is the day <time dateTime={ev.date}>{dayWords(ev.date)}</time> {ev.label}.
+      Dashed rule 1 is the day <time dateTime={ev.date}>{dayText(ev.date)}</time> {ev.label}.
     </>
   );
 }
 
+function EarlyList({ reads }: { reads: EarlyRead[] }) {
+  if (reads.length === 0) return null;
+  return (
+    <ul className="m-0 flex list-none flex-col p-0 [font-variant-numeric:lining-nums]">
+      {reads.map((r) => (
+        <li
+          key={r.metric}
+          data-early={r.metric}
+          className="flex flex-col gap-0.5 border-b border-rule py-2.5 last:border-b-0 md:flex-row md:gap-6"
+        >
+          <span className="text-base text-ink md:w-64 md:shrink-0">{r.label}</span>
+          <span className="text-sm text-ink-soft md:pt-0.5">{r.text}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 const sheet = "rounded-sheet bg-sheet px-(--space-panel-pad) py-6 md:py-8";
+
+type Kpis = NonNullable<ProgressViewModel["kpis"]>;
+
+/** Fewer than `MIN_TREND_WEEKS` weeks: one note and every metric's early read, no empty charts. */
+function CollapsedTrends({ kpis }: { kpis: Kpis }) {
+  return (
+    <Section
+      id="rating-heading"
+      title="Rating and trends"
+      lede="Your recorded rating; it moves for many reasons."
+    >
+      <div data-surface="sheet" className={`${sheet} flex flex-col gap-6`}>
+        <p className="m-0 max-w-2xl text-base text-ink [font-variant-numeric:lining-nums]">
+          Trends appear after {MIN_TREND_WEEKS} weeks of games. You have {kpis.weeks} so far.
+        </p>
+        {[kpis.rating, ...kpis.groups].map((g) => (
+          <div key={g.id} className="flex flex-col gap-1">
+            {g.id === "rating" ? null : (
+              <h3 className="m-0 text-sm font-medium text-ink-soft">{g.title}</h3>
+            )}
+            <EarlyList reads={g.early} />
+          </div>
+        ))}
+      </div>
+    </Section>
+  );
+}
+
+function Trends({ kpis }: { kpis: Kpis }) {
+  const { range, events } = kpis;
+  return (
+    <>
+      <Section
+        id="rating-heading"
+        title="Rating over time"
+        lede="Your recorded rating; it moves for many reasons."
+      >
+        <div
+          data-surface="sheet"
+          className={`${sheet} grid grid-cols-1 gap-x-10 gap-y-4 lg:grid-cols-5 lg:items-end`}
+        >
+          {kpis.rating.items.length > 0 ? (
+            <>
+              <KpiTrendGrid
+                items={kpis.rating.items}
+                range={range}
+                events={events}
+                minN={kpis.rating.minN}
+                nUnit={kpis.rating.nUnit}
+                headingLevel={3}
+                className={`lg:col-span-3 ${NO_KEY}`}
+              />
+              <p className="m-0 max-w-md text-sm text-ink-faint lg:col-span-2">
+                The line joins weeks with a recorded rating; a break is a week without games.
+                <ReportNote events={events} />
+              </p>
+            </>
+          ) : (
+            <div className="lg:col-span-5">
+              <EarlyList reads={kpis.rating.early} />
+            </div>
+          )}
+        </div>
+      </Section>
+
+      <Section
+        id="kpi-heading"
+        title="How you play"
+        lede="Each week's value with its stored 80% range, on the same weeks as your rating."
+      >
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          {kpis.groups.map((g, i) => {
+            const keyed = g.id === kpis.keyGroup;
+            return (
+              <section
+                key={g.id}
+                data-surface="sheet"
+                className={`${sheet} flex flex-col gap-4 ${i === 0 ? "lg:col-span-2" : i === 1 ? "lg:row-span-2" : ""}`}
+                aria-labelledby={`kpi-${g.id}`}
+              >
+                <div className="flex flex-col gap-1">
+                  <h3 id={`kpi-${g.id}`} className="m-0 font-serif text-xl font-semibold text-ink">
+                    {g.title}
+                  </h3>
+                  {g.items.length > 0 && !keyed ? (
+                    <p className="m-0 text-sm text-ink-faint">
+                      Marks as in the key above; hollow weeks had fewer than {g.minN} {g.caption}.
+                    </p>
+                  ) : null}
+                </div>
+                {g.items.length > 0 ? (
+                  <KpiTrendGrid
+                    items={g.items}
+                    range={range}
+                    events={events}
+                    minN={g.minN}
+                    nUnit={g.nUnit}
+                    headingLevel={4}
+                    className={keyed ? undefined : NO_KEY}
+                  />
+                ) : null}
+                {g.early.length > 0 ? (
+                  <div className="flex flex-col gap-1">
+                    {g.items.length > 0 ? (
+                      <h4 className="m-0 text-sm font-medium text-ink-soft">
+                        Not enough games for a trend yet
+                      </h4>
+                    ) : null}
+                    <EarlyList reads={g.early} />
+                  </div>
+                ) : null}
+              </section>
+            );
+          })}
+        </div>
+      </Section>
+    </>
+  );
+}
 
 export function ProgressView({
   view,
@@ -280,80 +478,16 @@ export function ProgressView({
         </div>
       </Section>
 
-      {view.kpis ? (
-        <>
-          <Section
-            id="rating-heading"
-            title="Rating over time"
-            lede="Your recorded rating; it moves for many reasons."
-          >
-            <div
-              data-surface="sheet"
-              className={`${sheet} grid grid-cols-1 gap-x-10 gap-y-4 lg:grid-cols-5 lg:items-end`}
-            >
-              <KpiTrendGrid
-                items={view.kpis.rating.items}
-                range={view.kpis.range}
-                events={view.kpis.events}
-                minN={view.kpis.rating.minN}
-                nUnit={view.kpis.rating.nUnit}
-                headingLevel={3}
-                className={`lg:col-span-3 ${NO_KEY}`}
-              />
-              <p className="m-0 max-w-md text-sm text-ink-faint lg:col-span-2">
-                The line joins weeks with a recorded rating; a break is a week without games.
-                <ReportNote events={view.kpis.events} />
-              </p>
-            </div>
-          </Section>
-
-          <Section
-            id="kpi-heading"
-            title="How you play"
-            lede="Each week's value with its stored 80% range, on the same weeks as your rating."
-          >
-            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-              {view.kpis.groups.map((g, i) => (
-                <section
-                  key={g.id}
-                  data-surface="sheet"
-                  className={`${sheet} flex flex-col gap-4 ${i === 0 ? "lg:col-span-2" : i === 1 ? "lg:row-span-2" : ""}`}
-                  aria-labelledby={`kpi-${g.id}`}
-                >
-                  <div className="flex flex-col gap-1">
-                    <h3
-                      id={`kpi-${g.id}`}
-                      className="m-0 font-serif text-xl font-semibold text-ink"
-                    >
-                      {g.title}
-                    </h3>
-                    {i === 0 ? null : (
-                      <p className="m-0 text-sm text-ink-faint">
-                        Marks as in the key above; hollow weeks had fewer than {g.minN}{" "}
-                        {g.nUnit.many}.
-                      </p>
-                    )}
-                  </div>
-                  <KpiTrendGrid
-                    items={g.items}
-                    range={view.kpis?.range ?? { from: "", to: "" }}
-                    events={view.kpis?.events ?? []}
-                    minN={g.minN}
-                    nUnit={g.nUnit}
-                    headingLevel={4}
-                    className={i === 0 ? undefined : NO_KEY}
-                  />
-                </section>
-              ))}
-            </div>
-          </Section>
-        </>
-      ) : (
-        <Section id="rating-heading" title="Rating and KPIs">
+      {view.kpis === null ? (
+        <Section id="rating-heading" title="Rating and trends">
           <p className="max-w-2xl text-base text-ink-soft">
             Weekly trends appear once a week of your games is analysed.
           </p>
         </Section>
+      ) : view.kpis.collapsed ? (
+        <CollapsedTrends kpis={view.kpis} />
+      ) : (
+        <Trends kpis={view.kpis} />
       )}
 
       <Section

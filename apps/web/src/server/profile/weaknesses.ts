@@ -303,6 +303,15 @@ async function weeklyOf(
   });
 }
 
+/** A history row's stored `evidence` as counts; null unless both are whole, non-negative numbers. */
+function countsOf(v: unknown): { events: number; chances: number } | null {
+  if (!isObj(v)) return null;
+  const { k, n } = v;
+  return isNum(k) && isNum(n) && k >= 0 && n >= 0 && Number.isInteger(k) && Number.isInteger(n)
+    ? { events: k, chances: n }
+    : null;
+}
+
 /** One weakness with its history, timeline, weekly rates and exemplars; null when not found. */
 export async function getWeakness(
   db: Db,
@@ -333,6 +342,7 @@ export async function getWeakness(
         rateBefore: r.rateBefore,
         rateAfter: r.rateAfter,
         causeHints: Array.isArray(r.causeHints) ? r.causeHints : [],
+        counts: countsOf(r.evidence),
       })),
       timeline: timelineOf(seriesKey, base.label, rows),
       weekly: await weeklyOf(tx, scope, seriesKey),

@@ -61,11 +61,28 @@ function trend(metric: string, weeks: string[], value: (i: number) => number | n
     label: d.label,
     unit: d.unit,
     current: null,
-    points: weeks.map((week, i) => ({ week, value: value(i), low: null, high: null, n: 24 })),
+    points: weeks.map((week, i) => ({ week, value: value(i), low: null, high: null, n: 50 })),
   };
 }
 
 const WEEKS = ["2026-W40", "2026-W41", "2026-W42", "2026-W43", "2026-W44", "2026-W45"];
+
+type HistoryRow = WeaknessDetail["history"][number];
+const row = (over: Partial<HistoryRow>): HistoryRow => ({
+  kind: "transition",
+  fromState: null,
+  toState: "active",
+  at: null,
+  onsetAt: null,
+  onsetLow: null,
+  onsetHigh: null,
+  pChange: null,
+  rateBefore: null,
+  rateAfter: null,
+  causeHints: [],
+  counts: null,
+  ...over,
+});
 
 function weakness(over: Partial<WeaknessDetail> = {}): WeaknessDetail {
   return {
@@ -82,40 +99,39 @@ function weakness(over: Partial<WeaknessDetail> = {}): WeaknessDetail {
     pImp: 0.8,
     updatedAt: NOW,
     onset: null,
+    // Shaped like Rust's rows: the confirming game writes a transition (no onset fields) and an
+    // onset row with the same game, rates and counts, whose onset is the change point.
     history: [
-      {
-        kind: "transition",
-        fromState: null,
-        toState: "active",
-        at: new Date("2026-09-01T12:00:00Z"),
-        onsetAt: null,
-        onsetLow: null,
-        onsetHigh: null,
-        pChange: null,
-        rateBefore: null,
-        rateAfter: null,
-        causeHints: [],
-      },
-      {
-        kind: "transition",
+      row({ toState: "active", at: new Date("2026-09-01T12:00:00Z") }),
+      row({
         fromState: "active",
         toState: "improving",
-        at: new Date("2026-10-14T12:00:00Z"),
-        onsetAt: null,
-        onsetLow: null,
-        onsetHigh: null,
+        at: new Date("2026-10-21T12:00:00Z"),
         pChange: 0.93,
         rateBefore: 0.041,
         rateAfter: 0.026,
-        causeHints: [],
-      },
+        counts: { events: 12, chances: 460 },
+      }),
+      row({
+        kind: "onset",
+        fromState: "active",
+        toState: "improving",
+        at: new Date("2026-10-21T12:00:00Z"),
+        onsetAt: new Date("2026-10-14T12:00:00Z"),
+        onsetLow: new Date("2026-10-08T12:00:00Z"),
+        onsetHigh: new Date("2026-10-19T12:00:00Z"),
+        pChange: 0.93,
+        rateBefore: 0.041,
+        rateAfter: 0.026,
+        counts: { events: 12, chances: 460 },
+      }),
     ],
     timeline: {
       id: "W1",
       label: "Hung material",
       segments: [
-        { state: "active", from: "2026-09-01", to: "2026-10-14" },
-        { state: "improving", from: "2026-10-14", to: null },
+        { state: "active", from: "2026-09-01", to: "2026-10-21" },
+        { state: "improving", from: "2026-10-21", to: null },
       ],
     },
     weekly: [],
@@ -158,13 +174,44 @@ describe("progress page", () => {
   it("before and after comes from the transition row", () => {
     const { container } = show(input());
     const block = section(container, "before-after-heading");
+    // The date is the change point (the same-game onset row), not the confirming game.
     expect(block.textContent).toContain(
       "Hung material: 4.1% before, 2.6% after 14 Oct 2026, detected improving",
     );
-    // The opening transition into active has no rates and is no before-and-after.
-    expect(block.querySelectorAll("li")).toHaveLength(1);
-    expect(block.textContent).not.toMatch(/fixed|thanks to|because|training/i);
     expect(block.querySelector('time[datetime="2026-10-14"]')).not.toBeNull();
+    expect(block.textContent).not.toContain("21 Oct 2026");
+    // One row per weakness: the onset row pairs with its transition, the first row has no rates.
+    expect(block.querySelectorAll("li[data-change]")).toHaveLength(1);
+    expect(block.textContent).not.toMatch(/fixed|thanks to|because|training/i);
+  });
+
+  it("without an onset row the date is the confirming game, said as such", () => {
+    const w = weakness();
+    const history = w.history.filter((h) => h.kind === "transition");
+    const { container } = show(input({ weaknesses: [{ ...w, history }] }));
+    const block = section(container, "before-after-heading");
+    expect(block.textContent).toContain(
+      "Hung material: 4.1% before, 2.6% after, detected improving on 21 Oct 2026",
+    );
+    expect(block.textContent).not.toContain("after 21 Oct");
+  });
+
+  it("each side of a before and after states its own n", () => {
+    const { container } = show(input());
+    const block = section(container, "before-after-heading");
+    expect(block.textContent).toContain("After: 12 of 460 chances since 14 Oct 2026");
+    expect(block.textContent).toContain("Before: from the earlier games of that stretch");
+    // Never the current estimate's six-month n.
+    expect(block.textContent).not.toMatch(/1,200|in all/);
+  });
+
+  it("before and after labels both values on the row's own scale", () => {
+    const { container } = show(input());
+    const block = section(container, "before-after-heading");
+    const svg = block.querySelector("svg[data-dumbbell]");
+    expect(svg?.textContent).toContain("4.1%");
+    expect(svg?.textContent).toContain("2.6%");
+    expect(block.textContent).toContain("Each row on its own scale from 0");
   });
 
   it("no transition gives the honest empty line", () => {
@@ -219,9 +266,40 @@ describe("progress page", () => {
       t.metric === "conversion_rate" ? { ...t, points: [] } : t,
     );
     const { container } = show(input({ trends }));
-    const fig = container.querySelector('figure[data-kpi="conversion_rate"]') as HTMLElement;
-    expect(fig.textContent).toMatch(/in this range yet/);
-    expect(fig.textContent).not.toMatch(/\b0(\.0)?%/);
+    expect(container.querySelector('figure[data-kpi="conversion_rate"]')).toBeNull();
+    const early = container.querySelector('[data-early="conversion_rate"]') as HTMLElement;
+    expect(early.textContent).toMatch(/No games with a winning position yet/);
+    expect(early.textContent).not.toMatch(/\b0(\.0)?%/);
+  });
+
+  it("a metric with no week at its minimum is an early read, not a chart", () => {
+    const trends = input().trends.map((t) =>
+      t.metric === "blunders_per_game"
+        ? { ...t, points: t.points.map((p) => ({ ...p, n: 6, value: 1.6 })) }
+        : t,
+    );
+    const { container } = show(input({ trends }));
+    expect(container.querySelector('figure[data-kpi="blunders_per_game"]')).toBeNull();
+    const early = container.querySelector('[data-early="blunders_per_game"]') as HTMLElement;
+    expect(early.textContent).toContain("Early read: 1.60 from 6 games in the week of 2 Nov 2026.");
+    expect(early.textContent).toContain("A week counts from 20 games.");
+    // Settled metrics keep their charts.
+    expect(container.querySelector('figure[data-kpi="accuracy"]')).not.toBeNull();
+  });
+
+  it("fewer than three weeks collapse into one note and early reads", () => {
+    const two = ["2026-W46", "2026-W47"];
+    const { container } = show(
+      input({
+        trends: PROGRESS_METRICS.map((m) => trend(m, two, () => (m === "rating" ? 1480 : 40))),
+      }),
+    );
+    expect(container.querySelectorAll("figure[data-kpi]")).toHaveLength(0);
+    expect(container.textContent).toContain(
+      "Trends appear after 3 weeks of games. You have 2 so far.",
+    );
+    expect(container.querySelectorAll("[data-early]")).toHaveLength(PROGRESS_METRICS.length);
+    expect(container.querySelector('[data-early="rating"]')?.textContent).toContain("1,480");
   });
 
   it("the weakness timeline has a lane per measured weakness", () => {
@@ -301,6 +379,23 @@ describe("progress page", () => {
       "Your first, for the week of 16 Nov 2026, is scheduled for 23 Nov 2026.",
     );
     expect(block.querySelector('time[datetime="2026-11-23"]')).not.toBeNull();
+  });
+
+  it("the first review is the earliest week still due", () => {
+    // Monday 23 Nov before the run: the week of 16 Nov is due today, so it is the first, even
+    // though the week of 23 Nov already has games.
+    const now = new Date("2026-11-23T02:00:00Z");
+    const trends = input().trends.map((t) => ({
+      ...t,
+      points: [
+        { week: "2026-W47", value: 50, low: null, high: null, n: 3 },
+        { week: "2026-W48", value: 50, low: null, high: null, n: 1 },
+      ],
+    }));
+    const { container } = show(input({ now, weekly: [], trends }));
+    expect(section(container, "weekly-heading").textContent).toContain(
+      "Your first, for the week of 16 Nov 2026, is scheduled for 23 Nov 2026.",
+    );
   });
 
   it("a new account with two weeks renders without bad text", () => {

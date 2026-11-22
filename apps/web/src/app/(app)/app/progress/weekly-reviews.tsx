@@ -1,7 +1,8 @@
 import { AiDisclosure, CoachState, SegmentText } from "@ci/ui/coach";
+import { dayText } from "@ci/ui/profile";
+import { ProgressPlaceholder } from "@ci/ui/progress";
 import { segmentHref } from "../../../../lib/segment-href";
 import type { NarrativeItem, WeeklyReviewView } from "../../../../server/coaching";
-import { dayWords } from "./before-after";
 
 // Weekly reviews (spec G2: Rust writes them each Monday for the week before). Model text is shown
 // only for a `ready` review with its validated content and its stored disclosure (ADR 0060,
@@ -12,7 +13,7 @@ export const WEEKLY_PENDING = "Your weekly review is being written";
 export const WEEKLY_UNCHECKED =
   "This week's review couldn't be checked against your games, so it isn't shown.";
 
-/** When the first review is due: the Monday after the newest week with games, if still ahead. */
+/** The first review: the earliest week with games whose review day (the Monday after) is today or later. */
 export type FirstReview = { week: string; due: string } | null;
 
 function Week({ start }: { start: string }) {
@@ -20,7 +21,7 @@ function Week({ start }: { start: string }) {
     <h3 className="m-0 font-serif text-xl font-semibold text-ink">
       Week of{" "}
       <time dateTime={start} className="[font-variant-numeric:lining-nums]">
-        {dayWords(start)}
+        {dayText(start)}
       </time>
     </h3>
   );
@@ -104,7 +105,10 @@ function Review({ review }: { review: WeeklyReviewView }) {
       {review.status === "ready" ? (
         <Ready review={review} />
       ) : review.status === "pending" ? (
-        <CoachState kind="writing" title={WEEKLY_PENDING} titleAs="p" />
+        <div className="flex flex-col gap-3">
+          <p className="m-0 text-base text-ink-soft">{WEEKLY_PENDING}</p>
+          <ProgressPlaceholder shape="list" verb="Writing" />
+        </div>
       ) : (
         <CoachState kind="unavailable" title={WEEKLY_UNCHECKED} titleAs="p" />
       )}
@@ -126,8 +130,8 @@ export function WeeklyReviews({
         <p className="m-0 max-w-2xl text-base text-ink-soft [font-variant-numeric:lining-nums]">
           {first ? (
             <>
-              Your first, for the week of <time dateTime={first.week}>{dayWords(first.week)}</time>,
-              is scheduled for <time dateTime={first.due}>{dayWords(first.due)}</time>.
+              Your first, for the week of <time dateTime={first.week}>{dayText(first.week)}</time>,
+              is scheduled for <time dateTime={first.due}>{dayText(first.due)}</time>.
             </>
           ) : (
             "Each Monday your coach reviews the week before, for any week you played in."

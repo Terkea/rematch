@@ -36,6 +36,7 @@ describe("progress page reads through the read models", () => {
           toState: "improving",
           rateBefore: 0.041,
           rateAfter: 0.026,
+          evidence: { k: 12, n: 460, confidence: 0.9 },
         },
       ],
       kpis: [{ metric: "accuracy", windowKey: "2026-W45", value: 61.5, n: 22 }],
@@ -47,6 +48,7 @@ describe("progress page reads through the read models", () => {
     expect(data.trends.find((t) => t.metric === "accuracy")?.points).toHaveLength(1);
     expect(data.weaknesses.map((w) => w.seriesKey)).toEqual(["W1"]);
     expect(data.weaknesses[0]?.history[0]?.rateBefore).toBe(0.041);
+    expect(data.weaknesses[0]?.history[0]?.counts).toEqual({ events: 12, chances: 460 });
     expect(data.weekly).toHaveLength(1);
   });
 

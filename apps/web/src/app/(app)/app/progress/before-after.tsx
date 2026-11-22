@@ -1,13 +1,15 @@
+import { dayText } from "@ci/ui/profile";
 import { stateStyle } from "@ci/ui/timeline";
 import type { WeaknessDetail } from "../../../../server/profile";
 
 // Before and after (spec §10a.4): the rates either side of a detected change, straight from the
-// weakness's own transition row (`weakness_state_history.rate_before` / `rate_after`). The words
-// follow §12a: a change is "detected", never "fixed", and nothing names training as its cause.
+// weakness's own history rows (`weakness_state_history.rate_before` / `rate_after`). Rust writes a
+// confirmed change as two rows of the same game: a transition (no onset fields) and an onset row
+// whose onset is the change point, where the rates split. The words follow §12a: a change is
+// "detected", never "fixed", and nothing names training as its cause.
 
 const CALLED = ["improving", "resolved", "relapsed"] as const;
 type Called = (typeof CALLED)[number];
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const count = new Intl.NumberFormat("en-GB");
 
 export type BeforeAfterRow = {
@@ -16,10 +18,15 @@ export type BeforeAfterRow = {
   state: Called;
   before: number;
   after: number;
-  /** The change point (the onset when stored, else the transition's game), ISO day. */
-  day: string | null;
-  chances: number;
+  /** The change point from the same-game onset row, with its likely range (ISO days). */
+  onset: { day: string; low: string | null; high: string | null } | null;
+  /** The game that confirmed the change (ISO day). */
+  confirmed: string | null;
+  /** The after side's counts (the row's stored evidence: the games since the onset). */
+  afterCounts: { events: number; chances: number } | null;
 };
+
+type History = WeaknessDetail["history"][number];
 
 const fin = (v: number | null): v is number => v !== null && Number.isFinite(v);
 
@@ -27,12 +34,9 @@ export function isoDay(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
-export function dayWords(iso: string): string {
-  const [y, m, d] = iso.split("-").map(Number);
-  return `${d} ${MONTHS[(m ?? 1) - 1]} ${y}`;
-}
-
 const pct = (share: number) => `${(share * 100).toFixed(1)}%`;
+const sameTime = (a: Date | null, b: Date | null) =>
+  a !== null && b !== null && a.getTime() === b.getTime();
 
 /** Per weakness, its newest transition into improving, resolved or relapsed that has both rates. */
 export function beforeAfterRows(weaknesses: WeaknessDetail[]): BeforeAfterRow[] {
@@ -41,65 +45,115 @@ export function beforeAfterRows(weaknesses: WeaknessDetail[]): BeforeAfterRow[] 
     const hit = [...w.history]
       .reverse()
       .find(
-        (h) =>
+        (h): h is History & { rateBefore: number; rateAfter: number } =>
           h.kind === "transition" &&
           (CALLED as readonly string[]).includes(h.toState) &&
           fin(h.rateBefore) &&
           fin(h.rateAfter),
       );
-    if (!hit || !fin(hit.rateBefore) || !fin(hit.rateAfter)) continue;
-    const at = hit.onsetAt ?? hit.at;
+    if (!hit) continue;
+    const onsetRow = w.history.find(
+      (h) => h.kind === "onset" && h.toState === hit.toState && sameTime(h.at, hit.at) && h.onsetAt,
+    );
     rows.push({
       seriesKey: w.seriesKey,
       label: w.label,
       state: hit.toState as Called,
       before: hit.rateBefore,
       after: hit.rateAfter,
-      day: at ? isoDay(at) : null,
-      chances: w.evidence.chances,
+      onset: onsetRow?.onsetAt
+        ? {
+            day: isoDay(onsetRow.onsetAt),
+            low: onsetRow.onsetLow ? isoDay(onsetRow.onsetLow) : null,
+            high: onsetRow.onsetHigh ? isoDay(onsetRow.onsetHigh) : null,
+          }
+        : null,
+      confirmed: hit.at ? isoDay(hit.at) : null,
+      afterCounts: hit.counts ?? onsetRow?.counts ?? null,
     });
   }
-  return rows.sort((a, b) => (b.day ?? "").localeCompare(a.day ?? ""));
+  const key = (r: BeforeAfterRow) => r.onset?.day ?? r.confirmed ?? "";
+  return rows.sort((a, b) => key(b).localeCompare(key(a)));
 }
 
-/** "Hung material: 4.1% before, 2.6% after 14 Oct 2026, detected improving". */
+/**
+ * "Hung material: 4.1% before, 2.6% after 14 Oct 2026, detected improving" when the change point
+ * is stored; otherwise the confirming game, said as such ("…, detected improving on 21 Oct 2026").
+ */
 export function beforeAfterText(r: BeforeAfterRow): string {
-  const when = r.day ? ` ${dayWords(r.day)}` : "";
-  return `${r.label}: ${pct(r.before)} before, ${pct(r.after)} after${when}, detected ${r.state}`;
+  const head = `${r.label}: ${pct(r.before)} before, ${pct(r.after)} after`;
+  if (r.onset) return `${head} ${dayText(r.onset.day)}, detected ${r.state}`;
+  const on = r.confirmed ? ` on ${dayText(r.confirmed)}` : "";
+  return `${head}, detected ${r.state}${on}`;
 }
 
-const W = 160;
-const H = 14;
-const PAD = 6;
+const W = 240;
+const H = 30;
+const PAD_L = 48;
+const PAD_R = 48;
+const MID = 22;
 
-/** A ring for before and a dot for after on one shared scale, joined by a rule. */
-function Dumbbell({ before, after, max }: { before: number; after: number; max: number }) {
-  const x = (v: number) => PAD + (max > 0 ? v / max : 0) * (W - 2 * PAD);
+/**
+ * A ring for before and a dot for after on the row's own scale from 0, each value labelled above
+ * its mark: the lower one ending at it, the higher one starting at it, so the labels never overlap.
+ */
+function Dumbbell({ before, after }: { before: number; after: number }) {
+  const max = Math.max(before, after) * 1.25 || 1;
+  const x = (v: number) => PAD_L + (v / max) * (W - PAD_L - PAD_R);
+  const lowIsBefore = before <= after;
+  const label = (v: number, side: "left" | "right") => (
+    <text
+      x={side === "left" ? x(v) - 3 : x(v) + 3}
+      y={MID - 9}
+      textAnchor={side === "left" ? "end" : "start"}
+      className="fill-ink-soft text-xs [font-variant-numeric:lining-nums]"
+    >
+      {pct(v)}
+    </text>
+  );
   return (
     <svg
+      data-dumbbell=""
       aria-hidden="true"
       viewBox={`0 0 ${W} ${H}`}
       width={W}
       height={H}
       className="shrink-0 overflow-visible"
     >
-      <line x1={PAD} x2={W - PAD} y1={H / 2} y2={H / 2} strokeWidth={1} className="stroke-rule" />
+      <line
+        x1={PAD_L}
+        x2={W - PAD_R}
+        y1={MID}
+        y2={MID}
+        strokeWidth={1}
+        className="stroke-rule-strong"
+      />
+      <line
+        x1={PAD_L}
+        x2={PAD_L}
+        y1={MID - 4}
+        y2={MID + 4}
+        strokeWidth={1}
+        className="stroke-rule-strong"
+      />
       <line
         x1={x(before)}
         x2={x(after)}
-        y1={H / 2}
-        y2={H / 2}
+        y1={MID}
+        y2={MID}
         strokeWidth={2}
         className="stroke-ink-soft"
       />
       <circle
         cx={x(before)}
-        cy={H / 2}
-        r={4}
+        cy={MID}
+        r={4.5}
         strokeWidth={1.75}
         className="fill-sheet stroke-ink-soft"
       />
-      <circle cx={x(after)} cy={H / 2} r={4} className="fill-ink" />
+      <circle cx={x(after)} cy={MID} r={4.5} className="fill-ink" />
+      {label(before, lowIsBefore ? "left" : "right")}
+      {label(after, lowIsBefore ? "right" : "left")}
     </svg>
   );
 }
@@ -139,6 +193,50 @@ function StateMark({ state }: { state: Called }) {
   );
 }
 
+function Day({ iso }: { iso: string }) {
+  return (
+    <time dateTime={iso} className="whitespace-nowrap">
+      {dayText(iso)}
+    </time>
+  );
+}
+
+/** What each side's rate rests on. Rust stores the after side's counts; the before side's are not. */
+function Sides({ r }: { r: BeforeAfterRow }) {
+  const c = r.afterCounts;
+  const since = r.onset ? (
+    <>
+      since <Day iso={r.onset.day} />
+    </>
+  ) : (
+    "since the change point"
+  );
+  const range =
+    r.onset?.low && r.onset.high && r.onset.low !== r.onset.high ? (
+      <>
+        {" "}
+        (the change point lies between <Day iso={r.onset.low} /> and <Day iso={r.onset.high} />)
+      </>
+    ) : null;
+  return (
+    <ul className="m-0 flex list-none flex-col gap-0.5 p-0 text-sm text-ink-faint [font-variant-numeric:lining-nums]">
+      <li>
+        After:{" "}
+        {c ? (
+          <>
+            {count.format(c.events)} of {count.format(c.chances)}{" "}
+            {c.chances === 1 ? "chance" : "chances"} {since}
+          </>
+        ) : (
+          <>the games {since}; their count isn't stored</>
+        )}
+        {range}
+      </li>
+      <li>Before: from the earlier games of that stretch; their count isn't stored yet</li>
+    </ul>
+  );
+}
+
 export function BeforeAfter({ rows }: { rows: BeforeAfterRow[] }) {
   if (rows.length === 0) {
     return (
@@ -147,14 +245,14 @@ export function BeforeAfter({ rows }: { rows: BeforeAfterRow[] }) {
       </p>
     );
   }
-  const max = Math.max(...rows.flatMap((r) => [r.before, r.after])) * 1.15;
   return (
     <div className="flex flex-col gap-3">
-      <ul className="m-0 flex list-none flex-col p-0">
+      <ol className="m-0 flex list-none flex-col p-0">
         {rows.map((r) => (
           <li
             key={r.seriesKey}
-            className="flex flex-col gap-2 border-b border-rule py-4 first:pt-0 last:border-b-0 md:flex-row md:items-center md:gap-6"
+            data-change={r.seriesKey}
+            className="flex flex-col gap-3 border-b border-rule py-4 first:pt-0 last:border-b-0 lg:flex-row lg:items-center lg:gap-10"
           >
             <div className="flex min-w-0 flex-1 flex-col gap-1">
               <p className="m-0 text-base text-ink [font-variant-numeric:lining-nums]">
@@ -162,29 +260,33 @@ export function BeforeAfter({ rows }: { rows: BeforeAfterRow[] }) {
                 <span aria-hidden="true">
                   <span className="font-medium">{r.label}</span>: {pct(r.before)} before,{" "}
                   {pct(r.after)} after
-                  {r.day ? (
+                  {r.onset ? (
                     <>
                       {" "}
-                      <time dateTime={r.day} className="whitespace-nowrap">
-                        {dayWords(r.day)}
-                      </time>
+                      <Day iso={r.onset.day} />, detected {r.state}
                     </>
-                  ) : null}
-                  , detected {r.state}
+                  ) : (
+                    <>
+                      , detected {r.state}
+                      {r.confirmed ? (
+                        <>
+                          {" "}
+                          on <Day iso={r.confirmed} />
+                        </>
+                      ) : null}
+                    </>
+                  )}
                 </span>
               </p>
-              <p className="m-0 text-sm text-ink-faint">
-                Rates either side of the change point, from {count.format(r.chances)}{" "}
-                {r.chances === 1 ? "chance" : "chances"} in all
-              </p>
+              <Sides r={r} />
             </div>
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-              <Dumbbell before={r.before} after={r.after} max={max} />
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+              <Dumbbell before={r.before} after={r.after} />
               <StateMark state={r.state} />
             </div>
           </li>
         ))}
-      </ul>
+      </ol>
       <p className="m-0 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-ink-faint">
         <span className="inline-flex items-center gap-1.5">
           <svg aria-hidden="true" width={10} height={10}>
@@ -198,7 +300,7 @@ export function BeforeAfter({ rows }: { rows: BeforeAfterRow[] }) {
           </svg>
           After
         </span>
-        <span>On one scale from 0 for every row</span>
+        <span>Each row on its own scale from 0</span>
       </p>
     </div>
   );

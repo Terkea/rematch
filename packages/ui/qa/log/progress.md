@@ -44,3 +44,28 @@ Checked and kept:
   links it to training.
 - Weekly reviews show model text only when the review is `ready` with its stored disclosure
   ("Written by AI", the date, and the note behind the info button).
+
+## Pass 2 (review-t10 pass B, needs-changes; fixes by the implementer)
+
+Retaken shots (rich, empty two-week account, pending review; 390 and 1440, light and dark) are in
+the T10 scratchpad `fix1/`. No overflow at 360 or 390, and no bad text.
+
+1. **Thin reads looked settled (Important).** A metric with no week at its minimum is no longer a
+   chart with a big headline. It is an early-read row at body weight ("Early read: 78.0% from 5 games
+   in the week of 16 Nov 2026. A week counts from 20 games."). With fewer than 3 weeks the page draws
+   no charts at all: one note ("Trends appear after 3 weeks of games. You have 2 so far.") and every
+   metric's early read.
+2. **The dumbbell was illegible for small rates (Important).** Each row now has its own scale from 0,
+   with a 0 tick and both values labelled above their marks (the lower one ending at its mark, the
+   higher one starting at its mark), and the legend says "Each row on its own scale from 0".
+3. **Before and after date and n.** The date is the change point from the same-game onset row, with
+   its likely range. The after side shows its stored count ("After: 12 of 460 chances since 14 Oct
+   2026"). The before side says plainly that its count isn't stored. It no longer cites the six-month
+   estimate's n.
+4. **Pending review.** The state line is at body weight under the week heading, and the shot data
+   uses a finished week (9 Nov).
+5. **Group captions** name what the threshold counts ("fewer than 15 games with a winning or lost
+   position").
+
+Left to `@ci/ui` (hand-offs): bands that run through hollow weeks, the decimals on y-axis ticks and
+their 11px `ink-faint` labels, and a `showKey` or per-item `minN` prop to replace the CSS hide.
