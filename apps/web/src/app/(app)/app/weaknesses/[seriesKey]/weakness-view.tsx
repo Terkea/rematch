@@ -21,6 +21,12 @@ import { MorphArrival } from "../../../../../components/shared-morph";
 import { coachChatLive } from "../../../../../lib/coach-chat";
 import type { ChangeNoteView } from "../../../../../server/coaching";
 import type { CoachScope, WeaknessDetail } from "../../../../../server/profile";
+import {
+  BENCHMARK_BIAS_TEXT,
+  type Benchmark,
+  benchmarkGroupLabel,
+  benchmarkLabel,
+} from "../../../../../server/profile/benchmark-text";
 import { ESTIMATE_WINDOW_TEXT } from "../../../../../server/profile/window";
 import { SectionHead } from "../../_overview/section-head";
 import { scopeQuery, WEEKLY_MIN_CHANCES } from "../queries";
@@ -152,7 +158,7 @@ const scaleText = (share: number) =>
   Number.isFinite(share) ? `${Number((share * 100).toFixed(1))}%` : "";
 
 /** The early read's key: the same marks drawn provisional, as the strip draws them. */
-function EarlyKey() {
+function EarlyKey({ group }: { group: string }) {
   return (
     <ul
       aria-label="Key"
@@ -171,7 +177,7 @@ function EarlyKey() {
       </li>
       <li className="flex items-center gap-2">
         <span aria-hidden="true" className="mt-2 h-2.5 w-0.5 rounded-full bg-pencil" />
-        Players in your rating band, median
+        {group}, median
       </li>
     </ul>
   );
@@ -224,7 +230,12 @@ function Header({ detail, scope, askHref }: Props & { askHref: string }) {
   );
 }
 
-function Standing({ detail }: { detail: WeaknessDetail }) {
+/** The reference group's name when nothing more specific is known. */
+const DEFAULT_GROUP = "Players in your rating band";
+
+function Standing({ detail, benchmark }: { detail: WeaknessDetail; benchmark: Benchmark | null }) {
+  const group = benchmarkGroupLabel(benchmark) ?? DEFAULT_GROUP;
+  const label = benchmarkLabel(benchmark);
   const early = !detail.evidence.sufficient;
   const none = detail.evidence.chances <= 0;
   const median = detail.compared ? detail.band.median : null;
@@ -282,7 +293,7 @@ function Standing({ detail }: { detail: WeaknessDetail }) {
         {none ? null : (
           <>
             <IntervalScale rate={detail.rate} median={median} early={early} />
-            {early ? <EarlyKey /> : <WeaknessRowKey className="text-xs" />}
+            {early ? <EarlyKey group={group} /> : <WeaknessRowKey className="text-xs" />}
           </>
         )}
         <div className="flex flex-col gap-1 text-sm" style={LINING}>
@@ -293,9 +304,14 @@ function Standing({ detail }: { detail: WeaknessDetail }) {
               <p className="font-medium text-ink">Band median {shareText(median)}</p>
               <p className="text-ink-soft">
                 {early || none
-                  ? "Players in your rating band. A comparison waits for more chances."
-                  : `Players in your rating band, ${bandRelation(detail.rate, median)}.`}
+                  ? `${group}. A comparison waits for more chances.`
+                  : `${group}, ${bandRelation(detail.rate, median)}.`}
               </p>
+              {label === null ? null : (
+                <p data-benchmark="peers" className="text-ink-soft">
+                  {label}. {BENCHMARK_BIAS_TEXT}
+                </p>
+              )}
             </>
           )}
           <p className="mt-2 text-ink-soft">
@@ -392,8 +408,11 @@ export function WeaknessView({
   notes,
   reviewIds,
   askHref,
+  benchmark = null,
 }: Props & {
   notes: ChangeNoteView[];
+  /** What the comparison was made with (ADR 0080); null without a peer benchmark. */
+  benchmark?: Benchmark | null;
   /** `games.id` by platform game id, for the exemplars and the note's moves. */
   reviewIds: Map<string, string>;
   askHref: string;
@@ -409,7 +428,7 @@ export function WeaknessView({
       className="flex flex-col gap-8"
       header={<Header detail={detail} scope={scope} askHref={askHref} />}
     >
-      <Standing detail={detail} />
+      <Standing detail={detail} benchmark={benchmark} />
 
       <section aria-labelledby="timeline-heading" className="flex flex-col gap-5">
         <SectionHead id="timeline-heading" title="State over time" />

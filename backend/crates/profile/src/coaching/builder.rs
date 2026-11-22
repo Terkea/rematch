@@ -51,7 +51,6 @@ use profile_core::timeline::states::DETECTOR_VERSION;
 use profile_core::types::{
     BandReference, GameContext, MetricId, PlayerGameMetrics, SeriesKey, StrengthKind, WeaknessKey,
 };
-use refdata::band_reference::load_band_reference;
 use refdata::builds::RefdataError;
 use refdata::repertoire::player_band;
 use scheduler::precision::{PrecisionInput, is_precise};
@@ -72,6 +71,7 @@ use super::strengths::{
     AREA_STRENGTH_SCORE, MAX_STRENGTH_EXEMPLARS, StrengthCandidate, StrengthSource,
     WEAKNESS_STRENGTH_CONFIDENCE, area_kinds, select_strengths, weakness_kinds,
 };
+use crate::peer_benchmark::load_account_benchmark;
 use crate::analyse_features::parse_time_class;
 use crate::estimates::{age_days, compute_estimates, games_in_window};
 use crate::load::{LoadError, load_analysed_games, load_series_points};
@@ -814,9 +814,9 @@ pub async fn build_coaching_input_report(
     series.retain(|_, p| !p.is_empty());
 
     let (band, _source) = player_band(pool, account_id, tc).await?;
-    let reference: Option<BandReference> = load_band_reference(pool, band, tc)
-        .await?
-        .map(|r| r.reference());
+    // What the account's last build-profile compared with (ADR 0080), so the input and the
+    // stored estimates agree.
+    let reference: Option<BandReference> = load_account_benchmark(pool, account_id, tc).await?;
     let rating: Option<i32> = sqlx::query_scalar(
         "SELECT CASE WHEN player_color = 'white' THEN white_rating ELSE black_rating END \
          FROM games WHERE account_id = $1 AND time_class = $2::time_class \

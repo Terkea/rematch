@@ -3,7 +3,12 @@ import { queryKeys } from "../../../../lib/query-keys";
 import { requireUser } from "../../../../server/auth/session";
 import { getDb } from "../../../../server/db";
 import { requestEventCursor } from "../../../../server/events/request-cursor";
-import { difficultyStatus, listWeaknesses, resolveCoachScope } from "../../../../server/profile";
+import {
+  difficultyStatus,
+  getBenchmark,
+  listWeaknesses,
+  resolveCoachScope,
+} from "../../../../server/profile";
 import { weeklyRates } from "./queries";
 import { WeaknessesView } from "./weaknesses-view";
 
@@ -25,10 +30,11 @@ export default async function WeaknessesPage({ searchParams }: Props) {
   if (!scope) {
     return <WeaknessesView scope={null} weaknesses={[]} trends={new Map()} difficulty={null} />;
   }
-  const [weaknesses, trends, difficulty] = await Promise.all([
+  const [weaknesses, trends, difficulty, benchmark] = await Promise.all([
     listWeaknesses(db, user.id, scope),
     weeklyRates(db, user.id, scope),
     difficultyStatus(db, user.id, scope),
+    getBenchmark(db, user.id, scope),
   ]);
   return (
     <>
@@ -38,6 +44,7 @@ export default async function WeaknessesPage({ searchParams }: Props) {
         weaknesses={weaknesses}
         trends={trends}
         difficulty={difficulty}
+        benchmark={benchmark}
       />
     </>
   );
