@@ -42,6 +42,7 @@ use uuid::Uuid;
 use crate::deadline::{ANALYSE_DEADLINE, JobDeadlineError};
 use crate::eval_cache::EvalCache;
 use crate::evaluate::{DeadlineInfo, EvalStats, EvaluateDeps, EvaluateError, evaluate_game};
+use crate::hook::{AnalyseHook, HookError, HookInput, PreparedHook};
 use crate::metrics::{GameMetrics, log_metrics, record_metrics};
 
 /// Minimum gap between heartbeat writes.
@@ -69,6 +70,8 @@ pub struct AnalyseGameDeps {
     pub concurrency: usize,
     /// Publish `game.analysed` and `job.failed` (default true).
     pub publish_events: bool,
+    /// The analyse-game hook (R2 Task 31). `None` (the default) keeps R1's behaviour exactly.
+    pub hook: Option<Arc<dyn AnalyseHook>>,
 }
 
 impl AnalyseGameDeps {
@@ -82,6 +85,7 @@ impl AnalyseGameDeps {
             deadline: ANALYSE_DEADLINE,
             concurrency: DEFAULT_CONCURRENCY,
             publish_events: true,
+            hook: None,
         }
     }
 }
@@ -289,6 +293,18 @@ enum Failure {
     Records(#[from] MoveRecordError),
     #[error("database error: {0}")]
     Db(#[from] sqlx::Error),
+    /// The hook was cancelled by the run's token (shutdown, lost lease or deadline).
+    #[error("analyse hook cancelled")]
+    HookCancelled,
+}
+
+/// The hook's result for this attempt.
+enum HookState {
+    /// No hook configured (R1).
+    None,
+    Prepared(Box<dyn PreparedHook>),
+    /// `prepare` failed: persist without hook rows, leaving the game unenriched.
+    Failed,
 }
 
 /// The game while this attempt owns it.
@@ -420,8 +436,12 @@ pub async fn handle_analyse_game(
         }
     };
 
+    let mut prepared = None;
     let outcome = match result {
-        Ok(outcome) => Ok(outcome),
+        Ok((outcome, hook)) => {
+            prepared = hook;
+            Ok(outcome)
+        }
         Err(Failure::Superseded) => Ok(AnalyseOutcome::Superseded),
         Err(failure) => Err(on_failure(deps, job, &game, fence, timed_out, &cancel, failure).await),
     };
@@ -446,6 +466,10 @@ pub async fn handle_analyse_game(
         {
             tracing::warn!(game_id = %game_id, error = %e, "publish failed");
         }
+    }
+    // The hook's post-commit work (enqueues, its own metrics) follows the publish.
+    if let Some(prepared) = prepared {
+        prepared.after_commit().await;
     }
     metrics.total_ms = ms(started.elapsed());
     if let Err(e) = record_metrics(&deps.pool, &metrics).await {
@@ -507,9 +531,11 @@ async fn on_failure(
         failure,
         Failure::Evaluate(EvaluateError::Engine(EngineError::PoolClosed))
     );
+    // A cancelled hook is a shutdown release too, unless the deadline cancelled it (a timeout).
+    let hook_cancelled = matches!(failure, Failure::HookCancelled) && timed_out.is_none();
     // A shutdown (or a lost lease) is not the game's fault: leave it pending, use no attempt.
-    if pool_closed || cancel.is_cancelled() {
-        let message = if pool_closed {
+    if pool_closed || hook_cancelled || cancel.is_cancelled() {
+        let message = if pool_closed || hook_cancelled {
             failure.to_string()
         } else {
             "analysis interrupted by shutdown".to_owned()
@@ -614,7 +640,7 @@ async fn analyse(
     token: &CancellationToken,
     deadline: DeadlineInfo,
     metrics: &mut GameMetrics,
-) -> Result<AnalyseOutcome, Failure> {
+) -> Result<(AnalyseOutcome, Option<Box<dyn PreparedHook>>), Failure> {
     let pool = &deps.pool;
     let skipped = || async {
         if fence
@@ -625,7 +651,7 @@ async fn analyse(
             )
             .await?
         {
-            Ok(AnalyseOutcome::Skipped)
+            Ok((AnalyseOutcome::Skipped, None))
         } else {
             Err(Failure::Superseded)
         }
@@ -719,27 +745,90 @@ async fn analyse(
     let white = game_accuracy(&wins, Color::White);
     let black = game_accuracy(&wins, Color::Black);
 
+    let hook = match &deps.hook {
+        None => HookState::None,
+        Some(hook) => {
+            let input = HookInput {
+                game,
+                parsed: &parsed,
+                evals: &evals,
+                records: &records,
+                cancel: token,
+            };
+            // The hook may run engines for a while: keep the heartbeat going meanwhile.
+            let prepare = hook.prepare(input);
+            tokio::pin!(prepare);
+            let ticker = async {
+                let mut tick = tokio::time::interval(every.max(MIN_HOOK_BEAT));
+                tick.tick().await;
+                while !token.is_cancelled() {
+                    tokio::select! {
+                        _ = tick.tick() => {}
+                        () = token.cancelled() => break,
+                    }
+                    if let Err(e) = heartbeat(0, 0).await {
+                        tracing::warn!(game_id = %game.id, error = %e, "heartbeat failed");
+                    }
+                }
+            };
+            let prepared = tokio::select! {
+                r = &mut prepare => r,
+                () = ticker => prepare.await,
+            };
+            if lost.load(Ordering::SeqCst) {
+                return Err(Failure::Superseded);
+            }
+            match prepared {
+                Ok(p) => HookState::Prepared(p),
+                Err(HookError::Cancelled) => return Err(Failure::HookCancelled),
+                Err(HookError::Failed(message)) => {
+                    tracing::warn!(
+                        game_id = %game.id,
+                        error = %message,
+                        "analyse hook failed; persisting the analysis without its rows"
+                    );
+                    HookState::Failed
+                }
+            }
+        }
+    };
+
     let t = Instant::now();
-    let persisted = persist(pool, fence, &records, white, black).await;
+    let persisted = persist(pool, fence, &records, white, black, hook).await;
     metrics.persist_ms = Some(ms(t.elapsed()));
-    persisted?;
-    Ok(AnalyseOutcome::Done {
-        accuracy: Some(if game.player_color == "white" {
-            white
-        } else {
-            black
-        }),
-    })
+    let prepared = persisted?;
+    Ok((
+        AnalyseOutcome::Done {
+            accuracy: Some(if game.player_color == "white" {
+                white
+            } else {
+                black
+            }),
+        },
+        prepared,
+    ))
 }
 
-/// Claims `done` under the fence (or rolls back with `Superseded`), then replaces the moves.
+/// Shortest heartbeat period while the hook runs.
+const MIN_HOOK_BEAT: Duration = Duration::from_millis(10);
+
+/// Leaves the game for `requeue_unenriched`, with no derived rows of an earlier analysis left
+/// to serve and no preview (the done transition replaces it), in the analysis transaction.
+async fn mark_unenriched(conn: &mut sqlx::PgConnection, game_id: Uuid) -> Result<(), sqlx::Error> {
+    crate::hook::clear_hook_rows(conn, game_id).await
+}
+
+/// Claims `done` under the fence (or rolls back with `Superseded`), then replaces the moves, then
+/// writes the hook's rows in a savepoint. Returns the prepared hook when its rows were written
+/// (its `after_commit` is due).
 async fn persist(
     pool: &PgPool,
     fence: Fence,
     records: &[MoveRecord],
     white: f64,
     black: f64,
-) -> Result<(), Failure> {
+    hook: HookState,
+) -> Result<Option<Box<dyn PreparedHook>>, Failure> {
     let mut tx = pool.begin().await?;
     let owned: Option<Uuid> = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
         "UPDATE games SET analysis_status = 'done', analysis_protocol = $4, \
@@ -765,8 +854,38 @@ async fn persist(
     for chunk in records.chunks(INSERT_CHUNK) {
         insert_moves(&mut tx, fence.game_id, chunk).await?;
     }
+    let written = match hook {
+        HookState::None => None,
+        HookState::Failed => {
+            mark_unenriched(&mut tx, fence.game_id).await?;
+            None
+        }
+        HookState::Prepared(prepared) => {
+            let mut savepoint = sqlx::Connection::begin(&mut *tx).await?;
+            let wrote = {
+                let fut = prepared.persist(&mut savepoint);
+                fut.await
+            };
+            match wrote {
+                Ok(()) => {
+                    savepoint.commit().await?;
+                    Some(prepared)
+                }
+                Err(e) => {
+                    savepoint.rollback().await?;
+                    tracing::warn!(
+                        game_id = %fence.game_id,
+                        error = %e,
+                        "analyse hook rows failed to persist; keeping the analysis without them"
+                    );
+                    mark_unenriched(&mut tx, fence.game_id).await?;
+                    None
+                }
+            }
+        }
+    };
     tx.commit().await?;
-    Ok(())
+    Ok(written)
 }
 
 const INSERT_MOVES_SQL: &str = "INSERT INTO moves (game_id, ply, color, san, uci, fen_before, \
