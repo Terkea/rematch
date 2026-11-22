@@ -1,5 +1,12 @@
 import { Button } from "@ci/ui/primitives";
-import { NOT_COMPARED_LABEL, WeaknessRow, WeaknessRowKey, weaknessScaleMax } from "@ci/ui/profile";
+import {
+  NO_COLOUR_BENCHMARK,
+  NOT_COMPARED_LABEL,
+  type SideRate,
+  WeaknessRow,
+  WeaknessRowKey,
+  weaknessScaleMax,
+} from "@ci/ui/profile";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { CoachScopeSwitch } from "../../../../components/coach-scope-switch";
@@ -61,6 +68,34 @@ export const UNCOMPARED_GROUP = {
   title: NOT_COMPARED_LABEL,
   lede: "No benchmark for players at your level yet. Each shows your own rate, its range and its chances.",
 } as const;
+
+/**
+ * One colour's groups (ADR 0082): its rows carry the account's state, which is called on every
+ * game, so they are not grouped by what they are doing. Ranked by the colour's own priority;
+ * a row without the colour's own peer rows is "No colour benchmark", never the both one.
+ */
+export function groupColourWeaknesses(list: WeaknessSummary[], colour: "White" | "Black") {
+  const settled = list.filter((w) => w.evidence.sufficient);
+  return [
+    {
+      id: "colour",
+      title: `In your ${colour} games`,
+      lede: `Compared with players at your level in their ${colour} games, most pressing first. States are called on all your games, so they are not shown per colour.`,
+      rows: settled.filter((w) => w.compared),
+    },
+    {
+      id: "uncompared",
+      title: NO_COLOUR_BENCHMARK,
+      lede: `No peer rates for ${colour} yet. Each shows your own rate, its range and its chances.`,
+      rows: settled.filter((w) => !w.compared),
+    },
+    {
+      ...EARLY_GROUP,
+      lede: `Not enough chances in your ${colour} games yet. Each says how many more it needs.`,
+      rows: list.filter((w) => !w.evidence.sufficient),
+    },
+  ];
+}
 
 export function groupWeaknesses(list: WeaknessSummary[]) {
   const settled = list.filter((w) => w.evidence.sufficient);
@@ -131,6 +166,7 @@ export function WeaknessesView({
   benchmark = null,
   filterBar,
   accountSwitch = true,
+  sides = null,
 }: {
   scope: CoachScope | null;
   weaknesses: WeaknessSummary[];
@@ -141,9 +177,16 @@ export function WeaknessesView({
   filterBar?: ReactNode;
   /** Whether the scope switch is still needed (more than one linked account). */
   accountSwitch?: boolean;
+  /** In Both mode, each series' White and Black estimate, shown under its row (ADR 0082). */
+  sides?: Map<string, { white: SideRate | null; black: SideRate | null }> | null;
 }) {
   const group = benchmarkGroupLabel(benchmark);
-  const groups = groupWeaknesses(weaknesses).filter((g) => g.rows.length > 0);
+  const side = scope?.side === "white" || scope?.side === "black" ? scope.side : undefined;
+  const groups = (
+    side
+      ? groupColourWeaknesses(weaknesses, side === "white" ? "White" : "Black")
+      : groupWeaknesses(weaknesses)
+  ).filter((g) => g.rows.length > 0);
   // One interval scale for the whole page, so a row's range compares with every other row's.
   const scaleMax = weaknessScaleMax(weaknesses);
   return (
@@ -214,6 +257,10 @@ export function WeaknessesView({
                         onset={w.onset ? w.onset.at.toISOString().slice(0, 10) : null}
                         scaleMax={scaleMax}
                         explain={seriesGlossary(w.seriesKey)}
+                        {...(side ? { side } : {})}
+                        {...(sides
+                          ? { sides: sides.get(w.seriesKey) ?? { white: null, black: null } }
+                          : {})}
                       />
                     </MorphLink>
                   </li>

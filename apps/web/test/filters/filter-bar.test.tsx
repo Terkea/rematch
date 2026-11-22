@@ -78,7 +78,7 @@ describe("FilterBar", () => {
 
   it("says honestly where the stored data has no colour split", () => {
     render(bar("", { color: "coming" }));
-    expect(screen.getAllByText(/Colour split for weaknesses is coming/)[0]).toBeInTheDocument();
+    expect(screen.getAllByText(/These numbers cover both colours/)[0]).toBeInTheDocument();
     expect(screen.queryAllByRole("link", { name: "White" })).toHaveLength(0);
   });
 });

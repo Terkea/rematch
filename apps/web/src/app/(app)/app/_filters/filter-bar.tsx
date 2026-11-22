@@ -188,7 +188,7 @@ function Body({
  */
 export function FilterBar({
   model,
-  colorNote = "Colour split for weaknesses is coming. These numbers cover both colours.",
+  colorNote = "These numbers cover both colours.",
 }: {
   model: FilterBarModel;
   colorNote?: string;

@@ -13,6 +13,7 @@ import { CompareBlock } from "../_filters/compare-block";
 import { compareView } from "../_filters/compare-view";
 import { FilterBar } from "../_filters/filter-bar";
 import { loadCoachBar, manyAccounts } from "../_filters/load";
+import { storedSide } from "../_filters/side";
 import { loadProgress } from "./load";
 import { ProgressView, toProgressView } from "./progress-view";
 
@@ -63,7 +64,7 @@ export default async function ProgressPage({
   });
   const f = bar.filters;
   const [input, compared] = await Promise.all([
-    loadProgress(db, user.id, scope, now, { from: f.from, to: f.to }),
+    loadProgress(db, user.id, scope, now, { from: f.from, to: f.to }, storedSide(f)),
     loadPeriodComparison(db, user.id, f, now, { accountId: scope.accountId }),
   ]);
   const view = toProgressView(input);
@@ -86,8 +87,8 @@ export default async function ProgressPage({
             <FilterBar model={bar.model} />
             {f.color !== "both" ? (
               <p className="m-0 max-w-prose text-sm text-ink-soft">
-                Colour applies to the comparison. The trends and timeline below cover both colours
-                until their colour split is ready.
+                Colour applies to the comparison and the weekly trends. Before and after and the
+                weakness timeline cover both colours: states are called on all your games.
               </p>
             ) : null}
           </>

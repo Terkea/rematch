@@ -54,6 +54,28 @@ describe("listWeaknesses", () => {
     expect(list.map((w) => [w.seriesKey, w.rate.mean])).toEqual([["W1", 0.05]]);
   });
 
+  it("reads one colour's rows when the scope names a side (T3, ADR 0082)", async () => {
+    await seedProfile(db, accountId, {
+      timeClass: "rapid",
+      games: 1,
+      estimates: [
+        { seriesKey: "W1", priority: 1, mean: 0.05 },
+        { seriesKey: "W1", side: "white", priority: 3, mean: 0.09 },
+        { seriesKey: "W1", side: "black", priority: 0, mean: 0.02 },
+        { seriesKey: "W2", side: "white", priority: 2, mean: 0.1 },
+      ],
+    });
+    const scope = await scopeOf(userId);
+    const white = await listWeaknesses(db, userId, { ...scope, side: "white" });
+    expect(white.map((w) => [w.seriesKey, w.rate.mean])).toEqual([
+      ["W1", 0.09],
+      ["W2", 0.1],
+    ]);
+    const black = await listWeaknesses(db, userId, { ...scope, side: "black" });
+    expect(black.map((w) => [w.seriesKey, w.rate.mean])).toEqual([["W1", 0.02]]);
+    expect((await listWeaknesses(db, userId, { ...scope, side: "both" })).length).toBe(1);
+  });
+
   it("lists by priority with stored intervals", async () => {
     await seedProfile(db, accountId, {
       timeClass: "rapid",

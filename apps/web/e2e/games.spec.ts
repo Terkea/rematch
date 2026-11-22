@@ -93,7 +93,8 @@ test("overview, explorer and review, end to end", async ({ browser, request }, i
     // The shared filter bar (T3): its desktop copy is the one shown at this width.
     const tc = page.locator("[data-filter-bar] > div").getByRole("group", { name: "Time control" });
     await tc.getByRole("link", { name: /^Rapid/ }).click();
-    await expect(page).toHaveURL(/[?&]tc=rapid\b/);
+    // Rapid is the default class, so its canonical URL names no class (ADR 0083).
+    await expect(page).toHaveURL(/\/app$/);
     await expect(tc.getByRole("link", { name: /^Rapid/ })).toHaveAttribute("aria-current", "true");
     await expect(page.getByText(/^Across 16 rapid games your accuracy averages/)).toBeVisible();
     await expect(page.getByText(/^Across 16 rapid games\.$/)).toBeVisible();

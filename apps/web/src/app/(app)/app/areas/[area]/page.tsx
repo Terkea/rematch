@@ -67,11 +67,11 @@ export default async function AreaPage({
   const bar = await loadCoachBar(db, search, resolved, {
     basePath: `/app/areas/${area}`,
     formatSupported: false,
-    color: "coming",
+    color: "on",
     dates: true,
     compare: false,
   });
-  // The stored estimates are Both only until ADR 0082; `withSide` carries the colour filter.
+  // The colour filter reads that side's area score, measures and estimates (ADR 0082).
   const scope = withSide(resolved, bar.filters);
   const range = { from: bar.filters.from, to: bar.filters.to };
 

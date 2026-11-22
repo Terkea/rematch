@@ -1,25 +1,23 @@
 import type { StatsFilters } from "../../../../server/filters/params";
+import type { Side } from "../../../../server/profile/types";
 
 /**
- * The side of the stored per-colour estimates (weakness estimates, KPI snapshots, band
- * reference) that the colour filter reads. Every read of them takes its side from here, so the
- * colour filter reaches them in one line.
- *
- * TODO(ADR 0082): return `f.color` once `feat/colour-split` lands the `side` column
- * ('both' | 'white' | 'black') and the read models take it. Until then the stored data is
- * Both only, and the bar says so ("Colour split for weaknesses is coming").
+ * The side of the stored per-colour rows (weakness estimates, KPI snapshots, area scores and
+ * the peer benchmark's rows, ADR 0082) that the colour filter reads. Timeline states have no
+ * side: they are always every game's.
  */
-export function storedSide(_f: Pick<StatsFilters, "color">): "both" {
-  return "both";
+export function storedSide(f: Pick<StatsFilters, "color">): Side {
+  return f.color;
 }
 
-/**
- * The coach scope with the colour filter's stored side attached. The read models ignore `side`
- * today; once ADR 0082's read models take it, they read it from here and nothing else changes.
- */
+/** The coach scope with the colour filter's side, which the profile read models read. */
 export function withSide<S extends object>(
   scope: S,
   f: Pick<StatsFilters, "color">,
-): S & { side: ReturnType<typeof storedSide> } {
+): S & { side: Side } {
   return { ...scope, side: storedSide(f) };
 }
+
+/** "White", "Black", or null for both. */
+export const sideName = (side: Side | undefined) =>
+  side === "white" ? "White" : side === "black" ? "Black" : null;

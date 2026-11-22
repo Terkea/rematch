@@ -5,9 +5,17 @@ import type { TimeClass } from "../games/types";
 export type { Area, TimelineSeries, WeaknessState };
 
 /** One (account, time class) the coach reads (ruling R1, ADR 0068). */
+/** Which games a stored profile row covers (ADR 0082): every game, or one colour's. */
+export type Side = "both" | "white" | "black";
+
 export type CoachScope = {
   accountId: string;
   timeClass: TimeClass;
+  /**
+   * The colour split's side the stored estimates and snapshots are read for (default "both").
+   * Timeline states (`weakness_state_history`) have no side: they are always every game's.
+   */
+  side?: Side;
   platform: "lichess" | "chesscom";
   username: string;
   options: {

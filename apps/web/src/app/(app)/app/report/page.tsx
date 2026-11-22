@@ -55,8 +55,9 @@ export default async function ReportPage({
     compare: false,
     now,
   });
-  // The stored estimates are Both only until ADR 0082; `withSide` carries the colour filter.
-  const scope = withSide(resolved, bar.filters);
+  // The report is built on all your games (its coach notes and sections have no side), so it
+  // reads the both rows whatever the colour filter says, and the bar says so.
+  const scope = withSide(resolved, { color: "both" });
   const data = await loadReport(db, user.id, scope, now, betaReportIntervalDays(), {
     from: bar.filters.from,
     to: bar.filters.to,
@@ -66,7 +67,12 @@ export default async function ReportPage({
       <LiveRefreshOn keys={[queryKeys.report(scope.accountId), queryKeys.notes(scope.accountId)]} />
       <ReportView
         data={data}
-        filterBar={<FilterBar model={bar.model} />}
+        filterBar={
+          <FilterBar
+            model={bar.model}
+            colorNote="The report covers both colours. Weaknesses, areas and progress split by colour."
+          />
+        }
         accountSwitch={manyAccounts(scope)}
       />
     </>

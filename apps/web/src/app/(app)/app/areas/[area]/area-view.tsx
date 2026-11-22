@@ -136,7 +136,10 @@ const finite = (v: number | null | undefined): v is number =>
   typeof v === "number" && Number.isFinite(v);
 
 function scopeQuery(scope: CoachScope): string {
-  return new URLSearchParams({ account: scope.accountId, tc: scope.timeClass }).toString();
+  const q = new URLSearchParams({ account: scope.accountId, tc: scope.timeClass });
+  // The colour filter travels with the scope (ADR 0082).
+  if (scope.side === "white" || scope.side === "black") q.set("color", scope.side);
+  return q.toString();
 }
 
 const areaHref = (area: Area, scope: CoachScope) => `/app/areas/${area}?${scopeQuery(scope)}`;
@@ -587,6 +590,7 @@ function WeaknessesPart({ model }: { model: AreaPageModel }) {
                 onset={w.onset ? w.onset.at.toISOString().slice(0, 10) : null}
                 scaleMax={scaleMax}
                 explain={seriesGlossary(w.seriesKey)}
+                {...(scope.side === "white" || scope.side === "black" ? { side: scope.side } : {})}
               />
             </li>
           ))}
@@ -595,6 +599,11 @@ function WeaknessesPart({ model }: { model: AreaPageModel }) {
       {timeline.length > 0 && from ? (
         <div className="flex flex-col gap-3">
           <h3 className="m-0 text-base font-medium text-ink">How they changed</h3>
+          {scope.side === "white" || scope.side === "black" ? (
+            <p className="m-0 text-sm text-ink-soft">
+              States are called on all your games together, so this timeline covers both colours.
+            </p>
+          ) : null}
           <WeaknessTimeline
             series={timeline}
             range={{ from, to: model.today }}

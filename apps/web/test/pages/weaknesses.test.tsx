@@ -75,6 +75,51 @@ function noBadText(container: HTMLElement) {
   expect(container.textContent ?? "").not.toMatch(/NaN|undefined|Infinity|null/);
 }
 
+describe("weaknesses by colour (T3, ADR 0082)", () => {
+  const none = { bandMedian: null, bandP40: null, excess: null };
+
+  it("Both lists each colour's rate with its n under the row", async () => {
+    await seedProfile(db, accountId, {
+      timeClass: "rapid",
+      games: 3,
+      estimates: [
+        { seriesKey: "W1", state: "active", priority: 3, mean: 0.05 },
+        { seriesKey: "W1", side: "white", priority: 3, mean: 0.061 },
+        { seriesKey: "W1", side: "black", priority: 1, mean: 0.032 },
+      ],
+    });
+    const { container } = await list();
+    const sides = container.querySelector("[data-part='sides']");
+    expect(sides?.textContent).toMatch(/White 6\.1% of [\d,]+ chances/);
+    expect(sides?.textContent).toMatch(/Black 3\.2% of [\d,]+ chances/);
+    noBadText(container);
+  });
+
+  it("one colour reads its own rows, shows no state, and never borrows Both's benchmark", async () => {
+    await seedProfile(db, accountId, {
+      timeClass: "rapid",
+      games: 3,
+      estimates: [
+        { seriesKey: "W1", state: "active", priority: 3, mean: 0.05 },
+        { seriesKey: "W1", side: "white", state: "active", priority: 3, mean: 0.061 },
+        { seriesKey: "W5", side: "white", state: "active", priority: 1, ...none },
+      ],
+    });
+    const { container } = await list({ color: "white" });
+    const text = container.textContent ?? "";
+    expect(screen.queryByRole("region", { name: "Costing you games" })).toBeNull();
+    expect(screen.getByRole("region", { name: "In your White games" }).textContent).toMatch(
+      /6\.1%/,
+    );
+    const uncompared = screen.getByRole("region", { name: "No colour benchmark" });
+    expect(uncompared.textContent).toMatch(/No colour benchmark/);
+    expect(text).not.toMatch(/Not compared yet/);
+    const link = screen.getAllByRole("link", { name: /Hung material/ })[0];
+    expect(link?.getAttribute("href")).toMatch(/color=white/);
+    noBadText(container);
+  });
+});
+
 describe("weaknesses list", () => {
   it("groups by state", async () => {
     await seedProfile(db, accountId, {

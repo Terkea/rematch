@@ -5,6 +5,7 @@ import type { DayRange } from "../../../../server/filters/params";
 import { readOnly } from "../../../../server/games";
 import type { CoachScope } from "../../../../server/profile";
 import { ownsScope } from "../../../../server/profile/scope";
+import { pointOnSide } from "../../../../server/profile/weaknesses";
 import { clipWeeklyRates } from "../_filters/clip";
 
 // Two narrow reads the weaknesses pages need beside T1's read model, each behind its `ownsScope`
@@ -35,7 +36,10 @@ export function basisText(scope: CoachScope): string {
 
 /** The scope's URL parameters, so a link opens the same games coached. */
 export function scopeQuery(scope: CoachScope): string {
-  return new URLSearchParams({ account: scope.accountId, tc: scope.timeClass }).toString();
+  const q = new URLSearchParams({ account: scope.accountId, tc: scope.timeClass });
+  // The colour filter travels with the scope, so a row opens the same colour's detail.
+  if (scope.side && scope.side !== "both") q.set("color", scope.side);
+  return q.toString();
 }
 
 export function weaknessHref(seriesKey: string, scope: CoachScope): string {
@@ -76,6 +80,8 @@ export async function weeklyRates(
         and(
           eq(weaknessSeriesPoint.accountId, scope.accountId),
           eq(weaknessSeriesPoint.timeClass, scope.timeClass),
+          // One colour's games when the colour filter names one (ADR 0082).
+          pointOnSide(scope),
         ),
       )
       .groupBy(weaknessSeriesPoint.seriesKey, monday);
