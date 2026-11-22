@@ -13,7 +13,8 @@ use serde::{Deserialize, Serialize};
 use super::codes::{Citation, SectionKey};
 use super::drills::DrillType;
 use super::schema::{
-    ITEM_TEXT_MAX_CHARS, MAX_DRILLS, MAX_FOCUSES, MAX_STRENGTHS, MIN_DRILLS, desc,
+    DRILL_RATIONALE_MAX_CHARS, ITEM_TEXT_MAX_CHARS, MAX_DRILLS, MAX_FOCUSES, MAX_STRENGTHS,
+    MIN_DRILLS, WEAKNESS_TITLE_MAX_CHARS, desc,
 };
 use crate::input::types::{AreaId, Verdict, nullable};
 use crate::segments::Segment;
@@ -65,6 +66,7 @@ pub struct WeaknessItem {
     pub citations: Vec<Citation>,
     #[schemars(description = desc::WEAKNESS_ID)]
     pub weakness_id: String,
+    #[schemars(length(min = 1, max = WEAKNESS_TITLE_MAX_CHARS))]
     pub title: String,
 }
 
@@ -100,6 +102,7 @@ pub struct OpeningsSection {
 pub struct Drill {
     #[schemars(description = desc::DRILL_TYPE)]
     pub drill_type: DrillType,
+    #[schemars(length(min = 1, max = DRILL_RATIONALE_MAX_CHARS))]
     pub rationale: String,
 }
 

@@ -532,6 +532,8 @@ fn schema_descriptions_are_pinned() {
                 "{maxItems: 4}".into(),
                 "{maxItems: 3}".into(),
                 "{minItems: 1, maxItems: 3}".into(),
+                "{minLength: 1, maxLength: 500}".into(),
+                "{minLength: 1, maxLength: 120}".into(),
             ]),
         ),
         (
@@ -768,4 +770,71 @@ fn weekly_exemplars_too_big() {
     let mut two = weekly;
     two["exemplars"] = json!([item(), item()]);
     assert_eq!(check(&WEEKLY_REVIEW_SCHEMA, &two), Ok(()));
+}
+
+// --- R3 Task 14 (from the T3 review): bounds on `Drill.rationale` and `WeaknessItem.title`. ---
+
+#[test]
+fn drill_rationale_and_weakness_title_are_bounded() {
+    use ai::output::schema::{DRILL_RATIONALE_MAX_CHARS, WEAKNESS_TITLE_MAX_CHARS};
+    assert_eq!(DRILL_RATIONALE_MAX_CHARS, 500);
+    assert_eq!(WEAKNESS_TITLE_MAX_CHARS, 120);
+    let plan_with = |r: String| {
+        let mut p = plan(1);
+        p["focuses"][0]["drills"][0]["rationale"] = json!(r);
+        envelope("climb_plan", "climbPlan", p)
+    };
+    assert_eq!(
+        check(&REPORT_SECTION_SCHEMA, &plan_with("é".repeat(500))),
+        Ok(())
+    );
+    assert_eq!(
+        codes(check(&REPORT_SECTION_SCHEMA, &plan_with("x".repeat(501)))),
+        vec![(
+            "climbPlan.focuses.0.drills.0.rationale".to_string(),
+            "too_big".to_string()
+        )]
+    );
+    assert_eq!(
+        codes(check(&REPORT_SECTION_SCHEMA, &plan_with(String::new()))),
+        vec![(
+            "climbPlan.focuses.0.drills.0.rationale".to_string(),
+            "too_small".to_string()
+        )]
+    );
+    let weakness_with = |t: String| {
+        let mut w = item();
+        w["weaknessId"] = json!("W1");
+        w["title"] = json!(t);
+        envelope("weaknesses", "weaknesses", json!({ "items": [w] }))
+    };
+    assert_eq!(
+        check(&REPORT_SECTION_SCHEMA, &weakness_with("t".repeat(120))),
+        Ok(())
+    );
+    assert_eq!(
+        codes(check(
+            &REPORT_SECTION_SCHEMA,
+            &weakness_with("t".repeat(121))
+        )),
+        vec![(
+            "weaknesses.items.0.title".to_string(),
+            "too_big".to_string()
+        )]
+    );
+    assert_eq!(
+        codes(check(&REPORT_SECTION_SCHEMA, &weakness_with(String::new()))),
+        vec![(
+            "weaknesses.items.0.title".to_string(),
+            "too_small".to_string()
+        )]
+    );
+    // The model sees the bounds as description hints.
+    let js = (REPORT_SECTION_SCHEMA.json)();
+    let drill = &js["properties"]["climbPlan"]["anyOf"][0]["properties"]["focuses"]["items"]["properties"]
+        ["drills"]["items"]["properties"]["rationale"];
+    assert_eq!(drill["description"], "{minLength: 1, maxLength: 500}");
+    let title = &js["properties"]["weaknesses"]["anyOf"][0]["properties"]["items"]["items"]["properties"]
+        ["title"];
+    assert_eq!(title["description"], "{minLength: 1, maxLength: 120}");
 }
