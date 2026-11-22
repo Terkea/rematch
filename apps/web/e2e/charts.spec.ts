@@ -114,7 +114,8 @@ test.describe("on a touch phone", () => {
       [x, y] as const,
     );
     await page.touchscreen.tap(x, y);
-    const dialog = page.getByRole("dialog");
+    // The styleguide also pins an open "How linking works" popover; pick the trend's one.
+    const dialog = page.getByRole("dialog").filter({ hasText: "Review game" });
     await expect(dialog).toBeVisible();
     const caption = dialog.locator("p").first();
     const first = await caption.textContent();

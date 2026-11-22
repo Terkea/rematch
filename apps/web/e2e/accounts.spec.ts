@@ -103,6 +103,15 @@ test("a player connects Lichess, then signs in with it", async ({ page, request,
   await gotoSettled(other, "/app/accounts");
   await expect(other.getByText("FakeUser")).toBeVisible();
   await context.close();
+
+  // Leave no verified link behind: the games seed refuses a database holding real accounts.
+  await page.reload();
+  await hydrated(page);
+  await page.getByRole("button", { name: "Remove" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Remove account" }).click();
+  await expect(
+    page.getByText("Connect a Lichess or chess.com account to import your games."),
+  ).toBeVisible();
 });
 
 test("an under-13 is blocked and the sign-in page stays blocked", async ({ page, request }) => {
