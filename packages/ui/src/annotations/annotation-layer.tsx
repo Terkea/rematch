@@ -92,6 +92,7 @@ interface BadgeMark {
   kind: "mark";
   key: string;
   tone: Tone;
+  weight: "full" | "light";
   glyph: string;
   cx: number;
   cy: number;
@@ -153,7 +154,7 @@ function planMarks(
         if (arrows.some((o) => o !== a && (o.from === sq || o.to === sq))) knight = "short";
       }
       const { shaft, head } = arrowGeometry(a.from, a.to, orientation, {
-        ringed: ringed.has(a.to),
+        ringed: ringed.has(a.to) || a.toEdge === true,
         tone: a.tone,
         seed: `arrow:${a.from}${a.to}`,
         knight,
@@ -266,12 +267,21 @@ function planMarks(
     const right = col + 1 - inset - r;
     const top = row + inset + r;
     const bottom = row + 1 - inset - r;
-    const corners = [
-      { x: right, y: top, ok: true },
-      { x: left, y: top, ok: col !== 0 },
-      { x: right, y: bottom, ok: row !== 7 },
-      { x: left, y: bottom, ok: true },
-    ].filter((c) => c.ok);
+    // `edge`: on the square's top corners themselves, kept on the board (a1-style coordinates sit
+    // bottom left and bottom right, so the top corners never cover them).
+    const onBoard = (v: number) => Math.min(8 - inset - r, Math.max(inset + r, v));
+    const corners =
+      a.place === "edge"
+        ? [
+            { x: onBoard(col + 1), y: onBoard(row), ok: true },
+            { x: onBoard(col), y: onBoard(row), ok: true },
+          ]
+        : [
+            { x: right, y: top, ok: true },
+            { x: left, y: top, ok: col !== 0 },
+            { x: right, y: bottom, ok: row !== 7 },
+            { x: left, y: bottom, ok: true },
+          ].filter((c) => c.ok);
     const heads = arrivals.get(a.square) ?? [];
     const clearance = (c: Point) =>
       heads.reduce(
@@ -294,6 +304,7 @@ function planMarks(
       kind: "mark",
       key: `mark:${a.square}:${a.glyph}:${a.tone}`,
       tone: a.tone,
+      weight: a.weight ?? "full",
       glyph: a.glyph,
       cx,
       cy,
@@ -402,12 +413,17 @@ function MarkPaint({
   );
 }
 
+/** A light badge's ring, in board units (2px at the 56px reference square). */
+const LIGHT_RING = 2 / 56;
+
 function BadgeView({ mark, still }: { mark: BadgeMark; still: boolean }) {
   const colour = TONE_COLOUR[mark.tone];
+  const light = mark.weight === "light";
   return (
     <motion.g
       data-mark="badge"
       data-tone={mark.tone}
+      data-weight={mark.weight}
       style={{ transformBox: "fill-box", transformOrigin: "center" }}
       initial={still ? false : { scale: 0, opacity: 0 }}
       animate={{ scale: 1, opacity: 1 }}
@@ -421,13 +437,24 @@ function BadgeView({ mark, still }: { mark: BadgeMark; still: boolean }) {
       }
     >
       <circle cx={mark.cx} cy={mark.cy} r={mark.r + HALO} fill="var(--color-sheet)" />
-      <circle cx={mark.cx} cy={mark.cy} r={mark.r} fill={colour} />
+      {light ? (
+        <circle
+          cx={mark.cx}
+          cy={mark.cy}
+          r={mark.r - LIGHT_RING / 2}
+          fill="var(--color-sheet)"
+          stroke={colour}
+          strokeWidth={LIGHT_RING}
+        />
+      ) : (
+        <circle cx={mark.cx} cy={mark.cy} r={mark.r} fill={colour} />
+      )}
       <text
         x={mark.cx}
         y={mark.cy}
         textAnchor="middle"
         dominantBaseline="central"
-        fill="var(--color-on-ink)"
+        fill={light ? colour : "var(--color-on-ink)"}
         style={{
           fontFamily: "var(--font-serif)",
           fontWeight: 600,

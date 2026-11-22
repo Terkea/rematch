@@ -153,9 +153,17 @@ const Cell = memo(function Cell({
         {move.judgement ? (
           <span
             data-glyph
+            data-severity={move.judgement}
             className={cn(
               "tracking-(--tracking-glyph)",
-              move.mine ? "text-pen-text" : "text-ink-soft",
+              // Graded (M5a T10): only the player's ?? in full pen, ? lighter, ?! in ink.
+              !move.mine
+                ? "text-ink-soft"
+                : move.judgement === "blunder"
+                  ? "text-pen-text"
+                  : move.judgement === "mistake"
+                    ? "text-pen-text/75"
+                    : "text-ink-soft",
             )}
           >
             {judgementGlyph[move.judgement]}

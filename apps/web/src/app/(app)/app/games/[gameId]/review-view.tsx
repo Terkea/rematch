@@ -1,0 +1,502 @@
+"use client";
+
+import { Board, EvalBar } from "@ci/ui/board";
+import { EvalGraph } from "@ci/ui/eval-graph";
+import { Icon, ListIcon } from "@ci/ui/icons";
+import { cn } from "@ci/ui/lib";
+import { Drawer } from "@ci/ui/overlays";
+import { buttonVariants, Kbd, Switch } from "@ci/ui/primitives";
+import { ProgressPlaceholder } from "@ci/ui/progress";
+import {
+  ClockPair,
+  type ClockSide,
+  ReviewControls,
+  Scoresheet,
+  useReviewKeys,
+} from "@ci/ui/review";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
+import { annotationsFor } from "./annotations";
+import {
+  checkSquare,
+  clockAt,
+  evalText,
+  fenAt,
+  graphPoints,
+  hasTenths,
+  lastMoveAt,
+  scoreAt,
+  sheetMoves,
+  spentAt,
+} from "./board-state";
+import {
+  BASIS_NOTE,
+  engineAlternative,
+  type LedgerRow,
+  ledgerRows,
+  moveCommentary,
+  moveText,
+} from "./move-commentary";
+import {
+  initialState,
+  PLAY_INTERVAL_MS,
+  type ReviewAction,
+  type ReviewState,
+  reviewReducer,
+} from "./review-state";
+import type { ReviewView } from "./view-model";
+
+// The single-game review (M5a T10): T7's variant b, "the graph as the spine", with c's "Where it
+// went wrong" ledger (ADR 0054, critique-t7.md). The win-chance graph runs across the top and
+// scrubs the board; under it the board, and beside it the loudest line on the page: the verdict
+// on the shown move. On a phone the graph is a 70px strip, the controls ride in a sticky bar under
+// the thumb, and the scoresheet is a drawer.
+
+export type StepKind = "step" | "play" | "jump";
+
+export interface GameReviewViewProps {
+  view: ReviewView;
+  /** The `?ply=` search param, as given. */
+  initialPly?: string;
+  onStep?: (kind: StepKind, ply: number) => void;
+}
+
+/** The URL mirrors the shown ply this long after the last step. */
+const URL_DEBOUNCE_MS = 150;
+/** A graph scrub reports one jump this long after it stops. */
+const SCRUB_SETTLE_MS = 150;
+/** More ledger rows than this collapse to the three worst. */
+const LEDGER_MAX = 8;
+const LEDGER_COLLAPSED = 3;
+/** The step announcement waits this long after the last step (T5's Scoresheet rule). */
+const ANNOUNCE_MS = 300;
+const SEVERITY_RANK = { blunder: 3, mistake: 2, inaccuracy: 1 } as const;
+/** The phone's graph strip, in px (critic: about 70px so the verdict clears the fold). */
+const STRIP_HEIGHT = 70;
+
+const WIDE = "(min-width: 768px)";
+
+/** True from 768px. False on the server and the first paint, so the phone layout renders first. */
+function useWide(): boolean {
+  return useSyncExternalStore(
+    (onChange) => {
+      const mq = window.matchMedia(WIDE);
+      mq.addEventListener("change", onChange);
+      return () => mq.removeEventListener("change", onChange);
+    },
+    () => window.matchMedia(WIDE).matches,
+    () => false,
+  );
+}
+
+const WAITING: Record<Exclude<ReviewView["status"], "analysed">, string> = {
+  waiting: "This game is waiting for analysis. You can replay the moves now.",
+  failed: "Analysis failed for this game.",
+  skipped: "This game was skipped: it is a variant or too short to analyse.",
+};
+
+const NUMERALS = "[font-variant-numeric:lining-nums_tabular-nums]";
+
+/** The glyph's colour by severity: only the player's ?? in full pen (critic, T7 change 1). */
+function severityClass(judgement: string, mine: boolean): string {
+  if (!mine) return "text-ink-soft";
+  if (judgement === "blunder") return "text-pen-text";
+  if (judgement === "mistake") return "text-pen-text/75";
+  return "text-ink-soft";
+}
+
+function useReview(
+  view: ReviewView,
+  initialPly: string | undefined,
+  onStep: GameReviewViewProps["onStep"],
+) {
+  const [state, rawDispatch] = useReducer(
+    (s: ReviewState, a: ReviewAction) => reviewReducer(view, s, a),
+    undefined,
+    () => initialState(view, initialPly),
+  );
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const onStepRef = useRef(onStep);
+  onStepRef.current = onStep;
+
+  /** Dispatch, then report the ply it lands on (when it moved). */
+  const act = useCallback(
+    (a: ReviewAction, kind: StepKind | null) => {
+      const next = reviewReducer(view, stateRef.current, a);
+      rawDispatch(a);
+      stateRef.current = next;
+      if (kind) onStepRef.current?.(kind, next.ply);
+    },
+    [view],
+  );
+
+  // Autoplay: one ply a second, stopping at the end.
+  useEffect(() => {
+    if (!state.playing) return;
+    const id = setInterval(() => act({ type: "tick" }, "play"), PLAY_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [state.playing, act]);
+
+  // Mirror the ply to ?ply= (never on the first render).
+  const mounted = useRef(false);
+  useEffect(() => {
+    if (!mounted.current) {
+      mounted.current = true;
+      return;
+    }
+    const t = setTimeout(() => {
+      const url = new URL(window.location.href);
+      url.searchParams.set("ply", String(state.ply));
+      window.history.replaceState(window.history.state, "", url.toString());
+    }, URL_DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [state.ply]);
+
+  // The graph selects on every scrub frame; report the jump once it settles.
+  const scrub = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (scrub.current) clearTimeout(scrub.current);
+    },
+    [],
+  );
+  const fromGraph = useCallback(
+    (ply: number) => {
+      act({ type: "go", ply }, null);
+      if (scrub.current) clearTimeout(scrub.current);
+      scrub.current = setTimeout(
+        () => onStepRef.current?.("jump", stateRef.current.ply),
+        SCRUB_SETTLE_MS,
+      );
+    },
+    [act],
+  );
+
+  const controls = {
+    first: () => act({ type: "first" }, "jump"),
+    prev: () => act({ type: "step", by: -1 }, "step"),
+    next: () => act({ type: "step", by: 1 }, "step"),
+    last: () => act({ type: "last" }, "jump"),
+    prevMoment: () => act({ type: "moment", dir: -1 }, "jump"),
+    nextMoment: () => act({ type: "moment", dir: 1 }, "jump"),
+    play: () => act({ type: "togglePlay" }, null),
+    flip: () => act({ type: "flip" }, null),
+    engine: () => act({ type: "toggleEngine" }, null),
+    go: (ply: number) => act({ type: "go", ply }, "jump"),
+    fromGraph,
+  };
+  useReviewKeys(controls);
+  return { state, controls };
+}
+
+export function GameReviewView({ view, initialPly, onStep }: GameReviewViewProps) {
+  const { state, controls: c } = useReview(view, initialPly, onStep);
+  const { ply, playing, orientation, showEngine } = state;
+  const wide = useWide();
+  const engineId = useId();
+  const lastPly = view.plies.length;
+  const analysed = view.status === "analysed";
+
+  const sheet = useMemo(() => sheetMoves(view), [view]);
+  const points = useMemo(() => graphPoints(view), [view]);
+  const ledger = useMemo(() => ledgerRows(view), [view]);
+  const tenths = useMemo(() => hasTenths(view), [view]);
+  const fen = fenAt(view, ply);
+  const check = useMemo(() => checkSquare(fen), [fen]);
+  const annotations = useMemo(() => annotationsFor(view, ply, showEngine), [view, ply, showEngine]);
+  const lastMove = lastMoveAt(view, ply);
+  const score = scoreAt(view, ply);
+  const ev = evalText(score);
+  const move = view.plies[ply - 1];
+  const text = moveText(view, ply);
+  const verdict = moveCommentary(view, ply);
+  const alternative = engineAlternative(view, ply);
+  const spoken = verdict ?? text ?? "Start position";
+
+  // One page-level announcer at every width (fix round 1): the scoresheet's own is in a drawer on
+  // phones. Polite, 300ms after the last step, silent while autoplaying and on first paint; the
+  // move play stops on is read when it stops.
+  const [announcement, setAnnouncement] = useState("");
+  const announced = useRef(false);
+  useEffect(() => {
+    if (!announced.current) {
+      announced.current = true;
+      return;
+    }
+    if (playing) return;
+    const t = setTimeout(() => setAnnouncement(spoken), ANNOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [spoken, playing]);
+  const flipped = orientation === "black";
+  const whiteToMove = fen.split(" ")[1] === "w";
+
+  const side = (color: "white" | "black"): ClockSide => ({
+    name: view[color].name,
+    rating: view[color].rating,
+    seconds: view.hasClocks ? clockAt(view, color, ply) : null,
+    toMove: (color === "white") === whiteToMove && ply < lastPly,
+  });
+
+  const transport = {
+    ply,
+    lastPly,
+    playing,
+    hasMoments: view.moments.length > 0,
+    onFirst: c.first,
+    onPrev: c.prev,
+    onPlayToggle: c.play,
+    onNext: c.next,
+    onLast: c.last,
+    onFlip: c.flip,
+    onPrevMoment: c.prevMoment,
+    onNextMoment: c.nextMoment,
+  };
+
+  const moveLabel = move ? `${text ?? move.san}` : "the start";
+  const scoresheet = (className: string) => (
+    <Scoresheet
+      moves={sheet}
+      currentPly={ply}
+      onSelectPly={c.go}
+      label={`Moves, ${view.title}`}
+      announce={false}
+      className={className}
+    />
+  );
+
+  return (
+    <div data-review data-ply={ply} className="flex flex-col gap-5 md:gap-6">
+      <p
+        data-testid="step-status"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+      >
+        {announcement}
+      </p>
+      {/* The spine: the whole game at once, and the scrubber for the board under it. */}
+      {view.status === "failed" || view.status === "skipped" ? null : (
+        <section
+          aria-label="Win chance"
+          className="flex flex-col gap-2 rounded-sheet bg-sheet px-(--space-panel-pad) py-3 max-md:-mx-(--space-gutter) max-md:rounded-none max-md:px-(--space-gutter) max-md:py-2 md:min-h-40 md:py-4"
+        >
+          {analysed ? (
+            <>
+              <p className="flex items-baseline justify-between gap-4 text-xs text-ink-faint max-md:sr-only">
+                <span>White&rsquo;s win chance, White at the top</span>
+                <span>Drag or use the arrow keys to step</span>
+              </p>
+              <EvalGraph
+                points={points}
+                label={`Win chance, ${view.title}`}
+                currentPly={ply}
+                onSelectPly={c.fromGraph}
+                phases={view.phases}
+                playerColor={view.playerColor}
+                {...(wide ? {} : { compact: true, height: STRIP_HEIGHT })}
+              />
+            </>
+          ) : (
+            <ProgressPlaceholder shape="graph" verb="Analysing" />
+          )}
+        </section>
+      )}
+
+      {analysed ? null : (
+        <p className="max-w-prose font-serif text-prose text-ink" data-testid="waiting">
+          {WAITING[view.status as Exclude<ReviewView["status"], "analysed">]}
+        </p>
+      )}
+
+      <div className="grid gap-x-(--space-gutter) gap-y-5 lg:grid-cols-[auto_minmax(0,1fr)]">
+        <div className="flex min-w-0 flex-col gap-3">
+          <div className="flex w-fit flex-col gap-2 md:flex-row md:gap-3">
+            {score ? (
+              <EvalBar
+                score={score.score}
+                fen={fen}
+                orientation={orientation}
+                label={`Evaluation, ${ev}`}
+                ends
+                className="md:my-2"
+              />
+            ) : null}
+            <Board
+              fen={fen}
+              label={`${view.title}, after ${moveLabel}, seen from ${flipped ? "Black" : "White"}`}
+              orientation={orientation}
+              {...(lastMove ? { lastMove } : {})}
+              {...(check ? { check } : {})}
+              annotations={annotations}
+            />
+          </div>
+          <ReviewControls {...transport} className={cn("max-md:hidden", score && "md:pl-7")} />
+        </div>
+
+        <div className="flex min-w-0 flex-col gap-5">
+          {/* The verdict on the shown move: the loudest line on the page. */}
+          <section aria-label="This move" className="flex flex-col gap-2">
+            <p
+              className={cn("flex items-baseline gap-3 font-sans text-sm text-ink-soft", NUMERALS)}
+            >
+              <span className="font-medium text-ink">{text ?? "Start position"}</span>
+              {ev ? <span data-testid="eval-readout">{ev}</span> : null}
+            </p>
+            <p
+              data-testid="verdict"
+              className="min-h-15 max-w-prose font-serif-italic text-xl text-ink italic md:min-h-21 md:text-2xl"
+            >
+              {verdict ?? (move ? "" : "Step through the game, or jump to a mistake.")}
+            </p>
+            {alternative ? (
+              <p data-testid="arrow-key" className="text-sm text-ink-soft">
+                {`Green arrow: ${alternative}, the engine's choice instead.`}
+              </p>
+            ) : null}
+          </section>
+          {analysed ? (
+            <div className="flex items-center gap-3 text-sm text-ink-soft">
+              <Switch checked={showEngine} onCheckedChange={c.engine} aria-labelledby={engineId} />
+              <span id={engineId}>{"Show the engine's next move"}</span>
+              <Kbd className="max-md:hidden">B</Kbd>
+            </div>
+          ) : null}
+
+          <ClockPair
+            top={side(flipped ? "white" : "black")}
+            bottom={side(flipped ? "black" : "white")}
+            spent={view.hasClocks ? spentAt(view, ply) : null}
+            tenths={tenths}
+          />
+
+          {analysed ? <Ledger rows={ledger} ply={ply} onGo={c.go} /> : null}
+
+          {/* The drawer stays mounted (its trigger hides from 768px); one scoresheet in the DOM. */}
+          <Drawer.Root>
+            <Drawer.Trigger
+              className={cn(buttonVariants({ variant: "outline" }), "self-start md:hidden")}
+            >
+              <Icon icon={ListIcon} size={20} />
+              All moves
+            </Drawer.Trigger>
+            <Drawer.Content aria-describedby={undefined}>
+              <Drawer.Title>Moves</Drawer.Title>
+              {wide ? null : scoresheet("h-96")}
+            </Drawer.Content>
+          </Drawer.Root>
+          {wide ? scoresheet("h-96 lg:h-80") : null}
+        </div>
+      </div>
+
+      {/* Under the thumb on a phone: previous and next mistake, previous, play and next. */}
+      <div className="sticky bottom-0 z-10 -mx-(--space-gutter) border-t border-rule bg-paper px-(--space-gutter) py-2 md:hidden">
+        <ReviewControls {...transport} layout="thumb" />
+      </div>
+    </div>
+  );
+}
+
+function Ledger({
+  rows,
+  ply,
+  onGo,
+}: {
+  rows: LedgerRow[];
+  ply: number;
+  onGo: (ply: number) => void;
+}) {
+  const [all, setAll] = useState(false);
+  const collapsed = !all && rows.length > LEDGER_MAX;
+  const shown = useMemo(() => {
+    if (!collapsed) return rows;
+    // The three worst (?? before ?, before ?!, then by drop), plus the shown move when it is one
+    // of the player's mistakes; listed in game order.
+    const worst = [...rows]
+      .sort(
+        (x, y) =>
+          SEVERITY_RANK[y.judgement] - SEVERITY_RANK[x.judgement] ||
+          y.before - y.after - (x.before - x.after) ||
+          x.ply - y.ply,
+      )
+      .slice(0, LEDGER_COLLAPSED)
+      .map((r) => r.ply);
+    const keep = new Set([...worst, ply]);
+    return rows.filter((r) => keep.has(r.ply));
+  }, [collapsed, rows, ply]);
+
+  if (rows.length === 0)
+    return (
+      <section className="flex flex-col gap-1">
+        <h2 className="font-serif text-xl font-semibold text-ink">Where it went wrong</h2>
+        <p className="text-sm text-ink-soft">The engine found nothing of yours to mark.</p>
+      </section>
+    );
+
+  return (
+    <section className="flex flex-col gap-2">
+      <div className="flex flex-col gap-x-4 sm:flex-row sm:items-baseline sm:justify-between">
+        <h2 className="font-serif text-xl font-semibold text-ink">Where it went wrong</h2>
+        <span className="text-xs text-ink-faint">Your win chance, before to after</span>
+      </div>
+      <ol aria-label="Where it went wrong" className="flex flex-col border-t border-rule">
+        {shown.map((r) => {
+          const note = BASIS_NOTE[r.basis];
+          return (
+            <li key={r.ply} className="border-b border-rule">
+              <button
+                type="button"
+                data-ply={r.ply}
+                onClick={() => onGo(r.ply)}
+                aria-current={r.ply === ply ? "step" : undefined}
+                className={cn(
+                  "grid min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-4 px-2 py-2 text-left",
+                  "hover:bg-well aria-[current=step]:bg-well",
+                  "focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ink",
+                )}
+              >
+                <span className={cn("font-serif text-lg font-semibold text-ink", NUMERALS)}>
+                  {r.text.slice(0, r.text.length - glyphLength(r.judgement))}
+                  <span
+                    data-severity={r.judgement}
+                    className={cn("tracking-glyph", severityClass(r.judgement, true))}
+                  >
+                    {r.text.slice(r.text.length - glyphLength(r.judgement))}
+                  </span>
+                </span>
+                <span className={cn("text-right font-sans text-base text-ink", NUMERALS)}>
+                  {r.before}% to {r.after}%
+                </span>
+                {note ? (
+                  <span className="col-span-2 font-serif-italic text-sm text-ink-soft italic">
+                    {note}
+                  </span>
+                ) : null}
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+      {collapsed ? (
+        <button
+          type="button"
+          onClick={() => setAll(true)}
+          className="min-h-11 self-start text-sm font-medium text-ink underline decoration-rule-strong underline-offset-4 hover:decoration-ink"
+        >
+          Show all {rows.length}
+        </button>
+      ) : null}
+    </section>
+  );
+}
+
+const glyphLength = (j: LedgerRow["judgement"]) => (j === "mistake" ? 1 : 2);

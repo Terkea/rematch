@@ -1,8 +1,10 @@
 "use client";
 
-import { type ReactNode, useLayoutEffect, useRef } from "react";
+import { type FocusEvent, type ReactNode, useLayoutEffect, useRef } from "react";
 import {
   ArrowsClockwiseIcon,
+  CaretDoubleLeftIcon,
+  CaretDoubleRightIcon,
   CaretDownIcon,
   CaretLeftIcon,
   CaretRightIcon,
@@ -32,6 +34,11 @@ export interface ReviewControlsProps {
   onFlip: () => void;
   onPrevMoment: () => void;
   onNextMoment: () => void;
+  /**
+   * `full` (default): the whole transport. `thumb`: a phone's sticky bottom bar with the previous
+   * mistake, previous, play, next and the next mistake, each a wide 44px target (M5a T10).
+   */
+  layout?: "full" | "thumb";
   className?: string;
 }
 
@@ -62,6 +69,8 @@ interface ControlProps {
   pressed?: boolean;
   register: (id: Key, el: HTMLButtonElement | null) => void;
   children?: ReactNode;
+  /** Replaces the fixed icon-button width (the thumb bar's wide targets). */
+  sizing?: string;
 }
 
 function Control({
@@ -74,6 +83,7 @@ function Control({
   pressed,
   register,
   children,
+  sizing,
 }: ControlProps) {
   return (
     <Tooltip>
@@ -89,7 +99,7 @@ function Control({
             disabled={disabled}
             onClick={onClick}
             data-control={id}
-            className={cn("w-10 px-0", primary && "w-12")}
+            className={sizing ?? cn("w-10 px-0", primary && "w-12")}
           />
         }
       >
@@ -135,6 +145,7 @@ export function ReviewControls({
   onFlip,
   onPrevMoment,
   onNextMoment,
+  layout = "full",
   className,
 }: ReviewControlsProps) {
   const reduced = useReducedMotion();
@@ -161,6 +172,107 @@ export function ReviewControls({
     if (buttons.current.get(next)?.disabled) next = "play";
     buttons.current.get(next)?.focus();
   });
+
+  const playIcon = (
+    <AnimatePresence mode="popLayout" initial={false}>
+      <motion.span
+        key={playing ? "pause" : "play"}
+        className="flex"
+        initial={reduced ? false : { scale: 0.5, opacity: 0, rotate: -30 }}
+        animate={{ scale: 1, opacity: 1, rotate: 0 }}
+        exit={reduced ? { opacity: 0, transition: { duration: 0 } } : { scale: 0.5, opacity: 0 }}
+        transition={spring.land}
+      >
+        <Icon icon={playing ? PauseIcon : PlayIcon} weight="fill" />
+      </motion.span>
+    </AnimatePresence>
+  );
+  const groupEvents = {
+    onFocus: (e: FocusEvent<HTMLDivElement>) => {
+      const id = (e.target as HTMLElement).dataset.control as Key | undefined;
+      focused.current = id ?? null;
+    },
+    onBlur: (e: FocusEvent<HTMLDivElement>) => {
+      const to = e.relatedTarget as Node | null;
+      if (to && group.current?.contains(to)) return;
+      if (!to && e.target instanceof HTMLButtonElement && e.target.disabled) return;
+      focused.current = null;
+    },
+  };
+
+  if (layout === "thumb") {
+    const jump = (dir: "prev" | "next") => (
+      <span className="flex flex-col items-center gap-0.5 leading-none">
+        <Icon icon={dir === "prev" ? CaretDoubleLeftIcon : CaretDoubleRightIcon} size={20} />
+        <span className="font-sans text-2xs font-medium">Mistake</span>
+      </span>
+    );
+    const wideTarget = "h-12 min-w-11 flex-1 px-0";
+    return (
+      // biome-ignore lint/a11y/useSemanticElements: a group of controls, not a form fieldset
+      <div
+        ref={group}
+        role="group"
+        aria-label="Move controls, thumb bar"
+        {...groupEvents}
+        className={cn("flex items-stretch gap-1", className)}
+      >
+        <Control
+          id="prevMoment"
+          label="Previous mistake"
+          icon={CaretDoubleLeftIcon}
+          disabled={!hasMoments}
+          onClick={onPrevMoment}
+          register={register}
+          sizing={wideTarget}
+        >
+          {jump("prev")}
+        </Control>
+        <Control
+          id="prev"
+          label="Previous move"
+          icon={CaretLeftIcon}
+          disabled={atStart}
+          onClick={onPrev}
+          register={register}
+          sizing={wideTarget}
+        />
+        <Control
+          id="play"
+          label="Autoplay"
+          icon={playing ? PauseIcon : PlayIcon}
+          disabled={false}
+          onClick={onPlayToggle}
+          primary
+          pressed={playing}
+          register={register}
+          sizing={wideTarget}
+        >
+          {playIcon}
+        </Control>
+        <Control
+          id="next"
+          label="Next move"
+          icon={CaretRightIcon}
+          disabled={atEnd}
+          onClick={onNext}
+          register={register}
+          sizing={wideTarget}
+        />
+        <Control
+          id="nextMoment"
+          label="Next mistake"
+          icon={CaretDoubleRightIcon}
+          disabled={!hasMoments}
+          onClick={onNextMoment}
+          register={register}
+          sizing={wideTarget}
+        >
+          {jump("next")}
+        </Control>
+      </div>
+    );
+  }
 
   return (
     // biome-ignore lint/a11y/useSemanticElements: a group of controls, not a form fieldset
@@ -248,7 +360,7 @@ export function ReviewControls({
         <Control
           id="prevMoment"
           label="Previous mistake"
-          icon={CaretUpIcon}
+          icon={CaretDoubleLeftIcon}
           disabled={!hasMoments}
           onClick={onPrevMoment}
           register={register}
@@ -260,12 +372,12 @@ export function ReviewControls({
             hasMoments ? "text-ink-soft" : "text-ink-faint",
           )}
         >
-          Mistakes
+          Mistake
         </span>
         <Control
           id="nextMoment"
           label="Next mistake"
-          icon={CaretDownIcon}
+          icon={CaretDoubleRightIcon}
           disabled={!hasMoments}
           onClick={onNextMoment}
           register={register}

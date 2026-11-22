@@ -196,23 +196,9 @@ describe("placeLabels", () => {
     expect(labels.find((l) => l.ply === 62)?.x).not.toBe(94);
   });
 
-  it("falls back to a glyph straight above the tick, with no leader", () => {
-    const labels = placeLabels(
-      [
-        mk(55, "Rxe6", "blunder", 100, true),
-        mk(57, "Nf3", "mistake", 230, true),
-        mk(60, "exd8=Q+", "blunder", 180, false),
-      ],
-      320,
-      narrow,
-    );
-    const glyph = labels.find((l) => l.ply === 60);
-    expect(glyph?.text).toEqual({ prefix: "", san: "", glyph: "??" });
-    expect(glyph?.leader).toBe(false);
-    expect(Math.abs((glyph?.x ?? 0) + (glyph?.width ?? 0) / 2 - 180)).toBeLessThanOrEqual(4);
-  });
-
-  it("drops a label whose glyph can't sit within 4px of its tick", () => {
+  // M5a T10: the glyph-only fallback is gone (a bare "?" read as noise); see
+  // review-page-fixes.test.tsx, "never leaves a bare glyph".
+  it("drops a label that can't be placed", () => {
     const labels = placeLabels(
       [
         mk(55, "Rxe6", "blunder", 100, true),
