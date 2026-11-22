@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { LeadFinding } from "../../../../server/profile/types";
 import { AccuracySection } from "./accuracy-section";
 import { OverviewEmpty } from "./empty-state";
 import { Headline, WorkOn } from "./headline";
@@ -21,11 +22,14 @@ export function OverviewSheet({
   view,
   reveal,
   sync,
+  lead = { kind: "building" },
 }: {
   view: OverviewView;
   reveal: boolean;
   /** The compact sync and analysis panel (Task P2); it replaces the status line when given. */
   sync?: ReactNode;
+  /** The coaching profile's lead finding for "What to work on" (default: still building). */
+  lead?: LeadFinding;
 }) {
   return (
     <div {...(reveal ? { "data-reveal": "first" } : {})} className="flex flex-col gap-10">
@@ -44,7 +48,7 @@ export function OverviewSheet({
             <div data-reveal-fig="" style={{ "--reveal-i": 0 } as React.CSSProperties}>
               <Headline lead={view.lead} basisClass={view.basisClass} reveal={reveal} />
             </div>
-            <WorkOn />
+            <WorkOn lead={lead} />
           </div>
 
           <section aria-labelledby="accuracy-heading" className="flex flex-col gap-5">

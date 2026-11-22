@@ -1,4 +1,6 @@
+import { weaknessRateText } from "@ci/ui/profile";
 import { bandText, Stat } from "@ci/ui/stats";
+import type { CoachScope, LeadFinding } from "../../../../server/profile/types";
 import type { Estimate } from "../../../../server/stats";
 import type { OverviewView } from "./view";
 
@@ -76,24 +78,79 @@ export function Headline({
   );
 }
 
+const count = new Intl.NumberFormat("en-GB");
+/** "214 analysed rapid games" (`kind` between the count and the noun). */
+const games = (n: number, kind: string) =>
+  `${count.format(n)} ${kind} ${n === 1 ? "game" : "games"}`;
+
+function analysedIn(scope: CoachScope): number {
+  return (
+    scope.options.find((o) => o.accountId === scope.accountId && o.timeClass === scope.timeClass)
+      ?.analysedGames ?? 0
+  );
+}
+
 /**
- * The red-pen slot for the coaching profile's lead finding. It stays empty until the R2 profile
- * reaches the web: a "biggest leak" is never guessed from raw judgement counts (T6 ruling).
+ * The red-pen slot: the coaching profile's lead finding (ADR 0068), never a "biggest leak"
+ * guessed from raw judgement counts. A weakness shows its label, its stored estimate with the
+ * counts behind it and a link to its page; `none` says nothing stands out; `building` says the
+ * profile is not ready yet.
  */
-export function WorkOn() {
+export function WorkOn({ lead }: { lead: LeadFinding }) {
+  // Pen red means the player's own mistake, so only a real finding carries it.
+  const finding = lead.kind === "weakness";
   return (
     <section
       aria-labelledby="work-on-heading"
       data-slot="work-on"
-      className="flex max-w-3xl flex-col gap-1 border-l-2 border-pen pl-4"
+      className={`flex max-w-3xl flex-col gap-1 border-l-2 pl-4 ${finding ? "border-pen" : "border-rule-strong"}`}
     >
-      <h2 id="work-on-heading" className="text-base font-medium text-pen-text">
+      <h2
+        id="work-on-heading"
+        className={`text-base font-medium ${finding ? "text-pen-text" : "text-ink"}`}
+      >
         What to work on
       </h2>
-      <p className="text-sm text-ink-soft">
-        Your coaching profile is still being built. When it is ready, its first finding goes here,
-        with the games behind it.
-      </p>
+      <WorkOnBody lead={lead} />
     </section>
   );
+}
+
+function WorkOnBody({ lead }: { lead: LeadFinding }) {
+  switch (lead.kind) {
+    case "weakness": {
+      const { weakness: w, scope } = lead;
+      const q = new URLSearchParams({ account: scope.accountId, tc: scope.timeClass });
+      return (
+        <>
+          <a
+            href={`/app/weaknesses/${encodeURIComponent(w.seriesKey)}?${q.toString()}`}
+            className="self-start rounded-field font-serif text-xl font-semibold text-ink underline decoration-rule-strong underline-offset-4 hover:decoration-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+          >
+            {w.label}
+          </a>
+          <p className="m-0 text-sm text-ink-soft">
+            {weaknessRateText(w.rate, w.evidence)} chances.
+          </p>
+          <p className="m-0 text-sm text-ink-faint">
+            Based on {games(analysedIn(scope), `analysed ${scope.timeClass}`)}.
+          </p>
+        </>
+      );
+    }
+    case "none":
+      return (
+        <p className="m-0 text-sm text-ink-soft">
+          Nothing stands out above players at your level across{" "}
+          {games(lead.analysedGames, "analysed")} yet.
+        </p>
+      );
+    default:
+      return (
+        <p className="m-0 text-sm text-ink-soft">
+          Your coaching profile is still being built. When it is ready, its first finding goes here,
+          with the games behind it.
+        </p>
+      );
+  }
 }
