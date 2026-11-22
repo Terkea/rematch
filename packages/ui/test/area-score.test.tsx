@@ -1,7 +1,13 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { AreaScore, AreaScoreList, areaLabels, rulerDomain } from "../src/area-score/index.js";
+import {
+  AreaScore,
+  AreaScoreKey,
+  AreaScoreList,
+  areaLabels,
+  rulerDomain,
+} from "../src/area-score/index.js";
 import { areaScoreFixtures } from "../src/fixtures/index.js";
 
 afterEach(cleanup);
@@ -100,5 +106,35 @@ describe("AreaScore delta", () => {
   it("names its basis", () => {
     render(<AreaScore {...base} />);
     expect(screen.getByText("22 rapid games")).toBeInTheDocument();
+  });
+});
+
+describe("AreaScore without a measured next band", () => {
+  const base = {
+    area: "endgame" as const,
+    score: 62,
+    band: { median: 50 },
+    basis: { games: 22, timeClass: "rapid" },
+  };
+
+  it("area score without next band draws no next tick", () => {
+    const { container } = render(<AreaScore {...base} />);
+    expect(container.querySelector('[data-tick="next"]')).toBeNull();
+    expect(container.querySelector('[data-tick="median"]')).not.toBeNull();
+    expect(
+      screen.getByText("Endgame 62, band median 50, next band not measured yet"),
+    ).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/NaN|undefined|Infinity/);
+  });
+
+  it("fits the domain without a next band", () => {
+    // 50 to 62: 40 to 70 after the margin, widened at the low end first to 30 to 70.
+    expect(rulerDomain([{ score: 62, band: { median: 50 } }])).toEqual([30, 70]);
+  });
+
+  it("drops the next-band entry from the key when asked", () => {
+    render(<AreaScoreKey next={false} />);
+    expect(screen.queryByText("Next band")).toBeNull();
+    expect(screen.getByText("Band median")).toBeInTheDocument();
   });
 });
