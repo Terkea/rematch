@@ -211,6 +211,29 @@ describe("bandComparisonText", () => {
       "Players you've faced, rated about 650–950: 9.6% (pooled over 65 of their chances), higher than your whole likely range",
     );
   });
+  // ADR 0084 (bug hunt N10): the owner's rapid "Allowed mate" was active at confidence 0.81
+  // while the row read only "inside your likely range". The row now says what the state says.
+  const allowed = { low: 0.00293, high: 0.00782 };
+  const faced = "Players you've faced, rated about 667–967";
+  const pooled = "pooled over 1,484 of their chances";
+  it("names a probable gap inside the range with the stored confidence", () => {
+    expect(bandComparisonText(allowed, 0.003498, faced, pooled, 0.81)).toBe(
+      "Players you've faced, rated about 667–967: 0.3% (pooled over 1,484 of their chances), inside your likely range, though yours is probably higher (81% likely)",
+    );
+  });
+  it("says only inside below the probable threshold or without a confidence", () => {
+    const plain =
+      "Players you've faced, rated about 667–967: 0.3% (pooled over 1,484 of their chances), inside your likely range";
+    expect(bandComparisonText(allowed, 0.003498, faced, pooled, 0.547)).toBe(plain);
+    expect(bandComparisonText(allowed, 0.003498, faced, pooled)).toBe(plain);
+    expect(bandComparisonText(allowed, 0.003498, faced, pooled, Number.NaN)).toBe(plain);
+    expect(bandComparisonText(allowed, 0.003498, faced, pooled, 1.5)).toBe(plain);
+  });
+  it("keeps lower and higher when the interval clears the median", () => {
+    expect(bandComparisonText(r, 0.02, undefined, undefined, 0.99)).toBe(
+      "Players in your rating band: 2.0%, lower than your whole likely range",
+    );
+  });
   it("says when there is no reference", () => {
     expect(bandComparisonText(r, null)).toBe(NO_BENCHMARK);
     expect(bandComparisonText(r, Number.NaN)).toBe(NO_BENCHMARK);

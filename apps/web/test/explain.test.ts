@@ -313,6 +313,57 @@ describe("levelText with a peer benchmark (ADR 0080)", () => {
     expect(text).not.toMatch(/players at your level/);
   });
 
+  // ADR 0084 (bug hunt N10): real-shaped rows of the owner's rapid profile.
+  const faced = { ...benchmark, low: 667, high: 967 };
+  const allowed = { mean: 0.00522, low: 0.00293, high: 0.00782 };
+  it("an active row at confidence 0.81 inside the range says probably, with the odds", () => {
+    expect(
+      levelText({
+        rate: allowed,
+        median: 0.003498,
+        compared: true,
+        sufficient: true,
+        benchmark: faced,
+        confidence: 0.81,
+        state: "active",
+      }),
+    ).toBe(
+      "Probably more often than players you've faced on chess.com, rated about 667–967 (0.3%): about 81% likely, though their rate is inside your likely range.",
+    );
+  });
+
+  it("an active row below confidence 0.7 says where its state comes from", () => {
+    expect(
+      levelText({
+        rate: { mean: 0.4443, low: 0.3819, high: 0.5071 },
+        median: 0.4381,
+        compared: true,
+        sufficient: true,
+        benchmark: faced,
+        confidence: 0.547,
+        state: "active",
+      }),
+    ).toBe(
+      "Not clearly different from players you've faced on chess.com, rated about 667–967 (43.8%): their rate is inside your likely range. Active comes from your game-by-game record (every game since the last change it found), not from this comparison.",
+    );
+  });
+
+  it("a row that is not a costing state gets no state sentence", () => {
+    expect(
+      levelText({
+        rate,
+        median: 0.04,
+        compared: true,
+        sufficient: true,
+        benchmark,
+        confidence: 0.4,
+        state: "not_an_issue",
+      }),
+    ).toBe(
+      "Not clearly different from players you've faced on chess.com, rated about 650–950 (4.0%): their rate is inside your likely range.",
+    );
+  });
+
   it("keeps the band wording for the legacy band reference", () => {
     expect(
       levelText({
