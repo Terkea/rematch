@@ -12,6 +12,7 @@ x-workspace-volumes: &workspace-volumes
   - chess_core_node_modules:/app/packages/chess-core/node_modules
   - db_node_modules:/app/packages/db/node_modules
   - ui_node_modules:/app/packages/ui/node_modules
+  - ai_sidecar_node_modules:/app/services/ai-sidecar/node_modules
   - pnpm_store:/pnpm-store
 
 x-web-environment: &web-environment
@@ -176,39 +177,118 @@ services:
         condition: service_healthy
     volumes: *workspace-volumes
 
+  # R3 (ADR-R3-6): every interactive Claude call goes through this Agent SDK sidecar. No ports:
+  # only the Rust backend on the compose network reaches it. Chat transcripts persist in Postgres
+  # through the session store (role ai_sidecar); the CLI disk is a tmpfs scratch area.
+  ai-sidecar:
+    build:
+      context: .
+      dockerfile: services/ai-sidecar/Dockerfile
+    environment:
+      AI_SIDECAR_TOKEN: ${AI_SIDECAR_TOKEN:-dev-only-sidecar-token-change-me-0000000}
+      AI_SIDECAR_ENV: ${AI_SIDECAR_ENV:-development}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+      # postgres://ai_sidecar:<password>@postgres:5432/chess. Empty = no session store (dev only).
+      AI_SESSION_DATABASE_URL: ${AI_SESSION_DATABASE_URL:-}
+    # Read-only root; the only writable paths are sized tmpfs scratch areas (they count toward
+    # mem_limit). The CLI's config dir and cwd live in the first; /tmp is for the CLI's temp files.
+    read_only: true
+    tmpfs:
+      - /var/lib/ai-sidecar:uid=1000,gid=1000,mode=0700,size=512m
+      - /tmp:mode=1777,size=256m
+    mem_limit: 5g
+
+  # Dev only: grants the NOLOGIN ai_sidecar role LOGIN and AI_SIDECAR_DB_PASSWORD, after the
+  # migrations ran. `docker compose --profile ai run --rm ai-sidecar-role` (ADR-R3-6).
+  ai-sidecar-role:
+    profiles: [ai]
+    image: postgres:17
+    entrypoint: ["sh", "/ai-sidecar-role.sh"]
+    environment:
+      PGHOST: postgres
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: chess
+      AI_SIDECAR_DB_PASSWORD: ${AI_SIDECAR_DB_PASSWORD:-}
+    volumes:
+      - ./docker/postgres/ai-sidecar-role.sh:/ai-sidecar-role.sh:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   rust-dev:
     build:
       context: .
       dockerfile: backend/Dockerfile
       target: dev
     working_dir: /work/backend
-    # Compose interpolates ${...} from the host shell and .env, NOT from `run -e`. So CARGO_TARGET_DIR
-    # is derived inside the container from the LANE passed with `run -e LANE=<lane>` (default: main).
+    # Compose interpolates ${...} from the host shell and .env, NOT from `run -e`. So the target dir
+    # is derived inside the container from the LANE passed with `run -e LANE=<lane>` (default: main):
+    # each lane builds into its own /target/<lane>. Cargo sees it through the fixed path /lane-target
+    # (a symlink in the container's own filesystem), because sccache keys include the --out-dir,
+    # -L and OUT_DIR paths: one path for every lane is what lets lanes hit each other's cache.
     entrypoint:
       - /bin/sh
       - -c
-      - 'export CARGO_TARGET_DIR="/target/$${LANE:-main}"; exec "$$@"'
+      - 'mkdir -p "/target/$${LANE:-main}" && ln -sfn "/target/$${LANE:-main}" /lane-target && export CARGO_TARGET_DIR=/lane-target; exec "$$@"'
       - rust-dev
     environment:
       # Master connection for #[sqlx::test], which creates and drops one database per test.
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/chess_test
       STOCKFISH_PATH: /usr/local/bin/stockfish
       IN_DOCKER: "1"
-      # rust-dev makes no external API calls (tests use recorded fixtures), so a placeholder is safe.
-      CONTACT_EMAIL: ${CONTACT_EMAIL:-dev@example.invalid}
       RUST_LOG: warn
       # R2 (ADR-R2-1): git-ignored data dir (Syzygy tables, never the Lichess dump) and Maia.
       DATA_DIR: /work/data
       SYZYGY_PATH: /work/data/syzygy
       MAIA_URL: ${MAIA_URL:-}
+      # scripts/check-crate-age.sh caches crates.io publish dates here, shared by every lane.
+      CRATE_AGE_CACHE: /crate-age
     depends_on:
       postgres:
         condition: service_healthy
+    # rust_target stays per compose project (and per LANE inside it), so lanes never share a target
+    # dir and `down -v` removes it. The four caches (cargo registry, cargo git, sccache, crates.io
+    # publish dates) are external volumes shared by every project (ADR 0042), and `down -v` never
+    # deletes external volumes. Create them once with `sh scripts/rust-cache-init.sh`. Compose
+    # refuses to start rust-dev while one of them is missing.
     volumes:
       - .:/work
       - rust_target:/target
       - cargo_registry:/usr/local/cargo/registry
       - cargo_git:/usr/local/cargo/git
+      - sccache:/sccache
+      - crate_age:/crate-age
+      # Syzygy tables live only in the main checkout (git-ignored). Gates run from a worktree set
+      # SYZYGY_HOST_DIR to that folder, e.g. E:/code/chess-improver/data/syzygy (ADR-R2-12).
+      - ${SYZYGY_HOST_DIR:-./data/syzygy}:/work/data/syzygy:ro
+
+  # The Rust worker (Task 22): the runtime image of backend/Dockerfile. It reaches chess.com and
+  # Lichess with the fixed project User-Agent and never sends an email (ADR 0043), so it gets no
+  # CONTACT_EMAIL. No ports. On `docker compose stop` it drains within its 25 s grace.
+  rust-worker:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      target: worker
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/chess
+      STOCKFISH_PATH: /usr/local/bin/stockfish
+      LICHESS_TOKEN: ${LICHESS_TOKEN:-}
+      # Engines (and analyses at once). Empty: min(cores - 2, 8). See .env.example.
+      WORKER_POOL_SIZE: ${WORKER_POOL_SIZE:-}
+      RUST_LOG: ${RUST_LOG:-info}
+      # R2 T23 (ADR-R2-12): the 3-4-5 Syzygy tables, read-only. Without them the tablebase probe
+      # is unavailable and analysis goes on.
+      SYZYGY_PATH: /work/data/syzygy
+    volumes:
+      - ${SYZYGY_HOST_DIR:-./data/syzygy}:/work/data/syzygy:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    stop_grace_period: 30s
+    restart: unless-stopped
 
 volumes:
   pgdata:
@@ -219,7 +299,18 @@ volumes:
   chess_core_node_modules:
   db_node_modules:
   ui_node_modules:
+  ai_sidecar_node_modules:
   pnpm_store:
   rust_target:
   cargo_registry:
+    external: true
+    name: ci-cargo-registry
   cargo_git:
+    external: true
+    name: ci-cargo-git
+  sccache:
+    external: true
+    name: ci-sccache
+  crate_age:
+    external: true
+    name: ci-crate-age

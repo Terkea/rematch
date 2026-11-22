@@ -13,6 +13,7 @@ export async function eventCursor(db: Db, userId: string): Promise<number> {
     await userAccountIds(db, userId),
     Number.MAX_SAFE_INTEGER,
     1,
+    userId,
   );
   return page.headId;
 }

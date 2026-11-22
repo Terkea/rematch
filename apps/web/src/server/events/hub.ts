@@ -1,4 +1,5 @@
-import { type StreamEvent, USER_EVENTS_CHANNEL, userEvents } from "@ci/db";
+import { eventVisibleTo, type StreamEvent, USER_EVENTS_CHANNEL } from "@ci/db";
+import { userEvents } from "@ci/db/generated";
 import { eq } from "drizzle-orm";
 import { getEnv } from "../../env";
 import { getDb } from "../db";
@@ -25,14 +26,17 @@ export type EventHubDeps = {
 
 export interface EventHub {
   /**
-   * Calls `listener` for every live event of these accounts, in id order. `onReconnect` runs
-   * when the LISTEN connection was rebuilt: notifications in the gap are gone, so replay from
-   * the cursor. Returns the unsubscribe function (idempotent).
+   * Calls `listener` for every live event of these accounts that `viewerUserId` may see, in id
+   * order: account events, and user-owned events (`user_events.user_id`) only when they are the
+   * viewer's own. Without a viewer only account events arrive. `onReconnect` runs when the LISTEN
+   * connection was rebuilt: notifications in the gap are gone, so replay from the cursor.
+   * Returns the unsubscribe function (idempotent).
    */
   subscribe(
     accountIds: string[],
     listener: (e: StreamEvent) => void,
     onReconnect?: () => void,
+    viewerUserId?: string | null,
   ): () => void;
   /** Resolves once LISTEN is active; rejects (and retries on the next call) when it fails. */
   ready(): Promise<void>;
@@ -41,11 +45,16 @@ export interface EventHub {
   close(): Promise<void>;
 }
 
-type Subscription = { listener: (e: StreamEvent) => void; onReconnect?: () => void };
+type Subscription = {
+  listener: (e: StreamEvent) => void;
+  onReconnect?: () => void;
+  viewerUserId: string | null;
+};
 
 type Notification = {
   id: number;
   accountId: string;
+  userId: string | null;
   type: string;
   payload?: unknown;
   truncated?: boolean;
@@ -62,11 +71,15 @@ function parseNotification(raw: string): Notification | null {
   const note = value as Record<string, unknown>;
   if (!Number.isSafeInteger(note.id) || (note.id as number) < 1) return null;
   if (typeof note.accountId !== "string" || typeof note.type !== "string") return null;
+  if (note.userId !== undefined && note.userId !== null && typeof note.userId !== "string") {
+    return null;
+  }
   if (!EVENT_TYPE.test(note.type)) return null;
   if (note.truncated !== true && !("payload" in note)) return null;
   return {
     id: note.id as number,
     accountId: note.accountId.toLowerCase(),
+    userId: typeof note.userId === "string" ? note.userId.toLowerCase() : null,
     type: note.type,
     payload: note.payload,
     truncated: note.truncated === true,
@@ -116,6 +129,7 @@ export function createEventHub(deps: EventHubDeps): EventHub {
     let event: StreamEvent | null = {
       id: note.id,
       accountId: note.accountId,
+      ...(note.userId === null ? {} : { userId: note.userId }),
       type: note.type,
       payload: note.payload,
     };
@@ -132,7 +146,11 @@ export function createEventHub(deps: EventHubDeps): EventHub {
       }
       if (!event || event.accountId.toLowerCase() !== note.accountId) return;
     }
+    // A user-owned event is for its user only (migration 20261121030400, ADR-R3-8). The stored
+    // row's owner wins over the notification's.
+    const owner = { userId: event.userId ?? note.userId };
     for (const sub of [...(byAccount.get(note.accountId) ?? [])]) {
+      if (!eventVisibleTo(owner, sub.viewerUserId)) continue;
       try {
         sub.listener(event);
       } catch (error) {
@@ -171,8 +189,12 @@ export function createEventHub(deps: EventHubDeps): EventHub {
   }
 
   return {
-    subscribe(accountIds, listener, onReconnect) {
-      const sub: Subscription = { listener, ...(onReconnect ? { onReconnect } : {}) };
+    subscribe(accountIds, listener, onReconnect, viewerUserId = null) {
+      const sub: Subscription = {
+        listener,
+        ...(onReconnect ? { onReconnect } : {}),
+        viewerUserId: viewerUserId?.toLowerCase() ?? null,
+      };
       const ids = [...new Set(accountIds.map((id) => id.toLowerCase()))];
       for (const id of ids) {
         const subs = byAccount.get(id) ?? new Set<Subscription>();
@@ -218,7 +240,13 @@ export function getEventHub(): EventHub {
         async fetchEvent(id) {
           const [row] = await db.select().from(userEvents).where(eq(userEvents.id, id));
           return row
-            ? { id: row.id, accountId: row.accountId, type: row.type, payload: row.payload }
+            ? {
+                id: row.id,
+                accountId: row.accountId,
+                ...(row.userId === null ? {} : { userId: row.userId }),
+                type: row.type,
+                payload: row.payload,
+              }
             : null;
         },
       }),

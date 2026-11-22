@@ -16,7 +16,8 @@ const invalidCursor = () => Response.json({ error: "invalid_cursor" }, { status:
 /**
  * The signed-in user's live events (ADR-WEB-8): an SSE stream with `Last-Event-ID` (or `?since=`)
  * replay, or, with `?after=<id>`, one JSON page for the polling fallback
- * `{ events, lastId, reset }`. Only events of the user's own linked accounts are ever read.
+ * `{ events, lastId, reset }`. Only events of the user's own linked accounts are ever read, and
+ * of those, user-owned events (`user_events.user_id`) only when they are this user's.
  */
 export async function GET(req: Request): Promise<Response> {
   const crossSite = rejectCrossSite(req);
@@ -34,7 +35,7 @@ export async function GET(req: Request): Promise<Response> {
     const after = parseCursor(url.searchParams.get("after"));
     if (after === "invalid" || after === null) return invalidCursor();
     const accountIds = await userAccountIds(db, user.id);
-    const page = await listEventsPage(db, accountIds, after, POLL_LIMIT);
+    const page = await listEventsPage(db, accountIds, after, POLL_LIMIT, user.id);
     const events: StreamEvent[] = page.reset
       ? []
       : page.events.map((e) => ({

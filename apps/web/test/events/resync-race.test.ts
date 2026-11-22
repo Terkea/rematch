@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // The stream's replay reads go through this wrapper, so a test can act between a replay page
@@ -86,5 +87,52 @@ describe("LISTEN reconnect during a running sync", () => {
     }
     expect(ids).toEqual([e1, gap, live]);
     expect(await frames.nextWithin(200)).toBe("timeout");
+  });
+
+  it("user 2 opening with since= never replays user 1's own events, in either replay", async () => {
+    // Two users on one account; a user-owned event (user_events.user_id) is for that user only.
+    const { user: other } = await createTestSession(db, { birthMonth: "1990-01" });
+    await db.execute(sql`insert into account_links (user_id, linked_account_id, method)
+                         values (${other.id}, ${accountId}, 'location_code')`);
+    let relisten: (() => void) | undefined;
+    const listen = vi.fn(async (_c: string, _n: (p: string) => void, listened: () => void) => {
+      relisten = listened;
+      listened();
+      return { unlisten: async () => {} };
+    });
+    const hub = createEventHub({ listen, fetchEvent: async () => null });
+    const before = await insertAndPublish(db, accountId, "t");
+    const secret1 = await insertAndPublish(db, accountId, "chat.chunk", { s: 1 }, userId);
+
+    let gap = 0;
+    let secret2 = 0;
+    afterPage = async () => {
+      // During user 2's first replay: user 1's event and an account event are stored while
+      // LISTEN is down, then LISTEN is rebuilt, so the pending replay must read them.
+      secret2 = await insertAndPublish(db, accountId, "chat.chunk", { s: 2 }, userId);
+      gap = await insertAndPublish(db, accountId, "t");
+      relisten?.();
+    };
+
+    const controller = new AbortController();
+    aborts.push(controller);
+    const res = await openEventStream({
+      db,
+      hub,
+      userId: other.id,
+      accountIds: [accountId],
+      cursor: 0,
+      signal: controller.signal,
+    });
+    const frames = frameReader(res);
+    const ids: number[] = [];
+    for (;;) {
+      const f = await frames.nextWithin(1000);
+      if (f === "timeout" || f === null) break;
+      if (f.event) ids.push(Number(f.id));
+    }
+    expect(ids).toEqual([before, gap]);
+    expect(ids).not.toContain(secret1);
+    expect(ids).not.toContain(secret2);
   });
 });

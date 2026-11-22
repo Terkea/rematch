@@ -402,7 +402,6 @@ async fn http_404_maps_to_not_found() {
         .await;
     let client: Arc<dyn PlatformClient> = Arc::new(HttpPlatformClient::new(ClientOptions {
         name: Platform::Chesscom,
-        contact_email: "ops@example.com".into(),
         retry_after: std::time::Duration::ZERO,
         ..ClientOptions::default()
     }));

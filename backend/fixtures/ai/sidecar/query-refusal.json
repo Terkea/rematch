@@ -1,0 +1,16 @@
+{
+  "subtype": "success",
+  "stopReason": "refusal",
+  "text": "",
+  "numTurns": 1,
+  "durationMs": 900,
+  "modelUsage": {
+    "claude-sonnet-5-5": {
+      "inputTokens": 3120,
+      "outputTokens": 5,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0
+    }
+  },
+  "sdkCostUsd": 0.0063
+}

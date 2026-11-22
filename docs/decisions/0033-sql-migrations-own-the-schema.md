@@ -36,7 +36,7 @@ Until R1 the schema lived in `packages/db/src/schema.ts` and Drizzle generated t
 
 1. All timestamp columns use `mode: "date"` (drizzle-kit emits `"string"`), matching the hand-written schema.
 2. `user_events.id` is `bigserial({ mode: "number" })` (drizzle-kit emits `"bigint"`). `jobs.id` stays `bigint`.
-3. `position_evals.pv` default is `` sql`'{}'::text[]` `` (drizzle-kit emits `[""]`); the `sql` import is added.
+3. `position_evals.pv` and `interactive_evals.moves` (R3) defaults are `` sql`'{}'::text[]` `` (drizzle-kit emits `[""]`); the `sql` import is added.
 4. Every `.op("..._ops")` opclass is removed: drizzle-kit attaches opclass names from the wrong column (for example `timestamptz_ops` on a uuid column). Postgres uses the default opclass anyway.
 5. `$type<ImportCursor>()` on `linked_accounts.import_cursor` and `$type<ImportErrorCode>()` on `import_runs.error_code` are re-applied, and both types are exported from the generated `schema.ts`.
 6. Output order is stable: enums first (tables evaluate them eagerly), then tables, each sorted by export name; in `relations.ts` blocks and the entries inside each block are sorted by name.

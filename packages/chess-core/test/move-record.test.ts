@@ -64,6 +64,14 @@ describe("buildMoveRecords", () => {
     expect(out.every((r) => r.timeSpent === null)).toBe(true);
   });
 
+  // R1 Task 24 parity: a PGN without clock comments has no clock to report, even with a known
+  // time control (the base used to leak into the first move of each colour).
+  it("clock before is null when clock config given but pgn has no clocks", () => {
+    const noClocks = parsePgn(read("no-clocks.pgn"));
+    const out = buildMoveRecords(noClocks, evals, { baseSeconds: 180, incrementSeconds: 0 });
+    expect(out.map((r) => r.clockBefore)).toEqual(out.map(() => null));
+  });
+
   it("rejects an evals array of the wrong length", () => {
     expect(() => buildMoveRecords(game, evals.slice(1), null)).toThrow();
   });

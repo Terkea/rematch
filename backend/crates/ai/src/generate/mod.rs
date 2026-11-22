@@ -1,5 +1,6 @@
 //! Report, weekly and change-note generation.
 
+pub(crate) mod attempt;
 pub mod batch;
 pub mod change;
 pub mod computed;

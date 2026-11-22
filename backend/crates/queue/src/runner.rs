@@ -58,6 +58,7 @@ use crate::queue::{
     Backoff, FailOutcome, JOBS_CHANNEL, MAX_ERROR_CHARS, Queue, QueueError, truncate_chars,
 };
 use crate::reaper::{LeaseMark, STALLED_REASON};
+use crate::strategy::{PriorityFifo, SelectStrategy};
 use crate::types::{Job, JobError};
 
 /// How long a cancelled handler (hard timeout, lost lease) gets before it is dropped. A job's
@@ -93,7 +94,7 @@ pub struct JobContext {
     pub cancel: CancellationToken,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct RunnerConfig {
     /// The prefix of this runner's `lease_owner`, which is `<worker_id>/<kind>`. It must be
     /// unique per *process*: runners of one process (one per kind) may share it, but two
@@ -117,6 +118,25 @@ pub struct RunnerConfig {
     pub backoff: Backoff,
     /// Per-handler hard deadline; `None` for none.
     pub hard_timeout: Option<Duration>,
+    /// How each claim chooses its jobs ([`PriorityFifo`], R1's claim, by default).
+    pub strategy: Arc<dyn SelectStrategy>,
+}
+
+impl std::fmt::Debug for RunnerConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RunnerConfig")
+            .field("worker_id", &self.worker_id)
+            .field("concurrency", &self.concurrency)
+            .field("lease", &self.lease)
+            .field("renew_every", &self.renew_every)
+            .field("reap_every", &self.reap_every)
+            .field("stall_grace", &self.stall_grace)
+            .field("idle_poll", &self.idle_poll)
+            .field("backoff", &self.backoff)
+            .field("hard_timeout", &self.hard_timeout)
+            .field("strategy", &self.strategy.order_by())
+            .finish()
+    }
 }
 
 impl Default for RunnerConfig {
@@ -131,6 +151,7 @@ impl Default for RunnerConfig {
             idle_poll: Duration::from_millis(500),
             backoff: Backoff::default(),
             hard_timeout: None,
+            strategy: Arc::new(PriorityFifo),
         }
     }
 }
@@ -303,16 +324,34 @@ impl RunnerHandle {
     /// Stops claiming, cancels every handler, waits up to [`FORCE_GRACE`] for them, then aborts
     /// the rest and hands this runner's running jobs back to the queue without using an attempt
     /// ([`Queue::release_owned`] for its own `<worker_id>/<kind>` owner only, so other runners
-    /// sharing the `worker_id` are untouched). Re-entrant.
+    /// sharing the `worker_id` are untouched). Re-entrant. [`force_within`](Self::force_within)
+    /// with a budget of three force graces.
     pub async fn force(&self) {
+        self.force_within(FORCE_GRACE * 3).await;
+    }
+
+    /// [`force`](Self::force) with the wait for the handlers bounded by `budget`: cancelled
+    /// handlers get at most half of it (and at most [`FORCE_GRACE`]), the abort a quarter of the
+    /// rest. `release_owned` then always runs to completion, bounded only by the queue's own
+    /// query timeout, not by what is left of `budget`: it is the write that makes the force
+    /// lossless, and a release cut off on a loaded host or behind a row lock would leave the
+    /// job leased for a whole lease and cost it a stall. So a handler that ignores its
+    /// cancellation cannot keep its job leased, and this returns within `budget` plus one
+    /// release; a caller that needs a hard bound (the worker's shutdown deadline) applies it
+    /// around the call. Re-entrant.
+    pub async fn force_within(&self, budget: Duration) {
         let s = &self.shared;
+        let deadline = Instant::now() + budget;
+        let left = || deadline.saturating_duration_since(Instant::now());
         self.stop();
         s.force.cancel();
         let mut rx = s.in_flight.subscribe();
-        let _ = tokio::time::timeout(FORCE_GRACE, rx.wait_for(|n| *n == 0)).await;
+        let handlers = FORCE_GRACE.min(budget / 2);
+        let _ = tokio::time::timeout(handlers, rx.wait_for(|n| *n == 0)).await;
         self.main.abort();
-        let _ = tokio::time::timeout(FORCE_GRACE, s.finished.cancelled()).await;
-        let _ = tokio::time::timeout(FORCE_GRACE, rx.wait_for(|n| *n == 0)).await;
+        let abort = FORCE_GRACE.min(left() / 4);
+        let _ = tokio::time::timeout(abort, s.finished.cancelled()).await;
+        let _ = tokio::time::timeout(abort, rx.wait_for(|n| *n == 0)).await;
         match s.queue.release_owned(&s.owner).await {
             Ok(0) => {}
             Ok(n) => tracing::warn!(
@@ -409,8 +448,9 @@ async fn run(s: Arc<Shared>) {
             let claimed_at = Instant::now();
             // Not raced against anything: see the module docs.
             match s
-                .queue
-                .dequeue(&[kind], &s.owner, free as i64, s.cfg.lease)
+                .cfg
+                .strategy
+                .dequeue(&s.queue, &[kind], &s.owner, free as i64, s.cfg.lease)
                 .await
             {
                 Ok(jobs) => {

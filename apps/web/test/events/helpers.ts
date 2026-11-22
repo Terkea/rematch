@@ -11,8 +11,9 @@ export function insertAndPublish(
   accountId: string,
   type: string,
   payload: object = {},
+  userId: string | null = null,
 ): Promise<number> {
-  return insertUserEvent(db, { accountId, type, payload });
+  return insertUserEvent(db, { accountId, type, payload, userId });
 }
 
 /** Rust `prune_events` for a fixed id: deletes `id <= through` and raises the watermark. */
