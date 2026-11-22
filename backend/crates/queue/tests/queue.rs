@@ -1087,3 +1087,146 @@ async fn dequeue_skips_a_locked_row_instead_of_blocking(pool: PgPool) {
     tx.rollback().await.unwrap();
     assert_eq!(row(&pool, first).await.state, "queued");
 }
+
+// ---- Task 22: batched enqueue ----
+
+fn batch_item(key: &str, user: Uuid) -> (serde_json::Value, EnqueueOptions) {
+    (
+        json!({ "key": key }),
+        EnqueueOptions {
+            dedupe_key: Some(key.to_owned()),
+            user_key: Some(user),
+            priority: 70,
+            max_attempts: 4,
+            ..EnqueueOptions::default()
+        },
+    )
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn enqueue_many_writes_the_rows_enqueue_writes_and_skips_live_keys(pool: PgPool) {
+    let q = Queue::new(pool.clone());
+    let user = Uuid::new_v4();
+    // A live job already holds "b"; "c" appears twice in the batch.
+    q.enqueue(KIND, &json!({ "key": "b" }), batch_item("b", user).1)
+        .await
+        .unwrap()
+        .unwrap();
+    let batch = vec![
+        batch_item("a", user),
+        batch_item("b", user),
+        batch_item("c", user),
+        batch_item("c", user),
+    ];
+    assert_eq!(q.enqueue_many(KIND, &batch).await.unwrap(), 2);
+    assert_eq!(q.enqueue_many(KIND, &[]).await.unwrap(), 0);
+    let single = q
+        .enqueue(KIND, &json!({ "key": "d" }), batch_item("d", user).1)
+        .await
+        .unwrap()
+        .unwrap();
+    type Cols = (
+        String,
+        serde_json::Value,
+        Option<Uuid>,
+        i16,
+        i32,
+        String,
+        bool,
+    );
+    let cols = |key: &'static str| {
+        let pool = pool.clone();
+        async move {
+            sqlx::query_as::<_, Cols>(
+                "SELECT kind, payload, user_key, priority, max_attempts, state::text, \
+                   run_at <= now() AND recur_every IS NULL \
+                 FROM jobs WHERE dedupe_key = $1",
+            )
+            .bind(key)
+            .fetch_all(&pool)
+            .await
+            .unwrap()
+        }
+    };
+    let a = cols("a").await;
+    assert_eq!(a.len(), 1);
+    let mut d = cols("d").await.pop().unwrap();
+    d.1 = json!({ "key": "a" });
+    assert_eq!(a[0], d, "batched row equals the enqueue row (id {single})");
+    assert_eq!(cols("b").await.len(), 1);
+    assert_eq!(cols("c").await.len(), 1);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn enqueue_many_sends_one_notification_per_batch(pool: PgPool) {
+    let q = Queue::new(pool.clone());
+    let mut listener = PgListener::connect_with(&pool).await.unwrap();
+    listener.listen(JOBS_CHANNEL).await.unwrap();
+    let user = Uuid::new_v4();
+    let batch: Vec<_> = (0..5).map(|i| batch_item(&format!("n{i}"), user)).collect();
+    assert_eq!(q.enqueue_many(KIND, &batch).await.unwrap(), 5);
+    // A fully deduped batch sends nothing.
+    assert_eq!(q.enqueue_many(KIND, &batch).await.unwrap(), 0);
+    q.enqueue("import-account", &json!({}), EnqueueOptions::default())
+        .await
+        .unwrap()
+        .unwrap();
+    let mut payloads = Vec::new();
+    for _ in 0..2 {
+        let n = tokio::time::timeout(Duration::from_secs(10), listener.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        payloads.push(n.payload().to_owned());
+    }
+    assert_eq!(payloads, [KIND, "import-account"]);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn enqueue_many_has_the_query_timeout(pool: PgPool) {
+    let q = Queue::new(pool.clone()).with_query_timeout(Duration::from_millis(300));
+    // An uncommitted insert of the same key makes the batch wait on the unique index.
+    let mut tx = pool.begin().await.unwrap();
+    sqlx::query("INSERT INTO jobs (kind, payload, dedupe_key) VALUES ($1, '{}', 'held')")
+        .bind(KIND)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    let started = std::time::Instant::now();
+    let err = q
+        .enqueue_many(KIND, &[batch_item("held", Uuid::new_v4())])
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(
+            err,
+            QueueError::Timeout {
+                op: "enqueue_many",
+                ..
+            }
+        ),
+        "{err:?}"
+    );
+    assert!(started.elapsed() < Duration::from_secs(10));
+    tx.rollback().await.unwrap();
+    assert_eq!(
+        q.enqueue_many(KIND, &[batch_item("held", Uuid::new_v4())])
+            .await
+            .unwrap(),
+        1
+    );
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn enqueue_many_rejects_a_short_recur_every(pool: PgPool) {
+    let q = Queue::new(pool.clone());
+    let opts = EnqueueOptions {
+        recur_every: Some(Duration::from_secs(1)),
+        ..EnqueueOptions::default()
+    };
+    let err = q
+        .enqueue_many(KIND, &[(json!({}), opts)])
+        .await
+        .unwrap_err();
+    assert!(matches!(err, QueueError::InvalidOptions(_)), "{err:?}");
+}

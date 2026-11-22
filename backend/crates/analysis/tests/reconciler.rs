@@ -649,3 +649,52 @@ async fn an_interrupted_sweep_still_resumes_the_stale_import(pool: PgPool) {
         .unwrap();
     assert_eq!(st, "failed");
 }
+
+/// Step 5 looks up the account's import job by its dedupe key (`import:<account>`), not by any
+/// live import-kind job that happens to carry the account as `user_key`.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn revives_a_paused_run_by_the_import_key(pool: PgPool) {
+    let acct = insert_account(&pool, "chesscom", "keyed").await;
+    sqlx::query(
+        "INSERT INTO import_runs (account_id, status, error_code) \
+         VALUES ($1, 'paused', 'circuit_open')",
+    )
+    .bind(acct)
+    .execute(&pool)
+    .await
+    .unwrap();
+    // A live import-kind job for the account that does not hold `import:<account>`.
+    Queue::new(pool.clone())
+        .enqueue(
+            KIND_IMPORT,
+            &json!({ "accountId": acct }),
+            EnqueueOptions {
+                user_key: Some(acct),
+                dedupe_key: Some("other".to_owned()),
+                ..EnqueueOptions::default()
+            },
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(sweep(&pool).await.revived_paused, 1);
+    assert_eq!(
+        live_jobs(&pool, KIND_IMPORT, &import_key(acct)).await.len(),
+        1
+    );
+}
+
+/// The reconciler's batched enqueue and `enqueue_analyse` write the same options.
+#[test]
+fn the_reconciler_uses_the_analyse_job_options() {
+    let (game, account) = (Uuid::new_v4(), Uuid::new_v4());
+    assert_eq!(
+        analysis::jobs::analyse::analyse_enqueue_options(game, account),
+        EnqueueOptions {
+            dedupe_key: Some(analyse_key(game)),
+            user_key: Some(account),
+            max_attempts: analysis::jobs::analyse::ANALYSE_MAX_ATTEMPTS,
+            ..EnqueueOptions::default()
+        }
+    );
+}
