@@ -406,14 +406,14 @@ describe("pickHardSpots", () => {
     winAfter: 100,
   };
 
-  it("skips the opponent's mistakes and captures of free material", () => {
+  it("skips captures of free material but keeps punishing a mistake with a real move", () => {
     const r = pickHardSpots([
       spot({ gameId: "q", ...hungQueen, multipvGap: 60 }),
       spot({ gameId: "r", ...freeRook, multipvGap: 50 }),
       spot({ gameId: "m", prevJudgement: "mistake", multipvGap: 40 }),
       spot({ gameId: "i", prevJudgement: "inaccuracy", multipvGap: 20 }),
     ]);
-    expect(r.spots.map((s) => s.gameId)).toEqual(["i"]);
+    expect(r.spots.map((s) => s.gameId)).toEqual(["m", "i"]);
   });
 
   it("skips them in Maia mode too", () => {

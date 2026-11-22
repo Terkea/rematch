@@ -564,10 +564,13 @@ export function obviousCapture(fen: string, uci: string, prevSan: string | null)
 }
 
 /** Hard only on paper: the opponent's mistake or blunder handed it over, or free material. */
-const handedOver = (c: HardSpotCandidate) =>
-  c.prevJudgement === "mistake" ||
-  c.prevJudgement === "blunder" ||
-  obviousCapture(c.fen, c.uci, c.prevSan);
+/**
+ * A move anyone would find: an obvious capture (`obviousCapture`). Finding the refutation of
+ * the opponent's mistake is kept: punishing errors is a strength, and on the owner's real games
+ * excluding every post-mistake moment left 2 of 69 balanced critical moments, both free
+ * captures. The balanced-position gate still drops moments their error already decided.
+ */
+const handedOver = (c: HardSpotCandidate) => obviousCapture(c.fen, c.uci, c.prevSan);
 
 const balanced = (c: HardSpotCandidate) =>
   c.winBefore >= BALANCED_MIN && c.winBefore <= BALANCED_MAX;
@@ -586,7 +589,7 @@ function spread(sorted: HardSpotCandidate[]): HardSpotCandidate[] {
 
 /**
  * Up to `MAX_SPOTS` positions where the player found the engine's best move, never one the
- * opponent's mistake or blunder handed over nor an obvious capture (`obviousCapture`). Maia-hard
+ * obvious capture (`obviousCapture`; refuting the opponent's mistake with a real move counts). Maia-hard
  * ones (difficulty `ok`, `p_best ≤ HARD_P_BEST`) first, hardest first; with none, the fallback is
  * critical moments in a roughly balanced game (`is_critical`, the best line at least
  * `CRITICAL_GAP` win% ahead of the second, the win% before between `BALANCED_MIN` and
