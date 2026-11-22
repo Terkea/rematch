@@ -48,3 +48,33 @@ filter bar and pages come in T2b and T3.
 - A Rust change to the posterior numerics fails the fixture test until the fixture is
   regenerated (`UPDATE_SNAPSHOTS=1`) and the TS port matches it again.
 - Presets do not roll forward: a saved "last 30 days" link keeps its days.
+
+## Amendment 1 (T3, 2026-11-22): the filter bar on the pages
+
+1. **One `FilterBar`** (`app/(app)/app/_filters/`) on the overview, games, progress, weaknesses,
+   areas and report pages. It is links and GET forms only (native date inputs for the custom
+   range and the custom periods), so it works without JavaScript; below `md` it is one "Filters"
+   disclosure that names the active filters. A page declares what its data supports: format
+   (overview only; the stored series have no format), colour (`on`, or `coming` where the stored
+   estimates are Both only), dates, and the comparison (overview and progress).
+2. **What a filter changes is said on the page.** On the overview, format, colour and dates drive
+   the White | Black row and the comparison (`gameStats`); the headline and charts still cover the
+   whole class, and a note says so when such a filter is set. On progress, colour applies to the
+   comparison only. Date filters clip the stored weekly series to the weeks that touch the range;
+   a dense series keeps its length with gaps (null), never zeros.
+3. **Colour on stored estimates waits for ADR 0082.** Weaknesses, areas and the report show
+   "Colour split for weaknesses is coming" in place of the colour options, and pass the scope
+   through `withSide` (`_filters/side.ts`), whose `storedSide` returns `"both"` until the `side`
+   column lands: then it returns `f.color`, a one-line change.
+4. **The comparison view** shows A | B | change for accuracy, blunders per game and score (points
+   per finished game, compared as a per-game mean by the bootstrap rule of §6), n on each side.
+   The change column holds only the verdict's words, and the difference with its 80% range only
+   beside a reached verdict; below the minimum it reads "Not enough games to tell: need N more in
+   period B".
+5. **The games page** reads `color` (with `colour` as an alias) and writes `color`; a `?colour=`
+   URL redirects to the same URL with `color`. Its time control, colour and dates come from the
+   shared bar, and its own controls keep result, account and sort. Its default class is now the
+   first with games by `TIME_CLASS_ORDER` (rapid when there is rapid), as on every other page;
+   before, a player without rapid opened on every class. The custom range uses native date inputs,
+   replacing the explorer's typed "1 Oct 2026" fields (M5a T13): the GET form must work without
+   JavaScript.

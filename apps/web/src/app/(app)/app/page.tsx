@@ -65,10 +65,14 @@ export default async function OverviewPage({
     now,
   });
   const f = { ...bar.filters, tc };
-  const [stats, compared] = await Promise.all([
-    gameStats(db, user.id, scopeOfFilters(f)),
-    loadPeriodComparison(db, user.id, f, now),
-  ]);
+  // With no analysed game the page is an empty state: nothing to split or compare.
+  const ready = overview.timeClasses.length > 0;
+  const [stats, compared] = ready
+    ? await Promise.all([
+        gameStats(db, user.id, scopeOfFilters(f)),
+        loadPeriodComparison(db, user.id, f, now),
+      ])
+    : [null, null];
   const basis = tc ? tc : "";
   return (
     <>
@@ -76,7 +80,7 @@ export default async function OverviewPage({
       <OverviewSheet
         view={toOverviewView(overview, tc)}
         filterBar={<FilterBar model={bar.model} />}
-        colourSplit={colourSplitView(stats, f.color, basis)}
+        colourSplit={stats ? colourSplitView(stats, f.color, basis) : null}
         compare={compared ? compareView(compared) : null}
         filtersNote={filtersNote(f)}
         reveal={reveal}
