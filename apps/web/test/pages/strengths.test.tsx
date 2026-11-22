@@ -1,0 +1,293 @@
+import { within } from "@testing-library/react";
+import { JSDOM } from "jsdom";
+import { renderToString } from "react-dom/server";
+import { describe, expect, it, vi } from "vitest";
+import type { CoachScope } from "../../src/server/profile";
+import type { StrengthsModel } from "../../src/server/profile/strengths";
+
+// The strengths view (`/app/strengths`), rendered from synthetic read-model objects: what each
+// section says when it has a claim, and the calm line when it has none. No row is the user's.
+
+vi.mock("next/navigation", async (orig) => ({
+  ...(await orig<object>()),
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn(), prefetch: vi.fn() }),
+}));
+
+const { StrengthsView, VERDICT_TEXT, OWN_BASELINE_TEXT, diffText } = await import(
+  "../../src/app/(app)/app/strengths/strengths-view.js"
+);
+const report = await import("../../src/app/(app)/app/report/_sections/openings.js");
+
+const ACCOUNT = "00000000-0000-4000-8000-0000000000a1";
+const scope: CoachScope = {
+  accountId: ACCOUNT,
+  timeClass: "rapid",
+  platform: "chesscom",
+  username: "e2e-hero",
+  options: [
+    {
+      accountId: ACCOUNT,
+      platform: "chesscom",
+      username: "e2e-hero",
+      timeClass: "rapid",
+      analysedGames: 214,
+    },
+    {
+      accountId: ACCOUNT,
+      platform: "chesscom",
+      username: "e2e-hero",
+      timeClass: "blitz",
+      analysedGames: 61,
+    },
+  ],
+};
+
+const FEN = "r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3";
+
+function base(): StrengthsModel {
+  return {
+    analysedGames: 214,
+    above: {
+      mode: "own",
+      trends: { claims: [], enough: true, earlierGames: 164, needEarlier: 0 },
+    },
+    improving: { weaknesses: [], kpis: null },
+    openings: { lines: [], judged: 0 },
+    hardSpots: { mode: "none", spots: [], notes: {} },
+    difficulty: { positions: 40, pendingMaia: 40, ok: 0, notApplicable: 0 },
+    report: null,
+  };
+}
+
+function show(model: StrengthsModel | null, s: CoachScope | null = scope) {
+  const html = renderToString(<StrengthsView scope={s} model={model} />);
+  const body = new JSDOM(`<!doctype html><body>${html}</body>`).window.document.body;
+  return { body, screen: within(body) };
+}
+
+const section = (body: HTMLElement, id: string) =>
+  body.querySelector(`[data-section="${id}"]`) as HTMLElement;
+
+describe("StrengthsView", () => {
+  it("states the basis and the four sections, each calm when empty", () => {
+    const { body, screen } = show(base());
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Strengths");
+    expect(body.textContent).toContain("Based on 214 analysed rapid games on chess.com.");
+    for (const h of [
+      "Where you're above your level",
+      "What's improving",
+      "Openings that work for you",
+      "Your best moves in hard spots",
+    ]) {
+      expect(screen.getByRole("heading", { level: 2, name: h })).toBeTruthy();
+    }
+    expect(section(body, "above").textContent).toContain(OWN_BASELINE_TEXT);
+    expect(section(body, "above").textContent).toContain("Nothing stands out yet");
+    expect(section(body, "improving").textContent).toContain(
+      "No weakness has a confirmed improvement yet.",
+    );
+    expect(section(body, "openings").textContent).toContain(
+      "Not enough games yet: a line needs at least 10 analysed games",
+    );
+    expect(section(body, "hard-spots").textContent).toContain(
+      "Difficulty pending: Maia hasn't rated these positions yet (40 of 40 positions waiting).",
+    );
+    expect(body.textContent).not.toMatch(/NaN|undefined|Infinity|null/);
+  });
+
+  it("says how many earlier games the own baseline still needs", () => {
+    const m = base();
+    m.above = {
+      mode: "own",
+      trends: { claims: [], enough: false, earlierGames: 12, needEarlier: 8 },
+    };
+    const { body } = show(m);
+    expect(section(body, "above").textContent).toContain(
+      "Not enough games yet. This compares your last 50 games with your earlier ones, and needs 8 more earlier games (you have 12 earlier games).",
+    );
+  });
+
+  it("shows an own-baseline claim with both sides' n and the change's range", () => {
+    const m = base();
+    m.above = {
+      mode: "own",
+      trends: {
+        enough: true,
+        earlierGames: 40,
+        needEarlier: 0,
+        claims: [
+          {
+            metric: "accuracy",
+            label: "Accuracy",
+            unit: "pct",
+            higherIsBetter: true,
+            recent: { value: 76.14, n: 50 },
+            earlier: { value: 65, n: 40 },
+            diff: { low: 9.1, high: 13.2 },
+          },
+        ],
+      },
+    };
+    const { body } = show(m);
+    const row = body.querySelector('[data-claim="accuracy"]');
+    expect(row?.textContent).toContain("+11.1 points");
+    expect(row?.textContent).toContain(
+      "76.1% over your last 50 games, against 65.0% over 40 earlier games. The change's 80% range is +9.1 points to +13.2 points.",
+    );
+    expect(section(body, "improving").textContent).toContain(
+      `Measures that rose against your earlier games are under "Where you're above your level".`,
+    );
+  });
+
+  it("compares with the band when a benchmark exists, and lists KPI trends under improving", () => {
+    const m = base();
+    m.above = {
+      mode: "band",
+      band: "B2",
+      compared: 5,
+      claims: [
+        {
+          metric: "blunders_per_game",
+          label: "Blunders per game",
+          unit: "per_game",
+          higherIsBetter: false,
+          value: 0.8,
+          low: 0.6,
+          high: 1.0,
+          n: 50,
+          median: 1.2,
+          band: "B2",
+        },
+      ],
+    };
+    m.improving.kpis = { claims: [], enough: false, earlierGames: 3, needEarlier: 17 };
+    const { body } = show(m);
+    expect(section(body, "above").textContent).not.toContain(OWN_BASELINE_TEXT);
+    expect(body.querySelector('[data-claim="blunders_per_game"]')?.textContent).toContain(
+      "80% range 0.60 to 1.00, over your last 50 games. Players in your rating band: 1.20.",
+    );
+    expect(section(body, "improving").textContent).toContain("needs 17 more earlier games");
+  });
+
+  it("shows a confirmed weakness change with its evidence, linked to its page", () => {
+    const m = base();
+    m.improving.weaknesses = [
+      {
+        seriesKey: "W1",
+        label: "Hung material",
+        state: "improving",
+        before: 0.04,
+        after: 0.026,
+        pChange: 0.86,
+        at: new Date("2026-10-14T12:00:00Z"),
+        afterCounts: { events: 21, chances: 800 },
+        chances: 2400,
+      },
+    ];
+    const { body } = show(m);
+    const row = body.querySelector('[data-claim="W1"]');
+    expect(row?.textContent).toContain(
+      "4.0% of chances before, 2.6% after, detected improving on 14 Oct 2026 (86% likely a real change). Since then: 21 times in 800 chances.",
+    );
+    expect(row?.querySelector("a")?.getAttribute("href")).toBe(
+      `/app/weaknesses/W1?account=${ACCOUNT}&tc=rapid`,
+    );
+  });
+
+  it("shows an opening's score against expected, with n and the report's verdict word", () => {
+    const m = base();
+    m.openings = {
+      judged: 3,
+      lines: [
+        {
+          lineKey: "italian",
+          name: "Italian Game",
+          color: "white",
+          kind: "chosen",
+          verdict: "keep",
+          n: 14,
+          score: 0.643,
+          expected: 0.51,
+          low: 0.52,
+          high: 0.75,
+        },
+      ],
+    };
+    const { body } = show(m);
+    expect(body.querySelector('[data-claim="italian"]')?.textContent).toContain(
+      "You play it as White. Scored 64% in 14 games (80% range 52% to 75%); your rating predicted 51%. Verdict: Keep.",
+    );
+  });
+
+  it("uses the report's verdict words", () => {
+    expect(VERDICT_TEXT).toEqual(report.VERDICT_TEXT);
+  });
+
+  it("draws a found move on a board, labels the fallback and links to that ply", () => {
+    const m = base();
+    m.hardSpots = {
+      mode: "critical",
+      spots: [
+        {
+          gameId: "g-1",
+          playedAt: new Date("2026-10-03T12:00:00Z"),
+          ply: 5,
+          kind: "only_move_found",
+          fen: FEN,
+          san: "Bb5",
+          uci: "f1b5",
+          bestUci: "f1b5",
+          winBefore: 54,
+          winAfter: 55,
+          timeSpent: 12,
+          difficultyStatus: "pending_maia",
+          pBest: null,
+          isCritical: true,
+          multipvGap: 22.4,
+        },
+      ],
+      notes: { only_move_found: "Keep doing this: when the position is sharp, take your time." },
+    };
+    const { body } = show(m);
+    const hard = section(body, "hard-spots");
+    expect(hard.textContent).toContain(
+      "Until it does, these are critical positions: the engine's best move was at least 15 win% points better than its second choice, and you found it.",
+    );
+    const spot = body.querySelector('[data-spot="g-1:5"]');
+    expect(spot?.querySelector("[aria-label='Position before 3. Bb5']")).toBeTruthy();
+    expect(spot?.textContent).toContain(
+      "The engine's next choice was 22 win% points worse. Win chance 54% to 55%. You took 12 s.",
+    );
+    expect(spot?.textContent).toContain("Keep doing this: when the position is sharp");
+    expect(spot?.querySelector("a")?.getAttribute("href")).toBe("/app/games/g-1?ply=5");
+    expect(body.textContent).not.toMatch(/NaN|undefined|Infinity/);
+  });
+
+  it("names the report's strengths so the page and the coach agree", () => {
+    const m = base();
+    m.report = {
+      at: new Date("2026-10-13T12:00:00Z"),
+      strengths: [
+        { area: "openings", label: "Solid Italian repertoire", metricKey: null, examples: 1 },
+      ],
+    };
+    const { body } = show(m);
+    expect(body.querySelector("[data-report-strengths]")?.textContent).toContain(
+      "Your report of 13 Oct 2026 names this strength, as your coach does:Solid Italian repertoire (Openings)",
+    );
+  });
+
+  it("is one calm empty sheet without analysed games", () => {
+    const { body } = show(null, null);
+    expect(body.textContent).toContain("No analysed games yet.");
+    expect(body.querySelector("[data-section]")).toBeNull();
+  });
+});
+
+describe("diffText", () => {
+  it("signs with a real minus and states the unit", () => {
+    expect(diffText(-0.4, "per_game")).toBe("−0.40 a game");
+    expect(diffText(0.12, "rate")).toBe("+12.0 percentage points");
+    expect(diffText(Number.NaN, "pct")).toBe("not measured");
+  });
+});

@@ -171,7 +171,9 @@ describe("ownTrends", () => {
 
   it("reads a lower-is-better KPI the right way round", () => {
     const g = [
-      ...Array.from({ length: 30 }, (_, i) => ({ blunders_per_game: [2, 3, 2, 4][i % 4] as number })),
+      ...Array.from({ length: 30 }, (_, i) => ({
+        blunders_per_game: [2, 3, 2, 4][i % 4] as number,
+      })),
       ...Array.from({ length: RECENT_GAMES }, (_, i) => ({
         blunders_per_game: [0, 1, 0, 1][i % 4] as number,
       })),
@@ -332,7 +334,9 @@ describe("keepDoingNote", () => {
     expect(keepDoingNote("tactic_found")).toBe(
       "Keep doing this: on every move, look at your own checks, captures and threats before anything else.",
     );
-    expect(keepDoingNote("only_move_found")).toMatch(/^Keep doing this: when the position is sharp/);
+    expect(keepDoingNote("only_move_found")).toMatch(
+      /^Keep doing this: when the position is sharp/,
+    );
   });
 });
 

@@ -139,7 +139,13 @@ export type BandClaim = {
  * at least the catalogue's minimum games. An interval that touches the median is no claim.
  */
 export function aboveBand(
-  current: { metric: string; value: number | null; low: number | null; high: number | null; n: number }[],
+  current: {
+    metric: string;
+    value: number | null;
+    low: number | null;
+    high: number | null;
+    n: number;
+  }[],
   medians: Map<string, BandMedian>,
 ): BandClaim[] {
   const out: BandClaim[] = [];
@@ -212,7 +218,11 @@ export type OwnTrends = {
 const mean = (v: number[]) => v.reduce((a, b) => a + b, 0) / v.length;
 
 /** Percentile bootstrap of mean(a) - mean(b), seeded; null when it has no spread. */
-function bootstrapDiff(a: number[], b: number[], seed: string): { low: number; high: number } | null {
+function bootstrapDiff(
+  a: number[],
+  b: number[],
+  seed: string,
+): { low: number; high: number } | null {
   const rnd = mulberry32(fnv1a(seed));
   const draws = new Float64Array(BOOTSTRAP_RESAMPLES);
   const resample = (v: number[]) => {
@@ -224,7 +234,9 @@ function bootstrapDiff(a: number[], b: number[], seed: string): { low: number; h
   draws.sort();
   const tail = (1 - CONFIDENCE) / 2;
   const at = (q: number) =>
-    draws[Math.min(BOOTSTRAP_RESAMPLES - 1, Math.max(0, Math.floor(q * BOOTSTRAP_RESAMPLES)))] as number;
+    draws[
+      Math.min(BOOTSTRAP_RESAMPLES - 1, Math.max(0, Math.floor(q * BOOTSTRAP_RESAMPLES)))
+    ] as number;
   const low = at(tail);
   const high = at(1 - tail);
   return fin(low) && fin(high) && high > low ? { low, high } : null;
@@ -374,7 +386,14 @@ export function workingOpenings(lines: OpeningInput[]): WorkingOpening[] {
     const w = wilson(points, g.length);
     if (!w || w.low <= expected) continue;
     const { games: _games, ...rest } = l;
-    out.push({ ...rest, n: g.length, score: points / g.length, expected, low: w.low, high: w.high });
+    out.push({
+      ...rest,
+      n: g.length,
+      score: points / g.length,
+      expected,
+      low: w.low,
+      high: w.high,
+    });
   }
   return out.sort((a, b) => b.low - b.expected - (a.low - a.expected) || b.n - a.n);
 }
@@ -437,7 +456,8 @@ export function pickHardSpots(candidates: HardSpotCandidate[]): HardSpots {
   );
   if (maia.length > 0) {
     const sorted = [...maia].sort(
-      (a, b) => (a.pBest as number) - (b.pBest as number) || b.playedAt.getTime() - a.playedAt.getTime(),
+      (a, b) =>
+        (a.pBest as number) - (b.pBest as number) || b.playedAt.getTime() - a.playedAt.getTime(),
     );
     return { mode: "maia", spots: spread(sorted) };
   }
@@ -479,7 +499,12 @@ const AREA_IDS: readonly Area[] = [
   "mindset",
 ];
 
-export type ReportStrength = { area: Area; label: string; metricKey: string | null; examples: number };
+export type ReportStrength = {
+  area: Area;
+  label: string;
+  metricKey: string | null;
+  examples: number;
+};
 
 /**
  * The strengths of a `report_runs.input` (Rust `select_strengths`: areas scoring at least 60,
@@ -525,7 +550,10 @@ export async function loadStrengths(
   const model = await readOnly(db, async (tx) => {
     if (!(await ownsScope(tx, userId, scope))) return null;
     const inScope = {
-      metrics: and(eq(gameMetrics.accountId, scope.accountId), eq(gameMetrics.timeClass, scope.timeClass)),
+      metrics: and(
+        eq(gameMetrics.accountId, scope.accountId),
+        eq(gameMetrics.timeClass, scope.timeClass),
+      ),
     };
 
     // Per-game values, newest first, then oldest first for the comparison.
@@ -541,7 +569,9 @@ export async function loadStrengths(
     // The band: the newest own rating on the Lichess scale (Rust `player_band`).
     const [rated] = await tx
       .select({
-        rating: sql<number | null>`case when ${games.playerColor} = 'white' then ${games.whiteRating} else ${games.blackRating} end`,
+        rating: sql<
+          number | null
+        >`case when ${games.playerColor} = 'white' then ${games.whiteRating} else ${games.blackRating} end`,
         platform: linkedAccounts.platform,
       })
       .from(games)
@@ -558,7 +588,11 @@ export async function loadStrengths(
     const band = rated ? bandOf(rated.platform, scope.timeClass, rated.rating) : null;
     const refRows = band
       ? await tx
-          .select({ band: bandReference.band, metric: bandReference.metric, median: bandReference.median })
+          .select({
+            band: bandReference.band,
+            metric: bandReference.metric,
+            median: bandReference.median,
+          })
           .from(bandReference)
           .innerJoin(referenceBuilds, eq(referenceBuilds.id, bandReference.buildId))
           .where(
@@ -579,7 +613,13 @@ export async function loadStrengths(
         mode: "band",
         band,
         claims: aboveBand(
-          current.map((r) => ({ metric: r.metric, value: r.value, low: r.ciLow, high: r.ciHigh, n: r.n })),
+          current.map((r) => ({
+            metric: r.metric,
+            value: r.value,
+            low: r.ciLow,
+            high: r.ciHigh,
+            n: r.n,
+          })),
           medians,
         ),
         compared: medians.size,
@@ -618,7 +658,9 @@ export async function loadStrengths(
       : [];
     const names = await openingNames(tx, scope, keys);
     const changes: WeaknessChangeInput[] = estimates.map((e) => {
-      const t = transitions.filter((h) => h.seriesKey === e.seriesKey && h.toState === e.state).at(-1);
+      const t = transitions
+        .filter((h) => h.seriesKey === e.seriesKey && h.toState === e.state)
+        .at(-1);
       const min = weaknessDef(e.seriesKey)?.minEvidence ?? null;
       const ev = isObj(t?.evidence) ? t.evidence : null;
       return {
@@ -673,7 +715,12 @@ export async function loadStrengths(
         verdict: openingLines.verdict,
       })
       .from(openingLines)
-      .where(and(eq(openingLines.accountId, scope.accountId), eq(openingLines.timeClass, scope.timeClass)));
+      .where(
+        and(
+          eq(openingLines.accountId, scope.accountId),
+          eq(openingLines.timeClass, scope.timeClass),
+        ),
+      );
     const lines = new Map<string, OpeningInput>();
     for (const r of openingRows) {
       if (!r.lineKey || !r.kind || r.score == null || r.expected == null) continue;

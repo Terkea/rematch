@@ -10,6 +10,7 @@ describe("navItems", () => {
       ["Games", "/app/games"],
       ["Report", "/app/report"],
       ["Weaknesses", "/app/weaknesses"],
+      ["Strengths", "/app/strengths"],
       ["Progress", "/app/progress"],
       ["Coach", "/app/coach"],
       ["Accounts", "/app/accounts"],
@@ -20,6 +21,7 @@ describe("navItems", () => {
     const keywords = Object.fromEntries(navItems.map((i) => [i.label, [...i.keywords]]));
     expect(keywords.Report).toEqual(["coaching", "plan", "summary"]);
     expect(keywords.Weaknesses).toEqual(["mistakes", "leaks"]);
+    expect(keywords.Strengths).toEqual(["good", "keep doing", "best moves"]);
     expect(keywords.Progress).toEqual(["trends", "kpi", "weekly"]);
     expect(keywords.Coach).toEqual(["ask", "chat", "question"]);
   });
@@ -43,6 +45,7 @@ describe("shownNavItems", () => {
       "Games",
       "Report",
       "Weaknesses",
+      "Strengths",
       "Progress",
       "Accounts",
     ]);

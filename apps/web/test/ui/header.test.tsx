@@ -86,6 +86,7 @@ describe("shell header", () => {
       "Games",
       "Report",
       "Weaknesses",
+      "Strengths",
       "Progress",
       "Coach",
       "Accounts",
@@ -147,7 +148,7 @@ describe("shell header", () => {
       within(more)
         .getAllByRole("link")
         .map((a) => a.textContent),
-    ).toEqual(["Weaknesses", "Progress", "Accounts"]);
+    ).toEqual(["Weaknesses", "Strengths", "Progress", "Accounts"]);
     expect(within(more).getByRole("link", { name: "Progress" })).toHaveAttribute(
       "aria-current",
       "page",
