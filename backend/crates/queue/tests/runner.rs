@@ -240,32 +240,32 @@ async fn notify_wakes_idle_runner_quickly(pool: PgPool) {
             Ok(json!({}))
         }
     });
+    // An hour-long poll and reap period: once idle, only the notification can wake the loop.
+    // That is the claim, so it is checked by cause rather than by a latency bound, which a
+    // loaded host can always exceed (the claim waits for a pooled connection and the CPU).
     let runner = Runner::spawn(
         q.clone(),
         h,
         RunnerConfig {
-            idle_poll: Duration::from_secs(5),
-            // No reap ticks either: only the notification can wake the loop.
-            reap_every: Duration::from_secs(60),
+            idle_poll: Duration::from_secs(3600),
+            reap_every: Duration::from_secs(3600),
             ..cfg(1)
         },
     );
     wait_listening(&pool, 1).await;
-    // Let the runner finish its first (empty) claim and go idle.
+    // Coverage only, not correctness: give the runner time to finish its start-up claims and go
+    // idle. If it has not, one of them takes the job and the test passes without the wake-up.
     tokio::time::sleep(Duration::from_millis(300)).await;
-    let enqueued = Instant::now();
     let past = EnqueueOptions {
         run_at: Some(time::OffsetDateTime::now_utc() - time::Duration::seconds(10)),
         ..EnqueueOptions::default()
     };
     q.enqueue(KIND, &json!({}), past).await.unwrap().unwrap();
-    let started = tokio::time::timeout(Duration::from_secs(5), rx.recv())
+    // Far below the hour-long poll: a start means the NOTIFY woke the runner.
+    tokio::time::timeout(Duration::from_secs(60), rx.recv())
         .await
-        .expect("job started")
+        .expect("woken by NOTIFY, long before the next poll")
         .unwrap();
-    let latency = started - enqueued;
-    // Woken by NOTIFY, not by the 5 s poll.
-    assert!(latency < Duration::from_secs(1), "{latency:?}");
     runner.stop();
     runner.wait_idle().await;
 }
@@ -464,14 +464,14 @@ async fn force_cancels_handlers_and_releases_leases(pool: PgPool) {
 async fn force_releases_retryable_failures_but_keeps_unrecoverable_ones(pool: PgPool) {
     // Every handler stops promptly, so `force` sees their own writes (not `release_owned`):
     // a retryable error and a panic after force are releases, an unrecoverable verdict is kept.
-    // The runner gets its own pool so its writes never wait for the shared test-pool permits
-    // and land within the force grace period.
-    let own = sqlx::postgres::PgPoolOptions::new()
-        .max_connections(4)
-        .connect_with((*pool.connect_options()).clone())
-        .await
-        .unwrap();
-    let q = Queue::new(own);
+    // Those writes must land within the 1 s force grace, so nothing else may stand in their way:
+    // - a dedicated pool of open connections, one each for the listener, the main loop and
+    //   the three writes, plus slack, so a write never waits for a connection or opens one;
+    // - no lease renewal during the test (renew every 30 s), so no renew holds a connection or
+    //   the job's row lock, and none is dropped mid-query (which closes its connection) when the
+    //   handlers end.
+    let own = testkit::dedicated_pool(&pool, 8).await;
+    let q = Queue::new(own.clone());
     let erroring = enqueue(&q, KIND, json!({ "mode": "error" })).await;
     let panicking = enqueue(&q, KIND, json!({ "mode": "panic" })).await;
     let verdict = enqueue(&q, KIND, json!({ "mode": "unrecoverable" })).await;
@@ -489,12 +489,19 @@ async fn force_releases_retryable_failures_but_keeps_unrecoverable_ones(pool: Pg
             }),
         }
     });
-    let runner = Runner::spawn(q.clone(), h, cfg(3));
+    let quiet = RunnerConfig {
+        lease: Duration::from_secs(60),
+        renew_every: Duration::from_secs(30),
+        stall_grace: Duration::from_secs(31),
+        ..cfg(3)
+    };
+    let runner = Runner::spawn(q.clone(), h, quiet);
     wait_for("3 running", Duration::from_secs(10), POLL, || async {
         (runner.in_flight() == 3).then_some(())
     })
     .await;
     runner.force().await;
+    own.close().await;
     let stats = runner.stats();
     assert_eq!((stats.released, stats.failed, stats.retried), (2, 1, 0));
     let r = row(&pool, verdict).await;
