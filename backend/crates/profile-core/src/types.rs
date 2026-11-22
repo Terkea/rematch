@@ -442,7 +442,10 @@ pub struct SessionInfo {
 }
 
 /// Version of [`PlayerGameMetrics`] written by this code.
-pub const PLAYER_GAME_METRICS_VERSION: u32 = 1;
+///
+/// Version 2 (R2 Task 9 fix round): `tactics.missed` became `Option` (`None` = W3 unknown for
+/// the game). Version-1 rows read it as `Some(n)` even when W3 was dropped, so they are stale.
+pub const PLAYER_GAME_METRICS_VERSION: u32 = 2;
 
 /// A value per game phase (TS `Record<Phase, number | null>`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -485,8 +488,11 @@ pub struct MissCounts {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct TacticsCounts {
+    /// W3 opportunities (0 when W3 is unknown for the game; see `missed`).
     pub opportunities: u32,
-    pub missed: u32,
+    /// W3 events; `None` when W3 was left out for the game (a missing best line, ADR-R2-4 §10)
+    /// or the observation was unusable. Never read `None` as 0.
+    pub missed: Option<u32>,
     pub allowed: u32,
 }
 
@@ -757,7 +763,7 @@ mod tests {
             ply: 12,
         });
         let v = serde_json::to_value(&m).unwrap();
-        assert_eq!(v["version"], 1);
+        assert_eq!(v["version"], 2);
         assert!(v.get("accuracyByPhase").is_some());
         assert!(v.get("evalTrend15to35").is_some());
         assert!(v["opening"].get("evalAtOpeningEndWhiteCp").is_some());
@@ -801,7 +807,7 @@ mod tests {
             .unwrap()
             .remove("evalAtOpeningEndWhiteCp");
         let m: PlayerGameMetrics = serde_json::from_value(v).unwrap();
-        assert_eq!(m.version, 1);
+        assert_eq!(m.version, PLAYER_GAME_METRICS_VERSION);
         assert_eq!(m.blunders, 2);
         assert!(m.strengths.is_empty());
         assert_eq!(m.w9d_rho, None);

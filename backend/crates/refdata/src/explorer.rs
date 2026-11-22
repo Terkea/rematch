@@ -15,10 +15,11 @@ use crate::builds::{RefdataError, Result, ensure_building};
 pub const FLUSH_CHUNK: usize = 5_000;
 /// Positions per query in [`load_explorer_index`].
 pub const INDEX_BATCH: usize = 1_000;
-/// A position is theory only with at least this many games …
-pub const THEORY_MIN_TOTAL: i64 = 50;
-/// … and a move only with at least this share of them, in percent.
-pub const THEORY_MIN_SHARE_PCT: i64 = 5;
+/// One explorer move, the theory rule and its constants live in `profile-core` (pure, used by the
+/// repertoire), so there is one copy of each (T18 review M1).
+pub use profile_core::openings::repertoire::{
+    ExplorerMove, THEORY_MIN_SHARE_PCT, THEORY_MIN_TOTAL, in_theory,
+};
 
 /// One explorer row key: the move `uci` played from position `fen_key` in `band` × `time_class`.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -37,14 +38,26 @@ pub struct ExplorerCounts {
     pub black: i64,
 }
 
-/// One move of a position, with `total = white + draws + black`.
-#[derive(Clone, Debug, PartialEq, Eq, FromRow)]
-pub struct ExplorerMove {
-    pub uci: String,
-    pub white: i64,
-    pub draws: i64,
-    pub black: i64,
-    pub total: i64,
+/// One stored move row ([`ExplorerMove`] has no sqlx derive: `profile-core` has no sqlx).
+#[derive(FromRow)]
+struct MoveRow {
+    uci: String,
+    white: i64,
+    draws: i64,
+    black: i64,
+    total: i64,
+}
+
+impl From<MoveRow> for ExplorerMove {
+    fn from(r: MoveRow) -> Self {
+        ExplorerMove {
+            uci: r.uci,
+            white: r.white,
+            draws: r.draws,
+            black: r.black,
+            total: r.total,
+        }
+    }
 }
 
 /// The active explorer build's moves of one position, by total desc then uci.
@@ -169,20 +182,20 @@ pub async fn query_explorer(
     band: Band,
     tc: TimeClass,
 ) -> Result<Vec<ExplorerMove>> {
-    let moves = sqlx::query_as(QUERY_EXPLORER_SQL)
+    let rows: Vec<MoveRow> = sqlx::query_as(QUERY_EXPLORER_SQL)
         .bind(fen_key)
         .bind(band.as_str())
         .bind(tc.as_str())
         .fetch_all(pool)
         .await?;
-    Ok(moves)
+    Ok(rows.into_iter().map(ExplorerMove::from).collect())
 }
 
 #[derive(FromRow)]
 struct IndexRow {
     fen_key: String,
     #[sqlx(flatten)]
-    mv: ExplorerMove,
+    mv: MoveRow,
 }
 
 /// The active build's moves for each known position among `fen_keys` (deduplicated, queried in
@@ -213,7 +226,7 @@ pub async fn load_explorer_index(
             .fetch_all(&mut *tx)
             .await?;
         for r in rows {
-            index.entry(r.fen_key).or_default().push(r.mv);
+            index.entry(r.fen_key).or_default().push(r.mv.into());
         }
     }
     tx.commit().await?;
@@ -221,20 +234,4 @@ pub async fn load_explorer_index(
         moves.sort_by(|a, b| b.total.cmp(&a.total).then_with(|| a.uci.cmp(&b.uci)));
     }
     Ok(index)
-}
-
-/// True when the position has at least [`THEORY_MIN_TOTAL`] games and `uci` has at least
-/// [`THEORY_MIN_SHARE_PCT`] percent of them (exact integer comparison).
-pub fn in_theory(index: &HashMap<String, Vec<ExplorerMove>>, fen_key: &str, uci: &str) -> bool {
-    let Some(moves) = index.get(fen_key) else {
-        return false;
-    };
-    let total: i64 = moves.iter().map(|m| m.total).sum();
-    if total < THEORY_MIN_TOTAL {
-        return false;
-    }
-    moves
-        .iter()
-        .find(|m| m.uci == uci)
-        .is_some_and(|m| m.total * 100 >= total * THEORY_MIN_SHARE_PCT)
 }

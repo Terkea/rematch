@@ -623,19 +623,23 @@ pub fn w9d_rho(v: &GameView) -> Option<f64> {
     spearman(&t, &g).filter(|r| r.is_finite())
 }
 
+/// W10 opportunity (a quiet move): eligible, middlegame, not critical, no tactic in the best
+/// line, `|cp| ≤ 150`, and every eligible own move has its best line. Shared with the per-game
+/// `quiet` metric.
+pub(crate) fn is_quiet_move(v: &GameView, o: &OwnMove) -> bool {
+    v.best_lines_complete
+        && o.eligible
+        && o.m.rec.phase == Phase::Middlegame
+        && o.m.f.is_critical != Some(true)
+        && o.m.f.best.as_ref().is_some_and(|b| b.swing.depth.is_none())
+        && matches!(o.m.score_before, EngineScore::Cp(cp) if cp.abs() <= QUIET_MAX_CP)
+}
+
 /// W10 positional drift: eligible quiet middlegame moves; ΔW ≥ 5.
 pub fn w10(v: &GameView) -> Detection {
-    let complete = v.best_lines_complete;
-    Detection::per_move(
-        v.eligible().filter(|o| {
-            complete
-                && o.m.rec.phase == Phase::Middlegame
-                && o.m.f.is_critical != Some(true)
-                && o.m.f.best.as_ref().is_some_and(|b| b.swing.depth.is_none())
-                && matches!(o.m.score_before, EngineScore::Cp(cp) if cp.abs() <= QUIET_MAX_CP)
-        }),
-        |o| o.dw() >= INACCURACY_DW,
-    )
+    Detection::per_move(v.own.iter().filter(|o| is_quiet_move(v, o)), |o| {
+        o.dw() >= INACCURACY_DW
+    })
 }
 
 /// W11 easy-move errors: eligible moves with Maia `p_ok ≥ 0.8`; decisive.
