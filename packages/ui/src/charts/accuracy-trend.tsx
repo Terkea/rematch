@@ -307,6 +307,29 @@ const stepButton =
  * opens its caption, with Previous and Next to step through a dense cluster. Keyboard: the dots
  * are one tab stop; arrow keys walk the games in date order, Home and End jump to the ends.
  */
+/** The empty grid the chart draws on: the same ticks at the same heights, with no data. */
+function TrendPlaceholder() {
+  return (
+    <div aria-hidden="true" data-part="trend-placeholder" className="absolute inset-0">
+      {ACCURACY_TICKS.map((t) => (
+        <div
+          key={t}
+          className="absolute right-0 left-0 flex -translate-y-1/2 items-center"
+          style={{ top: yForAccuracy(t) }}
+        >
+          <span
+            className="shrink-0 pr-1.5 text-right font-sans text-xs text-ink-faint tabular-nums"
+            style={{ width: TREND_LEFT }}
+          >
+            {`${t}%`}
+          </span>
+          <span className="h-px flex-1 bg-rule" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function AccuracyTrend({
   points,
   rolling,
@@ -519,6 +542,9 @@ export function AccuracyTrend({
     <div className={cn("flex flex-col gap-3", className)}>
       <p className="sr-only">{summary}</p>
       <div ref={parentRef} className="relative h-52 w-full">
+        {/* Before the first measure (the server render, and until hydration) the box holds the
+            chart's own gridlines and nothing else, so it never sits blank (M5). */}
+        {!geo && <TrendPlaceholder />}
         {geo && (
           <>
             <motion.svg
