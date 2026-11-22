@@ -14,7 +14,7 @@ use profile_core::types::{
     SeriesKey,
 };
 use sqlx::types::Json;
-use sqlx::{FromRow, PgPool};
+use sqlx::{FromRow, PgConnection, PgPool};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -67,12 +67,22 @@ pub async fn load_analysed_games(
     account_id: Uuid,
     tc: TimeClass,
 ) -> Result<Vec<(GameContext, PlayerGameMetrics)>> {
+    let mut conn = pool.acquire().await?;
+    load_analysed_games_in(&mut conn, account_id, tc).await
+}
+
+/// [`load_analysed_games`] on the caller's connection or transaction.
+pub async fn load_analysed_games_in(
+    conn: &mut PgConnection,
+    account_id: Uuid,
+    tc: TimeClass,
+) -> Result<Vec<(GameContext, PlayerGameMetrics)>> {
     let version = i32::try_from(PLAYER_GAME_METRICS_VERSION).unwrap_or(i32::MAX);
     let rows: Vec<AnalysedRow> = sqlx::query_as(ANALYSED_SQL)
         .bind(account_id)
         .bind(tc.as_str())
         .bind(version)
-        .fetch_all(pool)
+        .fetch_all(&mut *conn)
         .await?;
     let stale: i64 = sqlx::query_scalar(
         "SELECT count(*) FROM game_metrics WHERE account_id = $1 AND time_class = $2::time_class \
@@ -81,7 +91,7 @@ pub async fn load_analysed_games(
     .bind(account_id)
     .bind(tc.as_str())
     .bind(version)
-    .fetch_one(pool)
+    .fetch_one(&mut *conn)
     .await?;
     if stale > 0 {
         tracing::info!(%account_id, tc = tc.as_str(), stale, "stale game_metrics rows left out");
@@ -147,6 +157,16 @@ pub async fn load_series_points(
     account_id: Uuid,
     tc: TimeClass,
 ) -> Result<BTreeMap<SeriesKey, Vec<SeriesPoint>>> {
+    let mut conn = pool.acquire().await?;
+    load_series_points_in(&mut conn, account_id, tc).await
+}
+
+/// [`load_series_points`] on the caller's connection or transaction.
+pub async fn load_series_points_in(
+    conn: &mut PgConnection,
+    account_id: Uuid,
+    tc: TimeClass,
+) -> Result<BTreeMap<SeriesKey, Vec<SeriesPoint>>> {
     let rows: Vec<PointRow> = sqlx::query_as(
         "SELECT series_key, game_id, played_at, events, opportunities, protocol \
          FROM weakness_series_point WHERE account_id = $1 AND time_class = $2::time_class \
@@ -154,7 +174,7 @@ pub async fn load_series_points(
     )
     .bind(account_id)
     .bind(tc.as_str())
-    .fetch_all(pool)
+    .fetch_all(conn)
     .await?;
     let mut out: BTreeMap<SeriesKey, Vec<SeriesPoint>> = BTreeMap::new();
     let mut invalid = 0u32;
