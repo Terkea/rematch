@@ -31,6 +31,20 @@ describe("ProgressPlaceholder text", () => {
     expect(label(container)).toBe("Importing: 120 games so far");
   });
 
+  it("takes Writing and Building as verbs", () => {
+    const { container } = render(
+      <ProgressPlaceholder
+        shape="list"
+        verb="Writing"
+        progress={{ done: 1, total: 5, unit: "sections" }}
+      />,
+    );
+    expect(label(container)).toBe("Writing 1 / 5 sections");
+    cleanup();
+    const { container: b } = render(<ProgressPlaceholder shape="list" verb="Building" />);
+    expect(label(b)).toBe("Building");
+  });
+
   it("shows the verb alone without progress", () => {
     const { container } = render(<ProgressPlaceholder shape="stat" verb="Analysing" />);
     expect(label(container)).toBe("Analysing");
