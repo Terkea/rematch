@@ -106,6 +106,10 @@ test("overview, explorer and review, end to end", async ({ browser, request }, i
       .click();
     await expect(page).toHaveURL(/\/app\/games$/);
     await hydrated(page, "section[aria-label='Filters'] button");
+    // The list opens on rapid (I8); the analysed fixture is not rapid, so show every time control.
+    await page.getByRole("combobox", { name: "Time control" }).click();
+    await page.getByRole("option", { name: "All time controls" }).click();
+    await expect(page).toHaveURL(/[?&]tc=all\b/);
     await page
       .getByRole("radiogroup", { name: "Result" })
       .getByRole("radio", { name: "Losses" })

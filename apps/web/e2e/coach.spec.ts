@@ -243,8 +243,8 @@ test.describe
 
     test("8. progress shows before-and-after first, a KPI gap for the empty week, the review", async () => {
       await ready(page, "/app/progress", "main h1");
-      const headings = await page.locator("main h2").allInnerTexts();
-      expect(headings[0]).toBe("Before and after");
+      // The page, not its loading state: before-and-after is the first section heading.
+      await expect(page.locator("main h2").first()).toHaveText("Before and after");
       // The null week is a stated gap in the grid's summary, never a zero.
       await expect(
         page.locator("[data-kpi='accuracy']").getByText(/no \w+ in week of 5 Oct 2026/),
