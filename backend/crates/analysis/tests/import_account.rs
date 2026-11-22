@@ -504,6 +504,7 @@ async fn shutdown_cancel_pauses_the_run_and_releases(pool: PgPool) {
         Some(ImportCursor {
             oldest_reached: Some(list[1].played_at),
             newest_seen_at: None,
+            backfill: false,
         })
     );
     assert!(matches!(
@@ -672,6 +673,7 @@ async fn overlapping_handlers_on_one_account_are_exclusive_with_no_gap_and_no_lo
         Some(ImportCursor {
             oldest_reached: None,
             newest_seen_at: Some(list[0].played_at),
+            backfill: false,
         }),
         "the watermark covers a contiguous import"
     );
