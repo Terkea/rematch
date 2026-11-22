@@ -27,6 +27,9 @@ use db::pool::DbOptions;
 use engine::pool::{EnginePool, PoolOptions};
 use engine::version::stockfish_version;
 use engine::{ANALYSIS_PROTOCOL, Analyser};
+use enrich::tablebase::cached::CachedTbProbe;
+use enrich::tablebase::pool::{SyzygyPool, TablebaseStatus};
+use enrich::types::TablebaseProbe;
 use futures::FutureExt;
 use futures::future::BoxFuture;
 use platforms::breaker::{BreakerOptions, CircuitBreaker};
@@ -240,6 +243,62 @@ pub fn import_deps(env: &WorkerEnv, pool: &PgPool, queue: &Queue) -> ImportAccou
     deps
 }
 
+/// Engines in the tablebase pool (ADR-R2-12).
+pub const TABLEBASE_ENGINES: usize = 1;
+/// Nodes per tablebase probe (ADR-R2-12).
+pub const TABLEBASE_NODES: u64 = 1000;
+
+/// The worker's tablebase probe (R2 Task 23): its own Stockfish set with `SyzygyPath`, never the
+/// main engine pool, behind the `position_tb` cache. The enrichment pipeline (R2 Tasks 25, 31,
+/// 35) takes `probe`.
+pub struct WorkerTablebase {
+    pub pool: Arc<SyzygyPool>,
+    /// [`CachedTbProbe`] over `pool`.
+    pub probe: Arc<dyn TablebaseProbe>,
+}
+
+impl WorkerTablebase {
+    pub fn status(&self) -> TablebaseStatus {
+        self.pool.status()
+    }
+}
+
+/// The tablebase probe for `SYZYGY_PATH`: `None` when it is unset or when its engines cannot
+/// start. A path without tables gives an unavailable probe. Never an error: analysis does not
+/// depend on the tables.
+pub async fn start_tablebase(env: &WorkerEnv, pool: &PgPool) -> Option<WorkerTablebase> {
+    let Some(path) = env.syzygy_path.as_deref() else {
+        tracing::info!("SYZYGY_PATH is not set; no tablebase probe");
+        return None;
+    };
+    match SyzygyPool::start(
+        &env.stockfish_path,
+        path,
+        TABLEBASE_ENGINES,
+        TABLEBASE_NODES,
+    )
+    .await
+    {
+        Ok(tb) => {
+            let tb = Arc::new(tb);
+            tracing::info!(
+                path = %path.display(),
+                status = tb.status().as_str(),
+                tables = tb.tables_found(),
+                "tablebase probe"
+            );
+            Some(WorkerTablebase {
+                probe: Arc::new(CachedTbProbe::new(tb.clone(), pool.clone())),
+                pool: tb,
+            })
+        }
+        Err(err) => {
+            tracing::warn!(%err, path = %path.display(), "tablebase engines failed to start; tablebase unavailable");
+            None
+        }
+    }
+}
+
 /// A started worker. Turn it into [`ShutdownHandles`] with
 /// [`into_shutdown_handles`](Self::into_shutdown_handles).
 pub struct RunningWorkers {
@@ -249,6 +308,8 @@ pub struct RunningWorkers {
     /// Import, analyse and (with the reconciler) reconcile.
     pub runners: Vec<RunnerHandle>,
     pub stockfish_version: String,
+    /// `None` when `SYZYGY_PATH` is unset (see [`start_tablebase`]).
+    pub tablebase: Option<WorkerTablebase>,
     /// Imports released because another handler held the account (`account_busy`).
     pub busy_releases: Arc<AtomicU64>,
     monitor: AbortHandle,
@@ -262,12 +323,34 @@ impl RunningWorkers {
                 .into_iter()
                 .map(|r| Box::new(r) as Box<dyn Drainable>)
                 .collect(),
-            engines: Box::new(self.engines),
+            engines: Box::new(Engines {
+                main: self.engines,
+                tablebase: self.tablebase.map(|tb| tb.pool),
+            }),
             db: Box::new(DbClose {
                 pool: self.pool,
                 monitor: self.monitor,
             }),
         }
+    }
+}
+
+/// The main engine pool and the tablebase engines, closed together.
+struct Engines {
+    main: Arc<EnginePool>,
+    tablebase: Option<Arc<SyzygyPool>>,
+}
+
+impl Closable for Engines {
+    fn close(&self) -> BoxFuture<'_, anyhow::Result<()>> {
+        async move {
+            if let Some(tb) = &self.tablebase {
+                tb.close().await;
+            }
+            EnginePool::close(&self.main).await;
+            Ok(())
+        }
+        .boxed()
     }
 }
 
@@ -362,6 +445,7 @@ pub async fn start_workers(env: &WorkerEnv, opts: StartOptions) -> anyhow::Resul
             return Err(anyhow::Error::new(e).context("scheduling the reconciler"));
         }
     }
+    let tablebase = start_tablebase(env, &pool).await;
     let monitor = tokio::spawn(log_busy_releases(busy_releases.clone())).abort_handle();
     tracing::info!(
         stockfish_version = %stockfish_version,
@@ -376,6 +460,7 @@ pub async fn start_workers(env: &WorkerEnv, opts: StartOptions) -> anyhow::Resul
         engines,
         runners,
         stockfish_version,
+        tablebase,
         busy_releases,
         monitor,
     })

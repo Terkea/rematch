@@ -42,6 +42,7 @@ pub fn env_for(opts: &PgConnectOptions) -> Option<WorkerEnv> {
         lichess_token: None,
         lichess_lookback_days: None,
         pool_size: Some(1),
+        syzygy_path: None,
     })
 }
 

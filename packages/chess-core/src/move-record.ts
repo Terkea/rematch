@@ -47,10 +47,11 @@ export function buildMoveRecords(
     throw new Error(`Expected ${plies.length + 1} evals, got ${evals.length}`);
   }
   const phases = detectPhases(plies.map((p) => p.fenBefore));
-  const previousClock: Record<Color, number | null> = {
-    white: clock?.baseSeconds ?? null,
-    black: clock?.baseSeconds ?? null,
-  };
+  // Without any clock comment in the PGN there is no clock to report, even when a time control
+  // is known (R1 Task 24 parity: the Rust port's rule, so a clockless game reads as unknown).
+  const pgnHasClocks = plies.some((p) => p.clockSeconds !== null);
+  const base = clock && pgnHasClocks ? clock.baseSeconds : null;
+  const previousClock: Record<Color, number | null> = { white: base, black: base };
 
   return plies.map((ply, i): MoveRecord => {
     const evalBefore = evals[i] as PositionEval;

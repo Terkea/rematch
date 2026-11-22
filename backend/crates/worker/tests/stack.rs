@@ -66,6 +66,7 @@ async fn refuses_to_start_unless_the_engine_is_stockfish_19(
         lichess_token: None,
         lichess_lookback_days: None,
         pool_size: Some(1),
+        syzygy_path: None,
     };
     let err = match start_workers(&env, StartOptions::default()).await {
         Ok(_) => panic!("started with Stockfish 18"),
