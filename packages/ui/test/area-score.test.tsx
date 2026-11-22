@@ -138,3 +138,32 @@ describe("AreaScore without a measured next band", () => {
     expect(screen.getByText("Band median")).toBeInTheDocument();
   });
 });
+
+describe("AreaScore interval", () => {
+  const base = {
+    area: "endgame" as const,
+    score: 62,
+    band: { median: 50 },
+    basis: { games: 22, timeClass: "rapid" },
+  };
+
+  it("draws a stored interval and states it", () => {
+    const { container } = render(
+      <AreaScore {...base} interval={{ low: 55, high: 68, level: 0.8 }} />,
+    );
+    expect(container.querySelector('[data-part="interval"]')).not.toBeNull();
+    expect(container.textContent).toContain("80% range 55–68");
+  });
+
+  it("says no interval yet when there is none", () => {
+    const { container } = render(<AreaScore {...base} interval={null} />);
+    expect(container.querySelector('[data-part="interval"]')).toBeNull();
+    expect(container.textContent).toContain("No interval yet");
+  });
+
+  it("explains the connector and the interval in the key", () => {
+    render(<AreaScoreKey next={false} interval />);
+    expect(screen.getByText("Distance to the band median")).toBeInTheDocument();
+    expect(screen.getByText("Likely range")).toBeInTheDocument();
+  });
+});

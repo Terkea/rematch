@@ -1,12 +1,15 @@
 export {
   type Area,
+  type AreaInterval,
   AreaScore,
+  type AreaScoreItem,
   AreaScoreKey,
   AreaScoreList,
   type AreaScoreProps,
   areaLabels,
   areaScoreText,
   deltaText,
+  intervalText,
   type RulerDomain,
   rulerDomain,
 } from "./area-score.js";
