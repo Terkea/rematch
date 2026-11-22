@@ -4,6 +4,7 @@ import Link from "next/link";
 import { CoachScopeSwitch } from "../../../../components/coach-scope-switch";
 import { MorphLink } from "../../../../components/shared-morph";
 import type { CoachScope, DifficultyStatus, WeaknessSummary } from "../../../../server/profile";
+import { seriesGlossary } from "../../../../server/profile/glossary";
 import { ESTIMATE_WINDOW_TEXT } from "../../../../server/profile/window";
 import { EmptySheet } from "../../_shell/page-heading";
 import { SectionHead } from "../_overview/section-head";
@@ -172,6 +173,7 @@ export function WeaknessesView({
                         trend={trends.get(w.seriesKey) ?? []}
                         onset={w.onset ? w.onset.at.toISOString().slice(0, 10) : null}
                         scaleMax={scaleMax}
+                        explain={seriesGlossary(w.seriesKey)}
                       />
                     </MorphLink>
                   </li>

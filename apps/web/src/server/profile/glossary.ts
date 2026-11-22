@@ -915,3 +915,15 @@ export function glossaryForPrompt(): string {
     states: STATE_GLOSSARY,
   });
 }
+
+/**
+ * The entry of a weakness series: a `W*` key's own, a missed motif's KPI entry. An allowed motif,
+ * an opening line or an endgame type has none, so the page shows no definition rather than a
+ * borrowed one.
+ */
+export function seriesGlossary(seriesKey: string): GlossaryEntry | null {
+  if (Object.hasOwn(WEAKNESS_GLOSSARY, seriesKey)) return WEAKNESS_GLOSSARY[seriesKey] ?? null;
+  const missed = /^motif\.missed:(.+)$/.exec(seriesKey);
+  if (missed) return glossaryEntry(`motif_miss_rate:${missed[1]}`);
+  return null;
+}

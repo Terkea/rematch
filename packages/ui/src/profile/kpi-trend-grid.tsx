@@ -2,6 +2,7 @@
 
 import { createElement, useId } from "react";
 import { cn } from "../lib/index.js";
+import { ExplainPopover } from "./explain.js";
 import {
   dayText,
   formatKpiValue,
@@ -172,11 +173,15 @@ function Multiple({
   return (
     <figure data-kpi={item.metric} className="m-0 flex min-w-0 flex-col gap-2">
       <figcaption className="flex flex-col gap-0.5">
-        {createElement(
-          `h${headingLevel}`,
-          { className: "m-0 text-base font-medium text-ink" },
-          item.label,
-        )}
+        <span className="flex items-center gap-1">
+          {createElement(
+            `h${headingLevel}`,
+            { className: "m-0 text-base font-medium text-ink" },
+            item.label,
+          )}
+          {item.explain ? <ExplainPopover entry={item.explain} /> : null}
+        </span>
+        {item.explain ? <p className="m-0 text-sm text-ink-soft">{item.explain.meaning}</p> : null}
         {head ? (
           <p aria-hidden="true" className="m-0 flex flex-wrap items-baseline gap-x-2 text-sm">
             <span className="font-serif text-xl font-semibold text-ink" style={NUMERALS}>

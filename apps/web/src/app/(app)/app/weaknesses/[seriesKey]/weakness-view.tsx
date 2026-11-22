@@ -17,19 +17,24 @@ import {
 } from "@ci/ui/profile";
 import { stateStyle, WeaknessTimeline } from "@ci/ui/timeline";
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { MorphArrival } from "../../../../../components/shared-morph";
 import { coachChatLive } from "../../../../../lib/coach-chat";
+import { howOftenText, levelText, rateText, trendText } from "../../../../../lib/explain";
 import type { ChangeNoteView } from "../../../../../server/coaching";
 import type { CoachScope, WeaknessDetail } from "../../../../../server/profile";
+import { type GlossaryEntry, seriesGlossary } from "../../../../../server/profile/glossary";
 import { ESTIMATE_WINDOW_TEXT } from "../../../../../server/profile/window";
 import { SectionHead } from "../../_overview/section-head";
 import { scopeQuery, WEEKLY_MIN_CHANCES } from "../queries";
 import { morphName } from "../weaknesses-view";
-import { Exemplars } from "./exemplars";
+import { Examples } from "./exemplars";
 
-// `/app/weaknesses/[seriesKey]` (M5b Task 7): one weakness in full. The header is the shared
-// element the list row morphs into; below it, where the estimate stands, its state over time,
-// the weekly series, the latest change note, example positions and a way to ask the coach.
+// `/app/weaknesses/[seriesKey]` (M5b Task 7, rewritten as a story): one weakness, top down. The
+// header is the shared element the list row morphs into; below it, what the weakness is (the
+// glossary), how often it happens to the player, whether it is getting better or worse, examples
+// from their own games and what to do. The charts (where the estimate stands, its state over
+// time, the weekly series and the latest change note) sit under "Details", intact.
 
 const AREA_LABEL: Record<WeaknessDetail["area"], string> = {
   openings: "Openings",
@@ -342,7 +347,7 @@ function Weekly({ detail }: { detail: WeaknessDetail }) {
         range={{ from: first, to: last }}
         minN={WEEKLY_MIN_CHANCES}
         nUnit={CHANCES}
-        headingLevel={3}
+        headingLevel={4}
       />
     </div>
   );
@@ -386,6 +391,80 @@ function Note({
 
 type Props = { detail: WeaknessDetail; scope: CoachScope };
 
+const PROSE = "m-0 max-w-prose font-serif text-prose text-ink";
+const SOFT = "m-0 max-w-prose text-base text-ink-soft";
+
+/** One step of the story: a ruled head and its body, in reading order. */
+function Step({ id, title, children }: { id: string; title: string; children: ReactNode }) {
+  return (
+    <section aria-labelledby={id} className="flex flex-col gap-4">
+      <SectionHead id={id} title={title} />
+      {children}
+    </section>
+  );
+}
+
+function WhatItIs({ entry }: { entry: GlossaryEntry | null }) {
+  if (!entry) {
+    return <p className={SOFT}>This series has no plain-language description yet.</p>;
+  }
+  return (
+    <div className="flex flex-col gap-4">
+      <p className={PROSE}>{entry.meaning}</p>
+      <div className="flex max-w-prose flex-col gap-1">
+        <h3 className="m-0 text-base font-medium text-ink">How it's measured</h3>
+        <p className="m-0 text-base text-ink-soft" style={LINING}>
+          {entry.measured}
+        </p>
+      </div>
+      <div className="flex max-w-prose flex-col gap-1">
+        <h3 className="m-0 text-base font-medium text-ink">Why it matters</h3>
+        <p className="m-0 text-base text-ink-soft">{entry.whyItMatters}</p>
+      </div>
+    </div>
+  );
+}
+
+function HowOften({ detail }: { detail: WeaknessDetail }) {
+  const early = !detail.evidence.sufficient;
+  const none = detail.evidence.chances <= 0;
+  return (
+    <div className="flex flex-col gap-3" style={LINING}>
+      <p className={PROSE}>{howOftenText(detail.evidence, ESTIMATE_WINDOW_TEXT)}</p>
+      {none ? null : <p className={SOFT}>{rateText(detail.rate, early)}</p>}
+      <p className={SOFT}>
+        {levelText({
+          rate: detail.rate,
+          median: detail.band.median,
+          compared: detail.compared,
+          sufficient: detail.evidence.sufficient && !none,
+        })}
+      </p>
+    </div>
+  );
+}
+
+function Trend({ detail }: { detail: WeaknessDetail }) {
+  return (
+    <div className="flex flex-col gap-2" style={LINING}>
+      <p className={PROSE}>
+        {trendText({
+          state: detail.state,
+          compared: detail.compared,
+          sufficient: detail.evidence.sufficient,
+          needMore: detail.evidence.needMore,
+          pImp: detail.pImp,
+        })}
+      </p>
+      {detail.onset ? (
+        <p className={SOFT}>
+          <time dateTime={isoDay(detail.onset.at)}>{onsetText(detail.onset)}</time>.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 export function WeaknessView({
   detail,
   scope,
@@ -394,7 +473,7 @@ export function WeaknessView({
   askHref,
 }: Props & {
   notes: ChangeNoteView[];
-  /** `games.id` by platform game id, for the exemplars and the note's moves. */
+  /** `games.id` by platform game id, for the examples and the note's moves. */
   reviewIds: Map<string, string>;
   askHref: string;
 }) {
@@ -403,41 +482,75 @@ export function WeaknessView({
     const id = reviewIds.get(s.gameId);
     return id ? `/app/games/${encodeURIComponent(id)}?ply=${s.ply}` : null;
   };
+  const entry = seriesGlossary(detail.seriesKey);
   return (
     <MorphArrival
       name={morphName(detail.seriesKey)}
-      className="flex flex-col gap-8"
+      className="flex flex-col gap-12"
       header={<Header detail={detail} scope={scope} askHref={askHref} />}
     >
-      <Standing detail={detail} />
+      <Step id="what-heading" title="What this is">
+        <WhatItIs entry={entry} />
+      </Step>
+      <Step id="often-heading" title="How often it happens to you">
+        <HowOften detail={detail} />
+      </Step>
+      <Step id="trend-heading" title="Better or worse">
+        <Trend detail={detail} />
+      </Step>
+      <Step id="examples-heading" title="Examples from your games">
+        <Examples examples={detail.examples} reviewIds={reviewIds} />
+      </Step>
+      <Step id="todo-heading" title="What to do">
+        {entry ? (
+          <p className={PROSE}>{entry.tip}</p>
+        ) : (
+          <p className={SOFT}>No tip for this series yet. Your coach can suggest one.</p>
+        )}
+      </Step>
 
-      <section aria-labelledby="timeline-heading" className="flex flex-col gap-5">
-        <SectionHead id="timeline-heading" title="State over time" />
-        <Timeline detail={detail} />
-      </section>
+      <section aria-labelledby="details-heading" className="flex flex-col gap-8">
+        <SectionHead id="details-heading" title="Details">
+          <p className="m-0 text-sm text-ink-soft">
+            The numbers behind the story: the estimate's range, its state over time and the
+            week-by-week rate.
+          </p>
+        </SectionHead>
+        <Standing detail={detail} />
 
-      <div className="grid grid-cols-1 gap-x-10 gap-y-8 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-        <section aria-labelledby="weekly-heading" className="flex min-w-0 flex-col gap-5">
-          <SectionHead id="weekly-heading" title="Week by week">
-            <p className="text-sm text-ink-soft">
-              The raw share of chances each week, with its 80% range. Weeks with fewer than{" "}
-              {WEEKLY_MIN_CHANCES} chances are hollow and off the line.
-            </p>
-          </SectionHead>
-          <Weekly detail={detail} />
+        <section aria-labelledby="timeline-heading" className="flex flex-col gap-4">
+          <h3 id="timeline-heading" className="m-0 font-serif text-xl font-semibold text-ink">
+            State over time
+          </h3>
+          <Timeline detail={detail} />
         </section>
 
-        <section aria-labelledby="note-heading" className="flex min-w-0 flex-col gap-5">
-          <SectionHead id="note-heading" title="What changed">
-            <p className="text-sm text-ink-soft">The coach's note on the latest detected change.</p>
-          </SectionHead>
-          <Note notes={notes} hrefFor={hrefFor} />
-        </section>
-      </div>
+        <div className="grid grid-cols-1 gap-x-10 gap-y-8 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+          <section aria-labelledby="weekly-heading" className="flex min-w-0 flex-col gap-4">
+            <div className="flex flex-col gap-1">
+              <h3 id="weekly-heading" className="m-0 font-serif text-xl font-semibold text-ink">
+                Week by week
+              </h3>
+              <p className="m-0 text-sm text-ink-soft">
+                The raw share of chances each week, with its 80% range. Weeks with fewer than{" "}
+                {WEEKLY_MIN_CHANCES} chances are hollow and off the line.
+              </p>
+            </div>
+            <Weekly detail={detail} />
+          </section>
 
-      <section aria-labelledby="examples-heading" className="flex flex-col gap-5">
-        <SectionHead id="examples-heading" title="Example positions" />
-        <Exemplars exemplars={detail.exemplars} reviewIds={reviewIds} />
+          <section aria-labelledby="note-heading" className="flex min-w-0 flex-col gap-4">
+            <div className="flex flex-col gap-1">
+              <h3 id="note-heading" className="m-0 font-serif text-xl font-semibold text-ink">
+                What changed
+              </h3>
+              <p className="m-0 text-sm text-ink-soft">
+                The coach's note on the latest detected change.
+              </p>
+            </div>
+            <Note notes={notes} hrefFor={hrefFor} />
+          </section>
+        </div>
       </section>
     </MorphArrival>
   );

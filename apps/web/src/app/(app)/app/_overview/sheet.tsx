@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { KPI_GLOSSARY } from "../../../../server/profile/glossary";
 import type { LeadFinding } from "../../../../server/profile/types";
 import { AccuracySection } from "./accuracy-section";
 import { OverviewEmpty } from "./empty-state";
@@ -52,7 +53,12 @@ export function OverviewSheet({
           </div>
 
           <section aria-labelledby="accuracy-heading" className="flex flex-col gap-5">
-            <SectionHead id="accuracy-heading" title="Accuracy over time" order={1} />
+            <SectionHead
+              id="accuracy-heading"
+              title="Accuracy over time"
+              order={1}
+              explain={KPI_GLOSSARY.accuracy}
+            />
             <div
               data-surface="sheet"
               className="rounded-sheet bg-sheet px-(--space-panel-pad) py-6 md:py-8"

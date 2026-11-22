@@ -4,6 +4,7 @@ import { Scale } from "@visx/visx";
 import { useEffect, useRef } from "react";
 import { cn } from "../lib/index.js";
 import { animate, dur, ease, motion, useMotionValue, useReducedMotion } from "../motion/index.js";
+import { type ExplainEntry, ExplainPopover } from "../profile/explain.js";
 import {
   type BandInterval,
   bandText,
@@ -58,6 +59,8 @@ export interface KpiStatProps {
   rollIn?: boolean;
   rollDelay?: number;
   className?: string;
+  /** The glossary entry: its meaning under the label, and an "i" that opens the rest. */
+  explain?: ExplainEntry | null;
 }
 
 /** The halo reads the host's surface, as `--eval-graph-surface` does, and is never set here. */
@@ -259,6 +262,7 @@ export function KpiStat(props: KpiStatProps) {
     rollIn,
     rollDelay,
     className,
+    explain,
   } = props;
   const Heading = `h${headingLevel}` as const;
   if (basis.games < KPI_MIN_GAMES) {
@@ -269,7 +273,11 @@ export function KpiStat(props: KpiStatProps) {
         className={cn("flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1", className)}
       >
         <div className="flex flex-col gap-0.5">
-          <Heading className="text-base font-medium text-ink">{label}</Heading>
+          <span className="flex items-center gap-1">
+            <Heading className="text-base font-medium text-ink">{label}</Heading>
+            {explain ? <ExplainPopover entry={explain} /> : null}
+          </span>
+          {explain ? <p className="m-0 text-sm text-ink-soft">{explain.meaning}</p> : null}
           <p className="text-sm text-ink-faint">{basisText(basis)}</p>
         </div>
         <p className="font-serif text-xl text-ink-soft">{needText(basis.games)}</p>
@@ -311,7 +319,11 @@ export function KpiStat(props: KpiStatProps) {
             wide.label,
           )}
         >
-          <Heading className="text-base font-medium text-ink">{label}</Heading>
+          <span className="flex items-center gap-1">
+            <Heading className="text-base font-medium text-ink">{label}</Heading>
+            {explain ? <ExplainPopover entry={explain} /> : null}
+          </span>
+          {explain ? <p className="m-0 text-sm text-ink-soft">{explain.meaning}</p> : null}
           <p className={basisHidden ? "sr-only" : "text-sm text-ink-faint"}>
             {basisText(basis)}
             {provisional && (

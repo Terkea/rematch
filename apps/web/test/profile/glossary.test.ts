@@ -11,6 +11,7 @@ import {
   glossaryForPrompt,
   KPI_GLOSSARY,
   STATE_GLOSSARY,
+  seriesGlossary,
   TERM_GLOSSARY,
   WEAKNESS_GLOSSARY,
 } from "../../src/server/profile/glossary";
@@ -115,4 +116,21 @@ describe("glossary", () => {
     expect(parsed.terms?.chances).toEqual(TERM_GLOSSARY.chances);
     expect(parsed.states?.active).toEqual(STATE_GLOSSARY.active);
   });
+});
+
+describe("seriesGlossary", () => {
+  it.each([
+    ["W1", "W1"],
+    ["W3.shallow", "W3.shallow"],
+    ["motif.missed:fork", "motif_miss_rate:fork"],
+  ])("%s takes the entry of %s", (series, key) => {
+    expect(seriesGlossary(series)).toEqual(glossaryEntry(key));
+  });
+
+  it.each(["motif.allowed:fork", "opening:white:italian", "endgame:rook", "W99"])(
+    "%s has no entry, never an invented one",
+    (series) => {
+      expect(seriesGlossary(series)).toBeNull();
+    },
+  );
 });
