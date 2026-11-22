@@ -38,7 +38,11 @@ export interface AccountsViewProps {
   lichess: boolean;
 }
 
-const EMPTY = "Connect a Lichess or chess.com account to import your games.";
+/** The empty line names only what is offered: chess.com alone while Lichess is off (ADR 0040). */
+const EMPTY = {
+  chesscom: "Connect your chess.com account to import your games.",
+  both: "Connect a Lichess or chess.com account to import your games.",
+};
 const NOT_YET = "Not there yet. Try again in a minute.";
 const READ_ONLY = "We read your public games. Nothing is ever posted to your account.";
 /** What chess.com verification asks of the player, as a margin note on the empty page. */
@@ -332,7 +336,7 @@ export function AccountsView({ initialAccounts, chesscom, lichess }: AccountsVie
               <h2 id="connect-title" className="font-serif text-2xl font-semibold text-ink">
                 Connect an account
               </h2>
-              <p className="text-base text-ink-soft">{EMPTY}</p>
+              <p className="text-base text-ink-soft">{lichess ? EMPTY.both : EMPTY.chesscom}</p>
               <p className="text-sm text-ink-faint">{READ_ONLY}</p>
             </div>
             {connect}

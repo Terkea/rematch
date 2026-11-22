@@ -34,7 +34,7 @@ test("an adult links chess.com, verifies it by location code, then removes it", 
   // Empty state.
   await expect(page.getByRole("heading", { name: "Accounts", level: 1 })).toBeVisible();
   await expect(
-    page.getByText("Connect a Lichess or chess.com account to import your games."),
+    page.getByText("Connect your chess.com account to import your games."),
   ).toBeVisible();
 
   // Connect chess.com: a pending row with a code.
@@ -69,7 +69,7 @@ test("an adult links chess.com, verifies it by location code, then removes it", 
   ).toBeVisible();
   await dialog.getByRole("button", { name: "Remove account" }).click();
   await expect(
-    page.getByText("Connect a Lichess or chess.com account to import your games."),
+    page.getByText("Connect your chess.com account to import your games."),
   ).toBeVisible();
 });
 

@@ -22,7 +22,9 @@ const verified: LinkedAccountView = { ...pending, verified: true, status: "ok", 
 beforeEach(() => stubMatchMedia());
 afterEach(() => vi.unstubAllGlobals());
 
-const EMPTY = "Connect a Lichess or chess.com account to import your games.";
+// The empty line names only what is offered: chess.com alone while Lichess is off (ADR 0040).
+const EMPTY = "Connect your chess.com account to import your games.";
+const EMPTY_BOTH = "Connect a Lichess or chess.com account to import your games.";
 const INSTRUCTIONS =
   "Add CI-ABC234 to the Location field on your chess.com profile, then check again. chess.com can take up to 12 hours to show profile changes.";
 
@@ -33,6 +35,20 @@ describe("AccountsView", () => {
     expect(screen.getByRole("heading", { name: "Accounts", level: 1 })).toBeInTheDocument();
     expect(screen.getByText(EMPTY)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Connect Lichess" })).toBeNull();
+  });
+
+  it("names only chess.com in the empty line while Lichess is off", () => {
+    stubFetch([{ method: "GET", path: "/api/accounts", body: [] }]);
+    renderWithProviders(<AccountsView initialAccounts={[]} chesscom lichess={false} />);
+    expect(screen.getByText(EMPTY)).toBeInTheDocument();
+    expect(screen.queryByText(EMPTY_BOTH)).toBeNull();
+  });
+
+  it("names both platforms in the empty line when Lichess is on", () => {
+    stubFetch([{ method: "GET", path: "/api/accounts", body: [] }]);
+    renderWithProviders(<AccountsView initialAccounts={[]} chesscom lichess />);
+    expect(screen.getByText(EMPTY_BOTH)).toBeInTheDocument();
+    expect(screen.queryByText(EMPTY)).toBeNull();
   });
 
   it("hides the chess.com form when chess.com is off, and shows Connect Lichess when on", () => {
