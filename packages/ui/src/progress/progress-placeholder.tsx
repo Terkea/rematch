@@ -7,7 +7,8 @@ import { dur, ease, motion, useReducedMotion } from "../motion/index.js";
 export interface ProgressPlaceholderProps {
   /** The shape of the section this stands in for. */
   shape: "graph" | "stat" | "list" | "board";
-  verb: "Analysing" | "Importing";
+  /** What is happening: games analysed or imported, a report built, coaching text written. */
+  verb: "Analysing" | "Importing" | "Building" | "Writing";
   /** Omit for "no count yet". Without a `total` the count reads "so far" and the stroke idles. */
   progress?: { done: number; total?: number; unit: string };
   /** A quiet line under the status, for example what the numbers will be based on. */
