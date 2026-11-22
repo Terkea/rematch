@@ -208,7 +208,7 @@ pub fn w1_stat() -> BandReferenceStat {
         pooled_rate: Some(W1_REFERENCE),
         epl_per_event: Some(0.1),
         opps_per_game: Some(50.0),
-        opp_slope_per_100: 0.0,
+        opp_slope_per_100: Some(0.0),
         n_players: 200,
         n_games: 2000,
         low_sample: false,
