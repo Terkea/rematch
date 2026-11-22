@@ -26,7 +26,7 @@ use profile_core::stats::beta_binomial::fit_beta_binomial;
 use profile_core::stats::priority::{EstimateInput, EstimateReason, estimate_weakness};
 use profile_core::types::{
     Band, BaseMetric, BinomialObs, Difficulty, GameContext, MetricId, PLAYER_GAME_METRICS_VERSION,
-    PlatformId, PlayerGameMetrics, WeaknessKey,
+    PlatformId, PlayerGameMetrics, Side, WeaknessKey,
 };
 use queue::{Job, KIND_REFERENCE_GAME, ReferenceGamePayload};
 use refdata::band_reference::{BandReferenceRow, load_band_reference};
@@ -118,7 +118,12 @@ fn w1_player(player: &str, events: u32, opps: u32, games: u32) -> Vec<ReferenceS
 
 fn row(rows: &[BandReferenceRow], band: Band, metric: MetricId) -> &BandReferenceRow {
     rows.iter()
-        .find(|r| r.band == band && r.time_class == TimeClass::Blitz && r.stat.metric == metric)
+        .find(|r| {
+            r.band == band
+                && r.time_class == TimeClass::Blitz
+                && r.side == Side::Both
+                && r.stat.metric == metric
+        })
         .unwrap_or_else(|| panic!("no {band:?} {metric} row in {rows:#?}"))
 }
 
@@ -230,6 +235,55 @@ fn continuous_rows_take_type_7_quantiles_of_per_player_means() {
         (s.pooled_rate, s.epl_per_event, s.opps_per_game),
         (None, None, None)
     );
+}
+
+/// The colour split: `Both` pools every side; `White` and `Black` rows each come from their own
+/// colour's sides, with their own player counts and low-sample flags.
+#[test]
+fn sides_are_aggregated_per_colour_and_pooled_for_both() {
+    // Ten white players at 0.02 and ten black players at 0.06: each colour has ten players.
+    let mut sides: Vec<_> = (0..10)
+        .flat_map(|p| w1_player(&format!("w{p}"), 6, 300, 1))
+        .collect();
+    for p in 0..10 {
+        for mut s in w1_player(&format!("b{p}"), 18, 300, 1) {
+            s.ctx.player_color = Color::Black;
+            sides.push(s);
+        }
+    }
+    let rows = aggregate_band_reference(&sides);
+    let of = |side: Side| {
+        rows.iter()
+            .find(|r| r.side == side && r.band == Band::B2 && r.stat.metric == W1)
+            .unwrap_or_else(|| panic!("no {side} W1 row"))
+            .stat
+            .clone()
+    };
+    let (both, white, black) = (of(Side::Both), of(Side::White), of(Side::Black));
+    assert_eq!((both.n_players, white.n_players, black.n_players), (20, 10, 10));
+    assert!((both.pooled_rate.unwrap() - 0.04).abs() < 1e-12);
+    assert!((white.pooled_rate.unwrap() - 0.02).abs() < 1e-12);
+    assert!((black.pooled_rate.unwrap() - 0.06).abs() < 1e-12);
+    assert!(!white.low_sample && !black.low_sample);
+    // Rows are ordered band, time class, side, catalogue.
+    let order: Vec<Side> = rows
+        .iter()
+        .filter(|r| r.stat.metric == W1)
+        .map(|r| r.side)
+        .collect();
+    assert_eq!(order, [Side::Both, Side::White, Side::Black]);
+
+    // Five black players only: the black row is low-sample (never served), the both row too.
+    let few: Vec<_> = (0..5)
+        .flat_map(|p| w1_player(&format!("b{p}"), 18, 300, 1))
+        .map(|mut s| {
+            s.ctx.player_color = Color::Black;
+            s
+        })
+        .collect();
+    let rows = aggregate_band_reference(&few);
+    assert!(rows.iter().all(|r| r.side != Side::White), "no white sides, no white rows");
+    assert!(rows.iter().all(|r| r.stat.low_sample || r.stat.metric != W1));
 }
 
 #[test]
@@ -591,7 +645,8 @@ async fn an_unsampled_opponent_contributes_nothing_to_a_cell(pool: PgPool) {
     assert_eq!(leaked, 0);
     let w1: (i32, i32) = sqlx::query_as(
         "SELECT n_players, n_games FROM band_reference \
-         WHERE build_id = $1 AND band = 'B2' AND time_class = 'blitz' AND metric = 'weakness:W1'",
+         WHERE build_id = $1 AND band = 'B2' AND time_class = 'blitz' AND metric = 'weakness:W1' \
+         AND side = 'both'",
     )
     .bind(build)
     .fetch_one(&pool)
@@ -643,7 +698,8 @@ async fn ten_reference_games_give_twenty_observations_and_an_active_build(pool: 
 
     let w1: (i32, i32, bool) = sqlx::query_as(
         "SELECT n_players, n_games, low_sample FROM band_reference \
-         WHERE build_id = $1 AND band = 'B2' AND time_class = 'blitz' AND metric = 'weakness:W1'",
+         WHERE build_id = $1 AND band = 'B2' AND time_class = 'blitz' AND metric = 'weakness:W1' \
+         AND side = 'both'",
     )
     .bind(build)
     .fetch_one(&pool)
@@ -737,7 +793,7 @@ async fn w11_opportunities(pool: &PgPool, build: Uuid) -> i64 {
 async fn w11_row(pool: &PgPool, build: Uuid) -> Option<i32> {
     sqlx::query_scalar(
         "SELECT n_players FROM band_reference WHERE build_id = $1 AND band = 'B2' \
-         AND time_class = 'blitz' AND metric = $2",
+         AND time_class = 'blitz' AND metric = $2 AND side = 'both'",
     )
     .bind(build)
     .bind(W11.to_string())
@@ -888,7 +944,8 @@ async fn an_unknown_slope_is_stored_null_and_nan_is_refused(pool: PgPool) {
         .unwrap();
     tx.commit().await.unwrap();
     let null: bool = sqlx::query_scalar(
-        "SELECT opp_slope_per_100 IS NULL FROM band_reference WHERE build_id = $1 AND metric = $2",
+        "SELECT opp_slope_per_100 IS NULL FROM band_reference WHERE build_id = $1 AND metric = $2 \
+         AND side = 'both'",
     )
     .bind(build)
     .bind(ACCURACY.to_string())
@@ -1156,7 +1213,8 @@ async fn stale_observations_are_left_out_of_the_build(pool: PgPool) {
     );
     let (n_players, pooled): (i32, Option<f64>) = sqlx::query_as(
         "SELECT n_players, pooled_rate::float8 FROM band_reference \
-         WHERE build_id = $1 AND band = 'B2' AND time_class = 'blitz' AND metric = 'weakness:W1'",
+         WHERE build_id = $1 AND band = 'B2' AND time_class = 'blitz' AND metric = 'weakness:W1' \
+         AND side = 'both'",
     )
     .bind(build)
     .fetch_one(&pool)
@@ -1193,7 +1251,8 @@ async fn analyse_all(d: &ReferenceGameDeps, ids: &[Uuid]) -> Option<ReferenceOut
 async fn usable(pool: &PgPool, build: Uuid) -> i64 {
     count(
         pool,
-        "SELECT count(*) FROM band_reference WHERE build_id = $1 AND NOT low_sample",
+        "SELECT count(*) FROM band_reference WHERE build_id = $1 AND side = 'both' \
+         AND NOT low_sample",
         build,
     )
     .await
@@ -1371,7 +1430,8 @@ async fn observations_of_a_failed_game_are_not_aggregated(pool: PgPool) {
     assert_eq!(status(&pool, build).await, BuildStatus::Active);
     let (n_players, pooled): (i32, Option<f64>) = sqlx::query_as(
         "SELECT n_players, pooled_rate::float8 FROM band_reference \
-         WHERE build_id = $1 AND band = 'B2' AND time_class = 'blitz' AND metric = 'weakness:W1'",
+         WHERE build_id = $1 AND band = 'B2' AND time_class = 'blitz' AND metric = 'weakness:W1' \
+         AND side = 'both'",
     )
     .bind(build)
     .fetch_one(&pool)

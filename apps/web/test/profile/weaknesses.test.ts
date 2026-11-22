@@ -34,6 +34,21 @@ beforeEach(async () => {
 });
 
 describe("listWeaknesses", () => {
+  it("reads the both side only (colour rows are not listed)", async () => {
+    await seedProfile(db, accountId, {
+      timeClass: "rapid",
+      games: 1,
+      estimates: [
+        { seriesKey: "W1", priority: 1, mean: 0.05 },
+        { seriesKey: "W1", side: "white", priority: 3, mean: 0.09 },
+        { seriesKey: "W1", side: "black", priority: 0, mean: 0.02 },
+        { seriesKey: "W2", side: "white", priority: 2, mean: 0.1 },
+      ],
+    });
+    const list = await listWeaknesses(db, userId, await scopeOf(userId));
+    expect(list.map((w) => [w.seriesKey, w.rate.mean])).toEqual([["W1", 0.05]]);
+  });
+
   it("lists by priority with stored intervals", async () => {
     await seedProfile(db, accountId, {
       timeClass: "rapid",

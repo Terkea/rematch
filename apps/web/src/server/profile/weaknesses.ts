@@ -40,6 +40,8 @@ const inScope = (scope: CoachScope) => ({
   estimates: and(
     eq(weaknessEstimates.accountId, scope.accountId),
     eq(weaknessEstimates.timeClass, scope.timeClass),
+    // The colour split's per-side rows are not shown yet: these pages read every game.
+    eq(weaknessEstimates.side, "both"),
   ),
   history: and(
     eq(weaknessStateHistory.accountId, scope.accountId),

@@ -188,7 +188,8 @@ async fn metric_deltas_compare_the_week_with_the_week_before(pool: PgPool) {
             async move {
                 let row: (Option<f64>, i32) = sqlx::query_as(
                     "SELECT value, n FROM kpi_snapshot WHERE account_id = $1 \
-                     AND metric = $2 AND window_key = $3 ORDER BY id DESC LIMIT 1",
+                     AND side = 'both' AND metric = $2 AND window_key = $3 \
+                     ORDER BY id DESC LIMIT 1",
                 )
                 .bind(a)
                 .bind(&key)
