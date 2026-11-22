@@ -32,24 +32,6 @@ async function ready(page: Page, url: string, selector: string): Promise<void> {
     selector,
     { timeout: 180_000 },
   );
-  // The report's first-view reveal (ADR 0073) holds its content back; wait for its end state.
-  await page.waitForFunction(
-    () =>
-      document.querySelector(
-        "[data-report-version][data-reveal='first'], [data-report-version] [data-reveal='first']",
-      ) === null,
-    undefined,
-    {
-      timeout: 60_000,
-    },
-  );
-}
-
-/** Opens a page whose event stream is live (its `/api/events` answered). */
-async function live(page: Page, url: string, selector: string): Promise<void> {
-  const opened = page.waitForResponse((r) => new URL(r.url()).pathname === "/api/events", {
-    timeout: 180_000,
-  });
   await ready(page, url, selector);
   await opened;
 }
@@ -73,7 +55,7 @@ test.describe
     });
 
     test("1. the report shows the snapshot, seven areas, ranked weaknesses and the disclosure", async () => {
-      await ready(page, "/app/report", "main h1");
+      await ready(page, "/app/report", "[data-report-version]");
       await expect(page.getByRole("heading", { level: 1 })).toHaveText("Your coaching report");
       const snapshot = page.locator("#report-snapshot").locator("..");
       await expect(page.getByRole("heading", { name: "Where you stand" })).toBeVisible();
@@ -90,7 +72,7 @@ test.describe
     });
 
     test("2. a rebuild shows the building state, and sections arrive without a reload", async () => {
-      await live(page, "/app/report", "main h1");
+      await live(page, "/app/report", "[data-report-version]");
       const rebuild = page.getByRole("button", { name: "Rebuild report" });
       await rebuild.click();
       await expect(page.getByText(/Building your report: 0 of 5 sections written/)).toBeVisible();

@@ -50,17 +50,6 @@ async function ready(page: Page, url: string, selector: string): Promise<void> {
     selector,
     { timeout: 180_000 },
   );
-  // The report's first-view reveal (ADR 0073) holds its content back; wait for its end state.
-  await page.waitForFunction(
-    () =>
-      document.querySelector(
-        "[data-report-version][data-reveal='first'], [data-report-version] [data-reveal='first']",
-      ) === null,
-    undefined,
-    {
-      timeout: 60_000,
-    },
-  );
   await page.evaluate(() => document.fonts.ready);
 }
 
@@ -114,7 +103,7 @@ test("the coach pages look as they did", async ({ browser, request }, info) => {
 
   // Fixed dates only (the seed's module comment), so the text snapshots hold on every run.
   const routes = [
-    { url: "/app/report", name: "report.png", ready: "main h1" },
+    { url: "/app/report", name: "report.png", ready: "[data-report-version]" },
     { url: "/app/weaknesses/W1", name: "weakness.png", ready: "main h1" },
     { url: "/app/areas/endgame", name: "area-endgame.png", ready: "main h1" },
     { url: "/app/progress", name: "progress.png", ready: "main h1" },

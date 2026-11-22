@@ -21,17 +21,6 @@ async function settle(page: Page, url: string, ready: string): Promise<void> {
     ready,
     { timeout: 180_000 },
   );
-  // The report's first-view reveal (ADR 0073) holds its content back; wait for its end state.
-  await page.waitForFunction(
-    () =>
-      document.querySelector(
-        "[data-report-version][data-reveal='first'], [data-report-version] [data-reveal='first']",
-      ) === null,
-    undefined,
-    {
-      timeout: 60_000,
-    },
-  );
 }
 
 test("the game pages: no sideways scroll at 360px, visible focus, no broken numbers", async ({
@@ -50,7 +39,7 @@ test("the game pages: no sideways scroll at 360px, visible focus, no broken numb
     { url: `/app/games/${pendingId}`, ready: "[data-review]", main: "pending review" },
     { url: `/app/games/${longId}?ply=300`, ready: "[data-review]", main: "300-ply review" },
     // The coach surfaces (M5b Task 11), on the coach seed seedFixtures also writes.
-    { axe: true, url: "/app/report", ready: "main h1", main: "report" },
+    { axe: true, url: "/app/report", ready: "[data-report-version]", main: "report" },
     { axe: true, url: "/app/weaknesses", ready: "main h1", main: "weaknesses" },
     { axe: true, url: "/app/weaknesses/W3.shallow", ready: "main h1", main: "weakness" },
     { axe: true, url: "/app/areas/endgame", ready: "main h1", main: "endgame area" },
