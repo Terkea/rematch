@@ -69,9 +69,15 @@ One file per decision: context, decision, alternatives, consequences. New decisi
 - [0064. "Ask your coach": the chat engine](0064-ask-your-coach-chat.md)
 - [0065. Game pages e2e: a guarded seed, their own quality and visual specs](0065-game-pages-e2e-and-visual-baselines.md)
 - [0066. Postgres connection limit for the integrated worker](0066-postgres-connection-limit.md)
+- [0067. CI runs the gates in compose, and e2e on a production build](0067-ci-gates-in-compose-and-production-e2e.md)
+- [0068. Coach read models: scope, exemplars, sufficiency and the catalogue](0068-coach-read-models.md)
+- [0069. Report requests and report states on the web](0069-report-requests-and-states.md)
+- [0070. Coach chat: the web's hand-off to the worker, and the allowance it shows](0070-chat-web-hand-off.md)
+- [0071. Coach text, disclosure and states in `@ci/ui`](0071-coach-text-and-states.md)
+- [0072. Profile encodings: weakness rate, KPI small multiples, exemplar arrows, optional next band](0072-profile-encodings.md)
+- [0074. Coach e2e: a guarded coach seed, a simulated worker, and the coach baselines](0074-coach-e2e-and-simulated-worker.md)
 - [0075. Coach data for the beta: the beta AI plan, weekly-review inputs, the first report](0075-beta-ai-plan-weekly-inputs-first-report.md)
 - [0076. Recurring incremental sync of linked accounts](0076-recurring-account-sync.md)
-- [0067. CI runs the gates in compose, and e2e on a production build](0067-ci-gates-in-compose-and-production-e2e.md)
 
 ## Records with placeholder numbers
 
