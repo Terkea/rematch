@@ -63,7 +63,7 @@ fn stat(metric: MetricId, median: f64, n_players: u32) -> BandReferenceStat {
         pooled_rate: Some(median),
         epl_per_event: Some(12.25),
         opps_per_game: None,
-        opp_slope_per_100: -0.125,
+        opp_slope_per_100: Some(-0.125),
         n_players,
         n_games: n_players * 10,
         low_sample: n_players < 10,
