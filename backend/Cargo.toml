@@ -22,6 +22,7 @@ platforms = { path = "crates/platforms" }
 analysis = { path = "crates/analysis" }
 events = { path = "crates/events" }
 testkit = { path = "crates/testkit" }
+worker = { path = "crates/worker" }
 
 # Third-party crates
 tokio = { version = "=1.54.1", features = [

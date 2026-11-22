@@ -18,6 +18,7 @@ engine.workspace = true
 platforms.workspace = true
 analysis.workspace = true
 events.workspace = true
+worker.workspace = true
 anyhow.workspace = true
 clap.workspace = true
 tracing.workspace = true
