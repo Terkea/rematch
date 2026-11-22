@@ -93,6 +93,49 @@ the protocols of band-reference builds, and expose the profile on the command li
 - `docker-compose.maia.yml` puts `rust-worker` on `maia_internal`, with
   `MAIA_URL=http://maia:8080`.
 
+### Throughput: staging the tables, and the measured costs
+
+Measured on the owner's lab copy: 506 games, Windows 11 host with Docker Desktop, 24 logical
+cores. Results were identical in every run: the move, move-feature and metric fingerprints match.
+
+| Run | Engines | Games/min | Per game |
+|---|---|---|---|
+| TS baseline (HANDOFF §7, analysis only) | about 18 | 61 | 17.9 s |
+| Rust, analysis only | 8 | 42 | 12.6 s |
+| Rust, analysis only | 18 | 64 | 18.8 s |
+| Rust with enrichment, before (live smoke, includes the import) | 8 | 26 | 19.7 s |
+| Rust with enrichment, before | 18 | 28 | 37.8 s |
+| Rust with enrichment, after staging | 8 | 37 | 14.3 s |
+| Rust with enrichment, after staging | 18 | 58 | 20.7 s |
+
+- **Like for like, Rust matches TS.** Both are bound by Stockfish, at fixed nodes
+  (`sf19-n300k-v1`). The TS baseline did no enrichment.
+- **The tablebase probes were the cost.** Before the fix, they were 75 % of the enrichment:
+  17.1 s of 22.9 s per game. A game makes only 1.8 probes on average, but every probe sends
+  `ucinewgame`, and Stockfish then re-opens all 290 table files. Through Docker Desktop's bind
+  mount of a Windows folder that took about 0.5 s idle and about 9.5 s under load. The single
+  tablebase engine also serialised every game behind it.
+- **The fix:** with `SYZYGY_STAGE_DIR` set, the worker copies the tables once to a local named
+  volume, incrementally and through temporary names. The probe reads the copy, so the files are
+  the same bytes and give the same answers. Afterwards a probe costs about 40 ms, and `tb_ms`
+  fell to 71 ms per game.
+- **What is left is protocol work.** About 9 MultiPV searches (300k nodes, MultiPV 3) and 17
+  threat searches (50k nodes) per game add about 20 % engine nodes over the analysis. Hook
+  features, the explorer read and the hook's writes take under 50 ms per game.
+- **Not changed:**
+  - `ucinewgame` is kept per probe. Without it, the transposition table would carry over between
+    probes and could change an answer.
+  - Enrichment searches stay serial within a game. With a backlog, every engine is already busy.
+- **Pool size:** the default of 8 engines (`min(cores - 2, 8)`) keeps a desktop usable. Set
+  `WORKER_POOL_SIZE` to about the number of logical cores for throughput.
+- **A finding about R1, not changed here.** Runs with 8 engines and with 18 engines differ in one
+  position of one game. The position after 1. e4 g6 also occurs in a Lichess game that carries
+  server evals. Whichever game is analysed first writes the shared eval cache (ADR 0027,
+  `ON CONFLICT DO NOTHING`), so the result depends on scheduling order. Runs with the same pool
+  size are identical, with or without enrichment and staging.
+- **`CLI_ANALYSIS_ONLY=1`** runs `cli analyse` without the profile hook. It is a benchmark knob:
+  those games stay unenriched, and the next start requeues them.
+
 ## Left open (parked, with reasons)
 
 - **Events.** Build-profile events stay best effort. The web reloads profile state on page load,

@@ -67,6 +67,7 @@ async fn refuses_to_start_unless_the_engine_is_stockfish_19(
         lichess_lookback_days: None,
         pool_size: Some(1),
         syzygy_path: None,
+        syzygy_stage_dir: None,
         data_dir: None,
         maia_url: None,
         plan_default: scheduler::select::Plan::Beta,
@@ -96,6 +97,7 @@ async fn starts_with_stockfish_19_and_shuts_down_cleanly(
             pool_size: Some(1),
             runner: Some(RunnerConfig::fast_for_tests()),
             with_reconciler: true,
+            profile_hook: true,
         },
     )
     .await

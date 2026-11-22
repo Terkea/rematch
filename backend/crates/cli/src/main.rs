@@ -43,6 +43,8 @@ async fn main() {
             &env,
             StartOptions {
                 with_reconciler: false,
+                // Benchmark knob: R1's analysis without the profile hook (ADR-R2-25).
+                profile_hook: std::env::var("CLI_ANALYSIS_ONLY").as_deref() != Ok("1"),
                 ..StartOptions::default()
             },
         )

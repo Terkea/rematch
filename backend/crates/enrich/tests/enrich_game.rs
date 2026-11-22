@@ -451,9 +451,30 @@ async fn stages_are_reported() {
     let keys: Vec<&str> = out.stages.keys().map(String::as_str).collect();
     assert_eq!(
         keys,
-        vec!["difficulty_ms", "multipv_ms", "tb_ms", "threat_ms"]
+        vec![
+            "difficulty_ms",
+            "multipv_engine_calls",
+            "multipv_ms",
+            "multipv_positions",
+            "tb_ms",
+            "tb_probes",
+            "threat_engine_calls",
+            "threat_ms",
+            "threat_positions",
+        ]
     );
     assert!(out.stages.values().all(|v| v.is_finite() && *v >= 0.0));
+    // Every probed position was an engine call (an empty store), and no table was probed.
+    assert_eq!(
+        out.stages["multipv_positions"],
+        out.stages["multipv_engine_calls"]
+    );
+    assert_eq!(
+        out.stages["threat_positions"],
+        out.stages["threat_engine_calls"]
+    );
+    assert!(out.stages["threat_positions"] > 0.0);
+    assert_eq!(out.stages["tb_probes"], 0.0);
 }
 
 /// Real Stockfish and the real Syzygy tables (Docker): a critical endgame ply gets three MultiPV

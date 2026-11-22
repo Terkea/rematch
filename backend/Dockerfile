@@ -109,5 +109,8 @@ COPY --from=builder /work/backend/target/release/worker /usr/local/bin/worker
 COPY --from=builder /work/backend/target/release/cli /usr/local/bin/cli
 COPY --from=builder /work/backend/target/release/lichess-db /usr/local/bin/lichess-db
 ENV STOCKFISH_PATH=/usr/local/bin/stockfish
+# The worker copies the Syzygy tables here at start (SYZYGY_STAGE_DIR, ADR-R2-25). Compose mounts
+# a named volume on it, which takes this owner on first use.
+RUN mkdir -p /var/lib/chess-improver/syzygy && chown -R 10001:10001 /var/lib/chess-improver
 USER 10001:10001
 ENTRYPOINT ["worker"]

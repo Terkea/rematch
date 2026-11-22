@@ -22,6 +22,7 @@ fn opts(pool_size: usize) -> StartOptions {
         pool_size: Some(pool_size),
         runner: Some(RunnerConfig::fast_for_tests()),
         with_reconciler: false,
+        profile_hook: true,
     }
 }
 
@@ -240,7 +241,11 @@ async fn start_resumes_lost_reference_game_jobs(pool_opts: PgPoolOptions, o: PgC
         })
         .collect();
     insert_reference_games(&pool, build, &games).await.unwrap();
-    assert_eq!(live_jobs(&pool, "analyse-reference-game").await, 0, "the jobs were lost");
+    assert_eq!(
+        live_jobs(&pool, "analyse-reference-game").await,
+        0,
+        "the jobs were lost"
+    );
     let running = start_workers(&env, opts(1)).await.expect("start_workers");
     let jobs: i64 = sqlx::query_scalar(
         "SELECT count(DISTINCT dedupe_key) FROM jobs WHERE kind = 'analyse-reference-game'",
@@ -249,5 +254,55 @@ async fn start_resumes_lost_reference_game_jobs(pool_opts: PgPoolOptions, o: PgC
     .await
     .unwrap();
     assert_eq!(jobs, 2, "one job per pending reference game");
+    stop(running).await;
+}
+
+/// The benchmark knob: without the hook, the analysis is R1's alone (no enrichment rows).
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn without_the_profile_hook_analysis_writes_no_enrichment(
+    pool_opts: PgPoolOptions,
+    o: PgConnectOptions,
+) {
+    let Some(env) = env_for(&o) else {
+        return;
+    };
+    let pool: PgPool = pool_opts.connect_with(o).await.unwrap();
+    let (acct, id) = common::add_game(&pool, RUY, "nohook").await;
+    let running = start_workers(
+        &env,
+        StartOptions {
+            profile_hook: false,
+            ..opts(1)
+        },
+    )
+    .await
+    .expect("start_workers");
+    assert!(
+        analysis::jobs::analyse::enqueue_analyse(&running.queue, id, acct)
+            .await
+            .unwrap()
+    );
+    wait_until("the analysis to finish", Duration::from_secs(120), || {
+        let pool = pool.clone();
+        async move {
+            let s: String =
+                sqlx::query_scalar("SELECT analysis_status::text FROM games WHERE id = $1")
+                    .bind(id)
+                    .fetch_one(&pool)
+                    .await
+                    .unwrap();
+            (s == "done").then_some(())
+        }
+    })
+    .await;
+    let (protocol, features): (Option<String>, i64) = sqlx::query_as(
+        "SELECT g.enrichment_protocol, (SELECT count(*) FROM move_features WHERE game_id = g.id) \
+         FROM games g WHERE g.id = $1",
+    )
+    .bind(id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!((protocol, features), (None, 0));
     stop(running).await;
 }

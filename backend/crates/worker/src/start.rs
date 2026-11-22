@@ -121,6 +121,10 @@ pub struct StartOptions {
     pub runner: Option<RunnerConfig>,
     /// Run the reconcile runner and schedule the recurring sweep.
     pub with_reconciler: bool,
+    /// Set the profile hook on the analyse runner (default). `false` runs R1's analysis alone:
+    /// only for measuring analysis throughput (`cli analyse` with `CLI_ANALYSIS_ONLY=1`); the
+    /// games it writes are unenriched, so the next normal start requeues them.
+    pub profile_hook: bool,
 }
 
 impl Default for StartOptions {
@@ -129,6 +133,7 @@ impl Default for StartOptions {
             pool_size: None,
             runner: None,
             with_reconciler: true,
+            profile_hook: true,
         }
     }
 }
@@ -451,6 +456,9 @@ pub const TABLEBASE_NODES: u64 = 1000;
 /// 35) takes `probe`.
 pub struct WorkerTablebase {
     pub pool: Arc<SyzygyPool>,
+    /// The directory the engines read: the staged copy when `SYZYGY_STAGE_DIR` is set and the
+    /// copy succeeded, else `SYZYGY_PATH`.
+    pub path: std::path::PathBuf,
     /// [`CachedTbProbe`] over `pool`.
     pub probe: Arc<dyn TablebaseProbe>,
 }
@@ -465,10 +473,41 @@ impl WorkerTablebase {
 /// start. A path without tables gives an unavailable probe. Never an error: analysis does not
 /// depend on the tables.
 pub async fn start_tablebase(env: &WorkerEnv, pool: &PgPool) -> Option<WorkerTablebase> {
-    let Some(path) = env.syzygy_path.as_deref() else {
+    let Some(source) = env.syzygy_path.clone() else {
         tracing::info!("SYZYGY_PATH is not set; no tablebase probe");
         return None;
     };
+    let path = match env.syzygy_stage_dir.clone() {
+        None => source,
+        Some(stage) => {
+            let (src, dst) = (source.clone(), stage.clone());
+            let staged =
+                tokio::task::spawn_blocking(move || crate::syzygy_stage::stage_tables(&src, &dst))
+                    .await;
+            match staged {
+                Ok(Ok(r)) => {
+                    tracing::info!(
+                        from = %source.display(),
+                        to = %stage.display(),
+                        copied = r.copied,
+                        current = r.current,
+                        bytes = r.bytes,
+                        "syzygy tables staged"
+                    );
+                    stage
+                }
+                Ok(Err(e)) => {
+                    tracing::warn!(error = %e, "staging the syzygy tables failed; reading SYZYGY_PATH");
+                    source
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "staging the syzygy tables failed; reading SYZYGY_PATH");
+                    source
+                }
+            }
+        }
+    };
+    let path = path.as_path();
     match SyzygyPool::start(
         &env.stockfish_path,
         path,
@@ -488,6 +527,7 @@ pub async fn start_tablebase(env: &WorkerEnv, pool: &PgPool) -> Option<WorkerTab
             Some(WorkerTablebase {
                 probe: Arc::new(CachedTbProbe::new(tb.clone(), pool.clone())),
                 pool: tb,
+                path: path.to_path_buf(),
             })
         }
         Err(err) => {
@@ -641,11 +681,13 @@ pub async fn start_workers(env: &WorkerEnv, opts: StartOptions) -> anyhow::Resul
         concurrency: 2,
     };
     let mut analyse = AnalyseGameDeps::new(pool.clone(), analyser.clone(), cache.clone());
-    analyse.hook = Some(into_hook(ProfileHook {
-        pool: pool.clone(),
-        enrich: enrich_deps(analyser.clone(), &pool, tablebase.as_ref(), &difficulty),
-        queue: queue.clone(),
-    }));
+    if opts.profile_hook {
+        analyse.hook = Some(into_hook(ProfileHook {
+            pool: pool.clone(),
+            enrich: enrich_deps(analyser.clone(), &pool, tablebase.as_ref(), &difficulty),
+            queue: queue.clone(),
+        }));
+    }
     let reference = Arc::new(ReferenceGameDeps {
         pool: pool.clone(),
         analyser: analyser.clone(),

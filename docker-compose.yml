@@ -244,6 +244,9 @@ services:
       # on.
       DATA_DIR: /data
       SYZYGY_PATH: /data/syzygy
+      # The tables are copied to this volume at start (incremental): every probe re-opens the
+      # table set, which is slow through a Windows bind mount (ADR-R2-25).
+      SYZYGY_STAGE_DIR: /var/lib/chess-improver/syzygy
       # Maia-2 (ADR-R2-13). Empty: difficulty stays pending_maia (never estimated). The Maia overlay
       # (docker-compose.maia.yml) sets http://maia:8080 and joins its network.
       MAIA_URL: ${MAIA_URL:-}
@@ -253,6 +256,7 @@ services:
       - ./data:/data:ro
       # From a worktree, SYZYGY_HOST_DIR points at the main checkout's tables.
       - ${SYZYGY_HOST_DIR:-./data/syzygy}:/data/syzygy:ro
+      - syzygy_stage:/var/lib/chess-improver/syzygy
     depends_on:
       postgres:
         condition: service_healthy
@@ -261,6 +265,7 @@ services:
 
 volumes:
   pgdata:
+  syzygy_stage:
   node_modules:
   worker_node_modules:
   web_node_modules:

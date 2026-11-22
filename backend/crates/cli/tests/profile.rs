@@ -172,7 +172,10 @@ async fn profile_json_prints_a_valid_coaching_input(pool: PgPool) {
         .iter_errors(&doc)
         .map(|e| format!("{e} at {}", e.instance_path()))
         .collect();
-    assert!(errors.is_empty(), "the TS schema rejects the output: {errors:?}");
+    assert!(
+        errors.is_empty(),
+        "the TS schema rejects the output: {errors:?}"
+    );
     let input: CoachingInput = serde_json::from_value(doc).expect("the contract type");
     input.validate().expect("the M3 contract's rules");
 }
