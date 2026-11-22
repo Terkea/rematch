@@ -26,6 +26,7 @@ TypeScript monorepo (pnpm workspaces + Turborepo, Node 22, ESM only). Packages u
 - Migrations live in `db/migrations/` (plain SQL, applied by sqlx). They are the schema source of truth.
 - Only the coordinator edits `Cargo.toml` dependency lists and `Cargo.lock`. Crates are pinned exactly, at least 7 days old (`scripts/check-crate-age.sh`), and checked by `cargo deny`. Always pass `--locked`.
 - DB tests use `#[sqlx::test(migrator = "db::MIGRATOR")]`. With `IN_DOCKER=1`, a missing Postgres or Stockfish fails the test instead of skipping it.
+- Syzygy tables (ADR-R2-12) are only in the main checkout's `data/syzygy`. From a worktree, set `SYZYGY_HOST_DIR=E:/code/chess-improver/data/syzygy` (with `MSYS_NO_PATHCONV=1`), or the real-table tests fail under `IN_DOCKER=1`.
 - Maia (ADR-R2-13) is opt-in: add `docker-compose.maia.yml` to `COMPOSE_FILE` (and `docker-compose.maia-ports.yml` for the dev host port). The base file creates one network per project, so parallel lanes don't exhaust Docker's address pools.
 - The `postgres` service keeps `init: true` and an exec-form TCP healthcheck (ADR 0044). Without them, an orphaned `pg_isready` makes Postgres crash-restart mid-run, and tests fail with EOF or "in recovery mode". Regression test: `COMPOSE_FILE=docker-compose.yml sh scripts/test-postgres-orphan-reap.sh ci-<lane>-pg`.
 - Use `testkit` only from integration tests in `tests/`, never from `#[cfg(test)]` unit tests: the dev-dependency cycle would compile the crate twice.

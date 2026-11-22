@@ -21,6 +21,9 @@ pub struct WorkerEnv {
     /// `WORKER_POOL_SIZE`: Stockfish processes (and analyses at once); default
     /// `min(available_parallelism - 2, 8)`, at least 1.
     pub pool_size: Option<usize>,
+    /// `SYZYGY_PATH`: the 3-4-5 Syzygy tables (compose: `/work/data/syzygy`). Unset: no
+    /// tablebase probe; set but without tables: the probe is unavailable (ADR-R2-12).
+    pub syzygy_path: Option<PathBuf>,
 }
 
 impl WorkerEnv {
@@ -38,6 +41,7 @@ impl WorkerEnv {
             lichess_token: get("LICHESS_TOKEN"),
             lichess_lookback_days: parse(&get, "LICHESS_SINCE_LOOKBACK_DAYS", 0)?,
             pool_size: parse(&get, "WORKER_POOL_SIZE", 1)?,
+            syzygy_path: get("SYZYGY_PATH").map(PathBuf::from),
         })
     }
 }
@@ -53,6 +57,7 @@ impl std::fmt::Debug for WorkerEnv {
             )
             .field("lichess_lookback_days", &self.lichess_lookback_days)
             .field("pool_size", &self.pool_size)
+            .field("syzygy_path", &self.syzygy_path)
             .finish()
     }
 }
@@ -115,6 +120,7 @@ mod tests {
             ("LICHESS_TOKEN", "lip_x"),
             ("LICHESS_SINCE_LOOKBACK_DAYS", "7"),
             ("WORKER_POOL_SIZE", "3"),
+            ("SYZYGY_PATH", "/work/data/syzygy"),
             ("CONTACT_EMAIL", "someone@example.com"),
         ]);
         assert_eq!(
@@ -125,11 +131,13 @@ mod tests {
                 lichess_token: Some("lip_x".to_owned()),
                 lichess_lookback_days: Some(7),
                 pool_size: Some(3),
+                syzygy_path: Some(PathBuf::from("/work/data/syzygy")),
             }
         );
         let plain = env(&BASE).unwrap();
         assert_eq!(plain.lichess_token, None);
         assert_eq!(plain.pool_size, None);
+        assert_eq!(plain.syzygy_path, None);
     }
 
     #[test]
@@ -162,6 +170,7 @@ mod tests {
             lichess_token: Some("lip_secret_token".to_owned()),
             lichess_lookback_days: None,
             pool_size: Some(2),
+            syzygy_path: None,
         };
         let shown = format!("{env:?}");
         assert!(!shown.contains("s3cr"), "{shown}");

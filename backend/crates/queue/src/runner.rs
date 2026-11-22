@@ -58,6 +58,7 @@ use crate::queue::{
     Backoff, FailOutcome, JOBS_CHANNEL, MAX_ERROR_CHARS, Queue, QueueError, truncate_chars,
 };
 use crate::reaper::{LeaseMark, STALLED_REASON};
+use crate::strategy::{PriorityFifo, SelectStrategy};
 use crate::types::{Job, JobError};
 
 /// How long a cancelled handler (hard timeout, lost lease) gets before it is dropped. A job's
@@ -95,7 +96,7 @@ pub struct JobContext {
     pub cancel: CancellationToken,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct RunnerConfig {
     /// The prefix of this runner's `lease_owner`, which is `<worker_id>/<kind>`. It must be
     /// unique per *process*: runners of one process (one per kind) may share it, but two
@@ -119,6 +120,25 @@ pub struct RunnerConfig {
     pub backoff: Backoff,
     /// Per-handler hard deadline; `None` for none.
     pub hard_timeout: Option<Duration>,
+    /// How each claim chooses its jobs ([`PriorityFifo`], R1's claim, by default).
+    pub strategy: Arc<dyn SelectStrategy>,
+}
+
+impl std::fmt::Debug for RunnerConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RunnerConfig")
+            .field("worker_id", &self.worker_id)
+            .field("concurrency", &self.concurrency)
+            .field("lease", &self.lease)
+            .field("renew_every", &self.renew_every)
+            .field("reap_every", &self.reap_every)
+            .field("stall_grace", &self.stall_grace)
+            .field("idle_poll", &self.idle_poll)
+            .field("backoff", &self.backoff)
+            .field("hard_timeout", &self.hard_timeout)
+            .field("strategy", &self.strategy.order_by())
+            .finish()
+    }
 }
 
 impl Default for RunnerConfig {
@@ -133,6 +153,7 @@ impl Default for RunnerConfig {
             idle_poll: Duration::from_millis(500),
             backoff: Backoff::default(),
             hard_timeout: None,
+            strategy: Arc::new(PriorityFifo),
         }
     }
 }
@@ -431,8 +452,9 @@ async fn run(s: Arc<Shared>) {
             let claimed_at = Instant::now();
             // Not raced against anything: see the module docs.
             match s
-                .queue
-                .dequeue(&[kind], &s.owner, free as i64, s.cfg.lease)
+                .cfg
+                .strategy
+                .dequeue(&s.queue, &[kind], &s.owner, free as i64, s.cfg.lease)
                 .await
             {
                 Ok(jobs) => {
