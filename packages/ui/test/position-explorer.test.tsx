@@ -133,6 +133,14 @@ describe("PositionExplorer, expanded", () => {
     expect(within(dialog).getByRole("button", { name: "Next move" })).toBeDisabled();
   });
 
+  it("a step button that becomes disabled hands focus to its neighbours, not the page", async () => {
+    const { dialog, user } = await expand({ line });
+    const next = within(dialog).getByRole("button", { name: "Next move" });
+    for (let i = 0; i < 5; i++) await user.click(next);
+    expect(next).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "First move" })).toHaveFocus();
+  });
+
   it("switches to the engine line, and says so when none is stored", async () => {
     const engineLine: PositionLine = {
       ...line,

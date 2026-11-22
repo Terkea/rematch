@@ -7,6 +7,7 @@ import {
   type RefObject,
   Suspense,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useReducer,
   useRef,
@@ -14,6 +15,7 @@ import {
 } from "react";
 import type { Annotation } from "../annotations/index.js";
 import { Board, type BoardMove } from "../board/board.js";
+import { formatNotation } from "../board/notation.js";
 import type { Orientation, Square } from "../board/theme.js";
 import {
   ArrowCounterClockwiseIcon,
@@ -286,6 +288,10 @@ export function PositionExplorer(props: PositionExplorerProps) {
   );
 }
 
+/** "28. Nd2" or "28… Nd2". */
+const moveText = (m: ExplorerMove) =>
+  formatNotation({ moveNumber: Math.ceil(m.ply / 2), color: m.color, san: m.san });
+
 /** The side-to-move king's square when it is in check. */
 function checkSquare(fen: string): Square | undefined {
   try {
@@ -365,7 +371,7 @@ function ExplorerDialog({
   }, [line, state.line]);
   const [side, setSide] = useState<Orientation>(orientation);
 
-  const moves = lineMoves(state);
+  const moves = useMemo(() => lineMoves(state), [state]);
   const fen = positionAt(moves, state.cursor, fenBefore);
   const last = state.cursor > 0 ? moves[state.cursor - 1] : undefined;
   const lastMove = squares(last?.uci) ?? undefined;
@@ -424,6 +430,18 @@ function ExplorerDialog({
     else dispatch(action);
   };
 
+  // A step button that the step disabled keeps focus in the controls: it moves to the first
+  // button still enabled, never to the page.
+  const controls = useRef<HTMLDivElement>(null);
+  const focused = useRef<HTMLButtonElement | null>(null);
+  useLayoutEffect(() => {
+    const el = focused.current;
+    if (!el?.disabled) return;
+    const active = document.activeElement;
+    if (active !== null && active !== document.body && active !== el) return;
+    controls.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
+  });
+
   const match = tryMatch(state);
   const note =
     state.mode === "game"
@@ -453,7 +471,7 @@ function ExplorerDialog({
           <div className={cn("@container w-full", BOARD_SIZE, BOARD_SIZE_MD)}>
             <Board
               fen={fen}
-              label={`${boardLabel}. Shown: ${last ? `after ${last.san}` : "the start of the line"}`}
+              label={atCited || !last ? boardLabel : `Position after ${moveText(last)}`}
               orientation={side}
               lastMove={lastMove}
               check={checkSquare(fen)}
@@ -464,8 +482,12 @@ function ExplorerDialog({
           </div>
           {/* biome-ignore lint/a11y/useSemanticElements: a group of controls, not a fieldset */}
           <div
+            ref={controls}
             role="group"
             aria-label="Move controls"
+            onFocus={(e) => {
+              focused.current = e.target instanceof HTMLButtonElement ? e.target : null;
+            }}
             className="flex flex-wrap items-center justify-between gap-1"
           >
             <div className="flex items-center gap-1">
