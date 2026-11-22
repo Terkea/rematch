@@ -142,3 +142,7 @@ Every R2 record has a file (titles final at R2 Task 35); numbers 19 to 21 were n
 ### Browser check fixes (fix/d): ADR-FIX-D
 
 - [ADR-FIX-D-1. Numbers keep their units, answers show their positions, numbers-only reports say why](ADR-FIX-D-1-units-boards-and-numbers-only-reports.md)
+
+### Coach bug fixes (fix/e): ADR-FIX-E
+
+- [ADR-FIX-E-1. The coach finds the player's own moves by a move filter](ADR-FIX-E-1-find-examples-move-filter.md)

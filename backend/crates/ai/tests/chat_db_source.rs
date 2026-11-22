@@ -8,9 +8,12 @@ mod support;
 use std::sync::Arc;
 
 use ai::chat::anchor::ChatAnchor;
-use ai::chat::data_source::{CoachDataSource, ExamplesQuery, GameResult, GamesQuery};
+use ai::chat::data_source::{
+    CoachDataSource, ExampleSort, ExamplesQuery, GameResult, GamesQuery, Judgement, MoveFilter,
+    Phase, Standing,
+};
 use ai::chat::db_source::{ChatScope, DbCoachDataSource, latest_coaching_input};
-use ai::input::types::{CoachingInput, TimeClass};
+use ai::input::types::{CoachingInput, PlayerColor, TimeClass};
 use ai::output::codes::SectionKey;
 use serde_json::json;
 use sqlx::PgPool;
@@ -566,4 +569,341 @@ async fn the_find_examples_tool_cites_r2_occurrences(pool: PgPool) {
     assert_eq!(examples.len(), 1, "{v}");
     assert_eq!(examples[0]["position"]["gameId"], "li-r2-tool");
     assert!(session.evidence().game_ids.contains("li-r2-tool"));
+}
+
+// --- Fix E (N8): the move filter ---------------------------------------------------------------
+//
+// "Show me one rapid game where I blundered in a winning endgame" found nothing: find_examples
+// only knew weaknesses, motifs and opening lines. The move filter reads the player's own moves of
+// the scope (account and time class) by phase, judgement, win chance, drop, clock, colour and
+// date, one move per game (its worst match), newest game first.
+
+fn day(s: &str) -> time::Date {
+    time::Date::parse(s, time::macros::format_description!("[year]-[month]-[day]")).unwrap()
+}
+
+/// A game of `account` with the player's colour, time class and day (2026-MM-DD).
+async fn filter_game(
+    pool: &PgPool,
+    account: Uuid,
+    id: &str,
+    color: &str,
+    time_class: &str,
+    on: &str,
+) -> Uuid {
+    let g = seed_game(pool, account, id).await;
+    sqlx::query(
+        "UPDATE games SET player_color = $2::color, time_class = $3::time_class, \
+         played_at = ($4::date)::timestamp AT TIME ZONE 'UTC' + interval '12 hours' WHERE id = $1",
+    )
+    .bind(g)
+    .bind(color)
+    .bind(time_class)
+    .bind(day(on))
+    .execute(pool)
+    .await
+    .unwrap();
+    g
+}
+
+/// One move, as `(ply, by the player's side, phase, judgement, win before, drop, clock)`.
+type Mv<'a> = (i32, bool, &'a str, Option<&'a str>, f64, f64, f64);
+
+/// Moves of a game: White's `e4` from the start or Black's `e5` after it (both legal, so the
+/// record has its position). `white` is the mover.
+async fn filter_moves(pool: &PgPool, game: Uuid, moves: &[Mv<'_>]) {
+    for &(ply, white, phase, judgement, win_before, delta_w, clock) in moves {
+        let (color, fen, san, uci) = if white {
+            ("white", START, "e4", "e2e4")
+        } else {
+            ("black", AFTER_E4, "e5", "e7e5")
+        };
+        sqlx::query(
+            "INSERT INTO moves (game_id, ply, color, san, uci, fen_before, best_uci, win_before, \
+             win_after, delta_w, accuracy, judgement, phase, clock_before, time_spent, decided) \
+             VALUES ($1, $2, $3::color, $4, $5, $6, NULL, $7, greatest($7 - $8, 0), $8, 40.0, \
+             $9::judgement, $10::phase, $11, 5.0, false)",
+        )
+        .bind(game)
+        .bind(ply)
+        .bind(color)
+        .bind(san)
+        .bind(uci)
+        .bind(fen)
+        .bind(win_before)
+        .bind(delta_w)
+        .bind(judgement)
+        .bind(phase)
+        .bind(clock)
+        .execute(pool)
+        .await
+        .unwrap();
+    }
+}
+
+/// Alice's rapid games (oldest first) plus moves that must never match: the opponent's, a blitz
+/// game's, another account's. `g-none` has no analysed move and is never searched.
+async fn filter_world(pool: &PgPool) -> DbCoachDataSource {
+    let a = account(pool, "alice").await;
+    let input = unranked(store_input(pool, a).await);
+    let old = filter_game(pool, a, "g-old", "white", "rapid", "2026-02-01").await;
+    filter_moves(
+        pool,
+        old,
+        &[
+            (21, true, "middlegame", Some("inaccuracy"), 60.0, 8.0, 300.0),
+            (23, true, "middlegame", Some("mistake"), 55.0, 70.0, 200.0),
+        ],
+    )
+    .await;
+    let mid = filter_game(pool, a, "g-mid", "black", "rapid", "2026-03-01").await;
+    filter_moves(
+        pool,
+        mid,
+        &[
+            (40, false, "endgame", Some("blunder"), 80.0, 50.0, 30.0),
+            // The opponent's blunder in the same game: never the player's example.
+            (41, true, "endgame", Some("blunder"), 90.0, 60.0, 20.0),
+            // A good move (no judgement).
+            (42, false, "endgame", None, 85.0, 1.0, 25.0),
+        ],
+    )
+    .await;
+    let new = filter_game(pool, a, "g-new", "white", "rapid", "2026-04-01").await;
+    filter_moves(
+        pool,
+        new,
+        &[
+            (31, true, "opening", Some("mistake"), 50.0, 20.0, 500.0),
+            (61, true, "endgame", Some("blunder"), 75.0, 40.0, 100.0),
+            (63, true, "endgame", Some("blunder"), 72.0, 60.0, 50.0),
+            (65, true, "endgame", Some("blunder"), 20.0, 15.0, 10.0),
+        ],
+    )
+    .await;
+    filter_game(pool, a, "g-none", "white", "rapid", "2026-05-01").await;
+    let blitz = filter_game(pool, a, "g-blitz", "white", "blitz", "2026-04-02").await;
+    let winning_blunder: Mv = (61, true, "endgame", Some("blunder"), 80.0, 50.0, 30.0);
+    filter_moves(pool, blitz, &[winning_blunder]).await;
+    let b = account(pool, "bob").await;
+    let bob = filter_game(pool, b, "g-bob", "white", "rapid", "2026-04-03").await;
+    filter_moves(pool, bob, &[winning_blunder]).await;
+    ds(pool, a, input)
+}
+
+async fn filtered(src: &DbCoachDataSource, f: MoveFilter, limit: u32) -> Vec<(String, u32)> {
+    src.find_examples(ExamplesQuery {
+        filter: Some(f),
+        limit,
+        ..ExamplesQuery::default()
+    })
+    .await
+    .unwrap()
+    .into_iter()
+    .map(|p| (p.game_id, p.ply))
+    .collect()
+}
+
+fn ids(xs: &[(&str, u32)]) -> Vec<(String, u32)> {
+    xs.iter().map(|(g, p)| ((*g).to_owned(), *p)).collect()
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn move_filter_finds_blunders_in_winning_endgames(pool: PgPool) {
+    let src = filter_world(&pool).await;
+    let f = MoveFilter {
+        phase: Some(Phase::Endgame),
+        judgement: Some(Judgement::Blunder),
+        standing: Some(Standing::Winning),
+        ..MoveFilter::default()
+    };
+    // g-new's worst winning endgame blunder (ply 63 dropped more than 61), then g-mid's; never
+    // the opponent's, the blitz game's or Bob's.
+    assert_eq!(
+        filtered(&src, f.clone(), 5).await,
+        ids(&[("g-new", 63), ("g-mid", 40)])
+    );
+    assert_eq!(filtered(&src, f.clone(), 1).await, ids(&[("g-new", 63)]));
+    let recs = src
+        .find_examples(ExamplesQuery {
+            filter: Some(f.clone()),
+            limit: 1,
+            ..ExamplesQuery::default()
+        })
+        .await
+        .unwrap();
+    let r = &recs[0];
+    assert_eq!(
+        (r.phase.as_str(), r.judgement.as_deref()),
+        ("endgame", Some("blunder"))
+    );
+    assert!(r.win_before >= 70.0);
+    assert_eq!(r.played.uci, "e2e4");
+    let counts = src.count_examples(&f).await.unwrap().unwrap();
+    assert_eq!(counts.time_class, "rapid");
+    assert_eq!(
+        (
+            counts.matching_moves,
+            counts.matching_games,
+            counts.games_searched
+        ),
+        (3, 2, 3),
+        "g-none has no analysed move, so it is not searched"
+    );
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn move_filter_judgement_and_severity(pool: PgPool) {
+    let src = filter_world(&pool).await;
+    let exact = MoveFilter {
+        judgement: Some(Judgement::Inaccuracy),
+        ..MoveFilter::default()
+    };
+    assert_eq!(filtered(&src, exact, 5).await, ids(&[("g-old", 21)]));
+    let at_least_mistake = MoveFilter {
+        min_judgement: Some(Judgement::Mistake),
+        ..MoveFilter::default()
+    };
+    assert_eq!(
+        filtered(&src, at_least_mistake.clone(), 5).await,
+        ids(&[("g-new", 63), ("g-mid", 40), ("g-old", 23)])
+    );
+    // Worst first: g-old's mistake dropped the most.
+    let worst = MoveFilter {
+        sort: ExampleSort::Worst,
+        ..at_least_mistake
+    };
+    assert_eq!(
+        filtered(&src, worst, 5).await,
+        ids(&[("g-old", 23), ("g-new", 63), ("g-mid", 40)])
+    );
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn move_filter_win_chance_presets_and_bounds(pool: PgPool) {
+    let src = filter_world(&pool).await;
+    let standing = |s| MoveFilter {
+        standing: Some(s),
+        ..MoveFilter::default()
+    };
+    assert_eq!(
+        filtered(&src, standing(Standing::Losing), 5).await,
+        ids(&[("g-new", 65)])
+    );
+    assert_eq!(
+        filtered(&src, standing(Standing::Equal), 5).await,
+        ids(&[("g-new", 31), ("g-old", 23)])
+    );
+    let bounds = |lo, hi| MoveFilter {
+        min_win_before: lo,
+        max_win_before: hi,
+        ..MoveFilter::default()
+    };
+    assert_eq!(
+        filtered(&src, bounds(None, Some(25)), 5).await,
+        ids(&[("g-new", 65)])
+    );
+    assert_eq!(
+        filtered(&src, bounds(Some(55), Some(60)), 5).await,
+        ids(&[("g-old", 23)])
+    );
+    // Without a judgement or drop filter only erring moves match, so g-mid's good move (85) is
+    // left out; a drop filter includes it.
+    assert!(filtered(&src, bounds(Some(84), None), 5).await.is_empty());
+    let good = MoveFilter {
+        min_win_before: Some(84),
+        min_delta_w: Some(1),
+        ..MoveFilter::default()
+    };
+    assert_eq!(filtered(&src, good, 5).await, ids(&[("g-mid", 42)]));
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn move_filter_drop_clock_colour_dates_and_last_games(pool: PgPool) {
+    let src = filter_world(&pool).await;
+    let drop = MoveFilter {
+        min_delta_w: Some(45),
+        ..MoveFilter::default()
+    };
+    assert_eq!(
+        filtered(&src, drop, 5).await,
+        ids(&[("g-new", 63), ("g-mid", 40), ("g-old", 23)])
+    );
+    let clock = MoveFilter {
+        clock_below: Some(40),
+        ..MoveFilter::default()
+    };
+    assert_eq!(
+        filtered(&src, clock, 5).await,
+        ids(&[("g-new", 65), ("g-mid", 40)])
+    );
+    let black = MoveFilter {
+        color: Some(PlayerColor::Black),
+        ..MoveFilter::default()
+    };
+    assert_eq!(filtered(&src, black, 5).await, ids(&[("g-mid", 40)]));
+    let march = MoveFilter {
+        since: Some(day("2026-03-01")),
+        until: Some(day("2026-03-31")),
+        ..MoveFilter::default()
+    };
+    assert_eq!(
+        filtered(&src, march.clone(), 5).await,
+        ids(&[("g-mid", 40)])
+    );
+    let c = src.count_examples(&march).await.unwrap().unwrap();
+    assert_eq!((c.games_searched, c.matching_games), (1, 1));
+    // The newest analysed game only (g-none has no moves).
+    let last = MoveFilter {
+        last_games: Some(1),
+        ..MoveFilter::default()
+    };
+    assert_eq!(filtered(&src, last.clone(), 5).await, ids(&[("g-new", 63)]));
+    let c = src.count_examples(&last).await.unwrap().unwrap();
+    assert_eq!((c.games_searched, c.matching_moves), (1, 4));
+}
+
+// The N8 question through the coach's own tool: the examples carry their positions (so the
+// answer's boards render) and `searched` says what was searched, with citable counts.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn the_find_examples_tool_filters_the_players_moves(pool: PgPool) {
+    use ai::chat::execute::{ToolDeps, ToolExec, ToolSession, execute_tool};
+    use ai::validator::format::resolve_token;
+    use ai::validator::tokens::parse_tokens;
+    let src = filter_world(&pool).await;
+    let session = ToolSession::new(ai::validator::evidence::create_evidence());
+    let deps = ToolDeps {
+        ds: &src,
+        engine: &NoEngine,
+    };
+    let input =
+        json!({"phase": "endgame", "judgement": "blunder", "standing": "winning", "limit": 1});
+    let out = execute_tool(&deps, &session, "find_examples", Some(&input)).await;
+    let ToolExec::Ready(o) = out else {
+        panic!("expected a ready result, got {out:?}");
+    };
+    assert!(!o.is_error, "{}", o.content);
+    let v: serde_json::Value = serde_json::from_str(&o.content).unwrap();
+    let ex = v["examples"].as_array().unwrap();
+    assert_eq!(ex.len(), 1, "{v}");
+    assert_eq!(ex[0]["position"]["gameId"], "g-new");
+    assert_eq!(ex[0]["position"]["ply"], 63);
+    assert!(session.evidence().positions.contains_key("g-new#63"));
+    assert_eq!(v["searched"]["timeClass"], "rapid");
+    assert_eq!(v["searched"]["matchingMoves"], 3);
+    assert_eq!(v["searched"]["matchingGames"], 2);
+    assert_eq!(v["searched"]["gamesSearched"], 3);
+    // "winning" is an engine word: the bound it stands for is citable instead.
+    assert_eq!(v["searched"]["minWinBefore"], 70);
+    let bound = v["refs"]["num"]["searched.minWinBefore"].as_str().unwrap();
+    let ev = session.evidence();
+    let shown = resolve_token(&ev, &parse_tokens(bound).tokens[0].body).unwrap();
+    assert!(shown.starts_with("70") && shown.ends_with('%'), "{shown}");
+    let tok = v["refs"]["num"]["searched.matchingMoves"].as_str().unwrap();
+    let parsed = parse_tokens(tok);
+    let ev = session.evidence();
+    assert_eq!(
+        resolve_token(&ev, &parsed.tokens[0].body).as_deref(),
+        Some("3")
+    );
 }
