@@ -12,9 +12,34 @@ export type Tone = "pen" | "good" | "pencil";
 export type Glyph = "??" | "?" | "?!" | "!" | "!!";
 
 export type Annotation =
-  | { kind: "arrow"; from: Square; to: Square; tone: Tone }
+  | {
+      kind: "arrow";
+      from: Square;
+      to: Square;
+      tone: Tone;
+      /**
+       * Stop the tip on the target square's edge, as for a ringed target, so no ink covers the
+       * piece there (the player's move in red pen, M5a T10).
+       */
+      toEdge?: boolean;
+    }
   | { kind: "circle"; square: Square; tone: Tone }
-  | { kind: "mark"; square: Square; glyph: Glyph; tone: Tone };
+  | {
+      kind: "mark";
+      square: Square;
+      glyph: Glyph;
+      tone: Tone;
+      /**
+       * `full` (default): a solid disc. `light`: the tone's outline on paper, for a lesser mark
+       * in the same colour (the player's `?` beside a full-red `??`, M5a T10 fix round 1).
+       */
+      weight?: "full" | "light";
+      /**
+       * `inset` (default): inside the square's freest corner. `edge`: centred on one of the
+       * square's top corners, half outside it, so it never sits on the piece (M5a T10).
+       */
+      place?: "inset" | "edge";
+    };
 
 export interface AnnotationLayerProps {
   annotations: readonly Annotation[];

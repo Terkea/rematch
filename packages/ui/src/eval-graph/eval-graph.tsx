@@ -78,6 +78,11 @@ export interface EvalGraphProps {
   height?: number;
   /** Reveal left to right on mount over 2 × `dur.reveal` (no reveal under reduced motion). */
   drawIn?: boolean;
+  /**
+   * A strip: the plot alone, `height` tall, with no label lane, phase lane, corner names or
+   * readout (a phone's first screen, M5a T10). Ticks, phase lines and the cursor stay.
+   */
+  compact?: boolean;
   className?: string;
 }
 
@@ -94,6 +99,16 @@ const TAP_SLOP = 10;
 const SCRUB_START = 6;
 
 const isSerious = (j: EvalGraphPoint["judgement"]) => j === "mistake" || j === "blunder";
+/** Severity, graded (critic, M5a T7): only a blunder is in full pen; a mistake a lighter pen. */
+const SEVERITY_STROKE: Record<EvalGraphJudgement, string> = {
+  blunder: "stroke-pen",
+  mistake: "stroke-pen/60",
+  inaccuracy: "stroke-pencil",
+};
+/** Above this many plies only blunders are labelled; mistakes stay ticks. */
+const SPARSE_PLIES = 100;
+/** Fewer than this many px per serious mark also turns the labels sparse. */
+const LABEL_ROOM = 64;
 const sideOf = (ply: number) => (ply % 2 === 1 ? "White" : "Black");
 
 /**
@@ -144,6 +159,8 @@ interface Phase {
   name: string;
   x: number;
   labelX: number;
+  /** False when the name would run into the next phase's: the boundary line stays. */
+  named: boolean;
 }
 
 interface Corner {
@@ -157,6 +174,9 @@ interface Corner {
 const StaticLayer = memo(function StaticLayer({
   width,
   plotH,
+  lane,
+  axis,
+  compact,
   linePath,
   areaPath,
   baseline,
@@ -181,25 +201,43 @@ const StaticLayer = memo(function StaticLayer({
   /** Clip the line and area to the reveal's wipe; without a reveal there is no clip at all. */
   reveal: boolean;
   clipId: string;
+  lane: number;
+  axis: number;
+  /** A strip with no lanes: no corner labels and no scale text. */
+  compact: boolean;
 }) {
   const clip = reveal ? `url(#${clipId})` : undefined;
-  const cornerText = (c: Corner, y: number, key: string) => (
-    <text
-      key={key}
-      data-corner={key}
-      data-side={c.side}
-      x={c.side === "left" ? PAD : width - PAD}
-      y={y}
-      textAnchor={c.side === "left" ? "start" : "end"}
-    >
-      {c.text}
-    </text>
-  );
+  const cornerText = (c: Corner, y: number, key: string) => {
+    const x = c.side === "left" ? PAD : width - PAD;
+    return (
+      <g key={key}>
+        {/* A solid ground under the name, so the line never runs through it (M5a T10). */}
+        <rect
+          data-corner-ground
+          x={(c.side === "left" ? x : x - c.width) - 3}
+          y={y - 11}
+          width={c.width + 6}
+          height={15}
+          rx={2}
+          className="fill-well stroke-none"
+        />
+        <text
+          data-corner={key}
+          data-side={c.side}
+          x={x}
+          y={y}
+          textAnchor={c.side === "left" ? "start" : "end"}
+        >
+          {c.text}
+        </text>
+      </g>
+    );
+  };
 
   return (
     <svg
       width={width}
-      height={LANE + plotH + AXIS}
+      height={lane + plotH + axis}
       aria-hidden="true"
       className="absolute inset-0 block"
     >
@@ -210,13 +248,27 @@ const StaticLayer = memo(function StaticLayer({
               x={0}
               y={0}
               width={width}
-              height={LANE + plotH + AXIS}
+              height={lane + plotH + axis}
               style={{ scaleX: progress, originX: 0, originY: 0 }}
             />
           </clipPath>
         </defs>
       )}
-      <rect x={0} y={LANE} width={width} height={plotH} rx={2} className="fill-well" />
+      <rect x={0} y={lane} width={width} height={plotH} rx={2} className="fill-well" />
+      {/* The scale: faint rules at 25% and 75%, and the 50% line named at its right end. */}
+      {[75, 25].map((w) => (
+        <line
+          key={w}
+          data-grid={w}
+          x1={0}
+          x2={width}
+          y1={lane + yForWin(w, plotH)}
+          y2={lane + yForWin(w, plotH)}
+          strokeWidth={1}
+          strokeDasharray="2 4"
+          className="stroke-rule"
+        />
+      ))}
       <g clipPath={clip}>
         <path d={areaPath} className="fill-ink/10" />
       </g>
@@ -234,23 +286,25 @@ const StaticLayer = memo(function StaticLayer({
           data-phase={ph.name}
           x1={ph.x}
           x2={ph.x}
-          y1={LANE}
-          y2={LANE + plotH}
+          y1={lane}
+          y2={lane + plotH}
           strokeWidth={1}
           className="stroke-pencil"
         />
       ))}
       <g className="group-data-readout:invisible">
-        {phases.map((ph) => (
-          <text
-            key={ph.name}
-            x={ph.labelX}
-            y={LANE + plotH + 15}
-            className="fill-ink-faint font-sans text-xs"
-          >
-            {ph.name}
-          </text>
-        ))}
+        {phases
+          .filter((ph) => ph.named)
+          .map((ph) => (
+            <text
+              key={ph.name}
+              x={ph.labelX}
+              y={lane + plotH + 15}
+              className="fill-ink-faint font-sans text-xs"
+            >
+              {ph.name}
+            </text>
+          ))}
       </g>
       <g clipPath={clip}>
         <path
@@ -282,10 +336,24 @@ const StaticLayer = memo(function StaticLayer({
           ))}
       </g>
       {/* Corner labels sit over the line and leaders on a well halo, under the marks. */}
-      <g className="fill-ink-soft stroke-well font-sans text-xs" style={CORNER_HALO}>
-        {cornerText(corners.top, LANE + 14, "top")}
-        {cornerText(corners.bottom, LANE + plotH - 6, "bottom")}
-      </g>
+      {compact ? null : (
+        <g className="fill-ink-soft stroke-well font-sans text-xs" style={CORNER_HALO}>
+          {cornerText(corners.top, lane + 14, "top")}
+          {cornerText(corners.bottom, lane + plotH - 6, "bottom")}
+        </g>
+      )}
+      {compact ? null : (
+        <text
+          data-scale
+          x={width - PAD}
+          y={baseline - 3}
+          textAnchor="end"
+          className="fill-ink-faint stroke-well font-sans text-2xs"
+          style={CORNER_HALO}
+        >
+          50%
+        </text>
+      )}
       <g data-layer="marks">
         {marks.map((m) => {
           const serious = isSerious(m.judgement);
@@ -295,6 +363,7 @@ const StaticLayer = memo(function StaticLayer({
               <line
                 key={m.ply}
                 data-mark="opponent"
+                data-severity={m.judgement}
                 data-ply={m.ply}
                 x1={m.x}
                 x2={m.x}
@@ -312,6 +381,7 @@ const StaticLayer = memo(function StaticLayer({
             <g
               key={m.ply}
               data-mark={serious ? "pen" : "pencil"}
+              data-severity={m.judgement}
               data-ply={m.ply}
               style={wipeOpacity(m.x, width)}
             >
@@ -331,7 +401,7 @@ const StaticLayer = memo(function StaticLayer({
                 y2={m.y2}
                 strokeWidth={w}
                 strokeLinecap="round"
-                className={serious ? "stroke-pen" : "stroke-pencil"}
+                className={SEVERITY_STROKE[m.judgement]}
               />
             </g>
           );
@@ -370,7 +440,9 @@ const StaticLayer = memo(function StaticLayer({
                   ? "fill-ink-faint"
                   : l.mine === false
                     ? "fill-ink-soft"
-                    : "fill-pen-text",
+                    : l.judgement === "mistake"
+                      ? "fill-pen-text/75"
+                      : "fill-pen-text",
               )}
             >
               {l.text.glyph}
@@ -400,8 +472,11 @@ export function EvalGraph({
   playerColor,
   height,
   drawIn = false,
+  compact = false,
   className,
 }: EvalGraphProps) {
+  const lane = compact ? 0 : LANE;
+  const axis = compact ? 0 : AXIS;
   const reduced = useReducedMotion();
   const rawId = useId();
   const id = `eg${rawId.replace(/[^a-zA-Z0-9]/g, "")}`;
@@ -446,8 +521,8 @@ export function EvalGraph({
   // Scales and paths, built once per data and size. x maps by index, so plies need not start at 1.
   const geo = useMemo(() => {
     const xs = points.map((_, i) => PAD + xForPly(i + 1, innerW, count));
-    const ys = points.map((p) => LANE + yForWin(p.winWhite, plotH));
-    const baseline = LANE + yForWin(50, plotH);
+    const ys = points.map((p) => lane + yForWin(p.winWhite, plotH));
+    const baseline = lane + yForWin(50, plotH);
     const index = new Map(points.map((p, i) => [p.ply, i]));
     const at = (_: EvalGraphPoint, i: number) => xs[i] ?? 0;
     const yAt = (_: EvalGraphPoint, i: number) => ys[i] ?? baseline;
@@ -458,7 +533,7 @@ export function EvalGraph({
         points,
       ) ?? "";
     return { xs, ys, baseline, index, linePath, areaPath };
-  }, [points, innerW, count, plotH]);
+  }, [points, innerW, count, plotH, lane]);
 
   // Ticks, clamped inside the plot: blunders longest, inaccuracies shortest.
   const marks = useMemo<Mark[]>(
@@ -471,14 +546,14 @@ export function EvalGraph({
           {
             ply: p.ply,
             x: geo.xs[i] ?? 0,
-            y1: Math.max(LANE + 2, y - half),
-            y2: Math.min(LANE + plotH - 2, y + half),
+            y1: Math.max(lane + 2, y - half),
+            y2: Math.min(lane + plotH - 2, y + half),
             judgement: p.judgement,
             mine: playerColor ? sideOf(p.ply).toLowerCase() === playerColor : null,
           },
         ];
       }),
-    [points, geo, plotH, playerColor],
+    [points, geo, plotH, playerColor, lane],
   );
 
   const labels = useMemo(() => {
@@ -491,8 +566,11 @@ export function EvalGraph({
       top: m.y1,
       mine: m.mine,
     }));
-    return placeLabels(input, width, { narrow, wide: width >= LABEL_WIDE });
-  }, [marks, points, geo, width, narrow]);
+    if (compact) return [];
+    const serious = marks.filter((m) => isSerious(m.judgement)).length;
+    const sparse = count > SPARSE_PLIES || serious * LABEL_ROOM > width;
+    return placeLabels(input, width, { narrow, wide: width >= LABEL_WIDE, sparse });
+  }, [marks, points, geo, width, narrow, compact, count]);
 
   const corners = useMemo(() => {
     const text = (side: "white" | "black") =>
@@ -509,8 +587,7 @@ export function EvalGraph({
   }, [playerColor, width, plotH, labels, marks, geo, cornerWidths]);
 
   const phaseLines = useMemo<Phase[]>(() => {
-    let end = -Infinity;
-    return [
+    const lines = [
       { ply: phases?.middlegameStartPly, name: "Middlegame" },
       { ply: phases?.endgameStartPly, name: "Endgame" },
     ].flatMap(({ ply, name }) => {
@@ -518,11 +595,15 @@ export function EvalGraph({
       if (i === undefined || i <= 0) return [];
       const x = ((geo.xs[i - 1] ?? 0) + (geo.xs[i] ?? 0)) / 2;
       const w = cornerWidth(name);
-      let labelX = Math.max(x + 4, end + 8);
-      if (labelX + w > width) labelX = Math.max(end + 8, width - w);
-      end = labelX + w;
-      return [{ name, x, labelX }];
+      return [{ name, x, labelX: Math.min(x + 4, Math.max(0, width - w)), named: true }];
     });
+    // A name that would run into the next one is left off ("Middlegame Endgame" read as one).
+    for (let k = 0; k + 1 < lines.length; k++) {
+      const a = lines[k] as Phase;
+      const b = lines[k + 1] as Phase;
+      if (a.labelX + cornerWidth(a.name) + 12 > b.labelX) a.named = false;
+    }
+    return lines;
   }, [phases?.middlegameStartPly, phases?.endgameStartPly, geo, width]);
 
   const describe = useMemo(() => summary(points, playerColor), [points, playerColor]);
@@ -569,10 +650,10 @@ export function EvalGraph({
   );
 
   const boxClass =
-    height === undefined
+    height === undefined && !compact
       ? "h-(--eval-graph-height) @graph:h-(--eval-graph-height-wide)"
       : undefined;
-  const boxStyle = height === undefined ? undefined : { height: LANE + height + AXIS };
+  const boxStyle = height === undefined && !compact ? undefined : { height: lane + plotH + axis };
 
   if (count === 0) {
     return (
@@ -710,12 +791,15 @@ export function EvalGraph({
             progress={progress}
             reveal={revealing}
             clipId={`${id}-clip`}
+            lane={lane}
+            axis={axis}
+            compact={compact}
           />
         )}
         {width > 0 && (
           <svg
             width={width}
-            height={LANE + plotH + AXIS}
+            height={lane + plotH + axis}
             aria-hidden="true"
             className="pointer-events-none absolute inset-0 block"
           >
@@ -724,8 +808,8 @@ export function EvalGraph({
                 data-hover
                 x1={geo.xs[shownIndex]}
                 x2={geo.xs[shownIndex]}
-                y1={LANE}
-                y2={LANE + plotH}
+                y1={lane}
+                y2={lane + plotH}
                 strokeWidth={1}
                 className="stroke-ink-faint"
               />
@@ -736,8 +820,8 @@ export function EvalGraph({
                   data-cursor-rule
                   x1={0}
                   x2={0}
-                  y1={LANE}
-                  y2={LANE + plotH}
+                  y1={lane}
+                  y2={lane + plotH}
                   strokeWidth={1.5}
                   className="stroke-ink"
                   initial={false}
@@ -771,7 +855,7 @@ export function EvalGraph({
           }
           aria-describedby={`${id}-desc`}
           className="absolute inset-x-0 cursor-crosshair touch-pan-y touch-pinch-zoom rounded-board focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
-          style={{ top: LANE, height: plotH }}
+          style={{ top: lane, height: plotH }}
           onKeyDown={onKeyDown}
           onFocus={(e) => {
             let visible = false;
@@ -793,8 +877,9 @@ export function EvalGraph({
         />
         {shownPoint &&
           width > 0 &&
+          !compact &&
           (narrow ? (
-            <LaneReadout point={shownPoint} top={LANE + plotH} />
+            <LaneReadout point={shownPoint} top={lane + plotH} />
           ) : (
             <Readout
               point={shownPoint}

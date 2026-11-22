@@ -63,18 +63,19 @@ export interface PlacedLabel {
   tickX: number;
   tickTop: number;
   serious: boolean;
-  /** False for a glyph-only label sitting straight above its tick. */
+  /** Always true since M5a T10 (no glyph-only labels); kept for the leader layer. */
   leader: boolean;
   /** Whose move: the player's (true), the opponent's (false) or unknown (null). */
   mine: boolean | null;
   text: LabelText;
+  /** The move's judgement, for its severity colour. */
+  judgement?: Judgement;
 }
 
 export const GLYPH: Record<Judgement, string> = { blunder: "??", mistake: "?", inaccuracy: "?!" };
 
 const LABEL_GAP = 10;
 const MAX_PUSH = 56;
-const GLYPH_SLOP = 4;
 const SERIOUS_CLEARANCE = 24;
 const INACCURACY_SPACING = 120;
 /** Leaders leave the label at this y, bend at LEADER_BEND, then run straight down. */
@@ -88,9 +89,9 @@ export const labelWidth = (t: LabelText) => Math.ceil((t.prefix + t.san + t.glyp
 export const movePrefix = (ply: number) =>
   ply % 2 === 1 ? `${Math.ceil(ply / 2)}. ` : `${Math.ceil(ply / 2)}…`;
 
-const textFor = (m: LabelMark, form: LabelForm | "glyph"): LabelText => ({
+const textFor = (m: LabelMark, form: LabelForm): LabelText => ({
   prefix: form === "full" ? movePrefix(m.ply) : "",
-  san: form === "glyph" ? "" : m.san,
+  san: m.san,
   glyph: GLYPH[m.judgement],
 });
 
@@ -130,6 +131,7 @@ function placeSerious(marks: LabelMark[], width: number, form: LabelForm): Place
       leader,
       mine: m.mine,
       text,
+      judgement: m.judgement,
     });
     return true;
   };
@@ -139,13 +141,8 @@ function placeSerious(marks: LabelMark[], width: number, form: LabelForm): Place
     const base = Math.min(Math.max(m.x - 6, 0), width - labelWidth(text));
     const pushes = [base];
     for (let d = 1; d <= MAX_PUSH; d++) pushes.push(base + d, base - d);
-    if (place(m, text, pushes, true)) continue;
-    // Glyph only, and only straight above its tick (no leader); otherwise the label is dropped.
-    const glyph = textFor(m, "glyph");
-    const centred = m.x - labelWidth(glyph) / 2;
-    const nudges = [centred];
-    for (let d = 1; d <= GLYPH_SLOP; d++) nudges.push(centred + d, centred - d);
-    place(m, glyph, nudges, false);
+    // A label that can't be placed is dropped: a bare glyph with no move read as noise (M5a T10).
+    place(m, text, pushes, true);
   }
   return placed;
 }
@@ -156,17 +153,18 @@ function placeSerious(marks: LabelMark[], width: number, form: LabelForm): Place
  * way by at most 56px to keep a 10px gap, and always in the same order as their ticks, so leaders
  * never cross. One label form is used for the whole lane: the full notation (`28. Nd2??`) when it
  * places as many labels as SAN alone, else SAN plus glyph (always when `narrow`). A label that
- * can't be placed falls back to its glyph straight above the tick (within 4px, no leader), or is
- * dropped; the text alternative still lists it. On `wide` lanes, inaccuracies are labelled where
- * they fit unpushed, 24px clear of serious labels and at most one per 120px.
+ * can't be placed is dropped (never left as a bare glyph); the text alternative still lists it.
+ * `sparse` (a long game) labels blunders only and leaves mistakes as ticks. On `wide` lanes that
+ * aren't sparse, inaccuracies are labelled where they fit unpushed, 24px clear of serious labels
+ * and at most one per 120px.
  */
 export function placeLabels(
   marks: LabelMark[],
   width: number,
-  { narrow, wide }: { narrow: boolean; wide: boolean },
+  { narrow, wide, sparse = false }: { narrow: boolean; wide: boolean; sparse?: boolean },
 ): PlacedLabel[] {
   const serious = marks
-    .filter(isSerious)
+    .filter((m) => (sparse ? m.judgement === "blunder" : isSerious(m)))
     .sort((a, b) => mineRank(a) - mineRank(b) || severityRank(a) - severityRank(b) || a.x - b.x);
   const withLeaders = (ls: PlacedLabel[]) => ls.filter((l) => l.leader).length;
   let form: LabelForm = "san";
@@ -178,7 +176,7 @@ export function placeLabels(
       placed = full;
     }
   }
-  if (!wide) return placed;
+  if (!wide || sparse) return placed;
 
   const inaccuracies = marks
     .filter((m) => !isSerious(m))
@@ -200,6 +198,7 @@ export function placeLabels(
       leader: true,
       mine: m.mine,
       text,
+      judgement: m.judgement,
     });
   }
   return all;

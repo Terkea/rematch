@@ -16,6 +16,11 @@ export interface EvalBarProps {
   fen?: string;
   orientation?: Orientation;
   label: string;
+  /**
+   * Below 768px, name both ends of the bar ("White", "Black") and leave the number to the host,
+   * so the reading never depends on which end a jumping label sits at (M5a T10).
+   */
+  ends?: boolean;
   className?: string;
 }
 
@@ -50,7 +55,14 @@ function describe(score: Score, share: number): string {
  * board, with the label outside its end. The boundary moves on `swing`, or `swing-big` for big
  * changes, keeping its velocity when values come quickly; under reduced motion it is set at once.
  */
-export function EvalBar({ score, fen, orientation = "white", label, className }: EvalBarProps) {
+export function EvalBar({
+  score,
+  fen,
+  orientation = "white",
+  label,
+  ends = false,
+  className,
+}: EvalBarProps) {
   // A forced mate maps to the end of the bar, as on the graph ("Eval graph", Mapping).
   const share = whiteShare(score, fen);
   const reduced = useReducedMotion();
@@ -92,16 +104,26 @@ export function EvalBar({ score, fen, orientation = "white", label, className }:
       data-winning={whiteWins ? "white" : "black"}
       className={cn(
         "flex w-(--board-size) items-center gap-2 md:h-(--board-size) md:w-4",
-        labelAtStart ? "flex-row" : "flex-row-reverse",
+        ends || labelAtStart ? "flex-row" : "flex-row-reverse",
         className,
       )}
     >
-      <span
-        aria-hidden="true"
-        className="shrink-0 font-serif text-2xs font-semibold text-ink [font-variant-numeric:lining-nums_tabular-nums] md:hidden"
-      >
-        {text}
-      </span>
+      {ends ? (
+        <span
+          aria-hidden="true"
+          data-end
+          className="shrink-0 font-sans text-xs font-medium text-ink-soft md:hidden"
+        >
+          {whiteStart ? "White" : "Black"}
+        </span>
+      ) : (
+        <span
+          aria-hidden="true"
+          className="shrink-0 font-serif text-2xs font-semibold text-ink [font-variant-numeric:lining-nums_tabular-nums] md:hidden"
+        >
+          {text}
+        </span>
+      )}
       <div className="relative h-2 min-w-0 flex-1 overflow-hidden rounded-(--radius-board) bg-ink md:h-full md:w-4 md:flex-none dark:bg-well">
         <motion.div
           data-testid="eval-fill"
@@ -134,6 +156,15 @@ export function EvalBar({ score, fen, orientation = "white", label, className }:
           className="pointer-events-none absolute inset-0 rounded-(--radius-board) border border-rule-strong"
         />
       </div>
+      {ends ? (
+        <span
+          aria-hidden="true"
+          data-end
+          className="shrink-0 font-sans text-xs font-medium text-ink-soft md:hidden"
+        >
+          {whiteStart ? "Black" : "White"}
+        </span>
+      ) : null}
     </div>
   );
 }
