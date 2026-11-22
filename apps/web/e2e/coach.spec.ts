@@ -209,9 +209,9 @@ test.describe
     });
 
     test("6. a weekly_cap denial shows the cap copy and disables the composer", async () => {
-      // With step 4's answer, 99 of the week's 100 are used; another device uses the last while
-      // this question waits.
-      spendAllowance(98);
+      // With steps 4 and 4b's answers, 99 of the week's 100 are used; another device uses the
+      // last while this question waits.
+      spendAllowance(97);
       await live(page, "/app/coach/new", "textarea");
       await page.getByRole("textbox").fill("One more question about my endgames?");
       await page.getByRole("button", { name: "Send" }).click();
