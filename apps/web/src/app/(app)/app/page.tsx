@@ -1,10 +1,12 @@
 import { cookies } from "next/headers";
 import { LiveRefresh } from "../../../components/live-refresh";
+import { SyncPanel } from "../../../components/sync/sync-panel";
 import { requireUser } from "../../../server/auth/session";
 import { getDb } from "../../../server/db";
 import { requestEventCursor } from "../../../server/events/request-cursor";
 import { scopedAccountIds } from "../../../server/games";
 import { getOverview } from "../../../server/overview";
+import { getSyncStatus } from "../../../server/sync";
 import { OverviewSheet } from "./_overview/sheet";
 import { knownTimeClass, parseTimeClass, REVEAL_COOKIE, toOverviewView } from "./_overview/view";
 
@@ -35,10 +37,15 @@ export default async function OverviewPage({
   // The report reveal runs on the first view in a browser session only (DESIGN.md choreography 2).
   const reveal = !(await cookies()).has(REVEAL_COOKIE);
   const accountIds = await scopedAccountIds(db, user.id);
+  const sync = await getSyncStatus(db, user.id);
   return (
     <>
       <LiveRefresh accountIds={accountIds} />
-      <OverviewSheet view={toOverviewView(overview, tc)} reveal={reveal} />
+      <OverviewSheet
+        view={toOverviewView(overview, tc)}
+        reveal={reveal}
+        sync={sync.accounts.length > 0 ? <SyncPanel initial={sync} variant="compact" /> : undefined}
+      />
     </>
   );
 }

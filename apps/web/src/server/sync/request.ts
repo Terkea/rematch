@@ -1,0 +1,134 @@
+import type { Db } from "@ci/db";
+import { sql } from "drizzle-orm";
+import { userAccountIds } from "../events/user-accounts";
+import { enqueueJob } from "../jobs";
+import {
+  ANALYSE_JOB,
+  IMPORT_JOB,
+  RETRY_COOLDOWN_MS,
+  RETRY_LIMIT,
+  SYNC_COOLDOWN_MS,
+  SYNC_LOCK_CLASS,
+} from "./jobs";
+import { lastStartSql } from "./status";
+
+/**
+ * `queued`: an import was enqueued, or a scheduled one was moved to now. `already`: one is due,
+ * running or paused (one live import per account, `import:<account>`). `throttled`: an import
+ * started less than `SYNC_COOLDOWN_MS` ago; `availableAt` says when the next is allowed.
+ */
+export type SyncOutcome =
+  | { accountId: string; outcome: "queued" | "already" }
+  | { accountId: string; outcome: "throttled"; availableAt: Date };
+
+export type SyncRequest = { kind: "ok"; accounts: SyncOutcome[] } | { kind: "not_found" };
+
+async function syncOne(tx: Db, accountId: string, now: Date): Promise<SyncOutcome> {
+  await tx.execute(
+    sql`select pg_advisory_xact_lock(${SYNC_LOCK_CLASS}::int4, hashtext(${accountId}::text))`,
+  );
+  const [live] = (await tx.execute(sql`
+    SELECT id::text AS id, state::text AS state, run_at <= now() AS due FROM jobs
+    WHERE kind = ${IMPORT_JOB.kind} AND dedupe_key = ${IMPORT_JOB.key(accountId)}
+      AND state IN ('queued', 'running', 'paused')
+    LIMIT 1
+  `)) as unknown as { id: string; state: string; due: boolean }[];
+  if (live && (live.state !== "queued" || live.due)) return { accountId, outcome: "already" };
+
+  const [last] = (await tx.execute(
+    sql`SELECT ${lastStartSql(sql`${accountId}::uuid`)} AS at`,
+  )) as unknown as { at: Date | string | null }[];
+  if (last?.at) {
+    const availableAt = new Date(new Date(last.at).getTime() + SYNC_COOLDOWN_MS);
+    if (availableAt.getTime() > now.getTime()) {
+      return { accountId, outcome: "throttled", availableAt };
+    }
+  }
+
+  if (live) {
+    // A sync scheduled for later (the recurring sync, Task S): run that one now, never a second.
+    await tx.execute(sql`
+      UPDATE jobs SET run_at = now() WHERE id = ${live.id}::int8 AND state = 'queued';
+    `);
+    await tx.execute(sql`SELECT pg_notify('jobs', ${IMPORT_JOB.kind})`);
+    return { accountId, outcome: "queued" };
+  }
+  const id = await enqueueJob(tx, {
+    kind: IMPORT_JOB.kind,
+    payload: IMPORT_JOB.payload(accountId),
+    dedupeKey: IMPORT_JOB.key(accountId),
+    userKey: accountId,
+    priority: IMPORT_JOB.priority,
+    maxAttempts: IMPORT_JOB.maxAttempts,
+  });
+  return { accountId, outcome: id === null ? "already" : "queued" };
+}
+
+/**
+ * "Sync now": an incremental import of one linked account, or of every one when `accountId` is
+ * null. Only accounts the user holds a link to (`userAccountIds`); anything else is not found,
+ * whatever the reason, so a foreign id leaks nothing. Each account is serialised by
+ * `pg_advisory_xact_lock(30040, hashtext(account_id))`, so concurrent clicks enqueue once.
+ */
+export async function requestSync(
+  db: Db,
+  userId: string,
+  accountId: string | null,
+  now: Date = new Date(),
+): Promise<SyncRequest> {
+  const ids = await userAccountIds(db, userId);
+  const targets = accountId === null ? ids : ids.filter((id) => id === accountId);
+  if (targets.length === 0) return { kind: "not_found" };
+  const accounts: SyncOutcome[] = [];
+  for (const id of targets) {
+    accounts.push(await db.transaction((tx) => syncOne(tx as unknown as Db, id, now)));
+  }
+  return { kind: "ok", accounts };
+}
+
+export type RetryRequest = { kind: "ok"; queued: number } | { kind: "not_found" };
+
+/**
+ * "Retry" for games whose analysis failed: one `analyse-game` job each (the reconciler's
+ * priority), skipping games with a live job or one created in the last `RETRY_COOLDOWN_MS`.
+ * The worker's claim moves the game on from `failed`; the web writes no game row.
+ */
+export async function requestRetry(
+  db: Db,
+  userId: string,
+  accountId: string,
+): Promise<RetryRequest> {
+  const ids = await userAccountIds(db, userId);
+  if (!ids.includes(accountId)) return { kind: "not_found" };
+  return db.transaction(async (raw) => {
+    const tx = raw as unknown as Db;
+    await tx.execute(
+      sql`select pg_advisory_xact_lock(${SYNC_LOCK_CLASS}::int4, hashtext(${`retry:${accountId}`}))`,
+    );
+    const games = (await tx.execute(sql`
+      SELECT g.id::text AS id, coalesce(g.analysis_priority, ${ANALYSE_JOB.defaultPriority})::int AS priority
+      FROM games g
+      WHERE g.account_id = ${accountId}::uuid AND g.analysis_status = 'failed'
+        AND NOT EXISTS (
+          SELECT 1 FROM jobs j WHERE j.kind = ${ANALYSE_JOB.kind}
+            AND j.dedupe_key = ${ANALYSE_JOB.key("")} || g.id::text
+            AND (j.state IN ('queued', 'running', 'paused')
+              OR j.created_at > now() - ${RETRY_COOLDOWN_MS} * interval '1 millisecond'))
+      ORDER BY g.played_at DESC, g.id
+      LIMIT ${RETRY_LIMIT}
+    `)) as unknown as { id: string; priority: number }[];
+    let queued = 0;
+    for (const g of games) {
+      const id = await enqueueJob(tx, {
+        kind: ANALYSE_JOB.kind,
+        payload: ANALYSE_JOB.payload(g.id),
+        dedupeKey: ANALYSE_JOB.key(g.id),
+        userKey: accountId,
+        priority: Number(g.priority),
+        maxAttempts: ANALYSE_JOB.maxAttempts,
+      });
+      if (id !== null) queued++;
+    }
+    return { kind: "ok", queued };
+  });
+}

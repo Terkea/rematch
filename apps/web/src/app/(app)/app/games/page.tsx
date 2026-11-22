@@ -1,9 +1,11 @@
 import { LiveRefresh } from "../../../../components/live-refresh";
+import { SyncPanel } from "../../../../components/sync/sync-panel";
 import { requireUser } from "../../../../server/auth/session";
 import { getDb } from "../../../../server/db";
 import { requestEventCursor } from "../../../../server/events/request-cursor";
 import { scopedAccountIds } from "../../../../server/games";
 import { loadExplorer } from "../../../../server/games/explorer";
+import { getSyncStatus } from "../../../../server/sync";
 import { PageHeading } from "../../_shell/page-heading";
 import { NoGames, NoLinks, NoMatch } from "./_explorer/empty";
 import { FilterBar } from "./_explorer/filter-bar";
@@ -30,6 +32,9 @@ export default async function GamesPage({ searchParams }: { searchParams: Promis
   const db = getDb();
   const explorer = await loadExplorer(db, user.id, await searchParams);
   const live = <LiveRefresh accountIds={await scopedAccountIds(db, user.id)} />;
+  const status = await getSyncStatus(db, user.id);
+  // "Sync now" and the analysis progress per account (Task P2); nothing without a link.
+  const sync = status.accounts.length > 0 ? <SyncPanel initial={status} variant="full" /> : null;
 
   if (explorer.state !== "games") {
     return (
@@ -44,6 +49,7 @@ export default async function GamesPage({ searchParams }: { searchParams: Promis
             accounts={explorer.accounts.map((a) => a.label)}
           />
         )}
+        {sync}
       </div>
     );
   }
@@ -57,6 +63,7 @@ export default async function GamesPage({ searchParams }: { searchParams: Promis
       <div className="flex flex-col gap-6 md:gap-8">
         {live}
         <PageHeading title="Games" />
+        {sync}
         <FilterBar
           query={query}
           accounts={accounts}
