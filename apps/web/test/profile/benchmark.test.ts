@@ -107,6 +107,18 @@ describe("getBenchmark", () => {
     expect(await getBenchmark(db, userId, await scopeOf(userId))).toEqual(peers);
   });
 
+  it("counts the chances of the Both row, never a colour row (ADR 0082)", async () => {
+    await storeBenchmark(accountId, true);
+    // Colour rows for the same metric, with their own (smaller) chance counts.
+    await db.execute(sql`
+      insert into account_benchmark_stat (account_id, time_class, side, metric, median, p25, p40,
+        p75, n_players, n_games, low_sample, n_chances)
+      values (${accountId}, 'rapid', 'white', 'weakness:W5', 0.2, 0.1, 0.15, 0.3, 6, 15, false, 14),
+        (${accountId}, 'rapid', 'black', 'weakness:W5', 0.4, 0.3, 0.35, 0.5, 6, 16, false, 17)`);
+    const b = await getBenchmark(db, userId, await scopeOf(userId));
+    expect(b && b.source === "peers" ? b.chances : null).toEqual({ W5: 31 });
+  });
+
   it("is null without a stored benchmark or without a served row", async () => {
     expect(await getBenchmark(db, userId, await scopeOf(userId))).toBeNull();
     await storeBenchmark(accountId, false);

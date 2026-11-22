@@ -51,7 +51,7 @@ export async function getBenchmark(
       select substr(metric, length('weakness:') + 1) as key, n_chances as chances
       from account_benchmark_stat
       where account_id = ${scope.accountId} and time_class = ${scope.timeClass}
-        and metric like 'weakness:%' and n_chances is not null`);
+        and side = 'both' and metric like 'weakness:%' and n_chances is not null`);
     const chances: Record<string, number> = {};
     for (const s of stats) chances[s.key] = Number(s.chances);
     if (row.source === "lichess_bands") return { source: "lichess_bands" };
