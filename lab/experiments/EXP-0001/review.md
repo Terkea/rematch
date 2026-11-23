@@ -92,3 +92,94 @@ Every edit below is in the commit after the review, before any result; section 1
 7. Owner direction after the review: `--algorithm` and `--seed-namespace` make the algorithm and the seeds inputs (section 10); the defaults are the registered run.
 
 The two analysis scripts were exercised once on fabricated inputs before the run (a fake bench result, and a seed namespace `DRY-` that is not the registered one, at toy sizes), to catch software errors. No registered seed and no pilot data were used.
+
+# Review of the result (part two)
+
+Reviewer: a fresh agent with the `scientific-critical-thinking` and `peer-review` skills, reading `preregistration.md`, `analysis.py`, part one above, `results.json` (queried, not read whole), `decision.md`, `summary.md`, the EXP-0001 line in `lab/findings.md`, and the uncommitted implementation in the worktree (`backend/crates/bench/src/suite.rs`, `.github/workflows/bench.yml`, `.github/workflows/lab.yml`, `docs/benchmark.md`, `bench/baseline.json`). Nothing was rerun. Every number in `decision.md`, `summary.md` and the findings line was checked against `results.json`; those not named below match it to the rounding shown. The compute figures (1,489 seconds, 575,567 searches, 468,209 from the cache) are not in `results.json` and could not be checked. This is a working draft for the maintainer, who is accountable for the decision.
+
+What holds: the decision follows section 9. At churn 0.10 the required players per flaw are 40 at 80 games and 48 at 120 (`required_players_per_flaw`), above the budget's 22 and 14, so "resize" cannot apply; at the budget the ship power is 0.525 at 80 games and 0.283 at 120, more than 0.01 apart, so the rule picks 80 games and 22 a flaw. The smoke m (3), the recall tolerance ((2 − 0.5)/15 = 0.1, from 10 reference hits) and the coverage tolerance (0.05) are the ones `results.json` records. The churn is called an assumption throughout, and the power is called an assurance.
+
+## Concerns
+
+1. A wrong count of clean checkpoints.
+   - Where: `decision.md`, "Secondaries", clean controls: "two of 64 clean checkpoints here (rather than zero of four in the smoke suite)".
+   - Seen: `observed.clean_rank1` has 2 clean players at 5 checkpoints, 10 clean checkpoints, with a rank-1 weakness at 2 of them (`exp1-clean-0` at 45 games, W9a; `exp1-clean-1` at 80 games, W5).
+   - Why it matters: 2 of 64 reads as a 3% rate; it is 2 of 10, 20%, which makes the exploratory signal about the ranking floor stronger than the text says.
+   - Severity: minor.
+   - Fix: "two of 10 clean checkpoints".
+
+2. "The opening players' rank 1 is W1 at every checkpoint" is not quite so.
+   - Where: `decision.md`, "Secondaries", recall at 2.
+   - Seen: `exp1-openingblunder-0` has no rank-1 weakness at 30 games; the other 29 opening checkpoints have W1 first.
+   - Severity: minor.
+   - Fix: "at every checkpoint but one (nothing ranked at 30 games for one player)".
+
+3. A coverage half-width attributed to a size that was not simulated.
+   - Where: `decision.md`, "Secondaries": "at 22 players a flaw the 95% half-width is about 0.057".
+   - Seen: the coverage grid has no m = 22; 0.057364 is the m = 20 cell (32 a flaw gives 0.046). The other values (0.091 at 8, 0.153 at 3, paired power 0.52 and 0.23 at 20) match.
+   - Severity: minor.
+   - Fix: "at 20 players a flaw, the nearest simulated size, 0.057".
+
+4. An unlisted change to the premise of the budget.
+   - Where: `decision.md`, "Deviations" and "Next" item 2; preregistration section 9 ("the full suite runs weekly inside `bench.yml`'s 180-minute job and has 9,000 games"); the worktree's `.github/workflows/bench.yml` (timeout 180 to 300 minutes) and `lab.yml` (90 to 300 minutes, release build).
+   - Seen: the implementation raises the weekly job to 300 minutes. The budget was registered in games, so the branch taken is still right, but the 9,000 games were justified by the 180-minute job. At the documented 0.544 seconds a game, the resize suite of 40 a flaw at 80 games (16,160 games, which `decision.md` itself computes) takes about 147 minutes, inside the new limit on the documented machine, though not on a runner twice as slow. "Next" item 2 leaves the split-or-accept choice to the owner while the workflow change has already moved the limit.
+   - Why it matters: a reader sees "budget-bound" and a 300-minute job side by side and cannot tell whether the 0.1 target was given up for compute or by choice. A change to a registered input of the decision rule must be listed.
+   - Severity: major.
+   - Fix: add a deviation stating the timeout change and its reason (slower hosted runners), and state that the registered budget of 9,000 games is kept and the extra time is headroom, not budget; if the owner wants the budget raised, record that as a new decision (it would make "resize" reachable), not as a workflow edit.
+
+5. The gain model that the pilot contradicts is not discussed, and part one's concern 6 is neither fixed nor listed as not done.
+   - Where: section 1 (the W1 detector example), section 8 (gains spread uniformly over every flaw's misses); part one, concern 6 and "What was done", item 6 (concern 6 is in neither the done nor the not-done list); `decision.md`, primary.
+   - Seen: at 80 games `hang` and `low_clock_blunder` are 6 of 6 and `no_convert` 5 of 6, so the flaws a detector fix would most plausibly move are at or near the ceiling; 10 of the 11 misses are `miss_mate` (0 of 6; W4.missed is never ranked for any player at any checkpoint, which `decision.md` attributes to structure) and `opening_blunder` (4 of 6 missed, held back by the W1 precedence). The simulated candidate gains almost all of its +0.1 on exactly the players the decision says the ranking cannot reach, and the section 1 example (a W1 detector finding more hanging-piece players) cannot happen at the pilot's ceiling. The Jeffreys draw for 0 of 6 (Beta(0.5, 6.5), mean about 0.07) also gives simulated reference hits on `miss_mate` that the pipeline does not produce.
+   - Why it matters: the MDE of 0.15 and the 40 players a flaw are the power for a hypothetical pooled change under this model, not for the detector or ranking fixes the benchmark will meet. Part one judged the total discordant count roughly model-free, which is plausible, but the report does not say which kind of change the 0.15 refers to.
+   - Severity: major (interpretation; it does not change the branch taken).
+   - Fix: say in `decision.md` that the power and the MDE are for a change spread over the flaws' misses, that at 80 games the misses are almost all in W4.missed and W7.traps, and that the section 1 example is unreachable on this pilot; list concern 6 as not done in part one's record. A concentrated-gain sensitivity run belongs in the EXP-0005 registration, not here.
+
+6. A causal explanation of the 80- against 120-game result stated as a finding.
+   - Where: `decision.md`, primary: "under the registered churn model a higher baseline means more hits to lose and fewer misses to gain".
+   - Seen: the same ordering appears at churn 0 (16 a flaw at 120 games against 14 at 80), where no hits are lost, so the loss of hits cannot be the whole explanation. At 120 games 0.3 to 0.75% of the draws are infeasible (counted as not shipped), against none at 80; the grid steps are coarse (14, 16; 40, 48) and the Monte Carlo error is about 0.008. No analysis isolated a cause.
+   - Severity: minor.
+   - Fix: report the ordering and give the explanation as a conjecture, naming the infeasible share and the grid's coarseness as alternatives.
+
+7. Registered secondaries left out of the decision.
+   - Where: preregistration section 4 (confirmatory: the MDE of the ship rule, of ADR 0104's guard and of the CI rule, and the false-alarm rate of both guards, at the smoke, full-80 and full-120 sizes); `decision.md`, "The CI rule and the tolerances".
+   - Seen: `results.json` `at_budget` gives the guard's MDE (0.3 smoke, 0.1 full-80, 0.1 full-120) and false-alarm rate (0.098, 0.093, 0.090), the CI rule's MDE at the full sizes (0.05, 0.1) and its false-alarm rate at full-120 (0.30). The decision reports the smoke CI rule and the full-80 tolerance only. At the smoke size ADR 0104's guard needs a drop of 0.3 to fire four times in five, against the CI rule's 0.2.
+   - Severity: minor (the numbers are in `results.json`; section 4 says every metric is reported whatever it shows).
+   - Fix: add the three-size table of both guards' MDE and false-alarm rate.
+
+8. The ship curves are not monotone, and the MDE is read off the rising part without saying so.
+   - Where: `decision.md`, budget table ("smallest change shipped 80% of the time"); `at_budget[].curve`.
+   - Seen: at full-80 the ship power is 0.83 at +0.15 and 0.96 at +0.2, then falls to 0.64 at +0.3 and 0.003 at +0.5; at full-120 it peaks at 0.58 (+0.2) and falls to 0; the smoke CI rule's detection of drops also falls from 0.99 at 0.4 to 0.90 at 0.5. This is the infeasible draws (a > 1) counted as not shipped, an artefact of the gain model, not a property of the suites. The grid step is 0.05, so the MDE lies in (0.10, 0.15].
+   - Why it matters: "none in the grid" for the 120-game suite partly reflects infeasibility at large changes; a reader could take the falling curve for a defect of the rule.
+   - Severity: minor.
+   - Fix: one sentence explaining the fall and the grid's resolution; report the infeasible share next to the curve.
+
+9. The decision states as done a change that is not in the tree.
+   - Where: `decision.md`, "What changes" (`bench/baseline.json`: the new smoke metrics, tolerances 0.1 and 0.05); section 9 ("the new smoke suite is run once to give the baseline's metrics"); the worktree's `docs/benchmark.md` already describes the new tolerances.
+   - Seen: `bench/baseline.json` still holds the six-player metrics and tolerances of 0.2 (recall) and 0.15 (coverage).
+   - Severity: minor (implementation pending).
+   - Fix: commit the baseline from one run of the new smoke suite with the decision, or word "What changes" as pending.
+
+10. The pilot sits below the absolute thresholds the decision keeps, and the decision does not say so.
+    - Where: section 9 (recall at 2 at least 0.8, coverage in [0.65, 0.95], unchanged); `observed`.
+    - Seen: recall at 2 at 80 games is 0.63 [0.46, 0.78] and coverage 0.575 [0.467, 0.683], both below their thresholds, the coverage interval mostly below 0.65. The resized suites at the smoke rates should be expected to miss both absolute thresholds (reported, not enforced, `docs/benchmark.md`).
+    - Severity: minor.
+    - Fix: one sentence under "Secondaries".
+
+11. The follow-up does not follow cleanly from the evidence.
+    - Where: `decision.md`, "Next" item 1; `.github/settings/roadmap-issues.json`, EXP-0005.
+    - Seen: (a) The rule is one-sided: "if the churn is below 0.10, re-size". A measured churn above 0.10 means the weekly suite is weaker than registered, which also needs its MDE re-registered. (b) One candidate (EXP-0006's prior change) gives one churn; a prior change moves many ranks at once and may not stand for detector fixes, so it estimates the churn of that change, not "the churn". (c) "Re-size with this experiment's analysis at the measured value" changes `PRIMARY_CHURN` in a frozen `analysis.py`; a re-size is a new registered analysis (EXP-0005's), not a rerun of EXP-0001.
+    - Severity: minor.
+    - Fix: make the EXP-0005 rule two-sided, say that it measures one change's churn and that the suite is re-sized at the upper end of its interval, and register the re-size in EXP-0005's own pre-registration and `analysis.py`.
+
+## Verdict
+
+The decision is the one section 9 gives, and the primary numbers (the required sizes, the powers with their Monte Carlo intervals, the tolerances) are reported correctly in `decision.md`, `summary.md` and `lab/findings.md`. Three statements of fact in `decision.md` are wrong or loose: two of 64 clean checkpoints (it is two of 10), W1 first at every opening checkpoint (29 of 30), and the half-width "at 22" (the m = 20 cell). The larger issues are about interpretation and process: the weekly job's timeout was raised from 180 to 300 minutes without a listed deviation, though the 180-minute job was the stated basis of the 9,000-game budget, and the MDE of 0.15 is for a pooled change that, on this pilot, falls almost entirely on flaws the ranking cannot reach today. Both can be fixed in `decision.md` without touching the frozen sections.
+
+## What was done after part two
+
+Edits to `decision.md`, `summary.md`, `lab/findings.md` and the EXP-0005 issue only; sections 1 to 10 and `analysis.py` are unchanged.
+
+- Wrong numbers corrected: 2 of 10 clean checkpoints; the coverage half-width is the 20-a-flaw cell; W1 is the opening players' rank 1 at 29 of 30 checkpoints.
+- Major 1: the timeout change is listed as a deviation; the 9,000-game budget is kept and its basis stated, with the 147-minute estimate for the 40-a-flaw suite left to the owner.
+- Major 2: the decision now says that 10 of the 11 pilot misses sit in W4.missed and W7.traps, so the +0.1 is a pooled change that would have to come from them, and that a W1 change cannot show in recall at 2 at this ceiling. Part one's concern 6 (the W1 example) is answered by this, not by a change to the frozen sections.
+- Minors: the 120-game explanation is stated as the model's mechanics, with the churn-0 ordering and the infeasible draws; the guard and CI-rule secondaries are reported; the non-monotone ship curve and the MDE's grid step are stated; the pilot's results are set against the unchanged absolute thresholds; EXP-0005 re-sizes in either direction with its own analysis. Concern 6 (the baseline) is done in the commit that resizes the suites.

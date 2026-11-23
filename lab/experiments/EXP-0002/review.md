@@ -84,3 +84,77 @@ Every edit below is in the commit after the review, before any result; section 1
 6. Owner direction after the review: `--algorithm` and `--seed-namespace` make the algorithm and the seeds inputs (section 10); the defaults are the registered run.
 
 The analysis was exercised once before the run with a seed namespace `DRY-` that is not the registered one and 2 players a cell, to catch software errors. No registered seed was used.
+
+# Review of the result (part two)
+
+Reviewer: a fresh agent with the `scientific-critical-thinking` and `peer-review` skills, reading `preregistration.md`, `analysis.py`, part one above, `results.json` (queried, not read whole), `decision.md`, `summary.md`, the EXP-0002 line in `lab/findings.md`, and the EXP-0006 draft in `.github/settings/roadmap-issues.json`. Nothing was rerun. Every number in `decision.md`, `summary.md` and the findings line was checked against `results.json`; those not named below match it to the rounding shown. Where this review quotes coverage by schedule for a key and checkpoint, it is the equal-weighted mean of the 18 exploratory cells (band × ρ × dispersion, 200 players each) in `results.json` `cells`, the same estimator as the primary (it reproduces the primary's 0.636 for W1 at 30 games); those numbers are exploratory. This is a working draft for the maintainer, who is accountable for the decision.
+
+What holds: the decision follows section 9. `results.json` classifies 12 of the 20 primary Bonferroni intervals (z = 3.023) as wholly outside [0.75, 0.85], 2 inside and 6 neither, and one outside is enough for "outside the band". The 20 coverages and Bonferroni intervals in the table, the outside and within lists, the pooled 0.572 [0.568, 0.575], the 21 margins, the credible-only coverages, the #13 row without dispersion and the calibration points (0.34, 0.57, 0.74) all match. The prior pull is supported by the pattern across ρ: over-coverage at ρ = 1 (0.87), under-coverage growing with ρ, the misses almost all on the side of the truth above the interval (39.8% against 3.0% of the primary's intervals).
+
+## Concerns
+
+1. The recency weighting has effects of opposite sign by key, and the pooled schedule margin hides them; the two "within" cells and the W5 over-coverage depend on it.
+   - Where: `decision.md`, primary ("The 60-day recency weighting makes it worse at 250 games") and margins ("Removing the recency weighting does not rescue coverage: the prior strength, not the weighting, is the main cause"); part one, concern 1 (averages over errors of opposite sign).
+   - Seen (exploratory, ρ in {2, 4, 8}, two games a day against every game in the last day): W1 at 250 games 0.80 against 0.73, at 120 games 0.76 against 0.72; W9b at 120 games 0.78 against 0.73, at 250 games 0.84 against 0.75; W5 at 250 games 0.90 against 0.81. The other way: W4.missed at 250 games 0.26 against 0.39, W7.traps 0.43 against 0.54. The pooled margins (0.572 against 0.566) cancel these.
+   - Why it matters: both "within the band" cells (W1 at 250 games, W9b at 120) are within only because the weighting widens the interval (weighted counts are treated as real counts, the variance overstatement part one described), offsetting the prior pull; without the weighting both are about 0.73. W5's one over-coverage (0.90 at 250 games) disappears without it (0.81). So the weighting is a second cause, harmful for the low-chance keys and masking for the others, and "the prior strength, not the weighting" is true of the pooled number only. The statement "makes it worse at 250 games" holds for W4.missed and W7.traps and is false for W1, W9b and W5.
+   - Severity: major (an inconvenient result the decision omits, and it bears on the follow-up).
+   - Fix: add the schedule contrast by key at 250 games to `decision.md` (as exploratory), say that the two in-band cells and W5's over-coverage come from the weighting's widening, and narrow the "main cause" sentence to the pooled result.
+
+2. The headline names a population the primary does not measure.
+   - Where: `decision.md` first bullet and `summary.md` ("not calibrated for the players they are shown to").
+   - Seen: the primary is defined by ρ in {2, 4, 8}, not by being shown. The coverage among shown (`credible`) estimates is a descriptive secondary, and there W9b (0.77) and W5 (0.83) are inside the band, W1 (0.73) just below; W4.missed (0.20) and W7.traps (0.25) far below.
+   - Why it matters: the headline is the sentence that will be quoted; it overstates the scope for two of the five keys and borrows the selection-affected secondary's framing for the primary.
+   - Severity: major.
+   - Fix: "not calibrated for players whose odds of the weakness are 2 to 8 times the peers' (on the registered grid)", and give the shown-only numbers separately, with their caveat.
+
+3. "It cannot rescue W4.missed and W7.traps ... whatever the peers' rate" overreaches.
+   - Where: `decision.md`, "What this does not show".
+   - Seen: the under-coverage comes from the distance between the player's rate and the peers' rate, which the design fixes through ρ; at ρ = 1 the same keys are over-covered (the ρ margin is 0.87). EXP-0001's end-to-end pilot, under other conditions, had W4.missed covered 0.79 of the time.
+   - Severity: minor.
+   - Fix: "for players whose rate is 2 to 8 times the peers' in odds, whatever the peers' rate".
+
+4. The mechanism is stated as shown, and one step of it contradicts the table.
+   - Where: `decision.md`, primary ("The mechanism is the one #13 suspected", "W1 has 53 chances a game against 300, so the data take over within a few games").
+   - Seen: W1 is outside the band at 30 and 60 games (0.64, 0.71) and undecided at 120, with the truth above the interval for about a third of the players at 30 games; the data have not "taken over" by 60 games. No factor of the design varies the prior strength n0, so "counted in chances" is an inference from the ρ pattern and the keys' chance rates, consistent with the results but not tested; that is what EXP-0006 would test.
+   - Severity: minor.
+   - Fix: replace "within a few games" with what the table shows, and write the mechanism as the explanation the results support, to be tested by EXP-0006.
+
+5. A wrong range of players a margin.
+   - Where: `decision.md`, margins: "with 1,200 to 7,200 players a margin"; the same figure in preregistration section 6 ("at least 3,600", "the schedule margins 7,200").
+   - Seen: each margin pools the cells of one schedule (band × ρ × dispersion, 200 players each, `player_means`): the band margins 1,200 players, the ρ margins 1,200, the dispersion margins 1,800, the key, checkpoint and schedule margins 3,600. None pools 7,200; the band and dispersion margins pool fewer than 3,600. The player counts are not stored in `results.json`; this follows from the design and `analysis.py`.
+   - Why it matters: no conclusion changes (every margin's p value is still below 0.001), but the figure is wrong in a frozen section and copied into the decision.
+   - Severity: minor.
+   - Fix: "1,200 to 3,600" in `decision.md`, and list the error in section 11 of the preregistration (not edited in place).
+
+6. The #13 cell is reported for one dispersion level only.
+   - Where: `decision.md`, "Secondaries"; section 9 ("the #13 cell ... named in the decision").
+   - Seen: with de1.5 the cell gives 0.53, 0.615, 0.675 and 0.755 at 30, 60, 120 and 250 games (also every estimate credible); the decision reports the no-dispersion rows only (0.53, 0.645, 0.65, 0.73).
+   - Severity: minor.
+   - Fix: add the de1.5 row.
+
+7. The intervals in the findings line and the summary are not labelled.
+   - Where: `lab/findings.md`, `summary.md` ("W4.missed 0.10 [0.09, 0.11]", "W1 0.64 [0.61, 0.66]").
+   - Seen: they are the Bonferroni intervals (as `decision.md` says); the 95% intervals differ (W1 at 30 games [0.62, 0.65]). The #13 interval in the same line is a Wilson 95% interval over intervals.
+   - Severity: minor.
+   - Fix: say "Bonferroni" once in each.
+
+8. The follow-up as drafted is predicted by this experiment's own numbers to fail its primary.
+   - Where: `decision.md`, "Next" item 1; the EXP-0006 draft in `.github/settings/roadmap-issues.json`.
+   - Seen: (a) `n0_games` is set so W1 keeps 300 chances, while W1 is outside the band at 30 and 60 games with that strength; the other half of the candidate, a prior that decays with the recency weights, changes little at 30 games (15 days, weights of about 0.84 to 1). EXP-0006's primary is the worst of the 20, so W1 at 30 games (0.64) would likely decide it. (b) On this design's assumed chances, 300 / 53 ≈ 5.7 games times W9b's 10.6 chances a game is about 60 chances, a stronger prior than today's 40, for a key already too low at 30 games (0.71). (c) The candidate does not address the variance overstatement from treating weighted counts as real counts (concern 1), so it may push W1, W9b and W5 above 0.85 at 250 games once the prior decays. (d) The draft says the misses are "all on the high side"; W5 at 250 games misses by over-coverage.
+   - Why it matters: a follow-up should be designed so that the evidence here makes it a fair test; as drafted, two of the keys are made no better or worse.
+   - Severity: major.
+   - Fix: before registering EXP-0006, state the predicted coverage of each of the 20 cells under the candidate (closed form or a dry run on non-registered seeds), choose `n0_games` from the keys that fail rather than to keep W1 fixed, treat the weighted-count variance in the same candidate or name it as a second one, and correct "all on the high side".
+
+## Verdict
+
+The decision is the one section 9 gives, and the tables in `decision.md` report `results.json` correctly. The one wrong number is the margin size (1,200 to 7,200 players; the largest margin pools 3,600, and the figure comes from section 6 of the pre-registration). The weaknesses are in interpretation: the headline speaks of the players the ranges are shown to while the primary is defined by ρ; the schedule contrast, read per key, shows the recency weighting widening W1, W9b and W5 intervals enough to make the two in-band cells and W5's over-coverage, which the decision's "the prior strength, not the weighting" hides; and the EXP-0006 candidate, as drafted, keeps W1's prior and strengthens W9b's, so this experiment's own numbers predict it fails its primary. The finding that the ranges under-cover badly for W4.missed and W7.traps, and for W1 at short histories, is robust to all of this.
+
+## What was done after part two
+
+Edits to `decision.md`, `summary.md`, `lab/findings.md` and the EXP-0006 issue only; sections 1 to 10 and `analysis.py` are unchanged.
+
+- Wrong number: the margins pool 1,200 to 3,600 players, listed as a deviation from section 6.
+- Major 1: the per-key schedule contrast is reported: the weighting is what puts W1 at 250 and W9b at 120 inside the band, and it deepens the pull on W4.missed and W7.traps.
+- Major 2: the headline now names the primary's population (ρ 2 to 8), and the credible-only result says W9b's and W5's shown ranges are inside the band.
+- Major 3: EXP-0006 is no longer a fixed candidate. It develops one on development seeds among a lighter prior for every key, a prior that decays with the data and an interval on the effective sample size, freezes it, and then registers the comparison. "All on the high side" is gone from the issue.
+- Minors: the "whatever the peers' rate" and "within a few games" sentences are corrected and the mechanism is called inferred; the #13 cell's de1.5 row is reported; findings and summary label the Bonferroni intervals.
