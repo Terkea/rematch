@@ -17,7 +17,7 @@ One file per decision: context, decision, alternatives, consequences. New decisi
 - [0013. Local 5-piece Syzygy plus the Lichess tablebase API](0013-tablebases-local-plus-api.md)
 - [0014. Stockfish WASM in the browser, GPL-compliant](0014-browser-stockfish-wasm.md)
 - [0015. UI stack and an anti-slop design process](0015-ui-stack-and-process.md)
-- [0016. Freemium, with Pro at $7.99/month or $59.99/year via Stripe Managed Payments](0016-monetisation.md)
+- 0016. Withdrawn: Rematch has no paid plans.
 - [0017. Per-game metrics plus append-only KPI snapshots](0017-kpi-snapshots.md)
 - [0018. Age gate and privacy defaults](0018-children-and-privacy.md)
 - [0019. Hosting: Vercel for the web app, a dedicated-CPU host for the workers](0019-hosting.md)

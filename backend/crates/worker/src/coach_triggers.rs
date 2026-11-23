@@ -126,7 +126,7 @@ impl From<sqlx::Error> for RebuildError {
 
 /// The operator's report rebuild (`cli report-rebuild`, ADR 0086): a new sync run of (account,
 /// time class) with `trigger = scheduled`, enqueued with T18's payload. The player's manual
-/// quota does not apply (it gates `manual` runs only), and the paid and beta plans never gate a
+/// quota does not apply (it gates `manual` runs only), and the larger and beta plans never gate a
 /// scheduled run; the free plan's interval still does. Refused while a run is unfinished. The
 /// run's job builds a fresh input from the current profile, as every report does.
 pub async fn request_report_rebuild(

@@ -94,7 +94,7 @@ The `auth` instance is built lazily by `getAuth()`, so importing the module duri
 
 ### Left out (public launch, deferred by ADR 0041)
 
-Billing, plans and payment-linked quotas, public sign-up flows (codes, waitlist, invite emails), a shared rate-limit store, a durable mail queue (today a send lost to a crash is not retried), and production domain hardening.
+Public sign-up flows (codes, waitlist, invite emails), a shared rate-limit store, a durable mail queue (today a send lost to a crash is not retried), and production domain hardening.
 
 ## Consequences
 

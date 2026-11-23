@@ -1423,7 +1423,7 @@ CREATE INDEX ai_batch_items_pending_idx ON ai_batch_items (batch_id) WHERE proce
 - Consumes: T14, T17, R1 `queue::{Handler, Job, JobContext, JobError}`, T9 `cost_micro_usd`, `check_budget`.
 - Produces:
   - `trait CoachingInputProvider: Send + Sync { fn coaching_input<'a>(&'a self, account_id: Uuid, tc: TimeClass) -> BoxFuture<'a, anyhow::Result<Option<serde_json::Value>>>; }` and `NullInputProvider`;
-  - the plan and budget scope come from `entitlements::Entitlements` (T1), with the default `DefaultEntitlements`; M7 wires the real entitlements and user-to-accounts;
+  - the plan and budget scope come from `entitlements::Entitlements` (T1), with the default `DefaultEntitlements`; a later milestone wires per-user limits and user-to-accounts;
   - `BudgetConfig { per_plan: Budgets, global_monthly: Option<u64> }`, `BudgetConfig::from_env()` (reads `AI_BUDGET_FREE_MICRO_USD`, `AI_BUDGET_PRO_MICRO_USD`, `AI_GLOBAL_MONTHLY_BUDGET_MICRO_USD`), and `budget_guard(pool, scope, plan, cfg, now) -> impl Fn() -> BoxFuture<'static, Result<(), AiError>>`, which checks the per-account and global spend since the start of the UTC month;
   - `meter(conn, account_id, feature, calls: &[CallRecord], ref_id: &str, requested_model: AiModel)`, which writes one `ai_usage` row per call and prices unknown response models at the requested model's rates with a `warn`;
   - `request_report(pool, queue, account_id, tc, trigger, plan) -> Result<Uuid /* run id */>`, which inserts a queued run and enqueues after the commit;
@@ -1970,7 +1970,7 @@ Each Rust file keeps the TS test titles in snake_case. A TS test with no Rust eq
 | §8b at most 3 focuses, insufficient areas say so | T8 |
 | Secrets only from env, never logged | T11, T26 |
 
-Gaps left to other milestones on purpose: the `WeeklyReviewInput` builder and the weekly provider (M7); Pro entitlements and user-to-accounts budget scopes (M7, with the defaults Free and own account, so no batch spend); the report and chat UI and the SSE route (M4/M5; the web inserts chat rows through the `post_user_message` contract or the same SQL); profile-change triggers (R2 or M7 calling `request_report`).
+Gaps left to other milestones on purpose: the `WeeklyReviewInput` builder and the weekly provider (M7); per-user limits and user-to-accounts budget scopes (M7, with the defaults Free and own account, so no batch spend); the report and chat UI and the SSE route (M4/M5; the web inserts chat rows through the `post_user_message` contract or the same SQL); profile-change triggers (R2 or M7 calling `request_report`).
 
 **2. Step scan.** Every code step names its file, its signature and the values the spec pins. Prompt files are listed with their required content but no prose, and tests pin their length, caching, registration and copy rules. The only bodies given are the SQL migration (a schema contract) and the JSON wire shapes (an API contract). Edge cases are listed as test assertions.
 

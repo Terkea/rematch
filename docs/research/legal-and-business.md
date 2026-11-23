@@ -1,7 +1,8 @@
 # Legal and business research: Chess Improver
 
 Date: 2026-11-21
-Scope: third-party API terms, open-source licences, AI terms, privacy, payments/tax, pricing.
+Scope: third-party API terms, open-source licences, AI terms, privacy, competitor prices.
+Rematch is free and open source, with no paid plans. Sections on its own pricing and payments were removed.
 Context: `docs/superpowers/specs/2026-11-21-chess-improver-design.md`.
 
 > **Not legal advice.** This is engineering research compiled from public sources on the date above. Terms change; several pages were read through automated fetch/summary tools, so wording quoted here should be re-checked against the live page before relying on it. Get a lawyer to review the ToS, privacy policy, and the chess.com position (section 2) before launch.
@@ -12,12 +13,11 @@ Context: `docs/superpowers/specs/2026-11-21-chess-improver-design.md`.
 
 | # | Finding | Severity | Design impact |
 |---|---|---|---|
-| A | **chess.com User Agreement §4(D) (updated 25 Mar 2026)** bars using content to "develop or enhance chess engines, training models, **educational tools**, or game databases" and to build products that "compete with or substitute for Chess.com", without prior written authorisation. This conflicts with the more permissive PubAPI help article ("commercial purposes" OK if you don't copy features/IP). chess.com owns Aimchess, our direct competitor. | **High (potential blocker for chess.com import in a paid product)** | Get written authorisation from chess.com Business Development before charging for chess.com-derived features, or launch paid tier as Lichess-first with chess.com behind a flag. |
+| A | **chess.com User Agreement §4(D) (updated 25 Mar 2026)** bars using content to "develop or enhance chess engines, training models, **educational tools**, or game databases" and to build products that "compete with or substitute for Chess.com", without prior written authorisation. This conflicts with the more permissive PubAPI help article ("commercial purposes" OK if you don't copy features/IP). chess.com owns Aimchess, our direct competitor. | **High (potential blocker for chess.com import)** | Get written authorisation from chess.com Business Development before shipping chess.com-derived features, or launch Lichess-first with chess.com behind a flag. |
 | B | **Lichess Opening Explorer requires an OAuth token on every request since 3 Mar 2026, limited to ~20 requests/minute per user.** | **High for §8.4 / §8a as written** | Cannot serve explorer stats for many users (or chess.com-only users) from one server token. Build our own rating-band explorer from the CC0 Lichess database (or self-host `lila-openingexplorer`, AGPL-3.0), and use per-user tokens only for live, user-initiated lookups. |
 | C | Shipping stockfish.wasm to browsers **is distribution** under GPL-3.0. | Medium (compliance work, not a blocker) | Spec §16.4 is right in principle but needs a concrete checklist: corresponding source for the exact build, licence text, NNUE net, no obfuscation. |
 | D | Many users will be minors. Anthropic's minors guidelines, COPPA (amended rule fully in force since 22 Apr 2026) and the UK Children's Code all apply to a chess product. | Medium-High | Age gate (block under-13), DPIA, high-privacy defaults for under-18s, public COPPA/minors statement, AI disclosure, child-safety system prompt. Review streak mechanics against Children's Code "nudge" standard. |
-| E | Selling globally at $8/mo from a solo company means VAT/GST/US sales-tax registration in many places if you are the merchant. | Medium | Use a merchant of record. **Stripe Managed Payments** (MoR, GA 2026, +3.5%) keeps the Stripe stack in the spec; Paddle is the alternative. |
-| F | Anthropic Commercial Terms §D.3 require telling users that factual assertions in outputs may be inaccurate; AUP requires AI disclosure for consumer-facing AI. | Low | Label reports "written by AI from Stockfish data" with an accuracy note. Fits the claim-validator design. |
+| E | Anthropic Commercial Terms §D.3 require telling users that factual assertions in outputs may be inaccurate; AUP requires AI disclosure for consumer-facing AI. | Low | Label reports "written by AI from Stockfish data" with an accuracy note. Fits the claim-validator design. |
 
 Everything else (react-chessboard, chess.js, CC0 datasets, Lichess API for commercial use, Stockfish server-side) is clear.
 
@@ -34,7 +34,7 @@ But also:
 
 > "All use of our services are subject to reasonable caps, limits, restrictions, or other bottle-necking which are purely determined at Lichess' discretion ... We also reserve the right to give privileged access to certain categories of our services (such as special API access) or revoke access temporarily or permanently as we see fit, at our sole discretion, and potentially without any advance warning."
 
-So a paid product is permitted, but there is no SLA and access can be revoked. There is no attribution requirement in the ToS for API data, though crediting Lichess is good manners and good for the relationship. Using multiple accounts to get around rate limits would breach the ToS.
+So a commercial product is permitted, but there is no SLA and access can be revoked. There is no attribution requirement in the ToS for API data, though crediting Lichess is good manners and good for the relationship. Using multiple accounts to get around rate limits would breach the ToS.
 
 - ToS: https://lichess.org/terms-of-service
 - API docs: https://lichess.org/api
@@ -95,7 +95,7 @@ User Agreement, last updated **25 Mar 2026**: https://www.chess.com/legal/user-a
 - §2(C): game records (UGA) "can be accessed, used, and monetized by anyone for any number of purposes". This cuts the other way and is internally inconsistent with §2(D).
 - §5(A): links must not create a false appearance of sponsorship.
 
-**Assessment.** An AI-written coaching product built on chess.com game data, sold in competition with chess.com's own Aimchess, Game Review and Insights, sits squarely within the text of §4(D). The PubAPI article's "commercial purposes" permission is the more specific developer-facing statement and is a reasonable basis to operate. But chess.com can block us at any time ("block your application entirely") and has a contractual hook to do so. Arguably the User Agreement binds chess.com *account holders*. We don't need a chess.com account to call the PubAPI, but our users who link their chess.com accounts are bound by it.
+**Assessment.** An AI-written coaching product built on chess.com game data, built in competition with chess.com's own Aimchess, Game Review and Insights, sits squarely within the text of §4(D). The PubAPI article's "commercial purposes" permission is the more specific developer-facing statement and is a reasonable basis to operate. But chess.com can block us at any time ("block your application entirely") and has a contractual hook to do so. Arguably the User Agreement binds chess.com *account holders*. We don't need a chess.com account to call the PubAPI, but our users who link their chess.com accounts are bound by it.
 
 **History of blocking competitors.** I found no documented case of chess.com cutting off a competing analysis or coaching app's PubAPI access. Many developer-forum reports describe Cloudflare 403s from cloud/VPS IPs (for example DigitalOcean), sometimes even with a User-Agent: https://www.chess.com/clubs/forum/view/chess-com-api-returns-403-blocked-by-cloudflare. That's an operational risk for a Hetzner or Fly worker. Note also that chess.com is the seller of Aimchess on the App Store (seller "Chess.com, LLC"), so we compete directly with their product: https://apps.apple.com/us/app/aimchess-learn-chess-online/id1524941307
 
@@ -185,14 +185,14 @@ Action: generate a third-party licence file automatically (`license-checker` or 
 ## 6. Privacy
 
 ### Data we hold
-Account email; Lichess OAuth token; linked usernames; public games, which include **opponents'** usernames and ratings; derived profiles and weakness models; payment status (card data stays with Stripe or the MoR); usage analytics; any shareable report cards.
+Account email; Lichess OAuth token; linked usernames; public games, which include **opponents'** usernames and ratings; derived profiles and weakness models; usage analytics; any shareable report cards.
 
 Public game data is still **personal data** under GDPR when it is linked to a username, for our users and for their opponents. Our pooled benchmark statistics come from opponents' moves. That's a legitimate-interest use on public data. Disclose it in the privacy policy and keep benchmarks aggregated and anonymised.
 
 ### GDPR / UK GDPR basics (we have EU/UK users from day one; Art. 3(2) applies to non-EU businesses offering services there)
 - **Lawful bases:** contract (Art. 6(1)(b)) for account, import, analysis and reports; legitimate interests for security, fraud prevention, benchmarking and product analytics (document a balancing test); consent for marketing email and non-essential cookies.
 - **Profiling:** our weakness and playstyle profiling is not "solely automated decisions with legal or similarly significant effects" (Art. 22), but be transparent about it.
-- **Transparency:** a privacy policy covering the controller identity, purposes, bases, recipients (Anthropic, Stripe/MoR, hosting, email, Sentry), transfers, retention and rights.
+- **Transparency:** a privacy policy covering the controller identity, purposes, bases, recipients (Anthropic, hosting, email, Sentry), transfers, retention and rights.
 - **Processors:** sign or accept DPAs with each one. International transfers rely on SCCs or the EU-US Data Privacy Framework where the vendor is certified.
 - **EU representative:** Art. 27 requires one if we are not established in the EU (a UK representative likewise under UK GDPR), unless processing is "occasional", which ours is not. Cost is roughly €100–€500 per year through representative services. This depends on where the owner is based.
 - **Rights:** access, export (offer JSON/PGN export), rectification, erasure, objection. Respond within one month.
@@ -200,60 +200,31 @@ Public game data is still **personal data** under GDPR when it is linked to a us
 - **Records:** keep a simple Art. 30 record of processing (likely required because processing is not occasional). Do a DPIA because of children (below).
 
 ### Children (the big one for chess)
-- **GDPR Art. 8:** where we rely on consent for information-society services offered directly to a child, the child must be at least 16 unless a member state lowers this (13–16). Our core processing relies on *contract*, not consent, but the capacity of minors to contract varies by country, and paid subscriptions for minors should go through a parent.
+- **GDPR Art. 8:** where we rely on consent for information-society services offered directly to a child, the child must be at least 16 unless a member state lowers this (13–16). Our core processing relies on *contract*, not consent, but the capacity of minors to contract varies by country.
 - **UK Children's Code (Age Appropriate Design Code):** applies to services "**likely to be accessed by children**" (under 18), even if not aimed at them. https://ico.org.uk/for-organisations/uk-gdpr-guidance-and-resources/childrens-information/childrens-code-guidance-and-resources/age-appropriate-design-code/. That covers 15 standards: DPIA, high-privacy defaults, no profiling by default unless core to the service (our profiling *is* the core service, so document that), no "nudge techniques" that push lower privacy or extended use, and data minimisation. The ICO says self-declared age is no longer adequate where risk is high, and fined Reddit £14.7m in Feb 2026 over age assurance and risk assessment. Our risk is lower (no UGC or chat between users), but do a documented age-assurance risk assessment. Streaks and daily queues could be read as nudges, so give under-18s optional streaks, no loss-framing, and no push notifications by default.
 - **COPPA (US, under 13):** applies if the service is directed to children or we have actual knowledge we're collecting data from under-13s. The amended rule took effect 23 Jun 2025, with compliance required from **22 Apr 2026** (separate written security programme, separate consent for third-party disclosure, data-retention limits). https://www.federalregister.gov/documents/2025/04/22/2025-05904/childrens-online-privacy-protection-rule. Recommendation: a general-audience service with a **neutral age gate**, asking date of birth without signalling the "right" answer. **Block under-13 sign-ups** (or build verifiable parental consent later as a "family/coach" feature). Avoid kid-directed marketing (cartoon mascots, school targeting) that could make us "directed to children". Note ChessKid exists for that market.
 - Lichess's own ToS sets 15+ or the legal age (or parental authorisation) for accounts. Our users may still be young, especially chess.com users, where there's no OAuth age signal.
-- **Recommended policy:** 13+ only. 13–17 allowed with a "high-privacy" profile: shareable report card off by default, no marketing email, AI safeguards as in §5, and parent-paid subscriptions. 18+ normal.
+- **Recommended policy:** 13+ only. 13–17 allowed with a "high-privacy" profile: shareable report card off by default, no marketing email, and AI safeguards as in §5. 18+ normal.
 
 ### CCPA/CPRA (California)
 Applies only if we exceed **$26,625,000** annual gross revenue (CPI-adjusted threshold, https://www.cppa.ca.gov/regulations/cpi_adjustment.html), or buy/sell/share personal information of 100,000+ consumers or households, or earn 50%+ of revenue from selling or sharing PI. **Likely not applicable at launch**, but other US state laws (some with lower thresholds or child-specific rules) are growing. Cheap wins: don't sell or share data, no ad-tech pixels, honour Global Privacy Control, and a "Do not sell/share" statement is trivially true.
 
 ### Cookies (ePrivacy / PECR)
-- Strictly necessary cookies (session, CSRF, Stripe fraud prevention at checkout) need no consent.
+- Strictly necessary cookies (session, CSRF) need no consent.
 - Analytics: use a **cookieless, privacy-first analytics tool** (Plausible, self-hosted Umami, or server-side events) and avoid a consent banner entirely, or show a real opt-in banner. No Google Analytics or Meta pixel without opt-in. The UK Data (Use and Access) Act 2025 adds an exemption for some statistical cookies, but check commencement before relying on it.
 - Sentry: turn off session replay or put it behind consent. Scrub PII.
 
 ### Deletion and retention
 - In-app "Delete account": hard-delete user, linked accounts, tokens (and revoke the Lichess token), profiles, reports, drills and KPI snapshots within 30 days. Purge backups on a 30–35-day rotation, and document that.
 - Imported games: delete the user's links to them. Shared, de-identified engine position cache (FEN → eval) and aggregated benchmarks can be retained because they're not personal data.
-- Retention: delete inactive free accounts after, say, 24 months with an email warning first. Keep billing records as required by tax law, which the MoR keeps if we use one.
+- Retention: delete inactive accounts after, say, 24 months with an email warning first.
 - Public report cards: opt-in, revocable, `noindex` by default for minors.
 
 ---
 
-## 7. Payments, tax, merchant of record
+## 7. Competitor prices
 
-### Stripe direct (we are the merchant)
-- Processing: about 2.9% + 30¢ for US domestic cards, plus ~1.5% for international cards and ~1% for currency conversion (varies by country).
-- **Stripe Billing** (subscriptions, customer portal): about 0.7% of billing volume, pay-as-you-go (per third-party summaries; confirm on https://stripe.com/billing/pricing).
-- **Stripe Tax:** 0.5% per transaction where you're registered, for no-code integrations (Checkout/Billing). https://stripe.com/tax/pricing. It **calculates and collects; filing is separate** (a paid filing add-on or partner).
-- What we would owe as merchant: EU VAT on digital services from the **first sale** if we are a non-EU business (no threshold; register for non-Union OSS); UK VAT from the first sale for non-UK sellers; Norway, Switzerland, Australia, NZ, Japan, Korea, India, Singapore and others have their own digital-services registrations; US states tax SaaS in roughly half of them, with economic-nexus thresholds usually $100k or 200 transactions per state. A solo founder would need dozens of registrations and quarterly filings.
-
-### Merchant-of-record options
-| | Fee (headline) | Notes |
-|---|---|---|
-| **Stripe Managed Payments** | Standard Stripe fees **+3.5%** per successful transaction (https://stripe.com/managed-payments) | Stripe's MoR, generally available for digital businesses at Sessions 2026. Works with Checkout, Payment Links and Billing. Covers indirect tax in 80+ countries, fraud and disputes. Least change to the spec, since Stripe Checkout and Billing stay. Check seller-country eligibility (reported unavailable for India-based sellers as of mid-2026). Billing fees may still apply. |
-| **Paddle** | 5% + 50¢ per transaction, all-in (https://www.paddle.com/pricing) | Mature MoR, handles tax, invoicing and chargebacks. Paddle offers **bespoke pricing for products under $10**, and our $8 monthly plan qualifies, so ask. Its own checkout and billing APIs mean more integration change. |
-| **Lemon Squeezy** | 5% + 50¢ headline, plus surcharges (international cards, PayPal, subscriptions per third-party sources) | Acquired by Stripe in 2024. Its strategic future relative to Managed Payments is unclear, so don't start a new build on it. |
-
-### Effective cost at our price points (rough, international card)
-| Plan | Stripe + Billing + Tax (we file ourselves) | Stripe Managed Payments | Paddle (list) |
-|---|---|---|---|
-| $7.99/mo | ~$0.75 (9.4%) plus tax-filing costs and admin | ~$1.03 (12.9%) | ~$0.90 (11.3%) |
-| $59.99/yr | ~$3.66 (6.1%) plus filing | ~$5.76 (9.6%) | ~$3.50 (5.8%) |
-
-The per-transaction 50¢ makes monthly plans expensive on MoRs, so steer users to annual billing.
-
-**Recommendation for a solo founder selling globally: use a MoR.** The 3–5 points of margin are far cheaper than registering and filing VAT/GST in 10+ jurisdictions, plus US states, plus handling consumer-law invoices. Default to **Stripe Managed Payments**, because it keeps the spec's Stripe Checkout, Billing and portal design and the env-var price IDs. Quote Paddle as a fallback (or for a negotiated sub-$10 rate). Revisit direct Stripe + Stripe Tax once revenue is meaningful and registrations are worth managing, roughly $20–50k MRR.
-
-### Consumer-subscription law (applies whoever the MoR is; the MoR handles some of it)
-- **EU:** 14-day withdrawal right for digital services. To start the service at once, get express consent and an acknowledgement that the right is lost on full performance. From **19 June 2026**, the EU requires an easy online "withdraw from contract" function for distance contracts (Directive (EU) 2023/2673). Make cancellation one click in the portal.
-- **US:** the FTC "click-to-cancel" rule was vacated by the 8th Circuit in July 2025, but **state auto-renewal laws** still apply, notably California's amended ARL, in force from July 2025: clear disclosure, affirmative consent, online cancellation, and annual reminders. Show the price and renewal terms next to the pay button and email renewal reminders for annual plans.
-
----
-
-## 8. Pricing benchmarks and recommendation
+These describe other products, for context only.
 
 ### Benchmarks (check live pages; most are JS-rendered or vary by country)
 | Product | Price | Notes |
@@ -264,22 +235,13 @@ The per-transaction 50¢ makes monthly plans expensive on MoRs, so steer users t
 | Chessable PRO | About $9.99/mo (unverified for 2026) | Course discounts. Opening training is a comparable feature. |
 | ChessTempo, others | Low single-digit $/mo tiers (unverified) | Puzzles and opening training. |
 
-### Suggested pricing
-- **Free:** as in spec §12 (50 games, one report, 5 own-game puzzles a day). Keep it generous enough that the first report is the hook.
-- **Pro: $7.99/month or $59.99/year** (annual ≈ $5/mo, 37% off; make it the default toggle). Rationale: priced just under Aimchess ($9.99 / $71.99) to win switchers on price as well as quality, and a near-impulse buy for adults. The annual default also cuts the effective payment fee from ~12% to ~6–9%.
-- **Regional (PPP) pricing** via the MoR or Stripe price localisation for India, Latin America and Eastern Europe, where much of the chess player base is (for example about 40–60% off). Chess.com itself prices by country.
-- **Later tiers, not at launch:** *Family* (up to 4 profiles, about $99/yr, parent-paid, which also solves the minors payment question); *Coach* (manage 10–30 students, about $20–30/mo). Coaches are high-value advocates.
-- **Trial:** 7-day Pro trial *after* the first free report, so users try Pro once they've seen value, not at signup. Collect the card up front only if conversion data later supports it.
-- **Fair use:** keep the hidden caps (§16.1). Monthly AI reports cost cents with Sonnet-class models plus prompt caching, so pricing isn't AI-cost-bound. Engine CPU for full-history imports is the bigger cost driver, and Lichess server evals help.
-
 ---
 
 ## Required actions / decisions
 
 **Blockers / design changes**
-- [ ] **chess.com authorisation:** email chess.com Business Development (via the PubAPI help-article form) describing the product and requesting written confirmation that a paid, AI-assisted coaching service using PubAPI data is acceptable under User Agreement §4(D). Decide the fallback if they refuse or don't answer: (a) launch with chess.com import free-only or behind a feature flag, (b) Lichess-first launch, or (c) proceed on the PubAPI article's permission and accept the risk. *Owner decision.*
+- [ ] **chess.com authorisation:** email chess.com Business Development (via the PubAPI help-article form) describing the product and requesting written confirmation that an AI-assisted coaching service using PubAPI data is acceptable under User Agreement §4(D). Decide the fallback if they refuse or don't answer: (a) launch with chess.com import behind a feature flag, (b) Lichess-first launch, or (c) proceed on the PubAPI article's permission and accept the risk. *Owner decision.*
 - [ ] **Replace live Lichess Opening Explorer dependency** in §8.4 and §8a with our own rating-band explorer aggregate built from the CC0 Lichess database (or a self-hosted `lila-openingexplorer`). Use per-user OAuth explorer calls only for interactive browsing, rate-limited to under 20/min per token. Record this in an ADR.
-- [ ] **Merchant of record:** choose Stripe Managed Payments (recommended) or Paddle. Update spec §12 ("Stripe Checkout, Billing and portal"). Confirm the owner's country is eligible.
 
 **Compliance tasks before launch**
 - [ ] Lichess: a single global request lane per host (one in flight), 60 s back-off on 429, identifying User-Agent with contact email, OAuth for own-game export (60 games/s), minimal scopes, token revoke on delete. Post in `#lichess-api-support` to describe expected volume.
@@ -289,17 +251,11 @@ The per-transaction 50¢ makes monthly plans expensive on MoRs, so steer users t
 - [ ] OSS licence scan in CI. Block GPL/AGPL from the app bundle (chessground, chessops). Generate a third-party notices file.
 - [ ] Anthropic: an AI disclosure and accuracy note on every report (Commercial Terms §D.3, AUP); minors safeguards (child-safety system prompt, output moderation, public COPPA/minors statement); confirm API data retention and consider ZDR; never expose open-ended Claude access.
 - [ ] Privacy: privacy policy, ToS, a DPIA (children plus profiling), Art. 30 record, DPAs with all processors, an EU/UK Art. 27 representative if the owner is outside the EU/UK, a security/retention policy (COPPA-style written programme is good practice even if we block under-13s).
-- [ ] Age: a neutral DOB age gate. Block under-13s. 13–17 get high-privacy defaults (report card off, no marketing email, optional streaks, no push), and paid plans for under-18s go through a parent. *Owner decision on minimum age (13 recommended).*
+- [ ] Age: a neutral DOB age gate. Block under-13s. 13–17 get high-privacy defaults (report card off, no marketing email, optional streaks, no push). *Owner decision on minimum age (13 recommended).*
 - [ ] Cookies: cookieless analytics, no ad pixels, Sentry replay off. No banner needed, or a real opt-in banner if marketing tools are added.
 - [ ] Deletion: one-click account deletion with a 30-day hard delete, backup rotation, a data export (JSON/PGN), and a retention schedule for inactive accounts.
-- [ ] Subscriptions: EU withdrawal-right consent at checkout, an online cancel and withdrawal button, renewal reminder emails, and clear renewal terms next to the pay button.
-
-**Pricing decisions**
-- [ ] Confirm **$7.99/mo, $59.99/yr (annual default)**, PPP regional prices, and a 7-day trial after the first report. Ask Paddle for sub-$10 pricing if Paddle is chosen.
-- [ ] Defer Family and Coach tiers to after launch, but keep the entitlements module ready for them.
-- [ ] Re-verify Aimchess and chess.com live prices just before launch.
 
 **Spec corrections to log as ADRs**
-- [ ] §7/§12a: chess.com data refreshes every 12–24 h, so the 3-hour Pro poll only helps Lichess.
+- [ ] §7/§12a: chess.com data refreshes every 12–24 h, so the 3-hour poll only helps Lichess.
 - [ ] §14: add the opening explorer authentication change; state that stockfish.wasm *is* distributed (spec §14 says "We don't distribute it", which is true only for the server binary); add the chess.com §4(D) risk.
 - [ ] §8b endgame KPIs: use local Syzygy (Fathom, MIT) for bulk tablebase checks instead of the Lichess tablebase API.

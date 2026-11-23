@@ -87,7 +87,7 @@ Source: https://platform.claude.com/docs/en/about-claude/pricing, read on 2026-1
 
 ## Budgets
 
-- **Per account.** Spend since the start of the calendar month (UTC) is hard-stopped at `AI_MONTHLY_BUDGET_MICRO_USD = Budgets { free: 200_000, pro: 2_000_000 }` (USD 0.20 and USD 2.00). The plan comes from `entitlements::Plan`.
+- **Per account.** Spend since the start of the calendar month (UTC) is hard-stopped at `AI_MONTHLY_BUDGET_MICRO_USD = Budgets { free: 200_000, pro: 2_000_000 }` (USD 0.20 and USD 2.00). The plan comes from `entitlements::Plan`. The plans are limit presets that bound the API bill. Rematch has no paid plans, and whoever enables the coach pays Anthropic directly with their own key.
 - **Global.** There is an optional monthly hard stop across all accounts (`AI_GLOBAL_MONTHLY_BUDGET_MICRO_USD`, from configuration). It works the same way.
 - **Checked before every call.** `check_budget(spent, plan, &budgets)` returns `Err(AiError::Budget)` once spend reaches the budget (`>=`). It runs before every model call, both per account and globally. This is a hard stop with no overdraft. The overshoot is bounded by one call per call in flight, because spend is only known after the response (see "Degradation").
 - **Metered after every call.** Usage from every response, including a refusal, a truncation or a failed parse, is metered into `ai_usage` with `cost_micro_usd`. Batch usage is metered at half price.
