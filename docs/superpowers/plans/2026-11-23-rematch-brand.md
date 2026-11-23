@@ -20,10 +20,10 @@ They touch disjoint files except the visual baselines, which are regenerated onc
 - No change to data, statistics, the validator rules, the 80% ranges or the trainer logic.
 - Red (`--color-pen`) means "dad's pen on a mistake" and nothing else. The logo is ink only.
 - The dad story never appears in app copy, prompts or the site. It stays only in the README section "Why I'm building this", which nobody edits.
-- All public text follows `C:\Users\Marian\AppData\Local\Temp\claude\6b83e2242e494f2c\4cd2fe85-f4fe-4c94-893c-312c5672a183\scratchpad\voice.md` (British spelling, fact first, no banned words).
+- All public text follows the maintainer's voice guide (British spelling, fact first, no banned words).
 - Use tokens only: no raw colours in components (`pnpm design:check`). Contrast is at least WCAG AA on sheet and paper, day and night.
 - Prompts are versioned: a new version file per changed prompt, the old version kept for stored hashes, and the prompt table and prompt-set tests updated.
-- Lane rules: `scratchpad\lane-rules.md` (one Rust run, one e2e stack, memory ≥ 4 GB).
+- Lane rules: one Rust run and one e2e stack at a time, with at least 4 GB of free memory.
 
 ## Review focus
 

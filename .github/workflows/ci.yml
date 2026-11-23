@@ -5,6 +5,8 @@ on:
   push:
     branches: [main]
   pull_request:
+  # A maintainer can start a run by hand, e.g. the first run after the repo goes public.
+  workflow_dispatch:
 
 # Every job runs its gate the way it runs locally (CLAUDE.md, ADR 0067): in the compose services,
 # in its own project, with no host ports, then `down -v`. No secret is used anywhere: the web
