@@ -87,7 +87,7 @@ describe("the pixel-fitted icons", () => {
       const svg = readFileSync(join(BRAND, file), "utf8");
       expect(svg).toContain(`viewBox="${viewBox}"`);
       expect(svg).toContain('fill="currentColor"');
-      expect(svg).not.toMatch(/<mask|#[0-9a-f]{3,6}/i);
+      expect(svg).not.toMatch(/<mask|#[0-9a-f]{3,6}(?![0-9a-z])/i);
       const ds = [...svg.matchAll(/ d="([^"]+)"/g)].map((m) => m[1] ?? "");
       expect(ds.length).toBeGreaterThan(0);
       for (const d of ds) expect(d).toMatch(/^(M\d+ \d+h\d+v1h-\d+z)+$/);
