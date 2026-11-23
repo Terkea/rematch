@@ -120,11 +120,11 @@ const ROWS: WeaknessRowProps[] = [
     onset: null,
   },
   {
-    label: "Blunders under one minute",
+    label: "Blunders on a low clock",
     state: "resolved",
     rate: { mean: 0.018, low: 0.011, high: 0.027 },
     evidence: { events: 14, chances: 780, sufficient: true, needMore: null },
-    counts: { event: "blunders", chance: "moves under one minute" },
+    counts: { event: "blunders", chance: "moves under 30 seconds" },
     band: { median: null },
     href: "#profile",
     trend: [0.04, 0.035, 0.03, 0.026, 0.022, 0.02, 0.019, 0.018],
