@@ -117,15 +117,17 @@ jobs:
       COMPOSE: docker compose -p ci-e2e --profile e2e
     steps:
       - uses: actions/checkout@v4
-      - name: Build the images
-        run: $COMPOSE build deps web fakes
       # A production server refuses the public dev secret, so this run makes its own. It is
-      # masked, and it signs only this run's throwaway sessions.
+      # masked, and it signs only this run's throwaway sessions. It comes before every compose
+      # command: compose interpolates docker-compose.e2e-prod.yml even for `build`, and that file
+      # refuses an empty secret (scripts/github/test-settings.mjs checks the order).
       - name: A random auth secret for this run
         run: |
           secret=$(openssl rand -hex 32)
           echo "::add-mask::$secret"
           echo "E2E_BETTER_AUTH_SECRET=$secret" >> "$GITHUB_ENV"
+      - name: Build the images
+        run: $COMPOSE build deps web fakes
       - name: Start web (production build) and the fakes
         run: $COMPOSE up -d --wait web fakes
       - name: e2e on the production build

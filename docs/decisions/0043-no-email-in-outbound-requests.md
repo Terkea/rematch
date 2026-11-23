@@ -17,3 +17,7 @@ The Rust platform client built its User-Agent as `chess-improver/0.1 (+mailto:{C
 ## Consequences
 
 - chess.com may rate-limit or block an anonymous agent more readily; if so, revisit with a project-owned address, not a personal one.
+
+## Amendment (2026-11-23): the Rematch name
+
+The project is now Rematch, so every outbound client (the Rust `platforms`, `ai` and `lichess-db` crates, the web app, the TS worker, and the npm and crates.io age checks) sends one fixed User-Agent, `rematch/0.1 (+https://github.com/Terkea/rematch)`. The rule is unchanged: no email address, in any request.

@@ -20,7 +20,7 @@ describe("platform client", () => {
     }) as typeof fetch;
     const client = createPlatformClient({ ...base, fetch: fetchFn });
     await client.getJson("https://example.test/a", { headers: { Accept: "application/json" } });
-    expect(seen?.get("user-agent")).toBe("chess-improver/0.1 (+https://github.com/chess-improver)");
+    expect(seen?.get("user-agent")).toBe("rematch/0.1 (+https://github.com/Terkea/rematch)");
     expect(seen?.get("user-agent")).not.toContain("@");
     expect(seen?.get("accept")).toBe("application/json");
   });

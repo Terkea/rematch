@@ -239,7 +239,7 @@ describe("lichessProvider", () => {
 
   it("sends the project User-Agent, with no email in it", async () => {
     const { USER_AGENT } = await import("../../../worker/src/http/platform-client");
-    expect(LICHESS_USER_AGENT).toBe("chess-improver/0.1 (+https://github.com/chess-improver)");
+    expect(LICHESS_USER_AGENT).toBe("rematch/0.1 (+https://github.com/Terkea/rematch)");
     expect(LICHESS_USER_AGENT).toBe(USER_AGENT);
     expect(LICHESS_USER_AGENT).not.toMatch(/@|mailto/);
   });

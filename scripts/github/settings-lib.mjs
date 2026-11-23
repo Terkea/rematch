@@ -180,6 +180,61 @@ export function ciCheckNames(yaml) {
   return names;
 }
 
+/**
+ * Jobs that use docker-compose.e2e-prod.yml (in the workflow's or the job's env, or in a step)
+ * need E2E_BETTER_AUTH_SECRET before compose reads that file: compose interpolates every file in
+ * COMPOSE_FILE on every command, `build` included, and the overlay refuses an empty secret (first
+ * public CI run, 2026-11-23). Returns one line per job that runs compose before the step that
+ * writes the secret to $GITHUB_ENV, or that never sets it.
+ */
+export function e2eSecretOrderProblems(yaml) {
+  const lines = yaml.split(/\r?\n/);
+  const start = lines.findIndex((l) => /^jobs:\s*$/.test(l));
+  if (start < 0) return [];
+  const PROD = /docker-compose\.e2e-prod\.yml/;
+  const globalProd = PROD.test(lines.slice(0, start).join("\n"));
+  const jobs = [];
+  let job = null;
+  let step = null;
+  for (const line of lines.slice(start + 1)) {
+    if (/^\S/.test(line) && !line.startsWith("#")) break;
+    const head = /^ {2}([A-Za-z0-9_-]+):\s*$/.exec(line);
+    if (head) {
+      job = { id: head[1], head: [], steps: [] };
+      jobs.push(job);
+      step = null;
+    } else if (!job) {
+      // comments between `jobs:` and the first job
+    } else if (/^ {6}- /.test(line)) {
+      step = [line];
+      job.steps.push(step);
+    } else if (step && (/^ {8,}\S/.test(line) || line.trim() === "")) {
+      step.push(line);
+    } else {
+      step = null;
+      job.head.push(line);
+    }
+  }
+  const problems = [];
+  for (const { id, head, steps } of jobs) {
+    const texts = steps.map((s) => s.join("\n"));
+    const prod = globalProd || PROD.test(head.join("\n")) || texts.some((t) => PROD.test(t));
+    if (!prod || head.some((l) => /^\s+E2E_BETTER_AUTH_SECRET:/.test(l))) continue;
+    const setter = texts.findIndex((t) => /E2E_BETTER_AUTH_SECRET=.*>>\s*"?\$GITHUB_ENV/.test(t));
+    const compose = texts.findIndex((t) => /\$COMPOSE\b|\$\{COMPOSE\}|docker compose/.test(t));
+    if (setter < 0) {
+      problems.push(
+        `job ${id}: uses docker-compose.e2e-prod.yml but never sets E2E_BETTER_AUTH_SECRET`,
+      );
+    } else if (compose >= 0 && compose < setter) {
+      problems.push(
+        `job ${id}: step ${compose + 1} runs compose before step ${setter + 1} sets E2E_BETTER_AUTH_SECRET`,
+      );
+    }
+  }
+  return problems;
+}
+
 // ---- diffing ----
 
 const show = (v) => (v === undefined ? "(missing)" : JSON.stringify(v));

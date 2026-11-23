@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const MIN_AGE_DAYS = 7;
 const CACHE_DIR = join(ROOT, ".cache", "npm-age");
-const USER_AGENT = "chess-improver-ci (+https://github.com/chess-improver)";
+const USER_AGENT = "rematch/0.1 (+https://github.com/Terkea/rematch)";
 const CONCURRENCY = 8;
 const DEP_FIELDS = ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"];
 
