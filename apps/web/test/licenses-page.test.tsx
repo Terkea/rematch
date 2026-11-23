@@ -35,7 +35,7 @@ describe("the licences page", () => {
 
   it("lists the fonts with their OFL texts, the icons and the opening names", () => {
     render(<LicensesPage />);
-    for (const font of ["Literata", "Schibsted-Grotesk"]) {
+    for (const font of ["Literata", "Schibsted-Grotesk", "Caveat"]) {
       const ofl = readFileSync(resolve(`src/app/fonts/${font.replace("-", "")}-OFL.txt`), "utf8");
       expect(squash(text())).toContain(squash(ofl));
     }

@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { brand } from "../../brand";
 import {
+  CAVEAT_OFL,
   CBURNETT_BSD,
   CHESSJS_BSD2,
   LITERATA_OFL,
@@ -93,6 +94,10 @@ export default function LicensesPage() {
 
         <Credit id="schibsted" title="Typeface: Schibsted Grotesk" text={SCHIBSTED_OFL}>
           <p>By the Schibsted Grotesk Project Authors, under the SIL Open Font License 1.1.</p>
+        </Credit>
+
+        <Credit id="caveat" title="Typeface: Caveat" text={CAVEAT_OFL}>
+          <p>By the Caveat Project Authors, under the SIL Open Font License 1.1.</p>
         </Credit>
 
         <Credit id="icons" title="Icons: Phosphor" text={PHOSPHOR_MIT}>

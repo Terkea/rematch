@@ -23,6 +23,14 @@ const literataItalic = localFont({
   adjustFontFallback: "Times New Roman",
 });
 
+// Dad's handwriting, for margin notes only (--font-hand). Few pages have one, so never preloaded.
+const caveat = localFont({
+  src: [{ path: "./fonts/Caveat-VF.woff2", weight: "400 700", style: "normal" }],
+  variable: "--font-caveat",
+  display: "swap",
+  preload: false,
+});
+
 const schibsted = localFont({
   src: [{ path: "./fonts/SchibstedGrotesk-VF.woff2", weight: "400 900", style: "normal" }],
   variable: "--font-schibsted",
@@ -36,7 +44,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     // next-themes sets data-theme on <html> before paint, so it differs from the server render.
     <html
       lang="en-GB"
-      className={`${literata.variable} ${literataItalic.variable} ${schibsted.variable}`}
+      className={`${literata.variable} ${literataItalic.variable} ${caveat.variable} ${schibsted.variable}`}
       suppressHydrationWarning
     >
       <body className="bg-paper font-sans text-ink">

@@ -6,6 +6,7 @@ import { ForcedStatesStyle } from "./forced-states-style";
 import { AnnotationsSection } from "./sections/annotations";
 import { AreaScoreSection } from "./sections/area-score";
 import { BoardSection } from "./sections/board";
+import { BrandSection } from "./sections/brand";
 import { ChartsSection } from "./sections/charts";
 import { CoachSection } from "./sections/coach";
 import { EvalBarSection } from "./sections/eval-bar";
@@ -43,6 +44,7 @@ export default function StyleguidePage() {
       <main className="flex flex-col gap-16 pb-16">
         <HeroSection />
         <FoundationsSection />
+        <BrandSection />
         <PrimitivesSection />
         <OverlaysSection />
         <BoardSection />
