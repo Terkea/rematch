@@ -14,7 +14,10 @@
       "!algorithm/manifest.json",
       "!backend/crates/*/schema/**",
       "!**/*.md",
-      "!**/assets/pieces/**/*.svg"
+      "!**/assets/pieces/**/*.svg",
+      "!.claude/skills/science/**",
+      "!lab/fixtures/**",
+      "!lab/experiments/**/results.json"
     ]
   },
   "formatter": { "indentStyle": "space", "indentWidth": 2, "lineWidth": 100 },

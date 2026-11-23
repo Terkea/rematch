@@ -22,6 +22,10 @@ a machine cannot judge.
 - [ ] Maia: `services/maia/requirements.lock` and the model it downloads (ADR-R2-13).
 - [ ] Syzygy: the 3-4-5 manifest `backend/crates/lichess-db/data/syzygy-345.sha256` still verifies
       against its source (ADR-R2-12).
+- [ ] Lab: the PyPI pins in `lab/pyproject.toml` (bump with `uv lock` in the image and
+      `node scripts/check-pypi-age.mjs`), and the science skills' commit in
+      `.claude/skills/science/SOURCE.md` against upstream `main`. An update re-reads every
+      changed file before it is vendored (ADR 0106).
 - [ ] Dependabot: merge or close every open dependency pull request. Cargo bumps are merged by the
       maintainer, who owns `Cargo.toml` and `Cargo.lock`.
 

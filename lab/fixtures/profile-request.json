@@ -1,0 +1,968 @@
+{
+  "schema_version": "lab-v1",
+  "players": [
+    {
+      "id": "lab-hangs",
+      "now": "2026-11-01T12:00:00Z",
+      "band": "B2",
+      "games_in_window": 60,
+      "series": {
+        "W1": [
+          {
+            "played_at": "2026-09-02T12:00:00Z",
+            "events": 2,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-09-03T12:00:00Z",
+            "events": 1,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-09-04T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-09-05T12:00:00Z",
+            "events": 1,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-09-06T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-09-07T12:00:00Z",
+            "events": 2,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-09-08T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-09-09T12:00:00Z",
+            "events": 1,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-09-10T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-09-11T12:00:00Z",
+            "events": 1,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-09-12T12:00:00Z",
+            "events": 2,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-09-13T12:00:00Z",
+            "events": 1,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-09-14T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-09-15T12:00:00Z",
+            "events": 1,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-09-16T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-09-17T12:00:00Z",
+            "events": 2,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-09-18T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-09-19T12:00:00Z",
+            "events": 1,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-09-20T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-09-21T12:00:00Z",
+            "events": 1,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-09-22T12:00:00Z",
+            "events": 2,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-09-23T12:00:00Z",
+            "events": 1,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-09-24T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-09-25T12:00:00Z",
+            "events": 1,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-09-26T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-09-27T12:00:00Z",
+            "events": 2,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-09-28T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-09-29T12:00:00Z",
+            "events": 1,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-09-30T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-01T12:00:00Z",
+            "events": 1,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-02T12:00:00Z",
+            "events": 2,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-03T12:00:00Z",
+            "events": 1,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-04T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-05T12:00:00Z",
+            "events": 1,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-06T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-07T12:00:00Z",
+            "events": 2,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-08T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-09T12:00:00Z",
+            "events": 1,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-10T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-11T12:00:00Z",
+            "events": 1,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-12T12:00:00Z",
+            "events": 2,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-13T12:00:00Z",
+            "events": 1,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-14T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-15T12:00:00Z",
+            "events": 1,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-16T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-17T12:00:00Z",
+            "events": 2,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-18T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-19T12:00:00Z",
+            "events": 1,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-20T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-21T12:00:00Z",
+            "events": 1,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-22T12:00:00Z",
+            "events": 2,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-23T12:00:00Z",
+            "events": 1,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-24T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-25T12:00:00Z",
+            "events": 1,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-26T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-27T12:00:00Z",
+            "events": 2,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-28T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-29T12:00:00Z",
+            "events": 1,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-30T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-31T12:00:00Z",
+            "events": 1,
+            "opportunities": 50
+          }
+        ],
+        "W5": [
+          {
+            "played_at": "2026-10-12T12:00:00Z",
+            "events": 1,
+            "opportunities": 1
+          },
+          {
+            "played_at": "2026-10-13T12:00:00Z",
+            "events": 0,
+            "opportunities": 1
+          },
+          {
+            "played_at": "2026-10-14T12:00:00Z",
+            "events": 0,
+            "opportunities": 1
+          },
+          {
+            "played_at": "2026-10-15T12:00:00Z",
+            "events": 0,
+            "opportunities": 1
+          },
+          {
+            "played_at": "2026-10-16T12:00:00Z",
+            "events": 1,
+            "opportunities": 1
+          },
+          {
+            "played_at": "2026-10-17T12:00:00Z",
+            "events": 0,
+            "opportunities": 1
+          },
+          {
+            "played_at": "2026-10-18T12:00:00Z",
+            "events": 0,
+            "opportunities": 1
+          },
+          {
+            "played_at": "2026-10-19T12:00:00Z",
+            "events": 0,
+            "opportunities": 1
+          },
+          {
+            "played_at": "2026-10-20T12:00:00Z",
+            "events": 1,
+            "opportunities": 1
+          },
+          {
+            "played_at": "2026-10-21T12:00:00Z",
+            "events": 0,
+            "opportunities": 1
+          },
+          {
+            "played_at": "2026-10-22T12:00:00Z",
+            "events": 0,
+            "opportunities": 1
+          },
+          {
+            "played_at": "2026-10-23T12:00:00Z",
+            "events": 0,
+            "opportunities": 1
+          },
+          {
+            "played_at": "2026-10-24T12:00:00Z",
+            "events": 1,
+            "opportunities": 1
+          },
+          {
+            "played_at": "2026-10-25T12:00:00Z",
+            "events": 0,
+            "opportunities": 1
+          },
+          {
+            "played_at": "2026-10-26T12:00:00Z",
+            "events": 0,
+            "opportunities": 1
+          },
+          {
+            "played_at": "2026-10-27T12:00:00Z",
+            "events": 0,
+            "opportunities": 1
+          },
+          {
+            "played_at": "2026-10-28T12:00:00Z",
+            "events": 1,
+            "opportunities": 1
+          },
+          {
+            "played_at": "2026-10-29T12:00:00Z",
+            "events": 0,
+            "opportunities": 1
+          },
+          {
+            "played_at": "2026-10-30T12:00:00Z",
+            "events": 0,
+            "opportunities": 1
+          },
+          {
+            "played_at": "2026-10-31T12:00:00Z",
+            "events": 0,
+            "opportunities": 1
+          }
+        ],
+        "W9b": [
+          {
+            "played_at": "2026-10-02T12:00:00Z",
+            "events": 1,
+            "opportunities": 4
+          },
+          {
+            "played_at": "2026-10-03T12:00:00Z",
+            "events": 0,
+            "opportunities": 4
+          },
+          {
+            "played_at": "2026-10-04T12:00:00Z",
+            "events": 0,
+            "opportunities": 4
+          },
+          {
+            "played_at": "2026-10-05T12:00:00Z",
+            "events": 0,
+            "opportunities": 4
+          },
+          {
+            "played_at": "2026-10-06T12:00:00Z",
+            "events": 0,
+            "opportunities": 4
+          },
+          {
+            "played_at": "2026-10-07T12:00:00Z",
+            "events": 0,
+            "opportunities": 4
+          },
+          {
+            "played_at": "2026-10-08T12:00:00Z",
+            "events": 0,
+            "opportunities": 4
+          },
+          {
+            "played_at": "2026-10-09T12:00:00Z",
+            "events": 0,
+            "opportunities": 4
+          },
+          {
+            "played_at": "2026-10-10T12:00:00Z",
+            "events": 0,
+            "opportunities": 4
+          },
+          {
+            "played_at": "2026-10-11T12:00:00Z",
+            "events": 0,
+            "opportunities": 4
+          },
+          {
+            "played_at": "2026-10-12T12:00:00Z",
+            "events": 1,
+            "opportunities": 4
+          },
+          {
+            "played_at": "2026-10-13T12:00:00Z",
+            "events": 0,
+            "opportunities": 4
+          },
+          {
+            "played_at": "2026-10-14T12:00:00Z",
+            "events": 0,
+            "opportunities": 4
+          },
+          {
+            "played_at": "2026-10-15T12:00:00Z",
+            "events": 0,
+            "opportunities": 4
+          },
+          {
+            "played_at": "2026-10-16T12:00:00Z",
+            "events": 0,
+            "opportunities": 4
+          },
+          {
+            "played_at": "2026-10-17T12:00:00Z",
+            "events": 0,
+            "opportunities": 4
+          },
+          {
+            "played_at": "2026-10-18T12:00:00Z",
+            "events": 0,
+            "opportunities": 4
+          },
+          {
+            "played_at": "2026-10-19T12:00:00Z",
+            "events": 0,
+            "opportunities": 4
+          },
+          {
+            "played_at": "2026-10-20T12:00:00Z",
+            "events": 0,
+            "opportunities": 4
+          },
+          {
+            "played_at": "2026-10-21T12:00:00Z",
+            "events": 0,
+            "opportunities": 4
+          },
+          {
+            "played_at": "2026-10-22T12:00:00Z",
+            "events": 1,
+            "opportunities": 4
+          },
+          {
+            "played_at": "2026-10-23T12:00:00Z",
+            "events": 0,
+            "opportunities": 4
+          },
+          {
+            "played_at": "2026-10-24T12:00:00Z",
+            "events": 0,
+            "opportunities": 4
+          },
+          {
+            "played_at": "2026-10-25T12:00:00Z",
+            "events": 0,
+            "opportunities": 4
+          },
+          {
+            "played_at": "2026-10-26T12:00:00Z",
+            "events": 0,
+            "opportunities": 4
+          },
+          {
+            "played_at": "2026-10-27T12:00:00Z",
+            "events": 0,
+            "opportunities": 4
+          },
+          {
+            "played_at": "2026-10-28T12:00:00Z",
+            "events": 0,
+            "opportunities": 4
+          },
+          {
+            "played_at": "2026-10-29T12:00:00Z",
+            "events": 0,
+            "opportunities": 4
+          },
+          {
+            "played_at": "2026-10-30T12:00:00Z",
+            "events": 0,
+            "opportunities": 4
+          },
+          {
+            "played_at": "2026-10-31T12:00:00Z",
+            "events": 0,
+            "opportunities": 4
+          }
+        ]
+      },
+      "reference": {
+        "weakness:W1": {
+          "metric": "weakness:W1",
+          "median": 0.004,
+          "p25": 0.0024,
+          "p40": 0.0034,
+          "p75": 0.006,
+          "pooledRate": 0.004,
+          "eplPerEvent": 0.35,
+          "oppsPerGame": 50,
+          "oppSlopePer100": null,
+          "nPlayers": 40,
+          "nGames": 1200,
+          "lowSample": false
+        },
+        "weakness:W9b": {
+          "metric": "weakness:W9b",
+          "median": 0.02,
+          "p25": 0.012,
+          "p40": 0.017,
+          "p75": 0.03,
+          "pooledRate": 0.02,
+          "eplPerEvent": 0.4,
+          "oppsPerGame": 50,
+          "oppSlopePer100": null,
+          "nPlayers": 40,
+          "nGames": 1200,
+          "lowSample": false
+        }
+      },
+      "model_reference": {
+        "W5": {
+          "metric": "weakness:W5",
+          "median": 0.15,
+          "p25": 0.15,
+          "p40": 0.15,
+          "p75": 0.15,
+          "pooledRate": 0.15,
+          "eplPerEvent": 1,
+          "oppsPerGame": null,
+          "oppSlopePer100": null,
+          "nPlayers": 0,
+          "nGames": 0,
+          "lowSample": false
+        }
+      },
+      "outcomes": {
+        "W1": {
+          "state": "active",
+          "p_imp": 0.12
+        },
+        "W9b": {
+          "state": "not_an_issue"
+        }
+      }
+    },
+    {
+      "id": "lab-clean",
+      "now": "2026-11-01T12:00:00Z",
+      "band": "B2",
+      "games_in_window": 45,
+      "series": {
+        "W1": [
+          {
+            "played_at": "2026-09-17T12:00:00Z",
+            "events": 1,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-09-18T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-09-19T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-09-20T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-09-21T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-09-22T12:00:00Z",
+            "events": 1,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-09-23T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-09-24T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-09-25T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-09-26T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-09-27T12:00:00Z",
+            "events": 1,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-09-28T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-09-29T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-09-30T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-01T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-02T12:00:00Z",
+            "events": 1,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-03T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-04T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-05T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-06T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-07T12:00:00Z",
+            "events": 1,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-08T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-09T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-10T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-11T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-12T12:00:00Z",
+            "events": 1,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-13T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-14T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-15T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-16T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-17T12:00:00Z",
+            "events": 1,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-18T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-19T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-20T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-21T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-22T12:00:00Z",
+            "events": 1,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-23T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-24T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-25T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-26T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-27T12:00:00Z",
+            "events": 1,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-28T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-29T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-30T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          },
+          {
+            "played_at": "2026-10-31T12:00:00Z",
+            "events": 0,
+            "opportunities": 50
+          }
+        ],
+        "W4.missed": [
+          {
+            "played_at": "2026-10-17T12:00:00Z",
+            "events": 1,
+            "opportunities": 2
+          },
+          {
+            "played_at": "2026-10-18T12:00:00Z",
+            "events": 0,
+            "opportunities": 2
+          },
+          {
+            "played_at": "2026-10-19T12:00:00Z",
+            "events": 0,
+            "opportunities": 2
+          },
+          {
+            "played_at": "2026-10-20T12:00:00Z",
+            "events": 1,
+            "opportunities": 2
+          },
+          {
+            "played_at": "2026-10-21T12:00:00Z",
+            "events": 0,
+            "opportunities": 2
+          },
+          {
+            "played_at": "2026-10-22T12:00:00Z",
+            "events": 0,
+            "opportunities": 2
+          },
+          {
+            "played_at": "2026-10-23T12:00:00Z",
+            "events": 1,
+            "opportunities": 2
+          },
+          {
+            "played_at": "2026-10-24T12:00:00Z",
+            "events": 0,
+            "opportunities": 2
+          },
+          {
+            "played_at": "2026-10-25T12:00:00Z",
+            "events": 0,
+            "opportunities": 2
+          },
+          {
+            "played_at": "2026-10-26T12:00:00Z",
+            "events": 1,
+            "opportunities": 2
+          },
+          {
+            "played_at": "2026-10-27T12:00:00Z",
+            "events": 0,
+            "opportunities": 2
+          },
+          {
+            "played_at": "2026-10-28T12:00:00Z",
+            "events": 0,
+            "opportunities": 2
+          },
+          {
+            "played_at": "2026-10-29T12:00:00Z",
+            "events": 1,
+            "opportunities": 2
+          },
+          {
+            "played_at": "2026-10-30T12:00:00Z",
+            "events": 0,
+            "opportunities": 2
+          },
+          {
+            "played_at": "2026-10-31T12:00:00Z",
+            "events": 0,
+            "opportunities": 2
+          }
+        ]
+      },
+      "reference": {
+        "weakness:W1": {
+          "metric": "weakness:W1",
+          "median": 0.004,
+          "p25": 0.0024,
+          "p40": 0.0034,
+          "p75": 0.006,
+          "pooledRate": 0.004,
+          "eplPerEvent": 0.35,
+          "oppsPerGame": 50,
+          "oppSlopePer100": null,
+          "nPlayers": 40,
+          "nGames": 1200,
+          "lowSample": false
+        },
+        "weakness:W9b": {
+          "metric": "weakness:W9b",
+          "median": 0.02,
+          "p25": 0.012,
+          "p40": 0.017,
+          "p75": 0.03,
+          "pooledRate": 0.02,
+          "eplPerEvent": 0.4,
+          "oppsPerGame": 50,
+          "oppSlopePer100": null,
+          "nPlayers": 40,
+          "nGames": 1200,
+          "lowSample": false
+        }
+      },
+      "model_reference": {},
+      "outcomes": {}
+    }
+  ]
+}

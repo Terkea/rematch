@@ -68,6 +68,16 @@ Shipped to the browser (full texts at /licenses)
   Board: react-chessboard
     Copyright (c) 2022 Ryan Gregory. Licence: MIT.
 
+Agent skills (in the repository, not shipped)
+
+  Scientific Agent Skills, nine skills vendored in .claude/skills/science
+    https://github.com/K-Dense-AI/scientific-agent-skills
+    Copyright (c) 2025 K-Dense Inc. Licence: MIT (.claude/skills/science/LICENSE-K-Dense.md).
+    Pinned to commit c21d13b3cc2894680229ba9959a53281acb9200e. The pymc skill
+    declares Apache-2.0 and the statsmodels and scikit-learn skills declare
+    BSD-3-Clause. The changes made on vendoring are listed in
+    .claude/skills/science/SOURCE.md.
+
 Other dependencies
 
   The npm packages (pnpm-lock.yaml) and Rust crates (backend/Cargo.lock) keep

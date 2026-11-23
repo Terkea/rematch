@@ -56,7 +56,8 @@ fn bench_now() -> OffsetDateTime {
     OffsetDateTime::from_unix_timestamp(NOW.load(Ordering::SeqCst)).unwrap_or(crate::suite::ANCHOR)
 }
 
-fn set_now(t: OffsetDateTime) {
+/// Sets the clock every later build reads (the lab sets it to its request's `now`).
+pub fn set_now(t: OffsetDateTime) {
     NOW.store(t.unix_timestamp(), Ordering::SeqCst);
 }
 
@@ -68,7 +69,8 @@ pub struct Harness {
     pub log: Box<dyn Fn(&str) + Send + Sync>,
 }
 
-async fn insert_account(pool: &PgPool, username: &str) -> anyhow::Result<Uuid> {
+/// A chess.com account named `username` (the importer's shape).
+pub async fn insert_account(pool: &PgPool, username: &str) -> anyhow::Result<Uuid> {
     Ok(sqlx::query_scalar(
         "INSERT INTO linked_accounts (platform, username, display_name) \
          VALUES ($1::platform, $2, $3) RETURNING id",
@@ -80,11 +82,25 @@ async fn insert_account(pool: &PgPool, username: &str) -> anyhow::Result<Uuid> {
     .await?)
 }
 
+/// Inserts `g` as the chess.com importer does (status `pending`), on the generator's clock.
 async fn insert_game(
     pool: &PgPool,
     account: Uuid,
     g: &GeneratedGame,
     suffix: &str,
+) -> anyhow::Result<Uuid> {
+    let base = crate::generate::BASE_SECONDS as i32;
+    insert_game_with_clock(pool, account, g, suffix, base, 0).await
+}
+
+/// [`insert_game`] with the game's own base time and increment (the lab's games, ADR 0106).
+pub async fn insert_game_with_clock(
+    pool: &PgPool,
+    account: Uuid,
+    g: &GeneratedGame,
+    suffix: &str,
+    base_seconds: i32,
+    increment_seconds: i32,
 ) -> anyhow::Result<Uuid> {
     let r = upsert_game(
         pool,
@@ -95,8 +111,8 @@ async fn insert_game(
             pgn: g.pgn.clone(),
             played_at: g.played_at,
             time_class: TIME_CLASS.as_str().to_owned(),
-            base_seconds: Some(crate::generate::BASE_SECONDS as i32),
-            increment_seconds: Some(0),
+            base_seconds: Some(base_seconds),
+            increment_seconds: Some(increment_seconds),
             rated: true,
             player_color: g.player_color.clone(),
             white_name: g.white_name.clone(),
@@ -136,7 +152,8 @@ fn job_for(game_id: Uuid) -> Job {
 }
 
 impl Harness {
-    fn analyse_deps(&self) -> AnalyseGameDeps {
+    /// The production `analyse-game` dependencies with the profile hook, served by the memo.
+    pub fn analyse_deps(&self) -> AnalyseGameDeps {
         let analyser: Arc<dyn Analyser> = self.memo.clone();
         let queue = Queue::new(self.pool.clone());
         let mut deps = AnalyseGameDeps::new(
@@ -159,7 +176,8 @@ impl Harness {
         deps
     }
 
-    async fn analyse(&self, deps: &AnalyseGameDeps, ids: &[Uuid]) -> anyhow::Result<()> {
+    /// Analyses `ids` with the production handler, `engines` at a time.
+    pub async fn analyse(&self, deps: &AnalyseGameDeps, ids: &[Uuid]) -> anyhow::Result<()> {
         let results: Vec<_> = futures::stream::iter(ids.iter().copied())
             .map(|id| async move {
                 handle_analyse_game(
@@ -180,7 +198,8 @@ impl Harness {
         Ok(())
     }
 
-    async fn build(&self, account: Uuid) -> anyhow::Result<()> {
+    /// The production `build-profile` of `account` (rapid) against the peer benchmark.
+    pub async fn build(&self, account: Uuid) -> anyhow::Result<()> {
         let deps = BuildProfileDeps {
             pool: self.pool.clone(),
             queue: Queue::new(self.pool.clone()),

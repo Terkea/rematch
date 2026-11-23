@@ -8,6 +8,15 @@ One entry per algorithm version, newest first. The id is `algo-<version>+<hash>`
 
 Each entry says what changed, why, the ADR, and the benchmark delta (the scorecard before and after; `cli bench compare` once it exists).
 
+## algo-1.1.0+fa5e2186e1dd
+
+2026-11-23. A refactor in the language layer, with no output change.
+
+- What changed: `select_focuses` in `backend/crates/ai/src/validator/focus.rs` now calls `select_focuses_of`, the same rule over the ranked weaknesses alone, so the lab's `cli lab rank` computes the coach's focuses with the production code instead of a copy (ADR 0106). The rule, its order and its limits are unchanged. Only `language.validator_digest` moved; the version policy makes any change under `ai/src/validator` a minor bump.
+- Why: one implementation of the algorithm, driven from the lab (ADR 0106).
+- ADRs: 0105 (the version policy), 0106 (the lab).
+- Benchmark: no change. The replay goldens in `backend/fixtures/replay/` are byte-identical, and no layer 1 to 3 component moved, so the Tier 1 scorecard of 1.0.0 stands.
+
 ## algo-1.0.0+fd96e117c013
 
 2026-11-24. The first named version: the algorithm as it stood on `main` at 0d1afa6, with nothing changed in its output.

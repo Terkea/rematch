@@ -1,0 +1,36 @@
+# The algorithm lab (ADR 0106): Python that drives the Rust algorithm through `cli lab` and
+# analyses experiments. It never runs in the product. Every direct dependency is pinned exactly
+# and was published at least 7 days before it was adopted (scripts/check-pypi-age.mjs);
+# `exclude-newer` holds the transitive ones to the same rule when the lock is regenerated.
+[project]
+name = "rematch-lab"
+version = "0.1.0"
+description = "Pre-registered experiments on the Rematch algorithm, driving the Rust code from Python"
+requires-python = "==3.12.*"
+license = "AGPL-3.0-only"
+dependencies = [
+    "arviz==1.3.0",
+    "jsonschema==4.26.0",
+    "matplotlib==3.11.2",
+    "numpy==2.5.3",
+    "pandas==3.0.6",
+    "pingouin==0.7.0",
+    "polars==2.1.0",
+    "pydantic==2.14.3",
+    "pymc==6.3.2",
+    "scikit-learn==1.9.1",
+    "scipy==1.18.1",
+    "statsmodels==0.15.0",
+]
+
+[dependency-groups]
+dev = ["pytest==9.2.0"]
+
+[tool.uv]
+# Seven days before the lock was generated (2026-11-23). Move it forward only with the lock.
+exclude-newer = "2026-11-16T00:00:00Z"
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

@@ -9,7 +9,7 @@ use engine::Analyser;
 use engine::pool::{EnginePool, PoolOptions};
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
-use sqlx::{ConnectOptions, Connection};
+use sqlx::{ConnectOptions, Connection, PgPool};
 
 use crate::harness::Harness;
 use crate::memo::MemoAnalyser;
@@ -43,6 +43,72 @@ async fn admin(url: &str) -> anyhow::Result<sqlx::PgConnection> {
     Ok(PgConnectOptions::from_str(url)?.connect().await?)
 }
 
+/// A migrated database `bench_<uuid>` next to `DATABASE_URL`'s, for one benchmark or lab run.
+pub struct Throwaway {
+    pub name: String,
+    pub pool: PgPool,
+    admin: sqlx::PgConnection,
+}
+
+impl Throwaway {
+    /// Creates and migrates the database; a failed migration drops it again.
+    pub async fn create(
+        database_url: &str,
+        max_connections: u32,
+        log: &(dyn Fn(&str) + Send + Sync),
+    ) -> anyhow::Result<Self> {
+        let name = format!("bench_{}", uuid::Uuid::new_v4().simple());
+        let mut admin = admin(database_url).await?;
+        // `name` is our own `bench_<uuid hex>`, never input.
+        sqlx::query(sqlx::AssertSqlSafe(format!("CREATE DATABASE {name}")))
+            .execute(&mut admin)
+            .await?;
+        log(&format!("database {name}"));
+        let opts = PgConnectOptions::from_str(database_url)?.database(&name);
+        let pool = PgPoolOptions::new()
+            .max_connections(max_connections)
+            .connect_with(opts)
+            .await?;
+        let me = Self { name, pool, admin };
+        if let Err(e) = db::MIGRATOR.run(&me.pool).await {
+            me.finish(false).await?;
+            return Err(e.into());
+        }
+        Ok(me)
+    }
+
+    /// Closes the pool and drops the database, unless `keep`.
+    pub async fn finish(mut self, keep: bool) -> anyhow::Result<()> {
+        self.pool.close().await;
+        if !keep {
+            sqlx::query(sqlx::AssertSqlSafe(format!(
+                "DROP DATABASE IF EXISTS {} WITH (FORCE)",
+                self.name
+            )))
+            .execute(&mut self.admin)
+            .await?;
+        }
+        self.admin.close().await?;
+        Ok(())
+    }
+}
+
+/// `engines` Stockfish processes behind one in-memory cache at `nodes` per search (ADR 0100).
+pub async fn memo_engines(
+    stockfish: &Path,
+    engines: usize,
+    nodes: u64,
+) -> anyhow::Result<(Arc<EnginePool>, Arc<MemoAnalyser>)> {
+    let pool = EnginePool::create(PoolOptions {
+        size: engines.max(1),
+        path: stockfish.to_path_buf(),
+        hash_mb: Some(16),
+    })
+    .await?;
+    let inner: Arc<dyn Analyser> = pool.clone();
+    Ok((pool, Arc::new(MemoAnalyser::new(inner, nodes))))
+}
+
 pub async fn run(
     suite: &Suite,
     o: &RunOptions,
@@ -50,30 +116,16 @@ pub async fn run(
 ) -> anyhow::Result<RunOutput> {
     enrich::install_crypto_provider();
     let started = std::time::Instant::now();
-    let name = format!("bench_{}", uuid::Uuid::new_v4().simple());
-    let mut conn = admin(&o.database_url).await?;
-    // `name` is our own `bench_<uuid hex>`, never input.
-    sqlx::query(sqlx::AssertSqlSafe(format!("CREATE DATABASE {name}")))
-        .execute(&mut conn)
-        .await?;
-    log(&format!("database {name}"));
-    let opts = PgConnectOptions::from_str(&o.database_url)?.database(&name);
-    let pool = PgPoolOptions::new()
-        .max_connections(u32::try_from(o.engines * 2 + 4).unwrap_or(16))
-        .connect_with(opts)
-        .await?;
+    let db = Throwaway::create(
+        &o.database_url,
+        u32::try_from(o.engines * 2 + 4).unwrap_or(16),
+        &*log,
+    )
+    .await?;
     let outcome = async {
-        db::MIGRATOR.run(&pool).await?;
-        let engines = EnginePool::create(PoolOptions {
-            size: o.engines.max(1),
-            path: o.stockfish.clone(),
-            hash_mb: Some(16),
-        })
-        .await?;
-        let inner: Arc<dyn Analyser> = engines.clone();
-        let memo = Arc::new(MemoAnalyser::new(inner, suite.nodes));
+        let (engines, memo) = memo_engines(&o.stockfish, o.engines, suite.nodes).await?;
         let harness = Harness {
-            pool: pool.clone(),
+            pool: db.pool.clone(),
             memo: memo.clone(),
             engines: o.engines.max(1),
             log,
@@ -92,15 +144,7 @@ pub async fn run(
         })
     }
     .await;
-    pool.close().await;
-    if !o.keep_db {
-        sqlx::query(sqlx::AssertSqlSafe(format!(
-            "DROP DATABASE IF EXISTS {name} WITH (FORCE)"
-        )))
-        .execute(&mut conn)
-        .await?;
-    }
-    conn.close().await?;
+    db.finish(o.keep_db).await?;
     let out = outcome?;
     write_outputs(&out, &o.out_dir)?;
     Ok(out)

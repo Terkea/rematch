@@ -6,6 +6,7 @@
 pub mod flaws;
 pub mod generate;
 pub mod harness;
+pub mod lab;
 pub mod memo;
 pub mod policy;
 pub mod results;
