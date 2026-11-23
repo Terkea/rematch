@@ -17,6 +17,8 @@ const DEP_FIELDS = ["dependencies", "devDependencies", "optionalDependencies", "
 // ---- (b) exact pins -------------------------------------------------------
 function packageJsonFiles() {
   const out = [join(ROOT, "package.json")];
+  // The site is a single workspace package at the root (ADR 0096).
+  if (existsSync(join(ROOT, "site", "package.json"))) out.push(join(ROOT, "site", "package.json"));
   for (const group of ["apps", "packages", "services"]) {
     const dir = join(ROOT, group);
     if (!existsSync(dir)) continue;

@@ -13,6 +13,7 @@ x-workspace-volumes: &workspace-volumes
   - db_node_modules:/app/packages/db/node_modules
   - ui_node_modules:/app/packages/ui/node_modules
   - ai_sidecar_node_modules:/app/services/ai-sidecar/node_modules
+  - site_node_modules:/app/site/node_modules
   - pnpm_store:/pnpm-store
 
 x-web-environment: &web-environment
@@ -23,7 +24,7 @@ x-web-environment: &web-environment
   BETTER_AUTH_URL: http://localhost:3100
   BETTER_AUTH_TRUSTED_ORIGINS: http://127.0.0.1:3100
   SMTP_URL: smtp://mailpit:1025
-  MAIL_FROM: ${MAIL_FROM:-chess-improver <no-reply@chess-improver.local>}
+  MAIL_FROM: ${MAIL_FROM:-Rematch <no-reply@chess-improver.local>}
   GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
   GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
   LAB_ENABLED: "${LAB_ENABLED:-1}"
@@ -352,6 +353,7 @@ volumes:
   db_node_modules:
   ui_node_modules:
   ai_sidecar_node_modules:
+  site_node_modules:
   pnpm_store:
   rust_target:
   cargo_registry:

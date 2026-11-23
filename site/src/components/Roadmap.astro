@@ -1,0 +1,40 @@
+---
+import { next, openForContributors, shipped } from "../data/roadmap";
+import { GOOD_FIRST_ISSUES_URL, href } from "../data/site";
+
+const groups = [
+  { id: "shipped", title: "Shipped", items: shipped },
+  { id: "next", title: "Next", items: next },
+  { id: "open", title: "Open for contributors", items: openForContributors },
+];
+---
+
+<div class="roadmap">
+  {
+    groups.map((g) => (
+      <section class="roadmap-group" aria-labelledby={`roadmap-${g.id}`}>
+        <h3 id={`roadmap-${g.id}`} class="roadmap-title">
+          {g.title}
+        </h3>
+        <ol class="roadmap-list" role="list">
+          {g.items.map((item) => (
+            <li>
+              <span class="roadmap-item">{item.title}</span>
+              <span class="roadmap-detail">{item.detail}</span>
+              {item.adr && (
+                <a class="roadmap-adr" href={href(`docs/decisions/${item.adr}/`)}>
+                  Decision {item.adr.slice(0, 4)}
+                </a>
+              )}
+            </li>
+          ))}
+        </ol>
+        {g.id === "open" && (
+          <p class="roadmap-more">
+            <a href={GOOD_FIRST_ISSUES_URL}>Good first issues on GitHub</a>
+          </p>
+        )}
+      </section>
+    ))
+  }
+</div>

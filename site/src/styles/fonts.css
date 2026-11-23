@@ -1,0 +1,37 @@
+/*
+ * The app's own typefaces (DESIGN.md "Type", ADR-WEB-7): Literata for anything a coach would write,
+ * Schibsted Grotesk for anything the app says. The same committed WOFF2 files as apps/web, under
+ * the SIL OFL 1.1 (their licence texts sit beside them), so the site never calls a font CDN.
+ */
+@font-face {
+  font-family: "Literata";
+  src: url("../../../apps/web/src/app/fonts/Literata-VF.woff2") format("woff2");
+  font-weight: 200 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Literata Italic";
+  src: url("../../../apps/web/src/app/fonts/Literata-Italic-VF.woff2") format("woff2");
+  font-weight: 200 900;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Schibsted Grotesk";
+  src: url("../../../apps/web/src/app/fonts/SchibstedGrotesk-VF.woff2") format("woff2");
+  font-weight: 400 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  /* The names tokens.css expects from next/font, here from the faces above. */
+  --font-literata: "Literata";
+  --font-literata-italic: "Literata Italic";
+  --font-schibsted: "Schibsted Grotesk";
+  /* Tailwind 4's base unit (DESIGN.md "Spacing roles"); the site has no Tailwind, so it is named here. */
+  --spacing: 0.25rem;
+}

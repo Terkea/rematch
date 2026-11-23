@@ -1,0 +1,29 @@
+---
+title: Roadmap
+description: What Rematch does today, what comes next and what is open for contributors.
+sidebar:
+  order: 4
+---
+
+import RoadmapList from "../../../components/RoadmapList.astro";
+import { next, openForContributors, shipped } from "../../../data/roadmap";
+
+The roadmap follows one question: will this make a club player better? The next steps come from a review of the app through the eyes of an 800-rated rapid player, ranked by what the [research on learning](/rematch/docs/research/2026-11-23-what-helps-amateurs-improve/) says should help. Each one needs the maintainer's approval and its own decision record before work starts.
+
+## Shipped
+
+<RoadmapList items={shipped} />
+
+## Next
+
+<RoadmapList items={next} />
+
+## Open for contributors
+
+These become [good first issues](https://github.com/Terkea/rematch/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) and [help wanted](https://github.com/Terkea/rematch/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22) issues. Comment on one before you start.
+
+<RoadmapList items={openForContributors} />
+
+## Version 1.0
+
+1.0.0 is reserved for the first complete release, the MVP, and is declared by the maintainer in its own decision record. Until then every release is a 0.y.z beta. See [how we ship](/rematch/docs/sdlc/).

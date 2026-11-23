@@ -1,0 +1,61 @@
+---
+// A real screenshot of the app (the /styleguide fixture pages), in the day and night versions; the
+// one that matches the page's theme shows. Plain files in public/shots, so no image pipeline.
+import { href } from "../data/site";
+
+// CSS pixels; the files are captured at twice this, so they stay sharp and are never upscaled.
+const SIZES: Record<string, [number, number]> = {
+  coach: [820, 700],
+  focus: [580, 393],
+  graphs: [1216, 525],
+  positions: [820, 505],
+  review: [600, 742],
+  trajectory: [1216, 490],
+  weaknesses: [1040, 360],
+};
+
+/** Shots wider than a phone: below 768px they keep a readable size and scroll in their frame.
+ * WIDE ones are shown at a reduced but readable width there; the rest at their natural size. The
+ * review board reads at any size and simply scales. */
+const WIDE = new Set(["graphs", "trajectory", "weaknesses"]);
+const SCROLL = new Set([...WIDE, "coach", "focus", "positions"]);
+
+interface Props {
+  name: string;
+  alt: string;
+  caption?: string;
+}
+const { name, alt, caption } = Astro.props;
+const [width, height] = SIZES[name] ?? [820, 600];
+---
+
+<figure class:list={["shot", { "shot-wide": WIDE.has(name), "shot-scroll": SCROLL.has(name) }]}>
+  {/* A wide shot scrolls inside its frame on a phone, so its text stays readable. */}
+  <div
+    class="shot-frame"
+    tabindex={SCROLL.has(name) ? 0 : undefined}
+    role={SCROLL.has(name) ? "region" : undefined}
+    aria-label={SCROLL.has(name) ? "Screenshot, scroll sideways to see all of it" : undefined}
+  >
+    <img
+      class="shot-day"
+      src={href(`shots/${name}-light.webp`)}
+      alt={alt}
+      width={width}
+      height={height}
+      loading="lazy"
+      decoding="async"
+    />
+    <img
+      class="shot-night"
+      src={href(`shots/${name}-dark.webp`)}
+      alt=""
+      aria-hidden="true"
+      width={width}
+      height={height}
+      loading="lazy"
+      decoding="async"
+    />
+  </div>
+  {caption && <figcaption>{caption}</figcaption>}
+</figure>

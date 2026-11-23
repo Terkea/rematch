@@ -64,6 +64,26 @@ jobs:
         if: always()
         run: $COMPOSE down -v
 
+  site:
+    # The public site (site/, ADR 0096): its unit tests, a production build (the decision log and
+    # research pages are generated from docs/ at build time) and a check of every internal link,
+    # on the host's Node like the Pages workflow. Actions are pinned by commit SHA.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - name: Install pnpm
+        run: npm install --global pnpm@12.21.0
+      - name: Install the site's dependencies (frozen lockfile)
+        run: pnpm install --frozen-lockfile --filter @ci/site...
+      - name: Test, build and check links
+        run: |
+          pnpm --filter @ci/site test
+          pnpm --filter @ci/site build
+          pnpm --filter @ci/site links
+
   e2e:
     # The Playwright suite on a production build (ADR 0067): `next build`, then `next start`, so
     # the 4x CPU throttle budget in charts.spec.ts is enforced on every change (ADR 0065,

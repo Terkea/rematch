@@ -294,7 +294,24 @@ describe("runBanLint", () => {
     expect(paths.every((p) => p === "apps/web/src/app/real/page.tsx")).toBe(true);
   });
 
-  it("scans only apps/web/src and packages/ui/src and tolerates missing dirs", async () => {
+  it("scans the site's Astro, TS and CSS sources too (ADR 0096)", async () => {
+    const r = await tree({
+      "site/src/pages/index.astro": `<a href="/docs">Docs →</a>
+<p style="color: #D3312B">x</p>
+`,
+      "site/src/styles/landing.css": `.x { color: #16233b; }
+`,
+      "site/src/styles/generated/tokens.css": `:root { --color-ink: #16233b; }
+`,
+    });
+    expect((await runBanLint(r)).findings).toEqual([
+      { rule: "B5b", path: "site/src/pages/index.astro", line: 1, match: "→" },
+      { rule: "TOK1", path: "site/src/pages/index.astro", line: 2, match: "#D3312B" },
+      { rule: "TOK1", path: "site/src/styles/landing.css", line: 1, match: "#16233b" },
+    ]);
+  });
+
+  it("scans only apps/web/src, packages/ui/src and site/src and tolerates missing dirs", async () => {
     const r = await tree({
       "packages/other/src/x.tsx": `lorem`,
       "packages/ui/src/node_modules/x.ts": `lorem`,

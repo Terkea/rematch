@@ -1,0 +1,217 @@
+/*
+ * Starlight in the annotated-scoresheet system (packages/ui/DESIGN.md). Every value is a token from
+ * tokens.css; Starlight's own palette is mapped onto them. Day and night follow data-theme, which
+ * Starlight sets on <html>, the same attribute tokens.css switches on.
+ */
+:root,
+:root[data-theme="light"],
+:root[data-theme="dark"] {
+  /* Starlight's ramp runs from "white" (strongest text) to "black" (the page). */
+  --sl-color-white: var(--color-ink);
+  --sl-color-gray-1: var(--color-ink);
+  --sl-color-gray-2: var(--color-ink);
+  --sl-color-gray-3: var(--color-ink-soft);
+  --sl-color-gray-4: var(--color-ink-faint);
+  --sl-color-gray-5: var(--color-rule);
+  --sl-color-gray-6: var(--color-sheet);
+  --sl-color-gray-7: var(--color-sheet);
+  --sl-color-black: var(--color-paper);
+
+  --sl-color-accent-low: var(--color-well);
+  --sl-color-accent: var(--color-ink);
+  --sl-color-accent-high: var(--color-ink);
+
+  /* Asides: no hue carries decoration. Red and green keep their chess meanings, so none uses them. */
+  --sl-color-orange-low: var(--color-well);
+  --sl-color-orange: var(--color-rule-strong);
+  --sl-color-orange-high: var(--color-ink);
+  --sl-color-green-low: var(--color-well);
+  --sl-color-green: var(--color-rule-strong);
+  --sl-color-green-high: var(--color-ink);
+  --sl-color-blue-low: var(--color-well);
+  --sl-color-blue: var(--color-rule-strong);
+  --sl-color-blue-high: var(--color-ink);
+  --sl-color-purple-low: var(--color-well);
+  --sl-color-purple: var(--color-rule-strong);
+  --sl-color-purple-high: var(--color-ink);
+  --sl-color-red-low: var(--color-well);
+  --sl-color-red: var(--color-rule-strong);
+  --sl-color-red-high: var(--color-ink);
+
+  --sl-color-text: var(--color-ink);
+  --sl-color-text-accent: var(--color-ink);
+  --sl-color-text-invert: var(--color-on-ink);
+  --sl-color-bg: var(--color-paper);
+  --sl-color-bg-nav: var(--color-paper);
+  --sl-color-bg-sidebar: var(--color-paper);
+  --sl-color-bg-inline-code: var(--color-well);
+  --sl-color-bg-accent: var(--color-ink);
+  --sl-color-hairline-light: var(--color-rule);
+  --sl-color-hairline: var(--color-rule);
+  --sl-color-hairline-shade: var(--color-rule);
+  --sl-color-backdrop-overlay: color-mix(in srgb, var(--color-well) 90%, transparent);
+
+  /* The one shadow, only for things that float (DESIGN.md "Elevation"). */
+  --sl-shadow-sm: none;
+  --sl-shadow-md: var(--shadow-lift);
+  --sl-shadow-lg: var(--shadow-lift);
+
+  /* Type: Schibsted Grotesk for the interface and body, Literata for headings. No monospace (B5). */
+  --sl-font: var(--font-sans);
+  --sl-font-mono: var(--font-sans);
+  --sl-text-h1: var(--text-3xl);
+  --sl-text-h2: var(--text-2xl);
+  --sl-text-h3: var(--text-xl);
+  --sl-text-h4: var(--text-lg);
+  --sl-text-h5: var(--text-base);
+  --sl-text-body: var(--text-base);
+  --sl-text-code: var(--text-sm);
+  --sl-line-height-headings: 1.25;
+}
+
+::selection {
+  background: var(--color-selection);
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+}
+
+/* Headings are a coach's hand: Literata 600, sentence case. */
+.sl-markdown-content :is(h1, h2, h3, h4, h5),
+h1#_top {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  letter-spacing: normal;
+}
+
+.site-title {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  font-size: var(--text-xl);
+  color: var(--color-ink);
+}
+
+/* Links: ink, underlined, never a hue. */
+.sl-markdown-content a:not(:where(.not-content *)) {
+  color: var(--color-ink);
+  text-decoration-color: var(--color-rule-strong);
+  text-underline-offset: 0.2em;
+}
+
+.sl-markdown-content a:not(:where(.not-content *)):hover {
+  text-decoration-color: var(--color-ink);
+}
+
+/* Focus everywhere: 2px ink, 2px offset (DESIGN.md "Focus"). */
+:focus-visible {
+  outline: 2px solid var(--color-ink);
+  outline-offset: 2px;
+}
+
+/* Code sits in a well with the field radius; the app's sans, never monospace. */
+.sl-markdown-content :not(pre) > code {
+  background: var(--color-well);
+  border-radius: var(--radius-board);
+  padding: 0 0.15em;
+  margin: 0;
+  font-size: 0.92em;
+}
+
+/* Commands keep their lines (a wrapped command invites a bad paste) and scroll sideways. */
+.sl-markdown-content pre {
+  white-space: pre;
+  overflow-x: auto;
+  background: var(--color-well);
+  color: var(--color-ink);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-field);
+  padding: calc(var(--spacing) * 4);
+  font-size: var(--text-sm);
+  line-height: var(--text-sm--line-height);
+}
+
+/* Tables: the scoresheet's ruling is allowed on tabular data. */
+.sl-markdown-content ol > li::marker {
+  font-variant-numeric: normal;
+  letter-spacing: normal;
+}
+
+.sl-markdown-content table {
+  font-variant-numeric: lining-nums tabular-nums;
+}
+
+.sl-markdown-content :is(th, td) {
+  border-bottom: 1px solid var(--color-rule);
+}
+
+.sl-markdown-content blockquote {
+  border-inline-start: 1px solid var(--color-rule-strong);
+  color: var(--color-ink-soft);
+}
+
+/* The sidebar's current page: the selected state (well, ink at 600), not an accent fill. */
+.sidebar-content a[aria-current="page"],
+.sidebar-content a[aria-current="page"]:hover,
+.sidebar-content a[aria-current="page"]:focus {
+  background: var(--color-well);
+  color: var(--color-ink);
+  font-weight: 600;
+}
+
+.sidebar-content a:hover {
+  background: var(--color-sheet);
+}
+
+/* Search and the theme select stay quiet controls in a well. */
+site-search button[data-open-modal] {
+  background: var(--color-well);
+  border-color: var(--color-rule-strong);
+  border-radius: var(--radius-field);
+  color: var(--color-ink-soft);
+}
+
+dialog {
+  border: 1px solid var(--color-rule-strong);
+  border-radius: var(--radius-sheet);
+}
+
+.sl-markdown-content .generated-source {
+  color: var(--color-ink-faint);
+}
+
+/* Previous and next: no arrow glyph (B5), the title in the coach's serif. */
+.pagination-links svg {
+  display: none;
+}
+
+.pagination-links .link-title {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  font-size: var(--text-xl);
+}
+
+.pagination-links a {
+  border-color: var(--color-rule);
+  border-radius: var(--radius-sheet);
+  box-shadow: none;
+}
+
+.pagination-links a:hover {
+  background: var(--surface-hover);
+  border-color: var(--color-rule-strong);
+}
+
+/* The phone menu button: a quiet ghost control, not a filled disc. */
+.sl-menu-button {
+  background: transparent;
+  color: var(--color-ink);
+  box-shadow: none;
+  border: 1px solid var(--color-rule-strong);
+  border-radius: var(--radius-field);
+}
+
+.sl-menu-button:hover {
+  background: var(--surface-hover);
+}
