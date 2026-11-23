@@ -281,7 +281,7 @@ pub struct Prior {
 pub fn prior_of(k: f64, n: f64, alpha: f64, beta: f64) -> Prior {
     let n0 = alpha + beta - n;
     let mu = if n0 > 0.0 { (alpha - k) / n0 } else { f64::NAN };
-    if !(n0 > 1e-6) || !mu.is_finite() || mu <= 0.0 || mu >= 1.0 {
+    if n0.is_nan() || n0 <= 1e-6 || !mu.is_finite() || mu <= 0.0 || mu >= 1.0 {
         return NO_BENCHMARK_PRIOR;
     }
     Prior { mu, n0 }
