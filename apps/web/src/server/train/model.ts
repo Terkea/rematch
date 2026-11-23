@@ -1,7 +1,10 @@
 import { type EngineScore, winPercent } from "@ci/chess-core";
 import { Chess } from "chess.js";
+import { timeZoneOf } from "../../lib/time-zone";
 import { obviousCapture } from "../profile/strengths";
 import { fnv1a, type Interval, mulberry32, wilson } from "../stats";
+
+export { timeZoneOf };
 
 // The missed-moments trainer's pure rules (ADR 0090). Everything here is unit tested; `store.ts`
 // only reads and writes the rows these functions decide on.
@@ -132,19 +135,6 @@ function wallClock(t: number, timeZone: string): number {
     Number(p.minute),
     Number(p.second),
   );
-}
-
-/**
- * An IANA time zone the runtime knows (the browser's `Intl` zone, sent as a cookie), else UTC,
- * the fallback for a player who has not sent one.
- */
-export function timeZoneOf(v: unknown): string {
-  if (typeof v !== "string" || v.length === 0 || v.length > 64) return "UTC";
-  try {
-    return new Intl.DateTimeFormat("en-GB", { timeZone: v }).resolvedOptions().timeZone;
-  } catch {
-    return "UTC";
-  }
 }
 
 /** The calendar day (`YYYY-MM-DD`) of `d` in `timeZone` (UTC by default). */
