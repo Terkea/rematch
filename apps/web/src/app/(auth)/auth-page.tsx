@@ -1,6 +1,13 @@
 import type { ReactNode } from "react";
 import { type DiagramKind, OperaDiagram } from "./opera-diagram";
 
+/**
+ * The signed-out grid and its form column, shared with the layout's wordmark so "Rematch" and the
+ * page title start on one left edge at every width.
+ */
+export const AUTH_GRID = "lg:grid lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]";
+export const AUTH_COLUMN = "mx-auto w-full max-w-sm";
+
 export interface AuthPageProps {
   /** The page title (h1). Omit it when the children carry their own `#auth-title` heading. */
   title?: string;
@@ -22,7 +29,7 @@ export function AuthPage({ title, lede, aside, children }: AuthPageProps) {
       {...(aside ? { "data-bleed": "" } : {})}
       className={
         aside
-          ? "flex flex-1 flex-col lg:grid lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]"
+          ? `flex flex-1 flex-col ${AUTH_GRID}`
           : "flex flex-1 flex-col"
       }
     >
@@ -30,7 +37,7 @@ export function AuthPage({ title, lede, aside, children }: AuthPageProps) {
         aria-labelledby="auth-title"
         className="flex flex-col px-(--space-gutter) pt-14 pb-12 sm:pt-24 lg:flex-1 lg:justify-center lg:py-12"
       >
-        <div className="mx-auto flex w-full max-w-sm flex-col gap-8">
+        <div className={`${AUTH_COLUMN} flex flex-col gap-8`}>
           {title ? (
             <header className="flex flex-col gap-3">
               <h1 id="auth-title" className="font-serif text-3xl font-semibold text-ink">
