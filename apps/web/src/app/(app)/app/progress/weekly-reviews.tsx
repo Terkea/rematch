@@ -1,6 +1,7 @@
 import { AiDisclosure, CoachState, SegmentText } from "@ci/ui/coach";
 import { dayText } from "@ci/ui/profile";
 import { ProgressPlaceholder } from "@ci/ui/progress";
+import { weekLineText } from "../../../../components/focus/focus-text";
 import { segmentHref } from "../../../../lib/segment-href";
 import type { NarrativeItem, WeeklyReviewView } from "../../../../server/coaching";
 
@@ -102,6 +103,15 @@ function Review({ review }: { review: WeeklyReviewView }) {
   return (
     <article className="flex flex-col gap-4 border-b border-rule pb-8 last:border-b-0 last:pb-0">
       <Week start={review.weekStart} />
+      {review.focus ? (
+        <div data-slot="focus-week">
+          <Part title="Your focus this week">
+            <p className="m-0 max-w-prose text-base text-ink [font-variant-numeric:lining-nums]">
+              {weekLineText(review.focus)}
+            </p>
+          </Part>
+        </div>
+      ) : null}
       {review.status === "ready" ? (
         <Ready review={review} />
       ) : review.status === "pending" ? (

@@ -1,5 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { listWeeklyReviews } from "../../src/server/coaching";
 import { focusWeekLines, setFocus } from "../../src/server/focus";
+import { resetCoachingTables, seedWeekly } from "../helpers/coaching";
 import { DAY, play, START } from "../helpers/focus";
 import { resetGameTables, seedAccount } from "../helpers/games";
 import { seedProfile } from "../helpers/profile";
@@ -16,6 +18,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   await resetAuthTables(db);
   await resetGameTables(db);
+  await resetCoachingTables(db);
   userId = (await createTestSession(db)).user.id;
   accountId = (await seedAccount(db, { userId, username: "Hero" })).accountId;
   await seedProfile(db, accountId, {
@@ -59,5 +62,15 @@ describe("focusWeekLines", () => {
       "2026-09-28",
     ]);
     expect(lines.size).toBe(0);
+  });
+
+  it("rides on each weekly review, computed from the games", async () => {
+    await setFocus(db, userId, { accountId, timeClass: "rapid", seriesKey: "W5" }, START);
+    await play(db, accountId, 1, { W5: [1, 4] });
+    await seedWeekly(db, accountId, { timeClass: "rapid", weekStart: "2026-09-28" });
+    await seedWeekly(db, accountId, { timeClass: "rapid", weekStart: "2026-09-21" });
+    const [late, early] = await listWeeklyReviews(db, userId, { accountId, timeClass: "rapid" });
+    expect(late?.focus).toMatchObject({ seriesKey: "W5", events: 1, chances: 4, games: 1 });
+    expect(early?.focus).toBeNull();
   });
 });

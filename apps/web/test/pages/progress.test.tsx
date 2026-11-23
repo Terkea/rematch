@@ -152,6 +152,7 @@ function review(over: Partial<WeeklyReviewView> = {}): WeeklyReviewView {
     content: WEEKLY_CONTENT,
     droppedCount: 0,
     aiDisclosure: { ...DISCLOSURE, promptVersion: "weekly@1" },
+    focus: null,
     ...over,
   };
 }
@@ -355,6 +356,26 @@ describe("progress page", () => {
     expect(block.textContent).toContain("Keep checking captures before you move.");
     expect(block.querySelector("[data-ai-disclosure]")).not.toBeNull();
     expect(block.textContent).toContain("Written by AI");
+  });
+
+  it("a review carries its computed focus line, even while it is being written", () => {
+    const focus = {
+      seriesKey: "W5",
+      label: "Missed mates",
+      side: "both" as const,
+      targetRate: 0.15,
+      events: 1,
+      chances: 6,
+      games: 2,
+      rate: 1 / 6,
+      interval: { low: 0.05, high: 0.4, level: 0.8 as const },
+    };
+    const { container } = show(
+      input({ weekly: [review({ status: "pending", content: null, aiDisclosure: null, focus })] }),
+    );
+    const block = section(container, "weekly-heading");
+    expect(block.textContent).toContain("Your focus this week");
+    expect(block.textContent).toContain("Missed mates: 1 of 6 chances in 2 games, 16.7%");
   });
 
   it("a ready review without a stored disclosure shows no model text", () => {

@@ -446,42 +446,54 @@ export async function focusWeekLines(
   target: { accountId: string; timeClass: TimeClass },
   weekStarts: string[],
 ): Promise<Map<string, FocusWeekLine>> {
+  if (weekStarts.length === 0) return new Map();
+  return readOnly(db, async (tx) => {
+    if ((await scopedAccountIds(tx, userId, target.accountId)).length === 0) return new Map();
+    return focusWeekLinesIn(tx, userId, target, weekStarts);
+  });
+}
+
+/** `focusWeekLines` inside a caller's transaction that has already checked the account. */
+export async function focusWeekLinesIn(
+  tx: Db,
+  userId: string,
+  target: { accountId: string; timeClass: TimeClass },
+  weekStarts: string[],
+): Promise<Map<string, FocusWeekLine>> {
   const out = new Map<string, FocusWeekLine>();
   if (weekStarts.length === 0) return out;
-  return readOnly(db, async (tx) => {
-    if ((await scopedAccountIds(tx, userId, target.accountId)).length === 0) return out;
-    const rows = await tx
-      .select()
-      .from(focuses)
-      .where(
-        and(
-          eq(focuses.userId, userId),
-          eq(focuses.accountId, target.accountId),
-          eq(focuses.timeClass, target.timeClass),
-        ),
-      )
-      .orderBy(desc(focuses.startedAt));
-    for (const week of weekStarts) {
-      const from = new Date(`${week}T00:00:00Z`);
-      if (Number.isNaN(from.getTime())) continue;
-      const to = new Date(from.getTime() + 7 * 86_400_000);
-      // The newest focus that started before the week ended and had not ended before it began.
-      const f = rows.find((r) => r.startedAt < to && (r.endedAt === null || r.endedAt >= from));
-      if (!f) continue;
-      const c = await focusCounts(tx, f, { from, to });
-      if (c.games === 0) continue;
-      out.set(week, {
-        seriesKey: f.seriesKey,
-        label: await labelOf(tx, f),
-        side: f.side,
-        targetRate: f.targetRate,
-        events: c.events,
-        chances: c.chances,
-        games: c.games,
-        rate: c.chances > 0 ? c.events / c.chances : null,
-        interval: wilson(c.events, c.chances, 0.8),
-      });
-    }
-    return out;
-  });
+  const rows = await tx
+    .select()
+    .from(focuses)
+    .where(
+      and(
+        eq(focuses.userId, userId),
+        eq(focuses.accountId, target.accountId),
+        eq(focuses.timeClass, target.timeClass),
+      ),
+    )
+    .orderBy(desc(focuses.startedAt));
+  if (rows.length === 0) return out;
+  for (const week of weekStarts) {
+    const from = new Date(`${week}T00:00:00Z`);
+    if (Number.isNaN(from.getTime())) continue;
+    const to = new Date(from.getTime() + 7 * 86_400_000);
+    // The newest focus that started before the week ended and had not ended before it began.
+    const f = rows.find((r) => r.startedAt < to && (r.endedAt === null || r.endedAt >= from));
+    if (!f) continue;
+    const c = await focusCounts(tx, f, { from, to });
+    if (c.games === 0) continue;
+    out.set(week, {
+      seriesKey: f.seriesKey,
+      label: await labelOf(tx, f),
+      side: f.side,
+      targetRate: f.targetRate,
+      events: c.events,
+      chances: c.chances,
+      games: c.games,
+      rate: c.chances > 0 ? c.events / c.chances : null,
+      interval: wilson(c.events, c.chances, 0.8),
+    });
+  }
+  return out;
 }

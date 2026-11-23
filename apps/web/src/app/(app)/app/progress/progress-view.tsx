@@ -468,8 +468,11 @@ export function ProgressView({
   view,
   scopeSwitch,
   compare,
+  focus,
 }: {
   view: ProgressViewModel;
+  /** The weekly focus card (ADR 0090) of this scope. */
+  focus?: ReactNode;
   scopeSwitch?: ReactNode;
   /** Period A against period B for the game-level stats, when the URL asks for it (T3). */
   compare?: ReactNode;
@@ -490,6 +493,8 @@ export function ProgressView({
       </div>
 
       {compare}
+
+      {focus}
 
       <Section
         id="before-after-heading"

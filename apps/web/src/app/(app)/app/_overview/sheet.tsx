@@ -34,6 +34,7 @@ export function OverviewSheet({
   compare,
   filtersNote,
   peer = null,
+  focus,
 }: {
   view: OverviewView;
   reveal: boolean;
@@ -51,6 +52,8 @@ export function OverviewSheet({
   filtersNote?: string | null;
   /** The players faced, for the headline's comparison (Q1); null without a peer benchmark. */
   peer?: HeadlinePeer | null;
+  /** The weekly focus card (ADR 0090), first on the page. */
+  focus?: ReactNode;
 }) {
   return (
     <div {...(reveal ? { "data-reveal": "first" } : {})} className="flex flex-col gap-10">
@@ -64,6 +67,7 @@ export function OverviewSheet({
         <OverviewEmpty state={view.empty} />
       ) : (
         <>
+          {focus}
           <div className="flex flex-col gap-6">
             {filterBar ?? <TimeClassSwitch options={view.switch} />}
             {/* An asked-for comparison answers the question just set, so it comes first

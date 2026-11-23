@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { cache } from "react";
+import { MakeFocusButton } from "../../../../../components/focus/make-focus-button";
 import { LiveRefreshOn } from "../../../../../components/live-refresh-on";
 import { queryKeys } from "../../../../../lib/query-keys";
 import { requireUser } from "../../../../../server/auth/session";
@@ -9,6 +10,7 @@ import { changeNotes } from "../../../../../server/coaching";
 import { getDb } from "../../../../../server/db";
 import { requestEventCursor } from "../../../../../server/events/request-cursor";
 import type { DayRange } from "../../../../../server/filters/params";
+import { focusOffer } from "../../../../../server/focus";
 import { getBenchmark, getWeakness, resolveCoachScope } from "../../../../../server/profile";
 import { reviewGameIds } from "../../../../../server/profile/game-ids";
 import { FilterBar } from "../../_filters/filter-bar";
@@ -96,9 +98,10 @@ export default async function WeaknessPage({ params, searchParams }: Props) {
     queryOf(await searchParams),
   );
   // Notes are account rows; only those written for this scope's time class belong here.
-  const [allNotes, inScope] = await Promise.all([
+  const [allNotes, inScope, offer] = await Promise.all([
     changeNotes(db, user.id, scope.accountId, [detail.seriesKey]),
     noteKeysInScope(db, user.id, scope, detail.seriesKey),
+    focusOffer(db, user.id, scope, detail),
   ]);
   const notes = allNotes.filter((n) => inScope.has(n.changeKey));
   const cited = [
@@ -128,6 +131,19 @@ export default async function WeaknessPage({ params, searchParams }: Props) {
         range={range}
         sides={sides}
         filterBar={<FilterBar model={bar.model} />}
+        focusAction={
+          offer.current || offer.suggestion ? (
+            <MakeFocusButton
+              target={{
+                accountId: scope.accountId,
+                timeClass: scope.timeClass,
+                seriesKey: detail.seriesKey,
+                side: scope.side ?? "both",
+              }}
+              current={offer.current}
+            />
+          ) : null
+        }
       />
     </>
   );
