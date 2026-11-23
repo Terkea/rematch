@@ -1,15 +1,25 @@
 import { brand } from "../../brand";
+import { BrandMark } from "./mark";
 
-/**
- * The Rematch wordmark for headers: "Rematch" in Literata italic, capital R, in the current text
- * colour (ink by day, cream at night). At header height the boy with his board is a scribble and
- * the favicon icon reads as clip-art, so the header carries the word alone; the drawing and the
- * "chess improver" tagline live in the hero, the README and the social card.
- */
-export function BrandLockup() {
+/** "Rematch" in Literata italic, capital R, in the current text colour. */
+export function BrandWordmark() {
   return (
     <span className="font-serif-italic text-2xl leading-none font-medium italic">
       {brand.wordmark}
     </span>
+  );
+}
+
+/**
+ * The header lockup: the mid-size mark (drawn for this height, so the boy, his board and his
+ * dad's hand still read) beside the wordmark. The "chess improver" tagline is too small to read
+ * here; it lives in the README, the social card and the video.
+ */
+export function BrandLockup() {
+  return (
+    <>
+      <BrandMark variant="mid" className="h-10" />
+      <BrandWordmark />
+    </>
   );
 }

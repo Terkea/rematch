@@ -12,6 +12,7 @@ import {
   lockupHtml,
 } from "../scripts/brand-assets-lib.js";
 import manifest from "../src/app/manifest.js";
+import { REMATCH_MARKS } from "../src/components/brand/marks.generated.js";
 
 // The Rematch logo (docs/superpowers/specs/2026-11-23-rematch-brand-design.md): the boy with his
 // board, ink only. `pnpm --filter @ci/web brand` regenerates every file checked here from
@@ -128,8 +129,34 @@ describe("the lockup", () => {
   });
 });
 
-describe("the header", () => {
-  it("has no generated icon module: headers carry the wordmark alone", () => {
-    expect(existsSync(join(WEB, "src/components/brand/icon.generated.ts"))).toBe(false);
+describe("the marks in the app", () => {
+  // rematch-mark-mid.svg is the same drawing with fewer, heavier strokes for 40-64 px (headers,
+  // footer); rematch-mark.svg is the full drawing for 96 px and up. Both are inlined by a
+  // generated module, in currentColor, never pen red.
+  it("rematch-mark-mid.svg is ink only, with its own title", () => {
+    const svg = readFileSync(join(BRAND, "rematch-mark-mid.svg"), "utf8");
+    expect(svg).toContain('fill="currentColor"');
+    expect(svg).toMatch(/<title>Rematch[^<]*<\/title>/);
+    expect(svg).not.toMatch(/#[0-9a-f]{3,6}(?![0-9a-z])|<mask/i);
+  });
+
+  it("generates the mark module from both files, unchanged and scoped", () => {
+    for (const [mark, file] of [
+      [REMATCH_MARKS.mid, "rematch-mark-mid.svg"],
+      [REMATCH_MARKS.full, "rematch-mark.svg"],
+    ] as const) {
+      const source = readFileSync(join(BRAND, file), "utf8");
+      expect(mark.viewBox).toBe(source.match(/viewBox="([^"]+)"/)?.[1]);
+      for (const d of source.matchAll(/ d="([^"]+)"/g)) expect(mark.body).toContain(d[1]);
+      expect(mark.body).not.toMatch(PEN);
+      expect(mark.body).not.toContain("<title>");
+    }
+    expect(REMATCH_MARKS.mid.body).toContain('id="rematch-mid-');
+    expect(REMATCH_MARKS.full.body).toContain('id="rematch-full-');
+  });
+
+  it("ships the sign-in email's lockup at 2x", () => {
+    const png = readFileSync(join(WEB, "public/brand/rematch-lockup-mail.png"));
+    expect(pngSize(png)).toEqual([440, 152]);
   });
 });

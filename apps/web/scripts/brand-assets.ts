@@ -12,6 +12,8 @@ import {
   icoFile,
   iconSvg,
   lockupHtml,
+  marksModule,
+  solidSvg,
 } from "./brand-assets-lib";
 
 // Every file made from the Rematch logo (packages/ui/assets/brand), in one run:
@@ -30,6 +32,7 @@ const icon = readFileSync(join(BRAND, "rematch-icon.svg"), "utf8");
 // The tab icon is drawn on a 16 px grid of its own, so a browser tab shows it without blur.
 const icon16 = readFileSync(join(BRAND, "rematch-icon-16.svg"), "utf8");
 const mark = readFileSync(join(BRAND, "rematch-mark.svg"), "utf8");
+const markMid = readFileSync(join(BRAND, "rematch-mark-mid.svg"), "utf8");
 
 const write = (path: string, data: string | Buffer) => {
   mkdirSync(dirname(path), { recursive: true });
@@ -40,6 +43,10 @@ const write = (path: string, data: string | Buffer) => {
 // Text files.
 write(join(WEB, "src/app/icon.svg"), iconSvg(icon16));
 write(join(ROOT, "site/public/favicon.svg"), iconSvg(icon16));
+write(join(WEB, "src/components/brand/marks.generated.ts"), marksModule(markMid, mark));
+// The docs header (Starlight takes image files): the mid mark in day ink and night cream.
+write(join(ROOT, "site/src/assets/rematch-mark-day.svg"), solidSvg(markMid, BRAND_INK));
+write(join(ROOT, "site/src/assets/rematch-mark-night.svg"), solidSvg(markMid, BRAND_NIGHT_INK));
 
 // Rasters.
 const font = (file: string) =>
@@ -108,6 +115,11 @@ async function main() {
     write(
       join(ROOT, "docs/media/rematch-lockup-day.png"),
       await shot(lockupHtml(mark, FACES, BRAND_INK, BRAND_PENCIL), 640, 220, true, 2),
+    );
+    // The sign-in email's header: the lockup at 220 x 76, drawn at 2x.
+    write(
+      join(WEB, "public/brand/rematch-lockup-mail.png"),
+      await shot(lockupHtml(mark, FACES, BRAND_INK, BRAND_PENCIL, 220 / 640), 220, 76, true, 2),
     );
     write(
       join(ROOT, "docs/media/rematch-lockup-night.png"),

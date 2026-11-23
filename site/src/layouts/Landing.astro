@@ -3,9 +3,17 @@ import "../styles/fonts.css";
 import "../styles/generated/tokens.css";
 import "../styles/landing.css";
 import "../styles/diagram.css";
+import markMid from "../../../packages/ui/assets/brand/rematch-mark-mid.svg?raw";
 import { href, REPO_URL } from "../data/site";
 
-// The header carries the wordmark alone: "Rematch" in Literata italic, capital R.
+// The mid-size mark (drawn for 40-64 px) in the text colour, decorative: its link or the name
+// beside it says "Rematch". Each copy scopes its clip ids, so two copies on a page never collide.
+const mark = (cls: string) =>
+  markMid
+    .replace(/<title>[\s\S]*?<\/title>/, "")
+    .replace(' role="img"', ` class="${cls}" aria-hidden="true" focusable="false"`)
+    .replace(/id="(\w+)"/g, `id="${cls}-$1"`)
+    .replace(/url\(#(\w+)\)/g, `url(#${cls}-$1)`);
 
 interface Props {
   title: string;
@@ -57,6 +65,7 @@ const card = new URL(href("og.png"), Astro.site);
     <header class="site-header">
       <div class="wrap header-row">
         <a class="wordmark" href={href("")} aria-label="Rematch, chess improver, home">
+          <Fragment set:html={mark("wordmark-mark")} />
           <span class="wordmark-name">Rematch</span>
         </a>
         <nav aria-label="Main" class="header-nav">
@@ -77,7 +86,11 @@ const card = new URL(href("og.png"), Astro.site);
     </main>
     <footer class="site-footer">
       <div class="wrap footer-row">
-        <p class="footer-name">Rematch, chess improver</p>
+        <p class="footer-name"><Fragment set:html={mark("footer-mark")} />Rematch, chess improver</p>
+        <p class="footer-note">
+          The mark is drawn from <a href={href("#why")}>a photo of my dad</a> as a boy, holding his
+          chess board.
+        </p>
         <p class="footer-note">
           Open source under the AGPL-3.0. Not affiliated with chess.com or Lichess. Analysis by
           Stockfish (GPL-3.0).

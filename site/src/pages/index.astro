@@ -4,8 +4,16 @@ import GoodFirstIssues from "../components/GoodFirstIssues.astro";
 import Roadmap from "../components/Roadmap.astro";
 import Shot from "../components/Shot.astro";
 import Video from "../components/Video.astro";
+import markFull from "../../../packages/ui/assets/brand/rematch-mark.svg?raw";
 import { BLOB, DISCUSSIONS_URL, href, REPO_URL, VERSION } from "../data/site";
 import Landing from "../layouts/Landing.astro";
+
+// The hero opens with the full drawing: the boy with his board and his dad's hand.
+const heroMark = markFull
+  .replace(/<title>[\s\S]*?<\/title>/, "")
+  .replace(' role="img"', ' class="hero-mark" aria-hidden="true" focusable="false"')
+  .replace(/id="(\w+)"/g, 'id="hero-mark-$1"')
+  .replace(/url\(#(\w+)\)/g, "url(#hero-mark-$1)");
 
 const features = [
   {
@@ -152,6 +160,13 @@ const faq = [
 >
   <section class="hero wrap" aria-labelledby="hero-title">
     <div class="hero-copy">
+      <div class="hero-lockup">
+        <Fragment set:html={heroMark} />
+        <div class="hero-word">
+          <p class="hero-wordmark">Rematch</p>
+          <p class="hero-tagline">chess improver</p>
+        </div>
+      </div>
       <h1 id="hero-title" class="hero-title">Stop losing to the same move.</h1>
       <p class="lead">
         Rematch is an open-source chess improver for chess.com players. It checks every move of
@@ -346,6 +361,27 @@ const faq = [
           ))
         }
       </div>
+    </div>
+  </section>
+
+  <section id="why" class="wrap why" aria-labelledby="why-title">
+    <div class="why-row">
+      <div class="prose-col">
+        <h2 id="why-title" class="section-title">Why I'm building this</h2>
+        <p class="prose">
+          My dad played chess his whole life. I'm not good at it, but every time I play I feel
+          closer to him. He died recently, and Rematch is how I keep that going — a coach that shows
+          me the mistake I keep making, the way he probably would have.
+        </p>
+      </div>
+      <img
+        class="why-photo"
+        src={href("media/dad.jpg")}
+        width="260"
+        height="468"
+        loading="lazy"
+        alt="My dad as a young boy in a striped shirt, holding a chess board under his arm, with his mum kneeling beside him."
+      />
     </div>
   </section>
 </Landing>

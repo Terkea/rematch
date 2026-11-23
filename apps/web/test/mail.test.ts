@@ -29,3 +29,14 @@ describe("sendMail, the one mail path (review n4)", () => {
     expect(sent).toHaveLength(1);
   });
 });
+
+describe("the sign-in email", () => {
+  it("opens with the Rematch lockup, hosted on the app's own origin, with alt text", () => {
+    const msg = magicLinkEmail("ana@example.com", "https://rematch.example/api/auth/magic?t=1");
+    expect(msg.html).toMatch(
+      /^<p><img src="https:\/\/rematch\.example\/brand\/rematch-lockup-mail\.png" width="220" height="76" alt="Rematch, chess improver"/,
+    );
+    // The plain-text part stays plain.
+    expect(msg.text).not.toContain("<img");
+  });
+});

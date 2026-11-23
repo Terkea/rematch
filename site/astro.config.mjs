@@ -19,7 +19,13 @@ export default defineConfig({
       description:
         "Rematch, chess improver: an open-source coach that reads your chess.com games, names the mistakes you repeat and drills them. Stop losing to the same move.",
       favicon: "/favicon.svg",
-      // The header carries the wordmark alone (docs.css sets it in Literata italic).
+      // The mid-size mark (packages/ui/assets/brand), ink by day and cream at night, beside the
+      // wordmark (docs.css sets it in Literata italic).
+      logo: {
+        light: "./src/assets/rematch-mark-day.svg",
+        dark: "./src/assets/rematch-mark-night.svg",
+        alt: "",
+      },
       expressiveCode: false,
       pagefind: true,
       credits: false,
