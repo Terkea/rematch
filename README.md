@@ -2,7 +2,7 @@
 
 # Rematch, chess improver
 
-**Stop losing to the same move.**
+Stop losing to the same move.
 
 Rematch is an open-source coach for chess.com players. Stockfish checks every move of your games, Rematch names the mistakes you keep repeating, drills you on your own missed moments and tells you, with honest numbers, whether it's working.
 
@@ -14,7 +14,7 @@ Rematch is an open-source coach for chess.com players. Stockfish checks every mo
 
 <a href="https://terkea.github.io/rematch/"><img src="site/public/media/rematch-preview.gif" width="960" alt="Rematch in eight seconds: a red pen ring and a double question mark draw onto 28. Nd2 on the board, then three evaluation graphs each collapse at a blunder." /></a>
 
-**[▶ Watch the 60-second video](site/public/media/rematch.mp4)** (MP4, 5 MB) · [or on the website](https://terkea.github.io/rematch/) · [Read the docs](https://terkea.github.io/rematch/docs/getting-started/)
+[Watch the 60-second video](site/public/media/rematch.mp4) (MP4, 5 MB) · [on the website](https://terkea.github.io/rematch/) · [the docs](https://terkea.github.io/rematch/docs/getting-started/)
 
 ## Why
 
@@ -36,7 +36,7 @@ Link your chess.com account and Rematch imports your games, keeps them in sync a
 
 Each mistake is counted per chance, not per game: a loose piece per move that had one, a missed fork per fork you had. Rematch ranks them by what they cost, explains each in a sentence and compares you with players around your rating. Every rate carries its count and an 80% range.
 
-<picture><source media="(prefers-color-scheme: dark)" srcset="site/public/shots/weaknesses-dark.webp"><img src="site/public/shots/weaknesses-light.webp" width="760" alt="Weakness rows: leaving pieces undefended at 4.2% with its 80% range and the peer median, rook endgames, missed forks as an early read, and blunders under one minute."></picture>
+<picture><source media="(prefers-color-scheme: dark)" srcset="site/public/shots/weaknesses-dark.webp"><img src="site/public/shots/weaknesses-light.webp" width="760" alt="Weakness rows: leaving pieces undefended at 4.2% with its 80% range and the peer median, rook endgames, missed forks as an early read, and blunders on a low clock."></picture>
 
 ### An AI coach that cites your games
 
@@ -62,13 +62,13 @@ Your rating line with the peak marked, then the games around the peak against yo
 
 <picture><source media="(prefers-color-scheme: dark)" srcset="site/public/shots/trajectory-dark.webp"><img src="site/public/shots/trajectory-light.webp" width="760" alt="A rating trajectory: the line rising to a peak of 1,111 and falling to 816, with the games around the peak and the last 30 games shaded."></picture>
 
-## Why it's different
+## What it does that a game review doesn't
 
-- **Research first.** Features are ranked by what the evidence says helps amateurs improve: retrieval practice on your own errors, spacing, interleaving, specific goals with feedback. The notes are in [`docs/research/`](docs/research/).
-- **Honest numbers.** A count with every rate, an 80% range with every estimate, no number until the minimum evidence is there ("Need 9 more games"; [the thresholds](#when-rematch-stays-quiet)), and "better" or "worse" only when the ranges separate. [The honesty rules](https://terkea.github.io/rematch/docs/honesty/).
-- **Facts by reference.** The AI never types a move or a number. It cites computed facts by reference, the server renders them, and a validator drops any claim it can't check.
-- **Private by default.** Run it yourself and your games stay in your database. It reads only public chess.com data, and its requests never carry your email address.
-- **Every decision written down.** [More than 140 decision records](docs/decisions/README.md) explain why the code is the way it is.
+- Research first: features are ranked by what the evidence says helps amateurs improve: retrieval practice on your own errors, spacing, interleaving, specific goals with feedback. The notes are in [`docs/research/`](docs/research/).
+- Honest numbers: a count with every rate, an 80% range with every estimate, no number until the minimum evidence is there ("Need 9 more games"; [the thresholds](#when-rematch-stays-quiet)), and "better" or "worse" only when the ranges separate. [The honesty rules](https://terkea.github.io/rematch/docs/honesty/).
+- Facts by reference: the AI never types a move or a number. It cites computed facts by reference, the server renders them, and a validator drops any claim it can't check.
+- Private by default: run it yourself and your games stay in your database. It reads only public chess.com data, and its requests never carry your email address.
+- Every decision written down: [more than 140 decision records](docs/decisions/README.md) explain why the code is the way it is.
 
 ## How it works
 
@@ -114,7 +114,7 @@ The styleguide's sample game is a real Lichess blitz game, so here is what the p
 <summary>Import: chess.com only, public data, kept in sync</summary>
 
 - Source: The public Published-Data API at `https://api.chess.com/pub/player`. The importer reads `/games/archives`, then walks the monthly archives newest first and normalises each game ([`chesscom.rs`](backend/crates/platforms/src/chesscom.rs)). Time classes come from `base + 40 × increment`: under 180 s is bullet, under 480 s blitz, under 1500 s rapid, else classical ([`time_control.rs`](backend/crates/chess-core/src/time_control.rs)). Daily games keep chess.com's own class.
-- Rate limits: Each platform has one serial HTTP client: one request at a time. A 429 waits 60 s and retries up to 3 times, and a circuit breaker opens after 5 consecutive outages (5xx, timeouts, transport errors; never a 404 or a 429) for 60 s ([`client.rs`](backend/crates/platforms/src/client.rs), [`breaker.rs`](backend/crates/platforms/src/breaker.rs)). The User-Agent is the fixed string `chess-improver/0.1 (+https://github.com/chess-improver)`. No request carries an email address ([ADR 0043](docs/decisions/0043-no-email-in-outbound-requests.md)).
+- Rate limits: Each platform has one serial HTTP client: one request at a time. A 429 waits 60 s and retries up to 3 times, and a circuit breaker opens after 5 consecutive outages (5xx, timeouts, transport errors; never a 404 or a 429) for 60 s ([`client.rs`](backend/crates/platforms/src/client.rs), [`breaker.rs`](backend/crates/platforms/src/breaker.rs)). The User-Agent is the fixed string `rematch/0.1 (+https://github.com/Terkea/rematch)`. No request carries an email address ([ADR 0043](docs/decisions/0043-no-email-in-outbound-requests.md)).
 - Sync: A recurring `sync-accounts` job runs every 5 minutes, a sixth of the 30-minute interval, and enqueues an incremental import for the accounts that are due, the longest-waiting first. The linked accounts are spread over the interval, so chess.com never gets them in one burst ([ADR 0076](docs/decisions/0076-recurring-account-sync.md), [`sync.rs`](backend/crates/analysis/src/jobs/sync.rs)).
 - Ownership: Anyone may link a public username and see its engine analysis. The AI report and the coach need a verified link: you put a short code anywhere in your chess.com profile's location field, and the server reads it back ([ADR-WEB-5](docs/decisions/ADR-WEB-5-chesscom-verification.md), [ADR-FIX-N-1](docs/decisions/ADR-FIX-N-1-unverified-links-see-analysis-only.md)).
 - Lichess: The Lichess importer and OAuth are in the tree and tested, but `LICHESS_ENABLED` defaults to off. We chose to get one platform right first ([ADR 0040](docs/decisions/0040-chesscom-first-defer-lichess-accounts.md)). The open Lichess game database is a different thing: it is reference data, described below.
@@ -210,7 +210,7 @@ Stockfish says what the best move was. It can't say whether a 1200 would ever se
 - Output: A probability for every legal move. We keep two numbers: `p_best`, the probability the engine's best move is played, and `p_ok`, the probability of any move within 5 win-chance points of the best line.
 - Where it's used: W11, "Mistakes on easy moves": a chance is a move where `p_ok ≥ 0.8` (most players at your level would find a good move) and the event is a blunder there. On the strengths page, "Your best moves in hard spots" prefers positions where you found the best move and `p_best ≤ 0.3`, the hardest first.
 - Not before ply 10: Maia-2 wasn't trained on the first ten half-moves, so those positions are never sent.
-- Without Maia nothing is estimated in its place. There is no engine-spread fallback: the maintainer ruled that difficulty comes from Maia or not at all, and a test fails if any other difficulty provider appears in the code. The positions are stored as `pending_maia`, W11 has no chances, the hard-spots board falls back to critical, balanced positions (a best line at least 15 points ahead of the second, win chance 25–75%), and the pages say how many positions are still waiting. When Maia comes back, a sweep fills them in; a position that keeps failing is retried at most 3 times.
+- Without Maia nothing is estimated in its place. There is no engine-spread fallback: difficulty comes from Maia or not at all (ADR-R2-13), and a test fails if any other difficulty provider appears in the code. The positions are stored as `pending_maia`, W11 has no chances, the hard-spots board falls back to critical, balanced positions (a best line at least 15 points ahead of the second, win chance 25–75%), and the pages say how many positions are still waiting. When Maia comes back, a sweep fills them in; a position that keeps failing is retried at most 3 times.
 
 </details>
 
@@ -349,7 +349,7 @@ From your rated games in one time class, each with its pre-game rating ([ADR 008
 - Peak: the first game with your highest rating, or your current rating if it is higher still.
 - Windows: `W = min(30, floor(n / 2))` games each. "Now" is the last W rated games. "Then" is the W games centred on the peak, clamped to end before "now", or your first W games if the peak is inside "now".
 - Then against now: rating, accuracy, blunders per game and score, by the period-comparison rules, plus your top three ranked weaknesses as events per chance in each window, under the prior behind the stored estimate.
-- The words: "Clearly worse" only with that verdict. The headline states facts ("peaked at 1,097 in April 2026 and is 816 now"), and a clearly worse measure is named as the likeliest place to look, never as the cause.
+- The words: "Clearly worse" only with that verdict. The headline states facts ("peaked at 1,111 in March 2026 and is 816 now"), and a clearly worse measure is named as the likeliest place to look, never as the cause.
 
 The web and the coach compute it with the same seeds and stream; a shared fixture checks every window and number to 1e-9.
 
@@ -403,7 +403,7 @@ A report is five calls, one per section. A section that fails gets one repair tu
 
 #### Budgets and modes
 
-A hard monthly stop per account (USD 0.20 on the free plan, USD 2.00 on pro, overridable) plus an optional global cap, checked before every call; every call is metered once from token counts. With no key the worker logs `ai: disabled (<reason>)` and every report is computed-only. Nothing about the analysis, the profile, the trainer or the focus needs the AI. For local development, the maintainer runs the coach on the machine's signed-in Claude Code on the host (`pnpm --filter @ci/ai-sidecar start:local`); then the budget is not enforced but still recorded. Production refuses that mode, and Anthropic's terms don't allow serving other people from a personal login, so any other deployment needs an `ANTHROPIC_API_KEY`.
+A hard monthly stop per account (USD 0.20 on the free plan, USD 2.00 on pro and on the default beta plan, overridable) plus an optional global cap, checked before every call; every call is metered once from token counts. With no key the worker logs `ai: disabled (<reason>)` and every report is computed-only. Nothing about the analysis, the profile, the trainer or the focus needs the AI. For local development the coach can run on your own signed-in Claude Code on the host (`sh scripts/setup.sh ai`, choice `local`); the budget is then recorded but not enforced. Production refuses that mode, and Anthropic's terms don't allow serving other people from a personal login, so any other deployment needs an `ANTHROPIC_API_KEY`.
 
 </details>
 
@@ -439,7 +439,7 @@ From [ADR 0090](docs/decisions/0090-missed-moments-trainer.md) and [`train/model
 - Events to the browser: The worker writes user events and `pg_notify('user_events', …)` in the same transaction; each web process holds one `LISTEN` and streams server-sent events with replay, with polling as the fallback ([ADR 0034](docs/decisions/0034-user-events-listen-notify.md), [ADR-WEB-8](docs/decisions/ADR-WEB-8-sse-delivery.md)).
 - Migrations own the schema: Plain SQL in `db/migrations/`, applied by sqlx; the web's Drizzle types are generated from the database ([ADR 0033](docs/decisions/0033-sql-migrations-own-the-schema.md)).
 - Redis is still in the Compose stack, but today only the web's health check talks to it. The queue moved to Postgres when the backend moved to Rust ([ADR 0030](docs/decisions/0030-rust-backend.md)).
-- The web app: Next.js 16 (App Router) and React 19, Better Auth with email sign-in links. It reads Postgres directly through read models scoped to your own links. Every pixel comes from one token set in [`packages/ui/DESIGN.md`](packages/ui/DESIGN.md) ([ADR-WEB-7](docs/decisions/ADR-WEB-7-design-tokens.md)). The board is react-chessboard with the Cburnett pieces; marks are drawn by our own overlay (a red pen for your mistakes, green for the better move, grey for the reply, numbered when they show a sequence), and a screen reader hears them as a list: "Red arrow from e4 to e6" ([ADR-WEB-15](docs/decisions/ADR-WEB-15-annotation-overlay.md)). Every cited position opens in one explorer with three lines: what you played, the engine line, and your own moves ([ADR-FIX-F-1](docs/decisions/ADR-FIX-F-1-position-explorer.md)).
+- The web app: Next.js 16 (App Router) and React 19, Better Auth with email sign-in links. It reads Postgres directly through read models scoped to your own links. Every colour, size and font comes from one token set in [`packages/ui/DESIGN.md`](packages/ui/DESIGN.md) ([ADR-WEB-7](docs/decisions/ADR-WEB-7-design-tokens.md)). The board is react-chessboard with the Cburnett pieces; marks are drawn by our own overlay (a red pen for your mistakes, green for the better move, grey for the reply, numbered when they show a sequence), and a screen reader hears them as a list: "Red arrow from e4 to e6" ([ADR-WEB-15](docs/decisions/ADR-WEB-15-annotation-overlay.md)). Every cited position opens in one explorer with three lines: what you played, the engine line, and your own moves ([ADR-FIX-F-1](docs/decisions/ADR-FIX-F-1-position-explorer.md)).
 
 </details>
 
@@ -449,7 +449,7 @@ From [ADR 0090](docs/decisions/0090-missed-moments-trainer.md) and [`train/model
 - Your data stays with you: Self-hosted, your games, analysis and plans live in your own Postgres. Rematch reads only public chess.com data and sends no email address anywhere. Accounts are for players 13 and over ([ADR-WEB-6](docs/decisions/ADR-WEB-6-age-gate.md)). With the AI on, the coaching input and your question go to Anthropic to write the text.
 - Stockfish and our statistics produce every fact: Claude only explains and prioritises them, and every claim links to a position from your games.
 - Rematch never helps during a game: It reads finished games only.
-- Limits: chess.com only for now. It is a beta (`v0.y.z`). The full stack wants about 16 GB of memory for Docker. The peer comparison is a rough guide built from your own opponents. Without Maia, the easy-move and hard-spot features wait; without tablebases, endgame technique is not measured; without an AI key, you get the numbers without the commentary. The coach can be wrong in what it chooses to stress, even when every fact it cites is right.
+- Limits: chess.com only for now. It is a beta (`v0.y.z`). The full stack wants a 16 GB machine with about 12 GB assigned to Docker. The peer comparison is a rough guide built from your own opponents. Without Maia, the easy-move and hard-spot features wait; without tablebases, endgame technique is not measured; without an AI key, you get the numbers without the commentary. The coach can be wrong in what it chooses to stress, even when every fact it cites is right.
 
 </details>
 
@@ -457,17 +457,15 @@ From [ADR 0090](docs/decisions/0090-missed-moments-trainer.md) and [`train/model
 
 ## Quick start
 
-You need Docker with about 16 GB of memory and Git.
+You need Git, and Docker with about 12 GB of memory assigned (a 16 GB machine) and about 10 GB of free disk.
 
 ```sh
 git clone https://github.com/Terkea/rematch.git && cd rematch
-cp .env.example .env          # then add your address: INVITE_ALLOWLIST=you@example.com
-sh scripts/rust-cache-init.sh # once per Docker host: the shared Rust build caches
-docker compose up -d --build  # Postgres, Redis, the Rust worker with Stockfish, the web app, Mailpit
-docker compose ps             # wait for web to be healthy
+sh scripts/setup.sh minimal --email=you@example.com
+sh scripts/seed-demo.sh        # optional: a demo player on every page
 ```
 
-Open <http://localhost:3100>, ask for a sign-in link and open it from Mailpit at <http://localhost:48025>. Then link your chess.com username. [Getting started](https://terkea.github.io/rematch/docs/getting-started/) covers verification, the AI coach and the optional pieces; [CONTRIBUTING.md](CONTRIBUTING.md) covers development and tests.
+`setup.sh` writes the `.env`, creates the shared Rust build caches and starts only the services the app uses: Postgres, Redis, the Rust worker with Stockfish, the web app, Mailpit and the AI sidecar. Open <http://localhost:3100>, ask for a sign-in link with the address you gave and open it from Mailpit at <http://localhost:48025>. Then link your chess.com username. [Getting started](https://terkea.github.io/rematch/docs/getting-started/) covers the data, the AI coach and the optional pieces; [CONTRIBUTING.md](CONTRIBUTING.md) covers development and tests.
 
 ### Releases
 
@@ -475,7 +473,8 @@ Each [release](https://github.com/Terkea/rematch/releases) ships signed linux/am
 
 <!-- x-release-please-start-version -->
 ```sh
-gh release download v0.1.0 --repo Terkea/rematch --pattern compose.yaml --pattern env.release.example
+gh release download v0.1.0 --repo Terkea/rematch --pattern compose.yaml --pattern env.release.example --pattern SHA256SUMS
+sha256sum --check --ignore-missing SHA256SUMS
 cp env.release.example .env   # fill in the values marked "required"
 docker compose up -d --wait
 ```
@@ -485,7 +484,7 @@ The worker migrates the database when it starts, so back up before upgrading. [d
 
 ## Roadmap
 
-The roadmap is GitHub's [milestones](https://github.com/Terkea/rematch/milestones): each milestone has one epic per theme, a spec in the issue, and its work as sub-issues. The ranking comes from a review of the app through the eyes of an 824-rated rapid player, checked against [the research on how amateurs improve](docs/research/2026-11-23-what-helps-amateurs-improve.md).
+The roadmap is GitHub's [milestones](https://github.com/Terkea/rematch/milestones): each milestone has one epic per theme, a spec in the issue, and its work as sub-issues. The order comes from a week of using it on my own account (824 rapid), checked against [the research on how amateurs improve](docs/research/2026-11-23-what-helps-amateurs-improve.md).
 
 Shipped: Stockfish analysis of every move, explained weaknesses and strengths, the citing coach, the missed-moments trainer, the weekly focus, the rating trajectory, and a coach that knows your plan.
 
@@ -503,7 +502,7 @@ Shipped: Stockfish analysis of every move, explained weaknesses and strengths, t
   - Drills for every weekly focus (3 sub-issues)
   - Conversion play-outs against an opponent at your level (2 sub-issues)
 - [v0.4 Self-host and benchmark](https://github.com/Terkea/rematch/issues?q=is%3Aissue+milestone%3A%22v0.4+Self-host+and+benchmark%22)
-  - A pipeline benchmark scorecard, tiers 1 to 4 (3 sub-issues)
+  - A pipeline speed scorecard, stages 1 to 4 (3 sub-issues)
 
 ### Later
 
@@ -518,19 +517,19 @@ Live progress (done of total) is on the [milestones page](https://github.com/Ter
 
 <!-- roadmap:end -->
 
-**Benchmark:** synthetic players with known flaws, run through the real pipeline, show what Rematch finds and what it misses today. [The method and the current scorecard](docs/benchmark.md).
+The pipeline benchmark runs synthetic players with known flaws through the real pipeline: today it finds two of the five ([the method and the scorecard](docs/benchmark.md)).
 
 Rematch is a beta: every release is `v0.y.z`, and 1.0 is reserved for the first complete release ([how we ship](docs/SDLC.md)).
 
 ## Help build Rematch
 
-It gets better with people who play, people who coach and people who build.
+Five kinds of help move it forward most:
 
-- **Rust developers:** the worker, the analysis pipeline, the profile engine and the coach's validator.
-- **TypeScript and React developers:** the Next.js app and its design system.
-- **Chess coaches and strong players:** what should a 1200 practise, and how would a good coach say it? Open a [coaching idea](https://github.com/Terkea/rematch/issues/new?template=coaching_idea.yml).
-- **Designers:** the annotated-scoresheet system in [`packages/ui/DESIGN.md`](packages/ui/DESIGN.md).
-- **Testers:** run it on your own games and tell us where it's wrong.
+- Rust developers: the worker, the analysis pipeline, the profile engine and the coach's validator.
+- TypeScript and React developers: the Next.js app and its design system.
+- Chess coaches and strong players: what should a 1200 practise, and how would a good coach say it? Open a [coaching idea](https://github.com/Terkea/rematch/issues/new?template=coaching_idea.yml).
+- Designers: the annotated-scoresheet system in [`packages/ui/DESIGN.md`](packages/ui/DESIGN.md).
+- Testers: run it on your own games and tell us where it's wrong.
 
 Start with a [good first issue](https://github.com/Terkea/rematch/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22), say hello in [Discussions](https://github.com/Terkea/rematch/discussions), and read [CONTRIBUTING.md](CONTRIBUTING.md). AI-assisted pull requests are welcome: [CLAUDE.md](CLAUDE.md) and [`.claude/skills`](.claude/skills) are the house rules. Everyone follows the [code of conduct](CODE_OF_CONDUCT.md); security reports go through [SECURITY.md](SECURITY.md).
 
@@ -546,6 +545,6 @@ My dad played chess his whole life. I'm not good at it, but every time I play I 
 
 Rematch is licensed under the [GNU AGPL-3.0](LICENSE). If you run a modified version as a network service, offer its users the source.
 
-It stands on the work of others, each under its own licence ([NOTICE](NOTICE)): [Stockfish](https://stockfishchess.org/) (GPL-3.0), the [Lichess open database](https://database.lichess.org/) (CC0) for the opening explorer and the optional band reference, the Syzygy endgame tablebases, [Maia-2](https://github.com/CSSLab/maia2) (MIT, optional), the Cburnett pieces (BSD-3-Clause), [chess.js](https://github.com/jhlywa/chess.js) and [react-chessboard](https://github.com/Clariity/react-chessboard), [Phosphor icons](https://phosphoricons.com/), and the Literata and Schibsted Grotesk typefaces (SIL OFL 1.1). The AI coach is written by Anthropic's Claude.
+It stands on the work of others, each under its own licence ([NOTICE](NOTICE)): [Stockfish](https://stockfishchess.org/) (GPL-3.0), the [Lichess open database](https://database.lichess.org/) (CC0) for the opening explorer and the optional band reference, the Syzygy endgame tablebases, [Maia-2](https://github.com/CSSLab/maia2) (MIT, optional), the Cburnett pieces (BSD-3-Clause), [chess.js](https://github.com/jhlywa/chess.js) and [react-chessboard](https://github.com/Clariity/react-chessboard), [Phosphor icons](https://phosphoricons.com/), and the Literata and Schibsted Grotesk typefaces (SIL OFL 1.1). The coach's words are written by Anthropic's Claude.
 
 Rematch is not affiliated with chess.com or Lichess.

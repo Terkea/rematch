@@ -3,7 +3,7 @@
     "title": "v0.2 Practice habit",
     "horizon": "now",
     "state": "open",
-    "description": "Turn the trainer into a daily habit and answer \"Is it working?\" weeks sooner: a streak that forgives a rest day, an opt-in daily email, an ETA in games and the training numbers that are already trustworthy."
+    "description": "Turn the trainer into a daily habit and show how far away \"Is it working?\" is: a streak that forgives a rest day, an opt-in daily email, an ETA in games and the training numbers that are already trustworthy."
   },
   {
     "title": "v0.3 Trainer depth",
@@ -15,7 +15,7 @@
     "title": "v0.4 Self-host and benchmark",
     "horizon": "next",
     "state": "open",
-    "description": "A scorecard for the analysis pipeline, from one Stockfish thread to a month of Lichess games and a coach report, tracked release over release, and a stack that fits a laptop."
+    "description": "A speed scorecard for the pipeline in four stages, from one Stockfish thread to a month of Lichess games and a coach report, tracked release over release, and a stack that fits a laptop."
   },
   {
     "title": "v0.5 More players",
