@@ -33,12 +33,14 @@ test.describe
       await page?.context().close();
     });
 
-    test("the nav opens it after Weaknesses, rapid first, each section honest", async () => {
+    test("the nav opens it after Weaknesses and Train, rapid first, each section honest", async () => {
       test.setTimeout(300_000);
       await gotoSettled(page, "/app/weaknesses");
       const nav = page.getByRole("navigation", { name: "Main" });
       const labels = await nav.getByRole("link").allTextContents();
-      expect(labels.indexOf("Strengths")).toBe(labels.indexOf("Weaknesses") + 1);
+      // Train sits between them (ADR 0090).
+      expect(labels.indexOf("Train")).toBe(labels.indexOf("Weaknesses") + 1);
+      expect(labels.indexOf("Strengths")).toBe(labels.indexOf("Train") + 1);
       await nav.getByRole("link", { name: "Strengths" }).click();
       await page.waitForURL(/\/app\/strengths$/);
       await expect(page.getByRole("heading", { level: 1 })).toHaveText("Strengths");
