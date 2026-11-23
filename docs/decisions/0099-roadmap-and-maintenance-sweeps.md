@@ -87,3 +87,12 @@ existed (the chat is ADR 0064).
   weekly sweep of 2026-11-30 fails unless `url` has been bumped.
 - The lychee job skips our own repository's URLs and GitHub's search pages, which rate-limit
   anonymous clients; the site's own link check still covers every internal link.
+
+## Amendment 1 (2026-11-23, ADR 0104)
+
+For an open seeded issue, `roadmap-issues.json` is now the source of truth. `--seed-issues` moves it
+to its milestone, adds its missing labels and rewrites its body when the text differs, keeping boxes
+ticked on GitHub; a closed issue is never edited, and an issue filed by hand stays GitHub's except
+for the milestone a milestone adopts (`adopt_issues`). `milestones.json` renames a milestone in place
+through `renamed_from`, and closes any other old title it names. Re-ranking is a pull request to the
+two files, not an edit on GitHub.

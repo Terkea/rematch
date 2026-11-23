@@ -105,6 +105,7 @@ One file per decision: context, decision, alternatives, consequences. New decisi
 - [0097. Self-hosting: one setup script, its data, the AI choice and a demo player](0097-self-hosting-setup-and-demo-data.md)
 - [0100. A pipeline benchmark: synthetic players with injected flaws (Tier 1)](0100-pipeline-benchmark-synthetic-players.md)
 - [0101. A ranking floor, W1 compared with the opponents, and W5 compared with the evaluation](0101-weakness-ranking-floor-and-baselines.md)
+- [0104. Factual and deterministic: four layers, one versioned recommendation algorithm](0104-factual-and-deterministic-four-layers.md)
 
 ## Records with placeholder numbers
 

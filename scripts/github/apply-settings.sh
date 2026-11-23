@@ -2,9 +2,11 @@
 # Apply the repository settings kept as code in .github/settings (ADR 0095) to this repository:
 # the "main" ruleset (created, or updated in place by name), the repository settings and topics,
 # private vulnerability reporting, Pages built by Actions, the labels, and the roadmap milestones
-# (milestones.json, matched by title; ADR 0099). With --seed-issues it also creates the seed
-# issues in roadmap-issues.json that do not exist yet, epics first, then links each one under its
-# epic as a sub-issue. An issue that already exists, open or closed, is never edited.
+# (milestones.json, matched by title, renamed through `renamed_from`; ADRs 0099 and 0104). With
+# --seed-issues it also syncs the seed issues in roadmap-issues.json, epics first: it creates the
+# ones that do not exist, moves and updates the open ones that differ from the file (labels are
+# only added, ticked boxes are kept), moves each milestone's `adopt_issues`, then links each one
+# under its epic as a sub-issue. A closed issue is never edited.
 #
 # Run it from the maintainer's own `gh` login (an admin of the repository). No token is stored
 # anywhere. It is idempotent: it reads the live state first, prints the diff, and writes only what
@@ -29,7 +31,7 @@ for arg in "$@"; do
     --prune) prune="--prune" ;;
     --seed-issues) seed=1 ;;
     -h | --help)
-      sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *)

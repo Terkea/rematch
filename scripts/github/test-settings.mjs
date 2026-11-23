@@ -5,7 +5,8 @@
 //      .github/workflows/ci.yml cannot silently drop (or block on) a required check;
 //   3. the diff and plan logic that apply-settings.sh and the drift check share;
 //   4. the roadmap kept as code (ADR 0099): milestones.json and roadmap-issues.json agree with
-//      each other and with labels.json, and the milestone, seed-issue and sub-issue plans.
+//      each other and with labels.json, and the milestone, seed-issue and sub-issue plans;
+//   5. milestone renames, moved and updated issues, and adopted issues (ADR 0104).
 // Run: node scripts/github/test-settings.mjs (no dependencies, no network).
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
@@ -20,11 +21,13 @@ import {
   driftReport,
   epicNumbers,
   findRuleset,
+  keepTicks,
   loadSettings,
   planChanges,
   planMilestones,
   planSeedIssues,
   planSubIssues,
+  resolveMilestones,
   validateLabels,
   validateMilestones,
   validateRepo,
@@ -439,11 +442,12 @@ check("every issue form's labels are in labels.json, and the spec form exists", 
   }
 });
 
-check("composeIssueBody: the size first, the spec, then where it was seeded from", () => {
+check("composeIssueBody: the size first, the spec, then where it is kept", () => {
   const body = composeIssueBody(settings.roadmapIssues[0]);
   assert.match(body, /^Size: [SMLX]+: /);
   assert.ok(body.includes("## Problem"));
   assert.match(body, /roadmap-issues\.json/);
+  assert.match(body, /replaced on the next/);
 });
 
 check("planMilestones: create by title, update what differs, delete only with prune", () => {
@@ -500,7 +504,9 @@ check("planSeedIssues: epics first, existing titles (open or closed) skipped, PR
   // Before the milestones exist (a dry run), the issue is planned without a number.
   const early = planSeedIssues(issues, [], [], "o/r");
   assert.ok(early.calls.every((c) => c.body.milestone === undefined));
-  assert.ok(early.lines.every((l) => l.includes("milestone created first")));
+  const planned = early.lines.filter((l) => l.startsWith("+ "));
+  assert.equal(planned.length, issues.length);
+  assert.ok(planned.every((l) => l.includes("milestone created first")));
 });
 
 check("planSubIssues: links each child under its epic once, by the child's id", () => {
@@ -514,7 +520,7 @@ check("planSubIssues: links each child under its epic once, by the child's id", 
   const child = live.find((l) => l.title === children[0].title);
   const parent = live.find((l) => l.title === children[0].parent);
   assert.equal(plan.calls[0].path, `repos/o/r/issues/${parent.number}/sub_issues`);
-  assert.deepEqual(plan.calls[0].body, { sub_issue_id: child.id });
+  assert.deepEqual(plan.calls[0].body, { sub_issue_id: child.id, replace_parent: true });
   // Already linked: nothing to do.
   const linked = new Map(numbers.map((n) => [n, live]));
   assert.deepEqual(planSubIssues(issues, live, linked, "o/r").calls, []);
@@ -522,6 +528,253 @@ check("planSubIssues: links each child under its epic once, by the child's id", 
   const none = planSubIssues(issues, [], new Map(), "o/r");
   assert.deepEqual(none.calls, []);
   assert.equal(none.lines.length, children.length);
+});
+
+// ---- 5. renames, moves and updates (ADR 0104) ----
+
+check(
+  "milestones.json: the evaluation-first roadmap, in order, with the old titles renamed",
+  () => {
+    assert.deepEqual(
+      settings.milestones.map((m) => m.title),
+      [
+        "v0.2 Factual and deterministic foundation",
+        "v0.3 The evaluation lab",
+        "v0.4 Patterns and progression",
+        "v0.5 Board, sound and clarity",
+        "v0.6 Practice habit and trainer depth",
+        "v0.7 More players",
+        "v1.0 MVP",
+      ],
+    );
+    const from = settings.milestones.flatMap((m) => m.renamed_from ?? []);
+    for (const t of [
+      "v0.2 Practice habit",
+      "v0.3 Trainer depth",
+      "v0.4 Self-host and benchmark",
+      "v0.5 More players",
+    ]) {
+      assert.ok(from.includes(t), `"${t}" is renamed or retired, not left behind`);
+    }
+    const lab = settings.milestones.find((m) => m.title === "v0.3 The evaluation lab");
+    assert.deepEqual(lab.adopt_issues, [11, 13, 14]);
+    const epic = settings.roadmapIssues.find(
+      (i) => i.epic && i.milestone === "v0.3 The evaluation lab" && /evaluation lab/i.test(i.title),
+    );
+    assert.ok(epic, "v0.3 has the evaluation lab epic");
+    const body = epic.body.join("\n");
+    for (const n of [11, 13, 14]) assert.match(body, new RegExp(`#${n}\\b`));
+  },
+);
+
+check("validateMilestones refuses a rename that clashes", () => {
+  const base = [
+    { title: "v0.2 A", description: "a", state: "open", horizon: "now" },
+    { title: "v0.3 B", description: "b", state: "open", horizon: "next" },
+  ];
+  const cases = [
+    [
+      (x) => {
+        x[0].renamed_from = ["v0.3 B"];
+      },
+      /is a current milestone/,
+    ],
+    [
+      (x) => {
+        x[0].renamed_from = ["old"];
+        x[1].renamed_from = ["old"];
+      },
+      /more than one renamed_from/,
+    ],
+    [
+      (x) => {
+        x[0].renamed_from = "old";
+      },
+      /must be an array/,
+    ],
+    [
+      (x) => {
+        x[0].adopt_issues = [3];
+        x[1].adopt_issues = [3];
+      },
+      /more than one milestone/,
+    ],
+    [
+      (x) => {
+        x[0].adopt_issues = [0];
+      },
+      /adopt_issues are numbers/,
+    ],
+  ];
+  for (const [mutate, err] of cases) {
+    const copy = structuredClone(base);
+    mutate(copy);
+    assert.throws(() => validateMilestones(copy), err);
+  }
+  validateMilestones(base);
+});
+
+const renameDesired = [
+  { title: "v0.2 Fresh", description: "f", state: "open", horizon: "now" },
+  {
+    title: "v0.6 Habit",
+    description: "h",
+    state: "open",
+    horizon: "later",
+    renamed_from: ["v0.2 Practice", "v0.3 Trainer"],
+  },
+  {
+    title: "v0.7 More",
+    description: "m",
+    state: "open",
+    horizon: "later",
+    renamed_from: ["v0.5 More"],
+    adopt_issues: [70],
+  },
+];
+const renameLive = [
+  { number: 1, title: "v0.2 Practice", description: "old", state: "open", due_on: null },
+  { number: 2, title: "v0.3 Trainer", description: "old", state: "open", due_on: null },
+  { number: 4, title: "v0.5 More", description: "m", state: "open", due_on: null },
+];
+
+check("planMilestones: renames through renamed_from, retires the rest, then does nothing", () => {
+  const plan = planMilestones(renameDesired, renameLive);
+  assert.deepEqual(
+    plan.calls.map((c) => `${c.method} ${c.path} ${JSON.stringify(c.body)}`),
+    [
+      'POST /milestones {"title":"v0.2 Fresh","state":"open","description":"f"}',
+      'PATCH /milestones/1 {"title":"v0.6 Habit","state":"open","description":"h"}',
+      'PATCH /milestones/4 {"title":"v0.7 More","state":"open","description":"m"}',
+      'PATCH /milestones/2 {"state":"closed"}',
+    ],
+  );
+  assert.ok(plan.lines.some((l) => l.includes('"v0.3 Trainer" (#2), retired into "v0.6 Habit"')));
+  assert.ok(!plan.lines.some((l) => l.includes("is not in milestones.json")));
+  // After the apply the renamed ones match by title and the retired one is closed.
+  const after = [
+    { number: 1, title: "v0.6 Habit", description: "h", state: "open", due_on: null },
+    { number: 2, title: "v0.3 Trainer", description: "old", state: "closed", due_on: null },
+    { number: 4, title: "v0.7 More", description: "m", state: "open", due_on: null },
+    { number: 6, title: "v0.2 Fresh", description: "f", state: "open", due_on: null },
+  ];
+  const again = planMilestones(renameDesired, after);
+  assert.deepEqual(again.calls, [], again.lines.join("\n"));
+  assert.deepEqual(again.lines, []);
+  // With --prune the retired milestone is deleted instead of closed; a renamed one never is.
+  const pruned = planMilestones(renameDesired, renameLive, { prune: true });
+  assert.ok(pruned.calls.some((c) => c.method === "DELETE" && c.path === "/milestones/2"));
+  assert.ok(!pruned.calls.some((c) => c.method === "DELETE" && c.path === "/milestones/1"));
+});
+
+check(
+  "resolveMilestones: an exact title wins over a rename, and each live one is used once",
+  () => {
+    const live = [...renameLive, { number: 9, title: "v0.6 Habit", state: "open" }];
+    const r = resolveMilestones(renameDesired, live);
+    assert.equal(r.byDesired.get("v0.6 Habit").number, 9);
+    assert.equal(r.byDesired.get("v0.7 More").number, 4);
+    assert.deepEqual(
+      r.retired.map((x) => x.live.number),
+      [1, 2],
+    );
+  },
+);
+
+check("planSeedIssues: moves, updates and adopts open issues, leaves closed ones alone", () => {
+  const spec = (title, milestone) => ({
+    title,
+    milestone,
+    size: "S",
+    labels: ["type/chore", "roadmap"],
+    body: ["## Problem", "", "x", "", "## Acceptance criteria", "", "- [ ] one", "- [ ] two"],
+  });
+  const file = [
+    spec("Stays", "v0.6 Habit"),
+    spec("Moves", "v0.6 Habit"),
+    spec("Text changed", "v0.7 More"),
+    spec("Closed", "v0.7 More"),
+    spec("Brand new", "v0.2 Fresh"),
+  ];
+  const ms = (n) => ({ number: n, title: renameLive.find((m) => m.number === n).title });
+  const labels = [{ name: "type/chore" }, { name: "roadmap" }];
+  const ticked = composeIssueBody(file[2]).replace("- [ ] one", "- [x] one");
+  const issue = (number, title, milestone, extra) => ({
+    number,
+    id: 100 + number,
+    title,
+    state: "open",
+    milestone,
+    labels,
+    ...extra,
+  });
+  const live = [
+    issue(10, "Stays", ms(1), { body: composeIssueBody(file[0]) }),
+    issue(11, "Moves", ms(2), {
+      labels: [{ name: "roadmap" }],
+      body: composeIssueBody(file[1]).replace("- [ ] two", "- [X] two"),
+    }),
+    issue(12, "Text changed", ms(4), { body: ticked.replace("\nx\n", "\nold text\n") }),
+    issue(13, "Closed", ms(2), { state: "closed", labels: [], body: "" }),
+    issue(70, "Filed by hand", null, { labels: [], body: "mine" }),
+  ];
+  const plan = planSeedIssues(file, live, renameLive, "o/r", renameDesired);
+  const calls = Object.fromEntries(plan.calls.map((c) => [c.path, c]));
+  // "Stays" is in v0.2 Practice, which becomes v0.6 Habit: nothing to do.
+  assert.equal(calls["repos/o/r/issues/10"], undefined);
+  // "Moves" is in the retired v0.3 Trainer: moved to #1 with its missing label; the text matches.
+  assert.deepEqual(calls["repos/o/r/issues/11"].body, {
+    milestone: 1,
+    labels: ["roadmap", "type/chore"],
+  });
+  // "Text changed" gets the file's text with its ticked box kept.
+  const patched = calls["repos/o/r/issues/12"].body;
+  assert.deepEqual(Object.keys(patched), ["body"]);
+  assert.match(patched.body, /- \[x\] one/);
+  assert.match(patched.body, /\nx\n/);
+  assert.equal(calls["repos/o/r/issues/13"], undefined, "a closed issue is never edited");
+  assert.deepEqual(calls["repos/o/r/issues/70"].body, { milestone: 4 }, "adopted: milestone only");
+  const created = plan.calls.filter((c) => c.method === "POST");
+  assert.deepEqual(
+    created.map((c) => c.body.title),
+    ["Brand new"],
+  );
+  assert.equal(created[0].body.milestone, undefined, "v0.2 Fresh does not exist yet");
+  assert.ok(plan.lines.some((l) => l.includes('"v0.3 Trainer" -> "v0.6 Habit"')));
+  assert.ok(plan.lines.some((l) => /1 to create, 2 to move, 1 to update in place/.test(l)));
+
+  // After the apply nothing differs, so the plan is empty.
+  const after = [
+    { number: 1, title: "v0.6 Habit", state: "open" },
+    { number: 2, title: "v0.3 Trainer", state: "closed" },
+    { number: 4, title: "v0.7 More", state: "open" },
+    { number: 6, title: "v0.2 Fresh", state: "open" },
+  ];
+  const byNumber = (n) => after.find((m) => m.number === n);
+  const done = live.map((l) => {
+    const c = calls[`repos/o/r/issues/${l.number}`];
+    const milestone = l.milestone ? byNumber(l.milestone.number) : null;
+    if (!c) return { ...l, milestone };
+    return {
+      ...l,
+      milestone: c.body.milestone ? byNumber(c.body.milestone) : milestone,
+      labels: c.body.labels ? c.body.labels.map((name) => ({ name })) : l.labels,
+      body: c.body.body ?? l.body,
+    };
+  });
+  done.push(issue(14, "Brand new", byNumber(6), { body: composeIssueBody(file[4]) }));
+  const again = planSeedIssues(file, done, after, "o/r", renameDesired);
+  assert.deepEqual(again.calls, [], again.lines.join("\n"));
+  assert.deepEqual(again.lines, []);
+});
+
+check("keepTicks: only boxes with the same text stay ticked", () => {
+  const body = "- [ ] a\n- [ ] b\n  - [ ] c";
+  assert.equal(
+    keepTicks(body, "- [x] a\r\n- [ ] b\r\n  - [X] c\n- [x] gone"),
+    "- [x] a\n- [ ] b\n  - [x] c",
+  );
+  assert.equal(keepTicks(body, undefined), body);
 });
 
 /** A live state that already matches the settings. */

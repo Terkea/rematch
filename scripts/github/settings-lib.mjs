@@ -464,7 +464,11 @@ export function validateMilestones(milestones) {
   }
   const titles = new Set();
   for (const m of milestones) {
-    onlyKeys(m, ["title", "description", "state", "due_on", "horizon"], `milestone ${m.title}`);
+    onlyKeys(
+      m,
+      ["title", "description", "state", "due_on", "horizon", "renamed_from", "adopt_issues"],
+      `milestone ${m.title}`,
+    );
     if (typeof m.title !== "string" || m.title === "" || m.title.length > 100) {
       fail("a milestone needs a title of at most 100 characters");
     }
@@ -479,6 +483,29 @@ export function validateMilestones(milestones) {
     }
     if (m.due_on !== undefined && !/^\d{4}-\d{2}-\d{2}T00:00:00Z$/.test(m.due_on)) {
       fail(`milestone "${m.title}": due_on must look like 2027-01-31T00:00:00Z`);
+    }
+  }
+  // Renames (ADR 0104): an old title names one live milestone, so it appears in one renamed_from
+  // only, and never as a current title (that milestone would be matched and renamed at once).
+  const old = new Set();
+  const adopted = new Set();
+  for (const m of milestones) {
+    const from = m.renamed_from ?? [];
+    if (!Array.isArray(from)) fail(`milestone "${m.title}": renamed_from must be an array`);
+    for (const t of from) {
+      if (typeof t !== "string" || t === "") fail(`milestone "${m.title}": renamed_from entry`);
+      if (titles.has(t.toLowerCase())) {
+        fail(`milestone "${m.title}": "${t}" in renamed_from is a current milestone`);
+      }
+      if (old.has(t.toLowerCase())) fail(`"${t}" is in more than one renamed_from`);
+      old.add(t.toLowerCase());
+    }
+    const nums = m.adopt_issues ?? [];
+    if (!Array.isArray(nums)) fail(`milestone "${m.title}": adopt_issues must be an array`);
+    for (const n of nums) {
+      if (!Number.isInteger(n) || n < 1) fail(`milestone "${m.title}": adopt_issues are numbers`);
+      if (adopted.has(n)) fail(`issue #${n} is adopted by more than one milestone`);
+      adopted.add(n);
     }
   }
 }
@@ -562,8 +589,9 @@ export function composeIssueBody(issue) {
     ...issue.body,
     "",
     "---",
-    "Seeded from `.github/settings/roadmap-issues.json` (ADR 0099). From now on the issue is the",
-    "source of truth: edit it here, not in the file.",
+    "Kept in `.github/settings/roadmap-issues.json` (ADRs 0099 and 0104). Edit the file, then run",
+    "`sh scripts/github/apply-settings.sh --seed-issues`: an edit made here is replaced on the next",
+    "run, except ticked boxes, which are kept.",
   ].join("\n");
 }
 
@@ -573,33 +601,91 @@ const milestoneBody = (m) => {
   return b;
 };
 
-/** Create or update milestones by title; delete unknown ones only with `prune`. */
+/**
+ * Which live milestone each desired one is (ADR 0104): the one with its title, else the first
+ * unclaimed one named in its `renamed_from`. `retired` holds the live milestones named in a
+ * `renamed_from` that no rename took: their issues have moved to the milestone that names them.
+ */
+export function resolveMilestones(desired, live) {
+  const byDesired = new Map();
+  const renamed = new Set();
+  const claimed = new Set();
+  for (const d of desired) {
+    const l = live.find((m) => m.title === d.title);
+    if (l) {
+      byDesired.set(d.title, l);
+      claimed.add(l.number);
+    }
+  }
+  for (const d of desired) {
+    if (byDesired.has(d.title)) continue;
+    const l = (d.renamed_from ?? [])
+      .map((t) => live.find((m) => m.title === t && !claimed.has(m.number)))
+      .find((m) => m !== undefined);
+    if (l) {
+      byDesired.set(d.title, l);
+      renamed.add(d.title);
+      claimed.add(l.number);
+    }
+  }
+  const retired = [];
+  for (const d of desired) {
+    for (const t of d.renamed_from ?? []) {
+      for (const l of live.filter((m) => m.title === t && !claimed.has(m.number))) {
+        retired.push({ live: l, into: d.title });
+      }
+    }
+  }
+  return { byDesired, renamed, retired };
+}
+
+/**
+ * Create, rename or update milestones by title. A live milestone named in a `renamed_from` that
+ * no rename took is retired: closed, or deleted with `prune`. Any other unknown milestone is
+ * deleted only with `prune`.
+ */
 export function planMilestones(desired, live, opts = {}) {
   const lines = [];
   const calls = [];
-  const byTitle = new Map(live.map((m) => [m.title, m]));
+  const { byDesired, renamed, retired } = resolveMilestones(desired, live);
   for (const d of desired) {
-    const l = byTitle.get(d.title);
+    const l = byDesired.get(d.title);
     if (!l) {
       lines.push(`+ milestone "${d.title}" (${d.state})`);
       calls.push({ method: "POST", path: "/milestones", body: milestoneBody(d) });
       continue;
     }
     const diffs = [];
+    if (renamed.has(d.title)) diffs.push(`title -> "${d.title}"`);
     if ((l.description ?? "") !== d.description) diffs.push("description");
     if (l.state !== d.state) diffs.push(`state: ${l.state} -> ${d.state}`);
     const liveDue = l.due_on ? String(l.due_on).slice(0, 10) : null;
     const wantDue = d.due_on ? d.due_on.slice(0, 10) : null;
     if (liveDue !== wantDue) diffs.push(`due_on: ${liveDue} -> ${wantDue}`);
     if (diffs.length > 0) {
-      lines.push(`~ milestone "${d.title}" (#${l.number}): ${diffs.join(", ")}`);
+      lines.push(`~ milestone "${l.title}" (#${l.number}): ${diffs.join(", ")}`);
       const body = milestoneBody(d);
       if (!d.due_on && l.due_on) body.due_on = null;
       calls.push({ method: "PATCH", path: `/milestones/${l.number}`, body });
     }
   }
-  const wanted = new Set(desired.map((d) => d.title));
-  for (const l of live.filter((m) => !wanted.has(m.title))) {
+  const known = new Set([...byDesired.values()].map((m) => m.number));
+  for (const r of retired) {
+    known.add(r.live.number);
+    const what = `milestone "${r.live.title}" (#${r.live.number}), retired into "${r.into}"`;
+    if (opts.prune) {
+      lines.push(`- ${what}: delete`);
+      calls.push({ method: "DELETE", path: `/milestones/${r.live.number}` });
+    } else if (r.live.state !== "closed") {
+      lines.push(`~ ${what}: state open -> closed`);
+      calls.push({
+        method: "PATCH",
+        path: `/milestones/${r.live.number}`,
+        body: { state: "closed" },
+      });
+    }
+  }
+  for (const l of live.filter((m) => !known.has(m.number))) {
     if (opts.prune) {
       lines.push(`- milestone "${l.title}" (#${l.number}, delete)`);
       calls.push({ method: "DELETE", path: `/milestones/${l.number}` });
@@ -615,30 +701,125 @@ function liveIssue(liveIssues, title) {
   return liveIssues.find((i) => !i.pull_request && i.title.trim() === title.trim());
 }
 
+const TICKED = /^(\s*- )\[[xX]\] /;
+const untick = (line) => line.replace(TICKED, "$1[ ] ");
+const lf = (text) => String(text ?? "").replaceAll("\r\n", "\n");
+
+/** A body as compared: LF line ends, no trailing whitespace, every box unticked. */
+function comparable(body) {
+  return lf(body).trimEnd().split("\n").map(untick).join("\n");
+}
+
+/** `body` with every box ticked that is ticked, with the same text, in `live`. */
+export function keepTicks(body, live) {
+  const ticked = new Set(
+    lf(live)
+      .split("\n")
+      .filter((l) => TICKED.test(l))
+      .map(untick),
+  );
+  return body
+    .split("\n")
+    .map((l) => (ticked.has(l) ? l.replace("- [ ] ", "- [x] ") : l))
+    .join("\n");
+}
+
 /**
- * Seed issues that do not exist yet (matched by exact title, open or closed), epics first. An
- * issue that exists is never edited: after seeding, GitHub is the source of truth.
+ * The issue plan (ADRs 0099 and 0104), epics first. A seed issue whose exact title is not on
+ * GitHub, open or closed, is created. An open one is brought in line with the file: moved to its
+ * milestone (through a rename when there is one), given its missing labels (none is removed) and
+ * its body rewritten when the text differs, with ticked boxes kept. A closed one is left alone.
+ * The issues a milestone adopts (`adopt_issues`, filed by hand) are moved to it, and nothing else
+ * of theirs changes.
  */
-export function planSeedIssues(issues, liveIssues, liveMilestones, repo) {
+export function planSeedIssues(issues, liveIssues, liveMilestones, repo, desiredMilestones = []) {
   const lines = [];
   const calls = [];
-  const number = new Map(liveMilestones.map((m) => [m.title, m.number]));
+  const { byDesired } = resolveMilestones(desiredMilestones, liveMilestones);
+  const number = (title) =>
+    byDesired.get(title)?.number ?? liveMilestones.find((m) => m.title === title)?.number;
+  const count = { created: 0, moved: 0, updated: 0, current: 0, closed: 0 };
+  /** The move of `live` to milestone `title` (number `want`), or null when it is there. */
+  const move = (live, want, title) => {
+    if (want !== undefined && live.milestone?.number === want) return null;
+    const from = live.milestone?.title ? `"${live.milestone.title}"` : "no milestone";
+    return `${from} -> "${title}"${want === undefined ? " (created first)" : ""}`;
+  };
   const ordered = [...issues.filter((i) => i.epic), ...issues.filter((i) => !i.epic)];
-  let existing = 0;
   for (const i of ordered) {
-    if (liveIssue(liveIssues, i.title)) {
-      existing += 1;
+    const live = liveIssue(liveIssues, i.title);
+    const m = number(i.milestone);
+    if (!live) {
+      const kind = i.epic ? "epic" : i.parent ? "sub-issue" : "issue";
+      const pending = m === undefined ? " (milestone created first)" : "";
+      lines.push(`+ ${kind} "${i.title}" [${i.labels.join(", ")}] in "${i.milestone}"${pending}`);
+      const body = { title: i.title, body: composeIssueBody(i), labels: i.labels };
+      if (m !== undefined) body.milestone = m;
+      calls.push({ method: "POST", path: `repos/${repo}/issues`, body });
+      count.created += 1;
       continue;
     }
-    const m = number.get(i.milestone);
-    const kind = i.epic ? "epic" : i.parent ? "sub-issue" : "issue";
-    const pending = m === undefined ? " (milestone created first)" : "";
-    lines.push(`+ ${kind} "${i.title}" [${i.labels.join(", ")}] in "${i.milestone}"${pending}`);
-    const body = { title: i.title, body: composeIssueBody(i), labels: i.labels };
-    if (m !== undefined) body.milestone = m;
-    calls.push({ method: "POST", path: `repos/${repo}/issues`, body });
+    if (live.state === "closed") {
+      count.closed += 1;
+      continue;
+    }
+    const patch = {};
+    const what = [];
+    const moved = move(live, m, i.milestone);
+    if (moved) {
+      what.push(`milestone ${moved}`);
+      if (m !== undefined) patch.milestone = m;
+    }
+    const have = (live.labels ?? []).map((l) => (typeof l === "string" ? l : l.name));
+    const missing = i.labels.filter((l) => !have.includes(l));
+    if (missing.length > 0) {
+      what.push(`labels +${missing.join(" +")}`);
+      patch.labels = [...have, ...missing];
+    }
+    const want = composeIssueBody(i);
+    if (comparable(want) !== comparable(live.body)) {
+      what.push("body");
+      patch.body = keepTicks(want, live.body);
+    }
+    if (what.length === 0) {
+      count.current += 1;
+      continue;
+    }
+    lines.push(`~ issue #${live.number} "${i.title}": ${what.join("; ")}`);
+    count[moved ? "moved" : "updated"] += 1;
+    if (Object.keys(patch).length > 0) {
+      calls.push({ method: "PATCH", path: `repos/${repo}/issues/${live.number}`, body: patch });
+    }
   }
-  if (existing > 0) lines.push(`  ${existing} seed issue(s) already exist (left as they are)`);
+  for (const d of desiredMilestones) {
+    for (const n of d.adopt_issues ?? []) {
+      const live = liveIssues.find((x) => x.number === n && !x.pull_request);
+      if (!live) {
+        lines.push(`  issue #${n} (adopted by "${d.title}") is not on GitHub (skipped)`);
+        continue;
+      }
+      if (live.state === "closed") {
+        count.closed += 1;
+        continue;
+      }
+      const m = number(d.title);
+      const moved = move(live, m, d.title);
+      if (!moved) {
+        count.current += 1;
+        continue;
+      }
+      lines.push(`~ issue #${n} "${live.title}" (adopted): milestone ${moved}`);
+      count.moved += 1;
+      if (m !== undefined) {
+        calls.push({ method: "PATCH", path: `repos/${repo}/issues/${n}`, body: { milestone: m } });
+      }
+    }
+  }
+  if (count.created + count.moved + count.updated > 0) {
+    lines.push(
+      `  issues: ${count.created} to create, ${count.moved} to move, ${count.updated} to update in place, ${count.current} current, ${count.closed} closed (left alone)`,
+    );
+  }
   return { lines, calls };
 }
 
@@ -671,10 +852,11 @@ export function planSubIssues(issues, liveIssues, subIssues, repo) {
       continue;
     }
     lines.push(`+ link #${child.number} "${i.title}" under #${parent.number}`);
+    // A child linked under another epic moves here (ADR 0104); GitHub allows one parent.
     calls.push({
       method: "POST",
       path: `repos/${repo}/issues/${parent.number}/sub_issues`,
-      body: { sub_issue_id: child.id },
+      body: { sub_issue_id: child.id, replace_parent: true },
     });
   }
   if (linked > 0) lines.push(`  ${linked} sub-issue link(s) already in place`);

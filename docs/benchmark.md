@@ -39,7 +39,7 @@ The run took 4 minutes 21 seconds with 4 engines: 72,971 Stockfish searches, 58,
 
 ## What it measures
 
-The benchmark asks one question of Rematch's analysis: given a player whose weakness we put there ourselves, at a rate we chose, does the pipeline find it, rank it first, size it correctly and point the plan at it? Tier 1 answers it with synthetic players. Tiers 2 to 4 are planned and described at the end. They measure accuracy; the speed of each pipeline stage is a separate roadmap item (the v0.4 milestone).
+The benchmark asks one question of Rematch's analysis: given a player whose weakness we put there ourselves, at a rate we chose, does the pipeline find it, rank it first, size it correctly and point the plan at it? Tier 1 answers it with synthetic players. Tiers 2 to 4 are planned and described at the end. They measure accuracy; the speed and cost of each pipeline stage are measured in the v0.3 evaluation lab ([the evaluation method](evaluation.md)).
 
 Tier 1 lives in `backend/crates/bench` (ADR 0100). It runs the production code, in-process, against a throwaway **Postgres** database:
 

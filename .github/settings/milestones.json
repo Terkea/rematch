@@ -1,27 +1,43 @@
 [
   {
-    "title": "v0.2 Practice habit",
+    "title": "v0.2 Factual and deterministic foundation",
     "horizon": "now",
     "state": "open",
-    "description": "Turn the trainer into a daily habit and show how far away \"Is it working?\" is: a streak that forgives a rest day, an opt-in daily email, an ETA in games and the training numbers that are already trustworthy."
+    "description": "One versioned recommendation algorithm: a manifest of every constant, protocol and prompt that shapes a recommendation, its id stamped on every row it writes, and a replay suite that proves the same games give byte-identical facts, profile and recommendations (ADR 0104)."
   },
   {
-    "title": "v0.3 Trainer depth",
+    "title": "v0.3 The evaluation lab",
     "horizon": "next",
     "state": "open",
-    "description": "Drills for the focuses that have none today: the opening-trap lines replayed from move 1, a clock budget for time trouble, and won positions played out against an opponent at your level."
+    "renamed_from": ["v0.4 Self-host and benchmark"],
+    "adopt_issues": [11, 13, 14],
+    "description": "Every layer measured against its own ground truth: Lichess puzzle themes, Syzygy, lila's accuracy formula, synthetic players and anonymised real ones. Quality, cost and latency KPIs with 80% intervals, a history per algorithm version, and an Evaluation page on the site."
   },
   {
-    "title": "v0.4 Self-host and benchmark",
+    "title": "v0.4 Patterns and progression",
     "horizon": "next",
     "state": "open",
-    "description": "A speed scorecard for the pipeline in four stages, from one Stockfish thread to a month of Lichess games and a coach report, tracked release over release, and a stack that fits a laptop."
+    "description": "One registry of versioned patterns (by motif, piece, phase, clock, opening, colour and after a loss), each admitted only after it passes its ground-truth suite, and a progression monitor that shows when a pattern started and whether it has recovered."
   },
   {
-    "title": "v0.5 More players",
+    "title": "v0.5 Board, sound and clarity",
+    "horizon": "next",
+    "state": "open",
+    "description": "The big UI round, from real-screenshot mockups the owner picks: sound in the trainer, a promotion picker and premoves, piece and board settings, an overview that leads with one trend and one focus, and \"Why this?\" on every recommendation."
+  },
+  {
+    "title": "v0.6 Practice habit and trainer depth",
     "horizon": "later",
     "state": "open",
-    "description": "Lichess accounts and PGN files as game sources, the app in more than one language, and an app that works on a phone and with a screen reader."
+    "renamed_from": ["v0.2 Practice habit", "v0.3 Trainer depth"],
+    "description": "Turn the trainer into a daily habit and give every weekly focus a drill: a streak that forgives a rest day, an opt-in morning email, an ETA for \"Is it working?\", opening-trap lines, a clock budget and won positions played out against Maia."
+  },
+  {
+    "title": "v0.7 More players",
+    "horizon": "later",
+    "state": "open",
+    "renamed_from": ["v0.5 More players"],
+    "description": "Lichess accounts and PGN files as game sources, the app in more than one language, and the rating-band assumptions checked with players above 2000."
   },
   {
     "title": "v1.0 MVP",

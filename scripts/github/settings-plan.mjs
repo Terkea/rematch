@@ -4,8 +4,9 @@
 // <out>/calls.tsv ("METHOD<TAB>PATH<TAB>BODY-FILE or -") with one JSON body file per call.
 // Usage: node scripts/github/settings-plan.mjs --live DIR --repo OWNER/REPO --out DIR [--prune]
 //          [--phase settings|issues|sub-issues]
-// The phases run in that order (ADR 0099): the settings and milestones, then the seed issues that
-// do not exist yet (epics first), then the sub-issue links, each against a fresh read.
+// The phases run in that order (ADR 0099): the settings and milestones (with renames, ADR 0104),
+// then the seed issues (created, moved or updated, epics first), then the sub-issue links, each
+// against a fresh read.
 //        node scripts/github/settings-plan.mjs --live DIR --epic-numbers
 // prints the live numbers of the seeded epics, one per line, so the script can read their
 // sub-issues.
@@ -104,6 +105,7 @@ if (phase === "settings") {
     readList("issues.jsonl"),
     readList("milestones.jsonl"),
     repo,
+    settings.milestones,
   );
 } else {
   const issues = readList("issues.jsonl");
@@ -117,7 +119,7 @@ if (phase === "settings") {
 
 const none = {
   settings: "No changes: the repository matches .github/settings.",
-  issues: "No new seed issues: every issue in roadmap-issues.json exists.",
+  issues: "No issue changes: every seed issue exists and matches roadmap-issues.json.",
   "sub-issues": "No new sub-issue links.",
 }[phase];
 console.log(plan.lines.length === 0 ? none : plan.lines.join("\n"));
