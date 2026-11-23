@@ -2,11 +2,12 @@ import type { Db } from "@ci/db";
 import { focuses, gameMetrics, games, weaknessSeriesPoint } from "@ci/db/generated";
 import { and, desc, eq, gt, gte, isNull, lt, sql } from "drizzle-orm";
 import { comparisonBacksState } from "../../lib/explain";
-import { scopedAccountIds } from "../games";
+import { readOnly, scopedAccountIds } from "../games";
 import type { TimeClass } from "../games/types";
 import { seriesLabel } from "../profile/catalogue";
 import type { CoachScope, Side, WeaknessState, WeaknessSummary } from "../profile/types";
 import { openingNames, type ScopeKey, summariesIn } from "../profile/weaknesses";
+import { type Interval, wilson } from "../stats/wilson";
 import {
   chooseTarget,
   DEFAULT_GAMES_N,
@@ -419,4 +420,68 @@ export async function focusOffer(
     current,
     suggestion: candidate({ accountId: scope.accountId, timeClass: scope.timeClass, side }, w),
   };
+}
+
+export type FocusWeekLine = {
+  seriesKey: string;
+  label: string;
+  side: Side;
+  targetRate: number;
+  events: number;
+  chances: number;
+  games: number;
+  rate: number | null;
+  interval: Interval | null;
+};
+
+/**
+ * "Your focus this week" for each weekly review (ADR 0090): the focus that ran during the week
+ * starting on each Monday (`YYYY-MM-DD`), with its own games' counts in that week. A week before
+ * any focus, or with none of a focus's games, gets no line. Only the user's own focuses of the
+ * target's account and time class are read.
+ */
+export async function focusWeekLines(
+  db: Db,
+  userId: string,
+  target: { accountId: string; timeClass: TimeClass },
+  weekStarts: string[],
+): Promise<Map<string, FocusWeekLine>> {
+  const out = new Map<string, FocusWeekLine>();
+  if (weekStarts.length === 0) return out;
+  return readOnly(db, async (tx) => {
+    if ((await scopedAccountIds(tx, userId, target.accountId)).length === 0) return out;
+    const rows = await tx
+      .select()
+      .from(focuses)
+      .where(
+        and(
+          eq(focuses.userId, userId),
+          eq(focuses.accountId, target.accountId),
+          eq(focuses.timeClass, target.timeClass),
+        ),
+      )
+      .orderBy(desc(focuses.startedAt));
+    for (const week of weekStarts) {
+      const from = new Date(`${week}T00:00:00Z`);
+      if (Number.isNaN(from.getTime())) continue;
+      const to = new Date(from.getTime() + 7 * 86_400_000);
+      // The newest focus that started before the week ended and had not ended before it began.
+      const f = rows.find((r) => r.startedAt < to && (r.endedAt === null || r.endedAt >= from));
+      if (!f) continue;
+      const c = await focusCounts(tx, f, { from, to });
+      if (c.games === 0) continue;
+      out.set(week, {
+        seriesKey: f.seriesKey,
+        label: await labelOf(tx, f),
+        side: f.side,
+        targetRate: f.targetRate,
+        events: c.events,
+        chances: c.chances,
+        games: c.games,
+        rate: c.chances > 0 ? c.events / c.chances : null,
+        interval: wilson(c.events, c.chances, 0.8),
+      });
+    }
+    return out;
+  });
 }
