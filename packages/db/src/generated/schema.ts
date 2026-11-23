@@ -645,6 +645,110 @@ export const coachingInputs = pgTable(
   ],
 );
 
+export const drillAttempts = pgTable(
+  "drill_attempts",
+  {
+    id: bigserial({ mode: "bigint" }).primaryKey().notNull(),
+    itemId: uuid("item_id").notNull(),
+    userId: uuid("user_id").notNull(),
+    at: timestamp({ withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    correct: boolean().notNull(),
+    confidence: text().notNull(),
+    moveUci: text("move_uci").notNull(),
+    ms: integer(),
+  },
+  (table) => [
+    index("drill_attempts_item_idx").using(
+      "btree",
+      table.itemId.asc().nullsLast(),
+      table.at.asc().nullsLast(),
+    ),
+    index("drill_attempts_user_idx").using(
+      "btree",
+      table.userId.asc().nullsLast(),
+      table.at.asc().nullsLast(),
+    ),
+    foreignKey({
+      columns: [table.itemId],
+      foreignColumns: [drillItems.id],
+      name: "drill_attempts_item_id_fkey",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [table.userId],
+      foreignColumns: [user.id],
+      name: "drill_attempts_user_id_fkey",
+    }).onDelete("cascade"),
+    check(
+      "drill_attempts_confidence_check",
+      sql`confidence = ANY (ARRAY['sure'::text, 'guess'::text])`,
+    ),
+    check("drill_attempts_ms_check", sql`(ms IS NULL) OR (ms >= 0)`),
+  ],
+);
+
+export const drillItems = pgTable(
+  "drill_items",
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    userId: uuid("user_id").notNull(),
+    accountId: uuid("account_id").notNull(),
+    timeClass: timeClass("time_class").notNull(),
+    gameId: uuid("game_id").notNull(),
+    ply: integer().notNull(),
+    sourceKey: text("source_key").notNull(),
+    sourceKeys: text("source_keys").array().notNull(),
+    fen: text().notNull(),
+    playedUci: text("played_uci").notNull(),
+    solutionUci: text("solution_uci").notNull(),
+    solutionLine: text("solution_line").array().notNull(),
+    acceptedUci: text("accepted_uci").array().notNull(),
+    mateIn: integer("mate_in"),
+    winBefore: doublePrecision("win_before").notNull(),
+    winAfter: doublePrecision("win_after").notNull(),
+    tags: text().array().notNull(),
+    heldOut: boolean("held_out").notNull(),
+    streak: smallint().default(0).notNull(),
+    cleanPasses: smallint("clean_passes").default(0).notNull(),
+    dueOn: date("due_on"),
+    introducedOn: date("introduced_on"),
+    lastAttemptOn: date("last_attempt_on"),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    retiredAt: timestamp("retired_at", { withTimezone: true, mode: "date" }),
+  },
+  (table) => [
+    index("drill_items_due_idx")
+      .using(
+        "btree",
+        table.userId.asc().nullsLast(),
+        table.accountId.asc().nullsLast(),
+        table.timeClass.asc().nullsLast(),
+        table.dueOn.asc().nullsLast(),
+      )
+      .where(sql`((retired_at IS NULL) AND (NOT held_out))`),
+    foreignKey({
+      columns: [table.userId],
+      foreignColumns: [user.id],
+      name: "drill_items_user_id_fkey",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [table.accountId],
+      foreignColumns: [linkedAccounts.id],
+      name: "drill_items_account_id_fkey",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [table.gameId],
+      foreignColumns: [games.id],
+      name: "drill_items_game_id_fkey",
+    }).onDelete("cascade"),
+    unique("drill_items_position_unique").on(table.userId, table.gameId, table.ply),
+    check("drill_items_ply_check", sql`ply > 0`),
+    check(
+      "drill_items_source_check",
+      sql`(source_key = ANY (ARRAY['W4.missed'::text, 'W3.shallow'::text, 'W3.deep'::text, 'W7.traps'::text, 'blunder'::text])) AND (source_keys <@ ARRAY['W4.missed'::text, 'W3.shallow'::text, 'W3.deep'::text, 'W7.traps'::text, 'blunder'::text]) AND (source_key = ANY (source_keys))`,
+    ),
+  ],
+);
+
 export const gameMetrics = pgTable(
   "game_metrics",
   {

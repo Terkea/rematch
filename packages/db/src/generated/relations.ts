@@ -12,6 +12,8 @@ import {
   coachConversations,
   coachingInputs,
   coachMessages,
+  drillAttempts,
+  drillItems,
   gameMetrics,
   gameOpenings,
   gamePreviews,
@@ -147,6 +149,33 @@ export const coachingInputsRelations = relations(coachingInputs, ({ one, many })
   }),
 }));
 
+export const drillAttemptsRelations = relations(drillAttempts, ({ one }) => ({
+  drillItem: one(drillItems, {
+    fields: [drillAttempts.itemId],
+    references: [drillItems.id],
+  }),
+  user: one(user, {
+    fields: [drillAttempts.userId],
+    references: [user.id],
+  }),
+}));
+
+export const drillItemsRelations = relations(drillItems, ({ one, many }) => ({
+  drillAttempts: many(drillAttempts),
+  game: one(games, {
+    fields: [drillItems.gameId],
+    references: [games.id],
+  }),
+  linkedAccount: one(linkedAccounts, {
+    fields: [drillItems.accountId],
+    references: [linkedAccounts.id],
+  }),
+  user: one(user, {
+    fields: [drillItems.userId],
+    references: [user.id],
+  }),
+}));
+
 export const gameMetricsRelations = relations(gameMetrics, ({ one }) => ({
   game: one(games, {
     fields: [gameMetrics.gameId],
@@ -177,6 +206,7 @@ export const gamePreviewsRelations = relations(gamePreviews, ({ one }) => ({
 }));
 
 export const gamesRelations = relations(games, ({ one, many }) => ({
+  drillItems: many(drillItems),
   gameMetrics: many(gameMetrics),
   gameOpenings: many(gameOpenings),
   gamePreviews: many(gamePreviews),
@@ -220,6 +250,7 @@ export const linkedAccountsRelations = relations(linkedAccounts, ({ many }) => (
   accountLinks: many(accountLinks),
   coachConversations: many(coachConversations),
   coachingInputs: many(coachingInputs),
+  drillItems: many(drillItems),
   gameMetrics: many(gameMetrics),
   gameOpenings: many(gameOpenings),
   games: many(games),
@@ -350,6 +381,8 @@ export const userRelations = relations(user, ({ many }) => ({
   accounts: many(account),
   chesscomRequestBudgets: many(chesscomRequestBudgets),
   coachConversations: many(coachConversations),
+  drillAttempts: many(drillAttempts),
+  drillItems: many(drillItems),
   sessions: many(session),
 }));
 
