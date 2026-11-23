@@ -18,3 +18,15 @@ Changed: night `well` to `#191612` (`piece-dark` stays `#141210`), night pen to 
 ## Round 3: pass
 
 Two minors left: the night eval-graph plot and empty-state wells are the darkest masses (warm, acceptable), and the sign-in copy belongs to the coach-voice lane.
+
+## Amendment 1: back to the cool scoresheet (2026-11-23)
+
+Shots: `/styleguide`, `/sign-in` and the site landing at 390 and 1440, day and night, from fixtures (scratchpad `holistic-2/brand-shots/blue/`), plus `og.png` and both README lockups. A fresh critic saw only the shots, DESIGN.md and REFERENCES.md.
+
+- It found no warm, cream or brown tones: a pixel scan found warm hues only in the crayon swatches and strokes. Paper, sheet and well are cool in day, night study is navy, the boards are blue-grey, and the rasters and lockups use navy ink and pencil only. The crayon shows only under "there you go" (`B19`, `B20` respected).
+- major: on the night landing at 1440, the film's poster is the day still. It isn't a palette leftover: `site/public/media/rematch-hook.jpg` is one cool day frame of the film and has no night version, and this lane changed neither file. It belongs with the video and the site lanes.
+- minor: the night "Watch the film" pill sits on that day poster (the same cause).
+- minor: lazy feature images were blank in some full-page captures. That is the shots tool, not colour.
+- nit: the night lockup is pale ink on transparent, for GitHub's dark `<picture>` source only.
+
+Verdict: fail on one major, the film poster, which comes from before this lane and is outside its colour-token scope. Nothing in this lane's colour work needs fixing.
