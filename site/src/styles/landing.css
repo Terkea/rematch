@@ -116,13 +116,6 @@ ul {
   white-space: nowrap;
 }
 
-/* The boy with his board, in the text colour (ink by day, cream at night); never pen red. */
-.wordmark-mark {
-  flex: none;
-  width: calc(var(--spacing) * 8);
-  height: calc(var(--spacing) * 8);
-}
-
 .wordmark-name {
   font-family: var(--font-serif-italic);
   font-style: italic;

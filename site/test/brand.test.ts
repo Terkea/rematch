@@ -24,18 +24,19 @@ describe("the site's brand", () => {
     expect(pngSize(read("site/public/media/github-social-preview.png"))).toEqual([1280, 640]);
   });
 
-  it("shows the lockup in the header and shares the card", () => {
+  it("shows the wordmark alone in the header and shares the card", () => {
     const layout = read("site/src/layouts/Landing.astro").toString();
-    expect(layout).toContain("packages/ui/assets/brand/rematch-icon.svg?raw");
-    expect(layout).toContain('<span class="wordmark-name">rematch</span>');
+    expect(layout).not.toContain("rematch-icon");
+    expect(layout).toContain('<span class="wordmark-name">Rematch</span>');
+    // The capital R is the wordmark: no stylesheet lowercases it.
+    for (const css of ["site/src/styles/landing.css", "site/src/styles/docs.css"])
+      expect(read(css).toString()).not.toMatch(/text-transform:\s*lowercase/);
     expect(layout).toContain('href("og.png")');
   });
 
-  it("gives the docs the icon, ink by day and cream at night, never pen red", () => {
-    const day = read("site/src/assets/rematch-icon-day.svg").toString();
-    const night = read("site/src/assets/rematch-icon-night.svg").toString();
-    expect(day).toContain('fill="#1F2A3D"');
-    expect(night).toContain('fill="#E8E2D6"');
-    for (const svg of [day, night]) expect(svg).not.toMatch(/#c8372d|#d3312b|currentColor/i);
+  it("gives the docs the wordmark alone, no icon in the header", () => {
+    const config = read("site/astro.config.mjs").toString();
+    expect(config).toContain('title: "Rematch"');
+    expect(config).not.toMatch(/logo:\s*\{/);
   });
 });

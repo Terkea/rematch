@@ -86,19 +86,14 @@ h1#_top {
   letter-spacing: normal;
 }
 
-/* The lockup: the boy with his board, then "rematch" in Literata italic (lowercased by CSS only). */
+/* The wordmark: "Rematch" in Literata italic, capital R, no icon and no tagline. */
 .site-title {
   gap: calc(var(--spacing) * 2);
   font-family: var(--font-serif-italic);
   font-style: italic;
   font-weight: 500;
   font-size: var(--text-2xl);
-  text-transform: lowercase;
   color: var(--color-ink);
-}
-
-.site-title img {
-  height: calc(var(--spacing) * 8);
 }
 
 /* Links: ink, underlined, never a hue. */
