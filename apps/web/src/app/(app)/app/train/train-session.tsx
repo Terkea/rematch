@@ -2,6 +2,7 @@
 
 import type { Annotation } from "@ci/ui/annotations";
 import { Board, type BoardMove, NotationText } from "@ci/ui/board";
+import { MarginNote } from "@ci/ui/brand";
 import { CheckCircleIcon, Icon } from "@ci/ui/icons";
 import { type ExplorerMove, explorerAnnotations, moveFrom } from "@ci/ui/position-explorer";
 import { Button } from "@ci/ui/primitives";
@@ -272,7 +273,7 @@ export function TrainSession({
   );
 }
 
-function RevealPanel({
+export function RevealPanel({
   result,
   moveNumber,
   colour,
@@ -300,6 +301,7 @@ function RevealPanel({
         {result.correct ? <Icon icon={CheckCircleIcon} className="mt-1 shrink-0" /> : null}
         <span>{result.feedback}</span>
       </p>
+      {result.correct ? <MarginNote celebrate>there you go</MarginNote> : null}
       {result.correct ? null : (
         <p className="m-0 text-base text-ink">
           You played <NotationText moveNumber={moveNumber} color={colour} san={result.move.san} />.

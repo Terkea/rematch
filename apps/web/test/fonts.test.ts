@@ -123,6 +123,22 @@ describe("self-hosted fonts", () => {
     for (const row of typeRows) expect(row.opsz, row.step).toBe(row.size);
   });
 
+  it("Caveat-VF.woff2 (dad's handwriting) covers weights 400 to 700", () => {
+    const wght = woff2Axes(read("../src/app/fonts/Caveat-VF.woff2")).find(
+      (axis) => axis.tag === "wght",
+    );
+    expect(wght?.min).toBeLessThanOrEqual(400);
+    expect(wght?.max).toBeGreaterThanOrEqual(700);
+  });
+
+  it("loads Caveat as --font-caveat, not preloaded", () => {
+    const layout = read("../src/app/layout.tsx").toString("utf8");
+    const hand = /localFont\(\{[^}]*Caveat-VF\.woff2[\s\S]*?\n\}\);/.exec(layout)?.[0];
+    expect(hand).toBeDefined();
+    expect(hand).toMatch(/preload: false/);
+    expect(hand).toMatch(/variable: "--font-caveat"/);
+  });
+
   it("loads Literata italic as its own family, not preloaded", () => {
     const layout = read("../src/app/layout.tsx").toString("utf8");
     const italic = /localFont\(\{[^}]*Literata-Italic-VF\.woff2[\s\S]*?\n\}\);/.exec(layout)?.[0];

@@ -33,7 +33,7 @@ const colourNames = (block: Declarations) => tokensNamed("--color-", block);
 
 describe("colour tokens match DESIGN.md", () => {
   it("reads the full colour table from DESIGN.md", () => {
-    expect(colourRows.length).toBe(22);
+    expect(colourRows.length).toBe(23);
   });
 
   for (const { token, day, night } of colourRows) {
@@ -282,7 +282,13 @@ describe("fonts and dark mode", () => {
     expect(css.day.get("--font-serif")).toMatch(/^var\(--font-literata\)/);
     expect(css.day.get("--font-sans")).toMatch(/^var\(--font-schibsted\)/);
     expect(css.day.get("--font-serif-italic")).toMatch(/^var\(--font-literata-italic\)/);
-    expect(tokensNamed("--font-")).toEqual(["--font-sans", "--font-serif", "--font-serif-italic"]);
+    expect(css.day.get("--font-hand")).toMatch(/^var\(--font-caveat\)/);
+    expect(tokensNamed("--font-")).toEqual([
+      "--font-hand",
+      "--font-sans",
+      "--font-serif",
+      "--font-serif-italic",
+    ]);
   });
   it("declares the data-theme dark variant", () => {
     expect(tokensCss.replaceAll('"', "")).toContain(

@@ -1,3 +1,4 @@
+import { MarginNote } from "@ci/ui/brand";
 import { Button } from "@ci/ui/primitives";
 import { ProgressPlaceholder } from "@ci/ui/progress";
 import Link from "next/link";
@@ -22,6 +23,7 @@ export function NoLinks() {
       <Button asChild variant="outline">
         <Link href="/app/accounts">Connect chess.com</Link>
       </Button>
+      <MarginNote>let's go through your games</MarginNote>
     </div>
   );
 }
