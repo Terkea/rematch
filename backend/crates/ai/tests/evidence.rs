@@ -601,7 +601,10 @@ mod colour_split {
         assert_eq!(f("byColor.white.score.low", Some(NumFormat::Dec2)), "44%");
         assert_eq!(f("byColor.white.score.high", Some(NumFormat::Dec1)), "60%");
         assert_eq!(
-            f("byColor.white.weaknesses.W4_missed.rate", Some(NumFormat::Dec2)),
+            f(
+                "byColor.white.weaknesses.W4_missed.rate",
+                Some(NumFormat::Dec2)
+            ),
             "14%"
         );
         // Below 10% one decimal is kept (a whole one would read 0% for a rare event).
@@ -612,7 +615,10 @@ mod colour_split {
             ),
             "9.6%"
         );
-        assert_eq!(f("metrics.hung_piece_rate.value", Some(NumFormat::Dec2)), "6%");
+        assert_eq!(
+            f("metrics.hung_piece_rate.value", Some(NumFormat::Dec2)),
+            "6%"
+        );
         assert_eq!(f("weaknesses.W9b.pImp", Some(NumFormat::Dec2)), "40%");
         // A score difference reads as one too.
         assert_eq!(
@@ -623,7 +629,10 @@ mod colour_split {
             "-9%"
         );
         // pct0/pct1 keep their precision; non-fractions keep their own units.
-        assert_eq!(f("byColor.white.score.value", Some(NumFormat::Pct1)), "52.4%");
+        assert_eq!(
+            f("byColor.white.score.value", Some(NumFormat::Pct1)),
+            "52.4%"
+        );
         assert_eq!(
             f("byColor.white.blundersPerGame.value", Some(NumFormat::Dec1)),
             "0.9"
@@ -745,15 +754,21 @@ mod colour_split {
     #[test]
     fn every_fraction_path_of_the_schema_renders_as_a_percentage() {
         let leaves = schema_leaves();
-        assert!(leaves.contains_key("byColor.white.score.value"), "{leaves:#?}");
-        assert!(leaves.contains_key("weaknesses[].posteriorRate"), "{leaves:#?}");
-        let fraction_leaf = |p: &str| {
-            matches!(leaves.get(p), Some((Some(lo), Some(hi))) if *hi == 1.0 && (*lo == 0.0 || *lo == -1.0))
-        };
-        let wanted: BTreeSet<&str> = leaves
+        assert!(
+            leaves.contains_key("byColor.white.score.value"),
+            "{leaves:#?}"
+        );
+        assert!(
+            leaves.contains_key("weaknesses[].posteriorRate"),
+            "{leaves:#?}"
+        );
+        let fraction_leaf = |p: &str| matches!(leaves.get(p), Some((Some(lo), Some(hi))) if *hi == 1.0 && (*lo == 0.0 || *lo == -1.0));
+        // White and Black share one schema; the fixture's Black has no weakness rows.
+        let any_colour = |p: &str| p.replacen("byColor.black.", "byColor.white.", 1);
+        let wanted: BTreeSet<String> = leaves
             .keys()
-            .map(String::as_str)
             .filter(|p| fraction_leaf(p))
+            .map(|p| any_colour(p))
             .collect();
 
         let input = v2_input("b2-rapid");
@@ -772,7 +787,7 @@ mod colour_split {
             if !(fraction_leaf(&pat) || rate_unit) {
                 continue;
             }
-            hit.insert(pat.clone());
+            hit.insert(any_colour(&pat));
             by_unit += usize::from(rate_unit);
             if !ev.rate_paths.contains(path) {
                 bad.push(format!("{path}: not a rate path"));
@@ -785,7 +800,7 @@ mod colour_split {
             }
         }
         assert!(bad.is_empty(), "{bad:#?}");
-        let missing: Vec<_> = wanted.iter().filter(|p| !hit.contains(**p)).collect();
+        let missing: Vec<_> = wanted.iter().filter(|p| !hit.contains(*p)).collect();
         assert!(missing.is_empty(), "fixture covers no {missing:?}");
         assert!(by_unit >= 4, "rate metrics and the colour score: {by_unit}");
     }

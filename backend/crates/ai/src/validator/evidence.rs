@@ -104,8 +104,9 @@ pub struct Evidence {
     pub dates: HashSet<String>,
     /// R3: interactive engine results by eval id.
     pub engine_evals: HashMap<String, EngineEvidence>,
-    /// R3 (Task 8 fix 1): number paths that hold a rate or share in [0, 1], the only paths a
-    /// `pct0`/`pct1` token may format.
+    /// R3 (Task 8 fix 1): number paths that hold a rate or share in [0, 1] (or a score
+    /// difference in [-1, 1]), the only paths a `pct0`/`pct1` token may format (with a value in
+    /// [0, 1]). Every format prints them as a percentage (ADR-FIX-D-1 Amendment 1).
     pub rate_paths: HashSet<String>,
     /// R3 (Task 8 fix 1): the path of every exemplar object in the input, mapped to its
     /// position key `gameId#ply` (`weaknesses.W1.exemplars.0` → `li-w1-0#5`).
@@ -541,78 +542,109 @@ impl Evidence {
         }
     }
 
-    /// The rates and shares of the input (R3 Task 8 fix 1).
+    /// The rates and shares of the input (R3 Task 8 fix 1), every fraction of coaching-input v2
+    /// (ADR-FIX-D-1 Amendment 1).
     fn index_rate_paths(&mut self, input: &CoachingInput) {
-        use crate::input::types::MetricUnit;
-        let add = |ev: &mut Evidence, p: String| {
-            if ev
-                .number_paths
-                .get(&p)
-                .is_some_and(|v| (0.0..=1.0).contains(v))
-            {
-                ev.rate_paths.insert(p);
-            }
-        };
         for w in &input.weaknesses {
-            let b = format!("weaknesses.{}", seg(&w.id));
-            for f in [
-                "posteriorRate",
-                "intervalLow",
-                "intervalHigh",
-                "bandMedian",
-                "confidence",
-                "pImp",
-            ] {
-                add(self, format!("{b}.{f}"));
-            }
+            self.mark_weakness_rates(&format!("weaknesses.{}", seg(&w.id)));
         }
         for c in &input.changes {
             let b = format!("changes.{}", seg(&c.series_key));
             for f in ["rateBefore", "rateAfter", "posteriorProb"] {
-                add(self, format!("{b}.{f}"));
+                self.mark_rate(&format!("{b}.{f}"));
             }
         }
         for o in &input.openings {
-            let b = format!("openings.{}", seg(&o.line_key));
-            add(self, format!("{b}.score"));
-            for (i, _) in o.alternatives.iter().enumerate() {
-                add(self, format!("{b}.alternatives.{i}.bandScore"));
-            }
+            self.mark_opening_rates(
+                &format!("openings.{}", seg(&o.line_key)),
+                o.alternatives.len(),
+            );
         }
         for m in &input.metrics {
-            let unit = match m.unit {
-                MetricUnit::Pct => NumUnit::Percent,
-                MetricUnit::Seconds => NumUnit::Seconds,
-                MetricUnit::Rate | MetricUnit::PerGame | MetricUnit::Elo => continue,
-            };
             let b = format!("metrics.{}", seg(&m.key));
-            for f in ["value", "low", "high", "bandMedian"] {
-                self.unit_paths.insert(format!("{b}.{f}"), unit);
-            }
+            self.mark_unit(&b, m.unit, &["value", "low", "high", "bandMedian"]);
         }
-        for m in input.metrics.iter().filter(|m| m.unit == MetricUnit::Rate) {
-            let b = format!("metrics.{}", seg(&m.key));
-            for f in ["value", "low", "high", "bandMedian"] {
-                add(self, format!("{b}.{f}"));
-            }
-        }
-        // v2 (ADR 0085): the colour split. A score and a weakness rate are shares (`pct0`,
-        // `pct1`); an accuracy prints with `%`; blunders per game and counts take no unit.
+        // v2 (ADR 0085): the colour split. Each colour metric's unit is its own `unit` (the score
+        // is a rate, the accuracy `pct`, blunders per game none); a weakness rate is a share.
         if let Some(by) = &input.by_color {
             for (colour, s) in COLORS.into_iter().zip([&by.white, &by.black]) {
                 let b = format!("byColor.{colour}");
-                for f in ["value", "low", "high"] {
-                    add(self, format!("{b}.score.{f}"));
-                    self.unit_paths
-                        .insert(format!("{b}.accuracy.{f}"), NumUnit::Percent);
+                for (name, m) in [
+                    ("score", &s.score),
+                    ("accuracy", &s.accuracy),
+                    ("blundersPerGame", &s.blunders_per_game),
+                ] {
+                    self.mark_unit(&format!("{b}.{name}"), m.unit, &["value", "low", "high"]);
                 }
                 for w in &s.weaknesses {
                     let wb = format!("{b}.weaknesses.{}", seg(&w.series_key));
                     for f in ["rate", "low", "high", "peerRate"] {
-                        add(self, format!("{wb}.{f}"));
+                        self.mark_rate(&format!("{wb}.{f}"));
                     }
                 }
             }
+        }
+    }
+
+    /// Marks `base.<field>` for each field by `unit`: a rate path for `rate`, else the unit.
+    fn mark_unit(&mut self, base: &str, unit: crate::input::types::MetricUnit, fields: &[&str]) {
+        use crate::input::types::MetricUnit;
+        for f in fields {
+            let p = format!("{base}.{f}");
+            match unit {
+                MetricUnit::Rate => self.mark_rate(&p),
+                MetricUnit::Pct => {
+                    self.unit_paths.insert(p, NumUnit::Percent);
+                }
+                MetricUnit::Seconds => {
+                    self.unit_paths.insert(p, NumUnit::Seconds);
+                }
+                MetricUnit::PerGame | MetricUnit::Elo => {}
+            }
+        }
+    }
+
+    /// Marks a path as a rate when it holds a number in [0, 1].
+    fn mark_rate(&mut self, p: &str) {
+        if self
+            .number_paths
+            .get(p)
+            .is_some_and(|v| (0.0..=1.0).contains(v))
+        {
+            self.rate_paths.insert(p.to_owned());
+        }
+    }
+
+    /// The fractions of a `RankedWeakness` at `base` (`weaknesses.W1`, or a chat tool's
+    /// `tools.0.weakness`).
+    pub fn mark_weakness_rates(&mut self, base: &str) {
+        for f in [
+            "posteriorRate",
+            "intervalLow",
+            "intervalHigh",
+            "bandMedian",
+            "confidence",
+            "pImp",
+        ] {
+            self.mark_rate(&format!("{base}.{f}"));
+        }
+    }
+
+    /// The fractions of an `OpeningVerdict` at `base` with `alternatives` alternatives: its
+    /// score, the alternatives' band scores, and `performanceVsExpected`, a score difference in
+    /// [-1, 1] (rendered as a percentage; `pct0`/`pct1` still need [0, 1]).
+    pub fn mark_opening_rates(&mut self, base: &str, alternatives: usize) {
+        self.mark_rate(&format!("{base}.score"));
+        for i in 0..alternatives {
+            self.mark_rate(&format!("{base}.alternatives.{i}.bandScore"));
+        }
+        let p = format!("{base}.performanceVsExpected");
+        if self
+            .number_paths
+            .get(&p)
+            .is_some_and(|v| (-1.0..=1.0).contains(v))
+        {
+            self.rate_paths.insert(p);
         }
     }
 }
@@ -718,13 +750,7 @@ impl Evidence {
     /// Marks each path as a rate when it holds a number in [0, 1].
     fn mark_rate_paths(&mut self, paths: &[String]) {
         for p in paths {
-            if self
-                .number_paths
-                .get(p)
-                .is_some_and(|v| (0.0..=1.0).contains(v))
-            {
-                self.rate_paths.insert(p.clone());
-            }
+            self.mark_rate(p);
         }
     }
 }

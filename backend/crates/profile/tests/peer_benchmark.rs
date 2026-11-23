@@ -223,7 +223,12 @@ fn both_weighs_an_opponent_once_however_many_colours_they_had() {
         sides.push(coloured_missed_side(&format!("b{i}"), Color::Black, 0, 1));
     }
     for g in 0..4 {
-        sides.push(coloured_missed_side("both", Color::White, u32::from(g == 0), 1));
+        sides.push(coloured_missed_side(
+            "both",
+            Color::White,
+            u32::from(g == 0),
+            1,
+        ));
         sides.push(coloured_missed_side("both", Color::Black, 0, 1));
     }
     let pooled = |side: Side| {
@@ -269,7 +274,11 @@ fn both_weighs_an_opponent_once_however_many_colours_they_had() {
     // White units: 9 × 1 + 0.5 (the 60-day-old game) + 1 (solo, an event); Black: 10.
     let (w_units, b_units) = (10.5, 10.0);
     let mean = (rate(Side::White) * w_units + rate(Side::Black) * b_units) / (w_units + b_units);
-    assert!((rate(Side::Both) - mean).abs() < 1e-12, "{} vs {mean}", rate(Side::Both));
+    assert!(
+        (rate(Side::Both) - mean).abs() < 1e-12,
+        "{} vs {mean}",
+        rate(Side::Both)
+    );
 }
 
 #[test]
@@ -413,7 +422,11 @@ use queue::queue::Queue;
 use sqlx::PgPool;
 use testkit::{GameSeed, insert_account, insert_game};
 
-/// Player metrics of one rapid game: rated 800 against 800, a W7.traps opportunity with `w5_events`.
+/// W7.traps chances per seeded game: 12 opponents give 48, over the KPI's minimum of 40 (ADR 0081
+/// Amendment 1).
+const TRAPS_CHANCES_PER_GAME: u32 = 4;
+
+/// Player metrics of one rapid game: rated 800 against 800, W7.traps chances with `w5_events`.
 fn owner_metrics(w5_events: u32) -> PlayerGameMetrics {
     let mut m = metrics();
     m.player_rating = Some(800);
@@ -425,7 +438,7 @@ fn owner_metrics(w5_events: u32) -> PlayerGameMetrics {
         WeaknessKey::W7Traps,
         BinomialObs {
             events: w5_events,
-            opportunities: 1,
+            opportunities: TRAPS_CHANCES_PER_GAME,
             epl: 0.5 * f64::from(w5_events),
             exemplar_plies: vec![],
         },
@@ -608,7 +621,7 @@ async fn build_profile_compares_with_the_opponents_faced(pool: PgPool) {
     .fetch_one(&pool)
     .await
     .unwrap();
-    assert_eq!(chances, Some(12));
+    assert_eq!(chances, Some(12 * 4));
     assert_eq!(
         Some(median),
         pooled,
@@ -645,7 +658,7 @@ async fn colour_peers_are_the_opponents_who_had_that_colour(pool: PgPool) {
     .await
     .unwrap();
     assert_eq!(traps.len(), 2, "{traps:?}");
-    assert_eq!(traps[0].1, Some(12));
+    assert_eq!(traps[0].1, Some(12 * 4));
     assert_eq!((traps[0].1, traps[0].2), (traps[1].1, traps[1].2));
 
     let traps_median = |side: &'static str| {
