@@ -5,41 +5,60 @@ Each area on one shared ruler, scaled to these scores: your score against the me
 Replay draw
 Your score
 Band median
+Distance to the band median
 Next band
-40
-60
-80
 Openings 71, band median 64, next band 72
 Openings
 38 rapid games
 71
+40
+60
+80
 +3 since last report
 Middlegame 58, band median 60, next band 68
 Middlegame
 38 rapid games
 58
+40
+60
+80
 −2 since last report
 Endgame 62, band median 55, next band 68
 Endgame
 22 rapid games
 62
+40
+60
+80
 +4 since last report
 Tactics 66, band median 61, next band 70
 Tactics
 38 rapid games
 66
+40
+60
+80
 Calculation 49, band median 57, next band 65
 Calculation
 30 rapid games
 49
+40
+60
+80
 +1 since last report
 Time 74, band median 62, in the next band (71 and up)
 Time
 38 rapid games
 74
+40
+60
+80
 In the next band (71 and up)
 Mindset 55, band median 58, next band 66
 Mindset
 38 rapid games
 55
+40
+60
+80
 −5 since last report

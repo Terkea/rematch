@@ -1,0 +1,146 @@
+Coach
+
+The coach writes in stored segments, never raw tokens. Moves are notation and link to the position, the better move carries the solid good head, and anything the engine checked while answering wears a dashed pencil line. Every piece of model text says it was written by AI. The answers here are sample copy over real games.
+
+Segments
+
+Against Night-King96 you were winning until Nd2 on move 28. The knight left e4 and the evaluation fell from +2.7engine check to −1.1. It was the first of 3 blunders you made in that game. Your next report is due on 12 Dec 2026.
+
+In the Opera game, b5 was met at once by
+better move:
+Nxb5, and after Nxb5 cxb5 Bxb5+ Nbd7 White's pieces poured in. The game had opened with 1. e4 e5 2. Nf3 d6, the Philidor Defence.
+
+AI disclosure
+Under a report section
+Written by AI
+Written on 12 Nov 2026
+
+This coaching was written by an AI model (Claude) from your analysed games. It can contain mistakes. The engine data shown alongside it is the source of truth.
+
+Compact, with the note behind the info button
+Written by AI
+Written on 12 Nov 2026
+This coaching was written by an AI model (Claude) from your analysed games. It can contain mistakes. The engine data shown alongside it is the source of truth.
+States
+Building, with a count
+
+Building your report
+
+Sections appear here as they are written.
+
+Overview
+(written)
+Weaknesses
+(written)
+Openings
+(not written yet)
+Climb plan
+(not written yet)
+Areas
+(not written yet)
+
+Building 2 / 5 sections
+
+Building 2 / 5 sections
+
+Writing, nothing counted yet
+
+Your coach is reading your games
+
+The first section is usually ready within a minute.
+
+Writing
+
+Writing started
+
+Failed
+
+The report could not be written
+
+The AI service did not answer. Your computed numbers are below; try again in a few minutes.
+
+Try again
+Allowance used
+
+This week's questions are used
+
+You have used this week's 100 questions. They reset on 16 Nov 2026.
+
+Unavailable
+
+Coaching is switched off here
+
+This server has no AI key, so reports show computed numbers only.
+
+Computed only
+
+Numbers without commentary
+
+These figures come from your analysed games. No AI text was written for this report.
+
+Empty
+
+No questions yet
+
+Ask about a game, a move or a weakness, and the answer stays here.
+
+Open your games
+Conversation
+
+You asked
+
+Why did I lose the blitz game after move 28?
+Written by AI
+Written on 12 Nov 2026
+This coaching was written by an AI model (Claude) from your analysed games. It can contain mistakes. The engine data shown alongside it is the source of truth.
+
+Against Night-King96 you were winning until Nd2 on move 28. The knight left e4 and the evaluation fell from +2.7engine check to −1.1. It was the first of 3 blunders you made in that game. Your next report is due on 12 Dec 2026.
+
+Red arrow from e4 to d2
+Played, Nd2
+Expand
+Open the game at 28. Nd2
+Engine check: 28. Nd2 e4 29. Nxe4 (done)
+One statement was left out because the engine could not confirm it.
+Streaming
+Play stream
+Written by AI
+
+Before Nd2 the knight on e4 held your position together.
+
+Checking 28. Nd2 e4 29. Nxe4 with the engine
+
+Once it left, Black pushed e4 and
+
+Your coach is still writing
+
+Engine check: 28. Nd2 e4 29. Nxe4 (checking)
+Waiting for the first words
+
+Your coach is reading your games
+
+Writing
+
+Writing started
+
+Failed
+
+Your coach could not answer this time. Ask again in a minute; this question was not counted.
+
+Composer
+Ready
+Your question
+
+Enter
+sends,
+Shift
++
+Enter
+adds a line
+
+Send
+
+Allowance used
+Your question
+
+You have used this week's 100 questions. They reset on 16 Nov 2026.

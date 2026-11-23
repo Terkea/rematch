@@ -1,5 +1,5 @@
 All weaknesses
-Hung material
+Leaving pieces hanging
 
 Active
 Calculation
@@ -26,7 +26,7 @@ of your chances, 80% range 2.1% to 2.8%
 
 In the last 6 months this happened in 58 of your 2,400 chances (about 1 in 41).
 
-More often than typical players at your level (1.7%): their rate is below your whole likely range.
+More often than typical players in your rating band (1.7%): their rate is below your whole likely range.
 
 Better or worse
 
@@ -118,6 +118,7 @@ What to do
 
 Before you let go of a piece, ask what it is attacked by and what it defends after the move, then check every capture your opponent could make.
 
+Make this my focus
 Details
 
 The numbers behind the story: the estimate's range, its state over time and the week-by-week rate.
@@ -150,7 +151,7 @@ Onset, with its likely range
 
 Hover, tap or use the arrow keys to read a state's dates.
 
-Hung material
+Leaving pieces hanging
 Now active
 Earlier
 Oct 2026

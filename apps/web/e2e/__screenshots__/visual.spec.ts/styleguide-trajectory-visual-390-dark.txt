@@ -1,0 +1,87 @@
+Trajectory
+
+Progress opens with the rating line: the peak marked, the compared spans shaded, then the games around the peak against the last games. Synthetic games.
+
+Rating trajectory
+
+Where your rating has been, its peak, and how your play then compares with now.
+
+Your rapid rating peaked at 1,111 in March 2026 and is 816 now (−295).
+
+Since then: accuracy 74.0% then, 64.1% now (clearly worse), blunders per game 1.33 a game then, 2.33 a game now (clearly worse), score 50.0% then, 50.0% now (no clear change), missing a short tactic 27% then, 43% now of chances (clearly worse).
+
+Your rapid rating over time: 160 rated games. Peak 1,111, March 2026. Now 816.
+
+Then
+Now
+800
+900
+1,000
+1,100
+1,200
+Oct 2025
+Jan 2026
+Apr 2026
+Aug 2026
+Peak 1,111, March 2026
+Now 816
+Show as a table
+
+Based on 160 rated rapid games. The line is your rating before each game; the shaded spans are the games compared below.
+
+Then and now
+Around your peak
+30 rated games, 28 Feb to 27 Apr 2026
+Your last 30 games
+30 rated games, 18 Jun to 15 Aug 2026
+Measure	Around your peak	Your last 30 games	Change
+Rating
+Around your peak
+1,072 on average
+80% range 1,067 to 1,077, 30 rated games
+Your last 30 games
+881 on average
+80% range 872 to 889, 30 rated games
+Change
+Worse
+Difference −192 points, 80% range −202 to −181
+Accuracy
+Around your peak
+74.0%
+80% range 73.3% to 74.6%, 30 analysed games
+Your last 30 games
+64.1%
+80% range 63.5% to 64.7%, 30 analysed games
+Change
+Worse
+Difference −9.9 points, 80% range −10.8 to −9.0
+Blunders per game
+Around your peak
+1.33 a game
+80% range 1.2 to 1.5, 30 analysed games
+Your last 30 games
+2.33 a game
+80% range 2.2 to 2.5, 30 analysed games
+Change
+Worse
+Difference +1.00 a game, 80% range +0.8 to +1.2
+Score
+Around your peak
+50.0%
+80% range 38.6% to 61.4%, 30 finished games
+Your last 30 games
+50.0%
+80% range 38.6% to 61.4%, 30 finished games
+Change
+No clear change
+Difference 0.0 points, 80% range −15.0 to +15.0
+Missing a short tactic
+Around your peak
+27%
+80% range 22% to 31%, 30 of 120 chances in 30 games
+Your last 30 games
+43%
+80% range 38% to 49%, 60 of 120 chances in 30 games
+Change
+Worse
+Difference +17 points of chances

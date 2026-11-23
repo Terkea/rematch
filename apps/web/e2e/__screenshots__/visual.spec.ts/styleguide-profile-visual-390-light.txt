@@ -1,0 +1,194 @@
+Profile
+
+The pieces of the coach pages: a weakness as a row, KPI trends as small multiples on one time axis, and example positions. The numbers here are synthetic.
+
+Explanations
+
+Every weakness, measure and area name carries its one-sentence meaning in muted text, and an "i" that opens how it is measured, why it matters and what to try. It opens on click or tap, never on hover alone, and Escape or a click outside closes it. The words come from the glossary, never from the component.
+
+Not winning won games
+
+You reached a clearly winning position and didn't go on to win the game.
+
+Weakness rows
+Estimated rate
+80% range
+Players rated 1400–1600, median
+Leaving pieces undefended
+Active
+Onset detected 14 Sep 2026
+Estimated 4.2% of chances (80% range 3.1% to 5.6%), from 38 of 902.
+Estimated % of moves with a loose piece
+4.2%
+80% range 3.1% to 5.6%
+38 pieces left hanging in 902 moves with a loose piece
+0%
+20.0%
+Players rated 1400–1600: 2.1%, lower than your whole likely range
+Weekly rate
+Rook endgames
+Improving
+Onset detected 20 Aug 2026
+Estimated 11.8% of chances (80% range 8.4% to 15.2%), from 31 of 263.
+Estimated % of rook-endgame moves
+11.8%
+80% range 8.4% to 15.2%
+31 errors in 263 rook-endgame moves
+0%
+20.0%
+Players rated 1400–1600: 11.0%, inside your likely range
+Weekly rate
+Missed forks
+Early read
+Early read. Estimated 9.0% of chances (80% range 4.0% to 17.0%), from 4 of 40.
+Early estimate % of fork chances
+9.0%
+80% range 4.0% to 17.0%
+4 missed in 40 fork chances
+Early read
+180 more fork chances needed
+Weekly trend after 180 more fork chances
+Blunders under one minute
+Not compared yet
+Onset detected 2 Jul 2026
+Estimated 1.8% of chances (80% range 1.1% to 2.7%), from 14 of 780.
+Estimated % of moves under one minute
+1.8%
+80% range 1.1% to 2.7%
+14 blunders in 780 moves under one minute
+0%
+20.0%
+Not compared yet: no benchmark for this account yet
+Weekly rate
+KPI trends
+Weekly value, 5 or more games
+A week on its own, between gaps
+Fewer than 5 games, off the line
+Gap: no games that week
+Stored 80% range
+Report, numbered below
+1
+21 Sep 2026: Coaching report
+2
+26 Oct 2026: Coaching report
+Accuracy
+
+76.3%
+Week of 16 Nov 2026, 14 games
+
+Accuracy: 71.2% in week of 31 Aug 2026, 11 games; 72.0% in week of 7 Sep 2026, 9 games; 70.4% in week of 14 Sep 2026, 12 games; no games in week of 21 Sep 2026; 73.1% in week of 28 Sep 2026, 10 games; 72.6% in week of 5 Oct 2026, 3 games, below the 5-game minimum; 74.0% in week of 12 Oct 2026, 12 games; 73.4% in week of 19 Oct 2026, 11 games; 75.2% in week of 26 Oct 2026, 13 games; 74.1% in week of 2 Nov 2026, 9 games; 75.8% in week of 9 Nov 2026, 12 games; 76.3% in week of 16 Nov 2026, 14 games.
+80.0%
+65.0%
+1
+2
+31 Aug
+16 Nov 2026
+Blunders per game
+
+1.18
+Week of 16 Nov 2026, 14 games
+
+Blunders per game: 1.62 in week of 31 Aug 2026, 11 games; 1.55 in week of 7 Sep 2026, 9 games; 1.70 in week of 14 Sep 2026, 12 games; no games in week of 21 Sep 2026; 1.41 in week of 28 Sep 2026, 10 games; 1.50 in week of 5 Oct 2026, 3 games, below the 5-game minimum; 1.38 in week of 12 Oct 2026, 12 games; 1.33 in week of 19 Oct 2026, 11 games; 1.29 in week of 26 Oct 2026, 13 games; 1.35 in week of 2 Nov 2026, 9 games; 1.22 in week of 9 Nov 2026, 12 games; 1.18 in week of 16 Nov 2026, 14 games.
+2.00
+0.50
+1
+2
+31 Aug
+16 Nov 2026
+Converting winning positions
+
+75.0%
+Week of 16 Nov 2026, 9 games
+
+Converting winning positions: 62.0% in week of 31 Aug 2026, 8 games; 66.0% in week of 7 Sep 2026, 7 games; no games in week of 14 Sep 2026; no games in week of 21 Sep 2026; 61.0% in week of 28 Sep 2026, 6 games; 70.0% in week of 5 Oct 2026, 2 games, below the 5-game minimum; 68.0% in week of 12 Oct 2026, 9 games; 72.0% in week of 19 Oct 2026, 8 games; 70.0% in week of 26 Oct 2026, 7 games; 74.0% in week of 2 Nov 2026, 6 games; 71.0% in week of 9 Nov 2026, 8 games; 75.0% in week of 16 Nov 2026, 9 games.
+100.0%
+40.0%
+1
+2
+31 Aug
+16 Nov 2026
+Saving worse positions
+Saving worse positions: no games in week of 26 Oct 2026; no games in week of 2 Nov 2026; no games in week of 9 Nov 2026; no games in week of 16 Nov 2026.
+
+No games in this range yet
+
+Example positions
+8
+7
+6
+5
+4
+3
+2
+a
+1
+b
+c
+d
+e
+f
+g
+h
+?
+1
+2
+Green arrow from f3 to d4
+2: Grey arrow from d8 to g5
+1: Red arrow from f3 to e5
+Red ? on e5
+
+4. Nxe5? Better was Nxd4. Win chance 52% to 36%.
+
+1. Played, 4. Nxe5
+2. Their reply, 4… Qg5
+Better, Nxd4
+1
+2
+3
+4
+5
+6
+7
+h
+8
+g
+f
+e
+d
+c
+b
+a
+??
+1
+2
+Green arrow from d7 to d5
+2: Grey arrow from g5 to f7
+1: Red arrow from h7 to h6
+Red ?? on h6
+
+4… h6?? Better was d5. Win chance 48% to 22%.
+
+1. Played, 4… h6
+2. Their reply, 5. Nxf7
+Better, d5
+Area scores without a measured next band
+Your score
+Band median
+Distance to the band median
+Likely range
+Endgame 62, band median 50, next band not measured yet, 80% range 55 to 68
+Endgame
+22 rapid games
+62
+30
+50
+70
+80% range 55 to 68
+Tactics 44, band median 50, next band not measured yet, no interval yet
+Tactics
+9 rapid games
+44
+30
+50
+70
+No interval yet

@@ -58,17 +58,17 @@ Not measured yet
 Winning endgames converted
 How often you win when you reach the endgame with a clear advantage.
 Not measured yet
-Drawn endgames held
+Worse endgames held
 How often you avoid losing when you reach the endgame worse off.
 Not measured yet
-Tablebase errors per endgame
+Endgame errors per game
 How many result-changing mistakes you make in small endgames.
 Not measured yet
 Weaknesses
 Estimated rate
 80% range
 Players in your rating band, median
-Endgame technique (basics)
+Basic endgames
 
 In a basic endgame you made a move that changed a win into a draw, or a draw into a loss.
 
@@ -93,7 +93,7 @@ Onset, with its likely range
 
 Hover, tap or use the arrow keys to read a state's dates.
 
-Endgame technique (basics)
+Basic endgames
 Now improving
 Oct 2026
 Nov
