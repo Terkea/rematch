@@ -354,22 +354,22 @@ describe("levelText with a peer benchmark (ADR 0080)", () => {
     [
       0.021,
       true,
-      "More often than players you've faced on chess.com, rated about 650–950 (2.1%): their rate is below your whole likely range.",
+      "More often than the 12 players you've faced on chess.com, rated about 650–950 (2.1%): their rate is below your whole likely range.",
     ],
     [
       0.08,
       true,
-      "Less often than players you've faced on chess.com, rated about 650–950 (8.0%): their rate is above your whole likely range.",
+      "Less often than the 12 players you've faced on chess.com, rated about 650–950 (8.0%): their rate is above your whole likely range.",
     ],
     [
       0.04,
       true,
-      "Not clearly different from players you've faced on chess.com, rated about 650–950 (4.0%): their rate is inside your likely range.",
+      "Not clearly different from the 12 players you've faced on chess.com, rated about 650–950 (4.0%): their rate is inside your likely range.",
     ],
     [
       0.021,
       false,
-      "Players you've faced on chess.com, rated about 650–950: 2.1%. A comparison waits for more chances.",
+      "The 12 players you've faced on chess.com, rated about 650–950: 2.1%. A comparison waits for more chances.",
     ],
   ])("median %s, sufficient %s", (median, sufficient, want) => {
     const text = levelText({ rate, median, compared: true, sufficient, benchmark });
@@ -392,7 +392,7 @@ describe("levelText with a peer benchmark (ADR 0080)", () => {
         state: "active",
       }),
     ).toBe(
-      "Probably more often than players you've faced on chess.com, rated about 667–967 (0.3%): about 81% likely, though their rate is inside your likely range.",
+      "Probably more often than the 12 players you've faced on chess.com, rated about 667–967 (0.3%): about 81% likely, though their rate is inside your likely range.",
     );
   });
 
@@ -408,7 +408,7 @@ describe("levelText with a peer benchmark (ADR 0080)", () => {
         state: "active",
       }),
     ).toBe(
-      "Not clearly different from players you've faced on chess.com, rated about 667–967 (43.8%): their rate is inside your likely range. Active comes from your game-by-game record (every game since the last change it found), not from this comparison.",
+      "Not clearly different from the 12 players you've faced on chess.com, rated about 667–967 (43.8%): their rate is inside your likely range. Active comes from your game-by-game record (every game since the last change it found), not from this comparison.",
     );
   });
 
@@ -424,7 +424,7 @@ describe("levelText with a peer benchmark (ADR 0080)", () => {
         state: "not_an_issue",
       }),
     ).toBe(
-      "Not clearly different from players you've faced on chess.com, rated about 650–950 (4.0%): their rate is inside your likely range.",
+      "Not clearly different from the 12 players you've faced on chess.com, rated about 650–950 (4.0%): their rate is inside your likely range.",
     );
   });
 

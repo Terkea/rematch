@@ -253,7 +253,10 @@ export function areaMeaning(a: {
 function peerGroup(b: Benchmark | null | undefined): string | null {
   if (b?.source !== "peers" || !fin(b.low) || !fin(b.high)) return null;
   const site = b.platform === "chesscom" ? "chess.com" : "lichess";
-  return `players you've faced on ${site}, rated about ${count(b.low)}–${count(b.high)}`;
+  // The count is named here, so the comparison is one sentence and no line repeats it (critic 8).
+  const n = fin(b.players) ? Math.max(0, Math.trunc(b.players)) : null;
+  const who = n === null ? "players" : `the ${count(n)} ${n === 1 ? "player" : "players"}`;
+  return `${who} you've faced on ${site}, rated about ${count(b.low)}–${count(b.high)}`;
 }
 
 /** The states the weaknesses page files under "Costing you games" when the comparison backs them. */
