@@ -57,6 +57,13 @@ export default defineConfig({
           ],
         },
         {
+          label: "The lab",
+          items: [
+            { label: "Experiments", link: "/docs/experiments/" },
+            { label: "Progress", link: "/docs/progress/" },
+          ],
+        },
+        {
           label: "Decision log",
           collapsed: true,
           items: [{ autogenerate: { directory: "docs/decisions" } }],
