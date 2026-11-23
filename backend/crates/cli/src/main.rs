@@ -40,18 +40,17 @@ async fn main() {
     if argv.first().map(String::as_str) == Some("algo") {
         let pool = if cli::algo_cmd::needs_db(&argv) {
             match std::env::var("DATABASE_URL") {
-                Ok(url) => db::pool::connect(&url, db::pool::DbOptions::default()).await.ok(),
+                Ok(url) => db::pool::connect(&url, db::pool::DbOptions::default())
+                    .await
+                    .ok(),
                 Err(_) => None,
             }
         } else {
             None
         };
-        let code = cli::algo_cmd::run_algo(
-            &argv,
-            pool.as_ref(),
-            &|l| println!("{l}"),
-            &|l| eprintln!("{l}"),
-        )
+        let code = cli::algo_cmd::run_algo(&argv, pool.as_ref(), &|l| println!("{l}"), &|l| {
+            eprintln!("{l}")
+        })
         .await;
         std::process::exit(code);
     }

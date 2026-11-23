@@ -20,6 +20,7 @@ const focus = {
   peerRate: 0.1,
   endedAt: null,
   outcome: null,
+  algorithmId: null,
 };
 const suggestion = {
   accountId: ACCOUNT,

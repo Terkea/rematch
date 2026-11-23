@@ -106,7 +106,10 @@ async fn a_pooled_engine_gets_threads_hash_ucinewgame_and_a_node_limit() {
     assert_eq!(positions.len(), fens.len(), "{lines:?}");
     for &i in &positions {
         assert!(
-            lines[..i].iter().rev().find(|l| l.starts_with("position ") || *l == &"ucinewgame")
+            lines[..i]
+                .iter()
+                .rev()
+                .find(|l| l.starts_with("position ") || *l == &"ucinewgame")
                 == Some(&"ucinewgame"),
             "no ucinewgame right before line {i}: {lines:?}"
         );
@@ -172,7 +175,12 @@ async fn evals(threads: Option<u32>, hash_mb: Option<u32>, path: PathBuf) -> Vec
             .await
             .expect("search");
         for l in r.lines {
-            out.push(format!("{fen} | {} | {:?} | {}", l.multipv, l.score, l.pv.join(" ")));
+            out.push(format!(
+                "{fen} | {} | {:?} | {}",
+                l.multipv,
+                l.score,
+                l.pv.join(" ")
+            ));
         }
     }
     e.quit().await;

@@ -21,7 +21,9 @@ use futures::future::BoxFuture;
 use tokio::sync::{Semaphore, oneshot, watch};
 use tokio_util::sync::CancellationToken;
 
-use crate::types::{ENGINE_HASH_MB, ENGINE_THREADS, AnalyseOptions, Analyser, AnalysisResult, EngineError};
+use crate::types::{
+    AnalyseOptions, Analyser, AnalysisResult, ENGINE_HASH_MB, ENGINE_THREADS, EngineError,
+};
 use crate::uci::{AliveHandle, StartOptions, UciEngine, validate_fen};
 
 /// Engines started at once per pool. A cold start loads the NNUE net from

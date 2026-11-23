@@ -3,6 +3,7 @@
 import { AiDisclosure, CoachState } from "@ci/ui/coach";
 import { dayText } from "@ci/ui/profile";
 import { type ReactNode, useEffect, useRef, useState } from "react";
+import { AlgorithmNote } from "../../../../components/algorithm-note";
 import { CoachScopeSwitch } from "../../../../components/coach-scope-switch";
 import type { LineEvidence } from "../../../../lib/explain";
 import { VERIFY_ACTION, VERIFY_BODY, VERIFY_REPORT_TITLE } from "../../../../lib/verify-copy";
@@ -339,6 +340,7 @@ export function ReportView({
           />
         </Fresh>
         <Changes computed={computed} notes={notes} order={7} />
+        <AlgorithmNote algorithmId={view.algorithmId} />
       </div>
     </GameIdsContext.Provider>
   );

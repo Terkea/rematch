@@ -5,6 +5,7 @@ import type { FocusCard as FocusCardModel, Suggestion } from "../../server/focus
 import type { Progress } from "../../server/focus/goal";
 import type { TimeClass } from "../../server/games/types";
 import type { Side } from "../../server/profile/types";
+import { AlgorithmNote } from "../algorithm-note";
 import { ActiveFocusControls, SuggestFocusControls } from "./focus-controls";
 import {
   gamesText,
@@ -191,6 +192,7 @@ export function FocusCard({
             {practise ? <Practise seriesKey={f.seriesKey} /> : null}
             <ActiveFocusControls timeClass={f.timeClass} gamesN={f.gamesN} />
           </div>
+          <AlgorithmNote algorithmId={f.algorithmId} />
         </Sheet>
       );
     }

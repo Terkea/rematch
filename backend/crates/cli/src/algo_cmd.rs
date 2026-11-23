@@ -7,13 +7,14 @@
 //!   `algorithm_versions` (an id, needs `DATABASE_URL`), or a file.
 //! - `cli algo diff A B` prints the components that differ. Each side is `current`, an id in the
 //!   database, or a manifest file. Exits 0 when they are the same and 3 when they differ.
+//!   `--json` prints `{a, b, changes: [{path, a, b}]}` for scripts (the lab lane).
 
 use std::path::{Path, PathBuf};
 
 use algo::Manifest;
 use sqlx::PgPool;
 
-pub const ALGO_USAGE: &str = "usage: cli algo manifest [--write] [--root DIR] | cli algo show [ID|FILE] [--json] | cli algo diff A B";
+pub const ALGO_USAGE: &str = "usage: cli algo manifest [--write] [--root DIR] | cli algo show [ID|FILE] [--json] | cli algo diff A B [--json]";
 
 /// Where a manifest comes from.
 #[derive(Debug, PartialEq, Eq)]
@@ -73,7 +74,18 @@ pub async fn run_algo(
     let result = match args.as_slice() {
         ["manifest", rest @ ..] => manifest(rest, print),
         ["show", rest @ ..] => show(rest, pool, print).await,
-        ["diff", a, b] => diff(a, b, pool, print).await,
+        ["diff", rest @ ..] => {
+            let json = rest.contains(&"--json");
+            match rest
+                .iter()
+                .filter(|a| **a != "--json")
+                .collect::<Vec<_>>()
+                .as_slice()
+            {
+                [a, b] => diff(a, b, json, pool, print).await,
+                _ => Err(anyhow::anyhow!(ALGO_USAGE)),
+            }
+        }
         _ => Err(anyhow::anyhow!(ALGO_USAGE)),
     };
     match result {
@@ -92,9 +104,7 @@ fn manifest(rest: &[&str], print: &dyn Fn(&str)) -> anyhow::Result<i32> {
     while let Some(a) = it.next() {
         match *a {
             "--write" => write = true,
-            "--root" => {
-                root = PathBuf::from(it.next().ok_or_else(|| anyhow::anyhow!(ALGO_USAGE))?)
-            }
+            "--root" => root = PathBuf::from(it.next().ok_or_else(|| anyhow::anyhow!(ALGO_USAGE))?),
             _ => anyhow::bail!(ALGO_USAGE),
         }
     }
@@ -130,7 +140,10 @@ async fn show(rest: &[&str], pool: Option<&PgPool>, print: &dyn Fn(&str)) -> any
         ("enrichment", &c["facts"]["enrichment"]["protocol"]),
         ("detector", &c["profile"]["detector_version"]),
         ("ranking", &c["recommendation"]["ranking_version"]),
-        ("coaching input", &c["recommendation"]["coaching_input_version"]),
+        (
+            "coaching input",
+            &c["recommendation"]["coaching_input_version"],
+        ),
         ("trainer", &c["recommendation"]["trainer_version"]),
         ("focus", &c["recommendation"]["focus_version"]),
         ("models", &c["language"]["models"]),
@@ -140,12 +153,36 @@ async fn show(rest: &[&str], pool: Option<&PgPool>, print: &dyn Fn(&str)) -> any
     Ok(0)
 }
 
-async fn diff(a: &str, b: &str, pool: Option<&PgPool>, print: &dyn Fn(&str)) -> anyhow::Result<i32> {
+/// `cli algo diff --json`: both ids and every changed leaf.
+#[derive(Debug, serde::Serialize)]
+pub struct DiffOutput {
+    pub a: String,
+    pub b: String,
+    pub changes: Vec<algo::diff::Change>,
+}
+
+async fn diff(
+    a: &str,
+    b: &str,
+    json: bool,
+    pool: Option<&PgPool>,
+    print: &dyn Fn(&str),
+) -> anyhow::Result<i32> {
     let (ma, mb) = (
         load(&source_of(a), pool).await?,
         load(&source_of(b), pool).await?,
     );
     let changes = algo::diff::diff(&ma.hashed(), &mb.hashed());
+    let code = if changes.is_empty() { 0 } else { 3 };
+    if json {
+        let out = DiffOutput {
+            a: ma.id(),
+            b: mb.id(),
+            changes,
+        };
+        print(&serde_json::to_string_pretty(&out)?);
+        return Ok(code);
+    }
     print(&format!("{} -> {}", ma.id(), mb.id()));
     if changes.is_empty() {
         print("  no component differs");

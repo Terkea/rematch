@@ -1100,7 +1100,7 @@ async fn every_build_stores_a_current_coaching_input_snapshot(pool: PgPool) {
             .fetch_one(&pool)
             .await
             .unwrap();
-    assert_eq!(algo.as_deref(), Some(common::algorithm::id()));
+    assert_eq!(algo.as_deref(), Some(::common::algorithm::id()));
 
     // A newer game, a rebuild: a newer snapshot that counts it.
     insert_analysed_game(
