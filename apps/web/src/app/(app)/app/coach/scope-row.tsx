@@ -7,9 +7,9 @@ import type { ReactNode } from "react";
  */
 export function ScopeRow({ children }: { children: ReactNode }) {
   return (
-    // ban-lint-allow TOK2: a mask gradient is alpha only, not a colour
     <div
       data-scope-row=""
+      // ban-lint-allow TOK2: a mask gradient is alpha only, not a colour
       className="-mx-1 max-w-full min-w-0 overflow-x-auto px-1 py-1 max-sm:pr-8 max-sm:[mask-image:linear-gradient(to_right,black_calc(100%_-_2.5rem),transparent)]"
     >
       {children}
