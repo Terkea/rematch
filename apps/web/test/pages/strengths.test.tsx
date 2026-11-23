@@ -381,7 +381,7 @@ describe("StrengthsView", () => {
           prevJudgement: null,
         },
       ],
-      notes: { only_move_found: "Keep doing this: when the position is sharp, take your time." },
+      notes: { "g-1:5": "Keep doing this: when the position is sharp, take your time." },
     };
     const { body } = show(m);
     const hard = section(body, "hard-spots");
@@ -504,6 +504,53 @@ describe("StrengthsView filters", () => {
     expect(body.querySelector("[data-colour='white']")?.textContent).toContain(
       "None of your 3 measures compared in your White games is clearly better yet.",
     );
+  });
+
+  // Holistic F2: the page opened on two empty colour statements. With no colour claim the
+  // colour block is a row of "Not judged yet", and the real sections lead.
+  it("files an empty colour block under Not judged yet, after what's real", () => {
+    const m = base();
+    m.bySide = {
+      white: { mode: "peers", compared: 5, claims: [] },
+      black: { mode: "peers", compared: 5, claims: [] },
+    };
+    m.hardSpots = {
+      mode: "critical",
+      spots: [
+        {
+          gameId: "g-1",
+          playedAt: new Date("2026-11-01T10:00:00Z"),
+          ply: 5,
+          kind: "only_move_found",
+          fen: "r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3",
+          san: "Bb5",
+          uci: "f1b5",
+          bestUci: "f1b5",
+          winBefore: 54,
+          winAfter: 55,
+          timeSpent: 2,
+          difficultyStatus: "pending_maia",
+          pBest: null,
+          isCritical: true,
+          multipvGap: 22.4,
+          prevSan: "Nc6",
+          prevJudgement: null,
+        },
+      ],
+      notes: {},
+    };
+    const { body } = show(m);
+    const list = section(body, "not-judged");
+    const colours = within(list).getByRole("heading", { level: 3, name: "By colour" });
+    expect(colours).toBeTruthy();
+    expect(list.textContent).toContain(
+      "None of your 5 measures compared in your White games is clearly better yet.",
+    );
+    const sections = [...body.querySelectorAll("section[data-section]")].map((e) =>
+      e.getAttribute("data-section"),
+    );
+    expect(sections[0]).toBe("hard-spots");
+    expect(sections.at(-1)).toBe("not-judged");
   });
 
   it("has no colour block for one colour", () => {

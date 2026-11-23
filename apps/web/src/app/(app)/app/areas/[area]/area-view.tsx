@@ -26,7 +26,12 @@ import type { CoachStatus } from "../../../../../server/coach/status";
 import type { ReportView } from "../../../../../server/coaching";
 import type { NarrativeItem } from "../../../../../server/coaching/types";
 import type { DayRange } from "../../../../../server/filters/params";
-import type { Benchmark } from "../../../../../server/profile/benchmark-text";
+import {
+  type Benchmark,
+  benchmarkGroupLabel,
+  notComparedText,
+  peerPooledBasis,
+} from "../../../../../server/profile/benchmark-text";
 import {
   AREA_GLOSSARY,
   KPI_GLOSSARY,
@@ -598,6 +603,17 @@ function ThinMeasure({ kpi }: { kpi: KpiTrend }) {
 
 // ---- Weaknesses ----
 
+/** A row's group, basis and not-compared reason, named after the benchmark (Q4, holistic F1). */
+function areaBand(benchmark: Benchmark | null, seriesKey: string) {
+  const label = benchmarkGroupLabel(benchmark);
+  const basis = peerPooledBasis(benchmark, seriesKey);
+  return {
+    ...(label ? { label } : {}),
+    ...(basis ? { basis } : {}),
+    notCompared: notComparedText(benchmark, seriesKey),
+  };
+}
+
 function WeaknessesPart({ model }: { model: AreaPageModel }) {
   const { area, scope, weaknesses, timeline } = model;
   if (weaknesses.length === 0) {
@@ -627,7 +643,10 @@ function WeaknessesPart({ model }: { model: AreaPageModel }) {
                   sufficient: w.evidence.sufficient,
                   needMore: w.evidence.needMore,
                 }}
-                band={{ median: w.band.median }}
+                band={{
+                  median: w.band.median,
+                  ...areaBand(model.benchmark ?? null, w.seriesKey),
+                }}
                 href={`/app/weaknesses/${encodeURIComponent(w.seriesKey)}?${scopeQuery(scope)}`}
                 trend={trend}
                 onset={w.onset ? w.onset.at.toISOString().slice(0, 10) : null}

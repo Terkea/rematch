@@ -3,6 +3,7 @@
 import type { AiDisclosureData } from "@ci/ui/coach";
 import { Button } from "@ci/ui/primitives";
 import {
+  DEFAULT_BAND_LABEL,
   dayText,
   ExemplarBoard,
   NO_BENCHMARK_TEXT,
@@ -17,6 +18,10 @@ import type {
   ExemplarPosition,
   WeaknessesSection,
 } from "../../../../../server/coaching/types";
+import {
+  benchmarkGroupLabel,
+  storedBenchmark,
+} from "../../../../../server/profile/benchmark-text";
 import { seriesGlossary } from "../../../../../server/profile/glossary";
 import type { ReportScope } from "../rebuild-button";
 import { weaknessHref, weaknessSeriesKey } from "./links";
@@ -58,7 +63,9 @@ export function Weaknesses({
       band: { median: w.bandMedian },
     })),
   );
-  const band = capital(BAND_TEXT[computed.player.band] ?? "players at your level");
+  // Holistic F5: a peer benchmark is named as the players faced, never the old Lichess band.
+  const peers = benchmarkGroupLabel(storedBenchmark(computed.benchmark, computed.player.platform));
+  const band = peers ?? capital(BAND_TEXT[computed.player.band] ?? DEFAULT_BAND_LABEL);
   // A ranked weakness always has a benchmark; with none ranked, the metrics say whether the build
   // had any band reference at all. Without one nothing was compared (bug hunt I1).
   const benchmarked = ranked.length > 0 || computed.metrics.some((m) => m.bandMedian !== null);

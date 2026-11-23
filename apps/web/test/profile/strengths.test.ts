@@ -512,13 +512,32 @@ const hq = {
 };
 
 describe("keepDoingNote", () => {
-  it("quotes the glossary tip for the strength's kind", () => {
-    expect(keepDoingNote("tactic_found")).toBe(
+  it("quotes the glossary tip for the strength's kind when it took its time", () => {
+    expect(keepDoingNote("tactic_found", 20)).toBe(
       "Keep doing this: on every move, look at your own checks, captures and threats before anything else.",
     );
-    expect(keepDoingNote("only_move_found")).toMatch(
+    expect(keepDoingNote("only_move_found", 12)).toMatch(
       /^Keep doing this: when the position is sharp/,
     );
+  });
+
+  // Holistic F3: under 31. Kg6!, found in 2 s, "take your time" contradicted the moment.
+  it("a fast find never says take your time", () => {
+    expect(keepDoingNote("only_move_found", 2)).toBe(
+      "You saw the only move quickly. Keep scanning checks, captures and threats first.",
+    );
+    expect(keepDoingNote("tactic_found", 4.9)).toBe(
+      "You spotted the tactic quickly. Keep scanning checks, captures and threats first.",
+    );
+  });
+
+  it("with no clock it gives the tip that never says take your time", () => {
+    for (const kind of ["only_move_found", "tactic_found"] as const) {
+      const note = keepDoingNote(kind, null);
+      expect(note).toBe(
+        "Keep doing this: on every move, look at your own checks, captures and threats before anything else.",
+      );
+    }
   });
 });
 

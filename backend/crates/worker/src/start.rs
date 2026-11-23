@@ -757,16 +757,25 @@ pub async fn start_workers(env: &WorkerEnv, opts: StartOptions) -> anyhow::Resul
             } else {
                 "ai: disabled (no client)".to_owned()
             },
+            local: false,
         })),
         AiSetup::FromEnv => Some(ai_client_from_env(env).await),
     };
     // The startup line, recorded in `ai_status` for the web (bug hunt I5); never a credential.
     let mut ai_line: Option<String> = None;
+    // ADR 0062 Amendment 3: on the host's own login the budget is recorded, never enforced.
+    let mut ai_budgets = env.ai_budgets;
     let ai_client = match ai_choice {
         None => None,
         Some(Ok(choice)) => {
             tracing::info!("{}", choice.line);
             ai_line = Some(choice.line.clone());
+            if choice.local && choice.client.is_some() {
+                ai_budgets = ai_budgets.notional();
+                tracing::info!(
+                    "ai: monthly budget not enforced (local login, no real cost; usage still recorded)"
+                );
+            }
             // Which path the monthly and weekly schedules take (ADR 0075); no credential here.
             if let Some(client) = &choice.client {
                 tracing::info!(
@@ -890,7 +899,7 @@ pub async fn start_workers(env: &WorkerEnv, opts: StartOptions) -> anyhow::Resul
             ai: client,
             analyser: analyser.clone(),
             inputs,
-            budgets: env.ai_budgets,
+            budgets: ai_budgets,
             pricing,
             entitlements: ai_entitlements.clone(),
             weekly: Arc::new(crate::coach_triggers::ProfileWeeklyProvider { pool: pool.clone() }),

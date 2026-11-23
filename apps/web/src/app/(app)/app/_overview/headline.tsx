@@ -164,7 +164,7 @@ function WorkOnBody({ lead }: { lead: LeadFinding }) {
     case "none":
       return lead.compared ? (
         <p className="m-0 text-sm text-ink-soft">
-          Nothing stands out above players at your level across{" "}
+          Nothing stands out above the players you are compared with across{" "}
           {scopeGames(lead.analysedGames, lead.scope)} yet.
         </p>
       ) : (

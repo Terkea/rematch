@@ -169,7 +169,18 @@ fn report_prompt_set_is_the_brief_list() {
     // Fix D (N1): core/tokens v2 says the server prints a number's unit. ADR 0085: report v2
     // teaches the colour split and the peer benchmark, the overview v2 the White vs Black
     // sentence.
-    let v2 = ["core/tokens", "report/report", "report/section-overview"];
+    // Holistic F5: tone v2 drops the band's rating range.
+    let v2 = [
+        "core/tokens",
+        "report/report",
+        "report/section-overview",
+        "tone/b0",
+        "tone/b1",
+        "tone/b2",
+        "tone/b3",
+        "tone/b4",
+        "tone/b5",
+    ];
     assert!(
         REPORT_PROMPT_SET
             .iter()

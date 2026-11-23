@@ -67,7 +67,7 @@ export function Snapshot({ computed, order }: { computed: ComputedReport; order:
   );
   const unscored = computed.areaScores.filter((a) => !scored.includes(a));
   const peers = peerGroupText(computed);
-  const band = BAND_TEXT[player.band] ?? "players at your level";
+  const band = BAND_TEXT[player.band] ?? "players in your rating band";
   return (
     <ReportSection id="report-snapshot" title="Where you stand" order={order}>
       <div className="flex max-w-3xl flex-col gap-2">

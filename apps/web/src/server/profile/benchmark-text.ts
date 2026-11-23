@@ -1,7 +1,12 @@
 // The benchmark's words (ADRs 0080, 0081), with no database import so client components and
 // the report can name it too.
 
-import { shareText } from "@ci/ui/profile";
+import {
+  NO_BENCHMARK_TEXT,
+  NOT_COMPARED_EXCLUDED_TEXT,
+  NOT_COMPARED_LOW_SAMPLE_TEXT,
+  shareText,
+} from "@ci/ui/profile";
 
 export type Benchmark =
   | {
@@ -22,6 +27,15 @@ export type Benchmark =
   | { source: "lichess_bands" };
 
 const PLATFORM = { chesscom: "chess.com", lichess: "lichess" } as const;
+
+/** A stored coaching input's benchmark (ADR 0085, coaching-input v2 `benchmark`). */
+export type StoredBenchmark = {
+  source: "peers" | "lichess_bands";
+  ratingLow: number | null;
+  ratingHigh: number | null;
+  players: number | null;
+  games: number | null;
+};
 const count = new Intl.NumberFormat("en-GB");
 
 /** The bias every peer benchmark carries, stated wherever it is named. */
@@ -63,4 +77,44 @@ export function peerRateText(b: Benchmark | null, seriesKey: string, rate: numbe
   if (group === undefined || !fin(rate)) return null;
   const basis = peerPooledBasis(b, seriesKey);
   return `${group}: ${shareText(rate)}${basis ? ` (${basis})` : ""}`;
+}
+
+/**
+ * The weakness rows the peer benchmark compares, mirrored from Rust `is_peer_comparable`
+ * (ADR 0081). Every other row (and every motif) is mirrored or unenriched in the opponents' side
+ * of games against the player, so it is left out by design.
+ */
+export const PEER_COMPARABLE_KEYS: ReadonlySet<string> = new Set([
+  "W4.missed",
+  "W4.allowed",
+  "W7.traps",
+  "W9a",
+  "W9b",
+]);
+
+/**
+ * Why a row is not compared (holistic F1): left out by design, too few of the opponents'
+ * chances, or no benchmark at all. Never "players at your level".
+ */
+export function notComparedText(b: Benchmark | null, seriesKey: string): string {
+  if (b?.source !== "peers") return NO_BENCHMARK_TEXT;
+  return PEER_COMPARABLE_KEYS.has(seriesKey)
+    ? NOT_COMPARED_LOW_SAMPLE_TEXT
+    : NOT_COMPARED_EXCLUDED_TEXT;
+}
+
+/**
+ * The report's benchmark (holistic F5): a stored input's peer band as a [`Benchmark`], so the
+ * report names it with the same words as the live pages; null without a usable peer band.
+ */
+export function storedBenchmark(
+  b: StoredBenchmark | null | undefined,
+  platform: "chesscom" | "lichess",
+): Benchmark | null {
+  if (b?.source !== "peers") return null;
+  const { ratingLow: low, ratingHigh: high } = b;
+  if (low == null || high == null || !fin(low) || !fin(high)) return null;
+  const players = b.players != null && fin(b.players) ? b.players : 0;
+  const games = b.games != null && fin(b.games) ? b.games : 0;
+  return { source: "peers", platform, low, high, players, games, chances: {} };
 }

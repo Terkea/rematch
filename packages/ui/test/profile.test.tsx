@@ -11,6 +11,9 @@ import {
   kpiDomain,
   kpiSummary,
   kpiYScale,
+  NO_BENCHMARK_TEXT,
+  NOT_COMPARED_EXCLUDED_TEXT,
+  NOT_COMPARED_LOW_SAMPLE_TEXT,
   needMoreText,
   WeaknessRow,
   type WeaknessRowProps,
@@ -21,7 +24,7 @@ import {
 afterEach(cleanup);
 
 const BAD = /NaN|undefined|Infinity|null/;
-const NO_BENCHMARK = "Not compared yet: no benchmark for players at your level yet";
+const NO_BENCHMARK = "Not compared yet: no benchmark for this account yet";
 
 const row: WeaknessRowProps = {
   label: "Hanging pieces",
@@ -171,6 +174,24 @@ describe("WeaknessRow", () => {
     expect(text).toContain("4.2%");
     expect(text).toContain("80% range 3.1% to 5.6%");
     expect(text).toContain("38 times in 902 chances");
+  });
+
+  // Holistic F1: a row the benchmark leaves out says why, never the generic "no benchmark".
+  it("says why a row is not compared when the host gives the reason", () => {
+    const { container } = render(
+      <WeaknessRow
+        {...row}
+        band={{ median: null, notCompared: NOT_COMPARED_EXCLUDED_TEXT }}
+        compared={false}
+      />,
+    );
+    const text = container.textContent ?? "";
+    expect(text).toContain(
+      "Not compared: this can't be measured fairly from your opponents' moves in games against you",
+    );
+    expect(text).not.toContain(NO_BENCHMARK);
+    expect(NOT_COMPARED_LOW_SAMPLE_TEXT).toBe("Not compared yet: too few of their chances");
+    expect(`${NO_BENCHMARK_TEXT}`).not.toMatch(/at your level/);
   });
 
   it("names the estimate's window beside its counts", () => {

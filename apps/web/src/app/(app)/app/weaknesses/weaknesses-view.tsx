@@ -18,6 +18,7 @@ import {
   type Benchmark,
   benchmarkGroupLabel,
   benchmarkLabel,
+  notComparedText,
   peerPooledBasis,
 } from "../../../../server/profile/benchmark-text";
 import { seriesGlossary } from "../../../../server/profile/glossary";
@@ -67,7 +68,7 @@ export const EARLY_GROUP = {
 export const UNCOMPARED_GROUP = {
   id: "uncompared",
   title: NOT_COMPARED_LABEL,
-  lede: "No benchmark for players at your level yet. Each shows your own rate, its range and its chances.",
+  lede: "Not compared with other players. Each says why, and shows your own rate, its range and its chances.",
 } as const;
 
 /**
@@ -299,8 +300,12 @@ export function WeaknessesView({
                                 median: w.band.median,
                                 label: group,
                                 basis: peerPooledBasis(benchmark, w.seriesKey),
+                                notCompared: notComparedText(benchmark, w.seriesKey),
                               }
-                            : { median: w.band.median }
+                            : {
+                                median: w.band.median,
+                                notCompared: notComparedText(benchmark, w.seriesKey),
+                              }
                         }
                         compared={w.compared}
                         confidence={w.confidence}

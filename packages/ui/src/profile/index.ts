@@ -24,6 +24,8 @@ export {
   kpiSummary,
   likelyText,
   NO_BENCHMARK_TEXT,
+  NOT_COMPARED_EXCLUDED_TEXT,
+  NOT_COMPARED_LOW_SAMPLE_TEXT,
   NOT_COMPARED_LABEL,
   needMoreText,
   nText,

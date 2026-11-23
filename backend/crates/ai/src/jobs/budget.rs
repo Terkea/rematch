@@ -37,6 +37,10 @@ pub const GLOBAL_BUDGET_ENV: &str = "AI_GLOBAL_MONTHLY_BUDGET_MICRO_USD";
 pub struct BudgetConfig {
     pub per_plan: Budgets,
     pub global_monthly: Option<u64>,
+    /// Whether [`budget_guard`] blocks a call over budget. False only on the host's own Claude
+    /// Code login (dev only, ADR 0062 Amendment 3), where a call has no real cost: usage is still
+    /// metered, at list prices, but the budget is notional.
+    pub enforce: bool,
 }
 
 impl Default for BudgetConfig {
@@ -45,6 +49,7 @@ impl Default for BudgetConfig {
         BudgetConfig {
             per_plan: AI_MONTHLY_BUDGET_MICRO_USD,
             global_monthly: None,
+            enforce: true,
         }
     }
 }
@@ -87,7 +92,18 @@ impl BudgetConfig {
                 pro: read(BUDGET_PRO_ENV)?.unwrap_or(d.per_plan.pro),
             },
             global_monthly: read(GLOBAL_BUDGET_ENV)?,
+            enforce: true,
         })
+    }
+
+    /// The same budgets, recorded but not enforced (ADR 0062 Amendment 3): the host's own
+    /// Claude Code login has no real cost. Production refuses that mode, so it never applies
+    /// there.
+    pub fn notional(self) -> Self {
+        BudgetConfig {
+            enforce: false,
+            ..self
+        }
     }
 }
 
@@ -102,7 +118,8 @@ fn db_unavailable() -> AiError {
 /// the budget by a few calls; ADR 0061 "Degradation"): the spend of `scope` (the accounts
 /// sharing one budget) and, with a global cap, of everyone, since the start of `now`'s UTC
 /// month. Spend at or above the budget is `Err(AiError::Budget)`. A database error fails closed as
-/// `Unavailable` (the job retries later; no call is made).
+/// `Unavailable` (the job retries later; no call is made). A notional budget
+/// ([`BudgetConfig::notional`]) always passes: the calls are still metered.
 pub fn budget_guard(
     pool: PgPool,
     scope: Vec<Uuid>,
@@ -114,6 +131,9 @@ pub fn budget_guard(
         let pool = pool.clone();
         let scope = scope.clone();
         Box::pin(async move {
+            if !cfg.enforce {
+                return Ok(());
+            }
             let since = window_start(QuotaWindow::Month, now);
             let mut conn = pool.acquire().await.map_err(|_| db_unavailable())?;
             let spent = usage::spend_since(&mut conn, &scope, since)

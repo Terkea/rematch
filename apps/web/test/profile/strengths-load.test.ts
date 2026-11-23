@@ -381,7 +381,8 @@ describe("loadStrengths", () => {
     expect(m?.hardSpots.spots).toMatchObject([
       { gameId, ply: 3, kind: "only_move_found", fen: move?.fenBefore, san: move?.san },
     ]);
-    expect(m?.hardSpots.notes.only_move_found).toMatch(/^Keep doing this: /);
+    // Holistic F3: one note per spot, chosen by its kind and time.
+    expect(m?.hardSpots.notes[`${gameId}:3`]).toMatch(/^Keep doing this: |quickly/);
     expect(m?.difficulty).toMatchObject({ positions: 1, pendingMaia: 1 });
   });
 

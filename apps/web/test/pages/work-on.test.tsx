@@ -60,7 +60,7 @@ describe("WorkOn", () => {
     render(<WorkOn lead={{ kind: "none", scope, analysedGames: 214, compared: true }} />);
     expect(
       screen.getByText(
-        "Nothing stands out above players at your level across 214 analysed rapid games on lichess yet.",
+        "Nothing stands out above the players you are compared with across 214 analysed rapid games on lichess yet.",
       ),
     ).toBeInTheDocument();
   });
@@ -71,7 +71,7 @@ describe("WorkOn", () => {
       <WorkOn lead={{ kind: "none", scope, analysedGames: 214, compared: false }} />,
     );
     expect(container).toHaveTextContent(
-      "Not compared yet: no benchmark for players at your level yet.",
+      "Not compared yet: no benchmark for this account yet.",
     );
     expect(container).toHaveTextContent("214 analysed rapid games on lichess");
     expect(container).not.toHaveTextContent(/Nothing stands out/);

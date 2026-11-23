@@ -73,7 +73,7 @@ macro_rules! prompt {
     };
 }
 
-static TABLE: [Prompt; 32] = [
+static TABLE: [Prompt; 38] = [
     prompt!("core/rules", 1),
     prompt!("core/tokens", 1),
     prompt!("core/tokens", 2),
@@ -89,11 +89,17 @@ static TABLE: [Prompt; 32] = [
     prompt!("report/section-climb_plan", 1),
     prompt!("report/section-areas", 1),
     prompt!("tone/b0", 1),
+    prompt!("tone/b0", 2),
     prompt!("tone/b1", 1),
+    prompt!("tone/b1", 2),
     prompt!("tone/b2", 1),
+    prompt!("tone/b2", 2),
     prompt!("tone/b3", 1),
+    prompt!("tone/b3", 2),
     prompt!("tone/b4", 1),
+    prompt!("tone/b4", 2),
     prompt!("tone/b5", 1),
+    prompt!("tone/b5", 2),
     prompt!("repair/repair", 1),
     prompt!("weekly-review/system", 1),
     prompt!("weekly-review/task", 1),
@@ -131,12 +137,14 @@ pub const REPORT_PROMPT_SET: &[(&str, u32)] = &[
     // glossary gives the plain words. v1 stays for stored hashes.
     ("report/report", 2),
     ("report/output", 1),
-    ("tone/b0", 1),
-    ("tone/b1", 1),
-    ("tone/b2", 1),
-    ("tone/b3", 1),
-    ("tone/b4", 1),
-    ("tone/b5", 1),
+    // Holistic F5: v2 drops the band's rating range, so the model never names it in place of the
+    // peer benchmark. v1 stays for stored hashes.
+    ("tone/b0", 2),
+    ("tone/b1", 2),
+    ("tone/b2", 2),
+    ("tone/b3", 2),
+    ("tone/b4", 2),
+    ("tone/b5", 2),
     ("report/section-overview", 2),
     ("report/section-weaknesses", 1),
     ("report/section-openings", 1),
