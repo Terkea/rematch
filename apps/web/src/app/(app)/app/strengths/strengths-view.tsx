@@ -1,15 +1,10 @@
 import { Button } from "@ci/ui/primitives";
-import {
-  dayText,
-  ExplainPopover,
-  exemplarMoveText,
-  fenMove,
-  formatKpiValue,
-} from "@ci/ui/profile";
+import { dayText, ExplainPopover, exemplarMoveText, fenMove, formatKpiValue } from "@ci/ui/profile";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { CoachScopeSwitch } from "../../../../components/coach-scope-switch";
 import { GamePosition } from "../../../../components/game-position";
+import type { DayRange } from "../../../../server/filters/params";
 import type { CoachScope, DifficultyStatus } from "../../../../server/profile";
 import {
   BENCHMARK_BIAS_TEXT,
@@ -17,7 +12,6 @@ import {
   benchmarkGroupLabel,
   benchmarkLabel,
 } from "../../../../server/profile/benchmark-text";
-import type { DayRange } from "../../../../server/filters/params";
 import {
   AREA_GLOSSARY,
   type GlossaryEntry,
@@ -677,8 +671,8 @@ function ColourClaims({ colour, above }: { colour: "White" | "Black"; above: Sid
   if (above.claims.length === 0) {
     return (
       <Quiet>
-        None of your {plural(above.compared, "measure", "measures")} compared in your {colour}{" "}
-        games is clearly better yet.
+        None of your {plural(above.compared, "measure", "measures")} compared in your {colour} games
+        is clearly better yet.
       </Quiet>
     );
   }

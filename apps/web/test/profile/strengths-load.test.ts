@@ -207,7 +207,9 @@ describe("loadStrengths", () => {
     const m = await loadStrengths(db, userId, await scopeOf(userId));
     expect(m?.bySide?.white).toMatchObject({ mode: "peers", compared: 1 });
     const white = m?.bySide?.white;
-    expect(white?.mode === "peers" ? white.claims.map((c) => c.metric) : null).toEqual(["accuracy"]);
+    expect(white?.mode === "peers" ? white.claims.map((c) => c.metric) : null).toEqual([
+      "accuracy",
+    ]);
     expect(m?.bySide?.black).toMatchObject({ mode: "peers", compared: 1, claims: [] });
   });
 

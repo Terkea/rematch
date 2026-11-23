@@ -23,7 +23,7 @@ import { difficultyStatus } from "./difficulty";
 import { KPI_GLOSSARY } from "./glossary";
 import { CURRENT_WINDOW, latestSnapshots } from "./kpis";
 import { ownsScope } from "./scope";
-import type { Area, CoachScope, DifficultyStatus, Side as Colour, WeaknessState } from "./types";
+import type { Area, CoachScope, Side as Colour, DifficultyStatus, WeaknessState } from "./types";
 import { openingNames } from "./weaknesses";
 
 // The strengths page's read model (`/app/strengths`): the good things in a scope's games and what
@@ -829,7 +829,12 @@ export async function loadStrengths(
       const current =
         peerRows.length > 0 || (band && refRows.length > 0)
           ? (
-              await latestSnapshots(tx, { ...scope, side: at }, [...STRENGTH_METRICS], CURRENT_WINDOW)
+              await latestSnapshots(
+                tx,
+                { ...scope, side: at },
+                [...STRENGTH_METRICS],
+                CURRENT_WINDOW,
+              )
             ).map((r) => ({
               metric: r.metric,
               value: r.value,

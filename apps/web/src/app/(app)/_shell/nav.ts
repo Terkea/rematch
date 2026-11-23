@@ -77,7 +77,10 @@ export function withFilters(href: string, search: Search | null): string {
     set("account", f.account);
     set("tc", f.tc === "all" ? null : f.tc);
     if (href === "/app/coach/new") set("color", f.color);
-  } else if (href === "/app" || /^\/app\/(report|weaknesses|strengths|progress|areas)(\/|$)/.test(href)) {
+  } else if (
+    href === "/app" ||
+    /^\/app\/(report|weaknesses|strengths|progress|areas)(\/|$)/.test(href)
+  ) {
     set("account", f.account);
     set("tc", f.tc);
     set("color", f.color);

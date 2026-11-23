@@ -9,8 +9,8 @@ import {
   listWeaknesses,
   resolveCoachScope,
 } from "../../../../server/profile";
-import { FilterBar } from "../_filters/filter-bar";
 import { datesNote } from "../_filters/dates-note";
+import { FilterBar } from "../_filters/filter-bar";
 import { loadCoachBar, manyAccounts } from "../_filters/load";
 import { withSide } from "../_filters/side";
 import { weeklyRates } from "./queries";

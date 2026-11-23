@@ -776,7 +776,12 @@ describe("/app/areas", () => {
 
   it("keeps the colour and dates too (audit A7)", async () => {
     const err = await IndexPage({
-      searchParams: Promise.resolve({ account: ACCOUNT, tc: "rapid", color: "black", to: "2026-10-31" }),
+      searchParams: Promise.resolve({
+        account: ACCOUNT,
+        tc: "rapid",
+        color: "black",
+        to: "2026-10-31",
+      }),
     }).catch((e: unknown) => e);
     const digest = String((err as { digest?: string }).digest);
     expect(digest).toContain(

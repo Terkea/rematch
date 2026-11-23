@@ -523,7 +523,10 @@ describe("StrengthsView filters", () => {
     ];
     const { body, screen } = show(m);
     for (const row of body.querySelectorAll("[data-claim]")) {
-      expect(row.querySelector("button[aria-label^='What is']"), row.textContent ?? "").not.toBeNull();
+      expect(
+        row.querySelector("button[aria-label^='What is']"),
+        row.textContent ?? "",
+      ).not.toBeNull();
       expect(row.querySelector("[data-claim-head]")?.className).toContain("flex-wrap");
     }
     expect(screen.getByRole("button", { name: "What is accuracy?" })).toBeTruthy();

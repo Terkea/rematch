@@ -16,6 +16,7 @@ import { WeaknessTimeline } from "@ci/ui/timeline";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { CoachScopeSwitch } from "../../../../../components/coach-scope-switch";
+import { ScrollCue } from "../../../../../components/scroll-cue";
 import { coachChatLive } from "../../../../../lib/coach-chat";
 import { areaMeaning } from "../../../../../lib/explain";
 import { weeklyPoints } from "../../../../../lib/iso-week";
@@ -24,6 +25,8 @@ import { coachHref } from "../../../../../server/coach/anchor";
 import type { CoachStatus } from "../../../../../server/coach/status";
 import type { ReportView } from "../../../../../server/coaching";
 import type { NarrativeItem } from "../../../../../server/coaching/types";
+import type { DayRange } from "../../../../../server/filters/params";
+import type { Benchmark } from "../../../../../server/profile/benchmark-text";
 import {
   AREA_GLOSSARY,
   KPI_GLOSSARY,
@@ -39,13 +42,10 @@ import type {
   WeaknessSummary,
 } from "../../../../../server/profile/types";
 import { EmptySheet } from "../../../_shell/page-heading";
+import { datesNote } from "../../_filters/dates-note";
 import { SectionHead } from "../../_overview/section-head";
 import { numbersOnlyCopy } from "../../report/notes-off";
 import { type ScoreBasis, shortfallUnit } from "./basis";
-import type { DayRange } from "../../../../../server/filters/params";
-import type { Benchmark } from "../../../../../server/profile/benchmark-text";
-import { datesNote } from "../../_filters/dates-note";
-import { ScrollCue } from "../../../../../components/scroll-cue";
 
 // The skill-area page's layout, shared by all seven areas (one layout, no card grid, B4): a
 // heading with the area tabs, then ruled sections down one column. Score and the coach's note

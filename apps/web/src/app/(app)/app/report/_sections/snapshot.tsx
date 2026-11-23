@@ -93,10 +93,7 @@ export function Snapshot({ computed, order }: { computed: ComputedReport; order:
                 basis: { games: a.n, timeClass: player.timeClass },
               }))}
             />
-            <AreaScoreKey
-              next={false}
-              {...(peers ? { median: "Players you've faced" } : {})}
-            />
+            <AreaScoreKey next={false} {...(peers ? { median: "Players you've faced" } : {})} />
           </>
         ) : null}
         {unscored.length > 0 ? (

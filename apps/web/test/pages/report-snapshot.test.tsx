@@ -1,5 +1,5 @@
-import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { renderToString } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { ComputedReport } from "../../src/server/coaching/types.js";
