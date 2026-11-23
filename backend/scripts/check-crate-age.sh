@@ -27,7 +27,7 @@ CACHE=${CRATE_AGE_CACHE:-${CARGO_TARGET_DIR:-target}/crate-age-cache}
 OFFLINE=${CRATE_AGE_OFFLINE:-0}
 RETRY_BUDGET=${CRATE_AGE_RETRY_BUDGET:-60}
 API=${CRATE_AGE_API:-https://crates.io/api/v1/crates}
-UA="chess-improver-ci (+https://github.com/chess-improver)"
+UA="rematch/0.1 (+https://github.com/Terkea/rematch)"
 
 valid_timestamp() {
   printf '%s' "$1" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+(Z|[+-][0-9:]+)$' \

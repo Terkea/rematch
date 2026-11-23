@@ -28,7 +28,7 @@ export interface PlatformClient {
   getNdjson<T>(url: string, init?: RequestInitLite): AsyncIterable<T>;
 }
 
-export const USER_AGENT = "chess-improver/0.1 (+https://github.com/chess-improver)";
+export const USER_AGENT = "rematch/0.1 (+https://github.com/Terkea/rematch)";
 
 export interface PlatformClientOptions {
   name: "lichess" | "chesscom";

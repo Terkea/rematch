@@ -189,7 +189,7 @@ async fn structured_posts_the_contract_with_bearer() {
     let ua = reqs[0].headers.get("user-agent").unwrap().to_str().unwrap();
     assert_eq!(
         ua,
-        "chess-improver/0.1 (+https://github.com/chess-improver)"
+        "rematch/0.1 (+https://github.com/Terkea/rematch)"
     );
     assert_eq!(ua, ai::client::wire::USER_AGENT);
     assert!(!ua.contains('@'));

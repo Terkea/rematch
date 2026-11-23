@@ -30,7 +30,7 @@ pub const READ_TIMEOUT: Duration = Duration::from_secs(120);
 /// The fixed User-Agent of every outbound request, the same string as `platforms` sends
 /// (ADR 0043: no request ever carries an email address, so this crate has no `CONTACT_EMAIL`
 /// plumbing).
-pub const ANONYMOUS_USER_AGENT: &str = "chess-improver/0.1 (+https://github.com/chess-improver)";
+pub const ANONYMOUS_USER_AGENT: &str = "rematch/0.1 (+https://github.com/Terkea/rematch)";
 
 /// One monthly standard-rated dump, e.g. `lichess_db_standard_rated_2026-10.pgn.zst`.
 #[derive(Clone, Debug, PartialEq, Eq)]

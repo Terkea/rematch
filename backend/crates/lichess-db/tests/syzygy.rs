@@ -129,7 +129,7 @@ async fn requests_carry_the_project_user_agent() {
         .to_owned();
     assert_eq!(
         ua,
-        "chess-improver/0.1 (+https://github.com/chess-improver)"
+        "rematch/0.1 (+https://github.com/Terkea/rematch)"
     );
     assert!(!ua.contains('@'), "{ua}");
 }
@@ -259,7 +259,7 @@ async fn contact_email_never_reaches_the_cli_user_agent() {
     for ua in syz.iter().chain(&scan) {
         assert_eq!(
             ua,
-            "chess-improver/0.1 (+https://github.com/chess-improver)"
+            "rematch/0.1 (+https://github.com/Terkea/rematch)"
         );
         assert!(!ua.contains('@'));
     }

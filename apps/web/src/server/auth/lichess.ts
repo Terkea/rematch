@@ -7,7 +7,7 @@ import {
 } from "../../lib/placeholder-email";
 
 /** ADR 0043: the project User-Agent, with no email. Must equal the worker's `USER_AGENT`. */
-export const LICHESS_USER_AGENT = "chess-improver/0.1 (+https://github.com/chess-improver)";
+export const LICHESS_USER_AGENT = "rematch/0.1 (+https://github.com/Terkea/rematch)";
 
 /** A token this close to its expiry shows "Reconnect Lichess" (Lichess has no refresh token). */
 export const LICHESS_EXPIRING_WINDOW_MS = 14 * 24 * 3600 * 1000;

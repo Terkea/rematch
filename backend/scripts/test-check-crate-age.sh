@@ -57,7 +57,7 @@ calls() { grep -c '^URL=' "$t/log" || true; }
 reset
 run > "$t/out" || fail "first run failed: $(cat "$t/out")"
 [ "$(calls)" = 1 ] || fail "expected 1 call on a cold cache, got $(calls)"
-grep -qx 'UA=chess-improver-ci (+https://github.com/chess-improver)' "$t/log" || fail "wrong User-Agent"
+grep -qx 'UA=rematch/0.1 (+https://github.com/Terkea/rematch)' "$t/log" || fail "wrong User-Agent"
 grep -q '@' "$t/log" && fail "a request carried an email-like value: $(cat "$t/log")"
 grep -q '1 fetched, 0 cached' "$t/out" || fail "unexpected summary: $(cat "$t/out")"
 

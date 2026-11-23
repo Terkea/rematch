@@ -824,7 +824,7 @@ async fn failed_resume_requests_stop_when_the_budget_is_spent() {
 /// ADR 0043: one fixed User-Agent, no email, on the dump and the sums requests.
 #[tokio::test]
 async fn dump_and_sums_requests_send_the_exact_project_user_agent() {
-    const UA: &str = "chess-improver/0.1 (+https://github.com/chess-improver)";
+    const UA: &str = "rematch/0.1 (+https://github.com/Terkea/rematch)";
     assert_eq!(lichess_db::config::user_agent(), UA);
     let (_, body) = dump_body(3).await;
     let server = MockServer::start().await;
