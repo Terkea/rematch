@@ -1,7 +1,7 @@
 # 0086. The coach reads a coaching-input snapshot written at every profile build
 
 Date: 2026-11-23. Status: accepted (fix/fresh-coach-input, final-QA finding Q5). Builds on
-ADR 0085 (coaching-input-v2), ADR-R2-18 (the CoachingInput builder) and ADR-R3-6 (the chat).
+ADR 0085 (coaching-input-v2), ADR-R2-18 (the CoachingInput builder) and ADR 0064 (the chat).
 
 ## Context
 

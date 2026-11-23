@@ -652,8 +652,30 @@ main > section:not(.band) {
   font-size: var(--text-sm);
 }
 
+.roadmap-epics {
+  list-style: none;
+  padding: 0;
+  margin-top: calc(var(--spacing) * 2);
+  font-size: var(--text-sm);
+  line-height: var(--text-sm--line-height);
+}
+
+.roadmap-epics li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: calc(var(--spacing) * 1) calc(var(--spacing) * 3);
+  padding-block: calc(var(--spacing) * 1);
+  border-top: 1px solid var(--color-rule);
+}
+
+.roadmap-progress {
+  color: var(--color-ink-faint);
+  font-variant-numeric: lining-nums tabular-nums;
+}
+
 .roadmap-more {
-  margin-top: calc(var(--spacing) * 4);
+  margin-top: calc(var(--spacing) * 8);
   font-weight: 500;
 }
 

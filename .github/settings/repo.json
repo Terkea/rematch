@@ -3,7 +3,7 @@
     "description": "Rematch, chess improver. Stockfish on every move of your chess.com games, an AI coach that cites your own games, and a trainer built from the moments you missed. Stop losing to the same move.",
     "homepage": "https://terkea.github.io/rematch/",
     "has_issues": true,
-    "has_projects": false,
+    "has_projects": true,
     "has_wiki": false,
     "has_discussions": true,
     "allow_squash_merge": true,

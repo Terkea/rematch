@@ -1,29 +1,38 @@
 ---
 title: Roadmap
-description: What Rematch does today, what comes next and what is open for contributors.
+description: What Rematch does today and what comes next, from the milestones and epics on GitHub.
 sidebar:
   order: 4
 ---
 
 import RoadmapList from "../../../components/RoadmapList.astro";
-import { next, openForContributors, shipped } from "../../../data/roadmap";
+import RoadmapMilestones from "../../../components/RoadmapMilestones.astro";
+import { roadmap, shipped } from "../../../data/roadmap";
 
-The roadmap follows one question: will this make a club player better? The next steps come from a review of the app through the eyes of an 800-rated rapid player, ranked by what the [research on learning](/rematch/docs/research/2026-11-23-what-helps-amateurs-improve/) says should help. Each one needs the maintainer's approval and its own decision record before work starts.
+The roadmap is the [milestones on GitHub](https://github.com/Terkea/rematch/milestones). Each milestone has one epic per theme; the epic is a spec (the problem, the evidence, the design, the acceptance criteria) and its work is linked to it as sub-issues. This page is built from them, so the progress below is GitHub's{roadmap.source === "seed" ? " (this build could not read GitHub, so it shows the seed list from .github/settings with counts only)" : ""}.
+
+The order follows one question: will this make a club player better? It comes from a review of the app through the eyes of an 824-rated rapid player, ranked by what the [research on learning](/rematch/docs/research/2026-11-23-what-helps-amateurs-improve/) says should help. An idea becomes work in four steps: an issue, a spec the maintainer accepts (`accepted`), a milestone, then the pull requests that close it ([how we ship](/rematch/docs/sdlc/)).
+
+## Now
+
+<RoadmapMilestones horizon="now" />
+
+## Next
+
+<RoadmapMilestones horizon="next" />
+
+## Later
+
+<RoadmapMilestones horizon="later" />
 
 ## Shipped
 
 <RoadmapList items={shipped} />
 
-## Next
-
-<RoadmapList items={next} />
-
 ## Open for contributors
 
-These become [good first issues](https://github.com/Terkea/rematch/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) and [help wanted](https://github.com/Terkea/rematch/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22) issues. Comment on one before you start.
-
-<RoadmapList items={openForContributors} />
+Issues labelled [good first issue](https://github.com/Terkea/rematch/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) are small, with the files to start from; [help wanted](https://github.com/Terkea/rematch/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22) issues are larger. Comment on one before you start, so two people don't build the same thing.
 
 ## Version 1.0
 
-1.0.0 is reserved for the first complete release, the MVP, and is declared by the maintainer in its own decision record. Until then every release is a 0.y.z beta. See [how we ship](/rematch/docs/sdlc/).
+1.0.0 is reserved for the first complete release, the MVP, and is declared by the maintainer in its own decision record. The epic "What 1.0 means" in the v1.0 milestone proposes the bar. Until then every release is a 0.y.z beta.

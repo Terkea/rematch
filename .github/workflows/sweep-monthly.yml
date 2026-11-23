@@ -1,0 +1,42 @@
+name: Monthly sweep
+# Opens the monthly maintenance checklist (ADR 0099) from .github/sweeps/monthly-maintenance.md,
+# once per month: a second run in the same month finds the issue by title and does nothing. No
+# secrets: only the run's own GITHUB_TOKEN, with issues: write.
+on:
+  schedule:
+    - cron: "7 6 1 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sweep-monthly
+  cancel-in-progress: false
+
+jobs:
+  checklist:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: .github/sweeps
+      - name: Open this month's checklist
+        run: |
+          month=$(date -u +%Y-%m)
+          title="Maintenance sweep: $month"
+          found=$(gh issue list --state all --search "\"$title\" in:title" --limit 20 --json title \
+            --jq "[.[] | select(.title == \"$title\")] | length")
+          if [ "$found" != "0" ]; then
+            echo "\"$title\" already exists."
+            exit 0
+          fi
+          sed "s/{{MONTH}}/$month/g" .github/sweeps/monthly-maintenance.md >body.md
+          gh issue create --title "$title" --label sweep --body-file body.md ||
+            gh issue create --title "$title" --body-file body.md

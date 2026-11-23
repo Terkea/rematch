@@ -3,12 +3,16 @@
 // - the design tokens, from packages/ui/src/styles/tokens.css (DESIGN.md is the law), turned from a
 //   Tailwind @theme block into plain custom properties;
 // - the decision log, one page per docs/decisions/*.md plus an index from its README;
-// - the research notes, one page per docs/research/*.md plus an index.
+// - the research notes, one page per docs/research/*.md plus an index;
+// - the roadmap, from GitHub's milestones and epics with `--roadmap-live` (the production build),
+//   else from the seed files in .github/settings (roadmap-data.mjs, ADR 0099).
 // Everything written here is git-ignored and regenerated on every build.
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, posix, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { loadSeed } from "../../scripts/roadmap/roadmap-lib.mjs";
 import { BASE, GITHUB_BLOB, rewriteMarkdown, slugOf, titleOf } from "./content-lib.mjs";
+import { loadRoadmap, writeRoadmap } from "./roadmap-data.mjs";
 
 const SITE = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const ROOT = resolve(SITE, "..");
@@ -122,4 +126,11 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
   console.log(
     `site content: ${n.decisions} decisions, ${n.research} research notes, tokens (${relative(ROOT, join(SITE, "src/styles/generated/tokens.css"))})`,
   );
+  const live = process.argv.includes("--roadmap-live") && process.env.ROADMAP_OFFLINE !== "1";
+  const { model, note } = await loadRoadmap(loadSeed(ROOT), {
+    live,
+    token: process.env.GITHUB_TOKEN,
+  });
+  writeRoadmap(join(SITE, "src", "data", "generated", "roadmap.json"), model);
+  console.log(`site roadmap: ${model.milestones.length} milestones from ${note}`);
 }

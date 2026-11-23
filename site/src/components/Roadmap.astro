@@ -1,40 +1,43 @@
 ---
-import { next, openForContributors, shipped } from "../data/roadmap";
-import { GOOD_FIRST_ISSUES_URL, href } from "../data/site";
-
-const groups = [
-  { id: "shipped", title: "Shipped", items: shipped },
-  { id: "next", title: "Next", items: next },
-  { id: "open", title: "Open for contributors", items: openForContributors },
-];
+// The landing page's roadmap: Now, Next and Later, one column each, from GitHub's milestones and
+// epics (src/data/roadmap.ts, ADR 0099).
+import { epicName, HORIZONS, milestonesIn, progressText } from "../data/roadmap";
+import { GOOD_FIRST_ISSUES_URL, href, REPO_URL } from "../data/site";
 ---
 
 <div class="roadmap">
   {
-    groups.map((g) => (
-      <section class="roadmap-group" aria-labelledby={`roadmap-${g.id}`}>
-        <h3 id={`roadmap-${g.id}`} class="roadmap-title">
-          {g.title}
+    HORIZONS.map((h) => (
+      <section class="roadmap-group" aria-labelledby={`roadmap-${h.id}`}>
+        <h3 id={`roadmap-${h.id}`} class="roadmap-title">
+          {h.title}
         </h3>
         <ol class="roadmap-list" role="list">
-          {g.items.map((item) => (
+          {milestonesIn(h.id).map((m) => (
             <li>
-              <span class="roadmap-item">{item.title}</span>
-              <span class="roadmap-detail">{item.detail}</span>
-              {item.adr && (
-                <a class="roadmap-adr" href={href(`docs/decisions/${item.adr}/`)}>
-                  Decision {item.adr.slice(0, 4)}
-                </a>
-              )}
+              <a class="roadmap-item" href={m.url}>
+                {m.title}
+              </a>
+              <span class="roadmap-detail">{m.description}</span>
+              <ul class="roadmap-epics" role="list">
+                {m.epics.map((e) => (
+                  <li>
+                    {e.url ? <a href={e.url}>{epicName(e.title)}</a> : epicName(e.title)}
+                    <span class="roadmap-progress">
+                      {progressText(e.done, e.total, "sub-issue")}
+                    </span>
+                  </li>
+                ))}
+              </ul>
             </li>
           ))}
         </ol>
-        {g.id === "open" && (
-          <p class="roadmap-more">
-            <a href={GOOD_FIRST_ISSUES_URL}>Good first issues on GitHub</a>
-          </p>
-        )}
       </section>
     ))
   }
 </div>
+<p class="roadmap-more">
+  <a href={`${REPO_URL}/milestones`}>Every milestone on GitHub</a>{" · "}
+  <a href={GOOD_FIRST_ISSUES_URL}>Good first issues</a>{" · "}
+  <a href={href("docs/roadmap/")}>What has shipped</a>
+</p>

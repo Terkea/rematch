@@ -25,6 +25,10 @@ updates:
         dependency-type: production
         update-types: [minor, patch]
 
+  # Cargo.toml dependency lists and Cargo.lock belong to the maintainer (CLAUDE.md, ADR 0099):
+  # these pull requests are reviewed and merged by the maintainer, never by a contributor, after
+  # the Rust job (cargo deny, crate age, --locked tests) is green. Majors are not grouped, so each
+  # one is its own decision.
   - package-ecosystem: cargo
     directory: /backend
     schedule:

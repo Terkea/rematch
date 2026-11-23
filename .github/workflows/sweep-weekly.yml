@@ -1,0 +1,213 @@
+name: Weekly sweep
+# The weekly maintenance sweep (ADR 0099): links, fresh RustSec advisories and dated advisory
+# ignores, the npm audit (reported, never failing), the crate-age rule, the README's roadmap
+# summary and the decision log's index. When a check fails, one tracking issue
+# "Weekly sweep: <date>" is opened, or the open one updated; when every check passes again, it is
+# closed. No secrets: only the run's own GITHUB_TOKEN, with issues: write in the report job alone.
+# Actions are pinned by commit SHA.
+on:
+  schedule:
+    - cron: "41 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sweep-weekly
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    # The fast checks, on the host's Node. Each writes its findings to sweep/<name>.md.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - name: Install pnpm
+        run: npm install --global pnpm@12.21.0
+      - name: Run the checks
+        run: |
+          mkdir -p sweep
+          status=0
+          run() {
+            name=$1
+            shift
+            if ! out=$("$@" 2>&1); then
+              status=1
+              printf '### %s\n\n~~~\n%s\n~~~\n\n' "$name" "$out" >"sweep/$name.md"
+            fi
+            echo "$out"
+          }
+          run "README roadmap summary" node scripts/roadmap/render-readme.mjs --check
+          run "Decision log and ADR references" node scripts/sweeps/check-docs.mjs
+          run "Advisory ignores past their date" node scripts/sweeps/check-advisory-ignores.mjs
+          run "Repository settings files" node scripts/github/test-settings.mjs
+          exit "$status"
+      - name: npm audit of production dependencies (reported, never fails)
+        if: always()
+        run: |
+          mkdir -p sweep
+          if ! out=$(pnpm audit --prod 2>&1); then
+            printf '### npm audit (production, report only)\n\n~~~\n%s\n~~~\n\n' "$out" >sweep/zz-npm-audit.md
+          fi
+          echo "$out"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: sweep-checks
+          path: sweep/
+          if-no-files-found: ignore
+          retention-days: 30
+
+  links:
+    # Every link in the README, the docs and the site's sources. localhost and the GitHub pages
+    # that rate-limit anonymous clients (issue and pull searches, our own repository, which is
+    # renamed and may be private) are skipped; 429 counts as reachable rather than failing a week.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check links
+        id: lychee
+        uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
+        with:
+          fail: false
+          output: sweep/links.md
+          args: >-
+            --no-progress
+            --max-concurrency 8
+            --accept 200,206,429
+            --exclude-loopback
+            --exclude '^https?://localhost'
+            --exclude '^https://github\.com/Terkea/'
+            --exclude '^https://github\.com/[^/]+/[^/]+/(issues|pulls|discussions|milestones|compare|commit)'
+            --exclude '^https://api\.github\.com/'
+            --exclude-path node_modules
+            README.md
+            'docs/**/*.md'
+            'site/src/**/*.md'
+            'site/src/**/*.mdx'
+            'site/src/**/*.astro'
+            'site/src/**/*.ts'
+      - name: Keep the report only when links are broken
+        if: always()
+        env:
+          LYCHEE_EXIT: ${{ steps.lychee.outputs.exit_code }}
+        run: |
+          if [ "$LYCHEE_EXIT" = "0" ]; then
+            rm -f sweep/links.md
+          else
+            { echo "### Broken links"; echo; cat sweep/links.md; } >sweep/links.tmp
+            mv sweep/links.tmp sweep/links.md
+            exit 1
+          fi
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: sweep-links
+          path: sweep/
+          if-no-files-found: ignore
+          retention-days: 30
+
+  rust:
+    # cargo deny against today's RustSec database (it fetches it), and the crate-age rule, in the
+    # same rust-dev image as CI (ADR 0067), with no host ports.
+    runs-on: ubuntu-latest
+    env:
+      COMPOSE_FILE: docker-compose.yml
+      COMPOSE: docker compose -p ci-sweep
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build the Rust dev image
+        run: $COMPOSE build rust-dev
+      - name: Create the shared Rust cache volumes
+        run: sh scripts/rust-cache-init.sh
+      - name: Advisories and crate age
+        run: |
+          mkdir -p sweep
+          status=0
+          if ! out=$($COMPOSE run --rm --no-deps rust-dev cargo deny --locked check advisories 2>&1); then
+            status=1
+            printf '### cargo deny check advisories\n\n~~~\n%s\n~~~\n\n' "$out" >sweep/advisories.md
+          fi
+          echo "$out"
+          if ! out=$($COMPOSE run --rm --no-deps rust-dev sh scripts/check-crate-age.sh 2>&1); then
+            status=1
+            printf '### Crate age\n\n~~~\n%s\n~~~\n\n' "$out" >sweep/crate-age.md
+          fi
+          echo "$out"
+          exit "$status"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: sweep-rust
+          path: sweep/
+          if-no-files-found: ignore
+          retention-days: 30
+      - name: Stop the stack
+        if: always()
+        run: $COMPOSE down -v
+
+  report:
+    # One tracking issue, never one per run: opened or updated on failure, closed on success.
+    needs: [checks, links, rust]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RESULTS: >-
+        checks=${{ needs.checks.result }}
+        links=${{ needs.links.result }}
+        rust=${{ needs.rust.result }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: sweep-*
+          merge-multiple: true
+          path: sweep
+      - name: Open, update or close the tracking issue
+        run: |
+          today=$(date -u +%F)
+          open=$(gh issue list --state open --label sweep --limit 50 --json number,title \
+            --jq '[.[] | select(.title | startswith("Weekly sweep: "))][0].number // empty')
+          case "$RESULTS" in
+            *failure* | *cancelled*) failed=1 ;;
+            *) failed=0 ;;
+          esac
+          if [ "$failed" -eq 0 ]; then
+            if [ -n "$open" ]; then
+              gh issue close "$open" --comment "The sweep of $today passed: $RUN_URL"
+            fi
+            echo "Every check passed."
+            exit 0
+          fi
+          {
+            echo "The weekly sweep of $today found problems. Run: $RUN_URL"
+            echo
+            echo "Results: $RESULTS"
+            echo
+            if ls sweep/*.md >/dev/null 2>&1; then
+              cat sweep/*.md
+            else
+              echo "A job failed before it wrote its findings; the run's log has the cause."
+            fi
+            echo
+            echo "How each check is fixed is in docs/SDLC.md, \"Maintenance sweeps\". This issue is"
+            echo "updated by every failing sweep and closed by the first one that passes."
+          } >body.md
+          # GitHub caps an issue body at 65,536 characters.
+          head -c 60000 body.md >body-capped.md
+          if [ -n "$open" ]; then
+            gh issue edit "$open" --title "Weekly sweep: $today" --body-file body-capped.md
+            gh issue comment "$open" --body "Still failing on $today: $RUN_URL"
+          else
+            gh issue create --title "Weekly sweep: $today" --label sweep --body-file body-capped.md ||
+              gh issue create --title "Weekly sweep: $today" --body-file body-capped.md
+          fi

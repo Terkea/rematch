@@ -13,7 +13,7 @@ const { items } = Astro.props;
   {
     items.map((item) => (
       <li>
-        <strong>{item.title}.</strong> {item.detail}
+        {item.title}. {item.detail}
         {item.adr && (
           <>
             {" "}

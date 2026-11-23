@@ -4,27 +4,51 @@
     "color": "ededed",
     "description": "New: the maintainer has not looked at it yet"
   },
-  { "name": "type/bug", "color": "d73a4a", "description": "Something does not work as described" },
-  { "name": "type/feature", "color": "a2eeef", "description": "A new capability for players" },
+  {
+    "name": "type/bug",
+    "color": "d73a4a",
+    "description": "Something does not work as described"
+  },
+  {
+    "name": "type/feature",
+    "color": "a2eeef",
+    "description": "A new capability for players"
+  },
   {
     "name": "type/coaching-idea",
     "color": "c5def5",
     "description": "Chess knowledge from players and coaches"
   },
-  { "name": "type/docs", "color": "0075ca", "description": "Documentation only" },
+  {
+    "name": "type/docs",
+    "color": "0075ca",
+    "description": "Documentation only"
+  },
   {
     "name": "type/chore",
     "color": "fef2c0",
     "description": "Tooling, CI, dependencies, refactors"
   },
-  { "name": "type/security", "color": "b60205", "description": "A security fix or hardening" },
+  {
+    "name": "type/security",
+    "color": "b60205",
+    "description": "A security fix or hardening"
+  },
   {
     "name": "area/analysis",
     "color": "1d76db",
     "description": "Stockfish analysis, moments and stats"
   },
-  { "name": "area/coach", "color": "5319e7", "description": "The AI coach and its reports" },
-  { "name": "area/trainer", "color": "0e8a16", "description": "The trainer and weekly focus" },
+  {
+    "name": "area/coach",
+    "color": "5319e7",
+    "description": "The AI coach and its reports"
+  },
+  {
+    "name": "area/trainer",
+    "color": "0e8a16",
+    "description": "The trainer and weekly focus"
+  },
   {
     "name": "area/web-ui",
     "color": "fbca04",
@@ -35,7 +59,11 @@
     "color": "b07219",
     "description": "The Rust worker, CLI and database"
   },
-  { "name": "area/docs", "color": "006b75", "description": "README, docs site and ADRs" },
+  {
+    "name": "area/docs",
+    "color": "006b75",
+    "description": "README, docs site and ADRs"
+  },
   {
     "name": "good first issue",
     "color": "7057ff",
@@ -45,5 +73,45 @@
     "name": "help wanted",
     "color": "008672",
     "description": "The maintainer would love a hand with this"
+  },
+  {
+    "name": "area/infra",
+    "color": "5a6f7d",
+    "description": "Docker, CI, self-hosting and benchmarks"
+  },
+  {
+    "name": "needs-spec",
+    "color": "f9d0c4",
+    "description": "Accepted as a problem; needs a spec issue before code"
+  },
+  {
+    "name": "spec",
+    "color": "d4c5f9",
+    "description": "A feature spec (RFC) open for review"
+  },
+  {
+    "name": "accepted",
+    "color": "0e8a16",
+    "description": "The maintainer accepted the spec; ready to build"
+  },
+  {
+    "name": "epic",
+    "color": "3e4b9e",
+    "description": "A milestone theme; its work is tracked as sub-issues"
+  },
+  {
+    "name": "roadmap",
+    "color": "bfdadc",
+    "description": "Seeded from .github/settings/roadmap-issues.json"
+  },
+  {
+    "name": "stale",
+    "color": "cfd3d7",
+    "description": "No activity for a while; comment to keep it open"
+  },
+  {
+    "name": "sweep",
+    "color": "e4e669",
+    "description": "Opened by a scheduled maintenance sweep"
   }
 ]
