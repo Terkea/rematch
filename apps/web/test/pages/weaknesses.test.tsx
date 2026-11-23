@@ -165,6 +165,16 @@ describe("weakness detail filters (A4)", () => {
     expect(back.getAttribute("href")).toMatch(/color=black/);
   });
 
+  it("Both with no colour rows shows no empty colour block", async () => {
+    await seedProfile(db, accountId, {
+      timeClass: "rapid",
+      games: 3,
+      estimates: [{ seriesKey: "W1", state: "active", priority: 3, mean: 0.05 }],
+    });
+    await detail("W1");
+    expect(screen.queryByRole("region", { name: "By colour" })).toBeNull();
+  });
+
   it("list rows carry the dates into the detail", async () => {
     await seedProfile(db, accountId, {
       timeClass: "rapid",

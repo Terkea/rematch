@@ -700,7 +700,10 @@ export function WeaknessView({
       </Step>
       <Step id="often-heading" title="How often it happens to you">
         <HowOften detail={detail} benchmark={benchmark} colour={colourOf(scope)} />
-        {sides ? <ByColour detail={detail} scope={scope} range={range} sides={sides} /> : null}
+        {/* With no colour row at all there is nothing to split: no pair of empty cards. */}
+        {sides && (sides.white || sides.black) ? (
+          <ByColour detail={detail} scope={scope} range={range} sides={sides} />
+        ) : null}
       </Step>
       <Step id="trend-heading" title="Better or worse">
         <Trend detail={detail} colour={colourOf(scope)} />
