@@ -1,0 +1,98 @@
+name: Feature spec (RFC)
+description: A full spec for work on the roadmap. Usually written by a maintainer from an accepted idea.
+title: "spec: "
+labels: [spec, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A spec is how an idea becomes roadmap work (docs/SDLC.md): this issue is reviewed, the
+        maintainer labels it `accepted` and puts it in a milestone, and pull requests close it.
+        For a quick idea, use the feature request form instead. Write it the way the seeded epics
+        are written: the player's problem with a real example, the files and ADRs to start from,
+        and criteria someone else can check.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: The player's pain, with one concrete example from a real game or page.
+      placeholder: |
+        A player who sets "Getting short of time" as their weekly focus is served missed mates,
+        because the trainer has no drills for W9a.
+    validations:
+      required: true
+  - type: textarea
+    id: who
+    attributes:
+      label: Who it's for
+      description: Which players (rating, time class, how they use Rematch), and how many of them.
+    validations:
+      required: true
+  - type: textarea
+    id: goals
+    attributes:
+      label: Goals and non-goals
+      description: What this spec commits to, and what it deliberately leaves out.
+      value: |
+        Goals:
+        -
+
+        Non-goals:
+        -
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence it helps players improve
+      description: |
+        Research, coaching experience or measured results, with links. docs/research has what the
+        project relies on today. Rematch only claims what it can show.
+    validations:
+      required: true
+  - type: textarea
+    id: design
+    attributes:
+      label: Proposed design
+      description: The UX, the data (tables, migrations, the coaching input) and the algorithm.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: A checkbox list someone other than the author can verify.
+      value: |
+        - [ ]
+    validations:
+      required: true
+  - type: textarea
+    id: tests
+    attributes:
+      label: Test plan
+      description: Unit, e2e and visual tests (390 and 1440 px, day and night for UI).
+      value: |
+        - Unit:
+        - e2e:
+        - Visual:
+    validations:
+      required: true
+  - type: input
+    id: adr
+    attributes:
+      label: ADR needed?
+      description: Yes or no; if yes, the next free number in docs/decisions, or "next free".
+      placeholder: "Yes, next free number"
+    validations:
+      required: true
+  - type: textarea
+    id: risks
+    attributes:
+      label: Risks and open questions
+  - type: textarea
+    id: pointers
+    attributes:
+      label: Pointers to code
+      description: The files, ADRs, specs (docs/superpowers/specs) and plans to start from.
+    validations:
+      required: true

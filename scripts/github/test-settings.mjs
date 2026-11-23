@@ -421,6 +421,19 @@ check("validateRoadmapIssues refuses the mistakes that would break seeding", () 
   }
 });
 
+check("every issue form's labels are in labels.json, and the spec form exists", () => {
+  const dir = join(root, ".github", "ISSUE_TEMPLATE");
+  const names = new Set(settings.labels.map((l) => l.name));
+  const forms = readdirSync(dir).filter((f) => f.endsWith(".yml") && f !== "config.yml");
+  assert.ok(forms.includes("spec.yml"), "the spec form exists");
+  for (const f of forms) {
+    const line = /^labels:\s*\[([^\]]*)\]/m.exec(readFileSync(join(dir, f), "utf8"));
+    for (const l of (line?.[1] ?? "").split(",").map((x) => x.trim().replace(/^"|"$/g, ""))) {
+      if (l) assert.ok(names.has(l), `${f} uses label "${l}", which is not in labels.json`);
+    }
+  }
+});
+
 check("composeIssueBody: the size first, the spec, then where it was seeded from", () => {
   const body = composeIssueBody(settings.roadmapIssues[0]);
   assert.match(body, /^Size: [SMLX]+: /);

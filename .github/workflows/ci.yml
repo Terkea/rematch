@@ -42,6 +42,10 @@ jobs:
         run: node scripts/check-npm-age.mjs
       - name: Repository settings as code (the ruleset requires exactly these jobs, ADR 0095)
         run: node scripts/github/test-settings.mjs
+      - name: The README's roadmap summary is current, and the sweep checks' tests (ADR 0099)
+        run: |
+          node scripts/roadmap/render-readme.mjs --check
+          node scripts/sweeps/test-sweeps.mjs
       - name: One product version everywhere (root, web, Cargo; ADR 0095)
         run: node scripts/test-versions.mjs
       - name: Build the images
@@ -79,6 +83,10 @@ jobs:
       - name: Install the site's dependencies (frozen lockfile)
         run: pnpm install --frozen-lockfile --filter @ci/site...
       - name: Test, build and check links
+        # The roadmap comes from the seed files here, so a pull request's build never depends on
+        # the GitHub API (ADR 0099); the Pages build reads the live milestones.
+        env:
+          ROADMAP_OFFLINE: "1"
         run: |
           pnpm --filter @ci/site test
           pnpm --filter @ci/site build

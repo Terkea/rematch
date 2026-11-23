@@ -7,6 +7,10 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Daily, so the roadmap's progress (read from GitHub's milestones at build time, ADR 0099)
+  # follows the issues without waiting for a push.
+  schedule:
+    - cron: "17 3 * * *"
   workflow_dispatch:
 
 permissions:
@@ -29,6 +33,9 @@ jobs:
       - name: Install the site's dependencies (frozen lockfile)
         run: pnpm install --frozen-lockfile --filter @ci/site...
       - name: Build the site
+        # The run's own read-only token lifts the API rate limit for the roadmap fetch.
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: pnpm --filter @ci/site build
       - name: Check the site's links
         run: pnpm --filter @ci/site links

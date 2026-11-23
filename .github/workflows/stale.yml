@@ -1,0 +1,53 @@
+name: Stale
+# Gentle housekeeping (ADR 0099). An issue with no activity for 60 days, or a pull request for 30,
+# gets the `stale` label and a note; any comment or push removes it. Issues close 30 days after the
+# label if nobody answers. Pull requests are never closed by this workflow: a first-time
+# contributor's work is closed by a human or not at all. Exempt: good first issue, help wanted,
+# roadmap, epic, spec, accepted, security, anything in a milestone and anything assigned. Pinned by
+# commit SHA; only the run's own GITHUB_TOKEN.
+on:
+  schedule:
+    - cron: "23 4 * * 2"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stale
+  cancel-in-progress: false
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/stale@4391f3da665fdf50b6810c1a66712fb9ba21aa93 # v11.0.0
+        with:
+          days-before-issue-stale: 60
+          days-before-issue-close: 30
+          days-before-pr-stale: 30
+          days-before-pr-close: -1
+          stale-issue-label: stale
+          stale-pr-label: stale
+          exempt-issue-labels: "good first issue,help wanted,roadmap,epic,spec,accepted,type/security"
+          exempt-pr-labels: "roadmap,type/security"
+          exempt-all-milestones: true
+          exempt-all-assignees: true
+          exempt-draft-pr: false
+          remove-stale-when-updated: true
+          operations-per-run: 60
+          stale-issue-message: >-
+            No activity here for 60 days, so this is marked stale. If it still matters, say so in a
+            comment (a line on what changed helps) and the label goes. Without a reply it closes in
+            30 days; closed issues can always be reopened.
+          stale-pr-message: >-
+            No activity on this pull request for 30 days, so it is marked stale. It will not be
+            closed automatically: a push or a comment removes the label, and the maintainer will
+            look at it. If you are stuck, say where, and we'll help.
+          close-issue-message: >-
+            Closed after 90 days without activity. Reopen it, or open a new issue, if it still
+            applies; many thanks for raising it.
+          close-issue-reason: not_planned
