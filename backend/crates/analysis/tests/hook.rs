@@ -416,7 +416,13 @@ async fn heartbeats_continue_during_prepare(pool: PgPool) {
     let out = run(&d, id).await;
     assert!(matches!(out, Ok(AnalyseOutcome::Done { .. })), "{out:?}");
     let (before, after) = hook.beats.lock().unwrap().expect("slow prepare ran");
-    assert!(after > before, "heartbeat {before} not renewed by {after}");
+    // A renewal writes a new `now()`, so the value changes. Not `after > before`: that compares
+    // two readings of the server's wall clock, which stepped back under load (`after` was seen
+    // 0.45 s before `before`, 400 ms later).
+    assert_ne!(
+        after, before,
+        "heartbeat {before} not renewed during prepare"
+    );
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
