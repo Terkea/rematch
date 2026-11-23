@@ -1,7 +1,7 @@
 //! The computed focuses of the climb plan (TS `selectFocuses`, ADR-AI-7): deterministic code picks
 //! them, Claude only narrates them.
 
-use crate::input::types::{CoachingInput, WeaknessState};
+use crate::input::types::{CoachingInput, RankedWeakness, WeaknessState};
 
 /// The minimum confidence for a focus.
 pub const FOCUS_MIN_CONFIDENCE: f64 = 0.7;
@@ -12,8 +12,12 @@ pub const GENERAL_FOCUS: &str = "general";
 /// emerging, relapsed or improving, never W12. At most 2 on the first report, 3 otherwise. Empty
 /// means the general focus.
 pub fn select_focuses(input: &CoachingInput, is_first_report: bool) -> Vec<String> {
-    let mut ws: Vec<_> = input
-        .weaknesses
+    select_focuses_of(&input.weaknesses, is_first_report)
+}
+
+/// [`select_focuses`] over the ranked weaknesses alone (the lab's `cli lab rank`, ADR 0106).
+pub fn select_focuses_of(weaknesses: &[RankedWeakness], is_first_report: bool) -> Vec<String> {
+    let mut ws: Vec<_> = weaknesses
         .iter()
         .filter(|w| {
             w.confidence >= FOCUS_MIN_CONFIDENCE

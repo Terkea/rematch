@@ -1,0 +1,89 @@
+{
+  "schema_version": "lab-v1",
+  "algorithm_id": "ALGORITHM_ID",
+  "players": [
+    {
+      "id": "lab-hangs",
+      "ranked": [
+        {
+          "id": "W1",
+          "variant": null,
+          "label": "Leaving pieces hanging",
+          "area": "calculation",
+          "rank": 1,
+          "posteriorRate": 0.014411771762278574,
+          "intervalLow": 0.01142447939777972,
+          "intervalHigh": 0.017568715571543995,
+          "bandMedian": 0.004,
+          "bandPercentile": 1.0,
+          "excessEplPerGame": 0.18220600583987503,
+          "confidence": 0.9999999997922349,
+          "priority": 0.1639854052218171,
+          "state": "active",
+          "pImp": 0.12,
+          "events": 48,
+          "opportunities": 3000,
+          "exemplars": []
+        },
+        {
+          "id": "W5",
+          "variant": null,
+          "label": "Not winning won games",
+          "area": "middlegame",
+          "rank": 2,
+          "posteriorRate": 0.2714320041960525,
+          "intervalLow": 0.1506481958378328,
+          "intervalHigh": 0.40283944866546756,
+          "bandMedian": 0.15,
+          "bandPercentile": 25.0,
+          "excessEplPerGame": 0.040477334732017506,
+          "confidence": 0.9015132821019064,
+          "priority": 0.032841769396498736,
+          "state": "not_an_issue",
+          "pImp": null,
+          "events": 5,
+          "opportunities": 20,
+          "exemplars": []
+        }
+      ],
+      "drills": {
+        "W1": [
+          "own_mistake_puzzles",
+          "safe_unsafe",
+          "themed_puzzles",
+          "slow_games",
+          "own_game_analysis"
+        ],
+        "W5": [
+          "convert_vs_engine",
+          "own_game_analysis"
+        ]
+      },
+      "focuses": [
+        "W1"
+      ],
+      "focus_drills": {
+        "W1": [
+          "own_mistake_puzzles",
+          "safe_unsafe",
+          "themed_puzzles",
+          "slow_games",
+          "own_game_analysis"
+        ]
+      }
+    },
+    {
+      "id": "lab-clean",
+      "ranked": [],
+      "drills": {},
+      "focuses": [
+        "general"
+      ],
+      "focus_drills": {
+        "general": [
+          "own_game_analysis"
+        ]
+      }
+    }
+  ]
+}

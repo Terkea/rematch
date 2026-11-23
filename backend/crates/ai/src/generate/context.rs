@@ -114,11 +114,18 @@ pub fn input_hash(input: &CoachingInput) -> String {
 
 /// The drills a focus may use (as Task 8's `validate_section` allows them).
 fn allowed_drills(input: &CoachingInput, focus: &str) -> Vec<DrillType> {
+    allowed_drills_of(&input.weaknesses, focus)
+}
+
+/// [`allowed_drills`] over the ranked weaknesses alone (the lab's `cli lab rank`, ADR 0106).
+pub fn allowed_drills_of(
+    weaknesses: &[crate::input::types::RankedWeakness],
+    focus: &str,
+) -> Vec<DrillType> {
     if focus == GENERAL_FOCUS {
         return vec![DrillType::OwnGameAnalysis];
     }
-    let variant = input
-        .weaknesses
+    let variant = weaknesses
         .iter()
         .find(|w| w.id == focus)
         .and_then(|w| w.variant.as_deref());

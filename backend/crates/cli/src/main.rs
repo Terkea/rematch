@@ -3,7 +3,7 @@
 //! `cli recompute-metrics` rewrites stale metrics from the stored evals (no engine, no worker);
 //! `cli report-rebuild` queues a report run for a running worker (ADR 0086); `cli bench run`
 //! runs the pipeline benchmark (ADR 0100); `cli algo` shows and compares algorithm manifests
-//! (ADR 0105).
+//! (ADR 0105); `cli lab` is the lab bridge (ADR 0106).
 
 use std::time::Duration;
 
@@ -51,6 +51,17 @@ async fn main() {
         let code = cli::algo_cmd::run_algo(&argv, pool.as_ref(), &|l| println!("{l}"), &|l| {
             eprintln!("{l}")
         })
+        .await;
+        std::process::exit(code);
+    }
+    // The lab bridge (ADR 0106): JSON on stdin and stdout, no workers.
+    if argv.first().map(String::as_str) == Some("lab") {
+        let code = cli::lab_cmd::run_lab(
+            &argv,
+            &|k| std::env::var(k).ok(),
+            &|l| println!("{l}"),
+            &|l| eprintln!("{l}"),
+        )
         .await;
         std::process::exit(code);
     }
