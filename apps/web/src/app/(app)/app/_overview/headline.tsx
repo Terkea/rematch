@@ -1,6 +1,6 @@
 import { NO_BENCHMARK_TEXT, weaknessRateText } from "@ci/ui/profile";
 import { bandText, Stat } from "@ci/ui/stats";
-import { headlineMeaning } from "../../../../lib/explain";
+import { type HeadlinePeer, headlineMeaning } from "../../../../lib/explain";
 import type { CoachScope, LeadFinding } from "../../../../server/profile/types";
 import { ESTIMATE_WINDOW_TEXT } from "../../../../server/profile/window";
 import type { Estimate } from "../../../../server/stats";
@@ -28,16 +28,19 @@ export function Headline({
   lead,
   basisClass,
   reveal,
+  peer = null,
 }: {
   lead: OverviewView["lead"];
   basisClass: string;
   reveal: boolean;
+  /** The players faced (Q1): the meaning line compares with them. */
+  peer?: HeadlinePeer | null;
 }) {
   const { accuracy, blunders } = lead;
   const scope = basisClass === "analysed" ? "analysed games" : `${basisClass} games`;
   const meaning = (
     <p data-slot="meaning" className="m-0 max-w-prose text-base text-ink">
-      {headlineMeaning({ accuracy, blunders, games: scope })}
+      {headlineMeaning({ accuracy, blunders, games: scope, peer })}
     </p>
   );
   if (accuracy.kind === "insufficient") {

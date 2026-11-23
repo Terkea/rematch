@@ -1,6 +1,6 @@
 import { likelyText, NO_BENCHMARK_TEXT, probablyAbove } from "@ci/ui/profile";
 import { stateStyle } from "@ci/ui/timeline";
-import type { Benchmark } from "../server/profile/benchmark-text";
+import { BENCHMARK_BIAS_TEXT, type Benchmark } from "../server/profile/benchmark-text";
 import { DETECTOR_CONSTANTS as K, VERDICT_CONSTANTS as V } from "../server/profile/glossary";
 import type { MateChange, WeaknessState } from "../server/profile/types";
 import type { Estimate } from "../server/stats";
@@ -135,14 +135,51 @@ export function exampleLine(
     : `Your win chance went from ${b}% to ${a}%, a rise of ${a - b} win% points.`;
 }
 
+/** The peer benchmark's blunders a game, for the overview headline (ADR 0080). */
+export type HeadlinePeer = {
+  platform: "chesscom" | "lichess";
+  low: number;
+  high: number;
+  /** Distinct opponents behind the median. */
+  players: number;
+  /** The median of the opponents' blunders a game, or null when that row is not served. */
+  blunders: number | null;
+};
+
+/**
+ * The headline's comparison: the players faced, against the player's blunder range (Q1). With a
+ * peer benchmark it is never "not compared with players at your level".
+ */
+function peerTail(bl: Estimate, peer: HeadlinePeer | null | undefined): string {
+  if (!peer || !fin(peer.low) || !fin(peer.high)) return NOT_COMPARED;
+  if (bl.kind !== "estimate" || !fin(bl.value) || peer.blunders === null || !fin(peer.blunders)) {
+    return "Not compared with the players you've faced yet: too few of their games have a blunder count.";
+  }
+  const site = peer.platform === "chesscom" ? "chess.com" : "lichess";
+  const n = Math.max(0, Math.trunc(peer.players));
+  const m = peer.blunders;
+  const iv = bl.interval && fin(bl.interval.low) && fin(bl.interval.high) ? bl.interval : null;
+  const where = iv
+    ? m > iv.high
+      ? ", more than your likely range"
+      : m < iv.low
+        ? ", fewer than your likely range"
+        : ", inside your likely range"
+    : "";
+  return `The players you've faced on ${site}, rated about ${count(peer.low)}–${count(peer.high)}, make about ${one(m)} (the median of ${count(n)} ${n === 1 ? "player" : "players"})${where}. ${BENCHMARK_BIAS_TEXT}`;
+}
+
 /** The overview headline in a game's terms: how often a winning chance is given away. */
 export function headlineMeaning(h: {
   accuracy: Estimate;
   blunders: Estimate;
   /** "rapid games", "analysed games". */
   games: string;
+  /** The players faced, when the scope has a peer benchmark. */
+  peer?: HeadlinePeer | null;
 }): string {
   const { accuracy: acc, blunders: bl } = h;
+  const NOT_COMPARED = peerTail(bl, h.peer);
   if (acc.kind === "insufficient") {
     return `Too little evidence yet: with ${count(acc.n)} ${h.games}, one unusual game moves the average a lot.`;
   }

@@ -218,6 +218,42 @@ describe("headlineMeaning", () => {
     expect(text).toBe(want);
     expect(text).not.toMatch(BAD);
   });
+
+  // Q1: with a peer benchmark the line compares with the players faced, never "not compared".
+  const peer = (blunders: number | null) => ({
+    platform: "chesscom" as const,
+    low: 650,
+    high: 950,
+    players: 58,
+    blunders,
+  });
+  it.each([
+    [
+      1.9,
+      "In a typical game you make about 1.1 blunders (moves that cost 15 win% points or more), likely between 0.8 and 1.4. The players you've faced on chess.com, rated about 650–950, make about 1.9 (the median of 58 players), more than your likely range. Only their games against you count, so it is a rough guide, not a rating-band average.",
+    ],
+    [
+      0.5,
+      "In a typical game you make about 1.1 blunders (moves that cost 15 win% points or more), likely between 0.8 and 1.4. The players you've faced on chess.com, rated about 650–950, make about 0.5 (the median of 58 players), fewer than your likely range. Only their games against you count, so it is a rough guide, not a rating-band average.",
+    ],
+    [
+      1.2,
+      "In a typical game you make about 1.1 blunders (moves that cost 15 win% points or more), likely between 0.8 and 1.4. The players you've faced on chess.com, rated about 650–950, make about 1.2 (the median of 58 players), inside your likely range. Only their games against you count, so it is a rough guide, not a rating-band average.",
+    ],
+    [
+      null,
+      "In a typical game you make about 1.1 blunders (moves that cost 15 win% points or more), likely between 0.8 and 1.4. Not compared with the players you've faced yet: too few of their games have a blunder count.",
+    ],
+  ])("peer median %s", (median, want) => {
+    const text = headlineMeaning({
+      accuracy: est(74.2, 72.8, 75.6, 40),
+      blunders: est(1.1, 0.8, 1.4, 40),
+      games: "rapid games",
+      peer: peer(median),
+    });
+    expect(text).toBe(want);
+    expect(text).not.toMatch(/at your level/);
+  });
 });
 
 describe("areaMeaning", () => {

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { HeadlinePeer } from "../../../../lib/explain";
 import { KPI_GLOSSARY } from "../../../../server/profile/glossary";
 import type { LeadFinding } from "../../../../server/profile/types";
 import { CompareBlock } from "../_filters/compare-block";
@@ -32,6 +33,7 @@ export function OverviewSheet({
   colourSplit,
   compare,
   filtersNote,
+  peer = null,
 }: {
   view: OverviewView;
   reveal: boolean;
@@ -47,6 +49,8 @@ export function OverviewSheet({
   compare?: CompareView | null;
   /** What the filters beyond the class apply to, when any is set. */
   filtersNote?: string | null;
+  /** The players faced, for the headline's comparison (Q1); null without a peer benchmark. */
+  peer?: HeadlinePeer | null;
 }) {
   return (
     <div {...(reveal ? { "data-reveal": "first" } : {})} className="flex flex-col gap-10">
@@ -63,7 +67,12 @@ export function OverviewSheet({
           <div className="flex flex-col gap-6">
             {filterBar ?? <TimeClassSwitch options={view.switch} />}
             <div data-reveal-fig="" style={{ "--reveal-i": 0 } as React.CSSProperties}>
-              <Headline lead={view.lead} basisClass={view.basisClass} reveal={reveal} />
+              <Headline
+                lead={view.lead}
+                basisClass={view.basisClass}
+                reveal={reveal}
+                peer={peer}
+              />
             </div>
             {filtersNote ? (
               <p data-slot="filters-note" className="m-0 max-w-prose text-sm text-ink-soft">
