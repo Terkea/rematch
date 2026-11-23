@@ -216,6 +216,55 @@ export function buildSession(
   return interleave([...due, ...fresh], `${o.seed}:${o.today}`).map((i) => i.id);
 }
 
+/** The overview's practise call (ADR 0092): today's session size, or why there is none. */
+export type PractiseToday =
+  | { kind: "first-run" }
+  | { kind: "due"; count: number; source: SourceKey | null }
+  | { kind: "done"; next: string | null; doneToday: number };
+
+/**
+ * What "Practise today" offers, from the same items and caps as `buildSession`, so the count is
+ * the session the trainer serves. `source` (the weekly focus's) is kept when it has live items,
+ * otherwise every source counts. No items at all is a first run: the trainer makes them on its
+ * first visit. With nothing left today, `next` is the next day an item comes back: tomorrow when
+ * today's caps hold items back, else the earliest due day, null when none is scheduled.
+ */
+export function practiseToday(
+  items: readonly QueueItem[],
+  o: {
+    today: string;
+    attemptedToday: number;
+    introducedToday: number;
+    seed: string;
+    source: SourceKey | null;
+  },
+): PractiseToday {
+  if (items.length === 0) return { kind: "first-run" };
+  const live = items.filter((i) => !i.heldOut && !i.retired);
+  const source =
+    o.source !== null && live.some((i) => i.sourceKeys.includes(o.source as SourceKey))
+      ? o.source
+      : null;
+  const session = buildSession(items, {
+    today: o.today,
+    attemptedToday: o.attemptedToday,
+    introducedToday: o.introducedToday,
+    seed: o.seed,
+    ...(source ? { source } : {}),
+  });
+  if (session.length > 0) return { kind: "due", count: session.length, source };
+  const pool = source ? live.filter((i) => i.sourceKeys.includes(source)) : live;
+  const tomorrow = addDays(o.today, 1);
+  const waiting = pool.some(
+    (i) => i.introducedOn === null || (i.dueOn !== null && i.dueOn <= o.today),
+  );
+  const later = pool
+    .flatMap((i) => (i.introducedOn !== null && i.dueOn !== null && i.dueOn > o.today ? [i.dueOn] : []))
+    .sort();
+  const next = waiting ? tomorrow : (later[0] ?? null);
+  return { kind: "done", next, doneToday: o.attemptedToday };
+}
+
 /** Round robin over the sources, each source's items in their order, sources in a seeded order. */
 function interleave(list: QueueItem[], seed: string): QueueItem[] {
   const groups = new Map<SourceKey, QueueItem[]>();
