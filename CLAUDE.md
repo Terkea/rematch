@@ -4,6 +4,7 @@ TypeScript monorepo (pnpm workspaces + Turborepo, Node 22, ESM only). Packages u
 
 ## Run
 
+- Self-host bootstrap (ADR 0097): `sh scripts/setup.sh [minimal|full|configure|doctor|data|ai|ai-start|ai-stop|ai-status]` writes `.env` (merged, never overwritten), brings the stack up and fetches the data; `pnpm seed:demo [--remove]` loads the fictional `demo.player`. Its tests: `sh scripts/test-setup.sh`.
 - Install: `pnpm install` (pnpm 12; Node version in `.nvmrc`).
 - Stack (Postgres, Redis, worker with Stockfish): `docker compose up -d`. Host ports 55432 (Postgres) and 56379 (Redis) are opt-in via `COMPOSE_FILE=docker-compose.yml:docker-compose.ports.yml` in `.env` (see `.env.example`; keep `COMPOSE_PATH_SEPARATOR=:`). Parallel or CI projects run `COMPOSE_FILE=docker-compose.yml docker compose -p <name> ...`, which publishes no host ports.
 - Build / lint / typecheck: `pnpm build`, `pnpm lint`, `pnpm typecheck` (all via `turbo run`).
