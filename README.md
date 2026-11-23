@@ -64,7 +64,7 @@ Your rating line with the peak marked, then the games around the peak against yo
 
 ## What it does that a game review doesn't
 
-- Research first: features are ranked by what the evidence says helps amateurs improve: retrieval practice on your own errors, spacing, interleaving, specific goals with feedback. The notes are in [`docs/research/`](docs/research/).
+- Research first: features are ranked by what the evidence says helps amateurs improve (retrieval practice on your own errors, spacing, interleaving, specific goals with feedback). The notes are in [`docs/research/`](docs/research/).
 - Honest numbers: a count with every rate, an 80% range with every estimate, no number until the minimum evidence is there ("Need 9 more games"; [the thresholds](#when-rematch-stays-quiet)), and "better" or "worse" only when the ranges separate. [The honesty rules](https://terkea.github.io/rematch/docs/honesty/).
 - Facts by reference: the AI never types a move or a number. It cites computed facts by reference, the server renders them, and a validator drops any claim it can't check.
 - Private by default: run it yourself and your games stay in your database. It reads only public chess.com data, and its requests never carry your email address.

@@ -5,7 +5,7 @@ sidebar:
   order: 1
 ---
 
-`scripts/setup.sh` sets up the whole project in one command: the `.env`, the Docker stack, the data and the AI choice (ADR 0097). It is POSIX `sh`, so it runs in Git Bash on Windows and in a macOS or Linux terminal. It never installs anything with `sudo`; when something is missing it says what to install. Running it again repairs what is missing and skips what is done.
+`scripts/setup.sh` sets up the whole project in one command: the `.env`, the Docker stack, the data and the AI choice (ADR 0097). It is POSIX `sh`, so it runs in Git Bash on Windows and in a macOS or Linux terminal. It never installs anything with `sudo`; when something is missing it says what to install. Running it again repairs what is missing and skips what is done. This page and the set-up section of CONTRIBUTING.md share their text, so an edit goes in both.
 
 Rematch is a beta (version 0.x) that you run yourself. There is no public sign-up yet.
 
@@ -82,14 +82,14 @@ The script ends by printing the worker's `ai: enabled (...)` or `ai: disabled (<
 
 ## Troubleshooting
 
-These are the snags I hit on the dry runs on Windows 11 (Git Bash, Docker Desktop 29.1, Compose 5.0): the first seven following the old setup steps in a fresh clone, the last on the first full-mode run. The first one I reproduced in a scratch Compose project, because my machine already had the caches.
+These are the snags from my dry runs on Windows 11 (Git Bash, Docker Desktop 29.1, Compose 5.0). Most come from running `docker compose` by hand instead of `setup.sh`; the last one is from the first full-mode run.
 
 | What you see | Why, and the fix |
 |---|---|
 | `external volume "ci-cargo-registry" not found`, and nothing starts | `docker compose up` ran before the shared Rust caches existed. `sh scripts/rust-cache-init.sh` creates them once per Docker host; `setup.sh` runs it first. |
 | `Bind for 127.0.0.1:48025 failed: port is already allocated` | Another stack, often a second copy of Rematch, holds the port. `sh scripts/setup.sh configure --web-port=3101 --mailpit-port=48026 --postgres-port=55440 --redis-port=56380`, or `--no-ports`. |
 | The sign-in page says "Check your email", but Mailpit stays empty | Sign-up is invite-only, and `INVITE_ALLOWLIST` was empty. The app does not tell an uninvited address apart, by design. `sh scripts/setup.sh configure --email=you@example.com`, then `docker compose up -d web`. |
-| `docker compose up -d` also starts `rust-dev`, which exits at once, and `worker`, the old TypeScript worker | A plain `up` starts every service in the file. `setup.sh` starts only what the app uses: `docker compose up -d --wait postgres redis mailpit web ai-sidecar rust-worker`. |
+| `docker compose up -d` also starts `rust-dev`, which exits at once, and `worker`, the old TypeScript worker | A plain `up` starts every service in the file. `worker` stays in the file because CI runs the TypeScript gate in its image (ADR 0067). `setup.sh` starts only what the app uses: `docker compose up -d --wait postgres redis mailpit web ai-sidecar rust-worker`. |
 | `nvm use` fails with "A version argument is required but missing" | nvm-windows does not read `.nvmrc`. Run `nvm use 22`. |
 | The worker logs `no Syzygy .rtbw files found; tablebase probes disabled` | Expected in minimal mode. `sh scripts/setup.sh data` fetches the tables, and the worker logs `"tablebase probe" ... "status":"available","tables":145` after its restart. |
 | The worker logs `ai: disabled (sidecar has no credential)` | Expected with `--ai=none`. `sh scripts/setup.sh ai` switches to `local` or `key`. |

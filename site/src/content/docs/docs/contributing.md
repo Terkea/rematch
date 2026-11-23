@@ -1,11 +1,11 @@
 ---
 title: Contributing
-description: How to help build Rematch, whether you write Rust, TypeScript, chess advice or design.
+description: How to help build Rematch with Rust, TypeScript, chess advice or design.
 sidebar:
   order: 2
 ---
 
-Rematch gets better with people who play, people who coach and people who build. The full guide is [CONTRIBUTING.md](https://github.com/Terkea/rematch/blob/main/CONTRIBUTING.md) in the repository; this page is the short version.
+The full guide is [CONTRIBUTING.md](https://github.com/Terkea/rematch/blob/main/CONTRIBUTING.md) in the repository; this page is the short version.
 
 ## Ways to help
 
