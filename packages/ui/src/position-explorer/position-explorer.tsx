@@ -116,9 +116,40 @@ const mistakeGlyph = (p: Cited) =>
 
 const betterMove = (p: Cited) => (p.best && p.best.uci !== p.played.uci ? p.best : null);
 
-/** The cited position's marks: the move played and, when it differs, the engine's better move. */
-export function explorerAnnotations(p: Cited, show: "both" | "best" = "both"): Annotation[] {
+/** The most moves of an engine line drawn as numbered arrows on the cited position. */
+export const LINE_ARROWS = 5;
+
+/** The engine line's first moves, as the board numbers them (owner request). */
+export const lineArrowMoves = (engine: readonly ExplorerMove[] | undefined) =>
+  engine && engine.length >= 2 ? engine.slice(0, LINE_ARROWS) : [];
+
+/**
+ * The cited position's marks: the move played and, when it differs, the engine's better move
+ * (two alternatives, so neither is numbered). With `show: "best"` and a stored engine line of two
+ * moves or more, the line's first moves instead, numbered 1, 2, 3 in move order: the mover's
+ * moves in `good`, the replies in `pencil`.
+ */
+export function explorerAnnotations(
+  p: Cited,
+  show: "both" | "best" = "both",
+  engine?: readonly ExplorerMove[],
+): Annotation[] {
   const out: Annotation[] = [];
+  const seq = show === "best" ? lineArrowMoves(engine) : [];
+  if (seq.length > 0) {
+    const mover = seq[0]?.color;
+    seq.forEach((m, i) => {
+      const sq = squares(m.uci);
+      if (sq)
+        out.push({
+          kind: "arrow",
+          ...sq,
+          tone: m.color === mover ? "good" : "pencil",
+          step: i + 1,
+        });
+    });
+    return out;
+  }
   const best = squares(betterMove(p)?.uci);
   const played = show === "both" ? squares(p.played.uci) : null;
   if (best) out.push({ kind: "arrow", ...best, tone: "good" });
@@ -438,7 +469,11 @@ function ExplorerDialog({
     atCited && state.mode === "game"
       ? explorerAnnotations({ played, best, mistake, found, judgement })
       : atCited && state.mode === "engine"
-        ? explorerAnnotations({ played, best, mistake, found, judgement }, "best")
+        ? explorerAnnotations(
+            { played, best, mistake, found, judgement },
+            "best",
+            state.line.engine,
+          )
         : [];
 
   const sheetMoves = useMemo<ScoresheetMove[]>(
@@ -612,6 +647,19 @@ function ExplorerDialog({
               phone the note takes only its own height (critic 12). */}
           <div aria-live="polite" className="flex flex-col gap-1 font-sans text-sm lg:min-h-20">
             <p className="m-0 text-ink">{note}</p>
+            {state.mode === "engine" && lineArrowMoves(state.line.engine).length > 0 ? (
+              // The numbered arrows' key, in move order (owner request): "1. Nf3, 2. … Nc6".
+              <ol
+                aria-label="Engine line, in order"
+                className="m-0 flex list-none flex-wrap gap-x-3 gap-y-1 p-0 text-ink-soft"
+              >
+                {lineArrowMoves(state.line.engine).map((m, i) => (
+                  <li key={`${m.ply}-${m.uci}`} className="whitespace-nowrap">
+                    {`${i + 1}. ${m.color === "black" ? "\u2026 " : ""}${m.san}`}
+                  </li>
+                ))}
+              </ol>
+            ) : null}
             {state.mode === "try" ? (
               <p className="m-0 text-ink-soft">
                 Moves you try are not checked by the engine. The game review shows the engine's move

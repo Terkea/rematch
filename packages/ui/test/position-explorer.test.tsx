@@ -225,6 +225,35 @@ describe("PositionExplorer, expanded", () => {
     expect(within(again.dialog).getByText("No engine line is stored for this move.")).toBeVisible();
   });
 
+  // Owner request: an engine line drawn as several arrows is numbered in move order, the
+  // player's side in good, the replies in pencil, and its key lists the moves in order.
+  it("numbers the engine line's arrows and lists them in order", async () => {
+    // The game's own next moves stand in for a stored engine line (legal from the position).
+    const engine = [55, 56, 57].map(asMove);
+    const marks = explorerAnnotations(
+      { ...props, best: { san: "Nd2", uci: "e4d2" } },
+      "best",
+      engine,
+    );
+    expect(marks.map((m) => (m.kind === "arrow" ? [m.from + m.to, m.tone, m.step] : null))).toEqual(
+      engine.map((m, i) => [m.uci.slice(0, 4), m.color === "white" ? "good" : "pencil", i + 1]),
+    );
+    // One move is no sequence: the better move stays a single, unnumbered arrow.
+    expect(
+      explorerAnnotations(
+        { ...props, best: { san: "Nc3", uci: "e4c3" } },
+        "best",
+        engine.slice(0, 1),
+      ),
+    ).toEqual([{ kind: "arrow", from: "e4", to: "c3", tone: "good" }]);
+
+    const { dialog, user } = await expand({ line: { ...line, engine } });
+    await user.click(within(dialog).getByRole("radio", { name: "Engine line" }));
+    const key = within(dialog).getByRole("list", { name: "Engine line, in order" });
+    const want = engine.map((m, i) => `${i + 1}. ${m.color === "black" ? "… " : ""}${m.san}`);
+    expect([...key.querySelectorAll("li")].map((li) => li.textContent)).toEqual(want);
+  });
+
   it("tries a legal move by clicking squares, honestly unchecked, and resets", async () => {
     const { dialog, user } = await expand({ line });
     const square = (s: string) => {

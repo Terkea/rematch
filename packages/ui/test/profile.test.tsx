@@ -458,10 +458,27 @@ describe("ExemplarBoard", () => {
       "4. Nxe5? Better was Nxd4. Win chance 52% to 36%.",
     );
     // The reply is named, not only drawn.
-    expect(container.textContent).toContain("Their reply, Qg5");
+    expect(container.textContent).toContain("Their reply, 4… Qg5");
     expect(exemplarCaption(props)).toBe("4. Nxe5? Better was Nxd4. Win chance 52% to 36%.");
     expect(screen.getByRole("group", { name: "Position before 4. Nxe5" })).toBeInTheDocument();
     expect(container.textContent).not.toMatch(BAD);
+  });
+
+  // Owner request: the move and its reply are a sequence, numbered 1 and 2 on the board and in
+  // the key; the better move is the alternative, unnumbered.
+  it("numbers the move and its reply, in order, on the board and in the key", () => {
+    const { container } = render(<ExemplarBoard {...props} />);
+    const steps = [...container.querySelectorAll("[data-mark='step']")];
+    expect(steps.map((g) => [g.textContent, g.getAttribute("data-tone")])).toEqual([
+      ["1", "pen"],
+      ["2", "pencil"],
+    ]);
+    const key = screen.getByRole("list", { name: "Arrows" });
+    expect([...key.querySelectorAll("li")].map((li) => li.textContent)).toEqual([
+      "1. Played, 4. Nxe5",
+      "2. Their reply, 4… Qg5",
+      "Better, Nxd4",
+    ]);
   });
 
   it("draws only the arrows it has, and ignores a malformed move", () => {

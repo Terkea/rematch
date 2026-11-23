@@ -352,8 +352,8 @@ describe("sections", () => {
     const ends = [...container.querySelectorAll("[data-part='trend-ends']")];
     expect(ends).toHaveLength(3);
     for (const e of ends) {
-      expect(e.textContent).toMatch(/First week \d+\.\d · \d+ games?/);
-      expect(e.textContent).toMatch(/Latest week \d+\.\d · \d+ games?/);
+      expect(e.textContent).toMatch(/First week \d+\.\d \(\d+ games?\)/);
+      expect(e.textContent).toMatch(/Latest week \d+\.\d \(\d+ games?\)/);
     }
   });
 

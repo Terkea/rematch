@@ -481,7 +481,9 @@ describe("weakness detail", () => {
     expect(text).toContain(
       "In the last 6 months this happened in 38 of your 1,902 chances (about 1 in 50).",
     );
-    expect(text).toMatch(/likely between 3\.1% and 5\.7% \(80% range\)/);
+    // The story leads with the rate at the KPI scale (critic 5).
+    expect(container.querySelector("[data-part='story-rate']")?.textContent).toBe("4.2%");
+    expect(text).toMatch(/of your chances, 80% range 3\.1% to 5\.7%/);
     expect(text).toContain("More often than typical players at your level (2.1%)");
     expect(text).toContain(
       "No clear change yet. There is a 42% chance your rate is lower than before its last change",
@@ -525,9 +527,9 @@ describe("weakness detail", () => {
     const often = screen.getByRole("region", { name: "How often it happens to you" });
     expect(often.querySelector("[data-benchmark='peers']")).toBeNull();
     expect(often.textContent).toMatch(
-      /the 73 players you've faced on chess\.com, rated about 667–967/,
+      /the 73 players you've faced on chess\.com, rated about 667–967/i,
     );
-    expect(often.textContent?.match(/players you've faced/g)).toHaveLength(1);
+    expect(often.textContent?.match(/players you've faced/gi)).toHaveLength(1);
     noBadText(container);
   });
 

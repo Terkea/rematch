@@ -134,6 +134,7 @@ test("filters round-trip through the URL, and the overview compares periods hone
     "/app?cmp=custom&a_from=2026-09-01&a_to=2026-09-30&b_from=2026-10-01&b_to=2026-10-31";
   const routes = [
     ["overview-compare", compare],
+    ["overview-month", "/app?cmp=month"],
     ["overview-colour", "/app?fmt=600%2B0&from=2026-10-01&to=2026-10-31"],
     [
       "overview-short",
@@ -162,6 +163,13 @@ test("filters round-trip through the URL, and the overview compares periods hone
         await gotoSettled(page, url);
         await page.evaluate(() => document.fonts.ready);
         await expect(page.locator("main")).toBeVisible();
+        // Critic 6: the trend measures its parent, so a shot taken before that shows the empty
+        // grid. Wait for the drawn chart (its placeholder gone) before every overview shot.
+        if (name.startsWith("overview")) {
+          const trend = page.locator("[data-chart='trend']");
+          await expect(trend.locator("[data-part='trend-placeholder']")).toHaveCount(0);
+          await expect(trend.locator("svg [data-part]").first()).toBeAttached();
+        }
         expect(
           await page.evaluate(
             () => document.documentElement.scrollWidth - document.documentElement.clientWidth,

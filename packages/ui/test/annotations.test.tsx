@@ -380,3 +380,44 @@ describe("NotationText side", () => {
     expect(theirs).not.toHaveClass("text-pen-text");
   });
 });
+
+// Owner request: a sequence of arrows (an engine line, a move and its reply) is numbered 1, 2, 3
+// in move order, each badge on its own shaft and off every square's centre. Alternatives carry
+// no number.
+describe("numbered arrows", () => {
+  const line: Annotation[] = [
+    { kind: "arrow", from: "g1", to: "f3", tone: "good", step: 1 },
+    { kind: "arrow", from: "b8", to: "c6", tone: "pencil", step: 2 },
+    { kind: "arrow", from: "f1", to: "b5", tone: "good", step: 3 },
+    { kind: "arrow", from: "e2", to: "e4", tone: "pen" },
+  ];
+
+  it("draws one badge per step, in move order, never on a square's centre", () => {
+    const { container } = render(
+      <AnnotationLayer annotations={line} orientation="white" animate={false} />,
+    );
+    const steps = [...container.querySelectorAll("[data-mark='step']")];
+    expect(steps.map((g) => g.textContent)).toEqual(["1", "2", "3"]);
+    expect(steps.map((g) => g.getAttribute("data-tone"))).toEqual(["good", "pencil", "good"]);
+    for (const g of steps) {
+      const c = g.querySelector("circle:last-of-type");
+      const x = Number(c?.getAttribute("cx"));
+      const y = Number(c?.getAttribute("cy"));
+      const off = Math.hypot((x % 1) - 0.5, (y % 1) - 0.5);
+      expect(off).toBeGreaterThanOrEqual(0.3);
+    }
+  });
+
+  it("names each step for screen readers, in order", () => {
+    const { container } = render(
+      <AnnotationLayer annotations={line} orientation="white" animate={false} />,
+    );
+    const items = [...container.querySelectorAll("ul li")].map((li) => li.textContent);
+    expect(items).toEqual([
+      "1: Green arrow from g1 to f3",
+      "2: Grey arrow from b8 to c6",
+      "3: Green arrow from f1 to b5",
+      "Red arrow from e2 to e4",
+    ]);
+  });
+});
