@@ -122,6 +122,8 @@ Start with a [good first issue](https://github.com/Terkea/rematch/issues?q=is%3A
 
 ## Why I'm building this
 
+<img src="docs/media/dad.jpg" width="220" align="right" alt="My dad as a young boy in a striped shirt, holding a chess board under his arm, with his mum kneeling beside him." />
+
 My dad played chess his whole life. I'm not good at it, but every time I play I feel closer to him. He died recently, and Rematch is how I keep that going — a coach that shows me the mistake I keep making, the way he probably would have.
 
 ## Licence and acknowledgements
