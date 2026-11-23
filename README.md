@@ -120,6 +120,10 @@ It gets better with people who play, people who coach and people who build.
 
 Start with a [good first issue](https://github.com/Terkea/rematch/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22), say hello in [Discussions](https://github.com/Terkea/rematch/discussions), and read [CONTRIBUTING.md](CONTRIBUTING.md). AI-assisted pull requests are welcome: [CLAUDE.md](CLAUDE.md) and [`.claude/skills`](.claude/skills) are the house rules. Everyone follows the [code of conduct](CODE_OF_CONDUCT.md); security reports go through [SECURITY.md](SECURITY.md).
 
+## Why I'm building this
+
+My dad played chess his whole life. I'm not good at it, but every time I play I feel closer to him. He died recently, and Rematch is how I keep that going — a coach that shows me the mistake I keep making, the way he probably would have.
+
 ## Licence and acknowledgements
 
 Rematch is licensed under the [GNU AGPL-3.0](LICENSE). If you run a modified version as a network service, offer its users the source.
