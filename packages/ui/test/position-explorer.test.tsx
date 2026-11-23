@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { games } from "../src/fixtures/index.js";
 import {
   type ExplorerMove,
+  compactCoordinates,
   explorerAnnotations,
   PositionExplorer,
   type PositionExplorerProps,
@@ -124,6 +125,20 @@ describe("PositionExplorer, compact", () => {
     render(<PositionExplorer {...props} judgement="blunder" />);
     const key = screen.getByRole("list", { name: "Arrows" });
     expect(key.querySelector("li")?.textContent).toBe("Played, Nd2??");
+  });
+
+  // Critic 7: a compact board under 32px squares (256px) leaves its coordinates off.
+  it("draws coordinates only from 32px squares", async () => {
+    expect(compactCoordinates(192)).toBe(false);
+    expect(compactCoordinates(255)).toBe(false);
+    expect(compactCoordinates(256)).toBe(true);
+    render(<PositionExplorer {...props} />);
+    const group = await screen.findByRole("group", { name: "Position before 28. Nd2" });
+    const board = group.closest("[data-board]") ?? group;
+    const glyphs = [...board.querySelectorAll("[aria-hidden='true'] *")].filter(
+      (n) => n.children.length === 0 && /^[a-h1-8]$/.test(n.textContent ?? ""),
+    );
+    expect(glyphs).toHaveLength(0);
   });
 
   it("has no game link without an href", async () => {

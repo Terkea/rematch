@@ -145,6 +145,31 @@ export function explorerLabel(p: Cited & { label: string }): string {
   return `Position before ${p.label}${best ? `; engine preferred ${best.san}` : ""}`;
 }
 
+/** The narrowest board, in px, whose squares (32px) still carry readable coordinates. */
+const COORDINATES_FROM = 256;
+
+/** Whether a compact board this wide draws its coordinates (critic 7: not under 32px squares). */
+export const compactCoordinates = (width: number) =>
+  Number.isFinite(width) && width >= COORDINATES_FROM;
+
+/**
+ * The element's width, kept current. 0 until measured (and on the server), so a board draws no
+ * coordinates until it knows they fit.
+ */
+function useWidth(ref: RefObject<HTMLElement | null>): number {
+  const [width, setWidth] = useState(0);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    setWidth(el.clientWidth);
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => setWidth(el.clientWidth));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [ref]);
+  return width;
+}
+
 /** True once `ref` comes within a screen of the viewport (at once without IntersectionObserver). */
 function useNear(ref: RefObject<HTMLElement | null>): boolean {
   const [near, setNear] = useState(false);
@@ -186,6 +211,7 @@ export function PositionExplorer(props: PositionExplorerProps) {
   const { gameId, ply, fenBefore, played, orientation, label, href, loadLine, className } = props;
   const ref = useRef<HTMLDivElement>(null);
   const near = useNear(ref);
+  const width = useWidth(ref);
   const [open, setOpen] = useState(false);
   const [loaded, setLoaded] = useState<PositionLine | null>(props.line ?? null);
   const [load, setLoad] = useState<Load>(props.line ? "done" : "idle");
@@ -248,6 +274,7 @@ export function PositionExplorer(props: PositionExplorerProps) {
               label={boardLabel}
               orientation={orientation}
               annotations={explorerAnnotations(props)}
+              coordinates={compactCoordinates(width)}
             />
           </Suspense>
         ) : (
@@ -579,10 +606,11 @@ function ExplorerDialog({
               Try a move
             </Button>
           </div>
-          {/* Tall enough for the longest note at 390px, so a mode switch moves nothing below. */}
+          {/* From lg, tall enough for the longest note, so a mode switch moves nothing below; on a
+              phone the note takes only its own height (critic 12). */}
           <div
             aria-live="polite"
-            className="flex min-h-28 flex-col gap-1 font-sans text-sm lg:min-h-20"
+            className="flex flex-col gap-1 font-sans text-sm lg:min-h-20"
           >
             <p className="m-0 text-ink">{note}</p>
             {state.mode === "try" ? (

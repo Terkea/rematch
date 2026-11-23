@@ -66,6 +66,9 @@ export function OverviewSheet({
         <>
           <div className="flex flex-col gap-6">
             {filterBar ?? <TimeClassSwitch options={view.switch} />}
+            {/* An asked-for comparison answers the question just set, so it comes first
+                (critic 4); on a phone it was some 1,100 px down. */}
+            {compare ? <CompareBlock view={compare} /> : null}
             <div data-reveal-fig="" style={{ "--reveal-i": 0 } as React.CSSProperties}>
               <Headline
                 lead={view.lead}
@@ -84,8 +87,6 @@ export function OverviewSheet({
             ) : null}
             <WorkOn lead={lead} />
           </div>
-
-          {compare ? <CompareBlock view={compare} /> : null}
 
           <section aria-labelledby="accuracy-heading" className="flex flex-col gap-5">
             <SectionHead

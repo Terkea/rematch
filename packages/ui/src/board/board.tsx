@@ -42,6 +42,11 @@ export interface BoardProps {
   interactive?: boolean;
   /** Called for a legal move; return false to refuse it. */
   onMove?: (m: BoardMove) => boolean;
+  /**
+   * Draw the coordinates on the squares (default true). A board whose squares are under 32px
+   * leaves them off: at that size they cannot be read (critic 7).
+   */
+  coordinates?: boolean;
   className?: string;
 }
 
@@ -200,6 +205,7 @@ export function Board({
   animateAnnotations = true,
   interactive = false,
   onMove,
+  coordinates = true,
   className,
 }: BoardProps) {
   const id = `board-${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
@@ -404,6 +410,7 @@ export function Board({
                 },
                 squareStyles: styles,
                 ...boardTheme,
+                showNotation: coordinates,
               }}
             />
           </PieceMotionContext.Provider>
