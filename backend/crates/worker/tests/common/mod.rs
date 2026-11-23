@@ -14,6 +14,7 @@ use sqlx::PgPool;
 use sqlx::postgres::PgConnectOptions;
 use testkit::fake_engine::FakeAnalyser;
 use testkit::{GameSeed, insert_account, insert_game};
+use tokio::sync::{Semaphore, SemaphorePermit};
 use uuid::Uuid;
 use worker::config::WorkerEnv;
 
@@ -30,6 +31,29 @@ pub fn test_db_url(opts: &PgConnectOptions) -> String {
         "{base}/{}",
         opts.get_database().expect("test database name")
     )
+}
+
+/// The Postgres connections the tests of one binary may hold at once: the compose `postgres`
+/// service's `max_connections` (300, docker-compose.yml, ADR 0066) minus sqlx::test's master pool
+/// (20, shared by the binary; each test's own `PgPool` argument is a child of it).
+///
+/// Every test runs on its own runtime and thread, so with the default test threads (one per core)
+/// all of a binary's worker tests start at once. A worker started with AI may open
+/// `max_connections(1, true)` = 58 connections, and its runners open about 45 of them in the first
+/// second. Twelve such workers asked Postgres for far more than 300: it answered "too many
+/// clients", sqlx retried that until the acquire timeout, and a start failed with "pool timed
+/// out". Each worker test reserves its share first, so the tests queue here instead.
+static PG_CONNECTIONS: Semaphore = Semaphore::const_new(300 - 20);
+
+/// Reserves, until the permit drops, every connection a worker started with `pool_size` engines
+/// (and the AI runners, the default) may open, plus `own` for the pools the test opens itself.
+/// Take it before `start_workers` and keep it until the worker is stopped.
+pub async fn reserve_connections(pool_size: usize, own: usize) -> SemaphorePermit<'static> {
+    let n = worker::start::max_connections(pool_size, true) + own;
+    PG_CONNECTIONS
+        .acquire_many(u32::try_from(n).expect("a test's connection budget fits in u32"))
+        .await
+        .expect("the connection budget is never closed")
 }
 
 /// A worker environment on the test database with the real Stockfish, or `None` (skip) when

@@ -33,6 +33,7 @@ use serde_json::{Value, json};
 use sqlx::PgPool;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::sync::SemaphorePermit;
 use uuid::Uuid;
 use worker::ai_jobs::{AI_RUNNER_KINDS, AiSetup};
 use worker::config::{SidecarEnv, WorkerEnv};
@@ -62,9 +63,20 @@ fn input_of(account: Uuid) -> CoachingInput {
     serde_json::from_value(make_input(json!({ "accountId": account }))).unwrap()
 }
 
+/// Engines of every worker these tests start.
+const POOL_SIZE: usize = 1;
+/// Connections of the test's own pool ([`pool_of`]).
+const OWN_POOL: usize = 4;
+
+/// This test's share of the Postgres connections (see `common::reserve_connections`): a worker
+/// from [`opts`] and [`pool_of`]. Held until the worker is stopped.
+async fn reserve() -> SemaphorePermit<'static> {
+    common::reserve_connections(POOL_SIZE, OWN_POOL).await
+}
+
 fn opts(ai: AiSetup) -> StartOptions {
     StartOptions {
-        pool_size: Some(1),
+        pool_size: Some(POOL_SIZE),
         runner: Some(RunnerConfig::fast_for_tests()),
         with_reconciler: false,
         ai,
@@ -79,7 +91,7 @@ async fn stop(running: RunningWorkers) {
 
 async fn pool_of(env: &WorkerEnv) -> PgPool {
     PgPoolOptions::new()
-        .max_connections(4)
+        .max_connections(OWN_POOL as u32)
         .connect(&env.database_url)
         .await
         .unwrap()
@@ -133,6 +145,7 @@ async fn no_key_runs_report_to_computed_only(_p: PgPoolOptions, opts_: PgConnect
     let Some(env) = env_for(&opts_) else {
         return;
     };
+    let _budget = reserve().await;
     let running = start_workers(&env, opts(AiSetup::FromEnv)).await.unwrap();
     assert!(!running.ai_enabled);
     // Every AI kind has its runner, AI or not.
@@ -162,6 +175,7 @@ async fn fake_ai_runs_report_to_complete_through_the_queue(
     let Some(env) = env_for(&opts_) else {
         return;
     };
+    let _budget = reserve().await;
     let pool = pool_of(&env).await;
     let account = testkit::insert_account(&pool, "lichess", "t26player").await;
     // Every report section answers validly; anything else (the run's change notes, whose runner
@@ -243,6 +257,7 @@ async fn interactive_analyse_runs_on_the_real_engine_pool(
     let Some(env) = env_for(&opts_) else {
         return;
     };
+    let _budget = reserve().await;
     let running = start_workers(&env, opts(AiSetup::With(None)))
         .await
         .unwrap();
@@ -400,6 +415,7 @@ fn logs() -> &'static Captured {
 async fn start_logged(env: &WorkerEnv) -> (bool, String) {
     let captured = logs();
     tracing::info!(env = ?env, "test: worker env");
+    let _budget = reserve().await;
     let running = start_workers(env, opts(AiSetup::FromEnv)).await.unwrap();
     let enabled = running.ai_enabled;
     stop(running).await;
@@ -552,6 +568,7 @@ async fn the_worker_records_whether_its_ai_can_write(_p: PgPoolOptions, opts_: P
     let Some(env) = env_for(&opts_) else {
         return;
     };
+    let _budget = reserve().await;
     let pool = pool_of(&env).await;
     let client: Arc<dyn AiClient> = Arc::new(FakeAiClient::new(FakeScript::default()));
     let running = start_workers(&env, opts(AiSetup::With(Some(client))))

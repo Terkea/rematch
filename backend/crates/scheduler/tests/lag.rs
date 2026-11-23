@@ -265,7 +265,11 @@ async fn p0_is_priority_5_and_below_not_6(pool: PgPool) {
     age_secs(&pool, six, 3600).await;
     assert_eq!(queue_lag(&pool).await.unwrap().oldest_p0_age, None);
     let five = job(&q, KIND_ANALYSE, 5, "five").await;
-    age_secs(&pool, five, 300).await;
+    // Aged to the middle of the asserted 5..10 min window, not onto its edge: the age is
+    // `now()` of the lag query minus `now()` of this UPDATE, two statements on the server's
+    // wall clock, which can step back a fraction of a second under load (299.57 s was seen for
+    // an age of exactly 300 s).
+    age_secs(&pool, five, 7 * 60 + 30).await;
     let a = queue_lag(&pool).await.unwrap().oldest_p0_age.unwrap();
     assert!(
         a >= 5 * MIN && a < 10 * MIN,
