@@ -384,6 +384,8 @@ struct Loaded {
     next_call_index: i32,
     /// This AI attempt of the turn (1 = the first; set by the reservation).
     attempt: i16,
+    /// The asking user's plan (ADR 0094; set once the input is loaded).
+    plan: Option<crate::plan::PlanContext>,
 }
 
 impl CoachChatHandler {
@@ -528,6 +530,7 @@ impl CoachChatHandler {
         Ok(Ok(Loaded {
             next_call_index,
             attempt: 0,
+            plan: None,
             account_id: conversation.account_id,
             conversation,
             message,
@@ -657,6 +660,24 @@ impl CoachChatHandler {
             crate::generate::context::input_hash(&stored.input),
         );
         let input = stored.input;
+        // The asking user's own plan (ADR 0094): never another user's, even on a shared
+        // account. Derived data: a failure is logged and the turn goes on without it.
+        t.plan = match crate::plan::load_plan(
+            &mut *conn,
+            t.conversation.user_id,
+            account_id,
+            t.time_class,
+            now,
+            &|k| crate::plan::label_from_input(&input, k),
+        )
+        .await
+        {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::warn!(error = %e, "loading the player's plan failed");
+                None
+            }
+        };
         let Some(ai) = d.ai.clone() else {
             fail_and_emit(conn, who, id, REASON_UNAVAILABLE).await?;
             return Ok(json!({ "failed": REASON_UNAVAILABLE }));
@@ -943,6 +964,10 @@ impl CoachChatHandler {
             },
         ));
         let mut evidence = build_evidence(&input);
+        let plan = t.plan.as_ref();
+        if let Some(p) = plan {
+            crate::plan::add_plan_evidence(&mut evidence, p);
+        }
         let details = |anchor: Option<ChatAnchor>| {
             let ds = ds.clone();
             async move {
@@ -974,6 +999,7 @@ impl CoachChatHandler {
             &history,
             &t.question,
             msg_details.as_ref(),
+            plan,
         );
         let previous_in_sync = t.previous.as_ref().map(|(s, _)| *s);
         // A retried attempt is never in sync (review I1): the SDK session may hold the failed
@@ -1122,12 +1148,13 @@ impl CoachChatHandler {
             return Ok(false);
         }
         sqlx::query(
-            "UPDATE coach_messages SET session_in_sync = $2, coaching_input_id = $3,              input_hash = $4 WHERE id = $1",
+            "UPDATE coach_messages SET session_in_sync = $2, coaching_input_id = $3,              input_hash = $4, plan_context = $5 WHERE id = $1",
         )
             .bind(id)
             .bind(o.session_in_sync)
             .bind(*snapshot)
             .bind(input_hash)
+            .bind(t.plan.as_ref().map(crate::plan::plan_json))
             .execute(&mut *tx)
             .await
             .map_err(|e| retryable("in sync", e))?;

@@ -98,7 +98,7 @@ async fn weekly_uses_haiku_with_a_cached_system_block() {
     assert_eq!(req.system.len(), 2);
     assert_eq!(req.system[0], rules_block());
     assert!(req.system[1].cache);
-    let weekly_system = load_prompt("weekly-review/system", 1).unwrap().text;
+    let weekly_system = load_prompt("weekly-review/system", 2).unwrap().text;
     assert!(req.system[1].text.starts_with(weekly_system));
     assert!(
         !req.system[1]

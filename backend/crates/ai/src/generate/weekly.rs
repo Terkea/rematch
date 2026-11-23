@@ -29,7 +29,7 @@ use crate::output::weekly::{
     FocusUpdate, ValidatedWeeklyOutcome, ValidatedWeeklyReview, WeeklyOutcomeItem,
     WeeklyReviewInput, WeeklyReviewOutput,
 };
-use crate::prompts::load_prompt;
+use crate::prompts::{WEEKLY_PROMPT_SET, load_prompt};
 use crate::validator::evidence::{
     Evidence, build_evidence_from, list_date_paths, list_number_paths, path_segment,
 };
@@ -55,9 +55,18 @@ pub const PROCESS_OUTCOME_NUMBER: &str = "process quotes an outcome number";
 /// (improvement-engine §6.6): no efficacy verdict then.
 pub const NOT_ENOUGH_PRACTICE: &str = "not enough practice to judge";
 
-/// The number paths that state an outcome: the metric deltas, the timeline changes and the
-/// focus estimates. Only outcomes may quote them (T15 fix round 1, review I2).
-const OUTCOME_PATHS: [&str; 3] = ["metricDeltas", "changes", "focusUpdates"];
+/// The number paths that state an outcome: the metric deltas, the timeline changes, the
+/// focus estimates, and (ADR 0094) the plan's focus progress and "Is it working?" results. Only
+/// outcomes may quote them (T15 fix round 1, review I2). The plan's training counts are
+/// process numbers.
+const OUTCOME_PATHS: [&str; 6] = [
+    "metricDeltas",
+    "changes",
+    "focusUpdates",
+    "plan.focus",
+    "plan.isItWorking",
+    "plan.patterns",
+];
 
 /// Less than half the planned minutes were done (improvement-engine §6.6). `false` when nothing
 /// was planned (`adherence` null or 0 minutes planned).
@@ -76,8 +85,13 @@ fn focus_phrase(input: &WeeklyReviewInput, f: &FocusUpdate) -> Option<&'static s
     }
 }
 
+/// The prompt `id` at its version in [`WEEKLY_PROMPT_SET`] (version 1 for any other id).
 fn text(id: &str) -> &'static str {
-    load_prompt(id, 1).unwrap_or_else(|e| panic!("{e}")).text
+    let v = WEEKLY_PROMPT_SET
+        .iter()
+        .find(|(i, _)| *i == id)
+        .map_or(1, |(_, v)| *v);
+    load_prompt(id, v).unwrap_or_else(|e| panic!("{e}")).text
 }
 
 fn input_json(input: &WeeklyReviewInput) -> Value {
@@ -95,7 +109,11 @@ pub fn build_weekly_evidence(input: &WeeklyReviewInput) -> Evidence {
         .iter()
         .map(|f| format!("focusUpdates.{}.pImp", path_segment(&f.weakness_id)))
         .collect();
-    build_evidence_from(&input_json(input), &exemplars, &changes, &rates)
+    let mut ev = build_evidence_from(&input_json(input), &exemplars, &changes, &rates);
+    if let Some(p) = &input.plan {
+        crate::plan::add_plan_evidence(&mut ev, p);
+    }
+    ev
 }
 
 /// What the weekly prompts read: the input, plus

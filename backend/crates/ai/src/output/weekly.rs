@@ -152,6 +152,12 @@ pub struct WeeklyReviewInput {
     #[schemars(length(max = WEEKLY_INPUT_MAX_EXEMPLARS))]
     pub exemplars: Vec<ExemplarPosition>,
     pub changes: Vec<TimelineChange>,
+    /// ADR 0094: the account's verified owner's plan (focus, training, "Is it working?"),
+    /// attached by the weekly schedule; absent for an account without a verified owner, or one
+    /// with nothing to say. Never built by R2's weekly-input builder.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(extend("x-optional" = true))]
+    pub plan: Option<crate::plan::PlanContext>,
 }
 
 /// TS `exemplars: ExemplarPosition[] (max 2)`.

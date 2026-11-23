@@ -591,6 +591,7 @@ export const coachMessages = pgTable(
     turnAttempts: smallint("turn_attempts").default(0).notNull(),
     coachingInputId: uuid("coaching_input_id"),
     inputHash: text("input_hash"),
+    planContext: jsonb("plan_context"),
   },
   (table) => [
     index("coach_messages_coaching_input_idx")

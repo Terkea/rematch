@@ -95,6 +95,7 @@ One file per decision: context, decision, alternatives, consequences. New decisi
 - [0089. The rating trajectory, and then against now](0089-rating-trajectory-and-then-vs-now.md)
 - [0092. A focused overview: trend, focus, practise, then the detail](0092-focused-overview.md)
 - [0093. The report validator drops claims, not honest wording](0093-report-validator-false-drops.md)
+- [0094. The coach knows the player's plan: a per-user plan context](0094-coach-knows-the-plan.md)
 
 ## Records with placeholder numbers
 

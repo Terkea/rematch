@@ -197,6 +197,24 @@ const COLOR_WEAKNESS_ARRAYS: [&str; 3] = [
     "trajectory.thenVsNow.weaknesses",
 ];
 
+/// ADR 0094: the plan context's per-source arrays, keyed by their `source`
+/// (`plan.isItWorking.W4_missed.after.rate`).
+const PLAN_SOURCE_ARRAYS: [&str; 3] = [
+    "plan.isItWorking",
+    "plan.training.lastWeek.bySource",
+    "plan.training.lastMonth.bySource",
+];
+
+/// ADR 0094: the plan context's fractions (shares in 0..1), by field name.
+const PLAN_RATE_FIELDS: [&str; 6] = [
+    "rate",
+    "low",
+    "high",
+    "targetRate",
+    "baselineRate",
+    "firstTryRate",
+];
+
 /// The colours of the v2 colour split, as their path segments.
 const COLORS: [&str; 2] = ["white", "black"];
 
@@ -493,6 +511,8 @@ impl Evidence {
                 self.put_number_path(&format!("{path}.count"), xs.len() as f64);
                 let id_field = if COLOR_WEAKNESS_ARRAYS.contains(&path) {
                     Some("seriesKey")
+                } else if PLAN_SOURCE_ARRAYS.contains(&path) {
+                    Some("source")
                 } else {
                     key.filter(|_| !path.contains('.')).and_then(array_id_field)
                 };
@@ -531,6 +551,29 @@ impl Evidence {
 }
 
 impl Evidence {
+    /// ADR 0094: one user's plan context (`PlanContext` JSON) under `plan.`: its numbers and
+    /// dates may be stated, its `{{num:plan.…}}` and `{{date:plan.…}}` paths cited, and every
+    /// fraction (a rate, its range, a target, a first-try share) prints as a percentage.
+    pub fn add_plan(&mut self, plan: &Value) {
+        let json = serde_json::json!({ "plan": plan });
+        self.add_numbers_from(&json);
+        self.walk_paths(&json, "", None);
+        let rates: Vec<String> = self
+            .number_paths
+            .keys()
+            .filter(|p| {
+                p.starts_with("plan.")
+                    && p.rsplit('.')
+                        .next()
+                        .is_some_and(|f| PLAN_RATE_FIELDS.contains(&f))
+            })
+            .cloned()
+            .collect();
+        for p in rates {
+            self.mark_rate(&p);
+        }
+    }
+
     /// Marks a number path as a rate or share in [0, 1] (`pct0`/`pct1` may format it).
     pub fn add_rate_path(&mut self, path: &str) {
         self.rate_paths.insert(path.to_owned());

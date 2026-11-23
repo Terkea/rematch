@@ -338,6 +338,7 @@ fn messages(question: &str) -> Vec<Message> {
         &ChatHistory::Verbatim(Vec::new()),
         question,
         None,
+        None,
     )
 }
 
@@ -709,6 +710,7 @@ fn request_messages_put_the_question_last_inside_question_tags() {
         &ChatHistory::Verbatim(Vec::new()),
         "a < b?",
         Some(&anchor),
+        None,
     );
     assert_eq!(m.len(), 2);
     assert_eq!(m[0].role, Role::User);
@@ -765,7 +767,7 @@ fn rollover_message_carries_summary_and_recent_turns_without_assistant_blocks() 
             ("And the endgame?".into(), "Trade when ahead.".into()),
         ],
     };
-    let m = build_chat_request_messages(&i, None, &history, "Next question", None);
+    let m = build_chat_request_messages(&i, None, &history, "Next question", None, None);
     assert_eq!(m.len(), 2);
     assert!(m.iter().all(|x| x.role == Role::User));
     let first = m[0]
@@ -793,6 +795,7 @@ fn rollover_message_carries_summary_and_recent_turns_without_assistant_blocks() 
         },
         "x",
         None,
+        None,
     );
     let first = m[0].content[0]["text"].as_str().unwrap().to_owned()
         + m[0].content.last().unwrap()["text"].as_str().unwrap();
@@ -805,7 +808,14 @@ async fn verbatim_history_is_append_only() {
     let world = World::new(FakeEngine::default());
     let f = fake(vec![answer(&[OK1]), answer(&[OK2])]);
     let i = input("b2-rapid");
-    let m1 = build_chat_request_messages(&i, None, &ChatHistory::Verbatim(vec![]), "First?", None);
+    let m1 = build_chat_request_messages(
+        &i,
+        None,
+        &ChatHistory::Verbatim(vec![]),
+        "First?",
+        None,
+        None,
+    );
     let (out1, _) = run(&f, &world, args(m1.clone())).await;
     assert_eq!(out1.new_messages.len(), 2);
     assert_eq!(out1.new_messages[0], *m1.last().unwrap());
@@ -823,6 +833,7 @@ async fn verbatim_history_is_append_only() {
         None,
         &ChatHistory::Verbatim(history.clone()),
         "Second?",
+        None,
         None,
     );
     assert_eq!(m2[..m1.len()], m1[..]);
@@ -1194,6 +1205,7 @@ fn move_anchor_args(world: &World, question: &str) -> ChatTurnArgs<'static> {
         &ChatHistory::Verbatim(vec![]),
         question,
         Some(&details),
+        None,
     );
     ChatTurnArgs {
         evidence: ev,
@@ -1647,7 +1659,14 @@ async fn a_turn_after_an_out_of_sync_answer_sends_the_full_history_as_a_new_sess
     let world = World::new(FakeEngine::default());
     let f = fake(vec![answer(&[BAD]), answer(&[OK2]), answer(&[OK3])]);
     let i = input("b2-rapid");
-    let m1 = build_chat_request_messages(&i, None, &ChatHistory::Verbatim(vec![]), "First?", None);
+    let m1 = build_chat_request_messages(
+        &i,
+        None,
+        &ChatHistory::Verbatim(vec![]),
+        "First?",
+        None,
+        None,
+    );
     let (out1, _) = run(&f, &world, args(m1)).await;
     assert!(!out1.session_in_sync);
     let m2 = build_chat_request_messages(
@@ -1655,6 +1674,7 @@ async fn a_turn_after_an_out_of_sync_answer_sends_the_full_history_as_a_new_sess
         None,
         &ChatHistory::Verbatim(out1.new_messages.clone()),
         "Second?",
+        None,
         None,
     );
     let mut a2 = args(m2.clone());
@@ -1888,7 +1908,8 @@ async fn a_paragraph_cut_off_by_max_tokens_is_never_published() {
 fn chat_prompts_have_no_json_output_instruction() {
     let system = chat_system_blocks();
     assert_eq!(system[0], rules_block());
-    let chat = load_prompt("chat/system", 4).unwrap();
+    // ADR 0094: v5, the set's version.
+    let chat = load_prompt("chat/system", 5).unwrap();
     assert!(system[1].text.starts_with(chat.text.trim_end()));
     // ADR 0085: the glossary follows, and the off-topic marker stays the last line.
     let glossary = load_prompt("core/glossary", 2).unwrap().text.trim_end();
@@ -2062,8 +2083,9 @@ async fn tools_after_the_off_topic_marker_are_refused() {
 fn chat_system_v2_teaches_the_move_filter_and_honest_empty_searches() {
     // ADR 0085: v3 keeps v2's text and adds the colour split, the benchmark and the glossary.
     // ADR 0089: v4 keeps v3's text and adds the rating history.
-    assert!(CHAT_PROMPT_SET.contains(&("chat/system", 4)));
-    let v2 = load_prompt("chat/system", 4).unwrap().text;
+    // ADR 0094: v5 keeps v4's text and adds the player's plan.
+    assert!(CHAT_PROMPT_SET.contains(&("chat/system", 5)));
+    let v2 = load_prompt("chat/system", 5).unwrap().text;
     assert!(chat_system_blocks()[1].text.starts_with(v2.trim_end()));
     for f in [
         "`phase`",

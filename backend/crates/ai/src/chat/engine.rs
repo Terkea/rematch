@@ -64,6 +64,7 @@ pub use crate::generate::section::{BeforeCall, CallRecord};
 use crate::input::types::CoachingInput;
 use crate::output::codes::{Citation, ValidationCode, ValidationError};
 use crate::output::schema::ITEM_TEXT_MAX_CHARS;
+use crate::plan::{PlanContext, plan_block};
 use crate::prompts::{CHAT_PROMPT_SET, CHAT_SUMMARY_PROMPT_SET, load_prompt, render_template};
 use crate::segments::Segment;
 use crate::validator::evidence::Evidence;
@@ -145,15 +146,19 @@ fn text_json(s: impl Into<String>) -> Value {
 /// 1. a user message (cached at its last block): the coaching context, the conversation anchor
 ///    if any, and for a rollover the thread summary and the recent turns;
 /// 2. the verbatim history, unchanged;
-/// 3. the question: `[anchor_block(message_anchor)?, "<question>…</question>"]`.
+/// 3. the question: `[anchor_block(message_anchor)?, plan_block(plan)?,
+///    "<question>…</question>"]`.
 ///
 /// The anchors are `anchor_details` values. Question, summary and recent turns are escaped.
+/// The player's plan (ADR 0094) rides with each question, not with the cached context: it
+/// changes from day to day, and a resumed SDK session receives only the new question.
 pub fn build_chat_request_messages(
     input: &CoachingInput,
     conversation_anchor: Option<&Value>,
     history: &ChatHistory,
     question: &str,
     message_anchor: Option<&Value>,
+    plan: Option<&PlanContext>,
 ) -> Vec<Message> {
     let mut first = vec![TextBlock::new(context_block(input))];
     if let Some(a) = conversation_anchor {
@@ -191,6 +196,9 @@ pub fn build_chat_request_messages(
     let mut q = Vec::new();
     if let Some(a) = message_anchor {
         q.push(text_json(anchor_block(a)));
+    }
+    if let Some(p) = plan {
+        q.push(text_json(plan_block(p)));
     }
     q.push(text_json(format!(
         "<question>{}</question>",
