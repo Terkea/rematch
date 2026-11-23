@@ -32,12 +32,17 @@ async function scopeOf(uid: string): Promise<CoachScope> {
 }
 
 /** A synthetic rapid game (player rated 1500 on chess.com: B3) with its metrics row. */
-async function analysed(i: number, metrics: Record<string, unknown>): Promise<string> {
+async function analysed(
+  i: number,
+  metrics: Record<string, unknown>,
+  playerColor: "white" | "black" = "white",
+): Promise<string> {
   const playedAt = new Date(BASE + i * DAY);
   const { gameId } = await seedSyntheticGame(db, accountId, {
     playedAt: playedAt.toISOString(),
     timeClass: "rapid",
     result: "1-0",
+    playerColor,
   });
   await db.insert(gameMetrics).values({
     gameId,
@@ -156,6 +161,110 @@ describe("loadStrengths", () => {
     expect(m.improving.kpis).not.toBeNull();
   });
 
+  // Audit A1: the peer rows and estimates are stored per side (ADR 0082). Both mode reads the
+  // both rows only, never a White row that happens to come back first.
+  async function peersWithAWhiteRow() {
+    await analysed(0, { accuracy: 74 });
+    await db.execute(sql`
+      insert into account_benchmark (account_id, time_class, source, center_rating, rating_low,
+        rating_high, n_players, n_games)
+      values (${accountId}, 'rapid', 'peers', 800, 650, 950, 25, 61)`);
+    await db.execute(sql`
+      insert into account_benchmark_stat (account_id, time_class, side, metric, median, p25, p40,
+        p75, pooled_rate, n_players, n_games, low_sample, n_chances)
+      values (${accountId}, 'rapid', 'white', 'accuracy', 60, 55, 58, 64, null, 12, 30, false, null),
+        (${accountId}, 'rapid', 'both', 'blunders_per_game', 1.4, 1.1, 1.3, 1.7, null, 25, 61, false, null),
+        (${accountId}, 'rapid', 'black', 'accuracy', 90, 85, 88, 94, null, 13, 31, false, null)`);
+    await seedProfile(db, accountId, {
+      timeClass: "rapid",
+      kpis: [
+        { metric: "accuracy", value: 76.2, ciLow: 74.1, ciHigh: 78.3, n: 50 },
+        { metric: "blunders_per_game", value: 1.2, ciLow: 0.9, ciHigh: 1.5, n: 50 },
+        { metric: "accuracy", side: "white", value: 76.2, ciLow: 74.1, ciHigh: 78.3, n: 25 },
+        { metric: "accuracy", side: "black", value: 76.2, ciLow: 74.1, ciHigh: 78.3, n: 25 },
+      ],
+    });
+  }
+
+  it("compares Both with the both peer row, never a colour's", async () => {
+    await peersWithAWhiteRow();
+    const m = await loadStrengths(db, userId, await scopeOf(userId));
+    if (m?.above.mode !== "peers") throw new Error(`mode ${m?.above.mode}`);
+    // Accuracy has no both row, so it is not compared; the White one (60) would have been a claim.
+    expect(m.above.compared).toBe(1);
+    expect(m.above.claims).toEqual([]);
+  });
+
+  it("compares one colour with that colour's peer row", async () => {
+    await peersWithAWhiteRow();
+    const m = await loadStrengths(db, userId, { ...(await scopeOf(userId)), side: "white" });
+    if (m?.above.mode !== "peers") throw new Error(`mode ${m?.above.mode}`);
+    expect(m.above.claims.map((c) => [c.metric, c.peer, c.n])).toEqual([["accuracy", 60, 25]]);
+  });
+
+  it("gives each colour its own claims in Both mode", async () => {
+    await peersWithAWhiteRow();
+    const m = await loadStrengths(db, userId, await scopeOf(userId));
+    expect(m?.bySide?.white).toMatchObject({ mode: "peers", compared: 1 });
+    const white = m?.bySide?.white;
+    expect(white?.mode === "peers" ? white.claims.map((c) => c.metric) : null).toEqual(["accuracy"]);
+    expect(m?.bySide?.black).toMatchObject({ mode: "peers", compared: 1, claims: [] });
+  });
+
+  it("lists an improving weakness once, from the both estimate", async () => {
+    await analysed(0, {});
+    await seedProfile(db, accountId, {
+      timeClass: "rapid",
+      estimates: (["both", "white", "black"] as const).map((side) => ({
+        seriesKey: "W1",
+        side,
+        state: "improving" as const,
+        nUnweighted: 2400,
+      })),
+      history: [
+        {
+          seriesKey: "W1",
+          kind: "transition",
+          fromState: "active",
+          toState: "improving",
+          atPlayedAt: new Date("2026-10-14T12:00:00Z"),
+          pChange: 0.9,
+          rateBefore: 0.04,
+          rateAfter: 0.026,
+          evidence: { k: 21, n: 800 },
+        },
+      ],
+    });
+    const m = await loadStrengths(db, userId, await scopeOf(userId));
+    expect(m?.improving.weaknesses.map((w) => w.seriesKey)).toEqual(["W1"]);
+  });
+
+  it("reads one colour's openings and the dates' games only", async () => {
+    for (let i = 0; i < 24; i++) {
+      const color = i < 12 ? "white" : "black";
+      const gameId = await analysed(i, { score: 1, expectedScore: 0.5 }, color);
+      await db.insert(gameOpenings).values({
+        gameId,
+        accountId,
+        timeClass: "rapid",
+        color,
+        fenKeys: [],
+        ucis: [],
+        sans: [],
+        lineKey: color === "white" ? "italian" : "caro-kann",
+        lineName: color === "white" ? "Italian Game" : "Caro-Kann Defence",
+        lineKind: "chosen",
+      });
+    }
+    const scope = await scopeOf(userId);
+    const black = await loadStrengths(db, userId, { ...scope, side: "black" });
+    expect(black?.openings.lines.map((o) => o.name)).toEqual(["Caro-Kann Defence"]);
+    // Games 0 to 11 are White's, on 1 to 12 June: the first five days hold five of them.
+    const dated = await loadStrengths(db, userId, scope, { from: "2026-06-01", to: "2026-06-05" });
+    expect(dated?.openings.judged).toBe(0);
+    expect(dated?.analysedGames).toBe(5);
+  });
+
   it("lists a confirmed improving weakness with its transition's evidence", async () => {
     await analysed(0, {});
     await seedProfile(db, accountId, {
@@ -182,7 +291,7 @@ describe("loadStrengths", () => {
     expect(m?.improving.weaknesses).toMatchObject([
       {
         seriesKey: "W1",
-        label: "Hung material",
+        label: "Leaving pieces hanging",
         state: "improving",
         pChange: expect.closeTo(0.9, 5),
         afterCounts: { events: 21, chances: 800 },
