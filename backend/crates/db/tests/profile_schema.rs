@@ -1156,3 +1156,38 @@ async fn hot_reads_use_their_indexes(pool: PgPool) {
         .unwrap();
     assert!(failures.is_empty(), "{}", failures.join("\n\n"));
 }
+
+/// ADR 0105: every profile writer stamps the build's algorithm id and registers its manifest in
+/// the same statement, so a fresh database needs no start-up step first.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn profile_writers_stamp_the_algorithm_id(pool: PgPool) {
+    seed_every_table(&pool).await;
+    for table in [
+        "game_metrics",
+        "weakness_estimates",
+        "weakness_state_history",
+        "kpi_snapshot",
+    ] {
+        let ids: Vec<Option<String>> = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
+            "SELECT algorithm_id FROM {table}"
+        )))
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        assert!(!ids.is_empty(), "{table}");
+        assert!(
+            ids.iter()
+                .all(|i| i.as_deref() == Some(common::algorithm::id())),
+            "{table}: {ids:?}"
+        );
+    }
+    let manifest: serde_json::Value =
+        sqlx::query_scalar("SELECT manifest FROM algorithm_versions WHERE id = $1")
+            .bind(common::algorithm::id())
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(manifest["id"], common::algorithm::id());
+    let again = db::algorithm::register(&pool).await.unwrap();
+    assert_eq!(again, common::algorithm::id());
+}

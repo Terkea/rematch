@@ -2,6 +2,7 @@ import type { Db } from "@ci/db";
 import { focuses, gameMetrics, games, weaknessSeriesPoint } from "@ci/db/generated";
 import { and, desc, eq, gt, gte, isNull, lt, sql } from "drizzle-orm";
 import { comparisonBacksState } from "../../lib/explain";
+import { registerAlgorithm } from "../algorithm";
 import { readOnly, scopedAccountIds } from "../games";
 import type { TimeClass } from "../games/types";
 import { MODEL_BASELINE_KEYS } from "../profile/benchmark-text";
@@ -44,6 +45,8 @@ export type Focus = {
   peerRate: number | null;
   endedAt: Date | null;
   outcome: FocusOutcome | "cleared" | null;
+  /** The algorithm that chose the target (ADR 0105); null before versioning. */
+  algorithmId: string | null;
 };
 
 export type Suggestion = {
@@ -141,6 +144,7 @@ async function toFocus(tx: Db, f: Row): Promise<Focus> {
     peerRate: f.peerRate,
     endedAt: f.endedAt,
     outcome: f.outcome,
+    algorithmId: f.algorithmId,
   };
 }
 
@@ -294,9 +298,11 @@ export async function setFocus(
     if (running && !(await settle(tx, running))) {
       await endRow(tx, running, await focusCounts(tx, running), "cleared", now);
     }
+    const algorithmId = await registerAlgorithm(tx);
     const [row] = await tx
       .insert(focuses)
       .values({
+        algorithmId,
         userId,
         accountId: c.accountId,
         timeClass: c.timeClass,

@@ -28,6 +28,7 @@ function run(over: Partial<ReportRunRow> = {}): ReportRunRow {
     aiDisabledReason: null,
     createdAt: T0,
     reconcileCount: 0,
+    algorithmId: null,
     ...over,
   };
 }

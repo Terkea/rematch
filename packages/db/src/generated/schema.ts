@@ -441,6 +441,12 @@ export const aiUsage = pgTable(
   ],
 );
 
+export const algorithmVersions = pgTable("algorithm_versions", {
+  id: text().primaryKey().notNull(),
+  manifest: jsonb().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+});
+
 export const bandReference = pgTable(
   "band_reference",
   {
@@ -592,6 +598,7 @@ export const coachMessages = pgTable(
     coachingInputId: uuid("coaching_input_id"),
     inputHash: text("input_hash"),
     planContext: jsonb("plan_context"),
+    algorithmId: text("algorithm_id"),
   },
   (table) => [
     index("coach_messages_coaching_input_idx")
@@ -613,6 +620,11 @@ export const coachMessages = pgTable(
       foreignColumns: [coachingInputs.id],
       name: "coach_messages_coaching_input_id_fkey",
     }).onDelete("set null"),
+    foreignKey({
+      columns: [table.algorithmId],
+      foreignColumns: [algorithmVersions.id],
+      name: "coach_messages_algorithm_id_fkey",
+    }),
     unique("coach_messages_conversation_id_seq_key").on(table.conversationId, table.seq),
     check(
       "coach_messages_session_check",
@@ -632,6 +644,7 @@ export const coachingInputs = pgTable(
     generatedAt: timestamp("generated_at", { withTimezone: true, mode: "date" }).notNull(),
     input: jsonb().notNull(),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    algorithmId: text("algorithm_id"),
   },
   (table) => [
     index("coaching_inputs_latest_idx").using(
@@ -645,6 +658,11 @@ export const coachingInputs = pgTable(
       foreignColumns: [linkedAccounts.id],
       name: "coaching_inputs_account_id_fkey",
     }).onDelete("cascade"),
+    foreignKey({
+      columns: [table.algorithmId],
+      foreignColumns: [algorithmVersions.id],
+      name: "coaching_inputs_algorithm_id_fkey",
+    }),
   ],
 );
 
@@ -717,6 +735,7 @@ export const drillItems = pgTable(
     lastAttemptOn: date("last_attempt_on"),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
     retiredAt: timestamp("retired_at", { withTimezone: true, mode: "date" }),
+    algorithmId: text("algorithm_id"),
   },
   (table) => [
     index("drill_items_due_idx")
@@ -743,6 +762,11 @@ export const drillItems = pgTable(
       foreignColumns: [games.id],
       name: "drill_items_game_id_fkey",
     }).onDelete("cascade"),
+    foreignKey({
+      columns: [table.algorithmId],
+      foreignColumns: [algorithmVersions.id],
+      name: "drill_items_algorithm_id_fkey",
+    }),
     unique("drill_items_position_unique").on(table.userId, table.gameId, table.ply),
     check("drill_items_ply_check", sql`ply > 0`),
     check(
@@ -803,6 +827,7 @@ export const focuses = pgTable(
     resultN: integer("result_n"),
     resultGames: integer("result_games"),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    algorithmId: text("algorithm_id"),
   },
   (table) => [
     index("focuses_account_idx").using("btree", table.accountId.asc().nullsLast()),
@@ -825,6 +850,11 @@ export const focuses = pgTable(
       foreignColumns: [linkedAccounts.id],
       name: "focuses_account_id_fkey",
     }).onDelete("cascade"),
+    foreignKey({
+      columns: [table.algorithmId],
+      foreignColumns: [algorithmVersions.id],
+      name: "focuses_algorithm_id_fkey",
+    }),
     check(
       "focuses_series_key_check",
       sql`(length(series_key) >= 1) AND (length(series_key) <= 200)`,
@@ -859,6 +889,7 @@ export const gameMetrics = pgTable(
       sql`COALESCE(((metrics ->> 'version'::text))::integer, 0)`,
     ),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    algorithmId: text("algorithm_id"),
   },
   (table) => [
     index("game_metrics_account_tc_played_idx").using(
@@ -883,6 +914,11 @@ export const gameMetrics = pgTable(
       foreignColumns: [linkedAccounts.id],
       name: "game_metrics_account_id_fkey",
     }).onDelete("cascade"),
+    foreignKey({
+      columns: [table.algorithmId],
+      foreignColumns: [algorithmVersions.id],
+      name: "game_metrics_algorithm_id_fkey",
+    }),
   ],
 );
 
@@ -1246,6 +1282,7 @@ export const kpiSnapshot = pgTable(
       .defaultNow()
       .notNull(),
     side: sideScope().default("both").notNull(),
+    algorithmId: text("algorithm_id"),
   },
   (table) => [
     index("kpi_snapshot_lookup_idx").using(
@@ -1262,6 +1299,11 @@ export const kpiSnapshot = pgTable(
       foreignColumns: [linkedAccounts.id],
       name: "kpi_snapshot_account_id_fkey",
     }).onDelete("cascade"),
+    foreignKey({
+      columns: [table.algorithmId],
+      foreignColumns: [algorithmVersions.id],
+      name: "kpi_snapshot_algorithm_id_fkey",
+    }),
   ],
 );
 
@@ -1677,6 +1719,7 @@ export const reportRuns = pgTable(
     aiDisabledReason: text("ai_disabled_reason"),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
     reconcileCount: smallint("reconcile_count").default(0).notNull(),
+    algorithmId: text("algorithm_id"),
   },
   (table) => [
     index("report_runs_account_idx").using(
@@ -1700,6 +1743,11 @@ export const reportRuns = pgTable(
       foreignColumns: [linkedAccounts.id],
       name: "report_runs_account_id_fkey",
     }).onDelete("cascade"),
+    foreignKey({
+      columns: [table.algorithmId],
+      foreignColumns: [algorithmVersions.id],
+      name: "report_runs_algorithm_id_fkey",
+    }),
   ],
 );
 
@@ -1925,6 +1973,7 @@ export const weaknessEstimates = pgTable(
     pImp: doublePrecision("p_imp"),
     updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
     side: sideScope().default("both").notNull(),
+    algorithmId: text("algorithm_id"),
   },
   (table) => [
     foreignKey({
@@ -1932,6 +1981,11 @@ export const weaknessEstimates = pgTable(
       foreignColumns: [linkedAccounts.id],
       name: "weakness_estimates_account_id_fkey",
     }).onDelete("cascade"),
+    foreignKey({
+      columns: [table.algorithmId],
+      foreignColumns: [algorithmVersions.id],
+      name: "weakness_estimates_algorithm_id_fkey",
+    }),
     primaryKey({
       columns: [table.accountId, table.timeClass, table.seriesKey, table.side],
       name: "weakness_estimates_pkey",
@@ -2002,6 +2056,7 @@ export const weaknessStateHistory = pgTable(
     detectorVersion: text("detector_version").notNull(),
     protocol: text().notNull(),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    algorithmId: text("algorithm_id"),
   },
   (table) => [
     index("weakness_state_history_series_idx").using(
@@ -2016,6 +2071,11 @@ export const weaknessStateHistory = pgTable(
       foreignColumns: [linkedAccounts.id],
       name: "weakness_state_history_account_id_fkey",
     }).onDelete("cascade"),
+    foreignKey({
+      columns: [table.algorithmId],
+      foreignColumns: [algorithmVersions.id],
+      name: "weakness_state_history_algorithm_id_fkey",
+    }),
   ],
 );
 
@@ -2039,6 +2099,7 @@ export const weeklyReviews = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
     reconcileCount: smallint("reconcile_count").default(0).notNull(),
+    algorithmId: text("algorithm_id"),
   },
   (table) => [
     index("weekly_reviews_pending_idx")
@@ -2049,6 +2110,11 @@ export const weeklyReviews = pgTable(
       foreignColumns: [linkedAccounts.id],
       name: "weekly_reviews_account_id_fkey",
     }).onDelete("cascade"),
+    foreignKey({
+      columns: [table.algorithmId],
+      foreignColumns: [algorithmVersions.id],
+      name: "weekly_reviews_algorithm_id_fkey",
+    }),
     unique("weekly_reviews_account_id_time_class_week_start_key").on(
       table.accountId,
       table.timeClass,

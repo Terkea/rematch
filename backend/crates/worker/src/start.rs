@@ -729,10 +729,17 @@ pub async fn start_workers(env: &WorkerEnv, opts: StartOptions) -> anyhow::Resul
     )
     .await
     .context("connecting to DATABASE_URL")?;
+    match db::algorithm::register(&pool).await {
+        Ok(id) => tracing::info!("algorithm: {id}"),
+        Err(e) => {
+            pool.close().await;
+            return Err(anyhow::Error::new(e).context("registering the algorithm manifest"));
+        }
+    }
     let engines = match EnginePool::create(PoolOptions {
         size: pool_size,
         path: env.stockfish_path.clone(),
-        hash_mb: None,
+        hash_mb: Some(engine::ENGINE_HASH_MB),
     })
     .await
     {

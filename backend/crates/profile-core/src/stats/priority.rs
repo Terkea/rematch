@@ -27,6 +27,10 @@ use crate::stats::weights::{HALF_LIFE_DAYS, weighted_counts};
 use crate::types::{Band, BandReferenceStat, MetricId, WeaknessKey};
 use crate::weakness::observe_game::T_WIN;
 
+/// The name of the ranking rule (ADR 0101's floor: [`RANK_MIN_EXCESS_PER_GAME`], the credible
+/// 80% interval, [`MIN_GAMES`], `MODEL_LOSS_PER_WINNING_EPISODE`). A change to the rule is a
+/// new name and a new algorithm version (ADR 0104, `algorithm/CHANGELOG.md`).
+pub const RANKING_VERSION: &str = "rank-v1";
 /// Points older than this many days are outside the 6-month window (inclusive bound).
 pub const WINDOW_DAYS: f64 = 183.0;
 /// Fewer analysed games in the window than this gives `InsufficientData` (section 6.3).

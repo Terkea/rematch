@@ -3,6 +3,7 @@ import type { Db } from "@ci/db";
 import { drillAttempts, drillItems, games } from "@ci/db/generated";
 import { Chess } from "chess.js";
 import { and, eq, isNull, type SQL, sql } from "drizzle-orm";
+import { registerAlgorithm } from "../algorithm";
 import { readOnly, scopedAccountIds } from "../games";
 import type { CoachScope } from "../profile/types";
 import {
@@ -281,12 +282,13 @@ export async function refreshItems(db: Db, userId: string, scope: Scope): Promis
     const mark = await sourceMark(tx, scope);
     if ((await storedMark(tx, userId, scope)) === mark) return 0;
     const kept = await candidates(tx, userId, scope);
+    const algorithmId = kept.length > 0 ? await registerAlgorithm(tx) : null;
     let added = 0;
     for (let i = 0; i < kept.length; i += MAX_CANDIDATES) {
       const values = await rowsOf(tx, userId, scope, kept.slice(i, i + MAX_CANDIDATES));
       const rows = await tx
         .insert(drillItems)
-        .values(values)
+        .values(values.map((v) => ({ ...v, algorithmId })))
         .onConflictDoNothing()
         .returning({ id: drillItems.id });
       added += rows.length;

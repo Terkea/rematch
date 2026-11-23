@@ -1,6 +1,7 @@
 import { focuses } from "@ci/db/generated";
 import { eq } from "drizzle-orm";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { ALGORITHM_ID } from "../../src/server/algorithm";
 import { clearFocus, getFocusCard, setFocus, setFocusLength } from "../../src/server/focus";
 import { resolveCoachScope } from "../../src/server/profile";
 import { DAY, play, START } from "../helpers/focus";
@@ -91,6 +92,9 @@ describe("setFocus and its progress", () => {
       START,
     );
     expect(set.kind).toBe("set");
+    // ADR 0105: the focus names the algorithm that chose its target.
+    const [stored] = await db.select().from(focuses).where(eq(focuses.userId, userId));
+    expect(stored?.algorithmId).toBe(ALGORITHM_ID);
     await play(db, accountId, 1, { W5: [1, 6], W4: [3, 3] });
     await play(db, accountId, 2, { W5: [0, 6] });
     await play(db, accountId, 3, {}); // a game with no chance still counts as a game

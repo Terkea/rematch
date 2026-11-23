@@ -15,7 +15,7 @@ The language model never produces a fact. It writes citation tokens, the server 
 
 ## Determinism
 
-The same games and the same algorithm version give byte-identical facts, profile rows and coaching input. The engine runs one thread with a 16 MB hash, starts every search with `ucinewgame`, and stops at a fixed node count (300,000 for the main analysis). Every random draw in the statistics comes from a generator seeded by the data, so the same games always give the same 80% range. From v0.2, a replay suite runs the whole pipeline twice on the committed fixture games and compares the results with golden files; a difference fails CI.
+The same games and the same algorithm version give byte-identical facts, profile rows and coaching input. The engine runs one thread with a 16 MB hash, starts every search with `ucinewgame`, and stops at a fixed node count (300,000 for the main analysis). Every random draw in the statistics comes from a generator seeded by the data, so the same games always give the same 80% range. A replay suite (`backend/crates/algo/tests/replay.rs`) runs the 19 committed fixture games through import, analysis, enrichment, the profile build and the coaching input twice, in two throwaway databases, and compares canonical dumps with each other and with the goldens in `backend/fixtures/replay/`; a difference fails CI unless the major version moved. A test also bans unseeded randomness and the wall clock in the maths modules, in Rust (`backend/crates/algo/tests/ban.rs`) and TypeScript (`apps/web/test/determinism.test.ts`).
 
 ## What we publish
 
@@ -29,7 +29,7 @@ Every number comes with its 80% interval over seeds and players. Each run is sto
 
 ## Proposing a new algorithm version
 
-A change to a constant, threshold, detector, protocol, prompt, model or rule is a new algorithm version. From v0.2, `algorithm/manifest.json` names every component, and CI fails when one changes without a version bump.
+A change to a constant, threshold, detector, protocol, prompt, model or rule is a new algorithm version. `algorithm/manifest.json` names every component, `backend/crates/algo/tests/manifest.rs` fails when it no longer matches the code, and `scripts/algorithm/check.mjs` fails a pull request when a component changes without the version bump and a changelog entry ([ADR 0105](decisions/0105-algorithm-manifest-stamping-and-replay.md)).
 
 1. **Change the code** on a branch, and say in an issue what you expect to improve and by how much, before you run anything.
 2. **Bump the version.** Major when facts, profile or recommendations can change; minor when only the coach's prompts, model or validator change; patch when nothing a replay can see changes. Regenerate the manifest with `cargo run -p cli -- algo manifest --write`, and the replay goldens with `REPLAY_UPDATE=1` for a major bump.

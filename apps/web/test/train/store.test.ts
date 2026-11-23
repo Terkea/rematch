@@ -1,6 +1,7 @@
 import { drillItems, gameMetrics, moves, positionMultipv } from "@ci/db/generated";
 import { eq, sql } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
+import { ALGORITHM_ID } from "../../src/server/algorithm";
 import { type CoachScope, resolveCoachScope } from "../../src/server/profile";
 import { isHeldOut } from "../../src/server/train/model";
 import {
@@ -152,6 +153,8 @@ describe("refreshItems", () => {
     expect(items[1]?.acceptedUci).toEqual(["d1d8"]);
     expect(items[1]).toMatchObject({ timeClass: "rapid", accountId, dueOn: null });
     for (const i of items) expect(i.heldOut).toBe(isHeldOut(i.gameId, i.ply));
+    // ADR 0105: every item names the algorithm that chose it.
+    for (const i of items) expect(i.algorithmId).toBe(ALGORITHM_ID);
     // A second visit adds nothing and rewrites nothing.
     expect(await refreshItems(db, userId, await scopeOf(userId))).toBe(0);
   });

@@ -1,0 +1,42 @@
+[package]
+name = "algo"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+# The algorithm manifest (ADRs 0104 and 0105): every constant, protocol, prompt set and model that
+# shapes a recommendation, gathered by import, with a content-hashed id. Workspace dependencies only.
+[dependencies]
+common.workspace = true
+engine.workspace = true
+enrich.workspace = true
+profile-core.workspace = true
+coaching-input.workspace = true
+profile.workspace = true
+ai.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+hex.workspace = true
+regex.workspace = true
+anyhow.workspace = true
+
+[dev-dependencies]
+testkit.workspace = true
+db.workspace = true
+queue.workspace = true
+analysis.workspace = true
+bench.workspace = true
+platforms.workspace = true
+chess-core.workspace = true
+sqlx.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+futures.workspace = true
+uuid.workspace = true
+time.workspace = true

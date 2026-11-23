@@ -1,5 +1,3 @@
-import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   bootstrapMean,
@@ -83,10 +81,5 @@ describe("stable intervals", () => {
     expect(hit / trials).toBeLessThan(0.9);
   });
 
-  it("has no Math.random anywhere in server/stats", () => {
-    const dir = join(__dirname, "../../src/server/stats");
-    for (const f of readdirSync(dir).filter((n) => n.endsWith(".ts"))) {
-      expect(readFileSync(join(dir, f), "utf8"), f).not.toContain("Math.random");
-    }
-  });
+  // The randomness and clock ban over every maths module: test/determinism.test.ts.
 });

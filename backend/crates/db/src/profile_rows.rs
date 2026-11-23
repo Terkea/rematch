@@ -31,16 +31,17 @@ pub async fn insert_game_metrics(
     conn: &mut PgConnection,
     row: &GameMetricsRow,
 ) -> Result<(), sqlx::Error> {
-    sqlx::query(
-        "INSERT INTO game_metrics (game_id, account_id, time_class, played_at, protocol, \
-         enrichment_protocol, difficulty_model, metrics) \
-         VALUES ($1, $2, $3::time_class, $4, $5, $6, $7, $8) \
+    sqlx::query(sqlx::AssertSqlSafe(format!(
+        "{}INSERT INTO game_metrics (game_id, account_id, time_class, played_at, protocol, \
+         enrichment_protocol, difficulty_model, metrics, algorithm_id) \
+         VALUES ($1, $2, $3::time_class, $4, $5, $6, $7, $8, $9) \
          ON CONFLICT (game_id) DO UPDATE SET account_id = EXCLUDED.account_id, \
          time_class = EXCLUDED.time_class, played_at = EXCLUDED.played_at, \
          protocol = EXCLUDED.protocol, enrichment_protocol = EXCLUDED.enrichment_protocol, \
          difficulty_model = EXCLUDED.difficulty_model, metrics = EXCLUDED.metrics, \
-         created_at = now()",
-    )
+         algorithm_id = EXCLUDED.algorithm_id, created_at = now()",
+        common::algorithm::register_cte(9, 10)
+    )))
     .bind(row.game_id)
     .bind(row.account_id)
     .bind(&row.time_class)
@@ -49,6 +50,8 @@ pub async fn insert_game_metrics(
     .bind(&row.enrichment_protocol)
     .bind(&row.difficulty_model)
     .bind(&row.metrics)
+    .bind(common::algorithm::id())
+    .bind(common::algorithm::manifest())
     .execute(conn)
     .await?;
     Ok(())
@@ -143,12 +146,12 @@ pub async fn upsert_weakness_estimate(
     conn: &mut PgConnection,
     row: &WeaknessEstimateRow,
 ) -> Result<(), sqlx::Error> {
-    sqlx::query(
-        "INSERT INTO weakness_estimates (account_id, time_class, series_key, k, n, n_unweighted, \
-         k_unweighted, alpha, beta, mean, ci_low, ci_high, band_median, band_p40, confidence, \
-         excess, priority, percentile, state, p_imp, side, updated_at) \
+    sqlx::query(sqlx::AssertSqlSafe(format!(
+        "{}INSERT INTO weakness_estimates (account_id, time_class, series_key, k, n, \
+         n_unweighted, k_unweighted, alpha, beta, mean, ci_low, ci_high, band_median, band_p40, \
+         confidence, excess, priority, percentile, state, p_imp, side, algorithm_id, updated_at) \
          VALUES ($1, $2::time_class, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, \
-         $16, $17, $18, $19::weakness_state, $20, $21::side_scope, now()) \
+         $16, $17, $18, $19::weakness_state, $20, $21::side_scope, $22, now()) \
          ON CONFLICT (account_id, time_class, side, series_key) DO UPDATE SET k = EXCLUDED.k, \
          n = EXCLUDED.n, n_unweighted = EXCLUDED.n_unweighted, \
          k_unweighted = EXCLUDED.k_unweighted, alpha = EXCLUDED.alpha, beta = EXCLUDED.beta, \
@@ -156,8 +159,10 @@ pub async fn upsert_weakness_estimate(
          band_median = EXCLUDED.band_median, band_p40 = EXCLUDED.band_p40, \
          confidence = EXCLUDED.confidence, excess = EXCLUDED.excess, \
          priority = EXCLUDED.priority, percentile = EXCLUDED.percentile, \
-         state = EXCLUDED.state, p_imp = EXCLUDED.p_imp, updated_at = now()",
-    )
+         state = EXCLUDED.state, p_imp = EXCLUDED.p_imp, \
+         algorithm_id = EXCLUDED.algorithm_id, updated_at = now()",
+        common::algorithm::register_cte(22, 23)
+    )))
     .bind(row.account_id)
     .bind(&row.time_class)
     .bind(&row.series_key)
@@ -179,6 +184,8 @@ pub async fn upsert_weakness_estimate(
     .bind(&row.state)
     .bind(row.p_imp)
     .bind(&row.side)
+    .bind(common::algorithm::id())
+    .bind(common::algorithm::manifest())
     .execute(conn)
     .await?;
     Ok(())
@@ -214,15 +221,16 @@ pub async fn append_state_history(
     conn: &mut PgConnection,
     row: &StateHistoryRow,
 ) -> Result<i64, sqlx::Error> {
-    sqlx::query_scalar(
-        "INSERT INTO weakness_state_history (account_id, time_class, series_key, kind, \
+    sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
+        "{}INSERT INTO weakness_state_history (account_id, time_class, series_key, kind, \
          from_state, to_state, at_game_id, at_played_at, onset_game_id, onset_at, onset_low, \
          onset_high, p_change, rate_before, rate_after, evidence, cause_hints, detector_version, \
-         protocol) \
+         protocol, algorithm_id) \
          VALUES ($1, $2::time_class, $3, $4::state_row_kind, $5::weakness_state, \
-         $6::weakness_state, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19) \
-         RETURNING id",
-    )
+         $6::weakness_state, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, \
+         $20) RETURNING id",
+        common::algorithm::register_cte(20, 21)
+    )))
     .bind(row.account_id)
     .bind(&row.time_class)
     .bind(&row.series_key)
@@ -242,6 +250,8 @@ pub async fn append_state_history(
     .bind(&row.cause_hints)
     .bind(&row.detector_version)
     .bind(&row.protocol)
+    .bind(common::algorithm::id())
+    .bind(common::algorithm::manifest())
     .fetch_one(conn)
     .await
 }
@@ -272,13 +282,14 @@ pub async fn append_kpi_snapshot(
     conn: &mut PgConnection,
     row: &KpiSnapshotRow,
 ) -> Result<i64, sqlx::Error> {
-    sqlx::query_scalar(
-        "INSERT INTO kpi_snapshot (user_id, account_id, time_class, metric, window_kind, \
-         window_key, value, value_adjusted, n, ci_low, ci_high, protocol, side) \
+    sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
+        "{}INSERT INTO kpi_snapshot (user_id, account_id, time_class, metric, window_kind, \
+         window_key, value, value_adjusted, n, ci_low, ci_high, protocol, side, algorithm_id) \
          VALUES ($1, $2, $3::time_class, $4, $5::kpi_window, $6, $7, $8, $9, $10, $11, $12, \
-         $13::side_scope) \
+         $13::side_scope, $14) \
          RETURNING id",
-    )
+        common::algorithm::register_cte(14, 15)
+    )))
     .bind(row.user_id)
     .bind(row.account_id)
     .bind(&row.time_class)
@@ -292,6 +303,8 @@ pub async fn append_kpi_snapshot(
     .bind(row.ci_high)
     .bind(&row.protocol)
     .bind(&row.side)
+    .bind(common::algorithm::id())
+    .bind(common::algorithm::manifest())
     .fetch_one(conn)
     .await
 }
