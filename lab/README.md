@@ -29,7 +29,7 @@ The image takes `cli` and Stockfish from a Rematch build; it compiles no Rust.
 # With the stack's rust-worker image (release build):
 docker compose --profile lab build lab
 docker compose --profile lab run --rm lab                                    # the contract tests
-docker compose --profile lab run --rm lab python -m rematch_lab.experiments check
+docker compose --profile lab run --rm lab python -m rematch_lab.experiments check --history
 
 # With a cli from a Rust lane (what CI does, .github/workflows/lab.yml):
 docker build --build-context rematch=lab-ctx -t rematch-lab lab   # lab-ctx/usr/local/bin/{cli,stockfish}
