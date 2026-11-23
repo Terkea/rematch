@@ -27,9 +27,9 @@ Length
 Make this my focus
 Choose another
 Practise
-Start training
+Practise today: 3 positions due
 
-Practise positions from your own rapid games where you missed a win or a mate, or blundered. Up to 12 a session, about 10 to 15 minutes.
+Positions from your own rapid games where you missed a win or a mate, or blundered.
 
 How you're doing
 
@@ -44,7 +44,7 @@ White
 23 games
 Accuracy
 68.8%
-80% range 65.4% to 72.2%, 22 analysed games
+80% range 65.3% to 72.1%, 22 analysed games
 Blunders per game
 1.55 a game
 80% range 1.2 to 1.9, 22 analysed games
@@ -55,7 +55,7 @@ Black
 12 games
 Accuracy
 67.0%
-80% range 61.4% to 72.8%, 12 analysed games
+80% range 61.4% to 73.1%, 12 analysed games
 Blunders per game
 1.50 a game
 80% range 1.0 to 2.0, 12 analysed games
