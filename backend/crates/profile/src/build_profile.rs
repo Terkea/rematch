@@ -728,6 +728,15 @@ async fn run_build(
         .map_err(refdata_error)?;
     stages.insert("repertoire_ms".into(), ms(t));
 
+    // The coaching input of the profile just written (ADR 0086), so the coach is never older
+    // than the profile. It is derived data: a failure is logged, never retried (the next build
+    // writes a newer one, and the coach falls back to the newest stored input meanwhile).
+    if let Err(e) =
+        crate::coaching::snapshot::store_coaching_snapshot(pool, account_id, tc, started_at).await
+    {
+        tracing::warn!(%account_id, tc = tc.as_str(), error = %e, "coaching-input snapshot not stored");
+    }
+
     // 8. Follow-up build: release the key first, then check, then enqueue.
     if let Some(job) = job {
         deps.queue

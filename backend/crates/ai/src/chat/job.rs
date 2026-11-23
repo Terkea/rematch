@@ -648,9 +648,15 @@ impl CoachChatHandler {
         let input = latest_coaching_input(&d.pool, account_id, t.time_class)
             .await
             .map_err(|e| retryable("load coaching input", e))?;
-        let Some(input) = input else {
+        let Some(stored) = input else {
             return self.no_data(conn, who, id).await;
         };
+        // Which input the answer is written from (ADR 0086), stored with it.
+        let used = (
+            stored.snapshot_id(),
+            crate::generate::context::input_hash(&stored.input),
+        );
+        let input = stored.input;
         let Some(ai) = d.ai.clone() else {
             fail_and_emit(conn, who, id, REASON_UNAVAILABLE).await?;
             return Ok(json!({ "failed": REASON_UNAVAILABLE }));
@@ -694,7 +700,7 @@ impl CoachChatHandler {
         };
 
         // --- Finish ---
-        let finished = match self.finish(conn, &t, &outcome, now).await {
+        let finished = match self.finish(conn, &t, &outcome, &used, now).await {
             Ok(f) => f,
             Err(e) => {
                 // The finish rolled back its usage rows; the calls were paid (review m1).
@@ -1044,6 +1050,7 @@ impl CoachChatHandler {
         conn: &mut PgConnection,
         t: &Loaded,
         o: &ChatTurnOutcome,
+        (snapshot, input_hash): &(Option<Uuid>, String),
         now: OffsetDateTime,
     ) -> Result<bool, JobError> {
         let d = &self.0;
@@ -1114,9 +1121,13 @@ impl CoachChatHandler {
             .map_err(|e| retryable("orphan entries", e))?;
             return Ok(false);
         }
-        sqlx::query("UPDATE coach_messages SET session_in_sync = $2 WHERE id = $1")
+        sqlx::query(
+            "UPDATE coach_messages SET session_in_sync = $2, coaching_input_id = $3,              input_hash = $4 WHERE id = $1",
+        )
             .bind(id)
             .bind(o.session_in_sync)
+            .bind(*snapshot)
+            .bind(input_hash)
             .execute(&mut *tx)
             .await
             .map_err(|e| retryable("in sync", e))?;

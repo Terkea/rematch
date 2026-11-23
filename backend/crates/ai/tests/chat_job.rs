@@ -41,7 +41,7 @@ use serde_json::{Value, json};
 use sqlx::PgPool;
 use support::{
     AnyLink, Links, OK2, OK3, account, answer, deps, events, job, seed_game, seed_move, statuses,
-    store_input, usage_rows, user,
+    store_input, store_snapshot, usage_rows, user, v2_raw,
 };
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
@@ -276,6 +276,55 @@ async fn job_happy_path(pool: PgPool) {
     // A finished message is not run again.
     assert!(run(&pool, &f, Plan::Free, msg).await.is_ok());
     assert_eq!(turn_requests(&f).len(), 1);
+}
+
+/// Finding Q5 (ADR 0086): with a v1 report input (before the colour split) and a newer v2
+/// build-profile snapshot, the turn is answered from the snapshot, and the answer records which
+/// snapshot it used, so it stays auditable after newer ones arrive.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_turn_reads_the_newest_profile_snapshot_and_records_it(pool: PgPool) {
+    let a = account(&pool, "alice").await;
+    store_input(&pool, a).await; // v1, 214 games, 2026-11-20
+    let snap = store_snapshot(&pool, a, &v2_raw(a, "2026-11-22T23:00:00.000Z", 162)).await;
+    let (_, msg) = ask(&pool, a, "How do my White and Black games differ?").await;
+    let f = fake(vec![answer(&[OK2])]);
+    assert!(run(&pool, &f, Plan::Free, msg).await.is_ok());
+
+    let reqs = turn_requests(&f);
+    assert_eq!(reqs.len(), 1);
+    let sent = reqs[0].to_string();
+    // The request JSON holds the context as a string, so its quotes are escaped.
+    assert!(
+        sent.contains("byColor"),
+        "the v2 snapshot's colour split is sent"
+    );
+    assert!(
+        sent.contains(r#"\"analysedGames\":162"#),
+        "the snapshot's game count, not the v1 report's 214"
+    );
+
+    let (used, hash): (Option<Uuid>, Option<String>) =
+        sqlx::query_as("SELECT coaching_input_id, input_hash FROM coach_messages WHERE id = $1")
+            .bind(msg)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(used, Some(snap));
+    assert_eq!(
+        hash.map(|h| h.len()),
+        Some(64),
+        "the sha256 of the input used"
+    );
+
+    // A newer snapshot leaves the stored answer pointing at its own.
+    store_snapshot(&pool, a, &v2_raw(a, "2026-11-23T08:00:00.000Z", 165)).await;
+    let still: Option<Uuid> =
+        sqlx::query_scalar("SELECT coaching_input_id FROM coach_messages WHERE id = $1")
+            .bind(msg)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(still, Some(snap));
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]

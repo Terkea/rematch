@@ -5,6 +5,7 @@ pub mod builder;
 pub mod colors;
 pub mod exemplars;
 pub mod mapping;
+pub mod snapshot;
 pub mod strengths;
 pub mod weekly;
 
