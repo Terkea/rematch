@@ -265,11 +265,13 @@ const faq = [
   <section id="how-it-works" class="wrap" aria-labelledby="how-title">
     <h2 id="how-title" class="section-title">How it works</h2>
     <p class="section-intro">
-      A Rust worker does the chess, Postgres keeps every fact, and the Next.js app shows them.
-      Claude is optional and only ever words facts that were computed first.
+      Your games go in, Stockfish marks every move, and the mistakes you repeat come back as
+      drills. Underneath, a Rust worker does the chess, Postgres keeps every fact and a Next.js app
+      shows them. Claude is optional and words only what was computed first.
     </p>
     <div class="split how">
-      <ol class="stages">
+      <div>
+        <ol class="stages">
         {
           stages.map((s) => (
             <li>
@@ -278,12 +280,13 @@ const faq = [
             </li>
           ))
         }
-      </ol>
+        </ol>
+        <p class="more">
+          <a href={href("docs/how-it-works/")}>Read how it works, with every constant</a>
+        </p>
+      </div>
       <Diagram />
     </div>
-    <p class="more">
-      <a href={href("docs/how-it-works/")}>Read how it works, with every constant</a>
-    </p>
   </section>
 
   <section id="roadmap" class="band" aria-labelledby="roadmap-title">

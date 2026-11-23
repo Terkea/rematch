@@ -843,6 +843,11 @@ main > section:not(.band) {
     align-items: center;
   }
 
+  /* The stages read beside the drawing from its top, so the link ends the reading path. */
+  .split.how {
+    align-items: start;
+  }
+
   .honesty,
   .contribute {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);

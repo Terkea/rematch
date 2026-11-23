@@ -26,7 +26,8 @@
 .hiw-box.hiw-opt {
   fill: var(--color-paper);
   stroke: var(--color-pencil);
-  stroke-dasharray: 2 3;
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
 }
 
 .hiw-name {
@@ -49,7 +50,16 @@
 
 .hiw-line.hiw-opt {
   stroke: var(--color-pencil);
-  stroke-dasharray: 2 3;
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+}
+
+/* The worked example from the README: the pen marks the player's mistake, as on the board. */
+.hiw-pen {
+  fill: var(--color-pen-text);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-anchor: middle;
 }
 
 .hiw-head {
@@ -80,4 +90,20 @@
   color: var(--color-ink-soft);
   font-size: var(--text-sm);
   line-height: var(--text-sm--line-height);
+}
+
+/* Two drawings of one pipeline: the wide one keeps the inputs beside their stage; the phone one
+   puts them inside it, so no label drops below the type scale at 390px. */
+.hiw-diagram svg.hiw-narrow {
+  display: none;
+}
+
+@media (width < 640px) {
+  .hiw-diagram svg.hiw-wide {
+    display: none;
+  }
+
+  .hiw-diagram svg.hiw-narrow {
+    display: block;
+  }
 }

@@ -120,8 +120,8 @@ function writeHowItWorks() {
       // The stage disclosures hold h3s; the contents list keeps to the page's two h2 sections.
       tableOfContents: { maxHeadingLevel: 2 },
     }) +
-      `> Source: the "How it works" section of [\`README.md\`](${GITHUB_BLOB}/README.md#how-it-works). Generated at build time; edit the README.\n\n` +
-      howItWorksPage(readme, diagram),
+      howItWorksPage(readme, diagram) +
+      `\n<p class="generated-source">Generated at build time from the "How it works" section of <a href="${GITHUB_BLOB}/README.md#how-it-works">README.md</a>; edit it there.</p>\n`,
   );
 }
 

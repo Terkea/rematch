@@ -72,6 +72,8 @@ Your rating line with the peak marked, then the games around the peak against yo
 
 <!-- how-it-works:start -->
 
+A game becomes advice in five steps: Rematch imports it from chess.com, Stockfish 19 checks every move, the critical moves get a closer look, the profile counts what you keep getting wrong per chance, and the trainer brings your own missed moments back as drills. The coach is optional and words only what was computed.
+
 ```mermaid
 flowchart LR
   cc["chess.com public API<br/>monthly archives"] --> imp["Import and sync<br/>Rust worker"]
@@ -133,13 +135,13 @@ The protocol is `sf19-n300k-v1`: 300,000 nodes per position, MultiPV 1, Stockfis
 We use the Lichess formulas, not chess.com's unpublished ones ([ADR 0008](docs/decisions/0008-lichess-win-percent-classification.md), [`score.rs`](backend/crates/chess-core/src/score.rs)):
 
 ```text
-cp = the mover's centipawns, clamped to ±1000 (any mate is ±1000)
+cp = the mover's centipawns, clamped to ±1000
 chances = 2 / (1 + exp(−0.00368208 · cp)) − 1
 W = 50 + 50 · chances
 ΔW = max(0, W_before − W_after)
 ```
 
-`chances` runs from −1 to 1, `W` is the win chance from 0 to 100, and ΔW is measured from the mover's side. So +100 is about 59%, and +300 about 75%.
+Any mate counts as ±1000. `chances` runs from −1 to 1, `W` is the win chance from 0 to 100, and ΔW is measured from the mover's side. So +100 is about 59%, and +300 about 75%.
 
 #### Judgements
 
@@ -150,7 +152,8 @@ A drop in `chances` of at least 0.3 is a blunder, 0.2 a mistake and 0.1 an inacc
 Per-move accuracy is Lichess's curve:
 
 ```text
-accuracy = 103.1668100711649 · exp(−0.04354415386753951 · ΔW) − 3.166924740191411 + 1
+accuracy = 103.1668100711649 · exp(−0.04354415386753951 · ΔW)
+ − 3.166924740191411 + 1
 ```
 
 It is clamped to [0, 100], and a move that lost nothing scores 100.
@@ -256,12 +259,12 @@ Some rules that keep the counts honest:
 The posterior comes from [`posterior.rs`](backend/crates/profile-core/src/stats/posterior.rs) ([ADR-R2-5](docs/decisions/ADR-R2-5-posterior-priority-conventions.md)):
 
 ```text
-weight = 0.5^(age_days / 60), games older than 183 days left out
+weight = 0.5^(age_days / 60)
 posterior = Beta(n0 · μ + k, n0 · (1 − μ) + n − k)
 range = the 10% and 90% quantiles of the posterior
 ```
 
-Here k and n are the weighted events and chances, μ is the peer rate (a flat Beta(1, 1) prior when there are no peers), and n0 is the prior strength in chances: W1 300, W2 100, W3 60, W4 40, W5 and W6 30, W7 40, W8 80, W9a 30, W9b 40, W9c 60, W10 600, W11 300. The range is an equal-tailed 80% interval.
+Games older than 183 days are left out. Here k and n are the weighted events and chances, μ is the peer rate (a flat Beta(1, 1) prior when there are no peers), and n0 is the prior strength in chances: W1 300, W2 100, W3 60, W4 40, W5 and W6 30, W7 40, W8 80, W9a 30, W9b 40, W9c 60, W10 600, W11 300. The range is an equal-tailed 80% interval.
 
 The prior pulls a thin record towards what players like you do. Ten chances can't move a W10 rate far from the peer rate (n0 = 600); a few hundred can. Every interval in the product is 80%, because 95% ranges on 30 games are so wide they say nothing.
 
@@ -277,18 +280,18 @@ The prior pulls a thin record towards what players like you do. Ten chances can'
 
 Rematch prints no number until it has the evidence, and says how much more it needs. Each minimum counts a different thing:
 
-| What | Needs | Constant and source |
-|---|---|---|
-| Accuracy, blunders per game, score on any page | 10 games | `KPI_MIN_GAMES` in [`stats/constants.ts`](apps/web/src/server/stats/constants.ts) |
-| Each colour's numbers, for you and for the coach | 10 games with that colour | `MIN_COLOR_GAMES` in [`limits.rs`](backend/crates/coaching-input/src/limits.rs) |
-| A weakness ranked at all | 30 games in the 6-month window, a peer rate and one event | `MIN_GAMES` in [`priority.rs`](backend/crates/profile-core/src/stats/priority.rs) |
-| A weakness rate called sufficient | n0 chances for its key (W4 40, W9a 30, W9b 40…), up to 1,000 for W1, W2 and W11 and 1,500 for W10 | `min_evidence` in [`constants.rs`](backend/crates/profile-core/src/constants.rs) |
-| A peer rate shown | 10 distinct opponents, and at least the chances your own rate needs | `LOW_SAMPLE_PLAYERS` in [`reference_aggregate.rs`](backend/crates/profile/src/reference_aggregate.rs), [ADR 0081 Amendment 1](docs/decisions/0081-peer-benchmark-pooled-rate.md) |
-| An area score | each component's own minimum; otherwise "need N more" for the first short one | `need_more` in [`area_scores.rs`](backend/crates/profile-core/src/kpi/area_scores.rs) |
-| A period comparison | 10 games on each side | `compareRates`, `compareMeans` in [`compare.ts`](apps/web/src/server/stats/compare.ts) |
-| The rating trajectory | 20 rated games (two windows of 10) | [ADR 0089](docs/decisions/0089-rating-trajectory-and-then-vs-now.md) |
-| A focus verdict | 10 chances in the focus games | `MIN_VERDICT_CHANCES` in [`focus/goal.ts`](apps/web/src/server/focus/goal.ts) |
-| "Is it working?" | 30 chances before and 30 after | `MIN_CHANCES` in [`train/model.ts`](apps/web/src/server/train/model.ts) |
+| What | Needs, and where it is set |
+|---|---|
+| Accuracy, blunders per game, score on any page | 10 games: `KPI_MIN_GAMES` in [`stats/constants.ts`](apps/web/src/server/stats/constants.ts) |
+| Each colour's numbers, for you and for the coach | 10 games with that colour: `MIN_COLOR_GAMES` in [`limits.rs`](backend/crates/coaching-input/src/limits.rs) |
+| A weakness ranked at all | 30 games in the 6-month window, a peer rate and one event: `MIN_GAMES` in [`priority.rs`](backend/crates/profile-core/src/stats/priority.rs) |
+| A weakness rate called sufficient | n0 chances for its key (W4 40, W9a 30, W9b 40…), up to 1,000 for W1, W2 and W11 and 1,500 for W10: `min_evidence` in [`constants.rs`](backend/crates/profile-core/src/constants.rs) |
+| A peer rate shown | 10 distinct opponents, and at least the chances your own rate needs: `LOW_SAMPLE_PLAYERS` in [`reference_aggregate.rs`](backend/crates/profile/src/reference_aggregate.rs), [ADR 0081 Amendment 1](docs/decisions/0081-peer-benchmark-pooled-rate.md) |
+| An area score | each component's own minimum; otherwise "need N more" for the first short one: `need_more` in [`area_scores.rs`](backend/crates/profile-core/src/kpi/area_scores.rs) |
+| A period comparison | 10 games on each side: `compareRates`, `compareMeans` in [`compare.ts`](apps/web/src/server/stats/compare.ts) |
+| The rating trajectory | 20 rated games (two windows of 10): [ADR 0089](docs/decisions/0089-rating-trajectory-and-then-vs-now.md) |
+| A focus verdict | 10 chances in the focus games: `MIN_VERDICT_CHANCES` in [`focus/goal.ts`](apps/web/src/server/focus/goal.ts) |
+| "Is it working?" | 30 chances before and 30 after: `MIN_CHANCES` in [`train/model.ts`](apps/web/src/server/train/model.ts) |
 
 <details>
 <summary>Peers: players you've faced, and the Lichess reference</summary>
