@@ -106,6 +106,8 @@ Open <http://localhost:3100>, ask for a sign-in link and open it from Mailpit at
 
 **Open for contributors:** Lichess import behind a flag, translations, mobile polish, PGN upload, a smaller Docker profile and more end-to-end tests. [The full roadmap](https://terkea.github.io/rematch/docs/roadmap/).
 
+**Benchmark:** synthetic players with known flaws, run through the real pipeline, show what Rematch finds and what it misses today. [The method and the current scorecard](docs/benchmark.md).
+
 Rematch is a beta: every release is `v0.y.z`, and 1.0 is reserved for the first complete release ([how we ship](docs/SDLC.md)).
 
 ## Help build Rematch

@@ -29,3 +29,6 @@ apps/web/AGENTS.md
 
 # Browser-automation output (Playwright MCP); never commit it (M7).
 .playwright-mcp/
+
+# Pipeline benchmark output (cli bench run --out bench-out, ADR 0098)
+/bench-out/
