@@ -21,7 +21,7 @@ async function look(page: Page, row: string, state: string) {
 for (const theme of ["light", "dark"] as const) {
   test(`every hover and focus cell differs from rest (${theme})`, async ({ page }) => {
     await page.addInitScript((t) => localStorage.setItem("theme", t), theme);
-    await page.goto("/styleguide");
+    await page.goto("/styleguide?render=all");
     await expect(page.locator("style[data-forced-states]")).toHaveCount(1);
     for (const row of [
       "Primary",

@@ -9,7 +9,7 @@ const BLOCKS = [
 /** The first load of `/app/progress`: the page's ruled shape in static wells, never a spinner (B18). */
 export default function Loading() {
   return (
-    <div className="flex flex-col gap-12">
+    <div data-route-loading className="flex flex-col gap-12">
       <PageHeading title="Progress" />
       <div role="status" className="flex flex-col gap-10">
         <p className="m-0 font-serif text-base text-ink-soft">Reading your progress</p>

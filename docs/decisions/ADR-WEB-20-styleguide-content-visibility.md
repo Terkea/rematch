@@ -21,9 +21,13 @@ The page kept growing (sections, rows, demos) after ADR-WEB-18 brought the step 
 
 - Every direct `section` of the styleguide's `main` except `charts` gets `content-visibility: auto` and `contain-intrinsic-size: auto 100vh`. The charts section stays laid out. The trend measures its parent on load, and a skipped section has no size, so its dots would only appear once someone scrolled to it, and `charts.spec`, `quality.spec` and `visual.spec` wait for those dots before they scroll. An off-screen section skips style, layout, paint and layerize. `auto` remembers a section's real height after its first render, so the scrollbar stops changing once a section has been seen. One viewport is only the first guess. The styleguide is a lab page (LAB_ENABLED), so no user-facing route changes.
 - The budget stays at 16 ms. It is right: the check measures one step on the chart, and the cost came from the rest of the page.
-- `visual.spec.ts`'s `tall()` turns every section's `content-visibility` to `visible` before it sizes the viewport. Otherwise each unrendered section's `100vh` guess grows with the tall viewport, and the page never stops growing (Chromium refused a viewport over 10,000,000 px).
+- `/styleguide?render=all` lays out every section, as the page did before. A skipped section holds its transitions and animations, so the specs that inspect the whole page at once use it: `visual.spec` (its tall viewport would otherwise grow with each unrendered section's `100vh` guess, past Chromium's 10,000,000 px limit), `quality.spec` (axe read a half-faded row as a contrast failure), `styleguide-states.spec` (a forced hover's transition never ran) and `touch-targets.spec`. `charts.spec` and `overlays.spec` use the plain page.
 
 ## Consequences
 
 - The trend step's cost no longer depends on how big the styleguide gets.
-- A section's placeholder height can differ from its real height until it renders, so anything that measures the whole page's height has to render every section first, as `tall()` does.
+- A section's placeholder height can differ from its real height until it renders, so a spec that measures or inspects the whole page uses `?render=all`.
+
+## Also: the footer hides while a route loads
+
+`review-reveal.spec` failed on GitHub and locally with a layout shift of 0.0915 against < 0.02. The logo work (04fd048) added the signed-in footer to `(app)/layout.tsx`. The layout is `min-h-dvh` with `main` at `flex-1`, so while a route's short loading skeleton streams in, the footer sits at the foot of the first screen. The page that replaces the skeleton pushes it off: a 0.0827 shift on a 390 px phone, from the footer alone. Each route's `loading.tsx` root now carries `data-route-loading`, and the layout hides its footer (`visibility: hidden`) while that is present. A hidden element's move is not a layout shift, and the footer shows where the page leaves it. Afterwards the reveal's CLS is under 0.01.

@@ -1,3 +1,4 @@
+import { cn } from "@ci/ui/lib";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { brand } from "../../brand";
@@ -32,8 +33,23 @@ export const metadata: Metadata = { title: `Styleguide, ${brand.name}` };
 // Checked per request, so a production build without LAB_ENABLED=1 serves a 404.
 export const dynamic = "force-dynamic";
 
-export default function StyleguidePage() {
+// Every section but the charts skips layout, paint and layerize while it is off screen
+// (ADR-WEB-20). The page is about 18,000 elements, and each repaint re-layerized all of them, so a
+// trend step at 4x throttle cost a whole frame. The charts stay laid out: the trend measures its
+// parent on load, and the e2e specs wait for its dots. `auto` remembers a section's real height
+// once it has rendered; one viewport is only the first guess. A skipped section also holds its
+// transitions and animations, so the specs that inspect the whole page at once (axe, the forced
+// states, the visual captures) ask for `?render=all`, which lays out every section.
+const SKIP_OFF_SCREEN =
+  "[&>section:not([data-section='charts'])]:[content-visibility:auto] [&>section:not([data-section='charts'])]:[contain-intrinsic-size:auto_100vh]";
+
+export default async function StyleguidePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ render?: string | string[] }>;
+}) {
   if (!labEnabled(process.env)) notFound();
+  const { render } = await searchParams;
 
   return (
     <div className="mx-auto max-w-7xl px-(--space-gutter)">
@@ -44,12 +60,7 @@ export default function StyleguidePage() {
         </p>
         <ThemeToggle />
       </header>
-      {/* Every section but the charts skips layout, paint and layerize while it is off screen
-          (ADR-WEB-20). The page is about 18,000 elements, and each repaint re-layerized all of
-          them, so a trend step at 4x throttle cost a whole frame. The charts stay laid out: the
-          trend measures its parent on load, and the e2e specs wait for its dots. `auto` remembers
-          a section's real height once it has rendered; one viewport is only the first guess. */}
-      <main className="flex flex-col gap-16 pb-16 [&>section:not([data-section='charts'])]:[content-visibility:auto] [&>section:not([data-section='charts'])]:[contain-intrinsic-size:auto_100vh]">
+      <main className={cn("flex flex-col gap-16 pb-16", render !== "all" && SKIP_OFF_SCREEN)}>
         <HeroSection />
         <FoundationsSection />
         <BrandSection />
