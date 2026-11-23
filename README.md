@@ -541,7 +541,7 @@ Shipped: Stockfish analysis of every move, explained weaknesses and strengths, t
 
 - [v0.3 The evaluation lab](https://github.com/Terkea/rematch/issues?q=is%3Aissue+milestone%3A%22v0.3+The+evaluation+lab%22)
   - The evaluation lab: every layer against its ground truth (8 sub-issues)
-  - The scientific method for the algorithm (8 sub-issues)
+  - The scientific method for the algorithm (10 sub-issues)
   - A pipeline speed scorecard, stages 1 to 4 (4 sub-issues)
 - [v0.4 Patterns and progression](https://github.com/Terkea/rematch/issues?q=is%3Aissue+milestone%3A%22v0.4+Patterns+and+progression%22)
   - Patterns and progression (6 sub-issues)

@@ -1,6 +1,6 @@
 # EXP-0002: do the 80% ranges of the weakness rates hold the true rate 80% of the time?
 
-- Status: pre-registered
+- Status: decided (outside the band)
 - Issue: #92 (and #13)
 - Author: the maintainer, with Claude (lane `exp/0001-0002`)
 - Kind: measurement (one version)

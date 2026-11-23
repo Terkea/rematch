@@ -1,6 +1,6 @@
 # EXP-0001: how many synthetic players and games the Tier 1 benchmark needs
 
-- Status: pre-registered
+- Status: decided (budget-bound: the suites resized to the budget)
 - Issue: #91
 - Author: the maintainer, with Claude (lane `exp/0001-0002`)
 - Kind: measurement (one version): a design study that sizes the suites
