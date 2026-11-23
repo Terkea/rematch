@@ -56,8 +56,15 @@ test.describe
 
       // W8.basics' improving transition: p_change 0.85, 14.0% to 9.0% of chances.
       const improving = page.locator('[data-section="improving"]');
-      await expect(improving.locator('[data-claim="W8.basics"]')).toContainText(
-        "14.0% of chances before, 9.0% after, detected improving on 15 Oct 2026 (85% likely a real change).",
+      const w8 = improving.locator('[data-claim="W8.basics"]');
+      await expect(w8.locator("[data-claim-figure]")).toHaveText(
+        "9.0% of chances now, down from 14.0%",
+      );
+      await expect(w8.locator("[data-claim-state]")).toHaveText("Improving");
+      await expect(w8).toContainText("Detected on 15 Oct 2026, 85% likely a real change.");
+      // Sections with nothing to claim are one quiet list at the bottom (critic 9).
+      await expect(page.locator('[data-section="not-judged"] [data-section="above"]')).toHaveCount(
+        1,
       );
       await expect(page.locator('[data-section="openings"]')).toContainText("Not enough games yet");
       await expect(page.locator("[data-report-strengths]")).toContainText(

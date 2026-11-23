@@ -71,10 +71,13 @@ const section = (body: HTMLElement, id: string) =>
   body.querySelector(`[data-section="${id}"]`) as HTMLElement;
 
 describe("StrengthsView", () => {
-  it("states the basis and the four sections, each calm when empty", () => {
+  it("states the basis and gathers the empty sections into one quiet list at the bottom", () => {
     const { body, screen } = show(base());
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Strengths");
     expect(body.textContent).toContain("Based on 214 analysed rapid games on chess.com.");
+    // Critic 9: nothing to claim, so no section of its own; one "Not judged yet" list instead.
+    const list = body.querySelector('[data-section="not-judged"]') as HTMLElement;
+    expect(within(list).getByRole("heading", { level: 2 }).textContent).toBe("Not judged yet");
     for (const h of [
       "Where you're above your level",
       "What's improving",
@@ -82,8 +85,12 @@ describe("StrengthsView", () => {
       // No Maia rating yet: the fallback's title never says "hard" (N11).
       CRITICAL_TITLE,
     ]) {
-      expect(screen.getByRole("heading", { level: 2, name: h })).toBeTruthy();
+      expect(within(list).getByRole("heading", { level: 3, name: h })).toBeTruthy();
+      expect(screen.queryByRole("heading", { level: 2, name: h })).toBeNull();
     }
+    expect(body.lastElementChild?.lastElementChild?.getAttribute("data-section")).toBe(
+      "not-judged",
+    );
     expect(section(body, "above").textContent).toContain(OWN_BASELINE_TEXT);
     expect(section(body, "above").textContent).toContain("Nothing stands out yet");
     expect(section(body, "improving").textContent).toContain(
@@ -274,8 +281,14 @@ describe("StrengthsView", () => {
     ];
     const { body } = show(m);
     const row = body.querySelector('[data-claim="W1"]');
+    // Critic 9: the row leads with the rate now and before, in ink; only "Improving" is green.
+    const figure = row?.querySelector("[data-claim-figure]");
+    expect(figure?.textContent).toBe("2.6% of chances now, down from 4.0%");
+    expect(figure?.className).not.toContain("text-good");
+    expect(row?.querySelector("[data-claim-state]")?.textContent).toBe("Improving");
+    expect(row?.querySelector("[data-claim-state]")?.className).toContain("text-good-text");
     expect(row?.textContent).toContain(
-      "4.0% of chances before, 2.6% after, detected improving on 14 Oct 2026 (86% likely a real change). Since then: 21 times in 800 chances.",
+      "Detected on 14 Oct 2026, 86% likely a real change. Since then: 21 times in 800 chances.",
     );
     expect(row?.querySelector("a")?.getAttribute("href")).toBe(
       `/app/weaknesses/W1?account=${ACCOUNT}&tc=rapid`,
@@ -446,6 +459,14 @@ describe("StrengthsView filters", () => {
     expect(section(body, "improving").textContent).toContain(
       "Weakness changes are called on all your games, both colours.",
     );
+  });
+
+  // Critic 13: at 390 the scope switch scrolls in its own row, fading at the right edge.
+  it("puts the scope switch in the coach's scrolling row", () => {
+    const { body } = show(base());
+    const sw = body.querySelector("[data-scope-row]");
+    expect(sw?.className).toContain("overflow-x-auto");
+    expect(sw?.className).toContain("mask-image");
   });
 
   it("shows the filter bar it is given", () => {
