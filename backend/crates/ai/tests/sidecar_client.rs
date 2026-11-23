@@ -187,10 +187,7 @@ async fn structured_posts_the_contract_with_bearer() {
     let reqs = server.received_requests().await.unwrap();
     // ADR 0043: the fixed project User-Agent, never an email address.
     let ua = reqs[0].headers.get("user-agent").unwrap().to_str().unwrap();
-    assert_eq!(
-        ua,
-        "rematch/0.1 (+https://github.com/Terkea/rematch)"
-    );
+    assert_eq!(ua, "rematch/0.1 (+https://github.com/Terkea/rematch)");
     assert_eq!(ua, ai::client::wire::USER_AGENT);
     assert!(!ua.contains('@'));
     let body: Value = serde_json::from_slice(&reqs[0].body).unwrap();
