@@ -54,6 +54,18 @@ export async function getBenchmark(
         and side = ${scope.side ?? "both"} and metric like 'weakness:%' and n_chances is not null`);
     const chances: Record<string, number> = {};
     for (const s of stats) chances[s.key] = Number(s.chances);
+    // One colour's opponents (A11): the header counts every game; a colour's rows count only
+    // the opponents who had that colour, and the widest row (accuracy, any analysed game) says
+    // how many there were.
+    if (scope.side === "white" || scope.side === "black") {
+      const [own] = await tx.execute<{ players: number | null; games: number | null }>(sql`
+        select max(n_players) as players, max(n_games) as games
+        from account_benchmark_stat
+        where account_id = ${scope.accountId} and time_class = ${scope.timeClass}
+          and side = ${scope.side}`);
+      row.players = own?.players == null ? 0 : Number(own.players);
+      row.games = own?.games == null ? 0 : Number(own.games);
+    }
     if (row.source === "lichess_bands") return { source: "lichess_bands" };
     if (
       row.source !== "peers" ||

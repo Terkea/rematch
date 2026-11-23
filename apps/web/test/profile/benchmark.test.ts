@@ -119,6 +119,21 @@ describe("getBenchmark", () => {
     expect(b && b.source === "peers" ? b.chances : null).toEqual({ W5: 31 });
   });
 
+  // Audit A11: "(12 players)" is the both count; a colour names its own opponents and games.
+  it("counts one colour's own players and games", async () => {
+    await storeBenchmark(accountId, true);
+    await db.execute(sql`
+      insert into account_benchmark_stat (account_id, time_class, side, metric, median, p25, p40,
+        p75, n_players, n_games, low_sample, n_chances)
+      values (${accountId}, 'rapid', 'white', 'weakness:W5', 0.2, 0.1, 0.15, 0.3, 5, 12, false, 14),
+        (${accountId}, 'rapid', 'white', 'accuracy', 70, 60, 65, 80, 6, 15, false, null),
+        (${accountId}, 'rapid', 'black', 'accuracy', 70, 60, 65, 80, 7, 16, false, null)`);
+    const b = await getBenchmark(db, userId, { ...(await scopeOf(userId)), side: "white" });
+    expect(b).toMatchObject({ source: "peers", players: 6, games: 15 });
+    const both = await getBenchmark(db, userId, await scopeOf(userId));
+    expect(both).toMatchObject({ players: 12, games: 31 });
+  });
+
   it("is null without a stored benchmark or without a served row", async () => {
     expect(await getBenchmark(db, userId, await scopeOf(userId))).toBeNull();
     await storeBenchmark(accountId, false);
