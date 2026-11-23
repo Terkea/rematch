@@ -95,6 +95,7 @@ One file per decision: context, decision, alternatives, consequences. New decisi
 - [0089. The rating trajectory, and then against now](0089-rating-trajectory-and-then-vs-now.md)
 - [0092. A focused overview: trend, focus, practise, then the detail](0092-focused-overview.md)
 - [0093. The report validator drops claims, not honest wording](0093-report-validator-false-drops.md)
+- [0095. Open source under AGPL-3.0, with the SDLC, protection and releases as code](0095-open-source-sdlc-and-releases.md)
 
 ## Records with placeholder numbers
 

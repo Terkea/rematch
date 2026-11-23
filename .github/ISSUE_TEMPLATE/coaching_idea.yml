@@ -1,0 +1,47 @@
+name: Coaching idea
+description: Chess knowledge from players and coaches. How should Rematch teach?
+title: "coaching: "
+labels: [type/coaching-idea, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        You don't need to write code to make Rematch better. If you coach, or you play at a level
+        where you can see what club players get wrong, your knowledge is exactly what the
+        analysis and the AI coach need. Thank you for sharing it.
+  - type: input
+    id: background
+    attributes:
+      label: Your chess background
+      description: Optional. Rating range, titles, coaching experience; whatever helps us weigh the idea.
+      placeholder: Club coach for 8 years, 2100 FIDE
+  - type: textarea
+    id: pattern
+    attributes:
+      label: The pattern or mistake
+      description: What do players at some level keep getting wrong? How would you spot it in their games?
+    validations:
+      required: true
+  - type: textarea
+    id: teaching
+    attributes:
+      label: How you would teach it
+      description: What would you tell the player, and what would you have them practise?
+    validations:
+      required: true
+  - type: textarea
+    id: examples
+    attributes:
+      label: Example positions or games
+      description: FENs, PGNs or public master games. Please don't share other players' private games.
+  - type: dropdown
+    id: level
+    attributes:
+      label: Which players does it apply to?
+      multiple: true
+      options:
+        - Under 1200
+        - 1200 to 1600
+        - 1600 to 2000
+        - Over 2000
+        - Everyone

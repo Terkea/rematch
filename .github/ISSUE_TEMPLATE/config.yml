@@ -1,0 +1,14 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Ask a question
+    url: https://github.com/Terkea/rematch/discussions/categories/q-a
+    about: Setup trouble, "is this expected?", or how something works. Discussions Q&A is the place.
+  - name: Share an idea
+    url: https://github.com/Terkea/rematch/discussions/categories/ideas
+    about: Not sure it is a feature request yet? Start it in Discussions Ideas.
+  - name: Read the docs
+    url: https://terkea.github.io/rematch/
+    about: What Rematch does, how it works, and how to run it.
+  - name: Report a security problem
+    url: https://github.com/Terkea/rematch/security/advisories/new
+    about: Please report vulnerabilities privately, never in a public issue.

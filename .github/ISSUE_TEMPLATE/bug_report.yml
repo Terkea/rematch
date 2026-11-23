@@ -1,0 +1,70 @@
+name: Bug report
+description: Something in Rematch does not work the way it should.
+title: "bug: "
+labels: [type/bug, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this. A clear report is the fastest way to a fix.
+
+        **Please keep it public-safe.** This issue is public forever. Leave out personal data,
+        email addresses, tokens, and links to games or accounts you don't want the world to see.
+        A FEN, a PGN snippet or a screenshot with names cropped out works just as well.
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: What did you do, step by step?
+      placeholder: |
+        1. Link a chess.com account
+        2. Open Games and pick a rapid game
+        3. Click the move 23. Qxe5
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened instead
+      description: Error messages, wrong numbers, a screenshot. Paste logs as text if you have them.
+    validations:
+      required: true
+  - type: input
+    id: url
+    attributes:
+      label: Page URL
+      description: The path is enough, for example /app/games or /app/weaknesses.
+      placeholder: /app/games
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where are you running Rematch?
+      options:
+        - My own local stack (docker compose)
+        - A hosted instance
+        - Somewhere else (say below)
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, browser and version, Docker memory limit, and the version (the account menu shows "Rematch vX.Y.Z") or commit.
+      placeholder: Windows 11, Chrome 141, Docker with 16 GB, v0.1.0
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before you send it
+      options:
+        - label: I searched the existing issues and this is not a duplicate.
+          required: true
+        - label: This report contains no personal data, secrets, or game links I don't want public.
+          required: true
