@@ -5,3 +5,4 @@ src/content/docs/docs/decisions/
 src/content/docs/docs/research/
 .astro/
 dist/
+src/content/docs/docs/how-it-works.md

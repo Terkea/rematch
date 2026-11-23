@@ -215,3 +215,26 @@ dialog {
 .sl-menu-button:hover {
   background: var(--surface-hover);
 }
+
+/* The disclosures of the "How it works" page: one per stage, ruled like the scoresheet. */
+.sl-markdown-content details {
+  border-top: 1px solid var(--color-rule);
+  padding-block: calc(var(--spacing) * 2);
+}
+
+.sl-markdown-content details:last-of-type {
+  border-bottom: 1px solid var(--color-rule);
+}
+
+.sl-markdown-content summary {
+  cursor: pointer;
+  font-family: var(--font-serif);
+  font-weight: 600;
+  font-size: var(--text-lg);
+  line-height: var(--text-lg--line-height);
+  padding-block: calc(var(--spacing) * 2);
+}
+
+.sl-markdown-content details[open] > summary {
+  margin-bottom: calc(var(--spacing) * 2);
+}

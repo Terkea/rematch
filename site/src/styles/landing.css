@@ -417,18 +417,6 @@ main > section:not(.band) {
   }
 }
 
-@media (width < 1024px) {
-  .node-ai {
-    order: 1;
-    margin-inline-start: 0;
-  }
-
-  .flow .node-ai::before,
-  .flow .node-ai::after {
-    display: none;
-  }
-}
-
 @media (width < 480px) {
   .film-play {
     position: static;
@@ -528,27 +516,30 @@ main > section:not(.band) {
   font-weight: 600;
 }
 
-/* ---- diagram ---- */
+/* ---- how it works ---- */
 
-.diagram {
+.how {
   margin-top: calc(var(--spacing) * 8);
+  align-items: start;
 }
 
-.flow {
-  list-style: none;
-  padding: 0;
+.stages {
+  margin: 0;
+  padding-inline-start: calc(var(--spacing) * 6);
   display: grid;
-  gap: calc(var(--spacing) * 8);
+  gap: calc(var(--spacing) * 4);
 }
 
-.node {
-  position: relative;
-  padding: var(--space-panel-pad);
-  background: var(--color-sheet);
-  border-radius: var(--radius-sheet);
+.stages li {
+  padding-inline-start: calc(var(--spacing) * 1);
 }
 
-.node-name {
+.stages li::marker {
+  color: var(--color-ink-faint);
+  font-variant-numeric: lining-nums tabular-nums;
+}
+
+.stage-name {
   display: block;
   font-family: var(--font-serif);
   font-weight: 600;
@@ -556,56 +547,10 @@ main > section:not(.band) {
   line-height: var(--text-lg--line-height);
 }
 
-.node-what {
+.stage-what {
   display: block;
-  margin-top: calc(var(--spacing) * 2);
+  margin-top: calc(var(--spacing) * 1);
   color: var(--color-ink-soft);
-  font-size: var(--text-sm);
-  line-height: var(--text-sm--line-height);
-}
-
-/* Pencil connectors with an open head (two strokes), pointing to the next stage. */
-.node:not(:first-child)::before {
-  content: "";
-  position: absolute;
-  left: calc(var(--spacing) * 8);
-  top: calc(var(--spacing) * -8);
-  height: calc(var(--spacing) * 8);
-  border-left: 1.5px solid var(--color-pencil);
-}
-
-.node:not(:first-child)::after {
-  content: "";
-  position: absolute;
-  left: calc(var(--spacing) * 8 - 4px);
-  top: calc(var(--spacing) * -1 - 6px);
-  width: 8px;
-  height: 8px;
-  border-right: 1.5px solid var(--color-pencil);
-  border-bottom: 1.5px solid var(--color-pencil);
-  transform: rotate(45deg);
-}
-
-/* The AI branch: dashed, because it is optional. */
-.node-ai {
-  background: var(--color-paper);
-  border: 1px dashed var(--color-rule-strong);
-  margin-inline-start: calc(var(--spacing) * 6);
-}
-
-.flow .node-ai::before {
-  border-left-style: dashed;
-}
-
-.band .node {
-  background: var(--color-paper);
-}
-
-.diagram figcaption {
-  margin-top: calc(var(--spacing) * 6);
-  color: var(--color-ink-faint);
-  font-size: var(--text-sm);
-  max-width: 66ch;
 }
 
 /* ---- roadmap ---- */
@@ -967,69 +912,6 @@ main > section:not(.band) {
 
   .problem .section-title + .prose {
     margin-top: 0;
-  }
-
-  /* The pipeline runs left to right; the AI branch hangs under the worker. */
-  .flow {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    column-gap: calc(var(--spacing) * 8);
-    row-gap: calc(var(--spacing) * 10);
-  }
-
-  .node-source {
-    grid-column: 1;
-    grid-row: 1;
-  }
-
-  .node-worker {
-    grid-column: 2;
-    grid-row: 1;
-  }
-
-  .node-profile {
-    grid-column: 3;
-    grid-row: 1;
-  }
-
-  .node-store {
-    grid-column: 4;
-    grid-row: 1;
-  }
-
-  .node-web {
-    grid-column: 5;
-    grid-row: 1;
-  }
-
-  .node-ai {
-    grid-column: 2 / span 2;
-    grid-row: 2;
-    margin-inline-start: 0;
-  }
-
-  .node:not(:first-child):not(.node-ai)::before {
-    left: calc(var(--spacing) * -8);
-    top: calc(var(--spacing) * 9);
-    width: calc(var(--spacing) * 8);
-    height: 0;
-    border-left: 0;
-    border-top: 1.5px solid var(--color-pencil);
-  }
-
-  .node:not(:first-child):not(.node-ai)::after {
-    left: calc(var(--spacing) * -1 - 6px);
-    top: calc(var(--spacing) * 9 - 4px);
-    transform: rotate(-45deg);
-  }
-
-  .node-ai::before {
-    left: calc(var(--spacing) * 8);
-    top: calc(var(--spacing) * -10);
-    height: calc(var(--spacing) * 10);
-  }
-
-  .node-ai::after {
-    top: calc(var(--spacing) * -1 - 6px);
   }
 
   .footer-row {

@@ -165,7 +165,7 @@ The result is `(weighted + harmonic) / 2`. Opening, middlegame and endgame accur
 
 #### Scheduling
 
-New games go first, in tiers, and previews of the first 20 games run at the top priority so a new account sees something within minutes ([ADR-R2-16](docs/decisions/ADR-R2-16-tiered-analysis-scheduler.md), [ADR-R2-15](docs/decisions/ADR-R2-15-fair-scheduling-and-preview.md)).
+New games go first, in tiers, and previews of the first 20 games run at priority 0, ahead of everything else, so a new account sees its first analysis before the backfill ([ADR-R2-16](docs/decisions/ADR-R2-16-tiered-analysis-scheduler.md), [ADR-R2-15](docs/decisions/ADR-R2-15-fair-scheduling-and-preview.md)).
 
 </details>
 
@@ -204,7 +204,7 @@ Stockfish says what the best move was. It can't say whether a 1200 would ever se
 - Output: A probability for every legal move. We keep two numbers: `p_best`, the probability the engine's best move is played, and `p_ok`, the probability of any move within 5 win-chance points of the best line.
 - Where it's used: W11, "Mistakes on easy moves": a chance is a move where `p_ok ≥ 0.8` (most players at your level would find a good move) and the event is a blunder there. On the strengths page, "Your best moves in hard spots" prefers positions where you found the best move and `p_best ≤ 0.3`, the hardest first.
 - Not before ply 10: Maia-2 wasn't trained on the first ten half-moves, so those positions are never sent.
-- Without Maia nothing is estimated in its place. There is no engine-spread fallback: the owner ruled that difficulty comes from Maia or not at all, and a test fails if any other difficulty provider appears in the code. The positions are stored as `pending_maia`, W11 has no chances, the hard-spots board falls back to critical, balanced positions (a best line at least 15 points ahead of the second, win chance 25–75%), and the pages say how many positions are still waiting. When Maia comes back, a sweep fills them in; a position that keeps failing is retried at most 3 times.
+- Without Maia nothing is estimated in its place. There is no engine-spread fallback: the maintainer ruled that difficulty comes from Maia or not at all, and a test fails if any other difficulty provider appears in the code. The positions are stored as `pending_maia`, W11 has no chances, the hard-spots board falls back to critical, balanced positions (a best line at least 15 points ahead of the second, win chance 25–75%), and the pages say how many positions are still waiting. When Maia comes back, a sweep fills them in; a position that keeps failing is retried at most 3 times.
 
 </details>
 
@@ -330,7 +330,7 @@ Bands are B0 < 900, B1 900–1299, B2 1300–1699, B3 1700–1999, B4 2000–229
 
 The strengths page uses the same gates as the weaknesses ([`strengths.ts`](apps/web/src/server/profile/strengths.ts), [`strengths.rs`](backend/crates/profile-core/src/weakness/strengths.rs)):
 
-- Above your level: accuracy (overall and by phase), blunders per game, conversion and resilience against the band median, within two bands of yours, using the same posterior and change rules as the comparisons.
+- Above your level: accuracy (overall and by phase), blunders per game, conversion and resilience, against the peer benchmark when the last build stored one, else the Lichess band median within two bands of yours, and against your own earlier games (your last 50 against the rest), under the same change rules as the comparisons.
 - Moves that show skill: finding the only move (a critical position where you played MultiPV line 1), finding a tactic (the best line is a tactic and you played its first move), converting a winning episode and saving a losing one. At most 3 per kind per game, the biggest MultiPV gap first.
 - Best moves in hard spots: Maia-hard positions first (above), never an obvious capture: a recapture, a capture of a more valuable piece or a capture nothing can take back.
 - Openings: a line needs 10 games with an expected score before it is judged, and is "promising" when it is at least 80% likely to score above what the ratings predict.
@@ -393,7 +393,7 @@ Each prompt is `prompts/<id>.v<n>.md`, embedded at compile time and never edited
 
 #### The validator
 
-([`text.rs`](backend/crates/ai/src/validator/text.rs), [`language.rs`](backend/crates/ai/src/validator/language.rs)) checks each paragraph in order: every citation is a real position; the token syntax parses; no fact appears outside a token (a free-text number, move or date is a `free_text_fact`); every token resolves, with a format that suits its value (a rate can't be printed as `int`); no token is glued to a letter or digit; move and square tokens belong to the cited positions; and the language rules hold. Engine words ("winning", "mate", "advantage", "best move", "Stockfish") need engine evidence in the same paragraph, and "blunder" may not sit within four words of the engine's own move. Weakness paragraphs must use the likelihood phrase that matches P(improvement), "likely" only from 0.85, and causal claims are banned. [ADR 0093](docs/decisions/0093-report-validator-false-drops.md) loosened two rules that dropped honest prose: ordinals used as discourse ("First, …") and mate words in training advice ("practise mating patterns").
+([`text.rs`](backend/crates/ai/src/validator/text.rs), [`language.rs`](backend/crates/ai/src/validator/language.rs)) checks each paragraph in order: every citation is a real position; the token syntax parses; no fact appears outside a token (a free-text number, move or date is a `free_text_fact`); every token resolves, with a format that suits its value (`pct0` and `pct1` only on a rate in [0, 1], `int` only on a whole number, `signed1` only on an evaluation); no token is glued to a letter or digit; move and square tokens belong to the cited positions; and the language rules hold. Engine words ("winning", "mate", "advantage", "best move", "Stockfish") need engine evidence in the same paragraph, and "blunder" may not sit within four words of the engine's own move. Weakness paragraphs must use the likelihood phrase that matches P(improvement), "likely" only from 0.85, and causal claims are banned. [ADR 0093](docs/decisions/0093-report-validator-false-drops.md) loosened two rules that dropped honest prose: ordinals used as discourse ("First, …") and mate words in training advice ("practise mating patterns").
 
 #### Repair once, then drop
 
@@ -401,7 +401,7 @@ A report is five calls, one per section. A section that fails gets one repair tu
 
 #### Budgets and modes
 
-A hard monthly stop per account (USD 0.20 on the free plan, USD 2.00 on pro, overridable) plus an optional global cap, checked before every call; every call is metered once from token counts. With no key the worker logs `ai: disabled (<reason>)` and every report is computed-only. Nothing about the analysis, the profile, the trainer or the focus needs the AI. For development, the owner can run the coach on their own signed-in Claude Code on the host (`pnpm --filter @ci/ai-sidecar start:local`); then the budget is not enforced but still recorded. Production refuses that mode, and Anthropic's terms don't allow serving other people from a personal login, so friends in the beta need an `ANTHROPIC_API_KEY`.
+A hard monthly stop per account (USD 0.20 on the free plan, USD 2.00 on pro, overridable) plus an optional global cap, checked before every call; every call is metered once from token counts. With no key the worker logs `ai: disabled (<reason>)` and every report is computed-only. Nothing about the analysis, the profile, the trainer or the focus needs the AI. For local development, the maintainer runs the coach on the machine's signed-in Claude Code on the host (`pnpm --filter @ci/ai-sidecar start:local`); then the budget is not enforced but still recorded. Production refuses that mode, and Anthropic's terms don't allow serving other people from a personal login, so any other deployment needs an `ANTHROPIC_API_KEY`.
 
 </details>
 
@@ -413,7 +413,7 @@ From [ADR 0090](docs/decisions/0090-missed-moments-trainer.md) and [`train/model
 - Items are your own moves at a W4.missed, W3.shallow, W3.deep or W7.traps example, or any move judged a blunder, with a stored engine move different from yours. Positions already decided (W ≥ 97 before and ≥ 90 after) are dropped, and so is an answer that is a free capture, unless it is a missed mate.
 - Grading without an engine: The accepted moves are stored with the item: the best move, plus each MultiPV line within 5 win-chance points of it, or, when the best move mates in n, any mate in n + 1 or less. The server grades; the answer never reaches the page before you move.
 - The attempt: Play a move, then say "Sure" or "A guess", then see the verdict about the move, with the engine line as numbered arrows on the board.
-- Spacing: Each right answer in a row is due again after 1, 3, 7, 21, then 60 days; a miss resets the streak and comes back tomorrow. A "clean pass" is a right, sure answer at least 7 days after the previous attempt, and three of them retire the item, so a lucky guess can't. Only the first attempt of a day changes the schedule. Days are your time zone's days, from the browser.
+- Spacing: Each right answer in a row is due again after 1, 3, 7, 21, then 60 days; a miss resets the streak and comes back tomorrow. A "clean pass" is a right, sure answer at least 7 days after the previous attempt, and three of them retire the item, so a lucky guess can't. Only the first attempt of a day changes the schedule. Days are calendar days in your own time zone, which the browser sends in the `ci_tz` cookie (UTC without it).
 - Sessions: Up to 12 items: due ones first, then new ones while fewer than 10 were introduced today, never past 24 attempts a day. Sources are interleaved and the motif isn't named before you answer.
 - The holdout: `fnv1a("holdout:<game>:<ply>") % 100 < 20` puts about 20% of positions aside, decided once, never served.
 - "Is it working?" Per source, your rate per chance in games since your first drill of it against before; and the motifs you drilled against the motifs only held-out items have. Below 30 chances on a side it says "Too early to tell", and it claims a change only when the two 80% Wilson ranges don't overlap.
@@ -526,6 +526,6 @@ My dad played chess his whole life. I'm not good at it, but every time I play I 
 
 Rematch is licensed under the [GNU AGPL-3.0](LICENSE). If you run a modified version as a network service, offer its users the source.
 
-It stands on the work of others, each under its own licence ([NOTICE](NOTICE)): [Stockfish](https://stockfishchess.org/) (GPL-3.0), the [Lichess open database](https://database.lichess.org/) (CC0) for peer references and the opening explorer, the Syzygy endgame tablebases, [Maia-2](https://github.com/CSSLab/maia2) (MIT, optional), the Cburnett pieces (BSD-3-Clause), [chess.js](https://github.com/jhlywa/chess.js) and [react-chessboard](https://github.com/Clariity/react-chessboard), [Phosphor icons](https://phosphoricons.com/), and the Literata and Schibsted Grotesk typefaces (SIL OFL 1.1). The AI coach is written by Anthropic's Claude.
+It stands on the work of others, each under its own licence ([NOTICE](NOTICE)): [Stockfish](https://stockfishchess.org/) (GPL-3.0), the [Lichess open database](https://database.lichess.org/) (CC0) for the opening explorer and the optional band reference, the Syzygy endgame tablebases, [Maia-2](https://github.com/CSSLab/maia2) (MIT, optional), the Cburnett pieces (BSD-3-Clause), [chess.js](https://github.com/jhlywa/chess.js) and [react-chessboard](https://github.com/Clariity/react-chessboard), [Phosphor icons](https://phosphoricons.com/), and the Literata and Schibsted Grotesk typefaces (SIL OFL 1.1). The AI coach is written by Anthropic's Claude.
 
 Rematch is not affiliated with chess.com or Lichess.

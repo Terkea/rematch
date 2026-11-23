@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { rewriteLink, rewriteMarkdown, slugOf, titleOf } from "../scripts/content-lib.mjs";
+import {
+  howItWorksPage,
+  rewriteLink,
+  rewriteMarkdown,
+  slugOf,
+  titleOf,
+} from "../scripts/content-lib.mjs";
 import { tokensToPlainCss } from "../scripts/sync-content.mjs";
 
 const FROM = "docs/decisions/0090-missed-moments-trainer.md";
@@ -47,6 +53,63 @@ describe("rewriteMarkdown", () => {
     expect(rewriteMarkdown("available <when> now, `<anchor>`", FROM)).toBe(
       "available &lt;when&gt; now, `<anchor>`",
     );
+  });
+});
+
+describe("howItWorksPage", () => {
+  const readme = [
+    "# Rematch",
+    "## How it works",
+    "<!-- how-it-works:start -->",
+    "```mermaid",
+    "flowchart LR",
+    "  a --> b",
+    "```",
+    "",
+    "See [ADR 0090](docs/decisions/0090-missed-moments-trainer.md) and [`score.rs`](backend/crates/chess-core/src/score.rs).",
+    "",
+    "### One blunder",
+    "",
+    "<details>",
+    "<summary>Import: chess.com only</summary>",
+    "",
+    "#### Win chance",
+    "",
+    "A token `{{num:<path>}}` and a <placeholder>.",
+    "",
+    "</details>",
+    "<!-- how-it-works:end -->",
+    "## Quick start",
+  ].join("\n");
+
+  it("takes only the marked section", () => {
+    const out = howItWorksPage(readme, "<figure>svg</figure>");
+    expect(out).not.toContain("# Rematch");
+    expect(out).not.toContain("Quick start");
+    expect(out).not.toContain("how-it-works:start");
+  });
+  it("puts the diagram in place of the mermaid block", () => {
+    const out = howItWorksPage(readme, "<figure>svg</figure>");
+    expect(out).toContain("<figure>svg</figure>");
+    expect(out).not.toContain("mermaid");
+  });
+  it("sends decisions to their pages and source files to GitHub", () => {
+    const out = howItWorksPage(readme, "");
+    expect(out).toContain("](/rematch/docs/decisions/0090-missed-moments-trainer/)");
+    expect(out).toContain(
+      "](https://github.com/Terkea/rematch/blob/main/backend/crates/chess-core/src/score.rs)",
+    );
+  });
+  it("lifts headings one level and keeps the disclosure tags", () => {
+    const out = howItWorksPage(readme, "");
+    expect(out).toContain("\n## One blunder\n");
+    expect(out).toContain("\n### Win chance\n");
+    expect(out).toContain("<details>\n<summary>Import: chess.com only</summary>");
+    expect(out).toContain("</details>");
+    expect(out).toContain("`{{num:<path>}}` and a &lt;placeholder&gt;.");
+  });
+  it("fails loudly when the markers are missing", () => {
+    expect(() => howItWorksPage("# Rematch", "")).toThrow(/how-it-works/);
   });
 });
 

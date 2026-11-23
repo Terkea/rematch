@@ -68,6 +68,39 @@ function rewriteLine(line, fromRepoPath) {
     .join("");
 }
 
+const HIW_START = "<!-- how-it-works:start -->";
+const HIW_END = "<!-- how-it-works:end -->";
+/** The raw HTML the README's "How it works" uses, which `escapeProse` must not turn into text. */
+const DISCLOSURE_TAGS = /&lt;(\/?(?:details|summary))&gt;/g;
+
+/**
+ * The site's "How it works" page body from the README, so the two never drift: the text between
+ * the how-it-works markers, with links rewritten for the site, headings lifted one level (the page
+ * title is the h1), and the mermaid block (GitHub draws it; Starlight cannot) replaced by `diagram`.
+ */
+export function howItWorksPage(source, diagram) {
+  const readme = source.replace(/\r\n/g, "\n");
+  const start = readme.indexOf(HIW_START);
+  const end = readme.indexOf(HIW_END);
+  if (start < 0 || end < start) {
+    throw new Error("README.md has no <!-- how-it-works:start --> ... :end --> section");
+  }
+  const section = readme.slice(start + HIW_START.length, end).trim();
+  const withDiagram = section.replace(/^```mermaid\n[\s\S]*?\n```$/m, "@@DIAGRAM@@");
+  let fence = null;
+  const lifted = rewriteMarkdown(withDiagram, "README.md")
+    .split("\n")
+    .map((line) => {
+      if (/^\s*(`{3,}|~{3,})/.test(line)) fence = fence === null ? line.trim()[0] : null;
+      if (fence !== null) return line;
+      return line
+        .replace(/^(#{3,6}) /, (_m, h) => `${h.slice(1)} `)
+        .replace(DISCLOSURE_TAGS, "<$1>");
+    })
+    .join("\n");
+  return `${lifted.replace("@@DIAGRAM@@", diagram.trim())}\n`;
+}
+
 /** Rewrites links and escapes placeholders in a markdown document, leaving fenced code alone. */
 export function rewriteMarkdown(markdown, fromRepoPath) {
   let fence = null;
