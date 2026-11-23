@@ -175,13 +175,16 @@ check("ci.yml: push runs only on main, pull_request on every branch, with concur
   has(/^permissions:\n {2}contents: read$/m, "permissions: contents: read");
 });
 
-check("every workflow sets E2E_BETTER_AUTH_SECRET before compose reads the e2e-prod overlay", () => {
-  const dir = join(root, ".github", "workflows");
-  const problems = readdirSync(dir)
-    .filter((f) => /\.ya?ml$/.test(f))
-    .flatMap((f) => e2eSecretOrderProblems(workflow(f)).map((p) => `${f}: ${p}`));
-  assert.deepEqual(problems, []);
-});
+check(
+  "every workflow sets E2E_BETTER_AUTH_SECRET before compose reads the e2e-prod overlay",
+  () => {
+    const dir = join(root, ".github", "workflows");
+    const problems = readdirSync(dir)
+      .filter((f) => /\.ya?ml$/.test(f))
+      .flatMap((f) => e2eSecretOrderProblems(workflow(f)).map((p) => `${f}: ${p}`));
+    assert.deepEqual(problems, []);
+  },
+);
 
 // ---- 3. the shared logic ----
 
@@ -190,7 +193,10 @@ check("e2eSecretOrderProblems: compose before the secret, no secret, and the goo
     ["jobs:", "  e2e:", "    runs-on: ubuntu-latest", ...env, "    steps:", ...steps, ""].join(
       "\n",
     );
-  const prodEnv = ["    env:", "      COMPOSE_FILE: docker-compose.yml:docker-compose.e2e-prod.yml"];
+  const prodEnv = [
+    "    env:",
+    "      COMPOSE_FILE: docker-compose.yml:docker-compose.e2e-prod.yml",
+  ];
   const build = ["      - name: Build", "        run: $COMPOSE build web"];
   const secret = [
     "      - name: Secret",

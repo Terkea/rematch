@@ -223,7 +223,9 @@ export function e2eSecretOrderProblems(yaml) {
     const setter = texts.findIndex((t) => /E2E_BETTER_AUTH_SECRET=.*>>\s*"?\$GITHUB_ENV/.test(t));
     const compose = texts.findIndex((t) => /\$COMPOSE\b|\$\{COMPOSE\}|docker compose/.test(t));
     if (setter < 0) {
-      problems.push(`job ${id}: uses docker-compose.e2e-prod.yml but never sets E2E_BETTER_AUTH_SECRET`);
+      problems.push(
+        `job ${id}: uses docker-compose.e2e-prod.yml but never sets E2E_BETTER_AUTH_SECRET`,
+      );
     } else if (compose >= 0 && compose < setter) {
       problems.push(
         `job ${id}: step ${compose + 1} runs compose before step ${setter + 1} sets E2E_BETTER_AUTH_SECRET`,
