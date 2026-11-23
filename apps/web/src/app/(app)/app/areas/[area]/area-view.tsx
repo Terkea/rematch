@@ -43,6 +43,7 @@ import { SectionHead } from "../../_overview/section-head";
 import { numbersOnlyCopy } from "../../report/notes-off";
 import { type ScoreBasis, shortfallUnit } from "./basis";
 import type { DayRange } from "../../../../../server/filters/params";
+import type { Benchmark } from "../../../../../server/profile/benchmark-text";
 import { datesNote } from "../../_filters/dates-note";
 import { ScrollCue } from "../../../../../components/scroll-cue";
 
@@ -74,7 +75,19 @@ export type AreaPageModel = {
   accountSwitch?: boolean;
   /** The date filter, kept on the area tabs (audit A7); it only clips the weekly lines (A6). */
   range?: DayRange;
+  /** What the score compares with (ADRs 0080, 0081): the players faced, or the rating band. */
+  benchmark?: Benchmark | null;
 };
+
+/**
+ * "players you've faced on chess.com, rated about 667–967" against the peer benchmark (Q8), else
+ * null: the rating band's words stand.
+ */
+function peerGroup(b: Benchmark | null | undefined): string | null {
+  if (b?.source !== "peers" || !Number.isFinite(b.low) || !Number.isFinite(b.high)) return null;
+  const f = new Intl.NumberFormat("en-GB");
+  return `players you've faced on ${PLATFORM[b.platform]}, rated about ${f.format(b.low)}–${f.format(b.high)}`;
+}
 
 const ORDER: readonly Area[] = [
   "openings",
@@ -307,18 +320,25 @@ function ScorePart({ model }: { model: AreaPageModel }) {
         : basis?.unit === "games"
           ? undefined
           : { one: "in its thinnest measure", many: "in its thinnest measure" };
+    const peers = peerGroup(model.benchmark);
     return (
       <div className="flex flex-col gap-4">
-        <AreaScoreKey next={false} interval={false} />
+        <AreaScoreKey
+          next={false}
+          interval={false}
+          {...(peers ? { median: "Players you've faced" } : {})}
+        />
         <AreaScore
           area={area}
           score={Math.round(score.value)}
-          band={{ median: 50 }}
+          band={peers ? { median: 50, name: "players you've faced at" } : { median: 50 }}
           basis={{ games: score.n, timeClass: tc, ...(unit ? { unit } : {}) }}
           interval={null}
         />
         <p className="m-0 max-w-prose text-sm text-ink-soft">
-          A percentile against players in your rating band, so the band median is 50 by definition.{" "}
+          {peers
+            ? `Against ${peers}: 50 is level with them and higher is better. It says how far you are from their rate given how well it is known, not a rank among players.`
+            : "A percentile against players in your rating band, so the band median is 50 by definition."}{" "}
           {basis?.label
             ? `The count is its thinnest measure, ${basis.label}.`
             : "The count is its thinnest measure."}

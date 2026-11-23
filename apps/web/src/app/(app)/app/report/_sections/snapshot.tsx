@@ -23,6 +23,17 @@ const PLATFORM = { lichess: "lichess", chesscom: "chess.com" } as const;
 /** A percentile area score's band median is 50 by construction (ruling R8). */
 const BAND_MEDIAN = 50;
 
+/**
+ * "players you've faced on chess.com, rated about 667–967" when the report compared with the
+ * peer benchmark (ADRs 0080, 0081), else null: the rating band's words then stand (Q8).
+ */
+export function peerGroupText(c: ComputedReport): string | null {
+  const b = c.benchmark;
+  if (b?.source !== "peers" || b.ratingLow === null || b.ratingHigh === null) return null;
+  if (!Number.isFinite(b.ratingLow) || !Number.isFinite(b.ratingHigh)) return null;
+  return `players you've faced on ${PLATFORM[c.player.platform]}, rated about ${n(b.ratingLow)}–${n(b.ratingHigh)}`;
+}
+
 /** "Based on 214 analysed rapid games from 3,912 imported" (and the backfill when it runs). */
 export function basisText(c: ComputedReport): string {
   const { analysedGames, importedGames, backfillComplete } = c.basis;
@@ -55,11 +66,13 @@ export function Snapshot({ computed, order }: { computed: ComputedReport; order:
     (a) => a.area !== "mindset" && a.score !== null && Number.isFinite(a.score) && a.sufficient,
   );
   const unscored = computed.areaScores.filter((a) => !scored.includes(a));
+  const peers = peerGroupText(computed);
+  const band = BAND_TEXT[player.band] ?? "players at your level";
   return (
     <ReportSection id="report-snapshot" title="Where you stand" order={order}>
       <div className="flex max-w-3xl flex-col gap-2">
         <p className="m-0 font-serif text-2xl leading-snug text-ink md:text-3xl">
-          {rating}, among {BAND_TEXT[player.band] ?? "players at your level"}.
+          {peers ? `${rating}, compared with ${peers}.` : `${rating}, among ${band}.`}
         </p>
         <p className="m-0 text-sm text-ink-soft">{basisText(computed)}.</p>
       </div>
@@ -74,11 +87,16 @@ export function Snapshot({ computed, order }: { computed: ComputedReport; order:
               items={scored.map((a) => ({
                 area: a.area,
                 score: a.score as number,
-                band: { median: BAND_MEDIAN },
+                band: peers
+                  ? { median: BAND_MEDIAN, name: "players you've faced at" }
+                  : { median: BAND_MEDIAN },
                 basis: { games: a.n, timeClass: player.timeClass },
               }))}
             />
-            <AreaScoreKey next={false} />
+            <AreaScoreKey
+              next={false}
+              {...(peers ? { median: "Players you've faced" } : {})}
+            />
           </>
         ) : null}
         {unscored.length > 0 ? (
@@ -92,8 +110,9 @@ export function Snapshot({ computed, order }: { computed: ComputedReport; order:
           </ul>
         ) : null}
         <p className="m-0 text-sm text-ink-faint">
-          Scores are percentiles against {BAND_TEXT[player.band] ?? "players at your level"}, so 50
-          is the band median.
+          {peers
+            ? `Scores compare you with ${peers}: 50 is level with them and higher is better. A score says how far you are from their rate given how well it is known, not a rank among players.`
+            : `Scores are percentiles against ${band}, so 50 is the band median.`}
         </p>
       </div>
     </ReportSection>

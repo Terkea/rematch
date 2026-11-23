@@ -214,6 +214,7 @@ const getArea = vi.fn();
 const kpiTrends = vi.fn();
 const getWeakness = vi.fn();
 const getReport = vi.fn();
+const getBenchmark = vi.fn(async () => null);
 const requireUser = vi.fn(async () => ({ id: "u1", email: "x@example.invalid" }));
 
 const coachStatus = vi.fn(async () => "available");
@@ -232,6 +233,7 @@ vi.mock("../../src/server/profile", async (orig) => ({
   getArea,
   kpiTrends,
   getWeakness,
+  getBenchmark,
 }));
 vi.mock("../../src/server/coaching", async (orig) => ({
   ...(await orig<object>()),
@@ -558,6 +560,25 @@ describe("skill-area pages", { timeout: 30_000 }, () => {
     const again = screen.getByRole("region", { name: "Score" });
     expect(within(again).getByText("96 chances")).toBeInTheDocument();
     expect(again.textContent).toMatch(/thinnest measure, Endgame technique \(advanced\)/);
+  });
+
+  it("names the players faced, not a rating band, against a peer benchmark (Q8)", async () => {
+    getBenchmark.mockResolvedValueOnce({
+      source: "peers",
+      platform: "chesscom",
+      low: 667,
+      high: 967,
+      players: 25,
+      games: 61,
+      chances: {},
+    } as never);
+    getArea.mockResolvedValue({ ...ENDGAME_VIEW, score: { value: 44.33, n: 46, computedAt: AT } });
+    await show("endgame");
+    const region = screen.getByRole("region", { name: "Score" });
+    expect(region.textContent).toContain(
+      "Against players you've faced on chess.com, rated about 667–967: 50 is level with them and higher is better.",
+    );
+    expect(region.textContent).not.toMatch(/rating band|band median/);
   });
 
   it("a score whose n matches no measure names no unit", async () => {

@@ -24,12 +24,16 @@ export type AreaInterval = { low: number; high: number; level: 0.8 | 0.9 };
  */
 export type AreaScoreItem = AreaScoreProps & { interval?: AreaInterval | null };
 
+/** A percentile as shown: a whole number (stored area scores are floats, Q7). */
+export const whole = (v: number) => Math.round(v);
+
 /** "80% range 55–68", or "No interval yet". */
 export function intervalText(interval: AreaInterval | null): string {
   if (!interval || !Number.isFinite(interval.low) || !Number.isFinite(interval.high)) {
     return "No interval yet";
   }
-  return `${Math.round(interval.level * 100)}% range ${interval.low}\u2013${interval.high}`;
+  // Rounded outward, so the whole-number range never claims more than the stored one.
+  return `${Math.round(interval.level * 100)}% range ${Math.floor(interval.low)}\u2013${Math.ceil(interval.high)}`;
 }
 
 export const areaLabels: Record<Area, string> = {
@@ -82,8 +86,9 @@ const fmt = (p: number) => `${Number(p.toFixed(3))}%`;
 
 /** "+4 since last report", "−5 since last report" (U+2212) or "No change since last report". */
 export function deltaText(delta: number): string {
-  if (delta === 0) return "No change since last report";
-  return `${delta > 0 ? "+" : "−"}${Math.abs(delta)} since last report`;
+  const d = whole(delta);
+  if (d === 0) return "No change since last report";
+  return `${d > 0 ? "+" : "−"}${Math.abs(d)} since last report`;
 }
 
 /** The score has reached the next band's threshold: the flag is no longer ahead of the player. */
@@ -91,16 +96,16 @@ export const pastNext = ({ score, band }: Pick<AreaScoreItem, "score" | "band">)
   band.next !== undefined && score >= band.next;
 
 /** "In the next band (71 and up)". */
-export const inNextText = (next: number) => `In the next band (${next} and up)`;
+export const inNextText = (next: number) => `In the next band (${whole(next)} and up)`;
 
 /** "Endgame 62, band median 55, next band 68", "…, in the next band (71 and up)", or "…, next band not measured yet" (R8). */
 export function areaScoreText({ area, score, band, interval }: AreaScoreItem): string {
-  const head = `${areaLabels[area]} ${score}, band median ${band.median}`;
+  const head = `${areaLabels[area]} ${whole(score)}, ${band.name ?? "band median"} ${whole(band.median)}`;
   const range = interval === undefined ? "" : `, ${intervalText(interval).toLowerCase()}`;
   if (band.next === undefined) return `${head}, next band not measured yet${range}`;
   return pastNext({ score, band })
-    ? `${head}, in the next band (${band.next} and up)${range}`
-    : `${head}, next band ${band.next}${range}`;
+    ? `${head}, in the next band (${whole(band.next)} and up)${range}`
+    : `${head}, next band ${whole(band.next)}${range}`;
 }
 
 /**
@@ -208,7 +213,7 @@ function ScoreRow(props: AreaScoreItem & { domain: RulerDomain }) {
           className="text-right font-serif text-3xl font-semibold text-ink @min-[560px]:col-start-2 @min-[560px]:row-start-1"
           style={NUMERALS}
         >
-          {score}
+          {whole(score)}
         </span>
       </div>
       <div className="flex flex-col gap-0.5 @min-[560px]:col-start-3 @min-[560px]:row-start-1">
@@ -343,11 +348,14 @@ export function AreaScoreKey({
   className,
   next = true,
   interval = false,
+  median = "Band median",
 }: {
   className?: string;
   next?: boolean;
   /** Name the interval band too, when the rows carry one. */
   interval?: boolean;
+  /** What the median tick is ("Players you've faced" against the peer benchmark, Q8). */
+  median?: string;
 }) {
   return (
     <ul
@@ -363,14 +371,14 @@ export function AreaScoreKey({
       </li>
       <li className="flex items-center gap-2">
         <span aria-hidden="true" className="mt-3 h-2.5 w-0.5 rounded-full bg-pencil" />
-        Band median
+        {median}
       </li>
       <li className="flex items-center gap-2">
         <span aria-hidden="true" className="relative mt-3 h-2.5 w-5">
           <span className="absolute top-0 left-0 h-2.5 w-0.5 rounded-full bg-pencil" />
           <span className="absolute bottom-0 left-0 h-px w-5 bg-pencil" />
         </span>
-        Distance to the band median
+        Distance to {median === "Band median" ? "the band median" : median.toLowerCase()}
       </li>
       {interval ? (
         <li className="flex items-center gap-2">

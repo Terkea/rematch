@@ -75,8 +75,12 @@ export interface AreaScoreProps {
   area: Area;
   /** 0 to 100. */
   score: number;
-  /** `next` is optional: absent, the next band is not measured yet and no tick is drawn (R8). */
-  band: { median: number; next?: number };
+  /**
+   * `next` is optional: absent, the next band is not measured yet and no tick is drawn (R8).
+   * `name` is what the median is, in a sentence ("band median" by default; "players you've
+   * faced at" against the peer benchmark, Q8).
+   */
+  band: { median: number; next?: number; name?: string };
   delta?: number;
   /**
    * The sample behind the score. Without `unit` it reads "22 rapid games"; with one, "148 chances"
