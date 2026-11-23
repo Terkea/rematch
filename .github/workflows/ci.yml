@@ -1,6 +1,9 @@
 name: CI
+# Pushes run only on main (the merge result); every branch, including forks, is covered by its
+# pull request. Fork PRs get no secrets, and none are used (ADR 0095).
 on:
   push:
+    branches: [main]
   pull_request:
 
 # Every job runs its gate the way it runs locally (CLAUDE.md, ADR 0067): in the compose services,
@@ -37,6 +40,8 @@ jobs:
           node-version-file: .nvmrc
       - name: Check npm release age (7 days) and exact pins
         run: node scripts/check-npm-age.mjs
+      - name: Repository settings as code (the ruleset requires exactly these jobs, ADR 0095)
+        run: node scripts/github/test-settings.mjs
       - name: Build the images
         run: $COMPOSE build deps worker web
       - name: Install dependencies (frozen lockfile)

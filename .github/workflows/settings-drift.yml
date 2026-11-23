@@ -1,0 +1,44 @@
+name: Settings drift
+# Compares the repository settings kept as code (.github/settings, ADR 0095) with the live
+# repository, using only the read-only GITHUB_TOKEN. No admin token is stored: the maintainer
+# applies changes with scripts/github/apply-settings.sh from their own gh login.
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  push:
+    branches: [main]
+    paths:
+      - ".github/settings/**"
+      - "scripts/github/**"
+      - ".github/workflows/settings-drift.yml"
+  pull_request:
+    paths:
+      - ".github/settings/**"
+      - "scripts/github/**"
+      - ".github/workflows/settings-drift.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: settings-drift-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: The settings files and their tests
+        run: node scripts/github/test-settings.mjs
+      # A pull request's settings are applied only after it merges, so there a difference is a
+      # warning (the preview of what apply-settings.sh will change). On main and weekly it fails.
+      - name: Compare with the live repository
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          DRIFT_FAILS: ${{ github.event_name == 'pull_request' && '0' || '1' }}
+        run: node scripts/github/check-drift.mjs
