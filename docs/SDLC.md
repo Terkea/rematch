@@ -51,6 +51,12 @@ Contributors work in a fork; branches are named for what they do (`fix/filter-on
 - The template's checklist applies: test first, the gates, an ADR when a decision was made,
   `design:check` and screenshots for UI, no secrets or personal data.
 - Small pull requests are reviewed faster. One idea per PR.
+- A change to the algorithm's behaviour (a threshold, the ranking, a detector, a prior) needs a
+  pre-registered experiment, merged before the change: an "Experiment on the algorithm" issue,
+  then `lab/experiments/EXP-NNNN/` with its pre-registration and analysis committed before
+  anything runs (ADR 0106, [the protocol](evaluation.md#how-we-do-science-on-the-algorithm)).
+  The change's pull request links the experiment and its decision. A refactor, a copy change or
+  a fix that makes the code do what an ADR already says needs none.
 
 ## 5. CI
 
@@ -202,5 +208,7 @@ A change is done when:
 - numbers are honest: a sample size with every rate, a dash rather than a fake zero, no
   "improved" without evidence;
 - a decision worth remembering has an ADR, and docs that describe the behaviour are updated;
+- a behaviour change to the algorithm cites its decided experiment (`lab/findings.md`) and is
+  a new algorithm version with a changelog entry (ADRs 0104 and 0106);
 - there are no secrets, tokens, personal data or other players' private games anywhere in it;
 - the PR title is a Conventional Commit that describes the change for the changelog.

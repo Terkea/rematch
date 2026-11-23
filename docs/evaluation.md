@@ -31,13 +31,27 @@ Every number comes with its 80% interval over seeds and players. Each run is sto
 
 A change to a constant, threshold, detector, protocol, prompt, model or rule is a new algorithm version. `algorithm/manifest.json` names every component, `backend/crates/algo/tests/manifest.rs` fails when it no longer matches the code, and `scripts/algorithm/check.mjs` fails a pull request when a component changes without the version bump and a changelog entry ([ADR 0105](decisions/0105-algorithm-manifest-stamping-and-replay.md)).
 
-1. **Change the code** on a branch, and say in an issue what you expect to improve and by how much, before you run anything.
+1. **Pre-register the experiment** when the change alters behaviour (below), then change the code on a branch. A refactor or a copy change needs only an issue.
 2. **Bump the version.** Major when facts, profile or recommendations can change; minor when only the coach's prompts, model or validator change; patch when nothing a replay can see changes. Regenerate the manifest with `cargo run -p cli -- algo manifest --write`, and the replay goldens with `REPLAY_UPDATE=1` for a major bump.
 3. **Run the benchmark** on the same seeds as the reference, then `cli bench compare <reference> <yours>`. It prints each KPI's difference with an 80% interval and a verdict: better, worse, or no clear difference.
 4. **Write the changelog entry** in `algorithm/CHANGELOG.md`: what changed, why, the ADR, and the comparison table.
 5. **Open the pull request.** CI reruns the deterministic suites and fails on a clear regression in a guarded KPI, which is one whose 80% interval of the difference lies wholly on the worse side.
 
 A version that makes one KPI better and another worse is a decision, not a fault: say which you chose and why, in the ADR.
+
+## How we do science on the algorithm
+
+A change to a threshold, the ranking, a detector or a prior ships only with a pre-registered experiment behind it: the question, the hypothesis, the metric, the smallest effect that matters, the sample size and the analysis are written down and committed before anything runs (ADR 0106). The experiments run the real Rust algorithm from Python, in the lab (`lab/`), so the numbers we analyse are the numbers the product would produce. No Python re-implementation exists and none runs in the product.
+
+1. **Propose it** with the "Experiment on the algorithm" issue form: the question, H0 and H1, the algorithm versions, the primary metric and its ground truth, the minimum effect, the design and the decision rule.
+2. **Pre-register it.** Copy [the template](experiments/TEMPLATE.md) to `lab/experiments/EXP-NNNN/preregistration.md` and write `analysis.py` next to it. The power analysis sets the number of synthetic players, games and seeds for the minimum effect at 80% power. The design counts players, never games, because a player's games are not independent of each other: 80 games of one player are one unit, not 80. The analysis plan names the effect size with its 80% and 95% intervals and the correction for multiple comparisons. The sha256 of `analysis.py` goes into the pre-registration. The pull request that adds both is reviewed before anything runs.
+3. **Have it criticised.** A fresh reviewer (a person, or an agent with the `scientific-critical-thinking` and `peer-review` skills in `.claude/skills/science/`) reads the pre-registration for room to p-hack, leakage between training and test data, pseudoreplication, and a decision rule that cannot fail. The review is `review.md`.
+4. **Run it once.** `analysis.py` drives the algorithm through `rematch_lab` (`cli lab analyse|profile|rank`, `cli bench run --json`) on the registered seeds and writes `results.json`. A Bayesian fit whose diagnostics fail (R-hat above 1.01, ESS below 400, divergences) is a failed result, reported as one.
+5. **Decide by the rule written in step 2:** ship, reject, or need more data. `decision.md` records it, `lab/findings.md` logs it whatever it shows, and a shipped change becomes a new algorithm version in Rust with its `algorithm/CHANGELOG.md` entry citing the EXP id, and an ADR.
+
+Two rules keep the record honest. The analysis code cannot change after its results are committed: the lab CI reruns every experiment twice, fails when `results.json` differs between runs or from the committed file, and fails when `analysis.py` no longer matches the sha256 in its pre-registration. A change after registration is written up as a deviation, or it is a new experiment. And negative results are published: a rejected change keeps its folder and its line in the findings log.
+
+The first four experiments answer questions we already have. EXP-0001 sizes the benchmark: how many synthetic players and games per flaw the Tier 1 suite needs to detect a change of 0.1 in recall at 2 and of 5 points in coverage. EXP-0002 measures whether the 80% ranges hold the true rate 80% of the time ([#13](https://github.com/Terkea/rematch/issues/13)). EXP-0003 compares partial pooling across players with the current fixed priors ([#11](https://github.com/Terkea/rematch/issues/11)). EXP-0004 pre-registers the leakage-free design of Tier 2. The methods follow **K-Dense**'s Scientific Agent Skills, nine of which are vendored and pinned (`.claude/skills/science/SOURCE.md`).
 
 ## Credits
 
