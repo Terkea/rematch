@@ -30,8 +30,8 @@ export type TrajectoryChart = {
   points: TrajectoryChartPoint[];
   peak: { date: string; rating: number; label: string };
   current: { date: string; rating: number; label: string };
-  earlier: { from: string; to: string; label: string };
-  recent: { from: string; to: string; label: string };
+  earlier: { from: string; to: string; label: string; short: string };
+  recent: { from: string; to: string; label: string; short: string };
 };
 
 export type TrajectoryView =
@@ -261,8 +261,18 @@ export function trajectoryView(t: Trajectory, tc: TimeClass): TrajectoryView {
         rating: t.current.rating,
         label: `Now ${rating(t.current.rating)}`,
       },
-      earlier: { from: t.then.from.toISOString(), to: t.then.to.toISOString(), label: thenLabel },
-      recent: { from: t.now.from.toISOString(), to: t.now.to.toISOString(), label: nowLabel },
+      earlier: {
+        from: t.then.from.toISOString(),
+        to: t.then.to.toISOString(),
+        label: thenLabel,
+        short: "Then",
+      },
+      recent: {
+        from: t.now.from.toISOString(),
+        to: t.now.to.toISOString(),
+        label: nowLabel,
+        short: "Now",
+      },
     },
     compare: {
       a: {

@@ -29,6 +29,8 @@ export interface RatingTrajectoryWindow {
   from: string;
   to: string;
   label: string;
+  /** Drawn instead of `label` when the windows' labels would collide ("Then", "Now"). */
+  short?: string;
 }
 
 export interface RatingTrajectoryProps {
@@ -73,6 +75,59 @@ export function ratingDomain(ratings: number[]): { lo: number; hi: number; ticks
     }
   }
   return { lo: 0, hi: 1, ticks: [] };
+}
+
+/** About one character of `text-xs` sans, for label collision checks. */
+const CHAR_PX = 6.6;
+const LABEL_GAP = 8;
+
+type Anchor = "start" | "middle" | "end";
+export type WindowLabel = { text: string; x: number; anchor: Anchor };
+
+/**
+ * Where each window's label sits above the plot: centred over its span, anchored inward at the
+ * plot's edges. Labels that would collide switch to their `short` text; if they still collide
+ * they are pushed apart either side of the gap between the spans.
+ */
+export function windowLabels(
+  spans: { x0: number; x1: number; label: string; short?: string }[],
+  width: number,
+): WindowLabel[] {
+  type Placed = WindowLabel & { lo: number; hi: number };
+  const place = (s: (typeof spans)[number], text: string): Placed => {
+    const w = text.length * CHAR_PX;
+    const c = (s.x0 + s.x1) / 2;
+    if (c - w / 2 < LEFT) {
+      const x = Math.max(s.x0, LEFT);
+      return { text, x, anchor: "start", lo: x, hi: x + w };
+    }
+    if (c + w / 2 > width) {
+      const x = Math.min(s.x1, width);
+      return { text, x, anchor: "end", lo: x - w, hi: x };
+    }
+    return { text, x: c, anchor: "middle", lo: c - w / 2, hi: c + w / 2 };
+  };
+  const clashes = (ls: Placed[]) =>
+    ls.some((l, i) => i > 0 && (ls[i - 1] as Placed).hi + LABEL_GAP > l.lo);
+  let out = spans.map((s) => place(s, s.label));
+  if (clashes(out)) out = spans.map((s) => place(s, s.short ?? s.label));
+  if (clashes(out)) {
+    out = out.map((l, i) => {
+      const next = spans[i + 1];
+      const prev = spans[i - 1];
+      const s = spans[i] as (typeof spans)[number];
+      if (next) {
+        const x = (s.x1 + next.x0) / 2 - LABEL_GAP / 2;
+        return { ...l, x, anchor: "end" as const };
+      }
+      if (prev) {
+        const x = (prev.x1 + s.x0) / 2 + LABEL_GAP / 2;
+        return { ...l, x, anchor: "start" as const };
+      }
+      return l;
+    });
+  }
+  return out.map(({ text, x, anchor }) => ({ text, x, anchor }));
 }
 
 export type MonthRow = { month: string; label: string; games: number; last: number; high: number };
@@ -186,6 +241,7 @@ export function RatingTrajectory({
       const x1 = x(new Date(w.to));
       return { ...w, x0, x1: Math.max(x1, x0 + 2) };
     });
+    const labels = windowLabels(spans, width);
     // Labels sit inside the plot: anchored inward near either edge.
     const anchorFor = (px: number) =>
       px > width - 120
@@ -193,7 +249,7 @@ export function RatingTrajectory({
         : px < LEFT + 60
           ? ("start" as const)
           : ("middle" as const);
-    return { x, placed, end, line, peakAt, spans, ticks: dateTicks(x, width), anchorFor };
+    return { x, placed, end, line, peakAt, spans, labels, ticks: dateTicks(x, width), anchorFor };
   }, [width, sorted, current.date, current.rating, peak.date, peak.rating, windows, y]);
 
   const [active, setActive] = useState<number | null>(null);
@@ -250,7 +306,7 @@ export function RatingTrajectory({
               height={TREND_HEIGHT}
               className="absolute inset-0 block overflow-visible"
             >
-              {geo.spans.map((s) => (
+              {geo.spans.map((s, i) => (
                 <g key={`${s.label}-${s.from}`} data-part="window">
                   <rect
                     x={s.x0}
@@ -260,18 +316,12 @@ export function RatingTrajectory({
                     className="fill-pencil/25 dark:fill-pencil/40"
                   />
                   <text
-                    x={
-                      geo.anchorFor((s.x0 + s.x1) / 2) === "end"
-                        ? s.x1
-                        : geo.anchorFor((s.x0 + s.x1) / 2) === "start"
-                          ? s.x0
-                          : (s.x0 + s.x1) / 2
-                    }
+                    x={geo.labels[i]?.x ?? s.x0}
                     y={TOP - 8}
-                    textAnchor={geo.anchorFor((s.x0 + s.x1) / 2)}
+                    textAnchor={geo.labels[i]?.anchor ?? "start"}
                     className="fill-ink-soft font-sans text-xs"
                   >
-                    {s.label}
+                    {geo.labels[i]?.text ?? s.label}
                   </text>
                 </g>
               ))}

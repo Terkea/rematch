@@ -7,6 +7,7 @@ import {
   RatingTrajectory,
   type RatingTrajectoryProps,
   ratingDomain,
+  windowLabels,
 } from "../src/charts/index.js";
 
 // The rating trajectory (F6): one ink line of the pre-game rating, the peak marked and labelled,
@@ -64,6 +65,30 @@ describe("ratingDomain", () => {
 
   it("widens a single value by one step each way", () => {
     expect(ratingDomain([900])).toEqual({ lo: 875, hi: 925, ticks: [875, 900, 925] });
+  });
+});
+
+describe("windowLabels", () => {
+  const spans = (a: [number, number], b: [number, number]) => [
+    { x0: a[0], x1: a[1], label: "Around your peak", short: "Then" },
+    { x0: b[0], x1: b[1], label: "Your last 30 games", short: "Now" },
+  ];
+
+  it("centres each label over its span when they fit", () => {
+    const out = windowLabels(spans([150, 250], [400, 500]), 640);
+    expect(out.map((l) => [l.text, l.x, l.anchor])).toEqual([
+      ["Around your peak", 200, "middle"],
+      ["Your last 30 games", 450, "middle"],
+    ]);
+  });
+
+  it("shortens labels that would collide, and pushes them apart", () => {
+    const out = windowLabels(spans([580, 600], [601, 625]), 640);
+    expect(out.map((l) => l.text)).toEqual(["Then", "Now"]);
+    const [a, b] = out;
+    expect(a?.anchor).toBe("end");
+    expect(b?.anchor).toBe("start");
+    expect((a?.x ?? 0) <= (b?.x ?? 0)).toBe(true);
   });
 });
 

@@ -20,6 +20,8 @@ export {
   type RatingTrajectoryProps,
   type RatingTrajectoryWindow,
   ratingDomain,
+  type WindowLabel,
+  windowLabels,
 } from "./rating-trajectory.js";
 export { ResultSplit, type ResultSplitProps, type ResultSplitRow } from "./result-split.js";
 export {
