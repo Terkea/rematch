@@ -25,9 +25,9 @@ function pngSize(buf: Buffer): [number, number] {
 const PEN = /#c8372d|#d3312b|--color-pen/i;
 
 describe("the favicon set", () => {
-  it("serves icon.svg: the icon in ink, night cream on dark browser chrome, never red", () => {
+  it("serves icon.svg: the 16 px icon in ink, night cream on dark browser chrome, never red", () => {
     const svg = readFileSync(join(WEB, "src/app/icon.svg"), "utf8");
-    expect(svg).toBe(iconSvg(readFileSync(join(BRAND, "rematch-icon.svg"), "utf8")));
+    expect(svg).toBe(iconSvg(readFileSync(join(BRAND, "rematch-icon-16.svg"), "utf8")));
     expect(BRAND_INK).toBe("#1F2A3D");
     expect(BRAND_NIGHT_INK).toBe("#E8E2D6");
     expect(svg).toContain(`color:${BRAND_INK}`);
@@ -74,6 +74,25 @@ describe("the favicon set", () => {
       "/app/apps/web/public ./apps/web/public",
     );
   });
+});
+
+describe("the pixel-fitted icons", () => {
+  // Drawn on whole pixels: rematch-icon-16.svg for 16 px, rematch-icon.svg (32 grid) for 32 and up.
+  // Every path is runs of whole-unit rectangles, so a tab draws them without blur.
+  for (const [file, viewBox] of [
+    ["rematch-icon-16.svg", "0 0 16 16"],
+    ["rematch-icon.svg", "0 0 32 32"],
+  ] as const) {
+    it(`${file} sits on a ${viewBox.split(" ")[2]} px grid, ink only`, () => {
+      const svg = readFileSync(join(BRAND, file), "utf8");
+      expect(svg).toContain(`viewBox="${viewBox}"`);
+      expect(svg).toContain('fill="currentColor"');
+      expect(svg).not.toMatch(/<mask|#[0-9a-f]{3,6}(?![0-9a-z])/i);
+      const ds = [...svg.matchAll(/ d="([^"]+)"/g)].map((m) => m[1] ?? "");
+      expect(ds.length).toBeGreaterThan(0);
+      for (const d of ds) expect(d).toMatch(/^(M\d+ \d+h\d+v1h-\d+z)+$/);
+    });
+  }
 });
 
 describe("the header mark", () => {

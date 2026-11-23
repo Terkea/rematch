@@ -26,6 +26,8 @@ const BRAND = join(ROOT, "packages/ui/assets/brand");
 const FONTS = join(WEB, "src/app/fonts");
 
 const icon = readFileSync(join(BRAND, "rematch-icon.svg"), "utf8");
+// The tab icon is drawn on a 16 px grid of its own, so a browser tab shows it without blur.
+const icon16 = readFileSync(join(BRAND, "rematch-icon-16.svg"), "utf8");
 const mark = readFileSync(join(BRAND, "rematch-mark.svg"), "utf8");
 
 const write = (path: string, data: string | Buffer) => {
@@ -35,8 +37,8 @@ const write = (path: string, data: string | Buffer) => {
 };
 
 // Text files.
-write(join(WEB, "src/app/icon.svg"), iconSvg(icon));
-write(join(ROOT, "site/public/favicon.svg"), iconSvg(icon));
+write(join(WEB, "src/app/icon.svg"), iconSvg(icon16));
+write(join(ROOT, "site/public/favicon.svg"), iconSvg(icon16));
 write(join(WEB, "src/components/brand/icon.generated.ts"), iconModule(icon));
 
 const iconTitle = "Rematch";
@@ -56,10 +58,10 @@ const FACES = `
 const sized = (svg: string, attrs: string) => svg.replace("<svg", `<svg ${attrs}`);
 
 /** The icon on an opaque paper tile, `inset` of the side left around it, corners `radius`. */
-const tile = (size: number, inset: number, radius: number) => `
+const tile = (size: number, inset: number, radius: number, source = icon) => `
 <body style="margin:0;background:transparent">
 <div style="width:${size}px;height:${size}px;background:${BRAND_PAPER};color:${BRAND_INK};border-radius:${radius * size}px;display:grid;place-items:center">
-${sized(icon, `width="${Math.round(size * (1 - 2 * inset))}" height="${Math.round(size * (1 - 2 * inset))}"`)}
+${sized(source, `width="${Math.round(size * (1 - 2 * inset))}" height="${Math.round(size * (1 - 2 * inset))}" shape-rendering="crispEdges"`)}
 </div></body>`;
 
 /** The social card: the full mark beside the lockup and the promise. */
@@ -100,10 +102,13 @@ async function main() {
       await page.close();
       return png;
     };
-    // The tab icon fallback: small sizes keep almost the whole tile for the boy.
+    // The tab icon fallback: whole-pixel drawings filling the tile, the 16 px one for 16 px.
     const ico = [];
     for (const size of [16, 32, 48])
-      ico.push({ size, png: await shot(tile(size, 0.03, 0.18), size, size, true) });
+      ico.push({
+        size,
+        png: await shot(tile(size, 0, 0.18, size === 16 ? icon16 : icon), size, size, true),
+      });
     write(join(WEB, "src/app/favicon.ico"), icoFile(ico));
     // iOS rounds the corners itself; the manifest icons keep the maskable safe zone.
     write(join(WEB, "src/app/apple-icon.png"), await shot(tile(180, 0.14, 0), 180, 180, false));
