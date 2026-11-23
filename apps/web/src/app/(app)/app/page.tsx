@@ -123,6 +123,13 @@ export default async function OverviewPage({
         reveal={reveal}
         peer={peer}
         focus={focus ? <FocusCard card={focus} practise={false} /> : null}
+        focusSeries={
+          focus?.kind === "active"
+            ? focus.focus.seriesKey
+            : focus?.kind === "suggest"
+              ? focus.suggestion.seriesKey
+              : null
+        }
         practise={
           practise && focusScope ? (
             <PractiseCard view={practiseView(practise, focusScope, dayOf(now))} />

@@ -18,6 +18,11 @@ import { TimeClassSection } from "./time-class-section";
 import { TimeClassSwitch } from "./time-class-switch";
 import type { OverviewView } from "./view";
 
+/** "What to work on", unless it names the weekly focus's weakness (the focus card says it). */
+export function showWorkOn(lead: LeadFinding, focusSeries: string | null): boolean {
+  return !(lead.kind === "weakness" && lead.weakness.seriesKey === focusSeries);
+}
+
 /**
  * The overview (ADR 0092, after variant b of ADR 0053): a focused flow for an 800 to 1200 player.
  * Where you are (the trajectory), this week's focus, one practise call, how you're doing (the
@@ -41,6 +46,7 @@ export function OverviewSheet({
   trajectory,
   focus,
   practise,
+  focusSeries = null,
 }: {
   view: OverviewView;
   reveal: boolean;
@@ -68,6 +74,8 @@ export function OverviewSheet({
   focus?: ReactNode;
   /** The one practise call (ADR 0092), third. */
   practise?: ReactNode;
+  /** The weakness the focus card names (running or suggested), so Details does not repeat it. */
+  focusSeries?: string | null;
 }) {
   return (
     <div {...(reveal ? { "data-reveal": "first" } : {})} className="flex flex-col gap-10">
@@ -123,7 +131,7 @@ export function OverviewSheet({
               {filteredSplit && filteredSplit.columns.length > 0 ? (
                 <ColourSplit view={filteredSplit} filtered />
               ) : null}
-              <WorkOn lead={lead} />
+              {showWorkOn(lead, focusSeries) ? <WorkOn lead={lead} /> : null}
             </div>
 
             <section aria-labelledby="accuracy-heading" className="flex flex-col gap-5">

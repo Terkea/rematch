@@ -7,7 +7,8 @@ import type { ColourSplitView } from "../../src/app/(app)/app/_overview/colour-s
 import { OverviewEmpty } from "../../src/app/(app)/app/_overview/empty-state.js";
 import { JudgementsSection } from "../../src/app/(app)/app/_overview/judgements-section.js";
 import { RecentSection } from "../../src/app/(app)/app/_overview/recent-section.js";
-import { OverviewSheet } from "../../src/app/(app)/app/_overview/sheet.js";
+import { OverviewSheet, showWorkOn } from "../../src/app/(app)/app/_overview/sheet.js";
+import type { LeadFinding } from "../../src/server/profile/types.js";
 import { StatusLine } from "../../src/app/(app)/app/_overview/status-line.js";
 import { TimeClassSection } from "../../src/app/(app)/app/_overview/time-class-section.js";
 import { TimeClassSwitch } from "../../src/app/(app)/app/_overview/time-class-switch.js";
@@ -170,6 +171,30 @@ describe("overview page sections", () => {
     expect(within(details).getByRole("heading", { name: "What to work on" })).toBeInTheDocument();
     const how = screen.getByRole("region", { name: "How you're doing" });
     expect(within(how).queryByRole("heading", { name: "Accuracy over time" })).toBeNull();
+  });
+
+  // The focus card above already names the lead weakness, with its rate: no second card for it.
+  it("leaves out 'What to work on' when it names the weekly focus's weakness", async () => {
+    await seed(await linked(), 12);
+    const view = await viewFor();
+    const lead = {
+      kind: "weakness",
+      scope: {},
+      weakness: { seriesKey: "W3.shallow" },
+    } as unknown as LeadFinding;
+    expect(showWorkOn(lead, "W3.shallow")).toBe(false);
+    expect(showWorkOn(lead, "W4.missed")).toBe(true);
+    expect(showWorkOn(lead, null)).toBe(true);
+    expect(showWorkOn({ kind: "building" }, "W3.shallow")).toBe(true);
+    render(
+      <OverviewSheet
+        view={view}
+        reveal={false}
+        lead={{ kind: "building" }}
+        focusSeries="W3.shallow"
+      />,
+    );
+    expect(screen.getByRole("heading", { name: "What to work on" })).toBeInTheDocument();
   });
 
   // Critic 4: an active comparison sits right under the filter bar, not 1,100 px down on a phone.
