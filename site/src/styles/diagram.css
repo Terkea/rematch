@@ -107,3 +107,8 @@
     display: block;
   }
 }
+
+/* A note beside a box reads from its left edge. */
+.hiw-diagram .hiw-start {
+  text-anchor: start;
+}
