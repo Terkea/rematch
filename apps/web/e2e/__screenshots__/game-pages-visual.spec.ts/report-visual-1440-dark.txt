@@ -75,6 +75,7 @@ Over your last 214 analysed rapid games your play was steady.
 
 Strengths found in your games
 Solid Italian repertoire (Openings)
+See everything you do well
 What's costing you games
 
 Ranked by how much each one costs you, compared with players rated 1300–1699.
@@ -88,10 +89,10 @@ Hanging pieces
 You made a move that let your opponent win material straight away.
 
 Active
-Estimated 17.0% of chances (80% range 10.0–28.0%), from 29 of 190.
+Estimated 17.0% of chances (80% range 10.0% to 28.0%), from 29 of 190.
 Estimated % of chances
 17.0%
-80% range 10.0–28.0%
+80% range 10.0% to 28.0%
 29 times in 190 chances
 0%
 35.0%
@@ -117,15 +118,17 @@ e
 f
 g
 h
+1
+2
 Green arrow from f3 to e5
-Grey arrow from e5 to d4
-Red arrow from d2 to d4
+2: Grey arrow from e5 to d4
+1: Red arrow from d2 to d4
 
 3. d4. Better was Nxe5. Win chance 52% to 36%.
 
-Played, d4
+1. Played, 3. d4
+2. Their reply, 3… exd4
 Better, Nxe5
-Their reply, exd4
 8
 7
 6
@@ -142,15 +145,17 @@ e
 f
 g
 h
+1
+2
 Green arrow from e5 to d6
-Grey arrow from d6 to e5
-Red arrow from d1 to f3
+2: Grey arrow from d6 to e5
+1: Red arrow from d1 to f3
 
 5. Qxf3. Better was exd6. Win chance 54% to 32%.
 
-Played, Qxf3
+1. Played, 5. Qxf3
+2. Their reply, 5… dxe5
 Better, exd6
-Their reply, dxe5
 8
 7
 6
@@ -167,23 +172,25 @@ e
 f
 g
 h
+1
+2
 Green arrow from c4 to b5
-Grey arrow from d8 to d2
-Red arrow from f3 to b3
+2: Grey arrow from d8 to d2
+1: Red arrow from f3 to b3
 
 7. Qb3. Better was Bb5+. Win chance 56% to 29%.
 
-Played, Qb3
+1. Played, 7. Qb3
+2. Their reply, 7… Qd2+
 Better, Bb5+
-Their reply, Qd2+
 Ask your coach about hanging pieces
 2
 Missed forks
 Active
-Estimated 16.0% of chances (80% range 10.0–28.0%), from 28 of 180.
+Estimated 16.0% of chances (80% range 10.0% to 28.0%), from 28 of 180.
 Estimated % of chances
 16.0%
-80% range 10.0–28.0%
+80% range 10.0% to 28.0%
 28 times in 180 chances
 0%
 35.0%
@@ -206,15 +213,17 @@ d
 c
 b
 a
+1
+2
 Green arrow from f6 to e4
-Grey arrow from c4 to f7
-Red arrow from c7 to c6
+2: Grey arrow from c4 to f7
+1: Red arrow from c7 to c6
 
 8… c6. Better was Nxe4. Win chance 54% to 37%.
 
-Played, c6
+1. Played, 8… c6
+2. Their reply, 9. Bxf7+
 Better, Nxe4
-Their reply, Bxf7+
 1
 2
 3
@@ -231,15 +240,17 @@ d
 c
 b
 a
+1
+2
 Green arrow from f6 to e4
-Grey arrow from g5 to f6
-Red arrow from b7 to b5
+2: Grey arrow from g5 to f6
+1: Red arrow from b7 to b5
 
 9… b5. Better was Nxe4. Win chance 52% to 31%.
 
-Played, b5
+1. Played, 9… b5
+2. Their reply, 10. Bxf6
 Better, Nxe4
-Their reply, Bxf6
 1
 2
 3
@@ -256,15 +267,17 @@ d
 c
 b
 a
+1
+2
 Green arrow from e7 to b4
-Grey arrow from g5 to f6
-Red arrow from c6 to b5
+2: Grey arrow from g5 to f6
+1: Red arrow from c6 to b5
 
 10… cxb5. Better was Qb4+. Win chance 50% to 25%.
 
-Played, cxb5
+1. Played, 10… cxb5
+2. Their reply, 11. Bxf6
 Better, Qb4+
-Their reply, Bxf6
 Ask your coach about missed forks
 3
 Endgame technique
@@ -272,10 +285,10 @@ Endgame technique
 You reached a clearly winning position and didn't go on to win the game.
 
 Active
-Estimated 15.0% of chances (80% range 10.0–28.0%), from 27 of 170.
+Estimated 15.0% of chances (80% range 10.0% to 28.0%), from 27 of 170.
 Estimated % of chances
 15.0%
-80% range 10.0–28.0%
+80% range 10.0% to 28.0%
 27 times in 170 chances
 0%
 35.0%
@@ -285,10 +298,10 @@ Ask your coach about endgame technique
 4
 Time trouble collapses
 Active
-Estimated 14.0% of chances (80% range 10.0–28.0%), from 26 of 160.
+Estimated 14.0% of chances (80% range 10.0% to 28.0%), from 26 of 160.
 Estimated % of chances
 14.0%
-80% range 10.0–28.0%
+80% range 10.0% to 28.0%
 26 times in 160 chances
 0%
 35.0%
@@ -301,10 +314,10 @@ Premature attacks
 With very little time left, you made a move that threw the position away.
 
 Emerging
-Estimated 13.0% of chances (80% range 10.0–28.0%), from 25 of 150.
+Estimated 13.0% of chances (80% range 10.0% to 28.0%), from 25 of 150.
 Estimated % of chances
 13.0%
-80% range 10.0–28.0%
+80% range 10.0% to 28.0%
 25 times in 150 chances
 0%
 35.0%
@@ -317,10 +330,10 @@ Tilt after a loss
 You went wrong in a position where most players at your level find a good move.
 
 Improving
-Estimated 12.0% of chances (80% range 10.0–28.0%), from 24 of 140.
+Estimated 12.0% of chances (80% range 10.0% to 28.0%), from 24 of 140.
 Estimated % of chances
 12.0%
-80% range 10.0–28.0%
+80% range 10.0% to 28.0%
 24 times in 140 chances
 0%
 35.0%
@@ -367,7 +380,7 @@ A plan for the next few weeks.
 1
 Hanging pieces
 
-Estimated 17.0% of chances (80% range 10.0–28.0%), from 29 of 190 chances.
+Estimated 17.0% of chances (80% range 10.0% to 28.0%), from 29 of 190 chances.
 
 Over your last 214 analysed rapid games you left pieces loose, as with d4.
 

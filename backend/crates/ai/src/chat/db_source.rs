@@ -39,8 +39,8 @@ use super::data_source::{
 use super::tools::{MAX_EXAMPLES, MAX_GAMES};
 use crate::input::parse::parse_coaching_input;
 use crate::input::types::{
-    CoachingInput, ExemplarPosition, MoveRef, OpeningVerdict, PlayerColor, RankedWeakness, Score,
-    TimeClass,
+    CoachingInput, ExemplarPosition, InputVersion, MoveRef, OpeningVerdict, PlayerColor,
+    RankedWeakness, Score, TimeClass,
 };
 use crate::validator::pv::{fen_after, pv_to_san};
 
@@ -708,37 +708,102 @@ impl CoachDataSource for DbCoachDataSource {
     }
 }
 
-/// The newest coaching input stored for (account, time class): the snapshot of its newest report
-/// run. `None` when there is none, or when the stored JSON no longer validates or belongs to
-/// another account (logged without content).
+/// Where a chat turn's coaching input came from (ADR 0086).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum InputSource {
+    /// A build-profile snapshot (`coaching_inputs.id`).
+    Snapshot(Uuid),
+    /// A report run's input (`report_runs.id`).
+    ReportRun(Uuid),
+}
+
+/// A stored coaching input and where it came from.
+#[derive(Clone, Debug, PartialEq)]
+pub struct StoredInput {
+    pub input: CoachingInput,
+    pub source: InputSource,
+}
+
+impl StoredInput {
+    /// The `coaching_inputs` row, when the input was a build-profile snapshot.
+    pub fn snapshot_id(&self) -> Option<Uuid> {
+        match self.source {
+            InputSource::Snapshot(id) => Some(id),
+            InputSource::ReportRun(_) => None,
+        }
+    }
+}
+
+/// The parsed input of a stored row; `None` (logged without content) when it no longer
+/// validates or belongs to another account.
+fn checked(raw: &Value, account_id: Uuid, what: &'static str) -> Option<CoachingInput> {
+    match parse_coaching_input(raw) {
+        Ok(i) if i.account_id == account_id => Some(i),
+        Ok(_) => {
+            tracing::warn!(
+                what,
+                "stored coaching input belongs to another account; ignored"
+            );
+            None
+        }
+        Err(issues) => {
+            tracing::warn!(
+                what,
+                issues = issues.len(),
+                "stored coaching input is invalid; ignored"
+            );
+            None
+        }
+    }
+}
+
+/// The most current coaching input of (account, time class) (ADR 0086): of the newest
+/// build-profile snapshot and the newest report run's input, the one of the newer contract
+/// version (`inputVersion`), then the later `generatedAt`. Every build-profile writes a snapshot,
+/// so the coach is as current as the profile, while reports are throttled. `None` when neither
+/// exists (or validates).
 pub async fn latest_coaching_input(
     pool: &PgPool,
     account_id: Uuid,
     tc: TimeClass,
-) -> anyhow::Result<Option<CoachingInput>> {
-    let raw: Option<Value> = sqlx::query_scalar(
-        "SELECT input FROM report_runs WHERE account_id = $1 AND time_class = $2::time_class \
-         AND input IS NOT NULL ORDER BY created_at DESC, id DESC LIMIT 1",
+) -> anyhow::Result<Option<StoredInput>> {
+    let snapshot: Option<(Uuid, Value)> = sqlx::query_as(
+        "SELECT id, input FROM coaching_inputs WHERE account_id = $1          AND time_class = $2::time_class ORDER BY created_at DESC, id DESC LIMIT 1",
     )
     .bind(account_id)
     .bind(tc.as_str())
     .fetch_optional(pool)
     .await?;
-    let Some(raw) = raw else {
-        return Ok(None);
-    };
-    match parse_coaching_input(&raw) {
-        Ok(i) if i.account_id == account_id => Ok(Some(i)),
-        Ok(_) => {
-            tracing::warn!("stored coaching input belongs to another account; ignored");
-            Ok(None)
-        }
-        Err(issues) => {
-            tracing::warn!(
-                issues = issues.len(),
-                "stored coaching input is invalid; ignored"
-            );
-            Ok(None)
-        }
+    let report: Option<(Uuid, Value)> = sqlx::query_as(
+        "SELECT id, input FROM report_runs WHERE account_id = $1 AND time_class = $2::time_class          AND input IS NOT NULL ORDER BY created_at DESC, id DESC LIMIT 1",
+    )
+    .bind(account_id)
+    .bind(tc.as_str())
+    .fetch_optional(pool)
+    .await?;
+    let snapshot = snapshot.and_then(|(id, raw)| {
+        checked(&raw, account_id, "snapshot").map(|input| StoredInput {
+            input,
+            source: InputSource::Snapshot(id),
+        })
+    });
+    let report = report.and_then(|(id, raw)| {
+        checked(&raw, account_id, "report").map(|input| StoredInput {
+            input,
+            source: InputSource::ReportRun(id),
+        })
+    });
+    let rank = |s: &StoredInput| (version_rank(s.input.input_version), s.input.generated_at);
+    Ok(match (snapshot, report) {
+        // A tie goes to the snapshot: it is the profile's own.
+        (Some(s), Some(r)) => Some(if rank(&r) > rank(&s) { r } else { s }),
+        (s, r) => s.or(r),
+    })
+}
+
+fn version_rank(v: InputVersion) -> u8 {
+    match v {
+        InputVersion::V1 => 1,
+        InputVersion::V2 => 2,
     }
 }

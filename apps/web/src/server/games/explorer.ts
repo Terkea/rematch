@@ -1,6 +1,7 @@
 import { accountLinks, type Db, games, importRuns, linkedAccounts } from "@ci/db";
 import { asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { byTimeClass, defaultTimeClass } from "../../lib/time-class";
+import { type FormatOption, listFormats } from "../filters/formats";
 import { countGames, listGames } from "./list";
 import { NO_FILTERS, parseGameQuery } from "./query";
 import { scopedAccountIds } from "./scope";
@@ -37,6 +38,8 @@ export type Explorer =
       page: GamePage;
       /** Each time class the user has games in, rapid first (I8), with its game count. */
       classes: ClassCount[];
+      /** The format options of the query's time class (the shared bar's Format, Q2). */
+      formats: FormatOption[];
       /** Set only when a filtered query matched nothing. */
       relax?: Relax[];
     };
@@ -115,13 +118,19 @@ async function relaxations(db: Db, userId: string, query: GameListQuery): Promis
   const f = query.filters;
   const keys: Relax["key"][] = [];
   if (f.timeClass) keys.push("timeClass");
+  if (f.format) keys.push("format");
   if (f.result) keys.push("result");
   if (f.colour) keys.push("colour");
   if (f.from || f.to) keys.push("dates");
   if (f.accountId) keys.push("accountId");
   const out: Relax[] = [];
   for (const key of keys) {
-    const filters = key === "dates" ? { ...f, from: null, to: null } : { ...f, [key]: null };
+    const filters =
+      key === "dates"
+        ? { ...f, from: null, to: null }
+        : key === "timeClass"
+          ? { ...f, timeClass: null, format: null }
+          : { ...f, [key]: null };
     const total = await countGames(db, userId, filters);
     if (total > 0) out.push({ key, total });
   }
@@ -141,9 +150,18 @@ export async function loadExplorer(db: Db, userId: string, params: Params): Prom
   // The first class with games by default, rapid when there is rapid (I8), as on every filtered
   // page (ADR 0083); `tc=all` shows every game.
   const classes = await classCounts(db, userId);
-  const query = parseGameQuery(params, defaultTimeClass(classes.map((c) => c.tc)));
+  const parsed = parseGameQuery(params, defaultTimeClass(classes.map((c) => c.tc)));
+  const tc = parsed.filters.timeClass;
+  const formats = tc ? await listFormats(db, await scopedAccountIds(db, userId), tc) : [];
+  // A format the class does not list (another class's, or none played) is dropped, as on every
+  // filtered page (ADR 0083).
+  const fmt = parsed.filters.format;
+  const query =
+    fmt !== null && !formats.some((o) => o.key === fmt)
+      ? { ...parsed, filters: { ...parsed.filters, format: null } }
+      : parsed;
   const page = await listGames(db, userId, query);
-  if (page.total > 0) return { state: "games", accounts, query, page, classes };
+  if (page.total > 0) return { state: "games", accounts, query, page, classes, formats };
   const filtered = Object.values(query.filters).some((v) => v !== null);
   const any = filtered ? await countGames(db, userId, NO_FILTERS) : page.total;
   if (any === 0) {
@@ -155,6 +173,7 @@ export async function loadExplorer(db: Db, userId: string, params: Params): Prom
     query,
     page,
     classes,
+    formats,
     relax: await relaxations(db, userId, query),
   };
 }

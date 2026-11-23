@@ -15,7 +15,7 @@ import {
 } from "react";
 import type { Annotation } from "../annotations/index.js";
 import { Board, type BoardMove } from "../board/board.js";
-import { formatNotation } from "../board/notation.js";
+import { formatNotation, judgementGlyph, type NotationJudgement } from "../board/notation.js";
 import type { Orientation, Square } from "../board/theme.js";
 import {
   ArrowCounterClockwiseIcon,
@@ -80,6 +80,11 @@ export interface PositionExplorerProps {
   /** The player's own mistake or blunder: the move played is drawn in pen, else in pencil. */
   mistake?: boolean;
   /**
+   * The stored judgement of the move played. With `mistake`, the pen arrow carries its `?`-family
+   * badge and the key names the glyph ("Played, Nd2??"): a pen mark never relies on colour alone.
+   */
+  judgement?: NotationJudgement | null;
+  /**
    * The move played was the engine's own (a strength): it is drawn as a `good` arrow with a `!`
    * badge, and the key says so. Wins over `mistake`.
    */
@@ -103,13 +108,48 @@ function squares(uci: string | null | undefined): { from: Square; to: Square } |
   return { from: from as Square, to: to as Square };
 }
 
-type Cited = Pick<PositionExplorerProps, "played" | "best" | "mistake" | "found">;
+type Cited = Pick<PositionExplorerProps, "played" | "best" | "mistake" | "found" | "judgement">;
+
+/** The glyph of the player's own judged mistake, or "" (a found move or an unjudged one). */
+const mistakeGlyph = (p: Cited) =>
+  p.mistake && !p.found && p.judgement ? judgementGlyph[p.judgement] : "";
 
 const betterMove = (p: Cited) => (p.best && p.best.uci !== p.played.uci ? p.best : null);
 
-/** The cited position's marks: the move played and, when it differs, the engine's better move. */
-export function explorerAnnotations(p: Cited, show: "both" | "best" = "both"): Annotation[] {
+/** The most moves of an engine line drawn as numbered arrows on the cited position. */
+export const LINE_ARROWS = 5;
+
+/** The engine line's first moves, as the board numbers them (owner request). */
+export const lineArrowMoves = (engine: readonly ExplorerMove[] | undefined) =>
+  engine && engine.length >= 2 ? engine.slice(0, LINE_ARROWS) : [];
+
+/**
+ * The cited position's marks: the move played and, when it differs, the engine's better move
+ * (two alternatives, so neither is numbered). With `show: "best"` and a stored engine line of two
+ * moves or more, the line's first moves instead, numbered 1, 2, 3 in move order: the mover's
+ * moves in `good`, the replies in `pencil`.
+ */
+export function explorerAnnotations(
+  p: Cited,
+  show: "both" | "best" = "both",
+  engine?: readonly ExplorerMove[],
+): Annotation[] {
   const out: Annotation[] = [];
+  const seq = show === "best" ? lineArrowMoves(engine) : [];
+  if (seq.length > 0) {
+    const mover = seq[0]?.color;
+    seq.forEach((m, i) => {
+      const sq = squares(m.uci);
+      if (sq)
+        out.push({
+          kind: "arrow",
+          ...sq,
+          tone: m.color === mover ? "good" : "pencil",
+          step: i + 1,
+        });
+    });
+    return out;
+  }
   const best = squares(betterMove(p)?.uci);
   const played = show === "both" ? squares(p.played.uci) : null;
   if (best) out.push({ kind: "arrow", ...best, tone: "good" });
@@ -118,12 +158,15 @@ export function explorerAnnotations(p: Cited, show: "both" | "best" = "both"): A
       { kind: "arrow", ...played, tone: "good" },
       { kind: "mark", square: played.to, glyph: "!", tone: "good" },
     );
-  else if (played)
+  else if (played) {
     out.push(
       p.mistake
         ? { kind: "arrow", ...played, tone: "pen", toEdge: true }
         : { kind: "arrow", ...played, tone: "pencil" },
     );
+    const glyph = mistakeGlyph(p);
+    if (glyph) out.push({ kind: "mark", square: played.to, glyph, tone: "pen" });
+  }
   return out;
 }
 
@@ -131,6 +174,31 @@ export function explorerAnnotations(p: Cited, show: "both" | "best" = "both"): A
 export function explorerLabel(p: Cited & { label: string }): string {
   const best = betterMove(p);
   return `Position before ${p.label}${best ? `; engine preferred ${best.san}` : ""}`;
+}
+
+/** The narrowest board, in px, whose squares (32px) still carry readable coordinates. */
+const COORDINATES_FROM = 256;
+
+/** Whether a compact board this wide draws its coordinates (critic 7: not under 32px squares). */
+export const compactCoordinates = (width: number) =>
+  Number.isFinite(width) && width >= COORDINATES_FROM;
+
+/**
+ * The element's width, kept current. 0 until measured (and on the server), so a board draws no
+ * coordinates until it knows they fit.
+ */
+function useWidth(ref: RefObject<HTMLElement | null>): number {
+  const [width, setWidth] = useState(0);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    setWidth(el.clientWidth);
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => setWidth(el.clientWidth));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [ref]);
+  return width;
 }
 
 /** True once `ref` comes within a screen of the viewport (at once without IntersectionObserver). */
@@ -174,6 +242,7 @@ export function PositionExplorer(props: PositionExplorerProps) {
   const { gameId, ply, fenBefore, played, orientation, label, href, loadLine, className } = props;
   const ref = useRef<HTMLDivElement>(null);
   const near = useNear(ref);
+  const width = useWidth(ref);
   const [open, setOpen] = useState(false);
   const [loaded, setLoaded] = useState<PositionLine | null>(props.line ?? null);
   const [load, setLoad] = useState<Load>(props.line ? "done" : "idle");
@@ -236,6 +305,7 @@ export function PositionExplorer(props: PositionExplorerProps) {
               label={boardLabel}
               orientation={orientation}
               annotations={explorerAnnotations(props)}
+              coordinates={compactCoordinates(width)}
             />
           </Suspense>
         ) : (
@@ -259,6 +329,11 @@ export function PositionExplorer(props: PositionExplorerProps) {
           <li className="flex items-center gap-1.5">
             <ArrowSwatch tone={props.found ? "good" : props.mistake ? "pen" : "pencil"} />
             Played, {played.san}
+            {mistakeGlyph(props) ? (
+              <span className="tracking-(--tracking-glyph) text-pen-text">
+                {mistakeGlyph(props)}
+              </span>
+            ) : null}
             {props.found ? ", the engine's move" : null}
           </li>
           {best ? (
@@ -368,6 +443,7 @@ function ExplorerDialog({
   orientation,
   label,
   mistake,
+  judgement,
   found,
   href,
   line,
@@ -391,9 +467,13 @@ function ExplorerDialog({
   const atCited = moves[state.cursor]?.ply === ply && moves[state.cursor]?.fenBefore === fenBefore;
   const annotations =
     atCited && state.mode === "game"
-      ? explorerAnnotations({ played, best, mistake, found })
+      ? explorerAnnotations({ played, best, mistake, found, judgement })
       : atCited && state.mode === "engine"
-        ? explorerAnnotations({ played, best, mistake, found }, "best")
+        ? explorerAnnotations(
+            { played, best, mistake, found, judgement },
+            "best",
+            state.line.engine,
+          )
         : [];
 
   const sheetMoves = useMemo<ScoresheetMove[]>(
@@ -402,11 +482,13 @@ function ExplorerDialog({
         ply: m.ply,
         color: m.color,
         san: m.san,
-        judgement: null,
+        // The cited move keeps its stored glyph on the sheet; tried and engine moves have none.
+        judgement:
+          mistake && !found && m.ply === ply && m.uci === played.uci ? (judgement ?? null) : null,
         best: false,
         mine: m.color === orientation,
       })),
-    [moves, orientation],
+    [moves, orientation, mistake, found, ply, played.uci, judgement],
   );
   const firstMove = moves[0];
   const startMoveNumber = firstMove ? Math.ceil(firstMove.ply / 2) : Math.ceil(ply / 2);
@@ -561,12 +643,23 @@ function ExplorerDialog({
               Try a move
             </Button>
           </div>
-          {/* Tall enough for the longest note at 390px, so a mode switch moves nothing below. */}
-          <div
-            aria-live="polite"
-            className="flex min-h-28 flex-col gap-1 font-sans text-sm lg:min-h-20"
-          >
+          {/* From lg, tall enough for the longest note, so a mode switch moves nothing below; on a
+              phone the note takes only its own height (critic 12). */}
+          <div aria-live="polite" className="flex flex-col gap-1 font-sans text-sm lg:min-h-20">
             <p className="m-0 text-ink">{note}</p>
+            {state.mode === "engine" && lineArrowMoves(state.line.engine).length > 0 ? (
+              // The numbered arrows' key, in move order (owner request): "1. Nf3, 2. … Nc6".
+              <ol
+                aria-label="Engine line, in order"
+                className="m-0 flex list-none flex-wrap gap-x-3 gap-y-1 p-0 text-ink-soft"
+              >
+                {lineArrowMoves(state.line.engine).map((m, i) => (
+                  <li key={`${m.ply}-${m.uci}`} className="whitespace-nowrap">
+                    {`${i + 1}. ${m.color === "black" ? "\u2026 " : ""}${m.san}`}
+                  </li>
+                ))}
+              </ol>
+            ) : null}
             {state.mode === "try" ? (
               <p className="m-0 text-ink-soft">
                 Moves you try are not checked by the engine. The game review shows the engine's move

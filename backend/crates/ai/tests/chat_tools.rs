@@ -1468,6 +1468,46 @@ async fn get_weakness_and_opening_line_return_refs() {
     assert!(s.evidence().game_ids.contains("li-w1-1"));
 }
 
+/// The path of a ready-made `{{num:<path>}}` token.
+fn num_path(token: &Value) -> String {
+    let t = token.as_str().expect("a token string");
+    t.trim_start_matches("{{num:")
+        .trim_end_matches("}}")
+        .to_owned()
+}
+
+#[tokio::test]
+async fn tool_rates_read_as_percentages() {
+    // Q9: a weakness or opening fetched by a tool is a fraction too.
+    let (ds, eng) = (FakeDs::new(), FakeEngine::default());
+    let s = ToolSession::new(create_evidence());
+    let (_, w) = ready(&ds, &eng, &s, "get_weakness", json!({"weaknessId": "W1"})).await;
+    let (_, l) = ready(
+        &ds,
+        &eng,
+        &s,
+        "get_opening_line",
+        json!({"lineKey": "w-italian"}),
+    )
+    .await;
+    let ev = s.evidence();
+    for token in [
+        &w["refs"]["num"]["weakness.posteriorRate"],
+        &w["refs"]["num"]["weakness.intervalHigh"],
+        &w["refs"]["num"]["weakness.bandMedian"],
+        &l["refs"]["num"]["line.score"],
+        &l["refs"]["num"]["line.performanceVsExpected"],
+    ] {
+        let path = num_path(token);
+        assert!(ev.rate_paths.contains(&path), "{path} is a rate");
+        let shown = render(&ev, token).unwrap();
+        assert!(shown.ends_with('%'), "{path}: {shown}");
+    }
+    // Counts stay bare.
+    let shown = render(&ev, &w["refs"]["num"]["weakness.opportunities"]).unwrap();
+    assert!(!shown.ends_with('%'), "{shown}");
+}
+
 #[tokio::test]
 async fn opening_line_from_the_report_keeps_its_allowed_moves() {
     let (ds, eng) = (FakeDs::new(), FakeEngine::default());

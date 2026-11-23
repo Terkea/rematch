@@ -5,6 +5,7 @@ export {
   benchmarkGroupLabel,
   benchmarkLabel,
   getBenchmark,
+  peerHeadline,
   peerPooledBasis,
   peerRateText,
 } from "./benchmark";

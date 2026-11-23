@@ -120,6 +120,73 @@ describe("weaknesses by colour (T3, ADR 0082)", () => {
   });
 });
 
+// A4: the detail has the shared bar (colour, dates), a White and Black block in Both mode, and
+// every link back keeps the filters.
+describe("weakness detail filters (A4)", () => {
+  it("Both shows the filter bar and each colour's rate, linked to its own view", async () => {
+    await seedProfile(db, accountId, {
+      timeClass: "rapid",
+      games: 3,
+      estimates: [
+        { seriesKey: "W1", state: "active", priority: 3, mean: 0.05 },
+        { seriesKey: "W1", side: "white", priority: 3, mean: 0.061 },
+        { seriesKey: "W1", side: "black", priority: 1, mean: 0.032 },
+      ],
+    });
+    const { container } = await detail("W1", { from: "2026-09-01", to: "2026-11-01" });
+    expect(screen.getByRole("region", { name: "Filters" })).toBeTruthy();
+    const block = screen.getByRole("region", { name: "By colour" });
+    expect(block.textContent).toMatch(/White.*6\.1%/);
+    expect(block.textContent).toMatch(/Black.*3\.2%/);
+    const white = within(block).getByRole("link", { name: /White games only/ });
+    const href = new URL(white.getAttribute("href") ?? "", "http://x");
+    expect(href.pathname).toBe("/app/weaknesses/W1");
+    expect(href.searchParams.get("color")).toBe("white");
+    expect(href.searchParams.get("from")).toBe("2026-09-01");
+    const back = screen.getByRole("link", { name: "All weaknesses" });
+    const backUrl = new URL(back.getAttribute("href") ?? "", "http://x");
+    expect(backUrl.searchParams.get("from")).toBe("2026-09-01");
+    expect(backUrl.searchParams.get("to")).toBe("2026-11-01");
+    noBadText(container);
+  });
+
+  it("one colour keeps color on the back link and shows no colour block", async () => {
+    await seedProfile(db, accountId, {
+      timeClass: "rapid",
+      games: 3,
+      estimates: [
+        { seriesKey: "W1", state: "active", priority: 3, mean: 0.05 },
+        { seriesKey: "W1", side: "black", priority: 1, mean: 0.032 },
+      ],
+    });
+    await detail("W1", { color: "black" });
+    expect(screen.queryByRole("region", { name: "By colour" })).toBeNull();
+    const back = screen.getByRole("link", { name: "All weaknesses" });
+    expect(back.getAttribute("href")).toMatch(/color=black/);
+  });
+
+  it("Both with no colour rows shows no empty colour block", async () => {
+    await seedProfile(db, accountId, {
+      timeClass: "rapid",
+      games: 3,
+      estimates: [{ seriesKey: "W1", state: "active", priority: 3, mean: 0.05 }],
+    });
+    await detail("W1");
+    expect(screen.queryByRole("region", { name: "By colour" })).toBeNull();
+  });
+
+  it("list rows carry the dates into the detail", async () => {
+    await seedProfile(db, accountId, {
+      timeClass: "rapid",
+      games: 3,
+      estimates: [{ seriesKey: "W1", state: "active", priority: 3, mean: 0.05 }],
+    });
+    await list({ from: "2026-09-01" });
+    const row = screen.getAllByRole("link", { name: /Hung material/ })[0];
+    expect(row?.getAttribute("href")).toMatch(/from=2026-09-01/);
+  });
+});
+
 describe("weaknesses list", () => {
   it("says what the dates change and what stays on the estimate (audit A6)", async () => {
     await seedProfile(db, accountId, {
@@ -246,7 +313,7 @@ describe("weaknesses list", () => {
     expect(within(region).getAllByRole("link")).toHaveLength(2);
     // Each still shows its own rate, range and n, over its window.
     expect(region.textContent).toMatch(/32\.5%/);
-    expect(region.textContent).toMatch(/80% range 30\.0–35\.0%/);
+    expect(region.textContent).toMatch(/80% range 30\.0% to 35\.0%/);
     expect(region.textContent).toMatch(/40 times in 2,000 chances in the last 6 months/);
     noBadText(container);
   });
@@ -393,7 +460,7 @@ describe("weakness detail", () => {
     expect(screen.getByRole("heading", { level: 1, name: "Leaving pieces hanging" })).toBeTruthy();
     expect(screen.getAllByText("4.2%").length).toBeGreaterThan(0);
     // The stored interval, one decimal each, never widened.
-    expect(screen.getAllByText(/80% range 3\.1–5\.7%/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/80% range 3\.1% to 5\.7%/).length).toBeGreaterThan(0);
     expect(screen.getByText(/38 times in 1,902 chances/)).toBeTruthy();
     expect(screen.getByText(/Band median 2\.1%/)).toBeTruthy();
     // The weekly series counts chances.
@@ -438,7 +505,9 @@ describe("weakness detail", () => {
     expect(text).toContain(
       "In the last 6 months this happened in 38 of your 1,902 chances (about 1 in 50).",
     );
-    expect(text).toMatch(/likely between 3\.1% and 5\.7% \(80% range\)/);
+    // The story leads with the rate at the KPI scale (critic 5).
+    expect(container.querySelector("[data-part='story-rate']")?.textContent).toBe("4.2%");
+    expect(text).toMatch(/of your chances, 80% range 3\.1% to 5\.7%/);
     expect(text).toContain("More often than typical players at your level (2.1%)");
     expect(text).toContain(
       "No clear change yet. There is a 42% chance your rate is lower than before its last change",
@@ -478,6 +547,13 @@ describe("weakness detail", () => {
     );
     expect(container.textContent).not.toMatch(/Band median/);
     expect(container.textContent).toContain("Only their games against you count");
+    // Critic 8: the story's comparison is one sentence; it names the players, no repeat line.
+    const often = screen.getByRole("region", { name: "How often it happens to you" });
+    expect(often.querySelector("[data-benchmark='peers']")).toBeNull();
+    expect(often.textContent).toMatch(
+      /the 73 players you've faced on chess\.com, rated about 667–967/i,
+    );
+    expect(often.textContent?.match(/players you've faced/gi)).toHaveLength(1);
     noBadText(container);
   });
 

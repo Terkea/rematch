@@ -1,5 +1,6 @@
 import { type Db, games, moves } from "@ci/db";
 import { and, asc, desc, eq, gte, inArray, lt, type SQL, sql } from "drizzle-orm";
+import { formatCondition, listFormats, OTHER_FORMAT } from "../filters/formats";
 import { readOnly } from "./read-only";
 import { playerResult } from "./result";
 import { scopedAccountIds } from "./scope";
@@ -21,9 +22,18 @@ function nextDay(day: string): Date {
 
 const playerWon = sql`((${games.result} = '1-0' and ${games.playerColor} = 'white') or (${games.result} = '0-1' and ${games.playerColor} = 'black'))`;
 
-function filterConditions(ids: string[], f: GameFilters): SQL {
+/**
+ * The filters as one condition. A format (Q2) is read against its class's options, as the shared
+ * bar lists them, so "Other" is every game outside the named formats.
+ */
+async function filterConditions(tx: Db, ids: string[], f: GameFilters): Promise<SQL> {
   const conds: SQL[] = [inArray(games.accountId, ids)];
   if (f.timeClass) conds.push(eq(games.timeClass, f.timeClass));
+  if (f.timeClass && f.format !== null) {
+    const options = f.format === OTHER_FORMAT ? await listFormats(tx, ids, f.timeClass) : [];
+    const cond = formatCondition(f.format, options);
+    if (cond) conds.push(cond);
+  }
   if (f.colour) conds.push(eq(games.playerColor, f.colour));
   if (f.from) conds.push(gte(games.playedAt, new Date(`${f.from}T00:00:00Z`)));
   if (f.to) conds.push(lt(games.playedAt, nextDay(f.to)));
@@ -45,7 +55,7 @@ export function countGames(db: Db, userId: string, filters: GameFilters): Promis
     const [row] = await tx
       .select({ total: sql<number>`count(*)::int` })
       .from(games)
-      .where(filterConditions(ids, filters));
+      .where(await filterConditions(tx, ids, filters));
     return row?.total ?? 0;
   });
 }
@@ -59,7 +69,7 @@ export function listGames(db: Db, userId: string, q: GameListQuery): Promise<Gam
   return readOnly(db, async (tx) => {
     const ids = await scopedAccountIds(tx, userId, q.filters.accountId);
     if (ids.length === 0) return { rows: [], total: 0, page: 1, pageCount: 1 };
-    const where = filterConditions(ids, q.filters);
+    const where = await filterConditions(tx, ids, q.filters);
 
     const [totalRow] = await tx
       .select({ total: sql<number>`count(*)::int` })

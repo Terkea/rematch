@@ -111,7 +111,7 @@ test.describe
       await page.waitForURL(/\/app\/weaknesses\/W1\?/);
       await expect(page.getByRole("heading", { name: "State over time" })).toBeVisible();
       await expect(page.getByText(/58 of 2,400/).first()).toBeVisible();
-      await expect(page.getByRole("heading", { name: "Example positions" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Examples from your games" })).toBeVisible();
       const examples = page.locator("section:has(#examples-heading)");
       await expect(examples.getByRole("figure").first()).toBeVisible();
 

@@ -81,6 +81,37 @@ pub async fn account(pool: &PgPool, name: &str) -> Uuid {
 /// The b2-rapid fixture for `account_id`, stored as the snapshot of a report run.
 pub async fn store_input(pool: &PgPool, account_id: Uuid) -> CoachingInput {
     let raw = make_input(json!({ "accountId": account_id }));
+    store_report_input(pool, account_id, &raw).await;
+    serde_json::from_value(raw).unwrap()
+}
+
+/// The b2-rapid fixture as coaching-input-v2 (the colour split and the benchmark, ADR 0085)
+/// for `account_id`, generated at `generated_at` (RFC 3339) with `analysed` games.
+pub fn v2_raw(account_id: Uuid, generated_at: &str, analysed: u32) -> Value {
+    let mut over = ai::testing::colour_split();
+    let o = over.as_object_mut().unwrap();
+    o.insert("accountId".into(), json!(account_id));
+    o.insert("generatedAt".into(), json!(generated_at));
+    o.insert("basis".into(), json!({ "analysedGames": analysed }));
+    make_input(over)
+}
+
+/// `raw` stored as a build-profile snapshot (`coaching_inputs`, ADR 0086); returns its id.
+pub async fn store_snapshot(pool: &PgPool, account_id: Uuid, raw: &Value) -> Uuid {
+    sqlx::query_scalar(
+        "INSERT INTO coaching_inputs (account_id, time_class, input_version, generated_at, input)          VALUES ($1, 'rapid', $2, ($3::text)::timestamptz, $4) RETURNING id",
+    )
+    .bind(account_id)
+    .bind(raw["inputVersion"].as_str().unwrap())
+    .bind(raw["generatedAt"].as_str().unwrap())
+    .bind(raw)
+    .fetch_one(pool)
+    .await
+    .unwrap()
+}
+
+/// `raw` stored as the input snapshot of a new rapid report run; returns the run id.
+pub async fn store_report_input(pool: &PgPool, account_id: Uuid, raw: &Value) -> Uuid {
     let mut conn = pool.acquire().await.unwrap();
     let run = runs::insert_run(
         &mut conn,
@@ -97,10 +128,10 @@ pub async fn store_input(pool: &PgPool, account_id: Uuid) -> CoachingInput {
     )
     .await
     .unwrap();
-    runs::snapshot_input(&mut conn, run, &raw, "h", "p")
+    runs::snapshot_input(&mut conn, run, raw, "h", "p")
         .await
         .unwrap();
-    serde_json::from_value(raw).unwrap()
+    run
 }
 
 /// A rapid game of the account; returns its row id.

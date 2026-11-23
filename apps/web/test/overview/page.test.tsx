@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { render, screen, within } from "@testing-library/react";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { compareView } from "../../src/app/(app)/app/_filters/compare-view.js";
 import { AccuracySection } from "../../src/app/(app)/app/_overview/accuracy-section.js";
 import { OverviewEmpty } from "../../src/app/(app)/app/_overview/empty-state.js";
 import { JudgementsSection } from "../../src/app/(app)/app/_overview/judgements-section.js";
@@ -17,6 +18,8 @@ import {
 } from "../../src/app/(app)/app/_overview/view.js";
 import type { TimeClass } from "../../src/server/games/types.js";
 import { getOverview } from "../../src/server/overview/index.js";
+import type { GameStatRow } from "../../src/server/stats/game-stats.js";
+import { comparePeriodRows } from "../../src/server/stats/period-compare.js";
 import {
   resetGameTables,
   type SyntheticGame,
@@ -90,6 +93,45 @@ async function viewFor(tc: TimeClass | null = null) {
 const BAD = /NaN|undefined|Infinity/;
 
 describe("overview page sections", () => {
+  // Critic 4: an active comparison sits right under the filter bar, not 1,100 px down on a phone.
+  it("puts the comparison right under the filter bar when one is active", async () => {
+    await seed(await linked(), 30);
+    const view = await viewFor();
+    const stat = (n: number): GameStatRow[] =>
+      Array.from({ length: n }, (_, i) => ({
+        id: `g${i}`,
+        playedAt: new Date(Date.UTC(2026, 9, 1 + (i % 28))),
+        color: "white",
+        result: "win",
+        analysed: true,
+        accuracy: 60 + (i % 3),
+        blunders: 1,
+        mistakes: 1,
+        inaccuracies: 1,
+        phaseAccuracy: { opening: null, middlegame: null, endgame: null },
+      }));
+    const compare = compareView({
+      periods: {
+        a: { kind: "days", from: "2026-09-01", to: "2026-09-30" },
+        b: { kind: "days", from: "2026-10-01", to: "2026-10-31" },
+      },
+      spans: { a: null, b: null },
+      comparison: comparePeriodRows(stat(20), stat(20), "t"),
+    });
+    const { container } = render(
+      <OverviewSheet
+        view={view}
+        reveal={false}
+        filterBar={<div data-testid="bar" />}
+        compare={compare}
+      />,
+    );
+    const order = [...container.querySelectorAll("[data-testid='bar'], [data-slot]")].map(
+      (el) => el.getAttribute("data-slot") ?? "bar",
+    );
+    expect(order.slice(0, 2)).toEqual(["bar", "compare"]);
+  });
+
   it("renders a one-game account without NaN", async () => {
     await seed(await linked(), 1);
     const view = await viewFor();
@@ -314,8 +356,8 @@ describe("sections", () => {
     const ends = [...container.querySelectorAll("[data-part='trend-ends']")];
     expect(ends).toHaveLength(3);
     for (const e of ends) {
-      expect(e.textContent).toMatch(/First week \d+\.\d · \d+ games?/);
-      expect(e.textContent).toMatch(/Latest week \d+\.\d · \d+ games?/);
+      expect(e.textContent).toMatch(/First week \d+\.\d \(\d+ games?\)/);
+      expect(e.textContent).toMatch(/Latest week \d+\.\d \(\d+ games?\)/);
     }
   });
 

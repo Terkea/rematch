@@ -3,7 +3,7 @@
 import { Chess } from "chess.js";
 import { useMemo } from "react";
 import type { Annotation } from "../annotations/index.js";
-import { Board, judgementGlyph } from "../board/index.js";
+import { Board, judgementGlyph, moveNumberText } from "../board/index.js";
 import type { Orientation, Square } from "../board/theme.js";
 import { cn } from "../lib/index.js";
 import { ArrowSwatch } from "./arrow-swatch.js";
@@ -74,10 +74,19 @@ export function ExemplarBoard({
     const bestSq = squares(bestUci);
     const refSq = squares(refutation);
     const playedSq = squares(played.uci);
+    // The move and its reply are a sequence (1, 2); the better move is the alternative to the
+    // move played, so it carries no number.
+    const seq = playedSq !== null && refSq !== null;
     if (bestSq) out.push({ kind: "arrow", ...bestSq, tone: "good" });
-    if (refSq) out.push({ kind: "arrow", ...refSq, tone: "pencil" });
+    if (refSq) out.push({ kind: "arrow", ...refSq, tone: "pencil", ...(seq ? { step: 2 } : {}) });
     if (playedSq) {
-      out.push({ kind: "arrow", ...playedSq, tone: "pen", toEdge: true });
+      out.push({
+        kind: "arrow",
+        ...playedSq,
+        tone: "pen",
+        toEdge: true,
+        ...(seq ? { step: 1 } : {}),
+      });
       if (judgement) {
         out.push({
           kind: "mark",
@@ -90,7 +99,14 @@ export function ExemplarBoard({
     return out;
   }, [bestUci, refutation, played.uci, judgement]);
   const tones = new Set(annotations.map((a) => a.tone));
+  const steps = annotations.some((a) => a.kind === "arrow" && a.step);
   const move = exemplarMoveText(fen, played.san);
+  const mover = fenMove(fen);
+  // The reply's own move number: Black answers on White's number, White on the next one.
+  const replyNumber =
+    mover.color === "white"
+      ? moveNumberText(mover.moveNumber, "black")
+      : moveNumberText(mover.moveNumber + 1, "white");
   const reply = useMemo(() => replySan(fen, played.uci, refutation), [fen, played.uci, refutation]);
   // Keep the win-chance pair on one line, with no-break spaces around "to".
   const text = exemplarCaption({ fen, played, best, caption }).replace(
@@ -114,22 +130,25 @@ export function ExemplarBoard({
           aria-label="Arrows"
           className="m-0 flex list-none flex-wrap gap-x-4 gap-y-1 p-0 text-sm text-ink-soft"
         >
+          {/* The sequence first, in move order and numbered as on the board; then the
+              alternative. */}
           {tones.has("pen") ? (
             <li className="flex items-center gap-1.5">
               <ArrowSwatch tone="pen" />
-              Played, {played.san}
+              {steps ? `1. Played, ${move}` : `Played, ${played.san}`}
+            </li>
+          ) : null}
+          {tones.has("pencil") ? (
+            <li className="flex items-center gap-1.5">
+              <ArrowSwatch tone="pencil" />
+              {steps ? "2. " : ""}
+              {reply ? `Their reply, ${steps ? `${replyNumber} ` : ""}${reply}` : "Their reply"}
             </li>
           ) : null}
           {tones.has("good") ? (
             <li className="flex items-center gap-1.5">
               <ArrowSwatch tone="good" />
               Better, {best?.san}
-            </li>
-          ) : null}
-          {tones.has("pencil") ? (
-            <li className="flex items-center gap-1.5">
-              <ArrowSwatch tone="pencil" />
-              {reply ? `Their reply, ${reply}` : "Their reply"}
             </li>
           ) : null}
         </ul>

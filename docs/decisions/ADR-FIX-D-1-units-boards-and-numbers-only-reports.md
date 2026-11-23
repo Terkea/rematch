@@ -44,3 +44,28 @@ ADR-AI-8 (segments), ADR 0060 and 0071 (coach text), ADR 0073 (report states) an
 - Stored answers keep the display they were stored with; new answers carry units.
 - The thread API grows by the cited positions; no request per board.
 - Copied text reads "better move: Qe3" and the composer hint "Shift + Enter" (one "+").
+
+## Amendment 1 (2026-11-23): a fraction always reads as a percentage
+
+Final QA Q9: a live answer read "As White you have 50 games and score 0.45, with a range of 0.36
+to 0.54". A score, rate or probability is stored as a fraction in 0..1, and `dec1`/`dec2` printed
+it bare.
+
+1. **A rate path renders as a percentage in every format.** `format_num_at` prints a path in
+   `Evidence::rate_paths` with `%` whatever the token's format: `pct0`/`pct1` as asked; any other
+   format as a whole percentage from 10% and with one decimal below it, without a trailing `.0`
+   (`0.45` → `45%`, `0.096` → `9.6%`, `0.0017` → `0.2%`), so a rare event never reads `0%`.
+2. **Every fraction of coaching-input v2 is a rate path** (ADR 0085): the schema's `0..1` leaves
+   (a weakness's `posteriorRate`, `intervalLow`/`High`, `bandMedian`, `confidence`, `pImp`; an
+   opening's `score` and alternatives' `bandScore`; a change's `rateBefore`, `rateAfter`,
+   `posteriorProb`; a colour weakness's `rate`, `low`, `high`, `peerRate`), an opening's
+   `performanceVsExpected` (a score difference, `-1..1`, which reads `-9%`), and every metric or
+   colour metric (`byColor.*.score`) whose `unit` is `rate`. A colour metric's unit now comes from
+   its `unit` field, as a metric's does. The chat tools `get_weakness` and `get_opening_line`
+   mark the same fields of what they return. `pct0`/`pct1` stay refused outside `[0, 1]`.
+3. **A test walks the schema.** `every_fraction_path_of_the_schema_renders_as_a_percentage` lists
+   the `CoachingInput` JSON schema's number leaves and checks that every fraction leaf the v2
+   fixture holds is a rate path and renders with `%` in `dec1`, `dec2` and no format; a new
+   fraction field fails it until it is marked.
+
+Stored answers keep the display they were stored with.

@@ -75,13 +75,20 @@ export const UNCOMPARED_GROUP = {
  * game, so they are not grouped by what they are doing. Ranked by the colour's own priority;
  * a row without the colour's own peer rows is "No colour benchmark", never the both one.
  */
-export function groupColourWeaknesses(list: WeaknessSummary[], colour: "White" | "Black") {
+export function groupColourWeaknesses(
+  list: WeaknessSummary[],
+  colour: "White" | "Black",
+  benchmark: Benchmark | null = null,
+) {
   const settled = list.filter((w) => w.evidence.sufficient);
+  // Q4: the group compared with is named as it is, the players faced when it is a peer band.
+  const group =
+    benchmark?.source === "peers" ? "the players you've faced" : "players in your rating band";
   return [
     {
       id: "colour",
       title: `In your ${colour} games`,
-      lede: `Compared with players at your level in their ${colour} games, most pressing first. States are called on all your games, so they are not shown per colour.`,
+      lede: `Compared with ${group}, in their ${colour} games, most pressing first. States are called on all your games, so they are not shown per colour.`,
       rows: settled.filter((w) => w.compared),
     },
     {
@@ -175,6 +182,23 @@ export function BenchmarkNote({ benchmark }: { benchmark: Benchmark | null }) {
   );
 }
 
+/** The rows' key, its median named after the group compared with (Q4). */
+export function BandKey({
+  benchmark,
+  className,
+}: {
+  benchmark: Benchmark | null;
+  className?: string;
+}) {
+  const group = benchmarkGroupLabel(benchmark);
+  return (
+    <WeaknessRowKey
+      {...(group ? { bandLabel: group } : {})}
+      {...(className ? { className } : {})}
+    />
+  );
+}
+
 export function WeaknessesView({
   scope,
   weaknesses,
@@ -185,6 +209,7 @@ export function WeaknessesView({
   accountSwitch = true,
   sides = null,
   datesNote = null,
+  range,
 }: {
   scope: CoachScope | null;
   weaknesses: WeaknessSummary[];
@@ -199,12 +224,14 @@ export function WeaknessesView({
   sides?: Map<string, { white: SideRate | null; black: SideRate | null }> | null;
   /** What the date filter changes here (audit A6): only the weekly lines; null without dates. */
   datesNote?: string | null;
+  /** The bar's dates: each row's link carries them to its detail (A4). */
+  range?: { from: string | null; to: string | null };
 }) {
   const group = benchmarkGroupLabel(benchmark);
   const side = scope?.side === "white" || scope?.side === "black" ? scope.side : undefined;
   const groups = (
     side
-      ? groupColourWeaknesses(weaknesses, side === "white" ? "White" : "Black")
+      ? groupColourWeaknesses(weaknesses, side === "white" ? "White" : "Black", benchmark)
       : groupWeaknesses(weaknesses)
   ).filter((g) => g.rows.length > 0);
   // One interval scale for the whole page, so a row's range compares with every other row's.
@@ -237,7 +264,7 @@ export function WeaknessesView({
       ) : (
         <>
           <div className="flex flex-col gap-2">
-            <WeaknessRowKey />
+            <BandKey benchmark={benchmark} />
             <BenchmarkNote benchmark={benchmark} />
             <p className="text-sm text-ink-soft">
               Weekly rate lines leave out weeks with fewer than {WEEKLY_MIN_CHANCES} chances, and
@@ -278,7 +305,7 @@ export function WeaknessesView({
                         compared={w.compared}
                         confidence={w.confidence}
                         window={ESTIMATE_WINDOW_TEXT}
-                        href={weaknessHref(w.seriesKey, scope)}
+                        href={weaknessHref(w.seriesKey, scope, range)}
                         trend={trends.get(w.seriesKey) ?? []}
                         onset={w.onset ? w.onset.at.toISOString().slice(0, 10) : null}
                         scaleMax={scaleMax}

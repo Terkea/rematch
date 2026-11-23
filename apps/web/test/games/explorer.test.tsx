@@ -148,6 +148,25 @@ describe("the shared filter bar on the games page (T3)", () => {
     expect(m.format).toBeNull();
     expect(m.compare).toBeNull();
   });
+
+  // Q2: the games page has the Format control, and `fmt` survives its links.
+  it("shows the class's formats, marks the URL's, and keeps fmt on the colour links", () => {
+    const formats = [
+      { key: "600+0", label: "10+0", games: 77 },
+      { key: "900+10", label: "15+10", games: 3 },
+    ];
+    const m = gamesBarModel(
+      parseGameQuery({ tc: "rapid", fmt: "600+0" }, "rapid"),
+      classes,
+      now,
+      formats,
+    );
+    expect(m.format?.map((o) => o.label)).toEqual(["All formats", "10+0", "15+10"]);
+    expect(m.format?.find((o) => o.current)?.label).toBe("10+0");
+    expect(m.color?.find((o) => o.label === "Black")?.href).toBe(
+      "/app/games?fmt=600%2B0&color=black",
+    );
+  });
 });
 
 describe("game row", () => {

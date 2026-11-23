@@ -16,7 +16,12 @@
 //!   class; opponents whose pre-game rating falls outside are left out.
 //! - **Players** are distinct opponents (case-insensitive usernames). Each weighs once
 //!   ([`Weighting::Players`]), and `low_sample` is the band reference's rule: fewer than
-//!   [`LOW_SAMPLE_PLAYERS`](crate::reference_aggregate::LOW_SAMPLE_PLAYERS) opponents with evidence. Low-sample rows are stored, never served.
+//!   [`LOW_SAMPLE_PLAYERS`](crate::reference_aggregate::LOW_SAMPLE_PLAYERS) opponents with evidence,
+//!   and for a rate row also fewer raw chances in the window than the KPI's `min_n` (ADR 0081
+//!   Amendment 1). Low-sample rows are stored, never served.
+//! - **Both is its own pool** (ADR 0081 Amendment 1): an opponent faced with both colours is one
+//!   unit of the Both pool and one of each colour's, so Both is not the chance-weighted mean of
+//!   the colour rows.
 //! - **The window** is the player's estimate window (ADR 0081): sides older than
 //!   [`WINDOW_DAYS`] before the build are left out, and a rate row weighs each game by the same
 //!   recency weight (half-life [`HALF_LIFE_DAYS`]) as the player's estimate.

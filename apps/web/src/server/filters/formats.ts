@@ -1,5 +1,12 @@
 import { type Db, games } from "@ci/db";
 import { and, eq, inArray, type SQL, sql } from "drizzle-orm";
+import {
+  formatKey,
+  formatLabel,
+  OTHER_FORMAT,
+  parseFormatKey,
+  TOP_FORMATS,
+} from "../../lib/format-key";
 import type { TimeClass } from "../games/types";
 
 // Time-control formats ("10+0", "3+2") inside a time class, built from `games.base_seconds` and
@@ -7,40 +14,13 @@ import type { TimeClass } from "../games/types";
 // class lists its 5 most played formats, then "Other" for the rest (including games whose base
 // is unknown). Daily has no formats.
 
-/** The `fmt` value of every game outside a class's top formats. */
-export const OTHER_FORMAT = "other";
-/** Formats listed by name per time class; the rest are "Other". */
-export const TOP_FORMATS = 5;
-
-const KEY_RE = /^(\d{1,6})\+(\d{1,4})$/;
-
-/** `600+0` for 600 s and no increment (a missing increment is 0); null without a base. */
-export function formatKey(base: number | null, increment: number | null): string | null {
-  if (base == null || !Number.isSafeInteger(base) || base < 0) return null;
-  const inc = increment != null && Number.isSafeInteger(increment) && increment > 0 ? increment : 0;
-  return `${base}+${inc}`;
-}
-
-/** `{ base, increment }` of a valid key, normalised (`0600+00` is `600+0`); null otherwise. */
-export function parseFormatKey(key: string): { base: number; increment: number } | null {
-  const m = KEY_RE.exec(key);
-  if (!m) return null;
-  return { base: Number(m[1]), increment: Number(m[2]) };
-}
-
-/** A base in seconds as players say it: 600 is "10", 90 is "1.5", 30 is "30s". */
-function baseLabel(seconds: number): string {
-  if (seconds % 60 === 0) return String(seconds / 60);
-  if (seconds < 60) return `${seconds}s`;
-  return String(Math.round((seconds / 60) * 10) / 10);
-}
-
-/** "10+0" for `600+0`, "Other" for `other`; an invalid key is returned as is. */
-export function formatLabel(key: string): string {
-  if (key === OTHER_FORMAT) return "Other";
-  const f = parseFormatKey(key);
-  return f ? `${baseLabel(f.base)}+${f.increment}` : key;
-}
+export {
+  formatKey,
+  formatLabel,
+  OTHER_FORMAT,
+  parseFormatKey,
+  TOP_FORMATS,
+} from "../../lib/format-key";
 
 export type FormatCount = { base: number | null; increment: number | null; games: number };
 export type FormatOption = { key: string; label: string; games: number };

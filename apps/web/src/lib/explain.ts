@@ -1,8 +1,8 @@
 import { likelyText, NO_BENCHMARK_TEXT, probablyAbove } from "@ci/ui/profile";
 import { stateStyle } from "@ci/ui/timeline";
-import type { Benchmark } from "../server/profile/benchmark-text";
+import { BENCHMARK_BIAS_TEXT, type Benchmark } from "../server/profile/benchmark-text";
 import { DETECTOR_CONSTANTS as K, VERDICT_CONSTANTS as V } from "../server/profile/glossary";
-import type { WeaknessState } from "../server/profile/types";
+import type { MateChange, WeaknessState } from "../server/profile/types";
 import type { Estimate } from "../server/stats";
 
 // "What this means for you": one plain line per headline, built only from the numbers on the page
@@ -84,16 +84,89 @@ export function trendText(t: TrendInput): string {
   }
 }
 
-/** "Your win chance went from 52% to 36%, a drop of 16 win% points."; null without both values. */
-export function exampleLine(before: number, after: number): string | null {
+/** An engine score from White's point of view, as stored (`{ cp }` or `{ mate }`). */
+export type WhiteScore = { cp?: number | null; mate?: number | null };
+
+/**
+ * The `MateChange` of a move (see its type). Scores are White's point of view; the mover is the
+ * side to move in `fen`. Null when neither happened or a score is unknown.
+ */
+export function mateChange(
+  fen: string,
+  before: WhiteScore | null | undefined,
+  after: WhiteScore | null | undefined,
+): MateChange | null {
+  if (!before || !after) return null;
+  const sign = fen.split(" ")[1] === "b" ? -1 : 1;
+  const mate = (s: WhiteScore) => (fin(s.mate) && s.mate !== 0 ? s.mate * sign : null);
+  const b = mate(before);
+  const a = mate(after);
+  if (b !== null && b > 0 && !(a !== null && a > 0)) return { kind: "lost", n: b };
+  if (a !== null && a < 0 && !(b !== null && b < 0)) return { kind: "allowed", n: -a };
+  return null;
+}
+
+/**
+ * "Your win chance went from 52% to 36%, a drop of 16 win% points."; null without both values.
+ * A mate the move gave up or allowed is said first: it is why the move was judged, whatever the
+ * drop (critic 1).
+ */
+export function exampleLine(
+  before: number,
+  after: number,
+  mate: MateChange | null = null,
+): string | null {
   if (!fin(before) || !fin(after)) return null;
   const clamp = (v: number) => Math.round(Math.min(100, Math.max(0, v)));
   const b = clamp(before);
   const a = clamp(after);
+  if (mate && fin(mate.n) && mate.n > 0) {
+    const head =
+      mate.kind === "lost"
+        ? `You had mate in ${mate.n}; after this move there was no forced mate.`
+        : `This move allowed mate in ${mate.n}.`;
+    const tail =
+      a === b ? `Your win chance stayed at ${b}%.` : `Your win chance went from ${b}% to ${a}%.`;
+    return `${head} ${tail}`;
+  }
   if (a === b) return `Your win chance stayed at ${b}%.`;
   return a < b
     ? `Your win chance went from ${b}% to ${a}%, a drop of ${b - a} win% points.`
     : `Your win chance went from ${b}% to ${a}%, a rise of ${a - b} win% points.`;
+}
+
+/** The peer benchmark's blunders a game, for the overview headline (ADR 0080). */
+export type HeadlinePeer = {
+  platform: "chesscom" | "lichess";
+  low: number;
+  high: number;
+  /** Distinct opponents behind the median. */
+  players: number;
+  /** The median of the opponents' blunders a game, or null when that row is not served. */
+  blunders: number | null;
+};
+
+/**
+ * The headline's comparison: the players faced, against the player's blunder range (Q1). With a
+ * peer benchmark it is never "not compared with players at your level".
+ */
+function peerTail(bl: Estimate, peer: HeadlinePeer | null | undefined): string {
+  if (!peer || !fin(peer.low) || !fin(peer.high)) return NOT_COMPARED;
+  if (bl.kind !== "estimate" || !fin(bl.value) || peer.blunders === null || !fin(peer.blunders)) {
+    return "Not compared with the players you've faced yet: too few of their games have a blunder count.";
+  }
+  const site = peer.platform === "chesscom" ? "chess.com" : "lichess";
+  const n = Math.max(0, Math.trunc(peer.players));
+  const m = peer.blunders;
+  const iv = bl.interval && fin(bl.interval.low) && fin(bl.interval.high) ? bl.interval : null;
+  const where = iv
+    ? m > iv.high
+      ? ", more than your likely range"
+      : m < iv.low
+        ? ", fewer than your likely range"
+        : ", inside your likely range"
+    : "";
+  return `The players you've faced on ${site}, rated about ${count(peer.low)}–${count(peer.high)}, make about ${one(m)} (the median of ${count(n)} ${n === 1 ? "player" : "players"})${where}. ${BENCHMARK_BIAS_TEXT}`;
 }
 
 /** The overview headline in a game's terms: how often a winning chance is given away. */
@@ -102,8 +175,11 @@ export function headlineMeaning(h: {
   blunders: Estimate;
   /** "rapid games", "analysed games". */
   games: string;
+  /** The players faced, when the scope has a peer benchmark. */
+  peer?: HeadlinePeer | null;
 }): string {
   const { accuracy: acc, blunders: bl } = h;
+  const NOT_COMPARED = peerTail(bl, h.peer);
   if (acc.kind === "insufficient") {
     return `Too little evidence yet: with ${count(acc.n)} ${h.games}, one unusual game moves the average a lot.`;
   }
@@ -177,7 +253,10 @@ export function areaMeaning(a: {
 function peerGroup(b: Benchmark | null | undefined): string | null {
   if (b?.source !== "peers" || !fin(b.low) || !fin(b.high)) return null;
   const site = b.platform === "chesscom" ? "chess.com" : "lichess";
-  return `players you've faced on ${site}, rated about ${count(b.low)}–${count(b.high)}`;
+  // The count is named here, so the comparison is one sentence and no line repeats it (critic 8).
+  const n = fin(b.players) ? Math.max(0, Math.trunc(b.players)) : null;
+  const who = n === null ? "players" : `the ${count(n)} ${n === 1 ? "player" : "players"}`;
+  return `${who} you've faced on ${site}, rated about ${count(b.low)}–${count(b.high)}`;
 }
 
 /** The states the weaknesses page files under "Costing you games" when the comparison backs them. */

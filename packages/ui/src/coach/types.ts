@@ -66,6 +66,8 @@ export interface CitedPosition {
   best: { san: string; uci: string } | null;
   /** The player's own mistake or blunder: the played move is drawn in pen. */
   mistake: boolean;
+  /** The stored judgement of the player's own move: its glyph badge on the pen arrow. */
+  judgement?: "inaccuracy" | "mistake" | "blunder" | null;
 }
 
 /** The key of a cited position: the segment's game and ply. */

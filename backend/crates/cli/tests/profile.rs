@@ -10,6 +10,7 @@ use analysis::jobs::analyse::{AnalyseGameDeps, handle_analyse_game};
 use cli::profile_cmd::{run_eta, run_profile};
 use cli::queue_cmd::run_queue_lag;
 use cli::recompute_cmd::run_recompute_metrics;
+use cli::report_cmd::run_report_rebuild;
 use enrich::enrich_game::EnrichDeps;
 use enrich::store::MemoryEnrichmentStore;
 use profile::build_profile::{BuildProfileDeps, handle_build_profile};
@@ -444,4 +445,93 @@ async fn recompute_metrics_refuses_arguments(pool: PgPool) {
         "{}",
         o.err()
     );
+}
+
+// ------------------------------------------------------------- report-rebuild (ADR 0086)
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn report_rebuild_queues_a_run_by_platform_and_username(pool: PgPool) {
+    let a = insert_account(&pool, "chesscom", "rebuilder").await;
+    let o = Out::default();
+    let code = run_report_rebuild(
+        &argv(&[
+            "report-rebuild",
+            "--platform",
+            "chesscom",
+            "--username",
+            "Rebuilder",
+            "--time-class",
+            "rapid",
+        ]),
+        &pool,
+        worker::config::AiPlan::Beta,
+        &o.print(),
+        &o.print_error(),
+    )
+    .await;
+    assert_eq!(code, 0, "{}", o.err());
+    let (run, trigger): (Uuid, String) = sqlx::query_as(
+        "SELECT id, trigger::text FROM report_runs WHERE account_id = $1 AND time_class = 'rapid'",
+    )
+    .bind(a)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(trigger, "scheduled");
+    assert!(o.out().contains(&run.to_string()), "{}", o.out());
+    // No analysed games: no snapshot, said so.
+    assert!(
+        o.out().contains("no coaching-input snapshot"),
+        "{}",
+        o.out()
+    );
+
+    // By id, while that run is queued: refused, naming it.
+    let o = Out::default();
+    let id = a.to_string();
+    let code = run_report_rebuild(
+        &argv(&["report-rebuild", "--account", &id, "--time-class", "rapid"]),
+        &pool,
+        worker::config::AiPlan::Beta,
+        &o.print(),
+        &o.print_error(),
+    )
+    .await;
+    assert_eq!(code, 1);
+    assert!(o.err().contains(&run.to_string()), "{}", o.err());
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn report_rebuild_needs_an_account_and_a_time_class(pool: PgPool) {
+    for args in [
+        vec!["report-rebuild", "--time-class", "rapid"],
+        vec![
+            "report-rebuild",
+            "--account",
+            "not-a-uuid",
+            "--time-class",
+            "rapid",
+        ],
+        vec![
+            "report-rebuild",
+            "--account",
+            "00000000-0000-0000-0000-000000000001",
+        ],
+    ] {
+        let o = Out::default();
+        let code = run_report_rebuild(
+            &argv(&args),
+            &pool,
+            worker::config::AiPlan::Beta,
+            &o.print(),
+            &o.print_error(),
+        )
+        .await;
+        assert_eq!(code, 1, "{args:?}");
+        assert!(
+            o.err().contains("usage: cli report-rebuild"),
+            "{args:?}: {}",
+            o.err()
+        );
+    }
 }

@@ -40,10 +40,8 @@ function formatValue(v: number, kind: ColourMetricKind): string {
 }
 
 function formatRange(low: number, high: number, kind: ColourMetricKind): string {
-  const strip = (s: string) => s.replace(/%$/, "");
-  const lo = formatValue(low, kind);
-  const hi = formatValue(high, kind);
-  return kind === "blunders" ? `${lo}–${hi}` : `${strip(lo)}–${hi}`;
+  // One range style everywhere (critic 11): "44% to 60%", "1.0 to 1.4".
+  return `${formatValue(low, kind)} to ${formatValue(high, kind)}`;
 }
 
 /**
@@ -122,5 +120,5 @@ export function colourWeaknessPeerText(
 export function colourWeaknessRateText(w: ColorWeakness): string {
   if (!fin(w.rate) || !fin(w.low) || !fin(w.high)) return "Not measured";
   const p = (x: number) => (x * 100).toFixed(1);
-  return `${p(w.rate)}% of chances (80% range ${p(w.low)}–${p(w.high)}%), ${int(w.events)} of ${plural(w.opportunities, "chance", "chances")}`;
+  return `${p(w.rate)}% of chances (80% range ${p(w.low)}% to ${p(w.high)}%), ${int(w.events)} of ${plural(w.opportunities, "chance", "chances")}`;
 }

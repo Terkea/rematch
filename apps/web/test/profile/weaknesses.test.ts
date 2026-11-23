@@ -384,6 +384,42 @@ describe("getWeakness", () => {
     expect((await getWeakness(db, userId, scope, "W1"))?.exemplars?.items).toEqual([]);
   });
 
+  // Critic 1: a mate-rule judgement names the mate it gave up, from the report's stored scores.
+  it("a report example that gave up a mate carries it", async () => {
+    await seedProfile(db, accountId, {
+      timeClass: "rapid",
+      games: 1,
+      estimates: [{ seriesKey: "W1" }],
+      input: {
+        weaknesses: [
+          {
+            id: "W1",
+            variant: null,
+            exemplars: [
+              {
+                gameId: "mate-game",
+                ply: 69,
+                playedAt: "2026-11-01T10:00:00.000Z",
+                fen: "6k1/5ppp/8/8/8/3r4/5PPP/6K1 b - - 0 35",
+                played: { san: "Rd6", uci: "d3d6" },
+                best: { san: "Rd1#", uci: "d3d1" },
+                bestPv: ["d3d1"],
+                refutationPv: [],
+                tags: [],
+                evalBefore: { mate: -1 },
+                evalAfter: { cp: -820 },
+                winBefore: 98,
+                winAfter: 95,
+              },
+            ],
+          },
+        ],
+      },
+    });
+    const w = await getWeakness(db, userId, await scopeOf(userId), "W1");
+    expect(w?.examples[0]?.mate).toEqual({ kind: "lost", n: 1 });
+  });
+
   it("examples add the player's own stored occurrences after the report's, newest game first", async () => {
     await seedProfile(db, accountId, { timeClass: "rapid", estimates: [{ seriesKey: "W1" }] });
     // The fixture is played as White: ply 55 (Nd2) is White's blunder, 62 is Black's.
@@ -432,6 +468,7 @@ describe("getWeakness", () => {
       winBefore: m.winBefore,
       winAfter: m.winAfter,
       playedAt: "2026-11-01T12:00:00.000Z",
+      judgement: m.judgement,
     });
     // Without an engine move there is no second arrow, never an invented one.
     expect(w?.examples[1]?.best).toBeNull();

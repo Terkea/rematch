@@ -197,7 +197,7 @@ describe("AreaScore interval", () => {
       <AreaScore {...base} interval={{ low: 55, high: 68, level: 0.8 }} />,
     );
     expect(container.querySelector('[data-part="interval"]')).not.toBeNull();
-    expect(container.textContent).toContain("80% range 55–68");
+    expect(container.textContent).toContain("80% range 55 to 68");
   });
 
   it("says no interval yet when there is none", () => {
@@ -239,7 +239,7 @@ describe("AreaScore numbers", () => {
     );
     const text = container.textContent ?? "";
     expect(text).not.toMatch(/\d\.\d/);
-    expect(text).toContain("Openings 44, band median 50, next band 62, 80% range 40–49");
+    expect(text).toContain("Openings 44, band median 50, next band 62, 80% range 40 to 49");
     expect(text).toContain("Tactics 6, band median 50");
     expect(text).toContain("+3 since last report");
   });

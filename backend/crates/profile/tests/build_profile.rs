@@ -1062,3 +1062,130 @@ async fn detector_bump_does_not_reannounce_an_unchanged_series(pool: PgPool) {
         "active under both detectors: no change to announce"
     );
 }
+
+/// `(id, inputVersion column, input.inputVersion, input.basis.analysedGames)` of the account's
+/// stored coaching-input snapshots (ADR 0086), oldest first.
+async fn coaching_snapshots(pool: &PgPool, a: Uuid) -> Vec<(Uuid, String, Value)> {
+    sqlx::query_as(
+        "SELECT id, input_version, input FROM coaching_inputs \
+         WHERE account_id = $1 AND time_class = 'blitz' ORDER BY created_at, id",
+    )
+    .bind(a)
+    .fetch_all(pool)
+    .await
+    .unwrap()
+}
+
+/// ADR 0086: every build-profile stores the coaching input of the profile it just wrote, so the
+/// coach never reads an input older than the profile (finding Q5).
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn every_build_stores_a_current_coaching_input_snapshot(pool: PgPool) {
+    let s = seed(&pool, SeedOptions::default()).await;
+    build(&pool, s.account_id).await;
+    let first = coaching_snapshots(&pool, s.account_id).await;
+    assert_eq!(first.len(), 1, "{first:?}");
+    let (_, version, input) = &first[0];
+    assert_eq!(version, "coaching-input-v2");
+    assert_eq!(input["inputVersion"], "coaching-input-v2");
+    assert_eq!(input["accountId"], json!(s.account_id));
+    let games = input["basis"]["analysedGames"].as_u64().unwrap();
+    assert!(input["byColor"].is_object(), "v2 carries the colour split");
+    let parsed: profile::coaching_input::CoachingInput =
+        serde_json::from_value(input.clone()).expect("the snapshot is a CoachingInput");
+    assert_eq!(parsed.validate(), Ok(()));
+
+    // A newer game, a rebuild: a newer snapshot that counts it.
+    insert_analysed_game(
+        &pool,
+        s.account_id,
+        datetime!(2026-11-19 09:00 UTC),
+        datetime!(2026-11-19 10:00 UTC),
+    )
+    .await;
+    build(&pool, s.account_id).await;
+    let second = coaching_snapshots(&pool, s.account_id).await;
+    assert_eq!(second.len(), 2, "{second:?}");
+    assert_ne!(second[1].0, first[0].0);
+    assert_eq!(
+        second[1].2["basis"]["analysedGames"].as_u64().unwrap(),
+        games + 1
+    );
+}
+
+/// An account without analysed games has no input, so a build stores no snapshot.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_build_without_analysed_games_stores_no_snapshot(pool: PgPool) {
+    let s = seed(
+        &pool,
+        SeedOptions {
+            games: 0,
+            ..SeedOptions::default()
+        },
+    )
+    .await;
+    build(&pool, s.account_id).await;
+    assert!(coaching_snapshots(&pool, s.account_id).await.is_empty());
+}
+
+/// Old snapshots are pruned to the newest [`SNAPSHOTS_KEPT`], except one a stored chat answer
+/// used: that answer stays auditable against its own input.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn pruning_keeps_the_newest_snapshots_and_every_cited_one(pool: PgPool) {
+    use profile::coaching::snapshot::{SNAPSHOTS_KEPT, prune_coaching_snapshots};
+
+    let s = seed(
+        &pool,
+        SeedOptions {
+            games: 0,
+            ..SeedOptions::default()
+        },
+    )
+    .await;
+    let a = s.account_id;
+    let mut ids = Vec::new();
+    for i in 0..(SNAPSHOTS_KEPT + 3) {
+        let id: Uuid = sqlx::query_scalar(
+            "INSERT INTO coaching_inputs (account_id, time_class, input_version, generated_at, \
+             input, created_at) VALUES ($1, 'blitz', 'coaching-input-v2', $2, '{}', $2) \
+             RETURNING id",
+        )
+        .bind(a)
+        .bind(SEED_NOW + time::Duration::minutes(i as i64))
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        ids.push(id);
+    }
+    // The oldest is cited by an answer.
+    let user = testkit::insert_user(&pool, "pruner").await;
+    let conv: Uuid = sqlx::query_scalar(
+        "INSERT INTO coach_conversations (account_id, user_id, time_class) \
+         VALUES ($1, $2, 'blitz') RETURNING id",
+    )
+    .bind(a)
+    .bind(user)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO coach_messages (conversation_id, seq, role, status, coaching_input_id) \
+         VALUES ($1, 2, 'assistant', 'done', $2)",
+    )
+    .bind(conv)
+    .bind(ids[0])
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    prune_coaching_snapshots(&pool, a, chess_core::TimeClass::Blitz)
+        .await
+        .unwrap();
+    let left: BTreeSet<Uuid> = coaching_snapshots(&pool, a)
+        .await
+        .into_iter()
+        .map(|(id, _, _)| id)
+        .collect();
+    let mut want: BTreeSet<Uuid> = ids[ids.len() - SNAPSHOTS_KEPT..].iter().copied().collect();
+    want.insert(ids[0]);
+    assert_eq!(left, want);
+}

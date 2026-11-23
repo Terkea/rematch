@@ -15,7 +15,6 @@ import {
   probablyAbove,
   shareRangeText,
   shareText,
-  WeaknessRowKey,
   weaknessRateText,
   weaknessScaleMax,
 } from "@ci/ui/profile";
@@ -24,8 +23,9 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { MorphArrival } from "../../../../../components/shared-morph";
 import { coachChatLive } from "../../../../../lib/coach-chat";
-import { howOftenText, levelText, rateText, trendText } from "../../../../../lib/explain";
+import { howOftenText, levelText, trendText } from "../../../../../lib/explain";
 import type { ChangeNoteView } from "../../../../../server/coaching";
+import type { DayRange } from "../../../../../server/filters/params";
 import type { CoachScope, WeaknessDetail } from "../../../../../server/profile";
 import {
   BENCHMARK_BIAS_TEXT,
@@ -36,9 +36,10 @@ import {
 } from "../../../../../server/profile/benchmark-text";
 import { type GlossaryEntry, seriesGlossary } from "../../../../../server/profile/glossary";
 import { ESTIMATE_WINDOW_TEXT } from "../../../../../server/profile/window";
+import { clipWeekly } from "../../_filters/clip";
 import { SectionHead } from "../../_overview/section-head";
 import { scopeQuery, WEEKLY_MIN_CHANCES } from "../queries";
-import { morphName } from "../weaknesses-view";
+import { BandKey, morphName } from "../weaknesses-view";
 import { Examples } from "./exemplars";
 
 // `/app/weaknesses/[seriesKey]` (M5b Task 7, rewritten as a story): one weakness, top down. The
@@ -203,7 +204,13 @@ function EarlyKey({ group }: { group: string }) {
   );
 }
 
-function Header({ detail, scope, askHref }: Props & { askHref: string }) {
+function Header({
+  detail,
+  scope,
+  askHref,
+  range,
+  filterBar,
+}: Props & { askHref: string; range: DayRange; filterBar?: ReactNode | undefined }) {
   const early = !detail.evidence.sufficient;
   const colour = colourOf(scope);
   // Without a benchmark the stored state is no claim (bug hunt I1). A colour has no state of its
@@ -221,7 +228,7 @@ function Header({ detail, scope, askHref }: Props & { askHref: string }) {
   return (
     <header className="flex flex-col gap-4">
       <Link
-        href={`/app/weaknesses?${scopeQuery(scope)}`}
+        href={`/app/weaknesses?${scopeQuery(scope, range)}`}
         className="inline-flex w-fit items-center gap-1 rounded-field text-sm text-ink-soft hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
       >
         <Icon icon={CaretLeftIcon} size={16} />
@@ -254,6 +261,7 @@ function Header({ detail, scope, askHref }: Props & { askHref: string }) {
           </Button>
         ) : null}
       </div>
+      {filterBar}
     </header>
   );
 }
@@ -297,8 +305,8 @@ function Standing({ detail, benchmark }: { detail: WeaknessDetail; benchmark: Be
             aria-hidden="true"
             className={
               early
-                ? "font-serif text-3xl leading-tight font-semibold text-ink-soft underline decoration-rule-strong decoration-dashed underline-offset-8"
-                : "font-serif text-4xl leading-tight font-semibold text-ink"
+                ? "font-serif text-xl leading-tight font-semibold text-ink-soft underline decoration-rule-strong decoration-dashed underline-offset-8"
+                : "font-serif text-xl leading-tight font-semibold text-ink"
             }
             style={NUMERALS}
           >
@@ -326,7 +334,11 @@ function Standing({ detail, benchmark }: { detail: WeaknessDetail; benchmark: Be
         {none ? null : (
           <>
             <IntervalScale rate={detail.rate} median={median} early={early} />
-            {early ? <EarlyKey group={group} /> : <WeaknessRowKey className="text-xs" />}
+            {early ? (
+              <EarlyKey group={group} />
+            ) : (
+              <BandKey benchmark={benchmark} className="text-xs" />
+            )}
           </>
         )}
         <div className="flex flex-col gap-1 text-sm" style={LINING}>
@@ -390,12 +402,17 @@ function Timeline({ detail }: { detail: WeaknessDetail }) {
   );
 }
 
-function Weekly({ detail }: { detail: WeaknessDetail }) {
-  const item = weeklyItem(detail);
+function Weekly({ detail, range }: { detail: WeaknessDetail; range: DayRange }) {
+  // The bar's dates clip whole weeks of the weekly rate (T3); the estimate keeps its window.
+  const item = weeklyItem({ ...detail, weekly: clipWeekly(detail.weekly, range) });
   const first = item.points[0]?.week;
   const last = item.points.at(-1)?.week;
   if (!first || !last) {
-    return <p className="text-base text-ink-soft">No weekly points yet.</p>;
+    return (
+      <p className="text-base text-ink-soft">
+        {range.from || range.to ? "No weekly points in these dates." : "No weekly points yet."}
+      </p>
+    );
   }
   return (
     <div data-surface="sheet" className="rounded-sheet bg-sheet px-(--space-panel-pad) py-6">
@@ -447,6 +464,7 @@ function Note({
 }
 
 type Props = { detail: WeaknessDetail; scope: CoachScope };
+type Sides = { white: WeaknessDetail | null; black: WeaknessDetail | null };
 
 const PROSE = "m-0 max-w-prose font-serif text-prose text-ink";
 const SOFT = "m-0 max-w-prose text-base text-ink-soft";
@@ -482,6 +500,72 @@ function WhatItIs({ entry }: { entry: GlossaryEntry | null }) {
   );
 }
 
+/** "White" or "Black" for a side. */
+const SIDE_NAME = { white: "White", black: "Black" } as const;
+
+const LINK =
+  "w-fit rounded-field text-ink underline decoration-rule-strong underline-offset-4 hover:decoration-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink";
+
+/**
+ * Both mode's White and Black block (A4): each colour's own stored estimate with its range and
+ * chances, linked to that colour's view of this page. A colour without a row says so.
+ */
+function ByColour({
+  detail,
+  scope,
+  range,
+  sides,
+}: {
+  detail: WeaknessDetail;
+  scope: CoachScope;
+  range: DayRange;
+  sides: Sides;
+}) {
+  return (
+    <section
+      aria-label="By colour"
+      data-part="by-colour"
+      className="grid max-w-prose grid-cols-1 gap-4 sm:grid-cols-2"
+    >
+      {(["white", "black"] as const).map((side) => {
+        const d = sides[side];
+        const name = SIDE_NAME[side];
+        const href = `/app/weaknesses/${encodeURIComponent(detail.seriesKey)}?${scopeQuery({ ...scope, side }, range)}`;
+        return (
+          <div
+            key={side}
+            data-surface="sheet"
+            className="flex flex-col gap-1 rounded-sheet bg-sheet px-(--space-panel-pad) py-4"
+            style={LINING}
+          >
+            <h3 className="m-0 text-base font-medium text-ink">{name}</h3>
+            {!d || d.evidence.chances <= 0 ? (
+              <p className="m-0 text-sm text-ink-soft">
+                No {name} games with a chance for this yet.
+              </p>
+            ) : (
+              <>
+                <p className="m-0 text-base text-ink">
+                  <span className="font-serif text-xl font-semibold" style={NUMERALS}>
+                    {shareText(d.rate.mean)}
+                  </span>{" "}
+                  of chances{d.evidence.sufficient ? "" : ", an early read"}
+                </p>
+                <p className="m-0 text-sm text-ink-soft">
+                  80% range {shareRangeText(d.rate.low, d.rate.high)}, {countsText(d.evidence)}
+                </p>
+              </>
+            )}
+            <Link href={href} className={`${LINK} mt-1 text-sm`}>
+              {name} games only
+            </Link>
+          </div>
+        );
+      })}
+    </section>
+  );
+}
+
 function HowOften({
   detail,
   benchmark,
@@ -493,11 +577,30 @@ function HowOften({
 }) {
   const early = !detail.evidence.sufficient;
   const none = detail.evidence.chances <= 0;
-  const label = detail.compared ? benchmarkLabel(benchmark) : null;
+  const peer = detail.compared && benchmarkLabel(benchmark) !== null;
   return (
     <div className="flex flex-col gap-3" style={LINING}>
+      {/* The story's main number at the KPI scale (critic 5); Details repeats it small. */}
+      {none ? null : (
+        <p className="m-0 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <span
+            data-part="story-rate"
+            className={
+              early
+                ? "font-serif text-3xl leading-none font-semibold text-ink-soft"
+                : "font-serif text-3xl leading-none font-semibold text-ink"
+            }
+            style={NUMERALS}
+          >
+            {shareText(detail.rate.mean)}
+          </span>
+          <span className="text-base text-ink-soft">
+            {early ? "early estimate" : "of your chances"}, 80% range{" "}
+            {shareRangeText(detail.rate.low, detail.rate.high)}
+          </span>
+        </p>
+      )}
       <p className={PROSE}>{howOftenText(detail.evidence, ESTIMATE_WINDOW_TEXT)}</p>
-      {none ? null : <p className={SOFT}>{rateText(detail.rate, early)}</p>}
       <p className={SOFT}>
         {colour && !detail.compared
           ? `${NO_COLOUR_BENCHMARK_TEXT}.`
@@ -511,12 +614,9 @@ function HowOften({
               // A colour has no state of its own (ADR 0082): only its comparison speaks.
               ...(colour ? {} : { state: detail.state }),
             })}
+        {/* One sentence names the players and their count; the bias follows it (critic 8). */}
+        {peer ? ` ${BENCHMARK_BIAS_TEXT}` : null}
       </p>
-      {label === null ? null : (
-        <p data-benchmark="peers" className="m-0 max-w-prose text-sm text-ink-soft">
-          {label}. {BENCHMARK_BIAS_TEXT}
-        </p>
-      )}
     </div>
   );
 }
@@ -558,6 +658,9 @@ export function WeaknessView({
   reviewIds,
   askHref,
   benchmark = null,
+  range = { from: null, to: null },
+  sides = null,
+  filterBar,
 }: Props & {
   notes: ChangeNoteView[];
   /** What the comparison was made with (ADR 0080); null without a peer benchmark. */
@@ -565,6 +668,12 @@ export function WeaknessView({
   /** `games.id` by platform game id, for the examples and the note's moves. */
   reviewIds: Map<string, string>;
   askHref: string;
+  /** The bar's dates (A4): they clip the weekly rate and travel on every link. */
+  range?: DayRange;
+  /** Both mode: each colour's own detail, for the White and Black block (A4). */
+  sides?: Sides | null;
+  /** The shared filter bar (colour, dates). */
+  filterBar?: ReactNode;
 }) {
   const hrefFor = (s: Segment): string | null => {
     if (s.kind !== "move" && s.kind !== "best" && s.kind !== "pv") return null;
@@ -576,13 +685,25 @@ export function WeaknessView({
     <MorphArrival
       name={morphName(detail.seriesKey)}
       className="flex flex-col gap-12"
-      header={<Header detail={detail} scope={scope} askHref={askHref} />}
+      header={
+        <Header
+          detail={detail}
+          scope={scope}
+          askHref={askHref}
+          range={range}
+          filterBar={filterBar}
+        />
+      }
     >
       <Step id="what-heading" title="What this is">
         <WhatItIs entry={entry} />
       </Step>
       <Step id="often-heading" title="How often it happens to you">
         <HowOften detail={detail} benchmark={benchmark} colour={colourOf(scope)} />
+        {/* With no colour row at all there is nothing to split: no pair of empty cards. */}
+        {sides && (sides.white || sides.black) ? (
+          <ByColour detail={detail} scope={scope} range={range} sides={sides} />
+        ) : null}
       </Step>
       <Step id="trend-heading" title="Better or worse">
         <Trend detail={detail} colour={colourOf(scope)} />
@@ -626,9 +747,12 @@ export function WeaknessView({
               <p className="m-0 text-sm text-ink-soft">
                 The raw share of chances each week, with its 80% range. Weeks with fewer than{" "}
                 {WEEKLY_MIN_CHANCES} chances are hollow and off the line.
+                {range.from || range.to
+                  ? " The dates set above clip these weeks only; the estimate and its range cover the last 6 months."
+                  : ""}
               </p>
             </div>
-            <Weekly detail={detail} />
+            <Weekly detail={detail} range={range} />
           </section>
 
           <section aria-labelledby="note-heading" className="flex min-w-0 flex-col gap-4">

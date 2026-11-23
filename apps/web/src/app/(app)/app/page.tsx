@@ -6,7 +6,7 @@ import { getDb } from "../../../server/db";
 import { requestEventCursor } from "../../../server/events/request-cursor";
 import { scopedAccountIds } from "../../../server/games";
 import { getOverview } from "../../../server/overview";
-import { leadFinding } from "../../../server/profile";
+import { leadFinding, peerHeadline, resolveCoachScope } from "../../../server/profile";
 import { gameStats, scopeOfFilters } from "../../../server/stats/game-stats";
 import { loadPeriodComparison } from "../../../server/stats/period-compare";
 import { getSyncStatus } from "../../../server/sync";
@@ -74,6 +74,11 @@ export default async function OverviewPage({
       ])
     : [null, null];
   const basis = tc ? tc : "";
+  // The headline's peer comparison (Q1): only for one account's one time class, which is what a
+  // peer benchmark covers; "All" or several accounts pool games no benchmark was built for.
+  const coach =
+    ready && tc && accountIds.length === 1 ? await resolveCoachScope(db, user.id, { tc }) : null;
+  const peer = coach && coach.timeClass === tc ? await peerHeadline(db, user.id, coach) : null;
   return (
     <>
       <LiveRefresh accountIds={accountIds} />
@@ -84,6 +89,7 @@ export default async function OverviewPage({
         compare={compared ? compareView(compared) : null}
         filtersNote={filtersNote(f)}
         reveal={reveal}
+        peer={peer}
         lead={lead}
         sync={sync.accounts.length > 0 ? <SyncPanel initial={sync} variant="compact" /> : undefined}
       />

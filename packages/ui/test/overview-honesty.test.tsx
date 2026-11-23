@@ -96,8 +96,8 @@ describe("KpiStat honest options", () => {
       />,
     );
     const ends = container.querySelector("[data-part='trend-ends']");
-    expect(ends?.textContent).toContain("First week 1.0 · 2 games");
-    expect(ends?.textContent).toContain("Latest week 4.0 · 1 game");
+    expect(ends?.textContent).toContain("First week 1.0 (2 games)");
+    expect(ends?.textContent).toContain("Latest week 4.0 (1 game)");
     // Read out too, not only drawn.
     expect(ends?.querySelector("[aria-hidden='true']")).toBeNull();
   });

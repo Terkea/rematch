@@ -7,6 +7,7 @@ pub mod format;
 pub mod profile_cmd;
 pub mod queue_cmd;
 pub mod recompute_cmd;
+pub mod report_cmd;
 
 pub use analyse::{AnalyseDeps, CliDeps, Signal, Started, USAGE, run_analyse, run_cli};
 pub use format::to_fixed;

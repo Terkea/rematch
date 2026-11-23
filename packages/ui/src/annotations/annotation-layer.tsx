@@ -29,6 +29,7 @@ import {
   outlinePoints,
   polyline,
   ringPoints,
+  STEP_BADGE,
   samplePath,
   TONE_SCALE,
   timeAtProgress,
@@ -53,7 +54,10 @@ const TONE_WORD: Readonly<Record<Tone, string>> = { pen: "Red", good: "Green", p
 /** What assistive tech hears for a mark: "Red arrow from e4 to e6", "Green circle on f7". */
 export function describeAnnotation(a: Annotation): string {
   const tone = TONE_WORD[a.tone];
-  if (a.kind === "arrow") return `${tone} arrow from ${a.from} to ${a.to}`;
+  if (a.kind === "arrow") {
+    const what = `${tone} arrow from ${a.from} to ${a.to}`;
+    return a.step ? `${a.step}: ${what}` : what;
+  }
   if (a.kind === "circle") return `${tone} circle on ${a.square}`;
   return `${tone} ${a.glyph} on ${a.square}`;
 }
@@ -95,7 +99,7 @@ interface StrokeMark {
 }
 
 interface BadgeMark {
-  kind: "mark";
+  kind: "mark" | "step";
   key: string;
   tone: Tone;
   weight: "full" | "light";
@@ -114,7 +118,7 @@ const pts = (d: string): Point[] =>
 
 /** A mark's identity: the same arrow, ring or badge twice is drawn and read once. */
 export function annotationKey(a: Annotation): string {
-  if (a.kind === "arrow") return `arrow:${a.from}${a.to}:${a.tone}`;
+  if (a.kind === "arrow") return `arrow:${a.from}${a.to}:${a.tone}${a.step ? `:${a.step}` : ""}`;
   if (a.kind === "circle") return `circle:${a.square}:${a.tone}`;
   return `mark:${a.square}:${a.glyph}:${a.tone}`;
 }
@@ -143,6 +147,7 @@ function planMarks(
     (a): a is Extract<Annotation, { kind: "arrow" }> => a.kind === "arrow",
   );
   const plans: Plan[] = [];
+  const steps: BadgeMark[] = [];
   /** For each target, the points of every arrowhead that lands on it, to place the badge. */
   const arrivals = new Map<string, Point[]>();
   let strokeIndex = 0;
@@ -221,6 +226,23 @@ function planMarks(
         });
       }
       lastEnd = Math.max(lastEnd, ...tracks.map((t) => t.delay + t.duration));
+      if (a.step && squarePx >= STEP_BADGE.minSquarePx) {
+        const font = Math.max(STEP_BADGE.font, STEP_BADGE.minFontPx * px);
+        const r = Math.max(STEP_BADGE.r, font * 0.6);
+        const at = stepPoint(line, r, steps);
+        steps.push({
+          kind: "step",
+          key: `step:${a.from}${a.to}:${a.step}`,
+          tone: a.tone,
+          weight: "full",
+          glyph: String(a.step),
+          cx: at.x,
+          cy: at.y,
+          r,
+          fontSize: font,
+          at: delay + dur.draw,
+        });
+      }
       plans.push({
         kind: "arrow",
         route: knight,
@@ -329,7 +351,42 @@ function planMarks(
       at: lastEnd,
     });
   }
+  // Steps in move order, whatever order the arrows came in.
+  plans.push(...steps.sort((x, y) => Number(x.glyph) - Number(y.glyph)));
   return plans;
+}
+
+/**
+ * Where a step number sits on its shaft: the sampled point nearest the middle of the shaft that
+ * is off every square's centre (so never on a piece) and clear of the badges already placed,
+ * away from both ends. The middle itself when no point qualifies.
+ */
+function stepPoint(line: Point[], r: number, placed: readonly BadgeMark[]): Point {
+  const lengths = [0];
+  for (let i = 1; i < line.length; i++) {
+    const a = line[i - 1] as Point;
+    const b = line[i] as Point;
+    lengths.push((lengths[i - 1] as number) + Math.hypot(b.x - a.x, b.y - a.y));
+  }
+  const total = lengths[lengths.length - 1] || 1;
+  const frac = (v: number) => v - Math.floor(v);
+  const offCentre = (p: Point) => Math.hypot(frac(p.x) - 0.5, frac(p.y) - 0.5) >= 0.3;
+  const clear = (p: Point) =>
+    placed.every((b) => Math.hypot(b.cx - p.x, b.cy - p.y) >= b.r + r + 0.04);
+  let best: Point | null = null;
+  let bestGap = Number.POSITIVE_INFINITY;
+  line.forEach((p, i) => {
+    const t = (lengths[i] as number) / total;
+    if (t < 0.15 || t > 0.8 || !offCentre(p) || !clear(p)) return;
+    const gap = Math.abs(t - 0.5);
+    if (gap < bestGap) {
+      best = p;
+      bestGap = gap;
+    }
+  });
+  if (best) return best;
+  const mid = line[Math.floor(line.length / 2)] ?? { x: 4, y: 4 };
+  return mid;
 }
 
 /** One square's width in CSS px, measured; 56 (DESIGN.md's reference square) until known. */
@@ -437,7 +494,7 @@ function BadgeView({ mark, still }: { mark: BadgeMark; still: boolean }) {
   const light = mark.weight === "light";
   return (
     <motion.g
-      data-mark="badge"
+      data-mark={mark.kind === "step" ? "step" : "badge"}
       data-tone={mark.tone}
       data-weight={mark.weight}
       style={{ transformBox: "fill-box", transformOrigin: "center" }}
@@ -516,8 +573,8 @@ export function AnnotationLayer({
     () => planMarks(annotations, orientation, squarePx, occupied),
     [annotations, orientation, squarePx, occupied],
   );
-  const strokes = plans.filter((p): p is StrokeMark => p.kind !== "mark");
-  const badges = plans.filter((p): p is BadgeMark => p.kind === "mark");
+  const strokes = plans.filter((p): p is StrokeMark => p.kind === "arrow" || p.kind === "circle");
+  const badges = plans.filter((p): p is BadgeMark => p.kind === "mark" || p.kind === "step");
 
   // One progress value per track, per mark; a ring's three pieces share one, split by arc (M2).
   // They live here, not in the marks, because a mark is painted in more than one pass.

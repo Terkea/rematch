@@ -33,7 +33,7 @@ export function intervalText(interval: AreaInterval | null): string {
     return "No interval yet";
   }
   // Rounded outward, so the whole-number range never claims more than the stored one.
-  return `${Math.round(interval.level * 100)}% range ${Math.floor(interval.low)}\u2013${Math.ceil(interval.high)}`;
+  return `${Math.round(interval.level * 100)}% range ${Math.floor(interval.low)} to ${Math.ceil(interval.high)}`;
 }
 
 export const areaLabels: Record<Area, string> = {

@@ -40,6 +40,7 @@ export function CitedBoard({
       orientation={position.orientation}
       label={position.moveText}
       mistake={position.mistake}
+      judgement={position.judgement ?? null}
       href={position.href}
       loadLine={game ? loadLine : undefined}
     />

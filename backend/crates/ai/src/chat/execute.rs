@@ -824,6 +824,7 @@ async fn get_weakness(deps: &ToolDeps<'_>, s: &ToolSession, input: &Value) -> Ou
     Ok(s.write(|ev, k| {
         ev.add_numbers_from(&v);
         let (nums, dates) = index_paths(ev, &format!("tools.{k}"), &json!({ "weakness": &v }));
+        ev.mark_weakness_rates(&format!("tools.{k}.weakness"));
         let exemplars: Vec<Value> = w.exemplars.iter().map(|e| exemplar_refs(ev, e)).collect();
         json!({
             "found": true,
@@ -870,6 +871,7 @@ async fn get_opening_line(deps: &ToolDeps<'_>, s: &ToolSession, input: &Value) -
         let n = ev.line_moves.get(key).map_or(0, Vec::len).min(999);
         ev.add_numbers_from(&v);
         let (nums, dates) = index_paths(ev, &format!("tools.{k}"), &json!({ "line": &v }));
+        ev.mark_opening_rates(&format!("tools.{k}.line"), o.alternatives.len());
         let examples: Vec<Value> = o.examples.iter().map(|e| exemplar_refs(ev, e)).collect();
         json!({
             "found": true,

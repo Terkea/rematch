@@ -4,6 +4,13 @@ import type { TimeClass } from "../games/types";
 
 export type { Area, TimelineSeries, WeaknessState };
 
+/**
+ * A forced mate a move gave up (`lost`: the mover had mate in `n` and after it had none) or
+ * handed over (`allowed`: the opponent then had mate in `n`). Lichess judges these by the mate
+ * rule (chess-core `judge`), so a `??` can come with a small win% drop.
+ */
+export type MateChange = { kind: "lost" | "allowed"; n: number };
+
 /** One (account, time class) the coach reads (ruling R1, ADR 0068). */
 /** Which games a stored profile row covers (ADR 0082): every game, or one colour's. */
 export type Side = "both" | "white" | "black";
@@ -75,6 +82,8 @@ export type Exemplar = {
   tags: string[];
   winBefore: number;
   winAfter: number;
+  /** A forced mate the move gave up or allowed, from the report's stored scores (critic 1). */
+  mate?: MateChange;
 };
 
 export type WeaknessDetail = WeaknessSummary & {
@@ -116,10 +125,12 @@ export type WeaknessDetail = WeaknessSummary & {
 };
 
 /** An example position, from the report (`report`) or from the stored occurrences (`games`). */
-export type Example = Exemplar & {
+export type Example = Omit<Exemplar, "mate"> & {
   source: "report" | "games";
-  /** The stored judgement of the played move, when it came from `moves`. */
+  /** The stored judgement of the played move, from `moves` when the game is imported. */
   judgement: "inaccuracy" | "mistake" | "blunder" | null;
+  /** A forced mate the move gave up or allowed (the Lichess mate rule), or null. */
+  mate: MateChange | null;
 };
 
 export type KpiPoint = {

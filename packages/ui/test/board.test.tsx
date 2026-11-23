@@ -316,6 +316,19 @@ describe("Board coordinates (controller ruling, Task 11)", () => {
     });
   }
 
+  // Critic 7: below 32px squares the coordinates are unreadable, so a small board can drop them.
+  it("draws no coordinates when asked not to", () => {
+    const glyphs = (el: Element) =>
+      [...el.querySelectorAll("[aria-hidden='true'] *")].filter(
+        (n) => n.children.length === 0 && /^[a-h1-8]$/.test(n.textContent ?? ""),
+      ).length;
+    const on = render(<Board fen={START} label="Position" />);
+    expect(glyphs(on.container)).toBe(16);
+    on.unmount();
+    const off = render(<Board fen={START} label="Position" coordinates={false} />);
+    expect(glyphs(off.container)).toBe(0);
+  });
+
   it("uses on-ink coordinates on tinted night squares (last move and selection)", () => {
     const { container } = render(
       <Board fen={MATE} label="Position" lastMove={{ from: "h5", to: "f7" }} />,
