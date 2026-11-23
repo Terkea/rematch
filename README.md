@@ -435,9 +435,9 @@ The validator ([`text.rs`](backend/crates/ai/src/validator/text.rs), [`language.
 
 A report is five calls, one per section. A section that fails gets one repair turn with the list of errors. Whatever still fails is dropped and never shown, the computed numbers are shown in its place, and the page says how many statements were removed.
 
-#### Budgets and modes
+#### Keys and modes
 
-A hard monthly stop per account (USD 0.20 on the free plan, USD 2.00 on pro and on the default beta plan, overridable) plus an optional global cap, checked before every call; every call is metered once from token counts. With no key the worker logs `ai: disabled (<reason>)` and every report is computed-only. Nothing about the analysis, the profile, the trainer or the focus needs the AI. For local development the coach can run on your own signed-in Claude Code on the host (`sh scripts/setup.sh ai`, choice `local`); the budget is then recorded but not enforced. Production refuses that mode, and Anthropic's terms don't allow serving other people from a personal login, so any other deployment needs an `ANTHROPIC_API_KEY`.
+The coach runs on your own Anthropic API key, so any AI usage is billed to you by Anthropic, not by Rematch. A monthly spending cap per account and an optional overall cap (both set in `.env`) are checked before every call, and every call is metered once from token counts. With no key the worker logs `ai: disabled (<reason>)` and every report is computed-only. Nothing about the analysis, the profile, the trainer or the focus needs the AI. For local development the coach can run on your own signed-in Claude Code on the host (`sh scripts/setup.sh ai`, choice `local`); the budget is then recorded but not enforced. Production refuses that mode, and Anthropic's terms don't allow serving other people from a personal login, so any other deployment needs an `ANTHROPIC_API_KEY`.
 
 </details>
 
