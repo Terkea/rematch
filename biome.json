@@ -11,6 +11,7 @@
       "!**/test/fixtures/**",
       "!**/tests/fixtures/**",
       "!backend/fixtures/**",
+      "!algorithm/manifest.json",
       "!backend/crates/*/schema/**",
       "!**/*.md",
       "!**/assets/pieces/**/*.svg"

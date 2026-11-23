@@ -130,7 +130,11 @@ The engine is **Stockfish 19**, the official `stockfish-linux-x86-64-universal` 
 
 #### The protocol
 
-The protocol is `sf19-n300k-v1`: 300,000 nodes per position, MultiPV 1, Stockfish's default `Threads` and `Hash`, a 30 s timeout ([`types.rs`](backend/crates/engine/src/types.rs)). We fix nodes rather than time or depth, because a node count gives the same answer on a slow laptop and a fast server. Evals are stored once per position and protocol in `position_evals`, keyed by the position, and shared by every user, so a common position is never searched twice. A protocol change means re-analysis ([ADR 0007](docs/decisions/0007-analysis-protocol-pinned.md)).
+The protocol is `sf19-n300k-v1`: 300,000 nodes per position, MultiPV 1, `Threads 1` and `Hash 16` sent explicitly to every engine (Stockfish 19's defaults, so sending them changed no evaluation; `ENGINE_THREADS` and `ENGINE_HASH_MB`), a 30 s timeout ([`types.rs`](backend/crates/engine/src/types.rs)). We fix nodes rather than time or depth, because a node count gives the same answer on a slow laptop and a fast server. Evals are stored once per position and protocol in `position_evals`, keyed by the position, and shared by every user, so a common position is never searched twice. A protocol change means re-analysis ([ADR 0007](docs/decisions/0007-analysis-protocol-pinned.md)).
+
+#### The algorithm version
+
+Every constant, protocol, prompt set and model above is named in one generated file, [`algorithm/manifest.json`](algorithm/manifest.json), and the whole has one id, for example `algo-1.0.0+fd96e117c013`: a version for people and the first 12 hex characters of the manifest's sha256 as the proof ([ADR 0105](docs/decisions/0105-algorithm-manifest-stamping-and-replay.md)). Every row a recommendation comes from (the coaching input, the report run, the estimates, the focus, the drill items) stores the id it was computed with, and the report, the focus card and the trainer link it to [`algorithm/CHANGELOG.md`](algorithm/CHANGELOG.md). `cli algo show` prints it and `cli algo diff A B` names what changed between two. A replay suite runs the fixture games through the whole pipeline twice and compares the bytes with committed goldens, so a change that moves a fact cannot merge without a major version bump.
 
 #### Win chance
 

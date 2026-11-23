@@ -34,10 +34,7 @@ function manifest(version, patch = {}) {
 const entry = (m) => `# Changelog\n\n## ${m.id}\n\nText.\n`;
 
 test("canonical JSON sorts keys and drops whitespace, as the Rust side does", () => {
-  assert.equal(
-    canonical({ b: 1, a: { z: "x", y: [1, 2] } }),
-    '{"a":{"y":[1,2],"z":"x"},"b":1}',
-  );
+  assert.equal(canonical({ b: 1, a: { z: "x", y: [1, 2] } }), '{"a":{"y":[1,2],"z":"x"},"b":1}');
   // The pinned id of algo::tests (backend/crates/algo/src/lib.rs).
   assert.equal(
     idOf({ version: "1.0.0", components: { b: 1, a: { z: "x", y: [1, 2] } } }),
@@ -57,14 +54,30 @@ test("semver bumps", () => {
 test("the bump a change needs", () => {
   const base = manifest("1.0.0");
   assert.equal(requiredBump(base, manifest("1.0.0"), false), "none");
-  assert.equal(requiredBump(base, manifest("1.0.0", { "facts.source_digest": { a: "9" } }), false), "patch");
-  assert.equal(requiredBump(base, manifest("1.0.0", { "language.prompt_sets": { report: "r2" } }), false), "minor");
-  assert.equal(requiredBump(base, manifest("1.0.0", { "facts.engine_nodes": 500000 }), false), "major");
   assert.equal(
-    requiredBump(base, manifest("1.0.0", { "recommendation.rank_min_excess_per_game": 0.03 }), false),
+    requiredBump(base, manifest("1.0.0", { "facts.source_digest": { a: "9" } }), false),
+    "patch",
+  );
+  assert.equal(
+    requiredBump(base, manifest("1.0.0", { "language.prompt_sets": { report: "r2" } }), false),
+    "minor",
+  );
+  assert.equal(
+    requiredBump(base, manifest("1.0.0", { "facts.engine_nodes": 500000 }), false),
     "major",
   );
-  assert.equal(requiredBump(base, manifest("1.0.0", { "facts.source_digest": { a: "9" } }), true), "major");
+  assert.equal(
+    requiredBump(
+      base,
+      manifest("1.0.0", { "recommendation.rank_min_excess_per_game": 0.03 }),
+      false,
+    ),
+    "major",
+  );
+  assert.equal(
+    requiredBump(base, manifest("1.0.0", { "facts.source_digest": { a: "9" } }), true),
+    "major",
+  );
 });
 
 test("an unchanged manifest with its changelog entry passes", () => {
@@ -84,17 +97,29 @@ test("a changed threshold without a version bump fails", () => {
 test("a minor bump is too small for a facts change, a major one is enough", () => {
   const base = manifest("1.0.0");
   const minor = manifest("1.1.0", { "facts.engine_nodes": 500000 });
-  assert.equal(check({ base, head: minor, changelog: entry(minor), goldensChanged: false }).length, 1);
+  assert.equal(
+    check({ base, head: minor, changelog: entry(minor), goldensChanged: false }).length,
+    1,
+  );
   const major = manifest("2.0.0", { "facts.engine_nodes": 500000 });
-  assert.deepEqual(check({ base, head: major, changelog: entry(major), goldensChanged: false }), []);
+  assert.deepEqual(
+    check({ base, head: major, changelog: entry(major), goldensChanged: false }),
+    [],
+  );
 });
 
 test("a prompt change takes a minor bump; a digest-only change a patch, unless goldens moved", () => {
   const base = manifest("1.0.0");
   const prompt = manifest("1.1.0", { "language.prompt_sets": { report: "r2" } });
-  assert.deepEqual(check({ base, head: prompt, changelog: entry(prompt), goldensChanged: false }), []);
+  assert.deepEqual(
+    check({ base, head: prompt, changelog: entry(prompt), goldensChanged: false }),
+    [],
+  );
   const refactor = manifest("1.0.1", { "profile.source_digest": { b: "3" } });
-  assert.deepEqual(check({ base, head: refactor, changelog: entry(refactor), goldensChanged: false }), []);
+  assert.deepEqual(
+    check({ base, head: refactor, changelog: entry(refactor), goldensChanged: false }),
+    [],
+  );
   assert.match(
     check({ base, head: refactor, changelog: entry(refactor), goldensChanged: true })[0],
     /replay goldens changed/,
@@ -103,15 +128,24 @@ test("a prompt change takes a minor bump; a digest-only change a patch, unless g
 
 test("a missing changelog entry and a hand-edited id fail", () => {
   const m = manifest("1.0.0");
-  assert.match(check({ base: null, head: m, changelog: "# Changelog\n", goldensChanged: false })[0], /no `## algo-1\.0\.0\+/);
+  assert.match(
+    check({ base: null, head: m, changelog: "# Changelog\n", goldensChanged: false })[0],
+    /no `## algo-1\.0\.0\+/,
+  );
   const edited = { ...m, components: { ...m.components, profile: { detector_version: "tl-v2" } } };
-  assert.match(check({ base: null, head: edited, changelog: entry(m), goldensChanged: false })[0], /does not match its content/);
+  assert.match(
+    check({ base: null, head: edited, changelog: entry(m), goldensChanged: false })[0],
+    /does not match its content/,
+  );
 });
 
 test("a step back is refused", () => {
   const base = manifest("2.0.0");
   const head = manifest("1.0.0");
-  assert.match(check({ base, head, changelog: entry(head), goldensChanged: false })[0], /not a forward/);
+  assert.match(
+    check({ base, head, changelog: entry(head), goldensChanged: false })[0],
+    /not a forward/,
+  );
 });
 
 test("the committed manifest and changelog pass on their own", () => {

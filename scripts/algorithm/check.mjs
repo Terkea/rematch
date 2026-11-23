@@ -95,7 +95,10 @@ export function bumpOf(a, b) {
 export function check({ base, head, changelog, goldensChanged }) {
   const errors = [];
   const id = idOf(head);
-  if (head.id !== id) errors.push(`${MANIFEST}: its id ${head.id} does not match its content (${id}); regenerate it with \`cargo run -p cli -- algo manifest --write\``);
+  if (head.id !== id)
+    errors.push(
+      `${MANIFEST}: its id ${head.id} does not match its content (${id}); regenerate it with \`cargo run -p cli -- algo manifest --write\``,
+    );
   if (!changelog.split(/\r?\n/).includes(`## ${head.id}`)) {
     errors.push(`${CHANGELOG} has no \`## ${head.id}\` entry`);
   }
@@ -116,7 +119,11 @@ export function check({ base, head, changelog, goldensChanged }) {
 }
 
 function git(args, root) {
-  return execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  return execFileSync("git", args, {
+    cwd: root,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
 }
 
 function main() {
