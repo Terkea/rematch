@@ -4,6 +4,7 @@ import {
   compareMeans,
   compareRates,
   type Estimate,
+  estimateMean,
   KPI_MIN_GAMES,
   type MeanComparison,
   type Pair,
@@ -104,9 +105,12 @@ export type Trajectory =
       now: TrajectoryWindow;
       /** The windows' pre-game ratings compared: the trajectory's kind. */
       rating: MeanComparison;
+      /** Each window's mean pre-game rating with its 80% interval. */
+      ratingSides: Pair<Estimate>;
       rows: ThenNowRow[];
     };
 
+const RATING_DOMAIN = { min: 0, max: 4000 };
 const LABEL = { accuracy: "Accuracy", blunders: "Blunders per game", score: "Score" } as const;
 const UNIT = { accuracy: "accuracy", blunders: "perGame", score: "score" } as const;
 
@@ -220,11 +224,16 @@ export function computeTrajectory(input: TrajectoryInput): Trajectory {
     a: series.slice(thenStart, thenStart + size).map((p) => p.id),
     b: series.slice(nowStart).map((p) => p.id),
   };
-  const rating = compareMeans(
-    series.slice(thenStart, thenStart + size).map((p) => p.rating),
-    series.slice(nowStart).map((p) => p.rating),
-    { higherIsBetter: true, seed: `${input.seed}:rating` },
-  );
+  const thenRatings = series.slice(thenStart, thenStart + size).map((p) => p.rating);
+  const nowRatings = series.slice(nowStart).map((p) => p.rating);
+  const rating = compareMeans(thenRatings, nowRatings, {
+    higherIsBetter: true,
+    seed: `${input.seed}:rating`,
+  });
+  const ratingSides = {
+    a: estimateMean(thenRatings, `${input.seed}:rating:a`, RATING_DOMAIN),
+    b: estimateMean(nowRatings, `${input.seed}:rating:b`, RATING_DOMAIN),
+  };
   const kind: TrajectoryKind =
     rating.verdict === "worse" ? "falling" : rating.verdict === "better" ? "rising" : "flat";
 
@@ -254,6 +263,7 @@ export function computeTrajectory(input: TrajectoryInput): Trajectory {
     then,
     now,
     rating,
+    ratingSides,
     rows,
   };
 }
