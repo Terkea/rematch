@@ -72,7 +72,7 @@ Your rating line with the peak marked, then the games around the peak against yo
 
 <!-- how-it-works:start -->
 
-A game becomes advice in five steps: Rematch imports it from chess.com, Stockfish 19 checks every move, the critical moves get a closer look, the profile counts what you keep getting wrong per chance, and the trainer brings your own missed moments back as drills. The coach is optional and words only what was computed.
+A game becomes advice like this: Rematch imports it from chess.com, Stockfish 19 checks every move, the critical moves get a closer look, the profile counts what you keep getting wrong per chance, and the trainer brings your own missed moments back as drills. The coach is optional, and it only puts computed facts into words.
 
 ```mermaid
 flowchart LR

@@ -56,10 +56,19 @@
 
 /* The worked example from the README: the pen marks the player's mistake, as on the board. */
 .hiw-pen {
-  fill: var(--color-pen-text);
-  font-size: var(--text-sm);
+  font-family: var(--font-serif);
+  font-size: var(--text-base);
   font-weight: 600;
+  font-variant-numeric: lining-nums;
   text-anchor: middle;
+}
+
+.hiw-move {
+  fill: var(--color-ink);
+}
+
+.hiw-glyph {
+  fill: var(--color-pen-text);
 }
 
 .hiw-head {

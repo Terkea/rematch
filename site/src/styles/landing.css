@@ -523,6 +523,11 @@ main > section:not(.band) {
   align-items: start;
 }
 
+#how-it-works .section-intro,
+.stages {
+  text-wrap: pretty;
+}
+
 .stages {
   margin: 0;
   padding-inline-start: calc(var(--spacing) * 6);

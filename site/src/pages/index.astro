@@ -75,11 +75,11 @@ const stages = [
   },
   {
     name: "Your profile",
-    what: "Each weakness counted per chance, over the last six months, with an 80% range, against the players you've faced on chess.com. Below the minimum evidence it says how many more games it needs.",
+    what: "Each of 12 weaknesses counted per chance, over the last six months, with an 80% range, against the players you've faced on chess.com. Below the minimum evidence it says how many more games it needs.",
   },
   {
     name: "The coach, optional",
-    what: "Claude writes with reference tokens that the server fills in, and a validator drops any paragraph it cannot trace back to your data.",
+    what: "Claude writes the coaching around numbers the server inserts, and a validator drops any paragraph it cannot trace back to your data.",
   },
   {
     name: "Practice",
@@ -267,7 +267,7 @@ const faq = [
     <p class="section-intro">
       Your games go in, Stockfish marks every move, and the mistakes you repeat come back as
       drills. Underneath, a Rust worker does the chess, Postgres keeps every fact and a Next.js app
-      shows them. Claude is optional and words only what was computed first.
+      shows them. Claude is optional, and only puts computed facts into words.
     </p>
     <div class="split how">
       <div>
