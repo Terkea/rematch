@@ -182,7 +182,7 @@ describe("weakness detail filters (A4)", () => {
       estimates: [{ seriesKey: "W1", state: "active", priority: 3, mean: 0.05 }],
     });
     await list({ from: "2026-09-01" });
-    const row = screen.getAllByRole("link", { name: /Hung material/ })[0];
+    const row = screen.getAllByRole("link", { name: /Leaving pieces hanging/ })[0];
     expect(row?.getAttribute("href")).toMatch(/from=2026-09-01/);
   });
 });
