@@ -96,6 +96,99 @@ pub async fn request_first_report(
     Ok(Some(run_id))
 }
 
+/// Why [`request_report_rebuild`] queued nothing.
+#[derive(Debug)]
+pub enum RebuildError {
+    /// No linked account has that id.
+    UnknownAccount,
+    /// A run of the account × time class is still unfinished (its id).
+    InProgress(Uuid),
+    Db(anyhow::Error),
+}
+
+impl std::fmt::Display for RebuildError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RebuildError::UnknownAccount => write!(f, "no linked account has that id"),
+            RebuildError::InProgress(id) => write!(f, "report run {id} is still unfinished"),
+            RebuildError::Db(e) => write!(f, "{e:#}"),
+        }
+    }
+}
+
+impl std::error::Error for RebuildError {}
+
+impl From<sqlx::Error> for RebuildError {
+    fn from(e: sqlx::Error) -> Self {
+        RebuildError::Db(e.into())
+    }
+}
+
+/// The operator's report rebuild (`cli report-rebuild`, ADR 0086): a new sync run of (account,
+/// time class) with `trigger = scheduled`, enqueued with T18's payload. The player's manual
+/// quota does not apply (it gates `manual` runs only), and the paid and beta plans never gate a
+/// scheduled run; the free plan's interval still does. Refused while a run is unfinished. The
+/// run's job builds a fresh input from the current profile, as every report does.
+pub async fn request_report_rebuild(
+    pool: &PgPool,
+    queue: &Queue,
+    account_id: Uuid,
+    tc: TimeClass,
+    plan: Plan,
+) -> Result<Uuid, RebuildError> {
+    let mut tx = pool.begin().await?;
+    // The first-report lock: the two never create runs of one account x time class at once.
+    sqlx::query("SELECT pg_advisory_xact_lock($1, hashtext($2))")
+        .bind(FIRST_REPORT_LOCK_CLASS)
+        .bind(format!("first-report:{account_id}:{}", tc.as_str()))
+        .execute(&mut *tx)
+        .await?;
+    let exists: bool =
+        sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM linked_accounts WHERE id = $1)")
+            .bind(account_id)
+            .fetch_one(&mut *tx)
+            .await?;
+    if !exists {
+        return Err(RebuildError::UnknownAccount);
+    }
+    let live: Option<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM report_runs WHERE account_id = $1 AND time_class = $2::time_class          AND status IN ('queued', 'running', 'awaiting_retry', 'awaiting_batch')          ORDER BY created_at DESC LIMIT 1",
+    )
+    .bind(account_id)
+    .bind(tc.as_str())
+    .fetch_optional(&mut *tx)
+    .await?;
+    if let Some(id) = live {
+        return Err(RebuildError::InProgress(id));
+    }
+    let first: bool = sqlx::query_scalar(
+        "SELECT NOT EXISTS (SELECT 1 FROM reports WHERE account_id = $1          AND time_class = $2::time_class)",
+    )
+    .bind(account_id)
+    .bind(tc.as_str())
+    .fetch_one(&mut *tx)
+    .await?;
+    let run_id = runs::insert_run(
+        &mut tx,
+        &NewRun {
+            account_id,
+            time_class: tc.as_str().to_owned(),
+            trigger: ReportTrigger::Scheduled,
+            plan,
+            mode: ReportMode::Sync,
+            prompt_version: REPORT_PROMPT_VERSION.to_owned(),
+            is_first_report: first,
+            ai_disabled_reason: None,
+        },
+    )
+    .await?;
+    tx.commit().await?;
+    enqueue_report(queue, run_id, account_id)
+        .await
+        .map_err(|e| RebuildError::Db(anyhow::anyhow!("enqueue generate-report: {e}")))?;
+    Ok(run_id)
+}
+
 /// The `build-profile` handler, followed on success by [`request_first_report`]. A failure of
 /// that request is logged and never fails the build.
 pub struct FirstReportOnBuild {

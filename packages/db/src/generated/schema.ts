@@ -587,8 +587,13 @@ export const coachMessages = pgTable(
     streamingAt: timestamp("streaming_at", { withTimezone: true, mode: "date" }),
     sessionInSync: boolean("session_in_sync"),
     turnAttempts: smallint("turn_attempts").default(0).notNull(),
+    coachingInputId: uuid("coaching_input_id"),
+    inputHash: text("input_hash"),
   },
   (table) => [
+    index("coach_messages_coaching_input_idx")
+      .using("btree", table.coachingInputId.asc().nullsLast())
+      .where(sql`(coaching_input_id IS NOT NULL)`),
     index("coach_messages_pending_idx")
       .using("btree", table.createdAt.asc().nullsLast())
       .where(sql`(status = 'pending'::chat_status)`),
@@ -600,12 +605,43 @@ export const coachMessages = pgTable(
       foreignColumns: [coachConversations.id],
       name: "coach_messages_conversation_id_fkey",
     }).onDelete("cascade"),
+    foreignKey({
+      columns: [table.coachingInputId],
+      foreignColumns: [coachingInputs.id],
+      name: "coach_messages_coaching_input_id_fkey",
+    }).onDelete("set null"),
     unique("coach_messages_conversation_id_seq_key").on(table.conversationId, table.seq),
     check(
       "coach_messages_session_check",
       sql`session = ANY (ARRAY['new'::text, 'resumed'::text, 'rebuilt'::text])`,
     ),
     check("coach_messages_turn_attempts_check", sql`turn_attempts >= 0`),
+  ],
+);
+
+export const coachingInputs = pgTable(
+  "coaching_inputs",
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    accountId: uuid("account_id").notNull(),
+    timeClass: timeClass("time_class").notNull(),
+    inputVersion: text("input_version").notNull(),
+    generatedAt: timestamp("generated_at", { withTimezone: true, mode: "date" }).notNull(),
+    input: jsonb().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("coaching_inputs_latest_idx").using(
+      "btree",
+      table.accountId.asc().nullsLast(),
+      table.timeClass.asc().nullsLast(),
+      table.createdAt.desc().nullsFirst(),
+    ),
+    foreignKey({
+      columns: [table.accountId],
+      foreignColumns: [linkedAccounts.id],
+      name: "coaching_inputs_account_id_fkey",
+    }).onDelete("cascade"),
   ],
 );
 

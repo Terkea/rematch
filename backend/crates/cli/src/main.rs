@@ -1,11 +1,13 @@
 //! The `cli` entry point: `cli analyse ...` starts the workers in-process (no reconciler);
 //! `cli db migrate` only migrates; `cli profile`, `cli eta` and `cli queue-lag` only read;
-//! `cli recompute-metrics` rewrites stale metrics from the stored evals (no engine, no worker).
+//! `cli recompute-metrics` rewrites stale metrics from the stored evals (no engine, no worker);
+//! `cli report-rebuild` queues a report run for a running worker (ADR 0086).
 
 use std::time::Duration;
 
 use cli::{
-    AnalyseDeps, CliDeps, Signal, Started, db_cmd, profile_cmd, queue_cmd, recompute_cmd, run_cli,
+    AnalyseDeps, CliDeps, Signal, Started, db_cmd, profile_cmd, queue_cmd, recompute_cmd,
+    report_cmd, run_cli,
 };
 use futures::FutureExt;
 use tokio::sync::mpsc;
@@ -22,7 +24,7 @@ async fn main() {
         std::process::exit(code);
     }
     // Read-only views (R2 Task 35) and the metrics recompute: the database only, no workers.
-    if let Some(cmd @ ("profile" | "eta" | "queue-lag" | "recompute-metrics")) =
+    if let Some(cmd @ ("profile" | "eta" | "queue-lag" | "recompute-metrics" | "report-rebuild")) =
         argv.first().map(String::as_str)
     {
         let code = read_only(cmd, &argv).await;
@@ -129,6 +131,16 @@ async fn read_only(cmd: &str, argv: &[String]) -> i32 {
         "recompute-metrics" => {
             recompute_cmd::run_recompute_metrics(argv, &pool, &print, &print_error).await
         }
+        // The deployment's AI plan (AI_DEFAULT_PLAN) decides which report gate applies.
+        "report-rebuild" => match WorkerEnv::from_env() {
+            Ok(env) => {
+                report_cmd::run_report_rebuild(argv, &pool, env.ai_plan, &print, &print_error).await
+            }
+            Err(e) => {
+                eprintln!("{e:#}");
+                1
+            }
+        },
         _ => queue_cmd::run_queue_lag(argv, &pool, &print, &print_error).await,
     };
     pool.close().await;

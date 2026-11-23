@@ -19,7 +19,8 @@ use time::macros::date;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 use worker::coach_triggers::{
-    FIRST_REPORT_RETRY_AFTER, FirstReportOnBuild, ProfileWeeklyProvider, request_first_report,
+    FIRST_REPORT_RETRY_AFTER, FirstReportOnBuild, ProfileWeeklyProvider, RebuildError,
+    request_first_report, request_report_rebuild,
 };
 
 /// Stands in for the build-profile handler: succeeds or fails, and counts its calls.
@@ -262,4 +263,67 @@ async fn the_weekly_provider_has_nothing_due_without_analysed_games(pool: PgPool
     assert!(due.is_empty(), "{due:?}");
     let due: Vec<_> = p.due(date!(2026 - 11 - 16)).try_collect().await.unwrap();
     assert!(due.is_empty());
+}
+
+// ------------------------------------------------------------- the operator's report rebuild
+
+/// ADR 0086: `cli report-rebuild` queues a sync run outside the player's manual-report quota
+/// (`trigger = scheduled`, which the paid and beta plans never gate), with T18's payload.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_report_rebuild_queues_a_scheduled_sync_run(pool: PgPool) {
+    let a = linked_account(&pool, "rebuild").await;
+    let queue = Queue::new(pool.clone());
+    let run = request_report_rebuild(&pool, &queue, a, TimeClass::Rapid, Plan::Beta)
+        .await
+        .unwrap();
+    let r = runs(&pool).await;
+    assert_eq!(r.len(), 1);
+    assert_eq!(
+        r[0].clone(),
+        (
+            run,
+            "scheduled".into(),
+            "beta".into(),
+            "queued".into(),
+            true
+        )
+    );
+    let mode: (String, String, Uuid) = sqlx::query_as(
+        "SELECT mode::text, time_class::text, account_id FROM report_runs WHERE id = $1",
+    )
+    .bind(run)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(mode, ("sync".into(), "rapid".into(), a));
+    assert_eq!(
+        report_jobs(&pool).await,
+        vec![(json!({ "reportRunId": run }), Some(report_key(run)))]
+    );
+
+    // While that run is unfinished a second rebuild is refused, naming it.
+    let again = request_report_rebuild(&pool, &queue, a, TimeClass::Rapid, Plan::Beta).await;
+    assert!(
+        matches!(again, Err(RebuildError::InProgress(id)) if id == run),
+        "{again:?}"
+    );
+    // Once it is done, the next rebuild is queued.
+    sqlx::query("UPDATE report_runs SET status = 'done'")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let next = request_report_rebuild(&pool, &queue, a, TimeClass::Rapid, Plan::Beta)
+        .await
+        .unwrap();
+    assert_ne!(next, run);
+    assert_eq!(report_jobs(&pool).await.len(), 2);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_report_rebuild_of_an_unknown_account_is_refused(pool: PgPool) {
+    let queue = Queue::new(pool.clone());
+    let r =
+        request_report_rebuild(&pool, &queue, Uuid::new_v4(), TimeClass::Rapid, Plan::Beta).await;
+    assert!(matches!(r, Err(RebuildError::UnknownAccount)), "{r:?}");
+    assert!(runs(&pool).await.is_empty());
 }

@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use ai::client::batches::ApiKey;
 use ai::client::sidecar::SidecarToken;
 use ai::client::tool_server::DEFAULT_TOOL_BIND;
-use ai::entitlements::{BetaLimits, Plan as AiPlan};
+pub use ai::entitlements::{BetaLimits, Plan as AiPlan};
 use ai::jobs::budget::BudgetConfig;
 use analysis::jobs::sync::SyncOptions;
 use anyhow::{Context, bail};

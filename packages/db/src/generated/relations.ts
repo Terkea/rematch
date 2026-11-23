@@ -10,6 +10,7 @@ import {
   chesscomRequestBudgets,
   chesscomVerifications,
   coachConversations,
+  coachingInputs,
   coachMessages,
   gameMetrics,
   gameOpenings,
@@ -131,7 +132,19 @@ export const coachMessagesRelations = relations(coachMessages, ({ one, many }) =
     fields: [coachMessages.conversationId],
     references: [coachConversations.id],
   }),
+  coachingInput: one(coachingInputs, {
+    fields: [coachMessages.coachingInputId],
+    references: [coachingInputs.id],
+  }),
   interactiveEvals: many(interactiveEvals),
+}));
+
+export const coachingInputsRelations = relations(coachingInputs, ({ one, many }) => ({
+  coachMessages: many(coachMessages),
+  linkedAccount: one(linkedAccounts, {
+    fields: [coachingInputs.accountId],
+    references: [linkedAccounts.id],
+  }),
 }));
 
 export const gameMetricsRelations = relations(gameMetrics, ({ one }) => ({
@@ -206,6 +219,7 @@ export const linkedAccountsRelations = relations(linkedAccounts, ({ many }) => (
   accountBenchmarks: many(accountBenchmark),
   accountLinks: many(accountLinks),
   coachConversations: many(coachConversations),
+  coachingInputs: many(coachingInputs),
   gameMetrics: many(gameMetrics),
   gameOpenings: many(gameOpenings),
   games: many(games),

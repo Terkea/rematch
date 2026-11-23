@@ -88,6 +88,7 @@ One file per decision: context, decision, alternatives, consequences. New decisi
 - [0084. A costing state and its peer comparison never contradict each other](0084-costing-state-and-peer-comparison-agree.md)
 - [0081. The peer benchmark compares with the pooled rate, in the player's window, without mirrors](0081-peer-benchmark-pooled-rate.md)
 - [0085. The coach reads the colour split, names the peer benchmark and uses the glossary](0085-coach-colour-split-benchmark-glossary.md)
+- [0086. The coach reads a coaching-input snapshot written at every profile build](0086-coaching-input-snapshot-per-profile-build.md)
 
 ## Records with placeholder numbers
 

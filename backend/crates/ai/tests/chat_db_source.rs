@@ -12,12 +12,15 @@ use ai::chat::data_source::{
     CoachDataSource, ExampleSort, ExamplesQuery, GameResult, GamesQuery, Judgement, MoveFilter,
     Phase, Standing,
 };
-use ai::chat::db_source::{ChatScope, DbCoachDataSource, latest_coaching_input};
+use ai::chat::db_source::{ChatScope, DbCoachDataSource, InputSource, latest_coaching_input};
 use ai::input::types::{CoachingInput, PlayerColor, TimeClass};
 use ai::output::codes::SectionKey;
 use serde_json::json;
 use sqlx::PgPool;
-use support::{account, seed_exemplar_positions, seed_game, seed_move, store_input};
+use support::{
+    account, seed_exemplar_positions, seed_game, seed_move, store_input, store_report_input,
+    store_snapshot, v2_raw,
+};
 use uuid::Uuid;
 
 const START: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
@@ -395,7 +398,80 @@ async fn latest_coaching_input_reads_the_newest_snapshot_of_the_account(pool: Pg
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(got, stored);
+    assert_eq!(got.input, stored);
+    assert!(matches!(got.source, InputSource::ReportRun(_)), "{got:?}");
+    assert_eq!(
+        latest_coaching_input(&pool, a, TimeClass::Blitz)
+            .await
+            .unwrap(),
+        None
+    );
+}
+
+/// Finding Q5 (ADR 0086): a build-profile snapshot newer than the report's input is what the
+/// coach reads, so a profile rebuild after the report reaches the chat at once.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_newer_profile_snapshot_supersedes_the_report_input(pool: PgPool) {
+    let a = account(&pool, "alice").await;
+    store_report_input(&pool, a, &v2_raw(a, "2026-11-20T09:00:00.000Z", 159)).await;
+    let snap = store_snapshot(&pool, a, &v2_raw(a, "2026-11-22T23:00:00.000Z", 162)).await;
+    let got = latest_coaching_input(&pool, a, TimeClass::Rapid)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(got.source, InputSource::Snapshot(snap));
+    assert_eq!(got.input.basis.analysed_games, 162);
+}
+
+/// A report built after the newest snapshot is at least as current: the coach reads it.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_report_newer_than_the_snapshot_is_read(pool: PgPool) {
+    let a = account(&pool, "alice").await;
+    store_snapshot(&pool, a, &v2_raw(a, "2026-11-20T09:00:00.000Z", 159)).await;
+    let run = store_report_input(&pool, a, &v2_raw(a, "2026-11-21T09:00:00.000Z", 162)).await;
+    let got = latest_coaching_input(&pool, a, TimeClass::Rapid)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(got.source, InputSource::ReportRun(run));
+}
+
+/// An input of an older contract (v1, before the colour split) never wins over a v2 one, even
+/// when it was generated later: the coach would say it has no White and Black results.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_v1_report_input_is_superseded_by_a_v2_snapshot(pool: PgPool) {
+    let a = account(&pool, "alice").await;
+    let snap = store_snapshot(&pool, a, &v2_raw(a, "2026-11-19T09:00:00.000Z", 159)).await;
+    // The b2-rapid fixture is v1, generated 2026-11-20.
+    store_input(&pool, a).await;
+    let got = latest_coaching_input(&pool, a, TimeClass::Rapid)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(got.source, InputSource::Snapshot(snap));
+    assert!(got.input.by_color.is_some());
+}
+
+/// Another account's snapshot, or one of another time class, is never read.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn snapshots_are_scoped_to_the_account_and_time_class(pool: PgPool) {
+    let a = account(&pool, "alice").await;
+    let b = account(&pool, "bob").await;
+    store_snapshot(&pool, b, &v2_raw(b, "2026-11-22T09:00:00.000Z", 10)).await;
+    // A snapshot stored under bob's row but carrying alice's id is still bob's row.
+    store_snapshot(&pool, b, &v2_raw(a, "2026-11-22T09:00:00.000Z", 10)).await;
+    assert_eq!(
+        latest_coaching_input(&pool, a, TimeClass::Rapid)
+            .await
+            .unwrap(),
+        None
+    );
+    let snap = store_snapshot(&pool, a, &v2_raw(a, "2026-11-22T09:00:00.000Z", 12)).await;
+    let got = latest_coaching_input(&pool, a, TimeClass::Rapid)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(got.source, InputSource::Snapshot(snap));
     assert_eq!(
         latest_coaching_input(&pool, a, TimeClass::Blitz)
             .await
