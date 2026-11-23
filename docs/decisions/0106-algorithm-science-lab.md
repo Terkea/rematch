@@ -29,7 +29,7 @@ The owner asked for a lab in Python, "but not offline: just use our algorithm as
 
 - The next behaviour change waits for its experiment. The first four are on the v0.3 roadmap: EXP-0001 sizes the benchmark, EXP-0002 measures the calibration of the 80% ranges (#13), EXP-0003 compares partial pooling with the current priors (#11), and EXP-0004 pre-registers the Tier 2 design.
 - An experiment ages: once a version ships, the older experiments are historical, checked for their registration, freeze and inputs but not rerun.
-- `algorithm_id` reads `unversioned` until the manifest (ADR 0105) merges; then `cli::lab_cmd::algorithm_id` returns `common::algorithm::id()`, and the golden files, which store a placeholder, do not move.
+- `algorithm_id` is the build's manifest id (`common::algorithm::id()`, ADR 0105), and `rematch_lab.algorithm()` returns the whole manifest (`cli algo show --json`). The golden files store a placeholder for the id, so a manifest bump alone does not move them. Exposing `select_focuses_of` changed a file under `ai/src/validator`, which moves `language.validator_digest`, so this lane bumps the algorithm to 1.1.0 with no output change (`algorithm/CHANGELOG.md`).
 - `analyse` covers chess.com rapid games, as the harness does. Tier 2's Lichess games need the platform and time class as inputs, a schema `lab-v2`.
 - The bench crate exposes its steps (`Throwaway`, `memo_engines`, `insert_game_with_clock`, the harness's `analyse` and `build`), and `ai` exposes `select_focuses_of` and `allowed_drills_of`; no behaviour changes.
 - Python stays out of every product image. The lab image is built only by the lab workflow and the opt-in `lab` compose profile.

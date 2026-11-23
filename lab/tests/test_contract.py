@@ -84,6 +84,13 @@ def test_the_typed_wrappers_give_the_golden_values() -> None:
     assert clean.ranked == [] and clean.focuses == ["general"]
 
 
+def test_responses_carry_the_build_manifest_id() -> None:
+    manifest = rematch_lab.algorithm()
+    assert manifest["id"].startswith("algo-")
+    facts = models.ProfileRequest.model_validate_json(FIXTURE.read_text(encoding="utf-8"))
+    assert rematch_lab.profile(facts).algorithm_id == manifest["id"]
+
+
 def test_the_same_request_gives_the_same_ranking() -> None:
     facts = models.ProfileRequest.model_validate_json(FIXTURE.read_text(encoding="utf-8"))
     a = rematch_lab.rank(rematch_lab.profile(facts)).model_dump_json(by_alias=True)

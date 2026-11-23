@@ -55,7 +55,7 @@
         "report": "36ab4116c87719baa41fa31fb4e0de9a08a14c84a03f9e779c003c46f720ff24",
         "weekly": "82758a37e89b26b90f52f2eb7f3f33b3e05ab389bdf149a5a2be1a14e03c9236"
       },
-      "validator_digest": "781b4772df6453c7c043b5d9e07cf42f09c5994a9a7b42ecf0a2795e907df06d"
+      "validator_digest": "de9be7308916979e494f224ba1c67d715514d0356511b4853680568be3b9e727"
     },
     "profile": {
       "decisive_dw": 15,
@@ -84,6 +84,6 @@
       "weekly_input_version": "weekly-input-v1"
     }
   },
-  "id": "algo-1.0.0+fd96e117c013",
-  "version": "1.0.0"
+  "id": "algo-1.1.0+fa5e2186e1dd",
+  "version": "1.1.0"
 }

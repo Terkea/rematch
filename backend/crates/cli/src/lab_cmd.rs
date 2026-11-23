@@ -11,11 +11,10 @@ use bench::lab::{AnalyseOptions, AnalyseRequest, ProfileRequest, RankRequest};
 
 pub const LAB_USAGE: &str = "usage: cli lab analyse|profile|rank < request.json > response.json";
 
-/// The id of the algorithm that answers. Until the manifest lands (ADR 0104, lane
-/// `feat/algorithm-manifest`), the bridge reports `unversioned`; after it, this returns
-/// `common::algorithm::id()`.
+/// The id of the algorithm that answers: this build's manifest id (ADR 0105), the same one every
+/// writer stamps on its rows. `cli algo show --json` prints the whole manifest.
 pub fn algorithm_id() -> &'static str {
-    "unversioned"
+    common::algorithm::id()
 }
 
 /// Pretty JSON with a final newline: the same response is the same bytes.

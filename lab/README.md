@@ -17,7 +17,7 @@ In a nutshell -
 | `rematch_lab.rank(profiles)` | `cli lab rank` | estimates | the ranked weaknesses, the coach's focuses and their drills |
 | `rematch_lab.bench("smoke", out_dir=…)` | `cli bench run --json` | a suite | the Tier 1 scorecard and every player's results (ADR 0100) |
 
-Every response carries `schema_version` and the `algorithm_id` that produced it. Until the algorithm manifest is merged the id is `unversioned`. The schema is `schemas/lab-v1.schema.json`. The envelope and the lab's own objects are snake_case, and the algorithm's own types (`WeaknessEstimate`, `BandReferenceStat`, `RankedWeakness`) keep the camelCase the product stores.
+Every response carries `schema_version` and the `algorithm_id` that produced it. It is the build's manifest id (ADR 0105), and `rematch_lab.algorithm()` returns the whole manifest (`cli algo show --json`). The schema is `schemas/lab-v1.schema.json`. The envelope and the lab's own objects are snake_case, and the algorithm's own types (`WeaknessEstimate`, `BandReferenceStat`, `RankedWeakness`) keep the camelCase the product stores.
 
 `analyse` runs the production `analyse-game` handler with the profile hook and the production `build-profile`, in a throwaway database next to `DATABASE_URL`'s, and checks itself: the profile of the facts it returns must equal the `weakness_estimates` rows the build stored (`checks[].profile_matches_build`). `profile` and `rank` are pure. `rank` keeps a weakness that has no stored exemplar position, where the CoachingInput builder drops it; that is the one known difference.
 

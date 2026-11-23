@@ -137,7 +137,7 @@ fn the_schema_is_not_vacuous() {
     assert!(!v.is_valid(&json!({})));
     assert!(!v.is_valid(&json!({"schema_version": "lab-v1", "algorithm_id": "v1", "players": []})));
     assert!(v.is_valid(
-        &json!({"schema_version": "lab-v1", "algorithm_id": "unversioned", "players": []})
+        &json!({"schema_version": "lab-v1", "algorithm_id": "algo-1.1.0+0123456789ab", "players": []})
     ));
 }
 

@@ -6,9 +6,9 @@
   "$defs": {
     "SchemaVersion": { "const": "lab-v1" },
     "AlgorithmId": {
-      "description": "algo-<major>.<minor>.<patch>+<12 hex> (ADR 0104), or `unversioned` before the manifest.",
+      "description": "algo-<major>.<minor>.<patch>+<12 hex>, the manifest id (ADRs 0104 and 0105).",
       "type": "string",
-      "pattern": "^(unversioned|algo-[0-9]+\\.[0-9]+\\.[0-9]+\\+[0-9a-f]{12})$"
+      "pattern": "^algo-[0-9]+\\.[0-9]+\\.[0-9]+\\+[0-9a-f]{12}$"
     },
     "Time": { "type": "string", "format": "date-time" },
     "Band": { "enum": ["B0", "B1", "B2", "B3", "B4", "B5"] },

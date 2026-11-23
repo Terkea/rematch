@@ -138,6 +138,20 @@ def rank(
     return RankResponse.model_validate(lab_call("rank", req, "RankRequest", "RankResponse"))
 
 
+def algorithm(which: str | None = None) -> dict[str, Any]:
+    """`cli algo show --json` (ADR 0105): this build's manifest, or the one `which` names (an
+    id stored in `algorithm_versions`, which needs DATABASE_URL, or a manifest file)."""
+    out = json.loads(call_raw(["algo", "show", *([which] if which else []), "--json"], ""))
+    if not str(out.get("id", "")).startswith("algo-"):
+        raise LabError("cli algo show --json gave no algorithm id")
+    return out
+
+
+def algorithm_diff(a: str, b: str) -> dict[str, Any]:
+    """`cli algo diff A B --json`: both ids and every changed leaf of the manifest."""
+    return json.loads(call_raw(["algo", "diff", a, b, "--json"], ""))
+
+
 def bench(
     suite: str = "smoke",
     *,
@@ -170,6 +184,8 @@ def bench(
 __all__ = [
     "SCHEMA_VERSION",
     "LabError",
+    "algorithm",
+    "algorithm_diff",
     "analyse",
     "bench",
     "call_raw",

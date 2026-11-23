@@ -23,7 +23,7 @@ use sha2::{Digest, Sha256};
 /// The algorithm's version, for people (the hash is the proof). Bump it by the policy in
 /// `algorithm/CHANGELOG.md`: major when layer 1 to 3 output can change, minor when only the
 /// language layer changes, patch when nothing a replay can see changes.
-pub const VERSION: &str = "1.0.0";
+pub const VERSION: &str = "1.1.0";
 
 /// The manifest's path in the repository.
 pub const MANIFEST_PATH: &str = "algorithm/manifest.json";

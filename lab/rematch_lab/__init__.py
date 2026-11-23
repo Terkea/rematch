@@ -5,16 +5,30 @@
     profiles = lab.profile(facts)                # facts -> rates with 80% intervals
     ranking = lab.rank(profiles)                 # rates -> ranked weaknesses, focuses, drills
     run = lab.bench("smoke", out_dir="out")      # the Tier 1 benchmark (ADR 0100)
+    manifest = lab.algorithm()                   # this build's manifest (ADR 0105)
 
 Every response carries `schema_version` and the `algorithm_id` that produced it.
 """
 
 from . import models
-from .bridge import SCHEMA_VERSION, LabError, analyse, bench, call_raw, check, profile, rank
+from .bridge import (
+    SCHEMA_VERSION,
+    LabError,
+    algorithm,
+    algorithm_diff,
+    analyse,
+    bench,
+    call_raw,
+    check,
+    profile,
+    rank,
+)
 
 __all__ = [
     "SCHEMA_VERSION",
     "LabError",
+    "algorithm",
+    "algorithm_diff",
     "analyse",
     "bench",
     "call_raw",

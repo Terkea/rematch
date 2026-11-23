@@ -828,7 +828,7 @@
       "      (`scripts/check-pypi-age.mjs`).",
       "- [x] `rematch_lab.analyse`, `.profile`, `.rank` and `.bench`, with pydantic models checked against",
       "      the schema.",
-      "- [ ] `algorithm_id` from the manifest once ADR 0105 is merged (today `unversioned`).",
+      "- [x] `algorithm_id` from the manifest (ADR 0105), and `rematch_lab.algorithm()` for the whole manifest.",
       "- [ ] Merged to main.",
       "",
       "## Pointers",
