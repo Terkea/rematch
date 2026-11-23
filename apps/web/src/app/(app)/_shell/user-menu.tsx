@@ -5,8 +5,10 @@ import { toast } from "@ci/ui/overlays";
 import { Popover, PopoverContent, PopoverTrigger } from "@ci/ui/primitives";
 import Link from "next/link";
 import { useState } from "react";
+import { brand } from "../../../brand";
 import { signOut } from "../../../lib/auth-client";
 import { isPlaceholderEmail } from "../../../lib/placeholder-email";
+import { appVersion, versionLabel } from "../../../version";
 import { PendingButton } from "../../ui/pending-button";
 import { isCurrent } from "./nav";
 
@@ -109,6 +111,9 @@ export function UserMenu({
           <Icon icon={SignOutIcon} />
           Sign out
         </PendingButton>
+        <p className="border-t border-rule pt-3 text-xs text-ink-faint">
+          {versionLabel(brand.name, appVersion)}
+        </p>
       </PopoverContent>
     </Popover>
   );
