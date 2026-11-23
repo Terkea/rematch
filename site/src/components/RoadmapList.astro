@@ -1,0 +1,26 @@
+---
+// The roadmap as plain headings and lists, for the docs page (Starlight styles them).
+import type { RoadmapItem } from "../data/roadmap";
+import { href } from "../data/site";
+
+interface Props {
+  items: RoadmapItem[];
+}
+const { items } = Astro.props;
+---
+
+<ul>
+  {
+    items.map((item) => (
+      <li>
+        <strong>{item.title}.</strong> {item.detail}
+        {item.adr && (
+          <>
+            {" "}
+            <a href={href(`docs/decisions/${item.adr}/`)}>Decision {item.adr.slice(0, 4)}</a>.
+          </>
+        )}
+      </li>
+    ))
+  }
+</ul>

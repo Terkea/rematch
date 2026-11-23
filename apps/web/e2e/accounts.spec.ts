@@ -125,10 +125,10 @@ test("an under-13 is blocked and the sign-in page stays blocked", async ({ page,
   await expect(page).toHaveURL(/\/welcome\/age$/);
   await enterAge(page, 2015, 1);
   await expect(page).toHaveURL(/\/blocked$/);
-  await expect(page.getByText("You need to be 13 or older to use chess-improver.")).toBeVisible();
+  await expect(page.getByText("You need to be 13 or older to use Rematch.")).toBeVisible();
   await expect(page.getByText("We've deleted the details you gave us.")).toBeVisible();
 
   await gotoSettled(page, "/sign-in");
-  await expect(page.getByText("You need to be 13 or older to use chess-improver.")).toBeVisible();
+  await expect(page.getByText("You need to be 13 or older to use Rematch.")).toBeVisible();
   await expect(page.getByLabel("Email")).toHaveCount(0);
 });

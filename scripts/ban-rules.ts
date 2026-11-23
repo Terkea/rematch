@@ -163,9 +163,9 @@ export const banRules: BanRule[] = [
   },
   {
     id: "B5b",
-    description: "No arrow glyph (or &rarr;) in tsx text or strings",
+    description: "No arrow glyph (or &rarr;) in tsx or astro text or strings",
     test: ({ path, text }) =>
-      norm(path).endsWith(".tsx")
+      /\.(?:tsx|astro)$/.test(norm(path))
         ? perLine(maskBlockComments(text), (line) =>
             isCommentLine(line) ? [] : (line.match(/→|&rarr;|\\u2192/g) ?? []).map((m) => m),
           )

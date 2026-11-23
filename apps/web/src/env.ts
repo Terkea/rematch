@@ -39,7 +39,7 @@ const schema = z.object({
   BETTER_AUTH_URL: z.string().default("http://localhost:3100"),
   BETTER_AUTH_TRUSTED_ORIGINS: z.string().default(""),
   SMTP_URL: z.string().default("smtp://mailpit:1025"),
-  MAIL_FROM: z.string().default("chess-improver <no-reply@chess-improver.local>"),
+  MAIL_FROM: z.string().default("Rematch <no-reply@chess-improver.local>"),
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   // Lichess sign-in and linking (ADR-WEB-4); off by default: this deployment is chess.com only.

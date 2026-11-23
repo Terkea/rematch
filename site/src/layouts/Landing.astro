@@ -1,0 +1,110 @@
+---
+import "../styles/fonts.css";
+import "../styles/generated/tokens.css";
+import "../styles/landing.css";
+import { href, REPO_URL } from "../data/site";
+
+interface Props {
+  title: string;
+  description: string;
+}
+const { title, description } = Astro.props;
+const canonical = new URL(Astro.url.pathname, Astro.site);
+const poster = new URL(href("media/rematch-poster.jpg"), Astro.site);
+---
+
+<!doctype html>
+<html lang="en-GB" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    <link rel="icon" href={href("favicon.svg")} type="image/svg+xml" />
+    <link rel="preload" href={href("media/rematch-hook.jpg")} as="image" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={poster} />
+    <meta property="og:video" content={new URL(href("media/rematch.mp4"), Astro.site)} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content={poster} />
+    {/* The docs' theme choice (Starlight's key) applies here too, before first paint. */}
+    <script is:inline>
+      (() => {
+        let stored = null;
+        try {
+          stored = localStorage.getItem("starlight-theme");
+        } catch {}
+        const dark =
+          stored === "dark" ||
+          ((stored === null || stored === "auto" || stored === "") &&
+            window.matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.dataset.theme = dark ? "dark" : "light";
+      })();
+    </script>
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to the content</a>
+    <header class="site-header">
+      <div class="wrap header-row">
+        <a class="wordmark" href={href("")} aria-label="Rematch, chess improver, home">
+          <span class="wordmark-name">Rematch</span>
+          <span class="wordmark-sub">chess improver</span>
+        </a>
+        <nav aria-label="Main" class="header-nav">
+          <a class="nav-wide" href="#features">Features</a>
+          <a class="nav-wide" href="#how-it-works">How it works</a>
+          <a class="nav-wide" href="#roadmap">Roadmap</a>
+          <a class="nav-wide" href="#contribute">Contribute</a>
+          <a href={href("docs/getting-started/")}>Docs</a>
+          <a href={REPO_URL}>GitHub</a>
+          <button type="button" class="theme-toggle" data-theme-toggle>
+            <span data-theme-label>Night</span>
+          </button>
+        </nav>
+      </div>
+    </header>
+    <main id="main">
+      <slot />
+    </main>
+    <footer class="site-footer">
+      <div class="wrap footer-row">
+        <p class="footer-name">Rematch, chess improver</p>
+        <p class="footer-note">
+          Open source under the AGPL-3.0. Not affiliated with chess.com or Lichess. Analysis by
+          Stockfish (GPL-3.0).
+        </p>
+        <nav aria-label="Footer" class="footer-nav">
+          <a href={href("docs/getting-started/")}>Docs</a>
+          <a href={href("docs/decisions/")}>Decision log</a>
+          <a href={`${REPO_URL}/blob/main/LICENSE`}>Licence</a>
+          <a href={`${REPO_URL}/blob/main/CODE_OF_CONDUCT.md`}>Code of conduct</a>
+          <a href={`${REPO_URL}/blob/main/SECURITY.md`}>Security</a>
+        </nav>
+      </div>
+    </footer>
+    <script>
+      const button = document.querySelector<HTMLButtonElement>("[data-theme-toggle]");
+      const label = document.querySelector<HTMLElement>("[data-theme-label]");
+      const sync = () => {
+        const dark = document.documentElement.dataset.theme === "dark";
+        if (label) label.textContent = dark ? "Day" : "Night";
+        button?.setAttribute("aria-label", dark ? "Switch to day" : "Switch to night");
+      };
+      sync();
+      button?.addEventListener("click", () => {
+        const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+        document.documentElement.dataset.theme = next;
+        try {
+          localStorage.setItem("starlight-theme", next);
+        } catch {
+          // storage unavailable: the choice lasts for this page
+        }
+        sync();
+      });
+    </script>
+  </body>
+</html>

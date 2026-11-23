@@ -1,0 +1,75 @@
+---
+// Live good first issues from GitHub's public API, fetched in the browser (no token, no build-time
+// call). While loading it shows ruled placeholder lines (no spinner, B18); if the repository is
+// private, rate-limited or unreachable it says so and links to the issues page instead.
+import { GOOD_FIRST_ISSUES_URL, REPO } from "../data/site";
+---
+
+<section class="issues" aria-labelledby="issues-title" data-issues data-repo={REPO}>
+  <h3 id="issues-title" class="issues-title">Good first issues</h3>
+  <p class="issues-status" data-issues-status aria-live="polite">Asking GitHub for open issues.</p>
+  <div class="issues-placeholder" data-issues-placeholder aria-hidden="true"></div>
+  <ul class="issues-list" data-issues-list role="list" hidden></ul>
+  <p class="issues-more"><a href={GOOD_FIRST_ISSUES_URL}>See every good first issue</a></p>
+</section>
+
+<script>
+  type Issue = { title: string; html_url: string; number: number; comments: number };
+
+  async function load(root: HTMLElement): Promise<void> {
+    const repo = root.dataset.repo ?? "";
+    const status = root.querySelector<HTMLElement>("[data-issues-status]");
+    const list = root.querySelector<HTMLUListElement>("[data-issues-list]");
+    const placeholder = root.querySelector<HTMLElement>("[data-issues-placeholder]");
+    const say = (text: string) => {
+      if (status) status.textContent = text;
+      if (placeholder) placeholder.hidden = true;
+    };
+    const q = encodeURIComponent(`repo:${repo} is:issue is:open label:"good first issue"`);
+    let response: Response;
+    try {
+      response = await fetch(
+        `https://api.github.com/search/issues?q=${q}&sort=created&order=desc&per_page=5`,
+        { headers: { accept: "application/vnd.github+json" } },
+      );
+    } catch {
+      say("GitHub didn't answer just now. The full list is one link away.");
+      return;
+    }
+    if (response.status === 403 || response.status === 429) {
+      say("GitHub's hourly limit for anonymous visitors is used up. The full list is one link away.");
+      return;
+    }
+    if (!response.ok) {
+      say("The issue list isn't public yet. Star or watch the repository to hear when it opens.");
+      return;
+    }
+    const body = (await response.json()) as { total_count?: number; items?: Issue[] };
+    const total = body.total_count ?? 0;
+    const items = body.items ?? [];
+    if (total === 0 || items.length === 0) {
+      say("No good first issues are open right now. Ask in the discussions what would help most.");
+      return;
+    }
+    say(
+      total === 1
+        ? "1 issue is open and labelled for newcomers."
+        : `${total} issues are open and labelled for newcomers${total > items.length ? `; the newest ${items.length}:` : ":"}`,
+    );
+    if (!list) return;
+    for (const issue of items) {
+      const li = document.createElement("li");
+      const a = document.createElement("a");
+      a.href = issue.html_url;
+      a.textContent = issue.title;
+      const meta = document.createElement("span");
+      meta.className = "issues-meta";
+      meta.textContent = `#${issue.number}${issue.comments ? `, ${issue.comments} ${issue.comments === 1 ? "comment" : "comments"}` : ""}`;
+      li.append(a, meta);
+      list.append(li);
+    }
+    list.hidden = false;
+  }
+
+  for (const root of document.querySelectorAll<HTMLElement>("[data-issues]")) void load(root);
+</script>

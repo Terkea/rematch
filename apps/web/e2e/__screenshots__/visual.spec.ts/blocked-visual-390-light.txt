@@ -1,5 +1,5 @@
-chess-improver
-You need to be 13 or older to use chess-improver.
+Rematch
+You need to be 13 or older to use Rematch.
 
 We've deleted the details you gave us.
 

@@ -1,0 +1,306 @@
+---
+import Diagram from "../components/Diagram.astro";
+import GoodFirstIssues from "../components/GoodFirstIssues.astro";
+import Roadmap from "../components/Roadmap.astro";
+import Shot from "../components/Shot.astro";
+import Video from "../components/Video.astro";
+import { BLOB, DISCUSSIONS_URL, href, REPO_URL, VERSION } from "../data/site";
+import Landing from "../layouts/Landing.astro";
+
+const features = [
+  {
+    id: "analysis",
+    title: "Every move, checked by Stockfish",
+    body: "Link your chess.com account and Rematch imports your games, keeps them in sync and analyses every move with Stockfish 19. The turning points are marked the way a coach marks a scoresheet: a red pen for your mistakes, the better move in green, and the evaluation graph showing where the game turned.",
+    note: "The engine settings are pinned, so the same position always gets the same verdict.",
+    shot: "review",
+    alt: "A game review: the board with a red ring and a double question mark on the knight that went to d2, the win-chance graph dropping at move 28, and the scoresheet with the coach's note.",
+  },
+  {
+    id: "weaknesses",
+    wide: true,
+    title: "The mistakes you keep making, named",
+    body: "It counts each mistake per chance, not per game: a loose piece per move that had one, a missed fork per fork you had. Then it ranks them by what they cost, explains each in a sentence and compares you with players around your rating. Your strengths get the same treatment.",
+    note: "Every rate carries its count and an 80% range. A new pattern stays an early read until the evidence is there.",
+    shot: "weaknesses",
+    alt: "Weakness rows: leaving pieces undefended at 4.2% with its 80% range and peer median, rook endgames, missed forks as an early read, and blunders under one minute.",
+  },
+  {
+    id: "coach",
+    title: "A coach that cites your games",
+    body: "Ask why you lost after move 28 and the answer points at the position, the move and the evaluation, each one a link into the game. Claude writes the words. Stockfish and the app's own statistics supply every fact, and a validator checks each paragraph against your data before you see it.",
+    note: "What can't be checked is left out, and the answer says so. The AI is optional: without a key, every number is still there.",
+    shot: "coach",
+    alt: "A coach answer citing 28. Nd2 with a mini board, an engine check marked done, and the line: one statement was left out because the engine could not confirm it.",
+  },
+  {
+    id: "trainer",
+    title: "Your missed moments, back as drills",
+    body: "Positions where you missed a mate, a win or a short tactic, or blundered, come back as drills. Play your move, say whether you were sure, then see the verdict with the engine's line drawn on the board. A right answer returns after 1, 3, 7, 21 and then 60 days; a miss comes back tomorrow.",
+    note: "About one position in five is held back on purpose, so “Is it working?” can compare the patterns you drilled with the ones you didn't.",
+    shot: "positions",
+    alt: "Two example positions with numbered arrows: the move played in red, the reply in grey and the better move in green, with the win chance before and after.",
+  },
+  {
+    id: "focus",
+    title: "One focus a week, with a number to hit",
+    body: "Rematch suggests the weakness that costs you most and sets a target from your own rate and your peers': get it down to a stated share of your chances over your next 20 games. Pick 10 to 40 games, and practise it straight from the card.",
+    note: "Under 10 chances it says “Too early to tell”. It compares you with the goal and never claims you improved.",
+    shot: "focus",
+    alt: "Weekly focus cards: a suggested focus on missed mates with a 15.0% target, and a running focus at 7 of 20 games marked too early to tell.",
+  },
+  {
+    id: "trajectory",
+    wide: true,
+    title: "What changed since your peak",
+    body: "Your rating line with the peak marked, then the games around the peak against your last games: rating, accuracy, blunders per game, score and your top weaknesses, side by side.",
+    note: "A rating moves for many reasons, so a clearly worse measure is named as the likeliest place to look, never as the cause.",
+    shot: "trajectory",
+    alt: "A rating trajectory: the line rising to a peak of 1,111 and falling to 816, with the games around the peak and the last 30 games shaded.",
+  },
+];
+
+const roles = [
+  {
+    who: "Rust developers",
+    what: "The worker, the analysis pipeline, the profile engine and the coach's validator live in one Cargo workspace.",
+  },
+  {
+    who: "TypeScript and React developers",
+    what: "The Next.js app and its design system: the board, the eval graph, the charts and the motion around them.",
+  },
+  {
+    who: "Chess coaches and strong players",
+    what: "Tell us what a 1200 should practise and how a good coach would say it. There is an issue form for coaching ideas.",
+  },
+  {
+    who: "Designers",
+    what: "The annotated-scoresheet system is written down in DESIGN.md. Critique it, then extend it.",
+  },
+  {
+    who: "Players who test",
+    what: "Run it on your own games and tell us where it is wrong, unclear or slow.",
+  },
+];
+
+const faq = [
+  {
+    q: "Is it free?",
+    a: "Yes. Rematch is open source under the AGPL-3.0: run it, read it, change it. If you run a modified version for other people, share your changes with them.",
+  },
+  {
+    q: "Can I sign up somewhere?",
+    a: `Not yet. Rematch is a beta (version ${VERSION}) that you run yourself with Docker, and the maintainer runs a small private beta for friends. Version 1.0 is reserved for the first complete release.`,
+  },
+  {
+    q: "Why chess.com only?",
+    a: "To get one platform right first. The Lichess importer exists and is tested, but Lichess accounts are switched off for now (decision 0040). Peer comparisons and the opening explorer already use the open Lichess game database.",
+  },
+  {
+    q: "What happens to my data?",
+    a: "When you run it yourself, your games and analysis stay in your own database. Rematch reads only public game data from chess.com, and its requests never carry your email address. If you switch the AI coach on, the computed facts it needs are sent to Anthropic to write the text. Accounts are for players aged 13 and over.",
+  },
+  {
+    q: "Do I need an AI key?",
+    a: "No. Without one, the analysis, every rate, the focus and the trainer all work, and reports show the numbers without commentary. With an Anthropic API key, the coach writes reports, answers your questions and writes a weekly review.",
+  },
+  {
+    q: "Is this cheating?",
+    a: "No. Rematch only reads finished games and never helps during one. Live assistance is banned on chess.com and Lichess, and it is a non-goal here.",
+  },
+  {
+    q: "How strong do I need to be?",
+    a: "It is designed around club players from about 1000 to 2000, and works from beginner up: what it ranks and how it explains it follow your rating band.",
+  },
+  {
+    q: "What do I need to run it?",
+    a: "Docker with about 16 GB of memory for the whole stack. Node 22 and pnpm if you want to work on the code. Getting started has the five commands.",
+  },
+];
+---
+
+<Landing
+  title="Rematch, chess improver: stop losing to the same move"
+  description="An open-source coach for chess.com players. Stockfish checks every move of your games, Rematch names the mistakes you repeat, drills you on them and tells you, with honest numbers, whether it's working."
+>
+  <section class="hero wrap" aria-labelledby="hero-title">
+    <div class="hero-copy">
+      <h1 id="hero-title" class="hero-title">Stop losing to the same move.</h1>
+      <p class="lead">
+        Rematch is an open-source chess improver for chess.com players. It checks every move of
+        your games with Stockfish, names the mistakes you keep repeating, drills you on your own
+        missed moments and tells you, with honest numbers, whether it's working.
+      </p>
+      <div class="actions">
+        <a class="button button-primary" href={href("docs/getting-started/")}>Get started</a>
+        <a class="button button-secondary" href="#contribute">Help build it</a>
+      </div>
+      <p class="fineprint">
+        Beta, version {VERSION}. Open source under the AGPL-3.0. Built in the open, and{" "}
+        <a href={href("docs/decisions/")}>every decision is written down</a>.
+      </p>
+    </div>
+    <Video class="hero-video" />
+  </section>
+
+  <section class="band" aria-labelledby="problem-title">
+    <div class="wrap problem">
+      <div class="prose-col">
+        <h2 id="problem-title" class="section-title">You don't lose to new mistakes.</h2>
+        <p class="prose">
+          You lose to the same one again. A review shows you the blunder, the engine's better
+          move and the evaluation falling off a cliff. Then the next game starts, and nobody tells
+          you it was the same knight move, the same missed fork, the same rushed move with a
+          minute on the clock as last week.
+        </p>
+        <p class="prose">
+          The research on learning says what fixes that: retrieving your own errors, spaced over
+          days, with feedback about the move rather than about you. Rematch is built on it.
+        </p>
+        <p class="more">
+          <a href={href("docs/research/2026-11-23-what-helps-amateurs-improve/")}
+            >Read the evidence we built on</a
+          >
+        </p>
+      </div>
+      <Shot
+        name="graphs"
+        alt="Two win-chance graphs from two games by the same player. In each, a winning position drops at a blunder marked with a red tick and a double question mark: 28. Nd2?? in the first, 13. Nb4?? and 23. Bc1?? in the second."
+        caption="Two real games from the styleguide, two collapses, each marked ??."
+      />
+    </div>
+  </section>
+
+  <section id="features" class="wrap tour" aria-labelledby="features-title">
+    <h2 id="features-title" class="section-title">What it does</h2>
+    <p class="section-intro">
+      The screenshots are the app's own interface on its styleguide's demo data, never a player's
+      account.
+    </p>
+    {
+      features.map((f, i) => (
+        <article
+          id={f.id}
+          class:list={["feature", { flip: i % 2 === 1, wide: "wide" in f && f.wide }]}
+          aria-labelledby={`${f.id}-title`}
+        >
+          <div class="feature-copy">
+            <h3 id={`${f.id}-title`} class="feature-title">
+              {f.title}
+            </h3>
+            <p class="feature-body">{f.body}</p>
+            <p class="margin-note">{f.note}</p>
+          </div>
+          <Shot name={f.shot} alt={f.alt} />
+        </article>
+      ))
+    }
+  </section>
+
+  <section class="band" aria-labelledby="honesty-title">
+    <div class="wrap split honesty">
+      <div class="prose-col">
+        <h2 id="honesty-title" class="section-title">Every number shows its range.</h2>
+        <blockquote class="principle">
+          <p>
+            Stockfish and our own statistics produce every fact. Claude only explains and
+            prioritises those facts. Every claim in a report links to real positions from the
+            player's games.
+          </p>
+          <footer>The core rule, from the design spec</footer>
+        </blockquote>
+      </div>
+      <ul class="rules" role="list">
+        <li>
+          <strong>A count with every rate.</strong> &ldquo;Based on 38 rapid games&rdquo; sits beside
+          the number it explains.
+        </li>
+        <li>
+          <strong>A range with every estimate.</strong> An 80% range, written out in words, not just
+          drawn.
+        </li>
+        <li>
+          <strong>Unknown is never zero.</strong> Below 10 games there is no number, only
+          &ldquo;Need 9 more games&rdquo;.
+        </li>
+        <li>
+          <strong>Better or worse only when it's clear.</strong> If the ranges overlap, it says
+          &ldquo;No clear change&rdquo;.
+        </li>
+        <li>
+          <strong>Facts by reference.</strong> The AI can only cite positions, moves and numbers the
+          app computed. A sentence that can't be checked is dropped before you see it.
+        </li>
+      </ul>
+    </div>
+  </section>
+
+  <section id="how-it-works" class="wrap" aria-labelledby="how-title">
+    <h2 id="how-title" class="section-title">How it works</h2>
+    <p class="section-intro">
+      A Rust backend does the heavy lifting, a Next.js app shows it, and the AI only ever writes
+      words about facts that were computed first.
+    </p>
+    <Diagram />
+    <p class="more"><a href={href("docs/architecture/")}>Read the architecture</a></p>
+  </section>
+
+  <section id="roadmap" class="band" aria-labelledby="roadmap-title">
+    <div class="wrap">
+      <h2 id="roadmap-title" class="section-title">Roadmap</h2>
+      <p class="section-intro">
+        Shipped, next, and open for you. The next steps come from a review of the app through the
+        eyes of an 800-rated rapid player, ranked by what should help them improve.
+      </p>
+      <Roadmap />
+    </div>
+  </section>
+
+  <section id="contribute" class="wrap" aria-labelledby="contribute-title">
+    <h2 id="contribute-title" class="section-title">Help us turn this into something great</h2>
+    <p class="section-intro">
+      Rematch is one maintainer and a lot of decisions written down. It gets better with people who
+      play, people who coach and people who build.
+    </p>
+    <div class="split contribute">
+      <dl class="roles">
+        {
+          roles.map((r) => (
+            <div class="role">
+              <dt>{r.who}</dt>
+              <dd>{r.what}</dd>
+            </div>
+          ))
+        }
+      </dl>
+      <div class="contribute-side">
+        <GoodFirstIssues />
+        <div class="actions">
+          <a class="button button-primary" href={`${BLOB}/CONTRIBUTING.md`}>Read the contributing guide</a>
+          <a class="button button-secondary" href={DISCUSSIONS_URL}>Join the discussions</a>
+        </div>
+        <p class="fineprint">
+          AI-assisted pull requests are welcome: <a href={`${BLOB}/CLAUDE.md`}>CLAUDE.md</a> and
+          the skills in <a href={`${REPO_URL}/tree/main/.claude/skills`}>.claude/skills</a> are the
+          house rules, for people and agents alike.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section id="faq" class="band" aria-labelledby="faq-title">
+    <div class="wrap faq-wrap">
+      <h2 id="faq-title" class="section-title">Questions</h2>
+      <div class="faq">
+        {
+          faq.map((item) => (
+            <details>
+              <summary>{item.q}</summary>
+              <p>{item.a}</p>
+            </details>
+          ))
+        }
+      </div>
+    </div>
+  </section>
+</Landing>

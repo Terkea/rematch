@@ -104,7 +104,7 @@ describe("magic link (invited address)", () => {
     expect(msg?.to).toBe("ana@example.com");
     expect(msg?.subject).toBe("Your sign-in link");
     expect(msg?.text).toContain(
-      "Use this link to sign in to chess-improver. It works once and expires in 10 minutes.",
+      "Use this link to sign in to Rematch. It works once and expires in 10 minutes.",
     );
     expect(lastLink()).toContain("/api/auth/magic-link/verify");
   });

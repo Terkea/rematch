@@ -66,6 +66,10 @@ describe("getEnv", () => {
     expect(getEnv(base).LICHESS_ENABLED).toBe(false);
   });
 
+  it("sends mail from Rematch by default (the brand, not the package name)", () => {
+    expect(getEnv(base).MAIL_FROM).toBe("Rematch <no-reply@chess-improver.local>");
+  });
+
   it("defaults LICHESS_CLIENT_ID to chess-improver", () => {
     expect(getEnv(base).LICHESS_CLIENT_ID).toBe("chess-improver");
   });

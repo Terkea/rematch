@@ -5,8 +5,9 @@ import { lintFile } from "./ban-rules.js";
 
 export type BanFinding = { rule: string; path: string; line: number; match: string };
 
-const SCAN_DIRS = ["apps/web/src", "packages/ui/src"];
-const EXTENSIONS = /\.(?:tsx?|css)$/;
+// site/src: the landing page and docs theme (ADR 0096) follow the same design law.
+const SCAN_DIRS = ["apps/web/src", "packages/ui/src", "site/src"];
+const EXTENSIONS = /\.(?:tsx?|css|astro)$/;
 const SKIP_DIRS = new Set(["node_modules", ".next", "dist"]);
 // Lab pages 404 in production (labEnabled guard) and exist to try off-token looks.
 const LAB_EXEMPT = /(^|\/)apps\/web\/src\/app\/lab\//;

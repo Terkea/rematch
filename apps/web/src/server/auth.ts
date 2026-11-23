@@ -4,6 +4,7 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError } from "better-auth/api";
 import { genericOAuth, magicLink } from "better-auth/plugins";
 import { eq } from "drizzle-orm";
+import { brand } from "../brand";
 import { getEnv, type WebEnv } from "../env";
 import { runAfterResponse } from "./auth/background";
 import { authDbHooks } from "./auth/db-hooks";
@@ -54,7 +55,7 @@ function withInviteGuard(hooks: DbHooks, db: Db, env: WebEnv): DbHooks {
 
 export function createAuth(env: WebEnv, db: Db) {
   return betterAuth({
-    appName: "chess-improver",
+    appName: brand.name,
     // A failed write logs its row, which for a magic link holds the address (T21 review M7).
     logger: { log: redactedLog },
     baseURL: env.BETTER_AUTH_URL,

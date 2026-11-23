@@ -1,0 +1,54 @@
+---
+// How a game becomes advice: one sequence (so B9's "steps only for a sequence" holds), with the
+// optional AI branch off the worker. Pencil connectors with open heads, the DESIGN.md mark for a
+// plan or idea; HTML, not an image, so it reflows from 360px and stays readable.
+const nodes = [
+  {
+    id: "source",
+    name: "chess.com",
+    what: "Your public games, fetched by username. A short code in your chess.com profile proves the account is yours.",
+  },
+  {
+    id: "worker",
+    name: "Rust worker",
+    what: "Imports and queues your games, then checks every move with a pool of Stockfish 19 engines and, when installed, Syzygy endgame tables.",
+  },
+  {
+    id: "ai",
+    name: "AI sidecar, optional",
+    what: "A branch of the Rust worker: Claude, through the Agent SDK. Rust builds each prompt from computed facts and validates every paragraph that comes back.",
+  },
+  {
+    id: "profile",
+    name: "Profile engine",
+    what: "Rates per chance, weaknesses, strengths and the trajectory, against a rating-band reference built from the open Lichess database.",
+  },
+  {
+    id: "store",
+    name: "Postgres",
+    what: "The job queue and every computed fact, in one database.",
+  },
+  {
+    id: "web",
+    name: "Web app",
+    what: "Next.js and React: the board, the eval graph and every chart, from one design system.",
+  },
+];
+---
+
+<figure class="diagram" aria-labelledby="diagram-caption">
+  <ol class="flow" role="list">
+    {
+      nodes.map((n) => (
+        <li class:list={["node", `node-${n.id}`]}>
+          <span class="node-name">{n.name}</span>
+          <span class="node-what">{n.what}</span>
+        </li>
+      ))
+    }
+  </ol>
+  <figcaption id="diagram-caption">
+    From your games to the page: chess.com, the Rust worker, the profile engine, Postgres and the
+    web app, with the AI sidecar as an optional branch of the worker.
+  </figcaption>
+</figure>

@@ -1,0 +1,54 @@
+---
+// The 60-second film in a well. It never plays on its own (M1: nothing moves to attract
+// attention): the poster shows until the visitor presses play, then it plays with sound and
+// native controls.
+import { href } from "../data/site";
+
+interface Props {
+  class?: string;
+}
+const { class: className } = Astro.props;
+---
+
+<figure class:list={["film", className]}>
+  <div class="film-well">
+    <video
+      data-film
+      src={href("media/rematch.mp4")}
+      poster={href("media/rematch-hook.jpg")}
+      preload="none"
+      playsinline
+      width="1920"
+      height="1080"
+      aria-label="Rematch in 60 seconds: the board, the coach, the drills and the open-source call"
+    >
+      <a href={href("media/rematch.mp4")}>Download the video (MP4, 5 MB)</a>
+    </video>
+    <button type="button" class="film-play" data-film-play>
+      <svg aria-hidden="true" viewBox="0 0 256 256" width="20" height="20">
+        <path
+          fill="currentColor"
+          d="M240,128a15.74,15.74,0,0,1-7.6,13.51L88.32,229.65a16,16,0,0,1-16.2.3A15.86,15.86,0,0,1,64,216.13V39.87a15.86,15.86,0,0,1,8.12-13.82,16,16,0,0,1,16.2.3L232.4,114.49A15.74,15.74,0,0,1,240,128Z"
+        ></path>
+      </svg>
+      <span>Watch the film</span>
+      <span class="film-length">1:00, with sound</span>
+    </button>
+  </div>
+  <figcaption>One minute, with sound: the board, the coach, the drills, and how to help.</figcaption>
+</figure>
+
+<script>
+  for (const button of document.querySelectorAll<HTMLButtonElement>("[data-film-play]")) {
+    const video = button.parentElement?.querySelector<HTMLVideoElement>("[data-film]");
+    if (!video) continue;
+    button.addEventListener("click", () => {
+      video.controls = true;
+      button.hidden = true;
+      void video.play().catch(() => {
+        // Playback refused (no codec, data saver): the native controls stay for a manual start.
+      });
+      video.focus();
+    });
+  }
+</script>
