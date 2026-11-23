@@ -12,13 +12,13 @@ The tokens are implemented in `packages/ui/src/styles/tokens.css`. That file and
 
 Every screen should answer "where did I go wrong, and what do I do about it?" faster than the one before.
 
-## Direction: annotated scoresheet, on faded photo paper
+## Direction: annotated scoresheet
 
-A kid at the board, learning from his dad. The page is faded, warm photo paper; the ink is navy; dad's red pen marks the mistakes; a crayon yellow turns up only when something is worth celebrating. It should feel like a game a patient teacher has marked up at the kitchen table: personal and warm around the edges, precise wherever there is chess or a number. The signature is still the red pen: rings, arrows and question marks draw themselves onto the board and the scoresheet, the way a hand would.
+Cool paper, navy ink, and dad's red pen for mistakes. A kid at the board, learning from his dad: it should feel precise and studious, like a game a patient teacher has marked up the night after the tournament, with a crayon yellow only when something is worth celebrating. The signature is the red pen: rings, arrows and question marks draw themselves onto the board and the scoresheet, the way a hand would.
 
 **Boldness lives in two places: the board and the eval graph, and in how things move.** The board and graph are the brand. Motion is a headline feature (owner, 2026-11-21: "the animations need to be huge, that makes it premium"), so it is rich, choreographed and physical, but always about the chess. Everything static around the board (navigation, forms, settings, panels) stays quiet, tonal and disciplined.
 
-**Warm the brand, keep the analysis precise** (Rematch brand spec, 2026-11-23). Boards, graphs, tables and numbers stay crisp: no handwriting, texture or crayon on them. The hand-made touches (dad's margin notes, the pencil texture and the crayon) live only in soft places: empty states, the landing page, a drill solved and milestones. Warm is never childish: no cartoon type, no rounded "kids app" shapes, no sticker colours.
+**Personal around the edges, precise in the analysis** (Rematch brand spec, 2026-11-23). Boards, graphs, tables and numbers stay crisp: no handwriting, texture or crayon on them. The hand-made touches (dad's margin notes, the pencil texture and the crayon) live only in soft places: empty states, the landing page, a drill solved and milestones. Personal is never childish: no cartoon type, no rounded "kids app" shapes, no sticker colours.
 
 Red has two meanings and no others: `--color-pen` is dad's pen on a chess mistake, and `--color-pen-text` also carries form errors. Red is never decoration, never a brand flourish, never the logo, and never a destructive-button colour.
 
@@ -26,59 +26,59 @@ Red has two meanings and no others: `--color-pen` is dad's pen on a chess mistak
 
 | Name | Day | Role in the direction |
 |---|---|---|
-| Paper | `#F4EFE6` | faded, warm, photographic page, never yellow |
-| Sheet | `#FBF8F2` | the scoresheet and panels, raised by tone only |
-| Navy ink | `#1F2A3D` | text, primary fills, focus, the logo |
-| Red pen | `#C8372D` | dad's pen on mistakes, and nothing else |
-| Good-move green | `#2F6B4F` | better moves and good play |
-| Pencil | `#6B6458` | warm graphite: plans and neutral ideas, quieter than ink |
+| Paper | `#F3F5F8` | cool, slightly blue page, never cream |
+| Sheet | `#FBFCFD` | the scoresheet and panels, raised by tone only |
+| Navy ink | `#16233B` | text, primary fills, focus, the logo |
+| Red pen | `#D3312B` | dad's pen on mistakes, and nothing else |
+| Good-move green | `#24684B` | better moves and good play (deepened in round 2) |
+| Pencil | `#56657F` | plans and neutral ideas, quieter than ink |
 | Crayon | `#E3A92F` | celebrations only (a drill solved, a milestone), never data |
 
 ## Colour tokens
 
-Two themes: **day** (light) and **night study** (dark). Night study is the same scoresheet under a desk lamp: warm dark paper and lamp-lit pale ink, not a blue screen and not black with an accent (reference 5 for the structure; the navy hue it shows was replaced on 2026-11-23). Contrast is checked against `sheet`, `paper` and `well`, and `packages/ui/test/tokens-contrast.test.ts` holds the brand's promises: warm low-chroma paper in both themes, AA for every text and mark, and the crayon kept out of the data.
+Two themes: **day** (light) and **night study** (dark). Night study is the same scoresheet at a desk lamp: navy paper and pale ink, not black with an accent (reference 5). Contrast is checked against `sheet`, `paper` and `well`, and `packages/ui/test/tokens-contrast.test.ts` holds the palette's promises: cool low-chroma paper and a navy night, AA for every text and mark, and the crayon kept out of the data.
 
 | Token | Day | Night | Role |
 |---|---|---|---|
-| `--color-paper` | `#F4EFE6` | `#1C1915` | page background: faded photo paper, a desk at night |
-| `--color-sheet` | `#FBF8F2` | `#24201B` | raised surfaces, scoresheet, panels |
-| `--color-well` | `#ECE5D9` | `#191612` | inset wells, inputs on sheet |
-| `--color-rule` | `#D9CFBF` | `#3B352D` | decorative lines (non-text) |
-| `--color-rule-strong` | `#8A7F6E` | `#857A69` | input borders, chart axes (≥ 3:1) |
-| `--color-ink` | `#1F2A3D` | `#EFE8DC` | text, primary fill, focus ring (night: lamp-lit paper white) |
-| `--color-ink-soft` | `#434B5C` | `#C9BFAF` | secondary text |
-| `--color-ink-faint` | `#5F6470` | `#A0968A` | tertiary text (lowest allowed) |
-| `--color-on-ink` | `#FBF8F2` | `#1C1915` | text on ink fills |
-| `--color-pen` | `#C8372D` | `#EE6258` | dad's red pen: strokes and marks on mistakes |
-| `--color-pen-text` | `#B8322A` | `#EE6258` | red text (AA on `well` too) |
-| `--color-good` | `#2F6B4F` | `#7FCDA3` | good-move strokes and marks |
-| `--color-good-text` | `#2F6B4F` | `#7FCDA3` | green text |
-| `--color-pencil` | `#6B6458` | `#ADA394` | warm graphite: neutral annotations, plan arrows |
+| `--color-paper` | `#F3F5F8` | `#121A2B` | page background |
+| `--color-sheet` | `#FBFCFD` | `#18223A` | raised surfaces, scoresheet, panels |
+| `--color-well` | `#E7EBF1` | `#0D1421` | inset wells, inputs on sheet |
+| `--color-rule` | `#C9D1DD` | `#2C3956` | decorative lines (non-text) |
+| `--color-rule-strong` | `#7A879E` | `#6B7B9B` | input borders, chart axes (≥ 3:1) |
+| `--color-ink` | `#16233B` | `#E7ECF4` | text, primary fill, focus ring |
+| `--color-ink-soft` | `#3D4A63` | `#B4BFD2` | secondary text |
+| `--color-ink-faint` | `#5B6780` | `#8E9AB1` | tertiary text (lowest allowed) |
+| `--color-on-ink` | `#FBFCFD` | `#121A2B` | text on ink fills |
+| `--color-pen` | `#D3312B` | `#F2695E` | red-pen strokes and marks (spec value) |
+| `--color-pen-text` | `#C42B26` | `#F2695E` | red text (AA on `well` too) |
+| `--color-good` | `#24684B` | `#76D3A4` | good-move strokes and marks (owner-approved change, round 2) |
+| `--color-good-text` | `#24684B` | `#76D3A4` | green text (owner-approved change, round 2) |
+| `--color-pencil` | `#56657F` | `#97A6C0` | neutral annotations, plan arrows |
 | `--color-crayon` | `#E3A92F` | `#D9A441` | celebrations only: the crayon stroke under a solved drill or a milestone, never data, never text |
-| `--color-board-light` | `#E6E1D8` | `#A39580` | light squares |
-| `--color-board-dark` | `#B8B2A6` | `#716552` | dark squares |
-| `--color-board-lastmove` | `rgb(31 42 61 / 0.16)` | `rgb(239 232 220 / 0.30)` | last-move tint (ink at 16%, night ink at 30%) |
+| `--color-board-light` | `#E3E8EF` | `#8796B5` | light squares (night: owner-approved change, round 2) |
+| `--color-board-dark` | `#A7B4C7` | `#5A6A8C` | dark squares (night: owner-approved change, round 2) |
+| `--color-board-lastmove` | `rgb(22 35 59 / 0.16)` | `rgb(231 236 244 / 0.30)` | last-move tint (night: controller-approved change, Task 11) |
 
 Added in fix round 1 (derived from the tokens above, no new hues):
 
 | Token | Day | Night | Role |
 |---|---|---|---|
-| `--color-selection` | `rgb(107 100 88 / 0.28)` | `rgb(173 163 148 / 0.34)` | `::selection` background (pencil); text keeps its colour |
-| `--color-board-select` | `rgb(31 42 61 / 0.24)` | `rgb(239 232 220 / 0.26)` | selected square tint (supplementary) |
-| `--color-board-premove` | `rgb(107 100 88 / 0.30)` | `rgb(173 163 148 / 0.30)` | premove tint (pencil, supplementary) |
-| `--color-piece-dark` | `#1F2A3D` (ink) | `#141210` (deepest ink, a step below `well`) | black piece body, and every piece's outline |
-| `--color-piece-light` | `#FBF8F2` (sheet) | `#EFE8DC` (ink) | white piece body, black piece interior details |
+| `--color-selection` | `rgb(86 101 127 / 0.28)` | `rgb(151 166 192 / 0.34)` | `::selection` background (pencil); text keeps its colour |
+| `--color-board-select` | `rgb(22 35 59 / 0.24)` | `rgb(231 236 244 / 0.26)` | selected square tint (supplementary) |
+| `--color-board-premove` | `rgb(86 101 127 / 0.30)` | `rgb(151 166 192 / 0.30)` | premove tint (pencil, supplementary) |
+| `--color-piece-dark` | `#16233B` (ink) | `#0D1421` (well) | black piece body, and every piece's outline |
+| `--color-piece-light` | `#FBFCFD` (sheet) | `#E7ECF4` (ink) | white piece body, black piece interior details |
 
 ### Usage rules
 
-- **Text** uses `ink`, `ink-soft` or `ink-faint`, and nothing lighter. On dark, body text is `ink` (`#EFE8DC`), never a mid grey (`B17`).
+- **Text** uses `ink`, `ink-soft` or `ink-faint`, and nothing lighter. On dark, body text is `ink` (`#E7ECF4`), never a mid grey (`B17`).
 - **Red text** uses `pen-text`, and green text uses `good-text`. The stroke tokens `pen` and `good` are for marks, not words.
 - **Lines:** `rule` is decorative only (scoresheet ruling, dividers). Anything a user must see to operate the UI, such as input borders, chart axes or checkbox outlines, uses `rule-strong`.
 - **Primary action:** an `ink` fill with `on-ink` text. There is one primary action per view.
-- **The halo rule:** every board mark (ring, arrow, glyph badge, focus ring, check ring, legal-move dot) sits on a 2px `--color-sheet` halo, so the mark's adjacent colour is always its halo and never a square. That makes the `pen`, `good`, `pencil` and `ink` rows against `sheet` below the binding check. Without the halo, night marks fall to 1.10:1 on light squares, so the halo is not optional.
+- **The halo rule:** every board mark (ring, arrow, glyph badge, focus ring, check ring, legal-move dot) sits on a 2px `--color-sheet` halo, so the mark's adjacent colour is always its halo and never a square. That makes the `pen`, `good`, `pencil` and `ink` rows against `sheet` below the binding check. Without the halo, night marks fall to 1.01:1 on light squares, so the halo is not optional.
 - **Board coordinates** use `ink` in day. In night they use `on-ink` on light squares and `ink` on dark squares, because no single colour passes on both night squares. On a tinted night square (last move or selected) they use `on-ink` on both colours, because the pale tint drops `ink` below 3:1 there (controller ruling, Task 11).
 - **Last move** is tinted with `board-lastmove`. The tint is under 3:1 against the bare square on purpose, so it never competes with the pen. It is supplementary: the current move is also marked in the move list and announced to assistive tech.
-- **Colour never carries meaning alone.** `pen` and `good` are close in luminance (1.21:1 day and 1.71:1 night in the Rematch palette), so every mark also differs in shape: pen marks always carry a `?`-family glyph badge and an open two-stroke arrowhead; good marks carry a `!`-family badge and a solid head. See "Severity and marks".
+- **Colour never carries meaning alone.** `pen` and `good` are close in luminance (1.34:1 day and 1.67:1 night after the round 2 green change, up from 1.01 and 1.29), so every mark also differs in shape: pen marks always carry a `?`-family glyph badge and an open two-stroke arrowhead; good marks carry a `!`-family badge and a solid head. See "Severity and marks".
 - **Crayon** is for celebrations only: the crayon stroke under a drill solved or a milestone, drawn by `MarginNote` and `CrayonStroke` in `@ci/ui/brand`. It is decorative: the words beside it always say what happened, so it needs no contrast floor of its own (it is at least 1.8:1 on `paper` and `sheet` so it shows). It is never text, never a fill behind text, never a series, tick, cell or mark on a chart, table, KPI or board (`B19`), and never on a mistake.
 - **Hand-made touches** (dad's handwriting, the pencil texture, the crayon) appear only in empty states, the landing page, a drill solved and milestones. Never on charts, tables, the board or any number (`B20`). See "Hand-made touches".
 
@@ -86,7 +86,7 @@ Added in fix round 1 (derived from the tokens above, no new hues):
 
 | State | Treatment |
 |---|---|
-| Error (forms, failed actions) | `pen-text` message under the field, Phosphor `WarningCircle` icon, `aria-invalid`, field border `pen` (4.15:1 on `well`). Red is used for form errors, which is red's second meaning. |
+| Error (forms, failed actions) | `pen-text` message under the field, Phosphor `WarningCircle` icon, `aria-invalid`, field border `pen` (4.14:1 on `well`). Red is used for form errors, which is red's second meaning. |
 | Warning | `ink` text on `well`, Phosphor `Warning` icon in `ink`, 1px `rule-strong` border. No amber token. |
 | Info | `ink-soft` text on `well`, Phosphor `Info` icon. |
 | Success | `good-text` message, Phosphor `CheckCircle` icon. A toast names the finished action ("chess.com connected"). |
@@ -95,101 +95,101 @@ Added in fix round 1 (derived from the tokens above, no new hues):
 
 The tonal ladder runs `paper`, then `sheet`, then `well`. Hover moves one step down the ladder and never lifts. In code, hover fills use `--surface-hover`: `sheet` on the page, and `well` inside anything that is `bg-sheet` or marked `data-surface="sheet"`.
 
-Night study is the exception inside a sheet: night `well` is near-black, so a step down there barely shows (about 1.11:1). Inside a night sheet, hover steps up instead, to `sheet` mixed 14% toward `ink` (1.48:1 on `sheet`, where 10% gives 1.31:1 and a step down to `well` gives 1.11:1; `ink` on it is 8.99:1) (`color-mix`, no new colour). A day scope inside a night page keeps the day step (Task 9 critic).
+Night study is the exception inside a sheet: night `well` is near-black, so a step down there barely shows (about 1.1:1). Inside a night sheet, hover steps up instead, to `sheet` mixed 14% toward `ink` (1.48:1 on `sheet`, where 10% gave 1.31:1 and a step down to `well` gave 1.17:1; `ink` on it is 8.99:1) (`color-mix`, no new colour). A day scope inside a night page keeps the day step (Task 9 critic).
 
-Controls that already sit in a `well` (text field, select trigger) show hover on their edge, which steps from `rule-strong` to `ink-soft` (2.23:1 against the rest edge in day, 2.32:1 at night; `ink-faint` was too close to read, Task 9 critic re-check). A disabled or invalid field keeps its own edge. The switch's edge does the same when off, and when on its track steps from `ink` to `ink-soft`, as the primary button does. A disabled tab drops to `ink-faint`.
+Controls that already sit in a `well` (text field, select trigger) show hover on their edge, which steps from `rule-strong` to `ink-soft` (2.45:1 against the rest edge in day, 2.30:1 at night; `ink-faint` was too close to read, Task 9 critic re-check). A disabled or invalid field keeps its own edge. The switch's edge does the same when off, and when on its track steps from `ink` to `ink-soft`, as the primary button does. A disabled tab drops to `ink-faint`.
 
-Night floating surfaces (dialog, drawer, command menu, popover, select list) carry a 1px `rule-strong` edge, because the one shadow is lost on the dark paper. Behind a modal, the night scrim is `well` at 90%, not `paper` at 80%, so the page behind stops competing (Task 9 critic).
+Night floating surfaces (dialog, drawer, command menu, popover, select list) carry a 1px `rule-strong` edge, because the one shadow is lost on navy. Behind a modal, the night scrim is `well` at 90%, not `paper` at 80%, so the page behind stops competing (Task 9 critic).
 
 | State | Surface items (rows, secondary buttons, menu items) | Primary button (ink) |
 |---|---|---|
 | Rest | its surface (`paper` or `sheet`) | `ink` fill, `on-ink` text |
-| Hover | one step down (`paper` to `sheet`, `sheet` to `well`) | `ink-soft` fill (`on-ink` 8.26:1) |
+| Hover | one step down (`paper` to `sheet`, `sheet` to `well`) | `ink-soft` fill (`on-ink` 8.67:1) |
 | Pressed | `well` with a 1px inset `rule-strong`, and the pen-press: scale 0.97 for `--dur-instant` | `ink` fill, scale 0.97 |
 | Focus-visible | 2px `ink` outline, 2px offset, on any surface | the same, offset over the page |
 | Selected | `well` fill, text in `ink` at 600 weight, `aria-selected` or `aria-current` | not applicable |
 | Disabled | `ink-faint` text, 1px `rule` border, no fill change, no hover, `aria-disabled` | `well` fill, `ink-faint` text |
 
-`::selection` uses `--color-selection`. Text keeps its own colour (`ink` on it: 9.28:1 day, 6.86:1 night).
+`::selection` uses `--color-selection`. Text keeps its own colour (`ink` on it: 10.34:1 day, 6.92:1 night).
 
 ### Contrast results
 
-Computed with the WCAG 2.x relative-luminance formula (sRGB to linear, `L = 0.2126 R + 0.7152 G + 0.0722 B`, ratio `(L1 + 0.05) / (L2 + 0.05)`), last run 2026-11-23 over every pair, after the Rematch palette change (the warm paper and the desk-lamp night). Composited colours (selection) are blended over their surface before the check. Text needs 4.5:1. Large text, UI strokes, marks and focus rings need 3:1. No pair fails.
+Computed with the WCAG 2.x relative-luminance formula (sRGB to linear, `L = 0.2126 R + 0.7152 G + 0.0722 B`, ratio `(L1 + 0.05) / (L2 + 0.05)`), last run 2026-11-21 in fix round 2 over every pair, after the owner-approved green and night-board changes. Re-checked on 2026-11-23 when the cool palette came back (ADR 0103, Amendment 1), with the crayon rows added. Composited colours (selection) are blended over their surface before the check. Text needs 4.5:1. Large text, UI strokes, marks and focus rings need 3:1. No pair fails.
 
 | Foreground | Background | Use | Day | Night | Required | Result |
 |---|---|---|---|---|---|---|
-| `ink` | `sheet` | body text | 13.60 | 13.29 | 4.5:1 | pass |
-| `ink` | `paper` | body text | 12.59 | 14.38 | 4.5:1 | pass |
-| `ink` | `well` | text in wells | 11.52 | 14.81 | 4.5:1 | pass |
-| `ink-soft` | `sheet` | secondary text | 8.26 | 8.91 | 4.5:1 | pass |
-| `ink-soft` | `paper` | secondary text | 7.64 | 9.64 | 4.5:1 | pass |
-| `ink-soft` | `well` | secondary text | 6.99 | 9.92 | 4.5:1 | pass |
-| `ink-faint` | `sheet` | tertiary and disabled text | 5.59 | 5.57 | 4.5:1 | pass |
-| `ink-faint` | `paper` | tertiary text | 5.17 | 6.02 | 4.5:1 | pass |
-| `ink-faint` | `well` | tertiary text | 4.73 | 6.20 | 4.5:1 | pass |
-| `on-ink` | `ink` | primary button | 13.60 | 14.38 | 4.5:1 | pass |
-| `on-ink` | `ink-soft` | primary button, hover | 8.26 | 9.64 | 4.5:1 | pass |
-| `pen-text` | `sheet` | red text | 5.62 | 5.03 | 4.5:1 | pass |
-| `pen-text` | `paper` | red text | 5.20 | 5.44 | 4.5:1 | pass |
-| `pen-text` | `well` | red text | 4.76 | 5.60 | 4.5:1 | pass |
-| `good-text` | `sheet` | green text | 5.94 | 8.60 | 4.5:1 | pass |
-| `good-text` | `paper` | green text | 5.49 | 9.31 | 4.5:1 | pass |
-| `good-text` | `well` | green text | 5.03 | 9.58 | 4.5:1 | pass |
-| `ink` | selection on `sheet` | `::selection` | 9.28 | 6.86 | 4.5:1 | pass |
-| `ink` | selection on `paper` | `::selection` | 8.67 | 7.44 | 4.5:1 | pass |
-| `on-ink` | `pen` | glyph badge text (`?`, `??`, `?!`) | 4.90 | 5.44 | 4.5:1 | pass |
-| `on-ink` | `good` | glyph badge text (`!`, `!!`) | 5.94 | 9.31 | 4.5:1 | pass |
-| `pen` | `sheet` | mark on its halo | 4.90 | 5.03 | 3:1 | pass |
-| `pen` | `paper` | mark off the board | 4.54 | 5.44 | 3:1 | pass |
-| `pen` | `well` | graph ring, error border | 4.15 | 5.60 | 3:1 | pass |
-| `good` | `sheet` | mark on its halo | 5.94 | 8.60 | 3:1 | pass |
-| `good` | `paper` | mark off the board | 5.49 | 9.31 | 3:1 | pass |
-| `pencil` | `sheet` | mark on its halo | 5.52 | 6.51 | 3:1 | pass |
-| `pencil` | `paper` | mark off the board | 5.11 | 7.04 | 3:1 | pass |
-| `crayon` | `sheet` | celebration stroke (decorative) | 1.98 | 7.20 | 1.8:1 | pass |
-| `crayon` | `paper` | celebration stroke (decorative) | 1.84 | 7.79 | 1.8:1 | pass |
-| `rule-strong` | `sheet` | borders, axes | 3.71 | 3.84 | 3:1 | pass |
-| `rule-strong` | `paper` | borders, axes | 3.43 | 4.16 | 3:1 | pass |
-| `rule-strong` | `well` | borders, axes | 3.14 | 4.28 | 3:1 | pass |
-| `ink` | `sheet` | focus ring (2px, 2px offset) | 13.60 | 13.29 | 3:1 | pass |
-| `ink` | `paper` | focus ring | 12.59 | 14.38 | 3:1 | pass |
-| `ink` | `well` | focus ring | 11.52 | 14.81 | 3:1 | pass |
+| `ink` | `sheet` | body text | 15.28 | 13.32 | 4.5:1 | pass |
+| `ink` | `paper` | body text | 14.37 | 14.65 | 4.5:1 | pass |
+| `ink` | `well` | text in wells | 13.12 | 15.54 | 4.5:1 | pass |
+| `ink-soft` | `sheet` | secondary text | 8.67 | 8.52 | 4.5:1 | pass |
+| `ink-soft` | `paper` | secondary text | 8.15 | 9.37 | 4.5:1 | pass |
+| `ink-soft` | `well` | secondary text | 7.44 | 9.94 | 4.5:1 | pass |
+| `ink-faint` | `sheet` | tertiary and disabled text | 5.53 | 5.57 | 4.5:1 | pass |
+| `ink-faint` | `paper` | tertiary text | 5.20 | 6.13 | 4.5:1 | pass |
+| `ink-faint` | `well` | tertiary text | 4.75 | 6.50 | 4.5:1 | pass |
+| `on-ink` | `ink` | primary button | 15.28 | 14.65 | 4.5:1 | pass |
+| `on-ink` | `ink-soft` | primary button, hover | 8.67 | 9.37 | 4.5:1 | pass |
+| `pen-text` | `sheet` | red text | 5.49 | 5.24 | 4.5:1 | pass |
+| `pen-text` | `paper` | red text | 5.17 | 5.76 | 4.5:1 | pass |
+| `pen-text` | `well` | red text | 4.72 | 6.11 | 4.5:1 | pass |
+| `good-text` | `sheet` | green text | 6.48 | 8.75 | 4.5:1 | pass |
+| `good-text` | `paper` | green text | 6.09 | 9.62 | 4.5:1 | pass |
+| `good-text` | `well` | green text | 5.56 | 10.20 | 4.5:1 | pass |
+| `ink` | selection on `sheet` | `::selection` | 10.34 | 6.92 | 4.5:1 | pass |
+| `ink` | selection on `paper` | `::selection` | 9.82 | 7.52 | 4.5:1 | pass |
+| `on-ink` | `pen` | glyph badge text (`?`, `??`, `?!`) | 4.82 | 5.76 | 4.5:1 | pass |
+| `on-ink` | `good` | glyph badge text (`!`, `!!`) | 6.48 | 9.62 | 4.5:1 | pass |
+| `pen` | `sheet` | mark on its halo | 4.82 | 5.24 | 3:1 | pass |
+| `pen` | `paper` | mark off the board | 4.53 | 5.76 | 3:1 | pass |
+| `pen` | `well` | graph ring, error border | 4.14 | 6.11 | 3:1 | pass |
+| `good` | `sheet` | mark on its halo | 6.48 | 8.75 | 3:1 | pass |
+| `good` | `paper` | mark off the board | 6.09 | 9.62 | 3:1 | pass |
+| `pencil` | `sheet` | mark on its halo | 5.74 | 6.42 | 3:1 | pass |
+| `pencil` | `paper` | mark off the board | 5.40 | 7.06 | 3:1 | pass |
+| `crayon` | `sheet` | celebration stroke (decorative) | 2.05 | 7.03 | 1.8:1 | pass |
+| `crayon` | `paper` | celebration stroke (decorative) | 1.93 | 7.73 | 1.8:1 | pass |
+| `rule-strong` | `sheet` | borders, axes | 3.53 | 3.71 | 3:1 | pass |
+| `rule-strong` | `paper` | borders, axes | 3.32 | 4.08 | 3:1 | pass |
+| `rule-strong` | `well` | borders, axes | 3.03 | 4.33 | 3:1 | pass |
+| `ink` | `sheet` | focus ring (2px, 2px offset) | 15.28 | 13.32 | 3:1 | pass |
+| `ink` | `paper` | focus ring | 14.37 | 14.65 | 3:1 | pass |
+| `ink` | `well` | focus ring | 13.12 | 15.54 | 3:1 | pass |
 | **Board** | | | | | | |
-| `ink` | `sheet` (halo) | board focus, check and legal-dot rings on their 2px halo | 13.60 | 13.29 | 3:1 | pass |
-| `ink` | `board-light` | coordinates (day only) | 11.07 | n/a | 4.5:1 | pass |
-| `ink` | `board-dark` | coordinates | 6.83 | 4.68 | 4.5:1 | pass |
-| `on-ink` | `board-light` | coordinates (night only) | n/a | 5.98 | 4.5:1 | pass |
-| `ink` | last move on `board-light` | coordinates on a last-move square (day) | 8.27 | n/a | 4.5:1 | pass |
-| `ink` | last move on `board-dark` | coordinates on a last-move square (day) | 5.27 | n/a | 4.5:1 | pass |
-| `on-ink` | last move on `board-light` | coordinates on a last-move square (night) | n/a | 8.02 | 4.5:1 | pass |
-| `on-ink` | last move on `board-dark` | coordinates on a last-move square (night) | n/a | 5.30 | 4.5:1 | pass |
-| `ink` | selected on `board-light` | coordinates on the selected square (day) | 7.04 | n/a | 4.5:1 | pass |
-| `ink` | selected on `board-dark` | coordinates on the selected square (day) | 4.58 | n/a | 4.5:1 | pass |
-| `on-ink` | selected on `board-light` | coordinates on the selected square (night) | n/a | 7.75 | 4.5:1 | pass |
-| `on-ink` | selected on `board-dark` | coordinates on the selected square (night) | n/a | 4.96 | 4.5:1 | pass |
-| `piece-dark` | `board-light` | piece outline and black body | 11.07 | 6.38 | 3:1 | pass |
-| `piece-dark` | `board-dark` | piece outline and black body | 6.83 | 3.28 | 3:1 | pass |
-| `piece-light` | `piece-dark` | white body inside its outline | 13.60 | 15.35 | 3:1 | pass |
+| `ink` | `sheet` (halo) | board focus, check and legal-dot rings on their 2px halo | 15.28 | 13.32 | 3:1 | pass |
+| `ink` | `board-light` | coordinates (day only) | 12.75 | n/a | 4.5:1 | pass |
+| `ink` | `board-dark` | coordinates | 7.47 | 4.57 | 4.5:1 | pass |
+| `on-ink` | `board-light` | coordinates (night only) | n/a | 5.84 | 4.5:1 | pass |
+| `ink` | last move on `board-light` | coordinates on a last-move square (day) | 9.33 | n/a | 4.5:1 | pass |
+| `ink` | last move on `board-dark` | coordinates on a last-move square (day) | 5.71 | n/a | 4.5:1 | pass |
+| `on-ink` | last move on `board-light` | coordinates on a last-move square (night) | n/a | 7.96 | 4.5:1 | pass |
+| `on-ink` | last move on `board-dark` | coordinates on a last-move square (night) | n/a | 5.48 | 4.5:1 | pass |
+| `ink` | selected on `board-light` | coordinates on the selected square (day) | 7.95 | n/a | 4.5:1 | pass |
+| `ink` | selected on `board-dark` | coordinates on the selected square (day) | 4.92 | n/a | 4.5:1 | pass |
+| `on-ink` | selected on `board-light` | coordinates on the selected square (night) | n/a | 7.62 | 4.5:1 | pass |
+| `on-ink` | selected on `board-dark` | coordinates on the selected square (night) | n/a | 5.14 | 4.5:1 | pass |
+| `piece-dark` | `board-light` | piece outline and black body | 12.75 | 6.20 | 3:1 | pass |
+| `piece-dark` | `board-dark` | piece outline and black body | 7.47 | 3.40 | 3:1 | pass |
+| `piece-light` | `piece-dark` | white body inside its outline | 15.28 | 15.54 | 3:1 | pass |
 | **Charts** | | | | | | |
-| `ink` | `sheet` | series 1, highlighted series | 13.60 | 13.29 | 3:1 | pass |
-| `ink-soft` | `sheet` | series 2 | 8.26 | 8.91 | 3:1 | pass |
-| `pencil` | `sheet` | series 3 | 5.52 | 6.51 | 3:1 | pass |
-| `rule-strong` | `sheet` | series 4, axes | 3.71 | 3.84 | 3:1 | pass |
-| `ink` | `well` | series 1 on a well | 11.52 | 14.81 | 3:1 | pass |
-| `ink-soft` | `well` | series 2 on a well | 6.99 | 9.92 | 3:1 | pass |
-| `pencil` | `well` | series 3 on a well | 4.67 | 7.25 | 3:1 | pass |
-| `rule-strong` | `well` | series 4 on a well | 3.14 | 4.28 | 3:1 | pass |
+| `ink` | `sheet` | series 1, highlighted series | 15.28 | 13.32 | 3:1 | pass |
+| `ink-soft` | `sheet` | series 2 | 8.67 | 8.52 | 3:1 | pass |
+| `pencil` | `sheet` | series 3 | 5.74 | 6.42 | 3:1 | pass |
+| `rule-strong` | `sheet` | series 4, axes | 3.53 | 3.71 | 3:1 | pass |
+| `ink` | `well` | series 1 on a well | 13.12 | 15.54 | 3:1 | pass |
+| `ink-soft` | `well` | series 2 on a well | 7.44 | 9.94 | 3:1 | pass |
+| `pencil` | `well` | series 3 on a well | 4.93 | 7.49 | 3:1 | pass |
+| `rule-strong` | `well` | series 4 on a well | 3.03 | 4.33 | 3:1 | pass |
 
 Informational only, to show why the halo rule exists (a mark drawn straight on a square, with no halo):
 
 | Mark | `board-light` day | `board-dark` day | `board-light` night | `board-dark` night |
 |---|---|---|---|---|
-| `pen` | 3.99 | 2.46 | 1.10 | 1.77 |
-| `good` | 4.83 | 2.98 | 1.56 | 3.03 |
-| `pencil` | 4.49 | 2.77 | 1.18 | 2.29 |
-| `ink` (focus ring) | 11.07 | 6.83 | 2.41 | 4.68 |
+| `pen` | 4.02 | 2.36 | 1.01 | 1.80 |
+| `good` | 5.40 | 3.17 | 1.65 | 3.00 |
+| `pencil` | 4.79 | 2.81 | 1.21 | 2.20 |
+| `ink` (focus ring) | 12.75 | 7.47 | 2.51 | 4.57 |
 
-The halo itself against the squares is 1.23 and 1.99 (day) and 5.52 and 2.84 (night). It never needs 3:1, because it is the mark's background, not the mark. Last-move tint over the bare square: 1.34 and 1.30 (day), 1.34 and 1.72 (night, at 0.30 since Task 11), supplementary by design.
+The halo itself against the squares is 1.20 and 2.05 (day) and 5.31 and 2.92 (night). It never needs 3:1, because it is the mark's background, not the mark. Last-move tint over the bare square: 1.37 and 1.31 (day), 1.36 and 1.71 (night, after the Task 11 change from 0.18 to 0.30, which also made the night board livelier), supplementary by design.
 
 ## Type
 
@@ -224,7 +224,7 @@ Size and line height in px, from the classic scale. Literata's `opsz` tracks the
 
 ## Hand-made touches
 
-Dad's hand shows only where nothing is being measured. Boards, graphs, tables, KPIs and numbers stay crisp, so the warmth never costs trust.
+Dad's hand shows only where nothing is being measured. Boards, graphs, tables, KPIs and numbers stay crisp, so the personal touch never costs trust.
 
 | Touch | Component (`@ci/ui/brand`) | Where it may appear |
 |---|---|---|
@@ -267,7 +267,7 @@ Dad's hand shows only where nothing is being measured. Boards, graphs, tables, K
 | 1280–1599px | 560px |
 | 1600px and up | 640px |
 
-**Elevation.** There are no card shadows. Surfaces separate by tone: `paper` is the page, `sheet` sits on it, and `well` is pressed into a sheet. The one shadow is `--shadow-lift: 0 10px 30px -12px rgb(31 42 61 / 0.35)` (night: `rgb(0 0 0 / 0.5)`), used only for things that float: popovers, the drawer, the command menu, and a piece while it is being dragged.
+**Elevation.** There are no card shadows. Surfaces separate by tone: `paper` is the page, `sheet` sits on it, and `well` is pressed into a sheet. The one shadow is `--shadow-lift: 0 10px 30px -12px rgb(22 35 59 / 0.35)` (night: `rgb(0 0 0 / 0.5)`), used only for things that float: popovers, the drawer, the command menu, and a piece while it is being dragged.
 
 **Ruling.** Ruled lines are scoresheet-native, so they appear only on scoresheet and move-list surfaces, in `rule`. They never decorate a page, never separate every section, and never form newspaper columns (`B3`). Panels keep `--radius-sheet`.
 
@@ -281,7 +281,7 @@ Dad's hand shows only where nothing is being measured. Boards, graphs, tables, K
 
 - **Style:** flat, in the ink metaphor. They are line drawings, like a printed diagram, with no gradients, bevels, wood or shadows.
 - **Day:** black pieces are filled `piece-dark` (ink) with `piece-light` interior details. White pieces are filled `piece-light` (sheet) with a `piece-dark` outline about 1.5px at a 45px square, scaling with the square.
-- **Night:** black pieces are filled `piece-dark` (`#141210`, a step below `well`, so the warm night `well` can stay a shallow inset), which holds 6.38:1 and 3.28:1 on the two night squares, with `piece-light` interior details. White pieces are filled `piece-light` (pale ink) with the same `piece-dark` outline. Every silhouette therefore has a ≥ 3:1 edge on both squares in both themes.
+- **Night:** black pieces are filled `piece-dark` (`well`, `#0D1421`), which holds 6.20:1 and 3.40:1 on the two night squares, with `piece-light` interior details. White pieces are filled `piece-light` (pale ink) with the same `piece-dark` outline. Every silhouette therefore has a ≥ 3:1 edge on both squares in both themes.
 - **Default set: Cburnett** (Colin M.L. Burnett, Wikimedia Commons, used under its BSD-3-Clause option). It is drawn as flat outlines with a 1.5px stroke at 45px, which is this exact look, and it recolours with two values. Decision: `docs/decisions/0039-piece-set.md` (Accepted).
 - Never use Unicode chess glyphs for pieces.
 
@@ -383,9 +383,9 @@ Marks are filled, variable-width outlines built around a centreline, never const
 - **Markers:** each blunder, mistake or inaccuracy gets a small ring drawn with the same pen geometry (radius 7px, tilted 10°), thin for inaccuracies, centred on the line.
 - **Labels:** in the label lane, never on the line: the move in notation with its glyph (`9…b5?`) in `pen-text`, Literata 600 at `sm`. A 1px `pencil` leader runs from each label down to its ring. Labels are placed in priority order (the player's blunders, the player's mistakes, then the opponent's), each pushed either way by at most 56px to keep a 10px gap, and always order-preserving: a label sits in the same left-to-right order as its mark, so no two leaders cross. Leaders leave the label as a short 7px diagonal, then run straight down; a mark at the top of the plot gets a straight vertical. One label form is used per lane: the full notation, or SAN plus glyph when that places more labels (always below `--container-graph`). A label that can't be placed shows its glyph straight above its mark (within 4px, no leader), or is dropped; the text alternative lists every mistake and blunder. Inaccuracies are labelled only in containers 768px and wider, in Literata 400 `ink-faint`, at least 24px clear of serious labels and at most one per 120px. Label text has a halo in `--eval-graph-surface` (default `sheet`), which a host on another surface sets.
 - **Cursor:** a 1.5px `ink` rule marks the move shown on the board and moves with it.
-- **Whose move (ruled value, controller ruling, Task 13 fix round 3):** when the player's colour is known, only the player's own mistakes and blunders are `pen` ticks with `pen-text` glyphs. The opponent's marks (any judgement) are `pencil` hairline ticks, 1px wide with no halo, the same length as their severity, and their labels (in `ink-soft`, glyph included) are placed only after all of the player's labels. Red therefore always means "your mistake", and dense clusters lose half their red. Contrast for a chart mark (3:1): `pencil` on `well` 4.67 day and 7.25 night, and 3.90 day and 5.67 night on the tinted `well`.
+- **Whose move (ruled value, controller ruling, Task 13 fix round 3):** when the player's colour is known, only the player's own mistakes and blunders are `pen` ticks with `pen-text` glyphs. The opponent's marks (any judgement) are `pencil` hairline ticks, 1px wide with no halo, the same length as their severity, and their labels (in `ink-soft`, glyph included) are placed only after all of the player's labels. Red therefore always means "your mistake", and dense clusters lose half their red. Contrast for a chart mark (3:1): `pencil` on `well` 4.93 day and 7.49 night, and 4.08 day and 5.88 night on the tinted `well`.
 - **Corner labels:** "White" and "Black" (with "(you)" on the player's side) sit in the plot's top and bottom left corners, in `ink-soft` on a `well` halo. Each is measured in its real font, and its box grows by 3px (the line's stroke and halo). It moves to the right end only when nothing (no leader, tick or the eval line) touches it there; otherwise it stays left and its halo breaks what crosses it.
-- **Lines over the tint:** phase boundaries and label leaders cross the area tint, where `rule-strong` drops to 2.62:1 (day). They use `pencil` instead: 3.90:1 day and 5.67:1 night on the tinted `well` (controller ruling, Task 13 fix round 1). The zero line stays `rule-strong`, because it is the tint's edge, with `well` on its other side.
+- **Lines over the tint:** phase boundaries and label leaders cross the area tint, where `rule-strong` drops to 2.51:1 (day). They use `pencil` instead: 4.08:1 day and 5.88:1 night on the tinted `well` (controller ruling, Task 13 fix round 1). The zero line stays `rule-strong`, because it is the tint's edge, with `well` on its other side.
 - Long games scroll or compress inside the graph's own container, never the page.
 
 ### Eval bar
@@ -664,7 +664,7 @@ Settings persist in `localStorage` under `ci.sound` (mute, volume, pen), and the
 
 Every later task cites these IDs. A review that finds one names its ID.
 
-- `B1` Yellow cream with terracotta. The paper is faded, warm and photographic, never yellow (OKLCH chroma at most 0.025, checked by `tokens-contrast.test.ts`), and the red is a true pen red, never clay.
+- `B1` Warm cream with terracotta. The paper is cool blue-grey, never cream (an OKLCH hue around navy and a low chroma, checked by `tokens-contrast.test.ts`), and the red is a true pen red, never clay.
 - `B2` Near-black with one acid accent.
 - `B3` Broadsheet: hairlines everywhere, zero radius, newspaper columns.
 - `B4` SaaS card kit: identical rounded cards, one radius, grey shadow.
@@ -733,7 +733,7 @@ The first thing on `/styleguide` is the system doing its job on a real game, not
 - **`--hero-graph-height`** (hero-only token in `tokens.css`, controller ruling, Task 6 fix rounds 3 and 4): `calc(--board-size + 16px)`, the height of the board in its well. From 1024px the right column is exactly this tall: the header sits at its top, and after a 24px gap the eval graph (label lane and plot) fills the rest, so the graph's top meets the header block and its bottom meets the board's. The plot never drops below its 120px desktop height. Elsewhere the graph keeps its real sizes.
 - **The excerpt** opens on the ringed move and ends before the next blunder, so no second `??` competes with the key move. The hero's label lane names only the move on the board (accepted by controller ruling: the hero tells one moment).
 - **One pen mark in the hero graph** (controller ruling, Task 6 fix round 4): only the key move gets a pen ring. Every other mistake, blunder or inaccuracy in the hero graph is a quiet `pencil` hairline tick in the opponent-mark style of "Whose move" (1px, no halo, severity length), so the `??` stays the only loud red and narrow graphs don't crowd.
-- **The graph's own beat** (controller rulings, Task 6 fix rounds 4 and 5): when the eval graph is fully in view at the start (an `IntersectionObserver`, as for the link), the hero opens with the graph prologue. Over `--dur-reveal` on `--ease-pen` the eval line draws in and a left-to-right mask reveals the tint and ticks. The key move's beat (choreography 1's climax rows) then starts at 600ms, so everything shifts by `--dur-reveal`: lift 1000, contact 1360, rings 1460, badge and link 2000–2420, comment 2420. At contact the cursor drops onto the key move, growing down from the plot's top edge on `swing` while the eval bar swings on `swing-big`. The cursor is `ink` in day and `ink-soft` at night (9.92:1 on night `well`), so it doesn't compete with the key ring. When the graph is not in view at the start (phones, where it sits below the fold), there is no prologue and no stillness: the line is already drawn, the key move's beat runs at the original climax times (lift 400, contact 760, badge and link 1400–1820, comment 1820), and the cursor simply rests on the key move.
+- **The graph's own beat** (controller rulings, Task 6 fix rounds 4 and 5): when the eval graph is fully in view at the start (an `IntersectionObserver`, as for the link), the hero opens with the graph prologue. Over `--dur-reveal` on `--ease-pen` the eval line draws in and a left-to-right mask reveals the tint and ticks. The key move's beat (choreography 1's climax rows) then starts at 600ms, so everything shifts by `--dur-reveal`: lift 1000, contact 1360, rings 1460, badge and link 2000–2420, comment 2420. At contact the cursor drops onto the key move, growing down from the plot's top edge on `swing` while the eval bar swings on `swing-big`. The cursor is `ink` in day and `ink-soft` at night (9.94:1 on night `well`), so it doesn't compete with the key ring. When the graph is not in view at the start (phones, where it sits below the fold), there is no prologue and no stillness: the line is already drawn, the key move's beat runs at the original climax times (lift 400, contact 760, badge and link 1400–1820, comment 1820), and the cursor simply rests on the key move.
 - Left aligned. The heading is the game itself, set in Literata 600 at `3xl`. There is no marketing headline, eyebrow or badge. On first view, the hero plays the key move's beat: the climax rows of choreography 1, then the link mark, then the comment.
 
 ## How this direction was chosen
@@ -750,8 +750,8 @@ The first thing on `/styleguide` is the system doing its job on a real game, not
 
 The plan was checked against the five common generated looks:
 
-1. **Cream and terracotta (`B1`).** The paper was cool blue-grey at first; since the Rematch brand (2026-11-23) it is faded, warm photo paper at very low chroma, never yellow cream, and the red is a true pen red, not clay. A big serif headline on light paper still drifts toward this look, so a guard was added: Literata stays at text and title sizes in the app (`3xl` for page titles, `4xl` rarely), `5xl` is landing-only, and the styleguide hero is the game, not a display headline.
-2. **Near-black with an acid accent (`B2`).** Night study is warm dark paper under a desk lamp (`#1C1915`, navy `#121A2B` before 2026-11-23), not `#0B0B0B`. It has two semantic accents, not one decorative one, and the body text is near-white `ink`, not grey.
+1. **Cream and terracotta (`B1`).** The paper is cool blue-grey, not cream, and the red is a true pen red, not clay. A big serif headline on light paper still drifts toward this look, so a guard was added: Literata stays at text and title sizes in the app (`3xl` for page titles, `4xl` rarely), `5xl` is landing-only, and the styleguide hero is the game, not a display headline.
+2. **Near-black with an acid accent (`B2`).** Night study is navy (`#121A2B`), not `#0B0B0B`. It has two semantic accents, not one decorative one, and the body text is near-white `ink`, not grey.
 3. **Broadsheet (`B3`).** Ruled lines are scoresheet-native, which borders on this look. **Changed:** the first draft ruled the whole styleguide page into sections. Ruling is now only on scoresheet and move-list surfaces, panels keep `--radius-sheet`, and there are no newspaper columns.
 4. **SaaS card kit (`B4`).** There are no card shadows. Surfaces separate by tone, and radii vary by role (2, 6, 10 and pill). There are no gradients.
 5. **Template chrome (`B5`).** **Changed:** the first draft put small letter-spaced section labels above each styleguide block and set evaluations in a monospace face. Headings are now plain sentence case, and evaluations use Literata's tabular lining figures. The game line used a middle-dot meta string, and it is now a plain sentence.
@@ -964,3 +964,11 @@ Rulings taken while building `packages/ui/src/annotations` (ADR-WEB-15):
 4. **`--font-hand`** (Caveat) is new, for dad's margin notes only, and "Hand-made touches" sets where they may appear (`B20`).
 
 **Token values changed in this round:** every colour token in both themes, `--shadow-lift` (day), and the new `--color-crayon` and `--font-hand`.
+
+### 2026-11-23, back to the cool scoresheet (ADR 0103, Amendment 1)
+
+1. **The warm palette is withdrawn.** The owner preferred the original cool scoresheet, so every colour token in both themes, `--shadow-lift` and the contrast tables are back at their values from before the Rematch palette: paper `#F3F5F8`, navy ink `#16233B`, pen `#D3312B`, and the navy night study (`#121A2B`).
+2. **`B1` is "paper is never cream" again,** held by `tokens-contrast.test.ts` as an OKLCH rule: every surface in both themes sits between 230° and 285° of hue, and night paper is navy.
+3. **The brand stays:** the logo, the wordmark, margin notes, `--font-hand` and the crayon (`B19`, `B20`). The crayon keeps `#E3A92F` and `#D9A441`: 1.93:1 on day `paper`, 7.73:1 on night `paper`, and 53° of hue from the pen, so it still shows and never reads as a mistake.
+
+**Token values changed in this round:** every colour token in both themes except `--color-crayon`, and `--shadow-lift` (day).

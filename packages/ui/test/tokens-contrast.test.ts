@@ -1,8 +1,7 @@
-// The Rematch palette (docs/superpowers/specs/2026-11-23-rematch-brand-design.md): faded photo
-// paper, navy ink, dad's red pen and a crayon yellow for celebrations. These checks hold the brand's
-// promises that tokens.test.ts doesn't: the warm paper is never yellow, night study is a desk lamp
-// on warm paper rather than navy, every text and mark keeps AA in both themes, and the crayon stays
-// out of the data.
+// The annotated-scoresheet palette under the Rematch brand (ADR 0103, Amendment 1): cool blue-grey
+// paper, navy ink, dad's red pen and a crayon yellow for celebrations. These checks hold the
+// promises that tokens.test.ts doesn't: the paper is cool and never cream, night study is navy,
+// every text and mark keeps AA in both themes, and the crayon stays out of the data.
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -35,15 +34,16 @@ function oklch([r, g, b]: Rgba): { l: number; c: number; h: number } {
   return { l: L, c: Math.hypot(a, bb), h };
 }
 
-describe("the Rematch day palette", () => {
-  // The spec's values. They may move only to pass contrast, and these all pass.
+describe("the scoresheet day palette", () => {
+  // The original annotated-scoresheet values (ADR-WEB-7), restored by ADR 0103 Amendment 1, and the
+  // crayon the Rematch brand added.
   const spec: [string, string][] = [
-    ["paper", "#F4EFE6"],
-    ["sheet", "#FBF8F2"],
-    ["ink", "#1F2A3D"],
-    ["pen", "#C8372D"],
-    ["good", "#2F6B4F"],
-    ["pencil", "#6B6458"],
+    ["paper", "#F3F5F8"],
+    ["sheet", "#FBFCFD"],
+    ["ink", "#16233B"],
+    ["pen", "#D3312B"],
+    ["good", "#24684B"],
+    ["pencil", "#56657F"],
     ["crayon", "#E3A92F"],
   ];
   for (const [token, value] of spec) {
@@ -53,24 +53,24 @@ describe("the Rematch day palette", () => {
   }
 });
 
-describe("paper is faded, warm and photographic, never yellow", () => {
+describe("paper is cool blue-grey, never cream", () => {
   for (const theme of ["day", "night"] as const) {
     for (const surface of ["paper", "sheet", "well"]) {
-      it(`${theme} ${surface} is a warm hue at low chroma`, () => {
+      it(`${theme} ${surface} is a cool blue hue at low chroma`, () => {
         const { c, h } = oklch(colour(theme, surface));
-        // Warm: between red-orange and yellow-green on the OKLCH wheel, never navy (about 260°).
-        expect(h).toBeGreaterThanOrEqual(40);
-        expect(h).toBeLessThanOrEqual(100);
-        // Faded, not cream: a yellow or cream page sits well above 0.03.
-        expect(c).toBeGreaterThan(0.004);
-        expect(c).toBeLessThanOrEqual(0.025);
+        // Cool: around navy on the OKLCH wheel (about 260°), never the warm 40–100° of cream.
+        expect(h).toBeGreaterThanOrEqual(230);
+        expect(h).toBeLessThanOrEqual(285);
+        expect(c).toBeLessThanOrEqual(theme === "day" ? 0.015 : 0.05);
       });
     }
   }
-  it("night study is a desk lamp on warm paper: dark, and not blue", () => {
-    const { l, h } = oklch(colour("night", "paper"));
+  it("night study is navy: dark, and blue rather than black or warm", () => {
+    const { l, c, h } = oklch(colour("night", "paper"));
     expect(l).toBeLessThan(0.3);
-    expect(h < 200 || h > 300).toBe(true);
+    expect(c).toBeGreaterThan(0.02);
+    expect(h).toBeGreaterThanOrEqual(240);
+    expect(h).toBeLessThanOrEqual(280);
   });
 });
 
