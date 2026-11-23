@@ -22,6 +22,7 @@ const SHOT = {
 
 const SECTIONS = [
   "hero",
+  "brand",
   "foundations",
   "primitives",
   "overlays",

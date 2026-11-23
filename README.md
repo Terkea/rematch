@@ -36,7 +36,7 @@ Link your chess.com account and Rematch imports your games, keeps them in sync a
 
 Each mistake is counted per chance, not per game: a loose piece per move that had one, a missed fork per fork you had. Rematch ranks them by what they cost, explains each in a sentence and compares you with players around your rating. Every rate carries its count and an 80% range.
 
-<picture><source media="(prefers-color-scheme: dark)" srcset="site/public/shots/weaknesses-dark.webp"><img src="site/public/shots/weaknesses-light.webp" width="760" alt="Weakness rows: leaving pieces undefended at 4.2% with its 80% range and the peer median, rook endgames, missed forks as an early read, and blunders on a low clock."></picture>
+<picture><source media="(prefers-color-scheme: dark)" srcset="site/public/shots/weaknesses-dark.webp"><img src="site/public/shots/weaknesses-light.webp" width="760" alt="Weakness rows: leaving pieces undefended at 4.2% with its 80% range and the peer median, rook endgames, missed forks as an early read, and blunders with under 30 seconds on the clock."></picture>
 
 ### An AI coach that cites your games
 
