@@ -81,7 +81,7 @@ futures = "=0.3.34"
 tokio-util = { version = "=0.7.20", features = ["io"] }
 bytes = "=1.12.1"
 regex = "=1.13.1"
-rand = "=0.10.3"
+rand = "=0.10.4"
 wiremock = "=0.6.5"
 # R2 additions (ADR-R2-1). Each was published at least 7 days before 2026-11-21.
 schemars = { version = "=1.2.3", features = ["derive", "uuid1"] }
