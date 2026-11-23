@@ -29,7 +29,7 @@ export function intervalText(interval: AreaInterval | null): string {
   if (!interval || !Number.isFinite(interval.low) || !Number.isFinite(interval.high)) {
     return "No interval yet";
   }
-  return `${Math.round(interval.level * 100)}% range ${interval.low}\u2013${interval.high}`;
+  return `${Math.round(interval.level * 100)}% range ${interval.low} to ${interval.high}`;
 }
 
 export const areaLabels: Record<Area, string> = {

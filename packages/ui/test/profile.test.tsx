@@ -38,7 +38,7 @@ describe("weaknessRateText", () => {
   it("formats mean, range and counts", () => {
     expect(
       weaknessRateText({ mean: 0.0421, low: 0.031, high: 0.056 }, { events: 38, chances: 902 }),
-    ).toBe("Estimated 4.2% of chances (80% range 3.1–5.6%), from 38 of 902");
+    ).toBe("Estimated 4.2% of chances (80% range 3.1% to 5.6%), from 38 of 902");
   });
 });
 
@@ -61,7 +61,7 @@ describe("WeaknessRow", () => {
               .map((n) => (n.nodeType === 3 ? n.textContent : visible(n as Element)))
               .join("");
     expect(visible(container)).toContain("Estimated % of chances");
-    expect(visible(container)).toContain("80% range 3.1–5.6%");
+    expect(visible(container)).toContain("80% range 3.1% to 5.6%");
     // The interval clears the median: the comparison says so, and names the reference group.
     expect(container.textContent).toContain(
       "Players in your rating band: 2.1%, lower than your whole likely range",
@@ -169,7 +169,7 @@ describe("WeaknessRow", () => {
     expect(text).toContain("Not compared yet");
     expect(text).toContain(NO_BENCHMARK);
     expect(text).toContain("4.2%");
-    expect(text).toContain("80% range 3.1–5.6%");
+    expect(text).toContain("80% range 3.1% to 5.6%");
     expect(text).toContain("38 times in 902 chances");
   });
 

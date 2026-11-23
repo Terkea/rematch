@@ -64,15 +64,15 @@ describe("White vs Black text", () => {
     });
     expect(colourMetricText(fixture.byColor.white.accuracy, "accuracy")).toEqual({
       value: "78.4%",
-      detail: "80% range 76.9–79.8%",
+      detail: "80% range 76.9% to 79.8%",
     });
     expect(colourMetricText(fixture.byColor.white.score, "score")).toEqual({
       value: "52%",
-      detail: "80% range 44–60%",
+      detail: "80% range 44% to 60%",
     });
     expect(colourMetricText(fixture.byColor.white.blundersPerGame, "blunders")).toEqual({
       value: "0.9",
-      detail: "80% range 0.7–1.1",
+      detail: "80% range 0.7 to 1.1",
     });
   });
 

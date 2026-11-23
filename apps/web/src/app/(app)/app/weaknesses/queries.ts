@@ -35,15 +35,27 @@ export function basisText(scope: CoachScope): string {
 }
 
 /** The scope's URL parameters, so a link opens the same games coached. */
-export function scopeQuery(scope: CoachScope): string {
+/**
+ * The scope as a query, with the filters that travel between the list and a detail (A4): the
+ * colour, so a row opens the same colour's detail, and the dates.
+ */
+export function scopeQuery(
+  scope: CoachScope,
+  range: { from: string | null; to: string | null } = { from: null, to: null },
+): string {
   const q = new URLSearchParams({ account: scope.accountId, tc: scope.timeClass });
-  // The colour filter travels with the scope, so a row opens the same colour's detail.
+  if (range.from) q.set("from", range.from);
+  if (range.to) q.set("to", range.to);
   if (scope.side && scope.side !== "both") q.set("color", scope.side);
   return q.toString();
 }
 
-export function weaknessHref(seriesKey: string, scope: CoachScope): string {
-  return `/app/weaknesses/${encodeURIComponent(seriesKey)}?${scopeQuery(scope)}`;
+export function weaknessHref(
+  seriesKey: string,
+  scope: CoachScope,
+  range?: { from: string | null; to: string | null },
+): string {
+  return `/app/weaknesses/${encodeURIComponent(seriesKey)}?${scopeQuery(scope, range)}`;
 }
 
 /** Weeks with fewer chances than this are left off a line (hollow on the detail's chart). */

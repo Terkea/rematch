@@ -417,7 +417,7 @@ function TrendEnds({
   const shown = ends && at.length >= 2 && first != null && last != null;
   const gamesText = (i: number | undefined) => {
     const n = i === undefined ? undefined : games?.[i];
-    return n === undefined ? "" : ` · ${n} ${n === 1 ? "game" : "games"}`;
+    return n === undefined ? "" : ` (${n} ${n === 1 ? "game" : "games"})`;
   };
   return (
     <div data-part="trend-ends" className="mt-1 text-xs text-ink-soft">

@@ -205,6 +205,7 @@ export function WeaknessesView({
   filterBar,
   accountSwitch = true,
   sides = null,
+  range,
 }: {
   scope: CoachScope | null;
   weaknesses: WeaknessSummary[];
@@ -217,6 +218,8 @@ export function WeaknessesView({
   accountSwitch?: boolean;
   /** In Both mode, each series' White and Black estimate, shown under its row (ADR 0082). */
   sides?: Map<string, { white: SideRate | null; black: SideRate | null }> | null;
+  /** The bar's dates: each row's link carries them to its detail (A4). */
+  range?: { from: string | null; to: string | null };
 }) {
   const group = benchmarkGroupLabel(benchmark);
   const side = scope?.side === "white" || scope?.side === "black" ? scope.side : undefined;
@@ -291,7 +294,7 @@ export function WeaknessesView({
                         compared={w.compared}
                         confidence={w.confidence}
                         window={ESTIMATE_WINDOW_TEXT}
-                        href={weaknessHref(w.seriesKey, scope)}
+                        href={weaknessHref(w.seriesKey, scope, range)}
                         trend={trends.get(w.seriesKey) ?? []}
                         onset={w.onset ? w.onset.at.toISOString().slice(0, 10) : null}
                         scaleMax={scaleMax}
