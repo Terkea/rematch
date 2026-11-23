@@ -29,7 +29,7 @@ import type { NarrativeItem } from "../../../../../server/coaching/types";
 import type { DayRange } from "../../../../../server/filters/params";
 import {
   type Benchmark,
-  benchmarkGroupLabel,
+  baselineGroupLabel,
   notComparedText,
   peerPooledBasis,
 } from "../../../../../server/profile/benchmark-text";
@@ -617,7 +617,7 @@ function ThinMeasure({ kpi }: { kpi: KpiTrend }) {
 
 /** A row's group, basis and not-compared reason, named after the benchmark (Q4, holistic F1). */
 function areaBand(benchmark: Benchmark | null, seriesKey: string) {
-  const label = benchmarkGroupLabel(benchmark);
+  const label = baselineGroupLabel(benchmark, seriesKey);
   const basis = peerPooledBasis(benchmark, seriesKey);
   return {
     ...(label ? { label } : {}),

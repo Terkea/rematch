@@ -99,7 +99,9 @@ use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::analyse_features::parse_time_class;
-use crate::estimates::{compute_estimates, estimate_row, games_in_window};
+use crate::estimates::{
+    compute_estimates, estimate_row, games_in_window, model_baselines, with_model_baselines,
+};
 use crate::hook_impl::enqueue_build_profile;
 use crate::load::{LoadError, load_analysed_games_in, load_series_points_in};
 use crate::peer_benchmark::{
@@ -427,11 +429,20 @@ fn side_estimates(
     let games = l.games.iter().filter(|(c, _)| side.covers(c.player_color));
     let in_window = games_in_window(games.clone().map(|(c, _)| c.played_at), started_at);
     if side == Side::Both {
-        return compute_estimates(&l.series, in_window, l.band, reference, started_at);
+        // ADR 0101: the evaluation baselines apply to the all-games side only.
+        let model = model_baselines(&l.games, started_at);
+        return compute_estimates(&l.series, in_window, l.band, reference, &model, started_at);
     }
     let ids: HashSet<Uuid> = games.map(|(c, _)| c.game_id).collect();
     let series = side_series(&l.series, &ids);
-    compute_estimates(&series, in_window, l.band, reference, started_at)
+    compute_estimates(
+        &series,
+        in_window,
+        l.band,
+        reference,
+        &BTreeMap::new(),
+        started_at,
+    )
 }
 
 /// Each side's peer benchmark and served reference (peers), or the loaded Lichess ones.
@@ -467,7 +478,11 @@ fn compute(tc: TimeClass, l: &Loaded, started_at: OffsetDateTime) -> Computed {
     let estimates_ms = ms(t);
 
     let t = Instant::now();
-    let outcomes = evaluate_all(&l.series, references[side_index(Side::Both)].as_ref());
+    let timeline_reference = with_model_baselines(
+        references[side_index(Side::Both)].as_ref(),
+        &model_baselines(&l.games, started_at),
+    );
+    let outcomes = evaluate_all(&l.series, timeline_reference.as_ref());
     let contexts: HashMap<Uuid, &GameContext> =
         l.games.iter().map(|(c, _)| (c.game_id, c)).collect();
     let facts = CauseFacts {

@@ -67,6 +67,8 @@ fn w1_ref() -> BandReferenceStat {
 }
 
 const W1_POINTS: [(f64, f64, f64, f64); 1] = [(10.0, 400.0, 2.5, 0.0)];
+/// Clears the ranking floor (ADR 0101): 40 in 400 against a median of 0.02.
+const W1_STRONG: [(f64, f64, f64, f64); 1] = [(40.0, 400.0, 10.0, 0.0)];
 
 fn w1_input<'a>(
     points: &'a [(f64, f64, f64, f64)],
@@ -99,7 +101,10 @@ fn ts_w1_estimate() {
     close(e.posterior.interval.high, 0.0303238, 7);
     close(e.confidence, 0.672363, 6);
     close(e.excess, 0.0071429, 6);
-    close(e.priority, 0.0048026, 7);
+    // ADR 0101: the 80% interval [0.016, 0.030] holds the median 0.02 and the excess is 0.007
+    // of a point per game, so the estimate is below the ranking floor and ranks nowhere.
+    assert!(!e.credible);
+    assert_eq!(e.priority, 0.0);
     assert!(!e.precise);
     assert!(!e.min_evidence_met);
     assert_eq!(e.reason, EstimateReason::Ok);
@@ -138,8 +143,9 @@ fn under_30_games_is_insufficient_data() {
     assert_eq!(e.reason, EstimateReason::InsufficientData);
     assert_eq!(e.priority, 0.0);
     assert_eq!(MIN_GAMES, 30);
-    let e = estimate_weakness(&w1_input(&W1_POINTS, 30, Some(&r)));
+    let e = estimate_weakness(&w1_input(&W1_STRONG, 30, Some(&r)));
     assert_eq!(e.reason, EstimateReason::Ok);
+    assert!(e.credible);
     assert!(e.priority > 0.0);
 }
 
@@ -554,11 +560,12 @@ fn reason_precedence_and_missing_benchmark_fields() {
 #[test]
 fn fatigue_scales_priority() {
     let r = w1_ref();
-    let base = estimate_weakness(&w1_input(&W1_POINTS, 40, Some(&r)));
+    let base = estimate_weakness(&w1_input(&W1_STRONG, 40, Some(&r)));
+    assert!(base.priority > 0.0);
     let at = |fatigue: f64| {
         estimate_weakness(&EstimateInput {
             fatigue,
-            ..w1_input(&W1_POINTS, 40, Some(&r))
+            ..w1_input(&W1_STRONG, 40, Some(&r))
         })
         .priority
     };
@@ -792,6 +799,10 @@ fn property_estimate_is_contract_safe() {
                 let pct = e.percentile.expect("percentile");
                 assert!((1.0..=99.0).contains(&pct), "{ctx}");
                 assert_eq!(e.band_median, Some(median), "{ctx}");
+                // ADR 0101: only a credible estimate has a priority.
+                if !e.credible {
+                    assert_eq!(e.priority, 0.0, "{ctx}");
+                }
                 if post.mean <= median {
                     assert_eq!(e.excess, 0.0, "{ctx}");
                 }

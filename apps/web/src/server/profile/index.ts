@@ -2,9 +2,12 @@ export { getArea, listAreaScores } from "./areas";
 export {
   BENCHMARK_BIAS_TEXT,
   type Benchmark,
+  baselineGroupLabel,
   benchmarkGroupLabel,
   benchmarkLabel,
   getBenchmark,
+  MODEL_BASELINE_LABEL,
+  notComparedText,
   peerHeadline,
   peerPooledBasis,
   peerRateText,

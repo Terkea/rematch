@@ -18,7 +18,11 @@ import type {
   ExemplarPosition,
   WeaknessesSection,
 } from "../../../../../server/coaching/types";
-import { benchmarkGroupLabel, storedBenchmark } from "../../../../../server/profile/benchmark-text";
+import {
+  baselineGroupLabel,
+  benchmarkGroupLabel,
+  storedBenchmark,
+} from "../../../../../server/profile/benchmark-text";
 import { seriesGlossary } from "../../../../../server/profile/glossary";
 import type { ReportScope } from "../rebuild-button";
 import { weaknessHref, weaknessSeriesKey } from "./links";
@@ -61,7 +65,8 @@ export function Weaknesses({
     })),
   );
   // Holistic F5: a peer benchmark is named as the players faced, never the old Lichess band.
-  const peers = benchmarkGroupLabel(storedBenchmark(computed.benchmark, computed.player.platform));
+  const stored = storedBenchmark(computed.benchmark, computed.player.platform);
+  const peers = benchmarkGroupLabel(stored);
   const band = peers ?? capital(BAND_TEXT[computed.player.band] ?? DEFAULT_BAND_LABEL);
   // A ranked weakness always has a benchmark; with none ranked, the metrics say whether the build
   // had any band reference at all. Without one nothing was compared (bug hunt I1).
@@ -121,7 +126,8 @@ export function Weaknesses({
                     }}
                     band={{
                       median: Number.isFinite(w.bandMedian) ? w.bandMedian : null,
-                      label: band,
+                      // ADR 0101: W5's median is the evaluation's prediction.
+                      label: stored ? (baselineGroupLabel(stored, seriesKey) ?? band) : band,
                     }}
                     href={weaknessHref(seriesKey, scope)}
                     trend={trends[seriesKey] ?? []}

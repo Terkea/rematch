@@ -9,8 +9,11 @@ import type { CoachScope } from "./types";
 export {
   BENCHMARK_BIAS_TEXT,
   type Benchmark,
+  baselineGroupLabel,
   benchmarkGroupLabel,
   benchmarkLabel,
+  MODEL_BASELINE_LABEL,
+  notComparedText,
   peerPooledBasis,
   peerRateText,
 } from "./benchmark-text";

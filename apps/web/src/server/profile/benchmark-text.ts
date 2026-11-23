@@ -60,9 +60,30 @@ export function benchmarkGroupLabel(b: Benchmark | null): string | undefined {
   return `Players you've faced, rated about ${count.format(b.low)}–${count.format(b.high)}`;
 }
 
+/**
+ * The weakness rows Rust compares with what the evaluation predicts rather than with the players
+ * faced (ADR 0101, `profile_core::stats::priority::model_baseline`): the opponents' W5 in games
+ * against the player is the player's own W6 mirrored, so it is no peer rate. Its median is the
+ * failure rate that loses exactly the 0.15 of a point the evaluation expects a winning episode
+ * (W of 85 or more) to lose.
+ */
+export const MODEL_BASELINE_KEYS: ReadonlySet<string> = new Set(["W5"]);
+
+/** The group name of a row compared with the evaluation (ADR 0101). */
+export const MODEL_BASELINE_LABEL = "What the evaluation predicts";
+
+/**
+ * The group a weakness row's median belongs to: the evaluation for a [`MODEL_BASELINE_KEYS`]
+ * row of a peer benchmark, else the players faced ([`benchmarkGroupLabel`]).
+ */
+export function baselineGroupLabel(b: Benchmark | null, seriesKey: string): string | undefined {
+  if (b?.source === "peers" && MODEL_BASELINE_KEYS.has(seriesKey)) return MODEL_BASELINE_LABEL;
+  return benchmarkGroupLabel(b);
+}
+
 /** "pooled over 65 of their chances": what a peer row's rate is (ADR 0081). */
 export function peerPooledBasis(b: Benchmark | null, seriesKey: string): string | undefined {
-  if (b?.source !== "peers") return undefined;
+  if (b?.source !== "peers" || MODEL_BASELINE_KEYS.has(seriesKey)) return undefined;
   const n = b.chances[seriesKey];
   if (n == null || !fin(n) || n < 0) return undefined;
   return `pooled over ${count.format(Math.trunc(n))} of their chances`;
@@ -73,7 +94,7 @@ export function peerPooledBasis(b: Benchmark | null, seriesKey: string): string 
  * when the benchmark is not a peer band or the rate is not a number.
  */
 export function peerRateText(b: Benchmark | null, seriesKey: string, rate: number): string | null {
-  const group = benchmarkGroupLabel(b);
+  const group = b?.source === "peers" ? baselineGroupLabel(b, seriesKey) : undefined;
   if (group === undefined || !fin(rate)) return null;
   const basis = peerPooledBasis(b, seriesKey);
   return `${group}: ${shareText(rate)}${basis ? ` (${basis})` : ""}`;
@@ -81,10 +102,13 @@ export function peerRateText(b: Benchmark | null, seriesKey: string, rate: numbe
 
 /**
  * The weakness rows the peer benchmark compares, mirrored from Rust `is_peer_comparable`
- * (ADR 0081). Every other row (and every motif) is mirrored or unenriched in the opponents' side
- * of games against the player, so it is left out by design.
+ * (ADRs 0081, 0101). Every other row (and every motif) is mirrored or unenriched in the
+ * opponents' side of games against the player, so it is left out by design (W5 is compared with
+ * the evaluation instead, [`MODEL_BASELINE_KEYS`]).
  */
 export const PEER_COMPARABLE_KEYS: ReadonlySet<string> = new Set([
+  // ADR 0101: W1's refutation line is the cached main eval's PV, on both sides.
+  "W1",
   "W4.missed",
   "W4.allowed",
   "W7.traps",

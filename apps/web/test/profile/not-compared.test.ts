@@ -17,7 +17,9 @@ const peers: Benchmark = {
 
 describe("notComparedText", () => {
   it("names the by-design exclusion for mirrored or unenriched rows", () => {
-    for (const key of ["W1", "W3.deep", "W5", "W6", "W7.prep", "W8.basics", "W10", "W11"]) {
+    // ADR 0101: W1 is compared now (refutation lines from the cached evals); W5 is compared with
+    // the evaluation on the all-games side only, so a colour row says this.
+    for (const key of ["W2", "W3.deep", "W5", "W6", "W7.prep", "W8.basics", "W10", "W11"]) {
       expect(notComparedText(peers, key)).toBe(
         "Not compared: this can't be measured fairly from your opponents' moves in games against you",
       );
@@ -26,7 +28,7 @@ describe("notComparedText", () => {
   });
 
   it("says a comparable row has too few of their chances", () => {
-    for (const key of ["W4.missed", "W4.allowed", "W7.traps", "W9a", "W9b"]) {
+    for (const key of ["W1", "W4.missed", "W4.allowed", "W7.traps", "W9a", "W9b"]) {
       expect(notComparedText(peers, key)).toBe("Not compared yet: too few of their chances");
     }
   });

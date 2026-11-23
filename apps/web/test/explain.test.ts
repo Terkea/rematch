@@ -353,7 +353,8 @@ describe("levelText with a peer benchmark (ADR 0080)", () => {
       chances: {},
     };
     const base = { rate, median: null, compared: false, sufficient: true, benchmark: b };
-    expect(levelText({ ...base, seriesKey: "W1" })).toBe(
+    // ADR 0101: W1 is compared now, so W2 (it needs the threat probe) is the excluded example.
+    expect(levelText({ ...base, seriesKey: "W2" })).toBe(
       "Not compared: this can't be measured fairly from your opponents' moves in games against you.",
     );
     expect(levelText({ ...base, seriesKey: "W4.missed" })).toBe(

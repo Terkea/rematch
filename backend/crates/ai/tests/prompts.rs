@@ -186,7 +186,7 @@ fn report_prompt_set_is_the_brief_list() {
         "report/section-areas",
     ];
     let want = |id: &str| match id {
-        "report/report" => 3,
+        "report/report" => 4,
         id if v2.contains(&id) => 2,
         _ => 1,
     };
@@ -743,7 +743,7 @@ fn report_blocks_use_the_set_versions() {
     assert!(
         req.system[1]
             .text
-            .starts_with(load_prompt("report/report", 3).unwrap().text)
+            .starts_with(load_prompt("report/report", 4).unwrap().text)
     );
     assert!(
         req.system[1]
@@ -793,9 +793,9 @@ fn v3_prompts_teach_the_trajectory_and_its_honest_words() {
     for (id, v) in [("report/report", 2), ("chat/system", 3)] {
         assert!(!load_prompt(id, v).unwrap().text.contains("trajectory"));
     }
-    assert!(REPORT_PROMPT_SET.contains(&("report/report", 3)));
-    // ADR 0094: the set moved on to v5, which keeps v4's text.
-    assert!(ai::prompts::CHAT_PROMPT_SET.contains(&("chat/system", 5)));
+    assert!(REPORT_PROMPT_SET.contains(&("report/report", 4)));
+    // ADR 0094 moved the chat set to v5 and ADR 0101 to v6; both keep the trajectory text.
+    assert!(ai::prompts::CHAT_PROMPT_SET.contains(&("chat/system", 6)));
 }
 
 /// The chat context a v3 input gives the model (a snapshot of its trajectory part): the peak,
@@ -846,7 +846,7 @@ fn the_chat_context_carries_the_trajectory_and_its_refs() {
 /// stored hashes, and the sets use the new ones.
 #[test]
 fn plan_prompts_teach_the_plan_and_its_honest_words() {
-    let chat = load_prompt("chat/system", 5).unwrap().text;
+    let chat = load_prompt("chat/system", 6).unwrap().text;
     assert!(
         chat.starts_with(
             load_prompt("chat/system", 4)
@@ -904,7 +904,7 @@ fn plan_prompts_teach_the_plan_and_its_honest_words() {
             .text
             .contains("`plan`")
     );
-    assert!(ai::prompts::CHAT_PROMPT_SET.contains(&("chat/system", 5)));
+    assert!(ai::prompts::CHAT_PROMPT_SET.contains(&("chat/system", 6)));
     assert!(ai::prompts::WEEKLY_PROMPT_SET.contains(&("weekly-review/system", 2)));
     // The requests send the set versions.
     assert!(
@@ -1019,4 +1019,27 @@ fn the_sets_before_the_voice_still_load_and_hash_differently() {
         assert_eq!(before.len() + 1, set.len(), "{name}");
         assert_ne!(prompt_set_hash(&before), prompt_set_hash(set), "{name}");
     }
+}
+
+/// ADR 0101: W5's median is what the evaluation predicts, never the players faced. Report v4 and
+/// chat v6 say so; v3 and v5 stay unchanged for stored hashes.
+#[test]
+fn w5_median_is_named_as_the_evaluation() {
+    for (id, v) in [("report/report", 4), ("chat/system", 6)] {
+        let text = load_prompt(id, v).unwrap().text;
+        assert!(text.contains("The conversion weakness"), "{id} v{v}");
+        assert!(text.contains("what the evaluation predicts"), "{id} v{v}");
+        assert!(text.contains("not the players faced"), "{id} v{v}");
+    }
+    for (id, v) in [("report/report", 3), ("chat/system", 5)] {
+        assert!(
+            !load_prompt(id, v)
+                .unwrap()
+                .text
+                .contains("The conversion weakness"),
+            "{id} v{v}"
+        );
+    }
+    assert!(REPORT_PROMPT_SET.contains(&("report/report", 4)));
+    assert!(ai::prompts::CHAT_PROMPT_SET.contains(&("chat/system", 6)));
 }

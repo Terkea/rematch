@@ -8,10 +8,15 @@
 //!   ([`opponent_context`]), and cached in `opponent_game_metrics` per game
 //!   ([`refresh_opponent_metrics`]). A game whose evals are not all cached is skipped (counted),
 //!   never evaluated.
-//! - **Comparable metrics only** ([`is_peer_comparable`]). The opponent side has no enrichment
-//!   (refutation, threat and best lines, tablebase, Maia). Detectors that need it would read a
-//!   missing line as a non-event (W1's non-decisive moves still count), so their rows are never
-//!   produced: no benchmark, "not compared", rather than a biased one.
+//! - **Refutation lines** (ADR 0101). The opponent side gets the one enrichment the cached
+//!   main evals already hold: each of its moves' refutation line is the main eval's PV of the
+//!   position after it, exactly as the player's enrichment builds it (`enrich_game`,
+//!   `refutation_pv = evals[i+1].pv`). So W1 is measured on both sides by the same rule, and a
+//!   decisive move without a PV is left out of W1's chances on both sides, never a non-event.
+//! - **Comparable metrics only** ([`is_peer_comparable`]). The opponent side has no other
+//!   enrichment (threat and best lines, MultiPV, tablebase, Maia). Detectors that need it would
+//!   read a missing line as a non-event, so their rows are never produced: no benchmark, "not
+//!   compared", rather than a biased one.
 //! - **The band** is the player's latest pre-game rating ± [`PEER_RATING_WINDOW`] in the time
 //!   class; opponents whose pre-game rating falls outside are left out.
 //! - **Players** are distinct opponents (case-insensitive usernames). Each weighs once
@@ -41,7 +46,7 @@ use chess_core::game_accuracy::game_accuracy;
 use chess_core::move_record::build_move_records;
 use chess_core::pgn::parse_pgn;
 use chess_core::score::win_percent;
-use chess_core::{ClockInfo, Color, TimeClass};
+use chess_core::{ClockInfo, Color, MoveRecord, PositionEval, TimeClass};
 use db::games::get_game;
 use engine::ANALYSIS_PROTOCOL;
 use profile_core::bands::band_of;
@@ -50,7 +55,7 @@ use profile_core::stats::priority::WINDOW_DAYS;
 use profile_core::stats::weights::{HALF_LIFE_DAYS, recency_weight};
 use profile_core::types::{
     BandReference, BandReferenceStat, BaseMetric, GameContext, MetricId,
-    PLAYER_GAME_METRICS_VERSION, PlayerGameMetrics, Side, WeaknessKey,
+    PLAYER_GAME_METRICS_VERSION, PlayerGameMetrics, RawMoveFeatures, Side, WeaknessKey,
 };
 use serde_json::Value;
 use sqlx::{FromRow, PgConnection, PgPool};
@@ -101,7 +106,8 @@ impl BenchmarkSource {
 }
 
 /// True for the metrics an unenriched side measures exactly as the enriched player's side:
-/// decided from the main evals, the clocks, the phases and the result. Left out as well
+/// decided from the main evals (W1 from their PVs, ADR 0101), the clocks, the phases and the
+/// result. Left out as well
 /// (ADR 0081), because in a game against the player they are the player's own episodes
 /// mirrored: W5 and conversion (the player's W6 and resilience), W6 and resilience (the
 /// player's W5 and conversion), W7.prep, the "out worse" rate and the eval after the opening
@@ -112,7 +118,10 @@ pub fn is_peer_comparable(metric: MetricId) -> bool {
     use WeaknessKey as W;
     match metric {
         MetricId::Weakness(k) => {
-            matches!(k, W::W4Missed | W::W4Allowed | W::W7Traps | W::W9a | W::W9b)
+            matches!(
+                k,
+                W::W1 | W::W4Missed | W::W4Allowed | W::W7Traps | W::W9a | W::W9b
+            )
         }
         MetricId::Base(m) => matches!(
             m,
@@ -376,7 +385,7 @@ pub async fn compute_opponent_metrics(
     let accuracy = (!records.is_empty()).then(|| game_accuracy(&wins, opp_color));
     let ctx = opponent_context(&owner, (own_pre, opp_pre), accuracy);
     let explorer = load_game_explorer(pool, game.account_id, tc, &parsed).await;
-    let raw = vec![None; records.len()];
+    let raw = opponent_raw(&records, &evals, opp_color);
     let features = compute_game_features(FeatureInput {
         ctx: &ctx,
         parsed: &parsed,
@@ -395,6 +404,32 @@ pub async fn compute_opponent_metrics(
         own_pre,
         features.metrics,
     )))
+}
+
+/// The opponent side's raw features (ADR 0101): for each of `color`'s moves, only its
+/// refutation line, the cached main eval's PV of the position after it (`evals[i + 1]`, empty
+/// when the eval has none). Every other ply, and every other feature, is `None` or empty.
+pub fn opponent_raw(
+    records: &[MoveRecord],
+    evals: &[PositionEval],
+    color: Color,
+) -> Vec<Option<RawMoveFeatures>> {
+    records
+        .iter()
+        .enumerate()
+        .map(|(i, r)| {
+            (r.color == color).then(|| RawMoveFeatures {
+                ply: r.ply,
+                multipv: None,
+                best_pv: Vec::new(),
+                refutation_pv: evals.get(i + 1).map(|e| e.pv.clone()).unwrap_or_default(),
+                threat: None,
+                tb_wdl_before: None,
+                tb_wdl_after: None,
+                difficulty: None,
+            })
+        })
+        .collect()
 }
 
 /// Computes the missing or stale `opponent_game_metrics` rows of the account × time class.

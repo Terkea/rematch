@@ -7,7 +7,13 @@
 //! - `confidence = P(theta > band median)`;
 //! - `excess = max(0, mean - median) * (n_unweighted / games) * epl_per_event`;
 //! - `priority = excess * trainability * confidence * (1 - fatigue)`, 0 unless the reason is
-//!   `Ok` (benchmark present, at least [`MIN_GAMES`] games and at least one in-window event);
+//!   `Ok` (benchmark present, at least [`MIN_GAMES`] games and at least one in-window event)
+//!   and the estimate is `credible` (ADR 0101): its 80% interval lies above the median and its
+//!   excess is at least [`RANK_MIN_EXCESS_PER_GAME`]. Below that floor the excess and the
+//!   confidence are still reported, but nothing is ranked: "not enough evidence yet";
+//! - W5 has no peer row by design (the opponents' W5 in games against the player is the
+//!   player's own W6 mirrored, ADR 0081), so [`model_baseline`] gives it the evaluation's own
+//!   prediction as its benchmark, with a flat prior ([`estimate_weakness_against_model`]);
 //! - with no in-window event, confidence is 0 and the percentile is `None`: we never express
 //!   certainty about a weakness that was never observed;
 //! - invalid points are skipped and counted, so no NaN or infinity reaches the output.
@@ -18,7 +24,8 @@ use crate::constants::{RANKABLE, min_evidence, n0, trainability};
 use crate::stats::posterior::{BetaPosterior, posterior, prob_above};
 use crate::stats::quantiles::{QuartileRef, percentile_from_quartiles};
 use crate::stats::weights::{HALF_LIFE_DAYS, weighted_counts};
-use crate::types::{Band, BandReferenceStat, WeaknessKey};
+use crate::types::{Band, BandReferenceStat, MetricId, WeaknessKey};
+use crate::weakness::observe_game::T_WIN;
 
 /// Points older than this many days are outside the 6-month window (inclusive bound).
 pub const WINDOW_DAYS: f64 = 183.0;
@@ -32,6 +39,13 @@ pub const MAX_POINT_COUNT: f64 = 1e9;
 /// Largest usable band EPL per event (expected points lost, in pawns' worth of win share per
 /// event; real values are below 1). Larger values mean a broken reference: no benchmark.
 pub const MAX_EPL_PER_EVENT: f64 = 1e3;
+/// A weakness ranks only when it costs at least this many points per game beyond the benchmark
+/// (ADR 0101): one game's result every 50 games, about 14 Elo by the research's upper-bound
+/// conversion (0.03 points per game is about 20 Elo, improvement-engine section 5).
+pub const RANK_MIN_EXCESS_PER_GAME: f64 = 0.02;
+/// Score the evaluation expects a winning episode to lose: the episode starts at
+/// `W >= T_WIN` (85), and the win percentage is the expected score (ADR 0101).
+pub const MODEL_LOSS_PER_WINNING_EPISODE: f64 = (100.0 - T_WIN) / 100.0;
 
 /// Why an estimate can or cannot be ranked (TS `reason`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -67,8 +81,45 @@ pub struct WeaknessEstimate {
     pub precise: bool,
     pub min_evidence_met: bool,
     pub reason: EstimateReason,
+    /// The evidence clears the ranking floor (ADR 0101): the 80% interval lies above the
+    /// median and the excess is at least [`RANK_MIN_EXCESS_PER_GAME`].
+    #[serde(default)]
+    pub credible: bool,
+    /// The benchmark is [`model_baseline`] (the evaluation's prediction), not a peer or band row.
+    #[serde(default)]
+    pub model_baseline: bool,
     /// Points skipped as invalid (see [`estimate_weakness`]).
     pub invalid_points: u32,
+}
+
+/// The benchmark of a key that has no peer comparison by design (ADR 0101): for W5, the failure
+/// rate at which a player loses exactly [`MODEL_LOSS_PER_WINNING_EPISODE`] per winning episode,
+/// `0.15 / e`, where `e` is the player's own score lost per failure (`1 - score`, so 0.5 for a
+/// draw and 1 for a loss; `None` or invalid counts as 1). Its quartiles are that one rate, and
+/// its EPL per event is `e`, so the excess is the score lost per game beyond the evaluation's
+/// prediction. `None` for every other key.
+pub fn model_baseline(key: WeaknessKey, epl_per_event: Option<f64>) -> Option<BandReferenceStat> {
+    if key != WeaknessKey::W5 {
+        return None;
+    }
+    let e = epl_per_event
+        .filter(|e| e.is_finite() && *e > 0.0)
+        .map_or(1.0, |e| e.min(1.0));
+    let rate = (MODEL_LOSS_PER_WINNING_EPISODE / e).min(1.0);
+    Some(BandReferenceStat {
+        metric: MetricId::Weakness(key),
+        median: rate,
+        p25: rate,
+        p40: rate,
+        p75: rate,
+        pooled_rate: Some(rate),
+        epl_per_event: Some(e),
+        opps_per_game: None,
+        opp_slope_per_100: None,
+        n_players: 0,
+        n_games: 0,
+        low_sample: false,
+    })
 }
 
 /// Input of [`estimate_weakness`]. `points` are `(events, opportunities, epl, age_days)`; `epl`
@@ -126,6 +177,22 @@ fn valid_point(&(e, o, epl, age): &(f64, f64, f64, f64)) -> bool {
 /// opportunities, implausibly large counts, a non-finite age) are skipped and counted in
 /// `invalid_points`. Valid points older than [`WINDOW_DAYS`] are ignored, not invalid.
 pub fn estimate_weakness(i: &EstimateInput) -> WeaknessEstimate {
+    estimate_with_prior(i, None)
+}
+
+/// [`estimate_weakness`] against a [`model_baseline`] row (ADR 0101): the row sets the
+/// comparison (median, excess, the ranking floor), but the evaluation's prediction is no
+/// population of players, so it is not a prior: the posterior keeps the flat `Beta(1, 1)`.
+/// The estimate is marked `model_baseline`.
+pub fn estimate_weakness_against_model(i: &EstimateInput) -> WeaknessEstimate {
+    WeaknessEstimate {
+        model_baseline: true,
+        ..estimate_with_prior(i, Some((0.5, 2.0)))
+    }
+}
+
+/// `prior` overrides the benchmark's `{pooled_rate, n0[key]}` prior as `(mu, n0)`.
+fn estimate_with_prior(i: &EstimateInput, prior: Option<(f64, f64)>) -> WeaknessEstimate {
     let valid: Vec<_> = i.points.iter().filter(|p| valid_point(p)).collect();
     let invalid_points = u32::try_from(i.points.len() - valid.len()).unwrap_or(u32::MAX);
     let in_window: Vec<_> = valid
@@ -140,9 +207,10 @@ pub fn estimate_weakness(i: &EstimateInput) -> WeaknessEstimate {
         .fold((0.0, 0.0), |(ks, ns), &(e, o, _, _)| (ks + e, ns + o));
 
     let bench = benchmark(i.reference);
-    let post = match bench {
-        Some((_, pooled, _)) => posterior(k, n, pooled, n0(i.key)),
-        None => posterior(k, n, 0.5, 2.0),
+    let post = match (prior, bench) {
+        (Some((mu, strength)), _) => posterior(k, n, mu, strength),
+        (None, Some((_, pooled, _))) => posterior(k, n, pooled, n0(i.key)),
+        (None, None) => posterior(k, n, 0.5, 2.0),
     };
     let train = trainability(i.key, i.band);
     let fatigue = if i.fatigue.is_nan() {
@@ -151,7 +219,7 @@ pub fn estimate_weakness(i: &EstimateInput) -> WeaknessEstimate {
         i.fatigue.clamp(0.0, 1.0)
     };
 
-    let (band_median, band_p40, percentile, confidence, excess, precise) = match bench {
+    let (band_median, band_p40, percentile, confidence, excess, precise, above) = match bench {
         Some((r, _, epl)) => {
             let q = QuartileRef {
                 p25: r.p25,
@@ -177,9 +245,10 @@ pub fn estimate_weakness(i: &EstimateInput) -> WeaknessEstimate {
                 prob_above(&post, r.median),
                 excess,
                 width <= PRECISE_REL_WIDTH * r.median,
+                post.interval.low > r.median,
             )
         }
-        None => (None, None, None, 0.0, 0.0, false),
+        None => (None, None, None, 0.0, 0.0, false, false),
     };
 
     let no_events = k_unweighted == 0.0;
@@ -198,9 +267,11 @@ pub fn estimate_weakness(i: &EstimateInput) -> WeaknessEstimate {
     } else {
         EstimateReason::Ok
     };
-    let priority = match reason {
-        EstimateReason::Ok => excess * train * confidence * (1.0 - fatigue),
-        _ => 0.0,
+    let credible = reason == EstimateReason::Ok && above && excess >= RANK_MIN_EXCESS_PER_GAME;
+    let priority = if credible {
+        excess * train * confidence * (1.0 - fatigue)
+    } else {
+        0.0
     };
 
     WeaknessEstimate {
@@ -220,6 +291,8 @@ pub fn estimate_weakness(i: &EstimateInput) -> WeaknessEstimate {
         precise,
         min_evidence_met: n_unweighted >= min_evidence(i.key),
         reason,
+        credible,
+        model_baseline: false,
         invalid_points,
     }
 }
