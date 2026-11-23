@@ -36,6 +36,8 @@ test("setting a focus on a weakness page puts its card on the overview", async (
   const make = page.getByRole("button", { name: "Make this my focus" });
   // The button is a client island: retry the click until it has hydrated and the page refreshed.
   await expect(async () => {
+    // A click that landed but refreshed slowly has already set it: never click twice.
+    if (await page.getByText("This is your focus this week.").isVisible()) return;
     await make.click({ timeout: 2_000 });
     await expect(page.getByText("This is your focus this week.")).toBeVisible({ timeout: 5_000 });
   }).toPass({ timeout: 60_000 });
@@ -157,7 +159,7 @@ test("a focus that reached its N games reads as closed: met, not met, inconclusi
     await expect(card).toBeVisible();
     await expect(card.locator(`[data-verdict="${kind}"]`)).toBeVisible();
     if (text) await expect(card.locator(`[data-verdict="${kind}"]`)).toHaveText(text);
-    await expect(card).toContainText("Over 5 games");
+    await expect(card).toContainText("Over 5 of 5 games");
     expect(await card.textContent()).not.toMatch(/NaN|undefined|Infinity/);
     // Progress reads the same closed focus.
     await settle(page, "/app/progress?tc=rapid");
