@@ -11,7 +11,7 @@ use serde_json::json;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-const FIXED_UA: &str = "chess-improver/0.1 (+https://github.com/chess-improver)";
+const FIXED_UA: &str = "rematch/0.1 (+https://github.com/Terkea/rematch)";
 
 #[tokio::test]
 async fn a_chesscom_import_sends_only_the_fixed_user_agent_and_no_email() {

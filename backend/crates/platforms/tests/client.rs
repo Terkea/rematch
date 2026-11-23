@@ -12,7 +12,7 @@ use tokio::net::TcpListener;
 use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, MockServer, Request, Respond, ResponseTemplate};
 
-const FIXED_UA: &str = "chess-improver/0.1 (+https://github.com/chess-improver)";
+const FIXED_UA: &str = "rematch/0.1 (+https://github.com/Terkea/rematch)";
 
 fn opts() -> ClientOptions {
     ClientOptions {
