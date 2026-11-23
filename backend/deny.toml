@@ -21,7 +21,8 @@ unused-allowed-license = "allow"
 include-dev = true
 
 [licenses.private]
-# Workspace crates are `publish = false` and `license = "UNLICENSED"`.
+# Workspace crates are `publish = false` and `license = "AGPL-3.0-only"` (the project licence);
+# the allowlist above governs third-party crates only.
 ignore = true
 
 [advisories]
