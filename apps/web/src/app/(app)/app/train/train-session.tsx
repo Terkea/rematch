@@ -13,7 +13,7 @@ import type { AttemptResult, TrainItem } from "../../../../server/train/store";
 
 // Today's session (ADR 0090): one position at a time, from the player's side, with the prompt
 // "Find the best move" and no motif named. The player plays a move, says how sure they are, and
-// only then sees the verdict, which is about the move ("Right: Rd8# mates." or "Not this time:
+// only then sees the verdict, which is about the move ("There you go: Rd8# is mate." or "Not quite.
 // ..."), with the engine's line as numbered arrows and a link to the game at that ply. Grading is
 // the server's (`POST /api/train/attempts`), so the answer never reaches the page before it.
 
@@ -302,8 +302,8 @@ function RevealPanel({
       </p>
       {result.correct ? null : (
         <p className="m-0 text-base text-ink">
-          Your move, <NotationText moveNumber={moveNumber} color={colour} san={result.move.san} />,
-          is not one of the engine's good moves here.
+          You played <NotationText moveNumber={moveNumber} color={colour} san={result.move.san} />.
+          It isn't one of the engine's good moves here.
         </p>
       )}
       {result.line.length > 0 ? (

@@ -42,28 +42,28 @@ describe("practiseView", () => {
     expect(practiseView({ kind: "done", next: "2026-11-24", doneToday: 12 }, scope, today)).toEqual(
       {
         kind: "done",
-        line: "All done for today, next due tomorrow.",
-        detail: "You practised 12 positions today.",
+        line: "That's today done. Next due tomorrow.",
+        detail: "You went through 12 positions today. Well done.",
         href: "/app/train?account=acc-1&tc=rapid",
       },
     );
     expect(
       practiseView({ kind: "done", next: "2026-11-30", doneToday: 0 }, scope, today),
-    ).toMatchObject({ line: "All done for today, next due on 30 November." });
+    ).toMatchObject({ line: "That's today done. Next due on 30 November." });
     expect(practiseView({ kind: "done", next: null, doneToday: 1 }, scope, today)).toMatchObject({
-      line: "All done for today.",
+      line: "That's today done.",
       detail:
-        "You practised 1 position today. Nothing else is due yet: new positions come from your next analysed games.",
+        "You went through 1 position today. Well done. Nothing else is due yet. Your next analysed games will bring new positions.",
     });
   });
 
   it("starts training on a first run", () => {
     expect(practiseView({ kind: "first-run" }, scope, today)).toEqual({
       kind: "first-run",
-      action: "Start training",
+      action: "Start practising",
       href: "/app/train?account=acc-1&tc=rapid",
       detail:
-        "Practise positions from your own rapid games where you missed a win or a mate, or blundered. Up to 12 a session, about 10 to 15 minutes.",
+        "Let's go over the moments in your own rapid games where you missed a win or a mate, or blundered. Up to 12 a session, about 10 to 15 minutes.",
     });
   });
 });
@@ -87,13 +87,13 @@ describe("PractiseCard", () => {
       />,
     );
     const card = screen.getByRole("region", { name: "Practise" });
-    expect(card).toHaveTextContent("All done for today, next due tomorrow.");
+    expect(card).toHaveTextContent("That's today done. Next due tomorrow.");
     expect(within(card).getByRole("link", { name: "Open the trainer" })).toBeInTheDocument();
   });
 
-  it("offers Start training on a first run", () => {
+  it("offers Start practising on a first run", () => {
     render(<PractiseCard view={practiseView({ kind: "first-run" }, scope, today)} />);
-    expect(screen.getByRole("link", { name: "Start training" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Start practising" })).toHaveAttribute(
       "href",
       "/app/train?account=acc-1&tc=rapid",
     );

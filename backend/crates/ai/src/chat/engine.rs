@@ -96,16 +96,17 @@ pub const ANSWER_NOW_TEXT: &str = "Answer now with what you have.";
 const OFFTOPIC: &str = OFFTOPIC_MARKER;
 
 /// `system[0]` = the shared [`rules_block`] (cached, byte-identical to the report's), and
-/// `system[1]` = `chat/system` + `"\n\n"` + `core/glossary` (ADR 0085) + `"\n\n"` +
-/// [`OFFTOPIC_LINE`] (cached). The `chat/system` file
+/// `system[1]` = `chat/system` + `"\n\n"` + `tone/voice` (the coach's voice) + `"\n\n"` +
+/// `core/glossary` (ADR 0085) + `"\n\n"` + [`OFFTOPIC_LINE`] (cached). The `chat/system` file
 /// holds no `{{…}}`: T13's `render_template` treats `{{name}}` as a placeholder, so the marker is
 /// added here in code, never through a template.
 pub fn chat_system_blocks() -> Vec<TextBlock> {
     vec![
         rules_block(),
         TextBlock::cached(format!(
-            "{}\n\n{}\n\n{OFFTOPIC_LINE}",
+            "{}\n\n{}\n\n{}\n\n{OFFTOPIC_LINE}",
             prompt_text("chat/system").trim_end(),
+            prompt_text("tone/voice").trim_end(),
             prompt_text("core/glossary").trim_end()
         )),
     ]

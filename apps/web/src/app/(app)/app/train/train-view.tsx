@@ -16,11 +16,11 @@ import { TrainSession } from "./train-session";
 // it is done, and "Is it working?". The motif of a position is never named before the attempt.
 
 export const LEDE =
-  "Positions from your own games where a better move was there. Find it, then see the engine's line.";
+  "Moments from your own games where there was a better move. Find it, then we'll look at the engine's line.";
 export const NO_SCOPE_TEXT =
-  "No analysed games yet. Your practice positions come from your analysed games.";
+  "No analysed games yet. Once there are, the moments you missed will be here to practise.";
 export const NO_ITEMS_TEXT =
-  "No positions to practise yet. They come from your analysed games: a mate you missed, a tactic you missed, or a blunder.";
+  "No positions to practise yet. When an analysed game has a mate or a tactic you missed, or a blunder, that position comes here so we can go over it.";
 
 const count = new Intl.NumberFormat("en-GB");
 const positions = (n: number) => `${count.format(n)} ${n === 1 ? "position" : "positions"}`;
@@ -118,7 +118,7 @@ function Summary({ page }: { page: TrainPage }) {
       className="flex flex-col gap-3 rounded-sheet bg-sheet px-(--space-panel-pad) py-8"
     >
       <h2 id="train-summary" className="font-serif text-2xl font-semibold text-ink">
-        {done > 0 ? "Today's session is done" : "Nothing due today"}
+        {done > 0 ? "That's today done" : "Nothing to go over today"}
       </h2>
       {done > 0 ? (
         <p className="m-0 text-lg text-ink [font-variant-numeric:lining-nums]">

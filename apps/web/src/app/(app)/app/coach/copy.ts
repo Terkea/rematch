@@ -8,7 +8,8 @@ import { type CapReason, failureCopy } from "../../../../server/coach/copy";
 export const AI_DISCLOSURE_NOTE =
   "This coaching was written by an AI model (Claude) from your analysed games. It can contain mistakes. The engine data shown alongside it is the source of truth.";
 
-export const EMPTY_THREADS = "Ask about any of your games, moves, openings or weaknesses.";
+export const EMPTY_THREADS =
+  "Ask about any of your games: a move, an opening or a weakness. We'll go through it together.";
 
 /** Under "Coach not available right now" (bug hunt I5): what still works, and what to expect. */
 export const COACH_UNAVAILABLE_BODY =

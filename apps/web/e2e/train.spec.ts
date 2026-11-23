@@ -95,7 +95,7 @@ test("a training session: one right, one wrong, both due again tomorrow", async 
     await main.getByRole("button", { name: i === 1 ? "Sure" : "A guess" }).click();
     const verdict = main.locator('[data-slot="verdict"]');
     await expect(verdict).toContainText(
-      right ? /^Right: / : /^Not this time: the engine's move was /,
+      right ? /^(There you go|That works): / : /^Not quite\. The engine's move was /,
     );
     const link = main.getByRole("link", { name: "Open the game at this move" });
     await expect(link).toHaveAttribute("href", /^\/app\/games\/[0-9a-f-]{36}\?ply=\d+$/);
@@ -106,7 +106,7 @@ test("a training session: one right, one wrong, both due again tomorrow", async 
       .click();
   }
 
-  await expect(main.getByRole("heading", { name: "Today's session is done" })).toBeVisible({
+  await expect(main.getByRole("heading", { name: "That's today done" })).toBeVisible({
     timeout: 60_000,
   });
   await expect(main).toContainText(`${total - 1} of ${total} positions right today.`);
@@ -162,18 +162,18 @@ test("trainer states: new games, one source, nothing due, held out, no positions
   // Everything seen and due later: nothing today, and the overview says when.
   state("rest");
   await settle(page, "/app/train");
-  await expect(main.getByRole("heading", { name: "Nothing due today" })).toBeVisible();
+  await expect(main.getByRole("heading", { name: "Nothing to go over today" })).toBeVisible();
   await settle(page, "/app?tc=rapid");
   const practise = page.locator('[data-slot="practise"]');
   await expect(practise).toHaveAttribute("data-practise", "done");
-  await expect(practise).toContainText(/All done for today, next due on \d+ \w+\./);
+  await expect(practise).toContainText(/That's today done\. Next due on \d+ \w+\./);
   await expect(practise.getByRole("link", { name: "Open the trainer" })).toBeVisible();
 
   // No position at all: a first run on the overview, the empty sheet on the trainer.
   state("empty");
   await settle(page, "/app?tc=rapid");
   await expect(practise).toHaveAttribute("data-practise", "first-run");
-  await expect(practise.getByRole("link", { name: "Start training" })).toHaveAttribute(
+  await expect(practise.getByRole("link", { name: "Start practising" })).toHaveAttribute(
     "href",
     /^\/app\/train\?account=[^&]+&tc=rapid$/,
   );

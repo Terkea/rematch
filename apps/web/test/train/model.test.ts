@@ -82,23 +82,23 @@ describe("feedback", () => {
   const fen = "6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1";
   it("names a mate in the right answer", () => {
     expect(feedback({ correct: true, fen, moveUci: "d1d8", solutionUci: "d1d8" })).toBe(
-      "Right: Rd8# mates.",
+      "There you go: Rd8# is mate.",
     );
   });
 
   it("names the engine's move when the player's was another good one", () => {
     const open = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
     expect(feedback({ correct: true, fen: open, moveUci: "d2d4", solutionUci: "e2e4" })).toBe(
-      "Right: d4 is one of the engine's good moves here (it chose e4).",
+      "That works: d4 is one of the engine's good moves here (it chose e4).",
     );
     expect(feedback({ correct: true, fen: open, moveUci: "e2e4", solutionUci: "e2e4" })).toBe(
-      "Right: e4 is the engine's move.",
+      "There you go: e4 is the engine's move.",
     );
   });
 
   it("is about the move, never the player, when it fails", () => {
     expect(feedback({ correct: false, fen, moveUci: "d1d7", solutionUci: "d1d8" })).toBe(
-      "Not this time: the engine's move was Rd8#.",
+      "Not quite. The engine's move was Rd8#. Let's try this one again tomorrow.",
     );
   });
 });

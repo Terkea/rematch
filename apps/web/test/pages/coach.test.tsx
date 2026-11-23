@@ -441,7 +441,9 @@ describe("coach pages", () => {
     const tree = await ListPage({ searchParams: Promise.resolve({}) });
     render(tree as ReactElement);
     expect(
-      screen.getByText("Ask about any of your games, moves, openings or weaknesses."),
+      screen.getByText(
+        "Ask about any of your games: a move, an opening or a weakness. We'll go through it together.",
+      ),
     ).toBeInTheDocument();
   });
 

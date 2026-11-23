@@ -79,8 +79,10 @@ export function sanOf(fen: string, uci: string): string {
 }
 
 /**
- * The verdict line, about the move and never the player (Kluger and DeNisi): "Right: Qg7#
- * mates.", "Right: Nf5 is the engine's move.", or "Not this time: the engine's move was Qg7#."
+ * The verdict line, about the move and never the player (Kluger and DeNisi), in the coach's
+ * voice: "There you go: Qg7# is mate.", "There you go: Nf5 is the engine's move.", "That works:
+ * d4 is one of the engine's good moves here (it chose e4).", or "Not quite. The engine's move
+ * was Qg7#. Let's try this one again tomorrow." (a miss is due tomorrow, `afterAttempt`).
  */
 export function feedback(p: {
   correct: boolean;
@@ -89,11 +91,13 @@ export function feedback(p: {
   solutionUci: string;
 }): string {
   const best = sanOf(p.fen, p.solutionUci);
-  if (!p.correct) return `Not this time: the engine's move was ${best}.`;
+  if (!p.correct)
+    return `Not quite. The engine's move was ${best}. Let's try this one again tomorrow.`;
   const san = sanOf(p.fen, p.moveUci);
-  if (san.endsWith("#")) return `Right: ${san} mates.`;
-  if (p.moveUci.toLowerCase() === p.solutionUci) return `Right: ${san} is the engine's move.`;
-  return `Right: ${san} is one of the engine's good moves here (it chose ${best}).`;
+  if (san.endsWith("#")) return `There you go: ${san} is mate.`;
+  if (p.moveUci.toLowerCase() === p.solutionUci)
+    return `There you go: ${san} is the engine's move.`;
+  return `That works: ${san} is one of the engine's good moves here (it chose ${best}).`;
 }
 
 // ---- Days (the player's time zone, R2-8) ----

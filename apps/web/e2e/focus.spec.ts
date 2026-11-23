@@ -50,7 +50,7 @@ test("setting a focus on a weakness page puts its card on the overview", async (
     /^\/app\/weaknesses\/W3\.shallow\?/,
   );
   await expect(card).toContainText(
-    /Get it down to \d+\.\d% of your chances over your next 20 rapid games, from \d+\.\d% now\./,
+    /Let's get it down to \d+\.\d% of your chances over your next 20 rapid games\. It's \d+\.\d% now\./,
   );
   await expect(
     card.getByRole("progressbar", { name: "Games played in this focus" }),
