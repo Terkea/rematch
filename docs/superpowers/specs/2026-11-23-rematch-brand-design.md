@@ -33,7 +33,9 @@ Rematch is built in memory of the maintainer's dad, who played chess all his lif
 
 **Mark.** The boy with his board, from the photo, drawn by the designer agent: the primary mark, a variant with dad's hand on his shoulder in red pen, a simplified favicon mark and a lockup. The owner picks the final one.
 
-**Palette.** "Annotated scoresheet" keeps its structure and moves warmer. These are proposed values; the DESIGN.md contrast checks decide the final ones.
+**Palette (withdrawn on 2026-11-23, ADR 0103 Amendment 1).** The owner preferred the original cool scoresheet, so the app keeps `#F3F5F8` paper, `#16233B` navy ink, the `#D3312B` pen and the navy night study (`#121A2B`). Only the crayon below survived, at `#E3A92F` by day and `#D9A441` at night, on the cool paper. The warm proposal is kept here as the record.
+
+The proposal: "Annotated scoresheet" keeps its structure and moves warmer. These are proposed values; the DESIGN.md contrast checks decide the final ones.
 
 | Token | Day now | Day proposed | Role |
 |---|---|---|---|
@@ -47,7 +49,7 @@ Rematch is built in memory of the maintainer's dad, who played chess all his lif
 
 Night study moves warmer in the same way: a desk lamp on warm paper, not a blue screen.
 
-DESIGN.md's ban "paper is never cream" is replaced by "paper is faded, warm and photographic, never yellow".
+The proposal replaced DESIGN.md's ban "paper is never cream" with "paper is faded, warm and photographic, never yellow". Since Amendment 1 the original ban holds again.
 
 **Type.**
 - Literata and Schibsted Grotesk stay for all reading and data.
