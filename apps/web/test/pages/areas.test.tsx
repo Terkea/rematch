@@ -314,6 +314,18 @@ describe("skill-area pages", { timeout: 30_000 }, () => {
     expect(container.textContent).not.toMatch(/Mindset 66/);
   });
 
+  // Holistic F10: an unverified link sees no coach's note, only the calm "verify" state.
+  it("an unverified link asks to verify instead of showing the coach's note", async () => {
+    getReport.mockResolvedValue({ ...reportView(null), locked: "unverified" });
+    const { container } = await show("endgame");
+    const note = within(screen.getByRole("region", { name: "Coach's note" }));
+    expect(note.getByText("Verify this account to see your coach's note")).toBeInTheDocument();
+    expect(note.getByRole("link", { name: "Verify this account" }).getAttribute("href")).toBe(
+      "/app/accounts",
+    );
+    expect(container.textContent).not.toMatch(/comes with your first report/);
+  });
+
   it("null score says not enough games and never renders 0", async () => {
     getReport.mockResolvedValue(reportView(null));
     getArea.mockResolvedValue({

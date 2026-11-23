@@ -1,6 +1,6 @@
 import { CoachScopeSwitch } from "../../../../../components/coach-scope-switch";
 import { requireUser } from "../../../../../server/auth/session";
-import { chatAllowance } from "../../../../../server/coach/allowance";
+import { coachAllowance } from "../../../../../server/coach/allowance";
 import { askedColour, type ChatAnchor, decodeAnchor } from "../../../../../server/coach/anchor";
 import { coachStatus } from "../../../../../server/coach/status";
 import { getDb } from "../../../../../server/db";
@@ -45,7 +45,7 @@ export default async function NewCoachPage({ searchParams }: { searchParams: Pro
   const decoded = raw ? decodeAnchor(raw) : null;
   const [view, allowance, status] = await Promise.all([
     decoded ? loadAnchorView(db, user.id, scope.accountId, decoded) : Promise.resolve(null),
-    chatAllowance(db, scope.accountId),
+    coachAllowance(db, user.id, scope.accountId),
     coachStatus(db),
   ]);
   const anchor: ChatAnchor | null = view ? decoded : null;
@@ -55,7 +55,8 @@ export default async function NewCoachPage({ searchParams }: { searchParams: Pro
       scope={{ accountId: scope.accountId, timeClass: scope.timeClass }}
       anchor={anchor}
       color={askedColour(first(params.color))}
-      allowance={allowanceView(allowance)}
+      allowance={allowance ? allowanceView(allowance) : null}
+      verified={allowance !== null}
       listHref={`/app/coach?${q.toString()}`}
       available={status === "available"}
       // An anchor belongs to one account's games: switching scope would drop it, so no switch.

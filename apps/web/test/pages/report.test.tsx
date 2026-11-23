@@ -418,6 +418,21 @@ describe("report page", () => {
     expect(text).not.toMatch(/rated 900–1299|at your level/);
   });
 
+  // Holistic F10: a user whose link is not verified gets the calm verify state, no report.
+  it("an unverified link sees the verify state, not the report", async () => {
+    await previous();
+    await db.execute(sql`update account_links set verified_at = null where user_id = ${userId}`);
+    const d = await data();
+    expect(d.view.payload).toBeNull();
+    const screen = within(render(<ReportView data={d} />).container);
+    expect(screen.getByText("Verify this account to see your coach's report")).toBeTruthy();
+    expect(
+      screen.getByRole("link", { name: "Verify this account" }).getAttribute("href"),
+    ).toBe("/app/accounts");
+    expect(screen.queryByRole("button", { name: /report/i })).toBeNull();
+    expect(screen.queryByRole("region", { name: "What's costing you games" })).toBeNull();
+  });
+
   it("no ask link while the chat pages are not live", async () => {
     chatLive.mockReturnValue(false);
     try {

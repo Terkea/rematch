@@ -63,6 +63,8 @@ export function postErrorResponse(r: PostResult): Response | null {
       return notFound();
     case "not_linked":
       return jsonError("not_linked", 403);
+    case "not_verified":
+      return jsonError("not_verified", 403);
     case "busy":
       return jsonError("busy", 409);
     case "empty":

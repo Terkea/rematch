@@ -1,6 +1,7 @@
 import type { Db } from "@ci/db";
 import { reportRuns, reportSections, reports } from "@ci/db/generated";
 import { and, desc, eq } from "drizzle-orm";
+import { isVerifiedLink } from "../accounts/verified";
 import { readOnly, scopedAccountIds } from "../games";
 import { assembleReportPayload } from "./payload";
 import { type ReportState, reportState } from "./state";
@@ -21,6 +22,11 @@ export type ReportView = {
   payload: ReportPayload | null;
   createdAt: Date | null;
   nextManualAt: Date | null;
+  /**
+   * `unverified`: the user's link to the account is not verified, so the report is not theirs to
+   * read (holistic F10). The page shows the calm "verify" state; nothing of the report is sent.
+   */
+  locked?: "unverified";
 };
 
 const EMPTY: ReportView = {
@@ -55,6 +61,9 @@ export async function getReport(
   return readOnly(db, async (tx) => {
     const ids = await scopedAccountIds(tx, userId, scope.accountId);
     if (ids.length === 0) return EMPTY;
+    if (!(await isVerifiedLink(tx, userId, scope.accountId))) {
+      return { ...EMPTY, locked: "unverified" };
+    }
     const inScope = (t: typeof reportRuns | typeof reports) =>
       and(eq(t.accountId, scope.accountId), eq(t.timeClass, scope.timeClass));
 

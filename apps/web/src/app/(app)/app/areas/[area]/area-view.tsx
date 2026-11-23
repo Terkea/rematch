@@ -49,6 +49,7 @@ import type {
 import { EmptySheet } from "../../../_shell/page-heading";
 import { datesNote } from "../../_filters/dates-note";
 import { SectionHead } from "../../_overview/section-head";
+import { VERIFY_ACTION, VERIFY_BODY, VERIFY_NOTE_TITLE } from "../../../../../lib/verify-copy";
 import { numbersOnlyCopy } from "../../report/notes-off";
 import { type ScoreBasis, shortfallUnit } from "./basis";
 
@@ -455,6 +456,17 @@ function Note({
       body="It appears here as soon as it's written."
     />
   );
+  // Holistic F10: an unverified link sees no coach's note.
+  if (report.locked === "unverified") {
+    return (
+      <CoachState
+        kind="computed_only"
+        title={VERIFY_NOTE_TITLE}
+        body={VERIFY_BODY}
+        action={VERIFY_ACTION}
+      />
+    );
+  }
   if (!payload) {
     if (building) return writing;
     return (
@@ -685,7 +697,9 @@ function ExamplesPart({ model }: { model: AreaPageModel }) {
   if (!payload) {
     return (
       <p className="m-0 text-sm text-ink-soft">
-        Example positions appear once your first report is built.
+        {report.locked === "unverified"
+          ? "Example positions come from your coach's report: verify this account to see them."
+          : "Example positions appear once your first report is built."}
       </p>
     );
   }

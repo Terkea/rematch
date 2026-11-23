@@ -1,6 +1,7 @@
 import type { Db } from "@ci/db";
 import { weaknessChangeNotes } from "@ci/db/generated";
 import { and, desc, eq, inArray, type SQL, sql } from "drizzle-orm";
+import { isVerifiedLink } from "../accounts/verified";
 import { readOnly, scopedAccountIds } from "../games";
 import type { AiDisclosure, AiItemStatus, Citation, NarrativeItem, Segment } from "./types";
 
@@ -28,6 +29,8 @@ export async function changeNotes(
   return readOnly(db, async (tx) => {
     const ids = await scopedAccountIds(tx, userId, accountId);
     if (ids.length === 0) return [];
+    // Holistic F10: AI text is read only through a verified link.
+    if (!(await isVerifiedLink(tx, userId, accountId))) return [];
     const where: SQL[] = [eq(weaknessChangeNotes.accountId, accountId)];
     if (seriesKeys) where.push(inArray(weaknessChangeNotes.seriesKey, seriesKeys));
     const rows = await tx

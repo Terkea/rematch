@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { cache } from "react";
 import { segmentGameIds } from "../../../../../lib/segment-href";
 import { requireUser } from "../../../../../server/auth/session";
-import { chatAllowance } from "../../../../../server/coach/allowance";
+import { coachAllowance } from "../../../../../server/coach/allowance";
 import { coachStatus } from "../../../../../server/coach/status";
 import { getThread, listConversations, type Thread } from "../../../../../server/coach/threads";
 import { getDb } from "../../../../../server/db";
@@ -50,7 +50,7 @@ export default async function ThreadPage({ params }: Props) {
     ...m.streamed.flatMap((c) => segmentGameIds(c.segments)),
   ]);
   const [allowance, threads, anchor, ids, status] = await Promise.all([
-    chatAllowance(db, thread.accountId),
+    coachAllowance(db, userId, thread.accountId),
     listConversations(db, userId, thread.accountId),
     thread.anchor
       ? loadAnchorView(db, userId, thread.accountId, thread.anchor)
@@ -63,7 +63,8 @@ export default async function ThreadPage({ params }: Props) {
     <ThreadView
       key={thread.id}
       thread={thread}
-      allowance={allowanceView(allowance)}
+      allowance={allowance ? allowanceView(allowance) : null}
+      verified={allowance !== null}
       listHref={`/app/coach?${q.toString()}`}
       available={status === "available"}
       gameIds={Object.fromEntries(ids)}

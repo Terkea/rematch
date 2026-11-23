@@ -1,6 +1,7 @@
 import type { Db } from "@ci/db";
 import { weeklyReviews } from "@ci/db/generated";
 import { and, desc, eq } from "drizzle-orm";
+import { isVerifiedLink } from "../accounts/verified";
 import { readOnly, scopedAccountIds } from "../games";
 import type { AiDisclosure, AiItemStatus, CoachTarget, WeeklyContent } from "./types";
 
@@ -27,6 +28,8 @@ export async function listWeeklyReviews(
   return readOnly(db, async (tx) => {
     const ids = await scopedAccountIds(tx, userId, scope.accountId);
     if (ids.length === 0) return [];
+    // Holistic F10: AI text is read only through a verified link.
+    if (!(await isVerifiedLink(tx, userId, scope.accountId))) return [];
     const rows = await tx
       .select()
       .from(weeklyReviews)

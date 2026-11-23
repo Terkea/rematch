@@ -79,7 +79,8 @@ export async function seedAccount(
       userId: opts.userId,
       linkedAccountId: row.id,
       method: "username",
-      verifiedAt: opts.verified ? new Date() : null,
+      // Verified unless the test says otherwise: an unverified link sees analysis only (F10).
+      verifiedAt: opts.verified === false ? null : new Date(),
     });
   }
   return { accountId: row.id };

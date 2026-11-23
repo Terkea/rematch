@@ -3,8 +3,9 @@ import { Icon, PlusIcon } from "@ci/ui/icons";
 import { Button } from "@ci/ui/primitives";
 import Link from "next/link";
 import { CoachScopeSwitch } from "../../../../components/coach-scope-switch";
+import { VERIFY_ACTION, VERIFY_BODY, VERIFY_COACH_TITLE } from "../../../../lib/verify-copy";
 import { requireUser } from "../../../../server/auth/session";
-import { chatAllowance } from "../../../../server/coach/allowance";
+import { coachAllowance } from "../../../../server/coach/allowance";
 import { coachHref } from "../../../../server/coach/anchor";
 import { COACH_UNAVAILABLE_TITLE, coachStatus } from "../../../../server/coach/status";
 import { listConversations } from "../../../../server/coach/threads";
@@ -47,12 +48,14 @@ export default async function CoachPage({ searchParams }: { searchParams: Promis
   }
   const [threads, allowance, status] = await Promise.all([
     listConversations(db, user.id, scope.accountId),
-    chatAllowance(db, scope.accountId),
+    coachAllowance(db, user.id, scope.accountId),
     coachStatus(db),
   ]);
   const newHref = coachHref(null, scope);
   // Bug hunt I5: nothing invites a question, or counts an allowance, that no coach would answer.
-  const available = status === "available";
+  // Holistic F10: an unverified link has no allowance and cannot ask; it is asked to verify.
+  const verified = allowance !== null;
+  const available = status === "available" && verified;
   return (
     <>
       <PageHeading title="Ask your coach" lede={LEDE} />
@@ -69,7 +72,15 @@ export default async function CoachPage({ searchParams }: { searchParams: Promis
           </Button>
         ) : null}
       </div>
-      {available ? null : (
+      {!verified ? (
+        <CoachState
+          kind="computed_only"
+          titleAs="h2"
+          title={VERIFY_COACH_TITLE}
+          body={VERIFY_BODY}
+          action={VERIFY_ACTION}
+        />
+      ) : available ? null : (
         <CoachState
           kind="unavailable"
           titleAs="h2"
@@ -98,7 +109,7 @@ export default async function CoachPage({ searchParams }: { searchParams: Promis
         ) : null}
       </section>
       {/* M3: no AI disclosure here: the list holds no AI text, and each answer carries its own. */}
-      {available ? (
+      {available && allowance ? (
         <footer className="flex max-w-prose flex-col gap-2">
           <AllowanceLine allowance={allowanceView(allowance)} />
         </footer>

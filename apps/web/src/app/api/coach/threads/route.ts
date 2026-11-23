@@ -66,6 +66,7 @@ export async function POST(req: Request): Promise<Response> {
   if (typeof question !== "string") {
     const made = await createConversation(db, user.id, target);
     if (made.kind === "not_linked") return notFound();
+    if (made.kind === "not_verified") return jsonError("not_verified", 403);
     if (made.kind === "rate_limited") return rateLimited(made.retryAt);
     return Response.json({ id: made.id }, { status: 201 });
   }

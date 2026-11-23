@@ -2,6 +2,7 @@ import type { Db } from "@ci/db";
 import { reportRuns, reports } from "@ci/db/generated";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { getEnv } from "../../env";
+import { isVerifiedLink } from "../accounts/verified";
 import { scopedAccountIds } from "../games";
 import { enqueueJob, JOB } from "../jobs";
 import { FREE_REPORT_INTERVAL_DAYS } from "./report";
@@ -35,7 +36,8 @@ export type ReportRequest =
   | { kind: "building"; runId: string }
   | { kind: "interval"; availableAt: Date }
   | { kind: "throttled"; availableAt: Date }
-  | { kind: "not_found" };
+  | { kind: "not_found" }
+  | { kind: "not_verified" };
 
 /**
  * "Build my report" / "Rebuild report" (ruling R4, ADR 0069). In ONE transaction, serialised per
@@ -61,6 +63,10 @@ export async function requestReport(
     const tx = raw as unknown as Db;
     const ids = await scopedAccountIds(tx, userId, target.accountId);
     if (ids.length === 0) return { kind: "not_found" } as const;
+    // Holistic F10: only a verified link spends the account's AI budget on a report.
+    if (!(await isVerifiedLink(tx, userId, target.accountId))) {
+      return { kind: "not_verified" } as const;
+    }
     const { accountId, timeClass } = target;
 
     await tx.execute(

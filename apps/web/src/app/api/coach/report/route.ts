@@ -18,6 +18,7 @@ const notFound = () => Response.json({ error: "not_found" }, { status: 404 });
  * "Build my report" / "Rebuild report" (ruling R4, ADR 0069). 202 `{ runId }` when queued,
  * 202 `{ runId, building: true }` when a run is already live, 429 `plan_interval` inside the
  * beta interval or `throttled` after failures or too many runs (both with `availableAt`),
+ * 403 `not_verified` while the user's link to the account is not verified (holistic F10),
  * 404 for a foreign or malformed account, 400 for a body that is not `{ accountId, timeClass }`.
  */
 export async function POST(req: Request): Promise<Response> {
@@ -56,5 +57,7 @@ export async function POST(req: Request): Promise<Response> {
       );
     case "not_found":
       return notFound();
+    case "not_verified":
+      return Response.json({ error: "not_verified" }, { status: 403 });
   }
 }

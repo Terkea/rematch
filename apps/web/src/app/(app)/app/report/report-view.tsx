@@ -1,10 +1,11 @@
 "use client";
 
-import { AiDisclosure } from "@ci/ui/coach";
+import { AiDisclosure, CoachState } from "@ci/ui/coach";
 import { dayText } from "@ci/ui/profile";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { CoachScopeSwitch } from "../../../../components/coach-scope-switch";
 import type { LineEvidence } from "../../../../lib/explain";
+import { VERIFY_ACTION, VERIFY_BODY, VERIFY_REPORT_TITLE } from "../../../../lib/verify-copy";
 import type { CoachStatus } from "../../../../server/coach/status";
 import type { ChangeNoteView } from "../../../../server/coaching/notes";
 import type { ReportView as ReportViewModel } from "../../../../server/coaching/report";
@@ -228,6 +229,22 @@ export function ReportView({
       coach={data.coach ?? "available"}
     />
   );
+
+  // Holistic F10: an unverified link reads none of the report, and cannot build one.
+  if (view.locked === "unverified") {
+    return (
+      <div className="flex flex-col gap-10">
+        {header}
+        <CoachState
+          kind="computed_only"
+          titleAs="h2"
+          title={VERIFY_REPORT_TITLE}
+          body={VERIFY_BODY}
+          action={VERIFY_ACTION}
+        />
+      </div>
+    );
+  }
 
   if (!payload) {
     return (
