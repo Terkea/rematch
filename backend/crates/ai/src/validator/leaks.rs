@@ -487,6 +487,37 @@ pub fn find_leaks(stripped: &str) -> Vec<Leak> {
     dedup(ts.into_iter().chain(hardened))
 }
 
+/// Whether a leak is an ordinal used as discourse, not a numeric fact (R2-1 (b)): "first"
+/// anywhere ("First, …", "your first move", "at first"), and "second" or "third" when every use
+/// of it in `stripped` opens a sentence and is followed by a comma ("Second, …"). A counted claim
+/// ("first 10 games", "first ten games") keeps its own digit or number-word leak, and "a third
+/// of your games" or "your second loss" stays a leak. [`find_leaks`] itself is unchanged (TS
+/// parity); the claim validator applies this filter.
+pub fn is_discourse_ordinal(stripped: &str, leak: &Leak) -> bool {
+    if leak.kind != LeakKind::NumberWord {
+        return false;
+    }
+    match leak.text.as_str() {
+        "first" => true,
+        w @ ("second" | "third") => {
+            let lower = stripped.to_ascii_lowercase();
+            let mut any = false;
+            for (i, _) in lower.match_indices(w) {
+                let before = lower[..i].trim_end_matches([' ', '\t']);
+                let after = &lower[i + w.len()..];
+                let opens = before.is_empty()
+                    || before.ends_with(['.', '!', '?', ';', ':', '\n']);
+                if !opens || !after.starts_with(',') {
+                    return false;
+                }
+                any = true;
+            }
+            any
+        }
+        _ => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::bounded::take_scanned;
