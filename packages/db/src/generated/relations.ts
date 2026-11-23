@@ -14,6 +14,7 @@ import {
   coachMessages,
   drillAttempts,
   drillItems,
+  drillRefreshes,
   focuses,
   gameMetrics,
   gameOpenings,
@@ -177,6 +178,17 @@ export const drillItemsRelations = relations(drillItems, ({ one, many }) => ({
   }),
 }));
 
+export const drillRefreshesRelations = relations(drillRefreshes, ({ one }) => ({
+  linkedAccount: one(linkedAccounts, {
+    fields: [drillRefreshes.accountId],
+    references: [linkedAccounts.id],
+  }),
+  user: one(user, {
+    fields: [drillRefreshes.userId],
+    references: [user.id],
+  }),
+}));
+
 export const focusesRelations = relations(focuses, ({ one }) => ({
   linkedAccount: one(linkedAccounts, {
     fields: [focuses.accountId],
@@ -263,6 +275,7 @@ export const linkedAccountsRelations = relations(linkedAccounts, ({ many }) => (
   coachConversations: many(coachConversations),
   coachingInputs: many(coachingInputs),
   drillItems: many(drillItems),
+  drillRefreshes: many(drillRefreshes),
   focuses: many(focuses),
   gameMetrics: many(gameMetrics),
   gameOpenings: many(gameOpenings),
@@ -396,6 +409,7 @@ export const userRelations = relations(user, ({ many }) => ({
   coachConversations: many(coachConversations),
   drillAttempts: many(drillAttempts),
   drillItems: many(drillItems),
+  drillRefreshes: many(drillRefreshes),
   focuses: many(focuses),
   sessions: many(session),
 }));

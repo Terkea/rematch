@@ -171,7 +171,7 @@ describe("setFocus and its progress", () => {
 });
 
 describe("closing at N games", () => {
-  it("closes with the outcome, stores it and offers the next focus", async () => {
+  it("reads as closed with the outcome and the next focus, writing nothing; a POST stores it", async () => {
     await setFocus(
       db,
       userId,
@@ -190,13 +190,79 @@ describe("closing at N games", () => {
       outcome: "met",
     });
     expect(card.next?.seriesKey).toBe("W5");
-    const [row] = await db.select().from(focuses).where(eq(focuses.userId, userId));
-    expect(row).toMatchObject({ outcome: "met", resultK: 1, resultN: 15, resultGames: 5 });
     // The fifth game's date closes it.
-    expect(row?.endedAt?.toISOString()).toBe(new Date(START.getTime() + 5 * DAY).toISOString());
-    // Read again, it is still the closed focus (stored, not recomputed into a new one).
+    const fifth = new Date(START.getTime() + 5 * DAY).toISOString();
+    expect(card.focus.endedAt?.toISOString()).toBe(fifth);
+    expect(card.focus.outcome).toBe("met");
+    // A read writes nothing (R2-7): the row is still running.
+    const [read] = await db.select().from(focuses).where(eq(focuses.userId, userId));
+    expect(read).toMatchObject({ endedAt: null, outcome: null });
+    // Read again, it is the same closed focus.
     const again = await getFocusCard(db, userId, await scopeOf(userId));
     expect(again.kind === "closed" && again.progress.outcome).toBe("met");
+    // A POST settles it: changing N on a finished focus stores the close instead.
+    expect(await setFocusLength(db, userId, "rapid", 30)).toBe(false);
+    const [row] = await db.select().from(focuses).where(eq(focuses.userId, userId));
+    expect(row).toMatchObject({
+      outcome: "met",
+      resultK: 1,
+      resultN: 15,
+      resultGames: 5,
+      gamesN: 5,
+    });
+    expect(row?.endedAt?.toISOString()).toBe(fifth);
+    const stored = await getFocusCard(db, userId, await scopeOf(userId));
+    expect(stored.kind === "closed" && stored.progress).toMatchObject({
+      outcome: "met",
+      events: 1,
+      chances: 15,
+    });
+  });
+
+  it("is not met when the rate stays above the target", async () => {
+    await setFocus(
+      db,
+      userId,
+      { accountId, timeClass: "rapid", seriesKey: "W5", gamesN: 5 },
+      START,
+    );
+    for (let i = 1; i <= 5; i++) await play(db, accountId, i, { W5: [3, 6] });
+    const card = await getFocusCard(db, userId, await scopeOf(userId));
+    expect(card.kind === "closed" && card.progress.outcome).toBe("not_met");
+  });
+
+  it("a new focus set over a finished one stores the finished one's outcome, not cleared", async () => {
+    await setFocus(
+      db,
+      userId,
+      { accountId, timeClass: "rapid", seriesKey: "W5", gamesN: 5 },
+      START,
+    );
+    for (let i = 1; i <= 5; i++) await play(db, accountId, i, { W5: [0, 3] });
+    await setFocus(
+      db,
+      userId,
+      { accountId, timeClass: "rapid", seriesKey: "W4.allowed" },
+      new Date(START.getTime() + 9 * DAY),
+    );
+    const rows = await db.select().from(focuses).where(eq(focuses.userId, userId));
+    expect(rows.find((r) => r.seriesKey === "W5")).toMatchObject({
+      outcome: "met",
+      resultGames: 5,
+    });
+  });
+
+  it("clearing a finished focus stores its outcome", async () => {
+    await setFocus(
+      db,
+      userId,
+      { accountId, timeClass: "rapid", seriesKey: "W5", gamesN: 5 },
+      START,
+    );
+    for (let i = 1; i <= 5; i++) await play(db, accountId, i, { W5: [0, 1] });
+    expect(await clearFocus(db, userId, "rapid")).toBe(true);
+    const [row] = await db.select().from(focuses).where(eq(focuses.userId, userId));
+    expect(row?.outcome).toBe("inconclusive");
   });
 
   it("is inconclusive with too few chances", async () => {
@@ -238,5 +304,7 @@ describe("per-user isolation", () => {
     if (!scope) throw new Error("no scope");
     const card = await getFocusCard(db, userId, scope);
     expect(card.kind).toBe("elsewhere");
+    if (card.kind !== "elsewhere") return;
+    expect(card.focus).toMatchObject({ accountId, seriesKey: "W5", endedAt: null });
   });
 });

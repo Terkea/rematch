@@ -1,6 +1,7 @@
 import { Button } from "@ci/ui/primitives";
 import Link from "next/link";
 import { CoachScopeSwitch } from "../../../../components/coach-scope-switch";
+import { FreshItems } from "../../../../components/train/fresh-items";
 import type { CoachScope } from "../../../../server/profile";
 import { DAILY_CAP, HOLDOUT_PERCENT, SOURCES } from "../../../../server/train/model";
 import type { TrainPage } from "../../../../server/train/store";
@@ -8,6 +9,7 @@ import { EmptySheet, PageHeading } from "../../_shell/page-heading";
 import { SectionHead } from "../_overview/section-head";
 import { ScopeRow } from "../coach/scope-row";
 import { patternText, rateText, SOURCE_LABEL, sourceRowText } from "./copy";
+import { TrainPlaceholder } from "./loading";
 import { TrainSession } from "./train-session";
 
 // `/app/train` (ADR 0090): today's session of the player's own missed moments, the summary once
@@ -70,7 +72,14 @@ export function TrainView({ scope, page }: { scope: CoachScope | null; page: Tra
           {NO_SCOPE_TEXT}
         </EmptySheet>
       ) : (
-        <Body scope={scope} page={page} />
+        <FreshItems
+          stale={page.stale}
+          accountId={scope.accountId}
+          timeClass={scope.timeClass}
+          pending={<TrainPlaceholder line="Adding positions from your newest games" />}
+        >
+          <Body scope={scope} page={page} />
+        </FreshItems>
       )}
     </div>
   );

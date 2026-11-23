@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { FocusCard } from "../../../components/focus/focus-card";
 import { LiveRefresh } from "../../../components/live-refresh";
 import { SyncPanel } from "../../../components/sync/sync-panel";
+import { FreshItemsRequest } from "../../../components/train/fresh-items";
 import { requireUser } from "../../../server/auth/session";
 import { getDb } from "../../../server/db";
 import { requestEventCursor } from "../../../server/events/request-cursor";
@@ -12,6 +13,7 @@ import { leadFinding, peerHeadline, resolveCoachScope } from "../../../server/pr
 import { gameStats, scopeOfFilters } from "../../../server/stats/game-stats";
 import { loadPeriodComparison } from "../../../server/stats/period-compare";
 import { getSyncStatus } from "../../../server/sync";
+import { requestTimeZone } from "../../../server/time-zone";
 import { dayOf, isSourceKey } from "../../../server/train/model";
 import { loadPractiseToday } from "../../../server/train/store";
 import { loadTrajectory } from "../../../server/trajectory/load";
@@ -106,8 +108,9 @@ export default async function OverviewPage({
   // The one practise call (ADR 0092): today's trainer session, kept to the focus's source.
   const focusSource =
     focus?.kind === "active" && isSourceKey(focus.focus.seriesKey) ? focus.focus.seriesKey : null;
+  const timeZone = await requestTimeZone();
   const practise = focusScope
-    ? await loadPractiseToday(db, user.id, focusScope, { source: focusSource, now })
+    ? await loadPractiseToday(db, user.id, focusScope, { source: focusSource, now, timeZone })
     : null;
   return (
     <>
@@ -132,7 +135,15 @@ export default async function OverviewPage({
         }
         practise={
           practise && focusScope ? (
-            <PractiseCard view={practiseView(practise, focusScope, dayOf(now))} />
+            <>
+              <PractiseCard view={practiseView(practise, focusScope, dayOf(now, timeZone))} />
+              {practise.stale ? (
+                <FreshItemsRequest
+                  accountId={focusScope.accountId}
+                  timeClass={focusScope.timeClass}
+                />
+              ) : null}
+            </>
           ) : null
         }
         trajectory={

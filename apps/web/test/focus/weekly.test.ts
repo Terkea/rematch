@@ -55,6 +55,38 @@ describe("focusWeekLines", () => {
     expect(new Date(START.getTime() + 4 * DAY).getUTCDay()).toBe(1);
   });
 
+  it("gives each week its own focus when the focus changed, with one query per kind", async () => {
+    await setFocus(db, userId, { accountId, timeClass: "rapid", seriesKey: "W5" }, START);
+    await play(db, accountId, 1, { W5: [1, 4] });
+    await play(db, accountId, 2, { W5: [0, 2] });
+    await play(db, accountId, 4, { W5: [2, 5] }); // Monday 5 October, the first focus's
+    // A new focus on Tuesday 6 October, over 5 games.
+    await setFocus(
+      db,
+      userId,
+      { accountId, timeClass: "rapid", seriesKey: "W5", gamesN: 5 },
+      new Date(START.getTime() + 5 * DAY),
+    );
+    await play(db, accountId, 6, { W5: [1, 3] });
+    await play(db, accountId, 7, { W5: [0, 3] });
+    for (let d = 15; d <= 21; d++) await play(db, accountId, d, { W5: [1, 1] });
+    const target = { accountId, timeClass: "rapid" as const };
+    const lines = await focusWeekLines(db, userId, target, [
+      "2026-10-19",
+      "2026-10-12",
+      "2026-10-05",
+      "2026-09-28",
+      "not-a-date",
+    ]);
+    expect(lines.get("2026-09-28")).toMatchObject({ events: 1, chances: 6, games: 2 });
+    // The week of 5 October is the second focus's: only its own games count.
+    expect(lines.get("2026-10-05")).toMatchObject({ events: 1, chances: 6, games: 2 });
+    // Its N of 5 games ends on 18 October: three of them in the week of 12 October.
+    expect(lines.get("2026-10-12")).toMatchObject({ events: 3, chances: 3, games: 3 });
+    expect(lines.has("2026-10-19")).toBe(false);
+    expect(lines.size).toBe(3);
+  });
+
   it("is empty for another user", async () => {
     await setFocus(db, userId, { accountId, timeClass: "rapid", seriesKey: "W5" }, START);
     await play(db, accountId, 1, { W5: [1, 4] });

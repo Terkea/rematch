@@ -1,7 +1,10 @@
 import { type EngineScore, winPercent } from "@ci/chess-core";
 import { Chess } from "chess.js";
+import { timeZoneOf } from "../../lib/time-zone";
 import { obviousCapture } from "../profile/strengths";
 import { fnv1a, type Interval, mulberry32, wilson } from "../stats";
+
+export { timeZoneOf };
 
 // The missed-moments trainer's pure rules (ADR 0090). Everything here is unit tested; `store.ts`
 // only reads and writes the rows these functions decide on.
@@ -93,11 +96,62 @@ export function feedback(p: {
   return `Right: ${san} is one of the engine's good moves here (it chose ${best}).`;
 }
 
-// ---- Days (UTC) ----
+// ---- Days (the player's time zone, R2-8) ----
 
 const DAY_MS = 86_400_000;
 
-export const dayOf = (d: Date): string => d.toISOString().slice(0, 10);
+const formats = new Map<string, Intl.DateTimeFormat>();
+
+function formatIn(timeZone: string): Intl.DateTimeFormat {
+  let f = formats.get(timeZone);
+  if (!f) {
+    f = new Intl.DateTimeFormat("en-GB", {
+      timeZone,
+      hourCycle: "h23",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+    formats.set(timeZone, f);
+  }
+  return f;
+}
+
+/** The wall clock in `timeZone` at `t`, read as if it were UTC (ms). */
+function wallClock(t: number, timeZone: string): number {
+  const p = Object.fromEntries(
+    formatIn(timeZone)
+      .formatToParts(new Date(t))
+      .map((x) => [x.type, x.value]),
+  );
+  return Date.UTC(
+    Number(p.year),
+    Number(p.month) - 1,
+    Number(p.day),
+    Number(p.hour) % 24,
+    Number(p.minute),
+    Number(p.second),
+  );
+}
+
+/** The calendar day (`YYYY-MM-DD`) of `d` in `timeZone` (UTC by default). */
+export function dayOf(d: Date, timeZone = "UTC"): string {
+  if (timeZone === "UTC") return d.toISOString().slice(0, 10);
+  return new Date(wallClock(d.getTime(), timeZone)).toISOString().slice(0, 10);
+}
+
+/** The instant `day` starts in `timeZone`: its local midnight. */
+export function startOfDay(day: string, timeZone = "UTC"): Date {
+  const midnight = Date.parse(`${day}T00:00:00Z`);
+  if (timeZone === "UTC") return new Date(midnight);
+  // The zone's offset at the guess, then again at the corrected instant (a DST change that day).
+  let t = midnight - (wallClock(midnight, timeZone) - midnight);
+  t = midnight - (wallClock(t, timeZone) - t);
+  return new Date(t);
+}
 
 export const addDays = (day: string, n: number): string =>
   dayOf(new Date(Date.parse(`${day}T00:00:00Z`) + n * DAY_MS));

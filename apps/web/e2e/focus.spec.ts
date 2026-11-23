@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { expect, type Page, test } from "@playwright/test";
 import { adultPage, seedFixtures } from "./support/game-pages";
 import { gotoSettled } from "./support/mail";
@@ -35,6 +36,8 @@ test("setting a focus on a weakness page puts its card on the overview", async (
   const make = page.getByRole("button", { name: "Make this my focus" });
   // The button is a client island: retry the click until it has hydrated and the page refreshed.
   await expect(async () => {
+    // A click that landed but refreshed slowly has already set it: never click twice.
+    if (await page.getByText("This is your focus this week.").isVisible()) return;
     await make.click({ timeout: 2_000 });
     await expect(page.getByText("This is your focus this week.")).toBeVisible({ timeout: 5_000 });
   }).toPass({ timeout: 60_000 });
@@ -94,6 +97,16 @@ test("setting a focus on a weakness page puts its card on the overview", async (
   await page.emulateMedia({ colorScheme: "light" });
   await page.setViewportSize({ width: 1440, height: 900 });
 
+  // Change N: the running focus keeps its start, now over 10 games.
+  await expect(async () => {
+    await card.getByRole("combobox", { name: "Length" }).click({ timeout: 2_000 });
+    await page.getByRole("option", { name: "10 games" }).click({ timeout: 2_000 });
+    await expect(
+      card.getByRole("progressbar", { name: "Games played in this focus" }),
+    ).toHaveAttribute("aria-valuemax", "10", { timeout: 5_000 });
+  }).toPass({ timeout: 60_000 });
+  await expect(card).toContainText("over your next 10 rapid games");
+
   // Progress shows the same focus.
   await settle(page, "/app/progress?tc=rapid");
   await expect(page.getByRole("region", { name: "This week's focus" })).toBeVisible();
@@ -114,5 +127,68 @@ test("setting a focus on a weakness page puts its card on the overview", async (
     await expect(offer.getByRole("button", { name: "Make this my focus" })).toBeVisible();
     await offer.screenshot({ path: "../../.shots/focus/suggest-1440-light.png" });
   }
+  await page.context().close();
+});
+
+function focusSeed(state: string): void {
+  const run = spawnSync(
+    "node_modules/.bin/tsx",
+    ["--conditions", "development", "e2e/helpers/seed-focus.ts", state],
+    { env: process.env, encoding: "utf8" },
+  );
+  expect(run.status, run.stderr).toBe(0);
+}
+
+test("a focus that reached its N games reads as closed: met, not met, inconclusive", async ({
+  browser,
+  request,
+}, info) => {
+  test.skip(info.project.name !== "e2e", "runs once, in the e2e project");
+  test.setTimeout(300_000);
+  const page = await adultPage(browser, request);
+  seedFixtures();
+  const outcomes = [
+    ["met", "Goal met"],
+    ["not_met", "Goal not met"],
+    ["inconclusive", null],
+  ] as const;
+  for (const [kind, text] of outcomes) {
+    focusSeed(kind);
+    await settle(page, "/app?tc=rapid");
+    const card = page.getByRole("region", { name: "Your last focus" });
+    await expect(card).toBeVisible();
+    await expect(card.locator(`[data-verdict="${kind}"]`)).toBeVisible();
+    if (text) await expect(card.locator(`[data-verdict="${kind}"]`)).toHaveText(text);
+    await expect(card).toContainText("Over 5 of 5 games");
+    expect(await card.textContent()).not.toMatch(/NaN|undefined|Infinity/);
+    // Progress reads the same closed focus.
+    await settle(page, "/app/progress?tc=rapid");
+    await expect(page.getByRole("region", { name: "Your last focus" })).toBeVisible();
+  }
+  focusSeed("clear");
+  await page.context().close();
+});
+
+test("a weakness whose rate cannot go down has no target: 422 no_target", async ({
+  browser,
+  request,
+}, info) => {
+  test.skip(info.project.name !== "e2e", "runs once, in the e2e project");
+  test.setTimeout(300_000);
+  const page = await adultPage(browser, request);
+  seedFixtures();
+  focusSeed("zero");
+  await settle(page, "/app?tc=rapid");
+  // The overview's trainer link names the rapid scope's account.
+  const href = await page.locator('[data-slot="practise"] a').first().getAttribute("href");
+  const accountId = new URL(href ?? "", "http://x").searchParams.get("account");
+  expect(accountId).toMatch(/^[0-9a-f-]{36}$/);
+  const res = await page.request.post("/api/focus", {
+    data: { accountId, timeClass: "rapid", seriesKey: "W2" },
+    headers: { origin: new URL(page.url()).origin },
+  });
+  expect(res.status()).toBe(422);
+  expect(await res.json()).toEqual({ error: "no_target" });
+  focusSeed("clear");
   await page.context().close();
 });

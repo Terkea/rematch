@@ -6,6 +6,7 @@ import { isHeldOut } from "../../src/server/train/model";
 import {
   loadPractiseToday,
   loadTrainPage,
+  MAX_CANDIDATES,
   practiseCount,
   recordAttempt,
   refreshItems,
@@ -321,18 +322,26 @@ describe("a session", () => {
 });
 
 describe("loadPractiseToday", () => {
-  it("is a first run before the trainer made items, then counts today's session", async () => {
+  it("is a first run when the games hold no position yet, then counts today's session", async () => {
     const scope = await scopeOf(userId);
     const o = { source: null, now: NOW };
-    expect(await loadPractiseToday(db, userId, scope, o)).toEqual({ kind: "first-run" });
+    const kept = await db.select().from(moves).where(eq(moves.gameId, gameId));
+    await db.delete(moves).where(eq(moves.gameId, gameId));
+    expect(await loadPractiseToday(db, userId, scope, o)).toEqual({
+      kind: "first-run",
+      stale: true,
+    });
+    await db.insert(moves).values(kept);
     await refreshItems(db, userId, scope);
     await noHoldout(userId);
     expect(await loadPractiseToday(db, userId, scope, o)).toEqual({
+      stale: false,
       kind: "due",
       count: 2,
       source: null,
     });
     expect(await loadPractiseToday(db, userId, scope, { source: "W4.missed", now: NOW })).toEqual({
+      stale: false,
       kind: "due",
       count: 1,
       source: "W4.missed",
@@ -348,6 +357,7 @@ describe("loadPractiseToday", () => {
       await recordAttempt(db, userId, { itemId: it.id, uci, confidence: "guess", ms: 1 }, NOW);
     }
     expect(await loadPractiseToday(db, userId, scope, { source: null, now: NOW })).toEqual({
+      stale: false,
       kind: "done",
       next: "2026-11-24",
       doneToday: 2,
@@ -359,5 +369,450 @@ describe("loadPractiseToday", () => {
     expect(
       await loadPractiseToday(db, other, await scopeOf(userId), { source: null, now: NOW }),
     ).toBeNull();
+  });
+});
+
+// ---- R2-7: reads never write; items are made by `refreshItems` (a POST), once per game set ----
+
+const countItems = async () =>
+  Number(
+    (
+      (await db.execute(sql`select count(*)::int as n from drill_items`)) as unknown as {
+        n: number;
+      }[]
+    )[0]?.n,
+  );
+
+/** A new analysed rapid game with one plain blunder at `ply` (a new candidate position). */
+async function newBlunderGame(playedAt: string, ply = 7): Promise<string> {
+  const { gameId: g } = await seedSyntheticGame(db, accountId, {
+    playedAt,
+    timeClass: "rapid",
+    result: "0-1",
+    playerColor: "white",
+    noMoves: true,
+  });
+  await db.insert(moves).values({
+    gameId: g,
+    ply,
+    color: "white",
+    san: "x",
+    uci: "f2f3",
+    fenBefore: START_FEN,
+    bestUci: "e2e4",
+    winBefore: 50,
+    winAfter: 20,
+    deltaW: 30,
+    accuracy: 50,
+    judgement: "blunder",
+    phase: "middlegame",
+    decided: false,
+  });
+  return g;
+}
+
+/** A move row with no analysis (an opponent's move, for the last-move tint). */
+const plainMove = (g: string, ply: number, uci: string) => ({
+  gameId: g,
+  ply,
+  color: "black" as const,
+  san: "x",
+  uci,
+  fenBefore: START_FEN,
+  winBefore: 50,
+  winAfter: 50,
+  deltaW: 0,
+  accuracy: 90,
+  phase: "middlegame" as const,
+  decided: false,
+});
+
+describe("no writes on GET", () => {
+  it("loadTrainPage, loadPractiseToday and practiseCount add no items", async () => {
+    const scope = await scopeOf(userId);
+    const page = await loadTrainPage(db, userId, scope, { source: null, now: NOW });
+    await loadPractiseToday(db, userId, scope, { source: null, now: NOW });
+    await practiseCount(db, userId, scope, "blunder");
+    expect(await countItems()).toBe(0);
+    // The page says new positions are waiting, so the trainer asks for them (a POST).
+    expect(page?.stale).toBe(true);
+    expect(await refreshItems(db, userId, scope)).toBe(2);
+    expect((await loadTrainPage(db, userId, scope, { source: null, now: NOW }))?.stale).toBe(false);
+  });
+
+  it("makes items at most once per set of analysed games", async () => {
+    const scope = await scopeOf(userId);
+    expect(await refreshItems(db, userId, scope)).toBe(2);
+    // The same games: the refresh is skipped, even when items were removed under it.
+    await db.delete(drillItems).where(eq(drillItems.userId, userId));
+    expect(await refreshItems(db, userId, scope)).toBe(0);
+    // A new analysed game: a new set, so the refresh runs again (and remakes every position).
+    await newBlunderGame("2026-11-01T12:00:00Z");
+    expect((await loadTrainPage(db, userId, scope, { source: null, now: NOW }))?.stale).toBe(true);
+    expect(await refreshItems(db, userId, scope)).toBe(3);
+    expect(await refreshItems(db, userId, scope)).toBe(0);
+  });
+
+  it("pages through more candidates than one batch", async () => {
+    const scope = await scopeOf(userId);
+    const { gameId: g } = await seedSyntheticGame(db, accountId, {
+      playedAt: "2026-11-02T12:00:00Z",
+      timeClass: "rapid",
+      result: "0-1",
+      playerColor: "white",
+      noMoves: true,
+    });
+    const n = MAX_CANDIDATES + 5;
+    await db.insert(moves).values(
+      Array.from({ length: n }, (_, i) => ({
+        gameId: g,
+        ply: 2 * i + 1,
+        color: "white" as const,
+        san: "x",
+        uci: "f2f3",
+        fenBefore: START_FEN,
+        bestUci: "e2e4",
+        winBefore: 50,
+        winAfter: 20,
+        deltaW: 30,
+        accuracy: 50,
+        judgement: "blunder" as const,
+        phase: "middlegame" as const,
+        decided: false,
+      })),
+    );
+    expect(await refreshItems(db, userId, scope)).toBe(n + 2);
+  });
+});
+
+describe("the overview's count after new games (R2-7)", () => {
+  it("counts the positions a refresh would add, without adding them, as the trainer will", async () => {
+    const scope = await scopeOf(userId);
+    await refreshItems(db, userId, scope);
+    await noHoldout(userId);
+    const before = await loadPractiseToday(db, userId, scope, { source: null, now: NOW });
+    expect(before).toMatchObject({ kind: "due", count: 2, stale: false });
+    // Three new games, each with a blunder outside the holdout.
+    let made = 0;
+    for (let ply = 7; made < 3; ply += 2) {
+      const probe = await newBlunderGame(`2026-11-0${made + 1}T12:00:00Z`, ply);
+      if (isHeldOut(probe, ply)) await db.execute(sql`delete from games where id = ${probe}`);
+      else made += 1;
+    }
+    const n = await countItems();
+    const practise = await loadPractiseToday(db, userId, scope, { source: null, now: NOW });
+    expect(practise).toMatchObject({ kind: "due", count: 5, stale: true });
+    expect(await practiseCount(db, userId, scope, "blunder")).toBe(5);
+    expect(await countItems()).toBe(n);
+    // The trainer's POST makes them; its session is the count the overview showed.
+    await refreshItems(db, userId, scope);
+    const page = await loadTrainPage(db, userId, scope, { source: null, now: NOW });
+    expect(page?.session).toHaveLength(5);
+    expect(await loadPractiseToday(db, userId, scope, { source: null, now: NOW })).toMatchObject({
+      kind: "due",
+      count: 5,
+      stale: false,
+    });
+  });
+});
+
+// ---- R2-9: the schedule at store level ----
+
+/** `n` drillable items on the seed game, introduced and due on `due` (or new, for null). */
+async function seedItems(n: number, due: string | null): Promise<string[]> {
+  const rows = await db
+    .insert(drillItems)
+    .values(
+      Array.from({ length: n }, (_, i) => ({
+        userId,
+        accountId,
+        timeClass: "rapid" as const,
+        gameId,
+        ply: 101 + 2 * i,
+        sourceKey: "blunder",
+        sourceKeys: ["blunder"],
+        fen: START_FEN,
+        playedUci: "f2f3",
+        solutionUci: "e2e4",
+        solutionLine: ["e2e4"],
+        acceptedUci: ["e2e4"],
+        winBefore: 50,
+        winAfter: 20,
+        tags: [],
+        heldOut: false,
+        dueOn: due,
+        introducedOn: due === null ? null : "2026-11-01",
+        lastAttemptOn: due === null ? null : "2026-11-01",
+      })),
+    )
+    .returning({ id: drillItems.id });
+  return rows.map((r) => r.id);
+}
+
+const attempt = (itemId: string, now: Date, uci = "e2e4", timeZone?: string) =>
+  recordAttempt(db, userId, { itemId, uci, confidence: "sure", ms: 1 }, now, timeZone);
+
+const attemptsOf = async (itemId: string) =>
+  Number(
+    (
+      (await db.execute(
+        sql`select count(*)::int as n from drill_attempts where item_id = ${itemId}`,
+      )) as unknown as { n: number }[]
+    )[0]?.n,
+  );
+
+const dayN = (n: number) => new Date(Date.parse("2026-11-01T10:00:00Z") + n * 86_400_000);
+
+describe("retirement", () => {
+  it("retires an item after three sure right answers a week or more apart", async () => {
+    const [id] = await seedItems(1, null);
+    if (!id) throw new Error("no item");
+    expect(await attempt(id, dayN(0))).toMatchObject({ recorded: true, retired: false });
+    expect(await attempt(id, dayN(7))).toMatchObject({ retired: false });
+    expect(await attempt(id, dayN(14))).toMatchObject({ retired: false });
+    expect(await attempt(id, dayN(21))).toMatchObject({ recorded: true, retired: true });
+    const [row] = await db.select().from(drillItems).where(eq(drillItems.id, id));
+    expect(row?.cleanPasses).toBe(3);
+    expect(row?.retiredAt?.toISOString()).toBe(dayN(21).toISOString());
+    // Retired: never graded or served again.
+    expect(await attempt(id, dayN(30))).toBeNull();
+    const page = await loadTrainPage(db, userId, await scopeOf(userId), {
+      source: null,
+      now: dayN(30),
+    });
+    expect(page?.counts.retired).toBe(1);
+    expect(page?.session).toEqual([]);
+  });
+
+  it("a guess or a short gap is not a clean pass", async () => {
+    const [id] = await seedItems(1, null);
+    if (!id) throw new Error("no item");
+    await attempt(id, dayN(0));
+    await attempt(id, dayN(6));
+    await recordAttempt(
+      db,
+      userId,
+      { itemId: id, uci: "e2e4", confidence: "guess", ms: 1 },
+      dayN(13),
+    );
+    const [row] = await db.select().from(drillItems).where(eq(drillItems.id, id));
+    expect(row).toMatchObject({ cleanPasses: 0, streak: 3, retiredAt: null });
+  });
+});
+
+describe("the daily cap", () => {
+  it("serves at most 24 attempts a day, in sessions of 12", async () => {
+    await seedItems(30, "2026-11-20");
+    const scope = await scopeOf(userId);
+    const load = () => loadTrainPage(db, userId, scope, { source: null, now: NOW });
+    const first = await load();
+    expect(first?.session).toHaveLength(12);
+    for (const s of first?.session ?? []) await attempt(s.id, NOW);
+    const second = await load();
+    expect(second?.session).toHaveLength(12);
+    expect(second?.session.map((s) => s.id)).not.toContain(first?.session[0]?.id);
+    for (const s of second?.session ?? []) await attempt(s.id, NOW);
+    expect(await load()).toMatchObject({ doneToday: 24, rightToday: 24, session: [] });
+    expect(await loadPractiseToday(db, userId, scope, { source: null, now: NOW })).toMatchObject({
+      kind: "done",
+      next: "2026-11-24",
+      doneToday: 24,
+    });
+  });
+});
+
+describe("one recorded attempt a day", () => {
+  it("grades a same-day second attempt without recording it or moving the schedule", async () => {
+    const [id] = await seedItems(1, "2026-11-20");
+    if (!id) throw new Error("no item");
+    expect(await attempt(id, NOW, "f2f3")).toMatchObject({ correct: false, recorded: true });
+    const [after1] = await db.select().from(drillItems).where(eq(drillItems.id, id));
+    expect(await attempt(id, new Date(NOW.getTime() + 3_600_000))).toMatchObject({
+      correct: true,
+      recorded: false,
+      dueOn: "2026-11-24",
+    });
+    const [after2] = await db.select().from(drillItems).where(eq(drillItems.id, id));
+    expect(after2).toEqual(after1);
+    expect(await attemptsOf(id)).toBe(1);
+  });
+
+  it("records exactly one of two concurrent same-day attempts", async () => {
+    const [id] = await seedItems(1, "2026-11-20");
+    if (!id) throw new Error("no item");
+    const results = await Promise.all([attempt(id, NOW), attempt(id, NOW, "f2f3")]);
+    expect(results.map((r) => r?.recorded).sort()).toEqual([false, true]);
+    expect(await attemptsOf(id)).toBe(1);
+    const [row] = await db.select().from(drillItems).where(eq(drillItems.id, id));
+    expect(row?.lastAttemptOn).toBe("2026-11-23");
+  });
+});
+
+describe("the player's day (R2-8)", () => {
+  const LA = "America/Los_Angeles";
+
+  it("schedules and counts by the player's local day", async () => {
+    // Only the seeded item: the game holds no other position.
+    await db.delete(moves).where(eq(moves.gameId, gameId));
+    const [id] = await seedItems(1, "2026-11-20");
+    if (!id) throw new Error("no item");
+    // 21:00 on 23 November in Los Angeles (05:00 UTC on the 24th).
+    expect(await attempt(id, new Date("2026-11-24T05:00:00Z"), "e2e4", LA)).toMatchObject({
+      recorded: true,
+      dueOn: "2026-11-24",
+    });
+    const [row] = await db.select().from(drillItems).where(eq(drillItems.id, id));
+    expect(row?.lastAttemptOn).toBe("2026-11-23");
+    const scope = await scopeOf(userId);
+    const at = (iso: string) => ({ source: null, now: new Date(iso), timeZone: LA });
+    // 23:00 local: still the same day, so the attempt counts and the item is not due.
+    expect(await loadTrainPage(db, userId, scope, at("2026-11-24T07:00:00Z"))).toMatchObject({
+      doneToday: 1,
+      session: [],
+    });
+    expect(await loadPractiseToday(db, userId, scope, at("2026-11-24T07:00:00Z"))).toMatchObject({
+      kind: "done",
+      doneToday: 1,
+      next: "2026-11-24",
+    });
+    // A second attempt at 23:30 local is the same day: not recorded.
+    expect(await attempt(id, new Date("2026-11-24T07:30:00Z"), "e2e4", LA)).toMatchObject({
+      recorded: false,
+    });
+    // 01:00 local on the 24th: a new day, the item is due again, nothing done yet.
+    const next = await loadTrainPage(db, userId, scope, at("2026-11-24T09:00:00Z"));
+    expect(next?.doneToday).toBe(0);
+    expect(next?.session.map((s) => s.id)).toEqual([id]);
+    // In UTC the same instant is already the 24th's 09:00, and the 05:00 attempt is today's.
+    expect(
+      (await loadTrainPage(db, userId, scope, { source: null, now: new Date("2026-11-24T09:00Z") }))
+        ?.doneToday,
+    ).toBe(1);
+  });
+});
+
+// ---- R2-7: bounded queries give the same results ----
+
+describe("the efficacy panel and the last move, aggregated in SQL", () => {
+  it("splits each source's rate at its first drill and compares drilled and held-back motifs", async () => {
+    const scope = await scopeOf(userId);
+    await refreshItems(db, userId, scope);
+    await noHoldout(userId);
+    const [blunder, mate] = await itemsOf(userId);
+    if (!blunder || !mate) throw new Error("no items");
+    await db
+      .update(drillItems)
+      .set({ tags: ["fork"] })
+      .where(eq(drillItems.id, blunder.id));
+    // A held-back item tagged with another motif (and the drilled one, which does not count).
+    const [held] = await seedItems(1, null);
+    await db
+      .update(drillItems)
+      .set({ heldOut: true, tags: ["pin", "fork"] })
+      .where(eq(drillItems.id, held ?? ""));
+    // A game before the first drill and two after it, with weakness and motif counts.
+    const metricsGame = async (at: string, metrics: Record<string, unknown>, blunders: number) => {
+      const { gameId: g } = await seedSyntheticGame(db, accountId, {
+        playedAt: at,
+        timeClass: "rapid",
+        result: "1-0",
+        playerColor: "white",
+        noMoves: true,
+      });
+      await db.insert(moves).values(
+        Array.from({ length: 4 }, (_, i) => ({
+          gameId: g,
+          ply: 2 * i + 1,
+          color: "white" as const,
+          san: "x",
+          uci: "a2a3",
+          fenBefore: START_FEN,
+          bestUci: "a2a3",
+          winBefore: 50,
+          winAfter: 50,
+          deltaW: 0,
+          accuracy: 90,
+          judgement: i < blunders ? ("blunder" as const) : null,
+          phase: "middlegame" as const,
+          decided: false,
+        })),
+      );
+      await db.insert(gameMetrics).values({
+        gameId: g,
+        accountId,
+        timeClass: "rapid",
+        playedAt: new Date(at),
+        protocol: "test-1",
+        metrics: { version: 1, ...metrics },
+      });
+    };
+    await metricsGame(
+      "2026-11-10T12:00:00Z",
+      { weakness: { "W4.missed": { events: 3, opportunities: 5 } } },
+      1,
+    );
+    await attempt(mate.id, new Date("2026-11-15T12:00:00Z"), "d1d8");
+    await attempt(blunder.id, new Date("2026-11-16T12:00:00Z"));
+    await metricsGame(
+      "2026-11-20T12:00:00Z",
+      {
+        weakness: {
+          "W4.missed": { events: 1, opportunities: 4 },
+          "W3.deep": { events: 9, opportunities: 9 },
+        },
+        missedByMotif: {
+          fork: { opportunities: 4, misses: 1 },
+          pin: { opportunities: 2, misses: 2 },
+          skewer: { opportunities: 5, misses: 0 },
+        },
+      },
+      2,
+    );
+    await metricsGame(
+      "2026-11-21T12:00:00Z",
+      {
+        weakness: { "W4.missed": { events: 0, opportunities: 0 } },
+        missedByMotif: { fork: { opportunities: 3, misses: 5 }, pin: "junk" },
+      },
+      0,
+    );
+    const page = await loadTrainPage(db, userId, scope, { source: null, now: NOW });
+    const row = (s: string) => page?.efficacy.rows.find((r) => r.source === s);
+    // W4.missed: first drill 15 Nov. Before: the seed game (1/2) and 10 Nov (3/5); after: 1/4.
+    expect(row("W4.missed")).toMatchObject({
+      drilled: 1,
+      before: { events: 4, chances: 7 },
+      after: { events: 1, chances: 4 },
+    });
+    expect(row("W4.missed")?.firstDrill?.toISOString()).toBe("2026-11-15T12:00:00.000Z");
+    // Blunders: first drill 15 Nov (the mate is a blunder too). The seed game has 5 moves with 4
+    // blunders and 10 Nov 4 moves with 1; after, 4 moves with 2 and 4 with none.
+    expect(row("blunder")).toMatchObject({
+      drilled: 2,
+      before: { events: 5, chances: 9 },
+      after: { events: 2, chances: 8 },
+    });
+    // Drilled motif fork (3 of 4 found, then 0 of 3), against the held-back pin only (0 of 2).
+    expect(page?.efficacy.patterns.since?.toISOString()).toBe("2026-11-15T12:00:00.000Z");
+    expect(page?.efficacy.patterns.drilled).toMatchObject({ events: 3, chances: 7 });
+    expect(page?.efficacy.patterns.heldOut).toMatchObject({ events: 0, chances: 2 });
+  });
+
+  it("tints the opponent's last move from the exact previous ply of each item's game", async () => {
+    const scope = await scopeOf(userId);
+    // The seed game's ply 21 follows its ply 20; the new game's ply 7 follows its ply 6.
+    await db.insert(moves).values(plainMove(gameId, 20, "g8h8"));
+    const g2 = await newBlunderGame("2026-11-01T12:00:00Z", 7);
+    await db.insert(moves).values(plainMove(g2, 6, "e7e5"));
+    // A decoy at the other game's previous ply, which an IN x IN lookup would also read.
+    await db.insert(moves).values(plainMove(g2, 20, "a7a6"));
+    await refreshItems(db, userId, scope);
+    await noHoldout(userId);
+    const page = await loadTrainPage(db, userId, scope, { source: null, now: NOW });
+    const byPly = new Map((await itemsOf(userId)).map((i) => [`${i.gameId}#${i.ply}`, i.id]));
+    const last = (key: string) => page?.session.find((s) => s.id === byPly.get(key))?.lastMove;
+    expect(last(`${gameId}#21`)).toEqual({ from: "g8", to: "h8" });
+    expect(last(`${g2}#7`)).toEqual({ from: "e7", to: "e5" });
+    expect(last(`${gameId}#1`)).toBeNull();
   });
 });

@@ -7,6 +7,7 @@ import {
   buildSession,
   type Candidate,
   DAILY_CAP,
+  dayOf,
   feedback,
   grade,
   isHeldOut,
@@ -19,6 +20,8 @@ import {
   type QueueItem,
   type Schedule,
   SESSION_SIZE,
+  startOfDay,
+  timeZoneOf,
 } from "../../src/server/train/model";
 
 // The missed-moments trainer's pure rules (ADR 0090): the accepted set and its mate band, the
@@ -319,6 +322,38 @@ describe("patternFound", () => {
 describe("addDays", () => {
   it("adds whole UTC days", () => {
     expect(addDays("2026-12-31", 1)).toBe("2027-01-01");
+  });
+});
+
+describe("the player's day (R2-8)", () => {
+  it("is the calendar day in the player's time zone, UTC by default", () => {
+    const late = new Date("2026-11-24T05:30:00Z");
+    expect(dayOf(late)).toBe("2026-11-24");
+    expect(dayOf(late, "America/Los_Angeles")).toBe("2026-11-23");
+    expect(dayOf(new Date("2026-11-23T23:30:00Z"), "Asia/Tokyo")).toBe("2026-11-24");
+  });
+
+  it("starts at local midnight, across a DST change", () => {
+    expect(startOfDay("2026-11-23").toISOString()).toBe("2026-11-23T00:00:00.000Z");
+    expect(startOfDay("2026-11-23", "America/Los_Angeles").toISOString()).toBe(
+      "2026-11-23T08:00:00.000Z",
+    );
+    expect(startOfDay("2026-07-01", "America/Los_Angeles").toISOString()).toBe(
+      "2026-07-01T07:00:00.000Z",
+    );
+    // London's clocks go back at 01:00 UTC on 25 October 2026: that day starts on BST.
+    expect(startOfDay("2026-10-25", "Europe/London").toISOString()).toBe(
+      "2026-10-24T23:00:00.000Z",
+    );
+    expect(startOfDay("2026-11-23", "Asia/Kolkata").toISOString()).toBe("2026-11-22T18:30:00.000Z");
+  });
+
+  it("takes only a real IANA zone from the browser, else UTC", () => {
+    expect(timeZoneOf("Europe/Berlin")).toBe("Europe/Berlin");
+    expect(timeZoneOf("Not/AZone")).toBe("UTC");
+    expect(timeZoneOf("")).toBe("UTC");
+    expect(timeZoneOf(undefined)).toBe("UTC");
+    expect(timeZoneOf("x".repeat(200))).toBe("UTC");
   });
 });
 

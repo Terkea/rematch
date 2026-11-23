@@ -239,6 +239,19 @@ async function endRow(
     .where(and(eq(focuses.id, f.id), isNull(focuses.endedAt)));
 }
 
+/**
+ * Stores the close of a running focus that has reached its N games (R2-7: reads only compute
+ * it), on its last game's date with its outcome. Called by the focus POSTs, under the row lock.
+ * True when it closed the focus.
+ */
+async function settle(tx: Db, f: Row): Promise<boolean> {
+  const counts = await focusCounts(tx, f);
+  const progress = progressOf(f, counts);
+  if (!progress.done || !progress.outcome) return false;
+  await endRow(tx, f, counts, progress.outcome, counts.lastAt ?? new Date());
+  return true;
+}
+
 const isGamesN = (n: number) => Number.isInteger(n) && n >= MIN_GAMES_N && n <= MAX_GAMES_N;
 
 export type SetFocusResult =
@@ -276,7 +289,9 @@ export async function setFocus(
     const c = candidate(scope, w, gamesN);
     if (!c) return { kind: "no_target" } as const;
     const running = await activeRow(tx, userId, req.timeClass, true);
-    if (running) await endRow(tx, running, await focusCounts(tx, running), "cleared", now);
+    if (running && !(await settle(tx, running))) {
+      await endRow(tx, running, await focusCounts(tx, running), "cleared", now);
+    }
     const [row] = await tx
       .insert(focuses)
       .values({
@@ -299,7 +314,10 @@ export async function setFocus(
   });
 }
 
-/** Ends the user's running focus for a time class as `cleared`; false when there is none. */
+/**
+ * Ends the user's running focus for a time class as `cleared` (or with its outcome, when it has
+ * already reached its N games); false when there is none.
+ */
 export async function clearFocus(
   db: Db,
   userId: string,
@@ -310,12 +328,17 @@ export async function clearFocus(
     const tx = raw as unknown as Db;
     const running = await activeRow(tx, userId, tc, true);
     if (!running) return false;
-    await endRow(tx, running, await focusCounts(tx, running), "cleared", now);
+    if (!(await settle(tx, running))) {
+      await endRow(tx, running, await focusCounts(tx, running), "cleared", now);
+    }
     return true;
   });
 }
 
-/** Changes the running focus's N, keeping its start; false when there is none or N is invalid. */
+/**
+ * Changes the running focus's N, keeping its start; false when there is none, N is invalid, or
+ * the focus has already reached its N games (then its close is stored instead).
+ */
 export async function setFocusLength(
   db: Db,
   userId: string,
@@ -323,26 +346,27 @@ export async function setFocusLength(
   gamesN: number,
 ): Promise<boolean> {
   if (!isGamesN(gamesN)) return false;
-  const rows = await db
-    .update(focuses)
-    .set({ gamesN })
-    .where(and(eq(focuses.userId, userId), eq(focuses.timeClass, tc), isNull(focuses.endedAt)))
-    .returning({ id: focuses.id });
-  return rows.length > 0;
+  return db.transaction(async (raw) => {
+    const tx = raw as unknown as Db;
+    const running = await activeRow(tx, userId, tc, true);
+    if (!running || (await settle(tx, running))) return false;
+    await tx.update(focuses).set({ gamesN }).where(eq(focuses.id, running.id));
+    return true;
+  });
 }
 
 /**
  * The focus card of a scope: the running focus with its live progress; the last one, closed,
  * with the next suggestion; or the suggestion alone. A running focus that has reached its N
- * games is closed here, on the date of its last game, with its outcome.
+ * games reads as closed, on the date of its last game, with its outcome; a read never writes
+ * (R2-7), so the next focus POST stores the close (`settle`).
  */
 export async function getFocusCard(db: Db, userId: string, scope: CoachScope): Promise<FocusCard> {
-  return db.transaction(async (raw) => {
-    const tx = raw as unknown as Db;
+  return readOnly(db, async (tx) => {
     const owned = await scopedAccountIds(tx, userId);
     if (!owned.includes(scope.accountId)) return { kind: "none" } as const;
     const key: ScopeKey = { accountId: scope.accountId, timeClass: scope.timeClass, side: "both" };
-    const running = await activeRow(tx, userId, scope.timeClass, true);
+    const running = await activeRow(tx, userId, scope.timeClass);
     if (running && owned.includes(running.accountId)) {
       if (running.accountId !== scope.accountId) {
         return { kind: "elsewhere", focus: await toFocus(tx, running) } as const;
@@ -352,7 +376,6 @@ export async function getFocusCard(db: Db, userId: string, scope: CoachScope): P
       if (!progress.done || !progress.outcome) {
         return { kind: "active", focus: await toFocus(tx, running), progress } as const;
       }
-      await endRow(tx, running, counts, progress.outcome, counts.lastAt ?? new Date());
       const focus = await toFocus(tx, {
         ...running,
         endedAt: counts.lastAt,
@@ -399,7 +422,7 @@ export async function focusOffer(
   w: WeaknessSummary,
 ): Promise<{ current: boolean; suggestion: Suggestion | null }> {
   const running = await db
-    .select({ seriesKey: focuses.seriesKey, accountId: focuses.accountId, side: focuses.side })
+    .select()
     .from(focuses)
     .where(
       and(
@@ -415,7 +438,9 @@ export async function focusOffer(
     r !== undefined &&
     r.accountId === scope.accountId &&
     r.seriesKey === w.seriesKey &&
-    r.side === side;
+    r.side === side &&
+    // One that reached its N games reads as closed (`getFocusCard`), so it is not the focus.
+    !progressOf(r, await focusCounts(db, r)).done;
   return {
     current,
     suggestion: candidate({ accountId: scope.accountId, timeClass: scope.timeClass, side }, w),
@@ -447,22 +472,85 @@ async function hasTrainer(tx: Db): Promise<boolean> {
   return row?.ok === true;
 }
 
-/** Distinct UTC days in `[from, to)` with a trainer attempt on the target's positions. */
-async function practiceDays(
+/** One reviewed week and the focus that ran in it. */
+type WeekFocus = { week: string; from: Date; to: Date; focus: Row };
+
+/** The weeks as a `values` list: (week, focus id, from, to). */
+const weekValues = (weeks: readonly WeekFocus[]) =>
+  sql.join(
+    weeks.map(
+      (w) =>
+        sql`(${w.week}::text, ${w.focus.id}::uuid, ${w.from.toISOString()}::timestamptz, ${w.to.toISOString()}::timestamptz)`,
+    ),
+    sql`, `,
+  );
+
+/**
+ * Each week's focus counts in one query (`focusCounts` with `within`, for every week at once):
+ * the focus's first `games_n` analysed games after its start (of its colour) played in the week,
+ * and the series' events and chances in them.
+ */
+async function weekCounts(tx: Db, weeks: readonly WeekFocus[]): Promise<Map<string, Counts>> {
+  const rows = (await tx.execute(sql`
+    with wk(week, focus_id, from_at, to_at) as (values ${weekValues(weeks)}),
+    f as (select * from focuses where id in (select focus_id from wk)),
+    in_focus as (
+      select f.id as focus_id, f.account_id, f.time_class, f.series_key, g.game_id, g.played_at
+      from f
+      cross join lateral (
+        select gm.game_id, gm.played_at
+        from game_metrics gm
+        join games on games.id = gm.game_id
+        where gm.account_id = f.account_id and gm.time_class = f.time_class
+          and gm.played_at > f.started_at
+          and (f.side = 'both' or games.player_color::text = f.side::text)
+        order by gm.played_at, gm.game_id
+        limit f.games_n
+      ) g
+    )
+    select wk.week, count(*)::int as games, max(i.played_at) as last_at,
+      coalesce(sum(p.events), 0)::int as events,
+      coalesce(sum(p.opportunities), 0)::int as chances
+    from wk
+    join in_focus i on i.focus_id = wk.focus_id
+      and i.played_at >= wk.from_at and i.played_at < wk.to_at
+    left join weakness_series_point p
+      on p.game_id = i.game_id and p.account_id = i.account_id
+      and p.time_class = i.time_class and p.series_key = i.series_key
+    group by wk.week`)) as unknown as Record<string, unknown>[];
+  return new Map(
+    rows.map((r) => [
+      String(r.week),
+      {
+        games: Number(r.games),
+        events: Number(r.events),
+        chances: Number(r.chances),
+        lastAt: r.last_at == null ? null : new Date(String(r.last_at)),
+      },
+    ]),
+  );
+}
+
+/**
+ * Each week's practice in one query: the distinct UTC days in the week with a trainer attempt on
+ * the target's positions.
+ */
+async function weekPracticeDays(
   tx: Db,
   userId: string,
   target: { accountId: string; timeClass: TimeClass },
-  from: Date,
-  to: Date,
-): Promise<number> {
-  const [row] = await tx.execute<{ n: number }>(
-    sql`select count(distinct (a.at at time zone 'UTC')::date)::int as n
-      from drill_attempts a join drill_items i on i.id = a.item_id
-      where a.user_id = ${userId} and i.user_id = ${userId}
-        and i.account_id = ${target.accountId} and i.time_class = ${target.timeClass}
-        and a.at >= ${from.toISOString()} and a.at < ${to.toISOString()}`,
-  );
-  return row?.n ?? 0;
+  weeks: readonly WeekFocus[],
+): Promise<Map<string, number>> {
+  const rows = (await tx.execute(sql`
+    with wk(week, focus_id, from_at, to_at) as (values ${weekValues(weeks)})
+    select wk.week, count(distinct (a.at at time zone 'UTC')::date)::int as n
+    from wk
+    join drill_attempts a on a.user_id = ${userId} and a.at >= wk.from_at and a.at < wk.to_at
+    join drill_items i on i.id = a.item_id
+    where i.user_id = ${userId} and i.account_id = ${target.accountId}
+      and i.time_class = ${target.timeClass}
+    group by wk.week`)) as unknown as { week: string; n: number }[];
+  return new Map(rows.map((r) => [String(r.week), Number(r.n)]));
 }
 
 /**
@@ -484,7 +572,10 @@ export async function focusWeekLines(
   });
 }
 
-/** `focusWeekLines` inside a caller's transaction that has already checked the account. */
+/**
+ * `focusWeekLines` inside a caller's transaction that has already checked the account: a fixed
+ * number of queries for any number of weeks (the focuses, the counts, the labels, the practice).
+ */
 export async function focusWeekLinesIn(
   tx: Db,
   userId: string,
@@ -505,19 +596,29 @@ export async function focusWeekLinesIn(
     )
     .orderBy(desc(focuses.startedAt));
   if (rows.length === 0) return out;
-  const trainer = await hasTrainer(tx);
-  for (const week of weekStarts) {
+  const weeks = weekStarts.flatMap((week): WeekFocus[] => {
     const from = new Date(`${week}T00:00:00Z`);
-    if (Number.isNaN(from.getTime())) continue;
+    if (Number.isNaN(from.getTime())) return [];
     const to = new Date(from.getTime() + 7 * 86_400_000);
     // The newest focus that started before the week ended and had not ended before it began.
-    const f = rows.find((r) => r.startedAt < to && (r.endedAt === null || r.endedAt >= from));
-    if (!f) continue;
-    const c = await focusCounts(tx, f, { from, to });
-    if (c.games === 0) continue;
+    const focus = rows.find((r) => r.startedAt < to && (r.endedAt === null || r.endedAt >= from));
+    return focus ? [{ week, from, to, focus }] : [];
+  });
+  if (weeks.length === 0) return out;
+  const counts = await weekCounts(tx, weeks);
+  const shown = weeks.filter((w) => (counts.get(w.week)?.games ?? 0) > 0);
+  if (shown.length === 0) return out;
+  const scope: ScopeKey = { ...target, side: "both" };
+  const names = await openingNames(tx, scope, [...new Set(shown.map((w) => w.focus.seriesKey))]);
+  const practice = (await hasTrainer(tx))
+    ? await weekPracticeDays(tx, userId, target, shown)
+    : null;
+  for (const { week, focus: f } of shown) {
+    const c = counts.get(week);
+    if (!c) continue;
     out.set(week, {
       seriesKey: f.seriesKey,
-      label: await labelOf(tx, f),
+      label: seriesLabel(f.seriesKey, names.get(f.seriesKey)),
       side: f.side,
       targetRate: f.targetRate,
       events: c.events,
@@ -525,7 +626,7 @@ export async function focusWeekLinesIn(
       games: c.games,
       rate: c.chances > 0 ? c.events / c.chances : null,
       interval: wilson(c.events, c.chances, 0.8),
-      practiceSessions: trainer ? await practiceDays(tx, userId, target, from, to) : null,
+      practiceSessions: practice ? (practice.get(week) ?? 0) : null,
     });
   }
   return out;

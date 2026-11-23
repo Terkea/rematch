@@ -14,7 +14,7 @@ const USER = { id: "user-1", email: "adult@example.invalid", name: "Ana" };
 
 vi.mock("next/headers", () => ({
   headers: async () => new Headers(),
-  cookies: async () => ({ has: () => true }),
+  cookies: async () => ({ has: () => true, get: () => undefined }),
 }));
 vi.mock("next/navigation", () => ({
   notFound: () => {

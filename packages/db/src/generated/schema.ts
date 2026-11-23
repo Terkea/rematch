@@ -752,6 +752,35 @@ export const drillItems = pgTable(
   ],
 );
 
+export const drillRefreshes = pgTable(
+  "drill_refreshes",
+  {
+    userId: uuid("user_id").notNull(),
+    accountId: uuid("account_id").notNull(),
+    timeClass: timeClass("time_class").notNull(),
+    sourceMark: text("source_mark").notNull(),
+    refreshedAt: timestamp("refreshed_at", { withTimezone: true, mode: "date" })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.accountId],
+      foreignColumns: [linkedAccounts.id],
+      name: "drill_refreshes_account_id_fkey",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [table.userId],
+      foreignColumns: [user.id],
+      name: "drill_refreshes_user_id_fkey",
+    }).onDelete("cascade"),
+    primaryKey({
+      columns: [table.userId, table.accountId, table.timeClass],
+      name: "drill_refreshes_pkey",
+    }),
+  ],
+);
+
 export const focuses = pgTable(
   "focuses",
   {

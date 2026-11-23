@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { ActivityIndicator } from "../../components/activity-indicator";
+import { TimeZoneCookie } from "../../components/time-zone-cookie";
 import { RealtimeProvider } from "../../lib/realtime/realtime-provider";
 import { requireUser } from "../../server/auth/session";
 import { requestAccountIds, requestEventCursor } from "../../server/events/request-cursor";
@@ -19,6 +20,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const accountIds = await requestAccountIds(user.id);
   return (
     <RealtimeProvider accountIds={accountIds} initialEventId={cursor}>
+      <TimeZoneCookie />
       <div className="flex min-h-dvh flex-col bg-paper">
         <a
           href="#main"

@@ -33,6 +33,8 @@ export async function seedE2eTrain(email = E2E_USER): Promise<E2eTrainItem[]> {
   const db = dbOf();
   const uid = await userId(db, email);
   await db.delete(drillItems).where(eq(drillItems.userId, uid));
+  // The refresh mark too, so the refresh runs on the same games again (ADR 0090 Amendment 1).
+  await db.execute(sql`delete from drill_refreshes where user_id = ${uid}`);
   const scope = await resolveCoachScope(db, uid, {});
   if (!scope) throw new Error("no coach scope; seed the coach first");
   await refreshItems(db, uid, scope);
@@ -50,6 +52,48 @@ export async function seedE2eTrain(email = E2E_USER): Promise<E2eTrainItem[]> {
   });
 }
 
+/**
+ * A trainer state for the e2e specs: `empty` (no positions, nothing waiting), `stale` (items
+ * and the refresh mark removed, so the page makes them), `rest` (every item seen and due in five
+ * days: nothing due today) or `holdout` (one item held out; prints its id).
+ */
+export async function trainState(state: string, email = E2E_USER): Promise<string | null> {
+  const db = dbOf();
+  const uid = await userId(db, email);
+  const scope = await resolveCoachScope(db, uid, {});
+  if (!scope) throw new Error("no coach scope; seed the coach first");
+  const clear = async () => {
+    await db.delete(drillItems).where(eq(drillItems.userId, uid));
+    await db.execute(sql`delete from drill_refreshes where user_id = ${uid}`);
+  };
+  switch (state) {
+    case "empty":
+      // Made and removed: the mark says these games were seen, so nothing is waiting.
+      await clear();
+      await refreshItems(db, uid, scope);
+      await db.delete(drillItems).where(eq(drillItems.userId, uid));
+      return null;
+    case "stale":
+      await clear();
+      return null;
+    case "rest":
+      await db.execute(sql`
+        update drill_items set introduced_on = current_date - 1, last_attempt_on = current_date - 1,
+          due_on = current_date + 5, streak = 1
+        where user_id = ${uid}`);
+      return null;
+    case "holdout": {
+      const [row] = (await db.execute(sql`
+        update drill_items set held_out = true
+        where id = (select id from drill_items where user_id = ${uid} order by ply limit 1)
+        returning id`)) as unknown as { id: string }[];
+      return row?.id ?? null;
+    }
+    default:
+      throw new Error(`unknown train state ${state}`);
+  }
+}
+
 export async function dueDays(email = E2E_USER): Promise<Record<string, string | null>> {
   const db = dbOf();
   const uid = await userId(db, email);
@@ -62,6 +106,7 @@ export async function dueDays(email = E2E_USER): Promise<Record<string, string |
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const [command] = process.argv.slice(2);
   if (command === "due") console.log(`DUE=${JSON.stringify(await dueDays())}`);
+  else if (command) console.log(`STATE=${JSON.stringify(await trainState(command))}`);
   else console.log(`TRAIN=${JSON.stringify(await seedE2eTrain())}`);
   process.exit(0);
 }
