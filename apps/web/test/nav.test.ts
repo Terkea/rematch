@@ -71,6 +71,12 @@ describe("withFilters", () => {
     );
   });
 
+  it("carries an explicit All time to the stats pages; the games page shows every game anyway", () => {
+    const all = new URLSearchParams("tc=blitz&from=all");
+    expect(withFilters("/app/progress", all)).toBe("/app/progress?tc=blitz&from=all");
+    expect(withFilters("/app/games", all)).toBe("/app/games?tc=blitz");
+  });
+
   it("speaks the games page's own words, with no account", () => {
     expect(withFilters("/app/games", q)).toBe(
       "/app/games?tc=blitz&colour=black&from=2026-09-01&to=2026-10-31",

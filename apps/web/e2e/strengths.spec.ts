@@ -35,14 +35,15 @@ test.describe
 
     test("the nav opens it after Weaknesses and Train, rapid first, each section honest", async () => {
       test.setTimeout(300_000);
-      await gotoSettled(page, "/app/weaknesses");
+      // All time travels through the nav (the seed's games are fixed days).
+      await gotoSettled(page, "/app/weaknesses?from=all");
       const nav = page.getByRole("navigation", { name: "Main" });
       const labels = await nav.getByRole("link").allTextContents();
       // Train sits between them (ADR 0090).
       expect(labels.indexOf("Train")).toBe(labels.indexOf("Weaknesses") + 1);
       expect(labels.indexOf("Strengths")).toBe(labels.indexOf("Train") + 1);
       await nav.getByRole("link", { name: "Strengths" }).click();
-      await page.waitForURL(/\/app\/strengths$/);
+      await page.waitForURL(/\/app\/strengths\?from=all$/);
       await expect(page.getByRole("heading", { level: 1 })).toHaveText("Strengths");
       await expect(
         page.getByText(/^Based on 15 analysed rapid games on chess\.com\./),
@@ -78,7 +79,8 @@ test.describe
     // Audit A5: the shared filter bar, each colour in Both mode, a "What is this?" on each claim.
     test("filters by colour and dates, splits Both by colour, and explains each claim", async () => {
       test.setTimeout(300_000);
-      await gotoSettled(page, "/app/strengths");
+      // All time: the seed's games are fixed days, and the default 90 days roll past them.
+      await gotoSettled(page, "/app/strengths?from=all");
       const byColour = page.locator('[data-section="by-colour"]');
       await expect(byColour.locator("[data-colour]")).toHaveCount(2);
       // The strengths seed has no benchmark: each colour says so instead of a claim.

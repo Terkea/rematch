@@ -227,6 +227,7 @@ vi.mock("../../src/lib/coach-chat", () => ({ coachChatLive: () => chatLive() }))
 vi.mock("../../src/server/events/request-cursor", () => ({ requestEventCursor: async () => 0 }));
 vi.mock("../../src/server/auth/session", () => ({ requireUser }));
 vi.mock("../../src/server/db", () => ({ getDb: () => ({}) }));
+vi.mock("../../src/server/filters/window", () => ({ gamesInRange: async () => 30 }));
 vi.mock("../../src/server/profile", async (orig) => ({
   ...(await orig<object>()),
   resolveCoachScope,

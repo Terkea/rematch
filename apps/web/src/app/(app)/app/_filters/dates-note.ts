@@ -17,3 +17,15 @@ export function datesNote(range: DayRange, page: keyof typeof KEEPS): string | n
   const words = rangeWords(range);
   return `${words.charAt(0).toUpperCase()}${words.slice(1)}: these dates trim the weekly lines only. ${KEEPS[page]}`;
 }
+
+const REPORT_WINDOW = `The report is written from your whole profile, on all your games of this time control: the weakness rates cover the ${ESTIMATE_WINDOW_TEXT.replace(/^in the /, "")}.`;
+
+/**
+ * The report's window, always stated (ADR 0083 Amendment 2): the coach's text and the sections
+ * come from the profile, which no date filter narrows; the dates trim the weekly lines only.
+ */
+export function reportWindowNote(range: DayRange): string {
+  if (range.from === null && range.to === null) return REPORT_WINDOW;
+  const words = rangeWords(range);
+  return `${words.charAt(0).toUpperCase()}${words.slice(1)}: these dates trim the weekly lines only. ${REPORT_WINDOW}`;
+}

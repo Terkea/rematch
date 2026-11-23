@@ -6,6 +6,8 @@ Stop losing to the same move.
 
 Rematch is an open-source coach for chess.com players. Stockfish checks every move of your games, Rematch names the mistakes you keep repeating, drills you on your own missed moments and tells you, with honest numbers, whether it's working.
 
+For anyone who knows how the pieces move, up to about 2000. Above 2000 it hasn't been tested with real players yet; if you're 2000+, [tell us where it's wrong](https://github.com/Terkea/rematch/issues/new?template=coaching_idea.yml).
+
 [![CI](https://github.com/Terkea/rematch/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Terkea/rematch/actions/workflows/ci.yml)
 [![Licence: AGPL-3.0](https://img.shields.io/badge/licence-AGPL--3.0-16233b)](LICENSE)
 [![Version](https://img.shields.io/badge/version-v0.x%20%C2%B7%20beta-56657f)](docs/SDLC.md)
@@ -113,6 +115,8 @@ The styleguide's sample game is a real Lichess blitz game, so here is what the p
 <details>
 <summary>Import: chess.com only, public data, kept in sync</summary>
 
+Rematch reads your public chess.com games from the monthly archives, newest first, and checks every linked account for new games every 30 minutes.
+
 - Source: The public Published-Data API at `https://api.chess.com/pub/player`. The importer reads `/games/archives`, then walks the monthly archives newest first and normalises each game ([`chesscom.rs`](backend/crates/platforms/src/chesscom.rs)). Time classes come from `base + 40 × increment`: under 180 s is bullet, under 480 s blitz, under 1500 s rapid, else classical ([`time_control.rs`](backend/crates/chess-core/src/time_control.rs)). Daily games keep chess.com's own class.
 - Rate limits: Each platform has one serial HTTP client: one request at a time. A 429 waits 60 s and retries up to 3 times, and a circuit breaker opens after 5 consecutive outages (5xx, timeouts, transport errors; never a 404 or a 429) for 60 s ([`client.rs`](backend/crates/platforms/src/client.rs), [`breaker.rs`](backend/crates/platforms/src/breaker.rs)). The User-Agent is the fixed string `rematch/0.1 (+https://github.com/Terkea/rematch)`. No request carries an email address ([ADR 0043](docs/decisions/0043-no-email-in-outbound-requests.md)).
 - Sync: A recurring `sync-accounts` job runs every 5 minutes, a sixth of the 30-minute interval, and enqueues an incremental import for the accounts that are due, the longest-waiting first. The linked accounts are spread over the interval, so chess.com never gets them in one burst ([ADR 0076](docs/decisions/0076-recurring-account-sync.md), [`sync.rs`](backend/crates/analysis/src/jobs/sync.rs)).
@@ -123,6 +127,8 @@ The styleguide's sample game is a real Lichess blitz game, so here is what the p
 
 <details>
 <summary>Engine analysis: Stockfish 19, win chance, accuracy, judgements</summary>
+
+Stockfish 19 searches every position at a fixed 300,000 nodes, so the same position always gets the same number, and a drop of 15 win-chance points is a blunder, as on Lichess.
 
 #### The engine
 
@@ -178,6 +184,8 @@ New games go first, in tiers, and previews of the first 20 games run at priority
 <details>
 <summary>Enrichment: the critical moves get a closer look</summary>
 
+Up to 30 critical moves a game get the engine's top three lines, a threat probe and motif tags.
+
 The main eval gives one line per position. Weakness detection needs more: was there a second good move, was there a threat, what was the tactic. Enrichment adds that without ever touching the main evals, under its own protocol ids ([ADR-R2-14](docs/decisions/ADR-R2-14-enrichment-protocol.md), [`protocol.rs`](backend/crates/enrich/src/protocol.rs)):
 
 - Critical plies: A move is critical when it lost ΔW ≥ 5, or when the previous move lost ΔW ≥ 10 (the reply to a big mistake). At most 30 per game, the biggest drops first ([`critical.rs`](backend/crates/enrich/src/critical.rs)).
@@ -192,6 +200,8 @@ The cost is about 25–40% more CPU than the main analysis. A known bias, stated
 <details>
 <summary>Syzygy tablebases: perfect verdicts with five pieces or fewer</summary>
 
+In an ending with five pieces or fewer, the Syzygy tables give the exact result, so a move that throws it away is counted for certain.
+
 - The tables: The 3-4-5 piece WDL and DTZ sets from `tablebase.lichess.ovh`, 290 files. `lichess-db syzygy` streams each to a `.part` file while hashing it, and renames it only when the SHA-256 matches the pinned manifest [`syzygy-345.sha256`](backend/crates/lichess-db/data/syzygy-345.sha256). The files are never committed ([ADR-R2-22](docs/decisions/ADR-R2-22-syzygy-345-fetch.md)).
 - The probe: A separate Stockfish, never one from the analysis pool, with `SyzygyPath` set, searching 1,000 nodes. Keeping it separate means the 300k evals are identical with or without the tables (a test checks the main pool never sets `SyzygyPath`). Stockfish reports a tablebase win as `cp 20000 − plies`, so `cp ≥ 19000` or a positive mate is a win, `cp ≤ −19000` or a negative mate a loss, anything else a draw ([`wdl.rs`](backend/crates/enrich/src/tablebase/wdl.rs), [ADR-R2-12](docs/decisions/ADR-R2-12-local-syzygy-probe.md)).
 - When: Every requested move whose position has at most 5 pieces, kings included, and no castling rights. The answer is cached per position in `position_tb`. The clocks are reset before probing, so a win that needs more than 100 plies to the next capture or pawn move counts as a draw, as the 50-move rule would make it.
@@ -202,6 +212,8 @@ The cost is about 25–40% more CPU than the main analysis. A known bias, stated
 
 <details>
 <summary>Maia-2: would a player at your rating have found it?</summary>
+
+If you run it, Maia-2 estimates how many players at your rating would have found the move, which tells a hard miss from an easy one.
 
 Stockfish says what the best move was. It can't say whether a 1200 would ever see it. [Maia-2](https://github.com/CSSLab/maia2) is a neural network trained on human games that predicts which moves a player of a given rating plays ([ADR-R2-13](docs/decisions/ADR-R2-13-maia-licence-and-difficulty.md), [`difficulty/`](backend/crates/enrich/src/difficulty/)).
 
@@ -256,6 +268,8 @@ Some rules that keep the counts honest:
 <details>
 <summary>Rates and uncertainty: the prior, the 80% range, the seeded bootstrap</summary>
 
+Each rate is a Beta posterior with an 80% range, pulled towards your peers' rate until your own games outweigh it.
+
 #### A rate per chance is a Beta posterior
 
 The posterior comes from [`posterior.rs`](backend/crates/profile-core/src/stats/posterior.rs) ([ADR-R2-5](docs/decisions/ADR-R2-5-posterior-priority-conventions.md)):
@@ -301,6 +315,8 @@ Rematch prints no number until it has the evidence, and says how much more it ne
 <details>
 <summary>Peers: players you've faced, and the Lichess reference</summary>
 
+Every rate is compared with players like you: by default the chess.com opponents you've faced within 150 points of your rating.
+
 A rate means little alone. 4% hanging pieces is good at 800 and poor at 2000. So every rate is compared with a peer rate, and since chess.com publishes no bulk game data, the peers had to come from somewhere.
 
 #### The default: your own opponents
@@ -327,6 +343,8 @@ Bands are B0 < 900, B1 900–1299, B2 1300–1699, B3 1700–1999, B4 2000–229
 <details>
 <summary>Comparisons: White and Black, then and now</summary>
 
+Every number is split into your White and your Black games, and two periods are compared only when both have 10 games.
+
 - The colour split: Every profile build computes everything three times: both colours, your White games, your Black games. A colour is compared only with peers who had that colour: your Black games give the White peers. A combined reference is never applied to one colour ([ADR 0082](docs/decisions/0082-colour-split-profile-rows.md)). The change-point timeline stays on both colours, because splitting it would halve the evidence behind every change.
 - Filters and period comparison: One URL contract for time class (rapid first), format such as `10+0`, colour, dates and a comparison: this month against last month, the last 30 days against the 30 before, your newest 50 games against the 50 before, or two custom ranges ([ADR 0083](docs/decisions/0083-filters-and-period-comparison.md)). A shared link always shows the same games.
 - When a change is called ([`compare.ts`](apps/web/src/server/stats/compare.ts)). Both sides need 10 games. A rate is better or worse when P(better) from the two Beta posteriors (10,000 seeded Monte Carlo draws) is at least 0.8 and the means differ by at least 15% relative to the earlier side. A mean is better or worse when the bootstrap 80% interval of the difference excludes 0. Anything else is "No clear change". The posterior maths is a line-by-line TypeScript port of the Rust, checked against a Rust-written fixture to 1e-9.
@@ -335,6 +353,8 @@ Bands are B0 < 900, B1 900–1299, B2 1300–1699, B3 1700–1999, B4 2000–229
 
 <details>
 <summary>Strengths: what you do well, under the same rules</summary>
+
+A strength passes the same gates as a weakness: a count, an 80% range and a comparison, so nothing is praised on thin evidence.
 
 The strengths page uses the same gates as the weaknesses ([`strengths.ts`](apps/web/src/server/profile/strengths.ts), [`strengths.rs`](backend/crates/profile-core/src/weakness/strengths.rs)):
 
@@ -347,6 +367,8 @@ The strengths page uses the same gates as the weaknesses ([`strengths.ts`](apps/
 
 <details>
 <summary>Trajectory: what changed since your peak</summary>
+
+Your rating line with its peak marked, and the games around the peak set against your last games, measure by measure.
 
 From your rated games in one time class, each with its pre-game rating ([ADR 0089](docs/decisions/0089-rating-trajectory-and-then-vs-now.md)):
 
@@ -362,6 +384,8 @@ The web and the coach compute it with the same seeds and stream; a shared fixtur
 <details>
 <summary>The coaching input: one JSON document of everything the coach may cite</summary>
 
+Everything the coach may cite is one JSON document, written once per profile build and kept, so every answer can be checked against what the coach saw.
+
 - What's in it: the account, time class, band and rating; the basis (games analysed and the window); seven area scores; the KPIs; the ranked weaknesses with their rates, ranges, P(improvement) and example positions; strengths; opening verdicts; timeline changes; and from v2 the colour split and the benchmark band, from v3 the trajectory ([ADR-R2-2](docs/decisions/ADR-R2-2-coaching-input-contract.md), [`types.rs`](backend/crates/coaching-input/src/types.rs)).
 - Versions: `coaching-input-v1` is the original contract, `v2` adds `byColor` and `benchmark` ([ADR 0085](docs/decisions/0085-coach-colour-split-benchmark-glossary.md)), and `v3`, the one the builder writes now, adds `trajectory`. Older versions still parse, so a stored report can always be re-read.
 - Snapshots: Every profile build writes a snapshot to `coaching_inputs`, never updated, keeping the newest 5 per account and time class plus any a stored answer cites. Each report and chat answer stores the sha256 of its input's canonical JSON, so any answer can be audited against exactly what the coach saw ([ADR 0086](docs/decisions/0086-coaching-input-snapshot-per-profile-build.md)).
@@ -371,6 +395,8 @@ The web and the coach compute it with the same seeds and stream; a shared fixtur
 
 <details>
 <summary>The AI coach: Claude writes the words, the validator decides what you see</summary>
+
+Claude writes the words of reports and answers through reference tokens the server fills in, and a validator drops any paragraph it can't trace back to your data.
 
 #### The sidecar
 
@@ -414,6 +440,8 @@ A hard monthly stop per account (USD 0.20 on the free plan, USD 2.00 on pro and 
 <details>
 <summary>The trainer: your missed moments, spaced</summary>
 
+Your own missed moments come back as drills after 1, 3, 7, 21 and 60 days, and one in five is held back to measure whether drilling works.
+
 From [ADR 0090](docs/decisions/0090-missed-moments-trainer.md) and [`train/model.ts`](apps/web/src/server/train/model.ts):
 
 - Items are your own moves at a W4.missed, W3.shallow, W3.deep or W7.traps example, or any move judged a blunder, with a stored engine move different from yours. Positions already decided (W ≥ 97 before and ≥ 90 after) are dropped, and so is an answer that is a free capture, unless it is a missed mate.
@@ -429,6 +457,8 @@ From [ADR 0090](docs/decisions/0090-missed-moments-trainer.md) and [`train/model
 <details>
 <summary>The weekly focus and the overview</summary>
 
+One weakness a week, with a target rate over your next 10 to 40 games and a verdict only once there are 10 chances.
+
 - A target ([ADR 0091](docs/decisions/0091-weekly-focus-and-goal.md), [`focus/goal.ts`](apps/web/src/server/focus/goal.ts)): your current rate less a meaningful step, either a quarter fewer or the peer median, whichever is the easier goal. The peer median counts only when it is at least 10% below your rate. It is rounded to a tenth of a percentage point and always computed on the server.
 - N games: 20 by default; pick 10, 20, 30 or 40. Progress is read live from your first N analysed games after you set it: k of n chances, the rate with its 80% range. Under 10 chances: "Too early to tell: X more chances". From 10: "On track" or "Not yet". When the N-th game exists, the focus closes as met, not met, or inconclusive.
 - The suggestion is the top weakness under "Costing you games" with priority above 0.
@@ -438,6 +468,8 @@ From [ADR 0090](docs/decisions/0090-missed-moments-trainer.md) and [`train/model
 
 <details>
 <summary>Storage, jobs and the web app</summary>
+
+Postgres holds the job queue and every computed fact, and the Next.js app reads them directly.
 
 - Postgres is the queue ([ADR 0032](docs/decisions/0032-postgres-job-queue.md), [`queue.rs`](backend/crates/queue/src/queue.rs)). One `jobs` table. Workers claim with `FOR UPDATE SKIP LOCKED`, so twenty workers never claim the same job. Each claim writes a lease token, and a worker whose lease expired can't write a late result. A failed job is retried after `5 s · 2^(attempt − 1)` and dead after 3 attempts; shutdown or an open circuit releases a job without using an attempt. Dedupe keys among live jobs (`import:<account>`, `analyse:<game>`) keep one import per account. Enqueue sends `pg_notify('jobs', kind)`, runners `LISTEN` and also poll, so a lost notification costs only latency. Analysis jobs heartbeat every 10 s, and a reconciler every 300 s re-queues what a crash left behind.
 - Events to the browser: The worker writes user events and `pg_notify('user_events', …)` in the same transaction; each web process holds one `LISTEN` and streams server-sent events with replay, with polling as the fallback ([ADR 0034](docs/decisions/0034-user-events-listen-notify.md), [ADR-WEB-8](docs/decisions/ADR-WEB-8-sse-delivery.md)).
@@ -449,6 +481,8 @@ From [ADR 0090](docs/decisions/0090-missed-moments-trainer.md) and [`train/model
 
 <details>
 <summary>Privacy, honesty and the limits</summary>
+
+Your games and analysis stay in your own Postgres, and Rematch reads only public chess.com data.
 
 - Your data stays with you: Self-hosted, your games, analysis and plans live in your own Postgres. Rematch reads only public chess.com data and sends no email address anywhere. Accounts are for players 13 and over ([ADR-WEB-6](docs/decisions/ADR-WEB-6-age-gate.md)). With the AI on, the coaching input and your question go to Anthropic to write the text.
 - Stockfish and our statistics produce every fact: Claude only explains and prioritises them, and every claim links to a position from your games.
@@ -541,7 +575,7 @@ Five kinds of help move it forward most:
 - TypeScript and React developers: the Next.js app and its design system.
 - Chess coaches and strong players: what should a 1200 practise, and how would a good coach say it? Open a [coaching idea](https://github.com/Terkea/rematch/issues/new?template=coaching_idea.yml).
 - Designers: the annotated-scoresheet system in [`packages/ui/DESIGN.md`](packages/ui/DESIGN.md).
-- Testers: run it on your own games and tell us where it's wrong.
+- Testers: run it on your own games and tell us where it's wrong. Players rated 2000+ most of all: nobody at that level has tested it yet.
 
 Start with a [good first issue](https://github.com/Terkea/rematch/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22), say hello in [Discussions](https://github.com/Terkea/rematch/discussions), and read [CONTRIBUTING.md](CONTRIBUTING.md). AI-assisted pull requests are welcome: [CLAUDE.md](CLAUDE.md) and [`.claude/skills`](.claude/skills) are the house rules. Everyone follows the [code of conduct](CODE_OF_CONDUCT.md); security reports go through [SECURITY.md](SECURITY.md).
 
