@@ -14,7 +14,7 @@ export function BrandLockup() {
         aria-hidden="true"
         focusable="false"
         viewBox={REMATCH_ICON.viewBox}
-        className="size-7 shrink-0"
+        className="size-8 shrink-0"
         // A constant generated from the committed logo (scripts/brand-assets.ts), never user data.
         // biome-ignore lint/security/noDangerouslySetInnerHtml: the generated logo paths
         dangerouslySetInnerHTML={{ __html: REMATCH_ICON.body }}

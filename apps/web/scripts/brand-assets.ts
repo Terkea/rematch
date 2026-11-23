@@ -38,9 +38,6 @@ const write = (path: string, data: string | Buffer) => {
 write(join(WEB, "src/app/icon.svg"), iconSvg(icon));
 write(join(ROOT, "site/public/favicon.svg"), iconSvg(icon));
 write(join(WEB, "src/components/brand/icon.generated.ts"), iconModule(icon));
-const markTitle = "Rematch: a boy with his chess board, his dad's hand on his shoulder";
-write(join(ROOT, "docs/media/rematch-mark-day.svg"), solidSvg(mark, BRAND_INK, markTitle));
-write(join(ROOT, "docs/media/rematch-mark-night.svg"), solidSvg(mark, BRAND_NIGHT_INK, markTitle));
 
 const iconTitle = "Rematch";
 write(join(ROOT, "site/src/assets/rematch-icon-day.svg"), solidSvg(icon, BRAND_INK, iconTitle));
@@ -76,13 +73,23 @@ ${sized(mark, `height="${Math.round(h * 0.74)}" style="display:block;flex:none"`
   <p style="margin:${h * 0.075}px 0 0 ${h * 0.008}px;font-family:'Literata';font-weight:400;font-size:${h * 0.07}px">Stop losing to the same move.</p>
 </div></body>`;
 
+/** The README lockup on a transparent ground: the mark, "rematch" and "chess improver" beneath. */
+const lockup = (ink: string, sub: string) => `
+<style>${FACES}</style>
+<body style="margin:0;width:640px;height:220px;background:transparent;color:${ink};display:flex;align-items:center;gap:28px">
+${sized(mark, 'height="208" style="display:block;flex:none"')}
+<div style="display:flex;flex-direction:column">
+  <p style="margin:0;font-family:'Literata Italic';font-style:italic;font-weight:500;font-size:104px;line-height:1;letter-spacing:-0.01em">rematch</p>
+  <p style="margin:6px 0 0 6px;font-family:'Schibsted Grotesk';font-weight:500;font-size:30px;color:${sub}">chess improver</p>
+</div></body>`;
+
 async function main() {
   const browser = await chromium.launch({ channel: "chrome" });
   try {
-    const shot = async (html: string, w: number, h: number, omitBackground: boolean) => {
+    const shot = async (html: string, w: number, h: number, omitBackground: boolean, scale = 1) => {
       const page = await browser.newPage({
         viewport: { width: w, height: h },
-        deviceScaleFactor: 1,
+        deviceScaleFactor: scale,
       });
       await page.setContent(html);
       await page.evaluate(() => document.fonts.ready);
@@ -110,6 +117,15 @@ async function main() {
     write(
       join(ROOT, "site/public/media/github-social-preview.png"),
       await shot(card(1280, 640), 1280, 640, false),
+    );
+    // GitHub shows the README's <picture> by the reader's colour scheme; drawn at 2x for retina.
+    write(
+      join(ROOT, "docs/media/rematch-lockup-day.png"),
+      await shot(lockup(BRAND_INK, BRAND_PENCIL), 640, 220, true, 2),
+    );
+    write(
+      join(ROOT, "docs/media/rematch-lockup-night.png"),
+      await shot(lockup(BRAND_NIGHT_INK, BRAND_NIGHT_INK), 640, 220, true, 2),
     );
   } finally {
     await browser.close();
