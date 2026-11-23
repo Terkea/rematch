@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { brand } from "../../brand";
+import { BrandLockup } from "../../components/brand/lockup";
 import {
   CBURNETT_BSD,
   CHESSJS_BSD2,
@@ -58,9 +59,10 @@ export default function LicensesPage() {
       <div className="px-(--space-gutter) pt-6">
         <Link
           href="/"
-          className="rounded-field font-serif text-xl font-semibold text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+          aria-label={brand.name}
+          className="inline-flex h-10 items-center gap-2 rounded-field whitespace-nowrap text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
         >
-          {brand.wordmark}
+          <BrandLockup />
         </Link>
       </div>
       <main className="mx-auto flex w-full max-w-2xl flex-col gap-8 px-(--space-gutter) pt-10 pb-16">

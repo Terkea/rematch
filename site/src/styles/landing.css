@@ -110,23 +110,25 @@ ul {
 
 .wordmark {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: calc(var(--spacing) * 2);
   text-decoration: none;
   white-space: nowrap;
 }
 
-.wordmark-name {
-  font-family: var(--font-serif);
-  font-weight: 600;
-  font-size: var(--text-xl);
-  line-height: var(--text-xl--line-height);
+/* The boy with his board, in the text colour (ink by day, cream at night); never pen red. */
+.wordmark-mark {
+  flex: none;
+  width: calc(var(--spacing) * 8);
+  height: calc(var(--spacing) * 8);
 }
 
-.wordmark-sub {
-  display: none;
-  color: var(--color-ink-soft);
-  font-size: var(--text-sm);
+.wordmark-name {
+  font-family: var(--font-serif-italic);
+  font-style: italic;
+  font-weight: 500;
+  font-size: var(--text-2xl);
+  line-height: var(--text-2xl--line-height);
 }
 
 .header-nav {
@@ -801,10 +803,6 @@ main > section:not(.band) {
 /* ---- breakpoints ---- */
 
 @media (width >= 480px) {
-  .wordmark-sub {
-    display: inline;
-  }
-
   .film-length {
     display: inline;
   }

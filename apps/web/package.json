@@ -12,6 +12,7 @@
     "lint": "biome check .",
     "typecheck": "tsc --noEmit",
     "e2e": "playwright test",
+    "brand": "tsx scripts/brand-assets.ts",
     "dev:link": "tsx --conditions development scripts/dev-link-account.ts"
   },
   "dependencies": {

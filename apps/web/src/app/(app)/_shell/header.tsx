@@ -7,6 +7,7 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { type ReactNode, useState } from "react";
 import { brand } from "../../../brand";
+import { BrandLockup } from "../../../components/brand/lockup";
 import { coachChatLive } from "../../../lib/coach-chat";
 import { isCurrent, onPhoneRow, shownNavItems, withFilters } from "./nav";
 import { NavCommandMenu } from "./nav-command-menu";
@@ -57,9 +58,10 @@ export function Header({
       <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-4 px-(--space-gutter) md:gap-x-6 pt-3 md:h-16 md:flex-nowrap md:pt-0">
         <Link
           href="/"
-          className="flex h-10 shrink-0 items-center rounded-field font-serif text-xl font-semibold whitespace-nowrap text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+          aria-label={brand.name}
+          className="flex h-10 shrink-0 items-center gap-2 rounded-field whitespace-nowrap text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
         >
-          {brand.wordmark}
+          <BrandLockup />
         </Link>
         {demo ? (
           <span

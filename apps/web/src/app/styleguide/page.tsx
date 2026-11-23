@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { brand } from "../../brand";
+import { BrandLockup } from "../../components/brand/lockup";
 import { labEnabled } from "../lab/lab-enabled";
 import { ForcedStatesStyle } from "./forced-states-style";
 import { AnnotationsSection } from "./sections/annotations";
@@ -37,7 +38,9 @@ export default function StyleguidePage() {
     <div className="mx-auto max-w-7xl px-(--space-gutter)">
       <ForcedStatesStyle />
       <header className="flex items-center justify-between gap-4 py-5">
-        <p className="font-serif text-lg font-semibold whitespace-nowrap">{brand.wordmark}</p>
+        <p className="flex items-center gap-2 whitespace-nowrap text-ink">
+          <BrandLockup />
+        </p>
         <ThemeToggle />
       </header>
       <main className="flex flex-col gap-16 pb-16">
