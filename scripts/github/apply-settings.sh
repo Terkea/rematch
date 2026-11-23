@@ -1,27 +1,35 @@
 #!/usr/bin/env bash
 # Apply the repository settings kept as code in .github/settings (ADR 0095) to this repository:
 # the "main" ruleset (created, or updated in place by name), the repository settings and topics,
-# private vulnerability reporting, Pages built by Actions, and the labels.
+# private vulnerability reporting, Pages built by Actions, the labels, and the roadmap milestones
+# (milestones.json, matched by title; ADR 0099). With --seed-issues it also creates the seed
+# issues in roadmap-issues.json that do not exist yet, epics first, then links each one under its
+# epic as a sub-issue. An issue that already exists, open or closed, is never edited.
 #
 # Run it from the maintainer's own `gh` login (an admin of the repository). No token is stored
 # anywhere. It is idempotent: it reads the live state first, prints the diff, and writes only what
 # differs, so a second run prints "No changes".
 #
-#   sh scripts/github/apply-settings.sh --dry-run   # print the diff, change nothing
-#   sh scripts/github/apply-settings.sh             # print the diff, then apply it
-#   sh scripts/github/apply-settings.sh --prune     # also delete labels not in labels.json
+#   sh scripts/github/apply-settings.sh --dry-run                 # print the plan, change nothing
+#   sh scripts/github/apply-settings.sh                           # print the plan, then apply it
+#   sh scripts/github/apply-settings.sh --prune                   # also delete labels and
+#                                                                 # milestones not in the files
+#   sh scripts/github/apply-settings.sh --seed-issues --dry-run   # also plan the seed issues
+#   sh scripts/github/apply-settings.sh --seed-issues             # and create and link them
 #
 # Works under Git Bash on Windows and on Linux. Needs gh (logged in) and node.
 set -eu
 
 dry_run=0
 prune=""
+seed=0
 for arg in "$@"; do
   case "$arg" in
     --dry-run) dry_run=1 ;;
     --prune) prune="--prune" ;;
+    --seed-issues) seed=1 ;;
     -h | --help)
-      sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *)
@@ -52,7 +60,7 @@ if command -v cygpath >/dev/null 2>&1; then
   work=$(cygpath -m "$work")
   root=$(cygpath -m "$root")
 fi
-mkdir -p "$work/live" "$work/plan"
+mkdir -p "$work/live"
 
 # Save one GET response as <name>, or gh's error as <name>.err (a 403 or 404 is a state, not a
 # failure: a private repository on the free plan has no rulesets, Pages may be off).
@@ -64,6 +72,48 @@ get() {
   else
     rm -f "$work/live/$name.err"
   fi
+}
+
+get_milestones() {
+  get milestones.jsonl "repos/$repo/milestones?state=all&per_page=100" --paginate -q '.[]'
+}
+
+# Issues only: the issues endpoint also lists pull requests.
+get_issues() {
+  get issues.jsonl "repos/$repo/issues?state=all&per_page=100" --paginate \
+    -q '.[] | select(.pull_request == null)'
+}
+
+# Plan one phase into $work/plan-<phase>; apply it unless this is a dry run.
+failed=0
+phase() {
+  name=$1
+  shift
+  out="$work/plan-$name"
+  mkdir -p "$out"
+  echo
+  node "$root/scripts/github/settings-plan.mjs" --live "$work/live" --repo "$repo" --out "$out" \
+    --phase "$name" "$@"
+  [ "$dry_run" -eq 0 ] || return 0
+  calls="$out/calls.tsv"
+  [ -s "$calls" ] || return 0
+  echo
+  tab=$(printf '\t')
+  while IFS="$tab" read -r method path body; do
+    [ -n "$method" ] || continue
+    printf '%s %s ... ' "$method" "$path"
+    if [ "$body" = "-" ]; then
+      set -- gh api -X "$method" "$path" --silent
+    else
+      set -- gh api -X "$method" "$path" --input "$body" --silent
+    fi
+    if err=$("$@" 2>&1); then
+      echo "ok"
+    else
+      echo "FAILED: $err"
+      failed=$((failed + 1))
+    fi
+  done <"$calls"
 }
 
 ruleset_name=$(node -p "JSON.parse(require('fs').readFileSync('$root/.github/settings/rulesets/main.json','utf8')).name")
@@ -81,37 +131,29 @@ if [ -f "$work/live/rulesets.jsonl" ]; then
 fi
 get vulnerability-reporting.json "repos/$repo/private-vulnerability-reporting"
 get pages.json "repos/$repo/pages"
+get_milestones
+
+# shellcheck disable=SC2086 # $prune is empty or one flag
+phase settings $prune
+
+if [ "$seed" -eq 1 ]; then
+  # Fresh reads after each phase: the issues need the milestone numbers, the links need the
+  # issue ids, and on a real run both were just created.
+  get_milestones
+  get_issues
+  phase issues
+  get_issues
+  for n in $(node "$root/scripts/github/settings-plan.mjs" --live "$work/live" --epic-numbers); do
+    get "sub-issues-$n.jsonl" "repos/$repo/issues/$n/sub_issues?per_page=100" --paginate -q '.[]'
+  done
+  phase sub-issues
+fi
 
 echo
-node "$root/scripts/github/settings-plan.mjs" --live "$work/live" --repo "$repo" --out "$work/plan" $prune
-
 if [ "$dry_run" -eq 1 ]; then
   echo "Dry run: nothing was changed."
   exit 0
 fi
-
-calls="$work/plan/calls.tsv"
-[ -s "$calls" ] || exit 0
-
-echo
-failed=0
-tab=$(printf '\t')
-while IFS="$tab" read -r method path body; do
-  [ -n "$method" ] || continue
-  printf '%s %s ... ' "$method" "$path"
-  if [ "$body" = "-" ]; then
-    set -- gh api -X "$method" "$path" --silent
-  else
-    set -- gh api -X "$method" "$path" --input "$body" --silent
-  fi
-  if err=$("$@" 2>&1); then
-    echo "ok"
-  else
-    echo "FAILED: $err"
-    failed=$((failed + 1))
-  fi
-done <"$calls"
-
 if [ "$failed" -gt 0 ]; then
   echo "$failed write(s) failed. Fix the cause and run the script again; it only redoes what still differs." >&2
   exit 1

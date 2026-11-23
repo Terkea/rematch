@@ -1,0 +1,32 @@
+[
+  {
+    "title": "v0.2 Practice habit",
+    "horizon": "now",
+    "state": "open",
+    "description": "Turn the trainer into a daily habit and answer \"Is it working?\" weeks sooner: a streak that forgives a rest day, an opt-in daily email, an ETA in games and the training numbers that are already trustworthy."
+  },
+  {
+    "title": "v0.3 Trainer depth",
+    "horizon": "next",
+    "state": "open",
+    "description": "Drills for the focuses that have none today: the opening-trap lines replayed from move 1, a clock budget for time trouble, and won positions played out against an opponent at your level."
+  },
+  {
+    "title": "v0.4 Self-host and benchmark",
+    "horizon": "next",
+    "state": "open",
+    "description": "A scorecard for the analysis pipeline, from one Stockfish thread to a month of Lichess games and a coach report, tracked release over release, and a stack that fits a laptop."
+  },
+  {
+    "title": "v0.5 More players",
+    "horizon": "later",
+    "state": "open",
+    "description": "Lichess accounts and PGN files as game sources, the app in more than one language, and an app that works on a phone and with a screen reader."
+  },
+  {
+    "title": "v1.0 MVP",
+    "horizon": "later",
+    "state": "open",
+    "description": "The first complete release, declared in its own ADR: a stranger can sign up, link chess.com, practise daily, see whether it works, and delete everything when they leave."
+  }
+]

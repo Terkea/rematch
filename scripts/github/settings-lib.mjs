@@ -13,6 +13,8 @@ export function loadSettings(root) {
     ruleset: read("rulesets/main.json"),
     repo: read("repo.json"),
     labels: read("labels.json"),
+    milestones: read("milestones.json"),
+    roadmapIssues: read("roadmap-issues.json"),
   };
 }
 
@@ -348,6 +350,17 @@ export function planChanges(settings, live, repo, opts = {}) {
       lines.push(`  label "${name}" is not in labels.json (kept; --prune deletes it)`);
     }
   }
+
+  // Milestones, matched by title (only when the caller read them).
+  if (live.milestones !== undefined && settings.milestones) {
+    if (live.milestones.error) {
+      lines.push(`(could not read the milestones: ${live.milestones.error})`);
+    } else {
+      const m = planMilestones(settings.milestones, live.milestones, opts);
+      lines.push(...m.lines);
+      for (const c of m.calls) call(c.method, c.path, c.body);
+    }
+  }
   return { lines, calls };
 }
 
@@ -416,4 +429,254 @@ export function driftReport(settings, live) {
   }
   drift.push(...diffSubset(desired, detail).map((l) => `ruleset ${l}`));
   return { drift, notices };
+}
+
+// ---- the roadmap: milestones and seed issues (ADR 0099) ----
+
+export const HORIZONS = ["now", "next", "later"];
+
+/** What each size means, written into the seeded issue so a newcomer can judge it. */
+export const SIZES = {
+  S: "S: a few hours to a day for someone new to the code",
+  M: "M: two to four days",
+  L: "L: one to two weeks",
+  XL: "XL: several weeks, across more than one area",
+};
+
+/** The sections every epic's spec has (the `spec.yml` issue form, in the same order). */
+export const SPEC_SECTIONS = [
+  "## Problem",
+  "## Who it's for",
+  "## Goals",
+  "## Non-goals",
+  "## Evidence",
+  "## Proposed design",
+  "## Acceptance criteria",
+  "## Test plan",
+  "## ADR",
+  "## Risks and open questions",
+  "## Pointers",
+];
+
+export function validateMilestones(milestones) {
+  if (!Array.isArray(milestones) || milestones.length === 0) {
+    fail("milestones.json must be a non-empty array");
+  }
+  const titles = new Set();
+  for (const m of milestones) {
+    onlyKeys(m, ["title", "description", "state", "due_on", "horizon"], `milestone ${m.title}`);
+    if (typeof m.title !== "string" || m.title === "" || m.title.length > 100) {
+      fail("a milestone needs a title of at most 100 characters");
+    }
+    if (titles.has(m.title.toLowerCase())) fail(`milestone "${m.title}" appears twice`);
+    titles.add(m.title.toLowerCase());
+    if (typeof m.description !== "string" || m.description === "") {
+      fail(`milestone "${m.title}" needs a description`);
+    }
+    if (!["open", "closed"].includes(m.state)) fail(`milestone "${m.title}": state open|closed`);
+    if (!HORIZONS.includes(m.horizon)) {
+      fail(`milestone "${m.title}": horizon must be one of ${HORIZONS.join(", ")}`);
+    }
+    if (m.due_on !== undefined && !/^\d{4}-\d{2}-\d{2}T00:00:00Z$/.test(m.due_on)) {
+      fail(`milestone "${m.title}": due_on must look like 2027-01-31T00:00:00Z`);
+    }
+  }
+}
+
+/**
+ * The seed issues: unique titles, a known milestone and known labels, a size, and parent links
+ * that point at an epic in the same milestone. Epics carry the full spec; good first issues are
+ * small. Throws on the first problem.
+ */
+export function validateRoadmapIssues(issues, { milestones, labels }) {
+  if (!Array.isArray(issues) || issues.length === 0) fail("roadmap-issues.json must be an array");
+  const milestoneTitles = new Set(milestones.map((m) => m.title));
+  const labelNames = new Set(labels.map((l) => l.name));
+  const byTitle = new Map();
+  for (const i of issues) {
+    onlyKeys(i, ["title", "milestone", "epic", "parent", "size", "labels", "body"], `${i.title}`);
+    if (typeof i.title !== "string" || i.title === "" || i.title.length > 256) {
+      fail("an issue needs a title of at most 256 characters");
+    }
+    const key = i.title.trim().toLowerCase();
+    if (byTitle.has(key)) fail(`issue "${i.title}" appears twice`);
+    byTitle.set(key, i);
+  }
+  for (const i of issues) {
+    const where = `issue "${i.title}"`;
+    if (!milestoneTitles.has(i.milestone)) {
+      fail(`${where}: milestone "${i.milestone}" is not in milestones.json`);
+    }
+    if (!(i.size in SIZES)) fail(`${where}: size must be one of ${Object.keys(SIZES).join(", ")}`);
+    if (!Array.isArray(i.labels) || i.labels.length === 0) fail(`${where}: needs labels`);
+    for (const l of i.labels) {
+      if (!labelNames.has(l)) fail(`${where}: label "${l}" is not in labels.json`);
+    }
+    if (new Set(i.labels).size !== i.labels.length) fail(`${where}: a label appears twice`);
+    if (!i.labels.includes("roadmap")) fail(`${where}: seed issues carry the roadmap label`);
+    if (!i.labels.some((l) => l.startsWith("type/"))) fail(`${where}: needs a type/* label`);
+    if (!Array.isArray(i.body) || !i.body.every((l) => typeof l === "string")) {
+      fail(`${where}: body must be an array of lines`);
+    }
+    const body = i.body.join("\n");
+    if (body.length > 60000) fail(`${where}: body is longer than GitHub allows`);
+    if (!body.startsWith("## Problem")) fail(`${where}: the body starts with "## Problem"`);
+    for (const s of ["## Acceptance criteria", "## Pointers"]) {
+      if (!body.includes(s)) fail(`${where}: missing "${s}"`);
+    }
+    if (!/^- \[ \] /m.test(body)) fail(`${where}: acceptance criteria are a checkbox list`);
+    if (i.epic === true) {
+      if (i.parent !== undefined) fail(`${where}: an epic has no parent`);
+      if (!i.labels.includes("epic")) fail(`${where}: an epic carries the epic label`);
+      if (!i.title.startsWith("Epic: ")) fail(`${where}: an epic's title starts with "Epic: "`);
+      let at = -1;
+      for (const s of SPEC_SECTIONS) {
+        const next = body.indexOf(`${s}\n`, at + 1);
+        if (next < 0) fail(`${where}: the spec is missing "${s}" (or it is out of order)`);
+        at = next;
+      }
+    } else {
+      if (i.epic !== undefined) fail(`${where}: "epic" is true or absent`);
+      if (i.labels.includes("epic")) fail(`${where}: only epics carry the epic label`);
+    }
+    if (i.labels.includes("good first issue") && i.size !== "S") {
+      fail(`${where}: a good first issue is size S`);
+    }
+    if (i.parent !== undefined) {
+      const p = byTitle.get(String(i.parent).trim().toLowerCase());
+      if (!p) fail(`${where}: parent "${i.parent}" is not in roadmap-issues.json`);
+      if (p.epic !== true) fail(`${where}: parent "${i.parent}" is not an epic`);
+      if (p.milestone !== i.milestone) fail(`${where}: not in its epic's milestone`);
+    }
+  }
+  for (const e of issues.filter((i) => i.epic)) {
+    if (!issues.some((i) => i.parent === e.title)) fail(`epic "${e.title}" has no sub-issues`);
+  }
+}
+
+/** The body GitHub gets: the size first, then the spec, then where it came from. */
+export function composeIssueBody(issue) {
+  return [
+    `Size: ${SIZES[issue.size]}.`,
+    "",
+    ...issue.body,
+    "",
+    "---",
+    "Seeded from `.github/settings/roadmap-issues.json` (ADR 0099). From now on the issue is the",
+    "source of truth: edit it here, not in the file.",
+  ].join("\n");
+}
+
+const milestoneBody = (m) => {
+  const b = { title: m.title, state: m.state, description: m.description };
+  if (m.due_on) b.due_on = m.due_on;
+  return b;
+};
+
+/** Create or update milestones by title; delete unknown ones only with `prune`. */
+export function planMilestones(desired, live, opts = {}) {
+  const lines = [];
+  const calls = [];
+  const byTitle = new Map(live.map((m) => [m.title, m]));
+  for (const d of desired) {
+    const l = byTitle.get(d.title);
+    if (!l) {
+      lines.push(`+ milestone "${d.title}" (${d.state})`);
+      calls.push({ method: "POST", path: "/milestones", body: milestoneBody(d) });
+      continue;
+    }
+    const diffs = [];
+    if ((l.description ?? "") !== d.description) diffs.push("description");
+    if (l.state !== d.state) diffs.push(`state: ${l.state} -> ${d.state}`);
+    const liveDue = l.due_on ? String(l.due_on).slice(0, 10) : null;
+    const wantDue = d.due_on ? d.due_on.slice(0, 10) : null;
+    if (liveDue !== wantDue) diffs.push(`due_on: ${liveDue} -> ${wantDue}`);
+    if (diffs.length > 0) {
+      lines.push(`~ milestone "${d.title}" (#${l.number}): ${diffs.join(", ")}`);
+      const body = milestoneBody(d);
+      if (!d.due_on && l.due_on) body.due_on = null;
+      calls.push({ method: "PATCH", path: `/milestones/${l.number}`, body });
+    }
+  }
+  const wanted = new Set(desired.map((d) => d.title));
+  for (const l of live.filter((m) => !wanted.has(m.title))) {
+    if (opts.prune) {
+      lines.push(`- milestone "${l.title}" (#${l.number}, delete)`);
+      calls.push({ method: "DELETE", path: `/milestones/${l.number}` });
+    } else {
+      lines.push(`  milestone "${l.title}" is not in milestones.json (kept; --prune deletes it)`);
+    }
+  }
+  return { lines, calls };
+}
+
+/** The live issue with this title (any state, pull requests excluded), or undefined. */
+function liveIssue(liveIssues, title) {
+  return liveIssues.find((i) => !i.pull_request && i.title.trim() === title.trim());
+}
+
+/**
+ * Seed issues that do not exist yet (matched by exact title, open or closed), epics first. An
+ * issue that exists is never edited: after seeding, GitHub is the source of truth.
+ */
+export function planSeedIssues(issues, liveIssues, liveMilestones, repo) {
+  const lines = [];
+  const calls = [];
+  const number = new Map(liveMilestones.map((m) => [m.title, m.number]));
+  const ordered = [...issues.filter((i) => i.epic), ...issues.filter((i) => !i.epic)];
+  let existing = 0;
+  for (const i of ordered) {
+    if (liveIssue(liveIssues, i.title)) {
+      existing += 1;
+      continue;
+    }
+    const m = number.get(i.milestone);
+    const kind = i.epic ? "epic" : i.parent ? "sub-issue" : "issue";
+    const pending = m === undefined ? " (milestone created first)" : "";
+    lines.push(`+ ${kind} "${i.title}" [${i.labels.join(", ")}] in "${i.milestone}"${pending}`);
+    const body = { title: i.title, body: composeIssueBody(i), labels: i.labels };
+    if (m !== undefined) body.milestone = m;
+    calls.push({ method: "POST", path: `repos/${repo}/issues`, body });
+  }
+  if (existing > 0) lines.push(`  ${existing} seed issue(s) already exist (left as they are)`);
+  return { lines, calls };
+}
+
+/** The live numbers of the epics, to read their sub-issues. */
+export function epicNumbers(issues, liveIssues) {
+  return issues
+    .filter((i) => i.epic)
+    .map((i) => liveIssue(liveIssues, i.title)?.number)
+    .filter((n) => n !== undefined);
+}
+
+/**
+ * Attach each seed issue to its epic as a sub-issue, unless it already is. `subIssues` maps an
+ * epic's number to the sub-issues GitHub lists for it.
+ */
+export function planSubIssues(issues, liveIssues, subIssues, repo) {
+  const lines = [];
+  const calls = [];
+  let linked = 0;
+  for (const i of issues.filter((x) => x.parent)) {
+    const parent = liveIssue(liveIssues, i.parent);
+    const child = liveIssue(liveIssues, i.title);
+    if (!parent || !child) {
+      lines.push(`+ link "${i.title}" under "${i.parent}" (once both exist)`);
+      continue;
+    }
+    const current = subIssues.get(parent.number) ?? [];
+    if (current.some((s) => s.id === child.id)) {
+      linked += 1;
+      continue;
+    }
+    lines.push(`+ link #${child.number} "${i.title}" under #${parent.number}`);
+    calls.push({
+      method: "POST",
+      path: `repos/${repo}/issues/${parent.number}/sub_issues`,
+      body: { sub_issue_id: child.id },
+    });
+  }
+  if (linked > 0) lines.push(`  ${linked} sub-issue link(s) already in place`);
+  return { lines, calls };
 }
