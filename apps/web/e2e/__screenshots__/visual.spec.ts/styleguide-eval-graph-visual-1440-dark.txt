@@ -43,7 +43,7 @@ Rde8??
 
 127 half-moves. White's win chance goes from 49% to 98%. You played White. Mistakes and blunders: Move 13, White Nb4, blunder, White 8%; Move 13, Black f4, mistake, White 22%; Move 15, Black fxe3, mistake, White 38%; Move 17, White Nxd4, mistake, White 24%; Move 21, Black d4, mistake, White 25%; Move 23, White Bc1, blunder, White 10%; Move 38, Black g5, mistake, White 24%; Move 41, White g3, blunder, White 12%; Move 41, Black Rde8, blunder, White 64%; Move 42, Black Re2+, mistake, White 70%; Move 43, White Kf1, mistake, White 59%; Move 44, White Re1, mistake, White 49%; Move 46, Black Re4, mistake, White 68%; Move 47, White Nd4, blunder, White 19%; Move 47, Black Re6, blunder, White 98%. Also 12 inaccuracies.
 
-oasenegre v DrNykterstein, 0-1
+sample_player v DrNykterstein, 0-1
 
 Rapport-Jobava System, blitz, 34 half-moves.
 

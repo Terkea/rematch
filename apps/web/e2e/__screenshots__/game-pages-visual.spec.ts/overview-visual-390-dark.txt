@@ -262,7 +262,7 @@ Open
 3029
 	79.0%
 
-29 Oct	Win	oasenegre
+29 Oct	Win	sample_player
 2230
 	95.2%
 
