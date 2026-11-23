@@ -15,7 +15,9 @@
       "!backend/crates/*/schema/**",
       "!**/*.md",
       "!**/assets/pieces/**/*.svg",
-      "!.claude/skills/science/**"
+      "!.claude/skills/science/**",
+      "!lab/fixtures/**",
+      "!lab/experiments/**/results.json"
     ]
   },
   "formatter": { "indentStyle": "space", "indentWidth": 2, "lineWidth": 100 },

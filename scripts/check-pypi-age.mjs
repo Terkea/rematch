@@ -94,7 +94,8 @@ const cutoff = excludeNewer(lockText);
 console.log(
   `checked ${packages.length} locked versions${OFFLINE ? " (offline: the lock's upload times)" : ""}`,
 );
-const report = (title, list) => list.length && console.log(`\n${title}:\n  ${list.sort().join("\n  ")}`);
+const report = (title, list) =>
+  list.length && console.log(`\n${title}:\n  ${list.sort().join("\n  ")}`);
 report(`Younger than ${MIN_AGE_DAYS} days`, young);
 report("No publish time found", missing);
 report("Lookup errors", errors);

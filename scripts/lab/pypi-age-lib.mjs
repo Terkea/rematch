@@ -46,7 +46,9 @@ export function pyprojectRequirements(text) {
 
 /** Requirements that are not an exact `name==version` pin. */
 export function pinViolations(requirements) {
-  return requirements.filter((r) => !/^[A-Za-z0-9][A-Za-z0-9._-]*(\[[\w,-]+\])?==[\w.+!-]+$/.test(r));
+  return requirements.filter(
+    (r) => !/^[A-Za-z0-9][A-Za-z0-9._-]*(\[[\w,-]+\])?==[\w.+!-]+$/.test(r),
+  );
 }
 
 /** The earliest upload time (ISO) among a PyPI release's files, or null. */
