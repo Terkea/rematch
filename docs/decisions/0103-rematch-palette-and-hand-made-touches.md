@@ -1,6 +1,6 @@
 # 0103. The Rematch palette, a crayon for celebrations and dad's handwriting
 
-- Status: accepted
+- Status: accepted; the warm palette withdrawn by Amendment 1
 - Date: 2026-11-23
 - Lane: `feat/brand-palette`
 
@@ -28,3 +28,12 @@ The approved Rematch brand (`docs/superpowers/specs/2026-11-23-rematch-brand-des
 - Every colour token changes in both themes, so every visual baseline changes. They are regenerated once in the final pre-launch gate, not in this lane.
 - Pieces need no rebuild: their sprites use `var(--color-piece-dark)` and `var(--color-piece-light)`.
 - `/licenses` credits Caveat with its OFL text.
+
+## Amendment 1 (2026-11-23)
+
+The owner preferred the original cool scoresheet palette; the warm palette is withdrawn, and the logo, wordmark, margin notes and crayon stay.
+
+1. **Decision 1 is reversed.** Every colour token in both themes is back at its value from before this ADR (`bfbc3bd^1`): paper `#F3F5F8`, sheet `#FBFCFD`, ink `#16233B`, pen `#D3312B`, good `#24684B`, pencil `#56657F`, and the navy night study (paper `#121A2B`, ink `#E7ECF4`). The contrast tables in `packages/ui/DESIGN.md` are the fix round 2 tables again, with two crayon rows added.
+2. **Decision 2 is reversed.** `B1` is "paper is never cream" again. `packages/ui/test/tokens-contrast.test.ts` holds it as an OKLCH rule: every surface in both themes has a hue between 230° and 285°, day chroma is at most 0.015, and night paper is navy (lightness under 0.3, hue 240°–280°).
+3. **Decisions 3 to 5 stand.** The crayon keeps `#E3A92F` and `#D9A441`: on the cool paper it is 1.93:1 on day `paper`, 2.05:1 on `sheet` and 7.73:1 on night `paper`, and 53° of hue from the pen, so it still shows and never reads as a mistake. Caveat, `MarginNote`, `CrayonStroke` and `PencilTexture` are unchanged.
+4. **The brand rasters follow the tokens.** `apps/web/scripts/brand-assets-lib.ts` draws in `#16233B` on `#F3F5F8`, with `#E7ECF4` and `#97A6C0` for dark chrome, and `apps/web/test/brand-assets.test.ts` now reads those values from `tokens.css`, so the two can't drift apart. Every visual baseline changes again, regenerated once in the final gate.

@@ -6,6 +6,7 @@ import {
   BRAND_INK,
   BRAND_NIGHT_INK,
   BRAND_NIGHT_PENCIL,
+  BRAND_PAPER,
   BRAND_PENCIL,
   cardHtml,
   iconSvg,
@@ -31,14 +32,37 @@ function pngSize(buf: Buffer): [number, number] {
 
 const PEN = /#c8372d|#d3312b|--color-pen/i;
 
+/** A colour token's value in one theme block of tokens.css (`:root` day, or the `[data-theme="dark"]` block). */
+function token(name: string, theme: "day" | "night"): string {
+  const css = readFileSync(join(ROOT, "packages/ui/src/styles/tokens.css"), "utf8");
+  const block = theme === "day" ? css : css.slice(css.indexOf('\n[data-theme="dark"] {'));
+  const value = block.match(new RegExp(`--color-${name}:\\s*(#[0-9a-f]{6});`, "i"))?.[1];
+  if (!value) throw new Error(`tokens.css has no --color-${name} (${theme})`);
+  return value.toUpperCase();
+}
+
+describe("the brand colours are the app's tokens", () => {
+  it("draws in day ink and pencil on day paper", () => {
+    expect(BRAND_INK).toBe(token("ink", "day"));
+    expect(BRAND_PENCIL).toBe(token("pencil", "day"));
+    expect(BRAND_PAPER).toBe(token("paper", "day"));
+  });
+  it("draws in night ink and pencil on dark chrome", () => {
+    expect(BRAND_NIGHT_INK).toBe(token("ink", "night"));
+    expect(BRAND_NIGHT_PENCIL).toBe(token("pencil", "night"));
+  });
+  it("is the cool scoresheet, not the withdrawn warm palette", () => {
+    expect(BRAND_PAPER).toBe("#F3F5F8");
+    expect(BRAND_INK).toBe("#16233B");
+  });
+});
+
 describe("the favicon set", () => {
-  it("serves icon.svg: the 16 px icon in ink, night cream on dark browser chrome, never red", () => {
+  it("serves icon.svg: the 16 px icon in ink, pale night ink on dark browser chrome, never red", () => {
     const svg = readFileSync(join(WEB, "src/app/icon.svg"), "utf8");
     expect(svg).toBe(iconSvg(readFileSync(join(BRAND, "rematch-icon-16.svg"), "utf8")));
-    expect(BRAND_INK).toBe("#1F2A3D");
-    expect(BRAND_NIGHT_INK).toBe("#E8E2D6");
     expect(svg).toContain(`color:${BRAND_INK}`);
-    expect(svg).toMatch(/@media \(prefers-color-scheme: ?dark\)\{svg\{color:#E8E2D6\}\}/);
+    expect(svg).toMatch(/@media \(prefers-color-scheme: ?dark\)\{svg\{color:#E7ECF4\}\}/);
     expect(svg).toContain("<title>Rematch</title>");
     expect(svg).not.toMatch(PEN);
   });
@@ -123,8 +147,9 @@ describe("the lockup", () => {
   }
 
   it("draws the README tagline in night pencil on dark", () => {
-    expect(BRAND_NIGHT_PENCIL).toBe("#ADA394");
-    expect(lockupHtml("<svg/>", faces, BRAND_NIGHT_INK, BRAND_NIGHT_PENCIL)).toContain("#ADA394");
+    expect(lockupHtml("<svg/>", faces, BRAND_NIGHT_INK, BRAND_NIGHT_PENCIL)).toContain(
+      BRAND_NIGHT_PENCIL,
+    );
   });
 });
 

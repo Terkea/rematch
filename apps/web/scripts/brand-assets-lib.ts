@@ -3,16 +3,16 @@ import { brand } from "../src/brand";
 // The pure half of `scripts/brand-assets.ts`: text transforms of the committed logo SVGs in
 // packages/ui/assets/brand, and the ICO container. The rasters come from the system Chrome.
 
-/** Ink, by day (the spec's `--color-ink`). The logo is ink only, never pen red. */
-export const BRAND_INK = "#1F2A3D";
-/** Ink at night (the spec's night cream), for dark browser chrome. */
-export const BRAND_NIGHT_INK = "#E8E2D6";
-/** Pencil, the warm graphite of secondary text on the social card. */
-export const BRAND_PENCIL = "#6B6458";
-/** Pencil at night (the warm desk-lamp night's `--color-pencil`), for the README's dark lockup. */
-export const BRAND_NIGHT_PENCIL = "#ADA394";
-/** The paper behind the raster icons, where a platform needs an opaque tile. */
-export const BRAND_PAPER = "#F4EFE6";
+/** Ink, by day (`--color-ink`, navy). The logo is ink only, never pen red. */
+export const BRAND_INK = "#16233B";
+/** Ink at night (night study's pale `--color-ink`), for dark browser chrome. */
+export const BRAND_NIGHT_INK = "#E7ECF4";
+/** Pencil (`--color-pencil`), the cool graphite of secondary text on the social card. */
+export const BRAND_PENCIL = "#56657F";
+/** Pencil at night (night study's `--color-pencil`), for the README's dark lockup. */
+export const BRAND_NIGHT_PENCIL = "#97A6C0";
+/** The paper behind the raster icons (`--color-paper`), where a platform needs an opaque tile. */
+export const BRAND_PAPER = "#F3F5F8";
 
 const WORD = "font-family:'Literata Italic';font-style:italic;font-optical-sizing:auto";
 
@@ -56,7 +56,7 @@ export function svgParts(source: string): { viewBox: string; body: string } {
   return { viewBox, body: body.replace(/<title>[\s\S]*?<\/title>/, "").trim() };
 }
 
-/** The browser-tab icon: the icon in ink, and in night cream when the browser chrome is dark. */
+/** The browser-tab icon: the icon in ink, and in pale night ink when the browser chrome is dark. */
 export function iconSvg(source: string): string {
   const { viewBox, body } = svgParts(source);
   return [
