@@ -1,0 +1,29 @@
+name: Release
+# release-please (ADR 0095): from the Conventional Commit titles that land on main (squash merges
+# use the PR title), it keeps one release PR open with the next version and its CHANGELOG.md
+# entry. Merging that PR tags vX.Y.Z and publishes a GitHub Release, marked prerelease while the
+# version is 0.y.z (beta). 1.0.0 is the MVP: a maintainer decision, never automatic.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# The only workflow that writes: it opens the release PR and creates the tag and Release with the
+# run's own GITHUB_TOKEN. No other token is stored.
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      # v5.0.0, pinned by commit.
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json

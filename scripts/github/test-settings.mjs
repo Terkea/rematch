@@ -117,22 +117,36 @@ check("labels.json: unique names, 6-digit colours, the triage set", () => {
 
 // ---- 2. required checks == CI's job names ----
 
-const ciPath = join(root, ".github", "workflows", "ci.yml");
+// The workflows whose every job gates a merge to main.
+const GATING_WORKFLOWS = ["ci.yml", "pr-title.yml"];
 // A Windows checkout may have CRLF line ends; the checks read LF.
-const ciYaml = readFileSync(ciPath, "utf8").replaceAll("\r\n", "\n");
+const workflow = (name) =>
+  readFileSync(join(root, ".github", "workflows", name), "utf8").replaceAll("\r\n", "\n");
+const ciYaml = workflow("ci.yml");
+const prTitleYaml = workflow("pr-title.yml");
 
-check("the ruleset requires exactly the check names ci.yml reports", () => {
-  const want = ciCheckNames(ciYaml).sort();
-  const got = settings.ruleset.rules
-    .find((r) => r.type === "required_status_checks")
-    .parameters.required_status_checks.map((c) => c.context)
-    .sort();
-  assert.deepEqual(
-    got,
-    want,
-    `rulesets/main.json requires [${got}] but ci.yml reports [${want}].\n` +
-      "Update required_status_checks in .github/settings/rulesets/main.json to match.",
-  );
+check(
+  `the ruleset requires exactly the check names ${GATING_WORKFLOWS.join(" and ")} report`,
+  () => {
+    const want = GATING_WORKFLOWS.flatMap((w) => ciCheckNames(workflow(w))).sort();
+    const got = settings.ruleset.rules
+      .find((r) => r.type === "required_status_checks")
+      .parameters.required_status_checks.map((c) => c.context)
+      .sort();
+    assert.deepEqual(
+      got,
+      want,
+      `rulesets/main.json requires [${got}] but the workflows report [${want}].\n` +
+        "Update required_status_checks in .github/settings/rulesets/main.json to match.",
+    );
+    assert.ok(want.includes("pr-title"), "the PR-title lint is a required check");
+  },
+);
+
+check("pr-title.yml: plain pull_request with a read token, the action pinned by commit", () => {
+  assert.ok(!prTitleYaml.includes("pull_request_target"), "never pull_request_target");
+  assert.match(prTitleYaml, /^permissions:\n {2}pull-requests: read$/m);
+  assert.match(prTitleYaml, /uses: amannn\/action-semantic-pull-request@[0-9a-f]{40}$/m);
 });
 
 check("every required check comes from the GitHub Actions app", () => {

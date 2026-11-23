@@ -1,0 +1,38 @@
+name: PR title
+# Squash merges use the PR title as the commit on main, and release-please builds the changelog
+# and the next version from those commits (ADR 0095). So the title must be a Conventional Commit:
+# "feat(coach): cite the move number", "fix: ...", "docs: ...". Plain pull_request, never the
+# privileged _target variant: it only reads the event, so fork PRs run it safely with a read token.
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  pull-requests: read
+
+concurrency:
+  group: pr-title-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  pr-title:
+    runs-on: ubuntu-latest
+    steps:
+      # v6.1.2, pinned by commit.
+      - uses: amannn/action-semantic-pull-request@2252a14e810aa9b85c2d560bd7070c802206ecf6
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          types: |
+            feat
+            fix
+            perf
+            revert
+            docs
+            refactor
+            chore
+            test
+            ci
+            build
+            style
+          requireScope: false

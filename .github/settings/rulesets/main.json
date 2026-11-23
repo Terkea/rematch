@@ -41,7 +41,8 @@
           { "context": "e2e-fakes", "integration_id": 15368 },
           { "context": "rust", "integration_id": 15368 },
           { "context": "baseline-schema", "integration_id": 15368 },
-          { "context": "schema-drift", "integration_id": 15368 }
+          { "context": "schema-drift", "integration_id": 15368 },
+          { "context": "pr-title", "integration_id": 15368 }
         ]
       }
     }

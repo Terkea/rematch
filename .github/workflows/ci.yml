@@ -42,6 +42,8 @@ jobs:
         run: node scripts/check-npm-age.mjs
       - name: Repository settings as code (the ruleset requires exactly these jobs, ADR 0095)
         run: node scripts/github/test-settings.mjs
+      - name: One product version everywhere (root, web, Cargo; ADR 0095)
+        run: node scripts/test-versions.mjs
       - name: Build the images
         run: $COMPOSE build deps worker web
       - name: Install dependencies (frozen lockfile)
