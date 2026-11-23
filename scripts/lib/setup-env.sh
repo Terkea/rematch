@@ -120,3 +120,8 @@ version_ge() {
 gib() {
   awk -v b="$1" 'BEGIN { printf "%d", b / 1073741824 }'
 }
+
+# month_has_clocks YYYY-MM: true from 2017-04, the first Lichess dump with [%clk] comments.
+month_has_clocks() {
+  expr "$1" ">=" 2017-04 > /dev/null
+}

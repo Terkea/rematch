@@ -354,6 +354,9 @@ services:
       dockerfile: backend/Dockerfile
       target: worker
     entrypoint: ["lichess-db"]
+    # The image runs as uid 10001, which may not write a bind-mounted data/. setup.sh passes the
+    # host user on Linux (so the files stay yours); Docker Desktop maps any uid, so root is fine.
+    user: "${DATA_UID:-0}:${DATA_GID:-0}"
     environment:
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/chess
       DATA_DIR: /data

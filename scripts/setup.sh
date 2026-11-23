@@ -10,6 +10,9 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 . "$ROOT/scripts/lib/setup-env.sh"
 
 ENV_FILE=${SETUP_ENV_FILE:-$ROOT/.env}
+# Git Bash rewrites arguments that look like paths (/data/...) before Docker sees them, so dc()
+# turns that off for Docker only (pnpm's shim needs it) and passes the checkout as a Windows path.
+DOCKER_ROOT=$(cd "$ROOT" && pwd -W 2> /dev/null || pwd)
 EXAMPLE=${SETUP_EXAMPLE_FILE:-$ROOT/.env.example}
 CACHE_DIR="$ROOT/.cache"
 PIDFILE="$CACHE_DIR/ai-sidecar.pid"
@@ -17,11 +20,14 @@ SIDECAR_LOG="$CACHE_DIR/ai-sidecar.log"
 SIDECAR_URL="http://127.0.0.1:7310"
 DEFAULT_EMAIL="player@rematch.test"
 DEFAULT_MONTH="2013-01"
+# Lichess dumps carry [%clk] comments from this month on; the band reference needs them.
+FIRST_CLOCK_MONTH="2017-04"
 SYZYGY_FILES=290
-# Measured on a Docker Desktop host (see the Getting started docs); disk includes images.
+# The dry run measured 3.3 GB of images and 1.8 GB of volumes, plus the Rust build cache; full
+# mode adds 940 MiB of Syzygy tables and the explorer rows.
 MIN_MEMORY_GIB=12
-DISK_MINIMAL_GIB=20
-DISK_FULL_GIB=24
+DISK_MINIMAL_GIB=10
+DISK_FULL_GIB=12
 DISK_MAIA_GIB=6
 
 usage() {
@@ -47,7 +53,7 @@ Options:
                         none: computed reports only (switch later with `sh scripts/setup.sh ai`)
   --month=YYYY-MM       the Lichess month for full mode (default 2013-01, 18 MB, 121k games).
   --no-lichess          full mode without the Lichess month.
-  --maia | --no-maia    the Maia-2 difficulty service (full mode; about 3 GB of images).
+  --maia | --no-maia    the Maia-2 difficulty service (full mode).
   --project=NAME        the Compose project name (written to .env as COMPOSE_PROJECT_NAME).
   --no-ports | --ports  publish no host ports, or the default ones again.
   --web-port=N --mailpit-port=N --postgres-port=N --redis-port=N
@@ -141,9 +147,9 @@ ask() { # question default -> answer (the default when not interactive)
 # --- docker --------------------------------------------------------------------------------------
 dc() {
   if [ -n "${SETUP_ENV_FILE:-}" ]; then
-    docker compose --project-directory "$ROOT" --env-file "$ENV_FILE" "$@"
+    MSYS_NO_PATHCONV=1 docker compose --project-directory "$DOCKER_ROOT" --env-file "$ENV_FILE" "$@"
   else
-    docker compose --project-directory "$ROOT" "$@"
+    MSYS_NO_PATHCONV=1 docker compose --project-directory "$DOCKER_ROOT" "$@"
   fi
 }
 
@@ -438,8 +444,8 @@ start_stack() {
   mkdir -p "$ROOT/data/syzygy"
   if [ "$(ai_mode)" = local ]; then ai_start; fi
   step "Building and starting: $(services)"
-  say "    The first build compiles the Rust worker and installs the web app: 10 to 30 minutes,"
-  say "    about 12 GB of images. Later runs take seconds."
+  say "    The first build compiles the Rust worker and installs the web app. With a warm Docker"
+  say "    build cache it took about 3 minutes on the dry run; a cold first build takes longer."
   _t=$(now)
   # shellcheck disable=SC2046
   dc up -d --build --wait --wait-timeout 3600 $(services)
@@ -464,16 +470,29 @@ worker_ai_line() {
 remote_size() { # url -> bytes
   curl -sIL --max-time 30 "$1" 2> /dev/null | tr -d '\r' | awk 'tolower($1) == "content-length:" { n = $2 } END { print n + 0 }'
 }
-mb() { awk -v b="$1" 'BEGIN { printf "%d", b / 1048576 }'; }
+mb() { awk -v b="$1" 'BEGIN { printf "%d", b / 1000000 + 0.5 }'; }
+
+# The data service writes data/ as the host user on Linux (Docker Desktop maps any uid).
+data_user() {
+  if [ "$(uname -s)" = Linux ]; then
+    DATA_UID=$(id -u)
+    DATA_GID=$(id -g)
+    export DATA_UID DATA_GID
+  fi
+}
 
 data_syzygy() {
   _have=$(find "$ROOT/data/syzygy" -name '*.rtb[wz]' 2> /dev/null | wc -l | tr -d ' ')
   step "Syzygy 3-4-5 endgame tables: $SYZYGY_FILES files, about 984 MB (have $_have)"
   say "    Resumable: verified files are kept, a partial file is fetched again. Every file is"
-  say "    checked against backend/crates/lichess-db/data/syzygy-345.sha256. A few minutes."
+  say "    checked against backend/crates/lichess-db/data/syzygy-345.sha256. 101 s on the dry run."
   _t=$(now)
-  dc --profile data run --rm --no-deps data syzygy --dest /data/syzygy
+  dc --profile data run --rm --no-deps data syzygy
   took "$_t"
+}
+
+built_kinds() { # month -> the reference kinds already active or building for it
+  dc exec -T postgres psql -U postgres -d chess -Atc     "select kind from reference_builds where source_month = '$1' and status in ('active', 'building')" 2> /dev/null || true
 }
 
 data_lichess() {
@@ -481,31 +500,40 @@ data_lichess() {
   [ -n "$_m" ] || _m=$DEFAULT_MONTH
   _file="lichess_db_standard_rated_$_m.pgn.zst"
   _url="https://database.lichess.org/standard/$_file"
-  _done=$(dc exec -T postgres psql -U postgres -d chess -Atc \
-    "select count(*) from reference_builds where source_month = '$_m' and status in ('active', 'building')" 2> /dev/null || echo 0)
-  if [ "${_done:-0}" -gt 0 ] 2> /dev/null; then
-    step "Lichess $_m: already built ($_done builds), skipped"
+  _kinds=$(built_kinds "$_m")
+  _flags=""
+  case $_kinds in *opening_explorer*) ;; *) _flags="--explorer" ;; esac
+  if month_has_clocks "$_m"; then
+    case $_kinds in *band_reference*) ;; *) _flags="$_flags --band-reference" ;; esac
+  fi
+  if [ -z "$_flags" ]; then
+    step "Lichess $_m: already built, skipped"
     return 0
   fi
   _bytes=$(remote_size "$_url")
   _games=$(curl -s --max-time 30 https://database.lichess.org/standard/counts.txt 2> /dev/null | awk -v f="$_file" '$1 == f { print $2 }')
   [ "${_bytes:-0}" -gt 0 ] || die "Lichess has no dump for $_m ($_url)"
-  step "Lichess $_m: $(mb "$_bytes") MB streamed (never stored on disk), ${_games:-?} games"
-  say "    Builds the opening explorer and the band reference, verified against Lichess's"
-  say "    sha256sums.txt. A stopped build is re-run from the start. 2013-01 takes about a minute;"
-  say "    a recent month is about 30 GB and takes hours. The band reference then queues its"
-  say "    reference games for the worker's Stockfish (background, minutes to hours)."
+  step "Lichess $_m: $(mb "$_bytes") MB streamed, never stored on disk; ${_games:-?} games"
+  say "    Verified against Lichess's sha256sums.txt. A stopped build starts the month again."
+  say "    2013-01 builds the opening explorer in about 40 s."
+  if ! month_has_clocks "$_m"; then
+    say "    No band reference from this month: it needs [%clk] comments, which Lichess dumps carry"
+    say "    from $FIRST_CLOCK_MONTH on (that month is 3.5 GB, 11.3M games). Without it, weaknesses"
+    say "    say \"Not compared yet\". Build one with: sh scripts/setup.sh data --month=$FIRST_CLOCK_MONTH"
+  else
+    say "    The band reference then queues its reference games for the worker's Stockfish, which"
+    say "    analyses them in the background."
+  fi
   _t=$(now)
   _max=2000000
   if [ -n "$_games" ] && [ "$_games" -lt "$_max" ]; then _max=$_games; fi
   # shellcheck disable=SC2086
-  dc --profile data run --rm data build --month "$_m" --explorer --band-reference \
-    --max-games "$_max" ${_games:+--expected-games "$_games"}
+  dc --profile data run --rm data build --month "$_m" $_flags     --max-games "$_max" ${_games:+--expected-games "$_games"}
   took "$_t"
 }
 
 data_maia() {
-  step "Maia-2 difficulty service (about 3 GB: PyTorch CPU and the weights, SHA-256 checked by maia2)"
+  step "Maia-2 difficulty service: PyTorch (CPU) and the Maia-2 weights, SHA-256-checked by maia2"
   _t=$(now)
   dc --profile maia up -d --build --wait maia
   dc up -d rust-worker
@@ -513,6 +541,7 @@ data_maia() {
 }
 
 run_data() {
+  data_user
   data_syzygy
   dc restart rust-worker > /dev/null
   if [ "$LICHESS" -eq 1 ]; then data_lichess; fi
@@ -661,7 +690,7 @@ summary() {
     say "    No host ports are published (--no-ports): reach the app through docker compose."
   fi
   say "    Sign in with: $(setting INVITE_ALLOWLIST | cut -d, -f1)"
-  say "    Demo data:    pnpm seed:demo   (or sh scripts/seed-demo.sh; --remove takes it away)"
+  say "    Demo data:    sh scripts/seed-demo.sh   (or pnpm seed:demo; --remove takes it away)"
   say "    Worker:       $(worker_ai_line || echo 'ai: line not logged yet (docker compose logs rust-worker)')"
   say "    Check later:  sh scripts/setup.sh doctor"
 }
@@ -684,6 +713,8 @@ case $CMD in
   ai-stop) ai_stop ;;
   ai-status) ai_status ;;
   data)
+    [ -z "$MONTH" ] || env_set "$ENV_FILE" SETUP_LICHESS_MONTH "$MONTH"
+    [ "$MAIA" != 1 ] || compose_add "$ENV_FILE" docker-compose.maia.yml
     run_data
     ;;
   minimal | full)

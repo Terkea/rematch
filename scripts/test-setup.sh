@@ -105,6 +105,11 @@ if version_ge 2.24.0 2.24.0 && version_ge 5.0.0-desktop.1 2.24.0 && ! version_ge
 else
   no "version_ge compares dotted versions"
 fi
+if month_has_clocks 2017-04 && month_has_clocks 2026-10 && ! month_has_clocks 2017-03 && ! month_has_clocks 2013-01; then
+  ok "month_has_clocks starts at 2017-04"
+else
+  no "month_has_clocks starts at 2017-04"
+fi
 eq "gib rounds bytes down to GiB" "15" "$(gib 16265678848)"
 
 # --- the setup.sh CLI (configure only writes .env) -----------------------------------------------
