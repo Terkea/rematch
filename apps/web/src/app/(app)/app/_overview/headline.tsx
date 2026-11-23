@@ -1,6 +1,6 @@
 import { NO_BENCHMARK_TEXT, weaknessRateText } from "@ci/ui/profile";
 import { bandText, Stat } from "@ci/ui/stats";
-import { headlineMeaning } from "../../../../lib/explain";
+import { type HeadlinePeer, headlineMeaning } from "../../../../lib/explain";
 import type { CoachScope, LeadFinding } from "../../../../server/profile/types";
 import { ESTIMATE_WINDOW_TEXT } from "../../../../server/profile/window";
 import type { Estimate } from "../../../../server/stats";
@@ -28,16 +28,19 @@ export function Headline({
   lead,
   basisClass,
   reveal,
+  peer = null,
 }: {
   lead: OverviewView["lead"];
   basisClass: string;
   reveal: boolean;
+  /** The players faced (Q1): the meaning line compares with them. */
+  peer?: HeadlinePeer | null;
 }) {
   const { accuracy, blunders } = lead;
   const scope = basisClass === "analysed" ? "analysed games" : `${basisClass} games`;
   const meaning = (
     <p data-slot="meaning" className="m-0 max-w-prose text-base text-ink">
-      {headlineMeaning({ accuracy, blunders, games: scope })}
+      {headlineMeaning({ accuracy, blunders, games: scope, peer })}
     </p>
   );
   if (accuracy.kind === "insufficient") {
@@ -120,18 +123,16 @@ const scopeQuery = (scope: CoachScope) =>
  * profile is not ready yet.
  */
 export function WorkOn({ lead }: { lead: LeadFinding }) {
-  // Pen red means the player's own mistake, so only a real finding carries it.
-  const finding = lead.kind === "weakness";
+  // A plain sheet: no coloured border and no red heading (B10). Pen red stays for the player's
+  // own moves.
   return (
     <section
       aria-labelledby="work-on-heading"
       data-slot="work-on"
-      className={`flex max-w-3xl flex-col gap-1 border-l-2 pl-4 ${finding ? "border-pen" : "border-rule-strong"}`}
+      data-surface="sheet"
+      className="flex max-w-3xl flex-col gap-1 rounded-sheet bg-sheet px-(--space-panel-pad) py-4"
     >
-      <h2
-        id="work-on-heading"
-        className={`text-base font-medium ${finding ? "text-pen-text" : "text-ink"}`}
-      >
+      <h2 id="work-on-heading" className="text-base font-medium text-ink">
         What to work on
       </h2>
       <WorkOnBody lead={lead} />

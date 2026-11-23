@@ -43,7 +43,7 @@ export function weaknessRateText(
 ): string {
   const counts = `from ${count(e.events)} of ${count(e.chances)}${window ? ` ${window}` : ""}`;
   if (!fin(r.mean) || !fin(r.low) || !fin(r.high)) return `Rate not estimated yet, ${counts}`;
-  return `Estimated ${pct1(r.mean)}% of chances (80% range ${pct1(r.low)}–${pct1(r.high)}%), ${counts}`;
+  return `Estimated ${pct1(r.mean)}% of chances (80% range ${pct1(r.low)}% to ${pct1(r.high)}%), ${counts}`;
 }
 
 /** "4.2%" for a share of chances. */
@@ -51,7 +51,7 @@ export const shareText = (share: number) => (fin(share) ? `${pct1(share)}%` : "n
 
 /** "3.1–5.6%". */
 export const shareRangeText = (low: number, high: number) =>
-  fin(low) && fin(high) ? `${pct1(low)}–${pct1(high)}%` : "range not measured";
+  fin(low) && fin(high) ? `${pct1(low)}% to ${pct1(high)}%` : "range not measured";
 
 /**
  * A weakness with no rating-band benchmark has no state worth naming: Rust stores `not_an_issue`

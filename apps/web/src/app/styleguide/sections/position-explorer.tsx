@@ -97,6 +97,7 @@ export function PositionExplorerSection() {
             orientation={game.playerColor}
             label="28. Nd2"
             mistake
+            judgement="blunder"
             href="#position-explorer"
             line={nd2Line}
           />

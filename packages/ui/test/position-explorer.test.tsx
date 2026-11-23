@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { games } from "../src/fixtures/index.js";
 import {
+  compactCoordinates,
   type ExplorerMove,
   explorerAnnotations,
   PositionExplorer,
@@ -112,6 +113,34 @@ describe("PositionExplorer, compact", () => {
     expect(screen.queryByText(/^Better/)).toBeNull();
   });
 
+  // Critic 2: a pen mark always carries its ?-family glyph, on the board and in the key.
+  it("a judged mistake carries its glyph badge and names it in the key", async () => {
+    expect(explorerAnnotations({ ...props, judgement: "blunder" })).toEqual([
+      { kind: "arrow", from: "e4", to: "d2", tone: "pen", toEdge: true },
+      { kind: "mark", square: "d2", glyph: "??", tone: "pen" },
+    ]);
+    expect(explorerAnnotations({ ...props, judgement: "mistake" })[1]).toMatchObject({
+      glyph: "?",
+    });
+    render(<PositionExplorer {...props} judgement="blunder" />);
+    const key = screen.getByRole("list", { name: "Arrows" });
+    expect(key.querySelector("li")?.textContent).toBe("Played, Nd2??");
+  });
+
+  // Critic 7: a compact board under 32px squares (256px) leaves its coordinates off.
+  it("draws coordinates only from 32px squares", async () => {
+    expect(compactCoordinates(192)).toBe(false);
+    expect(compactCoordinates(255)).toBe(false);
+    expect(compactCoordinates(256)).toBe(true);
+    render(<PositionExplorer {...props} />);
+    const group = await screen.findByRole("group", { name: "Position before 28. Nd2" });
+    const board = group.closest("[data-board]") ?? group;
+    const glyphs = [...board.querySelectorAll("[aria-hidden='true'] *")].filter(
+      (n) => n.children.length === 0 && /^[a-h1-8]$/.test(n.textContent ?? ""),
+    );
+    expect(glyphs).toHaveLength(0);
+  });
+
   it("has no game link without an href", async () => {
     const { href: _href, ...rest } = props;
     render(<PositionExplorer {...rest} />);
@@ -194,6 +223,35 @@ describe("PositionExplorer, expanded", () => {
     const again = await expand({ line });
     await again.user.click(within(again.dialog).getByRole("radio", { name: "Engine line" }));
     expect(within(again.dialog).getByText("No engine line is stored for this move.")).toBeVisible();
+  });
+
+  // Owner request: an engine line drawn as several arrows is numbered in move order, the
+  // player's side in good, the replies in pencil, and its key lists the moves in order.
+  it("numbers the engine line's arrows and lists them in order", async () => {
+    // The game's own next moves stand in for a stored engine line (legal from the position).
+    const engine = [55, 56, 57].map(asMove);
+    const marks = explorerAnnotations(
+      { ...props, best: { san: "Nd2", uci: "e4d2" } },
+      "best",
+      engine,
+    );
+    expect(marks.map((m) => (m.kind === "arrow" ? [m.from + m.to, m.tone, m.step] : null))).toEqual(
+      engine.map((m, i) => [m.uci.slice(0, 4), m.color === "white" ? "good" : "pencil", i + 1]),
+    );
+    // One move is no sequence: the better move stays a single, unnumbered arrow.
+    expect(
+      explorerAnnotations(
+        { ...props, best: { san: "Nc3", uci: "e4c3" } },
+        "best",
+        engine.slice(0, 1),
+      ),
+    ).toEqual([{ kind: "arrow", from: "e4", to: "c3", tone: "good" }]);
+
+    const { dialog, user } = await expand({ line: { ...line, engine } });
+    await user.click(within(dialog).getByRole("radio", { name: "Engine line" }));
+    const key = within(dialog).getByRole("list", { name: "Engine line, in order" });
+    const want = engine.map((m, i) => `${i + 1}. ${m.color === "black" ? "… " : ""}${m.san}`);
+    expect([...key.querySelectorAll("li")].map((li) => li.textContent)).toEqual(want);
   });
 
   it("tries a legal move by clicking squares, honestly unchecked, and resets", async () => {

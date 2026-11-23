@@ -8,8 +8,11 @@ import { coachHref } from "../../../../../server/coach/anchor";
 import { changeNotes } from "../../../../../server/coaching";
 import { getDb } from "../../../../../server/db";
 import { requestEventCursor } from "../../../../../server/events/request-cursor";
+import type { DayRange } from "../../../../../server/filters/params";
 import { getBenchmark, getWeakness, resolveCoachScope } from "../../../../../server/profile";
 import { reviewGameIds } from "../../../../../server/profile/game-ids";
+import { FilterBar } from "../../_filters/filter-bar";
+import { loadCoachBar } from "../../_filters/load";
 import { withSide } from "../../_filters/side";
 import { noteKeysInScope } from "../queries";
 import { WeaknessView } from "./weakness-view";
@@ -49,20 +52,32 @@ const load = cache(async (raw: string, query: string) => {
   const params = Object.fromEntries(new URLSearchParams(query));
   const resolved = await resolveCoachScope(db, user.id, params);
   if (!resolved) notFound();
-  // The colour filter reads that side's estimate and weekly points (ADR 0082).
-  const scope = withSide(resolved, {
-    color: params.color === "white" || params.color === "black" ? params.color : "both",
+  // The shared bar (A4): colour and dates, as on the list. The colour reads that side's estimate
+  // and weekly points (ADR 0082); the dates clip the weekly rate.
+  const bar = await loadCoachBar(db, params, resolved, {
+    basePath: `/app/weaknesses/${encodeURIComponent(key)}`,
+    formatSupported: false,
+    color: "on",
+    dates: true,
+    compare: false,
   });
+  const scope = withSide(resolved, bar.filters);
+  const range: DayRange = { from: bar.filters.from, to: bar.filters.to };
   const detail = await getWeakness(db, user.id, scope, key);
   if (!detail) notFound();
-  const benchmark = await getBenchmark(db, user.id, scope);
-  return { user, db, scope, detail, benchmark };
+  const both = scope.side === "both";
+  const [benchmark, white, black] = await Promise.all([
+    getBenchmark(db, user.id, scope),
+    both ? getWeakness(db, user.id, { ...scope, side: "white" }, key) : null,
+    both ? getWeakness(db, user.id, { ...scope, side: "black" }, key) : null,
+  ]);
+  return { user, db, scope, detail, benchmark, bar, range, sides: both ? { white, black } : null };
 });
 
 /** The search params as a stable string, so `cache` sees one key per request. */
 function queryOf(sp: Params): string {
   const q = new URLSearchParams();
-  for (const name of ["account", "tc", "color"]) {
+  for (const name of ["account", "tc", "color", "from", "to"]) {
     const v = sp[name];
     const first = Array.isArray(v) ? v[0] : v;
     if (typeof first === "string") q.set(name, first);
@@ -76,7 +91,7 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
 }
 
 export default async function WeaknessPage({ params, searchParams }: Props) {
-  const { user, db, scope, detail, benchmark } = await load(
+  const { user, db, scope, detail, benchmark, bar, range, sides } = await load(
     (await params).seriesKey,
     queryOf(await searchParams),
   );
@@ -110,6 +125,9 @@ export default async function WeaknessPage({ params, searchParams }: Props) {
         reviewIds={reviewIds}
         askHref={askHref}
         benchmark={benchmark}
+        range={range}
+        sides={sides}
+        filterBar={<FilterBar model={bar.model} />}
       />
     </>
   );

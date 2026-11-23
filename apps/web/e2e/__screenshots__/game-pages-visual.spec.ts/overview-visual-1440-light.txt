@@ -40,7 +40,7 @@ White
 23 games
 Accuracy
 68.8%
-80% range 65.2% to 72.2%, 22 analysed games
+80% range 65.6% to 72.3%, 22 analysed games
 Blunders per game
 1.55 a game
 80% range 1.2 to 1.9, 22 analysed games
@@ -51,7 +51,7 @@ Black
 12 games
 Accuracy
 67.0%
-80% range 61.4% to 73.2%, 12 analysed games
+80% range 61.5% to 73.0%, 12 analysed games
 Blunders per game
 1.50 a game
 80% range 1.0 to 2.0, 12 analysed games
@@ -61,7 +61,7 @@ Score
 What to work on
 Missed own tactic (shallow)
 
-Estimated 18.0% of chances (80% range 15.0–22.0%), from 22 of 120 in the last 6 months.
+Estimated 18.0% of chances (80% range 15.0% to 22.0%), from 22 of 120 in the last 6 months.
 
 Based on 15 analysed rapid games on chess.com.
 
@@ -107,11 +107,11 @@ Based on 34 analysed games
 
 First
 week
- 1.0 · 3 games
+ 1.0 (3 games)
 
 Latest
 week
- 1.6 · 5 games
+ 1.6 (5 games)
 
 Lower is better
 
@@ -123,11 +123,11 @@ Based on 34 analysed games
 
 First
 week
- 1.7 · 3 games
+ 1.7 (3 games)
 
 Latest
 week
- 1.2 · 5 games
+ 1.2 (5 games)
 
 Lower is better
 
@@ -139,11 +139,11 @@ Based on 34 analysed games
 
 First
 week
- 1.0 · 3 games
+ 1.0 (3 games)
 
 Latest
 week
- 4.0 · 5 games
+ 4.0 (5 games)
 
 Lower is better
 

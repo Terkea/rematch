@@ -65,6 +65,7 @@ export default async function WeaknessesPage({ searchParams }: Props) {
         difficulty={difficulty}
         benchmark={benchmark}
         sides={sides}
+        range={range}
         filterBar={<FilterBar model={bar.model} />}
         accountSwitch={manyAccounts(scope)}
       />

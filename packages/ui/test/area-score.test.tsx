@@ -197,7 +197,7 @@ describe("AreaScore interval", () => {
       <AreaScore {...base} interval={{ low: 55, high: 68, level: 0.8 }} />,
     );
     expect(container.querySelector('[data-part="interval"]')).not.toBeNull();
-    expect(container.textContent).toContain("80% range 55–68");
+    expect(container.textContent).toContain("80% range 55 to 68");
   });
 
   it("says no interval yet when there is none", () => {

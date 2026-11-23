@@ -48,12 +48,28 @@ test("the weakness detail tells its story, with the player's own examples", asyn
   );
   await expect(main).toContainText("80% range");
 
+  // The filter bar (A4) sits under the header.
+  await expect(page.getByRole("region", { name: "Filters" })).toBeVisible();
   const examples = page.locator("section:has(#examples-heading) > ol > li");
   await expect(examples).toHaveCount(3);
+  // Shots for the critique loop (DESIGN.md "CL"): the repo's `.shots/` (git-ignored).
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+    await page.evaluate(() => document.fonts.ready);
+    await page.screenshot({
+      path: `../../.shots/weakness-detail/${width}-light.png`,
+      fullPage: true,
+    });
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
   const first = examples.first();
   // The played move (pen) and the engine's move (good) as two arrows, named in the key.
   await expect(first.getByRole("list", { name: "Arrows" }).locator("li")).toHaveCount(2);
+  // Worst first (critic 1): the biggest drop leads.
   await expect(first).toContainText(
+    "Your win chance went from 70% to 38%, a drop of 32 win% points.",
+  );
+  await expect(examples.nth(1)).toContainText(
     "Your win chance went from 62% to 31%, a drop of 31 win% points.",
   );
   const link = first.getByRole("link", { name: /^Open the game at / });

@@ -1,5 +1,6 @@
 import type { Db } from "@ci/db";
 import { sql } from "drizzle-orm";
+import type { HeadlinePeer } from "../../lib/explain";
 import { readOnly } from "../games";
 import type { Benchmark } from "./benchmark-text";
 import { ownsScope } from "./scope";
@@ -72,6 +73,34 @@ export async function getBenchmark(
       players: row.players,
       games: row.games,
       chances,
+    };
+  });
+}
+
+/**
+ * The overview headline's comparison (Q1): the scope's peer band and the opponents' median
+ * blunders a game (`blunders_per_game`, both colours, served rows only). Null without a peer
+ * benchmark; `blunders` is null when that row is low-sample or missing.
+ */
+export async function peerHeadline(
+  db: Db,
+  userId: string,
+  scope: CoachScope,
+): Promise<HeadlinePeer | null> {
+  const benchmark = await getBenchmark(db, userId, { ...scope, side: "both" });
+  if (benchmark?.source !== "peers") return null;
+  return readOnly(db, async (tx) => {
+    const [row] = await tx.execute<{ median: number | null }>(sql`
+      select median from account_benchmark_stat
+      where account_id = ${scope.accountId} and time_class = ${scope.timeClass}
+        and side = 'both' and metric = 'blunders_per_game' and not low_sample`);
+    const median = row?.median == null ? null : Number(row.median);
+    return {
+      platform: benchmark.platform,
+      low: benchmark.low,
+      high: benchmark.high,
+      players: benchmark.players,
+      blunders: median !== null && Number.isFinite(median) ? median : null,
     };
   });
 }

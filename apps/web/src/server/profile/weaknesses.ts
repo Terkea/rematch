@@ -1,9 +1,11 @@
+import { fenKey } from "@ci/chess-core";
 import type { Db } from "@ci/db";
 import {
   gameMetrics,
   gameOpenings,
   games,
   moves,
+  positionEvals,
   reportRuns,
   weaknessEstimates,
   weaknessSeriesPoint,
@@ -11,6 +13,7 @@ import {
 } from "@ci/db/generated";
 import { Chess } from "chess.js";
 import { and, asc, desc, eq, gte, inArray, isNotNull, sql } from "drizzle-orm";
+import { mateChange } from "../../lib/explain";
 import { readOnly } from "../games";
 import { wilson } from "../stats";
 import { contractId, seriesArea, seriesLabel, weaknessDef } from "./catalogue";
@@ -249,6 +252,11 @@ function exemplar(v: unknown): Exemplar | null {
   ) {
     return null;
   }
+  const mate = mateChange(
+    v.fen,
+    isObj(v.evalBefore) ? v.evalBefore : null,
+    isObj(v.evalAfter) ? v.evalAfter : null,
+  );
   return {
     gameId: v.gameId,
     ply: v.ply,
@@ -261,6 +269,7 @@ function exemplar(v: unknown): Exemplar | null {
     tags: strings(v.tags),
     winBefore: v.winBefore,
     winAfter: v.winAfter,
+    ...(mate ? { mate } : {}),
   };
 }
 
@@ -370,9 +379,26 @@ async function examplesOf(
     if (out.length >= MAX_EXAMPLES) break;
     if (seen.has(e.gameId)) continue;
     seen.add(e.gameId);
-    out.push({ ...e, source: "report", judgement: null });
+    const { mate = null, ...rest } = e;
+    out.push({ ...rest, source: "report", judgement: null, mate });
   }
-  if (out.length >= MAX_EXAMPLES) return out;
+  if (out.length < MAX_EXAMPLES)
+    out.push(
+      ...(await storedExamples(tx, scope, seriesKey, from, seen, MAX_EXAMPLES - out.length)),
+    );
+  return withStored(tx, scope, out);
+}
+
+/** The scope's stored occurrences, after the report's (see `examplesOf`). */
+async function storedExamples(
+  tx: Db,
+  scope: CoachScope,
+  seriesKey: string,
+  from: Date,
+  seen: Set<string>,
+  max: number,
+): Promise<Example[]> {
+  const out: Example[] = [];
   const plies = sql`(case when jsonb_typeof(${gameMetrics.metrics} -> 'weakness' -> ${seriesKey}::text -> 'exemplarPlies') = 'array'
       then ${gameMetrics.metrics} -> 'weakness' -> ${seriesKey}::text -> 'exemplarPlies' else '[]'::jsonb end)`;
   const rows = await tx
@@ -409,7 +435,7 @@ async function examplesOf(
     .orderBy(desc(games.playedAt), games.platformGameId, sql`p.ord`)
     .limit(MAX_EXAMPLES * 10);
   for (const r of rows) {
-    if (out.length >= MAX_EXAMPLES) break;
+    if (out.length >= max) break;
     if (seen.has(r.gameId)) continue;
     seen.add(r.gameId);
     const bestSan = r.bestUci && r.bestUci !== r.uci ? sanOf(r.fen, r.bestUci) : null;
@@ -430,9 +456,81 @@ async function examplesOf(
         r.judgement === "inaccuracy" || r.judgement === "mistake" || r.judgement === "blunder"
           ? r.judgement
           : null,
+      mate: null,
     });
   }
   return out;
+}
+
+/** The position after `uci` in `fen`, or null when it is not a legal move there. */
+function fenAfter(fen: string, uci: string): string | null {
+  try {
+    const chess = new Chess(fen);
+    chess.move({ from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci[4] ?? "q" });
+    return chess.fen();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * What the stored analysis adds to the examples of imported games: the played move's judgement
+ * (the report's exemplars carry none) and, where the report gave none, a mate the move gave up
+ * or allowed, from `position_evals` under the game's own protocol.
+ */
+async function withStored(tx: Db, scope: CoachScope, list: Example[]): Promise<Example[]> {
+  if (list.length === 0) return list;
+  const rows = await tx
+    .select({
+      gameId: games.platformGameId,
+      ply: moves.ply,
+      uci: moves.uci,
+      judgement: moves.judgement,
+      protocol: games.analysisProtocol,
+    })
+    .from(moves)
+    .innerJoin(games, eq(games.id, moves.gameId))
+    .where(
+      and(
+        eq(games.accountId, scope.accountId),
+        inArray(games.platformGameId, [...new Set(list.map((e) => e.gameId))]),
+        inArray(moves.ply, [...new Set(list.map((e) => e.ply))]),
+        sql`${moves.color} = ${games.playerColor}`,
+      ),
+    );
+  const stored = new Map(rows.map((r) => [`${r.gameId}#${r.ply}`, r]));
+  const after = new Map(list.map((e) => [e, fenAfter(e.fen, e.played.uci)]));
+  const keys = [
+    ...new Set(
+      list.flatMap((e) => {
+        const a = after.get(e);
+        return a ? [fenKey(e.fen), fenKey(a)] : [];
+      }),
+    ),
+  ];
+  const protocols = [...new Set(rows.flatMap((r) => (r.protocol ? [r.protocol] : [])))];
+  const evals = new Map<string, { cp: number | null; mate: number | null }>();
+  if (keys.length > 0 && protocols.length > 0) {
+    const found = await tx
+      .select({
+        fenKey: positionEvals.fenKey,
+        protocol: positionEvals.protocol,
+        cp: positionEvals.scoreCp,
+        mate: positionEvals.scoreMate,
+      })
+      .from(positionEvals)
+      .where(and(inArray(positionEvals.protocol, protocols), inArray(positionEvals.fenKey, keys)));
+    for (const f of found) evals.set(`${f.protocol}|${f.fenKey}`, { cp: f.cp, mate: f.mate });
+  }
+  return list.map((e) => {
+    const r = stored.get(`${e.gameId}#${e.ply}`);
+    if (!r || r.uci !== e.played.uci) return e;
+    const a = after.get(e);
+    const score = (fen: string) =>
+      r.protocol ? evals.get(`${r.protocol}|${fenKey(fen)}`) : undefined;
+    const mate = e.mate ?? (a ? mateChange(e.fen, score(e.fen), score(a)) : null);
+    return { ...e, judgement: e.judgement ?? r.judgement ?? null, mate };
+  });
 }
 
 /** A history row's stored `evidence` as counts; null unless both are whole, non-negative numbers. */

@@ -5,6 +5,7 @@ import {
   headlineMeaning,
   howOftenText,
   levelText,
+  mateChange,
   oneInText,
   trendText,
 } from "../src/lib/explain";
@@ -117,7 +118,34 @@ describe("trendText", () => {
   });
 });
 
+// Critic 1: a mate-rule judgement (Lichess) is a blunder without a big win% drop; the line says
+// why, so a "??" with "a drop of 3 win% points" never reads as a contradiction.
+describe("mateChange", () => {
+  const W = "6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1";
+  const B = "6k1/5ppp/8/8/8/8/5PPP/r5K1 b - - 0 1";
+  it.each([
+    ["White loses mate in 1", W, { mate: 1 }, { cp: 820 }, { kind: "lost", n: 1 }],
+    ["Black loses mate in 3", B, { mate: -3 }, { cp: -600 }, { kind: "lost", n: 3 }],
+    ["White keeps a mate", W, { mate: 2 }, { mate: 4 }, null],
+    ["White allows mate in 2", W, { cp: 30 }, { mate: -2 }, { kind: "allowed", n: 2 }],
+    ["Black allows mate in 1", B, { cp: 10 }, { mate: 1 }, { kind: "allowed", n: 1 }],
+    ["no mate either side", W, { cp: 30 }, { cp: -200 }, null],
+    ["unknown scores", W, null, null, null],
+  ] as const)("%s", (_name, fen, before, after, want) => {
+    expect(mateChange(fen, before, after)).toEqual(want);
+  });
+});
+
 describe("exampleLine", () => {
+  it("a lost mate says so before the small drop", () => {
+    expect(exampleLine(98, 95, { kind: "lost", n: 3 })).toBe(
+      "You had mate in 3; after this move there was no forced mate. Your win chance went from 98% to 95%.",
+    );
+    expect(exampleLine(60, 0, { kind: "allowed", n: 1 })).toBe(
+      "This move allowed mate in 1. Your win chance went from 60% to 0%.",
+    );
+  });
+
   it.each([
     [52.4, 36.1, "Your win chance went from 52% to 36%, a drop of 16 win% points."],
     [88, 12, "Your win chance went from 88% to 12%, a drop of 76 win% points."],
@@ -189,6 +217,42 @@ describe("headlineMeaning", () => {
     const text = headlineMeaning(input);
     expect(text).toBe(want);
     expect(text).not.toMatch(BAD);
+  });
+
+  // Q1: with a peer benchmark the line compares with the players faced, never "not compared".
+  const peer = (blunders: number | null) => ({
+    platform: "chesscom" as const,
+    low: 650,
+    high: 950,
+    players: 58,
+    blunders,
+  });
+  it.each([
+    [
+      1.9,
+      "In a typical game you make about 1.1 blunders (moves that cost 15 win% points or more), likely between 0.8 and 1.4. The players you've faced on chess.com, rated about 650–950, make about 1.9 (the median of 58 players), more than your likely range. Only their games against you count, so it is a rough guide, not a rating-band average.",
+    ],
+    [
+      0.5,
+      "In a typical game you make about 1.1 blunders (moves that cost 15 win% points or more), likely between 0.8 and 1.4. The players you've faced on chess.com, rated about 650–950, make about 0.5 (the median of 58 players), fewer than your likely range. Only their games against you count, so it is a rough guide, not a rating-band average.",
+    ],
+    [
+      1.2,
+      "In a typical game you make about 1.1 blunders (moves that cost 15 win% points or more), likely between 0.8 and 1.4. The players you've faced on chess.com, rated about 650–950, make about 1.2 (the median of 58 players), inside your likely range. Only their games against you count, so it is a rough guide, not a rating-band average.",
+    ],
+    [
+      null,
+      "In a typical game you make about 1.1 blunders (moves that cost 15 win% points or more), likely between 0.8 and 1.4. Not compared with the players you've faced yet: too few of their games have a blunder count.",
+    ],
+  ])("peer median %s", (median, want) => {
+    const text = headlineMeaning({
+      accuracy: est(74.2, 72.8, 75.6, 40),
+      blunders: est(1.1, 0.8, 1.4, 40),
+      games: "rapid games",
+      peer: peer(median),
+    });
+    expect(text).toBe(want);
+    expect(text).not.toMatch(/at your level/);
   });
 });
 
@@ -290,22 +354,22 @@ describe("levelText with a peer benchmark (ADR 0080)", () => {
     [
       0.021,
       true,
-      "More often than players you've faced on chess.com, rated about 650–950 (2.1%): their rate is below your whole likely range.",
+      "More often than the 12 players you've faced on chess.com, rated about 650–950 (2.1%): their rate is below your whole likely range.",
     ],
     [
       0.08,
       true,
-      "Less often than players you've faced on chess.com, rated about 650–950 (8.0%): their rate is above your whole likely range.",
+      "Less often than the 12 players you've faced on chess.com, rated about 650–950 (8.0%): their rate is above your whole likely range.",
     ],
     [
       0.04,
       true,
-      "Not clearly different from players you've faced on chess.com, rated about 650–950 (4.0%): their rate is inside your likely range.",
+      "Not clearly different from the 12 players you've faced on chess.com, rated about 650–950 (4.0%): their rate is inside your likely range.",
     ],
     [
       0.021,
       false,
-      "Players you've faced on chess.com, rated about 650–950: 2.1%. A comparison waits for more chances.",
+      "The 12 players you've faced on chess.com, rated about 650–950: 2.1%. A comparison waits for more chances.",
     ],
   ])("median %s, sufficient %s", (median, sufficient, want) => {
     const text = levelText({ rate, median, compared: true, sufficient, benchmark });
@@ -328,7 +392,7 @@ describe("levelText with a peer benchmark (ADR 0080)", () => {
         state: "active",
       }),
     ).toBe(
-      "Probably more often than players you've faced on chess.com, rated about 667–967 (0.3%): about 81% likely, though their rate is inside your likely range.",
+      "Probably more often than the 12 players you've faced on chess.com, rated about 667–967 (0.3%): about 81% likely, though their rate is inside your likely range.",
     );
   });
 
@@ -344,7 +408,7 @@ describe("levelText with a peer benchmark (ADR 0080)", () => {
         state: "active",
       }),
     ).toBe(
-      "Not clearly different from players you've faced on chess.com, rated about 667–967 (43.8%): their rate is inside your likely range. Active comes from your game-by-game record (every game since the last change it found), not from this comparison.",
+      "Not clearly different from the 12 players you've faced on chess.com, rated about 667–967 (43.8%): their rate is inside your likely range. Active comes from your game-by-game record (every game since the last change it found), not from this comparison.",
     );
   });
 
@@ -360,7 +424,7 @@ describe("levelText with a peer benchmark (ADR 0080)", () => {
         state: "not_an_issue",
       }),
     ).toBe(
-      "Not clearly different from players you've faced on chess.com, rated about 650–950 (4.0%): their rate is inside your likely range.",
+      "Not clearly different from the 12 players you've faced on chess.com, rated about 650–950 (4.0%): their rate is inside your likely range.",
     );
   });
 

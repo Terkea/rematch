@@ -134,6 +134,7 @@ test("filters round-trip through the URL, and the overview compares periods hone
     "/app?cmp=custom&a_from=2026-09-01&a_to=2026-09-30&b_from=2026-10-01&b_to=2026-10-31";
   const routes = [
     ["overview-compare", compare],
+    ["overview-month", "/app?cmp=month"],
     ["overview-colour", "/app?fmt=600%2B0&from=2026-10-01&to=2026-10-31"],
     [
       "overview-short",
@@ -168,10 +169,25 @@ test("filters round-trip through the URL, and the overview compares periods hone
           ),
           `${name} at ${width}`,
         ).toBeLessThanOrEqual(0);
-        await page.screenshot({
-          path: `../../.shots/filters/${name}/${width}-${scheme}.png`,
-          fullPage: true,
-        });
+        const path = `../../.shots/filters/${name}/${width}-${scheme}.png`;
+        if (!name.startsWith("overview")) {
+          await page.screenshot({ path, fullPage: true });
+          continue;
+        }
+        // Critic 6: the trend measures its parent, and a full-page capture of a tall page caught
+        // it mid-measure as the empty grid ("Tried and rejected"). The drawn chart must be there
+        // (a real render, not only the placeholder); then one tall viewport is shot.
+        const chart = page.locator("[data-chart='trend'] svg[role='img']");
+        await chart.scrollIntoViewIfNeeded();
+        await expect(chart).toBeVisible();
+        const tall = await page.evaluate(() => document.documentElement.scrollHeight);
+        await page.setViewportSize({ width, height: tall });
+        await expect(chart).toBeVisible();
+        await expect(
+          page.locator("[data-chart='trend'] [data-part='trend-placeholder']"),
+        ).toHaveCount(0);
+        await page.screenshot({ path });
+        await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
       }
     }
   }

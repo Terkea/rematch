@@ -7,6 +7,7 @@ import {
   benchmarkLabel,
   type CoachScope,
   getBenchmark,
+  peerHeadline,
   peerPooledBasis,
   peerRateText,
   resolveCoachScope,
@@ -130,5 +131,39 @@ describe("getBenchmark", () => {
     const scope = await scopeOf(userId);
     const other = (await createTestSession(db)).user.id;
     expect(await getBenchmark(db, other, scope)).toBeNull();
+  });
+});
+
+// Q1: the overview headline compares blunders a game with the players faced.
+describe("peerHeadline", () => {
+  beforeEach(async () => {
+    await resetAuthTables(db);
+    await resetGameTables(db);
+    userId = (await createTestSession(db)).user.id;
+    accountId = (await seedAccount(db, { userId, platform: "chesscom", username: "Hero" }))
+      .accountId;
+    await seedProfile(db, accountId, { timeClass: "rapid", games: 1, estimates: [] });
+  });
+
+  it("gives the band and the opponents' median blunders a game, Both rows only", async () => {
+    await storeBenchmark(accountId, true);
+    const scope = await scopeOf(userId);
+    expect(await peerHeadline(db, userId, scope)).toMatchObject({ blunders: null, players: 12 });
+    await db.execute(sql`
+      insert into account_benchmark_stat (account_id, time_class, side, metric, median, p25, p40,
+        p75, n_players, n_games, low_sample)
+      values (${accountId}, 'rapid', 'both', 'blunders_per_game', 1.4, 1, 1.2, 2, 12, 31, false),
+        (${accountId}, 'rapid', 'white', 'blunders_per_game', 0.9, 1, 1.2, 2, 6, 15, false)`);
+    expect(await peerHeadline(db, userId, scope)).toEqual({
+      platform: "chesscom",
+      low: 650,
+      high: 950,
+      players: 12,
+      blunders: 1.4,
+    });
+  });
+
+  it("is null without a peer benchmark", async () => {
+    expect(await peerHeadline(db, userId, await scopeOf(userId))).toBeNull();
   });
 });

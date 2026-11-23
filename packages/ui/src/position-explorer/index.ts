@@ -13,6 +13,7 @@ export {
   tryMatch,
 } from "./model.js";
 export {
+  compactCoordinates,
   explorerAnnotations,
   explorerLabel,
   PositionExplorer,

@@ -22,6 +22,12 @@ export type Annotation =
        * piece there (the player's move in red pen, M5a T10).
        */
       toEdge?: boolean;
+      /**
+       * The arrow's place in a sequence (an engine line, a move and its reply): 1, 2, 3 in move
+       * order, drawn as a numbered badge on its shaft. Alternatives (the move played against the
+       * better one) carry none.
+       */
+      step?: number;
     }
   | { kind: "circle"; square: Square; tone: Tone }
   | {

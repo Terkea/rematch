@@ -24,6 +24,8 @@ export type CitedPosition = {
   played: { san: string; uci: string };
   best: { san: string; uci: string } | null;
   mistake: boolean;
+  /** The player's own judged move's stored judgement (its glyph on the board), else null. */
+  judgement: "inaccuracy" | "mistake" | "blunder" | null;
 };
 
 /** Mirrors `@ci/ui/coach` `citedKey`. */
@@ -120,6 +122,7 @@ export async function citedPositions(
       best: bestSan && r.bestUci ? { san: bestSan, uci: r.bestUci } : null,
       mistake:
         r.color === r.playerColor && (r.judgement === "mistake" || r.judgement === "blunder"),
+      judgement: r.color === r.playerColor ? (r.judgement ?? null) : null,
     };
   }
   return out;

@@ -4,6 +4,11 @@ export type AnalysisStatus = "pending" | "analysing" | "done" | "failed" | "skip
 export type JudgementCounts = { blunders: number; mistakes: number; inaccuracies: number };
 export type GameFilters = {
   timeClass: TimeClass | null;
+  /**
+   * The shared bar's format (`fmt`, ADR 0083): a normalised key ("600+0") or "other", inside a
+   * timed class only.
+   */
+  format: string | null;
   result: "win" | "draw" | "loss" | null;
   colour: "white" | "black" | null;
   from: string | null;

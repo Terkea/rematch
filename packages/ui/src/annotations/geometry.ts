@@ -61,6 +61,13 @@ export const RING = {
 /** The badge (DESIGN.md, "Glyph badge"): radius 20% of the square, inset 1px. */
 export const BADGE = { r: 0.2, font1: 0.35, font2: 0.28, minFontPx: 11 } as const;
 
+/**
+ * A step number on an arrow's shaft (owner request): a little smaller than a glyph badge, its
+ * numeral never under `minFontPx`. Under `minSquarePx` the disc would cover too much of a square,
+ * so it is left off and the key's numbered text carries the order alone.
+ */
+export const STEP_BADGE = { r: 0.17, font: 0.3, minFontPx: 11, minSquarePx: 28 } as const;
+
 /** The centre of a square, as drawn in the given orientation. */
 export function squareCenter(sq: Square, orientation: Orientation): Point {
   const { col, row } = squareToCell(sq, orientation);

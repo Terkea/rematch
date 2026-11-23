@@ -72,7 +72,7 @@ export default async function GamesPage({ searchParams }: { searchParams: Promis
         {live}
         <PageHeading title="Games" />
         {sync}
-        <FilterBar model={gamesBarModel(query, explorer.classes, new Date())} />
+        <FilterBar model={gamesBarModel(query, explorer.classes, new Date(), explorer.formats)} />
         <ExplorerControls
           query={query}
           accounts={accounts}
