@@ -81,7 +81,7 @@ describe("POST /api/train/attempts", () => {
     const res = await post({ itemId, uci: "d1d8", confidence: "sure", ms: 3000 });
     expect(res.status).toBe(200);
     const json = await res.json();
-    expect(json).toMatchObject({ correct: true, feedback: "Right: Rd8# mates." });
+    expect(json).toMatchObject({ correct: true, feedback: "There you go: Rd8# is mate." });
     expect(json.game.href).toMatch(/^\/app\/games\/[0-9a-f-]{36}\?ply=21$/);
     const [row] = await db.select().from(drillItems).where(eq(drillItems.id, itemId));
     expect(row?.lastAttemptOn).not.toBeNull();

@@ -94,9 +94,10 @@ fn section_requests_share_the_cached_prefix() {
     assert_eq!(
         first.system[1].text,
         format!(
-            "{}\n\n{}\n\n{}\n\n{}",
+            "{}\n\n{}\n\n{}\n\n{}\n\n{}",
             p("report/report"),
             p("report/output"),
+            p("tone/voice"),
             p("tone/b2"),
             p("core/glossary")
         )
@@ -104,9 +105,10 @@ fn section_requests_share_the_cached_prefix() {
     assert_eq!(
         b0_req.system[1].text,
         format!(
-            "{}\n\n{}\n\n{}\n\n{}",
+            "{}\n\n{}\n\n{}\n\n{}\n\n{}",
             p("report/report"),
             p("report/output"),
+            p("tone/voice"),
             p("tone/b0"),
             p("core/glossary")
         )

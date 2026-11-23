@@ -157,6 +157,7 @@ fn report_prompt_set_is_the_brief_list() {
             "tone/b3",
             "tone/b4",
             "tone/b5",
+            "tone/voice",
             "report/section-overview",
             "report/section-weaknesses",
             "report/section-openings",
@@ -921,4 +922,101 @@ fn plan_prompts_teach_the_plan_and_its_honest_words() {
     .unwrap();
     let req = ai::generate::weekly::build_weekly_request(&w);
     assert!(req.system[1].text.starts_with(weekly));
+}
+
+// ---- the coach's voice (the Rematch brand) --------------------------------------------------
+
+/// `tone/voice` is the coach's voice for every call kind that talks to the player: short and
+/// plain, it names the move and what it left undefended, invites another try, praises only what
+/// the data shows, and makes no claim about how often without a number token. Report, chat and
+/// weekly send it; the band tones and every earlier version stay for stored hashes.
+#[test]
+fn the_voice_prompt_is_in_every_player_facing_set_and_sent() {
+    let voice = load_prompt("tone/voice", 1).unwrap().text;
+    for f in [
+        "short, plain sentences",
+        "what it left undefended",
+        "Let's have another go at this position.",
+        "Praise effort or progress only when the data shows it",
+        "no flattery",
+        "Do not lecture",
+        "pet names",
+        // The no-uncited-generalisation rule.
+        "how often",
+        "needs a number token from the data in the same sentence",
+        "British spelling",
+    ] {
+        assert!(voice.contains(f), "tone/voice v1 says {f:?}");
+    }
+    for (name, set) in [
+        ("report", REPORT_PROMPT_SET),
+        ("chat", ai::prompts::CHAT_PROMPT_SET),
+        ("weekly", ai::prompts::WEEKLY_PROMPT_SET),
+    ] {
+        assert!(
+            set.contains(&("tone/voice", 1)),
+            "{name} set has tone/voice"
+        );
+    }
+    let report = ai::generate::request::build_section_request(
+        &ai::testing::v3_input("b2-rapid"),
+        ai::output::codes::SectionKey::Overview,
+        false,
+    );
+    assert!(report.system[1].text.contains(voice));
+    assert!(
+        ai::chat::engine::chat_system_blocks()[1]
+            .text
+            .contains(voice.trim_end())
+    );
+    let b2 = ai::testing::load_fixture("b2-rapid");
+    let w: ai::output::weekly::WeeklyReviewInput = serde_json::from_value(serde_json::json!({
+        "inputVersion": "weekly-input-v1", "timeClass": b2["timeClass"], "band": b2["band"],
+        "weekStart": "2026-11-16", "weekEnd": "2026-11-22", "gamesThisWeek": 3,
+        "basis": b2["basis"], "adherence": null, "metricDeltas": [], "focusUpdates": [],
+        "exemplars": [], "changes": [],
+    }))
+    .unwrap();
+    assert!(
+        ai::generate::weekly::build_weekly_request(&w).system[1]
+            .text
+            .contains(voice)
+    );
+}
+
+/// The voice is fatherly, never a role: no prompt names a dad or a father, or tells the story
+/// behind the brand.
+#[test]
+fn no_prompt_plays_a_parent_or_tells_the_brand_story() {
+    for p in PROMPTS {
+        let lower = p.text.to_lowercase();
+        let words: BTreeSet<&str> = lower
+            .split(|c: char| !c.is_ascii_alphabetic())
+            .filter(|w| !w.is_empty())
+            .collect();
+        for w in ["dad", "daddy", "father", "fatherly", "rematch"] {
+            assert!(!words.contains(w), "{}@{} says {w:?}", p.id, p.version);
+        }
+        assert!(!lower.contains("in memory"), "{}@{}", p.id, p.version);
+    }
+}
+
+/// Stored reports keep the set they were written with: the sets before the voice still load
+/// file by file (their hashes can be recomputed), and their hash differs from today's, so a
+/// stored `prompt_hash` names the older copy.
+#[test]
+fn the_sets_before_the_voice_still_load_and_hash_differently() {
+    for (name, set) in [
+        ("report", REPORT_PROMPT_SET),
+        ("chat", ai::prompts::CHAT_PROMPT_SET),
+        ("weekly", ai::prompts::WEEKLY_PROMPT_SET),
+    ] {
+        let before: Vec<(&str, u32)> = set
+            .iter()
+            .copied()
+            .filter(|(id, _)| *id != "tone/voice")
+            .collect();
+        assert_eq!(before.len() + 1, set.len(), "{name}");
+        assert_ne!(prompt_set_hash(&before), prompt_set_hash(set), "{name}");
+    }
 }

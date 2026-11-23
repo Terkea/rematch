@@ -52,7 +52,7 @@ describe("FocusCard", () => {
       `/app/weaknesses/W5?account=${ACCOUNT}&tc=rapid`,
     );
     expect(card).toHaveTextContent(
-      "Get it down to 15.0% of your chances over your next 20 rapid games, from 20.0% now.",
+      "Let's get it down to 15.0% of your chances over your next 20 rapid games. It's 20.0% now.",
     );
     const bar = within(card).getByRole("progressbar", { name: "Games played in this focus" });
     expect(bar).toHaveAttribute("aria-valuenow", "7");

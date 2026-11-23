@@ -140,7 +140,8 @@ pub fn build_weekly_context(input: &WeeklyReviewInput) -> Value {
 
 /// The weekly review request: `Models::WEEKLY`, low effort, [`WEEKLY_MAX_TOKENS`].
 /// - `system[0]`: [`rules_block`] (cached, shared with reports and the chat);
-/// - `system[1]`: `weekly-review/system` + `weekly-review/output` (cached);
+/// - `system[1]`: `weekly-review/system` + `tone/voice` (the coach's voice) +
+///   `weekly-review/output` (cached);
 /// - user: `<weekly_input>` + the canonical context (cached), then `weekly-review/task`.
 pub fn build_weekly_request(input: &WeeklyReviewInput) -> StructuredRequest {
     StructuredRequest {
@@ -148,8 +149,9 @@ pub fn build_weekly_request(input: &WeeklyReviewInput) -> StructuredRequest {
         system: vec![
             rules_block(),
             TextBlock::cached(format!(
-                "{}\n\n{}",
+                "{}\n\n{}\n\n{}",
                 text("weekly-review/system"),
+                text("tone/voice"),
                 text("weekly-review/output")
             )),
         ],

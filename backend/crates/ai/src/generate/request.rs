@@ -4,7 +4,8 @@
 //! 1. `system[0]`: [`rules_block`], `core/rules` + `core/tokens`: the format-neutral rules and
 //!    token grammar, byte-identical for reports and the chat, so it caches for both;
 //! 2. `system[1]`: `report/report` + `report/output` (the JSON output instructions, report only)
-//!    + the band's `tone/b<n>` (shared within a band) + `core/glossary` (ADR 0085);
+//!    + `tone/voice` (the coach's voice) + the band's `tone/b<n>` (shared within a band)
+//!    + `core/glossary` (ADR 0085);
 //! 3. user block 1: `<coaching_input>` + the canonical prompt context (shared within a report);
 //!
 //! and then the uncached section task, the only part that differs. The Messages API (batches)
@@ -66,6 +67,7 @@ pub fn build_section_request(
             TextBlock::cached(joined(&[
                 "report/report",
                 "report/output",
+                "tone/voice",
                 &tone,
                 "core/glossary",
             ])),

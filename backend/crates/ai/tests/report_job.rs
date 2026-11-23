@@ -396,6 +396,51 @@ async fn full_run_publishes_sections_progressively(pool: PgPool) {
     assert_eq!(report_of(&pool, run2).await.unwrap().version, 2);
 }
 
+/// A report written before the voice prompt keeps its stored copy: a newer run writes a new
+/// report version with today's prompt-set hash, and leaves the older run's hash and the older
+/// report's sections exactly as stored (nothing re-validates them under the new voice).
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_report_from_an_older_prompt_set_keeps_its_hash_and_sections(pool: PgPool) {
+    use ai::prompts::{REPORT_PROMPT_SET, prompt_set_hash};
+    let a = account(&pool).await;
+    let d = deps(
+        &pool,
+        Some(in_order(Arc::new(valid_fake(some_usage())))),
+        now_micros(),
+    );
+    let run1 = request(&pool, a, ReportTrigger::Onboarding, Plan::Pro).await;
+    handle(&d, run1).await.unwrap();
+    // The set before the voice, as a stored report written then would carry it.
+    let before: Vec<(&str, u32)> = REPORT_PROMPT_SET
+        .iter()
+        .copied()
+        .filter(|(id, _)| *id != "tone/voice")
+        .collect();
+    let old_hash = prompt_set_hash(&before);
+    sqlx::query("UPDATE report_runs SET prompt_hash = $2 WHERE id = $1")
+        .bind(run1)
+        .bind(&old_hash)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let rep1 = report_of(&pool, run1).await.unwrap();
+    let sections1 = section_rows(&pool, rep1.id).await;
+
+    let run2 = request(&pool, a, ReportTrigger::Manual, Plan::Pro).await;
+    handle(&d, run2).await.unwrap();
+
+    assert_eq!(
+        run_row(&pool, run1).await.prompt_hash,
+        Some(old_hash.clone())
+    );
+    assert_eq!(report_of(&pool, run1).await.unwrap(), rep1);
+    assert_eq!(section_rows(&pool, rep1.id).await, sections1);
+    let new_hash = run_row(&pool, run2).await.prompt_hash.unwrap();
+    assert_eq!(new_hash, prompt_set_hash(REPORT_PROMPT_SET));
+    assert_ne!(new_hash, old_hash);
+    assert_eq!(report_of(&pool, run2).await.unwrap().version, 2);
+}
+
 #[sqlx::test(migrator = "db::MIGRATOR")]
 async fn request_report_enqueues_one_job_after_the_commit(pool: PgPool) {
     let a = account(&pool).await;

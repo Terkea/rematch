@@ -73,7 +73,7 @@ macro_rules! prompt {
     };
 }
 
-static TABLE: [Prompt; 44] = [
+static TABLE: [Prompt; 45] = [
     prompt!("core/rules", 1),
     prompt!("core/tokens", 1),
     prompt!("core/tokens", 2),
@@ -105,6 +105,8 @@ static TABLE: [Prompt; 44] = [
     prompt!("tone/b4", 2),
     prompt!("tone/b5", 1),
     prompt!("tone/b5", 2),
+    // The Rematch brand: the coach's voice, shared by the report, the chat and the weekly review.
+    prompt!("tone/voice", 1),
     prompt!("repair/repair", 1),
     prompt!("weekly-review/system", 1),
     // ADR 0094: v2 reads the player's plan (focus, training, "Is it working?").
@@ -156,6 +158,11 @@ pub const REPORT_PROMPT_SET: &[(&str, u32)] = &[
     ("tone/b3", 2),
     ("tone/b4", 2),
     ("tone/b5", 2),
+    // The Rematch brand: the coach's voice (short and plain, names the move and what it left
+    // undefended, praises only what the data shows, no claim of how often without a number).
+    // New in the set, so the set hash moves on; stored reports keep the hash they were written
+    // with.
+    ("tone/voice", 1),
     ("report/section-overview", 2),
     ("report/section-weaknesses", 1),
     ("report/section-openings", 1),
@@ -185,6 +192,8 @@ pub const CHAT_PROMPT_SET: &[(&str, u32)] = &[
     // focus rate to games, suggest the next drill, and say "too early" honestly. v4 stays for
     // stored hashes.
     ("chat/system", 5),
+    // The Rematch brand: the coach's voice, the same file as the report's.
+    ("tone/voice", 1),
     ("chat/repair", 1),
     ("core/glossary", 2),
 ];
@@ -261,6 +270,8 @@ pub const WEEKLY_PROMPT_SET: &[(&str, u32)] = &[
     ("core/tokens", 2),
     // ADR 0094: v2 adds the player's plan. v1 stays for stored hashes.
     ("weekly-review/system", 2),
+    // The Rematch brand: the coach's voice, the same file as the report's.
+    ("tone/voice", 1),
     ("weekly-review/output", 1),
     ("weekly-review/task", 1),
     ("repair/repair", 1),

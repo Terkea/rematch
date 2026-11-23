@@ -19,14 +19,14 @@ const plural = (n: number, one: string, many: string) => `${count(n)} ${n === 1 
 const rangeText = (i: Interval | null) =>
   i && fin(i.low) && fin(i.high) ? ` (80% range ${pctText(i.low)} to ${pctText(i.high)})` : "";
 
-/** "Get it down to 15.0% of your chances over your next 20 rapid games, from 20.0% now." */
+/** "Let's get it down to 15.0% of your chances over your next 20 rapid games. It's 20.0% now." */
 export function goalText(g: {
   targetRate: number;
   baselineRate: number;
   gamesN: number;
   timeClass: TimeClass;
 }): string {
-  return `Get it down to ${pctText(g.targetRate)} of your chances over your next ${count(g.gamesN)} ${g.timeClass} games, from ${pctText(g.baselineRate)} now.`;
+  return `Let's get it down to ${pctText(g.targetRate)} of your chances over your next ${count(g.gamesN)} ${g.timeClass} games. It's ${pctText(g.baselineRate)} now.`;
 }
 
 /** The current rate with its n, and where the target came from. */
@@ -56,7 +56,7 @@ export function verdictText(v: Verdict): string {
     case "on_track":
       return "On track";
     case "not_yet":
-      return "Not yet";
+      return "Not there yet";
     case "too_early":
       return `Too early to tell: ${plural(v.moreChances, "more chance", "more chances")}`;
   }

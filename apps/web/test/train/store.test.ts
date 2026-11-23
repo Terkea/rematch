@@ -236,7 +236,7 @@ describe("a session", () => {
       correct: true,
       recorded: true,
       dueOn: "2026-11-24",
-      feedback: "Right: d4 is one of the engine's good moves here (it chose e4).",
+      feedback: "That works: d4 is one of the engine's good moves here (it chose e4).",
     });
     const wrong = await recordAttempt(
       db,
@@ -246,7 +246,7 @@ describe("a session", () => {
     );
     expect(wrong).toMatchObject({
       correct: false,
-      feedback: "Not this time: the engine's move was Rd8#.",
+      feedback: "Not quite. The engine's move was Rd8#. Let's try this one again tomorrow.",
       solution: { uci: "d1d8", san: "Rd8#" },
       dueOn: "2026-11-24",
     });

@@ -62,9 +62,9 @@ export function practiseView(
     case "first-run":
       return {
         kind: "first-run",
-        action: "Start training",
+        action: "Start practising",
         href: trainHref(scope, null),
-        detail: `Practise positions from ${what}. Up to ${SESSION_SIZE} a session, about 10 to 15 minutes.`,
+        detail: `Let's go over the moments in your own ${tc} games where you missed a win or a mate, or blundered. Up to ${SESSION_SIZE} a session, about 10 to 15 minutes.`,
       };
     case "due":
       return {
@@ -76,17 +76,18 @@ export function practiseView(
           : `Positions from ${what}.`,
       };
     case "done": {
-      const done = p.doneToday > 0 ? `You practised ${positions(p.doneToday)} today.` : "";
+      const done =
+        p.doneToday > 0 ? `You went through ${positions(p.doneToday)} today. Well done.` : "";
       const nothing =
         p.next === null
-          ? "Nothing else is due yet: new positions come from your next analysed games."
+          ? "Nothing else is due yet. Your next analysed games will bring new positions."
           : "";
       return {
         kind: "done",
         line:
           p.next === null
-            ? "All done for today."
-            : `All done for today, next due ${nextWords(p.next, today)}.`,
+            ? "That's today done."
+            : `That's today done. Next due ${nextWords(p.next, today)}.`,
         detail: [done, nothing].filter((s) => s !== "").join(" "),
         href: trainHref(scope, null),
       };

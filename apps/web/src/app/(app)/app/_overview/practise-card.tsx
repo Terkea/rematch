@@ -3,7 +3,7 @@ import Link from "next/link";
 import type { PractiseView } from "./practise-view";
 
 // The overview's one call to action (ADR 0092): today's trainer session as a single primary
-// button, "All done for today" with the next due day, or "Start training" on a first run. A plain
+// button, "That's today done" with the next due day, or "Start practising" on a first run. A plain
 // sheet like the focus card above it (no coloured border, B10).
 
 const LINK =

@@ -13,7 +13,7 @@ import { focusProgress } from "../../src/server/focus/goal";
 describe("focus copy", () => {
   it("states the goal with the target, N and the current rate", () => {
     expect(goalText({ targetRate: 0.15, baselineRate: 0.2, gamesN: 20, timeClass: "rapid" })).toBe(
-      "Get it down to 15.0% of your chances over your next 20 rapid games, from 20.0% now.",
+      "Let's get it down to 15.0% of your chances over your next 20 rapid games. It's 20.0% now.",
     );
   });
 
@@ -49,7 +49,7 @@ describe("focus copy", () => {
 
   it("names the verdict honestly", () => {
     expect(verdictText({ kind: "on_track" })).toBe("On track");
-    expect(verdictText({ kind: "not_yet" })).toBe("Not yet");
+    expect(verdictText({ kind: "not_yet" })).toBe("Not there yet");
     expect(verdictText({ kind: "too_early", moreChances: 4 })).toBe(
       "Too early to tell: 4 more chances",
     );
