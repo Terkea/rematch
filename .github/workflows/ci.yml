@@ -44,6 +44,8 @@ jobs:
         run: node scripts/github/test-settings.mjs
       - name: One product version everywhere (root, web, Cargo; ADR 0095)
         run: node scripts/test-versions.mjs
+      - name: The self-host setup script (.env merge, AI modes; no Docker, ADR 0097)
+        run: sh scripts/test-setup.sh
       - name: Build the images
         run: $COMPOSE build deps worker web
       - name: Install dependencies (frozen lockfile)
