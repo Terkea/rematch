@@ -10,12 +10,15 @@ import { leadFinding, peerHeadline, resolveCoachScope } from "../../../server/pr
 import { gameStats, scopeOfFilters } from "../../../server/stats/game-stats";
 import { loadPeriodComparison } from "../../../server/stats/period-compare";
 import { getSyncStatus } from "../../../server/sync";
+import { loadTrajectory } from "../../../server/trajectory/load";
 import { compareView } from "./_filters/compare-view";
 import { FilterBar } from "./_filters/filter-bar";
 import { loadFilterBar } from "./_filters/load";
 import { colourSplitView } from "./_overview/colour-split-view";
 import { OverviewSheet } from "./_overview/sheet";
 import { chooseTimeClass, knownTimeClass, REVEAL_COOKIE, toOverviewView } from "./_overview/view";
+import { TrajectoryCard } from "./_trajectory/card";
+import { trajectoryView } from "./_trajectory/view";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Overview" };
@@ -78,7 +81,10 @@ export default async function OverviewPage({
   // peer benchmark covers; "All" or several accounts pool games no benchmark was built for.
   const coach =
     ready && tc && accountIds.length === 1 ? await resolveCoachScope(db, user.id, { tc }) : null;
-  const peer = coach && coach.timeClass === tc ? await peerHeadline(db, user.id, coach) : null;
+  const own = coach && coach.timeClass === tc ? coach : null;
+  const [peer, trajectory] = own
+    ? await Promise.all([peerHeadline(db, user.id, own), loadTrajectory(db, user.id, own)])
+    : [null, null];
   return (
     <>
       <LiveRefresh accountIds={accountIds} />
@@ -90,6 +96,14 @@ export default async function OverviewPage({
         filtersNote={filtersNote(f)}
         reveal={reveal}
         peer={peer}
+        trajectory={
+          trajectory && own ? (
+            <TrajectoryCard
+              view={trajectoryView(trajectory, own.timeClass)}
+              href={`/app/progress?tc=${own.timeClass}`}
+            />
+          ) : null
+        }
         lead={lead}
         sync={sync.accounts.length > 0 ? <SyncPanel initial={sync} variant="compact" /> : undefined}
       />

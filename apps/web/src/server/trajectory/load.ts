@@ -49,7 +49,8 @@ export function preGameRatings(
   let previous: number | null = null;
   for (const r of rows) {
     const pre = platform === "chesscom" ? (previous ?? r.own) : r.own;
-    if (pre !== null && Number.isFinite(pre)) out.push({ id: r.id, playedAt: r.playedAt, rating: pre });
+    if (pre !== null && Number.isFinite(pre))
+      out.push({ id: r.id, playedAt: r.playedAt, rating: pre });
     previous = r.own;
   }
   return out;
@@ -145,7 +146,12 @@ export async function loadTrajectory(
         map.set(p.gameId, { events: p.events, opportunities: p.opportunities });
       }
     }
-    return { seriesKey: e.seriesKey, label: seriesLabel(e.seriesKey), prior: priorOf(e), points: map };
+    return {
+      seriesKey: e.seriesKey,
+      label: seriesLabel(e.seriesKey),
+      prior: priorOf(e),
+      points: map,
+    };
   });
 
   const current =

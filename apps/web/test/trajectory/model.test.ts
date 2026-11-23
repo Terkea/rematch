@@ -197,6 +197,7 @@ describe("computeTrajectory", () => {
     });
     if (t.kind === "not_enough_games") throw new Error("expected a trajectory");
     const w = t.rows.find((r) => r.key === "weakness:W3.shallow");
+    if (w?.unit !== "rate") throw new Error("expected a rate row");
     expect(w?.label).toBe("Missing a short tactic");
     expect(w?.unit).toBe("rate");
     expect(w?.counts).toEqual({

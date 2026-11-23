@@ -8,7 +8,12 @@ import type {
   TrajectoryKind,
   TrajectoryWindow,
 } from "../../../../server/trajectory/model";
-import type { CompareCell, CompareChange, CompareView, CompareViewRow } from "../_filters/compare-view";
+import type {
+  CompareCell,
+  CompareChange,
+  CompareView,
+  CompareViewRow,
+} from "../_filters/compare-view";
 import { STATS_GLOSSARY } from "../_filters/glossary";
 import { rangeWords } from "../_filters/model";
 import { DASH, diffRange, diffValue, gamesText, statRange, statValue } from "../_filters/stat-text";
@@ -25,8 +30,8 @@ export type TrajectoryChart = {
   points: TrajectoryChartPoint[];
   peak: { date: string; rating: number; label: string };
   current: { date: string; rating: number; label: string };
-  then: { from: string; to: string; label: string };
-  now: { from: string; to: string; label: string };
+  earlier: { from: string; to: string; label: string };
+  recent: { from: string; to: string; label: string };
 };
 
 export type TrajectoryView =
@@ -86,7 +91,9 @@ function headline(t: Extract<Trajectory, { kind: TrajectoryKind }>, tc: TimeClas
   const delta = signed(t.change);
   if (t.then.basis === "peak") {
     const head = `Your ${tc} rating peaked at ${rating(t.peak.rating)} in ${monthOf(t.peak.at)} and is ${now} now (${delta})`;
-    return t.kind === "falling" ? `${head}.` : `${head}: ${verdictWords(t.rating.verdict)} from your peak period.`;
+    return t.kind === "falling"
+      ? `${head}.`
+      : `${head}: ${verdictWords(t.rating.verdict)} from your peak period.`;
   }
   const first = `your first ${t.then.games} rated games`;
   const mean = rating(t.then.meanRating);
@@ -137,7 +144,10 @@ function ratingCell(e: Estimate, games: number): CompareCell {
   const range = e.interval
     ? `80% range ${rating(Math.floor(e.interval.low))} to ${rating(Math.ceil(e.interval.high))}`
     : "Every game had the same rating, so there is no range";
-  return { value: `${rating(e.value)} on average`, detail: `${range}, ${gamesText(games, "rated")}` };
+  return {
+    value: `${rating(e.value)} on average`,
+    detail: `${range}, ${gamesText(games, "rated")}`,
+  };
 }
 
 const CHANGE_TEXT = {
@@ -172,7 +182,10 @@ function compareRows(t: Extract<Trajectory, { kind: TrajectoryKind }>): CompareV
   ];
   for (const r of t.rows) {
     if (r.unit === "rate") {
-      const cell = (e: RateEstimate, c: { events: number; opportunities: number; games: number }) => ({
+      const cell = (
+        e: RateEstimate,
+        c: { events: number; opportunities: number; games: number },
+      ) => ({
         value: rateValue(e),
         detail: `${rateRange(e)}, ${count.format(c.events)} of ${count.format(c.opportunities)} chances in ${gamesText(c.games)}`,
       });
@@ -247,11 +260,14 @@ export function trajectoryView(t: Trajectory, tc: TimeClass): TrajectoryView {
         rating: t.current.rating,
         label: `Now ${rating(t.current.rating)}`,
       },
-      then: { from: t.then.from.toISOString(), to: t.then.to.toISOString(), label: thenLabel },
-      now: { from: t.now.from.toISOString(), to: t.now.to.toISOString(), label: nowLabel },
+      earlier: { from: t.then.from.toISOString(), to: t.then.to.toISOString(), label: thenLabel },
+      recent: { from: t.now.from.toISOString(), to: t.now.to.toISOString(), label: nowLabel },
     },
     compare: {
-      a: { label: thenLabel, detail: `${gamesText(t.then.games, "rated")}, ${windowRange(t.then)}` },
+      a: {
+        label: thenLabel,
+        detail: `${gamesText(t.then.games, "rated")}, ${windowRange(t.then)}`,
+      },
       b: { label: nowLabel, detail: `${gamesText(t.now.games, "rated")}, ${windowRange(t.now)}` },
       rows: compareRows(t),
     },

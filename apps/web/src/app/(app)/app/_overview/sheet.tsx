@@ -34,6 +34,7 @@ export function OverviewSheet({
   compare,
   filtersNote,
   peer = null,
+  trajectory,
 }: {
   view: OverviewView;
   reveal: boolean;
@@ -51,6 +52,8 @@ export function OverviewSheet({
   filtersNote?: string | null;
   /** The players faced, for the headline's comparison (Q1); null without a peer benchmark. */
   peer?: HeadlinePeer | null;
+  /** The rating trajectory's headline card (F6), under the headline. */
+  trajectory?: ReactNode;
 }) {
   return (
     <div {...(reveal ? { "data-reveal": "first" } : {})} className="flex flex-col gap-10">
@@ -72,6 +75,7 @@ export function OverviewSheet({
             <div data-reveal-fig="" style={{ "--reveal-i": 0 } as React.CSSProperties}>
               <Headline lead={view.lead} basisClass={view.basisClass} reveal={reveal} peer={peer} />
             </div>
+            {trajectory}
             {filtersNote ? (
               <p data-slot="filters-note" className="m-0 max-w-prose text-sm text-ink-soft">
                 {filtersNote}

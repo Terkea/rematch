@@ -74,9 +74,13 @@ describe("trajectoryView", () => {
   it("names each change by its verdict in the since-then sentence", () => {
     const v = trajectoryView(falling(), "rapid");
     if (v.state !== "ready") throw new Error("expected a trajectory");
-    expect(v.since).toMatch(/^Since then: accuracy \d+(\.\d)?% then, \d+(\.\d)?% now \(clearly worse\)/);
+    expect(v.since).toMatch(
+      /^Since then: accuracy \d+(\.\d)?% then, \d+(\.\d)?% now \(clearly worse\)/,
+    );
     expect(v.since).toContain("blunders per game");
-    expect(v.since).toMatch(/missing a short tactic \d+% then, \d+% now of chances \((no clear change|clearly worse)\)/);
+    expect(v.since).toMatch(
+      /missing a short tactic \d+% then, \d+% now of chances \((no clear change|clearly worse)\)/,
+    );
     expect(v.since.endsWith(".")).toBe(true);
   });
 

@@ -188,7 +188,11 @@ export function RatingTrajectory({
     });
     // Labels sit inside the plot: anchored inward near either edge.
     const anchorFor = (px: number) =>
-      px > width - 120 ? ("end" as const) : px < LEFT + 60 ? ("start" as const) : ("middle" as const);
+      px > width - 120
+        ? ("end" as const)
+        : px < LEFT + 60
+          ? ("start" as const)
+          : ("middle" as const);
     return { x, placed, end, line, peakAt, spans, ticks: dateTicks(x, width), anchorFor };
   }, [width, sorted, current.date, current.rating, peak.date, peak.rating, windows, y]);
 
@@ -246,8 +250,8 @@ export function RatingTrajectory({
               height={TREND_HEIGHT}
               className="absolute inset-0 block overflow-visible"
             >
-              {geo.spans.map((s, i) => (
-                <g key={`${s.label}-${i}`} data-part="window">
+              {geo.spans.map((s) => (
+                <g key={`${s.label}-${s.from}`} data-part="window">
                   <rect
                     x={s.x0}
                     y={TOP}

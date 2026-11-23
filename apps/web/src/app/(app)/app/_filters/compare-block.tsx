@@ -1,8 +1,9 @@
 import { cn } from "@ci/ui/lib";
 import { ExplainPopover } from "@ci/ui/profile";
+import type { ReactNode } from "react";
 import { SectionHead } from "../_overview/section-head";
 import type { CompareCell, CompareView } from "./compare-view";
-import { STATS_GLOSSARY } from "./glossary";
+import { type GlossaryEntry, STATS_GLOSSARY } from "./glossary";
 
 // The period comparison (T3): A | B | change for accuracy, blunders per game and score, with n
 // on each side. A table from `md`; below it each stat is a short block, with every cell labelled.
@@ -28,10 +29,25 @@ function Cell({ side, cell }: { side: string; cell: CompareCell }) {
   );
 }
 
-export function CompareBlock({ view, id = "compare-heading" }: { view: CompareView; id?: string }) {
+export function CompareBlock({
+  view,
+  id = "compare-heading",
+  title = "Period A against period B",
+  explain = STATS_GLOSSARY.compare,
+  slot = "compare",
+  head,
+}: {
+  view: CompareView;
+  id?: string;
+  title?: string;
+  explain?: GlossaryEntry;
+  slot?: string;
+  /** Replaces the section head (a host that heads the block itself, labelled by `id`). */
+  head?: ReactNode;
+}) {
   return (
-    <section aria-labelledby={id} data-slot="compare" className="flex flex-col gap-5">
-      <SectionHead id={id} title="Period A against period B" explain={STATS_GLOSSARY.compare} />
+    <section aria-labelledby={id} data-slot={slot} className="flex flex-col gap-5">
+      {head ?? <SectionHead id={id} title={title} explain={explain} />}
       <dl className="m-0 grid grid-cols-1 gap-x-8 gap-y-2 text-sm sm:grid-cols-2">
         {[view.a, view.b].map((p) => (
           <div key={p.label} className="flex flex-col">

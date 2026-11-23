@@ -36,7 +36,9 @@ const START = Date.UTC(2026, 0, 1);
 const iso = (i: number) => new Date(START + i * DAY).toISOString();
 
 function props(): RatingTrajectoryProps {
-  const ratings = Array.from({ length: 90 }, (_, i) => (i <= 40 ? 800 + i * 7 : 1080 - (i - 40) * 5));
+  const ratings = Array.from({ length: 90 }, (_, i) =>
+    i <= 40 ? 800 + i * 7 : 1080 - (i - 40) * 5,
+  );
   return {
     label: "Rapid rating over time",
     points: ratings.map((rating, i) => ({ id: `g${i}`, date: iso(i), rating })),

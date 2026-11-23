@@ -19,7 +19,9 @@ let bob: string;
 let account: string;
 const ids: string[] = [];
 /** Stored (post-game, chess.com) ratings: up to 1,100 at game 12, then down. */
-const stored = Array.from({ length: 24 }, (_, i) => (i <= 12 ? 1000 + i * 8 : 1096 - (i - 12) * 20));
+const stored = Array.from({ length: 24 }, (_, i) =>
+  i <= 12 ? 1000 + i * 8 : 1096 - (i - 12) * 20,
+);
 
 beforeAll(async () => {
   await resetAuthTables(db);
@@ -47,7 +49,10 @@ beforeAll(async () => {
     timeClass: "rapid",
     result: "1-0",
   });
-  await db.update(games).set({ rated: false, whiteRating: 2000 }).where(eq(games.id, unrated.gameId));
+  await db
+    .update(games)
+    .set({ rated: false, whiteRating: 2000 })
+    .where(eq(games.id, unrated.gameId));
   await seedSyntheticGame(db, account, {
     playedAt: new Date(BASE + 31 * DAY).toISOString(),
     timeClass: "blitz",
