@@ -35,15 +35,20 @@ test("filters round-trip through the URL, and the overview compares periods hone
   );
   expect(seed.status).toBe(0);
 
-  // Links: colour and format write the canonical URL, and the page reads it back.
+  // Links: colour and format write the canonical URL, and the page reads it back. On the
+  // overview the time control scopes the whole page, so it sits at the top (ADR 0092); the rest
+  // of the bar scopes Details.
   await gotoSettled(page, "/app");
   const bar = desktop(page);
   await expect(
-    bar.getByRole("group", { name: "Time control" }).getByRole("link", { name: /^Rapid/ }),
+    page.getByRole("navigation", { name: "Time control" }).getByRole("link", { name: /^Rapid/ }),
   ).toHaveAttribute("aria-current", "true");
+  await expect(bar.getByRole("group", { name: "Time control" })).toHaveCount(0);
   await bar.getByRole("group", { name: "Colour" }).getByRole("link", { name: "White" }).click();
   await expect(page).toHaveURL(/\/app\?color=white$/);
-  const split = page.locator("[data-slot='colour-split']");
+  // The summary keeps both colours; Details shows the filtered row.
+  await expect(page.locator("[data-slot='colour-split'] [data-colour]")).toHaveCount(2);
+  const split = page.locator("[data-slot='colour-split-filtered']");
   await expect(split.locator("[data-colour]")).toHaveCount(1);
   await expect(split.locator("[data-colour='white']")).toContainText("22 rapid games");
   await bar.getByRole("group", { name: "Format" }).getByRole("link", { name: "10+0" }).click();
@@ -136,7 +141,7 @@ test("filters round-trip through the URL, and the overview compares periods hone
   await gotoSettled(page, "/app?color=black&cmp=month");
   const summary = page.locator("[data-filter-bar] > details > summary");
   await expect(summary).toContainText("Filters (2)");
-  await expect(summary).toContainText("Rapid, Black, this month vs last");
+  await expect(summary).toContainText("Black, this month vs last");
   await summary.click();
   await expect(
     page.locator("[data-filter-bar] > details").getByRole("link", { name: "White" }),
