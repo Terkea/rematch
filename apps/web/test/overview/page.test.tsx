@@ -299,6 +299,10 @@ describe("sections", () => {
       expect(screen.getByRole("heading", { name: label })).toBeInTheDocument();
     }
     expect(container.textContent).toContain("Across 14 analysed games.");
+    // Audit A10: every row says what it counts, mistakes and inaccuracies too.
+    for (const name of ["blunders per game", "mistakes per game", "inaccuracies per game"]) {
+      expect(screen.getByRole("button", { name: `What is ${name}?` })).toBeInTheDocument();
+    }
     expect(
       screen.getByRole("heading", { name: "Your last 14 analysed games" }),
     ).toBeInTheDocument();
