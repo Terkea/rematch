@@ -385,9 +385,26 @@ function stepPoint(line: Point[], r: number, placed: readonly BadgeMark[]): Poin
       bestGap = gap;
     }
   });
-  if (best) return best;
-  return pointAt(line, lengths, STEP_AT * total);
+  const head = line[line.length - 1] ?? { x: 4, y: 4 };
+  const clearOfHead = (p: Point) => Math.hypot(p.x - head.x, p.y - head.y) >= r + STEP_HEAD_GAP;
+  const along: Point = best ?? pointAt(line, lengths, STEP_AT * total);
+  if (clearOfHead(along)) return along;
+  // A shaft too short to hold the number (a one-square move): set it beside the arrow, a third of
+  // the way from the tail, on whichever side is clear, so it never covers the arrowhead.
+  const tail = line[0] ?? head;
+  const len = Math.hypot(head.x - tail.x, head.y - tail.y) || 1;
+  const mid = pointAt(line, lengths, total * STEP_AT);
+  const off = r + STEP_SIDE_GAP;
+  const sides: Point[] = [1, -1].map((s) => ({
+    x: mid.x + (s * -(head.y - tail.y) * off) / len,
+    y: mid.y + (s * (head.x - tail.x) * off) / len,
+  }));
+  return sides.find((p) => clear(p) && clearOfHead(p)) ?? sides[0] ?? along;
 }
+
+/** How far a step number keeps from the arrowhead, and from the shaft when set beside it. */
+const STEP_HEAD_GAP = 0.3;
+const STEP_SIDE_GAP = 0.12;
 
 /** A step number's place along its shaft: a third of the way, between 10% and 50%. */
 export const STEP_AT = 0.33;

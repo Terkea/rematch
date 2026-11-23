@@ -416,7 +416,7 @@ describe("numbered arrows", () => {
     });
     const arrows: [string, string][] = [
       ["g1", "f3"],
-      ["g5", "h4"],
+      ["h3", "h4"],
       ["f1", "b5"],
     ];
     const { container } = render(
