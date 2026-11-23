@@ -14,7 +14,8 @@
       "!algorithm/manifest.json",
       "!backend/crates/*/schema/**",
       "!**/*.md",
-      "!**/assets/pieces/**/*.svg"
+      "!**/assets/pieces/**/*.svg",
+      "!.claude/skills/science/**"
     ]
   },
   "formatter": { "indentStyle": "space", "indentWidth": 2, "lineWidth": 100 },
