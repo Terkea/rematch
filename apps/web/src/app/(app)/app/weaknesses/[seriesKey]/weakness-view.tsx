@@ -662,6 +662,7 @@ export function WeaknessView({
   range = { from: null, to: null },
   sides = null,
   filterBar,
+  practise = null,
 }: Props & {
   notes: ChangeNoteView[];
   /** What the comparison was made with (ADR 0080); null without a peer benchmark. */
@@ -675,6 +676,8 @@ export function WeaknessView({
   sides?: Sides | null;
   /** The shared filter bar (colour, dates). */
   filterBar?: ReactNode;
+  /** "Practise these N positions" into the trainer (ADR 0090), or null. */
+  practise?: { href: string; label: string } | null;
 }) {
   const hrefFor = (s: Segment): string | null => {
     if (s.kind !== "move" && s.kind !== "best" && s.kind !== "pv") return null;
@@ -718,7 +721,7 @@ export function WeaknessView({
         ) : (
           <p className={SOFT}>No tip for this series yet. Your coach can suggest one.</p>
         )}
-        <PractisePositions seriesKey={detail.seriesKey} scope={scope} />
+        <PractisePositions link={practise} />
       </Step>
 
       <section aria-labelledby="details-heading" className="flex flex-col gap-8">

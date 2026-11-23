@@ -1,6 +1,5 @@
 import { Button } from "@ci/ui/primitives";
 import Link from "next/link";
-import { requireUser } from "../server/auth/session";
 import { getDb } from "../server/db";
 import type { CoachScope } from "../server/profile/types";
 import { isSourceKey } from "../server/train/model";
@@ -29,20 +28,18 @@ export function practiseLink(
   };
 }
 
-export async function PractisePositions({
-  seriesKey,
-  scope,
-}: {
-  seriesKey: string;
-  scope: CoachScope;
-}) {
+/** The weakness page's count of drillable positions for `seriesKey` (null when it has none). */
+export async function practiseLinkFor(
+  userId: string,
+  scope: CoachScope,
+  seriesKey: string,
+): Promise<{ href: string; label: string } | null> {
   if (!isSourceKey(seriesKey)) return null;
-  const user = await requireUser();
-  const link = practiseLink(
-    seriesKey,
-    scope,
-    await practiseCount(getDb(), user.id, scope, seriesKey),
-  );
+  return practiseLink(seriesKey, scope, await practiseCount(getDb(), userId, scope, seriesKey));
+}
+
+/** "Practise these N positions", placed by the weakness page under "What to do". */
+export function PractisePositions({ link }: { link: { href: string; label: string } | null }) {
   if (!link) return null;
   return (
     <div>

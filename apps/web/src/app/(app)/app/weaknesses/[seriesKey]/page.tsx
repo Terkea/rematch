@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { cache } from "react";
 import { LiveRefreshOn } from "../../../../../components/live-refresh-on";
+import { practiseLinkFor } from "../../../../../components/practise-positions";
 import { queryKeys } from "../../../../../lib/query-keys";
 import { requireUser } from "../../../../../server/auth/session";
 import { coachHref } from "../../../../../server/coach/anchor";
@@ -110,6 +111,7 @@ export default async function WeaknessPage({ params, searchParams }: Props) {
     ),
   ];
   const reviewIds = await reviewGameIds(db, user.id, scope, cited);
+  const practise = await practiseLinkFor(user.id, scope, detail.seriesKey);
   // Non-`W` series have no contract id, so the chat opens without an anchor.
   const askHref = coachHref(
     detail.contractId ? { kind: "weakness", weaknessId: detail.contractId } : null,
@@ -128,6 +130,7 @@ export default async function WeaknessPage({ params, searchParams }: Props) {
         range={range}
         sides={sides}
         filterBar={<FilterBar model={bar.model} />}
+        practise={practise}
       />
     </>
   );
