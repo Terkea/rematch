@@ -84,17 +84,17 @@ applied by `scripts/github/apply-settings.sh`; the `Settings drift` workflow che
 
 ## 8. Versioning and releases
 
-Rematch is one product with **one version**: the root `package.json`. release-please keeps
+Rematch is one product with one version: the root `package.json`. release-please keeps
 `apps/web/package.json`, the Cargo workspace version and its crates in `Cargo.lock` in step with
 it, and `scripts/test-versions.mjs` fails CI when they differ. The app shows the version in the
 account menu ("Rematch v0.1.0 · beta").
 
 Versions follow [Semantic Versioning](https://semver.org/):
 
-- **every `0.y.z` is a beta.** While the major is 0, `feat` and `fix` bump the patch, and a breaking
+- Every `0.y.z` is a beta. While the major is 0, `feat` and `fix` bump the patch, and a breaking
   change (`feat!:`, or a `BREAKING CHANGE:` footer) bumps the minor
   (`bump-patch-for-minor-pre-major` and `bump-minor-pre-major` in `release-please-config.json`);
-- **`1.0.0` is the MVP.** It is a deliberate maintainer decision, made in its own ADR, and is set by
+- `1.0.0` is the MVP. It is a deliberate maintainer decision, made in its own ADR, and is set by
   hand with `release-as`. It never happens because of a commit message.
 
 How a release happens:
@@ -102,23 +102,23 @@ How a release happens:
 1. Each push to `main` runs the `Release` workflow. release-please reads the Conventional Commit
    titles since the last release and opens, or updates, one release PR: the next version in every
    versioned file and the new `CHANGELOG.md` entry.
-2. The changelog groups `feat` under Features, `fix` under Fixes, `perf` under Performance and
-   `docs` under Docs. `chore`, `test`, `ci`, `refactor`, `build` and `style` are left out, so the
+2. The changelog groups `feat` under Features, `fix` under Fixes, `perf` under Performance,
+   `revert` under Reverts and `docs` under Docs. `chore`, `test`, `ci`, `refactor`, `build` and `style` are left out, so the
    changelog reads for players.
 3. When the maintainer merges the release PR, release-please tags `v0.y.z` and publishes a GitHub
-   Release, marked **prerelease** while the version is below 1.0.
+   Release, marked prerelease while the version is below 1.0.
 4. The `Release images` workflow then waits for CI to pass on the tagged commit, builds and
    smoke-tests the images, pushes them to GHCR signed, and attaches the source and the
    deployment files ([RELEASING.md](RELEASING.md), [ADR 0098](decisions/0098-release-images-signing-and-source-offer.md)).
 
-Notes for the maintainer:
+Notes for whoever cuts the release:
 
 - The release workflows are the only ones that write, with their own `GITHUB_TOKEN`
   (`contents`, `pull-requests`, and `packages` for the images). GitHub does not run other workflows on a PR that
   token opens, so the required checks don't report on the release PR: merge it with the admin
   bypass, after the commits it lists passed CI on `main`.
-- The first release is 0.1.0 (`release-as` in the config, with the changelog starting after
-  commit `9717616`). Once it is out, remove `release-as`; `test-versions.mjs` warns until you do.
+- The first release is 0.1.0, set with `release-as` in the config. Once it is out, remove
+  `release-as`; `test-versions.mjs` warns until you do.
 - At 1.0.0, set `"prerelease": false` in the config in the same change (the version test requires
   it).
 
@@ -183,7 +183,7 @@ one. The first sweep that passes closes it. How to fix what it finds:
   command that fixes it.
 
 Dependabot (`.github/dependabot.yml`) opens grouped weekly updates for npm, Cargo, Docker and
-GitHub Actions, with a 7-day cooldown that matches `check-npm-age.mjs` and `check-crate-age.sh`.
+GitHub Actions, with a 7-day cooldown that matches `scripts/check-npm-age.mjs` and `backend/scripts/check-crate-age.sh`.
 Majors come one per pull request. A Cargo update is reviewed and merged by the maintainer only.
 
 ## Definition of done

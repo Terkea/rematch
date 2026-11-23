@@ -9,7 +9,7 @@ body:
         Rematch exists to help players stop repeating the same mistakes. The best requests start
         from a real problem a player has, not from a feature in another app.
 
-        This form is for ideas, kept short. Maintainers turn accepted ideas into a spec issue
+        This form is for ideas, kept short. The maintainer turns accepted ideas into a spec issue
         (the "Feature spec (RFC)" form) before any code is written; see docs/SDLC.md.
   - type: textarea
     id: problem

@@ -1,10 +1,10 @@
 # Security policy
 
-Thank you for helping keep Rematch and the people who use it safe.
+Report security problems privately, through GitHub. Many thanks for doing it that way.
 
 ## Reporting a vulnerability
 
-**Please don't open a public issue for a security problem.** Report it privately through GitHub:
+Don't open a public issue for a security problem. Report it privately:
 
 1. Go to the repository's [Security tab](https://github.com/Terkea/rematch/security).
 2. Choose **Report a vulnerability** ([direct link](https://github.com/Terkea/rematch/security/advisories/new)).
@@ -15,8 +15,8 @@ vulnerability reporting is the one channel.
 
 What to expect:
 
-- an acknowledgement within **7 days**;
-- an assessment and a plan, or questions, within **14 days**;
+- an acknowledgement within 7 days;
+- an assessment and a plan, or questions, within 14 days;
 - a fix released as soon as it is ready, with credit to you in the advisory if you want it.
 
 Please give us a reasonable time to fix the problem before you disclose it, and don't access,
@@ -25,7 +25,7 @@ always fine.
 
 ## Supported versions
 
-Rematch is in beta (`0.y.z`). Only the latest release and `main` get security fixes.
+Rematch is in beta (`0.y.z`).
 
 | Version | Supported |
 | --- | --- |

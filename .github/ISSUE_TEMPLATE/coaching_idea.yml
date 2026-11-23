@@ -7,8 +7,8 @@ body:
     attributes:
       value: |
         You don't need to write code to make Rematch better. If you coach, or you play at a level
-        where you can see what club players get wrong, your knowledge is exactly what the
-        analysis and the AI coach need. Thank you for sharing it.
+        where you can see what club players get wrong, the analysis and the AI coach need what you
+        know. Many thanks for sharing it.
   - type: input
     id: background
     attributes:

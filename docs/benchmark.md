@@ -1,10 +1,10 @@
 # The pipeline benchmark
 
-Rematch's pipeline finds two of the five injected flaws today. On the first smoke run (2026-11-23, branch `feat/pipeline-benchmark`), early blunders (W7.traps) and low-clock blunders (W9b) are ranked first and their drills fit. Hanging pieces (W1), missed mates (W4.missed) and thrown-away wins (W5) are measured correctly but never ranked, and a clean control is given a rank-1 weakness from noise. The 80% intervals hold the true rate 80% of the time (16 of 20). These are known gaps with issues, not tuned away:
+Rematch's pipeline finds two of the five injected flaws today. On the first smoke run (2026-11-23), early blunders (W7.traps) and low-clock blunders (W9b) are ranked first and their drills fit. Hanging pieces (W1), missed mates (W4.missed) and thrown-away wins (W5) are measured correctly but never ranked, and a clean control is given a rank-1 weakness from noise. The 80% intervals hold the true rate 80% of the time (16 of 20). These are known gaps with issues, not tuned away:
 
-- W1 and W5 have no peer benchmark, so they are never ranked ([#10](https://github.com/Terkea/chess-improvement-engine/issues/10));
-- the W4.missed peer row is low-sample at 80 games ([#11](https://github.com/Terkea/chess-improvement-engine/issues/11));
-- ranking has no confidence or effect floor, so the clean control's W9b (11 of 846 against a peer median of 0.008) ranks first ([#12](https://github.com/Terkea/chess-improvement-engine/issues/12)).
+- W1 and W5 have no peer benchmark, so they are never ranked ([#10](https://github.com/Terkea/rematch/issues/10));
+- the W4.missed peer row is low-sample at 80 games ([#11](https://github.com/Terkea/rematch/issues/11));
+- ranking has no confidence or effect floor, so the clean control's W9b (11 of 846 against a peer median of 0.008) ranks first ([#12](https://github.com/Terkea/rematch/issues/12)).
 
 ## The current scorecard
 
@@ -37,7 +37,7 @@ The run took 5 minutes 3 seconds with 4 engines: 72,972 Stockfish searches, 58,0
 
 ## What it measures
 
-The benchmark asks one question of Rematch's analysis: given a player whose weakness we put there ourselves, at a rate we chose, does the pipeline find it, rank it first, size it correctly and point the plan at it? Tier 1 answers it with synthetic players. Tiers 2 to 4 are planned and described at the end.
+The benchmark asks one question of Rematch's analysis: given a player whose weakness we put there ourselves, at a rate we chose, does the pipeline find it, rank it first, size it correctly and point the plan at it? Tier 1 answers it with synthetic players. Tiers 2 to 4 are planned and described at the end. They measure accuracy; the speed of each pipeline stage is a separate roadmap item (the v0.4 milestone).
 
 Tier 1 lives in `backend/crates/bench` (ADR 0100). It runs the production code, in-process, against a throwaway **Postgres** database:
 
@@ -107,14 +107,14 @@ The suites:
 
 ## What Tier 1 does not show
 
-- **The games are not human.** The clean policy is an engine with a loss cap, so the profile it gives is not a typical 1500 player's. The clock model is harsh: 18 to 35 of each player's 80 games end on time, and W9a (getting short of time) sits near 70% for everyone, flawed or not.
-- **Search noise reaches the detectors.** Two node-limited searches can disagree, so a capped move sometimes reads as decisive: the clean control has 14 W1 events in 4,274 eligible moves and 11 W9b events in 846. The true rate includes this noise through the clean control's rate (above), and the clean control's false alarm comes from it.
-- **Not every weakness is covered.** There is no Maia (W11 needs it), no tablebase (W8), no injector for W2, W3, W6, W7.prep, W9a, W9c or W10, and no colour split. Each is a new injector type in `bench::flaws`.
-- **One run, one seed per flaw.** The smoke suite has five flawed players, so one detection is 20 points of recall. The full suite's second seeds and rate sweep are what narrow it.
-- **12,000 nodes, not 300,000.** Weaker searches than production make the lines noisier; the conclusions about ranking and benchmarks do not depend on depth, the exact rates do.
+- The games are not human. The clean policy is an engine with a loss cap, so the profile it gives is not a typical 1500 player's. The clock model is harsh: 18 to 35 of each player's 80 games end on time, and W9a (getting short of time) sits near 70% for everyone, flawed or not.
+- Search noise reaches the detectors. Two node-limited searches can disagree, so a capped move sometimes reads as decisive: the clean control has 14 W1 events in 4,274 eligible moves and 11 W9b events in 846. The true rate includes this noise through the clean control's rate (above), and the clean control's false alarm comes from it.
+- Not every weakness is covered. There is no Maia (W11 needs it), no tablebase (W8), no injector for W2, W3, W6, W7.prep, W9a, W9c or W10, and no colour split. Each is a new injector type in `bench::flaws`.
+- One run, one seed per flaw. The smoke suite has five flawed players, so one detection is 20 points of recall. The full suite's second seeds and rate sweep are what narrow it.
+- 12,000 nodes, not 300,000. Weaker searches than production make the lines noisier; the conclusions about ranking and benchmarks do not depend on depth, the exact rates do.
 
 ## Planned tiers
 
-- **Tier 2, predictive validity.** Anonymised real players from the Lichess database dump (the explorer pipeline already streams it, ADR-R2-11): build the profile from games before a date T and test whether the top weakness predicts where the points are lost after T, against the base rates.
-- **Tier 3, plan quality.** A rubric for the written plan, scored by an LLM judge and by a blind panel of coaches, against a baseline plan (a generic "do tactics" plan). It needs the AI text, so it stays out of CI.
-- **Tier 4, real-user efficacy.** The trainer's held-out positions (ADR 0090): whether players who drill a weakness miss fewer of its held-out positions than before, with the "Is it working?" rules.
+- Tier 2, predictive validity: anonymised real players from the Lichess database dump (the `lichess-db` pipeline already streams it, ADR-R2-9): build the profile from games before a date T and test whether the top weakness predicts where the points are lost after T, against the base rates.
+- Tier 3, plan quality: a rubric for the written plan, scored by an LLM judge and by a blind panel of coaches, against a baseline plan (a generic "do tactics" plan). It needs the AI text, so it stays out of CI.
+- Tier 4, real-user efficacy: the trainer's held-out positions (ADR 0090): whether players who drill a weakness miss fewer of its held-out positions than before, with the "Is it working?" rules.
