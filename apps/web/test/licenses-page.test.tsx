@@ -57,4 +57,32 @@ describe("the licences page", () => {
     expect(text()).toContain("Stockfish");
     expect(text()).toContain("Maia-2");
   });
+
+  it("credits Stockfish 19 with its GPL notice word for word and where its source is", () => {
+    render(<LicensesPage />);
+    expect(screen.getByRole("heading", { name: "Analysis engine: Stockfish" })).toBeInTheDocument();
+    // The header of src/main.cpp at tag sf_19, the release the Dockerfiles pin by SHA-256.
+    const notice = `Stockfish, a UCI chess playing engine derived from Glaurung 2.1
+      Copyright (C) 2004-2026 The Stockfish developers (see AUTHORS file)
+      Stockfish is free software: you can redistribute it and/or modify
+      it under the terms of the GNU General Public License as published by
+      the Free Software Foundation, either version 3 of the License, or
+      (at your option) any later version.
+      Stockfish is distributed in the hope that it will be useful,
+      but WITHOUT ANY WARRANTY; without even the implied warranty of
+      MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+      GNU General Public License for more details.
+      You should have received a copy of the GNU General Public License
+      along with this program.  If not, see <http://www.gnu.org/licenses/>.`;
+    expect(squash(text())).toContain(squash(notice));
+    expect(
+      screen
+        .getAllByRole("link")
+        .some(
+          (a) =>
+            a.getAttribute("href") ===
+            "https://github.com/official-stockfish/Stockfish/releases/tag/sf_19",
+        ),
+    ).toBe(true);
+  });
 });

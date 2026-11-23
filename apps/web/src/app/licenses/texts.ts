@@ -1,6 +1,7 @@
 // Licence texts shown on /licenses, copied verbatim from the files they credit:
 // packages/ui/assets/pieces/cburnett/LICENSE (the notice), apps/web/src/app/fonts/*-OFL.txt and
-// the LICENSE files of @phosphor-icons/react, chess.js and react-chessboard.
+// the LICENSE files of @phosphor-icons/react, chess.js and react-chessboard, and the licence
+// header of Stockfish's src/main.cpp at tag sf_19 (the release the Dockerfiles pin by SHA-256).
 // test/licenses-page.test.tsx fails if any of them drifts from its file.
 
 export const CBURNETT_BSD =
@@ -20,3 +21,6 @@ export const CHESSJS_BSD2 =
 
 export const REACT_CHESSBOARD_MIT =
   'MIT License\n\nCopyright (c) 2022 Ryan Gregory\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the "Software"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.';
+
+export const STOCKFISH_GPL =
+  "Stockfish, a UCI chess playing engine derived from Glaurung 2.1\nCopyright (C) 2004-2026 The Stockfish developers (see AUTHORS file)\n\nStockfish is free software: you can redistribute it and/or modify\nit under the terms of the GNU General Public License as published by\nthe Free Software Foundation, either version 3 of the License, or\n(at your option) any later version.\n\nStockfish is distributed in the hope that it will be useful,\nbut WITHOUT ANY WARRANTY; without even the implied warranty of\nMERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the\nGNU General Public License for more details.\n\nYou should have received a copy of the GNU General Public License\nalong with this program.  If not, see <http://www.gnu.org/licenses/>.";

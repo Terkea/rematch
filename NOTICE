@@ -20,7 +20,7 @@ Engines and data (run on the server, not committed to this repository)
 
   Stockfish 19
     https://github.com/official-stockfish/Stockfish
-    Copyright (C) The Stockfish developers (see the AUTHORS file in its source)
+    Copyright (C) 2004-2026 The Stockfish developers (see the AUTHORS file in its source)
     Licence: GNU General Public License v3.0 (GPL-3.0-or-later)
     The official release binary is downloaded at image build time and checked
     against a pinned SHA-256 (apps/worker/Dockerfile, backend/Dockerfile). It
