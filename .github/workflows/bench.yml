@@ -47,11 +47,13 @@ jobs:
       - name: Create the shared Rust cache volumes (ADR 0042)
         run: sh scripts/rust-cache-init.sh
       - name: Run the ${{ env.SUITE }} suite
-        run: >-
-          mkdir -p bench-out &&
-          $COMPOSE run --rm -e BENCH_SUITE="$SUITE" rust-dev sh -c
-          'if [ "$BENCH_SUITE" = smoke ]; then base="--baseline /work/bench/baseline.json"; else base=""; fi;
-          cargo run --locked -p cli -- bench run --suite "$BENCH_SUITE" --out /work/bench-out $base'
+        run: |
+          mkdir -p bench-out
+          # The single quotes are deliberate: $BENCH_SUITE and $base expand inside the container.
+          # shellcheck disable=SC2016
+          $COMPOSE run --rm -e BENCH_SUITE="$SUITE" rust-dev sh -c \
+            'if [ "$BENCH_SUITE" = smoke ]; then base="--baseline /work/bench/baseline.json"; else base=""; fi;
+            cargo run --locked -p cli -- bench run --suite "$BENCH_SUITE" --out /work/bench-out $base'
       - name: Scorecard in the job summary
         if: always()
         run: cat bench-out/bench-scorecard.md >> "$GITHUB_STEP_SUMMARY" || true
