@@ -416,7 +416,10 @@ const KEPT_TIMES: [&str; 6] = [
 /// A wall-clock column: the excluded names, any other `*_at` or `*_since`, and every `*_ms`.
 fn excluded(k: &str) -> bool {
     !KEPT_TIMES.contains(&k)
-        && (EXCLUDED.contains(&k) || k.ends_with("_at") || k.ends_with("_since") || k.ends_with("_ms"))
+        && (EXCLUDED.contains(&k)
+            || k.ends_with("_at")
+            || k.ends_with("_since")
+            || k.ends_with("_ms"))
 }
 
 fn is_uuid(s: &str) -> bool {
