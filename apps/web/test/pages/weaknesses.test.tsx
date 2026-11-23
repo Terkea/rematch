@@ -655,9 +655,7 @@ describe("weakness detail", () => {
     });
     const { container } = await detail("W1");
     expect(screen.getByText("Early read: 880 more chances needed")).toBeTruthy();
-    expect(
-      screen.getByText("Not compared yet: no benchmark for this account yet"),
-    ).toBeTruthy();
+    expect(screen.getByText("Not compared yet: no benchmark for this account yet")).toBeTruthy();
     expect(container.textContent).not.toMatch(/Emerging/);
     noBadText(container);
   });

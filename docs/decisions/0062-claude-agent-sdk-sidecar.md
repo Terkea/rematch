@@ -237,3 +237,11 @@ Owner direction: in development the coach uses the Claude Code already signed in
   - **Chat turns.** These cannot run without local persistence: the SDK requires local writes for its `sessionStore` mirror, and `persistSession: false` throws there. The transcript is written to `~/.claude/projects/chess-improver-coach/<conversation id>.jsonl` (the fixed `CLAUDE_CODE_PROJECT_DIR_NAME`). That project directory matches no real cwd, so the transcripts never appear in the owner's `claude --resume` lists.
   - **With a session store** (the host Postgres), the sidecar deletes that file and its `<id>/` directory after every turn, as before.
   - **Without a store**, the transcripts stay there, because resume reads them. Delete that directory at any time; a lost transcript makes the next turn rebuild from Rust's context.
+
+## Amendment 3 (2026-11-23): local mode records usage but does not enforce the budget
+
+Holistic review F4: in local mode the report said "Your coach has reached this month's spending limit". The month's notional spend (list prices, $2.24) had passed the beta pro budget ($2), all from the owner's own testing, although a call on the host's own Claude Code login has no real cost.
+
+- **Decision.** When the sidecar reports `auth: "local"`, the worker makes its budgets notional (`BudgetConfig::notional`, `enforce: false`). `budget_guard` then passes every call. Every call is still metered into `ai_usage` at list prices, so the numbers stay comparable with a keyed deployment. The start logs `ai: monthly budget not enforced (local login, no real cost; usage still recorded)`.
+- **Why it can't leak.** Production refuses local mode (Amendment 2), so a production worker never sees `auth: "local"`, and its budget stays enforced. Every other credential (`api_key`, `cloud`, `oauth`) keeps the enforced budget.
+- **The UI.** With no budget refusal in local mode, no new report, note or chat answer fails with `budget`, so the pages never show "spending limit" in that mode. A report that already failed for budget before the change keeps its banner until it is rebuilt.

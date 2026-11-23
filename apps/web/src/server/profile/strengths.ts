@@ -646,7 +646,8 @@ export function keepDoingNote(kind: StrengthKind, timeSpent: number | null): str
   if (timeSpent !== null && fin(timeSpent) && timeSpent >= 0 && timeSpent < FAST_FIND_SECONDS) {
     return FAST_NOTE[kind];
   }
-  const key = timeSpent === null || !fin(timeSpent) ? KEEP_DOING_KEY.tactic_found : KEEP_DOING_KEY[kind];
+  const key =
+    timeSpent === null || !fin(timeSpent) ? KEEP_DOING_KEY.tactic_found : KEEP_DOING_KEY[kind];
   const tip = KPI_GLOSSARY[key]?.tip;
   if (!tip) return null;
   return `Keep doing this: ${tip.charAt(0).toLowerCase()}${tip.slice(1)}`;

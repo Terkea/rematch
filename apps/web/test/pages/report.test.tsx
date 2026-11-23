@@ -426,9 +426,9 @@ describe("report page", () => {
     expect(d.view.payload).toBeNull();
     const screen = within(render(<ReportView data={d} />).container);
     expect(screen.getByText("Verify this account to see your coach's report")).toBeTruthy();
-    expect(
-      screen.getByRole("link", { name: "Verify this account" }).getAttribute("href"),
-    ).toBe("/app/accounts");
+    expect(screen.getByRole("link", { name: "Verify this account" }).getAttribute("href")).toBe(
+      "/app/accounts",
+    );
     expect(screen.queryByRole("button", { name: /report/i })).toBeNull();
     expect(screen.queryByRole("region", { name: "What's costing you games" })).toBeNull();
   });

@@ -7,8 +7,8 @@ import {
   userEvents,
 } from "@ci/db/generated";
 import { Chess } from "chess.js";
-import { isVerifiedLink } from "../accounts/verified.js";
 import { and, asc, count, desc, eq, gte, inArray, sql } from "drizzle-orm";
+import { isVerifiedLink } from "../accounts/verified.js";
 import type { AiDisclosure, Segment } from "../coaching/types.js";
 import { readOnly } from "../games/read-only.js";
 import type { TimeClass } from "../games/types.js";

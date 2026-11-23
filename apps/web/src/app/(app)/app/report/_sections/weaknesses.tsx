@@ -18,10 +18,7 @@ import type {
   ExemplarPosition,
   WeaknessesSection,
 } from "../../../../../server/coaching/types";
-import {
-  benchmarkGroupLabel,
-  storedBenchmark,
-} from "../../../../../server/profile/benchmark-text";
+import { benchmarkGroupLabel, storedBenchmark } from "../../../../../server/profile/benchmark-text";
 import { seriesGlossary } from "../../../../../server/profile/glossary";
 import type { ReportScope } from "../rebuild-button";
 import { weaknessHref, weaknessSeriesKey } from "./links";

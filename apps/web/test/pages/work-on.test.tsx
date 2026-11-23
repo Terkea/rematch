@@ -70,9 +70,7 @@ describe("WorkOn", () => {
     const { container } = render(
       <WorkOn lead={{ kind: "none", scope, analysedGames: 214, compared: false }} />,
     );
-    expect(container).toHaveTextContent(
-      "Not compared yet: no benchmark for this account yet.",
-    );
+    expect(container).toHaveTextContent("Not compared yet: no benchmark for this account yet.");
     expect(container).toHaveTextContent("214 analysed rapid games on lichess");
     expect(container).not.toHaveTextContent(/Nothing stands out/);
     const link = screen.getByRole("link", { name: /your weaknesses/i });

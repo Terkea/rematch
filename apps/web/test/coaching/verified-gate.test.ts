@@ -100,14 +100,13 @@ describe("an unverified link sees analysis only", () => {
 
   it("sees it all once the link is verified", async () => {
     // One verified owner per account: verifying the stranger's link moves ownership.
-    await db
-      .update(accountLinks)
-      .set({ verifiedAt: null })
-      .where(eq(accountLinks.userId, owner));
+    await db.update(accountLinks).set({ verifiedAt: null }).where(eq(accountLinks.userId, owner));
     await db
       .update(accountLinks)
       .set({ verifiedAt: new Date() })
-      .where(and(eq(accountLinks.userId, stranger.id), eq(accountLinks.linkedAccountId, accountId)));
+      .where(
+        and(eq(accountLinks.userId, stranger.id), eq(accountLinks.linkedAccountId, accountId)),
+      );
     expect((await getReport(db, stranger.id, scope())).payload).not.toBeNull();
     expect(await coachAllowance(db, stranger.id, accountId)).not.toBeNull();
   });

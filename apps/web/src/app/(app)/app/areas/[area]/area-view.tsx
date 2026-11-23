@@ -21,6 +21,7 @@ import { coachChatLive } from "../../../../../lib/coach-chat";
 import { areaMeaning } from "../../../../../lib/explain";
 import { weeklyPoints } from "../../../../../lib/iso-week";
 import { segmentHref } from "../../../../../lib/segment-href";
+import { VERIFY_ACTION, VERIFY_BODY, VERIFY_NOTE_TITLE } from "../../../../../lib/verify-copy";
 import { coachHref } from "../../../../../server/coach/anchor";
 import type { CoachStatus } from "../../../../../server/coach/status";
 import type { ReportView } from "../../../../../server/coaching";
@@ -49,7 +50,6 @@ import type {
 import { EmptySheet } from "../../../_shell/page-heading";
 import { datesNote } from "../../_filters/dates-note";
 import { SectionHead } from "../../_overview/section-head";
-import { VERIFY_ACTION, VERIFY_BODY, VERIFY_NOTE_TITLE } from "../../../../../lib/verify-copy";
 import { numbersOnlyCopy } from "../../report/notes-off";
 import { type ScoreBasis, shortfallUnit } from "./basis";
 
