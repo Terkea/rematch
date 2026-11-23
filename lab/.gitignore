@@ -1,0 +1,10 @@
+# Python and tool caches. The lock, the schemas, the fixtures and every experiment's committed
+# results stay in the repository.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+.ruff_cache/
+.mypy_cache/
+/out/
+experiments/*/out/
