@@ -11,12 +11,12 @@ Some players have thousands of games. Downloading a game is almost free; engine 
 
 Import broadly, analyse selectively (design section 8c).
 
-- Tier 1: import up to 10,000 recent games per account (Pro) or 1,000 (free), without the engine. This powers the rating curve, openings, time-control mix, clock and session stats.
+- Tier 1: import up to 10,000 recent games per account (large limit) or 1,000 (small limit), without the engine. This powers the rating curve, openings, time-control mix, clock and session stats.
 - Tier 2: a per-user priority queue for engine analysis:
-  - P0 onboarding: 50 (free) or 200 (Pro) recent games in the primary time control.
-  - P1: 100 per other active time control (Pro).
-  - P2: stratified history sample of 15 per month per time control, up to 3 years back (Pro), backfilled at low priority.
-  - P3: new games from sync (free 20 per week; Pro all, with a fair-use cap of 300 per week).
+  - P0 onboarding: 50 (small limit) or 200 (large limit) recent games in the primary time control.
+  - P1: 100 per other active time control (large limit).
+  - P2: stratified history sample of 15 per month per time control, up to 3 years back (large limit), backfilled at low priority.
+  - P3: new games from sync (small limit 20 per week; large limit all, with a fair-use cap of 300 per week).
   - P4: on-demand analysis in the browser.
 - P1 and P2 stop adaptively once the weakness posteriors are precise enough.
 - Rated games first; skip games under 10 plies; bullet only if primary; games that already have Lichess evals first.

@@ -13,7 +13,7 @@ import { isUuid } from "./threads.js";
 
 /**
  * `free` and `pro` are Rust `entitlements.rs`; `beta` is ruling G1 (100 a week, configurable).
- * M7 replaces `aiPlan()` with the billing-backed entitlements.
+ * `aiPlan()` reads the deployment's limit preset; plans are limits, not products.
  */
 export type ChatPlan = "free" | "beta" | "pro";
 

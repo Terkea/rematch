@@ -5,9 +5,9 @@ Status: Approved by delegation. The owner put Claude in charge ("you are in char
 
 ## 1. Intent
 
-A commercial web platform. A chess player links their Lichess or chess.com account. We import their game history, analyse every game with Stockfish, work out how they play, and give them a full, honest coaching programme: what they already do well, what is costing them games, which openings to keep, fix or learn, and drills to practise, all pitched at their current rating and aimed at the next rating band.
+A web platform. A chess player links their Lichess or chess.com account. We import their game history, analyse every game with Stockfish, work out how they play, and give them a full, honest coaching programme: what they already do well, what is costing them games, which openings to keep, fix or learn, and drills to practise, all pitched at their current rating and aimed at the next rating band.
 
-The owner wants a "robust proper platform" that can be monetised, that works for players at every level from beginner to master, and that has a premium, animated UI that does not look AI-generated.
+The owner wants a "robust proper platform" that works for players at every level from beginner to master, and that has a premium, animated UI that does not look AI-generated.
 
 ### Why it can win
 
@@ -25,7 +25,7 @@ The market has an incumbent, Aimchess (owned by chess.com, about $10/month), and
 6. Generate a rating-aware **coaching report** with Claude: strengths, weaknesses, an opening review and recommendations, and a climb plan.
 7. Provide **training**: puzzles from the player's own mistakes, an opening repertoire trainer, endgame drills, "retry your mistake", and clock-pressure drills.
 8. Track **progress** over time and re-analyse automatically as new games arrive.
-9. **Monetise** with a free tier and a paid subscription.
+9. **Stay free**: Rematch is free and open source, with no paid plans.
 10. Deliver a distinctive, premium, animated UI that works on mobile and desktop.
 
 All of goals 1–10 ship together as one release (owner's decision: "build everything at once"). The plan may still order the work internally.
@@ -43,7 +43,7 @@ All of goals 1–10 ship together as one release (owner's decision: "build every
 - **Generic advice.** "Study tactics" with no link to the player's own games is worthless.
 - **It looks AI-generated or templated.** See §11 for what to avoid.
 - **The first experience is a dead wait.** The player must see live progress, with first insights within a couple of minutes, not a blank "come back later".
-- **Runaway cost.** Engine CPU and AI tokens per user must be bounded, so a free user can't cost more than they're worth.
+- **Runaway cost.** Engine CPU and AI tokens per user must be bounded, so no user can cost more than the limits allow.
 - **Getting banned by chess.com or Lichess** for API abuse.
 
 ## 5. Users and rating-aware coaching
@@ -79,7 +79,7 @@ Monorepo using pnpm workspaces and Turborepo, all TypeScript:
 - `apps/worker`: long-running Node workers on BullMQ. They handle import, engine analysis, feature extraction, report generation and puzzle generation. Stockfish runs as a native binary pool, one process per core.
 - `packages/db`: Postgres schema and migrations with Drizzle ORM.
 - Auth: **Better Auth**, with email magic link, Google, and a custom Lichess OAuth provider (PKCE S256, no app registration needed; tokens last about a year with no refresh token, so we prompt to re-link when one expires).
-- Versions verified 2026-11-21 (`docs/research/technical-facts.md`): Next 16, React 19.3, Tailwind 4.3, Motion 14, BullMQ 6, chess.js 1.4 (BSD-2), react-chessboard 5 (MIT), ts-fsrs 6, Stripe SDK 23, Turborepo 2.11, pnpm 12, Playwright 1.65, Vitest 5. Avoid chessground and chessops, which are GPL.
+- Versions verified 2026-11-21 (`docs/research/technical-facts.md`): Next 16, React 19.3, Tailwind 4.3, Motion 14, BullMQ 6, chess.js 1.4 (BSD-2), react-chessboard 5 (MIT), ts-fsrs 6, Turborepo 2.11, pnpm 12, Playwright 1.65, Vitest 5. Avoid chessground and chessops, which are GPL.
 - `packages/chess-core`: pure functions built on chess.js for move classification, phase detection, motif tagging, feature extraction and benchmarks. These get heavy unit tests.
 - `packages/ai`: Claude prompts, structured-output schemas and the claim validator.
 - `packages/ui`: the design system (tokens, components, the board and the eval graph).
@@ -111,7 +111,7 @@ Local development uses Docker Compose (Postgres, Redis, worker). Production runs
 6. **Benchmarks.** Every game also gives us analysed moves for the *opponent* at a known rating. Pooling those across all users gives band-by-band population statistics ("blunders per game at 1400 blitz on chess.com") without needing any outside dataset. Before we have enough data, seed the benchmarks with a one-off analysis of a sample from the Lichess open database.
 7. **Weakness ranking.** For each weakness, estimate its cost: games lost or drawn where that weakness caused the decisive swing, converted into estimated rating points. Rank by cost, weighted by how far the player is from the next band's benchmark.
 
-**Budgets:** a free user gets up to their last 50 games in each time control. A paid user gets their full history, analysed newest first. Results stream in: the profile updates as each batch finishes, and the UI shows live progress.
+**Budgets:** the smallest limit is the last 50 games in each time control. The largest is the full history, analysed newest first. Results stream in: the profile updates as each batch finishes, and the UI shows live progress.
 
 ## 8c. Handling large game histories (how many games we fetch and analyse)
 
@@ -124,7 +124,7 @@ The costs are very different:
 So we import broadly and analyse selectively.
 
 **Tier 1: import (no engine).**
-- Pro: up to **10,000 most recent games per account**. Free: up to **1,000**.
+- Up to **10,000 most recent games per account** (the default plan sets 1,000; the limit is configuration).
 - Stored as compressed PGN plus metadata.
 - This alone powers several features across the player's whole history with no engine cost:
   - the full rating curve;
@@ -137,7 +137,7 @@ So we import broadly and analyse selectively.
 
 **Tier 2: engine analysis, by priority.** Each user gets a priority-ordered analysis queue:
 
-| Priority | Which games | Free | Pro |
+| Priority | Which games | Small limit | Large limit |
 |---|---|---|---|
 | P0 Onboarding | Most recent games in the primary time control | 50 | 200 |
 | P1 Other active time controls | Most recent per other time control with ≥ 20 games in the last 90 days | — | 100 each |
@@ -154,7 +154,7 @@ So we import broadly and analyse selectively.
 - Games that already have Lichess server evals are analysed first, since they cost no CPU.
 - The analysis protocol is the same in every tier, so sampled and recent games stay comparable.
 
-**Cost envelope.** A heavy Pro user's onboarding (P0 + P1) takes about 200–400 games, roughly 1–2 core-hours. On 16 cores that's about 5–8 minutes of wall time, and results stream in as they finish. P2 backfill adds about 500 games over the following hours at low priority. Per-user CPU-seconds are metered, and hard caps from §13 apply.
+**Cost envelope.** A heavy user's onboarding (P0 + P1) takes about 200–400 games, roughly 1–2 core-hours. On 16 cores that's about 5–8 minutes of wall time, and results stream in as they finish. P2 backfill adds about 500 games over the following hours at low priority. Per-user CPU-seconds are metered, and hard caps from §13 apply.
 
 **Shown to the user.** Each profile and KPI states its basis ("based on 214 analysed rapid games from 3,912 imported") along with how far the background backfill has got, so a sampled history is never mistaken for a complete one.
 
@@ -172,7 +172,7 @@ So we import broadly and analyse selectively.
 | 100 | under 1 min | about 1.5 min |
 | 1,000 | about 9 min | about 13 min |
 
-**Sign-up waves set the requirement.** 100 free users × 50 games is 5,000 games, about 17 core-hours. One 16-vCPU worker needs about 70 minutes to drain that. The money cost is negligible (about €0.01 per vCPU-hour, so about €0.25 for the whole wave). The binding constraint is **time to first insight**, so the design targets latency:
+**Sign-up waves set the requirement.** 100 users × 50 games is 5,000 games, about 17 core-hours. One 16-vCPU worker needs about 70 minutes to drain that. The money cost is negligible (about €0.01 per vCPU-hour, so about €0.25 for the whole wave). The binding constraint is **time to first insight**, so the design targets latency:
 
 1. **Fair scheduling.** The analysis scheduler (§8c) serves users round-robin in slices of 5 games, ordered by priority tier, then by when the user joined. Nobody waits behind another user's whole history. Every new user gets their first 10 games before anyone's 11th.
 2. **Preview pass.** A user's first 20 P0 games are first analysed at **30k nodes** (about 10× faster, giving a provisional "early read" within about 1–2 minutes even during a wave). Those preview evals are labelled `preview`. They are never written to the shared cache, and never used for KPIs, posteriors or the weakness timeline. The full protocol pass replaces them in the background. This is the only exception to "one protocol everywhere", and it's visibly marked as provisional in the UI.
@@ -260,12 +260,12 @@ Everything is organised into seven **skill areas**. Each area gets its own repor
 - **Input:** the computed profile, the ranked weaknesses, benchmarks, opening tree, and a handful of selected example positions (FEN, played move, best move, evals). **Output:** structured JSON through a schema (strengths, weaknesses, opening verdicts, climb plan, drill assignments), and each item must cite `gameId` plus ply references.
 - **Claim validator:** after generation, check that every cited game and ply exists, that the move and eval quoted match stored data, and that every number quoted appears in the input. On a failure, regenerate once with the errors attached. If it fails again, drop the bad item.
 - Tone adapts to the rating band (§5). The report is direct and specific, written like a strong human coach.
-- Reports are regenerated on a schedule (monthly for paid users) or when the profile changes a lot. Reports are versioned, so progress can be compared.
+- Reports are regenerated on a schedule (monthly where the limit allows) or when the profile changes a lot. Reports are versioned, so progress can be compared.
 - Prompt caching is used for the large, stable system prompt.
 
 ## 10. Product surfaces
 
-1. **Landing page.** A premium hero that shows the product working, such as a real sample report animating in. Pricing is on the page.
+1. **Landing page.** A premium hero that shows the product working, such as a real sample report animating in.
 2. **Onboarding:** sign up (email magic link or Google), link an account, choose time controls, then a **live analysis screen**. Games count up, the eval graph draws in, and early findings appear as they're computed. This is the signature "wow" moment.
 3. **Report**, the core page:
    - Snapshot: rating, target band, playstyle profile, and the seven area scores (§8b).
@@ -283,7 +283,7 @@ Everything is organised into seven **skill areas**. Each area gets its own repor
    - *Clock drills:* timed puzzle sets that simulate low-clock decisions.
    - Daily training queue and streaks.
 6. **Progress.** Metrics over time (accuracy by phase, blunder rate, conversion, rating) with report-to-report comparisons.
-7. **Account and billing.** Linked accounts, plan, and Stripe customer portal.
+7. **Account.** Linked accounts.
 8. **Shareable report card.** A public, image-friendly summary for social sharing, which also brings in new users.
 
 ## 10a. Product rules from user research
@@ -306,9 +306,9 @@ Source: `docs/research/competitors-and-users.md`. Paid rivals cost $8–14/month
    - It answers follow-ups ("why is this a mistake?", "what should I play instead?", "show me another game like this").
    - For "what if I'd played X?" questions it runs an **on-demand server-side engine check**. That's a high-priority interactive job, MultiPV 3, never used for stats. Results are cited through `{{eng:…}}` tokens, so answers stay facts-by-reference.
    - Threads are saved and can be deleted.
-   - Limits: Pro gets 30 messages/day and 300/month, plus 20 engine checks/day. Free gets 3 messages/week and 3 engine checks/week, as a taste.
+   - Limits: the larger limit is 30 messages/day and 300/month, plus 20 engine checks/day. The smaller one is 3 messages/week and 3 engine checks/week. They protect the owner's API bill and are configuration.
    - Safety: chess and own-games only, a minor-safe tone, no rating promises, prompt-injection resistant, and every paragraph validated.
-   - The original definition follows. The "Ask your coach" chat: Claude answers questions about the player's own games using only their computed data and the engine (as tools), through the same claim validator. Pro only, with a fair-use cap.
+   - The original definition follows. The "Ask your coach" chat: Claude answers questions about the player's own games using only their computed data and the engine (as tools), through the same claim validator. With a fair-use cap.
 10. **Free acquisition tools:**
     - unlimited single-game review in the browser (WASM Stockfish), with no signup needed;
     - a no-signup **quick diagnosis** by username: the last 20 games and a teaser report, cached and rate-limited.
@@ -398,31 +398,18 @@ Owner's words: "sexy design", "amazing UI with animations and a premium feel", "
   - The Playwright MCP, run with `--isolated`, configured by hand in `.mcp.json` with a `cmd /c npx` wrapper for Windows. A plain Playwright `scripts/shots.ts` is the fallback.
   - Third-party skills get read and reviewed before they're installed.
 
-## 12. Monetisation
+## 12. Cost
 
-*Proposed by Claude; the owner said "maybe we can monetise this".*
+Rematch is free and open source, with no paid plans. The AI coach is optional. Whoever turns it on uses their own Anthropic API key, Anthropic bills them, and a spending cap protects their bill (ADR 0061). The internal limit tiers (import size, analysis depth, report interval, chat quota) are configuration that bounds server load and API spend. They are not products.
 
-| | Free | Pro ($7.99/month, $59.99/year) |
-|---|---|---|
-| Games analysed | Last 50 per time control | Full history, plus auto-sync |
-| Coaching report | One, refreshed manually at most every 30 days | Monthly plus on demand (fair-use cap) |
-| Openings | Results tree | Plus verdicts, recommendations and trainer |
-| Training | 5 puzzles/day from own games | Unlimited, all drill types |
-| Progress tracking | No | Yes |
-| Linked accounts | 1 | Lichess plus chess.com |
-
-**Pricing:** Pro costs **$7.99/month or $59.99/year**, with annual shown as the default, plus regional pricing for lower-income countries. Aimchess is $9.99 / $71.99.
-
-**Payments:** Stripe Checkout, Billing and the customer portal, running through **Stripe Managed Payments**. That makes Stripe the merchant of record, which handles VAT and sales tax worldwide for an extra 3.5%. Paddle is the fallback. **Owner action:** confirm your country is eligible for Managed Payments. Entitlements are checked on the server.
-
-**Sync cadence:** Lichess games for Pro users sync every 3 hours. chess.com's data only refreshes every 12–24 hours, so chess.com syncs daily for everyone.
+**Sync cadence:** Lichess games sync every 3 hours. chess.com's data only refreshes every 12–24 hours, so chess.com syncs daily.
 
 ## 12a. Measuring improvement (KPIs and progression)
 
 This is how we show, honestly, that the plan is working.
 
 **Collection: polling and recomputation**
-- A sync job polls each active user's platforms for new games, every 3 hours for Pro and daily for free. Users can also tap "Sync now". New games flow through engine → classification → metrics automatically.
+- A sync job polls each active user's platforms for new games, every 3 hours for Lichess and daily for chess.com. Users can also tap "Sync now". New games flow through engine → classification → metrics automatically.
 - Every analysed game writes one row of **per-game metrics** (`game_metrics`: accuracy by phase, blunders, time-pressure blunders, conversion opportunity and result, motif misses, opening line and deviation ply, endgame type and result, and more). Any time window is then a cheap aggregate over these rows, and nothing needs re-analysing.
 - After each sync, the system recomputes **KPI snapshots** (`kpi_snapshot`: user, account, time control, metric, window, value, sample size `n`, confidence interval low/high, computed_at) for two kinds of window: **rolling last-N games** (default 50) and **calendar weeks**. Snapshots are append-only, so history is never rewritten.
 
@@ -575,7 +562,7 @@ The queue is always fed *after* the DB commit, and the reconciler covers the gap
 
 ## 13. Robustness
 
-- Idempotent jobs with retries and exponential back-off, a dead-letter queue, and per-user job priority (paid first, then onboarding first).
+- Idempotent jobs with retries and exponential back-off, a dead-letter queue, and per-user job priority (onboarding first).
 - Engine process supervision, with restart on crash and a timeout per position.
 - Rate limiters per external API. Per-user AI and engine budgets are enforced.
 - Observability: structured logs, Sentry errors, queue dashboards (Bull Board, behind an admin login), and cost metrics (CPU-seconds and tokens per user).
@@ -590,7 +577,7 @@ Source: `docs/research/legal-and-business.md`. This is not legal advice.
 **chess.com terms: a launch risk.** The User Agreement §4(D) (March 2026) bans using their content to build educational tools or competing products without written permission. Their API help page says commercial use is fine. The two conflict, and chess.com owns Aimchess.
 - **Owner action:** ask chess.com Business Development for written permission, together with the OAuth application.
 - **Build:** the chess.com integration is built and tested in full, behind a `CHESSCOM_ENABLED` flag.
-- **Launch:** if permission hasn't arrived, launch **Lichess-first** with chess.com off, or limited to the free tier, depending on the owner's risk call.
+- **Launch:** if permission hasn't arrived, launch **Lichess-first** with chess.com off, or limited, depending on the owner's risk call.
 - Test chess.com API access from the production host early, because Cloudflare often blocks cloud IP addresses.
 
 **Lichess:** commercial use is explicitly allowed (ToS, August 2026), subject to the request etiquette in §7.
@@ -632,20 +619,19 @@ Every significant decision is recorded as a Markdown ADR in `docs/decisions/NNNN
 
 ## 16. Calls made by Claude (owner delegated: "you are in charge of everything")
 
-1. **Cost envelope** (§8c now replaces the game counts below). We evaluate every position once. That gives the quality of both the player's and the opponent's moves at no extra cost, so the §8.6 benchmarks need no extra engine work. The default budget is about 300k nodes per position (about 0.2–0.3 s on one core), deepened only on critical positions. A free user gets their last 50 games in their *primary* time control, which works out to roughly 4,000 positions, or about 15–20 core-minutes before cache hits. Pro analyses the full history, newest first, with a hidden fair-use cap of the last 2,000 games per time control. Launch is sized for one worker host with 16 dedicated vCPUs, scaled by adding workers. We meter CPU-seconds and tokens per user, and hard-stop at budget.
-2. **Tiers in §12 are approved as the launch config.** They live in a single entitlements module, and Stripe price IDs come from env vars, so changing tiers is a config change, not a rewrite.
-3. **Report scope.** One report per (linked account × time control). Free gets one, for the primary time control. Pro gets one for every time control with at least 20 games, plus a short cross-report overview. Reports never mix platforms.
+1. **Cost envelope** (§8c now replaces the game counts below). We evaluate every position once. That gives the quality of both the player's and the opponent's moves at no extra cost, so the §8.6 benchmarks need no extra engine work. The default budget is about 300k nodes per position (about 0.2–0.3 s on one core), deepened only on critical positions. The smallest limit is the last 50 games in their *primary* time control, which works out to roughly 4,000 positions, or about 15–20 core-minutes before cache hits. The largest limit analyses the full history, newest first, with a hidden fair-use cap of the last 2,000 games per time control. Launch is sized for one worker host with 16 dedicated vCPUs, scaled by adding workers. We meter CPU-seconds and tokens per user, and hard-stop at budget.
+2. **Limits are configuration.** They live in a single module, so changing a limit is a config change, not a rewrite.
+3. **Report scope.** One report per (linked account × time control). The smaller limit gives one, for the primary time control. The larger gives one for every time control with at least 20 games, plus a short cross-report overview. Reports never mix platforms.
 4. **Browser engine.** Stockfish (WASM build) runs in a Web Worker for interactive features: drills, retry, and explorer eval. It runs as a separate program, with its license and a source link shown, which meets GPL-3.0 without affecting our own code. Batch analysis stays server-side. Endgame drills also use the Lichess tablebase API for exact results with 7 pieces or fewer.
 5. **"Next band" = current rating +200**, on the same platform and time control. Benchmarks are bucketed per 100 points. The §5 coaching bands only control tone and emphasis.
-6. **Timeline and team.** Built autonomously by Claude Code agents, in milestones that each leave a runnable, tested system: foundation → ingestion and analysis → profile and AI report → UI → training → billing, sync and progress → hardening.
+6. **Timeline and team.** Built autonomously by Claude Code agents, in milestones that each leave a runnable, tested system: foundation → ingestion and analysis → profile and AI report → UI → training → sync and progress → hardening.
 
 ## 18. Owner actions (things only the owner can do)
 
 1. **chess.com:** request written permission for commercial use from Business Development, and apply for OAuth access. This decides whether chess.com is on at launch (§14).
-2. **Payments:** create a Stripe account and confirm your country is eligible for Managed Payments (§12).
-3. **API keys and accounts:** Anthropic API key, Sentry, an email provider (the builder defaults to Resend), and a Google OAuth client.
-4. **Product name and domain.** The working name in code is `chess-improver`. The brand is swappable from one config file.
-5. **Hosting:** approve the provider and spend before anything is deployed. Nothing is deployed or published without the owner's go-ahead.
+2. **API keys and accounts:** Anthropic API key, Sentry, an email provider (the builder defaults to Resend), and a Google OAuth client.
+3. **Product name and domain.** The working name in code is `chess-improver`. The brand is swappable from one config file.
+4. **Hosting:** approve the provider and spend before anything is deployed. Nothing is deployed or published without the owner's go-ahead.
 
 ## 17. Left to the builder
 

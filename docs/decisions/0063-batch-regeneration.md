@@ -6,7 +6,7 @@ on the minimal Rust Messages client and need `ANTHROPIC_API_KEY`).
 
 ## Context
 
-Pro players get a fresh report every month and a weekly review every week. Neither is waited on
+Players on the larger limit get a fresh report every month and a weekly review every week. Neither is waited on
 by a player, so both can use the Message Batches API, which costs half of a sync call. Batches
 are asynchronous (up to 24 hours), results come back in any order, and a submit or a results
 read can fail half-way. A result must never be applied to the wrong player or report, and every
@@ -15,7 +15,7 @@ billed call must be metered exactly once.
 ## Decision
 
 1. **What goes through batches.** The monthly report regeneration (`report-batch-schedule`,
-   daily at 03:00 UTC: each (account, time class) on the Pro plan, within budget, whose newest
+   daily at 03:00 UTC: each (account, time class) on the larger plan, within budget, whose newest
    report is at least 30 days old and that has no unfinished run) and the weekly reviews
    (`weekly-batch-schedule`, Mondays at 04:00 UTC, for the items a `WeeklyInputProvider`
    reports due). Both are metered at batch rates (50%) with `ai_usage.batch = true`. Nothing is
