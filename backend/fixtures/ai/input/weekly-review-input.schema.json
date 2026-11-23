@@ -252,6 +252,16 @@
       ],
       "type": "string"
     },
+    "EfficacyVerdict": {
+      "description": "\"Is it working?\" (ADR 0090 §8): a change is claimed only when both sides have 30 chances\nand the 80% ranges separate.",
+      "enum": [
+        "too_early",
+        "lower",
+        "higher",
+        "no_clear_change"
+      ],
+      "type": "string"
+    },
     "ExampleSide": {
       "description": "`TimelineChange.examples[].side`.",
       "enum": [
@@ -364,6 +374,24 @@
         "winBefore"
       ],
       "type": "object"
+    },
+    "FocusOutcome": {
+      "description": "How a focus that has reached its N games ended (ADR 0091 §5).",
+      "enum": [
+        "met",
+        "not_met",
+        "inconclusive"
+      ],
+      "type": "string"
+    },
+    "FocusStatus": {
+      "description": "Where a running focus stands (ADR 0091 §4): below 10 chances it is too early to tell.",
+      "enum": [
+        "on_track",
+        "not_yet",
+        "too_early"
+      ],
+      "type": "string"
     },
     "FocusUpdate": {
       "additionalProperties": false,
@@ -478,6 +506,250 @@
       ],
       "type": "object"
     },
+    "PatternEfficacy": {
+      "additionalProperties": false,
+      "description": "Drilled against held back: how often the motifs of drilled positions were found in later\ngames, against motifs only held-out positions have. `events` counts the times found.",
+      "properties": {
+        "drilled": {
+          "$ref": "#/$defs/PlanRate"
+        },
+        "heldOut": {
+          "$ref": "#/$defs/PlanRate"
+        },
+        "since": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "verdict": {
+          "$ref": "#/$defs/EfficacyVerdict"
+        }
+      },
+      "required": [
+        "drilled",
+        "heldOut",
+        "since",
+        "verdict"
+      ],
+      "type": "object"
+    },
+    "PlanContext": {
+      "additionalProperties": false,
+      "description": "What one user is working on (ADR 0094): their focus, their training and whether it is\nworking, for one of their accounts and a time class. Never shared across users.",
+      "properties": {
+        "asOf": {
+          "description": "The UTC day the context was built on.",
+          "type": "string"
+        },
+        "focus": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PlanFocus"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "isItWorking": {
+          "items": {
+            "$ref": "#/$defs/SourceEfficacy"
+          },
+          "type": "array"
+        },
+        "patterns": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PatternEfficacy"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "training": {
+          "$ref": "#/$defs/PlanTraining"
+        }
+      },
+      "required": [
+        "asOf",
+        "focus",
+        "isItWorking",
+        "patterns",
+        "training"
+      ],
+      "type": "object"
+    },
+    "PlanFocus": {
+      "additionalProperties": false,
+      "description": "The user's running focus on this account and time class (ADR 0091), with its live progress.",
+      "properties": {
+        "baselineChances": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "baselineEvents": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "baselineRate": {
+          "description": "What the focus started from: the estimate's rate and its unweighted counts.",
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "gamesN": {
+          "description": "N: the focus's length in analysed games.",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "gamesPlayed": {
+          "description": "Analysed games played since the focus started (at most N).",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "label": {
+          "description": "The weakness's plain name.",
+          "type": "string"
+        },
+        "moreChances": {
+          "description": "Chances still needed before a verdict (only while `too_early`).",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "outcome": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FocusOutcome"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Set once the focus has its N games."
+        },
+        "progress": {
+          "$ref": "#/$defs/PlanRate",
+          "description": "The weakness's events and chances in those games, the rate and its 80% range."
+        },
+        "seriesKey": {
+          "type": "string"
+        },
+        "side": {
+          "$ref": "#/$defs/PlanSide"
+        },
+        "startedOn": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/FocusStatus"
+        },
+        "targetRate": {
+          "description": "The goal: at most this share of chances over the focus's games.",
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "baselineChances",
+        "baselineEvents",
+        "baselineRate",
+        "gamesN",
+        "gamesPlayed",
+        "label",
+        "moreChances",
+        "outcome",
+        "progress",
+        "seriesKey",
+        "side",
+        "startedOn",
+        "status",
+        "targetRate"
+      ],
+      "type": "object"
+    },
+    "PlanRate": {
+      "additionalProperties": false,
+      "description": "A rate per chance with its n and its 80% Wilson range (null without a chance).",
+      "properties": {
+        "chances": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "events": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "high": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "low": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "rate": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "chances",
+        "events",
+        "high",
+        "low",
+        "rate"
+      ],
+      "type": "object"
+    },
+    "PlanSide": {
+      "description": "The colour a focus counts (ADR 0082): `both` counts every game.",
+      "enum": [
+        "both",
+        "white",
+        "black"
+      ],
+      "type": "string"
+    },
+    "PlanTraining": {
+      "additionalProperties": false,
+      "properties": {
+        "activeItems": {
+          "description": "Positions waiting in the trainer (not held out, not retired).",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "lastMonth": {
+          "$ref": "#/$defs/TrainingWindow"
+        },
+        "lastWeek": {
+          "$ref": "#/$defs/TrainingWindow"
+        }
+      },
+      "required": [
+        "activeItems",
+        "lastMonth",
+        "lastWeek"
+      ],
+      "type": "object"
+    },
     "Score": {
       "description": "An engine evaluation from WHITE's point of view: `{\"cp\": n}` (centipawns, positive = White\nbetter) or `{\"mate\": n}` (moves to mate, positive = White mates).",
       "oneOf": [
@@ -510,6 +782,85 @@
           "type": "object"
         }
       ]
+    },
+    "SourceEfficacy": {
+      "additionalProperties": false,
+      "description": "\"Is it working?\" for one source: the weakness rate per chance in games before its first\ndrill and from it on.",
+      "properties": {
+        "after": {
+          "$ref": "#/$defs/PlanRate"
+        },
+        "before": {
+          "$ref": "#/$defs/PlanRate"
+        },
+        "drilled": {
+          "description": "Items of the source drilled at least once.",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "firstDrill": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "label": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "verdict": {
+          "$ref": "#/$defs/EfficacyVerdict"
+        }
+      },
+      "required": [
+        "after",
+        "before",
+        "drilled",
+        "firstDrill",
+        "label",
+        "source",
+        "verdict"
+      ],
+      "type": "object"
+    },
+    "SourceTraining": {
+      "additionalProperties": false,
+      "description": "One trainer source's attempts in a window.",
+      "properties": {
+        "attempts": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "firstTryRate": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "label": {
+          "type": "string"
+        },
+        "right": {
+          "description": "Attempts answered right (each is the item's first try that day, ADR 0090 §5).",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "attempts",
+        "firstTryRate",
+        "label",
+        "right",
+        "source"
+      ],
+      "type": "object"
     },
     "TimeClass": {
       "description": "`CoachingInput.timeClass`.",
@@ -623,6 +974,59 @@
       ],
       "type": "object"
     },
+    "TrainingWindow": {
+      "additionalProperties": false,
+      "description": "The trainer over the last `days` UTC days, today included.",
+      "properties": {
+        "attempts": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "bySource": {
+          "description": "Per source, only sources with an attempt in the window.",
+          "items": {
+            "$ref": "#/$defs/SourceTraining"
+          },
+          "type": "array"
+        },
+        "days": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "daysPractised": {
+          "description": "Distinct days with at least one attempt.",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "firstTryRate": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "itemsRetired": {
+          "description": "Positions retired in the window (three clean passes).",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "right": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "attempts",
+        "bySource",
+        "days",
+        "daysPractised",
+        "firstTryRate",
+        "itemsRetired",
+        "right"
+      ],
+      "type": "object"
+    },
     "WeaknessState": {
       "description": "Weakness timeline state (zod `WeaknessState`).",
       "enum": [
@@ -694,6 +1098,17 @@
         "$ref": "#/$defs/MetricDelta"
       },
       "type": "array"
+    },
+    "plan": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PlanContext"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "ADR 0094: the account's verified owner's plan (focus, training, \"Is it working?\"),\nattached by the weekly schedule; absent for an account without a verified owner, or one\nwith nothing to say. Never built by R2's weekly-input builder."
     },
     "timeClass": {
       "$ref": "#/$defs/TimeClass"

@@ -91,3 +91,54 @@ pub fn v3_input(name: &str) -> CoachingInput {
     serde_json::from_value(merge(&v2, &trajectory()))
         .unwrap_or_else(|e| panic!("v3 fixture {name} does not deserialize: {e}"))
 }
+
+/// ADR 0094: a plan context with every field set (a running focus too early to tell, a week and
+/// a month of practice, a verdict per drilled source and the pattern comparison), so every
+/// path of the plan is citable in tests.
+pub fn plan_fixture() -> crate::plan::PlanContext {
+    serde_json::from_value(serde_json::json!({
+        "asOf": "2026-11-23",
+        "focus": {
+            "seriesKey": "W4.missed", "label": "Missing a mate", "side": "both",
+            "startedOn": "2026-11-16", "targetRate": 0.11, "gamesN": 20, "gamesPlayed": 6,
+            "progress": { "events": 1, "chances": 9, "rate": 0.111, "low": 0.03, "high": 0.3 },
+            "status": "too_early", "moreChances": 1, "outcome": null,
+            "baselineRate": 0.14, "baselineEvents": 13, "baselineChances": 91
+        },
+        "training": {
+            "lastWeek": {
+                "days": 7, "daysPractised": 4, "attempts": 30, "right": 21, "firstTryRate": 0.7,
+                "itemsRetired": 2,
+                "bySource": [
+                    { "source": "W4.missed", "label": "Missing a mate", "attempts": 10,
+                      "right": 8, "firstTryRate": 0.8 },
+                    { "source": "blunder", "label": "Blunders", "attempts": 20, "right": 13,
+                      "firstTryRate": 0.65 }
+                ]
+            },
+            "lastMonth": {
+                "days": 30, "daysPractised": 9, "attempts": 70, "right": 45,
+                "firstTryRate": 0.643, "itemsRetired": 3,
+                "bySource": [
+                    { "source": "W4.missed", "label": "Missing a mate", "attempts": 25,
+                      "right": 18, "firstTryRate": 0.72 }
+                ]
+            },
+            "activeItems": 41
+        },
+        "isItWorking": [
+            { "source": "W4.missed", "label": "Missing a mate", "drilled": 12,
+              "firstDrill": "2026-11-02",
+              "before": { "events": 13, "chances": 91, "rate": 0.143, "low": 0.1, "high": 0.19 },
+              "after": { "events": 2, "chances": 18, "rate": 0.111, "low": 0.04, "high": 0.25 },
+              "verdict": "too_early" }
+        ],
+        "patterns": {
+            "since": "2026-11-02",
+            "drilled": { "events": 30, "chances": 40, "rate": 0.75, "low": 0.65, "high": 0.83 },
+            "heldOut": { "events": 6, "chances": 12, "rate": 0.5, "low": 0.32, "high": 0.68 },
+            "verdict": "too_early"
+        }
+    }))
+    .expect("the plan fixture parses")
+}

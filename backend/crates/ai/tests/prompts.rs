@@ -431,7 +431,9 @@ fn synthetic_input() -> CoachingInput {
 /// its value allows.
 #[test]
 fn every_token_form_the_prompts_teach_is_accepted_by_the_validator() {
-    let ev = build_evidence(&synthetic_input());
+    // The plan paths the chat v5 and weekly v2 prompts teach (ADR 0094) resolve against a plan.
+    let mut ev = build_evidence(&synthetic_input());
+    ai::plan::add_plan_evidence(&mut ev, &ai::testing::plan_fixture());
     let mut kinds = BTreeSet::new();
     let mut formats = BTreeSet::new();
     let mut checked = 0;
@@ -553,7 +555,8 @@ fn token_spans(line: &str) -> (Vec<String>, usize) {
 /// positions). This runs the square-membership, glue, format and path checks on every example.
 #[test]
 fn every_example_span_passes_the_validator_in_context() {
-    let ev = build_evidence(&synthetic_input());
+    let mut ev = build_evidence(&synthetic_input());
+    ai::plan::add_plan_evidence(&mut ev, &ai::testing::plan_fixture());
     let mut spans_checked = 0;
     for p in PROMPTS {
         let text = render_template(p.text, &vars_for(p.id)).unwrap();
@@ -790,7 +793,8 @@ fn v3_prompts_teach_the_trajectory_and_its_honest_words() {
         assert!(!load_prompt(id, v).unwrap().text.contains("trajectory"));
     }
     assert!(REPORT_PROMPT_SET.contains(&("report/report", 3)));
-    assert!(ai::prompts::CHAT_PROMPT_SET.contains(&("chat/system", 4)));
+    // ADR 0094: the set moved on to v5, which keeps v4's text.
+    assert!(ai::prompts::CHAT_PROMPT_SET.contains(&("chat/system", 5)));
 }
 
 /// The chat context a v3 input gives the model (a snapshot of its trajectory part): the peak,
@@ -832,4 +836,89 @@ fn the_chat_context_carries_the_trajectory_and_its_refs() {
     // A v2 input's context has no trajectory.
     let v2 = ai::chat::context::build_chat_context(&ai::testing::v2_input("b2-rapid"));
     assert!(v2.get("trajectory").is_none());
+}
+
+// ---- the player's plan (ADR 0094) -----------------------------------------------------------
+
+/// Chat v5 and weekly v2 teach the plan: acknowledge practice, connect the focus rate to games,
+/// suggest the next drill, and say "too early" honestly. Their old versions stay unchanged for
+/// stored hashes, and the sets use the new ones.
+#[test]
+fn plan_prompts_teach_the_plan_and_its_honest_words() {
+    let chat = load_prompt("chat/system", 5).unwrap().text;
+    assert!(
+        chat.starts_with(
+            load_prompt("chat/system", 4)
+                .unwrap()
+                .text
+                .split("## Plain words")
+                .next()
+                .unwrap()
+                .replace(
+                    "the `<coaching_context>`, the `<anchor>` blocks",
+                    "the `<coaching_context>`, the `<plan_context>`, the `<anchor>` blocks",
+                )
+                .as_str()
+        )
+    );
+    for f in [
+        "`<plan_context>`",
+        "`focus`",
+        "`targetRate`",
+        "`too_early`",
+        "`moreChances`",
+        "`daysPractised`",
+        "`firstTryRate`",
+        "`isItWorking`",
+        "`{{num:plan.training.lastWeek.daysPractised|int}}`",
+        "suggest the next drill",
+        "Do not invent practice or progress",
+        "too early to tell",
+        "belongs to this player only",
+    ] {
+        assert!(chat.contains(f), "chat/system v5 says {f:?}");
+    }
+    let weekly = load_prompt("weekly-review/system", 2).unwrap().text;
+    assert!(weekly.starts_with(load_prompt("weekly-review/system", 1).unwrap().text));
+    for f in [
+        "`plan`",
+        "`plan.training.lastWeek`",
+        "`{{num:plan.training.lastWeek.daysPractised|int}}`",
+        "do not invent any",
+        "outcomes",
+        "too early to tell",
+        "Without `plan`",
+    ] {
+        assert!(weekly.contains(f), "weekly-review/system v2 says {f:?}");
+    }
+    assert!(
+        !load_prompt("chat/system", 4)
+            .unwrap()
+            .text
+            .contains("plan_context")
+    );
+    assert!(
+        !load_prompt("weekly-review/system", 1)
+            .unwrap()
+            .text
+            .contains("`plan`")
+    );
+    assert!(ai::prompts::CHAT_PROMPT_SET.contains(&("chat/system", 5)));
+    assert!(ai::prompts::WEEKLY_PROMPT_SET.contains(&("weekly-review/system", 2)));
+    // The requests send the set versions.
+    assert!(
+        ai::chat::engine::chat_system_blocks()[1]
+            .text
+            .starts_with(chat.trim_end())
+    );
+    let b2 = ai::testing::load_fixture("b2-rapid");
+    let w: ai::output::weekly::WeeklyReviewInput = serde_json::from_value(serde_json::json!({
+        "inputVersion": "weekly-input-v1", "timeClass": b2["timeClass"], "band": b2["band"],
+        "weekStart": "2026-11-16", "weekEnd": "2026-11-22", "gamesThisWeek": 3,
+        "basis": b2["basis"], "adherence": null, "metricDeltas": [], "focusUpdates": [],
+        "exemplars": [], "changes": [],
+    }))
+    .unwrap();
+    let req = ai::generate::weekly::build_weekly_request(&w);
+    assert!(req.system[1].text.starts_with(weekly));
 }

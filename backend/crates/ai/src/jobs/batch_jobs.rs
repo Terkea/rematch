@@ -389,7 +389,7 @@ async fn schedule_weekly(d: &BatchDeps) -> anyhow::Result<Value> {
                 continue;
             }
         };
-        let input = match serde_json::from_value::<WeeklyReviewInput>(raw.clone()) {
+        let mut input = match serde_json::from_value::<WeeklyReviewInput>(raw.clone()) {
             Ok(i) if i.check_bounds().is_ok() => i,
             _ => {
                 tracing::warn!(account = %account_id, "invalid weekly review input");
@@ -404,6 +404,16 @@ async fn schedule_weekly(d: &BatchDeps) -> anyhow::Result<Value> {
         if !d.within_budget(account_id, plan, now).await {
             continue;
         }
+        // ADR 0094: the verified owner's plan, the review's one reader (ADR-FIX-N-1).
+        let changes = input.changes.clone();
+        input.plan = crate::plan::owner_plan(&d.pool, account_id, tc, now, &|k| {
+            changes
+                .iter()
+                .find(|c| c.series_key == k)
+                .map(|c| c.label.clone())
+        })
+        .await;
+        let raw = serde_json::to_value(&input).unwrap_or(raw);
         if !batches {
             if request_weekly_review(&d.pool, &d.queue, account_id, tc, week_start, &input)
                 .await?

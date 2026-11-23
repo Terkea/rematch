@@ -73,7 +73,7 @@ macro_rules! prompt {
     };
 }
 
-static TABLE: [Prompt; 42] = [
+static TABLE: [Prompt; 44] = [
     prompt!("core/rules", 1),
     prompt!("core/tokens", 1),
     prompt!("core/tokens", 2),
@@ -107,6 +107,8 @@ static TABLE: [Prompt; 42] = [
     prompt!("tone/b5", 2),
     prompt!("repair/repair", 1),
     prompt!("weekly-review/system", 1),
+    // ADR 0094: v2 reads the player's plan (focus, training, "Is it working?").
+    prompt!("weekly-review/system", 2),
     prompt!("weekly-review/task", 1),
     prompt!("weekly-review/output", 1),
     prompt!("weakness-change/system", 1),
@@ -116,6 +118,8 @@ static TABLE: [Prompt; 42] = [
     prompt!("chat/system", 2),
     prompt!("chat/system", 3),
     prompt!("chat/system", 4),
+    // ADR 0094: v5 reads the player's plan (`<plan_context>`).
+    prompt!("chat/system", 5),
     prompt!("chat/repair", 1),
     prompt!("chat-summary/system", 1),
     prompt!("chat-summary/task", 1),
@@ -177,7 +181,10 @@ pub const CHAT_PROMPT_SET: &[(&str, u32)] = &[
     // ADR 0085: v3 adds the colour split, the peer benchmark's words and the glossary.
     // ADR 0089: v4 adds the rating history (`trajectory`), so "what changed since I was at my
     // best?" is answered from cited numbers.
-    ("chat/system", 4),
+    // ADR 0094: v5 adds the player's plan (`<plan_context>`): acknowledge practice, connect the
+    // focus rate to games, suggest the next drill, and say "too early" honestly. v4 stays for
+    // stored hashes.
+    ("chat/system", 5),
     ("chat/repair", 1),
     ("core/glossary", 2),
 ];
@@ -252,7 +259,8 @@ pub fn render_template(text: &str, vars: &[(&str, &str)]) -> Result<String, Prom
 pub const WEEKLY_PROMPT_SET: &[(&str, u32)] = &[
     ("core/rules", 1),
     ("core/tokens", 2),
-    ("weekly-review/system", 1),
+    // ADR 0094: v2 adds the player's plan. v1 stays for stored hashes.
+    ("weekly-review/system", 2),
     ("weekly-review/output", 1),
     ("weekly-review/task", 1),
     ("repair/repair", 1),

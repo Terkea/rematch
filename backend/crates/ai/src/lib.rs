@@ -13,6 +13,7 @@ pub mod generate;
 pub mod input;
 pub mod jobs;
 pub mod output;
+pub mod plan;
 pub mod prompts;
 pub mod segments;
 pub mod testing;
