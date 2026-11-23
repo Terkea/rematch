@@ -42,7 +42,7 @@ export function TrainView({ scope, page }: { scope: CoachScope | null; page: Tra
     <div className="flex flex-col gap-12">
       <div className="flex flex-col gap-5">
         <PageHeading title="Train" lede={LEDE} />
-        {scope ? (
+        {scope && scope.options.length > 1 ? (
           <ScopeRow>
             <CoachScopeSwitch scope={scope} basePath="/app/train" />
           </ScopeRow>
@@ -158,7 +158,7 @@ function Efficacy({ page }: { page: TrainPage }) {
             </p>
             {r.verdict === "too_early" && r.before.chances > 0 ? (
               <p className="m-0 text-sm text-ink-soft [font-variant-numeric:lining-nums]">
-                Before your first drill: {rateText(r.before)}.
+                {r.firstDrill ? "Before your first drill" : "So far"}: {rateText(r.before)}.
               </p>
             ) : null}
           </li>

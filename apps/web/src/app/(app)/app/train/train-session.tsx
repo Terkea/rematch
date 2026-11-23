@@ -208,7 +208,7 @@ export function TrainSession({
         />
         <div className="flex min-w-0 max-w-md flex-1 flex-col gap-5">
           <p className="m-0 text-base text-ink">
-            {colour === "white" ? "White" : "Black"} to move. {item.label.split(",")[0]}.
+            {colour === "white" ? "White" : "Black"} to move.
           </p>
           {phase.kind === "find" ? (
             <p className="m-0 text-base text-ink-soft">
@@ -300,6 +300,12 @@ function RevealPanel({
         {result.correct ? <Icon icon={CheckCircleIcon} className="mt-1 shrink-0" /> : null}
         <span>{result.feedback}</span>
       </p>
+      {result.correct ? null : (
+        <p className="m-0 text-base text-ink">
+          Your move, <NotationText moveNumber={moveNumber} color={colour} san={result.move.san} />,
+          is not one of the engine's good moves here.
+        </p>
+      )}
       {result.line.length > 0 ? (
         <div className="flex flex-col gap-1">
           <p className="m-0 text-sm text-ink-soft">

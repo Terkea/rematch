@@ -39,6 +39,8 @@ async function play(page: Page, uci: string): Promise<void> {
 }
 
 async function shots(page: Page, name: string): Promise<void> {
+  // Let the pen marks finish drawing.
+  await page.waitForTimeout(1500);
   for (const scheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme: scheme });
     for (const width of [1440, 390]) {
