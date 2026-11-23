@@ -124,6 +124,44 @@ pub fn by_name(name: &str) -> Option<Suite> {
     }
 }
 
+/// A suite read from JSON (the [`Suite`] shape), for an experiment that needs players the named
+/// suites do not have (`cli bench run --suite-file`, ADR 0106). It is checked before anything
+/// runs: at least one player, unique names, known flaws with a rate in `(0, 1]`, at least one
+/// game each, ascending checkpoints of at least one game, and positive nodes and opponents.
+pub fn from_json(json: &str) -> anyhow::Result<Suite> {
+    let s: Suite = serde_json::from_str(json)?;
+    anyhow::ensure!(!s.name.trim().is_empty(), "the suite has no name");
+    anyhow::ensure!(!s.players.is_empty(), "the suite has no players");
+    anyhow::ensure!(s.nodes > 0, "nodes must be positive");
+    anyhow::ensure!(s.opponents > 0, "opponents must be positive");
+    anyhow::ensure!(
+        !s.checkpoints.is_empty() && s.checkpoints[0] > 0,
+        "checkpoints must be positive game counts"
+    );
+    anyhow::ensure!(
+        s.checkpoints.windows(2).all(|w| w[0] < w[1]),
+        "checkpoints must be strictly ascending"
+    );
+    let mut names = std::collections::BTreeSet::new();
+    for p in &s.players {
+        anyhow::ensure!(
+            names.insert(p.name.as_str()),
+            "player {} is listed twice",
+            p.name
+        );
+        anyhow::ensure!(p.games > 0, "player {} has no games", p.name);
+        if let Some((id, rate)) = &p.flaw {
+            anyhow::ensure!(
+                *rate > 0.0 && *rate <= 1.0,
+                "player {}: rate {rate} is not in (0, 1]",
+                p.name
+            );
+            anyhow::ensure!(p.flaw().is_some(), "player {}: no flaw {id:?}", p.name);
+        }
+    }
+    Ok(s)
+}
+
 /// The games of a player: colours alternate, opponents are drawn from `opponents` fixed
 /// identities rated `RATING +- 100`, games are [`GAME_SPACING_HOURS`] apart and the last one is
 /// at [`ANCHOR`] minus one spacing. Seeds derive from the player's seed.
@@ -193,6 +231,29 @@ mod tests {
         assert!(a.iter().all(|g| g.played_at < ANCHOR));
         assert!(a.windows(2).all(|w| w[0].played_at < w[1].played_at));
         assert!(a.iter().all(|g| (g.opponent_rating - RATING).abs() <= 100));
+    }
+
+    #[test]
+    fn a_suite_file_round_trips_and_is_checked() {
+        let json = serde_json::to_string(&smoke()).unwrap();
+        assert_eq!(from_json(&json).unwrap(), smoke());
+        let mut bad = smoke();
+        bad.players[1].name = bad.players[0].name.clone();
+        let e = from_json(&serde_json::to_string(&bad).unwrap()).unwrap_err();
+        assert!(e.to_string().contains("twice"), "{e}");
+        let mut bad = smoke();
+        bad.players[0].flaw = Some(("juggle".to_owned(), 0.1));
+        assert!(from_json(&serde_json::to_string(&bad).unwrap()).is_err());
+        let mut bad = smoke();
+        bad.players[0].flaw = Some(("hang".to_owned(), 0.0));
+        assert!(from_json(&serde_json::to_string(&bad).unwrap()).is_err());
+        let mut bad = smoke();
+        bad.checkpoints = vec![45, 30];
+        assert!(from_json(&serde_json::to_string(&bad).unwrap()).is_err());
+        let mut bad = smoke();
+        bad.players.clear();
+        assert!(from_json(&serde_json::to_string(&bad).unwrap()).is_err());
+        assert!(from_json("{}").is_err());
     }
 
     #[test]
