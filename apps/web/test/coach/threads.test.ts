@@ -75,8 +75,11 @@ describe("threads", () => {
     // A new start (blitz, not a repeat of the seeded rapid ones) is refused.
     const r = await createConversation(db, a, { accountId, timeClass: "blitz", anchor: null });
     expect(r.kind).toBe("rate_limited");
+    // Another user is not counted against them (on an account of their own: F10, only a
+    // verified link asks, and an account has one verified owner).
+    const { accountId: own } = await seedAccount(db, { userId: b, username: "b-own" });
     expect(
-      (await createConversation(db, b, { accountId, timeClass: "rapid", anchor: null })).kind,
+      (await createConversation(db, b, { accountId: own, timeClass: "rapid", anchor: null })).kind,
     ).toBe("created");
   });
 

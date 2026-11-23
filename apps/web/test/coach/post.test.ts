@@ -165,8 +165,9 @@ describe("postUserMessage", () => {
     if (r.kind !== "rate_limited") throw new Error("not limited");
     expect(r.retryAt.getTime()).toBeGreaterThan(Date.now());
     expect(r.retryAt.getTime()).toBeLessThanOrEqual(Date.now() + CHAT_POST_LIMIT.windowMs + 1000);
-    // Another user's posts are not counted against them.
-    const theirs = await seedThread(db, { userId: b, accountId, timeClass: "rapid" });
+    // Another user's posts are not counted against them (on an account of their own: F10).
+    const { accountId: own } = await seedAccount(db, { userId: b, username: "b-own" });
+    const theirs = await seedThread(db, { userId: b, accountId: own, timeClass: "rapid" });
     expect((await postUserMessage(db, b, theirs.threadId, "Mine", null)).kind).toBe("posted");
   });
 });
