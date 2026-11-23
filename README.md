@@ -2,9 +2,11 @@
 
 # Rematch, chess improver
 
-Stop losing to the same move.
+## Chess, taught the way you learn.
 
-Rematch is an open-source coach for chess.com players. Stockfish checks every move of your games, Rematch names the mistakes you keep repeating, drills you on your own missed moments and tells you, with honest numbers, whether it's working.
+A patient coach that learns your patterns, re-evaluates them after every game and points you at the one thing that will take you higher. The engine, the statistics and the AI are just how it works out what to teach you next.
+
+Stop losing to the same move. Rematch is free and open source, for chess.com players, and it tells you with honest numbers whether it's working.
 
 For anyone who knows how the pieces move, up to about 2000. Above 2000 it hasn't been tested with real players yet; if you're 2000+, [tell us where it's wrong](https://github.com/Terkea/rematch/issues/new?template=coaching_idea.yml).
 
