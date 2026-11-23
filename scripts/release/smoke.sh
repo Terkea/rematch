@@ -31,6 +31,8 @@ export REMATCH_DATA_DIR="$host_root/data"
 # The sidecar refuses to start in production without a real ANTHROPIC_API_KEY; the smoke test
 # checks the image, not the key, so it runs the sidecar in development mode with no credential.
 export AI_SIDECAR_ENV=development
+# Git Bash would rewrite the in-container paths below (/usr/share/...) into Windows paths.
+export MSYS_NO_PATHCONV=1
 # Ignore any COMPOSE_* settings of the calling shell.
 export COMPOSE_PROFILES= COMPOSE_FILE=
 
