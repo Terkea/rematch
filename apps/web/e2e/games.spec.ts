@@ -90,8 +90,8 @@ test("overview, explorer and review, end to end", async ({ browser, request }, i
 
   await test.step("2. Rapid in the time-control switch", async () => {
     await hydrated(page, "[data-filter-bar] a");
-    // The shared filter bar (T3): its desktop copy is the one shown at this width.
-    const tc = page.locator("[data-filter-bar] > div").getByRole("group", { name: "Time control" });
+    // The overview's time control sits under the title: it scopes the whole page (ADR 0092).
+    const tc = page.getByRole("navigation", { name: "Time control" });
     await tc.getByRole("link", { name: /^Rapid/ }).click();
     // Rapid is the default class, so its canonical URL names no class (ADR 0083).
     await expect(page).toHaveURL(/\/app$/);

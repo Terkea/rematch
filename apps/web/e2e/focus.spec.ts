@@ -71,6 +71,26 @@ test("setting a focus on a weakness page puts its card on the overview", async (
       await card.screenshot({ path: `../../.shots/focus/card-${width}-${theme}.png` });
     }
   }
+  // The whole overview (ADR 0092): one tall viewport per capture, once the trend has drawn
+  // ("Tried and rejected": a full-page capture caught it mid-measure).
+  for (const theme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: theme, reducedMotion: "reduce" });
+    for (const width of [1440, 390]) {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+      await page.screenshot({ path: `../../.shots/overview/first-${width}-${theme}.png` });
+      const height = await page.evaluate(() => document.documentElement.scrollHeight);
+      await page.setViewportSize({ width, height });
+      await page.evaluate(() => document.fonts.ready);
+      await expect(page.locator("[data-chart='trend'] svg[role='img']")).toBeVisible();
+      await page.waitForTimeout(500);
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        ),
+      ).toBeLessThanOrEqual(0);
+      await page.screenshot({ path: `../../.shots/overview/${width}-${theme}.png` });
+    }
+  }
   await page.emulateMedia({ colorScheme: "light" });
   await page.setViewportSize({ width: 1440, height: 900 });
 
