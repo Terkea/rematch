@@ -122,41 +122,44 @@ The styleguide's sample game is a real Lichess blitz game, so here is what the p
 
 #### The engine
 
-Stockfish 19, the official `stockfish-linux-x86-64-universal` build, downloaded in the Docker build and checked against a pinned SHA-256 ([`backend/Dockerfile`](backend/Dockerfile)). At start the worker reads the engine's banner and refuses anything that isn't Stockfish 19. The pool runs `min(cores − 2, 8)` engines (at least 1; `WORKER_POOL_SIZE` overrides it), starts two at a time because each cold start loads the NNUE net, replaces a crashed engine and retries its search once ([`pool.rs`](backend/crates/engine/src/pool.rs), [`start.rs`](backend/crates/worker/src/start.rs)).
+The engine is **Stockfish 19**, the official `stockfish-linux-x86-64-universal` build, downloaded in the Docker build and checked against a pinned SHA-256 ([`backend/Dockerfile`](backend/Dockerfile)). At start the worker reads the engine's banner and refuses anything that isn't Stockfish 19. The pool runs `min(cores − 2, 8)` engines (at least 1; `WORKER_POOL_SIZE` overrides it), starts two at a time because each cold start loads the NNUE net, replaces a crashed engine and retries its search once ([`pool.rs`](backend/crates/engine/src/pool.rs), [`start.rs`](backend/crates/worker/src/start.rs)).
 
 #### The protocol
 
-is `sf19-n300k-v1`: 300,000 nodes per position, MultiPV 1, Stockfish's default `Threads` and `Hash`, a 30 s timeout ([`types.rs`](backend/crates/engine/src/types.rs)). We fix nodes rather than time or depth, because a node count gives the same answer on a slow laptop and a fast server. Evals are stored once per position and protocol in `position_evals`, keyed by the position, and shared by every user, so a common position is never searched twice. A protocol change means re-analysis ([ADR 0007](docs/decisions/0007-analysis-protocol-pinned.md)).
+The protocol is `sf19-n300k-v1`: 300,000 nodes per position, MultiPV 1, Stockfish's default `Threads` and `Hash`, a 30 s timeout ([`types.rs`](backend/crates/engine/src/types.rs)). We fix nodes rather than time or depth, because a node count gives the same answer on a slow laptop and a fast server. Evals are stored once per position and protocol in `position_evals`, keyed by the position, and shared by every user, so a common position is never searched twice. A protocol change means re-analysis ([ADR 0007](docs/decisions/0007-analysis-protocol-pinned.md)).
 
 #### Win chance
 
 We use the Lichess formulas, not chess.com's unpublished ones ([ADR 0008](docs/decisions/0008-lichess-win-percent-classification.md), [`score.rs`](backend/crates/chess-core/src/score.rs)):
 
 ```text
-cp       = centipawns for the mover, clamped to ±1000; any mate counts as ±1000
-chances  = 2 / (1 + exp(−0.00368208 · cp)) − 1          in [−1, 1]
-W        = 50 + 50 · chances                            win chance, 0 to 100
-ΔW       = max(0, W_before − W_after)                   from the mover's side
+cp = the mover's centipawns, clamped to ±1000 (any mate is ±1000)
+chances = 2 / (1 + exp(−0.00368208 · cp)) − 1
+W = 50 + 50 · chances
+ΔW = max(0, W_before − W_after)
 ```
+
+`chances` runs from −1 to 1, `W` is the win chance from 0 to 100, and ΔW is measured from the mover's side.
 
 So +100 is about 59%, +300 about 75%.
 
 #### Judgements
 
-([`judgement.rs`](backend/crates/chess-core/src/judgement.rs)): a drop in `chances` of at least 0.3 is a blunder, 0.2 a mistake and 0.1 an inaccuracy. On the 0 to 100 scale that is ΔW ≥ 15, 10 and 5. Mates get their own rule, as on Lichess: walking into a forced mate is a blunder unless you were already lost by more than 700 cp (mistake) or 999 cp (inaccuracy), and letting a forced mate of your own slip is judged by how good the position still is afterwards, with the same 700 and 999 cut-offs.
+A drop in `chances` of at least 0.3 is a blunder, 0.2 a mistake and 0.1 an inaccuracy ([`judgement.rs`](backend/crates/chess-core/src/judgement.rs)). On the 0 to 100 scale that is ΔW ≥ 15, 10 and 5. Mates get their own rule, as on Lichess: walking into a forced mate is a blunder unless you were already lost by more than 700 cp (mistake) or 999 cp (inaccuracy), and letting a forced mate of your own slip is judged by how good the position still is afterwards, with the same 700 and 999 cut-offs.
 
 #### Accuracy per move
 
-is Lichess's curve:
+Per-move accuracy is Lichess's curve:
 
 ```text
-accuracy = clamp(103.1668100711649 · exp(−0.04354415386753951 · ΔW) − 3.166924740191411 + 1, 0, 100)
-           (100 when the move didn't lose anything)
+accuracy = 103.1668100711649 · exp(−0.04354415386753951 · ΔW) − 3.166924740191411 + 1
 ```
+
+It is clamped to [0, 100], and a move that lost nothing scores 100.
 
 #### Accuracy per game
 
-is a port of lila's `AccuracyPercent.gameAccuracy` ([ADR-FIX-C-1](docs/decisions/ADR-FIX-C-1-lila-accuracy-and-pre-game-ratings.md), [`game_accuracy.rs`](backend/crates/chess-core/src/game_accuracy.rs)). It averages two means of the per-move accuracies:
+Game accuracy is a port of lila's `AccuracyPercent.gameAccuracy` ([ADR-FIX-C-1](docs/decisions/ADR-FIX-C-1-lila-accuracy-and-pre-game-ratings.md), [`game_accuracy.rs`](backend/crates/chess-core/src/game_accuracy.rs)). It averages two means of the per-move accuracies:
 
 - a volatility-weighted mean: each move is weighted by the standard deviation of White's win chance over a sliding window of `clamp(moves / 10, 2, 8)` positions, clamped to [0.5, 12], so moves in sharp positions count more;
 - a harmonic mean, with each move floored at 1, so a single 0 can't zero the game.
@@ -252,17 +255,15 @@ Some rules that keep the counts honest:
 
 #### A rate per chance is a Beta posterior
 
-([`posterior.rs`](backend/crates/profile-core/src/stats/posterior.rs), [ADR-R2-5](docs/decisions/ADR-R2-5-posterior-priority-conventions.md)):
+The posterior comes from [`posterior.rs`](backend/crates/profile-core/src/stats/posterior.rs) ([ADR-R2-5](docs/decisions/ADR-R2-5-posterior-priority-conventions.md)):
 
 ```text
-window    only the last 183 days; each game weighted 0.5^(age_days / 60)
-posterior Beta(n0 · μ + k,  n0 · (1 − μ) + n − k)
-          k, n = weighted events and chances
-          μ    = the peer rate (Beta(1, 1) when there are no peers)
-          n0   = prior strength per key, in chances: W1 300, W2 100, W3 60, W4 40,
-                 W5/W6 30, W7 40, W8 80, W9a 30, W9b 40, W9c 60, W10 600, W11 300
-range     the 10% and 90% quantiles: an equal-tailed 80% interval
+weight = 0.5^(age_days / 60), games older than 183 days left out
+posterior = Beta(n0 · μ + k, n0 · (1 − μ) + n − k)
+range = the 10% and 90% quantiles of the posterior
 ```
+
+Here k and n are the weighted events and chances, μ is the peer rate (a flat Beta(1, 1) prior when there are no peers), and n0 is the prior strength in chances: W1 300, W2 100, W3 60, W4 40, W5 and W6 30, W7 40, W8 80, W9a 30, W9b 40, W9c 60, W10 600, W11 300. The range is an equal-tailed 80% interval.
 
 The prior pulls a thin record towards what players like you do. Ten chances can't move a W10 rate far from the peer rate (n0 = 600); a few hundred can. Every interval in the product is 80%, because 95% ranges on 30 games are so wide they say nothing.
 
@@ -298,7 +299,7 @@ A rate means little alone. 4% hanging pieces is good at 800 and poor at 2000. So
 
 #### The default: your own opponents
 
-([ADR 0080](docs/decisions/0080-chesscom-peer-benchmark.md), [ADR 0081](docs/decisions/0081-peer-benchmark-pooled-rate.md)). Every analysed game has a second player, and their moves were analysed too. The opponent's side is measured with the same extractors, from the cached evals, in their colour.
+The default peers are your own opponents ([ADR 0080](docs/decisions/0080-chesscom-peer-benchmark.md), [ADR 0081](docs/decisions/0081-peer-benchmark-pooled-rate.md)). Every analysed game has a second player, and their moves were analysed too. The opponent's side is measured with the same extractors, from the cached evals, in their colour.
 
 - Who counts: distinct opponents (case-insensitive usernames) whose rating was within ±150 of your latest pre-game rating, on chess.com's own scale, in the last 183 days. The page says it plainly: "Players you've faced on chess.com, rated about 667–967".
 - Pooling: each opponent contributes at most one game's worth of chances, recency-weighted with the same 60-day half-life, so someone you've played 40 times counts as much as someone you've played once. The peer rate is Σ k / Σ n over opponents. Its spread comes from a cluster bootstrap over opponents, 2,000 resamples with the fixed seed `0x00810081`, so the same games give the same rows.
@@ -307,7 +308,7 @@ A rate means little alone. 4% hanging pieces is good at 800 and poor at 2000. So
 
 #### The Lichess database
 
-([ADR-R2-9](docs/decisions/ADR-R2-9-lichess-db-data-pipeline.md)). `lichess-db` is an operator command that reads one CC0 monthly dump from `database.lichess.org`. The dump is never stored: about 30 GB of zstd is streamed through a SHA-256 hasher and a decoder in under 48 MiB of memory, and a build is only activated after the whole file's hash matches `sha256sums.txt`. It builds two things:
+`lichess-db` ([ADR-R2-9](docs/decisions/ADR-R2-9-lichess-db-data-pipeline.md)) is an operator command that reads one CC0 monthly dump from `database.lichess.org`. The dump is never stored: about 30 GB of zstd is streamed through a SHA-256 hasher and a decoder in under 48 MiB of memory, and a build is only activated after the whole file's hash matches `sha256sums.txt`. It builds two things:
 
 - The opening explorer ([ADR-R2-10](docs/decisions/ADR-R2-10-opening-explorer-build.md)): about 2 million games sampled across the whole month by a hash of the game URL, the first 30 plies of each, counted by position, rating band of the two players' mean rating and time class. Your opening tree marks a move as theory when its position has at least 50 explorer games and the move at least 5% of them ([`repertoire.rs`](backend/crates/profile-core/src/openings/repertoire.rs), [ADR-R2-8](docs/decisions/ADR-R2-8-repertoire-and-verdicts.md)).
 - The band reference ([ADR-R2-11](docs/decisions/ADR-R2-11-band-reference-method.md)): per band and time class, 20 players × 10 games chosen by the smallest salted hash of their names (so no part of the month is favoured), each with at least 20 games in that time class. Names are stored only as salted hashes. Their games are analysed like yours, and a Beta-binomial is fitted over the players. It is used only with `BENCHMARK_SOURCE=lichess-bands`.
@@ -366,11 +367,11 @@ The web and the coach compute it with the same seeds and stream; a shared fixtur
 
 #### The sidecar
 
-([ADR 0062](docs/decisions/0062-claude-agent-sdk-sidecar.md)). Every interactive Claude call goes through `services/ai-sidecar`, a small Node service on the Claude Agent SDK, with no built-in tools, `settingSources: []`, an isolated working directory and pinned model ids. Rust stays in charge: it builds the prompts, owns the budgets, the circuit breaker and the metering, and validates everything. The sidecar's only database access is its chat session table, through a role that can't read anything else. Reports use `claude-sonnet-5-5`, chat too, and change notes and the weekly review `claude-haiku-5-5` ([ADR 0061](docs/decisions/0061-models-budgets-and-degradation.md)).
+Every interactive Claude call goes through `services/ai-sidecar` ([ADR 0062](docs/decisions/0062-claude-agent-sdk-sidecar.md)), a small Node service on the Claude Agent SDK, with no built-in tools, `settingSources: []`, an isolated working directory and pinned model ids. Rust stays in charge: it builds the prompts, owns the budgets, the circuit breaker and the metering, and validates everything. The sidecar's only database access is its chat session table, through a role that can't read anything else. Reports use `claude-sonnet-5-5`, chat too, and change notes and the weekly review `claude-haiku-5-5` ([ADR 0061](docs/decisions/0061-models-budgets-and-degradation.md)).
 
 #### Tools for the chat
 
-([`tools.rs`](backend/crates/ai/src/chat/tools.rs), [ADR 0064](docs/decisions/0064-ask-your-coach-chat.md)): `get_position`, `get_eval` (stored evals only), `get_games`, `get_weakness`, `get_opening_line`, `find_examples` (your own moves by weakness, motif, opening line or a move filter such as "a blunder in a winning endgame") and `analyse_position`, a fresh engine check after up to 4 moves for "what if" questions, which counts against your engine checks.
+The chat has seven tools ([`tools.rs`](backend/crates/ai/src/chat/tools.rs), [ADR 0064](docs/decisions/0064-ask-your-coach-chat.md)): `get_position`, `get_eval` (stored evals only), `get_games`, `get_weakness`, `get_opening_line`, `find_examples` (your own moves by weakness, motif, opening line or a move filter such as "a blunder in a winning endgame") and `analyse_position`, a fresh engine check after up to 4 moves for "what if" questions, which counts against your engine checks.
 
 #### Prompts are files
 
@@ -378,22 +379,20 @@ Each prompt is `prompts/<id>.v<n>.md`, embedded at compile time and never edited
 
 #### Facts by reference
 
-([ADR 0060](docs/decisions/0060-sectioned-generation-and-facts-by-reference.md), [`tokens.rs`](backend/crates/ai/src/validator/tokens.rs)). The model never types a move, a number or a date. It writes tokens, and the server fills in the value:
+The model never types a move, a number or a date. It writes tokens, and the server fills in the value ([ADR 0060](docs/decisions/0060-sectioned-generation-and-facts-by-reference.md), [`tokens.rs`](backend/crates/ai/src/validator/tokens.rs)):
 
-```text
-{{move:<gameId>:<ply>}}                 the move played
-{{best:<gameId>:<ply>}}                 the engine's best move there
-{{pv:<gameId>:<ply>:best|refutation:<n>}}   the n-th move of an engine line
-{{line:<lineKey>[:<n>]}}                an opening line, or its n-th move
-{{num:<path>|int|pct0|pct1|dec1|dec2|signed1}}   a number from the coaching input
-{{date:<path>}}                         a date from the coaching input
-{{sq:<square>}}                         a square
-{{eng:<evalId>:<line>[:<n>]}}           a fresh engine check (chat)
-```
+- `{{move:<gameId>:<ply>}}`: the move played;
+- `{{best:<gameId>:<ply>}}`: the engine's best move there;
+- `{{pv:<gameId>:<ply>:best|refutation:<n>}}`: the n-th move of an engine line;
+- `{{line:<lineKey>[:<n>]}}`: an opening line, or its n-th move;
+- `{{num:<path>|<format>}}`: a number from the coaching input, with the format `int`, `pct0`, `pct1`, `dec1`, `dec2` or `signed1`;
+- `{{date:<path>}}`: a date from the coaching input;
+- `{{sq:<square>}}`: a square;
+- `{{eng:<evalId>:<line>[:<n>]}}`: a fresh engine check, in the chat only.
 
 #### The validator
 
-([`text.rs`](backend/crates/ai/src/validator/text.rs), [`language.rs`](backend/crates/ai/src/validator/language.rs)) checks each paragraph in order: every citation is a real position; the token syntax parses; no fact appears outside a token (a free-text number, move or date is a `free_text_fact`); every token resolves, with a format that suits its value (`pct0` and `pct1` only on a rate in [0, 1], `int` only on a whole number, `signed1` only on an evaluation); no token is glued to a letter or digit; move and square tokens belong to the cited positions; and the language rules hold. Engine words ("winning", "mate", "advantage", "best move", "Stockfish") need engine evidence in the same paragraph, and "blunder" may not sit within four words of the engine's own move. Weakness paragraphs must use the likelihood phrase that matches P(improvement), "likely" only from 0.85, and causal claims are banned. [ADR 0093](docs/decisions/0093-report-validator-false-drops.md) loosened two rules that dropped honest prose: ordinals used as discourse ("First, …") and mate words in training advice ("practise mating patterns").
+The validator ([`text.rs`](backend/crates/ai/src/validator/text.rs), [`language.rs`](backend/crates/ai/src/validator/language.rs)) checks each paragraph in order: every citation is a real position; the token syntax parses; no fact appears outside a token (a free-text number, move or date is a `free_text_fact`); every token resolves, with a format that suits its value (`pct0` and `pct1` only on a rate in [0, 1], `int` only on a whole number, `signed1` only on an evaluation); no token is glued to a letter or digit; move and square tokens belong to the cited positions; and the language rules hold. Engine words ("winning", "mate", "advantage", "best move", "Stockfish") need engine evidence in the same paragraph, and "blunder" may not sit within four words of the engine's own move. Weakness paragraphs must use the likelihood phrase that matches P(improvement), "likely" only from 0.85, and causal claims are banned. [ADR 0093](docs/decisions/0093-report-validator-false-drops.md) loosened two rules that dropped honest prose: ordinals used as discourse ("First, …") and mate words in training advice ("practise mating patterns").
 
 #### Repair once, then drop
 

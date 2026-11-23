@@ -117,6 +117,8 @@ function writeHowItWorks() {
         "Every stage of Rematch with its real constants: import, Stockfish 19, enrichment, Syzygy, Maia-2, the weakness detectors, the statistics, peers, the coach and its validator, the trainer and the focus.",
       editUrl: `${GITHUB_BLOB.replace("/blob/", "/edit/")}/README.md`,
       sidebar: { order: 0 },
+      // The stage disclosures hold h3s; the contents list keeps to the page's two h2 sections.
+      tableOfContents: { maxHeadingLevel: 2 },
     }) +
       `> Source: the "How it works" section of [\`README.md\`](${GITHUB_BLOB}/README.md#how-it-works). Generated at build time; edit the README.\n\n` +
       howItWorksPage(readme, diagram),
