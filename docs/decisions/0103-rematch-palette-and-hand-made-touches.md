@@ -1,4 +1,4 @@
-# 0100. The Rematch palette, a crayon for celebrations and dad's handwriting
+# 0103. The Rematch palette, a crayon for celebrations and dad's handwriting
 
 - Status: accepted
 - Date: 2026-11-23
