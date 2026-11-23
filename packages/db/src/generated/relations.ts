@@ -12,6 +12,7 @@ import {
   coachConversations,
   coachingInputs,
   coachMessages,
+  focuses,
   gameMetrics,
   gameOpenings,
   gamePreviews,
@@ -147,6 +148,17 @@ export const coachingInputsRelations = relations(coachingInputs, ({ one, many })
   }),
 }));
 
+export const focusesRelations = relations(focuses, ({ one }) => ({
+  linkedAccount: one(linkedAccounts, {
+    fields: [focuses.accountId],
+    references: [linkedAccounts.id],
+  }),
+  user: one(user, {
+    fields: [focuses.userId],
+    references: [user.id],
+  }),
+}));
+
 export const gameMetricsRelations = relations(gameMetrics, ({ one }) => ({
   game: one(games, {
     fields: [gameMetrics.gameId],
@@ -220,6 +232,7 @@ export const linkedAccountsRelations = relations(linkedAccounts, ({ many }) => (
   accountLinks: many(accountLinks),
   coachConversations: many(coachConversations),
   coachingInputs: many(coachingInputs),
+  focuses: many(focuses),
   gameMetrics: many(gameMetrics),
   gameOpenings: many(gameOpenings),
   games: many(games),
@@ -350,6 +363,7 @@ export const userRelations = relations(user, ({ many }) => ({
   accounts: many(account),
   chesscomRequestBudgets: many(chesscomRequestBudgets),
   coachConversations: many(coachConversations),
+  focuses: many(focuses),
   sessions: many(session),
 }));
 
