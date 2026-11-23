@@ -468,12 +468,15 @@ export function ProgressView({
   view,
   scopeSwitch,
   compare,
+  trajectory,
   focus,
 }: {
   view: ProgressViewModel;
   /** The weekly focus card (ADR 0091) of this scope. */
   focus?: ReactNode;
   scopeSwitch?: ReactNode;
+  /** The rating trajectory and then | now block (F6): the page's first section. */
+  trajectory?: ReactNode;
   /** Period A against period B for the game-level stats, when the URL asks for it (T3). */
   compare?: ReactNode;
 }) {
@@ -491,6 +494,8 @@ export function ProgressView({
         />
         {scopeSwitch}
       </div>
+
+      {trajectory}
 
       {compare}
 

@@ -354,7 +354,7 @@ async fn coaching_input_splits_by_colour(pool: PgPool) {
     )
     .await
     .expect("coaching input");
-    assert_eq!(input.input_version, InputVersion::V2);
+    assert_eq!(input.input_version, InputVersion::V3);
     assert_eq!(input.validate(), Ok(()));
     let by = input.by_color.as_ref().expect("v2 has byColor");
 

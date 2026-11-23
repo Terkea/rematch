@@ -190,7 +190,12 @@ fn array_id_field(key: &str) -> Option<&'static str> {
 
 /// v2 (ADR 0085): a colour's weakness rows are keyed by their series key, like the top-level
 /// arrays (`byColor.white.weaknesses.W4_missed.rate`).
-const COLOR_WEAKNESS_ARRAYS: [&str; 2] = ["byColor.white.weaknesses", "byColor.black.weaknesses"];
+const COLOR_WEAKNESS_ARRAYS: [&str; 3] = [
+    "byColor.white.weaknesses",
+    "byColor.black.weaknesses",
+    // v3 (ADR 0089): then against now's weakness rows, keyed by series key too.
+    "trajectory.thenVsNow.weaknesses",
+];
 
 /// The colours of the v2 colour split, as their path segments.
 const COLORS: [&str; 2] = ["white", "black"];
@@ -564,6 +569,9 @@ impl Evidence {
             let b = format!("metrics.{}", seg(&m.key));
             self.mark_unit(&b, m.unit, &["value", "low", "high", "bandMedian"]);
         }
+        if let Some(t) = &input.trajectory {
+            self.mark_trajectory(t);
+        }
         // v2 (ADR 0085): the colour split. Each colour metric's unit is its own `unit` (the score
         // is a rate, the accuracy `pct`, blunders per game none); a weakness rate is a share.
         if let Some(by) = &input.by_color {
@@ -582,6 +590,61 @@ impl Evidence {
                         self.mark_rate(&format!("{wb}.{f}"));
                     }
                 }
+            }
+        }
+    }
+
+    /// v3 (ADR 0089): the trajectory's then and now numbers in their own `unit` (a rating has
+    /// none), the differences in their measure's unit (a score difference is a share's, in
+    /// -1..1; an accuracy difference is in percentage points) and each weakness rate as a share.
+    fn mark_trajectory(&mut self, t: &crate::input::types::Trajectory) {
+        use crate::input::types::MetricUnit;
+        let Some(v) = &t.then_vs_now else { return };
+        let b = "trajectory.thenVsNow";
+        for (name, m) in [
+            ("rating", &v.rating),
+            ("accuracy", &v.accuracy),
+            ("blundersPerGame", &v.blunders_per_game),
+            ("score", &v.score),
+        ] {
+            let mb = format!("{b}.{name}");
+            for side in ["then", "now"] {
+                self.mark_unit(
+                    &format!("{mb}.{side}"),
+                    m.then.unit,
+                    &["value", "low", "high"],
+                );
+            }
+            for f in ["diff", "diffLow", "diffHigh"] {
+                let p = format!("{mb}.{f}");
+                match m.then.unit {
+                    MetricUnit::Rate => {
+                        if self
+                            .number_paths
+                            .get(&p)
+                            .is_some_and(|x| (-1.0..=1.0).contains(x))
+                        {
+                            self.rate_paths.insert(p);
+                        }
+                    }
+                    MetricUnit::Pct => {
+                        self.unit_paths.insert(p, NumUnit::Percent);
+                    }
+                    MetricUnit::Seconds => {
+                        self.unit_paths.insert(p, NumUnit::Seconds);
+                    }
+                    MetricUnit::PerGame | MetricUnit::Elo => {}
+                }
+            }
+        }
+        for w in &v.weaknesses {
+            let wb = format!("{b}.weaknesses.{}", seg(&w.series_key));
+            for side in ["then", "now"] {
+                self.mark_unit(
+                    &format!("{wb}.{side}"),
+                    MetricUnit::Rate,
+                    &["value", "low", "high"],
+                );
             }
         }
     }

@@ -1085,8 +1085,8 @@ async fn every_build_stores_a_current_coaching_input_snapshot(pool: PgPool) {
     let first = coaching_snapshots(&pool, s.account_id).await;
     assert_eq!(first.len(), 1, "{first:?}");
     let (_, version, input) = &first[0];
-    assert_eq!(version, "coaching-input-v2");
-    assert_eq!(input["inputVersion"], "coaching-input-v2");
+    assert_eq!(version, "coaching-input-v3");
+    assert_eq!(input["inputVersion"], "coaching-input-v3");
     assert_eq!(input["accountId"], json!(s.account_id));
     let games = input["basis"]["analysedGames"].as_u64().unwrap();
     assert!(input["byColor"].is_object(), "v2 carries the colour split");

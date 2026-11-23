@@ -25,7 +25,9 @@
 //!   with their onset in the last 90 days, newest first, with their stored causes and up to 3
 //!   examples on each side of the onset;
 //! - v2 (ADR 0085): `byColor` ([`super::colors`]), each colour from its own games, snapshot
-//!   rows, series points and benchmark rows, and `benchmark`, the stored benchmark band.
+//!   rows, series points and benchmark rows, and `benchmark`, the stored benchmark band;
+//! - v3 (ADR 0089): `trajectory` ([`super::trajectory`]), the rating over time of every rated
+//!   game of the time class and then against now, by the web's rule.
 //!
 //! Every list is cut to `LIMITS` by its own order (R-6), and [`CoachingInput::validate`] runs
 //! last: a failure is a bug and returns [`BuildError::Contract`].
@@ -75,6 +77,7 @@ use super::strengths::{
     AREA_STRENGTH_SCORE, MAX_STRENGTH_EXEMPLARS, StrengthCandidate, StrengthSource,
     WEAKNESS_STRENGTH_CONFIDENCE, area_kinds, select_strengths, weakness_kinds,
 };
+use super::trajectory::{Prior, TRAJECTORY_WEAKNESSES, load_trajectory, prior_of};
 use crate::analyse_features::parse_time_class;
 use crate::estimates::{age_days, compute_estimates, games_in_window};
 use crate::load::{LoadError, load_analysed_games, load_series_points};
@@ -819,6 +822,27 @@ async fn by_color(
     Ok(ByColor { white, black })
 }
 
+/// v3 `trajectory.thenVsNow.weaknesses`: the top claimable estimates (`priority > 0`) by priority,
+/// then series key, with the prior behind each posterior (the web's `loadTrajectory` reads the
+/// same rows from `weakness_estimates`).
+fn trajectory_weaknesses(estimates: &[WeaknessEstimate]) -> Vec<(String, Prior)> {
+    let mut top: Vec<&WeaknessEstimate> = estimates.iter().filter(|e| e.priority > 0.0).collect();
+    top.sort_by(|a, b| {
+        b.priority
+            .total_cmp(&a.priority)
+            .then_with(|| a.key.as_str().cmp(b.key.as_str()))
+    });
+    top.into_iter()
+        .take(TRAJECTORY_WEAKNESSES)
+        .map(|e| {
+            (
+                SeriesKey::Weakness(e.key).to_string(),
+                prior_of(e.k, e.n, e.posterior.alpha, e.posterior.beta),
+            )
+        })
+        .collect()
+}
+
 /// v2 `benchmark`: the account's stored benchmark band, when any of its both rows is served
 /// (the web's `getBenchmark` rule).
 async fn stored_benchmark(
@@ -1013,9 +1037,17 @@ pub async fn build_coaching_input_report(
 
     let by_color = by_color(pool, account_id, tc, &games, &series, band, now).await?;
     let benchmark = stored_benchmark(pool, account_id, tc).await?;
+    let trajectory = load_trajectory(
+        pool,
+        account_id,
+        tc,
+        platform == profile_core::types::PlatformId::Chesscom,
+        &trajectory_weaknesses(&estimates),
+    )
+    .await?;
 
     let input = CoachingInput {
-        input_version: InputVersion::V2,
+        input_version: InputVersion::V3,
         account_id,
         platform: contract_platform(platform),
         time_class: tc.into(),
@@ -1034,6 +1066,7 @@ pub async fn build_coaching_input_report(
         changes,
         by_color: Some(by_color),
         benchmark,
+        trajectory: Some(trajectory),
     };
     input.validate().map_err(BuildError::Contract)?;
     if skipped.get() > 0 {

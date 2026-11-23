@@ -185,7 +185,7 @@ fn input_version_is_the_literal() {
     assert_eq!(InputVersion::V1.as_str(), INPUT_VERSION_V1);
     assert_eq!(sample().input_version, InputVersion::V1);
     let mut v = sample_value();
-    v["inputVersion"] = json!("coaching-input-v3");
+    v["inputVersion"] = json!("coaching-input-v9");
     assert!(serde_json::from_value::<CoachingInput>(v).is_err());
 }
 

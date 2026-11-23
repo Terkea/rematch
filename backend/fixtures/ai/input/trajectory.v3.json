@@ -1,0 +1,69 @@
+{
+  "inputVersion": "coaching-input-v3",
+  "trajectory": {
+    "ratedGames": 140,
+    "sufficient": true,
+    "needMore": null,
+    "kind": "falling",
+    "peak": { "rating": 1097, "date": "2026-04-18" },
+    "current": { "rating": 816, "date": "2026-11-20" },
+    "change": -281,
+    "months": [
+      { "month": "2026-04", "games": 31, "last": 1080, "high": 1097 },
+      { "month": "2026-10", "games": 28, "last": 851, "high": 902 },
+      { "month": "2026-11", "games": 22, "last": 816, "high": 870 }
+    ],
+    "thenVsNow": {
+      "then": { "basis": "peak", "games": 30, "from": "2026-04-02", "to": "2026-05-01" },
+      "now": { "basis": "last", "games": 30, "from": "2026-10-25", "to": "2026-11-20" },
+      "rating": {
+        "then": { "value": 1071.2, "unit": "elo", "n": 30, "low": 1062.1, "high": 1080.4, "sufficient": true, "needMore": null },
+        "now": { "value": 842.6, "unit": "elo", "n": 30, "low": 831.3, "high": 853.9, "sufficient": true, "needMore": null },
+        "verdict": "worse",
+        "diff": -228.6,
+        "diffLow": -243.1,
+        "diffHigh": -214.8
+      },
+      "accuracy": {
+        "then": { "value": 69.2, "unit": "pct", "n": 28, "low": 66.8, "high": 71.5, "sufficient": true, "needMore": null },
+        "now": { "value": 66.1, "unit": "pct", "n": 29, "low": 63.9, "high": 68.4, "sufficient": true, "needMore": null },
+        "verdict": "no_clear_change",
+        "diff": -3.1,
+        "diffLow": -6.3,
+        "diffHigh": 0.2
+      },
+      "blundersPerGame": {
+        "then": { "value": 1.1, "unit": "per_game", "n": 28, "low": 0.9, "high": 1.4, "sufficient": true, "needMore": null },
+        "now": { "value": 1.6, "unit": "per_game", "n": 29, "low": 1.3, "high": 1.9, "sufficient": true, "needMore": null },
+        "verdict": "worse",
+        "diff": 0.5,
+        "diffLow": 0.1,
+        "diffHigh": 0.9
+      },
+      "score": {
+        "then": { "value": 0.55, "unit": "rate", "n": 30, "low": 0.44, "high": 0.65, "sufficient": true, "needMore": null },
+        "now": { "value": 0.42, "unit": "rate", "n": 30, "low": 0.32, "high": 0.53, "sufficient": true, "needMore": null },
+        "verdict": "no_clear_change",
+        "diff": -0.13,
+        "diffLow": -0.28,
+        "diffHigh": 0.02
+      },
+      "weaknesses": [
+        {
+          "seriesKey": "W3.shallow",
+          "id": "W3",
+          "variant": "shallow",
+          "label": "Missing a short tactic",
+          "area": "tactics",
+          "then": { "value": 0.3, "unit": "rate", "n": 30, "low": 0.26, "high": 0.34, "sufficient": true, "needMore": null },
+          "now": { "value": 0.43, "unit": "rate", "n": 30, "low": 0.39, "high": 0.47, "sufficient": true, "needMore": null },
+          "verdict": "worse",
+          "thenEvents": 25,
+          "thenOpportunities": 84,
+          "nowEvents": 38,
+          "nowOpportunities": 88
+        }
+      ]
+    }
+  }
+}

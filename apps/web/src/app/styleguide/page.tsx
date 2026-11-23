@@ -22,6 +22,7 @@ import { ReviewSection } from "./sections/review";
 import { SoundSection } from "./sections/sound";
 import { StatsSection } from "./sections/stats";
 import { TimelineSection } from "./sections/timeline";
+import { TrajectoryStyleguideSection } from "./sections/trajectory";
 import { ThemeToggle } from "./theme-toggle";
 
 export const metadata: Metadata = { title: `Styleguide, ${brand.name}` };
@@ -51,6 +52,7 @@ export default function StyleguidePage() {
         <ReviewSection />
         <StatsSection />
         <ChartsSection />
+        <TrajectoryStyleguideSection />
         <AreaScoreSection />
         <TimelineSection />
         <ProfileSection />

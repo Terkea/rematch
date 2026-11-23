@@ -22,13 +22,14 @@ use crate::enums::AreaId;
 use crate::limits::MIN_COLOR_GAMES;
 use crate::limits::{
     ECO_MAX_CHARS, FEN_MAX_CHARS, LIMITS, MAX_BASE_SECONDS, MAX_COUNT, MAX_CP, MAX_EXCESS_EPL,
-    MAX_INCREMENT_SECONDS, MAX_MATE, MAX_PLY, MAX_PRIORITY, MAX_RATING, UCI_PATTERN, UUID_PATTERN,
-    WEAKNESS_ID_MAX_CHARS, WEAKNESS_ID_PATTERN,
+    MAX_INCREMENT_SECONDS, MAX_MATE, MAX_PLY, MAX_PRIORITY, MAX_RATING, MONTH_PATTERN, UCI_PATTERN,
+    UUID_PATTERN, WEAKNESS_ID_MAX_CHARS, WEAKNESS_ID_PATTERN,
 };
 use crate::types::{
     Alternative, AreaScore, Basis, Benchmark, BenchmarkSource, ByColor, CandidateCause, CauseValue,
     CoachingInput, ColorMetric, ColorSummary, ColorWeakness, ExemplarPosition, InputVersion,
-    Metric, MetricUnit, MoveRef, OpeningVerdict, RankedWeakness, Score, Strength, TimelineChange,
+    Metric, MetricUnit, MoveRef, OpeningVerdict, RankedWeakness, Score, Strength, ThenNowMetric,
+    ThenNowWeakness, ThenVsNow, TimelineChange, Trajectory, TrajectoryWindow, WindowBasis,
 };
 
 /// One problem, as `parseCoachingInput` reports it: `{ path, message }`.
@@ -67,6 +68,7 @@ fn regex(pattern: &str) -> Regex {
 
 static UCI_RE: LazyLock<Regex> = LazyLock::new(|| regex(UCI_PATTERN));
 static WEAKNESS_ID_RE: LazyLock<Regex> = LazyLock::new(|| regex(WEAKNESS_ID_PATTERN));
+static MONTH_RE: LazyLock<Regex> = LazyLock::new(|| regex(MONTH_PATTERN));
 static UUID_RE: LazyLock<Regex> = LazyLock::new(|| regex(UUID_PATTERN));
 
 fn join(prefix: &str, segment: impl fmt::Display) -> String {
@@ -364,7 +366,8 @@ impl Checker {
             self.change(&join("changes", i), ch);
         }
 
-        // v2 (ADR 0085): `byColor` is required, `benchmark` optional; v1 has neither.
+        // v2 (ADR 0085): `byColor` is required, `benchmark` optional; v1 has neither. v3
+        // (ADR 0089) adds the required `trajectory`, which no earlier version has.
         match c.input_version {
             InputVersion::V1 => {
                 if c.by_color.is_some() {
@@ -374,13 +377,22 @@ impl Checker {
                     self.push("benchmark".into(), "benchmark needs coaching-input-v2");
                 }
             }
-            InputVersion::V2 => match &c.by_color {
+            InputVersion::V2 | InputVersion::V3 => match &c.by_color {
                 Some(b) => self.by_color("byColor", b),
                 None => self.push(
                     "byColor".into(),
                     "Invalid input: expected object, received undefined",
                 ),
             },
+        }
+        match (c.input_version, &c.trajectory) {
+            (InputVersion::V3, Some(t)) => self.trajectory("trajectory", t),
+            (InputVersion::V3, None) => self.push(
+                "trajectory".into(),
+                "Invalid input: expected object, received undefined",
+            ),
+            (_, Some(_)) => self.push("trajectory".into(), "trajectory needs coaching-input-v3"),
+            (_, None) => {}
         }
         if let Some(b) = &c.benchmark {
             self.benchmark("benchmark", b);
@@ -544,6 +556,170 @@ impl Checker {
             && (v < low || v > high)
         {
             self.push(join(p, "value"), "value must lie within [low, high]");
+        }
+    }
+
+    fn trajectory(&mut self, p: &str, t: &Trajectory) {
+        self.count(join(p, "ratedGames"), t.rated_games);
+        self.need_more(p, t.sufficient, t.need_more);
+        let stated = [
+            ("kind", t.kind.is_some()),
+            ("peak", t.peak.is_some()),
+            ("current", t.current.is_some()),
+            ("change", t.change.is_some()),
+            ("thenVsNow", t.then_vs_now.is_some()),
+        ];
+        for (field, set) in stated {
+            if set != t.sufficient {
+                let rule = if t.sufficient {
+                    "is required when sufficient"
+                } else {
+                    "must be null when not sufficient"
+                };
+                self.push(join(p, field), format!("{field} {rule}"));
+            }
+        }
+        for (field, at) in [("peak", &t.peak), ("current", &t.current)] {
+            if let Some(at) = at {
+                self.int(
+                    join(&join(p, field), "rating"),
+                    at.rating.into(),
+                    0,
+                    MAX_RATING.into(),
+                );
+                self.date(join(&join(p, field), "date"), at.date);
+            }
+        }
+        if let Some(change) = t.change {
+            self.int(join(p, "change"), change.into(), -4000, 4000);
+        }
+        if let (Some(peak), Some(current)) = (&t.peak, &t.current)
+            && current.rating > peak.rating
+        {
+            self.push(join(p, "peak"), "peak must be >= current");
+        }
+        self.items(join(p, "months"), t.months.len(), LIMITS.trajectory_months);
+        for (i, m) in t.months.iter().enumerate() {
+            let mp = join(&join(p, "months"), i);
+            self.pattern(join(&mp, "month"), &m.month, &MONTH_RE);
+            self.count(join(&mp, "games"), m.games);
+            self.int(join(&mp, "last"), m.last.into(), 0, MAX_RATING.into());
+            self.int(join(&mp, "high"), m.high.into(), 0, MAX_RATING.into());
+            if m.last > m.high {
+                self.push(join(&mp, "last"), "last must be <= high");
+            }
+            if i > 0 && t.months[i - 1].month >= m.month {
+                self.push(join(&mp, "month"), "months must be in order, each once");
+            }
+        }
+        if let Some(v) = &t.then_vs_now {
+            self.then_vs_now(&join(p, "thenVsNow"), v);
+        }
+    }
+
+    fn window(&mut self, p: &str, w: &TrajectoryWindow) {
+        self.count(join(p, "games"), w.games);
+        self.date(join(p, "from"), w.from);
+        self.date(join(p, "to"), w.to);
+        if w.from > w.to {
+            self.push(join(p, "from"), "from must be <= to");
+        }
+    }
+
+    fn then_vs_now(&mut self, p: &str, v: &ThenVsNow) {
+        self.window(&join(p, "then"), &v.then);
+        self.window(&join(p, "now"), &v.now);
+        if v.then.basis == WindowBasis::Last {
+            self.push(join(&join(p, "then"), "basis"), "then is peak or start");
+        }
+        if v.now.basis != WindowBasis::Last {
+            self.push(join(&join(p, "now"), "basis"), "now is last");
+        }
+        if v.then.to > v.now.from {
+            self.push(
+                join(&join(p, "then"), "to"),
+                "then must end before now starts",
+            );
+        }
+        for (field, m, unit) in [
+            ("rating", &v.rating, MetricUnit::Elo),
+            ("accuracy", &v.accuracy, MetricUnit::Pct),
+            ("blundersPerGame", &v.blunders_per_game, MetricUnit::PerGame),
+            ("score", &v.score, MetricUnit::Rate),
+        ] {
+            self.then_now_metric(&join(p, field), m, unit);
+        }
+        self.items(
+            join(p, "weaknesses"),
+            v.weaknesses.len(),
+            LIMITS.trajectory_weaknesses,
+        );
+        for (i, w) in v.weaknesses.iter().enumerate() {
+            self.then_now_weakness(&join(&join(p, "weaknesses"), i), w);
+        }
+    }
+
+    fn then_now_metric(&mut self, p: &str, m: &ThenNowMetric, unit: MetricUnit) {
+        self.color_metric(&join(p, "then"), &m.then, unit);
+        self.color_metric(&join(p, "now"), &m.now, unit);
+        let called = m.verdict != crate::types::ChangeVerdict::NotEnoughGames;
+        let diff = [
+            ("diff", m.diff),
+            ("diffLow", m.diff_low),
+            ("diffHigh", m.diff_high),
+        ];
+        for (field, v) in diff {
+            match v {
+                Some(v) => {
+                    if self.finite(join(p, field), v) && !called {
+                        self.push(
+                            join(p, field),
+                            format!("{field} must be null when not_enough_games"),
+                        );
+                    }
+                }
+                None if called => self.push(
+                    join(p, field),
+                    format!("{field} is required with a verdict"),
+                ),
+                None => {}
+            }
+        }
+        if let (Some(lo), Some(hi)) = (m.diff_low, m.diff_high)
+            && lo > hi
+        {
+            self.push(join(p, "diffLow"), "diffLow must be <= diffHigh");
+        }
+    }
+
+    fn then_now_weakness(&mut self, p: &str, w: &ThenNowWeakness) {
+        self.id(join(p, "seriesKey"), &w.series_key);
+        self.weakness_id(join(p, "id"), &w.id);
+        if let Some(variant) = &w.variant {
+            self.string(join(p, "variant"), variant, 1, LIMITS.tag_chars);
+        }
+        self.label(join(p, "label"), &w.label);
+        self.color_metric(&join(p, "then"), &w.then, MetricUnit::Rate);
+        self.color_metric(&join(p, "now"), &w.now, MetricUnit::Rate);
+        for (field, v) in [
+            ("thenEvents", w.then_events),
+            ("thenOpportunities", w.then_opportunities),
+            ("nowEvents", w.now_events),
+            ("nowOpportunities", w.now_opportunities),
+        ] {
+            self.count(join(p, field), v);
+        }
+        if w.then_events > w.then_opportunities {
+            self.push(
+                join(p, "thenEvents"),
+                "thenEvents must be <= thenOpportunities",
+            );
+        }
+        if w.now_events > w.now_opportunities {
+            self.push(
+                join(p, "nowEvents"),
+                "nowEvents must be <= nowOpportunities",
+            );
         }
     }
 

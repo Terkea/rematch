@@ -23,6 +23,7 @@ const CONTEXT_SECTIONS: &[&str] = &[
     "changes",
     "byColor",
     "benchmark",
+    "trajectory",
 ];
 
 fn in_context(path: &str) -> bool {
@@ -48,7 +49,9 @@ fn pick(v: &Value, keys: &[&str]) -> Value {
 ///
 /// A v2 input (ADR 0085) adds the colour split `byColor` (each colour's games, W-D-L, score,
 /// accuracy, blunders per game and its own weakness rows, so the coach can answer "how do I do
-/// as Black?") and the `benchmark` band. A v1 input's context is unchanged.
+/// as Black?") and the `benchmark` band. A v3 input (ADR 0089) adds the `trajectory`: the rating
+/// by month, its peak and current rating, and then against now, so the coach can answer "what
+/// changed since I was 1,100?". A v1 input's context is unchanged.
 pub fn build_chat_context(input: &CoachingInput) -> Value {
     let json = input.to_json();
     let weaknesses: Vec<Value> = json["weaknesses"]
@@ -97,7 +100,7 @@ pub fn build_chat_context(input: &CoachingInput) -> Value {
         ),
         "refs": {"num": nums, "date": dates},
     });
-    for key in ["byColor", "benchmark"] {
+    for key in ["byColor", "benchmark", "trajectory"] {
         if let Some(v) = json.get(key) {
             ctx[key] = v.clone();
         }

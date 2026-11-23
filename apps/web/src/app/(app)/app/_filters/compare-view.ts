@@ -21,7 +21,7 @@ export type CompareChange = {
   detail: string | null;
 };
 export type CompareViewRow = {
-  key: CompareKey;
+  key: CompareKey | (string & {});
   label: string;
   explain: GlossaryEntry;
   a: CompareCell;

@@ -10,12 +10,15 @@ import { requestEventCursor } from "../../../../server/events/request-cursor";
 import { getFocusCard } from "../../../../server/focus";
 import { resolveCoachScope } from "../../../../server/profile";
 import { loadPeriodComparison } from "../../../../server/stats/period-compare";
+import { loadTrajectory } from "../../../../server/trajectory/load";
 import { EmptySheet, PageHeading } from "../../_shell/page-heading";
 import { CompareBlock } from "../_filters/compare-block";
 import { compareView } from "../_filters/compare-view";
 import { FilterBar } from "../_filters/filter-bar";
 import { loadCoachBar, manyAccounts } from "../_filters/load";
 import { storedSide } from "../_filters/side";
+import { TrajectorySection } from "../_trajectory/section";
+import { trajectoryView } from "../_trajectory/view";
 import { loadProgress } from "./load";
 import { ProgressView, toProgressView } from "./progress-view";
 
@@ -65,9 +68,10 @@ export default async function ProgressPage({
     now,
   });
   const f = bar.filters;
-  const [input, compared, focus] = await Promise.all([
+  const [input, compared, trajectory, focus] = await Promise.all([
     loadProgress(db, user.id, scope, now, { from: f.from, to: f.to }, storedSide(f)),
     loadPeriodComparison(db, user.id, f, now, { accountId: scope.accountId }),
+    loadTrajectory(db, user.id, scope),
     getFocusCard(db, user.id, scope),
   ]);
   const view = toProgressView(input);
@@ -97,6 +101,11 @@ export default async function ProgressPage({
           </>
         }
         compare={compared ? <CompareBlock view={compareView(compared)} /> : null}
+        trajectory={
+          trajectory ? (
+            <TrajectorySection view={trajectoryView(trajectory, scope.timeClass)} />
+          ) : null
+        }
         focus={<FocusCard card={focus} />}
       />
     </>

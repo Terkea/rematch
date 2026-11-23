@@ -285,7 +285,8 @@ fn ts_validator() -> jsonschema::Validator {
         .expect("the TS schema compiles")
 }
 
-/// The document's errors: its v1 part (without v2's `byColor` and `benchmark`, ADR 0085)
+/// The document's errors: its v1 part (without v2's `byColor` and `benchmark`, ADR 0085, and
+/// v3's `trajectory`, ADR 0089)
 /// against the zod export, which is v1's, and the whole document against the contract's own
 /// schema.
 fn schema_errors(v: &jsonschema::Validator, doc: &Value) -> Vec<String> {
@@ -293,6 +294,7 @@ fn schema_errors(v: &jsonschema::Validator, doc: &Value) -> Vec<String> {
     if let Some(o) = v1.as_object_mut() {
         o.remove("byColor");
         o.remove("benchmark");
+        o.remove("trajectory");
         o.insert("inputVersion".into(), json!("coaching-input-v1"));
     }
     let contract = jsonschema::options()
@@ -1234,4 +1236,51 @@ async fn same_data_and_now_give_the_same_input(pool: PgPool) {
     let a = coaching(&pool, f.account_id).await;
     let b = coaching(&pool, f.account_id).await;
     assert_eq!(a.to_json(), b.to_json());
+}
+
+// ------------------------------------------------------------------ v3 trajectory (ADR 0089)
+
+/// v3: the trajectory covers every rated game of the time class with its pre-game rating (on
+/// Lichess the stored one), finds the peak, and compares the games around it with the latest.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn trajectory_finds_the_peak_and_compares_it_with_the_latest_games(pool: PgPool) {
+    let f = seed_with_moves(&pool, SeedOptions::default()).await;
+    // Up 10 a game to a peak at the middle game, then down 30 a game.
+    sqlx::query(
+        "WITH o AS (SELECT id, row_number() OVER (ORDER BY played_at, id) AS i,                 count(*) OVER () AS n FROM games WHERE account_id = $1 AND rated)          UPDATE games g SET white_rating = r.v, black_rating = r.v          FROM (SELECT id, (CASE WHEN i <= n / 2 THEN 1000 + i * 10                 ELSE 1000 + (n / 2) * 10 - (i - n / 2) * 30 END)::int AS v FROM o) r          WHERE r.id = g.id",
+    )
+    .bind(f.account_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let rated: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM games WHERE account_id = $1 AND time_class = 'blitz' AND rated",
+    )
+    .bind(f.account_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    run_build(&pool, f.account_id).await;
+    let input = coaching(&pool, f.account_id).await;
+    assert_eq!(input.input_version, coaching_input::InputVersion::V3);
+    let t = input.trajectory.as_ref().expect("v3 carries a trajectory");
+    assert_eq!(i64::from(t.rated_games), rated);
+    if rated < 20 {
+        assert!(!t.sufficient && t.then_vs_now.is_none());
+        return;
+    }
+    let peak = i32::try_from(1000 + (rated / 2) * 10).unwrap();
+    assert_eq!(t.peak.as_ref().map(|p| i32::from(p.rating)), Some(peak));
+    let v = t.then_vs_now.as_ref().unwrap();
+    assert_eq!(v.then.basis, coaching_input::WindowBasis::Peak);
+    assert_eq!(v.now.basis, coaching_input::WindowBasis::Last);
+    assert_eq!(t.kind, Some(coaching_input::TrajectoryKind::Falling));
+    assert_eq!(v.rating.verdict, coaching_input::ChangeVerdict::Worse);
+    assert_eq!(v.rating.then.unit, coaching_input::MetricUnit::Elo);
+    assert!(t.change.unwrap() < 0);
+    assert_eq!(
+        t.months.iter().map(|m| i64::from(m.games)).sum::<i64>(),
+        rated
+    );
+    assert_eq!(input.validate(), Ok(()));
 }

@@ -3,8 +3,10 @@
 //! The schemars attributes in `types.rs` and the checks in `validate.rs` both read these, so the
 //! generated schema and `CoachingInput::validate` cannot drift apart.
 
-/// The version the builder writes (ADR 0085): v1 plus `byColor` and `benchmark`.
-pub const INPUT_VERSION: &str = "coaching-input-v2";
+/// The version the builder writes (ADR 0089): v2 plus `trajectory`.
+pub const INPUT_VERSION: &str = "coaching-input-v3";
+/// ADR 0085: v1 plus `byColor` and `benchmark`, still accepted when parsing.
+pub const INPUT_VERSION_V2: &str = "coaching-input-v2";
 /// zod `z.literal("coaching-input-v1")`: the M3 contract, still accepted when parsing.
 pub const INPUT_VERSION_V1: &str = "coaching-input-v1";
 /// v2: games a colour needs (in its window) before its numbers are stated (the honesty rule of
@@ -35,6 +37,10 @@ pub struct Limits {
     pub examples_per_change: usize,
     /// v2: weakness rows per colour in `byColor`.
     pub color_weaknesses: usize,
+    /// v3: months in `trajectory.months` (the newest are kept).
+    pub trajectory_months: usize,
+    /// v3: weakness rows in `trajectory.thenVsNow.weaknesses`.
+    pub trajectory_weaknesses: usize,
 }
 
 pub const LIMITS: Limits = Limits {
@@ -57,7 +63,12 @@ pub const LIMITS: Limits = Limits {
     examples_per_opening: 3,
     examples_per_change: 6,
     color_weaknesses: 5,
+    trajectory_months: 36,
+    trajectory_weaknesses: 3,
 };
+
+/// v3 `MonthRating.month`: `YYYY-MM`.
+pub const MONTH_PATTERN: &str = r"^\d{4}-(0[1-9]|1[0-2])$";
 
 /// zod `UCI_RE`.
 pub const UCI_PATTERN: &str = "^[a-h][1-8][a-h][1-8][qrbn]?$";

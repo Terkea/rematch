@@ -771,7 +771,8 @@ mod colour_split {
             .map(|p| any_colour(p))
             .collect();
 
-        let input = v2_input("b2-rapid");
+        // v3 carries every v2 path plus the trajectory (ADR 0089).
+        let input = ai::testing::v3_input("b2-rapid");
         let json = input.to_json();
         let ev = build_evidence(&input);
         let mut hit = BTreeSet::new();
@@ -810,5 +811,109 @@ mod colour_split {
         let ev = build_evidence(&input("b2-rapid"));
         assert!(ev.number_paths.keys().all(|p| !p.starts_with("byColor")));
         assert!(ev.number_paths.keys().all(|p| !p.starts_with("benchmark")));
+    }
+}
+
+/// coaching-input-v3 (ADR 0089): the trajectory is citable, each number with its unit, so the
+/// coach can say "1,097 in April, 816 now" and "30% then, 43% now" from tokens.
+mod trajectory {
+    use ai::testing::v3_input;
+    use ai::validator::evidence::NumUnit;
+    use ai::validator::format::format_num_at;
+
+    use super::*;
+
+    fn ev() -> Evidence {
+        build_evidence(&v3_input("b2-rapid"))
+    }
+
+    #[test]
+    fn indexes_the_peak_the_current_rating_and_then_against_now() {
+        let ev = ev();
+        let n = |p: &str| ev.number_paths.get(p).copied();
+        assert_eq!(n("trajectory.peak.rating"), Some(1097.0));
+        assert_eq!(n("trajectory.current.rating"), Some(816.0));
+        assert_eq!(n("trajectory.change"), Some(-281.0));
+        assert_eq!(n("trajectory.months.0.high"), Some(1097.0));
+        assert_eq!(n("trajectory.thenVsNow.then.games"), Some(30.0));
+        assert_eq!(n("trajectory.thenVsNow.accuracy.now.value"), Some(66.1));
+        // Weakness rows are keyed by their series key, as the colour split's are.
+        assert_eq!(
+            n("trajectory.thenVsNow.weaknesses.W3_shallow.now.value"),
+            Some(0.43)
+        );
+        assert_eq!(
+            n("trajectory.thenVsNow.weaknesses.W3_shallow.nowOpportunities"),
+            Some(88.0)
+        );
+        assert_eq!(
+            ev.date_paths
+                .get("trajectory.peak.date")
+                .map(String::as_str),
+            Some("2026-04-18")
+        );
+    }
+
+    #[test]
+    fn every_trajectory_number_renders_in_its_unit() {
+        let ev = ev();
+        let f = |p: &str, fmt| format_num_at(&ev, p, fmt).unwrap();
+        // A rating has no unit.
+        assert_eq!(ev.unit_of("trajectory.peak.rating"), None);
+        let shown = f(
+            "trajectory.thenVsNow.rating.then.value",
+            Some(NumFormat::Int),
+        );
+        assert!(
+            !shown.ends_with('%') && shown.replace([',', '\u{202f}', '\u{a0}'], "") == "1071",
+            "{shown}"
+        );
+        // Accuracy and its difference are percentages; blunders a game are bare.
+        assert_eq!(
+            ev.unit_of("trajectory.thenVsNow.accuracy.then.value"),
+            Some(NumUnit::Percent)
+        );
+        assert_eq!(
+            ev.unit_of("trajectory.thenVsNow.accuracy.diff"),
+            Some(NumUnit::Percent)
+        );
+        assert_eq!(
+            f(
+                "trajectory.thenVsNow.accuracy.now.value",
+                Some(NumFormat::Dec1)
+            ),
+            "66.1%"
+        );
+        assert_eq!(
+            f(
+                "trajectory.thenVsNow.blundersPerGame.now.value",
+                Some(NumFormat::Dec1)
+            ),
+            "1.6"
+        );
+        // Fractions are shares: the score, its difference and each weakness rate.
+        for p in [
+            "trajectory.thenVsNow.score.then.value",
+            "trajectory.thenVsNow.score.diff",
+            "trajectory.thenVsNow.score.diffLow",
+            "trajectory.thenVsNow.weaknesses.W3_shallow.then.value",
+            "trajectory.thenVsNow.weaknesses.W3_shallow.now.high",
+        ] {
+            assert!(ev.rate_paths.contains(p), "{p} is a share");
+            assert!(f(p, Some(NumFormat::Dec2)).ends_with('%'), "{p}");
+        }
+        assert_eq!(
+            f(
+                "trajectory.thenVsNow.weaknesses.W3_shallow.now.value",
+                Some(NumFormat::Dec2)
+            ),
+            "43%"
+        );
+    }
+
+    #[test]
+    fn a_v2_input_has_no_trajectory_paths() {
+        let ev = build_evidence(&ai::testing::v2_input("b2-rapid"));
+        assert!(ev.number_paths.keys().all(|p| !p.starts_with("trajectory")));
     }
 }

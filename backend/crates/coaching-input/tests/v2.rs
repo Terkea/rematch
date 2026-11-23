@@ -5,7 +5,8 @@
 mod v2;
 
 use coaching_input::{
-    CoachingInput, INPUT_VERSION, INPUT_VERSION_V1, InputVersion, MetricUnit, json_schema,
+    CoachingInput, INPUT_VERSION, INPUT_VERSION_V1, INPUT_VERSION_V2, InputVersion, MetricUnit,
+    json_schema,
 };
 use serde_json::{Value, json};
 
@@ -39,16 +40,17 @@ fn paths(r: Result<(), Vec<coaching_input::Issue>>) -> Vec<String> {
 
 #[test]
 fn versions() {
-    assert_eq!(INPUT_VERSION, "coaching-input-v2");
+    assert_eq!(INPUT_VERSION, "coaching-input-v3");
+    assert_eq!(INPUT_VERSION_V2, "coaching-input-v2");
     assert_eq!(INPUT_VERSION_V1, "coaching-input-v1");
-    assert_eq!(InputVersion::default(), InputVersion::V2);
+    assert_eq!(InputVersion::default(), InputVersion::V3);
     assert_eq!(InputVersion::V1.as_str(), INPUT_VERSION_V1);
     assert_eq!(
         serde_json::to_value(InputVersion::V2).unwrap(),
-        json!(INPUT_VERSION)
+        json!(INPUT_VERSION_V2)
     );
     let mut v = sample_value();
-    v["inputVersion"] = json!("coaching-input-v3");
+    v["inputVersion"] = json!("coaching-input-v9");
     assert!(serde_json::from_value::<CoachingInput>(v).is_err());
 }
 
