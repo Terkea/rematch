@@ -3,10 +3,10 @@ resolver = "3"
 members = ["crates/*", "tools/parity"]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.0" # x-release-please-version
 edition = "2024"
 rust-version = "1.100"
-license = "UNLICENSED"
+license = "AGPL-3.0-only"
 publish = false
 
 # Every version is pinned exactly and was published at least 7 days before it was adopted

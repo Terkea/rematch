@@ -1,0 +1,49 @@
+[
+  {
+    "name": "needs-triage",
+    "color": "ededed",
+    "description": "New: the maintainer has not looked at it yet"
+  },
+  { "name": "type/bug", "color": "d73a4a", "description": "Something does not work as described" },
+  { "name": "type/feature", "color": "a2eeef", "description": "A new capability for players" },
+  {
+    "name": "type/coaching-idea",
+    "color": "c5def5",
+    "description": "Chess knowledge from players and coaches"
+  },
+  { "name": "type/docs", "color": "0075ca", "description": "Documentation only" },
+  {
+    "name": "type/chore",
+    "color": "fef2c0",
+    "description": "Tooling, CI, dependencies, refactors"
+  },
+  { "name": "type/security", "color": "b60205", "description": "A security fix or hardening" },
+  {
+    "name": "area/analysis",
+    "color": "1d76db",
+    "description": "Stockfish analysis, moments and stats"
+  },
+  { "name": "area/coach", "color": "5319e7", "description": "The AI coach and its reports" },
+  { "name": "area/trainer", "color": "0e8a16", "description": "The trainer and weekly focus" },
+  {
+    "name": "area/web-ui",
+    "color": "fbca04",
+    "description": "The Next.js app and the design system"
+  },
+  {
+    "name": "area/rust-backend",
+    "color": "b07219",
+    "description": "The Rust worker, CLI and database"
+  },
+  { "name": "area/docs", "color": "006b75", "description": "README, docs site and ADRs" },
+  {
+    "name": "good first issue",
+    "color": "7057ff",
+    "description": "A friendly first contribution, with pointers"
+  },
+  {
+    "name": "help wanted",
+    "color": "008672",
+    "description": "The maintainer would love a hand with this"
+  }
+]

@@ -8,6 +8,7 @@ import {
   PHOSPHOR_MIT,
   REACT_CHESSBOARD_MIT,
   SCHIBSTED_OFL,
+  STOCKFISH_GPL,
 } from "./texts";
 
 export const metadata = { title: "Licences" };
@@ -116,17 +117,29 @@ export default function LicensesPage() {
           </p>
         </Credit>
 
-        <Credit id="engines" title="Analysis engines">
+        <Credit id="stockfish" title="Analysis engine: Stockfish" text={STOCKFISH_GPL}>
           <p>
-            Games are analysed on our servers by{" "}
-            <a className={link} href="https://github.com/official-stockfish/Stockfish">
-              Stockfish
-            </a>{" "}
-            (GPL-3.0) and{" "}
+            Games are analysed on our servers by Stockfish 19, by the Stockfish developers, under
+            the GNU General Public License version 3. We run the official release unmodified. Its
+            source is with the{" "}
+            <a
+              className={link}
+              href="https://github.com/official-stockfish/Stockfish/releases/tag/sf_19"
+            >
+              sf_19 release
+            </a>
+            . It is never sent to your browser.
+          </p>
+        </Credit>
+
+        <Credit id="maia" title="Move difficulty: Maia-2">
+          <p>
+            Where it is switched on,{" "}
             <a className={link} href="https://github.com/CSSLab/maia2">
               Maia-2
             </a>{" "}
-            (MIT). Neither is sent to your browser.
+            (MIT, CSSLab) estimates how hard a move is to find at your rating. It runs on our
+            servers too.
           </p>
         </Credit>
       </main>

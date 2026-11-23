@@ -1,6 +1,8 @@
 {
   "name": "chess-improver",
+  "version": "0.1.0",
   "private": true,
+  "license": "AGPL-3.0-only",
   "type": "module",
   "packageManager": "pnpm@12.21.0",
   "engines": {

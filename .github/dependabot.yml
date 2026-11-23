@@ -1,0 +1,77 @@
+# Dependency updates (ADR 0095). Weekly, grouped, and never for a release younger than 7 days:
+# the same supply-chain rule as scripts/check-npm-age.mjs and scripts/check-crate-age.sh, which
+# CI enforces anyway. PR titles are Conventional Commits ("chore(deps): ..."), so the PR-title
+# lint passes and release-please leaves them out of the changelog.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    versioning-strategy: increase
+    commit-message:
+      prefix: chore
+      include: scope
+    labels: [type/chore]
+    groups:
+      npm-dev:
+        dependency-type: development
+        update-types: [minor, patch]
+      npm-prod:
+        dependency-type: production
+        update-types: [minor, patch]
+
+  - package-ecosystem: cargo
+    directory: /backend
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore
+      include: scope
+    labels: [type/chore, area/rust-backend]
+    groups:
+      cargo:
+        update-types: [minor, patch]
+
+  - package-ecosystem: docker
+    directories:
+      - /apps/web
+      - /apps/worker
+      - /backend
+      - /services/ai-sidecar
+      - /services/maia
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: chore
+      include: scope
+    labels: [type/chore]
+    groups:
+      docker:
+        patterns: ["*"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: ci
+      include: scope
+    labels: [type/chore]
+    groups:
+      actions:
+        patterns: ["*"]

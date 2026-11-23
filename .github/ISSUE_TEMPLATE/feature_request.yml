@@ -1,0 +1,46 @@
+name: Feature request
+description: Suggest something that would help players improve.
+title: "feat: "
+labels: [type/feature, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Rematch exists to help players stop repeating the same mistakes. The best requests start
+        from a real problem a player has, not from a feature in another app.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem a player has
+      description: Who struggles, with what, and when? "As a 1400 rapid player, I keep..."
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: The solution you propose
+      description: What would Rematch do? Sketches and screenshots are welcome.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Why it would help you improve
+      description: |
+        Evidence beats opinion: research, coaching experience, your own results. Rematch only
+        says what it can show, so a feature should be honest about what it measures.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered
+      description: Other ways to solve it, or the tools you use today.
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - label: I know Rematch supports chess.com accounts only, for now.
+          required: true
+        - label: I would like to help build this.
