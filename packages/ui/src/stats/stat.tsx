@@ -64,15 +64,27 @@ export function Stat({
       setFrom(null);
     };
   }, [rollIn, reduced, rollDelay]);
+  // NumberFlow's shadow DOM gives its host no accessible name, so the formatted value is also
+  // written as visually hidden text (absolute, so it adds no width) and the roll is hidden.
+  const text = new Intl.NumberFormat(
+    locale,
+    valueFormat[format] as Intl.NumberFormatOptions,
+  ).format(value);
   return (
-    <NumberFlow
-      ref={ref as never}
-      value={from ?? value}
-      format={valueFormat[format]}
-      locales={locale}
-      animated={!reduced && from === null}
-      {...TIMING}
-      className={cn("[font-variant-numeric:lining-nums_tabular-nums]", className)}
-    />
+    <>
+      <NumberFlow
+        ref={ref as never}
+        aria-hidden="true"
+        value={from ?? value}
+        format={valueFormat[format]}
+        locales={locale}
+        animated={!reduced && from === null}
+        {...TIMING}
+        className={cn("[font-variant-numeric:lining-nums_tabular-nums]", className)}
+      />
+      <span className="sr-only" data-part="stat-text">
+        {text}
+      </span>
+    </>
   );
 }

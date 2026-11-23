@@ -288,3 +288,21 @@ describe("KpiStat honest band", () => {
     expect(tokensCss).not.toMatch(/--stat-surface\s*:/);
   });
 });
+
+describe("Stat accessible text", () => {
+  it.each([
+    ["percent", 0.642, "64.2%"],
+    ["decimal", 1.84, "1.84"],
+    ["integer", 1234, "1,234"],
+  ] as const)(
+    "writes the %s value as text a reader and find-in-page can use",
+    (format, value, text) => {
+      const { container } = render(<Stat value={value} format={format} />);
+      expect(container.querySelector("[data-part=stat-text]")).toHaveTextContent(text);
+      expect(container).toHaveTextContent(text);
+      expect(container.querySelector("number-flow-react")?.getAttribute("aria-hidden")).toBe(
+        "true",
+      );
+    },
+  );
+});
