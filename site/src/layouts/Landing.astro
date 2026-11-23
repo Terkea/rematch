@@ -3,15 +3,9 @@ import "../styles/fonts.css";
 import "../styles/generated/tokens.css";
 import "../styles/landing.css";
 import "../styles/diagram.css";
-import icon from "../../../packages/ui/assets/brand/rematch-icon.svg?raw";
 import { href, REPO_URL } from "../data/site";
 
-// The lockup: the boy with his board (ink only, in the text colour) and "rematch" in Literata italic.
-const mark = icon
-  .replace(/<title>[\s\S]*?<\/title>/, "")
-  .replace(' role="img"', ' class="wordmark-mark" aria-hidden="true" focusable="false"')
-  .replaceAll('id="m"', 'id="rematch-icon-m"')
-  .replaceAll("url(#m)", "url(#rematch-icon-m)");
+// The header carries the wordmark alone: "Rematch" in Literata italic, capital R.
 
 interface Props {
   title: string;
@@ -34,7 +28,7 @@ const card = new URL(href("og.png"), Astro.site);
     <link rel="preload" href={href("media/rematch-hook.jpg")} as="image" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content="The Rematch logo, a boy with his chess board and his dad's hand on his shoulder, beside: rematch, chess improver. Stop losing to the same move." />
+    <meta property="og:image:alt" content="The Rematch logo, a boy with his chess board and his dad's hand on his shoulder, beside: Rematch, chess improver. Stop losing to the same move." />
     <meta property="og:type" content="website" />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
@@ -63,8 +57,7 @@ const card = new URL(href("og.png"), Astro.site);
     <header class="site-header">
       <div class="wrap header-row">
         <a class="wordmark" href={href("")} aria-label="Rematch, chess improver, home">
-          <Fragment set:html={mark} />
-          <span class="wordmark-name">rematch</span>
+          <span class="wordmark-name">Rematch</span>
         </a>
         <nav aria-label="Main" class="header-nav">
           <a class="nav-wide" href="#features">Features</a>

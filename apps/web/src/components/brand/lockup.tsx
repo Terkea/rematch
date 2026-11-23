@@ -1,27 +1,15 @@
 import { brand } from "../../brand";
-import { REMATCH_ICON } from "./icon.generated";
 
 /**
- * The Rematch lockup: the boy with his board (the small-size icon from
- * packages/ui/assets/brand, ink only, never pen red) beside "rematch" in Literata italic. Both
- * draw in the current text colour, so the lockup is ink by day and cream at night. The word is
- * lowercased by CSS only, so screen readers still say "Rematch".
+ * The Rematch wordmark for headers: "Rematch" in Literata italic, capital R, in the current text
+ * colour (ink by day, cream at night). At header height the boy with his board is a scribble and
+ * the favicon icon reads as clip-art, so the header carries the word alone; the drawing and the
+ * "chess improver" tagline live in the hero, the README and the social card.
  */
 export function BrandLockup() {
   return (
-    <>
-      <svg
-        aria-hidden="true"
-        focusable="false"
-        viewBox={REMATCH_ICON.viewBox}
-        className="size-8 shrink-0"
-        // A constant generated from the committed logo (scripts/brand-assets.ts), never user data.
-        // biome-ignore lint/security/noDangerouslySetInnerHtml: the generated logo paths
-        dangerouslySetInnerHTML={{ __html: REMATCH_ICON.body }}
-      />
-      <span className="font-serif-italic text-2xl leading-none font-medium lowercase italic">
-        {brand.wordmark}
-      </span>
-    </>
+    <span className="font-serif-italic text-2xl leading-none font-medium italic">
+      {brand.wordmark}
+    </span>
   );
 }

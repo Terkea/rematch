@@ -1,4 +1,4 @@
-<picture><source media="(prefers-color-scheme: dark)" srcset="docs/media/rematch-lockup-night.png"><img src="docs/media/rematch-lockup-day.png" width="440" alt="rematch, chess improver: the logo, a boy holding his chess board with his dad's hand on his shoulder." /></picture>
+<picture><source media="(prefers-color-scheme: dark)" srcset="docs/media/rematch-lockup-night.png"><img src="docs/media/rematch-lockup-day.png" width="440" alt="Rematch, chess improver: the logo, a boy holding his chess board with his dad's hand on his shoulder." /></picture>
 
 # Rematch, chess improver
 

@@ -2,9 +2,16 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { BRAND_INK, BRAND_NIGHT_INK, iconSvg } from "../scripts/brand-assets-lib.js";
+import {
+  BRAND_INK,
+  BRAND_NIGHT_INK,
+  BRAND_NIGHT_PENCIL,
+  BRAND_PENCIL,
+  cardHtml,
+  iconSvg,
+  lockupHtml,
+} from "../scripts/brand-assets-lib.js";
 import manifest from "../src/app/manifest.js";
-import { REMATCH_ICON } from "../src/components/brand/icon.generated.js";
 
 // The Rematch logo (docs/superpowers/specs/2026-11-23-rematch-brand-design.md): the boy with his
 // board, ink only. `pnpm --filter @ci/web brand` regenerates every file checked here from
@@ -25,9 +32,9 @@ function pngSize(buf: Buffer): [number, number] {
 const PEN = /#c8372d|#d3312b|--color-pen/i;
 
 describe("the favicon set", () => {
-  it("serves icon.svg: the icon in ink, night cream on dark browser chrome, never red", () => {
+  it("serves icon.svg: the 16 px icon in ink, night cream on dark browser chrome, never red", () => {
     const svg = readFileSync(join(WEB, "src/app/icon.svg"), "utf8");
-    expect(svg).toBe(iconSvg(readFileSync(join(BRAND, "rematch-icon.svg"), "utf8")));
+    expect(svg).toBe(iconSvg(readFileSync(join(BRAND, "rematch-icon-16.svg"), "utf8")));
     expect(BRAND_INK).toBe("#1F2A3D");
     expect(BRAND_NIGHT_INK).toBe("#E8E2D6");
     expect(svg).toContain(`color:${BRAND_INK}`);
@@ -76,13 +83,53 @@ describe("the favicon set", () => {
   });
 });
 
-describe("the header mark", () => {
-  it("is generated from rematch-icon.svg and draws in currentColor", () => {
-    const source = readFileSync(join(BRAND, "rematch-icon.svg"), "utf8");
-    expect(REMATCH_ICON.viewBox).toBe("0 0 32 32");
-    // Every path of the source is in the component, unchanged.
-    for (const d of source.matchAll(/ d="([^"]+)"/g)) expect(REMATCH_ICON.body).toContain(d[1]);
-    expect(REMATCH_ICON.body).toContain('fill="currentColor"');
-    expect(REMATCH_ICON.body).not.toMatch(PEN);
+describe("the icons by size", () => {
+  // 16 px is pixel art on a 16 px grid (whole-unit rectangles, so a tab draws it without blur).
+  // From 32 px up it's the fine line drawing (the pixel figure read as a cartoon at 32/48).
+  it("rematch-icon-16.svg sits on a 16 px grid, ink only", () => {
+    const svg = readFileSync(join(BRAND, "rematch-icon-16.svg"), "utf8");
+    expect(svg).toContain('viewBox="0 0 16 16"');
+    expect(svg).toContain('fill="currentColor"');
+    expect(svg).not.toMatch(/#[0-9a-f]{3,6}(?![0-9a-z])/i);
+    const ds = [...svg.matchAll(/ d="([^"]+)"/g)].map((m) => m[1] ?? "");
+    expect(ds.length).toBeGreaterThan(0);
+    for (const d of ds) expect(d).toMatch(/^(M\d+ \d+h\d+v1h-\d+z)+$/);
+  });
+
+  it("rematch-icon.svg is the fine line drawing, in currentColor", () => {
+    const svg = readFileSync(join(BRAND, "rematch-icon.svg"), "utf8");
+    expect(svg).toContain('viewBox="0 0 32 32"');
+    expect(svg).toContain('fill="currentColor"');
+    expect(svg).toMatch(/ d="[^"]*[Cc]/);
+  });
+});
+
+describe("the lockup", () => {
+  // The owner's pick (lockup-type option 4): "Rematch" in Literata italic with a capital R, and
+  // "chess improver" in a smaller Literata italic, in pencil, flush with the end of the word.
+  const faces = "/* faces */";
+  for (const [name, html] of [
+    ["README", lockupHtml("<svg/>", faces, BRAND_INK, BRAND_PENCIL)],
+    ["social card", cardHtml("<svg/>", faces, 1200, 630)],
+  ] as const) {
+    it(`sets the ${name} in Literata italic, capital R, italic tagline`, () => {
+      expect(html).toContain(">Rematch</p>");
+      expect(html).toContain(">chess improver</p>");
+      expect(html).not.toMatch(/>rematch</);
+      expect(html).not.toMatch(/lowercase|Schibsted/);
+      expect(html.match(/font-family:'Literata Italic'/g)?.length).toBeGreaterThanOrEqual(2);
+      expect(html).toContain("align-items:flex-end");
+    });
+  }
+
+  it("draws the README tagline in night pencil on dark", () => {
+    expect(BRAND_NIGHT_PENCIL).toBe("#ADA394");
+    expect(lockupHtml("<svg/>", faces, BRAND_NIGHT_INK, BRAND_NIGHT_PENCIL)).toContain("#ADA394");
+  });
+});
+
+describe("the header", () => {
+  it("has no generated icon module: headers carry the wordmark alone", () => {
+    expect(existsSync(join(WEB, "src/components/brand/icon.generated.ts"))).toBe(false);
   });
 });
