@@ -180,7 +180,7 @@ export function TrainSession({
   const right = results.filter(Boolean).length;
 
   return (
-    <section aria-labelledby="train-position" className="flex flex-col gap-6">
+    <section aria-labelledby="train-position" data-item={item.id} className="flex flex-col gap-6">
       <div className="flex flex-col gap-1">
         <p className="m-0 text-sm text-ink-soft [font-variant-numeric:lining-nums]">
           Position {index + 1} of {total}
@@ -294,6 +294,7 @@ function RevealPanel({
     <div className="flex flex-col gap-4">
       <p
         role="status"
+        data-slot="verdict"
         className={`m-0 flex items-start gap-2 font-serif text-xl font-semibold ${result.correct ? "text-good-text" : "text-ink"}`}
       >
         {result.correct ? <Icon icon={CheckCircleIcon} className="mt-1 shrink-0" /> : null}
