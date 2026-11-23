@@ -1,17 +1,17 @@
 {
   "suite": "smoke",
   "metrics": {
-    "recall_at_2": 0.4,
-    "recall_at_1": 0.4,
-    "top1_precision": 0.4,
-    "clean_top1_false_alarms": 1,
+    "recall_at_2": 0.6,
+    "recall_at_1": 0.6,
+    "top1_precision": 0.6,
+    "clean_top1_false_alarms": 0,
     "clean_players": 1,
-    "coverage": 0.8,
+    "coverage": 0.6,
     "coverage_samples": 20,
-    "plan_hit_rate": 0.4,
-    "mean_games_to_detection": 55.0,
+    "plan_hit_rate": 0.6,
+    "mean_games_to_detection": 45.0,
     "deterministic": true,
-    "top2_agreement": 0.8333333333333334
+    "top2_agreement": 1.0
   },
   "tolerance": {
     "recall_at_2": 0.2,
@@ -24,22 +24,32 @@
     {
       "player": "bench-hang",
       "issue": "https://github.com/Terkea/rematch/issues/10",
-      "note": "W1 has no peer benchmark (is_peer_comparable), so it is never ranked"
+      "note": "resolved (ADR 0101): W1 is compared with the opponents' refutation lines from the cached main evals; ranked 1 from 45 games"
     },
     {
       "player": "bench-noconvert",
       "issue": "https://github.com/Terkea/rematch/issues/10",
-      "note": "W5 has no peer benchmark (is_peer_comparable), so it is never ranked"
-    },
-    {
-      "player": "bench-missmate",
-      "issue": "https://github.com/Terkea/rematch/issues/11",
-      "note": "the W4.missed peer row is low-sample at 80 games, so it is not ranked"
+      "note": "resolved (ADR 0101): W5 is compared with what the evaluation predicts from a winning episode; ranked 1 from 60 games"
     },
     {
       "player": "bench-clean",
       "issue": "https://github.com/Terkea/rematch/issues/12",
-      "note": "W9b ranks first from noise: no confidence or effect floor on ranking"
+      "note": "resolved (ADR 0101): a weakness ranks only when its 80% range lies above the benchmark and it costs at least 0.02 points per game; the clean control ranks nothing"
+    },
+    {
+      "player": "bench-missmate",
+      "issue": "https://github.com/Terkea/rematch/issues/11",
+      "note": "the W4.missed peer row is low-sample at 80 games, so it is not ranked; its rank 1 is W1 (0.0043 against its opponents' 0.0018, the games-against-you bias)"
+    },
+    {
+      "player": "bench-opening",
+      "issue": "docs/decisions/0101-weakness-ranking-floor-and-baselines.md",
+      "note": "no issue yet: the injected opening blunders mostly hang a piece, so their cost goes to W1 (precedence W1 > W7) and W1 ranks 1; W7.traps keeps 0.0 of excess (the peers' row has an EPL per event of 0) and is not ranked"
+    },
+    {
+      "player": "bench-hang",
+      "issue": "docs/decisions/0101-weakness-ranking-floor-and-baselines.md",
+      "note": "no issue yet: coverage fell from 0.8 to 0.6 because W1's four intervals now miss; the W1 detector reads 0.019 against a true rate of 0.023 and the interval is shrunk towards the opponents' 0.0008 (n0 = 300)"
     }
   ]
 }
