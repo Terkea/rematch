@@ -110,7 +110,7 @@ The styleguide's sample game is a real Lichess blitz game, so here is what the p
 <summary>Import: chess.com only, public data, kept in sync</summary>
 
 - Source: The public Published-Data API at `https://api.chess.com/pub/player`. The importer reads `/games/archives`, then walks the monthly archives newest first and normalises each game ([`chesscom.rs`](backend/crates/platforms/src/chesscom.rs)). Time classes come from `base + 40 × increment`: under 180 s is bullet, under 480 s blitz, under 1500 s rapid, else classical ([`time_control.rs`](backend/crates/chess-core/src/time_control.rs)). Daily games keep chess.com's own class.
-- Being polite: Each platform has one serial HTTP client: one request at a time. A 429 waits 60 s and retries up to 3 times, and a circuit breaker opens after 5 consecutive outages (5xx, timeouts, transport errors; never a 404 or a 429) for 60 s ([`client.rs`](backend/crates/platforms/src/client.rs), [`breaker.rs`](backend/crates/platforms/src/breaker.rs)). The User-Agent is the fixed string `chess-improver/0.1 (+https://github.com/chess-improver)`. No request carries an email address ([ADR 0043](docs/decisions/0043-no-email-in-outbound-requests.md)).
+- Rate limits: Each platform has one serial HTTP client: one request at a time. A 429 waits 60 s and retries up to 3 times, and a circuit breaker opens after 5 consecutive outages (5xx, timeouts, transport errors; never a 404 or a 429) for 60 s ([`client.rs`](backend/crates/platforms/src/client.rs), [`breaker.rs`](backend/crates/platforms/src/breaker.rs)). The User-Agent is the fixed string `chess-improver/0.1 (+https://github.com/chess-improver)`. No request carries an email address ([ADR 0043](docs/decisions/0043-no-email-in-outbound-requests.md)).
 - Sync: A recurring `sync-accounts` job runs every 5 minutes, a sixth of the 30-minute interval, and enqueues an incremental import for the accounts that are due, the longest-waiting first. The linked accounts are spread over the interval, so chess.com never gets them in one burst ([ADR 0076](docs/decisions/0076-recurring-account-sync.md), [`sync.rs`](backend/crates/analysis/src/jobs/sync.rs)).
 - Ownership: Anyone may link a public username and see its engine analysis. The AI report and the coach need a verified link: you put a short code anywhere in your chess.com profile's location field, and the server reads it back ([ADR-WEB-5](docs/decisions/ADR-WEB-5-chesscom-verification.md), [ADR-FIX-N-1](docs/decisions/ADR-FIX-N-1-unverified-links-see-analysis-only.md)).
 - Lichess: The Lichess importer and OAuth are in the tree and tested, but `LICHESS_ENABLED` defaults to off. We chose to get one platform right first ([ADR 0040](docs/decisions/0040-chesscom-first-defer-lichess-accounts.md)). The open Lichess game database is a different thing: it is reference data, described below.
@@ -139,9 +139,7 @@ W = 50 + 50 · chances
 ΔW = max(0, W_before − W_after)
 ```
 
-`chances` runs from −1 to 1, `W` is the win chance from 0 to 100, and ΔW is measured from the mover's side.
-
-So +100 is about 59%, +300 about 75%.
+`chances` runs from −1 to 1, `W` is the win chance from 0 to 100, and ΔW is measured from the mover's side. So +100 is about 59%, and +300 about 75%.
 
 #### Judgements
 

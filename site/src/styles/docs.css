@@ -139,7 +139,8 @@ h1#_top {
 }
 
 .sl-markdown-content table {
-  font-variant-numeric: lining-nums tabular-nums;
+  /* Lining figures only: tabular widths also space out the commas and full stops of prose cells. */
+  font-variant-numeric: lining-nums;
 }
 
 .sl-markdown-content :is(th, td) {
