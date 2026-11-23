@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isCurrent, navItems, shownNavItems } from "../src/app/(app)/_shell/nav.js";
+import { isCurrent, navItems, shownNavItems, withFilters } from "../src/app/(app)/_shell/nav.js";
 
 // The header's sections (M5b Task 11): the coach pages sit after "Games", before "Accounts".
 
@@ -50,5 +50,42 @@ describe("shownNavItems", () => {
       "Accounts",
     ]);
     expect(shownNavItems(true)).toEqual(navItems);
+  });
+});
+
+// Audit A7: moving between pages keeps the filters (account, time control, colour, dates).
+describe("withFilters", () => {
+  const q = new URLSearchParams(
+    "account=acc-1&tc=blitz&color=black&from=2026-09-01&to=2026-10-31&cmp=month&anchor=x",
+  );
+
+  it("carries the scope, colour and dates to a stats page", () => {
+    expect(withFilters("/app/weaknesses", q)).toBe(
+      "/app/weaknesses?account=acc-1&tc=blitz&color=black&from=2026-09-01&to=2026-10-31",
+    );
+    expect(withFilters("/app/areas/time", q)).toBe(
+      "/app/areas/time?account=acc-1&tc=blitz&color=black&from=2026-09-01&to=2026-10-31",
+    );
+  });
+
+  it("speaks the games page's own words, with no account", () => {
+    expect(withFilters("/app/games", q)).toBe(
+      "/app/games?tc=blitz&colour=black&from=2026-09-01&to=2026-10-31",
+    );
+  });
+
+  it("keeps only the scope (and colour for a new chat) on the coach pages", () => {
+    expect(withFilters("/app/coach", q)).toBe("/app/coach?account=acc-1&tc=blitz");
+    expect(withFilters("/app/coach/new", q)).toBe(
+      "/app/coach/new?account=acc-1&tc=blitz&color=black",
+    );
+  });
+
+  it("reads the games page's colour, drops bad values and leaves other pages bare", () => {
+    expect(withFilters("/app/progress", new URLSearchParams("colour=white&from=junk"))).toBe(
+      "/app/progress?color=white",
+    );
+    expect(withFilters("/app/accounts", q)).toBe("/app/accounts");
+    expect(withFilters("/app/report", null)).toBe("/app/report");
   });
 });

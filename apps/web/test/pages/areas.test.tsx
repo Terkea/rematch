@@ -214,6 +214,7 @@ const getArea = vi.fn();
 const kpiTrends = vi.fn();
 const getWeakness = vi.fn();
 const getReport = vi.fn();
+const getBenchmark = vi.fn(async () => null);
 const requireUser = vi.fn(async () => ({ id: "u1", email: "x@example.invalid" }));
 
 const coachStatus = vi.fn(async () => "available");
@@ -232,6 +233,7 @@ vi.mock("../../src/server/profile", async (orig) => ({
   getArea,
   kpiTrends,
   getWeakness,
+  getBenchmark,
 }));
 vi.mock("../../src/server/coaching", async (orig) => ({
   ...(await orig<object>()),
@@ -464,6 +466,40 @@ describe("skill-area pages", { timeout: 30_000 }, () => {
     expect(href.searchParams.get("anchor")).not.toBeNull();
   });
 
+  it("asks the coach about the colour the page is filtered to (audit A3)", async () => {
+    await show("endgame", { account: ACCOUNT, tc: "rapid", color: "black" });
+    const ask = screen.getByRole("link", { name: "Ask your coach about your endgame" });
+    const href = new URL(ask.getAttribute("href") ?? "", "http://x");
+    expect(href.searchParams.get("color")).toBe("black");
+  });
+
+  it("keeps the colour and dates on the area tabs (audit A7)", async () => {
+    await show("endgame", {
+      account: ACCOUNT,
+      tc: "rapid",
+      color: "white",
+      from: "2026-09-01",
+      to: "2026-10-31",
+    });
+    const tabs = within(screen.getByRole("navigation", { name: "Skill areas" }));
+    const href = new URL(
+      tabs.getByRole("link", { name: "Time" }).getAttribute("href") ?? "",
+      "http://x",
+    );
+    expect(Object.fromEntries(href.searchParams)).toMatchObject({
+      color: "white",
+      from: "2026-09-01",
+      to: "2026-10-31",
+    });
+  });
+
+  it("says what the dates change and what stays on its window (audit A6)", async () => {
+    await show("endgame", { account: ACCOUNT, tc: "rapid", from: "2026-09-01" });
+    expect(
+      screen.getByText(/^From 1 Sep 2026: these dates trim the weekly lines only\./),
+    ).toBeInTheDocument();
+  });
+
   it("a dropped areas section says so and shows no model text", async () => {
     const p = payload();
     p.sections.areas = null;
@@ -524,6 +560,25 @@ describe("skill-area pages", { timeout: 30_000 }, () => {
     const again = screen.getByRole("region", { name: "Score" });
     expect(within(again).getByText("96 chances")).toBeInTheDocument();
     expect(again.textContent).toMatch(/thinnest measure, Endgame technique \(advanced\)/);
+  });
+
+  it("names the players faced, not a rating band, against a peer benchmark (Q8)", async () => {
+    getBenchmark.mockResolvedValueOnce({
+      source: "peers",
+      platform: "chesscom",
+      low: 667,
+      high: 967,
+      players: 25,
+      games: 61,
+      chances: {},
+    } as never);
+    getArea.mockResolvedValue({ ...ENDGAME_VIEW, score: { value: 44.33, n: 46, computedAt: AT } });
+    await show("endgame");
+    const region = screen.getByRole("region", { name: "Score" });
+    expect(region.textContent).toContain(
+      "Against players you've faced on chess.com, rated about 667–967: 50 is level with them and higher is better.",
+    );
+    expect(region.textContent).not.toMatch(/rating band|band median/);
   });
 
   it("a score whose n matches no measure names no unit", async () => {
@@ -717,5 +772,20 @@ describe("/app/areas", () => {
     const digest = String((err as { digest?: string }).digest);
     expect(digest).toContain(`/app/areas/openings?account=${ACCOUNT}&tc=rapid;`);
     expect(digest).not.toContain("other");
+  });
+
+  it("keeps the colour and dates too (audit A7)", async () => {
+    const err = await IndexPage({
+      searchParams: Promise.resolve({
+        account: ACCOUNT,
+        tc: "rapid",
+        color: "black",
+        to: "2026-10-31",
+      }),
+    }).catch((e: unknown) => e);
+    const digest = String((err as { digest?: string }).digest);
+    expect(digest).toContain(
+      `/app/areas/openings?account=${ACCOUNT}&tc=rapid&color=black&to=2026-10-31;`,
+    );
   });
 });

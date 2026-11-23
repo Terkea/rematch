@@ -2,7 +2,9 @@ import type { Area } from "@ci/ui/area-score";
 
 // The profile catalogue, mirrored from Rust (ADR 0068). `backend/fixtures/profile/catalogue.json`
 // is written by `profile-core`'s `catalogue_snapshot` test; `test/profile/catalogue.test.ts` fails
-// when these tables differ from it. Edit both together, never one alone.
+// when these tables differ from it. Edit both together, never one alone. Every label is the
+// glossary's plain name (`glossary.ts`, ADR 0087): one name per weakness and KPI on every page,
+// in the report and for the coach, and `catalogue.test.ts` fails when the two drift apart.
 
 /**
  * The seven areas in `@ci/ui`'s `areaLabels` order. Kept here because `area-score` is a client
@@ -50,7 +52,7 @@ export const WEAKNESSES: readonly WeaknessDef[] = [
     key: "W1",
     contractId: "W1",
     variant: null,
-    label: "Hung material",
+    label: "Leaving pieces hanging",
     area: "calculation",
     minEvidence: 1000,
     rankable: true,
@@ -59,7 +61,7 @@ export const WEAKNESSES: readonly WeaknessDef[] = [
     key: "W2",
     contractId: "W2",
     variant: null,
-    label: "Missed opponent threat",
+    label: "Missing your opponent's threat",
     area: "calculation",
     minEvidence: 1000,
     rankable: true,
@@ -68,7 +70,7 @@ export const WEAKNESSES: readonly WeaknessDef[] = [
     key: "W3.shallow",
     contractId: "W3",
     variant: "shallow",
-    label: "Missed own tactic (shallow)",
+    label: "Missing a short tactic",
     area: "tactics",
     minEvidence: 40,
     rankable: true,
@@ -77,7 +79,7 @@ export const WEAKNESSES: readonly WeaknessDef[] = [
     key: "W3.deep",
     contractId: "W3",
     variant: "deep",
-    label: "Missed own tactic (deep)",
+    label: "Missing a longer tactic",
     area: "tactics",
     minEvidence: 40,
     rankable: true,
@@ -86,7 +88,7 @@ export const WEAKNESSES: readonly WeaknessDef[] = [
     key: "W4.missed",
     contractId: "W4",
     variant: "missed",
-    label: "Missed mate",
+    label: "Missing a mate",
     area: "tactics",
     minEvidence: 40,
     rankable: true,
@@ -95,7 +97,7 @@ export const WEAKNESSES: readonly WeaknessDef[] = [
     key: "W4.allowed",
     contractId: "W4",
     variant: "allowed",
-    label: "Allowed mate",
+    label: "Allowing a mate",
     area: "calculation",
     minEvidence: 40,
     rankable: true,
@@ -104,7 +106,7 @@ export const WEAKNESSES: readonly WeaknessDef[] = [
     key: "W5",
     contractId: "W5",
     variant: null,
-    label: "Conversion failure",
+    label: "Not winning won games",
     area: "middlegame",
     minEvidence: 15,
     rankable: true,
@@ -113,7 +115,7 @@ export const WEAKNESSES: readonly WeaknessDef[] = [
     key: "W6",
     contractId: "W6",
     variant: null,
-    label: "Defence / resourcefulness",
+    label: "Defending lost positions",
     area: "middlegame",
     minEvidence: 15,
     rankable: true,
@@ -122,7 +124,7 @@ export const WEAKNESSES: readonly WeaknessDef[] = [
     key: "W7.traps",
     contractId: "W7",
     variant: "traps",
-    label: "Opening traps",
+    label: "Early blunders",
     area: "openings",
     minEvidence: 40,
     rankable: true,
@@ -131,7 +133,7 @@ export const WEAKNESSES: readonly WeaknessDef[] = [
     key: "W7.prep",
     contractId: "W7",
     variant: "prep",
-    label: "Opening preparation",
+    label: "Leaving the opening worse",
     area: "openings",
     minEvidence: 40,
     rankable: true,
@@ -140,7 +142,7 @@ export const WEAKNESSES: readonly WeaknessDef[] = [
     key: "W8.basics",
     contractId: "W8",
     variant: "basics",
-    label: "Endgame technique (basics)",
+    label: "Basic endgames",
     area: "endgame",
     minEvidence: 50,
     rankable: true,
@@ -149,7 +151,7 @@ export const WEAKNESSES: readonly WeaknessDef[] = [
     key: "W8.advanced",
     contractId: "W8",
     variant: "advanced",
-    label: "Endgame technique (advanced)",
+    label: "Harder endgames",
     area: "endgame",
     minEvidence: 50,
     rankable: true,
@@ -158,7 +160,7 @@ export const WEAKNESSES: readonly WeaknessDef[] = [
     key: "W9a",
     contractId: "W9a",
     variant: null,
-    label: "Time trouble",
+    label: "Getting short of time",
     area: "time",
     minEvidence: 20,
     rankable: true,
@@ -167,7 +169,7 @@ export const WEAKNESSES: readonly WeaknessDef[] = [
     key: "W9b",
     contractId: "W9b",
     variant: null,
-    label: "Time-pressure collapse",
+    label: "Blunders on a low clock",
     area: "time",
     minEvidence: 40,
     rankable: true,
@@ -176,7 +178,7 @@ export const WEAKNESSES: readonly WeaknessDef[] = [
     key: "W9c",
     contractId: "W9c",
     variant: null,
-    label: "Rushing critical moves",
+    label: "Rushing important moves",
     area: "time",
     minEvidence: 60,
     rankable: true,
@@ -185,7 +187,7 @@ export const WEAKNESSES: readonly WeaknessDef[] = [
     key: "W9d",
     contractId: "W9d",
     variant: null,
-    label: "Time misallocation",
+    label: "How you spend your time",
     area: "time",
     minEvidence: 20,
     rankable: false,
@@ -194,7 +196,7 @@ export const WEAKNESSES: readonly WeaknessDef[] = [
     key: "W10",
     contractId: "W10",
     variant: null,
-    label: "Positional drift",
+    label: "Drifting in quiet positions",
     area: "middlegame",
     minEvidence: 1500,
     rankable: true,
@@ -203,7 +205,7 @@ export const WEAKNESSES: readonly WeaknessDef[] = [
     key: "W11",
     contractId: "W11",
     variant: null,
-    label: "Easy-move errors (vision)",
+    label: "Mistakes on easy moves",
     area: "calculation",
     minEvidence: 1000,
     rankable: true,
@@ -212,7 +214,7 @@ export const WEAKNESSES: readonly WeaknessDef[] = [
     key: "W12",
     contractId: "W12",
     variant: null,
-    label: "Tilt / fatigue",
+    label: "Tilt and tiredness",
     area: "mindset",
     minEvidence: 60,
     rankable: false,
@@ -255,7 +257,7 @@ export const KPIS: readonly KpiDef[] = [
     unit: null,
     higherIsBetter: true,
     minN: 20,
-    label: "Score vs expected",
+    label: "Score against expectations",
   },
   {
     metric: "accuracy",
@@ -318,7 +320,7 @@ export const KPIS: readonly KpiDef[] = [
     unit: "rate",
     higherIsBetter: false,
     minN: 40,
-    label: "Blunder rate on a low clock",
+    label: "Blunders on a low clock",
   },
   {
     metric: "conversion_rate",
@@ -390,7 +392,7 @@ export const KPIS: readonly KpiDef[] = [
     unit: null,
     higherIsBetter: true,
     minN: 20,
-    label: "Eval trend, moves 15-35",
+    label: "How the middlegame goes",
   },
   {
     metric: "time_trouble_rate",
@@ -444,7 +446,7 @@ export const KPIS: readonly KpiDef[] = [
     unit: null,
     higherIsBetter: true,
     minN: 20,
-    label: "Time on critical moves vs others",
+    label: "Time on critical moves",
   },
   {
     metric: "eval_after_opening",
@@ -471,7 +473,7 @@ export const KPIS: readonly KpiDef[] = [
     unit: null,
     higherIsBetter: true,
     minN: 20,
-    label: "Book exit ply",
+    label: "How long you stay in known theory",
   },
   {
     metric: "time_in_opening",
@@ -498,7 +500,7 @@ export const KPIS: readonly KpiDef[] = [
     unit: "rate",
     higherIsBetter: true,
     minN: 15,
-    label: "Drawn endgames held",
+    label: "Worse endgames held",
   },
   {
     metric: "tb_errors_per_endgame",
@@ -507,7 +509,7 @@ export const KPIS: readonly KpiDef[] = [
     unit: "per_game",
     higherIsBetter: false,
     minN: 20,
-    label: "Tablebase errors per endgame",
+    label: "Endgame errors per game",
   },
   {
     metric: "score_after_loss",
@@ -534,7 +536,7 @@ export const KPIS: readonly KpiDef[] = [
     unit: null,
     higherIsBetter: true,
     minN: 20,
-    label: "Accuracy change late in a session",
+    label: "Accuracy late in a session",
   },
   {
     metric: "first_game_accuracy",
@@ -561,7 +563,7 @@ export const KPIS: readonly KpiDef[] = [
     unit: "rate",
     higherIsBetter: false,
     minN: 10,
-    label: "Resignations in saveable positions",
+    label: "Resigning too early",
   },
   {
     metric: "motif_miss_rate:hangingPiece",
@@ -570,7 +572,7 @@ export const KPIS: readonly KpiDef[] = [
     unit: "rate",
     higherIsBetter: false,
     minN: 20,
-    label: "Missed hanging pieces",
+    label: "Missed free pieces",
   },
   {
     metric: "motif_miss_rate:fork",
@@ -651,7 +653,7 @@ export const KPIS: readonly KpiDef[] = [
     unit: "rate",
     higherIsBetter: false,
     minN: 20,
-    label: "Missed mates in 1",
+    label: "Missed mates in one",
   },
   {
     metric: "motif_miss_rate:mateIn2",
@@ -660,7 +662,7 @@ export const KPIS: readonly KpiDef[] = [
     unit: "rate",
     higherIsBetter: false,
     minN: 20,
-    label: "Missed mates in 2",
+    label: "Missed mates in two",
   },
   {
     metric: "motif_miss_rate:mateIn3",
@@ -669,7 +671,7 @@ export const KPIS: readonly KpiDef[] = [
     unit: "rate",
     higherIsBetter: false,
     minN: 20,
-    label: "Missed mates in 3",
+    label: "Missed mates in three",
   },
   {
     metric: "motif_miss_rate:mateIn4Plus",
@@ -678,7 +680,7 @@ export const KPIS: readonly KpiDef[] = [
     unit: "rate",
     higherIsBetter: false,
     minN: 20,
-    label: "Missed mates in 4+",
+    label: "Missed long mates",
   },
   {
     metric: "motif_miss_rate:matingNet",
@@ -714,7 +716,7 @@ export const KPIS: readonly KpiDef[] = [
     unit: "rate",
     higherIsBetter: false,
     minN: 300,
-    label: "Hung material",
+    label: "Leaving pieces hanging",
   },
   {
     metric: "weakness:W2",
@@ -723,7 +725,7 @@ export const KPIS: readonly KpiDef[] = [
     unit: "rate",
     higherIsBetter: false,
     minN: 100,
-    label: "Missed opponent threat",
+    label: "Missing your opponent's threat",
   },
   {
     metric: "weakness:W3.shallow",
@@ -732,7 +734,7 @@ export const KPIS: readonly KpiDef[] = [
     unit: "rate",
     higherIsBetter: false,
     minN: 60,
-    label: "Missed own tactic (shallow)",
+    label: "Missing a short tactic",
   },
   {
     metric: "weakness:W3.deep",
@@ -741,7 +743,7 @@ export const KPIS: readonly KpiDef[] = [
     unit: "rate",
     higherIsBetter: false,
     minN: 60,
-    label: "Missed own tactic (deep)",
+    label: "Missing a longer tactic",
   },
   {
     metric: "weakness:W4.missed",
@@ -750,7 +752,7 @@ export const KPIS: readonly KpiDef[] = [
     unit: "rate",
     higherIsBetter: false,
     minN: 40,
-    label: "Missed mate",
+    label: "Missing a mate",
   },
   {
     metric: "weakness:W4.allowed",
@@ -759,7 +761,7 @@ export const KPIS: readonly KpiDef[] = [
     unit: "rate",
     higherIsBetter: false,
     minN: 40,
-    label: "Allowed mate",
+    label: "Allowing a mate",
   },
   {
     metric: "weakness:W5",
@@ -768,7 +770,7 @@ export const KPIS: readonly KpiDef[] = [
     unit: "rate",
     higherIsBetter: false,
     minN: 30,
-    label: "Conversion failure",
+    label: "Not winning won games",
   },
   {
     metric: "weakness:W6",
@@ -777,7 +779,7 @@ export const KPIS: readonly KpiDef[] = [
     unit: "rate",
     higherIsBetter: false,
     minN: 30,
-    label: "Defence / resourcefulness",
+    label: "Defending lost positions",
   },
   {
     metric: "weakness:W7.traps",
@@ -786,7 +788,7 @@ export const KPIS: readonly KpiDef[] = [
     unit: "rate",
     higherIsBetter: false,
     minN: 40,
-    label: "Opening traps",
+    label: "Early blunders",
   },
   {
     metric: "weakness:W7.prep",
@@ -795,7 +797,7 @@ export const KPIS: readonly KpiDef[] = [
     unit: "rate",
     higherIsBetter: false,
     minN: 40,
-    label: "Opening preparation",
+    label: "Leaving the opening worse",
   },
   {
     metric: "weakness:W8.basics",
@@ -804,7 +806,7 @@ export const KPIS: readonly KpiDef[] = [
     unit: "rate",
     higherIsBetter: false,
     minN: 80,
-    label: "Endgame technique (basics)",
+    label: "Basic endgames",
   },
   {
     metric: "weakness:W8.advanced",
@@ -813,7 +815,7 @@ export const KPIS: readonly KpiDef[] = [
     unit: "rate",
     higherIsBetter: false,
     minN: 80,
-    label: "Endgame technique (advanced)",
+    label: "Harder endgames",
   },
   {
     metric: "weakness:W9a",
@@ -822,7 +824,7 @@ export const KPIS: readonly KpiDef[] = [
     unit: "rate",
     higherIsBetter: false,
     minN: 30,
-    label: "Time trouble",
+    label: "Getting short of time",
   },
   {
     metric: "weakness:W9b",
@@ -831,7 +833,7 @@ export const KPIS: readonly KpiDef[] = [
     unit: "rate",
     higherIsBetter: false,
     minN: 40,
-    label: "Time-pressure collapse",
+    label: "Blunders on a low clock",
   },
   {
     metric: "weakness:W9c",
@@ -840,7 +842,7 @@ export const KPIS: readonly KpiDef[] = [
     unit: "rate",
     higherIsBetter: false,
     minN: 60,
-    label: "Rushing critical moves",
+    label: "Rushing important moves",
   },
   {
     metric: "weakness:W10",
@@ -849,7 +851,7 @@ export const KPIS: readonly KpiDef[] = [
     unit: "rate",
     higherIsBetter: false,
     minN: 600,
-    label: "Positional drift",
+    label: "Drifting in quiet positions",
   },
   {
     metric: "weakness:W11",
@@ -858,7 +860,7 @@ export const KPIS: readonly KpiDef[] = [
     unit: "rate",
     higherIsBetter: false,
     minN: 300,
-    label: "Easy-move errors (vision)",
+    label: "Mistakes on easy moves",
   },
 ];
 

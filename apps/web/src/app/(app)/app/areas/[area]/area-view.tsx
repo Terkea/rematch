@@ -16,6 +16,7 @@ import { WeaknessTimeline } from "@ci/ui/timeline";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { CoachScopeSwitch } from "../../../../../components/coach-scope-switch";
+import { ScrollCue } from "../../../../../components/scroll-cue";
 import { coachChatLive } from "../../../../../lib/coach-chat";
 import { areaMeaning } from "../../../../../lib/explain";
 import { weeklyPoints } from "../../../../../lib/iso-week";
@@ -24,6 +25,8 @@ import { coachHref } from "../../../../../server/coach/anchor";
 import type { CoachStatus } from "../../../../../server/coach/status";
 import type { ReportView } from "../../../../../server/coaching";
 import type { NarrativeItem } from "../../../../../server/coaching/types";
+import type { DayRange } from "../../../../../server/filters/params";
+import type { Benchmark } from "../../../../../server/profile/benchmark-text";
 import {
   AREA_GLOSSARY,
   KPI_GLOSSARY,
@@ -39,10 +42,10 @@ import type {
   WeaknessSummary,
 } from "../../../../../server/profile/types";
 import { EmptySheet } from "../../../_shell/page-heading";
+import { datesNote } from "../../_filters/dates-note";
 import { SectionHead } from "../../_overview/section-head";
 import { numbersOnlyCopy } from "../../report/notes-off";
 import { type ScoreBasis, shortfallUnit } from "./basis";
-import { ScrollCue } from "./scroll-cue";
 
 // The skill-area page's layout, shared by all seven areas (one layout, no card grid, B4): a
 // heading with the area tabs, then ruled sections down one column. Score and the coach's note
@@ -70,7 +73,21 @@ export type AreaPageModel = {
   filterBar?: ReactNode;
   /** Whether the scope switch is still needed beside the bar (more than one linked account). */
   accountSwitch?: boolean;
+  /** The date filter, kept on the area tabs (audit A7); it only clips the weekly lines (A6). */
+  range?: DayRange;
+  /** What the score compares with (ADRs 0080, 0081): the players faced, or the rating band. */
+  benchmark?: Benchmark | null;
 };
+
+/**
+ * "players you've faced on chess.com, rated about 667–967" against the peer benchmark (Q8), else
+ * null: the rating band's words stand.
+ */
+function peerGroup(b: Benchmark | null | undefined): string | null {
+  if (b?.source !== "peers" || !Number.isFinite(b.low) || !Number.isFinite(b.high)) return null;
+  const f = new Intl.NumberFormat("en-GB");
+  return `players you've faced on ${PLATFORM[b.platform]}, rated about ${f.format(b.low)}–${f.format(b.high)}`;
+}
 
 const ORDER: readonly Area[] = [
   "openings",
@@ -142,7 +159,13 @@ function scopeQuery(scope: CoachScope): string {
   return q.toString();
 }
 
-const areaHref = (area: Area, scope: CoachScope) => `/app/areas/${area}?${scopeQuery(scope)}`;
+/** An area's page with the scope, the colour and the dates (audit A7). */
+function areaHref(area: Area, scope: CoachScope, range?: DayRange): string {
+  const q = new URLSearchParams(scopeQuery(scope));
+  if (range?.from) q.set("from", range.from);
+  if (range?.to) q.set("to", range.to);
+  return `/app/areas/${area}?${q.toString()}`;
+}
 
 export function AreaView({ model }: { model: AreaPageModel }) {
   const { area, scope } = model;
@@ -152,7 +175,7 @@ export function AreaView({ model }: { model: AreaPageModel }) {
   return (
     <div className="flex flex-col gap-10">
       <header className="flex flex-col gap-5">
-        <AreaTabs current={area} scope={scope} />
+        <AreaTabs current={area} scope={scope} range={model.range} />
         <div className="flex max-w-3xl flex-col gap-2">
           <div className="flex items-center gap-1.5">
             <h1 className="font-serif text-3xl font-semibold text-ink md:text-4xl">
@@ -182,6 +205,11 @@ export function AreaView({ model }: { model: AreaPageModel }) {
           </ScrollCue>
         ) : null}
         {model.filterBar}
+        {model.range && datesNote(model.range, "area") ? (
+          <p data-slot="dates-note" className="m-0 max-w-2xl text-sm text-ink-soft">
+            {datesNote(model.range, "area")}
+          </p>
+        ) : null}
       </header>
 
       <div className="grid grid-cols-1 gap-x-12 gap-y-10 lg:grid-cols-12">
@@ -228,7 +256,15 @@ function Section({
 }
 
 /** The seven areas as links, in a pill track like the app's tabs; the current one is a chip. */
-function AreaTabs({ current, scope }: { current: Area; scope: CoachScope }) {
+function AreaTabs({
+  current,
+  scope,
+  range,
+}: {
+  current: Area;
+  scope: CoachScope;
+  range: DayRange | undefined;
+}) {
   return (
     <ScrollCue>
       <nav
@@ -240,7 +276,7 @@ function AreaTabs({ current, scope }: { current: Area; scope: CoachScope }) {
           {ORDER.map((a) => (
             <li key={a}>
               <Link
-                href={areaHref(a, scope)}
+                href={areaHref(a, scope, range)}
                 aria-current={a === current ? "page" : undefined}
                 className={cn(
                   "relative inline-flex h-8 shrink-0 items-center rounded-pill px-4 font-sans text-sm font-medium whitespace-nowrap",
@@ -284,18 +320,25 @@ function ScorePart({ model }: { model: AreaPageModel }) {
         : basis?.unit === "games"
           ? undefined
           : { one: "in its thinnest measure", many: "in its thinnest measure" };
+    const peers = peerGroup(model.benchmark);
     return (
       <div className="flex flex-col gap-4">
-        <AreaScoreKey next={false} interval={false} />
+        <AreaScoreKey
+          next={false}
+          interval={false}
+          {...(peers ? { median: "Players you've faced" } : {})}
+        />
         <AreaScore
           area={area}
           score={Math.round(score.value)}
-          band={{ median: 50 }}
+          band={peers ? { median: 50, name: "players you've faced at" } : { median: 50 }}
           basis={{ games: score.n, timeClass: tc, ...(unit ? { unit } : {}) }}
           interval={null}
         />
         <p className="m-0 max-w-prose text-sm text-ink-soft">
-          A percentile against players in your rating band, so the band median is 50 by definition.{" "}
+          {peers
+            ? `Against ${peers}: 50 is level with them and higher is better. It says how far you are from their rate given how well it is known, not a rank among players.`
+            : "A percentile against players in your rating band, so the band median is 50 by definition."}{" "}
           {basis?.label
             ? `The count is its thinnest measure, ${basis.label}.`
             : "The count is its thinnest measure."}

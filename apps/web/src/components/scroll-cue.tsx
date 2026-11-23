@@ -2,7 +2,8 @@
 
 import { type ReactNode, useEffect, useRef } from "react";
 
-// A horizontal track that doesn't fit (the area tabs and the scope switch on a phone): on load
+// A horizontal track that doesn't fit (the area tabs, the scope switch and the filter bar's chip
+// rows on a phone): on load
 // the current item is centred in view, and each edge with more to scroll fades out (a mask, so
 // it works on any surface in both themes). The scroller is the wrapper's `[data-scroller]`, or
 // the nearest scrolling element inside it (the segmented control's own track).
@@ -79,7 +80,7 @@ export function ScrollCue({
     };
   }, [current]);
   return (
-    <div ref={ref} className={className}>
+    <div ref={ref} data-scroll-cue="" className={className}>
       {children}
     </div>
   );

@@ -1136,7 +1136,7 @@ async fn weakness_strength_needs_exemplars_of_its_own_claim(pool: PgPool) {
         input
             .strengths
             .iter()
-            .all(|s| !s.label.contains("Hung material")),
+            .all(|s| !s.label.contains("Leaving pieces hanging")),
         "{:?}",
         input.strengths
     );

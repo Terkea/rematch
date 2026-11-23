@@ -12,7 +12,8 @@ import {
   weaknessStateHistory,
 } from "@ci/db/generated";
 import { Chess } from "chess.js";
-import { and, asc, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, isNotNull, lt, type SQL, sql } from "drizzle-orm";
+import type { DayRange } from "../filters/params";
 import { readOnly } from "../games";
 import type { TimeClass } from "../games/types";
 import { BOOTSTRAP_RESAMPLES, CONFIDENCE, fnv1a, mulberry32, regIncBeta, wilson } from "../stats";
@@ -22,7 +23,7 @@ import { difficultyStatus } from "./difficulty";
 import { KPI_GLOSSARY } from "./glossary";
 import { CURRENT_WINDOW, latestSnapshots } from "./kpis";
 import { ownsScope } from "./scope";
-import type { Area, CoachScope, DifficultyStatus, WeaknessState } from "./types";
+import type { Area, CoachScope, Side as Colour, DifficultyStatus, WeaknessState } from "./types";
 import { openingNames } from "./weaknesses";
 
 // The strengths page's read model (`/app/strengths`): the good things in a scope's games and what
@@ -675,7 +676,17 @@ export function reportStrengths(input: unknown): ReportStrength[] {
 
 // ---- The page model ----
 
+/** One side's comparison with other players: the peers' rows, the band's, or none stored. */
+export type SideAbove =
+  | { mode: "peers"; claims: PeerClaim[]; compared: number }
+  | { mode: "band"; band: Band; claims: BandClaim[]; compared: number }
+  | { mode: "none" };
+
 export type StrengthsModel = {
+  /** The colour filter's side (ADR 0082) and the date filter the page was read with. */
+  side: Colour;
+  range: DayRange;
+  /** Analysed games of the scope's side and dates. */
   analysedGames: number;
   above:
     | {
@@ -686,6 +697,8 @@ export type StrengthsModel = {
       }
     | { mode: "band"; band: Band; claims: BandClaim[]; compared: number }
     | { mode: "own"; trends: OwnTrends };
+  /** In Both mode, each colour's own comparison with other players; null for one colour. */
+  bySide: { white: SideAbove; black: SideAbove } | null;
   improving: { weaknesses: ImprovingWeakness[]; kpis: OwnTrends | null };
   openings: { lines: WorkingOpening[]; promising: PromisingOpening[]; judged: number };
   hardSpots: HardSpots & { notes: Record<string, string | null> };
@@ -693,32 +706,55 @@ export type StrengthsModel = {
   report: { at: Date; strengths: ReportStrength[] } | null;
 };
 
-/** The scope's strengths, every read behind its `ownsScope` check; null for a foreign scope. */
+/** The start of the UTC day after `day`, so a range's `to` includes its whole day. */
+const dayAfter = (day: string) => new Date(Date.parse(`${day}T00:00:00Z`) + 86_400_000);
+
+/**
+ * The scope's strengths, every read behind its `ownsScope` check; null for a foreign scope.
+ * `scope.side` picks the colour (ADR 0082): the stored peer, band and KPI rows of that side, and
+ * the games the player had that colour in. `range` narrows the per-game reads (the comparison
+ * with earlier games, the openings and the hard spots); the stored last-50 rows and the
+ * weakness timeline (every game's, both colours) have no dates.
+ */
 export async function loadStrengths(
   db: Db,
   userId: string,
   scope: CoachScope,
+  range: DayRange = { from: null, to: null },
 ): Promise<StrengthsModel | null> {
+  const side: Colour = scope.side ?? "both";
   // The peer benchmark (ADRs 0080, 0081), when the scope's last build-profile stored one.
   const benchmark = await getBenchmark(db, userId, scope);
   const model = await readOnly(db, async (tx) => {
     if (!(await ownsScope(tx, userId, scope))) return null;
-    const inScope = {
-      metrics: and(
-        eq(gameMetrics.accountId, scope.accountId),
-        eq(gameMetrics.timeClass, scope.timeClass),
-      ),
-    };
+    // The games of the side and dates, through `game_metrics` (joined to `games` for the colour).
+    const gameConds: SQL[] = [
+      eq(gameMetrics.accountId, scope.accountId),
+      eq(gameMetrics.timeClass, scope.timeClass),
+    ];
+    if (side !== "both") gameConds.push(eq(games.playerColor, side));
+    if (range.from) gameConds.push(gte(gameMetrics.playedAt, new Date(`${range.from}T00:00:00Z`)));
+    if (range.to) gameConds.push(lt(gameMetrics.playedAt, dayAfter(range.to)));
+    const inGames = and(...gameConds);
+    const filtered = side !== "both" || range.from !== null || range.to !== null;
 
     // Per-game values, newest first, then oldest first for the comparison.
     const rows = await tx
       .select({ gameId: gameMetrics.gameId, metrics: gameMetrics.metrics })
       .from(gameMetrics)
-      .where(inScope.metrics)
+      .innerJoin(games, eq(games.id, gameMetrics.gameId))
+      .where(inGames)
       .orderBy(desc(gameMetrics.playedAt), desc(gameMetrics.gameId))
       .limit(MAX_GAMES);
+    const [selected] = filtered
+      ? await tx
+          .select({ n: count() })
+          .from(gameMetrics)
+          .innerJoin(games, eq(games.id, gameMetrics.gameId))
+          .where(inGames)
+      : [];
     const values = rows.reverse().map((r) => gameValues(r.metrics));
-    const own = ownTrends(values, `${scope.accountId}:${scope.timeClass}`);
+    const own = ownTrends(values, `${scope.accountId}:${scope.timeClass}:${side}`);
 
     // The band: the newest own rating on the Lichess scale (Rust `player_band`).
     const [rated] = await tx
@@ -740,69 +776,89 @@ export async function loadStrengths(
       .orderBy(desc(games.playedAt), asc(games.id))
       .limit(1);
     const band = rated ? bandOf(rated.platform, scope.timeClass, rated.rating) : null;
-    const refRows = band
-      ? await tx
-          .select({
-            band: bandReference.band,
-            metric: bandReference.metric,
-            median: bandReference.median,
-          })
-          .from(bandReference)
-          .innerJoin(referenceBuilds, eq(referenceBuilds.id, bandReference.buildId))
-          .where(
-            and(
-              eq(referenceBuilds.kind, "band_reference"),
-              eq(referenceBuilds.status, "active"),
-              eq(bandReference.timeClass, scope.timeClass),
-              eq(bandReference.lowSample, false),
-              inArray(bandReference.metric, [...STRENGTH_METRICS]),
-            ),
-          )
-      : [];
+
+    // One side's comparison with other players: its own peer rows (A1: never another side's),
+    // its own band rows, against its own last-50 snapshots.
+    const compareAt = async (at: Colour): Promise<SideAbove> => {
+      const refRows = band
+        ? await tx
+            .select({
+              band: bandReference.band,
+              metric: bandReference.metric,
+              median: bandReference.median,
+            })
+            .from(bandReference)
+            .innerJoin(referenceBuilds, eq(referenceBuilds.id, bandReference.buildId))
+            .where(
+              and(
+                eq(referenceBuilds.kind, "band_reference"),
+                eq(referenceBuilds.status, "active"),
+                eq(bandReference.timeClass, scope.timeClass),
+                eq(bandReference.side, at),
+                eq(bandReference.lowSample, false),
+                inArray(bandReference.metric, [...STRENGTH_METRICS]),
+              ),
+            )
+        : [];
+      const peerRows: PeerRow[] =
+        benchmark?.source === "peers"
+          ? (
+              (await tx.execute(sql`
+                select metric, median, pooled_rate, n_chances, n_players
+                from account_benchmark_stat
+                where account_id = ${scope.accountId} and time_class = ${scope.timeClass}::time_class
+                  and side = ${at}::side_scope and not low_sample and metric in (${sql.join(
+                    STRENGTH_METRICS.map((m) => sql`${m}`),
+                    sql`, `,
+                  )})`)) as unknown as Record<string, unknown>[]
+            ).flatMap((r): PeerRow[] => {
+              const median = Number(r.median);
+              if (!fin(median)) return [];
+              const opt = (v: unknown) => (v == null || !fin(Number(v)) ? null : Number(v));
+              return [
+                {
+                  metric: String(r.metric),
+                  median,
+                  pooledRate: opt(r.pooled_rate),
+                  nChances: opt(r.n_chances),
+                  nPlayers: Math.max(0, Math.trunc(Number(r.n_players) || 0)),
+                },
+              ];
+            })
+          : [];
+      const current =
+        peerRows.length > 0 || (band && refRows.length > 0)
+          ? (
+              await latestSnapshots(
+                tx,
+                { ...scope, side: at },
+                [...STRENGTH_METRICS],
+                CURRENT_WINDOW,
+              )
+            ).map((r) => ({
+              metric: r.metric,
+              value: r.value,
+              low: r.ciLow,
+              high: r.ciHigh,
+              n: r.n,
+            }))
+          : [];
+      const compared = defs().filter((d) => peerRows.some((p) => p.metric === d.metric)).length;
+      if (benchmark?.source === "peers" && compared > 0) {
+        return { mode: "peers", claims: abovePeers(current, peerRows), compared };
+      }
+      if (band && refRows.length > 0) {
+        const medians = bandMedians(refRows, band);
+        return { mode: "band", band, claims: aboveBand(current, medians), compared: medians.size };
+      }
+      return { mode: "none" };
+    };
+    const at = await compareAt(side);
     let above: StrengthsModel["above"] = { mode: "own", trends: own };
-    const peerRows: PeerRow[] =
-      benchmark?.source === "peers"
-        ? (
-            (await tx.execute(sql`
-              select metric, median, pooled_rate, n_chances, n_players
-              from account_benchmark_stat
-              where account_id = ${scope.accountId} and time_class = ${scope.timeClass}::time_class
-                and not low_sample and metric in (${sql.join(
-                  STRENGTH_METRICS.map((m) => sql`${m}`),
-                  sql`, `,
-                )})`)) as unknown as Record<string, unknown>[]
-          ).flatMap((r): PeerRow[] => {
-            const median = Number(r.median);
-            if (!fin(median)) return [];
-            const opt = (v: unknown) => (v == null || !fin(Number(v)) ? null : Number(v));
-            return [
-              {
-                metric: String(r.metric),
-                median,
-                pooledRate: opt(r.pooled_rate),
-                nChances: opt(r.n_chances),
-                nPlayers: Math.max(0, Math.trunc(Number(r.n_players) || 0)),
-              },
-            ];
-          })
-        : [];
-    const current =
-      peerRows.length > 0 || (band && refRows.length > 0)
-        ? (await latestSnapshots(tx, scope, [...STRENGTH_METRICS], CURRENT_WINDOW)).map((r) => ({
-            metric: r.metric,
-            value: r.value,
-            low: r.ciLow,
-            high: r.ciHigh,
-            n: r.n,
-          }))
-        : [];
-    const compared = defs().filter((d) => peerRows.some((p) => p.metric === d.metric)).length;
-    if (benchmark?.source === "peers" && compared > 0) {
-      above = { mode: "peers", benchmark, claims: abovePeers(current, peerRows), compared };
-    } else if (band && refRows.length > 0) {
-      const medians = bandMedians(refRows, band);
-      above = { mode: "band", band, claims: aboveBand(current, medians), compared: medians.size };
-    }
+    if (at.mode === "peers" && benchmark?.source === "peers") above = { ...at, benchmark };
+    else if (at.mode === "band") above = at;
+    const bySide =
+      side === "both" ? { white: await compareAt("white"), black: await compareAt("black") } : null;
 
     // Weaknesses improving or resolved, with their newest transition into that state.
     const estimates = await tx
@@ -816,6 +872,8 @@ export async function loadStrengths(
         and(
           eq(weaknessEstimates.accountId, scope.accountId),
           eq(weaknessEstimates.timeClass, scope.timeClass),
+          // The timeline is every game's (ADR 0082), so its states are the both estimates' (A1).
+          eq(weaknessEstimates.side, "both"),
           inArray(weaknessEstimates.state, ["improving", "resolved"]),
         ),
       );
@@ -875,8 +933,10 @@ export async function loadStrengths(
       })
       .from(gameOpenings)
       .innerJoin(gameMetrics, eq(gameMetrics.gameId, gameOpenings.gameId))
+      .innerJoin(games, eq(games.id, gameMetrics.gameId))
       .where(
         and(
+          inGames,
           eq(gameOpenings.accountId, scope.accountId),
           eq(gameOpenings.timeClass, scope.timeClass),
           isNotNull(gameOpenings.lineKey),
@@ -930,7 +990,11 @@ export async function loadStrengths(
         cross join lateral jsonb_array_elements(
           case when jsonb_typeof(gm.metrics->'strengths') = 'array' then gm.metrics->'strengths'
           else '[]'::jsonb end) e
+        join games g on g.id = gm.game_id
         where gm.account_id = ${scope.accountId} and gm.time_class = ${scope.timeClass}::time_class
+          ${side === "both" ? sql`` : sql`and g.player_color = ${side}::color`}
+          ${range.from ? sql`and gm.played_at >= ${`${range.from}T00:00:00Z`}::timestamptz` : sql``}
+          ${range.to ? sql`and gm.played_at < ${dayAfter(range.to).toISOString()}::timestamptz` : sql``}
           and e->>'kind' in ('only_move_found', 'tactic_found')
           and jsonb_typeof(e->'ply') = 'number' and (e->>'ply') ~ '^[0-9]{1,4}$'
       ) s
@@ -986,8 +1050,11 @@ export async function loadStrengths(
       (o) => o.accountId === scope.accountId && o.timeClass === scope.timeClass,
     );
     return {
-      analysedGames: option?.analysedGames ?? rows.length,
+      side,
+      range,
+      analysedGames: filtered ? Number(selected?.n ?? 0) : (option?.analysedGames ?? rows.length),
       above,
+      bySide,
       improving: {
         weaknesses: improvingWeaknesses(changes),
         kpis: above.mode === "own" ? null : own,

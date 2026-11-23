@@ -36,6 +36,9 @@ const SECTIONS = [
   "progress",
   "review",
   "sound",
+  "coach",
+  "position-explorer",
+  "profile",
 ] as const;
 
 /** Visible text, one line per line, trailing spaces dropped: what a reader sees. */

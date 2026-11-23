@@ -696,7 +696,7 @@ export const KPI_GLOSSARY: Record<string, GlossaryEntry> = Object.fromEntries(
   }),
 );
 
-const AREA_SCORE = `The area's score is the average of its parts' standing against players in your rating band, each as a percentile where ${K.bandMedianPercentile} is the typical player in your band. A part counts once it has enough games or chances and your band has a figure for it, and the area is scored once at least half its parts count.`;
+const AREA_SCORE = `The area's score is the average of its parts' standing against your benchmark, each on a scale where ${K.bandMedianPercentile} is level with it and higher is better. On chess.com the benchmark is the players you have faced, rated close to you: there a part's standing says how far your rate is from theirs given how well theirs is known, not a rank among players. Elsewhere it is the typical player in your rating band. A part counts once it has enough games or chances and the benchmark has a figure for it, and the area is scored once at least half its parts count.`;
 
 export const AREA_GLOSSARY: Record<Area, GlossaryEntry> = {
   openings: {

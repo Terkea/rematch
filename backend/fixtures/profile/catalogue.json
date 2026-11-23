@@ -13,7 +13,7 @@
       "area": null,
       "higherIsBetter": true,
       "kind": "mean",
-      "label": "Score vs expected",
+      "label": "Score against expectations",
       "metric": "perf_vs_expected",
       "minN": 20,
       "unit": null
@@ -76,7 +76,7 @@
       "area": "time",
       "higherIsBetter": false,
       "kind": "rate",
-      "label": "Blunder rate on a low clock",
+      "label": "Blunders on a low clock",
       "metric": "blunder_rate_low_clock",
       "minN": 40,
       "unit": "rate"
@@ -148,7 +148,7 @@
       "area": "middlegame",
       "higherIsBetter": true,
       "kind": "mean",
-      "label": "Eval trend, moves 15-35",
+      "label": "How the middlegame goes",
       "metric": "eval_trend_15_35",
       "minN": 20,
       "unit": null
@@ -202,7 +202,7 @@
       "area": "time",
       "higherIsBetter": true,
       "kind": "mean",
-      "label": "Time on critical moves vs others",
+      "label": "Time on critical moves",
       "metric": "critical_time_ratio",
       "minN": 20,
       "unit": null
@@ -229,7 +229,7 @@
       "area": "openings",
       "higherIsBetter": true,
       "kind": "mean",
-      "label": "Book exit ply",
+      "label": "How long you stay in known theory",
       "metric": "book_exit_ply",
       "minN": 20,
       "unit": null
@@ -256,7 +256,7 @@
       "area": "endgame",
       "higherIsBetter": true,
       "kind": "rate",
-      "label": "Drawn endgames held",
+      "label": "Worse endgames held",
       "metric": "endgame_hold_rate",
       "minN": 15,
       "unit": "rate"
@@ -265,7 +265,7 @@
       "area": "endgame",
       "higherIsBetter": false,
       "kind": "mean",
-      "label": "Tablebase errors per endgame",
+      "label": "Endgame errors per game",
       "metric": "tb_errors_per_endgame",
       "minN": 20,
       "unit": "per_game"
@@ -292,7 +292,7 @@
       "area": "mindset",
       "higherIsBetter": true,
       "kind": "mean",
-      "label": "Accuracy change late in a session",
+      "label": "Accuracy late in a session",
       "metric": "session_accuracy_decline",
       "minN": 20,
       "unit": null
@@ -319,7 +319,7 @@
       "area": "mindset",
       "higherIsBetter": false,
       "kind": "rate",
-      "label": "Resignations in saveable positions",
+      "label": "Resigning too early",
       "metric": "saveable_resignation_rate",
       "minN": 10,
       "unit": "rate"
@@ -328,7 +328,7 @@
       "area": "tactics",
       "higherIsBetter": false,
       "kind": "rate",
-      "label": "Missed hanging pieces",
+      "label": "Missed free pieces",
       "metric": "motif_miss_rate:hangingPiece",
       "minN": 20,
       "unit": "rate"
@@ -409,7 +409,7 @@
       "area": "tactics",
       "higherIsBetter": false,
       "kind": "rate",
-      "label": "Missed mates in 1",
+      "label": "Missed mates in one",
       "metric": "motif_miss_rate:mateIn1",
       "minN": 20,
       "unit": "rate"
@@ -418,7 +418,7 @@
       "area": "tactics",
       "higherIsBetter": false,
       "kind": "rate",
-      "label": "Missed mates in 2",
+      "label": "Missed mates in two",
       "metric": "motif_miss_rate:mateIn2",
       "minN": 20,
       "unit": "rate"
@@ -427,7 +427,7 @@
       "area": "tactics",
       "higherIsBetter": false,
       "kind": "rate",
-      "label": "Missed mates in 3",
+      "label": "Missed mates in three",
       "metric": "motif_miss_rate:mateIn3",
       "minN": 20,
       "unit": "rate"
@@ -436,7 +436,7 @@
       "area": "tactics",
       "higherIsBetter": false,
       "kind": "rate",
-      "label": "Missed mates in 4+",
+      "label": "Missed long mates",
       "metric": "motif_miss_rate:mateIn4Plus",
       "minN": 20,
       "unit": "rate"
@@ -472,7 +472,7 @@
       "area": "calculation",
       "higherIsBetter": false,
       "kind": "rate",
-      "label": "Hung material",
+      "label": "Leaving pieces hanging",
       "metric": "weakness:W1",
       "minN": 300,
       "unit": "rate"
@@ -481,7 +481,7 @@
       "area": "calculation",
       "higherIsBetter": false,
       "kind": "rate",
-      "label": "Missed opponent threat",
+      "label": "Missing your opponent's threat",
       "metric": "weakness:W2",
       "minN": 100,
       "unit": "rate"
@@ -490,7 +490,7 @@
       "area": "tactics",
       "higherIsBetter": false,
       "kind": "rate",
-      "label": "Missed own tactic (shallow)",
+      "label": "Missing a short tactic",
       "metric": "weakness:W3.shallow",
       "minN": 60,
       "unit": "rate"
@@ -499,7 +499,7 @@
       "area": "tactics",
       "higherIsBetter": false,
       "kind": "rate",
-      "label": "Missed own tactic (deep)",
+      "label": "Missing a longer tactic",
       "metric": "weakness:W3.deep",
       "minN": 60,
       "unit": "rate"
@@ -508,7 +508,7 @@
       "area": "tactics",
       "higherIsBetter": false,
       "kind": "rate",
-      "label": "Missed mate",
+      "label": "Missing a mate",
       "metric": "weakness:W4.missed",
       "minN": 40,
       "unit": "rate"
@@ -517,7 +517,7 @@
       "area": "calculation",
       "higherIsBetter": false,
       "kind": "rate",
-      "label": "Allowed mate",
+      "label": "Allowing a mate",
       "metric": "weakness:W4.allowed",
       "minN": 40,
       "unit": "rate"
@@ -526,7 +526,7 @@
       "area": "middlegame",
       "higherIsBetter": false,
       "kind": "rate",
-      "label": "Conversion failure",
+      "label": "Not winning won games",
       "metric": "weakness:W5",
       "minN": 30,
       "unit": "rate"
@@ -535,7 +535,7 @@
       "area": "middlegame",
       "higherIsBetter": false,
       "kind": "rate",
-      "label": "Defence / resourcefulness",
+      "label": "Defending lost positions",
       "metric": "weakness:W6",
       "minN": 30,
       "unit": "rate"
@@ -544,7 +544,7 @@
       "area": "openings",
       "higherIsBetter": false,
       "kind": "rate",
-      "label": "Opening traps",
+      "label": "Early blunders",
       "metric": "weakness:W7.traps",
       "minN": 40,
       "unit": "rate"
@@ -553,7 +553,7 @@
       "area": "openings",
       "higherIsBetter": false,
       "kind": "rate",
-      "label": "Opening preparation",
+      "label": "Leaving the opening worse",
       "metric": "weakness:W7.prep",
       "minN": 40,
       "unit": "rate"
@@ -562,7 +562,7 @@
       "area": "endgame",
       "higherIsBetter": false,
       "kind": "rate",
-      "label": "Endgame technique (basics)",
+      "label": "Basic endgames",
       "metric": "weakness:W8.basics",
       "minN": 80,
       "unit": "rate"
@@ -571,7 +571,7 @@
       "area": "endgame",
       "higherIsBetter": false,
       "kind": "rate",
-      "label": "Endgame technique (advanced)",
+      "label": "Harder endgames",
       "metric": "weakness:W8.advanced",
       "minN": 80,
       "unit": "rate"
@@ -580,7 +580,7 @@
       "area": "time",
       "higherIsBetter": false,
       "kind": "rate",
-      "label": "Time trouble",
+      "label": "Getting short of time",
       "metric": "weakness:W9a",
       "minN": 30,
       "unit": "rate"
@@ -589,7 +589,7 @@
       "area": "time",
       "higherIsBetter": false,
       "kind": "rate",
-      "label": "Time-pressure collapse",
+      "label": "Blunders on a low clock",
       "metric": "weakness:W9b",
       "minN": 40,
       "unit": "rate"
@@ -598,7 +598,7 @@
       "area": "time",
       "higherIsBetter": false,
       "kind": "rate",
-      "label": "Rushing critical moves",
+      "label": "Rushing important moves",
       "metric": "weakness:W9c",
       "minN": 60,
       "unit": "rate"
@@ -607,7 +607,7 @@
       "area": "middlegame",
       "higherIsBetter": false,
       "kind": "rate",
-      "label": "Positional drift",
+      "label": "Drifting in quiet positions",
       "metric": "weakness:W10",
       "minN": 600,
       "unit": "rate"
@@ -616,7 +616,7 @@
       "area": "calculation",
       "higherIsBetter": false,
       "kind": "rate",
-      "label": "Easy-move errors (vision)",
+      "label": "Mistakes on easy moves",
       "metric": "weakness:W11",
       "minN": 300,
       "unit": "rate"
@@ -693,7 +693,7 @@
       "area": "calculation",
       "contractId": "W1",
       "key": "W1",
-      "label": "Hung material",
+      "label": "Leaving pieces hanging",
       "minEvidence": 1000.0,
       "rankable": true,
       "variant": null
@@ -702,7 +702,7 @@
       "area": "calculation",
       "contractId": "W2",
       "key": "W2",
-      "label": "Missed opponent threat",
+      "label": "Missing your opponent's threat",
       "minEvidence": 1000.0,
       "rankable": true,
       "variant": null
@@ -711,7 +711,7 @@
       "area": "tactics",
       "contractId": "W3",
       "key": "W3.shallow",
-      "label": "Missed own tactic (shallow)",
+      "label": "Missing a short tactic",
       "minEvidence": 40.0,
       "rankable": true,
       "variant": "shallow"
@@ -720,7 +720,7 @@
       "area": "tactics",
       "contractId": "W3",
       "key": "W3.deep",
-      "label": "Missed own tactic (deep)",
+      "label": "Missing a longer tactic",
       "minEvidence": 40.0,
       "rankable": true,
       "variant": "deep"
@@ -729,7 +729,7 @@
       "area": "tactics",
       "contractId": "W4",
       "key": "W4.missed",
-      "label": "Missed mate",
+      "label": "Missing a mate",
       "minEvidence": 40.0,
       "rankable": true,
       "variant": "missed"
@@ -738,7 +738,7 @@
       "area": "calculation",
       "contractId": "W4",
       "key": "W4.allowed",
-      "label": "Allowed mate",
+      "label": "Allowing a mate",
       "minEvidence": 40.0,
       "rankable": true,
       "variant": "allowed"
@@ -747,7 +747,7 @@
       "area": "middlegame",
       "contractId": "W5",
       "key": "W5",
-      "label": "Conversion failure",
+      "label": "Not winning won games",
       "minEvidence": 15.0,
       "rankable": true,
       "variant": null
@@ -756,7 +756,7 @@
       "area": "middlegame",
       "contractId": "W6",
       "key": "W6",
-      "label": "Defence / resourcefulness",
+      "label": "Defending lost positions",
       "minEvidence": 15.0,
       "rankable": true,
       "variant": null
@@ -765,7 +765,7 @@
       "area": "openings",
       "contractId": "W7",
       "key": "W7.traps",
-      "label": "Opening traps",
+      "label": "Early blunders",
       "minEvidence": 40.0,
       "rankable": true,
       "variant": "traps"
@@ -774,7 +774,7 @@
       "area": "openings",
       "contractId": "W7",
       "key": "W7.prep",
-      "label": "Opening preparation",
+      "label": "Leaving the opening worse",
       "minEvidence": 40.0,
       "rankable": true,
       "variant": "prep"
@@ -783,7 +783,7 @@
       "area": "endgame",
       "contractId": "W8",
       "key": "W8.basics",
-      "label": "Endgame technique (basics)",
+      "label": "Basic endgames",
       "minEvidence": 50.0,
       "rankable": true,
       "variant": "basics"
@@ -792,7 +792,7 @@
       "area": "endgame",
       "contractId": "W8",
       "key": "W8.advanced",
-      "label": "Endgame technique (advanced)",
+      "label": "Harder endgames",
       "minEvidence": 50.0,
       "rankable": true,
       "variant": "advanced"
@@ -801,7 +801,7 @@
       "area": "time",
       "contractId": "W9a",
       "key": "W9a",
-      "label": "Time trouble",
+      "label": "Getting short of time",
       "minEvidence": 20.0,
       "rankable": true,
       "variant": null
@@ -810,7 +810,7 @@
       "area": "time",
       "contractId": "W9b",
       "key": "W9b",
-      "label": "Time-pressure collapse",
+      "label": "Blunders on a low clock",
       "minEvidence": 40.0,
       "rankable": true,
       "variant": null
@@ -819,7 +819,7 @@
       "area": "time",
       "contractId": "W9c",
       "key": "W9c",
-      "label": "Rushing critical moves",
+      "label": "Rushing important moves",
       "minEvidence": 60.0,
       "rankable": true,
       "variant": null
@@ -828,7 +828,7 @@
       "area": "time",
       "contractId": "W9d",
       "key": "W9d",
-      "label": "Time misallocation",
+      "label": "How you spend your time",
       "minEvidence": 20.0,
       "rankable": false,
       "variant": null
@@ -837,7 +837,7 @@
       "area": "middlegame",
       "contractId": "W10",
       "key": "W10",
-      "label": "Positional drift",
+      "label": "Drifting in quiet positions",
       "minEvidence": 1500.0,
       "rankable": true,
       "variant": null
@@ -846,7 +846,7 @@
       "area": "calculation",
       "contractId": "W11",
       "key": "W11",
-      "label": "Easy-move errors (vision)",
+      "label": "Mistakes on easy moves",
       "minEvidence": 1000.0,
       "rankable": true,
       "variant": null
@@ -855,7 +855,7 @@
       "area": "mindset",
       "contractId": "W12",
       "key": "W12",
-      "label": "Tilt / fatigue",
+      "label": "Tilt and tiredness",
       "minEvidence": 60.0,
       "rankable": false,
       "variant": null

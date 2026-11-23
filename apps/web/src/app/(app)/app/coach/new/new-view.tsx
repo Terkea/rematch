@@ -5,7 +5,7 @@ import { Icon, WarningIcon } from "@ci/ui/icons";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type ReactNode, useEffect, useState } from "react";
-import type { ChatAnchor } from "../../../../../server/coach/anchor";
+import { type ChatAnchor, colourQuestion } from "../../../../../server/coach/anchor";
 import { CHAT_COPY } from "../../../../../server/coach/copy";
 import { COACH_UNAVAILABLE_TITLE } from "../../../../../server/coach/status-copy";
 import type { TimeClass } from "../../../../../server/games/types";
@@ -38,10 +38,13 @@ export function NewConversation({
   listHref,
   available = true,
   scopeSwitch,
+  color = null,
   children,
 }: {
   scope: { accountId: string; timeClass: TimeClass };
   anchor: ChatAnchor | null;
+  /** Opened from one colour's page: the question is about that colour's games (audit A3). */
+  color?: "white" | "black" | null;
   allowance: AllowanceView | null;
   listHref: string;
   /** False while no coach could answer (bug hunt I5): the composer is off and says why. */
@@ -70,7 +73,7 @@ export function NewConversation({
         method: "POST",
         credentials: "same-origin",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ...scope, anchor, question }),
+        body: JSON.stringify({ ...scope, anchor, question, ...(color ? { color } : {}) }),
       });
       const data = (await res.json().catch(() => null)) as {
         id?: string;
@@ -117,6 +120,12 @@ export function NewConversation({
         </p>
       </header>
       {scopeSwitch}
+      {color ? (
+        <p data-slot="ask-colour" className="m-0 max-w-prose text-base text-ink-soft">
+          About your games with {color === "white" ? "White" : "Black"}: your question is sent with
+          that colour, so your coach answers from those games.
+        </p>
+      ) : null}
       {available ? null : (
         <CoachState
           kind="unavailable"
@@ -131,7 +140,7 @@ export function NewConversation({
           <ChatMessage
             {...{ role }}
             status="done"
-            segments={[{ kind: "text", text: sending }]}
+            segments={[{ kind: "text", text: colourQuestion(sending, color) }]}
             streamed={[]}
             notes={[]}
             engineChecks={[]}

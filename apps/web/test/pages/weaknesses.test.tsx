@@ -114,7 +114,7 @@ describe("weaknesses by colour (T3, ADR 0082)", () => {
     const uncompared = screen.getByRole("region", { name: "No colour benchmark" });
     expect(uncompared.textContent).toMatch(/No colour benchmark/);
     expect(text).not.toMatch(/Not compared yet/);
-    const link = screen.getAllByRole("link", { name: /Hung material/ })[0];
+    const link = screen.getAllByRole("link", { name: /Leaving pieces hanging/ })[0];
     expect(link?.getAttribute("href")).toMatch(/color=white/);
     noBadText(container);
   });
@@ -182,12 +182,42 @@ describe("weakness detail filters (A4)", () => {
       estimates: [{ seriesKey: "W1", state: "active", priority: 3, mean: 0.05 }],
     });
     await list({ from: "2026-09-01" });
-    const row = screen.getAllByRole("link", { name: /Hung material/ })[0];
+    const row = screen.getAllByRole("link", { name: /Leaving pieces hanging/ })[0];
     expect(row?.getAttribute("href")).toMatch(/from=2026-09-01/);
+  });
+
+  it("list rows carry the colour and both dates into the detail", async () => {
+    await seedProfile(db, accountId, {
+      timeClass: "rapid",
+      games: 3,
+      estimates: [{ seriesKey: "W1", side: "white", state: "active", priority: 3, mean: 0.05 }],
+    });
+    await list({ color: "white", from: "2026-09-01", to: "2026-10-31" });
+    const row = screen.getAllByRole("link", { name: /Leaving pieces hanging/ })[0];
+    const q = new URL(row?.getAttribute("href") ?? "", "http://x").searchParams;
+    expect([q.get("color"), q.get("from"), q.get("to")]).toEqual([
+      "white",
+      "2026-09-01",
+      "2026-10-31",
+    ]);
   });
 });
 
 describe("weaknesses list", () => {
+  it("says what the dates change and what stays on the estimate (audit A6)", async () => {
+    await seedProfile(db, accountId, {
+      timeClass: "rapid",
+      games: 3,
+      estimates: [{ seriesKey: "W1", state: "active", priority: 3 }],
+    });
+    const { container } = await list({ from: "2026-09-01", to: "2026-10-31" });
+    expect(container.querySelector("[data-slot='dates-note']")?.textContent).toBe(
+      "1 Sep to 31 Oct 2026: these dates trim the weekly lines only. Each rate, its range, its state and the comparison stay on your games in the last 6 months.",
+    );
+    const { container: plain } = await list();
+    expect(plain.querySelector("[data-slot='dates-note']")).toBeNull();
+  });
+
   it("groups by state", async () => {
     await seedProfile(db, accountId, {
       timeClass: "rapid",
@@ -208,18 +238,18 @@ describe("weaknesses list", () => {
     const costing = group("Costing you games");
     expect(costing).toHaveLength(2);
     // By priority: W5 (5) before W1 (3).
-    expect(costing[0]).toMatch(/Conversion failure/);
-    expect(costing[1]).toMatch(/Hung material/);
+    expect(costing[0]).toMatch(/Not winning won games/);
+    expect(costing[1]).toMatch(/Leaving pieces hanging/);
     expect(group("Getting better")).toHaveLength(1);
     expect(group("Under control")).toHaveLength(2);
-    const w1 = screen.getByRole("link", { name: /Hung material/ });
+    const w1 = screen.getByRole("link", { name: /Leaving pieces hanging/ });
     expect(w1.getAttribute("href")).toMatch(/^\/app\/weaknesses\/W1\?/);
     expect(screen.getByText(/Based on 3 analysed rapid games/)).toBeTruthy();
     noBadText(container);
   });
 
-  // ADR 0084 (bug hunt N10): the owner's rapid rows. "Allowed mate" is active at confidence 0.81
-  // with the peers' rate inside its range; "Opening traps" stays active (the timeline's longer
+  // ADR 0084 (bug hunt N10): the owner's rapid rows. "Allowing a mate" is active at confidence 0.81
+  // with the peers' rate inside its range; "Early blunders" stays active (the timeline's longer
   // segment) at 0.547. Only a row the comparison backs (>= 0.7) is "Costing you games".
   it("files a costing state the comparison does not back under worth watching", async () => {
     await seedProfile(db, accountId, {
@@ -259,7 +289,7 @@ describe("weaknesses list", () => {
       within(screen.getByRole("region", { name }))
         .getAllByRole("link")
         .map((a) => a.textContent);
-    expect(names("Costing you games")).toEqual(["Allowed mate"]);
+    expect(names("Costing you games")).toEqual(["Allowing a mate"]);
     expect(screen.getByRole("region", { name: "Costing you games" }).textContent).toMatch(
       /inside your likely range, though yours is probably higher \(81% likely\)/,
     );
@@ -319,9 +349,9 @@ describe("weaknesses list", () => {
       within(screen.getByRole("region", { name }))
         .getAllByRole("link")
         .map((a) => a.textContent);
-    expect(names("Costing you games")).toEqual(["Hung material"]);
+    expect(names("Costing you games")).toEqual(["Leaving pieces hanging"]);
     expect(screen.queryByRole("region", { name: "Getting better" })).toBeNull();
-    expect(names("Early reads")).toEqual(["Missed opponent threat", "Rook endgames"]);
+    expect(names("Early reads")).toEqual(["Missing your opponent's threat", "Rook endgames"]);
   });
 
   it("row sparklines leave thin and missing weeks as gaps", async () => {
@@ -443,7 +473,7 @@ describe("weakness detail", () => {
       ],
     });
     const { container } = await detail("W1");
-    expect(screen.getByRole("heading", { level: 1, name: "Hung material" })).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 1, name: "Leaving pieces hanging" })).toBeTruthy();
     expect(screen.getAllByText("4.2%").length).toBeGreaterThan(0);
     // The stored interval, one decimal each, never widened.
     expect(screen.getAllByText(/80% range 3\.1% to 5\.7%/).length).toBeGreaterThan(0);

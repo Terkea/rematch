@@ -56,14 +56,103 @@ test.describe
 
       // W8.basics' improving transition: p_change 0.85, 14.0% to 9.0% of chances.
       const improving = page.locator('[data-section="improving"]');
-      await expect(improving.locator('[data-claim="W8.basics"]')).toContainText(
-        "14.0% of chances before, 9.0% after, detected improving on 15 Oct 2026 (85% likely a real change).",
+      const w8 = improving.locator('[data-claim="W8.basics"]');
+      await expect(w8.locator("[data-claim-figure]")).toHaveText(
+        "9.0% of chances now, down from 14.0%",
+      );
+      await expect(w8.locator("[data-claim-state]")).toHaveText("Improving");
+      await expect(w8).toContainText("Detected on 15 Oct 2026, 85% likely a real change.");
+      // Sections with nothing to claim are one quiet list at the bottom (critic 9).
+      await expect(page.locator('[data-section="not-judged"] [data-section="above"]')).toHaveCount(
+        1,
       );
       await expect(page.locator('[data-section="openings"]')).toContainText("Not enough games yet");
       await expect(page.locator("[data-report-strengths]")).toContainText(
         "Solid Italian repertoire",
       );
       await expect(page.locator("main")).not.toContainText(/NaN|undefined|Infinity/);
+    });
+
+    // Audit A5: the shared filter bar, each colour in Both mode, a "What is this?" on each claim.
+    test("filters by colour and dates, splits Both by colour, and explains each claim", async () => {
+      test.setTimeout(300_000);
+      await gotoSettled(page, "/app/strengths");
+      const byColour = page.locator('[data-section="by-colour"]');
+      await expect(byColour.locator("[data-colour]")).toHaveCount(2);
+      // The strengths seed has no benchmark: each colour says so instead of a claim.
+      await expect(byColour.locator("[data-colour='white']")).toContainText(
+        "No benchmark for your White games yet.",
+      );
+      const claim = page.locator('[data-section="improving"] [data-claim="W8.basics"]');
+      await expect(claim).toContainText("Basic endgames");
+      await expect(async () => {
+        await claim.getByRole("button", { name: "What is basic endgames?" }).click();
+        await expect(page.getByRole("dialog", { name: "Basic endgames" })).toBeVisible({
+          timeout: 2_000,
+        });
+      }).toPass({ timeout: 60_000 });
+      await page.keyboard.press("Escape");
+
+      const bar = page.locator("[data-filter-bar] > div");
+      await bar.getByRole("group", { name: "Colour" }).getByRole("link", { name: "Black" }).click();
+      await expect(page).toHaveURL(/\/app\/strengths\?.*color=black/);
+      await expect(
+        page.getByText(/^Based on \d+ analysed rapid games? with Black on chess\.com\./),
+      ).toBeVisible();
+      await expect(page.locator('[data-section="by-colour"]')).toHaveCount(0);
+      await expect(page.locator('[data-section="improving"]')).toContainText(
+        "Weakness changes are called on all your games, both colours.",
+      );
+
+      await gotoSettled(page, "/app/strengths?from=2026-10-01&to=2026-10-31");
+      await expect(page.locator("[data-slot='dates-note']")).toContainText(
+        "These dates narrow the comparison with your earlier games",
+      );
+      // The page's filters follow the header to the next page (audit A7).
+      await page
+        .getByRole("navigation", { name: "Main" })
+        .getByRole("link", { name: "Weaknesses" })
+        .click();
+      await expect(page).toHaveURL(/\/app\/weaknesses\?.*from=2026-10-01&to=2026-10-31/);
+      await expect(page.locator("[data-slot='dates-note']")).toContainText(
+        "these dates trim the weekly lines only",
+      );
+      await expect(page.locator("main")).not.toContainText(/NaN|undefined|Infinity/);
+
+      // Shots for the critique loop, signed in: the repo's `.shots/` (git-ignored).
+      await page.addInitScript(() => {
+        try {
+          localStorage.removeItem("theme");
+        } catch {
+          // storage unavailable: the colour-scheme emulation still applies
+        }
+      });
+      const routes = [
+        ["both", "/app/strengths"],
+        ["black-dated", "/app/strengths?color=black&from=2026-10-01&to=2026-10-31"],
+      ] as const;
+      for (const width of [1440, 390]) {
+        await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+        for (const scheme of ["light", "dark"] as const) {
+          await page.emulateMedia({ colorScheme: scheme, reducedMotion: "reduce" });
+          for (const [name, url] of routes) {
+            await gotoSettled(page, url);
+            await page.evaluate(() => document.fonts.ready);
+            expect(
+              await page.evaluate(
+                () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+              ),
+              `${name} at ${width}`,
+            ).toBeLessThanOrEqual(0);
+            await page.screenshot({
+              path: `../../.shots/strengths/${name}/${width}-${scheme}.png`,
+              fullPage: true,
+            });
+          }
+        }
+      }
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
     });
 
     test("blitz shows the critical-moment fallback in explorers that open the game", async () => {

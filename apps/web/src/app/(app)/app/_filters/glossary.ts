@@ -24,6 +24,24 @@ export const STATS_GLOSSARY = {
     whyItMatters: "One blunder often decides a game at club level.",
     tip: "Before each move, check what your opponent's last move attacks.",
   },
+  mistakes: {
+    name: "Mistakes per game",
+    meaning:
+      "How many mistakes you made in an average game: moves that cost a lot, short of a blunder.",
+    measured: `Each of your moves is judged by how much it lowered your win chance (the Lichess rule): 10 to 15 win% points is a mistake, 15 or more a blunder. The count is per analysed game, averaged over the games the filters select.`,
+    whyItMatters:
+      "One mistake rarely loses a game, but two or three of them hand it to your opponent.",
+    tip: "Look at the mistakes in your last few games: most come from a plan you did not check against your opponent's best reply.",
+  },
+  inaccuracies: {
+    name: "Inaccuracies per game",
+    meaning:
+      "How many small slips you made in an average game: moves a little worse than the best one.",
+    measured: `Each of your moves is judged by how much it lowered your win chance (the Lichess rule): 5 to 10 win% points is an inaccuracy, 10 or more a mistake. The count is per analysed game, averaged over the games the filters select.`,
+    whyItMatters:
+      "Small slips add up, and a position worn down by them is where the bigger mistakes come.",
+    tip: "When nothing is attacked, ask which of your pieces does the least, and improve that one.",
+  },
   score: {
     name: "Score",
     meaning: "The points you took per game: a win is 1, a draw a half and a loss 0.",

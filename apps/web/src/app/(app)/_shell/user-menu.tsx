@@ -17,7 +17,7 @@ export interface UserMenuProps {
   /** Where to go after signing out (a full navigation, so no signed-in page stays cached). */
   signOutTo: (href: string) => void;
   /** Sections the phone nav row has no room for; listed here below `sm` only. */
-  morePages?: readonly { label: string; href: string }[];
+  morePages?: readonly { label: string; href: string; link?: string }[];
   pathname?: string;
 }
 
@@ -88,7 +88,7 @@ export function UserMenu({
               return (
                 <Link
                   key={page.href}
-                  href={page.href}
+                  href={page.link ?? page.href}
                   aria-current={current ? "page" : undefined}
                   className={`flex h-10 items-center rounded-field px-2 text-sm transition-colors duration-(--dur-quick) ease-out hover:bg-sheet focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink ${current ? "font-semibold text-ink" : "text-ink-soft hover:text-ink"}`}
                 >

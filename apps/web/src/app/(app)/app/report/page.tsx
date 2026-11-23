@@ -74,6 +74,7 @@ export default async function ReportPage({
           />
         }
         accountSwitch={manyAccounts(scope)}
+        askColor={bar.filters.color === "both" ? null : bar.filters.color}
       />
     </>
   );

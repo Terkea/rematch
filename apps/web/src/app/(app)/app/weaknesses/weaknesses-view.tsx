@@ -208,6 +208,7 @@ export function WeaknessesView({
   filterBar,
   accountSwitch = true,
   sides = null,
+  datesNote = null,
   range,
 }: {
   scope: CoachScope | null;
@@ -221,6 +222,8 @@ export function WeaknessesView({
   accountSwitch?: boolean;
   /** In Both mode, each series' White and Black estimate, shown under its row (ADR 0082). */
   sides?: Map<string, { white: SideRate | null; black: SideRate | null }> | null;
+  /** What the date filter changes here (audit A6): only the weekly lines; null without dates. */
+  datesNote?: string | null;
   /** The bar's dates: each row's link carries them to its detail (A4). */
   range?: { from: string | null; to: string | null };
 }) {
@@ -241,6 +244,11 @@ export function WeaknessesView({
           <CoachScopeSwitch scope={scope} basePath="/app/weaknesses" />
         ) : null}
         {filterBar}
+        {datesNote ? (
+          <p data-slot="dates-note" className="m-0 max-w-2xl text-sm text-ink-soft">
+            {datesNote}
+          </p>
+        ) : null}
       </div>
 
       {scope === null || weaknesses.length === 0 ? (

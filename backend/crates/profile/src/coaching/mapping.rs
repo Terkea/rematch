@@ -13,13 +13,13 @@ use coaching_input::{
     Platform, PlayerColor, RankedWeakness, Score,
 };
 use profile_core::constants::{weakness_area, weakness_label};
-use profile_core::kpi::catalogue::KpiDefinition;
+use profile_core::kpi::catalogue::{KpiDefinition, kpi_definition};
 use profile_core::kpi::snapshots::{KpiValue, clamp_to_unit};
 use profile_core::openings::lines::LineSummary;
 use profile_core::stats::priority::{EstimateReason, WeaknessEstimate};
 use profile_core::stats::quantiles::{QuartileRef, percentile_from_quartiles};
 use profile_core::types::{
-    BandReference, EndgameType, MotifTag, PlatformId, SeriesKey, WeaknessState,
+    BandReference, EndgameType, MetricId, MotifTag, PlatformId, SeriesKey, WeaknessState,
 };
 use sha2::{Digest, Sha256};
 
@@ -294,8 +294,9 @@ pub fn opening_verdict(s: &LineSummary, examples: Vec<ExemplarPosition>) -> Opti
     })
 }
 
-fn motif_words(t: MotifTag) -> String {
-    t.contract_tag().replace('_', " ")
+/// The KPI catalogue's name of a missed motif ("Missed forks"), as the pages show it.
+fn motif_missed_label(t: MotifTag) -> &'static str {
+    kpi_definition(MetricId::MotifMissRate(t)).map_or("Missed tactics", |d| d.label)
 }
 
 fn endgame_label(e: EndgameType) -> &'static str {
@@ -312,8 +313,15 @@ fn endgame_label(e: EndgameType) -> &'static str {
 pub fn series_label(key: &SeriesKey, opening_name: Option<&str>) -> String {
     let label = match key {
         SeriesKey::Weakness(k) => weakness_label(*k).to_owned(),
-        SeriesKey::MotifMissed(t) => format!("Missed tactic: {}", motif_words(*t)),
-        SeriesKey::MotifAllowed(t) => format!("Allowed tactic: {}", motif_words(*t)),
+        SeriesKey::MotifMissed(t) => motif_missed_label(*t).to_owned(),
+        // The web's `seriesLabel`: the missed name with "Allowed" for "Missed".
+        SeriesKey::MotifAllowed(t) => {
+            let missed = motif_missed_label(*t);
+            format!(
+                "Allowed {}",
+                missed.strip_prefix("Missed ").unwrap_or(missed)
+            )
+        }
         SeriesKey::Opening(line) => format!("Opening: {}", opening_name.unwrap_or(line)),
         SeriesKey::Endgame(e) => endgame_label(*e).to_owned(),
     };
@@ -341,4 +349,31 @@ pub fn candidate_causes(stored: &serde_json::Value) -> Vec<CandidateCause> {
 /// `timeControl`'s daily rule: no typical clock for daily games.
 pub fn has_time_control(tc: TimeClass) -> bool {
     tc != TimeClass::Daily
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use profile_core::types::WeaknessKey;
+
+    /// Audit A2: the coach names a series the way the pages do (the web's `seriesLabel`).
+    #[test]
+    fn series_labels_match_the_pages() {
+        assert_eq!(
+            series_label(&SeriesKey::Weakness(WeaknessKey::W5), None),
+            "Not winning won games"
+        );
+        assert_eq!(
+            series_label(&SeriesKey::MotifMissed(MotifTag::Fork), None),
+            "Missed forks"
+        );
+        assert_eq!(
+            series_label(&SeriesKey::MotifAllowed(MotifTag::HangingPiece), None),
+            "Allowed free pieces"
+        );
+        assert_eq!(
+            series_label(&SeriesKey::MotifAllowed(MotifTag::MateIn1), None),
+            "Allowed mates in one"
+        );
+    }
 }

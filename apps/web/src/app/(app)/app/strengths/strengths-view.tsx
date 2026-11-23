@@ -1,9 +1,10 @@
 import { Button } from "@ci/ui/primitives";
-import { dayText, exemplarMoveText, fenMove, formatKpiValue } from "@ci/ui/profile";
+import { dayText, ExplainPopover, exemplarMoveText, fenMove, formatKpiValue } from "@ci/ui/profile";
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 import { CoachScopeSwitch } from "../../../../components/coach-scope-switch";
 import { GamePosition } from "../../../../components/game-position";
+import type { DayRange } from "../../../../server/filters/params";
 import type { CoachScope, DifficultyStatus } from "../../../../server/profile";
 import {
   BENCHMARK_BIAS_TEXT,
@@ -11,7 +12,12 @@ import {
   benchmarkGroupLabel,
   benchmarkLabel,
 } from "../../../../server/profile/benchmark-text";
-import { AREA_GLOSSARY } from "../../../../server/profile/glossary";
+import {
+  AREA_GLOSSARY,
+  type GlossaryEntry,
+  KPI_GLOSSARY,
+  seriesGlossary,
+} from "../../../../server/profile/glossary";
 import {
   BALANCED_MAX,
   BALANCED_MIN,
@@ -28,12 +34,15 @@ import {
   PROMISING_P,
   type PromisingOpening,
   RECENT_GAMES,
+  type SideAbove,
   type StrengthsModel,
   type Verdict,
   type WorkingOpening,
 } from "../../../../server/profile/strengths";
 import { EmptySheet } from "../../_shell/page-heading";
+import { rangeWords } from "../_filters/model";
 import { SectionHead } from "../_overview/section-head";
+import { ScopeRow } from "../coach/scope-row";
 
 // `/app/strengths`: the good things in the scope's games and what to keep doing. Everything here
 // is worded from the read model's numbers (`server/profile/strengths.ts`), which has already
@@ -75,17 +84,39 @@ const plural = (n: number, one: string, many: string) =>
 const pct0 = (share: number) => `${Math.round(Math.min(1, Math.max(0, share)) * 100)}%`;
 const pct1 = (share: number) => `${(share * 100).toFixed(1)}%`;
 
-/** "Based on 214 analysed rapid games on chess.com." */
-export function basisText(scope: CoachScope): string {
+/** The colour's name in a sentence ("White"), or null for both. */
+const COLOUR = { white: "White", black: "Black" } as const;
+const colourOf = (side: string | undefined) =>
+  side === "white" || side === "black" ? COLOUR[side] : null;
+
+/**
+ * "Based on 214 analysed rapid games on chess.com.", or with the filters the page read:
+ * "Based on 120 analysed rapid games with White on chess.com, 1 Sep to 31 Oct 2026."
+ */
+export function basisText(
+  scope: CoachScope,
+  read?: { games: number; side: string; range: DayRange },
+): string {
   const o = scope.options.find(
     (x) => x.accountId === scope.accountId && x.timeClass === scope.timeClass,
   );
-  const n = Math.max(0, Math.trunc(o?.analysedGames ?? 0));
-  return `Based on ${plural(n, `analysed ${TIME_CLASS[scope.timeClass]} game`, `analysed ${TIME_CLASS[scope.timeClass]} games`)} on ${PLATFORM[scope.platform]}.`;
+  const n = Math.max(0, Math.trunc(read?.games ?? o?.analysedGames ?? 0));
+  const tc = TIME_CLASS[scope.timeClass];
+  const colour = colourOf(read?.side);
+  const dated = read && (read.range.from || read.range.to) ? `, ${rangeWords(read.range)}` : "";
+  return `Based on ${plural(n, `analysed ${tc} game`, `analysed ${tc} games`)}${colour ? ` with ${colour}` : ""} on ${PLATFORM[scope.platform]}${dated}.`;
 }
 
-const scopeQuery = (scope: CoachScope) =>
-  new URLSearchParams({ account: scope.accountId, tc: scope.timeClass }).toString();
+/** What the date filter changes on this page (audit A5): the per-game reads, not the stored ones. */
+export const STRENGTHS_DATES_TEXT =
+  "These dates narrow the comparison with your earlier games, the openings and the moves in hard spots. The comparison with other players stays on your last 50 games, and what's improving on your whole record.";
+
+const scopeQuery = (scope: CoachScope) => {
+  const q = new URLSearchParams({ account: scope.accountId, tc: scope.timeClass });
+  const colour = scope.side === "white" || scope.side === "black" ? scope.side : null;
+  if (colour) q.set("color", colour);
+  return q.toString();
+};
 
 /** What a metric's per-game value counts, for "over your last 40 games". */
 const N_UNIT: Record<string, [string, string]> = {
@@ -145,13 +176,18 @@ export function ownClaimText(c: OwnClaim): string {
   return `${value(c.recent.value, c.unit)} over your last ${nOf(c.metric, c.recent.n)}, against ${value(c.earlier.value, c.unit)} over ${nOf(c.metric, c.earlier.n).replace(/^(\S+) /, "$1 earlier ")}. The change's 80% range is ${diffText(c.diff.low, c.unit)} to ${diffText(c.diff.high, c.unit)}.`;
 }
 
-/** "4.0% of chances before, 2.6% after, detected improving on 14 Oct 2026 (86% likely). …" */
+/** "Detected on 14 Oct 2026, 86% likely a real change. Since then: …" */
 export function weaknessChangeText(w: ImprovingWeakness): string {
   const on = w.at ? ` on ${dayText(iso(w.at))}` : "";
   const since = w.afterCounts
     ? ` Since then: ${plural(w.afterCounts.events, "time", "times")} in ${plural(w.afterCounts.chances, "chance", "chances")}.`
     : "";
-  return `${pct1(w.before)} of chances before, ${pct1(w.after)} after, detected ${w.state}${on} (${pct0(w.pChange)} likely a real change).${since}`;
+  return `Detected${on}, ${pct0(w.pChange)} likely a real change.${since}`;
+}
+
+/** "9.0% of chances now, down from 14.0%": the row's lead, in ink (critic 9). */
+export function weaknessNowText(w: ImprovingWeakness): string {
+  return `${pct1(w.after)} of chances now, down from ${pct1(w.before)}`;
 }
 
 /** "Scored 64% in 14 games (80% range 52% to 75%); your rating predicted 51%." */
@@ -184,12 +220,26 @@ function Section({
   title,
   lede,
   children,
+  compact = false,
 }: {
   id: string;
   title: string;
   lede?: ReactNode;
   children: ReactNode;
+  /** Nothing to claim: a row of the "Not judged yet" list instead of a section (critic 9). */
+  compact?: boolean;
 }) {
+  if (compact) {
+    return (
+      <li data-section={id} className="flex flex-col gap-1 py-4">
+        <h3 id={id} className="m-0 font-sans text-base font-semibold text-ink">
+          {title}
+        </h3>
+        {lede ? <p className="m-0 max-w-2xl text-sm text-ink-soft">{lede}</p> : null}
+        {children}
+      </li>
+    );
+  }
   return (
     <section aria-labelledby={id} data-section={id} className="flex flex-col gap-5">
       <SectionHead id={id} title={title}>
@@ -256,7 +306,9 @@ function ClaimRow({
   detail,
   strip,
   href,
+  explain,
   tentative = false,
+  state,
 }: {
   id: string;
   label: string;
@@ -264,26 +316,48 @@ function ClaimRow({
   detail: string;
   strip?: ReactNode;
   href?: string;
+  /** A weakness's state word ("Improving"), the one green word of its row (critic 9). */
+  state?: string;
+  /** The claim's "What is this?" (the glossary entry of its measure). */
+  explain?: GlossaryEntry | null;
   /** A likely but not certain claim: its figure in ink, not in the `good` ink of a sure one. */
   tentative?: boolean;
 }) {
   return (
     <li data-claim={id} className="flex flex-col gap-1 py-4 [font-variant-numeric:lining-nums]">
-      <div className="flex items-baseline justify-between gap-4">
-        {href ? (
-          <Link
-            href={href}
-            className="rounded-field text-base font-medium text-ink underline decoration-rule-strong underline-offset-4 hover:decoration-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
-          >
-            {label}
-          </Link>
-        ) : (
-          <span className="text-base font-medium text-ink">{label}</span>
-        )}
-        <span className="flex items-center gap-4">
+      {/* The label and the figure share a line while they fit; on a phone the figure wraps
+          under a long label (audit A14), never past the sheet's edge. */}
+      <div
+        data-claim-head=""
+        className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1"
+      >
+        <span className="flex min-w-0 items-center gap-1">
+          {href ? (
+            <Link
+              href={href}
+              className="min-w-0 rounded-field text-base font-medium text-ink underline decoration-rule-strong underline-offset-4 hover:decoration-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+            >
+              {label}
+            </Link>
+          ) : (
+            <span className="min-w-0 text-base font-medium text-ink">{label}</span>
+          )}
+          {explain ? <ExplainPopover entry={explain} /> : null}
+        </span>
+        <span className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
           {strip}
+          {state ? (
+            <span data-claim-state="" className="text-sm font-medium text-good-text">
+              {state}
+            </span>
+          ) : null}
           <span
-            className={`font-serif text-xl font-semibold [font-variant-numeric:lining-nums_tabular-nums] ${tentative ? "text-ink" : "text-good-text"}`}
+            data-claim-figure=""
+            className={
+              state
+                ? "font-serif text-lg font-semibold text-ink [font-variant-numeric:lining-nums_tabular-nums]"
+                : `font-serif text-xl font-semibold [font-variant-numeric:lining-nums_tabular-nums] ${tentative ? "text-ink" : "text-good-text"}`
+            }
           >
             {figure}
           </span>
@@ -302,6 +376,7 @@ function OwnClaims({ claims }: { claims: OwnClaim[] }) {
           key={c.metric}
           id={c.metric}
           label={c.label}
+          explain={KPI_GLOSSARY[c.metric]}
           figure={figureOf(c.recent.value, c.unit)}
           detail={ownClaimText(c)}
           strip={
@@ -322,11 +397,18 @@ function ownShortfall(t: OwnTrends): string {
   return `Not enough games yet. This compares your last ${RECENT_GAMES} games with the games before them, so it needs ${plural(t.needGames, "more analysed game", "more analysed games")}${t.measured > 0 ? ` (you have ${plural(t.measured, "game", "games")} with these measures)` : ""}.`;
 }
 
-function AboveLevel({ above }: { above: StrengthsModel["above"] }) {
+function AboveLevel({
+  above,
+  compact = false,
+}: {
+  above: StrengthsModel["above"];
+  compact?: boolean;
+}) {
   if (above.mode === "peers") {
     const b = above.benchmark;
     return (
       <Section
+        compact={compact}
         id="above"
         title="Where you're above your level"
         lede={
@@ -348,6 +430,7 @@ function AboveLevel({ above }: { above: StrengthsModel["above"] }) {
                 key={c.metric}
                 id={c.metric}
                 label={c.label}
+                explain={KPI_GLOSSARY[c.metric]}
                 figure={figureOf(c.value, c.unit)}
                 detail={peerClaimText(c, b)}
                 strip={
@@ -368,6 +451,7 @@ function AboveLevel({ above }: { above: StrengthsModel["above"] }) {
   if (above.mode === "band") {
     return (
       <Section
+        compact={compact}
         id="above"
         title="Where you're above your level"
         lede="Measures where your whole likely range is better than the typical player in your rating band."
@@ -384,6 +468,7 @@ function AboveLevel({ above }: { above: StrengthsModel["above"] }) {
                 key={c.metric}
                 id={c.metric}
                 label={c.label}
+                explain={KPI_GLOSSARY[c.metric]}
                 figure={figureOf(c.value, c.unit)}
                 detail={bandClaimText(c)}
                 strip={
@@ -403,7 +488,12 @@ function AboveLevel({ above }: { above: StrengthsModel["above"] }) {
   }
   const t = above.trends;
   return (
-    <Section id="above" title="Where you're above your level" lede={OWN_BASELINE_TEXT}>
+    <Section
+      compact={compact}
+      id="above"
+      title="Where you're above your level"
+      lede={OWN_BASELINE_TEXT}
+    >
       {!t.enough ? (
         <Quiet>{ownShortfall(t)}</Quiet>
       ) : t.claims.length === 0 ? (
@@ -422,16 +512,23 @@ function Improving({
   improving,
   ownAbove,
   scope,
+  side,
+  compact = false,
 }: {
+  compact?: boolean;
   improving: StrengthsModel["improving"];
   ownAbove: boolean;
   scope: CoachScope;
+  side: StrengthsModel["side"];
 }) {
   const { weaknesses, kpis } = improving;
-  const rule = `A change shows here once it is confirmed: at least ${pct0(CONFIRM_P_CHANGE)} likely, and a drop of ${pct0(CONFIRM_REL_CHANGE)} or more.`;
+  // The weakness timeline is every game's (ADR 0082): a colour cannot narrow it, so it says so.
+  const allGames =
+    side === "both" ? "" : " Weakness changes are called on all your games, both colours.";
+  const rule = `A change shows here once it is confirmed: at least ${pct0(CONFIRM_P_CHANGE)} likely, and a drop of ${pct0(CONFIRM_REL_CHANGE)} or more.${allGames}`;
   const kpiClaims = kpis?.claims ?? [];
   return (
-    <Section id="improving" title="What's improving" lede={rule}>
+    <Section compact={compact} id="improving" title="What's improving" lede={rule}>
       {weaknesses.length === 0 ? (
         <Quiet>No weakness has a confirmed improvement yet.</Quiet>
       ) : (
@@ -441,7 +538,9 @@ function Improving({
               key={w.seriesKey}
               id={w.seriesKey}
               label={w.label}
-              figure={pct1(w.after)}
+              explain={seriesGlossary(w.seriesKey)}
+              figure={weaknessNowText(w)}
+              state={w.state === "improving" ? "Improving" : "Resolved"}
               detail={weaknessChangeText(w)}
               href={`/app/weaknesses/${encodeURIComponent(w.seriesKey)}?${scopeQuery(scope)}`}
             />
@@ -466,9 +565,16 @@ function Improving({
   );
 }
 
-function Openings({ openings }: { openings: StrengthsModel["openings"] }) {
+function Openings({
+  openings,
+  compact = false,
+}: {
+  openings: StrengthsModel["openings"];
+  compact?: boolean;
+}) {
   return (
     <Section
+      compact={compact}
       id="openings"
       title="Openings that work for you"
       lede={`Lines with at least ${MIN_OPENING_GAMES} games where your whole likely score is above what your rating predicts, then the promising ones: likely above, not yet certain.`}
@@ -486,6 +592,7 @@ function Openings({ openings }: { openings: StrengthsModel["openings"] }) {
               key={`${o.color}:${o.kind}:${o.lineKey}`}
               id={o.lineKey}
               label={o.name}
+              explain={KPI_GLOSSARY.perf_vs_expected}
               figure={pct0(o.score)}
               detail={`${o.kind === "chosen" ? "You play it" : "You face it"} as ${o.color === "white" ? "White" : "Black"}. ${openingText(o)}${o.verdict ? ` Verdict: ${VERDICT_TEXT[o.verdict]}.` : ""}`}
               strip={
@@ -513,6 +620,7 @@ function Openings({ openings }: { openings: StrengthsModel["openings"] }) {
                 key={`${o.color}:${o.kind}:${o.lineKey}`}
                 id={o.lineKey}
                 label={o.name}
+                explain={KPI_GLOSSARY.perf_vs_expected}
                 figure={pct0(o.score)}
                 tentative
                 detail={`${o.kind === "chosen" ? "You play it" : "You face it"} as ${o.color === "white" ? "White" : "Black"}. ${promisingText(o)}${o.verdict ? ` Verdict: ${VERDICT_TEXT[o.verdict]}.` : ""}`}
@@ -534,7 +642,9 @@ function waitingText(d: DifficultyStatus): string {
 function HardSpots({
   spots,
   difficulty,
+  compact = false,
 }: {
+  compact?: boolean;
   spots: StrengthsModel["hardSpots"];
   difficulty: DifficultyStatus;
 }) {
@@ -550,6 +660,7 @@ function HardSpots({
           : "Positions where you found the engine's best move when it mattered.";
   return (
     <Section
+      compact={compact}
       id="hard-spots"
       title={spots.mode === "maia" ? HARD_TITLE : CRITICAL_TITLE}
       lede={lede}
@@ -611,6 +722,70 @@ function HardSpots({
   );
 }
 
+/** One colour's claims, or the calm line saying why there are none. */
+function ColourClaims({ colour, above }: { colour: "White" | "Black"; above: SideAbove }) {
+  if (above.mode === "none") {
+    return <Quiet>No benchmark for your {colour} games yet.</Quiet>;
+  }
+  if (above.claims.length === 0) {
+    return (
+      <Quiet>
+        None of your {plural(above.compared, "measure", "measures")} compared in your {colour} games
+        is clearly better yet.
+      </Quiet>
+    );
+  }
+  return (
+    <ul className="m-0 flex list-none flex-col gap-3 p-0">
+      {above.claims.map((c) => {
+        const explain = KPI_GLOSSARY[c.metric];
+        return (
+          <li key={c.metric} className="flex flex-col [font-variant-numeric:lining-nums]">
+            <span className="flex flex-wrap items-baseline justify-between gap-x-3">
+              <span className="flex min-w-0 items-center gap-1 text-base font-medium text-ink">
+                {c.label}
+                {explain ? <ExplainPopover entry={explain} /> : null}
+              </span>
+              <span className="font-serif text-lg font-semibold text-good-text [font-variant-numeric:lining-nums_tabular-nums]">
+                {figureOf(c.value, c.unit)}
+              </span>
+            </span>
+            <span className="text-sm text-ink-soft">
+              80% range {range(c.low, c.high, c.unit)}, over your last {nOf(c.metric, c.n)}.{" "}
+              {"peer" in c
+                ? `Players you've faced: ${value(c.peer, c.unit)}.`
+                : `Players in your rating band: ${value(c.median, c.unit)}.`}
+            </span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/**
+ * Both colours side by side (audit A5): each colour's measures that are clearly better than
+ * other players in that colour's games, from the colour's own stored rows (ADR 0082).
+ */
+function ByColour({ bySide }: { bySide: NonNullable<StrengthsModel["bySide"]> }) {
+  return (
+    <Section
+      id="by-colour"
+      title="By colour"
+      lede="The same comparison in your White games and your Black games, each against players who had that colour."
+    >
+      <div className="grid grid-cols-1 gap-x-12 gap-y-8 md:grid-cols-2">
+        {(["white", "black"] as const).map((side) => (
+          <div key={side} data-colour={side} className="flex min-w-0 flex-col gap-3">
+            <h3 className="m-0 font-sans text-base font-semibold text-ink">{COLOUR[side]}</h3>
+            <ColourClaims colour={COLOUR[side]} above={bySide[side]} />
+          </div>
+        ))}
+      </div>
+    </Section>
+  );
+}
+
 function ReportStrengths({ report }: { report: StrengthsModel["report"] }) {
   if (!report || report.strengths.length === 0) return null;
   const at = iso(report.at);
@@ -632,13 +807,88 @@ function ReportStrengths({ report }: { report: StrengthsModel["report"] }) {
   );
 }
 
-export function StrengthsHeader({ scope }: { scope: CoachScope | null }) {
+/** Whether a section has a claim to show; one without goes to "Not judged yet" (critic 9). */
+function emptiness(model: StrengthsModel) {
+  const a = model.above;
+  const kpiClaims = model.improving.kpis?.claims.length ?? 0;
+  return {
+    above: a.mode === "own" ? a.trends.claims.length === 0 : a.claims.length === 0,
+    improving: model.improving.weaknesses.length === 0 && kpiClaims === 0,
+    openings: model.openings.lines.length === 0 && model.openings.promising.length === 0,
+    hard: model.hardSpots.mode === "none",
+  };
+}
+
+/** The sections with something to show, then one quiet list of the rest. */
+function Sections({ scope, model }: { scope: CoachScope; model: StrengthsModel }) {
+  const empty = emptiness(model);
+  const ownAbove = model.above.mode === "own" && model.above.trends.claims.length > 0;
+  const above = (compact: boolean) => <AboveLevel above={model.above} compact={compact} />;
+  const improving = (compact: boolean) => (
+    <Improving
+      improving={model.improving}
+      ownAbove={ownAbove}
+      scope={scope}
+      side={model.side}
+      compact={compact}
+    />
+  );
+  const openings = (compact: boolean) => <Openings openings={model.openings} compact={compact} />;
+  const hard = (compact: boolean) => (
+    <HardSpots spots={model.hardSpots} difficulty={model.difficulty} compact={compact} />
+  );
+  const parts = [
+    { key: "above", empty: empty.above, render: above },
+    { key: "improving", empty: empty.improving, render: improving },
+    { key: "openings", empty: empty.openings, render: openings },
+    { key: "hard", empty: empty.hard, render: hard },
+  ];
+  const quiet = parts.filter((p) => p.empty);
+  return (
+    <>
+      {parts[0] && !parts[0].empty ? parts[0].render(false) : null}
+      {model.bySide ? <ByColour bySide={model.bySide} /> : null}
+      {parts
+        .slice(1)
+        .map((p) => (p.empty ? null : <Fragment key={p.key}>{p.render(false)}</Fragment>))}
+      {quiet.length > 0 ? (
+        <section
+          aria-labelledby="not-judged"
+          data-section="not-judged"
+          className="flex flex-col gap-3"
+        >
+          <SectionHead id="not-judged" title="Not judged yet">
+            <p className="m-0 max-w-2xl text-sm text-ink-soft">
+              Nothing in these is clearly a strength yet; each says what it needs.
+            </p>
+          </SectionHead>
+          <ul className="m-0 flex list-none flex-col divide-y divide-rule p-0">
+            {quiet.map((p) => (
+              <Fragment key={p.key}>{p.render(true)}</Fragment>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+    </>
+  );
+}
+
+export function StrengthsHeader({
+  scope,
+  model = null,
+}: {
+  scope: CoachScope | null;
+  model?: StrengthsModel | null;
+}) {
+  const read = model
+    ? { games: model.analysedGames, side: model.side, range: model.range }
+    : undefined;
   return (
     <header className="flex max-w-2xl flex-col gap-2">
       <h1 className="font-serif text-3xl font-semibold text-ink">Strengths</h1>
       <p className="text-lg text-ink-soft [font-variant-numeric:lining-nums]">
         {scope
-          ? `${basisText(scope)} What you do well, and what to keep doing.`
+          ? `${basisText(scope, read)} What you do well, and what to keep doing.`
           : "What you do well, and what to keep doing."}
       </p>
     </header>
@@ -648,15 +898,32 @@ export function StrengthsHeader({ scope }: { scope: CoachScope | null }) {
 export function StrengthsView({
   scope,
   model,
+  filterBar,
+  accountSwitch = true,
 }: {
   scope: CoachScope | null;
   model: StrengthsModel | null;
+  /** The shared filter bar (audit A5); it holds the time control and the colour. */
+  filterBar?: ReactNode;
+  /** Whether the scope switch is still needed beside the bar (more than one linked account). */
+  accountSwitch?: boolean;
 }) {
+  const dated = model !== null && (model.range.from !== null || model.range.to !== null);
   return (
     <div className="flex flex-col gap-12">
       <div className="flex flex-col gap-5">
-        <StrengthsHeader scope={scope} />
-        {scope ? <CoachScopeSwitch scope={scope} basePath="/app/strengths" /> : null}
+        <StrengthsHeader scope={scope} model={model} />
+        {scope && (accountSwitch || !filterBar) ? (
+          <ScopeRow>
+            <CoachScopeSwitch scope={scope} basePath="/app/strengths" />
+          </ScopeRow>
+        ) : null}
+        {filterBar}
+        {dated ? (
+          <p data-slot="dates-note" className="m-0 max-w-2xl text-sm text-ink-soft">
+            {STRENGTHS_DATES_TEXT}
+          </p>
+        ) : null}
         {model ? <ReportStrengths report={model.report} /> : null}
       </div>
       {scope === null || model === null ? (
@@ -670,16 +937,7 @@ export function StrengthsView({
           {EMPTY_TEXT}
         </EmptySheet>
       ) : (
-        <>
-          <AboveLevel above={model.above} />
-          <Improving
-            improving={model.improving}
-            ownAbove={model.above.mode === "own" && model.above.trends.claims.length > 0}
-            scope={scope}
-          />
-          <Openings openings={model.openings} />
-          <HardSpots spots={model.hardSpots} difficulty={model.difficulty} />
-        </>
+        <Sections scope={scope} model={model} />
       )}
     </div>
   );

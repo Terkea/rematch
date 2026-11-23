@@ -12,6 +12,7 @@ import {
   WEAKNESSES,
   weaknessDef,
 } from "../../src/server/profile/catalogue";
+import { KPI_GLOSSARY, WEAKNESS_GLOSSARY } from "../../src/server/profile/glossary";
 
 const fixture = JSON.parse(
   readFileSync(
@@ -27,6 +28,18 @@ describe("profile catalogue", () => {
     expect(MOTIFS).toEqual(fixture.motifs);
   });
 
+  // One plain name per weakness and KPI (audit A2): the rows, details, popovers, report, Strengths
+  // and the coach all say the glossary's name, so the catalogue (and Rust's) must carry it too.
+  it("names every weakness and KPI with its glossary name", () => {
+    for (const w of WEAKNESSES) expect(w.label, w.key).toBe(WEAKNESS_GLOSSARY[w.key]?.name);
+    for (const k of KPIS) expect(k.label, k.metric).toBe(KPI_GLOSSARY[k.metric]?.name);
+  });
+
+  it("names an allowed motif after its missed twin", () => {
+    expect(seriesLabel("motif.allowed:hangingPiece")).toBe("Allowed free pieces");
+    expect(seriesLabel("motif.allowed:mateIn1")).toBe("Allowed mates in one");
+  });
+
   it("areas follow the UI's order", () => {
     expect(AREAS).toEqual(Object.keys(areaLabels));
   });
@@ -39,10 +52,10 @@ describe("profile catalogue", () => {
   });
 
   it("labels every series kind", () => {
-    expect(seriesLabel("W1")).toBe("Hung material");
-    expect(seriesLabel("W3.shallow")).toBe("Missed own tactic (shallow)");
+    expect(seriesLabel("W1")).toBe("Leaving pieces hanging");
+    expect(seriesLabel("W3.shallow")).toBe("Missing a short tactic");
     expect(seriesLabel("motif.missed:fork")).toBe("Missed forks");
-    expect(seriesLabel("motif.missed:hangingPiece")).toBe("Missed hanging pieces");
+    expect(seriesLabel("motif.missed:hangingPiece")).toBe("Missed free pieces");
     expect(seriesLabel("motif.allowed:fork")).toBe("Allowed forks");
     expect(seriesLabel("motif.allowed:backRankMate")).toBe("Allowed back-rank mates");
     expect(seriesLabel("opening:black:caro-kann-defence", "Caro-Kann Defence")).toBe(

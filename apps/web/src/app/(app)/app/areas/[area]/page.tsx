@@ -9,6 +9,7 @@ import {
   AREAS,
   type Area,
   getArea,
+  getBenchmark,
   getWeakness,
   KPIS,
   kpiTrends,
@@ -79,11 +80,12 @@ export default async function AreaPage({
   const metrics = KPIS.filter((k) => k.area === area && !k.metric.startsWith("weakness:")).map(
     (k) => k.metric,
   );
-  const [view, kpis, report, coach] = await Promise.all([
+  const [view, kpis, report, coach, benchmark] = await Promise.all([
     getArea(db, user.id, scope, area),
     kpiTrends(db, user.id, scope, metrics),
     getReport(db, user.id, { accountId: scope.accountId, timeClass: scope.timeClass }),
     coachStatus(db),
+    getBenchmark(db, user.id, scope),
   ]);
   const weaknesses = view.weaknesses.filter((w) => w.area === area);
   const details = await Promise.all(
@@ -111,6 +113,8 @@ export default async function AreaPage({
     now,
     filterBar: <FilterBar model={bar.model} />,
     accountSwitch: manyAccounts(scope),
+    range,
+    benchmark,
   };
   return <AreaView model={model} />;
 }

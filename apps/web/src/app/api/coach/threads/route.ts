@@ -1,6 +1,7 @@
 import { rejectCrossSite } from "../../../../server/accounts/http";
 import { requireApiUser } from "../../../../server/auth/session";
 import {
+  colourQuestion,
   createConversation,
   isLinked,
   isUuid,
@@ -39,9 +40,10 @@ export async function GET(req: Request): Promise<Response> {
 }
 
 /**
- * Starts a conversation `{ accountId, timeClass, anchor?, question? }` and, with a question,
- * posts it (R5: the answer arrives on `/api/events`). 201 `{ id, assistantMessageId? }`. An
- * account the user is not linked to is not found; a malformed anchor is dropped.
+ * Starts a conversation `{ accountId, timeClass, anchor?, color?, question? }` and, with a
+ * question, posts it (R5: the answer arrives on `/api/events`). 201 `{ id, assistantMessageId? }`.
+ * An account the user is not linked to is not found; a malformed anchor is dropped. `color`
+ * ("white" or "black", from a colour's page) puts the colour in the question's words.
  */
 export async function POST(req: Request): Promise<Response> {
   const crossSite = rejectCrossSite(req);
@@ -68,7 +70,10 @@ export async function POST(req: Request): Promise<Response> {
     return Response.json({ id: made.id }, { status: 201 });
   }
   // The create, the first post and its job in one transaction; a repeat answers the first.
-  const started = await startConversation(db, user.id, { ...target, question });
+  const started = await startConversation(db, user.id, {
+    ...target,
+    question: colourQuestion(question, body.color),
+  });
   if (started.kind !== "started") {
     return started.kind === "not_linked"
       ? notFound()

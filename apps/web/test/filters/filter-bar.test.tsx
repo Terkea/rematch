@@ -76,6 +76,19 @@ describe("FilterBar", () => {
     expect(summary).toHaveTextContent("Rapid, Black, this month vs last");
   });
 
+  // Audit A14: at 390 a chip row that does not fit scrolls sideways; its edge fades to say so.
+  it("fades the edge of a chip row that has more to scroll", () => {
+    const { container } = render(bar(""));
+    const desktop = container.querySelector("section > div") as HTMLElement;
+    const cues = desktop.querySelectorAll("[data-scroll-cue]");
+    expect(cues.length).toBe(desktop.querySelectorAll("ul[aria-label]").length);
+    const scroller = cues[0]?.querySelector("[data-scroller]") as HTMLElement;
+    Object.defineProperty(scroller, "scrollWidth", { configurable: true, value: 400 });
+    Object.defineProperty(scroller, "clientWidth", { configurable: true, value: 300 });
+    scroller.dispatchEvent(new Event("scroll"));
+    expect(scroller.dataset.fade).toBe("end");
+  });
+
   it("says honestly where the stored data has no colour split", () => {
     render(bar("", { color: "coming" }));
     expect(screen.getAllByText(/These numbers cover both colours/)[0]).toBeInTheDocument();

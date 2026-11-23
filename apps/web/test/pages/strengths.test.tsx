@@ -45,7 +45,10 @@ const FEN = "r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3";
 
 function base(): StrengthsModel {
   return {
+    side: "both",
+    range: { from: null, to: null },
     analysedGames: 214,
+    bySide: null,
     above: {
       mode: "own",
       trends: { claims: [], enough: true, measured: 214, needGames: 0 },
@@ -68,10 +71,13 @@ const section = (body: HTMLElement, id: string) =>
   body.querySelector(`[data-section="${id}"]`) as HTMLElement;
 
 describe("StrengthsView", () => {
-  it("states the basis and the four sections, each calm when empty", () => {
+  it("states the basis and gathers the empty sections into one quiet list at the bottom", () => {
     const { body, screen } = show(base());
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Strengths");
     expect(body.textContent).toContain("Based on 214 analysed rapid games on chess.com.");
+    // Critic 9: nothing to claim, so no section of its own; one "Not judged yet" list instead.
+    const list = body.querySelector('[data-section="not-judged"]') as HTMLElement;
+    expect(within(list).getByRole("heading", { level: 2 }).textContent).toBe("Not judged yet");
     for (const h of [
       "Where you're above your level",
       "What's improving",
@@ -79,8 +85,12 @@ describe("StrengthsView", () => {
       // No Maia rating yet: the fallback's title never says "hard" (N11).
       CRITICAL_TITLE,
     ]) {
-      expect(screen.getByRole("heading", { level: 2, name: h })).toBeTruthy();
+      expect(within(list).getByRole("heading", { level: 3, name: h })).toBeTruthy();
+      expect(screen.queryByRole("heading", { level: 2, name: h })).toBeNull();
     }
+    expect(body.lastElementChild?.lastElementChild?.getAttribute("data-section")).toBe(
+      "not-judged",
+    );
     expect(section(body, "above").textContent).toContain(OWN_BASELINE_TEXT);
     expect(section(body, "above").textContent).toContain("Nothing stands out yet");
     expect(section(body, "improving").textContent).toContain(
@@ -271,8 +281,14 @@ describe("StrengthsView", () => {
     ];
     const { body } = show(m);
     const row = body.querySelector('[data-claim="W1"]');
+    // Critic 9: the row leads with the rate now and before, in ink; only "Improving" is green.
+    const figure = row?.querySelector("[data-claim-figure]");
+    expect(figure?.textContent).toBe("2.6% of chances now, down from 4.0%");
+    expect(figure?.className).not.toContain("text-good");
+    expect(row?.querySelector("[data-claim-state]")?.textContent).toBe("Improving");
+    expect(row?.querySelector("[data-claim-state]")?.className).toContain("text-good-text");
     expect(row?.textContent).toContain(
-      "4.0% of chances before, 2.6% after, detected improving on 14 Oct 2026 (86% likely a real change). Since then: 21 times in 800 chances.",
+      "Detected on 14 Oct 2026, 86% likely a real change. Since then: 21 times in 800 chances.",
     );
     expect(row?.querySelector("a")?.getAttribute("href")).toBe(
       `/app/weaknesses/W1?account=${ACCOUNT}&tc=rapid`,
@@ -407,6 +423,135 @@ describe("StrengthsView", () => {
     const { body } = show(null, null);
     expect(body.textContent).toContain("No analysed games yet.");
     expect(body.querySelector("[data-section]")).toBeNull();
+  });
+});
+
+// Audit A5: the shared filter bar, each colour's claims in Both mode, and a "What is this?" on
+// every claim row; A14: the row wraps on a phone.
+describe("StrengthsView filters", () => {
+  const accuracy = {
+    metric: "accuracy",
+    label: "Accuracy",
+    unit: "pct" as const,
+    higherIsBetter: true,
+    value: 76.2,
+    low: 74.1,
+    high: 78.3,
+    n: 25,
+    peer: 71.4,
+    pooled: false,
+    chances: null,
+    players: 12,
+  };
+
+  it("names the colour and dates the page reads, and what the dates change", () => {
+    const m = base();
+    m.side = "white";
+    m.analysedGames = 120;
+    m.range = { from: "2026-09-01", to: "2026-10-31" };
+    const { body } = show(m, { ...scope, side: "white" });
+    expect(body.textContent).toContain(
+      "Based on 120 analysed rapid games with White on chess.com, 1 Sep to 31 Oct 2026.",
+    );
+    expect(body.querySelector("[data-slot='dates-note']")?.textContent).toBe(
+      "These dates narrow the comparison with your earlier games, the openings and the moves in hard spots. The comparison with other players stays on your last 50 games, and what's improving on your whole record.",
+    );
+    expect(section(body, "improving").textContent).toContain(
+      "Weakness changes are called on all your games, both colours.",
+    );
+  });
+
+  // Critic 13: at 390 the scope switch scrolls in its own row, fading at the right edge.
+  it("puts the scope switch in the coach's scrolling row", () => {
+    const { body } = show(base());
+    const sw = body.querySelector("[data-scope-row]");
+    expect(sw?.className).toContain("overflow-x-auto");
+    expect(sw?.className).toContain("mask-image");
+  });
+
+  it("shows the filter bar it is given", () => {
+    const html = renderToString(
+      <StrengthsView scope={scope} model={base()} filterBar={<div data-test-bar="" />} />,
+    );
+    expect(html).toContain("data-test-bar");
+  });
+
+  it("lists each colour's claims in Both mode, calm where a colour has none", () => {
+    const m = base();
+    m.bySide = {
+      white: { mode: "peers", compared: 3, claims: [accuracy] },
+      black: { mode: "none" },
+    };
+    const { body } = show(m);
+    const block = body.querySelector("[data-section='by-colour']") as HTMLElement;
+    const white = block.querySelector("[data-colour='white']")?.textContent ?? "";
+    expect(white).toContain("Accuracy");
+    expect(white).toContain("76.2%");
+    expect(white).toContain("over your last 25 games");
+    expect(block.querySelector("[data-colour='black']")?.textContent).toContain(
+      "No benchmark for your Black games yet.",
+    );
+    expect(body.textContent).not.toMatch(/NaN|undefined|Infinity/);
+  });
+
+  it("says so when a colour has a benchmark but no clear claim", () => {
+    const m = base();
+    m.bySide = {
+      white: { mode: "peers", compared: 3, claims: [] },
+      black: { mode: "peers", compared: 1, claims: [] },
+    };
+    const { body } = show(m);
+    expect(body.querySelector("[data-colour='white']")?.textContent).toContain(
+      "None of your 3 measures compared in your White games is clearly better yet.",
+    );
+  });
+
+  it("has no colour block for one colour", () => {
+    const m = base();
+    m.side = "black";
+    const { body } = show(m, { ...scope, side: "black" });
+    expect(body.querySelector("[data-section='by-colour']")).toBeNull();
+  });
+
+  it("explains every claim row and lets its head wrap", () => {
+    const m = base();
+    m.above = {
+      mode: "peers",
+      compared: 1,
+      benchmark: {
+        source: "peers",
+        platform: "chesscom",
+        low: 650,
+        high: 950,
+        players: 25,
+        games: 61,
+        chances: {},
+      },
+      claims: [accuracy],
+    };
+    m.improving.weaknesses = [
+      {
+        seriesKey: "W1",
+        label: "Leaving pieces hanging",
+        state: "improving",
+        before: 0.04,
+        after: 0.026,
+        pChange: 0.9,
+        at: new Date("2026-10-14T12:00:00Z"),
+        afterCounts: null,
+        chances: 2400,
+      },
+    ];
+    const { body, screen } = show(m);
+    for (const row of body.querySelectorAll("[data-claim]")) {
+      expect(
+        row.querySelector("button[aria-label^='What is']"),
+        row.textContent ?? "",
+      ).not.toBeNull();
+      expect(row.querySelector("[data-claim-head]")?.className).toContain("flex-wrap");
+    }
+    expect(screen.getByRole("button", { name: "What is accuracy?" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "What is leaving pieces hanging?" })).toBeTruthy();
   });
 });
 

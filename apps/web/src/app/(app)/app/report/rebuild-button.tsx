@@ -7,7 +7,12 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { TimeClass } from "../../../../server/games/types";
 
-export type ReportScope = { accountId: string; timeClass: TimeClass };
+export type ReportScope = {
+  accountId: string;
+  timeClass: TimeClass;
+  /** The colour the page was asked for, kept on "Ask your coach" links (audit A3). */
+  side?: "both" | "white" | "black";
+};
 
 const pad = (n: number) => String(n).padStart(2, "0");
 

@@ -212,3 +212,35 @@ describe("AreaScore interval", () => {
     expect(screen.getByText("Likely range")).toBeInTheDocument();
   });
 });
+
+// Q7: stored area scores are floats (44.33057115152735); every number the row renders, seen or
+// read aloud, is a whole percentile, and an interval rounds outward.
+describe("AreaScore numbers", () => {
+  it("renders whole percentiles only", () => {
+    const { container } = render(
+      <AreaScoreList
+        items={[
+          {
+            area: "openings",
+            score: 44.33057115152735,
+            band: { median: 50, next: 61.5 },
+            basis: { games: 40, timeClass: "rapid" },
+            delta: 2.71828,
+            interval: { low: 40.2, high: 48.9, level: 0.8 },
+          },
+          {
+            area: "tactics",
+            score: 6.309910793819363,
+            band: { median: 50 },
+            basis: { games: 40, timeClass: "rapid" },
+          },
+        ]}
+      />,
+    );
+    const text = container.textContent ?? "";
+    expect(text).not.toMatch(/\d\.\d/);
+    expect(text).toContain("Openings 44, band median 50, next band 62, 80% range 40 to 49");
+    expect(text).toContain("Tactics 6, band median 50");
+    expect(text).toContain("+3 since last report");
+  });
+});

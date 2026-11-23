@@ -1,11 +1,14 @@
 import { JudgementColumns } from "@ci/ui/charts";
 import { EstimateKpi } from "../../../../components/estimate-kpi";
 import { type GlossaryEntry, KPI_GLOSSARY } from "../../../../server/profile/glossary";
+import { STATS_GLOSSARY } from "../_filters/glossary";
 import type { JudgementsView } from "./view";
 
-/** The glossary entry of a row, where the glossary has one (mistakes and inaccuracies have none). */
+/** Each row's "What is this?": the KPI glossary's blunders, the game stats' other two (A10). */
 const EXPLAIN: Record<string, GlossaryEntry | undefined> = {
   blunders: KPI_GLOSSARY.blunders_per_game,
+  mistakes: STATS_GLOSSARY.mistakes,
+  inaccuracies: STATS_GLOSSARY.inaccuracies,
 };
 
 const scopeText = (j: JudgementsView) =>

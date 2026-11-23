@@ -83,7 +83,7 @@ describe("listWeaknesses", () => {
       estimates: [
         { seriesKey: "W2", priority: 0.4, mean: 0.11, ciLow: 0.0912345, ciHigh: 0.1387654 },
         { seriesKey: "W1", priority: 2.5, mean: 0.05, ciLow: 0.0411111, ciHigh: 0.0622222 },
-        { seriesKey: "W9b", priority: 0.4, mean: 0.2, ciLow: 0.15, ciHigh: 0.25 },
+        { seriesKey: "W9b", priority: 0.3, mean: 0.2, ciLow: 0.15, ciHigh: 0.25 },
       ],
     });
     const list = await listWeaknesses(db, userId, await scopeOf(userId));
@@ -92,7 +92,7 @@ describe("listWeaknesses", () => {
     expect(list[1]?.rate).toEqual({ mean: 0.11, low: 0.0912345, high: 0.1387654, level: 0.8 });
     expect(list[0]).toMatchObject({
       contractId: "W1",
-      label: "Hung material",
+      label: "Leaving pieces hanging",
       area: "calculation",
       state: "active",
       band: { median: 0.03, p40: 0.025 },
@@ -244,7 +244,7 @@ describe("getWeakness", () => {
     const w = await getWeakness(db, userId, await scopeOf(userId), "W1");
     expect(w?.timeline).toEqual({
       id: "W1",
-      label: "Hung material",
+      label: "Leaving pieces hanging",
       segments: [
         { state: "not_an_issue", from: "2026-03-01", to: "2026-05-04" },
         { state: "emerging", from: "2026-05-04", to: "2026-06-10" },
