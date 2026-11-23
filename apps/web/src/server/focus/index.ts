@@ -395,7 +395,7 @@ export async function getFocusCard(db: Db, userId: string, scope: CoachScope): P
       )
       .orderBy(desc(focuses.startedAt), desc(focuses.createdAt))
       .limit(1);
-    if (last && last.outcome && last.outcome !== "cleared") {
+    if (last?.outcome && last.outcome !== "cleared") {
       const progress = progressOf(last, {
         games: last.resultGames ?? 0,
         events: last.resultK ?? 0,

@@ -146,7 +146,7 @@ function ScopeRow({ children }: { children: ReactNode }) {
 }
 
 function Fresh({ on, children }: { on: boolean; children: ReactNode }) {
-  return on ? <div data-reveal="first">{children}</div> : <>{children}</>;
+  return on ? <div data-reveal="first">{children}</div> : children;
 }
 
 /**

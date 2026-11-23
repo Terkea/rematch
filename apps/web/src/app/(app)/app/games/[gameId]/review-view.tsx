@@ -183,7 +183,7 @@ function useReview(
       const t = performance.now();
       if (held.current && t - lastSound.current < REPEAT_SOUND_MS) return;
       lastSound.current = t;
-      const ply = to > from ? to : from;
+      const ply = Math.max(to, from);
       const san = view.plies[ply - 1]?.san;
       if (san) playSoundRef.current(soundForSan(san));
     },

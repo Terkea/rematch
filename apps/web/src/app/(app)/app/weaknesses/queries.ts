@@ -1,6 +1,6 @@
 import type { Db } from "@ci/db";
-import { games, weaknessChangeNotes, weaknessSeriesPoint } from "@ci/db/generated";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { weaknessChangeNotes, weaknessSeriesPoint } from "@ci/db/generated";
+import { and, eq, sql } from "drizzle-orm";
 import type { DayRange } from "../../../../server/filters/params";
 import { readOnly } from "../../../../server/games";
 import type { CoachScope } from "../../../../server/profile";
