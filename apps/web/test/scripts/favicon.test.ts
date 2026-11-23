@@ -17,7 +17,7 @@ describe("the favicon (M1)", () => {
   const colours = markColours(readDayTokens(readFileSync(TOKENS, "utf8")));
 
   it("takes its colours from the day tokens", () => {
-    expect(colours).toEqual({ tile: "#16233b", light: "#e3e8ef", dark: "#a7b4c7" });
+    expect(colours).toEqual({ tile: "#1f2a3d", light: "#e6e1d8", dark: "#b8b2a6" });
   });
 
   it("is a real ICO with 16, 32 and 48 px PNG images", () => {
