@@ -185,6 +185,22 @@ describe("weakness detail filters (A4)", () => {
     const row = screen.getAllByRole("link", { name: /Leaving pieces hanging/ })[0];
     expect(row?.getAttribute("href")).toMatch(/from=2026-09-01/);
   });
+
+  it("list rows carry the colour and both dates into the detail", async () => {
+    await seedProfile(db, accountId, {
+      timeClass: "rapid",
+      games: 3,
+      estimates: [{ seriesKey: "W1", side: "white", state: "active", priority: 3, mean: 0.05 }],
+    });
+    await list({ color: "white", from: "2026-09-01", to: "2026-10-31" });
+    const row = screen.getAllByRole("link", { name: /Leaving pieces hanging/ })[0];
+    const q = new URL(row?.getAttribute("href") ?? "", "http://x").searchParams;
+    expect([q.get("color"), q.get("from"), q.get("to")]).toEqual([
+      "white",
+      "2026-09-01",
+      "2026-10-31",
+    ]);
+  });
 });
 
 describe("weaknesses list", () => {
