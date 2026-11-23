@@ -30,7 +30,7 @@ import type { CoachScope, WeaknessDetail } from "../../../../../server/profile";
 import {
   BENCHMARK_BIAS_TEXT,
   type Benchmark,
-  benchmarkGroupLabel,
+  baselineGroupLabel,
   benchmarkLabel,
   notComparedText,
   peerRateText,
@@ -275,7 +275,8 @@ const colourOf = (scope: { side?: string }) =>
 const DEFAULT_GROUP = "Players in your rating band";
 
 function Standing({ detail, benchmark }: { detail: WeaknessDetail; benchmark: Benchmark | null }) {
-  const group = benchmarkGroupLabel(benchmark) ?? DEFAULT_GROUP;
+  // ADR 0101: W5's median is the evaluation's prediction, never the players faced.
+  const group = baselineGroupLabel(benchmark, detail.seriesKey) ?? DEFAULT_GROUP;
   const label = benchmarkLabel(benchmark);
   const early = !detail.evidence.sufficient;
   const none = detail.evidence.chances <= 0;

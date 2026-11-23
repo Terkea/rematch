@@ -164,8 +164,9 @@ function WorkOnBody({ lead }: { lead: LeadFinding }) {
     case "none":
       return lead.compared ? (
         <p className="m-0 text-sm text-ink-soft">
-          Nothing stands out above the players you are compared with across{" "}
-          {scopeGames(lead.analysedGames, lead.scope)} yet.
+          {/* ADR 0101: a clean record is a real answer, not a missing one. */}
+          Nothing stands out yet. Across {scopeGames(lead.analysedGames, lead.scope)}, no weakness
+          is both clearly more often than your benchmark and costly enough to work on first.
         </p>
       ) : (
         // No benchmark: nothing was compared, so "nothing stands out" would overclaim (I1).

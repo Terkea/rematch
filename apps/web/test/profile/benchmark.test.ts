@@ -3,10 +3,13 @@ import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   BENCHMARK_BIAS_TEXT,
   type Benchmark,
+  baselineGroupLabel,
   benchmarkGroupLabel,
   benchmarkLabel,
   type CoachScope,
   getBenchmark,
+  MODEL_BASELINE_LABEL,
+  notComparedText,
   peerHeadline,
   peerPooledBasis,
   peerRateText,
@@ -58,6 +61,18 @@ describe("benchmark label", () => {
     expect(peerRateText(b, "W1", 0.1)).toBe("Players you've faced, rated about 650–950: 10.0%");
     expect(peerRateText({ source: "lichess_bands" }, "W4.missed", 0.1)).toBeNull();
     expect(peerPooledBasis(null, "W4.missed")).toBeUndefined();
+  });
+
+  // ADR 0101 (#10): W1 is compared with the players faced; W5 with what the evaluation
+  // predicts from a winning position, never named as the players faced.
+  it("compares W1 with the players faced and W5 with the evaluation", () => {
+    expect(notComparedText(peers, "W1")).toMatch(/too few of their chances/);
+    expect(baselineGroupLabel(peers, "W1")).toBe("Players you've faced, rated about 650–950");
+    expect(baselineGroupLabel(peers, "W5")).toBe(MODEL_BASELINE_LABEL);
+    expect(MODEL_BASELINE_LABEL).toBe("What the evaluation predicts");
+    expect(peerRateText(peers, "W5", 0.1667)).toBe("What the evaluation predicts: 16.7%");
+    expect(peerPooledBasis(peers, "W5")).toBeUndefined();
+    expect(baselineGroupLabel(null, "W5")).toBeUndefined();
   });
 
   it("says nothing peer-specific for the legacy band reference or none", () => {

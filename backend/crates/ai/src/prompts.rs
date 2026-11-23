@@ -73,7 +73,7 @@ macro_rules! prompt {
     };
 }
 
-static TABLE: [Prompt; 45] = [
+static TABLE: [Prompt; 47] = [
     prompt!("core/rules", 1),
     prompt!("core/tokens", 1),
     prompt!("core/tokens", 2),
@@ -84,6 +84,8 @@ static TABLE: [Prompt; 45] = [
     prompt!("report/report", 1),
     prompt!("report/report", 2),
     prompt!("report/report", 3),
+    // ADR 0101: v4 names W5's median as the evaluation's prediction, never the players faced.
+    prompt!("report/report", 4),
     prompt!("report/output", 1),
     prompt!("report/section-overview", 1),
     prompt!("report/section-overview", 2),
@@ -122,6 +124,8 @@ static TABLE: [Prompt; 45] = [
     prompt!("chat/system", 4),
     // ADR 0094: v5 reads the player's plan (`<plan_context>`).
     prompt!("chat/system", 5),
+    // ADR 0101: v6 names W5's median as the evaluation's prediction.
+    prompt!("chat/system", 6),
     prompt!("chat/repair", 1),
     prompt!("chat-summary/system", 1),
     prompt!("chat-summary/task", 1),
@@ -148,7 +152,8 @@ pub const REPORT_PROMPT_SET: &[(&str, u32)] = &[
     // ADR 0085: v2 teaches the colour split (`byColor`) and names the peer benchmark; the
     // glossary gives the plain words. v1 stays for stored hashes.
     // ADR 0089: v3 adds the rating trajectory and then against now. v2 stays for stored hashes.
-    ("report/report", 3),
+    // ADR 0101: v4 names W5's median as the evaluation's prediction. v3 stays for stored hashes.
+    ("report/report", 4),
     ("report/output", 1),
     // Holistic F5: v2 drops the band's rating range, so the model never names it in place of the
     // peer benchmark. v1 stays for stored hashes.
@@ -191,7 +196,8 @@ pub const CHAT_PROMPT_SET: &[(&str, u32)] = &[
     // ADR 0094: v5 adds the player's plan (`<plan_context>`): acknowledge practice, connect the
     // focus rate to games, suggest the next drill, and say "too early" honestly. v4 stays for
     // stored hashes.
-    ("chat/system", 5),
+    // ADR 0101: v6 names W5's median as the evaluation's prediction. v5 stays for stored hashes.
+    ("chat/system", 6),
     // The Rematch brand: the coach's voice, the same file as the report's.
     ("tone/voice", 1),
     ("chat/repair", 1),

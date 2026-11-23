@@ -16,6 +16,7 @@ import type { CoachScope, DifficultyStatus, WeaknessSummary } from "../../../../
 import {
   BENCHMARK_BIAS_TEXT,
   type Benchmark,
+  baselineGroupLabel,
   benchmarkGroupLabel,
   benchmarkLabel,
   notComparedText,
@@ -109,19 +110,24 @@ export function groupColourWeaknesses(
 /**
  * Costing states the peer comparison does not back (ADR 0084): the timeline marked them from
  * every game since its last detected change, but over the estimate's 6 months the stored
- * `P(rate > benchmark)` is below 0.7. They never sit under "Costing you games", whose rows the
- * comparison on the same row has to agree with.
+ * `P(rate > benchmark)` is below 0.7, or the estimate is below the ranking floor (priority 0,
+ * ADR 0101). They never sit under "Costing you games", whose rows the coach ranks too.
  */
 export const WATCH_GROUP = {
   id: "watching",
   title: "Worth watching",
-  lede: "Your game-by-game record marks these active, emerging or back again, but over the last 6 months they are not clearly more often than the players you are compared with.",
+  lede: "Your game-by-game record marks these active, emerging or back again, but over the last 6 months they are not clearly more often than your benchmark, or not costly enough to matter yet: not enough evidence yet to rank them.",
 } as const;
+
+/** A costing row backed by its comparison and ranked (priority above 0, ADR 0101). */
+const backsCosting = (w: WeaknessSummary) =>
+  comparisonBacksState(w.state, w.confidence) &&
+  (!(GROUPS[0].states as readonly string[]).includes(w.state) || w.priority > 0);
 
 export function groupWeaknesses(list: WeaknessSummary[]) {
   const settled = list.filter((w) => w.evidence.sufficient);
   const compared = settled.filter((w) => w.compared);
-  const backed = compared.filter((w) => comparisonBacksState(w.state, w.confidence));
+  const backed = compared.filter(backsCosting);
   const [costing, ...rest] = GROUPS.map((g) => ({
     id: g.id as string,
     title: g.title as string,
@@ -130,7 +136,7 @@ export function groupWeaknesses(list: WeaknessSummary[]) {
   }));
   return [
     ...(costing ? [costing] : []),
-    { ...WATCH_GROUP, rows: compared.filter((w) => !comparisonBacksState(w.state, w.confidence)) },
+    { ...WATCH_GROUP, rows: compared.filter((w) => !backsCosting(w)) },
     ...rest,
     { ...UNCOMPARED_GROUP, rows: settled.filter((w) => !w.compared) },
     { ...EARLY_GROUP, rows: list.filter((w) => !w.evidence.sufficient) },
@@ -298,7 +304,7 @@ export function WeaknessesView({
                           group
                             ? {
                                 median: w.band.median,
-                                label: group,
+                                label: baselineGroupLabel(benchmark, w.seriesKey) ?? group,
                                 basis: peerPooledBasis(benchmark, w.seriesKey),
                                 notCompared: notComparedText(benchmark, w.seriesKey),
                               }

@@ -380,6 +380,8 @@ mod tests {
             precise: false,
             min_evidence_met: true,
             reason,
+            credible: priority > 0.0,
+            model_baseline: false,
             invalid_points: 0,
         }
     }

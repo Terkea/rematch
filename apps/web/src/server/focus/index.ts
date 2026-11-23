@@ -4,6 +4,7 @@ import { and, desc, eq, gt, gte, isNull, lt, sql } from "drizzle-orm";
 import { comparisonBacksState } from "../../lib/explain";
 import { readOnly, scopedAccountIds } from "../games";
 import type { TimeClass } from "../games/types";
+import { MODEL_BASELINE_KEYS } from "../profile/benchmark-text";
 import { seriesLabel } from "../profile/catalogue";
 import type { CoachScope, Side, WeaknessState, WeaknessSummary } from "../profile/types";
 import { openingNames, type ScopeKey, summariesIn } from "../profile/weaknesses";
@@ -82,7 +83,8 @@ export function candidate(
   gamesN = DEFAULT_GAMES_N,
 ): Suggestion | null {
   if (w.evidence.chances <= 0) return null;
-  const peer = w.compared ? w.band.median : null;
+  // ADR 0101: W5's median is the evaluation's prediction, not a peer rate to aim for.
+  const peer = w.compared && !MODEL_BASELINE_KEYS.has(w.seriesKey) ? w.band.median : null;
   const target = chooseTarget({ baseline: w.rate.mean, peer });
   if (!target) return null;
   return {

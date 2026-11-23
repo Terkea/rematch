@@ -114,13 +114,14 @@ fn only_metrics_the_unenriched_side_can_measure_are_compared() {
         ACCURACY,
         MetricId::Weakness(WeaknessKey::W9a),
         MetricId::Weakness(WeaknessKey::W4Allowed),
+        // ADR 0101: the refutation line is the cached main eval's PV, on both sides.
+        W1,
     ] {
         assert!(is_peer_comparable(m), "{m}");
     }
-    // Need the enrichment (refutation, threat, best line, tablebase, Maia), which only the
-    // player's side has: a missing line would read as a non-event.
+    // Need the rest of the enrichment (threat, best line, MultiPV, tablebase, Maia), which only
+    // the player's side has: a missing line would read as a non-event.
     for m in [
-        W1,
         MetricId::Weakness(WeaknessKey::W3Shallow),
         MetricId::Weakness(WeaknessKey::W10),
         MetricId::Base(BaseMetric::OneMoveBlundersPerGame),
@@ -143,9 +144,83 @@ fn the_window_is_the_player_rating_plus_or_minus_150() {
 
 #[test]
 fn enrichment_dependent_rows_are_never_produced() {
-    let b = aggregate_peer_benchmark(&players(12, 800), 800, NOW);
+    let w2 = MetricId::Weakness(WeaknessKey::W2);
+    let sides: Vec<PeerSide> = players(12, 800)
+        .into_iter()
+        .map(|mut s| {
+            s.metrics.weakness.insert(
+                WeaknessKey::W2,
+                BinomialObs {
+                    events: 1,
+                    opportunities: 20,
+                    epl: 0.3,
+                    exemplar_plies: vec![],
+                },
+            );
+            s
+        })
+        .collect();
+    let b = aggregate_peer_benchmark(&sides, 800, NOW);
     assert!(b.stats.iter().any(|s| s.metric == TRAPS));
-    assert!(b.stats.iter().all(|s| s.metric != W1), "{:#?}", b.stats);
+    // W2 needs the threat probe, which only the player's side has.
+    assert!(b.stats.iter().all(|s| s.metric != w2), "{:#?}", b.stats);
+}
+
+#[test]
+fn opponent_moves_get_the_main_eval_pv_as_their_refutation_line() {
+    use chess_core::{EngineScore, MoveRecord, Phase, PositionEval};
+    use profile::peer_benchmark::opponent_raw;
+    let eval = |pv: &[&str]| PositionEval {
+        score: EngineScore::Cp(0),
+        best_uci: pv.first().map(|s| (*s).to_owned()),
+        pv: pv.iter().map(|s| (*s).to_owned()).collect(),
+    };
+    let record = |ply: u32, color: Color| MoveRecord {
+        ply,
+        color,
+        san: String::new(),
+        uci: String::new(),
+        fen_before: String::new(),
+        best_uci: None,
+        win_before: 50.0,
+        win_after: 50.0,
+        delta_w: 0.0,
+        accuracy: 100.0,
+        judgement: None,
+        phase: Phase::Opening,
+        clock_before: None,
+        time_spent: None,
+        decided: false,
+    };
+    let records = [
+        record(1, Color::White),
+        record(2, Color::Black),
+        record(3, Color::White),
+    ];
+    let evals = [
+        eval(&["e2e4"]),
+        eval(&["e7e5", "g1f3"]),
+        eval(&["g1f3"]),
+        eval(&[]),
+    ];
+    let raw = opponent_raw(&records, &evals, Color::White);
+    assert_eq!(raw.len(), 3);
+    let first = raw[0].as_ref().expect("White's move");
+    assert_eq!(first.ply, 1);
+    assert_eq!(
+        first.refutation_pv,
+        vec!["e7e5".to_owned(), "g1f3".to_owned()]
+    );
+    assert!(first.best_pv.is_empty() && first.threat.is_none() && first.multipv.is_none());
+    assert!(raw[1].is_none(), "the player's own move gets nothing");
+    // The last move's position has no PV: no line, so a decisive move is not computable.
+    assert!(
+        raw[2]
+            .as_ref()
+            .expect("White's move")
+            .refutation_pv
+            .is_empty()
+    );
 }
 
 #[test]
@@ -602,7 +677,7 @@ async fn build_profile_compares_with_the_opponents_faced(pool: PgPool) {
     assert_eq!(
         (w1.1, w1.2),
         (None, None),
-        "W1 needs enrichment: never compared"
+        "no opponent side observed W1 chances: not compared"
     );
 
     let served = load_account_benchmark(&pool, account, TimeClass::Rapid)

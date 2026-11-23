@@ -248,6 +248,36 @@ describe("weaknesses list", () => {
     noBadText(container);
   });
 
+  // ADR 0101 (#12): a costing state whose comparison clears 0.7 but whose evidence is below the
+  // ranking floor (priority 0) is not ranked, so it never sits under "Costing you games".
+  it("files a costing state below the ranking floor under worth watching", async () => {
+    await seedProfile(db, accountId, {
+      timeClass: "rapid",
+      games: 3,
+      estimates: [
+        {
+          seriesKey: "W9b",
+          state: "active",
+          mean: 0.0125,
+          ciLow: 0.0075,
+          ciHigh: 0.018,
+          bandMedian: 0.008,
+          bandP40: 0.0076,
+          confidence: 0.87,
+          nUnweighted: 846,
+          kUnweighted: 11,
+          priority: 0,
+        },
+      ],
+    });
+    const { container } = await list();
+    expect(screen.queryByRole("region", { name: "Costing you games" })).toBeNull();
+    const watching = screen.getByRole("region", { name: "Worth watching" });
+    expect(within(watching).getAllByRole("link")).toHaveLength(1);
+    expect(watching.textContent).toMatch(/not enough evidence yet to rank/);
+    noBadText(container);
+  });
+
   // ADR 0084 (bug hunt N10): the owner's rapid rows. "Allowing a mate" is active at confidence 0.81
   // with the peers' rate inside its range; "Early blunders" stays active (the timeline's longer
   // segment) at 0.547. Only a row the comparison backs (>= 0.7) is "Costing you games".
@@ -582,7 +612,7 @@ describe("weakness detail", () => {
       games: 3,
       estimates: [
         { seriesKey: "W4.missed", mean: 0.2, ciLow: 0.15, ciHigh: 0.26, bandMedian: 0.0957 },
-        { seriesKey: "W1", ...none, priority: 0 },
+        { seriesKey: "W2", ...none, priority: 0 },
         { seriesKey: "W9a", ...none, priority: 0 },
       ],
     });
@@ -598,11 +628,11 @@ describe("weakness detail", () => {
     const { container } = await list();
     const region = screen.getByRole("region", { name: "Not compared yet" });
     const rows = within(region).getAllByRole("listitem");
-    const w1 = rows.find((r) => r.textContent?.includes(WEAKNESS_GLOSSARY.W1?.meaning ?? "?"));
-    expect(w1?.textContent).toContain(
+    const w2 = rows.find((r) => r.textContent?.includes(WEAKNESS_GLOSSARY.W2?.meaning ?? "?"));
+    expect(w2?.textContent).toContain(
       "Not compared: this can't be measured fairly from your opponents' moves in games against you",
     );
-    const w9 = rows.find((r) => !r.textContent?.includes(WEAKNESS_GLOSSARY.W1?.meaning ?? "?"));
+    const w9 = rows.find((r) => !r.textContent?.includes(WEAKNESS_GLOSSARY.W2?.meaning ?? "?"));
     expect(w9?.textContent).toContain("Not compared yet: too few of their chances");
     expect(container.textContent).not.toMatch(/at your level/);
     noBadText(container);

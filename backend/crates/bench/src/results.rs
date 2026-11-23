@@ -246,7 +246,8 @@ fn note(c: &Checkpoint, key: &str) -> Option<String> {
     } else if e.events == 0.0 {
         "not ranked: no events".to_owned()
     } else if e.priority <= 0.0 {
-        "not ranked: priority 0".to_owned()
+        // ADR 0101: the interval holds the median, or the excess is below the floor.
+        "not ranked: not enough evidence yet".to_owned()
     } else {
         match c.rank_of(key) {
             Some(r) => format!("ranked {r}"),
@@ -677,6 +678,29 @@ mod tests {
         assert!(
             md.contains("| (a) Flaw in the top 2 (recall) | 100% |"),
             "{md}"
+        );
+    }
+
+    #[test]
+    fn a_flaw_below_the_ranking_floor_says_not_enough_evidence() {
+        let mut e = est("W9b", 11.0, 846.0, 0.0075, 0.018);
+        e.priority = 0.0;
+        let cp = Checkpoint {
+            games: 80,
+            ranked: vec![],
+            estimates: vec![e],
+            benchmark_players: Some(16),
+        };
+        let players = vec![player(
+            "l",
+            Some(("low_clock_blunder", 0.25, "W9b")),
+            vec![cp],
+            all(100),
+        )];
+        let s = score("smoke", 1000, &players);
+        assert_eq!(
+            s.cases[0].note.as_deref(),
+            Some("not ranked: not enough evidence yet")
         );
     }
 

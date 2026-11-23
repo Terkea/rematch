@@ -17,7 +17,7 @@ use coaching_input::{
     AreaId, BandId, CoachingInput, ExampleSide, LIMITS, LineSide, Platform, Verdict, WeaknessState,
 };
 use common::moves::*;
-use common::seed::{PROTOCOL, SEED_NOW, SeedOptions, seed_now, w1_stat};
+use common::seed::{GameShape, PROTOCOL, SEED_NOW, SeedOptions, WHITE_GAME, seed_now, w1_stat};
 use profile::build_profile::{BuildProfileDeps, handle_build_profile};
 use profile::coaching::builder::{BuildError, build_coaching_input, build_coaching_input_report};
 use profile::coaching::exemplars::{ExemplarRow, to_exemplar_position};
@@ -762,6 +762,40 @@ async fn weakness_without_an_exemplar_is_left_out(pool: PgPool) {
     let input = coaching(&pool, f.account_id).await;
     assert!(input.weaknesses.is_empty(), "{:?}", input.weaknesses);
     assert_eq!(input.validate(), Ok(()));
+}
+
+/// ADR 0101 (#12): W1 at the band's own rate (1 in 50 against a median of 0.02) is measured,
+/// with events and a benchmark, but its interval holds the median: nothing stands out, so
+/// nothing is ranked, and the input still validates.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_player_at_the_benchmark_has_no_ranked_weakness(pool: PgPool) {
+    fn at_median(_: usize) -> GameShape {
+        GameShape {
+            w1_events: 1,
+            ..WHITE_GAME
+        }
+    }
+    let f = seed_with_moves(
+        &pool,
+        SeedOptions {
+            shape: at_median,
+            ..SeedOptions::default()
+        },
+    )
+    .await;
+    run_build(&pool, f.account_id).await;
+    let input = coaching(&pool, f.account_id).await;
+    assert!(input.weaknesses.is_empty(), "{:?}", input.weaknesses);
+    assert_eq!(input.validate(), Ok(()));
+    let (priority, band_median): (f64, Option<f64>) = sqlx::query_as(
+        "SELECT priority, band_median FROM weakness_estimates          WHERE account_id = $1 AND side = 'both' AND series_key = 'W1'",
+    )
+    .bind(f.account_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(priority, 0.0, "not enough evidence yet: no priority");
+    assert!(band_median.is_some(), "still compared");
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]

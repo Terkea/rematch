@@ -11,6 +11,11 @@
 //!   is counted per side) against that side's benchmark only.
 //! - Without a usable benchmark the estimate is `NoBenchmark` (Task 12): `band_*`, `percentile`
 //!   and `excess` are `NULL`, confidence and priority 0. Fatigue is 0 until plans exist.
+//! - **Evaluation baselines** (ADR 0101): a key with no peer comparison by design (W5) is
+//!   compared with [`model_baseline`] instead, built from the side's own score lost per failure
+//!   ([`model_baselines`]). It applies only when the side has a benchmark at all, only to keys
+//!   the benchmark lacks, and only to the all-games side (the colour pages and the coach name
+//!   every colour comparison as the peers of that colour).
 
 use std::collections::BTreeMap;
 
@@ -18,10 +23,12 @@ use chess_core::TimeClass;
 use db::profile_rows::WeaknessEstimateRow;
 use profile_core::stats::priority::{
     EstimateInput, EstimateReason, WINDOW_DAYS, WeaknessEstimate, estimate_weakness,
+    estimate_weakness_against_model, model_baseline,
 };
 use profile_core::timeline::series::SeriesPoint;
 use profile_core::types::{
-    Band, BandReference, MetricId, SeriesKey, Side, WeaknessKey, WeaknessState,
+    Band, BandReference, BandReferenceStat, GameContext, MetricId, PlayerGameMetrics, SeriesKey,
+    Side, WeaknessKey, WeaknessState,
 };
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -48,12 +55,57 @@ pub fn games_in_window(
     u32::try_from(n).unwrap_or(u32::MAX)
 }
 
-/// One estimate per binomial key, in key order.
+/// Evaluation baselines (ADR 0101) of the keys that have one, from `games` (a side's loaded
+/// games): each key's own score lost per event, `Σ epl / Σ events` over the games at most
+/// [`WINDOW_DAYS`] old (`None` without an event).
+pub fn model_baselines<'a>(
+    games: impl IntoIterator<Item = &'a (GameContext, PlayerGameMetrics)>,
+    now: OffsetDateTime,
+) -> BTreeMap<WeaknessKey, BandReferenceStat> {
+    let mut sums: BTreeMap<WeaknessKey, (f64, f64)> = BTreeMap::new();
+    for (ctx, m) in games {
+        if age_days(now, ctx.played_at) > WINDOW_DAYS {
+            continue;
+        }
+        for (key, obs) in &m.weakness {
+            if obs.epl.is_finite() && obs.epl >= 0.0 {
+                let s = sums.entry(*key).or_default();
+                s.0 += obs.epl;
+                s.1 += f64::from(obs.events);
+            }
+        }
+    }
+    binomial_keys()
+        .filter_map(|key| {
+            let epl = sums.get(&key).filter(|(_, k)| *k > 0.0).map(|(e, k)| e / k);
+            model_baseline(key, epl).map(|r| (key, r))
+        })
+        .collect()
+}
+
+/// `reference` with the `model` rows of the keys it lacks; `None` without a reference (no
+/// benchmark: nothing is compared). The timeline reads this, so a key's state and its estimate
+/// compare with the same row.
+pub fn with_model_baselines(
+    reference: Option<&BandReference>,
+    model: &BTreeMap<WeaknessKey, BandReferenceStat>,
+) -> Option<BandReference> {
+    let mut r = reference?.clone();
+    for (key, stat) in model {
+        r.entry(MetricId::Weakness(*key))
+            .or_insert_with(|| stat.clone());
+    }
+    Some(r)
+}
+
+/// One estimate per binomial key, in key order. `model` holds the evaluation baselines
+/// ([`model_baselines`]); a key uses its row only when `reference` exists and lacks the key.
 pub fn compute_estimates(
     series: &BTreeMap<SeriesKey, Vec<SeriesPoint>>,
     games_in_window: u32,
     band: Band,
     reference: Option<&BandReference>,
+    model: &BTreeMap<WeaknessKey, BandReferenceStat>,
     now: OffsetDateTime,
 ) -> Vec<WeaknessEstimate> {
     binomial_keys()
@@ -73,14 +125,24 @@ pub fn compute_estimates(
                         .collect()
                 })
                 .unwrap_or_default();
-            estimate_weakness(&EstimateInput {
+            let peer = reference.and_then(|r| r.get(&MetricId::Weakness(key)));
+            let modelled = peer
+                .is_none()
+                .then(|| reference.and(model.get(&key)))
+                .flatten();
+            let input = EstimateInput {
                 key,
                 points: &points,
                 games_in_window,
                 band,
-                reference: reference.and_then(|r| r.get(&MetricId::Weakness(key))),
+                reference: peer.or(modelled),
                 fatigue: 0.0,
-            })
+            };
+            if modelled.is_some() {
+                estimate_weakness_against_model(&input)
+            } else {
+                estimate_weakness(&input)
+            }
         })
         .collect()
 }

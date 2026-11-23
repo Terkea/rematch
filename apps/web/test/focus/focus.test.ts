@@ -72,7 +72,8 @@ describe("the suggestion", () => {
     expect(card.suggestion).toMatchObject({
       seriesKey: "W5",
       baseline: { rate: 0.2, events: 18, chances: 90 },
-      peer: 0.1,
+      // ADR 0101: W5 is compared with the evaluation, so its median is no peer target.
+      peer: null,
       target: { rate: 0.15, basis: "relative" },
       gamesN: 20,
     });

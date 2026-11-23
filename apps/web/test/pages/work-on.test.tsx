@@ -60,7 +60,7 @@ describe("WorkOn", () => {
     render(<WorkOn lead={{ kind: "none", scope, analysedGames: 214, compared: true }} />);
     expect(
       screen.getByText(
-        "Nothing stands out above the players you are compared with across 214 analysed rapid games on lichess yet.",
+        "Nothing stands out yet. Across 214 analysed rapid games on lichess, no weakness is both clearly more often than your benchmark and costly enough to work on first.",
       ),
     ).toBeInTheDocument();
   });

@@ -14,7 +14,9 @@
 //!   scores recomputed from those rows so `sufficient`/`needMore` are known (R-2 for metrics);
 //! - `weaknesses` re-estimate every binomial key at `now` with the benchmark the last
 //!   build-profile stored (`account_benchmark`, ADR 0080; the same code as build-profile) and replay the series for the state and `P_imp`; only claimable
-//!   estimates (R-3, T12 ruling, `priority > 0`) with at least one exemplar (R3 T8) are ranked,
+//!   estimates (R-3, T12 ruling, `priority > 0`, which needs the ranking floor of ADR 0101)
+//!   with at least one exemplar (R3 T8) are ranked; with none, `weaknesses` is empty and the
+//!   coach says nothing stands out,
 //!   up to 5 exemplars for ranks 1-3 and 2 after, from `exemplar_plies` within 6 months, by ΔW
 //!   then recency, distinct games;
 //! - `strengths` ([`super::strengths`]);
@@ -79,7 +81,9 @@ use super::strengths::{
 };
 use super::trajectory::{Prior, TRAJECTORY_WEAKNESSES, load_trajectory, prior_of};
 use crate::analyse_features::parse_time_class;
-use crate::estimates::{age_days, compute_estimates, games_in_window};
+use crate::estimates::{
+    age_days, compute_estimates, games_in_window, model_baselines, with_model_baselines,
+};
 use crate::load::{LoadError, load_analysed_games, load_series_points};
 use crate::peer_benchmark::{load_account_benchmark, load_account_benchmark_side};
 use crate::snapshots::LAST_N;
@@ -449,7 +453,9 @@ fn strengths(
     let metric_keys: HashSet<&str> = metrics.iter().map(|m| m.key.as_str()).collect();
     for e in estimates {
         let (id, variant) = e.key.contract_id();
+        // A strength is named against the peers; the evaluation baseline (ADR 0101) is not one.
         let better = e.reason == EstimateReason::Ok
+            && !e.model_baseline
             && e.min_evidence_met
             && e.k_unweighted > 0.0
             && e.confidence.is_finite()
@@ -804,7 +810,15 @@ async fn by_color(
                 .collect();
         let reference = load_account_benchmark_side(pool, account_id, tc, side).await?;
         let in_window = games_in_window(side_games.iter().map(|(c, _)| c.played_at), now);
-        let estimates = compute_estimates(&side_series, in_window, band, reference.as_ref(), now);
+        // ADR 0101: a colour compares with its own peers only, never the evaluation baseline.
+        let estimates = compute_estimates(
+            &side_series,
+            in_window,
+            band,
+            reference.as_ref(),
+            &BTreeMap::new(),
+            now,
+        );
         let snapshots = if side_games.is_empty() {
             Vec::new()
         } else {
@@ -953,8 +967,12 @@ pub async fn build_coaching_input_report(
 
     // Estimates and states at `now`, as build-profile computes them.
     let in_window = games_in_window(games.iter().map(|(c, _)| c.played_at), now);
-    let estimates = compute_estimates(&series, in_window, band, reference.as_ref(), now);
-    let outcomes = evaluate_all(&series, reference.as_ref());
+    let model = model_baselines(&games, now);
+    let estimates = compute_estimates(&series, in_window, band, reference.as_ref(), &model, now);
+    let outcomes = evaluate_all(
+        &series,
+        with_model_baselines(reference.as_ref(), &model).as_ref(),
+    );
 
     // Metrics and area scores from the latest snapshots (none without evidence games).
     let (kpis, snapshots_computed_at) = if games.is_empty() {
