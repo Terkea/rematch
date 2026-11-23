@@ -496,24 +496,30 @@ Shipped: Stockfish analysis of every move, explained weaknesses and strengths, t
 
 ### Now
 
-- [v0.2 Practice habit](https://github.com/Terkea/rematch/issues?q=is%3Aissue+milestone%3A%22v0.2+Practice+habit%22)
-  - A daily practice rhythm (2 sub-issues)
-  - Answer "Is it working?" sooner (2 sub-issues)
+- [v0.2 Factual and deterministic foundation](https://github.com/Terkea/rematch/issues?q=is%3Aissue+milestone%3A%22v0.2+Factual+and+deterministic+foundation%22)
+  - One versioned recommendation algorithm (10 sub-issues)
 
 ### Next
 
-- [v0.3 Trainer depth](https://github.com/Terkea/rematch/issues?q=is%3Aissue+milestone%3A%22v0.3+Trainer+depth%22)
-  - Drills for every weekly focus (3 sub-issues)
-  - Conversion play-outs against an opponent at your level (2 sub-issues)
-- [v0.4 Self-host and benchmark](https://github.com/Terkea/rematch/issues?q=is%3Aissue+milestone%3A%22v0.4+Self-host+and+benchmark%22)
-  - A pipeline speed scorecard, stages 1 to 4 (3 sub-issues)
+- [v0.3 The evaluation lab](https://github.com/Terkea/rematch/issues?q=is%3Aissue+milestone%3A%22v0.3+The+evaluation+lab%22)
+  - The evaluation lab: every layer against its ground truth (8 sub-issues)
+  - A pipeline speed scorecard, stages 1 to 4 (4 sub-issues)
+- [v0.4 Patterns and progression](https://github.com/Terkea/rematch/issues?q=is%3Aissue+milestone%3A%22v0.4+Patterns+and+progression%22)
+  - Patterns and progression (6 sub-issues)
+- [v0.5 Board, sound and clarity](https://github.com/Terkea/rematch/issues?q=is%3Aissue+milestone%3A%22v0.5+Board%2C+sound+and+clarity%22)
+  - Board, sound and clarity (10 sub-issues)
+  - Works on a phone and with a screen reader (2 sub-issues)
 
 ### Later
 
-- [v0.5 More players](https://github.com/Terkea/rematch/issues?q=is%3Aissue+milestone%3A%22v0.5+More+players%22)
+- [v0.6 Practice habit and trainer depth](https://github.com/Terkea/rematch/issues?q=is%3Aissue+milestone%3A%22v0.6+Practice+habit+and+trainer+depth%22)
+  - A daily practice rhythm (2 sub-issues)
+  - Answer "Is it working?" sooner (2 sub-issues)
+  - Drills for every weekly focus (3 sub-issues)
+  - Conversion play-outs against an opponent at your level (2 sub-issues)
+- [v0.7 More players](https://github.com/Terkea/rematch/issues?q=is%3Aissue+milestone%3A%22v0.7+More+players%22)
   - More game sources: Lichess accounts and PGN files (2 sub-issues)
   - Rematch in more than one language (2 sub-issues)
-  - Works on a phone and with a screen reader (2 sub-issues)
 - [v1.0 MVP](https://github.com/Terkea/rematch/issues?q=is%3Aissue+milestone%3A%22v1.0+MVP%22)
   - What 1.0 means (2 sub-issues)
 
@@ -521,7 +527,9 @@ Live progress (done of total) is on the [milestones page](https://github.com/Ter
 
 <!-- roadmap:end -->
 
-The pipeline benchmark runs synthetic players with known flaws through the real pipeline: today it finds two of the five ([the method and the scorecard](docs/benchmark.md)).
+The pipeline benchmark runs synthetic players with known flaws through the real pipeline: today it finds three of the five ([the method and the scorecard](docs/benchmark.md)).
+
+From v0.2, every recommendation is the output of one versioned, deterministic algorithm, and each layer is measured against its own ground truth ([the evaluation method](docs/evaluation.md)).
 
 Rematch is a beta: every release is `v0.y.z`, and 1.0 is reserved for the first complete release ([how we ship](docs/SDLC.md)).
 

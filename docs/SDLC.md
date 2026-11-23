@@ -126,19 +126,23 @@ Notes for whoever cuts the release:
 
 The roadmap is GitHub's milestones and issues; nothing else holds it.
 
-- Milestones are versions with a theme: `v0.2 Practice habit`, `v0.3 Trainer depth`,
-  `v0.4 Self-host and benchmark`, `v0.5 More players` and `v1.0 MVP`. They are kept as code in
-  `.github/settings/milestones.json`, each with a description and a horizon (`now`, `next` or
-  `later`), and `scripts/github/apply-settings.sh` creates or updates them by title. It deletes one
-  only with `--prune`.
+- Milestones are versions with a theme: `v0.2 Factual and deterministic foundation`,
+  `v0.3 The evaluation lab`, `v0.4 Patterns and progression`, `v0.5 Board, sound and clarity`,
+  `v0.6 Practice habit and trainer depth`, `v0.7 More players` and `v1.0 MVP` (ADR 0104). They are
+  kept as code in `.github/settings/milestones.json`, each with a description and a horizon (`now`,
+  `next` or `later`), and `scripts/github/apply-settings.sh` creates or updates them by title. A
+  milestone's `renamed_from` lists its old titles: the first one found is renamed in place, and any
+  other is closed. It deletes one only with `--prune`.
 - Epics are one issue per theme with the full spec, and their work is linked to them as
   [sub-issues](https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/adding-sub-issues),
   so each epic shows its progress, done of total.
-- The seed is `.github/settings/roadmap-issues.json`: the first epics and sub-issues, with their
-  labels, size, milestone and parent. `apply-settings.sh --seed-issues` creates the ones whose title
-  does not exist yet (open or closed), epics first, then links every sub-issue under its epic; a
-  second run does nothing. Once an issue exists, GitHub is its source of truth and the file is not
-  synced back. `test-settings.mjs` checks that every milestone and label exists, the titles are
+- The seed is `.github/settings/roadmap-issues.json`: the epics and sub-issues, with their labels,
+  size, milestone and parent. `apply-settings.sh --seed-issues` creates the ones whose title does not
+  exist yet (open or closed), epics first; brings each open one in line with the file (its
+  milestone, its missing labels and its body, keeping boxes ticked on GitHub); moves the issues a
+  milestone adopts (`adopt_issues`); then links every sub-issue under its epic. A second run does
+  nothing. For an open seeded issue the file is the source of truth (ADR 0104, amending ADR 0099); a
+  closed issue is never edited, and an issue filed by hand stays GitHub's. `test-settings.mjs` checks that every milestone and label exists, the titles are
   unique, every parent is an epic in the same milestone, every epic has the spec's sections in
   order, and every good first issue is size S.
 - The site builds its roadmap page and the landing page's Now, Next and Later from the public API
@@ -152,8 +156,8 @@ The roadmap is GitHub's milestones and issues; nothing else holds it.
   `scripts/github/create-project.sh` creates it or brings it up to date (idempotent, with
   `--dry-run`). It needs the `project` scope once: `gh auth refresh -s project`.
 
-To re-rank, move epics between milestones on GitHub and milestones between horizons in
-`milestones.json`, then run `apply-settings.sh` and the README renderer. The monthly sweep asks for
+To re-rank, move epics between milestones in `roadmap-issues.json` and milestones between horizons
+in `milestones.json`, then run `apply-settings.sh --seed-issues` and the README renderer. The monthly sweep asks for
 this.
 
 ## Maintenance sweeps

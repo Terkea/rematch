@@ -32,13 +32,14 @@ a machine cannot judge.
 - [ ] Docs accuracy: follow the site's getting-started page on a clean machine or container, and
       read the README's claims against the app.
 - [ ] Benchmark scorecard: add this month's row from the maintainer's machine and compare the trend
-      (the v0.4 benchmark epic).
+      (the v0.3 evaluation lab).
 
 ## Roadmap and community
 
-- [ ] Re-rank the roadmap: move epics between milestones on GitHub, and milestones between Now,
-      Next and Later (`horizon` in `.github/settings/milestones.json`). Then run
-      `sh scripts/github/apply-settings.sh` and `node scripts/roadmap/render-readme.mjs`.
+- [ ] Re-rank the roadmap: move epics between milestones in `.github/settings/roadmap-issues.json`,
+      and milestones between Now, Next and Later (`horizon` in `.github/settings/milestones.json`).
+      Then run `sh scripts/github/apply-settings.sh --seed-issues` and
+      `node scripts/roadmap/render-readme.mjs`.
 - [ ] Triage: no issue older than a week still has `needs-triage`; every `spec` issue has had a
       maintainer reply.
 - [ ] Good first issues: at least three open, each with the files to start from.

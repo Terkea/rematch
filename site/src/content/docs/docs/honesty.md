@@ -21,6 +21,8 @@ Everything below follows from it. These rules bind the code, the AI prompts and 
 
 Decisions: [0047](/rematch/docs/decisions/0047-honest-overview-statistics/), [ADR-WEB-12](/rematch/docs/decisions/adr-web-12-kpi-stat-honest-uncertainty/), [ADR-WEB-19](/rematch/docs/decisions/adr-web-19-one-statistics-convention-and-layout-polish/), [0089](/rematch/docs/decisions/0089-rating-trajectory-and-then-vs-now/), [0091](/rematch/docs/decisions/0091-weekly-focus-and-goal/).
 
+How each layer is measured against its own ground truth, and how to propose a new algorithm version: [the evaluation method](https://github.com/Terkea/rematch/blob/main/docs/evaluation.md).
+
 ## Words written by the AI
 
 - **Facts by reference.** The model never types a move, an evaluation or a number. It writes tokens such as a position reference or a path into the computed data, and the server renders them from the stored facts.
