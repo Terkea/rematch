@@ -81,6 +81,8 @@ export const color = pgEnum("color", ["white", "black"]);
 
 export const evalSource = pgEnum("eval_source", ["stockfish", "lichess", "dump"]);
 
+export const focusOutcome = pgEnum("focus_outcome", ["met", "not_met", "inconclusive", "cleared"]);
+
 export const importRunStatus = pgEnum("import_run_status", ["running", "done", "failed", "paused"]);
 
 export const interactiveEvalStatus = pgEnum("interactive_eval_status", [
@@ -642,6 +644,69 @@ export const coachingInputs = pgTable(
       foreignColumns: [linkedAccounts.id],
       name: "coaching_inputs_account_id_fkey",
     }).onDelete("cascade"),
+  ],
+);
+
+export const focuses = pgTable(
+  "focuses",
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    userId: uuid("user_id").notNull(),
+    accountId: uuid("account_id").notNull(),
+    timeClass: timeClass("time_class").notNull(),
+    seriesKey: text("series_key").notNull(),
+    side: sideScope().default("both").notNull(),
+    targetRate: doublePrecision("target_rate").notNull(),
+    gamesN: integer("games_n").default(20).notNull(),
+    startedAt: timestamp("started_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    baselineRate: doublePrecision("baseline_rate").notNull(),
+    baselineK: integer("baseline_k").notNull(),
+    baselineN: integer("baseline_n").notNull(),
+    peerRate: doublePrecision("peer_rate"),
+    endedAt: timestamp("ended_at", { withTimezone: true, mode: "date" }),
+    outcome: focusOutcome(),
+    resultK: integer("result_k"),
+    resultN: integer("result_n"),
+    resultGames: integer("result_games"),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("focuses_account_idx").using("btree", table.accountId.asc().nullsLast()),
+    uniqueIndex("focuses_active_idx")
+      .using("btree", table.userId.asc().nullsLast(), table.timeClass.asc().nullsLast())
+      .where(sql`(ended_at IS NULL)`),
+    index("focuses_user_tc_idx").using(
+      "btree",
+      table.userId.asc().nullsLast(),
+      table.timeClass.asc().nullsLast(),
+      table.startedAt.desc().nullsFirst(),
+    ),
+    foreignKey({
+      columns: [table.userId],
+      foreignColumns: [user.id],
+      name: "focuses_user_id_fkey",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [table.accountId],
+      foreignColumns: [linkedAccounts.id],
+      name: "focuses_account_id_fkey",
+    }).onDelete("cascade"),
+    check(
+      "focuses_series_key_check",
+      sql`(length(series_key) >= 1) AND (length(series_key) <= 200)`,
+    ),
+    check(
+      "focuses_target_rate_check",
+      sql`(target_rate >= (0)::double precision) AND (target_rate < (1)::double precision)`,
+    ),
+    check("focuses_games_n_check", sql`(games_n >= 5) AND (games_n <= 100)`),
+    check(
+      "focuses_baseline_rate_check",
+      sql`(baseline_rate >= (0)::double precision) AND (baseline_rate <= (1)::double precision)`,
+    ),
+    check("focuses_baseline_k_check", sql`baseline_k >= 0`),
+    check("focuses_check", sql`baseline_n >= baseline_k`),
+    check("focuses_end_has_outcome", sql`(ended_at IS NULL) = (outcome IS NULL)`),
   ],
 );
 

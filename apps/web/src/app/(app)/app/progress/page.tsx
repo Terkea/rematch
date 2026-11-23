@@ -1,11 +1,13 @@
 import { Button } from "@ci/ui/primitives";
 import Link from "next/link";
 import { CoachScopeSwitch } from "../../../../components/coach-scope-switch";
+import { FocusCard } from "../../../../components/focus/focus-card";
 import { LiveRefreshOn } from "../../../../components/live-refresh-on";
 import { queryKeys } from "../../../../lib/query-keys";
 import { requireUser } from "../../../../server/auth/session";
 import { getDb } from "../../../../server/db";
 import { requestEventCursor } from "../../../../server/events/request-cursor";
+import { getFocusCard } from "../../../../server/focus";
 import { resolveCoachScope } from "../../../../server/profile";
 import { loadPeriodComparison } from "../../../../server/stats/period-compare";
 import { EmptySheet, PageHeading } from "../../_shell/page-heading";
@@ -63,9 +65,10 @@ export default async function ProgressPage({
     now,
   });
   const f = bar.filters;
-  const [input, compared] = await Promise.all([
+  const [input, compared, focus] = await Promise.all([
     loadProgress(db, user.id, scope, now, { from: f.from, to: f.to }, storedSide(f)),
     loadPeriodComparison(db, user.id, f, now, { accountId: scope.accountId }),
+    getFocusCard(db, user.id, scope),
   ]);
   const view = toProgressView(input);
   return (
@@ -94,6 +97,7 @@ export default async function ProgressPage({
           </>
         }
         compare={compared ? <CompareBlock view={compareView(compared)} /> : null}
+        focus={<FocusCard card={focus} />}
       />
     </>
   );

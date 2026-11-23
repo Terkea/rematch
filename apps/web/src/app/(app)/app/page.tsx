@@ -1,9 +1,11 @@
 import { cookies } from "next/headers";
+import { FocusCard } from "../../../components/focus/focus-card";
 import { LiveRefresh } from "../../../components/live-refresh";
 import { SyncPanel } from "../../../components/sync/sync-panel";
 import { requireUser } from "../../../server/auth/session";
 import { getDb } from "../../../server/db";
 import { requestEventCursor } from "../../../server/events/request-cursor";
+import { getFocusCard } from "../../../server/focus";
 import { scopedAccountIds } from "../../../server/games";
 import { getOverview } from "../../../server/overview";
 import { leadFinding, peerHeadline, resolveCoachScope } from "../../../server/profile";
@@ -79,6 +81,11 @@ export default async function OverviewPage({
   const coach =
     ready && tc && accountIds.length === 1 ? await resolveCoachScope(db, user.id, { tc }) : null;
   const peer = coach && coach.timeClass === tc ? await peerHeadline(db, user.id, coach) : null;
+  // The weekly focus (ADR 0091) of the class shown, on the default account; "All" shows rapid's.
+  const focusScope = ready
+    ? (coach ?? (await resolveCoachScope(db, user.id, tc ? { tc } : {})))
+    : null;
+  const focus = focusScope ? await getFocusCard(db, user.id, focusScope) : null;
   return (
     <>
       <LiveRefresh accountIds={accountIds} />
@@ -90,6 +97,7 @@ export default async function OverviewPage({
         filtersNote={filtersNote(f)}
         reveal={reveal}
         peer={peer}
+        focus={focus ? <FocusCard card={focus} /> : null}
         lead={lead}
         sync={sync.accounts.length > 0 ? <SyncPanel initial={sync} variant="compact" /> : undefined}
       />

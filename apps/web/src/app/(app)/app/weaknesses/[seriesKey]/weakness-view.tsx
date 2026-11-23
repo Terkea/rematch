@@ -661,7 +661,10 @@ export function WeaknessView({
   range = { from: null, to: null },
   sides = null,
   filterBar,
+  focusAction,
 }: Props & {
+  /** "Make this my focus" (ADR 0091), under what to do. */
+  focusAction?: ReactNode;
   notes: ChangeNoteView[];
   /** What the comparison was made with (ADR 0080); null without a peer benchmark. */
   benchmark?: Benchmark | null;
@@ -717,6 +720,7 @@ export function WeaknessView({
         ) : (
           <p className={SOFT}>No tip for this series yet. Your coach can suggest one.</p>
         )}
+        {focusAction}
       </Step>
 
       <section aria-labelledby="details-heading" className="flex flex-col gap-8">

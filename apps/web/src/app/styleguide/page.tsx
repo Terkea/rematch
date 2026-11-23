@@ -10,6 +10,7 @@ import { ChartsSection } from "./sections/charts";
 import { CoachSection } from "./sections/coach";
 import { EvalBarSection } from "./sections/eval-bar";
 import { EvalGraphSection } from "./sections/eval-graph";
+import { FocusSection } from "./sections/focus";
 import { FoundationsSection } from "./sections/foundations";
 import { HeroSection } from "./sections/hero";
 import { OverlaysSection } from "./sections/overlays";
@@ -54,6 +55,7 @@ export default function StyleguidePage() {
         <TimelineSection />
         <ProfileSection />
         <ProgressSection />
+        <FocusSection />
         <CoachSection />
         <PositionExplorerSection />
         <SoundSection />

@@ -39,6 +39,9 @@ export const WEEKLY_WEEKS = 28;
 
 const DAY_MS = 86_400_000;
 
+/** What a read of stored rows needs of a scope: the account, the time class and the side. */
+export type ScopeKey = Pick<CoachScope, "accountId" | "timeClass" | "side">;
+
 type EstimateRow = typeof weaknessEstimates.$inferSelect;
 type HistoryRow = typeof weaknessStateHistory.$inferSelect;
 
@@ -48,14 +51,14 @@ const day = (d: Date) => d.toISOString().slice(0, 10);
  * A series point of one of the side's games: every point for "both", else only the points of the
  * games the player had that colour in (how build-profile splits them, ADR 0082).
  */
-export function pointOnSide(scope: CoachScope) {
+export function pointOnSide(scope: ScopeKey) {
   const side = scope.side ?? "both";
   if (side === "both") return undefined;
   return sql`exists (select 1 from ${games} where ${games.id} = ${weaknessSeriesPoint.gameId}
     and ${games.playerColor} = ${side})`;
 }
 
-const inScope = (scope: CoachScope) => ({
+const inScope = (scope: ScopeKey) => ({
   estimates: and(
     eq(weaknessEstimates.accountId, scope.accountId),
     eq(weaknessEstimates.timeClass, scope.timeClass),
@@ -71,7 +74,7 @@ const inScope = (scope: CoachScope) => ({
 /** Opening names by series key (`opening:<line_key>`), from the scope's `game_openings`. */
 export async function openingNames(
   tx: Db,
-  scope: CoachScope,
+  scope: ScopeKey,
   seriesKeys: string[],
 ): Promise<Map<string, string>> {
   const lineKeys = seriesKeys
@@ -145,7 +148,7 @@ function summary(
 /** The scope's weakness summaries (optionally one series), by priority desc, then label. */
 export async function summariesIn(
   tx: Db,
-  scope: CoachScope,
+  scope: ScopeKey,
   seriesKey?: string,
 ): Promise<WeaknessSummary[]> {
   const where = inScope(scope);
