@@ -317,7 +317,10 @@ pub fn series_label(key: &SeriesKey, opening_name: Option<&str>) -> String {
         // The web's `seriesLabel`: the missed name with "Allowed" for "Missed".
         SeriesKey::MotifAllowed(t) => {
             let missed = motif_missed_label(*t);
-            format!("Allowed {}", missed.strip_prefix("Missed ").unwrap_or(missed))
+            format!(
+                "Allowed {}",
+                missed.strip_prefix("Missed ").unwrap_or(missed)
+            )
         }
         SeriesKey::Opening(line) => format!("Opening: {}", opening_name.unwrap_or(line)),
         SeriesKey::Endgame(e) => endgame_label(*e).to_owned(),
