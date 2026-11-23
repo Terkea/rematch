@@ -26,6 +26,8 @@ vi.mock("next/navigation", () => ({
 }));
 vi.mock("../../src/server/auth/session", () => ({ requireUser: async () => USER }));
 vi.mock("../../src/server/db", () => ({ getDb: () => ({}) }));
+// ADR 0097: the layout asks whether the demo player is linked (the header's "Demo data").
+vi.mock("../../src/server/demo", () => ({ hasDemoAccount: async () => false }));
 vi.mock("../../src/server/events/request-cursor", () => ({
   requestEventCursor: async (userId: string) => {
     order.push(`cursor:${userId}`);
