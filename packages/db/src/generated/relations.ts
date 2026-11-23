@@ -6,6 +6,7 @@ import {
   accountLinks,
   aiBatches,
   aiBatchItems,
+  algorithmVersions,
   bandReference,
   chesscomRequestBudgets,
   chesscomVerifications,
@@ -98,6 +99,19 @@ export const aiBatchesRelations = relations(aiBatches, ({ many }) => ({
   aiBatchItems: many(aiBatchItems),
 }));
 
+export const algorithmVersionsRelations = relations(algorithmVersions, ({ many }) => ({
+  coachMessages: many(coachMessages),
+  coachingInputs: many(coachingInputs),
+  drillItems: many(drillItems),
+  focuses: many(focuses),
+  gameMetrics: many(gameMetrics),
+  kpiSnapshots: many(kpiSnapshot),
+  reportRuns: many(reportRuns),
+  weaknessEstimates: many(weaknessEstimates),
+  weaknessStateHistories: many(weaknessStateHistory),
+  weeklyReviews: many(weeklyReviews),
+}));
+
 export const bandReferenceRelations = relations(bandReference, ({ one }) => ({
   referenceBuild: one(referenceBuilds, {
     fields: [bandReference.buildId],
@@ -132,6 +146,10 @@ export const coachConversationsRelations = relations(coachConversations, ({ one,
 }));
 
 export const coachMessagesRelations = relations(coachMessages, ({ one, many }) => ({
+  algorithmVersion: one(algorithmVersions, {
+    fields: [coachMessages.algorithmId],
+    references: [algorithmVersions.id],
+  }),
   coachConversation: one(coachConversations, {
     fields: [coachMessages.conversationId],
     references: [coachConversations.id],
@@ -144,6 +162,10 @@ export const coachMessagesRelations = relations(coachMessages, ({ one, many }) =
 }));
 
 export const coachingInputsRelations = relations(coachingInputs, ({ one, many }) => ({
+  algorithmVersion: one(algorithmVersions, {
+    fields: [coachingInputs.algorithmId],
+    references: [algorithmVersions.id],
+  }),
   coachMessages: many(coachMessages),
   linkedAccount: one(linkedAccounts, {
     fields: [coachingInputs.accountId],
@@ -163,6 +185,10 @@ export const drillAttemptsRelations = relations(drillAttempts, ({ one }) => ({
 }));
 
 export const drillItemsRelations = relations(drillItems, ({ one, many }) => ({
+  algorithmVersion: one(algorithmVersions, {
+    fields: [drillItems.algorithmId],
+    references: [algorithmVersions.id],
+  }),
   drillAttempts: many(drillAttempts),
   game: one(games, {
     fields: [drillItems.gameId],
@@ -190,6 +216,10 @@ export const drillRefreshesRelations = relations(drillRefreshes, ({ one }) => ({
 }));
 
 export const focusesRelations = relations(focuses, ({ one }) => ({
+  algorithmVersion: one(algorithmVersions, {
+    fields: [focuses.algorithmId],
+    references: [algorithmVersions.id],
+  }),
   linkedAccount: one(linkedAccounts, {
     fields: [focuses.accountId],
     references: [linkedAccounts.id],
@@ -201,6 +231,10 @@ export const focusesRelations = relations(focuses, ({ one }) => ({
 }));
 
 export const gameMetricsRelations = relations(gameMetrics, ({ one }) => ({
+  algorithmVersion: one(algorithmVersions, {
+    fields: [gameMetrics.algorithmId],
+    references: [algorithmVersions.id],
+  }),
   game: one(games, {
     fields: [gameMetrics.gameId],
     references: [games.id],
@@ -263,6 +297,10 @@ export const interactiveEvalsRelations = relations(interactiveEvals, ({ one }) =
 }));
 
 export const kpiSnapshotRelations = relations(kpiSnapshot, ({ one }) => ({
+  algorithmVersion: one(algorithmVersions, {
+    fields: [kpiSnapshot.algorithmId],
+    references: [algorithmVersions.id],
+  }),
   linkedAccount: one(linkedAccounts, {
     fields: [kpiSnapshot.accountId],
     references: [linkedAccounts.id],
@@ -369,6 +407,10 @@ export const repertoireNodesRelations = relations(repertoireNodes, ({ one }) => 
 
 export const reportRunsRelations = relations(reportRuns, ({ one, many }) => ({
   aiBatchItems: many(aiBatchItems),
+  algorithmVersion: one(algorithmVersions, {
+    fields: [reportRuns.algorithmId],
+    references: [algorithmVersions.id],
+  }),
   linkedAccount: one(linkedAccounts, {
     fields: [reportRuns.accountId],
     references: [linkedAccounts.id],
@@ -422,6 +464,10 @@ export const weaknessChangeNotesRelations = relations(weaknessChangeNotes, ({ on
 }));
 
 export const weaknessEstimatesRelations = relations(weaknessEstimates, ({ one }) => ({
+  algorithmVersion: one(algorithmVersions, {
+    fields: [weaknessEstimates.algorithmId],
+    references: [algorithmVersions.id],
+  }),
   linkedAccount: one(linkedAccounts, {
     fields: [weaknessEstimates.accountId],
     references: [linkedAccounts.id],
@@ -440,6 +486,10 @@ export const weaknessSeriesPointRelations = relations(weaknessSeriesPoint, ({ on
 }));
 
 export const weaknessStateHistoryRelations = relations(weaknessStateHistory, ({ one }) => ({
+  algorithmVersion: one(algorithmVersions, {
+    fields: [weaknessStateHistory.algorithmId],
+    references: [algorithmVersions.id],
+  }),
   linkedAccount: one(linkedAccounts, {
     fields: [weaknessStateHistory.accountId],
     references: [linkedAccounts.id],
@@ -448,6 +498,10 @@ export const weaknessStateHistoryRelations = relations(weaknessStateHistory, ({ 
 
 export const weeklyReviewsRelations = relations(weeklyReviews, ({ one, many }) => ({
   aiBatchItems: many(aiBatchItems),
+  algorithmVersion: one(algorithmVersions, {
+    fields: [weeklyReviews.algorithmId],
+    references: [algorithmVersions.id],
+  }),
   linkedAccount: one(linkedAccounts, {
     fields: [weeklyReviews.accountId],
     references: [linkedAccounts.id],
