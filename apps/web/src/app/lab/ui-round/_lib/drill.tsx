@@ -382,7 +382,7 @@ function SheetRows({
       {rows.map((r) => (
         <li
           key={r.n}
-          className="flex h-8 items-center gap-3 border-b border-rule text-sm [font-variant-numeric:lining-nums_tabular-nums]"
+          className="flex h-8 items-center gap-3 border-b border-rule text-sm [font-variant-numeric:lining-nums]"
         >
           <span className="w-4 text-ink-faint">{r.n}</span>
           <span
@@ -466,8 +466,8 @@ export const C_RIGHT: FrameSpec[] = [
     marks: [goodRing, goodMark],
     panel: (
       <>
-        <MarginNote celebrate>6 of 8, and a 5 in a row</MarginNote>
-        <p className="m-0 text-sm text-ink-soft">2 positions come back tomorrow.</p>
+        <MarginNote celebrate>a good session</MarginNote>
+        <p className="m-0 text-sm text-ink-soft">6 of 8 found. 2 positions come back tomorrow.</p>
       </>
     ),
   },

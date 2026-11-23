@@ -44,7 +44,7 @@ function Scene({
           {scrim ? (
             <div
               aria-hidden="true"
-              className="absolute inset-0 z-[4] rounded-board bg-paper opacity-60"
+              className="absolute inset-0 z-[4] rounded-board bg-paper opacity-40"
             />
           ) : null}
           <BoardOverlay cells={cells} />

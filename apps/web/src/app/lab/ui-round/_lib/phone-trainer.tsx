@@ -96,7 +96,7 @@ export function PhoneA() {
         <div className="flex flex-col gap-5 lg:flex-row lg:gap-8">
           <PlayedBoard phonePx={352} />
           <div className="flex max-w-md flex-col gap-3">
-            <p className="m-0 text-base text-ink">Your move: {yourMove}. How sure are you?</p>
+            <p className="m-0 text-base text-ink">How sure are you of {yourMove}?</p>
             <Confidence />
           </div>
         </div>
@@ -125,7 +125,7 @@ export function PhoneB() {
             </div>
           </div>
           <div className="flex flex-col gap-3 px-(--space-gutter) max-lg:sticky max-lg:bottom-0 max-lg:border-t max-lg:border-rule max-lg:bg-paper max-lg:py-3 lg:max-w-md lg:px-0">
-            <p className="m-0 text-base text-ink">Your move: {yourMove}. How sure are you?</p>
+            <p className="m-0 text-base text-ink">How sure are you of {yourMove}?</p>
             <Confidence />
           </div>
         </div>
@@ -153,7 +153,7 @@ export function PhoneC() {
         <div className="flex flex-1 flex-col gap-4 lg:max-w-sm">
           <div className="flex flex-col gap-1">
             <h1 className="m-0 font-serif text-2xl font-semibold text-ink">Find the best move</h1>
-            <p className="m-0 text-base text-ink">Your move: {yourMove}. How sure are you?</p>
+            <p className="m-0 text-base text-ink">How sure are you of {yourMove}?</p>
           </div>
           <div className="mt-auto lg:mt-0">
             <Confidence stacked />

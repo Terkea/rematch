@@ -158,7 +158,7 @@ export function WhyPopover() {
               </span>
               <div className="relative z-10 mt-1.5 md:absolute md:top-full md:left-0">
                 <FloatPanel wide>
-                  <p className="m-0 text-base font-medium text-ink">Why Missing a mate</p>
+                  <p className="m-0 text-base font-medium text-ink">Why this focus</p>
                   <Facts compact />
                   <Version />
                   <span className="text-sm text-ink underline decoration-rule-strong underline-offset-4">

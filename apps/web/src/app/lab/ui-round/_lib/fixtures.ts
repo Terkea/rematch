@@ -113,15 +113,15 @@ export const TRAJECTORY_POINTS: { id: string; date: string; rating: number }[] =
 
 /** The facts and version behind the focus recommendation, for "Why this?". */
 export const WHY = {
-  recommendation: "Make Missing a mate your focus this week",
-  algorithm: "profile ranking 1.4.0",
-  algorithmId: "rank-weakness@1.4.0+thresholds.7",
+  recommendation: "This week's focus: Missing a mate",
+  algorithm: "ranking version 1.4.0",
+  algorithmId: "threshold set 7",
   computedAt: "23 November 2026, 07:10",
   facts: [
     {
       label: "Your rate",
       value: "13.8% of mate chances missed (13 of 94)",
-      range: "80% range 10.2–18.3%",
+      range: "80% likely between 10.2% and 18.3%",
     },
     { label: "Players you face", value: "9.6% at your level", range: "from 1,840 of their games" },
     { label: "Rated games", value: "214 rapid games analysed", range: "since September 2025" },

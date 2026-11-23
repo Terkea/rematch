@@ -16,19 +16,19 @@ export const COLOURINGS: Record<
 > = {
   slate: {
     name: "Slate",
-    note: "The shipped squares: board-light and board-dark.",
+    note: "Today's squares: cool and quiet, so pieces and marks carry the eye.",
     day: "board-light, board-dark",
     night: "board-light, board-dark",
   },
   paper: {
     name: "Paper",
-    note: "Lighter and quieter: the sheet against a rule mix. Pieces and marks carry more of the eye.",
+    note: "Lighter and quieter, close to the page itself.",
     day: "sheet; rule + 25% rule-strong",
     night: "ink-faint + 20% ink; rule-strong + 30% ink-faint",
   },
   pencil: {
     name: "Pencil",
-    note: "More contrast between squares, closest to a printed diagram: well against a pencil mix.",
+    note: "More contrast between squares, closest to a printed diagram.",
     day: "well; pencil + 35% rule",
     night: "pencil + 30% ink-soft; rule-strong + 25% rule",
   },
