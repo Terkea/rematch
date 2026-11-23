@@ -20,11 +20,28 @@ import type { AnalysisStatus, JudgementCounts, TimeClass } from "../../src/serve
 type MoveRow = typeof moves.$inferInsert;
 
 /**
+ * Connections of `pnpm seed:demo` (scripts/demo-seed.ts, ADR 0097). It writes the fictional demo
+ * player through these helpers into a local dev database, which is not `*_test` and may hold real
+ * accounts; it guards itself instead (local host, not production, only its own account's rows).
+ */
+const demoSeedDbs = new WeakSet<Db>();
+
+export async function asDemoSeed<T>(db: Db, write: () => Promise<T>): Promise<T> {
+  demoSeedDbs.add(db);
+  try {
+    return await write();
+  } finally {
+    demoSeedDbs.delete(db);
+  }
+}
+
+/**
  * Refuses unless `db` is a `*_test` database that holds no real or verified accounts: none
  * imported by the worker (`last_synced_at` or `import_cursor` set) and no link verified by a real
  * method (anything but the helpers' own `username` links). It runs before every helper writes.
  */
 export async function assertSeedable(db: Db): Promise<void> {
+  if (demoSeedDbs.has(db)) return;
   const [current] = (await db.execute(sql`select current_database() as name`)) as unknown as {
     name: string;
   }[];

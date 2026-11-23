@@ -1,5 +1,6 @@
 import type { Db } from "@ci/db";
 import { sql } from "drizzle-orm";
+import { demoAccountIds } from "../demo";
 import { userAccountIds } from "../events/user-accounts";
 import { enqueueJob } from "../jobs";
 import { ANALYSE_JOB, IMPORT_JOB, RETRY_COOLDOWN_MS, RETRY_LIMIT, SYNC_LOCK_CLASS } from "./jobs";
@@ -63,8 +64,10 @@ export async function requestSync(
   const ids = await userAccountIds(db, userId);
   const targets = accountId === null ? ids : ids.filter((id) => id === accountId);
   if (targets.length === 0) return { kind: "not_found" };
+  // The demo player (ADR 0097) is fictional: there is nothing on a platform to fetch.
+  const demo = await demoAccountIds(db, targets);
   const accounts: SyncOutcome[] = [];
-  for (const id of targets) {
+  for (const id of targets.filter((t) => !demo.has(t))) {
     accounts.push(await db.transaction((tx) => syncOne(tx as unknown as Db, id)));
   }
   return { kind: "ok", accounts };

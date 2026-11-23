@@ -3,6 +3,8 @@ import { ActivityIndicator } from "../../components/activity-indicator";
 import { TimeZoneCookie } from "../../components/time-zone-cookie";
 import { RealtimeProvider } from "../../lib/realtime/realtime-provider";
 import { requireUser } from "../../server/auth/session";
+import { getDb } from "../../server/db";
+import { hasDemoAccount } from "../../server/demo";
 import { requestAccountIds, requestEventCursor } from "../../server/events/request-cursor";
 import { Header } from "./_shell/header";
 
@@ -18,6 +20,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const user = await requireUser();
   const cursor = await requestEventCursor(user.id);
   const accountIds = await requestAccountIds(user.id);
+  const demo = await hasDemoAccount(getDb(), user.id);
   return (
     <RealtimeProvider accountIds={accountIds} initialEventId={cursor}>
       <TimeZoneCookie />
@@ -28,7 +31,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
         >
           Skip to content
         </a>
-        <Header email={user.email} name={user.name} activity={<ActivityIndicator />} />
+        <Header email={user.email} name={user.name} activity={<ActivityIndicator />} demo={demo} />
         <main
           id="main"
           className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-(--space-gutter) pt-6 pb-16 md:pt-10"

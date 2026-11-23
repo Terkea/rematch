@@ -284,3 +284,24 @@ describe("shell header", () => {
     expect(signOutTo).not.toHaveBeenCalled();
   });
 });
+
+describe("demo data (ADR 0097)", () => {
+  function renderWith(demo: boolean) {
+    return render(
+      <ThemeProvider attribute="data-theme" defaultTheme="light" enableSystem={false}>
+        <Header email="adult@example.invalid" signOutTo={vi.fn()} demo={demo} />
+      </ThemeProvider>,
+    );
+  }
+
+  it("labels the fictional demo player's data", () => {
+    renderWith(true);
+    const badge = screen.getByText("Demo data");
+    expect(badge).toHaveAttribute("title", expect.stringContaining("fictional"));
+  });
+
+  it("says nothing for a real account", () => {
+    renderWith(false);
+    expect(screen.queryByText("Demo data")).toBeNull();
+  });
+});

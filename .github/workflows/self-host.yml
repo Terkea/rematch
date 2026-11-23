@@ -1,0 +1,52 @@
+name: Self-host
+# The instructions a stranger follows must keep working (ADR 0097): on a clean ubuntu-latest
+# runner, `scripts/setup.sh minimal` brings up the whole stack with no AI, `pnpm seed:demo` loads
+# the fictional demo player, and a Playwright smoke signs in through Mailpit and opens the
+# overview, the trainer and the report. Full mode (about 1 GB of Syzygy tables, a Lichess month,
+# Maia) is too heavy for a weekly run and is tested by hand (docs: Getting started).
+on:
+  schedule:
+    - cron: "17 5 * * 1" # Mondays, 05:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: self-host-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  minimal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      SMOKE_EMAIL: player@rematch.test
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - name: Enable pnpm
+        run: corepack enable
+      - name: The setup script's own tests
+        run: sh scripts/test-setup.sh
+      - name: setup.sh minimal --yes --ai=none
+        run: sh scripts/setup.sh minimal --yes --ai=none --email="$SMOKE_EMAIL"
+      - name: pnpm seed:demo
+        run: pnpm seed:demo
+      - name: A second seed changes nothing (idempotent)
+        run: pnpm seed:demo
+      - name: Doctor
+        run: sh scripts/setup.sh doctor
+      - name: Smoke (sign-in, overview, trainer, report)
+        run: >-
+          docker compose -f docker-compose.yml -f docker-compose.smoke.yml --profile qa
+          run --rm --no-deps qa sh -c
+          "cd apps/web && node node_modules/@playwright/test/cli.js test -c playwright.selfhost.config.ts"
+      - name: Logs
+        if: failure()
+        run: docker compose logs --no-color --tail=200 web rust-worker ai-sidecar
+      - name: Stop the stack
+        if: always()
+        run: docker compose down -v

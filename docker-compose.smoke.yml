@@ -1,0 +1,14 @@
+# The self-host smoke test (.github/workflows/self-host.yml, ADR 0097): Playwright in the qa
+# container against the dev stack scripts/setup.sh started, with the demo data in the dev
+# `chess` database (unlike docker-compose.e2e.yml, which swaps in a throwaway e2e database).
+# qa shares web's network namespace, so http://localhost:3100 (the sign-in links) is the app:
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.smoke.yml docker compose --profile qa \
+#     run --rm --no-deps qa sh -c "cd apps/web && node node_modules/@playwright/test/cli.js test -c playwright.selfhost.config.ts"
+# The links say localhost:${WEB_PORT}, so run it with the default WEB_PORT or no host ports.
+services:
+  qa:
+    network_mode: "service:web"
+    environment:
+      E2E_BASE_URL: http://localhost:3100
+      MAILPIT_URL: http://mailpit:8025
+      SMOKE_EMAIL: ${SMOKE_EMAIL:-player@rematch.test}

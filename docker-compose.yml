@@ -21,8 +21,9 @@ x-web-environment: &web-environment
   WEB_DATABASE_URL_TEST: postgres://postgres:postgres@postgres:5432/chess_web_test
   REDIS_URL: redis://redis:6379
   BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-dev-only-secret-do-not-use-outside-local-compose}
-  BETTER_AUTH_URL: http://localhost:3100
-  BETTER_AUTH_TRUSTED_ORIGINS: http://127.0.0.1:3100
+  # The address the browser uses, so it follows WEB_PORT (docker-compose.ports.yml).
+  BETTER_AUTH_URL: http://localhost:${WEB_PORT:-3100}
+  BETTER_AUTH_TRUSTED_ORIGINS: http://127.0.0.1:${WEB_PORT:-3100}
   SMTP_URL: smtp://mailpit:1025
   MAIL_FROM: ${MAIL_FROM:-Rematch <no-reply@chess-improver.local>}
   GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
@@ -341,6 +342,30 @@ services:
         condition: service_healthy
     stop_grace_period: 30s
     restart: unless-stopped
+
+  # Operator data tools (scripts/setup.sh full|data): the worker image's `lichess-db`, with the
+  # git-ignored data/ writable. `syzygy --dest /data/syzygy` fetches the verified 3-4-5 tables;
+  # `build --month ...` streams a Lichess month into the database (the dump is never stored).
+  # Profile `data`, so a plain `up` never starts it.
+  data:
+    profiles: [data]
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      target: worker
+    entrypoint: ["lichess-db"]
+    # The image runs as uid 10001, which may not write a bind-mounted data/. setup.sh passes the
+    # host user on Linux (so the files stay yours); Docker Desktop maps any uid, so root is fine.
+    user: "${DATA_UID:-0}:${DATA_GID:-0}"
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/chess
+      DATA_DIR: /data
+      RUST_LOG: ${RUST_LOG:-info}
+    volumes:
+      - ./data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
 
 volumes:
   pgdata:

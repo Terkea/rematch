@@ -11,6 +11,15 @@
     "types": ["node"],
     "plugins": [{ "name": "next" }]
   },
-  "include": ["next-env.d.ts", "src", "test", "e2e", "scripts", "*.ts", ".next/types/**/*.ts"],
+  "include": [
+    "next-env.d.ts",
+    "src",
+    "test",
+    "e2e",
+    "e2e-selfhost",
+    "scripts",
+    "*.ts",
+    ".next/types/**/*.ts"
+  ],
   "exclude": ["node_modules"]
 }

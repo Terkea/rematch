@@ -100,6 +100,7 @@ One file per decision: context, decision, alternatives, consequences. New decisi
 - [0096. The public face: the Rematch name, the README and a GitHub Pages site](0096-public-face-readme-and-site.md)
 - [0099. The roadmap as GitHub milestones and spec issues, and scheduled maintenance sweeps](0099-roadmap-and-maintenance-sweeps.md)
 - [0098. Release images on GHCR, signed, with the GPL source attached](0098-release-images-signing-and-source-offer.md)
+- [0097. Self-hosting: one setup script, its data, the AI choice and a demo player](0097-self-hosting-setup-and-demo-data.md)
 
 ## Records with placeholder numbers
 
