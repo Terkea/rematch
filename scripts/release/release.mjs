@@ -90,7 +90,9 @@ switch (command) {
       console.log(`${new Date().toISOString()} ${verdict.state}: ${verdict.detail}`);
       if (verdict.state === "pass") break;
       if (verdict.state === "fail") {
-        die(`CI did not pass on ${sha}: ${verdict.detail}. Re-run the failed CI jobs on that commit, then re-run this job.`);
+        die(
+          `CI did not pass on ${sha}: ${verdict.detail}. Re-run the failed CI jobs on that commit, then re-run this job.`,
+        );
       }
       if (Date.now() > deadline) die(`CI still running on ${sha} after ${minutes} minutes`);
       await new Promise((r) => setTimeout(r, 60_000));

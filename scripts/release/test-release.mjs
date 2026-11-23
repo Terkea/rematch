@@ -7,14 +7,14 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  IMAGES,
-  REGISTRY,
   ciGateVerdict,
   composeImageRefs,
+  IMAGES,
   imageTags,
   mergeReleaseNotes,
   parseSourceManifest,
   parseTag,
+  REGISTRY,
   renderReleaseCompose,
   renderTemplate,
   requiredCiChecks,
@@ -86,7 +86,10 @@ check("the worker image keeps Stockfish's licence and authors next to the binary
   const dockerfile = read("backend/Dockerfile");
   assert.match(dockerfile, /install -D -m 0644 \/tmp\/stockfish\/Copying\.txt/);
   const worker = dockerfile.split(/^FROM .+ AS worker$/m)[1];
-  assert.match(worker, /^COPY --from=stockfish \/usr\/share\/doc\/stockfish \/usr\/share\/doc\/stockfish$/m);
+  assert.match(
+    worker,
+    /^COPY --from=stockfish \/usr\/share\/doc\/stockfish \/usr\/share\/doc\/stockfish$/m,
+  );
 });
 
 check("requiredCiChecks: the ruleset's checks that ci.yml reports on a push to main", () => {
@@ -163,28 +166,31 @@ check("ciGateVerdict: pass only when every required check's newest run succeeded
 const compose = read("deploy/compose.yaml");
 const version = JSON.parse(read("package.json")).version;
 
-check("deploy/compose.yaml: every published image, at the product version, marked for release-please", () => {
-  const refs = composeImageRefs(compose);
-  assert.deepEqual(
-    refs.map((r) => r.image).sort(),
-    IMAGES.map((i) => i.name).sort(),
-  );
-  for (const r of refs) {
-    assert.equal(r.version, version, `${r.image} is ${r.version}, the root is ${version}`);
-    assert.ok(r.marked, `${r.image}'s line needs # x-release-please-version`);
-  }
-  assert.ok(!/\bbuild:/.test(compose), "the release file pulls images, it never builds");
-  assert.ok(!/:latest\b/.test(compose), "no latest tag");
-});
+check(
+  "deploy/compose.yaml: every published image, at the product version, marked for release-please",
+  () => {
+    const refs = composeImageRefs(compose);
+    assert.deepEqual(refs.map((r) => r.image).sort(), IMAGES.map((i) => i.name).sort());
+    for (const r of refs) {
+      assert.equal(r.version, version, `${r.image} is ${r.version}, the root is ${version}`);
+      assert.ok(r.marked, `${r.image}'s line needs # x-release-please-version`);
+    }
+    assert.ok(!/\bbuild:/.test(compose), "the release file pulls images, it never builds");
+    assert.ok(!/:latest\b/.test(compose), "no latest tag");
+  },
+);
 
-check("deploy/compose.yaml: Postgres and Redis pinned by digest, Postgres with init and exec healthcheck", () => {
-  assert.match(compose, /image: postgres:17@sha256:[0-9a-f]{64}$/m);
-  assert.match(compose, /image: redis:7@sha256:[0-9a-f]{64}$/m);
-  assert.match(compose, /^ {4}init: true$/m);
-  assert.match(compose, /test: \["CMD", "pg_isready", "-h", "127\.0\.0\.1"/);
-  assert.match(compose, /BETTER_AUTH_SECRET: \$\{BETTER_AUTH_SECRET:\?/);
-  assert.match(compose, /POSTGRES_PASSWORD: \$\{POSTGRES_PASSWORD:\?/);
-});
+check(
+  "deploy/compose.yaml: Postgres and Redis pinned by digest, Postgres with init and exec healthcheck",
+  () => {
+    assert.match(compose, /image: postgres:17@sha256:[0-9a-f]{64}$/m);
+    assert.match(compose, /image: redis:7@sha256:[0-9a-f]{64}$/m);
+    assert.match(compose, /^ {4}init: true$/m);
+    assert.match(compose, /test: \["CMD", "pg_isready", "-h", "127\.0\.0\.1"/);
+    assert.match(compose, /BETTER_AUTH_SECRET: \$\{BETTER_AUTH_SECRET:\?/);
+    assert.match(compose, /POSTGRES_PASSWORD: \$\{POSTGRES_PASSWORD:\?/);
+  },
+);
 
 check("renderReleaseCompose: pins each image to its pushed digest and drops the overrides", () => {
   const digests = {

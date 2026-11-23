@@ -61,9 +61,14 @@ for (const c of local) {
 // The released compose file (ADR 0098) pulls each image at the product version; release-please
 // bumps the lines marked x-release-please-version.
 const imageLines = [
-  ...read("deploy/compose.yaml").matchAll(/^\s*image: \S*rematch\}-([a-z-]+):\$\{REMATCH_VERSION:-([^}]+)\}(.*)$/gm),
+  ...read("deploy/compose.yaml").matchAll(
+    /^\s*image: \S*rematch\}-([a-z-]+):\$\{REMATCH_VERSION:-([^}]+)\}(.*)$/gm,
+  ),
 ];
-expect(imageLines.length === 3, `deploy/compose.yaml has ${imageLines.length} Rematch images, not 3`);
+expect(
+  imageLines.length === 3,
+  `deploy/compose.yaml has ${imageLines.length} Rematch images, not 3`,
+);
 for (const [, image, v, rest] of imageLines) {
   expect(v === version, `deploy/compose.yaml: rematch-${image} is ${v}, the root is ${version}`);
   expect(
@@ -71,6 +76,20 @@ for (const [, image, v, rest] of imageLines) {
     `deploy/compose.yaml: rematch-${image} needs # x-release-please-version`,
   );
 }
+
+// The README's release commands sit in an x-release-please-start-version block.
+const readmeBlock =
+  /<!-- x-release-please-start-version -->\n([\s\S]*?)<!-- x-release-please-end -->/.exec(
+    read("README.md"),
+  );
+expect(readmeBlock !== null, "README.md: no x-release-please-start-version block");
+const readmeVersions = [...(readmeBlock?.[1] ?? "").matchAll(/\bv?(\d+\.\d+\.\d+)\b/g)].map(
+  (m) => m[1],
+);
+expect(
+  readmeVersions.length > 0 && readmeVersions.every((v) => v === version),
+  `README.md release block names ${readmeVersions}, the root is ${version}`,
+);
 
 // The release config: beta rules while 0.y.z, the three extra files, and the first release.
 const config = json("release-please-config.json");
@@ -85,6 +104,7 @@ const extra = (pkg?.["extra-files"] ?? []).map((f) => f.path).sort();
 expect(
   JSON.stringify(extra) ===
     JSON.stringify([
+      "README.md",
       "apps/web/package.json",
       "backend/Cargo.lock",
       "backend/Cargo.toml",

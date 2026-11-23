@@ -98,6 +98,7 @@ One file per decision: context, decision, alternatives, consequences. New decisi
 - [0094. The coach knows the player's plan: a per-user plan context](0094-coach-knows-the-plan.md)
 - [0095. Open source under AGPL-3.0, with the SDLC, protection and releases as code](0095-open-source-sdlc-and-releases.md)
 - [0096. The public face: the Rematch name, the README and a GitHub Pages site](0096-public-face-readme-and-site.md)
+- [0098. Release images on GHCR, signed, with the GPL source attached](0098-release-images-signing-and-source-offer.md)
 
 ## Records with placeholder numbers
 

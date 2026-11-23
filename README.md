@@ -98,6 +98,20 @@ docker compose ps             # wait for web to be healthy
 
 Open <http://localhost:3100>, ask for a sign-in link and open it from Mailpit at <http://localhost:48025>. Then link your chess.com username. [Getting started](https://terkea.github.io/rematch/docs/getting-started/) covers verification, the AI coach and the optional pieces; [CONTRIBUTING.md](CONTRIBUTING.md) covers development and tests.
 
+### Releases
+
+Each [release](https://github.com/Terkea/rematch/releases) ships signed linux/amd64 images on GHCR (`ghcr.io/terkea/rematch-web`, `-worker` and `-ai-sidecar`, tagged `0.y.z`, `0.y` and `beta`; no `latest` before 1.0) and a `compose.yaml` that pulls them by digest, so running a release needs no build:
+
+<!-- x-release-please-start-version -->
+```sh
+gh release download v0.1.0 --repo Terkea/rematch --pattern compose.yaml --pattern env.release.example
+cp env.release.example .env   # fill in the values marked "required"
+docker compose up -d --wait
+```
+<!-- x-release-please-end -->
+
+The worker migrates the database when it starts, so back up before upgrading. [docs/RELEASING.md](docs/RELEASING.md) covers verifying the signatures, upgrading, and how releases are cut.
+
 ## Roadmap
 
 **Shipped:** Stockfish analysis of every move, explained weaknesses and strengths, the citing coach, the missed-moments trainer, the weekly focus, the rating trajectory, and a coach that knows your plan.
