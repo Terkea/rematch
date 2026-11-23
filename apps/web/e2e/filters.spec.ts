@@ -163,23 +163,31 @@ test("filters round-trip through the URL, and the overview compares periods hone
         await gotoSettled(page, url);
         await page.evaluate(() => document.fonts.ready);
         await expect(page.locator("main")).toBeVisible();
-        // Critic 6: the trend measures its parent, so a shot taken before that shows the empty
-        // grid. Wait for the drawn chart (its placeholder gone) before every overview shot.
-        if (name.startsWith("overview")) {
-          const trend = page.locator("[data-chart='trend']");
-          await expect(trend.locator("[data-part='trend-placeholder']")).toHaveCount(0);
-          await expect(trend.locator("svg [data-part]").first()).toBeAttached();
-        }
         expect(
           await page.evaluate(
             () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
           ),
           `${name} at ${width}`,
         ).toBeLessThanOrEqual(0);
-        await page.screenshot({
-          path: `../../.shots/filters/${name}/${width}-${scheme}.png`,
-          fullPage: true,
-        });
+        const path = `../../.shots/filters/${name}/${width}-${scheme}.png`;
+        if (!name.startsWith("overview")) {
+          await page.screenshot({ path, fullPage: true });
+          continue;
+        }
+        // Critic 6: the trend measures its parent, and a full-page capture of a tall page caught
+        // it mid-measure as the empty grid ("Tried and rejected"). The drawn chart must be there
+        // (a real render, not only the placeholder); then one tall viewport is shot.
+        const chart = page.locator("[data-chart='trend'] svg[role='img']");
+        await chart.scrollIntoViewIfNeeded();
+        await expect(chart).toBeVisible();
+        const tall = await page.evaluate(() => document.documentElement.scrollHeight);
+        await page.setViewportSize({ width, height: tall });
+        await expect(chart).toBeVisible();
+        await expect(
+          page.locator("[data-chart='trend'] [data-part='trend-placeholder']"),
+        ).toHaveCount(0);
+        await page.screenshot({ path });
+        await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
       }
     }
   }
