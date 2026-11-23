@@ -2,7 +2,7 @@ import type { GlossaryEntry } from "../../../../server/profile/glossary";
 import { CONFIDENCE, KPI_MIN_GAMES } from "../../../../server/stats/constants";
 import { TRAJECTORY_WINDOW } from "../../../../server/trajectory/model";
 
-// "What is this?" entries of the trajectory (F6, ADR 0088): how each number on it is computed,
+// "What is this?" entries of the trajectory (F6, ADR 0089): how each number on it is computed,
 // with the real windows, minimum and interval.
 
 const PCT = Math.round(CONFIDENCE * 100);

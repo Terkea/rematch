@@ -76,3 +76,18 @@ pub fn v2_input(name: &str) -> CoachingInput {
     serde_json::from_value(merge(&load_fixture(name), &colour_split()))
         .unwrap_or_else(|e| panic!("v2 fixture {name} does not deserialize: {e}"))
 }
+
+/// `backend/fixtures/ai/input/trajectory.v3.json`: a v3 trajectory (ADR 0089), a fall from a
+/// peak of 1,097 to 816 with then against now, for the v3 prompts and the evidence.
+pub fn trajectory() -> Value {
+    let path = fixtures_dir().join("input/trajectory.v3.json");
+    let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    serde_json::from_str(&text).unwrap_or_else(|e| panic!("{}: {e}", path.display()))
+}
+
+/// A fixture as coaching-input-v3: [`v2_input`]'s merge plus [`trajectory`] (ADR 0089).
+pub fn v3_input(name: &str) -> CoachingInput {
+    let v2 = merge(&load_fixture(name), &colour_split());
+    serde_json::from_value(merge(&v2, &trajectory()))
+        .unwrap_or_else(|e| panic!("v3 fixture {name} does not deserialize: {e}"))
+}

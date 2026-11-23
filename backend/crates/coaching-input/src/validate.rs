@@ -22,8 +22,8 @@ use crate::enums::AreaId;
 use crate::limits::MIN_COLOR_GAMES;
 use crate::limits::{
     ECO_MAX_CHARS, FEN_MAX_CHARS, LIMITS, MAX_BASE_SECONDS, MAX_COUNT, MAX_CP, MAX_EXCESS_EPL,
-    MAX_INCREMENT_SECONDS, MAX_MATE, MAX_PLY, MAX_PRIORITY, MAX_RATING, MONTH_PATTERN,
-    UCI_PATTERN, UUID_PATTERN, WEAKNESS_ID_MAX_CHARS, WEAKNESS_ID_PATTERN,
+    MAX_INCREMENT_SECONDS, MAX_MATE, MAX_PLY, MAX_PRIORITY, MAX_RATING, MONTH_PATTERN, UCI_PATTERN,
+    UUID_PATTERN, WEAKNESS_ID_MAX_CHARS, WEAKNESS_ID_PATTERN,
 };
 use crate::types::{
     Alternative, AreaScore, Basis, Benchmark, BenchmarkSource, ByColor, CandidateCause, CauseValue,
@@ -367,7 +367,7 @@ impl Checker {
         }
 
         // v2 (ADR 0085): `byColor` is required, `benchmark` optional; v1 has neither. v3
-        // (ADR 0088) adds the required `trajectory`, which no earlier version has.
+        // (ADR 0089) adds the required `trajectory`, which no earlier version has.
         match c.input_version {
             InputVersion::V1 => {
                 if c.by_color.is_some() {
@@ -636,7 +636,10 @@ impl Checker {
             self.push(join(&join(p, "now"), "basis"), "now is last");
         }
         if v.then.to > v.now.from {
-            self.push(join(&join(p, "then"), "to"), "then must end before now starts");
+            self.push(
+                join(&join(p, "then"), "to"),
+                "then must end before now starts",
+            );
         }
         for (field, m, unit) in [
             ("rating", &v.rating, MetricUnit::Elo),
@@ -707,10 +710,16 @@ impl Checker {
             self.count(join(p, field), v);
         }
         if w.then_events > w.then_opportunities {
-            self.push(join(p, "thenEvents"), "thenEvents must be <= thenOpportunities");
+            self.push(
+                join(p, "thenEvents"),
+                "thenEvents must be <= thenOpportunities",
+            );
         }
         if w.now_events > w.now_opportunities {
-            self.push(join(p, "nowEvents"), "nowEvents must be <= nowOpportunities");
+            self.push(
+                join(p, "nowEvents"),
+                "nowEvents must be <= nowOpportunities",
+            );
         }
     }
 

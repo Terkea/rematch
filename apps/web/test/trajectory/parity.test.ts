@@ -10,7 +10,7 @@ import {
   type TrajectoryInput,
 } from "../../src/server/trajectory/model.js";
 
-// One trajectory rule for the web and the coach (ADR 0088): this test writes the web's results
+// One trajectory rule for the web and the coach (ADR 0089): this test writes the web's results
 // for a few synthetic cases to `backend/fixtures/trajectory/cases.json`, and the Rust builder's
 // test (`profile/tests/trajectory.rs`) must reproduce every number from the same inputs. The two
 // share the seeds, the mulberry32 stream and the bootstrap, so the verdicts agree exactly.

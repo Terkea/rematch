@@ -1888,7 +1888,7 @@ async fn a_paragraph_cut_off_by_max_tokens_is_never_published() {
 fn chat_prompts_have_no_json_output_instruction() {
     let system = chat_system_blocks();
     assert_eq!(system[0], rules_block());
-    let chat = load_prompt("chat/system", 3).unwrap();
+    let chat = load_prompt("chat/system", 4).unwrap();
     assert!(system[1].text.starts_with(chat.text.trim_end()));
     // ADR 0085: the glossary follows, and the off-topic marker stays the last line.
     let glossary = load_prompt("core/glossary", 1).unwrap().text.trim_end();
@@ -2061,8 +2061,9 @@ async fn tools_after_the_off_topic_marker_are_refused() {
 #[test]
 fn chat_system_v2_teaches_the_move_filter_and_honest_empty_searches() {
     // ADR 0085: v3 keeps v2's text and adds the colour split, the benchmark and the glossary.
-    assert!(CHAT_PROMPT_SET.contains(&("chat/system", 3)));
-    let v2 = load_prompt("chat/system", 3).unwrap().text;
+    // ADR 0089: v4 keeps v3's text and adds the rating history.
+    assert!(CHAT_PROMPT_SET.contains(&("chat/system", 4)));
+    let v2 = load_prompt("chat/system", 4).unwrap().text;
     assert!(chat_system_blocks()[1].text.starts_with(v2.trim_end()));
     for f in [
         "`phase`",

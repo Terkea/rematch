@@ -169,12 +169,14 @@ fn report_prompt_set_is_the_brief_list() {
     // Fix D (N1): core/tokens v2 says the server prints a number's unit. ADR 0085: report v2
     // teaches the colour split and the peer benchmark, the overview v2 the White vs Black
     // sentence.
-    let v2 = ["core/tokens", "report/report", "report/section-overview"];
-    assert!(
-        REPORT_PROMPT_SET
-            .iter()
-            .all(|(id, v)| *v == if v2.contains(id) { 2 } else { 1 })
-    );
+    // ADR 0089: report v3 adds the rating trajectory.
+    let v2 = ["core/tokens", "report/section-overview"];
+    let want = |id: &str| match id {
+        "report/report" => 3,
+        id if v2.contains(&id) => 2,
+        _ => 1,
+    };
+    assert!(REPORT_PROMPT_SET.iter().all(|(id, v)| *v == want(id)));
     assert_eq!(REPORT_PROMPT_VERSION, "report@1");
 }
 
@@ -395,11 +397,11 @@ fn instantiate(schematic: &str) -> String {
     s
 }
 
-/// b2-rapid as coaching-input-v2 (the colour split and the peer benchmark the v2 prompts cite,
-/// ADR 0085) with its endgame area below the minimum sample (`needMore` 16), so every schematic
+/// b2-rapid as coaching-input-v3 (the colour split and the peer benchmark the v2 prompts cite,
+/// ADR 0085, and the trajectory the v3 report and v4 chat cite, ADR 0089) with its endgame area below the minimum sample (`needMore` 16), so every schematic
 /// form, the `needMore` path included, resolves against a real input.
 fn synthetic_input() -> CoachingInput {
-    let mut v = ai::testing::v2_input("b2-rapid").to_json();
+    let mut v = ai::testing::v3_input("b2-rapid").to_json();
     let area = v["areaScores"]
         .as_array_mut()
         .unwrap()
@@ -715,7 +717,7 @@ fn v2_prompts_teach_the_colour_split_and_the_benchmark_words() {
 #[test]
 fn report_blocks_use_the_set_versions() {
     let req = ai::generate::request::build_section_request(
-        &ai::testing::v2_input("b2-rapid"),
+        &ai::testing::v3_input("b2-rapid"),
         ai::output::codes::SectionKey::Overview,
         false,
     );
@@ -724,7 +726,7 @@ fn report_blocks_use_the_set_versions() {
     assert!(
         req.system[1]
             .text
-            .starts_with(load_prompt("report/report", 2).unwrap().text)
+            .starts_with(load_prompt("report/report", 3).unwrap().text)
     );
     assert!(
         req.system[1]
@@ -736,4 +738,85 @@ fn report_blocks_use_the_set_versions() {
         task,
         load_prompt("report/section-overview", 2).unwrap().text
     );
+}
+
+// ---- coaching-input-v3 (ADR 0089) -----------------------------------------------------------
+
+/// Report v3 and chat v4 teach the rating trajectory: its fields, the verdict words, and no
+/// cause claimed or rating promised. Their earlier versions stay unchanged for stored hashes.
+#[test]
+fn v3_prompts_teach_the_trajectory_and_its_honest_words() {
+    let report = load_prompt("report/report", 3).unwrap().text;
+    assert!(
+        report.starts_with(
+            load_prompt("report/report", 2)
+                .unwrap()
+                .text
+                .split("# How to write")
+                .next()
+                .unwrap()
+        )
+    );
+    let chat = load_prompt("chat/system", 4).unwrap().text;
+    for (name, text) in [("report/report v3", report), ("chat/system v4", chat)] {
+        for f in [
+            "`trajectory`",
+            "`thenVsNow`",
+            "`peak`",
+            "`verdict`",
+            "`not_enough_games`",
+            "no clear change",
+            "`{{num:trajectory.peak.rating}}`",
+            "many reasons",
+        ] {
+            assert!(text.contains(f), "{name} says {f:?}");
+        }
+    }
+    assert!(chat.contains("Do not say you cannot see their rating history"));
+    for (id, v) in [("report/report", 2), ("chat/system", 3)] {
+        assert!(!load_prompt(id, v).unwrap().text.contains("trajectory"));
+    }
+    assert!(REPORT_PROMPT_SET.contains(&("report/report", 3)));
+    assert!(ai::prompts::CHAT_PROMPT_SET.contains(&("chat/system", 4)));
+}
+
+/// The chat context a v3 input gives the model (a snapshot of its trajectory part): the peak,
+/// the current rating, then against now, and the paths to cite them.
+#[test]
+fn the_chat_context_carries_the_trajectory_and_its_refs() {
+    let input = ai::testing::v3_input("b2-rapid");
+    let ctx = ai::chat::context::build_chat_context(&input);
+    let t = &ctx["trajectory"];
+    assert_eq!(
+        t["peak"],
+        serde_json::json!({"rating": 1097, "date": "2026-04-18"})
+    );
+    assert_eq!(t["current"]["rating"], 816);
+    assert_eq!(t["change"], -281);
+    assert_eq!(t["thenVsNow"]["blundersPerGame"]["verdict"], "worse");
+    let nums: Vec<&str> = ctx["refs"]["num"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(Value::as_str)
+        .collect();
+    for p in [
+        "trajectory.peak.rating",
+        "trajectory.current.rating",
+        "trajectory.change",
+        "trajectory.thenVsNow.accuracy.then.value",
+        "trajectory.thenVsNow.weaknesses.W3_shallow.now.value",
+    ] {
+        assert!(nums.contains(&p), "refs list {p}");
+    }
+    let dates: Vec<&str> = ctx["refs"]["date"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(Value::as_str)
+        .collect();
+    assert!(dates.contains(&"trajectory.peak.date"));
+    // A v2 input's context has no trajectory.
+    let v2 = ai::chat::context::build_chat_context(&ai::testing::v2_input("b2-rapid"));
+    assert!(v2.get("trajectory").is_none());
 }

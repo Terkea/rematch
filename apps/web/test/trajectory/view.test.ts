@@ -129,7 +129,7 @@ describe("trajectoryView", () => {
     if (v.state !== "ready") throw new Error("expected a trajectory");
     // A level line still has a highest game, so it is compared with the games around it.
     expect(v.headline).toBe(
-      "Your rapid rating peaked at 912 in January 2026 and is 900 now (−12): no clear change from your peak period.",
+      "Your rapid rating is 900 now, −12 from its peak of 912 in January 2026: no clear change since the games around it.",
     );
     expect(v.kind).toBe("flat");
   });

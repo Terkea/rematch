@@ -73,7 +73,7 @@ macro_rules! prompt {
     };
 }
 
-static TABLE: [Prompt; 32] = [
+static TABLE: [Prompt; 34] = [
     prompt!("core/rules", 1),
     prompt!("core/tokens", 1),
     prompt!("core/tokens", 2),
@@ -81,6 +81,7 @@ static TABLE: [Prompt; 32] = [
     prompt!("core/glossary", 1),
     prompt!("report/report", 1),
     prompt!("report/report", 2),
+    prompt!("report/report", 3),
     prompt!("report/output", 1),
     prompt!("report/section-overview", 1),
     prompt!("report/section-overview", 2),
@@ -104,6 +105,7 @@ static TABLE: [Prompt; 32] = [
     prompt!("chat/system", 1),
     prompt!("chat/system", 2),
     prompt!("chat/system", 3),
+    prompt!("chat/system", 4),
     prompt!("chat/repair", 1),
     prompt!("chat-summary/system", 1),
     prompt!("chat-summary/task", 1),
@@ -129,7 +131,8 @@ pub const REPORT_PROMPT_SET: &[(&str, u32)] = &[
     ("core/tokens", 2),
     // ADR 0085: v2 teaches the colour split (`byColor`) and names the peer benchmark; the
     // glossary gives the plain words. v1 stays for stored hashes.
-    ("report/report", 2),
+    // ADR 0089: v3 adds the rating trajectory and then against now. v2 stays for stored hashes.
+    ("report/report", 3),
     ("report/output", 1),
     ("tone/b0", 1),
     ("tone/b1", 1),
@@ -157,7 +160,9 @@ pub const CHAT_PROMPT_SET: &[(&str, u32)] = &[
     // Fix E (N8): v2 teaches the move filter, citing concrete moves and saying what a search
     // that found nothing searched. v1 stays for stored hashes.
     // ADR 0085: v3 adds the colour split, the peer benchmark's words and the glossary.
-    ("chat/system", 3),
+    // ADR 0089: v4 adds the rating history (`trajectory`), so "what changed since I was at my
+    // best?" is answered from cited numbers.
+    ("chat/system", 4),
     ("chat/repair", 1),
     ("core/glossary", 1),
 ];

@@ -15,7 +15,7 @@ import {
 import type { GameStatRow } from "../stats/game-stats";
 import { comparePeriodRows } from "../stats/period-compare";
 
-// The rating trajectory (F6, F7; ADR 0088): the player's rating over time in one time class, its
+// The rating trajectory (F6, F7; ADR 0089): the player's rating over time in one time class, its
 // peak and the current rating, and a "then" window against the last games. Pure: the loader
 // (`load.ts`) reads the games, and the coach's v3 block is the same rule in Rust
 // (`profile::coaching::trajectory`). Every difference is called only by the ADR 0083 rule

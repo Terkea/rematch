@@ -30,6 +30,7 @@ const SECTIONS = [
   "eval-bar",
   "eval-graph",
   "charts",
+  "trajectory",
   "stats",
   "timeline",
   "area-score",

@@ -193,7 +193,7 @@ fn array_id_field(key: &str) -> Option<&'static str> {
 const COLOR_WEAKNESS_ARRAYS: [&str; 3] = [
     "byColor.white.weaknesses",
     "byColor.black.weaknesses",
-    // v3 (ADR 0088): then against now's weakness rows, keyed by series key too.
+    // v3 (ADR 0089): then against now's weakness rows, keyed by series key too.
     "trajectory.thenVsNow.weaknesses",
 ];
 
@@ -594,7 +594,7 @@ impl Evidence {
         }
     }
 
-    /// v3 (ADR 0088): the trajectory's then and now numbers in their own `unit` (a rating has
+    /// v3 (ADR 0089): the trajectory's then and now numbers in their own `unit` (a rating has
     /// none), the differences in their measure's unit (a score difference is a share's, in
     /// -1..1; an accuracy difference is in percentage points) and each weakness rate as a share.
     fn mark_trajectory(&mut self, t: &crate::input::types::Trajectory) {
@@ -609,7 +609,11 @@ impl Evidence {
         ] {
             let mb = format!("{b}.{name}");
             for side in ["then", "now"] {
-                self.mark_unit(&format!("{mb}.{side}"), m.then.unit, &["value", "low", "high"]);
+                self.mark_unit(
+                    &format!("{mb}.{side}"),
+                    m.then.unit,
+                    &["value", "low", "high"],
+                );
             }
             for f in ["diff", "diffLow", "diffHigh"] {
                 let p = format!("{mb}.{f}");
@@ -636,7 +640,11 @@ impl Evidence {
         for w in &v.weaknesses {
             let wb = format!("{b}.weaknesses.{}", seg(&w.series_key));
             for side in ["then", "now"] {
-                self.mark_unit(&format!("{wb}.{side}"), MetricUnit::Rate, &["value", "low", "high"]);
+                self.mark_unit(
+                    &format!("{wb}.{side}"),
+                    MetricUnit::Rate,
+                    &["value", "low", "high"],
+                );
             }
         }
     }

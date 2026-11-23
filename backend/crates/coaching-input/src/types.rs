@@ -55,7 +55,7 @@ pub mod iso_date {
 }
 
 /// `inputVersion`: `"coaching-input-v1"` (the M3 contract), `"coaching-input-v2"` (ADR 0085:
-/// v1 plus `byColor` and `benchmark`) or `"coaching-input-v3"` ([`INPUT_VERSION`], ADR 0088: v2
+/// v1 plus `byColor` and `benchmark`) or `"coaching-input-v3"` ([`INPUT_VERSION`], ADR 0089: v2
 /// plus `trajectory`). The builder writes v3; inputs stored before it still parse, without the
 /// later fields. `Ord` is the version order.
 #[derive(
@@ -684,7 +684,7 @@ pub struct ByColor {
 }
 
 wire_enum!(
-    /// v3 `trajectory.kind` (ADR 0088): the "then" window's ratings against the last games', by
+    /// v3 `trajectory.kind` (ADR 0089): the "then" window's ratings against the last games', by
     /// the period-comparison rule (ADR 0083 §6).
     TrajectoryKind, "trajectory kind", "snake_case", {
         Falling => "falling",
@@ -820,7 +820,7 @@ pub struct ThenVsNow {
     pub weaknesses: Vec<ThenNowWeakness>,
 }
 
-/// v3 (ADR 0088): the rating trajectory of the time class. Ratings are pre-game (on chess.com
+/// v3 (ADR 0089): the rating trajectory of the time class. Ratings are pre-game (on chess.com
 /// the rating after the previous rated game, ADR-FIX-C-1). Below 20 rated games it is not
 /// `sufficient`: `kind`, `peak`, `current`, `change` and `thenVsNow` are null and `needMore`
 /// says how many more rated games it needs.
@@ -897,7 +897,7 @@ pub struct CoachingInput {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schemars(extend("x-optional" = true))]
     pub benchmark: Option<Benchmark>,
-    /// v3 only (absent before): the rating trajectory and then against now (ADR 0088).
+    /// v3 only (absent before): the rating trajectory and then against now (ADR 0089).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schemars(extend("x-optional" = true))]
     pub trajectory: Option<Trajectory>,

@@ -26,7 +26,7 @@
 //!   examples on each side of the onset;
 //! - v2 (ADR 0085): `byColor` ([`super::colors`]), each colour from its own games, snapshot
 //!   rows, series points and benchmark rows, and `benchmark`, the stored benchmark band;
-//! - v3 (ADR 0088): `trajectory` ([`super::trajectory`]), the rating over time of every rated
+//! - v3 (ADR 0089): `trajectory` ([`super::trajectory`]), the rating over time of every rated
 //!   game of the time class and then against now, by the web's rule.
 //!
 //! Every list is cut to `LIMITS` by its own order (R-6), and [`CoachingInput::validate`] runs
@@ -73,11 +73,11 @@ use super::mapping::{
     candidate_causes, claimable_weakness, contract_line_key, contract_platform, has_time_control,
     metric, opening_verdict, ranked_weakness, series_label, weakness_id_of_series,
 };
-use super::trajectory::{Prior, TRAJECTORY_WEAKNESSES, load_trajectory, prior_of};
 use super::strengths::{
     AREA_STRENGTH_SCORE, MAX_STRENGTH_EXEMPLARS, StrengthCandidate, StrengthSource,
     WEAKNESS_STRENGTH_CONFIDENCE, area_kinds, select_strengths, weakness_kinds,
 };
+use super::trajectory::{Prior, TRAJECTORY_WEAKNESSES, load_trajectory, prior_of};
 use crate::analyse_features::parse_time_class;
 use crate::estimates::{age_days, compute_estimates, games_in_window};
 use crate::load::{LoadError, load_analysed_games, load_series_points};

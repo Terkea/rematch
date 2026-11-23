@@ -1,4 +1,4 @@
-//! coaching-input-v3 (ADR 0088): the rating `trajectory` and then against now, on top of v2.
+//! coaching-input-v3 (ADR 0089): the rating `trajectory` and then against now, on top of v2.
 //! v1 and v2 inputs (stored before) still parse and cannot carry it.
 
 #[path = "support/v2.rs"]
@@ -48,11 +48,11 @@ fn v3_input_validates_and_round_trips() {
     assert_eq!(t["change"], json!(-281));
     assert_eq!(t["thenVsNow"]["then"]["basis"], json!("peak"));
     assert_eq!(t["thenVsNow"]["rating"]["then"]["unit"], json!("elo"));
-    assert_eq!(t["thenVsNow"]["accuracy"]["verdict"], json!("no_clear_change"));
     assert_eq!(
-        t["thenVsNow"]["weaknesses"][0]["now"]["value"],
-        json!(0.43)
+        t["thenVsNow"]["accuracy"]["verdict"],
+        json!("no_clear_change")
     );
+    assert_eq!(t["thenVsNow"]["weaknesses"][0]["now"]["value"], json!(0.43));
     let back: CoachingInput = serde_json::from_value(json.clone()).unwrap();
     assert_eq!(back, input);
     let schema = jsonschema::options()
@@ -97,7 +97,10 @@ fn the_windows_are_ordered_and_named_by_their_role() {
     v.now.basis = WindowBasis::Peak;
     assert_eq!(
         paths(i.validate()),
-        vec!["trajectory.thenVsNow.now.basis", "trajectory.thenVsNow.then.to"]
+        vec![
+            "trajectory.thenVsNow.now.basis",
+            "trajectory.thenVsNow.then.to"
+        ]
     );
 }
 
@@ -121,7 +124,14 @@ fn a_verdict_carries_its_difference_and_not_enough_games_none() {
 #[test]
 fn a_weakness_rate_is_a_share_with_its_counts() {
     let mut i = v3_input();
-    let w = &mut i.trajectory.as_mut().unwrap().then_vs_now.as_mut().unwrap().weaknesses[0];
+    let w = &mut i
+        .trajectory
+        .as_mut()
+        .unwrap()
+        .then_vs_now
+        .as_mut()
+        .unwrap()
+        .weaknesses[0];
     w.now_events = 90;
     w.then.value = Some(1.4);
     assert_eq!(
@@ -154,6 +164,10 @@ fn the_schema_keeps_trajectory_optional() {
     assert!(schema["properties"]["trajectory"].is_object());
     assert_eq!(
         schema["properties"]["inputVersion"]["enum"],
-        json!(["coaching-input-v1", "coaching-input-v2", "coaching-input-v3"])
+        json!([
+            "coaching-input-v1",
+            "coaching-input-v2",
+            "coaching-input-v3"
+        ])
     );
 }

@@ -1,4 +1,4 @@
-//! coaching-input v3 `trajectory` (ADR 0088): the rating over time of one account × time class,
+//! coaching-input v3 `trajectory` (ADR 0089): the rating over time of one account × time class,
 //! its peak and current rating, and the "then" window (the games around the peak, or the first
 //! games) against the last games, for rating, accuracy, blunders per game, score and the top
 //! weaknesses.
@@ -16,8 +16,8 @@ use std::collections::{BTreeMap, HashMap};
 
 use coaching_input::{
     ChangeVerdict, ColorMetric, LIMITS, MetricUnit, MonthRating, RatingAt, ThenNowMetric,
-    ThenNowWeakness, ThenVsNow, Trajectory as ContractTrajectory, TrajectoryKind,
-    TrajectoryWindow, WindowBasis,
+    ThenNowWeakness, ThenVsNow, Trajectory as ContractTrajectory, TrajectoryKind, TrajectoryWindow,
+    WindowBasis,
 };
 use profile_core::constants::{weakness_area, weakness_label};
 use profile_core::stats::intervals::{Z80, wilson};
@@ -221,10 +221,7 @@ pub struct MeanComparison {
 pub fn compare_means(a: &[f64], b: &[f64], higher_is_better: bool, seed: &str) -> MeanComparison {
     let ea = estimate_mean(a, &format!("{seed}:a"), UNBOUNDED);
     let eb = estimate_mean(b, &format!("{seed}:b"), UNBOUNDED);
-    let (
-        Estimate::Estimate { value: va, .. },
-        Estimate::Estimate { value: vb, .. },
-    ) = (ea, eb)
+    let (Estimate::Estimate { value: va, .. }, Estimate::Estimate { value: vb, .. }) = (ea, eb)
     else {
         return MeanComparison {
             verdict: Verdict::NotEnoughGames,
@@ -923,8 +920,10 @@ pub async fn load_trajectory(
     .fetch_all(pool)
     .await?;
     let own = |r: &GameRow| if r.2 { r.3 } else { r.4 };
-    let ratings: Vec<(String, OffsetDateTime, Option<i32>)> =
-        rows.iter().map(|r| (r.0.to_string(), r.1, own(r))).collect();
+    let ratings: Vec<(String, OffsetDateTime, Option<i32>)> = rows
+        .iter()
+        .map(|r| (r.0.to_string(), r.1, own(r)))
+        .collect();
     let current = rows
         .iter()
         .rev()

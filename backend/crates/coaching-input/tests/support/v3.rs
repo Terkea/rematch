@@ -1,4 +1,4 @@
-//! A v3 trajectory for the contract tests (ADR 0088): a fall from a peak, with the peak window
+//! A v3 trajectory for the contract tests (ADR 0089): a fall from a peak, with the peak window
 //! against the last games, and one weakness compared.
 #![allow(dead_code)]
 

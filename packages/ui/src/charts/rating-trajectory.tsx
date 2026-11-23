@@ -5,7 +5,7 @@ import { type KeyboardEvent, type PointerEvent, useId, useMemo, useState } from 
 import { cn } from "../lib/index.js";
 import { dateTicks, TREND_AXIS, TREND_HEIGHT, TREND_RIGHT } from "./scales.js";
 
-// The rating trajectory (F6, ADR 0088): the player's pre-game rating per rated game as one ink
+// The rating trajectory (F6, ADR 0089): the player's pre-game rating per rated game as one ink
 // line, the peak marked and labelled, the current rating at the end, and the two windows the page
 // compares shaded and named on the plot. One series, so no legend: the title names it. A table of
 // the months is the chart's text view; a crosshair readout follows the pointer and the arrow keys.

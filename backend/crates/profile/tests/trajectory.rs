@@ -1,4 +1,4 @@
-//! The coach's trajectory is the web's (ADR 0088): every case of the web-written fixture
+//! The coach's trajectory is the web's (ADR 0089): every case of the web-written fixture
 //! (`backend/fixtures/trajectory/cases.json`, `apps/web/test/trajectory/parity.test.ts`) is
 //! replayed here and must give the same windows, verdicts and numbers. Then the contract mapping:
 //! units, insufficient sides and the months.
@@ -37,8 +37,12 @@ fn input_of(c: &Value) -> Input {
             rating: g["rating"].as_f64().unwrap(),
         })
         .collect();
-    let current = (!c["current"].is_null())
-        .then(|| (c["current"]["rating"].as_f64().unwrap(), at(&c["current"]["at"])));
+    let current = (!c["current"].is_null()).then(|| {
+        (
+            c["current"]["rating"].as_f64().unwrap(),
+            at(&c["current"]["at"]),
+        )
+    });
     let stats = c["stats"]
         .as_array()
         .unwrap()
@@ -91,7 +95,10 @@ fn input_of(c: &Value) -> Input {
 fn close(name: &str, got: Option<f64>, want: &Value) {
     match (got, want.as_f64()) {
         (None, None) => {}
-        (Some(g), Some(w)) => assert!((g - w).abs() <= 1e-9 * w.abs().max(1.0), "{name}: {g} != {w}"),
+        (Some(g), Some(w)) => assert!(
+            (g - w).abs() <= 1e-9 * w.abs().max(1.0),
+            "{name}: {g} != {w}"
+        ),
         _ => panic!("{name}: {got:?} != {want}"),
     }
 }
@@ -100,12 +107,23 @@ fn estimate(name: &str, e: &Estimate, want: &Value) {
     match e {
         Estimate::Estimate { value, interval, n } => {
             close(&format!("{name}.value"), Some(*value), &want["value"]);
-            close(&format!("{name}.low"), interval.map(|i| i.low), &want["low"]);
-            close(&format!("{name}.high"), interval.map(|i| i.high), &want["high"]);
+            close(
+                &format!("{name}.low"),
+                interval.map(|i| i.low),
+                &want["low"],
+            );
+            close(
+                &format!("{name}.high"),
+                interval.map(|i| i.high),
+                &want["high"],
+            );
             assert_eq!(want["n"].as_u64(), Some(*n as u64), "{name}.n");
         }
         Estimate::Insufficient { n, .. } => {
-            assert!(want["value"].is_null(), "{name}: insufficient here, {want} on the web");
+            assert!(
+                want["value"].is_null(),
+                "{name}: insufficient here, {want} on the web"
+            );
             assert_eq!(want["n"].as_u64(), Some(*n as u64), "{name}.n");
         }
     }
@@ -153,9 +171,21 @@ fn every_web_case_replays_exactly() {
         };
         assert_eq!(want["kind"], kind, "{name}");
         assert_eq!(want["games"].as_u64(), Some(r.games as u64), "{name}");
-        close(&format!("{name}.peak"), Some(r.peak.0), &want["peak"]["rating"]);
-        assert_eq!(want["peak"]["gameId"].as_str(), r.peak.2.as_deref(), "{name}");
-        close(&format!("{name}.current"), Some(r.current.0), &want["current"]);
+        close(
+            &format!("{name}.peak"),
+            Some(r.peak.0),
+            &want["peak"]["rating"],
+        );
+        assert_eq!(
+            want["peak"]["gameId"].as_str(),
+            r.peak.2.as_deref(),
+            "{name}"
+        );
+        close(
+            &format!("{name}.current"),
+            Some(r.current.0),
+            &want["current"],
+        );
         close(&format!("{name}.change"), Some(r.change), &want["change"]);
         for (w, side) in [(&r.then, &want["then"]), (&r.now, &want["now"])] {
             let basis = match w.basis {
@@ -167,15 +197,43 @@ fn every_web_case_replays_exactly() {
             assert_eq!(side["games"].as_u64(), Some(w.games as u64), "{name}");
             assert_eq!(side["firstId"], w.first_id.as_str(), "{name}");
             assert_eq!(side["lastId"], w.last_id.as_str(), "{name}");
-            close(&format!("{name}.meanRating"), Some(w.mean_rating), &side["meanRating"]);
+            close(
+                &format!("{name}.meanRating"),
+                Some(w.mean_rating),
+                &side["meanRating"],
+            );
         }
-        assert_eq!(want["rating"]["verdict"], verdict(r.rating.verdict), "{name}");
-        estimate(&format!("{name}.rating.a"), &r.rating_sides.0, &want["rating"]["a"]);
-        estimate(&format!("{name}.rating.b"), &r.rating_sides.1, &want["rating"]["b"]);
+        assert_eq!(
+            want["rating"]["verdict"],
+            verdict(r.rating.verdict),
+            "{name}"
+        );
+        estimate(
+            &format!("{name}.rating.a"),
+            &r.rating_sides.0,
+            &want["rating"]["a"],
+        );
+        estimate(
+            &format!("{name}.rating.b"),
+            &r.rating_sides.1,
+            &want["rating"]["b"],
+        );
         if let Some((d, i)) = r.rating.diff {
-            close(&format!("{name}.rating.diff"), Some(d), &want["rating"]["diff"]["value"]);
-            close("low", Some(i.low), &want["rating"]["diff"]["interval"]["low"]);
-            close("high", Some(i.high), &want["rating"]["diff"]["interval"]["high"]);
+            close(
+                &format!("{name}.rating.diff"),
+                Some(d),
+                &want["rating"]["diff"]["value"],
+            );
+            close(
+                "low",
+                Some(i.low),
+                &want["rating"]["diff"]["interval"]["low"],
+            );
+            close(
+                "high",
+                Some(i.high),
+                &want["rating"]["diff"]["interval"]["high"],
+            );
         }
         let rows = want["rows"].as_array().unwrap();
         assert_eq!(rows.len(), r.rows.len(), "{name} rows");
@@ -213,8 +271,15 @@ fn every_web_case_replays_exactly() {
                     assert_eq!(w["verdict"], verdict(result.verdict), "{label}");
                     for (side, c) in [("a", counts.0), ("b", counts.1)] {
                         assert_eq!(w["counts"][side]["events"], c.events, "{label}");
-                        assert_eq!(w["counts"][side]["opportunities"], c.opportunities, "{label}");
-                        assert_eq!(w["counts"][side]["games"].as_u64(), Some(c.games as u64), "{label}");
+                        assert_eq!(
+                            w["counts"][side]["opportunities"], c.opportunities,
+                            "{label}"
+                        );
+                        assert_eq!(
+                            w["counts"][side]["games"].as_u64(),
+                            Some(c.games as u64),
+                            "{label}"
+                        );
                     }
                     for (side, p) in [("a", a), ("b", b)] {
                         match p {
@@ -291,10 +356,16 @@ fn pre_game_ratings_shift_chesscom_by_one_game() {
         ("c".to_owned(), t(3), None),
         ("d".to_owned(), t(4), Some(990)),
     ];
-    let chesscom: Vec<f64> = pre_game_ratings(true, &rows).iter().map(|g| g.rating).collect();
+    let chesscom: Vec<f64> = pre_game_ratings(true, &rows)
+        .iter()
+        .map(|g| g.rating)
+        .collect();
     // "d" follows an unrated-looking row with no rating: it keeps its own, as the web does.
     assert_eq!(chesscom, [1000.0, 1000.0, 1010.0, 990.0]);
-    let lichess: Vec<f64> = pre_game_ratings(false, &rows).iter().map(|g| g.rating).collect();
+    let lichess: Vec<f64> = pre_game_ratings(false, &rows)
+        .iter()
+        .map(|g| g.rating)
+        .collect();
     assert_eq!(lichess, [1000.0, 1010.0, 990.0]);
 }
 

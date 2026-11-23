@@ -171,9 +171,9 @@ async fn profile_json_prints_a_valid_coaching_input(pool: PgPool) {
     assert_eq!(doc["accountId"], json!(account.to_string()));
     assert_eq!(doc["basis"]["analysedGames"], json!(3));
     assert_eq!(doc["areaScores"].as_array().map(Vec::len), Some(7));
-    // v2 (ADR 0085) is v1 plus `byColor` and `benchmark`: the v1 part still passes the zod
-    // export, and the whole document the contract's own schema.
-    assert_eq!(doc["inputVersion"], json!("coaching-input-v2"));
+    // v2 (ADR 0085) is v1 plus `byColor` and `benchmark`, v3 (ADR 0089) adds `trajectory`: the
+    // v1 part still passes the zod export, and the whole document the contract's own schema.
+    assert_eq!(doc["inputVersion"], json!("coaching-input-v3"));
     assert!(doc["byColor"]["white"].is_object() && doc["byColor"]["black"].is_object());
     let contract = jsonschema::options()
         .should_validate_formats(true)
@@ -191,6 +191,7 @@ async fn profile_json_prints_a_valid_coaching_input(pool: PgPool) {
     let o = v1.as_object_mut().unwrap();
     o.remove("byColor");
     o.remove("benchmark");
+    o.remove("trajectory");
     o.insert("inputVersion".into(), json!("coaching-input-v1"));
     let errors: Vec<String> = ts_validator()
         .iter_errors(&v1)

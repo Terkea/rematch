@@ -3,7 +3,7 @@
 //! The schemars attributes in `types.rs` and the checks in `validate.rs` both read these, so the
 //! generated schema and `CoachingInput::validate` cannot drift apart.
 
-/// The version the builder writes (ADR 0088): v2 plus `trajectory`.
+/// The version the builder writes (ADR 0089): v2 plus `trajectory`.
 pub const INPUT_VERSION: &str = "coaching-input-v3";
 /// ADR 0085: v1 plus `byColor` and `benchmark`, still accepted when parsing.
 pub const INPUT_VERSION_V2: &str = "coaching-input-v2";

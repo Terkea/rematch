@@ -13,7 +13,7 @@ import {
   type TrajectoryWeaknessInput,
 } from "./model";
 
-// The trajectory's reads (F6, ADR 0088). Server code only. Every read runs in one READ ONLY
+// The trajectory's reads (F6, ADR 0089). Server code only. Every read runs in one READ ONLY
 // transaction and checks the account is the user's, so a foreign scope reads nothing (null).
 
 /** Top weaknesses compared then against now: the claimable ones, by priority. */

@@ -296,10 +296,17 @@ test.describe
       expect(res?.status()).toBe(404);
     });
 
-    test("8. progress shows before-and-after first, a KPI gap for the empty week, the review", async () => {
+    test("8. progress shows the trajectory first, before-and-after, a KPI gap for the empty week, the review", async () => {
       await ready(page, "/app/progress", "main h1");
-      // The page, not its loading state: before-and-after is the first section heading.
-      await expect(page.locator("main h2").first()).toHaveText("Before and after");
+      // The page, not its loading state: the rating trajectory is the first section (F6): its
+      // headline, or how many more rated games it needs.
+      await expect(page.locator("main h2").first()).toHaveText("Rating trajectory");
+      const trajectory = page.locator("[data-slot='trajectory']");
+      await expect(
+        trajectory.getByText(/appears after 20 rated rapid games|^Your rapid rating /).first(),
+      ).toBeVisible();
+      await expect(trajectory).not.toContainText(/NaN|undefined|Infinity/);
+      await expect(page.getByRole("heading", { name: "Before and after" })).toBeVisible();
       // The null week is a stated gap in the grid's summary, never a zero.
       await expect(
         page.locator("[data-kpi='accuracy']").getByText(/no \w+ in week of 5 Oct 2026/),

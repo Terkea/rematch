@@ -90,10 +90,11 @@ function headline(t: Extract<Trajectory, { kind: TrajectoryKind }>, tc: TimeClas
   const now = rating(t.current.rating);
   const delta = signed(t.change);
   if (t.then.basis === "peak") {
-    const head = `Your ${tc} rating peaked at ${rating(t.peak.rating)} in ${monthOf(t.peak.at)} and is ${now} now (${delta})`;
-    return t.kind === "falling"
-      ? `${head}.`
-      : `${head}: ${verdictWords(t.rating.verdict)} from your peak period.`;
+    const peak = `${rating(t.peak.rating)} in ${monthOf(t.peak.at)}`;
+    if (t.kind === "falling") {
+      return `Your ${tc} rating peaked at ${peak} and is ${now} now (${delta}).`;
+    }
+    return `Your ${tc} rating is ${now} now, ${delta} from its peak of ${peak}: ${verdictWords(t.rating.verdict)} since the games around it.`;
   }
   const first = `your first ${t.then.games} rated games`;
   const mean = rating(t.then.meanRating);
