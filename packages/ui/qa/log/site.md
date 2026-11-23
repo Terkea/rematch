@@ -87,3 +87,50 @@ and the capture script fails on any visible image with `naturalWidth` 0.
 
 Verdict after round 3: no blocker; the one major is the app chart's figure spacing, ruled out of
 this lane above. Every other finding is fixed or ruled.
+
+## How it works: the landing section, the docs page and the shared drawing (docs/how-it-works)
+
+Shots: headless Chromium against `astro preview` of a production build, the landing's
+`#how-it-works` section and `/rematch/docs/how-it-works/` (top, one disclosure open, the
+thresholds table) at 390 and 1440, day and night (16 PNGs, not committed). `scrollWidth` equals
+the viewport in every shot. `pnpm design:check`: 0 findings.
+
+### Round 1 (fresh critic, PNGs, DESIGN.md and REFERENCES.md only): `revise`
+
+1. Blocker: the wide SVG scaled to 390 put labels near 8–10px. Fixed: under 640px a second,
+   one-column drawing puts each stage's inputs inside it as chips; every label stays on the type
+   scale.
+2. Major: stray spaces around commas and full stops in table cells. Cause: `tabular-nums` gives
+   Schibsted's punctuation figure widths (the same cause as round 3's chart finding). Fixed:
+   docs tables use lining figures only.
+3. Major: the three-column thresholds table clipped at 390. Fixed: two columns.
+4. Major: formula blocks clipped. Fixed: shorter lines, and `pre-wrap` inside disclosures.
+5. Major: the docs page opened with the "generated from README" note. Fixed: a lede first; the
+   note moved to the end in `ink-faint`.
+6. Major (B4): the disclosures read as a FAQ accordion. Fixed: summaries one step down
+   (Schibsted 600 `base`), each a `sheet` card with a rule under an open summary.
+7. Major: contributor vocabulary on the landing. Fixed: the intro starts from the player; the
+   drawing's subtitles are plain words.
+8. Minor: the list centred against the drawing, the link detached. Fixed: top-aligned, the link
+   ends the list.
+9. Minor: faint dotted strokes at night. Fixed: `pencil` at 1.5px, 4 3 dashes, and "optional" in
+   the optional boxes' subtitles.
+10. Minor: a stock flowchart; the rotated Postgres label. The engine stage now carries the README's
+    worked example, 28. Nd2?? (a real Lichess blitz game, the styleguide's analysed fixture).
+    Ruling: the rotated rail stays on the wide drawing, where it reads; the phone drawing drops it
+    for a caption line.
+
+### Round 2: `revise`, one major
+
+1. Major: 28. Nd2?? in bold sans and all pen red. Fixed: Literata 600, `ink` move with only `??` in
+   `pen-text`, the "73% to 40%: a blunder" line in `ink-soft` on both drawings, a leader on the wide
+   one.
+2–4. Minor: the lede's step count, an awkward intro line, two names (habit, weakness). Fixed.
+5. Minor (optional): separate cards. Ruled: kept; each stage is its own disclosure.
+6. Minor: inline-code chip padding after "(". Ruled: site-wide chip style, ruled in round 3 above.
+
+### Round 3: `pass`
+
+Two minors. The phone Stockfish box gets 5px more above the notation line. The example comes from
+a Lichess game shown beside a chess.com pipeline: the README's worked example says so ("a real
+Lichess blitz game"), and the drawing names no platform for it, so it stays.

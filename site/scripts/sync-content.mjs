@@ -5,13 +5,21 @@
 // - the decision log, one page per docs/decisions/*.md plus an index from its README;
 // - the research notes, one page per docs/research/*.md plus an index;
 // - the roadmap, from GitHub's milestones and epics with `--roadmap-live` (the production build),
-//   else from the seed files in .github/settings (roadmap-data.mjs, ADR 0099).
+//   else from the seed files in .github/settings (roadmap-data.mjs, ADR 0099);
+// - the "How it works" page, from the README's marked section, so the two never drift.
 // Everything written here is git-ignored and regenerated on every build.
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, posix, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadSeed } from "../../scripts/roadmap/roadmap-lib.mjs";
-import { BASE, GITHUB_BLOB, rewriteMarkdown, slugOf, titleOf } from "./content-lib.mjs";
+import {
+  BASE,
+  GITHUB_BLOB,
+  howItWorksPage,
+  rewriteMarkdown,
+  slugOf,
+  titleOf,
+} from "./content-lib.mjs";
 import { loadRoadmap, writeRoadmap } from "./roadmap-data.mjs";
 
 const SITE = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -94,8 +102,32 @@ function syncCollection({ dir, route, indexTitle, indexIntro, order }) {
   return pages;
 }
 
+// ---- how it works ---------------------------------------------------------
+function writeHowItWorks() {
+  const readme = readFileSync(join(ROOT, "README.md"), "utf8");
+  const diagram = readFileSync(
+    join(SITE, "src", "components", "how-it-works-diagram.html"),
+    "utf8",
+  );
+  writeFileSync(
+    join(OUT_DOCS, "how-it-works.md"),
+    frontmatter({
+      title: "How it works",
+      description:
+        "Every stage of Rematch with its real constants: import, Stockfish 19, enrichment, Syzygy, Maia-2, the weakness detectors, the statistics, peers, the coach and its validator, the trainer and the focus.",
+      editUrl: `${GITHUB_BLOB.replace("/blob/", "/edit/")}/README.md`,
+      sidebar: { order: 0 },
+      // The stage disclosures hold h3s; the contents list keeps to the page's two h2 sections.
+      tableOfContents: { maxHeadingLevel: 2 },
+    }) +
+      howItWorksPage(readme, diagram) +
+      `\n<p class="generated-source">Generated at build time from the "How it works" section of <a href="${GITHUB_BLOB}/README.md#how-it-works">README.md</a>; edit it there.</p>\n`,
+  );
+}
+
 export function sync() {
   writeTokens();
+  writeHowItWorks();
   const decisions = syncCollection({
     dir: "decisions",
     route: "decisions",

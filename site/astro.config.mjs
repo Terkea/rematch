@@ -28,6 +28,7 @@ export default defineConfig({
         "./src/styles/fonts.css",
         "./src/styles/generated/tokens.css",
         "./src/styles/docs.css",
+        "./src/styles/diagram.css",
       ],
       sidebar: [
         {
@@ -35,6 +36,7 @@ export default defineConfig({
           items: [
             { label: "Getting started", link: "/docs/getting-started/" },
             { label: "What Rematch does", link: "/docs/features/" },
+            { label: "How it works", link: "/docs/how-it-works/" },
             { label: "The honesty rules", link: "/docs/honesty/" },
           ],
         },
