@@ -1,0 +1,54 @@
+---
+// "Latest from the lab": the three newest experiment summaries and the newest milestone,
+// generated at build (sync-content.mjs, src/data/generated/lab.json). Shows an honest note when
+// there is nothing yet.
+import lab from "../data/generated/lab.json";
+import { href } from "../data/site";
+
+const { experiments, milestone } = lab;
+---
+
+<section id="lab" class="wrap lab-strip" aria-labelledby="lab-title">
+  <h2 id="lab-title" class="section-title">Latest from the lab</h2>
+  <div class="split lab-cols">
+    <div>
+      <h3 class="lab-sub">Experiments</h3>
+      {
+        experiments.length ? (
+          <ul class="lab-list" role="list">
+            {experiments.map((e) => (
+              <li class="lab-item">
+                <a class="lab-question" href={e.href}>
+                  {e.id}: {e.title}
+                </a>
+                <span class={`lab-badge lab-badge-${e.status}`}>{e.statusLabel}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p class="lab-empty">No experiment has been published yet. The first two are being pre-registered.</p>
+        )
+      }
+      <p class="more">
+        <a href={href("docs/experiments/")}>Every experiment</a>
+      </p>
+    </div>
+    <div>
+      <h3 class="lab-sub">Newest milestone</h3>
+      {
+        milestone ? (
+          <p class="lab-milestone">
+            <span class="lab-meta">{milestone.date}</span>
+            <a class="lab-question" href={milestone.href}>{milestone.title}</a>
+            <span class="lab-detail">{milestone.first}</span>
+          </p>
+        ) : (
+          <p class="lab-empty">No milestone has been logged yet.</p>
+        )
+      }
+      <p class="more">
+        <a href={href("docs/progress/")}>The full timeline</a>
+      </p>
+    </div>
+  </div>
+</section>

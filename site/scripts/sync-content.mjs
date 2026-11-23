@@ -8,6 +8,8 @@
 //   else from the seed files in .github/settings (roadmap-data.mjs, ADR 0099);
 // - the "How it works" page, from the README's marked section, so the two never drift, and the
 //   landing page's summary of it (the overview and each stage's title and first sentence).
+// - the Experiments pages (lab/experiments/EXP-*/summary.md), the Progress page (docs/progress.md)
+//   and the landing page's "Latest from the lab" strip.
 // Everything written here is git-ignored and regenerated on every build.
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, posix, relative, resolve } from "node:path";
@@ -22,6 +24,14 @@ import {
   slugOf,
   titleOf,
 } from "./content-lib.mjs";
+import {
+  experimentPage,
+  experimentsIndex,
+  labStrip,
+  loadExperiments,
+  parseProgress,
+  progressPage,
+} from "./lab-lib.mjs";
 import { loadRoadmap, writeRoadmap } from "./roadmap-data.mjs";
 
 const SITE = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -139,8 +149,55 @@ function writeHowItWorksSummary() {
   );
 }
 
+/** The Experiments pages and the Progress page, plus the landing strip (src/data/generated/lab.json). */
+function writeLab() {
+  const exps = loadExperiments(join(ROOT, "lab"));
+  const outDir = join(OUT_DOCS, "experiments");
+  rmSync(outDir, { recursive: true, force: true });
+  mkdirSync(outDir, { recursive: true });
+  const edit = `${GITHUB_BLOB.replace("/blob/", "/edit/")}`;
+  for (const e of exps) {
+    writeFileSync(
+      join(outDir, `${e.slug}.md`),
+      frontmatter({
+        title: `${e.id}: ${e.title}`,
+        description: e.title,
+        editUrl: `${edit}/lab/experiments/${e.folder}/summary.md`,
+      }) + experimentPage(e),
+    );
+  }
+  writeFileSync(
+    join(outDir, "index.md"),
+    frontmatter({
+      title: "Experiments",
+      description: "Every pre-registered experiment on the Rematch algorithm, with its status.",
+      editUrl: `${edit}/lab/experiments/README.md`,
+      sidebar: { order: 0, label: "Index" },
+      tableOfContents: false,
+    }) + experimentsIndex(exps),
+  );
+  const progress = readFileSync(join(ROOT, "docs", "progress.md"), "utf8");
+  writeFileSync(
+    join(OUT_DOCS, "progress.md"),
+    frontmatter({
+      title: "Progress",
+      description: "The milestones that moved Rematch, newest first.",
+      editUrl: `${edit}/docs/progress.md`,
+    }) + progressPage(progress),
+  );
+  const dir = join(SITE, "src", "data", "generated");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(
+    join(dir, "lab.json"),
+    `${JSON.stringify(labStrip(exps, parseProgress(progress)), null, 2)}
+`,
+  );
+  return exps.length;
+}
+
 export function sync() {
   writeTokens();
+  const experiments = writeLab();
   writeHowItWorksSummary();
   writeHowItWorks();
   const decisions = syncCollection({
@@ -165,13 +222,13 @@ export function sync() {
       GITHUB_BLOB.replace("/blob/", "/tree/") +
       "/docs/research).",
   });
-  return { decisions: decisions.length, research: research.length };
+  return { decisions: decisions.length, research: research.length, experiments };
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
   const n = sync();
   console.log(
-    `site content: ${n.decisions} decisions, ${n.research} research notes, tokens (${relative(ROOT, join(SITE, "src/styles/generated/tokens.css"))})`,
+    `site content: ${n.decisions} decisions, ${n.research} research notes, ${n.experiments} experiments, tokens (${relative(ROOT, join(SITE, "src/styles/generated/tokens.css"))})`,
   );
   const live = process.argv.includes("--roadmap-live") && process.env.ROADMAP_OFFLINE !== "1";
   const { model, note } = await loadRoadmap(loadSeed(ROOT), {
