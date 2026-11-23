@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   type ChatAnchor,
   coachHref,
+  colourQuestion,
   decodeAnchor,
   encodeAnchor,
   fallbackTitle,
@@ -67,6 +68,24 @@ describe("anchors", () => {
     expect(coachHref(null, { accountId: "acc-1", timeClass: "blitz" })).toBe(
       "/app/coach/new?account=acc-1&tc=blitz",
     );
+  });
+
+  // Audit A3: asking from a colour's page keeps the colour, so the coach answers about it.
+  it("coachHref keeps the scope's colour, never Both", () => {
+    expect(coachHref(null, { accountId: "acc-1", timeClass: "rapid", side: "black" })).toBe(
+      "/app/coach/new?account=acc-1&tc=rapid&color=black",
+    );
+    expect(coachHref(null, { accountId: "acc-1", timeClass: "rapid", side: "both" })).toBe(
+      "/app/coach/new?account=acc-1&tc=rapid",
+    );
+  });
+
+  it("colourQuestion names the colour the question is about", () => {
+    expect(colourQuestion("How do I stop this?", "white")).toBe(
+      "About my games with White: How do I stop this?",
+    );
+    expect(colourQuestion("How do I stop this?", "both")).toBe("How do I stop this?");
+    expect(colourQuestion("How do I stop this?", "nonsense")).toBe("How do I stop this?");
   });
 
   it("fallbackTitle follows the anchor", () => {

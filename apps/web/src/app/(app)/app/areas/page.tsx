@@ -1,10 +1,11 @@
 import { redirect } from "next/navigation";
 import { requireUser } from "../../../../server/auth/session";
 import { requestEventCursor } from "../../../../server/events/request-cursor";
+import { withFilters } from "../../_shell/nav";
 
 export const dynamic = "force-dynamic";
 
-/** `/app/areas` opens the first area, keeping the coach scope (`account`, `tc`) and nothing else. */
+/** `/app/areas` opens the first area, keeping the filters (`account`, `tc`, colour, dates). */
 export default async function AreasIndex({
   searchParams,
 }: {
@@ -15,11 +16,10 @@ export default async function AreasIndex({
   await requestEventCursor(user.id);
   const params = await searchParams;
   const q = new URLSearchParams();
-  for (const key of ["account", "tc"] as const) {
-    const v = params[key];
+  for (const [key, v] of Object.entries(params)) {
     const first = Array.isArray(v) ? v[0] : v;
     if (typeof first === "string" && first !== "") q.set(key, first);
   }
-  const query = q.toString();
-  redirect(`/app/areas/openings${query ? `?${query}` : ""}`);
+  // The scope, the colour and the dates, like every page link (audit A7), and nothing else.
+  redirect(withFilters("/app/areas/openings", q));
 }

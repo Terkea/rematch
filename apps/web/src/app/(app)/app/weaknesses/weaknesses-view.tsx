@@ -184,6 +184,7 @@ export function WeaknessesView({
   filterBar,
   accountSwitch = true,
   sides = null,
+  datesNote = null,
 }: {
   scope: CoachScope | null;
   weaknesses: WeaknessSummary[];
@@ -196,6 +197,8 @@ export function WeaknessesView({
   accountSwitch?: boolean;
   /** In Both mode, each series' White and Black estimate, shown under its row (ADR 0082). */
   sides?: Map<string, { white: SideRate | null; black: SideRate | null }> | null;
+  /** What the date filter changes here (audit A6): only the weekly lines; null without dates. */
+  datesNote?: string | null;
 }) {
   const group = benchmarkGroupLabel(benchmark);
   const side = scope?.side === "white" || scope?.side === "black" ? scope.side : undefined;
@@ -214,6 +217,11 @@ export function WeaknessesView({
           <CoachScopeSwitch scope={scope} basePath="/app/weaknesses" />
         ) : null}
         {filterBar}
+        {datesNote ? (
+          <p data-slot="dates-note" className="m-0 max-w-2xl text-sm text-ink-soft">
+            {datesNote}
+          </p>
+        ) : null}
       </div>
 
       {scope === null || weaknesses.length === 0 ? (

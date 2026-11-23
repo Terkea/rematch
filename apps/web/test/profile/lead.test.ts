@@ -40,7 +40,7 @@ describe("leadFinding", () => {
   });
 
   // ADR 0084 (bug hunt N10): a costing state the comparison does not back (confidence < 0.7,
-  // the owner's rapid "Opening traps" at 0.547) is never "What to work on".
+  // the owner's rapid "Early blunders" at 0.547) is never "What to work on".
   it("a costing state below confidence 0.7 is not a lead", async () => {
     await seedProfile(db, accountId, {
       timeClass: "rapid",

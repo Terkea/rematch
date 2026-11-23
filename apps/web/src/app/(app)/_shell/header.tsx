@@ -4,11 +4,11 @@ import { Icon, MagnifyingGlassIcon } from "@ci/ui/icons";
 import { motion, spring, useReducedMotion } from "@ci/ui/motion";
 import { Button, Kbd } from "@ci/ui/primitives";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { type ReactNode, useState } from "react";
 import { brand } from "../../../brand";
 import { coachChatLive } from "../../../lib/coach-chat";
-import { isCurrent, onPhoneRow, shownNavItems } from "./nav";
+import { isCurrent, onPhoneRow, shownNavItems, withFilters } from "./nav";
 import { NavCommandMenu } from "./nav-command-menu";
 import { ThemeToggle } from "./theme-toggle";
 import { UserMenu, useSignOut } from "./user-menu";
@@ -42,6 +42,8 @@ export function Header({
   activity,
 }: HeaderProps) {
   const pathname = usePathname();
+  // The page's filters travel with every section link (audit A7).
+  const search = useSearchParams();
   const reduced = useReducedMotion();
   const [menuOpen, setMenuOpen] = useState(false);
   const signOut = useSignOut(signOutTo);
@@ -67,7 +69,7 @@ export function Header({
               return (
                 <li key={item.href} className={onPhoneRow(item.href) ? undefined : "max-lg:hidden"}>
                   <Link
-                    href={item.href}
+                    href={withFilters(item.href, search)}
                     aria-current={current ? "page" : undefined}
                     className={`${navLink} ${current ? "font-semibold text-ink" : "text-ink-soft hover:bg-sheet hover:text-ink"}`}
                   >
@@ -113,7 +115,9 @@ export function Header({
               email={email}
               name={name}
               signOutTo={signOutTo}
-              morePages={sections.filter((item) => !onPhoneRow(item.href))}
+              morePages={sections
+                .filter((item) => !onPhoneRow(item.href))
+                .map((item) => ({ ...item, link: withFilters(item.href, search) }))}
               pathname={pathname}
             />
           </div>

@@ -464,6 +464,40 @@ describe("skill-area pages", { timeout: 30_000 }, () => {
     expect(href.searchParams.get("anchor")).not.toBeNull();
   });
 
+  it("asks the coach about the colour the page is filtered to (audit A3)", async () => {
+    await show("endgame", { account: ACCOUNT, tc: "rapid", color: "black" });
+    const ask = screen.getByRole("link", { name: "Ask your coach about your endgame" });
+    const href = new URL(ask.getAttribute("href") ?? "", "http://x");
+    expect(href.searchParams.get("color")).toBe("black");
+  });
+
+  it("keeps the colour and dates on the area tabs (audit A7)", async () => {
+    await show("endgame", {
+      account: ACCOUNT,
+      tc: "rapid",
+      color: "white",
+      from: "2026-09-01",
+      to: "2026-10-31",
+    });
+    const tabs = within(screen.getByRole("navigation", { name: "Skill areas" }));
+    const href = new URL(
+      tabs.getByRole("link", { name: "Time" }).getAttribute("href") ?? "",
+      "http://x",
+    );
+    expect(Object.fromEntries(href.searchParams)).toMatchObject({
+      color: "white",
+      from: "2026-09-01",
+      to: "2026-10-31",
+    });
+  });
+
+  it("says what the dates change and what stays on its window (audit A6)", async () => {
+    await show("endgame", { account: ACCOUNT, tc: "rapid", from: "2026-09-01" });
+    expect(
+      screen.getByText(/^From 1 Sep 2026: these dates trim the weekly lines only\./),
+    ).toBeInTheDocument();
+  });
+
   it("a dropped areas section says so and shows no model text", async () => {
     const p = payload();
     p.sections.areas = null;
@@ -717,5 +751,15 @@ describe("/app/areas", () => {
     const digest = String((err as { digest?: string }).digest);
     expect(digest).toContain(`/app/areas/openings?account=${ACCOUNT}&tc=rapid;`);
     expect(digest).not.toContain("other");
+  });
+
+  it("keeps the colour and dates too (audit A7)", async () => {
+    const err = await IndexPage({
+      searchParams: Promise.resolve({ account: ACCOUNT, tc: "rapid", color: "black", to: "2026-10-31" }),
+    }).catch((e: unknown) => e);
+    const digest = String((err as { digest?: string }).digest);
+    expect(digest).toContain(
+      `/app/areas/openings?account=${ACCOUNT}&tc=rapid&color=black&to=2026-10-31;`,
+    );
   });
 });

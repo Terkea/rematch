@@ -158,8 +158,14 @@ export function ReportView({
   data,
   filterBar,
   accountSwitch = true,
+  askColor = null,
 }: {
   data: ReportPageData;
+  /**
+   * The colour filter's colour: the report covers both colours, but a chat opened from it about
+   * one colour's page asks about that colour's games (audit A3).
+   */
+  askColor?: "white" | "black" | null;
   /** The shared filter bar (T3), rendered on the server; it holds the time control. */
   filterBar?: ReactNode;
   /** Whether the scope switch is still needed beside the bar (more than one linked account). */
@@ -280,7 +286,7 @@ export function ReportView({
             content={content("weaknesses", "weaknesses")}
             status={status("weaknesses")}
             disclosure={disclosure}
-            scope={target}
+            scope={askColor ? { ...target, side: askColor } : target}
             trends={trends}
             reportDate={(view.createdAt ?? new Date(payload.generatedAt)).toISOString()}
             order={3}

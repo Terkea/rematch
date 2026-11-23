@@ -10,6 +10,7 @@ import {
   resolveCoachScope,
 } from "../../../../server/profile";
 import { FilterBar } from "../_filters/filter-bar";
+import { datesNote } from "../_filters/dates-note";
 import { loadCoachBar, manyAccounts } from "../_filters/load";
 import { withSide } from "../_filters/side";
 import { weeklyRates } from "./queries";
@@ -67,6 +68,7 @@ export default async function WeaknessesPage({ searchParams }: Props) {
         sides={sides}
         filterBar={<FilterBar model={bar.model} />}
         accountSwitch={manyAccounts(scope)}
+        datesNote={datesNote(range, "weaknesses")}
       />
     </>
   );

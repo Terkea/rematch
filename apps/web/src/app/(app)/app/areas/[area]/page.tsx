@@ -111,6 +111,7 @@ export default async function AreaPage({
     now,
     filterBar: <FilterBar model={bar.model} />,
     accountSwitch: manyAccounts(scope),
+    range,
   };
   return <AreaView model={model} />;
 }

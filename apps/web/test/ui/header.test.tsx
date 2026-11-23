@@ -6,9 +6,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { stubMatchMedia } from "./helpers.js";
 
 let pathname = "/app/accounts";
+let search = new URLSearchParams();
 const push = vi.fn();
 vi.mock("next/navigation", () => ({
   usePathname: () => pathname,
+  useSearchParams: () => search,
   useRouter: () => ({ push, replace: vi.fn(), refresh: vi.fn() }),
 }));
 const signOut = vi.fn().mockResolvedValue({ data: { success: true }, error: null });
@@ -23,6 +25,7 @@ const { Toaster } = await import("@ci/ui/overlays");
 beforeEach(() => {
   stubMatchMedia();
   pathname = "/app/accounts";
+  search = new URLSearchParams();
   push.mockReset();
   signOut.mockClear();
   signOut.mockResolvedValue({ data: { success: true }, error: null });
@@ -189,6 +192,23 @@ describe("shell header", () => {
     await userEvent.click(screen.getByRole("button", { name: /Search/ }));
     await userEvent.click(within(await screen.findByRole("dialog")).getByText("Go to games"));
     expect(push).toHaveBeenLastCalledWith("/app/games");
+  });
+
+  it("keeps the page's filters on the header and command-menu links (audit A7)", async () => {
+    pathname = "/app/weaknesses";
+    search = new URLSearchParams("account=acc-1&tc=blitz&color=black&from=2026-09-01");
+    renderHeader();
+    const nav = within(screen.getByRole("navigation", { name: "Main" }));
+    expect(nav.getByRole("link", { name: "Report" })).toHaveAttribute(
+      "href",
+      "/app/report?account=acc-1&tc=blitz&color=black&from=2026-09-01",
+    );
+    await userEvent.click(screen.getByRole("button", { name: /Search/ }));
+    const menu = await screen.findByRole("dialog");
+    await userEvent.click(within(menu).getByText("Endgame"));
+    expect(push).toHaveBeenLastCalledWith(
+      "/app/areas/endgame?account=acc-1&tc=blitz&color=black&from=2026-09-01",
+    );
   });
 
   it("groups the seven skill areas in the command menu, Endgame by its name", async () => {

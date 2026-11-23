@@ -1,7 +1,7 @@
 import { CoachScopeSwitch } from "../../../../../components/coach-scope-switch";
 import { requireUser } from "../../../../../server/auth/session";
 import { chatAllowance } from "../../../../../server/coach/allowance";
-import { type ChatAnchor, decodeAnchor } from "../../../../../server/coach/anchor";
+import { askedColour, type ChatAnchor, decodeAnchor } from "../../../../../server/coach/anchor";
 import { coachStatus } from "../../../../../server/coach/status";
 import { getDb } from "../../../../../server/db";
 import { requestEventCursor } from "../../../../../server/events/request-cursor";
@@ -21,7 +21,8 @@ type Params = Record<string, string | string[] | undefined>;
 const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? null;
 
 /**
- * `/app/coach/new?account&tc&anchor`: a new conversation in the scope, opened from an anchor. A
+ * `/app/coach/new?account&tc&anchor&color`: a new conversation in the scope, opened from an
+ * anchor, about one colour's games when `color` is set (audit A3). A
  * malformed anchor, or one this user cannot see (another account's game, a ply past the end),
  * is dropped silently: the question is then asked without it.
  */
@@ -53,6 +54,7 @@ export default async function NewCoachPage({ searchParams }: { searchParams: Pro
     <NewConversation
       scope={{ accountId: scope.accountId, timeClass: scope.timeClass }}
       anchor={anchor}
+      color={askedColour(first(params.color))}
       allowance={allowanceView(allowance)}
       listHref={`/app/coach?${q.toString()}`}
       available={status === "available"}

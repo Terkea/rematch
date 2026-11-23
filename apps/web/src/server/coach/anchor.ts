@@ -101,14 +101,34 @@ export function decodeAnchor(s: string): ChatAnchor | null {
   }
 }
 
-/** A new chat in the scope, opened from `anchor`. */
+/**
+ * A new chat in the scope, opened from `anchor`. A scope read for one colour (ADR 0082) keeps
+ * it as `color`, so the chat is about that colour's games (`colourQuestion`).
+ */
 export function coachHref(
   anchor: ChatAnchor | null,
-  scope: { accountId: string; timeClass: TimeClass },
+  scope: { accountId: string; timeClass: TimeClass; side?: "both" | "white" | "black" },
 ): string {
   const q = new URLSearchParams({ account: scope.accountId, tc: scope.timeClass });
   if (anchor) q.set("anchor", encodeAnchor(anchor));
+  if (scope.side === "white" || scope.side === "black") q.set("color", scope.side);
   return `/app/coach/new?${q.toString()}`;
+}
+
+/** The colour of a `color` parameter or body field; null for Both or anything else. */
+export function askedColour(v: unknown): "white" | "black" | null {
+  return v === "white" || v === "black" ? v : null;
+}
+
+/**
+ * The question as the coach receives it. The chat context holds both colours' numbers
+ * (`byColor`, ADR 0085); a chat opened from one colour's page says which colour it is about, in
+ * the player's own visible words, so the answer uses that colour's numbers.
+ */
+export function colourQuestion(question: string, color: unknown): string {
+  const c = askedColour(color);
+  if (!c) return question;
+  return `About my games with ${c === "white" ? "White" : "Black"}: ${question}`;
 }
 
 /** Rust `chat::summary::fallback_title`: the title when the model gave none. */

@@ -42,6 +42,8 @@ import { EmptySheet } from "../../../_shell/page-heading";
 import { SectionHead } from "../../_overview/section-head";
 import { numbersOnlyCopy } from "../../report/notes-off";
 import { type ScoreBasis, shortfallUnit } from "./basis";
+import type { DayRange } from "../../../../../server/filters/params";
+import { datesNote } from "../../_filters/dates-note";
 import { ScrollCue } from "./scroll-cue";
 
 // The skill-area page's layout, shared by all seven areas (one layout, no card grid, B4): a
@@ -70,6 +72,8 @@ export type AreaPageModel = {
   filterBar?: ReactNode;
   /** Whether the scope switch is still needed beside the bar (more than one linked account). */
   accountSwitch?: boolean;
+  /** The date filter, kept on the area tabs (audit A7); it only clips the weekly lines (A6). */
+  range?: DayRange;
 };
 
 const ORDER: readonly Area[] = [
@@ -142,7 +146,13 @@ function scopeQuery(scope: CoachScope): string {
   return q.toString();
 }
 
-const areaHref = (area: Area, scope: CoachScope) => `/app/areas/${area}?${scopeQuery(scope)}`;
+/** An area's page with the scope, the colour and the dates (audit A7). */
+function areaHref(area: Area, scope: CoachScope, range?: DayRange): string {
+  const q = new URLSearchParams(scopeQuery(scope));
+  if (range?.from) q.set("from", range.from);
+  if (range?.to) q.set("to", range.to);
+  return `/app/areas/${area}?${q.toString()}`;
+}
 
 export function AreaView({ model }: { model: AreaPageModel }) {
   const { area, scope } = model;
@@ -152,7 +162,7 @@ export function AreaView({ model }: { model: AreaPageModel }) {
   return (
     <div className="flex flex-col gap-10">
       <header className="flex flex-col gap-5">
-        <AreaTabs current={area} scope={scope} />
+        <AreaTabs current={area} scope={scope} range={model.range} />
         <div className="flex max-w-3xl flex-col gap-2">
           <div className="flex items-center gap-1.5">
             <h1 className="font-serif text-3xl font-semibold text-ink md:text-4xl">
@@ -182,6 +192,11 @@ export function AreaView({ model }: { model: AreaPageModel }) {
           </ScrollCue>
         ) : null}
         {model.filterBar}
+        {model.range && datesNote(model.range, "area") ? (
+          <p data-slot="dates-note" className="m-0 max-w-2xl text-sm text-ink-soft">
+            {datesNote(model.range, "area")}
+          </p>
+        ) : null}
       </header>
 
       <div className="grid grid-cols-1 gap-x-12 gap-y-10 lg:grid-cols-12">
@@ -228,7 +243,15 @@ function Section({
 }
 
 /** The seven areas as links, in a pill track like the app's tabs; the current one is a chip. */
-function AreaTabs({ current, scope }: { current: Area; scope: CoachScope }) {
+function AreaTabs({
+  current,
+  scope,
+  range,
+}: {
+  current: Area;
+  scope: CoachScope;
+  range: DayRange | undefined;
+}) {
   return (
     <ScrollCue>
       <nav
@@ -240,7 +263,7 @@ function AreaTabs({ current, scope }: { current: Area; scope: CoachScope }) {
           {ORDER.map((a) => (
             <li key={a}>
               <Link
-                href={areaHref(a, scope)}
+                href={areaHref(a, scope, range)}
                 aria-current={a === current ? "page" : undefined}
                 className={cn(
                   "relative inline-flex h-8 shrink-0 items-center rounded-pill px-4 font-sans text-sm font-medium whitespace-nowrap",
