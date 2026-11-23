@@ -69,7 +69,7 @@ export function ActiveFocusControls({
       />
       <Button
         variant="quiet"
-        size="sm"
+        size="md"
         aria-disabled={pending || undefined}
         onClick={() => void run("DELETE", { timeClass }, "Focus cleared")}
       >
@@ -103,6 +103,7 @@ export function SuggestFocusControls({
         gamesN={gamesN}
         label={label}
         variant="primary"
+        size="md"
       />
     </div>
   );

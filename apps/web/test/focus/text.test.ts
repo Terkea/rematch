@@ -24,14 +24,14 @@ describe("focus copy", () => {
         baseline: { rate: 0.146, events: 18, chances: 91 },
       }),
     ).toBe(
-      "Now 14.6%, from 18 of 91 chances in the last 6 months. The target is the rate of the players you're compared with.",
+      "That is 18 of 91 chances in the last 6 months. The target is the rate of the players you're compared with.",
     );
     expect(
       targetWhyText({
         target: { rate: 0.15, basis: "relative" },
         baseline: { rate: 0.2, events: 1, chances: 1 },
       }),
-    ).toBe("Now 20.0%, from 1 of 1 chance in the last 6 months. The target is a quarter fewer.");
+    ).toBe("That is 1 of 1 chance in the last 6 months. The target is a quarter fewer.");
   });
 
   it("gives progress with k of n and the 80% range, and no rate before any chance", () => {

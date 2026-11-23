@@ -34,7 +34,7 @@ export function targetWhyText(s: {
   target: Target;
   baseline: { rate: number; events: number; chances: number };
 }): string {
-  const now = `Now ${pctText(s.baseline.rate)}, from ${count(s.baseline.events)} of ${plural(s.baseline.chances, "chance", "chances")} ${ESTIMATE_WINDOW_TEXT}.`;
+  const now = `That is ${count(s.baseline.events)} of ${plural(s.baseline.chances, "chance", "chances")} ${ESTIMATE_WINDOW_TEXT}.`;
   const why =
     s.target.basis === "peer"
       ? "The target is the rate of the players you're compared with."

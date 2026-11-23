@@ -55,12 +55,14 @@ export function MakeFocusButton({
   gamesN = 20,
   label = "Make this my focus",
   variant = "outline",
+  size = "sm",
 }: {
   target: FocusTarget;
   current: boolean;
   gamesN?: number;
   label?: string;
   variant?: "primary" | "outline";
+  size?: "sm" | "md";
 }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
@@ -70,7 +72,7 @@ export function MakeFocusButton({
   return (
     <Button
       variant={variant}
-      size="sm"
+      size={size}
       className="w-fit"
       aria-disabled={pending || undefined}
       onClick={async () => {

@@ -71,7 +71,7 @@ describe("FocusCard", () => {
     render(<FocusCard card={{ kind: "suggest", suggestion }} />);
     const card = screen.getByRole("region", { name: "A focus for this week" });
     expect(card).toHaveTextContent("Missed mates");
-    expect(card).toHaveTextContent("Now 20.0%, from 18 of 90 chances in the last 6 months.");
+    expect(card).toHaveTextContent("That is 18 of 90 chances in the last 6 months.");
     expect(within(card).getByRole("button", { name: "Make this my focus" })).toBeVisible();
     expect(within(card).getByRole("link", { name: "Choose another" })).toHaveAttribute(
       "href",

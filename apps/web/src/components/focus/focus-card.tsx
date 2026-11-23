@@ -111,7 +111,7 @@ function Pill({ text, provisional, data }: { text: string; provisional: boolean;
 
 function Practise({ seriesKey }: { seriesKey: string }) {
   return (
-    <Button asChild variant="primary" size="sm" className="w-fit">
+    <Button asChild variant="primary" size="md" className="w-fit">
       <Link href={practiseHref(seriesKey)}>Practise this</Link>
     </Button>
   );

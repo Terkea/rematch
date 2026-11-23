@@ -85,5 +85,10 @@ test("setting a focus on a weakness page puts its card on the overview", async (
       timeout: 5_000,
     });
   }).toPass({ timeout: 60_000 });
+  const offer = page.getByRole("region", { name: "A focus for this week" });
+  if ((await offer.count()) > 0) {
+    await expect(offer.getByRole("button", { name: "Make this my focus" })).toBeVisible();
+    await offer.screenshot({ path: "../../.shots/focus/suggest-1440-light.png" });
+  }
   await page.context().close();
 });
