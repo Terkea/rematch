@@ -1,6 +1,6 @@
 {
   "repo": {
-    "description": "Rematch, chess improver. Stockfish on every move of your chess.com games, an AI coach that cites your own games, and a trainer built from the moments you missed. Stop losing to the same move.",
+    "description": "Rematch, chess improver. An open-source coach for chess.com players up to about 2000: Stockfish checks every move, it finds the mistake you keep making and drills you on your own positions until it sticks. Every recommendation is computed and versioned; the AI only puts the facts into words. Stop losing to the same move.",
     "homepage": "https://terkea.github.io/rematch/",
     "has_issues": true,
     "has_projects": true,
