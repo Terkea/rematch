@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { listWeeklyReviews } from "../../src/server/coaching";
 import { focusWeekLines, setFocus } from "../../src/server/focus";
 import { resetCoachingTables, seedWeekly } from "../helpers/coaching";
@@ -75,43 +75,40 @@ describe("focusWeekLines", () => {
     expect(early?.focus).toBeNull();
   });
 
-  it("has no practice count while there is no trainer table", async () => {
+  it("counts no practice in a week without trainer attempts", async () => {
     await setFocus(db, userId, { accountId, timeClass: "rapid", seriesKey: "W5" }, START);
     await play(db, accountId, 1, { W5: [1, 4] });
     const lines = await focusWeekLines(db, userId, { accountId, timeClass: "rapid" }, [
       "2026-09-28",
     ]);
-    expect(lines.get("2026-09-28")?.practiceSessions).toBeNull();
+    expect(lines.get("2026-09-28")?.practiceSessions ?? 0).toBe(0);
   });
 });
 
-// The trainer lane's tables (its migration, not merged here): only the columns this reads. Made
-// and dropped by this block, so the lane's migration still applies to this database later.
+// The trainer's real tables (migration 20261123040000_drill_items, ADR 0090), now merged: this
+// test used to create and drop stand-ins, which dropped the real tables under the other suites.
 describe("focusWeekLines with the trainer's attempts", () => {
-  beforeAll(async () => {
-    await db.execute(sql`create table if not exists drill_items (
-      id uuid primary key default gen_random_uuid(),
-      user_id uuid not null, account_id uuid not null, time_class time_class not null)`);
-    await db.execute(sql`create table if not exists drill_attempts (
-      id bigserial primary key, item_id uuid not null references drill_items(id) on delete cascade,
-      user_id uuid not null, at timestamptz not null default now())`);
-  });
-  afterAll(async () => {
-    await db.execute(sql`drop table if exists drill_attempts, drill_items`);
-  });
-
   it("counts the days the player practised in the week as sessions", async () => {
     await setFocus(db, userId, { accountId, timeClass: "rapid", seriesKey: "W5" }, START);
     await play(db, accountId, 1, { W5: [1, 4] });
+    const [game] = await db.execute<{ id: string }>(
+      sql`select id from games where account_id = ${accountId} limit 1`,
+    );
     const [item] = await db.execute<{ id: string }>(
-      sql`insert into drill_items (user_id, account_id, time_class)
-        values (${userId}, ${accountId}, 'rapid') returning id`,
+      sql`insert into drill_items (user_id, account_id, time_class, game_id, ply, source_key,
+          source_keys, fen, played_uci, solution_uci, solution_line, accepted_uci, win_before,
+          win_after, tags, held_out)
+        values (${userId}, ${accountId}, 'rapid', ${game?.id}, 1, 'blunder', array['blunder'],
+          'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', 'e2e4', 'd2d4',
+          array['d2d4'], array['d2d4'], 50, 30, array[]::text[], false)
+        returning id`,
     );
     const id = item?.id;
     const at = (days: number) => new Date(START.getTime() + days * DAY).toISOString();
     for (const d of [0, 0.1, 2, 9]) {
       await db.execute(
-        sql`insert into drill_attempts (item_id, user_id, at) values (${id}, ${userId}, ${at(d)})`,
+        sql`insert into drill_attempts (item_id, user_id, at, correct, confidence, move_uci)
+          values (${id}, ${userId}, ${at(d)}, true, 'sure', 'd2d4')`,
       );
     }
     const lines = await focusWeekLines(db, userId, { accountId, timeClass: "rapid" }, [

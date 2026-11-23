@@ -88,6 +88,7 @@ One file per decision: context, decision, alternatives, consequences. New decisi
 - [0083. One filter URL contract, and honest period comparison](0083-filters-and-period-comparison.md)
 - [0084. A costing state and its peer comparison never contradict each other](0084-costing-state-and-peer-comparison-agree.md)
 - [0085. The coach reads the colour split, names the peer benchmark and uses the glossary](0085-coach-colour-split-benchmark-glossary.md)
+- [0090. The missed-moments trainer](0090-missed-moments-trainer.md)
 - [0087. One plain name per measure, and filters that follow the player](0087-one-name-per-measure-and-filters-that-follow.md)
 - [0086. The coach reads a coaching-input snapshot written at every profile build](0086-coaching-input-snapshot-per-profile-build.md)
 - [0091. A weekly focus with a measurable goal](0091-weekly-focus-and-goal.md)

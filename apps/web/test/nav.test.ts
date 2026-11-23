@@ -10,6 +10,7 @@ describe("navItems", () => {
       ["Games", "/app/games"],
       ["Report", "/app/report"],
       ["Weaknesses", "/app/weaknesses"],
+      ["Train", "/app/train"],
       ["Strengths", "/app/strengths"],
       ["Progress", "/app/progress"],
       ["Coach", "/app/coach"],
@@ -21,6 +22,7 @@ describe("navItems", () => {
     const keywords = Object.fromEntries(navItems.map((i) => [i.label, [...i.keywords]]));
     expect(keywords.Report).toEqual(["coaching", "plan", "summary"]);
     expect(keywords.Weaknesses).toEqual(["mistakes", "leaks"]);
+    expect(keywords.Train).toEqual(["practise", "drill", "puzzles", "missed moments"]);
     expect(keywords.Strengths).toEqual(["good", "keep doing", "best moves"]);
     expect(keywords.Progress).toEqual(["trends", "kpi", "weekly"]);
     expect(keywords.Coach).toEqual(["ask", "chat", "question"]);
@@ -45,6 +47,7 @@ describe("shownNavItems", () => {
       "Games",
       "Report",
       "Weaknesses",
+      "Train",
       "Strengths",
       "Progress",
       "Accounts",
@@ -79,6 +82,11 @@ describe("withFilters", () => {
     expect(withFilters("/app/coach/new", q)).toBe(
       "/app/coach/new?account=acc-1&tc=blitz&color=black",
     );
+  });
+
+  it("keeps only the scope on the train page", () => {
+    expect(withFilters("/app/train", q)).toBe("/app/train?account=acc-1&tc=blitz");
+    expect(withFilters("/app/train", new URLSearchParams("tc=all"))).toBe("/app/train");
   });
 
   it("reads the games page's colour, drops bad values and leaves other pages bare", () => {

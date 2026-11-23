@@ -5,6 +5,11 @@ export const navItems = [
   { label: "Games", href: "/app/games", keywords: ["reviews", "analysis"] },
   { label: "Report", href: "/app/report", keywords: ["coaching", "plan", "summary"] },
   { label: "Weaknesses", href: "/app/weaknesses", keywords: ["mistakes", "leaks"] },
+  {
+    label: "Train",
+    href: "/app/train",
+    keywords: ["practise", "drill", "puzzles", "missed moments"],
+  },
   { label: "Strengths", href: "/app/strengths", keywords: ["good", "keep doing", "best moves"] },
   { label: "Progress", href: "/app/progress", keywords: ["trends", "kpi", "weekly"] },
   { label: "Coach", href: "/app/coach", keywords: ["ask", "chat", "question"] },
@@ -19,7 +24,7 @@ export function shownNavItems(chatLive: boolean): readonly NavItem[] {
 }
 
 /**
- * The sections the nav keeps below `lg` (eight don't fit until 1024px; at 640 to 1023px the row
+ * The sections the nav keeps below `lg` (nine don't fit until 1024px; at 640 to 1023px the row
  * scrolled sideways). The rest stay in the header from `lg` up and, below it, move into the
  * account menu ("More pages"), so the row never scrolls sideways.
  */
@@ -73,6 +78,9 @@ export function withFilters(href: string, search: Search | null): string {
     set("colour", f.color);
     set("from", f.from);
     set("to", f.to);
+  } else if (href === "/app/train") {
+    set("account", f.account);
+    set("tc", f.tc === "all" ? null : f.tc);
   } else if (href === "/app/coach" || href.startsWith("/app/coach/")) {
     set("account", f.account);
     set("tc", f.tc === "all" ? null : f.tc);
