@@ -113,6 +113,17 @@ test("filters round-trip through the URL, and the overview compares periods hone
     desktop(page).getByRole("group", { name: "Colour" }).getByRole("link", { name: "Black" }),
   ).toHaveAttribute("aria-current", "true");
 
+  // The filters follow the header and the command menu to the next page (audit A7).
+  await gotoSettled(page, "/app/weaknesses?color=white&from=2026-10-01&to=2026-10-31");
+  await page
+    .getByRole("navigation", { name: "Main" })
+    .getByRole("link", { name: "Progress" })
+    .click();
+  await expect(page).toHaveURL(/\/app\/progress\?.*color=white&from=2026-10-01&to=2026-10-31/);
+  await expect(
+    desktop(page).getByRole("group", { name: "Colour" }).getByRole("link", { name: "White" }),
+  ).toHaveAttribute("aria-current", "true");
+
   // On a phone the bar is one disclosure that names the active filters.
   await page.setViewportSize({ width: 390, height: 844 });
   await gotoSettled(page, "/app?color=black&cmp=month");
