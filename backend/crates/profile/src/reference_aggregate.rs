@@ -272,7 +272,14 @@ pub(crate) fn aggregate_weighted_row(
         // Chances are integer counts; the cast saturates.
         n.round() as u32
     });
-    stat.map(|s| (s, chances))
+    stat.map(|mut s| {
+        // ADR 0081 Amendment 1 (A12): a peer rate row also needs the KPI's own minimum of
+        // chances, the evidence the player's own estimate needs before it counts.
+        if weighting == Weighting::Players && chances.is_some_and(|n| n < def.min_n) {
+            s.low_sample = true;
+        }
+        (s, chances)
+    })
 }
 
 fn count(n: usize) -> u32 {

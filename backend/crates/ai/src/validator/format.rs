@@ -129,8 +129,15 @@ pub fn format_number(value: f64, fmt: Option<NumFormat>) -> Option<String> {
 /// A `{{num:}}` token's text: [`format_number`] plus the path's unit (Fix D, N1), so a win
 /// chance reads `86.5%` and a clock time `40.7 s`. `pct0`/`pct1` already print `%`, and
 /// `signed1` is an evaluation in pawns, so neither takes a unit.
+///
+/// A rate path (a fraction, [`Evidence::rate_paths`]) always reads as a percentage
+/// (ADR-FIX-D-1 Amendment 1): `pct0`/`pct1` as asked, any other format by [`format_share`].
 pub fn format_num_at(ev: &Evidence, path: &str, fmt: Option<NumFormat>) -> Option<String> {
-    let text = format_number(*ev.number_paths.get(path)?, fmt)?;
+    let value = *ev.number_paths.get(path)?;
+    if ev.rate_paths.contains(path) && !matches!(fmt, Some(NumFormat::Pct0 | NumFormat::Pct1)) {
+        return format_share(value);
+    }
+    let text = format_number(value, fmt)?;
     let unit = match fmt {
         Some(NumFormat::Pct0 | NumFormat::Pct1 | NumFormat::Signed1) => None,
         _ => ev.unit_of(path),
@@ -139,6 +146,21 @@ pub fn format_num_at(ev: &Evidence, path: &str, fmt: Option<NumFormat>) -> Optio
         Some(u) => format!("{text}{}", u.suffix()),
         None => text,
     })
+}
+
+/// A fraction as a percentage: whole from 10%, else one decimal without a trailing `.0`, so a
+/// rare event never reads `0%` (`0.45` → `45%`, `0.096` → `9.6%`, `0.0017` → `0.2%`,
+/// `-0.09` → `-9%`).
+pub fn format_share(value: f64) -> Option<String> {
+    if (value * 100.0).abs() >= 10.0 {
+        format_number(value, Some(NumFormat::Pct0))
+    } else {
+        let s = format_number(value, Some(NumFormat::Pct1))?;
+        Some(match s.strip_suffix(".0%") {
+            Some(whole) => format!("{whole}%"),
+            None => s,
+        })
+    }
 }
 
 /// An engine line's evaluation, from White's point of view: centipawns as `signed1` pawns

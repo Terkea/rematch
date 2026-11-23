@@ -3,7 +3,7 @@
 //! index recorded in `backend/fixtures/ai/evidence/ts-evidence.json`
 //! (`backend/tools/gen-evidence-golden.mjs`).
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use ai::input::types::{CoachingInput, MoveRef, Score};
 use ai::testing::{fixtures_dir, input, load_fixture, make_input};
@@ -589,6 +589,220 @@ mod colour_split {
         // A percentage format on a non-rate path is refused.
         let bad = "{{num:byColor.white.accuracy.value|pct0}} accuracy.";
         assert!(validate_text(bad, &[], &ev, &TextRules::default(), "x").is_err());
+    }
+
+    #[test]
+    fn a_fraction_reads_as_a_percentage_in_any_format() {
+        // Q9: "As White you have 50 games and score 0.45, with a range of 0.36 to 0.54". A
+        // score or rate is stored as a fraction; users read percentages.
+        let ev = ev();
+        let f = |p: &str, fmt| format_num_at(&ev, p, fmt).unwrap();
+        assert_eq!(f("byColor.white.score.value", Some(NumFormat::Dec2)), "52%");
+        assert_eq!(f("byColor.white.score.low", Some(NumFormat::Dec2)), "44%");
+        assert_eq!(f("byColor.white.score.high", Some(NumFormat::Dec1)), "60%");
+        assert_eq!(
+            f(
+                "byColor.white.weaknesses.W4_missed.rate",
+                Some(NumFormat::Dec2)
+            ),
+            "14%"
+        );
+        // Below 10% one decimal is kept (a whole one would read 0% for a rare event).
+        assert_eq!(
+            f(
+                "byColor.white.weaknesses.W4_missed.peerRate",
+                Some(NumFormat::Dec2)
+            ),
+            "9.6%"
+        );
+        assert_eq!(
+            f("metrics.hung_piece_rate.value", Some(NumFormat::Dec2)),
+            "6%"
+        );
+        assert_eq!(f("weaknesses.W9b.pImp", Some(NumFormat::Dec2)), "40%");
+        // A score difference reads as one too.
+        assert_eq!(
+            f(
+                "openings.b-sicilian-najdorf.performanceVsExpected",
+                Some(NumFormat::Dec2)
+            ),
+            "-9%"
+        );
+        // pct0/pct1 keep their precision; non-fractions keep their own units.
+        assert_eq!(
+            f("byColor.white.score.value", Some(NumFormat::Pct1)),
+            "52.4%"
+        );
+        assert_eq!(
+            f("byColor.white.blundersPerGame.value", Some(NumFormat::Dec1)),
+            "0.9"
+        );
+
+        let text = "As White you have {{num:byColor.white.games|int}} games and score \
+                    {{num:byColor.white.score.value|dec2}}, with a range of \
+                    {{num:byColor.white.score.low|dec2}} to \
+                    {{num:byColor.white.score.high|dec2}}.";
+        let out = validate_text(text, &[], &ev, &TextRules::default(), "x").expect("valid");
+        let shown: Vec<String> = out
+            .iter()
+            .filter_map(|s| match s {
+                Segment::Num { display, .. } => Some(display.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(shown, ["42", "52%", "44%", "60%"]);
+    }
+
+    /// Every number leaf of the CoachingInput schema, as a pattern (`[]` for an array item),
+    /// with its `minimum` and `maximum`.
+    fn schema_leaves() -> BTreeMap<String, (Option<f64>, Option<f64>)> {
+        fn walk(
+            root: &Value,
+            s: &Value,
+            path: &str,
+            out: &mut BTreeMap<String, (Option<f64>, Option<f64>)>,
+            depth: u32,
+        ) {
+            assert!(depth < 64, "schema too deep at {path}");
+            if let Some(r) = s.get("$ref").and_then(Value::as_str) {
+                let name = r.rsplit('/').next().unwrap();
+                let def = root["$defs"]
+                    .get(name)
+                    .or_else(|| root["definitions"].get(name))
+                    .unwrap_or_else(|| panic!("unresolved {r}"));
+                walk(root, def, path, out, depth + 1);
+            }
+            for k in ["anyOf", "oneOf", "allOf"] {
+                for x in s.get(k).and_then(Value::as_array).into_iter().flatten() {
+                    walk(root, x, path, out, depth + 1);
+                }
+            }
+            if let Some(p) = s.get("properties").and_then(Value::as_object) {
+                for (k, x) in p {
+                    let child = if path.is_empty() {
+                        k.clone()
+                    } else {
+                        format!("{path}.{k}")
+                    };
+                    walk(root, x, &child, out, depth + 1);
+                }
+            }
+            if let Some(items) = s.get("items") {
+                walk(root, items, &format!("{path}[]"), out, depth + 1);
+            }
+            let is_num = |t: &Value| matches!(t.as_str(), Some("number" | "integer"));
+            let num = match s.get("type") {
+                Some(Value::Array(ts)) => ts.iter().any(is_num),
+                Some(t) => is_num(t),
+                None => false,
+            };
+            if num {
+                let range = (
+                    s.get("minimum").and_then(Value::as_f64),
+                    s.get("maximum").and_then(Value::as_f64),
+                );
+                out.insert(path.to_owned(), range);
+            }
+        }
+        let root = ai::input::types::json_schema();
+        let mut out = BTreeMap::new();
+        walk(&root, &root, "", &mut out, 0);
+        out
+    }
+
+    /// The schema pattern of an evidence path, and the object holding its number. `None` for
+    /// a derived path (`count`, `pawns`, `moveNumber`, a ratio).
+    fn pattern_of<'a>(json: &'a Value, path: &str) -> Option<(String, &'a Value)> {
+        let mut cur = json;
+        let mut parent = json;
+        let mut pat = String::new();
+        for s in path.split('.') {
+            parent = cur;
+            match cur {
+                Value::Object(o) => {
+                    cur = o.get(s)?;
+                    if !pat.is_empty() {
+                        pat.push('.');
+                    }
+                    pat.push_str(s);
+                }
+                Value::Array(xs) => {
+                    cur = match s.parse::<usize>() {
+                        Ok(i) => xs.get(i)?,
+                        Err(_) => xs.iter().find(|x| {
+                            x.as_object().is_some_and(|o| {
+                                o.values().any(|v| {
+                                    v.as_str().is_some_and(|t| {
+                                        ai::validator::evidence::path_segment(t) == s
+                                    })
+                                })
+                            })
+                        })?,
+                    };
+                    pat.push_str("[]");
+                }
+                _ => return None,
+            }
+        }
+        cur.is_number().then_some((pat, parent))
+    }
+
+    /// Q9: no number stored as a fraction renders bare. The schema says which leaves are
+    /// fractions (`0..1`, or `-1..1` for a score difference); a metric's own `unit: "rate"`
+    /// says it for the unit-dependent `value`/`low`/`high`/`bandMedian`. A new fraction field
+    /// fails here until the fixture covers it and the evidence marks it.
+    #[test]
+    fn every_fraction_path_of_the_schema_renders_as_a_percentage() {
+        let leaves = schema_leaves();
+        assert!(
+            leaves.contains_key("byColor.white.score.value"),
+            "{leaves:#?}"
+        );
+        assert!(
+            leaves.contains_key("weaknesses[].posteriorRate"),
+            "{leaves:#?}"
+        );
+        let fraction_leaf = |p: &str| matches!(leaves.get(p), Some((Some(lo), Some(hi))) if *hi == 1.0 && (*lo == 0.0 || *lo == -1.0));
+        // White and Black share one schema; the fixture's Black has no weakness rows.
+        let any_colour = |p: &str| p.replacen("byColor.black.", "byColor.white.", 1);
+        let wanted: BTreeSet<String> = leaves
+            .keys()
+            .filter(|p| fraction_leaf(p))
+            .map(|p| any_colour(p))
+            .collect();
+
+        let input = v2_input("b2-rapid");
+        let json = input.to_json();
+        let ev = build_evidence(&input);
+        let mut hit = BTreeSet::new();
+        let mut by_unit = 0;
+        let mut bad = Vec::new();
+        for path in ev.number_paths.keys() {
+            let Some((pat, parent)) = pattern_of(&json, path) else {
+                continue;
+            };
+            let field = path.rsplit('.').next().unwrap();
+            let rate_unit = parent.get("unit").and_then(Value::as_str) == Some("rate")
+                && ["value", "low", "high", "bandMedian"].contains(&field);
+            if !(fraction_leaf(&pat) || rate_unit) {
+                continue;
+            }
+            hit.insert(any_colour(&pat));
+            by_unit += usize::from(rate_unit);
+            if !ev.rate_paths.contains(path) {
+                bad.push(format!("{path}: not a rate path"));
+            }
+            for fmt in [Some(NumFormat::Dec1), Some(NumFormat::Dec2), None] {
+                let shown = format_num_at(&ev, path, fmt).unwrap();
+                if !shown.ends_with('%') {
+                    bad.push(format!("{path} ({fmt:?}) renders bare: {shown}"));
+                }
+            }
+        }
+        assert!(bad.is_empty(), "{bad:#?}");
+        let missing: Vec<_> = wanted.iter().filter(|p| !hit.contains(*p)).collect();
+        assert!(missing.is_empty(), "fixture covers no {missing:?}");
+        assert!(by_unit >= 4, "rate metrics and the colour score: {by_unit}");
     }
 
     #[test]

@@ -61,3 +61,31 @@ the owner's rapid benchmark found three errors:
   reference.
 - Rows for W5, W6 and W7.prep disappear from the stored benchmark at the next build.
 - Fewer opponents fall in the window, so some rows may become low-sample and uncompared.
+
+## Amendment 1 (2026-11-23): a rate row needs its chances; Both is not the colours' mean
+
+Final QA on the owner's data (items A12 and A13).
+
+1. **A12: a peer rate row needs the KPI's own minimum of chances.** `low_sample` counted
+   opponents only (fewer than `LOW_SAMPLE_PLAYERS`, 10), so a rate row pooled over 10 chances
+   was served. A peer rate row (`Weighting::Players`) is now also `low_sample` when its raw
+   chances in the window (`n_chances`, the count the web label names) are below the KPI
+   catalogue's `min_n` for the metric: the number of chances the player's own estimate needs
+   before it counts as sufficient (`n0(k)` for a weakness: W4.missed, W4.allowed, W7.traps and
+   W9b 40, W9a 30; base rates: blunders on a low clock 40, missed punishments 30, time trouble
+   and losses on time 20, endgame conversion and hold 15). The player is never compared on less
+   evidence than the player's own number needs. Mean rows keep the player rule, and the Lichess
+   band path (`Weighting::Games`) is unchanged. On the owner's rapid data, W4.missed White (31
+   chances) and Black (34) and endgame conversion Both (10) become uncompared at the next build.
+2. **A13: Both is not the chance-weighted mean of White and Black, by design.** The owner's rapid
+   `losses_on_time_rate` reads Both 0.16%, White 0.63%, Black 0%. The only loss on time in the
+   window is by one opponent faced 8 times, 4 with each colour. Each opponent weighs one game's
+   worth in each pool it is in (decision 1), so that event is 1/4 of a unit in White and 1/8 in
+   Both, and Both holds about twice White's units: Both ≈ White / 4, not White / 2. Re-pooling the
+   stored rows with SQL reproduced it (Both 0.0015, White 0.0059). The two pools use the same
+   denominators (recency-weighted chances per opponent game) and the same decay; when no opponent
+   is in both colour pools, Both is exactly the unit-weighted mean of the colours
+   (`both_weighs_an_opponent_once_however_many_colours_they_had`). An opponent is one player of
+   the Both pool however many colours they had, and one of each colour's pool: that is the rule
+   that stops a frequent opponent dominating, so it stays. The colour rows are the colour's own
+   comparison (ADR 0082), never a share of the Both one.
