@@ -3,6 +3,7 @@ import { cn } from "@ci/ui/lib";
 import { Button, touchTarget } from "@ci/ui/primitives";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { ScrollCue } from "../../../../components/scroll-cue";
 import { DateField } from "./date-field";
 import type { CustomCompare, CustomRange, FilterBarModel, LinkOption } from "./model";
 
@@ -33,26 +34,32 @@ const summaryChip = cn(
 );
 
 function Track({ options, label }: { options: LinkOption[]; label: string }) {
+  // A row wider than a phone scrolls sideways; its edges fade while there is more (audit A14).
   return (
-    <div className="max-w-full overflow-x-auto pointer-coarse:-my-1.5 pointer-coarse:py-1.5">
-      <ul aria-label={label} className={cn(track, "m-0 list-none")}>
-        {options.map((o) => (
-          <li key={o.href} className="flex">
-            <Link
-              href={o.href}
-              scroll={false}
-              aria-current={o.current ? "true" : undefined}
-              className={chip}
-            >
-              {o.label}
-              {o.count !== undefined ? (
-                <span className="font-normal tabular-nums text-ink-faint">{o.count}</span>
-              ) : null}
-            </Link>
-          </li>
-        ))}
-      </ul>
-    </div>
+    <ScrollCue current='[aria-current="true"]' className="min-w-0 max-w-full">
+      <div
+        data-scroller=""
+        className="max-w-full overflow-x-auto pointer-coarse:-my-1.5 pointer-coarse:py-1.5"
+      >
+        <ul aria-label={label} className={cn(track, "m-0 list-none")}>
+          {options.map((o) => (
+            <li key={o.href} className="flex">
+              <Link
+                href={o.href}
+                scroll={false}
+                aria-current={o.current ? "true" : undefined}
+                className={chip}
+              >
+                {o.label}
+                {o.count !== undefined ? (
+                  <span className="font-normal tabular-nums text-ink-faint">{o.count}</span>
+                ) : null}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </ScrollCue>
   );
 }
 

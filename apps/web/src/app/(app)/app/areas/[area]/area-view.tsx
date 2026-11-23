@@ -44,7 +44,7 @@ import { numbersOnlyCopy } from "../../report/notes-off";
 import { type ScoreBasis, shortfallUnit } from "./basis";
 import type { DayRange } from "../../../../../server/filters/params";
 import { datesNote } from "../../_filters/dates-note";
-import { ScrollCue } from "./scroll-cue";
+import { ScrollCue } from "../../../../../components/scroll-cue";
 
 // The skill-area page's layout, shared by all seven areas (one layout, no card grid, B4): a
 // heading with the area tabs, then ruled sections down one column. Score and the coach's note
