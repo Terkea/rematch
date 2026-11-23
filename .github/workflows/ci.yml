@@ -17,9 +17,10 @@ env:
 permissions:
   contents: read
 
-# A newer push to the same branch or PR cancels the run it supersedes.
+# A newer push to the same PR cancels the run it supersedes. Pushes to main get one group per
+# commit, so a later merge never cancels the run a release waits for (ADR 0098).
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'push' && github.sha || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -46,8 +47,16 @@ jobs:
         run: |
           node scripts/roadmap/render-readme.mjs --check
           node scripts/sweeps/test-sweeps.mjs
-      - name: One product version everywhere (root, web, Cargo; ADR 0095)
+      - name: One product version everywhere (root, web, Cargo, deploy/compose.yaml; ADR 0095)
         run: node scripts/test-versions.mjs
+      - name: Release pipeline logic (tags, CI gate, release compose, notes; ADR 0098)
+        run: node scripts/release/test-release.mjs
+      # actionlint 1.7.12 (with shellcheck), pinned by digest.
+      - name: Lint the workflows (actionlint)
+        run: >-
+          docker run --rm -v "$PWD:/repo" -w /repo
+          rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
+          -color
       - name: Build the images
         run: $COMPOSE build deps worker web
       - name: Install dependencies (frozen lockfile)

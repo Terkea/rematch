@@ -107,11 +107,14 @@ How a release happens:
    changelog reads for players.
 3. When the maintainer merges the release PR, release-please tags `v0.y.z` and publishes a GitHub
    Release, marked **prerelease** while the version is below 1.0.
+4. The `Release images` workflow then waits for CI to pass on the tagged commit, builds and
+   smoke-tests the images, pushes them to GHCR signed, and attaches the source and the
+   deployment files ([RELEASING.md](RELEASING.md), [ADR 0098](decisions/0098-release-images-signing-and-source-offer.md)).
 
 Notes for the maintainer:
 
-- The release workflow is the only one that writes, with its own `GITHUB_TOKEN`
-  (`contents: write`, `pull-requests: write`). GitHub does not run other workflows on a PR that
+- The release workflows are the only ones that write, with their own `GITHUB_TOKEN`
+  (`contents`, `pull-requests`, and `packages` for the images). GitHub does not run other workflows on a PR that
   token opens, so the required checks don't report on the release PR: merge it with the admin
   bypass, after the commits it lists passed CI on `main`.
 - The first release is 0.1.0 (`release-as` in the config, with the changelog starting after

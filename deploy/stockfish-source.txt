@@ -1,0 +1,8 @@
+# The corresponding source of the Stockfish 19 binary in the worker image (GPL-3.0-or-later),
+# attached to every GitHub release (ADR 0098). The binary is the official sf_19 release asset
+# stockfish-linux-x86-64-universal.tar.gz (backend/Dockerfile); it is built from the sf_19 tag
+# with the network below embedded. The release workflow downloads each file, checks its SHA-256
+# and fails if either has changed.
+# <sha256>  <file attached to the release>  <upstream URL>
+519b653d0d1ffb96531d982ccbe5c6a19425e8388e0e3c2f70f34b424ab32d76  stockfish-sf_19-source.tar.gz  https://github.com/official-stockfish/Stockfish/archive/refs/tags/sf_19.tar.gz
+1a298aa575a085434d29027978dc36867fe9c5bcea9376654b7a8eba1e52dfc2  nn-1a298aa575a0.nnue  https://github.com/official-stockfish/networks/raw/master/nn-1a298aa575a0.nnue

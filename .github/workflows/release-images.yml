@@ -1,0 +1,376 @@
+name: Release images
+# The release images and assets (ADR 0098). For a release tag vX.Y.Z:
+#   gate    the fast checks on the tagged commit, then a wait until CI passed on that same commit;
+#   images  builds web, worker and ai-sidecar (linux/amd64), smoke-tests them together through
+#           deploy/compose.yaml, then pushes them to GHCR with an SBOM and provenance, attests and
+#           signs them (keyless cosign);
+#   assets  the source tarballs (ours and Stockfish's), the digest-pinned compose.yaml,
+#           env.release.example, the SBOMs and SHA256SUMS;
+#   attach  uploads the assets to the GitHub Release and puts the header above its notes.
+#
+# Triggers:
+#   - workflow_call from release.yml, right after release-please publishes the Release. A Release
+#     created with a workflow's GITHUB_TOKEN never starts `release: published` runs, so this call
+#     is how an automatic release gets its images;
+#   - `release: published`, for a Release a person publishes (or re-publishes) by hand;
+#   - workflow_dispatch: a dry run on any ref. It builds and smoke-tests everything, keeps the
+#     assets as a workflow artifact, and pushes, signs and attaches nothing.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch, tag or commit to build (dry run, nothing is pushed)
+        required: true
+        default: main
+  workflow_call:
+    inputs:
+      tag:
+        description: The release tag, vX.Y.Z
+        required: true
+        type: string
+
+# Every job states its own permissions.
+permissions: {}
+
+concurrency:
+  group: release-images-${{ inputs.tag || github.event.release.tag_name || inputs.ref }}
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: read
+    outputs:
+      publish: ${{ steps.what.outputs.publish }}
+      ref: ${{ steps.what.outputs.ref }}
+      sha: ${{ steps.sha.outputs.sha }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: What to build
+        id: what
+        env:
+          CALL_TAG: ${{ inputs.tag }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          DISPATCH_REF: ${{ inputs.ref }}
+        run: |
+          if [ -n "$CALL_TAG" ]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"; echo "ref=$CALL_TAG" >> "$GITHUB_OUTPUT"
+          elif [ -n "$RELEASE_TAG" ]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"; echo "ref=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=false" >> "$GITHUB_OUTPUT"; echo "ref=$DISPATCH_REF" >> "$GITHUB_OUTPUT"
+            echo "::notice::Dry run of $DISPATCH_REF: nothing is pushed, signed or attached."
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.what.outputs.ref }}
+          persist-credentials: false
+      - name: The commit
+        id: sha
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - name: The tag matches package.json, Cargo and deploy/compose.yaml
+        id: version
+        env:
+          PUBLISH: ${{ steps.what.outputs.publish }}
+          REF: ${{ steps.what.outputs.ref }}
+        run: |
+          if [ "$PUBLISH" = true ]; then
+            version=$(node scripts/release/release.mjs check-tag "$REF")
+          else
+            version=$(node -p 'require("./package.json").version')
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Fast checks on the tagged commit
+        run: |
+          node scripts/test-versions.mjs
+          node scripts/github/test-settings.mjs
+          node scripts/release/test-release.mjs
+      # The full gate (e2e, Rust, the schema checks) already ran on this commit: merging the
+      # release PR pushed it to main, and CI runs on every push to main. This waits for that run
+      # and fails unless every required check succeeded on this exact SHA.
+      - name: CI passed on this commit
+        if: steps.what.outputs.publish == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ steps.sha.outputs.sha }}
+        run: node scripts/release/release.mjs ci-gate "$REPO" "$SHA" 150
+
+  images:
+    needs: gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    env:
+      PUBLISH: ${{ needs.gate.outputs.publish }}
+      VERSION: ${{ needs.gate.outputs.version }}
+      REF: ${{ needs.gate.outputs.ref }}
+      SHA: ${{ needs.gate.outputs.sha }}
+      SOURCE_URL: ${{ github.server_url }}/${{ github.repository }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.gate.outputs.sha }}
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        if: env.PUBLISH == 'true'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Image tags
+        id: tags
+        if: env.PUBLISH == 'true'
+        run: |
+          for image in web worker ai-sidecar; do
+            echo "$image=$(node scripts/release/release.mjs tags "$REF" "ghcr.io/terkea/rematch-$image")" >> "$GITHUB_OUTPUT"
+          done
+
+      # 1. Build each image into the runner's Docker for the smoke test. amd64 only: the Stockfish
+      #    asset and checksum in backend/Dockerfile are the x86-64 build (ADR 0098).
+      - name: Build web
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          target: runtime
+          platforms: linux/amd64
+          load: true
+          provenance: false
+          tags: rematch-local-web:${{ env.VERSION }}
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,scope=web,mode=max
+      - name: Build worker
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: backend/Dockerfile
+          target: worker
+          platforms: linux/amd64
+          load: true
+          provenance: false
+          tags: rematch-local-worker:${{ env.VERSION }}
+          cache-from: type=gha,scope=worker
+          cache-to: type=gha,scope=worker,mode=max
+      - name: Build ai-sidecar
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: services/ai-sidecar/Dockerfile
+          target: runtime
+          platforms: linux/amd64
+          load: true
+          provenance: false
+          tags: rematch-local-ai-sidecar:${{ env.VERSION }}
+          cache-from: type=gha,scope=ai-sidecar
+          cache-to: type=gha,scope=ai-sidecar,mode=max
+
+      # 2. The three images together through deploy/compose.yaml: /api/health, worker --version,
+      #    every migration applied, the licence files, the sidecar healthy.
+      - name: Smoke test
+        run: sh scripts/release/smoke.sh rematch-local "$VERSION" --with-ai
+
+      # 3. Push the same builds (every layer is a cache hit) with an SBOM and max provenance.
+      - name: Push web
+        id: push-web
+        if: env.PUBLISH == 'true'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          target: runtime
+          platforms: linux/amd64
+          push: true
+          sbom: true
+          provenance: mode=max
+          tags: ${{ steps.tags.outputs.web }}
+          labels: |
+            org.opencontainers.image.title=rematch-web
+            org.opencontainers.image.description=Rematch, chess improver: the web app
+            org.opencontainers.image.source=${{ env.SOURCE_URL }}
+            org.opencontainers.image.url=${{ env.SOURCE_URL }}
+            org.opencontainers.image.version=${{ env.VERSION }}
+            org.opencontainers.image.revision=${{ env.SHA }}
+            org.opencontainers.image.licenses=AGPL-3.0-only
+          cache-from: type=gha,scope=web
+      - name: Push worker
+        id: push-worker
+        if: env.PUBLISH == 'true'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: backend/Dockerfile
+          target: worker
+          platforms: linux/amd64
+          push: true
+          sbom: true
+          provenance: mode=max
+          tags: ${{ steps.tags.outputs.worker }}
+          labels: |
+            org.opencontainers.image.title=rematch-worker
+            org.opencontainers.image.description=Rematch, chess improver: the analysis worker, with Stockfish 19
+            org.opencontainers.image.source=${{ env.SOURCE_URL }}
+            org.opencontainers.image.url=${{ env.SOURCE_URL }}
+            org.opencontainers.image.version=${{ env.VERSION }}
+            org.opencontainers.image.revision=${{ env.SHA }}
+            org.opencontainers.image.licenses=AGPL-3.0-only AND GPL-3.0-or-later
+          cache-from: type=gha,scope=worker
+      - name: Push ai-sidecar
+        id: push-ai-sidecar
+        if: env.PUBLISH == 'true'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: services/ai-sidecar/Dockerfile
+          target: runtime
+          platforms: linux/amd64
+          push: true
+          sbom: true
+          provenance: mode=max
+          tags: ${{ steps.tags.outputs.ai-sidecar }}
+          labels: |
+            org.opencontainers.image.title=rematch-ai-sidecar
+            org.opencontainers.image.description=Rematch, chess improver: the Claude Agent SDK sidecar
+            org.opencontainers.image.source=${{ env.SOURCE_URL }}
+            org.opencontainers.image.url=${{ env.SOURCE_URL }}
+            org.opencontainers.image.version=${{ env.VERSION }}
+            org.opencontainers.image.revision=${{ env.SHA }}
+            org.opencontainers.image.licenses=AGPL-3.0-only
+          cache-from: type=gha,scope=ai-sidecar
+
+      # 4. GitHub build provenance (gh attestation verify) and a keyless cosign signature
+      #    (cosign verify), both bound to this workflow's OIDC identity.
+      - name: Attest web
+        if: env.PUBLISH == 'true'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ghcr.io/terkea/rematch-web
+          subject-digest: ${{ steps.push-web.outputs.digest }}
+          push-to-registry: true
+      - name: Attest worker
+        if: env.PUBLISH == 'true'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ghcr.io/terkea/rematch-worker
+          subject-digest: ${{ steps.push-worker.outputs.digest }}
+          push-to-registry: true
+      - name: Attest ai-sidecar
+        if: env.PUBLISH == 'true'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ghcr.io/terkea/rematch-ai-sidecar
+          subject-digest: ${{ steps.push-ai-sidecar.outputs.digest }}
+          push-to-registry: true
+      - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+        if: env.PUBLISH == 'true'
+      - name: Sign, then export the SBOMs and digests
+        env:
+          WEB: ${{ steps.push-web.outputs.digest }}
+          WORKER: ${{ steps.push-worker.outputs.digest }}
+          AI_SIDECAR: ${{ steps.push-ai-sidecar.outputs.digest }}
+        run: |
+          mkdir -p out
+          if [ "$PUBLISH" != true ]; then
+            # Dry run: the local image ids stand in for digests, so the assets job still renders.
+            image_id() { docker image inspect --format '{{.Id}}' "rematch-local-$1:$VERSION"; }
+            WEB=$(image_id web); WORKER=$(image_id worker); AI_SIDECAR=$(image_id ai-sidecar)
+          fi
+          printf '{"web":"%s","worker":"%s","ai-sidecar":"%s"}\n' "$WEB" "$WORKER" "$AI_SIDECAR" > out/digests.json
+          cat out/digests.json
+          [ "$PUBLISH" = true ] || exit 0
+          for pair in "web=$WEB" "worker=$WORKER" "ai-sidecar=$AI_SIDECAR"; do
+            image=${pair%%=*}; digest=${pair#*=}
+            ref="ghcr.io/terkea/rematch-$image@$digest"
+            cosign sign --yes "$ref"
+            # buildx stores the SPDX SBOM in the image index; the release attaches a copy.
+            docker buildx imagetools inspect "$ref" --format '{{ json .SBOM }}' \
+              | jq 'if has("SPDX") then .SPDX else (to_entries[0].value.SPDX) end' \
+              > "out/rematch-$image-$VERSION.spdx.json"
+            jq -e '.spdxVersion' "out/rematch-$image-$VERSION.spdx.json" > /dev/null
+          done
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: images
+          path: out/
+          retention-days: 30
+
+  assets:
+    needs: [gate, images]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      PUBLISH: ${{ needs.gate.outputs.publish }}
+      VERSION: ${{ needs.gate.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.gate.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: images
+          path: images
+      - name: Build the release assets
+        run: |
+          mkdir dist
+          # Our corresponding source (AGPL section 6 and 13): the tree of the tagged commit.
+          git archive --format=tar.gz --prefix="rematch-$VERSION/" \
+            -o "dist/rematch-$VERSION-source.tar.gz" HEAD
+          # Stockfish's (GPL-3.0): the sf_19 source and the network the binary embeds, each
+          # checked against deploy/stockfish-source.txt.
+          node scripts/release/release.mjs fetch-stockfish-source dist
+          cp deploy/stockfish-source.txt deploy/env.release.example dist/
+          node scripts/release/release.mjs render-compose "$VERSION" images/digests.json dist/compose.yaml
+          if [ "$PUBLISH" = true ]; then cp images/*.spdx.json dist/; fi
+          (cd dist && sha256sum -- * > SHA256SUMS && cat SHA256SUMS)
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-assets
+          path: dist/
+          retention-days: 30
+
+  attach:
+    needs: [gate, assets]
+    if: needs.gate.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      TAG: ${{ needs.gate.outputs.ref }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.gate.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-assets
+          path: dist
+      - name: Attach the assets (re-runs replace them)
+        run: gh release upload "$TAG" dist/* --clobber --repo "$REPO"
+      - name: The header above release-please's notes
+        run: |
+          gh release view "$TAG" --repo "$REPO" --json body --jq .body > body.md
+          node scripts/release/release.mjs notes "$TAG" "$REPO" body.md notes.md
+          gh release edit "$TAG" --repo "$REPO" --notes-file notes.md

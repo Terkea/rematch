@@ -6,6 +6,19 @@ use worker::start::{StartOptions, start_workers};
 
 #[tokio::main]
 async fn main() {
+    // Configuration is the environment; the only argument is --version (the release smoke test,
+    // ADR 0098), answered before the environment is read.
+    if let Some(arg) = std::env::args().nth(1) {
+        if arg == "--version" || arg == "-V" {
+            println!("worker {}", env!("CARGO_PKG_VERSION"));
+            return;
+        }
+        eprintln!(
+            "worker: unknown argument {arg:?}; it is configured by environment variables and \
+             takes only --version"
+        );
+        std::process::exit(2);
+    }
     worker::logging::init();
     // Before the (possibly slow) startup: a SIGTERM meanwhile is handled once the worker runs.
     let signals = signals();

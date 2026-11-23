@@ -60,3 +60,4 @@ TypeScript monorepo (pnpm workspaces + Turborepo, Node 22, ESM only). Packages u
 - Spec: `docs/superpowers/specs/2026-11-21-chess-improver-design.md`
 - Roadmap and plans: `docs/superpowers/`
 - Research: `docs/research/`
+- Releases (images, signing, the GPL source, upgrades): `docs/RELEASING.md`, ADR 0098. Release tests: `node scripts/release/test-release.mjs`; smoke test of built images: `sh scripts/release/smoke.sh <prefix> <version>`.

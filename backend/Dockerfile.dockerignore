@@ -3,4 +3,6 @@
 *
 !backend/
 !db/
+!LICENSE
+!NOTICE
 backend/target/

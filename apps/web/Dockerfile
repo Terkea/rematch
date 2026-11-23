@@ -28,6 +28,8 @@ ENV NODE_ENV=production \
 WORKDIR /app
 COPY --from=build --chown=node:node /app/apps/web/.next/standalone ./
 COPY --from=build --chown=node:node /app/apps/web/.next/static ./apps/web/.next/static
+# The licence and third-party notices (ADR 0098), readable in every published image.
+COPY LICENSE NOTICE /usr/share/doc/rematch/
 USER node
 EXPOSE 3100
 CMD ["node", "apps/web/server.js"]

@@ -1,0 +1,5 @@
+# The release smoke test's override (scripts/release/smoke.sh): no host ports, so it runs beside
+# any other stack on the machine. Compose 2.24+ (!reset).
+services:
+  web:
+    ports: !reset []
