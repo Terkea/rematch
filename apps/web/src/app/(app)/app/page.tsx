@@ -12,11 +12,15 @@ import { leadFinding, peerHeadline, resolveCoachScope } from "../../../server/pr
 import { gameStats, scopeOfFilters } from "../../../server/stats/game-stats";
 import { loadPeriodComparison } from "../../../server/stats/period-compare";
 import { getSyncStatus } from "../../../server/sync";
+import { dayOf, isSourceKey } from "../../../server/train/model";
+import { loadPractiseToday } from "../../../server/train/store";
 import { loadTrajectory } from "../../../server/trajectory/load";
 import { compareView } from "./_filters/compare-view";
-import { FilterBar } from "./_filters/filter-bar";
+import { FilterBar, TimeControlSwitch } from "./_filters/filter-bar";
 import { loadFilterBar } from "./_filters/load";
 import { colourSplitView } from "./_overview/colour-split-view";
+import { PractiseCard } from "./_overview/practise-card";
+import { practiseView } from "./_overview/practise-view";
 import { OverviewSheet } from "./_overview/sheet";
 import { chooseTimeClass, knownTimeClass, REVEAL_COOKIE, toOverviewView } from "./_overview/view";
 import { TrajectoryCard } from "./_trajectory/card";
@@ -26,12 +30,14 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: "Overview" };
 
 /**
- * The overview (`/app?tc=<timeClass>`): the signed-in player's analysed games. A server component;
- * only the trend is a client island, and it gets a narrow view model. No `tc`, or an unknown or
- * unanalysed one, shows the default class, rapid when there is rapid (I8); `?tc=all` is every
- * class. The shared filter bar (T3, ADR 0083) adds format, colour, dates and the period
- * comparison: they drive the White | Black row and the comparison, read through `gameStats`.
- * `LiveRefresh` re-renders it as the worker analyses more games.
+ * The overview (`/app?tc=<timeClass>`): the signed-in player's analysed games, as a focused flow
+ * (ADR 0092): where you are, this week's focus, practise today, how you're doing, then Details. A
+ * server component; only the trend is a client island, and it gets a narrow view model. No `tc`,
+ * or an unknown or unanalysed one, shows the default class, rapid when there is rapid (I8);
+ * `?tc=all` is every class. The time control scopes the whole page; the rest of the shared filter
+ * bar (T3, ADR 0083), format, colour, dates and the period comparison, scopes Details: a filtered
+ * White | Black row and the comparison, read through `gameStats`. `LiveRefresh` re-renders it as
+ * the worker analyses more games.
  */
 export default async function OverviewPage({
   searchParams,
@@ -72,12 +78,17 @@ export default async function OverviewPage({
   const f = { ...bar.filters, tc };
   // With no analysed game the page is an empty state: nothing to split or compare.
   const ready = overview.timeClasses.length > 0;
-  const [stats, compared] = ready
+  // The summary's White | Black covers the whole time control, like the headline beside it; the
+  // filters beyond the class get their own row in Details.
+  const filtered = f.fmt !== null || f.color !== "both" || f.from !== null || f.to !== null;
+  const whole = { ...f, fmt: null, color: "both" as const, from: null, to: null };
+  const [stats, filteredStats, compared] = ready
     ? await Promise.all([
-        gameStats(db, user.id, scopeOfFilters(f)),
+        gameStats(db, user.id, scopeOfFilters(whole)),
+        filtered ? gameStats(db, user.id, scopeOfFilters(f)) : null,
         loadPeriodComparison(db, user.id, f, now),
       ])
-    : [null, null];
+    : [null, null, null];
   const basis = tc ? tc : "";
   // The headline's peer comparison (Q1): only for one account's one time class, which is what a
   // peer benchmark covers; "All" or several accounts pool games no benchmark was built for.
@@ -92,18 +103,38 @@ export default async function OverviewPage({
     ? (coach ?? (await resolveCoachScope(db, user.id, tc ? { tc } : {})))
     : null;
   const focus = focusScope ? await getFocusCard(db, user.id, focusScope) : null;
+  // The one practise call (ADR 0092): today's trainer session, kept to the focus's source.
+  const focusSource =
+    focus?.kind === "active" && isSourceKey(focus.focus.seriesKey) ? focus.focus.seriesKey : null;
+  const practise = focusScope
+    ? await loadPractiseToday(db, user.id, focusScope, { source: focusSource, now })
+    : null;
   return (
     <>
       <LiveRefresh accountIds={accountIds} />
       <OverviewSheet
         view={toOverviewView(overview, tc)}
-        filterBar={<FilterBar model={bar.model} />}
-        colourSplit={stats ? colourSplitView(stats, f.color, basis) : null}
+        timeControl={<TimeControlSwitch model={bar.model} />}
+        filterBar={<FilterBar model={bar.model} timeControl={false} />}
+        colourSplit={stats ? colourSplitView(stats, "both", basis) : null}
+        filteredSplit={filteredStats ? colourSplitView(filteredStats, f.color, basis) : null}
         compare={compared ? compareView(compared) : null}
         filtersNote={filtersNote(f)}
         reveal={reveal}
         peer={peer}
-        focus={focus ? <FocusCard card={focus} /> : null}
+        focus={focus ? <FocusCard card={focus} practise={false} /> : null}
+        focusSeries={
+          focus?.kind === "active"
+            ? focus.focus.seriesKey
+            : focus?.kind === "suggest"
+              ? focus.suggestion.seriesKey
+              : null
+        }
+        practise={
+          practise && focusScope ? (
+            <PractiseCard view={practiseView(practise, focusScope, dayOf(now))} />
+          ) : null
+        }
         trajectory={
           trajectory && own ? (
             <TrajectoryCard
@@ -127,5 +158,5 @@ function filtersNote(f: {
   to: string | null;
 }) {
   if (f.fmt === null && f.color === "both" && f.from === null && f.to === null) return null;
-  return "Format, colour and dates apply to the colour split and the comparison. The headline and charts below cover every analysed game of the time control.";
+  return "Format, colour and dates apply to the colour split and the comparison here. The summary above and the charts below cover every analysed game of the time control.";
 }

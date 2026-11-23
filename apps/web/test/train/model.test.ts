@@ -14,6 +14,7 @@ import {
   type MotifCounts,
   NEW_PER_DAY,
   patternFound,
+  practiseToday,
   primarySource,
   type QueueItem,
   type Schedule,
@@ -318,5 +319,86 @@ describe("patternFound", () => {
 describe("addDays", () => {
   it("adds whole UTC days", () => {
     expect(addDays("2026-12-31", 1)).toBe("2027-01-01");
+  });
+});
+
+describe("practiseToday", () => {
+  const today = "2026-11-23";
+  const item = (i: number, over: Partial<QueueItem> = {}): QueueItem => ({
+    id: `p-${String(i).padStart(3, "0")}`,
+    sourceKey: "blunder",
+    sourceKeys: ["blunder"],
+    dueOn: null,
+    introducedOn: null,
+    heldOut: false,
+    retired: false,
+    playedAt: new Date(Date.UTC(2026, 9, 1) + i * 864e5),
+    ...over,
+  });
+  const base = { today, attemptedToday: 0, introducedToday: 0, seed: "u1", source: null };
+
+  it("is a first run before the trainer has made any item", () => {
+    expect(practiseToday([], base)).toEqual({ kind: "first-run" });
+  });
+
+  it("counts today's session, the same items the trainer serves", () => {
+    const items = [
+      item(1, { dueOn: "2026-11-22", introducedOn: "2026-11-01" }),
+      item(2, { dueOn: "2026-11-30", introducedOn: "2026-11-01" }),
+      item(3),
+    ];
+    expect(practiseToday(items, base)).toEqual({ kind: "due", count: 2, source: null });
+  });
+
+  it("keeps the focus source when it has items, and falls back to every source when not", () => {
+    const items = [
+      item(1, { sourceKey: "W4.missed", sourceKeys: ["W4.missed", "blunder"] }),
+      item(2),
+      item(3),
+    ];
+    expect(practiseToday(items, { ...base, source: "W4.missed" })).toEqual({
+      kind: "due",
+      count: 1,
+      source: "W4.missed",
+    });
+    expect(practiseToday(items, { ...base, source: "W7.traps" })).toEqual({
+      kind: "due",
+      count: 3,
+      source: null,
+    });
+  });
+
+  it("is done for today with the next due day when nothing is left", () => {
+    const items = [
+      item(1, { dueOn: "2026-11-24", introducedOn: "2026-11-20" }),
+      item(2, { dueOn: "2026-11-30", introducedOn: "2026-11-20" }),
+    ];
+    expect(practiseToday(items, { ...base, attemptedToday: 2 })).toEqual({
+      kind: "done",
+      next: "2026-11-24",
+      doneToday: 2,
+    });
+  });
+
+  it("says tomorrow when today's caps hold back items that are waiting", () => {
+    const fresh = Array.from({ length: 3 }, (_, i) => item(i));
+    expect(practiseToday(fresh, { ...base, introducedToday: NEW_PER_DAY })).toEqual({
+      kind: "done",
+      next: "2026-11-24",
+      doneToday: 0,
+    });
+    const due = [item(9, { dueOn: "2026-11-23", introducedOn: "2026-11-01" })];
+    expect(practiseToday(due, { ...base, attemptedToday: DAILY_CAP })).toMatchObject({
+      kind: "done",
+      next: "2026-11-24",
+    });
+  });
+
+  it("has no next day when every item is retired or held out", () => {
+    const items = [
+      item(1, { retired: true, introducedOn: "2026-10-01" }),
+      item(2, { heldOut: true }),
+    ];
+    expect(practiseToday(items, base)).toEqual({ kind: "done", next: null, doneToday: 0 });
   });
 });

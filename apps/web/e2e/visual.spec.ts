@@ -40,6 +40,7 @@ const SECTIONS = [
   "coach",
   "position-explorer",
   "profile",
+  "focus",
 ] as const;
 
 /** Visible text, one line per line, trailing spaces dropped: what a reader sees. */

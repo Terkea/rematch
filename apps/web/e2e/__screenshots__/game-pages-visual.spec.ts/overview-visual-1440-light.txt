@@ -15,6 +15,57 @@ Bullet
 1
 All
 34
+A focus for this week
+Missing a short tactic
+
+Get it down to 13.5% of your chances over your next 20 rapid games, from 18.0% now.
+
+That is 22 of 120 chances in the last 6 months. The target is a quarter fewer.
+
+Length
+20 games
+Make this my focus
+Choose another
+Practise
+Start training
+
+Practise positions from your own rapid games where you missed a win or a mate, or blundered. Up to 12 a session, about 10 to 15 minutes.
+
+How you're doing
+
+Across 34 analysed games your accuracy averages , with  blunders a game.
+
+Accuracy 80% likely between 65.1% and 71.2%. Blunders 80% likely between 1.2 and 1.8.
+
+In a typical game you make about 1.5 blunders (moves that cost 15 win% points or more), likely between 1.3 and 1.8. Not compared with other players yet.
+
+By colour
+White
+23 games
+Accuracy
+68.8%
+80% range 65.3% to 72.4%, 22 analysed games
+Blunders per game
+1.55 a game
+80% range 1.2 to 1.9, 22 analysed games
+Score
+43.5%
+7 wins, 6 draws, 10 losses
+Black
+12 games
+Accuracy
+67.0%
+80% range 60.9% to 72.8%, 12 analysed games
+Blunders per game
+1.50 a game
+80% range 1.0 to 2.0, 12 analysed games
+Score
+58.3%
+6 wins, 2 draws, 4 losses
+Details
+
+The numbers behind the summary, with filters for a closer look.
+
 Colour
 Both
 White
@@ -28,43 +79,6 @@ All time
 Custom
 Compare periods
 Compare periods
-
-Across 34 analysed games your accuracy averages , with  blunders a game.
-
-Accuracy 80% likely between 65.1% and 71.2%. Blunders 80% likely between 1.2 and 1.8.
-
-In a typical game you make about 1.5 blunders (moves that cost 15 win% points or more), likely between 1.3 and 1.8. Not compared with players at your level yet.
-
-By colour
-White
-23 games
-Accuracy
-68.8%
-80% range 65.6% to 72.3%, 22 analysed games
-Blunders per game
-1.55 a game
-80% range 1.2 to 1.9, 22 analysed games
-Score
-43.5%
-7 wins, 6 draws, 10 losses
-Black
-12 games
-Accuracy
-67.0%
-80% range 61.5% to 73.0%, 12 analysed games
-Blunders per game
-1.50 a game
-80% range 1.0 to 2.0, 12 analysed games
-Score
-58.3%
-6 wins, 2 draws, 4 losses
-What to work on
-Missed own tactic (shallow)
-
-Estimated 18.0% of chances (80% range 15.0% to 22.0%), from 22 of 120 in the last 6 months.
-
-Based on 15 analysed rapid games on chess.com.
-
 Accuracy over time
 
 How close your moves were to the engine's best moves, as a score out of 100.
@@ -119,6 +133,8 @@ Lower is better
 
 Mistakes
 
+How many mistakes you made in an average game: moves that cost a lot, short of a blunder.
+
 Based on 34 analysed games
 
 First
@@ -134,6 +150,8 @@ Lower is better
 80% likely between 1.2 and 1.8
 
 Inaccuracies
+
+How many small slips you made in an average game: moves a little worse than the best one.
 
 Based on 34 analysed games
 

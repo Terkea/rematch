@@ -125,17 +125,21 @@ function Body({
   model: m,
   idPrefix,
   colorNote,
+  timeControl,
 }: {
   model: FilterBarModel;
   idPrefix: string;
   colorNote: string;
+  timeControl: boolean;
 }) {
   const id = (s: string) => `${idPrefix}-${s}`;
   return (
     <div className="flex flex-col gap-4 md:flex-row md:flex-wrap md:items-start md:gap-x-8 md:gap-y-4">
-      <Group id={id("tc")} label="Time control">
-        <Track label="Time control" options={m.timeClass} />
-      </Group>
+      {timeControl ? (
+        <Group id={id("tc")} label="Time control">
+          <Track label="Time control" options={m.timeClass} />
+        </Group>
+      ) : null}
       {m.format ? (
         <Group id={id("fmt")} label="Format">
           <Track label="Format" options={m.format} />
@@ -190,16 +194,39 @@ function Body({
 }
 
 /**
+ * The time control on its own, for a page where it scopes everything and the rest of the bar
+ * scopes one part (the overview, ADR 0092). Its links keep the other filters.
+ */
+export function TimeControlSwitch({ model }: { model: FilterBarModel }) {
+  if (model.timeClass.length === 0) return null;
+  return (
+    <nav
+      aria-labelledby="time-control-label"
+      className="flex flex-wrap items-center gap-x-3 gap-y-1.5"
+    >
+      <span id="time-control-label" className={groupLabel}>
+        Time control
+      </span>
+      <Track label="Time controls" options={model.timeClass} />
+    </nav>
+  );
+}
+
+/**
  * The bar. `colorNote` is the honest line a page shows where its stored data has no colour split
  * yet (ADR 0082). From `md` the groups sit in one wrapping row; below it one disclosure holds them.
  */
 export function FilterBar({
   model,
   colorNote = "These numbers cover both colours.",
+  timeControl = true,
 }: {
   model: FilterBarModel;
   colorNote?: string;
+  /** False leaves the time control out (shown on its own by `TimeControlSwitch`). */
+  timeControl?: boolean;
 }) {
+  const summary = timeControl ? model.summary : model.filtersSummary || "None set";
   return (
     <section aria-label="Filters" data-filter-bar="">
       <details className="group md:hidden">
@@ -215,7 +242,7 @@ export function FilterBar({
           <span className="shrink-0 font-sans text-base font-medium text-ink">
             Filters{m(model)}
           </span>
-          <span className="min-w-0 flex-1 truncate text-sm text-ink-soft">{model.summary}</span>
+          <span className="min-w-0 flex-1 truncate text-sm text-ink-soft">{summary}</span>
           <Icon
             icon={CaretDownIcon}
             size={20}
@@ -223,11 +250,11 @@ export function FilterBar({
           />
         </summary>
         <div className="pt-4">
-          <Body model={model} idPrefix="fb-m" colorNote={colorNote} />
+          <Body model={model} idPrefix="fb-m" colorNote={colorNote} timeControl={timeControl} />
         </div>
       </details>
       <div className="hidden md:block">
-        <Body model={model} idPrefix="fb-d" colorNote={colorNote} />
+        <Body model={model} idPrefix="fb-d" colorNote={colorNote} timeControl={timeControl} />
       </div>
     </section>
   );

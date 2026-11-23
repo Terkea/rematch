@@ -153,7 +153,14 @@ function SuggestionBody({ s, action }: { s: Suggestion; action: string }) {
   );
 }
 
-export function FocusCard({ card }: { card: FocusCardModel }) {
+export function FocusCard({
+  card,
+  practise = true,
+}: {
+  card: FocusCardModel;
+  /** "Practise this" beside the controls; off where the page has its own practise call. */
+  practise?: boolean;
+}) {
   switch (card.kind) {
     case "active": {
       const { focus: f, progress: p } = card;
@@ -181,7 +188,7 @@ export function FocusCard({ card }: { card: FocusCardModel }) {
             </p>
           </div>
           <div className="flex flex-wrap items-end gap-x-4 gap-y-3">
-            <Practise seriesKey={f.seriesKey} />
+            {practise ? <Practise seriesKey={f.seriesKey} /> : null}
             <ActiveFocusControls timeClass={f.timeClass} gamesN={f.gamesN} />
           </div>
         </Sheet>

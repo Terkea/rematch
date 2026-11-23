@@ -92,19 +92,38 @@ describe("TrajectorySection", () => {
 });
 
 describe("TrajectoryCard", () => {
-  it("states the headline and links to what changed on Progress", () => {
-    render(<TrajectoryCard view={view()} href="/app/progress?tc=rapid" />);
-    const card = screen.getByRole("region", { name: "Rating trajectory" });
+  // The overview opens on it (ADR 0092): where you are now, the peak against now, and Progress.
+  it("leads the overview with the current rating, the headline and a link to Progress", () => {
+    const { container } = render(<TrajectoryCard view={view()} href="/app/progress?tc=rapid" />);
+    const card = screen.getByRole("region", { name: "Where you are" });
+    const now = card.querySelector('[data-part="rating-now"]');
+    expect(now?.textContent).toBe("816");
+    expect(card).toHaveTextContent("Rapid rating now");
     expect(within(card).getByText(/peaked at 1,080/)).toBeTruthy();
+    expect(card).toHaveTextContent("Based on 100 rated rapid games.");
     const link = within(card).getByRole("link", { name: "See what changed" });
     expect(link.getAttribute("href")).toBe("/app/progress?tc=rapid");
+    expect(container.textContent).not.toMatch(BAD);
   });
 
-  it("renders nothing below the minimum, so the overview stays as it was", () => {
-    const t = computeTrajectory({ games: [], current: null, stats: [], weaknesses: [], seed: "s" });
+  it("says how many more rated games it needs below the minimum, with no number", () => {
+    const t = computeTrajectory({
+      games: [{ id: "a", playedAt: new Date(START), rating: 900 }],
+      current: null,
+      stats: [],
+      weaknesses: [],
+      seed: "s",
+    });
     const { container } = render(
-      <TrajectoryCard view={trajectoryView(t, "rapid")} href="/app/progress" />,
+      <TrajectoryCard view={trajectoryView(t, "rapid")} href="/app/progress?tc=rapid" />,
     );
-    expect(container.innerHTML).toBe("");
+    const card = screen.getByRole("region", { name: "Where you are" });
+    expect(card).toHaveTextContent(/appears after 20 rated rapid games: 19 more to go/);
+    expect(card.querySelector('[data-part="rating-now"]')).toBeNull();
+    expect(within(card).getByRole("link", { name: "See your progress" })).toHaveAttribute(
+      "href",
+      "/app/progress?tc=rapid",
+    );
+    expect(container.textContent).not.toMatch(BAD);
   });
 });

@@ -4,12 +4,29 @@ What has changed in your games, week by week. Based on 15 analysed rapid games.
 
 Filters
 Rapid
+Rating trajectory
+
+Where your rating has been, its peak, and how your play then compares with now.
+
+Your rating trajectory appears after 20 rated rapid games: 3 more to go.
+
+A focus for this week
+Missing a short tactic
+
+Get it down to 13.5% of your chances over your next 20 rapid games, from 18.0% now.
+
+That is 22 of 120 chances in the last 6 months. The target is a quarter fewer.
+
+Length
+20 games
+Make this my focus
+Choose another
 Before and after
 
 Your rate either side of each change the detector has called.
 
-Endgame technique (basics): 14.0% before, 9.0% after, detected improving on 15 Oct 2026
-Endgame technique (basics): 14.0% before, 9.0% after, detected improving on 15 Oct 2026
+Basic endgames: 14.0% before, 9.0% after, detected improving on 15 Oct 2026
+Basic endgames: 14.0% before, 9.0% after, detected improving on 15 Oct 2026
 
 In a basic endgame you made a move that changed a win into a draw, or a draw into a loss.
 After: 6 of 70 chances since the change point
@@ -86,7 +103,7 @@ Lost positions saved
 How often you avoid losing after reaching a clearly losing position.
 No games with a lost position yet.
 On a low clock
-Blunder rate on a low clock
+Blunders on a low clock
 How often your moves go badly wrong when you are nearly out of time.
 No low-clock moves yet.
 Punishing mistakes
@@ -107,11 +124,11 @@ Onset, with its likely range
 
 Hover, tap or use the arrow keys to read a state's dates.
 
-Missed own tactic (shallow)
+Missing a short tactic
 Now active
-Hung material
+Leaving pieces hanging
 Now active
-Endgame technique (basics)
+Basic endgames
 Now improving
 Earlier
 Sep 2026

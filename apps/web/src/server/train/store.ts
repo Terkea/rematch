@@ -2,7 +2,7 @@ import { fenKey } from "@ci/chess-core";
 import type { Db } from "@ci/db";
 import { drillAttempts, drillItems, games, moves } from "@ci/db/generated";
 import { Chess } from "chess.js";
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 import { readOnly, scopedAccountIds } from "../games";
 import type { CoachScope } from "../profile/types";
 import {
@@ -21,7 +21,9 @@ import {
   keepCandidate,
   type MotifCounts,
   type MultipvLine,
+  type PractiseToday,
   patternFound,
+  practiseToday,
   primarySource,
   type QueueItem,
   type Rate,
@@ -421,6 +423,74 @@ export async function loadTrainPage(
         patterns: { since, drilled, heldOut: held, verdict: verdictOf(held, drilled) },
       },
     };
+  });
+}
+
+/**
+ * The overview's "Practise today" (ADR 0092): today's session size for the scope, read only. It
+ * adds no items (the trainer does on its visit), so a scope with none yet is a first run. Null
+ * when the scope is not the user's.
+ */
+export async function loadPractiseToday(
+  db: Db,
+  userId: string,
+  scope: Pick<CoachScope, "accountId" | "timeClass">,
+  o: { source: SourceKey | null; now: Date },
+): Promise<PractiseToday | null> {
+  return readOnly(db, async (tx) => {
+    if (!(await owns(tx, userId, scope.accountId))) return null;
+    const today = dayOf(o.now);
+    const items = await tx
+      .select({
+        id: drillItems.id,
+        sourceKey: drillItems.sourceKey,
+        sourceKeys: drillItems.sourceKeys,
+        dueOn: drillItems.dueOn,
+        introducedOn: drillItems.introducedOn,
+        heldOut: drillItems.heldOut,
+        retiredAt: drillItems.retiredAt,
+        playedAt: games.playedAt,
+      })
+      .from(drillItems)
+      .innerJoin(games, eq(games.id, drillItems.gameId))
+      .where(
+        and(
+          eq(drillItems.userId, userId),
+          eq(drillItems.accountId, scope.accountId),
+          eq(drillItems.timeClass, scope.timeClass),
+        ),
+      );
+    const ids = items.map((i) => i.id);
+    const [row] =
+      ids.length === 0
+        ? [{ n: 0 }]
+        : await tx
+            .select({ n: sql<number>`count(distinct ${drillAttempts.itemId})::int` })
+            .from(drillAttempts)
+            .where(
+              and(
+                eq(drillAttempts.userId, userId),
+                inArray(drillAttempts.itemId, ids),
+                gte(drillAttempts.at, startOfDay(today)),
+              ),
+            );
+    const queue: QueueItem[] = items.map((i) => ({
+      id: i.id,
+      sourceKey: isSourceKey(i.sourceKey) ? i.sourceKey : "blunder",
+      sourceKeys: i.sourceKeys.filter(isSourceKey),
+      dueOn: i.dueOn,
+      introducedOn: i.introducedOn,
+      heldOut: i.heldOut,
+      retired: i.retiredAt !== null,
+      playedAt: i.playedAt,
+    }));
+    return practiseToday(queue, {
+      today,
+      attemptedToday: Number(row?.n ?? 0),
+      introducedToday: items.filter((i) => i.introducedOn === today).length,
+      seed: userId,
+      source: o.source,
+    });
   });
 }
 

@@ -3,7 +3,8 @@ import { adultPage, seedFixtures } from "./support/game-pages";
 import { gotoSettled } from "./support/mail";
 
 // The weekly focus (ADR 0091): "Make this my focus" on a weakness page sets it, the overview
-// opens on its card (name, goal, games bar, rate against the target, Practise this), and Clear
+// opens on its card (name, goal, games bar, rate against the target) with the practise call under
+// it, and Clear
 // focus takes it away. On the e2e-fixtures coach seed (synthetic): W3.shallow has 22 of 120
 // chances.
 
@@ -52,9 +53,12 @@ test("setting a focus on a weakness page puts its card on the overview", async (
     card.getByRole("progressbar", { name: "Games played in this focus" }),
   ).toHaveAttribute("aria-valuemax", "20");
   await expect(card).toContainText("Too early to tell: 10 more chances");
-  await expect(card.getByRole("link", { name: "Practise this" })).toHaveAttribute(
+  // The overview's one practise call (ADR 0092) follows the focus's source.
+  await expect(card.getByRole("link", { name: "Practise this" })).toHaveCount(0);
+  const practise = page.getByRole("region", { name: "Practise" });
+  await expect(practise.getByRole("link").first()).toHaveAttribute(
     "href",
-    "/app/train?source=W3.shallow",
+    /^\/app\/train\?account=[^&]+&tc=rapid(&source=W3\.shallow)?$/,
   );
   expect(await card.textContent()).not.toMatch(/NaN|undefined|Infinity/);
 
@@ -65,6 +69,26 @@ test("setting a focus on a weakness page puts its card on the overview", async (
       await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
       await page.evaluate(() => document.fonts.ready);
       await card.screenshot({ path: `../../.shots/focus/card-${width}-${theme}.png` });
+    }
+  }
+  // The whole overview (ADR 0092): one tall viewport per capture, once the trend has drawn
+  // ("Tried and rejected": a full-page capture caught it mid-measure).
+  for (const theme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: theme, reducedMotion: "reduce" });
+    for (const width of [1440, 390]) {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+      await page.screenshot({ path: `../../.shots/overview/first-${width}-${theme}.png` });
+      const height = await page.evaluate(() => document.documentElement.scrollHeight);
+      await page.setViewportSize({ width, height });
+      await page.evaluate(() => document.fonts.ready);
+      await expect(page.locator("[data-chart='trend'] svg[role='img']")).toBeVisible();
+      await page.waitForTimeout(500);
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        ),
+      ).toBeLessThanOrEqual(0);
+      await page.screenshot({ path: `../../.shots/overview/${width}-${theme}.png` });
     }
   }
   await page.emulateMedia({ colorScheme: "light" });

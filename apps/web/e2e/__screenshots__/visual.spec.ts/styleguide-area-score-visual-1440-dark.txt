@@ -5,6 +5,7 @@ Each area on one shared ruler, scaled to these scores: your score against the me
 Replay draw
 Your score
 Band median
+Distance to the band median
 Next band
 40
 60

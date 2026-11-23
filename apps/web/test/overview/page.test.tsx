@@ -3,10 +3,11 @@ import { render, screen, within } from "@testing-library/react";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { compareView } from "../../src/app/(app)/app/_filters/compare-view.js";
 import { AccuracySection } from "../../src/app/(app)/app/_overview/accuracy-section.js";
+import type { ColourSplitView } from "../../src/app/(app)/app/_overview/colour-split-view.js";
 import { OverviewEmpty } from "../../src/app/(app)/app/_overview/empty-state.js";
 import { JudgementsSection } from "../../src/app/(app)/app/_overview/judgements-section.js";
 import { RecentSection } from "../../src/app/(app)/app/_overview/recent-section.js";
-import { OverviewSheet } from "../../src/app/(app)/app/_overview/sheet.js";
+import { OverviewSheet, showWorkOn } from "../../src/app/(app)/app/_overview/sheet.js";
 import { StatusLine } from "../../src/app/(app)/app/_overview/status-line.js";
 import { TimeClassSection } from "../../src/app/(app)/app/_overview/time-class-section.js";
 import { TimeClassSwitch } from "../../src/app/(app)/app/_overview/time-class-switch.js";
@@ -18,6 +19,7 @@ import {
 } from "../../src/app/(app)/app/_overview/view.js";
 import type { TimeClass } from "../../src/server/games/types.js";
 import { getOverview } from "../../src/server/overview/index.js";
+import type { LeadFinding } from "../../src/server/profile/types.js";
 import type { GameStatRow } from "../../src/server/stats/game-stats.js";
 import { comparePeriodRows } from "../../src/server/stats/period-compare.js";
 import {
@@ -93,10 +95,20 @@ async function viewFor(tc: TimeClass | null = null) {
 const BAD = /NaN|undefined|Infinity/;
 
 describe("overview page sections", () => {
-  // Critic 4: an active comparison sits right under the filter bar, not 1,100 px down on a phone.
-  it("puts the comparison right under the filter bar when one is active", async () => {
-    await seed(await linked(), 30);
-    const view = await viewFor();
+  const split = (games: string): ColourSplitView => {
+    const cell = { value: "64.2%", detail: "80% range 61.0% to 67.0%, 10 analysed games" };
+    const col = (key: "white" | "black") => ({
+      key,
+      label: key === "white" ? "White" : "Black",
+      games,
+      accuracy: cell,
+      blunders: cell,
+      score: cell,
+    });
+    return { columns: [col("white"), col("black")] };
+  };
+
+  async function compareFixture() {
     const stat = (n: number): GameStatRow[] =>
       Array.from({ length: n }, (_, i) => ({
         id: `g${i}`,
@@ -110,7 +122,7 @@ describe("overview page sections", () => {
         inaccuracies: 1,
         phaseAccuracy: { opening: null, middlegame: null, endgame: null },
       }));
-    const compare = compareView({
+    return compareView({
       periods: {
         a: { kind: "days", from: "2026-09-01", to: "2026-09-30" },
         b: { kind: "days", from: "2026-10-01", to: "2026-10-31" },
@@ -118,18 +130,125 @@ describe("overview page sections", () => {
       spans: { a: null, b: null },
       comparison: comparePeriodRows(stat(20), stat(20), "t"),
     });
+  }
+
+  // ADR 0092: trend, this week's focus, practise, how you're doing, then the detail.
+  it("orders the page: where you are, focus, practise, how you're doing, then details", async () => {
+    await seed(await linked(), 30);
+    const view = await viewFor();
+    const { container } = render(
+      <OverviewSheet
+        view={view}
+        reveal={false}
+        trajectory={<section data-slot="trajectory-card" />}
+        focus={<section data-slot="focus" />}
+        practise={<section data-slot="practise" />}
+        timeControl={<nav data-testid="tc" />}
+        filterBar={<div data-testid="bar" />}
+        colourSplit={split("30 rapid games")}
+      />,
+    );
+    const order = [
+      ...container.querySelectorAll(
+        "[data-testid], [data-slot], #how-heading, #details-heading, #accuracy-heading",
+      ),
+    ].map((el) => el.getAttribute("data-slot") ?? el.getAttribute("data-testid") ?? el.id);
+    expect(order.filter((x) => !["meaning", "work-on"].includes(x))).toEqual([
+      "tc",
+      "trajectory-card",
+      "focus",
+      "practise",
+      "how-heading",
+      "colour-split",
+      "details-heading",
+      "bar",
+      "accuracy-heading",
+    ]);
+    // The detail sits inside its own section, under one clear heading.
+    const details = screen.getByRole("region", { name: "Details" });
+    for (const h of ["Accuracy over time", "Mistakes per game", "By time control", "Recent games"])
+      expect(within(details).getByRole("heading", { name: h })).toBeInTheDocument();
+    expect(within(details).getByRole("heading", { name: "What to work on" })).toBeInTheDocument();
+    const how = screen.getByRole("region", { name: "How you're doing" });
+    expect(within(how).queryByRole("heading", { name: "Accuracy over time" })).toBeNull();
+  });
+
+  // The focus card above already names the lead weakness, with its rate: no second card for it.
+  it("leaves out 'What to work on' when it names the weekly focus's weakness", async () => {
+    await seed(await linked(), 12);
+    const view = await viewFor();
+    const lead = {
+      kind: "weakness",
+      scope: {},
+      weakness: { seriesKey: "W3.shallow" },
+    } as unknown as LeadFinding;
+    expect(showWorkOn(lead, "W3.shallow")).toBe(false);
+    expect(showWorkOn(lead, "W4.missed")).toBe(true);
+    expect(showWorkOn(lead, null)).toBe(true);
+    expect(showWorkOn({ kind: "building" }, "W3.shallow")).toBe(true);
+    render(
+      <OverviewSheet
+        view={view}
+        reveal={false}
+        lead={{ kind: "building" }}
+        focusSeries="W3.shallow"
+      />,
+    );
+    expect(screen.getByRole("heading", { name: "What to work on" })).toBeInTheDocument();
+  });
+
+  // Critic 4: an active comparison sits right under the filter bar, not 1,100 px down on a phone.
+  it("puts the comparison right under the filter bar when one is active", async () => {
+    await seed(await linked(), 30);
+    const view = await viewFor();
     const { container } = render(
       <OverviewSheet
         view={view}
         reveal={false}
         filterBar={<div data-testid="bar" />}
-        compare={compare}
+        compare={await compareFixture()}
       />,
     );
-    const order = [...container.querySelectorAll("[data-testid='bar'], [data-slot]")].map(
+    const details = container.querySelector("[aria-labelledby='details-heading']") as Element;
+    const order = [...details.querySelectorAll("[data-testid='bar'], [data-slot]")].map(
       (el) => el.getAttribute("data-slot") ?? "bar",
     );
     expect(order.slice(0, 2)).toEqual(["bar", "compare"]);
+  });
+
+  it("shows the filtered White | Black under the filter bar only when filters are set", async () => {
+    await seed(await linked(), 30);
+    const view = await viewFor();
+    const { container, rerender } = render(
+      <OverviewSheet
+        view={view}
+        reveal={false}
+        filterBar={<div data-testid="bar" />}
+        colourSplit={split("30 rapid games")}
+        filteredSplit={split("12 rapid games")}
+        filtersNote="These filters apply to the White | Black split and the comparison here."
+      />,
+    );
+    const details = container.querySelector("[aria-labelledby='details-heading']") as Element;
+    const filtered = details.querySelector("[data-slot='colour-split-filtered']");
+    expect(filtered).toHaveTextContent("12 rapid games");
+    expect(
+      within(filtered as HTMLElement).getByRole("heading", {
+        name: "By colour, with these filters",
+      }),
+    ).toBeInTheDocument();
+    const top = screen.getByRole("region", { name: "How you're doing" });
+    expect(top.querySelector("[data-slot='colour-split']")).toHaveTextContent("30 rapid games");
+    rerender(
+      <OverviewSheet
+        view={view}
+        reveal={false}
+        filterBar={<div data-testid="bar" />}
+        colourSplit={split("30 rapid games")}
+        filteredSplit={null}
+      />,
+    );
+    expect(container.querySelector("[data-slot='colour-split-filtered']")).toBeNull();
   });
 
   it("renders a one-game account without NaN", async () => {

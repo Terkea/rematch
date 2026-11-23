@@ -327,7 +327,7 @@ Ask your coach about premature attacks
 6
 Tilt after a loss
 
-You went wrong in a position where most players at your level find a good move.
+You went wrong in a position where most players of your rating find a good move.
 
 Improving
 Estimated 12.0% of chances (80% range 10.0% to 28.0%), from 24 of 140.

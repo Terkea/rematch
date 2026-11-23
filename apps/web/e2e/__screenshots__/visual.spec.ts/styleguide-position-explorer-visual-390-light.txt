@@ -1,0 +1,45 @@
+Position explorer
+
+One cited position, anywhere a page names a move: the small board with the move played and the engine's better move. Expand it (or click the board) to step through the game around it with the buttons or the arrow keys, switch to the engine's stored line, or try moves of your own. Moves you try are never given an evaluation: no engine checks them here.
+
+??
+Red arrow from e4 to d2
+Red ?? on d2
+Played, Nd2
+??
+Expand
+Open the game at 28. Nd2
+Green arrow from e2 to e4
+Grey arrow from d2 to d4
+Played, d4
+Better, e4
+Expand
+Open the game at 1. d4
+Props
+
+From @ci/ui/position-explorer. The coach's answers use it through CitedBoard; weakness examples and the strengths page use it through GamePosition (components/game-position.tsx).
+
+gameId
+The game as loadLine knows it: the review's game id (games.id) in the web app.
+ply
+The cited move's ply (1 is White's first move).
+fenBefore
+The position before the cited move.
+played
+{ san, uci } of the move played: a pen arrow for the player's mistake, else pencil.
+best
+{ san, uci } of the engine's better move, or null: a good arrow.
+orientation
+The player's side; the expanded board can be flipped.
+label
+The cited move as notation, 28. Nd2 or 28… Nd2.
+mistake
+The player's own mistake or blunder.
+found
+The move played was the engine's own (a strength): a good arrow with a ! badge, named in the key.
+href
+The review at that ply: Open the game, and Open full game. Without one there is no link.
+loadLine
+(gameId, ply) => Promise<PositionLine | null>, called once on first expand. The web app passes fetchPositionLine (lib/position-line.ts, GET /api/games/<id>/line?ply=N).
+line
+The expanded data when the host already has it (no fetch).

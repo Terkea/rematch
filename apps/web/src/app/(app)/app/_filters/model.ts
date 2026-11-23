@@ -75,6 +75,8 @@ export type FilterBarModel = {
   active: number;
   /** The filters in words ("Rapid, 10+0, Black, last 30 days"). */
   summary: string;
+  /** The summary without the time control, for a bar shown without it (ADR 0092). */
+  filtersSummary: string;
 };
 
 const ALL = "all";
@@ -278,5 +280,6 @@ export function filterBarModel(f: StatsFilters, cfg: BarConfig): FilterBarModel 
     compare,
     active,
     summary: words.join(", "),
+    filtersSummary: words.slice(1).join(", "),
   };
 }

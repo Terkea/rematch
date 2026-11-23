@@ -93,6 +93,7 @@ One file per decision: context, decision, alternatives, consequences. New decisi
 - [0086. The coach reads a coaching-input snapshot written at every profile build](0086-coaching-input-snapshot-per-profile-build.md)
 - [0091. A weekly focus with a measurable goal](0091-weekly-focus-and-goal.md)
 - [0089. The rating trajectory, and then against now](0089-rating-trajectory-and-then-vs-now.md)
+- [0092. A focused overview: trend, focus, practise, then the detail](0092-focused-overview.md)
 
 ## Records with placeholder numbers
 

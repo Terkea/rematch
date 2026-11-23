@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { type CoachScope, resolveCoachScope } from "../../src/server/profile";
 import { isHeldOut } from "../../src/server/train/model";
 import {
+  loadPractiseToday,
   loadTrainPage,
   practiseCount,
   recordAttempt,
@@ -316,5 +317,47 @@ describe("a session", () => {
       after: { chances: 0 },
       verdict: "too_early",
     });
+  });
+});
+
+describe("loadPractiseToday", () => {
+  it("is a first run before the trainer made items, then counts today's session", async () => {
+    const scope = await scopeOf(userId);
+    const o = { source: null, now: NOW };
+    expect(await loadPractiseToday(db, userId, scope, o)).toEqual({ kind: "first-run" });
+    await refreshItems(db, userId, scope);
+    await noHoldout(userId);
+    expect(await loadPractiseToday(db, userId, scope, o)).toEqual({
+      kind: "due",
+      count: 2,
+      source: null,
+    });
+    expect(await loadPractiseToday(db, userId, scope, { source: "W4.missed", now: NOW })).toEqual({
+      kind: "due",
+      count: 1,
+      source: "W4.missed",
+    });
+  });
+
+  it("is done for today after the session, with tomorrow next", async () => {
+    const scope = await scopeOf(userId);
+    await refreshItems(db, userId, scope);
+    await noHoldout(userId);
+    for (const it of await itemsOf(userId)) {
+      const uci = it.fen === MATE_FEN ? "h2h3" : "a2a3";
+      await recordAttempt(db, userId, { itemId: it.id, uci, confidence: "guess", ms: 1 }, NOW);
+    }
+    expect(await loadPractiseToday(db, userId, scope, { source: null, now: NOW })).toEqual({
+      kind: "done",
+      next: "2026-11-24",
+      doneToday: 2,
+    });
+  });
+
+  it("reads nothing for a scope that is not the user's", async () => {
+    const other = (await createTestSession(db)).user.id;
+    expect(
+      await loadPractiseToday(db, other, await scopeOf(userId), { source: null, now: NOW }),
+    ).toBeNull();
   });
 });

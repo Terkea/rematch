@@ -67,6 +67,15 @@ describe("FocusCard", () => {
     expect(card.textContent).not.toMatch(/NaN|undefined|Infinity/);
   });
 
+  // The overview has one call to action, its own "Practise today" (ADR 0092).
+  it("leaves out Practise this where the page has its own practise call", () => {
+    const progress = focusProgress({ k: 1, n: 6, games: 7, gamesN: 20, target: 0.15 });
+    render(<FocusCard card={{ kind: "active", focus, progress }} practise={false} />);
+    const card = screen.getByRole("region", { name: "This week's focus" });
+    expect(within(card).queryByRole("link", { name: "Practise this" })).toBeNull();
+    expect(within(card).getByRole("button", { name: "Clear focus" })).toBeInTheDocument();
+  });
+
   it("offers the suggestion with its target and why", () => {
     render(<FocusCard card={{ kind: "suggest", suggestion }} />);
     const card = screen.getByRole("region", { name: "A focus for this week" });
