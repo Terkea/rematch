@@ -171,7 +171,7 @@ function Placeholder({ ticks, y }: { ticks: number[]; y: (r: number) => number }
           style={{ top: y(t) }}
         >
           <span
-            className="shrink-0 pr-1.5 text-right font-sans text-xs text-ink-faint tabular-nums"
+            className="shrink-0 pr-1.5 text-right font-sans text-xs text-ink-faint proportional-nums lining-nums"
             style={{ width: LEFT }}
           >
             {count.format(t)}
@@ -304,7 +304,7 @@ export function RatingTrajectory({
               aria-label={label}
               width={width}
               height={TREND_HEIGHT}
-              className="absolute inset-0 block overflow-visible"
+              className="absolute inset-0 block overflow-visible proportional-nums lining-nums"
             >
               {geo.spans.map((s, i) => (
                 <g key={`${s.label}-${s.from}`} data-part="window">
@@ -339,7 +339,7 @@ export function RatingTrajectory({
                     x={LEFT - 6}
                     y={y(t) + 4}
                     textAnchor="end"
-                    className="fill-ink-faint font-sans text-xs tabular-nums"
+                    className="fill-ink-faint font-sans text-xs proportional-nums lining-nums"
                   >
                     {count.format(t)}
                   </text>
@@ -359,7 +359,7 @@ export function RatingTrajectory({
                   x={t.anchor === "middle" ? Math.min(Math.max(t.x, LEFT + 18), width - 24) : t.x}
                   y={plotBottom + 18}
                   textAnchor={t.anchor}
-                  className="fill-ink-faint font-sans text-xs tabular-nums"
+                  className="fill-ink-faint font-sans text-xs proportional-nums lining-nums"
                 >
                   {t.text}
                 </text>
@@ -400,7 +400,7 @@ export function RatingTrajectory({
                 x={geo.peakAt.x + (peakAnchor === "start" ? 8 : peakAnchor === "end" ? -8 : 0)}
                 y={Math.max(TOP + 12, geo.peakAt.y - 12)}
                 textAnchor={peakAnchor}
-                className="fill-ink font-sans text-xs font-medium tabular-nums"
+                className="fill-ink font-sans text-xs font-medium proportional-nums lining-nums"
                 style={{ paintOrder: "stroke", stroke: SURFACE, strokeWidth: 4 }}
               >
                 {peak.label}
@@ -413,7 +413,7 @@ export function RatingTrajectory({
                 x={geo.end.x - 8}
                 y={geo.end.y > plotBottom - 20 ? geo.end.y - 10 : geo.end.y + 18}
                 textAnchor="end"
-                className="fill-ink font-sans text-xs font-medium tabular-nums"
+                className="fill-ink font-sans text-xs font-medium proportional-nums lining-nums"
                 style={{ paintOrder: "stroke", stroke: SURFACE, strokeWidth: 4 }}
               >
                 {current.label}
@@ -454,7 +454,7 @@ export function RatingTrajectory({
               <div
                 data-part="readout"
                 aria-hidden="true"
-                className="pointer-events-none absolute top-0 rounded-field border border-rule-strong bg-sheet px-2 py-1 font-sans text-xs text-ink tabular-nums shadow-lift"
+                className="pointer-events-none absolute top-0 rounded-field border border-rule-strong bg-sheet px-2 py-1 font-sans text-xs text-ink proportional-nums lining-nums shadow-lift"
                 style={{
                   left: Math.min(Math.max(shown.x - 60, 0), Math.max(0, width - 120)),
                 }}

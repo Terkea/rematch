@@ -119,6 +119,20 @@ describe("RatingTrajectory", () => {
     expect(container.textContent).not.toMatch(/NaN|undefined|Infinity/);
   });
 
+  it("sets chart figures proportional and lining, so commas keep their own width", async () => {
+    const { container } = render(<RatingTrajectory {...props()} />);
+    await nextFrame();
+    const texts = [...container.querySelectorAll("svg text")];
+    expect(texts.length).toBeGreaterThan(0);
+    const svgClass = container.querySelector("svg")?.getAttribute("class") ?? "";
+    expect(svgClass).toContain("proportional-nums");
+    expect(svgClass).toContain("lining-nums");
+    for (const t of texts) expect(t.getAttribute("class")).not.toContain("tabular-nums");
+    expect(
+      container.querySelector("[data-part='trajectory-placeholder'] .tabular-nums"),
+    ).toBeNull();
+  });
+
   it("shades and names the two compared windows", async () => {
     const { container } = render(<RatingTrajectory {...props()} />);
     await nextFrame();

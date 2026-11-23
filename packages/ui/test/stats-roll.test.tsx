@@ -17,6 +17,10 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+/** The animated roll only; the hidden accessible copy always holds the final value. */
+const flowText = () =>
+  document.querySelector("[data-part=stat-text]")?.previousElementSibling?.textContent;
+
 describe("Stat first-view roll", () => {
   it("rolls up from zero when its reveal wrapper is still hidden", async () => {
     vi.useFakeTimers();
@@ -26,11 +30,11 @@ describe("Stat first-view roll", () => {
       </div>,
     );
     await act(async () => {});
-    expect(document.body.textContent).toBe("0");
+    expect(flowText()).toBe("0");
     await act(async () => {
       vi.advanceTimersByTime(400);
     });
-    expect(document.body.textContent).toContain("0.661");
+    expect(flowText()).toContain("0.661");
   });
 
   it("shows the value straight away when the wrapper is already visible", async () => {
@@ -40,6 +44,6 @@ describe("Stat first-view roll", () => {
       </div>,
     );
     await act(async () => {});
-    expect(document.body.textContent).toBe("0.661");
+    expect(flowText()).toBe("0.661");
   });
 });
