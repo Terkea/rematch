@@ -81,7 +81,7 @@ export default async function OverviewPage({
   const coach =
     ready && tc && accountIds.length === 1 ? await resolveCoachScope(db, user.id, { tc }) : null;
   const peer = coach && coach.timeClass === tc ? await peerHeadline(db, user.id, coach) : null;
-  // The weekly focus (ADR 0090) of the class shown, on the default account; "All" shows rapid's.
+  // The weekly focus (ADR 0091) of the class shown, on the default account; "All" shows rapid's.
   const focusScope = ready
     ? (coach ?? (await resolveCoachScope(db, user.id, tc ? { tc } : {})))
     : null;

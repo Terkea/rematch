@@ -2,7 +2,7 @@ import type { Db } from "@ci/db";
 import { gameMetrics, weaknessSeriesPoint } from "@ci/db/generated";
 import { seedSyntheticGame } from "./games";
 
-// Test-only writers for the weekly focus (ADR 0090). Every row is synthetic.
+// Test-only writers for the weekly focus (ADR 0091). Every row is synthetic.
 
 export const DAY = 86_400_000;
 /** A Thursday: the focus tests start here. */

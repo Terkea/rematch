@@ -21,7 +21,7 @@ import {
 
 export * from "./goal";
 
-// The weekly focus and goal (ADR 0090): one weakness series per user and time class, with a
+// The weekly focus and goal (ADR 0091): one weakness series per user and time class, with a
 // target rate per chance over the next N analysed games. Progress is read live from
 // `weakness_series_point`; the row is closed once its N games exist. Every read and write is the
 // user's own: rows are found by `user_id`, and an account must be one of the user's links.
@@ -432,10 +432,41 @@ export type FocusWeekLine = {
   games: number;
   rate: number | null;
   interval: Interval | null;
+  /**
+   * The days in the week the player practised in the trainer (its `drill_attempts`), the
+   * process before the outcome; null where the trainer's tables do not exist.
+   */
+  practiceSessions: number | null;
 };
 
+/** Whether the trainer's tables exist in this database (they come with the trainer lane). */
+async function hasTrainer(tx: Db): Promise<boolean> {
+  const [row] = await tx.execute<{ ok: boolean }>(
+    sql`select to_regclass('public.drill_attempts') is not null and to_regclass('public.drill_items') is not null as ok`,
+  );
+  return row?.ok === true;
+}
+
+/** Distinct UTC days in `[from, to)` with a trainer attempt on the target's positions. */
+async function practiceDays(
+  tx: Db,
+  userId: string,
+  target: { accountId: string; timeClass: TimeClass },
+  from: Date,
+  to: Date,
+): Promise<number> {
+  const [row] = await tx.execute<{ n: number }>(
+    sql`select count(distinct (a.at at time zone 'UTC')::date)::int as n
+      from drill_attempts a join drill_items i on i.id = a.item_id
+      where a.user_id = ${userId} and i.user_id = ${userId}
+        and i.account_id = ${target.accountId} and i.time_class = ${target.timeClass}
+        and a.at >= ${from.toISOString()} and a.at < ${to.toISOString()}`,
+  );
+  return row?.n ?? 0;
+}
+
 /**
- * "Your focus this week" for each weekly review (ADR 0090): the focus that ran during the week
+ * "Your focus this week" for each weekly review (ADR 0091): the focus that ran during the week
  * starting on each Monday (`YYYY-MM-DD`), with its own games' counts in that week. A week before
  * any focus, or with none of a focus's games, gets no line. Only the user's own focuses of the
  * target's account and time class are read.
@@ -474,6 +505,7 @@ export async function focusWeekLinesIn(
     )
     .orderBy(desc(focuses.startedAt));
   if (rows.length === 0) return out;
+  const trainer = await hasTrainer(tx);
   for (const week of weekStarts) {
     const from = new Date(`${week}T00:00:00Z`);
     if (Number.isNaN(from.getTime())) continue;
@@ -493,6 +525,7 @@ export async function focusWeekLinesIn(
       games: c.games,
       rate: c.chances > 0 ? c.events / c.chances : null,
       interval: wilson(c.events, c.chances, 0.8),
+      practiceSessions: trainer ? await practiceDays(tx, userId, target, from, to) : null,
     });
   }
   return out;

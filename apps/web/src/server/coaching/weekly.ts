@@ -13,7 +13,7 @@ export type WeeklyReviewView = {
   droppedCount: number;
   aiDisclosure: AiDisclosure | null;
   /**
-   * "Your focus this week" (ADR 0090): computed from the week's games of the focus that ran in
+   * "Your focus this week" (ADR 0091): computed from the week's games of the focus that ran in
    * it, never written by the model; null for a week with no focus or none of its games.
    */
   focus: FocusWeekLine | null;

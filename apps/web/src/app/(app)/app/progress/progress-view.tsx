@@ -471,7 +471,7 @@ export function ProgressView({
   focus,
 }: {
   view: ProgressViewModel;
-  /** The weekly focus card (ADR 0090) of this scope. */
+  /** The weekly focus card (ADR 0091) of this scope. */
   focus?: ReactNode;
   scopeSwitch?: ReactNode;
   /** Period A against period B for the game-level stats, when the URL asks for it (T3). */

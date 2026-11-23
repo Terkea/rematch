@@ -45,7 +45,7 @@ export async function postFocus(target: FocusTarget, gamesN: number): Promise<bo
 }
 
 /**
- * "Make this my focus" (ADR 0090): makes the weakness the focus of its time class over the next
+ * "Make this my focus" (ADR 0091): makes the weakness the focus of its time class over the next
  * `gamesN` games, replacing a running one. The target is the server's, from the current estimate.
  * When the weakness already is the focus it says so instead.
  */

@@ -48,7 +48,7 @@ async function read<T>(req: Request, schema: z.ZodType<T>) {
 }
 
 /**
- * "Make this my focus" (ADR 0090): 201 `{ focus }`. The target is chosen here from the
+ * "Make this my focus" (ADR 0091): 201 `{ focus }`. The target is chosen here from the
  * weakness's current estimate; a client's own target is ignored. 404 for an account that is not
  * the user's or a weakness its scope has no estimate for, 422 when its rate cannot go down.
  */

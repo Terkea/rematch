@@ -52,7 +52,7 @@ export function OverviewSheet({
   filtersNote?: string | null;
   /** The players faced, for the headline's comparison (Q1); null without a peer benchmark. */
   peer?: HeadlinePeer | null;
-  /** The weekly focus card (ADR 0090), first on the page. */
+  /** The weekly focus card (ADR 0091), first on the page. */
   focus?: ReactNode;
 }) {
   return (

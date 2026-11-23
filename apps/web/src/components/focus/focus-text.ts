@@ -82,6 +82,27 @@ export function weekLineText(l: {
   targetRate: number;
   rate: number | null;
   interval: Interval | null;
+  practiceSessions?: number | null;
+}): string {
+  return `${practiceText(l.practiceSessions)}${outcomeLine(l)}`;
+}
+
+/** "Practice: 2 sessions. ", the process first; empty without the trainer. */
+function practiceText(n: number | null | undefined): string {
+  if (!fin(n) || n < 0) return "";
+  return n === 0
+    ? "No practice sessions this week. "
+    : `Practice: ${plural(n, "session", "sessions")}. `;
+}
+
+function outcomeLine(l: {
+  label: string;
+  events: number;
+  chances: number;
+  games: number;
+  targetRate: number;
+  rate: number | null;
+  interval: Interval | null;
 }): string {
   const games = plural(l.games, "game", "games");
   if (l.chances <= 0 || l.rate === null) {

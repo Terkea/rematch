@@ -369,6 +369,7 @@ describe("progress page", () => {
       games: 2,
       rate: 1 / 6,
       interval: { low: 0.05, high: 0.4, level: 0.8 as const },
+      practiceSessions: null,
     };
     const { container } = show(
       input({ weekly: [review({ status: "pending", content: null, aiDisclosure: null, focus })] }),

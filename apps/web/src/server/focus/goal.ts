@@ -1,6 +1,6 @@
 import { type Interval, wilson } from "../stats/wilson";
 
-// The weekly focus's arithmetic (ADR 0090): how its target is chosen and how its progress is
+// The weekly focus's arithmetic (ADR 0091): how its target is chosen and how its progress is
 // judged. Pure, so the rules are tested apart from the database.
 
 /** The default length of a focus, in analysed games. */

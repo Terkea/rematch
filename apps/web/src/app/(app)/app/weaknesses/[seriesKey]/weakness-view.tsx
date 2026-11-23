@@ -663,7 +663,7 @@ export function WeaknessView({
   filterBar,
   focusAction,
 }: Props & {
-  /** "Make this my focus" (ADR 0090), under what to do. */
+  /** "Make this my focus" (ADR 0091), under what to do. */
   focusAction?: ReactNode;
   notes: ChangeNoteView[];
   /** What the comparison was made with (ADR 0080); null without a peer benchmark. */

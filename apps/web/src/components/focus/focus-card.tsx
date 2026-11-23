@@ -1,5 +1,6 @@
 import { Button } from "@ci/ui/primitives";
 import Link from "next/link";
+import { useId } from "react";
 import type { FocusCard as FocusCardModel, Suggestion } from "../../server/focus";
 import type { Progress } from "../../server/focus/goal";
 import type { TimeClass } from "../../server/games/types";
@@ -15,7 +16,7 @@ import {
   verdictText,
 } from "./focus-text";
 
-// The weekly focus card (ADR 0090): the one thing to work on this week, its goal and whether it
+// The weekly focus card (ADR 0091): the one thing to work on this week, its goal and whether it
 // is working. A plain sheet (no coloured border, B10); the verdict is a pill whose wording
 // carries the meaning, never its colour. Exported for the overview and the progress page.
 
@@ -40,7 +41,8 @@ export const practiseHref = (seriesKey: string) =>
 const colourNote = (side: Side) =>
   side === "white" ? " Your White games only." : side === "black" ? " Your Black games only." : "";
 
-function Sheet({ id, title, children }: { id: string; title: string; children: React.ReactNode }) {
+function Sheet({ title, children }: { title: string; children: React.ReactNode }) {
+  const id = useId();
   return (
     <section
       aria-labelledby={id}
@@ -156,7 +158,7 @@ export function FocusCard({ card }: { card: FocusCardModel }) {
     case "active": {
       const { focus: f, progress: p } = card;
       return (
-        <Sheet id="focus-heading" title="This week's focus">
+        <Sheet title="This week's focus">
           <Name label={f.label} href={weaknessHref(f.seriesKey, f)} />
           <p className="m-0 max-w-prose text-base text-ink [font-variant-numeric:lining-nums]">
             {goalText({
@@ -189,7 +191,7 @@ export function FocusCard({ card }: { card: FocusCardModel }) {
       const { focus: f, progress: p, next } = card;
       const outcome = p.outcome ?? "inconclusive";
       return (
-        <Sheet id="focus-heading" title="Your last focus">
+        <Sheet title="Your last focus">
           <Name label={f.label} href={weaknessHref(f.seriesKey, f)} />
           <div className="flex flex-col gap-2">
             <Pill
@@ -213,13 +215,13 @@ export function FocusCard({ card }: { card: FocusCardModel }) {
     }
     case "suggest":
       return (
-        <Sheet id="focus-heading" title="A focus for this week">
+        <Sheet title="A focus for this week">
           <SuggestionBody s={card.suggestion} action="Make this my focus" />
         </Sheet>
       );
     case "elsewhere":
       return (
-        <Sheet id="focus-heading" title="This week's focus">
+        <Sheet title="This week's focus">
           <p className="m-0 max-w-prose text-base text-ink">
             Your {card.focus.timeClass} focus, {card.focus.label}, is on your other linked account.
             Switch to it to see its progress.

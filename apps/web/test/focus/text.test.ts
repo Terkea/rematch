@@ -86,5 +86,19 @@ describe("focus copy", () => {
         interval: null,
       }),
     ).toBe("Missed mates: no chances in 1 game this week. The target is 15.0%.");
+    expect(
+      weekLineText({
+        label: "Missed mates",
+        events: 0,
+        chances: 0,
+        games: 1,
+        targetRate: 0.15,
+        rate: null,
+        interval: null,
+        practiceSessions: 2,
+      }),
+    ).toBe(
+      "Practice: 2 sessions. Missed mates: no chances in 1 game this week. The target is 15.0%.",
+    );
   });
 });

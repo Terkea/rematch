@@ -1,4 +1,4 @@
--- Weekly focus and goal (ADR 0090): one weakness series a user works on per time class, with a
+-- Weekly focus and goal (ADR 0091): one weakness series a user works on per time class, with a
 -- measurable target, a rate per chance over the next `games_n` analysed games after
 -- `started_at`. Progress is never stored while the focus runs; the web reads it live from
 -- `weakness_series_point`. The row is closed (ended_at, outcome and the result counts) once the
