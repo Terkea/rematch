@@ -9,9 +9,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use bench::generate::generate_game;
-use bench::lab::{
-    AnalyseOptions, AnalyseRequest, AnalysePlayer, LabGame, SCHEMA_VERSION, analyse,
-};
+use bench::lab::{AnalyseOptions, AnalysePlayer, AnalyseRequest, LabGame, SCHEMA_VERSION, analyse};
 use bench::memo::MemoAnalyser;
 use bench::suite::{PlayerDef, game_specs};
 use cli::lab_cmd::{algorithm_id, run_pure, to_output};
@@ -70,7 +68,10 @@ fn assert_valid(message: &str, doc: &str) {
         .iter_errors(&v)
         .map(|e| format!("{e} at {}", e.instance_path()))
         .collect();
-    assert!(errors.is_empty(), "{message} rejects the document: {errors:?}");
+    assert!(
+        errors.is_empty(),
+        "{message} rejects the document: {errors:?}"
+    );
 }
 
 #[test]
@@ -135,7 +136,9 @@ fn the_schema_is_not_vacuous() {
     let v = validator("RankResponse");
     assert!(!v.is_valid(&json!({})));
     assert!(!v.is_valid(&json!({"schema_version": "lab-v1", "algorithm_id": "v1", "players": []})));
-    assert!(v.is_valid(&json!({"schema_version": "lab-v1", "algorithm_id": "unversioned", "players": []})));
+    assert!(v.is_valid(
+        &json!({"schema_version": "lab-v1", "algorithm_id": "unversioned", "players": []})
+    ));
 }
 
 fn lab_game(g: &bench::generate::GeneratedGame) -> LabGame {
@@ -163,7 +166,10 @@ async fn analyse_is_deterministic_and_its_facts_reproduce_the_build() {
         return;
     };
     let Some(database_url) = std::env::var("DATABASE_URL").ok().filter(|u| !u.is_empty()) else {
-        assert!(!testkit::in_docker(), "DATABASE_URL must be set when IN_DOCKER=1");
+        assert!(
+            !testkit::in_docker(),
+            "DATABASE_URL must be set when IN_DOCKER=1"
+        );
         return;
     };
     const NODES: u64 = 1_500;

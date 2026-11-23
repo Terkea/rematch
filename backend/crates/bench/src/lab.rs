@@ -44,9 +44,7 @@ use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::generate::GeneratedGame;
-use crate::harness::{
-    Harness, TIME_CLASS, insert_account, insert_game_with_clock, set_now,
-};
+use crate::harness::{Harness, TIME_CLASS, insert_account, insert_game_with_clock, set_now};
 use crate::run::{Throwaway, memo_engines};
 
 /// The version of the request and response shapes (`lab/schemas/*.schema.json`).
@@ -538,7 +536,10 @@ pub async fn analyse(
                     ids.push(insert_game_with_clock(&db.pool, account, &row, "", base, inc).await?);
                 }
                 harness.analyse(&deps, &ids).await?;
-                let last = games.last().map(|g| g.played_at).unwrap_or(crate::suite::ANCHOR);
+                let last = games
+                    .last()
+                    .map(|g| g.played_at)
+                    .unwrap_or(crate::suite::ANCHOR);
                 let now = p.now.unwrap_or(last + time::Duration::hours(1));
                 set_now(now);
                 harness.build(account).await?;
