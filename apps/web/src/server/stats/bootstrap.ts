@@ -22,7 +22,8 @@ export function mulberry32(seed: number): () => number {
 }
 
 /**
- * The stream seed of a bootstrap: a stable hash of `label` and the samples, each sorted. The same
+ * The stream seed of a bootstrap: a stable hash of `label` and the samples (length, then the
+ * little-endian words of each value, sorted; the Rust profile crate hashes the same way). The same
  * data gives the same stream whatever the row order, an id or a user id in the label never moves
  * it, and different data gives a different stream. Pass a label without ids (a metric name).
  */
@@ -32,10 +33,19 @@ export function canonical(sample: readonly number[]): number[] {
 }
 
 export function dataSeed(label: string, ...samples: readonly number[][]): number {
+  const words = new Uint32Array(new Float64Array(1).buffer);
+  const view = new Float64Array(words.buffer);
   let h = fnv1a(label);
+  const mix = (w: number) => {
+    h = Math.imul(h ^ w, 0x01000193) >>> 0;
+  };
   for (const sample of samples) {
-    const sorted = Float64Array.from(sample).sort();
-    h = fnv1a(`${h}|${sorted.length}|${Array.from(sorted).join(",")}`);
+    mix(sample.length);
+    for (const v of canonical(sample)) {
+      view[0] = v;
+      mix(words[0] as number);
+      mix(words[1] as number);
+    }
   }
   return h;
 }
