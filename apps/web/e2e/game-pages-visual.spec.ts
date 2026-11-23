@@ -65,7 +65,8 @@ test("the game pages look as they did", async ({ browser, request }, info) => {
 
   // The overview, once the trend has drawn (T4: the capture waits for the trend SVG). All time
   // controls: the default is rapid (I8), and the seed's rapid games are too few for the line.
-  await ready(page, "/app?tc=all", "[data-filter-bar] a");
+  // All time: the seed's games are fixed days, and the default 90 days roll past them.
+  await ready(page, "/app?tc=all&from=all", "[data-filter-bar] a");
   await expect(page.locator("[data-chart='trend'] svg [data-part='mean']").first()).toBeAttached();
   const drawn = () =>
     page.evaluate(() => {
@@ -104,10 +105,14 @@ test("the coach pages look as they did", async ({ browser, request }, info) => {
 
   // Fixed dates only (the seed's module comment), so the text snapshots hold on every run.
   const routes = [
-    { url: "/app/report", name: "report.png", ready: "[data-report-version]" },
-    { url: "/app/weaknesses/W1", name: "weakness.png", ready: "main h1" },
-    { url: "/app/areas/endgame", name: "area-endgame.png", ready: "main [data-filter-bar]" },
-    { url: "/app/progress", name: "progress.png", ready: "main [data-filter-bar]" },
+    { url: "/app/report?from=all", name: "report.png", ready: "[data-report-version]" },
+    { url: "/app/weaknesses/W1?from=all", name: "weakness.png", ready: "main h1" },
+    {
+      url: "/app/areas/endgame?from=all",
+      name: "area-endgame.png",
+      ready: "main [data-filter-bar]",
+    },
+    { url: "/app/progress?from=all", name: "progress.png", ready: "main [data-filter-bar]" },
     { url: `/app/coach/${threadId}`, name: "coach-thread.png", ready: "textarea" },
   ];
   for (const r of routes) {

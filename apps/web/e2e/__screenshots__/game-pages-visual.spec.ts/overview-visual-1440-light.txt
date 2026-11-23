@@ -72,7 +72,7 @@ White
 Black
 Period
 30 days
-3 months
+90 days
 6 months
 12 months
 All time
