@@ -32,7 +32,7 @@ describe("sign-in error messages", () => {
       "account_not_linked",
       "That email already has an account. Sign in with your email link, then connect Lichess from Accounts.",
     ],
-    ["not_invited", "This email can't sign in yet. chess-improver is invite-only for now."],
+    ["not_invited", "This email can't sign in yet. Rematch is invite-only for now."],
   ])("%s", (code, message) => {
     expect(signInErrorMessage(code)).toBe(message);
   });
@@ -120,7 +120,7 @@ describe("BlockedNotice and CheckEmail", () => {
     render(<BlockedNotice />);
     const headings = screen.getAllByRole("heading");
     expect(headings).toHaveLength(1);
-    expect(headings[0]).toHaveTextContent("You need to be 13 or older to use chess-improver.");
+    expect(headings[0]).toHaveTextContent("You need to be 13 or older to use Rematch.");
     expect(screen.getByText("We've deleted the details you gave us.")).toBeInTheDocument();
   });
 

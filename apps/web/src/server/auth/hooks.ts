@@ -1,5 +1,6 @@
 import type { BetterAuthOptions } from "better-auth";
 import { APIError, createAuthMiddleware } from "better-auth/api";
+import { brand } from "../../brand";
 import { hasAgeBlock, isAgeGatedPath } from "../age";
 
 export const AGE_BLOCKED = "AGE_BLOCKED";
@@ -15,7 +16,7 @@ export const authHooks: NonNullable<BetterAuthOptions["hooks"]> = {
     if (!hasAgeBlock(ctx.headers ?? ctx.request?.headers)) return;
     throw new APIError("FORBIDDEN", {
       code: AGE_BLOCKED,
-      message: "You need to be 13 or older to use chess-improver.",
+      message: `You need to be 13 or older to use ${brand.name}.`,
     });
   }),
 };

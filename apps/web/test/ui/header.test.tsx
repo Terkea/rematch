@@ -102,7 +102,7 @@ describe("shell header", () => {
   it("has the wordmark, the nav with the current page, and the activity slot", () => {
     renderHeader();
     const banner = screen.getByRole("banner");
-    expect(within(banner).getByRole("link", { name: "chess-improver" })).toBeInTheDocument();
+    expect(within(banner).getByRole("link", { name: "Rematch" })).toBeInTheDocument();
     const nav = within(banner).getByRole("navigation", { name: "Main" });
     expect(within(nav).getByRole("link", { name: "Accounts" })).toHaveAttribute(
       "aria-current",
@@ -115,7 +115,7 @@ describe("shell header", () => {
   it("never wraps the wordmark; the activity slot gives way instead (I7)", () => {
     renderHeader();
     const banner = screen.getByRole("banner");
-    const mark = within(banner).getByRole("link", { name: "chess-improver" });
+    const mark = within(banner).getByRole("link", { name: "Rematch" });
     expect(mark.className).toMatch(/(^| )whitespace-nowrap( |$)/);
     expect(mark.className).toMatch(/(^| )shrink-0( |$)/);
     const slot = banner.querySelector('[data-slot="activity"]');
