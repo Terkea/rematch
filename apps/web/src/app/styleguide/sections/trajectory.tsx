@@ -1,7 +1,7 @@
-import { TrajectorySection } from "../../(app)/app/_trajectory/section";
-import { trajectoryView } from "../../(app)/app/_trajectory/view";
 import type { GameStatRow } from "../../../server/stats/game-stats";
 import { computeTrajectory } from "../../../server/trajectory/model";
+import { TrajectorySection } from "../../(app)/app/_trajectory/section";
+import { trajectoryView } from "../../(app)/app/_trajectory/view";
 
 // The rating trajectory (F6, ADR 0089) on synthetic games (B15 allows fixtures here): a rise to a
 // peak, then a fall, with accuracy and a weakness worse in the last games. A server component:
@@ -15,9 +15,7 @@ function demo() {
   const games = Array.from({ length: n }, (_, i) => ({
     id: `sg-${i}`,
     playedAt: new Date(START + i * 2 * DAY),
-    rating: Math.round(
-      (i < 90 ? 820 + i * 3.1 : 1099 - (i - 90) * 4) + (((i * 37) % 11) - 5) * 4,
-    ),
+    rating: Math.round((i < 90 ? 820 + i * 3.1 : 1099 - (i - 90) * 4) + (((i * 37) % 11) - 5) * 4),
   }));
   const stats: GameStatRow[] = games.map((g, i) => ({
     id: g.id,

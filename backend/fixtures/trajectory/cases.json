@@ -2344,14 +2344,14 @@
         },
         "current": 816,
         "change": -283,
-        "then": {
+        "thenWindow": {
           "basis": "peak",
           "games": 30,
           "firstId": "falling-044",
           "lastId": "falling-073",
           "meanRating": 1061.1
         },
-        "now": {
+        "nowWindow": {
           "basis": "last",
           "games": 30,
           "firstId": "falling-110",
@@ -4036,14 +4036,14 @@
         },
         "current": 1071,
         "change": 260,
-        "then": {
+        "thenWindow": {
           "basis": "start",
           "games": 30,
           "firstId": "rising-000",
           "lastId": "rising-029",
           "meanRating": 810.8
         },
-        "now": {
+        "nowWindow": {
           "basis": "last",
           "games": 30,
           "firstId": "rising-060",
@@ -5194,14 +5194,14 @@
         },
         "current": 1224,
         "change": 0,
-        "then": {
+        "thenWindow": {
           "basis": "peak",
           "games": 30,
           "firstId": "flat-000",
           "lastId": "flat-029",
           "meanRating": 1208.0666666666666
         },
-        "now": {
+        "nowWindow": {
           "basis": "last",
           "games": 30,
           "firstId": "flat-045",
@@ -5772,14 +5772,14 @@
         },
         "current": 1439,
         "change": -70,
-        "then": {
+        "thenWindow": {
           "basis": "peak",
           "games": 17,
           "firstId": "short-000",
           "lastId": "short-016",
           "meanRating": 1485.764705882353
         },
-        "now": {
+        "nowWindow": {
           "basis": "last",
           "games": 17,
           "firstId": "short-017",

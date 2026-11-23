@@ -187,7 +187,7 @@ fn every_web_case_replays_exactly() {
             &want["current"],
         );
         close(&format!("{name}.change"), Some(r.change), &want["change"]);
-        for (w, side) in [(&r.then, &want["then"]), (&r.now, &want["now"])] {
+        for (w, side) in [(&r.then, &want["thenWindow"]), (&r.now, &want["nowWindow"])] {
             let basis = match w.basis {
                 WindowBasis::Peak => "peak",
                 WindowBasis::Start => "start",

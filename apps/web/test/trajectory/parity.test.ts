@@ -103,7 +103,10 @@ function build(
   const current =
     opts.current === null || !last
       ? null
-      : { rating: opts.current ?? last.rating, at: new Date(Date.parse(last.playedAt) + 60_000).toISOString() };
+      : {
+          rating: opts.current ?? last.rating,
+          at: new Date(Date.parse(last.playedAt) + 60_000).toISOString(),
+        };
   return [name, { games, current, stats, weaknesses, seed: `trajectory:fixture:${name}` }];
 }
 
@@ -137,7 +140,9 @@ function toInput(c: CaseInput): TrajectoryInput {
       seriesKey: w.seriesKey,
       label: w.label,
       prior: w.prior,
-      points: new Map(w.points.map(([id, events, opportunities]) => [id, { events, opportunities }])),
+      points: new Map(
+        w.points.map(([id, events, opportunities]) => [id, { events, opportunities }]),
+      ),
     })),
     seed: c.seed,
   };
@@ -168,8 +173,8 @@ function project(t: Trajectory): unknown {
     peak: { rating: t.peak.rating, gameId: t.peak.gameId },
     current: t.current.rating,
     change: t.change,
-    then: win(t.then),
-    now: win(t.now),
+    thenWindow: win(t.then),
+    nowWindow: win(t.now),
     rating: {
       verdict: t.rating.verdict,
       a: est(t.ratingSides.a as never),
