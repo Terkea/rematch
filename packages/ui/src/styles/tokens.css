@@ -1,6 +1,6 @@
 /*
- * Annotated scoresheet design tokens. packages/ui/DESIGN.md is the source of truth: every value
- * here is checked against its tables by packages/ui/test/tokens.test.ts and motion.test.ts
+ * Annotated scoresheet design tokens, in the Rematch palette: faded photo paper, navy ink, dad's
+ * red pen. packages/ui/DESIGN.md is the source of truth: every value here is checked against its tables by packages/ui/test/tokens.test.ts and motion.test.ts
  * (ADR-WEB-7). Raw colour values live only in this file, packages/ui/src/board/** and
  * packages/ui/src/annotations/**.
  *
@@ -24,34 +24,37 @@
   --tracking-*: initial;
 
   /* Colour, day */
-  --color-paper: #f3f5f8;
-  --color-sheet: #fbfcfd;
-  --color-well: #e7ebf1;
-  --color-rule: #c9d1dd;
-  --color-rule-strong: #7a879e;
-  --color-ink: #16233b;
-  --color-ink-soft: #3d4a63;
-  --color-ink-faint: #5b6780;
-  --color-on-ink: #fbfcfd;
-  --color-pen: #d3312b;
-  --color-pen-text: #c42b26;
-  --color-good: #24684b;
-  --color-good-text: #24684b;
-  --color-pencil: #56657f;
-  --color-board-light: #e3e8ef;
-  --color-board-dark: #a7b4c7;
-  --color-board-lastmove: rgb(22 35 59 / 0.16);
-  --color-selection: rgb(86 101 127 / 0.28);
-  --color-board-select: rgb(22 35 59 / 0.24);
-  --color-board-premove: rgb(86 101 127 / 0.3);
-  --color-piece-dark: #16233b;
-  --color-piece-light: #fbfcfd;
+  --color-paper:#f4efe6;
+  --color-sheet:#fbf8f2;
+  --color-well:#ece5d9;
+  --color-rule:#d9cfbf;
+  --color-rule-strong:#8a7f6e;
+  --color-ink:#1f2a3d;
+  --color-ink-soft:#434b5c;
+  --color-ink-faint:#5f6470;
+  --color-on-ink:#fbf8f2;
+  --color-pen:#c8372d;
+  --color-pen-text:#b8322a;
+  --color-good:#2f6b4f;
+  --color-good-text:#2f6b4f;
+  --color-pencil:#6b6458;
+  --color-crayon: #e3a92f;
+  --color-board-light:#e6e1d8;
+  --color-board-dark:#b8b2a6;
+  --color-board-lastmove:rgb(31 42 61 / 0.16);
+  --color-selection:rgb(107 100 88 / 0.28);
+  --color-board-select:rgb(31 42 61 / 0.24);
+  --color-board-premove:rgb(107 100 88 / 0.3);
+  --color-piece-dark:#1f2a3d;
+  --color-piece-light:#fbf8f2;
 
   /* Type. Literata tracks size with font-optical-sizing: auto, so opsz equals the px size. */
   --font-serif: var(--font-literata), serif;
   --font-sans: var(--font-schibsted), sans-serif;
   /* Annotation comments only, with font-style: italic. Loaded separately and not preloaded. */
   --font-serif-italic: var(--font-literata-italic), var(--font-literata), serif;
+  /* Dad's handwriting: margin notes only (MarginNote in @ci/ui/brand). Loaded separately, not preloaded. */
+  --font-hand: var(--font-caveat), var(--font-literata-italic), cursive;
 
   /* Notation glyphs sit tight against the move (b5?, Nf6?!). */
   --tracking-glyph: -0.01em;
@@ -117,7 +120,7 @@
   );
 
   /* Elevation: the one shadow, for things that float */
-  --shadow-lift: 0 10px 30px -12px rgb(22 35 59 / 0.35);
+  --shadow-lift: 0 10px 30px -12px rgb(31 42 61 / 0.35);
 
   /* Motion. Springs have no CSS form; they live in @ci/ui/motion with these mirrored. */
   --dur-instant: 90ms;
@@ -208,58 +211,60 @@
   }
 }
 
-/* Night study: the same scoresheet at a desk lamp. */
+/* Night study: the same scoresheet under a desk lamp, on warm dark paper rather than navy. */
 [data-theme="dark"] {
   color-scheme: dark;
-  --color-paper: #121a2b;
-  --color-sheet: #18223a;
-  --color-well: #0d1421;
-  --color-rule: #2c3956;
-  --color-rule-strong: #6b7b9b;
-  --color-ink: #e7ecf4;
-  --color-ink-soft: #b4bfd2;
-  --color-ink-faint: #8e9ab1;
-  --color-on-ink: #121a2b;
-  --color-pen: #f2695e;
-  --color-pen-text: #f2695e;
-  --color-good: #76d3a4;
-  --color-good-text: #76d3a4;
-  --color-pencil: #97a6c0;
-  --color-board-light: #8796b5;
-  --color-board-dark: #5a6a8c;
-  --color-board-lastmove: rgb(231 236 244 / 0.3);
-  --color-selection: rgb(151 166 192 / 0.34);
-  --color-board-select: rgb(231 236 244 / 0.26);
-  --color-board-premove: rgb(151 166 192 / 0.3);
-  --color-piece-dark: #0d1421;
-  --color-piece-light: #e7ecf4;
+  --color-paper:#1c1915;
+  --color-sheet:#24201b;
+  --color-well:#141210;
+  --color-rule:#3b352d;
+  --color-rule-strong:#857a69;
+  --color-ink:#efe8dc;
+  --color-ink-soft:#c9bfaf;
+  --color-ink-faint:#a0968a;
+  --color-on-ink:#1c1915;
+  --color-pen:#f0705f;
+  --color-pen-text:#f0705f;
+  --color-good:#7fcda3;
+  --color-good-text:#7fcda3;
+  --color-pencil:#ada394;
+  --color-crayon: #d9a441;
+  --color-board-light:#a09684;
+  --color-board-dark:#6e6556;
+  --color-board-lastmove:rgb(239 232 220 / 0.3);
+  --color-selection:rgb(173 163 148 / 0.34);
+  --color-board-select:rgb(239 232 220 / 0.26);
+  --color-board-premove:rgb(173 163 148 / 0.3);
+  --color-piece-dark:#141210;
+  --color-piece-light:#efe8dc;
   --shadow-lift: 0 10px 30px -12px rgb(0 0 0 / 0.5);
 }
 
 /* Day restated, for a day scope inside a night page. */
 [data-theme="light"] {
   color-scheme: light;
-  --color-paper: #f3f5f8;
-  --color-sheet: #fbfcfd;
-  --color-well: #e7ebf1;
-  --color-rule: #c9d1dd;
-  --color-rule-strong: #7a879e;
-  --color-ink: #16233b;
-  --color-ink-soft: #3d4a63;
-  --color-ink-faint: #5b6780;
-  --color-on-ink: #fbfcfd;
-  --color-pen: #d3312b;
-  --color-pen-text: #c42b26;
-  --color-good: #24684b;
-  --color-good-text: #24684b;
-  --color-pencil: #56657f;
-  --color-board-light: #e3e8ef;
-  --color-board-dark: #a7b4c7;
-  --color-board-lastmove: rgb(22 35 59 / 0.16);
-  --color-selection: rgb(86 101 127 / 0.28);
-  --color-board-select: rgb(22 35 59 / 0.24);
-  --color-board-premove: rgb(86 101 127 / 0.3);
-  --color-piece-dark: #16233b;
-  --color-piece-light: #fbfcfd;
-  --shadow-lift: 0 10px 30px -12px rgb(22 35 59 / 0.35);
+  --color-paper:#f4efe6;
+  --color-sheet:#fbf8f2;
+  --color-well:#ece5d9;
+  --color-rule:#d9cfbf;
+  --color-rule-strong:#8a7f6e;
+  --color-ink:#1f2a3d;
+  --color-ink-soft:#434b5c;
+  --color-ink-faint:#5f6470;
+  --color-on-ink:#fbf8f2;
+  --color-pen:#c8372d;
+  --color-pen-text:#b8322a;
+  --color-good:#2f6b4f;
+  --color-good-text:#2f6b4f;
+  --color-pencil:#6b6458;
+  --color-crayon: #e3a92f;
+  --color-board-light:#e6e1d8;
+  --color-board-dark:#b8b2a6;
+  --color-board-lastmove:rgb(31 42 61 / 0.16);
+  --color-selection:rgb(107 100 88 / 0.28);
+  --color-board-select:rgb(31 42 61 / 0.24);
+  --color-board-premove:rgb(107 100 88 / 0.3);
+  --color-piece-dark:#1f2a3d;
+  --color-piece-light:#fbf8f2;
+  --shadow-lift: 0 10px 30px -12px rgb(31 42 61 / 0.35);
 }
