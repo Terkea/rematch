@@ -38,26 +38,38 @@ function crayonPath(seed: string): string {
  */
 export function CrayonStroke({ seed = "crayon", className }: CrayonStrokeProps) {
   const reduced = useReducedMotion();
+  // The reveal is a left-to-right clip, not pathLength: dashes are measured on screen under
+  // non-scaling-stroke, so a pathLength of 1 would cut the stretched line short.
   return (
-    <svg
+    <motion.svg
       data-crayon-stroke
       aria-hidden="true"
       focusable="false"
       viewBox="0 0 100 8"
       preserveAspectRatio="none"
       className={cn("block h-2 w-full overflow-visible", className)}
+      initial={reduced ? false : { clipPath: "inset(-4px 100% -4px -4px)" }}
+      animate={{ clipPath: "inset(-4px -4px -4px -4px)" }}
+      transition={{ duration: dur.draw * 2, ease: ease.pen }}
     >
-      <motion.path
+      {/* Two passes, as a crayon goes back over its line: a broad one, then a thinner one beside it. */}
+      <path
         d={crayonPath(seed)}
         fill="none"
         stroke="var(--color-crayon)"
-        strokeWidth={3}
+        strokeWidth={5}
         strokeLinecap="round"
         vectorEffect="non-scaling-stroke"
-        initial={reduced ? false : { pathLength: 0 }}
-        animate={{ pathLength: 1 }}
-        transition={{ duration: dur.draw, ease: ease.pen }}
       />
-    </svg>
+      <path
+        d={crayonPath(`${seed}:again`)}
+        fill="none"
+        stroke="var(--color-crayon)"
+        strokeWidth={2.5}
+        strokeLinecap="round"
+        strokeOpacity={0.75}
+        vectorEffect="non-scaling-stroke"
+      />
+    </motion.svg>
   );
 }

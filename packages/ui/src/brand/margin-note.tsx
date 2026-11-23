@@ -34,8 +34,8 @@ export function MarginNote({
       <span
         aria-hidden={named ? true : undefined}
         className={cn(
-          "font-hand font-medium text-ink-soft",
-          size === "landing" ? "text-3xl" : "text-2xl",
+          "font-hand font-semibold text-ink-soft",
+          size === "landing" ? "text-3xl sm:text-4xl" : "text-2xl sm:text-3xl",
         )}
       >
         {children}

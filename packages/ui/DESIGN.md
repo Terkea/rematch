@@ -42,21 +42,21 @@ Two themes: **day** (light) and **night study** (dark). Night study is the same 
 |---|---|---|---|
 | `--color-paper` | `#F4EFE6` | `#1C1915` | page background: faded photo paper, a desk at night |
 | `--color-sheet` | `#FBF8F2` | `#24201B` | raised surfaces, scoresheet, panels |
-| `--color-well` | `#ECE5D9` | `#141210` | inset wells, inputs on sheet |
+| `--color-well` | `#ECE5D9` | `#191612` | inset wells, inputs on sheet |
 | `--color-rule` | `#D9CFBF` | `#3B352D` | decorative lines (non-text) |
 | `--color-rule-strong` | `#8A7F6E` | `#857A69` | input borders, chart axes (≥ 3:1) |
 | `--color-ink` | `#1F2A3D` | `#EFE8DC` | text, primary fill, focus ring (night: lamp-lit paper white) |
 | `--color-ink-soft` | `#434B5C` | `#C9BFAF` | secondary text |
 | `--color-ink-faint` | `#5F6470` | `#A0968A` | tertiary text (lowest allowed) |
 | `--color-on-ink` | `#FBF8F2` | `#1C1915` | text on ink fills |
-| `--color-pen` | `#C8372D` | `#F0705F` | dad's red pen: strokes and marks on mistakes |
-| `--color-pen-text` | `#B8322A` | `#F0705F` | red text (AA on `well` too) |
+| `--color-pen` | `#C8372D` | `#EE6258` | dad's red pen: strokes and marks on mistakes |
+| `--color-pen-text` | `#B8322A` | `#EE6258` | red text (AA on `well` too) |
 | `--color-good` | `#2F6B4F` | `#7FCDA3` | good-move strokes and marks |
 | `--color-good-text` | `#2F6B4F` | `#7FCDA3` | green text |
 | `--color-pencil` | `#6B6458` | `#ADA394` | warm graphite: neutral annotations, plan arrows |
 | `--color-crayon` | `#E3A92F` | `#D9A441` | celebrations only: the crayon stroke under a solved drill or a milestone, never data, never text |
-| `--color-board-light` | `#E6E1D8` | `#A09684` | light squares |
-| `--color-board-dark` | `#B8B2A6` | `#6E6556` | dark squares |
+| `--color-board-light` | `#E6E1D8` | `#A39580` | light squares |
+| `--color-board-dark` | `#B8B2A6` | `#716552` | dark squares |
 | `--color-board-lastmove` | `rgb(31 42 61 / 0.16)` | `rgb(239 232 220 / 0.30)` | last-move tint (ink at 16%, night ink at 30%) |
 
 Added in fix round 1 (derived from the tokens above, no new hues):
@@ -66,7 +66,7 @@ Added in fix round 1 (derived from the tokens above, no new hues):
 | `--color-selection` | `rgb(107 100 88 / 0.28)` | `rgb(173 163 148 / 0.34)` | `::selection` background (pencil); text keeps its colour |
 | `--color-board-select` | `rgb(31 42 61 / 0.24)` | `rgb(239 232 220 / 0.26)` | selected square tint (supplementary) |
 | `--color-board-premove` | `rgb(107 100 88 / 0.30)` | `rgb(173 163 148 / 0.30)` | premove tint (pencil, supplementary) |
-| `--color-piece-dark` | `#1F2A3D` (ink) | `#141210` (well) | black piece body, and every piece's outline |
+| `--color-piece-dark` | `#1F2A3D` (ink) | `#141210` (deepest ink, a step below `well`) | black piece body, and every piece's outline |
 | `--color-piece-light` | `#FBF8F2` (sheet) | `#EFE8DC` (ink) | white piece body, black piece interior details |
 
 ### Usage rules
@@ -75,10 +75,10 @@ Added in fix round 1 (derived from the tokens above, no new hues):
 - **Red text** uses `pen-text`, and green text uses `good-text`. The stroke tokens `pen` and `good` are for marks, not words.
 - **Lines:** `rule` is decorative only (scoresheet ruling, dividers). Anything a user must see to operate the UI, such as input borders, chart axes or checkbox outlines, uses `rule-strong`.
 - **Primary action:** an `ink` fill with `on-ink` text. There is one primary action per view.
-- **The halo rule:** every board mark (ring, arrow, glyph badge, focus ring, check ring, legal-move dot) sits on a 2px `--color-sheet` halo, so the mark's adjacent colour is always its halo and never a square. That makes the `pen`, `good`, `pencil` and `ink` rows against `sheet` below the binding check. Without the halo, night marks fall to 1.00:1 on light squares, so the halo is not optional.
+- **The halo rule:** every board mark (ring, arrow, glyph badge, focus ring, check ring, legal-move dot) sits on a 2px `--color-sheet` halo, so the mark's adjacent colour is always its halo and never a square. That makes the `pen`, `good`, `pencil` and `ink` rows against `sheet` below the binding check. Without the halo, night marks fall to 1.10:1 on light squares, so the halo is not optional.
 - **Board coordinates** use `ink` in day. In night they use `on-ink` on light squares and `ink` on dark squares, because no single colour passes on both night squares. On a tinted night square (last move or selected) they use `on-ink` on both colours, because the pale tint drops `ink` below 3:1 there (controller ruling, Task 11).
 - **Last move** is tinted with `board-lastmove`. The tint is under 3:1 against the bare square on purpose, so it never competes with the pen. It is supplementary: the current move is also marked in the move list and announced to assistive tech.
-- **Colour never carries meaning alone.** `pen` and `good` are close in luminance (1.21:1 day and 1.55:1 night in the Rematch palette), so every mark also differs in shape: pen marks always carry a `?`-family glyph badge and an open two-stroke arrowhead; good marks carry a `!`-family badge and a solid head. See "Severity and marks".
+- **Colour never carries meaning alone.** `pen` and `good` are close in luminance (1.21:1 day and 1.71:1 night in the Rematch palette), so every mark also differs in shape: pen marks always carry a `?`-family glyph badge and an open two-stroke arrowhead; good marks carry a `!`-family badge and a solid head. See "Severity and marks".
 - **Crayon** is for celebrations only: the crayon stroke under a drill solved or a milestone, drawn by `MarginNote` and `CrayonStroke` in `@ci/ui/brand`. It is decorative: the words beside it always say what happened, so it needs no contrast floor of its own (it is at least 1.8:1 on `paper` and `sheet` so it shows). It is never text, never a fill behind text, never a series, tick, cell or mark on a chart, table, KPI or board (`B19`), and never on a mistake.
 - **Hand-made touches** (dad's handwriting, the pencil texture, the crayon) appear only in empty states, the landing page, a drill solved and milestones. Never on charts, tables, the board or any number (`B20`). See "Hand-made touches".
 
@@ -95,7 +95,7 @@ Added in fix round 1 (derived from the tokens above, no new hues):
 
 The tonal ladder runs `paper`, then `sheet`, then `well`. Hover moves one step down the ladder and never lifts. In code, hover fills use `--surface-hover`: `sheet` on the page, and `well` inside anything that is `bg-sheet` or marked `data-surface="sheet"`.
 
-Night study is the exception inside a sheet: night `well` is near-black, so a step down there barely shows (about 1.15:1). Inside a night sheet, hover steps up instead, to `sheet` mixed 14% toward `ink` (1.48:1 on `sheet`, where 10% gives 1.31:1 and a step down to `well` gives 1.15:1; `ink` on it is 8.99:1) (`color-mix`, no new colour). A day scope inside a night page keeps the day step (Task 9 critic).
+Night study is the exception inside a sheet: night `well` is near-black, so a step down there barely shows (about 1.11:1). Inside a night sheet, hover steps up instead, to `sheet` mixed 14% toward `ink` (1.48:1 on `sheet`, where 10% gives 1.31:1 and a step down to `well` gives 1.11:1; `ink` on it is 8.99:1) (`color-mix`, no new colour). A day scope inside a night page keeps the day step (Task 9 critic).
 
 Controls that already sit in a `well` (text field, select trigger) show hover on their edge, which steps from `rule-strong` to `ink-soft` (2.23:1 against the rest edge in day, 2.32:1 at night; `ink-faint` was too close to read, Task 9 critic re-check). A disabled or invalid field keeps its own edge. The switch's edge does the same when off, and when on its track steps from `ink` to `ink-soft`, as the primary button does. A disabled tab drops to `ink-faint`.
 
@@ -120,28 +120,28 @@ Computed with the WCAG 2.x relative-luminance formula (sRGB to linear, `L = 0.21
 |---|---|---|---|---|---|---|
 | `ink` | `sheet` | body text | 13.60 | 13.29 | 4.5:1 | pass |
 | `ink` | `paper` | body text | 12.59 | 14.38 | 4.5:1 | pass |
-| `ink` | `well` | text in wells | 11.52 | 15.35 | 4.5:1 | pass |
+| `ink` | `well` | text in wells | 11.52 | 14.81 | 4.5:1 | pass |
 | `ink-soft` | `sheet` | secondary text | 8.26 | 8.91 | 4.5:1 | pass |
 | `ink-soft` | `paper` | secondary text | 7.64 | 9.64 | 4.5:1 | pass |
-| `ink-soft` | `well` | secondary text | 6.99 | 10.28 | 4.5:1 | pass |
+| `ink-soft` | `well` | secondary text | 6.99 | 9.92 | 4.5:1 | pass |
 | `ink-faint` | `sheet` | tertiary and disabled text | 5.59 | 5.57 | 4.5:1 | pass |
 | `ink-faint` | `paper` | tertiary text | 5.17 | 6.02 | 4.5:1 | pass |
-| `ink-faint` | `well` | tertiary text | 4.73 | 6.43 | 4.5:1 | pass |
+| `ink-faint` | `well` | tertiary text | 4.73 | 6.20 | 4.5:1 | pass |
 | `on-ink` | `ink` | primary button | 13.60 | 14.38 | 4.5:1 | pass |
 | `on-ink` | `ink-soft` | primary button, hover | 8.26 | 9.64 | 4.5:1 | pass |
-| `pen-text` | `sheet` | red text | 5.62 | 5.54 | 4.5:1 | pass |
-| `pen-text` | `paper` | red text | 5.20 | 5.99 | 4.5:1 | pass |
-| `pen-text` | `well` | red text | 4.76 | 6.40 | 4.5:1 | pass |
+| `pen-text` | `sheet` | red text | 5.62 | 5.03 | 4.5:1 | pass |
+| `pen-text` | `paper` | red text | 5.20 | 5.44 | 4.5:1 | pass |
+| `pen-text` | `well` | red text | 4.76 | 5.60 | 4.5:1 | pass |
 | `good-text` | `sheet` | green text | 5.94 | 8.60 | 4.5:1 | pass |
 | `good-text` | `paper` | green text | 5.49 | 9.31 | 4.5:1 | pass |
-| `good-text` | `well` | green text | 5.03 | 9.93 | 4.5:1 | pass |
+| `good-text` | `well` | green text | 5.03 | 9.58 | 4.5:1 | pass |
 | `ink` | selection on `sheet` | `::selection` | 9.28 | 6.86 | 4.5:1 | pass |
 | `ink` | selection on `paper` | `::selection` | 8.67 | 7.44 | 4.5:1 | pass |
-| `on-ink` | `pen` | glyph badge text (`?`, `??`, `?!`) | 4.90 | 5.99 | 4.5:1 | pass |
+| `on-ink` | `pen` | glyph badge text (`?`, `??`, `?!`) | 4.90 | 5.44 | 4.5:1 | pass |
 | `on-ink` | `good` | glyph badge text (`!`, `!!`) | 5.94 | 9.31 | 4.5:1 | pass |
-| `pen` | `sheet` | mark on its halo | 4.90 | 5.54 | 3:1 | pass |
-| `pen` | `paper` | mark off the board | 4.54 | 5.99 | 3:1 | pass |
-| `pen` | `well` | graph ring, error border | 4.15 | 6.40 | 3:1 | pass |
+| `pen` | `sheet` | mark on its halo | 4.90 | 5.03 | 3:1 | pass |
+| `pen` | `paper` | mark off the board | 4.54 | 5.44 | 3:1 | pass |
+| `pen` | `well` | graph ring, error border | 4.15 | 5.60 | 3:1 | pass |
 | `good` | `sheet` | mark on its halo | 5.94 | 8.60 | 3:1 | pass |
 | `good` | `paper` | mark off the board | 5.49 | 9.31 | 3:1 | pass |
 | `pencil` | `sheet` | mark on its halo | 5.52 | 6.51 | 3:1 | pass |
@@ -150,53 +150,53 @@ Computed with the WCAG 2.x relative-luminance formula (sRGB to linear, `L = 0.21
 | `crayon` | `paper` | celebration stroke (decorative) | 1.84 | 7.79 | 1.8:1 | pass |
 | `rule-strong` | `sheet` | borders, axes | 3.71 | 3.84 | 3:1 | pass |
 | `rule-strong` | `paper` | borders, axes | 3.43 | 4.16 | 3:1 | pass |
-| `rule-strong` | `well` | borders, axes | 3.14 | 4.44 | 3:1 | pass |
+| `rule-strong` | `well` | borders, axes | 3.14 | 4.28 | 3:1 | pass |
 | `ink` | `sheet` | focus ring (2px, 2px offset) | 13.60 | 13.29 | 3:1 | pass |
 | `ink` | `paper` | focus ring | 12.59 | 14.38 | 3:1 | pass |
-| `ink` | `well` | focus ring | 11.52 | 15.35 | 3:1 | pass |
+| `ink` | `well` | focus ring | 11.52 | 14.81 | 3:1 | pass |
 | **Board** | | | | | | |
 | `ink` | `sheet` (halo) | board focus, check and legal-dot rings on their 2px halo | 13.60 | 13.29 | 3:1 | pass |
 | `ink` | `board-light` | coordinates (day only) | 11.07 | n/a | 4.5:1 | pass |
-| `ink` | `board-dark` | coordinates | 6.83 | 4.71 | 4.5:1 | pass |
-| `on-ink` | `board-light` | coordinates (night only) | n/a | 6.00 | 4.5:1 | pass |
+| `ink` | `board-dark` | coordinates | 6.83 | 4.68 | 4.5:1 | pass |
+| `on-ink` | `board-light` | coordinates (night only) | n/a | 5.98 | 4.5:1 | pass |
 | `ink` | last move on `board-light` | coordinates on a last-move square (day) | 8.27 | n/a | 4.5:1 | pass |
 | `ink` | last move on `board-dark` | coordinates on a last-move square (day) | 5.27 | n/a | 4.5:1 | pass |
-| `on-ink` | last move on `board-light` | coordinates on a last-move square (night) | n/a | 8.06 | 4.5:1 | pass |
-| `on-ink` | last move on `board-dark` | coordinates on a last-move square (night) | n/a | 5.28 | 4.5:1 | pass |
+| `on-ink` | last move on `board-light` | coordinates on a last-move square (night) | n/a | 8.02 | 4.5:1 | pass |
+| `on-ink` | last move on `board-dark` | coordinates on a last-move square (night) | n/a | 5.30 | 4.5:1 | pass |
 | `ink` | selected on `board-light` | coordinates on the selected square (day) | 7.04 | n/a | 4.5:1 | pass |
 | `ink` | selected on `board-dark` | coordinates on the selected square (day) | 4.58 | n/a | 4.5:1 | pass |
-| `on-ink` | selected on `board-light` | coordinates on the selected square (night) | n/a | 7.72 | 4.5:1 | pass |
-| `on-ink` | selected on `board-dark` | coordinates on the selected square (night) | n/a | 4.94 | 4.5:1 | pass |
-| `piece-dark` | `board-light` | piece outline and black body | 11.07 | 6.40 | 3:1 | pass |
-| `piece-dark` | `board-dark` | piece outline and black body | 6.83 | 3.26 | 3:1 | pass |
+| `on-ink` | selected on `board-light` | coordinates on the selected square (night) | n/a | 7.75 | 4.5:1 | pass |
+| `on-ink` | selected on `board-dark` | coordinates on the selected square (night) | n/a | 4.96 | 4.5:1 | pass |
+| `piece-dark` | `board-light` | piece outline and black body | 11.07 | 6.38 | 3:1 | pass |
+| `piece-dark` | `board-dark` | piece outline and black body | 6.83 | 3.28 | 3:1 | pass |
 | `piece-light` | `piece-dark` | white body inside its outline | 13.60 | 15.35 | 3:1 | pass |
 | **Charts** | | | | | | |
 | `ink` | `sheet` | series 1, highlighted series | 13.60 | 13.29 | 3:1 | pass |
 | `ink-soft` | `sheet` | series 2 | 8.26 | 8.91 | 3:1 | pass |
 | `pencil` | `sheet` | series 3 | 5.52 | 6.51 | 3:1 | pass |
 | `rule-strong` | `sheet` | series 4, axes | 3.71 | 3.84 | 3:1 | pass |
-| `ink` | `well` | series 1 on a well | 11.52 | 15.35 | 3:1 | pass |
-| `ink-soft` | `well` | series 2 on a well | 6.99 | 10.28 | 3:1 | pass |
-| `pencil` | `well` | series 3 on a well | 4.67 | 7.51 | 3:1 | pass |
-| `rule-strong` | `well` | series 4 on a well | 3.14 | 4.44 | 3:1 | pass |
+| `ink` | `well` | series 1 on a well | 11.52 | 14.81 | 3:1 | pass |
+| `ink-soft` | `well` | series 2 on a well | 6.99 | 9.92 | 3:1 | pass |
+| `pencil` | `well` | series 3 on a well | 4.67 | 7.25 | 3:1 | pass |
+| `rule-strong` | `well` | series 4 on a well | 3.14 | 4.28 | 3:1 | pass |
 
 Informational only, to show why the halo rule exists (a mark drawn straight on a square, with no halo):
 
 | Mark | `board-light` day | `board-dark` day | `board-light` night | `board-dark` night |
 |---|---|---|---|---|
-| `pen` | 3.99 | 2.46 | 1.00 | 1.96 |
-| `good` | 4.83 | 2.98 | 1.55 | 3.05 |
-| `pencil` | 4.49 | 2.77 | 1.17 | 2.31 |
-| `ink` (focus ring) | 11.07 | 6.83 | 2.40 | 4.71 |
+| `pen` | 3.99 | 2.46 | 1.10 | 1.77 |
+| `good` | 4.83 | 2.98 | 1.56 | 3.03 |
+| `pencil` | 4.49 | 2.77 | 1.18 | 2.29 |
+| `ink` (focus ring) | 11.07 | 6.83 | 2.41 | 4.68 |
 
-The halo itself against the squares is 1.23 and 1.99 (day) and 5.54 and 2.82 (night). It never needs 3:1, because it is the mark's background, not the mark. Last-move tint over the bare square: 1.34 and 1.30 (day), 1.34 and 1.73 (night, at 0.30 since Task 11), supplementary by design.
+The halo itself against the squares is 1.23 and 1.99 (day) and 5.52 and 2.84 (night). It never needs 3:1, because it is the mark's background, not the mark. Last-move tint over the bare square: 1.34 and 1.30 (day), 1.34 and 1.72 (night, at 0.30 since Task 11), supplementary by design.
 
 ## Type
 
 - **Literata** (variable, with the `opsz` optical-size axis) sets headlines, panel headings, annotations and notation. Weights 400 and 600. Italic 400 is used only for whole annotation comments, never for one word in a sentence or headline (`B16`), and never for moves.
 - **Schibsted Grotesk** sets the UI: labels, buttons, navigation, forms and settings. Weights 400, 500 and 700.
 - Italic is loaded as its own family, `--font-serif-italic` (Literata italic, not preloaded), so pages without an annotation comment never download it. Use it only with `font-style: italic`.
-- **Caveat** is dad's handwriting, `--font-hand`, and nothing else: margin notes (`MarginNote`, "same knight again", "there you go") in the soft places listed under "Hand-made touches". Weight 500, at `2xl` or larger: Caveat's small x-height needs it. It never sets data, notation, a number, a control, a heading or running text, and it is never on a chart, table or board (`B20`). Not preloaded, like the italic. It covers Romanian (ă â î ș ț) for a future translation (ADR 0100).
+- **Caveat** is dad's handwriting, `--font-hand`, and nothing else: margin notes (`MarginNote`, "same knight again", "there you go") in the soft places listed under "Hand-made touches". Weight 600, at `3xl` or larger: Caveat's small x-height needs it. It never sets data, notation, a number, a control, a heading or running text, and it is never on a chart, table or board (`B20`). Not preloaded, like the italic. It covers Romanian (ă â î ș ț) for a future translation (ADR 0100).
 - All three are self-hosted through `next/font/local` from WOFF2 files committed with their SIL OFL 1.1 licence texts in `apps/web/src/app/fonts/` (ADR-WEB-7), so neither the build nor the browser ever calls Google. Literata is the upstream variable font (`opsz` 7–72, `wght` 200–900, roman and italic), subset to Latin. Schibsted Grotesk is the upstream variable WOFF2 (`wght` 400–900). Caveat is the upstream variable font from `google/fonts` (`wght` 400–700), subset to Basic Latin, Latin-1, Latin Extended-A, ș ț Ș Ț and typographic punctuation. No other families. In particular, none of the defaults in `B6`, and no monospace anywhere, including for numbers (`B5`).
 
 ### Scale and optical size
@@ -232,8 +232,8 @@ Dad's hand shows only where nothing is being measured. Boards, graphs, tables, K
 | Crayon stroke | `CrayonStroke` (inside `MarginNote` with `celebrate`) | a drill solved and milestones only |
 | Pencil texture | `PencilTexture` | empty-state and landing illustrations, never behind text |
 
-- **Margin note.** One short line in `--font-hand` at weight 500, `2xl` (or `3xl` on the landing page), in `ink-soft`, tilted −1° from its start, beside or under the thing it annotates. Never more than eight words, never a sentence the page needs. When it repeats visible text it is `aria-hidden`; when it carries its own words it gets a `label`, which becomes its accessible name, and the handwriting is hidden from assistive tech, so a screen reader hears plain words, not the face. It never says something the data can't back.
-- **Crayon stroke.** A single wavering underline under a margin note, `crayon`, 3px at its widest, drawn once on `--ease-pen` over `--dur-draw` and still under reduced motion (M10). Decorative and `aria-hidden`: the words beside it always say what happened.
+- **Margin note.** One short line in `--font-hand` at weight 600, `2xl` below 640px and `3xl` from 640px (one step larger on the landing page), so it never wraps, in `ink-soft`, tilted −1° from its start, beside or under the thing it annotates. Never more than eight words, never a sentence the page needs. When it repeats visible text it is `aria-hidden`; when it carries its own words it gets a `label`, which becomes its accessible name, and the handwriting is hidden from assistive tech, so a screen reader hears plain words, not the face. It never says something the data can't back.
+- **Crayon stroke.** A wavering underline under a margin note in `crayon`, gone over twice as a crayon is: a 5px pass and a 2.5px pass at 75% beside it, spanning the whole note. It is revealed once, left to right, on `--ease-pen` over twice `--dur-draw`, and simply there under reduced motion (M10). Decorative and `aria-hidden`: the words beside it always say what happened.
 - **Pencil texture.** A faint graphite grain (an SVG `feTurbulence` filter, seeded, so every visit looks the same), at most 6% opacity in `pencil`. It never sits under text or data.
 - **Red is still only the pen.** A margin note is never red. Dad's red pen is for the mistake on the board and the scoresheet, and the logo is ink only.
 
@@ -281,7 +281,7 @@ Dad's hand shows only where nothing is being measured. Boards, graphs, tables, K
 
 - **Style:** flat, in the ink metaphor. They are line drawings, like a printed diagram, with no gradients, bevels, wood or shadows.
 - **Day:** black pieces are filled `piece-dark` (ink) with `piece-light` interior details. White pieces are filled `piece-light` (sheet) with a `piece-dark` outline about 1.5px at a 45px square, scaling with the square.
-- **Night:** black pieces are filled `piece-dark` (`well`, `#141210`), which holds 6.40:1 and 3.26:1 on the two night squares, with `piece-light` interior details. White pieces are filled `piece-light` (pale ink) with the same `piece-dark` outline. Every silhouette therefore has a ≥ 3:1 edge on both squares in both themes.
+- **Night:** black pieces are filled `piece-dark` (`#141210`, a step below `well`, so the warm night `well` can stay a shallow inset), which holds 6.38:1 and 3.28:1 on the two night squares, with `piece-light` interior details. White pieces are filled `piece-light` (pale ink) with the same `piece-dark` outline. Every silhouette therefore has a ≥ 3:1 edge on both squares in both themes.
 - **Default set: Cburnett** (Colin M.L. Burnett, Wikimedia Commons, used under its BSD-3-Clause option). It is drawn as flat outlines with a 1.5px stroke at 45px, which is this exact look, and it recolours with two values. Decision: `docs/decisions/0039-piece-set.md` (Accepted).
 - Never use Unicode chess glyphs for pieces.
 
@@ -383,9 +383,9 @@ Marks are filled, variable-width outlines built around a centreline, never const
 - **Markers:** each blunder, mistake or inaccuracy gets a small ring drawn with the same pen geometry (radius 7px, tilted 10°), thin for inaccuracies, centred on the line.
 - **Labels:** in the label lane, never on the line: the move in notation with its glyph (`9…b5?`) in `pen-text`, Literata 600 at `sm`. A 1px `pencil` leader runs from each label down to its ring. Labels are placed in priority order (the player's blunders, the player's mistakes, then the opponent's), each pushed either way by at most 56px to keep a 10px gap, and always order-preserving: a label sits in the same left-to-right order as its mark, so no two leaders cross. Leaders leave the label as a short 7px diagonal, then run straight down; a mark at the top of the plot gets a straight vertical. One label form is used per lane: the full notation, or SAN plus glyph when that places more labels (always below `--container-graph`). A label that can't be placed shows its glyph straight above its mark (within 4px, no leader), or is dropped; the text alternative lists every mistake and blunder. Inaccuracies are labelled only in containers 768px and wider, in Literata 400 `ink-faint`, at least 24px clear of serious labels and at most one per 120px. Label text has a halo in `--eval-graph-surface` (default `sheet`), which a host on another surface sets.
 - **Cursor:** a 1.5px `ink` rule marks the move shown on the board and moves with it.
-- **Whose move (ruled value, controller ruling, Task 13 fix round 3):** when the player's colour is known, only the player's own mistakes and blunders are `pen` ticks with `pen-text` glyphs. The opponent's marks (any judgement) are `pencil` hairline ticks, 1px wide with no halo, the same length as their severity, and their labels (in `ink-soft`, glyph included) are placed only after all of the player's labels. Red therefore always means "your mistake", and dense clusters lose half their red. Contrast for a chart mark (3:1): `pencil` on `well` 4.67 day and 7.51 night, and 3.90 day and 5.97 night on the tinted `well`.
+- **Whose move (ruled value, controller ruling, Task 13 fix round 3):** when the player's colour is known, only the player's own mistakes and blunders are `pen` ticks with `pen-text` glyphs. The opponent's marks (any judgement) are `pencil` hairline ticks, 1px wide with no halo, the same length as their severity, and their labels (in `ink-soft`, glyph included) are placed only after all of the player's labels. Red therefore always means "your mistake", and dense clusters lose half their red. Contrast for a chart mark (3:1): `pencil` on `well` 4.67 day and 7.25 night, and 3.90 day and 5.67 night on the tinted `well`.
 - **Corner labels:** "White" and "Black" (with "(you)" on the player's side) sit in the plot's top and bottom left corners, in `ink-soft` on a `well` halo. Each is measured in its real font, and its box grows by 3px (the line's stroke and halo). It moves to the right end only when nothing (no leader, tick or the eval line) touches it there; otherwise it stays left and its halo breaks what crosses it.
-- **Lines over the tint:** phase boundaries and label leaders cross the area tint, where `rule-strong` drops to 2.62:1 (day). They use `pencil` instead: 3.90:1 day and 5.97:1 night on the tinted `well` (controller ruling, Task 13 fix round 1). The zero line stays `rule-strong`, because it is the tint's edge, with `well` on its other side.
+- **Lines over the tint:** phase boundaries and label leaders cross the area tint, where `rule-strong` drops to 2.62:1 (day). They use `pencil` instead: 3.90:1 day and 5.67:1 night on the tinted `well` (controller ruling, Task 13 fix round 1). The zero line stays `rule-strong`, because it is the tint's edge, with `well` on its other side.
 - Long games scroll or compress inside the graph's own container, never the page.
 
 ### Eval bar
@@ -733,7 +733,7 @@ The first thing on `/styleguide` is the system doing its job on a real game, not
 - **`--hero-graph-height`** (hero-only token in `tokens.css`, controller ruling, Task 6 fix rounds 3 and 4): `calc(--board-size + 16px)`, the height of the board in its well. From 1024px the right column is exactly this tall: the header sits at its top, and after a 24px gap the eval graph (label lane and plot) fills the rest, so the graph's top meets the header block and its bottom meets the board's. The plot never drops below its 120px desktop height. Elsewhere the graph keeps its real sizes.
 - **The excerpt** opens on the ringed move and ends before the next blunder, so no second `??` competes with the key move. The hero's label lane names only the move on the board (accepted by controller ruling: the hero tells one moment).
 - **One pen mark in the hero graph** (controller ruling, Task 6 fix round 4): only the key move gets a pen ring. Every other mistake, blunder or inaccuracy in the hero graph is a quiet `pencil` hairline tick in the opponent-mark style of "Whose move" (1px, no halo, severity length), so the `??` stays the only loud red and narrow graphs don't crowd.
-- **The graph's own beat** (controller rulings, Task 6 fix rounds 4 and 5): when the eval graph is fully in view at the start (an `IntersectionObserver`, as for the link), the hero opens with the graph prologue. Over `--dur-reveal` on `--ease-pen` the eval line draws in and a left-to-right mask reveals the tint and ticks. The key move's beat (choreography 1's climax rows) then starts at 600ms, so everything shifts by `--dur-reveal`: lift 1000, contact 1360, rings 1460, badge and link 2000–2420, comment 2420. At contact the cursor drops onto the key move, growing down from the plot's top edge on `swing` while the eval bar swings on `swing-big`. The cursor is `ink` in day and `ink-soft` at night (10.28:1 on night `well`), so it doesn't compete with the key ring. When the graph is not in view at the start (phones, where it sits below the fold), there is no prologue and no stillness: the line is already drawn, the key move's beat runs at the original climax times (lift 400, contact 760, badge and link 1400–1820, comment 1820), and the cursor simply rests on the key move.
+- **The graph's own beat** (controller rulings, Task 6 fix rounds 4 and 5): when the eval graph is fully in view at the start (an `IntersectionObserver`, as for the link), the hero opens with the graph prologue. Over `--dur-reveal` on `--ease-pen` the eval line draws in and a left-to-right mask reveals the tint and ticks. The key move's beat (choreography 1's climax rows) then starts at 600ms, so everything shifts by `--dur-reveal`: lift 1000, contact 1360, rings 1460, badge and link 2000–2420, comment 2420. At contact the cursor drops onto the key move, growing down from the plot's top edge on `swing` while the eval bar swings on `swing-big`. The cursor is `ink` in day and `ink-soft` at night (9.92:1 on night `well`), so it doesn't compete with the key ring. When the graph is not in view at the start (phones, where it sits below the fold), there is no prologue and no stillness: the line is already drawn, the key move's beat runs at the original climax times (lift 400, contact 760, badge and link 1400–1820, comment 1820), and the cursor simply rests on the key move.
 - Left aligned. The heading is the game itself, set in Literata 600 at `3xl`. There is no marketing headline, eyebrow or badge. On first view, the hero plays the key move's beat: the climax rows of choreography 1, then the link mark, then the comment.
 
 ## How this direction was chosen
@@ -958,7 +958,7 @@ Rulings taken while building `packages/ui/src/annotations` (ADR-WEB-15):
 
 ### 2026-11-23, the Rematch brand: warm paper and dad's hand
 
-1. **The palette warms** (Rematch brand spec, ADR 0100): faded photo paper, navy ink a touch softer, dad's red pen, warm graphite pencil, a greige board, and night study as a desk lamp on warm dark paper instead of navy. Every pair in "Contrast results" was re-run: 0 failures, the tightest being `crayon` on day `paper` (1.84, decorative), `ink` on a selected day `board-dark` (4.58) and night pieces on `board-dark` (3.26).
+1. **The palette warms** (Rematch brand spec, ADR 0100): faded photo paper, navy ink a touch softer, dad's red pen, warm graphite pencil, a greige board, and night study as a desk lamp on warm dark paper instead of navy. Every pair in "Contrast results" was re-run: 0 failures, the tightest being `crayon` on day `paper` (1.84, decorative), `ink` on a selected day `board-dark` (4.58) and night pieces on `board-dark` (3.28). After the fresh critic: night `well` lifted to a shallow warm inset (`#191612`; `piece-dark` stays `#141210`), the night pen pulled back from coral to a true red (`#EE6258`), and the night board warmed.
 2. **The ban "paper is never cream" becomes "paper is faded, warm and photographic, never yellow"** (`B1`), held by an OKLCH chroma ceiling of 0.025 in `packages/ui/test/tokens-contrast.test.ts`.
 3. **`--color-crayon`** is new: celebrations only, never data (`B19`). A test fails any use of it outside `@ci/ui/brand`, the styleguide and `tokens.css`.
 4. **`--font-hand`** (Caveat) is new, for dad's margin notes only, and "Hand-made touches" sets where they may appear (`B20`).

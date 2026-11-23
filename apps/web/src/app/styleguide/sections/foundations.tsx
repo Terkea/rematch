@@ -101,7 +101,7 @@ const colourGroups: { title: string; tokens: [string, Check | string][] }[] = [
       ["good", stroke("good")],
       ["good-text", text("good-text")],
       ["pencil", stroke("pencil")],
-      ["crayon", "celebrations only, decorative, never data"],
+      ["crayon", { fg: "crayon", bg: ["paper", "sheet"], min: 1.8 }],
     ],
   },
   {
@@ -372,10 +372,12 @@ const typeSteps: { step: string; token: string; use: string; sample: ReactNode }
     sample: <span className="font-serif text-xl font-semibold">Critical moments</span>,
   },
   {
-    step: "2xl, hand",
-    token: "2xl",
-    use: "margin note: Caveat 500, empty states and celebrations only",
-    sample: <span className="font-hand text-2xl font-medium text-ink-soft">same knight again</span>,
+    step: "3xl, hand",
+    token: "3xl",
+    use: "margin note: Caveat 600, empty states and celebrations only",
+    sample: (
+      <span className="font-hand text-3xl font-semibold text-ink-soft">same knight again</span>
+    ),
   },
   {
     step: "2xl",
