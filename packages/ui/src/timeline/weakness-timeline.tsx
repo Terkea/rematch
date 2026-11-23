@@ -576,7 +576,7 @@ const END_LABEL_ROOM = 84;
 
 const LABEL_CELL = "sticky left-0 z-10 flex flex-col justify-center bg-sheet pr-3";
 const NAV_BUTTON = cn(
-  "relative flex size-8 items-center justify-center rounded-field text-ink-soft hover:bg-well focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink",
+  "relative -my-1 flex size-8 items-center justify-center rounded-field text-ink-soft hover:bg-well focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink",
   touchTarget,
 );
 
