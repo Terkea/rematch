@@ -341,7 +341,16 @@ main > section:not(.band) {
   font-size: var(--text-3xl);
   line-height: var(--text-3xl--line-height);
   text-wrap: balance;
-  max-width: 14ch;
+  max-width: 18ch;
+}
+
+.hero-kicker {
+  margin-top: calc(var(--spacing) * 3);
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: var(--text-lg);
+  line-height: var(--text-lg--line-height);
+  color: var(--color-pencil);
 }
 
 .lead {
