@@ -71,3 +71,17 @@ Also from the review: the sparkline note now reads "your latest 12 weeks of play
 Still open (not blocking per the critic): the moiré of the hatched judgement columns at small sizes, the sparse per-game grid at 1440, and the analysing placeholder's squiggle (M4's ProgressPlaceholder).
 
 Verdict: pending the critic's re-check.
+
+## 2026-11-23: the focused overview (ADR 0092)
+
+Shots: `.shots/overview/{1440,390}-{light,dark}.png` (whole page, one tall viewport) and `first-*` (first viewport), taken by `e2e/focus.spec.ts` on the e2e-fixtures seed with a running focus.
+
+Self-critique only: this lane ran without subagents, so no independent critic. The gate still wants a fresh `pass`.
+
+- The first viewport now answers "where am I, what is my one thing, what do I do": Where you are, This week's focus, Practise (one primary button), then How you're doing.
+- The time control sits under the title because it scopes the whole page; format, colour, dates and compare sit at the top of Details, with the comparison under them (critic 4 kept).
+- Details is quieter: `xl` sub-headings on a `rule` line, the trend no longer draws in (below the fold, M4).
+- Fixed in round 1: "What to work on" repeated the focus card's weakness; it is now left out when it names the focus's series.
+- Open: at 1440 the top cards are a `max-w-3xl` reading column with space to the right; the below-minimum trajectory card is one line; the focus card's length select stays as tall as before.
+
+Verdict: self-critique `pass` (no blocker or major found); needs an independent critic.
