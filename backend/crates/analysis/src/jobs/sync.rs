@@ -85,15 +85,26 @@ pub enum SyncError {
     Queue(#[from] QueueError),
 }
 
+/// The username prefix of the fictional demo player that `pnpm seed:demo` writes (ADR 0097). Neither
+/// chess.com nor Lichess allows a dot in a username, so no real account can carry it, and the sync
+/// never asks a platform for it.
+pub const DEMO_USERNAME_PREFIX: &str = "demo.";
+
+/// True for the demo player's accounts ([`DEMO_USERNAME_PREFIX`]).
+pub fn is_demo_username(username: &str) -> bool {
+    username.starts_with(DEMO_USERNAME_PREFIX)
+}
+
 /// The linked accounts and the due ones, the longest-waiting first. `$1` is `interval - tick` in
-/// milliseconds.
+/// milliseconds; `$3` is [`DEMO_USERNAME_PREFIX`] (demo accounts are never synced).
 const DUE_SQL: &str = "
 WITH linked AS (
   SELECT la.id,
     (SELECT max(r.started_at) FROM import_runs r WHERE r.account_id = la.id) AS last_run
   FROM linked_accounts la
-  WHERE la.user_id IS NOT NULL
-     OR EXISTS (SELECT 1 FROM account_links l WHERE l.linked_account_id = la.id)
+  WHERE (la.user_id IS NOT NULL
+     OR EXISTS (SELECT 1 FROM account_links l WHERE l.linked_account_id = la.id))
+    AND left(la.username, length($3)) <> $3
 )
 SELECT l.id,
   (l.last_run IS NULL OR l.last_run <= now() - $1::float8 * interval '1 millisecond')
@@ -114,6 +125,7 @@ pub async fn sync_accounts(
     let rows: Vec<(Uuid, bool)> = sqlx::query_as(DUE_SQL)
         .bind(threshold.as_secs_f64() * 1000.0)
         .bind(KIND_IMPORT)
+        .bind(DEMO_USERNAME_PREFIX)
         .fetch_all(pool)
         .await?;
     let linked = i64::try_from(rows.len()).unwrap_or(i64::MAX);

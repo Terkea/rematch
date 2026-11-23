@@ -17,7 +17,10 @@
     "format:check": "biome format .",
     "shots": "tsx scripts/shots.ts",
     "design:check": "tsx scripts/ban-lint.ts",
-    "e2e": "pnpm --filter @ci/web e2e"
+    "e2e": "pnpm --filter @ci/web e2e",
+    "seed:demo": "sh scripts/seed-demo.sh",
+    "setup": "sh scripts/setup.sh",
+    "test:setup": "sh scripts/test-setup.sh"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.7",

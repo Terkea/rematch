@@ -20,6 +20,8 @@ export interface HeaderProps {
   signOutTo?: (href: string) => void;
   /** Background work, shown in `data-slot="activity"` (the layout passes `ActivityIndicator`). */
   activity?: ReactNode;
+  /** The user sees the fictional demo player of `pnpm seed:demo` (ADR 0097): label it. */
+  demo?: boolean;
 }
 
 const navLink = [
@@ -40,6 +42,7 @@ export function Header({
   name = "",
   signOutTo = (href) => window.location.assign(href),
   activity,
+  demo = false,
 }: HeaderProps) {
   const pathname = usePathname();
   // The page's filters travel with every section link (audit A7).
@@ -58,6 +61,14 @@ export function Header({
         >
           {brand.wordmark}
         </Link>
+        {demo ? (
+          <span
+            title="A fictional player loaded by pnpm seed:demo, not your games. Remove it with pnpm seed:demo --remove."
+            className="inline-flex h-6 shrink-0 items-center rounded-pill bg-well px-2.5 text-xs font-medium whitespace-nowrap text-ink-soft"
+          >
+            Demo data
+          </span>
+        ) : null}
 
         <nav
           aria-label="Main"

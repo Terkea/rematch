@@ -226,3 +226,32 @@ async fn the_handler_runs_one_sync(pool: PgPool) {
     assert_eq!(out["enqueued"], 1);
     assert_eq!(live_imports(&pool).await[0].0, a);
 }
+
+/// ADR 0097: the demo player (`pnpm seed:demo`) is fictional; a chess.com username can never
+/// contain a dot, so no import is ever enqueued for it and it is not counted as linked.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn never_syncs_the_demo_player(pool: PgPool) {
+    let queue = Queue::new(pool.clone());
+    let real = linked_account(&pool, "alice").await;
+    let _demo = linked_account(&pool, "demo.player").await;
+
+    let summary = sync_accounts(
+        &pool,
+        &queue,
+        &SyncOptions::every(HALF_HOUR).with_tick(HALF_HOUR),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(summary.linked, 1);
+    assert_eq!(
+        live_imports(&pool)
+            .await
+            .iter()
+            .map(|(id, _)| *id)
+            .collect::<Vec<_>>(),
+        vec![real]
+    );
+    assert!(analysis::jobs::sync::is_demo_username("demo.player"));
+    assert!(!analysis::jobs::sync::is_demo_username("demo-player"));
+}
