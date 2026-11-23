@@ -7,7 +7,8 @@
 //! 2. Token syntax: any [`ParsedTokens::errors`] entry, and `{{offtopic}}` anywhere but as the
 //!    whole paragraph (`token_syntax`). Prose inside a malformed `{{…}}` is never leak-scanned.
 //!    **This is the only hard barrier**: with a syntax error the result is stages 1 and 2.
-//! 3. Leaks: [`find_leaks`] on the stripped text (`free_text_fact`), the TS/hardened union.
+//! 3. Leaks: [`find_leaks`] on the stripped text (`free_text_fact`), the TS/hardened union,
+//!    without ordinals used as discourse ([`is_discourse_ordinal`], R2-1 (b)).
 //! 4. Defence in depth, only when stage 3 found nothing: [`extract_moves`], [`extract_numbers`]
 //!    and [`extract_dates`] on the stripped text (`unknown_move`, `unknown_number`,
 //!    `unknown_date`). Any result is a fact outside a token. `normalize_text` alone (hardened
@@ -35,7 +36,7 @@ use super::bounded::count_scanned;
 use super::evidence::Evidence;
 use super::extract::{extract_dates, extract_moves, extract_numbers};
 use super::format::resolve_token;
-use super::leaks::find_leaks;
+use super::leaks::{find_leaks, is_discourse_ordinal};
 use super::normalize::{is_dash, is_invisible, normalize_text};
 use super::segments_render::render_segments;
 use super::tokens::{NumFormat, Token, TokenBody, canonical_for_tokens, parse_tokens};
@@ -366,7 +367,10 @@ fn validate(
     let canonical = canonical_for_tokens(text);
 
     // 3. Leaks, and 4. defence in depth when stage 3 found nothing.
-    let leaks = find_leaks(stripped);
+    let leaks: Vec<_> = find_leaks(stripped)
+        .into_iter()
+        .filter(|l| !is_discourse_ordinal(stripped, l))
+        .collect();
     if leaks.is_empty() {
         errors.extend(extracted_facts(stripped, path));
     } else {

@@ -73,7 +73,7 @@ macro_rules! prompt {
     };
 }
 
-static TABLE: [Prompt; 41] = [
+static TABLE: [Prompt; 42] = [
     prompt!("core/rules", 1),
     prompt!("core/tokens", 1),
     prompt!("core/tokens", 2),
@@ -91,6 +91,8 @@ static TABLE: [Prompt; 41] = [
     prompt!("report/section-openings", 1),
     prompt!("report/section-climb_plan", 1),
     prompt!("report/section-areas", 1),
+    // R2-1 (a): v2 says what an insufficient area with a null `needMore` says.
+    prompt!("report/section-areas", 2),
     prompt!("tone/b0", 1),
     prompt!("tone/b0", 2),
     prompt!("tone/b1", 1),
@@ -154,7 +156,10 @@ pub const REPORT_PROMPT_SET: &[(&str, u32)] = &[
     ("report/section-weaknesses", 1),
     ("report/section-openings", 1),
     ("report/section-climb_plan", 1),
-    ("report/section-areas", 1),
+    // R2-1 (a): v2 gives an area with a null `needMore` (no band benchmark, or Mindset) no
+    // count and no token; the validator asks for the count only when there is one. v1 stays for
+    // stored hashes.
+    ("report/section-areas", 2),
     ("repair/repair", 1),
     ("core/glossary", 2),
 ];

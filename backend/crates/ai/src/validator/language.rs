@@ -151,6 +151,18 @@ lazy_re!(
     r"\b(less|fewer|decreas\w*|drop\w*|fell|fall\w*|(went|gone|go|goes|going)\s+down|lower\w*|reduc\w*|improv\w*|better|resolved|fixed|stopped|declin\w*|rare\w*|no\s+longer|gone\s+away|(went|go|goes|going)\s+away|eas(e|ed|es|ing)|dip\w*|shr[iu]nk\w*|shrank|halv\w*|smaller|fad(e|ed|es|ing)|vanish\w*|disappear\w*|cut\s+down|settl\w*\s+down|(is|are|was|were|been|be)\s+((well|way)\s+)?down|down\s+(from|to)|not\s+(be\s+|been\s+)?(as|so)\s+([A-Za-z]+\s+){1,2}as|under\s+control|a\s+fraction|(kick\w*|br(oke|eak\w*))\s+the\s+habit|uncommon|infrequent\w*)\b"
 );
 lazy_re!(BLUNDER, r"\b(blunder|mistake)\w*");
+// R2-1 (c): a mate word, the training words that make it generic advice within a few words
+// ("checkmate puzzles", "look for mates"), and the cues that make a sentence a claim about a
+// game or a position ("you had", "there was", "this move").
+lazy_re!(MATE_WORD, r"^(check)?mate[sd]?$");
+lazy_re!(
+    TRAINING,
+    r"\b(puzzles?|patterns?|drills?|exercises?|motifs?|themes?|nets?|ideas?|techniques?|practi[cs](e|es|ed|ing)|train(s|ed|ing)?|stud(y|ies|ied|ying)|solv(e|es|ed|ing)|learn(s|ed|ing)?|recogni[sz](e|es|ed|ing)|(look|looking|scan|scanning|check|checking|watch|watching)\s+for|spot(s|ting)?)\b"
+);
+lazy_re!(
+    CLAIM_CUE,
+    r"\b((you|they|he|she|your\s+opponent)\s+(had|missed|allowed|played|found|got|faced|walked|lost|won|blundered)|there\s+(was|is|were|are)|(this|that|the)\s+(position|game|move)|in\s+(this|that|your|the)\s+games?|engine|stockfish)\b"
+);
 // Fix round 1 (C6): quantities and absolutes in words.
 lazy_re!(
     QUANTITY,
@@ -339,16 +351,75 @@ fn words_around(before: &str, after: &str, n: usize) -> String {
     format!("{} {}", pre.join(" "), post.join(" "))
 }
 
+/// The engine words of the paragraph, as [`find_all`] reads them, without a mate word that is
+/// generic training advice (R2-1 (c)): in a paragraph that names no position (no citation and no
+/// `move`, `best`, `pv`, `eng` or `sq` token), a mate word within three words of a training word
+/// ("checkmate puzzles", "look for mates") in a sentence with no claim cue ("you had", "there
+/// was", "this move", "engine"). Every other engine word stays a claim.
+fn engine_words(stripped: &str, ctx: &TextCtx) -> Vec<String> {
+    let names_a_position = !ctx.citations.is_empty()
+        || ctx.tokens.iter().any(|t| {
+            matches!(
+                t.body,
+                TokenBody::Move { .. }
+                    | TokenBody::Best { .. }
+                    | TokenBody::Pv { .. }
+                    | TokenBody::Eng { .. }
+                    | TokenBody::Sq { .. }
+            )
+        });
+    let mut seen = HashSet::new();
+    let mut out = Vec::new();
+    for f in [stripped, ctx.hardened] {
+        count_scanned(f.len());
+        for m in ENGINE.find_iter(f) {
+            let s = canon(m.as_str());
+            if !names_a_position && is_training_advice(f, m.start(), m.end(), &s) {
+                continue;
+            }
+            if seen.insert(s.clone()) {
+                out.push(s);
+            }
+        }
+    }
+    out
+}
+
+/// Whether the mate word `word` at `start..end` of `text` sits in generic training advice: a
+/// training word within three words of it, and no claim cue, in its sentence.
+fn is_training_advice(text: &str, start: usize, end: usize, word: &str) -> bool {
+    if !MATE_WORD.is_match(word) {
+        return false;
+    }
+    let is_stop = |c: char| matches!(c, '.' | '!' | '?' | ';' | '\n');
+    let from = text[..start].rfind(is_stop).map_or(0, |i| i + 1);
+    let to = text[end..].find(is_stop).map_or(text.len(), |i| end + i);
+    let sentence = &text[from..to];
+    count_scanned(sentence.len());
+    if CLAIM_CUE.is_match(sentence) {
+        return false;
+    }
+    let before: Vec<&str> = text[from..start].split_whitespace().collect();
+    let after: Vec<&str> = text[end..to].split_whitespace().take(3).collect();
+    let near = format!(
+        "{} {}",
+        before[before.len().saturating_sub(3)..].join(" "),
+        after.join(" ")
+    );
+    TRAINING.is_match(&near)
+}
+
 /// Engine and evaluation claims need engine evidence (`uncited_reference`, fix round 1, C4):
 /// - a word such as engine, Stockfish, winning, losing, mate, advantage, equal, top choice, best
 ///   move or threw away needs, in the same paragraph, a `best`, `pv` or `eng` token, or a `num`
-///   token on an evaluation path of a cited position;
+///   token on an evaluation path of a cited position. A mate word in generic training advice
+///   ("practise checkmate puzzles") is no claim ([`engine_words`], R2-1 (c));
 /// - "blunder" or "mistake" may not sit within four words of a `best` token (or a `pv` token of
 ///   the best line), which would call the engine's move the player's error.
 pub fn engine_claims() -> TextRule {
     Box::new(|stripped: &str, ctx: &TextCtx| {
         let mut out = Vec::new();
-        let words = find_all(&ENGINE, stripped, ctx);
+        let words = engine_words(stripped, ctx);
         if !words.is_empty() {
             let cited: HashSet<String> = ctx
                 .citations
@@ -517,7 +588,8 @@ pub fn no_change_words() -> TextRule {
 }
 
 /// An area below its minimum sample says how many more games it needs: a
-/// `{{num:areaScores.<area>.needMore…}}` token (`insufficient_data_not_stated`).
+/// `{{num:areaScores.<area>.needMore…}}` token (`insufficient_data_not_stated`). Only for an
+/// area whose `needMore` is a number ([`report_text_rules`]).
 pub fn states_insufficient_data(area: AreaId) -> TextRule {
     let path = format!("areaScores.{}.needMore", area.as_str());
     Box::new(move |_: &str, ctx: &TextCtx| {
@@ -561,7 +633,7 @@ pub struct RuleMeta {
 ///   general weakness requires no phrase, so every phrase and direction is a mismatch),
 ///   `evidence_window` and `no_causal_phrases`.
 /// - Summary: `evidence_window` and `no_causal_phrases`.
-/// - Area: below its minimum sample, `states_insufficient_data`.
+/// - Area: below its minimum sample with a `needMore` count, `states_insufficient_data`.
 /// - Item: `no_causal_phrases`.
 /// - Opening: a citation, and `line` tokens only for its own line.
 pub fn report_text_rules(
@@ -573,10 +645,12 @@ pub fn report_text_rules(
         .iter()
         .map(|w| (w.id.clone(), w.p_imp))
         .collect();
+    // R2-1 (a): only an area with a count to give. A null `needMore` (no band reference for
+    // its components, or Mindset) is a shortfall more games cannot fix, and has no path to cite.
     let insufficient: Vec<AreaId> = input
         .area_scores
         .iter()
-        .filter(|a| !a.sufficient)
+        .filter(|a| !a.sufficient && a.need_more.is_some())
         .map(|a| a.area)
         .collect();
     move |kind: RuleKind, meta: RuleMeta| {

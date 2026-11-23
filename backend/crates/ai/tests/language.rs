@@ -249,6 +249,56 @@ fn an_insufficient_area_text_without_the_need_more_token_is_insufficient_data_no
     );
 }
 
+/// R2-1 (a): an insufficient area with a null `needMore` (no band reference for its
+/// components, or Mindset, which is never scored) cannot be fixed by more games and has no count
+/// to cite, so its text needs no `needMore` token. An area with a count still needs it.
+#[test]
+fn an_insufficient_area_without_a_count_needs_no_need_more_token() {
+    let mut i = input("early-read");
+    for a in i.area_scores.iter_mut() {
+        if a.area == AreaId::Mindset || a.area == AreaId::Middlegame {
+            a.sufficient = false;
+            a.score = None;
+            a.need_more = None;
+        }
+    }
+    let rules = report_text_rules(&i);
+    let ev = build_evidence(&i);
+    let meta = |a| RuleMeta {
+        area: Some(a),
+        ..RuleMeta::default()
+    };
+    let check = |a, t: &str| match validate_text(t, &[], &ev, &rules(RuleKind::Area, meta(a)), "p")
+    {
+        Ok(_) => Vec::new(),
+        Err(e) => e.into_iter().map(|e| e.code).collect::<Vec<_>>(),
+    };
+    assert_eq!(
+        check(
+            AreaId::Middlegame,
+            "There is no score here yet: your rating band has no comparison for this part of the game."
+        ),
+        []
+    );
+    assert_eq!(
+        check(AreaId::Mindset, "Mindset is coaching advice, not a score."),
+        []
+    );
+    // A null count has no path: citing it is still unresolved.
+    assert_eq!(
+        check(
+            AreaId::Middlegame,
+            "We need {{num:areaScores.middlegame.needMore|int}} more games."
+        ),
+        [C::UnresolvedToken]
+    );
+    // An area that has a count still has to give it.
+    assert_eq!(
+        check(AreaId::Endgame, "Your endgame sample is still small."),
+        [C::InsufficientDataNotStated]
+    );
+}
+
 #[test]
 fn format_evidence_window_matches_the_example() {
     let i = input("b2-rapid");
@@ -396,6 +446,42 @@ mod engine_claims_rule {
                 &[5]
             ),
             []
+        );
+    }
+
+    /// R2-1 (c): generic training advice about mates (a drill, a puzzle, a habit) is not an
+    /// engine claim about a position and needs no engine evidence.
+    #[test]
+    fn mate_words_in_training_advice_need_no_engine_evidence() {
+        for ok in [
+            "Checkmate puzzles train you to see the mating net early.",
+            "Solve a few checkmate patterns each day before you play.",
+            "Look for mates and checks before every move.",
+            "Practise checkmate drills on the days you do not play.",
+            "Spend a short session on mate puzzles, then play your games.",
+            "Before each move, scan for mate threats against your king.",
+        ] {
+            assert_eq!(check(ok, &[]), [], "{ok}");
+        }
+    }
+
+    /// R2-1 (c): a mate claim about a position or a game still needs engine evidence.
+    #[test]
+    fn mate_claims_about_a_position_still_need_engine_evidence() {
+        for bad in [
+            "You had a mate here and missed it.",
+            "There was a mate on the board.",
+            "This move mates.",
+            "You missed mates in your games; practise checkmate puzzles.",
+            "The engine says checkmate puzzles help.",
+            "You allowed checkmate patterns again and again.",
+        ] {
+            assert!(check(bad, &[]).contains(&C::UncitedReference), "{bad}");
+        }
+        // About a cited position, a mate word needs engine evidence even beside a drill word.
+        assert_eq!(
+            check("{{move:li-w1-0:5}} walked into a mate pattern.", &[5]),
+            [C::UncitedReference]
         );
     }
 }

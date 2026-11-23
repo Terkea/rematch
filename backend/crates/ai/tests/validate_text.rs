@@ -312,3 +312,34 @@ fn num_formats_are_bound_to_values_and_paths() {
         assert_eq!(run(ok, &c, &d), [], "{ok}");
     }
 }
+
+/// R2-1 (b): "first" as discourse or sequencing ("First, …", "your first move", "at first") is
+/// no numeric fact, and a sentence-opening "Second," or "Third," is sequencing. A counted claim
+/// is still caught, by its digit or number word.
+#[test]
+fn discourse_ordinals_are_not_free_text_facts() {
+    let d = TextRules::default();
+    for ok in [
+        "First, slow down when the position gets sharp.",
+        "Check every capture before your first move in a new position.",
+        "At first this will feel slow.",
+        "First of all, look at your opponent's threats.",
+        "Your first job is to keep your pieces safe.",
+        "First, check captures. Second, check threats. Third, pick a plan.",
+        "Firstly, keep it simple.",
+    ] {
+        assert_eq!(run(ok, &[], &d), [], "{ok}");
+    }
+    for bad in [
+        // A counted claim keeps its number.
+        "Your first 10 games went well.",
+        "In your first ten games you hung a piece.",
+        // An ordinal that is not sequencing stays a number word.
+        "You lose a third of your endgames.",
+        "This is your second loss today.",
+        "Your second game was lost on time.",
+        "Play one game a day.",
+    ] {
+        assert_eq!(run(bad, &[], &d), [C::FreeTextFact], "{bad}");
+    }
+}

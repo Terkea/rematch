@@ -170,7 +170,8 @@ fn report_prompt_set_is_the_brief_list() {
     // teaches the colour split and the peer benchmark, the overview v2 the White vs Black
     // sentence.
     // ADR 0089: report v3 adds the rating trajectory. Holistic F5: tone v2 drops the band's
-    // rating range; F1: glossary v2 has no "players at your level".
+    // rating range; F1: glossary v2 has no "players at your level". R2-1 (a): areas v2 handles
+    // a null `needMore`.
     let v2 = [
         "core/tokens",
         "report/section-overview",
@@ -181,6 +182,7 @@ fn report_prompt_set_is_the_brief_list() {
         "tone/b4",
         "tone/b5",
         "core/glossary",
+        "report/section-areas",
     ];
     let want = |id: &str| match id {
         "report/report" => 3,
