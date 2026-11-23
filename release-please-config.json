@@ -30,6 +30,7 @@
       "extra-files": [
         { "type": "json", "path": "apps/web/package.json", "jsonpath": "$.version" },
         { "type": "generic", "path": "backend/Cargo.toml" },
+        { "type": "generic", "path": "deploy/compose.yaml" },
         {
           "type": "toml",
           "path": "backend/Cargo.lock",

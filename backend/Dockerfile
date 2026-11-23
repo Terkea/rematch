@@ -19,6 +19,8 @@ RUN apt-get update \
  && echo "${STOCKFISH_SHA256}  /tmp/sf.tar.gz" | sha256sum -c - \
  && tar -xzf /tmp/sf.tar.gz -C /tmp \
  && install -m 0755 /tmp/stockfish/stockfish-linux-x86-64-universal /usr/local/bin/stockfish \
+ && install -D -m 0644 /tmp/stockfish/Copying.txt /usr/share/doc/stockfish/Copying.txt \
+ && install -D -m 0644 /tmp/stockfish/AUTHORS /usr/share/doc/stockfish/AUTHORS \
  && rm -rf /tmp/sf.tar.gz /tmp/stockfish
 
 # Build tools for the dev image (ADR 0042), each an official GitHub release binary pinned by
@@ -105,6 +107,10 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 COPY --from=stockfish /usr/local/bin/stockfish /usr/local/bin/stockfish
+# Stockfish's GPL-3.0 text and authors, and Rematch's licence and notices (ADR 0098). The
+# corresponding Stockfish source is attached to every release (deploy/stockfish-source.txt).
+COPY --from=stockfish /usr/share/doc/stockfish /usr/share/doc/stockfish
+COPY LICENSE NOTICE /usr/share/doc/rematch/
 COPY --from=builder /work/backend/target/release/worker /usr/local/bin/worker
 COPY --from=builder /work/backend/target/release/cli /usr/local/bin/cli
 COPY --from=builder /work/backend/target/release/lichess-db /usr/local/bin/lichess-db

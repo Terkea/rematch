@@ -1,0 +1,185 @@
+# Rematch, released images (ADR 0098). This file pulls the published images; it never builds.
+# Each GitHub release attaches a copy of it with every Rematch image pinned by digest, plus
+# env.release.example. Run it from an empty folder:
+#   cp env.release.example .env      # then fill in every value marked "required"
+#   docker compose pull
+#   docker compose up -d --wait
+# With the AI coach: COMPOSE_PROFILES=ai in .env (see env.release.example), then
+#   docker compose run --rm ai-sidecar-role    # once, after the worker has run the migrations
+# Upgrading (back up, pull, up) is in docs/RELEASING.md.
+#
+# The worker applies db/migrations (sqlx) every time it starts, before it takes any job, so a
+# newer image migrates the database on its first start. Migrations only move forward: to go back
+# to an older release, restore the backup taken before the upgrade.
+name: rematch
+
+services:
+  postgres:
+    image: postgres:17@sha256:223efeb196329b55b3b9a13db144956411dbc18e727e59f681c3e0aede6475cf
+    # ADR 0044: an init process as PID 1 reaps orphaned healthcheck processes, so Postgres never
+    # mistakes one for a crashed backend and restarts mid-run.
+    init: true
+    # ADR 0066: the worker holds pool_size + preview + headroom connections beside the web app.
+    command: ["postgres", "-c", "max_connections=300"]
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env (openssl rand -hex 24)}
+      POSTGRES_DB: rematch
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # Exec form over TCP (ADR 0044): no shell to orphan pg_isready, and it passes only once the
+      # final server listens.
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "postgres", "-d", "rematch"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  redis:
+    image: redis:7@sha256:2e3eb11462c4e3759e6972678dd051d150ff54b1e60714b3c33b701260172a90
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  web:
+    image: ${REMATCH_IMAGE_PREFIX:-ghcr.io/terkea/rematch}-web:${REMATCH_VERSION:-0.1.0} # x-release-please-version
+    environment:
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/rematch
+      REDIS_URL: redis://redis:6379
+      # A production server refuses a missing, short or published secret (apps/web/src/env.ts).
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in .env (openssl rand -hex 32)}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:?set BETTER_AUTH_URL in .env, the address players open}
+      BETTER_AUTH_TRUSTED_ORIGINS: ${BETTER_AUTH_TRUSTED_ORIGINS:-}
+      SMTP_URL: ${SMTP_URL:?set SMTP_URL in .env; sign-in links go by email}
+      MAIL_FROM: ${MAIL_FROM:-Rematch <no-reply@rematch.invalid>}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      CHESSCOM_ENABLED: "${CHESSCOM_ENABLED:-1}"
+      LICHESS_ENABLED: "${LICHESS_ENABLED:-0}"
+      LAB_ENABLED: "${LAB_ENABLED:-0}"
+      INVITE_ONLY: "${INVITE_ONLY:-1}"
+      INVITE_ALLOWLIST: ${INVITE_ALLOWLIST:-}
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
+      IP_ADDRESS_HEADERS: ${IP_ADDRESS_HEADERS:-x-forwarded-for}
+      AI_DEFAULT_PLAN: ${AI_DEFAULT_PLAN:-beta}
+      AI_BETA_CHAT_WEEKLY: ${AI_BETA_CHAT_WEEKLY:-100}
+      AI_BETA_MANUAL_REPORTS_PER_DAY: ${AI_BETA_MANUAL_REPORTS_PER_DAY:-1}
+    # Loopback only: put a TLS reverse proxy in front and list it in TRUSTED_PROXIES (ADR-WEB-3).
+    ports:
+      - "127.0.0.1:${WEB_PORT:-3100}:3100"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3100/api/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    restart: unless-stopped
+
+  worker:
+    image: ${REMATCH_IMAGE_PREFIX:-ghcr.io/terkea/rematch}-worker:${REMATCH_VERSION:-0.1.0} # x-release-please-version
+    environment:
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/rematch
+      LICHESS_TOKEN: ${LICHESS_TOKEN:-}
+      # Stockfish processes, and so games analysed at once. Empty: min(cores - 2, 8).
+      WORKER_POOL_SIZE: ${WORKER_POOL_SIZE:-}
+      RUST_LOG: ${RUST_LOG:-info}
+      # Optional Syzygy 3-4-5 tables (ADR-R2-12) in $REMATCH_DATA_DIR/syzygy. Without them the
+      # tablebase probe is off and analysis goes on.
+      DATA_DIR: /data
+      SYZYGY_PATH: /data/syzygy
+      SYZYGY_STAGE_DIR: /var/lib/chess-improver/syzygy
+      MAIA_URL: ${MAIA_URL:-}
+      WORKER_DEFAULT_PLAN: ${WORKER_DEFAULT_PLAN:-}
+      SYNC_INTERVAL_MINUTES: ${SYNC_INTERVAL_MINUTES:-}
+      # AI coaching (ADR 0062): empty AI_SIDECAR_URL means computed-only reports.
+      AI_SIDECAR_URL: ${AI_SIDECAR_URL:-}
+      AI_SIDECAR_TOKEN: ${AI_SIDECAR_TOKEN:-}
+      AI_TOOL_BIND: 0.0.0.0:7311
+      AI_TOOL_PUBLIC_URL: http://worker:7311
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      AI_BUDGET_FREE_MICRO_USD: ${AI_BUDGET_FREE_MICRO_USD:-}
+      AI_BUDGET_PRO_MICRO_USD: ${AI_BUDGET_PRO_MICRO_USD:-}
+      AI_GLOBAL_MONTHLY_BUDGET_MICRO_USD: ${AI_GLOBAL_MONTHLY_BUDGET_MICRO_USD:-}
+      AI_DEFAULT_PLAN: ${AI_DEFAULT_PLAN:-beta}
+      AI_BETA_CHAT_WEEKLY: ${AI_BETA_CHAT_WEEKLY:-100}
+      AI_BETA_MANUAL_REPORTS_PER_DAY: ${AI_BETA_MANUAL_REPORTS_PER_DAY:-1}
+    volumes:
+      - ${REMATCH_DATA_DIR:-./data}:/data:ro
+      - syzygy_stage:/var/lib/chess-improver/syzygy
+    depends_on:
+      postgres:
+        condition: service_healthy
+      # Only with COMPOSE_PROFILES=ai; without it the worker starts on its own.
+      ai-sidecar:
+        condition: service_healthy
+        required: false
+    stop_grace_period: 30s
+    restart: unless-stopped
+
+  # The Claude Agent SDK sidecar (ADR 0062), profile `ai`. Production needs ANTHROPIC_API_KEY and
+  # the session store; it refuses a personal Claude login or subscription token.
+  ai-sidecar:
+    profiles: [ai]
+    image: ${REMATCH_IMAGE_PREFIX:-ghcr.io/terkea/rematch}-ai-sidecar:${REMATCH_VERSION:-0.1.0} # x-release-please-version
+    environment:
+      AI_SIDECAR_TOKEN: ${AI_SIDECAR_TOKEN:-}
+      AI_SIDECAR_ENV: ${AI_SIDECAR_ENV:-production}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      AI_SESSION_DATABASE_URL: postgres://ai_sidecar:${AI_SIDECAR_DB_PASSWORD:-}@postgres:5432/rematch
+    read_only: true
+    tmpfs:
+      - /var/lib/ai-sidecar:uid=1000,gid=1000,mode=0700,size=512m
+      - /tmp:mode=1777,size=256m
+    mem_limit: 5g
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # One-shot, profile `ai`: the migration creates the ai_sidecar role NOLOGIN; this grants it LOGIN
+  # with AI_SIDECAR_DB_PASSWORD. Run it once after the worker's first start, and again after
+  # changing the password: `docker compose run --rm ai-sidecar-role`.
+  ai-sidecar-role:
+    profiles: [ai]
+    image: postgres:17@sha256:223efeb196329b55b3b9a13db144956411dbc18e727e59f681c3e0aede6475cf
+    environment:
+      PGHOST: postgres
+      PGUSER: postgres
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: rematch
+      AI_SIDECAR_DB_PASSWORD: ${AI_SIDECAR_DB_PASSWORD:-}
+    entrypoint:
+      - sh
+      - -c
+      - |
+        set -eu
+        if [ "$${#AI_SIDECAR_DB_PASSWORD}" -lt 16 ]; then
+          echo "AI_SIDECAR_DB_PASSWORD must be at least 16 characters" >&2
+          exit 1
+        fi
+        psql -q -v ON_ERROR_STOP=1 <<'SQL'
+        \getenv pw AI_SIDECAR_DB_PASSWORD
+        ALTER ROLE ai_sidecar LOGIN PASSWORD :'pw';
+        \echo 'ai_sidecar: LOGIN granted'
+        SQL
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+volumes:
+  pgdata:
+  syzygy_stage:

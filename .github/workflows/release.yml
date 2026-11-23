@@ -3,16 +3,15 @@ name: Release
 # use the PR title), it keeps one release PR open with the next version and its CHANGELOG.md
 # entry. Merging that PR tags vX.Y.Z and publishes a GitHub Release, marked prerelease while the
 # version is 0.y.z (beta). 1.0.0 is the MVP: a maintainer decision, never automatic.
+# When a Release is published, the images job builds, smoke-tests, pushes and signs the images
+# and attaches the release assets (release-images.yml, ADR 0098).
 on:
   push:
     branches: [main]
   workflow_dispatch:
 
-# The only workflow that writes: it opens the release PR and creates the tag and Release with the
-# run's own GITHUB_TOKEN. No other token is stored.
-permissions:
-  contents: write
-  pull-requests: write
+# Every job states its own permissions. No other token is stored.
+permissions: {}
 
 concurrency:
   group: release
@@ -21,9 +20,32 @@ concurrency:
 jobs:
   release-please:
     runs-on: ubuntu-latest
+    # It opens the release PR and creates the tag and Release with the run's own GITHUB_TOKEN.
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
       # v5.0.0, pinned by commit.
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7
+        id: release
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+
+  # A Release made with GITHUB_TOKEN starts no `release: published` workflow, so the images are
+  # built from here. These are the most the called jobs may use; each asks for less.
+  images:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    permissions:
+      contents: write
+      checks: read
+      packages: write
+      id-token: write
+      attestations: write
+    uses: ./.github/workflows/release-images.yml
+    with:
+      tag: ${{ needs.release-please.outputs.tag_name }}

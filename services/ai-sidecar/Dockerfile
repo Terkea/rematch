@@ -25,6 +25,8 @@ FROM ${NODE_IMAGE} AS runtime
 WORKDIR /app
 # Root-owned, so the node user cannot modify the code or its dependencies.
 COPY --from=build /out /app
+# The licence and third-party notices (ADR 0098), readable in every published image.
+COPY LICENSE NOTICE /usr/share/doc/rematch/
 # workDir and configDir live here. Compose mounts a tmpfs over it: the CLI's disk is scratch, and
 # durable chat transcripts are in Postgres through the session store.
 RUN mkdir -p /var/lib/ai-sidecar \

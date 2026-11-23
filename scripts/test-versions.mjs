@@ -58,6 +58,20 @@ for (const c of local) {
   );
 }
 
+// The released compose file (ADR 0098) pulls each image at the product version; release-please
+// bumps the lines marked x-release-please-version.
+const imageLines = [
+  ...read("deploy/compose.yaml").matchAll(/^\s*image: \S*rematch\}-([a-z-]+):\$\{REMATCH_VERSION:-([^}]+)\}(.*)$/gm),
+];
+expect(imageLines.length === 3, `deploy/compose.yaml has ${imageLines.length} Rematch images, not 3`);
+for (const [, image, v, rest] of imageLines) {
+  expect(v === version, `deploy/compose.yaml: rematch-${image} is ${v}, the root is ${version}`);
+  expect(
+    rest.includes("# x-release-please-version"),
+    `deploy/compose.yaml: rematch-${image} needs # x-release-please-version`,
+  );
+}
+
 // The release config: beta rules while 0.y.z, the three extra files, and the first release.
 const config = json("release-please-config.json");
 const pkg = config.packages?.["."];
@@ -70,7 +84,12 @@ expect(pkg?.prerelease === major < 1, `prerelease must be ${major < 1} at versio
 const extra = (pkg?.["extra-files"] ?? []).map((f) => f.path).sort();
 expect(
   JSON.stringify(extra) ===
-    JSON.stringify(["apps/web/package.json", "backend/Cargo.lock", "backend/Cargo.toml"]),
+    JSON.stringify([
+      "apps/web/package.json",
+      "backend/Cargo.lock",
+      "backend/Cargo.toml",
+      "deploy/compose.yaml",
+    ]),
   `extra-files are ${extra}`,
 );
 
