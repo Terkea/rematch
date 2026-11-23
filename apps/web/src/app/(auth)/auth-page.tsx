@@ -27,11 +27,7 @@ export function AuthPage({ title, lede, aside, children }: AuthPageProps) {
   return (
     <div
       {...(aside ? { "data-bleed": "" } : {})}
-      className={
-        aside
-          ? `flex flex-1 flex-col ${AUTH_GRID}`
-          : "flex flex-1 flex-col"
-      }
+      className={aside ? `flex flex-1 flex-col ${AUTH_GRID}` : "flex flex-1 flex-col"}
     >
       <section
         aria-labelledby="auth-title"

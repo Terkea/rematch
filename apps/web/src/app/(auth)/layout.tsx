@@ -15,10 +15,10 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
         <div className="px-(--space-gutter)">
           <div className={AUTH_COLUMN}>
             <Link
-          href="/"
-          aria-label={brand.name}
-          className="inline-flex h-10 items-center gap-2 rounded-field whitespace-nowrap text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
-        >
+              href="/"
+              aria-label={brand.name}
+              className="inline-flex h-10 items-center gap-2 rounded-field whitespace-nowrap text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+            >
               <BrandLockup />
             </Link>
           </div>
