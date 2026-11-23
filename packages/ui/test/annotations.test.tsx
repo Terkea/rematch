@@ -408,6 +408,52 @@ describe("numbered arrows", () => {
     }
   });
 
+  it("keeps each number off the arrowhead, nearer the tail, even on a one-square arrow", () => {
+    // Owner: "Don't put the numbers over the tip of the arrow".
+    const centre = (sq: string) => ({
+      x: sq.charCodeAt(0) - 97 + 0.5,
+      y: 8 - Number(sq[1]) + 0.5,
+    });
+    const arrows: [string, string][] = [
+      ["g1", "f3"],
+      ["g5", "h4"],
+      ["f1", "b5"],
+    ];
+    const { container } = render(
+      <AnnotationLayer
+        annotations={arrows.map(([from, to], i) => ({
+          kind: "arrow",
+          from: from as never,
+          to: to as never,
+          tone: "good",
+          step: i + 1,
+        }))}
+        orientation="white"
+        animate={false}
+      />,
+    );
+    const steps = [...container.querySelectorAll("[data-mark='step']")];
+    expect(steps).toHaveLength(3);
+    steps.forEach((g, i) => {
+      const c = g.querySelector("circle:last-of-type");
+      const p = { x: Number(c?.getAttribute("cx")), y: Number(c?.getAttribute("cy")) };
+      const [from, to] = arrows[i] as [string, string];
+      const tail = centre(from);
+      const head = centre(to);
+      const toTail = Math.hypot(p.x - tail.x, p.y - tail.y);
+      const toHead = Math.hypot(p.x - head.x, p.y - head.y);
+      const where = `arrow ${from}-${to} at ${p.x},${p.y}`;
+      // Well clear of the arrowhead on every arrow (a knight's L included)…
+      expect(toHead, where).toBeGreaterThan(0.6);
+      // …and on a straight arrow, nearer the tail than the head.
+      const straight =
+        from[0] === to[0] ||
+        from[1] === to[1] ||
+        Math.abs(head.x - tail.x) === Math.abs(head.y - tail.y);
+      if (straight) expect(toTail, where).toBeLessThan(toHead);
+    });
+  });
+
   it("names each step for screen readers, in order", () => {
     const { container } = render(
       <AnnotationLayer annotations={line} orientation="white" animate={false} />,

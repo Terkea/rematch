@@ -357,9 +357,10 @@ function planMarks(
 }
 
 /**
- * Where a step number sits on its shaft: the sampled point nearest the middle of the shaft that
- * is off every square's centre (so never on a piece) and clear of the badges already placed,
- * away from both ends. The middle itself when no point qualifies.
+ * Where a step number sits on its shaft: in the shaft's first half, toward the tail, never over
+ * the arrowhead (owner: "don't put the numbers over the tip of the arrow"). The sampled point
+ * nearest `STEP_AT` of the way along that is off every square's centre (so never on a piece) and
+ * clear of the badges already placed; with none, the point at `STEP_AT` itself.
  */
 function stepPoint(line: Point[], r: number, placed: readonly BadgeMark[]): Point {
   const lengths = [0];
@@ -377,16 +378,34 @@ function stepPoint(line: Point[], r: number, placed: readonly BadgeMark[]): Poin
   let bestGap = Number.POSITIVE_INFINITY;
   line.forEach((p, i) => {
     const t = (lengths[i] as number) / total;
-    if (t < 0.15 || t > 0.8 || !offCentre(p) || !clear(p)) return;
-    const gap = Math.abs(t - 0.5);
+    if (t < STEP_SPAN[0] || t > STEP_SPAN[1] || !offCentre(p) || !clear(p)) return;
+    const gap = Math.abs(t - STEP_AT);
     if (gap < bestGap) {
       best = p;
       bestGap = gap;
     }
   });
   if (best) return best;
-  const mid = line[Math.floor(line.length / 2)] ?? { x: 4, y: 4 };
-  return mid;
+  return pointAt(line, lengths, STEP_AT * total);
+}
+
+/** A step number's place along its shaft: a third of the way, between 10% and 50%. */
+export const STEP_AT = 0.33;
+export const STEP_SPAN = [0.1, 0.5] as const;
+
+/** The point `d` along the sampled polyline `line` (cumulative `lengths`). */
+function pointAt(line: Point[], lengths: number[], d: number): Point {
+  for (let i = 1; i < line.length; i++) {
+    const end = lengths[i] as number;
+    if (end >= d) {
+      const a = line[i - 1] as Point;
+      const b = line[i] as Point;
+      const start = lengths[i - 1] as number;
+      const t = end > start ? (d - start) / (end - start) : 0;
+      return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+    }
+  }
+  return line[0] ?? { x: 4, y: 4 };
 }
 
 /** One square's width in CSS px, measured; 56 (DESIGN.md's reference square) until known. */
