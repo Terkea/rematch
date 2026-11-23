@@ -1,4 +1,4 @@
-FROM node:22-bookworm-slim AS base
+FROM node:26-bookworm-slim AS base
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates curl \
  && rm -rf /var/lib/apt/lists/* \
@@ -20,7 +20,7 @@ COPY . .
 RUN pnpm install --frozen-lockfile \
  && pnpm turbo run build --filter @ci/web...
 
-FROM node:22-bookworm-slim AS runtime
+FROM node:26-bookworm-slim AS runtime
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
     PORT=3100 \

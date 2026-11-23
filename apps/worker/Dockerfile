@@ -1,4 +1,4 @@
-FROM node:22-bookworm-slim AS base
+FROM node:26-bookworm-slim AS base
 # Stockfish 19, generic x86-64 Linux build (runs on any x86-64 CPU).
 # Asset: stockfish-linux-x86-64-universal.tar.gz (release sf_19)
 ARG STOCKFISH_ASSET=stockfish-linux-x86-64-universal.tar.gz
