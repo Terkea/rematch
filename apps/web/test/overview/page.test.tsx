@@ -8,7 +8,6 @@ import { OverviewEmpty } from "../../src/app/(app)/app/_overview/empty-state.js"
 import { JudgementsSection } from "../../src/app/(app)/app/_overview/judgements-section.js";
 import { RecentSection } from "../../src/app/(app)/app/_overview/recent-section.js";
 import { OverviewSheet, showWorkOn } from "../../src/app/(app)/app/_overview/sheet.js";
-import type { LeadFinding } from "../../src/server/profile/types.js";
 import { StatusLine } from "../../src/app/(app)/app/_overview/status-line.js";
 import { TimeClassSection } from "../../src/app/(app)/app/_overview/time-class-section.js";
 import { TimeClassSwitch } from "../../src/app/(app)/app/_overview/time-class-switch.js";
@@ -20,6 +19,7 @@ import {
 } from "../../src/app/(app)/app/_overview/view.js";
 import type { TimeClass } from "../../src/server/games/types.js";
 import { getOverview } from "../../src/server/overview/index.js";
+import type { LeadFinding } from "../../src/server/profile/types.js";
 import type { GameStatRow } from "../../src/server/stats/game-stats.js";
 import { comparePeriodRows } from "../../src/server/stats/period-compare.js";
 import {
