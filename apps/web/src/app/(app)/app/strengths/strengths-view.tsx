@@ -1,5 +1,11 @@
 import { Button } from "@ci/ui/primitives";
-import { dayText, exemplarMoveText, fenMove, formatKpiValue } from "@ci/ui/profile";
+import {
+  dayText,
+  ExplainPopover,
+  exemplarMoveText,
+  fenMove,
+  formatKpiValue,
+} from "@ci/ui/profile";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { CoachScopeSwitch } from "../../../../components/coach-scope-switch";
@@ -11,7 +17,13 @@ import {
   benchmarkGroupLabel,
   benchmarkLabel,
 } from "../../../../server/profile/benchmark-text";
-import { AREA_GLOSSARY } from "../../../../server/profile/glossary";
+import type { DayRange } from "../../../../server/filters/params";
+import {
+  AREA_GLOSSARY,
+  type GlossaryEntry,
+  KPI_GLOSSARY,
+  seriesGlossary,
+} from "../../../../server/profile/glossary";
 import {
   BALANCED_MAX,
   BALANCED_MIN,
@@ -28,11 +40,13 @@ import {
   PROMISING_P,
   type PromisingOpening,
   RECENT_GAMES,
+  type SideAbove,
   type StrengthsModel,
   type Verdict,
   type WorkingOpening,
 } from "../../../../server/profile/strengths";
 import { EmptySheet } from "../../_shell/page-heading";
+import { rangeWords } from "../_filters/model";
 import { SectionHead } from "../_overview/section-head";
 
 // `/app/strengths`: the good things in the scope's games and what to keep doing. Everything here
@@ -75,17 +89,39 @@ const plural = (n: number, one: string, many: string) =>
 const pct0 = (share: number) => `${Math.round(Math.min(1, Math.max(0, share)) * 100)}%`;
 const pct1 = (share: number) => `${(share * 100).toFixed(1)}%`;
 
-/** "Based on 214 analysed rapid games on chess.com." */
-export function basisText(scope: CoachScope): string {
+/** The colour's name in a sentence ("White"), or null for both. */
+const COLOUR = { white: "White", black: "Black" } as const;
+const colourOf = (side: string | undefined) =>
+  side === "white" || side === "black" ? COLOUR[side] : null;
+
+/**
+ * "Based on 214 analysed rapid games on chess.com.", or with the filters the page read:
+ * "Based on 120 analysed rapid games with White on chess.com, 1 Sep to 31 Oct 2026."
+ */
+export function basisText(
+  scope: CoachScope,
+  read?: { games: number; side: string; range: DayRange },
+): string {
   const o = scope.options.find(
     (x) => x.accountId === scope.accountId && x.timeClass === scope.timeClass,
   );
-  const n = Math.max(0, Math.trunc(o?.analysedGames ?? 0));
-  return `Based on ${plural(n, `analysed ${TIME_CLASS[scope.timeClass]} game`, `analysed ${TIME_CLASS[scope.timeClass]} games`)} on ${PLATFORM[scope.platform]}.`;
+  const n = Math.max(0, Math.trunc(read?.games ?? o?.analysedGames ?? 0));
+  const tc = TIME_CLASS[scope.timeClass];
+  const colour = colourOf(read?.side);
+  const dated = read && (read.range.from || read.range.to) ? `, ${rangeWords(read.range)}` : "";
+  return `Based on ${plural(n, `analysed ${tc} game`, `analysed ${tc} games`)}${colour ? ` with ${colour}` : ""} on ${PLATFORM[scope.platform]}${dated}.`;
 }
 
-const scopeQuery = (scope: CoachScope) =>
-  new URLSearchParams({ account: scope.accountId, tc: scope.timeClass }).toString();
+/** What the date filter changes on this page (audit A5): the per-game reads, not the stored ones. */
+export const STRENGTHS_DATES_TEXT =
+  "These dates narrow the comparison with your earlier games, the openings and the moves in hard spots. The comparison with other players stays on your last 50 games, and what's improving on your whole record.";
+
+const scopeQuery = (scope: CoachScope) => {
+  const q = new URLSearchParams({ account: scope.accountId, tc: scope.timeClass });
+  const colour = scope.side === "white" || scope.side === "black" ? scope.side : null;
+  if (colour) q.set("color", colour);
+  return q.toString();
+};
 
 /** What a metric's per-game value counts, for "over your last 40 games". */
 const N_UNIT: Record<string, [string, string]> = {
@@ -256,6 +292,7 @@ function ClaimRow({
   detail,
   strip,
   href,
+  explain,
   tentative = false,
 }: {
   id: string;
@@ -264,22 +301,32 @@ function ClaimRow({
   detail: string;
   strip?: ReactNode;
   href?: string;
+  /** The claim's "What is this?" (the glossary entry of its measure). */
+  explain?: GlossaryEntry | null;
   /** A likely but not certain claim: its figure in ink, not in the `good` ink of a sure one. */
   tentative?: boolean;
 }) {
   return (
     <li data-claim={id} className="flex flex-col gap-1 py-4 [font-variant-numeric:lining-nums]">
-      <div className="flex items-baseline justify-between gap-4">
-        {href ? (
-          <Link
-            href={href}
-            className="rounded-field text-base font-medium text-ink underline decoration-rule-strong underline-offset-4 hover:decoration-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
-          >
-            {label}
-          </Link>
-        ) : (
-          <span className="text-base font-medium text-ink">{label}</span>
-        )}
+      {/* The label and the figure share a line while they fit; on a phone the figure wraps
+          under a long label (audit A14), never past the sheet's edge. */}
+      <div
+        data-claim-head=""
+        className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1"
+      >
+        <span className="flex min-w-0 items-center gap-1">
+          {href ? (
+            <Link
+              href={href}
+              className="min-w-0 rounded-field text-base font-medium text-ink underline decoration-rule-strong underline-offset-4 hover:decoration-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+            >
+              {label}
+            </Link>
+          ) : (
+            <span className="min-w-0 text-base font-medium text-ink">{label}</span>
+          )}
+          {explain ? <ExplainPopover entry={explain} /> : null}
+        </span>
         <span className="flex items-center gap-4">
           {strip}
           <span
@@ -302,6 +349,7 @@ function OwnClaims({ claims }: { claims: OwnClaim[] }) {
           key={c.metric}
           id={c.metric}
           label={c.label}
+          explain={KPI_GLOSSARY[c.metric]}
           figure={figureOf(c.recent.value, c.unit)}
           detail={ownClaimText(c)}
           strip={
@@ -348,6 +396,7 @@ function AboveLevel({ above }: { above: StrengthsModel["above"] }) {
                 key={c.metric}
                 id={c.metric}
                 label={c.label}
+                explain={KPI_GLOSSARY[c.metric]}
                 figure={figureOf(c.value, c.unit)}
                 detail={peerClaimText(c, b)}
                 strip={
@@ -384,6 +433,7 @@ function AboveLevel({ above }: { above: StrengthsModel["above"] }) {
                 key={c.metric}
                 id={c.metric}
                 label={c.label}
+                explain={KPI_GLOSSARY[c.metric]}
                 figure={figureOf(c.value, c.unit)}
                 detail={bandClaimText(c)}
                 strip={
@@ -422,13 +472,18 @@ function Improving({
   improving,
   ownAbove,
   scope,
+  side,
 }: {
   improving: StrengthsModel["improving"];
   ownAbove: boolean;
   scope: CoachScope;
+  side: StrengthsModel["side"];
 }) {
   const { weaknesses, kpis } = improving;
-  const rule = `A change shows here once it is confirmed: at least ${pct0(CONFIRM_P_CHANGE)} likely, and a drop of ${pct0(CONFIRM_REL_CHANGE)} or more.`;
+  // The weakness timeline is every game's (ADR 0082): a colour cannot narrow it, so it says so.
+  const allGames =
+    side === "both" ? "" : " Weakness changes are called on all your games, both colours.";
+  const rule = `A change shows here once it is confirmed: at least ${pct0(CONFIRM_P_CHANGE)} likely, and a drop of ${pct0(CONFIRM_REL_CHANGE)} or more.${allGames}`;
   const kpiClaims = kpis?.claims ?? [];
   return (
     <Section id="improving" title="What's improving" lede={rule}>
@@ -441,6 +496,7 @@ function Improving({
               key={w.seriesKey}
               id={w.seriesKey}
               label={w.label}
+              explain={seriesGlossary(w.seriesKey)}
               figure={pct1(w.after)}
               detail={weaknessChangeText(w)}
               href={`/app/weaknesses/${encodeURIComponent(w.seriesKey)}?${scopeQuery(scope)}`}
@@ -486,6 +542,7 @@ function Openings({ openings }: { openings: StrengthsModel["openings"] }) {
               key={`${o.color}:${o.kind}:${o.lineKey}`}
               id={o.lineKey}
               label={o.name}
+              explain={KPI_GLOSSARY.perf_vs_expected}
               figure={pct0(o.score)}
               detail={`${o.kind === "chosen" ? "You play it" : "You face it"} as ${o.color === "white" ? "White" : "Black"}. ${openingText(o)}${o.verdict ? ` Verdict: ${VERDICT_TEXT[o.verdict]}.` : ""}`}
               strip={
@@ -513,6 +570,7 @@ function Openings({ openings }: { openings: StrengthsModel["openings"] }) {
                 key={`${o.color}:${o.kind}:${o.lineKey}`}
                 id={o.lineKey}
                 label={o.name}
+                explain={KPI_GLOSSARY.perf_vs_expected}
                 figure={pct0(o.score)}
                 tentative
                 detail={`${o.kind === "chosen" ? "You play it" : "You face it"} as ${o.color === "white" ? "White" : "Black"}. ${promisingText(o)}${o.verdict ? ` Verdict: ${VERDICT_TEXT[o.verdict]}.` : ""}`}
@@ -611,6 +669,69 @@ function HardSpots({
   );
 }
 
+/** One colour's claims, or the calm line saying why there are none. */
+function ColourClaims({ colour, above }: { colour: "White" | "Black"; above: SideAbove }) {
+  if (above.mode === "none") {
+    return <Quiet>No benchmark for your {colour} games yet.</Quiet>;
+  }
+  if (above.claims.length === 0) {
+    return (
+      <Quiet>
+        None of your {plural(above.compared, "measure", "measures")} compared in your {colour}{" "}
+        games is clearly better yet.
+      </Quiet>
+    );
+  }
+  return (
+    <ul className="m-0 flex list-none flex-col gap-3 p-0">
+      {above.claims.map((c) => (
+        <li key={c.metric} className="flex flex-col [font-variant-numeric:lining-nums]">
+          <span className="flex flex-wrap items-baseline justify-between gap-x-3">
+            <span className="flex min-w-0 items-center gap-1 text-base font-medium text-ink">
+              {c.label}
+              <ExplainPopover entry={KPI_GLOSSARY[c.metric] ?? { ...EMPTY, name: c.label }} />
+            </span>
+            <span className="font-serif text-lg font-semibold text-good-text [font-variant-numeric:lining-nums_tabular-nums]">
+              {figureOf(c.value, c.unit)}
+            </span>
+          </span>
+          <span className="text-sm text-ink-soft">
+            80% range {range(c.low, c.high, c.unit)}, over your last {nOf(c.metric, c.n)}.{" "}
+            {"peer" in c
+              ? `Players you've faced: ${value(c.peer, c.unit)}.`
+              : `Players in your rating band: ${value(c.median, c.unit)}.`}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+const EMPTY: GlossaryEntry = { name: "", meaning: "", measured: "", whyItMatters: "", tip: "" };
+
+/**
+ * Both colours side by side (audit A5): each colour's measures that are clearly better than
+ * other players in that colour's games, from the colour's own stored rows (ADR 0082).
+ */
+function ByColour({ bySide }: { bySide: NonNullable<StrengthsModel["bySide"]> }) {
+  return (
+    <Section
+      id="by-colour"
+      title="By colour"
+      lede="The same comparison in your White games and your Black games, each against players who had that colour."
+    >
+      <div className="grid grid-cols-1 gap-x-12 gap-y-8 md:grid-cols-2">
+        {(["white", "black"] as const).map((side) => (
+          <div key={side} data-colour={side} className="flex min-w-0 flex-col gap-3">
+            <h3 className="m-0 font-sans text-base font-semibold text-ink">{COLOUR[side]}</h3>
+            <ColourClaims colour={COLOUR[side]} above={bySide[side]} />
+          </div>
+        ))}
+      </div>
+    </Section>
+  );
+}
+
 function ReportStrengths({ report }: { report: StrengthsModel["report"] }) {
   if (!report || report.strengths.length === 0) return null;
   const at = iso(report.at);
@@ -632,13 +753,22 @@ function ReportStrengths({ report }: { report: StrengthsModel["report"] }) {
   );
 }
 
-export function StrengthsHeader({ scope }: { scope: CoachScope | null }) {
+export function StrengthsHeader({
+  scope,
+  model = null,
+}: {
+  scope: CoachScope | null;
+  model?: StrengthsModel | null;
+}) {
+  const read = model
+    ? { games: model.analysedGames, side: model.side, range: model.range }
+    : undefined;
   return (
     <header className="flex max-w-2xl flex-col gap-2">
       <h1 className="font-serif text-3xl font-semibold text-ink">Strengths</h1>
       <p className="text-lg text-ink-soft [font-variant-numeric:lining-nums]">
         {scope
-          ? `${basisText(scope)} What you do well, and what to keep doing.`
+          ? `${basisText(scope, read)} What you do well, and what to keep doing.`
           : "What you do well, and what to keep doing."}
       </p>
     </header>
@@ -648,15 +778,30 @@ export function StrengthsHeader({ scope }: { scope: CoachScope | null }) {
 export function StrengthsView({
   scope,
   model,
+  filterBar,
+  accountSwitch = true,
 }: {
   scope: CoachScope | null;
   model: StrengthsModel | null;
+  /** The shared filter bar (audit A5); it holds the time control and the colour. */
+  filterBar?: ReactNode;
+  /** Whether the scope switch is still needed beside the bar (more than one linked account). */
+  accountSwitch?: boolean;
 }) {
+  const dated = model !== null && (model.range.from !== null || model.range.to !== null);
   return (
     <div className="flex flex-col gap-12">
       <div className="flex flex-col gap-5">
-        <StrengthsHeader scope={scope} />
-        {scope ? <CoachScopeSwitch scope={scope} basePath="/app/strengths" /> : null}
+        <StrengthsHeader scope={scope} model={model} />
+        {scope && (accountSwitch || !filterBar) ? (
+          <CoachScopeSwitch scope={scope} basePath="/app/strengths" />
+        ) : null}
+        {filterBar}
+        {dated ? (
+          <p data-slot="dates-note" className="m-0 max-w-2xl text-sm text-ink-soft">
+            {STRENGTHS_DATES_TEXT}
+          </p>
+        ) : null}
         {model ? <ReportStrengths report={model.report} /> : null}
       </div>
       {scope === null || model === null ? (
@@ -672,10 +817,12 @@ export function StrengthsView({
       ) : (
         <>
           <AboveLevel above={model.above} />
+          {model.bySide ? <ByColour bySide={model.bySide} /> : null}
           <Improving
             improving={model.improving}
             ownAbove={model.above.mode === "own" && model.above.trends.claims.length > 0}
             scope={scope}
+            side={model.side}
           />
           <Openings openings={model.openings} />
           <HardSpots spots={model.hardSpots} difficulty={model.difficulty} />

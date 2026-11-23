@@ -413,6 +413,124 @@ describe("StrengthsView", () => {
   });
 });
 
+// Audit A5: the shared filter bar, each colour's claims in Both mode, and a "What is this?" on
+// every claim row; A14: the row wraps on a phone.
+describe("StrengthsView filters", () => {
+  const accuracy = {
+    metric: "accuracy",
+    label: "Accuracy",
+    unit: "pct" as const,
+    higherIsBetter: true,
+    value: 76.2,
+    low: 74.1,
+    high: 78.3,
+    n: 25,
+    peer: 71.4,
+    pooled: false,
+    chances: null,
+    players: 12,
+  };
+
+  it("names the colour and dates the page reads, and what the dates change", () => {
+    const m = base();
+    m.side = "white";
+    m.analysedGames = 120;
+    m.range = { from: "2026-09-01", to: "2026-10-31" };
+    const { body } = show(m, { ...scope, side: "white" });
+    expect(body.textContent).toContain(
+      "Based on 120 analysed rapid games with White on chess.com, 1 Sep to 31 Oct 2026.",
+    );
+    expect(body.querySelector("[data-slot='dates-note']")?.textContent).toBe(
+      "These dates narrow the comparison with your earlier games, the openings and the moves in hard spots. The comparison with other players stays on your last 50 games, and what's improving on your whole record.",
+    );
+    expect(section(body, "improving").textContent).toContain(
+      "Weakness changes are called on all your games, both colours.",
+    );
+  });
+
+  it("shows the filter bar it is given", () => {
+    const html = renderToString(
+      <StrengthsView scope={scope} model={base()} filterBar={<div data-test-bar="" />} />,
+    );
+    expect(html).toContain("data-test-bar");
+  });
+
+  it("lists each colour's claims in Both mode, calm where a colour has none", () => {
+    const m = base();
+    m.bySide = {
+      white: { mode: "peers", compared: 3, claims: [accuracy] },
+      black: { mode: "none" },
+    };
+    const { body } = show(m);
+    const block = body.querySelector("[data-section='by-colour']") as HTMLElement;
+    const white = block.querySelector("[data-colour='white']")?.textContent ?? "";
+    expect(white).toContain("Accuracy");
+    expect(white).toContain("76.2%");
+    expect(white).toContain("over your last 25 games");
+    expect(block.querySelector("[data-colour='black']")?.textContent).toContain(
+      "No benchmark for your Black games yet.",
+    );
+    expect(body.textContent).not.toMatch(/NaN|undefined|Infinity/);
+  });
+
+  it("says so when a colour has a benchmark but no clear claim", () => {
+    const m = base();
+    m.bySide = {
+      white: { mode: "peers", compared: 3, claims: [] },
+      black: { mode: "peers", compared: 1, claims: [] },
+    };
+    const { body } = show(m);
+    expect(body.querySelector("[data-colour='white']")?.textContent).toContain(
+      "None of your 3 measures compared in your White games is clearly better yet.",
+    );
+  });
+
+  it("has no colour block for one colour", () => {
+    const m = base();
+    m.side = "black";
+    const { body } = show(m, { ...scope, side: "black" });
+    expect(body.querySelector("[data-section='by-colour']")).toBeNull();
+  });
+
+  it("explains every claim row and lets its head wrap", () => {
+    const m = base();
+    m.above = {
+      mode: "peers",
+      compared: 1,
+      benchmark: {
+        source: "peers",
+        platform: "chesscom",
+        low: 650,
+        high: 950,
+        players: 25,
+        games: 61,
+        chances: {},
+      },
+      claims: [accuracy],
+    };
+    m.improving.weaknesses = [
+      {
+        seriesKey: "W1",
+        label: "Leaving pieces hanging",
+        state: "improving",
+        before: 0.04,
+        after: 0.026,
+        pChange: 0.9,
+        at: new Date("2026-10-14T12:00:00Z"),
+        afterCounts: null,
+        chances: 2400,
+      },
+    ];
+    const { body, screen } = show(m);
+    for (const row of body.querySelectorAll("[data-claim]")) {
+      expect(row.querySelector("button[aria-label^='What is']"), row.textContent ?? "").not.toBeNull();
+      expect(row.querySelector("[data-claim-head]")?.className).toContain("flex-wrap");
+    }
+    expect(screen.getByRole("button", { name: "What is accuracy?" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "What is leaving pieces hanging?" })).toBeTruthy();
+  });
+});
+
 describe("diffText", () => {
   it("signs with a real minus and states the unit", () => {
     expect(diffText(-0.4, "per_game")).toBe("−0.40 a game");
