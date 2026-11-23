@@ -1,0 +1,6 @@
+# Only the lab sources go into the image.
+**/__pycache__
+**/.pytest_cache
+.venv
+out
+experiments/*/out

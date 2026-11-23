@@ -31,8 +31,8 @@ WORKDIR /lab
 COPY pyproject.toml uv.lock .python-version ./
 # --frozen: the lock is the source of truth; a pyproject that disagrees with it fails the build.
 RUN uv sync --frozen --no-install-project --group dev && uv pip check --python /opt/venv/bin/python
-COPY --from=rematch /usr/local/bin/cli /usr/local/bin/cli
-COPY --from=rematch /usr/local/bin/stockfish /usr/local/bin/stockfish
+COPY --from=rematch --chmod=0755 /usr/local/bin/cli /usr/local/bin/cli
+COPY --from=rematch --chmod=0755 /usr/local/bin/stockfish /usr/local/bin/stockfish
 COPY . .
 ENV PATH=/opt/venv/bin:$PATH \
     REMATCH_CLI=/usr/local/bin/cli \
