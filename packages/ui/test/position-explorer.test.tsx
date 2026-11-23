@@ -4,8 +4,8 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { games } from "../src/fixtures/index.js";
 import {
-  type ExplorerMove,
   compactCoordinates,
+  type ExplorerMove,
   explorerAnnotations,
   PositionExplorer,
   type PositionExplorerProps,

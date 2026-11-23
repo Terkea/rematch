@@ -3,9 +3,9 @@ import {
   areaMeaning,
   exampleLine,
   headlineMeaning,
-  mateChange,
   howOftenText,
   levelText,
+  mateChange,
   oneInText,
   trendText,
 } from "../src/lib/explain";

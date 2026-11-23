@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 import { render, screen, within } from "@testing-library/react";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { compareView } from "../../src/app/(app)/app/_filters/compare-view.js";
 import { AccuracySection } from "../../src/app/(app)/app/_overview/accuracy-section.js";
 import { OverviewEmpty } from "../../src/app/(app)/app/_overview/empty-state.js";
 import { JudgementsSection } from "../../src/app/(app)/app/_overview/judgements-section.js";
 import { RecentSection } from "../../src/app/(app)/app/_overview/recent-section.js";
-import { compareView } from "../../src/app/(app)/app/_filters/compare-view.js";
 import { OverviewSheet } from "../../src/app/(app)/app/_overview/sheet.js";
 import { StatusLine } from "../../src/app/(app)/app/_overview/status-line.js";
 import { TimeClassSection } from "../../src/app/(app)/app/_overview/time-class-section.js";

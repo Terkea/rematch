@@ -524,7 +524,9 @@ describe("weakness detail", () => {
     // Critic 8: the story's comparison is one sentence; it names the players, no repeat line.
     const often = screen.getByRole("region", { name: "How often it happens to you" });
     expect(often.querySelector("[data-benchmark='peers']")).toBeNull();
-    expect(often.textContent).toMatch(/the 73 players you've faced on chess\.com, rated about 667–967/);
+    expect(often.textContent).toMatch(
+      /the 73 players you've faced on chess\.com, rated about 667–967/,
+    );
     expect(often.textContent?.match(/players you've faced/g)).toHaveLength(1);
     noBadText(container);
   });

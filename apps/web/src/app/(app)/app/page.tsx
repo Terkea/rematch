@@ -76,7 +76,8 @@ export default async function OverviewPage({
   const basis = tc ? tc : "";
   // The headline's peer comparison (Q1): only for one account's one time class, which is what a
   // peer benchmark covers; "All" or several accounts pool games no benchmark was built for.
-  const coach = ready && tc && accountIds.length === 1 ? await resolveCoachScope(db, user.id, { tc }) : null;
+  const coach =
+    ready && tc && accountIds.length === 1 ? await resolveCoachScope(db, user.id, { tc }) : null;
   const peer = coach && coach.timeClass === tc ? await peerHeadline(db, user.id, coach) : null;
   return (
     <>

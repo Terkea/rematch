@@ -192,7 +192,10 @@ export function BandKey({
 }) {
   const group = benchmarkGroupLabel(benchmark);
   return (
-    <WeaknessRowKey {...(group ? { bandLabel: group } : {})} {...(className ? { className } : {})} />
+    <WeaknessRowKey
+      {...(group ? { bandLabel: group } : {})}
+      {...(className ? { className } : {})}
+    />
   );
 }
 

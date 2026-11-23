@@ -1,5 +1,5 @@
-import { TIME_CLASS_ORDER as TIME_CLASSES } from "../../lib/time-class";
 import { OTHER_FORMAT, parseFormatKey } from "../../lib/format-key";
+import { TIME_CLASS_ORDER as TIME_CLASSES } from "../../lib/time-class";
 import type { GameFilters, GameListQuery, GameSortKey, TimeClass } from "./types";
 
 type Params = Record<string, string | string[] | undefined>;

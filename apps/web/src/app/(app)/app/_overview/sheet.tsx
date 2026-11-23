@@ -70,12 +70,7 @@ export function OverviewSheet({
                 (critic 4); on a phone it was some 1,100 px down. */}
             {compare ? <CompareBlock view={compare} /> : null}
             <div data-reveal-fig="" style={{ "--reveal-i": 0 } as React.CSSProperties}>
-              <Headline
-                lead={view.lead}
-                basisClass={view.basisClass}
-                reveal={reveal}
-                peer={peer}
-              />
+              <Headline lead={view.lead} basisClass={view.basisClass} reveal={reveal} peer={peer} />
             </div>
             {filtersNote ? (
               <p data-slot="filters-note" className="m-0 max-w-prose text-sm text-ink-soft">

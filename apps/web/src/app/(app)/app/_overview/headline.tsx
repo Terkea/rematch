@@ -132,10 +132,7 @@ export function WorkOn({ lead }: { lead: LeadFinding }) {
       data-surface="sheet"
       className="flex max-w-3xl flex-col gap-1 rounded-sheet bg-sheet px-(--space-panel-pad) py-4"
     >
-      <h2
-        id="work-on-heading"
-        className="text-base font-medium text-ink"
-      >
+      <h2 id="work-on-heading" className="text-base font-medium text-ink">
         What to work on
       </h2>
       <WorkOnBody lead={lead} />

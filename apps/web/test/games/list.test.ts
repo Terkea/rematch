@@ -1,5 +1,5 @@
-import { games as fixtures } from "@ci/ui/fixtures";
 import { games } from "@ci/db";
+import { games as fixtures } from "@ci/ui/fixtures";
 import { inArray } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 import {
@@ -195,7 +195,12 @@ describe("listGames", () => {
     await db
       .update(games)
       .set({ baseSeconds: 600, incrementSeconds: 0 })
-      .where(inArray(games.id, tenMin.map((s) => s.id)));
+      .where(
+        inArray(
+          games.id,
+          tenMin.map((s) => s.id),
+        ),
+      );
     const got = await allRows(alice, query({ filters: { timeClass: "rapid", format: "600+0" } }));
     expect(got.map((r) => r.id).sort()).toEqual(tenMin.map((s) => s.id).sort());
     const none = await allRows(alice, query({ filters: { timeClass: "rapid", format: "180+2" } }));

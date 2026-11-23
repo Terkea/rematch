@@ -299,7 +299,9 @@ export function PositionExplorer(props: PositionExplorerProps) {
             <ArrowSwatch tone={props.found ? "good" : props.mistake ? "pen" : "pencil"} />
             Played, {played.san}
             {mistakeGlyph(props) ? (
-              <span className="tracking-(--tracking-glyph) text-pen-text">{mistakeGlyph(props)}</span>
+              <span className="tracking-(--tracking-glyph) text-pen-text">
+                {mistakeGlyph(props)}
+              </span>
             ) : null}
             {props.found ? ", the engine's move" : null}
           </li>
@@ -608,10 +610,7 @@ function ExplorerDialog({
           </div>
           {/* From lg, tall enough for the longest note, so a mode switch moves nothing below; on a
               phone the note takes only its own height (critic 12). */}
-          <div
-            aria-live="polite"
-            className="flex flex-col gap-1 font-sans text-sm lg:min-h-20"
-          >
+          <div aria-live="polite" className="flex flex-col gap-1 font-sans text-sm lg:min-h-20">
             <p className="m-0 text-ink">{note}</p>
             {state.mode === "try" ? (
               <p className="m-0 text-ink-soft">

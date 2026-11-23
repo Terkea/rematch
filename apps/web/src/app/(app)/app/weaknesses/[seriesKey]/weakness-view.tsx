@@ -25,6 +25,7 @@ import { MorphArrival } from "../../../../../components/shared-morph";
 import { coachChatLive } from "../../../../../lib/coach-chat";
 import { howOftenText, levelText, trendText } from "../../../../../lib/explain";
 import type { ChangeNoteView } from "../../../../../server/coaching";
+import type { DayRange } from "../../../../../server/filters/params";
 import type { CoachScope, WeaknessDetail } from "../../../../../server/profile";
 import {
   BENCHMARK_BIAS_TEXT,
@@ -35,9 +36,8 @@ import {
 } from "../../../../../server/profile/benchmark-text";
 import { type GlossaryEntry, seriesGlossary } from "../../../../../server/profile/glossary";
 import { ESTIMATE_WINDOW_TEXT } from "../../../../../server/profile/window";
-import { SectionHead } from "../../_overview/section-head";
-import type { DayRange } from "../../../../../server/filters/params";
 import { clipWeekly } from "../../_filters/clip";
+import { SectionHead } from "../../_overview/section-head";
 import { scopeQuery, WEEKLY_MIN_CHANCES } from "../queries";
 import { BandKey, morphName } from "../weaknesses-view";
 import { Examples } from "./exemplars";
@@ -540,7 +540,9 @@ function ByColour({
           >
             <h3 className="m-0 text-base font-medium text-ink">{name}</h3>
             {!d || d.evidence.chances <= 0 ? (
-              <p className="m-0 text-sm text-ink-soft">No {name} games with a chance for this yet.</p>
+              <p className="m-0 text-sm text-ink-soft">
+                No {name} games with a chance for this yet.
+              </p>
             ) : (
               <>
                 <p className="m-0 text-base text-ink">

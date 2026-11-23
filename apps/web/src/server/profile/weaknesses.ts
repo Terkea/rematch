@@ -1,3 +1,4 @@
+import { fenKey } from "@ci/chess-core";
 import type { Db } from "@ci/db";
 import {
   gameMetrics,
@@ -10,7 +11,6 @@ import {
   weaknessSeriesPoint,
   weaknessStateHistory,
 } from "@ci/db/generated";
-import { fenKey } from "@ci/chess-core";
 import { Chess } from "chess.js";
 import { and, asc, desc, eq, gte, inArray, isNotNull, sql } from "drizzle-orm";
 import { mateChange } from "../../lib/explain";
@@ -382,7 +382,10 @@ async function examplesOf(
     const { mate = null, ...rest } = e;
     out.push({ ...rest, source: "report", judgement: null, mate });
   }
-  if (out.length < MAX_EXAMPLES) out.push(...(await storedExamples(tx, scope, seriesKey, from, seen, MAX_EXAMPLES - out.length)));
+  if (out.length < MAX_EXAMPLES)
+    out.push(
+      ...(await storedExamples(tx, scope, seriesKey, from, seen, MAX_EXAMPLES - out.length)),
+    );
   return withStored(tx, scope, out);
 }
 
@@ -505,9 +508,7 @@ async function withStored(tx: Db, scope: CoachScope, list: Example[]): Promise<E
       }),
     ),
   ];
-  const protocols = [
-    ...new Set(rows.flatMap((r) => (r.protocol ? [r.protocol] : []))),
-  ];
+  const protocols = [...new Set(rows.flatMap((r) => (r.protocol ? [r.protocol] : [])))];
   const evals = new Map<string, { cp: number | null; mate: number | null }>();
   if (keys.length > 0 && protocols.length > 0) {
     const found = await tx
@@ -525,7 +526,8 @@ async function withStored(tx: Db, scope: CoachScope, list: Example[]): Promise<E
     const r = stored.get(`${e.gameId}#${e.ply}`);
     if (!r || r.uci !== e.played.uci) return e;
     const a = after.get(e);
-    const score = (fen: string) => (r.protocol ? evals.get(`${r.protocol}|${fenKey(fen)}`) : undefined);
+    const score = (fen: string) =>
+      r.protocol ? evals.get(`${r.protocol}|${fenKey(fen)}`) : undefined;
     const mate = e.mate ?? (a ? mateChange(e.fen, score(e.fen), score(a)) : null);
     return { ...e, judgement: e.judgement ?? r.judgement ?? null, mate };
   });
