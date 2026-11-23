@@ -1,0 +1,45 @@
+{
+  "suite": "smoke",
+  "metrics": {
+    "recall_at_2": 0.4,
+    "recall_at_1": 0.4,
+    "top1_precision": 0.4,
+    "clean_top1_false_alarms": 1,
+    "clean_players": 1,
+    "coverage": 0.8,
+    "coverage_samples": 20,
+    "plan_hit_rate": 0.4,
+    "mean_games_to_detection": 55.0,
+    "deterministic": true,
+    "top2_agreement": 0.8333333333333334
+  },
+  "tolerance": {
+    "recall_at_2": 0.2,
+    "top1_precision": 0.2,
+    "plan_hit_rate": 0.2,
+    "coverage": 0.15,
+    "top2_agreement": 0.25
+  },
+  "known_gaps": [
+    {
+      "player": "bench-hang",
+      "issue": "https://github.com/Terkea/chess-improvement-engine/issues/10",
+      "note": "W1 has no peer benchmark (is_peer_comparable), so it is never ranked"
+    },
+    {
+      "player": "bench-noconvert",
+      "issue": "https://github.com/Terkea/chess-improvement-engine/issues/10",
+      "note": "W5 has no peer benchmark (is_peer_comparable), so it is never ranked"
+    },
+    {
+      "player": "bench-missmate",
+      "issue": "https://github.com/Terkea/chess-improvement-engine/issues/11",
+      "note": "the W4.missed peer row is low-sample at 80 games, so it is not ranked"
+    },
+    {
+      "player": "bench-clean",
+      "issue": "https://github.com/Terkea/chess-improvement-engine/issues/12",
+      "note": "W9b ranks first from noise: no confidence or effect floor on ranking"
+    }
+  ]
+}

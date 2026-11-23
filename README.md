@@ -516,6 +516,8 @@ Live progress (done of total) is on the [milestones page](https://github.com/Ter
 
 <!-- roadmap:end -->
 
+**Benchmark:** synthetic players with known flaws, run through the real pipeline, show what Rematch finds and what it misses today. [The method and the current scorecard](docs/benchmark.md).
+
 Rematch is a beta: every release is `v0.y.z`, and 1.0 is reserved for the first complete release ([how we ship](docs/SDLC.md)).
 
 ## Help build Rematch

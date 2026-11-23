@@ -1,0 +1,29 @@
+# 0100. A pipeline benchmark: synthetic players with injected flaws (Tier 1)
+
+Date: 2026-11-23. Status: accepted (lane `bench`, branch `feat/pipeline-benchmark`).
+Number 0097 is the self-hosting setup (lane `selfhost`).
+
+## Context
+
+Nothing measured whether Rematch's diagnoses are right. The unit tests check each detector and estimator on hand-built inputs, but not whether a player who keeps hanging pieces is told so, ranked first and given the right drills. The first smoke run answers that for five flaw types: two are found, three are not, and a clean player gets a false alarm (`docs/benchmark.md`).
+
+## Decision
+
+1. **Four tiers, Tier 1 now.** Tier 1 uses synthetic players with injected flaws of known rates (ground truth). Tier 2 tests predictive validity on anonymised Lichess-dump players (profile before a date T, losses after it). Tier 3 rates the written plan with a rubric, an LLM judge and a blind coach panel, against a baseline plan. Tier 4 measures real-user efficacy on the trainer's held-out positions (ADR 0090). Tiers 2 to 4 are not built.
+2. **A workspace crate, `backend/crates/bench`, with workspace dependencies only.** The workspace dependency table gains the path entry `bench = { path = "crates/bench" }` and `cli` depends on it; `Cargo.lock` gains only the `bench` package. No third-party crate is added.
+3. **The real pipeline, in-process.** The harness calls the production `analyse-game` handler with the production profile hook (enrichment, features, metrics, series), the production `build-profile` handler with the default peer benchmark (ADR 0080), the CoachingInput builder, and `ai::output::drills::drills_for`. No step is re-implemented. The AI text is not run (it is Tier 3's subject and costs tokens).
+4. **Engine-driven players, injected flaws.** Every move of both sides is chosen from a 4-line **Stockfish 19** search. The clean policy never plays a line that loses 8 win-percentage points or more and always plays a forced mate, so it makes no decisive errors of its own (`DECISIVE_DW` is 15). An injector (`bench::flaws::Flaw`) names its target series key, counts that key's opportunities as its detector does, and asks the engine for a move costing at least 20 points (with a piece capture for W1, or keeping no mate for W4.missed). Five injectors exist: `hang` (W1), `miss_mate` (W4.missed), `opening_blunder` (W7.traps), `low_clock_blunder` (W9b) and `no_convert` (W5).
+5. **One search per position, shared.** All engine requests go through an in-memory cache keyed by FEN (`bench::memo`), at 12,000 nodes per search. The analysis and enrichment are served the generator's own searches, so an injected move is judged on the numbers the injector saw, and a smoke run takes about 5 minutes on 4 engines instead of hours at the production 300,000 nodes.
+6. **Ground truth from the generator's counts.** The true rate is `p * success rate * armed share`, combined with the clean control's own rate of the key (`Tally::truth`). The clean control's rate stands for the noise between two node-limited searches.
+7. **Five scores.** (a) recall at 1 and 2, top-1 precision and clean-control false alarms, from the CoachingInput's ranked weaknesses; (b) coverage of the target's 80% `weakness_estimates` interval at every checkpoint; (c) whether the top weakness's drills train the flaw; (d) games to the first top-2 detection (checkpoints 30, 45, 60, 80); (e) determinism (the CoachingInput built twice) and the top-2 overlap after dropping about 10% of the games.
+8. **Thresholds set before the run, reported, not enforced.** Smoke must reach recall at 2 of at least 0.8, no clean false alarm, and coverage in [0.65, 0.95]. The first run meets only the coverage threshold. The failing cases are recorded as known gaps with issues (#10, #11, #12) in `bench/baseline.json`; nothing in the pipeline was changed to pass.
+9. **CI fails on regressions, not on the thresholds.** `.github/workflows/bench.yml` runs the smoke suite on pull requests that touch `enrich`, `profile`, `profile-core`, `coaching-input` or `bench`, and fails when a score drops below `bench/baseline.json` beyond its tolerance (recall, precision and plan 0.2, top-2 overlap 0.25, coverage 0.15 further from 0.8, any new clean false alarm, any loss of determinism). The full suite runs every Monday and on demand. Actions are pinned by commit SHA, the token is read-only, and the scorecard is uploaded as an artifact and written to the job summary.
+10. **A throwaway database per run.** `cli bench run` creates `bench_<uuid>` next to `DATABASE_URL`, migrates it, and drops it afterwards (`--keep-db` keeps it).
+
+## Consequences
+
+- The first scorecard (smoke, 80 games per player): recall at 2 is 0.4, top-1 precision 0.4, one clean false alarm of one, coverage 0.8 (16 of 20), plan hits 0.4, mean games to detection 55, determinism yes, top-2 overlap 0.83.
+- Three pipeline gaps are now measured and filed. W1 and W5 are never ranked under the peer benchmark because `is_peer_comparable` leaves them out (#10). W4.missed has a low-sample peer row at 80 games and is not ranked (#11). Ranking has no confidence or effect floor, so the clean control's W9b (11 of 846 against a peer median of 0.008) ranks first, and the same noise ranks first for the hanging and non-converting players (#12).
+- A fix for any of them shows up as a higher recall or precision; the baseline is then raised in the same change.
+- The generator's clock model is harsh (18 to 35 time forfeits in 80 games) and the clean policy is not human. Tier 1 says whether an injected flaw is found, not how a real 1500 player's profile looks; that is Tier 2's job.
+- New flaw types are new `Flaw` implementations; W2, W3, W6, W7.prep, W9a, W9c and W10 have none yet, and W8 and W11 need the tablebase and Maia, which the benchmark does not start.
