@@ -180,6 +180,7 @@ fn report_prompt_set_is_the_brief_list() {
         "tone/b3",
         "tone/b4",
         "tone/b5",
+        "core/glossary",
     ];
     assert!(
         REPORT_PROMPT_SET
@@ -635,8 +636,8 @@ fn model_facing_copy_passes_the_validator_rules() {
         }
         checked += 1;
     }
-    // core/rules, core/tokens v1 and v2, and core/glossary (reference text, not copy).
-    assert_eq!(checked, PROMPTS.len() - 4);
+    // core/rules, core/tokens v1 and v2, and core/glossary v1 and v2 (reference text, not copy).
+    assert_eq!(checked, PROMPTS.len() - 5);
 }
 
 /// The ruling of the T23 review: the shared rules block (what the chat includes too) carries no
@@ -710,7 +711,7 @@ fn v2_prompts_teach_the_colour_split_and_the_benchmark_words() {
     ] {
         assert!(chat.contains(f), "chat/system v3 says {f:?}");
     }
-    let glossary = load_prompt("core/glossary", 1).unwrap().text;
+    let glossary = load_prompt("core/glossary", 2).unwrap().text;
     assert!(glossary.starts_with("# Plain-language glossary\n"));
     let inner = glossary
         .split_once("\n<glossary>")
@@ -740,7 +741,7 @@ fn report_blocks_use_the_set_versions() {
     assert!(
         req.system[1]
             .text
-            .ends_with(load_prompt("core/glossary", 1).unwrap().text)
+            .ends_with(load_prompt("core/glossary", 2).unwrap().text)
     );
     let task = req.messages[0].content[1]["text"].as_str().unwrap();
     assert_eq!(

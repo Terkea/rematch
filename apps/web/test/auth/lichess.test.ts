@@ -190,6 +190,7 @@ beforeEach(async () => {
     TRUSTED_PROXIES: PROXY_CIDR,
     INVITE_ONLY: "0",
     INVITE_ALLOWLIST: "",
+    LICHESS_ENABLED: "1",
     LICHESS_CLIENT_ID: "chess-improver",
     LICHESS_AUTHORIZE_BASE_URL: fakes.url,
     LICHESS_API_BASE_URL: fakes.url,
@@ -212,6 +213,14 @@ afterEach(async () => {
 });
 
 describe("lichessProvider", () => {
+  // Holistic F8: no Lichess sign-in or link unless LICHESS_ENABLED is set.
+  it("is not configured unless Lichess is enabled", () => {
+    setEnv({ LICHESS_ENABLED: "0" });
+    expect(lichessProvider(getEnv())).toBeNull();
+    setEnv({ LICHESS_ENABLED: "1" });
+    expect(lichessProvider(getEnv())).not.toBeNull();
+  });
+
   it("is a PKCE provider with no client secret and the brief's endpoints", () => {
     const provider = lichessProvider(getEnv());
     expect(provider).toEqual(
@@ -225,7 +234,7 @@ describe("lichessProvider", () => {
         pkce: true,
       }),
     );
-    expect(provider.clientSecret).toBeUndefined();
+    expect(provider?.clientSecret).toBeUndefined();
   });
 
   it("sends the project User-Agent, with no email in it", async () => {

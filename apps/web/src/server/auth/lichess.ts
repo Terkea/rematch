@@ -16,7 +16,7 @@ const MAX_BODY_BYTES = 64 * 1024;
 
 type LichessEnv = Pick<
   WebEnv,
-  "LICHESS_CLIENT_ID" | "LICHESS_AUTHORIZE_BASE_URL" | "LICHESS_API_BASE_URL"
+  "LICHESS_ENABLED" | "LICHESS_CLIENT_ID" | "LICHESS_AUTHORIZE_BASE_URL" | "LICHESS_API_BASE_URL"
 >;
 
 /**
@@ -141,7 +141,9 @@ export async function revokeLichessToken(env: LichessEnv, accessToken: string): 
  * The authorize and API bases are separate so e2e can send the browser and the server to the
  * same fake by different hostnames.
  */
-export function lichessProvider(env: LichessEnv): GenericOAuthConfig {
+export function lichessProvider(env: LichessEnv): GenericOAuthConfig | null {
+  // Holistic F8: no Lichess sign-in or link unless the deployment enables it.
+  if (!env.LICHESS_ENABLED) return null;
   const api = env.LICHESS_API_BASE_URL.replace(/\/+$/, "");
   const authorize = env.LICHESS_AUTHORIZE_BASE_URL.replace(/\/+$/, "");
   assertLichessBaseUrl(api);

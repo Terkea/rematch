@@ -29,6 +29,8 @@ x-web-environment: &web-environment
   LAB_ENABLED: "${LAB_ENABLED:-1}"
   # chess.com linking (ADR 0040: on in development); OAuth stays off until chess.com approves it.
   CHESSCOM_ENABLED: "${CHESSCOM_ENABLED:-1}"
+  # Lichess sign-in and linking: off unless exactly "1" (this deployment is chess.com only).
+  LICHESS_ENABLED: "${LICHESS_ENABLED:-0}"
   CHESSCOM_OAUTH_ENABLED: ${CHESSCOM_OAUTH_ENABLED:-}
   CHESSCOM_CLIENT_ID: ${CHESSCOM_CLIENT_ID:-}
   CHESSCOM_CLIENT_SECRET: ${CHESSCOM_CLIENT_SECRET:-}

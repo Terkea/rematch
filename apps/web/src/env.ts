@@ -42,6 +42,8 @@ const schema = z.object({
   MAIL_FROM: z.string().default("chess-improver <no-reply@chess-improver.local>"),
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
+  // Lichess sign-in and linking (ADR-WEB-4); off by default: this deployment is chess.com only.
+  LICHESS_ENABLED: flag,
   LICHESS_CLIENT_ID: z.string().default("chess-improver"),
   LICHESS_AUTHORIZE_BASE_URL: z.string().default("https://lichess.org"),
   LICHESS_API_BASE_URL: z.string().default("https://lichess.org"),

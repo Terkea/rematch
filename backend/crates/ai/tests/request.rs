@@ -355,7 +355,7 @@ fn report_system_prompt_never_names_a_band_rating_range() {
             assert!(!system.contains(range), "{name}: system names {range:?}");
         }
         assert!(
-            system.contains("Never name the band or its rating range"),
+            system.contains("Do not name the band or its rating range"),
             "{name}: the tone says the band is not a comparison"
         );
     }
