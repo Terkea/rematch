@@ -113,13 +113,20 @@ test("filters round-trip through the URL, and the overview compares periods hone
     desktop(page).getByRole("group", { name: "Colour" }).getByRole("link", { name: "Black" }),
   ).toHaveAttribute("aria-current", "true");
 
-  // The filters follow the header and the command menu to the next page (audit A7).
-  await gotoSettled(page, "/app/weaknesses?color=white&from=2026-10-01&to=2026-10-31");
+  // The filters follow the header to the next page (audit A7), in each page's own words.
+  await gotoSettled(page, "/app?color=white&from=2026-10-01&to=2026-10-31");
+  const main = page.getByRole("navigation", { name: "Main" });
+  await expect(main.getByRole("link", { name: "Games" })).toHaveAttribute(
+    "href",
+    "/app/games?colour=white&from=2026-10-01&to=2026-10-31",
+  );
+  await main.getByRole("link", { name: "Report" }).click();
+  await expect(page).toHaveURL(/\/app\/report\?color=white&from=2026-10-01&to=2026-10-31$/);
   await page
     .getByRole("navigation", { name: "Main" })
-    .getByRole("link", { name: "Progress" })
+    .getByRole("link", { name: "Overview" })
     .click();
-  await expect(page).toHaveURL(/\/app\/progress\?.*color=white&from=2026-10-01&to=2026-10-31/);
+  await expect(page).toHaveURL(/\/app\?color=white&from=2026-10-01&to=2026-10-31$/);
   await expect(
     desktop(page).getByRole("group", { name: "Colour" }).getByRole("link", { name: "White" }),
   ).toHaveAttribute("aria-current", "true");
