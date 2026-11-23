@@ -34,7 +34,9 @@ const sources = [
 for (const file of sources) {
   const missing = adrReferences(readFileSync(file, "utf8")).filter((id) => !known.has(id));
   for (const id of missing) {
-    problems.push(`${relative(root, file).replaceAll("\\", "/")} mentions ADR ${id}, which does not exist`);
+    problems.push(
+      `${relative(root, file).replaceAll("\\", "/")} mentions ADR ${id}, which does not exist`,
+    );
   }
 }
 
@@ -43,4 +45,6 @@ if (problems.length > 0) {
   for (const p of problems) console.log(`- ${p}`);
   process.exit(1);
 }
-console.log(`Docs current: ${files.length - 1} decision records indexed, ${sources.length} files' ADR references exist.`);
+console.log(
+  `Docs current: ${files.length - 1} decision records indexed, ${sources.length} files' ADR references exist.`,
+);

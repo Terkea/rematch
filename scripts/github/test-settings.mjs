@@ -405,7 +405,12 @@ check("validateRoadmapIssues refuses the mistakes that would break seeding", () 
     ],
     [
       (x) => {
-        x.find((i) => i.epic).body = ["## Problem", "- [ ] x", "## Acceptance criteria", "## Pointers"];
+        x.find((i) => i.epic).body = [
+          "## Problem",
+          "- [ ] x",
+          "## Acceptance criteria",
+          "## Pointers",
+        ];
       },
       /spec is missing/,
     ],

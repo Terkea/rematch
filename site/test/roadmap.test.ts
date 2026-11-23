@@ -33,8 +33,22 @@ describe("the roadmap model", () => {
   it("from GitHub: open milestones in seed order, epics with done of total, horizon from the seed", () => {
     const [a, b] = seed.milestones;
     const api = [
-      { number: 2, title: b?.title, state: "open", open_issues: 3, closed_issues: 1, html_url: "u2" },
-      { number: 1, title: a?.title, state: "open", open_issues: 4, closed_issues: 2, html_url: "u1" },
+      {
+        number: 2,
+        title: b?.title,
+        state: "open",
+        open_issues: 3,
+        closed_issues: 1,
+        html_url: "u2",
+      },
+      {
+        number: 1,
+        title: a?.title,
+        state: "open",
+        open_issues: 4,
+        closed_issues: 2,
+        html_url: "u1",
+      },
       { number: 7, title: "v0.1 Shipped", state: "closed", open_issues: 0, closed_issues: 9 },
       { number: 8, title: "Someday", state: "open", open_issues: 1, closed_issues: 0 },
     ];
@@ -50,7 +64,11 @@ describe("the roadmap model", () => {
       { number: 6, title: "A PR", pull_request: {}, milestone: { number: 1 } },
     ];
     const model = fromGitHub(seed, api, epics);
-    expect(model.milestones.map((m: { title: string }) => m.title)).toEqual([a?.title, b?.title, "Someday"]);
+    expect(model.milestones.map((m: { title: string }) => m.title)).toEqual([
+      a?.title,
+      b?.title,
+      "Someday",
+    ]);
     expect(model.milestones[0]).toMatchObject({ closed: 2, total: 6, horizon: a?.horizon });
     expect(model.milestones[0]?.epics).toEqual([
       { title: "Epic: x", url: "e5", state: "open", done: 1, total: 3 },

@@ -37,7 +37,7 @@ jobs:
             shift
             if ! out=$("$@" 2>&1); then
               status=1
-              printf '### %s\n\n```\n%s\n```\n\n' "$name" "$out" >"sweep/$name.md"
+              printf '### %s\n\n~~~\n%s\n~~~\n\n' "$name" "$out" >"sweep/$name.md"
             fi
             echo "$out"
           }
@@ -51,7 +51,7 @@ jobs:
         run: |
           mkdir -p sweep
           if ! out=$(pnpm audit --prod 2>&1); then
-            printf '### npm audit (production, report only)\n\n```\n%s\n```\n\n' "$out" >sweep/zz-npm-audit.md
+            printf '### npm audit (production, report only)\n\n~~~\n%s\n~~~\n\n' "$out" >sweep/zz-npm-audit.md
           fi
           echo "$out"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -130,12 +130,12 @@ jobs:
           status=0
           if ! out=$($COMPOSE run --rm --no-deps rust-dev cargo deny --locked check advisories 2>&1); then
             status=1
-            printf '### cargo deny check advisories\n\n```\n%s\n```\n\n' "$out" >sweep/advisories.md
+            printf '### cargo deny check advisories\n\n~~~\n%s\n~~~\n\n' "$out" >sweep/advisories.md
           fi
           echo "$out"
           if ! out=$($COMPOSE run --rm --no-deps rust-dev sh scripts/check-crate-age.sh 2>&1); then
             status=1
-            printf '### Crate age\n\n```\n%s\n```\n\n' "$out" >sweep/crate-age.md
+            printf '### Crate age\n\n~~~\n%s\n~~~\n\n' "$out" >sweep/crate-age.md
           fi
           echo "$out"
           exit "$status"

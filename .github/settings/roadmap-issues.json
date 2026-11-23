@@ -4,19 +4,13 @@
     "milestone": "v0.2 Practice habit",
     "epic": true,
     "size": "L",
-    "labels": [
-      "epic",
-      "spec",
-      "type/feature",
-      "area/trainer",
-      "roadmap"
-    ],
+    "labels": ["epic", "spec", "type/feature", "area/trainer", "roadmap"],
     "body": [
       "## Problem",
       "",
-      "The trainer works when you open it, but nothing brings you back. The owner's own account shows",
-      "the pattern: 8 positions due on the overview, done on Monday, then nothing until the weekend. The",
-      "only streak in the app is per item (`streak` in `apps/web/src/server/train/model.ts`), which the",
+      "The trainer works when you open it, but nothing brings you back. The maintainer's own account",
+      "shows it: 347 positions made from their games, 8 due on the overview, and practice on one day so",
+      "far (2 attempts, at the review of 2026-11-23). The only streak in the app is per item (`streak` in `apps/web/src/server/train/model.ts`), which the",
       "player never sees. There is no daily goal and no reminder.",
       "",
       "## Who it's for",
@@ -94,13 +88,7 @@
     "milestone": "v0.2 Practice habit",
     "parent": "Epic: a daily practice rhythm",
     "size": "M",
-    "labels": [
-      "type/feature",
-      "area/trainer",
-      "area/web-ui",
-      "help wanted",
-      "roadmap"
-    ],
+    "labels": ["type/feature", "area/trainer", "area/web-ui", "help wanted", "roadmap"],
     "body": [
       "## Problem",
       "",
@@ -132,12 +120,7 @@
     "milestone": "v0.2 Practice habit",
     "parent": "Epic: a daily practice rhythm",
     "size": "L",
-    "labels": [
-      "type/feature",
-      "area/trainer",
-      "area/rust-backend",
-      "roadmap"
-    ],
+    "labels": ["type/feature", "area/trainer", "area/rust-backend", "roadmap"],
     "body": [
       "## Problem",
       "",
@@ -168,13 +151,7 @@
     "milestone": "v0.2 Practice habit",
     "epic": true,
     "size": "M",
-    "labels": [
-      "epic",
-      "spec",
-      "type/feature",
-      "area/trainer",
-      "roadmap"
-    ],
+    "labels": ["epic", "spec", "type/feature", "area/trainer", "roadmap"],
     "body": [
       "## Problem",
       "",
@@ -182,7 +159,7 @@
       "80% intervals to separate (`MIN_CHANCES` and `verdictOf` in `apps/web/src/server/train/model.ts`).",
       "That is the right bar, but a player sees \"Too early to tell: 9 chances in games since your first",
       "drill, and 30 are needed\" for weeks, with no idea whether that means three games or thirty. The",
-      "owner's account, with about 22% of positions held back, needs weeks of rapid games to reach it.",
+      "maintainer's account, with about 22% of positions held back, needs weeks of rapid games to reach it.",
       "Invisible progress is where people stop practising.",
       "",
       "## Who it's for",
@@ -246,12 +223,7 @@
     "milestone": "v0.2 Practice habit",
     "parent": "Epic: answer \"Is it working?\" sooner",
     "size": "M",
-    "labels": [
-      "type/feature",
-      "area/trainer",
-      "help wanted",
-      "roadmap"
-    ],
+    "labels": ["type/feature", "area/trainer", "help wanted", "roadmap"],
     "body": [
       "## Problem",
       "",
@@ -281,11 +253,7 @@
     "milestone": "v0.2 Practice habit",
     "parent": "Epic: answer \"Is it working?\" sooner",
     "size": "M",
-    "labels": [
-      "type/feature",
-      "area/trainer",
-      "roadmap"
-    ],
+    "labels": ["type/feature", "area/trainer", "roadmap"],
     "body": [
       "## Problem",
       "",
@@ -314,24 +282,18 @@
     "milestone": "v0.3 Trainer depth",
     "epic": true,
     "size": "XL",
-    "labels": [
-      "epic",
-      "spec",
-      "type/feature",
-      "area/trainer",
-      "roadmap"
-    ],
+    "labels": ["epic", "spec", "type/feature", "area/trainer", "roadmap"],
     "body": [
       "## Problem",
       "",
       "The weekly focus can be any ranked weakness, but the trainer only has positions for five sources:",
       "`W4.missed`, `W3.shallow`, `W3.deep`, `W7.traps` and `blunder` (`SOURCES` in",
-      "`apps/web/src/server/train/model.ts`). Pick \"Getting short of time\" (W9a) or \"Opening",
-      "preparation\" (W7.prep) as your focus and the practise card quietly serves every source instead",
+      "`apps/web/src/server/train/model.ts`). Pick \"Getting short of time\" (W9a) or \"Leaving",
+      "the opening worse\" (W7.prep) as your focus and the practise card quietly serves every source instead",
       "(`practiseToday` falls back when the focus source has no items). The player is told to work on",
       "their clock and handed a mate-in-two.",
       "",
-      "The trap positions that are drilled are drilled as one move: the owner's account has 71 `W7.traps`",
+      "The trap positions that are drilled are drilled as one move: the maintainer's account has 71 `W7.traps`",
       "items, each the single move after the trap, never the line that led into it.",
       "",
       "## Who it's for",
@@ -402,12 +364,7 @@
     "milestone": "v0.3 Trainer depth",
     "parent": "Epic: drills for every weekly focus",
     "size": "S",
-    "labels": [
-      "type/feature",
-      "area/trainer",
-      "good first issue",
-      "roadmap"
-    ],
+    "labels": ["type/feature", "area/trainer", "good first issue", "roadmap"],
     "body": [
       "## Problem",
       "",
@@ -439,12 +396,7 @@
     "milestone": "v0.3 Trainer depth",
     "parent": "Epic: drills for every weekly focus",
     "size": "L",
-    "labels": [
-      "type/feature",
-      "area/trainer",
-      "area/rust-backend",
-      "roadmap"
-    ],
+    "labels": ["type/feature", "area/trainer", "area/rust-backend", "roadmap"],
     "body": [
       "## Problem",
       "",
@@ -476,12 +428,7 @@
     "milestone": "v0.3 Trainer depth",
     "parent": "Epic: drills for every weekly focus",
     "size": "L",
-    "labels": [
-      "type/feature",
-      "area/analysis",
-      "area/trainer",
-      "roadmap"
-    ],
+    "labels": ["type/feature", "area/analysis", "area/trainer", "roadmap"],
     "body": [
       "## Problem",
       "",
@@ -512,19 +459,13 @@
     "milestone": "v0.3 Trainer depth",
     "epic": true,
     "size": "XL",
-    "labels": [
-      "epic",
-      "spec",
-      "type/feature",
-      "area/trainer",
-      "area/analysis",
-      "roadmap"
-    ],
+    "labels": ["epic", "spec", "type/feature", "area/trainer", "area/analysis", "roadmap"],
     "body": [
       "## Problem",
       "",
-      "\"Not winning won games\" (W5) is a real weakness at club level: the owner's profile shows 7 of 20",
-      "won positions not converted as Black. The trainer can only ask for one move, but conversion is a",
+      "\"Not winning won games\" (W5) is the one weakness the trainer cannot touch. The end-user review of",
+      "2026-11-23 found the maintainer's account letting good positions slip as Black, with the score",
+      "in the rating trajectory slipping too. The trainer can only ask for one move, but conversion is a",
       "skill of many moves: trading down, stopping counterplay, not rushing. There is no way to practise",
       "it in Rematch today.",
       "",
@@ -595,13 +536,7 @@
     "milestone": "v0.3 Trainer depth",
     "parent": "Epic: conversion play-outs against an opponent at your level",
     "size": "M",
-    "labels": [
-      "type/feature",
-      "area/rust-backend",
-      "area/analysis",
-      "help wanted",
-      "roadmap"
-    ],
+    "labels": ["type/feature", "area/rust-backend", "area/analysis", "help wanted", "roadmap"],
     "body": [
       "## Problem",
       "",
@@ -628,12 +563,7 @@
     "milestone": "v0.3 Trainer depth",
     "parent": "Epic: conversion play-outs against an opponent at your level",
     "size": "L",
-    "labels": [
-      "type/feature",
-      "area/trainer",
-      "area/web-ui",
-      "roadmap"
-    ],
+    "labels": ["type/feature", "area/trainer", "area/web-ui", "roadmap"],
     "body": [
       "## Problem",
       "",
@@ -661,14 +591,7 @@
     "milestone": "v0.4 Self-host and benchmark",
     "epic": true,
     "size": "L",
-    "labels": [
-      "epic",
-      "spec",
-      "type/chore",
-      "area/infra",
-      "area/rust-backend",
-      "roadmap"
-    ],
+    "labels": ["epic", "spec", "type/chore", "area/infra", "area/rust-backend", "roadmap"],
     "body": [
       "## Problem",
       "",
@@ -740,12 +663,7 @@
     "milestone": "v0.4 Self-host and benchmark",
     "parent": "Epic: a pipeline benchmark scorecard, tiers 1 to 4",
     "size": "M",
-    "labels": [
-      "type/chore",
-      "area/rust-backend",
-      "help wanted",
-      "roadmap"
-    ],
+    "labels": ["type/chore", "area/rust-backend", "help wanted", "roadmap"],
     "body": [
       "## Problem",
       "",
@@ -773,12 +691,7 @@
     "milestone": "v0.4 Self-host and benchmark",
     "parent": "Epic: a pipeline benchmark scorecard, tiers 1 to 4",
     "size": "M",
-    "labels": [
-      "type/chore",
-      "area/rust-backend",
-      "area/coach",
-      "roadmap"
-    ],
+    "labels": ["type/chore", "area/rust-backend", "area/coach", "roadmap"],
     "body": [
       "## Problem",
       "",
@@ -805,12 +718,7 @@
     "milestone": "v0.4 Self-host and benchmark",
     "parent": "Epic: a pipeline benchmark scorecard, tiers 1 to 4",
     "size": "M",
-    "labels": [
-      "type/docs",
-      "area/docs",
-      "help wanted",
-      "roadmap"
-    ],
+    "labels": ["type/docs", "area/docs", "help wanted", "roadmap"],
     "body": [
       "## Problem",
       "",
@@ -834,12 +742,7 @@
     "title": "A low-memory profile: the whole stack in 3 GB",
     "milestone": "v0.4 Self-host and benchmark",
     "size": "M",
-    "labels": [
-      "type/chore",
-      "area/infra",
-      "help wanted",
-      "roadmap"
-    ],
+    "labels": ["type/chore", "area/infra", "help wanted", "roadmap"],
     "body": [
       "## Problem",
       "",
@@ -866,13 +769,7 @@
     "milestone": "v0.5 More players",
     "epic": true,
     "size": "XL",
-    "labels": [
-      "epic",
-      "spec",
-      "type/feature",
-      "area/analysis",
-      "roadmap"
-    ],
+    "labels": ["epic", "spec", "type/feature", "area/analysis", "roadmap"],
     "body": [
       "## Problem",
       "",
@@ -940,12 +837,7 @@
     "milestone": "v0.5 More players",
     "parent": "Epic: more game sources: Lichess accounts and PGN files",
     "size": "L",
-    "labels": [
-      "type/feature",
-      "area/web-ui",
-      "help wanted",
-      "roadmap"
-    ],
+    "labels": ["type/feature", "area/web-ui", "help wanted", "roadmap"],
     "body": [
       "## Problem",
       "",
@@ -973,11 +865,7 @@
     "milestone": "v0.5 More players",
     "parent": "Epic: more game sources: Lichess accounts and PGN files",
     "size": "L",
-    "labels": [
-      "type/feature",
-      "area/rust-backend",
-      "roadmap"
-    ],
+    "labels": ["type/feature", "area/rust-backend", "roadmap"],
     "body": [
       "## Problem",
       "",
@@ -1005,13 +893,7 @@
     "milestone": "v0.5 More players",
     "epic": true,
     "size": "XL",
-    "labels": [
-      "epic",
-      "spec",
-      "type/feature",
-      "area/web-ui",
-      "roadmap"
-    ],
+    "labels": ["epic", "spec", "type/feature", "area/web-ui", "roadmap"],
     "body": [
       "## Problem",
       "",
@@ -1075,12 +957,7 @@
     "milestone": "v0.5 More players",
     "parent": "Epic: Rematch in more than one language",
     "size": "S",
-    "labels": [
-      "type/chore",
-      "area/web-ui",
-      "good first issue",
-      "roadmap"
-    ],
+    "labels": ["type/chore", "area/web-ui", "good first issue", "roadmap"],
     "body": [
       "## Problem",
       "",
@@ -1107,11 +984,7 @@
     "milestone": "v0.5 More players",
     "parent": "Epic: Rematch in more than one language",
     "size": "L",
-    "labels": [
-      "type/feature",
-      "area/web-ui",
-      "roadmap"
-    ],
+    "labels": ["type/feature", "area/web-ui", "roadmap"],
     "body": [
       "## Problem",
       "",
@@ -1140,21 +1013,15 @@
     "milestone": "v0.5 More players",
     "epic": true,
     "size": "L",
-    "labels": [
-      "epic",
-      "spec",
-      "type/feature",
-      "area/web-ui",
-      "roadmap"
-    ],
+    "labels": ["epic", "spec", "type/feature", "area/web-ui", "roadmap"],
     "body": [
       "## Problem",
       "",
       "The app is laid out for 390 px and has visual baselines there, but nobody has used it as a phone",
-      "app for a week, and at least one thing is broken for screen readers: every animated number",
-      "(`Stat`, built on NumberFlow) renders its digits inside a shadow root with no accessible name, so",
-      "the overview headline \"your accuracy averages 69.2%, with 1.4 blunders a game\" reads with blanks",
-      "(finding R2-10).",
+      "app for a week. One accessibility gap is known: every animated number (`Stat`, built on",
+      "NumberFlow) renders its digits inside a shadow root with no accessible name, so text extraction",
+      "reads the overview headline as \"your accuracy averages , with  blunders a game\" (finding",
+      "R2-10). No one has audited the app with a screen reader yet.",
       "",
       "## Who it's for",
       "",
@@ -1205,23 +1072,18 @@
     ]
   },
   {
-    "title": "Animated numbers are blank to screen readers",
+    "title": "Animated numbers have no accessible name",
     "milestone": "v0.5 More players",
     "parent": "Epic: works on a phone and with a screen reader",
     "size": "S",
-    "labels": [
-      "type/bug",
-      "area/web-ui",
-      "good first issue",
-      "roadmap"
-    ],
+    "labels": ["type/bug", "area/web-ui", "good first issue", "roadmap"],
     "body": [
       "## Problem",
       "",
       "`Stat` (`packages/ui/src/stats/stat.tsx`) renders the value with NumberFlow, which draws the digits",
       "in a shadow root. The host element has no `aria-label` and no text alternative, so the overview",
-      "headline reads \"your accuracy averages , with  blunders a game\" to text extraction and, very",
-      "likely, to screen readers. On screen it looks fine.",
+      "headline reads \"your accuracy averages , with  blunders a game\" to text extraction. We have not",
+      "tested it with a screen reader yet, but nothing gives one the value. On screen it looks fine.",
       "",
       "## Acceptance criteria",
       "",
@@ -1244,12 +1106,7 @@
     "milestone": "v0.5 More players",
     "parent": "Epic: works on a phone and with a screen reader",
     "size": "S",
-    "labels": [
-      "type/chore",
-      "area/web-ui",
-      "good first issue",
-      "roadmap"
-    ],
+    "labels": ["type/chore", "area/web-ui", "good first issue", "roadmap"],
     "body": [
       "## Problem",
       "",
@@ -1275,12 +1132,7 @@
     "milestone": "v1.0 MVP",
     "epic": true,
     "size": "L",
-    "labels": [
-      "epic",
-      "spec",
-      "type/feature",
-      "roadmap"
-    ],
+    "labels": ["epic", "spec", "type/feature", "roadmap"],
     "body": [
       "## Problem",
       "",
@@ -1342,12 +1194,7 @@
     "milestone": "v1.0 MVP",
     "parent": "Epic: what 1.0 means",
     "size": "M",
-    "labels": [
-      "type/feature",
-      "area/web-ui",
-      "type/security",
-      "roadmap"
-    ],
+    "labels": ["type/feature", "area/web-ui", "type/security", "roadmap"],
     "body": [
       "## Problem",
       "",
@@ -1378,12 +1225,7 @@
     "milestone": "v1.0 MVP",
     "parent": "Epic: what 1.0 means",
     "size": "M",
-    "labels": [
-      "type/feature",
-      "area/web-ui",
-      "help wanted",
-      "roadmap"
-    ],
+    "labels": ["type/feature", "area/web-ui", "help wanted", "roadmap"],
     "body": [
       "## Problem",
       "",
