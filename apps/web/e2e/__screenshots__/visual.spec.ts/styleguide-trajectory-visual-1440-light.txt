@@ -48,10 +48,10 @@ Rating
 80% range 1,067 to 1,077, 30 rated games
 
 881 on average
-80% range 872 to 889, 30 rated games
+80% range 872 to 890, 30 rated games
 
 Worse
-Difference −192 points, 80% range −202 to −181
+Difference −192 points, 80% range −202 to −182
 
 Accuracy
 
@@ -59,10 +59,10 @@ Accuracy
 80% range 73.3% to 74.6%, 30 analysed games
 
 64.1%
-80% range 63.5% to 64.7%, 30 analysed games
+80% range 63.4% to 64.8%, 30 analysed games
 
 Worse
-Difference −9.9 points, 80% range −10.8 to −9.0
+Difference −9.9 points, 80% range −10.8 to −8.9
 
 Blunders per game
 

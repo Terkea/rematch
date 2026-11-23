@@ -17,7 +17,9 @@ Period
 12 months
 All time
 Custom
+
 The report is written from your whole profile, on all your games of this time control: the weakness rates cover the last 6 months.
+
 Where you stand
 
 Rated 1,450 in rapid on lichess, among players rated 1300–1699.

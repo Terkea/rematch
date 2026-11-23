@@ -58,27 +58,15 @@ async function visibleText(page: Page, selector: string): Promise<string> {
 /**
  * The page as one tall viewport, not a `fullPage` capture: the charts measure their parent, and
  * Chromium's fullPage capture resizes the view under them (M5a T13). A tall viewport measures
- * once, before any capture. The styleguide's off-screen sections hold a guessed height until they
- * render (`content-visibility: auto`, ADR-WEB-20), so the viewport grows until the page stops.
+ * once, before any capture. The styleguide's off-screen sections skip rendering and hold a guess of
+ * one viewport each (`content-visibility: auto`, ADR-WEB-20). A viewport sized to that guess
+ * makes each guess as tall as the page, so the capture renders every section first.
  */
 async function tall(page: Page): Promise<void> {
+  await page.addStyleTag({ content: "main > section { content-visibility: visible !important; }" });
   const width = page.viewportSize()?.width ?? 1440;
-  const scrollHeight = () =>
-    page.evaluate(
-      () =>
-        new Promise<number>((r) =>
-          requestAnimationFrame(() =>
-            requestAnimationFrame(() => r(document.documentElement.scrollHeight)),
-          ),
-        ),
-    );
-  let height = await scrollHeight();
-  for (let i = 0; i < 10; i++) {
-    await page.setViewportSize({ width, height });
-    const next = await scrollHeight();
-    if (next === height) break;
-    height = next;
-  }
+  const height = await page.evaluate(() => document.documentElement.scrollHeight);
+  await page.setViewportSize({ width, height });
   await page.evaluate(() => document.fonts.ready);
   await page.waitForTimeout(500);
 }

@@ -33,7 +33,10 @@ Positions from your own rapid games where you missed a win or a mate, or blunder
 
 How you're doing
 
- accuracy,  blunders a game.
+68.2%
+ accuracy,
+1.53
+ blunders a game.
 
 34 analysed games. Accuracy 80% likely between 65.2% and 71.2%. Blunders 80% likely between 1.2 and 1.8.
 
@@ -66,8 +69,8 @@ Details
 
 The numbers behind the summary, with filters for a closer look.
 
-Filters
-None set
+Filters (1)
+all time
 Accuracy over time
 
 How close your moves were to the engine's best moves, as a score out of 100.
@@ -101,6 +104,8 @@ How many big mistakes you make in a typical game.
 
 Based on 34 analysed games
 
+1.53
+
 First
 week
  1.0 (3 games)
@@ -119,6 +124,8 @@ How many mistakes you made in an average game: moves that cost a lot, short of a
 
 Based on 34 analysed games
 
+1.50
+
 First
 week
  1.7 (3 games)
@@ -136,6 +143,8 @@ Inaccuracies
 How many small slips you made in an average game: moves a little worse than the best one.
 
 Based on 34 analysed games
+
+1.50
 
 First
 week
@@ -207,11 +216,15 @@ Rapid score
 
 Based on 16 rapid games
 
+56.3%
+
 80% likely between 40.5% and 70.9%
 
 Rapid accuracy
 
 Based on 16 rapid games
+
+64.4%
 
 80% likely between 60.4% and 68.5%
 
@@ -221,11 +234,15 @@ Blitz score
 
 Based on 17 blitz games
 
+35.3%
+
 80% likely between 22.3% and 50.9%
 
 Blitz accuracy
 
 Based on 17 blitz games
+
+71.1%
 
 80% likely between 66.8% and 75.5%
 

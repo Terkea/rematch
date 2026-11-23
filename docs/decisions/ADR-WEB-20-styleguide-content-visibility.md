@@ -21,9 +21,9 @@ The page kept growing (sections, rows, demos) after ADR-WEB-18 brought the step 
 
 - Every direct `section` of the styleguide's `main` except `charts` gets `content-visibility: auto` and `contain-intrinsic-size: auto 100vh`. The charts section stays laid out. The trend measures its parent on load, and a skipped section has no size, so its dots would only appear once someone scrolled to it, and `charts.spec`, `quality.spec` and `visual.spec` wait for those dots before they scroll. An off-screen section skips style, layout, paint and layerize. `auto` remembers a section's real height after its first render, so the scrollbar stops changing once a section has been seen. One viewport is only the first guess. The styleguide is a lab page (LAB_ENABLED), so no user-facing route changes.
 - The budget stays at 16 ms. It is right: the check measures one step on the chart, and the cost came from the rest of the page.
-- `visual.spec.ts`'s `tall()` grows the viewport until the page height stops changing. Before a section has rendered, the page's height is only an estimate.
+- `visual.spec.ts`'s `tall()` turns every section's `content-visibility` to `visible` before it sizes the viewport. Otherwise each unrendered section's `100vh` guess grows with the tall viewport, and the page never stops growing (Chromium refused a viewport over 10,000,000 px).
 
 ## Consequences
 
 - The trend step's cost no longer depends on how big the styleguide gets.
-- A section's placeholder height can differ from its real height until it renders, so anything that measures the page's height has to let the sections render first, as `tall()` does.
+- A section's placeholder height can differ from its real height until it renders, so anything that measures the whole page's height has to render every section first, as `tall()` does.
