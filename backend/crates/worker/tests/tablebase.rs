@@ -51,6 +51,8 @@ async fn syzygy_path_reaches_the_tablebase_probe(
     let Some(mut env) = env_for(&opts_) else {
         return;
     };
+    // This test's share of the Postgres connections (its pool is a child of sqlx::test's).
+    let _budget = common::reserve_connections(1, 0).await;
     let Some(tables) = real_tables() else {
         eprintln!("skipped: SYZYGY_PATH unset");
         return;
@@ -86,6 +88,8 @@ async fn missing_tables_dir_is_unavailable_and_never_blocks_analysis(
     let Some(mut env) = env_for(&opts_) else {
         return;
     };
+    // This test's share of the Postgres connections (its pool is a child of sqlx::test's).
+    let _budget = common::reserve_connections(1, 0).await;
     env.syzygy_path = Some(PathBuf::from("/nonexistent/syzygy"));
     let pool: PgPool = pool_opts.connect_with(opts_).await.unwrap();
     let (acct, id) = add_game(&pool, RUY, "notables").await;
@@ -117,6 +121,8 @@ async fn no_syzygy_path_means_no_probe(_pool_opts: PgPoolOptions, opts_: PgConne
     let Some(env) = env_for(&opts_) else {
         return;
     };
+    // This test's share of the Postgres connections (its pool is a child of sqlx::test's).
+    let _budget = common::reserve_connections(1, 0).await;
     assert_eq!(env.syzygy_path, None);
     let running = start_workers(&env, opts()).await.expect("start_workers");
     assert!(running.tablebase.is_none());
@@ -322,6 +328,8 @@ async fn staged_tables_answer_like_the_source(pool_opts: PgPoolOptions, opts_: P
     let Some(mut env) = env_for(&opts_) else {
         return;
     };
+    // This test's share of the Postgres connections (its pool is a child of sqlx::test's).
+    let _budget = common::reserve_connections(1, 0).await;
     let Some(tables) = real_tables() else {
         eprintln!("skipped: SYZYGY_PATH unset");
         return;
@@ -364,6 +372,8 @@ async fn a_staged_table_that_answers_wrongly_falls_back_to_the_source(
     let Some(mut env) = env_for(&opts_) else {
         return;
     };
+    // This test's share of the Postgres connections (its pool is a child of sqlx::test's).
+    let _budget = common::reserve_connections(1, 0).await;
     let Some(tables) = real_tables() else {
         eprintln!("skipped: SYZYGY_PATH unset");
         return;

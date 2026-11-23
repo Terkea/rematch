@@ -109,6 +109,14 @@ pub const SCHEDULE_HARD_TIMEOUT: Duration = Duration::from_secs(120);
 pub fn preview_concurrency(pool_size: usize) -> usize {
     (pool_size / 2).max(1)
 }
+/// The worker pool's `max_connections` for `pool_size` engines, with or without the AI runners
+/// (the connection budget in the module docs). Tests size their Postgres budget with it.
+pub fn max_connections(pool_size: usize, with_ai: bool) -> usize {
+    pool_size
+        + preview_concurrency(pool_size)
+        + POOL_HEADROOM
+        + if with_ai { AI_POOL_HEADROOM } else { 0 }
+}
 /// Profile builds at once (each holds two connections, Task 18's repertoire read).
 pub const BUILD_PROFILE_CONCURRENCY: usize = 2;
 /// The runner's hard deadline on a profile build.
@@ -693,10 +701,7 @@ pub async fn start_workers(env: &WorkerEnv, opts: StartOptions) -> anyhow::Resul
     } else {
         None
     };
-    let max_connections = pool_size
-        + preview_concurrency(pool_size)
-        + POOL_HEADROOM
-        + if with_ai { AI_POOL_HEADROOM } else { 0 };
+    let max_connections = max_connections(pool_size, with_ai);
 
     // Migrations run without the worker's statement timeout (ADR 0033).
     let migrations = db::pool::connect_for_migrations(&env.database_url)

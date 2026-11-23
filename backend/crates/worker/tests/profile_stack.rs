@@ -61,6 +61,8 @@ async fn start_workers_boots_without_syzygy_or_maia(pool_opts: PgPoolOptions, o:
     let Some(env) = env_for(&o) else {
         return;
     };
+    // This test's share of the Postgres connections (its pool is a child of sqlx::test's).
+    let _budget = common::reserve_connections(1, 0).await;
     assert_eq!(
         (env.syzygy_path.as_ref(), env.maia_url.as_ref()),
         (None, None)
@@ -98,6 +100,8 @@ async fn start_workers_uses_fair_strategy_for_analyse(
     let Some(env) = env_for(&o) else {
         return;
     };
+    // This test's share of the Postgres connections (its pool is a child of sqlx::test's).
+    let _budget = common::reserve_connections(4, 0).await;
     // With the AI runners too (disabled client): they claim like every other non-analyse kind.
     let running = start_workers(
         &env,
@@ -142,6 +146,8 @@ async fn unenriched_games_are_requeued_at_start_and_enriched_by_the_hook(
     let Some(env) = env_for(&o) else {
         return;
     };
+    // This test's share of the Postgres connections (its pool is a child of sqlx::test's).
+    let _budget = common::reserve_connections(1, 0).await;
     let pool: PgPool = pool_opts.connect_with(o).await.unwrap();
     let acct = insert_account(&pool, "chesscom", "prer2").await;
     let id = insert_game(
@@ -218,6 +224,8 @@ async fn start_resumes_lost_reference_game_jobs(pool_opts: PgPoolOptions, o: PgC
     let Some(env) = env_for(&o) else {
         return;
     };
+    // This test's share of the Postgres connections (its pool is a child of sqlx::test's).
+    let _budget = common::reserve_connections(1, 0).await;
     let pool: PgPool = pool_opts.connect_with(o).await.unwrap();
     let build = create_build(
         &pool,
@@ -280,6 +288,8 @@ async fn without_the_profile_hook_analysis_writes_no_enrichment(
     let Some(env) = env_for(&o) else {
         return;
     };
+    // This test's share of the Postgres connections (its pool is a child of sqlx::test's).
+    let _budget = common::reserve_connections(1, 0).await;
     let pool: PgPool = pool_opts.connect_with(o).await.unwrap();
     let (acct, id) = common::add_game(&pool, RUY, "nohook").await;
     let running = start_workers(
