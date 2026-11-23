@@ -51,8 +51,8 @@ not a template.
 
 ## Consequences
 
-- The `main` ruleset's required checks should add `site` (the settings test compares them with the
-  job names in `ci.yml`).
+- The `main` ruleset requires `site` too (`.github/settings/rulesets/main.json`; the settings test
+  compares the required checks with the job names in `ci.yml`), and `docs/SDLC.md` lists it.
 - Visual baselines that show the wordmark change once, regenerated in the `qa` container.
 - A new ADR, research note or README change appears on the site at the next build of `main`.
 - The repository grows by about 6 MB of media, once.

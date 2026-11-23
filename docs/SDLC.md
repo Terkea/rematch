@@ -49,6 +49,7 @@ Every pull request runs the same checks, and all of them are required by the `ma
 | `e2e` | the Playwright suite and the visual baselines on a production build |
 | `e2e-fakes` | the specs that need the chess.com and Lichess fakes, on the dev server |
 | `rust` | crate age, `cargo fmt`, `clippy -D warnings`, `cargo deny`, and `cargo test` |
+| `site` | the public site's tests, its production build and a check of every internal link |
 | `baseline-schema` | the Rust (sqlx) and Drizzle migrations produce the same schema |
 | `schema-drift` | the generated Drizzle schema is up to date with `db/migrations` |
 | `pr-title` | the title is a Conventional Commit |
