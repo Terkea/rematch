@@ -678,30 +678,31 @@ function ColourClaims({ colour, above }: { colour: "White" | "Black"; above: Sid
   }
   return (
     <ul className="m-0 flex list-none flex-col gap-3 p-0">
-      {above.claims.map((c) => (
-        <li key={c.metric} className="flex flex-col [font-variant-numeric:lining-nums]">
-          <span className="flex flex-wrap items-baseline justify-between gap-x-3">
-            <span className="flex min-w-0 items-center gap-1 text-base font-medium text-ink">
-              {c.label}
-              <ExplainPopover entry={KPI_GLOSSARY[c.metric] ?? { ...EMPTY, name: c.label }} />
+      {above.claims.map((c) => {
+        const explain = KPI_GLOSSARY[c.metric];
+        return (
+          <li key={c.metric} className="flex flex-col [font-variant-numeric:lining-nums]">
+            <span className="flex flex-wrap items-baseline justify-between gap-x-3">
+              <span className="flex min-w-0 items-center gap-1 text-base font-medium text-ink">
+                {c.label}
+                {explain ? <ExplainPopover entry={explain} /> : null}
+              </span>
+              <span className="font-serif text-lg font-semibold text-good-text [font-variant-numeric:lining-nums_tabular-nums]">
+                {figureOf(c.value, c.unit)}
+              </span>
             </span>
-            <span className="font-serif text-lg font-semibold text-good-text [font-variant-numeric:lining-nums_tabular-nums]">
-              {figureOf(c.value, c.unit)}
+            <span className="text-sm text-ink-soft">
+              80% range {range(c.low, c.high, c.unit)}, over your last {nOf(c.metric, c.n)}.{" "}
+              {"peer" in c
+                ? `Players you've faced: ${value(c.peer, c.unit)}.`
+                : `Players in your rating band: ${value(c.median, c.unit)}.`}
             </span>
-          </span>
-          <span className="text-sm text-ink-soft">
-            80% range {range(c.low, c.high, c.unit)}, over your last {nOf(c.metric, c.n)}.{" "}
-            {"peer" in c
-              ? `Players you've faced: ${value(c.peer, c.unit)}.`
-              : `Players in your rating band: ${value(c.median, c.unit)}.`}
-          </span>
-        </li>
-      ))}
+          </li>
+        );
+      })}
     </ul>
   );
 }
-
-const EMPTY: GlossaryEntry = { name: "", meaning: "", measured: "", whyItMatters: "", tip: "" };
 
 /**
  * Both colours side by side (audit A5): each colour's measures that are clearly better than
