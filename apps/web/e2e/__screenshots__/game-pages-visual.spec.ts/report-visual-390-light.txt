@@ -349,3 +349,5 @@ Detected as active (was emerging) from about 2 Oct 2026, somewhere between 28 Se
 Fixed this month
 
 Nothing was detected as fixed this month.
+
+About this recommendation: computed before algorithm versions were recorded.
