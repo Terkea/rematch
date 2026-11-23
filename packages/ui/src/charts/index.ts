@@ -11,6 +11,16 @@ export {
   type JudgementColumnsProps,
 } from "./judgement-columns.js";
 export { type ChartPatternId, ChartPatterns, patternFill } from "./patterns.js";
+export {
+  type MonthRow,
+  monthlyRatings,
+  RatingTrajectory,
+  type RatingTrajectoryMark,
+  type RatingTrajectoryPoint,
+  type RatingTrajectoryProps,
+  type RatingTrajectoryWindow,
+  ratingDomain,
+} from "./rating-trajectory.js";
 export { ResultSplit, type ResultSplitProps, type ResultSplitRow } from "./result-split.js";
 export {
   cellHeight,
