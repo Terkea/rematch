@@ -53,7 +53,11 @@ test("the weakness detail tells its story, with the player's own examples", asyn
   const first = examples.first();
   // The played move (pen) and the engine's move (good) as two arrows, named in the key.
   await expect(first.getByRole("list", { name: "Arrows" }).locator("li")).toHaveCount(2);
+  // Worst first (critic 1): the biggest drop leads.
   await expect(first).toContainText(
+    "Your win chance went from 70% to 38%, a drop of 32 win% points.",
+  );
+  await expect(examples.nth(1)).toContainText(
     "Your win chance went from 62% to 31%, a drop of 31 win% points.",
   );
   const link = first.getByRole("link", { name: /^Open the game at / });
