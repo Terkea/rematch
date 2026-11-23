@@ -860,3 +860,56 @@ async fn dump_and_sums_requests_send_the_exact_project_user_agent() {
         assert!(!ua.contains('@'));
     }
 }
+
+/// Slow to observe, so pool jobs are still running when the async side stops early. Fails merges
+/// on request.
+struct SlowSink {
+    fail_merge: bool,
+}
+
+impl GameSink for SlowSink {
+    type Partial = ();
+
+    fn observe(&self, _pgn: &str, _h: &DumpHeader, _tc: TimeClass) {
+        std::thread::sleep(Duration::from_micros(300));
+    }
+
+    fn merge(&self, _parts: Vec<()>) -> BoxFuture<'_, Result<(), DumpError>> {
+        let fail = self.fail_merge;
+        Box::pin(async move {
+            if fail {
+                Err(DumpError::Store("disk full".into()))
+            } else {
+                Ok(())
+            }
+        })
+    }
+}
+
+/// Regression (first public CI run, 2026-11-23): `run_pipeline` returned while pool jobs still
+/// held clones of the sink, so `Arc::try_unwrap(sink)` failed on a many-core runner. Completion
+/// must mean every worker is done: after a full run, a cap and a merge error, at 16 and 32 threads.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn the_caller_is_the_sole_owner_of_the_sink_when_the_pipeline_returns() {
+    let games: Vec<String> = ids_of(400).iter().map(|id| plain(id, 1)).collect();
+    for threads in [16, 32] {
+        for round in 0..20 {
+            for (cap, fail_merge) in [(None, false), (Some(7), false), (None, true)] {
+                let sink = Arc::new(SlowSink { fail_merge });
+                let filter = SampleFilter {
+                    max_games: cap,
+                    ..SampleFilter::default()
+                };
+                let out =
+                    run_pipeline(source(games.clone()), &filter, &sink, &cfg(threads, 3)).await;
+                assert_eq!(out.is_err(), fail_merge, "threads {threads}, round {round}");
+                assert_eq!(
+                    Arc::strong_count(&sink),
+                    1,
+                    "threads {threads}, round {round}, cap {cap:?}, fail {fail_merge}"
+                );
+                assert!(Arc::try_unwrap(sink).is_ok());
+            }
+        }
+    }
+}
