@@ -67,16 +67,16 @@ sh scripts/release/smoke.sh rematch-local 0.4.2
 
 ## When something fails
 
-- **`gate` fails with `CI did not pass on <sha>: ts: failure`.** The tagged commit is broken. Fix it on `main` with a `fix:` commit; release-please opens the next release PR (0.4.3). Do not move the tag.
-- **`gate` fails with `rust: cancelled`.** A CI run on that commit was cancelled. Pushes to `main` get one concurrency group per commit, so a later merge no longer cancels it, but a person can still cancel a run by hand. Re-run the failed CI jobs on the commit (`gh run rerun <ci-run-id> --failed`), then re-run the failed `Release` jobs.
-- **`gate` fails with `still running after 150 minutes`.** Wait for CI to finish, then re-run the failed `Release` jobs.
-- **`images` or `attach` fails** (a runner, GHCR or network error). Re-run the failed jobs of the `Release` run: `gh run rerun <release-run-id> --failed`. Pushes are idempotent and `gh release upload --clobber` replaces assets. Re-runs are possible for 30 days; after that, start a fresh run by re-publishing the Release by hand, which a person's token turns into a `release: published` event:
+- `gate` fails with `CI did not pass on <sha>: ts: failure`. The tagged commit is broken. Fix it on `main` with a `fix:` commit; release-please opens the next release PR (0.4.3). Do not move the tag.
+- `gate` fails with `rust: cancelled`. A CI run on that commit was cancelled. Pushes to `main` get one concurrency group per commit, so a later merge no longer cancels it, but a person can still cancel a run by hand. Re-run the failed CI jobs on the commit (`gh run rerun <ci-run-id> --failed`), then re-run the failed `Release` jobs.
+- `gate` fails with `still running after 150 minutes`. Wait for CI to finish, then re-run the failed `Release` jobs.
+- `images` or `attach` fails (a runner, GHCR or network error). Re-run the failed jobs of the `Release` run: `gh run rerun <release-run-id> --failed`. Pushes are idempotent and `gh release upload --clobber` replaces assets. Re-runs are possible for 30 days; after that, start a fresh run by re-publishing the Release by hand, which a person's token turns into a `release: published` event:
 
   ```sh
   gh release edit v0.4.2 --draft=true && gh release edit v0.4.2 --draft=false --prerelease
   ```
 
-- **`fetch-stockfish-source` fails with `SHA-256 … pins …`.** GitHub changed the bytes of the `sf_19` archive (it regenerates archive tarballs rarely, but has done so). Download it, compare the unpacked tree with the old one (`diff -r`), and if only the compression differs, update the sum in `deploy/stockfish-source.txt` in a `fix(release):` PR. Never skip the check: the attached file must be the source of the binary we ship.
+- `fetch-stockfish-source` fails with `SHA-256 … pins …`. GitHub changed the bytes of the `sf_19` archive (it regenerates archive tarballs rarely, but has done so). Download it, compare the unpacked tree with the old one (`diff -r`), and if only the compression differs, update the sum in `deploy/stockfish-source.txt` in a `fix(release):` PR. Never skip the check: the attached file must be the source of the binary we ship.
 
 ## A hotfix
 
@@ -89,7 +89,7 @@ A release that corrupts data or cannot start is yanked, never deleted: the tag a
 1. Put the reason at the top of the Release notes, above the existing text:
 
    ```sh
-   { echo "**Yanked:** <reason>. Use 0.4.3."; echo; gh release view v0.4.2 --json body --jq .body; } > yanked.md
+   { echo "Yanked: <reason>. Use 0.4.3."; echo; gh release view v0.4.2 --json body --jq .body; } > yanked.md
    gh release edit v0.4.2 --notes-file yanked.md
    ```
 

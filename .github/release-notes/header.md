@@ -1,5 +1,5 @@
 <!-- rematch-header -->
-**Rematch {{version}}** is a {{status}} release. Every `0.y.z` is a beta: the database schema and the settings in `env.release.example` can change between minor versions, so read the notes below before upgrading. 1.0 is reserved for the MVP ([ADR 0095](https://github.com/{{repo}}/blob/{{tag}}/docs/decisions/0095-open-source-sdlc-and-releases.md)).
+Rematch {{version}} is a {{status}} release. Every `0.y.z` is a beta: the database schema and the settings in `env.release.example` can change between minor versions, so read the notes below before upgrading. 1.0 is reserved for the MVP ([ADR 0095](https://github.com/{{repo}}/blob/{{tag}}/docs/decisions/0095-open-source-sdlc-and-releases.md)).
 
 ### Run it
 

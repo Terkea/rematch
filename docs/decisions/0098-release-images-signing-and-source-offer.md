@@ -35,12 +35,12 @@ Two facts shaped the design:
 
 ## Alternatives
 
-- **Docker Hub.** A second account and a stored token, with pull limits for anonymous users.
-- **`release: published` only.** Never fires for release-please's own Releases. A personal access token for release-please would fix that at the price of a stored secret with write access, which ADR 0095 rejected.
-- **Re-running the whole CI in the release workflow.** Duplicates about an hour of e2e and Rust per release and proves nothing the push to `main` did not.
-- **A cosign key pair.** A long-lived secret in a public repository; keyless signing ties each signature to the workflow instead.
-- **A written offer for the Stockfish source** (GPL-3.0 section 6(b)). Obliges us to answer requests for three years; attaching the source (section 6(a) and (d)) does not.
-- **Multi-arch now.** Hours of QEMU per release, and an unverified arm64 Stockfish asset; see decision 2.
+- Docker Hub: a second account and a stored token, with pull limits for anonymous users.
+- `release: published` only: never fires for release-please's own Releases. A personal access token for release-please would fix that at the price of a stored secret with write access, which ADR 0095 rejected.
+- Re-running the whole CI in the release workflow: duplicates about an hour of e2e and Rust per release and proves nothing the push to `main` did not.
+- A cosign key pair: a long-lived secret in a public repository; keyless signing ties each signature to the workflow instead.
+- A written offer for the Stockfish source (GPL-3.0 section 6(b)): it obliges us to answer requests for three years; attaching the source (section 6(a) and (d)) does not.
+- Multi-arch now: hours of QEMU per release, and an unverified arm64 Stockfish asset; see decision 2.
 
 ## Consequences
 
