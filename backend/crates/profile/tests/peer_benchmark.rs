@@ -4,11 +4,13 @@
 use chess_core::{Color, TimeClass};
 use profile::peer_benchmark::{
     PEER_RATING_WINDOW, PeerSide, aggregate_peer_benchmark, is_peer_comparable, opponent_context,
+    peer_sides_of,
 };
 use profile::reference_aggregate::LOW_SAMPLE_PLAYERS;
+use profile_core::kpi::catalogue::kpi_catalogue;
 use profile_core::types::{
     BaseMetric, BinomialObs, GameContext, MetricId, PLAYER_GAME_METRICS_VERSION, PlatformId,
-    PlayerGameMetrics, WeaknessKey,
+    PlayerGameMetrics, Side, WeaknessKey,
 };
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -162,10 +164,112 @@ fn players_are_distinct_opponents_and_low_sample_follows_them() {
     assert!(traps.low_sample, "9 < {LOW_SAMPLE_PLAYERS}");
     assert!(b.reference().is_none(), "a low-sample row is never served");
 
-    sides.push(side("opp9", 800, 1, 60.0));
+    // A tenth opponent, faced 13 times: ten players and 40 chances (W7.traps' minimum).
+    for _ in 0..13 {
+        sides.push(side("opp9", 800, 1, 60.0));
+    }
     let b = aggregate_peer_benchmark(&sides, 800, NOW);
     let reference = b.reference().expect("ten players");
     assert!(!reference[&TRAPS].low_sample);
+}
+
+#[test]
+fn a_rate_row_needs_its_minimum_chances_as_well_as_ten_players() {
+    // A12: twelve opponents but 12 W4.missed chances, under the KPI's own minimum of 40 (the
+    // number of chances the player's own estimate needs): stored, never served.
+    let min = kpi_catalogue()
+        .iter()
+        .find(|d| d.metric == MISSED)
+        .unwrap()
+        .min_n;
+    assert_eq!(min, 40);
+    let sides: Vec<PeerSide> = (0..12)
+        .map(|i| missed_side(&format!("opp{i}"), u32::from(i % 4 == 0), 1, 0))
+        .collect();
+    let b = aggregate_peer_benchmark(&sides, 800, NOW);
+    let r = b.stats.iter().find(|s| s.metric == MISSED).unwrap();
+    assert_eq!((r.n_players, b.chances[&MISSED]), (12, 12));
+    assert!(r.low_sample, "12 chances < {min}");
+    assert!(!b.reference().unwrap().contains_key(&MISSED));
+    // A mean row keeps the player rule: accuracy has twelve players and is served.
+    assert!(!b.reference().unwrap()[&ACCURACY].low_sample);
+
+    // The same twelve opponents with 4 chances each: 48 chances, served.
+    let sides: Vec<PeerSide> = (0..12)
+        .map(|i| missed_side(&format!("opp{i}"), u32::from(i % 4 == 0), 4, 0))
+        .collect();
+    let b = aggregate_peer_benchmark(&sides, 800, NOW);
+    assert_eq!(b.chances[&MISSED], 48);
+    assert!(!b.reference().unwrap()[&MISSED].low_sample);
+}
+
+/// One game against the player: `opponent` had `color`, W4.missed `k` of `n`.
+fn coloured_missed_side(opponent: &str, color: Color, k: u32, n: u32) -> PeerSide {
+    let mut s = missed_side(opponent, k, n, 0);
+    s.ctx.player_color = color;
+    s
+}
+
+#[test]
+fn both_weighs_an_opponent_once_however_many_colours_they_had() {
+    // A13 (the owner's rapid `losses_on_time_rate`: Both 0.0016, White 0.0063, Black 0): the
+    // only event is by an opponent faced 8 times, 4 with each colour. Each opponent weighs one
+    // game's worth in each pool (ADR 0081): in White their event is 1/4 of a unit, in Both 1/8,
+    // and Both has about twice White's units. So Both is not the chance-weighted mean of the
+    // colours; that is the per-opponent weighting, not a different denominator or decay.
+    let mut sides = Vec::new();
+    for i in 0..10 {
+        sides.push(coloured_missed_side(&format!("w{i}"), Color::White, 0, 1));
+        sides.push(coloured_missed_side(&format!("b{i}"), Color::Black, 0, 1));
+    }
+    for g in 0..4 {
+        sides.push(coloured_missed_side("both", Color::White, u32::from(g == 0), 1));
+        sides.push(coloured_missed_side("both", Color::Black, 0, 1));
+    }
+    let pooled = |side: Side| {
+        let b = aggregate_peer_benchmark(&peer_sides_of(&sides, side), 800, NOW);
+        let r = b.stats.iter().find(|s| s.metric == MISSED).unwrap().clone();
+        (r.pooled_rate.unwrap(), r.n_players, b.chances[&MISSED])
+    };
+    let (both, both_players, both_chances) = pooled(Side::Both);
+    let (white, white_players, white_chances) = pooled(Side::White);
+    let (black, black_players, black_chances) = pooled(Side::Black);
+    // Units: White 10 + 1 (the dual opponent's 4 games), event 1/4; Both 20 + 1, event 1/8.
+    assert!((white - 0.25 / 11.0).abs() < 1e-12, "{white}");
+    assert!((both - 0.125 / 21.0).abs() < 1e-12, "{both}");
+    assert_eq!(black, 0.0);
+    assert_eq!((both_players, white_players, black_players), (21, 11, 11));
+    assert_eq!((both_chances, white_chances, black_chances), (28, 14, 14));
+    let by_chances = (white * f64::from(white_chances) + black * f64::from(black_chances))
+        / f64::from(both_chances);
+    // Half the event's weight over 21/11 of White's units: (1/4 / 22) / (1/8 / 21) = 42/22.
+    assert!(
+        (by_chances / both - 42.0 / 22.0).abs() < 1e-9,
+        "{both} vs {by_chances}"
+    );
+
+    // Without an opponent in both pools, Both is exactly the unit-weighted mean of the colours
+    // (the same denominators and decay).
+    let mut single: Vec<PeerSide> = sides
+        .iter()
+        .filter(|s| s.opponent != "both")
+        .cloned()
+        .collect();
+    single.push(coloured_missed_side("solo", Color::White, 1, 1));
+    single[0].ctx.played_at = NOW - time::Duration::days(60);
+    let rate = |side: Side| {
+        let b = aggregate_peer_benchmark(&peer_sides_of(&single, side), 800, NOW);
+        b.stats
+            .iter()
+            .find(|s| s.metric == MISSED)
+            .unwrap()
+            .pooled_rate
+            .unwrap()
+    };
+    // White units: 9 × 1 + 0.5 (the 60-day-old game) + 1 (solo, an event); Black: 10.
+    let (w_units, b_units) = (10.5, 10.0);
+    let mean = (rate(Side::White) * w_units + rate(Side::Black) * b_units) / (w_units + b_units);
+    assert!((rate(Side::Both) - mean).abs() < 1e-12, "{} vs {mean}", rate(Side::Both));
 }
 
 #[test]
