@@ -505,8 +505,7 @@ pub fn is_discourse_ordinal(stripped: &str, leak: &Leak) -> bool {
             for (i, _) in lower.match_indices(w) {
                 let before = lower[..i].trim_end_matches([' ', '\t']);
                 let after = &lower[i + w.len()..];
-                let opens = before.is_empty()
-                    || before.ends_with(['.', '!', '?', ';', ':', '\n']);
+                let opens = before.is_empty() || before.ends_with(['.', '!', '?', ';', ':', '\n']);
                 if !opens || !after.starts_with(',') {
                     return false;
                 }
