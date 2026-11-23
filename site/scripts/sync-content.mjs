@@ -6,7 +6,8 @@
 // - the research notes, one page per docs/research/*.md plus an index;
 // - the roadmap, from GitHub's milestones and epics with `--roadmap-live` (the production build),
 //   else from the seed files in .github/settings (roadmap-data.mjs, ADR 0099);
-// - the "How it works" page, from the README's marked section, so the two never drift.
+// - the "How it works" page, from the README's marked section, so the two never drift, and the
+//   landing page's summary of it (the overview and each stage's title and first sentence).
 // Everything written here is git-ignored and regenerated on every build.
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, posix, relative, resolve } from "node:path";
@@ -16,6 +17,7 @@ import {
   BASE,
   GITHUB_BLOB,
   howItWorksPage,
+  howItWorksSummary,
   rewriteMarkdown,
   slugOf,
   titleOf,
@@ -125,8 +127,21 @@ function writeHowItWorks() {
   );
 }
 
+/** The landing page's "How it works" (src/data/generated/how-it-works.json), from the README. */
+function writeHowItWorksSummary() {
+  const readme = readFileSync(join(ROOT, "README.md"), "utf8");
+  const dir = join(SITE, "src", "data", "generated");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(
+    join(dir, "how-it-works.json"),
+    `${JSON.stringify(howItWorksSummary(readme), null, 2)}
+`,
+  );
+}
+
 export function sync() {
   writeTokens();
+  writeHowItWorksSummary();
   writeHowItWorks();
   const decisions = syncCollection({
     dir: "decisions",

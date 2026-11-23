@@ -15,8 +15,8 @@ import {
   presetOf,
   presetRange,
 } from "../../../../server/filters/presets";
-import { KPI_MIN_GAMES } from "../../../../server/stats/constants";
 import type { TimeClass } from "../../../../server/games/types";
+import { KPI_MIN_GAMES } from "../../../../server/stats/constants";
 
 // The shared filter bar's view model (T3, ADR 0083): every control is a link or a GET form built
 // from `serializeFilters`, so the bar works without JavaScript and a link is always canonical.

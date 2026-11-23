@@ -147,8 +147,7 @@ export function parseFilters(params: Params, ctx: FilterContext): StatsFilters {
 
   const rawFrom = one(params, "from");
   const days = range(parsed(Day, rawFrom), parsed(Day, one(params, "to")));
-  const { from, to } =
-    rawFrom === ALL_TIME || hasBound(days) ? days : defaultRange(ctx);
+  const { from, to } = rawFrom === ALL_TIME || hasBound(days) ? days : defaultRange(ctx);
   const color =
     parsed(ColorParam, one(params, "color")) ??
     parsed(GamesColour, one(params, "colour")) ??

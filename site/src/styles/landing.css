@@ -937,6 +937,12 @@ main > section:not(.band) {
     align-items: start;
   }
 
+  /* The stages run longer than the drawing, so it stays in view beside them. */
+  .split.how > :last-child {
+    position: sticky;
+    top: calc(var(--spacing) * 8);
+  }
+
   .honesty,
   .contribute {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
