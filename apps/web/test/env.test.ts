@@ -99,8 +99,8 @@ describe("ALLOW_UNVERIFIED_LINKS", () => {
   });
 
   it("is refused in production", () => {
-    expect(() =>
-      getEnv({ ...base, NODE_ENV: "production", ALLOW_UNVERIFIED_LINKS: "1" }),
-    ).toThrow(/ALLOW_UNVERIFIED_LINKS/);
+    expect(() => getEnv({ ...base, NODE_ENV: "production", ALLOW_UNVERIFIED_LINKS: "1" })).toThrow(
+      /ALLOW_UNVERIFIED_LINKS/,
+    );
   });
 });

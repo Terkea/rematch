@@ -4,6 +4,7 @@ import { requireUser } from "../../../../server/auth/session";
 import { getDb } from "../../../../server/db";
 import { requestEventCursor } from "../../../../server/events/request-cursor";
 import { resolveCoachScope } from "../../../../server/profile";
+import { requestTimeZone } from "../../../../server/time-zone";
 import { isSourceKey } from "../../../../server/train/model";
 import { loadTrainPage } from "../../../../server/train/store";
 import { TrainView } from "./train-view";
@@ -27,7 +28,11 @@ export default async function TrainPage({ searchParams }: Props) {
   if (!scope) return <TrainView scope={null} page={null} />;
   const raw = Array.isArray(params.source) ? params.source[0] : params.source;
   const source = isSourceKey(raw) ? raw : null;
-  const page = await loadTrainPage(db, user.id, scope, { source, now: new Date() });
+  const page = await loadTrainPage(db, user.id, scope, {
+    source,
+    now: new Date(),
+    timeZone: await requestTimeZone(),
+  });
   return (
     <>
       <LiveRefreshOn keys={[queryKeys.games(scope.accountId)]} />

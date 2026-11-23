@@ -33,6 +33,8 @@ export async function seedE2eTrain(email = E2E_USER): Promise<E2eTrainItem[]> {
   const db = dbOf();
   const uid = await userId(db, email);
   await db.delete(drillItems).where(eq(drillItems.userId, uid));
+  // The refresh mark too, so the refresh runs on the same games again (ADR 0090 Amendment 1).
+  await db.execute(sql`delete from drill_refreshes where user_id = ${uid}`);
   const scope = await resolveCoachScope(db, uid, {});
   if (!scope) throw new Error("no coach scope; seed the coach first");
   await refreshItems(db, uid, scope);

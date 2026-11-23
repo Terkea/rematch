@@ -5,8 +5,8 @@ import { type CoachScope, resolveCoachScope } from "../../src/server/profile";
 import { isHeldOut } from "../../src/server/train/model";
 import {
   loadPractiseToday,
-  MAX_CANDIDATES,
   loadTrainPage,
+  MAX_CANDIDATES,
   practiseCount,
   recordAttempt,
   refreshItems,
@@ -700,7 +700,10 @@ describe("the efficacy panel and the last move, aggregated in SQL", () => {
     await noHoldout(userId);
     const [blunder, mate] = await itemsOf(userId);
     if (!blunder || !mate) throw new Error("no items");
-    await db.update(drillItems).set({ tags: ["fork"] }).where(eq(drillItems.id, blunder.id));
+    await db
+      .update(drillItems)
+      .set({ tags: ["fork"] })
+      .where(eq(drillItems.id, blunder.id));
     // A held-back item tagged with another motif (and the drilled one, which does not count).
     const [held] = await seedItems(1, null);
     await db

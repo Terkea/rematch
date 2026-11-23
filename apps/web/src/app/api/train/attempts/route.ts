@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { timeZoneFromCookieHeader } from "../../../../lib/time-zone";
 import { rejectCrossSite } from "../../../../server/accounts/http";
 import { requireApiUser } from "../../../../server/auth/session";
 import { getDb } from "../../../../server/db";
@@ -45,6 +46,7 @@ export async function POST(req: Request): Promise<Response> {
       ms: body.data.ms ?? null,
     },
     new Date(),
+    timeZoneFromCookieHeader(req.headers.get("cookie")),
   );
   if (!res) return notFound;
   const href = `/app/games/${encodeURIComponent(res.game.id)}?ply=${res.game.ply}`;

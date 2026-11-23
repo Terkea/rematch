@@ -57,3 +57,29 @@ before the answer and task-focused feedback, as the highest-impact addition.
 - Positions without stored MultiPV accept the engine's move only, which is strict but honest.
 - Regression to the mean and rating drift still confound before/after; the holdout comparison is
   the within-player control. A learned half-life can replace the Leitner boxes once reviews exist.
+
+## Amendment 1 (2026-11-23): no writes on GET, the player's day, bounded reads
+
+Holistic round 2 (R2-7, R2-8) found that every `/app/train` and weakness page load wrote items,
+the reads loaded every attempt, game metric and own move of the scope, and days turned at UTC
+midnight.
+
+1. **Items are made by a POST.** `POST /api/train/refresh` runs `refreshItems`, which first
+   compares a cheap summary of the scope's games and profile rows (`source_mark`: game counts,
+   analysis generations, the newest `analysed_at`, the `game_metrics` count and newest write) with
+   the one stored in `drill_refreshes` (migration `20261123050000_drill_refreshes.sql`). The same
+   summary means no new position, so the refresh runs at most once per new set of analysed games.
+   It pages through every candidate (400 a page, newest first), so a large backlog is no longer cut
+   at 400 a visit. The train page shows its placeholder ("Adding positions from your newest
+   games") while the POST runs, then reloads; the overview asks for it quietly.
+2. **Reads never write.** `loadTrainPage`, `loadPractiseToday` and `practiseCount` are read-only.
+   When the summary changed, the overview's count and the weakness page's count include the
+   positions the refresh will add (the same `candidates` query), so the overview agrees with the
+   trainer before the trainer has run.
+3. **The player's day.** No user row stores a time zone, so the browser sends its `Intl` zone as
+   the first-party cookie `ci_tz` (set on the first signed-in load). Days, "today's" attempts and
+   the schedule use it; without it, UTC. The weekly review's practice days stay UTC weeks, like the
+   reviews.
+4. **Bounded reads.** Attempts are aggregated per item in SQL (first attempt, today's count and
+   right answers); the efficacy rates are summed in SQL from `game_metrics` and `moves`, never
+   loaded per game; the last-move tint reads the exact `(game, ply - 1)` pairs (`unnest`).

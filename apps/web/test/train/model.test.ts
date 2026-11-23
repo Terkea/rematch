@@ -345,9 +345,7 @@ describe("the player's day (R2-8)", () => {
     expect(startOfDay("2026-10-25", "Europe/London").toISOString()).toBe(
       "2026-10-24T23:00:00.000Z",
     );
-    expect(startOfDay("2026-11-23", "Asia/Kolkata").toISOString()).toBe(
-      "2026-11-22T18:30:00.000Z",
-    );
+    expect(startOfDay("2026-11-23", "Asia/Kolkata").toISOString()).toBe("2026-11-22T18:30:00.000Z");
   });
 
   it("takes only a real IANA zone from the browser, else UTC", () => {

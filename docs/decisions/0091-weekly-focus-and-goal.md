@@ -65,3 +65,13 @@ per chance, and process should come before outcome.
   inconclusive. The player can pick a longer N; the card says how many chances are missing.
 - The baseline is the estimate's (decay-weighted) rate while progress is the raw share in the
   focus's games; both are shares of chances, and both are printed with their counts.
+
+## Amendment 1 (2026-11-23): the close is computed on read and stored by a POST
+
+`getFocusCard` took `FOR UPDATE` and closed the focus on a GET (R2-7). It now reads only: a
+running focus that has reached its N games reads as closed, on its last game's date with its
+outcome. The next focus POST (set, change N or clear) stores that close first (`settle`), so a
+finished focus is never stored as `cleared` and its N cannot change after the fact.
+`focusOffer` no longer calls a finished focus the current one. `focusWeekLines` reads every week
+in a fixed number of queries (the focuses, the counts, the labels, the practice days) instead of
+three per week.
