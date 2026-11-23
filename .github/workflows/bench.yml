@@ -1,0 +1,66 @@
+name: Benchmark
+# The Tier 1 pipeline benchmark (ADR 0098, docs/benchmark.md): synthetic players with injected
+# flaws through the real analysis, enrichment, profile engine and CoachingInput. The smoke suite
+# runs on pull requests that touch the pipeline and fails on a regression against
+# bench/baseline.json; the full suite runs weekly and on demand, and only reports.
+on:
+  pull_request:
+    paths:
+      - backend/crates/enrich/**
+      - backend/crates/profile/**
+      - backend/crates/profile-core/**
+      - backend/crates/coaching-input/**
+      - backend/crates/bench/**
+      - bench/**
+      - .github/workflows/bench.yml
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: smoke or full
+        default: full
+
+env:
+  COMPOSE_FILE: docker-compose.yml
+
+# Read-only, like CI. upload-artifact uses the runner's own token.
+permissions:
+  contents: read
+
+concurrency:
+  group: bench-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      LANE: bench
+      COMPOSE: docker compose -p ci-bench
+      SUITE: ${{ github.event_name == 'pull_request' && 'smoke' || inputs.suite || 'full' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build the Rust dev image
+        run: $COMPOSE build rust-dev
+      - name: Create the shared Rust cache volumes (ADR 0042)
+        run: sh scripts/rust-cache-init.sh
+      - name: Run the ${{ env.SUITE }} suite
+        run: >-
+          mkdir -p bench-out &&
+          $COMPOSE run --rm -e BENCH_SUITE="$SUITE" rust-dev sh -c
+          'if [ "$BENCH_SUITE" = smoke ]; then base="--baseline /work/bench/baseline.json"; else base=""; fi;
+          cargo run --locked -p cli -- bench run --suite "$BENCH_SUITE" --out /work/bench-out $base'
+      - name: Scorecard in the job summary
+        if: always()
+        run: cat bench-out/bench-scorecard.md >> "$GITHUB_STEP_SUMMARY" || true
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: bench-${{ env.SUITE }}
+          path: bench-out/
+          retention-days: 30
+      - name: Stop the stack
+        if: always()
+        run: $COMPOSE down -v

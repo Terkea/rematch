@@ -24,7 +24,11 @@ fn command() -> Command {
         .arg(Arg::new("baseline").long("baseline"))
         .arg(Arg::new("engines").long("engines"))
         .arg(Arg::new("nodes").long("nodes"))
-        .arg(Arg::new("keep-db").long("keep-db").action(ArgAction::SetTrue))
+        .arg(
+            Arg::new("keep-db")
+                .long("keep-db")
+                .action(ArgAction::SetTrue),
+        )
 }
 
 #[derive(Debug, PartialEq)]
@@ -46,7 +50,9 @@ fn positive<T: std::str::FromStr + PartialOrd + Default>(
         None => Ok(None),
         Some(s) => match s.trim().parse::<T>() {
             Ok(n) if n > T::default() => Ok(Some(n)),
-            _ => Err(format!("--{name} must be a positive integer\n{BENCH_USAGE}")),
+            _ => Err(format!(
+                "--{name} must be a positive integer\n{BENCH_USAGE}"
+            )),
         },
     }
 }
@@ -191,7 +197,11 @@ mod tests {
     #[test]
     fn rejects_bad_input() {
         assert!(parse(&argv("bench")).is_err());
-        assert!(parse(&argv("bench run --suite huge")).unwrap_err().contains("smoke or full"));
+        assert!(
+            parse(&argv("bench run --suite huge"))
+                .unwrap_err()
+                .contains("smoke or full")
+        );
         assert!(parse(&argv("bench run --engines 0")).is_err());
     }
 }

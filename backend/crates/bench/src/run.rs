@@ -43,12 +43,17 @@ async fn admin(url: &str) -> anyhow::Result<sqlx::PgConnection> {
     Ok(PgConnectOptions::from_str(url)?.connect().await?)
 }
 
-pub async fn run(suite: &Suite, o: &RunOptions, log: Box<dyn Fn(&str) + Send + Sync>) -> anyhow::Result<RunOutput> {
+pub async fn run(
+    suite: &Suite,
+    o: &RunOptions,
+    log: Box<dyn Fn(&str) + Send + Sync>,
+) -> anyhow::Result<RunOutput> {
     enrich::install_crypto_provider();
     let started = std::time::Instant::now();
     let name = format!("bench_{}", uuid::Uuid::new_v4().simple());
     let mut conn = admin(&o.database_url).await?;
-    sqlx::query(&format!("CREATE DATABASE {name}"))
+    // `name` is our own `bench_<uuid hex>`, never input.
+    sqlx::query(sqlx::AssertSqlSafe(format!("CREATE DATABASE {name}")))
         .execute(&mut conn)
         .await?;
     log(&format!("database {name}"));
@@ -89,9 +94,11 @@ pub async fn run(suite: &Suite, o: &RunOptions, log: Box<dyn Fn(&str) + Send + S
     .await;
     pool.close().await;
     if !o.keep_db {
-        sqlx::query(&format!("DROP DATABASE IF EXISTS {name} WITH (FORCE)"))
-            .execute(&mut conn)
-            .await?;
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            "DROP DATABASE IF EXISTS {name} WITH (FORCE)"
+        )))
+        .execute(&mut conn)
+        .await?;
     }
     conn.close().await?;
     let out = outcome?;

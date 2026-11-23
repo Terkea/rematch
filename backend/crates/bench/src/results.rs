@@ -333,10 +333,7 @@ pub fn score(suite: &str, nodes: u64, players: &[PlayerResult]) -> Scorecard {
     let clean: Vec<&Case> = cases.iter().filter(|c| c.flaw.is_none()).collect();
     let clean_top1_false_alarms = clean.iter().filter(|c| !c.top.is_empty()).count();
     let with_top1 = cases.iter().filter(|c| !c.top.is_empty()).count();
-    let right_top1 = flawed
-        .iter()
-        .filter(|c| c.target_rank == Some(1))
-        .count();
+    let right_top1 = flawed.iter().filter(|c| c.target_rank == Some(1)).count();
     let top1_precision = (with_top1 > 0).then(|| right_top1 as f64 / with_top1 as f64);
     let detected: Vec<f64> = flawed
         .iter()
@@ -454,7 +451,11 @@ pub fn markdown(s: &Scorecard) -> String {
     ));
     out.push_str(&format!(
         "Thresholds: {}.\n\n",
-        if s.verdicts.pass { "all met" } else { "not all met" }
+        if s.verdicts.pass {
+            "all met"
+        } else {
+            "not all met"
+        }
     ));
     out.push_str("| Player | Flaw (rate) | Target | True rate | Estimate [80%] | Rank | Top 3 | Drills hit | Games to detect | Note |\n|---|---|---|---|---|---|---|---|---|---|\n");
     for c in &s.cases {
@@ -518,16 +519,24 @@ pub fn regressions(b: &Baseline, now: &Metrics) -> Vec<String> {
     let mut out = Vec::new();
     let t = &b.tolerance;
     let base = &b.metrics;
-    let drop = |name: &str, was: f64, is: f64, tol: f64, out: &mut Vec<String>| {
+    let fell = |name: &str, was: f64, is: f64, tol: f64, out: &mut Vec<String>| {
         if is < was - tol - 1e-9 {
-            out.push(format!("{name} fell from {was:.3} to {is:.3} (tolerance {tol})"));
+            out.push(format!(
+                "{name} fell from {was:.3} to {is:.3} (tolerance {tol})"
+            ));
         }
     };
-    drop("recall_at_2", base.recall_at_2, now.recall_at_2, t.recall_at_2, &mut out);
+    fell(
+        "recall_at_2",
+        base.recall_at_2,
+        now.recall_at_2,
+        t.recall_at_2,
+        &mut out,
+    );
     if let (Some(was), Some(is)) = (base.top1_precision, now.top1_precision) {
-        drop("top1_precision", was, is, t.top1_precision, &mut out);
+        fell("top1_precision", was, is, t.top1_precision, &mut out);
     }
-    drop(
+    fell(
         "plan_hit_rate",
         base.plan_hit_rate,
         now.plan_hit_rate,
@@ -535,7 +544,7 @@ pub fn regressions(b: &Baseline, now: &Metrics) -> Vec<String> {
         &mut out,
     );
     if let (Some(was), Some(is)) = (base.top2_agreement, now.top2_agreement) {
-        drop("top2_agreement", was, is, t.top2_agreement, &mut out);
+        fell("top2_agreement", was, is, t.top2_agreement, &mut out);
     }
     match (base.coverage, now.coverage) {
         (Some(was), Some(is)) if (is - 0.8).abs() > (was - 0.8).abs() + t.coverage + 1e-9 => {
@@ -629,7 +638,11 @@ mod tests {
     fn a_detected_flaw_with_a_calibrated_interval_passes() {
         let cp = |games| Checkpoint {
             games,
-            ranked: vec![ranked("W4.missed", 1, &["mate_patterns", "own_game_analysis"])],
+            ranked: vec![ranked(
+                "W4.missed",
+                1,
+                &["mate_patterns", "own_game_analysis"],
+            )],
             estimates: vec![est("W4.missed", 10.0, 20.0, 0.4, 0.6)],
             benchmark_players: Some(12),
         };
@@ -640,7 +653,12 @@ mod tests {
             benchmark_players: Some(12),
         };
         let players = vec![
-            player("m", Some(("miss_mate", 0.5, "W4.missed")), vec![cp(30), cp(60)], all(20)),
+            player(
+                "m",
+                Some(("miss_mate", 0.5, "W4.missed")),
+                vec![cp(30), cp(60)],
+                all(20),
+            ),
             player("c", None, vec![clean], Tally::default()),
         ];
         let s = score("smoke", 1000, &players);
@@ -656,7 +674,10 @@ mod tests {
         assert!(!s.verdicts.coverage);
         assert!(s.verdicts.recall && s.verdicts.clean);
         let md = markdown(&s);
-        assert!(md.contains("| (a) Flaw in the top 2 (recall) | 100% |"), "{md}");
+        assert!(
+            md.contains("| (a) Flaw in the top 2 (recall) | 100% |"),
+            "{md}"
+        );
     }
 
     #[test]

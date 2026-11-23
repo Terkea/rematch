@@ -16,7 +16,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use engine::{AnalyseOptions, AnalysisResult, Analyser, EngineError};
+use engine::{AnalyseOptions, Analyser, AnalysisResult, EngineError};
 use futures::FutureExt;
 use futures::future::BoxFuture;
 

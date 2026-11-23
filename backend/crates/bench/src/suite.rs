@@ -98,7 +98,10 @@ pub fn full() -> Suite {
     ];
     for (id, rates) in sweep {
         for r in rates {
-            add(format!("bench-{}-{}", id.replace('_', ""), (r * 100.0).round()), Some((id, *r)));
+            add(
+                format!("bench-{}-{}", id.replace('_', ""), (r * 100.0).round()),
+                Some((id, *r)),
+            );
         }
     }
     add("bench-clean-a".to_owned(), None);
@@ -137,7 +140,11 @@ pub fn game_specs(p: &PlayerDef, opponents: usize) -> Vec<GameSpec> {
             GameSpec {
                 platform_game_id: format!("{}-{i:04}", p.name),
                 player_name: p.name.clone(),
-                player_color: if i % 2 == 0 { Color::White } else { Color::Black },
+                player_color: if i % 2 == 0 {
+                    Color::White
+                } else {
+                    Color::Black
+                },
                 player_rating: RATING,
                 opponent_name: format!("{}-opp{o:02}", p.name),
                 opponent_rating: ratings[o],
@@ -174,8 +181,12 @@ mod tests {
         let b = game_specs(p, 16);
         assert_eq!(a.len(), 80);
         assert_eq!(
-            a.iter().map(|g| (&g.opponent_name, g.seed)).collect::<Vec<_>>(),
-            b.iter().map(|g| (&g.opponent_name, g.seed)).collect::<Vec<_>>()
+            a.iter()
+                .map(|g| (&g.opponent_name, g.seed))
+                .collect::<Vec<_>>(),
+            b.iter()
+                .map(|g| (&g.opponent_name, g.seed))
+                .collect::<Vec<_>>()
         );
         let distinct: std::collections::HashSet<_> = a.iter().map(|g| &g.opponent_name).collect();
         assert!(distinct.len() >= 12, "{}", distinct.len());

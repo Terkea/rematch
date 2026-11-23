@@ -99,22 +99,20 @@ async fn a_tiny_suite_runs_through_the_real_pipeline(pool: PgPool) {
             last.estimates
         );
     }
-    let done: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM games WHERE analysis_status = 'done'")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let done: i64 = sqlx::query_scalar("SELECT count(*) FROM games WHERE analysis_status = 'done'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     let total: i64 = sqlx::query_scalar("SELECT count(*) FROM games")
         .fetch_one(&pool)
         .await
         .unwrap();
     assert_eq!(done, total, "every game analysed");
-    let enriched: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM games WHERE enrichment_protocol IS NOT NULL",
-    )
-    .fetch_one(&pool)
-    .await
-    .unwrap();
+    let enriched: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM games WHERE enrichment_protocol IS NOT NULL")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert_eq!(enriched, total, "every game enriched by the hook");
     // Under 30 games nothing is ranked (MIN_GAMES), and the scorecard still renders.
     let s = score("test", suite.nodes, &players);

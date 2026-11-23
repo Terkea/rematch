@@ -380,7 +380,10 @@ mod tests {
         assert!(!h.armed(&ctx(10, 50.0, Some(300.0)), &g));
         assert!(h.armed(&ctx(30, 50.0, Some(300.0)), &g));
         assert!(!h.armed(&ctx(30, 50.0, Some(20.0)), &g));
-        assert!(!h.opportunity(&ctx(30, 95.0, Some(300.0)), &g), "not eligible");
+        assert!(
+            !h.opportunity(&ctx(30, 95.0, Some(300.0)), &g),
+            "not eligible"
+        );
     }
 
     #[test]
@@ -412,7 +415,10 @@ mod tests {
         assert!(f.armed(&ctx(9, 50.0, None), &g));
         g.succeeded = true;
         assert!(!f.armed(&ctx(11, 50.0, None), &g));
-        assert!(!f.armed(&ctx(21, 50.0, None), &OpeningBlunder(1.0).start_game(&mut Rng::new(1))));
+        assert!(!f.armed(
+            &ctx(21, 50.0, None),
+            &OpeningBlunder(1.0).start_game(&mut Rng::new(1))
+        ));
     }
 
     #[test]

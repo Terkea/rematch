@@ -84,7 +84,10 @@ fn idx(c: Color) -> usize {
 
 /// The value of a piece for W1's "hung a piece" test (pawns are not pieces here).
 fn is_piece(p: Piece) -> bool {
-    matches!(p, Piece::Knight | Piece::Bishop | Piece::Rook | Piece::Queen)
+    matches!(
+        p,
+        Piece::Knight | Piece::Bishop | Piece::Rook | Piece::Queen
+    )
 }
 
 /// Legal non-king moves of `pos` in UCI, in a stable order.
@@ -203,7 +206,10 @@ pub fn write_pgn(
         ("Termination", termination.to_owned()),
         ("UTCDate", date),
         ("UTCTime", t),
-        ("Link", format!("https://www.chess.com/game/live/{}", spec.platform_game_id)),
+        (
+            "Link",
+            format!("https://www.chess.com/game/live/{}", spec.platform_game_id),
+        ),
     ] {
         out.push_str(&format!("[{k} \"{v}\"]\n"));
     }

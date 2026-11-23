@@ -22,9 +22,9 @@ use analysis::eval_cache::DbEvalCache;
 use analysis::jobs::analyse::{AnalyseGameDeps, handle_analyse_game};
 use chess_core::TimeClass;
 use db::games::{AnalysisStatus, NewGame, upsert_game};
+use engine::Analyser;
 use enrich::enrich_game::EnrichDeps;
 use enrich::store::DbEnrichmentStore;
-use engine::Analyser;
 use futures::StreamExt;
 use profile::build_profile::{BuildProfileDeps, handle_build_profile};
 use profile::coaching::build_coaching_input_report;
@@ -53,8 +53,7 @@ static NOW: AtomicI64 = AtomicI64::new(0);
 
 /// The build clock (`BuildProfileDeps::now` takes a plain `fn`).
 fn bench_now() -> OffsetDateTime {
-    OffsetDateTime::from_unix_timestamp(NOW.load(Ordering::SeqCst))
-        .unwrap_or(crate::suite::ANCHOR)
+    OffsetDateTime::from_unix_timestamp(NOW.load(Ordering::SeqCst)).unwrap_or(crate::suite::ANCHOR)
 }
 
 fn set_now(t: OffsetDateTime) {
@@ -264,7 +263,7 @@ impl Harness {
     }
 
     async fn benchmark_players(&self, account: Uuid) -> anyhow::Result<Option<i32>> {
-        Ok(sqlx::query_scalar(
+        Ok(sqlx::query_scalar::<_, Option<i32>>(
             "SELECT n_players FROM account_benchmark WHERE account_id = $1 \
              AND time_class = $2::time_class",
         )
@@ -275,7 +274,11 @@ impl Harness {
         .flatten())
     }
 
-    async fn checkpoint(&self, account: Uuid, games: usize) -> anyhow::Result<(Checkpoint, String)> {
+    async fn checkpoint(
+        &self,
+        account: Uuid,
+        games: usize,
+    ) -> anyhow::Result<(Checkpoint, String)> {
         self.build(account).await?;
         let (ranked, fingerprint) = self.ranked(account).await?;
         Ok((
@@ -339,7 +342,11 @@ impl Harness {
                 "{}: {} games, top {:?}",
                 p.name,
                 cp,
-                c.ranked.iter().take(3).map(|r| r.key.as_str()).collect::<Vec<_>>()
+                c.ranked
+                    .iter()
+                    .take(3)
+                    .map(|r| r.key.as_str())
+                    .collect::<Vec<_>>()
             ));
             checkpoints.push(c);
             last_fingerprint = f;
@@ -382,7 +389,11 @@ impl Harness {
                 rate: f.rate(),
                 target_key: f.target_key().to_owned(),
                 unit: f.unit(),
-                expected_drills: f.expected_drills().iter().map(|d| (*d).to_owned()).collect(),
+                expected_drills: f
+                    .expected_drills()
+                    .iter()
+                    .map(|d| (*d).to_owned())
+                    .collect(),
             }),
             tally,
             generation: GenStats::of(&games, gen_seconds),
