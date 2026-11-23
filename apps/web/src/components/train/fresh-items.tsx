@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { type ReactNode, useEffect, useState, useTransition } from "react";
+import { type ReactNode, useEffect, useRef, useState, useTransition } from "react";
 
 /** Asks the server to make the scope's new trainer positions (a POST: pages never write). */
 export async function requestFreshItems(accountId: string, timeClass: string): Promise<boolean> {
@@ -18,8 +18,9 @@ export async function requestFreshItems(accountId: string, timeClass: string): P
 }
 
 /**
- * The trainer's new positions (ADR 0090 Amendment 1): while `stale`, it shows `pending`, makes the
- * positions and reloads the page with them. If that fails, the page shows what it has.
+ * The trainer's new positions (ADR 0090 Amendment 1): while `stale`, it makes the positions and
+ * reloads the page with them. On the page's first render it shows `pending` meanwhile; a game that
+ * lands mid-session never hides the session. If the request fails, the page shows what it has.
  */
 export function FreshItems({
   stale,
@@ -36,20 +37,26 @@ export function FreshItems({
 }) {
   const router = useRouter();
   const [settled, setSettled] = useState(false);
+  const [first] = useState(stale);
   const [reloading, startReload] = useTransition();
+  // One request per stale scope: a re-render while it runs never asks again.
+  const asked = useRef<string | null>(null);
+  const routerRef = useRef(router);
+  routerRef.current = router;
   useEffect(() => {
-    if (!stale) return;
-    let live = true;
+    const key = `${accountId}:${timeClass}`;
+    if (!stale) {
+      asked.current = null;
+      return;
+    }
+    if (asked.current === key) return;
+    asked.current = key;
     void requestFreshItems(accountId, timeClass).then((ok) => {
-      if (!live) return;
       setSettled(true);
-      if (ok) startReload(() => router.refresh());
+      if (ok) startReload(() => routerRef.current.refresh());
     });
-    return () => {
-      live = false;
-    };
-  }, [stale, accountId, timeClass, router]);
-  if (stale && (!settled || reloading)) return pending;
+  }, [stale, accountId, timeClass]);
+  if (first && stale && (!settled || reloading)) return pending;
   return children;
 }
 
