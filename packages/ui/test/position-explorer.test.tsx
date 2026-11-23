@@ -112,6 +112,20 @@ describe("PositionExplorer, compact", () => {
     expect(screen.queryByText(/^Better/)).toBeNull();
   });
 
+  // Critic 2: a pen mark always carries its ?-family glyph, on the board and in the key.
+  it("a judged mistake carries its glyph badge and names it in the key", async () => {
+    expect(explorerAnnotations({ ...props, judgement: "blunder" })).toEqual([
+      { kind: "arrow", from: "e4", to: "d2", tone: "pen", toEdge: true },
+      { kind: "mark", square: "d2", glyph: "??", tone: "pen" },
+    ]);
+    expect(explorerAnnotations({ ...props, judgement: "mistake" })[1]).toMatchObject({
+      glyph: "?",
+    });
+    render(<PositionExplorer {...props} judgement="blunder" />);
+    const key = screen.getByRole("list", { name: "Arrows" });
+    expect(key.querySelector("li")?.textContent).toBe("Played, Nd2??");
+  });
+
   it("has no game link without an href", async () => {
     const { href: _href, ...rest } = props;
     render(<PositionExplorer {...rest} />);

@@ -15,7 +15,7 @@ import {
 } from "react";
 import type { Annotation } from "../annotations/index.js";
 import { Board, type BoardMove } from "../board/board.js";
-import { formatNotation } from "../board/notation.js";
+import { formatNotation, judgementGlyph, type NotationJudgement } from "../board/notation.js";
 import type { Orientation, Square } from "../board/theme.js";
 import {
   ArrowCounterClockwiseIcon,
@@ -80,6 +80,11 @@ export interface PositionExplorerProps {
   /** The player's own mistake or blunder: the move played is drawn in pen, else in pencil. */
   mistake?: boolean;
   /**
+   * The stored judgement of the move played. With `mistake`, the pen arrow carries its `?`-family
+   * badge and the key names the glyph ("Played, Nd2??"): a pen mark never relies on colour alone.
+   */
+  judgement?: NotationJudgement | null;
+  /**
    * The move played was the engine's own (a strength): it is drawn as a `good` arrow with a `!`
    * badge, and the key says so. Wins over `mistake`.
    */
@@ -103,7 +108,11 @@ function squares(uci: string | null | undefined): { from: Square; to: Square } |
   return { from: from as Square, to: to as Square };
 }
 
-type Cited = Pick<PositionExplorerProps, "played" | "best" | "mistake" | "found">;
+type Cited = Pick<PositionExplorerProps, "played" | "best" | "mistake" | "found" | "judgement">;
+
+/** The glyph of the player's own judged mistake, or "" (a found move or an unjudged one). */
+const mistakeGlyph = (p: Cited) =>
+  p.mistake && !p.found && p.judgement ? judgementGlyph[p.judgement] : "";
 
 const betterMove = (p: Cited) => (p.best && p.best.uci !== p.played.uci ? p.best : null);
 
@@ -118,12 +127,15 @@ export function explorerAnnotations(p: Cited, show: "both" | "best" = "both"): A
       { kind: "arrow", ...played, tone: "good" },
       { kind: "mark", square: played.to, glyph: "!", tone: "good" },
     );
-  else if (played)
+  else if (played) {
     out.push(
       p.mistake
         ? { kind: "arrow", ...played, tone: "pen", toEdge: true }
         : { kind: "arrow", ...played, tone: "pencil" },
     );
+    const glyph = mistakeGlyph(p);
+    if (glyph) out.push({ kind: "mark", square: played.to, glyph, tone: "pen" });
+  }
   return out;
 }
 
@@ -259,6 +271,9 @@ export function PositionExplorer(props: PositionExplorerProps) {
           <li className="flex items-center gap-1.5">
             <ArrowSwatch tone={props.found ? "good" : props.mistake ? "pen" : "pencil"} />
             Played, {played.san}
+            {mistakeGlyph(props) ? (
+              <span className="tracking-(--tracking-glyph) text-pen-text">{mistakeGlyph(props)}</span>
+            ) : null}
             {props.found ? ", the engine's move" : null}
           </li>
           {best ? (
@@ -368,6 +383,7 @@ function ExplorerDialog({
   orientation,
   label,
   mistake,
+  judgement,
   found,
   href,
   line,
@@ -391,9 +407,9 @@ function ExplorerDialog({
   const atCited = moves[state.cursor]?.ply === ply && moves[state.cursor]?.fenBefore === fenBefore;
   const annotations =
     atCited && state.mode === "game"
-      ? explorerAnnotations({ played, best, mistake, found })
+      ? explorerAnnotations({ played, best, mistake, found, judgement })
       : atCited && state.mode === "engine"
-        ? explorerAnnotations({ played, best, mistake, found }, "best")
+        ? explorerAnnotations({ played, best, mistake, found, judgement }, "best")
         : [];
 
   const sheetMoves = useMemo<ScoresheetMove[]>(
@@ -402,11 +418,13 @@ function ExplorerDialog({
         ply: m.ply,
         color: m.color,
         san: m.san,
-        judgement: null,
+        // The cited move keeps its stored glyph on the sheet; tried and engine moves have none.
+        judgement:
+          mistake && !found && m.ply === ply && m.uci === played.uci ? (judgement ?? null) : null,
         best: false,
         mine: m.color === orientation,
       })),
-    [moves, orientation],
+    [moves, orientation, mistake, found, ply, played.uci, judgement],
   );
   const firstMove = moves[0];
   const startMoveNumber = firstMove ? Math.ceil(firstMove.ply / 2) : Math.ceil(ply / 2);

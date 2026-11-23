@@ -320,6 +320,7 @@ describe("threads", () => {
         played: { san: "e5", uci: "e7e5" },
         best: { san: "c5", uci: "c7c5" },
         mistake: true,
+        judgement: expect.stringMatching(/^(mistake|blunder)$/),
       },
     });
   });

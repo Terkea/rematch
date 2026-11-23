@@ -3,6 +3,7 @@ import {
   areaMeaning,
   exampleLine,
   headlineMeaning,
+  mateChange,
   howOftenText,
   levelText,
   oneInText,
@@ -117,7 +118,34 @@ describe("trendText", () => {
   });
 });
 
+// Critic 1: a mate-rule judgement (Lichess) is a blunder without a big win% drop; the line says
+// why, so a "??" with "a drop of 3 win% points" never reads as a contradiction.
+describe("mateChange", () => {
+  const W = "6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1";
+  const B = "6k1/5ppp/8/8/8/8/5PPP/r5K1 b - - 0 1";
+  it.each([
+    ["White loses mate in 1", W, { mate: 1 }, { cp: 820 }, { kind: "lost", n: 1 }],
+    ["Black loses mate in 3", B, { mate: -3 }, { cp: -600 }, { kind: "lost", n: 3 }],
+    ["White keeps a mate", W, { mate: 2 }, { mate: 4 }, null],
+    ["White allows mate in 2", W, { cp: 30 }, { mate: -2 }, { kind: "allowed", n: 2 }],
+    ["Black allows mate in 1", B, { cp: 10 }, { mate: 1 }, { kind: "allowed", n: 1 }],
+    ["no mate either side", W, { cp: 30 }, { cp: -200 }, null],
+    ["unknown scores", W, null, null, null],
+  ] as const)("%s", (_name, fen, before, after, want) => {
+    expect(mateChange(fen, before, after)).toEqual(want);
+  });
+});
+
 describe("exampleLine", () => {
+  it("a lost mate says so before the small drop", () => {
+    expect(exampleLine(98, 95, { kind: "lost", n: 3 })).toBe(
+      "You had mate in 3; after this move there was no forced mate. Your win chance went from 98% to 95%.",
+    );
+    expect(exampleLine(60, 0, { kind: "allowed", n: 1 })).toBe(
+      "This move allowed mate in 1. Your win chance went from 60% to 0%.",
+    );
+  });
+
   it.each([
     [52.4, 36.1, "Your win chance went from 52% to 36%, a drop of 16 win% points."],
     [88, 12, "Your win chance went from 88% to 12%, a drop of 76 win% points."],

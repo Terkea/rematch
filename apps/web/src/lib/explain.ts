@@ -2,7 +2,7 @@ import { likelyText, NO_BENCHMARK_TEXT, probablyAbove } from "@ci/ui/profile";
 import { stateStyle } from "@ci/ui/timeline";
 import type { Benchmark } from "../server/profile/benchmark-text";
 import { DETECTOR_CONSTANTS as K, VERDICT_CONSTANTS as V } from "../server/profile/glossary";
-import type { WeaknessState } from "../server/profile/types";
+import type { MateChange, WeaknessState } from "../server/profile/types";
 import type { Estimate } from "../server/stats";
 
 // "What this means for you": one plain line per headline, built only from the numbers on the page
@@ -84,12 +84,51 @@ export function trendText(t: TrendInput): string {
   }
 }
 
-/** "Your win chance went from 52% to 36%, a drop of 16 win% points."; null without both values. */
-export function exampleLine(before: number, after: number): string | null {
+/** An engine score from White's point of view, as stored (`{ cp }` or `{ mate }`). */
+export type WhiteScore = { cp?: number | null; mate?: number | null };
+
+/**
+ * The `MateChange` of a move (see its type). Scores are White's point of view; the mover is the
+ * side to move in `fen`. Null when neither happened or a score is unknown.
+ */
+export function mateChange(
+  fen: string,
+  before: WhiteScore | null | undefined,
+  after: WhiteScore | null | undefined,
+): MateChange | null {
+  if (!before || !after) return null;
+  const sign = fen.split(" ")[1] === "b" ? -1 : 1;
+  const mate = (s: WhiteScore) => (fin(s.mate) && s.mate !== 0 ? s.mate * sign : null);
+  const b = mate(before);
+  const a = mate(after);
+  if (b !== null && b > 0 && !(a !== null && a > 0)) return { kind: "lost", n: b };
+  if (a !== null && a < 0 && !(b !== null && b < 0)) return { kind: "allowed", n: -a };
+  return null;
+}
+
+/**
+ * "Your win chance went from 52% to 36%, a drop of 16 win% points."; null without both values.
+ * A mate the move gave up or allowed is said first: it is why the move was judged, whatever the
+ * drop (critic 1).
+ */
+export function exampleLine(
+  before: number,
+  after: number,
+  mate: MateChange | null = null,
+): string | null {
   if (!fin(before) || !fin(after)) return null;
   const clamp = (v: number) => Math.round(Math.min(100, Math.max(0, v)));
   const b = clamp(before);
   const a = clamp(after);
+  if (mate && fin(mate.n) && mate.n > 0) {
+    const head =
+      mate.kind === "lost"
+        ? `You had mate in ${mate.n}; after this move there was no forced mate.`
+        : `This move allowed mate in ${mate.n}.`;
+    const tail =
+      a === b ? `Your win chance stayed at ${b}%.` : `Your win chance went from ${b}% to ${a}%.`;
+    return `${head} ${tail}`;
+  }
   if (a === b) return `Your win chance stayed at ${b}%.`;
   return a < b
     ? `Your win chance went from ${b}% to ${a}%, a drop of ${b - a} win% points.`
