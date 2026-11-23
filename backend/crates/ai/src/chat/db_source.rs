@@ -805,5 +805,6 @@ fn version_rank(v: InputVersion) -> u8 {
     match v {
         InputVersion::V1 => 1,
         InputVersion::V2 => 2,
+        InputVersion::V3 => 3,
     }
 }

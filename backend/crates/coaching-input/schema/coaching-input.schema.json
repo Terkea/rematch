@@ -382,6 +382,16 @@
       ],
       "type": "object"
     },
+    "ChangeVerdict": {
+      "description": "v3: a then-against-now verdict, from the player's point of view (ADR 0083 §6).",
+      "enum": [
+        "better",
+        "worse",
+        "no_clear_change",
+        "not_enough_games"
+      ],
+      "type": "string"
+    },
     "ColorMetric": {
       "additionalProperties": false,
       "description": "v2: one number of a colour, with its 80% interval. Below its minimum evidence it is stated\nas insufficient: `value`, `low` and `high` are null (never 0) and `needMore` says how many\nmore observations it needs.",
@@ -834,6 +844,42 @@
       ],
       "type": "string"
     },
+    "MonthRating": {
+      "additionalProperties": false,
+      "description": "v3: one calendar month (UTC) of the rating line.",
+      "properties": {
+        "games": {
+          "description": "Rated games played in the month.",
+          "maximum": 100000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "high": {
+          "description": "The month's highest pre-game rating.",
+          "maximum": 4000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "last": {
+          "description": "The pre-game rating of the month's last game.",
+          "maximum": 4000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "month": {
+          "description": "`YYYY-MM`.",
+          "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "games",
+        "high",
+        "last",
+        "month"
+      ],
+      "type": "object"
+    },
     "MoveRef": {
       "additionalProperties": false,
       "description": "A move as SAN (display) and UCI (machine, e.g. `e2e4` or `e7e8q`).",
@@ -1122,6 +1168,27 @@
       ],
       "type": "object"
     },
+    "RatingAt": {
+      "additionalProperties": false,
+      "description": "v3: a rating on a day.",
+      "properties": {
+        "date": {
+          "format": "date",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+          "type": "string"
+        },
+        "rating": {
+          "maximum": 4000,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "date",
+        "rating"
+      ],
+      "type": "object"
+    },
     "Score": {
       "description": "An engine evaluation from WHITE's point of view: `{\"cp\": n}` (centipawns, positive = White\nbetter) or `{\"mate\": n}` (moves to mate, positive = White mates).",
       "oneOf": [
@@ -1189,6 +1256,170 @@
         "exemplars",
         "label",
         "metricKey"
+      ],
+      "type": "object"
+    },
+    "ThenNowMetric": {
+      "additionalProperties": false,
+      "description": "v3: one measure then and now. `then` and `now` carry their n and 80% interval; `diff` is\n`now - then` in the measure's unit (a share's difference is in -1..1) with its 80% interval,\nnull when the verdict is `not_enough_games`.",
+      "properties": {
+        "diff": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "diffHigh": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "diffLow": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "now": {
+          "$ref": "#/$defs/ColorMetric"
+        },
+        "then": {
+          "$ref": "#/$defs/ColorMetric"
+        },
+        "verdict": {
+          "$ref": "#/$defs/ChangeVerdict"
+        }
+      },
+      "required": [
+        "diff",
+        "diffHigh",
+        "diffLow",
+        "now",
+        "then",
+        "verdict"
+      ],
+      "type": "object"
+    },
+    "ThenNowWeakness": {
+      "additionalProperties": false,
+      "description": "v3: a top weakness's rate (events per chance, `rate`) in each window's own games, under the\nweakness estimate's prior.",
+      "properties": {
+        "area": {
+          "$ref": "#/$defs/AreaId"
+        },
+        "id": {
+          "maxLength": 5,
+          "pattern": "^W(1[0-2]|[1-9])[a-d]?$",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 120,
+          "minLength": 1,
+          "type": "string"
+        },
+        "now": {
+          "$ref": "#/$defs/ColorMetric"
+        },
+        "nowEvents": {
+          "maximum": 100000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "nowOpportunities": {
+          "maximum": 100000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "seriesKey": {
+          "maxLength": 64,
+          "minLength": 1,
+          "type": "string"
+        },
+        "then": {
+          "$ref": "#/$defs/ColorMetric"
+        },
+        "thenEvents": {
+          "maximum": 100000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "thenOpportunities": {
+          "maximum": 100000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "variant": {
+          "maxLength": 40,
+          "minLength": 1,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "verdict": {
+          "$ref": "#/$defs/ChangeVerdict"
+        }
+      },
+      "required": [
+        "area",
+        "id",
+        "label",
+        "now",
+        "nowEvents",
+        "nowOpportunities",
+        "seriesKey",
+        "then",
+        "thenEvents",
+        "thenOpportunities",
+        "variant",
+        "verdict"
+      ],
+      "type": "object"
+    },
+    "ThenVsNow": {
+      "additionalProperties": false,
+      "description": "v3: the \"then\" window against the last games.",
+      "properties": {
+        "accuracy": {
+          "$ref": "#/$defs/ThenNowMetric",
+          "description": "Mean game accuracy (`pct`)."
+        },
+        "blundersPerGame": {
+          "$ref": "#/$defs/ThenNowMetric",
+          "description": "Mean blunders per game (`per_game`)."
+        },
+        "now": {
+          "$ref": "#/$defs/TrajectoryWindow"
+        },
+        "rating": {
+          "$ref": "#/$defs/ThenNowMetric",
+          "description": "Mean pre-game rating (`elo`)."
+        },
+        "score": {
+          "$ref": "#/$defs/ThenNowMetric",
+          "description": "Points per finished game (`rate`)."
+        },
+        "then": {
+          "$ref": "#/$defs/TrajectoryWindow"
+        },
+        "weaknesses": {
+          "description": "The top claimable weaknesses, by priority.",
+          "items": {
+            "$ref": "#/$defs/ThenNowWeakness"
+          },
+          "maxItems": 3,
+          "type": "array"
+        }
+      },
+      "required": [
+        "accuracy",
+        "blundersPerGame",
+        "now",
+        "rating",
+        "score",
+        "then",
+        "weaknesses"
       ],
       "type": "object"
     },
@@ -1325,6 +1556,139 @@
       ],
       "type": "object"
     },
+    "Trajectory": {
+      "additionalProperties": false,
+      "description": "v3 (ADR 0088): the rating trajectory of the time class. Ratings are pre-game (on chess.com\nthe rating after the previous rated game, ADR-FIX-C-1). Below 20 rated games it is not\n`sufficient`: `kind`, `peak`, `current`, `change` and `thenVsNow` are null and `needMore`\nsays how many more rated games it needs.",
+      "properties": {
+        "change": {
+          "description": "`current - peak` with a `peak` \"then\" window, else `current` minus the first window's\nmean, in rating points.",
+          "maximum": 4000,
+          "minimum": -4000,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "current": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RatingAt"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The latest stored rating."
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TrajectoryKind"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "months": {
+          "description": "The newest months of the line, oldest first.",
+          "items": {
+            "$ref": "#/$defs/MonthRating"
+          },
+          "maxItems": 36,
+          "type": "array"
+        },
+        "needMore": {
+          "maximum": 100000000,
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "peak": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RatingAt"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The highest rating and its day (the current rating's when it is the highest)."
+        },
+        "ratedGames": {
+          "maximum": 100000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "sufficient": {
+          "type": "boolean"
+        },
+        "thenVsNow": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ThenVsNow"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "change",
+        "current",
+        "kind",
+        "months",
+        "needMore",
+        "peak",
+        "ratedGames",
+        "sufficient",
+        "thenVsNow"
+      ],
+      "type": "object"
+    },
+    "TrajectoryKind": {
+      "description": "v3 `trajectory.kind` (ADR 0088): the \"then\" window's ratings against the last games', by\nthe period-comparison rule (ADR 0083 §6).",
+      "enum": [
+        "falling",
+        "rising",
+        "flat"
+      ],
+      "type": "string"
+    },
+    "TrajectoryWindow": {
+      "additionalProperties": false,
+      "description": "v3: one of the two compared windows of rated games.",
+      "properties": {
+        "basis": {
+          "$ref": "#/$defs/WindowBasis"
+        },
+        "from": {
+          "format": "date",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+          "type": "string"
+        },
+        "games": {
+          "maximum": 100000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "to": {
+          "format": "date",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "basis",
+        "from",
+        "games",
+        "to"
+      ],
+      "type": "object"
+    },
     "Verdict": {
       "description": "`OpeningVerdict.verdict`.",
       "enum": [
@@ -1344,6 +1708,15 @@
         "improving",
         "resolved",
         "relapsed"
+      ],
+      "type": "string"
+    },
+    "WindowBasis": {
+      "description": "v3 `TrajectoryWindow.basis`: the games around the peak, the first games, or the last.",
+      "enum": [
+        "peak",
+        "start",
+        "last"
       ],
       "type": "string"
     }
@@ -1409,7 +1782,8 @@
     "inputVersion": {
       "enum": [
         "coaching-input-v1",
-        "coaching-input-v2"
+        "coaching-input-v2",
+        "coaching-input-v3"
       ],
       "type": "string"
     },
@@ -1459,6 +1833,17 @@
         }
       ],
       "description": "Typical time control; null when mixed or unknown."
+    },
+    "trajectory": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Trajectory"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "v3 only (absent before): the rating trajectory and then against now (ADR 0088)."
     },
     "weaknesses": {
       "description": "Ranked weaknesses; `rank` values are unique.",

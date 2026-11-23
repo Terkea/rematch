@@ -204,6 +204,7 @@ fn full_input(some: bool) -> CoachingInput {
         }],
         by_color: None,
         benchmark: None,
+        trajectory: None,
     }
 }
 
@@ -278,7 +279,7 @@ fn ts_schema_rejects_what_rust_rejects() {
         "/openings/0/avgEvalAtOpeningEnd",
     ));
     let mut v = sample_value();
-    v["inputVersion"] = json!("coaching-input-v3");
+    v["inputVersion"] = json!("coaching-input-v9");
     cases.push(("other input version", v, "/inputVersion"));
 
     for (name, v, pointer) in cases {

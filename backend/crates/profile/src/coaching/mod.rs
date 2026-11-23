@@ -7,6 +7,7 @@ pub mod exemplars;
 pub mod mapping;
 pub mod snapshot;
 pub mod strengths;
+pub mod trajectory;
 pub mod weekly;
 
 pub use builder::{BuildError, BuildReport, build_coaching_input, build_coaching_input_report};

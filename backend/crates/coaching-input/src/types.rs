@@ -18,9 +18,10 @@ use uuid::Uuid;
 
 use crate::enums::{AreaId, BandId, UnknownVariant, WeaknessState};
 use crate::limits::{
-    ECO_MAX_CHARS, FEN_MAX_CHARS, INPUT_VERSION, INPUT_VERSION_V1, LIMITS, MAX_BASE_SECONDS,
-    MAX_COUNT, MAX_CP, MAX_EXCESS_EPL, MAX_INCREMENT_SECONDS, MAX_MATE, MAX_PLY, MAX_PRIORITY,
-    MAX_RATING, UCI_PATTERN, WEAKNESS_ID_MAX_CHARS, WEAKNESS_ID_PATTERN,
+    ECO_MAX_CHARS, FEN_MAX_CHARS, INPUT_VERSION, INPUT_VERSION_V1, INPUT_VERSION_V2, LIMITS,
+    MAX_BASE_SECONDS, MAX_COUNT, MAX_CP, MAX_EXCESS_EPL, MAX_INCREMENT_SECONDS, MAX_MATE, MAX_PLY,
+    MAX_PRIORITY, MAX_RATING, MONTH_PATTERN, UCI_PATTERN, WEAKNESS_ID_MAX_CHARS,
+    WEAKNESS_ID_PATTERN,
 };
 
 /// Deserialises a zod `.nullable()` field: `null` or a value, but the key must be present.
@@ -53,23 +54,29 @@ pub mod iso_date {
     }
 }
 
-/// `inputVersion`: `"coaching-input-v1"` (the M3 contract) or `"coaching-input-v2"`
-/// ([`INPUT_VERSION`], ADR 0085: v1 plus `byColor` and `benchmark`). The builder writes v2; v1
-/// inputs stored before it still parse, without the v2 fields.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+/// `inputVersion`: `"coaching-input-v1"` (the M3 contract), `"coaching-input-v2"` (ADR 0085:
+/// v1 plus `byColor` and `benchmark`) or `"coaching-input-v3"` ([`INPUT_VERSION`], ADR 0088: v2
+/// plus `trajectory`). The builder writes v3; inputs stored before it still parse, without the
+/// later fields. `Ord` is the version order.
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize,
+)]
 pub enum InputVersion {
     #[serde(rename = "coaching-input-v1")]
     V1,
-    #[default]
     #[serde(rename = "coaching-input-v2")]
     V2,
+    #[default]
+    #[serde(rename = "coaching-input-v3")]
+    V3,
 }
 
 impl InputVersion {
     pub fn as_str(self) -> &'static str {
         match self {
             InputVersion::V1 => INPUT_VERSION_V1,
-            InputVersion::V2 => INPUT_VERSION,
+            InputVersion::V2 => INPUT_VERSION_V2,
+            InputVersion::V3 => INPUT_VERSION,
         }
     }
 }
@@ -84,7 +91,10 @@ impl JsonSchema for InputVersion {
     }
 
     fn json_schema(_: &mut SchemaGenerator) -> Schema {
-        json_schema!({ "type": "string", "enum": [INPUT_VERSION_V1, INPUT_VERSION] })
+        json_schema!({
+            "type": "string",
+            "enum": [INPUT_VERSION_V1, INPUT_VERSION_V2, INPUT_VERSION],
+        })
     }
 }
 
@@ -673,6 +683,176 @@ pub struct ByColor {
     pub black: ColorSummary,
 }
 
+wire_enum!(
+    /// v3 `trajectory.kind` (ADR 0088): the "then" window's ratings against the last games', by
+    /// the period-comparison rule (ADR 0083 §6).
+    TrajectoryKind, "trajectory kind", "snake_case", {
+        Falling => "falling",
+        Rising => "rising",
+        Flat => "flat",
+    }
+);
+
+wire_enum!(
+    /// v3 `TrajectoryWindow.basis`: the games around the peak, the first games, or the last.
+    WindowBasis, "window basis", "snake_case", {
+        Peak => "peak",
+        Start => "start",
+        Last => "last",
+    }
+);
+
+wire_enum!(
+    /// v3: a then-against-now verdict, from the player's point of view (ADR 0083 §6).
+    ChangeVerdict, "change verdict", "snake_case", {
+        Better => "better",
+        Worse => "worse",
+        NoClearChange => "no_clear_change",
+        NotEnoughGames => "not_enough_games",
+    }
+);
+
+/// v3: a rating on a day.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RatingAt {
+    #[schemars(range(max = MAX_RATING))]
+    pub rating: u16,
+    #[serde(with = "iso_date")]
+    #[schemars(schema_with = "crate::schema::iso_date")]
+    pub date: Date,
+}
+
+/// v3: one calendar month (UTC) of the rating line.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MonthRating {
+    /// `YYYY-MM`.
+    #[schemars(regex(pattern = MONTH_PATTERN))]
+    pub month: String,
+    /// Rated games played in the month.
+    #[schemars(range(max = MAX_COUNT))]
+    pub games: u32,
+    /// The pre-game rating of the month's last game.
+    #[schemars(range(max = MAX_RATING))]
+    pub last: u16,
+    /// The month's highest pre-game rating.
+    #[schemars(range(max = MAX_RATING))]
+    pub high: u16,
+}
+
+/// v3: one of the two compared windows of rated games.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TrajectoryWindow {
+    pub basis: WindowBasis,
+    #[schemars(range(max = MAX_COUNT))]
+    pub games: u32,
+    #[serde(with = "iso_date")]
+    #[schemars(schema_with = "crate::schema::iso_date")]
+    pub from: Date,
+    #[serde(with = "iso_date")]
+    #[schemars(schema_with = "crate::schema::iso_date")]
+    pub to: Date,
+}
+
+/// v3: one measure then and now. `then` and `now` carry their n and 80% interval; `diff` is
+/// `now - then` in the measure's unit (a share's difference is in -1..1) with its 80% interval,
+/// null when the verdict is `not_enough_games`.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ThenNowMetric {
+    pub then: ColorMetric,
+    pub now: ColorMetric,
+    pub verdict: ChangeVerdict,
+    #[serde(deserialize_with = "nullable")]
+    pub diff: Option<f64>,
+    #[serde(deserialize_with = "nullable")]
+    pub diff_low: Option<f64>,
+    #[serde(deserialize_with = "nullable")]
+    pub diff_high: Option<f64>,
+}
+
+/// v3: a top weakness's rate (events per chance, `rate`) in each window's own games, under the
+/// weakness estimate's prior.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ThenNowWeakness {
+    #[schemars(length(min = 1, max = LIMITS.id_chars))]
+    pub series_key: String,
+    #[schemars(length(max = WEAKNESS_ID_MAX_CHARS), regex(pattern = WEAKNESS_ID_PATTERN))]
+    pub id: String,
+    #[serde(deserialize_with = "nullable")]
+    #[schemars(length(min = 1, max = LIMITS.tag_chars))]
+    pub variant: Option<String>,
+    #[schemars(length(min = 1, max = LIMITS.label_chars))]
+    pub label: String,
+    pub area: AreaId,
+    pub then: ColorMetric,
+    pub now: ColorMetric,
+    pub verdict: ChangeVerdict,
+    #[schemars(range(max = MAX_COUNT))]
+    pub then_events: u32,
+    #[schemars(range(max = MAX_COUNT))]
+    pub then_opportunities: u32,
+    #[schemars(range(max = MAX_COUNT))]
+    pub now_events: u32,
+    #[schemars(range(max = MAX_COUNT))]
+    pub now_opportunities: u32,
+}
+
+/// v3: the "then" window against the last games.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ThenVsNow {
+    pub then: TrajectoryWindow,
+    pub now: TrajectoryWindow,
+    /// Mean pre-game rating (`elo`).
+    pub rating: ThenNowMetric,
+    /// Mean game accuracy (`pct`).
+    pub accuracy: ThenNowMetric,
+    /// Mean blunders per game (`per_game`).
+    pub blunders_per_game: ThenNowMetric,
+    /// Points per finished game (`rate`).
+    pub score: ThenNowMetric,
+    /// The top claimable weaknesses, by priority.
+    #[schemars(length(max = LIMITS.trajectory_weaknesses))]
+    pub weaknesses: Vec<ThenNowWeakness>,
+}
+
+/// v3 (ADR 0088): the rating trajectory of the time class. Ratings are pre-game (on chess.com
+/// the rating after the previous rated game, ADR-FIX-C-1). Below 20 rated games it is not
+/// `sufficient`: `kind`, `peak`, `current`, `change` and `thenVsNow` are null and `needMore`
+/// says how many more rated games it needs.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Trajectory {
+    #[schemars(range(max = MAX_COUNT))]
+    pub rated_games: u32,
+    pub sufficient: bool,
+    #[serde(deserialize_with = "nullable")]
+    #[schemars(range(max = MAX_COUNT))]
+    pub need_more: Option<u32>,
+    #[serde(deserialize_with = "nullable")]
+    pub kind: Option<TrajectoryKind>,
+    /// The highest rating and its day (the current rating's when it is the highest).
+    #[serde(deserialize_with = "nullable")]
+    pub peak: Option<RatingAt>,
+    /// The latest stored rating.
+    #[serde(deserialize_with = "nullable")]
+    pub current: Option<RatingAt>,
+    /// `current - peak` with a `peak` "then" window, else `current` minus the first window's
+    /// mean, in rating points.
+    #[serde(deserialize_with = "nullable")]
+    #[schemars(range(min = -4000, max = 4000))]
+    pub change: Option<i32>,
+    /// The newest months of the line, oldest first.
+    #[schemars(length(max = LIMITS.trajectory_months))]
+    pub months: Vec<MonthRating>,
+    #[serde(deserialize_with = "nullable")]
+    pub then_vs_now: Option<ThenVsNow>,
+}
+
 /// What R2 produces for the AI coach (R3) and the web: the M3 `CoachingInput`.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -717,6 +897,10 @@ pub struct CoachingInput {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schemars(extend("x-optional" = true))]
     pub benchmark: Option<Benchmark>,
+    /// v3 only (absent before): the rating trajectory and then against now (ADR 0088).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(extend("x-optional" = true))]
+    pub trajectory: Option<Trajectory>,
 }
 
 impl CoachingInput {
