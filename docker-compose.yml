@@ -274,7 +274,7 @@ services:
       - sccache:/sccache
       - crate_age:/crate-age
       # Syzygy tables live only in the main checkout (git-ignored). Gates run from a worktree set
-      # SYZYGY_HOST_DIR to that folder, e.g. E:/code/chess-improver/data/syzygy (ADR-R2-12).
+      # SYZYGY_HOST_DIR to that folder, e.g. ../../data/syzygy from .worktrees/<name> (ADR-R2-12).
       - ${SYZYGY_HOST_DIR:-./data/syzygy}:/work/data/syzygy:ro
 
   # The Rust worker (Task 22): the runtime image of backend/Dockerfile. It reaches chess.com and
