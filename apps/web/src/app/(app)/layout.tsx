@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { ActivityIndicator } from "../../components/activity-indicator";
+import { AppFooter } from "../../components/brand/footer";
 import { TimeZoneCookie } from "../../components/time-zone-cookie";
 import { RealtimeProvider } from "../../lib/realtime/realtime-provider";
 import { requireUser } from "../../server/auth/session";
@@ -38,6 +39,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
         >
           {children}
         </main>
+        <AppFooter />
       </div>
     </RealtimeProvider>
   );

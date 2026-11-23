@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { BrandMark } from "../../components/brand/mark";
 import { type DiagramKind, OperaDiagram } from "./opera-diagram";
 
 export interface AuthPageProps {
@@ -31,6 +32,7 @@ export function AuthPage({ title, lede, aside, children }: AuthPageProps) {
         className="flex flex-col px-(--space-gutter) pt-14 pb-12 sm:pt-24 lg:flex-1 lg:justify-center lg:py-12"
       >
         <div className="mx-auto flex w-full max-w-sm flex-col gap-8">
+          <BrandMark variant="full" className="h-36 self-start text-ink" />
           {title ? (
             <header className="flex flex-col gap-3">
               <h1 id="auth-title" className="font-serif text-3xl font-semibold text-ink">

@@ -112,12 +112,15 @@ describe("shell header", () => {
     expect(banner.querySelectorAll('[data-slot="activity"]')).toHaveLength(1);
   });
 
-  it("shows the wordmark alone: Rematch in Literata italic, no icon, no tagline", () => {
+  it("shows the lockup: the mid-size mark, then Rematch in Literata italic, no tagline", () => {
     renderHeader();
     const link = within(screen.getByRole("banner")).getByRole("link", { name: "Rematch" });
-    // At header height the drawing is a scribble and the favicon icon reads as clip-art (the
-    // owner, 2026-11-23), so the header carries the word only.
-    expect(link.querySelector("svg")).toBeNull();
+    // The mark drawn for 40-64 px (rematch-mark-mid.svg), decorative: the link's name says it.
+    const mark = link.querySelector("svg[data-brand-mark]");
+    expect(mark).not.toBeNull();
+    expect(mark?.getAttribute("data-brand-mark")).toBe("mid");
+    expect(mark?.getAttribute("aria-hidden")).toBe("true");
+    expect(link.querySelectorAll("svg[data-brand-mark]")).toHaveLength(1);
     const word = within(link).getByText("Rematch");
     expect(word.className).toMatch(/(^| )font-serif-italic( |$)/);
     expect(word.className).toMatch(/(^| )italic( |$)/);

@@ -1,5 +1,6 @@
 import { Button } from "@ci/ui/primitives";
 import Link from "next/link";
+import { BrandMark } from "../../../../components/brand/mark";
 import { CoachScopeSwitch } from "../../../../components/coach-scope-switch";
 import { FreshItems } from "../../../../components/train/fresh-items";
 import type { CoachScope } from "../../../../server/profile";
@@ -102,14 +103,15 @@ function Body({ scope, page }: { scope: CoachScope; page: TrainPage }) {
       ) : page.session.length > 0 ? (
         <TrainSession items={page.session} sources={SOURCE_LABEL} />
       ) : (
-        <Summary page={page} />
+        <TrainSummary page={page} />
       )}
       {total > 0 ? <Efficacy page={page} /> : null}
     </>
   );
 }
 
-function Summary({ page }: { page: TrainPage }) {
+/** Today's close: counts, what comes back tomorrow, and the mark once a session is done. */
+export function TrainSummary({ page }: { page: TrainPage }) {
   const done = page.doneToday;
   return (
     <section
@@ -117,6 +119,7 @@ function Summary({ page }: { page: TrainPage }) {
       data-surface="sheet"
       className="flex flex-col gap-3 rounded-sheet bg-sheet px-(--space-panel-pad) py-8"
     >
+      {done > 0 ? <BrandMark variant="mid" className="h-12 self-start text-ink-soft" /> : null}
       <h2 id="train-summary" className="font-serif text-2xl font-semibold text-ink">
         {done > 0 ? "That's today done" : "Nothing to go over today"}
       </h2>

@@ -2,6 +2,7 @@ import { MarginNote } from "@ci/ui/brand";
 import { Button } from "@ci/ui/primitives";
 import { ProgressPlaceholder } from "@ci/ui/progress";
 import Link from "next/link";
+import { BrandMark } from "../../../../components/brand/mark";
 import type { EmptyState } from "./view";
 
 /** The three states with nothing to chart: no link, a link with no games, nothing analysed. */
@@ -13,6 +14,7 @@ export function OverviewEmpty({ state }: { state: EmptyState }) {
         data-surface="sheet"
         className="flex flex-col items-center gap-5 rounded-sheet bg-sheet px-(--space-panel-pad) py-12 text-center"
       >
+        <BrandMark variant="mid" className="h-14 text-ink-faint" />
         <p className="max-w-md text-base text-ink-soft">
           Connect a chess.com account to see your games here.
         </p>

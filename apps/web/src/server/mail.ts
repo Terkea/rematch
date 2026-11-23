@@ -24,13 +24,18 @@ const escapeHtml = (value: string) =>
     (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] ?? c,
   );
 
-/** The magic-link email (Task 17 copy). */
+/**
+ * The magic-link email (Task 17 copy). It opens with the lockup, hosted by the app itself
+ * (`public/brand`), so the image comes from the same origin as the link; its alt text names it
+ * when a mail client blocks images.
+ */
 export function magicLinkEmail(to: string, url: string): MailMessage {
   const line = `Use this link to sign in to ${brand.name}. It works once and expires in 10 minutes.`;
+  const logo = new URL("/brand/rematch-lockup-mail.png", url).toString();
   return {
     to,
     subject: "Your sign-in link",
     text: `${line}\n\n${url}\n`,
-    html: `<p>${escapeHtml(line)}</p><p><a href="${escapeHtml(url)}">Sign in to ${escapeHtml(brand.name)}</a></p><p>${escapeHtml(url)}</p>`,
+    html: `<p><img src="${escapeHtml(logo)}" width="220" height="76" alt="${escapeHtml(brand.name)}, chess improver" style="display:block;border:0"></p><p>${escapeHtml(line)}</p><p><a href="${escapeHtml(url)}">Sign in to ${escapeHtml(brand.name)}</a></p><p>${escapeHtml(url)}</p>`,
   };
 }

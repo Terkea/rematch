@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { brand } from "../../brand";
+import { AppFooter } from "../../components/brand/footer";
 import { BrandLockup } from "../../components/brand/lockup";
 import {
   CAVEAT_OFL,
@@ -150,6 +151,7 @@ export default function LicensesPage() {
           </p>
         </Credit>
       </main>
+      <AppFooter />
     </div>
   );
 }

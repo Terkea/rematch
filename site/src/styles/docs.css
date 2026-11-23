@@ -78,6 +78,11 @@ body {
   color: var(--color-ink);
 }
 
+.site-title img {
+  height: calc(var(--spacing) * 10);
+  width: auto;
+}
+
 /* Headings are a coach's hand: Literata 600, sentence case. */
 .sl-markdown-content :is(h1, h2, h3, h4, h5),
 h1#_top {
@@ -86,7 +91,7 @@ h1#_top {
   letter-spacing: normal;
 }
 
-/* The wordmark: "Rematch" in Literata italic, capital R, no icon and no tagline. */
+/* The lockup: the mid-size mark, then "Rematch" in Literata italic, capital R, no tagline. */
 .site-title {
   gap: calc(var(--spacing) * 2);
   font-family: var(--font-serif-italic);
