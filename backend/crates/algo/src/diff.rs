@@ -3,7 +3,7 @@
 use serde_json::Value;
 
 /// One differing leaf: its dotted path and the two values (`None` when absent on that side).
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Change {
     pub path: String,
     pub a: Option<Value>,

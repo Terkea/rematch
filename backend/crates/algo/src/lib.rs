@@ -33,7 +33,9 @@ pub fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..")
 }
 
-#[derive(Clone, Debug, PartialEq)]
+/// A manifest: the version and the components (`to_value` adds the id). Serialises as
+/// `{version, components}`; [`Manifest::to_value`] is the file's form.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Manifest {
     pub version: String,
     pub components: Value,

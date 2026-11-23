@@ -22,7 +22,11 @@ fn the_committed_manifest_matches_the_code() {
          add an algorithm/CHANGELOG.md entry.",
         changes.join("\n  ")
     );
-    assert_eq!(text, built.to_pretty(), "manifest.json is not in its generated form");
+    assert_eq!(
+        text,
+        built.to_pretty(),
+        "manifest.json is not in its generated form"
+    );
 }
 
 #[test]

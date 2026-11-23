@@ -19,6 +19,7 @@ profile-core.workspace = true
 coaching-input.workspace = true
 profile.workspace = true
 ai.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 hex.workspace = true

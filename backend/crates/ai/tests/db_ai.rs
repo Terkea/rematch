@@ -140,6 +140,9 @@ async fn report_versions_are_unique_and_sequential(pool: PgPool) {
 #[sqlx::test(migrator = "db::MIGRATOR")]
 async fn concurrent_first_reports_get_distinct_versions(pool: PgPool) {
     let acct = account(&pool, "racing").await;
+    // The worker registers its manifest at start-up (ADR 0105). Without it, A's first write
+    // would insert the `algorithm_versions` row and B would wait on that row, not on the lock.
+    db::algorithm::register(&pool).await.unwrap();
     // A creates version 1 and holds its transaction (and the advisory lock) open.
     let mut a = pool.begin().await.unwrap();
     let run_a = runs::insert_run(&mut a, &new_run(acct)).await.unwrap();
@@ -1693,10 +1696,11 @@ async fn ai_writers_stamp_the_algorithm_id(pool: PgPool) {
     assert_eq!(stamp("report_runs", run).await, id);
     assert_eq!(stamp("weekly_reviews", wk.id).await, id);
     assert_eq!(stamp("coach_messages", reply.id).await, id);
-    let registered: i64 = sqlx::query_scalar("SELECT count(*) FROM algorithm_versions WHERE id = $1")
-        .bind(common::algorithm::id())
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let registered: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM algorithm_versions WHERE id = $1")
+            .bind(common::algorithm::id())
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert_eq!(registered, 1);
 }

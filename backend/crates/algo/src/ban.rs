@@ -7,7 +7,12 @@
 use std::path::Path;
 
 /// The banned calls.
-pub const BANNED: [&str; 4] = ["rand::", "thread_rng", "SystemTime::now", "OffsetDateTime::now_utc"];
+pub const BANNED: [&str; 4] = [
+    "rand::",
+    "thread_rng",
+    "SystemTime::now",
+    "OffsetDateTime::now_utc",
+];
 
 /// The crates (or modules) scanned, relative to the repository root.
 pub const SCANNED: [&str; 4] = [
@@ -54,8 +59,7 @@ pub fn scan(
         for (i, line) in text.lines().enumerate() {
             let code = code_of(line);
             for call in BANNED {
-                if code.contains(call)
-                    && !allowed.iter().any(|(af, ac, _)| af == f && *ac == call)
+                if code.contains(call) && !allowed.iter().any(|(af, ac, _)| af == f && *ac == call)
                 {
                     out.push(Violation {
                         file: f.clone(),

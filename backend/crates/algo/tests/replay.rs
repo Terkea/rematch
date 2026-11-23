@@ -79,9 +79,7 @@ fn pgn_played_at(pgn: &str, index: usize) -> OffsetDateTime {
     let date = header(pgn, "UTCDate").or_else(|| header(pgn, "Date"));
     let time = header(pgn, "UTCTime").unwrap_or("00:00:00");
     let parsed = date.and_then(|d| {
-        let f = time::macros::format_description!(
-            "[year].[month].[day] [hour]:[minute]:[second]"
-        );
+        let f = time::macros::format_description!("[year].[month].[day] [hour]:[minute]:[second]");
         time::PrimitiveDateTime::parse(&format!("{d} {time}"), f).ok()
     });
     match parsed {
@@ -94,7 +92,10 @@ fn pgn_time_control(pgn: &str) -> (Option<i32>, Option<i32>, TimeClass) {
     let tc = header(pgn, "TimeControl").unwrap_or("");
     let mut parts = tc.split('+');
     let base = parts.next().and_then(|b| b.parse::<u32>().ok());
-    let inc = parts.next().and_then(|i| i.parse::<u32>().ok()).unwrap_or(0);
+    let inc = parts
+        .next()
+        .and_then(|i| i.parse::<u32>().ok())
+        .unwrap_or(0);
     match base {
         Some(b) => (
             Some(b as i32),
@@ -182,9 +183,12 @@ fn normalized_game(account_id: Uuid, g: &NormalizedGame) -> NewGame {
     }
 }
 
+/// One fixture game: its account's username, the platform, and the game for an account id.
+type FixtureGame = (&'static str, &'static str, Box<dyn Fn(Uuid) -> NewGame>);
+
 /// The fixture games, in a fixed order, as (account username, platform, game).
-fn fixture_games() -> Vec<(&'static str, &'static str, Box<dyn Fn(Uuid) -> NewGame>)> {
-    let mut out: Vec<(&'static str, &'static str, Box<dyn Fn(Uuid) -> NewGame>)> = Vec::new();
+fn fixture_games() -> Vec<FixtureGame> {
+    let mut out: Vec<FixtureGame> = Vec::new();
     let root = fixtures();
     let mut pgn_files = Vec::new();
     for dir in ["pgn", "pgn/terminal", "lichess-db"] {
@@ -267,7 +271,10 @@ fn parse_tc(s: &str) -> TimeClass {
 }
 
 /// One full run in `pool`; returns the analysis outcome of every game, by natural key.
-async fn run_pipeline(pool: &PgPool, engines: Arc<EnginePool>) -> (BTreeMap<String, String>, Value) {
+async fn run_pipeline(
+    pool: &PgPool,
+    engines: Arc<EnginePool>,
+) -> (BTreeMap<String, String>, Value) {
     warm_openings().await;
     let inner: Arc<dyn Analyser> = engines;
     let memo: Arc<dyn Analyser> = Arc::new(MemoAnalyser::new(inner, REPLAY_NODES));
@@ -322,9 +329,9 @@ async fn run_pipeline(pool: &PgPool, engines: Arc<EnginePool>) -> (BTreeMap<Stri
             },
         );
     }
-    let pairs: Vec<(Uuid, String)> = sqlx::query_as(
-        "SELECT DISTINCT g.account_id, g.time_class::text FROM games g \
-         JOIN linked_accounts a ON a.id = g.account_id ORDER BY 2, 1",
+    let pairs: Vec<(Uuid, String, String)> = sqlx::query_as(
+        "SELECT DISTINCT g.account_id, a.username, g.time_class::text FROM games g \
+         JOIN linked_accounts a ON a.id = g.account_id ORDER BY 2, 3",
     )
     .fetch_all(pool)
     .await
@@ -396,6 +403,22 @@ const EXCLUDED: [&str; 16] = [
     "pgn",
 ];
 
+/// Times that are facts of the games themselves, kept.
+const KEPT_TIMES: [&str; 6] = [
+    "played_at",
+    "at_played_at",
+    "onset_at",
+    "onset_low",
+    "onset_high",
+    "playedAt",
+];
+
+/// A wall-clock column: the excluded names, any other `*_at` or `*_since`, and every `*_ms`.
+fn excluded(k: &str) -> bool {
+    !KEPT_TIMES.contains(&k)
+        && (EXCLUDED.contains(&k) || k.ends_with("_at") || k.ends_with("_since") || k.ends_with("_ms"))
+}
+
 fn is_uuid(s: &str) -> bool {
     Uuid::parse_str(s).is_ok() && s.len() == 36
 }
@@ -406,7 +429,7 @@ fn normalise(v: &Value, names: &BTreeMap<String, String>) -> Value {
     match v {
         Value::Object(m) => Value::Object(
             m.iter()
-                .filter(|(k, _)| !EXCLUDED.contains(&k.as_str()) && !k.ends_with("_ms"))
+                .filter(|(k, _)| !excluded(k))
                 .map(|(k, v)| (k.clone(), normalise(v, names)))
                 .collect(),
         ),
@@ -465,8 +488,10 @@ const STAMPED: [&str; 5] = [
 
 async fn natural_names(pool: &PgPool) -> BTreeMap<String, String> {
     let mut names = BTreeMap::new();
-    let games: Vec<(Uuid, String)> =
-        sqlx::query_as("SELECT id, platform_game_id FROM games").fetch_all(pool).await.unwrap();
+    let games: Vec<(Uuid, String)> = sqlx::query_as("SELECT id, platform_game_id FROM games")
+        .fetch_all(pool)
+        .await
+        .unwrap();
     for (id, key) in games {
         names.insert(id.to_string(), format!("game:{key}"));
     }
@@ -489,7 +514,10 @@ async fn dump_tables(pool: &PgPool, tables: &[&str], names: &BTreeMap<String, St
         .fetch_all(pool)
         .await
         .unwrap();
-        let mut lines: Vec<String> = rows.iter().map(|r| normalise(r, names).to_string()).collect();
+        let mut lines: Vec<String> = rows
+            .iter()
+            .map(|r| normalise(r, names).to_string())
+            .collect();
         lines.sort();
         out.push_str(&format!("## {t} ({} rows)\n", lines.len()));
         for l in lines {
@@ -528,7 +556,8 @@ async fn dump(pool: &PgPool, outcomes: &BTreeMap<String, String>, recs: &Value) 
         .await
         .unwrap();
         assert!(
-            ids.iter().all(|i| i.as_deref() == Some(common::algorithm::id())),
+            ids.iter()
+                .all(|i| i.as_deref() == Some(common::algorithm::id())),
             "{t} rows not stamped with {}: {ids:?}",
             common::algorithm::id()
         );
@@ -543,7 +572,11 @@ async fn dump(pool: &PgPool, outcomes: &BTreeMap<String, String>, recs: &Value) 
 // ---- Goldens -------------------------------------------------------------------------------
 
 fn major(version: &str) -> u64 {
-    version.split('.').next().and_then(|m| m.parse().ok()).unwrap_or(0)
+    version
+        .split('.')
+        .next()
+        .and_then(|m| m.parse().ok())
+        .unwrap_or(0)
 }
 
 fn header_line() -> String {
@@ -585,8 +618,12 @@ fn first_difference(a: &str, b: &str) -> String {
 fn check_golden(name: &str, body: &str) {
     let path = golden_dir().join(name);
     let text = format!("{}{body}", header_line());
-    let old = std::fs::read_to_string(&path).ok().map(|s| s.replace("\r\n", "\n"));
-    let old_body = old.as_deref().map(|o| o.split_once('\n').map_or("", |x| x.1).to_owned());
+    let old = std::fs::read_to_string(&path)
+        .ok()
+        .map(|s| s.replace("\r\n", "\n"));
+    let old_body = old
+        .as_deref()
+        .map(|o| o.split_once('\n').map_or("", |x| x.1).to_owned());
     if std::env::var("REPLAY_UPDATE").as_deref() == Ok("1") {
         if let (Some(o), Some(ob)) = (old.as_deref(), old_body.as_deref())
             && ob != body
@@ -606,7 +643,10 @@ fn check_golden(name: &str, body: &str) {
         return;
     }
     let ob = old_body.unwrap_or_else(|| {
-        panic!("{} is missing: run the suite with REPLAY_UPDATE=1", path.display())
+        panic!(
+            "{} is missing: run the suite with REPLAY_UPDATE=1",
+            path.display()
+        )
     });
     assert!(
         ob == body,
@@ -667,7 +707,11 @@ async fn the_same_games_give_the_same_bytes_twice(pool: PgPool) {
         ("profile", &a.profile, &b.profile),
         ("recommendation", &a.recommendation, &b.recommendation),
     ] {
-        assert!(x == y, "run 1 and run 2 differ in {name}: {}", first_difference(x, y));
+        assert!(
+            x == y,
+            "run 1 and run 2 differ in {name}: {}",
+            first_difference(x, y)
+        );
     }
     check_golden("facts.golden.txt", &a.facts);
     check_golden("profile.golden.txt", &a.profile);

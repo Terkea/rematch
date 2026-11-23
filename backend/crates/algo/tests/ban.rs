@@ -14,7 +14,10 @@ fn every_allow_list_entry_is_still_used() {
     for (file, call, reason) in ALLOWED {
         assert!(!reason.is_empty());
         let text = std::fs::read_to_string(repo_root().join(file)).expect(file);
-        assert!(text.contains(call), "{file} no longer uses {call}: drop it from ALLOWED");
+        assert!(
+            text.contains(call),
+            "{file} no longer uses {call}: drop it from ALLOWED"
+        );
     }
 }
 
