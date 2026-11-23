@@ -5,6 +5,20 @@ Active
 Calculation
 
 Ask your coach about this
+Time control
+Rapid
+15
+Colour
+Both
+White
+Black
+Period
+30 days
+3 months
+6 months
+12 months
+All time
+Custom
 What this is
 
 You made a move that let your opponent win material straight away.
@@ -19,9 +33,10 @@ Free material is the most common way games are decided at club level, and it is 
 
 How often it happens to you
 
-In the last 6 months this happened in 58 of your 2,400 chances (about 1 in 41).
+2.4%
+of your chances, 80% range 2.1% to 2.8%
 
-Your estimated rate is 2.4% of chances, likely between 2.1% and 2.8% (80% range).
+In the last 6 months this happened in 58 of your 2,400 chances (about 1 in 41).
 
 More often than typical players at your level (1.7%): their rate is below your whole likely range.
 
@@ -46,15 +61,15 @@ e
 f
 g
 h
-Green arrow from f3 to e5
-Red arrow from d2 to d4
-Played, d4
-Better, Nxe5
+Green arrow from c4 to b5
+Red arrow from f3 to b3
+Played, Qb3
+Better, Bb5+
 Expand
 
-Your win chance went from 52% to 36%, a drop of 16 win% points.
+Your win chance went from 56% to 29%, a drop of 27 win% points.
 
-Played 1 Nov 2026
+Played 3 Nov 2026
 This game is not among your imported games.
 
 8
@@ -100,15 +115,15 @@ e
 f
 g
 h
-Green arrow from c4 to b5
-Red arrow from f3 to b3
-Played, Qb3
-Better, Bb5+
+Green arrow from f3 to e5
+Red arrow from d2 to d4
+Played, d4
+Better, Nxe5
 Expand
 
-Your win chance went from 56% to 29%, a drop of 27 win% points.
+Your win chance went from 52% to 36%, a drop of 16 win% points.
 
-Played 3 Nov 2026
+Played 1 Nov 2026
 This game is not among your imported games.
 
 What to do
@@ -119,10 +134,10 @@ Details
 
 The numbers behind the story: the estimate's range, its state over time and the week-by-week rate.
 
-Estimated 2.4% of chances (80% range 2.1–2.8%), from 58 of 2,400 in the last 6 months.
+Estimated 2.4% of chances (80% range 2.1% to 2.8%), from 58 of 2,400 in the last 6 months.
 Estimated rate, % of chances
 2.4%
-80% range 2.1–2.8%
+80% range 2.1% to 2.8%
 58 times in 2,400 chances in the last 6 months
 0%
 4%
@@ -151,7 +166,7 @@ Hung material
 Now active
 Oct 2026
 Nov
-22 Nov
+23 Nov
 Week by week
 
 The raw share of chances each week, with its 80% range. Weeks with fewer than 20 chances are hollow and off the line.
