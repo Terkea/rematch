@@ -45,3 +45,12 @@ ADR 0064 §18 (report rows are account data) and ADR 0070 (the coach chat).
 - The Rust chat job keeps accepting any link (`AnyLink`): the web is the only way a question is
   enqueued, and it refuses an unverified one.
 - Test seeds now link verified by default (`seedAccount`); a test of an unverified link says so.
+
+## Amendment 1 (2026-11-23): local bypass
+
+The owner, on hitting the gate with their own locally linked account: "bypass that for local envs".
+
+- `ALLOW_UNVERIFIED_LINKS=1` makes `isVerifiedLink` accept any link the user has to the account, verified or not. Every F10 gate goes through that helper (report, change notes, weekly reviews, coach allowance, starting or posting a chat, building a report), so one switch covers them all. The user must still have a link of their own to the account.
+- It is off by default (`docker-compose.yml` passes `${ALLOW_UNVERIFIED_LINKS:-0}`), and is turned on only in a developer's own `.env`.
+- The web env refuses it when `NODE_ENV=production`, so a deploy can't open the gate by accident (the same pattern as the compose auth secret).
+- Tests: `test/env.test.ts` (off by default, on with 1, refused in production) and `test/coaching/verified-gate.test.ts` (with the flag an unverified link reads the AI artefacts and can start a chat; without it the gate holds).

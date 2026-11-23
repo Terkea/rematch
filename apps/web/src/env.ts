@@ -54,6 +54,10 @@ const schema = z.object({
   CHESSCOM_CLIENT_ID: z.string().optional(),
   CHESSCOM_CLIENT_SECRET: z.string().optional(),
   LAB_ENABLED: flag,
+  // Local only (ADR-FIX-N-1 Amendment 1): treat an unverified account link as verified, so a
+  // locally linked account (dev:link, no chess.com Location code) still sees its own report and
+  // coach. Refused in production below.
+  ALLOW_UNVERIFIED_LINKS: flag,
   INVITE_ONLY: defaultOn,
   // Beta AI plan (ruling G1): manual reports per scope per day; the worker reads the same name.
   AI_BETA_MANUAL_REPORTS_PER_DAY: z.coerce.number().int().min(1).max(24).default(1),
@@ -101,6 +105,11 @@ function parse(source: Record<string, string | undefined>): WebEnv {
   ) {
     throw new Error(
       "Invalid environment: BETTER_AUTH_SECRET is the public compose default; set a random secret of at least 32 characters",
+    );
+  }
+  if (source.NODE_ENV === "production" && result.data.ALLOW_UNVERIFIED_LINKS) {
+    throw new Error(
+      "Invalid environment: ALLOW_UNVERIFIED_LINKS is for local development only; it must not be set in production",
     );
   }
   return result.data;

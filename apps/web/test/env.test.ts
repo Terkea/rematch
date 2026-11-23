@@ -91,3 +91,16 @@ describe("getEnv", () => {
     resetEnvCache();
   });
 });
+
+describe("ALLOW_UNVERIFIED_LINKS", () => {
+  it("is off by default and on with 1", () => {
+    expect(getEnv(base).ALLOW_UNVERIFIED_LINKS).toBe(false);
+    expect(getEnv({ ...base, ALLOW_UNVERIFIED_LINKS: "1" }).ALLOW_UNVERIFIED_LINKS).toBe(true);
+  });
+
+  it("is refused in production", () => {
+    expect(() =>
+      getEnv({ ...base, NODE_ENV: "production", ALLOW_UNVERIFIED_LINKS: "1" }),
+    ).toThrow(/ALLOW_UNVERIFIED_LINKS/);
+  });
+});

@@ -1,6 +1,7 @@
 import { accountLinks, coachConversations, reportRuns } from "@ci/db/generated";
 import { and, eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
+import { resetEnvCache } from "../../src/env";
 import { coachAllowance } from "../../src/server/coach/allowance";
 import { changeNotes, getReport, listWeeklyReviews } from "../../src/server/coaching";
 import { resetCoachTables } from "../helpers/coach";
@@ -109,5 +110,38 @@ describe("an unverified link sees analysis only", () => {
       );
     expect((await getReport(db, stranger.id, scope())).payload).not.toBeNull();
     expect(await coachAllowance(db, stranger.id, accountId)).not.toBeNull();
+  });
+});
+
+// The owner: "bypass that for local envs". With ALLOW_UNVERIFIED_LINKS (refused in production),
+// an unverified link is treated as verified, so a locally linked account (dev:link, no chess.com
+// Location code) still sees its own report and coach. Without the flag the gate above holds.
+describe("ALLOW_UNVERIFIED_LINKS (local only)", () => {
+  const withFlag = async (fn: () => Promise<void>) => {
+    process.env.ALLOW_UNVERIFIED_LINKS = "1";
+    resetEnvCache();
+    try {
+      await fn();
+    } finally {
+      delete process.env.ALLOW_UNVERIFIED_LINKS;
+      resetEnvCache();
+    }
+  };
+
+  it("lets an unverified link read the AI artefacts and ask the coach", async () => {
+    await withFlag(async () => {
+      expect((await getReport(db, stranger.id, scope())).payload).not.toBeNull();
+      expect(await changeNotes(db, stranger.id, accountId)).toHaveLength(1);
+      expect(await listWeeklyReviews(db, stranger.id, scope())).toHaveLength(1);
+      expect(await coachAllowance(db, stranger.id, accountId)).not.toBeNull();
+      const res = await threads.POST(
+        post("/api/coach/threads", { accountId, timeClass: "rapid" }, stranger.cookie),
+      );
+      expect(res.status).not.toBe(403);
+    });
+  });
+
+  it("is off by default: the gate holds without the flag", async () => {
+    expect((await getReport(db, stranger.id, scope())).locked).toBe("unverified");
   });
 });

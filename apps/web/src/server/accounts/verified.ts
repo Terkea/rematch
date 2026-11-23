@@ -1,6 +1,7 @@
 import type { Db } from "@ci/db";
 import { accountLinks } from "@ci/db/generated";
 import { and, eq, isNotNull, sql } from "drizzle-orm";
+import { getEnv } from "../../env";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -12,6 +13,9 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  */
 export async function isVerifiedLink(db: Db, userId: string, accountId: string): Promise<boolean> {
   if (!UUID.test(accountId)) return false;
+  // Local only (ADR-FIX-N-1 Amendment 1): any link of the user's own counts as verified. The
+  // flag is refused in production (env.ts), and the user must still have a link to the account.
+  const anyLink = getEnv().ALLOW_UNVERIFIED_LINKS;
   const rows = await db
     .select({ one: sql<number>`1` })
     .from(accountLinks)
@@ -19,7 +23,7 @@ export async function isVerifiedLink(db: Db, userId: string, accountId: string):
       and(
         eq(accountLinks.userId, userId),
         eq(accountLinks.linkedAccountId, accountId),
-        isNotNull(accountLinks.verifiedAt),
+        anyLink ? undefined : isNotNull(accountLinks.verifiedAt),
       ),
     )
     .limit(1);
