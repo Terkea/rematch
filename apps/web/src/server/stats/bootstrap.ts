@@ -21,15 +21,45 @@ export function mulberry32(seed: number): () => number {
   };
 }
 
+/**
+ * The stream seed of a bootstrap: a stable hash of `label` and the samples (length, then the
+ * little-endian words of each value, sorted; the Rust profile crate hashes the same way). The same
+ * data gives the same stream whatever the row order, an id or a user id in the label never moves
+ * it, and different data gives a different stream. Pass a label without ids (a metric name).
+ */
+/** A sorted copy: resampling and summing run in a canonical order, so row order cannot move a figure. */
+export function canonical(sample: readonly number[]): number[] {
+  return Array.from(Float64Array.from(sample).sort());
+}
+
+export function dataSeed(label: string, ...samples: readonly number[][]): number {
+  const words = new Uint32Array(new Float64Array(1).buffer);
+  const view = new Float64Array(words.buffer);
+  let h = fnv1a(label);
+  const mix = (w: number) => {
+    h = Math.imul(h ^ w, 0x01000193) >>> 0;
+  };
+  for (const sample of samples) {
+    mix(sample.length);
+    for (const v of canonical(sample)) {
+      view[0] = v;
+      mix(words[0] as number);
+      mix(words[1] as number);
+    }
+  }
+  return h;
+}
+
 /** Percentile bootstrap of the mean. Null when empty. One value gives a degenerate interval. */
 export function bootstrapMean(
-  values: number[],
+  raw: number[],
   seed: string,
 ): { mean: number; interval: Interval } | null {
+  const values = canonical(raw);
   const n = values.length;
   if (n === 0) return null;
   const mean = values.reduce((a, b) => a + b, 0) / n;
-  const rnd = mulberry32(fnv1a(seed));
+  const rnd = mulberry32(dataSeed(seed, values));
   const means = new Float64Array(BOOTSTRAP_RESAMPLES);
   for (let r = 0; r < BOOTSTRAP_RESAMPLES; r++) {
     let sum = 0;

@@ -113,7 +113,7 @@ export async function loadPeriodComparison(
     gameStatRows(db, userId, scopeWithPeriod(filters, periods.a), opts),
     gameStatRows(db, userId, scopeWithPeriod(filters, periods.b), opts),
   ]);
-  const seed = `period-compare:${userId}:${JSON.stringify({ ...filters, periods })}`;
+  const seed = `period-compare:${JSON.stringify({ ...filters, periods })}`;
   return {
     periods,
     spans: { a: spanOf(a), b: spanOf(b) },

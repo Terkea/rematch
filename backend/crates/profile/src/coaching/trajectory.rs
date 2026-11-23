@@ -59,6 +59,29 @@ pub fn fnv1a(text: &str) -> u32 {
     h
 }
 
+/// TS `canonical`: a sorted copy, so row order cannot move a bootstrap.
+fn canonical(values: &[f64]) -> Vec<f64> {
+    let mut v = values.to_vec();
+    v.sort_by(f64::total_cmp);
+    v
+}
+
+/// TS `dataSeed`: `fnv1a(label)` mixed with each sample's length and the little-endian 32-bit
+/// words of its sorted values (low word first), one FNV-1a step per word.
+fn data_seed(label: &str, samples: &[&[f64]]) -> u32 {
+    let mut h = fnv1a(label);
+    let mut mix = |w: u32| h = (h ^ w).wrapping_mul(0x0100_0193);
+    for sample in samples {
+        mix(sample.len() as u32);
+        for v in canonical(sample) {
+            let bits = v.to_bits();
+            mix(bits as u32);
+            mix((bits >> 32) as u32);
+        }
+    }
+    h
+}
+
 /// TS `Math.round`: halves round up.
 fn js_round(x: f64) -> f64 {
     (x + 0.5).floor()
@@ -123,14 +146,16 @@ fn insufficient(n: usize) -> Estimate {
 }
 
 /// TS `bootstrapMean`: the mean and the seeded percentile interval.
-fn bootstrap_mean(values: &[f64], seed: &str) -> Option<(f64, Interval)> {
+fn bootstrap_mean(raw: &[f64], seed: &str) -> Option<(f64, Interval)> {
+    let values = canonical(raw);
+    let values = &values[..];
     let n = values.len();
     if n == 0 {
         return None;
     }
     let nf = n as f64;
     let mean = values.iter().fold(0.0, |a, b| a + b) / nf;
-    let mut rng = Rng::new(fnv1a(seed));
+    let mut rng = Rng::new(data_seed(seed, &[values]));
     let mut means = vec![0.0; RESAMPLES];
     for m in means.iter_mut() {
         let mut sum = 0.0;
@@ -229,8 +254,8 @@ pub fn compare_means(a: &[f64], b: &[f64], higher_is_better: bool, seed: &str) -
         };
     };
     let clean = |xs: &[f64]| -> Vec<f64> { xs.iter().copied().filter(|v| v.is_finite()).collect() };
-    let (ca, cb) = (clean(a), clean(b));
-    let mut rng = Rng::new(fnv1a(&format!("{seed}:diff")));
+    let (ca, cb) = (canonical(&clean(a)), canonical(&clean(b)));
+    let mut rng = Rng::new(data_seed(&format!("{seed}:diff"), &[&ca, &cb]));
     let mut resampled = |xs: &[f64]| {
         let n = xs.len() as f64;
         let mut sum = 0.0;
