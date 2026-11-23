@@ -907,7 +907,7 @@
       "## Acceptance criteria",
       "",
       "- [ ] Pre-registered with the `statistical-power` skill: the players and games per flaw that give",
-      "      80% power to detect a 0.1 change in recall at 2 and a 5-point change in interval coverage,",
+      "      80% power to detect a 0.1 change in recall at 2 (the primary), with the interval width coverage then reaches as a secondary,",
       "      clustered by player.",
       "- [ ] The smoke and full suites resized from the result, and the CI tolerances in",
       "      `bench/baseline.json` set from it.",

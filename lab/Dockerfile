@@ -27,6 +27,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     UV_PROJECT_ENVIRONMENT=/opt/venv
 
 FROM base AS lab
+# git: the experiment check reads the order of commits (registered before results, ADR 0106).
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/* \
+    && git config --system --add safe.directory '*'
 WORKDIR /lab
 COPY pyproject.toml uv.lock .python-version ./
 # --frozen: the lock is the source of truth; a pyproject that disagrees with it fails the build.

@@ -51,12 +51,13 @@ Contributors work in a fork; branches are named for what they do (`fix/filter-on
 - The template's checklist applies: test first, the gates, an ADR when a decision was made,
   `design:check` and screenshots for UI, no secrets or personal data.
 - Small pull requests are reviewed faster. One idea per PR.
-- A change to the algorithm's behaviour (a threshold, the ranking, a detector, a prior) needs a
-  pre-registered experiment, merged before the change: an "Experiment on the algorithm" issue,
+- A change to the algorithm's behaviour (any change that can move the replay goldens or a Tier 1
+  KPI, a major version under ADR 0104: a threshold, the ranking, a detector, a prior, a protocol)
+  needs a pre-registered experiment, merged before the change: an "Experiment on the algorithm" issue,
   then `lab/experiments/EXP-NNNN/` with its pre-registration and analysis committed before
   anything runs (ADR 0106, [the protocol](evaluation.md#how-we-do-science-on-the-algorithm)).
-  The change's pull request links the experiment and its decision. A refactor, a copy change or
-  a fix that makes the code do what an ADR already says needs none.
+  The change's pull request links the experiment and its decision. A refactor, a comment or a
+  copy change needs none; the unchanged goldens prove it.
 
 ## 5. CI
 

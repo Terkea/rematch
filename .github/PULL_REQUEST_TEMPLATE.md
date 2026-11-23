@@ -22,8 +22,8 @@ back". The PR-title check enforces this. See CONTRIBUTING.md.
       changed `.github/`.
 - [ ] A decision that others should know about has an ADR in `docs/decisions/` (next number,
       listed in its README), or none was needed.
-- [ ] Algorithm behaviour changes (a threshold, the ranking, a detector, a prior): the
-      pre-registered experiment is linked here with its decision (`lab/experiments/EXP-NNNN/`,
+- [ ] Algorithm behaviour changes (anything that can move the replay goldens or a Tier 1 KPI):
+      the pre-registered experiment is linked here with its decision (`lab/experiments/EXP-NNNN/`,
       ADR 0106), or this change alters no behaviour.
 - [ ] UI changes: I followed `packages/ui/DESIGN.md`, `pnpm design:check` passes, and I attached
       screenshots at 390 px and 1440 px, day and night.

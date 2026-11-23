@@ -1,16 +1,16 @@
 name: Experiment on the algorithm
-description: Propose a pre-registered experiment, required before any change to a threshold, the ranking, a detector or a prior.
+description: Propose a pre-registered experiment, required before any change that can move the replay goldens or a Tier 1 KPI (a threshold, the ranking, a detector, a prior, a protocol).
 title: "EXP: "
 labels: [experiment, needs-triage]
 body:
   - type: markdown
     attributes:
       value: |
-        A change to how Rematch ranks, detects or estimates a weakness ships only with a
+        A change that can move the replay goldens or a Tier 1 KPI ships only with a
         pre-registered experiment behind it (ADR 0106, docs/evaluation.md, "How we do science on
         the algorithm"). This issue proposes one. Once it is accepted, the pre-registration is
         lab/experiments/EXP-NNNN/preregistration.md, from docs/experiments/TEMPLATE.md, committed
-        with its analysis.py before anything runs. Refactors and copy changes need no experiment.
+        with its analysis.py before anything runs. Refactors, comments and copy changes need no experiment.
   - type: textarea
     id: question
     attributes:
@@ -44,11 +44,11 @@ body:
     id: metric
     attributes:
       label: Primary metric, ground truth and the minimum effect that matters
-      description: One primary metric, its ground truth, and the smallest difference that would change a decision, with why that size.
+      description: Exactly one primary metric (only it decides), its ground truth, and the smallest difference that would change a decision, with why that size.
       placeholder: |
         Coverage of the target's 80% interval over every checkpoint (ground truth: the
-        generator's injected rate, Tally::truth). Minimum effect: 0.10 of coverage, which takes
-        the measured 0.60 past the 0.65 threshold.
+        generator's injected rate, Tally::truth). Minimum effect: 0.10 of coverage, one player
+        in ten whose range does or does not hold their real rate.
     validations:
       required: true
   - type: textarea

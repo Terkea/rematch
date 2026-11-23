@@ -46,6 +46,9 @@ jobs:
       COMPOSE: docker compose -p ci-lab
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The experiment check reads when each file was first committed.
+          fetch-depth: 0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
@@ -66,8 +69,15 @@ jobs:
         run: docker build --build-context rematch=lab-ctx -t rematch-lab:ci lab
       - name: Contract tests (pytest)
         run: docker run --rm rematch-lab:ci pytest
-      - name: Rerun every committed experiment twice and compare results.json
-        run: docker run --rm rematch-lab:ci python -m rematch_lab.experiments check
+      - name: Start Postgres (rematch_lab.analyse builds in a throwaway database)
+        run: $COMPOSE up -d --wait postgres
+      - name: Experiments - registered first, frozen, checked inputs, rerun twice
+        run: |
+          network=$(docker network ls -q --filter label=com.docker.compose.project=ci-lab | head -n 1)
+          docker run --rm --network "$network" -v "$PWD:/repo" -w /repo/lab \
+            -e PYTHONPATH=/repo/lab \
+            -e DATABASE_URL=postgres://postgres:postgres@postgres:5432/chess_test \
+            rematch-lab:ci python -m rematch_lab.experiments check --history
       - name: Stop the stack
         if: always()
         run: $COMPOSE down -v
