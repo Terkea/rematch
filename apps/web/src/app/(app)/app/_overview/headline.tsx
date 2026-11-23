@@ -120,17 +120,18 @@ const scopeQuery = (scope: CoachScope) =>
  * profile is not ready yet.
  */
 export function WorkOn({ lead }: { lead: LeadFinding }) {
-  // Pen red means the player's own mistake, so only a real finding carries it.
-  const finding = lead.kind === "weakness";
+  // A plain sheet: no coloured border and no red heading (B10). Pen red stays for the player's
+  // own moves.
   return (
     <section
       aria-labelledby="work-on-heading"
       data-slot="work-on"
-      className={`flex max-w-3xl flex-col gap-1 border-l-2 pl-4 ${finding ? "border-pen" : "border-rule-strong"}`}
+      data-surface="sheet"
+      className="flex max-w-3xl flex-col gap-1 rounded-sheet bg-sheet px-(--space-panel-pad) py-4"
     >
       <h2
         id="work-on-heading"
-        className={`text-base font-medium ${finding ? "text-pen-text" : "text-ink"}`}
+        className="text-base font-medium text-ink"
       >
         What to work on
       </h2>

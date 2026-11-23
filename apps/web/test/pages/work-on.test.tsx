@@ -79,6 +79,16 @@ describe("WorkOn", () => {
     expect(link.getAttribute("href")).toBe(`/app/weaknesses?account=${scope.accountId}&tc=rapid`);
   });
 
+  // Critic B10: no coloured left border; red only on the finding's own words.
+  it("sits on a sheet, never behind a coloured border", () => {
+    const lead: LeadFinding = { kind: "weakness", scope, weakness };
+    const { container } = render(<WorkOn lead={lead} />);
+    const slot = container.querySelector("[data-slot='work-on']");
+    expect(slot?.className).not.toMatch(/border-l|border-pen/);
+    expect(slot?.getAttribute("data-surface")).toBe("sheet");
+    expect(slot?.className).toMatch(/bg-sheet/);
+  });
+
   it("building keeps the profile-building copy", () => {
     const { container } = render(<WorkOn lead={{ kind: "building" }} />);
     expect(container).toHaveTextContent("Your coaching profile is still being built.");
