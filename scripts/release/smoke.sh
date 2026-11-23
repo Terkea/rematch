@@ -16,6 +16,8 @@ prefix=${1:?usage: smoke.sh <image-prefix> <version> [--with-ai]}
 version=${2:?usage: smoke.sh <image-prefix> <version> [--with-ai]}
 with_ai=${3:-}
 root=$(cd "$(dirname "$0")/../.." && pwd)
+# The path Docker gets: E:/... under Git Bash, the plain path elsewhere.
+host_root=$(cd "$root" && { pwd -W 2>/dev/null || pwd; })
 project=${SMOKE_PROJECT:-ci-release}
 
 rand() { od -An -N24 -tx1 /dev/urandom | tr -d ' \n'; }
@@ -23,6 +25,9 @@ export REMATCH_IMAGE_PREFIX="$prefix" REMATCH_VERSION="$version"
 export POSTGRES_PASSWORD="$(rand)" BETTER_AUTH_SECRET="$(rand)$(rand)"
 export BETTER_AUTH_URL=http://localhost:3100 SMTP_URL=smtp://127.0.0.1:1025
 export AI_SIDECAR_TOKEN="$(rand)" AI_SIDECAR_DB_PASSWORD="$(rand)"
+# The worker's data mount: the git-ignored data/ of the checkout (an empty one is fine).
+mkdir -p "$root/data"
+export REMATCH_DATA_DIR="$host_root/data"
 # The sidecar refuses to start in production without a real ANTHROPIC_API_KEY; the smoke test
 # checks the image, not the key, so it runs the sidecar in development mode with no credential.
 export AI_SIDECAR_ENV=development
@@ -30,8 +35,8 @@ export AI_SIDECAR_ENV=development
 export COMPOSE_PROFILES= COMPOSE_FILE=
 
 dc() {
-  docker compose -p "$project" --project-directory "$root/deploy" \
-    -f "$root/deploy/compose.yaml" -f "$root/scripts/release/smoke.compose.yaml" "$@"
+  docker compose -p "$project" --project-directory "$host_root/deploy" \
+    -f "$host_root/deploy/compose.yaml" -f "$host_root/scripts/release/smoke.compose.yaml" "$@"
 }
 fail() {
   echo "FAIL $1" >&2
