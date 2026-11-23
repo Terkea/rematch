@@ -123,8 +123,10 @@ describe("crayon: celebrations only, never data", () => {
   }
 
   // Charts, boards, tables and stats stay crisp: the crayon may appear only in the brand touches,
-  // the styleguide that documents them, and the token file.
-  it("appears only in the brand touches", () => {
+  // the styleguide that documents them, and the token file. It reads every source file, so it is
+  // I/O-bound, not a unit test: under a full parallel run on a Docker Desktop bind mount the walk
+  // alone outlasts the 5 s default, so it gets its own budget.
+  it("appears only in the brand touches", { timeout: 30_000 }, () => {
     const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
     const allowed = [
       /^packages\/ui\/src\/styles\/tokens\.css$/,
