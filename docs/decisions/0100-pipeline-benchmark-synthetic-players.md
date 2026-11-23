@@ -1,4 +1,4 @@
-# 0098. A pipeline benchmark: synthetic players with injected flaws (Tier 1)
+# 0100. A pipeline benchmark: synthetic players with injected flaws (Tier 1)
 
 Date: 2026-11-23. Status: accepted (lane `bench`, branch `feat/pipeline-benchmark`).
 Number 0097 is the self-hosting setup (lane `selfhost`).

@@ -1,4 +1,4 @@
-//! `cli bench run` (ADR 0098): the Tier 1 pipeline benchmark. It needs `DATABASE_URL` (a
+//! `cli bench run` (ADR 0100): the Tier 1 pipeline benchmark. It needs `DATABASE_URL` (a
 //! throwaway database is created next to it and dropped afterwards) and `STOCKFISH_PATH`.
 //! Writes `bench-results.json` and `bench-scorecard.md` into `--out` (default `.`). With
 //! `--baseline`, exits 2 when a score regressed beyond the baseline's tolerance.

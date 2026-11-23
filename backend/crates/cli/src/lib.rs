@@ -1,5 +1,5 @@
 //! The `cli` command-line tool: `analyse`, `db migrate`, and the read-only `profile`, `eta` and
-//! `queue-lag` (R2 Task 35), and `recompute-metrics` (ADR-FIX-C-1) and `bench run` (ADR 0098).
+//! `queue-lag` (R2 Task 35), and `recompute-metrics` (ADR-FIX-C-1) and `bench run` (ADR 0100).
 
 pub mod analyse;
 pub mod bench_cmd;

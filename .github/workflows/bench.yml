@@ -1,5 +1,5 @@
 name: Benchmark
-# The Tier 1 pipeline benchmark (ADR 0098, docs/benchmark.md): synthetic players with injected
+# The Tier 1 pipeline benchmark (ADR 0100, docs/benchmark.md): synthetic players with injected
 # flaws through the real analysis, enrichment, profile engine and CoachingInput. The smoke suite
 # runs on pull requests that touch the pipeline and fails on a regression against
 # bench/baseline.json; the full suite runs weekly and on demand, and only reports.

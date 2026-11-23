@@ -39,7 +39,7 @@ The run took 5 minutes 3 seconds with 4 engines: 72,972 Stockfish searches, 58,0
 
 The benchmark asks one question of Rematch's analysis: given a player whose weakness we put there ourselves, at a rate we chose, does the pipeline find it, rank it first, size it correctly and point the plan at it? Tier 1 answers it with synthetic players. Tiers 2 to 4 are planned and described at the end.
 
-Tier 1 lives in `backend/crates/bench` (ADR 0098). It runs the production code, in-process, against a throwaway **Postgres** database:
+Tier 1 lives in `backend/crates/bench` (ADR 0100). It runs the production code, in-process, against a throwaway **Postgres** database:
 
 1. the `analyse-game` handler (`analysis::jobs::analyse`) with the production profile hook (`profile::hook_impl`): **Stockfish** evaluation, the enrichment (best and refutation lines, threats, MultiPV on critical plies), move features, per-game metrics and weakness series;
 2. the `build-profile` handler (`profile::build_profile`) with the default peer benchmark (ADR 0080): weakness estimates, posteriors and priorities;

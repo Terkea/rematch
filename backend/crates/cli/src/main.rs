@@ -2,7 +2,7 @@
 //! `cli db migrate` only migrates; `cli profile`, `cli eta` and `cli queue-lag` only read;
 //! `cli recompute-metrics` rewrites stale metrics from the stored evals (no engine, no worker);
 //! `cli report-rebuild` queues a report run for a running worker (ADR 0086); `cli bench run`
-//! runs the pipeline benchmark (ADR 0098).
+//! runs the pipeline benchmark (ADR 0100).
 
 use std::time::Duration;
 
@@ -24,7 +24,7 @@ async fn main() {
         let code = db_cmd::run_db(&argv, &|l| println!("{l}"), &|l| eprintln!("{l}")).await;
         std::process::exit(code);
     }
-    // The pipeline benchmark (ADR 0098): its own throwaway database and engines, no workers.
+    // The pipeline benchmark (ADR 0100): its own throwaway database and engines, no workers.
     if argv.first().map(String::as_str) == Some("bench") {
         let code = cli::bench_cmd::run_bench(
             &argv,
