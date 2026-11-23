@@ -1,6 +1,7 @@
 //! Postgres access (sqlx, runtime-checked queries). The schema lives in `db/migrations/`.
 
 pub mod accounts;
+pub mod algorithm;
 pub mod baseline;
 pub mod games;
 pub mod import_runs;

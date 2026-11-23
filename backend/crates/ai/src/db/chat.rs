@@ -265,12 +265,13 @@ pub async fn finish_message(
     id: Uuid,
     f: &MessageFinish,
 ) -> Result<bool, sqlx::Error> {
-    let r = sqlx::query(
-        "UPDATE coach_messages SET status = 'done', text = $2, segments = $3, citations = $4, \
+    let r = sqlx::query(sqlx::AssertSqlSafe(format!(
+        "{}UPDATE coach_messages SET status = 'done', text = $2, segments = $3, citations = $4, \
          api_messages = $5, dropped_count = $6, ai_disclosure = $7, session = $8, \
-         session_model_usage = $9, \
+         session_model_usage = $9, algorithm_id = $10, \
          failure_reason = NULL WHERE id = $1 AND status IN ('pending', 'streaming')",
-    )
+        common::algorithm::register_cte(10, 11)
+    )))
     .bind(id)
     .bind(&f.text)
     .bind(&f.segments)
@@ -280,6 +281,8 @@ pub async fn finish_message(
     .bind(&f.ai_disclosure)
     .bind(f.session.map(SessionPath::as_str))
     .bind(&f.session_model_usage)
+    .bind(common::algorithm::id())
+    .bind(common::algorithm::manifest())
     .execute(conn)
     .await?;
     Ok(r.rows_affected() == 1)

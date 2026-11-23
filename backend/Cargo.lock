@@ -64,6 +64,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "algo"
+version = "0.1.0"
+dependencies = [
+ "ai",
+ "analysis",
+ "anyhow",
+ "bench",
+ "chess-core",
+ "coaching-input",
+ "common",
+ "db",
+ "engine",
+ "enrich",
+ "futures",
+ "hex",
+ "platforms",
+ "profile",
+ "profile-core",
+ "queue",
+ "regex",
+ "serde_json",
+ "sha2 0.11.1",
+ "sqlx",
+ "testkit",
+ "time",
+ "tokio",
+ "tokio-util",
+ "uuid",
+]
+
+[[package]]
 name = "allocator-api2"
 version = "0.2.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -439,6 +470,7 @@ checksum = "1c133bc6a41be0d194c306b5506d15e6feeea7b1d6604bd3f8310dfb2ca96486"
 name = "cli"
 version = "0.1.0"
 dependencies = [
+ "algo",
  "analysis",
  "anyhow",
  "bench",

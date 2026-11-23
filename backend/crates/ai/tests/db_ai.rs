@@ -1626,3 +1626,77 @@ async fn reconciler_scans_use_their_partial_indexes(pool: PgPool) {
         .unwrap();
     assert_eq!(done.len(), 1);
 }
+
+/// ADR 0105: the report run, the weekly review and the finished chat answer carry the build's
+/// algorithm id, and the manifest is registered by the same statement.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn ai_writers_stamp_the_algorithm_id(pool: PgPool) {
+    let acct = account(&pool, "stamp").await;
+    let mut conn = pool.acquire().await.unwrap();
+    let run = runs::insert_run(&mut conn, &new_run(acct)).await.unwrap();
+    let wk = weekly::insert_weekly_if_absent(
+        &mut conn,
+        &NewWeekly {
+            account_id: acct,
+            time_class: "blitz".into(),
+            week_start: time::macros::date!(2026 - 11 - 16),
+            mode: ReportMode::Batch,
+            input: json!({}),
+        },
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    let conv = conversation(&pool, acct).await;
+    let reply = chat::insert_message(
+        &mut conn,
+        &NewMessage {
+            role: ChatRole::Assistant,
+            status: ChatStatus::Pending,
+            text: None,
+            ..user_msg(conv.id, 1)
+        },
+    )
+    .await
+    .unwrap();
+    let stamp = |table: &'static str, id: Uuid| {
+        let pool = pool.clone();
+        async move {
+            sqlx::query_scalar::<_, Option<String>>(sqlx::AssertSqlSafe(format!(
+                "SELECT algorithm_id FROM {table} WHERE id = $1"
+            )))
+            .bind(id)
+            .fetch_one(&pool)
+            .await
+            .unwrap()
+        }
+    };
+    // A pending answer has no algorithm yet: nothing has been computed for it.
+    assert_eq!(stamp("coach_messages", reply.id).await, None);
+    chat::finish_message(
+        &mut conn,
+        reply.id,
+        &MessageFinish {
+            text: "t".into(),
+            segments: json!([]),
+            citations: json!([]),
+            api_messages: None,
+            dropped_count: 0,
+            ai_disclosure: None,
+            session: None,
+            session_model_usage: None,
+        },
+    )
+    .await
+    .unwrap();
+    let id = Some(common::algorithm::id().to_owned());
+    assert_eq!(stamp("report_runs", run).await, id);
+    assert_eq!(stamp("weekly_reviews", wk.id).await, id);
+    assert_eq!(stamp("coach_messages", reply.id).await, id);
+    let registered: i64 = sqlx::query_scalar("SELECT count(*) FROM algorithm_versions WHERE id = $1")
+        .bind(common::algorithm::id())
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(registered, 1);
+}

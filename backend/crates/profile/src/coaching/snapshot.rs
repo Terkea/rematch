@@ -35,15 +35,18 @@ pub async fn store_coaching_snapshot(
     if input.basis.analysed_games == 0 {
         return Ok(None);
     }
-    let id: Uuid = sqlx::query_scalar(
-        "INSERT INTO coaching_inputs (account_id, time_class, input_version, generated_at, input) \
-         VALUES ($1, $2::time_class, $3, $4, $5) RETURNING id",
-    )
+    let id: Uuid = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
+        "{}INSERT INTO coaching_inputs (account_id, time_class, input_version, generated_at, \
+         input, algorithm_id) VALUES ($1, $2::time_class, $3, $4, $5, $6) RETURNING id",
+        common::algorithm::register_cte(6, 7)
+    )))
     .bind(account_id)
     .bind(tc.as_str())
     .bind(input.input_version.as_str())
     .bind(input.generated_at)
     .bind(input.to_json())
+    .bind(common::algorithm::id())
+    .bind(common::algorithm::manifest())
     .fetch_one(pool)
     .await?;
     prune_coaching_snapshots(pool, account_id, tc).await?;

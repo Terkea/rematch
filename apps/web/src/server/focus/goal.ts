@@ -3,6 +3,13 @@ import { type Interval, wilson } from "../stats/wilson";
 // The weekly focus's arithmetic (ADR 0091): how its target is chosen and how its progress is
 // judged. Pure, so the rules are tested apart from the database.
 
+/**
+ * The name of the focus rules below (`DEFAULT_GAMES_N`, `RELATIVE_STEP`, `MIN_PEER_STEP`,
+ * `MIN_VERDICT_CHANCES`). A change to any of them is a new name and a new algorithm version
+ * (ADR 0104, `algorithm/CHANGELOG.md`).
+ */
+export const FOCUS_VERSION = "focus-v1";
+
 /** The default length of a focus, in analysed games. */
 export const DEFAULT_GAMES_N = 20;
 /** The lengths a player can pick. */

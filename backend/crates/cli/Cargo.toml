@@ -26,6 +26,8 @@ refdata.workspace = true
 worker.workspace = true
 # The pipeline benchmark (ADR 0098), a workspace crate.
 bench.workspace = true
+# The algorithm manifest (ADR 0105), a workspace crate.
+algo.workspace = true
 anyhow.workspace = true
 clap.workspace = true
 tracing.workspace = true
