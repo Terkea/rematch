@@ -31,6 +31,8 @@ import rematch_lab as lab
 from rematch_lab.experiments import seed, write_results
 
 EXP = "EXP-0001"
+# The seed namespace (--seed-namespace); the registered run uses the experiment id.
+SEED_NS = EXP
 
 # ---- the pilot suite (section 7) ---------------------------------------------------------------
 FLAWS = [
@@ -54,7 +56,7 @@ NAMED_SUITE_SEEDS = set(range(11, 17)) | set(range(101, 116))
 DELTA = 0.10  # recall at 2, absolute
 DELTA_COVERAGE = 0.05  # coverage, absolute
 CHURN = [0.0, 0.05, 0.10]
-PRIMARY_CHURN = 0.05
+PRIMARY_CHURN = 0.10  # the conservative end: churn is assumed, not measured
 M_GRID = [1, 2, 3, 4, 5, 6, 8, 10, 12, 14, 16, 20, 24, 28, 32, 40, 48, 64, 80, 100]
 SIMS_RECALL = 4000
 SIMS_COVERAGE = 2000
@@ -68,7 +70,9 @@ SMOKE_GAMES = 80
 SMOKE_CLEAN = 1
 SMOKE_BUDGET_GAMES = 1650
 FULL_GAMES_OPTIONS = [80, 120]
-FULL_SWEEP_PLAYERS = 8
+# The rate sweep leaves the full suite (review, concern 5): the scorer's recall would mix
+# players the power analysis does not model.
+FULL_SWEEP_PLAYERS = 0
 FULL_CLEAN = 2
 FULL_BUDGET_GAMES = 9000
 
@@ -135,7 +139,7 @@ def pilot_suite() -> dict:
                     "name": f"exp1-{f.replace('_', '')}-{j}",
                     "flaw": [f, rate],
                     "games": GAMES,
-                    "seed": seed(EXP, f"player/{f}/{j}"),
+                    "seed": seed(SEED_NS, f"player/{f}/{j}"),
                 }
             )
     for j in range(CLEAN):
@@ -144,7 +148,7 @@ def pilot_suite() -> dict:
                 "name": f"exp1-clean-{j}",
                 "flaw": None,
                 "games": GAMES,
-                "seed": seed(EXP, f"player/clean/{j}"),
+                "seed": seed(SEED_NS, f"player/clean/{j}"),
             }
         )
     seeds = [p["seed"] for p in players]
@@ -225,8 +229,12 @@ def simulate_recall(
     delta: float,
     churn: float,
     sims: int,
+    tolerance: float | None = None,
 ) -> dict:
     """The decision rule on `sims` simulated suites of `m` players per flaw.
+
+    With `tolerance`, also the rule CI runs (`bench::results::regressions`): a regression when
+    the candidate's recall is below the reference's by more than `tolerance`.
 
     Each simulation draws each flaw's hit probability from Beta(h + 1/2, n - h + 1/2) (the
     pilot's h hits of n players), the reference outcome of every player from it, and the
@@ -262,9 +270,12 @@ def simulate_recall(
     _, _, hi_g = newcombe_paired(n11, n10, n01, n00, z_of(GUARD_LEVEL))
     ship = (lo_s > 0) & feasible
     flagged = (hi_g < 0) & feasible
+    drop = (n01 - n10) / (k * m)
+    ci_flagged = (drop > tolerance + 1e-9) & feasible if tolerance is not None else flagged
     return {
         "ship": float(ship.mean()),
         "flagged": float(flagged.mean()),
+        "ci_flagged": float(ci_flagged.mean()),
         "infeasible": float((~feasible).mean()),
         "mean_difference": float(((n10 - n01) / (k * m)).mean()),
     }
@@ -276,8 +287,10 @@ def mc_ci(p: float, sims: int) -> list[float]:
 
 
 def required_m(curve: list[dict], key: str = "ship") -> int | None:
-    for row in curve:
-        if row[key] >= TARGET_POWER:
+    """The smallest grid m from which the power stays at least the target for every larger m
+    (a single noisy crossing does not count)."""
+    for i, row in enumerate(curve):
+        if all(r[key] >= TARGET_POWER for r in curve[i:]):
             return row["players_per_flaw"]
     return None
 
@@ -373,10 +386,27 @@ def icc_oneway(vecs: dict[str, list[np.ndarray]]) -> float | None:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True)
-    out_dir = Path(ap.parse_args().out)
+    ap.add_argument(
+        "--algorithm",
+        default=None,
+        help="the algorithm_id the run must be on (default: whatever the cli is); the cli of "
+        "$REMATCH_CLI is the version that runs, and a different one stops the run",
+    )
+    ap.add_argument(
+        "--seed-namespace",
+        default=EXP,
+        help="the namespace of every named seed (default: the experiment id, the registered "
+        "seeds); another namespace draws a fresh replication",
+    )
+    args = ap.parse_args()
+    out_dir = Path(args.out)
+    global SEED_NS
+    SEED_NS = args.seed_namespace
     (out_dir / "figures").mkdir(parents=True, exist_ok=True)
 
     algorithm_id = lab.algorithm()["id"]
+    if args.algorithm is not None and algorithm_id != args.algorithm:
+        raise SystemExit(f"the cli is {algorithm_id}, not the requested {args.algorithm}")
     suite = pilot_suite()
     with tempfile.TemporaryDirectory() as tmp:
         suite_path = Path(tmp) / "suite.json"
@@ -394,7 +424,7 @@ def main() -> int:
 
     # Observed (descriptive): recall at 2 per checkpoint with Wilson 95%, per flaw; coverage.
     observed = {"recall_at_2": [], "coverage": [], "clean_rank1": []}
-    boot_rng = np.random.default_rng(seed(EXP, "bootstrap/observed"))
+    boot_rng = np.random.default_rng(seed(SEED_NS, "bootstrap/observed"))
     for g in CHECKPOINTS:
         hits = hits_at(rows, g)
         all_hits = [x for f in hits for x in hits[f]]
@@ -445,7 +475,7 @@ def main() -> int:
         )
 
     # Primary: power of the ship rule for +0.1 in recall at 2, per G, churn and players per flaw.
-    recall_ss = np.random.SeedSequence(seed(EXP, "power/recall"))
+    recall_ss = np.random.SeedSequence(seed(SEED_NS, "power/recall"))
     cells = [(g, b, m) for g in CHECKPOINTS for b in CHURN for m in M_GRID]
     streams = recall_ss.spawn(len(cells))
     power_recall = []
@@ -472,7 +502,11 @@ def main() -> int:
 
     # The budgets and the suites they allow.
     smoke_m = max(
-        (m for m in M_GRID if (len(FLAWS) * m + SMOKE_CLEAN) * SMOKE_GAMES <= SMOKE_BUDGET_GAMES),
+        (
+            m
+            for m in range(1, 1000)
+            if (len(FLAWS) * m + SMOKE_CLEAN) * SMOKE_GAMES <= SMOKE_BUDGET_GAMES
+        ),
         default=None,
     )
     full_budget_m = {
@@ -488,7 +522,7 @@ def main() -> int:
     }
 
     # Power, MDE and the guard at the budget sizes (exact m, not the grid).
-    smoke_ss = np.random.SeedSequence(seed(EXP, "power/smoke"))
+    smoke_ss = np.random.SeedSequence(seed(SEED_NS, "power/smoke"))
     budget_cells = [("smoke", SMOKE_GAMES, smoke_m)] + [
         ("full", g, full_budget_m[g]) for g in FULL_GAMES_OPTIONS
     ]
@@ -497,54 +531,81 @@ def main() -> int:
     for name, g, m in budget_cells:
         hits = hits_at(rows, g)
         row = {"suite": name, "games": g, "players_per_flaw": m, "flawed_players": m * len(FLAWS)}
+        n = m * len(FLAWS)
+        # The tolerance: the smallest number k of lost detections (none gained) whose 80% paired
+        # interval lies wholly below 0, from a reference at the pilot's recall at G (H hits of
+        # n, so n11 = H - k); a drop of k / n is flagged by CI, k - 1 is not.
+        pilot_recall = sum(sum(v) for v in hits.values()) / sum(len(v) for v in hits.values())
+        big_h = int(round(pilot_recall * n))
+        kstar = None
+        for k in range(1, big_h + 1):
+            _, _, hi = newcombe_paired(
+                np.array(float(big_h - k)),
+                np.array(0.0),
+                np.array(float(k)),
+                np.array(float(n - big_h)),
+                z_of(GUARD_LEVEL),
+            )
+            if float(hi) < 0:
+                kstar = k
+                break
+        tol = None if kstar is None else round((kstar - 0.5) / n, 3)
+        row["reference_hits"] = big_h
+        row["guard_k_lost"] = kstar
+        row["recall_tolerance"] = r6(tol)
         ship = simulate_recall(
             np.random.default_rng(next(budget_streams)), hits, m, DELTA, PRIMARY_CHURN, SIMS_RECALL
         )
         row["ship_power_delta_0_1"] = r6(ship["ship"])
         row["ship_power_mc_ci95"] = mc_ci(ship["ship"], SIMS_RECALL)
         null = simulate_recall(
-            np.random.default_rng(next(budget_streams)), hits, m, 0.0, PRIMARY_CHURN, SIMS_RECALL
+            np.random.default_rng(next(budget_streams)), hits, m, 0.0, PRIMARY_CHURN, SIMS_RECALL,
+            tol,
         )
         row["guard_false_alarm_delta_0"] = r6(null["flagged"])
+        row["ci_rule_false_alarm_delta_0"] = r6(null["ci_flagged"])
         mde_ship = None
         mde_guard = None
+        mde_ci = None
         curve = []
         for d in DELTA_GRID:
             s = simulate_recall(
                 np.random.default_rng(next(budget_streams)), hits, m, d, PRIMARY_CHURN, SIMS_RECALL
             )
             r = simulate_recall(
-                np.random.default_rng(next(budget_streams)), hits, m, -d, PRIMARY_CHURN, SIMS_RECALL
+                np.random.default_rng(next(budget_streams)),
+                hits,
+                m,
+                -d,
+                PRIMARY_CHURN,
+                SIMS_RECALL,
+                tol,
             )
-            curve.append({"delta": d, "ship": r6(s["ship"]), "guard_flags_drop": r6(r["flagged"])})
+            curve.append(
+                {
+                    "delta": d,
+                    "ship": r6(s["ship"]),
+                    "guard_flags_drop": r6(r["flagged"]),
+                    "ci_rule_flags_drop": r6(r["ci_flagged"]),
+                }
+            )
             if mde_ship is None and s["ship"] >= TARGET_POWER:
                 mde_ship = d
             if mde_guard is None and r["flagged"] >= TARGET_POWER:
                 mde_guard = d
+            if mde_ci is None and r["ci_flagged"] >= TARGET_POWER:
+                mde_ci = d
         row["curve"] = curve
         row["mde_ship"] = mde_ship
         row["mde_guard_drop"] = mde_guard
-        n = m * len(FLAWS)
-        # The tolerance: the smallest number k of lost detections (no gains) whose 80% paired
-        # interval lies wholly below 0; a drop of k / n is flagged, k - 1 is not.
-        kstar = None
-        for k in range(1, n + 1):
-            _, _, hi = newcombe_paired(
-                np.array(0.0), np.array(0.0), np.array(float(k)), np.array(float(n - k)),
-                z_of(GUARD_LEVEL),
-            )
-            if float(hi) < 0:
-                kstar = k
-                break
-        row["guard_k_lost"] = kstar
-        row["recall_tolerance"] = None if kstar is None else r6(round((kstar - 0.5) / n, 3))
+        row["mde_ci_rule_drop"] = mde_ci
         row["games_total"] = (
             (n + SMOKE_CLEAN) * g if name == "smoke" else (n + FULL_SWEEP_PLAYERS + FULL_CLEAN) * g
         )
         at_budget.append(row)
 
     # Secondary: coverage precision and power at the grid and budget sizes.
-    cov_ss = np.random.SeedSequence(seed(EXP, "power/coverage"))
+    cov_ss = np.random.SeedSequence(seed(SEED_NS, "power/coverage"))
     cov_m = [1, 2, 3, 4, 6, 8, 13, 20, 32, 64]
     cov_cells = [(g, m) for g in (80, 120) for m in cov_m]
     cov_streams = cov_ss.spawn(len(cov_cells) + 1)
@@ -554,8 +615,10 @@ def main() -> int:
             np.random.default_rng(ss), coverage_vectors(rows, g), m, SIMS_COVERAGE, PRIMARY_CHURN
         )
         coverage_power.append({"games_up_to": g, "players_per_flaw": m, **res})
-    # The coverage tolerance at the smoke size: 1.2816 x the SD of the paired difference when the
-    # true change is 0 (churn only), from the interval-flip model.
+    # The coverage tolerance at the smoke size, on the statistic CI checks: the growth of the
+    # distance from 0.8, |c' - 0.8| - |c - 0.8|, when the true change is 0 (churn only), with
+    # the player-by-player flips (the clustered, wider model); its 80th percentile, so churn
+    # alone exceeds it 20% of the time.
     null_rng = np.random.default_rng(cov_streams[-1])
     vecs80 = coverage_vectors(rows, SMOKE_GAMES)
     diffs = np.empty(SIMS_COVERAGE)
@@ -568,10 +631,13 @@ def main() -> int:
         allv = np.concatenate(players)
         cbar = allv.mean()
         gain = PRIMARY_CHURN * cbar / (1 - cbar) if cbar < 1 else 0.0
-        u = null_rng.random(allv.size)
-        v2 = np.where(allv, u >= PRIMARY_CHURN, u < gain)
-        diffs[s] = v2.mean() - allv.mean()
-    coverage_tolerance = r6(round(1.281552 * diffs.std(ddof=1), 3))
+        flipped = []
+        for v in players:
+            ug, ul = null_rng.random(2)
+            flipped.append(np.where(v, ul >= PRIMARY_CHURN, ug < gain))
+        c2 = np.concatenate(flipped).mean()
+        diffs[s] = abs(c2 - 0.8) - abs(cbar - 0.8)
+    coverage_tolerance = r6(round(float(np.quantile(diffs, 0.8)), 3))
 
     # The decision (section 9).
     primary_required = {g: required[f"{g}/{PRIMARY_CHURN}"] for g in FULL_GAMES_OPTIONS}
@@ -647,6 +713,7 @@ def main() -> int:
             "ship_level": SHIP_LEVEL,
             "guard_level": GUARD_LEVEL,
             "seed_names": SEED_NAMES,
+            "seed_namespace": SEED_NS,
         },
     }
     write_results(out_dir, results)

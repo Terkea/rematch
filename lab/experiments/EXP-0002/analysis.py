@@ -25,6 +25,8 @@ from rematch_lab.experiments import seed, write_results
 from rematch_lab.models import BandReferenceStat, LabPoint, PlayerFacts, ProfileRequest
 
 EXP = "EXP-0002"
+# The seed namespace (--seed-namespace); the registered run uses the experiment id.
+SEED_NS = EXP
 
 # ---- the design (section 7) --------------------------------------------------------------------
 # key: chances per game, the B2 peers' rate, whether its prior is a peer row (else the evaluation
@@ -40,7 +42,12 @@ KEYS = {
 # Odds multiplier of the peers' rate per band, relative to B2 (section 7).
 BANDS = {"B1": 1.25, "B2": 1.0, "B3": 0.8}
 RHOS = [0.5, 1.0, 2.0, 4.0, 8.0]
-PRIMARY_RHOS = (2.0, 4.0)
+PRIMARY_RHOS = (2.0, 4.0, 8.0)
+# The schedule: two games a day (the product's recency weights apply), or every game inside the
+# last day (weights of about 1), the contrast that separates the weighting from the prior.
+RECENCIES = ["spread", "compressed"]
+# The #13 case (docs/benchmark.md): W1 against opponents at 0.0008 with a true rate of 0.023.
+ISSUE13 = {"key": "W1", "peer": 0.0008, "theta": 0.023, "band": "B2"}
 DISPERSIONS = ["none", "de1.5"]
 DESIGN_EFFECT = 1.5
 CHECKPOINTS = [30, 60, 120, 250]
@@ -56,6 +63,7 @@ PIT_LEVELS = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95]
 
 CELLS = [(b, r, d) for b in BANDS for r in RHOS for d in DISPERSIONS]
 SEED_NAMES = [f"players/{b}/{r}/{d}" for b, r, d in CELLS] + [
+    *[f"issue13/{d}" for d in DISPERSIONS],
     "bootstrap/primary",
     "bootstrap/margins",
 ]
@@ -122,8 +130,15 @@ def events(
 
 
 def simulate_cell(band: str, rho: float, disp: str) -> dict[str, np.ndarray]:
-    """Every player of a cell: per key, (players, games) chances and events, in key order."""
-    rng = np.random.default_rng(seed(EXP, f"players/{band}/{rho}/{disp}"))
+    """Every player of a cell: per key, (players, games) chances and events, in key order. The
+    #13 cell (rho "issue13") has W1 only, at its own rates."""
+    if rho == "issue13":
+        rng = np.random.default_rng(seed(SEED_NS, f"issue13/{disp}"))
+        k = KEYS["W1"]
+        c = chances(rng, k["chances"], PLAYERS_PER_CELL * GAMES).reshape(PLAYERS_PER_CELL, GAMES)
+        e = events(rng, c.ravel(), ISSUE13["theta"], k["per_game"], disp).reshape(c.shape)
+        return {"W1": np.stack([c, e])}
+    rng = np.random.default_rng(seed(SEED_NS, f"players/{band}/{rho}/{disp}"))
     out = {}
     for key, k in KEYS.items():
         theta = true_rate(key, band, rho)
@@ -133,20 +148,33 @@ def simulate_cell(band: str, rho: float, disp: str) -> dict[str, np.ndarray]:
     return out
 
 
-PLAYED = [ANCHOR - SPACING * GAMES + SPACING * i for i in range(GAMES)]
+PLAYED = {
+    "spread": [ANCHOR - SPACING * GAMES + SPACING * i for i in range(GAMES)],
+    # Every game in the 24 hours before the anchor: ages under a day, weights above 0.988.
+    "compressed": [ANCHOR - timedelta(hours=24) + timedelta(hours=24) * i / GAMES for i in range(GAMES)],
+}
 
 
-def facts(band: str, pid: str, data: dict[str, np.ndarray], i: int, g: int) -> PlayerFacts:
-    now = PLAYED[g - 1] + timedelta(hours=1)
+def theta_of(key: str, band: str, rho) -> float:
+    return ISSUE13["theta"] if rho == "issue13" else true_rate(key, band, rho)
+
+
+def facts(
+    band: str, pid: str, data: dict[str, np.ndarray], i: int, g: int, recency: str, rho
+) -> PlayerFacts:
+    played = PLAYED[recency]
+    now = played[g - 1] + timedelta(hours=1)
     series = {
         key: [
-            LabPoint(played_at=PLAYED[t], events=int(arr[1, i, t]), opportunities=int(arr[0, i, t]))
+            LabPoint(played_at=played[t], events=int(arr[1, i, t]), opportunities=int(arr[0, i, t]))
             for t in range(g)
         ]
         for key, arr in data.items()
     }
     reference = {
-        f"weakness:{key}": stat(key, peer_rate(key, band), peer=True)
+        f"weakness:{key}": stat(
+            key, ISSUE13["peer"] if rho == "issue13" else peer_rate(key, band), peer=True
+        )
         for key, k in KEYS.items()
         if k["peer"]
     }
@@ -161,7 +189,11 @@ def run_profiles() -> tuple[str, list[dict]]:
     """Scores every interval: one row per (cell, player, key, checkpoint)."""
     rows: list[dict] = []
     algorithm_id = None
-    for band, rho, disp in CELLS:
+    plan = [(b, r, d, rec) for b, r, d in CELLS for rec in RECENCIES] + [
+        (ISSUE13["band"], "issue13", d, "spread") for d in DISPERSIONS
+    ]
+    for band, rho, disp, recency in plan:
+        # The same draws for both schedules (paired): only the dates differ.
         data = simulate_cell(band, rho, disp)
         pending: list[tuple[PlayerFacts, int, int]] = []
 
@@ -178,13 +210,14 @@ def run_profiles() -> tuple[str, list[dict]]:
                 if p.id != f.id:
                     raise SystemExit("profile responses out of order")
                 by_key = {e.key: e for e in p.estimates}
-                for key in KEYS:
+                for key in data:
                     e = by_key[key]
-                    theta = true_rate(key, band, rho)
+                    theta = theta_of(key, band, rho)
                     post = e.posterior
                     rows.append(
                         {
-                            "band": band, "rho": rho, "disp": disp, "player": i, "key": key,
+                            "band": band, "rho": rho, "disp": disp, "recency": recency,
+                            "player": i, "key": key, "credible": e.credible,
                             "games": g, "theta": theta, "low": post.interval.low,
                             "high": post.interval.high, "mean": post.mean,
                             "covered": post.interval.low <= theta <= post.interval.high,
@@ -197,8 +230,8 @@ def run_profiles() -> tuple[str, list[dict]]:
 
         for i in range(PLAYERS_PER_CELL):
             for g in CHECKPOINTS:
-                pid = f"{band}-{rho}-{disp}-{i:03d}-{g}"
-                pending.append((facts(band, pid, data, i, g), i, g))
+                pid = f"{band}-{rho}-{disp}-{recency}-{i:03d}-{g}"
+                pending.append((facts(band, pid, data, i, g, recency, rho), i, g))
                 if len(pending) >= CHUNK:
                     flush()
         flush()
@@ -214,12 +247,11 @@ def player_means(rows: list[dict], pred) -> dict[tuple, np.ndarray]:
     acc: dict[tuple, dict[int, list[bool]]] = {}
     for r in rows:
         if pred(r):
-            acc.setdefault((r["band"], r["rho"], r["disp"]), {}).setdefault(r["player"], []).append(
-                r["covered"]
-            )
+            cell = (r["band"], r["rho"], r["disp"], r["recency"])
+            acc.setdefault(cell, {}).setdefault(r["player"], []).append(r["covered"])
     return {
         cell: np.array([np.mean(v) for _, v in sorted(players.items())])
-        for cell, players in sorted(acc.items())
+        for cell, players in sorted(acc.items(), key=lambda kv: str(kv[0]))
     }
 
 
@@ -234,6 +266,17 @@ def stratified_boot(rng: np.random.Generator, by_cell: dict[tuple, np.ndarray]) 
 
 def estimate(by_cell: dict[tuple, np.ndarray]) -> float:
     return float(np.mean([y.mean() for y in by_cell.values()]))
+
+
+def wilson95(x: int, n: int) -> list:
+    if n == 0:
+        return [None, None]
+    z = 1.959964
+    p = x / n
+    den = 1 + z * z / n
+    c = (p + z * z / (2 * n)) / den
+    h = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / den
+    return [r6(c - h), r6(c + h)]
 
 
 def classify(lo: float, hi: float) -> str:
@@ -258,43 +301,97 @@ def holm(pvals: list[float]) -> list[float]:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True)
-    out_dir = Path(ap.parse_args().out)
+    ap.add_argument(
+        "--algorithm",
+        default=None,
+        help="the algorithm_id the run must be on (default: whatever the cli is); the cli of "
+        "$REMATCH_CLI is the version that runs, and a different one stops the run",
+    )
+    ap.add_argument(
+        "--seed-namespace",
+        default=EXP,
+        help="the namespace of every named seed (default: the experiment id, the registered "
+        "seeds); another namespace draws a fresh replication",
+    )
+    args = ap.parse_args()
+    out_dir = Path(args.out)
+    global SEED_NS
+    SEED_NS = args.seed_namespace
     (out_dir / "figures").mkdir(parents=True, exist_ok=True)
 
+    if args.algorithm is not None and lab.algorithm()["id"] != args.algorithm:
+        raise SystemExit(f"the cli is not the requested {args.algorithm}")
     algorithm_id, rows = run_profiles()
 
-    # Primary: coverage over rho in {2, 4}, every key, band, dispersion and checkpoint.
-    prim = player_means(rows, lambda r: r["rho"] in PRIMARY_RHOS)
-    point = estimate(prim)
-    boots = stratified_boot(np.random.default_rng(seed(EXP, "bootstrap/primary")), prim)
-    ci = {
-        lvl: [r6(float(np.quantile(boots, 0.5 - lvl / 2))), r6(float(np.quantile(boots, 0.5 + lvl / 2)))]
-        for lvl in (0.80, 0.95, 0.975)
-    }
+    spread = [r for r in rows if r["recency"] == "spread" and r["rho"] != "issue13"]
+    in_primary = [r for r in spread if r["rho"] in PRIMARY_RHOS]
+
+    # Primary: the 20 key x checkpoint coverages at rho in {2, 4, 8} (two games a day), each
+    # pooled over band and dispersion with cells weighted equally; Bonferroni intervals for 20.
+    prng = np.random.default_rng(seed(SEED_NS, "bootstrap/primary"))
+    z_prim = float(stats.norm.ppf(1 - 0.05 / (2 * len(KEYS) * len(CHECKPOINTS))))
+    primary_cells = []
+    for key in KEYS:
+        for g in CHECKPOINTS:
+            by = player_means(in_primary, lambda r, k=key, gg=g: r["key"] == k and r["games"] == gg)
+            est = estimate(by)
+            bs = stratified_boot(prng, by)
+            se = float(bs.std(ddof=1))
+            lo, hi = est - z_prim * se, est + z_prim * se
+            primary_cells.append(
+                {
+                    "key": key,
+                    "games": g,
+                    "coverage": r6(est),
+                    "ci95": [r6(float(np.quantile(bs, 0.025))), r6(float(np.quantile(bs, 0.975)))],
+                    "ci_bonferroni": [r6(lo), r6(hi)],
+                    "classification": classify(lo, hi),
+                }
+            )
+    classes = [c["classification"] for c in primary_cells]
+    if all(c == "within the band" for c in classes):
+        primary_decision = "within the band"
+    elif any(c == "outside the band" for c in classes):
+        primary_decision = "outside the band"
+    else:
+        primary_decision = "need more data"
+    worst = max(primary_cells, key=lambda c: abs(c["coverage"] - NOMINAL))
+    pooled = player_means(in_primary, lambda r: True)
+    pooled_bs = stratified_boot(prng, pooled)
     primary = {
-        "estimand": "coverage of the 80% interval, rho in {2, 4}, cells weighted equally",
-        "coverage": r6(point),
-        "ci80": ci[0.80],
-        "ci95": ci[0.95],
-        "ci975": ci[0.975],
-        "players": int(sum(y.size for y in prim.values())),
-        "intervals": sum(1 for r in rows if r["rho"] in PRIMARY_RHOS),
-        "decision": classify(ci[0.95][0], ci[0.95][1]),
+        "estimand": "each key x checkpoint coverage of the 80% interval, rho in {2, 4, 8}, "
+        "two games a day, pooled over band and dispersion",
+        "z_bonferroni": r6(z_prim),
+        "cells": primary_cells,
+        "outside": sum(c == "outside the band" for c in classes),
+        "within": sum(c == "within the band" for c in classes),
+        "worst": worst,
+        "pooled_coverage": r6(estimate(pooled)),
+        "pooled_ci95": [
+            r6(float(np.quantile(pooled_bs, 0.025))),
+            r6(float(np.quantile(pooled_bs, 0.975))),
+        ],
+        "players": int(sum(y.size for y in pooled.values())),
+        "intervals": len(in_primary),
+        "decision": primary_decision,
     }
 
-    # Confirmatory margins (Holm over the 19), each over the whole grid, cells weighted equally.
+    # Confirmatory margins (Holm over the 21): key, band (the peers' rate), checkpoint and
+    # dispersion at the primary rhos and two games a day; rho over every rho at two games a day;
+    # the schedule at the primary rhos.
     margins_def = (
-        [("key", k) for k in KEYS]
-        + [("band", b) for b in BANDS]
-        + [("rho", r) for r in RHOS]
-        + [("games", g) for g in CHECKPOINTS]
-        + [("disp", d) for d in DISPERSIONS]
+        [("key", k, in_primary) for k in KEYS]
+        + [("band", b, in_primary) for b in BANDS]
+        + [("games", g, in_primary) for g in CHECKPOINTS]
+        + [("disp", d, in_primary) for d in DISPERSIONS]
+        + [("rho", r, spread) for r in RHOS]
+        + [("recency", rec, [r for r in rows if r["rho"] in PRIMARY_RHOS]) for rec in RECENCIES]
     )
-    mrng = np.random.default_rng(seed(EXP, "bootstrap/margins"))
+    mrng = np.random.default_rng(seed(SEED_NS, "bootstrap/margins"))
     z_bonf = float(stats.norm.ppf(1 - 0.05 / (2 * len(margins_def))))
     margins = []
-    for factor, level in margins_def:
-        by = player_means(rows, lambda r, f=factor, v=level: r[f] == v)
+    for factor, level, subset in margins_def:
+        by = player_means(subset, lambda r, f=factor, v=level: r[f] == v)
         est = estimate(by)
         bs = stratified_boot(mrng, by)
         se = float(bs.std(ddof=1))
@@ -303,36 +400,80 @@ def main() -> int:
         lo, hi = est - z_bonf * se, est + z_bonf * se
         margins.append(
             {
-                "factor": factor, "level": level, "coverage": r6(est),
+                "factor": factor,
+                "level": level,
+                "coverage": r6(est),
                 "ci95": [r6(float(np.quantile(bs, 0.025))), r6(float(np.quantile(bs, 0.975)))],
-                "ci_bonferroni": [r6(lo), r6(hi)], "p_vs_0_80": r6(p),
+                "ci_bonferroni": [r6(lo), r6(hi)],
+                "p_vs_0_80": r6(p),
                 "classification": classify(lo, hi),
             }
         )
     for m, adj in zip(margins, holm([m["p_vs_0_80"] for m in margins]), strict=True):
         m["p_holm"] = r6(adj)
 
+    # Secondary: coverage among the estimates Rematch shows (credible), per key, every rho, two
+    # games a day; and the #13 cell. Wilson 95% over intervals, descriptive: a player can give
+    # up to four checkpoints, so these intervals are too narrow.
+    credible = []
+    for key in KEYS:
+        rs = [r for r in spread if r["key"] == key and r["credible"]]
+        x = sum(r["covered"] for r in rs)
+        credible.append(
+            {
+                "key": key,
+                "intervals": len(rs),
+                "players": len({(r["band"], r["rho"], r["disp"], r["player"]) for r in rs}),
+                "coverage": r6(x / len(rs)) if rs else None,
+                "ci95_wilson": wilson95(x, len(rs)),
+                "below": r6(sum(r["high"] < r["theta"] for r in rs) / len(rs)) if rs else None,
+            }
+        )
+    issue13 = []
+    for d in DISPERSIONS:
+        for g in CHECKPOINTS:
+            rs = [r for r in rows if r["rho"] == "issue13" and r["disp"] == d and r["games"] == g]
+            x = sum(r["covered"] for r in rs)
+            issue13.append(
+                {
+                    "disp": d,
+                    "games": g,
+                    "players": len(rs),
+                    "coverage": r6(x / len(rs)),
+                    "ci95": wilson95(x, len(rs)),
+                    "below": r6(sum(r["high"] < r["theta"] for r in rs) / len(rs)),
+                    "mean_ratio": r6(float(np.mean([r["mean"] / r["theta"] for r in rs]))),
+                    "credible": r6(sum(r["credible"] for r in rs) / len(rs)),
+                }
+            )
+
     # Exploratory: every cell (one interval per player: Wilson 95%), the calibration curve
     # from the posterior's PIT, and the bias of the posterior mean.
     cells = []
     groups: dict[tuple, list[dict]] = {}
     for r in rows:
-        groups.setdefault((r["key"], r["band"], r["rho"], r["disp"], r["games"]), []).append(r)
-    for (key, band, rho, disp, g), rs in sorted(groups.items()):
+        if r["rho"] == "issue13":
+            continue
+        cell = (r["key"], r["band"], r["rho"], r["disp"], r["recency"], r["games"])
+        groups.setdefault(cell, []).append(r)
+    for (key, band, rho, disp, rec, g), rs in sorted(groups.items(), key=lambda kv: str(kv[0])):
         n = len(rs)
         x = sum(r["covered"] for r in rs)
-        z = 1.959964
-        p = x / n
-        den = 1 + z * z / n
-        c = (p + z * z / (2 * n)) / den
-        h = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / den
         cells.append(
             {
-                "key": key, "band": band, "rho": rho, "disp": disp, "games": g,
-                "theta": r6(rs[0]["theta"]), "players": n, "coverage": r6(p),
-                "ci95": [r6(c - h), r6(c + h)],
+                "key": key,
+                "band": band,
+                "rho": rho,
+                "disp": disp,
+                "recency": rec,
+                "games": g,
+                "theta": r6(rs[0]["theta"]),
+                "players": n,
+                "coverage": r6(x / n),
+                "ci95": wilson95(x, n),
                 "below": r6(sum(r["high"] < r["theta"] for r in rs) / n),
                 "above": r6(sum(r["low"] > r["theta"] for r in rs) / n),
+                "credible": r6(sum(r["credible"] for r in rs) / n),
                 "mean_ratio": r6(float(np.mean([r["mean"] / r["theta"] for r in rs]))),
                 "median_width_ratio": r6(
                     float(np.median([(r["high"] - r["low"]) / r["theta"] for r in rs]))
@@ -342,17 +483,15 @@ def main() -> int:
         )
     calibration = []
     for rho in RHOS:
-        pits = np.array([r["pit"] for r in rows if r["rho"] == rho])
+        pits = np.array([r["pit"] for r in spread if r["rho"] == rho])
         calibration.append(
             {
                 "rho": rho,
                 "levels": PIT_LEVELS,
-                "empirical": [
-                    r6(float(np.mean(np.abs(pits - 0.5) <= q / 2))) for q in PIT_LEVELS
-                ],
+                "empirical": [r6(float(np.mean(np.abs(pits - 0.5) <= q / 2))) for q in PIT_LEVELS],
             }
         )
-    pits_all = np.array([r["pit"] for r in rows if r["rho"] in PRIMARY_RHOS])
+    pits_all = np.array([r["pit"] for r in in_primary])
     calibration_primary = [r6(float(np.mean(np.abs(pits_all - 0.5) <= q / 2))) for q in PIT_LEVELS]
 
     results = {
@@ -370,12 +509,16 @@ def main() -> int:
             "bands": BANDS,
             "rhos": RHOS,
             "dispersions": DISPERSIONS,
+            "recencies": RECENCIES,
             "checkpoints": CHECKPOINTS,
             "players_per_cell": PLAYERS_PER_CELL,
             "seed_names": SEED_NAMES,
+            "seed_namespace": SEED_NS,
         },
         "primary": primary,
         "margins": margins,
+        "credible": credible,
+        "issue13": {"case": ISSUE13, "rows": issue13},
         "cells": cells,
         "calibration": calibration,
         "calibration_primary": {"levels": PIT_LEVELS, "empirical": calibration_primary},
@@ -412,7 +555,10 @@ def figures(fig_dir: Path, res: dict) -> None:
                 cs = [
                     c["coverage"]
                     for c in res["cells"]
-                    if c["key"] == key and c["rho"] == rho and c["games"] == g
+                    if c["key"] == key
+                    and c["rho"] == rho
+                    and c["games"] == g
+                    and c["recency"] == "spread"
                 ]
                 ys.append(float(np.mean(cs)))
             ax.plot(CHECKPOINTS, ys, marker="o", ms=3, label=f"rho {rho}")
