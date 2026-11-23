@@ -15,7 +15,6 @@ import {
   probablyAbove,
   shareRangeText,
   shareText,
-  WeaknessRowKey,
   weaknessRateText,
   weaknessScaleMax,
 } from "@ci/ui/profile";
@@ -38,7 +37,7 @@ import { type GlossaryEntry, seriesGlossary } from "../../../../../server/profil
 import { ESTIMATE_WINDOW_TEXT } from "../../../../../server/profile/window";
 import { SectionHead } from "../../_overview/section-head";
 import { scopeQuery, WEEKLY_MIN_CHANCES } from "../queries";
-import { morphName } from "../weaknesses-view";
+import { BandKey, morphName } from "../weaknesses-view";
 import { Examples } from "./exemplars";
 
 // `/app/weaknesses/[seriesKey]` (M5b Task 7, rewritten as a story): one weakness, top down. The
@@ -326,7 +325,11 @@ function Standing({ detail, benchmark }: { detail: WeaknessDetail; benchmark: Be
         {none ? null : (
           <>
             <IntervalScale rate={detail.rate} median={median} early={early} />
-            {early ? <EarlyKey group={group} /> : <WeaknessRowKey className="text-xs" />}
+            {early ? (
+              <EarlyKey group={group} />
+            ) : (
+              <BandKey benchmark={benchmark} className="text-xs" />
+            )}
           </>
         )}
         <div className="flex flex-col gap-1 text-sm" style={LINING}>
