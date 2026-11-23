@@ -12,7 +12,7 @@ const SECTIONS = [
  */
 export default function Loading() {
   return (
-    <div className="flex flex-col gap-12">
+    <div data-route-loading className="flex flex-col gap-12">
       <PageHeading title="Strengths" />
       <div role="status" className="flex flex-col gap-10">
         <p className="font-serif text-base text-ink-soft">Reading your strengths</p>

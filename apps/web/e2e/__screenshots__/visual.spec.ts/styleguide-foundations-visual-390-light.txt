@@ -68,6 +68,10 @@ pencil
 #56657f
 5.74:1 on sheet
 passes 3:1
+crayon
+#e3a92f
+1.93:1 lowest, on paper
+passes 1.8:1
 
 Board and pieces
 
@@ -165,6 +169,10 @@ pencil
 #97a6c0
 6.42:1 on sheet
 passes 3:1
+crayon
+#d9a441
+7.03:1 lowest, on sheet
+passes 1.8:1
 
 Board and pieces
 
@@ -229,6 +237,9 @@ Three moments decided this game.
 xl 21/28
 panel headings, Literata 600
 Critical moments
+3xl, hand 36/42
+margin note: Caveat 600, empty states and celebrations only
+same knight again
 2xl 24/30
 page section headings
 Opening development

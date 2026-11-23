@@ -1,0 +1,25 @@
+Hand-made touches
+
+The hand-made touches show only where nothing is being measured: empty states, the landing page, a drill solved and milestones. Boards, graphs, tables and numbers stay crisp.
+
+Empty state
+
+Connect a chess.com account to see your games here.
+
+let's go through your games
+
+The note repeats the sentence above it, so screen readers skip it.
+
+A drill solved
+
+Right: Rd8# mates. (Morphy, Paris 1858)
+
+there you go
+
+The crayon is only for a celebration. The verdict says what happened; the note and the crayon are decoration.
+
+A note with its own words
+
+same knight again
+
+When a note says something the page doesn't, its label is what a screen reader hears.

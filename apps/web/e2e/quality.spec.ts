@@ -26,7 +26,7 @@ interface Route {
 
 const ROUTES: Route[] = [
   {
-    url: "/styleguide",
+    url: "/styleguide?render=all",
     who: "anonymous",
     ready: "[data-section='charts'] button[aria-label]",
     main: (p) => p.locator("main").locator("a[href], button").first(),
@@ -117,7 +117,9 @@ test.describe("quality", () => {
       const page = await context.newPage();
       try {
         await gotoSettled(page, route.url);
-        expect(new URL(page.url()).pathname, "the route stays put").toBe(route.url);
+        expect(new URL(page.url()).pathname, "the route stays put").toBe(
+          new URL(route.url, page.url()).pathname,
+        );
         await hydrated(page, route.ready);
         await page.evaluate(() => document.fonts.ready);
 
