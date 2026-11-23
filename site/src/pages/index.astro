@@ -106,7 +106,7 @@ const roles = [
   },
   {
     who: "Chess coaches and strong players",
-    what: "Tell us what a 1200 should practise and how a good coach would say it. There is an issue form for coaching ideas.",
+    what: "Tell us what a 1200 should practise and how a good coach would say it. Players rated 2000+ most of all: nobody at that level has tested it yet. There is an issue form for coaching ideas.",
   },
   {
     who: "Designers",
@@ -145,7 +145,7 @@ const faq = [
   },
   {
     q: "How strong do I need to be?",
-    a: "It is designed around club players from about 1000 to 2000, and works from beginner up: what it ranks and how it explains it follow your rating band.",
+    a: "For anyone who knows how the pieces move, up to about 2000. Above 2000 it hasn't been tested with real players yet; if you're 2000+, tell us where it's wrong. What it ranks and how the coach explains it follow your rating band.",
   },
   {
     q: "What do I need to run it?",
@@ -180,6 +180,11 @@ const faq = [
       <p class="fineprint">
         Beta, version {VERSION}. Open source under the AGPL-3.0. Built in the open, and{" "}
         <a href={href("docs/decisions/")}>every decision is written down</a>.
+      </p>
+      <p class="fineprint">
+        For anyone who knows how the pieces move, up to about 2000. Above 2000 it hasn't been
+        tested with real players yet; if you're 2000+,{" "}
+        <a href={`${REPO_URL}/issues/new?template=coaching_idea.yml`}>tell us where it's wrong</a>.
       </p>
     </div>
     <Video class="hero-video" />

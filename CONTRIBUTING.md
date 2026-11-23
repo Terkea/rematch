@@ -28,7 +28,8 @@ in [GOVERNANCE.md](GOVERNANCE.md), and the whole lifecycle of a change is in
   on it first so two people don't build the same thing.
 - Share chess knowledge. Strong players and coaches can open a
   [coaching idea](https://github.com/Terkea/rematch/issues/new?template=coaching_idea.yml). No
-  code needed.
+  code needed. Rematch is for anyone who knows how the pieces move, up to about 2000. Above 2000
+  it hasn't been tested with real players yet; if you're 2000+, tell us where it's wrong.
 - Report a bug with the bug form. Please keep reports free of personal data.
 - Ask or propose in [Discussions](https://github.com/Terkea/rematch/discussions) before a large
   change, so we agree on the shape before you spend a weekend on it.

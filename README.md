@@ -6,6 +6,8 @@ Stop losing to the same move.
 
 Rematch is an open-source coach for chess.com players. Stockfish checks every move of your games, Rematch names the mistakes you keep repeating, drills you on your own missed moments and tells you, with honest numbers, whether it's working.
 
+For anyone who knows how the pieces move, up to about 2000. Above 2000 it hasn't been tested with real players yet; if you're 2000+, [tell us where it's wrong](https://github.com/Terkea/rematch/issues/new?template=coaching_idea.yml).
+
 [![CI](https://github.com/Terkea/rematch/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Terkea/rematch/actions/workflows/ci.yml)
 [![Licence: AGPL-3.0](https://img.shields.io/badge/licence-AGPL--3.0-16233b)](LICENSE)
 [![Version](https://img.shields.io/badge/version-v0.x%20%C2%B7%20beta-56657f)](docs/SDLC.md)
@@ -541,7 +543,7 @@ Five kinds of help move it forward most:
 - TypeScript and React developers: the Next.js app and its design system.
 - Chess coaches and strong players: what should a 1200 practise, and how would a good coach say it? Open a [coaching idea](https://github.com/Terkea/rematch/issues/new?template=coaching_idea.yml).
 - Designers: the annotated-scoresheet system in [`packages/ui/DESIGN.md`](packages/ui/DESIGN.md).
-- Testers: run it on your own games and tell us where it's wrong.
+- Testers: run it on your own games and tell us where it's wrong. Players rated 2000+ most of all: nobody at that level has tested it yet.
 
 Start with a [good first issue](https://github.com/Terkea/rematch/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22), say hello in [Discussions](https://github.com/Terkea/rematch/discussions), and read [CONTRIBUTING.md](CONTRIBUTING.md). AI-assisted pull requests are welcome: [CLAUDE.md](CLAUDE.md) and [`.claude/skills`](.claude/skills) are the house rules. Everyone follows the [code of conduct](CODE_OF_CONDUCT.md); security reports go through [SECURITY.md](SECURITY.md).
 

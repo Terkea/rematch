@@ -7,7 +7,7 @@ The tokens are implemented in `packages/ui/src/styles/tokens.css`. That file and
 ## Subject, audience and job
 
 - **Subject:** a chess-coaching app that reads a player's own games and marks them up the way a parent teaches a child at the board: it sits beside you, rings the mistake you keep making in red pen, and asks you to try it again.
-- **Audience:** a 1000–2000 club player reviewing their own games on a laptop or phone.
+- **Audience:** anyone who knows how the pieces move, up to about 2000, reviewing their own games on a laptop or phone. Above 2000 it hasn't been tested with real players yet.
 - **Job:** to see, precisely, where they went wrong and what to practise.
 
 Every screen should answer "where did I go wrong, and what do I do about it?" faster than the one before.
