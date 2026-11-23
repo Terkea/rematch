@@ -45,6 +45,19 @@ jobs:
         run: node scripts/check-npm-age.mjs
       - name: Repository settings as code (the ruleset requires exactly these jobs, ADR 0095)
         run: node scripts/github/test-settings.mjs
+      # ADR 0105: a changed algorithm component needs a version bump by the policy and a
+      # changelog entry. On a pull request the base is the target branch's tip.
+      - name: The algorithm version guard and its tests (ADR 0105)
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          node scripts/algorithm/test-check.mjs
+          if [ -n "$BASE_REF" ]; then
+            git fetch --no-tags --depth=1 origin "$BASE_REF"
+            ALGO_BASE=FETCH_HEAD node scripts/algorithm/check.mjs
+          else
+            node scripts/algorithm/check.mjs
+          fi
       - name: The README's roadmap summary is current, and the sweep checks' tests (ADR 0099)
         run: |
           node scripts/roadmap/render-readme.mjs --check
