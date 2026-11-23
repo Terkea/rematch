@@ -91,6 +91,9 @@ WORKDIR /work/backend
 RUN cargo chef prepare --recipe-path recipe.json
 
 FROM chef AS builder
+# Optional cap on parallel rustc jobs (`--build-arg CARGO_BUILD_JOBS=4` on a busy host); unset,
+# cargo uses every core.
+ARG CARGO_BUILD_JOBS
 WORKDIR /work/backend
 COPY --from=planner /work/backend/recipe.json recipe.json
 RUN cargo chef cook --release --locked --recipe-path recipe.json
