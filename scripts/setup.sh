@@ -456,7 +456,7 @@ start_stack() {
   until [ "$(dc exec -T postgres psql -U postgres -d chess -Atc \
     "select count(*) from _sqlx_migrations where success" 2> /dev/null || echo 0)" -gt 0 ] 2> /dev/null; do
     _i=$((_i + 1))
-    [ "$_i" -lt 120 ] || die "the worker did not migrate the database in 10 minutes: dc logs rust-worker"
+    [ "$_i" -lt 120 ] || die "the worker did not migrate the database in 10 minutes (see: docker compose logs rust-worker)"
     sleep 5
   done
   took "$_t"
@@ -515,7 +515,7 @@ data_lichess() {
   [ "${_bytes:-0}" -gt 0 ] || die "Lichess has no dump for $_m ($_url)"
   step "Lichess $_m: $(mb "$_bytes") MB streamed, never stored on disk; ${_games:-?} games"
   say "    Verified against Lichess's sha256sums.txt. A stopped build starts the month again."
-  say "    2013-01 builds the opening explorer in about 40 s."
+  say "    On the dry run, the 2013-01 explorer took about 40 s."
   if ! month_has_clocks "$_m"; then
     say "    No band reference from this month: it needs [%clk] comments, which Lichess dumps carry"
     say "    from $FIRST_CLOCK_MONTH on (that month is 3.5 GB, 11.3M games). Without it, weaknesses"
