@@ -204,7 +204,7 @@ export function promisingText(o: PromisingOpening): string {
 export function spotText(s: HardSpotCandidate, mode: "maia" | "critical"): string {
   const why =
     mode === "maia" && fin(s.pBest)
-      ? `Maia expects about ${pct0(s.pBest)} of players at your level to find it.`
+      ? `Maia expects about ${pct0(s.pBest)} of players of your rating to find it.`
       : fin(s.multipvGap)
         ? `The engine's next choice was ${Math.round(s.multipvGap)} win% points worse.`
         : "";
@@ -652,7 +652,7 @@ function HardSpots({
   const fallback = `${pending} Until it does, these are moments where the engine's best move was at least ${CRITICAL_GAP} win% points better than its second choice, your win chance was between ${BALANCED_MIN}% and ${BALANCED_MAX}%, and you found it. Captures of free material are left out; punishing an opponent's mistake with a real move counts.`;
   const lede =
     spots.mode === "maia"
-      ? "Positions Maia rates hard for players at your level, where you found the engine's best move."
+      ? "Positions Maia rates hard for players of your rating, where you found the engine's best move."
       : spots.mode === "critical"
         ? fallback
         : difficulty.pendingMaia > 0
@@ -673,7 +673,7 @@ function HardSpots({
       ) : (
         <ol className="m-0 grid list-none grid-cols-1 gap-x-8 gap-y-10 p-0 md:grid-cols-2 xl:grid-cols-3">
           {spots.spots.map((s) => {
-            const note = spots.notes[s.kind] ?? null;
+            const note = spots.notes[`${s.gameId}:${s.ply}`] ?? null;
             const move = exemplarMoveText(s.fen, s.san);
             const found = { san: s.san, uci: s.uci };
             return (
@@ -767,13 +767,29 @@ function ColourClaims({ colour, above }: { colour: "White" | "Black"; above: Sid
  * Both colours side by side (audit A5): each colour's measures that are clearly better than
  * other players in that colour's games, from the colour's own stored rows (ADR 0082).
  */
-function ByColour({ bySide }: { bySide: NonNullable<StrengthsModel["bySide"]> }) {
+function ByColour({
+  bySide,
+  compact = false,
+}: {
+  bySide: NonNullable<StrengthsModel["bySide"]>;
+  compact?: boolean;
+}) {
+  const lede =
+    "The same comparison in your White games and your Black games, each against players who had that colour.";
+  if (compact) {
+    // Holistic F2: no colour has a claim, so the two calm lines are one row of "Not judged yet".
+    return (
+      <Section compact id="by-colour" title="By colour" lede={lede}>
+        {(["white", "black"] as const).map((side) => (
+          <div key={side} data-colour={side}>
+            <ColourClaims colour={COLOUR[side]} above={bySide[side]} />
+          </div>
+        ))}
+      </Section>
+    );
+  }
   return (
-    <Section
-      id="by-colour"
-      title="By colour"
-      lede="The same comparison in your White games and your Black games, each against players who had that colour."
-    >
+    <Section id="by-colour" title="By colour" lede={lede}>
       <div className="grid grid-cols-1 gap-x-12 gap-y-8 md:grid-cols-2">
         {(["white", "black"] as const).map((side) => (
           <div key={side} data-colour={side} className="flex min-w-0 flex-col gap-3">
@@ -785,6 +801,13 @@ function ByColour({ bySide }: { bySide: NonNullable<StrengthsModel["bySide"]> })
     </Section>
   );
 }
+
+/** Whether neither colour has a claim to show. */
+const noColourClaim = (b: NonNullable<StrengthsModel["bySide"]>) =>
+  (["white", "black"] as const).every((s) => {
+    const a = b[s];
+    return a.mode === "none" || a.claims.length === 0;
+  });
 
 function ReportStrengths({ report }: { report: StrengthsModel["report"] }) {
   if (!report || report.strengths.length === 0) return null;
@@ -837,20 +860,27 @@ function Sections({ scope, model }: { scope: CoachScope; model: StrengthsModel }
   const hard = (compact: boolean) => (
     <HardSpots spots={model.hardSpots} difficulty={model.difficulty} compact={compact} />
   );
+  const bySide = model.bySide;
   const parts = [
     { key: "above", empty: empty.above, render: above },
+    ...(bySide
+      ? [
+          {
+            key: "by-colour",
+            empty: noColourClaim(bySide),
+            render: (compact: boolean) => <ByColour bySide={bySide} compact={compact} />,
+          },
+        ]
+      : []),
     { key: "improving", empty: empty.improving, render: improving },
     { key: "openings", empty: empty.openings, render: openings },
     { key: "hard", empty: empty.hard, render: hard },
   ];
   const quiet = parts.filter((p) => p.empty);
+  // Holistic F2: what is real leads; every empty statement waits in "Not judged yet".
   return (
     <>
-      {parts[0] && !parts[0].empty ? parts[0].render(false) : null}
-      {model.bySide ? <ByColour bySide={model.bySide} /> : null}
-      {parts
-        .slice(1)
-        .map((p) => (p.empty ? null : <Fragment key={p.key}>{p.render(false)}</Fragment>))}
+      {parts.map((p) => (p.empty ? null : <Fragment key={p.key}>{p.render(false)}</Fragment>))}
       {quiet.length > 0 ? (
         <section
           aria-labelledby="not-judged"

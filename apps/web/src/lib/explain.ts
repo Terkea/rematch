@@ -1,6 +1,10 @@
 import { likelyText, NO_BENCHMARK_TEXT, probablyAbove } from "@ci/ui/profile";
 import { stateStyle } from "@ci/ui/timeline";
-import { BENCHMARK_BIAS_TEXT, type Benchmark } from "../server/profile/benchmark-text";
+import {
+  BENCHMARK_BIAS_TEXT,
+  type Benchmark,
+  notComparedText,
+} from "../server/profile/benchmark-text";
 import { DETECTOR_CONSTANTS as K, VERDICT_CONSTANTS as V } from "../server/profile/glossary";
 import type { MateChange, WeaknessState } from "../server/profile/types";
 import type { Estimate } from "../server/stats";
@@ -15,7 +19,7 @@ const fin = (v: number | null | undefined): v is number =>
 const count = (n: number) => new Intl.NumberFormat("en-GB").format(n);
 /** One decimal, with a whole number written bare ("3", "2.6"). */
 const one = (v: number) => String(Number(v.toFixed(1)));
-const NOT_COMPARED = "Not compared with players at your level yet.";
+const NOT_COMPARED = "Not compared with other players yet.";
 const DROP = `${K.decisiveDropWinPct} win% points or more`;
 
 /** "about 1 in 3", "about 8 in 10", "every time", "never"; null when there is nothing to count. */
@@ -61,7 +65,7 @@ export function trendText(t: TrendInput): string {
     return `Too early to tell. ${more} needed before it can be called better or worse.`;
   }
   if (!t.compared) {
-    return "No verdict yet. Without a benchmark for players at your level, it is not tracked as getting better or worse.";
+    return "No verdict yet. Without a benchmark to compare with, it is not tracked as getting better or worse.";
   }
   const p = fin(t.pImp) ? t.pImp : null;
   switch (t.state) {
@@ -148,7 +152,7 @@ export type HeadlinePeer = {
 
 /**
  * The headline's comparison: the players faced, against the player's blunder range (Q1). With a
- * peer benchmark it is never "not compared with players at your level".
+ * peer benchmark it is never "not compared with other players".
  */
 function peerTail(bl: Estimate, peer: HeadlinePeer | null | undefined): string {
   if (!peer || !fin(peer.low) || !fin(peer.high)) return NOT_COMPARED;
@@ -274,7 +278,7 @@ export const comparisonBacksState = (state: WeaknessState, confidence: number) =
  * it, a stored confidence of 0.7 or more says "probably more often", with the odds (ADR 0084). A
  * costing state the comparison does not back says where it comes from, so the page never reads
  * as contradicting itself. A peer benchmark (players the user has faced) is named as such, never
- * as "players at your level".
+ * as the rating band.
  */
 export function levelText(l: {
   rate: { mean: number; low: number; high: number };
@@ -284,10 +288,14 @@ export function levelText(l: {
   benchmark?: Benchmark | null;
   confidence?: number;
   state?: WeaknessState;
+  /** The row's series key: an uncompared row then says why (holistic F1). */
+  seriesKey?: string;
 }): string {
-  if (!l.compared || !fin(l.median)) return `${NO_BENCHMARK_TEXT}.`;
+  if (!l.compared || !fin(l.median)) {
+    return `${l.seriesKey ? notComparedText(l.benchmark ?? null, l.seriesKey) : NO_BENCHMARK_TEXT}.`;
+  }
   const m = `${(l.median * 100).toFixed(1)}%`;
-  const group = peerGroup(l.benchmark) ?? "typical players at your level";
+  const group = peerGroup(l.benchmark) ?? "typical players in your rating band";
   const Group = group.charAt(0).toUpperCase() + group.slice(1);
   if (!l.sufficient) return `${Group}: ${m}. A comparison waits for more chances.`;
   if (l.median < l.rate.low) {

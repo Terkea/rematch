@@ -1,5 +1,6 @@
 import type { Db } from "@ci/db";
 import { sql } from "drizzle-orm";
+import { isVerifiedLink } from "../accounts/verified.js";
 import { readOnly } from "../games/read-only.js";
 import type { QuotaWindow } from "./copy.js";
 import { isUuid } from "./threads.js";
@@ -129,4 +130,20 @@ export async function chatAllowance(
     quotas,
     exhausted: first ? { reason: CAP[first.window], resetsAt: first.resetsAt } : null,
   };
+}
+
+/**
+ * The account's chat allowance as `userId` may see it: null unless the user's own link to the
+ * account is verified (holistic F10). The allowance is the account's, shared by its verified
+ * users, so an unverified link never sees another user's usage.
+ */
+export async function coachAllowance(
+  db: Db,
+  userId: string,
+  accountId: string,
+  now: Date = new Date(),
+  plan: ChatPlan = aiPlan(),
+): Promise<ChatAllowance | null> {
+  if (!(await isVerifiedLink(db, userId, accountId))) return null;
+  return chatAllowance(db, accountId, now, plan);
 }

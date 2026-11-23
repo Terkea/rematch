@@ -129,12 +129,16 @@ impl std::fmt::Debug for AiSetup {
 pub struct AiClientChoice {
     pub client: Option<Arc<dyn AiClient>>,
     pub line: String,
+    /// The sidecar runs on the host's own Claude Code login (`auth: "local"`, dev only; ADR 0062
+    /// Amendment 2): its calls have no real cost, so the monthly budget is notional (Amendment 3).
+    pub local: bool,
 }
 
 fn disabled(reason: &str) -> AiClientChoice {
     AiClientChoice {
         client: None,
         line: format!("ai: disabled ({reason})"),
+        local: false,
     }
 }
 
@@ -158,14 +162,17 @@ pub async fn ai_client_from_env(env: &WorkerEnv) -> anyhow::Result<AiClientChoic
         tokio::time::sleep(HEALTH_RETRY_AFTER).await;
         health = probe.health().await;
     }
-    match health {
+    let local = match health {
         Err(e) => {
             tracing::warn!(error = %e, attempts = HEALTH_ATTEMPTS, "the AI sidecar health check failed");
             return Ok(disabled("sidecar health check failed"));
         }
         Ok(h) if h.auth == AuthKind::None => return Ok(disabled("sidecar has no credential")),
-        Ok(h) => tracing::info!("ai: sidecar auth {}", h.auth.describe()),
-    }
+        Ok(h) => {
+            tracing::info!("ai: sidecar auth {}", h.auth.describe());
+            h.auth == AuthKind::Local
+        }
+    };
     let tools = match &env.ai_tool_public_url {
         Some(url) => Some(
             ToolServer::start(env.ai_tool_bind, url.clone())
@@ -193,6 +200,7 @@ pub async fn ai_client_from_env(env: &WorkerEnv) -> anyhow::Result<AiClientChoic
     Ok(AiClientChoice {
         client: Some(with_breaker(runtime, breaker)),
         line,
+        local,
     })
 }
 

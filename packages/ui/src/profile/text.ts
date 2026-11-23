@@ -58,7 +58,15 @@ export const shareRangeText = (low: number, high: number) =>
  * for it, which is no claim at all (bug hunt I1). These say so, never "not an issue".
  */
 export const NOT_COMPARED_LABEL = "Not compared yet";
-export const NO_BENCHMARK_TEXT = "Not compared yet: no benchmark for players at your level yet";
+export const NO_BENCHMARK_TEXT = "Not compared yet: no benchmark for this account yet";
+/**
+ * Why a row the peer benchmark leaves out is not compared (holistic F1, ADR 0081): by design, a
+ * measure mirrored or unenriched in the opponents' side of games against you.
+ */
+export const NOT_COMPARED_EXCLUDED_TEXT =
+  "Not compared: this can't be measured fairly from your opponents' moves in games against you";
+/** Why a peer row is not compared yet: it is stored low-sample. */
+export const NOT_COMPARED_LOW_SAMPLE_TEXT = "Not compared yet: too few of their chances";
 
 /** The reference group when the host does not name the band ("Players rated 1400–1600"). */
 export const DEFAULT_BAND_LABEL = "Players in your rating band";

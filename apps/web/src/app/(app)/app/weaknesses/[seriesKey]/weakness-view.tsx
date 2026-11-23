@@ -7,7 +7,6 @@ import {
   KpiTrendGrid,
   type KpiTrendItem,
   likelyText,
-  NO_BENCHMARK_TEXT,
   NO_COLOUR_BENCHMARK,
   NO_COLOUR_BENCHMARK_TEXT,
   NOT_COMPARED_LABEL,
@@ -33,6 +32,7 @@ import {
   type Benchmark,
   benchmarkGroupLabel,
   benchmarkLabel,
+  notComparedText,
   peerRateText,
 } from "../../../../../server/profile/benchmark-text";
 import { type GlossaryEntry, seriesGlossary } from "../../../../../server/profile/glossary";
@@ -344,7 +344,7 @@ function Standing({ detail, benchmark }: { detail: WeaknessDetail; benchmark: Be
         )}
         <div className="flex flex-col gap-1 text-sm" style={LINING}>
           {median === null || !Number.isFinite(median) ? (
-            <p className="text-ink-soft">{NO_BENCHMARK_TEXT}</p>
+            <p className="text-ink-soft">{notComparedText(benchmark, detail.seriesKey)}</p>
           ) : (
             <>
               {peer === null ? (
@@ -611,6 +611,7 @@ function HowOften({
               compared: detail.compared,
               sufficient: detail.evidence.sufficient && !none,
               benchmark,
+              seriesKey: detail.seriesKey,
               confidence: detail.confidence,
               // A colour has no state of its own (ADR 0082): only its comparison speaks.
               ...(colour ? {} : { state: detail.state }),

@@ -169,8 +169,19 @@ fn report_prompt_set_is_the_brief_list() {
     // Fix D (N1): core/tokens v2 says the server prints a number's unit. ADR 0085: report v2
     // teaches the colour split and the peer benchmark, the overview v2 the White vs Black
     // sentence.
-    // ADR 0089: report v3 adds the rating trajectory.
-    let v2 = ["core/tokens", "report/section-overview"];
+    // ADR 0089: report v3 adds the rating trajectory. Holistic F5: tone v2 drops the band's
+    // rating range; F1: glossary v2 has no "players at your level".
+    let v2 = [
+        "core/tokens",
+        "report/section-overview",
+        "tone/b0",
+        "tone/b1",
+        "tone/b2",
+        "tone/b3",
+        "tone/b4",
+        "tone/b5",
+        "core/glossary",
+    ];
     let want = |id: &str| match id {
         "report/report" => 3,
         id if v2.contains(&id) => 2,
@@ -626,8 +637,8 @@ fn model_facing_copy_passes_the_validator_rules() {
         }
         checked += 1;
     }
-    // core/rules, core/tokens v1 and v2, and core/glossary (reference text, not copy).
-    assert_eq!(checked, PROMPTS.len() - 4);
+    // core/rules, core/tokens v1 and v2, and core/glossary v1 and v2 (reference text, not copy).
+    assert_eq!(checked, PROMPTS.len() - 5);
 }
 
 /// The ruling of the T23 review: the shared rules block (what the chat includes too) carries no
@@ -701,7 +712,7 @@ fn v2_prompts_teach_the_colour_split_and_the_benchmark_words() {
     ] {
         assert!(chat.contains(f), "chat/system v3 says {f:?}");
     }
-    let glossary = load_prompt("core/glossary", 1).unwrap().text;
+    let glossary = load_prompt("core/glossary", 2).unwrap().text;
     assert!(glossary.starts_with("# Plain-language glossary\n"));
     let inner = glossary
         .split_once("\n<glossary>")
@@ -731,7 +742,7 @@ fn report_blocks_use_the_set_versions() {
     assert!(
         req.system[1]
             .text
-            .ends_with(load_prompt("core/glossary", 1).unwrap().text)
+            .ends_with(load_prompt("core/glossary", 2).unwrap().text)
     );
     let task = req.messages[0].content[1]["text"].as_str().unwrap();
     assert_eq!(

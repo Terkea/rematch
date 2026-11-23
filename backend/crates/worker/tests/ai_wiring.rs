@@ -481,6 +481,13 @@ async fn the_host_login_counts_as_a_credential(_p: PgPoolOptions, opts_: PgConne
         logs.contains("ai: sidecar auth local (the host's Claude Code login, dev only)"),
         "{logs}"
     );
+    // Holistic F4 (ADR 0062 Amendment 3): no real cost, so the budget is notional.
+    assert!(
+        logs.contains(
+            "ai: monthly budget not enforced (local login, no real cost; usage still recorded)"
+        ),
+        "{logs}"
+    );
     assert!(!logs.contains(FAKE_TOKEN), "the sidecar token was logged");
 }
 

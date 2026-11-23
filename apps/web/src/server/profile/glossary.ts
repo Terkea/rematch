@@ -247,8 +247,8 @@ export const WEAKNESS_GLOSSARY: Record<string, GlossaryEntry> = {
   },
   W11: {
     name: "Mistakes on easy moves",
-    meaning: "You went wrong in a position where most players at your level find a good move.",
-    measured: `Chances: ${OPEN_MOVES} from move ${K.difficultyFromMove} on, that Maia (a model of how people at your rating play) rates as easy: at least ${K.easyMinPct}% of players at your level would find a good move. It counts when your move ${BLUNDER}.`,
+    meaning: "You went wrong in a position where most players of your rating find a good move.",
+    measured: `Chances: ${OPEN_MOVES} from move ${K.difficultyFromMove} on, that Maia (a model of how people at your rating play) rates as easy: at least ${K.easyMinPct}% of players of your rating would find a good move. It counts when your move ${BLUNDER}.`,
     whyItMatters:
       "Errors on easy moves usually come from hurrying or not looking, and those are habits you can change quickly.",
     tip: "Use the same short check on every move, however easy it looks: what changed after their move, and is anything of mine now loose?",
@@ -786,7 +786,7 @@ export const TERM_GLOSSARY: Record<GlossaryTerm, GlossaryEntry> = {
     meaning: "The group of players near your rating that you are compared with.",
     measured: `Bands use Lichess-style ratings: under ${B1}, then ${B1} to ${B2}, ${B2} to ${B3}, ${B3} to ${B4}, ${B4} to ${B5}, and ${B5} and up (each band runs up to, but not including, the next edge). Chess.com ratings are first raised by ${K.chesscomOffsetBlitz} for bullet and blitz, ${K.chesscomOffsetRapid} for rapid, and ${K.chesscomOffsetClassical} for daily and classical, a provisional conversion.`,
     whyItMatters:
-      "Comparing you with players at your level shows what is normal for them and what is holding you back.",
+      "Comparing you with the players you've faced shows what is normal for them and what is holding you back.",
     tip: "Focus on the weaknesses where you are clearly worse than your band, since those cost you the most.",
   },
   early_read: {
@@ -809,8 +809,8 @@ export const TERM_GLOSSARY: Record<GlossaryTerm, GlossaryEntry> = {
   },
   not_compared_yet: {
     name: "Not compared yet",
-    meaning: "We cannot yet say how this compares with players at your level.",
-    measured: `It shows when there is no reference for your rating band and time control, or when you have fewer than ${K.minGames} analysed games in the last ${K.windowDays} days. The rate is still measured, but there is no band comparison, and the weakness is not ranked.`,
+    meaning: "We cannot yet say how this compares with other players.",
+    measured: `It shows when a measure can't be measured fairly from your opponents' moves in games against you, when too few of their chances count, when there is no reference for your time control, or when you have fewer than ${K.minGames} analysed games in the last ${K.windowDays} days. The rate is still measured, but there is no band comparison, and the weakness is not ranked.`,
     whyItMatters:
       "Without a fair comparison, we would rather say nothing than guess how serious it is.",
     tip: "Keep playing and analysing games in this time control, and the comparison will appear when there is enough to go on.",
@@ -826,7 +826,7 @@ export const TERM_GLOSSARY: Record<GlossaryTerm, GlossaryEntry> = {
   priority: {
     name: "Priority",
     meaning: "The order in which your weaknesses are worth working on.",
-    measured: `A weakness is ranked by how far your estimated rate is above your band's typical rate, how often it comes up and what each mistake costs, how trainable it is at your level, and how sure we are that it is above typical. Only games from the last ${K.windowDays} days count. It needs at least ${K.minGames} analysed games, a band reference and at least one such mistake to be ranked at all.`,
+    measured: `A weakness is ranked by how far your estimated rate is above your band's typical rate, how often it comes up and what each mistake costs, how trainable it is for a player of your rating, and how sure we are that it is above typical. Only games from the last ${K.windowDays} days count. It needs at least ${K.minGames} analysed games, a band reference and at least one such mistake to be ranked at all.`,
     whyItMatters:
       "Working on the top weakness first gives you the most points back for your training time.",
     tip: "Train one weakness at a time, starting with the first on the list, until it moves to getting better.",

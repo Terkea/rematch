@@ -228,7 +228,10 @@ describe("overview page sections", () => {
   });
 
   it("names the account, unverified, with its last import", async () => {
-    await seed(await linked("someplayer"), 2);
+    await seed(
+      (await seedAccount(db, { userId, username: "someplayer", verified: false })).accountId,
+      2,
+    );
     const view = await viewFor();
     render(<StatusLine header={view.header} />);
     expect(screen.getByText("chess.com someplayer")).toBeInTheDocument();

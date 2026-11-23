@@ -23,7 +23,11 @@ beforeEach(async () => {
   await resetSyncTables(db);
   alice = (await createTestSession(db, { email: "alice@example.invalid" })).user.id;
   bob = (await createTestSession(db, { email: "bob@example.invalid" })).user.id;
-  ({ accountId } = await seedAccount(db, { userId: alice, username: "Alice-Status" }));
+  ({ accountId } = await seedAccount(db, {
+    userId: alice,
+    username: "Alice-Status",
+    verified: false,
+  }));
 });
 
 async function only(userId = alice) {

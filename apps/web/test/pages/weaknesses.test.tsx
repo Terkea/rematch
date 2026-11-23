@@ -325,7 +325,7 @@ describe("weaknesses list", () => {
     expect(screen.queryByRole("region", { name: "Under control" })).toBeNull();
     expect(text).not.toMatch(/not an issue/i);
     const region = screen.getByRole("region", { name: "Not compared yet" });
-    expect(region.textContent).toMatch(/no benchmark for players at your level yet/);
+    expect(region.textContent).toMatch(/no benchmark for this account yet/);
     expect(within(region).getAllByRole("link")).toHaveLength(2);
     // Each still shows its own rate, range and n, over its window.
     expect(region.textContent).toMatch(/32\.5%/);
@@ -524,7 +524,7 @@ describe("weakness detail", () => {
     // The story leads with the rate at the KPI scale (critic 5).
     expect(container.querySelector("[data-part='story-rate']")?.textContent).toBe("4.2%");
     expect(text).toMatch(/of your chances, 80% range 3\.1% to 5\.7%/);
-    expect(text).toContain("More often than typical players at your level (2.1%)");
+    expect(text).toContain("More often than typical players in your rating band (2.1%)");
     expect(text).toContain(
       "No clear change yet. There is a 42% chance your rate is lower than before its last change",
     );
@@ -573,6 +573,41 @@ describe("weakness detail", () => {
     noBadText(container);
   });
 
+  // Holistic F1: with a peer benchmark, an uncompared row says why: left out by design, or too
+  // few of the opponents' chances.
+  it("an uncompared row says why it is not compared", async () => {
+    const none = { state: "not_an_issue" as const, bandMedian: null, bandP40: null, excess: null };
+    await seedProfile(db, accountId, {
+      timeClass: "rapid",
+      games: 3,
+      estimates: [
+        { seriesKey: "W4.missed", mean: 0.2, ciLow: 0.15, ciHigh: 0.26, bandMedian: 0.0957 },
+        { seriesKey: "W1", ...none, priority: 0 },
+        { seriesKey: "W9a", ...none, priority: 0 },
+      ],
+    });
+    await db.execute(sql`
+      insert into account_benchmark (account_id, time_class, source, center_rating, rating_low,
+        rating_high, n_players, n_games)
+      values (${accountId}, 'rapid', 'peers', 817, 667, 967, 73, 100)`);
+    await db.execute(sql`
+      insert into account_benchmark_stat (account_id, time_class, metric, median, p25, p40, p75,
+        n_players, n_games, low_sample, n_chances)
+      values (${accountId}, 'rapid', 'weakness:W4.missed', 0.0957, 0.07, 0.08, 0.12, 25, 26,
+        false, 65)`);
+    const { container } = await list();
+    const region = screen.getByRole("region", { name: "Not compared yet" });
+    const rows = within(region).getAllByRole("listitem");
+    const w1 = rows.find((r) => r.textContent?.includes(WEAKNESS_GLOSSARY.W1?.meaning ?? "?"));
+    expect(w1?.textContent).toContain(
+      "Not compared: this can't be measured fairly from your opponents' moves in games against you",
+    );
+    const w9 = rows.find((r) => !r.textContent?.includes(WEAKNESS_GLOSSARY.W1?.meaning ?? "?"));
+    expect(w9?.textContent).toContain("Not compared yet: too few of their chances");
+    expect(container.textContent).not.toMatch(/at your level/);
+    noBadText(container);
+  });
+
   it("an uncompared weakness says so, with its own rate and window", async () => {
     await seedProfile(db, accountId, {
       timeClass: "rapid",
@@ -604,7 +639,7 @@ describe("weakness detail", () => {
     const text = container.textContent ?? "";
     expect(text).not.toMatch(/not an issue/i);
     expect(container.querySelector("[data-state]")?.textContent).toBe("Not compared yet");
-    expect(text).toMatch(/Not compared yet: no benchmark for players at your level yet/);
+    expect(text).toMatch(/Not compared yet: no benchmark for this account yet/);
     expect(text).toMatch(/21 times in 534 chances in the last 6 months/);
     expect(text).toMatch(/Now not compared yet/);
     noBadText(container);
@@ -620,9 +655,7 @@ describe("weakness detail", () => {
     });
     const { container } = await detail("W1");
     expect(screen.getByText("Early read: 880 more chances needed")).toBeTruthy();
-    expect(
-      screen.getByText("Not compared yet: no benchmark for players at your level yet"),
-    ).toBeTruthy();
+    expect(screen.getByText("Not compared yet: no benchmark for this account yet")).toBeTruthy();
     expect(container.textContent).not.toMatch(/Emerging/);
     noBadText(container);
   });

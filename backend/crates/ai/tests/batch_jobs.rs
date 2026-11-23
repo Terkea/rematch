@@ -449,6 +449,7 @@ fn deps(
         budgets: BudgetConfig {
             per_plan: AI_MONTHLY_BUDGET_MICRO_USD,
             global_monthly: None,
+            enforce: true,
         },
         pricing: Arc::new(PricingTable::seed()),
         now: Arc::new(OffsetDateTime::now_utc),

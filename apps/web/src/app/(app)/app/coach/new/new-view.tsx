@@ -5,6 +5,7 @@ import { Icon, WarningIcon } from "@ci/ui/icons";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type ReactNode, useEffect, useState } from "react";
+import { VERIFY_ACTION, VERIFY_BODY, VERIFY_COACH_TITLE } from "../../../../../lib/verify-copy";
 import { type ChatAnchor, colourQuestion } from "../../../../../server/coach/anchor";
 import { CHAT_COPY } from "../../../../../server/coach/copy";
 import { COACH_UNAVAILABLE_TITLE } from "../../../../../server/coach/status-copy";
@@ -37,6 +38,7 @@ export function NewConversation({
   allowance,
   listHref,
   available = true,
+  verified = true,
   scopeSwitch,
   color = null,
   children,
@@ -49,6 +51,8 @@ export function NewConversation({
   listHref: string;
   /** False while no coach could answer (bug hunt I5): the composer is off and says why. */
   available?: boolean;
+  /** False while the user's link is not verified (holistic F10): the composer is off. */
+  verified?: boolean;
   scopeSwitch?: ReactNode;
   children?: ReactNode;
 }) {
@@ -98,13 +102,15 @@ export function NewConversation({
   }
 
   const exhausted = allowance?.exhausted ?? null;
-  const reason = !available
-    ? COACH_UNAVAILABLE_TITLE
-    : exhausted
-      ? CHAT_COPY.capText(exhausted)
-      : sending !== null
-        ? SENDING
-        : null;
+  const reason = !verified
+    ? VERIFY_COACH_TITLE
+    : !available
+      ? COACH_UNAVAILABLE_TITLE
+      : exhausted
+        ? CHAT_COPY.capText(exhausted)
+        : sending !== null
+          ? SENDING
+          : null;
   // `role` through a variable: Biome reads a literal role="user" as an ARIA role (T3).
   const role = "user" as const;
 
@@ -126,7 +132,15 @@ export function NewConversation({
           that colour, so your coach answers from those games.
         </p>
       ) : null}
-      {available ? null : (
+      {!verified ? (
+        <CoachState
+          kind="computed_only"
+          titleAs="h2"
+          title={VERIFY_COACH_TITLE}
+          body={VERIFY_BODY}
+          action={VERIFY_ACTION}
+        />
+      ) : available ? null : (
         <CoachState
           kind="unavailable"
           titleAs="h2"
@@ -177,11 +191,11 @@ export function NewConversation({
           onSubmit={start}
           placeholder={COMPOSER_PLACEHOLDER}
           disabled={reason !== null}
-          disabledReason={exhausted || !available ? reason : null}
+          disabledReason={exhausted || !available || !verified ? reason : null}
           className={COMPACT_COMPOSER}
         />
         {/* No allowance while nothing could answer; no AI disclosure before any AI text (M3). */}
-        {available ? <AllowanceLine allowance={allowance} /> : null}
+        {available && verified ? <AllowanceLine allowance={allowance} /> : null}
       </div>
     </div>
   );

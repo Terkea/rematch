@@ -79,7 +79,7 @@ describe("trendText", () => {
     ],
     [
       { ...base, compared: false },
-      "No verdict yet. Without a benchmark for players at your level, it is not tracked as getting better or worse.",
+      "No verdict yet. Without a benchmark to compare with, it is not tracked as getting better or worse.",
     ],
     [
       { ...base, state: "improving" as const, pImp: 0.91 },
@@ -179,7 +179,7 @@ describe("headlineMeaning", () => {
         blunders: est(1.1, 0.8, 1.4, 40),
         games: "rapid games",
       },
-      "In a typical game you make about 1.1 blunders (moves that cost 15 win% points or more), likely between 0.8 and 1.4. Not compared with players at your level yet.",
+      "In a typical game you make about 1.1 blunders (moves that cost 15 win% points or more), likely between 0.8 and 1.4. Not compared with other players yet.",
     ],
     [
       {
@@ -187,7 +187,7 @@ describe("headlineMeaning", () => {
         blunders: est(0.25, 0.2, 0.3, 40),
         games: "rapid games",
       },
-      "You make a blunder (a move that costs 15 win% points or more) about once every 4 games, likely between 0.2 and 0.3 a game. Not compared with players at your level yet.",
+      "You make a blunder (a move that costs 15 win% points or more) about once every 4 games, likely between 0.2 and 0.3 a game. Not compared with other players yet.",
     ],
     [
       {
@@ -195,7 +195,7 @@ describe("headlineMeaning", () => {
         blunders: est(2.6, 2.2, 3, 40),
         games: "rapid games",
       },
-      "In a typical game you make about 2.6 blunders (moves that cost 15 win% points or more), likely between 2.2 and 3. Not compared with players at your level yet.",
+      "In a typical game you make about 2.6 blunders (moves that cost 15 win% points or more), likely between 2.2 and 3. Not compared with other players yet.",
     ],
     [
       {
@@ -203,7 +203,7 @@ describe("headlineMeaning", () => {
         blunders: { kind: "estimate" as const, value: 0, interval: null, n: 40 },
         games: "rapid games",
       },
-      "None of your 40 rapid games had a blunder (a move that costs 15 win% points or more). Not compared with players at your level yet.",
+      "None of your 40 rapid games had a blunder (a move that costs 15 win% points or more). Not compared with other players yet.",
     ],
     [
       {
@@ -211,7 +211,7 @@ describe("headlineMeaning", () => {
         blunders: { kind: "insufficient" as const, n: 40, needed: 0 },
         games: "rapid games",
       },
-      "Your accuracy is likely between 72.8% and 75.6% across 40 rapid games. Not compared with players at your level yet.",
+      "Your accuracy is likely between 72.8% and 75.6% across 40 rapid games. Not compared with other players yet.",
     ],
   ])("%o", (input, want) => {
     const text = headlineMeaning(input);
@@ -312,27 +312,27 @@ describe("levelText", () => {
   it.each([
     [
       { rate, median: 0.021, compared: true, sufficient: true },
-      "More often than typical players at your level (2.1%): their rate is below your whole likely range.",
+      "More often than typical players in your rating band (2.1%): their rate is below your whole likely range.",
     ],
     [
       { rate, median: 0.08, compared: true, sufficient: true },
-      "Less often than typical players at your level (8.0%): their rate is above your whole likely range.",
+      "Less often than typical players in your rating band (8.0%): their rate is above your whole likely range.",
     ],
     [
       { rate, median: 0.04, compared: true, sufficient: true },
-      "Not clearly different from typical players at your level (4.0%): their rate is inside your likely range.",
+      "Not clearly different from typical players in your rating band (4.0%): their rate is inside your likely range.",
     ],
     [
       { rate, median: 0.021, compared: true, sufficient: false },
-      "Typical players at your level: 2.1%. A comparison waits for more chances.",
+      "Typical players in your rating band: 2.1%. A comparison waits for more chances.",
     ],
     [
       { rate, median: null, compared: false, sufficient: true },
-      "Not compared yet: no benchmark for players at your level yet.",
+      "Not compared yet: no benchmark for this account yet.",
     ],
     [
       { rate, median: Number.NaN, compared: true, sufficient: true },
-      "Not compared yet: no benchmark for players at your level yet.",
+      "Not compared yet: no benchmark for this account yet.",
     ],
   ])("%o", (input, want) => {
     expect(levelText(input)).toBe(want);
@@ -341,6 +341,26 @@ describe("levelText", () => {
 
 describe("levelText with a peer benchmark (ADR 0080)", () => {
   const rate = { mean: 0.042, low: 0.031, high: 0.057 };
+  // Holistic F1: an uncompared row under a peer benchmark says why.
+  it("says why an uncompared row is not compared", () => {
+    const b = {
+      source: "peers" as const,
+      platform: "chesscom" as const,
+      low: 650,
+      high: 950,
+      players: 58,
+      games: 120,
+      chances: {},
+    };
+    const base = { rate, median: null, compared: false, sufficient: true, benchmark: b };
+    expect(levelText({ ...base, seriesKey: "W1" })).toBe(
+      "Not compared: this can't be measured fairly from your opponents' moves in games against you.",
+    );
+    expect(levelText({ ...base, seriesKey: "W4.missed" })).toBe(
+      "Not compared yet: too few of their chances.",
+    );
+  });
+
   const benchmark = {
     source: "peers" as const,
     platform: "chesscom" as const,
@@ -438,7 +458,7 @@ describe("levelText with a peer benchmark (ADR 0080)", () => {
         benchmark: { source: "lichess_bands" },
       }),
     ).toBe(
-      "Not clearly different from typical players at your level (4.0%): their rate is inside your likely range.",
+      "Not clearly different from typical players in your rating band (4.0%): their rate is inside your likely range.",
     );
   });
 });

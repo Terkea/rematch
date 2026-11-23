@@ -1891,7 +1891,7 @@ fn chat_prompts_have_no_json_output_instruction() {
     let chat = load_prompt("chat/system", 4).unwrap();
     assert!(system[1].text.starts_with(chat.text.trim_end()));
     // ADR 0085: the glossary follows, and the off-topic marker stays the last line.
-    let glossary = load_prompt("core/glossary", 1).unwrap().text.trim_end();
+    let glossary = load_prompt("core/glossary", 2).unwrap().text.trim_end();
     assert!(system[1].text.contains(glossary));
     assert!(system[1].text.ends_with(OFFTOPIC_LINE));
     let repair = render_template(

@@ -14,6 +14,8 @@ services:
       LICHESS_API_BASE_URL: http://fakes:3199
       CHESSCOM_API_BASE_URL: http://fakes:3199/chesscom
       CHESSCOM_ENABLED: "1"
+      # The Lichess specs run against the fake, so e2e turns Lichess on.
+      LICHESS_ENABLED: "1"
       # Sign-in is rate-limited per client address, which only a trusted proxy supplies
       # (ADR-WEB-3); without one every e2e user shares one bucket (3 links per 10 minutes). The qa
       # browser shares web's network namespace, so localhost is the "proxy", and

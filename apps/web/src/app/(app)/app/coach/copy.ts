@@ -96,6 +96,8 @@ export function postErrorCopy(code: string, retryAt?: string, now = Date.now()):
       return "Write a question first.";
     case "not_linked":
       return failureCopy("not_linked");
+    case "not_verified":
+      return "Verify this account to ask your coach. You can do it on the Accounts page.";
     case "not_found":
       return "This conversation no longer exists. Start a new one from the coach page.";
     default:

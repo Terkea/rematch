@@ -33,7 +33,13 @@ export interface WeaknessRowProps {
    * ("Players rated 1400–1600"; default "Players in your rating band"), and what the figure is
    * ("pooled over 65 of their chances"), said in brackets after it.
    */
-  band: { median: number | null; label?: string; basis?: string };
+  band: {
+    median: number | null;
+    label?: string;
+    basis?: string;
+    /** Why the row is not compared, when the host knows (default `NO_BENCHMARK_TEXT`). */
+    notCompared?: string;
+  };
   href: string;
   /** Weekly rates, oldest first; null is a week with no chances (a gap, never a zero). */
   trend: (number | null)[];
@@ -376,7 +382,7 @@ export function WeaknessRow({
                   ? bandComparisonText(rate, band.median, band.label, band.basis, confidence)
                   : side
                     ? NO_COLOUR_BENCHMARK_TEXT
-                    : bandComparisonText(rate, null)}
+                    : (band.notCompared ?? bandComparisonText(rate, null))}
               </span>
             </>
           )}

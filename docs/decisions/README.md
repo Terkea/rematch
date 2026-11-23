@@ -161,3 +161,7 @@ Every R2 record has a file (titles final at R2 Task 35); numbers 19 to 21 were n
 ### Position explorer (feat/position-explorer): ADR-FIX-F
 
 - [ADR-FIX-F-1. One position explorer for every cited position](ADR-FIX-F-1-position-explorer.md)
+
+### Holistic review fixes (fix/holistic): ADR-FIX-N
+
+- [ADR-FIX-N-1. An unverified link sees analysis only; Lichess is opt-in](ADR-FIX-N-1-unverified-links-see-analysis-only.md)

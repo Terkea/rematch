@@ -25,6 +25,7 @@ import { useRouter } from "next/navigation";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { fetchPositionLine } from "../../../../../lib/position-line";
 import { reviewHref } from "../../../../../lib/segment-href";
+import { VERIFY_ACTION, VERIFY_BODY, VERIFY_COACH_TITLE } from "../../../../../lib/verify-copy";
 import { COACH_UNAVAILABLE_TITLE } from "../../../../../server/coach/status-copy";
 import { PendingButton } from "../../../../ui/pending-button";
 import type { AllowanceView } from "../allowance";
@@ -280,12 +281,15 @@ export function ThreadView({
   aside,
   gameIds = {},
   available = true,
+  verified = true,
 }: {
   thread: ThreadData;
   allowance: AllowanceView | null;
   listHref: string;
   /** False while no coach could answer (bug hunt I5): answers stay, the composer is off. */
   available?: boolean;
+  /** False while the user's link is not verified (holistic F10): answers stay, no new question. */
+  verified?: boolean;
   /** Platform game id to `games.id`, for the answers' move links (`reviewGameIds`). */
   gameIds?: Record<string, string>;
   anchorCard?: ReactNode;
@@ -374,19 +378,34 @@ export function ThreadView({
             <span>{error}</span>
           </p>
         ) : null}
+        {verified ? null : (
+          <CoachState
+            kind="computed_only"
+            titleAs="h2"
+            title={VERIFY_COACH_TITLE}
+            body={VERIFY_BODY}
+            action={VERIFY_ACTION}
+          />
+        )}
         <ChatComposer
           onSubmit={send}
           placeholder={COMPOSER_PLACEHOLDER}
-          disabled={composer.disabled || !available}
+          disabled={composer.disabled || !available || !verified}
           // Only a used-up allowance or an unavailable coach pauses questions; an answer in
           // progress is a status line, so the box never says "paused" while the coach is writing.
           disabledReason={
-            !available ? COACH_UNAVAILABLE_TITLE : allowance?.exhausted ? composer.reason : null
+            !verified
+              ? VERIFY_COACH_TITLE
+              : !available
+                ? COACH_UNAVAILABLE_TITLE
+                : allowance?.exhausted
+                  ? composer.reason
+                  : null
           }
           className={COMPACT_COMPOSER}
         />
         <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-          {available ? (
+          {available && verified ? (
             <AllowanceLine
               allowance={allowance}
               className={answering && !allowance?.exhausted ? "max-sm:hidden" : undefined}

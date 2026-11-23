@@ -60,6 +60,12 @@ describe("getEnv", () => {
     );
   });
 
+  // Holistic F8: this deployment is chess.com only, so Lichess is off unless configured.
+  it("parses LICHESS_ENABLED=1 to true and absent to false", () => {
+    expect(getEnv({ ...base, LICHESS_ENABLED: "1" }).LICHESS_ENABLED).toBe(true);
+    expect(getEnv(base).LICHESS_ENABLED).toBe(false);
+  });
+
   it("defaults LICHESS_CLIENT_ID to chess-improver", () => {
     expect(getEnv(base).LICHESS_CLIENT_ID).toBe("chess-improver");
   });

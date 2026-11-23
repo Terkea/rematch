@@ -627,12 +627,34 @@ const KEEP_DOING_KEY: Record<StrengthKind, string> = {
   tactic_found: "tactics_missed_per_game",
 };
 
-/** "Keep doing this: …", the glossary tip for the kind; null when the entry is missing. */
-export function keepDoingNote(kind: StrengthKind): string | null {
-  const tip = KPI_GLOSSARY[KEEP_DOING_KEY[kind]]?.tip;
+/** A find in fewer seconds than this was quick: "take your time" would contradict it (F3). */
+export const FAST_FIND_SECONDS = 5;
+
+/** The note of a quick find, by kind. */
+const FAST_NOTE: Record<StrengthKind, string> = {
+  only_move_found:
+    "You saw the only move quickly. Keep scanning checks, captures and threats first.",
+  tactic_found: "You spotted the tactic quickly. Keep scanning checks, captures and threats first.",
+};
+
+/**
+ * The note under a found move, chosen by its kind and the seconds it took (holistic F3): a quick
+ * find says so; one that took its time gets the kind's glossary tip; with no clock, the tactics
+ * tip, which never says "take your time". Null when the glossary entry is missing.
+ */
+export function keepDoingNote(kind: StrengthKind, timeSpent: number | null): string | null {
+  if (timeSpent !== null && fin(timeSpent) && timeSpent >= 0 && timeSpent < FAST_FIND_SECONDS) {
+    return FAST_NOTE[kind];
+  }
+  const key =
+    timeSpent === null || !fin(timeSpent) ? KEEP_DOING_KEY.tactic_found : KEEP_DOING_KEY[kind];
+  const tip = KPI_GLOSSARY[key]?.tip;
   if (!tip) return null;
   return `Keep doing this: ${tip.charAt(0).toLowerCase()}${tip.slice(1)}`;
 }
+
+/** A hard spot's key in `notes`: its game and ply. */
+export const spotKey = (s: { gameId: string; ply: number }) => `${s.gameId}:${s.ply}`;
 
 // ---- 5. The report's strengths ----
 
@@ -701,6 +723,7 @@ export type StrengthsModel = {
   bySide: { white: SideAbove; black: SideAbove } | null;
   improving: { weaknesses: ImprovingWeakness[]; kpis: OwnTrends | null };
   openings: { lines: WorkingOpening[]; promising: PromisingOpening[]; judged: number };
+  /** One note per spot, keyed by [`spotKey`]. */
   hardSpots: HardSpots & { notes: Record<string, string | null> };
   difficulty: DifficultyStatus;
   report: { at: Date; strengths: ReportStrength[] } | null;
@@ -1066,7 +1089,9 @@ export async function loadStrengths(
       },
       hardSpots: {
         ...spots,
-        notes: Object.fromEntries(spots.spots.map((s) => [s.kind, keepDoingNote(s.kind)])),
+        notes: Object.fromEntries(
+          spots.spots.map((s) => [spotKey(s), keepDoingNote(s.kind, s.timeSpent)]),
+        ),
       },
       report: run ? { at: run.createdAt, strengths: reportStrengths(run.input) } : null,
     };

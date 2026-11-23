@@ -38,10 +38,11 @@ vi.mock("../../src/server/profile/scope", async (orig) => ({
   ...(await orig<object>()),
   resolveCoachScope,
 }));
+// The pages read the allowance through `coachAllowance` (null for an unverified link, F10).
 const chatAllowance = vi.fn();
 vi.mock("../../src/server/coach/allowance", async (orig) => ({
   ...(await orig<object>()),
-  chatAllowance,
+  coachAllowance: chatAllowance,
 }));
 const coachStatus = vi.fn();
 vi.mock("../../src/server/coach/status", async (orig) => ({
@@ -477,6 +478,34 @@ describe("coach pages", () => {
     expect(screen.getByText("Your rook left the seventh rank too early.")).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Your question" })).toBeDisabled();
     expect(container).toHaveTextContent("Coach not available right now");
+    expect(container.textContent).not.toMatch(/coach messages left/);
+  });
+
+  // Holistic F10: an unverified link cannot ask, and sees no allowance (the account's usage).
+  it("an unverified link is asked to verify on the list, new and thread pages", async () => {
+    chatAllowance.mockResolvedValue(null);
+    const list = render((await ListPage({ searchParams: Promise.resolve({}) })) as ReactElement);
+    expect(list.container).toHaveTextContent("Verify to ask your coach");
+    expect(screen.getByRole("link", { name: "Verify this account" })).toHaveAttribute(
+      "href",
+      "/app/accounts",
+    );
+    expect(screen.queryByRole("link", { name: "New conversation" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Ask your first question" })).toBeNull();
+    expect(list.container.textContent).not.toMatch(/coach messages left/);
+    list.unmount();
+
+    const added = render((await NewPage({ searchParams: Promise.resolve({}) })) as ReactElement);
+    expect(added.container).toHaveTextContent("Verify to ask your coach");
+    expect(screen.getByRole("textbox", { name: "Your question" })).toBeDisabled();
+    expect(added.container.textContent).not.toMatch(/coach messages left|not available/);
+    added.unmount();
+
+    const { container } = render(
+      <ThreadView thread={thread} allowance={null} listHref="/app/coach" verified={false} />,
+    );
+    expect(screen.getByRole("textbox", { name: "Your question" })).toBeDisabled();
+    expect(container).toHaveTextContent("Verify to ask your coach");
     expect(container.textContent).not.toMatch(/coach messages left/);
   });
 

@@ -969,6 +969,27 @@ async fn budget_guard_checks_scope_and_global_since_the_month_start(pool: PgPool
     assert_eq!(g().await, Err(AiError::Budget));
 }
 
+/// Holistic F4, ADR 0062 Amendment 3: on the host's own Claude Code login (dev only) a call has
+/// no real cost. Usage is still metered, but the monthly budget is notional and never blocks.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_notional_budget_records_but_never_blocks(pool: PgPool) {
+    let a = account(&pool).await;
+    seed_spend(&pool, a, 999_999_999).await;
+    let now = OffsetDateTime::now_utc();
+    let enforced = BudgetConfig {
+        global_monthly: Some(1),
+        ..BudgetConfig::default()
+    };
+    assert!(enforced.enforce);
+    let blocked = budget_guard(pool.clone(), vec![a], Plan::Pro, enforced, now);
+    assert_eq!(blocked().await, Err(AiError::Budget));
+    let notional = enforced.notional();
+    assert!(!notional.enforce);
+    assert_eq!(notional.per_plan, enforced.per_plan);
+    let open = budget_guard(pool.clone(), vec![a], Plan::Pro, notional, now);
+    assert_eq!(open().await, Ok(()));
+}
+
 // ---------------------------------------------------------------------------------------------
 // Gates and input
 // ---------------------------------------------------------------------------------------------

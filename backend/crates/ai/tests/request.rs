@@ -335,3 +335,28 @@ fn repair_messages_append_raw_assistant_content_then_user() {
         "one uncached text block"
     );
 }
+
+// Holistic F5: the band picks the tone only. The system prompt never carries the band's rating
+// range, so the model cannot name "players rated 900–1299" instead of the peer benchmark.
+#[test]
+fn report_system_prompt_never_names_a_band_rating_range() {
+    for name in ["b2-rapid", "b0-blitz"] {
+        let req = build_section_request(&input(name), SectionKey::Overview, false);
+        let system: String = req.system.iter().map(|b| b.text.clone()).collect();
+        for range in [
+            "below 900",
+            "900 to 1299",
+            "1300 to 1699",
+            "1700 to 1999",
+            "2000 to 2299",
+            "2300 and above",
+            "band scale",
+        ] {
+            assert!(!system.contains(range), "{name}: system names {range:?}");
+        }
+        assert!(
+            system.contains("Do not name the band or its rating range"),
+            "{name}: the tone says the band is not a comparison"
+        );
+    }
+}

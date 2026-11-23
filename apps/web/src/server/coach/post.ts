@@ -1,6 +1,7 @@
 import type { Db } from "@ci/db";
 import { coachConversations, coachMessages } from "@ci/db/generated";
 import { eq, sql } from "drizzle-orm";
+import { isVerifiedLink } from "../accounts/verified.js";
 import { enqueueJob, JOB } from "../jobs/index.js";
 import type { ChatAnchor } from "./anchor.js";
 import {
@@ -28,6 +29,7 @@ export type PostResult =
   | { kind: "posted"; userMessageId: string; assistantMessageId: string }
   | { kind: "not_found" }
   | { kind: "not_linked" }
+  | { kind: "not_verified" }
   | { kind: "busy" }
   | { kind: "empty" }
   | { kind: "too_long" }
@@ -88,6 +90,8 @@ async function postInTx(
   const accountId = owned.account_id;
   // The poster must still be linked to the account (Rust `require_link`).
   if (!(await isLinked(tx, userId, accountId))) return { kind: "not_linked" };
+  // Holistic F10: only a verified link may ask the coach about the account.
+  if (!(await isVerifiedLink(tx, userId, accountId))) return { kind: "not_verified" };
 
   const [busy] = (await tx.execute(sql`
       select exists (select 1 from coach_messages where conversation_id = ${threadId}
@@ -182,6 +186,7 @@ export async function startConversation(
       const tx = raw as unknown as Db;
       await lockCreates(tx, userId);
       if (!(await isLinked(tx, userId, opts.accountId))) return { kind: "not_linked" };
+      if (!(await isVerifiedLink(tx, userId, opts.accountId))) return { kind: "not_verified" };
       const [again] = (await tx.execute(sql`
         select c.id, u.id as user_message_id, a.id as assistant_message_id
         from coach_conversations c

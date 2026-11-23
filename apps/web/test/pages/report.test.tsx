@@ -392,8 +392,45 @@ describe("report page", () => {
     }));
     const screen = within(render(<ReportView data={d} />).container);
     const text = screen.getByRole("region", { name: "What's costing you games" }).textContent ?? "";
-    expect(text).toContain("Not compared yet: no benchmark for players at your level yet.");
+    expect(text).toContain("Not compared yet: no benchmark for this account yet.");
     expect(text).not.toMatch(/Nothing stands out|compared with players/);
+  });
+
+  // Holistic F5: with a peer benchmark the weaknesses name the players faced, never the old
+  // Lichess band ("Players rated 900–1299: 9.2%").
+  it("with a peer benchmark the weaknesses name the players faced", async () => {
+    await previous();
+    const d = await data();
+    const computed = d.view.payload?.computed;
+    if (!computed) throw new Error("no payload");
+    computed.player.band = "B1";
+    computed.benchmark = {
+      source: "peers",
+      ratingLow: 667,
+      ratingHigh: 967,
+      players: 25,
+      games: 61,
+    };
+    const screen = within(render(<ReportView data={d} />).container);
+    const text = screen.getByRole("region", { name: "What's costing you games" }).textContent ?? "";
+    expect(text).toContain("compared with players you've faced, rated about 667–967.");
+    expect(text).toMatch(/Players you've faced, rated about 667–967: \d/);
+    expect(text).not.toMatch(/rated 900–1299|at your level/);
+  });
+
+  // Holistic F10: a user whose link is not verified gets the calm verify state, no report.
+  it("an unverified link sees the verify state, not the report", async () => {
+    await previous();
+    await db.execute(sql`update account_links set verified_at = null where user_id = ${userId}`);
+    const d = await data();
+    expect(d.view.payload).toBeNull();
+    const screen = within(render(<ReportView data={d} />).container);
+    expect(screen.getByText("Verify this account to see your coach's report")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Verify this account" }).getAttribute("href")).toBe(
+      "/app/accounts",
+    );
+    expect(screen.queryByRole("button", { name: /report/i })).toBeNull();
+    expect(screen.queryByRole("region", { name: "What's costing you games" })).toBeNull();
   });
 
   it("no ask link while the chat pages are not live", async () => {

@@ -8,6 +8,7 @@ import {
 } from "@ci/db/generated";
 import { Chess } from "chess.js";
 import { and, asc, count, desc, eq, gte, inArray, sql } from "drizzle-orm";
+import { isVerifiedLink } from "../accounts/verified.js";
 import type { AiDisclosure, Segment } from "../coaching/types.js";
 import { readOnly } from "../games/read-only.js";
 import type { TimeClass } from "../games/types.js";
@@ -133,6 +134,7 @@ const CREATE_LOCK_CLASS = 30032;
 export type CreateResult =
   | { kind: "created"; id: string }
   | { kind: "not_linked" }
+  | { kind: "not_verified" }
   | { kind: "rate_limited"; retryAt: Date };
 
 export type NewConversation = {
@@ -168,6 +170,7 @@ export async function createConversation(
     const tx = raw as unknown as Db;
     await lockCreates(tx, userId);
     if (!(await isLinked(tx, userId, opts.accountId))) return { kind: "not_linked" };
+    if (!(await isVerifiedLink(tx, userId, opts.accountId))) return { kind: "not_verified" };
     const [again] = (await tx.execute(sql`
       select c.id from coach_conversations c
       where c.user_id = ${userId} and ${sameStart(opts)}
@@ -185,6 +188,8 @@ export async function createInTx(
   opts: NewConversation,
 ): Promise<CreateResult> {
   if (!(await isLinked(tx, userId, opts.accountId))) return { kind: "not_linked" };
+  // Holistic F10: only a verified link may ask the coach about the account.
+  if (!(await isVerifiedLink(tx, userId, opts.accountId))) return { kind: "not_verified" };
   const since = new Date(Date.now() - CHAT_CREATE_LIMIT.windowMs);
   const [recent] = await tx
     .select({ n: count(), oldest: sql<string | null>`min(${coachConversations.createdAt})` })
