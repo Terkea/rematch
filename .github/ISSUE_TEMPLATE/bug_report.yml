@@ -6,9 +6,9 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for taking the time to report this. A clear report is the fastest way to a fix.
+        Many thanks for reporting this. A clear report is the fastest way to a fix.
 
-        **Please keep it public-safe.** This issue is public forever. Leave out personal data,
+        This issue is public forever, so keep it public-safe. Leave out personal data,
         email addresses, tokens, and links to games or accounts you don't want the world to see.
         A FEN, a PGN snippet or a screenshot with names cropped out works just as well.
   - type: textarea
@@ -47,7 +47,7 @@ body:
       label: Where are you running Rematch?
       options:
         - My own local stack (docker compose)
-        - A hosted instance
+        - A server I or a friend host
         - Somewhere else (say below)
     validations:
       required: true

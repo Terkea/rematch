@@ -1,8 +1,8 @@
 # Contributing to Rematch
 
 Rematch, chess improver, analyses your chess.com games with **Stockfish**, finds the mistakes you
-keep repeating, explains them and trains you on them. Contributions of every size are welcome:
-code, chess knowledge, design, docs, testing and bug reports. Many thanks for considering it.
+keep repeating, explains them and trains you on them. Code, chess knowledge, design, docs and
+bug reports all help, and small pull requests are reviewed fastest. Many thanks for considering it.
 
 The full stack is heavy. It runs **Postgres**, **Redis**, a Rust worker with **Stockfish**, the
 **Next.js** app and an AI sidecar in Docker, so plan on a machine with at least 16 GB of RAM, 12 GB
@@ -110,14 +110,14 @@ The script ends by printing the worker's `ai: enabled (...)` or `ai: disabled (<
 
 ### Troubleshooting
 
-These are the snags I hit on the dry runs on Windows 11 (Git Bash, Docker Desktop 29.1, Compose 5.0): the first seven following the old setup steps in a fresh clone, the last on the first full-mode run. The first one I reproduced in a scratch Compose project, because my machine already had the caches.
+These are the snags from my dry runs on Windows 11 (Git Bash, Docker Desktop 29.1, Compose 5.0). Most come from running `docker compose` by hand instead of `setup.sh`; the last one is from the first full-mode run.
 
 | What you see | Why, and the fix |
 |---|---|
 | `external volume "ci-cargo-registry" not found`, and nothing starts | `docker compose up` ran before the shared Rust caches existed. `sh scripts/rust-cache-init.sh` creates them once per Docker host; `setup.sh` runs it first. |
 | `Bind for 127.0.0.1:48025 failed: port is already allocated` | Another stack, often a second copy of Rematch, holds the port. `sh scripts/setup.sh configure --web-port=3101 --mailpit-port=48026 --postgres-port=55440 --redis-port=56380`, or `--no-ports`. |
 | The sign-in page says "Check your email", but Mailpit stays empty | Sign-up is invite-only, and `INVITE_ALLOWLIST` was empty. The app does not tell an uninvited address apart, by design. `sh scripts/setup.sh configure --email=you@example.com`, then `docker compose up -d web`. |
-| `docker compose up -d` also starts `rust-dev`, which exits at once, and `worker`, the old TypeScript worker | A plain `up` starts every service in the file. `setup.sh` starts only what the app uses: `docker compose up -d --wait postgres redis mailpit web ai-sidecar rust-worker`. |
+| `docker compose up -d` also starts `rust-dev`, which exits at once, and `worker`, the old TypeScript worker | A plain `up` starts every service in the file. `worker` stays in the file because CI runs the TypeScript gate in its image (ADR 0067). `setup.sh` starts only what the app uses: `docker compose up -d --wait postgres redis mailpit web ai-sidecar rust-worker`. |
 | `nvm use` fails with "A version argument is required but missing" | nvm-windows does not read `.nvmrc`. Run `nvm use 22`. |
 | The worker logs `no Syzygy .rtbw files found; tablebase probes disabled` | Expected in minimal mode. `sh scripts/setup.sh data` fetches the tables, and the worker logs `"tablebase probe" ... "status":"available","tables":145` after its restart. |
 | The worker logs `ai: disabled (sidecar has no credential)` | Expected with `--ai=none`. `sh scripts/setup.sh ai` switches to `local` or `key`. |
@@ -141,7 +141,9 @@ We write the failing test first, then the code that makes it pass. Tests use Vit
 and `cargo test` (Rust).
 
 TypeScript, on the host. Start only Postgres and Redis (`docker compose up -d postgres redis`)
-and point the tests at them. The web tests need a 32+ character `BETTER_AUTH_SECRET`; any random
+and point the tests at them. Ports 55432 and 56379 are published when `.env` has the ports
+overlay in `COMPOSE_FILE`, as `setup.sh` writes it; use your own if you moved them with
+`--postgres-port` or `--redis-port`. The web tests need a 32+ character `BETTER_AUTH_SECRET`; any random
 value works.
 
 ```sh
@@ -168,7 +170,7 @@ Rust, in Docker:
 ```sh
 RUST="env COMPOSE_FILE=docker-compose.yml docker compose -p ci-dev run --rm rust-dev"   # no host ports
 $RUST cargo test --locked -p chess-core        # one crate
-$RUST sh -c "cargo fmt --check && cargo clippy --locked --workspace --all-targets -- -D warnings && cargo deny --locked check && cargo test --locked --workspace"
+$RUST sh -c "cargo fmt --check && cargo clippy --locked --workspace --all-targets -- -D warnings && cargo deny --locked check && cargo test --locked --workspace && sh scripts/check-crate-age.sh"
 COMPOSE_FILE=docker-compose.yml docker compose -p ci-dev down -v   # clean up when done
 ```
 
@@ -200,7 +202,7 @@ run the slow suites locally for a small change.
 - Honest numbers. Rematch states the sample size with every rate, shows a dash rather than a
   fake zero, and never claims "improved" unless the data shows it. Keep that true in what you build.
 - Dependencies are pinned exactly and must be at least 7 days old (`scripts/check-npm-age.mjs`,
-  `scripts/check-crate-age.sh`). Rust dependency changes are made by the maintainer.
+  `backend/scripts/check-crate-age.sh`). For now the maintainer makes Rust dependency changes.
 - No secrets or personal data in code, fixtures, screenshots or issues.
 
 The definition of done is in [docs/SDLC.md](docs/SDLC.md#definition-of-done).
@@ -218,7 +220,8 @@ release is a beta:
 
 [release-please](https://github.com/googleapis/release-please) reads the commit titles on `main`
 (your PR titles) and keeps a release PR open with the next version and its `CHANGELOG.md` entry.
-`feat` lands under Features, `fix` under Fixes, `perf` under Performance and `docs` under Docs;
+`feat` lands under Features, `fix` under Fixes, `perf` under Performance, `revert` under Reverts and
+`docs` under Docs;
 `chore`, `test`, `ci`, `refactor`, `build` and `style` stay out of the changelog. When the
 maintainer merges the release PR, it tags `v0.y.z` and publishes a GitHub Release marked as a
 prerelease. So a clear PR title is a clear changelog.

@@ -23,7 +23,7 @@ const features = [
     body: "It counts each mistake per chance, not per game: a loose piece per move that had one, a missed fork per fork you had. Then it ranks them by what they cost, explains each in a sentence and compares you with players around your rating. Your strengths get the same treatment.",
     note: "Every rate carries its count and an 80% range. A new pattern stays an early read until the evidence is there.",
     shot: "weaknesses",
-    alt: "Weakness rows: leaving pieces undefended at 4.2% with its 80% range and peer median, rook endgames, missed forks as an early read, and blunders under one minute.",
+    alt: "Weakness rows: leaving pieces undefended at 4.2% with its 80% range and peer median, rook endgames, missed forks as an early read, and blunders on a low clock.",
   },
   {
     id: "coach",
@@ -117,7 +117,7 @@ const faq = [
   },
   {
     q: "Can I sign up somewhere?",
-    a: `Not yet. Rematch is a beta (version ${VERSION}) that you run yourself with Docker, and the maintainer runs a small private beta for friends. Version 1.0 is reserved for the first complete release.`,
+    a: `Not yet. Rematch is a beta (version ${VERSION}) that you run yourself with Docker. Version 1.0 is reserved for the first complete release.`,
   },
   {
     q: "Why chess.com only?",
@@ -141,7 +141,7 @@ const faq = [
   },
   {
     q: "What do I need to run it?",
-    a: "Docker with about 16 GB of memory for the whole stack. Node 22 and pnpm if you want to work on the code. Getting started has the five commands.",
+    a: "Docker with about 12 GB of memory assigned (a 16 GB machine) and about 10 GB of free disk. Node 22 and pnpm 12 if you want to work on the code. Getting started has the three commands.",
   },
 ];
 ---
@@ -193,7 +193,7 @@ const faq = [
       <Shot
         name="graphs"
         alt="Two win-chance graphs from two games by the same player. In each, a winning position drops at a blunder marked with a red tick and a double question mark: 28. Nd2?? in the first, 13. Nb4?? and 23. Bc1?? in the second."
-        caption="Two real games from the styleguide, two collapses, each marked ??."
+        caption="Two public Lichess games from the styleguide, two collapses, each marked ??."
       />
     </div>
   </section>
@@ -243,8 +243,8 @@ const faq = [
           the number it explains.
         </li>
         <li>
-          <strong>A range with every estimate.</strong> An 80% range, written out in words, not just
-          drawn.
+          <strong>A range with every estimate.</strong> An 80% range, drawn and written out in
+          words.
         </li>
         <li>
           <strong>Unknown is never zero.</strong> Below 10 games there is no number, only
@@ -294,18 +294,18 @@ const faq = [
       <h2 id="roadmap-title" class="section-title">Roadmap</h2>
       <p class="section-intro">
         Each milestone on GitHub has one epic per theme, a spec in the issue and its work as
-        sub-issues. The order comes from a review of the app through the eyes of an 824-rated rapid
-        player, ranked by what the research says should help them improve.
+        sub-issues. The order comes from a week of using it on my own account (824 rapid), ranked by what
+        the research says should help a player improve.
       </p>
       <Roadmap />
     </div>
   </section>
 
   <section id="contribute" class="wrap" aria-labelledby="contribute-title">
-    <h2 id="contribute-title" class="section-title">Help us turn this into something great</h2>
+    <h2 id="contribute-title" class="section-title">Help build Rematch</h2>
     <p class="section-intro">
-      Rematch is one maintainer and a lot of decisions written down. It gets better with people who
-      play, people who coach and people who build.
+      Rematch is one maintainer and a lot of decisions written down. Here is where help moves it
+      most.
     </p>
     <div class="split contribute">
       <dl class="roles">

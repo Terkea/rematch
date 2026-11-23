@@ -23,22 +23,22 @@
   "known_gaps": [
     {
       "player": "bench-hang",
-      "issue": "https://github.com/Terkea/chess-improvement-engine/issues/10",
+      "issue": "https://github.com/Terkea/rematch/issues/10",
       "note": "W1 has no peer benchmark (is_peer_comparable), so it is never ranked"
     },
     {
       "player": "bench-noconvert",
-      "issue": "https://github.com/Terkea/chess-improvement-engine/issues/10",
+      "issue": "https://github.com/Terkea/rematch/issues/10",
       "note": "W5 has no peer benchmark (is_peer_comparable), so it is never ranked"
     },
     {
       "player": "bench-missmate",
-      "issue": "https://github.com/Terkea/chess-improvement-engine/issues/11",
+      "issue": "https://github.com/Terkea/rematch/issues/11",
       "note": "the W4.missed peer row is low-sample at 80 games, so it is not ranked"
     },
     {
       "player": "bench-clean",
-      "issue": "https://github.com/Terkea/chess-improvement-engine/issues/12",
+      "issue": "https://github.com/Terkea/rematch/issues/12",
       "note": "W9b ranks first from noise: no confidence or effect floor on ranking"
     }
   ]

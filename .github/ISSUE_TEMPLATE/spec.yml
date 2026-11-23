@@ -1,5 +1,5 @@
 name: Feature spec (RFC)
-description: A full spec for work on the roadmap. Usually written by a maintainer from an accepted idea.
+description: A full spec for work on the roadmap. Usually written by the maintainer from an accepted idea.
 title: "spec: "
 labels: [spec, needs-triage]
 body:

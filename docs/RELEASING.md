@@ -138,7 +138,7 @@ docker compose pull
 docker compose up -d --wait
 ```
 
-The web app listens on `127.0.0.1:3100` (`WEB_PORT`); put a TLS reverse proxy in front of it and list the proxy in `TRUSTED_PROXIES`. Sign-up is invite-only: add your address to `INVITE_ALLOWLIST` before the first sign-in. Compose 2.20 or newer is needed (`depends_on.required`).
+The web app listens on `127.0.0.1:3100` (`WEB_PORT`); put a TLS reverse proxy in front of it and list the proxy in `TRUSTED_PROXIES`. Sign-up is invite-only: add your address to `INVITE_ALLOWLIST` before the first sign-in. Running a release needs Compose 2.20 or newer (`depends_on.required`); development needs 2.24 (CONTRIBUTING.md).
 
 With the AI coach: set `COMPOSE_PROFILES=ai`, `AI_SIDECAR_URL=http://ai-sidecar:7310`, `AI_SIDECAR_TOKEN`, `ANTHROPIC_API_KEY` and `AI_SIDECAR_DB_PASSWORD` in `.env`, run `docker compose up -d`, then once `docker compose run --rm ai-sidecar-role`. Without it every number is still computed; the worker logs `ai: disabled (AI_SIDECAR_URL not set)`.
 
@@ -179,7 +179,7 @@ The worker applies `db/migrations` with **sqlx** every time it starts, before it
    docker compose stop worker web
    docker compose exec -T postgres dropdb -U postgres rematch
    docker compose exec -T postgres createdb -U postgres rematch
-   docker compose exec -T postgres pg_restore -U postgres -d rematch < rematch-20261124.dump
+   docker compose exec -T postgres pg_restore -U postgres -d rematch < rematch-YYYYMMDD.dump
    ```
 
 Then open an issue with the worker's log.

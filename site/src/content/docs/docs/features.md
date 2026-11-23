@@ -5,7 +5,7 @@ sidebar:
   order: 2
 ---
 
-Rematch reads your chess.com games, finds the mistakes you repeat, explains them and trains you on them, then checks whether the training works. Each section below links to the decision record that defines it, so you can see exactly how it behaves.
+Rematch reads your chess.com games, finds the mistakes you repeat, explains them and trains you on them, then checks whether the training works. Each section below links to the decision record that defines it.
 
 ## Analysis of every move
 
@@ -17,15 +17,15 @@ Decisions: [0007](/rematch/docs/decisions/0007-analysis-protocol-pinned/), [0008
 
 ## Weaknesses and strengths, explained
 
-Rematch measures each weakness per chance: loose pieces per move that had one, missed forks per fork available, blunders per move under a minute. It ranks them by what they cost you, says in one sentence what each means and why it matters, and compares you with players around your rating. Every rate shows its count and an 80% range; a pattern with too little evidence is an "early read". White and Black are split everywhere.
+Rematch measures each weakness per chance: loose pieces per move that had one, missed forks per fork available, blunders per move played with under 30 seconds left. It ranks them by what they cost you, says in one sentence what each means and why it matters, and compares you with players around your rating. Every rate shows its count and an 80% range; a pattern with too little evidence is an "early read". White and Black are split everywhere.
 
 Decisions: [0079](/rematch/docs/decisions/0079-explained-stats-and-weakness-story/), [0080](/rematch/docs/decisions/0080-chesscom-peer-benchmark/), [0082](/rematch/docs/decisions/0082-colour-split-profile-rows/), [ADR-R2-4](/rematch/docs/decisions/adr-r2-4-weakness-metric-rulings/).
 
 ## The coach: reports, chat and a weekly review
 
-With an Anthropic API key, Claude writes a coaching report, answers your questions in a chat and writes a weekly review. It never invents a fact. The report and chat may only cite positions, moves and numbers the app computed, through references that are resolved on the server, and every paragraph is validated before it is shown. A paragraph that fails is repaired once or dropped, and the answer says what was left out. The coach can ask Stockfish for a fresh check while it answers.
+With an Anthropic API key (or, for your own use, your signed-in Claude Code), Claude writes a coaching report, answers your questions in a chat and writes a weekly review. It never invents a fact. The report and chat may only cite positions, moves and numbers the app computed, through references that are resolved on the server, and every paragraph is validated before it is shown. A paragraph that fails is repaired once or dropped, and the answer says what was left out. The coach can ask Stockfish for a fresh check while it answers.
 
-Without a key, every report is computed-only: the numbers without commentary.
+Without either, every report is computed-only: the numbers without commentary.
 
 Decisions: [0060](/rematch/docs/decisions/0060-sectioned-generation-and-facts-by-reference/), [0062](/rematch/docs/decisions/0062-claude-agent-sdk-sidecar/), [0064](/rematch/docs/decisions/0064-ask-your-coach-chat/), [0093](/rematch/docs/decisions/0093-report-validator-false-drops/), [0094](/rematch/docs/decisions/0094-coach-knows-the-plan/).
 
@@ -33,7 +33,7 @@ Decisions: [0060](/rematch/docs/decisions/0060-sectioned-generation-and-facts-by
 
 Positions from your own games where you missed a mate, a win or a short tactic, fell for a trap or blundered become drills. You play a move, say "Sure" or "A guess", then see the verdict, the engine's line as numbered arrows, the move you played in the game and a link to that moment. A right answer comes back after 1, 3, 7, 21 and then 60 days; a miss comes back tomorrow; three clean passes at least a week apart retire a position. Sessions are at most 12 positions, mixed across sources, and never name the motif before you answer.
 
-About one position in five is held back and never drilled. "Is it working?" compares how often the patterns you drilled turn up solved in later games against the held-back ones, and says "Too early to tell" until it has 30 chances on a side.
+About one position in five is held back and never drilled. "Is it working?" compares your rate per chance before and after your first drill, and the motifs you drilled with those only held-back positions have. It says "Too early to tell" until it has 30 chances on a side.
 
 Decisions: [0090](/rematch/docs/decisions/0090-missed-moments-trainer/). Evidence: [what helps amateurs improve](/rematch/docs/research/2026-11-23-what-helps-amateurs-improve/).
 
@@ -59,5 +59,5 @@ Decisions: [0092](/rematch/docs/decisions/0092-focused-overview/).
 
 - A position explorer that opens any move the app names, with the engine line drawn on the board ([ADR-FIX-F-1](/rematch/docs/decisions/adr-fix-f-1-position-explorer/)).
 - Filters by time control, colour and dates, and a period comparison ([0083](/rematch/docs/decisions/0083-filters-and-period-comparison/)).
-- Original, synthesised move sounds and a board whose pieces have weight ([ADR-WEB-13](/rematch/docs/decisions/adr-web-13-board-pieces-and-motion/), [ADR-WEB-17](/rematch/docs/decisions/adr-web-17-original-procedural-sounds/)).
+- Original, synthesised move sounds, and pieces that move with a short, weighted animation (reduced motion respected) ([ADR-WEB-13](/rematch/docs/decisions/adr-web-13-board-pieces-and-motion/), [ADR-WEB-17](/rematch/docs/decisions/adr-web-17-original-procedural-sounds/)).
 - Day and night themes, from one design system ([ADR-WEB-7](/rematch/docs/decisions/adr-web-7-design-tokens/)).

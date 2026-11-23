@@ -41,7 +41,7 @@ impl Default for ClientOptions {
 
 /// Fixed, anonymous User-Agent: the project URL only, never an email (ADR 0043).
 pub fn user_agent() -> String {
-    "chess-improver/0.1 (+https://github.com/chess-improver)".to_owned()
+    "rematch/0.1 (+https://github.com/Terkea/rematch)".to_owned()
 }
 
 pub struct HttpPlatformClient {

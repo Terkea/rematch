@@ -1,5 +1,5 @@
 <!--
-Thanks for contributing to Rematch!
+Many thanks for the pull request.
 
 The PR title becomes the commit on main (squash merge) and a line in the changelog, so write it
 as a Conventional Commit: "feat(coach): cite the move number", "fix(web): keep the filter on
@@ -17,7 +17,7 @@ back". The PR-title check enforces this. See CONTRIBUTING.md.
 ## Checklist
 
 - [ ] I wrote the failing test first, then the code that makes it pass.
-- [ ] The gates pass locally for what I touched: `pnpm lint typecheck format:check`, the tests
+- [ ] The gates pass locally for what I touched: `pnpm lint && pnpm typecheck && pnpm format:check`, the tests
       (web on the host, the Rust gate in Docker), and `node scripts/github/test-settings.mjs` if I
       changed `.github/`.
 - [ ] A decision that others should know about has an ADR in `docs/decisions/` (next number,

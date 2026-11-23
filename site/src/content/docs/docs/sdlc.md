@@ -8,8 +8,8 @@ sidebar:
 The full process is [`docs/SDLC.md`](https://github.com/Terkea/rematch/blob/main/docs/SDLC.md), and the reasons behind it are decision [0095](https://github.com/Terkea/rematch/blob/main/docs/decisions/0095-open-source-sdlc-and-releases.md). In short:
 
 ```
-idea, triage, needs-spec, spec, accepted, milestone, pull request, CI green, review, squash merge,
-release PR, release
+idea -> triage -> needs-spec -> spec -> accepted -> milestone -> fork and branch -> pull request
+  -> CI green -> review -> squash merge -> release PR -> release
 ```
 
 1. **Issue.** Everything starts from a form: a bug, a feature request (the problem a player has and the evidence a fix helps) or a coaching idea. Questions go to Discussions.
@@ -24,9 +24,9 @@ release PR, release
 
 Rematch has one product version, shared by the app and the backend.
 
-- **0.y.z is a beta.** Every release below 1.0 is published as a GitHub prerelease tagged `v0.y.z`, and the app shows it as "Rematch v0.y.z · beta". While the major is 0, features and fixes bump the patch, and a breaking change bumps the minor.
-- **1.0.0 is the MVP.** It is a deliberate maintainer decision, made in its own ADR, not something a commit triggers.
-- **The first release is 0.1.0.**
+- 0.y.z is a beta. Every release below 1.0 is published as a GitHub prerelease tagged `v0.y.z`, and the app shows it as "Rematch v0.y.z · beta". While the major is 0, features and fixes bump the patch, and a breaking change bumps the minor.
+- 1.0.0 is the MVP. It is a deliberate maintainer decision, made in its own ADR, not something a commit triggers.
+- The first release is 0.1.0.
 
 ## Definition of done
 

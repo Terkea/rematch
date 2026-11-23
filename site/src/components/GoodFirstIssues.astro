@@ -37,7 +37,7 @@ import { GOOD_FIRST_ISSUES_URL, REPO } from "../data/site";
       return;
     }
     if (response.status === 403 || response.status === 429) {
-      say("GitHub's hourly limit for anonymous visitors is used up. The full list is one link away.");
+      say("GitHub's hourly limit for anonymous visitors is used up. The full list is on GitHub.");
       return;
     }
     if (!response.ok) {

@@ -48,14 +48,14 @@ Early estimate % of fork chances
 Early read
 180 more fork chances needed
 Weekly trend after 180 more fork chances
-Blunders under one minute
+Blunders on a low clock
 Not compared yet
 Onset detected 2 Jul 2026
 Estimated 1.8% of chances (80% range 1.1% to 2.7%), from 14 of 780.
-Estimated % of moves under one minute
+Estimated % of moves under 30 seconds
 1.8%
 80% range 1.1% to 2.7%
-14 blunders in 780 moves under one minute
+14 blunders in 780 moves under 30 seconds
 0%
 20.0%
 Not compared yet: no benchmark for this account yet
