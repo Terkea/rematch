@@ -1,0 +1,38 @@
+---
+// One horizon's milestones for the docs roadmap page, with each epic's sub-issue progress
+// (src/data/roadmap.ts, ADR 0099). Starlight styles the headings and lists.
+import {
+  epicName,
+  milestonesIn,
+  progressText,
+  type RoadmapMilestone,
+} from "../data/roadmap";
+
+interface Props {
+  horizon: RoadmapMilestone["horizon"];
+}
+const { horizon } = Astro.props;
+const milestones = milestonesIn(horizon);
+---
+
+{
+  milestones.map((m) => (
+    <>
+      <h3>
+        <a href={m.url}>{m.title}</a>
+      </h3>
+      <p>
+        {m.description} In this milestone: {progressText(m.closed, m.total)}.
+      </p>
+      <ul>
+        {m.epics.map((e) => (
+          <li>
+            {e.url ? <a href={e.url}>{epicName(e.title)}</a> : epicName(e.title)}:{" "}
+            {progressText(e.done, e.total, "sub-issue")}
+            {e.state === "closed" ? ", closed" : ""}.
+          </li>
+        ))}
+      </ul>
+    </>
+  ))
+}

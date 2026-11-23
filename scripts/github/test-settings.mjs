@@ -3,7 +3,9 @@
 //   1. every JSON file there parses and has the shape GitHub's REST API takes;
 //   2. the main ruleset requires exactly the checks CI reports, so renaming or adding a job in
 //      .github/workflows/ci.yml cannot silently drop (or block on) a required check;
-//   3. the diff and plan logic that apply-settings.sh and the drift check share.
+//   3. the diff and plan logic that apply-settings.sh and the drift check share;
+//   4. the roadmap kept as code (ADR 0099): milestones.json and roadmap-issues.json agree with
+//      each other and with labels.json, and the milestone, seed-issue and sub-issue plans.
 // Run: node scripts/github/test-settings.mjs (no dependencies, no network).
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
@@ -12,14 +14,21 @@ import { fileURLToPath } from "node:url";
 import {
   ACTIONS_APP_ID,
   ciCheckNames,
+  composeIssueBody,
   diffLabels,
   diffSubset,
   driftReport,
+  epicNumbers,
   findRuleset,
   loadSettings,
   planChanges,
+  planMilestones,
+  planSeedIssues,
+  planSubIssues,
   validateLabels,
+  validateMilestones,
   validateRepo,
+  validateRoadmapIssues,
   validateRuleset,
 } from "./settings-lib.mjs";
 
@@ -308,7 +317,7 @@ check("driftReport: a private repo only notices; a public one compares what it c
     description: settings.repo.repo.description,
     homepage: settings.repo.repo.homepage,
     has_issues: true,
-    has_projects: false,
+    has_projects: settings.repo.repo.has_projects,
     has_wiki: false,
     has_discussions: true,
     topics: settings.repo.topics,
@@ -337,6 +346,164 @@ check("driftReport: a private repo only notices; a public one compares what it c
   const unreadable = driftReport(settings, { ...readOnly, rulesets: { error: "HTTP 403" } });
   assert.deepEqual(unreadable.drift, []);
   assert.match(unreadable.notices.join(" "), /not readable/);
+});
+
+// ---- 4. the roadmap ----
+
+check("milestones.json: unique titles, a description and a horizon each, v1.0 MVP last", () => {
+  validateMilestones(settings.milestones);
+  assert.equal(settings.milestones.at(-1).title, "v1.0 MVP");
+  assert.ok(
+    settings.milestones.some((m) => m.horizon === "now"),
+    "something is Now",
+  );
+});
+
+check("labels.json has the spec flow and the sweep labels", () => {
+  const names = settings.labels.map((l) => l.name);
+  for (const want of ["needs-spec", "spec", "accepted", "epic", "roadmap", "stale", "sweep"]) {
+    assert.ok(names.includes(want), `missing label ${want}`);
+  }
+});
+
+check("roadmap-issues.json: milestones and labels exist, titles unique, epics carry a spec", () => {
+  validateRoadmapIssues(settings.roadmapIssues, settings);
+  const epics = settings.roadmapIssues.filter((i) => i.epic);
+  for (const m of settings.milestones) {
+    assert.ok(
+      epics.some((e) => e.milestone === m.title),
+      `milestone "${m.title}" has no epic`,
+    );
+  }
+  const gfi = settings.roadmapIssues.filter((i) => i.labels.includes("good first issue"));
+  assert.ok(gfi.length >= 3, "at least three good first issues for newcomers");
+});
+
+check("validateRoadmapIssues refuses the mistakes that would break seeding", () => {
+  const firstChild = (x) => x.find((i) => i.parent);
+  const cases = [
+    [(x) => x.push({ ...x[0] }), /appears twice/],
+    [
+      (x) => {
+        firstChild(x).milestone = "v9 Nowhere";
+      },
+      /not in milestones.json/,
+    ],
+    [(x) => firstChild(x).labels.push("no-such-label"), /not in labels.json/],
+    [
+      (x) => {
+        firstChild(x).parent = "Epic: missing";
+      },
+      /is not in roadmap-issues/,
+    ],
+    [
+      (x) => {
+        const children = x.filter((i) => i.parent);
+        children[0].parent = children[1].title;
+      },
+      /is not an epic/,
+    ],
+    [
+      (x) => {
+        x.find((i) => i.epic).body = ["## Problem", "- [ ] x", "## Acceptance criteria", "## Pointers"];
+      },
+      /spec is missing/,
+    ],
+    [
+      (x) => x.find((i) => !i.epic && i.size !== "S").labels.push("good first issue"),
+      /good first issue is size S/,
+    ],
+  ];
+  for (const [mutate, err] of cases) {
+    const copy = structuredClone(settings.roadmapIssues);
+    mutate(copy);
+    assert.throws(() => validateRoadmapIssues(copy, settings), err);
+  }
+});
+
+check("composeIssueBody: the size first, the spec, then where it was seeded from", () => {
+  const body = composeIssueBody(settings.roadmapIssues[0]);
+  assert.match(body, /^Size: [SMLX]+: /);
+  assert.ok(body.includes("## Problem"));
+  assert.match(body, /roadmap-issues\.json/);
+});
+
+check("planMilestones: create by title, update what differs, delete only with prune", () => {
+  const desired = [
+    { title: "v0.2 A", description: "a", state: "open", horizon: "now" },
+    { title: "v0.3 B", description: "b", state: "open", horizon: "next" },
+  ];
+  const live = [
+    { number: 4, title: "v0.2 A", description: "old", state: "open", due_on: null },
+    { number: 9, title: "Someday", description: "", state: "open", due_on: null },
+  ];
+  const plan = planMilestones(desired, live);
+  assert.deepEqual(
+    plan.calls.map((c) => `${c.method} ${c.path}`),
+    ["PATCH /milestones/4", "POST /milestones"],
+  );
+  assert.equal(plan.calls[1].body.horizon, undefined, "horizon is ours, not GitHub's");
+  assert.ok(plan.lines.some((l) => l.includes('"Someday" is not in milestones.json (kept')));
+  const pruned = planMilestones(desired, live, { prune: true });
+  assert.ok(pruned.calls.some((c) => c.method === "DELETE" && c.path === "/milestones/9"));
+  const same = planMilestones(desired, [
+    { number: 4, title: "v0.2 A", description: "a", state: "open", due_on: null },
+    { number: 5, title: "v0.3 B", description: "b", state: "open", due_on: null },
+  ]);
+  assert.deepEqual(same.calls, []);
+});
+
+check("planChanges plans the milestones only when they were read", () => {
+  const live = matching(settings);
+  assert.deepEqual(planChanges(settings, live, "o/r").calls, []);
+  const fresh = planChanges(settings, { ...live, milestones: [] }, "o/r");
+  assert.equal(
+    fresh.calls.filter((c) => c.path === "repos/o/r/milestones").length,
+    settings.milestones.length,
+  );
+});
+
+check("planSeedIssues: epics first, existing titles (open or closed) skipped, PRs ignored", () => {
+  const issues = settings.roadmapIssues;
+  const child = issues.find((i) => i.parent);
+  const live = [
+    { number: 1, id: 101, title: child.title, state: "closed" },
+    { number: 2, id: 102, title: issues.find((i) => i.epic).title, pull_request: {} },
+  ];
+  const milestones = settings.milestones.map((m, n) => ({ number: n + 1, title: m.title }));
+  const plan = planSeedIssues(issues, live, milestones, "o/r");
+  assert.equal(plan.calls.length, issues.length - 1, "a PR with an epic's title does not count");
+  const titles = plan.calls.map((c) => c.body.title);
+  const lastEpic = Math.max(...titles.map((t, n) => (t.startsWith("Epic: ") ? n : -1)));
+  const firstOther = titles.findIndex((t) => !t.startsWith("Epic: "));
+  assert.ok(lastEpic < firstOther, "every epic is created before any other issue");
+  assert.ok(!titles.includes(child.title));
+  assert.ok(plan.calls.every((c) => Number.isInteger(c.body.milestone)));
+  // Before the milestones exist (a dry run), the issue is planned without a number.
+  const early = planSeedIssues(issues, [], [], "o/r");
+  assert.ok(early.calls.every((c) => c.body.milestone === undefined));
+  assert.ok(early.lines.every((l) => l.includes("milestone created first")));
+});
+
+check("planSubIssues: links each child under its epic once, by the child's id", () => {
+  const issues = settings.roadmapIssues;
+  const live = issues.map((i, n) => ({ number: n + 1, id: 1000 + n, title: i.title }));
+  const numbers = epicNumbers(issues, live);
+  assert.equal(numbers.length, issues.filter((i) => i.epic).length);
+  const children = issues.filter((i) => i.parent);
+  const plan = planSubIssues(issues, live, new Map(), "o/r");
+  assert.equal(plan.calls.length, children.length);
+  const child = live.find((l) => l.title === children[0].title);
+  const parent = live.find((l) => l.title === children[0].parent);
+  assert.equal(plan.calls[0].path, `repos/o/r/issues/${parent.number}/sub_issues`);
+  assert.deepEqual(plan.calls[0].body, { sub_issue_id: child.id });
+  // Already linked: nothing to do.
+  const linked = new Map(numbers.map((n) => [n, live]));
+  assert.deepEqual(planSubIssues(issues, live, linked, "o/r").calls, []);
+  // Not on GitHub yet: planned for after creation, with no call.
+  const none = planSubIssues(issues, [], new Map(), "o/r");
+  assert.deepEqual(none.calls, []);
+  assert.equal(none.lines.length, children.length);
 });
 
 /** A live state that already matches the settings. */

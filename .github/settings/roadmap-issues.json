@@ -1103,6 +1103,39 @@
     ]
   },
   {
+    "title": "Message catalogue for the overview and the trainer",
+    "milestone": "v0.5 More players",
+    "parent": "Epic: Rematch in more than one language",
+    "size": "L",
+    "labels": [
+      "type/feature",
+      "area/web-ui",
+      "roadmap"
+    ],
+    "body": [
+      "## Problem",
+      "",
+      "The overview and the trainer write their words inline: in components, in",
+      "`apps/web/src/app/(app)/app/train/copy.ts` and in `_overview/practise-view.ts`. A translator has",
+      "no file to work in, and nothing fails when a string is added without a key.",
+      "",
+      "## Acceptance criteria",
+      "",
+      "- [ ] The epic's ADR has picked the library; this issue follows it.",
+      "- [ ] Every user-visible string on `/app` and `/app/train` comes from `apps/web/messages/en.json`,",
+      "      including the plural forms (\"1 position\", \"8 positions\").",
+      "- [ ] The user's locale comes from their account setting, then the browser, then `en-GB`.",
+      "- [ ] A test fails when a key used in code is missing from `en.json`.",
+      "- [ ] The English pages are unchanged: the visual baselines do not move.",
+      "",
+      "## Pointers",
+      "",
+      "- `copy.ts` and `practise-view.ts` hold most of the trainer's and overview's words.",
+      "- `packages/ui/src/stats/stat.tsx` already takes a `locale`.",
+      "- The parent epic."
+    ]
+  },
+  {
     "title": "Epic: works on a phone and with a screen reader",
     "milestone": "v0.5 More players",
     "epic": true,

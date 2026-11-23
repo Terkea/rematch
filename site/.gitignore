@@ -1,5 +1,6 @@
 # Written by scripts/sync-content.mjs on every build.
 src/styles/generated/
+src/data/generated/
 src/content/docs/docs/decisions/
 src/content/docs/docs/research/
 .astro/

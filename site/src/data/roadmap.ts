@@ -1,7 +1,8 @@
-// The roadmap, shown on the landing page and on /docs/roadmap/. "Shipped" items cite the decision
-// that records them; "Next" is the ranked list from the end-user review of 2026-11-23 (each needs
-// the maintainer's approval before work starts); "Open for contributors" are the issues seeded for
-// newcomers at launch.
+// The roadmap, shown on the landing page and on /docs/roadmap/ (ADR 0099). "Shipped" cites the
+// decision that records each item. Everything still to do comes from GitHub's milestones and epics,
+// read at build time by scripts/sync-content.mjs (src/data/generated/roadmap.json), with the seed
+// files in .github/settings as the fallback.
+import generated from "./generated/roadmap.json";
 
 export type RoadmapItem = { title: string; detail: string; adr?: string };
 
@@ -43,42 +44,46 @@ export const shipped: RoadmapItem[] = [
   },
 ];
 
-export const next: RoadmapItem[] = [
-  {
-    title: "A daily rhythm",
-    detail:
-      "A streak that allows one rest day a week, and an opt-in daily email with today's positions.",
-  },
-  {
-    title: "“Is it working?” sooner",
-    detail:
-      "How many more games until it can tell, and the training numbers you can already trust.",
-  },
-  {
-    title: "The opening-trap line trainer",
-    detail: "Replay the exact lines where you fell for a trap, from move 1.",
-  },
-  {
-    title: "Conversion play-outs",
-    detail: "Play your won positions on against an engine at your opponent's level (Maia, opt-in).",
-  },
-  {
-    title: "A time-use drill",
-    detail: "A clock budget per phase of the game, checked after each game.",
-  },
-];
+export type RoadmapEpic = {
+  title: string;
+  url: string | null;
+  state: string;
+  /** Sub-issues closed; null when only the seed files were read. */
+  done: number | null;
+  total: number;
+};
 
-export const openForContributors: RoadmapItem[] = [
-  {
-    title: "Lichess import behind a flag",
-    detail: "The importer exists and is tested; accounts were deferred (ADR 0040).",
-  },
-  { title: "Translations", detail: "i18n scaffolding for the app, then the docs." },
-  { title: "Mobile polish", detail: "The app is responsive; the phone deserves a pass." },
-  { title: "PGN upload", detail: "A CLI that brings in over-the-board games." },
-  {
-    title: "A smaller Docker profile",
-    detail: "Run the whole stack on a laptop with less memory.",
-  },
-  { title: "End-to-end tests", detail: "For example, the trajectory's states." },
-];
+export type RoadmapMilestone = {
+  title: string;
+  description: string;
+  horizon: "now" | "next" | "later";
+  state: string;
+  url: string;
+  /** Issues closed; null when only the seed files were read. */
+  closed: number | null;
+  total: number;
+  epics: RoadmapEpic[];
+};
+
+export const roadmap = generated as { source: "seed" | "github"; milestones: RoadmapMilestone[] };
+
+export const HORIZONS = [
+  { id: "now", title: "Now" },
+  { id: "next", title: "Next" },
+  { id: "later", title: "Later" },
+] as const;
+
+export const milestonesIn = (horizon: RoadmapMilestone["horizon"]) =>
+  roadmap.milestones.filter((m) => m.horizon === horizon);
+
+/** "A daily practice rhythm" from "Epic: a daily practice rhythm". */
+export const epicName = (title: string) => {
+  const name = title.replace(/^Epic: /, "");
+  return name.charAt(0).toUpperCase() + name.slice(1);
+};
+
+/** "2 of 6 done" when GitHub was read, "6 issues" from the seed files. */
+export function progressText(done: number | null, total: number, noun = "issue"): string {
+  if (done === null) return `${total} ${noun}${total === 1 ? "" : "s"}`;
+  return `${done} of ${total} done`;
+}
