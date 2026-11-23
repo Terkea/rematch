@@ -18,7 +18,7 @@ export function BoardSoundBar({ open = false }: { open?: boolean }) {
           Sound on
         </Button>
         {open ? (
-          <div className="absolute bottom-full left-0 mb-1.5">
+          <div className="absolute bottom-full left-0 z-50 mb-1.5">
             <FloatPanel>
               <SwitchRow label="Board sounds" on />
               <VolumeRow value={60} />
