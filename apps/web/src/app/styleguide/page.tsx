@@ -44,7 +44,12 @@ export default function StyleguidePage() {
         </p>
         <ThemeToggle />
       </header>
-      <main className="flex flex-col gap-16 pb-16">
+      {/* Every section but the charts skips layout, paint and layerize while it is off screen
+          (ADR-WEB-20). The page is about 18,000 elements, and each repaint re-layerized all of
+          them, so a trend step at 4x throttle cost a whole frame. The charts stay laid out: the
+          trend measures its parent on load, and the e2e specs wait for its dots. `auto` remembers
+          a section's real height once it has rendered; one viewport is only the first guess. */}
+      <main className="flex flex-col gap-16 pb-16 [&>section:not([data-section='charts'])]:[content-visibility:auto] [&>section:not([data-section='charts'])]:[contain-intrinsic-size:auto_100vh]">
         <HeroSection />
         <FoundationsSection />
         <BrandSection />
