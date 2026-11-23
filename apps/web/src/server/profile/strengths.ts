@@ -16,7 +16,15 @@ import { and, asc, count, desc, eq, gte, inArray, isNotNull, lt, type SQL, sql }
 import type { DayRange } from "../filters/params";
 import { readOnly } from "../games";
 import type { TimeClass } from "../games/types";
-import { BOOTSTRAP_RESAMPLES, CONFIDENCE, fnv1a, mulberry32, regIncBeta, wilson } from "../stats";
+import {
+  BOOTSTRAP_RESAMPLES,
+  CONFIDENCE,
+  canonical,
+  dataSeed,
+  mulberry32,
+  regIncBeta,
+  wilson,
+} from "../stats";
 import { type Benchmark, getBenchmark } from "./benchmark";
 import { type KpiDef, kpiDef, seriesLabel, weaknessDef } from "./catalogue";
 import { difficultyStatus } from "./difficulty";
@@ -293,11 +301,13 @@ const mean = (v: number[]) => v.reduce((a, b) => a + b, 0) / v.length;
 
 /** Percentile bootstrap of mean(a) - mean(b), seeded; null when it has no spread. */
 function bootstrapDiff(
-  a: number[],
-  b: number[],
+  rawA: number[],
+  rawB: number[],
   seed: string,
 ): { low: number; high: number } | null {
-  const rnd = mulberry32(fnv1a(seed));
+  const a = canonical(rawA);
+  const b = canonical(rawB);
+  const rnd = mulberry32(dataSeed(seed, a, b));
   const draws = new Float64Array(BOOTSTRAP_RESAMPLES);
   const resample = (v: number[]) => {
     let s = 0;
@@ -777,7 +787,7 @@ export async function loadStrengths(
           .where(inGames)
       : [];
     const values = rows.reverse().map((r) => gameValues(r.metrics));
-    const own = ownTrends(values, `${scope.accountId}:${scope.timeClass}:${side}`);
+    const own = ownTrends(values, `${scope.timeClass}:${side}`);
 
     // The band: the newest own rating on the Lichess scale (Rust `player_band`).
     const [rated] = await tx

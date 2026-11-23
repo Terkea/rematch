@@ -36,7 +36,8 @@ function isoWeek(d: Date): { key: string; thursday: number } {
   return { key: `${year}-W${String(week).padStart(2, "0")}`, thursday };
 }
 
-const seedOf = (metric: string, ids: string[]) => `${metric}:${[...ids].sort().join(",")}`;
+// Ids stay out of the label (they differ per database); the bootstrap hashes the values itself.
+const seedOf = (metric: string, _ids: string[]) => metric;
 
 function mean(values: number[]): number | null {
   const clean = values.filter(Number.isFinite);

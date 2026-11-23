@@ -21,15 +21,35 @@ export function mulberry32(seed: number): () => number {
   };
 }
 
+/**
+ * The stream seed of a bootstrap: a stable hash of `label` and the samples, each sorted. The same
+ * data gives the same stream whatever the row order, an id or a user id in the label never moves
+ * it, and different data gives a different stream. Pass a label without ids (a metric name).
+ */
+/** A sorted copy: resampling and summing run in a canonical order, so row order cannot move a figure. */
+export function canonical(sample: readonly number[]): number[] {
+  return Array.from(Float64Array.from(sample).sort());
+}
+
+export function dataSeed(label: string, ...samples: readonly number[][]): number {
+  let h = fnv1a(label);
+  for (const sample of samples) {
+    const sorted = Float64Array.from(sample).sort();
+    h = fnv1a(`${h}|${sorted.length}|${Array.from(sorted).join(",")}`);
+  }
+  return h;
+}
+
 /** Percentile bootstrap of the mean. Null when empty. One value gives a degenerate interval. */
 export function bootstrapMean(
-  values: number[],
+  raw: number[],
   seed: string,
 ): { mean: number; interval: Interval } | null {
+  const values = canonical(raw);
   const n = values.length;
   if (n === 0) return null;
   const mean = values.reduce((a, b) => a + b, 0) / n;
-  const rnd = mulberry32(fnv1a(seed));
+  const rnd = mulberry32(dataSeed(seed, values));
   const means = new Float64Array(BOOTSTRAP_RESAMPLES);
   for (let r = 0; r < BOOTSTRAP_RESAMPLES; r++) {
     let sum = 0;

@@ -280,5 +280,5 @@ export async function gameStats(
   opts: { accountId?: string | null } = {},
 ): Promise<GameStats> {
   const rows = await gameStatRows(db, userId, scope, opts);
-  return summariseByColor(rows, `game-stats:${userId}:${JSON.stringify(scope)}`);
+  return summariseByColor(rows, `game-stats:${JSON.stringify(scope)}`);
 }

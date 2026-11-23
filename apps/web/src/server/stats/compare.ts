@@ -1,4 +1,4 @@
-import { fnv1a, mulberry32 } from "./bootstrap";
+import { canonical, dataSeed, mulberry32 } from "./bootstrap";
 import { BOOTSTRAP_RESAMPLES, CONFIDENCE, KPI_MIN_GAMES } from "./constants";
 import { estimateMean } from "./estimate";
 import {
@@ -115,8 +115,10 @@ export function compareRates(
 }
 
 /** The seeded percentile bootstrap of `mean(b) - mean(a)`, resampling each side independently. */
-function bootstrapDiff(a: number[], b: number[], seed: string): Interval {
-  const rnd = mulberry32(fnv1a(seed));
+function bootstrapDiff(rawA: number[], rawB: number[], seed: string): Interval {
+  const a = canonical(rawA);
+  const b = canonical(rawB);
+  const rnd = mulberry32(dataSeed(seed, a, b));
   const resampledMean = (xs: number[]) => {
     let sum = 0;
     for (let i = 0; i < xs.length; i++) sum += xs[Math.floor(rnd() * xs.length)] as number;
