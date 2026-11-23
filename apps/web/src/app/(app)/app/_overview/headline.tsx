@@ -46,7 +46,7 @@ export function Headline({
   if (accuracy.kind === "insufficient") {
     return (
       <div className="flex max-w-3xl flex-col gap-2">
-        <p className="font-serif text-2xl leading-snug text-ink md:text-3xl">
+        <p className="font-serif text-2xl leading-snug text-ink lg:text-3xl">
           Need {accuracy.needed} more {accuracy.needed === 1 ? "game" : "games"} before an average
           accuracy means anything.
         </p>
@@ -77,7 +77,7 @@ export function Headline({
       <p className="font-serif text-2xl leading-snug text-ink sm:hidden">
         {acc} accuracy{bl ? <>, {bl} blunders a game.</> : "."}
       </p>
-      <p className="hidden font-serif text-3xl leading-tight text-ink sm:block lg:text-4xl">
+      <p className="hidden font-serif text-2xl leading-snug text-ink sm:block lg:text-3xl lg:leading-tight">
         Across {accuracy.n} {scope} your accuracy averages {acc}
         {bl ? <>, with {bl} blunders a game.</> : "."}
       </p>
@@ -132,9 +132,9 @@ export function WorkOn({ lead }: { lead: LeadFinding }) {
       data-surface="sheet"
       className="flex max-w-3xl flex-col gap-1 rounded-sheet bg-sheet px-(--space-panel-pad) py-4"
     >
-      <h2 id="work-on-heading" className="text-base font-medium text-ink">
+      <h3 id="work-on-heading" className="m-0 text-base font-medium text-ink">
         What to work on
-      </h2>
+      </h3>
       <WorkOnBody lead={lead} />
     </section>
   );

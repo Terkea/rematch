@@ -27,9 +27,9 @@ describe("practiseView", () => {
       href: "/app/train?account=acc-1&tc=rapid",
       detail: "Positions from your own rapid games where you missed a win or a mate, or blundered.",
     });
-    expect(practiseView({ kind: "due", count: 1, source: null }, scope, today).action).toBe(
-      "Practise today: 1 position due",
-    );
+    expect(practiseView({ kind: "due", count: 1, source: null }, scope, today)).toMatchObject({
+      action: "Practise today: 1 position due",
+    });
   });
 
   it("names the focus source and keeps it in the link", () => {
@@ -48,13 +48,13 @@ describe("practiseView", () => {
       },
     );
     expect(
-      practiseView({ kind: "done", next: "2026-11-30", doneToday: 0 }, scope, today).line,
-    ).toBe("All done for today, next due on 30 November.");
-    const none = practiseView({ kind: "done", next: null, doneToday: 1 }, scope, today);
-    expect(none.line).toBe("All done for today.");
-    expect(none.detail).toBe(
-      "You practised 1 position today. Nothing else is due yet: new positions come from your next analysed games.",
-    );
+      practiseView({ kind: "done", next: "2026-11-30", doneToday: 0 }, scope, today),
+    ).toMatchObject({ line: "All done for today, next due on 30 November." });
+    expect(practiseView({ kind: "done", next: null, doneToday: 1 }, scope, today)).toMatchObject({
+      line: "All done for today.",
+      detail:
+        "You practised 1 position today. Nothing else is due yet: new positions come from your next analysed games.",
+    });
   });
 
   it("starts training on a first run", () => {

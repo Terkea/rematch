@@ -60,7 +60,7 @@ export function JudgementsSection({ judgements: j }: { judgements: JudgementsVie
       {n > 0 && (
         <div className="flex flex-col gap-3">
           <div>
-            <h3 className="text-base font-medium text-ink">{columnsLabel}</h3>
+            <h4 className="text-base font-medium text-ink">{columnsLabel}</h4>
             <p className="text-sm text-ink-soft">One column per game, newest on the right.</p>
           </div>
           <div data-chart="columns">

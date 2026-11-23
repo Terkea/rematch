@@ -12,11 +12,14 @@ export function SectionHead({
   title,
   order,
   explain,
+  level = 2,
   children,
 }: {
   id: string;
   title: string;
   order?: number;
+  /** 3 for a sub-section of the overview's Details: a quieter `rule` line and an `xl` heading. */
+  level?: 2 | 3;
   /** A glossary entry: an "i" beside the title and its one-sentence meaning under it. */
   explain?: ExplainEntry | null;
   children?: ReactNode;
@@ -28,13 +31,23 @@ export function SectionHead({
       <span
         aria-hidden="true"
         {...(reveal ? { "data-reveal-rule": "" } : {})}
-        className="block h-0.5 w-full origin-left bg-rule-strong"
+        className={
+          level === 2
+            ? "block h-0.5 w-full origin-left bg-rule-strong"
+            : "block h-px w-full origin-left bg-rule"
+        }
       />
       <div {...(reveal ? { "data-reveal-fig": "" } : {})} className="flex flex-col gap-1">
         <div className="flex items-center gap-1.5">
-          <h2 id={id} className="font-serif text-2xl font-semibold text-ink">
-            {title}
-          </h2>
+          {level === 2 ? (
+            <h2 id={id} className="font-serif text-2xl font-semibold text-ink">
+              {title}
+            </h2>
+          ) : (
+            <h3 id={id} className="m-0 font-serif text-xl font-semibold text-ink">
+              {title}
+            </h3>
+          )}
           {explain ? <ExplainPopover entry={explain} /> : null}
         </div>
         {explain ? (

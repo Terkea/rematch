@@ -332,9 +332,11 @@ describe("loadPractiseToday", () => {
       count: 2,
       source: null,
     });
-    expect(
-      await loadPractiseToday(db, userId, scope, { source: "W4.missed", now: NOW }),
-    ).toEqual({ kind: "due", count: 1, source: "W4.missed" });
+    expect(await loadPractiseToday(db, userId, scope, { source: "W4.missed", now: NOW })).toEqual({
+      kind: "due",
+      count: 1,
+      source: "W4.missed",
+    });
   });
 
   it("is done for today after the session, with tomorrow next", async () => {

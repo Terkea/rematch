@@ -3,7 +3,7 @@ import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { CompareBlock } from "../../src/app/(app)/app/_filters/compare-block.js";
 import { compareView } from "../../src/app/(app)/app/_filters/compare-view.js";
-import { FilterBar } from "../../src/app/(app)/app/_filters/filter-bar.js";
+import { FilterBar, TimeControlSwitch } from "../../src/app/(app)/app/_filters/filter-bar.js";
 import {
   type BarConfig,
   filterBarModel,
@@ -74,6 +74,29 @@ describe("FilterBar", () => {
     const summary = container.querySelector("section > details > summary") as HTMLElement;
     expect(summary).toHaveTextContent("Filters (2)");
     expect(summary).toHaveTextContent("Rapid, Black, this month vs last");
+  });
+
+  // ADR 0092: the overview lifts the time control to the top (it scopes the whole page) and
+  // keeps the rest of the bar in Details.
+  it("leaves out the time control on request, and the switch keeps the other filters", () => {
+    const conf = cfg;
+    const model = filterBarModel(parseBarFilters(new URLSearchParams("color=black"), conf), conf);
+    const { container } = render(<FilterBar model={model} timeControl={false} />);
+    expect(within(container).queryAllByRole("group", { name: "Time control" })).toHaveLength(0);
+    const summary = container.querySelector("section > details > summary") as HTMLElement;
+    expect(summary).toHaveTextContent("Filters (1)");
+    expect(summary).toHaveTextContent("Black");
+    expect(summary).not.toHaveTextContent("Rapid");
+    render(<TimeControlSwitch model={model} />);
+    const nav = screen.getByRole("navigation", { name: "Time control" });
+    expect(within(nav).getByRole("link", { name: /^Rapid/ })).toHaveAttribute(
+      "aria-current",
+      "true",
+    );
+    expect(within(nav).getByRole("link", { name: /^Blitz/ })).toHaveAttribute(
+      "href",
+      "/app?tc=blitz&color=black",
+    );
   });
 
   // Audit A14: at 390 a chip row that does not fit scrolls sideways; its edge fades to say so.

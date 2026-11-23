@@ -38,28 +38,39 @@ function Row({
   );
 }
 
-export function ColourSplit({ view }: { view: ColourSplitView }) {
+/**
+ * `filtered` is the Details copy (ADR 0092): the same row with the filter bar's format, colour and
+ * dates applied, under its own heading, while the summary above covers the whole time control.
+ */
+export function ColourSplit({
+  view,
+  filtered = false,
+}: {
+  view: ColourSplitView;
+  filtered?: boolean;
+}) {
+  const id = filtered ? "colour-split-filtered-heading" : "colour-split-heading";
   return (
     <section
-      aria-labelledby="colour-split-heading"
-      data-slot="colour-split"
+      aria-labelledby={id}
+      data-slot={filtered ? "colour-split-filtered" : "colour-split"}
       className="flex flex-col gap-3"
     >
       <div className="flex items-center gap-1.5">
-        <h2 id="colour-split-heading" className="m-0 font-sans text-base font-medium text-ink">
-          By colour
-        </h2>
+        <h3 id={id} className="m-0 font-sans text-base font-medium text-ink">
+          {filtered ? "By colour, with these filters" : "By colour"}
+        </h3>
         <ExplainPopover entry={STATS_GLOSSARY.colour_split} />
       </div>
       <div className="grid grid-cols-2 gap-x-6 gap-y-6 md:gap-x-12">
         {view.columns.map((c) => (
           <div key={c.key} data-colour={c.key} className="flex min-w-0 flex-col gap-3">
-            <h3 className="m-0 flex items-baseline gap-2 font-sans text-base font-semibold text-ink">
+            <h4 className="m-0 flex items-baseline gap-2 font-sans text-base font-semibold text-ink">
               {c.label}
               <span className="text-sm font-normal text-ink-soft" style={PROSE_NUMS}>
                 {c.games}
               </span>
-            </h3>
+            </h4>
             <dl className="m-0 grid grid-cols-1 gap-3 lg:grid-cols-3">
               <Row label="Accuracy" cell={c.accuracy} explain="accuracy" />
               <Row label="Blunders per game" cell={c.blunders} explain="blunders" />

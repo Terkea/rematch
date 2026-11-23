@@ -259,7 +259,9 @@ export function practiseToday(
     (i) => i.introducedOn === null || (i.dueOn !== null && i.dueOn <= o.today),
   );
   const later = pool
-    .flatMap((i) => (i.introducedOn !== null && i.dueOn !== null && i.dueOn > o.today ? [i.dueOn] : []))
+    .flatMap((i) =>
+      i.introducedOn !== null && i.dueOn !== null && i.dueOn > o.today ? [i.dueOn] : [],
+    )
     .sort();
   const next = waiting ? tomorrow : (later[0] ?? null);
   return { kind: "done", next, doneToday: o.attemptedToday };

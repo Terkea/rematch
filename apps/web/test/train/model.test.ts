@@ -395,7 +395,10 @@ describe("practiseToday", () => {
   });
 
   it("has no next day when every item is retired or held out", () => {
-    const items = [item(1, { retired: true, introducedOn: "2026-10-01" }), item(2, { heldOut: true })];
+    const items = [
+      item(1, { retired: true, introducedOn: "2026-10-01" }),
+      item(2, { heldOut: true }),
+    ];
     expect(practiseToday(items, base)).toEqual({ kind: "done", next: null, doneToday: 0 });
   });
 });
