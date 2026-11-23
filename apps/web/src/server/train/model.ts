@@ -204,7 +204,9 @@ export function buildSession(
   );
   const due = live
     .filter((i) => i.introducedOn !== null && i.dueOn !== null && i.dueOn <= o.today)
-    .sort((a, b) => (a.dueOn as string).localeCompare(b.dueOn as string) || a.id.localeCompare(b.id))
+    .sort(
+      (a, b) => (a.dueOn as string).localeCompare(b.dueOn as string) || a.id.localeCompare(b.id),
+    )
     .slice(0, room);
   const newRoom = Math.max(0, Math.min(NEW_PER_DAY - o.introducedToday, room - due.length));
   const fresh = live

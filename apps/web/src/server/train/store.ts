@@ -83,7 +83,8 @@ async function owns(tx: Db, userId: string, accountId: string): Promise<boolean>
  * Existing items are never touched. Returns how many were added.
  */
 export async function refreshItems(db: Db, userId: string, scope: CoachScope): Promise<number> {
-  return db.transaction(async (tx) => {
+  return db.transaction(async (t) => {
+    const tx = t as unknown as Db;
     if (!(await owns(tx, userId, scope.accountId))) return 0;
     const keys = sql.join(
       WEAKNESS_SOURCES.map((k) => sql`${k}::text`),
@@ -220,6 +221,7 @@ export type TrainPage = {
   source: SourceKey | null;
   session: TrainItem[];
   doneToday: number;
+  rightToday: number;
   dueTomorrow: number;
   counts: { active: number; fresh: number; heldOut: number; retired: number };
   efficacy: { rows: EfficacyRow[]; patterns: PatternCompare };
@@ -275,12 +277,18 @@ export async function loadTrainPage(
       ids.length === 0
         ? []
         : await tx
-            .select({ itemId: drillAttempts.itemId, at: drillAttempts.at })
+            .select({
+              itemId: drillAttempts.itemId,
+              at: drillAttempts.at,
+              correct: drillAttempts.correct,
+            })
             .from(drillAttempts)
             .where(and(eq(drillAttempts.userId, userId), inArray(drillAttempts.itemId, ids)));
     const todayStart = startOfDay(today);
-    const attemptedToday = new Set(attempts.filter((a) => a.at >= todayStart).map((a) => a.itemId))
-      .size;
+    const todays = attempts.filter((a) => a.at >= todayStart);
+    const attemptedToday = new Set(todays.map((a) => a.itemId)).size;
+    // The first attempt of each item today (only it is recorded, so this is every attempt).
+    const rightToday = todays.filter((a) => a.correct).length;
     const introducedToday = items.filter((i) => i.introducedOn === today).length;
     const queue: QueueItem[] = items.map((i) => ({
       id: i.id,
@@ -321,7 +329,8 @@ export async function loadTrainPage(
           id,
           fen: i.fen,
           orientation: (i.fen.split(" ")[1] ?? "w") === "w" ? "white" : "black",
-          lastMove: last && UCI.test(last) ? { from: last.slice(0, 2), to: last.slice(2, 4) } : null,
+          lastMove:
+            last && UCI.test(last) ? { from: last.slice(0, 2), to: last.slice(2, 4) } : null,
           label: moveLabel(i.fen, i.ply),
         },
       ];
@@ -399,6 +408,7 @@ export async function loadTrainPage(
       source: o.source,
       session,
       doneToday: attemptedToday,
+      rightToday,
       dueTomorrow,
       counts: {
         active: live.filter((i) => i.introducedOn !== null).length,
@@ -456,6 +466,8 @@ export type AttemptResult = {
   /** The move played in the game. */
   played: { uci: string; san: string };
   game: { id: string; ply: number; opponent: string; playedAt: string };
+  /** The item's source, named only after the attempt (interleaving). */
+  sourceKey: SourceKey;
   dueOn: string | null;
   retired: boolean;
 };
@@ -501,7 +513,8 @@ export async function recordAttempt(
   now: Date,
 ): Promise<AttemptResult | null> {
   const uci = a.uci.toLowerCase();
-  return db.transaction(async (tx) => {
+  return db.transaction(async (t) => {
+    const tx = t as unknown as Db;
     const [item] = await tx
       .select({
         item: drillItems,
@@ -571,6 +584,7 @@ export async function recordAttempt(
         opponent: item.opponent,
         playedAt: item.playedAt.toISOString(),
       },
+      sourceKey: isSourceKey(it.sourceKey) ? it.sourceKey : "blunder",
       dueOn,
       retired,
     };

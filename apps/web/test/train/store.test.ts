@@ -37,11 +37,35 @@ type Pos = {
 
 const POSITIONS: Pos[] = [
   // A missed back-rank mate (W4.missed and a blunder).
-  { ply: 21, fen: MATE_FEN, uci: "d1d7", best: "d1d8", before: 99, after: 60, judgement: "blunder" },
+  {
+    ply: 21,
+    fen: MATE_FEN,
+    uci: "d1d7",
+    best: "d1d8",
+    before: 99,
+    after: 60,
+    judgement: "blunder",
+  },
   // A blunder in an already decided position: dropped.
-  { ply: 23, fen: MATE_FEN, uci: "g1f1", best: "d1d8", before: 99, after: 95, judgement: "blunder" },
+  {
+    ply: 23,
+    fen: MATE_FEN,
+    uci: "g1f1",
+    best: "d1d8",
+    before: 99,
+    after: 95,
+    judgement: "blunder",
+  },
   // A plain blunder, with stored alternatives.
-  { ply: 1, fen: START_FEN, uci: "f2f3", best: "e2e4", before: 50, after: 20, judgement: "blunder" },
+  {
+    ply: 1,
+    fen: START_FEN,
+    uci: "f2f3",
+    best: "e2e4",
+    before: 50,
+    after: 20,
+    judgement: "blunder",
+  },
   // A free queen capture missed: dropped.
   { ply: 3, fen: FREE_FEN, uci: "e1e2", best: "c3d5", before: 60, after: 30, judgement: "blunder" },
   // Not a blunder and no exemplar: never a candidate.
@@ -147,7 +171,12 @@ describe("per-user isolation", () => {
     if (!item) throw new Error("no item");
     await noHoldout(userId);
     expect(
-      await recordAttempt(db, other, { itemId: item.id, uci: "e2e4", confidence: "sure", ms: 1 }, NOW),
+      await recordAttempt(
+        db,
+        other,
+        { itemId: item.id, uci: "e2e4", confidence: "sure", ms: 1 },
+        NOW,
+      ),
     ).toBeNull();
     await noHoldout(other);
     const page = await loadTrainPage(db, other, await scopeOf(other), { source: null, now: NOW });
@@ -230,7 +259,10 @@ describe("a session", () => {
     );
     expect(again).toMatchObject({ correct: true, recorded: false, dueOn: "2026-11-24" });
 
-    const after = await loadTrainPage(db, userId, await scopeOf(userId), { source: null, now: NOW });
+    const after = await loadTrainPage(db, userId, await scopeOf(userId), {
+      source: null,
+      now: NOW,
+    });
     expect(after).toMatchObject({ doneToday: 2, dueTomorrow: 2, session: [] });
     const tomorrow = await loadTrainPage(db, userId, await scopeOf(userId), {
       source: null,

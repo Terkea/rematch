@@ -21,6 +21,7 @@ import {
 import { stateStyle, WeaknessTimeline } from "@ci/ui/timeline";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { PractisePositions } from "../../../../../components/practise-positions";
 import { MorphArrival } from "../../../../../components/shared-morph";
 import { coachChatLive } from "../../../../../lib/coach-chat";
 import { howOftenText, levelText, trendText } from "../../../../../lib/explain";
@@ -717,6 +718,7 @@ export function WeaknessView({
         ) : (
           <p className={SOFT}>No tip for this series yet. Your coach can suggest one.</p>
         )}
+        <PractisePositions seriesKey={detail.seriesKey} scope={scope} />
       </Step>
 
       <section aria-labelledby="details-heading" className="flex flex-col gap-8">

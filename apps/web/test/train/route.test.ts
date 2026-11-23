@@ -61,7 +61,10 @@ beforeEach(async () => {
 });
 
 function post(body: unknown, opts: { origin?: string; cookie?: string | null } = {}) {
-  const headers = new Headers({ "content-type": "application/json", origin: opts.origin ?? ORIGIN });
+  const headers = new Headers({
+    "content-type": "application/json",
+    origin: opts.origin ?? ORIGIN,
+  });
   const c = opts.cookie === undefined ? cookie : opts.cookie;
   if (c) headers.set("cookie", c);
   return route.POST(
@@ -91,10 +94,7 @@ describe("POST /api/train/attempts", () => {
 
   it("is 404 for another user's item or a malformed one", async () => {
     const other = await createTestSession(db);
-    const res = await post(
-      { itemId, uci: "d1d8", confidence: "sure" },
-      { cookie: other.cookie },
-    );
+    const res = await post({ itemId, uci: "d1d8", confidence: "sure" }, { cookie: other.cookie });
     expect(res.status).toBe(404);
     expect((await post({ itemId: "nope", uci: "d1d8", confidence: "sure" })).status).toBe(404);
   });

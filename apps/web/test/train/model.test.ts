@@ -11,6 +11,7 @@ import {
   grade,
   isHeldOut,
   keepCandidate,
+  type MotifCounts,
   NEW_PER_DAY,
   patternFound,
   primarySource,
@@ -189,7 +190,10 @@ describe("buildSession", () => {
   });
 
   it("never serves a held-out or retired item", () => {
-    const ids = buildSession([item(1, { heldOut: true }), item(2, { retired: true }), item(3)], base);
+    const ids = buildSession(
+      [item(1, { heldOut: true }), item(2, { retired: true }), item(3)],
+      base,
+    );
     expect(ids).toEqual(["item-003"]);
   });
 
@@ -298,7 +302,7 @@ describe("beforeAfter", () => {
 
 describe("patternFound", () => {
   it("counts the chances at the item's motifs in games after it, and how often they were found", () => {
-    const games = [
+    const games: { playedAt: Date; byMotif: MotifCounts }[] = [
       { playedAt: new Date("2026-10-01"), byMotif: { fork: { opportunities: 9, misses: 9 } } },
       {
         playedAt: new Date("2026-10-20"),
