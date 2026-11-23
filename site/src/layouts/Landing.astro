@@ -3,7 +3,15 @@ import "../styles/fonts.css";
 import "../styles/generated/tokens.css";
 import "../styles/landing.css";
 import "../styles/diagram.css";
+import icon from "../../../packages/ui/assets/brand/rematch-icon.svg?raw";
 import { href, REPO_URL } from "../data/site";
+
+// The lockup: the boy with his board (ink only, in the text colour) and "rematch" in Literata italic.
+const mark = icon
+  .replace(/<title>[\s\S]*?<\/title>/, "")
+  .replace(' role="img"', ' class="wordmark-mark" aria-hidden="true" focusable="false"')
+  .replaceAll('id="m"', 'id="rematch-icon-m"')
+  .replaceAll("url(#m)", "url(#rematch-icon-m)");
 
 interface Props {
   title: string;
@@ -11,7 +19,7 @@ interface Props {
 }
 const { title, description } = Astro.props;
 const canonical = new URL(Astro.url.pathname, Astro.site);
-const poster = new URL(href("media/rematch-poster.jpg"), Astro.site);
+const card = new URL(href("og.png"), Astro.site);
 ---
 
 <!doctype html>
@@ -24,14 +32,17 @@ const poster = new URL(href("media/rematch-poster.jpg"), Astro.site);
     <link rel="canonical" href={canonical} />
     <link rel="icon" href={href("favicon.svg")} type="image/svg+xml" />
     <link rel="preload" href={href("media/rematch-hook.jpg")} as="image" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="The Rematch logo, a boy with his chess board and his dad's hand on his shoulder, beside: rematch, chess improver. Stop losing to the same move." />
     <meta property="og:type" content="website" />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonical} />
-    <meta property="og:image" content={poster} />
+    <meta property="og:image" content={card} />
     <meta property="og:video" content={new URL(href("media/rematch.mp4"), Astro.site)} />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:image" content={poster} />
+    <meta name="twitter:image" content={card} />
     {/* The docs' theme choice (Starlight's key) applies here too, before first paint. */}
     <script is:inline>
       (() => {
@@ -52,7 +63,8 @@ const poster = new URL(href("media/rematch-poster.jpg"), Astro.site);
     <header class="site-header">
       <div class="wrap header-row">
         <a class="wordmark" href={href("")} aria-label="Rematch, chess improver, home">
-          <span class="wordmark-name">Rematch</span>
+          <Fragment set:html={mark} />
+          <span class="wordmark-name">rematch</span>
           <span class="wordmark-sub">chess improver</span>
         </a>
         <nav aria-label="Main" class="header-nav">

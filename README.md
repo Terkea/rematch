@@ -1,3 +1,5 @@
+<picture><source media="(prefers-color-scheme: dark)" srcset="docs/media/rematch-mark-night.svg"><img src="docs/media/rematch-mark-day.svg" width="96" alt="The Rematch logo: a boy holding his chess board, his dad's hand on his shoulder." /></picture>
+
 # Rematch, chess improver
 
 **Stop losing to the same move.**

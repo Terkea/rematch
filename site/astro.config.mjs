@@ -19,6 +19,12 @@ export default defineConfig({
       description:
         "Rematch, chess improver: an open-source coach that reads your chess.com games, names the mistakes you repeat and drills them. Stop losing to the same move.",
       favicon: "/favicon.svg",
+      // The boy with his board (packages/ui/assets/brand), ink by day and cream at night.
+      logo: {
+        light: "./src/assets/rematch-icon-day.svg",
+        dark: "./src/assets/rematch-icon-night.svg",
+        alt: "",
+      },
       expressiveCode: false,
       pagefind: true,
       credits: false,

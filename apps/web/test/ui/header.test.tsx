@@ -112,6 +112,19 @@ describe("shell header", () => {
     expect(banner.querySelectorAll('[data-slot="activity"]')).toHaveLength(1);
   });
 
+  it("shows the lockup: the boy with his board, then rematch in Literata italic", () => {
+    renderHeader();
+    const link = within(screen.getByRole("banner")).getByRole("link", { name: "Rematch" });
+    const mark = link.querySelector("svg");
+    expect(mark).not.toBeNull();
+    expect(mark?.getAttribute("aria-hidden")).toBe("true");
+    expect(mark?.getAttribute("viewBox")).toBe("0 0 32 32");
+    const word = within(link).getByText("Rematch");
+    expect(word.className).toMatch(/(^| )font-serif-italic( |$)/);
+    expect(word.className).toMatch(/(^| )italic( |$)/);
+    expect(word.className).toMatch(/(^| )lowercase( |$)/);
+  });
+
   it("never wraps the wordmark; the activity slot gives way instead (I7)", () => {
     renderHeader();
     const banner = screen.getByRole("banner");
