@@ -1,4 +1,5 @@
 import { TIME_CLASS_ORDER as TIME_CLASSES } from "../../lib/time-class";
+import { OTHER_FORMAT, parseFormatKey } from "../../lib/format-key";
 import type { GameFilters, GameListQuery, GameSortKey, TimeClass } from "./types";
 
 type Params = Record<string, string | string[] | undefined>;
@@ -6,6 +7,7 @@ type Params = Record<string, string | string[] | undefined>;
 /** No filter set: every game of every linked account. */
 export const NO_FILTERS: GameFilters = {
   timeClass: null,
+  format: null,
   result: null,
   colour: null,
   from: null,
@@ -62,6 +64,13 @@ function uuid(value: unknown): string | null {
   return typeof value === "string" && UUID_RE.test(value) ? value.toLowerCase() : null;
 }
 
+/** A format key normalised ("0600+00" is "600+0"), or "other"; null for anything else. */
+function format(value: unknown): string | null {
+  if (value === OTHER_FORMAT) return OTHER_FORMAT;
+  const f = typeof value === "string" ? parseFormatKey(value) : null;
+  return f ? `${f.base}+${f.increment}` : null;
+}
+
 /** `tc=all`: every time control, when a default time control would otherwise apply (I8). */
 const ALL_TIME_CLASSES = "all";
 
@@ -76,9 +85,12 @@ export function parseGameQuery(params: Params, defaultTimeClass?: TimeClass | nu
   let from = day(one(params, "from"));
   let to = day(one(params, "to"));
   if (from !== null && to !== null && from > to) [from, to] = [to, from];
+  const timeClass =
+    tc === ALL_TIME_CLASSES ? null : (pick(tc, TIME_CLASSES) ?? defaultTimeClass ?? null);
   const filters: GameFilters = {
-    timeClass:
-      tc === ALL_TIME_CLASSES ? null : (pick(tc, TIME_CLASSES) ?? defaultTimeClass ?? null),
+    timeClass,
+    // A format belongs to one timed class (Q2); daily and "All" have none.
+    format: timeClass && timeClass !== "daily" ? format(one(params, "fmt")) : null,
     result: pick(one(params, "result"), RESULTS),
     // `color` is the shared filter contract's name (ADR 0083); `colour` is read as its alias.
     colour: pick(one(params, "color"), COLOURS) ?? pick(one(params, "colour"), COLOURS),
@@ -98,7 +110,7 @@ export function parseGameQuery(params: Params, defaultTimeClass?: TimeClass | nu
 
 /**
  * The inverse of `parseGameQuery`: only valid values, defaults omitted, in a fixed key order
- * (tc, result, color, from, to, account, sort, page).
+ * (tc, fmt, result, color, from, to, account, sort, page).
  */
 export function serializeGameQuery(q: GameListQuery): URLSearchParams {
   const out = new URLSearchParams();
@@ -109,6 +121,7 @@ export function serializeGameQuery(q: GameListQuery): URLSearchParams {
   const tc = pick(f.timeClass, TIME_CLASSES);
   const fallback = pick(q.defaultTimeClass, TIME_CLASSES);
   if (tc !== fallback) set("tc", tc ?? ALL_TIME_CLASSES);
+  if (tc && tc !== "daily") set("fmt", format(f.format));
   set("result", pick(f.result, RESULTS));
   set("color", pick(f.colour, COLOURS));
   set("from", day(f.from));

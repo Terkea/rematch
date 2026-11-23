@@ -8,7 +8,15 @@ import {
 } from "../../src/server/games";
 
 const DEFAULTS: GameListQuery = {
-  filters: { timeClass: null, result: null, colour: null, from: null, to: null, accountId: null },
+  filters: {
+    timeClass: null,
+    format: null,
+    result: null,
+    colour: null,
+    from: null,
+    to: null,
+    accountId: null,
+  },
   sort: { key: "played", dir: "desc" },
   page: 1,
 };
@@ -60,6 +68,7 @@ describe("parseGameQuery", () => {
     ).toEqual({
       filters: {
         timeClass: "rapid",
+        format: null,
         result: "loss",
         colour: "black",
         from: "2026-10-01",
@@ -77,6 +86,23 @@ describe("parseGameQuery", () => {
     const q = parseGameQuery({ from: "2026-11-05", to: "2026-10-01" });
     expect(q.filters.from).toBe("2026-10-01");
     expect(q.filters.to).toBe("2026-11-05");
+  });
+});
+
+// Q2: the games page reads the shared bar's Format (`fmt`), within one time control only.
+describe("fmt, the format filter", () => {
+  it("reads a valid key of a timed class, normalised, and writes it after tc", () => {
+    expect(parseGameQuery({ tc: "rapid", fmt: "600+0" }).filters.format).toBe("600+0");
+    expect(parseGameQuery({ tc: "rapid", fmt: "0600+00" }).filters.format).toBe("600+0");
+    expect(parseGameQuery({ tc: "blitz", fmt: "other" }).filters.format).toBe("other");
+    expect(parseGameQuery({ fmt: "600+0" }).filters.format).toBeNull();
+    expect(parseGameQuery({ tc: "all", fmt: "600+0" }, "rapid").filters.format).toBeNull();
+    expect(parseGameQuery({ tc: "daily", fmt: "600+0" }).filters.format).toBeNull();
+    expect(parseGameQuery({ tc: "rapid", fmt: "10 min" }).filters.format).toBeNull();
+    expect(parseGameQuery({ fmt: "600+0" }, "rapid").filters.format).toBe("600+0");
+    expect(
+      serializeGameQuery(parseGameQuery({ tc: "rapid", fmt: "600+0", color: "black" })).toString(),
+    ).toBe("tc=rapid&fmt=600%2B0&color=black");
   });
 });
 

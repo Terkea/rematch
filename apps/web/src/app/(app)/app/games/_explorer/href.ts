@@ -1,4 +1,5 @@
 import { dayText } from "@ci/ui/charts";
+import { formatLabel } from "../../../../../lib/format-key";
 import { NO_FILTERS, serializeGameQuery } from "../../../../../server/games/query";
 import type { GameFilters, GameListQuery, TimeClass } from "../../../../../server/games/types";
 
@@ -82,6 +83,7 @@ const accountLabel = (id: string, accounts: AccountOption[]) =>
 export function describeFilters(f: GameFilters, accounts: AccountOption[]): string {
   const noun = f.result ? RESULT_PLURAL[f.result] : "games";
   let out = f.timeClass ? `${CLASS_NAME[f.timeClass]} ${noun}` : noun;
+  if (f.timeClass && f.format) out += ` at ${formatLabel(f.format)}`;
   if (f.colour) out += ` as ${COLOUR[f.colour]}`;
   if (f.accountId) out += ` on ${accountLabel(f.accountId, accounts)}`;
   if (f.from && f.to) out += ` between ${dayWords(f.from)} and ${dayWords(f.to)}`;
@@ -96,7 +98,9 @@ export function activeFilters(
   accounts: AccountOption[],
 ): { label: string; clear: Partial<GameFilters> }[] {
   const out: { label: string; clear: Partial<GameFilters> }[] = [];
-  if (f.timeClass) out.push({ label: CLASS_NAME[f.timeClass], clear: { timeClass: null } });
+  if (f.timeClass)
+    out.push({ label: CLASS_NAME[f.timeClass], clear: { timeClass: null, format: null } });
+  if (f.format) out.push({ label: formatLabel(f.format), clear: { format: null } });
   if (f.result) out.push({ label: RESULT_CHIP[f.result], clear: { result: null } });
   if (f.colour) out.push({ label: COLOUR[f.colour], clear: { colour: null } });
   if (f.from) out.push({ label: `From ${dayWords(f.from)}`, clear: { from: null } });
@@ -108,6 +112,7 @@ export function activeFilters(
 
 const RELAX_LABEL = {
   timeClass: "Any time control",
+  format: "Any format",
   result: "Any result",
   colour: "Either colour",
   dates: "Any date",
@@ -125,7 +130,9 @@ export function suggestions(
     const filters =
       key === "dates"
         ? { ...query.filters, from: null, to: null }
-        : { ...query.filters, [key]: null };
+        : key === "timeClass"
+          ? { ...query.filters, timeClass: null, format: null }
+          : { ...query.filters, [key]: null };
     return {
       label: RELAX_LABEL[key],
       total,

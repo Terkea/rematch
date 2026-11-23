@@ -1,15 +1,22 @@
+import type { FormatOption } from "../../../../../server/filters/formats";
 import type { ClassCount } from "../../../../../server/games/explorer";
 import { serializeGameQuery } from "../../../../../server/games/query";
 import type { GameListQuery } from "../../../../../server/games/types";
 import { type BarConfig, type FilterBarModel, filterBarModel } from "../../_filters/model";
 
-// The games page's part of the shared filter bar (T3): time control (with All), colour and dates,
+// The games page's part of the shared filter bar (T3): time control (with All), format (Q2), colour
+// and dates,
 // read from the explorer's own query so the two never disagree. The explorer's other params
 // (result, account, sort) ride along on every link; the page goes back to 1.
 
 const KEEP = ["result", "account", "sort"] as const;
 
-export function gamesBarConfig(query: GameListQuery, classes: ClassCount[], now: Date): BarConfig {
+export function gamesBarConfig(
+  query: GameListQuery,
+  classes: ClassCount[],
+  now: Date,
+  formats: FormatOption[] = [],
+): BarConfig {
   const own = serializeGameQuery(query);
   const keep: Record<string, string> = {};
   for (const k of KEEP) {
@@ -20,8 +27,7 @@ export function gamesBarConfig(query: GameListQuery, classes: ClassCount[], now:
     basePath: "/app/games",
     timeClasses: classes,
     allTimeClasses: true,
-    formats: [],
-    formatSupported: false,
+    formats,
     color: "on",
     dates: true,
     compare: false,
@@ -34,12 +40,13 @@ export function gamesBarModel(
   query: GameListQuery,
   classes: ClassCount[],
   now: Date,
+  formats: FormatOption[] = [],
 ): FilterBarModel {
   const f = query.filters;
   return filterBarModel(
     {
       tc: f.timeClass,
-      fmt: null,
+      fmt: f.format,
       from: f.from,
       to: f.to,
       color: f.colour ?? "both",
@@ -47,6 +54,6 @@ export function gamesBarModel(
       a: null,
       b: null,
     },
-    gamesBarConfig(query, classes, now),
+    gamesBarConfig(query, classes, now, formats),
   );
 }

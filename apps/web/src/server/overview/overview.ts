@@ -282,6 +282,7 @@ export async function getOverview(
   const page = await listGames(db, userId, {
     filters: {
       timeClass: opts.timeClass,
+      format: null,
       result: null,
       colour: null,
       from: null,

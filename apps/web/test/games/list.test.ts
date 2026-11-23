@@ -1,4 +1,6 @@
 import { games as fixtures } from "@ci/ui/fixtures";
+import { games } from "@ci/db";
+import { inArray } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 import {
   type GameFilters,
@@ -21,6 +23,7 @@ const db = webTestDb();
 
 const NO_FILTERS: GameFilters = {
   timeClass: null,
+  format: null,
   result: null,
   colour: null,
   from: null,
@@ -183,6 +186,20 @@ describe("listGames", () => {
       query({ filters: { from: "2026-10-01", to: "2026-10-01" } }),
     );
     expect(firstDay.map((r) => r.id)).toEqual([(seeded[0] as Seeded).id]);
+  });
+
+  // Q2: `fmt=600+0` lists only that format's games of the class.
+  it("filters by format inside a time class", async () => {
+    const rapid = seeded.filter((s) => s.timeClass === "rapid");
+    const tenMin = rapid.filter((_, i) => i % 2 === 0);
+    await db
+      .update(games)
+      .set({ baseSeconds: 600, incrementSeconds: 0 })
+      .where(inArray(games.id, tenMin.map((s) => s.id)));
+    const got = await allRows(alice, query({ filters: { timeClass: "rapid", format: "600+0" } }));
+    expect(got.map((r) => r.id).sort()).toEqual(tenMin.map((s) => s.id).sort());
+    const none = await allRows(alice, query({ filters: { timeClass: "rapid", format: "180+2" } }));
+    expect(none).toEqual([]);
   });
 
   it("sorts by accuracy with nulls last", async () => {
