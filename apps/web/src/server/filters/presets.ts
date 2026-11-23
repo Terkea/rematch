@@ -4,9 +4,12 @@ import type { DayRange, StatsFilters } from "./params";
 // keeps the days, so a link always shows the same games); `presetOf` names the pair again. All
 // days are UTC, and ranges include both ends.
 
-export const PRESETS = ["30d", "3m", "6m", "12m", "all", "custom"] as const;
+export const PRESETS = ["30d", "90d", "6m", "12m", "all", "custom"] as const;
 export type Preset = (typeof PRESETS)[number];
 export type FixedPreset = Exclude<Preset, "custom">;
+
+/** The range a URL without dates shows on the statistics pages (ADR 0083 Amendment 2). */
+export const DEFAULT_PRESET = "90d" satisfies FixedPreset;
 
 /** Games of a comparison side: a day range (open ends allowed) or the newest games by count. */
 export type Period =
@@ -39,8 +42,9 @@ function addMonths(day: string, months: number): string {
 }
 
 /**
- * The days of a preset ending today: "30d" is today and the 29 days before it; "3m", "6m" and
- * "12m" start the day after the same date N months ago; "all" is unbounded.
+ * The days of a preset ending today: "30d" is today and the 29 days before it, "90d" today and
+ * the 89 before; "6m" and "12m" start the day after the same date N months ago; "all" is
+ * unbounded.
  */
 export function presetRange(preset: FixedPreset, now: Date): DayRange {
   const today = utcDay(now);
@@ -49,8 +53,8 @@ export function presetRange(preset: FixedPreset, now: Date): DayRange {
       return { from: null, to: null };
     case "30d":
       return { from: addDays(today, -29), to: today };
-    case "3m":
-      return { from: addDays(addMonths(today, -3), 1), to: today };
+    case "90d":
+      return { from: addDays(today, -89), to: today };
     case "6m":
       return { from: addDays(addMonths(today, -6), 1), to: today };
     case "12m":

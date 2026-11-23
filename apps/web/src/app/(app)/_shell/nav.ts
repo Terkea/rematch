@@ -39,6 +39,8 @@ export function isCurrent(pathname: string, href: string): boolean {
 }
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
+/** A day, or `all`: all time where the page's default is the last 90 days (ADR 0083). */
+const FROM = /^(\d{4}-\d{2}-\d{2}|all)$/;
 const TC = /^(bullet|blitz|rapid|classical|daily|all)$/;
 const ID = /^[0-9A-Za-z-]{1,64}$/;
 
@@ -55,7 +57,7 @@ function carried(search: Search) {
     account: get("account", ID),
     tc: get("tc", TC),
     color: colour === "white" || colour === "black" ? colour : null,
-    from: get("from", DAY),
+    from: get("from", FROM),
     to: get("to", DAY),
   };
 }
@@ -76,7 +78,8 @@ export function withFilters(href: string, search: Search | null): string {
   if (href === "/app/games") {
     set("tc", f.tc);
     set("colour", f.color);
-    set("from", f.from);
+    // The games list opens on every game, so all time needs no marker there.
+    set("from", f.from === "all" ? null : f.from);
     set("to", f.to);
   } else if (href === "/app/train") {
     set("account", f.account);

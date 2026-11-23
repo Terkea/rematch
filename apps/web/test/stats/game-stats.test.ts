@@ -1,6 +1,7 @@
 import { gameMetrics } from "@ci/db/generated";
 import { beforeAll, describe, expect, it } from "vitest";
 import { listFormats } from "../../src/server/filters/formats";
+import { gamesInRange } from "../../src/server/filters/window";
 import {
   type GameStatsScope,
   gameStatRows,
@@ -187,6 +188,15 @@ describe("gameStats", () => {
     expect((await gameStats(db, alice, { ...ALL, fmt: "60+0" })).n).toBe(0);
     // Three formats are all named, so Other is empty.
     expect((await gameStats(db, alice, { ...ALL, fmt: "other" })).n).toBe(0);
+  });
+
+  it("counts the games inside a range for the thin-window note, both ends included", async () => {
+    const feb = { from: "2026-02-01", to: "2026-02-04" };
+    expect(await gamesInRange(db, [aliceAccount], "rapid", feb)).toBe(4);
+    const late = { from: "2026-02-02", to: "2026-02-04" };
+    expect(await gamesInRange(db, [aliceAccount], "rapid", late)).toBe(3);
+    expect(await gamesInRange(db, [aliceAccount], "blitz", feb)).toBe(0);
+    expect(await gamesInRange(db, [], "rapid", feb)).toBe(0);
   });
 
   it("filters by an inclusive day range and by the newest games", async () => {

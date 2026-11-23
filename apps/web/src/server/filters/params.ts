@@ -2,11 +2,14 @@ import { z } from "zod";
 import { defaultTimeClass, TIME_CLASS_ORDER } from "../../lib/time-class";
 import type { TimeClass } from "../games/types";
 import { OTHER_FORMAT, parseFormatKey } from "./formats";
+import { DEFAULT_PRESET, presetRange } from "./presets";
 
 // The one URL search-param contract of every filtered page (T2a):
 //   tc      time class; rapid first and the default (`defaultTimeClass`), omitted when default
 //   fmt     a format of that class, "600+0" (shown "10+0") or "other"; never for daily
-//   from,to a UTC day range, `YYYY-MM-DD`, inclusive (a reversed pair is swapped)
+//   from,to a UTC day range, `YYYY-MM-DD`, inclusive (a reversed pair is swapped). Without
+//           either, the last 90 days (`DEFAULT_PRESET`, ADR 0083 Amendment 2); `from=all` is
+//           all time, an open start. One bound alone leaves the other end open.
 //   color   both | white | black (default both); the games page's `colour` is read as an alias
 //   cmp     month | 30d | 50g | custom: compare period A (earlier) with B (later)
 //   a_from, a_to, b_from, b_to   the custom periods (only with cmp=custom)
@@ -39,7 +42,45 @@ export type FilterContext = {
   available: readonly TimeClass[];
   /** The class's format keys, when known; a `fmt` outside them is dropped. */
   formats?: readonly string[];
+  /** Today, for the default range; the current time when absent. */
+  now?: Date;
+  /**
+   * What a URL without dates shows: the last 90 days (the default), or every game (the games
+   * list, which is a list rather than a statistic).
+   */
+  defaultPeriod?: "90d" | "all";
 };
+
+/** `from=all`: all time, where the page would otherwise show its default range. */
+export const ALL_TIME = "all";
+
+/** The range a URL without dates shows under `ctx`. */
+export function defaultRange(ctx: Pick<FilterContext, "now" | "defaultPeriod">): DayRange {
+  return ctx.defaultPeriod === "all"
+    ? { from: null, to: null }
+    : presetRange(DEFAULT_PRESET, ctx.now ?? new Date());
+}
+
+const sameRange = (a: DayRange, b: DayRange) => a.from === b.from && a.to === b.to;
+
+/**
+ * Writes `range` into `q` so the page reads it back: its days, nothing for the default (so the
+ * link keeps rolling), or `from=all` for all time where the default is the last 90 days. Links
+ * between pages use it, so "All time" travels.
+ */
+export function setRange(
+  q: URLSearchParams,
+  range: DayRange,
+  ctx: Pick<FilterContext, "defaultPeriod" | "now"> = {},
+): void {
+  if (sameRange(range, defaultRange(ctx))) return;
+  if (range.from === null && range.to === null) {
+    if (ctx.defaultPeriod !== "all") q.set("from", ALL_TIME);
+    return;
+  }
+  if (range.from !== null) q.set("from", range.from);
+  if (range.to !== null) q.set("to", range.to);
+}
 
 export type Params = Record<string, string | string[] | undefined> | URLSearchParams;
 
@@ -104,7 +145,10 @@ export function parseFilters(params: Params, ctx: FilterContext): StatsFilters {
   let fmt = tc === null || tc === "daily" ? null : parsed(Fmt, one(params, "fmt"));
   if (fmt !== null && ctx.formats && !ctx.formats.includes(fmt)) fmt = null;
 
-  const { from, to } = range(parsed(Day, one(params, "from")), parsed(Day, one(params, "to")));
+  const rawFrom = one(params, "from");
+  const days = range(parsed(Day, rawFrom), parsed(Day, one(params, "to")));
+  const { from, to } =
+    rawFrom === ALL_TIME || hasBound(days) ? days : defaultRange(ctx);
   const color =
     parsed(ColorParam, one(params, "color")) ??
     parsed(GamesColour, one(params, "colour")) ??
@@ -135,9 +179,7 @@ export function serializeFilters(f: StatsFilters, ctx: FilterContext): URLSearch
     const fmt = parsed(Fmt, f.fmt);
     if (fmt !== null && (!ctx.formats || ctx.formats.includes(fmt))) set("fmt", fmt);
   }
-  const { from, to } = range(parsed(Day, f.from), parsed(Day, f.to));
-  set("from", from);
-  set("to", to);
+  setRange(out, range(parsed(Day, f.from), parsed(Day, f.to)), ctx);
   const color = parsed(ColorParam, f.color);
   if (color !== null && color !== "both") set("color", color);
   const cmp = parsed(Cmp, f.cmp);
@@ -163,7 +205,11 @@ export function serializeFilters(f: StatsFilters, ctx: FilterContext): URLSearch
  */
 export function gamesPageParams(f: StatsFilters, ctx: FilterContext): URLSearchParams {
   const out = new URLSearchParams();
-  const canonical = serializeFilters({ ...f, fmt: null, cmp: null, a: null, b: null }, ctx);
+  // The games list opens on every game, so its URL carries the days and all time is no dates.
+  const canonical = serializeFilters(
+    { ...f, fmt: null, cmp: null, a: null, b: null },
+    { ...ctx, defaultPeriod: "all" },
+  );
   const tc = canonical.get("tc");
   if (tc !== null) out.set("tc", tc);
   const colour = canonical.get("color");

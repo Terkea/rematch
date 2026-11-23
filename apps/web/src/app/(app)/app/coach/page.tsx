@@ -25,7 +25,9 @@ export const metadata = { title: { absolute: "Ask your coach" } };
 
 type Params = Record<string, string | string[] | undefined>;
 
-const LEDE = "Questions about your own games, answered from your analysis.";
+// The coach has no date filter (ADR 0083 Amendment 2), so the lede says which games it reads.
+const LEDE =
+  "Questions about your own games, answered from all your analysed games. The other pages' date filters don't apply here.";
 
 /**
  * `/app/coach?account&tc`: the signed-in user's own conversations on the scope's account (R1),

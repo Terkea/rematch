@@ -33,6 +33,8 @@ export function gamesBarConfig(
     compare: false,
     keep,
     now,
+    // A list, not a statistic: the games page opens on every game (ADR 0083 Amendment 2).
+    defaultPeriod: "all",
   };
 }
 

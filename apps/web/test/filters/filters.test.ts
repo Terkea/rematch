@@ -13,23 +13,27 @@ import {
   parseFilters,
   type StatsFilters,
   serializeFilters,
+  setRange,
 } from "../../src/server/filters/params";
 import {
   applyPreset,
   comparePeriods,
+  DEFAULT_PRESET,
   PRESETS,
   presetOf,
   presetRange,
 } from "../../src/server/filters/presets";
 import { parseGameQuery } from "../../src/server/games/query";
 
-const ctx: FilterContext = { available: ["blitz", "rapid", "daily"] };
+// The last 90 days ending 2026-03-31 are 1 Jan to 31 Mar (ADR 0083 Amendment 2).
+const NOW = new Date("2026-03-31T15:00:00Z");
+const ctx: FilterContext = { available: ["blitz", "rapid", "daily"], now: NOW };
 const parse = (q: string, c: FilterContext = ctx) => parseFilters(new URLSearchParams(q), c);
 const DEFAULTS: StatsFilters = {
   tc: "rapid",
   fmt: null,
-  from: null,
-  to: null,
+  from: "2026-01-01",
+  to: "2026-03-31",
   color: "both",
   cmp: null,
   a: null,
@@ -90,7 +94,7 @@ describe("formats", () => {
 });
 
 describe("parseFilters", () => {
-  it("defaults to rapid, both colours, every date, no comparison", () => {
+  it("defaults to rapid, both colours, the last 90 days, no comparison", () => {
     expect(parse("")).toEqual(DEFAULTS);
   });
 
@@ -122,8 +126,46 @@ describe("parseFilters", () => {
     expect(parse("fmt=600+0", { ...ctx, formats: ["600+0"] }).fmt).toBe("600+0");
   });
 
+  it("defaults to the last 90 days, and reads from=all as all time", () => {
+    expect(parse("")).toMatchObject({ from: "2026-01-01", to: "2026-03-31" });
+    expect(parse("from=all")).toMatchObject({ from: null, to: null });
+    expect(parse("from=all&to=2026-02-01")).toMatchObject({ from: null, to: "2026-02-01" });
+    // One bound keeps the other end open, as before.
+    expect(parse("to=2026-02-01")).toMatchObject({ from: null, to: "2026-02-01" });
+    expect(parse("from=2026-02-01")).toMatchObject({ from: "2026-02-01", to: null });
+    // A page whose default is every game (the games list) reads no dates as all time.
+    expect(parse("", { ...ctx, defaultPeriod: "all" })).toMatchObject({ from: null, to: null });
+  });
+
+  it("writes all time as from=all and omits the 90-day default", () => {
+    expect(serializeFilters({ ...DEFAULTS, from: null, to: null }, ctx).toString()).toBe(
+      "from=all",
+    );
+    expect(serializeFilters({ ...DEFAULTS, from: null, to: "2026-02-01" }, ctx).toString()).toBe(
+      "to=2026-02-01",
+    );
+    expect(serializeFilters(DEFAULTS, ctx).toString()).toBe("");
+    const games = { ...ctx, defaultPeriod: "all" as const };
+    expect(serializeFilters({ ...DEFAULTS, from: null, to: null }, games).toString()).toBe("");
+    expect(serializeFilters(DEFAULTS, games).toString()).toBe("from=2026-01-01&to=2026-03-31");
+  });
+
+  it("writes a range into a link: days, nothing for the default, from=all for all time", () => {
+    const at = (r: { from: string | null; to: string | null }) => {
+      const q = new URLSearchParams("tc=blitz");
+      setRange(q, r, { now: NOW });
+      return q.toString();
+    };
+    expect(at({ from: "2026-02-01", to: null })).toBe("tc=blitz&from=2026-02-01");
+    expect(at({ from: "2026-01-01", to: "2026-03-31" })).toBe("tc=blitz");
+    expect(at({ from: null, to: null })).toBe("tc=blitz&from=all");
+  });
+
   it("rejects impossible days and swaps a reversed range", () => {
-    expect(parse("from=2026-02-30&to=1999-01-01")).toMatchObject({ from: null, to: null });
+    expect(parse("from=2026-02-30&to=1999-01-01")).toMatchObject({
+      from: "2026-01-01",
+      to: "2026-03-31",
+    });
     expect(parse("from=2026-03-01&to=2026-01-01")).toMatchObject({
       from: "2026-01-01",
       to: "2026-03-01",
@@ -159,6 +201,9 @@ describe("serializeFilters round-trips", () => {
     { ...DEFAULTS, tc: "blitz", fmt: "180+2", color: "white" },
     { ...DEFAULTS, fmt: OTHER_FORMAT, from: "2026-01-01", to: "2026-03-31", cmp: "30d" },
     { ...DEFAULTS, tc: "daily", color: "black", cmp: "month" },
+    { ...DEFAULTS, from: null, to: null },
+    { ...DEFAULTS, from: null, to: "2026-02-01" },
+    { ...DEFAULTS, from: "2025-06-01", to: "2025-07-01" },
     {
       ...DEFAULTS,
       cmp: "custom",
@@ -213,7 +258,10 @@ describe("serializeFilters round-trips", () => {
     expect(g.toString()).toBe("tc=blitz&colour=black&from=2026-01-01");
     const q = parseGameQuery(Object.fromEntries(g), "rapid");
     expect(q.filters).toMatchObject({ timeClass: "blitz", colour: "black", from: "2026-01-01" });
-    expect(gamesPageParams(DEFAULTS, ctx).toString()).toBe("");
+    // The games list opens on every game, so the stats pages' 90 days travel as days and all
+    // time as no dates.
+    expect(gamesPageParams(DEFAULTS, ctx).toString()).toBe("from=2026-01-01&to=2026-03-31");
+    expect(gamesPageParams({ ...DEFAULTS, from: null, to: null }, ctx).toString()).toBe("");
   });
 });
 
@@ -222,7 +270,7 @@ describe("presets", () => {
 
   it.each([
     ["30d", { from: "2026-03-02", to: "2026-03-31" }],
-    ["3m", { from: "2026-01-01", to: "2026-03-31" }],
+    ["90d", { from: "2026-01-01", to: "2026-03-31" }],
     ["6m", { from: "2025-10-01", to: "2026-03-31" }],
     ["12m", { from: "2025-04-01", to: "2026-03-31" }],
     ["all", { from: null, to: null }],
@@ -231,12 +279,13 @@ describe("presets", () => {
     expect(presetOf(want, now)).toBe(preset);
   });
 
-  it("clamps month ends (May 31 minus 3 months is Feb 28)", () => {
-    expect(presetRange("3m", new Date("2026-05-31T00:00:00Z")).from).toBe("2026-03-01");
+  it("clamps month ends (Aug 31 minus 6 months is Feb 28)", () => {
+    expect(presetRange("6m", new Date("2026-08-31T00:00:00Z")).from).toBe("2026-03-01");
   });
 
   it("names any other range custom, and applies presets", () => {
-    expect(PRESETS).toEqual(["30d", "3m", "6m", "12m", "all", "custom"]);
+    expect(PRESETS).toEqual(["30d", "90d", "6m", "12m", "all", "custom"]);
+    expect(DEFAULT_PRESET).toBe("90d");
     expect(presetOf({ from: "2026-01-05", to: null }, now)).toBe("custom");
     expect(applyPreset(DEFAULTS, "30d", now)).toMatchObject({
       from: "2026-03-02",

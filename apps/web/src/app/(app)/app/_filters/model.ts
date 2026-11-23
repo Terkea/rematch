@@ -9,7 +9,13 @@ import {
   type StatsFilters,
   serializeFilters,
 } from "../../../../server/filters/params";
-import { type FixedPreset, presetOf, presetRange } from "../../../../server/filters/presets";
+import {
+  DEFAULT_PRESET,
+  type FixedPreset,
+  presetOf,
+  presetRange,
+} from "../../../../server/filters/presets";
+import { KPI_MIN_GAMES } from "../../../../server/stats/constants";
 import type { TimeClass } from "../../../../server/games/types";
 
 // The shared filter bar's view model (T3, ADR 0083): every control is a link or a GET form built
@@ -35,6 +41,10 @@ export type BarConfig = {
   /** Params of the page's own contract kept on every link (the coach scope's `account`). */
   keep?: Readonly<Record<string, string>>;
   now: Date;
+  /** What a URL without dates shows: the last 90 days, or every game (the games list). */
+  defaultPeriod?: "90d" | "all";
+  /** The class's games in the default 90 days, for the thin-window note; unknown when absent. */
+  windowGames?: number | null;
 };
 
 export type LinkOption = { label: string; href: string; current: boolean; count?: number };
@@ -77,23 +87,28 @@ export type FilterBarModel = {
   summary: string;
   /** The summary without the time control, for a bar shown without it (ADR 0092). */
   filtersSummary: string;
+  /**
+   * The default 90 days hold fewer games than the numbers need (`KPI_MIN_GAMES`): the line that
+   * says so and the one link to all time (ADR 0083 Amendment 2).
+   */
+  thin: { text: string; allTimeHref: string } | null;
 };
 
 const ALL = "all";
 const PRESET_LABEL: Record<FixedPreset, string> = {
   "30d": "30 days",
-  "3m": "3 months",
+  "90d": "90 days",
   "6m": "6 months",
   "12m": "12 months",
   all: "All time",
 };
 const PRESET_WORDS: Record<Exclude<FixedPreset, "all">, string> = {
   "30d": "last 30 days",
-  "3m": "last 3 months",
+  "90d": "last 90 days",
   "6m": "last 6 months",
   "12m": "last 12 months",
 };
-const FIXED: FixedPreset[] = ["30d", "3m", "6m", "12m", "all"];
+const FIXED: FixedPreset[] = ["30d", "90d", "6m", "12m", "all"];
 const COMPARE_LABEL: Record<Exclude<CompareMode, "custom">, string> = {
   month: "This month vs last",
   "30d": "Last 30 days vs the 30 before",
@@ -111,6 +126,8 @@ function context(cfg: BarConfig): FilterContext {
   return {
     available: cfg.timeClasses.map((c) => c.tc),
     ...(cfg.formatSupported === false ? {} : { formats: cfg.formats.map((f) => f.key) }),
+    now: cfg.now,
+    ...(cfg.defaultPeriod ? { defaultPeriod: cfg.defaultPeriod } : {}),
   };
 }
 
@@ -206,6 +223,7 @@ export function filterBarModel(f: StatsFilters, cfg: BarConfig): FilterBarModel 
 
   const range = { from: f.from, to: f.to };
   const preset = presetOf(range, cfg.now);
+  const defaultPreset: FixedPreset = cfg.defaultPeriod === "all" ? "all" : DEFAULT_PRESET;
   const comparing = f.cmp !== null;
   const period =
     cfg.dates && !(cfg.compare && comparing)
@@ -265,10 +283,24 @@ export function filterBarModel(f: StatsFilters, cfg: BarConfig): FilterBarModel 
   if (cfg.compare && comparing && f.cmp) {
     words.push(COMPARE_WORDS[f.cmp]);
     active++;
-  } else if (cfg.dates && (f.from || f.to)) {
+  } else if (cfg.dates && (f.from || f.to || preset !== defaultPreset)) {
     words.push(preset === "custom" || preset === "all" ? rangeWords(range) : PRESET_WORDS[preset]);
-    active++;
+    if (preset !== defaultPreset) active++;
   }
+
+  const games = cfg.windowGames;
+  const thin =
+    cfg.dates &&
+    !(cfg.compare && comparing) &&
+    preset === DEFAULT_PRESET &&
+    defaultPreset === DEFAULT_PRESET &&
+    typeof games === "number" &&
+    games < KPI_MIN_GAMES
+      ? {
+          text: `${games} ${games === 1 ? "game" : "games"} in the last 90 days. Most numbers here need at least ${KPI_MIN_GAMES}.`,
+          allTimeHref: href(presetRange("all", cfg.now)),
+        }
+      : null;
 
   return {
     timeClass,
@@ -281,5 +313,6 @@ export function filterBarModel(f: StatsFilters, cfg: BarConfig): FilterBarModel 
     active,
     summary: words.join(", "),
     filtersSummary: words.slice(1).join(", "),
+    thin,
   };
 }
