@@ -155,7 +155,6 @@ pub async fn ai_client_from_env(env: &WorkerEnv) -> anyhow::Result<AiClientChoic
     let cfg = SidecarConfig::new(sc.url.clone(), sc.token.clone());
     let probe = SidecarClient::new(cfg.clone(), None).context("building the sidecar client")?;
     let mut health = probe.health().await;
-    let local;
     for _ in 1..HEALTH_ATTEMPTS {
         if health.is_ok() {
             break;
@@ -163,7 +162,7 @@ pub async fn ai_client_from_env(env: &WorkerEnv) -> anyhow::Result<AiClientChoic
         tokio::time::sleep(HEALTH_RETRY_AFTER).await;
         health = probe.health().await;
     }
-    match health {
+    let local = match health {
         Err(e) => {
             tracing::warn!(error = %e, attempts = HEALTH_ATTEMPTS, "the AI sidecar health check failed");
             return Ok(disabled("sidecar health check failed"));
@@ -171,9 +170,9 @@ pub async fn ai_client_from_env(env: &WorkerEnv) -> anyhow::Result<AiClientChoic
         Ok(h) if h.auth == AuthKind::None => return Ok(disabled("sidecar has no credential")),
         Ok(h) => {
             tracing::info!("ai: sidecar auth {}", h.auth.describe());
-            local = h.auth == AuthKind::Local;
+            h.auth == AuthKind::Local
         }
-    }
+    };
     let tools = match &env.ai_tool_public_url {
         Some(url) => Some(
             ToolServer::start(env.ai_tool_bind, url.clone())
