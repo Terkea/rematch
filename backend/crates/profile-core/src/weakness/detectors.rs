@@ -657,12 +657,20 @@ pub fn w11(v: &GameView) -> Detection {
 /// Per-motif `(opportunities, events, epl)`.
 pub type MotifCounts = BTreeMap<MotifTag, (u32, u32, f64)>;
 
-/// `motif.missed:<t>`: W3 opportunities whose best line has `t`; events are W3 events.
+/// `motif.missed:<t>`: W3 opportunities whose best line has `t`; events are W3 events. Only
+/// player-visible tags ([`MotifTag::is_player_visible`], EXP-0007) get a series; the move still
+/// counts for W3.
 pub fn motif_missed(v: &GameView) -> MotifCounts {
     let mut out = MotifCounts::new();
     for o in w3_moves(v, true).chain(w3_moves(v, false)) {
         let event = w3_event(o);
-        for t in o.m.f.best.iter().flat_map(|b| b.tags.iter()) {
+        for t in
+            o.m.f
+                .best
+                .iter()
+                .flat_map(|b| b.tags.iter())
+                .filter(|t| t.is_player_visible())
+        {
             let e = out.entry(*t).or_insert((0, 0, 0.0));
             e.0 += 1;
             if event {
@@ -674,15 +682,15 @@ pub fn motif_missed(v: &GameView) -> MotifCounts {
     out
 }
 
-/// `motif.allowed:<t>`: every W1 opportunity, for every tag; events are decisive moves whose
-/// refutation has `t`.
+/// `motif.allowed:<t>`: every W1 opportunity, for every player-visible tag (EXP-0007); events
+/// are decisive moves whose refutation has `t`.
 pub fn motif_allowed(v: &GameView) -> MotifCounts {
     let opps: Vec<&OwnMove> = v.own.iter().filter(|o| refutation_opportunity(o)).collect();
     let mut out = MotifCounts::new();
     if opps.is_empty() {
         return out;
     }
-    for t in MotifTag::ALL {
+    for t in MotifTag::ALL.into_iter().filter(|t| t.is_player_visible()) {
         let mut c = (opps.len() as u32, 0, 0.0);
         for o in opps.iter().filter(|o| o.decisive) {
             if o.m

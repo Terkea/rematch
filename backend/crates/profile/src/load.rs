@@ -151,7 +151,8 @@ struct PointRow {
 }
 
 /// Every series of the account × time class, points oldest first. A stored key that does not
-/// parse is skipped and logged (it would name no series).
+/// parse is skipped and logged (it would name no series). A motif series whose tag is hidden
+/// (EXP-0007, #122) is skipped too: games analysed before `algo-3.0.0` stored one.
 pub async fn load_series_points(
     pool: &PgPool,
     account_id: Uuid,
@@ -187,6 +188,9 @@ pub async fn load_series_points_in(
             invalid += 1;
             continue;
         };
+        if !key.is_player_visible() {
+            continue;
+        }
         out.entry(key).or_default().push(SeriesPoint {
             game_id: r.game_id,
             played_at: r.played_at,

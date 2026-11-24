@@ -13,7 +13,8 @@
 //!   ([`FILTER_SQL`]): one per game, its worst match, newest game first (or worst first), with
 //!   counts of what it searched and matched (`count_examples`).
 //! - A position's tags are the matching exemplar's plus its stored line tags (`move_features`),
-//!   in the contract's snake_case.
+//!   in the contract's snake_case; only the player-visible ones (EXP-0007,
+//!   `coaching_input::motifs`), and a hidden motif finds no stored examples.
 //! - `get_position` joins `moves` with the account's `games` by `platform_game_id` (the chat's
 //!   game id), with the engine line from `position_evals` (`fen_key`, R1's `ANALYSIS_PROTOCOL`).
 //! - `get_cached_eval` reads `position_evals` only (engine data, never computed here).
@@ -120,12 +121,14 @@ fn camel_tag(snake: &str) -> String {
     out
 }
 
-/// The string tags of a stored line's `tags` array, in snake_case.
+/// The player-visible string tags of a stored line's `tags` array, in snake_case. A tag
+/// EXP-0007 hid (`coaching_input::motifs`, #122) is left out: the coach may not name it.
 fn line_tags(v: Option<&Value>) -> impl Iterator<Item = String> + '_ {
     v.and_then(Value::as_array)
         .into_iter()
         .flatten()
         .filter_map(Value::as_str)
+        .filter(|t| coaching_input::motifs::is_player_visible(t))
         .map(snake_tag)
 }
 
@@ -435,6 +438,9 @@ impl DbCoachDataSource {
             .fetch_all(&self.pool)
             .await?
         } else if let Some(m) = &q.motif {
+            if is_hidden_motif(m) {
+                return Ok(Vec::new()); // a hidden motif (EXP-0007) names no examples
+            }
             // The player's own erring moves whose best line (missed) or refutation (allowed)
             // carries the motif.
             sqlx::query_as(
@@ -541,6 +547,9 @@ impl DbCoachDataSource {
                 .flat_map(|x| &x.exemplars)
                 .collect()
         } else if let Some(m) = &q.motif {
+            if is_hidden_motif(m) {
+                return Ok(Vec::new()); // a hidden motif (EXP-0007) names no examples
+            }
             self.exemplars().filter(|e| e.tags.contains(m)).collect()
         } else if let Some(l) = &q.line_key {
             input
@@ -736,9 +745,73 @@ impl StoredInput {
 
 /// The parsed input of a stored row; `None` (logged without content) when it no longer
 /// validates or belongs to another account.
+/// A motif series key (`motif.missed:pin`) or metric key (`motif_miss_rate:pin`) whose tag
+/// EXP-0007 hid; any other key is visible.
+fn names_hidden_motif(key: &str) -> bool {
+    ["motif.missed:", "motif.allowed:", "motif_miss_rate:"]
+        .iter()
+        .find_map(|p| key.strip_prefix(p))
+        .is_some_and(|t| !coaching_input::motifs::is_player_visible(t))
+}
+
+/// Removes what EXP-0007 hid (ADR 0112) from an input stored before `algo-3.0.0`: the hidden
+/// motifs' metrics and changes, and their tags on every position. An input built since has none.
+fn without_hidden_motifs(mut i: CoachingInput) -> CoachingInput {
+    i.metrics.retain(|m| !names_hidden_motif(&m.key));
+    i.changes.retain(|c| !names_hidden_motif(&c.series_key));
+    let visible = |p: &mut ExemplarPosition| {
+        p.tags.retain(|t| !is_hidden_motif(t));
+    };
+    i.weaknesses
+        .iter_mut()
+        .flat_map(|w| w.exemplars.iter_mut())
+        .for_each(visible);
+    i.strengths
+        .iter_mut()
+        .flat_map(|s| s.exemplars.iter_mut())
+        .for_each(visible);
+    i.openings
+        .iter_mut()
+        .flat_map(|o| o.examples.iter_mut())
+        .for_each(visible);
+    i.changes
+        .iter_mut()
+        .flat_map(|c| c.examples.iter_mut().map(|e| &mut e.position))
+        .for_each(visible);
+    i
+}
+
+/// Whether a contract tag (`hanging_piece`) is a motif EXP-0007 hid.
+fn is_hidden_motif(tag: &str) -> bool {
+    is_motif_tag(tag) && !coaching_input::motifs::is_player_visible_contract_tag(tag)
+}
+
+/// Whether a contract tag is one of the tagger's sixteen motif tags (a hidden one or not).
+fn is_motif_tag(tag: &str) -> bool {
+    const ALL: [&str; 16] = [
+        "hanging_piece",
+        "fork",
+        "pin",
+        "skewer",
+        "discovered_attack",
+        "deflection",
+        "sacrifice",
+        "promotion",
+        "mate",
+        "mate_in_1",
+        "mate_in_2",
+        "mate_in_3",
+        "mate_in_4_plus",
+        "mating_net",
+        "back_rank_mate",
+        "smothered_mate",
+    ];
+    ALL.contains(&tag)
+}
+
 fn checked(raw: &Value, account_id: Uuid, what: &'static str) -> Option<CoachingInput> {
     match parse_coaching_input(raw) {
-        Ok(i) if i.account_id == account_id => Some(i),
+        Ok(i) if i.account_id == account_id => Some(without_hidden_motifs(i)),
         Ok(_) => {
             tracing::warn!(
                 what,
@@ -806,5 +879,77 @@ fn version_rank(v: InputVersion) -> u8 {
         InputVersion::V1 => 1,
         InputVersion::V2 => 2,
         InputVersion::V3 => 3,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// ADR 0112: an input stored before `algo-3.0.0` reaches the coach without the hidden motifs.
+    #[test]
+    fn a_stored_input_loses_the_hidden_motifs() {
+        let mut i = crate::testing::v3_input("b2-rapid");
+        let metric = i.metrics.first().cloned().expect("a metric");
+        for key in ["motif_miss_rate:pin", "motif_miss_rate:fork"] {
+            let mut m = metric.clone();
+            m.key = key.to_owned();
+            i.metrics.push(m);
+        }
+        let position = i
+            .weaknesses
+            .iter()
+            .flat_map(|w| &w.exemplars)
+            .next()
+            .cloned()
+            .expect("an exemplar");
+        if let Some(w) = i.weaknesses.first_mut() {
+            w.exemplars[0].tags = vec!["pin".into(), "fork".into(), "hung_piece".into()];
+        }
+        let day = time::Date::from_calendar_date(2026, time::Month::November, 1).unwrap();
+        let mut change = coaching_input::TimelineChange {
+            series_key: "motif.missed:skewer".into(),
+            weakness_id: Some("W3".into()),
+            label: "Missed skewers".into(),
+            from_state: coaching_input::WeaknessState::NotAnIssue,
+            to_state: coaching_input::WeaknessState::Emerging,
+            onset_game_id: "g".into(),
+            onset_date: day,
+            onset_from: day,
+            onset_to: day,
+            rate_before: 0.1,
+            rate_after: 0.2,
+            posterior_prob: 0.9,
+            candidate_causes: Vec::new(),
+            examples: Vec::new(),
+        };
+        i.changes.push(change.clone());
+        change.series_key = "motif.missed:fork".into();
+        change.examples = vec![coaching_input::ChangeExample {
+            position: ExemplarPosition {
+                tags: vec!["back_rank_mate".into(), "mate".into()],
+                ..position
+            },
+            side: coaching_input::ExampleSide::After,
+        }];
+        i.changes.push(change);
+
+        let out = without_hidden_motifs(i);
+        let keys: Vec<&str> = out.metrics.iter().map(|m| m.key.as_str()).collect();
+        assert!(!keys.contains(&"motif_miss_rate:pin"), "{keys:?}");
+        assert!(keys.contains(&"motif_miss_rate:fork"));
+        assert_eq!(
+            out.weaknesses[0].exemplars[0].tags,
+            vec!["fork", "hung_piece"]
+        );
+        let changes: Vec<&str> = out.changes.iter().map(|c| c.series_key.as_str()).collect();
+        assert!(!changes.contains(&"motif.missed:skewer"), "{changes:?}");
+        let fork = out
+            .changes
+            .iter()
+            .find(|c| c.series_key == "motif.missed:fork")
+            .expect("a visible change stays");
+        assert_eq!(fork.examples[0].position.tags, vec!["mate"]);
+        assert!(is_hidden_motif("hanging_piece") && !is_hidden_motif("tactics"));
     }
 }

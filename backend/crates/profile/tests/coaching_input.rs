@@ -729,6 +729,50 @@ fn played_best_move_has_no_best_and_white_pov_scores() {
     assert_eq!(e.game_id, "abcd1234");
 }
 
+/// EXP-0007 (#122): the coach never sees a hidden motif tag; the position keeps its move, its
+/// eval swing and its best line.
+#[test]
+fn an_exemplar_carries_only_player_visible_tags() {
+    let parsed = parse_pgn(SCHOLARS).unwrap();
+    let p = &parsed.plies[6];
+    let row = |best_tags: Vec<MotifTag>, refutation_tags: Vec<MotifTag>| ExemplarRow {
+        game_id: Uuid::nil(),
+        platform_game_id: "abcd1234".into(),
+        played_at: SEED_NOW,
+        player_color: Color::White,
+        ply: p.ply,
+        color: p.color,
+        san: p.san.clone(),
+        uci: p.uci.clone(),
+        fen_before: p.fen_before.clone(),
+        best_uci: Some(p.uci.clone()),
+        win_before: 90.0,
+        win_after: 100.0,
+        delta_w: 0.0,
+        phase: "opening".into(),
+        best_pv: vec![p.uci.clone()],
+        refutation_pv: Vec::new(),
+        best_tags,
+        refutation_tags,
+        eval_before: Some(chess_core::EngineScore::Mate(1)),
+        eval_after: Some(chess_core::EngineScore::Cp(1000)),
+    };
+    let mixed = to_exemplar_position(&row(
+        vec![MotifTag::Sacrifice, MotifTag::Mate, MotifTag::BackRankMate],
+        vec![MotifTag::HangingPiece, MotifTag::Fork],
+    ))
+    .expect("a valid row");
+    assert_eq!(mixed.tags, vec!["mate", "fork"]);
+    let hidden_only = to_exemplar_position(&row(
+        vec![MotifTag::Pin, MotifTag::Skewer],
+        vec![MotifTag::Deflection],
+    ))
+    .expect("a position whose tags are all hidden is still a position");
+    assert!(hidden_only.tags.is_empty(), "{:?}", hidden_only.tags);
+    assert_eq!(hidden_only.eval_before, coaching_input::Score::Mate(1));
+    assert_eq!(hidden_only.best_pv, vec!["h5f7"]);
+}
+
 #[test]
 fn select_strengths_orders_by_percentile_caps_at_4_and_drops_empty() {
     let picked = select_strengths(vec![

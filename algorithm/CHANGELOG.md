@@ -8,6 +8,15 @@ One entry per algorithm version, newest first. The id is `algo-<version>+<hash>`
 
 Each entry says what changed, why, the ADR, and the benchmark delta (the scorecard before and after; `cli bench compare` once it exists).
 
+## algo-3.0.0+554036a3b27c
+
+2026-11-24. The six motif tags EXP-0007 did not clear are no longer named to players or the coach (#122).
+
+- What changed: `coaching_input::motifs::PLAYER_VISIBLE_MOTIFS` lists the tags a player may be told about: EXP-0007's trusted `fork`, `discoveredAttack`, `promotion`, `smotheredMate` and the five mate-length tags, plus `matingNet`, which no Lichess theme scores. The manifest names it (`profile.player_visible_motifs`). `motif_missed` and `motif_allowed` build series for those tags only, the KPI catalogue keeps a `motif_miss_rate` row for each (63 rows, not 69), an exemplar's `tags` are its visible ones, and rows stored by earlier versions are skipped where they are read (the series points, the CoachingInput's timeline changes, the web's area timeline, a stored report's changes, a stored CoachingInput the chat reads, and both trainer pattern rates). The chat drops the hidden tags from a position and finds no examples for one. The coach's glossary is `core/glossary.v3.md`, without the six, in the report and chat prompt sets. The tagger still computes all sixteen tags, `move_features` stores them, and `cli lab tag-motifs` returns them. A hidden-tag line still counts for W3 or W1, with its eval swing and the best move.
+- Why: EXP-0007 could not show `hangingPiece` (precision 0.572), `pin` (0.402), `skewer` (0.810, interval [0.778, 0.838]), `deflection` (0.562), `sacrifice` (0.528) or `backRankMate` (0.606) to be right at least 80% of the time against Lichess's puzzle themes, and decided to hide them until EXP-0019, EXP-0020 or EXP-0021 clears them (`lab/experiments/EXP-0007/decision.md`). `backend/crates/coaching-input/tests/motifs.rs` pins the list to its `results.json`.
+- ADRs: 0112 (the allowlist), 0105 (the version policy), 0109 (the arena).
+- Benchmark: the release arena against `algo-2.0.0` finds no clear difference on any metric of EXP-0001 (recall at 2 at 80 games 0.633 on both sides, coverage 0.775; pilot rerun in 1,438 seconds), EXP-0002 (worst coverage 0.835, coverage at the peers' rate 0.797) or EXP-0007 (the same 9 of 15 tags trusted, every precision and recall unchanged), so `bench/baseline.json` stands. The replay goldens lose every row of the six tags: 112 of 435 `weakness_series_point` rows, 234 of 2,964 `kpi_snapshot` rows and 45 of 195 `weakness_state_history` rows, the hidden counts of 3 `game_metrics` rows, and the CoachingInputs' hidden `motif_miss_rate` metrics. The lab's golden responses are byte-identical.
+
 ## algo-2.0.0+383bff27f04f
 
 2026-11-24. On synthetic players drawn from EXP-0002's model, the 80% ranges hold the true rate 78% to 83% of the time for players well above their peers (EXP-0006).

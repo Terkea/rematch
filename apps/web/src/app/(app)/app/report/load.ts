@@ -4,6 +4,7 @@ import { changeNotes, getReport } from "../../../../server/coaching";
 import type { ReportPayload } from "../../../../server/coaching/types";
 import type { DayRange } from "../../../../server/filters/params";
 import type { CoachScope } from "../../../../server/profile";
+import { isPlayerVisibleSeries } from "../../../../server/profile/catalogue";
 import { reviewGameIds } from "../../../../server/profile/game-ids";
 import { lineEvidence } from "../../../../server/profile/openings";
 import { noteKeysInScope, weeklyRates } from "../weaknesses/queries";
@@ -44,7 +45,26 @@ export async function loadReport(
   /** The filter bar's dates (T3): the weekly sparklines are clipped to these weeks. */
   range: DayRange = { from: null, to: null },
 ): Promise<ReportPageData> {
-  const view = await getReport(db, userId, scope, now, { intervalDays });
+  const stored = await getReport(db, userId, scope, now, { intervalDays });
+  // A report written before algo-3.0.0 may hold a change of a motif EXP-0007 hid (ADR 0112): it
+  // is never shown, and neither is its note.
+  const view = stored.payload
+    ? {
+        ...stored,
+        payload: {
+          ...stored.payload,
+          computed: {
+            ...stored.payload.computed,
+            newThisPeriod: stored.payload.computed.newThisPeriod.filter((c) =>
+              isPlayerVisibleSeries(c.seriesKey),
+            ),
+            fixedThisPeriod: stored.payload.computed.fixedThisPeriod.filter((c) =>
+              isPlayerVisibleSeries(c.seriesKey),
+            ),
+          },
+        },
+      }
+    : stored;
   const computed = view.payload?.computed;
   const changes = computed ? [...computed.newThisPeriod, ...computed.fixedThisPeriod] : [];
   const shown = new Set(changes.map(changeKey));

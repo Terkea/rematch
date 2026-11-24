@@ -107,7 +107,9 @@ pub struct MotifGame {
 }
 
 /// How often the player found any of `tags` in games from `since` on (web `patternFound`):
-/// `events` counts the chances found.
+/// `events` counts the chances found. Only player-visible tags count (EXP-0007,
+/// `coaching_input::motifs`): a game stored before `algo-3.0.0` still has counts for the hidden
+/// ones.
 pub fn pattern_found(
     games: &[MotifGame],
     tags: &BTreeSet<String>,
@@ -115,7 +117,10 @@ pub fn pattern_found(
 ) -> PlanRate {
     let (mut found, mut chances) = (0f64, 0f64);
     for g in games.iter().filter(|g| g.played_at >= since) {
-        for tag in tags {
+        for tag in tags
+            .iter()
+            .filter(|t| coaching_input::motifs::is_player_visible(t))
+        {
             let Some((opp, miss)) = g.by_motif.get(tag) else {
                 continue;
             };
@@ -283,6 +288,23 @@ mod tests {
         let (b, a, _) = before_after(&games, None);
         assert_eq!((b.chances, a.chances), (20, 0));
         assert_eq!(a.rate, None);
+    }
+
+    #[test]
+    fn pattern_rates_count_only_player_visible_motifs() {
+        let t = OffsetDateTime::UNIX_EPOCH;
+        let games = [MotifGame {
+            played_at: t,
+            by_motif: [
+                ("fork".to_owned(), (4.0, 1.0)),
+                ("pin".to_owned(), (6.0, 6.0)),
+            ]
+            .into_iter()
+            .collect(),
+        }];
+        let tags: BTreeSet<String> = ["fork", "pin"].iter().map(|s| (*s).to_owned()).collect();
+        let r = pattern_found(&games, &tags, t);
+        assert_eq!((r.events, r.chances), (3, 4));
     }
 
     #[test]

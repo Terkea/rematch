@@ -16,7 +16,7 @@ import { and, asc, desc, eq, gte, inArray, isNotNull, sql } from "drizzle-orm";
 import { mateChange } from "../../lib/explain";
 import { readOnly } from "../games";
 import { wilson } from "../stats";
-import { contractId, seriesArea, seriesLabel, weaknessDef } from "./catalogue";
+import { contractId, isPlayerVisibleTag, seriesArea, seriesLabel, weaknessDef } from "./catalogue";
 import { ownsScope } from "./scope";
 import type {
   CoachScope,
@@ -269,7 +269,7 @@ function exemplar(v: unknown): Exemplar | null {
     best: moveRef(v.best),
     bestPv: strings(v.bestPv),
     refutationPv: strings(v.refutationPv),
-    tags: strings(v.tags),
+    tags: strings(v.tags).filter(isPlayerVisibleTag),
     winBefore: v.winBefore,
     winAfter: v.winAfter,
     ...(mate ? { mate } : {}),

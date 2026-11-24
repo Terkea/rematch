@@ -102,6 +102,13 @@ str_enum!(
 );
 
 impl MotifTag {
+    /// Whether the tag may be named to a player or the coach: EXP-0007's allowlist,
+    /// [`coaching_input::motifs::PLAYER_VISIBLE_MOTIFS`] (#122). Every tag is still computed and
+    /// stored on its line; a hidden one builds no series, KPI or coaching fact.
+    pub fn is_player_visible(self) -> bool {
+        coaching_input::motifs::is_player_visible(self.as_str())
+    }
+
     /// The contract (`ExemplarPosition.tags`) form: snake_case, digits as their own word.
     pub fn contract_tag(self) -> &'static str {
         match self {
@@ -223,6 +230,17 @@ pub enum SeriesKey {
     /// The opening `line_key` (`"{color}:{slug}"`, R-7).
     Opening(String),
     Endgame(EndgameType),
+}
+
+impl SeriesKey {
+    /// False for a missed or allowed motif series whose tag is hidden
+    /// ([`MotifTag::is_player_visible`]); true for every other series.
+    pub fn is_player_visible(&self) -> bool {
+        match self {
+            SeriesKey::MotifMissed(t) | SeriesKey::MotifAllowed(t) => t.is_player_visible(),
+            _ => true,
+        }
+    }
 }
 
 impl fmt::Display for SeriesKey {

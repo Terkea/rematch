@@ -182,12 +182,38 @@ describe("seriesGlossary", () => {
     expect(seriesGlossary(series)).toEqual(glossaryEntry(key));
   });
 
-  it.each(["motif.allowed:fork", "opening:white:italian", "endgame:rook", "W99"])(
-    "%s has no entry, never an invented one",
-    (series) => {
-      expect(seriesGlossary(series)).toBeNull();
-    },
-  );
+  it.each([
+    "motif.allowed:fork",
+    "motif.missed:pin",
+    "motif.missed:hangingPiece",
+    "opening:white:italian",
+    "endgame:rook",
+    "W99",
+  ])("%s has no entry, never an invented one", (series) => {
+    expect(seriesGlossary(series)).toBeNull();
+  });
+});
+
+// EXP-0007 (ADR 0112): the six hidden motifs are neither defined on the pages nor given to
+// the coach, so it has no name for them.
+describe("hidden motifs", () => {
+  it.each([
+    ["hangingPiece", "Missed free pieces"],
+    ["pin", "Missed pins"],
+    ["skewer", "Missed skewers"],
+    ["deflection", "Missed deflections"],
+    ["sacrifice", "Missed sacrifices"],
+    ["backRankMate", "Missed back-rank mates"],
+  ])("%s is in no glossary", (tag, name) => {
+    expect(glossaryEntry(`motif_miss_rate:${tag}`)).toBeNull();
+    expect(glossaryForPrompt()).not.toContain(`motif_miss_rate:${tag}"`);
+    expect(coachGlossaryPrompt()).not.toContain(name);
+  });
+
+  it("keeps the cleared ones", () => {
+    expect(glossaryEntry("motif_miss_rate:fork")?.name).toBe("Missed forks");
+    expect(coachGlossaryPrompt()).toContain("Missed discovered attacks");
+  });
 });
 
 describe("verdict glossary", () => {

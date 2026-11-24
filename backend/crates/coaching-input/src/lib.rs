@@ -5,6 +5,7 @@
 #[macro_use]
 pub mod enums;
 pub mod limits;
+pub mod motifs;
 pub mod schema;
 pub mod types;
 pub mod validate;

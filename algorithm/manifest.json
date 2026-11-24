@@ -50,9 +50,9 @@
       ],
       "prompt_sets": {
         "change": "c0bdee42eee0db3131b70c37a9a2a7b91076d57256e51cb5d03fb9742a04783c",
-        "chat": "3c872e61f32dc3875c6fbbb7ef9949b36459be484e40f3dd2c312809b8662b6b",
+        "chat": "5afd1d43be967185ceccc049a2b3754f4d466143a3e4de5327974e3f86516bd7",
         "chat_summary": "68e53e35309c86c6334dc3b45ac9e210552ace66563a452975ea256d795fb26f",
-        "report": "36ab4116c87719baa41fa31fb4e0de9a08a14c84a03f9e779c003c46f720ff24",
+        "report": "d3ef4dc9f30cc82f074cc9b24b52377f66e851d139aab9d665b33042eb16f769",
         "weekly": "82758a37e89b26b90f52f2eb7f3f33b3e05ab389bdf149a5a2be1a14e03c9236"
       },
       "validator_digest": "de9be7308916979e494f224ba1c67d715514d0356511b4853680568be3b9e727"
@@ -61,9 +61,24 @@
       "decisive_dw": 15,
       "detector_version": "tl-v1",
       "peer_rating_window": 150,
+      "player_visible_motifs": {
+        "source": "EXP-0007",
+        "tags": [
+          "fork",
+          "discoveredAttack",
+          "promotion",
+          "mate",
+          "mateIn1",
+          "mateIn2",
+          "mateIn3",
+          "mateIn4Plus",
+          "matingNet",
+          "smotheredMate"
+        ]
+      },
       "source_digest": {
-        "backend/crates/profile-core/src": "a23f167e9889799dc4430d587d076520a2d8555dbf29abcb61e77fda234c2079",
-        "backend/crates/profile/src": "e7ed4bacec8ba402cd03100159a78693e241b31e3f9091977e3632e2a63691ba"
+        "backend/crates/profile-core/src": "51836f302a3ca8f62575eb7d3333f894be499ef15a35ff05c8ff973bdb33733a",
+        "backend/crates/profile/src": "1cd7e7d6866727bcf3093cebb3e2d979b3d9d06087cb41eb1bd83584d04467dc"
       },
       "t_win": 85
     },
@@ -78,12 +93,12 @@
         "apps/web/src/server/focus/goal.ts": "4d4c186f2fa2a83b4ce5785e838a67e5320969cf0103dd9d5a021ae7efaac4b1",
         "apps/web/src/server/train/model.ts": "bf9ed48573336203232620d5c0fbfc41bd1f24becf6300925cb02523545e6768",
         "backend/crates/ai/src/output/drills.rs": "3875d4337a16de8dd2a3912f2bfc53d97528003ae88e12a17a5a6b8d13c3960c",
-        "backend/crates/coaching-input/src": "9391cea65f5edfb1076e3a7453b30f64e8cf4356b862e0042113c66b7148c727"
+        "backend/crates/coaching-input/src": "e3210a8579d958bdf8940ba4f2945c2e092f412a0e16c49d4c78a21e8a2bf039"
       },
       "trainer_version": "trainer-v1",
       "weekly_input_version": "weekly-input-v1"
     }
   },
-  "id": "algo-2.0.0+383bff27f04f",
-  "version": "2.0.0"
+  "id": "algo-3.0.0+554036a3b27c",
+  "version": "3.0.0"
 }

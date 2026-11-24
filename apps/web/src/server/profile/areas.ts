@@ -2,7 +2,7 @@ import type { Db } from "@ci/db";
 import { weaknessStateHistory } from "@ci/db/generated";
 import { and, asc, eq } from "drizzle-orm";
 import { readOnly } from "../games";
-import { AREAS, KPIS, seriesArea, seriesLabel } from "./catalogue";
+import { AREAS, isPlayerVisibleSeries, KPIS, seriesArea, seriesLabel } from "./catalogue";
 import { CURRENT_WINDOW, kpiCurrent, latestSnapshots } from "./kpis";
 import { ownsScope } from "./scope";
 import type { Area, AreaView, CoachScope, TimelineSeries } from "./types";
@@ -50,6 +50,8 @@ export async function getArea(
     const bySeries = new Map<string, typeof history>();
     for (const r of history) {
       if (seriesArea(r.seriesKey) !== area) continue;
+      // A hidden motif's history, stored before algo-3.0.0 (EXP-0007, ADR 0112), is never shown.
+      if (!isPlayerVisibleSeries(r.seriesKey)) continue;
       bySeries.set(r.seriesKey, [...(bySeries.get(r.seriesKey) ?? []), r]);
     }
     const names = await openingNames(tx, scope, [...bySeries.keys()]);
