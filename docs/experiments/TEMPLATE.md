@@ -5,7 +5,7 @@ The pre-registration of one experiment on the algorithm (ADR 0106). Copy this fi
 lab/experiments/EXP-NNNN/preregistration.md, fill every section, and commit it with
 analysis.py BEFORE anything is run. The lab CI checks the order in git: both files must be
 added in a commit strictly before the one that adds results.json. Once results.json is
-committed, sections 1 to 10 are frozen (CI compares them with their text in that commit) and
+committed, sections 0 to 10 are frozen (CI compares them with their text in that commit) and
 analysis.py must keep the sha256 of section 10. A change after that is a deviation in section 11
 (text only, never a new analysis.py) or a new experiment. Edits between registration and the run,
 such as the fixes a critic asks for, stay visible in git and are listed in review.md.
@@ -22,6 +22,32 @@ Delete these comments when you fill the file.
 - Follows: EXP-NNNN, whose decision was "need more data" | none
 - Registered: <date>. The registration is the first commit that adds this file
   (`git log --diff-filter=A -- preregistration.md`), so it is not written here.
+
+## 0. Value case
+
+- Decision it informs: <the algorithm, product or roadmap decision that waits on this result>
+- If the result is <X>, we will <…>; if <Y>, we will <…>.
+- Expected cost: <CPU-hours, wall time, AI tokens in USD, maintainer time>
+- Value score: impact <1-3> × uncertainty <1-3> ÷ cost <1-3> = <score>
+- Cheaper alternative? <a smaller design, existing data, a cached run, a simulation or the
+  literature; if one answers the question, do that instead and do not register this>
+- Compute budget: <counted units, e.g. 3,840 games, 40 billion nodes, 50,000 profile calls,
+  400,000 AI tokens>; cap 150%
+
+<!-- Written first, before the question, and frozen with sections 1 to 10 once results exist (ADR 0107). If both
+results lead to the same action, the experiment is not worth running: stop here. Impact is how
+many players or how much of the recommendation the decision touches; uncertainty is how unsure we
+are today; cost is 1 for CPU minutes on existing data, 2 for CPU-hours or a new cohort, 3 for
+hundreds of CPU-hours, real users or a large token bill. The budget is in units the run counts
+deterministically, never wall time, because results.json must be byte-identical: analysis.py
+creates `rematch_lab.experiments.Budget(...)`, counts what it spends, aborts at the cap, and
+writes the budget against the actual into results.json (`compute`). A cap above 150% is written
+here, with why ("cap 200%: the second stage's size depends on the first"). The lab CI refuses a
+pre-registration without these fields.
+
+The kill rule: if the decision above closes before the run (another experiment settles it, the
+feature is dropped), close the experiment with a one-line reason in its summary.md and
+lab/findings.md, and do not run it. -->
 
 ## 1. Question
 
@@ -85,7 +111,8 @@ measured value clears a threshold, and never Cohen's conventions. -->
 band" (measurement) when the true effect is the minimum effect; the target is at least 80%. It is
 a-priori only: observed power after the run is not reported (it restates the p-value). If the
 feasible n cannot reach 80%, change the design, or register a measurement study by the interval
-width it will reach. -->
+width it will reach. The sample is the smallest that reaches the target, never "as big as
+possible": players beyond what the power analysis asks for spend compute on no decision. -->
 
 ## 7. Design
 
@@ -101,6 +128,9 @@ width it will reach. -->
   bench-history, a fixture, a pinned Lichess extract. No real chess.com player's games.>
 - Leakage controls: <for predictive questions: chronological split per player, player-grouped
   folds, nothing after the split date in the features>
+- Reuse: <what this run takes from earlier work instead of recomputing it: cached engine
+  evaluations (`position_evals`), another experiment's synthetic players or cohort, a
+  bench-history RunRecord; each with its checksum in `inputs.sha256`. "None", with the reason.>
 
 ## 8. Analysis plan
 
@@ -139,6 +169,20 @@ Measurement (one version):
 - Outside the band: the 95% interval lies wholly outside it. The follow-up is a comparison
   experiment for a fix.
 - Need more data: anything else, under the same one-follow-up rule.
+
+### Stopping rules
+
+- Early stopping: <none, with why; or the looks (after how many players or units), the
+  boundary at each (group-sequential with an O'Brien-Fleming or Pocock spending function, or a
+  Bayesian posterior threshold), and the section 6 simulation that shows the rule keeps its
+  error rates>
+- Futility: <the boundary at which the run stops because it can no longer reach a decision,
+  e.g. the conditional power of a ship falls below 10%>
+- Budget: the run aborts at the cap of section 0; an aborted run is a failed result, reported
+  as one.
+
+<!-- A look spends error: the section 6 simulation runs the rule with its looks, and the
+decision interval at each look comes from it, not from the single-look default above. -->
 
 ## 10. Analysis code
 
