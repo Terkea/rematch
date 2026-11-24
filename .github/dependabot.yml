@@ -13,6 +13,11 @@ updates:
       default-days: 7
     open-pull-requests-limit: 5
     versioning-strategy: increase
+    # The runtime is Node 22 (.nvmrc, the Dockerfiles), so its types stay on 22. A Node major is
+    # a decision with an ADR, made by the maintainer, not a weekly update (ADR 0108).
+    ignore:
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
     commit-message:
       prefix: chore
       include: scope
@@ -52,6 +57,10 @@ updates:
       - /backend
       - /services/ai-sidecar
       - /services/maia
+    # The same rule for the Node base image: majors are the maintainer's decision (ADR 0108).
+    ignore:
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
     schedule:
       interval: weekly
       day: monday
