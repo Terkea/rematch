@@ -14,11 +14,25 @@
     "reason": "variant: None in the harness of cli lab analyse, which EXP-0001 does not call (ADR 0109 Amendment 1)"
   },
   {
+    "adr": "docs/decisions/0113-analyse-at-1-million-nodes.md",
+    "blob": "02db2d68520c3296a5556f985aacc0a3095ba5bc",
+    "experiment": "EXP-0001",
+    "path": "backend/crates/bench/src/lab.rs",
+    "reason": "a doc comment only: the production count it names is now 1 million; EXP-0001 does not call cli lab analyse (ADR 0113)"
+  },
+  {
     "adr": "docs/decisions/0109-champion-and-challenger.md",
     "blob": "fd9d50a2899990b0517eec6543ed7cd95b072b2b",
     "experiment": "EXP-0001",
     "path": "backend/crates/bench/src/lib.rs",
     "reason": "variant_from_env and its test; an empty ALGO_VARIANT is None (ADR 0109 Amendment 1)"
+  },
+  {
+    "adr": "docs/decisions/0113-analyse-at-1-million-nodes.md",
+    "blob": "63bb0a0ec2faaefe7d54452c58136df55167e345",
+    "experiment": "EXP-0001",
+    "path": "backend/crates/bench/src/memo.rs",
+    "reason": "a doc comment only: the production count it names is now 1 million; every bench search still uses the memo's own node count (ADR 0113)"
   },
   {
     "adr": "docs/decisions/0109-champion-and-challenger.md",
