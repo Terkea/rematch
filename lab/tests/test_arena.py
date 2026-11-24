@@ -496,10 +496,15 @@ def test_records_on_other_seeds_or_code_are_not_reused(lab_dirs: Path) -> None:
     assert len(report["plan"]) == 2
 
 
+def ran_on(live: arena.Live) -> str:
+    """The algorithm_id a live experiment's committed results ran on (the champion of its day)."""
+    return json.loads((live.exp / "results.json").read_text(encoding="utf-8"))["algorithm_id"]
+
+
 def test_the_committed_results_are_the_champions_cache() -> None:
-    # EXP-0001 and EXP-0002 ran on the champion; their results.json is reused, never re-run.
+    # Each live experiment's results.json is its version's record, reused, never re-run.
     for live in arena.live_experiments("release"):
-        record = arena.committed_record(live, CHAMPION)
+        record = arena.committed_record(live, ran_on(live))
         assert record is not None and record["seed_namespace"] == live.id
         digest = hashlib.sha256((live.exp / "results.json").read_bytes()).hexdigest()
         assert record["results_sha256"] == digest
@@ -508,9 +513,9 @@ def test_the_committed_results_are_the_champions_cache() -> None:
 def test_the_seeded_leaderboard_is_what_the_committed_results_give() -> None:
     board = arena.load_board(LAB / "leaderboard.json")
     for live in arena.live_experiments("release"):
-        stored = arena.find_record(board, live, CHAMPION)
+        stored = arena.find_record(board, live, ran_on(live))
         assert stored is not None, live.id
-        assert arena.same_record(stored, arena.committed_record(live, CHAMPION))
+        assert arena.same_record(stored, arena.committed_record(live, ran_on(live)))
 
 
 # ---- external inputs and reviewed source changes (ADR 0109 Amendment 1) ------------------------
