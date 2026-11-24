@@ -87,10 +87,11 @@ Twelve experiments, EXP-0007 to EXP-0018, check the learning framework layer by 
 - Language: is the coach faithful to the facts? EXP-0016 (what the validator misses).
 - Learning, which needs real players (v0.6): EXP-0017 (how many players the learning experiments need), EXP-0018 (the review schedule and the retire rule).
 - The follow-ups of EXP-0007: EXP-0019 (a blind human audit of the tags the themes cannot judge), EXP-0020 (deflection), EXP-0021 (pin), EXP-0022 (motifs after the first gain and past ply 8), EXP-0023 (the engine's best line against the solution). Until one of them clears a tag, the six tags EXP-0007 hid are computed and measured but never named to a player or the coach: `coaching_input::motifs::PLAYER_VISIBLE_MOTIFS`, a manifest component since `algo-3.0.0` ([ADR 0112](decisions/0112-hide-the-motifs-exp-0007-did-not-clear.md)).
+- The follow-ups of EXP-0008, which chose 1 million nodes over 300,000: EXP-0027 (do a player's top weaknesses change between the two counts) and EXP-0028 (search deeper only where the cheap searches disagree).
 
 - The second batch, from what the first results left open: EXP-0026 (rank missed mates and early traps, the two flaws behind nearly every Tier 1 miss), and EXP-0004 is now run as well as designed, the first measurement on real players. Two enabling tasks carry no value case of their own: "lab-v2: the lab calls the trajectory, change-state, weekly target and trainer rules", which EXP-0011, EXP-0012, EXP-0014 and EXP-0015 wait on, and "Confirm a champion swap on fresh seeds at release (ADR 0109)", which closes the gap ADR 0109 names: a challenger tuned to the registered seeds.
 
-The open catalogue, by value score. Two take precedence over their score: EXP-0008, because the cost of EXP-0004 and EXP-0009 depends on its node count, and EXP-0009, the only one that can change what we teach, which starts as soon as EXP-0008 decides. Within a score, what can run now comes first. EXP-0001, EXP-0002, EXP-0006 and EXP-0007 are decided and live in the arena; EXP-0005 was closed unrun.
+The open catalogue, by value score. EXP-0009 takes precedence over its score: it is the only one that can change what we teach, and it runs at the 1 million nodes EXP-0008 chose. Within a score, what can run now comes first. EXP-0001, EXP-0002, EXP-0006, EXP-0007 and EXP-0008 are decided and live in the arena; EXP-0005 was closed unrun.
 
 | Rank | Experiment | Layer | Impact × uncertainty ÷ cost | Runs |
 |---|---|---|---|---|
@@ -102,19 +103,20 @@ The open catalogue, by value score. Two take precedence over their score: EXP-00
 | 6 | EXP-0014 the change detectors | profile | 2 × 3 ÷ 1 = 6 | after lab-v2 |
 | 7 | EXP-0010 points lost or frequency | recommendation | 3 × 2 ÷ 1 = 6 | after EXP-0004 |
 | 8 | EXP-0011 weekly targets | recommendation | 2 × 3 ÷ 1 = 6 | after EXP-0004 and lab-v2 |
-| 9 | EXP-0004 the ranking on real players | recommendation | 3 × 3 ÷ 2 = 4.5 | design now, run after EXP-0008 |
-| 10 | EXP-0009 what helps people climb | recommendation | 3 × 3 ÷ 2 = 4.5 | after EXP-0008, ahead of its score |
+| 9 | EXP-0004 the ranking on real players | recommendation | 3 × 3 ÷ 2 = 4.5 | design now, run after the 1 million protocol ships |
+| 10 | EXP-0009 what helps people climb | recommendation | 3 × 3 ÷ 2 = 4.5 | after the 1 million protocol ships, ahead of its score |
 | 11 | EXP-0019 a blind audit of four tags | facts | 3 × 3 ÷ 2 = 4.5 | now |
 | 12 | EXP-0016 the validator | language | 2 × 2 ÷ 1 = 4 | now |
 | 13 | EXP-0020 the deflection rule | facts | 2 × 2 ÷ 1 = 4 | now |
 | 14 | EXP-0025 W1's range at 30 games | profile | 2 × 2 ÷ 1 = 4 | now |
 | 15 | EXP-0012 drill relevance | recommendation | 2 × 2 ÷ 1 = 4 | after EXP-0004 and lab-v2 |
-| 16 | EXP-0008 engine depth | facts | 3 × 2 ÷ 2 = 3 | now, ahead of its score |
-| 17 | EXP-0026 missed mates and early traps | recommendation | 3 × 2 ÷ 2 = 3 | now |
-| 18 | EXP-0024 the churn of a ranking change | recommendation | 2 × 3 ÷ 2 = 3 | with EXP-0026's runs |
-| 19 | EXP-0023 the best line against the solution | facts | 3 × 2 ÷ 2 = 3 | now |
-| 20 | EXP-0003 partial pooling | profile | 3 × 2 ÷ 2 = 3 | its kill rule is due a check: EXP-0006 shipped a prior rule |
-| 21 | EXP-0018 the schedule | learning | 2 × 2 ÷ 2 = 2 | needs real players |
+| 16 | EXP-0026 missed mates and early traps | recommendation | 3 × 2 ÷ 2 = 3 | now |
+| 17 | EXP-0024 the churn of a ranking change | recommendation | 2 × 3 ÷ 2 = 3 | with EXP-0026's runs |
+| 18 | EXP-0023 the best line against the solution | facts | 3 × 2 ÷ 2 = 3 | now |
+| 19 | EXP-0027 top weaknesses at 300,000 and 1 million nodes | recommendation | 2 × 3 ÷ 2 = 3 | now |
+| 20 | EXP-0028 deeper search where the cheap ones disagree | facts | 2 × 3 ÷ 2 = 3 | after the 1 million protocol ships |
+| 21 | EXP-0003 partial pooling | profile | 3 × 2 ÷ 2 = 3 | its kill rule is due a check: EXP-0006 shipped a prior rule |
+| 22 | EXP-0018 the schedule | learning | 2 × 2 ÷ 2 = 2 | needs real players |
 
 Eight proposals were merged or dropped by their value case:
 

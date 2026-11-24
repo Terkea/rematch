@@ -7,10 +7,11 @@
 use std::io::Read;
 use std::path::PathBuf;
 
+use bench::depth::{EvaluateOptions, EvaluateRequest, JudgeRequest, PositionsRequest};
 use bench::lab::{AnalyseOptions, AnalyseRequest, ProfileRequest, RankRequest, TagMotifsRequest};
 
-pub const LAB_USAGE: &str =
-    "usage: cli lab analyse|profile|rank|tag-motifs < request.json > response.json";
+pub const LAB_USAGE: &str = "usage: cli lab analyse|profile|rank|tag-motifs|positions|evaluate|judge \
+     < request.json > response.json";
 
 /// The id of the algorithm that answers: this build's manifest id (ADR 0105), the same one every
 /// writer stamps on its rows. `cli algo show --json` prints the whole manifest.
@@ -49,6 +50,19 @@ pub fn run_pure(cmd: &str, input: &str) -> anyhow::Result<String> {
     }
 }
 
+/// `positions` or `judge` (EXP-0008) on a request string: pure, no engine and no database.
+pub async fn run_depth(cmd: &str, input: &str) -> anyhow::Result<String> {
+    match cmd {
+        "positions" => to_output(
+            &bench::depth::positions(&parse::<PositionsRequest>(input)?, algorithm_id()).await?,
+        ),
+        "judge" => {
+            to_output(&bench::depth::judge(&parse::<JudgeRequest>(input)?, algorithm_id()).await?)
+        }
+        _ => anyhow::bail!("{LAB_USAGE}"),
+    }
+}
+
 pub async fn run_lab(
     argv: &[String],
     env: &dyn Fn(&str) -> Option<String>,
@@ -62,7 +76,10 @@ pub async fn run_lab(
             return 1;
         }
     };
-    if !matches!(cmd, "analyse" | "profile" | "rank" | "tag-motifs") {
+    if !matches!(
+        cmd,
+        "analyse" | "profile" | "rank" | "tag-motifs" | "positions" | "evaluate" | "judge"
+    ) {
         print_error(LAB_USAGE);
         return 1;
     }
@@ -104,6 +121,23 @@ pub async fn run_lab(
             .and_then(|r| to_output(&r)),
             Err(e) => Err(e),
         }
+    } else if cmd == "evaluate" {
+        let Some(stockfish) = env("STOCKFISH_PATH") else {
+            print_error("STOCKFISH_PATH must be set");
+            return 1;
+        };
+        let opts = EvaluateOptions {
+            stockfish: PathBuf::from(stockfish),
+            syzygy_path: env("SYZYGY_PATH"),
+        };
+        match parse::<EvaluateRequest>(&input) {
+            Ok(req) => bench::depth::evaluate(&req, &opts, algorithm_id())
+                .await
+                .and_then(|r| to_output(&r)),
+            Err(e) => Err(e),
+        }
+    } else if matches!(cmd, "positions" | "judge") {
+        run_depth(cmd, &input).await
     } else {
         run_pure(cmd, &input)
     };

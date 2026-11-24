@@ -8,6 +8,13 @@ The site builds this file into /docs/progress/ and shows the newest entry on the
 
 See also the [experiments](/rematch/docs/experiments/) and the [roadmap](/rematch/docs/roadmap/).
 
+## 2026-11-24: EXP-0008, 300,000 nodes falls short of 1 million
+
+- We searched every position of 160 rated rapid Lichess games (CC0) at 50,000 to 1 million nodes and compared each move's label with **Stockfish 19** at 30 million. 1 million nodes disagrees with it on 2.5 moves in 100 fewer than today's 300,000 (95% 2.0 to 3.0), and on 2.2 fewer against 100 million nodes on 40 of the games, past the registered tolerance of 1 in 100 ([EXP-0008](https://github.com/Terkea/rematch/tree/main/lab/experiments/EXP-0008)).
+- For a player, 7.4% of move labels change, mostly fewer inaccuracies, and game accuracy falls by 0.4 of a point on average. The engine costs 39 CPU-seconds a game instead of 12: a 300-game import goes from about 15 to 49 minutes on 4 engines.
+- The deep reference is not the truth either: on the moves where 300,000 and 1 million disagree, 12% of its labels changed again between 30 and 100 million nodes, so the result says 1 million agrees more with deeper searches, not that its labels are exact.
+- Next: ship 1 million nodes as a major algorithm version, test searching deeper only where the cheaper searches disagree (EXP-0028, about 22 CPU-seconds a game), and measure whether players' top weaknesses move (EXP-0027).
+
 ## 2026-11-24: algo-3.0.0 stops naming the six motifs EXP-0007 did not clear
 
 - Hanging piece, pin, skewer, deflection, sacrifice and back-rank mate are no longer named anywhere a player or the coach reads: no "Missed pins" row, no timeline change, no tag on a coached position and no glossary entry. The moves behind them still count as missed tactics or blunders, with their eval swing and the best move ([ADR 0112](decisions/0112-hide-the-motifs-exp-0007-did-not-clear.md), #122).

@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_serializer, model_validator
 from pydantic.alias_generators import to_camel
 
 SCHEMA_VERSION = "lab-v1"
@@ -280,6 +280,124 @@ class TagMotifsResponse(Snake):
     lines: list[TaggedLine]
 
 
+# ---- engine depth (EXP-0008) -----------------------------------------------------------------
+
+
+class EngineScore(Snake):
+    """An engine score: exactly one of `cp` or `mate` (the other is left out on the wire)."""
+
+    cp: int | None = None
+    mate: int | None = None
+
+    @model_validator(mode="after")
+    def _one(self) -> EngineScore:
+        if (self.cp is None) == (self.mate is None):
+            raise ValueError("an engine score is exactly one of cp or mate")
+        return self
+
+    @model_serializer
+    def _wire(self) -> dict[str, int]:
+        return {"cp": self.cp} if self.cp is not None else {"mate": self.mate}  # type: ignore[dict-item]
+
+
+class DepthGame(Snake):
+    """A game for `positions` or `judge`; `lichess_evals` is Lichess's evaluation after each ply,
+    White's point of view, as production stores a Lichess game's."""
+
+    id: str
+    pgn: str
+    base_seconds: int | None = None
+    increment_seconds: int | None = None
+    lichess_evals: list[EngineScore | None] | None = None
+
+
+class PositionsRequest(Snake):
+    schema_version: Literal["lab-v1"] = SCHEMA_VERSION
+    games: list[DepthGame]
+
+
+class GamePositions(Snake):
+    id: str
+    plies: int
+    terminal: bool
+    fens: list[str]
+    sequence: list[str | None]
+
+
+class PositionsResponse(Snake):
+    schema_version: Literal["lab-v1"]
+    algorithm_id: str
+    games: list[GamePositions]
+
+
+class EvaluateRequest(Snake):
+    schema_version: Literal["lab-v1"] = SCHEMA_VERSION
+    nodes: int
+    hash_mb: int | None = None
+    syzygy: bool = False
+    engines: int | None = None
+    fens: list[str]
+
+
+class Search(Snake):
+    """One search: the side to move's score, as `evaluate_game` reads it."""
+
+    fen: str
+    score: EngineScore
+    best_uci: str | None
+    depth: int
+    nodes: int
+    cpu_ms: float | None
+
+
+class EvaluateResponse(Snake):
+    schema_version: Literal["lab-v1"]
+    algorithm_id: str
+    nodes: int
+    hash_mb: int
+    syzygy: bool
+    threads: int
+    searches: list[Search]
+
+
+class GivenSearch(Snake):
+    fen: str
+    score: EngineScore
+    best_uci: str | None = None
+
+
+class JudgeRequest(Snake):
+    schema_version: Literal["lab-v1"] = SCHEMA_VERSION
+    games: list[DepthGame]
+    searches: list[GivenSearch]
+
+
+class JudgedMove(Snake):
+    ply: int
+    color: Literal["white", "black"]
+    uci: str
+    best_uci: str | None
+    win_before: float
+    win_after: float
+    accuracy: float
+    judgement: Literal["inaccuracy", "mistake", "blunder"] | None
+    decided: bool
+
+
+class JudgedGame(Snake):
+    id: str
+    moves: list[JudgedMove]
+    accuracy_white: float
+    accuracy_black: float
+    lichess_used: int
+
+
+class JudgeResponse(Snake):
+    schema_version: Literal["lab-v1"]
+    algorithm_id: str
+    games: list[JudgedGame]
+
+
 #: Every message of the schema, by its `$defs` name.
 MESSAGES: dict[str, type[BaseModel]] = {
     "AnalyseRequest": AnalyseRequest,
@@ -290,6 +408,12 @@ MESSAGES: dict[str, type[BaseModel]] = {
     "RankResponse": RankResponse,
     "TagMotifsRequest": TagMotifsRequest,
     "TagMotifsResponse": TagMotifsResponse,
+    "PositionsRequest": PositionsRequest,
+    "PositionsResponse": PositionsResponse,
+    "EvaluateRequest": EvaluateRequest,
+    "EvaluateResponse": EvaluateResponse,
+    "JudgeRequest": JudgeRequest,
+    "JudgeResponse": JudgeResponse,
 }
 
 #: Every object of the schema that a model mirrors field for field.
@@ -308,4 +432,10 @@ OBJECTS: dict[str, type[BaseModel]] = {
     "MotifLine": MotifLine,
     "LineAnalysis": LineAnalysis,
     "TaggedLine": TaggedLine,
+    "DepthGame": DepthGame,
+    "GamePositions": GamePositions,
+    "Search": Search,
+    "GivenSearch": GivenSearch,
+    "JudgedMove": JudgedMove,
+    "JudgedGame": JudgedGame,
 }

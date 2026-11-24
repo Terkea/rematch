@@ -1,0 +1,712 @@
+{
+  "branch_cpu_hours": 5.541855555555555,
+  "ceiling_cpu_hours": 12.0,
+  "chosen_n": 160,
+  "cpu_hours_per_position": {
+    "deep": 0.02148006029285099,
+    "n100k": 1.8312837955695097e-5,
+    "n1m": 0.00017467076574219432,
+    "n300k": 5.4256061398918546e-5,
+    "n3m": 0.0005463653410081981,
+    "n50k": 9.36028257456829e-6,
+    "ref": 0.0058749281609195405
+  },
+  "k_upper80": 1.1769727057611257,
+  "pilot_estimates": {
+    "n100k-n300k": 0.03211009174311927,
+    "n300k-n1m": 0.009938837920489297
+  },
+  "pilot_games": 20,
+  "planned_cpu_hours": {
+    "40": 5.130511925287356,
+    "60": 6.215285991379311,
+    "80": 7.300060057471264,
+    "100": 8.384834123563218,
+    "120": 9.469608189655174,
+    "140": 10.554382255747127,
+    "160": 11.639156321839081,
+    "180": 12.723930387931036,
+    "200": 13.80870445402299,
+    "240": 15.9782525862069,
+    "300": 19.23257478448276,
+    "400": 24.65644511494253
+  },
+  "positions_per_game": 63.7,
+  "powered_n": null,
+  "reference_positions_per_game_step_down_extra": 7.6,
+  "reference_positions_per_game_step_up": 6.45,
+  "table": [
+    {
+      "100k is enough": {
+        "100k is enough": 0.057,
+        "300k falls short": 0.0005,
+        "need more data": 0.9425
+      },
+      "300k falls short": {
+        "300k falls short": 0.291,
+        "need more data": 0.709
+      },
+      "300k is right": {
+        "300k is right": 0.0515,
+        "need more data": 0.9485
+      },
+      "boundary 100k": {
+        "100k is enough": 0.0175,
+        "300k is right": 0.009,
+        "need more data": 0.9735
+      },
+      "boundary 1M": {
+        "100k is enough": 0.022,
+        "300k falls short": 0.0205,
+        "need more data": 0.9575
+      },
+      "k": 1.0,
+      "n": 40,
+      "variance": "pilot"
+    },
+    {
+      "100k is enough": {
+        "100k is enough": 0.073,
+        "need more data": 0.927
+      },
+      "300k falls short": {
+        "300k falls short": 0.2545,
+        "need more data": 0.7455
+      },
+      "300k is right": {
+        "300k is right": 0.0495,
+        "need more data": 0.9505
+      },
+      "boundary 100k": {
+        "100k is enough": 0.0155,
+        "300k is right": 0.007,
+        "need more data": 0.9775
+      },
+      "boundary 1M": {
+        "100k is enough": 0.0165,
+        "300k falls short": 0.01,
+        "need more data": 0.9735
+      },
+      "k": 1.0,
+      "n": 60,
+      "variance": "pilot"
+    },
+    {
+      "100k is enough": {
+        "100k is enough": 0.0845,
+        "need more data": 0.9155
+      },
+      "300k falls short": {
+        "300k falls short": 0.258,
+        "need more data": 0.742
+      },
+      "300k is right": {
+        "300k is right": 0.093,
+        "need more data": 0.907
+      },
+      "boundary 100k": {
+        "100k is enough": 0.019,
+        "300k is right": 0.009,
+        "need more data": 0.972
+      },
+      "boundary 1M": {
+        "100k is enough": 0.0145,
+        "300k falls short": 0.009,
+        "need more data": 0.9765
+      },
+      "k": 1.0,
+      "n": 80,
+      "variance": "pilot"
+    },
+    {
+      "100k is enough": {
+        "100k is enough": 0.116,
+        "need more data": 0.884
+      },
+      "300k falls short": {
+        "300k falls short": 0.268,
+        "need more data": 0.732
+      },
+      "300k is right": {
+        "100k is enough": 0.0005,
+        "300k is right": 0.1,
+        "need more data": 0.8995
+      },
+      "boundary 100k": {
+        "100k is enough": 0.0245,
+        "300k is right": 0.01,
+        "need more data": 0.9655
+      },
+      "boundary 1M": {
+        "100k is enough": 0.0135,
+        "300k falls short": 0.0015,
+        "need more data": 0.985
+      },
+      "k": 1.0,
+      "n": 100,
+      "variance": "pilot"
+    },
+    {
+      "100k is enough": {
+        "100k is enough": 0.115,
+        "need more data": 0.885
+      },
+      "300k falls short": {
+        "300k falls short": 0.283,
+        "need more data": 0.717
+      },
+      "300k is right": {
+        "300k is right": 0.114,
+        "need more data": 0.886
+      },
+      "boundary 100k": {
+        "100k is enough": 0.014,
+        "300k is right": 0.007,
+        "need more data": 0.979
+      },
+      "boundary 1M": {
+        "100k is enough": 0.019,
+        "300k falls short": 0.0045,
+        "need more data": 0.9765
+      },
+      "k": 1.0,
+      "n": 120,
+      "variance": "pilot"
+    },
+    {
+      "100k is enough": {
+        "100k is enough": 0.1305,
+        "need more data": 0.8695
+      },
+      "300k falls short": {
+        "300k falls short": 0.286,
+        "need more data": 0.714
+      },
+      "300k is right": {
+        "100k is enough": 0.001,
+        "300k is right": 0.1105,
+        "need more data": 0.8885
+      },
+      "boundary 100k": {
+        "100k is enough": 0.0185,
+        "300k is right": 0.01,
+        "need more data": 0.9715
+      },
+      "boundary 1M": {
+        "100k is enough": 0.019,
+        "300k falls short": 0.0035,
+        "need more data": 0.9775
+      },
+      "k": 1.0,
+      "n": 140,
+      "variance": "pilot"
+    },
+    {
+      "100k is enough": {
+        "100k is enough": 0.129,
+        "300k is right": 0.0005,
+        "need more data": 0.8705
+      },
+      "300k falls short": {
+        "300k falls short": 0.297,
+        "need more data": 0.703
+      },
+      "300k is right": {
+        "300k is right": 0.133,
+        "need more data": 0.867
+      },
+      "boundary 100k": {
+        "100k is enough": 0.02,
+        "300k is right": 0.015,
+        "need more data": 0.965
+      },
+      "boundary 1M": {
+        "100k is enough": 0.017,
+        "300k falls short": 0.0035,
+        "need more data": 0.9795
+      },
+      "k": 1.0,
+      "n": 160,
+      "variance": "pilot"
+    },
+    {
+      "100k is enough": {
+        "100k is enough": 0.1285,
+        "need more data": 0.8715
+      },
+      "300k falls short": {
+        "300k falls short": 0.304,
+        "need more data": 0.696
+      },
+      "300k is right": {
+        "300k is right": 0.1575,
+        "need more data": 0.8425
+      },
+      "boundary 100k": {
+        "100k is enough": 0.0185,
+        "300k is right": 0.01,
+        "need more data": 0.9715
+      },
+      "boundary 1M": {
+        "100k is enough": 0.013,
+        "300k falls short": 0.001,
+        "need more data": 0.986
+      },
+      "k": 1.0,
+      "n": 180,
+      "variance": "pilot"
+    },
+    {
+      "100k is enough": {
+        "100k is enough": 0.126,
+        "need more data": 0.874
+      },
+      "300k falls short": {
+        "300k falls short": 0.3005,
+        "need more data": 0.6995
+      },
+      "300k is right": {
+        "300k is right": 0.1495,
+        "need more data": 0.8505
+      },
+      "boundary 100k": {
+        "100k is enough": 0.0185,
+        "300k is right": 0.015,
+        "need more data": 0.9665
+      },
+      "boundary 1M": {
+        "100k is enough": 0.01,
+        "300k falls short": 0.0025,
+        "need more data": 0.9875
+      },
+      "k": 1.0,
+      "n": 200,
+      "variance": "pilot"
+    },
+    {
+      "100k is enough": {
+        "100k is enough": 0.148,
+        "need more data": 0.852
+      },
+      "300k falls short": {
+        "300k falls short": 0.2905,
+        "need more data": 0.7095
+      },
+      "300k is right": {
+        "100k is enough": 0.0005,
+        "300k is right": 0.155,
+        "need more data": 0.8445
+      },
+      "boundary 100k": {
+        "100k is enough": 0.0165,
+        "300k is right": 0.0065,
+        "need more data": 0.977
+      },
+      "boundary 1M": {
+        "100k is enough": 0.017,
+        "300k falls short": 0.001,
+        "need more data": 0.982
+      },
+      "k": 1.0,
+      "n": 240,
+      "variance": "pilot"
+    },
+    {
+      "100k is enough": {
+        "100k is enough": 0.1405,
+        "need more data": 0.8595
+      },
+      "300k falls short": {
+        "300k falls short": 0.315,
+        "need more data": 0.685
+      },
+      "300k is right": {
+        "300k is right": 0.154,
+        "need more data": 0.846
+      },
+      "boundary 100k": {
+        "100k is enough": 0.02,
+        "300k is right": 0.009,
+        "need more data": 0.971
+      },
+      "boundary 1M": {
+        "100k is enough": 0.012,
+        "300k falls short": 0.002,
+        "need more data": 0.986
+      },
+      "k": 1.0,
+      "n": 300,
+      "variance": "pilot"
+    },
+    {
+      "100k is enough": {
+        "100k is enough": 0.1405,
+        "300k is right": 0.0005,
+        "need more data": 0.859
+      },
+      "300k falls short": {
+        "300k falls short": 0.3055,
+        "need more data": 0.6945
+      },
+      "300k is right": {
+        "300k is right": 0.161,
+        "need more data": 0.839
+      },
+      "boundary 100k": {
+        "100k is enough": 0.017,
+        "300k is right": 0.0105,
+        "need more data": 0.9725
+      },
+      "boundary 1M": {
+        "100k is enough": 0.0115,
+        "300k falls short": 0.0035,
+        "need more data": 0.985
+      },
+      "k": 1.0,
+      "n": 400,
+      "variance": "pilot"
+    },
+    {
+      "100k is enough": {
+        "100k is enough": 0.0395,
+        "300k falls short": 0.0005,
+        "300k is right": 0.0005,
+        "need more data": 0.9595
+      },
+      "300k falls short": {
+        "300k falls short": 0.2015,
+        "need more data": 0.7985
+      },
+      "300k is right": {
+        "100k is enough": 0.0015,
+        "300k falls short": 0.001,
+        "300k is right": 0.0215,
+        "need more data": 0.976
+      },
+      "boundary 100k": {
+        "100k is enough": 0.0145,
+        "300k is right": 0.0065,
+        "need more data": 0.979
+      },
+      "boundary 1M": {
+        "100k is enough": 0.0165,
+        "300k falls short": 0.016,
+        "need more data": 0.9675
+      },
+      "k": 1.1769727057611257,
+      "n": 40,
+      "variance": "upper80"
+    },
+    {
+      "100k is enough": {
+        "100k is enough": 0.046,
+        "need more data": 0.954
+      },
+      "300k falls short": {
+        "300k falls short": 0.1925,
+        "need more data": 0.8075
+      },
+      "300k is right": {
+        "100k is enough": 0.001,
+        "300k falls short": 0.0005,
+        "300k is right": 0.035,
+        "need more data": 0.9635
+      },
+      "boundary 100k": {
+        "100k is enough": 0.016,
+        "300k is right": 0.005,
+        "need more data": 0.979
+      },
+      "boundary 1M": {
+        "100k is enough": 0.012,
+        "300k falls short": 0.01,
+        "need more data": 0.978
+      },
+      "k": 1.1769727057611257,
+      "n": 60,
+      "variance": "upper80"
+    },
+    {
+      "100k is enough": {
+        "100k is enough": 0.0525,
+        "300k is right": 0.001,
+        "need more data": 0.9465
+      },
+      "300k falls short": {
+        "300k falls short": 0.184,
+        "need more data": 0.816
+      },
+      "300k is right": {
+        "100k is enough": 0.0005,
+        "300k is right": 0.0455,
+        "need more data": 0.954
+      },
+      "boundary 100k": {
+        "100k is enough": 0.017,
+        "300k is right": 0.012,
+        "need more data": 0.971
+      },
+      "boundary 1M": {
+        "100k is enough": 0.014,
+        "300k falls short": 0.005,
+        "need more data": 0.981
+      },
+      "k": 1.1769727057611257,
+      "n": 80,
+      "variance": "upper80"
+    },
+    {
+      "100k is enough": {
+        "100k is enough": 0.0585,
+        "300k is right": 0.0005,
+        "need more data": 0.941
+      },
+      "300k falls short": {
+        "300k falls short": 0.168,
+        "need more data": 0.832
+      },
+      "300k is right": {
+        "300k is right": 0.0505,
+        "need more data": 0.9495
+      },
+      "boundary 100k": {
+        "100k is enough": 0.015,
+        "300k is right": 0.012,
+        "need more data": 0.973
+      },
+      "boundary 1M": {
+        "100k is enough": 0.014,
+        "300k falls short": 0.004,
+        "need more data": 0.982
+      },
+      "k": 1.1769727057611257,
+      "n": 100,
+      "variance": "upper80"
+    },
+    {
+      "100k is enough": {
+        "100k is enough": 0.084,
+        "need more data": 0.916
+      },
+      "300k falls short": {
+        "300k falls short": 0.2075,
+        "need more data": 0.7925
+      },
+      "300k is right": {
+        "300k is right": 0.0675,
+        "need more data": 0.9325
+      },
+      "boundary 100k": {
+        "100k is enough": 0.02,
+        "300k is right": 0.0105,
+        "need more data": 0.9695
+      },
+      "boundary 1M": {
+        "100k is enough": 0.0105,
+        "300k falls short": 0.0025,
+        "need more data": 0.987
+      },
+      "k": 1.1769727057611257,
+      "n": 120,
+      "variance": "upper80"
+    },
+    {
+      "100k is enough": {
+        "100k is enough": 0.0785,
+        "need more data": 0.9215
+      },
+      "300k falls short": {
+        "300k falls short": 0.202,
+        "need more data": 0.798
+      },
+      "300k is right": {
+        "100k is enough": 0.0005,
+        "300k is right": 0.0625,
+        "need more data": 0.937
+      },
+      "boundary 100k": {
+        "100k is enough": 0.021,
+        "300k is right": 0.0125,
+        "need more data": 0.9665
+      },
+      "boundary 1M": {
+        "100k is enough": 0.0075,
+        "300k falls short": 0.003,
+        "need more data": 0.9895
+      },
+      "k": 1.1769727057611257,
+      "n": 140,
+      "variance": "upper80"
+    },
+    {
+      "100k is enough": {
+        "100k is enough": 0.0935,
+        "300k is right": 0.0005,
+        "need more data": 0.906
+      },
+      "300k falls short": {
+        "300k falls short": 0.2025,
+        "need more data": 0.7975
+      },
+      "300k is right": {
+        "300k is right": 0.087,
+        "need more data": 0.913
+      },
+      "boundary 100k": {
+        "100k is enough": 0.0165,
+        "300k is right": 0.0055,
+        "need more data": 0.978
+      },
+      "boundary 1M": {
+        "100k is enough": 0.013,
+        "300k falls short": 0.0035,
+        "need more data": 0.9835
+      },
+      "k": 1.1769727057611257,
+      "n": 160,
+      "variance": "upper80"
+    },
+    {
+      "100k is enough": {
+        "100k is enough": 0.095,
+        "300k is right": 0.0005,
+        "need more data": 0.9045
+      },
+      "300k falls short": {
+        "300k falls short": 0.2135,
+        "need more data": 0.7865
+      },
+      "300k is right": {
+        "100k is enough": 0.001,
+        "300k is right": 0.091,
+        "need more data": 0.908
+      },
+      "boundary 100k": {
+        "100k is enough": 0.018,
+        "300k is right": 0.006,
+        "need more data": 0.976
+      },
+      "boundary 1M": {
+        "100k is enough": 0.012,
+        "300k falls short": 0.0025,
+        "need more data": 0.9855
+      },
+      "k": 1.1769727057611257,
+      "n": 180,
+      "variance": "upper80"
+    },
+    {
+      "100k is enough": {
+        "100k is enough": 0.096,
+        "300k is right": 0.001,
+        "need more data": 0.903
+      },
+      "300k falls short": {
+        "300k falls short": 0.21,
+        "need more data": 0.79
+      },
+      "300k is right": {
+        "100k is enough": 0.001,
+        "300k is right": 0.109,
+        "need more data": 0.89
+      },
+      "boundary 100k": {
+        "100k is enough": 0.0225,
+        "300k is right": 0.0125,
+        "need more data": 0.965
+      },
+      "boundary 1M": {
+        "100k is enough": 0.0115,
+        "300k falls short": 0.0045,
+        "need more data": 0.984
+      },
+      "k": 1.1769727057611257,
+      "n": 200,
+      "variance": "upper80"
+    },
+    {
+      "100k is enough": {
+        "100k is enough": 0.096,
+        "need more data": 0.904
+      },
+      "300k falls short": {
+        "300k falls short": 0.2185,
+        "need more data": 0.7815
+      },
+      "300k is right": {
+        "100k is enough": 0.001,
+        "300k is right": 0.101,
+        "need more data": 0.898
+      },
+      "boundary 100k": {
+        "100k is enough": 0.02,
+        "300k is right": 0.0125,
+        "need more data": 0.9675
+      },
+      "boundary 1M": {
+        "100k is enough": 0.01,
+        "300k falls short": 0.0035,
+        "need more data": 0.9865
+      },
+      "k": 1.1769727057611257,
+      "n": 240,
+      "variance": "upper80"
+    },
+    {
+      "100k is enough": {
+        "100k is enough": 0.112,
+        "need more data": 0.888
+      },
+      "300k falls short": {
+        "300k falls short": 0.218,
+        "need more data": 0.782
+      },
+      "300k is right": {
+        "100k is enough": 0.0005,
+        "300k is right": 0.1135,
+        "need more data": 0.886
+      },
+      "boundary 100k": {
+        "100k is enough": 0.0185,
+        "300k is right": 0.011,
+        "need more data": 0.9705
+      },
+      "boundary 1M": {
+        "100k is enough": 0.01,
+        "300k falls short": 0.002,
+        "need more data": 0.988
+      },
+      "k": 1.1769727057611257,
+      "n": 300,
+      "variance": "upper80"
+    },
+    {
+      "100k is enough": {
+        "100k is enough": 0.125,
+        "need more data": 0.875
+      },
+      "300k falls short": {
+        "300k falls short": 0.2325,
+        "need more data": 0.7675
+      },
+      "300k is right": {
+        "100k is enough": 0.0005,
+        "300k is right": 0.1155,
+        "need more data": 0.884
+      },
+      "boundary 100k": {
+        "100k is enough": 0.017,
+        "300k is right": 0.01,
+        "need more data": 0.973
+      },
+      "boundary 1M": {
+        "100k is enough": 0.008,
+        "300k falls short": 0.002,
+        "need more data": 0.99
+      },
+      "k": 1.1769727057611257,
+      "n": 400,
+      "variance": "upper80"
+    }
+  ]
+}

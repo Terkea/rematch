@@ -22,9 +22,16 @@ from .models import (
     AnalysePlayer,
     AnalyseRequest,
     AnalyseResponse,
+    DepthGame,
+    EvaluateRequest,
+    EvaluateResponse,
+    JudgeRequest,
+    JudgeResponse,
     MotifLine,
     PlayerFacts,
     PlayerProfile,
+    PositionsRequest,
+    PositionsResponse,
     ProfileRequest,
     ProfileResponse,
     RankRequest,
@@ -168,6 +175,41 @@ def tag_motifs(lines: list[MotifLine] | TagMotifsRequest) -> TagMotifsResponse:
         lab_call("tag-motifs", req, "TagMotifsRequest", "TagMotifsResponse")
     )
 
+
+def positions(games: list[DepthGame] | PositionsRequest) -> PositionsResponse:
+    """The positions production's `evaluate_game` asks the engine for, per game (EXP-0008). Pure."""
+    req = games if isinstance(games, PositionsRequest) else PositionsRequest(games=games)
+    return PositionsResponse.model_validate(
+        lab_call("positions", req, "PositionsRequest", "PositionsResponse")
+    )
+
+
+def evaluate(
+    fens: list[str] | EvaluateRequest,
+    *,
+    nodes: int | None = None,
+    hash_mb: int | None = None,
+    syzygy: bool = False,
+    engines: int | None = None,
+) -> EvaluateResponse:
+    """Each FEN searched by **Stockfish** as `evaluate_game` searches it (one thread, `ucinewgame`,
+    `go nodes`, MultiPV 1), at `nodes`, with the production hash unless `hash_mb` says otherwise and
+    the Syzygy tables only when `syzygy` (needs `STOCKFISH_PATH`, and `SYZYGY_PATH` for the tables)."""
+    if isinstance(fens, EvaluateRequest):
+        req = fens
+    else:
+        if nodes is None:
+            raise ValueError("evaluate needs nodes")
+        req = EvaluateRequest(nodes=nodes, hash_mb=hash_mb, syzygy=syzygy, engines=engines, fens=fens)
+    return EvaluateResponse.model_validate(
+        lab_call("evaluate", req, "EvaluateRequest", "EvaluateResponse")
+    )
+
+
+def judge(req: JudgeRequest) -> JudgeResponse:
+    """Each game judged on the given searches through `evaluate_game`, `build_move_records` and
+    `game_accuracy`, as the `analyse-game` job does (EXP-0008). Pure."""
+    return JudgeResponse.model_validate(lab_call("judge", req, "JudgeRequest", "JudgeResponse"))
 
 def algorithm(which: str | None = None) -> dict[str, Any]:
     """`cli algo show --json` (ADR 0105): this build's manifest, or the one `which` names (an
