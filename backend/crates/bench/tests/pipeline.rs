@@ -83,6 +83,7 @@ async fn a_tiny_suite_runs_through_the_real_pipeline(pool: PgPool) {
         memo: Arc::new(MemoAnalyser::new(inner, suite.nodes)),
         engines: 2,
         log: Box::new(|l| eprintln!("{l}")),
+        variant: None,
     };
     let players = harness.run(&suite).await.expect("suite runs");
     EnginePool::close(&engines).await;

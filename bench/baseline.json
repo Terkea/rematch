@@ -6,7 +6,7 @@
     "top1_precision": 0.6428571428571429,
     "clean_top1_false_alarms": 0,
     "clean_players": 1,
-    "coverage": 0.65,
+    "coverage": 0.8,
     "coverage_samples": 60,
     "plan_hit_rate": 0.6,
     "mean_games_to_detection": 42,
@@ -50,7 +50,7 @@
     {
       "player": "bench-hang",
       "issue": "docs/decisions/0101-weakness-ranking-floor-and-baselines.md",
-      "note": "coverage is 0.65 over the 60 target intervals of the 15 flawed players; W1 intervals under-read (0.017 against 0.023 for bench-hang). EXP-0002 shows the prior alone gives W1 0.64 coverage at 30 games for players well above their peers (#13, EXP-0006)"
+      "note": "coverage is 0.80 over the 60 target intervals of the 15 flawed players under algo-2.0.0 (EXP-0006: the prior capped at two of the player's games, effective counts divided by dispersion), from 0.65 under algo-1.1.0; W1 intervals still under-read (the detector reads below the injected rate), and EXP-0006's #13 cell is covered 0.766 at 30 games (#13, EXP-0025)"
     }
   ]
 }

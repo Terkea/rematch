@@ -1,4 +1,4 @@
-# replay golden: algorithm version 1.0.0, 3000 nodes per search, engine protocol sf19-n300k-v1, regenerate with REPLAY_UPDATE=1 (major bumps only)
+# replay golden: algorithm version 2.0.0, 3000 nodes per search, engine protocol sf19-n300k-v1, regenerate with REPLAY_UPDATE=1 (major bumps only)
 {
   "replay-chesscom/blitz": {
     "coachingInput": {

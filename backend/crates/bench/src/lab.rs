@@ -522,6 +522,7 @@ pub async fn analyse(
             memo,
             engines,
             log,
+            variant: None,
         };
         profile::hook_impl::warm_openings().await;
         let deps = harness.analyse_deps();

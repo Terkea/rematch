@@ -19,6 +19,8 @@ In a nutshell -
 | `rematch_lab.bench("smoke", out_dir=…)` | `cli bench run --json` | a suite | the Tier 1 scorecard and every player's results (ADR 0100) |
 | `rematch_lab.tag_motifs(lines)` | `cli lab tag-motifs` | positions, setup moves and lines | each line's `best` analysis (the swing and the motif tags) from the production `derive_move_features` (EXP-0007) |
 
+`profile`, `rank` and `bench` take `variant=` (`ALGO_VARIANT`, ADR 0111): `profile` and `rank` compute every estimate under that prior rule (`champion`, the production rule; `challenger`, EXP-0006's, production since `algo-2.0.0`; `algo-1`, the rule of 1.x; or `dev:<options>`), and `bench` runs it side by side with production on the same games, in a second account. A call without one runs production's rule.
+
 Every response carries `schema_version` and the `algorithm_id` that produced it. It is the build's manifest id (ADR 0105), and `rematch_lab.algorithm()` returns the whole manifest (`cli algo show --json`). The schema is `schemas/lab-v1.schema.json`. The envelope and the lab's own objects are snake_case, and the algorithm's own types (`WeaknessEstimate`, `BandReferenceStat`, `RankedWeakness`) keep the camelCase the product stores.
 
 `analyse` runs the production `analyse-game` handler with the profile hook and the production `build-profile`, in a throwaway database next to `DATABASE_URL`'s, and checks itself: the profile of the facts it returns must equal the `weakness_estimates` rows the build stored (`checks[].profile_matches_build`). `profile`, `rank` and `tag-motifs` are pure. `rank` keeps a weakness that has no stored exemplar position, where the CoachingInput builder drops it; that is the one known difference.

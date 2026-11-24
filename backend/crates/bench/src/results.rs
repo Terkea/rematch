@@ -120,11 +120,38 @@ pub struct PlayerResult {
     pub checkpoints: Vec<Checkpoint>,
     pub perturbed: Option<Checkpoint>,
     pub deterministic: bool,
+    /// The side-by-side variant's checkpoints (`ALGO_VARIANT`): the same games in a second
+    /// account, every profile built under the variant's prior rule.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub variant: Option<VariantResult>,
+}
+
+/// One player's results under the side-by-side variant.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct VariantResult {
+    pub name: String,
+    pub checkpoints: Vec<Checkpoint>,
+    /// The variant's checkpoint of the perturbed account (90% of the games), with `perturb`.
+    #[serde(default)]
+    pub perturbed: Option<Checkpoint>,
+    pub deterministic: bool,
 }
 
 impl PlayerResult {
     pub fn last(&self) -> Option<&Checkpoint> {
         self.checkpoints.last()
+    }
+
+    /// This player as the variant saw it: its checkpoints, perturbed checkpoint and determinism.
+    pub fn as_variant(&self) -> Option<PlayerResult> {
+        let v = self.variant.as_ref()?;
+        Some(PlayerResult {
+            checkpoints: v.checkpoints.clone(),
+            deterministic: v.deterministic,
+            perturbed: v.perturbed.clone(),
+            variant: None,
+            ..self.clone()
+        })
     }
 }
 
@@ -623,6 +650,7 @@ mod tests {
             perturbed: cps.last().cloned(),
             checkpoints: cps,
             deterministic: true,
+            variant: None,
         }
     }
 

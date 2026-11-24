@@ -10,4 +10,5 @@ pub mod priority;
 pub mod quantiles;
 pub mod rng;
 pub mod special;
+pub mod variant;
 pub mod weights;

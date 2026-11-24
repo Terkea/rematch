@@ -1,16 +1,16 @@
 # The pipeline benchmark
 
-Rematch's pipeline finds three of the five injected flaws and gives the clean control no weakness. Since EXP-0001 (2026-11-23) the smoke suite has three players per flaw: hanging pieces (W1), low-clock blunders (W9b) and thrown-away wins (W5) are ranked first for all nine of their players and their drills fit; missed mates (W4.missed) are measured but ranked for none of three, and early blunders (W7.traps) reach the top 3 for one of three, behind W1. The 80% intervals hold the true rate 65% of the time (39 of 60), at the bottom of the 65% to 95% band. These are known gaps, not tuned away:
+Rematch's pipeline finds three of the five injected flaws and gives the clean control no weakness. Since EXP-0001 (2026-11-23) the smoke suite has three players per flaw: hanging pieces (W1), low-clock blunders (W9b) and thrown-away wins (W5) are ranked first for all nine of their players and their drills fit; missed mates (W4.missed) are measured but ranked for none of three, and early blunders (W7.traps) reach the top 3 for one of three, behind W1. The 80% intervals hold the true rate 80% of the time (48 of 60) under `algo-2.0.0`, up from 65% under 1.1.0 (EXP-0006). These are known gaps, not tuned away:
 
 - resolved: W1 and W5 had no benchmark, so they were never ranked ([#10](https://github.com/Terkea/rematch/issues/10)). W1 is now compared with the opponents' refutation lines from the cached main evals, and W5 with what the evaluation predicts from a winning episode (ADR 0101);
 - resolved: ranking had no floor, so the clean control's W9b (11 of 846 against a peer median of 0.008) ranked first ([#12](https://github.com/Terkea/rematch/issues/12)). A weakness now ranks only when its 80% range lies above the benchmark and it costs at least 0.02 points per game;
 - the W4.missed peer row is low-sample at 80 games ([#11](https://github.com/Terkea/rematch/issues/11)), so `bench-missmate`'s rank 1 is W1: 0.0043 against its opponents' 0.0018, the bias of comparing with players who only played you;
 - `bench-opening`'s injected opening blunders mostly hang a piece. Each move's cost goes once, to the first key in W4 > W2 > W1 > W3 > W8 > W7 > W10, so their cost is W1's and W1 ranks first. W7.traps keeps 1.2 of the 31 events' points lost, and its peer row's EPL per event is 0, so it is not ranked. No issue yet;
-- coverage is 65%, and W1's intervals miss: W1's detector reads 0.017 against a true rate of 0.023 for `bench-hang`, and the interval is shrunk towards the opponents' rate (0.0008, prior strength 300 chances). EXP-0002 measured the prior alone: with exact counts, a W1 player at that rate is covered 53% of the time at 30 games ([#13](https://github.com/Terkea/rematch/issues/13); the fix is EXP-0006).
+- resolved for the prior: coverage was 65% under 1.1.0 because W1's interval was shrunk towards the opponents' rate (0.0008, prior strength 300 chances). Since `algo-2.0.0` the prior is worth at most two of the player's games and the data count at their effective sample size (EXP-0006), and coverage is 80%. W1's detector still reads below the injected rate (0.019 against 0.023 for `bench-hang`), and EXP-0006's #13 cell, with exact counts, is covered 77% at 30 games ([#13](https://github.com/Terkea/rematch/issues/13), EXP-0025).
 
 ## The current scorecard
 
-Stockfish at 12000 nodes per search. Tier 1 (synthetic players). Method: `docs/benchmark.md`.
+`algo-2.0.0+383bff27f04f`. Stockfish at 12000 nodes per search. Tier 1 (synthetic players). Method: `docs/benchmark.md`.
 
 | Score | Value | Threshold | Result |
 |---|---|---|---|
@@ -18,7 +18,7 @@ Stockfish at 12000 nodes per search. Tier 1 (synthetic players). Method: `docs/b
 | (a) Flaw ranked first | 60% | – | – |
 | (a) Top-1 precision | 64% | – | – |
 | (a) Clean controls with a rank-1 weakness | 0 of 1 | at most 0 | pass |
-| (b) 80% intervals holding the true rate | 65% (60 intervals) | 65% to 95% | pass |
+| (b) 80% intervals holding the true rate | 80% (60 intervals) | 65% to 95% | pass |
 | (c) Top weakness's drills train the flaw | 60% | – | – |
 | (d) Mean games to a top-2 detection | 42 | – | – |
 | (e) Same data, same weaknesses | yes | – | – |
@@ -28,21 +28,21 @@ Thresholds: not all met.
 
 | Player | Flaw (rate) | Target | True rate | Estimate [80%] | Rank | Top 3 | Drills hit | Games to detect | Note |
 |---|---|---|---|---|---|---|---|---|---|
-| bench-hang | hang (0.05) | W1 | 0.023 | 0.017 [0.014, 0.020] | 1 | W1 | yes | 45 |  |
-| bench-hang-2 | hang (0.05) | W1 | 0.021 | 0.019 [0.015, 0.022] | 1 | W1 | yes | 30 |  |
-| bench-hang-3 | hang (0.05) | W1 | 0.023 | 0.021 [0.017, 0.025] | 1 | W1 | yes | 30 |  |
-| bench-missmate | miss_mate (0.5) | W4.missed | 0.400 | 0.304 [0.155, 0.467] | – | W1 | no | – | not ranked: no peer benchmark for this key |
-| bench-missmate-2 | miss_mate (0.5) | W4.missed | 0.450 | 0.545 [0.386, 0.700] | – | none | no | – | not ranked: no peer benchmark for this key |
-| bench-missmate-3 | miss_mate (0.5) | W4.missed | 0.500 | 0.581 [0.419, 0.739] | – | W5, W9b | no | – | not ranked: no peer benchmark for this key |
-| bench-opening | opening_blunder (0.3) | W7.traps | 0.309 | 0.247 [0.194, 0.302] | – | W1 | no | – | not ranked: not enough evidence yet |
-| bench-opening-2 | opening_blunder (0.3) | W7.traps | 0.309 | 0.220 [0.170, 0.273] | 3 | W1, W5, W7.traps | no | 60 | ranked 3 |
-| bench-opening-3 | opening_blunder (0.3) | W7.traps | 0.309 | 0.324 [0.252, 0.398] | – | W1 | no | – | not ranked: no peer benchmark for this key |
-| bench-lowclock | low_clock_blunder (0.25) | W9b | 0.103 | 0.088 [0.070, 0.107] | 1 | W9b, W1 | yes | 30 |  |
-| bench-lowclock-2 | low_clock_blunder (0.25) | W9b | 0.087 | 0.068 [0.052, 0.085] | 1 | W9b, W1, W9a | yes | 45 |  |
-| bench-lowclock-3 | low_clock_blunder (0.25) | W9b | 0.111 | 0.094 [0.075, 0.114] | 1 | W9b, W1 | yes | 30 |  |
-| bench-noconvert | no_convert (0.5) | W5 | 0.545 | 0.526 [0.379, 0.671] | 1 | W5 | yes | 60 |  |
-| bench-noconvert-2 | no_convert (0.5) | W5 | 0.581 | 0.593 [0.454, 0.727] | 1 | W5 | yes | 45 |  |
-| bench-noconvert-3 | no_convert (0.5) | W5 | 0.605 | 0.460 [0.329, 0.591] | 1 | W5, W1 | yes | 45 |  |
+| bench-hang | hang (0.05) | W1 | 0.023 | 0.019 [0.015, 0.022] | 1 | W1 | yes | 45 |  |
+| bench-hang-2 | hang (0.05) | W1 | 0.021 | 0.020 [0.017, 0.024] | 1 | W1 | yes | 30 |  |
+| bench-hang-3 | hang (0.05) | W1 | 0.023 | 0.023 [0.019, 0.027] | 1 | W1 | yes | 30 |  |
+| bench-missmate | miss_mate (0.5) | W4.missed | 0.400 | 0.304 [0.155, 0.468] | – | W1 | no | – | not ranked: no peer benchmark for this key |
+| bench-missmate-2 | miss_mate (0.5) | W4.missed | 0.450 | 0.545 [0.394, 0.694] | – | none | no | – | not ranked: no peer benchmark for this key |
+| bench-missmate-3 | miss_mate (0.5) | W4.missed | 0.500 | 0.581 [0.416, 0.741] | – | W5, W9b | no | – | not ranked: no peer benchmark for this key |
+| bench-opening | opening_blunder (0.3) | W7.traps | 0.309 | 0.382 [0.313, 0.452] | – | W1 | no | – | not ranked: not enough evidence yet |
+| bench-opening-2 | opening_blunder (0.3) | W7.traps | 0.309 | 0.327 [0.262, 0.395] | 3 | W1, W5, W7.traps | no | 60 | ranked 3 |
+| bench-opening-3 | opening_blunder (0.3) | W7.traps | 0.309 | 0.323 [0.257, 0.390] | – | W1 | no | – | not ranked: no peer benchmark for this key |
+| bench-lowclock | low_clock_blunder (0.25) | W9b | 0.103 | 0.096 [0.071, 0.123] | 1 | W9b, W1 | yes | 30 |  |
+| bench-lowclock-2 | low_clock_blunder (0.25) | W9b | 0.087 | 0.074 [0.052, 0.097] | 1 | W9b, W1, W9a | yes | 45 |  |
+| bench-lowclock-3 | low_clock_blunder (0.25) | W9b | 0.111 | 0.101 [0.077, 0.127] | 1 | W9b, W1 | yes | 30 |  |
+| bench-noconvert | no_convert (0.5) | W5 | 0.545 | 0.526 [0.389, 0.662] | 1 | W5 | yes | 60 |  |
+| bench-noconvert-2 | no_convert (0.5) | W5 | 0.581 | 0.594 [0.468, 0.717] | 1 | W5 | yes | 45 |  |
+| bench-noconvert-3 | no_convert (0.5) | W5 | 0.605 | 0.459 [0.339, 0.580] | 1 | W5, W1 | yes | 45 |  |
 | bench-clean | clean | – | – | – | – | none | – | – |  |
 
 The run took 8 minutes 50 seconds with 8 engines: 195,945 Stockfish searches, 157,660 requests served from the cache. The first player of each flaw gives the same row as the six-player suite before EXP-0001. `bench/baseline.json` holds these numbers.

@@ -1,0 +1,32 @@
+{
+ "namespace": "EXP-0006-power",
+ "pilot": {
+  "D_champion": 0.705556,
+  "D_challenger": 0.038333,
+  "worst_challenger": {
+   "key": "W1",
+   "games": 30,
+   "coverage": 0.761667
+  },
+  "delta_D": 0.667222,
+  "rho1_worse_by": -0.070969,
+  "false_credible_worse_by": 0.009276,
+  "sd": {
+   "D": 0.005559,
+   "delta": 0.006732,
+   "rho1": 0.001213,
+   "fc": 0.000291
+  }
+ },
+ "profile_rule": {
+  "ship": 0.872,
+  "reject": 0.0
+ },
+ "tier1_no_change": {
+  "recall_holds": 0.8755,
+  "recall_beyond": 0.0,
+  "clean_alarm_holds": 0.4883,
+  "clean_alarm_beyond": 0.0015
+ },
+ "ship_power_approx": 0.3727
+}

@@ -2,8 +2,11 @@
 //!
 //! `estimate_weakness` turns a weakness series into a shrunk posterior against the band
 //! reference and scores it:
-//! - only points at most [`WINDOW_DAYS`] old count, recency-weighted with a 60-day half-life;
-//! - the prior is `{pooled_rate, N0[key]}`, or `Beta(1, 1)` without a benchmark;
+//! - only points at most [`WINDOW_DAYS`] old count, recency-weighted with a 60-day half-life,
+//!   counted by the process's [`PriorRule`] (production: their effective sample size divided by
+//!   their game-to-game dispersion, EXP-0006 and ADR 0110);
+//! - the prior is `{pooled_rate, N0[key]}`, capped by the rule at two of the player's own games,
+//!   or `Beta(1, 1)` without a benchmark;
 //! - `confidence = P(theta > band median)`;
 //! - `excess = max(0, mean - median) * (n_unweighted / games) * epl_per_event`;
 //! - `priority = excess * trainability * confidence * (1 - fatigue)`, 0 unless the reason is
@@ -23,7 +26,8 @@ use serde::{Deserialize, Serialize};
 use crate::constants::{RANKABLE, min_evidence, n0, trainability};
 use crate::stats::posterior::{BetaPosterior, posterior, prob_above};
 use crate::stats::quantiles::{QuartileRef, percentile_from_quartiles};
-use crate::stats::weights::{HALF_LIFE_DAYS, weighted_counts};
+use crate::stats::variant::{self, MAX_DISPERSION, PriorRule};
+use crate::stats::weights::{HALF_LIFE_DAYS, recency_weight, weighted_counts};
 use crate::types::{Band, BandReferenceStat, MetricId, WeaknessKey};
 use crate::weakness::observe_game::T_WIN;
 
@@ -181,7 +185,13 @@ fn valid_point(&(e, o, epl, age): &(f64, f64, f64, f64)) -> bool {
 /// opportunities, implausibly large counts, a non-finite age) are skipped and counted in
 /// `invalid_points`. Valid points older than [`WINDOW_DAYS`] are ignored, not invalid.
 pub fn estimate_weakness(i: &EstimateInput) -> WeaknessEstimate {
-    estimate_with_prior(i, None)
+    estimate_with_prior(i, None, variant::current())
+}
+
+/// [`estimate_weakness`] under an explicit prior rule instead of the process's
+/// ([`variant::current`], the champion in production).
+pub fn estimate_weakness_with(i: &EstimateInput, rule: PriorRule) -> WeaknessEstimate {
+    estimate_with_prior(i, None, rule)
 }
 
 /// [`estimate_weakness`] against a [`model_baseline`] row (ADR 0101): the row sets the
@@ -191,12 +201,83 @@ pub fn estimate_weakness(i: &EstimateInput) -> WeaknessEstimate {
 pub fn estimate_weakness_against_model(i: &EstimateInput) -> WeaknessEstimate {
     WeaknessEstimate {
         model_baseline: true,
-        ..estimate_with_prior(i, Some((0.5, 2.0)))
+        ..estimate_with_prior(i, Some((0.5, 2.0)), variant::current())
+    }
+}
+
+/// [`estimate_weakness_against_model`] under an explicit prior rule.
+pub fn estimate_weakness_against_model_with(
+    i: &EstimateInput,
+    rule: PriorRule,
+) -> WeaknessEstimate {
+    WeaknessEstimate {
+        model_baseline: true,
+        ..estimate_with_prior(i, Some((0.5, 2.0)), rule)
+    }
+}
+
+/// The data's `(k, n)` under `rule`: the recency-weighted sums, or with `effective_counts` the
+/// weighted rate over the effective number of chances (Kish), `n_eff = (sum w n)^2 / sum w^2 n`,
+/// divided with `dispersion` by the Pearson dispersion of the per-game counts.
+fn data_counts(points: &[(f64, f64, f64)], rule: PriorRule) -> (f64, f64) {
+    let (k, n) = weighted_counts(points, HALF_LIFE_DAYS);
+    if !rule.effective_counts || n <= 0.0 {
+        return (k, n);
+    }
+    let s2: f64 = points
+        .iter()
+        .filter(|p| !p.2.is_nan())
+        .map(|&(_, o, age)| recency_weight(age, HALF_LIFE_DAYS).powi(2) * o)
+        .sum();
+    if s2 <= 0.0 {
+        return (k, n);
+    }
+    let rate = (k / n).clamp(0.0, 1.0);
+    let mut n_eff = n * n / s2;
+    if rule.dispersion {
+        n_eff /= dispersion(points, rate);
+    }
+    (rate * n_eff, n_eff)
+}
+
+/// The Pearson dispersion `sum (k - n p)^2 / (n p (1 - p)) / (G - 1)` over the `G` games with a
+/// chance, clamped to `[1, MAX_DISPERSION]`; 1 with fewer than two such games or a rate of 0 or 1.
+fn dispersion(points: &[(f64, f64, f64)], rate: f64) -> f64 {
+    let var = rate * (1.0 - rate);
+    let games: Vec<_> = points
+        .iter()
+        .filter(|&&(_, o, age)| o > 0.0 && !age.is_nan())
+        .collect();
+    if games.len() < 2 || var <= 0.0 {
+        return 1.0;
+    }
+    let chi2: f64 = games
+        .iter()
+        .map(|&&(e, o, _)| (e - o * rate).powi(2) / (o * var))
+        .sum();
+    let phi = chi2 / (games.len() - 1) as f64;
+    if phi.is_finite() {
+        phi.clamp(1.0, MAX_DISPERSION)
+    } else {
+        1.0
+    }
+}
+
+/// The band prior's strength under `rule`: `n0[key]`, capped at `prior_games` of the player's
+/// own games counted as the data are (`n / games_in_window` chances a game).
+fn prior_strength(key: WeaknessKey, n: f64, games_in_window: u32, rule: PriorRule) -> f64 {
+    match rule.prior_games {
+        Some(g) if games_in_window > 0 => n0(key).min(g * n / f64::from(games_in_window)),
+        _ => n0(key),
     }
 }
 
 /// `prior` overrides the benchmark's `{pooled_rate, n0[key]}` prior as `(mu, n0)`.
-fn estimate_with_prior(i: &EstimateInput, prior: Option<(f64, f64)>) -> WeaknessEstimate {
+fn estimate_with_prior(
+    i: &EstimateInput,
+    prior: Option<(f64, f64)>,
+    rule: PriorRule,
+) -> WeaknessEstimate {
     let valid: Vec<_> = i.points.iter().filter(|p| valid_point(p)).collect();
     let invalid_points = u32::try_from(i.points.len() - valid.len()).unwrap_or(u32::MAX);
     let in_window: Vec<_> = valid
@@ -205,7 +286,7 @@ fn estimate_with_prior(i: &EstimateInput, prior: Option<(f64, f64)>) -> Weakness
         .copied()
         .collect();
     let weighted: Vec<_> = in_window.iter().map(|&(e, o, _, a)| (e, o, a)).collect();
-    let (k, n) = weighted_counts(&weighted, HALF_LIFE_DAYS);
+    let (k, n) = data_counts(&weighted, rule);
     let (k_unweighted, n_unweighted) = in_window
         .iter()
         .fold((0.0, 0.0), |(ks, ns), &(e, o, _, _)| (ks + e, ns + o));
@@ -213,7 +294,12 @@ fn estimate_with_prior(i: &EstimateInput, prior: Option<(f64, f64)>) -> Weakness
     let bench = benchmark(i.reference);
     let post = match (prior, bench) {
         (Some((mu, strength)), _) => posterior(k, n, mu, strength),
-        (None, Some((_, pooled, _))) => posterior(k, n, pooled, n0(i.key)),
+        (None, Some((_, pooled, _))) => posterior(
+            k,
+            n,
+            pooled,
+            prior_strength(i.key, n, i.games_in_window, rule),
+        ),
         (None, None) => posterior(k, n, 0.5, 2.0),
     };
     let train = trainability(i.key, i.band);

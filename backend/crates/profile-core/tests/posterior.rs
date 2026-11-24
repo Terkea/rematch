@@ -14,9 +14,10 @@ use profile_core::stats::posterior::{
 };
 use profile_core::stats::priority::{
     EstimateInput, EstimateReason, MAX_EPL_PER_EVENT, MIN_GAMES, WINDOW_DAYS, WeaknessEstimate,
-    estimate_weakness, rank_weaknesses,
+    estimate_weakness, estimate_weakness_with, rank_weaknesses,
 };
 use profile_core::stats::rng::Rng;
+use profile_core::stats::variant::PriorRule;
 use profile_core::stats::weights::HALF_LIFE_DAYS;
 use profile_core::types::{Band, BandReferenceStat, MetricId, WeaknessKey};
 
@@ -91,8 +92,9 @@ fn w1_input<'a>(
 
 #[test]
 fn ts_w1_estimate() {
+    // TS M2 Task 16 pinned the rule of algo-1.x (ADR-R2-5); algo-2's rule is in prior_rule.rs.
     let r = w1_ref();
-    let e = estimate_weakness(&w1_input(&W1_POINTS, 40, Some(&r)));
+    let e = estimate_weakness_with(&w1_input(&W1_POINTS, 40, Some(&r)), PriorRule::ALGO_1);
     assert_eq!(e.key, WeaknessKey::W1);
     assert_eq!(e.posterior.alpha, 16.0);
     assert_eq!(e.posterior.beta, 684.0);
@@ -156,10 +158,11 @@ fn point_aged_200_days_is_ignored() {
     let pts = [W1_POINTS[0], (90.0, 100.0, 9.0, 200.0)];
     let e = estimate_weakness(&w1_input(&pts, 40, Some(&r)));
     assert_eq!(e, base);
+    // The weighted sums of algo-1.x's rule (algo-2 counts them at their effective size).
     // The window is 183 days inclusive; a point at 183 counts with weight 0.5^(183/60).
     assert_eq!(WINDOW_DAYS, 183.0);
     let pts = [W1_POINTS[0], (2.0, 100.0, 1.0, 183.0)];
-    let e = estimate_weakness(&w1_input(&pts, 40, Some(&r)));
+    let e = estimate_weakness_with(&w1_input(&pts, 40, Some(&r)), PriorRule::ALGO_1);
     let w = 0.5_f64.powf(183.0 / 60.0);
     within(e.k, 10.0 + 2.0 * w, 1e-12);
     within(e.n, 400.0 + 100.0 * w, 1e-12);
@@ -344,18 +347,23 @@ fn floor_never_applies_with_an_in_window_event() {
     for age in [0.0, 60.0, WINDOW_DAYS] {
         let r = reference(WeaknessKey::W4Allowed, 0.0, 0.0, 0.0);
         let pts = [(1.0, 50.0, 0.0, age)];
-        let e = estimate_weakness(&EstimateInput {
+        let input = EstimateInput {
             key: WeaknessKey::W4Allowed,
             points: &pts,
             games_in_window: 60,
             band: Band::B3,
             reference: Some(&r),
             fatigue: 0.0,
-        });
+        };
         let w = 0.5_f64.powf(age / HALF_LIFE_DAYS);
-        // Pooled rate 0: alpha is exactly the weighted event, never the floor.
+        // Pooled rate 0: alpha is exactly the weighted event (algo-1.x), never the floor.
+        let e = estimate_weakness_with(&input, PriorRule::ALGO_1);
         assert_eq!(e.posterior.alpha, w, "age {age}");
         assert!(e.posterior.alpha >= lightest);
+        assert_eq!(e.reason, EstimateReason::Ok);
+        // algo-2 counts one game at its effective size, its own: one event, never the floor.
+        let e = estimate_weakness(&input);
+        assert!((e.posterior.alpha - 1.0).abs() < 1e-12, "age {age}");
         assert_eq!(e.reason, EstimateReason::Ok);
     }
 }
@@ -735,85 +743,93 @@ fn property_estimate_is_contract_safe() {
         let r = reference(key, pooled, median, p40);
         let has_ref = rng.next_f64() < 0.8;
         let g = games[(rng.next_f64() * games.len() as f64) as usize];
-        let e = estimate_weakness(&EstimateInput {
+        let input = EstimateInput {
             key,
             points: &pts,
             games_in_window: g,
             band,
             reference: has_ref.then_some(&r),
             fatigue: rng.next_f64(),
-        });
-        let ctx = format!("{key} {band:?} {pts:?} games {g} ref {has_ref} {r:?} -> {e:?}");
-        assert_eq!(e.invalid_points, want_invalid, "{ctx}");
-        let post = &e.posterior;
-        let floats = [
-            e.k,
-            e.n,
-            e.n_unweighted,
-            e.k_unweighted,
-            post.alpha,
-            post.beta,
-            post.mean,
-            post.interval.low,
-            post.interval.high,
-            e.confidence,
-            e.excess,
-            e.trainability,
-            e.priority,
-        ];
-        assert!(floats.iter().all(|x| x.is_finite()), "{ctx}");
-        for x in [e.band_median, e.band_p40, e.percentile]
-            .into_iter()
-            .flatten()
-        {
-            assert!(x.is_finite(), "{ctx}");
-        }
-        assert!(e.k_unweighted <= e.n_unweighted && e.k <= e.n, "{ctx}");
-        assert!(e.k >= 0.0 && e.n <= e.n_unweighted + 1e-9, "{ctx}");
-        assert!(
-            post.interval.low <= post.mean && post.mean <= post.interval.high,
-            "{ctx}"
-        );
-        assert!((0.0..=1.0).contains(&e.confidence), "{ctx}");
-        assert!(e.excess >= 0.0, "{ctx}");
-        assert!(e.priority >= 0.0, "{ctx}");
-        assert_eq!(e.trainability, trainability(key, band), "{ctx}");
-        match e.reason {
-            EstimateReason::InsufficientData => {
-                assert!(g < MIN_GAMES, "{ctx}");
-                assert_eq!(e.priority, 0.0, "{ctx}");
+        };
+        for rule in [PriorRule::ALGO_1, PriorRule::CHAMPION] {
+            let e = estimate_weakness_with(&input, rule);
+            let ctx = format!("{key} {band:?} {pts:?} games {g} ref {has_ref} {r:?} -> {e:?}");
+            assert_eq!(e.invalid_points, want_invalid, "{ctx}");
+            let post = &e.posterior;
+            let floats = [
+                e.k,
+                e.n,
+                e.n_unweighted,
+                e.k_unweighted,
+                post.alpha,
+                post.beta,
+                post.mean,
+                post.interval.low,
+                post.interval.high,
+                e.confidence,
+                e.excess,
+                e.trainability,
+                e.priority,
+            ];
+            assert!(floats.iter().all(|x| x.is_finite()), "{ctx}");
+            for x in [e.band_median, e.band_p40, e.percentile]
+                .into_iter()
+                .flatten()
+            {
+                assert!(x.is_finite(), "{ctx}");
             }
-            EstimateReason::NoBenchmark => {
-                assert!(!has_ref && g >= MIN_GAMES, "{ctx}");
-                assert_eq!(e.priority, 0.0, "{ctx}");
-                assert_eq!(e.percentile, None, "{ctx}");
-            }
-            EstimateReason::NoEvents => {
-                assert!(has_ref && g >= MIN_GAMES && e.k_unweighted == 0.0, "{ctx}");
-                assert_eq!(e.confidence, 0.0, "{ctx}");
-                assert_eq!(e.percentile, None, "{ctx}");
-                assert_eq!(e.priority, 0.0, "{ctx}");
-            }
-            EstimateReason::Ok => {
-                assert!(has_ref && g >= MIN_GAMES && e.k_unweighted > 0.0, "{ctx}");
-                let pct = e.percentile.expect("percentile");
-                assert!((1.0..=99.0).contains(&pct), "{ctx}");
-                assert_eq!(e.band_median, Some(median), "{ctx}");
-                // ADR 0101: only a credible estimate has a priority.
-                if !e.credible {
+            assert!(e.k_unweighted <= e.n_unweighted && e.k <= e.n, "{ctx}");
+            assert!(e.k >= 0.0 && e.n <= e.n_unweighted + 1e-9, "{ctx}");
+            assert!(
+                post.interval.low <= post.mean && post.mean <= post.interval.high,
+                "{ctx}"
+            );
+            assert!((0.0..=1.0).contains(&e.confidence), "{ctx}");
+            assert!(e.excess >= 0.0, "{ctx}");
+            assert!(e.priority >= 0.0, "{ctx}");
+            assert_eq!(e.trainability, trainability(key, band), "{ctx}");
+            match e.reason {
+                EstimateReason::InsufficientData => {
+                    assert!(g < MIN_GAMES, "{ctx}");
                     assert_eq!(e.priority, 0.0, "{ctx}");
                 }
-                if post.mean <= median {
-                    assert_eq!(e.excess, 0.0, "{ctx}");
+                EstimateReason::NoBenchmark => {
+                    assert!(!has_ref && g >= MIN_GAMES, "{ctx}");
+                    assert_eq!(e.priority, 0.0, "{ctx}");
+                    assert_eq!(e.percentile, None, "{ctx}");
+                }
+                EstimateReason::NoEvents => {
+                    assert!(has_ref && g >= MIN_GAMES && e.k_unweighted == 0.0, "{ctx}");
+                    assert_eq!(e.confidence, 0.0, "{ctx}");
+                    assert_eq!(e.percentile, None, "{ctx}");
+                    assert_eq!(e.priority, 0.0, "{ctx}");
+                }
+                EstimateReason::Ok => {
+                    assert!(has_ref && g >= MIN_GAMES && e.k_unweighted > 0.0, "{ctx}");
+                    let pct = e.percentile.expect("percentile");
+                    assert!((1.0..=99.0).contains(&pct), "{ctx}");
+                    assert_eq!(e.band_median, Some(median), "{ctx}");
+                    // ADR 0101: only a credible estimate has a priority.
+                    if !e.credible {
+                        assert_eq!(e.priority, 0.0, "{ctx}");
+                    }
+                    if post.mean <= median {
+                        assert_eq!(e.excess, 0.0, "{ctx}");
+                    }
                 }
             }
-        }
-        // Prior strength is N0 of the key whenever there is a benchmark; the floor only
-        // replaces an exactly zero shape.
-        if has_ref && e.reason != EstimateReason::NoBenchmark {
-            let raw = n0(key) * pooled + e.k;
-            let want_a = if raw == 0.0 { SHAPE_FLOOR } else { raw };
-            within(post.alpha, want_a, 1e-9 * want_a.max(1.0));
+            // Prior strength is N0 of the key whenever there is a benchmark (algo-1.x), or N0 capped
+            // at two of the player's games counted as the data are (algo-2); the floor only replaces
+            // an exactly zero shape.
+            if has_ref && e.reason != EstimateReason::NoBenchmark {
+                let strength = match rule.prior_games {
+                    Some(cap) if g > 0 => n0(key).min(cap * e.n / f64::from(g)),
+                    _ => n0(key),
+                };
+                let raw = strength * pooled + e.k;
+                let want_a = if raw == 0.0 { SHAPE_FLOOR } else { raw };
+                within(post.alpha, want_a, 1e-9 * want_a.max(1.0));
+            }
         }
     }
 }

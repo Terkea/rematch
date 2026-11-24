@@ -8,8 +8,9 @@
 
 use profile_core::stats::priority::{
     EstimateInput, EstimateReason, MODEL_LOSS_PER_WINNING_EPISODE, RANK_MIN_EXCESS_PER_GAME,
-    estimate_weakness, model_baseline,
+    estimate_weakness, estimate_weakness_with, model_baseline,
 };
+use profile_core::stats::variant::PriorRule;
 use profile_core::types::{Band, BandReferenceStat, MetricId, WeaknessKey};
 
 fn peer(key: WeaknessKey, median: f64, epl: f64) -> BandReferenceStat {
@@ -59,15 +60,43 @@ fn estimate(
     })
 }
 
+/// [`estimate`] under the rule of algo-1.x, whose numbers ADR 0101 quotes.
+fn estimate_algo1(
+    key: WeaknessKey,
+    pts: &[(f64, f64, f64, f64)],
+    r: &BandReferenceStat,
+) -> profile_core::stats::priority::WeaknessEstimate {
+    let input = EstimateInput {
+        key,
+        points: pts,
+        games_in_window: 80,
+        band: Band::B3,
+        reference: Some(r),
+        fatigue: 0.0,
+    };
+    estimate_weakness_with(&input, PriorRule::ALGO_1)
+}
+
 #[test]
 fn an_interval_that_overlaps_the_median_is_not_ranked() {
-    // bench-clean's W9b: 11 of 846 against a peer median of 0.008 (confidence 0.87).
+    // bench-clean's W9b: 11 of 846 against a peer median of 0.008 (confidence 0.87), under the
+    // rule ADR 0101 was written for.
     let r = peer(WeaknessKey::W9b, 0.008, 0.3);
-    let e = estimate(WeaknessKey::W9b, &points(11, 846, 80), &r);
+    let pts = points(11, 846, 80);
+    let e = estimate_algo1(WeaknessKey::W9b, &pts, &r);
     assert_eq!(e.reason, EstimateReason::Ok);
     assert!(e.posterior.interval.low <= 0.008, "{:?}", e.posterior);
     assert!(e.confidence > 0.5 && e.confidence < 0.9, "{}", e.confidence);
     assert!(e.excess > 0.0);
+    assert!(!e.credible);
+    assert_eq!(e.priority, 0.0);
+    // algo-2's lighter prior lets the interval clear the median; the excess floor still holds it.
+    let e = estimate(WeaknessKey::W9b, &pts, &r);
+    assert!(
+        e.excess > 0.0 && e.excess < RANK_MIN_EXCESS_PER_GAME,
+        "{}",
+        e.excess
+    );
     assert!(!e.credible);
     assert_eq!(e.priority, 0.0);
 }
@@ -77,13 +106,20 @@ fn a_clear_but_cheap_excess_is_not_ranked() {
     // bench-clean's W4.allowed: 3 of 4274 against 0.0001. The interval clears the median, but
     // the excess is about 0.01 of a point per game.
     let r = peer(WeaknessKey::W4Allowed, 0.0001, 0.08);
-    let e = estimate(WeaknessKey::W4Allowed, &points(3, 4274, 80), &r);
+    let pts = points(3, 4274, 80);
+    let e = estimate_algo1(WeaknessKey::W4Allowed, &pts, &r);
     assert!(e.posterior.interval.low > 0.0001, "{:?}", e.posterior);
     assert!(
         e.excess > 0.0 && e.excess < RANK_MIN_EXCESS_PER_GAME,
         "{}",
         e.excess
     );
+    assert!(!e.credible);
+    assert_eq!(e.priority, 0.0);
+    // algo-2: the three events sit in the first games, so the dispersion widens the interval;
+    // still not ranked.
+    let e = estimate(WeaknessKey::W4Allowed, &pts, &r);
+    assert!(e.excess < RANK_MIN_EXCESS_PER_GAME, "{}", e.excess);
     assert!(!e.credible);
     assert_eq!(e.priority, 0.0);
 }
