@@ -85,10 +85,23 @@ def call_raw(command: list[str], stdin: str, env: dict[str, str] | None = None) 
     return proc.stdout
 
 
-def lab_call(step: str, request: BaseModel, request_message: str, response_message: str) -> Any:
+def variant_env(variant: str | None) -> dict[str, str]:
+    """`ALGO_VARIANT` for one call (EXP-0006): `champion`, `challenger` or `dev:<options>`
+    (`profile_core::stats::variant`). `None` runs the build's production rule and clears any
+    `ALGO_VARIANT` the lab's own environment has, so a call never inherits one by accident."""
+    return {"ALGO_VARIANT": variant or ""}
+
+
+def lab_call(
+    step: str,
+    request: BaseModel,
+    request_message: str,
+    response_message: str,
+    variant: str | None = None,
+) -> Any:
     payload = json.loads(to_json(request))
     check(request_message, payload)
-    out = json.loads(call_raw(["lab", step], json.dumps(payload)))
+    out = json.loads(call_raw(["lab", step], json.dumps(payload), env=variant_env(variant)))
     check(response_message, out)
     return out
 
@@ -110,8 +123,11 @@ def analyse(
     )
 
 
-def profile(facts: AnalyseResponse | ProfileRequest | list[PlayerFacts]) -> ProfileResponse:
-    """Facts to per-player rates with 80% intervals (`compute_estimates`)."""
+def profile(
+    facts: AnalyseResponse | ProfileRequest | list[PlayerFacts], *, variant: str | None = None
+) -> ProfileResponse:
+    """Facts to per-player rates with 80% intervals (`compute_estimates`), under the prior rule
+    of `variant` (`ALGO_VARIANT`; `None` is production's)."""
     if isinstance(facts, ProfileRequest):
         req = facts
     elif isinstance(facts, AnalyseResponse):
@@ -119,12 +135,15 @@ def profile(facts: AnalyseResponse | ProfileRequest | list[PlayerFacts]) -> Prof
     else:
         req = ProfileRequest(players=facts)
     return ProfileResponse.model_validate(
-        lab_call("profile", req, "ProfileRequest", "ProfileResponse")
+        lab_call("profile", req, "ProfileRequest", "ProfileResponse", variant)
     )
 
 
 def rank(
-    profiles: ProfileResponse | RankRequest | list[PlayerProfile], *, first_report: bool = False
+    profiles: ProfileResponse | RankRequest | list[PlayerProfile],
+    *,
+    first_report: bool = False,
+    variant: str | None = None,
 ) -> RankResponse:
     """Rates to the ranked weaknesses, the coach's focuses and their drills."""
     if isinstance(profiles, RankRequest):
@@ -135,7 +154,7 @@ def rank(
         )
     else:
         req = RankRequest(first_report=first_report, players=profiles)
-    return RankResponse.model_validate(lab_call("rank", req, "RankRequest", "RankResponse"))
+    return RankResponse.model_validate(lab_call("rank", req, "RankRequest", "RankResponse", variant))
 
 
 def algorithm(which: str | None = None) -> dict[str, Any]:
@@ -160,6 +179,7 @@ def bench(
     engines: int | None = None,
     baseline: str | Path | None = None,
     suite_file: str | Path | None = None,
+    variant: str | None = None,
 ) -> dict[str, Any]:
     """`cli bench run --json` (ADR 0100): the Tier 1 benchmark's full results as a dict.
 
@@ -167,6 +187,10 @@ def bench(
     players with name, flaw `[id, rate]` or null, games and seed, checkpoints, nodes,
     opponents, perturb) instead of the named `suite`; an experiment that needs more players
     than the named suites writes one (`cli bench run --suite-file`).
+
+    `variant` runs that prior rule side by side (`ALGO_VARIANT`): every player's games also go
+    into a second account built under it, and the output gains each player's `variant`
+    checkpoints and the run's `variant` scorecard.
 
     Needs DATABASE_URL and STOCKFISH_PATH. Exit code 2 (a regression against `baseline`) is
     raised as LabError with the cli's message.
@@ -183,8 +207,9 @@ def bench(
         args += ["--engines", str(int(engines))]
     if baseline is not None:
         args += ["--baseline", str(baseline)]
-    out = json.loads(call_raw(args, ""))
-    for field in ("scorecard", "suite", "players"):
+    out = json.loads(call_raw(args, "", env=variant_env(variant)))
+    fields = ("scorecard", "suite", "players", *(("variant",) if variant else ()))
+    for field in fields:
         if field not in out:
             raise LabError(f"cli bench run --json gave no {field!r}")
     return out

@@ -11,6 +11,7 @@ use bench::results::score;
 use bench::suite::{PlayerDef, Suite, game_specs};
 use engine::Analyser;
 use engine::pool::{EnginePool, PoolOptions};
+use profile_core::stats::variant::PriorRule;
 use sqlx::PgPool;
 
 fn tiny() -> Suite {
@@ -83,6 +84,7 @@ async fn a_tiny_suite_runs_through_the_real_pipeline(pool: PgPool) {
         memo: Arc::new(MemoAnalyser::new(inner, suite.nodes)),
         engines: 2,
         log: Box::new(|l| eprintln!("{l}")),
+        variant: None,
     };
     let players = harness.run(&suite).await.expect("suite runs");
     EnginePool::close(&engines).await;
@@ -118,4 +120,57 @@ async fn a_tiny_suite_runs_through_the_real_pipeline(pool: PgPool) {
     let s = score("test", suite.nodes, &players);
     assert_eq!(s.metrics.clean_players, 1);
     assert!(!bench::results::markdown(&s).is_empty());
+}
+
+/// `ALGO_VARIANT` side by side: the champion run as the variant reproduces the main checkpoints
+/// exactly (the second account sees the same games), and a different rule moves the estimates.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_side_by_side_variant_sees_the_same_games(pool: PgPool) {
+    let Some(engines) = engines().await else {
+        return;
+    };
+    let inner: Arc<dyn Analyser> = engines.clone();
+    let mut suite = tiny();
+    suite.perturb = false;
+    let memo = Arc::new(MemoAnalyser::new(inner, suite.nodes));
+    let champion = Harness {
+        pool: pool.clone(),
+        memo: memo.clone(),
+        engines: 2,
+        log: Box::new(|l| eprintln!("{l}")),
+        variant: Some(("champion".to_owned(), PriorRule::CHAMPION)),
+    };
+    let players = champion.run(&suite).await.expect("suite runs");
+    for p in &players {
+        let v = p.variant.as_ref().expect("variant result");
+        assert!(v.deterministic, "{}", p.name);
+        assert_eq!(v.checkpoints, p.checkpoints, "{}", p.name);
+    }
+    let lighter = PriorRule {
+        prior_games: Some(1.0),
+        effective_counts: true,
+        dispersion: false,
+    };
+    let other = Harness {
+        pool: pool.clone(),
+        memo,
+        engines: 2,
+        log: Box::new(|l| eprintln!("{l}")),
+        variant: Some(("dev".to_owned(), lighter)),
+    };
+    let mut renamed = suite.clone();
+    for p in &mut renamed.players {
+        p.name = format!("{}-b", p.name);
+    }
+    let again = other.run(&renamed).await.expect("suite runs");
+    EnginePool::close(&engines).await;
+    assert_eq!(profile_core::stats::variant::current(), PriorRule::CHAMPION);
+    let moved = again.iter().any(|p| {
+        let v = p.variant.as_ref().unwrap();
+        v.checkpoints
+            .iter()
+            .zip(&p.checkpoints)
+            .any(|(a, b)| a.estimates != b.estimates)
+    });
+    assert!(moved, "a lighter prior moves at least one estimate");
 }

@@ -149,12 +149,24 @@ pub async fn run_bench(
     if let Some(n) = args.nodes {
         suite.nodes = n;
     }
+    // `ALGO_VARIANT=<name>` runs that variant side by side, on the same games (EXP-0006).
+    let variant = match bench::variant_from_env(env("ALGO_VARIANT")) {
+        Ok(v) => v,
+        Err(e) => {
+            print_error(&format!("ALGO_VARIANT: {e}"));
+            return 1;
+        }
+    };
+    if let Some((name, _)) = &variant {
+        eprintln!("bench: algorithm variant {name} side by side");
+    }
     let opts = RunOptions {
         database_url,
         stockfish: PathBuf::from(stockfish),
         engines: args.engines,
         out_dir: args.out.clone(),
         keep_db: args.keep_db,
+        variant,
     };
     let out = match run(&suite, &opts, Box::new(|l| eprintln!("bench: {l}"))).await {
         Ok(o) => o,

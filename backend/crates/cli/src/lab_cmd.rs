@@ -61,6 +61,18 @@ pub async fn run_lab(
         print_error(LAB_USAGE);
         return 1;
     }
+    // `ALGO_VARIANT=<name>` computes every estimate of this call under that prior rule (EXP-0006).
+    match bench::variant_from_env(env("ALGO_VARIANT")) {
+        Ok(Some((name, rule))) => {
+            eprintln!("lab: algorithm variant {name}");
+            bench::variant::set(rule);
+        }
+        Ok(None) => {}
+        Err(e) => {
+            print_error(&format!("ALGO_VARIANT: {e}"));
+            return 1;
+        }
+    }
     let mut input = String::new();
     if let Err(e) = std::io::stdin().read_to_string(&mut input) {
         print_error(&format!("lab: reading stdin: {e}"));

@@ -234,3 +234,18 @@ async fn analyse_is_deterministic_and_its_facts_reproduce_the_build() {
     let profile = run_pure("profile", &a).expect("profile of analyse");
     assert_valid("ProfileResponse", &profile);
 }
+
+#[tokio::test]
+async fn an_unknown_algo_variant_is_refused_before_anything_runs() {
+    let errors = std::sync::Mutex::new(Vec::<String>::new());
+    let argv = ["lab".to_owned(), "profile".to_owned()];
+    let code = cli::lab_cmd::run_lab(
+        &argv,
+        &|k| (k == "ALGO_VARIANT").then(|| "lighter".to_owned()),
+        &|_| {},
+        &|e| errors.lock().unwrap().push(e.to_owned()),
+    )
+    .await;
+    assert_eq!(code, 1);
+    assert!(errors.lock().unwrap()[0].starts_with("ALGO_VARIANT: unknown algorithm variant"));
+}

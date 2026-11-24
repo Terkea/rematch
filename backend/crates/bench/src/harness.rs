@@ -31,6 +31,7 @@ use profile::coaching::build_coaching_input_report;
 use profile::hook_impl::{ProfileHook, into_hook, warm_openings};
 use profile::peer_benchmark::BenchmarkSource;
 use profile_core::stats::rng::Rng;
+use profile_core::stats::variant::{self, PriorRule};
 use queue::queue::Queue;
 use queue::{AnalyseGamePayload, BuildProfilePayload, Job, KIND_ANALYSE};
 use sqlx::PgPool;
@@ -41,7 +42,9 @@ use uuid::Uuid;
 use crate::flaws::Tally;
 use crate::generate::{GeneratedGame, generate_game};
 use crate::memo::MemoAnalyser;
-use crate::results::{Checkpoint, EstimateRow, FlawInfo, GenStats, PlayerResult, RankedItem};
+use crate::results::{
+    Checkpoint, EstimateRow, FlawInfo, GenStats, PlayerResult, RankedItem, VariantResult,
+};
 use crate::suite::{PlayerDef, Suite, game_specs};
 
 pub const PLATFORM: &str = "chesscom";
@@ -67,6 +70,10 @@ pub struct Harness {
     /// Games generated or analysed at once.
     pub engines: usize,
     pub log: Box<dyn Fn(&str) + Send + Sync>,
+    /// A variant run side by side (`ALGO_VARIANT`, the evaluation spec section 5): every player's
+    /// games also go into a second account, whose profiles are built under the variant's prior
+    /// rule, so the two versions see the same games. `None`: the process's rule only.
+    pub variant: Option<(String, PriorRule)>,
 }
 
 /// A chess.com account named `username` (the importer's shape).
@@ -293,6 +300,33 @@ impl Harness {
         .flatten())
     }
 
+    /// [`Self::checkpoint`] under `rule`, with the process's rule restored afterwards. Nothing else
+    /// builds a profile meanwhile: the players and their checkpoints run one after another.
+    async fn checkpoint_under(
+        &self,
+        rule: PriorRule,
+        account: Uuid,
+        games: usize,
+    ) -> anyhow::Result<(Checkpoint, String)> {
+        let before = variant::current();
+        variant::set(rule);
+        let out = self.checkpoint(account, games).await;
+        let again = match &out {
+            Ok(_) => Some(self.ranked(account).await),
+            Err(_) => None,
+        };
+        variant::set(before);
+        let (c, f) = out?;
+        // The determinism fingerprint is the second build of the same rows, under the same rule.
+        let f = match again {
+            Some(Ok((_, again))) if again == f => f,
+            Some(Ok(_)) => String::new(),
+            Some(Err(e)) => return Err(e),
+            None => f,
+        };
+        Ok((c, f))
+    }
+
     async fn checkpoint(
         &self,
         account: Uuid,
@@ -345,6 +379,19 @@ impl Harness {
         for g in &games {
             ids.push(insert_game(&self.pool, account, g, "").await?);
         }
+        let side = match &self.variant {
+            Some((name, rule)) => {
+                let acct = insert_account(&self.pool, &format!("{}-v", p.name)).await?;
+                let mut vids = Vec::new();
+                for g in &games {
+                    vids.push(insert_game(&self.pool, acct, g, "-v").await?);
+                }
+                Some((name.clone(), *rule, acct, vids))
+            }
+            None => None,
+        };
+        let mut variant_checkpoints = Vec::new();
+        let mut variant_deterministic = true;
         let mut checkpoints = Vec::new();
         let mut done = 0usize;
         let mut last_fingerprint = String::new();
@@ -354,8 +401,26 @@ impl Harness {
                 continue;
             }
             self.analyse(&deps, &ids[done..cp]).await?;
+            if let Some((_, _, _, vids)) = &side {
+                self.analyse(&deps, &vids[done..cp]).await?;
+            }
             done = cp;
             set_now(games[cp - 1].played_at + time::Duration::hours(1));
+            if let Some((name, rule, acct, _)) = &side {
+                let (c, f) = self.checkpoint_under(*rule, *acct, cp).await?;
+                variant_deterministic &= !f.is_empty();
+                (self.log)(&format!(
+                    "{}: {} games, variant {name} top {:?}",
+                    p.name,
+                    cp,
+                    c.ranked
+                        .iter()
+                        .take(3)
+                        .map(|r| r.key.as_str())
+                        .collect::<Vec<_>>()
+                ));
+                variant_checkpoints.push(c);
+            }
             let (c, f) = self.checkpoint(account, cp).await?;
             (self.log)(&format!(
                 "{}: {} games, top {:?}",
@@ -419,6 +484,11 @@ impl Harness {
             checkpoints,
             perturbed,
             deterministic,
+            variant: side.map(|(name, ..)| VariantResult {
+                name,
+                checkpoints: variant_checkpoints,
+                deterministic: variant_deterministic,
+            }),
         })
     }
 

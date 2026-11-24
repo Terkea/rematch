@@ -26,6 +26,8 @@ pub struct RunOptions {
     pub out_dir: PathBuf,
     /// Keep the benchmark database after the run (for inspection).
     pub keep_db: bool,
+    /// A variant run side by side (`ALGO_VARIANT`): its name and prior rule.
+    pub variant: Option<(String, profile_core::stats::variant::PriorRule)>,
 }
 
 /// `bench-results.json`: the scorecard and every player's raw results.
@@ -37,6 +39,16 @@ pub struct RunOutput {
     pub memo_hits: u64,
     pub seconds: f64,
     pub players: Vec<PlayerResult>,
+    /// The side-by-side variant's scorecard (its own checkpoints, no perturbation).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub variant: Option<VariantRun>,
+}
+
+/// The side-by-side variant of a run (`ALGO_VARIANT`).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct VariantRun {
+    pub name: String,
+    pub scorecard: Scorecard,
 }
 
 async fn admin(url: &str) -> anyhow::Result<sqlx::PgConnection> {
@@ -129,11 +141,20 @@ pub async fn run(
             memo: memo.clone(),
             engines: o.engines.max(1),
             log,
+            variant: o.variant.clone(),
         };
         let players = harness.run(suite).await;
         EnginePool::close(&engines).await;
         let players = players?;
         let (engine_searches, memo_hits) = memo.counts();
+        let variant = o.variant.as_ref().map(|(name, _)| {
+            let side: Vec<PlayerResult> =
+                players.iter().filter_map(PlayerResult::as_variant).collect();
+            VariantRun {
+                name: name.clone(),
+                scorecard: score(&suite.name, suite.nodes, &side),
+            }
+        });
         anyhow::Ok(RunOutput {
             scorecard: score(&suite.name, suite.nodes, &players),
             suite: suite.clone(),
@@ -141,6 +162,7 @@ pub async fn run(
             memo_hits,
             seconds: started.elapsed().as_secs_f64(),
             players,
+            variant,
         })
     }
     .await;

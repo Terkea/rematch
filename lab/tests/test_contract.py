@@ -110,3 +110,17 @@ def test_a_bad_request_is_refused_before_the_cli() -> None:
 def test_the_cli_refuses_an_unknown_schema_version() -> None:
     with pytest.raises(rematch_lab.LabError, match="lab-v0"):
         call_raw(["lab", "profile"], '{"schema_version": "lab-v0", "players": []}')
+
+
+def test_algo_variant_selects_the_prior_rule() -> None:
+    """`variant` reaches the cli as ALGO_VARIANT (EXP-0006): the champion is production, a dev
+    rule moves the intervals, and an unknown name is refused."""
+    request = models.ProfileRequest.model_validate_json(FIXTURE.read_text(encoding="utf-8"))
+    base = rematch_lab.profile(request)
+    assert rematch_lab.profile(request, variant="champion") == base
+    lighter = rematch_lab.profile(request, variant="dev:games=1,ess")
+    assert lighter.algorithm_id == base.algorithm_id
+    intervals = lambda r: [e.posterior for p in r.players for e in p.estimates]  # noqa: E731
+    assert intervals(lighter) != intervals(base)
+    with pytest.raises(rematch_lab.LabError):
+        rematch_lab.profile(request, variant="lighter")
