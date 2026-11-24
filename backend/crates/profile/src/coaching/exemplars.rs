@@ -10,8 +10,9 @@
 //! - `bestPv` and `refutationPv` keep their legal prefix (from `fen`, and from the position after
 //!   `played`), cut to 16 plies; a `bestPv` that does not start with `best` is dropped (it would
 //!   contradict `best`);
-//! - tags are the `contract_tag()`s of the best and refutation lines' tags, deduplicated, at most
-//!   12.
+//! - tags are the `contract_tag()`s of the best and refutation lines' player-visible tags
+//!   (EXP-0007, `MotifTag::is_player_visible`), deduplicated, at most 12; a position whose only
+//!   tags are hidden has none, and is still shown by its move, eval swing and best move.
 //!
 //! A row that cannot give a valid position (an unknown eval, an illegal move, a FEN whose side to
 //! move disagrees with the ply, an over-long id) gives `None`: unknown is never invented.
@@ -80,6 +81,7 @@ fn tags(row: &ExemplarRow) -> Vec<String> {
     row.best_tags
         .iter()
         .chain(&row.refutation_tags)
+        .filter(|t| t.is_player_visible())
         .map(|t| t.contract_tag())
         .filter(|t| seen.insert(*t))
         .take(LIMITS.tags)

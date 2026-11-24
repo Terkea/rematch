@@ -1,4 +1,4 @@
-# replay golden: algorithm version 2.0.0, 3000 nodes per search, engine protocol sf19-n300k-v1, regenerate with REPLAY_UPDATE=1 (major bumps only)
+# replay golden: algorithm version 3.0.0, 3000 nodes per search, engine protocol sf19-n300k-v1, regenerate with REPLAY_UPDATE=1 (major bumps only)
 {
   "replay-chesscom/blitz": {
     "coachingInput": {
@@ -474,34 +474,6 @@
           "sufficient": false,
           "unit": "rate",
           "value": 0.5
-        },
-        {
-          "area": "tactics",
-          "bandMedian": null,
-          "bandPercentile": null,
-          "high": 0.2910785946320806,
-          "key": "motif_miss_rate:hangingPiece",
-          "label": "Missed free pieces",
-          "low": 0.0,
-          "n": 4,
-          "needMore": 16,
-          "sufficient": false,
-          "unit": "rate",
-          "value": 0.0
-        },
-        {
-          "area": "tactics",
-          "bandMedian": null,
-          "bandPercentile": null,
-          "high": 0.6215524967746471,
-          "key": "motif_miss_rate:pin",
-          "label": "Missed pins",
-          "low": 0.0,
-          "n": 1,
-          "needMore": 19,
-          "sufficient": false,
-          "unit": "rate",
-          "value": 0.0
         },
         {
           "area": "tactics",
@@ -989,20 +961,6 @@
           "high": 0.6215524967746471,
           "key": "opening_out_worse_rate",
           "label": "Openings left worse",
-          "low": 0.0,
-          "n": 1,
-          "needMore": 19,
-          "sufficient": false,
-          "unit": "rate",
-          "value": 0.0
-        },
-        {
-          "area": "tactics",
-          "bandMedian": null,
-          "bandPercentile": null,
-          "high": 0.6215524967746471,
-          "key": "motif_miss_rate:hangingPiece",
-          "label": "Missed free pieces",
           "low": 0.0,
           "n": 1,
           "needMore": 19,

@@ -1,4 +1,5 @@
 import type { Area } from "@ci/ui/area-score";
+import { ALGORITHM_MANIFEST } from "../../lib/algorithm";
 
 // The profile catalogue, mirrored from Rust (ADR 0068). `backend/fixtures/profile/catalogue.json`
 // is written by `profile-core`'s `catalogue_snapshot` test; `test/profile/catalogue.test.ts` fails
@@ -240,7 +241,34 @@ export const MOTIFS: readonly MotifDef[] = [
   { tag: "smotheredMate", contractTag: "smothered_mate" },
 ];
 
-export const KPIS: readonly KpiDef[] = [
+/**
+ * The motif tags a player may be told about (ADR 0112): EXP-0007's allowlist, read from the
+ * algorithm manifest (Rust `coaching_input::motifs::PLAYER_VISIBLE_MOTIFS`). Every tag is still
+ * computed and stored; a hidden one has no KPI row, no series on the pages and no label.
+ */
+export const PLAYER_VISIBLE_MOTIFS: ReadonlySet<string> = new Set(
+  ALGORITHM_MANIFEST.components.profile.player_visible_motifs.tags,
+);
+
+/** False for a missed or allowed motif series whose tag is hidden; true for any other key. */
+export function isPlayerVisibleSeries(seriesKey: string): boolean {
+  const motif = /^motif\.(?:missed|allowed):(.+)$/.exec(seriesKey);
+  return motif ? PLAYER_VISIBLE_MOTIFS.has(motif[1] ?? "") : true;
+}
+
+/**
+ * Whether a contract tag (`hanging_piece`, an exemplar's `tags`) may be shown: true for a visible
+ * motif and for any tag that is not a motif.
+ */
+export function isPlayerVisibleTag(contractTag: string): boolean {
+  const motif = MOTIFS.find((m) => m.contractTag === contractTag);
+  return motif ? PLAYER_VISIBLE_MOTIFS.has(motif.tag) : true;
+}
+
+const MOTIF_KPI = "motif_miss_rate:";
+
+/** Every KPI the Rust catalogue can define, before the motif allowlist. */
+const ALL_KPIS: readonly KpiDef[] = [
   {
     metric: "rating",
     area: null,
@@ -864,6 +892,12 @@ export const KPIS: readonly KpiDef[] = [
   },
 ];
 
+/** The KPI catalogue: every row but the hidden motifs' (the Rust `kpi_catalogue`). */
+export const KPIS: readonly KpiDef[] = ALL_KPIS.filter(
+  (k) =>
+    !k.metric.startsWith(MOTIF_KPI) || PLAYER_VISIBLE_MOTIFS.has(k.metric.slice(MOTIF_KPI.length)),
+);
+
 const weaknessByKey = new Map(WEAKNESSES.map((w) => [w.key, w]));
 const kpiByMetric = new Map(KPIS.map((k) => [k.metric, k]));
 
@@ -914,16 +948,19 @@ export function seriesArea(seriesKey: string): Area {
 /**
  * The English label of a series (ADR 0068): the Rust weakness label, the KPI label of a missed
  * motif ("Missed forks") and its allowed twin ("Allowed forks"), an opening's name (else its slug
- * in words) with the player's colour, or the endgame type. An unknown key is shown as itself.
+ * in words) with the player's colour, or the endgame type. A hidden motif (EXP-0007) is "Missed
+ * tactics" or "Allowed tactics", as in Rust. An unknown key is shown as itself.
  */
 export function seriesLabel(seriesKey: string, openingName?: string | null): string {
   const def = weaknessDef(seriesKey);
   if (def) return def.label;
   const missed = seriesKey.match(/^motif\.(missed|allowed):(.+)$/);
   if (missed) {
-    const label = kpiDef(`motif_miss_rate:${missed[2]}`)?.label;
-    if (label) return missed[1] === "missed" ? label : label.replace(/^Missed /, "Allowed ");
-    return seriesKey;
+    // A hidden motif (EXP-0007) has no row: Rust's `series_label` falls back to "Missed tactics".
+    const known = MOTIFS.some((m) => m.tag === missed[2]);
+    const label = kpiDef(`${MOTIF_KPI}${missed[2]}`)?.label ?? (known ? "Missed tactics" : null);
+    if (!label) return seriesKey;
+    return missed[1] === "missed" ? label : label.replace(/^Missed /, "Allowed ");
   }
   const opening = seriesKey.match(/^opening:(white|black):(.+)$/);
   if (opening) {

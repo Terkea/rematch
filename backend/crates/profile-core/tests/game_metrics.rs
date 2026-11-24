@@ -730,13 +730,9 @@ fn tactics_missed_and_allowed() {
             misses: 1
         }
     );
-    assert_eq!(
-        m.missed_by_motif[&MotifTag::Pin],
-        MissCounts {
-            opportunities: 1,
-            misses: 0
-        }
-    );
+    // The pin line is a tactic the player found (W3), but EXP-0007 hid `pin` (#122): it has no
+    // per-motif counts, so neither the KPIs nor the trainer's pattern rates are built on it.
+    assert!(!m.missed_by_motif.contains_key(&MotifTag::Pin));
     assert!(!m.missed_by_motif.contains_key(&MotifTag::Skewer));
 
     let m = metrics(&make_game());

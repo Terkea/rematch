@@ -445,14 +445,28 @@ fn mindset_has_no_benchmark_and_areas_come_in_contract_order() {
 #[test]
 fn catalogue_has_36_base_rows_and_contract_units() {
     let cat = kpi_catalogue();
-    assert_eq!(cat.len(), 69);
-    assert_eq!(CATALOGUE_LEN, 69);
-    assert_eq!(
-        cat.iter()
-            .filter(|d| matches!(d.metric, MetricId::MotifMissRate(_)))
-            .count(),
-        16
-    );
+    assert_eq!(cat.len(), 63);
+    assert_eq!(CATALOGUE_LEN, 63);
+    // One row per player-visible motif (EXP-0007, #122): the six hidden tags have none.
+    let motifs: Vec<MotifTag> = cat
+        .iter()
+        .filter_map(|d| match d.metric {
+            MetricId::MotifMissRate(t) => Some(t),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(motifs.len(), 10);
+    assert!(motifs.iter().all(|t| t.is_player_visible()), "{motifs:?}");
+    for t in [
+        MotifTag::HangingPiece,
+        MotifTag::Pin,
+        MotifTag::Skewer,
+        MotifTag::Deflection,
+        MotifTag::Sacrifice,
+        MotifTag::BackRankMate,
+    ] {
+        assert!(kpi_definition(MetricId::MotifMissRate(t)).is_none(), "{t}");
+    }
     assert_eq!(
         cat.iter()
             .filter(|d| matches!(d.metric, MetricId::Weakness(_)))
@@ -655,7 +669,7 @@ fn invalid_inputs_are_skipped_and_counted() {
     bad.metrics.blunders = 1;
     bad.metrics.time_in_opening = Some(f64::INFINITY);
     bad.metrics.missed_by_motif.insert(
-        MotifTag::Pin,
+        MotifTag::Promotion,
         MissCounts {
             opportunities: 1,
             misses: 3,
@@ -672,8 +686,8 @@ fn invalid_inputs_are_skipped_and_counted() {
     assert_eq!((acc.value, acc.n), (Some(70.0), 4));
     let bl = row(&report.values, base(BaseMetric::BlundersPerGame));
     assert_eq!((bl.value, bl.n), (Some(1.0), 5));
-    let pin = row(&report.values, MetricId::MotifMissRate(MotifTag::Pin));
-    assert_eq!((pin.value, pin.n), (None, 0));
+    let promotion = row(&report.values, MetricId::MotifMissRate(MotifTag::Promotion));
+    assert_eq!((promotion.value, promotion.n), (None, 0));
     assert_eq!(
         compute_kpis(&kpi_games(&games), &LAST50, None),
         report.values

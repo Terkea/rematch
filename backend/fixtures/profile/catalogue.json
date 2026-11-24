@@ -328,15 +328,6 @@
       "area": "tactics",
       "higherIsBetter": false,
       "kind": "rate",
-      "label": "Missed free pieces",
-      "metric": "motif_miss_rate:hangingPiece",
-      "minN": 20,
-      "unit": "rate"
-    },
-    {
-      "area": "tactics",
-      "higherIsBetter": false,
-      "kind": "rate",
       "label": "Missed forks",
       "metric": "motif_miss_rate:fork",
       "minN": 20,
@@ -346,44 +337,8 @@
       "area": "tactics",
       "higherIsBetter": false,
       "kind": "rate",
-      "label": "Missed pins",
-      "metric": "motif_miss_rate:pin",
-      "minN": 20,
-      "unit": "rate"
-    },
-    {
-      "area": "tactics",
-      "higherIsBetter": false,
-      "kind": "rate",
-      "label": "Missed skewers",
-      "metric": "motif_miss_rate:skewer",
-      "minN": 20,
-      "unit": "rate"
-    },
-    {
-      "area": "tactics",
-      "higherIsBetter": false,
-      "kind": "rate",
       "label": "Missed discovered attacks",
       "metric": "motif_miss_rate:discoveredAttack",
-      "minN": 20,
-      "unit": "rate"
-    },
-    {
-      "area": "tactics",
-      "higherIsBetter": false,
-      "kind": "rate",
-      "label": "Missed deflections",
-      "metric": "motif_miss_rate:deflection",
-      "minN": 20,
-      "unit": "rate"
-    },
-    {
-      "area": "tactics",
-      "higherIsBetter": false,
-      "kind": "rate",
-      "label": "Missed sacrifices",
-      "metric": "motif_miss_rate:sacrifice",
       "minN": 20,
       "unit": "rate"
     },
@@ -447,15 +402,6 @@
       "kind": "rate",
       "label": "Missed mating nets",
       "metric": "motif_miss_rate:matingNet",
-      "minN": 20,
-      "unit": "rate"
-    },
-    {
-      "area": "tactics",
-      "higherIsBetter": false,
-      "kind": "rate",
-      "label": "Missed back-rank mates",
-      "metric": "motif_miss_rate:backRankMate",
       "minN": 20,
       "unit": "rate"
     },

@@ -5,6 +5,7 @@ import { Chess } from "chess.js";
 import { and, eq, isNull, type SQL, sql } from "drizzle-orm";
 import { registerAlgorithm } from "../algorithm";
 import { readOnly, scopedAccountIds } from "../games";
+import { PLAYER_VISIBLE_MOTIFS } from "../profile/catalogue";
 import type { CoachScope } from "../profile/types";
 import {
   acceptedSet,
@@ -665,9 +666,15 @@ export async function loadTrainPage(
       };
     });
     const since = minDate([...firstBy.values()]);
-    const drilledTags = new Set(items.filter((i) => firstBy.has(i.id)).flatMap((i) => i.tags));
+    // Only player-visible motifs (EXP-0007, ADR 0112): a drill item keeps every tag its line has.
+    const visible = (t: string) => PLAYER_VISIBLE_MOTIFS.has(t);
+    const drilledTags = new Set(
+      items.filter((i) => firstBy.has(i.id)).flatMap((i) => i.tags.filter(visible)),
+    );
     const heldTags = new Set(
-      items.filter((i) => i.heldOut).flatMap((i) => i.tags.filter((t) => !drilledTags.has(t))),
+      items
+        .filter((i) => i.heldOut)
+        .flatMap((i) => i.tags.filter((t) => visible(t) && !drilledTags.has(t))),
     );
     const found = since
       ? await patternRates(tx, scope, since, [...drilledTags], [...heldTags])

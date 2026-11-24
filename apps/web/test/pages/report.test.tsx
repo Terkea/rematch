@@ -540,6 +540,27 @@ describe("review fix round 1", () => {
     expect(container).not.toHaveTextContent("This rose after you switched to a new opening.");
   });
 
+  // ADR 0112: a report written before algo-3.0.0 keeps its hidden motif's change in storage, but
+  // the page never shows it.
+  it("a stored change of a motif EXP-0007 hid is not shown", async () => {
+    await previous();
+    const computed = payloadFixture("example").computed;
+    const shown = computed.newThisPeriod[0];
+    if (!shown) throw new Error("no change in the fixture");
+    const hidden = { ...shown, seriesKey: "motif.missed:pin", label: "Missed pins" };
+    await db
+      .update(reports)
+      .set({ computed: { ...computed, newThisPeriod: [shown, hidden], fixedThisPeriod: [hidden] } })
+      .where(eq(reports.accountId, accountId));
+    const page = await data();
+    expect(page.view.payload?.computed.newThisPeriod.map((c) => c.seriesKey)).toEqual([
+      "time.flag_rate",
+    ]);
+    expect(page.view.payload?.computed.fixedThisPeriod).toEqual([]);
+    const { container } = render(<ReportView data={page} />);
+    expect(container).not.toHaveTextContent("Missed pins");
+  });
+
   it("a first report never claims it started on its own", async () => {
     await seedReport(db, accountId, { timeClass: "rapid", createdAt: CREATED });
     const { container } = render(<ReportView data={await data()} />);

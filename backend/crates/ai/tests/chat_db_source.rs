@@ -548,7 +548,7 @@ async fn find_examples_reads_r2_occurrences_when_nothing_is_ranked(pool: PgPool)
     .unwrap();
     let forks = src
         .find_examples(ExamplesQuery {
-            motif: Some("hanging_piece".into()),
+            motif: Some("fork".into()),
             limit: 5,
             ..ExamplesQuery::default()
         })
@@ -561,7 +561,21 @@ async fn find_examples_reads_r2_occurrences_when_nothing_is_ranked(pool: PgPool)
         "{:?}",
         forks[0].tags
     );
-    assert!(forks[0].tags.contains(&"hanging_piece".to_owned()));
+    // EXP-0007 hid `hangingPiece` (#122): the coach is never told it, nor can it search by it.
+    assert!(
+        !forks[0].tags.contains(&"hanging_piece".to_owned()),
+        "{:?}",
+        forks[0].tags
+    );
+    let hidden = src
+        .find_examples(ExamplesQuery {
+            motif: Some("hanging_piece".into()),
+            limit: 5,
+            ..ExamplesQuery::default()
+        })
+        .await
+        .unwrap();
+    assert!(hidden.is_empty(), "{hidden:?}");
 
     // An opening line: the player's worst move in the line's first 30 plies, per game.
     sqlx::query(

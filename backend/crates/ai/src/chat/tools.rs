@@ -85,7 +85,7 @@ pub fn chat_tools() -> Vec<ToolDef> {
             input_schema: object(
                 json!({
                     "weaknessId": string(WEAKNESS_ID),
-                    "motif": string("A motif tag such as fork, pin or hanging_piece."),
+                    "motif": string("A motif tag such as fork, discovered_attack or mate_in_2."),
                     "lineKey": string("An opening line key from the coaching context."),
                     "phase": {"type": "string", "enum": ["opening", "middlegame", "endgame"], "description": "Move filter: only moves in this phase of the game."},
                     "judgement": {"type": "string", "enum": JUDGEMENTS, "description": "Move filter: only moves with exactly this judgement."},

@@ -707,6 +707,9 @@ async fn changes(
         let Ok(key) = o.series_key.parse::<SeriesKey>() else {
             continue;
         };
+        if !key.is_player_visible() {
+            continue; // a hidden motif's change, stored before algo-3.0.0 (EXP-0007)
+        }
         let (Some(rate_before), Some(rate_after), Some(posterior_prob)) =
             (unit(o.rate_before), unit(o.rate_after), unit(o.p_change))
         else {

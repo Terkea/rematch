@@ -73,7 +73,7 @@ macro_rules! prompt {
     };
 }
 
-static TABLE: [Prompt; 47] = [
+static TABLE: [Prompt; 48] = [
     prompt!("core/rules", 1),
     prompt!("core/tokens", 1),
     prompt!("core/tokens", 2),
@@ -81,6 +81,8 @@ static TABLE: [Prompt; 47] = [
     prompt!("core/glossary", 1),
     // Holistic F1: no "players at your level" in the plain words.
     prompt!("core/glossary", 2),
+    // ADR 0112: v3 drops the six motifs EXP-0007 did not clear (#122).
+    prompt!("core/glossary", 3),
     prompt!("report/report", 1),
     prompt!("report/report", 2),
     prompt!("report/report", 3),
@@ -177,7 +179,8 @@ pub const REPORT_PROMPT_SET: &[(&str, u32)] = &[
     // stored hashes.
     ("report/section-areas", 2),
     ("repair/repair", 1),
-    ("core/glossary", 2),
+    // ADR 0112: v3 names only the motifs EXP-0007 cleared. v2 stays for stored hashes.
+    ("core/glossary", 3),
 ];
 
 /// The report's `prompt_version` (the AI disclosure and the report row).
@@ -201,7 +204,8 @@ pub const CHAT_PROMPT_SET: &[(&str, u32)] = &[
     // The Rematch brand: the coach's voice, the same file as the report's.
     ("tone/voice", 1),
     ("chat/repair", 1),
-    ("core/glossary", 2),
+    // ADR 0112: v3 names only the motifs EXP-0007 cleared. v2 stays for stored hashes.
+    ("core/glossary", 3),
 ];
 
 /// The chat's prompt version (stored with the chat's AI disclosure).

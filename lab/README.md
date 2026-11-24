@@ -17,7 +17,7 @@ In a nutshell -
 | `rematch_lab.profile(facts)` | `cli lab profile` | facts | one estimate per key with its 80% interval (`compute_estimates`) |
 | `rematch_lab.rank(profiles)` | `cli lab rank` | estimates | the ranked weaknesses, the coach's focuses and their drills |
 | `rematch_lab.bench("smoke", out_dir=…)` | `cli bench run --json` | a suite | the Tier 1 scorecard and every player's results (ADR 0100) |
-| `rematch_lab.tag_motifs(lines)` | `cli lab tag-motifs` | positions, setup moves and lines | each line's `best` analysis (the swing and the motif tags) from the production `derive_move_features` (EXP-0007) |
+| `rematch_lab.tag_motifs(lines)` | `cli lab tag-motifs` | positions, setup moves and lines | each line's `best` analysis (the swing and all sixteen motif tags, the six the product hides included, ADR 0112) from the production `derive_move_features` (EXP-0007) |
 
 `profile`, `rank` and `bench` take `variant=` (`ALGO_VARIANT`, ADR 0111): `profile` and `rank` compute every estimate under that prior rule (`champion`, the production rule; `challenger`, EXP-0006's, production since `algo-2.0.0`; `algo-1`, the rule of 1.x; or `dev:<options>`), and `bench` runs it side by side with production on the same games, in a second account. A call without one runs production's rule.
 

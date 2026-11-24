@@ -707,11 +707,12 @@ describe("the efficacy panel and the last move, aggregated in SQL", () => {
       .update(drillItems)
       .set({ tags: ["fork"] })
       .where(eq(drillItems.id, blunder.id));
-    // A held-back item tagged with another motif (and the drilled one, which does not count).
+    // A held-back item tagged with another motif (and the drilled one, which does not count), and
+    // with `pin`, which EXP-0007 hid (ADR 0112): its counts never enter a pattern rate.
     const [held] = await seedItems(1, null);
     await db
       .update(drillItems)
-      .set({ heldOut: true, tags: ["pin", "fork"] })
+      .set({ heldOut: true, tags: ["discoveredAttack", "pin", "fork"] })
       .where(eq(drillItems.id, held ?? ""));
     // A game before the first drill and two after it, with weakness and motif counts.
     const metricsGame = async (at: string, metrics: Record<string, unknown>, blunders: number) => {
@@ -765,7 +766,8 @@ describe("the efficacy panel and the last move, aggregated in SQL", () => {
         },
         missedByMotif: {
           fork: { opportunities: 4, misses: 1 },
-          pin: { opportunities: 2, misses: 2 },
+          discoveredAttack: { opportunities: 2, misses: 2 },
+          pin: { opportunities: 6, misses: 1 },
           skewer: { opportunities: 5, misses: 0 },
         },
       },
@@ -795,7 +797,8 @@ describe("the efficacy panel and the last move, aggregated in SQL", () => {
       before: { events: 5, chances: 9 },
       after: { events: 2, chances: 8 },
     });
-    // Drilled motif fork (3 of 4 found, then 0 of 3), against the held-back pin only (0 of 2).
+    // Drilled motif fork (3 of 4 found, then 0 of 3), against the held-back discovered attack only
+    // (0 of 2); the hidden pin's 5 of 6 are left out.
     expect(page?.efficacy.patterns.since?.toISOString()).toBe("2026-11-15T12:00:00.000Z");
     expect(page?.efficacy.patterns.drilled).toMatchObject({ events: 3, chances: 7 });
     expect(page?.efficacy.patterns.heldOut).toMatchObject({ events: 0, chances: 2 });

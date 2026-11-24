@@ -8,6 +8,13 @@ The site builds this file into /docs/progress/ and shows the newest entry on the
 
 See also the [experiments](/rematch/docs/experiments/) and the [roadmap](/rematch/docs/roadmap/).
 
+## 2026-11-24: algo-3.0.0 stops naming the six motifs EXP-0007 did not clear
+
+- Hanging piece, pin, skewer, deflection, sacrifice and back-rank mate are no longer named anywhere a player or the coach reads: no "Missed pins" row, no timeline change, no tag on a coached position and no glossary entry. The moves behind them still count as missed tactics or blunders, with their eval swing and the best move ([ADR 0112](decisions/0112-hide-the-motifs-exp-0007-did-not-clear.md), #122).
+- Fork, discovered attack, promotion, smothered mate and the mates in 1 to 4+ stay named; EXP-0007 found each right at least 97% of the time. Mating net has no Lichess theme to be scored against and stays as it was.
+- The tagger still computes all sixteen tags, so the arena measured `algo-3.0.0` on EXP-0007 exactly as before: the same 9 of 15 tags trusted and every precision unchanged, with no clear difference on EXP-0001 or EXP-0002 either. The replay fixtures lose 112 of 435 series points and 234 of 2,964 KPI rows, all of them the six tags.
+- Next: the six come back one by one, each with an experiment behind it: the blind audit (EXP-0019), then the deflection and pin fixes (EXP-0020, EXP-0021).
+
 ## 2026-11-24: EXP-0006 ships algo-2.0.0, the 80% ranges calibrated
 
 - On fresh synthetic players well above their peers, the 80% ranges now hold the true rate about 80% of the time: all 20 weakness-by-sample-size cells are inside 75–85% (the worst 83%), where the old rule's range for missed mates at 30 games held the truth 10% of the time. The peers' prior is worth at most two of the player's own games, and recency-weighted games count at their effective size, divided by how much they vary from game to game. The synthetic players' spread and peer rates are assumptions; real players come with Tier 2 ([EXP-0006](https://github.com/Terkea/rematch/tree/main/lab/experiments/EXP-0006), [ADR 0111](decisions/0111-prior-rule-variants-and-the-80-percent-ranges.md)).

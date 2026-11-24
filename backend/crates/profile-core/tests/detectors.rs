@@ -245,15 +245,43 @@ fn w3_mate_counts_and_small_gains_do_not() {
 #[test]
 fn w3_takes_epl_after_w1_and_feeds_motif_missed() {
     let g = with_move(w1_game(), own(15), |m| {
-        m.f.best = Some(line(3.0, Some(3), None, &[MotifTag::Pin]));
+        m.f.best = Some(line(3.0, Some(3), None, &[MotifTag::Fork]));
     });
     let o = obs(&g);
     assert!((key(&o, W1).epl - 0.2).abs() < EPS);
     assert_eq!(key(&o, W3Shallow).events, 1);
     assert_eq!(key(&o, W3Shallow).epl, 0.0);
-    let s = series(&o, "motif.missed:pin").unwrap();
+    let s = series(&o, "motif.missed:fork").unwrap();
     assert_eq!((s.events, s.opportunities), (1, 1));
-    assert!(series(&o, "motif.missed:fork").is_none());
+    assert!(series(&o, "motif.missed:mate").is_none());
+}
+
+/// EXP-0007 (#122): a line tagged only with a hidden motif still counts as a missed tactic (W3),
+/// but builds no motif series, so nothing downstream can name the motif.
+#[test]
+fn a_hidden_motif_counts_for_w3_and_builds_no_series() {
+    let g = with_move(w1_game(), own(15), |m| {
+        m.f.best = Some(line(
+            3.0,
+            Some(3),
+            None,
+            &[MotifTag::Pin, MotifTag::Sacrifice],
+        ));
+        m.f.refutation = Some(line(3.0, Some(1), None, &[MotifTag::HangingPiece]));
+    });
+    let o = obs(&g);
+    assert_eq!(key(&o, W3Shallow).events, 1);
+    for s in &o.series {
+        match s.series_key {
+            SeriesKey::MotifMissed(t) | SeriesKey::MotifAllowed(t) => {
+                assert!(t.is_player_visible(), "{}", s.series_key)
+            }
+            _ => {}
+        }
+    }
+    assert!(series(&o, "motif.missed:pin").is_none());
+    assert!(series(&o, "motif.allowed:hangingPiece").is_none());
+    assert!(series(&o, "motif.allowed:fork").is_some());
 }
 
 #[test]
@@ -682,8 +710,9 @@ fn motif_allowed_fork_series() {
     let s = series(&o, "motif.allowed:fork").unwrap();
     assert_eq!((s.events, s.opportunities), (1, 30));
     assert!((s.epl - 0.2).abs() < EPS);
-    let s = series(&o, "motif.allowed:pin").unwrap();
+    let s = series(&o, "motif.allowed:mate").unwrap();
     assert_eq!((s.events, s.opportunities), (0, 30));
+    assert!(series(&o, "motif.allowed:pin").is_none());
 }
 
 #[test]
@@ -903,7 +932,7 @@ fn motif_allowed_leaves_out_decisive_moves_without_a_refutation() {
         m.f.refutation = None;
     });
     let o = obs(&g);
-    for t in ["fork", "pin", "hangingPiece"] {
+    for t in ["fork", "discoveredAttack", "mateIn1"] {
         let s = series(&o, &format!("motif.allowed:{t}")).unwrap();
         assert_eq!((s.events, s.opportunities), (0, 29), "{t}");
     }

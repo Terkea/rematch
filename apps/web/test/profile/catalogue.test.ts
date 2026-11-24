@@ -4,9 +4,12 @@ import { describe, expect, it } from "vitest";
 import {
   AREAS,
   contractId,
+  isPlayerVisibleSeries,
+  isPlayerVisibleTag,
   KPIS,
   kpiDef,
   MOTIFS,
+  PLAYER_VISIBLE_MOTIFS,
   seriesArea,
   seriesLabel,
   WEAKNESSES,
@@ -36,8 +39,44 @@ describe("profile catalogue", () => {
   });
 
   it("names an allowed motif after its missed twin", () => {
-    expect(seriesLabel("motif.allowed:hangingPiece")).toBe("Allowed free pieces");
+    expect(seriesLabel("motif.allowed:fork")).toBe("Allowed forks");
     expect(seriesLabel("motif.allowed:mateIn1")).toBe("Allowed mates in one");
+  });
+
+  // EXP-0007 (ADR 0112): six tags are computed but never named to a player.
+  it("names only the motifs EXP-0007 cleared", () => {
+    const hidden = ["hangingPiece", "pin", "skewer", "deflection", "sacrifice", "backRankMate"];
+    const kpiMotifs = KPIS.filter((k) => k.metric.startsWith("motif_miss_rate:")).map((k) =>
+      k.metric.slice("motif_miss_rate:".length),
+    );
+    expect(new Set(kpiMotifs)).toEqual(PLAYER_VISIBLE_MOTIFS);
+    expect(
+      MOTIFS.filter((m) => !PLAYER_VISIBLE_MOTIFS.has(m.tag))
+        .map((m) => m.tag)
+        .sort(),
+    ).toEqual([...hidden].sort());
+    for (const t of hidden) {
+      expect(kpiDef(`motif_miss_rate:${t}`), t).toBeNull();
+      expect(isPlayerVisibleSeries(`motif.missed:${t}`), t).toBe(false);
+      expect(isPlayerVisibleSeries(`motif.allowed:${t}`), t).toBe(false);
+    }
+    expect(isPlayerVisibleSeries("motif.missed:fork")).toBe(true);
+    expect(isPlayerVisibleSeries("W1")).toBe(true);
+    expect(isPlayerVisibleSeries("opening:white:italian-game")).toBe(true);
+  });
+
+  it("falls back to the generic tactic name for a hidden motif, as Rust does", () => {
+    expect(seriesLabel("motif.missed:pin")).toBe("Missed tactics");
+    expect(seriesLabel("motif.allowed:hangingPiece")).toBe("Allowed tactics");
+    expect(seriesLabel("motif.missed:nope")).toBe("motif.missed:nope");
+  });
+
+  it("keeps an exemplar's visible tags and any tag that is not a motif", () => {
+    expect(isPlayerVisibleTag("fork")).toBe(true);
+    expect(isPlayerVisibleTag("mate_in_4_plus")).toBe(true);
+    expect(isPlayerVisibleTag("hung_piece")).toBe(true);
+    expect(isPlayerVisibleTag("hanging_piece")).toBe(false);
+    expect(isPlayerVisibleTag("back_rank_mate")).toBe(false);
   });
 
   it("areas follow the UI's order", () => {
@@ -55,9 +94,9 @@ describe("profile catalogue", () => {
     expect(seriesLabel("W1")).toBe("Leaving pieces hanging");
     expect(seriesLabel("W3.shallow")).toBe("Missing a short tactic");
     expect(seriesLabel("motif.missed:fork")).toBe("Missed forks");
-    expect(seriesLabel("motif.missed:hangingPiece")).toBe("Missed free pieces");
+    expect(seriesLabel("motif.missed:smotheredMate")).toBe("Missed smothered mates");
     expect(seriesLabel("motif.allowed:fork")).toBe("Allowed forks");
-    expect(seriesLabel("motif.allowed:backRankMate")).toBe("Allowed back-rank mates");
+    expect(seriesLabel("motif.allowed:mateIn4Plus")).toBe("Allowed long mates");
     expect(seriesLabel("opening:black:caro-kann-defence", "Caro-Kann Defence")).toBe(
       "Caro-Kann Defence (as Black)",
     );

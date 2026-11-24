@@ -9,8 +9,8 @@ use ai::generate::context::{canonical_json, canonical_json_escaped, input_hash};
 use ai::input::types::{BandId, CoachingInput};
 use ai::output::codes::Citation;
 use ai::prompts::{
-    PROMPTS, PromptError, REPORT_PROMPT_SET, REPORT_PROMPT_VERSION, TemplateVarProblem,
-    load_prompt, prompt_set_hash, render_template,
+    CHAT_PROMPT_SET, PROMPTS, PromptError, REPORT_PROMPT_SET, REPORT_PROMPT_VERSION,
+    TemplateVarProblem, load_prompt, prompt_set_hash, render_template,
 };
 use ai::testing::{fixtures_dir, input};
 use ai::validator::evidence::build_evidence;
@@ -182,11 +182,12 @@ fn report_prompt_set_is_the_brief_list() {
         "tone/b3",
         "tone/b4",
         "tone/b5",
-        "core/glossary",
         "report/section-areas",
     ];
     let want = |id: &str| match id {
         "report/report" => 4,
+        // ADR 0112: glossary v3 names only the motifs EXP-0007 cleared (#122).
+        "core/glossary" => 3,
         id if v2.contains(&id) => 2,
         _ => 1,
     };
@@ -643,8 +644,8 @@ fn model_facing_copy_passes_the_validator_rules() {
         }
         checked += 1;
     }
-    // core/rules, core/tokens v1 and v2, and core/glossary v1 and v2 (reference text, not copy).
-    assert_eq!(checked, PROMPTS.len() - 5);
+    // core/rules, core/tokens v1 and v2, and core/glossary v1 to v3 (reference text, not copy).
+    assert_eq!(checked, PROMPTS.len() - 6);
 }
 
 /// The ruling of the T23 review: the shared rules block (what the chat includes too) carries no
@@ -729,6 +730,50 @@ fn v2_prompts_teach_the_colour_split_and_the_benchmark_words() {
     assert!(parsed["verdicts"]["fix"]["meaning"].is_string());
 }
 
+/// ADR 0112 (#122): the glossary the report and the chat send names no motif EXP-0007 hid, so the
+/// coach has no word for one; v2 stays as it was, for stored hashes.
+#[test]
+fn glossary_v3_names_only_the_cleared_motifs() {
+    let inner = |v: u32| -> Value {
+        let text = load_prompt("core/glossary", v).unwrap().text;
+        let json = text
+            .split_once(
+                "
+<glossary>",
+            )
+            .and_then(|(_, rest)| {
+                rest.strip_suffix(
+                    "</glossary>
+",
+                )
+            })
+            .expect("one glossary block");
+        serde_json::from_str(json).expect("the glossary is JSON")
+    };
+    let motifs = |g: &Value| -> Vec<String> {
+        g["kpis"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .filter_map(|k| k.strip_prefix("motif_miss_rate:").map(str::to_owned))
+            .collect()
+    };
+    let v3 = motifs(&inner(3));
+    assert_eq!(
+        v3.len(),
+        coaching_input::motifs::PLAYER_VISIBLE_MOTIFS.len()
+    );
+    assert!(
+        v3.iter()
+            .all(|t| coaching_input::motifs::is_player_visible(t)),
+        "{v3:?}"
+    );
+    assert_eq!(motifs(&inner(2)).len(), 16);
+    for set in [REPORT_PROMPT_SET, CHAT_PROMPT_SET] {
+        assert!(set.contains(&("core/glossary", 3)));
+    }
+}
+
 /// The report's first system block is the rules at their set versions (`core/tokens` v2), and
 /// the second ends with the glossary.
 #[test]
@@ -748,7 +793,7 @@ fn report_blocks_use_the_set_versions() {
     assert!(
         req.system[1]
             .text
-            .ends_with(load_prompt("core/glossary", 2).unwrap().text)
+            .ends_with(load_prompt("core/glossary", 3).unwrap().text)
     );
     let task = req.messages[0].content[1]["text"].as_str().unwrap();
     assert_eq!(

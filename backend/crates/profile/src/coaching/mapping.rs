@@ -368,8 +368,17 @@ mod tests {
             "Missed forks"
         );
         assert_eq!(
+            series_label(&SeriesKey::MotifAllowed(MotifTag::DiscoveredAttack), None),
+            "Allowed discovered attacks"
+        );
+        // A hidden motif (EXP-0007, #122) has no KPI row: the generic name, as on the pages.
+        assert_eq!(
             series_label(&SeriesKey::MotifAllowed(MotifTag::HangingPiece), None),
-            "Allowed free pieces"
+            "Allowed tactics"
+        );
+        assert_eq!(
+            series_label(&SeriesKey::MotifMissed(MotifTag::Pin), None),
+            "Missed tactics"
         );
         assert_eq!(
             series_label(&SeriesKey::MotifAllowed(MotifTag::MateIn1), None),

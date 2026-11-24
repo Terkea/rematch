@@ -1,7 +1,7 @@
 //! KPI catalogue (R2 Task 15, TS M2 Task 19, ADR-R2-7).
 //!
 //! 36 base rows (exactly [`BaseMetric::ALL`], in that order), then one `motif_miss_rate:<tag>`
-//! row per [`MotifTag`] and one `weakness:<key>` row per binomial [`WeaknessKey`]
+//! row per player-visible [`MotifTag`] (EXP-0007, [`MotifTag::is_player_visible`]) and one `weakness:<key>` row per binomial [`WeaknessKey`]
 //! ([`RANKABLE`]). Each row says how one game contributes: a value (averaged by `Mean`, the most
 //! recent taken by `Last`) or event/opportunity counts (pooled by `Rate`). `None` means the game
 //! carries no evidence for the row and stays out of its denominator.
@@ -351,8 +351,9 @@ const WEAKNESS_EXTRACT: [Extract; 17] = [
 const _: () = assert!(MOTIF_EXTRACT.len() == MotifTag::ALL.len());
 const _: () = assert!(WEAKNESS_EXTRACT.len() == RANKABLE.len());
 
-/// Total catalogue rows: 36 base + 16 motif + 17 weakness.
-pub const CATALOGUE_LEN: usize = BaseMetric::ALL.len() + MotifTag::ALL.len() + RANKABLE.len();
+/// Total catalogue rows: 36 base + 10 player-visible motif + 17 weakness.
+pub const CATALOGUE_LEN: usize =
+    BaseMetric::ALL.len() + coaching_input::motifs::PLAYER_VISIBLE_MOTIFS.len() + RANKABLE.len();
 
 /// Count-type `Mean` rows (an integer count per game): a zero-width bootstrap falls back to the
 /// exact Poisson (Garwood) interval of the total count.
@@ -484,6 +485,7 @@ fn build() -> Vec<KpiDefinition> {
         MotifTag::ALL
             .iter()
             .zip(MOTIF_EXTRACT)
+            .filter(|(t, _)| t.is_player_visible())
             .map(|(&t, extract)| KpiDefinition {
                 metric: MetricId::MotifMissRate(t),
                 area: TACTICS,
@@ -518,8 +520,8 @@ fn weakness_row(k: WeaknessKey, extract: Extract) -> KpiDefinition {
     }
 }
 
-/// The whole catalogue: base rows in [`BaseMetric::ALL`] order, then motif rows in
-/// [`MotifTag::ALL`] order, then weakness rows in [`RANKABLE`] order.
+/// The whole catalogue: base rows in [`BaseMetric::ALL`] order, then the player-visible motif
+/// rows in [`MotifTag::ALL`] order, then weakness rows in [`RANKABLE`] order.
 pub fn kpi_catalogue() -> &'static [KpiDefinition] {
     static CATALOGUE: OnceLock<Vec<KpiDefinition>> = OnceLock::new();
     CATALOGUE.get_or_init(build)
