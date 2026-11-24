@@ -45,7 +45,10 @@ fn the_manifest_names_the_engine_settings_and_the_new_versions() {
     assert_eq!(c["facts"]["engine_protocol"], "sf19-n1m-v1");
     assert_eq!(c["facts"]["engine_nodes"], 1_000_000);
     assert_eq!(c["facts"]["enrichment"]["multipv_nodes"], 300_000);
-    assert_eq!(c["facts"]["enrichment"]["multipv_protocol"], "sf19-n300k-mpv3-v1");
+    assert_eq!(
+        c["facts"]["enrichment"]["multipv_protocol"],
+        "sf19-n300k-mpv3-v1"
+    );
     assert_eq!(c["facts"]["engine_options"]["threads"], 1);
     assert_eq!(c["facts"]["engine_options"]["hash_mb"], 16);
     assert_eq!(c["facts"]["stockfish"]["release"], "sf_19");

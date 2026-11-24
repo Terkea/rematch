@@ -8,7 +8,7 @@ One entry per algorithm version, newest first. The id is `algo-<version>+<hash>`
 
 Each entry says what changed, why, the ADR, and the benchmark delta (the scorecard before and after; `cli bench compare` once it exists).
 
-## algo-4.0.0+0e93e92f1cae
+## algo-4.0.0+51733d23895f
 
 2026-11-24. Every position is searched at 1 million nodes instead of 300,000, the count EXP-0008 chose (#128).
 

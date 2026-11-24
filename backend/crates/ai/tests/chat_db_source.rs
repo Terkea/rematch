@@ -404,7 +404,14 @@ async fn position_reads_the_engine_line_of_the_games_own_protocol(pool: PgPool) 
         .await
         .unwrap();
     put_eval(&pool, START, "sf19-n300k-v1", 30, &["e2e4", "e7e5"]).await;
-    put_eval(&pool, START, engine::ANALYSIS_PROTOCOL, 25, &["d2d4", "d7d5"]).await;
+    put_eval(
+        &pool,
+        START,
+        engine::ANALYSIS_PROTOCOL,
+        25,
+        &["d2d4", "d7d5"],
+    )
+    .await;
     let src = ds(&pool, a, input);
     let p = src.get_position("li-a-old", 1).await.unwrap().unwrap();
     assert_eq!(p.pv, vec!["e2e4".to_owned(), "e7e5".to_owned()]);

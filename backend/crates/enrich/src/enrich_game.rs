@@ -31,9 +31,7 @@ use chess_core::board::Position;
 use chess_core::fen::fen_key;
 use chess_core::score::win_percent;
 use chess_core::{Color, MoveRecord, ParsedGame, PositionEval};
-use engine::{
-    AnalyseOptions, Analyser, AnalysisLine, DEFAULT_ANALYSIS_TIMEOUT, EngineError,
-};
+use engine::{AnalyseOptions, Analyser, AnalysisLine, DEFAULT_ANALYSIS_TIMEOUT, EngineError};
 use profile_core::board::{null_move_fen, piece_count};
 use profile_core::features::DIFFICULTY_MIN_PLY;
 use profile_core::types::{MultipvLine, RawMoveFeatures, ThreatProbe, Wdl};

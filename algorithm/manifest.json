@@ -31,7 +31,7 @@
         "backend/crates/analysis/src": "76e1a74c67917f5743bd85c77d0476656937f10493b96faf15e885e52f26fb5f",
         "backend/crates/chess-core/src": "4c2be1483a53de496a37d2dce3a1a63e44070049410cf5c9a0b1090bbd455abf",
         "backend/crates/engine/src": "bb29f3829fa88ff569c47e6f64e6fc7519be8113e168e27898cc541e7f2c85fc",
-        "backend/crates/enrich/src": "38974695f7d3c18f9be350c06e501304ab1beafe0b5d5bc6c2a2ba57e4e3f084"
+        "backend/crates/enrich/src": "68c6f5e432ca274e588723ca60c9f35e3adb07e96114e265f2f5d4c99dfe13e6"
       },
       "stockfish": {
         "asset": "stockfish-linux-x86-64-universal.tar.gz",
@@ -100,6 +100,6 @@
       "weekly_input_version": "weekly-input-v1"
     }
   },
-  "id": "algo-4.0.0+0e93e92f1cae",
+  "id": "algo-4.0.0+51733d23895f",
   "version": "4.0.0"
 }
