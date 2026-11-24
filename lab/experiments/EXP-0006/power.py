@@ -76,7 +76,7 @@ def main() -> int:
         return float((hi <= margin).mean()), float((lo > margin).mean())
 
     rec_hold, rec_beyond = guard(45, 0.63, True, a.MARGINS["recall_at_2"])
-    cl_hold, cl_beyond = guard(23, 0.2, False, a.MARGINS["clean_alarm"])
+    cl_hold, cl_beyond = guard(23, 0.2, False, 0.10)
     out = {
         "namespace": POWER_NS,
         "pilot": {
@@ -93,7 +93,7 @@ def main() -> int:
             "recall_holds": round(rec_hold, 4), "recall_beyond": round(rec_beyond, 4),
             "clean_alarm_holds": round(cl_hold, 4), "clean_alarm_beyond": round(cl_beyond, 4),
         },
-        "ship_power_approx": round(float(ship_prof.mean()) * rec_hold * cl_hold, 4),
+        "ship_power_approx_without_the_smoke_ci_rule": round(float(ship_prof.mean()) * rec_hold, 4),
     }
     Path(args.out).mkdir(parents=True, exist_ok=True)
     (Path(args.out) / "power.json").write_text(json.dumps(out, indent=2, sort_keys=True) + "\n", encoding="utf-8")

@@ -5,6 +5,8 @@ status: decided
 algorithm: algo-1.1.1+42d749f7c50b
 issue: 100
 updated: 2026-11-24
+live: false
+retired: closed unrun by the value gate; no branch of its rule could change the suites (review concern 1)
 ---
 
 - Closed unrun by the value gate: no branch of its decision rule could change the benchmark's suites, so it was not run (ADR 0107).

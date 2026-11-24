@@ -55,9 +55,11 @@ MARGINS = {
     "rho1_deviation": 0.05,
     "false_credible": 0.01,
     "recall_at_2": 0.10,
-    "clean_alarm": 0.10,
-    "top2_agreement": 0.25,
 }
+# The smoke suite's CI rule (`bench::results::regressions`), with `bench/baseline.json`'s
+# tolerances as they stood at registration; the challenger's smoke scorecard is checked against the
+# champion's from the same run.
+CI_TOLERANCE = {"recall_at_2": 0.1, "top1_precision": 0.2, "plan_hit_rate": 0.2, "coverage": 0.05, "top2_agreement": 0.25}
 # The Tier 1 run (section 7).
 ENGINES = 8
 G = 80
@@ -80,7 +82,7 @@ SEED_NAMES = [
 ]
 # The sha256 of sections 0 to 9 of preregistration.md as registered after the critic's review
 # (section 10 holds this file's own sha256); the run stops if they change (review concern 5).
-PREREG_SHA = "0" * 64
+PREREG_SHA = "95dc947ab9c206f3ee4a709c44f174db1179c86d38f1e8a6e4b1eb83a74da43b"
 
 
 def r6(x):
@@ -476,18 +478,18 @@ def tier1_statistics(exp1, t1: dict) -> dict:
     dc, loc, hic = exp1.newcombe_paired(cl["n11"], cl["n10"], cl["n01"], cl["n00"], exp1.z_of(GUARD_LEVEL))
     sm = t1["runs"]["smoke"]
     out = {
+        "smoke_ci_rule": {"failures": ci_rule(sm["scorecard"], sm["variant_scorecard"]), "tolerance": CI_TOLERANCE},
         "recall_at_2": {
             "players": sum(rec.values()), "table": rec, "difference": r6(float(d)),
             "ci80_difference": [r6(float(lo)), r6(float(hi))], "margin": MARGINS["recall_at_2"],
         },
         "clean_alarm": {
             "players": sum(cl.values()), "table": cl, "difference": r6(float(dc)),
-            "ci80_difference": [r6(float(loc)), r6(float(hic))], "margin": MARGINS["clean_alarm"],
+            "ci80_difference": [r6(float(loc)), r6(float(hic))],
         },
         "top2_agreement": {
             "champion": sm["scorecard"]["top2_agreement"], "challenger": sm["variant_scorecard"]["top2_agreement"],
             "worse_by": r6(sm["scorecard"]["top2_agreement"] - sm["variant_scorecard"]["top2_agreement"]),
-            "margin": MARGINS["top2_agreement"],
         },
     }
     # Descriptive: the churn EXP-0001 assumed (EXP-0005, closed unrun, review concern 1).
@@ -526,20 +528,39 @@ def tier1_statistics(exp1, t1: dict) -> dict:
     return out
 
 
+def ci_rule(was: dict, now: dict) -> list[str]:
+    """`bench::results::regressions` of the challenger's smoke scorecard against the champion's."""
+    out = []
+    for name in ("recall_at_2", "top1_precision", "plan_hit_rate", "top2_agreement"):
+        a, b = was.get(name), now.get(name)
+        if a is not None and b is not None and b < a - CI_TOLERANCE[name] - 1e-9:
+            out.append(f"{name} fell from {a:.3f} to {b:.3f}")
+    a, b = was.get("coverage"), now.get("coverage")
+    if a is not None and b is None:
+        out.append("coverage is no longer computed")
+    elif a is not None and abs(b - 0.8) > abs(a - 0.8) + CI_TOLERANCE["coverage"] + 1e-9:
+        out.append(f"coverage moved from {a:.3f} to {b:.3f}, further from 0.8")
+    if now["clean_top1_false_alarms"] > was["clean_top1_false_alarms"]:
+        out.append(f"clean-control false alarms rose from {was['clean_top1_false_alarms']} to {now['clean_top1_false_alarms']}")
+    if was["deterministic"] and not now["deterministic"]:
+        out.append("the same data no longer gives the same weaknesses")
+    return out
+
+
 def decide(prof: dict, t1s: dict) -> tuple[str, dict]:
     holds = {
         "rho1_deviation": prof["rho1_deviation"]["ci80"][1] <= MARGINS["rho1_deviation"],
         "false_credible": prof["false_credible"]["ci80"][1] <= MARGINS["false_credible"],
         "recall_at_2": t1s["recall_at_2"]["ci80_difference"][0] >= -MARGINS["recall_at_2"],
-        "clean_alarm": t1s["clean_alarm"]["ci80_difference"][1] <= MARGINS["clean_alarm"],
-        "top2_agreement": t1s["top2_agreement"]["worse_by"] <= MARGINS["top2_agreement"],
+        "smoke_ci_rule": not t1s["smoke_ci_rule"]["failures"],
     }
+    # A failed smoke CI rule blocks a ship but never rejects alone: it reads one clean player and
+    # 15 flawed ones (review concern 3).
     beyond = {
         "rho1_deviation": prof["rho1_deviation"]["ci80"][0] > MARGINS["rho1_deviation"],
         "false_credible": prof["false_credible"]["ci80"][0] > MARGINS["false_credible"],
         "recall_at_2": t1s["recall_at_2"]["ci80_difference"][1] < -MARGINS["recall_at_2"],
-        "clean_alarm": t1s["clean_alarm"]["ci80_difference"][0] > MARGINS["clean_alarm"],
-        "top2_agreement": t1s["top2_agreement"]["worse_by"] > MARGINS["top2_agreement"],
+        "smoke_ci_rule": False,
     }
     p_lo, p_hi = prof["primary"]["ci97_5"]
     d_lo = prof["delta_D"]["ci97_5"][0]
@@ -614,11 +635,11 @@ def main() -> int:
         "per_rule": prof["per_rule"],
         "guards": {
             "rho1_deviation": prof["rho1_deviation"], "false_credible": prof["false_credible"],
-            "recall_at_2": t1s["recall_at_2"], "clean_alarm": t1s["clean_alarm"],
-            "top2_agreement": t1s["top2_agreement"], **guards,
+            "recall_at_2": t1s["recall_at_2"], "smoke_ci_rule": t1s["smoke_ci_rule"], **guards,
         },
         "decision": decision,
         "fixed": fixed,
+        "reported": {"clean_alarm": t1s["clean_alarm"], "top2_agreement": t1s["top2_agreement"]},
         "exploratory": {"rho_half_coverage": prof["rho_half_coverage"], "issue13": prof["issue13"], "churn": t1s["churn"]},
         "tier1": {"scorecards": t1["runs"], "positive_control_moved_estimates": t1["positive_control_moved_estimates"], "between_runs": t1["between_runs"], "players": t1["players"]},
         "compute": budget.record(),
