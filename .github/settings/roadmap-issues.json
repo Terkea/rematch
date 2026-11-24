@@ -1104,6 +1104,32 @@
     ]
   },
   {
+    "title": "Choose the weekly benchmark budget for a 0.1 change in recall at 2",
+    "milestone": "v0.3 The evaluation lab",
+    "parent": "Epic: the evaluation lab: every layer against its ground truth",
+    "size": "S",
+    "labels": ["type/chore", "area/infra", "roadmap"],
+    "body": [
+      "## Problem",
+      "",
+      "EXP-0001 found that the weekly full suite (8,960 games, 22 players a flaw) detects a change of 0.15",
+      "in recall at 2 80% of the time, not the 0.1 the spec asks for. Detecting 0.1 needs about 16,000",
+      "games a week at 80 games a player, about 147 minutes on the documented machine",
+      "(`lab/experiments/EXP-0001/decision.md`, Next 2). This is a budget choice, not an experiment.",
+      "",
+      "## Acceptance criteria",
+      "",
+      "- [ ] The owner picks one: raise the weekly budget to about 16,000 games, split the full suite",
+      "      across parallel jobs in `bench.yml`, or keep 9,000 games and register 0.15 as the target.",
+      "- [ ] The choice is an ADR; `backend/crates/bench/src/suite.rs`, `bench.yml` and `docs/benchmark.md`",
+      "      follow it, and EXP-0005 sizes the suite at the measured churn on top of it.",
+      "",
+      "## Pointers",
+      "",
+      "- `lab/experiments/EXP-0001/decision.md`, `.github/workflows/bench.yml`, ADR 0100, #91"
+    ]
+  },
+  {
     "title": "EXP-0006: fix the prior and the weighting of the 80% ranges",
     "milestone": "v0.3 The evaluation lab",
     "parent": "Epic: the scientific method for the algorithm",
