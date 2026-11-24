@@ -398,6 +398,54 @@ class JudgeResponse(Snake):
     games: list[JudgedGame]
 
 
+class ObserveGame(Snake):
+    """A Lichess game for `observe` (EXP-0009): Lichess's evaluation after each ply, White's
+    point of view, and the sides to observe."""
+
+    id: str
+    pgn: str
+    base_seconds: int
+    increment_seconds: int
+    lichess_evals: list[EngineScore | None]
+    sides: list[Literal["white", "black"]]
+    white_rating: int | None = None
+    black_rating: int | None = None
+    termination: str | None = None
+
+
+class ObserveRequest(Snake):
+    schema_version: Literal["lab-v1"] = SCHEMA_VERSION
+    games: list[ObserveGame]
+    searches: list[GivenSearch]
+
+
+class KeyCount(Snake):
+    events: int
+    opportunities: int
+
+
+class ObservedSide(Snake):
+    color: Literal["white", "black"]
+    accuracy: float | None
+    moves: int
+    inaccuracies: int
+    mistakes: int
+    blunders: int
+    keys: dict[str, KeyCount]
+
+
+class ObservedGame(Snake):
+    id: str
+    error: str | None
+    sides: list[ObservedSide]
+
+
+class ObserveResponse(Snake):
+    schema_version: Literal["lab-v1"]
+    algorithm_id: str
+    games: list[ObservedGame]
+
+
 #: Every message of the schema, by its `$defs` name.
 MESSAGES: dict[str, type[BaseModel]] = {
     "AnalyseRequest": AnalyseRequest,
@@ -414,6 +462,8 @@ MESSAGES: dict[str, type[BaseModel]] = {
     "EvaluateResponse": EvaluateResponse,
     "JudgeRequest": JudgeRequest,
     "JudgeResponse": JudgeResponse,
+    "ObserveRequest": ObserveRequest,
+    "ObserveResponse": ObserveResponse,
 }
 
 #: Every object of the schema that a model mirrors field for field.
@@ -438,4 +488,8 @@ OBJECTS: dict[str, type[BaseModel]] = {
     "GivenSearch": GivenSearch,
     "JudgedMove": JudgedMove,
     "JudgedGame": JudgedGame,
+    "ObserveGame": ObserveGame,
+    "KeyCount": KeyCount,
+    "ObservedSide": ObservedSide,
+    "ObservedGame": ObservedGame,
 }

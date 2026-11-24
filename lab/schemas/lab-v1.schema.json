@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/Terkea/rematch/lab/schemas/lab-v1.schema.json",
   "title": "Rematch lab bridge, lab-v1",
-  "description": "The JSON of `cli lab analyse|profile|rank|tag-motifs|positions|evaluate|judge` (ADR 0106). Validate one message with {\"$ref\": \"#/$defs/<Message>\"} next to these $defs. The envelope and the lab's own objects are snake_case; the algorithm's own types (WeaknessEstimate, BandReferenceStat, RankedWeakness) keep their camelCase serialisation.",
+  "description": "The JSON of `cli lab analyse|profile|rank|tag-motifs|positions|evaluate|judge|observe` (ADR 0106). Validate one message with {\"$ref\": \"#/$defs/<Message>\"} next to these $defs. The envelope and the lab's own objects are snake_case; the algorithm's own types (WeaknessEstimate, BandReferenceStat, RankedWeakness) keep their camelCase serialisation.",
   "$defs": {
     "SchemaVersion": { "const": "lab-v1" },
     "AlgorithmId": {
@@ -626,6 +626,86 @@
         "schema_version": { "$ref": "#/$defs/SchemaVersion" },
         "algorithm_id": { "$ref": "#/$defs/AlgorithmId" },
         "games": { "type": "array", "items": { "$ref": "#/$defs/JudgedGame" } }
+      }
+    },
+    "ObserveGame": {
+      "description": "A Lichess game for observe (EXP-0009): Lichess's evaluation after each ply, White's point of view, and the sides to observe.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "pgn", "base_seconds", "increment_seconds", "lichess_evals", "sides"],
+      "properties": {
+        "id": { "type": "string" },
+        "pgn": { "type": "string" },
+        "base_seconds": { "type": "integer", "minimum": 0 },
+        "increment_seconds": { "type": "integer", "minimum": 0 },
+        "lichess_evals": {
+          "type": "array",
+          "items": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/EngineScore" }] }
+        },
+        "sides": { "type": "array", "items": { "enum": ["white", "black"] } },
+        "white_rating": { "type": ["integer", "null"] },
+        "black_rating": { "type": ["integer", "null"] },
+        "termination": { "type": ["string", "null"] }
+      }
+    },
+    "ObserveRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "games", "searches"],
+      "properties": {
+        "schema_version": { "$ref": "#/$defs/SchemaVersion" },
+        "games": { "type": "array", "items": { "$ref": "#/$defs/ObserveGame" } },
+        "searches": { "type": "array", "items": { "$ref": "#/$defs/GivenSearch" } }
+      }
+    },
+    "KeyCount": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["events", "opportunities"],
+      "properties": {
+        "events": { "$ref": "#/$defs/Count" },
+        "opportunities": { "$ref": "#/$defs/Count" }
+      }
+    },
+    "ObservedSide": {
+      "description": "One side of an observed game: its accuracy, judgement counts and the keys whose detectors need no enrichment (bench::observe::EVAL_ONLY_KEYS) with at least one opportunity.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["color", "accuracy", "moves", "inaccuracies", "mistakes", "blunders", "keys"],
+      "properties": {
+        "color": { "enum": ["white", "black"] },
+        "accuracy": { "type": ["number", "null"] },
+        "moves": { "$ref": "#/$defs/Count" },
+        "inaccuracies": { "$ref": "#/$defs/Count" },
+        "mistakes": { "$ref": "#/$defs/Count" },
+        "blunders": { "$ref": "#/$defs/Count" },
+        "keys": {
+          "type": "object",
+          "propertyNames": {
+            "enum": ["W4.missed", "W4.allowed", "W5", "W6", "W7.traps", "W7.prep", "W9a", "W9b"]
+          },
+          "additionalProperties": { "$ref": "#/$defs/KeyCount" }
+        }
+      }
+    },
+    "ObservedGame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "error", "sides"],
+      "properties": {
+        "id": { "type": "string" },
+        "error": { "type": ["string", "null"] },
+        "sides": { "type": "array", "items": { "$ref": "#/$defs/ObservedSide" } }
+      }
+    },
+    "ObserveResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "algorithm_id", "games"],
+      "properties": {
+        "schema_version": { "$ref": "#/$defs/SchemaVersion" },
+        "algorithm_id": { "$ref": "#/$defs/AlgorithmId" },
+        "games": { "type": "array", "items": { "$ref": "#/$defs/ObservedGame" } }
       }
     }
   }

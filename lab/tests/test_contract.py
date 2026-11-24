@@ -180,6 +180,34 @@ def test_positions_and_judge_round_trip() -> None:
     assert judged.games[0].lichess_used == 6
 
 
+def test_observe_counts_the_eval_only_keys_from_lichess_evaluations() -> None:
+    clocked = (
+        '[Event "t"]\n[Result "*"]\n\n1. e4 { [%clk 0:10:00] } e5 { [%clk 0:10:00] } '
+        "2. Nf3 { [%clk 0:09:58] } Nc6 { [%clk 0:09:57] } 3. Bc4 { [%clk 0:09:55] } "
+        "Nd4 { [%clk 0:09:50] } *\n"
+    )
+    evals = [models.EngineScore(cp=20)] * 5 + [models.EngineScore(cp=400)]
+    start = rematch_lab.positions([models.DepthGame(id="s", pgn=OPEN_GAME)]).games[0].fens[0]
+    req = models.ObserveRequest(
+        games=[
+            models.ObserveGame(
+                id="open", pgn=clocked, base_seconds=600, increment_seconds=0,
+                lichess_evals=evals, sides=["black"],
+            ),
+            models.ObserveGame(
+                id="gap", pgn=clocked, base_seconds=600, increment_seconds=0,
+                lichess_evals=[None] * 6, sides=["white"],
+            ),
+        ],
+        searches=[models.GivenSearch(fen=start, score=models.EngineScore(cp=20))],
+    )
+    out = rematch_lab.observe(req)
+    black = out.games[0].sides[0]
+    assert (black.blunders, black.keys["W7.traps"].events) == (1, 1)
+    assert "W1" not in black.keys
+    assert out.games[1].error is not None and out.games[1].sides == []
+
+
 def test_an_engine_score_is_exactly_one_of_cp_or_mate() -> None:
     assert json.loads(models.EngineScore(mate=-3).model_dump_json()) == {"mate": -3}
     with pytest.raises(ValueError):

@@ -9,8 +9,9 @@ use std::path::PathBuf;
 
 use bench::depth::{EvaluateOptions, EvaluateRequest, JudgeRequest, PositionsRequest};
 use bench::lab::{AnalyseOptions, AnalyseRequest, ProfileRequest, RankRequest, TagMotifsRequest};
+use bench::observe::ObserveRequest;
 
-pub const LAB_USAGE: &str = "usage: cli lab analyse|profile|rank|tag-motifs|positions|evaluate|judge \
+pub const LAB_USAGE: &str = "usage: cli lab analyse|profile|rank|tag-motifs|positions|evaluate|judge|observe \
      < request.json > response.json";
 
 /// The id of the algorithm that answers: this build's manifest id (ADR 0105), the same one every
@@ -50,7 +51,8 @@ pub fn run_pure(cmd: &str, input: &str) -> anyhow::Result<String> {
     }
 }
 
-/// `positions` or `judge` (EXP-0008) on a request string: pure, no engine and no database.
+/// `positions`, `judge` (EXP-0008) or `observe` (EXP-0009) on a request string: pure, no engine
+/// and no database.
 pub async fn run_depth(cmd: &str, input: &str) -> anyhow::Result<String> {
     match cmd {
         "positions" => to_output(
@@ -59,6 +61,9 @@ pub async fn run_depth(cmd: &str, input: &str) -> anyhow::Result<String> {
         "judge" => {
             to_output(&bench::depth::judge(&parse::<JudgeRequest>(input)?, algorithm_id()).await?)
         }
+        "observe" => to_output(
+            &bench::observe::observe(&parse::<ObserveRequest>(input)?, algorithm_id()).await?,
+        ),
         _ => anyhow::bail!("{LAB_USAGE}"),
     }
 }
@@ -78,7 +83,14 @@ pub async fn run_lab(
     };
     if !matches!(
         cmd,
-        "analyse" | "profile" | "rank" | "tag-motifs" | "positions" | "evaluate" | "judge"
+        "analyse"
+            | "profile"
+            | "rank"
+            | "tag-motifs"
+            | "positions"
+            | "evaluate"
+            | "judge"
+            | "observe"
     ) {
         print_error(LAB_USAGE);
         return 1;
@@ -136,7 +148,7 @@ pub async fn run_lab(
                 .and_then(|r| to_output(&r)),
             Err(e) => Err(e),
         }
-    } else if matches!(cmd, "positions" | "judge") {
+    } else if matches!(cmd, "positions" | "judge" | "observe") {
         run_depth(cmd, &input).await
     } else {
         run_pure(cmd, &input)

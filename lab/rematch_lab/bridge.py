@@ -27,6 +27,8 @@ from .models import (
     EvaluateResponse,
     JudgeRequest,
     JudgeResponse,
+    ObserveRequest,
+    ObserveResponse,
     MotifLine,
     PlayerFacts,
     PlayerProfile,
@@ -210,6 +212,16 @@ def judge(req: JudgeRequest) -> JudgeResponse:
     """Each game judged on the given searches through `evaluate_game`, `build_move_records` and
     `game_accuracy`, as the `analyse-game` job does (EXP-0008). Pure."""
     return JudgeResponse.model_validate(lab_call("judge", req, "JudgeRequest", "JudgeResponse"))
+
+
+def observe(req: ObserveRequest) -> ObserveResponse:
+    """Each Lichess game's weakness observations from Lichess's own evaluations, through the
+    production feature path with no enrichment (`bench::observe`, EXP-0009): accuracy, judgement
+    counts and the keys whose detectors need no enrichment input. Pure."""
+    return ObserveResponse.model_validate(
+        lab_call("observe", req, "ObserveRequest", "ObserveResponse")
+    )
+
 
 def algorithm(which: str | None = None) -> dict[str, Any]:
     """`cli algo show --json` (ADR 0105): this build's manifest, or the one `which` names (an

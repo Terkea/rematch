@@ -2,6 +2,7 @@
 //! headers, sampling, parallel parse, explorer build, reference selection and Syzygy fetch.
 
 pub mod bench;
+pub mod cohort;
 pub mod config;
 pub mod download;
 pub mod explorer_build;
