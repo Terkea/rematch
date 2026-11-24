@@ -10,6 +10,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from conftest import clean_git_env
 
 from rematch_lab import arena, experiments, stats
 
@@ -557,6 +558,7 @@ def test_verify_without_the_external_input_compares_the_committed_record(
 def git(repo: Path, *args: str) -> str:
     return subprocess.run(
         ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t", *args],
+        env=clean_git_env(),
         capture_output=True,
         text=True,
         check=True,
