@@ -3943,7 +3943,7 @@
       "  first fits a cheaper suite in 9,000 games (about 0.03, computed before the run), we will resize",
       "  the full suite to what the rule picks; if it lies wholly above 0.10, we will re-register the",
       "  weekly suite's detectable change; otherwise the suites stay.",
-      "- Expected cost: the full and smoke suites side by side (`ALGO_VARIANT`, ADR 0110), 10,240 games,",
+      "- Expected cost: the full and smoke suites side by side (`ALGO_VARIANT`, ADR 0111), 10,240 games,",
       "  about 70 minutes with 8 engines; no AI tokens; about a day of maintainer time.",
       "- Value score: impact 2 × uncertainty 3 ÷ cost 2 = 3",
       "- Cheaper alternative? EXP-0005 tried the pilot and the smoke suite (28 reference hits) and was",

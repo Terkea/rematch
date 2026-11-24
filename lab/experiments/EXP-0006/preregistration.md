@@ -116,4 +116,4 @@ On a ship: `PriorRule::CHALLENGER` becomes production's rule as `algo-2.0.0` (a 
 
 ## 11. Deviations
 
-None.
+1. 2026-11-24, after the results: section 9 cites "ADR 0110"; that ADR is now 0111 (`docs/decisions/0111-prior-rule-variants-and-the-80-percent-ranges.md`), renumbered after a clash on main. Nothing in the analysis changes.

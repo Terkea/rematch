@@ -1,4 +1,4 @@
-//! `ALGO_VARIANT` side by side (ADR 0110): the variant's prior rule is process-wide, so these
+//! `ALGO_VARIANT` side by side (ADR 0111): the variant's prior rule is process-wide, so these
 //! tests live in their own binary (their own process) and run one after another in one test, so no
 //! other build can see the rule while it is set.
 

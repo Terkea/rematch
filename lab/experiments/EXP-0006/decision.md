@@ -56,7 +56,7 @@ Coverage of the 80% range for players two to eight times their peers' rate in od
 
 ## What changes
 
-- `backend/crates/profile-core/src/stats/variant.rs`: `PriorRule::CHAMPION` is the challenger's rule; the old one is `PriorRule::ALGO_1` (`ALGO_VARIANT=algo-1`). `algo-2.0.0`, with its `algorithm/CHANGELOG.md` entry and ADR 0110.
+- `backend/crates/profile-core/src/stats/variant.rs`: `PriorRule::CHAMPION` is the challenger's rule; the old one is `PriorRule::ALGO_1` (`ALGO_VARIANT=algo-1`). `algo-2.0.0`, with its `algorithm/CHANGELOG.md` entry and ADR 0111.
 - The replay goldens and the lab's golden profile response are regenerated; `bench/baseline.json` is rebuilt from a smoke run of `algo-2.0.0`.
 - #13 is not closed: its remaining case is W1 at 30 games against peers far below the player.
 

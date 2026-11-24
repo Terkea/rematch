@@ -1,6 +1,6 @@
-# 0110. Prior-rule variants behind `ALGO_VARIANT`, and the fix for the 80% ranges
+# 0111. Prior-rule variants behind `ALGO_VARIANT`, and the fix for the 80% ranges
 
-Date: 2026-11-24. Status: accepted (lane `exp56`, branch `exp/0005-0006`). Builds on ADRs 0100, 0101, 0104, 0105 and 0106. Experiments EXP-0005 (#100) and EXP-0006 (#101), for #13.
+Date: 2026-11-24. Status: accepted (lane `exp56`, branch `exp/0005-0006`). Builds on ADRs 0100, 0101, 0104, 0105 and 0106. Experiments EXP-0005 (#100) and EXP-0006 (#101), for #13. Written as ADR 0109, then 0110; the `algo-2.0.0` source comments in `profile-core` and EXP-0006's registration (section 9) still say ADR 0110, since changing them would move the manifest's digest or a frozen section.
 
 ## Context
 
