@@ -1,0 +1,5 @@
+# The confirmatory run reads the sample, the cell counts and the pinned snapshot (external: in the
+# data directory, git-ignored; see preregistration.md section 7).
+3a8aacad14ad50acec9edfa8cf86d586ae8101264574489e50b92a53c9367ca8  sample.csv
+86ebff169b3976f9cde717e83678a11eeecedafc585ae2f475134401f3bcc846  strata.csv
+8ce98180bcb7cb60f3f51f12afdbe6a4fd294d8aaf4f1410e8c25e85ac78fdc9  external:lichess-puzzles/lichess_db_puzzle.csv

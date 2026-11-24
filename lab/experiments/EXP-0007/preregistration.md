@@ -15,7 +15,7 @@
 - Expected cost: no engine and no AI tokens: `cli lab tag-motifs` replays each puzzle's own solution through the production feature derivation, CPU seconds to minutes on one core. A one-off download of the puzzle database (309,751,173 bytes). About a day of maintainer time, mostly the hand check of section 7.
 - Value score: impact 3 × uncertainty 3 ÷ cost 1 = 9
 - Cheaper alternative? No. The unit tests' hand-built lines (`backend/crates/profile-core/tests/motifs.rs`) were written by the authors of the rules, so they cannot measure them, and no other labelled set of real positions exists at this scale. The sample is the power analysis's, not the largest the data allow.
-- Compute budget: set from section 6 before the run (below); cap 150%
+- Compute budget: 23,817 lines tagged by `cli lab tag-motifs` (the size of `sample.csv`, section 6) in 12 cli calls of at most 2,000 lines; no engine nodes, no profile calls, no AI tokens; cap 150%
 
 ## 1. Question
 
@@ -80,20 +80,22 @@ From `cli algo show` on the cli built from this branch. The bench crate gains `b
 
 - Method: a simulation of the section 9 rule under the section 7 design (`analysis.py power`), 2,000 replicates a size, seed `power/simulation`, two-sided Bonferroni intervals over the 30 intervals (z = 3.14).
 - Inputs: the population's cell sizes and label shares (exact, `strata.csv`); each tag's rates of tagging a labelled and an unlabelled puzzle in each stratum, from the pilot (development data, smoothed as (k + 0.5)/(n + 1)); for the precision scenario the false-positive rates are scaled so that the population precision is 0.90, for the recall scenario the true-positive rates are scaled (capped at 1) so that the recall is 0.65.
-- Result: set by the pilot, before the run.
-- Sensitivity: the power of every tag at each m on the grid 25 to 400 (`power.json`, `figures/power.png`).
+- Result: the allocation n = min(N, max(m, ⌈f·N⌉)) a cell of N puzzles, with m = 200 and f = 0.01: 19,870 audience puzzles (23,817 with the slice above, `sample.csv`). It is the smallest design on the grid m ∈ {50, 100, 150, 200, 300} × f ∈ {0, 0.005, 0.01, 0.02, 0.03, 0.05}, ordered by its audience puzzles, whose worst tag reaches 0.80: the worst is `smotheredMate`'s precision, 0.84 (95% Monte Carlo ±0.016); `pin` 0.93, `deflection` 0.96, every other tag at least 0.98 for precision, and every tag 1.00 for recall. The next smaller design (m = 150, f = 0.01, 18,293) reaches 0.80 for its worst tag only at 0.799. A tag whose true precision is 0.70 is shown in none of the 2,000 replicates for any tag (the false-show rate), at this design.
+- Equal allocation (f = 0) is not enough at any m on the grid: a cell of the `none` stratum holds up to 223,180 puzzles, so one of its puzzles weighs about a thousand times one of a rare stratum's, and a single false positive there moves a precision by several points. The fraction f bounds the weights at 1/f.
+- Sensitivity: the power of every tag at every design of the grid (`power.json`, `figures/power.png`). The simulated coverage of the Bonferroni precision interval at a true precision of 0.90 is at least 0.99 for 12 tags, 0.94 for `mateIn4Plus` and 0.86 for `smotheredMate` (nominal 0.998): Kish's effective sample size understates the variance when a few heavy-weight false positives decide a rare tag's precision. For those two tags a "trusted" verdict carries that caveat. The scenario puts the false positives where the pilot's smoothed rates put them, which for a tag with no pilot false positive is an assumption ((0 + 0.5)/(n + 1) in every stratum).
+- The pilot (`pilot/pilot.json`) is 1,874 puzzles, 25 a cell (24 in the one cell with fewer), all tagged, none excluded.
 
 ## 7. Design
 
 - Unit of analysis: the puzzle. Each comes from a different game (6,193,530 puzzles, 6,193,530 distinct game URLs in the snapshot), so no two units share a game.
 - Population: the puzzles of the snapshot played at least 1,000 times with a popularity of at least 50 and a rating below 2400.
 - Strata and blocks: rating bands A1 (below 1000), A2 (1000 to 1399), A3 (1400 to 1699), A4 (1700 to 1999), the audience; and S (2000 to 2399), the slice above. Within each band, a puzzle's stratum is its rarest scored truth label in the population (ties by name), or `none` when it has none. A cell is a stratum in a band.
-- Sample: up to m puzzles a cell, at random within the cell; a cell smaller than m is taken whole. Each puzzle weighs its cell's population (less the pilot) over its cell's sample, so every estimate is a population estimate over the audience (Horvitz-Thompson). m comes from section 6.
+- Sample: min(N, max(m, ⌈f·N⌉)) puzzles of a cell of N (the population less the pilot), at random within the cell, with m = 200 and f = 0.01 (section 6); 23,817 puzzles in 75 cells (`sample.csv`). Each puzzle weighs its cell's N over its cell's sample, so every estimate is a population estimate over the audience (Horvitz-Thompson).
 - Seeds: `sample/pilot`, `sample/confirmatory`, `pilot/hand-check`, `power/simulation` (`rematch_lab.experiments.seed`); no other source of randomness.
 - Development and confirmatory data: the pilot, 25 puzzles a cell (seed `sample/pilot`), is development data: it sets the power analysis and the hand check, and is excluded from the confirmatory sample. The decision rule, the floors and the minimum effects (sections 4, 5 and 9) were committed before the pilot ran.
 - The hand check: from the pilot, seeded (`pilot/hand-check`), up to 4 puzzles a tag that we tag and Lichess does not label, and 2 that Lichess labels and we do not tag, each judged by hand from the position and the solution: a label gap (the motif is in the solution, Lichess did not name it), a tagger error, or unclear. The verdicts are in `hand-check.md`. A tag whose checked false positives are at least half label gaps is label-limited (section 9).
 - Held fixed: the snapshot, the filters, `LINE_MAX_PLIES` 8, the cli of section 3.
-- Data: the Lichess puzzle database, `https://database.lichess.org/lichess_db_puzzle.csv.zst`, downloaded 2026-11-24 01:09 UTC (Last-Modified 2026-11-01 07:57:40 GMT), 309,751,173 bytes, sha256 `7b0d235fa40cfd7fdb7df1fec56a96b3b6ee1496b32ed2eb05be90d0ebf94253`; decompressed with zstd 1.5.7 to `lichess_db_puzzle.csv`, 1,177,486,537 bytes, sha256 `8ce98180bcb7cb60f3f51f12afdbe6a4fd294d8aaf4f1410e8c25e85ac78fdc9`, the external input of `inputs.sha256` (in `data/lichess-puzzles/`, git-ignored; Lichess replaces the file every month, so the snapshot is kept by its checksum). Only the sample's ids (`sample-pilot.csv`, `sample.csv`) and the cell counts (`strata.csv`) are committed. No real chess.com player's games.
+- Data: the Lichess puzzle database, `https://database.lichess.org/lichess_db_puzzle.csv.zst`, downloaded 2026-11-24 01:09 UTC (Last-Modified 2026-11-01 07:57:40 GMT), 309,751,173 bytes, sha256 `7b0d235fa40cfd7fdb7df1fec56a96b3b6ee1496b32ed2eb05be90d0ebf94253`; decompressed with zstd 1.5.7 to `lichess_db_puzzle.csv`, 1,177,486,537 bytes, sha256 `8ce98180bcb7cb60f3f51f12afdbe6a4fd294d8aaf4f1410e8c25e85ac78fdc9`, the external input of `inputs.sha256` (in `data/lichess-puzzles/`, git-ignored; Lichess replaces the file every month, so the snapshot is kept by its checksum). Only the sample's ids (`sample-pilot.csv`, `sample.csv`) and the cell counts (`strata.csv`: each cell's population, its pilot and the population count of each truth label) are committed, with their sha256 in `inputs.sha256`. The population is 1,826,817 puzzles (1,580,025 in the audience). No real chess.com player's games.
 - Leakage controls: the pilot and the confirmatory sample are disjoint; nothing the confirmatory run computes feeds back into the design.
 - Reuse: none; no engine evaluation is needed.
 
@@ -122,7 +124,7 @@ Measurement, per tag, replacing the template's band rule: the action for a tag t
 ## 10. Analysis code
 
 - Entry point: `lab/experiments/EXP-0007/analysis.py` (`python analysis.py --out DIR` writes `DIR/results.json`, with the `algorithm_id` it ran on, and `DIR/figures/`; its `sample`, `pilot` and `power` stages ran before registration, in that order)
-- Analysis code sha256: `set at registration`
+- Analysis code sha256: `0ddc38369fc9cbf908929fa006280d5da7af97e23513a867ef1714d1ef2fc701`
 
 ## 11. Deviations
 
