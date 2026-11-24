@@ -15,10 +15,16 @@ export const STATUS_LABEL = {
 const FIELDS = ["id", "title", "status", "algorithm", "issue", "updated"];
 
 /** Parses a summary.md: flat `key: value` front matter and the hyphen bullets of the body. */
+/**
+ * @typedef {{ id: string, title: string, status: string, algorithm: string, issue: string,
+ *   updated: string, rerun?: string, live: boolean, bullets: string[] }} Summary
+ * @returns {Summary}
+ */
 export function parseSummary(text, folder = "") {
   const src = text.replace(/\r\n/g, "\n");
   const m = /^---\n([\s\S]*?)\n---\n?([\s\S]*)$/.exec(src);
   if (!m) throw new Error(`${folder}/summary.md: front matter is missing`);
+  /** @type {Record<string, string>} */
   const meta = {};
   for (const line of (m[1] ?? "").split("\n")) {
     const kv = /^([a-z_]+):\s*(.*)$/.exec(line.trim());
@@ -129,7 +135,10 @@ export function experimentPage(e) {
   ].join("\n");
 }
 
-/** lab/leaderboard.json, or null when the lab has none. */
+/**
+ * lab/leaderboard.json, or null when the lab has none.
+ * @returns {{ schema: string, specs?: Record<string, any[]>, records: any[] } | null}
+ */
 export function loadLeaderboard(labDir) {
   const path = join(labDir, "leaderboard.json");
   if (!existsSync(path)) return null;
@@ -235,6 +244,11 @@ export function leaderboardSection(exps, board, champion) {
   ].join("\n");
 }
 
+/**
+ * @param {any[]} exps
+ * @param {any} [board]
+ * @param {string | null} [champion]
+ */
 export function experimentsIndex(exps, board = null, champion = null) {
   const intro =
     "An experiment asks one question about the recommendation algorithm, with the hypothesis, the metric and the decision rule committed before anything runs. Whatever the result, it is decided by that rule and published. The method is in [How Rematch is evaluated](" +
