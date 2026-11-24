@@ -3,8 +3,9 @@ name: Release
 # use the PR title), it keeps one release PR open with the next version and its CHANGELOG.md
 # entry. Merging that PR tags vX.Y.Z and publishes a GitHub Release, marked prerelease while the
 # version is 0.y.z (beta). 1.0.0 is the MVP: a maintainer decision, never automatic.
-# When a Release is published, the images job builds, smoke-tests, pushes and signs the images
-# and attaches the release assets (release-images.yml, ADR 0098).
+# When a Release is published, the arena job checks every live experiment against the release
+# before it (lab.yml, ADR 0109), then the images job builds, smoke-tests, pushes and signs the
+# images and attaches the release assets (release-images.yml, ADR 0098).
 on:
   push:
     branches: [main]
@@ -35,10 +36,22 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
+  # The arena on the release (ADR 0109): every live experiment, the release's algorithm against
+  # the release before it. A clear regression fails it and holds the images back; the emergency
+  # override is an ADR and an entry in lab/overrides.json (docs/evaluation.md).
+  arena:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/lab.yml
+    with:
+      scope: release
+
   # A Release made with GITHUB_TOKEN starts no `release: published` workflow, so the images are
   # built from here. These are the most the called jobs may use; each asks for less.
   images:
-    needs: release-please
+    needs: [release-please, arena]
     if: needs.release-please.outputs.release_created == 'true'
     permissions:
       contents: write

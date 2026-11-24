@@ -1,2 +1,45 @@
 # The maintainer reviews every change (GOVERNANCE.md).
 * @Terkea
+
+# Sensitive paths (ADR 0108): code that runs in CI or on a maintainer's machine, what ships, and
+# what steers an AI agent. The same list as scripts/github/sensitive-paths.mjs, whose check flags
+# them on every outside pull request. Owned explicitly, so a later rule above can never hand
+# them to someone else.
+/.github/ @Terkea
+Dockerfile* @Terkea
+*.dockerignore @Terkea
+docker-compose*.yml @Terkea
+/deploy/ @Terkea
+/docker/ @Terkea
+pnpm-lock.yaml @Terkea
+Cargo.lock @Terkea
+uv.lock @Terkea
+requirements*.lock @Terkea
+package.json @Terkea
+pnpm-workspace.yaml @Terkea
+.npmrc @Terkea
+Cargo.toml @Terkea
+deny.toml @Terkea
+rust-toolchain.toml @Terkea
+pyproject.toml @Terkea
+.cargo/ @Terkea
+.gitattributes @Terkea
+build.rs @Terkea
+scripts/ @Terkea
+/.vscode/ @Terkea
+/.devcontainer/ @Terkea
+CLAUDE.md @Terkea
+AGENTS.md @Terkea
+.claude/ @Terkea
+.mcp.json @Terkea
+/backend/crates/ai/prompts/ @Terkea
+/services/ai-sidecar/src/options.ts @Terkea
+/services/ai-sidecar/src/local.ts @Terkea
+/services/ai-sidecar/src/local-env.ts @Terkea
+/services/ai-sidecar/src/tools.ts @Terkea
+/services/ai-sidecar/src/auth.ts @Terkea
+/algorithm/ @Terkea
+/lab/leaderboard.json @Terkea
+/lab/overrides.json @Terkea
+/lab/experiments/*/arena.py @Terkea
+/SECURITY.md @Terkea

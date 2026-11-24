@@ -12,6 +12,9 @@
 //! 3. [`rank`] (rates to a recommendation): `rank_weaknesses`, the ranking floor and the contract
 //!    mapping (`ranked_weakness`) up to `LIMITS.weaknesses`, the coach's computed focuses and the
 //!    drills of each, exactly as the CoachingInput builder and the report context compute them.
+//! 4. [`tag_motifs`] (lines to motif tags, EXP-0007): each line goes through the production
+//!    `derive_move_features` as a move's best line, which calls the motif tagger (`tag_line`), and
+//!    the stored `best` analysis comes back. Pure: no engine, no database.
 //!
 //! What the lab does not reproduce, by design: the builder drops a ranked weakness that has no
 //! stored exemplar position (it cannot be cited); `rank` has no positions, so it keeps it.
@@ -565,5 +568,118 @@ pub async fn analyse(
         nodes,
         players,
         checks,
+    })
+}
+
+// ---- tag-motifs -----------------------------------------------------------------------------
+
+/// One line to tag (`cli lab tag-motifs`, EXP-0007): a position, the moves that reach the tagged
+/// position from it (`setup`, empty for none), and the line played from there (`pv`). A Lichess
+/// puzzle is `fen` = its FEN, `setup` = its first move (the opponent's), `pv` = the rest.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MotifLine {
+    pub id: String,
+    pub fen: String,
+    #[serde(default)]
+    pub setup: Vec<String>,
+    pub pv: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TagMotifsRequest {
+    pub schema_version: String,
+    pub lines: Vec<MotifLine>,
+}
+
+/// One tagged line. `fen` is the tagged position and `pov` the side to move there; both are null
+/// when `fen` is invalid or `setup` cannot be played. `best` is the `best` line analysis the
+/// production enrichment stores for a move played there with `pv` as the engine's best line
+/// (`derive_move_features`): null exactly when production stores none (an empty or illegal line).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TaggedLine {
+    pub id: String,
+    pub fen: Option<String>,
+    pub pov: Option<chess_core::Color>,
+    pub best: Option<profile_core::types::LineAnalysis>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct TagMotifsResponse {
+    pub schema_version: String,
+    pub algorithm_id: String,
+    pub lines: Vec<TaggedLine>,
+}
+
+/// The position `setup` reaches from `fen`, or `None` when `fen` is invalid or a setup move is
+/// illegal.
+fn tagged_position(fen: &str, setup: &[String]) -> Option<String> {
+    let start = chess_core::board::Position::from_fen(fen).ok()?;
+    if setup.is_empty() {
+        return Some(start.fen());
+    }
+    let steps = profile_core::board::play_line(fen, setup, None);
+    if steps.len() != setup.len() {
+        return None;
+    }
+    steps.last().map(|s| s.fen_after.clone())
+}
+
+/// One line through the production feature derivation: `pv` is the mover's best line, exactly
+/// as `enrich` stores it (`RawMoveFeatures::best_pv`), so the tags are the ones the missed-motif
+/// series (`motif.missed:<tag>`) and the drills read. No engine and no database.
+pub fn tag_motif_line(l: &MotifLine) -> TaggedLine {
+    let none = |fen: Option<String>| TaggedLine {
+        id: l.id.clone(),
+        fen,
+        pov: None,
+        best: None,
+    };
+    let Some(fen) = tagged_position(&l.fen, &l.setup) else {
+        return none(None);
+    };
+    let Ok(pos) = chess_core::board::Position::from_fen(&fen) else {
+        return none(None);
+    };
+    let pov = pos.side_to_move();
+    let (uci, fen_after) = profile_core::board::play_line(&fen, &l.pv, Some(1))
+        .into_iter()
+        .next()
+        .map(|s| (s.uci, s.fen_after))
+        .unwrap_or_default();
+    let raw = profile_core::types::RawMoveFeatures {
+        ply: 0,
+        multipv: None,
+        best_pv: l.pv.clone(),
+        refutation_pv: Vec::new(),
+        threat: None,
+        tb_wdl_before: None,
+        tb_wdl_after: None,
+        difficulty: None,
+    };
+    let features = profile_core::features::derive::derive_move_features(
+        pov,
+        &fen,
+        &fen_after,
+        &uci,
+        Some(&raw),
+    );
+    TaggedLine {
+        id: l.id.clone(),
+        fen: Some(fen),
+        pov: Some(pov),
+        best: features.best,
+    }
+}
+
+/// `cli lab tag-motifs`.
+pub fn tag_motifs(req: &TagMotifsRequest, algorithm_id: &str) -> anyhow::Result<TagMotifsResponse> {
+    check_version(&req.schema_version)?;
+    Ok(TagMotifsResponse {
+        schema_version: SCHEMA_VERSION.to_owned(),
+        algorithm_id: algorithm_id.to_owned(),
+        lines: req.lines.iter().map(tag_motif_line).collect(),
     })
 }

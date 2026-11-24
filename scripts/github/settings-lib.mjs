@@ -109,7 +109,11 @@ export function validateRuleset(r) {
 }
 
 export function validateRepo(s) {
-  onlyKeys(s, ["repo", "topics", "private_vulnerability_reporting", "pages"], "repo.json");
+  onlyKeys(
+    s,
+    ["repo", "topics", "private_vulnerability_reporting", "pages", "actions"],
+    "repo.json",
+  );
   for (const k of Object.keys(s.repo)) {
     if (!REPO_KEYS.has(k)) fail(`repo.json repo: unknown key "${k}"`);
   }
@@ -124,6 +128,41 @@ export function validateRepo(s) {
     fail("private_vulnerability_reporting must be a boolean");
   }
   if (!["workflow", "legacy"].includes(s.pages?.build_type)) fail("pages.build_type");
+  if (s.actions !== undefined) validateActions(s.actions);
+}
+
+/** The approval policies GitHub takes for workflow runs from fork pull requests. */
+export const FORK_APPROVAL_POLICIES = [
+  "first_time_contributors_new_to_github",
+  "first_time_contributors",
+  "all_external_contributors",
+];
+
+/**
+ * The Actions settings (repo.json "actions"): who must be approved before a fork pull request's
+ * workflows run, and the default GITHUB_TOKEN permissions (PUT actions/permissions/workflow).
+ */
+export function validateActions(a) {
+  onlyKeys(
+    a,
+    [
+      "fork_pr_contributor_approval",
+      "default_workflow_permissions",
+      "can_approve_pull_request_reviews",
+    ],
+    "repo.json actions",
+  );
+  if (!FORK_APPROVAL_POLICIES.includes(a.fork_pr_contributor_approval)) {
+    fail(
+      `actions.fork_pr_contributor_approval must be one of ${FORK_APPROVAL_POLICIES.join(", ")}`,
+    );
+  }
+  if (!["read", "write"].includes(a.default_workflow_permissions)) {
+    fail('actions.default_workflow_permissions must be "read" or "write"');
+  }
+  if (typeof a.can_approve_pull_request_reviews !== "boolean") {
+    fail("actions.can_approve_pull_request_reviews must be a boolean");
+  }
 }
 
 export function validateLabels(labels) {
@@ -321,8 +360,8 @@ export function diffLabels(desired, live) {
 
 /**
  * What to change so the live repository matches the settings. `live` holds the GET responses
- * (or `{error}` when a GET failed): repo, labels, rulesets {list, detail}, vulnerabilityReporting
- * and pages. Returns readable `lines` (the diff) and the `calls` that would apply it.
+ * (or `{error}` when a GET failed): repo, labels, rulesets {list, detail}, vulnerabilityReporting,
+ * pages, and (when read) actionsWorkflow and forkApproval. Returns readable `lines` (the diff) and the `calls` that would apply it.
  */
 export function planChanges(settings, live, repo, opts = {}) {
   const lines = [];
@@ -379,6 +418,32 @@ export function planChanges(settings, live, repo, opts = {}) {
   } else if (live.pages?.build_type !== want) {
     lines.push(`~ pages: build_type ${show(live.pages?.build_type)} -> ${show(want)}`);
     call("PUT", "/pages", { build_type: want });
+  }
+
+  // Actions: fork pull request approval and the default token (only when the caller read them).
+  const actions = settings.repo.actions;
+  if (actions && live.forkApproval !== undefined) {
+    const want = actions.fork_pr_contributor_approval;
+    if (live.forkApproval.error || live.forkApproval.approval_policy !== want) {
+      const now = live.forkApproval.error
+        ? `(now: ${live.forkApproval.error})`
+        : show(live.forkApproval.approval_policy);
+      lines.push(`~ actions: fork pull request approval ${now} -> ${show(want)}`);
+      call("PUT", "/actions/permissions/fork-pr-contributor-approval", { approval_policy: want });
+    }
+  }
+  if (actions && live.actionsWorkflow !== undefined) {
+    const want = {
+      default_workflow_permissions: actions.default_workflow_permissions,
+      can_approve_pull_request_reviews: actions.can_approve_pull_request_reviews,
+    };
+    const d = live.actionsWorkflow.error
+      ? [`(could not read: ${live.actionsWorkflow.error})`]
+      : diffSubset(want, live.actionsWorkflow);
+    if (d.length > 0) {
+      lines.push("~ actions: workflow token", ...d.map((l) => `    ${l}`));
+      call("PUT", "/actions/permissions/workflow", want);
+    }
   }
 
   // Labels.
@@ -960,4 +1025,54 @@ export function planSubIssues(issues, liveIssues, subIssues, repo) {
   }
   if (linked > 0) lines.push(`  ${linked} sub-issue link(s) already in place`);
   return { lines, calls };
+}
+
+// ---- the Next rule (ADR 0109) ----
+
+/**
+ * The problems with a decided experiment's decision.md: it has a "## Next" section of numbered
+ * items; every item names a roadmap issue, by an `EXP-NNNN` id other than its own whose
+ * experiment issue is in roadmap-issues.json, or by `Issue: "<exact title>"`; and at least one
+ * item is an experiment issue. Empty means it passes.
+ */
+export function decisionNextProblems(text, expId, issues) {
+  const src = text.replace(/\r\n/g, "\n");
+  const at = src.search(/^## Next\s*$/m);
+  if (at < 0) return [`${expId}/decision.md: no "## Next" section`];
+  const rest = src.slice(at).split("\n").slice(1);
+  const end = rest.findIndex((l) => /^## /.test(l));
+  const section = (end < 0 ? rest : rest.slice(0, end)).join("\n");
+  const items = section
+    .split(/\n(?=\d+\. )/)
+    .map((s) => s.trim())
+    .filter((s) => /^\d+\. /.test(s));
+  if (items.length === 0) return [`${expId}/decision.md: the Next section has no numbered items`];
+  const titles = new Map(issues.map((i) => [i.title.trim().toLowerCase(), i]));
+  const experimentIssue = (id) => issues.find((i) => i.title.startsWith(`${id}:`));
+  const problems = [];
+  let experiments = 0;
+  items.forEach((item, n) => {
+    const named = [];
+    for (const m of item.matchAll(/\bEXP-\d{4}\b/g)) {
+      if (m[0] !== expId && experimentIssue(m[0])) named.push(experimentIssue(m[0]));
+    }
+    for (const m of item.matchAll(/Issue: "([^"]+)"/g)) {
+      const issue = titles.get((m[1] ?? "").trim().toLowerCase());
+      if (issue) named.push(issue);
+      else
+        problems.push(
+          `${expId}/decision.md: Next item ${n + 1} names "${m[1]}", not a roadmap issue`,
+        );
+    }
+    if (named.length === 0) {
+      problems.push(
+        `${expId}/decision.md: Next item ${n + 1} names no roadmap issue (an EXP id or Issue: "<title>")`,
+      );
+    }
+    if (named.some((i) => i.labels.includes("experiment"))) experiments += 1;
+  });
+  if (experiments === 0) {
+    problems.push(`${expId}/decision.md: no Next item is an experiment issue`);
+  }
+  return problems;
 }

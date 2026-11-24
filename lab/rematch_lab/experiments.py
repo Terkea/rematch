@@ -9,11 +9,19 @@ nothing else. `check` enforces what CI needs:
 2. Frozen: once results exist, sections 0 to 10 of the pre-registration are the text they had in
    the commit that added the results, and `analysis.py` has the sha256 that section 10 states.
 3. Checked inputs: every line of `inputs.sha256` (`<hex>  <path from the experiment folder>`)
-   matches its file.
+   matches its file. An external input (`<hex>  external:<path in the data directory>`) is a
+   large public file kept out of git in the data directory (`$REMATCH_DATA_DIR`, by default the
+   checkout's git-ignored `data/`), such as a pinned snapshot of the Lichess puzzle database. When
+   it is present it must match; when it is absent, as in CI, the check says so and does not rerun
+   the experiment, since its answer cannot be reproduced without its data.
 4. Deterministic: two runs give byte-identical `results.json`. For an experiment whose results
-   ran on the current algorithm (`algorithm_id`), the rerun also equals the committed file. An
-   older experiment is historical: its rules 1 to 3 are checked, but it is not rerun on an
-   algorithm it never measured.
+   ran on the current algorithm (`algorithm_id`), the rerun also equals the committed file. Once
+   the algorithm moves on, a decided experiment stays live (ADR 0109): `rematch_lab.arena`
+   re-runs it on its schedule against the champion, so this check does not rerun it twice more;
+   its rules 1 to 3 and 5 are still checked here.
+6. Live or retired (ADR 0109): a decided experiment's `summary.md` says `live: true` with a
+   `rerun` of per-pr, weekly or release, its measured `run_cpu_hours` and `run_minutes`, and an
+   `arena.py` with its comparison rule; or `live: false` with the reason in `retired`.
 5. Worth running (ADR 0107): section 0 of the pre-registration is a value case with every field
    of the template, and once results exist, `results.json` records its compute budget against
    the actual (`compute`), with no unit past the registered cap (150% unless section 0 says
@@ -56,6 +64,9 @@ VALUE_FIELDS = (
 VALUE_SCORE = re.compile(r"impact ([1-3]) × uncertainty ([1-3]) ÷ cost ([1-3]) = ([0-9]+(?:\.[0-9]+)?)")
 BUDGET_CAP = re.compile(r"^- Compute budget:.*\bcap (\d+)%", re.MULTILINE)
 DEFAULT_CAP = 1.5
+# How often a live experiment is re-run against the champion (ADR 0109), cheapest first.
+RERUNS = ("per-pr", "weekly", "release")
+FRONT_MATTER = re.compile(r"^---\n(.*?)\n---\n", re.DOTALL)
 # Registered before the value gate existed.
 VALUE_GATE_EXEMPT = frozenset({"EXP-0001", "EXP-0002"})
 
@@ -111,6 +122,19 @@ def seed(exp_id: str, name: str) -> int:
     """A stable 32-bit seed for one named random step (every name is listed in section 7)."""
     digest = hashlib.sha256(f"{exp_id}/{name}".encode()).digest()
     return int.from_bytes(digest[:4], "big")
+
+
+EXTERNAL = "external:"
+
+
+def data_dir() -> Path:
+    """Where external inputs live: `$REMATCH_DATA_DIR`, or the checkout's git-ignored `data/`."""
+    return Path(os.environ.get("REMATCH_DATA_DIR") or LAB_ROOT.parent / "data")
+
+
+def external_input(rel: str) -> Path:
+    """The path of an external input, `rel` inside the data directory; experiments call this."""
+    return data_dir() / rel
 
 
 def experiments(only: list[str] | None = None) -> list[Path]:
@@ -199,6 +223,57 @@ def compute_problems(exp: Path, text: str, results: dict[str, Any]) -> list[str]
     return problems
 
 
+def front_matter(text: str) -> dict[str, str]:
+    """The flat `key: value` front matter of a summary.md (quotes stripped)."""
+    m = FRONT_MATTER.match(text.replace("\r\n", "\n"))
+    if not m:
+        return {}
+    meta = {}
+    for line in m.group(1).splitlines():
+        key, sep, value = line.partition(":")
+        if sep and re.fullmatch(r"[a-z_]+", key.strip()):
+            v = value.strip()
+            if len(v) >= 2 and v[0] == v[-1] and v[0] in "\"'":
+                v = v[1:-1]
+            meta[key.strip()] = v
+    return meta
+
+
+def summary_meta(exp: Path) -> dict[str, str]:
+    path = exp / "summary.md"
+    return front_matter(path.read_text(encoding="utf-8")) if path.is_file() else {}
+
+
+def _positive(value: str | None) -> bool:
+    try:
+        return value is not None and float(value) > 0
+    except ValueError:
+        return False
+
+
+def metadata_problems(exp: Path) -> list[str]:
+    """Rule 6: a decided experiment is live with a schedule and a rule, or retired with a reason."""
+    meta = summary_meta(exp)
+    if meta.get("status") != "decided":
+        return []
+    live = meta.get("live")
+    if live == "false":
+        if not meta.get("retired"):
+            return [f"{exp.name}: live: false needs the reason in `retired`"]
+        return []
+    if live != "true":
+        return [f"{exp.name}: a decided experiment says `live: true` or `live: false` in summary.md"]
+    problems = []
+    if meta.get("rerun") not in RERUNS:
+        problems.append(f"{exp.name}: `rerun` is one of {', '.join(RERUNS)}")
+    for key in ("run_cpu_hours", "run_minutes"):
+        if not _positive(meta.get(key)):
+            problems.append(f"{exp.name}: `{key}` is the measured cost of one run, above 0")
+    if not (exp / "arena.py").is_file():
+        problems.append(f"{exp.name}: a live experiment has an arena.py with its comparison rule")
+    return problems
+
+
 def current_algorithm_id() -> str:
     from .bridge import call_raw
 
@@ -261,20 +336,50 @@ def history_problems(exp: Path) -> list[str]:
     return problems
 
 
-def input_problems(exp: Path) -> list[str]:
+def input_lines(exp: Path) -> list[tuple[str, str]]:
+    """`(sha256, path)` for each line of `inputs.sha256`; an external path keeps its prefix."""
     manifest = exp / "inputs.sha256"
     if not manifest.exists():
         return []
-    problems = []
+    out = []
     for line in manifest.read_text(encoding="utf-8").splitlines():
         if not line.strip() or line.startswith("#"):
             continue
         want, _, rel = line.partition("  ")
-        path = (exp / rel.strip()).resolve()
+        out.append((want.strip(), rel.strip()))
+    return out
+
+
+def sha256_of(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def missing_external(exp: Path) -> list[str]:
+    """The external inputs of `exp` that are not on this machine."""
+    return [
+        rel
+        for _, rel in input_lines(exp)
+        if rel.startswith(EXTERNAL) and not external_input(rel[len(EXTERNAL) :]).is_file()
+    ]
+
+
+def input_problems(exp: Path) -> list[str]:
+    problems = []
+    for want, rel in input_lines(exp):
+        if rel.startswith(EXTERNAL):
+            path = external_input(rel[len(EXTERNAL) :])
+            if not path.is_file():
+                continue  # reported by check(), which then skips the rerun
+        else:
+            path = (exp / rel).resolve()
         if not path.is_file():
-            problems.append(f"{exp.name}: input {rel.strip()} is missing")
-        elif hashlib.sha256(path.read_bytes()).hexdigest() != want.strip():
-            problems.append(f"{exp.name}: input {rel.strip()} does not match its sha256")
+            problems.append(f"{exp.name}: input {rel} is missing")
+        elif sha256_of(path) != want:
+            problems.append(f"{exp.name}: input {rel} does not match its sha256")
     return problems
 
 
@@ -288,12 +393,13 @@ def check(exp: Path, *, history: bool = False, algorithm_id: str | None = None) 
         return problems
     text = (exp / "preregistration.md").read_text(encoding="utf-8")
     problems += value_case_problems(exp, text)
+    problems += metadata_problems(exp)
     problems += input_problems(exp)
     committed = exp / "results.json"
     if not committed.exists() and (exp / "decision.md").is_file():
         print(f"{exp.name}: closed unrun (decision.md, no results.json)")
         return problems
-    historical = False
+    moved_on = False
     if committed.exists():
         stated = stated_hash(text)
         actual = analysis_hash(exp)
@@ -312,9 +418,20 @@ def check(exp: Path, *, history: bool = False, algorithm_id: str | None = None) 
         if not ran_on:
             problems.append(f"{exp.name}: results.json does not say which algorithm_id it ran on")
         elif algorithm_id is not None and ran_on != algorithm_id:
-            historical = True
-            print(f"{exp.name}: historical (ran on {ran_on}, the cli is {algorithm_id})")
-    if historical:
+            moved_on = True
+            meta = summary_meta(exp)
+            if meta.get("live") == "true":
+                print(
+                    f"{exp.name}: ran on {ran_on}, the cli is {algorithm_id}; live, re-run against "
+                    f"the champion by the arena ({meta.get('rerun')})"
+                )
+            else:
+                print(f"{exp.name}: ran on {ran_on}, the cli is {algorithm_id}; not live")
+    if moved_on:
+        return problems
+    absent = missing_external(exp)
+    if absent:
+        print(f"{exp.name}: not rerun, its external input is not here ({', '.join(absent)})")
         return problems
     with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as b:
         first = run_once(exp, Path(a))

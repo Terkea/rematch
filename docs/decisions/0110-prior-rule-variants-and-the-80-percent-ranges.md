@@ -1,4 +1,4 @@
-# 0109. Prior-rule variants behind `ALGO_VARIANT`, and the fix for the 80% ranges
+# 0110. Prior-rule variants behind `ALGO_VARIANT`, and the fix for the 80% ranges
 
 Date: 2026-11-24. Status: accepted (lane `exp56`, branch `exp/0005-0006`). Builds on ADRs 0100, 0101, 0104, 0105 and 0106. Experiments EXP-0005 (#100) and EXP-0006 (#101), for #13.
 

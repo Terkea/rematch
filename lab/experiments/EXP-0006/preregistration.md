@@ -102,7 +102,7 @@ Comparison (two versions), with the template's 97.5% level for the primary and 8
 - Reject: the 97.5% interval of D(challenger) lies wholly above 0.07, or a guard lies wholly beyond its margin (the other end of its 80% interval beyond it; for top-2 agreement, the value itself).
 - Need more data: anything else. At most one follow-up, registered with `Follows: EXP-0006`, the challenger unchanged, its own power analysis and new data: fresh profile seeds (`EXP-0006-followup`) for the profile guards, and the full suite's players side by side for the Tier 1 guards, with its cost in its section 0; the same rule on the pooled players. A second "need more data" is a reject.
 
-On a ship: `PriorRule::CHALLENGER` becomes production's rule as `algo-2.0.0` (a major version: profile output changes), with the replay goldens regenerated, `bench/baseline.json` rebuilt from a smoke run of the new version, an entry in `algorithm/CHANGELOG.md` citing EXP-0006 and ADR 0109, and "Fixes #13" only when the secondary says #13 is fixed. On anything else: production is unchanged, and the decision drafts the next experiment from the condition that failed.
+On a ship: `PriorRule::CHALLENGER` becomes production's rule as `algo-2.0.0` (a major version: profile output changes), with the replay goldens regenerated, `bench/baseline.json` rebuilt from a smoke run of the new version, an entry in `algorithm/CHANGELOG.md` citing EXP-0006 and ADR 0110, and "Fixes #13" only when the secondary says #13 is fixed. On anything else: production is unchanged, and the decision drafts the next experiment from the condition that failed.
 
 ### Stopping rules
 

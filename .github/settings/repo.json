@@ -38,5 +38,10 @@
   "private_vulnerability_reporting": true,
   "pages": {
     "build_type": "workflow"
+  },
+  "actions": {
+    "fork_pr_contributor_approval": "all_external_contributors",
+    "default_workflow_permissions": "read",
+    "can_approve_pull_request_reviews": false
   }
 }

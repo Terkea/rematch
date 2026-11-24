@@ -22,12 +22,15 @@ from .models import (
     AnalysePlayer,
     AnalyseRequest,
     AnalyseResponse,
+    MotifLine,
     PlayerFacts,
     PlayerProfile,
     ProfileRequest,
     ProfileResponse,
     RankRequest,
     RankResponse,
+    TagMotifsRequest,
+    TagMotifsResponse,
 )
 
 SCHEMA_PATH = Path(__file__).resolve().parent.parent / "schemas" / "lab-v1.schema.json"
@@ -157,6 +160,15 @@ def rank(
     return RankResponse.model_validate(lab_call("rank", req, "RankRequest", "RankResponse", variant))
 
 
+def tag_motifs(lines: list[MotifLine] | TagMotifsRequest) -> TagMotifsResponse:
+    """Lines to motif tags: each `pv` is a move's best line through the production feature
+    derivation (`derive_move_features`, which calls the tagger). Pure: no engine, no database."""
+    req = lines if isinstance(lines, TagMotifsRequest) else TagMotifsRequest(lines=lines)
+    return TagMotifsResponse.model_validate(
+        lab_call("tag-motifs", req, "TagMotifsRequest", "TagMotifsResponse")
+    )
+
+
 def algorithm(which: str | None = None) -> dict[str, Any]:
     """`cli algo show --json` (ADR 0105): this build's manifest, or the one `which` names (an
     id stored in `algorithm_versions`, which needs DATABASE_URL, or a manifest file)."""
@@ -226,4 +238,5 @@ __all__ = [
     "check",
     "profile",
     "rank",
+    "tag_motifs",
 ]

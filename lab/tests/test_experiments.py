@@ -1,5 +1,5 @@
 """The experiment rules (rematch_lab.experiments): registered first, frozen, checked inputs,
-deterministic, and historical results left alone."""
+deterministic, worth running, and live or retired once decided (ADR 0109)."""
 
 from __future__ import annotations
 
@@ -137,14 +137,64 @@ def test_results_must_name_their_algorithm(tmp_path: Path) -> None:
     assert any("which algorithm_id" in p for p in experiments.check(exp))
 
 
-def test_results_from_an_older_algorithm_are_historical(tmp_path: Path) -> None:
+LIVE = """---
+id: EXP-9999
+title: t
+status: decided
+algorithm: algo-1.0.0+000000000000
+issue: 1
+updated: 2026-11-24
+live: true
+rerun: weekly
+run_cpu_hours: 0.1
+run_minutes: 1
+---
+
+- b
+"""
+
+
+def test_results_from_an_older_algorithm_are_left_to_the_arena(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     exp = make(tmp_path)
     (exp / "results.json").write_text(
         '{"algorithm_id": "algo-1.0.0+000000000000", "mean": 0.5, '
         '"compute": {"budget": {"draws": 100}, "actual": {"draws": 100}}}\n'
     )
-    # Not rerun on an algorithm it never measured, so the differing number is no problem.
+    (exp / "summary.md").write_text(LIVE, encoding="utf-8")
+    (exp / "arena.py").write_text("METRICS = []\n", encoding="utf-8")
+    # The arena re-runs it against the champion, so the check does not rerun it twice more.
     assert experiments.check(exp, algorithm_id="algo-2.0.0+111111111111") == []
+    assert "live, re-run against the champion by the arena (weekly)" in capsys.readouterr().out
+
+
+def test_a_decided_experiment_is_live_with_a_schedule_or_retired(tmp_path: Path) -> None:
+    exp = make(tmp_path)
+    (exp / "summary.md").write_text(LIVE, encoding="utf-8")
+    assert any("arena.py" in p for p in experiments.metadata_problems(exp))
+    (exp / "arena.py").write_text("METRICS = []\n", encoding="utf-8")
+    assert experiments.metadata_problems(exp) == []
+    (exp / "summary.md").write_text(LIVE.replace("rerun: weekly", "rerun: monthly"))
+    assert any("`rerun`" in p for p in experiments.metadata_problems(exp))
+    (exp / "summary.md").write_text(LIVE.replace("run_cpu_hours: 0.1", "run_cpu_hours: 0"))
+    assert any("run_cpu_hours" in p for p in experiments.metadata_problems(exp))
+    (exp / "summary.md").write_text(LIVE.replace("live: true", "live: false"))
+    assert any("retired" in p for p in experiments.metadata_problems(exp))
+    retired = LIVE.replace("live: true", "live: false\nretired: the detector was removed")
+    (exp / "summary.md").write_text(retired)
+    assert experiments.metadata_problems(exp) == []
+    (exp / "summary.md").write_text(LIVE.replace("live: true\n", ""))
+    assert any("live: true" in p for p in experiments.metadata_problems(exp))
+    (exp / "summary.md").write_text(LIVE.replace("status: decided", "status: running"))
+    (exp / "arena.py").unlink()
+    assert experiments.metadata_problems(exp) == []
+
+
+def test_the_committed_decided_experiments_are_live() -> None:
+    root = Path(__file__).resolve().parent.parent / "experiments"
+    for exp in sorted(root.glob("EXP-*")):
+        assert experiments.metadata_problems(exp) == [], exp.name
 
 
 def test_inputs_are_checked_against_their_sha256(tmp_path: Path) -> None:
@@ -155,6 +205,31 @@ def test_inputs_are_checked_against_their_sha256(tmp_path: Path) -> None:
     assert experiments.check(exp) == []
     (exp / "data.json").write_text("[1, 3]\n")
     assert any("does not match" in p for p in experiments.check(exp))
+
+
+def test_an_external_input_is_checked_when_present_and_skips_the_rerun_when_absent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    data = tmp_path / "data"
+    monkeypatch.setenv("REMATCH_DATA_DIR", str(data))
+    exp = make(tmp_path)
+    digest = hashlib.sha256(b"PuzzleId\n").hexdigest()
+    (exp / "inputs.sha256").write_text(f"{digest}  external:puzzles/db.csv\n")
+    # Absent (CI): no problem, and no rerun.
+    (exp / "results.json").write_text(
+        '{"algorithm_id": "unversioned", "mean": 0.5, '
+        '"compute": {"budget": {"draws": 100}, "actual": {"draws": 100}}}\n'
+    )
+    assert experiments.check(exp, algorithm_id="unversioned") == []
+    assert "not rerun" in capsys.readouterr().out
+    # Present: it must match, and the experiment is rerun.
+    (data / "puzzles").mkdir(parents=True)
+    (data / "puzzles" / "db.csv").write_bytes(b"PuzzleId\n")
+    assert experiments.external_input("puzzles/db.csv") == data / "puzzles" / "db.csv"
+    problems = experiments.check(exp, algorithm_id="unversioned")
+    assert any("differs from the committed" in p for p in problems)
+    (data / "puzzles" / "db.csv").write_bytes(b"PuzzleId,FEN\n")
+    assert any("does not match" in p for p in experiments.check(exp, algorithm_id="unversioned"))
 
 
 def test_history_registered_first_then_frozen(tmp_path: Path) -> None:

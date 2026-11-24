@@ -124,3 +124,32 @@ def test_algo_variant_selects_the_prior_rule() -> None:
     assert intervals(lighter) != intervals(base)
     with pytest.raises(rematch_lab.LabError):
         rematch_lab.profile(request, variant="lighter")
+
+
+TAG_FIXTURE = LAB / "fixtures" / "tag-motifs-request.json"
+
+
+def test_tag_motifs_gives_the_golden_file() -> None:
+    request = TAG_FIXTURE.read_text(encoding="utf-8")
+    out = call_raw(["lab", "tag-motifs"], request)
+    algorithm_id = json.loads(out)["algorithm_id"]
+    rematch_lab.check("TagMotifsResponse", json.loads(out))
+    assert with_placeholder(out, algorithm_id) == (GOLDEN / "tag-motifs-response.json").read_text(
+        encoding="utf-8"
+    )
+    typed = rematch_lab.tag_motifs(models.TagMotifsRequest.model_validate_json(request))
+    golden = json.loads((GOLDEN / "tag-motifs-response.json").read_text(encoding="utf-8"))
+    golden["algorithm_id"] = typed.algorithm_id
+    assert json.loads(typed.model_dump_json(by_alias=True)) == golden
+    by_id = {line.id: line for line in typed.lines}
+    assert by_id["puzzle-00008"].pov == "white"
+    assert "smotheredMate" in by_id["smothered"].best.tags
+    assert by_id["bad-fen"].best is None and by_id["bad-fen"].fen is None
+
+
+def test_a_bad_tag_request_is_refused_before_the_cli() -> None:
+    with pytest.raises(rematch_lab.LabError, match="moves"):
+        rematch_lab.check(
+            "TagMotifsRequest",
+            {"schema_version": "lab-v1", "lines": [{"id": "x", "fen": "f", "pv": [], "moves": []}]},
+        )

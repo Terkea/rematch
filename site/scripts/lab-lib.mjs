@@ -1,6 +1,6 @@
 // Pure helpers for the Experiments and Progress pages, the landing strip and the lag guard.
-// sync-content.mjs calls them; test/lab.test.ts covers them. Sources: lab/experiments/EXP-*/summary.md
-// and docs/progress.md.
+// sync-content.mjs calls them; test/lab.test.ts covers them. Sources: lab/experiments/EXP-*/summary.md,
+// lab/leaderboard.json (the arena's records, ADR 0109) and docs/progress.md.
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { BASE, GITHUB_BLOB, REPO, rewriteMarkdown } from "./content-lib.mjs";
@@ -15,10 +15,16 @@ export const STATUS_LABEL = {
 const FIELDS = ["id", "title", "status", "algorithm", "issue", "updated"];
 
 /** Parses a summary.md: flat `key: value` front matter and the hyphen bullets of the body. */
+/**
+ * @typedef {{ id: string, title: string, status: string, algorithm: string, issue: string,
+ *   updated: string, rerun?: string, live: boolean, bullets: string[] }} Summary
+ * @returns {Summary}
+ */
 export function parseSummary(text, folder = "") {
   const src = text.replace(/\r\n/g, "\n");
   const m = /^---\n([\s\S]*?)\n---\n?([\s\S]*)$/.exec(src);
   if (!m) throw new Error(`${folder}/summary.md: front matter is missing`);
+  /** @type {Record<string, string>} */
   const meta = {};
   for (const line of (m[1] ?? "").split("\n")) {
     const kv = /^([a-z_]+):\s*(.*)$/.exec(line.trim());
@@ -41,7 +47,12 @@ export function parseSummary(text, folder = "") {
     else if (/^\s+\S/.test(line) && bullets.length)
       bullets[bullets.length - 1] += ` ${line.trim()}`;
   }
-  return { ...meta, issue: String(meta.issue).replace(/^#/, ""), bullets };
+  return {
+    ...meta,
+    issue: String(meta.issue).replace(/^#/, ""),
+    live: meta.live === "true",
+    bullets,
+  };
 }
 
 /** Every experiment under `<labDir>/experiments`, newest `updated` first (then id, descending). */
@@ -92,6 +103,12 @@ const esc = (s) => s.replace(/</g, "&lt;");
 const issueUrl = (n) => `https://github.com/${REPO}/issues/${n}`;
 const fileUrl = (e, f) => `${GITHUB_BLOB}/lab/experiments/${e.folder}/${f}`;
 
+const RERUN_TEXT = {
+  "per-pr": "on every pull request that changes the algorithm version",
+  weekly: "every week",
+  release: "on every release",
+};
+
 export function experimentPage(e) {
   const links = [];
   if (e.files.preregistration)
@@ -103,6 +120,12 @@ export function experimentPage(e) {
   return [
     `${badge(e.status)} Run on ${esc(e.algorithm)} · updated ${e.updated}`,
     "",
+    ...(e.live && RERUN_TEXT[e.rerun]
+      ? [
+          `Live: re-run against the champion ${RERUN_TEXT[e.rerun]} ([the leaderboard](${BASE}/docs/experiments/#leaderboard)).`,
+          "",
+        ]
+      : []),
     ...e.bullets.map((b) => `- ${b}`),
     "",
     links.map((l) => `- ${l}`).join("\n"),
@@ -112,7 +135,121 @@ export function experimentPage(e) {
   ].join("\n");
 }
 
-export function experimentsIndex(exps) {
+/**
+ * lab/leaderboard.json, or null when the lab has none.
+ * @returns {{ schema: string, specs?: Record<string, any[]>, records: any[] } | null}
+ */
+export function loadLeaderboard(labDir) {
+  const path = join(labDir, "leaderboard.json");
+  if (!existsSync(path)) return null;
+  return JSON.parse(readFileSync(path, "utf8"));
+}
+
+const num = (x) => (typeof x === "number" && Number.isFinite(x) ? x.toFixed(3) : null);
+const levelText = (l) =>
+  typeof l === "number" ? `${Math.round(l * 1000) / 10}%` : String(l ?? "");
+const VERDICT_TEXT = {
+  better: "better than",
+  worse: "worse than",
+  "no clear difference": "no clear difference from",
+  overridden: "worse, overridden by an ADR, against",
+};
+
+/**
+ * The Leaderboard section: a row per algorithm version (the champion first and marked), a
+ * column per live experiment's primary metric, each cell the value and its interval. A version
+ * an experiment has not measured shows a dash, never a number. Empty without a board or a live
+ * experiment.
+ */
+export function leaderboardSection(exps, board, champion) {
+  const live = exps.filter((e) => e.live);
+  if (!board || !live.length) return "";
+  const columns = live.flatMap((e) =>
+    (board.specs?.[e.id] ?? [])
+      .filter((m) => m.role === "primary")
+      .map((m) => ({ exp: e, metric: m })),
+  );
+  if (!columns.length) return "";
+  const records = board.records.filter((r) => live.some((e) => e.id === r.experiment));
+  const latest = (version, exp) =>
+    records
+      .filter((r) => r.algorithm_id === version && r.experiment === exp)
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .at(-1);
+  const newest = (v) =>
+    records
+      .filter((r) => r.algorithm_id === v)
+      .map((r) => r.date)
+      .sort()
+      .at(-1) ?? "";
+  // The champion has a row even before it has a record.
+  const ids = records.map((r) => r.algorithm_id);
+  const versions = [...new Set(champion ? [champion, ...ids] : ids)].sort(
+    (a, b) =>
+      Number(b === champion) - Number(a === champion) ||
+      newest(b).localeCompare(newest(a)) ||
+      a.localeCompare(b),
+  );
+  if (!versions.length) return "";
+  const level = (c) => {
+    const r = records.find((x) => x.experiment === c.exp.id && x.metrics?.[c.metric.name]);
+    return r ? levelText(r.metrics[c.metric.name].level) : "";
+  };
+  const head = columns.map(
+    (c) =>
+      `<th scope="col">${esc(c.metric.label)}<span class="lab-meta"><a href="${BASE}/docs/experiments/${c.exp.slug}/">${esc(c.exp.id)}</a> · ${esc(level(c))}</span></th>`,
+  );
+  const cell = (version, c) => {
+    const r = latest(version, c.exp.id);
+    const m = r?.metrics?.[c.metric.name];
+    const v = num(m?.value);
+    if (!r || v === null) {
+      return '<td><span class="lab-missing">—</span><span class="lab-meta">Not run on this version</span></td>';
+    }
+    const iv = Array.isArray(m.interval) ? ` [${num(m.interval[0])}, ${num(m.interval[1])}]` : "";
+    const notes = [];
+    if (m.at) notes.push(esc(m.at));
+    if (r.against && r.against !== r.algorithm_id && VERDICT_TEXT[r.verdict]) {
+      const who = r.against === champion ? "the champion" : `<code>${esc(r.against)}</code>`;
+      notes.push(`${VERDICT_TEXT[r.verdict]} ${who}`);
+    }
+    const meta = notes.length ? `<span class="lab-meta">${notes.join(" · ")}</span>` : "";
+    return `<td><span class="lab-value">${v}${iv}</span>${meta}</td>`;
+  };
+  const rows = versions.map((version) => {
+    const isChampion = version === champion;
+    const mark = isChampion ? ' <span class="lab-badge lab-badge-champion">Champion</span>' : "";
+    return `<tr${isChampion ? ' class="lab-champion"' : ""}><th scope="row"><code>${esc(version)}</code>${mark}</th>${columns.map((c) => cell(version, c)).join("")}</tr>`;
+  });
+  const intro =
+    "Every algorithm version against the primary metric of every live experiment, on the same registered seeds and inputs ([ADR 0109](" +
+    `${GITHUB_BLOB}/docs/decisions/0109-champion-and-challenger.md` +
+    ")). The champion is the version on main, the one in production. A challenger replaces it only when it beats it on the primaries with no clear regression on a guarded metric. The guarded metrics, each comparison's effect and its interval are in [lab/leaderboard.json](" +
+    `${GITHUB_BLOB}/lab/leaderboard.json` +
+    ").";
+  return [
+    "## Leaderboard",
+    "",
+    intro,
+    "",
+    '<div class="lab-table-wrap">',
+    '<table class="lab-leaderboard">',
+    `<thead><tr><th scope="col">Algorithm version</th>${head.join("")}</tr></thead>`,
+    "<tbody>",
+    ...rows,
+    "</tbody>",
+    "</table>",
+    "</div>",
+    "",
+  ].join("\n");
+}
+
+/**
+ * @param {any[]} exps
+ * @param {any} [board]
+ * @param {string | null} [champion]
+ */
+export function experimentsIndex(exps, board = null, champion = null) {
   const intro =
     "An experiment asks one question about the recommendation algorithm, with the hypothesis, the metric and the decision rule committed before anything runs. Whatever the result, it is decided by that rule and published. The method is in [How Rematch is evaluated](" +
     `${GITHUB_BLOB}/docs/evaluation.md#how-we-do-science-on-the-algorithm` +
@@ -124,7 +261,8 @@ export function experimentsIndex(exps) {
     (e) =>
       `<li class="lab-item"><a class="lab-question" href="${BASE}/docs/experiments/${e.slug}/">${esc(e.id)}: ${esc(e.title)}</a>${badge(e.status)}<span class="lab-meta">Run on ${esc(e.algorithm)} · ${e.updated}</span></li>`,
   );
-  return `${intro}\n\n<ul class="lab-list">\n${rows.join("\n")}\n</ul>\n`;
+  const table = leaderboardSection(exps, board, champion);
+  return `${intro}\n\n<ul class="lab-list">\n${rows.join("\n")}\n</ul>\n${table ? `\n${table}` : ""}`;
 }
 
 const ENTRY = /^## (\d{4}-\d{2}-\d{2})(?::| -|\s)\s*(.+)$/;
