@@ -34,7 +34,7 @@ The script asks how the coach should run ([below](#the-ai-coach)); `--yes --ai=n
 
 ## Your own chess.com games
 
-Link your chess.com username on the Accounts page. The worker imports your games and analyses every move with **Stockfish 19**; the overview fills in as games finish. The script sets `ALLOW_UNVERIFIED_LINKS=1`, which locally treats your link as verified, so the coach works without the location code in your chess.com profile. Production refuses that setting.
+Link your chess.com username on the Accounts page. The worker imports your games and analyses every move with **Stockfish 19**; the overview fills in as games finish. Each game is about 39 CPU-seconds of engine time at the 1 million nodes a position the analysis uses, so a 90-day import of 300 rapid games takes about 49 minutes on 4 engines and about 25 on 8 (`WORKER_POOL_SIZE`, one core each), with the enrichment on top ([ADR 0113](/rematch/docs/decisions/0113-analyse-at-1-million-nodes/)). The script sets `ALLOW_UNVERIFIED_LINKS=1`, which locally treats your link as verified, so the coach works without the location code in your chess.com profile. Production refuses that setting.
 
 ## The full path: data included
 
