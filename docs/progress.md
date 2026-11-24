@@ -10,7 +10,7 @@ See also the [experiments](/rematch/docs/experiments/) and the [roadmap](/rematc
 
 ## 2026-11-24: Champion and challenger
 
-- Decided experiments no longer retire. Each one is live and re-runs against every new algorithm version on its registered seeds; a challenger ships only if it beats the current champion without losing ground on the guarded measures ([ADR 0109](decisions/0109-champion-challenger-loop.md)).
+- Decided experiments no longer retire. Each one is live and re-runs against every new algorithm version on its registered seeds; a challenger ships only if it beats the current champion without losing ground on the guarded measures ([ADR 0109](decisions/0109-champion-and-challenger.md)).
 - EXP-0002 re-runs on every pull request that bumps the algorithm (0.44 CPU-hours, no engine). EXP-0001 re-runs on each release (2.44 CPU-hours with Stockfish), and the release images wait for it.
 - The Experiments page has a leaderboard: one row per algorithm version, one column per live experiment, with intervals. Today it has one row, `algo-1.1.0`, the champion.
 - Known weaknesses, written down: every version reuses the same seeds, so a challenger could be tuned to them, and there's no correction yet for comparing many measures at once.
