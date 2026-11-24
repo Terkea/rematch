@@ -4,7 +4,11 @@ title: How many synthetic players and games the benchmark needs
 status: decided
 algorithm: algo-1.1.0+fa5e2186e1dd
 issue: 91
-updated: 2026-11-23
+updated: 2026-11-24
+live: true
+rerun: release
+run_cpu_hours: 2.44
+run_minutes: 25
 ---
 
 - The question: how many synthetic players per flaw, and games per player, the Tier 1 benchmark needs to detect a change of 0.1 in recall at 2 between two algorithm versions at least 80% of the time.

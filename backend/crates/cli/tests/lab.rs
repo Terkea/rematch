@@ -141,6 +141,74 @@ fn the_schema_is_not_vacuous() {
     ));
 }
 
+/// `tag-motifs` (EXP-0007): the fixture gives the golden file, and each line's `best` is exactly
+/// what the production tagger gives for that position and line (`tag_line` at
+/// `LINE_MAX_PLIES`), so the bridge adds nothing of its own.
+#[test]
+fn tag_motifs_is_the_production_tagger() {
+    use chess_core::Color;
+    use profile_core::features::derive::LINE_MAX_PLIES;
+    use profile_core::motifs::tag_line;
+
+    let request = read("fixtures/tag-motifs-request.json");
+    assert_valid("TagMotifsRequest", &request);
+    let out = run_pure("tag-motifs", &request).expect("tag-motifs");
+    assert_valid("TagMotifsResponse", &out);
+    golden("fixtures/golden/tag-motifs-response.json", &out);
+    assert_eq!(run_pure("tag-motifs", &request).unwrap(), out);
+
+    let doc: Value = serde_json::from_str(&out).unwrap();
+    let lines = doc["lines"].as_array().expect("lines");
+    let by_id = |id: &str| {
+        lines
+            .iter()
+            .find(|l| l["id"] == json!(id))
+            .unwrap_or_else(|| panic!("no line {id}"))
+    };
+    // The puzzle's first move is the opponent's: the tagged position is after it, White to move.
+    let puzzle = by_id("puzzle-00008");
+    assert_eq!(puzzle["pov"], json!("white"));
+    let fen = puzzle["fen"].as_str().unwrap();
+    let pv: Vec<String> = ["e6e7", "b2b1", "b3c1", "b1c1", "h6c1"]
+        .map(String::from)
+        .to_vec();
+    let direct = tag_line(fen, &pv, Color::White, LINE_MAX_PLIES);
+    assert_eq!(puzzle["best"], serde_json::to_value(&direct).unwrap());
+
+    let tags = |id: &str| by_id(id)["best"]["tags"].clone();
+    assert!(tags("fork").as_array().unwrap().contains(&json!("fork")));
+    assert!(
+        tags("smothered")
+            .as_array()
+            .unwrap()
+            .contains(&json!("smotheredMate"))
+    );
+    assert!(
+        tags("back-rank")
+            .as_array()
+            .unwrap()
+            .contains(&json!("backRankMate"))
+    );
+    // No line, no analysis, as production stores none.
+    for id in ["illegal-line", "empty-line"] {
+        assert_eq!(by_id(id)["best"], Value::Null, "{id}");
+        assert_eq!(by_id(id)["pov"], json!("white"), "{id}");
+    }
+    for id in ["illegal-setup", "bad-fen"] {
+        assert_eq!(by_id(id)["fen"], Value::Null, "{id}");
+        assert_eq!(by_id(id)["best"], Value::Null, "{id}");
+    }
+
+    let err = run_pure("tag-motifs", r#"{"schema_version":"lab-v0","lines":[]}"#).unwrap_err();
+    assert!(err.to_string().contains("lab-v0"), "{err}");
+    let err = run_pure(
+        "tag-motifs",
+        r#"{"schema_version":"lab-v1","lines":[{"id":"x","fen":"8/8/8/8/8/8/8/8 w - - 0 1","pv":[],"moves":[]}]}"#,
+    )
+    .unwrap_err();
+    assert!(err.to_string().contains("moves"), "{err}");
+}
+
 fn lab_game(g: &bench::generate::GeneratedGame) -> LabGame {
     LabGame {
         id: g.platform_game_id.clone(),
