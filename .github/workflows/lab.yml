@@ -5,6 +5,14 @@ name: Lab
 # twice, failing when results.json differs from run to run or from the committed one, or when an
 # analysis.py changed after its results were committed. It runs on pull requests that touch the
 # lab or the algorithm's crates, and every Monday.
+#
+# Then the arena (ADR 0108, rematch_lab.arena): the challenger (this commit's cli) against the
+# champion on every live experiment in the scope, on the registered seeds, with each experiment's
+# own rule. A pull request that changes algorithm/manifest.json runs the `per-pr` experiments
+# against main, re-runs the challenger and requires its record in lab/leaderboard.json; the Monday
+# run takes `weekly` against the newest release (production); release.yml calls this workflow
+# with `release` against the release before. A clear regression on a primary or guarded metric
+# fails the job unless lab/overrides.json overrides it with an ADR.
 on:
   pull_request:
     paths:
@@ -25,6 +33,24 @@ on:
   schedule:
     - cron: "41 4 * * 1"
   workflow_dispatch:
+    inputs:
+      scope:
+        description: The arena's scope (per-pr, weekly or release)
+        default: weekly
+      champion_ref:
+        description: The champion's git ref (default the newest release)
+        default: ""
+  workflow_call:
+    inputs:
+      scope:
+        description: The arena's scope (per-pr, weekly or release)
+        required: true
+        type: string
+      champion_ref:
+        description: The champion's git ref (default the release before this one)
+        required: false
+        default: ""
+        type: string
 
 env:
   COMPOSE_FILE: docker-compose.yml
@@ -34,7 +60,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: lab-${{ github.ref }}
+  group: lab-${{ github.workflow }}-${{ github.ref }}-${{ inputs.scope || github.event_name }}
   cancel-in-progress: true
 
 jobs:
@@ -74,12 +100,102 @@ jobs:
       - name: Start Postgres (rematch_lab.analyse builds in a throwaway database)
         run: $COMPOSE up -d --wait postgres
       - name: Experiments - registered first, frozen, checked inputs, rerun twice
+        # A release run is the arena only; the commit's experiments were checked on its way in.
+        if: inputs.scope != 'release'
         run: |
           network=$(docker network ls -q --filter label=com.docker.compose.project=ci-lab | head -n 1)
           docker run --rm --network "$network" -v "$PWD:/repo" -w /repo/lab \
             -e PYTHONPATH=/repo/lab \
             -e DATABASE_URL=postgres://postgres:postgres@postgres:5432/chess_test \
             rematch-lab:ci python -m rematch_lab.experiments check --history
+      - name: Arena - the scope and the champion
+        id: arena
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          SCOPE_IN: ${{ inputs.scope }}
+          REF_IN: ${{ inputs.champion_ref }}
+        run: |
+          set -eu
+          ref=""
+          case "$EVENT" in
+            pull_request)
+              if git diff --quiet "origin/$BASE_REF" -- algorithm/manifest.json; then
+                echo "The algorithm version did not change: no arena run."
+                echo "scope=" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+              scope=per-pr
+              ref="origin/$BASE_REF"
+              ;;
+            schedule) scope=weekly ;;
+            *)
+              scope="${SCOPE_IN:-weekly}"
+              ref="$REF_IN"
+              ;;
+          esac
+          if [ -z "$ref" ]; then
+            # Production is the newest release; a release run compares with the one before it.
+            nth=1
+            if [ "$scope" = release ]; then nth=2; fi
+            ref=$(git tag --list 'v*' --sort=-v:refname --merged HEAD | sed -n "${nth}p")
+          fi
+          if [ -z "$ref" ] || ! git cat-file -e "$ref:algorithm/manifest.json" 2>/dev/null; then
+            echo "No champion manifest at '${ref}': the champion is this commit."
+            ref=HEAD
+          fi
+          echo "scope=$scope" >> "$GITHUB_OUTPUT"
+          echo "champion_ref=$ref" >> "$GITHUB_OUTPUT"
+      - name: Arena - plan (what the leaderboard and the committed results already answer)
+        id: plan
+        if: steps.arena.outputs.scope != ''
+        env:
+          SCOPE: ${{ steps.arena.outputs.scope }}
+          CHAMPION_REF: ${{ steps.arena.outputs.champion_ref }}
+        run: |
+          mkdir -p arena-out
+          docker run --rm -v "$PWD:/repo" -w /repo/lab -e PYTHONPATH=/repo/lab rematch-lab:ci \
+            python -m rematch_lab.arena --scope "$SCOPE" --champion-ref "$CHAMPION_REF" \
+            --dry-run --json /repo/arena-out/plan.json > /dev/null
+          echo "needs_champion_cli=$(jq -r .needs_champion_cli arena-out/plan.json)" >> "$GITHUB_OUTPUT"
+      - name: Arena - build the champion's cli (only when no record of it is cached)
+        if: steps.plan.outputs.needs_champion_cli == 'true'
+        env:
+          CHAMPION_REF: ${{ steps.arena.outputs.champion_ref }}
+        run: |
+          git worktree add --detach champion-src "$CHAMPION_REF"
+          mkdir -p champion-bin
+          $COMPOSE run --rm --no-deps -e LANE=champion rust-dev sh -c \
+            'cd /work/champion-src/backend && cargo build --locked --release -p cli && cp /lane-target/release/cli /work/champion-bin/cli'
+      - name: Arena - the challenger against the champion
+        if: steps.arena.outputs.scope != ''
+        env:
+          SCOPE: ${{ steps.arena.outputs.scope }}
+          CHAMPION_REF: ${{ steps.arena.outputs.champion_ref }}
+          EVENT: ${{ github.event_name }}
+          NEEDS_CHAMPION: ${{ steps.plan.outputs.needs_champion_cli }}
+        run: |
+          set -- --scope "$SCOPE" --champion-ref "$CHAMPION_REF" --write \
+            --write-to /repo/arena-out/leaderboard.json --json /repo/arena-out/arena.json \
+            --summary /repo/arena-out/summary.md
+          # A pull request re-runs its challenger and needs its record committed.
+          if [ "$EVENT" = pull_request ]; then set -- "$@" --verify --require-records; fi
+          if [ "$NEEDS_CHAMPION" = true ]; then set -- "$@" --champion-cli /repo/champion-bin/cli; fi
+          network=$(docker network ls -q --filter label=com.docker.compose.project=ci-lab | head -n 1)
+          docker run --rm --network "$network" -v "$PWD:/repo" -w /repo/lab \
+            -e PYTHONPATH=/repo/lab -e ARENA_SLOWDOWN=2 \
+            -e DATABASE_URL=postgres://postgres:postgres@postgres:5432/chess_test \
+            rematch-lab:ci python -m rematch_lab.arena "$@"
+      - name: Arena - the verdict in the job summary
+        if: always() && steps.arena.outputs.scope != ''
+        run: cat arena-out/summary.md >> "$GITHUB_STEP_SUMMARY" || true
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always() && steps.arena.outputs.scope != ''
+        with:
+          # leaderboard.json here is the file to commit when a record is new (ADR 0108).
+          name: arena-${{ steps.arena.outputs.scope }}
+          path: arena-out/
+          retention-days: 30
       - name: Stop the stack
         if: always()
         run: $COMPOSE down -v
