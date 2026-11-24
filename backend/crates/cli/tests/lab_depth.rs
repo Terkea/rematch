@@ -63,12 +63,40 @@ async fn positions_are_every_searched_position_once_in_order() {
     let parsed = parse_pgn(MATE).unwrap();
     assert_eq!(mate.fens[0], parsed.start_fen);
     assert_eq!(mate.fens[6], parsed.plies[5].fen_after);
+    assert_eq!(mate.sequence.len(), 8);
+    assert_eq!(mate.sequence[0].as_deref(), Some(parsed.start_fen.as_str()));
+    assert_eq!(mate.sequence[7], None, "the mated position is not searched");
     let open = &out.games[1];
     assert_eq!((open.plies, open.terminal), (6, false));
     assert_eq!(open.fens.len(), 7);
+    let want: Vec<Option<String>> = open.fens.iter().cloned().map(Some).collect();
+    assert_eq!(open.sequence, want);
     let text = to_output(&out).unwrap();
     schema_check("PositionsResponse", &text);
     schema_check("PositionsRequest", &serde_json::to_string(&req).unwrap());
+}
+
+/// A position that comes back (1. Nf3 Nf6 2. Ng1 Ng8) is scored by its first occurrence's search.
+#[tokio::test]
+async fn a_repeated_position_is_scored_by_its_first_search() {
+    let pgn = "[Event \"t\"]
+[Result \"*\"]
+
+1. Nf3 Nf6 2. Ng1 Ng8 3. e4 *
+";
+    let req = PositionsRequest {
+        schema_version: SCHEMA_VERSION.to_owned(),
+        games: vec![game("rep", pgn)],
+    };
+    let out = positions(&req, algorithm_id()).await.expect("positions");
+    let g = &out.games[0];
+    assert_eq!(
+        g.fens.len(),
+        5,
+        "the start comes back after 2...Ng8 and is searched once"
+    );
+    assert_eq!(g.sequence[4], g.sequence[0]);
+    assert_eq!(g.sequence.len(), 6);
 }
 
 /// Scores from the side to move's point of view, as an engine reports them, that make 3...Nd4 a

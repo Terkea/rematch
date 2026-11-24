@@ -321,6 +321,7 @@ class GamePositions(Snake):
     plies: int
     terminal: bool
     fens: list[str]
+    sequence: list[str | None]
 
 
 class PositionsResponse(Snake):

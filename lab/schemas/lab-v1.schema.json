@@ -486,15 +486,16 @@
       }
     },
     "GamePositions": {
-      "description": "The FENs evaluate_game asks the engine for, in its order, each once.",
+      "description": "The FENs evaluate_game asks the engine for, in its order, each once; sequence is, for each of the plies + 1 positions, the FEN whose search scores it, or null for a final position scored without one.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "plies", "terminal", "fens"],
+      "required": ["id", "plies", "terminal", "fens", "sequence"],
       "properties": {
         "id": { "type": "string" },
         "plies": { "$ref": "#/$defs/Count" },
         "terminal": { "type": "boolean" },
-        "fens": { "type": "array", "items": { "type": "string" } }
+        "fens": { "type": "array", "items": { "type": "string" } },
+        "sequence": { "type": "array", "items": { "type": ["string", "null"] } }
       }
     },
     "PositionsResponse": {

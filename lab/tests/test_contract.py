@@ -153,3 +153,36 @@ def test_a_bad_tag_request_is_refused_before_the_cli() -> None:
             "TagMotifsRequest",
             {"schema_version": "lab-v1", "lines": [{"id": "x", "fen": "f", "pv": [], "moves": []}]},
         )
+
+
+# ---- engine depth (EXP-0008) -----------------------------------------------------------------
+
+OPEN_GAME = '[Event "t"]\n[Result "*"]\n\n1. e4 e5 2. Nf3 Nc6 3. Bc4 Nd4 *\n'
+
+
+def test_positions_and_judge_round_trip() -> None:
+    games = [models.DepthGame(id="open", pgn=OPEN_GAME)]
+    asked = rematch_lab.positions(games)
+    g = asked.games[0]
+    assert (g.plies, g.terminal, len(g.fens)) == (6, False, 7)
+    assert g.sequence == g.fens
+    # Level everywhere except after 3...Nd4, where White (to move) is +4: a blunder by Black.
+    searches = [
+        models.GivenSearch(fen=f, score=models.EngineScore(cp=400 if i == 6 else 10))
+        for i, f in enumerate(g.fens)
+    ]
+    judged = rematch_lab.judge(models.JudgeRequest(games=games, searches=searches))
+    labels = [m.judgement for m in judged.games[0].moves]
+    assert labels == [None, None, None, None, None, "blunder"]
+    lichess = models.DepthGame(id="open", pgn=OPEN_GAME, lichess_evals=[models.EngineScore(cp=20)] * 6)
+    only_start = [searches[0]]
+    judged = rematch_lab.judge(models.JudgeRequest(games=[lichess], searches=only_start))
+    assert judged.games[0].lichess_used == 6
+
+
+def test_an_engine_score_is_exactly_one_of_cp_or_mate() -> None:
+    assert json.loads(models.EngineScore(mate=-3).model_dump_json()) == {"mate": -3}
+    with pytest.raises(ValueError):
+        models.EngineScore(cp=1, mate=2)
+    with pytest.raises(ValueError):
+        models.EngineScore()

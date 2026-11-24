@@ -82,6 +82,10 @@ pub struct GamePositions {
     pub terminal: bool,
     /// The FENs the engine is asked for, in `evaluate_game`'s order, each once.
     pub fens: Vec<String>,
+    /// For each position of the game (the start, then after each ply: `plies + 1`), the FEN whose
+    /// search scores it (a repeated position is scored by its first occurrence's search), or null
+    /// for a final position scored without one.
+    pub sequence: Vec<Option<String>>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -91,11 +95,16 @@ pub struct PositionsResponse {
     pub games: Vec<GamePositions>,
 }
 
-/// An engine that answers every search with a fixed score and records what it was asked.
+/// An engine that records what it was asked and answers the i-th search with `MARK + i`
+/// centipawns, so the evaluations `evaluate_game` returns say which search scored each position.
 #[derive(Default)]
 struct Recorder {
     asked: Mutex<Vec<String>>,
 }
+
+/// Above any score `evaluate_game` assigns without a search (a terminal position's is at most
+/// 1,000 centipawns).
+const MARK: i32 = 10_000;
 
 impl Analyser for Recorder {
     fn analyse<'a>(
@@ -103,11 +112,10 @@ impl Analyser for Recorder {
         fen: &'a str,
         _opts: AnalyseOptions,
     ) -> BoxFuture<'a, Result<AnalysisResult, EngineError>> {
-        self.asked
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .push(fen.to_owned());
-        futures::future::ready(Ok(line_result(EngineScore::Cp(0), None))).boxed()
+        let mut asked = self.asked.lock().unwrap_or_else(|e| e.into_inner());
+        let i = i32::try_from(asked.len()).unwrap_or(i32::MAX - MARK);
+        asked.push(fen.to_owned());
+        futures::future::ready(Ok(line_result(EngineScore::Cp(MARK + i), None))).boxed()
     }
 }
 
@@ -148,17 +156,30 @@ pub async fn positions(
         let parsed = parse_pgn(&g.pgn).map_err(|e| anyhow::anyhow!("game {}: {e}", g.id))?;
         let recorder = Recorder::default();
         let cache = MemoryEvalCache::default();
-        evaluate_game(&deps(&recorder, &cache), &parsed, None)
+        let evaluated = evaluate_game(&deps(&recorder, &cache), &parsed, None)
             .await
             .map_err(|e| anyhow::anyhow!("game {}: {e}", g.id))?;
+        let fens = recorder
+            .asked
+            .into_inner()
+            .unwrap_or_else(|e| e.into_inner());
+        let sequence = evaluated
+            .evals
+            .iter()
+            .map(|e| match e.score {
+                // White's point of view: a search for Black to move comes back negated.
+                EngineScore::Cp(cp) if cp.abs() >= MARK => usize::try_from(cp.abs() - MARK)
+                    .ok()
+                    .and_then(|i| fens.get(i).cloned()),
+                _ => None,
+            })
+            .collect();
         games.push(GamePositions {
             id: g.id.clone(),
             plies: u32::try_from(parsed.plies.len()).unwrap_or(u32::MAX),
             terminal: parsed.terminal.is_some(),
-            fens: recorder
-                .asked
-                .into_inner()
-                .unwrap_or_else(|e| e.into_inner()),
+            fens,
+            sequence,
         });
     }
     Ok(PositionsResponse {
