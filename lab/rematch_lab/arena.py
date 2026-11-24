@@ -16,13 +16,22 @@ the working tree's manifest or a built `cli`. For each live experiment in the sc
 3. `arena.py` in the experiment folder measures each side and compares them: per primary and
    guarded metric, the effect, its interval and a verdict (better, worse, no clear difference).
    A worse primary or guard fails the run unless `lab/overrides.json` overrides it with an ADR.
+4. An experiment whose external input (ADR 0106 Amendment 1) is not on this machine is never
+   run: its entry says "not run: external input missing" and names the file, and
+   `--require-external` makes that a problem. With `--verify`, a committed record of the
+   challenger is compared but reported as not re-run.
+5. An experiment's `SOURCE_PATHS` (code outside the manifest that both sides must share) may not
+   differ between the champion and the challenger, except for a file whose exact content
+   `lab/source-reviews.json` lists for that experiment with an ADR that found its measured path
+   unchanged (ADR 0109 Amendment 1).
 
     python -m rematch_lab.arena --scope per-pr --dry-run           # the plan and what is cached
     python -m rematch_lab.arena --scope release --write            # run, then record
     python -m rematch_lab.arena --verify --require-records          # what the pull request job does
 
 Exit status: 0 no regression, 1 a clear regression, 2 the plan was refused, 3 a record is
-missing or a re-run differs from its committed record.
+missing, a re-run differs from its committed record, a source change is unreviewed, or (with
+`--require-external`) an external input is missing.
 """
 
 from __future__ import annotations
@@ -49,6 +58,7 @@ LAB_ROOT = ex.LAB_ROOT
 REPO_ROOT = LAB_ROOT.parent
 LEADERBOARD = LAB_ROOT / "leaderboard.json"
 OVERRIDES = LAB_ROOT / "overrides.json"
+SOURCE_REVIEWS = LAB_ROOT / "source-reviews.json"
 SCHEMA = "leaderboard-v1"
 # A scope runs its own experiments and every cheaper one.
 SCOPES = {
@@ -62,6 +72,7 @@ RUN_CAP = ex.DEFAULT_CAP
 OVERRIDDEN = "overridden"
 GATING = ("primary", "guard")
 NOT_RUN = "not run"
+NOT_RUN_EXTERNAL = "not run: external input missing"
 # The fields that identify a record's content; a re-run must reproduce them exactly.
 CONTENT = (
     "experiment",
@@ -132,6 +143,12 @@ def seed_namespace(results: dict[str, Any]) -> str | None:
     return None
 
 
+def record_namespace(rule: ModuleType, results: dict[str, Any]) -> str | None:
+    """The seed namespace the results record or, for an analysis frozen before the arena that
+    draws nothing at run time (EXP-0007 reads its committed sample), the rule's `SEED_NAMESPACE`."""
+    return seed_namespace(results) or getattr(rule, "SEED_NAMESPACE", None)
+
+
 def make_record(live: Live, raw: bytes) -> dict[str, Any]:
     results = json.loads(raw)
     rule = load_rule(live.exp)
@@ -139,7 +156,7 @@ def make_record(live: Live, raw: bytes) -> dict[str, Any]:
     return {
         "experiment": live.id,
         "algorithm_id": results["algorithm_id"],
-        "seed_namespace": seed_namespace(results),
+        "seed_namespace": record_namespace(rule, results),
         "analysis_sha256": ex.analysis_hash(live.exp),
         "inputs_sha256": inputs_sha256(live.exp),
         "rule_sha256": sha256((live.exp / "arena.py").read_bytes()),
@@ -178,7 +195,8 @@ def committed_record(
             return None
         raw = path.read_bytes()
     results = json.loads(raw)
-    if results.get("algorithm_id") != algorithm_id or seed_namespace(results) != live.id:
+    namespace = record_namespace(load_rule(live.exp), results)
+    if results.get("algorithm_id") != algorithm_id or namespace != live.id:
         return None
     return make_record(live, raw)
 
@@ -254,6 +272,48 @@ def override_for(
     return None
 
 
+def load_source_reviews(path: Path) -> list[dict[str, Any]]:
+    if not path.is_file():
+        return []
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def git_blob(path: str) -> str | None:
+    """The git blob sha of the working tree's `path` (what `git hash-object` gives), or None."""
+    if not (REPO_ROOT / path).is_file():
+        return None
+    out = subprocess.run(
+        ["git", "-C", str(REPO_ROOT), "hash-object", "--", path],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return out.stdout.strip() if out.returncode == 0 else None
+
+
+def reviewed(reviews: list[dict[str, Any]], exp_id: str, path: str) -> dict[str, Any] | None:
+    """A review counts only for this experiment and this exact content of the file, with a
+    reason and an ADR (`decisions/NNNN-*.md`) that exists and names the experiment and the file.
+    A deleted file is never reviewed."""
+    blob = git_blob(path)
+    if blob is None:
+        return None
+    for r in reviews:
+        if r.get("experiment") != exp_id or r.get("path") != path or r.get("blob") != blob:
+            continue
+        adr = Path(r.get("adr", ""))
+        if not adr.is_absolute():
+            adr = REPO_ROOT / adr
+        if not r.get("reason") or adr.parent.name != "decisions" or not adr.is_file():
+            continue
+        if not re.fullmatch(r"\d{4}-[a-z0-9-]+\.md", adr.name):
+            continue
+        text = adr.read_text(encoding="utf-8")
+        if exp_id in text and path in text:
+            return r
+    return None
+
+
 def run_side(live: Live, algorithm_id: str, cli: str | None) -> dict[str, Any]:
     """One run of the frozen analysis on the registered seeds, with that version's cli."""
     env = {
@@ -266,18 +326,14 @@ def run_side(live: Live, algorithm_id: str, cli: str | None) -> dict[str, Any]:
         env["REMATCH_CLI"] = cli
     slowdown = float(os.environ.get("ARENA_SLOWDOWN", "1"))
     timeout = live.minutes * 60 * RUN_CAP * slowdown
+    # An analysis frozen before the arena (EXP-0007) takes no --algorithm; it records the cli's
+    # algorithm_id, which is checked below either way.
+    takes_flag = getattr(load_rule(live.exp), "ALGORITHM_FLAG", True)
+    flag = ["--algorithm", algorithm_id] if takes_flag else []
     with tempfile.TemporaryDirectory() as out:
         try:
             subprocess.run(
-                [
-                    sys.executable,
-                    "-P",
-                    str(live.exp / "analysis.py"),
-                    "--out",
-                    out,
-                    "--algorithm",
-                    algorithm_id,
-                ],
+                [sys.executable, "-P", str(live.exp / "analysis.py"), "--out", out, *flag],
                 cwd=live.exp,
                 check=True,
                 env=env,
@@ -292,6 +348,8 @@ def run_side(live: Live, algorithm_id: str, cli: str | None) -> dict[str, Any]:
     record = make_record(live, raw)
     if record["seed_namespace"] != live.id:
         raise SystemExit(f"{live.id}: the run did not use the registered seeds")
+    if record["algorithm_id"] != algorithm_id:
+        raise SystemExit(f"{live.id}: the run was on {record['algorithm_id']}, not {algorithm_id}")
     return record
 
 
@@ -369,6 +427,15 @@ def render(report: dict[str, Any]) -> str:
         lines += [f"Refused: {report['refused']}", ""]
     for p in report["problems"]:
         lines.append(f"- Problem: {p}")
+    for n in report["notes"]:
+        lines.append(f"- Note: {n}")
+    if report["not_run"]:
+        lines.append(
+            f"- Not run for want of data: {', '.join(sorted(report['not_run']))}. The pinned "
+            "snapshot (its URL and sha256 are in section 7 of the pre-registration) goes in the "
+            "data directory (`$REMATCH_DATA_DIR`), and the arena is run where it is "
+            "(docs/evaluation.md)."
+        )
     for e in report["experiments"]:
         lines += ["", f"### {e['experiment']}: {e['verdict']}", ""]
         if not e["comparison"]:
@@ -412,6 +479,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--leaderboard", type=Path, default=LEADERBOARD)
     ap.add_argument("--write-to", type=Path, help="write the leaderboard here instead")
     ap.add_argument("--overrides", type=Path, default=OVERRIDES)
+    ap.add_argument("--source-reviews", type=Path, default=SOURCE_REVIEWS)
+    ap.add_argument(
+        "--require-external",
+        action="store_true",
+        help="an experiment not run for want of its external input is a problem",
+    )
     ap.add_argument("--max-cpu-hours", type=float)
     ap.add_argument("--date", default=dt.datetime.now(dt.UTC).date().isoformat())
     ap.add_argument("--json", type=Path, help="write the report as JSON")
@@ -433,6 +506,7 @@ def main(argv: list[str] | None = None) -> int:
     else:
         champion_board = board
     overrides = load_overrides(args.overrides)
+    reviews = load_source_reviews(args.source_reviews)
     lives = live_experiments(args.scope, args.only)
 
     def cached(live: Live, algorithm_id: str) -> dict[str, Any] | None:
@@ -451,15 +525,25 @@ def main(argv: list[str] | None = None) -> int:
         paths = list(getattr(load_rule(live.exp), "SOURCE_PATHS", []))
         if paths:
             diff = subprocess.run(
-                ["git", "-C", str(REPO_ROOT), "diff", "--quiet", args.champion_ref, "--", *paths],
-                check=False,
+                ["git", "-C", str(REPO_ROOT), "diff", "--name-only", args.champion_ref, "--"]
+                + paths,
+                capture_output=True,
+                text=True,
+                check=True,
             )
-            if diff.returncode != 0:
+            changed = [f for f in diff.stdout.splitlines() if f.strip()]
+            accepted = {f: reviewed(reviews, live.id, f) for f in changed}
+            unreviewed = [f for f, r in accepted.items() if r is None]
+            if unreviewed:
                 out.append(
-                    f"{live.id}: {', '.join(paths)} changed between the champion and the "
+                    f"{live.id}: {', '.join(unreviewed)} changed between the champion and the "
                     "challenger, so the two would not run the same players; register a new "
-                    "experiment or compare on the challenger's inputs by hand"
+                    "experiment, compare on the challenger's inputs by hand, or record a review "
+                    "of the change in lab/source-reviews.json with its ADR"
                 )
+            for f, r in accepted.items():
+                if r is not None:
+                    notes.append(f"{live.id}: {f} changed, accepted by its review ({r['adr']})")
         return out
 
     def stockfish(text: bytes | str | None) -> Any:
@@ -470,6 +554,8 @@ def main(argv: list[str] | None = None) -> int:
     records: dict[tuple[str, str], dict[str, Any] | None] = {}
     plan: list[dict[str, Any]] = []
     problems: list[str] = []
+    notes: list[str] = []
+    not_run: dict[str, str] = {}
     same_engine = True
     if args.champion_ref and champion != challenger:
         here = (REPO_ROOT / "algorithm" / "manifest.json").read_text(encoding="utf-8")
@@ -478,16 +564,31 @@ def main(argv: list[str] | None = None) -> int:
         )
     for live in lives:
         problems.extend(drift(live))
+        absent = [a[len(ex.EXTERNAL) :] for a in ex.missing_external(live.exp)]
         sides = [champion] if champion == challenger else [champion, challenger]
         for algorithm_id in sides:
             hit = cached(live, algorithm_id)
-            if algorithm_id == challenger and args.verify:
+            verifying = algorithm_id == challenger and args.verify
+            if absent and (hit is None or verifying):
+                # Without its data the experiment cannot run: say so, never pass it silently.
+                if hit is not None:
+                    notes.append(
+                        f"{live.id}: {algorithm_id} not re-run, its external input is missing "
+                        f"({', '.join(absent)}); compared on its committed record"
+                    )
+                else:
+                    not_run[live.id] = f"{NOT_RUN_EXTERNAL} ({', '.join(absent)})"
+                records[(live.id, algorithm_id)] = hit
+                continue
+            if verifying:
                 hit = None
             records[(live.id, algorithm_id)] = hit
             if hit is None:
                 plan.append(
                     {"experiment": live.id, "algorithm_id": algorithm_id, "cpu_hours": live.cpu_hours}
                 )
+        if live.id in not_run and args.require_external:
+            problems.append(f"{live.id}: {not_run[live.id]}, and --require-external asks for it")
         if args.require_records and find_record(board, live, challenger) is None:
             problems.append(
                 f"{live.id}: {challenger} is not on the leaderboard; run the arena with --write "
@@ -507,6 +608,8 @@ def main(argv: list[str] | None = None) -> int:
         ),
         "refused": None,
         "problems": problems,
+        "notes": notes,
+        "not_run": not_run,
         "experiments": [],
     }
     clis = {champion: args.champion_cli, challenger: args.challenger_cli}
@@ -541,10 +644,10 @@ def main(argv: list[str] | None = None) -> int:
             "experiment": live.id,
             "rerun": live.rerun,
             "metric_specs": rule.METRICS,
-            "verdict": NOT_RUN,
+            "verdict": not_run.get(live.id, NOT_RUN),
             "comparison": None,
         }
-        if a is not None and b is not None:
+        if a is not None and b is not None and live.id not in not_run:
             comparison = rule.compare(a["measures"], b["measures"])
             entry["comparison"] = comparison
             entry["champion_metrics"] = a["metrics"]

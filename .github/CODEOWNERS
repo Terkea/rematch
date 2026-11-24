@@ -41,5 +41,6 @@ AGENTS.md @Terkea
 /algorithm/ @Terkea
 /lab/leaderboard.json @Terkea
 /lab/overrides.json @Terkea
+/lab/source-reviews.json @Terkea
 /lab/experiments/*/arena.py @Terkea
 /SECURITY.md @Terkea

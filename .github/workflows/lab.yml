@@ -12,7 +12,10 @@ name: Lab
 # against main, re-runs the challenger and requires its record in lab/leaderboard.json; the Monday
 # run takes `weekly` against the newest release (production); release.yml calls this workflow
 # with `release` against the release before. A clear regression on a primary or guarded metric
-# fails the job unless lab/overrides.json overrides it with an ADR.
+# fails the job unless lab/overrides.json overrides it with an ADR. An experiment with an external
+# input (EXP-0007's Lichess puzzle snapshot) is reported "not run: external input missing" here,
+# since a hosted runner has no data directory; the operator runs it by hand where the snapshot
+# is and commits lab/leaderboard.json (ADR 0109 Amendment 1).
 on:
   pull_request:
     paths:

@@ -72,6 +72,7 @@ const SENSITIVE = [
   "algorithm/CHANGELOG.md",
   "lab/leaderboard.json",
   "lab/overrides.json",
+  "lab/source-reviews.json",
   "lab/experiments/EXP-0001/arena.py",
   "SECURITY.md",
 ];

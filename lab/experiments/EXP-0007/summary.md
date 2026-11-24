@@ -5,6 +5,10 @@ status: decided
 algorithm: algo-1.1.0+fa5e2186e1dd
 issue: 102
 updated: 2026-11-24
+live: true
+rerun: release
+run_cpu_hours: 0.02
+run_minutes: 1
 ---
 
 - The question: how often is a position Rematch calls a fork really a fork, and how many forks does it miss? Measured on 54,987 Lichess puzzles (CC0), against Lichess's generated themes, with each puzzle's solution standing in for the engine's best line.

@@ -1,0 +1,37 @@
+[
+  {
+    "adr": "docs/decisions/0109-champion-and-challenger.md",
+    "blob": "86e981d8e30c3f6135a18c611e42775a5cd2b8b9",
+    "experiment": "EXP-0001",
+    "path": "backend/crates/bench/src/harness.rs",
+    "reason": "EXP-0006's side-by-side variant: every added statement runs only with a variant, which EXP-0001 never sets (ADR 0109 Amendment 1)"
+  },
+  {
+    "adr": "docs/decisions/0109-champion-and-challenger.md",
+    "blob": "ffca35ef107715d3ca83e12378a95bd78e81903a",
+    "experiment": "EXP-0001",
+    "path": "backend/crates/bench/src/lab.rs",
+    "reason": "variant: None in the harness of cli lab analyse, which EXP-0001 does not call (ADR 0109 Amendment 1)"
+  },
+  {
+    "adr": "docs/decisions/0109-champion-and-challenger.md",
+    "blob": "fd9d50a2899990b0517eec6543ed7cd95b072b2b",
+    "experiment": "EXP-0001",
+    "path": "backend/crates/bench/src/lib.rs",
+    "reason": "variant_from_env and its test; an empty ALGO_VARIANT is None (ADR 0109 Amendment 1)"
+  },
+  {
+    "adr": "docs/decisions/0109-champion-and-challenger.md",
+    "blob": "ea6bb08bd7f1599535ff7e09e6ae49be117a4d7a",
+    "experiment": "EXP-0001",
+    "path": "backend/crates/bench/src/results.rs",
+    "reason": "the optional variant result, skipped in JSON when None (ADR 0109 Amendment 1)"
+  },
+  {
+    "adr": "docs/decisions/0109-champion-and-challenger.md",
+    "blob": "f4773620e784d2387a0f29ac12fbef2a1c7a0aaf",
+    "experiment": "EXP-0001",
+    "path": "backend/crates/bench/src/run.rs",
+    "reason": "RunOptions::variant and RunOutput::variant, set only with a variant (ADR 0109 Amendment 1)"
+  }
+]

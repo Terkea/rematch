@@ -6,6 +6,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -69,7 +70,7 @@ def committed(exp_id: str) -> dict:
     return json.loads((LAB / "experiments" / exp_id / "results.json").read_text(encoding="utf-8"))
 
 
-@pytest.mark.parametrize("exp_id", ["EXP-0001", "EXP-0002"])
+@pytest.mark.parametrize("exp_id", ["EXP-0001", "EXP-0002", "EXP-0007"])
 def test_a_version_against_itself_shows_no_clear_difference(exp_id: str) -> None:
     rule = arena.load_rule(LAB / "experiments" / exp_id)
     m = rule.measure(committed(exp_id))
@@ -77,6 +78,66 @@ def test_a_version_against_itself_shows_no_clear_difference(exp_id: str) -> None
     assert {r["verdict"] for r in result.values()} == {"no clear difference"}
     assert set(result) == {x["name"] for x in rule.METRICS}
     assert any(x["role"] == "primary" for x in rule.METRICS)
+
+
+def test_exp_0007_metrics_reproduce_the_decision() -> None:
+    rule = arena.load_rule(LAB / "experiments" / "EXP-0007")
+    metrics = rule.metrics(rule.measure(committed("EXP-0007")))
+    assert metrics["trusted_tags"]["tags"] == [
+        "fork",
+        "discoveredAttack",
+        "promotion",
+        "smotheredMate",
+        "mate",
+        "mateIn1",
+        "mateIn2",
+        "mateIn3",
+        "mateIn4Plus",
+    ]
+    assert metrics["precision_fork"]["value"] == pytest.approx(0.9763)
+    assert metrics["precision_fork"]["interval"] == pytest.approx([0.9691, 0.9819])
+    assert metrics["recall_pin"]["value"] == pytest.approx(0.201, abs=1e-3)
+
+
+def test_exp_0007_a_trusted_tag_may_not_fall_below_the_precision_floor() -> None:
+    rule = arena.load_rule(LAB / "experiments" / "EXP-0007")
+    champ = rule.measure(committed("EXP-0007"))
+    chall = copy.deepcopy(champ)
+    # fork's estimate holds, but the lower end of its interval drops to 0.79: no longer trusted.
+    chall["fork"]["precision"]["interval"] = [0.79, 0.99]
+    chall["fork"]["decision"] = "hidden pending a human audit"
+    result = rule.compare(champ, chall)
+    assert result["precision_fork"]["verdict"] == "worse"
+    assert result["trusted_tags"]["verdict"] == "worse"
+    assert result["trusted_tags"]["lost"] == ["fork"]
+    roles = {m["name"]: m["role"] for m in rule.METRICS}
+    assert roles["trusted_tags"] == "primary" and roles["precision_fork"] == "guard"
+    assert roles["recall_fork"] == "report"
+
+
+def test_exp_0007_a_tag_clears_only_by_the_registered_rule() -> None:
+    rule = arena.load_rule(LAB / "experiments" / "EXP-0007")
+    champ = rule.measure(committed("EXP-0007"))
+    # skewer's precision interval clears 0.80, but the frozen rule did not trust it: no gain.
+    raised = copy.deepcopy(champ)
+    raised["skewer"]["precision"]["interval"] = [0.81, 0.85]
+    result = rule.compare(champ, raised)
+    assert result["trusted_tags"]["verdict"] == "no clear difference"
+    assert result["precision_skewer"]["verdict"] == "better"
+    # Once the rule trusts it (precision and recall both clear), the primary gains it.
+    raised["skewer"]["decision"] = "trusted"
+    result = rule.compare(champ, raised)
+    assert result["trusted_tags"]["verdict"] == "better"
+    assert result["trusted_tags"]["gained"] == ["skewer"]
+
+
+def test_exp_0007_runs_without_the_algorithm_flag_on_its_own_namespace() -> None:
+    rule = arena.load_rule(LAB / "experiments" / "EXP-0007")
+    assert rule.ALGORITHM_FLAG is False
+    live = next(x for x in arena.live_experiments("release") if x.id == "EXP-0007")
+    assert (live.rerun, live.cpu_hours, live.minutes) == ("release", 0.02, 1.0)
+    record = arena.committed_record(live, CHAMPION)
+    assert record is not None and record["seed_namespace"] == "EXP-0007"
 
 
 def test_exp_0001_metrics_reproduce_the_decision() -> None:
@@ -449,3 +510,104 @@ def test_the_seeded_leaderboard_is_what_the_committed_results_give() -> None:
         stored = arena.find_record(board, live, CHAMPION)
         assert stored is not None, live.id
         assert arena.same_record(stored, arena.committed_record(live, CHAMPION))
+
+
+# ---- external inputs and reviewed source changes (ADR 0109 Amendment 1) ------------------------
+
+
+def with_external(exp: Path) -> None:
+    (exp / "inputs.sha256").write_text(f"{'0' * 64}  external:puzzles/snapshot.csv\n")
+
+
+def test_a_missing_external_input_is_reported_not_run_never_passed(
+    lab_dirs: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("REMATCH_DATA_DIR", str(lab_dirs / "data"))
+    with_external(fake(lab_dirs / "experiments", WORSE))
+    code, report = run(lab_dirs)
+    assert code == 0 and report["plan"] == []
+    verdict = report["experiments"][0]["verdict"]
+    assert verdict == "not run: external input missing (puzzles/snapshot.csv)"
+    assert report["not_run"] == {"EXP-9999": verdict}
+    assert "Not run for want of data: EXP-9999" in arena.render(report)
+    code, report = run(lab_dirs, "--require-external")
+    assert code == 3
+    assert any("external input missing" in p for p in report["problems"])
+
+
+def test_verify_without_the_external_input_compares_the_committed_record(
+    lab_dirs: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("REMATCH_DATA_DIR", str(lab_dirs / "data"))
+    exp = fake(lab_dirs / "experiments", SAME)
+    # Both records are written where the snapshot is; then it is gone, as on a hosted runner.
+    snapshot = lab_dirs / "data" / "puzzles" / "snapshot.csv"
+    snapshot.parent.mkdir(parents=True)
+    snapshot.write_text("PuzzleId\n")
+    digest = hashlib.sha256(b"PuzzleId\n").hexdigest()
+    (exp / "inputs.sha256").write_text(f"{digest}  external:puzzles/snapshot.csv\n")
+    assert run(lab_dirs, "--write")[0] == 0
+    snapshot.unlink()
+    code, report = run(lab_dirs, "--verify")
+    assert code == 0 and report["plan"] == []
+    assert report["experiments"][0]["verdict"] == "no clear difference"
+    assert any("not re-run" in n for n in report["notes"])
+
+
+def git(repo: Path, *args: str) -> str:
+    return subprocess.run(
+        ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t", *args],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+
+
+def test_a_source_change_is_refused_unless_its_exact_content_is_reviewed(
+    lab_dirs: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = lab_dirs / "repo"
+    (repo / "src").mkdir(parents=True)
+    (repo / "algorithm").mkdir()
+    (repo / "algorithm" / "manifest.json").write_text('{"id": "x"}\n')
+    (repo / "src" / "players.rs").write_text("players\n")
+    (repo / "src" / "harness.rs").write_text("harness\n")
+    git(repo, "init", "-q")
+    git(repo, "add", ".")
+    git(repo, "commit", "-qm", "champion")
+    champion_ref = git(repo, "rev-parse", "HEAD")
+    (repo / "src" / "harness.rs").write_text("harness\n// additive\n")
+    monkeypatch.setattr(arena, "REPO_ROOT", repo)
+    exp = fake(lab_dirs / "experiments", SAME)
+    (exp / "arena.py").write_text(FAKE_RULE + 'SOURCE_PATHS = ["src"]\n', encoding="utf-8")
+    reviews = lab_dirs / "reviews.json"
+    args = ("--dry-run", "--champion-ref", champion_ref, "--source-reviews", str(reviews))
+
+    code, report = run(lab_dirs, *args)
+    assert code == 3
+    assert any("src/harness.rs changed" in p for p in report["problems"])
+
+    (repo / "docs" / "decisions").mkdir(parents=True)
+    adr = repo / "docs" / "decisions" / "0999-review.md"
+    adr.write_text("# 0999. EXP-9999 never calls the addition to src/harness.rs\n")
+    blob = git(repo, "hash-object", "--", "src/harness.rs")
+    entry = {
+        "experiment": "EXP-9999",
+        "path": "src/harness.rs",
+        "blob": blob,
+        "adr": "docs/decisions/0999-review.md",
+        "reason": "additive",
+    }
+    reviews.write_text(json.dumps([entry]))
+    code, report = run(lab_dirs, *args)
+    assert code == 0 and report["problems"] == []
+    assert any("accepted by its review" in n for n in report["notes"])
+
+    # Another edit of the file, a review of another experiment, or an ADR that does not name the
+    # file: refused again.
+    for bad in ({**entry, "blob": "0" * 40}, {**entry, "experiment": "EXP-0001"}):
+        reviews.write_text(json.dumps([bad]))
+        assert run(lab_dirs, *args)[0] == 3
+    reviews.write_text(json.dumps([entry]))
+    adr.write_text("# 0999. A review\n")
+    assert run(lab_dirs, *args)[0] == 3

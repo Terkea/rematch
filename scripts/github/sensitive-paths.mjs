@@ -109,11 +109,12 @@ export const RULES = [
   {
     id: "algorithm",
     reason:
-      "the algorithm manifest (ADR 0105) and the arena's gate: its rules, records and overrides (ADR 0109)",
+      "the algorithm manifest (ADR 0105) and the arena's gate: its rules, records, overrides and source reviews (ADR 0109)",
     test: (p) =>
       p.startsWith("algorithm/") ||
       p === "lab/leaderboard.json" ||
       p === "lab/overrides.json" ||
+      p === "lab/source-reviews.json" ||
       /^lab\/experiments\/EXP-\d{4}\/arena\.py$/.test(p),
   },
   {

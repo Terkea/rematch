@@ -46,7 +46,7 @@ Regenerate the lock only in the image, then check it: `docker build --target bas
 ## Layout
 
 - `rematch_lab/`: the bridge (`bridge.py`), the typed messages (`models.py`), the experiment rules (`experiments.py`), the champion/challenger arena (`arena.py`) and its interval rules (`stats.py`).
-- `leaderboard.json`: every version's record on every live experiment, written by the arena (canonical JSON, never edited by hand); `overrides.json`: the ADR-recorded emergency overrides, empty unless one is in force.
+- `leaderboard.json`: every version's record on every live experiment, written by the arena (canonical JSON, never edited by hand); `overrides.json`: the ADR-recorded emergency overrides, empty unless one is in force; `source-reviews.json`: the files under an experiment's `SOURCE_PATHS` whose exact content an ADR found outside its measured path (ADR 0109 Amendment 1).
 - `schemas/lab-v1.schema.json`: every message of the bridge.
 - `fixtures/`: the contract fixture and its golden outputs. `node fixtures/make-profile-request.mjs` rebuilds the fixture; `REPLAY_UPDATE=1` on the Rust test `backend/crates/cli/tests/lab.rs` rebuilds the goldens after a deliberate algorithm change.
 - `experiments/EXP-NNNN/`: one folder per experiment ([the layout](experiments/README.md)).
