@@ -223,7 +223,8 @@ async fn does_not_wait_past_the_grace_for_a_stuck_runner() {
 // ---------------------------------------------------------------------------------------------
 // Real stack
 
-/// A long game: 300k nodes per position keeps the engine busy well past the grace period.
+/// A long game: `ENGINE_NODES` (1 million) per position keeps the engine busy well past the
+/// grace period.
 const LONG: &str = "1. e4 c5 2. Nf3 d6 3. d4 cxd4 4. Nxd4 Nf6 5. Nc3 a6 6. Be3 e5 7. Nb3 Be6 \
     8. f3 Be7 9. Qd2 O-O 10. O-O-O Nbd7 11. g4 b5 12. g5 b4 13. Ne2 Ne8 14. f4 a5 15. f5 a4 *";
 
@@ -286,7 +287,7 @@ async fn sigterm_loses_nothing(pool_opts: PgPoolOptions, opts_: PgConnectOptions
     );
     assert_eq!(code, 0);
 
-    // 30 plies at 300k nodes cannot finish within the drain window: the analysis is aborted,
+    // 30 plies at `ENGINE_NODES` cannot finish within the drain window: the analysis is aborted,
     // the game is pending again and its job is queued without using an attempt.
     assert_eq!(
         game(&pool, id).await.analysis_status,

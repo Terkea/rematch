@@ -6,11 +6,11 @@ use std::sync::Arc;
 
 use chess_core::{Color, EngineScore};
 use common::*;
-use engine::ENGINE_NODES;
+
 use enrich::difficulty::{DifficultyOutcome, PendingReason};
 use enrich::enrich_game::enrich_game;
 use enrich::persist::persist_move_features;
-use enrich::protocol::MULTIPV;
+use enrich::protocol::{MULTIPV, MULTIPV_NODES};
 use enrich::store::{DbEnrichmentStore, EnrichmentStore};
 use profile_core::types::{MoveFeatures, MultipvLine, RawMoveFeatures};
 use sqlx::PgPool;
@@ -286,6 +286,6 @@ async fn persist_writes_in_chunks(pool: PgPool) {
         .await,
         1100
     );
-    assert_eq!(ENGINE_NODES, 300_000);
+    assert_eq!(MULTIPV_NODES, 300_000);
     assert_eq!(MULTIPV, 3);
 }
