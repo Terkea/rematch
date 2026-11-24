@@ -204,6 +204,8 @@ def test_a_pre_registration_needs_its_value_case(tmp_path: Path) -> None:
     wrong = text.replace("cost 1 = 3", "cost 1 = 9")
     assert any("value score is 3" in p for p in experiments.value_case_problems(exp, wrong))
     assert experiments.value_case_problems(exp, text) == []
+    sentence = text.replace("cost 1 = 3", "cost 2 = 1.5.")  # a full stop ends the score
+    assert experiments.value_case_problems(exp, sentence) == []
     (exp / "preregistration.md").write_text(text.replace(VALUE_CASE, ""))
     assert any("no section 0" in p for p in experiments.check(exp))
 

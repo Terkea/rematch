@@ -1,41 +1,51 @@
 # The pipeline benchmark
 
-Rematch's pipeline finds three of the five injected flaws today and gives the clean control no weakness. Since ADR 0101 (2026-11-23, branch `fix/weakness-ranking`), hanging pieces (W1), low-clock blunders (W9b) and thrown-away wins (W5) are ranked first and their drills fit; missed mates (W4.missed) are measured but not ranked, and early blunders (W7.traps) are ranked as hanging pieces. The 80% intervals hold the true rate 60% of the time (12 of 20), below the 65% threshold. These are known gaps, not tuned away:
+Rematch's pipeline finds three of the five injected flaws and gives the clean control no weakness. Since EXP-0001 (2026-11-23) the smoke suite has three players per flaw: hanging pieces (W1), low-clock blunders (W9b) and thrown-away wins (W5) are ranked first for all nine of their players and their drills fit; missed mates (W4.missed) are measured but ranked for none of three, and early blunders (W7.traps) reach the top 3 for one of three, behind W1. The 80% intervals hold the true rate 65% of the time (39 of 60), at the bottom of the 65% to 95% band. These are known gaps, not tuned away:
 
 - resolved: W1 and W5 had no benchmark, so they were never ranked ([#10](https://github.com/Terkea/rematch/issues/10)). W1 is now compared with the opponents' refutation lines from the cached main evals, and W5 with what the evaluation predicts from a winning episode (ADR 0101);
 - resolved: ranking had no floor, so the clean control's W9b (11 of 846 against a peer median of 0.008) ranked first ([#12](https://github.com/Terkea/rematch/issues/12)). A weakness now ranks only when its 80% range lies above the benchmark and it costs at least 0.02 points per game;
 - the W4.missed peer row is low-sample at 80 games ([#11](https://github.com/Terkea/rematch/issues/11)), so `bench-missmate`'s rank 1 is W1: 0.0043 against its opponents' 0.0018, the bias of comparing with players who only played you;
 - `bench-opening`'s injected opening blunders mostly hang a piece. Each move's cost goes once, to the first key in W4 > W2 > W1 > W3 > W8 > W7 > W10, so their cost is W1's and W1 ranks first. W7.traps keeps 1.2 of the 31 events' points lost, and its peer row's EPL per event is 0, so it is not ranked. No issue yet;
-- coverage fell from 80% to 60% because W1's four intervals now miss. W1's detector reads 0.019 against a true rate of 0.023, and the interval is now shrunk towards the opponents' rate (0.0008, prior strength 300 chances). No issue yet.
+- coverage is 65%, and W1's intervals miss: W1's detector reads 0.017 against a true rate of 0.023 for `bench-hang`, and the interval is shrunk towards the opponents' rate (0.0008, prior strength 300 chances). EXP-0002 measured the prior alone: with exact counts, a W1 player at that rate is covered 53% of the time at 30 games ([#13](https://github.com/Terkea/rematch/issues/13); the fix is EXP-0006).
 
 ## The current scorecard
 
 Stockfish at 12000 nodes per search. Tier 1 (synthetic players). Method: `docs/benchmark.md`.
 
-| Score | Value | Threshold | Result | Before ADR 0101 |
-|---|---|---|---|---|
-| (a) Flaw in the top 2 (recall) | 60% | at least 80% | fail | 40% |
-| (a) Flaw ranked first | 60% | – | – | 40% |
-| (a) Top-1 precision | 60% | – | – | 40% |
-| (a) Clean controls with a rank-1 weakness | 0 of 1 | at most 0 | pass | 1 of 1 |
-| (b) 80% intervals holding the true rate | 60% (20 intervals) | 65% to 95% | fail | 80% |
-| (c) Top weakness's drills train the flaw | 60% | – | – | 40% |
-| (d) Mean games to a top-2 detection | 45 | – | – | 55 |
-| (e) Same data, same weaknesses | yes | – | – | yes |
-| (e) Top-2 overlap without 10% of the games | 100% | – | – | 83% |
+| Score | Value | Threshold | Result |
+|---|---|---|---|
+| (a) Flaw in the top 2 (recall) | 60% | at least 80% | fail |
+| (a) Flaw ranked first | 60% | – | – |
+| (a) Top-1 precision | 64% | – | – |
+| (a) Clean controls with a rank-1 weakness | 0 of 1 | at most 0 | pass |
+| (b) 80% intervals holding the true rate | 65% (60 intervals) | 65% to 95% | pass |
+| (c) Top weakness's drills train the flaw | 60% | – | – |
+| (d) Mean games to a top-2 detection | 42 | – | – |
+| (e) Same data, same weaknesses | yes | – | – |
+| (e) Top-2 overlap without 10% of the games | 93% | – | – |
 
 Thresholds: not all met.
 
 | Player | Flaw (rate) | Target | True rate | Estimate [80%] | Rank | Top 3 | Drills hit | Games to detect | Note |
 |---|---|---|---|---|---|---|---|---|---|
 | bench-hang | hang (0.05) | W1 | 0.023 | 0.017 [0.014, 0.020] | 1 | W1 | yes | 45 |  |
+| bench-hang-2 | hang (0.05) | W1 | 0.021 | 0.019 [0.015, 0.022] | 1 | W1 | yes | 30 |  |
+| bench-hang-3 | hang (0.05) | W1 | 0.023 | 0.021 [0.017, 0.025] | 1 | W1 | yes | 30 |  |
 | bench-missmate | miss_mate (0.5) | W4.missed | 0.400 | 0.304 [0.155, 0.467] | – | W1 | no | – | not ranked: no peer benchmark for this key |
+| bench-missmate-2 | miss_mate (0.5) | W4.missed | 0.450 | 0.545 [0.386, 0.700] | – | none | no | – | not ranked: no peer benchmark for this key |
+| bench-missmate-3 | miss_mate (0.5) | W4.missed | 0.500 | 0.581 [0.419, 0.739] | – | W5, W9b | no | – | not ranked: no peer benchmark for this key |
 | bench-opening | opening_blunder (0.3) | W7.traps | 0.309 | 0.247 [0.194, 0.302] | – | W1 | no | – | not ranked: not enough evidence yet |
+| bench-opening-2 | opening_blunder (0.3) | W7.traps | 0.309 | 0.220 [0.170, 0.273] | 3 | W1, W5, W7.traps | no | 60 | ranked 3 |
+| bench-opening-3 | opening_blunder (0.3) | W7.traps | 0.309 | 0.324 [0.252, 0.398] | – | W1 | no | – | not ranked: no peer benchmark for this key |
 | bench-lowclock | low_clock_blunder (0.25) | W9b | 0.103 | 0.088 [0.070, 0.107] | 1 | W9b, W1 | yes | 30 |  |
+| bench-lowclock-2 | low_clock_blunder (0.25) | W9b | 0.087 | 0.068 [0.052, 0.085] | 1 | W9b, W1, W9a | yes | 45 |  |
+| bench-lowclock-3 | low_clock_blunder (0.25) | W9b | 0.111 | 0.094 [0.075, 0.114] | 1 | W9b, W1 | yes | 30 |  |
 | bench-noconvert | no_convert (0.5) | W5 | 0.545 | 0.526 [0.379, 0.671] | 1 | W5 | yes | 60 |  |
+| bench-noconvert-2 | no_convert (0.5) | W5 | 0.581 | 0.593 [0.454, 0.727] | 1 | W5 | yes | 45 |  |
+| bench-noconvert-3 | no_convert (0.5) | W5 | 0.605 | 0.460 [0.329, 0.591] | 1 | W5, W1 | yes | 45 |  |
 | bench-clean | clean | – | – | – | – | none | – | – |  |
 
-The run took 4 minutes 21 seconds with 4 engines: 72,971 Stockfish searches, 58,099 requests served from the cache. `bench/baseline.json` holds these numbers.
+The run took 8 minutes 50 seconds with 8 engines: 195,945 Stockfish searches, 157,660 requests served from the cache. The first player of each flaw gives the same row as the six-player suite before EXP-0001. `bench/baseline.json` holds these numbers.
 
 ## What it measures
 
@@ -102,17 +112,19 @@ Options: `--suite smoke|full`, `--json` (print `bench-results.json` instead of t
 
 The suites:
 
-- `smoke` (CI): six players, 80 games each (one per flaw above and one clean control), checkpoints at 30, 45, 60 and 80 games, and the perturbation.
-- `full` (weekly): 160 games per player, the rate sweep `hang` 0.02/0.05/0.1, `miss_mate` 0.25/0.5/0.75, `opening_blunder` 0.15/0.3/0.5, `low_clock_blunder` 0.1/0.25/0.4, `no_convert` 0.5, two clean controls, checkpoints up to 160 games. Its results give the detection curves (rate against games to detection).
+- `smoke` (CI): three players per flaw above and one clean control, 80 games each (16 players, 1,280 games), checkpoints at 30, 45, 60 and 80 games, and the perturbation. The first player of each flaw keeps its old name and seed (`bench-hang`, seed 11).
+- `full` (weekly): 22 players per flaw at the smoke rates and two clean controls, 80 games each (112 players, 8,960 games), checkpoints at 30, 45, 60 and 80 games. Its checkpoints give the detection curves (games to detection).
 
-`.github/workflows/bench.yml` runs the smoke suite on pull requests that touch `enrich`, `profile`, `profile-core`, `coaching-input` or `bench`, compares it with `bench/baseline.json` and fails on a regression beyond the baseline's tolerance. It runs the full suite every Monday and on demand. Both upload the scorecard and the results as an artifact. The absolute thresholds are reported, not enforced, because the first baseline does not meet them (below).
+The sizes come from EXP-0001 ([the decision](../lab/experiments/EXP-0001/decision.md)): with the player as the unit, detecting a change of 0.1 in recall at 2 80% of the time needs about 40 players a flaw at 80 games under the assumed churn, more than the weekly budget of 9,000 games allows; the full suite detects 0.15 that often, and the smoke suite is a tripwire for large drops. The rate sweep left the full suite so that the recall it scores is the recall that was sized.
+
+`.github/workflows/bench.yml` runs the smoke suite on pull requests that touch `enrich`, `profile`, `profile-core`, `coaching-input` or `bench`, compares it with `bench/baseline.json` and fails on a regression beyond the baseline's tolerance: a fall in recall at 2 of more than 0.1 (two net lost detections of 15) or coverage moving more than 0.05 further from 0.8, both from EXP-0001. It runs the full suite every Monday and on demand. Both upload the scorecard and the results as an artifact. The absolute thresholds are reported, not enforced, because the first baseline does not meet them (below).
 
 ## What Tier 1 does not show
 
 - The games are not human. The clean policy is an engine with a loss cap, so the profile it gives is not a typical 1500 player's. The clock model is harsh: 18 to 35 of each player's 80 games end on time, and W9a (getting short of time) sits near 70% for everyone, flawed or not.
 - Search noise reaches the detectors. Two node-limited searches can disagree, so a capped move sometimes reads as decisive: the clean control has 14 W1 events in 4,274 eligible moves and 11 W9b events in 846. The true rate includes this noise through the clean control's rate (above). The clean control's old false alarm came from it; the ranking floor (ADR 0101) now holds it back.
 - Not every weakness is covered. There is no Maia (W11 needs it), no tablebase (W8), no injector for W2, W3, W6, W7.prep, W9a, W9c or W10, and no colour split. Each is a new injector type in `bench::flaws`.
-- One run, one seed per flaw. The smoke suite has five flawed players, so one detection is 20 points of recall. The full suite's second seeds and rate sweep are what narrow it.
+- Few players. The smoke suite has 15 flawed players, so one detection is about 7 points of recall, and it detects only large drops (a fall of 0.2 four times in five, EXP-0001). The full suite's 110 detect a change of 0.15 four times in five, not 0.1.
 - 12,000 nodes, not 300,000. Weaker searches than production make the lines noisier; the conclusions about ranking and benchmarks do not depend on depth, the exact rates do.
 
 ## Planned tiers

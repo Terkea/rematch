@@ -40,7 +40,9 @@ concurrency:
 jobs:
   lab:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    # EXP-0001 runs the real pipeline on 3,840 games, twice (25 minutes each with 8 engines on the
+    # maintainer's machine), so the cli is a release build and the job has five hours.
+    timeout-minutes: 300
     env:
       LANE: lab
       COMPOSE: docker compose -p ci-lab
@@ -64,7 +66,7 @@ jobs:
         run: |
           mkdir -p lab-ctx/usr/local/bin
           $COMPOSE run --rm --no-deps -e LANE="$LANE" rust-dev sh -c \
-            'cargo build --locked -p cli && cp /lane-target/debug/cli /work/lab-ctx/usr/local/bin/cli && cp /usr/local/bin/stockfish /work/lab-ctx/usr/local/bin/stockfish'
+            'cargo build --locked --release -p cli && cp /lane-target/release/cli /work/lab-ctx/usr/local/bin/cli && cp /usr/local/bin/stockfish /work/lab-ctx/usr/local/bin/stockfish'
       - name: Build the lab image (uv sync --frozen)
         run: docker build --build-context rematch=lab-ctx -t rematch-lab:ci lab
       - name: Contract tests (pytest)

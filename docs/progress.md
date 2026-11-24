@@ -8,6 +8,12 @@ The site builds this file into /docs/progress/ and shows the newest entry on the
 
 See also the [experiments](/rematch/docs/experiments/) and the [roadmap](/rematch/docs/roadmap/).
 
+## 2026-11-24: The first two experiments are decided
+
+- EXP-0001 sized the benchmark with a power analysis on the real Rust pipeline. Reliably seeing a 0.1 gain in "finds the flaw in its top 2" needs 40 synthetic players per flaw; the weekly budget allows 22, which reliably sees 0.15. The suites were resized to match (smoke 1,280 games, full 8,960), and 10 of the pilot's 11 misses are missed mates and early traps, so that's where gains have to come from ([EXP-0001](https://github.com/Terkea/rematch/tree/main/lab/experiments/EXP-0001)).
+- EXP-0002 checked whether the 80% ranges hold 80% of the time. For players well above their peers, 12 of 20 weakness-by-sample-size cells fall outside 75–85%, worst for missed mates at 30 games (10%). The ranges are pulled towards the peers, so they miss high ([EXP-0002](https://github.com/Terkea/rematch/tree/main/lab/experiments/EXP-0002), [#13](https://github.com/Terkea/rematch/issues/13)).
+- Both were pre-registered, reviewed by an independent critic before and after the run, and re-run to byte-identical results. Next: EXP-0005 measures how much the rankings move between two real versions, and EXP-0006 tests a fix for the priors.
+
 ## 2026-11-23: The algorithm science lab and algo-1.1.0
 
 - Every change to the recommendation algorithm now needs a pre-registered experiment: the question, H0 and H1, the primary metric, the minimum effect, the sample size and the decision rule are committed before anything runs ([ADR 0106](decisions/0106-algorithm-science-lab.md), [evaluation](evaluation.md#how-we-do-science-on-the-algorithm)).

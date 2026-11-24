@@ -50,7 +50,7 @@ VALUE_FIELDS = (
     "- Cheaper alternative?",
     "- Compute budget:",
 )
-VALUE_SCORE = re.compile(r"impact ([1-3]) × uncertainty ([1-3]) ÷ cost ([1-3]) = ([0-9.]+)")
+VALUE_SCORE = re.compile(r"impact ([1-3]) × uncertainty ([1-3]) ÷ cost ([1-3]) = ([0-9]+(?:\.[0-9]+)?)")
 BUDGET_CAP = re.compile(r"^- Compute budget:.*\bcap (\d+)%", re.MULTILINE)
 DEFAULT_CAP = 1.5
 # Registered before the value gate existed.

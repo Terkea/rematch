@@ -667,7 +667,9 @@ function valueCaseProblem(body, where) {
     if (next < 0) fail(`${where}: the value case is missing "${f.trim()}" (or it is out of order)`);
     at = next + 1;
   }
-  const s = vc.match(/Value score: impact ([1-3]) × uncertainty ([1-3]) ÷ cost ([1-3]) = ([\d.]+)/);
+  const s = vc.match(
+    /Value score: impact ([1-3]) × uncertainty ([1-3]) ÷ cost ([1-3]) = (\d+(?:\.\d+)?)/,
+  );
   if (!s) fail(`${where}: the value score reads "impact N × uncertainty N ÷ cost N = S"`);
   const want = Math.round((Number(s[1]) * Number(s[2]) * 10) / Number(s[3])) / 10;
   if (Number(s[4]) !== want) fail(`${where}: the value score is ${want}, not ${s[4]}`);

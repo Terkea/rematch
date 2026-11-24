@@ -1,0 +1,6997 @@
+{
+  "algorithm_id": "algo-1.1.0+fa5e2186e1dd",
+  "at_budget": [
+    {
+      "ci_rule_false_alarm_delta_0": 0.11775,
+      "curve": [
+        {
+          "ci_rule_flags_drop": 0.265,
+          "delta": 0.05,
+          "guard_flags_drop": 0.2235,
+          "ship": 0.02925
+        },
+        {
+          "ci_rule_flags_drop": 0.49325,
+          "delta": 0.1,
+          "guard_flags_drop": 0.40775,
+          "ship": 0.06475
+        },
+        {
+          "ci_rule_flags_drop": 0.676,
+          "delta": 0.15,
+          "guard_flags_drop": 0.56325,
+          "ship": 0.13475
+        },
+        {
+          "ci_rule_flags_drop": 0.805,
+          "delta": 0.2,
+          "guard_flags_drop": 0.6855,
+          "ship": 0.1985
+        },
+        {
+          "ci_rule_flags_drop": 0.89525,
+          "delta": 0.25,
+          "guard_flags_drop": 0.78075,
+          "ship": 0.2595
+        },
+        {
+          "ci_rule_flags_drop": 0.95025,
+          "delta": 0.3,
+          "guard_flags_drop": 0.86275,
+          "ship": 0.2545
+        },
+        {
+          "ci_rule_flags_drop": 0.9755,
+          "delta": 0.35,
+          "guard_flags_drop": 0.9165,
+          "ship": 0.16225
+        },
+        {
+          "ci_rule_flags_drop": 0.99,
+          "delta": 0.4,
+          "guard_flags_drop": 0.9435,
+          "ship": 0.06175
+        },
+        {
+          "ci_rule_flags_drop": 0.9735,
+          "delta": 0.45,
+          "guard_flags_drop": 0.95225,
+          "ship": 0.01525
+        },
+        {
+          "ci_rule_flags_drop": 0.89825,
+          "delta": 0.5,
+          "guard_flags_drop": 0.887,
+          "ship": 0.0025
+        }
+      ],
+      "flawed_players": 15,
+      "games": 80,
+      "games_total": 1280,
+      "guard_false_alarm_delta_0": 0.09825,
+      "guard_k_lost": 2,
+      "mde_ci_rule_drop": 0.2,
+      "mde_guard_drop": 0.3,
+      "mde_ship": null,
+      "players_per_flaw": 3,
+      "recall_tolerance": 0.1,
+      "reference_hits": 10,
+      "ship_power_delta_0_1": 0.0685,
+      "ship_power_mc_ci95": [
+        0.061079,
+        0.076749
+      ],
+      "suite": "smoke"
+    },
+    {
+      "ci_rule_false_alarm_delta_0": 0.34425,
+      "curve": [
+        {
+          "ci_rule_flags_drop": 0.87175,
+          "delta": 0.05,
+          "guard_flags_drop": 0.591,
+          "ship": 0.15
+        },
+        {
+          "ci_rule_flags_drop": 0.991,
+          "delta": 0.1,
+          "guard_flags_drop": 0.93075,
+          "ship": 0.531
+        },
+        {
+          "ci_rule_flags_drop": 0.99925,
+          "delta": 0.15,
+          "guard_flags_drop": 0.992,
+          "ship": 0.83175
+        },
+        {
+          "ci_rule_flags_drop": 1.0,
+          "delta": 0.2,
+          "guard_flags_drop": 0.99975,
+          "ship": 0.9565
+        },
+        {
+          "ci_rule_flags_drop": 1.0,
+          "delta": 0.25,
+          "guard_flags_drop": 1.0,
+          "ship": 0.888
+        },
+        {
+          "ci_rule_flags_drop": 1.0,
+          "delta": 0.3,
+          "guard_flags_drop": 1.0,
+          "ship": 0.63825
+        },
+        {
+          "ci_rule_flags_drop": 0.999,
+          "delta": 0.35,
+          "guard_flags_drop": 0.999,
+          "ship": 0.322
+        },
+        {
+          "ci_rule_flags_drop": 0.9965,
+          "delta": 0.4,
+          "guard_flags_drop": 0.9965,
+          "ship": 0.10575
+        },
+        {
+          "ci_rule_flags_drop": 0.97725,
+          "delta": 0.45,
+          "guard_flags_drop": 0.97725,
+          "ship": 0.019
+        },
+        {
+          "ci_rule_flags_drop": 0.89,
+          "delta": 0.5,
+          "guard_flags_drop": 0.89,
+          "ship": 0.003
+        }
+      ],
+      "flawed_players": 110,
+      "games": 80,
+      "games_total": 8960,
+      "guard_false_alarm_delta_0": 0.0925,
+      "guard_k_lost": 2,
+      "mde_ci_rule_drop": 0.05,
+      "mde_guard_drop": 0.1,
+      "mde_ship": 0.15,
+      "players_per_flaw": 22,
+      "recall_tolerance": 0.014,
+      "reference_hits": 70,
+      "ship_power_delta_0_1": 0.52475,
+      "ship_power_mc_ci95": [
+        0.509258,
+        0.540195
+      ],
+      "suite": "full"
+    },
+    {
+      "ci_rule_false_alarm_delta_0": 0.299,
+      "curve": [
+        {
+          "ci_rule_flags_drop": 0.7705,
+          "delta": 0.05,
+          "guard_flags_drop": 0.512,
+          "ship": 0.082
+        },
+        {
+          "ci_rule_flags_drop": 0.9645,
+          "delta": 0.1,
+          "guard_flags_drop": 0.83675,
+          "ship": 0.26825
+        },
+        {
+          "ci_rule_flags_drop": 0.99625,
+          "delta": 0.15,
+          "guard_flags_drop": 0.965,
+          "ship": 0.53675
+        },
+        {
+          "ci_rule_flags_drop": 0.99975,
+          "delta": 0.2,
+          "guard_flags_drop": 0.994,
+          "ship": 0.57575
+        },
+        {
+          "ci_rule_flags_drop": 1.0,
+          "delta": 0.25,
+          "guard_flags_drop": 0.9995,
+          "ship": 0.312
+        },
+        {
+          "ci_rule_flags_drop": 1.0,
+          "delta": 0.3,
+          "guard_flags_drop": 1.0,
+          "ship": 0.1105
+        },
+        {
+          "ci_rule_flags_drop": 1.0,
+          "delta": 0.35,
+          "guard_flags_drop": 1.0,
+          "ship": 0.02375
+        },
+        {
+          "ci_rule_flags_drop": 1.0,
+          "delta": 0.4,
+          "guard_flags_drop": 1.0,
+          "ship": 0.00375
+        },
+        {
+          "ci_rule_flags_drop": 0.9995,
+          "delta": 0.45,
+          "guard_flags_drop": 0.9995,
+          "ship": 0.0
+        },
+        {
+          "ci_rule_flags_drop": 0.9965,
+          "delta": 0.5,
+          "guard_flags_drop": 0.9965,
+          "ship": 0.0
+        }
+      ],
+      "flawed_players": 70,
+      "games": 120,
+      "games_total": 8640,
+      "guard_false_alarm_delta_0": 0.0895,
+      "guard_k_lost": 2,
+      "mde_ci_rule_drop": 0.1,
+      "mde_guard_drop": 0.1,
+      "mde_ship": null,
+      "players_per_flaw": 14,
+      "recall_tolerance": 0.021,
+      "reference_hits": 51,
+      "ship_power_delta_0_1": 0.28325,
+      "ship_power_mc_ci95": [
+        0.2695,
+        0.297416
+      ],
+      "suite": "full"
+    }
+  ],
+  "budgets": {
+    "full_games": 9000,
+    "full_players_per_flaw": {
+      "120": 14,
+      "80": 22
+    },
+    "smoke_games": 1650,
+    "smoke_players_per_flaw": 3
+  },
+  "coverage_power": [
+    {
+      "games_up_to": 80,
+      "half_width_80": 0.170266,
+      "half_width_95": 0.260399,
+      "players_per_flaw": 1,
+      "power_interval_flips": 0.0025,
+      "power_player_flips": 0.0005
+    },
+    {
+      "games_up_to": 80,
+      "half_width_80": 0.121202,
+      "half_width_95": 0.185362,
+      "players_per_flaw": 2,
+      "power_interval_flips": 0.0215,
+      "power_player_flips": 0.0025
+    },
+    {
+      "games_up_to": 80,
+      "half_width_80": 0.100363,
+      "half_width_95": 0.153492,
+      "players_per_flaw": 3,
+      "power_interval_flips": 0.0345,
+      "power_player_flips": 0.022
+    },
+    {
+      "games_up_to": 80,
+      "half_width_80": 0.08595,
+      "half_width_95": 0.131449,
+      "players_per_flaw": 4,
+      "power_interval_flips": 0.055,
+      "power_player_flips": 0.048
+    },
+    {
+      "games_up_to": 80,
+      "half_width_80": 0.069179,
+      "half_width_95": 0.1058,
+      "players_per_flaw": 6,
+      "power_interval_flips": 0.095,
+      "power_player_flips": 0.064
+    },
+    {
+      "games_up_to": 80,
+      "half_width_80": 0.059231,
+      "half_width_95": 0.090585,
+      "players_per_flaw": 8,
+      "power_interval_flips": 0.153,
+      "power_player_flips": 0.0885
+    },
+    {
+      "games_up_to": 80,
+      "half_width_80": 0.047823,
+      "half_width_95": 0.073139,
+      "players_per_flaw": 13,
+      "power_interval_flips": 0.2945,
+      "power_player_flips": 0.1475
+    },
+    {
+      "games_up_to": 80,
+      "half_width_80": 0.037508,
+      "half_width_95": 0.057364,
+      "players_per_flaw": 20,
+      "power_interval_flips": 0.5195,
+      "power_player_flips": 0.229
+    },
+    {
+      "games_up_to": 80,
+      "half_width_80": 0.030151,
+      "half_width_95": 0.046112,
+      "players_per_flaw": 32,
+      "power_interval_flips": 0.789,
+      "power_player_flips": 0.341
+    },
+    {
+      "games_up_to": 80,
+      "half_width_80": 0.021667,
+      "half_width_95": 0.033137,
+      "players_per_flaw": 64,
+      "power_interval_flips": 0.9815,
+      "power_player_flips": 0.698
+    },
+    {
+      "games_up_to": 120,
+      "half_width_80": 0.151349,
+      "half_width_95": 0.231468,
+      "players_per_flaw": 1,
+      "power_interval_flips": 0.007,
+      "power_player_flips": 0.0
+    },
+    {
+      "games_up_to": 120,
+      "half_width_80": 0.106202,
+      "half_width_95": 0.162422,
+      "players_per_flaw": 2,
+      "power_interval_flips": 0.034,
+      "power_player_flips": 0.0055
+    },
+    {
+      "games_up_to": 120,
+      "half_width_80": 0.087981,
+      "half_width_95": 0.134556,
+      "players_per_flaw": 3,
+      "power_interval_flips": 0.044,
+      "power_player_flips": 0.024
+    },
+    {
+      "games_up_to": 120,
+      "half_width_80": 0.076071,
+      "half_width_95": 0.11634,
+      "players_per_flaw": 4,
+      "power_interval_flips": 0.0795,
+      "power_player_flips": 0.0515
+    },
+    {
+      "games_up_to": 120,
+      "half_width_80": 0.062879,
+      "half_width_95": 0.096165,
+      "players_per_flaw": 6,
+      "power_interval_flips": 0.1265,
+      "power_player_flips": 0.077
+    },
+    {
+      "games_up_to": 120,
+      "half_width_80": 0.053441,
+      "half_width_95": 0.081731,
+      "players_per_flaw": 8,
+      "power_interval_flips": 0.1955,
+      "power_player_flips": 0.103
+    },
+    {
+      "games_up_to": 120,
+      "half_width_80": 0.042899,
+      "half_width_95": 0.065608,
+      "players_per_flaw": 13,
+      "power_interval_flips": 0.3645,
+      "power_player_flips": 0.1435
+    },
+    {
+      "games_up_to": 120,
+      "half_width_80": 0.034159,
+      "half_width_95": 0.052242,
+      "players_per_flaw": 20,
+      "power_interval_flips": 0.629,
+      "power_player_flips": 0.2285
+    },
+    {
+      "games_up_to": 120,
+      "half_width_80": 0.026642,
+      "half_width_95": 0.040746,
+      "players_per_flaw": 32,
+      "power_interval_flips": 0.868,
+      "power_player_flips": 0.4085
+    },
+    {
+      "games_up_to": 120,
+      "half_width_80": 0.018859,
+      "half_width_95": 0.028842,
+      "players_per_flaw": 64,
+      "power_interval_flips": 0.998,
+      "power_player_flips": 0.7045
+    }
+  ],
+  "decision": {
+    "coverage_tolerance_smoke": 0.05,
+    "full_suite": {
+      "games": 80,
+      "players_per_flaw": 22
+    },
+    "outcome": "budget-bound: no full suite within the budget reaches 80% power for 0.1; the full suite is sized to the budget and its MDE registered",
+    "recall_tolerance_smoke": 0.1,
+    "smoke_suite": {
+      "games": 80,
+      "players_per_flaw": 3
+    }
+  },
+  "experiment": "EXP-0001",
+  "observed": {
+    "clean_rank1": [
+      {
+        "clean_players": 2,
+        "games": 30,
+        "with_rank1": 0
+      },
+      {
+        "clean_players": 2,
+        "games": 45,
+        "with_rank1": 1
+      },
+      {
+        "clean_players": 2,
+        "games": 60,
+        "with_rank1": 0
+      },
+      {
+        "clean_players": 2,
+        "games": 80,
+        "with_rank1": 1
+      },
+      {
+        "clean_players": 2,
+        "games": 120,
+        "with_rank1": 0
+      }
+    ],
+    "coverage": [
+      {
+        "ci95_cluster_bootstrap": [
+          0.633333,
+          0.9
+        ],
+        "coverage": 0.766667,
+        "games_up_to": 30,
+        "icc_within_player": null,
+        "intervals": 30,
+        "per_flaw": {
+          "hang": 0.333333,
+          "low_clock_blunder": 0.833333,
+          "miss_mate": 1.0,
+          "no_convert": 0.666667,
+          "opening_blunder": 1.0
+        }
+      },
+      {
+        "ci95_cluster_bootstrap": [
+          0.583333,
+          0.816667
+        ],
+        "coverage": 0.7,
+        "games_up_to": 45,
+        "icc_within_player": 0.379679,
+        "intervals": 60,
+        "per_flaw": {
+          "hang": 0.333333,
+          "low_clock_blunder": 0.75,
+          "miss_mate": 0.916667,
+          "no_convert": 0.75,
+          "opening_blunder": 0.75
+        }
+      },
+      {
+        "ci95_cluster_bootstrap": [
+          0.477778,
+          0.711111
+        ],
+        "coverage": 0.6,
+        "games_up_to": 60,
+        "icc_within_player": 0.318182,
+        "intervals": 90,
+        "per_flaw": {
+          "hang": 0.333333,
+          "low_clock_blunder": 0.611111,
+          "miss_mate": 0.833333,
+          "no_convert": 0.722222,
+          "opening_blunder": 0.5
+        }
+      },
+      {
+        "ci95_cluster_bootstrap": [
+          0.466667,
+          0.683333
+        ],
+        "coverage": 0.575,
+        "games_up_to": 80,
+        "icc_within_player": 0.295139,
+        "intervals": 120,
+        "per_flaw": {
+          "hang": 0.416667,
+          "low_clock_blunder": 0.625,
+          "miss_mate": 0.791667,
+          "no_convert": 0.666667,
+          "opening_blunder": 0.375
+        }
+      },
+      {
+        "ci95_cluster_bootstrap": [
+          0.48,
+          0.666667
+        ],
+        "coverage": 0.58,
+        "games_up_to": 120,
+        "icc_within_player": 0.257587,
+        "intervals": 150,
+        "per_flaw": {
+          "hang": 0.533333,
+          "low_clock_blunder": 0.666667,
+          "miss_mate": 0.766667,
+          "no_convert": 0.633333,
+          "opening_blunder": 0.3
+        }
+      }
+    ],
+    "recall_at_2": [
+      {
+        "ci95": [
+          0.117924,
+          0.409283
+        ],
+        "games": 30,
+        "hits": 7,
+        "per_flaw": {
+          "hang": [
+            5,
+            6
+          ],
+          "low_clock_blunder": [
+            2,
+            6
+          ],
+          "miss_mate": [
+            0,
+            6
+          ],
+          "no_convert": [
+            0,
+            6
+          ],
+          "opening_blunder": [
+            0,
+            6
+          ]
+        },
+        "players": 30,
+        "recall": 0.233333
+      },
+      {
+        "ci95": [
+          0.302324,
+          0.638577
+        ],
+        "games": 45,
+        "hits": 14,
+        "per_flaw": {
+          "hang": [
+            6,
+            6
+          ],
+          "low_clock_blunder": [
+            4,
+            6
+          ],
+          "miss_mate": [
+            0,
+            6
+          ],
+          "no_convert": [
+            2,
+            6
+          ],
+          "opening_blunder": [
+            2,
+            6
+          ]
+        },
+        "players": 30,
+        "recall": 0.466667
+      },
+      {
+        "ci95": [
+          0.487801,
+          0.807695
+        ],
+        "games": 60,
+        "hits": 20,
+        "per_flaw": {
+          "hang": [
+            6,
+            6
+          ],
+          "low_clock_blunder": [
+            6,
+            6
+          ],
+          "miss_mate": [
+            0,
+            6
+          ],
+          "no_convert": [
+            5,
+            6
+          ],
+          "opening_blunder": [
+            3,
+            6
+          ]
+        },
+        "players": 30,
+        "recall": 0.666667
+      },
+      {
+        "ci95": [
+          0.455136,
+          0.781261
+        ],
+        "games": 80,
+        "hits": 19,
+        "per_flaw": {
+          "hang": [
+            6,
+            6
+          ],
+          "low_clock_blunder": [
+            6,
+            6
+          ],
+          "miss_mate": [
+            0,
+            6
+          ],
+          "no_convert": [
+            5,
+            6
+          ],
+          "opening_blunder": [
+            2,
+            6
+          ]
+        },
+        "players": 30,
+        "recall": 0.633333
+      },
+      {
+        "ci95": [
+          0.55552,
+          0.858173
+        ],
+        "games": 120,
+        "hits": 22,
+        "per_flaw": {
+          "hang": [
+            6,
+            6
+          ],
+          "low_clock_blunder": [
+            6,
+            6
+          ],
+          "miss_mate": [
+            0,
+            6
+          ],
+          "no_convert": [
+            6,
+            6
+          ],
+          "opening_blunder": [
+            4,
+            6
+          ]
+        },
+        "players": 30,
+        "recall": 0.733333
+      }
+    ]
+  },
+  "pilot": {
+    "games_total": 3840,
+    "players": [
+      {
+        "checkpoints": [
+          {
+            "covered": false,
+            "estimate": [
+              0.012849,
+              0.009121,
+              0.016884
+            ],
+            "games": 30,
+            "hit2": true,
+            "rank1": "W1",
+            "target_rank": 1
+          },
+          {
+            "covered": false,
+            "estimate": [
+              0.014635,
+              0.011118,
+              0.018387
+            ],
+            "games": 45,
+            "hit2": true,
+            "rank1": "W1",
+            "target_rank": 1
+          },
+          {
+            "covered": false,
+            "estimate": [
+              0.016581,
+              0.013136,
+              0.020221
+            ],
+            "games": 60,
+            "hit2": true,
+            "rank1": "W1",
+            "target_rank": 1
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.017847,
+              0.01459,
+              0.021264
+            ],
+            "games": 80,
+            "hit2": true,
+            "rank1": "W1",
+            "target_rank": 1
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.01839,
+              0.015482,
+              0.021422
+            ],
+            "games": 120,
+            "hit2": true,
+            "rank1": "W1",
+            "target_rank": 1
+          }
+        ],
+        "deterministic": true,
+        "flaw": "hang",
+        "games": 120,
+        "injected_moves": 82,
+        "mean_plies": 97.158333,
+        "name": "exp1-hang-0",
+        "target": "W1",
+        "time_forfeits": 24,
+        "truth": 0.021168
+      },
+      {
+        "checkpoints": [
+          {
+            "covered": true,
+            "estimate": [
+              0.021228,
+              0.016177,
+              0.02661
+            ],
+            "games": 30,
+            "hit2": true,
+            "rank1": "W1",
+            "target_rank": 1
+          },
+          {
+            "covered": false,
+            "estimate": [
+              0.019871,
+              0.015674,
+              0.02431
+            ],
+            "games": 45,
+            "hit2": true,
+            "rank1": "W1",
+            "target_rank": 1
+          },
+          {
+            "covered": false,
+            "estimate": [
+              0.019917,
+              0.016065,
+              0.023971
+            ],
+            "games": 60,
+            "hit2": true,
+            "rank1": "W1",
+            "target_rank": 1
+          },
+          {
+            "covered": false,
+            "estimate": [
+              0.020447,
+              0.01693,
+              0.024125
+            ],
+            "games": 80,
+            "hit2": true,
+            "rank1": "W1",
+            "target_rank": 1
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.021408,
+              0.018207,
+              0.024738
+            ],
+            "games": 120,
+            "hit2": true,
+            "rank1": "W1",
+            "target_rank": 1
+          }
+        ],
+        "deterministic": true,
+        "flaw": "hang",
+        "games": 120,
+        "injected_moves": 88,
+        "mean_plies": 94.291667,
+        "name": "exp1-hang-1",
+        "target": "W1",
+        "time_forfeits": 18,
+        "truth": 0.024677
+      },
+      {
+        "checkpoints": [
+          {
+            "covered": false,
+            "estimate": [
+              0.014847,
+              0.010726,
+              0.019291
+            ],
+            "games": 30,
+            "hit2": true,
+            "rank1": "W1",
+            "target_rank": 1
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.020045,
+              0.015675,
+              0.024676
+            ],
+            "games": 45,
+            "hit2": true,
+            "rank1": "W1",
+            "target_rank": 1
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.022549,
+              0.01828,
+              0.027037
+            ],
+            "games": 60,
+            "hit2": true,
+            "rank1": "W1",
+            "target_rank": 1
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.019429,
+              0.015966,
+              0.023058
+            ],
+            "games": 80,
+            "hit2": true,
+            "rank1": "W1",
+            "target_rank": 1
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.018668,
+              0.01575,
+              0.021708
+            ],
+            "games": 120,
+            "hit2": true,
+            "rank1": "W1",
+            "target_rank": 1
+          }
+        ],
+        "deterministic": true,
+        "flaw": "hang",
+        "games": 120,
+        "injected_moves": 84,
+        "mean_plies": 98.591667,
+        "name": "exp1-hang-2",
+        "target": "W1",
+        "time_forfeits": 27,
+        "truth": 0.020974
+      },
+      {
+        "checkpoints": [
+          {
+            "covered": false,
+            "estimate": [
+              0.01747,
+              0.012902,
+              0.022371
+            ],
+            "games": 30,
+            "hit2": true,
+            "rank1": "W1",
+            "target_rank": 1
+          },
+          {
+            "covered": false,
+            "estimate": [
+              0.017766,
+              0.013811,
+              0.021962
+            ],
+            "games": 45,
+            "hit2": true,
+            "rank1": "W1",
+            "target_rank": 1
+          },
+          {
+            "covered": false,
+            "estimate": [
+              0.01784,
+              0.014261,
+              0.021615
+            ],
+            "games": 60,
+            "hit2": true,
+            "rank1": "W1",
+            "target_rank": 1
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.020204,
+              0.016696,
+              0.023876
+            ],
+            "games": 80,
+            "hit2": true,
+            "rank1": "W1",
+            "target_rank": 1
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.021633,
+              0.018365,
+              0.025032
+            ],
+            "games": 120,
+            "hit2": true,
+            "rank1": "W1",
+            "target_rank": 1
+          }
+        ],
+        "deterministic": true,
+        "flaw": "hang",
+        "games": 120,
+        "injected_moves": 93,
+        "mean_plies": 93.758333,
+        "name": "exp1-hang-3",
+        "target": "W1",
+        "time_forfeits": 22,
+        "truth": 0.022874
+      },
+      {
+        "checkpoints": [
+          {
+            "covered": false,
+            "estimate": [
+              0.015053,
+              0.011043,
+              0.019362
+            ],
+            "games": 30,
+            "hit2": true,
+            "rank1": "W1",
+            "target_rank": 1
+          },
+          {
+            "covered": false,
+            "estimate": [
+              0.016534,
+              0.012815,
+              0.020483
+            ],
+            "games": 45,
+            "hit2": true,
+            "rank1": "W1",
+            "target_rank": 1
+          },
+          {
+            "covered": false,
+            "estimate": [
+              0.016679,
+              0.013256,
+              0.020293
+            ],
+            "games": 60,
+            "hit2": true,
+            "rank1": "W1",
+            "target_rank": 1
+          },
+          {
+            "covered": false,
+            "estimate": [
+              0.016732,
+              0.013635,
+              0.019984
+            ],
+            "games": 80,
+            "hit2": true,
+            "rank1": "W1",
+            "target_rank": 1
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.0179,
+              0.015037,
+              0.020886
+            ],
+            "games": 120,
+            "hit2": true,
+            "rank1": "W1",
+            "target_rank": 1
+          }
+        ],
+        "deterministic": true,
+        "flaw": "hang",
+        "games": 120,
+        "injected_moves": 79,
+        "mean_plies": 99.666667,
+        "name": "exp1-hang-4",
+        "target": "W1",
+        "time_forfeits": 28,
+        "truth": 0.020683
+      },
+      {
+        "checkpoints": [
+          {
+            "covered": true,
+            "estimate": [
+              0.018979,
+              0.014102,
+              0.024205
+            ],
+            "games": 30,
+            "hit2": false,
+            "rank1": null,
+            "target_rank": null
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.019657,
+              0.015305,
+              0.024273
+            ],
+            "games": 45,
+            "hit2": true,
+            "rank1": "W1",
+            "target_rank": 1
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.019505,
+              0.015664,
+              0.023551
+            ],
+            "games": 60,
+            "hit2": true,
+            "rank1": "W1",
+            "target_rank": 1
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.018429,
+              0.01507,
+              0.021954
+            ],
+            "games": 80,
+            "hit2": true,
+            "rank1": "W1",
+            "target_rank": 1
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.020013,
+              0.016907,
+              0.023248
+            ],
+            "games": 120,
+            "hit2": true,
+            "rank1": "W1",
+            "target_rank": 1
+          }
+        ],
+        "deterministic": true,
+        "flaw": "hang",
+        "games": 120,
+        "injected_moves": 77,
+        "mean_plies": 92.816667,
+        "name": "exp1-hang-5",
+        "target": "W1",
+        "time_forfeits": 23,
+        "truth": 0.021752
+      },
+      {
+        "checkpoints": [
+          {
+            "covered": true,
+            "estimate": [
+              0.487472,
+              0.310913,
+              0.66497
+            ],
+            "games": 30,
+            "hit2": false,
+            "rank1": null,
+            "target_rank": null
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.458621,
+              0.295584,
+              0.624302
+            ],
+            "games": 45,
+            "hit2": false,
+            "rank1": "W9b",
+            "target_rank": null
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.464203,
+              0.30538,
+              0.625171
+            ],
+            "games": 60,
+            "hit2": false,
+            "rank1": null,
+            "target_rank": null
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.522724,
+              0.378998,
+              0.665385
+            ],
+            "games": 80,
+            "hit2": false,
+            "rank1": null,
+            "target_rank": null
+          },
+          {
+            "covered": false,
+            "estimate": [
+              0.624061,
+              0.503352,
+              0.740618
+            ],
+            "games": 120,
+            "hit2": false,
+            "rank1": null,
+            "target_rank": null
+          }
+        ],
+        "deterministic": true,
+        "flaw": "miss_mate",
+        "games": 120,
+        "injected_moves": 23,
+        "mean_plies": 124.083333,
+        "name": "exp1-missmate-0",
+        "target": "W4.missed",
+        "time_forfeits": 56,
+        "truth": 0.5
+      },
+      {
+        "checkpoints": [
+          {
+            "covered": true,
+            "estimate": [
+              0.25006,
+              0.034521,
+              0.535955
+            ],
+            "games": 30,
+            "hit2": false,
+            "rank1": null,
+            "target_rank": null
+          },
+          {
+            "covered": false,
+            "estimate": [
+              0.173634,
+              0.021895,
+              0.383571
+            ],
+            "games": 45,
+            "hit2": false,
+            "rank1": null,
+            "target_rank": null
+          },
+          {
+            "covered": false,
+            "estimate": [
+              0.188895,
+              0.055234,
+              0.351973
+            ],
+            "games": 60,
+            "hit2": false,
+            "rank1": null,
+            "target_rank": null
+          },
+          {
+            "covered": false,
+            "estimate": [
+              0.27079,
+              0.109875,
+              0.453419
+            ],
+            "games": 80,
+            "hit2": false,
+            "rank1": "W5",
+            "target_rank": null
+          },
+          {
+            "covered": false,
+            "estimate": [
+              0.298074,
+              0.135736,
+              0.477954
+            ],
+            "games": 120,
+            "hit2": false,
+            "rank1": "W5",
+            "target_rank": null
+          }
+        ],
+        "deterministic": true,
+        "flaw": "miss_mate",
+        "games": 120,
+        "injected_moves": 3,
+        "mean_plies": 122.208333,
+        "name": "exp1-missmate-1",
+        "target": "W4.missed",
+        "time_forfeits": 63,
+        "truth": 0.5
+      },
+      {
+        "checkpoints": [
+          {
+            "covered": true,
+            "estimate": [
+              0.571162,
+              0.328362,
+              0.802931
+            ],
+            "games": 30,
+            "hit2": false,
+            "rank1": "W9b",
+            "target_rank": null
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.529408,
+              0.360629,
+              0.696228
+            ],
+            "games": 45,
+            "hit2": false,
+            "rank1": null,
+            "target_rank": null
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.599778,
+              0.45067,
+              0.743743
+            ],
+            "games": 60,
+            "hit2": false,
+            "rank1": null,
+            "target_rank": null
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.534531,
+              0.391539,
+              0.675925
+            ],
+            "games": 80,
+            "hit2": false,
+            "rank1": null,
+            "target_rank": null
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.573722,
+              0.443956,
+              0.700698
+            ],
+            "games": 120,
+            "hit2": false,
+            "rank1": null,
+            "target_rank": null
+          }
+        ],
+        "deterministic": true,
+        "flaw": "miss_mate",
+        "games": 120,
+        "injected_moves": 18,
+        "mean_plies": 119.3,
+        "name": "exp1-missmate-2",
+        "target": "W4.missed",
+        "time_forfeits": 53,
+        "truth": 0.473684
+      },
+      {
+        "checkpoints": [
+          {
+            "covered": true,
+            "estimate": [
+              0.466269,
+              0.287,
+              0.648198
+            ],
+            "games": 30,
+            "hit2": false,
+            "rank1": "W9a",
+            "target_rank": null
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.470139,
+              0.297864,
+              0.644556
+            ],
+            "games": 45,
+            "hit2": false,
+            "rank1": "W5",
+            "target_rank": null
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.537008,
+              0.378318,
+              0.693548
+            ],
+            "games": 60,
+            "hit2": false,
+            "rank1": "W5",
+            "target_rank": null
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.502705,
+              0.358365,
+              0.646916
+            ],
+            "games": 80,
+            "hit2": false,
+            "rank1": "W5",
+            "target_rank": null
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.55081,
+              0.428922,
+              0.671024
+            ],
+            "games": 120,
+            "hit2": false,
+            "rank1": "W5",
+            "target_rank": null
+          }
+        ],
+        "deterministic": true,
+        "flaw": "miss_mate",
+        "games": 120,
+        "injected_moves": 19,
+        "mean_plies": 123.583333,
+        "name": "exp1-missmate-3",
+        "target": "W4.missed",
+        "time_forfeits": 52,
+        "truth": 0.475
+      },
+      {
+        "checkpoints": [
+          {
+            "covered": true,
+            "estimate": [
+              0.344818,
+              0.114317,
+              0.604991
+            ],
+            "games": 30,
+            "hit2": false,
+            "rank1": null,
+            "target_rank": null
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.462474,
+              0.246802,
+              0.682762
+            ],
+            "games": 45,
+            "hit2": false,
+            "rank1": null,
+            "target_rank": null
+          },
+          {
+            "covered": false,
+            "estimate": [
+              0.283029,
+              0.13265,
+              0.449823
+            ],
+            "games": 60,
+            "hit2": false,
+            "rank1": null,
+            "target_rank": null
+          },
+          {
+            "covered": false,
+            "estimate": [
+              0.294127,
+              0.14948,
+              0.452383
+            ],
+            "games": 80,
+            "hit2": false,
+            "rank1": "W5",
+            "target_rank": null
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.405277,
+              0.249615,
+              0.566726
+            ],
+            "games": 120,
+            "hit2": false,
+            "rank1": "W5",
+            "target_rank": null
+          }
+        ],
+        "deterministic": true,
+        "flaw": "miss_mate",
+        "games": 120,
+        "injected_moves": 7,
+        "mean_plies": 119.833333,
+        "name": "exp1-missmate-4",
+        "target": "W4.missed",
+        "time_forfeits": 52,
+        "truth": 0.5
+      },
+      {
+        "checkpoints": [
+          {
+            "covered": true,
+            "estimate": [
+              0.430005,
+              0.197037,
+              0.673948
+            ],
+            "games": 30,
+            "hit2": false,
+            "rank1": null,
+            "target_rank": null
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.509511,
+              0.277261,
+              0.740414
+            ],
+            "games": 45,
+            "hit2": false,
+            "rank1": null,
+            "target_rank": null
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.557878,
+              0.354816,
+              0.755077
+            ],
+            "games": 60,
+            "hit2": false,
+            "rank1": null,
+            "target_rank": null
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.461279,
+              0.285694,
+              0.639788
+            ],
+            "games": 80,
+            "hit2": false,
+            "rank1": null,
+            "target_rank": null
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.38276,
+              0.228248,
+              0.544568
+            ],
+            "games": 120,
+            "hit2": false,
+            "rank1": null,
+            "target_rank": null
+          }
+        ],
+        "deterministic": true,
+        "flaw": "miss_mate",
+        "games": 120,
+        "injected_moves": 7,
+        "mean_plies": 121.7,
+        "name": "exp1-missmate-5",
+        "target": "W4.missed",
+        "time_forfeits": 50,
+        "truth": 0.5
+      },
+      {
+        "checkpoints": [
+          {
+            "covered": true,
+            "estimate": [
+              0.376771,
+              0.265293,
+              0.491988
+            ],
+            "games": 30,
+            "hit2": false,
+            "rank1": null,
+            "target_rank": null
+          },
+          {
+            "covered": false,
+            "estimate": [
+              0.189717,
+              0.135516,
+              0.247311
+            ],
+            "games": 45,
+            "hit2": true,
+            "rank1": "W1",
+            "target_rank": 2
+          },
+          {
+            "covered": false,
+            "estimate": [
+              0.223575,
+              0.169137,
+              0.28066
+            ],
+            "games": 60,
+            "hit2": true,
+            "rank1": "W1",
+            "target_rank": 2
+          },
+          {
+            "covered": false,
+            "estimate": [
+              0.253508,
+              0.200116,
+              0.308953
+            ],
+            "games": 80,
+            "hit2": true,
+            "rank1": "W1",
+            "target_rank": 2
+          },
+          {
+            "covered": false,
+            "estimate": [
+              0.231024,
+              0.18412,
+              0.279766
+            ],
+            "games": 120,
+            "hit2": true,
+            "rank1": "W1",
+            "target_rank": 2
+          }
+        ],
+        "deterministic": true,
+        "flaw": "opening_blunder",
+        "games": 120,
+        "injected_moves": 41,
+        "mean_plies": 114.358333,
+        "name": "exp1-openingblunder-0",
+        "target": "W7.traps",
+        "time_forfeits": 46,
+        "truth": 0.311667
+      },
+      {
+        "checkpoints": [
+          {
+            "covered": true,
+            "estimate": [
+              0.412248,
+              0.298357,
+              0.528801
+            ],
+            "games": 30,
+            "hit2": false,
+            "rank1": "W1",
+            "target_rank": null
+          },
+          {
+            "covered": false,
+            "estimate": [
+              0.21583,
+              0.158672,
+              0.276095
+            ],
+            "games": 45,
+            "hit2": true,
+            "rank1": "W1",
+            "target_rank": 2
+          },
+          {
+            "covered": false,
+            "estimate": [
+              0.205317,
+              0.152691,
+              0.260764
+            ],
+            "games": 60,
+            "hit2": true,
+            "rank1": "W1",
+            "target_rank": 2
+          },
+          {
+            "covered": false,
+            "estimate": [
+              0.19115,
+              0.143327,
+              0.241544
+            ],
+            "games": 80,
+            "hit2": true,
+            "rank1": "W1",
+            "target_rank": 2
+          },
+          {
+            "covered": false,
+            "estimate": [
+              0.220984,
+              0.174866,
+              0.269007
+            ],
+            "games": 120,
+            "hit2": true,
+            "rank1": "W1",
+            "target_rank": 2
+          }
+        ],
+        "deterministic": true,
+        "flaw": "opening_blunder",
+        "games": 120,
+        "injected_moves": 38,
+        "mean_plies": 108.108333,
+        "name": "exp1-openingblunder-1",
+        "target": "W7.traps",
+        "time_forfeits": 37,
+        "truth": 0.311667
+      },
+      {
+        "checkpoints": [
+          {
+            "covered": true,
+            "estimate": [
+              0.373317,
+              0.262118,
+              0.488361
+            ],
+            "games": 30,
+            "hit2": false,
+            "rank1": "W1",
+            "target_rank": null
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.359472,
+              0.266245,
+              0.455685
+            ],
+            "games": 45,
+            "hit2": false,
+            "rank1": "W1",
+            "target_rank": null
+          },
+          {
+            "covered": false,
+            "estimate": [
+              0.21561,
+              0.161942,
+              0.272
+            ],
+            "games": 60,
+            "hit2": true,
+            "rank1": "W1",
+            "target_rank": 2
+          },
+          {
+            "covered": false,
+            "estimate": [
+              0.244477,
+              0.191776,
+              0.299306
+            ],
+            "games": 80,
+            "hit2": false,
+            "rank1": "W1",
+            "target_rank": 3
+          },
+          {
+            "covered": false,
+            "estimate": [
+              0.211289,
+              0.165982,
+              0.258567
+            ],
+            "games": 120,
+            "hit2": false,
+            "rank1": "W1",
+            "target_rank": 3
+          }
+        ],
+        "deterministic": true,
+        "flaw": "opening_blunder",
+        "games": 120,
+        "injected_moves": 35,
+        "mean_plies": 112.391667,
+        "name": "exp1-openingblunder-2",
+        "target": "W7.traps",
+        "time_forfeits": 31,
+        "truth": 0.311667
+      },
+      {
+        "checkpoints": [
+          {
+            "covered": true,
+            "estimate": [
+              0.31371,
+              0.208249,
+              0.424819
+            ],
+            "games": 30,
+            "hit2": false,
+            "rank1": "W1",
+            "target_rank": null
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.390807,
+              0.295623,
+              0.48831
+            ],
+            "games": 45,
+            "hit2": false,
+            "rank1": "W1",
+            "target_rank": null
+          },
+          {
+            "covered": false,
+            "estimate": [
+              0.411329,
+              0.325623,
+              0.49851
+            ],
+            "games": 60,
+            "hit2": false,
+            "rank1": "W1",
+            "target_rank": null
+          },
+          {
+            "covered": false,
+            "estimate": [
+              0.435668,
+              0.358219,
+              0.513966
+            ],
+            "games": 80,
+            "hit2": false,
+            "rank1": "W1",
+            "target_rank": null
+          },
+          {
+            "covered": false,
+            "estimate": [
+              0.391341,
+              0.325634,
+              0.458115
+            ],
+            "games": 120,
+            "hit2": false,
+            "rank1": "W1",
+            "target_rank": null
+          }
+        ],
+        "deterministic": true,
+        "flaw": "opening_blunder",
+        "games": 120,
+        "injected_moves": 45,
+        "mean_plies": 107.358333,
+        "name": "exp1-openingblunder-3",
+        "target": "W7.traps",
+        "time_forfeits": 35,
+        "truth": 0.311667
+      },
+      {
+        "checkpoints": [
+          {
+            "covered": true,
+            "estimate": [
+              0.281932,
+              0.180372,
+              0.390104
+            ],
+            "games": 30,
+            "hit2": false,
+            "rank1": "W1",
+            "target_rank": null
+          },
+          {
+            "covered": false,
+            "estimate": [
+              0.115441,
+              0.072268,
+              0.162813
+            ],
+            "games": 45,
+            "hit2": false,
+            "rank1": "W1",
+            "target_rank": null
+          },
+          {
+            "covered": false,
+            "estimate": [
+              0.135844,
+              0.091939,
+              0.183234
+            ],
+            "games": 60,
+            "hit2": false,
+            "rank1": "W1",
+            "target_rank": null
+          },
+          {
+            "covered": false,
+            "estimate": [
+              0.15972,
+              0.115442,
+              0.206831
+            ],
+            "games": 80,
+            "hit2": false,
+            "rank1": "W1",
+            "target_rank": null
+          },
+          {
+            "covered": false,
+            "estimate": [
+              0.214458,
+              0.168882,
+              0.261984
+            ],
+            "games": 120,
+            "hit2": true,
+            "rank1": "W1",
+            "target_rank": 2
+          }
+        ],
+        "deterministic": true,
+        "flaw": "opening_blunder",
+        "games": 120,
+        "injected_moves": 33,
+        "mean_plies": 109.225,
+        "name": "exp1-openingblunder-4",
+        "target": "W7.traps",
+        "time_forfeits": 34,
+        "truth": 0.311667
+      },
+      {
+        "checkpoints": [
+          {
+            "covered": true,
+            "estimate": [
+              0.254443,
+              0.156841,
+              0.359485
+            ],
+            "games": 30,
+            "hit2": false,
+            "rank1": "W1",
+            "target_rank": null
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.237841,
+              0.156935,
+              0.324312
+            ],
+            "games": 45,
+            "hit2": false,
+            "rank1": "W1",
+            "target_rank": null
+          },
+          {
+            "covered": false,
+            "estimate": [
+              0.210474,
+              0.14165,
+              0.284115
+            ],
+            "games": 60,
+            "hit2": false,
+            "rank1": "W1",
+            "target_rank": null
+          },
+          {
+            "covered": false,
+            "estimate": [
+              0.237862,
+              0.172922,
+              0.306265
+            ],
+            "games": 80,
+            "hit2": false,
+            "rank1": "W1",
+            "target_rank": null
+          },
+          {
+            "covered": false,
+            "estimate": [
+              0.199935,
+              0.155622,
+              0.246297
+            ],
+            "games": 120,
+            "hit2": true,
+            "rank1": "W1",
+            "target_rank": 2
+          }
+        ],
+        "deterministic": true,
+        "flaw": "opening_blunder",
+        "games": 120,
+        "injected_moves": 33,
+        "mean_plies": 115.066667,
+        "name": "exp1-openingblunder-5",
+        "target": "W7.traps",
+        "time_forfeits": 37,
+        "truth": 0.311667
+      },
+      {
+        "checkpoints": [
+          {
+            "covered": true,
+            "estimate": [
+              0.08355,
+              0.054479,
+              0.115332
+            ],
+            "games": 30,
+            "hit2": false,
+            "rank1": "W9a",
+            "target_rank": null
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.095101,
+              0.066525,
+              0.125892
+            ],
+            "games": 45,
+            "hit2": false,
+            "rank1": "W9a",
+            "target_rank": null
+          },
+          {
+            "covered": false,
+            "estimate": [
+              0.070032,
+              0.052513,
+              0.088695
+            ],
+            "games": 60,
+            "hit2": true,
+            "rank1": "W9b",
+            "target_rank": 1
+          },
+          {
+            "covered": false,
+            "estimate": [
+              0.068337,
+              0.052265,
+              0.085392
+            ],
+            "games": 80,
+            "hit2": true,
+            "rank1": "W9b",
+            "target_rank": 1
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.078777,
+              0.063257,
+              0.09507
+            ],
+            "games": 120,
+            "hit2": true,
+            "rank1": "W9b",
+            "target_rank": 1
+          }
+        ],
+        "deterministic": true,
+        "flaw": "low_clock_blunder",
+        "games": 120,
+        "injected_moves": 48,
+        "mean_plies": 110.933333,
+        "name": "exp1-lowclockblunder-0",
+        "target": "W9b",
+        "time_forfeits": 30,
+        "truth": 0.0949
+      },
+      {
+        "checkpoints": [
+          {
+            "covered": true,
+            "estimate": [
+              0.061664,
+              0.036909,
+              0.089235
+            ],
+            "games": 30,
+            "hit2": false,
+            "rank1": null,
+            "target_rank": null
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.079046,
+              0.054616,
+              0.105475
+            ],
+            "games": 45,
+            "hit2": false,
+            "rank1": "W1",
+            "target_rank": null
+          },
+          {
+            "covered": false,
+            "estimate": [
+              0.056526,
+              0.040332,
+              0.073971
+            ],
+            "games": 60,
+            "hit2": true,
+            "rank1": "W9b",
+            "target_rank": 1
+          },
+          {
+            "covered": false,
+            "estimate": [
+              0.0615,
+              0.046494,
+              0.07747
+            ],
+            "games": 80,
+            "hit2": true,
+            "rank1": "W9b",
+            "target_rank": 1
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.070748,
+              0.056303,
+              0.08595
+            ],
+            "games": 120,
+            "hit2": true,
+            "rank1": "W9b",
+            "target_rank": 1
+          }
+        ],
+        "deterministic": true,
+        "flaw": "low_clock_blunder",
+        "games": 120,
+        "injected_moves": 42,
+        "mean_plies": 120.625,
+        "name": "exp1-lowclockblunder-1",
+        "target": "W9b",
+        "time_forfeits": 33,
+        "truth": 0.081022
+      },
+      {
+        "checkpoints": [
+          {
+            "covered": true,
+            "estimate": [
+              0.118419,
+              0.084272,
+              0.15501
+            ],
+            "games": 30,
+            "hit2": false,
+            "rank1": "W1",
+            "target_rank": null
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.107168,
+              0.080831,
+              0.135109
+            ],
+            "games": 45,
+            "hit2": true,
+            "rank1": "W9b",
+            "target_rank": 1
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.103099,
+              0.080293,
+              0.12715
+            ],
+            "games": 60,
+            "hit2": true,
+            "rank1": "W9b",
+            "target_rank": 1
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.099783,
+              0.079464,
+              0.121121
+            ],
+            "games": 80,
+            "hit2": true,
+            "rank1": "W9b",
+            "target_rank": 1
+          },
+          {
+            "covered": false,
+            "estimate": [
+              0.087185,
+              0.071566,
+              0.1035
+            ],
+            "games": 120,
+            "hit2": true,
+            "rank1": "W9b",
+            "target_rank": 1
+          }
+        ],
+        "deterministic": true,
+        "flaw": "low_clock_blunder",
+        "games": 120,
+        "injected_moves": 62,
+        "mean_plies": 118.2,
+        "name": "exp1-lowclockblunder-2",
+        "target": "W9b",
+        "time_forfeits": 33,
+        "truth": 0.108957
+      },
+      {
+        "checkpoints": [
+          {
+            "covered": true,
+            "estimate": [
+              0.106642,
+              0.0776,
+              0.137666
+            ],
+            "games": 30,
+            "hit2": true,
+            "rank1": "W9b",
+            "target_rank": 1
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.1168,
+              0.091009,
+              0.143968
+            ],
+            "games": 45,
+            "hit2": true,
+            "rank1": "W9b",
+            "target_rank": 1
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.123919,
+              0.100609,
+              0.148265
+            ],
+            "games": 60,
+            "hit2": true,
+            "rank1": "W9b",
+            "target_rank": 1
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.117093,
+              0.095841,
+              0.139264
+            ],
+            "games": 80,
+            "hit2": true,
+            "rank1": "W9b",
+            "target_rank": 1
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.116036,
+              0.097512,
+              0.135261
+            ],
+            "games": 120,
+            "hit2": true,
+            "rank1": "W1",
+            "target_rank": 2
+          }
+        ],
+        "deterministic": true,
+        "flaw": "low_clock_blunder",
+        "games": 120,
+        "injected_moves": 66,
+        "mean_plies": 116.966667,
+        "name": "exp1-lowclockblunder-3",
+        "target": "W9b",
+        "time_forfeits": 32,
+        "truth": 0.119383
+      },
+      {
+        "checkpoints": [
+          {
+            "covered": true,
+            "estimate": [
+              0.089158,
+              0.062064,
+              0.118398
+            ],
+            "games": 30,
+            "hit2": false,
+            "rank1": "W9a",
+            "target_rank": null
+          },
+          {
+            "covered": false,
+            "estimate": [
+              0.063061,
+              0.045679,
+              0.081719
+            ],
+            "games": 45,
+            "hit2": true,
+            "rank1": "W1",
+            "target_rank": 2
+          },
+          {
+            "covered": false,
+            "estimate": [
+              0.072036,
+              0.053529,
+              0.091785
+            ],
+            "games": 60,
+            "hit2": true,
+            "rank1": "W9b",
+            "target_rank": 1
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.0957,
+              0.076525,
+              0.115826
+            ],
+            "games": 80,
+            "hit2": true,
+            "rank1": "W9b",
+            "target_rank": 1
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.102873,
+              0.084558,
+              0.12198
+            ],
+            "games": 120,
+            "hit2": true,
+            "rank1": "W9b",
+            "target_rank": 1
+          }
+        ],
+        "deterministic": true,
+        "flaw": "low_clock_blunder",
+        "games": 120,
+        "injected_moves": 57,
+        "mean_plies": 115.2,
+        "name": "exp1-lowclockblunder-4",
+        "target": "W9b",
+        "time_forfeits": 30,
+        "truth": 0.111268
+      },
+      {
+        "checkpoints": [
+          {
+            "covered": false,
+            "estimate": [
+              0.058562,
+              0.04144,
+              0.077034
+            ],
+            "games": 30,
+            "hit2": true,
+            "rank1": "W9b",
+            "target_rank": 1
+          },
+          {
+            "covered": false,
+            "estimate": [
+              0.054274,
+              0.040069,
+              0.069473
+            ],
+            "games": 45,
+            "hit2": true,
+            "rank1": "W9b",
+            "target_rank": 1
+          },
+          {
+            "covered": false,
+            "estimate": [
+              0.06447,
+              0.049057,
+              0.080847
+            ],
+            "games": 60,
+            "hit2": true,
+            "rank1": "W9b",
+            "target_rank": 1
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.079999,
+              0.063253,
+              0.097635
+            ],
+            "games": 80,
+            "hit2": true,
+            "rank1": "W9b",
+            "target_rank": 1
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.083611,
+              0.068594,
+              0.099301
+            ],
+            "games": 120,
+            "hit2": true,
+            "rank1": "W9b",
+            "target_rank": 1
+          }
+        ],
+        "deterministic": true,
+        "flaw": "low_clock_blunder",
+        "games": 120,
+        "injected_moves": 57,
+        "mean_plies": 118.35,
+        "name": "exp1-lowclockblunder-5",
+        "target": "W9b",
+        "time_forfeits": 31,
+        "truth": 0.087095
+      },
+      {
+        "checkpoints": [
+          {
+            "covered": true,
+            "estimate": [
+              0.607407,
+              0.399125,
+              0.803995
+            ],
+            "games": 30,
+            "hit2": false,
+            "rank1": "W1",
+            "target_rank": null
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.562289,
+              0.39417,
+              0.726291
+            ],
+            "games": 45,
+            "hit2": false,
+            "rank1": "W1",
+            "target_rank": null
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.604809,
+              0.452122,
+              0.751794
+            ],
+            "games": 60,
+            "hit2": true,
+            "rank1": "W5",
+            "target_rank": 1
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.620143,
+              0.483545,
+              0.751537
+            ],
+            "games": 80,
+            "hit2": true,
+            "rank1": "W5",
+            "target_rank": 1
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.58339,
+              0.454926,
+              0.708754
+            ],
+            "games": 120,
+            "hit2": true,
+            "rank1": "W5",
+            "target_rank": 1
+          }
+        ],
+        "deterministic": true,
+        "flaw": "no_convert",
+        "games": 120,
+        "injected_moves": 24,
+        "mean_plies": 119.4,
+        "name": "exp1-noconvert-0",
+        "target": "W5",
+        "time_forfeits": 50,
+        "truth": 0.598958
+      },
+      {
+        "checkpoints": [
+          {
+            "covered": true,
+            "estimate": [
+              0.43059,
+              0.260384,
+              0.605832
+            ],
+            "games": 30,
+            "hit2": false,
+            "rank1": null,
+            "target_rank": null
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.442227,
+              0.277182,
+              0.611127
+            ],
+            "games": 45,
+            "hit2": false,
+            "rank1": "W9b",
+            "target_rank": null
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.509238,
+              0.362944,
+              0.655081
+            ],
+            "games": 60,
+            "hit2": true,
+            "rank1": "W5",
+            "target_rank": 1
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.571442,
+              0.434995,
+              0.704884
+            ],
+            "games": 80,
+            "hit2": true,
+            "rank1": "W5",
+            "target_rank": 1
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.531192,
+              0.409305,
+              0.652054
+            ],
+            "games": 120,
+            "hit2": true,
+            "rank1": "W5",
+            "target_rank": 1
+          }
+        ],
+        "deterministic": true,
+        "flaw": "no_convert",
+        "games": 120,
+        "injected_moves": 26,
+        "mean_plies": 124.641667,
+        "name": "exp1-noconvert-1",
+        "target": "W5",
+        "time_forfeits": 51,
+        "truth": 0.598958
+      },
+      {
+        "checkpoints": [
+          {
+            "covered": true,
+            "estimate": [
+              0.509617,
+              0.304993,
+              0.713239
+            ],
+            "games": 30,
+            "hit2": false,
+            "rank1": null,
+            "target_rank": null
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.419378,
+              0.233728,
+              0.612315
+            ],
+            "games": 45,
+            "hit2": false,
+            "rank1": null,
+            "target_rank": null
+          },
+          {
+            "covered": false,
+            "estimate": [
+              0.327287,
+              0.183194,
+              0.481655
+            ],
+            "games": 60,
+            "hit2": true,
+            "rank1": "W5",
+            "target_rank": 1
+          },
+          {
+            "covered": false,
+            "estimate": [
+              0.364515,
+              0.224533,
+              0.511446
+            ],
+            "games": 80,
+            "hit2": true,
+            "rank1": "W5",
+            "target_rank": 1
+          },
+          {
+            "covered": false,
+            "estimate": [
+              0.463412,
+              0.341035,
+              0.587029
+            ],
+            "games": 120,
+            "hit2": true,
+            "rank1": "W5",
+            "target_rank": 1
+          }
+        ],
+        "deterministic": true,
+        "flaw": "no_convert",
+        "games": 120,
+        "injected_moves": 22,
+        "mean_plies": 120.408333,
+        "name": "exp1-noconvert-2",
+        "target": "W5",
+        "time_forfeits": 53,
+        "truth": 0.598958
+      },
+      {
+        "checkpoints": [
+          {
+            "covered": false,
+            "estimate": [
+              0.210559,
+              0.063664,
+              0.387748
+            ],
+            "games": 30,
+            "hit2": false,
+            "rank1": null,
+            "target_rank": null
+          },
+          {
+            "covered": false,
+            "estimate": [
+              0.176895,
+              0.050271,
+              0.332571
+            ],
+            "games": 45,
+            "hit2": false,
+            "rank1": null,
+            "target_rank": null
+          },
+          {
+            "covered": false,
+            "estimate": [
+              0.115864,
+              0.030337,
+              0.223948
+            ],
+            "games": 60,
+            "hit2": false,
+            "rank1": null,
+            "target_rank": null
+          },
+          {
+            "covered": false,
+            "estimate": [
+              0.213916,
+              0.097735,
+              0.34568
+            ],
+            "games": 80,
+            "hit2": false,
+            "rank1": null,
+            "target_rank": null
+          },
+          {
+            "covered": false,
+            "estimate": [
+              0.349198,
+              0.223602,
+              0.481031
+            ],
+            "games": 120,
+            "hit2": true,
+            "rank1": "W5",
+            "target_rank": 1
+          }
+        ],
+        "deterministic": true,
+        "flaw": "no_convert",
+        "games": 120,
+        "injected_moves": 18,
+        "mean_plies": 127.108333,
+        "name": "exp1-noconvert-3",
+        "target": "W5",
+        "time_forfeits": 61,
+        "truth": 0.572222
+      },
+      {
+        "checkpoints": [
+          {
+            "covered": true,
+            "estimate": [
+              0.611877,
+              0.431421,
+              0.78351
+            ],
+            "games": 30,
+            "hit2": false,
+            "rank1": null,
+            "target_rank": null
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.572065,
+              0.418168,
+              0.72203
+            ],
+            "games": 45,
+            "hit2": true,
+            "rank1": "W5",
+            "target_rank": 1
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.595073,
+              0.440382,
+              0.744472
+            ],
+            "games": 60,
+            "hit2": true,
+            "rank1": "W5",
+            "target_rank": 1
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.565639,
+              0.426104,
+              0.702282
+            ],
+            "games": 80,
+            "hit2": true,
+            "rank1": "W5",
+            "target_rank": 1
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.548089,
+              0.424687,
+              0.669865
+            ],
+            "games": 120,
+            "hit2": true,
+            "rank1": "W5",
+            "target_rank": 1
+          }
+        ],
+        "deterministic": true,
+        "flaw": "no_convert",
+        "games": 120,
+        "injected_moves": 34,
+        "mean_plies": 123.958333,
+        "name": "exp1-noconvert-4",
+        "target": "W5",
+        "time_forfeits": 55,
+        "truth": 0.580729
+      },
+      {
+        "checkpoints": [
+          {
+            "covered": false,
+            "estimate": [
+              0.312716,
+              0.15324,
+              0.48701
+            ],
+            "games": 30,
+            "hit2": false,
+            "rank1": null,
+            "target_rank": null
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.46222,
+              0.305903,
+              0.620727
+            ],
+            "games": 45,
+            "hit2": true,
+            "rank1": "W5",
+            "target_rank": 1
+          },
+          {
+            "covered": true,
+            "estimate": [
+              0.416302,
+              0.27426,
+              0.562442
+            ],
+            "games": 60,
+            "hit2": true,
+            "rank1": "W5",
+            "target_rank": 1
+          },
+          {
+            "covered": false,
+            "estimate": [
+              0.341304,
+              0.220404,
+              0.46833
+            ],
+            "games": 80,
+            "hit2": true,
+            "rank1": "W5",
+            "target_rank": 1
+          },
+          {
+            "covered": false,
+            "estimate": [
+              0.395126,
+              0.280122,
+              0.513448
+            ],
+            "games": 120,
+            "hit2": true,
+            "rank1": "W5",
+            "target_rank": 1
+          }
+        ],
+        "deterministic": true,
+        "flaw": "no_convert",
+        "games": 120,
+        "injected_moves": 16,
+        "mean_plies": 122.916667,
+        "name": "exp1-noconvert-5",
+        "target": "W5",
+        "time_forfeits": 48,
+        "truth": 0.548828
+      },
+      {
+        "checkpoints": [
+          {
+            "covered": null,
+            "estimate": null,
+            "games": 30,
+            "hit2": null,
+            "rank1": null,
+            "target_rank": null
+          },
+          {
+            "covered": null,
+            "estimate": null,
+            "games": 45,
+            "hit2": null,
+            "rank1": "W9a",
+            "target_rank": null
+          },
+          {
+            "covered": null,
+            "estimate": null,
+            "games": 60,
+            "hit2": null,
+            "rank1": null,
+            "target_rank": null
+          },
+          {
+            "covered": null,
+            "estimate": null,
+            "games": 80,
+            "hit2": null,
+            "rank1": null,
+            "target_rank": null
+          },
+          {
+            "covered": null,
+            "estimate": null,
+            "games": 120,
+            "hit2": null,
+            "rank1": null,
+            "target_rank": null
+          }
+        ],
+        "deterministic": true,
+        "flaw": null,
+        "games": 120,
+        "injected_moves": 0,
+        "mean_plies": 115.791667,
+        "name": "exp1-clean-0",
+        "target": null,
+        "time_forfeits": 42,
+        "truth": null
+      },
+      {
+        "checkpoints": [
+          {
+            "covered": null,
+            "estimate": null,
+            "games": 30,
+            "hit2": null,
+            "rank1": null,
+            "target_rank": null
+          },
+          {
+            "covered": null,
+            "estimate": null,
+            "games": 45,
+            "hit2": null,
+            "rank1": null,
+            "target_rank": null
+          },
+          {
+            "covered": null,
+            "estimate": null,
+            "games": 60,
+            "hit2": null,
+            "rank1": null,
+            "target_rank": null
+          },
+          {
+            "covered": null,
+            "estimate": null,
+            "games": 80,
+            "hit2": null,
+            "rank1": "W5",
+            "target_rank": null
+          },
+          {
+            "covered": null,
+            "estimate": null,
+            "games": 120,
+            "hit2": null,
+            "rank1": null,
+            "target_rank": null
+          }
+        ],
+        "deterministic": true,
+        "flaw": null,
+        "games": 120,
+        "injected_moves": 0,
+        "mean_plies": 121.8,
+        "name": "exp1-clean-1",
+        "target": null,
+        "time_forfeits": 43,
+        "truth": null
+      }
+    ],
+    "scorecard_metrics": {
+      "clean_players": 2,
+      "clean_top1_false_alarms": 0,
+      "coverage": 0.58,
+      "coverage_samples": 150,
+      "deterministic": true,
+      "mean_games_to_detection": 54.130434782608695,
+      "plan_hit_rate": 0.5666666666666667,
+      "recall_at_1": 0.5666666666666667,
+      "recall_at_2": 0.7333333333333333,
+      "top1_precision": 0.6296296296296297,
+      "top2_agreement": null
+    },
+    "suite": {
+      "checkpoints": [
+        30,
+        45,
+        60,
+        80,
+        120
+      ],
+      "name": "exp-0001-pilot",
+      "nodes": 12000,
+      "opponents": 16,
+      "perturb": false,
+      "players": [
+        {
+          "flaw": [
+            "hang",
+            0.05
+          ],
+          "games": 120,
+          "name": "exp1-hang-0",
+          "seed": 4280028461
+        },
+        {
+          "flaw": [
+            "hang",
+            0.05
+          ],
+          "games": 120,
+          "name": "exp1-hang-1",
+          "seed": 3975573659
+        },
+        {
+          "flaw": [
+            "hang",
+            0.05
+          ],
+          "games": 120,
+          "name": "exp1-hang-2",
+          "seed": 603290618
+        },
+        {
+          "flaw": [
+            "hang",
+            0.05
+          ],
+          "games": 120,
+          "name": "exp1-hang-3",
+          "seed": 1164004573
+        },
+        {
+          "flaw": [
+            "hang",
+            0.05
+          ],
+          "games": 120,
+          "name": "exp1-hang-4",
+          "seed": 1281378986
+        },
+        {
+          "flaw": [
+            "hang",
+            0.05
+          ],
+          "games": 120,
+          "name": "exp1-hang-5",
+          "seed": 913815533
+        },
+        {
+          "flaw": [
+            "miss_mate",
+            0.5
+          ],
+          "games": 120,
+          "name": "exp1-missmate-0",
+          "seed": 570176479
+        },
+        {
+          "flaw": [
+            "miss_mate",
+            0.5
+          ],
+          "games": 120,
+          "name": "exp1-missmate-1",
+          "seed": 1575883501
+        },
+        {
+          "flaw": [
+            "miss_mate",
+            0.5
+          ],
+          "games": 120,
+          "name": "exp1-missmate-2",
+          "seed": 2460640115
+        },
+        {
+          "flaw": [
+            "miss_mate",
+            0.5
+          ],
+          "games": 120,
+          "name": "exp1-missmate-3",
+          "seed": 3145223846
+        },
+        {
+          "flaw": [
+            "miss_mate",
+            0.5
+          ],
+          "games": 120,
+          "name": "exp1-missmate-4",
+          "seed": 1234238016
+        },
+        {
+          "flaw": [
+            "miss_mate",
+            0.5
+          ],
+          "games": 120,
+          "name": "exp1-missmate-5",
+          "seed": 3181544959
+        },
+        {
+          "flaw": [
+            "opening_blunder",
+            0.3
+          ],
+          "games": 120,
+          "name": "exp1-openingblunder-0",
+          "seed": 651891654
+        },
+        {
+          "flaw": [
+            "opening_blunder",
+            0.3
+          ],
+          "games": 120,
+          "name": "exp1-openingblunder-1",
+          "seed": 3837525627
+        },
+        {
+          "flaw": [
+            "opening_blunder",
+            0.3
+          ],
+          "games": 120,
+          "name": "exp1-openingblunder-2",
+          "seed": 973934283
+        },
+        {
+          "flaw": [
+            "opening_blunder",
+            0.3
+          ],
+          "games": 120,
+          "name": "exp1-openingblunder-3",
+          "seed": 1787122763
+        },
+        {
+          "flaw": [
+            "opening_blunder",
+            0.3
+          ],
+          "games": 120,
+          "name": "exp1-openingblunder-4",
+          "seed": 1838886429
+        },
+        {
+          "flaw": [
+            "opening_blunder",
+            0.3
+          ],
+          "games": 120,
+          "name": "exp1-openingblunder-5",
+          "seed": 3625817669
+        },
+        {
+          "flaw": [
+            "low_clock_blunder",
+            0.25
+          ],
+          "games": 120,
+          "name": "exp1-lowclockblunder-0",
+          "seed": 756479992
+        },
+        {
+          "flaw": [
+            "low_clock_blunder",
+            0.25
+          ],
+          "games": 120,
+          "name": "exp1-lowclockblunder-1",
+          "seed": 419127797
+        },
+        {
+          "flaw": [
+            "low_clock_blunder",
+            0.25
+          ],
+          "games": 120,
+          "name": "exp1-lowclockblunder-2",
+          "seed": 40688075
+        },
+        {
+          "flaw": [
+            "low_clock_blunder",
+            0.25
+          ],
+          "games": 120,
+          "name": "exp1-lowclockblunder-3",
+          "seed": 2408773881
+        },
+        {
+          "flaw": [
+            "low_clock_blunder",
+            0.25
+          ],
+          "games": 120,
+          "name": "exp1-lowclockblunder-4",
+          "seed": 417863133
+        },
+        {
+          "flaw": [
+            "low_clock_blunder",
+            0.25
+          ],
+          "games": 120,
+          "name": "exp1-lowclockblunder-5",
+          "seed": 319876771
+        },
+        {
+          "flaw": [
+            "no_convert",
+            0.5
+          ],
+          "games": 120,
+          "name": "exp1-noconvert-0",
+          "seed": 3491783725
+        },
+        {
+          "flaw": [
+            "no_convert",
+            0.5
+          ],
+          "games": 120,
+          "name": "exp1-noconvert-1",
+          "seed": 1344662199
+        },
+        {
+          "flaw": [
+            "no_convert",
+            0.5
+          ],
+          "games": 120,
+          "name": "exp1-noconvert-2",
+          "seed": 4046901175
+        },
+        {
+          "flaw": [
+            "no_convert",
+            0.5
+          ],
+          "games": 120,
+          "name": "exp1-noconvert-3",
+          "seed": 2097381943
+        },
+        {
+          "flaw": [
+            "no_convert",
+            0.5
+          ],
+          "games": 120,
+          "name": "exp1-noconvert-4",
+          "seed": 234640600
+        },
+        {
+          "flaw": [
+            "no_convert",
+            0.5
+          ],
+          "games": 120,
+          "name": "exp1-noconvert-5",
+          "seed": 2427472249
+        },
+        {
+          "flaw": null,
+          "games": 120,
+          "name": "exp1-clean-0",
+          "seed": 344059106
+        },
+        {
+          "flaw": null,
+          "games": 120,
+          "name": "exp1-clean-1",
+          "seed": 3743377082
+        }
+      ]
+    }
+  },
+  "power_recall": [
+    {
+      "churn": 0.0,
+      "flawed_players": 5,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 1,
+      "ship": 0.00325,
+      "ship_mc_ci95": [
+        0.0019,
+        0.005553
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 10,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 2,
+      "ship": 0.01075,
+      "ship_mc_ci95": [
+        0.007991,
+        0.014448
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 15,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 3,
+      "ship": 0.045,
+      "ship_mc_ci95": [
+        0.039001,
+        0.051873
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 20,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 4,
+      "ship": 0.07425,
+      "ship_mc_ci95": [
+        0.066527,
+        0.08279
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 25,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 5,
+      "ship": 0.09875,
+      "ship_mc_ci95": [
+        0.089886,
+        0.108384
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 30,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 6,
+      "ship": 0.178,
+      "ship_mc_ci95": [
+        0.166457,
+        0.190161
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 40,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 8,
+      "ship": 0.3655,
+      "ship_mc_ci95": [
+        0.350712,
+        0.380546
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 50,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 10,
+      "ship": 0.576,
+      "ship_mc_ci95": [
+        0.560619,
+        0.591235
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 60,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 12,
+      "ship": 0.7095,
+      "ship_mc_ci95": [
+        0.695235,
+        0.723363
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 70,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 14,
+      "ship": 0.824,
+      "ship_mc_ci95": [
+        0.811889,
+        0.835489
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 80,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 16,
+      "ship": 0.8815,
+      "ship_mc_ci95": [
+        0.871116,
+        0.891152
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 100,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 20,
+      "ship": 0.958,
+      "ship_mc_ci95": [
+        0.951332,
+        0.963789
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 120,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 24,
+      "ship": 0.988,
+      "ship_mc_ci95": [
+        0.984127,
+        0.990937
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 140,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 28,
+      "ship": 0.996,
+      "ship_mc_ci95": [
+        0.993512,
+        0.997536
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 160,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 32,
+      "ship": 0.9995,
+      "ship_mc_ci95": [
+        0.998179,
+        0.999863
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 200,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 40,
+      "ship": 1.0,
+      "ship_mc_ci95": [
+        0.999041,
+        1.0
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 240,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 48,
+      "ship": 1.0,
+      "ship_mc_ci95": [
+        0.999041,
+        1.0
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 320,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 64,
+      "ship": 1.0,
+      "ship_mc_ci95": [
+        0.999041,
+        1.0
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 400,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 80,
+      "ship": 1.0,
+      "ship_mc_ci95": [
+        0.999041,
+        1.0
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 500,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 100,
+      "ship": 1.0,
+      "ship_mc_ci95": [
+        0.999041,
+        1.0
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 5,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 1,
+      "ship": 0.0035,
+      "ship_mc_ci95": [
+        0.002086,
+        0.005867
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 10,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 2,
+      "ship": 0.0175,
+      "ship_mc_ci95": [
+        0.013875,
+        0.022051
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 15,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 3,
+      "ship": 0.069,
+      "ship_mc_ci95": [
+        0.061552,
+        0.077275
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 20,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 4,
+      "ship": 0.08025,
+      "ship_mc_ci95": [
+        0.072228,
+        0.089078
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 25,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 5,
+      "ship": 0.1085,
+      "ship_mc_ci95": [
+        0.099235,
+        0.118516
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 30,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 6,
+      "ship": 0.18225,
+      "ship_mc_ci95": [
+        0.170593,
+        0.194517
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 40,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 8,
+      "ship": 0.327,
+      "ship_mc_ci95": [
+        0.312634,
+        0.341698
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 50,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 10,
+      "ship": 0.4295,
+      "ship_mc_ci95": [
+        0.414235,
+        0.444901
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 60,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 12,
+      "ship": 0.511,
+      "ship_mc_ci95": [
+        0.495506,
+        0.526473
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 70,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 14,
+      "ship": 0.601,
+      "ship_mc_ci95": [
+        0.585735,
+        0.616072
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 80,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 16,
+      "ship": 0.6685,
+      "ship_mc_ci95": [
+        0.653756,
+        0.682921
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 100,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 20,
+      "ship": 0.7835,
+      "ship_mc_ci95": [
+        0.770468,
+        0.795988
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 120,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 24,
+      "ship": 0.88025,
+      "ship_mc_ci95": [
+        0.869822,
+        0.889948
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 140,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 28,
+      "ship": 0.93075,
+      "ship_mc_ci95": [
+        0.922462,
+        0.938211
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 160,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 32,
+      "ship": 0.95525,
+      "ship_mc_ci95": [
+        0.948394,
+        0.961232
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 200,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 40,
+      "ship": 0.987,
+      "ship_mc_ci95": [
+        0.982993,
+        0.990072
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 240,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 48,
+      "ship": 0.9965,
+      "ship_mc_ci95": [
+        0.994133,
+        0.997914
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 320,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 64,
+      "ship": 0.99875,
+      "ship_mc_ci95": [
+        0.997077,
+        0.999466
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 400,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 80,
+      "ship": 1.0,
+      "ship_mc_ci95": [
+        0.999041,
+        1.0
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 500,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 100,
+      "ship": 1.0,
+      "ship_mc_ci95": [
+        0.999041,
+        1.0
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 5,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 1,
+      "ship": 0.00825,
+      "ship_mc_ci95": [
+        0.005881,
+        0.011563
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 10,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 2,
+      "ship": 0.0225,
+      "ship_mc_ci95": [
+        0.018342,
+        0.027575
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 15,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 3,
+      "ship": 0.0705,
+      "ship_mc_ci95": [
+        0.062972,
+        0.078852
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 20,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 4,
+      "ship": 0.08375,
+      "ship_mc_ci95": [
+        0.07556,
+        0.092739
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 25,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 5,
+      "ship": 0.1155,
+      "ship_mc_ci95": [
+        0.105962,
+        0.125776
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 30,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 6,
+      "ship": 0.1735,
+      "ship_mc_ci95": [
+        0.16208,
+        0.185547
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 40,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 8,
+      "ship": 0.2745,
+      "ship_mc_ci95": [
+        0.260892,
+        0.288541
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 50,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 10,
+      "ship": 0.32925,
+      "ship_mc_ci95": [
+        0.314857,
+        0.343971
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 60,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 12,
+      "ship": 0.39675,
+      "ship_mc_ci95": [
+        0.381695,
+        0.412003
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 70,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 14,
+      "ship": 0.491,
+      "ship_mc_ci95": [
+        0.475524,
+        0.506494
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 80,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 16,
+      "ship": 0.5535,
+      "ship_mc_ci95": [
+        0.53805,
+        0.568847
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 100,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 20,
+      "ship": 0.68425,
+      "ship_mc_ci95": [
+        0.669675,
+        0.698472
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 120,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 24,
+      "ship": 0.75625,
+      "ship_mc_ci95": [
+        0.742703,
+        0.769305
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 140,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 28,
+      "ship": 0.83225,
+      "ship_mc_ci95": [
+        0.820353,
+        0.843509
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 160,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 32,
+      "ship": 0.8865,
+      "ship_mc_ci95": [
+        0.876297,
+        0.895961
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 200,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 40,
+      "ship": 0.95225,
+      "ship_mc_ci95": [
+        0.945197,
+        0.958435
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 240,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 48,
+      "ship": 0.979,
+      "ship_mc_ci95": [
+        0.974075,
+        0.983005
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 320,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 64,
+      "ship": 0.997,
+      "ship_mc_ci95": [
+        0.994763,
+        0.998283
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 400,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 80,
+      "ship": 0.9995,
+      "ship_mc_ci95": [
+        0.998179,
+        0.999863
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 500,
+      "games": 30,
+      "infeasible": 0.0,
+      "players_per_flaw": 100,
+      "ship": 0.99975,
+      "ship_mc_ci95": [
+        0.998585,
+        0.999956
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 5,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 1,
+      "ship": 0.00375,
+      "ship_mc_ci95": [
+        0.002274,
+        0.006178
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 10,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 2,
+      "ship": 0.0095,
+      "ship_mc_ci95": [
+        0.006929,
+        0.013012
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 15,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 3,
+      "ship": 0.05575,
+      "ship_mc_ci95": [
+        0.049057,
+        0.063296
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 20,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 4,
+      "ship": 0.10525,
+      "ship_mc_ci95": [
+        0.096116,
+        0.115142
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 25,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 5,
+      "ship": 0.098,
+      "ship_mc_ci95": [
+        0.089168,
+        0.107603
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 30,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 6,
+      "ship": 0.164,
+      "ship_mc_ci95": [
+        0.152849,
+        0.175796
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 40,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 8,
+      "ship": 0.37,
+      "ship_mc_ci95": [
+        0.355169,
+        0.38508
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 50,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 10,
+      "ship": 0.57525,
+      "ship_mc_ci95": [
+        0.559867,
+        0.590489
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 60,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 12,
+      "ship": 0.7445,
+      "ship_mc_ci95": [
+        0.730754,
+        0.757777
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 70,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 14,
+      "ship": 0.84875,
+      "ship_mc_ci95": [
+        0.837312,
+        0.859519
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 80,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 16,
+      "ship": 0.9145,
+      "ship_mc_ci95": [
+        0.905432,
+        0.922773
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 100,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 20,
+      "ship": 0.98025,
+      "ship_mc_ci95": [
+        0.975455,
+        0.984124
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 120,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 24,
+      "ship": 0.99525,
+      "ship_mc_ci95": [
+        0.992593,
+        0.996957
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 140,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 28,
+      "ship": 0.999,
+      "ship_mc_ci95": [
+        0.997431,
+        0.999611
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 160,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 32,
+      "ship": 0.99975,
+      "ship_mc_ci95": [
+        0.998585,
+        0.999956
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 200,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 40,
+      "ship": 1.0,
+      "ship_mc_ci95": [
+        0.999041,
+        1.0
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 240,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 48,
+      "ship": 1.0,
+      "ship_mc_ci95": [
+        0.999041,
+        1.0
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 320,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 64,
+      "ship": 1.0,
+      "ship_mc_ci95": [
+        0.999041,
+        1.0
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 400,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 80,
+      "ship": 1.0,
+      "ship_mc_ci95": [
+        0.999041,
+        1.0
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 500,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 100,
+      "ship": 1.0,
+      "ship_mc_ci95": [
+        0.999041,
+        1.0
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 5,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 1,
+      "ship": 0.00625,
+      "ship_mc_ci95": [
+        0.004237,
+        0.00921
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 10,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 2,
+      "ship": 0.01775,
+      "ship_mc_ci95": [
+        0.014097,
+        0.022329
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 15,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 3,
+      "ship": 0.07275,
+      "ship_mc_ci95": [
+        0.065105,
+        0.081215
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 20,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 4,
+      "ship": 0.11825,
+      "ship_mc_ci95": [
+        0.108608,
+        0.128625
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 25,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 5,
+      "ship": 0.115,
+      "ship_mc_ci95": [
+        0.105481,
+        0.125258
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 30,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 6,
+      "ship": 0.18,
+      "ship_mc_ci95": [
+        0.168403,
+        0.192211
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 40,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 8,
+      "ship": 0.2975,
+      "ship_mc_ci95": [
+        0.283533,
+        0.311856
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 50,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 10,
+      "ship": 0.39525,
+      "ship_mc_ci95": [
+        0.380206,
+        0.410495
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 60,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 12,
+      "ship": 0.42175,
+      "ship_mc_ci95": [
+        0.406528,
+        0.437122
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 70,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 14,
+      "ship": 0.512,
+      "ship_mc_ci95": [
+        0.496506,
+        0.527471
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 80,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 16,
+      "ship": 0.57575,
+      "ship_mc_ci95": [
+        0.560368,
+        0.590986
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 100,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 20,
+      "ship": 0.6975,
+      "ship_mc_ci95": [
+        0.683081,
+        0.71154
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 120,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 24,
+      "ship": 0.79925,
+      "ship_mc_ci95": [
+        0.786552,
+        0.811374
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 140,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 28,
+      "ship": 0.8585,
+      "ship_mc_ci95": [
+        0.847355,
+        0.868957
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 160,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 32,
+      "ship": 0.91675,
+      "ship_mc_ci95": [
+        0.907784,
+        0.924917
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 200,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 40,
+      "ship": 0.96225,
+      "ship_mc_ci95": [
+        0.955886,
+        0.967727
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 240,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 48,
+      "ship": 0.9845,
+      "ship_mc_ci95": [
+        0.980181,
+        0.98789
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 320,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 64,
+      "ship": 0.9975,
+      "ship_mc_ci95": [
+        0.995404,
+        0.998641
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 400,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 80,
+      "ship": 1.0,
+      "ship_mc_ci95": [
+        0.999041,
+        1.0
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 500,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 100,
+      "ship": 1.0,
+      "ship_mc_ci95": [
+        0.999041,
+        1.0
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 5,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 1,
+      "ship": 0.00975,
+      "ship_mc_ci95": [
+        0.007141,
+        0.0133
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 10,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 2,
+      "ship": 0.02575,
+      "ship_mc_ci95": [
+        0.021278,
+        0.031132
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 15,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 3,
+      "ship": 0.08,
+      "ship_mc_ci95": [
+        0.07199,
+        0.088816
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 20,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 4,
+      "ship": 0.12725,
+      "ship_mc_ci95": [
+        0.117279,
+        0.137936
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 25,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 5,
+      "ship": 0.10925,
+      "ship_mc_ci95": [
+        0.099955,
+        0.119295
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 30,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 6,
+      "ship": 0.16775,
+      "ship_mc_ci95": [
+        0.156491,
+        0.179647
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 40,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 8,
+      "ship": 0.23075,
+      "ship_mc_ci95": [
+        0.217956,
+        0.244061
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 50,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 10,
+      "ship": 0.27425,
+      "ship_mc_ci95": [
+        0.260646,
+        0.288287
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 60,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 12,
+      "ship": 0.3115,
+      "ship_mc_ci95": [
+        0.297335,
+        0.326027
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 70,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 14,
+      "ship": 0.38525,
+      "ship_mc_ci95": [
+        0.370286,
+        0.400435
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 80,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 16,
+      "ship": 0.4485,
+      "ship_mc_ci95": [
+        0.433144,
+        0.463955
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 100,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 20,
+      "ship": 0.5675,
+      "ship_mc_ci95": [
+        0.552089,
+        0.582781
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 120,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 24,
+      "ship": 0.645,
+      "ship_mc_ci95": [
+        0.630038,
+        0.659683
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 140,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 28,
+      "ship": 0.7165,
+      "ship_mc_ci95": [
+        0.70233,
+        0.730254
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 160,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 32,
+      "ship": 0.7725,
+      "ship_mc_ci95": [
+        0.759251,
+        0.785226
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 200,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 40,
+      "ship": 0.874,
+      "ship_mc_ci95": [
+        0.863356,
+        0.883926
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 240,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 48,
+      "ship": 0.928,
+      "ship_mc_ci95": [
+        0.919572,
+        0.935607
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 320,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 64,
+      "ship": 0.97775,
+      "ship_mc_ci95": [
+        0.9727,
+        0.981883
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 400,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 80,
+      "ship": 0.994,
+      "ship_mc_ci95": [
+        0.991087,
+        0.995965
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 500,
+      "games": 45,
+      "infeasible": 0.0,
+      "players_per_flaw": 100,
+      "ship": 0.99925,
+      "ship_mc_ci95": [
+        0.997797,
+        0.999745
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 5,
+      "games": 60,
+      "infeasible": 0.0,
+      "players_per_flaw": 1,
+      "ship": 0.00075,
+      "ship_mc_ci95": [
+        0.000255,
+        0.002203
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 10,
+      "games": 60,
+      "infeasible": 0.0,
+      "players_per_flaw": 2,
+      "ship": 0.005,
+      "ship_mc_ci95": [
+        0.003239,
+        0.007711
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 15,
+      "games": 60,
+      "infeasible": 0.0,
+      "players_per_flaw": 3,
+      "ship": 0.031,
+      "ship_mc_ci95": [
+        0.026063,
+        0.036837
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 20,
+      "games": 60,
+      "infeasible": 0.0,
+      "players_per_flaw": 4,
+      "ship": 0.04675,
+      "ship_mc_ci95": [
+        0.040632,
+        0.053738
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 25,
+      "games": 60,
+      "infeasible": 0.0,
+      "players_per_flaw": 5,
+      "ship": 0.099,
+      "ship_mc_ci95": [
+        0.090126,
+        0.108644
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 30,
+      "games": 60,
+      "infeasible": 0.0,
+      "players_per_flaw": 6,
+      "ship": 0.16875,
+      "ship_mc_ci95": [
+        0.157462,
+        0.180673
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 40,
+      "games": 60,
+      "infeasible": 0.0,
+      "players_per_flaw": 8,
+      "ship": 0.37025,
+      "ship_mc_ci95": [
+        0.355417,
+        0.385332
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 50,
+      "games": 60,
+      "infeasible": 0.0,
+      "players_per_flaw": 10,
+      "ship": 0.57075,
+      "ship_mc_ci95": [
+        0.55535,
+        0.586014
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 60,
+      "games": 60,
+      "infeasible": 0.0,
+      "players_per_flaw": 12,
+      "ship": 0.7195,
+      "ship_mc_ci95": [
+        0.705373,
+        0.733206
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 70,
+      "games": 60,
+      "infeasible": 0.0,
+      "players_per_flaw": 14,
+      "ship": 0.8245,
+      "ship_mc_ci95": [
+        0.812402,
+        0.835975
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 80,
+      "games": 60,
+      "infeasible": 0.0,
+      "players_per_flaw": 16,
+      "ship": 0.8895,
+      "ship_mc_ci95": [
+        0.879408,
+        0.898844
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 100,
+      "games": 60,
+      "infeasible": 0.0,
+      "players_per_flaw": 20,
+      "ship": 0.965,
+      "ship_mc_ci95": [
+        0.958844,
+        0.970264
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 120,
+      "games": 60,
+      "infeasible": 0.0,
+      "players_per_flaw": 24,
+      "ship": 0.9955,
+      "ship_mc_ci95": [
+        0.992898,
+        0.997152
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 140,
+      "games": 60,
+      "infeasible": 0.0,
+      "players_per_flaw": 28,
+      "ship": 0.99825,
+      "ship_mc_ci95": [
+        0.996392,
+        0.999152
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 160,
+      "games": 60,
+      "infeasible": 0.0,
+      "players_per_flaw": 32,
+      "ship": 1.0,
+      "ship_mc_ci95": [
+        0.999041,
+        1.0
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 200,
+      "games": 60,
+      "infeasible": 0.0,
+      "players_per_flaw": 40,
+      "ship": 1.0,
+      "ship_mc_ci95": [
+        0.999041,
+        1.0
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 240,
+      "games": 60,
+      "infeasible": 0.0,
+      "players_per_flaw": 48,
+      "ship": 1.0,
+      "ship_mc_ci95": [
+        0.999041,
+        1.0
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 320,
+      "games": 60,
+      "infeasible": 0.0,
+      "players_per_flaw": 64,
+      "ship": 1.0,
+      "ship_mc_ci95": [
+        0.999041,
+        1.0
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 400,
+      "games": 60,
+      "infeasible": 0.0,
+      "players_per_flaw": 80,
+      "ship": 1.0,
+      "ship_mc_ci95": [
+        0.999041,
+        1.0
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 500,
+      "games": 60,
+      "infeasible": 0.0,
+      "players_per_flaw": 100,
+      "ship": 1.0,
+      "ship_mc_ci95": [
+        0.999041,
+        1.0
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 5,
+      "games": 60,
+      "infeasible": 0.0,
+      "players_per_flaw": 1,
+      "ship": 0.0015,
+      "ship_mc_ci95": [
+        0.000688,
+        0.003269
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 10,
+      "games": 60,
+      "infeasible": 0.0,
+      "players_per_flaw": 2,
+      "ship": 0.011,
+      "ship_mc_ci95": [
+        0.008205,
+        0.014734
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 15,
+      "games": 60,
+      "infeasible": 0.0,
+      "players_per_flaw": 3,
+      "ship": 0.0535,
+      "ship_mc_ci95": [
+        0.046945,
+        0.060912
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 20,
+      "games": 60,
+      "infeasible": 0.0,
+      "players_per_flaw": 4,
+      "ship": 0.06975,
+      "ship_mc_ci95": [
+        0.062262,
+        0.078064
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 25,
+      "games": 60,
+      "infeasible": 0.00025,
+      "players_per_flaw": 5,
+      "ship": 0.09475,
+      "ship_mc_ci95": [
+        0.086059,
+        0.104219
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 30,
+      "games": 60,
+      "infeasible": 0.0,
+      "players_per_flaw": 6,
+      "ship": 0.1545,
+      "ship_mc_ci95": [
+        0.143631,
+        0.166032
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 40,
+      "games": 60,
+      "infeasible": 0.0,
+      "players_per_flaw": 8,
+      "ship": 0.24375,
+      "ship_mc_ci95": [
+        0.230695,
+        0.257297
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 50,
+      "games": 60,
+      "infeasible": 0.0,
+      "players_per_flaw": 10,
+      "ship": 0.307,
+      "ship_mc_ci95": [
+        0.292897,
+        0.321474
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 60,
+      "games": 60,
+      "infeasible": 0.0,
+      "players_per_flaw": 12,
+      "ship": 0.376,
+      "ship_mc_ci95": [
+        0.361115,
+        0.391123
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 70,
+      "games": 60,
+      "infeasible": 0.0,
+      "players_per_flaw": 14,
+      "ship": 0.445,
+      "ship_mc_ci95": [
+        0.429659,
+        0.460446
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 80,
+      "games": 60,
+      "infeasible": 0.0,
+      "players_per_flaw": 16,
+      "ship": 0.51025,
+      "ship_mc_ci95": [
+        0.494756,
+        0.525724
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 100,
+      "games": 60,
+      "infeasible": 0.0,
+      "players_per_flaw": 20,
+      "ship": 0.6445,
+      "ship_mc_ci95": [
+        0.629534,
+        0.659189
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 120,
+      "games": 60,
+      "infeasible": 0.0,
+      "players_per_flaw": 24,
+      "ship": 0.72575,
+      "ship_mc_ci95": [
+        0.711713,
+        0.739354
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 140,
+      "games": 60,
+      "infeasible": 0.0,
+      "players_per_flaw": 28,
+      "ship": 0.8085,
+      "ship_mc_ci95": [
+        0.796012,
+        0.820396
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 160,
+      "games": 60,
+      "infeasible": 0.00025,
+      "players_per_flaw": 32,
+      "ship": 0.866,
+      "ship_mc_ci95": [
+        0.855091,
+        0.876206
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 200,
+      "games": 60,
+      "infeasible": 0.0,
+      "players_per_flaw": 40,
+      "ship": 0.941,
+      "ship_mc_ci95": [
+        0.933266,
+        0.947888
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 240,
+      "games": 60,
+      "infeasible": 0.0,
+      "players_per_flaw": 48,
+      "ship": 0.97475,
+      "ship_mc_ci95": [
+        0.969414,
+        0.979175
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 320,
+      "games": 60,
+      "infeasible": 0.0,
+      "players_per_flaw": 64,
+      "ship": 0.99725,
+      "ship_mc_ci95": [
+        0.995082,
+        0.998464
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 400,
+      "games": 60,
+      "infeasible": 0.0,
+      "players_per_flaw": 80,
+      "ship": 0.99875,
+      "ship_mc_ci95": [
+        0.997077,
+        0.999466
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 500,
+      "games": 60,
+      "infeasible": 0.0,
+      "players_per_flaw": 100,
+      "ship": 1.0,
+      "ship_mc_ci95": [
+        0.999041,
+        1.0
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 5,
+      "games": 60,
+      "infeasible": 0.0005,
+      "players_per_flaw": 1,
+      "ship": 0.0025,
+      "ship_mc_ci95": [
+        0.001359,
+        0.004596
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 10,
+      "games": 60,
+      "infeasible": 0.0,
+      "players_per_flaw": 2,
+      "ship": 0.0135,
+      "ship_mc_ci95": [
+        0.010362,
+        0.017572
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 15,
+      "games": 60,
+      "infeasible": 0.00025,
+      "players_per_flaw": 3,
+      "ship": 0.07175,
+      "ship_mc_ci95": [
+        0.064157,
+        0.080165
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 20,
+      "games": 60,
+      "infeasible": 0.0005,
+      "players_per_flaw": 4,
+      "ship": 0.0735,
+      "ship_mc_ci95": [
+        0.065816,
+        0.082003
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 25,
+      "games": 60,
+      "infeasible": 0.0,
+      "players_per_flaw": 5,
+      "ship": 0.10725,
+      "ship_mc_ci95": [
+        0.098035,
+        0.117219
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 30,
+      "games": 60,
+      "infeasible": 0.00025,
+      "players_per_flaw": 6,
+      "ship": 0.133,
+      "ship_mc_ci95": [
+        0.122828,
+        0.143876
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 40,
+      "games": 60,
+      "infeasible": 0.001,
+      "players_per_flaw": 8,
+      "ship": 0.1605,
+      "ship_mc_ci95": [
+        0.149451,
+        0.1722
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 50,
+      "games": 60,
+      "infeasible": 0.00025,
+      "players_per_flaw": 10,
+      "ship": 0.20675,
+      "ship_mc_ci95": [
+        0.194484,
+        0.219579
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 60,
+      "games": 60,
+      "infeasible": 0.00025,
+      "players_per_flaw": 12,
+      "ship": 0.2495,
+      "ship_mc_ci95": [
+        0.236335,
+        0.263146
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 70,
+      "games": 60,
+      "infeasible": 0.00125,
+      "players_per_flaw": 14,
+      "ship": 0.318,
+      "ship_mc_ci95": [
+        0.303749,
+        0.332601
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 80,
+      "games": 60,
+      "infeasible": 0.0005,
+      "players_per_flaw": 16,
+      "ship": 0.35775,
+      "ship_mc_ci95": [
+        0.343038,
+        0.372735
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 100,
+      "games": 60,
+      "infeasible": 0.00025,
+      "players_per_flaw": 20,
+      "ship": 0.471,
+      "ship_mc_ci95": [
+        0.455566,
+        0.486489
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 120,
+      "games": 60,
+      "infeasible": 0.00075,
+      "players_per_flaw": 24,
+      "ship": 0.5445,
+      "ship_mc_ci95": [
+        0.529031,
+        0.559883
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 140,
+      "games": 60,
+      "infeasible": 0.0005,
+      "players_per_flaw": 28,
+      "ship": 0.61625,
+      "ship_mc_ci95": [
+        0.601075,
+        0.631202
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 160,
+      "games": 60,
+      "infeasible": 0.0005,
+      "players_per_flaw": 32,
+      "ship": 0.682,
+      "ship_mc_ci95": [
+        0.667399,
+        0.696251
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 200,
+      "games": 60,
+      "infeasible": 0.0,
+      "players_per_flaw": 40,
+      "ship": 0.8155,
+      "ship_mc_ci95": [
+        0.803179,
+        0.827216
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 240,
+      "games": 60,
+      "infeasible": 0.00025,
+      "players_per_flaw": 48,
+      "ship": 0.876,
+      "ship_mc_ci95": [
+        0.865424,
+        0.885854
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 320,
+      "games": 60,
+      "infeasible": 0.0,
+      "players_per_flaw": 64,
+      "ship": 0.961,
+      "ship_mc_ci95": [
+        0.954545,
+        0.966571
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 400,
+      "games": 60,
+      "infeasible": 0.00025,
+      "players_per_flaw": 80,
+      "ship": 0.98875,
+      "ship_mc_ci95": [
+        0.984981,
+        0.991581
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 500,
+      "games": 60,
+      "infeasible": 0.0005,
+      "players_per_flaw": 100,
+      "ship": 0.997,
+      "ship_mc_ci95": [
+        0.994763,
+        0.998283
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 5,
+      "games": 80,
+      "infeasible": 0.0,
+      "players_per_flaw": 1,
+      "ship": 0.0005,
+      "ship_mc_ci95": [
+        0.000137,
+        0.001821
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 10,
+      "games": 80,
+      "infeasible": 0.0,
+      "players_per_flaw": 2,
+      "ship": 0.00625,
+      "ship_mc_ci95": [
+        0.004237,
+        0.00921
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 15,
+      "games": 80,
+      "infeasible": 0.0,
+      "players_per_flaw": 3,
+      "ship": 0.03775,
+      "ship_mc_ci95": [
+        0.032273,
+        0.044114
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 20,
+      "games": 80,
+      "infeasible": 0.0,
+      "players_per_flaw": 4,
+      "ship": 0.0585,
+      "ship_mc_ci95": [
+        0.051642,
+        0.066205
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 25,
+      "games": 80,
+      "infeasible": 0.0,
+      "players_per_flaw": 5,
+      "ship": 0.077,
+      "ship_mc_ci95": [
+        0.069138,
+        0.085673
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 30,
+      "games": 80,
+      "infeasible": 0.0,
+      "players_per_flaw": 6,
+      "ship": 0.16825,
+      "ship_mc_ci95": [
+        0.156977,
+        0.18016
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 40,
+      "games": 80,
+      "infeasible": 0.0,
+      "players_per_flaw": 8,
+      "ship": 0.3685,
+      "ship_mc_ci95": [
+        0.353683,
+        0.383569
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 50,
+      "games": 80,
+      "infeasible": 0.0,
+      "players_per_flaw": 10,
+      "ship": 0.5875,
+      "ship_mc_ci95": [
+        0.572167,
+        0.602665
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 60,
+      "games": 80,
+      "infeasible": 0.0,
+      "players_per_flaw": 12,
+      "ship": 0.73775,
+      "ship_mc_ci95": [
+        0.723895,
+        0.751148
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 70,
+      "games": 80,
+      "infeasible": 0.0,
+      "players_per_flaw": 14,
+      "ship": 0.85,
+      "ship_mc_ci95": [
+        0.838599,
+        0.86073
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 80,
+      "games": 80,
+      "infeasible": 0.0,
+      "players_per_flaw": 16,
+      "ship": 0.9115,
+      "ship_mc_ci95": [
+        0.902299,
+        0.919912
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 100,
+      "games": 80,
+      "infeasible": 0.0,
+      "players_per_flaw": 20,
+      "ship": 0.9715,
+      "ship_mc_ci95": [
+        0.965874,
+        0.976222
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 120,
+      "games": 80,
+      "infeasible": 0.0,
+      "players_per_flaw": 24,
+      "ship": 0.9905,
+      "ship_mc_ci95": [
+        0.986988,
+        0.993071
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 140,
+      "games": 80,
+      "infeasible": 0.0,
+      "players_per_flaw": 28,
+      "ship": 0.999,
+      "ship_mc_ci95": [
+        0.997431,
+        0.999611
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 160,
+      "games": 80,
+      "infeasible": 0.0,
+      "players_per_flaw": 32,
+      "ship": 0.9995,
+      "ship_mc_ci95": [
+        0.998179,
+        0.999863
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 200,
+      "games": 80,
+      "infeasible": 0.0,
+      "players_per_flaw": 40,
+      "ship": 1.0,
+      "ship_mc_ci95": [
+        0.999041,
+        1.0
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 240,
+      "games": 80,
+      "infeasible": 0.0,
+      "players_per_flaw": 48,
+      "ship": 1.0,
+      "ship_mc_ci95": [
+        0.999041,
+        1.0
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 320,
+      "games": 80,
+      "infeasible": 0.0,
+      "players_per_flaw": 64,
+      "ship": 1.0,
+      "ship_mc_ci95": [
+        0.999041,
+        1.0
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 400,
+      "games": 80,
+      "infeasible": 0.0,
+      "players_per_flaw": 80,
+      "ship": 1.0,
+      "ship_mc_ci95": [
+        0.999041,
+        1.0
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 500,
+      "games": 80,
+      "infeasible": 0.0,
+      "players_per_flaw": 100,
+      "ship": 1.0,
+      "ship_mc_ci95": [
+        0.999041,
+        1.0
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 5,
+      "games": 80,
+      "infeasible": 0.0,
+      "players_per_flaw": 1,
+      "ship": 0.00075,
+      "ship_mc_ci95": [
+        0.000255,
+        0.002203
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 10,
+      "games": 80,
+      "infeasible": 0.0,
+      "players_per_flaw": 2,
+      "ship": 0.01225,
+      "ship_mc_ci95": [
+        0.009279,
+        0.016157
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 15,
+      "games": 80,
+      "infeasible": 0.0,
+      "players_per_flaw": 3,
+      "ship": 0.062,
+      "ship_mc_ci95": [
+        0.054939,
+        0.069902
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 20,
+      "games": 80,
+      "infeasible": 0.0,
+      "players_per_flaw": 4,
+      "ship": 0.074,
+      "ship_mc_ci95": [
+        0.06629,
+        0.082527
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 25,
+      "games": 80,
+      "infeasible": 0.0,
+      "players_per_flaw": 5,
+      "ship": 0.1095,
+      "ship_mc_ci95": [
+        0.100195,
+        0.119554
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 30,
+      "games": 80,
+      "infeasible": 0.0,
+      "players_per_flaw": 6,
+      "ship": 0.1695,
+      "ship_mc_ci95": [
+        0.158191,
+        0.181443
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 40,
+      "games": 80,
+      "infeasible": 0.0,
+      "players_per_flaw": 8,
+      "ship": 0.25375,
+      "ship_mc_ci95": [
+        0.240505,
+        0.267467
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 50,
+      "games": 80,
+      "infeasible": 0.0,
+      "players_per_flaw": 10,
+      "ship": 0.314,
+      "ship_mc_ci95": [
+        0.299801,
+        0.328556
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 60,
+      "games": 80,
+      "infeasible": 0.0,
+      "players_per_flaw": 12,
+      "ship": 0.37975,
+      "ship_mc_ci95": [
+        0.364832,
+        0.394899
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 70,
+      "games": 80,
+      "infeasible": 0.0,
+      "players_per_flaw": 14,
+      "ship": 0.44125,
+      "ship_mc_ci95": [
+        0.425926,
+        0.456687
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 80,
+      "games": 80,
+      "infeasible": 0.0,
+      "players_per_flaw": 16,
+      "ship": 0.5315,
+      "ship_mc_ci95": [
+        0.516013,
+        0.546926
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 100,
+      "games": 80,
+      "infeasible": 0.0,
+      "players_per_flaw": 20,
+      "ship": 0.655,
+      "ship_mc_ci95": [
+        0.640126,
+        0.669577
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 120,
+      "games": 80,
+      "infeasible": 0.0,
+      "players_per_flaw": 24,
+      "ship": 0.73675,
+      "ship_mc_ci95": [
+        0.72288,
+        0.750166
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 140,
+      "games": 80,
+      "infeasible": 0.0,
+      "players_per_flaw": 28,
+      "ship": 0.82,
+      "ship_mc_ci95": [
+        0.807789,
+        0.831597
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 160,
+      "games": 80,
+      "infeasible": 0.0,
+      "players_per_flaw": 32,
+      "ship": 0.8695,
+      "ship_mc_ci95": [
+        0.858705,
+        0.879585
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 200,
+      "games": 80,
+      "infeasible": 0.0,
+      "players_per_flaw": 40,
+      "ship": 0.9385,
+      "ship_mc_ci95": [
+        0.930626,
+        0.945533
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 240,
+      "games": 80,
+      "infeasible": 0.0,
+      "players_per_flaw": 48,
+      "ship": 0.97575,
+      "ship_mc_ci95": [
+        0.970507,
+        0.98008
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 320,
+      "games": 80,
+      "infeasible": 0.0,
+      "players_per_flaw": 64,
+      "ship": 0.99675,
+      "ship_mc_ci95": [
+        0.994447,
+        0.9981
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 400,
+      "games": 80,
+      "infeasible": 0.0,
+      "players_per_flaw": 80,
+      "ship": 0.99975,
+      "ship_mc_ci95": [
+        0.998585,
+        0.999956
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 500,
+      "games": 80,
+      "infeasible": 0.0,
+      "players_per_flaw": 100,
+      "ship": 1.0,
+      "ship_mc_ci95": [
+        0.999041,
+        1.0
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 5,
+      "games": 80,
+      "infeasible": 0.0,
+      "players_per_flaw": 1,
+      "ship": 0.00375,
+      "ship_mc_ci95": [
+        0.002274,
+        0.006178
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 10,
+      "games": 80,
+      "infeasible": 0.0,
+      "players_per_flaw": 2,
+      "ship": 0.01525,
+      "ship_mc_ci95": [
+        0.011891,
+        0.019539
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 15,
+      "games": 80,
+      "infeasible": 0.00025,
+      "players_per_flaw": 3,
+      "ship": 0.06425,
+      "ship_mc_ci95": [
+        0.057062,
+        0.072275
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 20,
+      "games": 80,
+      "infeasible": 0.0,
+      "players_per_flaw": 4,
+      "ship": 0.0775,
+      "ship_mc_ci95": [
+        0.069613,
+        0.086197
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 25,
+      "games": 80,
+      "infeasible": 0.0,
+      "players_per_flaw": 5,
+      "ship": 0.1015,
+      "ship_mc_ci95": [
+        0.09252,
+        0.111244
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 30,
+      "games": 80,
+      "infeasible": 0.0,
+      "players_per_flaw": 6,
+      "ship": 0.1405,
+      "ship_mc_ci95": [
+        0.130075,
+        0.151614
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 40,
+      "games": 80,
+      "infeasible": 0.00025,
+      "players_per_flaw": 8,
+      "ship": 0.1735,
+      "ship_mc_ci95": [
+        0.16208,
+        0.185547
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 50,
+      "games": 80,
+      "infeasible": 0.0,
+      "players_per_flaw": 10,
+      "ship": 0.21775,
+      "ship_mc_ci95": [
+        0.205234,
+        0.230808
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 60,
+      "games": 80,
+      "infeasible": 0.0,
+      "players_per_flaw": 12,
+      "ship": 0.26275,
+      "ship_mc_ci95": [
+        0.249343,
+        0.276612
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 70,
+      "games": 80,
+      "infeasible": 0.0,
+      "players_per_flaw": 14,
+      "ship": 0.32075,
+      "ship_mc_ci95": [
+        0.306463,
+        0.335381
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 80,
+      "games": 80,
+      "infeasible": 0.0,
+      "players_per_flaw": 16,
+      "ship": 0.3715,
+      "ship_mc_ci95": [
+        0.356656,
+        0.386591
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 100,
+      "games": 80,
+      "infeasible": 0.0,
+      "players_per_flaw": 20,
+      "ship": 0.47825,
+      "ship_mc_ci95": [
+        0.462798,
+        0.493744
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 120,
+      "games": 80,
+      "infeasible": 0.0,
+      "players_per_flaw": 24,
+      "ship": 0.56575,
+      "ship_mc_ci95": [
+        0.550334,
+        0.58104
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 140,
+      "games": 80,
+      "infeasible": 0.0,
+      "players_per_flaw": 28,
+      "ship": 0.634,
+      "ship_mc_ci95": [
+        0.61895,
+        0.648793
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 160,
+      "games": 80,
+      "infeasible": 0.0,
+      "players_per_flaw": 32,
+      "ship": 0.7055,
+      "ship_mc_ci95": [
+        0.691183,
+        0.719423
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 200,
+      "games": 80,
+      "infeasible": 0.0,
+      "players_per_flaw": 40,
+      "ship": 0.82575,
+      "ship_mc_ci95": [
+        0.813684,
+        0.837191
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 240,
+      "games": 80,
+      "infeasible": 0.0,
+      "players_per_flaw": 48,
+      "ship": 0.8935,
+      "ship_mc_ci95": [
+        0.88356,
+        0.902685
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 320,
+      "games": 80,
+      "infeasible": 0.0,
+      "players_per_flaw": 64,
+      "ship": 0.9705,
+      "ship_mc_ci95": [
+        0.964788,
+        0.975309
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 400,
+      "games": 80,
+      "infeasible": 0.00025,
+      "players_per_flaw": 80,
+      "ship": 0.9865,
+      "ship_mc_ci95": [
+        0.982428,
+        0.989638
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 500,
+      "games": 80,
+      "infeasible": 0.00025,
+      "players_per_flaw": 100,
+      "ship": 0.99825,
+      "ship_mc_ci95": [
+        0.996392,
+        0.999152
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 5,
+      "games": 120,
+      "infeasible": 0.0,
+      "players_per_flaw": 1,
+      "ship": 0.0,
+      "ship_mc_ci95": [
+        0.0,
+        0.000959
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 10,
+      "games": 120,
+      "infeasible": 0.0,
+      "players_per_flaw": 2,
+      "ship": 0.00425,
+      "ship_mc_ci95": [
+        0.002655,
+        0.006796
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 15,
+      "games": 120,
+      "infeasible": 0.0,
+      "players_per_flaw": 3,
+      "ship": 0.02175,
+      "ship_mc_ci95": [
+        0.017667,
+        0.02675
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 20,
+      "games": 120,
+      "infeasible": 0.0,
+      "players_per_flaw": 4,
+      "ship": 0.02925,
+      "ship_mc_ci95": [
+        0.024463,
+        0.034941
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 25,
+      "games": 120,
+      "infeasible": 0.0,
+      "players_per_flaw": 5,
+      "ship": 0.0775,
+      "ship_mc_ci95": [
+        0.069613,
+        0.086197
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 30,
+      "games": 120,
+      "infeasible": 0.0,
+      "players_per_flaw": 6,
+      "ship": 0.15575,
+      "ship_mc_ci95": [
+        0.144843,
+        0.167317
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 40,
+      "games": 120,
+      "infeasible": 0.0,
+      "players_per_flaw": 8,
+      "ship": 0.36075,
+      "ship_mc_ci95": [
+        0.346008,
+        0.375759
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 50,
+      "games": 120,
+      "infeasible": 0.0,
+      "players_per_flaw": 10,
+      "ship": 0.559,
+      "ship_mc_ci95": [
+        0.543564,
+        0.574323
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 60,
+      "games": 120,
+      "infeasible": 0.0,
+      "players_per_flaw": 12,
+      "ship": 0.66575,
+      "ship_mc_ci95": [
+        0.650978,
+        0.680204
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 70,
+      "games": 120,
+      "infeasible": 0.0,
+      "players_per_flaw": 14,
+      "ship": 0.78375,
+      "ship_mc_ci95": [
+        0.770723,
+        0.796233
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 80,
+      "games": 120,
+      "infeasible": 0.0,
+      "players_per_flaw": 16,
+      "ship": 0.87225,
+      "ship_mc_ci95": [
+        0.861547,
+        0.882239
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 100,
+      "games": 120,
+      "infeasible": 0.0,
+      "players_per_flaw": 20,
+      "ship": 0.9565,
+      "ship_mc_ci95": [
+        0.949729,
+        0.962395
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 120,
+      "games": 120,
+      "infeasible": 0.0,
+      "players_per_flaw": 24,
+      "ship": 0.992,
+      "ship_mc_ci95": [
+        0.988728,
+        0.994327
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 140,
+      "games": 120,
+      "infeasible": 0.0,
+      "players_per_flaw": 28,
+      "ship": 0.99825,
+      "ship_mc_ci95": [
+        0.996392,
+        0.999152
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 160,
+      "games": 120,
+      "infeasible": 0.0,
+      "players_per_flaw": 32,
+      "ship": 0.99975,
+      "ship_mc_ci95": [
+        0.998585,
+        0.999956
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 200,
+      "games": 120,
+      "infeasible": 0.0,
+      "players_per_flaw": 40,
+      "ship": 1.0,
+      "ship_mc_ci95": [
+        0.999041,
+        1.0
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 240,
+      "games": 120,
+      "infeasible": 0.0,
+      "players_per_flaw": 48,
+      "ship": 1.0,
+      "ship_mc_ci95": [
+        0.999041,
+        1.0
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 320,
+      "games": 120,
+      "infeasible": 0.0,
+      "players_per_flaw": 64,
+      "ship": 1.0,
+      "ship_mc_ci95": [
+        0.999041,
+        1.0
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 400,
+      "games": 120,
+      "infeasible": 0.0,
+      "players_per_flaw": 80,
+      "ship": 1.0,
+      "ship_mc_ci95": [
+        0.999041,
+        1.0
+      ]
+    },
+    {
+      "churn": 0.0,
+      "flawed_players": 500,
+      "games": 120,
+      "infeasible": 0.0,
+      "players_per_flaw": 100,
+      "ship": 1.0,
+      "ship_mc_ci95": [
+        0.999041,
+        1.0
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 5,
+      "games": 120,
+      "infeasible": 0.0,
+      "players_per_flaw": 1,
+      "ship": 0.0005,
+      "ship_mc_ci95": [
+        0.000137,
+        0.001821
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 10,
+      "games": 120,
+      "infeasible": 0.00025,
+      "players_per_flaw": 2,
+      "ship": 0.00525,
+      "ship_mc_ci95": [
+        0.003436,
+        0.008013
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 15,
+      "games": 120,
+      "infeasible": 0.0,
+      "players_per_flaw": 3,
+      "ship": 0.036,
+      "ship_mc_ci95": [
+        0.030658,
+        0.042233
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 20,
+      "games": 120,
+      "infeasible": 0.001,
+      "players_per_flaw": 4,
+      "ship": 0.04875,
+      "ship_mc_ci95": [
+        0.042499,
+        0.055867
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 25,
+      "games": 120,
+      "infeasible": 0.0005,
+      "players_per_flaw": 5,
+      "ship": 0.099,
+      "ship_mc_ci95": [
+        0.090126,
+        0.108644
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 30,
+      "games": 120,
+      "infeasible": 0.0,
+      "players_per_flaw": 6,
+      "ship": 0.14625,
+      "ship_mc_ci95": [
+        0.135639,
+        0.15754
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 40,
+      "games": 120,
+      "infeasible": 0.0005,
+      "players_per_flaw": 8,
+      "ship": 0.216,
+      "ship_mc_ci95": [
+        0.203523,
+        0.229022
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 50,
+      "games": 120,
+      "infeasible": 0.00075,
+      "players_per_flaw": 10,
+      "ship": 0.2845,
+      "ship_mc_ci95": [
+        0.27073,
+        0.298683
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 60,
+      "games": 120,
+      "infeasible": 0.00075,
+      "players_per_flaw": 12,
+      "ship": 0.33525,
+      "ship_mc_ci95": [
+        0.320785,
+        0.350031
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 70,
+      "games": 120,
+      "infeasible": 0.00025,
+      "players_per_flaw": 14,
+      "ship": 0.42775,
+      "ship_mc_ci95": [
+        0.412494,
+        0.443144
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 80,
+      "games": 120,
+      "infeasible": 0.0005,
+      "players_per_flaw": 16,
+      "ship": 0.49125,
+      "ship_mc_ci95": [
+        0.475773,
+        0.506743
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 100,
+      "games": 120,
+      "infeasible": 0.00025,
+      "players_per_flaw": 20,
+      "ship": 0.6165,
+      "ship_mc_ci95": [
+        0.601327,
+        0.63145
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 120,
+      "games": 120,
+      "infeasible": 0.00075,
+      "players_per_flaw": 24,
+      "ship": 0.7135,
+      "ship_mc_ci95": [
+        0.699289,
+        0.727301
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 140,
+      "games": 120,
+      "infeasible": 0.00025,
+      "players_per_flaw": 28,
+      "ship": 0.79625,
+      "ship_mc_ci95": [
+        0.783486,
+        0.808445
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 160,
+      "games": 120,
+      "infeasible": 0.00075,
+      "players_per_flaw": 32,
+      "ship": 0.8515,
+      "ship_mc_ci95": [
+        0.840143,
+        0.862182
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 200,
+      "games": 120,
+      "infeasible": 0.0005,
+      "players_per_flaw": 40,
+      "ship": 0.94125,
+      "ship_mc_ci95": [
+        0.93353,
+        0.948123
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 240,
+      "games": 120,
+      "infeasible": 0.0,
+      "players_per_flaw": 48,
+      "ship": 0.97025,
+      "ship_mc_ci95": [
+        0.964517,
+        0.975081
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 320,
+      "games": 120,
+      "infeasible": 0.00125,
+      "players_per_flaw": 64,
+      "ship": 0.99325,
+      "ship_mc_ci95": [
+        0.990197,
+        0.995357
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 400,
+      "games": 120,
+      "infeasible": 0.0,
+      "players_per_flaw": 80,
+      "ship": 0.99925,
+      "ship_mc_ci95": [
+        0.997797,
+        0.999745
+      ]
+    },
+    {
+      "churn": 0.05,
+      "flawed_players": 500,
+      "games": 120,
+      "infeasible": 0.0005,
+      "players_per_flaw": 100,
+      "ship": 0.99925,
+      "ship_mc_ci95": [
+        0.997797,
+        0.999745
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 5,
+      "games": 120,
+      "infeasible": 0.00375,
+      "players_per_flaw": 1,
+      "ship": 0.001,
+      "ship_mc_ci95": [
+        0.000389,
+        0.002569
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 10,
+      "games": 120,
+      "infeasible": 0.007,
+      "players_per_flaw": 2,
+      "ship": 0.0095,
+      "ship_mc_ci95": [
+        0.006929,
+        0.013012
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 15,
+      "games": 120,
+      "infeasible": 0.005,
+      "players_per_flaw": 3,
+      "ship": 0.03875,
+      "ship_mc_ci95": [
+        0.033198,
+        0.045187
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 20,
+      "games": 120,
+      "infeasible": 0.00525,
+      "players_per_flaw": 4,
+      "ship": 0.05675,
+      "ship_mc_ci95": [
+        0.049996,
+        0.064354
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 25,
+      "games": 120,
+      "infeasible": 0.00625,
+      "players_per_flaw": 5,
+      "ship": 0.0935,
+      "ship_mc_ci95": [
+        0.084864,
+        0.102916
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 30,
+      "games": 120,
+      "infeasible": 0.006,
+      "players_per_flaw": 6,
+      "ship": 0.10825,
+      "ship_mc_ci95": [
+        0.098995,
+        0.118257
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 40,
+      "games": 120,
+      "infeasible": 0.0055,
+      "players_per_flaw": 8,
+      "ship": 0.1415,
+      "ship_mc_ci95": [
+        0.131043,
+        0.152645
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 50,
+      "games": 120,
+      "infeasible": 0.0045,
+      "players_per_flaw": 10,
+      "ship": 0.17075,
+      "ship_mc_ci95": [
+        0.159406,
+        0.182726
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 60,
+      "games": 120,
+      "infeasible": 0.005,
+      "players_per_flaw": 12,
+      "ship": 0.23325,
+      "ship_mc_ci95": [
+        0.220404,
+        0.246608
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 70,
+      "games": 120,
+      "infeasible": 0.00325,
+      "players_per_flaw": 14,
+      "ship": 0.28325,
+      "ship_mc_ci95": [
+        0.2695,
+        0.297416
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 80,
+      "games": 120,
+      "infeasible": 0.00425,
+      "players_per_flaw": 16,
+      "ship": 0.3335,
+      "ship_mc_ci95": [
+        0.319055,
+        0.348264
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 100,
+      "games": 120,
+      "infeasible": 0.00525,
+      "players_per_flaw": 20,
+      "ship": 0.4175,
+      "ship_mc_ci95": [
+        0.402304,
+        0.432855
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 120,
+      "games": 120,
+      "infeasible": 0.0055,
+      "players_per_flaw": 24,
+      "ship": 0.5005,
+      "ship_mc_ci95": [
+        0.485012,
+        0.515987
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 140,
+      "games": 120,
+      "infeasible": 0.004,
+      "players_per_flaw": 28,
+      "ship": 0.58075,
+      "ship_mc_ci95": [
+        0.565388,
+        0.595957
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 160,
+      "games": 120,
+      "infeasible": 0.0045,
+      "players_per_flaw": 32,
+      "ship": 0.6675,
+      "ship_mc_ci95": [
+        0.652746,
+        0.681933
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 200,
+      "games": 120,
+      "infeasible": 0.0045,
+      "players_per_flaw": 40,
+      "ship": 0.78275,
+      "ship_mc_ci95": [
+        0.769703,
+        0.795255
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 240,
+      "games": 120,
+      "infeasible": 0.0075,
+      "players_per_flaw": 48,
+      "ship": 0.857,
+      "ship_mc_ci95": [
+        0.845809,
+        0.867506
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 320,
+      "games": 120,
+      "infeasible": 0.0065,
+      "players_per_flaw": 64,
+      "ship": 0.94825,
+      "ship_mc_ci95": [
+        0.940945,
+        0.954695
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 400,
+      "games": 120,
+      "infeasible": 0.00575,
+      "players_per_flaw": 80,
+      "ship": 0.98025,
+      "ship_mc_ci95": [
+        0.975455,
+        0.984124
+      ]
+    },
+    {
+      "churn": 0.1,
+      "flawed_players": 500,
+      "games": 120,
+      "infeasible": 0.00625,
+      "players_per_flaw": 100,
+      "ship": 0.99075,
+      "ship_mc_ci95": [
+        0.987277,
+        0.993282
+      ]
+    }
+  ],
+  "required_players_per_flaw": {
+    "120/0.0": 16,
+    "120/0.05": 32,
+    "120/0.1": 48,
+    "30/0.0": 14,
+    "30/0.05": 24,
+    "30/0.1": 28,
+    "45/0.0": 14,
+    "45/0.05": 28,
+    "45/0.1": 40,
+    "60/0.0": 14,
+    "60/0.05": 28,
+    "60/0.1": 40,
+    "80/0.0": 14,
+    "80/0.05": 28,
+    "80/0.1": 40
+  },
+  "settings": {
+    "churn": [
+      0.0,
+      0.05,
+      0.1
+    ],
+    "delta": 0.1,
+    "delta_coverage": 0.05,
+    "guard_level": 0.8,
+    "primary_churn": 0.1,
+    "seed_names": [
+      "player/hang/0",
+      "player/hang/1",
+      "player/hang/2",
+      "player/hang/3",
+      "player/hang/4",
+      "player/hang/5",
+      "player/miss_mate/0",
+      "player/miss_mate/1",
+      "player/miss_mate/2",
+      "player/miss_mate/3",
+      "player/miss_mate/4",
+      "player/miss_mate/5",
+      "player/opening_blunder/0",
+      "player/opening_blunder/1",
+      "player/opening_blunder/2",
+      "player/opening_blunder/3",
+      "player/opening_blunder/4",
+      "player/opening_blunder/5",
+      "player/low_clock_blunder/0",
+      "player/low_clock_blunder/1",
+      "player/low_clock_blunder/2",
+      "player/low_clock_blunder/3",
+      "player/low_clock_blunder/4",
+      "player/low_clock_blunder/5",
+      "player/no_convert/0",
+      "player/no_convert/1",
+      "player/no_convert/2",
+      "player/no_convert/3",
+      "player/no_convert/4",
+      "player/no_convert/5",
+      "player/clean/0",
+      "player/clean/1",
+      "power/recall",
+      "power/coverage",
+      "power/smoke",
+      "bootstrap/observed"
+    ],
+    "seed_namespace": "EXP-0001",
+    "ship_level": 0.975,
+    "sims_coverage": 2000,
+    "sims_recall": 4000
+  }
+}

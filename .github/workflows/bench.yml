@@ -35,7 +35,9 @@ concurrency:
 jobs:
   bench:
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    # The full suite is 8,960 games since EXP-0001 (about 81 minutes at the documented 0.544 s a
+    # game with 4 engines); a hosted runner can be twice as slow.
+    timeout-minutes: 300
     env:
       LANE: bench
       COMPOSE: docker compose -p ci-bench
