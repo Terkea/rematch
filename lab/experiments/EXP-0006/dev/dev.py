@@ -14,7 +14,7 @@ import argparse
 import importlib.util
 import json
 import math
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 import numpy as np
@@ -48,7 +48,7 @@ def load_exp2():
 
 
 def rows_for(exp2, variant: str) -> list[dict]:
-    jobs = []
+    rows = []
     for band, rho, disp in exp2.CELLS:
         data = exp2.simulate_cell(band, rho, disp)
         batch = []
@@ -56,29 +56,33 @@ def rows_for(exp2, variant: str) -> list[dict]:
             for g in exp2.CHECKPOINTS:
                 pid = f"{band}-{rho}-{disp}-{i:03d}-{g}"
                 batch.append((exp2.facts(band, pid, data, i, g, "spread", rho), band, rho, disp, i, g))
-        jobs += [(batch[j : j + 200], list(data)) for j in range(0, len(batch), 200)]
+        for j in range(0, len(batch), 200):
+            rows += run(exp2, variant, batch[j : j + 200], list(data))
+    return rows
 
-    def run(job):
-        batch, keys = job
-        resp = lab.profile(ProfileRequest(players=[b[0] for b in batch]), variant=variant)
-        out = []
-        for (f, band, rho, disp, i, g), p in zip(batch, resp.players, strict=True):
-            assert p.id == f.id
-            by = {e.key: e for e in p.estimates}
-            for key in keys:
-                e = by[key]
-                theta = exp2.theta_of(key, band, rho)
-                out.append(
-                    {
-                        "band": band, "rho": rho, "disp": disp, "player": i, "games": g,
-                        "key": key, "covered": e.posterior.interval.low <= theta <= e.posterior.interval.high,
-                        "credible": e.credible, "high_miss": e.posterior.interval.high < theta,
-                    }
-                )
-        return out
 
-    with ThreadPoolExecutor(WORKERS) as ex:
-        return [r for part in ex.map(run, jobs) for r in part]
+def run(exp2, variant, batch, keys):
+    resp = lab.profile(ProfileRequest(players=[b[0] for b in batch]), variant=variant)
+    out = []
+    for (f, band, rho, disp, i, g), p in zip(batch, resp.players, strict=True):
+        assert p.id == f.id
+        by = {e.key: e for e in p.estimates}
+        for key in keys:
+            e = by[key]
+            theta = exp2.theta_of(key, band, rho)
+            out.append(
+                {
+                    "band": band, "rho": rho, "disp": disp, "player": i, "games": g,
+                    "key": key, "covered": e.posterior.interval.low <= theta <= e.posterior.interval.high,
+                    "credible": e.credible, "high_miss": e.posterior.interval.high < theta,
+                }
+            )
+    return out
+
+
+def one(variant: str) -> tuple[str, dict]:
+    exp2 = load_exp2()
+    return variant, score(exp2, rows_for(exp2, variant))
 
 
 def coverage(rows, pred) -> float:
@@ -114,11 +118,11 @@ def main() -> int:
     ap.add_argument("--out", required=True)
     ap.add_argument("--only", nargs="*")
     args = ap.parse_args()
-    exp2 = load_exp2()
     out = {"seed_namespace": SEED_NS, "players_per_cell": PLAYERS, "variants": {}}
-    for v in args.only or GRID:
-        out["variants"][v] = score(exp2, rows_for(exp2, v))
-        print(v, json.dumps({k: x for k, x in out["variants"][v].items() if k != "primary"}), flush=True)
+    with ProcessPoolExecutor(WORKERS) as ex:
+        for v, s in ex.map(one, args.only or GRID):
+            out["variants"][v] = s
+            print(v, json.dumps({k: x for k, x in s.items() if k != "primary"}), flush=True)
     champ = out["variants"].get("champion")
     if champ:
         ok = {

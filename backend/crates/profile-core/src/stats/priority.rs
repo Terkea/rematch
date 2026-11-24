@@ -203,7 +203,10 @@ pub fn estimate_weakness_against_model(i: &EstimateInput) -> WeaknessEstimate {
 }
 
 /// [`estimate_weakness_against_model`] under an explicit prior rule.
-pub fn estimate_weakness_against_model_with(i: &EstimateInput, rule: PriorRule) -> WeaknessEstimate {
+pub fn estimate_weakness_against_model_with(
+    i: &EstimateInput,
+    rule: PriorRule,
+) -> WeaknessEstimate {
     WeaknessEstimate {
         model_baseline: true,
         ..estimate_with_prior(i, Some((0.5, 2.0)), rule)

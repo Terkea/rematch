@@ -39,7 +39,7 @@ pub struct RunOutput {
     pub memo_hits: u64,
     pub seconds: f64,
     pub players: Vec<PlayerResult>,
-    /// The side-by-side variant's scorecard (its own checkpoints, no perturbation).
+    /// The side-by-side variant's scorecard, from its own checkpoints.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub variant: Option<VariantRun>,
 }
@@ -148,8 +148,10 @@ pub async fn run(
         let players = players?;
         let (engine_searches, memo_hits) = memo.counts();
         let variant = o.variant.as_ref().map(|(name, _)| {
-            let side: Vec<PlayerResult> =
-                players.iter().filter_map(PlayerResult::as_variant).collect();
+            let side: Vec<PlayerResult> = players
+                .iter()
+                .filter_map(PlayerResult::as_variant)
+                .collect();
             VariantRun {
                 name: name.clone(),
                 scorecard: score(&suite.name, suite.nodes, &side),

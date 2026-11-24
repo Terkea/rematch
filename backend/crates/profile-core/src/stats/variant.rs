@@ -46,11 +46,12 @@ impl PriorRule {
     };
 
     /// The challenger EXP-0006 registered (`lab/experiments/EXP-0006/preregistration.md`), chosen
-    /// on development seeds only. It does not change after the registration.
+    /// on development seeds only (`dev:games=2,ess,disp`, `lab/experiments/EXP-0006/dev/`). It does
+    /// not change after the registration.
     pub const CHALLENGER: PriorRule = PriorRule {
-        prior_games: None,
-        effective_counts: false,
-        dispersion: false,
+        prior_games: Some(2.0),
+        effective_counts: true,
+        dispersion: true,
     };
 }
 
@@ -94,7 +95,11 @@ pub fn parse(name: &str) -> Result<PriorRule, String> {
             },
             None if opt == "ess" => rule.effective_counts = true,
             None if opt == "disp" => rule.dispersion = true,
-            _ => return Err(format!("unknown variant option {opt:?}: games=G, ess or disp")),
+            _ => {
+                return Err(format!(
+                    "unknown variant option {opt:?}: games=G, ess or disp"
+                ));
+            }
         }
     }
     if rule.dispersion && !rule.effective_counts {

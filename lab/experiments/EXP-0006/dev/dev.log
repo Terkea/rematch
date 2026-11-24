@@ -1,0 +1,15 @@
+champion {"worst_cell": "W4.missed@30", "D": 0.6928, "inside_band": 5, "rho1_coverage": 0.8798, "rho1_deviation": 0.0797, "false_credible": 0.02392}
+dev:games=8 {"worst_cell": "W1@30", "D": 0.1656, "inside_band": 9, "rho1_coverage": 0.8475, "rho1_deviation": 0.0475, "false_credible": 0.03017}
+dev:games=4 {"worst_cell": "W1@30", "D": 0.0994, "inside_band": 9, "rho1_coverage": 0.8423, "rho1_deviation": 0.0423, "false_credible": 0.03154}
+dev:games=2 {"worst_cell": "W4.missed@250", "D": 0.0956, "inside_band": 10, "rho1_coverage": 0.8374, "rho1_deviation": 0.0374, "false_credible": 0.03283}
+dev:games=1 {"worst_cell": "W4.missed@250", "D": 0.095, "inside_band": 10, "rho1_coverage": 0.8335, "rho1_deviation": 0.0335, "false_credible": 0.03329}
+dev:games=8,ess {"worst_cell": "W1@30", "D": 0.1672, "inside_band": 9, "rho1_coverage": 0.7987, "rho1_deviation": 0.0013, "false_credible": 0.03454}
+dev:games=4,ess {"worst_cell": "W1@30", "D": 0.1206, "inside_band": 12, "rho1_coverage": 0.7923, "rho1_deviation": 0.0078, "false_credible": 0.03583}
+dev:games=2,ess {"worst_cell": "W1@30", "D": 0.0839, "inside_band": 15, "rho1_coverage": 0.7862, "rho1_deviation": 0.0138, "false_credible": 0.03717}
+dev:games=1,ess {"worst_cell": "W1@30", "D": 0.0772, "inside_band": 15, "rho1_coverage": 0.7835, "rho1_deviation": 0.0165, "false_credible": 0.03775}
+dev:ess {"worst_cell": "W4.missed@30", "D": 0.6833, "inside_band": 4, "rho1_coverage": 0.8252, "rho1_deviation": 0.0252, "false_credible": 0.0285}
+dev:games=8,ess,disp {"worst_cell": "W1@30", "D": 0.1517, "inside_band": 14, "rho1_coverage": 0.821, "rho1_deviation": 0.021, "false_credible": 0.03029}
+dev:games=4,ess,disp {"worst_cell": "W1@30", "D": 0.0678, "inside_band": 19, "rho1_coverage": 0.815, "rho1_deviation": 0.015, "false_credible": 0.03167}
+dev:games=2,ess,disp {"worst_cell": "W5@30", "D": 0.05, "inside_band": 20, "rho1_coverage": 0.8085, "rho1_deviation": 0.0085, "false_credible": 0.03283}
+dev:games=1,ess,disp {"worst_cell": "W5@30", "D": 0.05, "inside_band": 20, "rho1_coverage": 0.8061, "rho1_deviation": 0.0061, "false_credible": 0.03338}
+dev:ess,disp {"worst_cell": "W4.missed@30", "D": 0.6939, "inside_band": 7, "rho1_coverage": 0.8488, "rho1_deviation": 0.0488, "false_credible": 0.02396}

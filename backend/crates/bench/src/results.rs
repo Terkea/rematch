@@ -131,6 +131,9 @@ pub struct PlayerResult {
 pub struct VariantResult {
     pub name: String,
     pub checkpoints: Vec<Checkpoint>,
+    /// The variant's checkpoint of the perturbed account (90% of the games), with `perturb`.
+    #[serde(default)]
+    pub perturbed: Option<Checkpoint>,
     pub deterministic: bool,
 }
 
@@ -139,13 +142,13 @@ impl PlayerResult {
         self.checkpoints.last()
     }
 
-    /// This player as the variant saw it: its checkpoints and determinism, no perturbation.
+    /// This player as the variant saw it: its checkpoints, perturbed checkpoint and determinism.
     pub fn as_variant(&self) -> Option<PlayerResult> {
         let v = self.variant.as_ref()?;
         Some(PlayerResult {
             checkpoints: v.checkpoints.clone(),
             deterministic: v.deterministic,
-            perturbed: None,
+            perturbed: v.perturbed.clone(),
             variant: None,
             ..self.clone()
         })

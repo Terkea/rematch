@@ -455,9 +455,26 @@ impl Harness {
                 set_now(last.played_at + time::Duration::hours(1));
             }
             let (c, _) = self.checkpoint(acct, kept.len()).await?;
-            Some(c)
+            let variant_perturbed = match &side {
+                Some((_, rule, _, _)) => {
+                    let vacct = insert_account(&self.pool, &format!("{}-pv", p.name)).await?;
+                    let mut vids = Vec::new();
+                    for g in &kept {
+                        vids.push(insert_game(&self.pool, vacct, g, "-pv").await?);
+                    }
+                    self.analyse(&deps, &vids).await?;
+                    let (vc, _) = self.checkpoint_under(*rule, vacct, kept.len()).await?;
+                    Some(vc)
+                }
+                None => None,
+            };
+            Some((c, variant_perturbed))
         } else {
             None
+        };
+        let (perturbed, variant_perturbed) = match perturbed {
+            Some((c, v)) => (Some(c), v),
+            None => (None, None),
         };
 
         let (searches, hits) = self.memo.counts();
@@ -487,6 +504,7 @@ impl Harness {
             variant: side.map(|(name, ..)| VariantResult {
                 name,
                 checkpoints: variant_checkpoints,
+                perturbed: variant_perturbed,
                 deterministic: variant_deterministic,
             }),
         })

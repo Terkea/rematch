@@ -30,7 +30,14 @@ fn reference(key: WeaknessKey, rate: f64) -> BandReferenceStat {
 /// 60 games, one a day, `events` of `chances` each.
 fn series(events: &[f64], chances: f64) -> Vec<(f64, f64, f64, f64)> {
     (0..60)
-        .map(|g| (events[g % events.len()], chances, 0.0, f64::from(59 - g as u32)))
+        .map(|g| {
+            (
+                events[g % events.len()],
+                chances,
+                0.0,
+                f64::from(59 - g as u32),
+            )
+        })
         .collect()
 }
 
@@ -60,7 +67,10 @@ fn the_champion_is_production() {
     let r = reference(WeaknessKey::W4Missed, 0.3);
     let pts = series(&[1.0, 0.0, 1.0], 1.0);
     let i = input(WeaknessKey::W4Missed, &pts, &r);
-    assert_eq!(estimate_weakness(&i), estimate_weakness_with(&i, PriorRule::CHAMPION));
+    assert_eq!(
+        estimate_weakness(&i),
+        estimate_weakness_with(&i, PriorRule::CHAMPION)
+    );
 }
 
 #[test]
@@ -87,7 +97,10 @@ fn effective_counts_are_kish() {
     let pts = series(&[1.0, 0.0, 0.0, 2.0], 50.0);
     let i = input(WeaknessKey::W1, &pts, &r);
     let e = estimate_weakness_with(&i, DEV(None, true, false));
-    let w: Vec<f64> = pts.iter().map(|p| recency_weight(p.3, HALF_LIFE_DAYS)).collect();
+    let w: Vec<f64> = pts
+        .iter()
+        .map(|p| recency_weight(p.3, HALF_LIFE_DAYS))
+        .collect();
     let s1: f64 = w.iter().map(|w| w * 50.0).sum();
     let s2: f64 = w.iter().map(|w| w * w * 50.0).sum();
     let k: f64 = pts.iter().zip(&w).map(|(p, w)| w * p.0).sum();
@@ -112,7 +125,10 @@ fn dispersion_shrinks_the_counts_of_a_lumpy_series_only() {
     let disp = DEV(None, true, true);
     let e_even = estimate_weakness_with(&input(WeaknessKey::W1, &even, &r), disp);
     let e_even_ess = estimate_weakness_with(&input(WeaknessKey::W1, &even, &r), ess);
-    assert_eq!(e_even.n, e_even_ess.n, "an under-dispersed series is clamped to 1");
+    assert_eq!(
+        e_even.n, e_even_ess.n,
+        "an under-dispersed series is clamped to 1"
+    );
     let e_lumpy = estimate_weakness_with(&input(WeaknessKey::W1, &lumpy, &r), disp);
     let e_lumpy_ess = estimate_weakness_with(&input(WeaknessKey::W1, &lumpy, &r), ess);
     let phi = e_lumpy_ess.n / e_lumpy.n;
@@ -127,6 +143,9 @@ fn the_model_baseline_keeps_its_flat_prior() {
     let i = input(WeaknessKey::W5, &pts, &r);
     let e = estimate_weakness_against_model_with(&i, DEV(Some(1.0), false, false));
     let champ = estimate_weakness_against_model_with(&i, PriorRule::CHAMPION);
-    assert_eq!(e.posterior, champ.posterior, "prior_games leaves the flat prior alone");
+    assert_eq!(
+        e.posterior, champ.posterior,
+        "prior_games leaves the flat prior alone"
+    );
     assert!(e.model_baseline);
 }
