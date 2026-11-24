@@ -602,7 +602,11 @@ export function validateRoadmapIssues(issues, { milestones, labels }) {
     }
     const body = i.body.join("\n");
     if (body.length > 60000) fail(`${where}: body is longer than GitHub allows`);
-    if (!body.startsWith("## Problem")) fail(`${where}: the body starts with "## Problem"`);
+    if (i.labels.includes("experiment") && i.epic !== true) {
+      valueCaseProblem(body, where);
+    } else if (!body.startsWith("## Problem")) {
+      fail(`${where}: the body starts with "## Problem"`);
+    }
     for (const s of ["## Acceptance criteria", "## Pointers"]) {
       if (!body.includes(s)) fail(`${where}: missing "${s}"`);
     }
@@ -633,6 +637,44 @@ export function validateRoadmapIssues(issues, { milestones, labels }) {
   }
   for (const e of issues.filter((i) => i.epic)) {
     if (!issues.some((i) => i.parent === e.title)) fail(`epic "${e.title}" has no sub-issues`);
+  }
+}
+
+/** The fields of an experiment's value case, in order (docs/evaluation.md, the value gate). */
+export const VALUE_CASE_FIELDS = [
+  "- Decision it informs: ",
+  "- If the result is ",
+  "- Expected cost: ",
+  "- Value score: ",
+  "- Cheaper alternative? ",
+];
+
+/**
+ * An experiment issue opens with its value case, every field in order, then "## Problem"; the
+ * value score's arithmetic holds (impact × uncertainty ÷ cost, each 1 to 3); and it says to
+ * pre-register before running.
+ */
+function valueCaseProblem(body, where) {
+  if (!body.startsWith("## Value case\n")) {
+    fail(`${where}: an experiment's body starts with "## Value case"`);
+  }
+  const end = body.indexOf("\n## Problem\n");
+  if (end < 0) fail(`${where}: the value case is followed by "## Problem"`);
+  const vc = body.slice(0, end);
+  let at = 0;
+  for (const f of VALUE_CASE_FIELDS) {
+    const next = vc.indexOf(`\n${f}`, at);
+    if (next < 0) fail(`${where}: the value case is missing "${f.trim()}" (or it is out of order)`);
+    at = next + 1;
+  }
+  const s = vc.match(/Value score: impact ([1-3]) × uncertainty ([1-3]) ÷ cost ([1-3]) = ([\d.]+)/);
+  if (!s) fail(`${where}: the value score reads "impact N × uncertainty N ÷ cost N = S"`);
+  const want = Math.round((Number(s[1]) * Number(s[2]) * 10) / Number(s[3])) / 10;
+  if (Number(s[4]) !== want) fail(`${where}: the value score is ${want}, not ${s[4]}`);
+  if (!body.includes("Pre-register before running (`docs/experiments/TEMPLATE.md`)")) {
+    fail(
+      `${where}: an experiment says "Pre-register before running (\`docs/experiments/TEMPLATE.md\`)"`,
+    );
   }
 }
 

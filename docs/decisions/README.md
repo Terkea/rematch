@@ -108,6 +108,7 @@ One file per decision: context, decision, alternatives, consequences. New decisi
 - [0104. Factual and deterministic: four layers, one versioned recommendation algorithm](0104-factual-and-deterministic-four-layers.md)
 - [0105. The algorithm manifest, stamping and the replay suite](0105-algorithm-manifest-stamping-and-replay.md)
 - [0106. Algorithm science: pre-registered experiments and a Python lab that drives the Rust algorithm](0106-algorithm-science-lab.md)
+- [0107. The experiment value gate, and the catalogue that checks the learning framework](0107-experiment-value-gate-and-catalogue.md)
 
 ## Records with placeholder numbers
 

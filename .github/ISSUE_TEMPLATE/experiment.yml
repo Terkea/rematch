@@ -12,6 +12,19 @@ body:
         lab/experiments/EXP-NNNN/preregistration.md, from docs/experiments/TEMPLATE.md, committed
         with its analysis.py before anything runs. Refactors, comments and copy changes need no experiment.
   - type: textarea
+    id: value
+    attributes:
+      label: Value case
+      description: Before anything else (ADR 0107). If both results lead to the same action, or a cheaper source answers the question, the experiment is not run.
+      value: |
+        - Decision it informs:
+        - If the result is X, we will …; if Y, we will …
+        - Expected cost: CPU-hours, wall time, AI tokens (USD), maintainer time
+        - Value score: impact (1-3) × uncertainty (1-3) ÷ cost (1-3) =
+        - Cheaper alternative? A smaller design, existing data, a cached run, a simulation or the literature
+    validations:
+      required: true
+  - type: textarea
     id: question
     attributes:
       label: Question
@@ -55,14 +68,14 @@ body:
     id: design
     attributes:
       label: Design and power
-      description: The unit (the player, never the game), pairing and blocking, the seeds, the data and its checksums, and the power analysis that sets the number of players, games and seeds.
+      description: The unit (the player, never the game), pairing and blocking, the seeds, the data and its checksums, what is reused from earlier runs, and the power analysis that sets the smallest sufficient number of players, games and seeds.
     validations:
       required: true
   - type: textarea
     id: analysis
     attributes:
       label: Analysis plan and decision rule
-      description: The model or test, the effect size with 80% and 95% intervals, the multiple-comparison correction, and when we ship, reject or need more data.
+      description: The model or test, the effect size with 80% and 95% intervals, the multiple-comparison correction, when we ship, reject or need more data, the stopping and futility boundaries, and the compute budget (aborted at 150%).
     validations:
       required: true
   - type: checkboxes

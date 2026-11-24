@@ -462,6 +462,34 @@ check("validateRoadmapIssues refuses the mistakes that would break seeding", () 
       (x) => x.find((i) => !i.epic && i.size !== "S").labels.push("good first issue"),
       /good first issue is size S/,
     ],
+    [
+      (x) => {
+        const e = x.find((i) => i.labels.includes("experiment"));
+        e.body = e.body.slice(e.body.indexOf("## Problem"));
+      },
+      /starts with "## Value case"/,
+    ],
+    [
+      (x) => {
+        const e = x.find((i) => i.labels.includes("experiment"));
+        e.body = e.body.filter((l) => !l.startsWith("- Cheaper alternative? "));
+      },
+      /missing "- Cheaper alternative\?"/,
+    ],
+    [
+      (x) => {
+        const e = x.find((i) => i.labels.includes("experiment"));
+        e.body = e.body.map((l) => l.replace(/= [\d.]+/, "= 27"));
+      },
+      /the value score is/,
+    ],
+    [
+      (x) => {
+        const e = x.find((i) => i.labels.includes("experiment"));
+        e.body = e.body.map((l) => l.replace("Pre-register before running", "Register"));
+      },
+      /Pre-register before running/,
+    ],
   ];
   for (const [mutate, err] of cases) {
     const copy = structuredClone(settings.roadmapIssues);

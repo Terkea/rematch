@@ -6,7 +6,7 @@ nothing else. `check` enforces what CI needs:
 
 1. Registered first: in git, `preregistration.md` and `analysis.py` were added in a commit
    strictly before the one that added `results.json` (with `--history`, which CI passes).
-2. Frozen: once results exist, sections 1 to 10 of the pre-registration are the text they had in
+2. Frozen: once results exist, sections 0 to 10 of the pre-registration are the text they had in
    the commit that added the results, and `analysis.py` has the sha256 that section 10 states.
 3. Checked inputs: every line of `inputs.sha256` (`<hex>  <path from the experiment folder>`)
    matches its file.
@@ -14,6 +14,10 @@ nothing else. `check` enforces what CI needs:
    ran on the current algorithm (`algorithm_id`), the rerun also equals the committed file. An
    older experiment is historical: its rules 1 to 3 are checked, but it is not rerun on an
    algorithm it never measured.
+5. Worth running (ADR 0107): section 0 of the pre-registration is a value case with every field
+   of the template, and once results exist, `results.json` records its compute budget against
+   the actual (`compute`), with no unit past the registered cap (150% unless section 0 says
+   more). EXP-0001 and EXP-0002 were registered before the gate and are exempt.
 
     python -m rematch_lab.experiments check [--history] [EXP-0001 ...]
     python -m rematch_lab.experiments hash EXP-0001    # print analysis.py's sha256
@@ -37,6 +41,20 @@ EXPERIMENTS = LAB_ROOT / "experiments"
 EXP_ID = re.compile(r"^EXP-\d{4}$")
 SECTION = re.compile(r"^## (\d+)\.", re.MULTILINE)
 HASH_LINE = re.compile(r"^- Analysis code sha256:\s*`([0-9a-f]{64})`\s*$", re.MULTILINE)
+# The value case of section 0 (ADR 0107), field by field, in the template's order.
+VALUE_FIELDS = (
+    "- Decision it informs:",
+    "- If the result is ",
+    "- Expected cost:",
+    "- Value score:",
+    "- Cheaper alternative?",
+    "- Compute budget:",
+)
+VALUE_SCORE = re.compile(r"impact ([1-3]) × uncertainty ([1-3]) ÷ cost ([1-3]) = ([0-9.]+)")
+BUDGET_CAP = re.compile(r"^- Compute budget:.*\bcap (\d+)%", re.MULTILINE)
+DEFAULT_CAP = 1.5
+# Registered before the value gate existed.
+VALUE_GATE_EXEMPT = frozenset({"EXP-0001", "EXP-0002"})
 
 
 def canonical(data: Any) -> str:
@@ -51,6 +69,39 @@ def write_results(out_dir: str | Path, data: Any) -> Path:
     path = out / "results.json"
     path.write_text(canonical(data), encoding="utf-8")
     return path
+
+
+class BudgetExceeded(RuntimeError):
+    """A run spent more than its registered cap of a unit; it is a failed result."""
+
+
+class Budget:
+    """The compute budget of section 0, in units the run counts deterministically.
+
+    budget = Budget({"games": 3840, "profile_calls": 50000})  # cap 150% unless registered
+    budget.spend("games", 120)  # raises BudgetExceeded past the cap
+    write_results(out, {..., "compute": budget.record()})
+    """
+
+    def __init__(self, budget: dict[str, float], cap: float = DEFAULT_CAP) -> None:
+        if not budget or any(v <= 0 for v in budget.values()) or cap < 1:
+            raise ValueError("a budget needs positive units and a cap of at least 1")
+        self.budget = dict(budget)
+        self.cap = cap
+        self.actual = {unit: 0 for unit in budget}
+
+    def spend(self, unit: str, amount: float = 1) -> None:
+        if unit not in self.budget:
+            raise KeyError(f"{unit} is not a budgeted unit")
+        self.actual[unit] += amount
+        if self.actual[unit] > self.cap * self.budget[unit]:
+            raise BudgetExceeded(
+                f"{unit}: spent {self.actual[unit]:g} of a budget of {self.budget[unit]:g} "
+                f"(cap {self.cap:.0%}); the run stops here"
+            )
+
+    def record(self) -> dict[str, Any]:
+        return {"budget": self.budget, "actual": self.actual, "cap": self.cap}
 
 
 def seed(exp_id: str, name: str) -> int:
@@ -85,15 +136,64 @@ def sections(text: str) -> dict[int, str]:
 
 
 def frozen_part(text: str) -> str:
-    """Sections 1 to 10: what may not change once results exist."""
+    """Sections 0 to 10: what may not change once results exist."""
     s = sections(text)
-    return "".join(s.get(n, "") for n in range(1, 11))
+    return "".join(s.get(n, "") for n in range(0, 11))
 
 
 def stated_hash(text: str) -> str | None:
     """The analysis sha256 of section 10 (a hash anywhere else does not count)."""
     m = HASH_LINE.search(sections(text).get(10, ""))
     return m.group(1) if m else None
+
+
+def registered_cap(text: str) -> float:
+    """The budget cap of section 0 as a factor: 1.5 unless a higher one is registered."""
+    m = BUDGET_CAP.search(sections(text).get(0, ""))
+    return max(DEFAULT_CAP, int(m.group(1)) / 100) if m else DEFAULT_CAP
+
+
+def value_case_problems(exp: Path, text: str) -> list[str]:
+    """Section 0 has every field, in order, and its value score's arithmetic holds."""
+    if exp.name in VALUE_GATE_EXEMPT:
+        return []
+    value = sections(text).get(0)
+    if value is None:
+        return [f"{exp.name}: no section 0 (the value case) in the pre-registration"]
+    problems = []
+    at = 0
+    for field in VALUE_FIELDS:
+        found = value.find(f"\n{field}", at)
+        if found < 0:
+            name = field[2:].strip()
+            problems.append(f'{exp.name}: the value case has no "{name}" (or it is out of order)')
+        else:
+            at = found + 1
+    score = VALUE_SCORE.search(value)
+    if score is None:
+        problems.append(f"{exp.name}: the value score is not impact × uncertainty ÷ cost = S")
+    else:
+        impact, uncertainty, cost = (int(score.group(i)) for i in (1, 2, 3))
+        if abs(float(score.group(4)) - impact * uncertainty / cost) > 0.05:
+            problems.append(f"{exp.name}: the value score is {impact * uncertainty / cost:g}")
+    return problems
+
+
+def compute_problems(exp: Path, text: str, results: dict[str, Any]) -> list[str]:
+    """results.json records the budget against the actual, with no unit past the cap."""
+    if exp.name in VALUE_GATE_EXEMPT:
+        return []
+    compute = results.get("compute")
+    if not isinstance(compute, dict) or not {"budget", "actual"} <= compute.keys():
+        return [f"{exp.name}: results.json has no compute budget and actual (`compute`)"]
+    cap = registered_cap(text)
+    problems = []
+    for unit, spent in compute["actual"].items():
+        if unit not in compute["budget"]:
+            problems.append(f"{exp.name}: compute unit {unit} has no budget")
+        elif spent > cap * compute["budget"][unit]:
+            problems.append(f"{exp.name}: {unit} spent {spent:g}, past the cap of {cap:.0%}")
+    return problems
 
 
 def current_algorithm_id() -> str:
@@ -152,7 +252,7 @@ def history_problems(exp: Path) -> list[str]:
     now = (exp / "preregistration.md").read_text(encoding="utf-8")
     if frozen_part(then) != frozen_part(now):
         problems.append(
-            f"{exp.name}: sections 1 to 10 of the pre-registration changed after the results "
+            f"{exp.name}: sections 0 to 10 of the pre-registration changed after the results "
             "were committed; write a deviation in section 11 or register a new experiment"
         )
     return problems
@@ -183,11 +283,13 @@ def check(exp: Path, *, history: bool = False, algorithm_id: str | None = None) 
             problems.append(f"{exp.name}: no {required}")
     if problems:
         return problems
+    text = (exp / "preregistration.md").read_text(encoding="utf-8")
+    problems += value_case_problems(exp, text)
     problems += input_problems(exp)
     committed = exp / "results.json"
     historical = False
     if committed.exists():
-        stated = stated_hash((exp / "preregistration.md").read_text(encoding="utf-8"))
+        stated = stated_hash(text)
         actual = analysis_hash(exp)
         if not stated:
             problems.append(f"{exp.name}: section 10 states no analysis code sha256")
@@ -198,7 +300,9 @@ def check(exp: Path, *, history: bool = False, algorithm_id: str | None = None) 
             )
         if history:
             problems += history_problems(exp)
-        ran_on = json.loads(committed.read_text(encoding="utf-8")).get("algorithm_id")
+        results = json.loads(committed.read_text(encoding="utf-8"))
+        problems += compute_problems(exp, text, results)
+        ran_on = results.get("algorithm_id")
         if not ran_on:
             problems.append(f"{exp.name}: results.json does not say which algorithm_id it ran on")
         elif algorithm_id is not None and ran_on != algorithm_id:

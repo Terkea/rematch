@@ -14,11 +14,16 @@ from rematch_lab import experiments
 
 ANALYSIS = """\
 import argparse, random
-from rematch_lab.experiments import seed, write_results
+from rematch_lab.experiments import Budget, seed, write_results
 p = argparse.ArgumentParser(); p.add_argument("--out", required=True); a = p.parse_args()
 rng = random.Random(seed("EXP-9999", "draws"))
-write_results(a.out, {"algorithm_id": "unversioned",
-                      "mean": sum(rng.random() for _ in range(100)) / 100})
+budget = Budget({"draws": 100})
+draws = []
+for _ in range(100):
+    budget.spend("draws")
+    draws.append(rng.random())
+write_results(a.out, {"algorithm_id": "unversioned", "mean": sum(draws) / 100,
+                      "compute": budget.record()})
 """
 
 # An experiment that drives the real algorithm through the bridge, as every experiment must.
@@ -26,20 +31,35 @@ BRIDGE_ANALYSIS = """\
 import argparse, json
 from pathlib import Path
 import rematch_lab
-from rematch_lab.experiments import write_results
+from rematch_lab.experiments import Budget, write_results
 p = argparse.ArgumentParser(); p.add_argument("--out", required=True); a = p.parse_args()
 fixture = Path(rematch_lab.__file__).parent.parent / "fixtures" / "profile-request.json"
 facts = rematch_lab.models.ProfileRequest.model_validate_json(fixture.read_text())
+budget = Budget({"bridge_calls": 2})
+budget.spend("bridge_calls", 2)
 ranking = rematch_lab.rank(rematch_lab.profile(facts))
 write_results(a.out, {"algorithm_id": ranking.algorithm_id,
-                      "focuses": [p.focuses for p in ranking.players]})
+                      "focuses": [p.focuses for p in ranking.players],
+                      "compute": budget.record()})
 """
+
+
+VALUE_CASE = (
+    "## 0. Value case\n\n"
+    "- Decision it informs: whether the rate rises.\n"
+    "- If the result is a rise, we will act; if not, we will not.\n"
+    "- Expected cost: a second of CPU.\n"
+    "- Value score: impact 1 × uncertainty 3 ÷ cost 1 = 3\n"
+    "- Cheaper alternative? No.\n"
+    "- Compute budget: 100 draws; cap 150%\n\n"
+)
 
 
 def prereg(analysis: str, h1: str = "H1: the rate rises.") -> str:
     digest = hashlib.sha256(analysis.encode()).hexdigest()
     return (
         "# EXP-9999: a test\n\n- Status: pre-registered\n\n"
+        f"{VALUE_CASE}"
         f"## 1. Question\n\nq\n\n## 2. Hypotheses\n\n{h1}\n\n"
         f"## 10. Analysis code\n\n- Analysis code sha256: `{digest}`\n\n"
         "## 11. Deviations\n\nNone.\n"
@@ -119,7 +139,10 @@ def test_results_must_name_their_algorithm(tmp_path: Path) -> None:
 
 def test_results_from_an_older_algorithm_are_historical(tmp_path: Path) -> None:
     exp = make(tmp_path)
-    (exp / "results.json").write_text('{"algorithm_id": "algo-1.0.0+000000000000", "mean": 0.5}\n')
+    (exp / "results.json").write_text(
+        '{"algorithm_id": "algo-1.0.0+000000000000", "mean": 0.5, '
+        '"compute": {"budget": {"draws": 100}, "actual": {"draws": 100}}}\n'
+    )
     # Not rerun on an algorithm it never measured, so the differing number is no problem.
     assert experiments.check(exp, algorithm_id="algo-2.0.0+111111111111") == []
 
@@ -147,7 +170,7 @@ def test_history_registered_first_then_frozen(tmp_path: Path) -> None:
     # Editing H1 after the results is outcome switching.
     text = (exp / "preregistration.md").read_text()
     (exp / "preregistration.md").write_text(text.replace("the rate rises", "the rate falls"))
-    assert any("sections 1 to 10" in p for p in experiments.history_problems(exp))
+    assert any("sections 0 to 10" in p for p in experiments.history_problems(exp))
     # A deviation in section 11 is allowed.
     (exp / "preregistration.md").write_text(text.replace("None.", "2026-12-01: one seed failed."))
     assert experiments.history_problems(exp) == []
@@ -169,3 +192,44 @@ def test_results_are_canonical() -> None:
         experiments.canonical({"x": float("nan")})
     assert experiments.seed("EXP-0001", "a") == experiments.seed("EXP-0001", "a")
     assert experiments.seed("EXP-0001", "a") != experiments.seed("EXP-0001", "b")
+
+
+def test_a_pre_registration_needs_its_value_case(tmp_path: Path) -> None:
+    exp = make(tmp_path)
+    text = (exp / "preregistration.md").read_text()
+    missing = experiments.value_case_problems(exp, text.replace(VALUE_CASE, ""))
+    assert any("no section 0" in p for p in missing)
+    gap = text.replace("- Cheaper alternative? No.\n", "")
+    assert any("Cheaper alternative" in p for p in experiments.value_case_problems(exp, gap))
+    wrong = text.replace("cost 1 = 3", "cost 1 = 9")
+    assert any("value score is 3" in p for p in experiments.value_case_problems(exp, wrong))
+    assert experiments.value_case_problems(exp, text) == []
+    (exp / "preregistration.md").write_text(text.replace(VALUE_CASE, ""))
+    assert any("no section 0" in p for p in experiments.check(exp))
+
+
+def test_experiments_before_the_gate_are_exempt(tmp_path: Path) -> None:
+    exp = tmp_path / "EXP-0001"
+    exp.mkdir()
+    assert experiments.value_case_problems(exp, "## 1. Question\n") == []
+    assert experiments.compute_problems(exp, "", {}) == []
+
+
+def test_the_budget_stops_the_run_at_its_cap() -> None:
+    budget = experiments.Budget({"games": 10})
+    budget.spend("games", 15)  # 150% is still inside the cap
+    with pytest.raises(experiments.BudgetExceeded):
+        budget.spend("games", 1)
+    section0 = "## 0. Value case\n\n- Compute budget: 10 games; cap 200%\n"
+    assert experiments.registered_cap(section0) == 2.0
+    assert experiments.registered_cap(section0.replace("; cap 200%", "")) == 1.5
+
+
+def test_results_past_the_cap_or_without_a_budget_fail(tmp_path: Path) -> None:
+    exp = make(tmp_path)
+    text = (exp / "preregistration.md").read_text()
+    over = {"compute": {"budget": {"draws": 100}, "actual": {"draws": 151}}}
+    assert any("past the cap" in p for p in experiments.compute_problems(exp, text, over))
+    assert any("no compute budget" in p for p in experiments.compute_problems(exp, text, {}))
+    fine = {"compute": {"budget": {"draws": 100}, "actual": {"draws": 150}}}
+    assert experiments.compute_problems(exp, text, fine) == []
