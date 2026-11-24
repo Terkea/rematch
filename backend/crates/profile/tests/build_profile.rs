@@ -1093,6 +1093,14 @@ async fn every_build_stores_a_current_coaching_input_snapshot(pool: PgPool) {
     let parsed: profile::coaching_input::CoachingInput =
         serde_json::from_value(input.clone()).expect("the snapshot is a CoachingInput");
     assert_eq!(parsed.validate(), Ok(()));
+    // ADR 0105: the snapshot names the algorithm that computed it.
+    let algo: Option<String> =
+        sqlx::query_scalar("SELECT algorithm_id FROM coaching_inputs WHERE id = $1")
+            .bind(first[0].0)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(algo.as_deref(), Some(::common::algorithm::id()));
 
     // A newer game, a rebuild: a newer snapshot that counts it.
     insert_analysed_game(

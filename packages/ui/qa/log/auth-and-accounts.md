@@ -75,3 +75,13 @@ The reviewer flagged the three weakest screens. Changes:
   - The linked list appears only once something exists.
 
 The screenshots were retaken on localhost after hydration, waiting until React attached to the page. Overlay screens capture the viewport only.
+
+## 2026-11-23: the wordmark and the form share a left edge (final gate)
+
+The signed-out layout now puts the wordmark in the same grid cell and column as the form, so
+"Rematch" and "Sign in" start at x≈108 at 1440 and x≈16 at 390. Shots: `pnpm shots` of /sign-in,
+/blocked and /welcome/age at 390 and 1440, day and night. A fresh critic saw only the shots,
+DESIGN.md and REFERENCES.md.
+
+- Round 1, `revise`. The shared edge passed on every page; there were no ban-list or contrast findings. The verdict came from the README weakness shot: a 1px sliver of the clipped sparkline column at its right edge (major), and uneven crop margins (minor). Two optional page notes were left as they are: the form's vertical centre sits a little below the board's, and the board's top moves 16px between /blocked and /sign-in because the captions differ in height.
+- Round 2, `pass`. The shot was re-captured with the whole specimen (sparklines included) and cropped inside its panel. Every edge pixel is background. The minors left belong to the component or the fixture (two left edges in the specimen, null-week gaps in the sparklines), so they are out of scope here. The README already says that its screenshots use the styleguide's demo data.

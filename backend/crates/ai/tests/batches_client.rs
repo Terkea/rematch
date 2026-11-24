@@ -115,7 +115,7 @@ async fn batch_create_sends_params_with_api_key_and_version() {
         .and(header("content-type", "application/json"))
         .and(header(
             "user-agent",
-            "chess-improver/0.1 (+https://github.com/chess-improver)",
+            "rematch/0.1 (+https://github.com/Terkea/rematch)",
         ))
         .respond_with(json_resp(200, &fixture("batch-create.json")))
         .expect(1)

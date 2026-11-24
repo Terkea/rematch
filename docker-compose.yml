@@ -367,6 +367,27 @@ services:
       postgres:
         condition: service_healthy
 
+  # The algorithm lab (ADR 0106), opt-in: `docker compose --profile lab run --rm lab` runs the
+  # contract tests; `... run --rm lab python -m rematch_lab.experiments check` reruns the
+  # experiments. Its cli and Stockfish come from the rust-worker image (lab/Dockerfile). It is
+  # never part of the product's request path. The checkout is mounted at /repo, so results land in
+  # it and the experiment check can read the git history.
+  lab:
+    profiles: [lab]
+    build:
+      context: lab
+      additional_contexts:
+        rematch: service:rust-worker
+    working_dir: /repo/lab
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/chess_test
+      PYTHONPATH: /repo/lab
+    volumes:
+      - .:/repo
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 volumes:
   pgdata:
   syzygy_stage:

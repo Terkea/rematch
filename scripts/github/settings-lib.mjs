@@ -109,7 +109,11 @@ export function validateRuleset(r) {
 }
 
 export function validateRepo(s) {
-  onlyKeys(s, ["repo", "topics", "private_vulnerability_reporting", "pages"], "repo.json");
+  onlyKeys(
+    s,
+    ["repo", "topics", "private_vulnerability_reporting", "pages", "actions"],
+    "repo.json",
+  );
   for (const k of Object.keys(s.repo)) {
     if (!REPO_KEYS.has(k)) fail(`repo.json repo: unknown key "${k}"`);
   }
@@ -124,6 +128,41 @@ export function validateRepo(s) {
     fail("private_vulnerability_reporting must be a boolean");
   }
   if (!["workflow", "legacy"].includes(s.pages?.build_type)) fail("pages.build_type");
+  if (s.actions !== undefined) validateActions(s.actions);
+}
+
+/** The approval policies GitHub takes for workflow runs from fork pull requests. */
+export const FORK_APPROVAL_POLICIES = [
+  "first_time_contributors_new_to_github",
+  "first_time_contributors",
+  "all_external_contributors",
+];
+
+/**
+ * The Actions settings (repo.json "actions"): who must be approved before a fork pull request's
+ * workflows run, and the default GITHUB_TOKEN permissions (PUT actions/permissions/workflow).
+ */
+export function validateActions(a) {
+  onlyKeys(
+    a,
+    [
+      "fork_pr_contributor_approval",
+      "default_workflow_permissions",
+      "can_approve_pull_request_reviews",
+    ],
+    "repo.json actions",
+  );
+  if (!FORK_APPROVAL_POLICIES.includes(a.fork_pr_contributor_approval)) {
+    fail(
+      `actions.fork_pr_contributor_approval must be one of ${FORK_APPROVAL_POLICIES.join(", ")}`,
+    );
+  }
+  if (!["read", "write"].includes(a.default_workflow_permissions)) {
+    fail('actions.default_workflow_permissions must be "read" or "write"');
+  }
+  if (typeof a.can_approve_pull_request_reviews !== "boolean") {
+    fail("actions.can_approve_pull_request_reviews must be a boolean");
+  }
 }
 
 export function validateLabels(labels) {
@@ -178,6 +217,61 @@ export function ciCheckNames(yaml) {
   }
   flush();
   return names;
+}
+
+/**
+ * Jobs that use docker-compose.e2e-prod.yml (in the workflow's or the job's env, or in a step)
+ * need E2E_BETTER_AUTH_SECRET before compose reads that file: compose interpolates every file in
+ * COMPOSE_FILE on every command, `build` included, and the overlay refuses an empty secret (first
+ * public CI run, 2026-11-23). Returns one line per job that runs compose before the step that
+ * writes the secret to $GITHUB_ENV, or that never sets it.
+ */
+export function e2eSecretOrderProblems(yaml) {
+  const lines = yaml.split(/\r?\n/);
+  const start = lines.findIndex((l) => /^jobs:\s*$/.test(l));
+  if (start < 0) return [];
+  const PROD = /docker-compose\.e2e-prod\.yml/;
+  const globalProd = PROD.test(lines.slice(0, start).join("\n"));
+  const jobs = [];
+  let job = null;
+  let step = null;
+  for (const line of lines.slice(start + 1)) {
+    if (/^\S/.test(line) && !line.startsWith("#")) break;
+    const head = /^ {2}([A-Za-z0-9_-]+):\s*$/.exec(line);
+    if (head) {
+      job = { id: head[1], head: [], steps: [] };
+      jobs.push(job);
+      step = null;
+    } else if (!job) {
+      // comments between `jobs:` and the first job
+    } else if (/^ {6}- /.test(line)) {
+      step = [line];
+      job.steps.push(step);
+    } else if (step && (/^ {8,}\S/.test(line) || line.trim() === "")) {
+      step.push(line);
+    } else {
+      step = null;
+      job.head.push(line);
+    }
+  }
+  const problems = [];
+  for (const { id, head, steps } of jobs) {
+    const texts = steps.map((s) => s.join("\n"));
+    const prod = globalProd || PROD.test(head.join("\n")) || texts.some((t) => PROD.test(t));
+    if (!prod || head.some((l) => /^\s+E2E_BETTER_AUTH_SECRET:/.test(l))) continue;
+    const setter = texts.findIndex((t) => /E2E_BETTER_AUTH_SECRET=.*>>\s*"?\$GITHUB_ENV/.test(t));
+    const compose = texts.findIndex((t) => /\$COMPOSE\b|\$\{COMPOSE\}|docker compose/.test(t));
+    if (setter < 0) {
+      problems.push(
+        `job ${id}: uses docker-compose.e2e-prod.yml but never sets E2E_BETTER_AUTH_SECRET`,
+      );
+    } else if (compose >= 0 && compose < setter) {
+      problems.push(
+        `job ${id}: step ${compose + 1} runs compose before step ${setter + 1} sets E2E_BETTER_AUTH_SECRET`,
+      );
+    }
+  }
+  return problems;
 }
 
 // ---- diffing ----
@@ -266,8 +360,8 @@ export function diffLabels(desired, live) {
 
 /**
  * What to change so the live repository matches the settings. `live` holds the GET responses
- * (or `{error}` when a GET failed): repo, labels, rulesets {list, detail}, vulnerabilityReporting
- * and pages. Returns readable `lines` (the diff) and the `calls` that would apply it.
+ * (or `{error}` when a GET failed): repo, labels, rulesets {list, detail}, vulnerabilityReporting,
+ * pages, and (when read) actionsWorkflow and forkApproval. Returns readable `lines` (the diff) and the `calls` that would apply it.
  */
 export function planChanges(settings, live, repo, opts = {}) {
   const lines = [];
@@ -324,6 +418,32 @@ export function planChanges(settings, live, repo, opts = {}) {
   } else if (live.pages?.build_type !== want) {
     lines.push(`~ pages: build_type ${show(live.pages?.build_type)} -> ${show(want)}`);
     call("PUT", "/pages", { build_type: want });
+  }
+
+  // Actions: fork pull request approval and the default token (only when the caller read them).
+  const actions = settings.repo.actions;
+  if (actions && live.forkApproval !== undefined) {
+    const want = actions.fork_pr_contributor_approval;
+    if (live.forkApproval.error || live.forkApproval.approval_policy !== want) {
+      const now = live.forkApproval.error
+        ? `(now: ${live.forkApproval.error})`
+        : show(live.forkApproval.approval_policy);
+      lines.push(`~ actions: fork pull request approval ${now} -> ${show(want)}`);
+      call("PUT", "/actions/permissions/fork-pr-contributor-approval", { approval_policy: want });
+    }
+  }
+  if (actions && live.actionsWorkflow !== undefined) {
+    const want = {
+      default_workflow_permissions: actions.default_workflow_permissions,
+      can_approve_pull_request_reviews: actions.can_approve_pull_request_reviews,
+    };
+    const d = live.actionsWorkflow.error
+      ? [`(could not read: ${live.actionsWorkflow.error})`]
+      : diffSubset(want, live.actionsWorkflow);
+    if (d.length > 0) {
+      lines.push("~ actions: workflow token", ...d.map((l) => `    ${l}`));
+      call("PUT", "/actions/permissions/workflow", want);
+    }
   }
 
   // Labels.
@@ -547,7 +667,11 @@ export function validateRoadmapIssues(issues, { milestones, labels }) {
     }
     const body = i.body.join("\n");
     if (body.length > 60000) fail(`${where}: body is longer than GitHub allows`);
-    if (!body.startsWith("## Problem")) fail(`${where}: the body starts with "## Problem"`);
+    if (i.labels.includes("experiment") && i.epic !== true) {
+      valueCaseProblem(body, where);
+    } else if (!body.startsWith("## Problem")) {
+      fail(`${where}: the body starts with "## Problem"`);
+    }
     for (const s of ["## Acceptance criteria", "## Pointers"]) {
       if (!body.includes(s)) fail(`${where}: missing "${s}"`);
     }
@@ -578,6 +702,46 @@ export function validateRoadmapIssues(issues, { milestones, labels }) {
   }
   for (const e of issues.filter((i) => i.epic)) {
     if (!issues.some((i) => i.parent === e.title)) fail(`epic "${e.title}" has no sub-issues`);
+  }
+}
+
+/** The fields of an experiment's value case, in order (docs/evaluation.md, the value gate). */
+export const VALUE_CASE_FIELDS = [
+  "- Decision it informs: ",
+  "- If the result is ",
+  "- Expected cost: ",
+  "- Value score: ",
+  "- Cheaper alternative? ",
+];
+
+/**
+ * An experiment issue opens with its value case, every field in order, then "## Problem"; the
+ * value score's arithmetic holds (impact × uncertainty ÷ cost, each 1 to 3); and it says to
+ * pre-register before running.
+ */
+function valueCaseProblem(body, where) {
+  if (!body.startsWith("## Value case\n")) {
+    fail(`${where}: an experiment's body starts with "## Value case"`);
+  }
+  const end = body.indexOf("\n## Problem\n");
+  if (end < 0) fail(`${where}: the value case is followed by "## Problem"`);
+  const vc = body.slice(0, end);
+  let at = 0;
+  for (const f of VALUE_CASE_FIELDS) {
+    const next = vc.indexOf(`\n${f}`, at);
+    if (next < 0) fail(`${where}: the value case is missing "${f.trim()}" (or it is out of order)`);
+    at = next + 1;
+  }
+  const s = vc.match(
+    /Value score: impact ([1-3]) × uncertainty ([1-3]) ÷ cost ([1-3]) = (\d+(?:\.\d+)?)/,
+  );
+  if (!s) fail(`${where}: the value score reads "impact N × uncertainty N ÷ cost N = S"`);
+  const want = Math.round((Number(s[1]) * Number(s[2]) * 10) / Number(s[3])) / 10;
+  if (Number(s[4]) !== want) fail(`${where}: the value score is ${want}, not ${s[4]}`);
+  if (!body.includes("Pre-register before running (`docs/experiments/TEMPLATE.md`)")) {
+    fail(
+      `${where}: an experiment says "Pre-register before running (\`docs/experiments/TEMPLATE.md\`)"`,
+    );
   }
 }
 

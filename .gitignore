@@ -32,3 +32,6 @@ apps/web/AGENTS.md
 
 # Pipeline benchmark output (cli bench run --out bench-out, ADR 0098)
 /bench-out/
+
+# The lab image build context: the cli and Stockfish staged by .github/workflows/lab.yml (ADR 0106)
+/lab-ctx/

@@ -35,6 +35,8 @@ ai = { path = "crates/ai" }
 worker = { path = "crates/worker" }
 # The pipeline benchmark (ADR 0098)
 bench = { path = "crates/bench" }
+# The algorithm manifest (ADR 0105)
+algo = { path = "crates/algo" }
 
 # Third-party crates
 tokio = { version = "=1.54.1", features = [

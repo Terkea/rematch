@@ -1,8 +1,10 @@
 import { Button } from "@ci/ui/primitives";
 import Link from "next/link";
+import { AlgorithmNote } from "../../../../components/algorithm-note";
 import { BrandMark } from "../../../../components/brand/mark";
 import { CoachScopeSwitch } from "../../../../components/coach-scope-switch";
 import { FreshItems } from "../../../../components/train/fresh-items";
+import { ALGORITHM_ID } from "../../../../lib/algorithm";
 import type { CoachScope } from "../../../../server/profile";
 import { DAILY_CAP, HOLDOUT_PERCENT, SOURCES } from "../../../../server/train/model";
 import type { TrainPage } from "../../../../server/train/store";
@@ -106,6 +108,8 @@ function Body({ scope, page }: { scope: CoachScope; page: TrainPage }) {
         <TrainSummary page={page} />
       )}
       {total > 0 ? <Efficacy page={page} /> : null}
+      {/* The trainer's rules are this build's (TRAINER_VERSION, in the manifest). */}
+      {total > 0 ? <AlgorithmNote algorithmId={ALGORITHM_ID} /> : null}
     </>
   );
 }

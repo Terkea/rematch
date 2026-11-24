@@ -1,7 +1,7 @@
 import type { Db } from "@ci/db";
 import { weaknessChangeNotes, weaknessSeriesPoint } from "@ci/db/generated";
 import { and, eq, sql } from "drizzle-orm";
-import type { DayRange } from "../../../../server/filters/params";
+import { type DayRange, setRange } from "../../../../server/filters/params";
 import { readOnly } from "../../../../server/games";
 import type { CoachScope } from "../../../../server/profile";
 import { ownsScope } from "../../../../server/profile/scope";
@@ -41,11 +41,12 @@ export function basisText(scope: CoachScope): string {
  */
 export function scopeQuery(
   scope: CoachScope,
-  range: { from: string | null; to: string | null } = { from: null, to: null },
+  range?: { from: string | null; to: string | null },
 ): string {
   const q = new URLSearchParams({ account: scope.accountId, tc: scope.timeClass });
-  if (range.from) q.set("from", range.from);
-  if (range.to) q.set("to", range.to);
+  // The page's own range travels, "All time" as `from=all` (ADR 0083 Amendment 2); without one
+  // the link opens on the default 90 days.
+  if (range) setRange(q, range);
   if (scope.side && scope.side !== "both") q.set("color", scope.side);
   return q.toString();
 }

@@ -21,7 +21,7 @@ use super::port::{
 pub const ANTHROPIC_VERSION: &str = "2026-10-21";
 /// The User-Agent of every request the `ai` crate sends (ADR 0043): the project URL, never an
 /// email address or other personal contact data.
-pub const USER_AGENT: &str = "chess-improver/0.1 (+https://github.com/chess-improver)";
+pub const USER_AGENT: &str = "rematch/0.1 (+https://github.com/Terkea/rematch)";
 /// The response header whose value becomes `request_id`.
 pub const REQUEST_ID_HEADER: &str = "request-id";
 /// Default API base (Task 11 makes it configurable).

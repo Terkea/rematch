@@ -83,3 +83,39 @@ filter bar and pages come in T2b and T3.
    before, a player without rapid opened on every class. The custom range uses native date inputs,
    replacing the explorer's typed "1 Oct 2026" fields (M5a T13): the GET form must work without
    JavaScript.
+
+## Amendment 2 (2026-11-23): the last 90 days by default
+
+The owner asked for it: a page that opens on every game since the account was linked mixes this
+month's chess with last year's, and the numbers a player acts on should describe how they play now.
+
+1. **The default range is the last 90 days** (`DEFAULT_PRESET = "90d"`, `server/filters/presets.ts`):
+   today and the 89 days before it, UTC. A URL with neither `from` nor `to` (or with only invalid
+   ones) reads as that range, so the default rolls forward with the calendar; a link with days
+   still keeps its days. One bound alone keeps the other end open, as before.
+2. **All time is explicit: `from=all`.** `serializeFilters` omits the default range and writes
+   `from=all` for an unbounded one, so `parse(serialize(f)) = f` still holds. `setRange`
+   (`params.ts`) is the one writer every cross-page link uses (the weakness and area links, the
+   nav's `withFilters`), so a chosen "All time" travels between pages. `from=all&to=…` is "up to"
+   a day.
+3. **The presets** are 30 days, 90 days, 6 months, 12 months and All time; "90 days" replaces
+   "3 months", which covered nearly the same games. The default 90 days do not count as an active
+   filter on the phone disclosure; All time does.
+4. **The games list keeps every game** (`defaultPeriod: "all"` in its bar config). It is a list,
+   not a statistic, and its "Clear filters" and widening suggestions already mean every game. Links
+   from the statistics pages carry their days to it (`gamesPageParams`), and all time arrives as
+   no dates.
+5. **Too few games say so.** When the default 90 days hold fewer than `KPI_MIN_GAMES` (10) games of
+   the class, the bar shows "4 games in the last 90 days. Most numbers here need at least 10." and
+   one "All time" link (`FilterBarModel.thin`, counted by `server/filters/window.ts`). A range the
+   player chose shows no such note: they asked for it.
+6. **The coach and the report state their window.** Neither is narrowed by dates: the report's
+   text and sections come from the profile (the weakness estimates cover the last 183 days,
+   `ESTIMATE_WINDOW_DAYS`), and the chat reads all the analysed games. The report always says so
+   under its bar ("The report is written from your whole profile, on all your games of this time
+   control …"), and the coach's lede says the other pages' date filters don't apply. The AI
+   pipeline is unchanged.
+
+Consequences: an old bookmark without dates now opens on 90 days, and "All time" is one click
+away. The e2e specs whose seeds sit on fixed days open with `from=all`, so they don't drift as the
+window rolls.

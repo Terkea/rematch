@@ -9,6 +9,13 @@ export { timeZoneOf };
 // The missed-moments trainer's pure rules (ADR 0090). Everything here is unit tested; `store.ts`
 // only reads and writes the rows these functions decide on.
 
+/**
+ * The name of the trainer's rules below (`INTERVALS`, `HOLDOUT_PERCENT`, `MIN_CHANCES`,
+ * `SESSION_SIZE`, `DAILY_CAP`, `NEW_PER_DAY`). A change to any of them is a new name and a new
+ * algorithm version (ADR 0104, `algorithm/CHANGELOG.md`).
+ */
+export const TRAINER_VERSION = "trainer-v1";
+
 // ---- Sources ----
 
 /** The positions drilled, most specific first: a position in several takes the first. */

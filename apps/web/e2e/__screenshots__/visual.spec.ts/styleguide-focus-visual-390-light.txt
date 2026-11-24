@@ -29,6 +29,9 @@ Practise this
 Length
 20 games
 Clear focus
+
+About this recommendation: computed before algorithm versions were recorded.
+
 Running, on track
 This week's focus
 Missed mates
@@ -44,6 +47,9 @@ Practise this
 Length
 20 games
 Clear focus
+
+About this recommendation: computed before algorithm versions were recorded.
+
 Closed
 Your last focus
 Missed mates

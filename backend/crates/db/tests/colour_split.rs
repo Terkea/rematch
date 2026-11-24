@@ -141,7 +141,15 @@ async fn applies_on_existing_rows_and_marks_them_both(pool: PgPool) {
             .unwrap();
     assert_eq!(labels, ["both", "white", "black"]);
 
-    // The keys now include the side: one row per side, the both row untouched.
+    // The keys now include the side: one row per side, the both row untouched. Today's writer
+    // also stamps the algorithm (ADR 0105, a later migration), so give this older schema the
+    // columns it writes to.
+    sqlx::raw_sql(
+        "CREATE TABLE algorithm_versions (id text PRIMARY KEY, manifest jsonb NOT NULL,          created_at timestamptz NOT NULL DEFAULT now());          ALTER TABLE weakness_estimates ADD COLUMN algorithm_id text          REFERENCES algorithm_versions (id);          ALTER TABLE kpi_snapshot ADD COLUMN algorithm_id text          REFERENCES algorithm_versions (id);",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
     let mut conn = pool.acquire().await.unwrap();
     for side in ["white", "black"] {
         upsert_weakness_estimate(&mut conn, &estimate(account, side))

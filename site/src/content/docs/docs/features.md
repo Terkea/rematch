@@ -7,6 +7,8 @@ sidebar:
 
 Rematch reads your chess.com games, finds the mistakes you repeat, explains them and trains you on them, then checks whether the training works. Each section below links to the decision record that defines it.
 
+It is for anyone who knows how the pieces move, up to about 2000. Above 2000 it hasn't been tested with real players yet; if you're 2000+, [tell us where it's wrong](https://github.com/Terkea/rematch/issues/new?template=coaching_idea.yml).
+
 ## Analysis of every move
 
 Your chess.com games are imported by username and kept in sync (every 30 minutes by default). A Rust worker analyses every move with a pool of Stockfish 19 engines under a pinned protocol, so the same position always gets the same verdict. Moves are judged by the loss of win chance, with the Lichess thresholds: an inaccuracy, a mistake or a blunder.

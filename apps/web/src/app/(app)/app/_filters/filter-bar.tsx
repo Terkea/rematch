@@ -256,7 +256,27 @@ export function FilterBar({
       <div className="hidden md:block">
         <Body model={model} idPrefix="fb-d" colorNote={colorNote} timeControl={timeControl} />
       </div>
+      {model.thin ? <ThinWindow thin={model.thin} /> : null}
     </section>
+  );
+}
+
+/**
+ * The default 90 days hold too few games for the page's numbers (ADR 0083 Amendment 2): the
+ * plain count, and one link to all time. Outside the phone disclosure, so it is never folded away.
+ */
+function ThinWindow({ thin }: { thin: NonNullable<FilterBarModel["thin"]> }) {
+  return (
+    <p data-slot="thin-window" className="m-0 mt-3 max-w-2xl text-sm text-ink-soft">
+      {thin.text}{" "}
+      <Link
+        href={thin.allTimeHref}
+        scroll={false}
+        className="font-medium text-ink underline decoration-rule-strong underline-offset-4 hover:decoration-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+      >
+        All time
+      </Link>
+    </p>
   );
 }
 

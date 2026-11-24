@@ -43,15 +43,16 @@ describe("the site's brand", () => {
     expect(index.match(/class="hero-mark"/g)).toHaveLength(1);
   });
 
-  it("gives the docs header the mid mark, ink by day and cream at night, never pen red", () => {
+  it("gives the docs header the mid mark, navy ink by day and pale ink at night, never pen red", () => {
     const config = read("site/astro.config.mjs").toString();
     expect(config).toContain('title: "Rematch"');
     expect(config).toContain("./src/assets/rematch-mark-day.svg");
     expect(config).toContain("./src/assets/rematch-mark-night.svg");
     const day = read("site/src/assets/rematch-mark-day.svg").toString();
     const night = read("site/src/assets/rematch-mark-night.svg").toString();
-    expect(day).toContain('fill="#1F2A3D"');
-    expect(night).toContain('fill="#E8E2D6"');
+    // The cool scoresheet palette (ADR 0103 Amendment 1): the generator writes the ink tokens.
+    expect(day).toContain('fill="#16233B"');
+    expect(night).toContain('fill="#E7ECF4"');
     for (const svg of [day, night]) expect(svg).not.toMatch(/#c8372d|#d3312b|currentColor/i);
   });
   it("carries the README's 'Why I'm building this' word for word, with the photo", () => {

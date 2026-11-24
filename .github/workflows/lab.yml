@@ -1,0 +1,85 @@
+name: Lab
+# The algorithm lab (ADR 0106): builds the lab image around a cli built from this commit, checks
+# the PyPI age rule, runs the rematch_lab contract tests (the Python models against
+# lab/schemas, the fixture against the golden files), and reruns every committed experiment
+# twice, failing when results.json differs from run to run or from the committed one, or when an
+# analysis.py changed after its results were committed. It runs on pull requests that touch the
+# lab or the algorithm's crates, and every Monday.
+on:
+  pull_request:
+    paths:
+      - lab/**
+      - algorithm/**
+      - backend/crates/ai/**
+      - backend/crates/analysis/**
+      - backend/crates/bench/**
+      - backend/crates/cli/**
+      - backend/crates/coaching-input/**
+      - backend/crates/engine/**
+      - backend/crates/enrich/**
+      - backend/crates/profile/**
+      - backend/crates/profile-core/**
+      - scripts/check-pypi-age.mjs
+      - scripts/lab/**
+      - .github/workflows/lab.yml
+  schedule:
+    - cron: "41 4 * * 1"
+  workflow_dispatch:
+
+env:
+  COMPOSE_FILE: docker-compose.yml
+
+# Read-only, like CI.
+permissions:
+  contents: read
+
+concurrency:
+  group: lab-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lab:
+    runs-on: ubuntu-latest
+    # EXP-0001 runs the real pipeline on 3,840 games, twice (25 minutes each with 8 engines on the
+    # maintainer's machine), so the cli is a release build and the job has five hours.
+    timeout-minutes: 300
+    env:
+      LANE: lab
+      COMPOSE: docker compose -p ci-lab
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The experiment check reads when each file was first committed.
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - name: PyPI release age (7 days), exact pins, PyPI only
+        run: |
+          node scripts/lab/test-pypi-age.mjs
+          node scripts/check-pypi-age.mjs
+      - name: Build the Rust dev image
+        run: $COMPOSE build rust-dev
+      - name: Create the shared Rust cache volumes (ADR 0042)
+        run: sh scripts/rust-cache-init.sh
+      - name: Build the cli of this commit and stage it with Stockfish
+        run: |
+          mkdir -p lab-ctx/usr/local/bin
+          $COMPOSE run --rm --no-deps -e LANE="$LANE" rust-dev sh -c \
+            'cargo build --locked --release -p cli && cp /lane-target/release/cli /work/lab-ctx/usr/local/bin/cli && cp /usr/local/bin/stockfish /work/lab-ctx/usr/local/bin/stockfish'
+      - name: Build the lab image (uv sync --frozen)
+        run: docker build --build-context rematch=lab-ctx -t rematch-lab:ci lab
+      - name: Contract tests (pytest)
+        run: docker run --rm rematch-lab:ci pytest
+      - name: Start Postgres (rematch_lab.analyse builds in a throwaway database)
+        run: $COMPOSE up -d --wait postgres
+      - name: Experiments - registered first, frozen, checked inputs, rerun twice
+        run: |
+          network=$(docker network ls -q --filter label=com.docker.compose.project=ci-lab | head -n 1)
+          docker run --rm --network "$network" -v "$PWD:/repo" -w /repo/lab \
+            -e PYTHONPATH=/repo/lab \
+            -e DATABASE_URL=postgres://postgres:postgres@postgres:5432/chess_test \
+            rematch-lab:ci python -m rematch_lab.experiments check --history
+      - name: Stop the stack
+        if: always()
+        run: $COMPOSE down -v

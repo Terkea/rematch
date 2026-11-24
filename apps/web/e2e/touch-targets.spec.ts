@@ -134,7 +134,7 @@ test("the coach states' Try again hits across its full 44px band (M5b T3 parked 
   page,
 }) => {
   test.setTimeout(300_000);
-  await page.goto("/styleguide");
+  await page.goto("/styleguide?render=all");
   const retry = page.locator("[data-section='coach']").getByRole("button", { name: "Try again" });
   await expect(retry.first()).toBeVisible({ timeout: 180_000 });
   const count = await retry.count();

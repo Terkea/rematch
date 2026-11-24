@@ -92,6 +92,8 @@ if (phase === "settings") {
       : list,
     vulnerabilityReporting: read("vulnerability-reporting.json"),
     pages: read("pages.json"),
+    forkApproval: read("actions-fork-approval.json"),
+    actionsWorkflow: read("actions-workflow.json"),
     milestones: read("milestones.jsonl", { lines: true }),
   };
   if (Array.isArray(live.labels) === false && live.labels.error) {

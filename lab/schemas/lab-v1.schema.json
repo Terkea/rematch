@@ -1,0 +1,372 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Terkea/rematch/lab/schemas/lab-v1.schema.json",
+  "title": "Rematch lab bridge, lab-v1",
+  "description": "The JSON of `cli lab analyse|profile|rank` (ADR 0106). Validate one message with {\"$ref\": \"#/$defs/<Message>\"} next to these $defs. The envelope and the lab's own objects are snake_case; the algorithm's own types (WeaknessEstimate, BandReferenceStat, RankedWeakness) keep their camelCase serialisation.",
+  "$defs": {
+    "SchemaVersion": { "const": "lab-v1" },
+    "AlgorithmId": {
+      "description": "algo-<major>.<minor>.<patch>+<12 hex>, the manifest id (ADRs 0104 and 0105).",
+      "type": "string",
+      "pattern": "^algo-[0-9]+\\.[0-9]+\\.[0-9]+\\+[0-9a-f]{12}$"
+    },
+    "Time": { "type": "string", "format": "date-time" },
+    "Band": { "enum": ["B0", "B1", "B2", "B3", "B4", "B5"] },
+    "BinomialKey": {
+      "enum": [
+        "W1",
+        "W2",
+        "W3.shallow",
+        "W3.deep",
+        "W4.missed",
+        "W4.allowed",
+        "W5",
+        "W6",
+        "W7.traps",
+        "W7.prep",
+        "W8.basics",
+        "W8.advanced",
+        "W9a",
+        "W9b",
+        "W9c",
+        "W10",
+        "W11"
+      ]
+    },
+    "WeaknessState": {
+      "enum": ["not_an_issue", "emerging", "active", "improving", "resolved", "relapsed"]
+    },
+    "Count": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
+    "LabPoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["played_at", "events", "opportunities"],
+      "properties": {
+        "played_at": { "$ref": "#/$defs/Time" },
+        "events": { "$ref": "#/$defs/Count" },
+        "opportunities": { "$ref": "#/$defs/Count" }
+      }
+    },
+    "BandReferenceStat": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "metric",
+        "median",
+        "p25",
+        "p40",
+        "p75",
+        "pooledRate",
+        "eplPerEvent",
+        "oppsPerGame",
+        "oppSlopePer100",
+        "nPlayers",
+        "nGames",
+        "lowSample"
+      ],
+      "properties": {
+        "metric": { "type": "string" },
+        "median": { "type": "number" },
+        "p25": { "type": "number" },
+        "p40": { "type": "number" },
+        "p75": { "type": "number" },
+        "pooledRate": { "type": ["number", "null"] },
+        "eplPerEvent": { "type": ["number", "null"] },
+        "oppsPerGame": { "type": ["number", "null"] },
+        "oppSlopePer100": { "type": ["number", "null"] },
+        "nPlayers": { "$ref": "#/$defs/Count" },
+        "nGames": { "$ref": "#/$defs/Count" },
+        "lowSample": { "type": "boolean" }
+      }
+    },
+    "LabOutcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state"],
+      "properties": {
+        "state": { "$ref": "#/$defs/WeaknessState" },
+        "p_imp": { "type": ["number", "null"], "minimum": 0, "maximum": 1 }
+      }
+    },
+    "Outcomes": {
+      "type": "object",
+      "propertyNames": { "$ref": "#/$defs/BinomialKey" },
+      "additionalProperties": { "$ref": "#/$defs/LabOutcome" }
+    },
+    "PlayerFacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "now", "band", "games_in_window"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "now": { "$ref": "#/$defs/Time" },
+        "band": { "$ref": "#/$defs/Band" },
+        "games_in_window": { "$ref": "#/$defs/Count" },
+        "series": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/BinomialKey" },
+          "additionalProperties": { "type": "array", "items": { "$ref": "#/$defs/LabPoint" } }
+        },
+        "reference": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "propertyNames": { "type": "string", "pattern": "^[a-z_]+(:[A-Za-z0-9._]+)?$" },
+              "additionalProperties": { "$ref": "#/$defs/BandReferenceStat" }
+            }
+          ]
+        },
+        "model_reference": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/BinomialKey" },
+          "additionalProperties": { "$ref": "#/$defs/BandReferenceStat" }
+        },
+        "outcomes": { "$ref": "#/$defs/Outcomes" }
+      }
+    },
+    "WeaknessEstimate": {
+      "description": "profile_core::stats::priority::WeaknessEstimate, as serde writes it.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "key",
+        "k",
+        "n",
+        "nUnweighted",
+        "kUnweighted",
+        "posterior",
+        "bandMedian",
+        "bandP40",
+        "percentile",
+        "confidence",
+        "excess",
+        "trainability",
+        "priority",
+        "precise",
+        "minEvidenceMet",
+        "reason",
+        "credible",
+        "modelBaseline",
+        "invalidPoints"
+      ],
+      "properties": {
+        "key": { "$ref": "#/$defs/BinomialKey" },
+        "k": { "type": "number", "minimum": 0 },
+        "n": { "type": "number", "minimum": 0 },
+        "nUnweighted": { "type": "number", "minimum": 0 },
+        "kUnweighted": { "type": "number", "minimum": 0 },
+        "posterior": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["alpha", "beta", "mean", "interval"],
+          "properties": {
+            "alpha": { "type": "number", "exclusiveMinimum": 0 },
+            "beta": { "type": "number", "exclusiveMinimum": 0 },
+            "mean": { "type": "number", "minimum": 0, "maximum": 1 },
+            "interval": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["low", "high"],
+              "properties": {
+                "low": { "type": "number", "minimum": 0, "maximum": 1 },
+                "high": { "type": "number", "minimum": 0, "maximum": 1 }
+              }
+            }
+          }
+        },
+        "bandMedian": { "type": ["number", "null"] },
+        "bandP40": { "type": ["number", "null"] },
+        "percentile": { "type": ["number", "null"] },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "excess": { "type": "number", "minimum": 0 },
+        "trainability": { "type": "number" },
+        "priority": { "type": "number", "minimum": 0 },
+        "precise": { "type": "boolean" },
+        "minEvidenceMet": { "type": "boolean" },
+        "reason": { "enum": ["ok", "no_benchmark", "insufficient_data", "no_events"] },
+        "credible": { "type": "boolean" },
+        "modelBaseline": { "type": "boolean" },
+        "invalidPoints": { "$ref": "#/$defs/Count" }
+      }
+    },
+    "PlayerProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "now", "band", "games_in_window", "estimates"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "now": { "$ref": "#/$defs/Time" },
+        "band": { "$ref": "#/$defs/Band" },
+        "games_in_window": { "$ref": "#/$defs/Count" },
+        "estimates": { "type": "array", "items": { "$ref": "#/$defs/WeaknessEstimate" } },
+        "outcomes": { "$ref": "#/$defs/Outcomes" }
+      }
+    },
+    "RankedWeakness": {
+      "description": "The CoachingInput's RankedWeakness (backend/crates/coaching-input), with no exemplars. The full field rules are in that crate's schema; these are the ones the lab reads.",
+      "type": "object",
+      "required": [
+        "id",
+        "rank",
+        "posteriorRate",
+        "intervalLow",
+        "intervalHigh",
+        "bandMedian",
+        "confidence",
+        "priority",
+        "state",
+        "events",
+        "opportunities"
+      ],
+      "properties": {
+        "id": { "type": "string", "pattern": "^W[0-9]+[a-d]?$" },
+        "variant": { "type": ["string", "null"] },
+        "rank": { "type": "integer", "minimum": 1 },
+        "posteriorRate": { "type": "number", "minimum": 0, "maximum": 1 },
+        "intervalLow": { "type": "number", "minimum": 0, "maximum": 1 },
+        "intervalHigh": { "type": "number", "minimum": 0, "maximum": 1 },
+        "bandMedian": { "type": "number", "minimum": 0, "maximum": 1 },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "priority": { "type": "number", "exclusiveMinimum": 0 },
+        "state": { "$ref": "#/$defs/WeaknessState" },
+        "events": { "$ref": "#/$defs/Count" },
+        "opportunities": { "$ref": "#/$defs/Count" },
+        "exemplars": { "type": "array", "maxItems": 0 }
+      }
+    },
+    "DrillLists": {
+      "type": "object",
+      "additionalProperties": { "type": "array", "items": { "type": "string" } }
+    },
+    "PlayerRanking": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "ranked", "drills", "focuses", "focus_drills"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "ranked": { "type": "array", "items": { "$ref": "#/$defs/RankedWeakness" } },
+        "drills": { "$ref": "#/$defs/DrillLists" },
+        "focuses": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+        "focus_drills": { "$ref": "#/$defs/DrillLists" }
+      }
+    },
+    "LabGame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "pgn",
+        "played_at",
+        "player_color",
+        "white_name",
+        "black_name",
+        "white_rating",
+        "black_rating",
+        "result",
+        "termination",
+        "base_seconds"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "pgn": { "type": "string", "minLength": 1 },
+        "played_at": { "$ref": "#/$defs/Time" },
+        "player_color": { "enum": ["white", "black"] },
+        "white_name": { "type": "string" },
+        "black_name": { "type": "string" },
+        "white_rating": { "type": "integer" },
+        "black_rating": { "type": "integer" },
+        "result": { "enum": ["1-0", "0-1", "1/2-1/2"] },
+        "termination": { "type": "string" },
+        "base_seconds": { "type": "integer", "minimum": 0 },
+        "increment_seconds": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "PlayerCheck": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "analysed_games", "profile_matches_build", "mismatches"],
+      "properties": {
+        "id": { "type": "string" },
+        "analysed_games": { "$ref": "#/$defs/Count" },
+        "profile_matches_build": { "type": "boolean" },
+        "mismatches": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "AnalyseRequest": {
+      "type": "object",
+      "required": ["schema_version", "players"],
+      "properties": {
+        "schema_version": { "$ref": "#/$defs/SchemaVersion" },
+        "nodes": { "type": ["integer", "null"], "minimum": 1 },
+        "engines": { "type": ["integer", "null"], "minimum": 1 },
+        "players": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "games"],
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "now": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/Time" }] },
+              "games": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/LabGame" } }
+            }
+          }
+        }
+      }
+    },
+    "AnalyseResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "algorithm_id", "nodes", "players", "checks"],
+      "properties": {
+        "schema_version": { "$ref": "#/$defs/SchemaVersion" },
+        "algorithm_id": { "$ref": "#/$defs/AlgorithmId" },
+        "nodes": { "type": "integer", "minimum": 1 },
+        "players": { "type": "array", "items": { "$ref": "#/$defs/PlayerFacts" } },
+        "checks": { "type": "array", "items": { "$ref": "#/$defs/PlayerCheck" } }
+      }
+    },
+    "ProfileRequest": {
+      "description": "Facts; an AnalyseResponse is one (its nodes and checks are ignored).",
+      "type": "object",
+      "required": ["schema_version", "players"],
+      "properties": {
+        "schema_version": { "$ref": "#/$defs/SchemaVersion" },
+        "algorithm_id": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/AlgorithmId" }] },
+        "players": { "type": "array", "items": { "$ref": "#/$defs/PlayerFacts" } }
+      }
+    },
+    "ProfileResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "algorithm_id", "players"],
+      "properties": {
+        "schema_version": { "$ref": "#/$defs/SchemaVersion" },
+        "algorithm_id": { "$ref": "#/$defs/AlgorithmId" },
+        "players": { "type": "array", "items": { "$ref": "#/$defs/PlayerProfile" } }
+      }
+    },
+    "RankRequest": {
+      "description": "Profiles; a ProfileResponse is one.",
+      "type": "object",
+      "required": ["schema_version", "players"],
+      "properties": {
+        "schema_version": { "$ref": "#/$defs/SchemaVersion" },
+        "algorithm_id": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/AlgorithmId" }] },
+        "first_report": { "type": "boolean" },
+        "players": { "type": "array", "items": { "$ref": "#/$defs/PlayerProfile" } }
+      }
+    },
+    "RankResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "algorithm_id", "players"],
+      "properties": {
+        "schema_version": { "$ref": "#/$defs/SchemaVersion" },
+        "algorithm_id": { "$ref": "#/$defs/AlgorithmId" },
+        "players": { "type": "array", "items": { "$ref": "#/$defs/PlayerRanking" } }
+      }
+    }
+  }
+}

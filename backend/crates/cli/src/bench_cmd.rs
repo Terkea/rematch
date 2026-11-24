@@ -1,7 +1,9 @@
 //! `cli bench run` (ADR 0100): the Tier 1 pipeline benchmark. It needs `DATABASE_URL` (a
 //! throwaway database is created next to it and dropped afterwards) and `STOCKFISH_PATH`.
 //! Writes `bench-results.json` and `bench-scorecard.md` into `--out` (default `.`). With
-//! `--baseline`, exits 2 when a score regressed beyond the baseline's tolerance.
+//! `--baseline`, exits 2 when a score regressed beyond the baseline's tolerance. `--suite-file`
+//! runs a suite read from JSON (the `bench::suite::Suite` shape) instead of a named one, for the
+//! lab's experiments (ADR 0106).
 
 use std::path::PathBuf;
 
@@ -9,7 +11,7 @@ use bench::results::{Baseline, regressions};
 use bench::run::{RunOptions, run};
 use clap::{Arg, ArgAction, Command};
 
-pub const BENCH_USAGE: &str = "usage: cli bench run [--suite smoke|full] [--json] [--out DIR] [--baseline FILE] [--engines N] [--nodes N] [--keep-db]";
+pub const BENCH_USAGE: &str = "usage: cli bench run [--suite smoke|full | --suite-file FILE] [--json] [--out DIR] [--baseline FILE] [--engines N] [--nodes N] [--keep-db]";
 
 fn command() -> Command {
     Command::new("cli")
@@ -19,6 +21,7 @@ fn command() -> Command {
         .disable_help_subcommand(true)
         .arg(Arg::new("pos").num_args(0..))
         .arg(Arg::new("suite").long("suite"))
+        .arg(Arg::new("suite-file").long("suite-file"))
         .arg(Arg::new("json").long("json").action(ArgAction::SetTrue))
         .arg(Arg::new("out").long("out"))
         .arg(Arg::new("baseline").long("baseline"))
@@ -34,6 +37,8 @@ fn command() -> Command {
 #[derive(Debug, PartialEq)]
 pub struct BenchArgs {
     pub suite: String,
+    /// A suite read from this JSON file instead of the named `suite`.
+    pub suite_file: Option<PathBuf>,
     pub json: bool,
     pub out: PathBuf,
     pub baseline: Option<PathBuf>,
@@ -75,8 +80,15 @@ pub fn parse(argv: &[String]) -> Result<BenchArgs, String> {
     if bench::suite::by_name(&suite).is_none() {
         return Err(format!("--suite must be smoke or full\n{BENCH_USAGE}"));
     }
+    let suite_file = m.get_one::<String>("suite-file").map(PathBuf::from);
+    if suite_file.is_some() && m.get_one::<String>("suite").is_some() {
+        return Err(format!(
+            "--suite and --suite-file cannot be used together\n{BENCH_USAGE}"
+        ));
+    }
     Ok(BenchArgs {
         suite,
+        suite_file,
         json: m.get_flag("json"),
         out: PathBuf::from(m.get_one::<String>("out").map_or(".", String::as_str)),
         baseline: m.get_one::<String>("baseline").map(PathBuf::from),
@@ -118,7 +130,20 @@ pub async fn run_bench(
             }
         },
     };
-    let Some(mut suite) = bench::suite::by_name(&args.suite) else {
+    let suite = match &args.suite_file {
+        None => bench::suite::by_name(&args.suite),
+        Some(p) => match std::fs::read_to_string(p)
+            .map_err(anyhow::Error::from)
+            .and_then(|s| bench::suite::from_json(&s))
+        {
+            Ok(s) => Some(s),
+            Err(e) => {
+                print_error(&format!("reading {}: {e:#}", p.display()));
+                return 1;
+            }
+        },
+    };
+    let Some(mut suite) = suite else {
         return 1;
     };
     if let Some(n) = args.nodes {
@@ -203,5 +228,17 @@ mod tests {
                 .contains("smoke or full")
         );
         assert!(parse(&argv("bench run --engines 0")).is_err());
+        assert!(
+            parse(&argv("bench run --suite smoke --suite-file s.json"))
+                .unwrap_err()
+                .contains("together")
+        );
+    }
+
+    #[test]
+    fn parses_a_suite_file() {
+        let a = parse(&argv("bench run --suite-file /tmp/s.json --json")).unwrap();
+        assert_eq!(a.suite_file, Some(PathBuf::from("/tmp/s.json")));
+        assert_eq!(a.suite, "smoke");
     }
 }

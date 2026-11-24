@@ -17,7 +17,7 @@ export default defineConfig({
     starlight({
       title: "Rematch",
       description:
-        "Rematch, chess improver: an open-source coach that reads your chess.com games, names the mistakes you repeat and drills them. Stop losing to the same move.",
+        "Rematch, chess improver. Chess, taught the way you learn: a patient coach that learns your patterns from your chess.com games, re-evaluates them after every game and points you at the one thing that will take you higher.",
       favicon: "/favicon.svg",
       // The mid-size mark (packages/ui/assets/brand), ink by day and cream at night, beside the
       // wordmark (docs.css sets it in Literata italic).
@@ -54,6 +54,13 @@ export default defineConfig({
             { label: "Contributing", link: "/docs/contributing/" },
             { label: "How we ship", link: "/docs/sdlc/" },
             { label: "Roadmap", link: "/docs/roadmap/" },
+          ],
+        },
+        {
+          label: "The lab",
+          items: [
+            { label: "Experiments", link: "/docs/experiments/" },
+            { label: "Progress", link: "/docs/progress/" },
           ],
         },
         {

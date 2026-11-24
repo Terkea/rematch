@@ -9,7 +9,7 @@
  */
 
 /** ADR 0043. Must equal the worker's `USER_AGENT` (apps/worker/src/http/platform-client.ts; tested). */
-export const CHESSCOM_USER_AGENT = "chess-improver/0.1 (+https://github.com/chess-improver)";
+export const CHESSCOM_USER_AGENT = "rematch/0.1 (+https://github.com/Terkea/rematch)";
 /** Largest profile body read; chess.com profiles are a few KB. */
 export const MAX_BODY_BYTES = 256 * 1024;
 export const DEFAULT_TIMEOUT_MS = 5000;

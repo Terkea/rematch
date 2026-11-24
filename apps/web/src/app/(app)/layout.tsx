@@ -25,7 +25,11 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   return (
     <RealtimeProvider accountIds={accountIds} initialEventId={cursor}>
       <TimeZoneCookie />
-      <div className="flex min-h-dvh flex-col bg-paper">
+      {/* The footer hides while a route's loading skeleton (`data-route-loading`) holds the
+          sheet: the short skeleton leaves it at the foot of the first screen, and the page that
+          replaces it pushes it off, a layout shift of about 0.08 on a phone. Hidden, it isn't
+          counted, and it shows where the page leaves it. */}
+      <div className="flex min-h-dvh flex-col bg-paper [&:has([data-route-loading])>footer]:invisible">
         <a
           href="#main"
           className="sr-only z-50 rounded-field bg-ink px-4 py-2 text-sm font-medium text-on-ink focus:not-sr-only focus:fixed focus:top-3 focus:left-3"

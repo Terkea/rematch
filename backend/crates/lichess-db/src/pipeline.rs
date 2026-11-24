@@ -238,24 +238,49 @@ async fn process_batches<S>(
 where
     S: GameSink + Send + 'static,
 {
-    let max = filter.max_games;
-    let mut parsed = rx
-        .map(|batch| {
+    // Every pool job holds a clone of `alive` until its last statement, after it has dropped its
+    // `sink` and `filter` clones. The stream below owns the original, so once it is dropped the
+    // channel closes only when every job spawned so far has finished. So when `run_pipeline`
+    // returns, no worker still holds the sink, even after a cap, an error or a panic stopped the
+    // loop early (a caller may then `Arc::try_unwrap` it).
+    let (alive, mut all_done) = mpsc::channel::<()>(0);
+    let parsed = rx
+        .map(move |batch| {
             let (done, wait) = oneshot::channel();
-            let (filter, sink) = (filter.clone(), sink.clone());
+            let (filter, sink, alive) = (filter.clone(), sink.clone(), alive.clone());
             pool.spawn(move || {
                 let t = Instant::now();
                 let result =
                     catch_unwind(AssertUnwindSafe(|| parse_batch(&batch, &filter, &*sink)));
+                drop(sink);
+                drop(filter);
                 let _ = done.send(result.map(|outcomes| Parsed {
                     outcomes,
                     parse_ms: ms(t.elapsed()),
                 }));
+                drop(alive);
             });
             wait
         })
         .buffered(IN_FLIGHT_BATCHES);
 
+    // merge_parsed owns the stream and drops it (and with it `rx`, which stops the reader, and
+    // `alive`) when it returns, on every path. Then wait for the jobs still running.
+    let stats = merge_parsed(parsed, filter.max_games, sink).await;
+    while all_done.next().await.is_some() {}
+    stats
+}
+
+/// Merges parsed batches in order until the source ends or the cap is reached.
+async fn merge_parsed<P, S>(
+    mut parsed: P,
+    max: Option<u64>,
+    sink: &Arc<S>,
+) -> Result<PipelineStats, DumpError>
+where
+    P: Stream<Item = Result<std::thread::Result<Parsed<S::Partial>>, oneshot::Canceled>> + Unpin,
+    S: GameSink + Send + 'static,
+{
     let mut stats = PipelineStats::default();
     let (mut parse_ms, mut merge) = (0.0, Duration::ZERO);
     while let Some(result) = parsed.next().await {

@@ -178,7 +178,7 @@ describe("fetchChesscomProfile", () => {
     const call = chesscom.calls[0];
     expect(call?.url).toBe(`${BASE_URL}/pub/player/hikaru`);
     expect(call?.headers.get("user-agent")).toBe(
-      "chess-improver/0.1 (+https://github.com/chess-improver)",
+      "rematch/0.1 (+https://github.com/Terkea/rematch)",
     );
     expect(CHESSCOM_USER_AGENT).toBe(WORKER_USER_AGENT);
     for (const [, value] of call?.headers ?? []) expect(value).not.toMatch(/@|mailto/);
@@ -919,7 +919,7 @@ describe("routes", () => {
     const created = await post({ username: "Hikaru" }, a.cookie);
     expect(created.status).toBe(201);
     const body = (await created.json()) as { linkId: string; code: string };
-    expect(seenAgents.at(-1)).toBe("chess-improver/0.1 (+https://github.com/chess-improver)");
+    expect(seenAgents.at(-1)).toBe("rematch/0.1 (+https://github.com/Terkea/rematch)");
 
     await freeUsernameSlots();
     locations.set("hikaru", `Paris ${body.code} `);

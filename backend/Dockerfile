@@ -87,6 +87,7 @@ FROM chef AS planner
 WORKDIR /work
 COPY backend backend
 COPY db db
+COPY algorithm algorithm
 WORKDIR /work/backend
 RUN cargo chef prepare --recipe-path recipe.json
 
@@ -99,6 +100,8 @@ COPY --from=planner /work/backend/recipe.json recipe.json
 RUN cargo chef cook --release --locked --recipe-path recipe.json
 COPY backend /work/backend
 COPY db /work/db
+# `common::algorithm` compiles in algorithm/manifest.json (ADR 0105).
+COPY algorithm /work/algorithm
 RUN cargo build --release --locked -p worker -p cli -p lichess-db
 
 # The worker: a digest-pinned Debian base (bookworm-slim of 2026-11-04), CA roots for the platform

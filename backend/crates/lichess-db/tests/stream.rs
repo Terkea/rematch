@@ -403,7 +403,7 @@ async fn requests_identify_the_client() {
     let server = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path(DUMP_PATH))
-        .and(header_regex("user-agent", "^chess-improver"))
+        .and(header_regex("user-agent", "^rematch/"))
         .respond_with(ResponseTemplate::new(200).set_body_bytes(body))
         .mount(&server)
         .await;

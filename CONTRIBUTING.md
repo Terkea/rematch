@@ -16,6 +16,7 @@ tests need far less.
 - [Versioning and releases](#versioning-and-releases)
 - [Scope](#scope)
 - [AI-assisted contributions](#ai-assisted-contributions)
+- [How we review outside code](#how-we-review-outside-code)
 
 Everyone taking part follows the [Code of Conduct](CODE_OF_CONDUCT.md). How decisions are made is
 in [GOVERNANCE.md](GOVERNANCE.md), and the whole lifecycle of a change is in
@@ -28,7 +29,8 @@ in [GOVERNANCE.md](GOVERNANCE.md), and the whole lifecycle of a change is in
   on it first so two people don't build the same thing.
 - Share chess knowledge. Strong players and coaches can open a
   [coaching idea](https://github.com/Terkea/rematch/issues/new?template=coaching_idea.yml). No
-  code needed.
+  code needed. Rematch is for anyone who knows how the pieces move, up to about 2000. Above 2000
+  it hasn't been tested with real players yet; if you're 2000+, tell us where it's wrong.
 - Report a bug with the bug form. Please keep reports free of personal data.
 - Ask or propose in [Discussions](https://github.com/Terkea/rematch/discussions) before a large
   change, so we agree on the shape before you spend a weekend on it.
@@ -240,6 +242,25 @@ written down: [`CLAUDE.md`](CLAUDE.md) and the skills in [`.claude/skills`](.cla
 (the design system, chess UI conventions) describe how this repository is built and tested. Point
 your assistant at them. You are responsible for every line you submit: read it, run the tests,
 and make sure it does what the PR says.
+
+## How we review outside code
+
+Every pull request from outside the project is reviewed as untrusted code, yours included; it
+is nothing personal, and it is the same for everyone (ADR 0108, [SECURITY.md](SECURITY.md#how-we-review-outside-code)).
+
+- Your pull request's workflows run once the maintainer approves them. They run on
+  `pull_request`, never `pull_request_target`, with a read-only token and no secrets.
+- The `Sensitive paths` check fails when you change `.github/`, a Dockerfile or compose file,
+  `deploy/`, a lockfile, `package.json` scripts or dependencies, package-manager or toolchain
+  configuration, a `build.rs`, a `scripts/` directory, `CLAUDE.md`, `AGENTS.md`, `.claude/`,
+  `.mcp.json`, the coach's prompts (`backend/crates/ai/prompts/`), `algorithm/` or
+  `SECURITY.md`. That is expected: the maintainer reads those files line by line and then adds
+  the `sensitive-reviewed` label. Tick the template's "touches sensitive paths" box and say why
+  the change needs them; keeping them in a pull request of their own makes the review faster.
+- `CLAUDE.md`, `.claude/` and the prompts are on the list because AI agents read them as
+  instructions. A sentence there is prompt injection into every agent that works on the
+  repository, or into the coach.
+- The maintainer never runs your branch on the host, only inside the project's containers.
 
 ## Licence
 

@@ -22,8 +22,15 @@ back". The PR-title check enforces this. See CONTRIBUTING.md.
       changed `.github/`.
 - [ ] A decision that others should know about has an ADR in `docs/decisions/` (next number,
       listed in its README), or none was needed.
+- [ ] Algorithm behaviour changes (anything that can move the replay goldens or a Tier 1 KPI):
+      the pre-registered experiment is linked here with its decision (`lab/experiments/EXP-NNNN/`,
+      ADR 0106), or this change alters no behaviour.
 - [ ] UI changes: I followed `packages/ui/DESIGN.md`, `pnpm design:check` passes, and I attached
       screenshots at 390 px and 1440 px, day and night.
+- [ ] Sensitive paths: this PR changes none of the paths in SECURITY.md ("How we review outside
+      code": `.github/`, Dockerfiles and compose files, lockfiles, `package.json` scripts or
+      dependencies, `build.rs`, `scripts/`, `CLAUDE.md`, `.claude/`, the prompts, `algorithm/`),
+      or it does and the "What and why" section says which ones and why.
 - [ ] No secrets, tokens, personal data, or other players' private games in the code, fixtures,
       screenshots or this description.
 - [ ] The title is a Conventional Commit, and a breaking change says `!` or `BREAKING CHANGE:`.

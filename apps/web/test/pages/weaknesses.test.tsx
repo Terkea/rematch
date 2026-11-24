@@ -214,7 +214,8 @@ describe("weaknesses list", () => {
     expect(container.querySelector("[data-slot='dates-note']")?.textContent).toBe(
       "1 Sep to 31 Oct 2026: these dates trim the weekly lines only. Each rate, its range, its state and the comparison stay on your games in the last 6 months.",
     );
-    const { container: plain } = await list();
+    // All time is the only range with no note; the default 90 days trim the lines too.
+    const { container: plain } = await list({ from: "all" });
     expect(plain.querySelector("[data-slot='dates-note']")).toBeNull();
   });
 

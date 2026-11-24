@@ -58,6 +58,12 @@ describe("time control row", () => {
     expect(m.timeClass[1]?.href).toBe("/app?tc=blitz&from=2026-10-01&color=black&cmp=month");
   });
 
+  it("keeps an explicit All time on every link", () => {
+    const m = model("from=all");
+    expect(m.timeClass[1]?.href).toBe("/app?tc=blitz&from=all");
+    expect(m.color?.[1]?.href).toBe("/app?from=all&color=white");
+  });
+
   it("keeps the page's own params (the coach scope's account) on every link", () => {
     const m = model("", { keep: { account: "a1" } });
     expect(m.timeClass[1]?.href).toBe("/app?tc=blitz&account=a1");
@@ -104,18 +110,28 @@ describe("colour row", () => {
 });
 
 describe("period row", () => {
-  it("writes presets as days and names the current one", () => {
-    const m = model("from=2026-08-23&to=2026-11-22");
+  it("opens on the last 90 days, writes presets as days and All time as from=all", () => {
+    const m = model("");
     const labels = m.period?.options.map((o) => [o.label, o.current]);
     expect(labels).toEqual([
       ["30 days", false],
-      ["3 months", true],
+      ["90 days", true],
       ["6 months", false],
       ["12 months", false],
       ["All time", false],
     ]);
     expect(m.period?.options[0]?.href).toBe("/app?from=2026-10-24&to=2026-11-22");
-    expect(m.period?.options[4]?.href).toBe("/app");
+    expect(m.period?.options[1]?.href).toBe("/app");
+    expect(m.period?.options[4]?.href).toBe("/app?from=all");
+    expect(model("from=all").period?.options[4]?.current).toBe(true);
+    // The 90 days written out are the default, so they name the same preset.
+    expect(model("from=2026-08-25&to=2026-11-22").period?.options[1]?.current).toBe(true);
+  });
+
+  it("opens on every game where the page's default is all time (the games list)", () => {
+    const m = model("", { defaultPeriod: "all" });
+    expect(m.period?.options[4]).toMatchObject({ current: true, href: "/app" });
+    expect(m.period?.options[1]?.href).toBe("/app?from=2026-08-25&to=2026-11-22");
   });
 
   it("opens the custom form with native dates for a range that is no preset", () => {
@@ -133,6 +149,26 @@ describe("period row", () => {
 
   it("is absent where the page has no dates", () => {
     expect(model("", { dates: false }).period).toBeNull();
+  });
+});
+
+describe("thin window note", () => {
+  it("says so and offers All time when the 90 days hold fewer than 10 games", () => {
+    expect(model("", { windowGames: 4 }).thin).toEqual({
+      text: "4 games in the last 90 days. Most numbers here need at least 10.",
+      allTimeHref: "/app?from=all",
+    });
+    expect(model("", { windowGames: 1 }).thin?.text).toBe(
+      "1 game in the last 90 days. Most numbers here need at least 10.",
+    );
+  });
+
+  it("stays quiet with enough games, on a chosen range, or without a count", () => {
+    expect(model("", { windowGames: 10 }).thin).toBeNull();
+    expect(model("from=2026-10-01&to=2026-10-31", { windowGames: 2 }).thin).toBeNull();
+    expect(model("from=all", { windowGames: 2 }).thin).toBeNull();
+    expect(model("").thin).toBeNull();
+    expect(model("", { windowGames: 0, dates: false }).thin).toBeNull();
   });
 });
 
@@ -185,6 +221,11 @@ describe("summary", () => {
     const m = model("fmt=600%2B0&color=black&from=2026-10-24&to=2026-11-22");
     expect(m.active).toBe(3);
     expect(m.summary).toBe("Rapid, 10+0, Black, last 30 days");
+  });
+
+  it("names the default 90 days without counting them, and counts All time", () => {
+    expect(model("")).toMatchObject({ active: 0, summary: "Rapid, last 90 days" });
+    expect(model("from=all")).toMatchObject({ active: 1, summary: "Rapid, all time" });
   });
 
   it("names a comparison and a custom range in words", () => {

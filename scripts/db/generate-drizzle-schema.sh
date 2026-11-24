@@ -16,7 +16,9 @@ set -eu
 COMPOSE=${COMPOSE:-docker compose}
 DB="schema_pull_$$_$(date +%s)"
 OUT=packages/db/src/generated
-TMP=".pull-tmp-$$"   # relative to packages/db, as seen from the worker container
+# relative to packages/db, as seen from the worker container. Not `TMP`: Git Bash exports TMP (the
+# Windows temp dir), so assigning it would point the docker CLI's own temp files at this path.
+PULL_TMP=".pull-tmp-$$"
 
 psql_in() { # psql_in <db> [psql args...]  (SQL on stdin)
   db=$1; shift
@@ -26,7 +28,7 @@ psql_in() { # psql_in <db> [psql args...]  (SQL on stdin)
 cleanup() {
   psql_in postgres -c "DROP DATABASE IF EXISTS $DB" || true
   # removed inside the container: the files there are owned by root
-  $COMPOSE run --rm -T worker sh -c "rm -rf /app/packages/db/$TMP" || true
+  $COMPOSE run --rm -T worker sh -c "rm -rf /app/packages/db/$PULL_TMP" || true
 }
 trap cleanup EXIT
 
@@ -41,15 +43,15 @@ done
 
 # One container run: pull, normalise (fails loudly when a rule no longer matches), format.
 $COMPOSE run --rm -T \
-  -e DATABASE_URL="postgres://postgres:postgres@postgres:5432/$DB" -e PULL_OUT="./$TMP" \
+  -e DATABASE_URL="postgres://postgres:postgres@postgres:5432/$DB" -e PULL_OUT="./$PULL_TMP" \
   worker sh -c "
     cd /app && pnpm --filter @ci/db db:pull &&
-    test -f packages/db/$TMP/schema.ts && test -f packages/db/$TMP/relations.ts &&
-    node packages/db/scripts/normalise-generated.mjs packages/db/$TMP &&
-    pnpm exec biome check --write --unsafe packages/db/$TMP/schema.ts packages/db/$TMP/relations.ts
+    test -f packages/db/$PULL_TMP/schema.ts && test -f packages/db/$PULL_TMP/relations.ts &&
+    node packages/db/scripts/normalise-generated.mjs packages/db/$PULL_TMP &&
+    pnpm exec biome check --write --unsafe packages/db/$PULL_TMP/schema.ts packages/db/$PULL_TMP/relations.ts
   "
 
 # Success: move into place (overwrite the two files; nothing else lives there).
 mkdir -p "$OUT"
-cp "packages/db/$TMP/schema.ts" "packages/db/$TMP/relations.ts" "$OUT/"
+cp "packages/db/$PULL_TMP/schema.ts" "packages/db/$PULL_TMP/relations.ts" "$OUT/"
 ls "$OUT" >&2

@@ -3,9 +3,10 @@
 //! Idle engines sit on a stack; callers that find none wait in a FIFO queue.
 //! A dead engine (crashed, killed externally, or killed after a timeout) is
 //! replaced transparently, and a job whose engine crashes mid-search is
-//! retried once on a fresh engine. Engines are started with Stockfish's
-//! default `Threads` and `Hash` (only `hash_mb` overrides Hash), so searches
-//! stay deterministic and comparable with the TS worker.
+//! retried once on a fresh engine. Every engine is sent `Threads`
+//! ([`ENGINE_THREADS`]) and `Hash` ([`ENGINE_HASH_MB`] unless `hash_mb` says
+//! otherwise) explicitly, so searches stay deterministic whatever a build's
+//! defaults are (ADR 0104).
 //!
 //! Every process is tracked by a [`Ticket`]; `close()` resolves only after
 //! every ticket is gone, that is after every process was quit or killed and
@@ -20,7 +21,9 @@ use futures::future::BoxFuture;
 use tokio::sync::{Semaphore, oneshot, watch};
 use tokio_util::sync::CancellationToken;
 
-use crate::types::{AnalyseOptions, Analyser, AnalysisResult, EngineError};
+use crate::types::{
+    AnalyseOptions, Analyser, AnalysisResult, ENGINE_HASH_MB, ENGINE_THREADS, EngineError,
+};
 use crate::uci::{AliveHandle, StartOptions, UciEngine, validate_fen};
 
 /// Engines started at once per pool. A cold start loads the NNUE net from
@@ -31,7 +34,7 @@ pub const SPAWN_CONCURRENCY: usize = 2;
 pub struct PoolOptions {
     pub size: usize,
     pub path: PathBuf,
-    /// `setoption name Hash`; `None` keeps the Stockfish default.
+    /// `setoption name Hash`; `None` sends [`ENGINE_HASH_MB`].
     pub hash_mb: Option<u32>,
 }
 
@@ -382,8 +385,8 @@ async fn spawn(inner: &Arc<Inner>) -> Result<Pooled, EngineError> {
     let start = || {
         UciEngine::start(StartOptions {
             path: inner.opts.path.clone(),
-            threads: None,
-            hash_mb: inner.opts.hash_mb,
+            threads: Some(ENGINE_THREADS),
+            hash_mb: Some(inner.opts.hash_mb.unwrap_or(ENGINE_HASH_MB)),
             syzygy_path: None,
             handshake_timeout: None,
         })

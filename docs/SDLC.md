@@ -51,6 +51,13 @@ Contributors work in a fork; branches are named for what they do (`fix/filter-on
 - The template's checklist applies: test first, the gates, an ADR when a decision was made,
   `design:check` and screenshots for UI, no secrets or personal data.
 - Small pull requests are reviewed faster. One idea per PR.
+- A change to the algorithm's behaviour (any change that can move the replay goldens or a Tier 1
+  KPI, a major version under ADR 0104: a threshold, the ranking, a detector, a prior, a protocol)
+  needs a pre-registered experiment, merged before the change: an "Experiment on the algorithm" issue,
+  then `lab/experiments/EXP-NNNN/` with its pre-registration and analysis committed before
+  anything runs (ADR 0106, [the protocol](evaluation.md#how-we-do-science-on-the-algorithm)).
+  The change's pull request links the experiment and its decision. A refactor, a comment or a
+  copy change needs none; the unchanged goldens prove it.
 
 ## 5. CI
 
@@ -67,13 +74,47 @@ Every pull request runs the same checks, and all of them are required by the `ma
 | `schema-drift` | the generated Drizzle schema is up to date with `db/migrations` |
 | `pr-title` | the title is a Conventional Commit |
 
-CI uses no secrets, and fork pull requests run with a read-only token. A pull request must be up
+One more check runs on every pull request but is advisory, not required: `Sensitive paths`
+(ADR 0108) lists the files that need the maintainer's line-by-line review (below).
+
+CI uses no secrets, and fork pull requests run with a read-only token, once the maintainer has
+approved their workflows. A pull request must be up
 to date with `main` before it merges (strict checks).
 
 ## 6. Review
 
 The maintainer reviews every pull request (`CODEOWNERS`). No approval count is required, because
 there is one maintainer, but every review conversation must be resolved before merging.
+
+### Reviewing outside code
+
+A pull request from outside the project, Dependabot's included, is untrusted until it has been
+read (ADR 0108). Its workflows wait for the maintainer's approval, and the `Sensitive paths` check
+lists the files that need a line-by-line read. The maintainer reads the diff with `gh pr diff`,
+never checks the branch out on the host, and builds it only inside the compose containers. The
+checklist:
+
+- Dependencies: every added or bumped package in `package.json`, `Cargo.toml` or `pyproject.toml`
+  is wanted, pinned exactly and at least 7 days old; the lockfile diff adds nothing the manifest
+  does not explain (no new registry or `git+` source, no tarball URL, no package renamed into a
+  look-alike).
+- Install and build hooks: no new or changed `preinstall`, `install`, `postinstall` or `prepare`
+  script, no new entry in `allowBuilds`, no new `build.rs`, and no changed Dockerfile `RUN` step.
+- Obfuscated code: no minified or encoded blobs, `eval`, `new Function`, base64 or hex strings
+  decoded at run time, or long lines that hide code past the edge of the diff view.
+- Network calls: no new URL, host, IP address, `fetch`, `curl` or `wget`, and no telemetry the
+  pull request does not explain.
+- Binary files: no new executable, archive or opaque binary. Images and visual baselines are
+  opened and looked at.
+- Workflows: no new `permissions`, no `pull_request_target` or `workflow_run`, no `secrets.`, no
+  action pinned by tag instead of commit, and no `${{ }}` expression inside a `run` script.
+- Agent instructions: every change to `CLAUDE.md`, `AGENTS.md`, `.claude/`, `.mcp.json`, the
+  coach's prompts or the sidecar's permission options is read as an instruction to an AI agent.
+  A sentence that asks an agent to fetch, run, send, skip a check or ignore its rules is grounds
+  to close the pull request.
+
+When every flagged file has been read, the maintainer adds `sensitive-reviewed`. A commit pushed
+after that needs the label removed and added again.
 
 ## 7. Merge
 
@@ -202,5 +243,7 @@ A change is done when:
 - numbers are honest: a sample size with every rate, a dash rather than a fake zero, no
   "improved" without evidence;
 - a decision worth remembering has an ADR, and docs that describe the behaviour are updated;
+- a behaviour change to the algorithm cites its decided experiment (`lab/findings.md`) and is
+  a new algorithm version with a changelog entry (ADRs 0104 and 0106);
 - there are no secrets, tokens, personal data or other players' private games anywhere in it;
 - the PR title is a Conventional Commit that describes the change for the changelog.

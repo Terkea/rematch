@@ -1,5 +1,5 @@
-//! The ONLY place plan and quota decisions are made (owner input, binding). R3 owns it until M7
-//! takes it over. Quotas are per account until users exist (ruling Q3).
+//! The ONLY place plan and quota decisions are made (owner input, binding). Plans are limit presets,
+//! not products. Quotas are per account until users exist (ruling Q3).
 //!
 //! | Plan | Chat messages | Engine checks | Manual reports |
 //! |---|---|---|---|
@@ -230,7 +230,7 @@ impl BetaLimits {
     }
 }
 
-/// Plan and budget-scope lookup. M7 replaces [`DefaultEntitlements`] with the billing-backed one.
+/// Plan and budget-scope lookup. `DefaultEntitlements` is replaced when per-user limits exist.
 pub trait Entitlements: Send + Sync {
     fn plan<'a>(&'a self, account_id: Uuid) -> BoxFuture<'a, Plan>;
     /// The accounts that share one budget (including `account_id`).
@@ -264,8 +264,8 @@ impl Entitlements for DefaultEntitlements {
 }
 
 /// One plan for every account, each with its own budget, and the configured beta limits. The
-/// worker wires it from `AI_DEFAULT_PLAN` and the `AI_BETA_*` variables until M7's
-/// billing-backed entitlements. The default is the beta plan with its default limits.
+/// worker wires it from `AI_DEFAULT_PLAN` and the `AI_BETA_*` variables until per-user
+/// limits exist. The default is the beta plan with its default limits.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ConfiguredEntitlements {
     pub plan: Plan,

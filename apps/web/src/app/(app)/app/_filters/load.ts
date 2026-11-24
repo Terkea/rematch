@@ -1,6 +1,7 @@
 import type { Db } from "@ci/db";
 import { type FormatOption, listFormats } from "../../../../server/filters/formats";
-import type { Params, StatsFilters } from "../../../../server/filters/params";
+import { defaultRange, type Params, type StatsFilters } from "../../../../server/filters/params";
+import { gamesInRange } from "../../../../server/filters/window";
 import type { TimeClass } from "../../../../server/games/types";
 import { type BarConfig, type FilterBarModel, filterBarModel, parseBarFilters } from "./model";
 
@@ -21,8 +22,20 @@ export async function loadFilterBar(db: Db, params: Params, setup: BarSetup): Pr
   const tc: TimeClass | null = parseBarFilters(params, { ...probe, formatSupported: false }).tc;
   const formats: FormatOption[] =
     tc && setup.formatSupported !== false ? await listFormats(db, accountIds, tc) : [];
-  const config: BarConfig = { ...probe, formats };
-  const filters = parseBarFilters(params, config);
+  const parsedConfig: BarConfig = { ...probe, formats };
+  const filters = parseBarFilters(params, parsedConfig);
+  // The default 90 days with too few games say so (ADR 0083 Amendment 2): count them only then.
+  const def = defaultRange(parsedConfig);
+  const onDefault =
+    setup.dates &&
+    setup.defaultPeriod !== "all" &&
+    !(setup.compare && filters.cmp !== null) &&
+    filters.from === def.from &&
+    filters.to === def.to;
+  const windowGames = onDefault
+    ? await gamesInRange(db, accountIds, filters.tc, { from: filters.from, to: filters.to })
+    : null;
+  const config: BarConfig = { ...parsedConfig, windowGames };
   return { config, filters, model: filterBarModel(filters, config) };
 }
 

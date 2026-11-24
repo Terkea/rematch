@@ -143,9 +143,8 @@ Scope: competitor teardown, unmet needs of improving players, retention UX, diff
 | chess.com Diamond | n/a | ~$144 *(unverified)* |
 | Chessigma review | free | free |
 | Lichess | free | free |
-| **Ours (proposed)** | **~$8** | **~$60** |
 
-Our proposed price is at the low end of the paid field. That is fine, but the **free tier has to beat Chessigma and Lichess on something visible**: the cross-game diagnosis, not single-game review.
+Rematch is free. The cross-game diagnosis has to beat Chessigma and Lichess on something visible, and single-game review is not where it can.
 
 ---
 
@@ -161,7 +160,7 @@ Our proposed price is at the low end of the paid field. That is fine, but the **
 8. **Explanations of *why*.** Noctie users ask for sentences. DecodeChess's appeal is the "why".
 9. **The big picture in the review UI.** A persistent eval graph, a clickable move list, and played and best moves side by side. [critique](https://www.chess.com/forum/view/site-feedback/detailed-critique-of-new-game-review-110227953)
 10. **Neglected areas.** "My brain knows I need endgames, but my heart prefers openings". Players need a nudge to train what they avoid.
-11. **Billing trust.** Hard cancellations, and app-store purchases that don't match the advertised tier (Aimchess, chess.com).
+11. **Billing trust.** Hard cancellations, and app-store purchases that don't match the advertised tier (Aimchess, chess.com). Rematch has nothing to bill.
 12. **Mobile and offline drilling** (Chessbook, Chessable).
 
 ---
@@ -199,13 +198,12 @@ Each item is marked as either in the design already (strengthen it) or missing (
 9. **"Why" playback** (partly in design). For each key moment, *play out* the refutation PV on the board with red-pen arrows, not just text. It answers the Noctie and DecodeChess demand for explanations while staying engine-grounded.
 10. **"Biggest gap" and priority-line repertoire building** (partly in design). Borrow from Chessbook and Chessable: the trainer starts from **lines the player actually reached** and opponent replies weighted by frequency at their band. Then add a one-tap "go to your biggest gap".
 11. **Conversion and defence sparring vs a human-like bot** (in design as "beat the engine"). Use a Maia-level opponent, not full Stockfish, so conversion drills feel like real games at the player's level (Noctie's main source of praise).
-12. **Ask-the-coach chat over your own data** (missing). Chessigma Supercoach and Chessiro have chat, but it is ungrounded. Ours answers "why do I lose with the London?" only through tools over the profile, opening tree and game DB, using the same claim validator. Cap it for Pro fair use.
+12. **Ask-the-coach chat over your own data** (missing). Chessigma Supercoach and Chessiro have chat, but it is ungrounded. Ours answers "why do I lose with the London?" only through tools over the profile, opening tree and game DB, using the same claim validator. Cap it for fair use.
 13. **A "Neglected area" nudge** (missing). If a ranked weakness sits in an area the player never trains (often endgames), surface it gently once a week.
 14. **A big-picture review UI** (in design: game explorer). Always-visible eval graph, a two-column clickable move list, and played and best moves shown together. The chess.com redesign showed these are table stakes.
-15. **Honest billing** (missing note). Web-only Stripe, one-click cancel, prorated, no app-store tier mismatch. Mention it on the pricing page, because it is a known pain with incumbents.
-16. **Offline-capable PWA drills** (missing). Cache the day's queue and the FSRS state, and sync later.
-17. **Coach and club seats** (missing). A coach dashboard over several students' reports and drills. Coaches are a trusted distribution channel and a higher price point.
-18. **Pre-tournament opponent scouting** (Aimchess has it; missing). Opening prep from an opponent's *public* games, for OTB and arena prep only. Never during a game, and never with live hooks.
+15. **Offline-capable PWA drills** (missing). Cache the day's queue and the FSRS state, and sync later.
+16. **Coach and club seats** (missing). A coach dashboard over several students' reports and drills. Coaches are a trusted distribution channel and a higher price point.
+17. **Pre-tournament opponent scouting** (Aimchess has it; missing). Opening prep from an opponent's *public* games, for OTB and arena prep only. Never during a game, and never with live hooks.
 
 ---
 
@@ -227,7 +225,7 @@ Each item is marked as either in the design already (strengthen it) or missing (
 3. **Streamer viewer reviews.** A streamer page and overlay: "Viewers' report cards". Viewers link accounts, and the streamer reviews ranked weaknesses on stream. That makes "roast my games" content. Give streamers affiliate codes.
 4. **Free public "quick diagnosis"** by username, with no signup. It shows 3 area scores plus 1 costed weakness, and the full report is gated behind signup. This is the SEO and word-of-mouth landing page. Cost is bounded by reusing Lichess evals and a 20-game cap.
 5. **Head-to-head and friend comparisons.** "You vs your club-mate: who converts better?" It only works with consent, and both players must opt in.
-6. **Coach referrals.** Coaches invite students. The coach gets a free seat for every N paying students.
+6. **Coach referrals.** Coaches invite students and see their progress, with consent.
 
 ---
 
@@ -241,14 +239,13 @@ Each item is marked as either in the design already (strengthen it) or missing (
 6. **Add the Maia human-likelihood layer (§8, §8a).** Mark each mistake as typical or unusual for the band. Weight opponent replies in the opening trainer by frequency at the band. Use a human-like sparring opponent for conversion and defence drills and endgame play. Write an ADR for licensing and hosting.
 7. **Recency and filters for own-mistake puzzles (§10.5).** Default to the last 30 days. Add filters for time control, phase, motif and opening. Retire mastered items.
 8. **Add "play the refutation" to every cited position (§10.3, §10.4).** Animate the engine PV with red-pen arrows. The explanation text stays tied to that PV through the validator.
-9. **Add an evidence-linked "Ask your coach" chat (new, Pro).** It uses tool calls over the profile and DB only, uses the same claim validator, and has fair-use caps.
-10. **Free tier positioning (§12).** Make free single-game review unlimited and run it client-side in WASM, so it costs us almost nothing, to match Chessigma and Lichess. The free tier keeps the cross-game diagnosis teaser (3 areas plus the top costed weakness). Pro sells the plan, the transfer tracking and the trainer.
+9. **Add an evidence-linked "Ask your coach" chat.** It uses tool calls over the profile and DB only, uses the same claim validator, and has fair-use caps.
+10. **Single-game review positioning (§12).** Make single-game review unlimited and run it client-side in WASM, so it costs almost nothing, to match Chessigma and Lichess. The cross-game diagnosis is the part that needs the server.
 11. **Add a no-signup "quick diagnosis by username" landing flow (§10.1, §10.2).** Bounded to about 20 games, reusing Lichess evals.
 12. **Add a monthly report card and an annual "Climb Wrapped" with video export (§10.8).** Every persona and statistic is grounded. Target the first one for late December 2026.
 13. **Add "biggest gap" and "lines you actually reach" to the opening trainer (§8a).** Seed the repertoire from the player's own tree, not a blank one.
 14. **Add a big-picture requirement to the game explorer (§10.4).** A persistent eval graph, a two-column clickable move list, and played and best moves side by side, on mobile too.
-15. **Add a Coach/Club tier and a streamer programme (§12).** Multi-student dashboards, a streamer overlay of "viewer report cards", and affiliate codes.
-16. **Add billing trust copy and policy (§12).** Web-only billing, one-click cancel, and a statement on the pricing page.
-17. **Make drills offline-capable in the PWA (§3).** Cache the queue and the FSRS state, and sync when back online.
-18. **Add a weekly "neglected area" nudge (improvement engine).** It shows only when a top-ranked weakness's area hasn't been trained for 14 days.
-19. **Add opponent scouting for tournament prep (later, Pro).** Public games only, framed as prep, with no in-game surface, consistent with §3 non-goals.
+15. **Add a streamer programme.** A streamer overlay of "viewer report cards".
+16. **Make drills offline-capable in the PWA (§3).** Cache the queue and the FSRS state, and sync when back online.
+17. **Add a weekly "neglected area" nudge (improvement engine).** It shows only when a top-ranked weakness's area hasn't been trained for 14 days.
+18. **Add opponent scouting for tournament prep (later).** Public games only, framed as prep, with no in-game surface, consistent with §3 non-goals.

@@ -1,8 +1,10 @@
 # BuildKit reads <Dockerfile>.dockerignore next to the Dockerfile; the build context is the repo root,
-# so backend/.dockerignore alone would not apply. Only the backend sources and the migrations are sent.
+# so backend/.dockerignore alone would not apply. Only the backend sources, the migrations and the
+# algorithm manifest (`common::algorithm` compiles it in, ADR 0105) are sent.
 *
 !backend/
 !db/
+!algorithm/
 !LICENSE
 !NOTICE
 backend/target/

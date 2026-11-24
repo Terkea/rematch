@@ -22,6 +22,7 @@ const SHOT = {
 
 const SECTIONS = [
   "hero",
+  "brand",
   "foundations",
   "primitives",
   "overlays",
@@ -57,7 +58,8 @@ async function visibleText(page: Page, selector: string): Promise<string> {
 /**
  * The page as one tall viewport, not a `fullPage` capture: the charts measure their parent, and
  * Chromium's fullPage capture resizes the view under them (M5a T13). A tall viewport measures
- * once, before any capture.
+ * once, before any capture. The styleguide is loaded with `?render=all` (ADR-WEB-20): off-screen
+ * sections otherwise hold a one-viewport guess that grows with the tall viewport.
  */
 async function tall(page: Page): Promise<void> {
   const width = page.viewportSize()?.width ?? 1440;
@@ -75,7 +77,7 @@ test.beforeEach(async ({ page }, info) => {
 });
 
 test("the styleguide sections look as they did", async ({ page }) => {
-  await gotoSettled(page, "/styleguide");
+  await gotoSettled(page, "/styleguide?render=all");
   await hydrated(page, "[data-section='charts'] button[aria-label]");
   await tall(page);
   // The trend has drawn: its clip spans the plot (T4/T13).

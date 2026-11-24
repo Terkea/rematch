@@ -1,5 +1,10 @@
 [
   {
+    "name": "sensitive-reviewed",
+    "color": "b60205",
+    "description": "The maintainer reviewed this PR's sensitive paths by hand (ADR 0108)"
+  },
+  {
     "name": "needs-triage",
     "color": "ededed",
     "description": "New: the maintainer has not looked at it yet"
@@ -113,5 +118,10 @@
     "name": "sweep",
     "color": "e4e669",
     "description": "Opened by a scheduled maintenance sweep"
+  },
+  {
+    "name": "experiment",
+    "color": "1d76db",
+    "description": "A pre-registered experiment on the algorithm (ADR 0106)"
   }
 ]

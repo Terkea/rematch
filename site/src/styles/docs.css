@@ -263,3 +263,52 @@ dialog {
 .sl-markdown-content details pre {
   white-space: pre-wrap;
 }
+
+/* ---- experiments list and status badges (shared by the landing strip and the docs) ---- */
+
+.lab-list {
+  list-style: none;
+  padding: 0;
+}
+
+.lab-item {
+  display: grid;
+  justify-items: start;
+  gap: calc(var(--spacing) * 1);
+  padding-block: calc(var(--spacing) * 3);
+  border-bottom: 1px solid var(--color-rule);
+}
+
+.lab-question {
+  font-weight: 600;
+}
+
+.lab-meta {
+  color: var(--color-ink-faint);
+  font-size: var(--text-sm);
+  font-variant-numeric: lining-nums tabular-nums;
+}
+
+.lab-badge {
+  display: inline-block;
+  padding: calc(var(--spacing) * 0.5) calc(var(--spacing) * 2);
+  border: 1px solid var(--color-rule-strong);
+  border-radius: var(--radius-field);
+  color: var(--color-ink-soft);
+  font-size: var(--text-sm);
+  line-height: var(--text-sm--line-height);
+}
+
+.lab-badge-pre-registered {
+  border-style: dashed;
+}
+
+.lab-badge-running {
+  border-color: var(--color-ink);
+  color: var(--color-ink);
+}
+
+.lab-badge-decided {
+  border-color: var(--color-good);
+  color: var(--color-good-text);
+}

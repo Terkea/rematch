@@ -7,6 +7,7 @@ Accuracy
 
 Based on 38 rapid games
 
+74.2%
 50%
 90%
 
@@ -17,6 +18,7 @@ Blunders per game
 
 Based on 38 rapid games
 
+1.84
 0.0
 2.6
 
@@ -29,6 +31,7 @@ Based on 11 rapid games
 .
 Early estimate
 
+61.2%
 40%
 80%
 

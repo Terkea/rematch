@@ -17,7 +17,7 @@ One file per decision: context, decision, alternatives, consequences. New decisi
 - [0013. Local 5-piece Syzygy plus the Lichess tablebase API](0013-tablebases-local-plus-api.md)
 - [0014. Stockfish WASM in the browser, GPL-compliant](0014-browser-stockfish-wasm.md)
 - [0015. UI stack and an anti-slop design process](0015-ui-stack-and-process.md)
-- [0016. Freemium, with Pro at $7.99/month or $59.99/year via Stripe Managed Payments](0016-monetisation.md)
+- 0016. Withdrawn: Rematch has no paid plans.
 - [0017. Per-game metrics plus append-only KPI snapshots](0017-kpi-snapshots.md)
 - [0018. Age gate and privacy defaults](0018-children-and-privacy.md)
 - [0019. Hosting: Vercel for the web app, a dedicated-CPU host for the workers](0019-hosting.md)
@@ -106,6 +106,10 @@ One file per decision: context, decision, alternatives, consequences. New decisi
 - [0100. A pipeline benchmark: synthetic players with injected flaws (Tier 1)](0100-pipeline-benchmark-synthetic-players.md)
 - [0101. A ranking floor, W1 compared with the opponents, and W5 compared with the evaluation](0101-weakness-ranking-floor-and-baselines.md)
 - [0104. Factual and deterministic: four layers, one versioned recommendation algorithm](0104-factual-and-deterministic-four-layers.md)
+- [0105. The algorithm manifest, stamping and the replay suite](0105-algorithm-manifest-stamping-and-replay.md)
+- [0106. Algorithm science: pre-registered experiments and a Python lab that drives the Rust algorithm](0106-algorithm-science-lab.md)
+- [0107. The experiment value gate, and the catalogue that checks the learning framework](0107-experiment-value-gate-and-catalogue.md)
+- [0108. Reviewing outside code: sensitive paths, fork approval and a read-only token](0108-reviewing-outside-code.md)
 
 ## Records with placeholder numbers
 
@@ -132,6 +136,7 @@ These lanes wrote their records under a lane prefix. The controller gives each i
 - [ADR-WEB-17. Original procedural board sounds](ADR-WEB-17-original-procedural-sounds.md)
 - [ADR-WEB-18. Quality sweep, visual baselines and the throttle fix](ADR-WEB-18-quality-sweep-and-visual-baselines.md)
 - [ADR-WEB-19. One statistics convention, and the critic's layout fixes](ADR-WEB-19-one-statistics-convention-and-layout-polish.md)
+- [ADR-WEB-20. The styleguide's off-screen sections skip rendering](ADR-WEB-20-styleguide-content-visibility.md)
 
 ### Profile engine (R2): ADR-R2
 

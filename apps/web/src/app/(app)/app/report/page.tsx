@@ -6,6 +6,7 @@ import { betaReportIntervalDays } from "../../../../server/coaching";
 import { getDb } from "../../../../server/db";
 import { requestEventCursor } from "../../../../server/events/request-cursor";
 import { resolveCoachScope } from "../../../../server/profile";
+import { reportWindowNote } from "../_filters/dates-note";
 import { FilterBar } from "../_filters/filter-bar";
 import { loadCoachBar, manyAccounts } from "../_filters/load";
 import { withSide } from "../_filters/side";
@@ -68,10 +69,16 @@ export default async function ReportPage({
       <ReportView
         data={data}
         filterBar={
-          <FilterBar
-            model={bar.model}
-            colorNote="The report covers both colours. Weaknesses, areas and progress split by colour."
-          />
+          <>
+            <FilterBar
+              model={bar.model}
+              colorNote="The report covers both colours. Weaknesses, areas and progress split by colour."
+            />
+            {/* The report names its window (ADR 0083 Amendment 2): no date narrows its text. */}
+            <p data-slot="dates-note" className="m-0 max-w-2xl text-sm text-ink-soft">
+              {reportWindowNote({ from: bar.filters.from, to: bar.filters.to })}
+            </p>
+          </>
         }
         accountSwitch={manyAccounts(scope)}
         askColor={bar.filters.color === "both" ? null : bar.filters.color}

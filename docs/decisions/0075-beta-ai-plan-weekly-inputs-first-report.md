@@ -28,7 +28,7 @@ The M5b coach pages need real data. Three gaps in the R3 wiring blocked that:
   - The free plan's 30-day interval is unchanged.
 - **Budgets and metering are unchanged.** The beta plan's monthly cap is the Pro one (USD 2 per account, `AI_BUDGET_PRO_MICRO_USD`). The global cap applies on top, and every call is still metered.
 - Engine checks: beta gets the Pro allowance of 20 a day (accepted by the coordinator). The ruling sets only chat and reports, and 3 a week would block testing the chat's engine tool.
-- The monthly report schedule stays Pro-only, so beta testers rebuild their reports on demand.
+- The monthly report schedule stays on the larger plan only, so beta testers rebuild their reports on demand.
 
 ### G2: weekly-review inputs from R2 data
 

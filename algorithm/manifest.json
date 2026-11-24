@@ -1,0 +1,89 @@
+{
+  "components": {
+    "facts": {
+      "engine_nodes": 300000,
+      "engine_options": {
+        "hash_mb": 16,
+        "limit": "go nodes",
+        "new_game": "ucinewgame before every search",
+        "threads": 1
+      },
+      "engine_protocol": "sf19-n300k-v1",
+      "enrichment": {
+        "max_critical_plies": 30,
+        "multipv": 3,
+        "multipv_protocol": "sf19-n300k-mpv3-v1",
+        "protocol": "enr-v1",
+        "threat_nodes": 50000,
+        "threat_protocol": "sf19-n50k-null-v1"
+      },
+      "maia": {
+        "default_model": "rapid",
+        "elo_max": 2100,
+        "elo_min": 1000,
+        "package": "maia2==0.11.0",
+        "used_when": "MAIA_URL is configured"
+      },
+      "phase_metrics_version": 3,
+      "player_game_metrics_version": 3,
+      "source_digest": {
+        "backend/crates/analysis/src": "76e1a74c67917f5743bd85c77d0476656937f10493b96faf15e885e52f26fb5f",
+        "backend/crates/chess-core/src": "4c2be1483a53de496a37d2dce3a1a63e44070049410cf5c9a0b1090bbd455abf",
+        "backend/crates/engine/src": "cf18431a59f9607fc115e01fface9fe7cb0dd6483dcdae914c2c851ea32f0ddb",
+        "backend/crates/enrich/src": "b8f57e6e1df027a58dd9a2fe0c370bfd972941ca4bea16a62fa86a943848cbb6"
+      },
+      "stockfish": {
+        "asset": "stockfish-linux-x86-64-universal.tar.gz",
+        "release": "sf_19",
+        "sha256": "9defc0d4e55d49c65a6d042f3e571a39fcea499ade6dbe741b53b8c65e03611f"
+      },
+      "syzygy": {
+        "manifest_sha256": "9db345be24baf2ffb97ab29e27ec72d109005e00640f32efb0be46386890f0db",
+        "set": "3-4-5"
+      }
+    },
+    "language": {
+      "anthropic_version": "2026-10-21",
+      "models": [
+        "claude-haiku-5-5",
+        "claude-sonnet-5-5"
+      ],
+      "prompt_sets": {
+        "change": "c0bdee42eee0db3131b70c37a9a2a7b91076d57256e51cb5d03fb9742a04783c",
+        "chat": "3c872e61f32dc3875c6fbbb7ef9949b36459be484e40f3dd2c312809b8662b6b",
+        "chat_summary": "68e53e35309c86c6334dc3b45ac9e210552ace66563a452975ea256d795fb26f",
+        "report": "36ab4116c87719baa41fa31fb4e0de9a08a14c84a03f9e779c003c46f720ff24",
+        "weekly": "82758a37e89b26b90f52f2eb7f3f33b3e05ab389bdf149a5a2be1a14e03c9236"
+      },
+      "validator_digest": "de9be7308916979e494f224ba1c67d715514d0356511b4853680568be3b9e727"
+    },
+    "profile": {
+      "decisive_dw": 15,
+      "detector_version": "tl-v1",
+      "peer_rating_window": 150,
+      "source_digest": {
+        "backend/crates/profile-core/src": "ddf90f4648636bb0de3dffd5d0c8e8c77ba14bf91546c5e24913b6cabfb37fde",
+        "backend/crates/profile/src": "e7ed4bacec8ba402cd03100159a78693e241b31e3f9091977e3632e2a63691ba"
+      },
+      "t_win": 85
+    },
+    "recommendation": {
+      "coaching_input_version": "coaching-input-v3",
+      "focus_version": "focus-v1",
+      "min_games": 30,
+      "model_loss_per_winning_episode": 0.15,
+      "rank_min_excess_per_game": 0.02,
+      "ranking_version": "rank-v1",
+      "source_digest": {
+        "apps/web/src/server/focus/goal.ts": "4d4c186f2fa2a83b4ce5785e838a67e5320969cf0103dd9d5a021ae7efaac4b1",
+        "apps/web/src/server/train/model.ts": "bf9ed48573336203232620d5c0fbfc41bd1f24becf6300925cb02523545e6768",
+        "backend/crates/ai/src/output/drills.rs": "3875d4337a16de8dd2a3912f2bfc53d97528003ae88e12a17a5a6b8d13c3960c",
+        "backend/crates/coaching-input/src": "9391cea65f5edfb1076e3a7453b30f64e8cf4356b862e0042113c66b7148c727"
+      },
+      "trainer_version": "trainer-v1",
+      "weekly_input_version": "weekly-input-v1"
+    }
+  },
+  "id": "algo-1.1.0+fa5e2186e1dd",
+  "version": "1.1.0"
+}

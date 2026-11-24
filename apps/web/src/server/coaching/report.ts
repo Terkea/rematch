@@ -27,6 +27,8 @@ export type ReportView = {
    * read (holistic F10). The page shows the calm "verify" state; nothing of the report is sent.
    */
   locked?: "unverified";
+  /** The algorithm of the shown report's run (ADR 0105); null before versioning or no report. */
+  algorithmId?: string | null;
 };
 
 const EMPTY: ReportView = {
@@ -96,12 +98,24 @@ export async function getReport(
             );
     }
 
+    const algorithmId = !report?.reportRunId
+      ? null
+      : run && run.id === report.reportRunId
+        ? run.algorithmId
+        : ((
+            await tx
+              .select({ algorithmId: reportRuns.algorithmId })
+              .from(reportRuns)
+              .where(eq(reportRuns.id, report.reportRunId))
+              .limit(1)
+          )[0]?.algorithmId ?? null);
     const next = report ? new Date(report.createdAt.getTime() + intervalDays * DAY_MS) : null;
     return {
       state: reportState(run ?? null, report ?? null, ready),
       payload: report ? assembleReportPayload(report, sections) : null,
       createdAt: report?.createdAt ?? null,
       nextManualAt: next && next > now ? next : null,
+      algorithmId,
     };
   });
 }

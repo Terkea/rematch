@@ -48,6 +48,22 @@ const bar = (q: string, c: Partial<BarConfig> = {}) => {
 };
 
 describe("FilterBar", () => {
+  it("says when the default 90 days are too few games, with one link to all time", () => {
+    render(bar("", { windowGames: 3 }));
+    const note = screen.getByText(/3 games in the last 90 days/);
+    expect(note.closest("[data-slot='thin-window']")).not.toBeNull();
+    const link = within(note.closest("[data-slot='thin-window']") as HTMLElement).getByRole(
+      "link",
+      { name: "All time" },
+    );
+    expect(link.getAttribute("href")).toBe("/app?from=all");
+  });
+
+  it("shows no thin-window note with enough games", () => {
+    const { container } = render(bar("", { windowGames: 30 }));
+    expect(container.querySelector("[data-slot='thin-window']")).toBeNull();
+  });
+
   it("is links and GET forms, so it works without JavaScript", () => {
     const { container } = render(bar("color=black"));
     const desktop = container.querySelector("section > div") as HTMLElement;

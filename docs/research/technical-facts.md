@@ -204,7 +204,6 @@ Source: https://lichess.org/page/accuracy · implementation: https://github.com/
 | cm-chessboard | 8.15.8 | MIT | MIT alternative board |
 | better-auth | 1.7.27 | MIT | **recommended** |
 | next-auth / @auth/core | 4.24.15 (v5 still `5.0.0-beta.32`) / 0.41.3 | ISC | |
-| stripe (Node SDK) | 23.2.0 | MIT | |
 | turbo | 2.11.13 | MIT | |
 | pnpm | 12.21.0 | MIT | |
 | ts-fsrs | 6.0.0 | MIT | |

@@ -1,7 +1,7 @@
 /** The first load of one weakness: its header and sheet in pencil wells, never a spinner (B18). */
 export default function Loading() {
   return (
-    <div role="status" className="flex flex-col gap-8">
+    <div data-route-loading role="status" className="flex flex-col gap-8">
       <p className="sr-only">Reading this weakness</p>
       <div aria-hidden="true" className="flex flex-col gap-4">
         <span className="h-3 w-28 rounded-pill bg-well" />

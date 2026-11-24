@@ -2,7 +2,8 @@
 //! `cli db migrate` only migrates; `cli profile`, `cli eta` and `cli queue-lag` only read;
 //! `cli recompute-metrics` rewrites stale metrics from the stored evals (no engine, no worker);
 //! `cli report-rebuild` queues a report run for a running worker (ADR 0086); `cli bench run`
-//! runs the pipeline benchmark (ADR 0100).
+//! runs the pipeline benchmark (ADR 0100); `cli algo` shows and compares algorithm manifests
+//! (ADR 0105); `cli lab` is the lab bridge (ADR 0106).
 
 use std::time::Duration;
 
@@ -27,6 +28,35 @@ async fn main() {
     // The pipeline benchmark (ADR 0100): its own throwaway database and engines, no workers.
     if argv.first().map(String::as_str) == Some("bench") {
         let code = cli::bench_cmd::run_bench(
+            &argv,
+            &|k| std::env::var(k).ok(),
+            &|l| println!("{l}"),
+            &|l| eprintln!("{l}"),
+        )
+        .await;
+        std::process::exit(code);
+    }
+    // The algorithm manifest (ADR 0105): the database only for an id argument.
+    if argv.first().map(String::as_str) == Some("algo") {
+        let pool = if cli::algo_cmd::needs_db(&argv) {
+            match std::env::var("DATABASE_URL") {
+                Ok(url) => db::pool::connect(&url, db::pool::DbOptions::default())
+                    .await
+                    .ok(),
+                Err(_) => None,
+            }
+        } else {
+            None
+        };
+        let code = cli::algo_cmd::run_algo(&argv, pool.as_ref(), &|l| println!("{l}"), &|l| {
+            eprintln!("{l}")
+        })
+        .await;
+        std::process::exit(code);
+    }
+    // The lab bridge (ADR 0106): JSON on stdin and stdout, no workers.
+    if argv.first().map(String::as_str) == Some("lab") {
+        let code = cli::lab_cmd::run_lab(
             &argv,
             &|k| std::env::var(k).ok(),
             &|l| println!("{l}"),

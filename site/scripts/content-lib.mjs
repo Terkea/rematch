@@ -118,3 +118,56 @@ export function rewriteMarkdown(markdown, fromRepoPath) {
     })
     .join("\n");
 }
+
+/** Markdown inline syntax as plain text: links keep their text, code and emphasis lose marks. */
+export function plainText(markdown) {
+  return markdown
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/`+([^`]*)`+/g, "$1")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/(^|[^\w*])\*([^*\n]+)\*/g, "$1$2");
+}
+
+/** The first sentence of plain text: up to the first `.`, `!` or `?` that ends a word. */
+function firstSentence(text) {
+  const m = /^.*?[.!?](?=\s+[A-Z"“(]|\s*$)/.exec(text);
+  return (m ? m[0] : text).trim();
+}
+
+/** The section between the how-it-works markers, with LF line ends. */
+function howItWorksSection(source) {
+  const readme = source.replace(/\r\n/g, "\n");
+  const start = readme.indexOf(HIW_START);
+  const end = readme.indexOf(HIW_END);
+  if (start < 0 || end < start) {
+    throw new Error("README.md has no <!-- how-it-works:start --> ... :end --> section");
+  }
+  return readme.slice(start + HIW_START.length, end);
+}
+
+/**
+ * The landing page's "How it works", from the README's section so the two never drift: the
+ * overview (the section's first paragraph), then each stage's `<summary>` title and the first
+ * sentence of its body (headings and code skipped, a list item's marker dropped), all plain text.
+ */
+export function howItWorksSummary(source) {
+  const section = howItWorksSection(source).trim();
+  const paragraph = (lines) => plainText(lines.join(" ")).replace(/\s+/g, " ").trim();
+  const overview = paragraph(section.split(/\n\s*\n/)[0]?.split("\n") ?? []);
+  const stages = [];
+  for (const m of section.matchAll(/<summary>([^<]+)<\/summary>\n([\s\S]*?)<\/details>/g)) {
+    const body = (m[2] ?? "").split("\n");
+    let fence = false;
+    const lines = [];
+    for (const line of body) {
+      if (/^\s*(`{3,}|~{3,})/.test(line)) fence = !fence;
+      if (fence || /^\s*(`{3,}|~{3,})/.test(line)) continue;
+      if (lines.length === 0 && (line.trim() === "" || /^#{1,6} /.test(line))) continue;
+      if (line.trim() === "" || (lines.length > 0 && /^\s*- /.test(line))) break;
+      lines.push(line.replace(/^\s*- /, ""));
+    }
+    stages.push({ title: (m[1] ?? "").trim(), first: firstSentence(paragraph(lines)) });
+  }
+  if (stages.length === 0) throw new Error("README.md's how-it-works section has no stage");
+  return { overview, stages };
+}

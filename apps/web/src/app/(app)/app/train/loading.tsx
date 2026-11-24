@@ -6,7 +6,7 @@ import { PageHeading } from "../../_shell/page-heading";
  */
 export function TrainPlaceholder({ line = "Choosing today's positions" }: { line?: string }) {
   return (
-    <div role="status" className="flex flex-col gap-6">
+    <div data-route-loading role="status" className="flex flex-col gap-6">
       <p className="font-serif text-base text-ink-soft">{line}</p>
       <div aria-hidden="true" className="flex flex-col gap-8 lg:flex-row lg:items-start">
         <span className="block size-(--board-size) rounded-board bg-well" />

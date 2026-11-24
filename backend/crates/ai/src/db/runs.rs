@@ -91,11 +91,12 @@ const COLS: &str = "id, account_id, time_class::text AS time_class, trigger::tex
     input_hash, input, is_first_report, report_id, ai_disabled_reason, created_at";
 
 pub async fn insert_run(conn: &mut PgConnection, run: &NewRun) -> Result<Uuid, sqlx::Error> {
-    sqlx::query_scalar(
-        "INSERT INTO report_runs (account_id, time_class, trigger, plan, mode, prompt_version, \
-         is_first_report, ai_disabled_reason) VALUES ($1, $2::time_class, $3::report_trigger, \
-         $4::ai_plan, $5::report_mode, $6, $7, $8) RETURNING id",
-    )
+    sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
+        "{}INSERT INTO report_runs (account_id, time_class, trigger, plan, mode, prompt_version, \
+         is_first_report, ai_disabled_reason, algorithm_id) VALUES ($1, $2::time_class, \
+         $3::report_trigger, $4::ai_plan, $5::report_mode, $6, $7, $8, $9) RETURNING id",
+        common::algorithm::register_cte(9, 10)
+    )))
     .bind(run.account_id)
     .bind(&run.time_class)
     .bind(run.trigger.as_str())
@@ -104,6 +105,8 @@ pub async fn insert_run(conn: &mut PgConnection, run: &NewRun) -> Result<Uuid, s
     .bind(&run.prompt_version)
     .bind(run.is_first_report)
     .bind(&run.ai_disabled_reason)
+    .bind(common::algorithm::id())
+    .bind(common::algorithm::manifest())
     .fetch_one(conn)
     .await
 }

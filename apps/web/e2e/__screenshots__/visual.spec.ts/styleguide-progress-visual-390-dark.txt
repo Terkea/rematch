@@ -27,6 +27,7 @@ Accuracy
 
 Based on 38 rapid games
 
+74.2%
 50%
 90%
 

@@ -8,7 +8,7 @@ const WIDTHS = [56, 44, 64, 38, 50] as const;
  */
 export default function Loading() {
   return (
-    <div className="flex flex-col gap-10">
+    <div data-route-loading className="flex flex-col gap-10">
       <PageHeading title="Weaknesses" />
       <div role="status" className="flex flex-col gap-4">
         <p className="font-serif text-base text-ink-soft">Reading your weaknesses</p>

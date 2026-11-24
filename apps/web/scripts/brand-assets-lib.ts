@@ -53,7 +53,7 @@ export function cardHtml(mark: string, faces: string, w: number, h: number): str
 ${mark.replace("<svg", `<svg height="${Math.round(h * 0.74)}" style="display:block;flex:none"`)}
 <div style="display:flex;flex-direction:column;align-items:flex-start">
 ${wordmarkBlock(Math.round(h * 0.25), BRAND_PENCIL)}
-  <p style="margin:${Math.round(h * 0.075)}px 0 0 ${Math.round(h * 0.008)}px;font-family:'Literata';font-weight:400;font-size:${Math.round(h * 0.07)}px">Stop losing to the same move.</p>
+  <p style="margin:${Math.round(h * 0.075)}px 0 0 ${Math.round(h * 0.008)}px;font-family:'Literata';font-weight:400;font-size:${Math.round(h * 0.07)}px">Chess, taught the way you learn.</p>
 </div></body>`;
 }
 

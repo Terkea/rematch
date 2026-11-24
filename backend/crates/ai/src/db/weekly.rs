@@ -62,15 +62,18 @@ pub async fn insert_weekly_if_absent(
     w: &NewWeekly,
 ) -> Result<Option<WeeklyRow>, sqlx::Error> {
     sqlx::query_as(sqlx::AssertSqlSafe(format!(
-        "INSERT INTO weekly_reviews (account_id, time_class, week_start, mode, input) \
-         VALUES ($1, $2::time_class, $3, $4::report_mode, $5) \
-         ON CONFLICT (account_id, time_class, week_start) DO NOTHING RETURNING {COLS}"
+        "{}INSERT INTO weekly_reviews (account_id, time_class, week_start, mode, input, \
+         algorithm_id) VALUES ($1, $2::time_class, $3, $4::report_mode, $5, $6) \
+         ON CONFLICT (account_id, time_class, week_start) DO NOTHING RETURNING {COLS}",
+        common::algorithm::register_cte(6, 7)
     )))
     .bind(w.account_id)
     .bind(&w.time_class)
     .bind(w.week_start)
     .bind(w.mode.as_str())
     .bind(&w.input)
+    .bind(common::algorithm::id())
+    .bind(common::algorithm::manifest())
     .fetch_optional(conn)
     .await
 }

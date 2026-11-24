@@ -44,15 +44,24 @@ test("filters round-trip through the URL, and the overview compares periods hone
     page.getByRole("navigation", { name: "Time control" }).getByRole("link", { name: /^Rapid/ }),
   ).toHaveAttribute("aria-current", "true");
   await expect(bar.getByRole("group", { name: "Time control" })).toHaveCount(0);
+  // The period opens on the last 90 days (ADR 0083 Amendment 2); All time is one click, and it
+  // stays on every link after it. The seed's games are fixed days, so the rest reads all time.
+  const periods = bar.getByRole("group", { name: "Period" });
+  await expect(periods.getByRole("link", { name: "90 days" })).toHaveAttribute(
+    "aria-current",
+    "true",
+  );
+  await periods.getByRole("link", { name: "All time" }).click();
+  await expect(page).toHaveURL(/\/app\?from=all$/);
   await bar.getByRole("group", { name: "Colour" }).getByRole("link", { name: "White" }).click();
-  await expect(page).toHaveURL(/\/app\?color=white$/);
+  await expect(page).toHaveURL(/\/app\?from=all&color=white$/);
   // The summary keeps both colours; Details shows the filtered row.
   await expect(page.locator("[data-slot='colour-split'] [data-colour]")).toHaveCount(2);
   const split = page.locator("[data-slot='colour-split-filtered']");
   await expect(split.locator("[data-colour]")).toHaveCount(1);
   await expect(split.locator("[data-colour='white']")).toContainText("22 rapid games");
   await bar.getByRole("group", { name: "Format" }).getByRole("link", { name: "10+0" }).click();
-  await expect(page).toHaveURL(/\/app\?fmt=600%2B0&color=white$/);
+  await expect(page).toHaveURL(/\/app\?fmt=600%2B0&from=all&color=white$/);
 
   // The custom range is a GET form with native date inputs; it keeps the other filters.
   const period = bar.getByRole("group", { name: "Period" });

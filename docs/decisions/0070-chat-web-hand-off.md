@@ -75,12 +75,11 @@ same operations without a Rust HTTP API, and without ever talking to the sidecar
 - A chat answer needs no new service, port or secret on the web side.
 - The post holds a row lock for a few statements only; two concurrent posts give one `posted`
   and one `busy`.
-- Follow-up for M7: `AI_DEFAULT_PLAN` and `AI_BETA_CHAT_WEEKLY` give way to the billing-backed
-  entitlements, read through one function on each side (`aiPlan()` on the web,
+- Follow-up: `AI_DEFAULT_PLAN` and `AI_BETA_CHAT_WEEKLY` may give way to per-user limits, read through one function on each side (`aiPlan()` on the web,
   `Entitlements::plan` in Rust).
-- Follow-up for M7: the quota's budget scope is the account (Rust `DefaultEntitlements::
+- Follow-up: the quota's budget scope is the account (Rust `DefaultEntitlements::
   budget_scope`), so a user with several linked accounts (verified or not) gets one allowance per
-  account. The billing-backed entitlements should scope it per user, or count verified links only.
+  account. Per-user limits should scope it per user, or count verified links only.
 - If the worker's plan variable and the web's ever disagree, the composer's count is wrong but
   the quota still holds (the job decides).
 

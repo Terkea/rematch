@@ -26,7 +26,7 @@ import { coachHref } from "../../../../../server/coach/anchor";
 import type { CoachStatus } from "../../../../../server/coach/status";
 import type { ReportView } from "../../../../../server/coaching";
 import type { NarrativeItem } from "../../../../../server/coaching/types";
-import type { DayRange } from "../../../../../server/filters/params";
+import { type DayRange, setRange } from "../../../../../server/filters/params";
 import {
   type Benchmark,
   baselineGroupLabel,
@@ -168,8 +168,7 @@ function scopeQuery(scope: CoachScope): string {
 /** An area's page with the scope, the colour and the dates (audit A7). */
 function areaHref(area: Area, scope: CoachScope, range?: DayRange): string {
   const q = new URLSearchParams(scopeQuery(scope));
-  if (range?.from) q.set("from", range.from);
-  if (range?.to) q.set("to", range.to);
+  if (range) setRange(q, range);
   return `/app/areas/${area}?${q.toString()}`;
 }
 

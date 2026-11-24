@@ -6,7 +6,8 @@
 //   3. the diff and plan logic that apply-settings.sh and the drift check share;
 //   4. the roadmap kept as code (ADR 0099): milestones.json and roadmap-issues.json agree with
 //      each other and with labels.json, and the milestone, seed-issue and sub-issue plans;
-//   5. milestone renames, moved and updated issues, and adopted issues (ADR 0104).
+//   5. milestone renames, moved and updated issues, and adopted issues (ADR 0104);
+//   6. the Actions settings: fork pull request approval and the default token (ADR 0108).
 // Run: node scripts/github/test-settings.mjs (no dependencies, no network).
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
@@ -19,6 +20,7 @@ import {
   diffLabels,
   diffSubset,
   driftReport,
+  e2eSecretOrderProblems,
   epicNumbers,
   findRuleset,
   keepTicks,
@@ -30,6 +32,7 @@ import {
   resolveMilestones,
   validateLabels,
   validateMilestones,
+  validateActions,
   validateRepo,
   validateRoadmapIssues,
   validateRuleset,
@@ -155,6 +158,21 @@ check(
   },
 );
 
+check(
+  "no workflow uses pull_request_target or workflow_run (fork code never gets a write token)",
+  () => {
+    const dir = join(root, ".github", "workflows");
+    const bad = readdirSync(dir)
+      .filter((f) => /\.ya?ml$/.test(f))
+      .filter((f) => /^\s*(pull_request_target|workflow_run)\s*:/m.test(workflow(f)));
+    assert.deepEqual(bad, []);
+  },
+);
+
+check("labels.json has the sensitive-reviewed override label", () => {
+  assert.ok(settings.labels.some((l) => l.name === "sensitive-reviewed"));
+});
+
 check("pr-title.yml: plain pull_request with a read token, the action pinned by commit", () => {
   assert.ok(!prTitleYaml.includes("pull_request_target"), "never pull_request_target");
   assert.match(prTitleYaml, /^permissions:\n {2}pull-requests: read$/m);
@@ -177,7 +195,47 @@ check("ci.yml: push runs only on main, pull_request on every branch, with concur
   has(/^permissions:\n {2}contents: read$/m, "permissions: contents: read");
 });
 
+check(
+  "every workflow sets E2E_BETTER_AUTH_SECRET before compose reads the e2e-prod overlay",
+  () => {
+    const dir = join(root, ".github", "workflows");
+    const problems = readdirSync(dir)
+      .filter((f) => /\.ya?ml$/.test(f))
+      .flatMap((f) => e2eSecretOrderProblems(workflow(f)).map((p) => `${f}: ${p}`));
+    assert.deepEqual(problems, []);
+  },
+);
+
 // ---- 3. the shared logic ----
+
+check("e2eSecretOrderProblems: compose before the secret, no secret, and the good orders", () => {
+  const job = (env, steps) =>
+    ["jobs:", "  e2e:", "    runs-on: ubuntu-latest", ...env, "    steps:", ...steps, ""].join(
+      "\n",
+    );
+  const prodEnv = [
+    "    env:",
+    "      COMPOSE_FILE: docker-compose.yml:docker-compose.e2e-prod.yml",
+  ];
+  const build = ["      - name: Build", "        run: $COMPOSE build web"];
+  const secret = [
+    "      - name: Secret",
+    "        run: |",
+    "          s=$(openssl rand -hex 32)",
+    '          echo "E2E_BETTER_AUTH_SECRET=$s" >> "$GITHUB_ENV"',
+  ];
+  assert.deepEqual(e2eSecretOrderProblems(job(prodEnv, [...secret, ...build])), []);
+  assert.match(
+    e2eSecretOrderProblems(job(prodEnv, [...build, ...secret]))[0],
+    /step 1 runs compose before step 2/,
+  );
+  assert.match(e2eSecretOrderProblems(job(prodEnv, build))[0], /never sets/);
+  assert.deepEqual(e2eSecretOrderProblems(job([], build)), [], "no overlay, no secret needed");
+  const inStep = ["      - run: docker compose -f docker-compose.e2e-prod.yml up -d"];
+  assert.match(e2eSecretOrderProblems(job([], inStep))[0], /never sets/);
+  const jobSecret = [...prodEnv, "      E2E_BETTER_AUTH_SECRET: x"];
+  assert.deepEqual(e2eSecretOrderProblems(job(jobSecret, build)), []);
+});
 
 check("ciCheckNames: a job's name wins over its id, and matrix jobs are refused", () => {
   const yaml = [
@@ -420,6 +478,34 @@ check("validateRoadmapIssues refuses the mistakes that would break seeding", () 
     [
       (x) => x.find((i) => !i.epic && i.size !== "S").labels.push("good first issue"),
       /good first issue is size S/,
+    ],
+    [
+      (x) => {
+        const e = x.find((i) => i.labels.includes("experiment"));
+        e.body = e.body.slice(e.body.indexOf("## Problem"));
+      },
+      /starts with "## Value case"/,
+    ],
+    [
+      (x) => {
+        const e = x.find((i) => i.labels.includes("experiment"));
+        e.body = e.body.filter((l) => !l.startsWith("- Cheaper alternative? "));
+      },
+      /missing "- Cheaper alternative\?"/,
+    ],
+    [
+      (x) => {
+        const e = x.find((i) => i.labels.includes("experiment"));
+        e.body = e.body.map((l) => l.replace(/= [\d.]+/, "= 27"));
+      },
+      /the value score is/,
+    ],
+    [
+      (x) => {
+        const e = x.find((i) => i.labels.includes("experiment"));
+        e.body = e.body.map((l) => l.replace("Pre-register before running", "Register"));
+      },
+      /Pre-register before running/,
     ],
   ];
   for (const [mutate, err] of cases) {
@@ -777,6 +863,76 @@ check("keepTicks: only boxes with the same text stay ticked", () => {
   assert.equal(keepTicks(body, undefined), body);
 });
 
+// ---- 6. the Actions settings (ADR 0108) ----
+
+check("repo.json actions: every outside contributor is approved first, a read-only token", () => {
+  assert.deepEqual(settings.repo.actions, {
+    fork_pr_contributor_approval: "all_external_contributors",
+    default_workflow_permissions: "read",
+    can_approve_pull_request_reviews: false,
+  });
+});
+
+check("validateActions rejects unknown keys and values", () => {
+  const ok = settings.repo.actions;
+  validateActions(ok);
+  assert.throws(() => validateActions({ ...ok, extra: 1 }), /unknown key "extra"/);
+  assert.throws(
+    () => validateActions({ ...ok, fork_pr_contributor_approval: "everyone" }),
+    /fork_pr_contributor_approval/,
+  );
+  assert.throws(
+    () => validateActions({ ...ok, default_workflow_permissions: "admin" }),
+    /default_workflow_permissions/,
+  );
+  assert.throws(
+    () => validateActions({ ...ok, can_approve_pull_request_reviews: "no" }),
+    /can_approve_pull_request_reviews/,
+  );
+});
+
+check("planChanges: the Actions settings are written only where the live repo differs", () => {
+  const live = matching(settings);
+  live.forkApproval = { approval_policy: "first_time_contributors" };
+  live.actionsWorkflow = {
+    default_workflow_permissions: "write",
+    can_approve_pull_request_reviews: true,
+  };
+  const plan = planChanges(settings, live, "o/r");
+  assert.deepEqual(
+    plan.calls.map((c) => `${c.method} ${c.path}`),
+    [
+      "PUT repos/o/r/actions/permissions/fork-pr-contributor-approval",
+      "PUT repos/o/r/actions/permissions/workflow",
+    ],
+  );
+  assert.deepEqual(plan.calls[0].body, { approval_policy: "all_external_contributors" });
+  assert.deepEqual(plan.calls[1].body, {
+    default_workflow_permissions: "read",
+    can_approve_pull_request_reviews: false,
+  });
+  assert.ok(
+    plan.lines.some((l) => l.includes('"first_time_contributors" -> "all_external_contributors"')),
+    plan.lines.join("\n"),
+  );
+
+  // A failed read is planned as a write; matching state and unread state plan none.
+  const failedRead = planChanges(
+    settings,
+    { ...matching(settings), forkApproval: { error: "HTTP 403: Forbidden" } },
+    "o/r",
+  );
+  assert.deepEqual(
+    failedRead.calls.map((c) => c.path),
+    ["repos/o/r/actions/permissions/fork-pr-contributor-approval"],
+  );
+  assert.deepEqual(planChanges(settings, matching(settings), "o/r").calls, []);
+  const unread = matching(settings);
+  delete unread.forkApproval;
+  delete unread.actionsWorkflow;
+  assert.deepEqual(planChanges(settings, unread, "o/r").calls, []);
+});
+
 /** A live state that already matches the settings. */
 function matching(s) {
   return {
@@ -789,6 +945,11 @@ function matching(s) {
     },
     vulnerabilityReporting: { enabled: true },
     pages: { build_type: s.repo.pages.build_type },
+    forkApproval: { approval_policy: s.repo.actions.fork_pr_contributor_approval },
+    actionsWorkflow: {
+      default_workflow_permissions: s.repo.actions.default_workflow_permissions,
+      can_approve_pull_request_reviews: s.repo.actions.can_approve_pull_request_reviews,
+    },
   };
 }
 

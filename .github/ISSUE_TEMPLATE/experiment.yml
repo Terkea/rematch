@@ -1,0 +1,91 @@
+name: Experiment on the algorithm
+description: Propose a pre-registered experiment, required before any change that can move the replay goldens or a Tier 1 KPI (a threshold, the ranking, a detector, a prior, a protocol).
+title: "EXP: "
+labels: [experiment, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A change that can move the replay goldens or a Tier 1 KPI ships only with a
+        pre-registered experiment behind it (ADR 0106, docs/evaluation.md, "How we do science on
+        the algorithm"). This issue proposes one. Once it is accepted, the pre-registration is
+        lab/experiments/EXP-NNNN/preregistration.md, from docs/experiments/TEMPLATE.md, committed
+        with its analysis.py before anything runs. Refactors, comments and copy changes need no experiment.
+  - type: textarea
+    id: value
+    attributes:
+      label: Value case
+      description: Before anything else (ADR 0107). If both results lead to the same action, or a cheaper source answers the question, the experiment is not run.
+      value: |
+        - Decision it informs:
+        - If the result is X, we will …; if Y, we will …
+        - Expected cost: CPU-hours, wall time, AI tokens (USD), maintainer time
+        - Value score: impact (1-3) × uncertainty (1-3) ÷ cost (1-3) =
+        - Cheaper alternative? A smaller design, existing data, a cached run, a simulation or the literature
+    validations:
+      required: true
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: What we want to know, why it matters to a player, and the gap or issue that raised it.
+      placeholder: |
+        Do the 80% ranges of W1 hold the true injected rate 80% of the time? docs/benchmark.md
+        measures 60% on the smoke suite, and #13 says the interval is pulled towards the
+        opponents' rate.
+    validations:
+      required: true
+  - type: textarea
+    id: hypotheses
+    attributes:
+      label: Hypotheses
+      description: H0 and H1, with H1 as a direction and a size; the rival explanations and what would separate them.
+      value: |
+        H0:
+        H1:
+        Rival explanations:
+    validations:
+      required: true
+  - type: textarea
+    id: versions
+    attributes:
+      label: Algorithm versions
+      description: The reference algorithm_id and the candidate's change (the constants or components of algorithm/manifest.json that move), or the one version an experiment measures.
+    validations:
+      required: true
+  - type: textarea
+    id: metric
+    attributes:
+      label: Primary metric, ground truth and the minimum effect that matters
+      description: Exactly one primary metric (only it decides), its ground truth, and the smallest difference that would change a decision, with why that size.
+      placeholder: |
+        Coverage of the target's 80% interval over every checkpoint (ground truth: the
+        generator's injected rate, Tally::truth). Minimum effect: 0.10 of coverage, one player
+        in ten whose range does or does not hold their real rate.
+    validations:
+      required: true
+  - type: textarea
+    id: design
+    attributes:
+      label: Design and power
+      description: The unit (the player, never the game), pairing and blocking, the seeds, the data and its checksums, what is reused from earlier runs, and the power analysis that sets the smallest sufficient number of players, games and seeds.
+    validations:
+      required: true
+  - type: textarea
+    id: analysis
+    attributes:
+      label: Analysis plan and decision rule
+      description: The model or test, the effect size with 80% and 95% intervals, the multiple-comparison correction, when we ship, reject or need more data, the stopping and futility boundaries, and the compute budget (aborted at 150%).
+    validations:
+      required: true
+  - type: checkboxes
+    id: rules
+    attributes:
+      label: The rules
+      options:
+        - label: The pre-registration and analysis.py will be committed before anything is run, and analysis.py will not change after its results are committed.
+          required: true
+        - label: The result will be published in lab/findings.md whatever it shows.
+          required: true
+        - label: No real chess.com player's games are used; inputs are synthetic players, fixtures or anonymised Lichess data.
+          required: true
