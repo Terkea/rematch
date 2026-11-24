@@ -93,11 +93,13 @@ POWER_SIMS = 2000
 TARGET_POWER = 0.80
 SCENARIO_PRECISION = PRECISION_FLOOR + 0.10
 SCENARIO_PRECISION_LOW = PRECISION_FLOOR - 0.10
+# Section 8: the variance whose effective sample size the decision intervals use.
+DECISION_VARIANCE = "linearised"
 SCENARIO_RECALL = RECALL_FLOOR + 0.15
 BATCH = 2000
 
 # Section 0: the compute budget of the registered run, the size of sample.csv (section 6).
-BUDGET = {"lines": 23817, "cli_calls": 12}
+BUDGET = {"lines": 54987, "cli_calls": 28}
 CAP = 1.5
 
 
@@ -251,8 +253,9 @@ def tag(df: pl.DataFrame, budget: Budget | None) -> dict[str, dict]:
     return out
 
 
-def records(df: pl.DataFrame, tagged: dict[str, dict], weights: dict[tuple[str, str], float]):
-    """One record per sampled puzzle: its cell, weight, Lichess labels and themes, our tags."""
+def records(df: pl.DataFrame, tagged: dict[str, dict], pops: dict[tuple[str, str], float]):
+    """One record per sampled puzzle: its cell, its cell's population N and weight N / n (n the
+    cell's puzzles that were tagged), its Lichess labels and themes, and our tags."""
     recs, excluded = [], []
     for pid, s, b, labels, themes in df.select("PuzzleId", "stratum", "band", "labels",
                                                "themes").iter_rows():
@@ -260,8 +263,13 @@ def records(df: pl.DataFrame, tagged: dict[str, dict], weights: dict[tuple[str, 
         if t["tags"] is None:
             excluded.append(pid)
             continue
-        recs.append({"id": pid, "stratum": s, "band": b, "w": weights[(s, b)],
+        recs.append({"id": pid, "stratum": s, "band": b, "N": pops[(s, b)],
                      "labels": set(labels), "themes": set(themes), "tags": set(t["tags"])})
+    n_cell: dict[tuple[str, str], int] = defaultdict(int)
+    for r in recs:
+        n_cell[(r["stratum"], r["band"])] += 1
+    for r in recs:
+        r["w"] = r["N"] / n_cell[(r["stratum"], r["band"])]
     return recs, excluded
 
 
@@ -291,7 +299,8 @@ def weighted_share(ws: list[float], ys: list[bool]) -> dict:
             "ci95": ci(Z95), "ci_decision": ci(Z_DECISION)}
 
 
-def precision_recall(recs: list[dict], t: str, bands: tuple[str, ...]) -> dict:
+def precision_recall_kish(recs: list[dict], t: str, bands: tuple[str, ...]) -> dict:
+    """The pilot's estimates (Kish's effective sample size), as pilot/pilot.json records them."""
     dom = [r for r in recs if r["band"] in bands]
     tagged = [r for r in dom if t in r["tags"]]
     labelled = [r for r in dom if t in r["labels"]]
@@ -301,13 +310,66 @@ def precision_recall(recs: list[dict], t: str, bands: tuple[str, ...]) -> dict:
     }
 
 
-def decide(pr: dict) -> str:
+def ratio_share(dom: list[dict], xs: list[bool], ys: list[bool]) -> dict:
+    """The stratified ratio estimate sum(w y) / sum(w x) over every sampled puzzle of the domain
+    (y implies x), with Wilson intervals at the effective sample size of its linearised variance
+    (section 8): Var = sum_h N_h^2 (1 - n_h / N_h) s_h^2 / n_h / X^2, s_h^2 the sample variance of
+    d = y - R x in cell h. Kish's effective sample size is reported beside it."""
+    cells: dict[tuple[str, str], list[tuple[float, float, float]]] = defaultdict(list)
+    for r, x, y in zip(dom, xs, ys, strict=True):
+        cells[(r["stratum"], r["band"])].append((r["N"], float(x), float(y)))
+    big_x = sum(r["w"] for r, x in zip(dom, xs, strict=True) if x)
+    n_den = sum(xs)
+    if big_x == 0:
+        return {"estimate": None, "n": 0, "n_eff": 0.0, "n_eff_kish": 0.0, "ci80": None,
+                "ci95": None, "ci_decision": None}
+    big_y = sum(r["w"] for r, y in zip(dom, ys, strict=True) if y)
+    p = big_y / big_x
+    var = 0.0
+    for items in cells.values():
+        n_h, pop_h = len(items), items[0][0]
+        if n_h < 2:
+            continue
+        d = [y - p * x for _, x, y in items]
+        mean = sum(d) / n_h
+        s2 = sum((v - mean) ** 2 for v in d) / (n_h - 1)
+        fpc = max(0.0, 1 - n_h / pop_h) if pop_h > 0 else 0.0  # a census cell adds nothing
+        var += pop_h * pop_h * fpc * s2 / n_h
+    var /= big_x * big_x
+    ws = [r["w"] for r, x in zip(dom, xs, strict=True) if x]
+    kish = sum(ws) ** 2 / sum(w * w for w in ws)
+    n_eff = p * (1 - p) / var if var > 0 and 0 < p < 1 else kish
+    r4 = lambda v: round(v, 4)  # noqa: E731
+    ci = lambda z: [r4(v) for v in wilson(p, n_eff, z)]  # noqa: E731
+    return {"estimate": r4(p), "n": n_den, "n_eff": round(n_eff, 1),
+            "n_eff_kish": round(kish, 1), "ci80": ci(Z80), "ci95": ci(Z95),
+            "ci_decision": ci(Z_DECISION)}
+
+
+def precision_recall(recs: list[dict], t: str, bands: tuple[str, ...]) -> dict:
+    dom = [r for r in recs if r["band"] in bands]
+    tag_ = [t in r["tags"] for r in dom]
+    lab = [t in r["labels"] for r in dom]
+    both = [a and b for a, b in zip(tag_, lab, strict=True)]
+    return {"precision": ratio_share(dom, tag_, both), "recall": ratio_share(dom, lab, both)}
+
+
+# Section 7: the tags the pilot's hand check found label-limited (pilot/hand-check.md).
+LABEL_LIMITED = ("hangingPiece", "fork", "pin", "skewer", "sacrifice", "backRankMate")
+# Section 4: the tags Lichess and we both read off the solution's length or last move.
+MATE_LENGTH = ("mate", "mateIn1", "mateIn2", "mateIn3", "mateIn4Plus")
+DECISIONS = ("trusted", "needs fixing", "hidden pending a human audit", "hidden until fixed")
+# Section 8: a run that excludes more than this share of the sample, or a whole cell, fails.
+MAX_EXCLUDED = 0.005
+
+
+def decide(t: str, pr: dict) -> str:
     p, r = pr["precision"]["ci_decision"], pr["recall"]["ci_decision"]
     if p is None or p[0] < PRECISION_FLOOR:
-        return "hidden until fixed"
+        return "hidden pending a human audit" if t in LABEL_LIMITED else "hidden until fixed"
     if r is not None and r[0] >= RECALL_FLOOR:
         return "trusted"
-    return "needs fixing"
+    return "needs fixing"  # recall shown below the floor, unclear, or unmeasured
 
 
 def confusion(recs: list[dict]) -> dict:
@@ -350,9 +412,9 @@ def sample_frame(name: str) -> tuple[pl.DataFrame, dict[str, tuple[str, str]]]:
 def cmd_pilot(out: Path) -> None:
     df, _ = sample_frame("sample-pilot.csv")
     strata = read_strata()
-    weights = {k: v["population"] / v["pilot"] for k, v in strata.items() if v["pilot"]}
+    pops = {k: float(v["population"]) for k, v in strata.items()}
     tagged = tag(df, None)
-    recs, excluded = records(df, tagged, weights)
+    recs, excluded = records(df, tagged, pops)
     # Per stratum (pooled over the bands) and tag: label+/label- puzzles and how many we tagged.
     counts: dict[str, dict[str, list[int]]] = {}
     for t in SCORED:
@@ -366,7 +428,7 @@ def cmd_pilot(out: Path) -> None:
                 k[2] += 1
                 k[3] += t in r["tags"]
         counts[t] = dict(sorted(c.items()))
-    estimates = {t: precision_recall(recs, t, AUDIENCE) for t in SCORED}
+    estimates = {t: precision_recall_kish(recs, t, AUDIENCE) for t in SCORED}
     algorithm_id = next(iter(tagged.values()))["algorithm_id"]
     out.mkdir(parents=True, exist_ok=True)
     (out / "pilot.json").write_text(json.dumps({
@@ -427,6 +489,22 @@ def wilson_np(p: np.ndarray, n: np.ndarray, z: float) -> tuple[np.ndarray, np.nd
     return lo, hi
 
 
+def neff_np(p: np.ndarray, w: np.ndarray, n: np.ndarray, pop: np.ndarray, xc: np.ndarray,
+            yc: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Kish's and the linearised variance's effective sample sizes of sum(w y) / sum(w x) over
+    simulated cell counts (xc puzzles with x, yc of them with y, in cells of n sampled of pop)."""
+    sx = (w * xc).sum(1)
+    kish = np.where(sx > 0, sx**2 / np.maximum((w * w * xc).sum(1), 1e-12), 0.0)
+    r = p[:, None]
+    mean = (yc * (1 - r) - (xc - yc) * r) / np.maximum(n, 1)
+    sumsq = yc * (1 - r) ** 2 + (xc - yc) * r**2
+    s2 = np.where(n > 1, (sumsq - n * mean**2) / np.maximum(n - 1, 1), 0.0)
+    fpc = np.where(pop > 0, 1 - n / np.maximum(pop, 1), 0.0)
+    var = (pop**2 * fpc * s2 / np.maximum(n, 1)).sum(1) / np.maximum(sx, 1e-12) ** 2
+    lin = np.where((var > 0) & (p > 0) & (p < 1), p * (1 - p) / np.maximum(var, 1e-300), kish)
+    return kish, np.where(sx > 0, lin, 0.0)
+
+
 def smoothed(k: int, n: int) -> float:
     return (k + 0.5) / (n + 1)
 
@@ -447,7 +525,6 @@ def cmd_power(pilot_path: Path) -> None:
 
     designs = sorted(((m, f) for m in M_GRID for f in F_GRID), key=lambda d: (size(d), d))
     table: dict[str, dict[str, dict[str, float]]] = {}
-    coverage: dict[str, dict[str, float]] = {}
     for t in SCORED:
         c = pilot["counts"][t]
         cc = [c.get(k[0], [0, 0, 0, 0]) for k in cells_]
@@ -457,52 +534,51 @@ def cmd_power(pilot_path: Path) -> None:
         # The scenarios: false positives scaled so that precision is 0.90; true positives scaled
         # (capped at 1) so that recall is 0.65. The pilot's structure is otherwise kept.
         tp_mass, fp_mass = float((pop * lam * a).sum()), float((pop * (1 - lam) * b).sum())
-        b_s = np.minimum(1, b * (tp_mass * (1 / SCENARIO_PRECISION - 1) / fp_mass))
-        b_low = np.minimum(1, b * (tp_mass * (1 / SCENARIO_PRECISION_LOW - 1) / fp_mass))
+        def scaled(target: float) -> np.ndarray:
+            return np.minimum(1, b * (tp_mass * (1 / target - 1) / fp_mass))
+
+        scenarios = {"0.90": scaled(SCENARIO_PRECISION), "0.80": scaled(PRECISION_FLOOR),
+                     "0.75": scaled(PRECISION_FLOOR - 0.05), "0.70": scaled(SCENARIO_PRECISION_LOW)}
         lo, hi = 0.0, 1e6
         for _ in range(200):
             mid = (lo + hi) / 2
             rec = float((pop * lam * np.minimum(1, a * mid)).sum() / (pop * lam).sum())
             lo, hi = (mid, hi) if rec < SCENARIO_RECALL else (lo, mid)
         a_r = np.minimum(1, a * lo)
-        table[t] = {"precision": {}, "recall": {}, "shown_at_0_70": {}}
-        coverage[t] = {}
+        table[t] = {f"{v}/{s_}": {} for v in ("kish", "linearised")
+                    for s_ in ("shown_at_0.90", "shown_at_0.80", "shown_at_0.75", "shown_at_0.70",
+                               "coverage_at_0.90", "recall_trusted_at_0.65")}
         for d in designs:
             key = design_key(*d)
             n = np.array([allocation(int(x), *d) for x in pop])
             w = pop / np.maximum(n, 1)
             labelled = rng.binomial(n, lam, size=(POWER_SIMS, len(cells_)))
             tp = rng.binomial(labelled, a)
-            fp = rng.binomial(n - labelled, b_s)
-            sw = (w * (tp + fp)).sum(1)
-            p_hat = np.where(sw > 0, (w * tp).sum(1) / np.where(sw > 0, sw, 1), 0.0)
-            neff = np.where(sw > 0, sw**2 / np.maximum((w * w * (tp + fp)).sum(1), 1e-12), 0.0)
-            lo_p, hi_p = wilson_np(p_hat, neff, Z_DECISION)
-            table[t]["precision"][key] = round(float((lo_p >= PRECISION_FLOOR).mean()), 4)
-            coverage[t][key] = round(
-                float(((lo_p <= SCENARIO_PRECISION) & (SCENARIO_PRECISION <= hi_p)).mean()), 4
-            )
-            fp_low = rng.binomial(n - labelled, b_low)
-            sw_low = (w * (tp + fp_low)).sum(1)
-            p_low = np.where(sw_low > 0, (w * tp).sum(1) / np.where(sw_low > 0, sw_low, 1), 0.0)
-            neff_low = np.where(
-                sw_low > 0, sw_low**2 / np.maximum((w * w * (tp + fp_low)).sum(1), 1e-12), 0.0
-            )
-            lo_low, _ = wilson_np(p_low, neff_low, Z_DECISION)
-            table[t]["shown_at_0_70"][key] = round(float((lo_low >= PRECISION_FLOOR).mean()), 4)
+            for name, b_x in scenarios.items():
+                fp = rng.binomial(n - labelled, b_x)
+                sw = (w * (tp + fp)).sum(1)
+                p_hat = np.where(sw > 0, (w * tp).sum(1) / np.where(sw > 0, sw, 1), 0.0)
+                kish, lin = neff_np(p_hat, w, n, pop, tp + fp, tp)
+                for v, ne in (("kish", kish), ("linearised", lin)):
+                    lo_p, hi_p = wilson_np(p_hat, ne, Z_DECISION)
+                    table[t][f"{v}/shown_at_{name}"][key] = round(
+                        float((lo_p >= PRECISION_FLOOR).mean()), 4)
+                    if name == "0.90":
+                        table[t][f"{v}/coverage_at_0.90"][key] = round(float(
+                            ((lo_p <= SCENARIO_PRECISION) & (SCENARIO_PRECISION <= hi_p)).mean()), 4)
             tp_r = rng.binomial(labelled, a_r)
             sl = (w * labelled).sum(1)
             r_hat = np.where(sl > 0, (w * tp_r).sum(1) / np.where(sl > 0, sl, 1), 0.0)
-            neff_r = np.where(sl > 0, sl**2 / np.maximum((w * w * labelled).sum(1), 1e-12), 0.0)
-            lo_r, _ = wilson_np(r_hat, neff_r, Z_DECISION)
-            table[t]["recall"][key] = round(float((lo_r >= RECALL_FLOOR).mean()), 4)
-    worst = {
-        design_key(*d): min(
-            min(table[t]["precision"][design_key(*d)], table[t]["recall"][design_key(*d)])
-            for t in SCORED
-        )
-        for d in designs
-    }
+            kish_r, lin_r = neff_np(r_hat, w, n, pop, labelled, tp_r)
+            for v, ne in (("kish", kish_r), ("linearised", lin_r)):
+                lo_r, _ = wilson_np(r_hat, ne, Z_DECISION)
+                table[t][f"{v}/recall_trusted_at_0.65"][key] = round(
+                    float((lo_r >= RECALL_FLOOR).mean()), 4)
+    def worst_of(v: str, d: str) -> float:
+        return min(min(table[t][f"{v}/shown_at_0.90"][d], table[t][f"{v}/recall_trusted_at_0.65"][d])
+                   for t in SCORED)
+
+    worst = {design_key(*d): worst_of(DECISION_VARIANCE, design_key(*d)) for d in designs}
     # The smallest design (in audience puzzles) whose worst tag reaches the target.
     chosen = next((d for d in designs if worst[design_key(*d)] >= TARGET_POWER), None)
     result = {
@@ -510,7 +586,7 @@ def cmd_power(pilot_path: Path) -> None:
         "designs": [design_key(*d) for d in designs],
         "audience_puzzles": {design_key(*d): size(d) for d in designs},
         "power": table,
-        "coverage_at_precision_0_90": coverage,
+        "decision_variance": DECISION_VARIANCE,
         "worst": worst,
         "chosen": None if chosen is None else {"m": chosen[0], "f": chosen[1]},
         "sims": POWER_SIMS,
@@ -532,7 +608,9 @@ def figure_power(result: dict, path: Path) -> None:
     xs = [result["audience_puzzles"][d] for d in result["designs"]]
     for i, metric in enumerate(("precision", "recall")):
         for t in SCORED:
-            ys = [result["power"][t][metric][d] for d in result["designs"]]
+            k = ("shown_at_0.90" if metric == "precision" else "recall_trusted_at_0.65")
+            ys = [result["power"][t][f"{result['decision_variance']}/{k}"][d]
+                  for d in result["designs"]]
             ax[i].plot(xs, ys, ".", ms=3, label=t)
         ax[i].axhline(TARGET_POWER, color="black", ls="--", lw=0.8)
         ax[i].set_xscale("log")
@@ -575,33 +653,44 @@ def figure_results(results: dict, path: Path) -> None:
 
 def cmd_run(out: Path) -> None:
     df, sample = sample_frame("sample.csv")
+    pilot_ids = set(read_sample("sample-pilot.csv"))
+    if pilot_ids & set(sample):
+        raise SystemExit("the confirmatory sample overlaps the pilot")
     strata = read_strata()
     n_cell: dict[tuple[str, str], int] = defaultdict(int)
     for key in sample.values():
         n_cell[key] += 1
     # The confirmatory sample is drawn from the population less the pilot.
-    weights = {k: (strata[k]["population"] - strata[k]["pilot"]) / n for k, n in n_cell.items()}
+    pops = {k: float(strata[k]["population"] - strata[k]["pilot"]) for k in n_cell}
     budget = Budget(BUDGET, CAP)
     tagged = tag(df, budget)
     ids = {v["algorithm_id"] for v in tagged.values()}
     if len(ids) != 1:
         raise SystemExit(f"the run spans algorithm versions: {sorted(ids)}")
-    recs, excluded = records(df, tagged, weights)
+    recs, excluded = records(df, tagged, pops)
+    excluded_by_cell: dict[str, int] = defaultdict(int)
+    for pid in excluded:
+        excluded_by_cell["/".join(sample[pid])] += 1
+    whole = [c for c, k in excluded_by_cell.items() if k == n_cell[tuple(c.split("/"))]]
+    if len(excluded) > MAX_EXCLUDED * len(sample) or whole:
+        raise SystemExit(f"failed result: {len(excluded)} puzzles excluded, whole cells {whole}")
     tags = {}
     for t in SCORED:
         pr = precision_recall(recs, t, AUDIENCE)
-        tags[t] = {**pr, "decision": decide(pr), "truth": list(TRUTH[t]),
+        tags[t] = {**pr, "decision": decide(t, pr), "truth": list(TRUTH[t]),
+                   "group": "mate length" if t in MATE_LENGTH else "motif",
+                   "label_limited": t in LABEL_LIMITED,
                    "by_band": {b: precision_recall(recs, t, (b,)) for b, _, _ in BANDS}}
     results = {
         "algorithm_id": ids.pop(),
         "snapshot_sha256": SNAPSHOT_SHA256,
         "sample": {"puzzles": len(sample), "tagged": len(recs), "excluded": excluded,
+                   "excluded_by_cell": dict(sorted(excluded_by_cell.items())),
                    "cells": {f"{s}/{b}": n for (s, b), n in sorted(n_cell.items())}},
         "z_decision": round(Z_DECISION, 4),
         "floors": {"precision": PRECISION_FLOOR, "recall": RECALL_FLOOR},
         "tags": tags,
-        "decisions": {d: [t for t in SCORED if tags[t]["decision"] == d]
-                      for d in ("trusted", "needs fixing", "hidden until fixed")},
+        "decisions": {d: [t for t in SCORED if tags[t]["decision"] == d] for d in DECISIONS},
         "unscored": {t: {"tagged_share": round(
             sum(r["w"] for r in recs if r["band"] in AUDIENCE and t in r["tags"])
             / sum(r["w"] for r in recs if r["band"] in AUDIENCE), 4)} for t in UNSCORED_TAGS},

@@ -1,5 +1,6 @@
-# The confirmatory run reads the sample, the cell counts and the pinned snapshot (external: in the
-# data directory, git-ignored; see preregistration.md section 7).
-3a8aacad14ad50acec9edfa8cf86d586ae8101264574489e50b92a53c9367ca8  sample.csv
+# The confirmatory run reads the sample, the pilot's ids (to check they are disjoint), the cell
+# counts and the pinned snapshot (external: in the data directory, git-ignored; section 7).
+73c988b79b5490bc207f4f97b487303edb5fb899809ac90dea6ada79a6416c17  sample.csv
+da5869cc30907e579f8246218e59f9b32f25ba86cbfb42badb01069ae59918c2  sample-pilot.csv
 86ebff169b3976f9cde717e83678a11eeecedafc585ae2f475134401f3bcc846  strata.csv
 8ce98180bcb7cb60f3f51f12afdbe6a4fd294d8aaf4f1410e8c25e85ac78fdc9  external:lichess-puzzles/lichess_db_puzzle.csv
