@@ -157,6 +157,31 @@ def test_inputs_are_checked_against_their_sha256(tmp_path: Path) -> None:
     assert any("does not match" in p for p in experiments.check(exp))
 
 
+def test_an_external_input_is_checked_when_present_and_skips_the_rerun_when_absent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    data = tmp_path / "data"
+    monkeypatch.setenv("REMATCH_DATA_DIR", str(data))
+    exp = make(tmp_path)
+    digest = hashlib.sha256(b"PuzzleId\n").hexdigest()
+    (exp / "inputs.sha256").write_text(f"{digest}  external:puzzles/db.csv\n")
+    # Absent (CI): no problem, and no rerun.
+    (exp / "results.json").write_text(
+        '{"algorithm_id": "unversioned", "mean": 0.5, '
+        '"compute": {"budget": {"draws": 100}, "actual": {"draws": 100}}}\n'
+    )
+    assert experiments.check(exp, algorithm_id="unversioned") == []
+    assert "not rerun" in capsys.readouterr().out
+    # Present: it must match, and the experiment is rerun.
+    (data / "puzzles").mkdir(parents=True)
+    (data / "puzzles" / "db.csv").write_bytes(b"PuzzleId\n")
+    assert experiments.external_input("puzzles/db.csv") == data / "puzzles" / "db.csv"
+    problems = experiments.check(exp, algorithm_id="unversioned")
+    assert any("differs from the committed" in p for p in problems)
+    (data / "puzzles" / "db.csv").write_bytes(b"PuzzleId,FEN\n")
+    assert any("does not match" in p for p in experiments.check(exp, algorithm_id="unversioned"))
+
+
 def test_history_registered_first_then_frozen(tmp_path: Path) -> None:
     git(tmp_path, "init", "-q")
     exp = make(tmp_path)
