@@ -79,7 +79,7 @@ python -m rematch_lab.arena --champion-cli /path/to/main/cli --challenger-cli /u
 
 ## The experiment catalogue
 
-Twelve more experiments, EXP-0007 to EXP-0018, check the learning framework layer by layer; each is an issue that opens with its value case, under one epic per layer ([ADR 0107](decisions/0107-experiment-value-gate-and-catalogue.md)). EXP-0005 and EXP-0006 are the follow-ups of EXP-0001 (the churn between two versions) and EXP-0002 (the fix for the 80% ranges).
+Twelve experiments, EXP-0007 to EXP-0018, check the learning framework layer by layer; each is an issue that opens with its value case, under one epic per layer ([ADR 0107](decisions/0107-experiment-value-gate-and-catalogue.md)). EXP-0005 and EXP-0006 are the follow-ups of EXP-0001 (the churn between two versions) and EXP-0002 (the fix for the 80% ranges).
 
 - Facts: are the engine's judgements and the motif tags right? EXP-0007 (the motif tagger against the Lichess puzzle themes), EXP-0008 (is 300,000 nodes enough).
 - Recommendation: do we tell a player the right thing? EXP-0009 (what actually helps people climb), EXP-0010 (rank by points lost or by frequency), EXP-0011 (are the weekly targets realistic), EXP-0012 (do drills resemble the next mistakes).
@@ -87,25 +87,38 @@ Twelve more experiments, EXP-0007 to EXP-0018, check the learning framework laye
 - Language: is the coach faithful to the facts? EXP-0016 (what the validator misses).
 - Learning, which needs real players (v0.6): EXP-0017 (how many players the learning experiments need), EXP-0018 (the review schedule and the retire rule).
 - The follow-ups of EXP-0007: EXP-0019 (a blind human audit of the tags the themes cannot judge), EXP-0020 (deflection), EXP-0021 (pin), EXP-0022 (motifs after the first gain and past ply 8), EXP-0023 (the engine's best line against the solution). Until one of them clears a tag, the six tags EXP-0007 hid are computed and measured but never named to a player or the coach: `coaching_input::motifs::PLAYER_VISIBLE_MOTIFS`, a manifest component since `algo-3.0.0` ([ADR 0112](decisions/0112-hide-the-motifs-exp-0007-did-not-clear.md)).
+- The follow-ups of EXP-0008, which chose 1 million nodes over 300,000: EXP-0027 (do a player's top weaknesses change between the two counts) and EXP-0028 (search deeper only where the cheap searches disagree).
 
-The order: the facts first, because every layer above them inherits their errors and EXP-0009's cost depends on EXP-0008's node count; then EXP-0009, the top priority, since it is the only one that can change what we teach; then the rest by value score. The profile experiments need no engine, so they run alongside the facts.
+- The second batch, from what the first results left open: EXP-0026 (rank missed mates and early traps, the two flaws behind nearly every Tier 1 miss), and EXP-0004 is now run as well as designed, the first measurement on real players. Two enabling tasks carry no value case of their own: "lab-v2: the lab calls the trajectory, change-state, weekly target and trainer rules", which EXP-0011, EXP-0012, EXP-0014 and EXP-0015 wait on, and "Confirm a champion swap on fresh seeds at release (ADR 0109)", which closes the gap ADR 0109 names: a challenger tuned to the registered seeds.
 
-| Run | Experiment | Layer | Impact × uncertainty ÷ cost | Runs |
+The open catalogue, by value score. EXP-0009 takes precedence over its score: it is the only one that can change what we teach, and it runs at the 1 million nodes EXP-0008 chose. Within a score, what can run now comes first. EXP-0001, EXP-0002, EXP-0006, EXP-0007 and EXP-0008 are decided and live in the arena; EXP-0005 was closed unrun.
+
+| Rank | Experiment | Layer | Impact × uncertainty ÷ cost | Runs |
 |---|---|---|---|---|
-| 1 | EXP-0007 the motif tagger | facts | 3 × 3 ÷ 1 = 9 | now |
-| 2 | EXP-0008 engine depth | facts | 3 × 2 ÷ 2 = 3 | now |
-| 3 | EXP-0009 what helps people climb | recommendation | 3 × 3 ÷ 2 = 4.5 | after EXP-0007 and EXP-0008 |
-| 4 | EXP-0015 the trajectory's "worse" | profile | 3 × 3 ÷ 1 = 9 | now (a lab-v2 step) |
-| 5 | EXP-0013 false weaknesses | profile | 3 × 2 ÷ 1 = 6 | now |
-| 6 | EXP-0014 the change detectors | profile | 2 × 3 ÷ 1 = 6 | now (a lab-v2 step) |
-| 7 | EXP-0017 learning power | learning | 2 × 3 ÷ 1 = 6 | now |
-| 8 | EXP-0010 points lost or frequency | recommendation | 3 × 2 ÷ 1 = 6 | after EXP-0004 and Tier 2 |
-| 9 | EXP-0011 weekly targets | recommendation | 2 × 3 ÷ 1 = 6 | after Tier 2 |
-| 10 | EXP-0012 drill relevance | recommendation | 2 × 2 ÷ 1 = 4 | after EXP-0007 and Tier 2 |
-| 11 | EXP-0016 the validator | language | 2 × 2 ÷ 1 = 4 | now |
-| 12 | EXP-0018 the schedule | learning | 2 × 2 ÷ 2 = 2 | needs real players |
+| 1 | EXP-0015 the trajectory's "worse" | profile | 3 × 3 ÷ 1 = 9 | after lab-v2 |
+| 2 | EXP-0013 false weaknesses | profile | 3 × 2 ÷ 1 = 6 | now |
+| 3 | EXP-0021 the pin rule | facts | 2 × 3 ÷ 1 = 6 | now |
+| 4 | EXP-0022 motifs past the first gain | facts | 3 × 2 ÷ 1 = 6 | now |
+| 5 | EXP-0017 learning power | learning | 2 × 3 ÷ 1 = 6 | now |
+| 6 | EXP-0014 the change detectors | profile | 2 × 3 ÷ 1 = 6 | after lab-v2 |
+| 7 | EXP-0010 points lost or frequency | recommendation | 3 × 2 ÷ 1 = 6 | after EXP-0004 |
+| 8 | EXP-0011 weekly targets | recommendation | 2 × 3 ÷ 1 = 6 | after EXP-0004 and lab-v2 |
+| 9 | EXP-0004 the ranking on real players | recommendation | 3 × 3 ÷ 2 = 4.5 | design now, run after the 1 million protocol ships |
+| 10 | EXP-0009 what helps people climb | recommendation | 3 × 3 ÷ 2 = 4.5 | after the 1 million protocol ships, ahead of its score |
+| 11 | EXP-0019 a blind audit of four tags | facts | 3 × 3 ÷ 2 = 4.5 | now |
+| 12 | EXP-0016 the validator | language | 2 × 2 ÷ 1 = 4 | now |
+| 13 | EXP-0020 the deflection rule | facts | 2 × 2 ÷ 1 = 4 | now |
+| 14 | EXP-0025 W1's range at 30 games | profile | 2 × 2 ÷ 1 = 4 | now |
+| 15 | EXP-0012 drill relevance | recommendation | 2 × 2 ÷ 1 = 4 | after EXP-0004 and lab-v2 |
+| 16 | EXP-0026 missed mates and early traps | recommendation | 3 × 2 ÷ 2 = 3 | now |
+| 17 | EXP-0024 the churn of a ranking change | recommendation | 2 × 3 ÷ 2 = 3 | with EXP-0026's runs |
+| 18 | EXP-0023 the best line against the solution | facts | 3 × 2 ÷ 2 = 3 | now |
+| 19 | EXP-0027 top weaknesses at 300,000 and 1 million nodes | recommendation | 2 × 3 ÷ 2 = 3 | now |
+| 20 | EXP-0028 deeper search where the cheap ones disagree | facts | 2 × 3 ÷ 2 = 3 | after the 1 million protocol ships |
+| 21 | EXP-0003 partial pooling | profile | 3 × 2 ÷ 2 = 3 | its kill rule is due a check: EXP-0006 shipped a prior rule |
+| 22 | EXP-0018 the schedule | learning | 2 × 2 ÷ 2 = 2 | needs real players |
 
-Six proposals were merged or dropped by their value case:
+Eight proposals were merged or dropped by their value case:
 
 - Judgements against Lichess's own merges into EXP-0008: the judgement rule is lila's, so a disagreement can only come from the evaluations, which EXP-0008 measures; Lichess's `[%eval]` comments are its secondary.
 - Syzygy agreement and the accuracy formula against `backend/fixtures/accuracy/lila-examples.json` are dropped as experiments: the lab's sub-issues measure both, and a disagreement is a bug to fix whatever its size.
@@ -113,6 +126,8 @@ Six proposals were merged or dropped by their value case:
 - The weekly focus effect merges into EXP-0017, which sizes it; it is registered only if EXP-0017 says the users exist.
 - Recommendation fidelity is dropped as an experiment: it is a deterministic check with a 100% target (v0.2), and a failure is a bug.
 - The validator's drop rate and tone per prompt version are dropped as an experiment: the lab tracks the drop rate per prompt-set hash, a comparison is registered when a prompt change is proposed, and tone needs an LLM judge, which never gates.
+- Predictive validity on real game histories, month t against month t+1, merges into EXP-0004: it was already that design, so it is now run as well as registered rather than duplicated.
+- Coach advice actionability is dropped as an experiment. The drill the coach names comes from a fixed table (`drills_for`, `backend/crates/ai/src/output/drills.rs`), so whether it targets the cited weakness is a lookup, checked by v0.2's "Check that the recommendation a text names is the computed one" and by Tier 1's plan targeting; every sentence that survives the validator cites a fact by construction, and its drop rate is tracked per prompt-set hash. Whether the drill's positions match the next mistakes is EXP-0012, and whether drilling helps is the learning epic's.
 
 ## Credits
 

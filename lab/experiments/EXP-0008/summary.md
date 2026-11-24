@@ -15,4 +15,4 @@ run_minutes: 4
 - Measured on 160 rated rapid Lichess games (CC0), the deep searches spent only on the moves where the cheaper ones disagree, so every contrast is exact.
 - For a player: 7.4% of move labels change, mostly fewer inaccuracies, and game accuracy falls by 0.4 of a point on average. The engine costs 39 CPU-seconds a game instead of 12, so a 300-game import goes from about 15 to 49 minutes on 4 engines.
 - The reference is not the truth: on the moves where 300,000 and 1 million disagree, 12% of its labels changed again between 30 and 100 million nodes, and the step up shrank by 12% on the same games; the claim is that 1 million agrees more with deeper searches.
-- Next: ship 1 million as a major version, test deeper search only where the cheap searches disagree (EXP-0026), and measure whether players' top weaknesses move (EXP-0027).
+- Next: ship 1 million as a major version, test deeper search only where the cheap searches disagree (EXP-0028), and measure whether players' top weaknesses move (EXP-0027).

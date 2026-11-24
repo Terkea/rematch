@@ -32,7 +32,7 @@ Measured engine CPU, one thread, per game of this sample (62.5 positions): 4.0 s
 Not settled by this experiment, and not choosable by it: section 9 chooses only among registered candidates. Two options:
 
 1. **A middle node count** (600,000, say): not searched, so nothing can be said; the curve between 300,000 and 1 million is not measured.
-2. **Deeper search only where the cheap searches disagree** (post hoc, exploratory, from this run's cached searches; `review.md`, part two): search 100,000 and 300,000 everywhere and 1 million only on the moves whose labels differ between them, 15.9% of positions, about 22 CPU-seconds a game instead of 39. It recovers 0.0147 [0.0111, 0.0183] of 1 million's 0.0246, and stays 0.0099 [0.0059, 0.0139] behind 1 million, an interval straddling the tolerance, so it is not shown to match. It also swaps labels move by move, where a real re-search of a position changes the neighbouring move that shares it, so it is not yet the protocol that would ship. Because its rule was found after seeing these results and is scored on the same games, it is EXP-0026's challenger on new games (Next, item 2), not a decision.
+2. **Deeper search only where the cheap searches disagree** (post hoc, exploratory, from this run's cached searches; `review.md`, part two): search 100,000 and 300,000 everywhere and 1 million only on the moves whose labels differ between them, 15.9% of positions, about 22 CPU-seconds a game instead of 39. It recovers 0.0147 [0.0111, 0.0183] of 1 million's 0.0246, and stays 0.0099 [0.0059, 0.0139] behind 1 million, an interval straddling the tolerance, so it is not shown to match. It also swaps labels move by move, where a real re-search of a position changes the neighbouring move that shares it, so it is not yet the protocol that would ship. Because its rule was found after seeing these results and is scored on the same games, it is EXP-0028's challenger on new games (Next, item 2), not a decision.
 
 ## Deviations and process
 
@@ -44,5 +44,5 @@ Not settled by this experiment, and not choosable by it: section 9 chooses only 
 ## Next
 
 1. Issue: "Analyse at 1 million nodes: the protocol EXP-0008 chose": `ENGINE_NODES` 1,000,000 and `sf19-n1m-v1`, a major algorithm version with its ADR, the manifest, the replay goldens and the arena against `algo-3.0.0`, the pipeline re-costed. EXP-0009 runs at 1 million.
-2. EXP-0026: search deeper only where the cheap searches disagree, registered against 1 million on new games, with the reference's convergence measured.
+2. EXP-0028: search deeper only where the cheap searches disagree, registered against 1 million on new games, with the reference's convergence measured.
 3. EXP-0027: do a player's top weaknesses change between 300,000 and 1 million nodes? Whether stored analyses are redone when the protocol ships.
