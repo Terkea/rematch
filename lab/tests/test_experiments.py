@@ -9,6 +9,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from conftest import clean_git_env
 
 from rematch_lab import experiments
 
@@ -78,6 +79,7 @@ def git(cwd: Path, *args: str) -> None:
     subprocess.run(
         ["git", "-c", "user.email=lab@example.invalid", "-c", "user.name=lab", *args],
         cwd=cwd,
+        env=clean_git_env(),
         check=True,
         capture_output=True,
     )
@@ -319,3 +321,34 @@ def test_an_experiment_closed_unrun_is_never_run(tmp_path: Path) -> None:
     assert experiments.check(exp) == []
     (exp / "preregistration.md").write_text("# no value case\n", encoding="utf-8")
     assert any("value case" in p for p in experiments.check(exp))
+
+
+def test_the_git_helper_never_touches_a_repository_named_by_git_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A container run sets GIT_DIR and GIT_WORK_TREE so git works in a mounted worktree; the
+    # helper must still init and commit in its own temporary repository, never in that one.
+    sentinel = tmp_path / "sentinel"
+    sentinel.mkdir()
+    git(sentinel, "init", "-q")
+    (sentinel / "a").write_text("a\n")
+    git(sentinel, "add", "a")
+    git(sentinel, "commit", "-qm", "sentinel")
+    before = subprocess.run(
+        ["git", "rev-list", "--all"], cwd=sentinel, env=clean_git_env(),
+        capture_output=True, text=True, check=True,
+    ).stdout
+    monkeypatch.setenv("GIT_DIR", str(sentinel / ".git"))
+    monkeypatch.setenv("GIT_WORK_TREE", str(sentinel))
+    inner = tmp_path / "inner"
+    inner.mkdir()
+    git(inner, "init", "-q")
+    (inner / "b").write_text("b\n")
+    git(inner, "add", "b")
+    git(inner, "commit", "-qm", "inner")
+    after = subprocess.run(
+        ["git", "rev-list", "--all"], cwd=sentinel, env=clean_git_env(),
+        capture_output=True, text=True, check=True,
+    ).stdout
+    assert after == before
+    assert (inner / ".git").is_dir()
