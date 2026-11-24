@@ -344,9 +344,9 @@ async fn core_seconds_use_the_recent_mean_cpu_per_game(pool: PgPool) {
     for i in 0..10 {
         job(&q, KIND_ANALYSE, 20, &format!("j{i}")).await;
     }
-    // No data: the default 12 000 ms per game.
+    // No data: the default CPU time per game (EXP-0008).
     let l = queue_lag(&pool).await.unwrap();
-    assert!((l.core_seconds_queued - 10.0 * 12.0).abs() < 1e-9);
+    assert!((l.core_seconds_queued - 10.0 * DEFAULT_CPU_MS_PER_GAME / 1000.0).abs() < 1e-9);
 
     // Mean of 4 000 and 8 000 is 6 000 ms; NULL cpu, old rows and other kinds are ignored.
     sqlx::raw_sql(

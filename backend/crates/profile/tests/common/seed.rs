@@ -43,7 +43,7 @@ pub const W1_EVENTS: i32 = 2;
 pub const W1_OPPORTUNITIES: i32 = 50;
 /// The band median of W1 in the seeded reference.
 pub const W1_REFERENCE: f64 = 0.02;
-pub const PROTOCOL: &str = "sf19-n300k-v1";
+pub const PROTOCOL: &str = engine::ANALYSIS_PROTOCOL;
 
 /// [`seed_now`] as a plain `fn`, for `BuildProfileDeps::now`.
 pub fn seed_now() -> OffsetDateTime {

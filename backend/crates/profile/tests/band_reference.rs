@@ -1639,6 +1639,9 @@ async fn activation_records_the_analysis_and_enrichment_protocols(pool: PgPool) 
             .unwrap();
     assert_eq!(
         after,
-        (Some("sf19-n300k-v1".to_owned()), Some("enr-v1".to_owned()))
+        (
+            Some(engine::ANALYSIS_PROTOCOL.to_owned()),
+            Some("enr-v1".to_owned())
+        )
     );
 }
