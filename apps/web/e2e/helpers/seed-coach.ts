@@ -178,6 +178,9 @@ async function profile(db: Db, accountId: string): Promise<void> {
     bandP40: mean * 0.6,
     excess: mean * 0.3,
     confidence: 0.85,
+    // A fixed build day (the column defaults to now()): the weakness timeline runs to it, and
+    // the visual spec pins "today" to the same day (BASELINE_NOW there).
+    updatedAt: at("2026-11-23"),
   });
   const points = RAPID.flatMap((g, j) => [
     {

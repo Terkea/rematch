@@ -54,6 +54,9 @@ const schema = z.object({
   CHESSCOM_CLIENT_ID: z.string().optional(),
   CHESSCOM_CLIENT_SECRET: z.string().optional(),
   LAB_ENABLED: flag,
+  // e2e only (ADR 0109): honour the `ci-e2e-now` cookie as the request's "now", so the visual
+  // baselines of pages that run to today hold on every day. Set by docker-compose.e2e.yml.
+  E2E_CLOCK: flag,
   // Local only (ADR-FIX-N-1 Amendment 1): treat an unverified account link as verified, so a
   // locally linked account (dev:link, no chess.com Location code) still sees its own report and
   // coach. Refused in production below.

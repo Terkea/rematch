@@ -110,6 +110,7 @@ One file per decision: context, decision, alternatives, consequences. New decisi
 - [0106. Algorithm science: pre-registered experiments and a Python lab that drives the Rust algorithm](0106-algorithm-science-lab.md)
 - [0107. The experiment value gate, and the catalogue that checks the learning framework](0107-experiment-value-gate-and-catalogue.md)
 - [0108. Reviewing outside code: sensitive paths, fork approval and a read-only token](0108-reviewing-outside-code.md)
+- [0109. A pinned "today" for the visual e2e](0109-e2e-request-clock.md)
 
 ## Records with placeholder numbers
 

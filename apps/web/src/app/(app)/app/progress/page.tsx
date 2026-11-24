@@ -5,6 +5,7 @@ import { FocusCard } from "../../../../components/focus/focus-card";
 import { LiveRefreshOn } from "../../../../components/live-refresh-on";
 import { queryKeys } from "../../../../lib/query-keys";
 import { requireUser } from "../../../../server/auth/session";
+import { requestNow } from "../../../../server/clock";
 import { getDb } from "../../../../server/db";
 import { requestEventCursor } from "../../../../server/events/request-cursor";
 import { getFocusCard } from "../../../../server/focus";
@@ -58,7 +59,7 @@ export default async function ProgressPage({
       </div>
     );
   }
-  const now = new Date();
+  const now = await requestNow();
   const bar = await loadCoachBar(db, params, scope, {
     basePath: "/app/progress",
     formatSupported: false,

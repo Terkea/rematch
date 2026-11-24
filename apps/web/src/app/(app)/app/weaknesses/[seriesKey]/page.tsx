@@ -6,6 +6,7 @@ import { LiveRefreshOn } from "../../../../../components/live-refresh-on";
 import { practiseLinkFor } from "../../../../../components/practise-positions";
 import { queryKeys } from "../../../../../lib/query-keys";
 import { requireUser } from "../../../../../server/auth/session";
+import { requestNow } from "../../../../../server/clock";
 import { coachHref } from "../../../../../server/coach/anchor";
 import { changeNotes } from "../../../../../server/coaching";
 import { getDb } from "../../../../../server/db";
@@ -132,6 +133,7 @@ export default async function WeaknessPage({ params, searchParams }: Props) {
         benchmark={benchmark}
         range={range}
         sides={sides}
+        now={await requestNow()}
         filterBar={<FilterBar model={bar.model} />}
         focusAction={
           offer.current || offer.suggestion ? (
