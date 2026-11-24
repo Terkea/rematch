@@ -41,6 +41,7 @@ EXP = A.EXP
 SNAPSHOT = "lichess-puzzles/lichess_db_puzzle.csv"
 SNAPSHOT_SHA256 = "8ce98180bcb7cb60f3f51f12afdbe6a4fd294d8aaf4f1410e8c25e85ac78fdc9"
 PILOT = HERE.parent / "EXP-0007" / "sample-pilot.csv"
+HAND_CHECK = HERE.parent / "EXP-0007" / "pilot" / "hand-check.md"
 PIECES = HERE.parents[2] / "packages" / "ui" / "assets" / "pieces" / "cburnett"
 OUT_DIR = "exp19"
 
@@ -48,16 +49,23 @@ OUT_DIR = "exp19"
 MIN_PLAYS, MIN_POPULARITY, MAX_RATING = 1000, 50, 2000
 FRAME_SIZE = 20000
 BATCH = 2000
-# Practice items, from EXP-0007's pilot (development data, never analysed).
-PRACTICE = ("AkJTy", "PwLEk", "wKuJU")
-# The labelled items rotate: odd blocks take hangingPiece and sacrifice, even ones the others.
-LABELLED_ROTATION = (("hangingPiece", "sacrifice"), ("backRankMate", "skewer"))
+# Practice items: three of EXP-0007's pilot puzzles (development data, never analysed) that its
+# hand check did not judge, one we tag with none of the four and no theme, one we tag without the
+# theme, one with both, drawn in a seeded order from PRACTICE_CANDIDATES pilot puzzles.
+PRACTICE_CANDIDATES = 80
+PRACTICE_KINDS = ("D:none", "U:", "L:")
+# Labelled items: hangingPiece and sacrifice every block, then backRankMate (odd blocks) or
+# skewer (even blocks).
+LABELLED_ROTATION = (("hangingPiece", "sacrifice", "backRankMate"),
+                     ("hangingPiece", "sacrifice", "skewer"))
 # The distractors alternate: odd blocks 2 with a theme and 1 without, even blocks 1 and 2.
 DISTRACTOR_ROTATION = ((2, 1), (1, 2))
-BUDGET = {"lines": FRAME_SIZE + len(PRACTICE), "cli_calls": FRAME_SIZE // BATCH + 1}
+BUDGET = {"lines": FRAME_SIZE + PRACTICE_CANDIDATES, "cli_calls": FRAME_SIZE // BATCH + 1}
 
 
-def load_audience(exclude: set[str]) -> tuple[pl.DataFrame, pl.DataFrame]:
+def load_audience(exclude: set[str], judged: set[str]) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """The audience less the pilot, and the pilot puzzles of the audience that the hand check
+    did not judge (the practice candidates)."""
     path = external_input(SNAPSHOT)
     if A.sha256_file(path) != SNAPSHOT_SHA256:
         raise SystemExit(f"{path} is not the registered snapshot")
@@ -68,19 +76,13 @@ def load_audience(exclude: set[str]) -> tuple[pl.DataFrame, pl.DataFrame]:
         .filter(
             ((pl.col("NbPlays") >= MIN_PLAYS) & (pl.col("Popularity") >= MIN_POPULARITY)
              & (pl.col("Rating") < MAX_RATING))
-            | pl.col("PuzzleId").is_in(list(PRACTICE))
         )
         .collect()
         .sort("PuzzleId")
     )
-    practice = df.filter(pl.col("PuzzleId").is_in(list(PRACTICE)))
-    audience = df.filter(
-        (pl.col("NbPlays") >= MIN_PLAYS)
-        & (pl.col("Popularity") >= MIN_POPULARITY)
-        & (pl.col("Rating") < MAX_RATING)
-        & ~pl.col("PuzzleId").is_in(sorted(exclude))
-    )
-    return audience, practice
+    in_pilot = pl.col("PuzzleId").is_in(sorted(exclude))
+    practice = df.filter(in_pilot & ~pl.col("PuzzleId").is_in(sorted(judged)))
+    return df.filter(~in_pilot), practice
 
 
 def tag(rows: list[tuple], budget: Budget) -> tuple[dict[str, dict], str]:
@@ -114,7 +116,13 @@ def stratum_of(tags: list[str], themes: set[str]) -> list[str]:
 def build() -> None:
     with PILOT.open(encoding="utf-8") as f:
         pilot = {line.split(",")[0] for line in f.read().splitlines()[1:] if line}
-    audience, practice_df = load_audience(pilot)
+    judged = set(re.findall(r"^## w+: [^:]+: (w+)$", HAND_CHECK.read_text(encoding="utf-8"),
+                            re.M))
+    audience, candidates = load_audience(pilot, judged)
+    pick = np.random.default_rng(seed(EXP, "sample/practice")).permutation(candidates.height)
+    chosen = np.zeros(candidates.height, dtype=bool)
+    chosen[pick[:PRACTICE_CANDIDATES]] = True
+    practice_df = candidates.filter(pl.Series(chosen))
     rng = np.random.default_rng(seed(EXP, "sample/frame"))
     mask = np.zeros(audience.height, dtype=bool)
     mask[rng.permutation(audience.height)[:FRAME_SIZE]] = True
@@ -127,6 +135,19 @@ def build() -> None:
             for pid, fen, mv, r, th in
             pl.concat([frame, practice_df]).select("PuzzleId", "FEN", "Moves", "Rating",
                                                    "Themes").rows()}
+
+    # The practice items: the first candidate of each kind, in the seeded order.
+    practice: list[str] = []
+    for kind in PRACTICE_KINDS:
+        for i in pick[:PRACTICE_CANDIDATES]:
+            pid = candidates["PuzzleId"][int(i)]
+            tags = tagged[pid]["tags"]
+            if tags is not None and pid not in practice and any(
+                    s.startswith(kind) for s in stratum_of(tags, set(info[pid]["themes"]))):
+                practice.append(pid)
+                break
+    if len(practice) != len(PRACTICE_KINDS):
+        raise SystemExit("too few practice candidates")
 
     # The frame's strata (a puzzle we tag with two of the four is in two strata).
     strata: dict[str, list[str]] = defaultdict(list)
@@ -188,9 +209,9 @@ def build() -> None:
 
     page_items = [{"n": it["item"], "block": it["block"], **shown(it["puzzle_id"])}
                   for it in items]
-    page_practice = [{"n": i + 1, **shown(p)} for i, p in enumerate(PRACTICE)]
+    page_practice = [{"n": i + 1, **shown(p)} for i, p in enumerate(practice)]
     page_data = {"blocks": A.BLOCKS, "items": page_items, "practice": page_practice}
-    page_id = hashlib.sha256(json.dumps(page_data, sort_keys=True).encode()).hexdigest()[:16]
+    page_id = page_id_of(page_data)
     html = page(page_data, page_id)
     html_sha = hashlib.sha256(html.encode()).hexdigest()
 
@@ -205,7 +226,7 @@ def build() -> None:
                   "strata": {s: len(v) for s, v in sorted(strata.items())}},
         "items": items,
         "practice": [{"n": i + 1, "puzzle_id": p, "tags": tagged[p]["tags"]}
-                     for i, p in enumerate(PRACTICE)],
+                     for i, p in enumerate(practice)],
         "compute": budget.record(),
     }
     out = external_input(OUT_DIR)
@@ -243,14 +264,14 @@ def piece_symbols() -> str:
 DEFINITIONS = {
     "hangingPiece": (
         "Hanging piece",
-        "Does the line win a knight, bishop, rook or queen that was left unguarded, so it is "
-        "taken for nothing?",
-        "Early in the line (usually its first move) a knight, bishop, rook or queen is captured "
-        "that no other enemy piece was guarding, and the opponent cannot take back on that "
-        "square. The point is a piece left loose and taken for free. A pawn does not count, and "
-        "nor does a piece that was guarded (even too few times: winning it by attacking it more "
-        "often than it is defended is another idea). It still counts when the capture also "
-        "gives check or mate.",
+        "Does the first move of the line take a knight, bishop, rook or queen that nothing "
+        "guarded, so it cannot be taken back?",
+        "The first move of the line (the side to move's first move) captures a knight, bishop, "
+        "rook or queen that no enemy piece was guarding, and after the capture the opponent has "
+        "no legal way to take back on that square. A king counts as a guard only if it can "
+        "legally take back. A pawn does not count, and nor does a piece that was guarded, even "
+        "too few times (winning a piece attacked more often than it is defended is another "
+        "idea). It still counts when the capture also gives check or mate.",
     ),
     "skewer": (
         "Skewer",
@@ -264,13 +285,16 @@ DEFINITIONS = {
     ),
     "sacrifice": (
         "Sacrifice",
-        "Does the side to move give up material on purpose (two pawns' worth or more) and get "
-        "more back, or mate, by the end of the line?",
-        "The side to move deliberately gives up material it does not get straight back: at some "
-        "point in the line it is at least two pawns' worth down (a knight or bishop for nothing, "
-        "a rook for a minor piece, the queen for a rook). By the end of the line it has won more "
-        "than it gave, at least two pawns' worth up overall, or it has given mate. A trade in "
-        "which the material comes straight back is not a sacrifice.",
+        "Does the side to move give up at least two pawns' worth that it does not win straight "
+        "back, and still end the line two or more up, or with mate?",
+        "Count material as pawn 1, knight 3, bishop 3, rook 5, queen 9, from the position on the "
+        "board (after the opponent's shaded move). At some point before the side to move has "
+        "won anything back, once the captures of that moment have finished, it is at least two "
+        "points down: a piece given for nothing, a rook for a knight or bishop, the queen for a "
+        "rook. By the end of the line it is at least two points up on the starting count, or it "
+        "has given mate. A trade in which the material comes straight back is not a sacrifice, "
+        "and neither is a line in which the opponent promotes a pawn while the side to move is "
+        "down.",
     ),
     "backRankMate": (
         "Back-rank mate",
@@ -285,11 +309,23 @@ DEFINITIONS = {
 }
 
 
-def page(data: dict[str, Any], page_id: str) -> str:
+def payload_of(data: dict[str, Any]) -> dict[str, Any]:
+    """Everything the page shows the person: the items, the questions and the definitions."""
     questions = [{"tag": t, "name": DEFINITIONS[t][0], "q": DEFINITIONS[t][1],
                   "def": DEFINITIONS[t][2]} for t in A.TAGS]
-    payload = json.dumps({**data, "page_id": page_id, "questions": questions,
-                          "format": A.ANSWERS_FORMAT, "min_blocks": A.MIN_BLOCKS},
+    return {**data, "questions": questions, "format": A.ANSWERS_FORMAT,
+            "min_blocks": A.MIN_BLOCKS}
+
+
+def page_id_of(data: dict[str, Any]) -> str:
+    """The page's id: the sha256 of what it shows and of its template, so answers.json, which
+    names it, is bound to exactly that page."""
+    body = json.dumps(payload_of(data), sort_keys=True) + TEMPLATE
+    return hashlib.sha256(body.encode()).hexdigest()[:16]
+
+
+def page(data: dict[str, Any], page_id: str) -> str:
+    payload = json.dumps({**payload_of(data), "page_id": page_id},
                          sort_keys=True, separators=(",", ":"))
     payload = payload.replace("<", "\\u003c")
     return (TEMPLATE.replace("__PIECES__", piece_symbols())
@@ -552,6 +588,7 @@ function render() {
 function answer(i, v) {
   const it = ITEMS[cur], bk = bucket(it);
   bk[it.n] = {...(bk[it.n] || {}), [Q[i].tag]: v};
+  (st.log = st.log || []).push([it.practice ? "p" + it.n : it.n, Q[i].tag, v, new Date().toISOString()]);
   focusQ = Math.min(i + 1, Q.length - 1); save(); render();
 }
 function leave() {
@@ -566,7 +603,7 @@ function go(to) {
   const nx = ITEMS[cur], bd = document.getElementById("blockdone");
   if (!it.practice && !nx.practice && nx.block !== it.block && to > 0) {
     const mins = Math.round(Object.values(st.seconds).reduce((x, y) => x + y, 0) / 60);
-    bd.textContent = `Block ${it.block} of ${D.blocks} done, about ${mins} minutes of judging so far. You may stop after any whole block once you are past 90 minutes (at least ${D.min_blocks} blocks). Download answers.json whenever you stop.`;
+    bd.textContent = `Block ${it.block} of ${D.blocks} done, about ${mins} minutes of judging so far. A break between blocks is fine; the audit is all ${D.blocks} blocks. Download answers.json before you take one.`;
     bd.classList.remove("hidden");
   } else bd.classList.add("hidden");
 }
@@ -583,7 +620,7 @@ function tick() {
 }
 function download() {
   leave(); save();
-  const out = {format: D.format, page_id: D.page_id, answers: st.answers, practice: st.practice, seconds: st.seconds,
+  const out = {format: D.format, page_id: D.page_id, answers: st.answers, practice: st.practice, seconds: st.seconds, log: st.log || [],
                items: D.items.length, saved_at: new Date().toISOString()};
   const blob = new Blob([JSON.stringify(out, null, 1)], {type: "application/json"});
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "answers.json";

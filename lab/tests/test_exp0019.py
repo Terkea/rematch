@@ -38,7 +38,9 @@ def synthetic_key(per_stratum: int = 30) -> dict:
                       "tags": [s[2:]] if s[0] in "UL" else [],
                       "themes": [s[2:]] if s[0] == "L" else ["hangingPiece"] if s == "D:miss"
                       else []})
-    return {"format": A.KEY_FORMAT, "algorithm_id": "algo-test", "page_id": "abc", "items": items}
+    frame = {f"{k}:{t}": 100 for k in "UL" for t in A.TAGS}
+    return {"format": A.KEY_FORMAT, "algorithm_id": "algo-test", "page_id": "abc", "items": items,
+            "frame": {"strata": frame}}
 
 
 def answers_for(key: dict, rule) -> dict:
@@ -57,7 +59,8 @@ def test_every_tagged_puzzle_judged_the_motif_clears_every_tag():
     key = synthetic_key()
     items = A.done_items(key, answers_for(key, yes_where_tagged))
     for t in A.TAGS:
-        d = A.decide_tag(PIS[t], A.tally(items, f"U:{t}", t), A.tally(items, f"L:{t}", t))
+        d = A.decide_tag(PIS[t], A.tally(items, f"U:{t}", t), A.tally(items, f"L:{t}", t),
+                         A.negatives(items, t))
         assert d["decision"] == "clears", (t, d)
         assert d["estimate"] == 1.0
 
@@ -67,7 +70,8 @@ def test_no_unlabelled_puzzle_judged_the_motif_fails_the_tags_far_from_the_floor
     items = A.done_items(key, answers_for(key, lambda it, t: "yes" if it["strata"][0] == f"L:{t}"
                                           else "no"))
     got = {t: A.decide_tag(PIS[t], A.tally(items, f"U:{t}", t),
-                           A.tally(items, f"L:{t}", t))["decision"] for t in A.TAGS}
+                           A.tally(items, f"L:{t}", t), A.negatives(items, t))["decision"]
+           for t in A.TAGS}
     # pi alone is 0.53 to 0.61 for three tags: they fail. skewer's pi is 0.81: it cannot fail.
     assert got["hangingPiece"] == got["sacrifice"] == got["backRankMate"] == "fails"
     assert got["skewer"] == "inconclusive"
@@ -79,7 +83,8 @@ def test_unsure_counts_against_a_clear_and_against_a_fail():
                                            and it["strata"][0].startswith("U") else
                                            yes_where_tagged(it, t)))
     for t in ("hangingPiece", "sacrifice", "backRankMate"):
-        d = A.decide_tag(PIS[t], A.tally(unsure, f"U:{t}", t), A.tally(unsure, f"L:{t}", t))
+        d = A.decide_tag(PIS[t], A.tally(unsure, f"U:{t}", t), A.tally(unsure, f"L:{t}", t),
+                         A.negatives(unsure, t))
         assert d["decision"] == "inconclusive", (t, d)
 
 
@@ -93,19 +98,30 @@ def test_the_labelled_guard_stops_a_clear():
 
     items = A.done_items(key, answers_for(key, rule))
     d = A.decide_tag(PIS["hangingPiece"], A.tally(items, "U:hangingPiece", "hangingPiece"),
-                     A.tally(items, "L:hangingPiece", "hangingPiece"))
-    assert d["decision"].startswith("inconclusive: the person and the theme disagree")
-    assert not d["guard_passes"]
+                     A.tally(items, "L:hangingPiece", "hangingPiece"),
+                     A.negatives(items, "hangingPiece"))
+    assert d["decision"].startswith("inconclusive: the bound clears, the guards do not")
+    assert not d["guards"]["labelled"]
 
 
-def test_items_after_the_last_answer_are_not_done_and_blanks_before_it_are_unsure():
+def test_a_rater_who_says_yes_to_everything_cannot_clear():
+    key = synthetic_key()
+    items = A.done_items(key, answers_for(key, lambda it, t: "yes"))
+    for t in A.TAGS:
+        d = A.decide_tag(PIS[t], A.tally(items, f"U:{t}", t), A.tally(items, f"L:{t}", t),
+                         A.negatives(items, t))
+        assert d["decision"] != "clears", (t, d)
+        assert not d["guards"]["false_yes"]
+
+
+def test_only_whole_blocks_count_and_blanks_in_them_are_unsure():
     key = synthetic_key()
     ans = answers_for(key, yes_where_tagged)
     for n in range(41, len(key["items"]) + 1):
         del ans["answers"][str(n)]
     del ans["answers"]["3"]["skewer"]
     items = A.done_items(key, ans)
-    assert len(items) == 40
+    assert len(items) == 21  # block 2 (items 22 to 42) is not finished
     assert items[2]["answers"]["skewer"] == "unsure"
 
 
@@ -127,7 +143,6 @@ def test_the_registered_run_writes_canonical_results(tmp_path, monkeypatch):
         paths[name] = (hashlib.sha256(p.read_bytes()).hexdigest(), p)
     paths["results.json"] = (A.sha256_file(A.EXP7_RESULTS), A.EXP7_RESULTS)
     monkeypatch.setattr(A, "registered_inputs", lambda: paths)
-    monkeypatch.setattr(A, "BLOCKS", 3)
     A.cmd_run(tmp_path / "a")
     A.cmd_run(tmp_path / "b")
     first = (tmp_path / "a" / "results.json").read_bytes()
@@ -169,7 +184,7 @@ def test_the_rule_rarely_clears_a_tag_at_the_floor():
 
     rng = np.random.default_rng(1)
     for t in A.TAGS:
-        r = A.simulate(PIS[t], 0.80, 30, 3, 0.0, 1.0, rng, reps=4000)
+        r = A.simulate(PIS[t], 0.80, 30, 3, 90, 0.0, 1.0, rng, reps=4000)
         assert r["clears"] <= A.ALPHA_TAG_ONE_SIDED * 2 + 0.003, (t, r)
 
 
@@ -183,11 +198,14 @@ def test_the_page_holds_no_id_tag_theme_or_rating():
     data = {"blocks": 1, "practice": [],
             "items": [{"n": 1, "block": 1, "fen": "6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1",
                        "setup": "g8h8", "line": ["a1a8"], "mate": True}]}
-    html = M.page(data, "pageid")
+    html = M.page(data, M.page_id_of(data))
     assert "__DATA__" not in html and "__PIECES__" not in html
     script = html.split("const D = ", 1)[1].split(";\n", 1)[0]
     payload = json.loads(script)
     assert set(payload["items"][0]) == {"n", "block", "fen", "setup", "line", "mate"}
+    assert payload["page_id"] == M.page_id_of(data)
+    changed = {**data, "items": [{**data["items"][0], "mate": False}]}
+    assert M.page_id_of(changed) != payload["page_id"]
     assert "connect-src 'none'" in html
     assert not re.search(r"<script[^>]+src=|<link[^>]+href=|https?://(?!www\.w3\.org)", html)
 
