@@ -103,7 +103,7 @@ test("the coach pages look as they did", async ({ browser, request }, info) => {
   // seedFixtures wrote the coach world; seeding again gives its ids (the same rows, rewritten).
   const { threadId } = seedCoach();
   // The weakness, area and progress timelines run to today: pin it to the day the baselines
-  // were made (the server honours the cookie under E2E_CLOCK=1, ADR 0109).
+  // were made (the server honours the cookie under E2E_CLOCK=1, ADR 0110).
   await page
     .context()
     .addCookies([{ name: "ci-e2e-now", value: BASELINE_NOW, url: new URL(page.url()).origin }]);

@@ -1,4 +1,4 @@
-# 0109. A pinned "today" for the visual e2e
+# 0110. A pinned "today" for the visual e2e
 
 Date: 2026-11-24. Status: accepted (lane `coachvis`, branch `fix/coach-visual`). Builds on ADR 0067.
 
@@ -27,3 +27,7 @@ Playwright's `page.clock` cannot help: these pages are server components, and th
 
 - The coach visual baselines stay valid on every day. A page that later starts reading the wall clock in its render will fail the same way; the fix is to take `requestNow()` from the page.
 - A production server honours the cookie only if an operator sets `E2E_CLOCK=1`, which nothing but the e2e overlay does. It changes only what these three pages treat as today.
+
+## Risk
+
+The flag also works in production builds, because CI's production e2e runs one with it set. If an operator set `E2E_CLOCK=1` on a real deployment, a signed-in user could move "today" on their own timeline pages, and nothing else: no data is written with the pinned time and other users are unaffected. `deploy/compose.yaml` never sets it, and only `docker-compose.e2e.yml` does.
