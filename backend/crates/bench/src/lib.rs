@@ -3,6 +3,7 @@
 //! CoachingInput, then scored on diagnosis, calibration, plan targeting, data efficiency and
 //! stability.
 
+pub mod depth;
 pub mod flaws;
 pub mod generate;
 pub mod harness;

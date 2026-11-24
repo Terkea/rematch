@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/Terkea/rematch/lab/schemas/lab-v1.schema.json",
   "title": "Rematch lab bridge, lab-v1",
-  "description": "The JSON of `cli lab analyse|profile|rank|tag-motifs` (ADR 0106). Validate one message with {\"$ref\": \"#/$defs/<Message>\"} next to these $defs. The envelope and the lab's own objects are snake_case; the algorithm's own types (WeaknessEstimate, BandReferenceStat, RankedWeakness) keep their camelCase serialisation.",
+  "description": "The JSON of `cli lab analyse|profile|rank|tag-motifs|positions|evaluate|judge` (ADR 0106). Validate one message with {\"$ref\": \"#/$defs/<Message>\"} next to these $defs. The envelope and the lab's own objects are snake_case; the algorithm's own types (WeaknessEstimate, BandReferenceStat, RankedWeakness) keep their camelCase serialisation.",
   "$defs": {
     "SchemaVersion": { "const": "lab-v1" },
     "AlgorithmId": {
@@ -441,6 +441,170 @@
         "schema_version": { "$ref": "#/$defs/SchemaVersion" },
         "algorithm_id": { "$ref": "#/$defs/AlgorithmId" },
         "lines": { "type": "array", "items": { "$ref": "#/$defs/TaggedLine" } }
+      }
+    },
+    "EngineScore": {
+      "description": "An engine score: exactly one of cp (centipawns) or mate (moves, negative when the side is mated).",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["cp"],
+          "properties": { "cp": { "type": "integer" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mate"],
+          "properties": { "mate": { "type": "integer" } }
+        }
+      ]
+    },
+    "DepthGame": {
+      "description": "A game for positions or judge (EXP-0008); lichess_evals is Lichess's evaluation after each ply, White's point of view, as production stores it.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "pgn"],
+      "properties": {
+        "id": { "type": "string" },
+        "pgn": { "type": "string" },
+        "base_seconds": { "type": ["integer", "null"] },
+        "increment_seconds": { "type": ["integer", "null"] },
+        "lichess_evals": {
+          "type": ["array", "null"],
+          "items": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/EngineScore" }] }
+        }
+      }
+    },
+    "PositionsRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "games"],
+      "properties": {
+        "schema_version": { "$ref": "#/$defs/SchemaVersion" },
+        "games": { "type": "array", "items": { "$ref": "#/$defs/DepthGame" } }
+      }
+    },
+    "GamePositions": {
+      "description": "The FENs evaluate_game asks the engine for, in its order, each once.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "plies", "terminal", "fens"],
+      "properties": {
+        "id": { "type": "string" },
+        "plies": { "$ref": "#/$defs/Count" },
+        "terminal": { "type": "boolean" },
+        "fens": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "PositionsResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "algorithm_id", "games"],
+      "properties": {
+        "schema_version": { "$ref": "#/$defs/SchemaVersion" },
+        "algorithm_id": { "$ref": "#/$defs/AlgorithmId" },
+        "games": { "type": "array", "items": { "$ref": "#/$defs/GamePositions" } }
+      }
+    },
+    "EvaluateRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "nodes", "fens"],
+      "properties": {
+        "schema_version": { "$ref": "#/$defs/SchemaVersion" },
+        "nodes": { "type": "integer", "minimum": 1 },
+        "hash_mb": { "type": ["integer", "null"], "minimum": 1, "maximum": 4096 },
+        "syzygy": { "type": "boolean" },
+        "engines": { "type": ["integer", "null"], "minimum": 1 },
+        "fens": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "Search": {
+      "description": "One search as evaluate_game reads it: the last complete MultiPV 1 line, the side to move's score. cpu_ms is for costing only and is not deterministic.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fen", "score", "best_uci", "depth", "nodes", "cpu_ms"],
+      "properties": {
+        "fen": { "type": "string" },
+        "score": { "$ref": "#/$defs/EngineScore" },
+        "best_uci": { "type": ["string", "null"] },
+        "depth": { "$ref": "#/$defs/Count" },
+        "nodes": { "type": "integer", "minimum": 0 },
+        "cpu_ms": { "type": ["number", "null"] }
+      }
+    },
+    "EvaluateResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "algorithm_id", "nodes", "hash_mb", "syzygy", "threads", "searches"],
+      "properties": {
+        "schema_version": { "$ref": "#/$defs/SchemaVersion" },
+        "algorithm_id": { "$ref": "#/$defs/AlgorithmId" },
+        "nodes": { "type": "integer", "minimum": 1 },
+        "hash_mb": { "type": "integer", "minimum": 1 },
+        "syzygy": { "type": "boolean" },
+        "threads": { "type": "integer", "minimum": 1 },
+        "searches": { "type": "array", "items": { "$ref": "#/$defs/Search" } }
+      }
+    },
+    "GivenSearch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fen", "score"],
+      "properties": {
+        "fen": { "type": "string" },
+        "score": { "$ref": "#/$defs/EngineScore" },
+        "best_uci": { "type": ["string", "null"] }
+      }
+    },
+    "JudgeRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "games", "searches"],
+      "properties": {
+        "schema_version": { "$ref": "#/$defs/SchemaVersion" },
+        "games": { "type": "array", "items": { "$ref": "#/$defs/DepthGame" } },
+        "searches": { "type": "array", "items": { "$ref": "#/$defs/GivenSearch" } }
+      }
+    },
+    "JudgedMove": {
+      "description": "One move as the analyse-game job stores it in move_records.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ply", "color", "uci", "best_uci", "win_before", "win_after", "accuracy", "judgement", "decided"],
+      "properties": {
+        "ply": { "$ref": "#/$defs/Count" },
+        "color": { "enum": ["white", "black"] },
+        "uci": { "type": "string" },
+        "best_uci": { "type": ["string", "null"] },
+        "win_before": { "type": "number" },
+        "win_after": { "type": "number" },
+        "accuracy": { "type": "number" },
+        "judgement": { "oneOf": [{ "type": "null" }, { "enum": ["inaccuracy", "mistake", "blunder"] }] },
+        "decided": { "type": "boolean" }
+      }
+    },
+    "JudgedGame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "moves", "accuracy_white", "accuracy_black", "lichess_used"],
+      "properties": {
+        "id": { "type": "string" },
+        "moves": { "type": "array", "items": { "$ref": "#/$defs/JudgedMove" } },
+        "accuracy_white": { "type": "number" },
+        "accuracy_black": { "type": "number" },
+        "lichess_used": { "$ref": "#/$defs/Count" }
+      }
+    },
+    "JudgeResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "algorithm_id", "games"],
+      "properties": {
+        "schema_version": { "$ref": "#/$defs/SchemaVersion" },
+        "algorithm_id": { "$ref": "#/$defs/AlgorithmId" },
+        "games": { "type": "array", "items": { "$ref": "#/$defs/JudgedGame" } }
       }
     }
   }
