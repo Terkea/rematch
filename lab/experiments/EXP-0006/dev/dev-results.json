@@ -14,10 +14,7 @@
   ],
   "players_per_cell": 100,
   "seed_namespace": "EXP-0006-dev",
-  "tied_within_0_01": [
-    "dev:games=2,ess,disp",
-    "dev:games=1,ess,disp"
-  ],
+  "tied_within_0_01": ["dev:games=2,ess,disp", "dev:games=1,ess,disp"],
   "variants": {
     "champion": {
       "D": 0.6928,

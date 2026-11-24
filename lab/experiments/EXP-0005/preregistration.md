@@ -1,6 +1,6 @@
 # EXP-0005: how much do the rankings move between two real algorithm versions?
 
-- Status: pre-registered
+- Status: decided (closed unrun by the value gate, review concern 1)
 - Issue: #100
 - Author: the maintainer, with Claude (lane `exp/0005-0006`)
 - Kind: measurement (one pair of versions): the churn EXP-0001 assumed
@@ -120,4 +120,4 @@ A mismatch in the between-runs check overrides the above: the churn is not inter
 
 ## 11. Deviations
 
-None.
+1. 2026-11-24, after the critic's review (`review.md`, concern 1): closed unrun. The design cannot move the suites in any branch, so its outcomes lead to one action and ADR 0107 says it is not run. The churn is reported descriptively by EXP-0006, which owns the side-by-side run. Sections 0 to 10 are left as registered.

@@ -18,6 +18,9 @@ nothing else. `check` enforces what CI needs:
    of the template, and once results exist, `results.json` records its compute budget against
    the actual (`compute`), with no unit past the registered cap (150% unless section 0 says
    more). EXP-0001 and EXP-0002 were registered before the gate and are exempt.
+6. Closed unrun (the kill rule, ADR 0107): an experiment with a `decision.md` and no
+   `results.json` was closed before it ran. Its value case and inputs are still checked; it is
+   never run.
 
     python -m rematch_lab.experiments check [--history] [EXP-0001 ...]
     python -m rematch_lab.experiments hash EXP-0001    # print analysis.py's sha256
@@ -287,6 +290,9 @@ def check(exp: Path, *, history: bool = False, algorithm_id: str | None = None) 
     problems += value_case_problems(exp, text)
     problems += input_problems(exp)
     committed = exp / "results.json"
+    if not committed.exists() and (exp / "decision.md").is_file():
+        print(f"{exp.name}: closed unrun (decision.md, no results.json)")
+        return problems
     historical = False
     if committed.exists():
         stated = stated_hash(text)

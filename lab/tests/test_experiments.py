@@ -235,3 +235,14 @@ def test_results_past_the_cap_or_without_a_budget_fail(tmp_path: Path) -> None:
     assert any("no compute budget" in p for p in experiments.compute_problems(exp, text, {}))
     fine = {"compute": {"budget": {"draws": 100}, "actual": {"draws": 150}}}
     assert experiments.compute_problems(exp, text, fine) == []
+
+
+def test_an_experiment_closed_unrun_is_never_run(tmp_path: Path) -> None:
+    """The kill rule: a decision.md with no results.json closes an experiment before it runs."""
+    exp = make(tmp_path, ANALYSIS.replace('random.Random(seed("EXP-9999", "draws"))', "random"))
+    (exp / "decision.md").write_text("# closed unrun
+", encoding="utf-8")
+    assert experiments.check(exp) == []
+    (exp / "preregistration.md").write_text("# no value case
+", encoding="utf-8")
+    assert any("value case" in p for p in experiments.check(exp))
