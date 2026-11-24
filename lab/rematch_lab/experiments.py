@@ -12,10 +12,10 @@ nothing else. `check` enforces what CI needs:
    matches its file.
 4. Deterministic: two runs give byte-identical `results.json`. For an experiment whose results
    ran on the current algorithm (`algorithm_id`), the rerun also equals the committed file. Once
-   the algorithm moves on, a decided experiment stays live (ADR 0108): `rematch_lab.arena`
+   the algorithm moves on, a decided experiment stays live (ADR 0109): `rematch_lab.arena`
    re-runs it on its schedule against the champion, so this check does not rerun it twice more;
    its rules 1 to 3 and 5 are still checked here.
-6. Live or retired (ADR 0108): a decided experiment's `summary.md` says `live: true` with a
+6. Live or retired (ADR 0109): a decided experiment's `summary.md` says `live: true` with a
    `rerun` of per-pr, weekly or release, its measured `run_cpu_hours` and `run_minutes`, and an
    `arena.py` with its comparison rule; or `live: false` with the reason in `retired`.
 5. Worth running (ADR 0107): section 0 of the pre-registration is a value case with every field
@@ -57,7 +57,7 @@ VALUE_FIELDS = (
 VALUE_SCORE = re.compile(r"impact ([1-3]) × uncertainty ([1-3]) ÷ cost ([1-3]) = ([0-9]+(?:\.[0-9]+)?)")
 BUDGET_CAP = re.compile(r"^- Compute budget:.*\bcap (\d+)%", re.MULTILINE)
 DEFAULT_CAP = 1.5
-# How often a live experiment is re-run against the champion (ADR 0108), cheapest first.
+# How often a live experiment is re-run against the champion (ADR 0109), cheapest first.
 RERUNS = ("per-pr", "weekly", "release")
 FRONT_MATTER = re.compile(r"^---\n(.*?)\n---\n", re.DOTALL)
 # Registered before the value gate existed.

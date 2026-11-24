@@ -1,5 +1,5 @@
 """The experiment rules (rematch_lab.experiments): registered first, frozen, checked inputs,
-deterministic, worth running, and live or retired once decided (ADR 0108)."""
+deterministic, worth running, and live or retired once decided (ADR 0109)."""
 
 from __future__ import annotations
 

@@ -13,7 +13,7 @@ lab/experiments/EXP-NNNN/
   review.md            the critic's review of the pre-registration and of the result
   decision.md          ship, reject or need more data, and a "## Next" of roadmap issues
   summary.md           the site's summary; once decided, live, rerun and the cost of one run
-  arena.py             once decided: the comparison rule the arena uses (ADR 0108)
+  arena.py             once decided: the comparison rule the arena uses (ADR 0109)
 ```
 
 ## The order of commits
@@ -34,7 +34,7 @@ CI checks the first three against git (`python -m rematch_lab.experiments check 
 - Count what it spends with `rematch_lab.experiments.Budget`, built from section 0's compute budget: it stops the run at the cap (150% unless section 0 registers more), and `budget.record()` goes into `results.json` as `compute`. Counted units only (games, nodes, profile calls, tokens): wall time goes in `decision.md`, since `results.json` must be byte-identical.
 - Write only `results.json` (with `rematch_lab.experiments.write_results`, including the `algorithm_id` of the responses it used) and `figures/` under `--out`.
 
-CI (`.github/workflows/lab.yml`) reruns it twice and fails when the two `results.json` differ, or when they differ from the committed one while its `algorithm_id` is the current cli's. Once the algorithm has moved on, a decided experiment stays live: the arena re-runs it against the champion on its schedule (ADR 0108), and its other rules are still checked.
+CI (`.github/workflows/lab.yml`) reruns it twice and fails when the two `results.json` differ, or when they differ from the committed one while its `algorithm_id` is the current cli's. Once the algorithm has moved on, a decided experiment stays live: the arena re-runs it against the champion on its schedule (ADR 0109), and its other rules are still checked.
 
 ## `review.md` and `decision.md`
 
@@ -46,4 +46,4 @@ The kill rule (ADR 0107): when a pre-registered experiment no longer informs an 
 
 ## Once decided: live
 
-A decided experiment stays live (ADR 0108). Its `summary.md` front matter adds `live: true`, `rerun: per-pr|weekly|release` and the measured cost of one run (`run_cpu_hours`, `run_minutes`, from `decision.md`), and `arena.py` holds its comparison rule: `METRICS` (each metric's `name`, `role` primary or guard, `label` and `better`), `measure(results)` (the compact per-unit data a comparison needs), `metrics(measures)` (each metric's value and interval) and `compare(champion, challenger)` (each metric's effect, interval, level and verdict, by the experiment's registered rule). An experiment that no longer informs a decision says `live: false` and `retired: <reason>`. Its `decision.md` ends with a `## Next` whose items each name a roadmap issue, at least one an experiment.
+A decided experiment stays live (ADR 0109). Its `summary.md` front matter adds `live: true`, `rerun: per-pr|weekly|release` and the measured cost of one run (`run_cpu_hours`, `run_minutes`, from `decision.md`), and `arena.py` holds its comparison rule: `METRICS` (each metric's `name`, `role` primary or guard, `label` and `better`), `measure(results)` (the compact per-unit data a comparison needs), `metrics(measures)` (each metric's value and interval) and `compare(champion, challenger)` (each metric's effect, interval, level and verdict, by the experiment's registered rule). An experiment that no longer informs a decision says `live: false` and `retired: <reason>`. Its `decision.md` ends with a `## Next` whose items each name a roadmap issue, at least one an experiment.

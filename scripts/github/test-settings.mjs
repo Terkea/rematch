@@ -7,8 +7,9 @@
 //   4. the roadmap kept as code (ADR 0099): milestones.json and roadmap-issues.json agree with
 //      each other and with labels.json, and the milestone, seed-issue and sub-issue plans;
 //   5. milestone renames, moved and updated issues, and adopted issues (ADR 0104);
-//   6. every decided experiment's decision.md ends with a Next whose items are roadmap issues,
-//      at least one of them an experiment (ADR 0108).
+//   6. the Actions settings: fork pull request approval and the default token (ADR 0108);
+//   7. every decided experiment's decision.md ends with a Next whose items are roadmap issues,
+//      at least one of them an experiment (ADR 0109).
 // Run: node scripts/github/test-settings.mjs (no dependencies, no network).
 import assert from "node:assert/strict";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
@@ -34,6 +35,7 @@ import {
   resolveMilestones,
   validateLabels,
   validateMilestones,
+  validateActions,
   validateRepo,
   validateRoadmapIssues,
   validateRuleset,
@@ -158,6 +160,21 @@ check(
     assert.ok(want.includes("pr-title"), "the PR-title lint is a required check");
   },
 );
+
+check(
+  "no workflow uses pull_request_target or workflow_run (fork code never gets a write token)",
+  () => {
+    const dir = join(root, ".github", "workflows");
+    const bad = readdirSync(dir)
+      .filter((f) => /\.ya?ml$/.test(f))
+      .filter((f) => /^\s*(pull_request_target|workflow_run)\s*:/m.test(workflow(f)));
+    assert.deepEqual(bad, []);
+  },
+);
+
+check("labels.json has the sensitive-reviewed override label", () => {
+  assert.ok(settings.labels.some((l) => l.name === "sensitive-reviewed"));
+});
 
 check("pr-title.yml: plain pull_request with a read token, the action pinned by commit", () => {
   assert.ok(!prTitleYaml.includes("pull_request_target"), "never pull_request_target");
@@ -899,6 +916,76 @@ check("keepTicks: only boxes with the same text stay ticked", () => {
   assert.equal(keepTicks(body, undefined), body);
 });
 
+// ---- 6. the Actions settings (ADR 0108) ----
+
+check("repo.json actions: every outside contributor is approved first, a read-only token", () => {
+  assert.deepEqual(settings.repo.actions, {
+    fork_pr_contributor_approval: "all_external_contributors",
+    default_workflow_permissions: "read",
+    can_approve_pull_request_reviews: false,
+  });
+});
+
+check("validateActions rejects unknown keys and values", () => {
+  const ok = settings.repo.actions;
+  validateActions(ok);
+  assert.throws(() => validateActions({ ...ok, extra: 1 }), /unknown key "extra"/);
+  assert.throws(
+    () => validateActions({ ...ok, fork_pr_contributor_approval: "everyone" }),
+    /fork_pr_contributor_approval/,
+  );
+  assert.throws(
+    () => validateActions({ ...ok, default_workflow_permissions: "admin" }),
+    /default_workflow_permissions/,
+  );
+  assert.throws(
+    () => validateActions({ ...ok, can_approve_pull_request_reviews: "no" }),
+    /can_approve_pull_request_reviews/,
+  );
+});
+
+check("planChanges: the Actions settings are written only where the live repo differs", () => {
+  const live = matching(settings);
+  live.forkApproval = { approval_policy: "first_time_contributors" };
+  live.actionsWorkflow = {
+    default_workflow_permissions: "write",
+    can_approve_pull_request_reviews: true,
+  };
+  const plan = planChanges(settings, live, "o/r");
+  assert.deepEqual(
+    plan.calls.map((c) => `${c.method} ${c.path}`),
+    [
+      "PUT repos/o/r/actions/permissions/fork-pr-contributor-approval",
+      "PUT repos/o/r/actions/permissions/workflow",
+    ],
+  );
+  assert.deepEqual(plan.calls[0].body, { approval_policy: "all_external_contributors" });
+  assert.deepEqual(plan.calls[1].body, {
+    default_workflow_permissions: "read",
+    can_approve_pull_request_reviews: false,
+  });
+  assert.ok(
+    plan.lines.some((l) => l.includes('"first_time_contributors" -> "all_external_contributors"')),
+    plan.lines.join("\n"),
+  );
+
+  // A failed read is planned as a write; matching state and unread state plan none.
+  const failedRead = planChanges(
+    settings,
+    { ...matching(settings), forkApproval: { error: "HTTP 403: Forbidden" } },
+    "o/r",
+  );
+  assert.deepEqual(
+    failedRead.calls.map((c) => c.path),
+    ["repos/o/r/actions/permissions/fork-pr-contributor-approval"],
+  );
+  assert.deepEqual(planChanges(settings, matching(settings), "o/r").calls, []);
+  const unread = matching(settings);
+  delete unread.forkApproval;
+  delete unread.actionsWorkflow;
+  assert.deepEqual(planChanges(settings, unread, "o/r").calls, []);
+});
+
 /** A live state that already matches the settings. */
 function matching(s) {
   return {
@@ -911,6 +998,11 @@ function matching(s) {
     },
     vulnerabilityReporting: { enabled: true },
     pages: { build_type: s.repo.pages.build_type },
+    forkApproval: { approval_policy: s.repo.actions.fork_pr_contributor_approval },
+    actionsWorkflow: {
+      default_workflow_permissions: s.repo.actions.default_workflow_permissions,
+      can_approve_pull_request_reviews: s.repo.actions.can_approve_pull_request_reviews,
+    },
   };
 }
 

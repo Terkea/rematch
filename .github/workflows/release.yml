@@ -4,7 +4,7 @@ name: Release
 # entry. Merging that PR tags vX.Y.Z and publishes a GitHub Release, marked prerelease while the
 # version is 0.y.z (beta). 1.0.0 is the MVP: a maintainer decision, never automatic.
 # When a Release is published, the arena job checks every live experiment against the release
-# before it (lab.yml, ADR 0108), then the images job builds, smoke-tests, pushes and signs the
+# before it (lab.yml, ADR 0109), then the images job builds, smoke-tests, pushes and signs the
 # images and attaches the release assets (release-images.yml, ADR 0098).
 on:
   push:
@@ -36,7 +36,7 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
-  # The arena on the release (ADR 0108): every live experiment, the release's algorithm against
+  # The arena on the release (ADR 0109): every live experiment, the release's algorithm against
   # the release before it. A clear regression fails it and holds the images back; the emergency
   # override is an ADR and an entry in lab/overrides.json (docs/evaluation.md).
   arena:

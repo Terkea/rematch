@@ -1,4 +1,4 @@
-"""EXP-0001's champion/challenger rule (rematch_lab.arena, ADR 0108).
+"""EXP-0001's champion/challenger rule (rematch_lab.arena, ADR 0109).
 
 The comparison is the one this experiment registered (preregistration.md, sections 5 and 9, and
 the analysis.py docstring): a paired comparison of two versions on the same pilot players, the

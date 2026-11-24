@@ -25,6 +25,7 @@ The full guide is [CONTRIBUTING.md](https://github.com/Terkea/rematch/blob/main/
 - **Honesty rules hold.** See [the honesty rules](/rematch/docs/honesty/): no number without its count, no "improved" without separated ranges, no AI fact without a reference.
 - **chess.com first.** Lichess accounts are deferred ([0040](/rematch/docs/decisions/0040-chesscom-first-defer-lichess-accounts/)); a Lichess import behind a flag is a welcome proposal.
 - **No secrets and no personal data** in commits, fixtures, screenshots or issues.
+- **Outside code is reviewed as untrusted.** Fork workflows run after the maintainer approves them, with a read-only token. A change to workflows, Dockerfiles, lockfiles, scripts, `CLAUDE.md`, `.claude/` or the coach's prompts is read by hand before the `sensitive-reviewed` label goes on ([0108](/rematch/docs/decisions/0108-reviewing-outside-code/), [security](https://github.com/Terkea/rematch/blob/main/SECURITY.md#how-we-review-outside-code)).
 
 ## AI-assisted contributions
 

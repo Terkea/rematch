@@ -1,4 +1,4 @@
-"""Champion and challenger (ADR 0108): every live experiment, re-run on the same registered seeds
+"""Champion and challenger (ADR 0109): every live experiment, re-run on the same registered seeds
 and inputs for two algorithm versions, compared by the experiment's own rule.
 
 The champion is the production algorithm (by default the manifest on main); the challenger is

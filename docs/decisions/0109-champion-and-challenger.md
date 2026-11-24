@@ -1,4 +1,4 @@
-# 0108. Champion and challenger: decided experiments stay live, and every version is compared on all of them
+# 0109. Champion and challenger: decided experiments stay live, and every version is compared on all of them
 
 Date: 2026-11-24. Status: accepted (lane `champ`, branch `feat/champion-challenger`). Builds on ADRs 0104, 0105, 0106 and 0107; replaces the "historical, not rerun" rule of ADR 0106.
 

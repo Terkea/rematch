@@ -1,4 +1,4 @@
-"""The champion/challenger arena (rematch_lab.arena, ADR 0108): the interval rules, each live
+"""The champion/challenger arena (rematch_lab.arena, ADR 0109): the interval rules, each live
 experiment's own comparison, the plan and its budget, the leaderboard and the overrides."""
 
 from __future__ import annotations

@@ -6,7 +6,7 @@ name: Lab
 # analysis.py changed after its results were committed. It runs on pull requests that touch the
 # lab or the algorithm's crates, and every Monday.
 #
-# Then the arena (ADR 0108, rematch_lab.arena): the challenger (this commit's cli) against the
+# Then the arena (ADR 0109, rematch_lab.arena): the challenger (this commit's cli) against the
 # champion on every live experiment in the scope, on the registered seeds, with each experiment's
 # own rule. A pull request that changes algorithm/manifest.json runs the `per-pr` experiments
 # against main, re-runs the challenger and requires its record in lab/leaderboard.json; the Monday
@@ -192,7 +192,7 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always() && steps.arena.outputs.scope != ''
         with:
-          # leaderboard.json here is the file to commit when a record is new (ADR 0108).
+          # leaderboard.json here is the file to commit when a record is new (ADR 0109).
           name: arena-${{ steps.arena.outputs.scope }}
           path: arena-out/
           retention-days: 30

@@ -23,7 +23,8 @@ const FIXTURE = join(HERE, "fixtures", "lab");
 describe("experiments", () => {
   const exps = loadExperiments(FIXTURE);
   it("lists newest first and finds the linked files", () => {
-    expect(exps.map((e) => e.id)).toEqual(["EXP-9002", "EXP-9001"]);
+    // `id` comes from the summary's front matter, which the JS generator spreads untyped.
+    expect(exps.map((e) => (e as { id?: string }).id)).toEqual(["EXP-9002", "EXP-9001"]);
     expect(exps[1]?.files).toMatchObject({ decision: true, results: true, review: false });
   });
   it("accepts a quoted or hashed issue number and joins wrapped bullets", () => {

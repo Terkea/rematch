@@ -1,4 +1,4 @@
-"""EXP-0002's champion/challenger rule (rematch_lab.arena, ADR 0108).
+"""EXP-0002's champion/challenger rule (rematch_lab.arena, ADR 0109).
 
 EXP-0002 is a measurement of one version: each of the 20 key × checkpoint coverages of the 80%
 range is classified by its Bonferroni interval against [0.75, 0.85] (preregistration.md, section

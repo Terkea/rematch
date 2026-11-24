@@ -1,6 +1,6 @@
 // Pure helpers for the Experiments and Progress pages, the landing strip and the lag guard.
 // sync-content.mjs calls them; test/lab.test.ts covers them. Sources: lab/experiments/EXP-*/summary.md,
-// lab/leaderboard.json (the arena's records, ADR 0108) and docs/progress.md.
+// lab/leaderboard.json (the arena's records, ADR 0109) and docs/progress.md.
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { BASE, GITHUB_BLOB, REPO, rewriteMarkdown } from "./content-lib.mjs";
@@ -222,8 +222,8 @@ export function leaderboardSection(exps, board, champion) {
     return `<tr${isChampion ? ' class="lab-champion"' : ""}><th scope="row"><code>${esc(version)}</code>${mark}</th>${columns.map((c) => cell(version, c)).join("")}</tr>`;
   });
   const intro =
-    "Every algorithm version against the primary metric of every live experiment, on the same registered seeds and inputs ([ADR 0108](" +
-    `${GITHUB_BLOB}/docs/decisions/0108-champion-and-challenger.md` +
+    "Every algorithm version against the primary metric of every live experiment, on the same registered seeds and inputs ([ADR 0109](" +
+    `${GITHUB_BLOB}/docs/decisions/0109-champion-and-challenger.md` +
     ")). The champion is the version on main, the one in production. A challenger replaces it only when it beats it on the primaries with no clear regression on a guarded metric. The guarded metrics, each comparison's effect and its interval are in [lab/leaderboard.json](" +
     `${GITHUB_BLOB}/lab/leaderboard.json` +
     ").";

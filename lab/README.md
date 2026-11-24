@@ -6,7 +6,7 @@ In a nutshell -
 
 1. **One implementation.** `rematch_lab` calls the `cli` binary built from `backend/`, through a versioned JSON interface (`cli lab analyse|profile|rank`, schema `lab-v1`). A finding that should change the product is made in Rust as a new algorithm version (ADR 0104), and the lab re-runs to confirm it.
 2. **Pre-registered.** A behaviour change (a threshold, the ranking, a detector, a prior) needs a pre-registered experiment: [the template](../docs/experiments/TEMPLATE.md) and [the protocol](../docs/evaluation.md#how-we-do-science-on-the-algorithm).
-3. **Live.** A decided experiment stays live: `python -m rematch_lab.arena` re-runs it for the champion (the production algorithm) and each challenger on its registered seeds, compares them by the experiment's own rule, and records both in `leaderboard.json` (ADR 0108).
+3. **Live.** A decided experiment stays live: `python -m rematch_lab.arena` re-runs it for the champion (the production algorithm) and each challenger on its registered seeds, compares them by the experiment's own rule, and records both in `leaderboard.json` (ADR 0109).
 4. **Reproducible.** Python 3.12 and every package are pinned and locked (`pyproject.toml`, `uv.lock`), at least 7 days old (`scripts/check-pypi-age.mjs`); everything runs in the lab image, never on the host's Python; every random draw is seeded; CI reruns each experiment twice and compares `results.json` byte for byte.
 
 ## The bridge

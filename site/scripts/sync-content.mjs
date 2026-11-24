@@ -150,7 +150,7 @@ function writeHowItWorksSummary() {
   );
 }
 
-/** The champion: the algorithm version on this commit's manifest (ADR 0108). */
+/** The champion: the algorithm version on this commit's manifest (ADR 0109). */
 function championId() {
   return JSON.parse(readFileSync(join(ROOT, "algorithm", "manifest.json"), "utf8")).id;
 }

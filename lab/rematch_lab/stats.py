@@ -1,4 +1,4 @@
-"""The interval rules the arena compares versions with (ADR 0108). Standard library only.
+"""The interval rules the arena compares versions with (ADR 0109). Standard library only.
 
 - `wilson(k, n, level)`: the Wilson score interval of a share.
 - `newcombe_paired(n11, n10, n01, n00, level)`: Newcombe (1998) method 10, the interval of the
