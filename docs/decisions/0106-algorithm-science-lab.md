@@ -34,3 +34,13 @@ The owner asked for a lab in Python, "but not offline: just use our algorithm as
 - The bench crate exposes its steps (`Throwaway`, `memo_engines`, `insert_game_with_clock`, the harness's `analyse` and `build`), and `ai` exposes `select_focuses_of` and `allowed_drills_of`; no behaviour changes.
 - Python stays out of every product image. The lab image is built only by the lab workflow and the opt-in `lab` compose profile.
 - The vendored skills drift from upstream by design; the monthly sweep compares the pinned commit with upstream, and an update is a pull request that re-reads every changed file.
+
+## Amendment 1 (2026-11-24): external inputs
+
+EXP-0007 reads a snapshot of the Lichess puzzle database (1,177,486,537 bytes decompressed), which is too large for git and which Lichess replaces every month at the same URL. The owner asked that only the sample's ids and checksums be committed.
+
+1. **An input may be external.** A line of `inputs.sha256` may name `external:<path>`, a file in the data directory (`$REMATCH_DATA_DIR`, by default the checkout's git-ignored `data/`); `analysis.py` reads it through `rematch_lab.experiments.external_input`. When the file is present, its sha256 is checked like any other input's.
+2. **No data, no rerun.** When an external input is absent, as in CI, `python -m rematch_lab.experiments check` prints that the experiment is not rerun and why, and its other rules (registered first, frozen sections, the analysis hash, the compute record) are still checked. The byte-identical rerun is then the maintainer's, on the machine that holds the snapshot, and the experiment's `decision.md` records it.
+3. **The snapshot is named by its checksum**, with its URL, download date, size and sha256 in section 7 of the pre-registration, so a copy can be verified wherever it comes from.
+
+Option considered: committing the sample's rows (CC0 data, a few megabytes) so CI could rerun it. Not now: the owner chose ids and checksums only. Archiving the snapshot as a release asset would let CI fetch it by checksum; that is a follow-up, not part of this amendment.
