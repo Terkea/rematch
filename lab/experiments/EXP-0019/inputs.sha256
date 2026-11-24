@@ -1,0 +1,9 @@
+# The registered run reads the key (which item is which, from make_audit.py) and the person's
+# answers, both external in the data directory until the audit is done (section 7), and
+# EXP-0007's results for pi. make_audit.py also reads the snapshot and EXP-0007's pilot ids.
+# The answers' sha256 is a placeholder until the audit is done: while answers.json is absent the
+# lab check does not run the experiment; once it is there, the line is pinned to its sha256.
+7528277468896710c27559b61b15e4528ed9d06b4c58b779fbcae6b08b138900  ../EXP-0007/results.json
+da5869cc30907e579f8246218e59f9b32f25ba86cbfb42badb01069ae59918c2  ../EXP-0007/sample-pilot.csv
+8ce98180bcb7cb60f3f51f12afdbe6a4fd294d8aaf4f1410e8c25e85ac78fdc9  external:lichess-puzzles/lichess_db_puzzle.csv
+0000000000000000000000000000000000000000000000000000000000000000  external:exp19/answers.json
