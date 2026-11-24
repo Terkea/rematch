@@ -17,7 +17,8 @@
       "!**/assets/pieces/**/*.svg",
       "!.claude/skills/science/**",
       "!lab/fixtures/**",
-      "!lab/experiments/**/results.json"
+      "!lab/experiments/**/results.json",
+      "!lab/experiments/**/pilot/*.json"
     ]
   },
   "formatter": { "indentStyle": "space", "indentWidth": 2, "lineWidth": 100 },
