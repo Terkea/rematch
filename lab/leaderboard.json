@@ -4454,6 +4454,87 @@
       "rule_sha256": "65cdc6c77961efcbd279a26caa7b11365ced5a1c47eedf712eb6460ecb8851d4",
       "seed_namespace": "EXP-0007",
       "verdict": "no clear difference"
+    },
+    {
+      "against": "algo-3.0.0+554036a3b27c",
+      "algorithm_id": "algo-3.0.0+554036a3b27c",
+      "analysis_sha256": "8aca6d49c804dee94a35938c90ddd8bd515e9a0af08b4af971f31ceebd5258e1",
+      "comparison": {
+        "ships_the_chosen_count": {
+          "effect": 0.0,
+          "interval": null,
+          "level": "section 9's rule",
+          "verdict": "no clear difference"
+        },
+        "step_down": {
+          "effect": 0.0,
+          "interval": [
+            -0.01529,
+            0.01529
+          ],
+          "level": "95%, t over games",
+          "verdict": "no clear difference"
+        },
+        "step_up": {
+          "effect": 0.0,
+          "interval": [
+            -0.00701,
+            0.00701
+          ],
+          "level": "95%, t over games",
+          "verdict": "no clear difference"
+        }
+      },
+      "date": "2026-11-24",
+      "experiment": "EXP-0008",
+      "inputs_sha256": "185ace4ca38fb68ededcb80a5115f244be41476d7c19bbbcc451ce56ec7102db",
+      "measures": {
+        "chosen_nodes": 1000000,
+        "outcome": "300k falls short",
+        "production_nodes": 300000,
+        "step_down": {
+          "estimate": 0.012226,
+          "interval": [
+            0.001414,
+            0.023037
+          ]
+        },
+        "step_up": {
+          "estimate": 0.024632,
+          "interval": [
+            0.019675,
+            0.029588
+          ]
+        }
+      },
+      "metrics": {
+        "ships_the_chosen_count": {
+          "at": "300k falls short: 1,000,000 nodes; the version uses 300,000",
+          "interval": null,
+          "level": "section 9's rule",
+          "value": 0.0
+        },
+        "step_down": {
+          "interval": [
+            0.001414,
+            0.023037
+          ],
+          "level": "95%, t over games",
+          "value": 0.012226
+        },
+        "step_up": {
+          "interval": [
+            0.019675,
+            0.029588
+          ],
+          "level": "95%, t over games",
+          "value": 0.024632
+        }
+      },
+      "results_sha256": "9fe1f487b9b2c291cc45593eef6bc6b4ff1c92a1ae7d78f85f8b1c7cb71379e6",
+      "rule_sha256": "30451eb48702ecb82e38191e63342857be8813241888ede5fe3c5b1aac1e3c53",
+      "seed_namespace": "EXP-0008",
+      "verdict": "no clear difference"
     }
   ],
   "schema": "leaderboard-v1",
@@ -4677,6 +4758,26 @@
         "better": "higher",
         "label": "Recall of `mateIn4Plus`",
         "name": "recall_mateIn4Plus",
+        "role": "report"
+      }
+    ],
+    "EXP-0008": [
+      {
+        "better": "yes, where the champion's was not",
+        "label": "The version's node count is the one section 9 chooses",
+        "name": "ships_the_chosen_count",
+        "role": "primary"
+      },
+      {
+        "better": "lower",
+        "label": "D(100,000) − D(300,000), share of moves",
+        "name": "step_down",
+        "role": "report"
+      },
+      {
+        "better": "lower",
+        "label": "D(300,000) − D(1 million), share of moves",
+        "name": "step_up",
         "role": "report"
       }
     ]
