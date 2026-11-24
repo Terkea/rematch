@@ -57,6 +57,12 @@ describe("practiseView", () => {
     });
   });
 
+  it("adds the year when the next due day falls in another year", () => {
+    expect(
+      practiseView({ kind: "done", next: "2027-01-05", doneToday: 0 }, scope, "2026-12-30"),
+    ).toMatchObject({ line: "That's today done. Next due on 5 January 2027." });
+  });
+
   it("starts training on a first run", () => {
     expect(practiseView({ kind: "first-run" }, scope, today)).toEqual({
       kind: "first-run",
