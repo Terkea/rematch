@@ -1,0 +1,90 @@
+name: Sensitive paths
+# Flags a pull request that changes a path where outside code can run on a maintainer's machine
+# or in CI, change what ships, or steer an AI agent: workflows and settings, Dockerfiles and
+# compose files, lockfiles and package configuration, build and repository scripts, CLAUDE.md,
+# .claude and the coach's prompts, the algorithm manifest and the security policy (ADR 0108).
+#
+# It runs no pull request code. It checks out the base commit (trusted), fetches the pull
+# request's commits as data, and runs the base copy of scripts/github/sensitive-paths.mjs over
+# `git diff --name-only`. Plain pull_request, never the privileged _target variant, with a
+# read-only token and no secrets.
+#
+# The maintainer reviews the flagged files by hand and then adds the label `sensitive-reviewed`
+# (labels need triage rights). The label counts only on the run its own `labeled` event starts:
+# after new commits the check fails again until the label is removed and added back. Pull
+# requests by the owner are exempt. The check is advisory, not required (ADR 0108 says why).
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sensitive-paths-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  sensitive-paths:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Owner exemption
+        id: owner
+        env:
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          if [ "$AUTHOR" = "Terkea" ]; then
+            echo "Opened by the owner: exempt."
+            echo "exempt=1" >>"$GITHUB_OUTPUT"
+          else
+            echo "exempt=0" >>"$GITHUB_OUTPUT"
+          fi
+      # v7.0.1, pinned by commit. The base commit, so the matcher is the trusted copy.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.owner.outputs.exempt == '0'
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Fetch the pull request's commits (data only, never checked out)
+        if: steps.owner.outputs.exempt == '0'
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: git fetch --no-tags origin "+refs/pull/${PR_NUMBER}/head:refs/remotes/pr/head"
+      - name: List the sensitive paths
+        id: match
+        if: steps.owner.outputs.exempt == '0'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if node scripts/github/sensitive-paths.mjs --base "$BASE_SHA" --head "$HEAD_SHA"; then
+            echo "sensitive=0" >>"$GITHUB_OUTPUT"
+          else
+            code=$?
+            [ "$code" -eq 1 ] || exit "$code"
+            echo "sensitive=1" >>"$GITHUB_OUTPUT"
+          fi
+      - name: Maintainer review
+        if: steps.owner.outputs.exempt == '0' && steps.match.outputs.sensitive == '1'
+        env:
+          ACTION: ${{ github.event.action }}
+          LABEL: ${{ github.event.label.name }}
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: |
+          case ",$LABELS," in
+            *,sensitive-reviewed,*) has=1 ;;
+            *) has=0 ;;
+          esac
+          if [ "$has" -eq 1 ] && [ "$ACTION" = "labeled" ] && [ "$LABEL" = "sensitive-reviewed" ]; then
+            echo "The maintainer reviewed the sensitive paths (label sensitive-reviewed)."
+            exit 0
+          fi
+          if [ "$has" -eq 1 ]; then
+            msg="The label sensitive-reviewed predates this run. Remove it and add it again after reviewing the latest commits."
+          else
+            msg="Sensitive paths changed. The maintainer reviews them by hand (docs/SDLC.md), then adds the label sensitive-reviewed."
+          fi
+          echo "::error title=Sensitive paths::$msg"
+          exit 1

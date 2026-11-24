@@ -44,7 +44,9 @@ jobs:
       - name: Check npm release age (7 days) and exact pins
         run: node scripts/check-npm-age.mjs
       - name: Repository settings as code (the ruleset requires exactly these jobs, ADR 0095)
-        run: node scripts/github/test-settings.mjs
+        run: |
+          node scripts/github/test-settings.mjs
+          node scripts/github/test-sensitive-paths.mjs
       # ADR 0105: a changed algorithm component needs a version bump by the policy and a
       # changelog entry. On a pull request the base is the target branch's tip.
       - name: The algorithm version guard and its tests (ADR 0105)
