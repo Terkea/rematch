@@ -11,9 +11,13 @@ nothing else. `check` enforces what CI needs:
 3. Checked inputs: every line of `inputs.sha256` (`<hex>  <path from the experiment folder>`)
    matches its file.
 4. Deterministic: two runs give byte-identical `results.json`. For an experiment whose results
-   ran on the current algorithm (`algorithm_id`), the rerun also equals the committed file. An
-   older experiment is historical: its rules 1 to 3 are checked, but it is not rerun on an
-   algorithm it never measured.
+   ran on the current algorithm (`algorithm_id`), the rerun also equals the committed file. Once
+   the algorithm moves on, a decided experiment stays live (ADR 0108): `rematch_lab.arena`
+   re-runs it on its schedule against the champion, so this check does not rerun it twice more;
+   its rules 1 to 3 and 5 are still checked here.
+6. Live or retired (ADR 0108): a decided experiment's `summary.md` says `live: true` with a
+   `rerun` of per-pr, weekly or release, its measured `run_cpu_hours` and `run_minutes`, and an
+   `arena.py` with its comparison rule; or `live: false` with the reason in `retired`.
 5. Worth running (ADR 0107): section 0 of the pre-registration is a value case with every field
    of the template, and once results exist, `results.json` records its compute budget against
    the actual (`compute`), with no unit past the registered cap (150% unless section 0 says
@@ -53,6 +57,9 @@ VALUE_FIELDS = (
 VALUE_SCORE = re.compile(r"impact ([1-3]) × uncertainty ([1-3]) ÷ cost ([1-3]) = ([0-9]+(?:\.[0-9]+)?)")
 BUDGET_CAP = re.compile(r"^- Compute budget:.*\bcap (\d+)%", re.MULTILINE)
 DEFAULT_CAP = 1.5
+# How often a live experiment is re-run against the champion (ADR 0108), cheapest first.
+RERUNS = ("per-pr", "weekly", "release")
+FRONT_MATTER = re.compile(r"^---\n(.*?)\n---\n", re.DOTALL)
 # Registered before the value gate existed.
 VALUE_GATE_EXEMPT = frozenset({"EXP-0001", "EXP-0002"})
 
@@ -196,6 +203,57 @@ def compute_problems(exp: Path, text: str, results: dict[str, Any]) -> list[str]
     return problems
 
 
+def front_matter(text: str) -> dict[str, str]:
+    """The flat `key: value` front matter of a summary.md (quotes stripped)."""
+    m = FRONT_MATTER.match(text.replace("\r\n", "\n"))
+    if not m:
+        return {}
+    meta = {}
+    for line in m.group(1).splitlines():
+        key, sep, value = line.partition(":")
+        if sep and re.fullmatch(r"[a-z_]+", key.strip()):
+            v = value.strip()
+            if len(v) >= 2 and v[0] == v[-1] and v[0] in "\"'":
+                v = v[1:-1]
+            meta[key.strip()] = v
+    return meta
+
+
+def summary_meta(exp: Path) -> dict[str, str]:
+    path = exp / "summary.md"
+    return front_matter(path.read_text(encoding="utf-8")) if path.is_file() else {}
+
+
+def _positive(value: str | None) -> bool:
+    try:
+        return value is not None and float(value) > 0
+    except ValueError:
+        return False
+
+
+def metadata_problems(exp: Path) -> list[str]:
+    """Rule 6: a decided experiment is live with a schedule and a rule, or retired with a reason."""
+    meta = summary_meta(exp)
+    if meta.get("status") != "decided":
+        return []
+    live = meta.get("live")
+    if live == "false":
+        if not meta.get("retired"):
+            return [f"{exp.name}: live: false needs the reason in `retired`"]
+        return []
+    if live != "true":
+        return [f"{exp.name}: a decided experiment says `live: true` or `live: false` in summary.md"]
+    problems = []
+    if meta.get("rerun") not in RERUNS:
+        problems.append(f"{exp.name}: `rerun` is one of {', '.join(RERUNS)}")
+    for key in ("run_cpu_hours", "run_minutes"):
+        if not _positive(meta.get(key)):
+            problems.append(f"{exp.name}: `{key}` is the measured cost of one run, above 0")
+    if not (exp / "arena.py").is_file():
+        problems.append(f"{exp.name}: a live experiment has an arena.py with its comparison rule")
+    return problems
+
+
 def current_algorithm_id() -> str:
     from .bridge import call_raw
 
@@ -285,9 +343,10 @@ def check(exp: Path, *, history: bool = False, algorithm_id: str | None = None) 
         return problems
     text = (exp / "preregistration.md").read_text(encoding="utf-8")
     problems += value_case_problems(exp, text)
+    problems += metadata_problems(exp)
     problems += input_problems(exp)
     committed = exp / "results.json"
-    historical = False
+    moved_on = False
     if committed.exists():
         stated = stated_hash(text)
         actual = analysis_hash(exp)
@@ -306,9 +365,16 @@ def check(exp: Path, *, history: bool = False, algorithm_id: str | None = None) 
         if not ran_on:
             problems.append(f"{exp.name}: results.json does not say which algorithm_id it ran on")
         elif algorithm_id is not None and ran_on != algorithm_id:
-            historical = True
-            print(f"{exp.name}: historical (ran on {ran_on}, the cli is {algorithm_id})")
-    if historical:
+            moved_on = True
+            meta = summary_meta(exp)
+            if meta.get("live") == "true":
+                print(
+                    f"{exp.name}: ran on {ran_on}, the cli is {algorithm_id}; live, re-run against "
+                    f"the champion by the arena ({meta.get('rerun')})"
+                )
+            else:
+                print(f"{exp.name}: ran on {ran_on}, the cli is {algorithm_id}; not live")
+    if moved_on:
         return problems
     with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as b:
         first = run_once(exp, Path(a))
