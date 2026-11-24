@@ -168,7 +168,7 @@ def committed_record(live: Live, algorithm_id: str) -> dict[str, Any] | None:
 
 def load_board(path: Path) -> dict[str, Any]:
     if not path.is_file():
-        return {"schema": SCHEMA, "records": []}
+        return {"schema": SCHEMA, "specs": {}, "records": []}
     board = json.loads(path.read_text(encoding="utf-8"))
     if board.get("schema") != SCHEMA:
         raise SystemExit(f"{path}: schema is not {SCHEMA}")
@@ -465,6 +465,7 @@ def main(argv: list[str] | None = None) -> int:
             entry["challenger_metrics"] = b["metrics"]
             entry["verdict"] = experiment_verdict(live, rule, comparison, challenger, overrides)
             if args.write and not args.dry_run:
+                board.setdefault("specs", {})[live.id] = rule.METRICS
                 if champion != challenger and "date" not in a:
                     blank = {"date": args.date, "against": None, "comparison": None, "verdict": None}
                     upsert(board, {**a, **blank})

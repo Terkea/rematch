@@ -994,7 +994,10 @@ export function decisionNextProblems(text, expId, issues) {
     for (const m of item.matchAll(/Issue: "([^"]+)"/g)) {
       const issue = titles.get((m[1] ?? "").trim().toLowerCase());
       if (issue) named.push(issue);
-      else problems.push(`${expId}/decision.md: Next item ${n + 1} names "${m[1]}", not a roadmap issue`);
+      else
+        problems.push(
+          `${expId}/decision.md: Next item ${n + 1} names "${m[1]}", not a roadmap issue`,
+        );
     }
     if (named.length === 0) {
       problems.push(

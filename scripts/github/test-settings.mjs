@@ -425,12 +425,20 @@ check("decisionNextProblems: a Next of roadmap issues, one of them an experiment
   const none = ok.replace(/## Next[\s\S]*$/, "## What changes\n\n- Nothing.\n");
   assert.match(decisionNextProblems(none, "EXP-0001", NEXT_ISSUES)[0], /no "## Next"/);
   const loose = ok.replace('Issue: "Choose the weekly benchmark budget"', "left to the owner");
-  assert.match(decisionNextProblems(loose, "EXP-0001", NEXT_ISSUES)[0], /item 2 names no roadmap issue/);
+  assert.match(
+    decisionNextProblems(loose, "EXP-0001", NEXT_ISSUES)[0],
+    /item 2 names no roadmap issue/,
+  );
   const unknown = ok.replace("EXP-0005", "EXP-0099");
   assert.ok(decisionNextProblems(unknown, "EXP-0001", NEXT_ISSUES).some((p) => /item 1/.test(p)));
-  const noExperiment = ok.replace("1. **EXP-0005: measure the churn.**", "1. Its own EXP-0001 again.");
+  const noExperiment = ok.replace(
+    "1. **EXP-0005: measure the churn.**",
+    "1. Its own EXP-0001 again.",
+  );
   assert.ok(
-    decisionNextProblems(noExperiment, "EXP-0001", NEXT_ISSUES).some((p) => /experiment issue/.test(p)),
+    decisionNextProblems(noExperiment, "EXP-0001", NEXT_ISSUES).some((p) =>
+      /experiment issue/.test(p),
+    ),
   );
   const empty = "## Next\n\nNothing.\n";
   assert.match(decisionNextProblems(empty, "EXP-0001", NEXT_ISSUES)[0], /no numbered items/);

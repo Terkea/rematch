@@ -602,5 +602,41 @@
       "verdict": "no clear difference"
     }
   ],
-  "schema": "leaderboard-v1"
+  "schema": "leaderboard-v1",
+  "specs": {
+    "EXP-0001": [
+      {
+        "better": "higher",
+        "label": "Recall at 2, 80 games",
+        "name": "recall_at_2",
+        "role": "primary"
+      },
+      {
+        "better": "closer to 0.8",
+        "label": "Coverage of the 80% ranges, up to 80 games",
+        "name": "coverage",
+        "role": "guard"
+      },
+      {
+        "better": "lower",
+        "label": "Clean checkpoints with a rank-1 weakness, up to 80 games",
+        "name": "clean_false_alarms",
+        "role": "guard"
+      }
+    ],
+    "EXP-0002": [
+      {
+        "better": "closer to 0.8",
+        "label": "Worst of the 20 coverages of the 80% range",
+        "name": "worst_coverage",
+        "role": "primary"
+      },
+      {
+        "better": "closer to 0.8",
+        "label": "Coverage at the peers' rate (ρ = 1)",
+        "name": "rho1_coverage",
+        "role": "guard"
+      }
+    ]
+  }
 }

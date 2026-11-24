@@ -259,6 +259,13 @@ def test_a_run_writes_both_records_and_reuses_them(lab_dirs: Path) -> None:
     assert chall["against"] == CHAMPION and chall["verdict"] == "no clear difference"
     assert chall["metrics"]["hits"]["value"] == pytest.approx(20 / 30)
     assert chall["date"] == "2026-11-24"
+    # The metrics' roles and labels, for the site's leaderboard.
+    assert board["specs"]["EXP-9999"][0] == {
+        "name": "hits",
+        "role": "primary",
+        "label": "Hits",
+        "better": "higher",
+    }
     # The second run reuses both records: nothing to plan.
     code, again = run(lab_dirs, "--dry-run")
     assert code == 0 and again["plan"] == []
