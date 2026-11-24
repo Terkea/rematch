@@ -4,6 +4,7 @@
     facts = lab.analyse(players, nodes=12_000)   # games -> facts (database and Stockfish)
     profiles = lab.profile(facts)                # facts -> rates with 80% intervals
     ranking = lab.rank(profiles)                 # rates -> ranked weaknesses, focuses, drills
+    tagged = lab.tag_motifs(lines)               # lines -> motif tags (EXP-0007)
     run = lab.bench("smoke", out_dir="out")      # the Tier 1 benchmark (ADR 0100)
     manifest = lab.algorithm()                   # this build's manifest (ADR 0105)
 
@@ -22,6 +23,7 @@ from .bridge import (
     check,
     profile,
     rank,
+    tag_motifs,
 )
 
 __all__ = [
@@ -36,4 +38,5 @@ __all__ = [
     "models",
     "profile",
     "rank",
+    "tag_motifs",
 ]

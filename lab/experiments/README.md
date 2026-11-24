@@ -28,7 +28,7 @@ CI checks the first three against git (`python -m rematch_lab.experiments check 
 
 ## What `analysis.py` may do
 
-- Read only the inputs in `inputs.sha256`.
+- Read only the inputs in `inputs.sha256`. A large public file kept out of git is an external input, `<sha256>  external:<path>` in the data directory (`$REMATCH_DATA_DIR`, by default the checkout's git-ignored `data/`), read through `rematch_lab.experiments.external_input`; where it is absent, as in CI, the check says so and does not rerun the experiment (ADR 0106, Amendment 1).
 - Call the algorithm only through `rematch_lab`; never re-implement a detector, an estimate or the ranking.
 - Draw randomness only from `rematch_lab.experiments.seed(exp_id, name)`, with every name listed in section 7.
 - Count what it spends with `rematch_lab.experiments.Budget`, built from section 0's compute budget: it stops the run at the cap (150% unless section 0 registers more), and `budget.record()` goes into `results.json` as `compute`. Counted units only (games, nodes, profile calls, tokens): wall time goes in `decision.md`, since `results.json` must be byte-identical.

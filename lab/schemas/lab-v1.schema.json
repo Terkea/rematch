@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/Terkea/rematch/lab/schemas/lab-v1.schema.json",
   "title": "Rematch lab bridge, lab-v1",
-  "description": "The JSON of `cli lab analyse|profile|rank` (ADR 0106). Validate one message with {\"$ref\": \"#/$defs/<Message>\"} next to these $defs. The envelope and the lab's own objects are snake_case; the algorithm's own types (WeaknessEstimate, BandReferenceStat, RankedWeakness) keep their camelCase serialisation.",
+  "description": "The JSON of `cli lab analyse|profile|rank|tag-motifs` (ADR 0106). Validate one message with {\"$ref\": \"#/$defs/<Message>\"} next to these $defs. The envelope and the lab's own objects are snake_case; the algorithm's own types (WeaknessEstimate, BandReferenceStat, RankedWeakness) keep their camelCase serialisation.",
   "$defs": {
     "SchemaVersion": { "const": "lab-v1" },
     "AlgorithmId": {
@@ -366,6 +366,81 @@
         "schema_version": { "$ref": "#/$defs/SchemaVersion" },
         "algorithm_id": { "$ref": "#/$defs/AlgorithmId" },
         "players": { "type": "array", "items": { "$ref": "#/$defs/PlayerRanking" } }
+      }
+    },
+    "MotifTag": {
+      "description": "A motif tag as the product stores it (MotifTag::as_str, profile-core).",
+      "enum": [
+        "hangingPiece",
+        "fork",
+        "pin",
+        "skewer",
+        "discoveredAttack",
+        "deflection",
+        "sacrifice",
+        "promotion",
+        "mate",
+        "mateIn1",
+        "mateIn2",
+        "mateIn3",
+        "mateIn4Plus",
+        "matingNet",
+        "backRankMate",
+        "smotheredMate"
+      ]
+    },
+    "LineAnalysis": {
+      "description": "The algorithm's LineAnalysis (camelCase): the settled swing and the motif tags.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["gain", "depth", "mateIn", "tags"],
+      "properties": {
+        "gain": { "type": "number" },
+        "depth": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/Count" }] },
+        "mateIn": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/Count" }] },
+        "tags": { "type": "array", "items": { "$ref": "#/$defs/MotifTag" } }
+      }
+    },
+    "MotifLine": {
+      "description": "A line to tag: setup is played from fen to reach the tagged position, then pv is the mover's best line.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "fen", "pv"],
+      "properties": {
+        "id": { "type": "string" },
+        "fen": { "type": "string" },
+        "setup": { "type": "array", "items": { "type": "string" } },
+        "pv": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "TaggedLine": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "fen", "pov", "best"],
+      "properties": {
+        "id": { "type": "string" },
+        "fen": { "type": ["string", "null"] },
+        "pov": { "oneOf": [{ "type": "null" }, { "enum": ["white", "black"] }] },
+        "best": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/LineAnalysis" }] }
+      }
+    },
+    "TagMotifsRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "lines"],
+      "properties": {
+        "schema_version": { "$ref": "#/$defs/SchemaVersion" },
+        "lines": { "type": "array", "items": { "$ref": "#/$defs/MotifLine" } }
+      }
+    },
+    "TagMotifsResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "algorithm_id", "lines"],
+      "properties": {
+        "schema_version": { "$ref": "#/$defs/SchemaVersion" },
+        "algorithm_id": { "$ref": "#/$defs/AlgorithmId" },
+        "lines": { "type": "array", "items": { "$ref": "#/$defs/TaggedLine" } }
       }
     }
   }

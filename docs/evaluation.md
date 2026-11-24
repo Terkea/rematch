@@ -86,6 +86,7 @@ Twelve more experiments, EXP-0007 to EXP-0018, check the learning framework laye
 - Profile: are the rates, the change states and the trajectory right? EXP-0013 (false weaknesses for a clean player), EXP-0014 (the change detectors), EXP-0015 (the trajectory's "worse" verdict); with EXP-0002, EXP-0003 and EXP-0006.
 - Language: is the coach faithful to the facts? EXP-0016 (what the validator misses).
 - Learning, which needs real players (v0.6): EXP-0017 (how many players the learning experiments need), EXP-0018 (the review schedule and the retire rule).
+- The follow-ups of EXP-0007: EXP-0019 (a blind human audit of the tags the themes cannot judge), EXP-0020 (deflection), EXP-0021 (pin), EXP-0022 (motifs after the first gain and past ply 8), EXP-0023 (the engine's best line against the solution).
 
 The order: the facts first, because every layer above them inherits their errors and EXP-0009's cost depends on EXP-0008's node count; then EXP-0009, the top priority, since it is the only one that can change what we teach; then the rest by value score. The profile experiments need no engine, so they run alongside the facts.
 

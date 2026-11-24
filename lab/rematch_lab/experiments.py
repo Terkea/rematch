@@ -9,7 +9,11 @@ nothing else. `check` enforces what CI needs:
 2. Frozen: once results exist, sections 0 to 10 of the pre-registration are the text they had in
    the commit that added the results, and `analysis.py` has the sha256 that section 10 states.
 3. Checked inputs: every line of `inputs.sha256` (`<hex>  <path from the experiment folder>`)
-   matches its file.
+   matches its file. An external input (`<hex>  external:<path in the data directory>`) is a
+   large public file kept out of git in the data directory (`$REMATCH_DATA_DIR`, by default the
+   checkout's git-ignored `data/`), such as a pinned snapshot of the Lichess puzzle database. When
+   it is present it must match; when it is absent, as in CI, the check says so and does not rerun
+   the experiment, since its answer cannot be reproduced without its data.
 4. Deterministic: two runs give byte-identical `results.json`. For an experiment whose results
    ran on the current algorithm (`algorithm_id`), the rerun also equals the committed file. Once
    the algorithm moves on, a decided experiment stays live (ADR 0109): `rematch_lab.arena`
@@ -115,6 +119,19 @@ def seed(exp_id: str, name: str) -> int:
     """A stable 32-bit seed for one named random step (every name is listed in section 7)."""
     digest = hashlib.sha256(f"{exp_id}/{name}".encode()).digest()
     return int.from_bytes(digest[:4], "big")
+
+
+EXTERNAL = "external:"
+
+
+def data_dir() -> Path:
+    """Where external inputs live: `$REMATCH_DATA_DIR`, or the checkout's git-ignored `data/`."""
+    return Path(os.environ.get("REMATCH_DATA_DIR") or LAB_ROOT.parent / "data")
+
+
+def external_input(rel: str) -> Path:
+    """The path of an external input, `rel` inside the data directory; experiments call this."""
+    return data_dir() / rel
 
 
 def experiments(only: list[str] | None = None) -> list[Path]:
@@ -316,20 +333,50 @@ def history_problems(exp: Path) -> list[str]:
     return problems
 
 
-def input_problems(exp: Path) -> list[str]:
+def input_lines(exp: Path) -> list[tuple[str, str]]:
+    """`(sha256, path)` for each line of `inputs.sha256`; an external path keeps its prefix."""
     manifest = exp / "inputs.sha256"
     if not manifest.exists():
         return []
-    problems = []
+    out = []
     for line in manifest.read_text(encoding="utf-8").splitlines():
         if not line.strip() or line.startswith("#"):
             continue
         want, _, rel = line.partition("  ")
-        path = (exp / rel.strip()).resolve()
+        out.append((want.strip(), rel.strip()))
+    return out
+
+
+def sha256_of(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def missing_external(exp: Path) -> list[str]:
+    """The external inputs of `exp` that are not on this machine."""
+    return [
+        rel
+        for _, rel in input_lines(exp)
+        if rel.startswith(EXTERNAL) and not external_input(rel[len(EXTERNAL) :]).is_file()
+    ]
+
+
+def input_problems(exp: Path) -> list[str]:
+    problems = []
+    for want, rel in input_lines(exp):
+        if rel.startswith(EXTERNAL):
+            path = external_input(rel[len(EXTERNAL) :])
+            if not path.is_file():
+                continue  # reported by check(), which then skips the rerun
+        else:
+            path = (exp / rel).resolve()
         if not path.is_file():
-            problems.append(f"{exp.name}: input {rel.strip()} is missing")
-        elif hashlib.sha256(path.read_bytes()).hexdigest() != want.strip():
-            problems.append(f"{exp.name}: input {rel.strip()} does not match its sha256")
+            problems.append(f"{exp.name}: input {rel} is missing")
+        elif sha256_of(path) != want:
+            problems.append(f"{exp.name}: input {rel} does not match its sha256")
     return problems
 
 
@@ -375,6 +422,10 @@ def check(exp: Path, *, history: bool = False, algorithm_id: str | None = None) 
             else:
                 print(f"{exp.name}: ran on {ran_on}, the cli is {algorithm_id}; not live")
     if moved_on:
+        return problems
+    absent = missing_external(exp)
+    if absent:
+        print(f"{exp.name}: not rerun, its external input is not here ({', '.join(absent)})")
         return problems
     with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as b:
         first = run_once(exp, Path(a))

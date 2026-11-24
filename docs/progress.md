@@ -8,6 +8,12 @@ The site builds this file into /docs/progress/ and shows the newest entry on the
 
 See also the [experiments](/rematch/docs/experiments/) and the [roadmap](/rematch/docs/roadmap/).
 
+## 2026-11-24: EXP-0007, the motif tags against the Lichess puzzle themes
+
+- We ran the real Rust tagger on 54,987 Lichess puzzles (CC0, many thanks to Lichess and its players), each solution standing in for the engine's best line, and scored it against Lichess's themes. Fork is right 98% of the time and finds 72% of the labelled forks; discovered attack 99% and 86%; promotion and smothered mate match almost exactly ([EXP-0007](https://github.com/Terkea/rematch/tree/main/lab/experiments/EXP-0007)).
+- Six tags can't be shown to be right four times in five: deflection (56%, mostly attraction) is ours to fix; skewer (81%, not shown to clear 80%), back-rank mate, hanging piece, sacrifice and pin wait for a blind human audit, since the themes don't name every motif in a puzzle. Pin also finds only 20% of the labelled pins.
+- Next: stop naming those six to players until they clear, the audit (EXP-0019), fixes for deflection and pin (EXP-0020, EXP-0021), motifs after the first capture (EXP-0022), and the engine's own line (EXP-0023).
+
 ## 2026-11-24: Champion and challenger
 
 - Decided experiments no longer retire. Each one is live and re-runs against every new algorithm version on its registered seeds; a challenger ships only if it beats the current champion without losing ground on the guarded measures ([ADR 0109](decisions/0109-champion-and-challenger.md)).
