@@ -37,7 +37,8 @@ fn defaults_are_the_briefed_values() {
     assert_eq!(c.idle_scale_down, 15 * MIN);
     assert_eq!(c.max_extra_servers, 4);
     assert_eq!(c.engines_per_server, 48);
-    assert_eq!(DEFAULT_CPU_MS_PER_GAME, 12_000.0);
+    // EXP-0008: 39.1 CPU-seconds a game at 1 million nodes.
+    assert_eq!(DEFAULT_CPU_MS_PER_GAME, 39_000.0);
 }
 
 #[test]

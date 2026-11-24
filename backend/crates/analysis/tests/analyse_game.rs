@@ -269,7 +269,7 @@ async fn analyses_scholar_s_mate_into_7_moves(pool: PgPool) {
     assert!(done(&res), "{res:?}");
     let g = game(&pool, id).await;
     assert_eq!(g.analysis_status, AnalysisStatus::Done);
-    assert_eq!(g.analysis_protocol.as_deref(), Some("sf19-n300k-v1"));
+    assert_eq!(g.analysis_protocol.as_deref(), Some("sf19-n1m-v1"));
     assert!(g.white_accuracy.is_some());
     assert!(g.black_accuracy.is_some());
     assert_eq!(move_count(&pool, id).await, 7);

@@ -349,7 +349,7 @@ pub struct AnalysePlayer {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AnalyseRequest {
     pub schema_version: String,
-    /// Nodes per search; default the production `ENGINE_NODES` (300,000). The in-memory cache
+    /// Nodes per search; default the production `ENGINE_NODES` (1 million). The in-memory cache
     /// serves every search at this count, enrichment included (ADR 0100).
     #[serde(default)]
     pub nodes: Option<u64>,

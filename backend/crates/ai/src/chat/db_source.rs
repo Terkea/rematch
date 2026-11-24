@@ -16,8 +16,10 @@
 //!   in the contract's snake_case; only the player-visible ones (EXP-0007,
 //!   `coaching_input::motifs`), and a hidden motif finds no stored examples.
 //! - `get_position` joins `moves` with the account's `games` by `platform_game_id` (the chat's
-//!   game id), with the engine line from `position_evals` (`fen_key`, R1's `ANALYSIS_PROTOCOL`).
-//! - `get_cached_eval` reads `position_evals` only (engine data, never computed here).
+//!   game id), with the engine line from `position_evals` (`fen_key`, under the game's own
+//!   `analysis_protocol`, ADR 0113).
+//! - `get_cached_eval` reads `position_evals` only (engine data, never computed here): the
+//!   current protocol's row, else the newest of `engine::EARLIER_ANALYSIS_PROTOCOLS`.
 //! - `get_games` is the scope's time class, newest first, at most [`MAX_GAMES`].
 //! - `resolve_anchor` returns records that carry the anchor's own ids (the T22 contract of
 //!   `context::anchor_details`).
@@ -85,10 +87,19 @@ type MoveRow = (
     Option<f64>,
     Option<Value>,
     Option<Value>,
+    // `games.analysis_protocol`: the engine line is read under the game's own protocol.
+    Option<String>,
 );
 
 /// How many plies of an opening line count for its examples (the report's rule, R2 T34).
 const LINE_PLIES: i32 = 30;
+
+/// The analysis protocols whose stored evals the chat reads, in order of preference (ADR 0113).
+fn readable_protocols() -> Vec<&'static str> {
+    std::iter::once(engine::ANALYSIS_PROTOCOL)
+        .chain(engine::EARLIER_ANALYSIS_PROTOCOLS.iter().copied())
+        .collect()
+}
 
 /// R2's camelCase motif tag (`hangingPiece`, `mateIn4Plus`) in the contract's snake_case
 /// (`hanging_piece`, `mate_in_4_plus`): a word per capital, digits as their own word.
@@ -276,7 +287,8 @@ impl DbCoachDataSource {
         let row: Option<MoveRow> = sqlx::query_as(
             "SELECT g.platform_game_id, m.ply, m.fen_before, m.san, m.uci, m.best_uci, \
              m.judgement::text, m.phase::text, m.win_before, m.win_after, m.clock_before, \
-             m.time_spent, mf.best_line -> 'tags', mf.refutation_line -> 'tags' \
+             m.time_spent, mf.best_line -> 'tags', mf.refutation_line -> 'tags', \
+             g.analysis_protocol \
              FROM moves m JOIN games g ON g.id = m.game_id \
              LEFT JOIN move_features mf ON mf.game_id = m.game_id AND mf.ply = m.ply \
              WHERE g.account_id = $1 AND g.platform_game_id = $2 AND m.ply = $3 \
@@ -302,6 +314,7 @@ impl DbCoachDataSource {
             time_spent,
             best_tags,
             refutation_tags,
+            protocol,
         )) = row
         else {
             return Ok(None);
@@ -313,7 +326,7 @@ impl DbCoachDataSource {
             "SELECT pv FROM position_evals WHERE fen_key = $1 AND protocol = $2",
         )
         .bind(fen_key(&fen))
-        .bind(engine::ANALYSIS_PROTOCOL)
+        .bind(protocol.as_deref().unwrap_or(engine::ANALYSIS_PROTOCOL))
         .fetch_optional(&self.pool)
         .await?;
         let best = best_uci.and_then(|b| {
@@ -382,13 +395,14 @@ impl DbCoachDataSource {
         Ok(row.and_then(game_summary))
     }
 
+    /// The current protocol's search of `fen`, else the newest earlier protocol's (ADR 0113).
     async fn cached_eval(&self, fen: &str) -> anyhow::Result<Option<CachedEval>> {
         let row: Option<EvalRow> = sqlx::query_as(
             "SELECT score_cp, score_mate, best_uci, pv FROM position_evals \
-             WHERE fen_key = $1 AND protocol = $2",
+             WHERE fen_key = $1 AND protocol = ANY($2) ORDER BY array_position($2, protocol) LIMIT 1",
         )
         .bind(fen_key(fen))
-        .bind(engine::ANALYSIS_PROTOCOL)
+        .bind(readable_protocols())
         .fetch_optional(&self.pool)
         .await?;
         Ok(row.and_then(|(cp, mate, best_uci, pv)| {

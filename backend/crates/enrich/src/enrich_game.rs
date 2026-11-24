@@ -2,7 +2,7 @@
 //!
 //! Over an analysed game (main evals at MultiPV 1, never rewritten here):
 //!
-//! - **MultiPV**: 3 lines at `ENGINE_NODES` on `fen_before` of the critical plies
+//! - **MultiPV**: 3 lines at `MULTIPV_NODES` on `fen_before` of the critical plies
 //!   ([`select_critical_plies`]), cached in `position_multipv` under `MULTIPV_PROTOCOL`.
 //! - **PV completion**: `refutation_pv = evals[i+1].pv`; when that is empty (Lichess server
 //!   evals) and the ply is critical, a MultiPV probe of `fen_after` supplies it. `best_pv` is
@@ -32,7 +32,7 @@ use chess_core::fen::fen_key;
 use chess_core::score::win_percent;
 use chess_core::{Color, MoveRecord, ParsedGame, PositionEval};
 use engine::{
-    AnalyseOptions, Analyser, AnalysisLine, DEFAULT_ANALYSIS_TIMEOUT, ENGINE_NODES, EngineError,
+    AnalyseOptions, Analyser, AnalysisLine, DEFAULT_ANALYSIS_TIMEOUT, EngineError,
 };
 use profile_core::board::{null_move_fen, piece_count};
 use profile_core::features::DIFFICULTY_MIN_PLY;
@@ -42,7 +42,7 @@ use tokio_util::sync::CancellationToken;
 use crate::critical::select_critical_plies;
 use crate::difficulty::select::select_difficulty_provider;
 use crate::difficulty::{DifficultyOutcome, DifficultySource, NotApplicableReason};
-use crate::protocol::{MAX_CRITICAL_PLIES, MULTIPV, THREAT_NODES};
+use crate::protocol::{MAX_CRITICAL_PLIES, MULTIPV, MULTIPV_NODES, THREAT_NODES};
 use crate::store::{EnrichmentStore, ThreatEntry};
 use crate::types::{DifficultyInput, TablebaseProbe};
 
@@ -237,7 +237,7 @@ pub async fn enrich_game(
         if multipv.contains_key(key) {
             continue;
         }
-        let lines = to_multipv(analyse(deps, fen, ENGINE_NODES, MULTIPV).await?);
+        let lines = to_multipv(analyse(deps, fen, MULTIPV_NODES, MULTIPV).await?);
         if !lines.is_empty() {
             multipv.insert(key.clone(), lines.clone());
             fresh.push((key.clone(), lines));

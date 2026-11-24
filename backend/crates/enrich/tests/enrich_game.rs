@@ -14,7 +14,7 @@ use common::*;
 use engine::ENGINE_NODES;
 use enrich::difficulty::{DifficultyOutcome, NotApplicableReason, PendingReason};
 use enrich::enrich_game::{EnrichError, enrich_game};
-use enrich::protocol::{MULTIPV, THREAT_NODES};
+use enrich::protocol::{MULTIPV, MULTIPV_NODES, THREAT_NODES};
 use enrich::tablebase::pool::SyzygyPool;
 use enrich::types::TablebaseProbe;
 use profile_core::board::null_move_fen;
@@ -56,14 +56,16 @@ async fn multipv_calls_are_exactly_the_critical_player_plies() {
     let out = enrich_game(&d, &g.input()).await.unwrap();
 
     assert_eq!(
-        calls_with(&a, ENGINE_NODES, MULTIPV),
+        calls_with(&a, MULTIPV_NODES, MULTIPV),
         vec![fen_before(&g, 13), fen_before(&g, 15)]
     );
-    assert_eq!(ENGINE_NODES, 300_000);
+    // The MultiPV probe keeps its own 300,000 nodes: EXP-0008 measured the main search only.
+    assert_eq!(MULTIPV_NODES, 300_000);
+    assert_ne!(MULTIPV_NODES, ENGINE_NODES);
     // Only the threat probe besides.
     for c in a.calls.lock().unwrap().iter() {
         assert!(
-            (c.1, c.2) == (ENGINE_NODES, MULTIPV) || (c.1, c.2) == (THREAT_NODES, 1),
+            (c.1, c.2) == (MULTIPV_NODES, MULTIPV) || (c.1, c.2) == (THREAT_NODES, 1),
             "unexpected call {c:?}"
         );
     }
@@ -80,7 +82,7 @@ async fn multipv_calls_are_exactly_the_critical_player_plies() {
     let a2 = Arc::new(FakeAnalyser::new());
     let d2 = deps(a2.clone(), store, None, None);
     let again = enrich_game(&d2, &g.input()).await.unwrap();
-    assert!(calls_with(&a2, ENGINE_NODES, MULTIPV).is_empty());
+    assert!(calls_with(&a2, MULTIPV_NODES, MULTIPV).is_empty());
     assert_eq!(again.raw, out.raw);
 }
 
@@ -185,7 +187,7 @@ async fn refutation_pv_falls_back_to_engine_when_cached_pv_is_empty() {
     let out = enrich_game(&deps(a.clone(), memory_store(), None, None), &g.input())
         .await
         .unwrap();
-    let mpv = calls_with(&a, ENGINE_NODES, MULTIPV);
+    let mpv = calls_with(&a, MULTIPV_NODES, MULTIPV);
     assert!(
         mpv.contains(&fen_after(&g, 13)),
         "fen_after of critical ply 13 probed"

@@ -187,7 +187,7 @@ impl Default for StartOptions {
 #[derive(Debug)]
 pub enum StartError {
     /// The engine at `STOCKFISH_PATH` is not Stockfish 19.x, which the analysis protocol
-    /// (`sf19-n300k-v1`) is pinned to.
+    /// (`sf19-n1m-v1`) is pinned to.
     WrongStockfish { found: String },
     /// The engine at `STOCKFISH_PATH` could not be probed.
     Probe(engine::EngineError),

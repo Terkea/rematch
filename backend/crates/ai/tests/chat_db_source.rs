@@ -376,6 +376,68 @@ async fn cached_eval_reads_position_evals(pool: PgPool) {
     assert_eq!(src.get_cached_eval(START).await.unwrap(), None);
 }
 
+async fn put_eval(pool: &PgPool, fen: &str, protocol: &str, cp: i32, pv: &[&str]) {
+    sqlx::query(
+        "INSERT INTO position_evals (fen_key, protocol, score_cp, best_uci, pv, source)          VALUES ($1, $2, $3, $4, $5, 'stockfish')",
+    )
+    .bind(chess_core::fen::fen_key(fen))
+    .bind(protocol)
+    .bind(cp)
+    .bind(pv[0])
+    .bind(pv.iter().map(|m| (*m).to_owned()).collect::<Vec<_>>())
+    .execute(pool)
+    .await
+    .unwrap();
+}
+
+/// ADR 0113: a game analysed at 300,000 nodes keeps its own engine line after the protocol moved
+/// to 1 million, as the web reads it (`games.analysis_protocol`).
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn position_reads_the_engine_line_of_the_games_own_protocol(pool: PgPool) {
+    let a = account(&pool, "alice").await;
+    let input = store_input(&pool, a).await;
+    let g = seed_game(&pool, a, "li-a-old").await;
+    seed_move(&pool, g, 1, START, "e4", "e2e4", Some("e2e4")).await;
+    sqlx::query("UPDATE games SET analysis_protocol = 'sf19-n300k-v1' WHERE id = $1")
+        .bind(g)
+        .execute(&pool)
+        .await
+        .unwrap();
+    put_eval(&pool, START, "sf19-n300k-v1", 30, &["e2e4", "e7e5"]).await;
+    put_eval(&pool, START, engine::ANALYSIS_PROTOCOL, 25, &["d2d4", "d7d5"]).await;
+    let src = ds(&pool, a, input);
+    let p = src.get_position("li-a-old", 1).await.unwrap().unwrap();
+    assert_eq!(p.pv, vec!["e2e4".to_owned(), "e7e5".to_owned()]);
+
+    sqlx::query("UPDATE games SET analysis_protocol = $2 WHERE id = $1")
+        .bind(g)
+        .bind(engine::ANALYSIS_PROTOCOL)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let p = src.get_position("li-a-old", 1).await.unwrap().unwrap();
+    assert_eq!(p.pv, vec!["d2d4".to_owned(), "d7d5".to_owned()]);
+}
+
+/// ADR 0113: the chat's cached eval prefers the current protocol and falls back to the earlier
+/// ones, so a line tried from a game analysed at 300,000 nodes still finds its stored search.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn cached_eval_falls_back_to_an_earlier_protocol(pool: PgPool) {
+    let a = account(&pool, "alice").await;
+    let input = store_input(&pool, a).await;
+    put_eval(&pool, AFTER_E4, "sf19-n300k-v1", 20, &["e7e5"]).await;
+    let src = ds(&pool, a, input);
+    let e = src.get_cached_eval(AFTER_E4).await.unwrap().unwrap();
+    assert_eq!(e.score, ai::input::types::Score::Cp(20));
+    put_eval(&pool, AFTER_E4, engine::ANALYSIS_PROTOCOL, 15, &["c7c5"]).await;
+    let e = src.get_cached_eval(AFTER_E4).await.unwrap().unwrap();
+    assert_eq!(e.score, ai::input::types::Score::Cp(15));
+    assert_eq!(e.best_uci.as_deref(), Some("c7c5"));
+    // Another protocol (a lab search, say) is never read.
+    put_eval(&pool, START, "lab-n30m", 99, &["e2e4"]).await;
+    assert_eq!(src.get_cached_eval(START).await.unwrap(), None);
+}
+
 #[sqlx::test(migrator = "db::MIGRATOR")]
 async fn latest_coaching_input_reads_the_newest_snapshot_of_the_account(pool: PgPool) {
     let a = account(&pool, "alice").await;
