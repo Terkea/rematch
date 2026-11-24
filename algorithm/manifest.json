@@ -1,17 +1,18 @@
 {
   "components": {
     "facts": {
-      "engine_nodes": 300000,
+      "engine_nodes": 1000000,
       "engine_options": {
         "hash_mb": 16,
         "limit": "go nodes",
         "new_game": "ucinewgame before every search",
         "threads": 1
       },
-      "engine_protocol": "sf19-n300k-v1",
+      "engine_protocol": "sf19-n1m-v1",
       "enrichment": {
         "max_critical_plies": 30,
         "multipv": 3,
+        "multipv_nodes": 300000,
         "multipv_protocol": "sf19-n300k-mpv3-v1",
         "protocol": "enr-v1",
         "threat_nodes": 50000,
@@ -29,8 +30,8 @@
       "source_digest": {
         "backend/crates/analysis/src": "76e1a74c67917f5743bd85c77d0476656937f10493b96faf15e885e52f26fb5f",
         "backend/crates/chess-core/src": "4c2be1483a53de496a37d2dce3a1a63e44070049410cf5c9a0b1090bbd455abf",
-        "backend/crates/engine/src": "cf18431a59f9607fc115e01fface9fe7cb0dd6483dcdae914c2c851ea32f0ddb",
-        "backend/crates/enrich/src": "b8f57e6e1df027a58dd9a2fe0c370bfd972941ca4bea16a62fa86a943848cbb6"
+        "backend/crates/engine/src": "bb29f3829fa88ff569c47e6f64e6fc7519be8113e168e27898cc541e7f2c85fc",
+        "backend/crates/enrich/src": "68c6f5e432ca274e588723ca60c9f35e3adb07e96114e265f2f5d4c99dfe13e6"
       },
       "stockfish": {
         "asset": "stockfish-linux-x86-64-universal.tar.gz",
@@ -78,7 +79,7 @@
       },
       "source_digest": {
         "backend/crates/profile-core/src": "51836f302a3ca8f62575eb7d3333f894be499ef15a35ff05c8ff973bdb33733a",
-        "backend/crates/profile/src": "1cd7e7d6866727bcf3093cebb3e2d979b3d9d06087cb41eb1bd83584d04467dc"
+        "backend/crates/profile/src": "efde23bf0e96ea40876b077235226bc2e99b5cf35c805bda26918547af5baf6b"
       },
       "t_win": 85
     },
@@ -99,6 +100,6 @@
       "weekly_input_version": "weekly-input-v1"
     }
   },
-  "id": "algo-3.0.0+554036a3b27c",
-  "version": "3.0.0"
+  "id": "algo-4.0.0+51733d23895f",
+  "version": "4.0.0"
 }

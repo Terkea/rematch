@@ -125,7 +125,18 @@ The sizes come from EXP-0001 ([the decision](../lab/experiments/EXP-0001/decisio
 - Search noise reaches the detectors. Two node-limited searches can disagree, so a capped move sometimes reads as decisive: the clean control has 14 W1 events in 4,274 eligible moves and 11 W9b events in 846. The true rate includes this noise through the clean control's rate (above). The clean control's old false alarm came from it; the ranking floor (ADR 0101) now holds it back.
 - Not every weakness is covered. There is no Maia (W11 needs it), no tablebase (W8), no injector for W2, W3, W6, W7.prep, W9a, W9c or W10, and no colour split. Each is a new injector type in `bench::flaws`.
 - Few players. The smoke suite has 15 flawed players, so one detection is about 7 points of recall, and it detects only large drops (a fall of 0.2 four times in five, EXP-0001). The full suite's 110 detect a change of 0.15 four times in five, not 0.1.
-- 12,000 nodes, not 300,000. Weaker searches than production make the lines noisier; the conclusions about ranking and benchmarks do not depend on depth, the exact rates do.
+- 12,000 nodes, not production's 1 million. Weaker searches than production make the lines noisier; the conclusions about ranking and benchmarks do not depend on depth, the exact rates do.
+
+## What production analysis costs
+
+The benchmark's 12,000 nodes are for speed; production searches at 1 million (`engine::ENGINE_NODES`, `sf19-n1m-v1`, since `algo-4.0.0`, ADR 0113). EXP-0008 measured the engine CPU of one thread per game of its 160 Lichess rapid games (62.5 positions a game):
+
+| Nodes a position | CPU-seconds a game | 300 games | On 4 engines | On 8 engines |
+|---|---|---|---|---|
+| 300,000 (`sf19-n300k-v1`, before `algo-4.0.0`) | 11.8 | 1.0 CPU-hours | about 15 minutes | about 7 minutes |
+| 1 million (`sf19-n1m-v1`) | 39.1 | 3.3 CPU-hours | about 49 minutes | about 25 minutes |
+
+That is the main search only. The enrichment's MultiPV probe (300,000 nodes on at most 30 critical plies) and threat probe (50,000 nodes) come on top and are unchanged by the version; they were not re-measured. `cli queue-lag` costs a backlog by the mean `engine_cpu_ms` of the last 24 hours, and falls back to 39,000 ms a game when no game finished (`scheduler::lag::DEFAULT_CPU_MS_PER_GAME`).
 
 ## Planned tiers
 

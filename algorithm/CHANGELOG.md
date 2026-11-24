@@ -8,6 +8,15 @@ One entry per algorithm version, newest first. The id is `algo-<version>+<hash>`
 
 Each entry says what changed, why, the ADR, and the benchmark delta (the scorecard before and after; `cli bench compare` once it exists).
 
+## algo-4.0.0+51733d23895f
+
+2026-11-24. Every position is searched at 1 million nodes instead of 300,000, the count EXP-0008 chose (#128).
+
+- What changed: `engine::ENGINE_NODES` is 1,000,000 and `ANALYSIS_PROTOCOL` is `sf19-n1m-v1`, with one thread, 16 MB of hash and `ucinewgame` before every search, as measured. The enrichment's MultiPV probe keeps 300,000 nodes under its own `enrich::protocol::MULTIPV_NODES` (the manifest's `facts.enrichment.multipv_nodes`), so `sf19-n300k-mpv3-v1` still says what it searched. Stored games keep their protocol and labels; the chat now reads a game's engine line under its own `analysis_protocol` and its cached eval falls back to `engine::EARLIER_ANALYSIS_PROTOCOLS`. `scheduler::lag::DEFAULT_CPU_MS_PER_GAME` is 39,000 ms. The TS reference worker mirrors the protocol.
+- Why: against **Stockfish 19** at 30 million nodes on 160 rated rapid Lichess games, 1 million disagrees on 0.0246 of moves fewer than 300,000, 95% [0.0197, 0.0296], and on 0.0221 fewer [0.0115, 0.0327] against 100 million nodes on 40 of them, both wholly above the tolerance of 0.01 (`lab/experiments/EXP-0008/decision.md`, section 9, rule 1). 7.45% of move labels change, mostly fewer inaccuracies, and game accuracy falls by 0.42 of a point on average. The engine costs 39.1 CPU-seconds a game instead of 11.8: a 300-game import is about 3.3 CPU-hours, about 49 minutes on 4 engines.
+- ADRs: 0113 (the protocol, the stored games, the MultiPV count), 0007 (the pinned protocol), 0105 (the version policy), 0109 (the arena).
+- Benchmark: the release arena against `algo-3.0.0` finds EXP-0008 better on its primary (the version ships the count section 9 chooses; both contrasts unchanged at 0.012 and 0.025, re-run from the evaluation cache re-keyed to the engine crate's new digest), and no clear difference on any metric of EXP-0002 (worst coverage 0.835, coverage at the peers' rate 0.797) or EXP-0007 (the same 9 of 15 tags trusted, every precision and recall unchanged); and none on EXP-0001 (recall at 2 at 80 games 0.633 on both sides, coverage 0.775; pilot rerun in 1,311 seconds). `bench/baseline.json` stands, since the bench searches at its own 12,000 nodes. The replay goldens change only in the protocol label and the version: the replay searches at 3,000 nodes, so no number moved.
+
 ## algo-3.0.0+554036a3b27c
 
 2026-11-24. The six motif tags EXP-0007 did not clear are no longer named to players or the coach (#122).

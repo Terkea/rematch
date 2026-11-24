@@ -2,7 +2,7 @@
 //! ADR-R2-11).
 //!
 //! [`handle_reference_game`] runs the full per-game pipeline of one `analyse-reference-game`
-//! job: parse, evaluate (`sf19-n300k-v1`, our own engine only: Lichess `[%eval]`s are another
+//! job: parse, evaluate (`ANALYSIS_PROTOCOL`, our own engine only: Lichess `[%eval]`s are another
 //! protocol), move records, enrichment of **both** colours, then the features and metrics of
 //! each side. It writes one `reference_observations` row per rated side and marks the game
 //! `done` in one transaction, records a `job_metrics` row, and once no game of the build is

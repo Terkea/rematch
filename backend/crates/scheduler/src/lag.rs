@@ -8,8 +8,9 @@ use std::time::Duration;
 use queue::{KIND_ANALYSE, KIND_PREVIEW};
 use sqlx::PgPool;
 
-/// Mean engine CPU per game when no game finished in the last 24 hours.
-pub const DEFAULT_CPU_MS_PER_GAME: f64 = 12_000.0;
+/// Mean engine CPU per game when no game finished in the last 24 hours: EXP-0008's 39.1
+/// CPU-seconds a game at 1 million nodes (ADR 0113; 11.8 at 300,000).
+pub const DEFAULT_CPU_MS_PER_GAME: f64 = 39_000.0;
 /// P0 is the fair tiers up to 2, that is priority up to 5 (`priority / 2 <= 2`).
 pub const P0_MAX_PRIORITY: i16 = 5;
 /// Seconds one server is expected to chew through per scaling decision.

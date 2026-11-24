@@ -8,6 +8,12 @@ The site builds this file into /docs/progress/ and shows the newest entry on the
 
 See also the [experiments](/rematch/docs/experiments/) and the [roadmap](/rematch/docs/roadmap/).
 
+## 2026-11-24: algo-4.0.0 analyses every position at 1 million nodes
+
+- Every position is now searched at 1 million **Stockfish 19** nodes instead of 300,000, the count EXP-0008 chose: 7.45% of move labels change, mostly fewer inaccuracies, and game accuracy falls by 0.42 of a point on average ([ADR 0113](decisions/0113-analyse-at-1-million-nodes.md), #128).
+- The engine costs 39.1 CPU-seconds a game instead of 11.8, so a 300-game import is about 3.3 CPU-hours: about 49 minutes on 4 engines and 25 on 8. Games analysed before keep their 300,000-node labels until EXP-0027 says whether they are worth redoing.
+- The release arena against `algo-3.0.0`: EXP-0008 better (the version ships the count its rule chooses), and no clear difference on EXP-0001 (recall at 2 0.633 on both sides), EXP-0002 (worst coverage 0.835) or EXP-0007 (the same 9 of 15 tags trusted), 2.8 CPU-hours in all.
+
 ## 2026-11-24: EXP-0008, 300,000 nodes falls short of 1 million
 
 - We searched every position of 160 rated rapid Lichess games (CC0) at 50,000 to 1 million nodes and compared each move's label with **Stockfish 19** at 30 million. 1 million nodes disagrees with it on 2.5 moves in 100 fewer than today's 300,000 (95% 2.0 to 3.0), and on 2.2 fewer against 100 million nodes on 40 of the games, past the registered tolerance of 1 in 100 ([EXP-0008](https://github.com/Terkea/rematch/tree/main/lab/experiments/EXP-0008)).

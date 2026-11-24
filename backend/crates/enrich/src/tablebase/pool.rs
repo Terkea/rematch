@@ -1,7 +1,7 @@
 //! Tablebase engine pool (R2 Task 23, ADR-R2-12).
 //!
 //! Its own `UciEngine`s, started with `SyzygyPath`; never the main `EnginePool`, so the main
-//! analysis protocol (`sf19-n300k-v1`) is unchanged.
+//! analysis protocol (`ANALYSIS_PROTOCOL`) is unchanged.
 
 use std::collections::HashSet;
 use std::path::Path;

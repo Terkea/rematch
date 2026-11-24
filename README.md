@@ -84,7 +84,7 @@ A game becomes advice like this: Rematch imports it from chess.com, Stockfish 19
 flowchart LR
   cc["chess.com public API<br/>monthly archives"] --> imp["Import and sync<br/>Rust worker"]
   imp --> pg[("Postgres<br/>job queue, every fact")]
-  pg --> sf["Stockfish 19 pool<br/>300k nodes per position"]
+  pg --> sf["Stockfish 19 pool<br/>1M nodes per position"]
   sf --> enr["Enrichment<br/>MultiPV 3, threats, motifs"]
   tb["Syzygy 3-4-5<br/>tablebases"] --> enr
   maia["Maia-2<br/>opt-in"] -.-> enr
@@ -130,7 +130,7 @@ Rematch reads your public chess.com games from the monthly archives, newest firs
 <details>
 <summary>Engine analysis: Stockfish 19, win chance, accuracy, judgements</summary>
 
-Stockfish 19 searches every position at a fixed 300,000 nodes, so the same position always gets the same number, and a drop of 15 win-chance points is a blunder, as on Lichess.
+Stockfish 19 searches every position at a fixed 1 million nodes, so the same position always gets the same number, and a drop of 15 win-chance points is a blunder, as on Lichess.
 
 #### The engine
 
@@ -138,7 +138,9 @@ The engine is **Stockfish 19**, the official `stockfish-linux-x86-64-universal` 
 
 #### The protocol
 
-The protocol is `sf19-n300k-v1`: 300,000 nodes per position, MultiPV 1, `Threads 1` and `Hash 16` sent explicitly to every engine (Stockfish 19's defaults, so sending them changed no evaluation; `ENGINE_THREADS` and `ENGINE_HASH_MB`), a 30 s timeout ([`types.rs`](backend/crates/engine/src/types.rs)). We fix nodes rather than time or depth, because a node count gives the same answer on a slow laptop and a fast server. Evals are stored once per position and protocol in `position_evals`, keyed by the position, and shared by every user, so a common position is never searched twice. A protocol change means re-analysis ([ADR 0007](docs/decisions/0007-analysis-protocol-pinned.md)).
+The protocol is `sf19-n1m-v1`: 1 million nodes per position, MultiPV 1, `Threads 1` and `Hash 16` sent explicitly to every engine (Stockfish 19's defaults, so sending them changed no evaluation; `ENGINE_THREADS` and `ENGINE_HASH_MB`), a 30 s timeout ([`types.rs`](backend/crates/engine/src/types.rs)). We fix nodes rather than time or depth, because a node count gives the same answer on a slow laptop and a fast server. Evals are stored once per position and protocol in `position_evals`, keyed by the position, and shared by every user, so a common position is never searched twice. A protocol change does not redo stored games: each keeps the protocol it was analysed under, and every reader uses that one ([ADR 0007](docs/decisions/0007-analysis-protocol-pinned.md), [ADR 0113](docs/decisions/0113-analyse-at-1-million-nodes.md)).
+
+The count is measured, not chosen by feel. EXP-0008 searched 160 rated rapid Lichess games at 50,000 to 1 million nodes against a 30-million-node reference: 1 million disagrees with it on 2.5 moves in 100 fewer than 300,000 did (95% [2.0, 3.0]), past the tolerance of 1 in 100, so it replaced 300,000 in `algo-4.0.0` ([the decision](lab/experiments/EXP-0008/decision.md)). It costs about 39 CPU-seconds of engine time a game instead of 12. Games analysed before `algo-4.0.0` keep their 300,000-node labels.
 
 #### The algorithm version
 
@@ -195,11 +197,11 @@ Up to 30 critical moves a game get the engine's top three lines, a threat probe 
 The main eval gives one line per position. Weakness detection needs more: was there a second good move, was there a threat, what was the tactic. Enrichment adds that without ever touching the main evals, under its own protocol ids ([ADR-R2-14](docs/decisions/ADR-R2-14-enrichment-protocol.md), [`protocol.rs`](backend/crates/enrich/src/protocol.rs)):
 
 - Critical plies: A move is critical when it lost ΔW ≥ 5, or when the previous move lost ΔW ≥ 10 (the reply to a big mistake). At most 30 per game, the biggest drops first ([`critical.rs`](backend/crates/enrich/src/critical.rs)).
-- MultiPV 3 at 300k nodes on those plies (`sf19-n300k-mpv3-v1`). It fills the best line and the refutation line, and gives the gap between the first and second line (`multipv_gap`) and whether the move played was in the top two. It never replaces the MultiPV-1 eval: a three-line search spreads its effort and can disagree with the one-line search, and ΔW must stay comparable across games and players.
+- MultiPV 3 at 300k nodes on those plies (`sf19-n300k-mpv3-v1`, `MULTIPV_NODES`; EXP-0008 measured the main search only, so the probe kept its count). It fills the best line and the refutation line, and gives the gap between the first and second line (`multipv_gap`) and whether the move played was in the top two. It never replaces the MultiPV-1 eval: a three-line search spreads its effort and can disagree with the one-line search, and ΔW must stay comparable across games and players.
 - Threat probe: 50,000 nodes on the position with the side to move passed (a null move), skipped when in check (`sf19-n50k-null-v1`). If the opponent would have a winning shot, there was a threat, and the move either dealt with it or didn't.
 - Motifs: A clean-room tagger reads each engine line and tags it: hanging piece, fork, pin, skewer, discovered attack, deflection, sacrifice, promotion, mate in 1, 2, 3 or 4+, mating net, back-rank mate, smothered mate ([ADR-R2-3](docs/decisions/ADR-R2-3-motif-tagger-clean-room.md), [`motifs/`](backend/crates/profile-core/src/motifs/)). A line counts as a tactic when it wins at least 2 pawns of material or mates. Every tag is computed and stored, but only the ones EXP-0007 showed to be right at least 4 times in 5 against Lichess's puzzle themes are named to you: fork, discovered attack, promotion, smothered mate and mate in 1, 2, 3 or 4+. Mating net has no Lichess theme to be scored against and stays named. Hanging piece, pin, skewer, deflection, sacrifice and back-rank mate stay hidden until a fix or a human audit clears them; a move they tagged still counts as a missed tactic or a blunder, with its eval swing and the best move ([`motifs.rs`](backend/crates/coaching-input/src/motifs.rs), [ADR 0112](docs/decisions/0112-hide-the-motifs-exp-0007-did-not-clear.md)).
 
-The cost is about 25–40% more CPU than the main analysis. A known bias, stated in the ADR: a hard position you handled well, with no swing before it, is never probed, so rates built on `is_critical` are only compared with references built the same way.
+At 300,000 nodes for the main analysis the enrichment cost about 25–40% more CPU; with the main search at 1 million and the probes unchanged, the same seconds are roughly 7.5–12% of it (worked out, not re-measured). A known bias, stated in the ADR: a hard position you handled well, with no swing before it, is never probed, so rates built on `is_critical` are only compared with references built the same way.
 
 </details>
 
@@ -209,7 +211,7 @@ The cost is about 25–40% more CPU than the main analysis. A known bias, stated
 In an ending with five pieces or fewer, the Syzygy tables give the exact result, so a move that throws it away is counted for certain.
 
 - The tables: The 3-4-5 piece WDL and DTZ sets from `tablebase.lichess.ovh`, 290 files. `lichess-db syzygy` streams each to a `.part` file while hashing it, and renames it only when the SHA-256 matches the pinned manifest [`syzygy-345.sha256`](backend/crates/lichess-db/data/syzygy-345.sha256). The files are never committed ([ADR-R2-22](docs/decisions/ADR-R2-22-syzygy-345-fetch.md)).
-- The probe: A separate Stockfish, never one from the analysis pool, with `SyzygyPath` set, searching 1,000 nodes. Keeping it separate means the 300k evals are identical with or without the tables (a test checks the main pool never sets `SyzygyPath`). Stockfish reports a tablebase win as `cp 20000 − plies`, so `cp ≥ 19000` or a positive mate is a win, `cp ≤ −19000` or a negative mate a loss, anything else a draw ([`wdl.rs`](backend/crates/enrich/src/tablebase/wdl.rs), [ADR-R2-12](docs/decisions/ADR-R2-12-local-syzygy-probe.md)).
+- The probe: A separate Stockfish, never one from the analysis pool, with `SyzygyPath` set, searching 1,000 nodes. Keeping it separate means the main evals are identical with or without the tables (a test checks the main pool never sets `SyzygyPath`). Stockfish reports a tablebase win as `cp 20000 − plies`, so `cp ≥ 19000` or a positive mate is a win, `cp ≤ −19000` or a negative mate a loss, anything else a draw ([`wdl.rs`](backend/crates/enrich/src/tablebase/wdl.rs), [ADR-R2-12](docs/decisions/ADR-R2-12-local-syzygy-probe.md)).
 - When: Every requested move whose position has at most 5 pieces, kings included, and no castling rights. The answer is cached per position in `position_tb`. The clocks are reset before probing, so a win that needs more than 100 plies to the next capture or pawn move counts as a draw, as the 50-move rule would make it.
 - What it feeds: W8: a move that turns a tablebase win into a draw or loss, or a draw into a loss, is an event. W8.basics covers KPvK, KQvK, KRvK, KRvKP, KRPvKR, KQvKP and KPvKP; W8.advanced every other five-piece ending ([`endgame.rs`](backend/crates/profile-core/src/weakness/endgame.rs)).
 - Without tables the probe answers nothing, the worker logs one warning, and W8 has no chances. Nothing is guessed. A DTZ probe exists for drills, but nothing reads it yet.
@@ -501,7 +503,7 @@ Your games and analysis stay in your own Postgres, and Rematch reads only public
 
 ## Quick start
 
-You need Git, and Docker with about 12 GB of memory assigned (a 16 GB machine) and about 10 GB of free disk.
+You need Git, and Docker with about 12 GB of memory assigned (a 16 GB machine) and about 10 GB of free disk. Analysis is CPU-bound: a 90-day import of 300 rapid games is about 3.3 CPU-hours of engine time, so about 49 minutes on 4 engines and 25 on 8 (`WORKER_POOL_SIZE`, with a core each), with the enrichment on top ([ADR 0113](docs/decisions/0113-analyse-at-1-million-nodes.md)).
 
 ```sh
 git clone https://github.com/Terkea/rematch.git && cd rematch

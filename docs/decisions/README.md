@@ -114,6 +114,7 @@ One file per decision: context, decision, alternatives, consequences. New decisi
 - [0110. A pinned "today" for the visual e2e](0110-e2e-request-clock.md)
 - [0111. Prior-rule variants behind `ALGO_VARIANT`, and the fix for the 80% ranges](0111-prior-rule-variants-and-the-80-percent-ranges.md)
 - [0112. Hide the motif tags EXP-0007 did not clear](0112-hide-the-motifs-exp-0007-did-not-clear.md)
+- [0113. Analyse at 1 million nodes: the protocol EXP-0008 chose](0113-analyse-at-1-million-nodes.md)
 
 ## Records with placeholder numbers
 

@@ -41,6 +41,14 @@ fn the_manifest_names_the_engine_settings_and_the_new_versions() {
     let m = build(&repo_root()).expect("manifest builds");
     let c = &m.components;
     assert_eq!(c["facts"]["engine_protocol"], engine::ANALYSIS_PROTOCOL);
+    // EXP-0008 (ADR 0113): the main search at 1 million nodes, the MultiPV probe kept at 300,000.
+    assert_eq!(c["facts"]["engine_protocol"], "sf19-n1m-v1");
+    assert_eq!(c["facts"]["engine_nodes"], 1_000_000);
+    assert_eq!(c["facts"]["enrichment"]["multipv_nodes"], 300_000);
+    assert_eq!(
+        c["facts"]["enrichment"]["multipv_protocol"],
+        "sf19-n300k-mpv3-v1"
+    );
     assert_eq!(c["facts"]["engine_options"]["threads"], 1);
     assert_eq!(c["facts"]["engine_options"]["hash_mb"], 16);
     assert_eq!(c["facts"]["stockfish"]["release"], "sf_19");

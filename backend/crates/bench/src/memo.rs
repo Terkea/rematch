@@ -8,7 +8,7 @@
 //! search has runs a new search and replaces it.
 //!
 //! Every search uses [`MemoAnalyser::nodes`], whatever the caller asked for: the production
-//! protocol (300k nodes, `engine::ENGINE_NODES`) would make one smoke run take hours. The
+//! protocol (1 million nodes, `engine::ENGINE_NODES`) would make one smoke run take hours. The
 //! engine sends `ucinewgame` before each search (`engine::uci`), so a node-limited search on one
 //! thread gives the same result every time.
 

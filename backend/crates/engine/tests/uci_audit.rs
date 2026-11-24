@@ -187,7 +187,8 @@ async fn evals(threads: Option<u32>, hash_mb: Option<u32>, path: PathBuf) -> Vec
     out
 }
 
-/// Sending the values explicitly changes no evaluation: the protocol stays `sf19-n300k-v1`.
+/// Sending the values explicitly changes no evaluation, so the protocol stayed `sf19-n300k-v1`
+/// when they came in (`algo-1.0.0`).
 #[tokio::test]
 async fn explicit_threads_and_hash_give_the_same_evals_as_the_defaults() {
     let Some(path) = testkit::stockfish() else {

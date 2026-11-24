@@ -65,7 +65,7 @@ describe.skipIf(!workerTestDbConfigured())("handleAnalyseGame", () => {
     expect(res).toEqual({ status: "done" });
     const g = await getGame(id);
     expect(g?.analysisStatus).toBe("done");
-    expect(g?.analysisProtocol).toBe("sf19-n300k-v1");
+    expect(g?.analysisProtocol).toBe("sf19-n1m-v1");
     expect(g?.whiteAccuracy).not.toBeNull();
     expect(g?.blackAccuracy).not.toBeNull();
     expect(await moveCount(id)).toBe(7);
