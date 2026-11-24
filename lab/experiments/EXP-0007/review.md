@@ -19,3 +19,21 @@ A fresh critic (an agent with the `scientific-critical-thinking` and `peer-revie
 13. **"Needs fixing" covers an unmeasured recall** (`decide()`). Note. Done: section 9 says so.
 
 One more disclosure, ours: before the registration commit, a run of `python -m rematch_lab.experiments check EXP-0007` (meant to check section 0) ran the confirmatory analysis twice into temporary directories, because the check reruns an experiment without results. The outputs were deleted by the check and never read; the sample has since been redrawn at the new size, so no number of that run applies to this one.
+
+## Part two: the result
+
+A second fresh critic, with the same skills, read the result (`results.json` of commit 43f8be99) and the registration. It checked every tag's decision against section 9 and found none wrong, with no exclusions and the compute at exactly its budget. Its concerns, and what was done about each, in `decision.md` and `summary.md`:
+
+1. `skewer`'s estimate (0.81) is above the floor; only its lower bound hides it. Worded "not shown to clear 0.80".
+2. `pin` needs a rule fix whatever an audit finds (recall 0.20), and it overlaps `deflection`. Said so; EXP-0021.
+3. `hangingPiece` and `backRankMate` have recall near 1 and low precision: wider rules, not gappy labels alone. Said so, and EXP-0019 must write down the intended definition first. Not done: the critic proposed diffing our rules against Lichess's `cook.py`; ADR-R2-3 keeps its code out of this project, so the audit uses Lichess's published theme descriptions.
+4. `promotion` and `smotheredMate` are close to pattern checks, so "4 of 10 trusted" overstates recognition. Worded "two of them close to pattern checks".
+5. Recall falls with the puzzle's rating for every trusted motif, and `skewer`, `pin` and `backRankMate` precision falls too. Reported, and EXP-0022.
+6. `sacrifice`'s and `deflection`'s false positives, by theme. Reported; EXP-0020.
+7. The linearised effective sample size exceeds the count for some tags. Explained in `decision.md`; the per-band intervals at 2000 and above are called descriptive.
+8. `smotheredMate` above 2000 was not sampled (the pilot took the whole cell). Said so.
+9. The mate-length tags' few disagreements are reported, not rounded to none.
+10. The revised design of commit fab55f92 had no second critique before the run, and the confirmatory analysis had run unread before registration. Both kept in `decision.md`.
+11. `summary.md` said the tagger reads the solution "as production does" and called the hand check's verdicts findings. Fixed: the solution stands in for the engine's line, and the check is described as the agent's, unblind, 2 to 4 puzzles a tag.
+12. The KPIs must name their ground truth. `decision.md` says "against Lichess's generated puzzle themes, on puzzle solutions".
+13. The critic's follow-ups (pin, the window, sacrifice, deflection) are filed as EXP-0020 to EXP-0022; its sacrifice-specific one (a temporary drop counted when the recapture lies past the solution) is folded into EXP-0022 and EXP-0023, which measure the window and the engine's line.
