@@ -538,7 +538,15 @@
     "EvaluateResponse": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["schema_version", "algorithm_id", "nodes", "hash_mb", "syzygy", "threads", "searches"],
+      "required": [
+        "schema_version",
+        "algorithm_id",
+        "nodes",
+        "hash_mb",
+        "syzygy",
+        "threads",
+        "searches"
+      ],
       "properties": {
         "schema_version": { "$ref": "#/$defs/SchemaVersion" },
         "algorithm_id": { "$ref": "#/$defs/AlgorithmId" },
@@ -573,7 +581,17 @@
       "description": "One move as the analyse-game job stores it in move_records.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["ply", "color", "uci", "best_uci", "win_before", "win_after", "accuracy", "judgement", "decided"],
+      "required": [
+        "ply",
+        "color",
+        "uci",
+        "best_uci",
+        "win_before",
+        "win_after",
+        "accuracy",
+        "judgement",
+        "decided"
+      ],
       "properties": {
         "ply": { "$ref": "#/$defs/Count" },
         "color": { "enum": ["white", "black"] },
@@ -582,7 +600,9 @@
         "win_before": { "type": "number" },
         "win_after": { "type": "number" },
         "accuracy": { "type": "number" },
-        "judgement": { "oneOf": [{ "type": "null" }, { "enum": ["inaccuracy", "mistake", "blunder"] }] },
+        "judgement": {
+          "oneOf": [{ "type": "null" }, { "enum": ["inaccuracy", "mistake", "blunder"] }]
+        },
         "decided": { "type": "boolean" }
       }
     },
