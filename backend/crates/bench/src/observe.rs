@@ -17,7 +17,8 @@
 //! it would see opportunities and never an event. Returning them would be wrong, not just thin.
 //!
 //! A game that cannot be observed (an illegal PGN, a position neither Lichess nor the given
-//! searches score) gets an `error` and no sides; the batch goes on.
+//! searches score, an evaluation list whose length is not the number of plies) gets an `error`
+//! and no sides; the batch goes on.
 //!
 //! None of this changes the product: the manifest's components are only called.
 
@@ -158,6 +159,15 @@ impl Analyser for Given<'_> {
 
 async fn observe_one(g: &ObserveGame, given: &Given<'_>) -> Result<Vec<ObservedSide>, String> {
     let parsed = parse_pgn(&g.pgn).map_err(|e| e.to_string())?;
+    // One evaluation (or null) per ply: a shorter or longer list would put every later
+    // evaluation on the wrong position without an error.
+    if g.lichess_evals.len() != parsed.plies.len() {
+        return Err(format!(
+            "{} evaluations for {} plies",
+            g.lichess_evals.len(),
+            parsed.plies.len()
+        ));
+    }
     let cache = MemoryEvalCache::default();
     let deps = EvaluateDeps {
         analyser: given,

@@ -133,3 +133,18 @@ async fn a_game_that_cannot_be_observed_carries_its_error_and_the_batch_goes_on(
     assert!(out["games"][1]["error"].is_null());
     assert_eq!(out["games"][1]["sides"][0]["color"], "white");
 }
+
+#[tokio::test]
+async fn an_evaluation_list_of_the_wrong_length_is_an_error_not_a_shift() {
+    let short = vec![cp(20), cp(20), cp(20), cp(20), cp(400)];
+    let out = observe(
+        &request(vec![game("short", OPEN, short, vec![Color::White])]),
+        algorithm_id(),
+    )
+    .await
+    .expect("observe");
+    assert_eq!(
+        out.games[0].error.as_deref(),
+        Some("5 evaluations for 6 plies")
+    );
+}

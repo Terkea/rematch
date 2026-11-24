@@ -1,0 +1,24 @@
+# EXP-0009: review
+
+## Part one: the pre-registration, before the run
+
+The critic was a fresh agent (Claude, `general-purpose`, no part in the design) with the `scientific-critical-thinking` and `peer-review` skills of `.claude/skills/science/`. It read the pre-registration and `analysis.py` as committed at dadc71c3, ADR 0114, `lichess-db cohort`, `bench::observe`, the detectors and the trainability rows, and issues #104 and #94, and ran nothing. It found the hash slices the same in Python and Rust, the rapid class Lichess's own, terminal positions scored without an engine and the binomial counts independent of the EPL precedence. Its verdict: do not run the confirmatory stage until concerns 1 to 3 are fixed, and reframe 4.
+
+The four dumps began streaming after the registration commit and before this review (they are the data, not a run: no pilot or confirmatory number existed until the fixes below were committed). Nothing in the review asked for other months, another rate or another filter.
+
+Its concerns, and what was done about each before the pilot:
+
+1. **Noise makes "below the minimum effect" easy to reach** (blocking). The exposure is standardised by its observed SD, mostly binomial noise for a rare key, so a true 30 Elo per true SD can read as 13 per observed SD, and section 2 said the opposite. Done: each exposure's split-half reliability (odd against even games by game key, Spearman-Brown) is measured in the run, the minimum effect per observed SD is 14 × √reliability, the disattenuated β is reported, and the section 2 sentence is corrected (sections 2, 5, 8; `reliability`, `fit`).
+2. **The positive control cannot vouch for the keys** (blocking). Accuracy is far more precise than W4.missed or W6. Done: outcome 2 still needs the control, and every key's own "below the minimum effect" now rests on its own reliability, so a noisy key's null can no longer count towards outcome 2 unless its own interval is narrow enough after disattenuation. A noise-matched second control was not added: the per-key reliability does what it was for.
+3. **Post-exposure and future covariates** (blocking). `log1p(games3)` was P3 activity, against section 7's own rule; the rating change within P2 and the opponent-gap change are mediators of the improvement. Done: P3 activity is gone from every model; the primary adjusts only for terms measured before the outcome and not caused by the exposure's rating effect; the old terms are the "adjusted" sensitivity (section 8; `base_covariates`, `design`).
+4. **The value case did not match the decision rule, and the construct is not trainability** (should fix). Done: section 0 now says the experiment measures a weakness's link to results, not how teachable it is, pools B0 to B3 and so cannot set a per-band row; outcome 1 registers a per-band comparison on new months; outcomes 2 and 3 change a site statement and the stage 2 decision, not the product. The branch for "a key the rows rank high shows no link" is deleted.
+5. **The minimum effect has no real anchor** (should fix). Done: 14 Elo stays (0.02 points a game, ADR 0101), now per SD of the true change after disattenuation, with why a shared unit is used instead of a natural one (section 5).
+6. **Selection on which games get analysed** (should fix). Done: the analysed share of rapid games in P1 and in P2 is a covariate; the flow reports what each eligibility step leaves, and the cohort by band.
+7. **Attrition** (should fix). Done: staying active is modelled on the primary's exposure and terms, and the primary is re-fitted with inverse-probability-of-staying weights as a sensitivity (section 8; `attrition`).
+8. **Evaluations could shift a ply silently** (should fix). Done: `cli lab observe` now refuses a game whose evaluation list is not one per ply, with a test (`an_evaluation_list_of_the_wrong_length_is_an_error_not_a_shift`).
+9. **W7.prep is not the hosted quantity** (should fix). Done: section 4 says it is the self-hosted value, the opening ending at ply 20 without an explorer.
+10. **The test did not match the power method** (should fix). Done: the text says HC3 with normal intervals; the power analysis scales the pilot's HC3 standard error by √(n_pilot / n) and asks for what outcome 2 needs (six keys and the control), not every quantity, W4.missed included.
+11. **The pilot showed full estimates** (minor). Done: `pilot.json` holds only n, the standard errors, the reliabilities and the counts.
+12. **Players of the two slices can meet** (minor). Done: the run counts the games with an opponent in the other slice. Ratings ignore rated abandoned games, which are filtered out; noted as a limit.
+13. **The blunder rate cost power for no decision** (minor). Done: it is exploratory; the family is nine and the simultaneous level 1 − 0.05/9.
+14. **The contemporaneous family is partly mechanical** (minor). Done: it is descriptive for W5, W6 and accuracy (section 4).
