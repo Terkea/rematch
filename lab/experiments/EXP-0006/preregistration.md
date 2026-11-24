@@ -1,6 +1,6 @@
 # EXP-0006: does a lighter, honestly counted prior bring the 80% ranges into [0.75, 0.85]?
 
-- Status: pre-registered
+- Status: decided (ship, as algo-2.0.0)
 - Issue: #101 (and #13)
 - Author: the maintainer, with Claude (lane `exp/0005-0006`)
 - Kind: comparison (two algorithm versions)
