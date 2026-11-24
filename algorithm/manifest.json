@@ -62,7 +62,7 @@
       "detector_version": "tl-v1",
       "peer_rating_window": 150,
       "source_digest": {
-        "backend/crates/profile-core/src": "ddf90f4648636bb0de3dffd5d0c8e8c77ba14bf91546c5e24913b6cabfb37fde",
+        "backend/crates/profile-core/src": "6c2c685c9494992e63a7c7ae5a5f906f875c3c2e6d49662c323596be559f03d9",
         "backend/crates/profile/src": "e7ed4bacec8ba402cd03100159a78693e241b31e3f9091977e3632e2a63691ba"
       },
       "t_win": 85
@@ -84,6 +84,6 @@
       "weekly_input_version": "weekly-input-v1"
     }
   },
-  "id": "algo-1.1.0+fa5e2186e1dd",
-  "version": "1.1.0"
+  "id": "algo-1.1.1+42d749f7c50b",
+  "version": "1.1.1"
 }

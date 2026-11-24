@@ -8,6 +8,15 @@ One entry per algorithm version, newest first. The id is `algo-<version>+<hash>`
 
 Each entry says what changed, why, the ADR, and the benchmark delta (the scorecard before and after; `cli bench compare` once it exists).
 
+## algo-1.1.1+42d749f7c50b
+
+2026-11-24. The prior-rule variants the lab compares, with no output change.
+
+- What changed: `profile_core::stats::variant` adds `PriorRule`, the rule by which `estimate_weakness` counts the data and weighs the band prior, with production's rule as `PriorRule::CHAMPION` and EXP-0006's frozen candidate as `PriorRule::CHALLENGER` (the prior worth at most two of the player's games, the weighted data at their effective sample size, divided by their dispersion). Only `cli lab` and the bench select a rule, through `ALGO_VARIANT`; the worker and the web never do, so production computes exactly what it did. Only `profile.source_digest` moved.
+- Why: EXP-0005 and EXP-0006 compare two rules on the same data (ADR 0109).
+- ADRs: 0109 (the variants), 0105 (the version policy).
+- Benchmark: no change. The replay goldens in `backend/fixtures/replay/` are byte-identical, and no layer 1 to 3 component other than a source digest moved, so the Tier 1 scorecard of 1.1.0 stands.
+
 ## algo-1.1.0+fa5e2186e1dd
 
 2026-11-23. A refactor in the language layer, with no output change.

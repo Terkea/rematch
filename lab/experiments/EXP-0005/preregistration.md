@@ -33,7 +33,7 @@ A measurement, so the hypotheses name the branches of section 9.
 The expectation written before the run: the challenger changes the prior of every key, so priorities and credibility move, but a flaw the reference finds sits well above its benchmark, so it stays in the top 2; we expect a churn near 0 and a few gains (W4.missed and W7.traps, whose ranges EXP-0002 found pulled down hardest). Rival explanations of a non-zero churn, and how each is separated:
 
 - The pipeline is not reproducible between builds or runs: separated by the between-runs check (the rebuilt reference side against EXP-0001's stored rows, field by field) and by the byte-identical double run; any mismatch is reported and makes the churn uninterpretable.
-- The second account sees different games: excluded by construction (the same generated games are inserted for both accounts) and by `backend/crates/bench/tests/pipeline.rs` (`a_champion_variant_reproduces_the_main_run`).
+- The second account sees different games: excluded by construction (the same generated games are inserted for both accounts) and by `backend/crates/bench/tests/variant.rs` (`a_side_by_side_variant_sees_the_same_games`).
 - A hit lost to a new false weakness rather than to a demoted target: the lost players' top-2 lists are reported.
 
 ## 3. Algorithm versions compared
@@ -116,7 +116,7 @@ A mismatch in the between-runs check overrides the above: the churn is not inter
 ## 10. Analysis code
 
 - Entry point: `lab/experiments/EXP-0005/analysis.py` (`python analysis.py --out DIR` writes `DIR/results.json`, with the `algorithm_id` it ran on, and `DIR/figures/`; `--design` prints section 6's table).
-- Analysis code sha256: `0000000000000000000000000000000000000000000000000000000000000000`
+- Analysis code sha256: `a0d6f356ed92de68edcf51ef2ca705ff9f0304521320db9e42c7e38864c3b50d`
 
 ## 11. Deviations
 

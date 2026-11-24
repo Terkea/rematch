@@ -11,7 +11,6 @@ use bench::results::score;
 use bench::suite::{PlayerDef, Suite, game_specs};
 use engine::Analyser;
 use engine::pool::{EnginePool, PoolOptions};
-use profile_core::stats::variant::PriorRule;
 use sqlx::PgPool;
 
 fn tiny() -> Suite {
@@ -120,59 +119,4 @@ async fn a_tiny_suite_runs_through_the_real_pipeline(pool: PgPool) {
     let s = score("test", suite.nodes, &players);
     assert_eq!(s.metrics.clean_players, 1);
     assert!(!bench::results::markdown(&s).is_empty());
-}
-
-/// `ALGO_VARIANT` side by side: `rule` runs as the variant on the suite's own games.
-async fn side_by_side(pool: PgPool, rule: PriorRule) -> Option<Vec<bench::results::PlayerResult>> {
-    let engines = engines().await?;
-    let inner: Arc<dyn Analyser> = engines.clone();
-    let suite = tiny();
-    let harness = Harness {
-        pool,
-        memo: Arc::new(MemoAnalyser::new(inner, suite.nodes)),
-        engines: 2,
-        log: Box::new(|l| eprintln!("{l}")),
-        variant: Some(("test".to_owned(), rule)),
-    };
-    let players = harness.run(&suite).await.expect("suite runs");
-    EnginePool::close(&engines).await;
-    // The process's rule is restored after every variant build.
-    assert_eq!(profile_core::stats::variant::current(), PriorRule::CHAMPION);
-    Some(players)
-}
-
-/// The champion as the variant reproduces the main checkpoints exactly, perturbed one included:
-/// the second account sees the same games and nothing of the first.
-#[sqlx::test(migrator = "db::MIGRATOR")]
-async fn a_champion_variant_reproduces_the_main_run(pool: PgPool) {
-    let Some(players) = side_by_side(pool, PriorRule::CHAMPION).await else {
-        return;
-    };
-    for p in &players {
-        let v = p.variant.as_ref().expect("variant result");
-        assert!(v.deterministic, "{}", p.name);
-        assert_eq!(v.checkpoints, p.checkpoints, "{}", p.name);
-        assert_eq!(v.perturbed, p.perturbed, "{}", p.name);
-    }
-}
-
-/// A lighter prior run side by side moves the estimates and leaves the main run alone.
-#[sqlx::test(migrator = "db::MIGRATOR")]
-async fn a_lighter_variant_moves_the_estimates(pool: PgPool) {
-    let rule = PriorRule {
-        prior_games: Some(1.0),
-        effective_counts: true,
-        dispersion: false,
-    };
-    let Some(players) = side_by_side(pool, rule).await else {
-        return;
-    };
-    let moved = players.iter().any(|p| {
-        let v = p.variant.as_ref().unwrap();
-        v.checkpoints
-            .iter()
-            .zip(&p.checkpoints)
-            .any(|(a, b)| a.estimates != b.estimates)
-    });
-    assert!(moved, "a lighter prior moves at least one estimate");
 }
