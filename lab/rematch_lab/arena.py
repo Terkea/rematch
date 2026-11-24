@@ -33,6 +33,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -59,6 +60,7 @@ SCOPES = {
 MAX_CPU_HOURS = {"per-pr": 1.0, "weekly": 4.0, "release": 8.0}
 RUN_CAP = ex.DEFAULT_CAP
 OVERRIDDEN = "overridden"
+GATING = ("primary", "guard")
 NOT_RUN = "not run"
 # The fields that identify a record's content; a re-run must reproduce them exactly.
 CONTENT = (
@@ -153,32 +155,52 @@ def same_record(a: dict[str, Any] | None, b: dict[str, Any] | None) -> bool:
     return all(ex.canonical(a.get(k)) == ex.canonical(b.get(k)) for k in CONTENT)
 
 
-def committed_record(live: Live, algorithm_id: str) -> dict[str, Any] | None:
-    """The committed results.json as a record, when it ran on this version with the registered
-    seeds."""
-    path = live.exp / "results.json"
-    if not path.is_file():
-        return None
-    raw = path.read_bytes()
+def git_show(ref: str, path: str) -> bytes | None:
+    """A file at a git ref, or None when the ref or the file is not there."""
+    shown = subprocess.run(
+        ["git", "-C", str(REPO_ROOT), "show", f"{ref}:{path}"], capture_output=True, check=False
+    )
+    return shown.stdout if shown.returncode == 0 else None
+
+
+def committed_record(
+    live: Live, algorithm_id: str, ref: str | None = None
+) -> dict[str, Any] | None:
+    """The committed results.json (at `ref`, or in the working tree) as a record, when it ran on
+    this version with the registered seeds."""
+    if ref is not None:
+        raw = git_show(ref, f"lab/experiments/{live.id}/results.json")
+        if raw is None:
+            return None
+    else:
+        path = live.exp / "results.json"
+        if not path.is_file():
+            return None
+        raw = path.read_bytes()
     results = json.loads(raw)
     if results.get("algorithm_id") != algorithm_id or seed_namespace(results) != live.id:
         return None
     return make_record(live, raw)
 
 
-def load_board(path: Path) -> dict[str, Any]:
-    if not path.is_file():
+def parse_board(text: str | bytes | None, where: str) -> dict[str, Any]:
+    if text is None:
         return {"schema": SCHEMA, "specs": {}, "records": []}
-    board = json.loads(path.read_text(encoding="utf-8"))
+    board = json.loads(text)
     if board.get("schema") != SCHEMA:
-        raise SystemExit(f"{path}: schema is not {SCHEMA}")
+        raise SystemExit(f"{where}: schema is not {SCHEMA}")
     return board
+
+
+def load_board(path: Path) -> dict[str, Any]:
+    return parse_board(path.read_text(encoding="utf-8") if path.is_file() else None, str(path))
 
 
 def find_record(board: dict[str, Any], live: Live, algorithm_id: str) -> dict[str, Any] | None:
     """The newest record of this version on this experiment, on the registered seeds and the
-    current analysis and inputs."""
+    current analysis, inputs and comparison rule."""
     analysis, inputs = ex.analysis_hash(live.exp), inputs_sha256(live.exp)
+    rule = sha256((live.exp / "arena.py").read_bytes())
     found = [
         r
         for r in board["records"]
@@ -187,6 +209,7 @@ def find_record(board: dict[str, Any], live: Live, algorithm_id: str) -> dict[st
         and r["seed_namespace"] == live.id
         and r["analysis_sha256"] == analysis
         and r["inputs_sha256"] == inputs
+        and r.get("rule_sha256") == rule
     ]
     return found[-1] if found else None
 
@@ -211,7 +234,8 @@ def load_overrides(path: Path) -> list[dict[str, Any]]:
 def override_for(
     overrides: list[dict[str, Any]], algorithm_id: str, exp_id: str, metric: str
 ) -> dict[str, Any] | None:
-    """An override counts only when the ADR that records it exists."""
+    """An override counts only with a reason and an ADR (`decisions/NNNN-*.md`) that exists and
+    names the version, the experiment and every metric it overrides."""
     for o in overrides:
         if o.get("algorithm_id") != algorithm_id or o.get("experiment") != exp_id:
             continue
@@ -220,7 +244,12 @@ def override_for(
         adr = Path(o.get("adr", ""))
         if not adr.is_absolute():
             adr = REPO_ROOT / adr
-        if o.get("reason") and adr.is_file():
+        if not o.get("reason") or adr.parent.name != "decisions" or not adr.is_file():
+            continue
+        if not re.fullmatch(r"\d{4}-[a-z0-9-]+\.md", adr.name):
+            continue
+        text = adr.read_text(encoding="utf-8")
+        if all(word in text for word in (algorithm_id, exp_id, *o["metrics"])):
             return o
     return None
 
@@ -272,7 +301,8 @@ def experiment_verdict(
     roles = {m["name"]: m["role"] for m in rule.METRICS}
     worse, overridden = False, False
     for name, c in comparison.items():
-        if c["verdict"] != WORSE:
+        # Only primaries and guards gate; a "report" metric is shown and decides nothing.
+        if c["verdict"] != WORSE or roles.get(name) not in GATING:
             continue
         o = override_for(overrides, challenger, live.id, name)
         if o:
@@ -368,6 +398,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--champion", help="the champion's algorithm_id")
     ap.add_argument("--champion-ref", help="a git ref whose algorithm/manifest.json is the champion")
     ap.add_argument("--champion-cli", help="a cli of the champion, for a champion run")
+    ap.add_argument(
+        "--champion-board",
+        type=Path,
+        help="the champion's leaderboard (default: lab/leaderboard.json at --champion-ref)",
+    )
     ap.add_argument("--challenger", help="the challenger's algorithm_id")
     ap.add_argument("--challenger-cli", help="a cli of the challenger (default $REMATCH_CLI)")
     ap.add_argument("--dry-run", action="store_true", help="plan and compare caches, run nothing")
@@ -387,16 +422,62 @@ def main(argv: list[str] | None = None) -> int:
     challenger = resolve_challenger(args)
     max_cpu = args.max_cpu_hours if args.max_cpu_hours is not None else MAX_CPU_HOURS[args.scope]
     board = load_board(args.leaderboard)
+    # The champion's records come from the champion's own commit, never from the challenger's
+    # working tree, which a pull request can edit.
+    if args.champion_board:
+        champion_board = load_board(args.champion_board)
+    elif args.champion_ref:
+        champion_board = parse_board(
+            git_show(args.champion_ref, "lab/leaderboard.json"), args.champion_ref
+        )
+    else:
+        champion_board = board
     overrides = load_overrides(args.overrides)
     lives = live_experiments(args.scope, args.only)
 
     def cached(live: Live, algorithm_id: str) -> dict[str, Any] | None:
+        if algorithm_id == champion and champion != challenger:
+            return find_record(champion_board, live, algorithm_id) or committed_record(
+                live, algorithm_id, args.champion_ref
+            )
         return find_record(board, live, algorithm_id) or committed_record(live, algorithm_id)
+
+    def drift(live: Live) -> list[str]:
+        """What the two versions would not share: the experiment's own source paths (its
+        synthetic players, say) and, for a champion run, the Stockfish build."""
+        if not args.champion_ref or champion == challenger:
+            return []
+        out = []
+        paths = list(getattr(load_rule(live.exp), "SOURCE_PATHS", []))
+        if paths:
+            diff = subprocess.run(
+                ["git", "-C", str(REPO_ROOT), "diff", "--quiet", args.champion_ref, "--", *paths],
+                check=False,
+            )
+            if diff.returncode != 0:
+                out.append(
+                    f"{live.id}: {', '.join(paths)} changed between the champion and the "
+                    "challenger, so the two would not run the same players; register a new "
+                    "experiment or compare on the challenger's inputs by hand"
+                )
+        return out
+
+    def stockfish(text: bytes | str | None) -> Any:
+        if not text:
+            return None
+        return json.loads(text).get("components", {}).get("facts", {}).get("stockfish")
 
     records: dict[tuple[str, str], dict[str, Any] | None] = {}
     plan: list[dict[str, Any]] = []
     problems: list[str] = []
+    same_engine = True
+    if args.champion_ref and champion != challenger:
+        here = (REPO_ROOT / "algorithm" / "manifest.json").read_text(encoding="utf-8")
+        same_engine = stockfish(git_show(args.champion_ref, "algorithm/manifest.json")) == (
+            stockfish(here)
+        )
     for live in lives:
+        problems.extend(drift(live))
         sides = [champion] if champion == challenger else [champion, challenger]
         for algorithm_id in sides:
             hit = cached(live, algorithm_id)
@@ -430,7 +511,12 @@ def main(argv: list[str] | None = None) -> int:
     }
     clis = {champion: args.champion_cli, challenger: args.challenger_cli}
     if not args.dry_run:
-        if cpu > max_cpu:
+        if not same_engine and any(p["algorithm_id"] == champion for p in plan):
+            report["refused"] = (
+                "the champion's Stockfish differs from this image's, so a champion run here would "
+                "not be the champion; run it in the champion's own lab image"
+            )
+        elif cpu > max_cpu:
             report["refused"] = (
                 f"the plan needs {cpu:g} CPU-hours, past the budget of {max_cpu:g}; nothing ran"
             )

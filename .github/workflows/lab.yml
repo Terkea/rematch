@@ -141,7 +141,8 @@ jobs:
             ref=$(git tag --list 'v*' --sort=-v:refname --merged HEAD | sed -n "${nth}p")
           fi
           if [ -z "$ref" ] || ! git cat-file -e "$ref:algorithm/manifest.json" 2>/dev/null; then
-            echo "No champion manifest at '${ref}': the champion is this commit."
+            # Only the first release with a manifest has no champion; it is compared with itself.
+            echo "::warning::No champion manifest at '${ref}': the champion is this commit."
             ref=HEAD
           fi
           echo "scope=$scope" >> "$GITHUB_OUTPUT"
@@ -178,8 +179,11 @@ jobs:
           set -- --scope "$SCOPE" --champion-ref "$CHAMPION_REF" --write \
             --write-to /repo/arena-out/leaderboard.json --json /repo/arena-out/arena.json \
             --summary /repo/arena-out/summary.md
-          # A pull request re-runs its challenger and needs its record committed.
+          # A pull request re-runs its challenger and needs its record committed; a release
+          # re-runs its challenger too, so no hand-committed record goes unchecked. The champion's
+          # records come from the champion's own commit (--champion-ref), never this one.
           if [ "$EVENT" = pull_request ]; then set -- "$@" --verify --require-records; fi
+          if [ "$SCOPE" = release ]; then set -- "$@" --verify; fi
           if [ "$NEEDS_CHAMPION" = true ]; then set -- "$@" --champion-cli /repo/champion-bin/cli; fi
           network=$(docker network ls -q --filter label=com.docker.compose.project=ci-lab | head -n 1)
           docker run --rm --network "$network" -v "$PWD:/repo" -w /repo/lab \

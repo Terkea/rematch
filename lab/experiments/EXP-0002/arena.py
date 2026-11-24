@@ -2,15 +2,17 @@
 
 EXP-0002 is a measurement of one version: each of the 20 key × checkpoint coverages of the 80%
 range is classified by its Bonferroni interval against [0.75, 0.85] (preregistration.md, section
-9). Its follow-up, EXP-0006, registered the comparison of two versions on this design: the
-primary is the worst of the 20 coverages, and the coverage at the peers' rate (ρ = 1) is
-guarded. That is the rule here.
+9). It registered no comparison of two versions. The comparison here is the one drafted in the
+EXP-0006 issue (primary: the worst of the 20 coverages; guarded: the coverage at the peers'
+rate), adopted by ADR 0109 for the arena and not pre-registered; EXP-0006's own registration
+will supersede it for that experiment's decision.
 
-- worst coverage (primary): the distance from 0.8 of the cell furthest from it, champion and
-  challenger each; the change in that distance with the MOVER interval from the two cells'
-  Bonferroni intervals (family of 20). Better when the interval lies wholly below 0.
+- worst coverage (primary): the largest distance from 0.8 among the 20 cells. Its interval is
+  the interval of the maximum, [max of the cells' lower bounds, max of their upper bounds], from
+  the simultaneous Bonferroni intervals (family of 20), so a challenger whose worst cell moves is
+  still compared fairly. The change is the MOVER interval of the two versions' maxima. Better
+  when it lies wholly below 0, worse when wholly above.
 - coverage at ρ = 1 (guard): the same, from the ρ margin's Bonferroni interval (family of 21).
-  Worse when the interval lies wholly above 0.
 
 The intervals are unpaired: results.json keeps the coverages, not each player's flags, so the
 positive correlation of two versions on the same seeds is ignored. That errs towards "no clear
@@ -66,8 +68,18 @@ def _worst(m: dict[str, Any]) -> dict[str, Any]:
     return max(m["cells"], key=lambda c: (abs(c["coverage"] - TARGET), c["key"], -c["games"]))
 
 
+def _max_distance(m: dict[str, Any]) -> tuple[float, tuple[float, float]]:
+    """The largest distance from 0.8 among the cells, with the interval of the maximum."""
+    dists = [stats.distance_interval(c["coverage"], c["interval"], TARGET) for c in m["cells"]]
+    return (
+        max(d for d, _ in dists),
+        (max(ci[0] for _, ci in dists), max(ci[1] for _, ci in dists)),
+    )
+
+
 def metrics(m: dict[str, Any]) -> dict[str, Any]:
     w = _worst(m)
+    d, (lo, hi) = _max_distance(m)
     within = sum(1 for c in m["cells"] if 0.75 <= c["interval"][0] and c["interval"][1] <= 0.85)
     return {
         "worst_coverage": {
@@ -75,6 +87,8 @@ def metrics(m: dict[str, Any]) -> dict[str, Any]:
             "interval": [_r(x) for x in w["interval"]],
             "level": "Bonferroni 95%, 20 cells",
             "at": f"{w['key']} at {w['games']} games",
+            "distance": _r(d),
+            "distance_interval": [_r(lo), _r(hi)],
             "within_band": within,
         },
         "rho1_coverage": {
@@ -85,10 +99,10 @@ def metrics(m: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _distance_change(champion: dict[str, Any], challenger: dict[str, Any]) -> dict[str, Any]:
-    d1, ci1 = stats.distance_interval(challenger["coverage"], challenger["interval"], TARGET)
-    d2, ci2 = stats.distance_interval(champion["coverage"], champion["interval"], TARGET)
-    d, lo, hi = stats.mover(d1, ci1, d2, ci2)
+def _change(
+    champion: tuple[float, tuple[float, float]], challenger: tuple[float, tuple[float, float]]
+) -> dict[str, Any]:
+    d, lo, hi = stats.mover(challenger[0], challenger[1], champion[0], champion[1])
     return {
         "effect": _r(d),
         "interval": [_r(lo), _r(hi)],
@@ -98,11 +112,17 @@ def _distance_change(champion: dict[str, Any], challenger: dict[str, Any]) -> di
     }
 
 
+def _rho1(m: dict[str, Any]) -> tuple[float, tuple[float, float]]:
+    return stats.distance_interval(m["rho1"]["coverage"], m["rho1"]["interval"], TARGET)
+
+
 def compare(champion: dict[str, Any], challenger: dict[str, Any]) -> dict[str, Any]:
-    cells = lambda m: [(c["key"], c["games"]) for c in m["cells"]]  # noqa: E731
+    def cells(m: dict[str, Any]) -> list[tuple[str, int]]:
+        return [(c["key"], c["games"]) for c in m["cells"]]
+
     if cells(champion) != cells(challenger):
         raise ValueError("EXP-0002: the two runs do not have the same 20 cells")
     return {
-        "worst_coverage": _distance_change(_worst(champion), _worst(challenger)),
-        "rho1_coverage": _distance_change(champion["rho1"], challenger["rho1"]),
+        "worst_coverage": _change(_max_distance(champion), _max_distance(challenger)),
+        "rho1_coverage": _change(_rho1(champion), _rho1(challenger)),
     }

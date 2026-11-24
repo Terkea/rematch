@@ -85,7 +85,7 @@ def test_exp_0001_metrics_reproduce_the_decision() -> None:
     assert metrics["recall_at_2"]["value"] == pytest.approx(19 / 30)
     assert metrics["recall_at_2"]["interval"] == pytest.approx([0.455136, 0.781261], abs=1e-6)
     assert metrics["coverage"]["value"] == pytest.approx(0.575)
-    assert metrics["clean_false_alarms"]["value"] == pytest.approx(2 / 8)
+    assert metrics["clean_false_alarms"]["value"] == pytest.approx(1.0)  # both clean controls
 
 
 def test_exp_0001_a_challenger_that_loses_hits_is_worse() -> None:
@@ -97,6 +97,59 @@ def test_exp_0001_a_challenger_that_loses_hits_is_worse() -> None:
     result = rule.compare(champ, chall)
     assert result["recall_at_2"]["verdict"] == "worse"
     assert result["recall_at_2"]["effect"] == pytest.approx(-19 / 30)
+
+
+def flip(m: dict, n: int, to: bool) -> dict:
+    """A copy of EXP-0001's measures with n players' hit at 80 games set to `to`."""
+    out = copy.deepcopy(m)
+    for k in [k for k, p in out["flawed"].items() if p["hit2"] != to][:n]:
+        out["flawed"][k]["hit2"] = to
+    return out
+
+
+def test_exp_0001_worse_uses_the_registered_guard_and_better_the_ship_rule() -> None:
+    rule = arena.load_rule(LAB / "experiments" / "EXP-0001")
+    champ = rule.measure(committed("EXP-0001"))
+    # Four lost detections: the 80% guard interval (ADR 0104) lies below 0, the 97.5% ship
+    # interval does not.
+    lost = rule.compare(champ, flip(champ, 4, False))["recall_at_2"]
+    assert lost["verdict"] == "worse"
+    assert lost["guard_interval"][1] < 0 < lost["interval"][1]
+    # Four gained: not enough for the registered ship rule.
+    gained = rule.compare(champ, flip(champ, 4, True))["recall_at_2"]
+    assert gained["verdict"] == "no clear difference"
+
+
+def test_exp_0001_clean_false_alarms_are_reported_not_gated() -> None:
+    rule = arena.load_rule(LAB / "experiments" / "EXP-0001")
+    roles = {m["name"]: m["role"] for m in rule.METRICS}
+    assert roles == {"recall_at_2": "primary", "coverage": "guard", "clean_false_alarms": "report"}
+
+
+def test_exp_0001_coverage_guard_has_the_registered_margin() -> None:
+    rule = arena.load_rule(LAB / "experiments" / "EXP-0001")
+    champ = rule.measure(committed("EXP-0001"))
+    # Three of 120 intervals fewer hold the truth: 0.025 further from 0.8, inside the 0.05 margin.
+    near = copy.deepcopy(champ)
+    left = 3
+    for p in near["flawed"].values():
+        for i, c in enumerate(p["covered"]):
+            if c and left:
+                p["covered"][i], left = False, left - 1
+    assert rule.compare(champ, near)["coverage"]["verdict"] != "worse"
+    none = copy.deepcopy(champ)
+    for p in none["flawed"].values():
+        p["covered"] = [False] * len(p["covered"])
+    assert rule.compare(champ, none)["coverage"]["verdict"] == "worse"
+
+
+def test_exp_0002_worst_coverage_interval_is_the_interval_of_the_maximum() -> None:
+    rule = arena.load_rule(LAB / "experiments" / "EXP-0002")
+    m = rule.measure(committed("EXP-0002"))
+    metric = rule.metrics(m)["worst_coverage"]
+    dists = [stats.distance_interval(c["coverage"], c["interval"], 0.8)[1] for c in m["cells"]]
+    want = [max(d[0] for d in dists), max(d[1] for d in dists)]
+    assert metric["distance_interval"] == pytest.approx(want, abs=1e-6)
 
 
 def test_exp_0001_refuses_players_that_do_not_pair() -> None:
@@ -282,8 +335,12 @@ def test_a_clear_regression_fails(lab_dirs: Path) -> None:
 
 def test_an_override_recorded_in_an_adr_lets_it_pass(lab_dirs: Path) -> None:
     fake(lab_dirs / "experiments", WORSE)
-    adr = lab_dirs / "0999-override.md"
-    adr.write_text("# 0999. An emergency\n", encoding="utf-8")
+    (lab_dirs / "decisions").mkdir()
+    adr = lab_dirs / "decisions" / "0999-override.md"
+    adr.write_text(
+        f"# 0999. An emergency\n\nShip {CHALLENGER} despite EXP-9999's hits and misses.\n",
+        encoding="utf-8",
+    )
     overrides = [
         {
             "algorithm_id": CHALLENGER,
@@ -297,10 +354,48 @@ def test_an_override_recorded_in_an_adr_lets_it_pass(lab_dirs: Path) -> None:
     code, report = run(lab_dirs)
     assert code == 0
     assert report["experiments"][0]["verdict"] == "overridden"
-    # An override whose ADR does not exist is refused.
-    overrides[0]["adr"] = str(lab_dirs / "missing.md")
+    # Refused: an ADR that does not exist, a file that is not an ADR, an ADR that does not name
+    # what it overrides.
+    readme = lab_dirs / "README.md"
+    readme.write_text(adr.read_text(encoding="utf-8"), encoding="utf-8")
+    for bad in (lab_dirs / "decisions" / "0998-missing.md", readme):
+        overrides[0]["adr"] = str(bad)
+        (lab_dirs / "overrides.json").write_text(json.dumps(overrides), encoding="utf-8")
+        assert run(lab_dirs)[0] == 1, bad.name
+    adr.write_text("# 0999. An emergency\n", encoding="utf-8")
+    overrides[0]["adr"] = str(adr)
     (lab_dirs / "overrides.json").write_text(json.dumps(overrides), encoding="utf-8")
     assert run(lab_dirs)[0] == 1
+
+
+def test_a_report_only_metric_never_fails_the_run(lab_dirs: Path) -> None:
+    exp = fake(lab_dirs / "experiments", WORSE)
+    rule = (exp / "arena.py").read_text(encoding="utf-8")
+    rule = rule.replace('"role": "primary"', '"role": "report"')
+    (exp / "arena.py").write_text(rule.replace('"role": "guard"', '"role": "report"'))
+    code, report = run(lab_dirs)
+    assert code == 0
+    assert report["experiments"][0]["comparison"]["hits"]["verdict"] == "worse"
+    assert report["experiments"][0]["verdict"] == "no clear difference"
+
+
+def test_champion_records_come_from_the_champions_own_board(lab_dirs: Path) -> None:
+    fake(lab_dirs / "experiments", SAME)
+    assert run(lab_dirs, "--write")[0] == 0
+    # The champion's board (main's, in a pull request) has no record: the working board's
+    # record of the champion is not trusted.
+    main_board = lab_dirs / "main-board.json"
+    main_board.write_text(json.dumps({"schema": "leaderboard-v1", "specs": {}, "records": []}))
+    code, report = run(lab_dirs, "--dry-run", "--champion-board", str(main_board))
+    assert [p["algorithm_id"] for p in report["plan"]] == [CHAMPION]
+
+
+def test_an_edited_rule_is_not_fed_stale_records(lab_dirs: Path) -> None:
+    exp = fake(lab_dirs / "experiments", SAME)
+    assert run(lab_dirs, "--write")[0] == 0
+    (exp / "arena.py").write_text(FAKE_RULE + "# changed\n", encoding="utf-8")
+    code, report = run(lab_dirs, "--dry-run")
+    assert len(report["plan"]) == 2
 
 
 def test_the_plan_is_refused_past_the_budget(lab_dirs: Path) -> None:

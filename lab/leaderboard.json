@@ -8,8 +8,8 @@
         "clean_false_alarms": {
           "effect": 0.0,
           "interval": [
-            -0.085164,
-            0.085164
+            -0.450908,
+            0.450908
           ],
           "level": 0.8,
           "verdict": "no clear difference"
@@ -22,10 +22,16 @@
             0.0
           ],
           "level": 0.8,
+          "margin": 0.05,
           "verdict": "no clear difference"
         },
         "recall_at_2": {
           "effect": 0.0,
+          "guard_interval": [
+            -0.013841,
+            0.013841
+          ],
+          "guard_level": 0.8,
           "interval": [
             -0.038251,
             0.038251
@@ -39,18 +45,8 @@
       "inputs_sha256": "3f137dac5d397969ad6ed82cda1763c16524c9a2fc68d2efef949b09396ebece",
       "measures": {
         "clean": {
-          "exp1-clean-0": [
-            false,
-            true,
-            false,
-            false
-          ],
-          "exp1-clean-1": [
-            false,
-            false,
-            false,
-            true
-          ]
+          "exp1-clean-0": true,
+          "exp1-clean-1": true
         },
         "flawed": {
           "exp1-hang-0": {
@@ -60,6 +56,7 @@
               false,
               true
             ],
+            "flaw": "hang",
             "hit2": true
           },
           "exp1-hang-1": {
@@ -69,6 +66,7 @@
               false,
               false
             ],
+            "flaw": "hang",
             "hit2": true
           },
           "exp1-hang-2": {
@@ -78,6 +76,7 @@
               true,
               true
             ],
+            "flaw": "hang",
             "hit2": true
           },
           "exp1-hang-3": {
@@ -87,6 +86,7 @@
               false,
               true
             ],
+            "flaw": "hang",
             "hit2": true
           },
           "exp1-hang-4": {
@@ -96,6 +96,7 @@
               false,
               false
             ],
+            "flaw": "hang",
             "hit2": true
           },
           "exp1-hang-5": {
@@ -105,6 +106,7 @@
               true,
               true
             ],
+            "flaw": "hang",
             "hit2": true
           },
           "exp1-lowclockblunder-0": {
@@ -114,6 +116,7 @@
               false,
               false
             ],
+            "flaw": "low_clock_blunder",
             "hit2": true
           },
           "exp1-lowclockblunder-1": {
@@ -123,6 +126,7 @@
               false,
               false
             ],
+            "flaw": "low_clock_blunder",
             "hit2": true
           },
           "exp1-lowclockblunder-2": {
@@ -132,6 +136,7 @@
               true,
               true
             ],
+            "flaw": "low_clock_blunder",
             "hit2": true
           },
           "exp1-lowclockblunder-3": {
@@ -141,6 +146,7 @@
               true,
               true
             ],
+            "flaw": "low_clock_blunder",
             "hit2": true
           },
           "exp1-lowclockblunder-4": {
@@ -150,6 +156,7 @@
               false,
               true
             ],
+            "flaw": "low_clock_blunder",
             "hit2": true
           },
           "exp1-lowclockblunder-5": {
@@ -159,6 +166,7 @@
               false,
               true
             ],
+            "flaw": "low_clock_blunder",
             "hit2": true
           },
           "exp1-missmate-0": {
@@ -168,6 +176,7 @@
               true,
               true
             ],
+            "flaw": "miss_mate",
             "hit2": false
           },
           "exp1-missmate-1": {
@@ -177,6 +186,7 @@
               false,
               false
             ],
+            "flaw": "miss_mate",
             "hit2": false
           },
           "exp1-missmate-2": {
@@ -186,6 +196,7 @@
               true,
               true
             ],
+            "flaw": "miss_mate",
             "hit2": false
           },
           "exp1-missmate-3": {
@@ -195,6 +206,7 @@
               true,
               true
             ],
+            "flaw": "miss_mate",
             "hit2": false
           },
           "exp1-missmate-4": {
@@ -204,6 +216,7 @@
               false,
               false
             ],
+            "flaw": "miss_mate",
             "hit2": false
           },
           "exp1-missmate-5": {
@@ -213,6 +226,7 @@
               true,
               true
             ],
+            "flaw": "miss_mate",
             "hit2": false
           },
           "exp1-noconvert-0": {
@@ -222,6 +236,7 @@
               true,
               true
             ],
+            "flaw": "no_convert",
             "hit2": true
           },
           "exp1-noconvert-1": {
@@ -231,6 +246,7 @@
               true,
               true
             ],
+            "flaw": "no_convert",
             "hit2": true
           },
           "exp1-noconvert-2": {
@@ -240,6 +256,7 @@
               false,
               false
             ],
+            "flaw": "no_convert",
             "hit2": true
           },
           "exp1-noconvert-3": {
@@ -249,6 +266,7 @@
               false,
               false
             ],
+            "flaw": "no_convert",
             "hit2": false
           },
           "exp1-noconvert-4": {
@@ -258,6 +276,7 @@
               true,
               true
             ],
+            "flaw": "no_convert",
             "hit2": true
           },
           "exp1-noconvert-5": {
@@ -267,6 +286,7 @@
               true,
               false
             ],
+            "flaw": "no_convert",
             "hit2": true
           },
           "exp1-openingblunder-0": {
@@ -276,6 +296,7 @@
               false,
               false
             ],
+            "flaw": "opening_blunder",
             "hit2": true
           },
           "exp1-openingblunder-1": {
@@ -285,6 +306,7 @@
               false,
               false
             ],
+            "flaw": "opening_blunder",
             "hit2": true
           },
           "exp1-openingblunder-2": {
@@ -294,6 +316,7 @@
               false,
               false
             ],
+            "flaw": "opening_blunder",
             "hit2": false
           },
           "exp1-openingblunder-3": {
@@ -303,6 +326,7 @@
               false,
               false
             ],
+            "flaw": "opening_blunder",
             "hit2": false
           },
           "exp1-openingblunder-4": {
@@ -312,6 +336,7 @@
               false,
               false
             ],
+            "flaw": "opening_blunder",
             "hit2": false
           },
           "exp1-openingblunder-5": {
@@ -321,6 +346,7 @@
               false,
               false
             ],
+            "flaw": "opening_blunder",
             "hit2": false
           }
         }
@@ -328,16 +354,16 @@
       "metrics": {
         "clean_false_alarms": {
           "interval": [
-            0.108871,
-            0.476294
+            0.549092,
+            1.0
           ],
           "level": 0.8,
-          "value": 0.25
+          "value": 1.0
         },
         "coverage": {
           "interval": [
-            0.45,
-            0.691667
+            0.466667,
+            0.675
           ],
           "level": 0.95,
           "value": 0.575
@@ -352,7 +378,7 @@
         }
       },
       "results_sha256": "cfdf0a49a8b8ea39d095e78e4ee7afe6a5cb04d432838b0adf85f09c74529535",
-      "rule_sha256": "87a843198361ec059710049768ac93c37dc03284ed06bbb425e4d5427dc93396",
+      "rule_sha256": "6a91c4bd4d5e8d47d57f1590e86182c90892525cc5595371b3f9caa318f97e56",
       "seed_namespace": "EXP-0001",
       "verdict": "no clear difference"
     },
@@ -587,6 +613,11 @@
         },
         "worst_coverage": {
           "at": "W4.missed at 30 games",
+          "distance": 0.699722,
+          "distance_interval": [
+            0.686947,
+            0.712498
+          ],
           "interval": [
             0.087502,
             0.113053
@@ -597,7 +628,7 @@
         }
       },
       "results_sha256": "842973132243f3f308e469f14f562b7efb9fc86cc5860effe47b0f8f4d5cc43b",
-      "rule_sha256": "d07f5509209ba9cb85bf67a2168c32a58d3e0128497d898bbde9bbbc25c7231b",
+      "rule_sha256": "65745a499c165e59636aa53b4e37d41c08fd52b980b29dfad86339fc4366d5e7",
       "seed_namespace": "EXP-0002",
       "verdict": "no clear difference"
     }
@@ -619,9 +650,9 @@
       },
       {
         "better": "lower",
-        "label": "Clean checkpoints with a rank-1 weakness, up to 80 games",
+        "label": "Clean controls with a rank-1 weakness, up to 80 games",
         "name": "clean_false_alarms",
-        "role": "guard"
+        "role": "report"
       }
     ],
     "EXP-0002": [
