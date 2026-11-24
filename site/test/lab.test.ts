@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,7 +8,9 @@ import {
   experimentsIndex,
   labStrip,
   lagging,
+  leaderboardSection,
   loadExperiments,
+  loadLeaderboard,
   missingSummaries,
   parseProgress,
   parseSummary,
@@ -35,6 +37,8 @@ describe("experiments", () => {
     expect(page).toContain("blob/main/lab/experiments/EXP-9001/decision.md");
     expect(page).toContain("https://github.com/Terkea/rematch/issues/1");
     expect(page).not.toContain("/review.md");
+    expect(page).toContain("Live: re-run against the champion on every pull request");
+    expect(experimentPage(exps[0] as never)).not.toContain("Live:");
   });
   it("builds an index with every status and a note when empty", () => {
     expect(experimentsIndex(exps as never)).toContain("/rematch/docs/experiments/exp-9002/");
@@ -67,12 +71,65 @@ describe("experiments", () => {
   });
 });
 
+describe("the leaderboard", () => {
+  const exps = loadExperiments(FIXTURE) as never[];
+  const board = loadLeaderboard(FIXTURE);
+  it("reads the live flag and the board", () => {
+    expect(loadExperiments(FIXTURE).find((e) => e.id === "EXP-9001")?.live).toBe(true);
+    expect(loadExperiments(FIXTURE).find((e) => e.id === "EXP-9002")?.live).toBe(false);
+    expect(board?.records).toHaveLength(2);
+    expect(loadLeaderboard(mkdtempSync(join(tmpdir(), "lab-")))).toBeNull();
+  });
+  it("has a row per version, the champion first and marked, a column per live primary", () => {
+    const html = leaderboardSection(exps, board as never, "algo-0.0.1");
+    expect(html).toContain("## Leaderboard");
+    const rows = html.match(/<tr[ >][\s\S]*?<\/tr>/g) ?? [];
+    expect(rows).toHaveLength(3); // the header and two versions
+    expect(rows[1]).toContain('class="lab-champion"');
+    expect(rows[1]).toContain("algo-0.0.1");
+    expect(rows[1]).toContain("Champion");
+    expect(rows[2]).toContain("algo-0.1.0");
+    expect(rows[2]).toContain("0.767 [0.600, 0.900]");
+    expect(rows[2]).toContain("better than the champion");
+    expect(rows[0]).toContain("Recall at 2");
+    expect(rows[0]).toContain("/rematch/docs/experiments/exp-9001/");
+    expect(html).not.toContain("Guarded"); // guards are in each experiment's record, not here
+    expect(html).not.toMatch(/NaN|undefined|Infinity/);
+  });
+  it("shows a dash, never a zero, for a version an experiment has not measured", () => {
+    const partial = { ...board, records: board?.records.slice(1) } as never;
+    const html = leaderboardSection(exps, partial, "algo-0.0.1");
+    expect(html).toContain("Not run");
+    expect(html).not.toMatch(/>0\.000/);
+  });
+  it("is empty without a board or a live experiment", () => {
+    expect(leaderboardSection(exps, null, "algo-0.0.1")).toBe("");
+    expect(leaderboardSection([], board as never, "algo-0.0.1")).toBe("");
+  });
+  it("is on the Experiments index", () => {
+    expect(experimentsIndex(exps, board as never, "algo-0.0.1")).toContain("lab-leaderboard");
+  });
+});
+
 describe("the real lab", () => {
   // The guard: the site cannot lag the lab.
   const lab = join(ROOT, "lab");
   it("has a decided summary for every decision.md", () => {
     expect(missingSummaries(lab)).toEqual([]);
     expect(lagging(loadExperiments(lab))).toEqual([]);
+  });
+  it("has the champion on the leaderboard for every live experiment", () => {
+    const champion = JSON.parse(readFileSync(join(ROOT, "algorithm", "manifest.json"), "utf8")).id;
+    const board = loadLeaderboard(lab);
+    const live = loadExperiments(lab).filter((e) => e.live);
+    expect(live.length).toBeGreaterThanOrEqual(2);
+    for (const e of live) {
+      expect(
+        board?.records.some((r) => r.experiment === e.id && r.algorithm_id === champion),
+        e.id,
+      ).toBe(true);
+    }
+    expect(leaderboardSection(live as never, board as never, champion)).toContain(champion);
   });
 });
 

@@ -1,0 +1,35 @@
+{
+  "records": [
+    {
+      "against": "algo-0.0.1",
+      "algorithm_id": "algo-0.0.1",
+      "date": "2026-01-02",
+      "experiment": "EXP-9001",
+      "metrics": {
+        "guarded": { "interval": [0.1, 0.3], "level": 0.8, "value": 0.2 },
+        "recall": { "interval": [0.455136, 0.781261], "level": 0.95, "value": 0.633333 }
+      },
+      "seed_namespace": "EXP-9001",
+      "verdict": "no clear difference"
+    },
+    {
+      "against": "algo-0.0.1",
+      "algorithm_id": "algo-0.1.0",
+      "date": "2026-01-05",
+      "experiment": "EXP-9001",
+      "metrics": {
+        "guarded": { "interval": [0.1, 0.3], "level": 0.8, "value": 0.2 },
+        "recall": { "interval": [0.6, 0.9], "level": 0.95, "value": 0.766667 }
+      },
+      "seed_namespace": "EXP-9001",
+      "verdict": "better"
+    }
+  ],
+  "schema": "leaderboard-v1",
+  "specs": {
+    "EXP-9001": [
+      { "better": "higher", "label": "Recall at 2", "name": "recall", "role": "primary" },
+      { "better": "lower", "label": "Guarded", "name": "guarded", "role": "guard" }
+    ]
+  }
+}

@@ -70,6 +70,9 @@ const SENSITIVE = [
   "services/ai-sidecar/src/local-env.ts",
   "algorithm/manifest.json",
   "algorithm/CHANGELOG.md",
+  "lab/leaderboard.json",
+  "lab/overrides.json",
+  "lab/experiments/EXP-0001/arena.py",
   "SECURITY.md",
 ];
 

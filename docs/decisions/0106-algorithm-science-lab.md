@@ -1,6 +1,6 @@
 # 0106. Algorithm science: pre-registered experiments and a Python lab that drives the Rust algorithm
 
-Date: 2026-11-23. Status: accepted (lane `science`, branch `feat/science-lab`, the owner-approved plan "put the algorithm on a scientific footing"). Builds on ADRs 0100, 0101 and 0104. Number 0105 is the algorithm manifest (lane `feat/algorithm-manifest`).
+Date: 2026-11-23. Status: accepted (lane `science`, branch `feat/science-lab`, the owner-approved plan "put the algorithm on a scientific footing"). Builds on ADRs 0100, 0101 and 0104. Number 0105 is the algorithm manifest (lane `feat/algorithm-manifest`). Its rule that an experiment on an older version is historical and never rerun is replaced by ADR 0109: decided experiments stay live.
 
 ## Context
 
