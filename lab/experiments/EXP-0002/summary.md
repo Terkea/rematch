@@ -4,7 +4,11 @@ title: Do the 80% ranges hold the true rate 80% of the time?
 status: decided
 algorithm: algo-1.1.0+fa5e2186e1dd
 issue: 92
-updated: 2026-11-23
+updated: 2026-11-24
+live: true
+rerun: per-pr
+run_cpu_hours: 0.44
+run_minutes: 27
 ---
 
 - The question: whether the 80% range Rematch shows for a weakness rate holds the player's true rate about 80% of the time (#13).

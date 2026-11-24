@@ -1,0 +1,72 @@
+{
+  "schema_version": "lab-v1",
+  "lines": [
+    {
+      "id": "puzzle-00008",
+      "fen": "r6k/pp2r2p/4Rp1Q/3p4/8/1N1P2R1/PqP2bPP/7K b - - 0 24",
+      "setup": [
+        "f2g3"
+      ],
+      "pv": [
+        "e6e7",
+        "b2b1",
+        "b3c1",
+        "b1c1",
+        "h6c1"
+      ]
+    },
+    {
+      "id": "fork",
+      "fen": "r3k3/8/8/1N6/8/8/8/4K3 w - - 0 1",
+      "pv": [
+        "b5c7",
+        "e8e7",
+        "c7a8"
+      ]
+    },
+    {
+      "id": "smothered",
+      "fen": "6rk/6pp/8/6N1/8/8/8/6K1 w - - 0 1",
+      "pv": [
+        "g5f7"
+      ]
+    },
+    {
+      "id": "back-rank",
+      "fen": "6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1",
+      "setup": [],
+      "pv": [
+        "d1d8"
+      ]
+    },
+    {
+      "id": "illegal-setup",
+      "fen": "6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1",
+      "setup": [
+        "d1d9"
+      ],
+      "pv": [
+        "d1d8"
+      ]
+    },
+    {
+      "id": "illegal-line",
+      "fen": "6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1",
+      "pv": [
+        "e2e4"
+      ]
+    },
+    {
+      "id": "empty-line",
+      "fen": "6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1",
+      "pv": []
+    },
+    {
+      "id": "bad-fen",
+      "fen": "not a fen",
+      "pv": [
+        "e2e4"
+      ]
+    }
+  ]
+}

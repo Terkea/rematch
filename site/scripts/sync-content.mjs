@@ -29,6 +29,7 @@ import {
   experimentsIndex,
   labStrip,
   loadExperiments,
+  loadLeaderboard,
   parseProgress,
   progressPage,
 } from "./lab-lib.mjs";
@@ -149,6 +150,11 @@ function writeHowItWorksSummary() {
   );
 }
 
+/** The champion: the algorithm version on this commit's manifest (ADR 0109). */
+function championId() {
+  return JSON.parse(readFileSync(join(ROOT, "algorithm", "manifest.json"), "utf8")).id;
+}
+
 /** The Experiments pages and the Progress page, plus the landing strip (src/data/generated/lab.json). */
 function writeLab() {
   const exps = loadExperiments(join(ROOT, "lab"));
@@ -174,7 +180,7 @@ function writeLab() {
       editUrl: `${edit}/lab/experiments/README.md`,
       sidebar: { order: 0, label: "Index" },
       tableOfContents: false,
-    }) + experimentsIndex(exps),
+    }) + experimentsIndex(exps, loadLeaderboard(join(ROOT, "lab")), championId()),
   );
   const progress = readFileSync(join(ROOT, "docs", "progress.md"), "utf8");
   writeFileSync(

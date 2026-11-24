@@ -1,15 +1,16 @@
-//! `cli lab analyse|profile|rank` (ADR 0106): the lab bridge. Each reads one JSON request on stdin
-//! and writes one JSON response on stdout (`lab/schemas/`); logs go to stderr. `profile` and `rank`
-//! are pure functions of their input. `analyse` needs `DATABASE_URL` (a throwaway database is
-//! created next to it and dropped) and `STOCKFISH_PATH`. Exit codes: 0 done, 1 usage, input or
-//! run error.
+//! `cli lab analyse|profile|rank|tag-motifs` (ADR 0106): the lab bridge. Each reads one JSON
+//! request on stdin and writes one JSON response on stdout (`lab/schemas/`); logs go to stderr.
+//! `profile`, `rank` and `tag-motifs` are pure functions of their input. `analyse` needs
+//! `DATABASE_URL` (a throwaway database is created next to it and dropped) and `STOCKFISH_PATH`.
+//! Exit codes: 0 done, 1 usage, input or run error.
 
 use std::io::Read;
 use std::path::PathBuf;
 
-use bench::lab::{AnalyseOptions, AnalyseRequest, ProfileRequest, RankRequest};
+use bench::lab::{AnalyseOptions, AnalyseRequest, ProfileRequest, RankRequest, TagMotifsRequest};
 
-pub const LAB_USAGE: &str = "usage: cli lab analyse|profile|rank < request.json > response.json";
+pub const LAB_USAGE: &str =
+    "usage: cli lab analyse|profile|rank|tag-motifs < request.json > response.json";
 
 /// The id of the algorithm that answers: this build's manifest id (ADR 0105), the same one every
 /// writer stamps on its rows. `cli algo show --json` prints the whole manifest.
@@ -29,7 +30,7 @@ fn parse<T: serde::de::DeserializeOwned>(input: &str) -> anyhow::Result<T> {
     Ok(serde_json::from_str(input)?)
 }
 
-/// `profile` or `rank` on a request string (no I/O): what the tests and the golden file use.
+/// `profile`, `rank` or `tag-motifs` on a request string (no I/O): what the tests and the golden file use.
 pub fn run_pure(cmd: &str, input: &str) -> anyhow::Result<String> {
     match cmd {
         "profile" => to_output(&bench::lab::profile(
@@ -38,6 +39,10 @@ pub fn run_pure(cmd: &str, input: &str) -> anyhow::Result<String> {
         )?),
         "rank" => to_output(&bench::lab::rank(
             &parse::<RankRequest>(input)?,
+            algorithm_id(),
+        )?),
+        "tag-motifs" => to_output(&bench::lab::tag_motifs(
+            &parse::<TagMotifsRequest>(input)?,
             algorithm_id(),
         )?),
         _ => anyhow::bail!("{LAB_USAGE}"),
@@ -57,7 +62,7 @@ pub async fn run_lab(
             return 1;
         }
     };
-    if !matches!(cmd, "analyse" | "profile" | "rank") {
+    if !matches!(cmd, "analyse" | "profile" | "rank" | "tag-motifs") {
         print_error(LAB_USAGE);
         return 1;
     }

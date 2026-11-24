@@ -8,6 +8,19 @@ The site builds this file into /docs/progress/ and shows the newest entry on the
 
 See also the [experiments](/rematch/docs/experiments/) and the [roadmap](/rematch/docs/roadmap/).
 
+## 2026-11-24: EXP-0007, the motif tags against the Lichess puzzle themes
+
+- We ran the real Rust tagger on 54,987 Lichess puzzles (CC0, many thanks to Lichess and its players), each solution standing in for the engine's best line, and scored it against Lichess's themes. Fork is right 98% of the time and finds 72% of the labelled forks; discovered attack 99% and 86%; promotion and smothered mate match almost exactly ([EXP-0007](https://github.com/Terkea/rematch/tree/main/lab/experiments/EXP-0007)).
+- Six tags can't be shown to be right four times in five: deflection (56%, mostly attraction) is ours to fix; skewer (81%, not shown to clear 80%), back-rank mate, hanging piece, sacrifice and pin wait for a blind human audit, since the themes don't name every motif in a puzzle. Pin also finds only 20% of the labelled pins.
+- Next: stop naming those six to players until they clear, the audit (EXP-0019), fixes for deflection and pin (EXP-0020, EXP-0021), motifs after the first capture (EXP-0022), and the engine's own line (EXP-0023).
+
+## 2026-11-24: Champion and challenger
+
+- Decided experiments no longer retire. Each one is live and re-runs against every new algorithm version on its registered seeds; a challenger ships only if it beats the current champion without losing ground on the guarded measures ([ADR 0109](decisions/0109-champion-and-challenger.md)).
+- EXP-0002 re-runs on every pull request that bumps the algorithm (0.44 CPU-hours, no engine). EXP-0001 re-runs on each release (2.44 CPU-hours with Stockfish), and the release images wait for it.
+- The Experiments page has a leaderboard: one row per algorithm version, one column per live experiment, with intervals. Today it has one row, `algo-1.1.0`, the champion.
+- Known weaknesses, written down: every version reuses the same seeds, so a challenger could be tuned to them, and there's no correction yet for comparing many measures at once.
+
 ## 2026-11-24: The first two experiments are decided
 
 - EXP-0001 sized the benchmark with a power analysis on the real Rust pipeline. Reliably seeing a 0.1 gain in "finds the flaw in its top 2" needs 40 synthetic players per flaw; the weekly budget allows 22, which reliably sees 0.15. The suites were resized to match (smoke 1,280 games, full 8,960), and 10 of the pilot's 11 misses are missed mates and early traps, so that's where gains have to come from ([EXP-0001](https://github.com/Terkea/rematch/tree/main/lab/experiments/EXP-0001)).

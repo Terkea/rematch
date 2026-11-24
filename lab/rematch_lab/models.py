@@ -222,6 +222,64 @@ class RankResponse(Snake):
     players: list[PlayerRanking]
 
 
+# ---- tag-motifs -------------------------------------------------------------------------------
+
+MotifTag = Literal[
+    "hangingPiece",
+    "fork",
+    "pin",
+    "skewer",
+    "discoveredAttack",
+    "deflection",
+    "sacrifice",
+    "promotion",
+    "mate",
+    "mateIn1",
+    "mateIn2",
+    "mateIn3",
+    "mateIn4Plus",
+    "matingNet",
+    "backRankMate",
+    "smotheredMate",
+]
+
+
+class MotifLine(Snake):
+    """A line to tag: `setup` is played from `fen`, then `pv` is the mover's best line."""
+
+    id: str
+    fen: str
+    setup: list[str] = []
+    pv: list[str]
+
+
+class TagMotifsRequest(Snake):
+    schema_version: Literal["lab-v1"] = SCHEMA_VERSION
+    lines: list[MotifLine]
+
+
+class LineAnalysis(Camel):
+    """The algorithm's LineAnalysis: the settled swing and the motif tags."""
+
+    gain: float
+    depth: int | None
+    mate_in: int | None
+    tags: list[MotifTag]
+
+
+class TaggedLine(Snake):
+    id: str
+    fen: str | None
+    pov: Literal["white", "black"] | None
+    best: LineAnalysis | None
+
+
+class TagMotifsResponse(Snake):
+    schema_version: Literal["lab-v1"]
+    algorithm_id: str
+    lines: list[TaggedLine]
+
+
 #: Every message of the schema, by its `$defs` name.
 MESSAGES: dict[str, type[BaseModel]] = {
     "AnalyseRequest": AnalyseRequest,
@@ -230,6 +288,8 @@ MESSAGES: dict[str, type[BaseModel]] = {
     "ProfileResponse": ProfileResponse,
     "RankRequest": RankRequest,
     "RankResponse": RankResponse,
+    "TagMotifsRequest": TagMotifsRequest,
+    "TagMotifsResponse": TagMotifsResponse,
 }
 
 #: Every object of the schema that a model mirrors field for field.
@@ -245,4 +305,7 @@ OBJECTS: dict[str, type[BaseModel]] = {
     "PlayerProfile": PlayerProfile,
     "RankedWeakness": RankedWeakness,
     "PlayerRanking": PlayerRanking,
+    "MotifLine": MotifLine,
+    "LineAnalysis": LineAnalysis,
+    "TaggedLine": TaggedLine,
 }

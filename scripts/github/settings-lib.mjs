@@ -1026,3 +1026,53 @@ export function planSubIssues(issues, liveIssues, subIssues, repo) {
   if (linked > 0) lines.push(`  ${linked} sub-issue link(s) already in place`);
   return { lines, calls };
 }
+
+// ---- the Next rule (ADR 0109) ----
+
+/**
+ * The problems with a decided experiment's decision.md: it has a "## Next" section of numbered
+ * items; every item names a roadmap issue, by an `EXP-NNNN` id other than its own whose
+ * experiment issue is in roadmap-issues.json, or by `Issue: "<exact title>"`; and at least one
+ * item is an experiment issue. Empty means it passes.
+ */
+export function decisionNextProblems(text, expId, issues) {
+  const src = text.replace(/\r\n/g, "\n");
+  const at = src.search(/^## Next\s*$/m);
+  if (at < 0) return [`${expId}/decision.md: no "## Next" section`];
+  const rest = src.slice(at).split("\n").slice(1);
+  const end = rest.findIndex((l) => /^## /.test(l));
+  const section = (end < 0 ? rest : rest.slice(0, end)).join("\n");
+  const items = section
+    .split(/\n(?=\d+\. )/)
+    .map((s) => s.trim())
+    .filter((s) => /^\d+\. /.test(s));
+  if (items.length === 0) return [`${expId}/decision.md: the Next section has no numbered items`];
+  const titles = new Map(issues.map((i) => [i.title.trim().toLowerCase(), i]));
+  const experimentIssue = (id) => issues.find((i) => i.title.startsWith(`${id}:`));
+  const problems = [];
+  let experiments = 0;
+  items.forEach((item, n) => {
+    const named = [];
+    for (const m of item.matchAll(/\bEXP-\d{4}\b/g)) {
+      if (m[0] !== expId && experimentIssue(m[0])) named.push(experimentIssue(m[0]));
+    }
+    for (const m of item.matchAll(/Issue: "([^"]+)"/g)) {
+      const issue = titles.get((m[1] ?? "").trim().toLowerCase());
+      if (issue) named.push(issue);
+      else
+        problems.push(
+          `${expId}/decision.md: Next item ${n + 1} names "${m[1]}", not a roadmap issue`,
+        );
+    }
+    if (named.length === 0) {
+      problems.push(
+        `${expId}/decision.md: Next item ${n + 1} names no roadmap issue (an EXP id or Issue: "<title>")`,
+      );
+    }
+    if (named.some((i) => i.labels.includes("experiment"))) experiments += 1;
+  });
+  if (experiments === 0) {
+    problems.push(`${expId}/decision.md: no Next item is an experiment issue`);
+  }
+  return problems;
+}

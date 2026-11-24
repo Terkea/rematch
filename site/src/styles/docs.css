@@ -308,6 +308,54 @@ dialog {
   color: var(--color-ink);
 }
 
+/* ---- the leaderboard (ADR 0108): a version per row, the champion on the well ---- */
+
+.lab-table-wrap {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.lab-leaderboard {
+  border-collapse: collapse;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+
+.lab-leaderboard th,
+.lab-leaderboard td {
+  padding: calc(var(--spacing) * 2) calc(var(--spacing) * 3);
+  border-bottom: 1px solid var(--color-rule);
+  text-align: left;
+  vertical-align: top;
+}
+
+.lab-leaderboard thead th {
+  border-bottom-color: var(--color-rule-strong);
+  font-weight: 600;
+}
+
+.lab-leaderboard .lab-meta {
+  display: block;
+  font-weight: 400;
+}
+
+.lab-leaderboard tr.lab-champion > * {
+  background: var(--color-well);
+}
+
+.lab-value {
+  white-space: nowrap;
+}
+
+.lab-missing {
+  color: var(--color-ink-faint);
+}
+
+.lab-badge-champion {
+  margin-inline-start: calc(var(--spacing) * 2);
+  border-color: var(--color-ink);
+  color: var(--color-ink);
+}
+
 .lab-badge-decided {
   border-color: var(--color-good);
   color: var(--color-good-text);
