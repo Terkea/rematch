@@ -75,6 +75,9 @@ SETTINGS: dict[str, dict[str, Any]] = {
     "ref": {"nodes": 30_000_000, "hash_mb": 128, "syzygy": True},
 }
 CANDIDATES = ("n50k", "n100k", "n300k", "n1m")
+# The settings whose disagreements always get the reference: the two contrasts that decide
+# (section 9). 50,000 and 3 million get it on the moves they add only when their test is reached.
+DECIDING = ("n100k", "n300k", "n1m")
 PRODUCTION = "n300k"
 LABELS = ("none", "inaccuracy", "mistake", "blunder")
 
@@ -83,7 +86,7 @@ DELTA = 0.01
 LEVEL = 0.95
 # The concordant moves (every candidate gives the same label) whose reference is searched.
 CONCORDANT_PILOT = 40
-CONCORDANT_CONFIRMATORY = 150
+CONCORDANT_CONFIRMATORY = 100
 RECHECK = 12
 BOOT = 2000
 
@@ -95,7 +98,19 @@ TARGET_POWER = 0.80
 CEILING_CPU_HOURS = 12.0
 
 # Section 0: the registered run's budget, in nodes the design asks for (filled from section 6).
-BUDGET: dict[str, float] = {}
+BUDGET: dict[str, float] = {
+    # 100 games, about 6,370 positions, at 50,000 + 100,000 + 300,000 + 1 million nodes.
+    "candidate_nodes": 9.3e9,
+    # About 1,605 positions at 30 million: 14.05 a game for the deciding disagreements and two
+    # for each of the 100 concordant moves.
+    "reference_nodes": 4.9e10,
+    # Whichever conditional branch section 9 reaches (they exclude each other): 3 million on every
+    # position and the reference on the moves it adds (about 2.8e10), or the reference on the
+    # moves 50,000 adds (about 1.3e10).
+    "branch_nodes": 2.8e10,
+    # 12 positions of each setting run, searched again without the cache.
+    "recheck_nodes": 4.0e8,
+}
 CAP = 1.5
 
 ENGINES = int(os.environ.get("EXP08_ENGINES", "10"))  # speed only; never a result
@@ -440,7 +455,11 @@ def contrast_totals(games, labs, ref: dict[str, list[str | None]], a: str, b: st
     return np.array(e, dtype=float), np.array(m, dtype=float)
 
 
-def decide(c100: dict, c50: dict, g1m: dict, g3m: dict | None) -> dict[str, Any]:
+def step_down_shown(c100: dict, g1m: dict) -> bool:
+    return g1m["ci_decision"][1] < DELTA and c100["ci_decision"][1] < DELTA
+
+
+def decide(c100: dict, c50: dict | None, g1m: dict, g3m: dict | None) -> dict[str, Any]:
     """Section 9, read on the 95% intervals."""
     lo_g, hi_g = g1m["ci_decision"]
     lo_d, hi_d = c100["ci_decision"]
@@ -449,7 +468,7 @@ def decide(c100: dict, c50: dict, g1m: dict, g3m: dict | None) -> dict[str, Any]
             return {"outcome": "300k falls short", "setting": "n3m"}
         return {"outcome": "300k falls short", "setting": "n1m"}
     if hi_g < DELTA and hi_d < DELTA:
-        if c50["ci_decision"][1] < DELTA:
+        if c50 is not None and c50["ci_decision"][1] < DELTA:
             return {"outcome": "100k is enough", "setting": "n50k"}
         return {"outcome": "100k is enough", "setting": "n100k"}
     if hi_g < DELTA and lo_d > DELTA:
@@ -482,9 +501,10 @@ def stratified(games, per_game: list[tuple[float, float]], name: str) -> dict[st
 
 def evaluate_stage(games, budget: Budget | None, concordant: int, stage: str,
                    with_3m: bool | None, rechecks: bool) -> dict[str, Any]:
-    """Searches the candidates on every position; the reference on every move where they
-    disagree and on `concordant` seeded moves where they agree; 3M always (`with_3m` True), never
-    (False) or only when section 9's step up needs it (None)."""
+    """Searches the candidates on every position; the reference on every move where 100,000,
+    300,000 and 1 million disagree and on `concordant` seeded moves where they agree; on the moves
+    50,000 adds only when section 9 reaches its test; 3M always (`with_3m` True), never (False) or
+    only when section 9's step up needs it (None)."""
     all_fens = sorted({f for g in games for f in g["pos"].fens})
     found: dict[str, dict[str, dict[str, Any]]] = {}
     for s in CANDIDATES:
@@ -501,13 +521,15 @@ def evaluate_stage(games, budget: Budget | None, concordant: int, stage: str,
                     out.add((g["id"], p))
         return out
 
-    def reference_for(moves: set[tuple[str, int]]) -> None:
+    def reference_for(moves: set[tuple[str, int]], unit: str = "reference_nodes") -> None:
         by_id = {g["id"]: g for g in games}
-        fens = sorted({f for gid, p in moves for f in move_fens(by_id[gid]["pos"], p)})
-        found["ref"] = {**found.get("ref", {}), **searches("ref", fens, budget, "reference_nodes")}
+        have = found.get("ref", {})
+        fens = sorted({f for gid, p in moves for f in move_fens(by_id[gid]["pos"], p)} - set(have))
+        found["ref"] = {**have, **searches("ref", fens, budget, unit)}
 
+    referenced = DECIDING
     settings = CANDIDATES
-    discordant = disc_moves(settings)
+    discordant = disc_moves(referenced)
     concordant_all = sorted((g["id"], p) for g in games for p in range(1, g["plies"] + 1)
                             if (g["id"], p) not in discordant)
     rng = np.random.default_rng(seed(EXP, f"concordant/{stage}"))
@@ -515,6 +537,7 @@ def evaluate_stage(games, budget: Budget | None, concordant: int, stage: str,
     conc_sample = {concordant_all[int(i)] for i in pick}
     found["ref"] = {}
     reference_for(discordant | conc_sample)
+    deciding_positions = len(found["ref"])
 
     def ref_labels() -> tuple[dict[str, list[str | None]], dict[str, Any]]:
         # The reference where both of a move's positions have it, else no label: the hybrid
@@ -533,28 +556,36 @@ def evaluate_stage(games, budget: Budget | None, concordant: int, stage: str,
     ref, jref = ref_labels()
     e, m = contrast_totals(games, labs, ref, "n100k", PRODUCTION)
     c100 = ratio(e, m, LEVEL)
-    e, m = contrast_totals(games, labs, ref, "n50k", PRODUCTION)
-    c50 = ratio(e, m, LEVEL)
     e, m = contrast_totals(games, labs, ref, PRODUCTION, "n1m")
     g1m = ratio(e, m, LEVEL)
     totals = {"n100k-n300k": contrast_totals(games, labs, ref, "n100k", PRODUCTION),
-              "n50k-n300k": contrast_totals(games, labs, ref, "n50k", PRODUCTION),
               "n300k-n1m": contrast_totals(games, labs, ref, PRODUCTION, "n1m")}
+
+    def add_reference(setting: str) -> None:
+        nonlocal referenced, discordant, ref, jref
+        referenced = (*referenced, setting)
+        extra = disc_moves(referenced) - discordant
+        if extra:
+            reference_for(extra, "branch_nodes")
+            ref, jref = ref_labels()
+        discordant = disc_moves(referenced)
+
+    c50 = None
+    if step_down_shown(c100, g1m) or with_3m:
+        add_reference("n50k")
+        totals["n50k-n300k"] = contrast_totals(games, labs, ref, "n50k", PRODUCTION)
+        c50 = ratio(*totals["n50k-n300k"], LEVEL)
 
     run_3m = with_3m if with_3m is not None else g1m["ci_decision"][0] > DELTA
     g3m = None
     if run_3m:
-        found["n3m"] = searches("n3m", all_fens, budget, "candidate_nodes")
+        found["n3m"] = searches("n3m", all_fens, budget, "branch_nodes")
         judged["n3m"] = judge(games, found["n3m"])
         labs = labels_by_setting(games, judged)
-        extra = disc_moves((*CANDIDATES, "n3m")) - discordant
-        if extra:
-            reference_for(extra)
-            ref, jref = ref_labels()
+        add_reference("n3m")
         totals["n1m-n3m"] = contrast_totals(games, labs, ref, "n1m", "n3m")
         g3m = ratio(*totals["n1m-n3m"], LEVEL)
         settings = (*CANDIDATES, "n3m")
-        discordant = disc_moves(settings)
     decision = decide(c100, c50, g1m, g3m)
 
     # The strata of the exploratory, absolute measures: every discordant move (weight 1) and the
@@ -664,11 +695,16 @@ def evaluate_stage(games, budget: Budget | None, concordant: int, stage: str,
         "positions": len(all_fens),
         "settings_run": sorted(found),
         "reference_positions": len(found["ref"]),
+        # The reference positions of the deciding settings' disagreements and the concordant
+        # sample, before any conditional branch (the power analysis's cost model).
+        "reference_positions_deciding": deciding_positions,
         "discordant_moves": len(discordant),
         "concordant_sampled": len(conc_sample),
         "concordant_moves": n_conc,
-        "primary": {"n100k-n300k": c100, "n50k-n300k": c50, "n300k-n1m": g1m,
+        "primary": {"n100k-n300k": c100, "n300k-n1m": g1m,
+                    **({"n50k-n300k": c50} if c50 else {}),
                     **({"n1m-n3m": g3m} if g3m else {})},
+        "referenced_settings": list(referenced),
         "decision": decision,
         "totals": {k: {"e": [float(x) for x in v[0]], "m": [float(x) for x in v[1]]}
                    for k, v in totals.items()},
@@ -758,21 +794,31 @@ def cmd_power(pilot_path: Path) -> None:
         return (row["100k is enough"].get("100k is enough", 0) >= TARGET_POWER
                 and row["300k falls short"].get("300k falls short", 0) >= TARGET_POWER
                 and row["300k is right"].get("300k is right", 0) >= TARGET_POWER)
-    chosen = next((r["n"] for r in table if r["variance"] == "upper80" and ok(r)), None)
+    powered = next((r["n"] for r in table if r["variance"] == "upper80" and ok(r)), None)
     rate = {s: pilot["cpu_hours"][s] / max(1, pilot["positions"] if s != "ref"
                                             else pilot["reference_positions"])
             for s in SETTINGS}
     per_game_positions = pilot["positions"] / pilot["games"]
-    per_game_ref = pilot["reference_positions"] / pilot["games"]
+    # The deciding disagreements grow with the games; the concordant sample is fixed (two
+    # positions a move at most).
+    per_game_ref = (pilot["reference_positions_deciding"] - 2 * pilot["concordant_sampled"]) / pilot["games"]
     def cost(n: int) -> float:
-        return n * (per_game_positions * sum(rate[s] for s in CANDIDATES)
-                    + per_game_ref * rate["ref"])
+        return (n * (per_game_positions * sum(rate[s] for s in CANDIDATES)
+                     + per_game_ref * rate["ref"])
+                + 2 * CONCORDANT_CONFIRMATORY * rate["ref"])
+    # Section 6's ceiling: the powered size if it fits in it, else the largest size that does.
+    affordable = [n for n in N_GRID if cost(n) <= CEILING_CPU_HOURS]
+    if powered is not None and cost(powered) <= CEILING_CPU_HOURS:
+        chosen = powered
+    else:
+        chosen = max(affordable) if affordable else None
     result = {
         "pilot_games": n_pilot,
         "k_upper80": k_upper,
         "pilot_estimates": {"n100k-n300k": float(e100.sum() / m.sum()),
                             "n300k-n1m": float(e1m.sum() / m.sum())},
         "table": table,
+        "powered_n": powered,
         "chosen_n": chosen,
         "cpu_hours_per_position": rate,
         "positions_per_game": per_game_positions,
@@ -829,7 +875,8 @@ def figure_results(stage: dict[str, Any], path: Path) -> None:
 
 
 def cmd_run(out: Path, algorithm: str | None) -> None:
-    algorithm_id = rematch_lab.algorithm()["id"]
+    manifest = rematch_lab.algorithm()
+    algorithm_id = manifest["id"]
     if algorithm is not None and algorithm_id != algorithm:
         raise SystemExit(f"the cli is {algorithm_id}, not the requested {algorithm}")
     if not BUDGET:
@@ -849,6 +896,8 @@ def cmd_run(out: Path, algorithm: str | None) -> None:
         "experiment": EXP,
         "algorithm_id": algorithm_id,
         "seed_namespace": EXP,
+        # The node count this version's analysis uses (the arena compares it with the decision).
+        "production_nodes": manifest["components"]["facts"]["engine_nodes"],
         "delta": DELTA,
         "level": LEVEL,
         "settings": SETTINGS,
