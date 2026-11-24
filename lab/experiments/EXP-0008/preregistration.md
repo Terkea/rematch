@@ -1,6 +1,6 @@
 # EXP-0008: is 300,000 nodes enough? Depth against judgements and cost
 
-- Status: pre-registered
+- Status: decided (300,000 falls short: 1 million nodes)
 - Issue: #103
 - Author: the maintainer, with Claude (lane `exp/0008-depth`)
 - Kind: measurement (one version, at five node counts against a deep reference)
@@ -120,4 +120,9 @@ This departs from ADR 0106's measurement rule (one interval against a band): the
 
 ## 11. Deviations
 
-None.
+- 2026-11-24, after the results, recorded by the lane (Claude) from the critique of the result (`review.md`, part two). None changes the decision.
+  - Compute: about 19.5 CPU-hours against section 0's plan of 11.6 (17.1 with the branch), every node unit under its 150% cap: 300,000 and 1 million disagreed on 7.4% of moves, against 5.3% in the pilot, so the reference searched 1,797 positions (planned about 1,536) and the deep check 336 (planned 258).
+  - Both deciding contrasts fell outside the pilot's intervals (step up 0.0099 in the pilot, 0.0246 here; step down 0.032 and 0.012), on the same engine; section 6's inputs came from 20 skewed games.
+  - Section 7 and `analysis.py` call the unreferenced remainder "concordant". It is concordant for 300,000 and 1 million on every game, and for 100,000 only in the 40 step-down games; the exploratory absolute measures of 50,000, 100,000 and Lichess's evaluations, best-move agreement and the win% error rest on its 100 sampled moves.
+  - `analysis.py`'s grid includes 180 games, which section 6 does not list; 180 is past the ceiling, so the sample stays 160.
+  - The published figure is `figures/contrasts.png`, drawn from `results.json`; the frozen code's `figures/disagreement.png` shows the exploratory absolute curve.
