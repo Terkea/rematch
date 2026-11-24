@@ -6,7 +6,8 @@ In a nutshell -
 
 1. **One implementation.** `rematch_lab` calls the `cli` binary built from `backend/`, through a versioned JSON interface (`cli lab analyse|profile|rank`, schema `lab-v1`). A finding that should change the product is made in Rust as a new algorithm version (ADR 0104), and the lab re-runs to confirm it.
 2. **Pre-registered.** A behaviour change (a threshold, the ranking, a detector, a prior) needs a pre-registered experiment: [the template](../docs/experiments/TEMPLATE.md) and [the protocol](../docs/evaluation.md#how-we-do-science-on-the-algorithm).
-3. **Reproducible.** Python 3.12 and every package are pinned and locked (`pyproject.toml`, `uv.lock`), at least 7 days old (`scripts/check-pypi-age.mjs`); everything runs in the lab image, never on the host's Python; every random draw is seeded; CI reruns each experiment twice and compares `results.json` byte for byte.
+3. **Live.** A decided experiment stays live: `python -m rematch_lab.arena` re-runs it for the champion (the production algorithm) and each challenger on its registered seeds, compares them by the experiment's own rule, and records both in `leaderboard.json` (ADR 0108).
+4. **Reproducible.** Python 3.12 and every package are pinned and locked (`pyproject.toml`, `uv.lock`), at least 7 days old (`scripts/check-pypi-age.mjs`); everything runs in the lab image, never on the host's Python; every random draw is seeded; CI reruns each experiment twice and compares `results.json` byte for byte.
 
 ## The bridge
 
@@ -30,6 +31,7 @@ The image takes `cli` and Stockfish from a Rematch build; it compiles no Rust.
 docker compose --profile lab build lab
 docker compose --profile lab run --rm lab                                    # the contract tests
 docker compose --profile lab run --rm lab python -m rematch_lab.experiments check --history
+docker compose --profile lab run --rm lab python -m rematch_lab.arena --scope release --dry-run
 
 # With a cli from a Rust lane (what CI does, .github/workflows/lab.yml):
 docker build --build-context rematch=lab-ctx -t rematch-lab lab   # lab-ctx/usr/local/bin/{cli,stockfish}
@@ -40,7 +42,8 @@ Regenerate the lock only in the image, then check it: `docker build --target bas
 
 ## Layout
 
-- `rematch_lab/`: the bridge (`bridge.py`), the typed messages (`models.py`), the experiment rules (`experiments.py`).
+- `rematch_lab/`: the bridge (`bridge.py`), the typed messages (`models.py`), the experiment rules (`experiments.py`), the champion/challenger arena (`arena.py`) and its interval rules (`stats.py`).
+- `leaderboard.json`: every version's record on every live experiment, written by the arena (canonical JSON, never edited by hand); `overrides.json`: the ADR-recorded emergency overrides, empty unless one is in force.
 - `schemas/lab-v1.schema.json`: every message of the bridge.
 - `fixtures/`: the contract fixture and its golden outputs. `node fixtures/make-profile-request.mjs` rebuilds the fixture; `REPLAY_UPDATE=1` on the Rust test `backend/crates/cli/tests/lab.rs` rebuilds the goldens after a deliberate algorithm change.
 - `experiments/EXP-NNNN/`: one folder per experiment ([the layout](experiments/README.md)).

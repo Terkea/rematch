@@ -109,6 +109,7 @@ One file per decision: context, decision, alternatives, consequences. New decisi
 - [0105. The algorithm manifest, stamping and the replay suite](0105-algorithm-manifest-stamping-and-replay.md)
 - [0106. Algorithm science: pre-registered experiments and a Python lab that drives the Rust algorithm](0106-algorithm-science-lab.md)
 - [0107. The experiment value gate, and the catalogue that checks the learning framework](0107-experiment-value-gate-and-catalogue.md)
+- [0108. Champion and challenger: decided experiments stay live, and every version is compared on all of them](0108-champion-and-challenger.md)
 
 ## Records with placeholder numbers
 
