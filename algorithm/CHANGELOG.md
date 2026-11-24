@@ -8,6 +8,15 @@ One entry per algorithm version, newest first. The id is `algo-<version>+<hash>`
 
 Each entry says what changed, why, the ADR, and the benchmark delta (the scorecard before and after; `cli bench compare` once it exists).
 
+## algo-2.0.0+383bff27f04f
+
+2026-11-24. The 80% ranges hold the true rate 80% of the time for players well above their peers (EXP-0006).
+
+- What changed: `estimate_weakness` counts a player's recency-weighted data at their effective sample size, `(Σ w n)² / Σ w² n` chances, divided by the Pearson dispersion of the per-game counts (clamped to [1, 10]), and the band prior is worth at most two of the player's own games (`min(n0[key], 2 × n / games_in_window)`). It is EXP-0006's challenger, `PriorRule::CHALLENGER`, now `PriorRule::CHAMPION`; the rule of 1.x is `PriorRule::ALGO_1` (`ALGO_VARIANT=algo-1`). W5's flat prior, the timeline's posteriors and the ranking rule are unchanged. Only `profile.source_digest` moved, and the replay goldens: every `weakness_estimates` row's counts, posterior and interval, and so priorities and states built on them.
+- Why: EXP-0002 measured 12 of 20 key × sample-size coverages outside [0.75, 0.85] for players two to eight times their peers' rate in odds, down to 0.10 for W4.missed at 30 games (#13). EXP-0006 decided "ship": on fresh seeds every one of the challenger's 20 coverages lies inside the band (the worst 0.828, W5 at 30 games; D 0.028 [0.022, 0.043], 97.5%), against the champion's 0.103 (D 0.697); the coverage at the peers' rate moves from 0.874 to 0.804; false weaknesses for players at or below their peers' rate rise by 0.0089 [0.0086, 0.0093] (80%) a credible estimate, inside the registered margin of 0.01; Tier 1 recall at 2 is unchanged (28 of 45 on both sides) and the smoke suite's CI rule finds no regression. #13's own case (W1 against peers at 0.0008) is covered 0.766 at 30 games, short of the band, so #13 stays open (EXP-0025).
+- ADRs: 0110 (the prior rule and its variants), 0105 (the version policy), ADR-R2-5 (the posterior it amends).
+- Benchmark: smoke suite, before and after: coverage of the 80% intervals 0.65 to 0.80 (60 intervals); recall at 2 0.6, top-1 precision 0.643, plan hits 0.6, top-2 agreement 0.927, clean false alarms 0 of 1, mean games to a detection 42, all unchanged (EXP-0006's side-by-side run; `bench/baseline.json` is rebuilt from the smoke run of this version).
+
 ## algo-1.1.1+42d749f7c50b
 
 2026-11-24. The prior-rule variants the lab compares, with no output change.

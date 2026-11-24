@@ -8,6 +8,13 @@ The site builds this file into /docs/progress/ and shows the newest entry on the
 
 See also the [experiments](/rematch/docs/experiments/) and the [roadmap](/rematch/docs/roadmap/).
 
+## 2026-11-24: EXP-0006 ships algo-2.0.0, the 80% ranges calibrated
+
+- The 80% ranges now hold a player's true rate about 80% of the time for players well above their peers: on fresh synthetic players all 20 weakness-by-sample-size cells are inside 75–85% (the worst 83%), where the old rule had missed mates at 30 games at 10%. The peers' prior is worth at most two of the player's own games, and recency-weighted games count at their honest effective size ([EXP-0006](https://github.com/Terkea/rematch/tree/main/lab/experiments/EXP-0006), [ADR 0110](decisions/0110-prior-rule-variants-and-the-80-percent-ranges.md)).
+- The cost is measured: about one more false weakness in 110 estimates for players at their peers' level, inside the 1-in-100 margin registered first. The benchmark finds the same flaws (28 of 45 in both versions), and its smoke coverage rises from 65% to 80%.
+- EXP-0005 (the churn between versions) was closed unrun: no result it could give would have changed the benchmark's size. Its measurement ran inside EXP-0006 instead: the new rule lost none of 28 correct top-2 weaknesses.
+- Next: #13's last case, a hanging-piece player far above peers who rarely hang anything, is covered 77% at 30 games (EXP-0025); what the extra false weaknesses mean for clean players is EXP-0013.
+
 ## 2026-11-24: EXP-0007, the motif tags against the Lichess puzzle themes
 
 - We ran the real Rust tagger on 54,987 Lichess puzzles (CC0, many thanks to Lichess and its players), each solution standing in for the engine's best line, and scored it against Lichess's themes. Fork is right 98% of the time and finds 72% of the labelled forks; discovered attack 99% and 86%; promotion and smothered mate match almost exactly ([EXP-0007](https://github.com/Terkea/rematch/tree/main/lab/experiments/EXP-0007)).

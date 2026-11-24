@@ -1,5 +1,5 @@
 //! The prior rules the lab compares (EXP-0006, `stats::variant`): the champion is the production
-//! estimate unchanged, and each option of a challenger does what its doc says.
+//! estimate, EXP-0006's challenger since algo-2.0.0, and each option does what its doc says.
 
 use profile_core::constants::n0;
 use profile_core::stats::posterior::posterior;
@@ -78,7 +78,7 @@ fn prior_games_caps_the_prior_at_that_many_games() {
     let r = reference(WeaknessKey::W4Missed, 0.3);
     let pts = series(&[1.0, 0.0, 1.0], 1.0);
     let i = input(WeaknessKey::W4Missed, &pts, &r);
-    let champ = estimate_weakness_with(&i, PriorRule::CHAMPION);
+    let champ = estimate_weakness_with(&i, PriorRule::ALGO_1);
     let two = estimate_weakness_with(&i, DEV(Some(2.0), false, false));
     // Two games' worth of the weighted chances, below n0 = 40.
     let n0_eff = 2.0 * champ.n / 60.0;
@@ -107,7 +107,7 @@ fn effective_counts_are_kish() {
     assert!((e.n - s1 * s1 / s2).abs() < 1e-9);
     assert!((e.k / e.n - k / s1).abs() < 1e-12);
     // More effective chances than the weighted sum: the weights are below 1.
-    let champ = estimate_weakness_with(&i, PriorRule::CHAMPION);
+    let champ = estimate_weakness_with(&i, PriorRule::ALGO_1);
     assert!(e.n > champ.n);
     // Every game today: the effective counts are the raw ones.
     let today: Vec<_> = pts.iter().map(|p| (p.0, p.1, p.2, 0.0)).collect();
@@ -142,7 +142,7 @@ fn the_model_baseline_keeps_its_flat_prior() {
     let pts = series(&[1.0, 0.0], 1.0);
     let i = input(WeaknessKey::W5, &pts, &r);
     let e = estimate_weakness_against_model_with(&i, DEV(Some(1.0), false, false));
-    let champ = estimate_weakness_against_model_with(&i, PriorRule::CHAMPION);
+    let champ = estimate_weakness_against_model_with(&i, PriorRule::ALGO_1);
     assert_eq!(
         e.posterior, champ.posterior,
         "prior_games leaves the flat prior alone"

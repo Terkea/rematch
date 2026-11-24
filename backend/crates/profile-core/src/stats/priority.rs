@@ -2,8 +2,11 @@
 //!
 //! `estimate_weakness` turns a weakness series into a shrunk posterior against the band
 //! reference and scores it:
-//! - only points at most [`WINDOW_DAYS`] old count, recency-weighted with a 60-day half-life;
-//! - the prior is `{pooled_rate, N0[key]}`, or `Beta(1, 1)` without a benchmark;
+//! - only points at most [`WINDOW_DAYS`] old count, recency-weighted with a 60-day half-life,
+//!   counted by the process's [`PriorRule`] (production: their effective sample size divided by
+//!   their game-to-game dispersion, EXP-0006 and ADR 0110);
+//! - the prior is `{pooled_rate, N0[key]}`, capped by the rule at two of the player's own games,
+//!   or `Beta(1, 1)` without a benchmark;
 //! - `confidence = P(theta > band median)`;
 //! - `excess = max(0, mean - median) * (n_unweighted / games) * epl_per_event`;
 //! - `priority = excess * trainability * confidence * (1 - fatigue)`, 0 unless the reason is

@@ -12,6 +12,8 @@ EXP-0002 found the 80% ranges of the weakness rates miscalibrated for players we
 2. **Only tools select one.** A process-wide rule, `variant::set`, is called by `cli lab` (every estimate of the call) and by the bench harness, never by the worker or the web. `cli` reads `ALGO_VARIANT`; an unknown name stops it before anything runs. With the variable unset every output is what it was, which the replay goldens prove.
 3. **The bench runs a variant side by side.** With `ALGO_VARIANT`, `cli bench run` inserts every player's games into a second account and builds that account's profiles under the variant, checkpoint by checkpoint and for the perturbed account too, so both versions see the same games for the engine time of one. `bench-results.json` gains each player's `variant` checkpoints and the run's `variant` scorecard. `backend/crates/bench/tests/variant.rs` shows the champion run as the variant reproduces the main run exactly; the rule is process-wide, so that test has its own binary.
 4. **The lab passes it through.** `rematch_lab.profile`, `rank` and `bench` take `variant=`; a call without one clears any `ALGO_VARIANT` in the lab's environment.
+5. **Production's rule is EXP-0006's challenger** (`algo-2.0.0`): the band prior worth at most two of the player's own games, and the weighted data at their effective sample size divided by their dispersion. EXP-0006 decided "ship" on fresh seeds: all 20 of EXP-0002's coverages inside [0.75, 0.85] (worst 0.828, against the old rule's 0.103), the coverage at the peers' rate 0.874 to 0.804, false weaknesses for players at or below their peers' rate up by 0.009 a credible estimate (margin 0.01), Tier 1 recall at 2 unchanged and the smoke CI rule clean (`lab/experiments/EXP-0006/decision.md`). The old rule stays selectable as `algo-1`.
+6. **EXP-0005 was closed unrun** by the value gate: with 28 reference hits no branch of its rule could change the suites. EXP-0006's run measured the churn of this prior change descriptively (none of 28 hits lost at 80 games, 0 [0, 0.085]), a lower bound for detector and ranking changes (EXP-0024).
 
 ## Options considered
 
@@ -21,6 +23,8 @@ EXP-0002 found the 80% ranges of the weakness rates miscalibrated for players we
 
 ## Consequences
 
-- The variant code is under `profile-core`, so the manifest's `profile.source_digest` moved; `algo-1.1.1` is a patch with byte-identical goldens (`algorithm/CHANGELOG.md`).
+- The variant code is under `profile-core`, so the manifest's `profile.source_digest` moved; `algo-1.1.1` was a patch with byte-identical goldens, and shipping the challenger is the major `algo-2.0.0` (`algorithm/CHANGELOG.md`).
 - A comparison of two prior rules costs one bench run, and a profile-only one costs nothing beyond the profile calls.
-- EXP-0005 and EXP-0006's results: see their decisions and the section below.
+- Players well above their peers now see ranges that hold their rate about four times in five, and their posterior means are no longer pulled down to the peers (W4.missed at 30 games was 0.69 of the truth). The cost is measured: about one more credible estimate in 110 for players at their peers' rate, and one more of 23 clean bench players shows a rank-1 weakness at 80 games.
+- #13's own case, W1 against peers at 0.0008, is covered 0.766 at 30 games, short of the band; #13 stays open for it (EXP-0025).
+- Whether real players' game-to-game spread matches the generator's design effect of 1.5 is not measured; Tier 2 is where it would be.

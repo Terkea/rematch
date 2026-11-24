@@ -1,7 +1,10 @@
 //! The prior rule of the weakness estimate, and the variants the lab compares (EXP-0006).
 //!
-//! Production runs [`PriorRule::CHAMPION`], the rule of ADR-R2-5: the recency-weighted counts
-//! `(sum w k, sum w n)` and the band prior `{pooled_rate, n0[key]}`. A tool can select another rule
+//! Production runs [`PriorRule::CHAMPION`], EXP-0006's challenger since `algo-2.0.0` (ADR 0110):
+//! the band prior is worth at most two of the player's own games, and the recency-weighted data
+//! count at their effective sample size, divided by their game-to-game dispersion. The rule of
+//! `algo-1.x` (ADR-R2-5: the weighted sums as counts and the prior `{pooled_rate, n0[key]}`) is
+//! [`PriorRule::ALGO_1`]. A tool can select another rule
 //! for the whole process with [`set`] (the `cli` does it for `ALGO_VARIANT`, in `lab` and `bench`
 //! only); nothing in the worker or the web calls it, so their output never depends on it.
 //! [`crate::stats::priority::estimate_weakness_with`] takes the rule explicitly, which is what
@@ -9,7 +12,8 @@
 //!
 //! The variants (`parse`):
 //! - `champion`: the production rule;
-//! - `challenger`: the rule EXP-0006 registered, frozen on its branch ([`PriorRule::CHALLENGER`]);
+//! - `challenger`: the rule EXP-0006 registered and shipped ([`PriorRule::CHALLENGER`]);
+//! - `algo-1`: the rule of `algo-1.x` ([`PriorRule::ALGO_1`]);
 //! - `dev:<options>`: a rule for development runs only, `games=G` (the prior is worth at most `G`
 //!   of the player's own games), `ess` (effective counts) and `disp` (the dispersion of the
 //!   per-game counts), comma-separated, e.g. `dev:games=2,ess`.
@@ -38,8 +42,8 @@ pub struct PriorRule {
 }
 
 impl PriorRule {
-    /// The production rule (ADR-R2-5).
-    pub const CHAMPION: PriorRule = PriorRule {
+    /// The rule of `algo-1.x` (ADR-R2-5), production until EXP-0006 shipped its challenger.
+    pub const ALGO_1: PriorRule = PriorRule {
         prior_games: None,
         effective_counts: false,
         dispersion: false,
@@ -53,6 +57,9 @@ impl PriorRule {
         effective_counts: true,
         dispersion: true,
     };
+
+    /// The production rule: EXP-0006's challenger, shipped as `algo-2.0.0` (ADR 0110).
+    pub const CHAMPION: PriorRule = PriorRule::CHALLENGER;
 }
 
 static CURRENT: RwLock<PriorRule> = RwLock::new(PriorRule::CHAMPION);
@@ -73,20 +80,22 @@ pub fn set(rule: PriorRule) {
     }
 }
 
-/// The rule of a variant name: `champion`, `challenger` or `dev:<options>`.
+/// The rule of a variant name: `champion`, `challenger`, `algo-1` or `dev:<options>`.
 pub fn parse(name: &str) -> Result<PriorRule, String> {
     let name = name.trim();
     match name {
         "champion" => return Ok(PriorRule::CHAMPION),
         "challenger" => return Ok(PriorRule::CHALLENGER),
+        "algo-1" => return Ok(PriorRule::ALGO_1),
         _ => {}
     }
     let Some(opts) = name.strip_prefix("dev:") else {
         return Err(format!(
-            "unknown algorithm variant {name:?}: champion, challenger or dev:<options>"
+            "unknown algorithm variant {name:?}: champion, challenger, algo-1 or dev:<options>"
         ));
     };
-    let mut rule = PriorRule::CHAMPION;
+    // Development rules start from the rule of `algo-1.x`, as EXP-0006's grid did.
+    let mut rule = PriorRule::ALGO_1;
     for opt in opts.split(',').map(str::trim).filter(|o| !o.is_empty()) {
         match opt.split_once('=') {
             Some(("games", g)) => match g.parse::<f64>() {
@@ -124,7 +133,11 @@ mod tests {
                 dispersion: true,
             })
         );
-        assert_eq!(parse("dev:"), Ok(PriorRule::CHAMPION));
+        assert_eq!(parse("dev:"), Ok(PriorRule::ALGO_1));
+        assert_eq!(parse("algo-1"), Ok(PriorRule::ALGO_1));
+        assert_eq!(parse("dev:games=2,ess,disp"), Ok(PriorRule::CHALLENGER));
+        // EXP-0006 shipped its challenger (algo-2.0.0).
+        assert_eq!(PriorRule::CHAMPION, PriorRule::CHALLENGER);
         assert!(parse("dev:games=0").is_err());
         assert!(parse("dev:games=x").is_err());
         assert!(parse("dev:disp").is_err());
