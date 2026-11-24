@@ -64,3 +64,19 @@ def test_bench_refuses_an_unknown_suite(tmp_path: Path) -> None:
     with pytest.raises(ValueError):
         rematch_lab.bench("huge", out_dir=tmp_path)
 
+
+
+def test_bench_runs_a_suite_file(fake_cli: Path, tmp_path: Path) -> None:
+    out = rematch_lab.bench(out_dir=tmp_path / "o", suite_file=tmp_path / "suite.json", engines=8)
+    assert out == CANNED
+    assert json.loads(fake_cli.read_text()) == [
+        "bench",
+        "run",
+        "--suite-file",
+        str(tmp_path / "suite.json"),
+        "--json",
+        "--out",
+        str(tmp_path / "o"),
+        "--engines",
+        "8",
+    ]

@@ -159,15 +159,24 @@ def bench(
     nodes: int | None = None,
     engines: int | None = None,
     baseline: str | Path | None = None,
+    suite_file: str | Path | None = None,
 ) -> dict[str, Any]:
     """`cli bench run --json` (ADR 0100): the Tier 1 benchmark's full results as a dict.
+
+    `suite_file` runs a suite read from JSON (the Rust `bench::suite::Suite` shape: name,
+    players with name, flaw `[id, rate]` or null, games and seed, checkpoints, nodes,
+    opponents, perturb) instead of the named `suite`; an experiment that needs more players
+    than the named suites writes one (`cli bench run --suite-file`).
 
     Needs DATABASE_URL and STOCKFISH_PATH. Exit code 2 (a regression against `baseline`) is
     raised as LabError with the cli's message.
     """
-    if suite not in ("smoke", "full"):
+    if suite_file is not None:
+        args = ["bench", "run", "--suite-file", str(suite_file), "--json", "--out", str(out_dir)]
+    elif suite not in ("smoke", "full"):
         raise ValueError("suite must be smoke or full")
-    args = ["bench", "run", "--suite", suite, "--json", "--out", str(out_dir)]
+    else:
+        args = ["bench", "run", "--suite", suite, "--json", "--out", str(out_dir)]
     if nodes is not None:
         args += ["--nodes", str(int(nodes))]
     if engines is not None:
