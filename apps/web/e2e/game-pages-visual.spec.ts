@@ -11,6 +11,9 @@ import { gotoSettled } from "./support/mail";
 //   ... run --rm --no-deps qa sh -c "cd apps/web && node node_modules/@playwright/test/cli.js \
 //     test game-pages-visual --project='visual-*' --update-snapshots"
 
+/** The day the coach baselines show as today (src/server/clock.ts, `ci-e2e-now`). */
+const BASELINE_NOW = "2026-11-23T12:00:00.000Z";
+
 const SHOT = {
   animations: "disabled",
   maxDiffPixelRatio: 0.001,
@@ -99,6 +102,11 @@ test("the coach pages look as they did", async ({ browser, request }, info) => {
   seedFixtures();
   // seedFixtures wrote the coach world; seeding again gives its ids (the same rows, rewritten).
   const { threadId } = seedCoach();
+  // The weakness, area and progress timelines run to today: pin it to the day the baselines
+  // were made (the server honours the cookie under E2E_CLOCK=1, ADR 0110).
+  await page
+    .context()
+    .addCookies([{ name: "ci-e2e-now", value: BASELINE_NOW, url: new URL(page.url()).origin }]);
   const { viewport, colorScheme } = info.project.use;
   const base = viewport ?? { width: 1440, height: 900 };
   await page.emulateMedia({ colorScheme: colorScheme ?? "light", reducedMotion: "reduce" });
