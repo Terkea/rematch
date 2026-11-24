@@ -15,14 +15,16 @@ const { class: className } = Astro.props;
     <video
       data-film
       src={href("media/rematch.mp4")}
-      poster={href("media/rematch-hook.jpg")}
+      poster={href("media/rematch-poster.jpg")}
+      data-poster-day={href("media/rematch-poster.jpg")}
+      data-poster-night={href("media/rematch-poster-night.jpg")}
       preload="none"
       playsinline
       width="1920"
       height="1080"
       aria-label="Rematch in 60 seconds: the board, the coach, the drills and the open-source call"
     >
-      <a href={href("media/rematch.mp4")}>Download the video (MP4, 5 MB)</a>
+      <a href={href("media/rematch.mp4")}>Download the video (MP4, 4 MB)</a>
     </video>
     <button type="button" class="film-play" data-film-play>
       <svg aria-hidden="true" viewBox="0 0 256 256" width="20" height="20">
@@ -39,6 +41,19 @@ const { class: className } = Astro.props;
 </figure>
 
 <script>
+  // The poster follows the theme, so night never opens on a bright frame. The attribute is the
+  // site's own (Landing.astro sets it), and the day poster is the no-script default.
+  const root = document.documentElement;
+  const syncPosters = () => {
+    const dark = root.dataset.theme === "dark";
+    for (const video of document.querySelectorAll<HTMLVideoElement>("[data-film]")) {
+      const next = dark ? video.dataset.posterNight : video.dataset.posterDay;
+      if (next && !video.currentTime && video.getAttribute("poster") !== next) video.setAttribute("poster", next);
+    }
+  };
+  syncPosters();
+  new MutationObserver(syncPosters).observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+
   for (const button of document.querySelectorAll<HTMLButtonElement>("[data-film-play]")) {
     const video = button.parentElement?.querySelector<HTMLVideoElement>("[data-film]");
     if (!video) continue;
