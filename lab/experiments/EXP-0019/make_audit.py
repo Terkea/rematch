@@ -6,7 +6,7 @@ It reads the pinned Lichess puzzle snapshot (EXP-0007's external input), draws a
 random sample of the audience puzzles (the frame), tags it with the production Rust code through
 `cli lab tag-motifs` (no engine), draws the audit's items from the frame's strata, and writes:
 
-- `<data>/exp19/key.json`: the hidden key, every item's puzzle id, stratum, our tags and
+- `<data>/exp19/sealed/key.json`: the hidden key, every item's puzzle id, stratum, our tags and
   Lichess's themes. Kept out of git until the audit is done.
 - `<data>/exp19/audit.html`: the page the person audits with. It holds the positions and lines
   only, in a seeded order, with no puzzle id, tag, theme or rating.
@@ -65,6 +65,11 @@ def load_audience(exclude: set[str]) -> tuple[pl.DataFrame, pl.DataFrame]:
         pl.scan_csv(path, infer_schema_length=0)
         .select("PuzzleId", "FEN", "Moves", "Rating", "Popularity", "NbPlays", "Themes")
         .with_columns(pl.col("Rating", "Popularity", "NbPlays").cast(pl.Int64))
+        .filter(
+            ((pl.col("NbPlays") >= MIN_PLAYS) & (pl.col("Popularity") >= MIN_POPULARITY)
+             & (pl.col("Rating") < MAX_RATING))
+            | pl.col("PuzzleId").is_in(list(PRACTICE))
+        )
         .collect()
         .sort("PuzzleId")
     )
@@ -205,14 +210,15 @@ def build() -> None:
     }
     out = external_input(OUT_DIR)
     out.mkdir(parents=True, exist_ok=True)
-    (out / "key.json").write_text(json.dumps(key, indent=1, sort_keys=True) + "\n",
+    (out / "sealed").mkdir(exist_ok=True)
+    (out / "sealed" / "key.json").write_text(json.dumps(key, indent=1, sort_keys=True) + "\n",
                                   encoding="utf-8")
     (out / "audit.html").write_text(html, encoding="utf-8")
     ids = sorted(it["puzzle_id"] for it in items)
     (HERE / "sample.csv").write_text("puzzle_id\n" + "".join(f"{i}\n" for i in ids),
                                      encoding="utf-8")
     print(json.dumps({"items": len(items), "page_id": page_id, "page_sha256": html_sha,
-                      "key_sha256": A.sha256_file(out / "key.json"),
+                      "key_sha256": A.sha256_file(out / "sealed" / "key.json"),
                       "frame": key["frame"]["strata"], "excluded": len(excluded),
                       "algorithm_id": algorithm_id}, indent=1))
 
@@ -412,7 +418,7 @@ const STORE = "rematch-exp19-" + D.page_id;
 const ITEMS = D.practice.map(p => ({...p, practice: true})).concat(D.items);
 const Q = D.questions;
 let st = load();
-let cur = st.cur || 0, ply = 0, focusQ = 0, flipped = false, shownAt = Date.now();
+let cur = st.cur || 0, ply = 1, focusQ = 0, flipped = false, shownAt = Date.now();
 
 function load() {
   try { const s = JSON.parse(localStorage.getItem(STORE)); if (s && s.page_id === D.page_id) return s; } catch (e) {}
@@ -556,7 +562,7 @@ function leave() {
 function go(to) {
   if (to < 0 || to >= ITEMS.length) return;
   const it = ITEMS[cur];
-  leave(); cur = to; st.cur = cur; ply = 0; focusQ = 0; save(); render();
+  leave(); cur = to; st.cur = cur; ply = 1; focusQ = 0; save(); render();
   const nx = ITEMS[cur], bd = document.getElementById("blockdone");
   if (!it.practice && !nx.practice && nx.block !== it.block && to > 0) {
     const mins = Math.round(Object.values(st.seconds).reduce((x, y) => x + y, 0) / 60);
@@ -583,7 +589,7 @@ function download() {
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "answers.json";
   document.body.appendChild(a); a.click(); a.remove();
 }
-document.getElementById("first").onclick = () => { ply = 0; render(); };
+document.getElementById("first").onclick = () => { ply = 1; render(); };
 document.getElementById("prev").onclick = () => { ply = Math.max(0, ply - 1); render(); };
 document.getElementById("next").onclick = () => { ply = Math.min(POS.length - 1, ply + 1); render(); };
 document.getElementById("last").onclick = () => { ply = POS.length - 1; render(); };
@@ -596,7 +602,7 @@ document.addEventListener("keydown", e => {
   const k = e.key;
   if (k === "ArrowRight") { ply = Math.min(POS.length - 1, ply + 1); render(); }
   else if (k === "ArrowLeft") { ply = Math.max(0, ply - 1); render(); }
-  else if (k === "Home") { ply = 0; render(); }
+  else if (k === "Home") { ply = 1; render(); }
   else if (k === "End") { ply = POS.length - 1; render(); }
   else if (k === "ArrowDown") { focusQ = Math.min(Q.length - 1, focusQ + 1); render(); }
   else if (k === "ArrowUp") { focusQ = Math.max(0, focusQ - 1); render(); }
