@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { requireUser } from "../../../../../server/auth/session";
+import { requestNow } from "../../../../../server/clock";
 import { coachStatus } from "../../../../../server/coach/status";
 import { getReport } from "../../../../../server/coaching";
 import { getDb } from "../../../../../server/db";
@@ -97,7 +98,7 @@ export default async function AreaPage({
     ),
   );
 
-  const now = new Date();
+  const now = await requestNow();
   const model: AreaPageModel = {
     area,
     scope,

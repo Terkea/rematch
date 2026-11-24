@@ -17,20 +17,17 @@ export type PractiseView =
   | { kind: "first-run"; action: string; href: string; detail: string };
 
 const count = new Intl.NumberFormat("en-GB");
-const MONTHS = [
-  "January",
-  "February",
-  "March",
-  "April",
-  "May",
-  "June",
-  "July",
-  "August",
-  "September",
-  "October",
-  "November",
-  "December",
-];
+const dayMonth = new Intl.DateTimeFormat("en-GB", {
+  day: "numeric",
+  month: "long",
+  timeZone: "UTC",
+});
+const dayMonthYear = new Intl.DateTimeFormat("en-GB", {
+  day: "numeric",
+  month: "long",
+  year: "numeric",
+  timeZone: "UTC",
+});
 
 const positions = (n: number) => `${count.format(n)} ${n === 1 ? "position" : "positions"}`;
 
@@ -47,8 +44,8 @@ function trainHref(
 function nextWords(next: string, today: string): string {
   if (next === addDays(today, 1)) return "tomorrow";
   const d = new Date(`${next}T00:00:00Z`);
-  const year = next.slice(0, 4) === today.slice(0, 4) ? "" : ` ${d.getUTCFullYear()}`;
-  return `on ${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}${year}`;
+  const sameYear = next.slice(0, 4) === today.slice(0, 4);
+  return `on ${(sameYear ? dayMonth : dayMonthYear).format(d)}`;
 }
 
 export function practiseView(

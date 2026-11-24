@@ -387,7 +387,7 @@ function Standing({ detail, benchmark }: { detail: WeaknessDetail; benchmark: Be
   );
 }
 
-function Timeline({ detail }: { detail: WeaknessDetail }) {
+function Timeline({ detail, now }: { detail: WeaknessDetail; now: Date }) {
   const t = detail.timeline;
   const starts = [t.segments[0]?.from, t.onset?.low].filter((d): d is string => !!d).sort();
   const from = starts[0];
@@ -395,7 +395,7 @@ function Timeline({ detail }: { detail: WeaknessDetail }) {
     return <p className="text-base text-ink-soft">No state changes detected yet.</p>;
   }
   const last = t.segments.at(-1)?.from ?? from;
-  const today = isoDay(new Date());
+  const today = isoDay(now);
   const to = [last, isoDay(detail.updatedAt), today].sort().at(-1) ?? today;
   return (
     <div data-surface="sheet" className="rounded-sheet bg-sheet px-(--space-panel-pad) py-6">
@@ -666,6 +666,7 @@ export function WeaknessView({
   filterBar,
   focusAction,
   practise = null,
+  now = new Date(),
 }: Props & {
   /** "Make this my focus" (ADR 0091), under what to do. */
   focusAction?: ReactNode;
@@ -683,6 +684,8 @@ export function WeaknessView({
   filterBar?: ReactNode;
   /** "Practise these N positions" into the trainer (ADR 0090), or null. */
   practise?: { href: string; label: string } | null;
+  /** Today, where the timeline ends: the page's request clock (`requestNow`). */
+  now?: Date;
 }) {
   const hrefFor = (s: Segment): string | null => {
     if (s.kind !== "move" && s.kind !== "best" && s.kind !== "pv") return null;
@@ -746,7 +749,7 @@ export function WeaknessView({
           <h3 id="timeline-heading" className="m-0 font-serif text-xl font-semibold text-ink">
             State over time
           </h3>
-          <Timeline detail={detail} />
+          <Timeline detail={detail} now={now} />
         </section>
 
         <div className="grid grid-cols-1 gap-x-10 gap-y-8 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
