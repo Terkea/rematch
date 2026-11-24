@@ -1147,6 +1147,388 @@
       "verdict": "no clear difference"
     },
     {
+      "against": "algo-3.0.0+554036a3b27c",
+      "algorithm_id": "algo-4.0.0+0e93e92f1cae",
+      "analysis_sha256": "b9ac1812a845c2f334794de51b5bf9b97c9ff71837adcf497e339e6c07e11add",
+      "comparison": {
+        "clean_false_alarms": {
+          "effect": 0.0,
+          "interval": [
+            -0.450908,
+            0.450908
+          ],
+          "level": 0.8,
+          "verdict": "no clear difference"
+        },
+        "coverage": {
+          "effect": 0.0,
+          "effect_is": "the change in the distance from 0.8",
+          "interval": [
+            0.0,
+            0.0
+          ],
+          "level": 0.8,
+          "margin": 0.05,
+          "verdict": "no clear difference"
+        },
+        "recall_at_2": {
+          "effect": 0.0,
+          "guard_interval": [
+            -0.013841,
+            0.013841
+          ],
+          "guard_level": 0.8,
+          "interval": [
+            -0.038251,
+            0.038251
+          ],
+          "level": 0.975,
+          "verdict": "no clear difference"
+        }
+      },
+      "date": "2026-11-24",
+      "experiment": "EXP-0001",
+      "inputs_sha256": "3f137dac5d397969ad6ed82cda1763c16524c9a2fc68d2efef949b09396ebece",
+      "measures": {
+        "clean": {
+          "exp1-clean-0": true,
+          "exp1-clean-1": true
+        },
+        "flawed": {
+          "exp1-hang-0": {
+            "covered": [
+              false,
+              false,
+              true,
+              true
+            ],
+            "flaw": "hang",
+            "hit2": true
+          },
+          "exp1-hang-1": {
+            "covered": [
+              true,
+              true,
+              true,
+              true
+            ],
+            "flaw": "hang",
+            "hit2": true
+          },
+          "exp1-hang-2": {
+            "covered": [
+              true,
+              true,
+              true,
+              true
+            ],
+            "flaw": "hang",
+            "hit2": true
+          },
+          "exp1-hang-3": {
+            "covered": [
+              true,
+              true,
+              true,
+              true
+            ],
+            "flaw": "hang",
+            "hit2": true
+          },
+          "exp1-hang-4": {
+            "covered": [
+              true,
+              true,
+              true,
+              true
+            ],
+            "flaw": "hang",
+            "hit2": true
+          },
+          "exp1-hang-5": {
+            "covered": [
+              true,
+              true,
+              true,
+              true
+            ],
+            "flaw": "hang",
+            "hit2": true
+          },
+          "exp1-lowclockblunder-0": {
+            "covered": [
+              true,
+              true,
+              true,
+              true
+            ],
+            "flaw": "low_clock_blunder",
+            "hit2": true
+          },
+          "exp1-lowclockblunder-1": {
+            "covered": [
+              true,
+              true,
+              true,
+              true
+            ],
+            "flaw": "low_clock_blunder",
+            "hit2": true
+          },
+          "exp1-lowclockblunder-2": {
+            "covered": [
+              true,
+              true,
+              true,
+              true
+            ],
+            "flaw": "low_clock_blunder",
+            "hit2": true
+          },
+          "exp1-lowclockblunder-3": {
+            "covered": [
+              true,
+              true,
+              true,
+              true
+            ],
+            "flaw": "low_clock_blunder",
+            "hit2": true
+          },
+          "exp1-lowclockblunder-4": {
+            "covered": [
+              true,
+              false,
+              false,
+              true
+            ],
+            "flaw": "low_clock_blunder",
+            "hit2": true
+          },
+          "exp1-lowclockblunder-5": {
+            "covered": [
+              false,
+              false,
+              true,
+              true
+            ],
+            "flaw": "low_clock_blunder",
+            "hit2": true
+          },
+          "exp1-missmate-0": {
+            "covered": [
+              true,
+              true,
+              true,
+              true
+            ],
+            "flaw": "miss_mate",
+            "hit2": false
+          },
+          "exp1-missmate-1": {
+            "covered": [
+              true,
+              false,
+              false,
+              false
+            ],
+            "flaw": "miss_mate",
+            "hit2": false
+          },
+          "exp1-missmate-2": {
+            "covered": [
+              true,
+              true,
+              true,
+              true
+            ],
+            "flaw": "miss_mate",
+            "hit2": false
+          },
+          "exp1-missmate-3": {
+            "covered": [
+              true,
+              true,
+              true,
+              true
+            ],
+            "flaw": "miss_mate",
+            "hit2": false
+          },
+          "exp1-missmate-4": {
+            "covered": [
+              true,
+              true,
+              false,
+              false
+            ],
+            "flaw": "miss_mate",
+            "hit2": false
+          },
+          "exp1-missmate-5": {
+            "covered": [
+              true,
+              true,
+              true,
+              true
+            ],
+            "flaw": "miss_mate",
+            "hit2": false
+          },
+          "exp1-noconvert-0": {
+            "covered": [
+              true,
+              true,
+              true,
+              true
+            ],
+            "flaw": "no_convert",
+            "hit2": true
+          },
+          "exp1-noconvert-1": {
+            "covered": [
+              true,
+              true,
+              true,
+              true
+            ],
+            "flaw": "no_convert",
+            "hit2": true
+          },
+          "exp1-noconvert-2": {
+            "covered": [
+              true,
+              true,
+              false,
+              false
+            ],
+            "flaw": "no_convert",
+            "hit2": true
+          },
+          "exp1-noconvert-3": {
+            "covered": [
+              false,
+              false,
+              false,
+              false
+            ],
+            "flaw": "no_convert",
+            "hit2": false
+          },
+          "exp1-noconvert-4": {
+            "covered": [
+              true,
+              true,
+              true,
+              true
+            ],
+            "flaw": "no_convert",
+            "hit2": true
+          },
+          "exp1-noconvert-5": {
+            "covered": [
+              false,
+              true,
+              true,
+              false
+            ],
+            "flaw": "no_convert",
+            "hit2": true
+          },
+          "exp1-openingblunder-0": {
+            "covered": [
+              true,
+              true,
+              true,
+              false
+            ],
+            "flaw": "opening_blunder",
+            "hit2": true
+          },
+          "exp1-openingblunder-1": {
+            "covered": [
+              true,
+              true,
+              true,
+              true
+            ],
+            "flaw": "opening_blunder",
+            "hit2": true
+          },
+          "exp1-openingblunder-2": {
+            "covered": [
+              true,
+              true,
+              true,
+              true
+            ],
+            "flaw": "opening_blunder",
+            "hit2": false
+          },
+          "exp1-openingblunder-3": {
+            "covered": [
+              true,
+              true,
+              false,
+              false
+            ],
+            "flaw": "opening_blunder",
+            "hit2": false
+          },
+          "exp1-openingblunder-4": {
+            "covered": [
+              true,
+              false,
+              false,
+              false
+            ],
+            "flaw": "opening_blunder",
+            "hit2": false
+          },
+          "exp1-openingblunder-5": {
+            "covered": [
+              true,
+              true,
+              false,
+              false
+            ],
+            "flaw": "opening_blunder",
+            "hit2": false
+          }
+        }
+      },
+      "metrics": {
+        "clean_false_alarms": {
+          "interval": [
+            0.549092,
+            1.0
+          ],
+          "level": 0.8,
+          "value": 1.0
+        },
+        "coverage": {
+          "interval": [
+            0.675,
+            0.866667
+          ],
+          "level": 0.95,
+          "value": 0.775
+        },
+        "recall_at_2": {
+          "interval": [
+            0.455136,
+            0.781261
+          ],
+          "level": 0.95,
+          "value": 0.633333
+        }
+      },
+      "results_sha256": "4708188c36240245515c2ba9b890bd75cc436aa0b4cb9167e55a1f036fd3908a",
+      "rule_sha256": "6a91c4bd4d5e8d47d57f1590e86182c90892525cc5595371b3f9caa318f97e56",
+      "seed_namespace": "EXP-0001",
+      "verdict": "no clear difference"
+    },
+    {
       "against": "algo-1.1.0+fa5e2186e1dd",
       "algorithm_id": "algo-1.1.0+fa5e2186e1dd",
       "analysis_sha256": "bc0a9ec07c49f65f175008784d359c09491b3f29263d42779d19081e09f2f391",
