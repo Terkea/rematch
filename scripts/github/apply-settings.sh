@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # Apply the repository settings kept as code in .github/settings (ADR 0095) to this repository:
 # the "main" ruleset (created, or updated in place by name), the repository settings and topics,
-# private vulnerability reporting, Pages built by Actions, the labels, and the roadmap milestones
-# (milestones.json, matched by title, renamed through `renamed_from`; ADRs 0099 and 0104). With
-# --seed-issues it also syncs the seed issues in roadmap-issues.json, epics first: it creates the
-# ones that do not exist, moves and updates the open ones that differ from the file (labels are
-# only added, ticked boxes are kept), moves each milestone's `adopt_issues`, then links each one
-# under its epic as a sub-issue. A closed issue is never edited.
+# private vulnerability reporting, Pages built by Actions, the Actions settings (every outside
+# contributor's fork pull request waits for approval, a read-only default GITHUB_TOKEN; ADR 0108),
+# the labels, and the roadmap milestones (milestones.json, matched by title, renamed through
+# `renamed_from`; ADRs 0099 and 0104). With --seed-issues it also syncs the seed issues in
+# roadmap-issues.json, epics first: it creates the ones that do not exist, moves and updates the
+# open ones that differ from the file (labels are only added, ticked boxes are kept), moves each
+# milestone's `adopt_issues`, then links each one under its epic as a sub-issue. A closed issue
+# is never edited.
 #
 # Run it from the maintainer's own `gh` login (an admin of the repository). No token is stored
 # anywhere. It is idempotent: it reads the live state first, prints the diff, and writes only what
@@ -31,7 +33,7 @@ for arg in "$@"; do
     --prune) prune="--prune" ;;
     --seed-issues) seed=1 ;;
     -h | --help)
-      sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *)
@@ -133,6 +135,8 @@ if [ -f "$work/live/rulesets.jsonl" ]; then
 fi
 get vulnerability-reporting.json "repos/$repo/private-vulnerability-reporting"
 get pages.json "repos/$repo/pages"
+get actions-fork-approval.json "repos/$repo/actions/permissions/fork-pr-contributor-approval"
+get actions-workflow.json "repos/$repo/actions/permissions/workflow"
 get_milestones
 
 # shellcheck disable=SC2086 # $prune is empty or one flag

@@ -27,6 +27,10 @@ back". The PR-title check enforces this. See CONTRIBUTING.md.
       ADR 0106), or this change alters no behaviour.
 - [ ] UI changes: I followed `packages/ui/DESIGN.md`, `pnpm design:check` passes, and I attached
       screenshots at 390 px and 1440 px, day and night.
+- [ ] Sensitive paths: this PR changes none of the paths in SECURITY.md ("How we review outside
+      code": `.github/`, Dockerfiles and compose files, lockfiles, `package.json` scripts or
+      dependencies, `build.rs`, `scripts/`, `CLAUDE.md`, `.claude/`, the prompts, `algorithm/`),
+      or it does and the "What and why" section says which ones and why.
 - [ ] No secrets, tokens, personal data, or other players' private games in the code, fixtures,
       screenshots or this description.
 - [ ] The title is a Conventional Commit, and a breaking change says `!` or `BREAKING CHANGE:`.
