@@ -544,7 +544,7 @@ Shipped: Stockfish analysis of every move, explained weaknesses and strengths, t
 - [v0.3 The evaluation lab](https://github.com/Terkea/rematch/issues?q=is%3Aissue+milestone%3A%22v0.3+The+evaluation+lab%22)
   - The evaluation lab: every layer against its ground truth (9 sub-issues)
   - The scientific method for the algorithm (11 sub-issues)
-  - Are the facts right? (8 sub-issues)
+  - Are the facts right? (11 sub-issues)
   - Do we recommend the right thing? (4 sub-issues)
   - Is the profile right? (4 sub-issues)
   - Is the AI faithful? (1 sub-issue)
